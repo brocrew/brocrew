@@ -1,0 +1,55 @@
+# 147 mutations — HEAD a75a7ad + working tree
+# 2026-08-14T17:56:00Z
+
+M0  CONTROL (no mutation) — baseline runtime=247 desktop=218 dom=17
+    node: runtime GREEN 0 of 247 in 4 files · desktop GREEN 0 of 218 in 8 files
+    dom:  GREEN 0 of 17 in 3 files
+
+M1 · the fingerprint IS the token (no digest at all)
+    node: runtime RED 1 of 247 in 4 files · desktop GREEN 0 of 218 in 8 files
+M2 · the fingerprint is constant, so nothing ever differs
+    node: runtime RED 5 of 247 in 4 files · desktop GREEN 0 of 218 in 8 files
+M3 · the launch credential is never recorded (THE detection, disabled)
+    node: runtime RED 4 of 247 in 4 files · desktop GREEN 0 of 218 in 8 files
+M4 · the digest is taken from a SECOND read, not the injected bytes
+    node: runtime RED 1 of 247 in 4 files · desktop GREEN 0 of 218 in 8 files
+M5 · a STARTED session gets no credential watch
+    node: runtime RED 3 of 247 in 4 files · desktop GREEN 0 of 218 in 8 files
+M6 · a RESUMED session gets no credential watch
+    node: runtime RED 1 of 247 in 4 files · desktop GREEN 0 of 218 in 8 files
+M7 · the answer does not latch
+    node: runtime RED 2 of 247 in 4 files · desktop GREEN 0 of 218 in 8 files
+M8 · a Keychain that yields nothing counts as a supersession (fail-closed in the wrong place)
+    node: runtime RED 1 of 247 in 4 files · desktop GREEN 0 of 218 in 8 files
+M9 · the comparison always agrees, so a replaced sign-in is never noticed
+    node: runtime RED 4 of 247 in 4 files · desktop GREEN 0 of 218 in 8 files
+M10 · the message gate stops asking (THE §2 DEFECT)
+    node: runtime GREEN 0 of 247 in 4 files · desktop RED 5 of 218 in 8 files
+M11 · the check itself is a no-op
+    node: runtime GREEN 0 of 247 in 4 files · desktop RED 6 of 218 in 8 files
+M12 · the state is published AFTER the throw, so the button arrives after the refusal
+    node: runtime GREEN 0 of 247 in 4 files · desktop RED 1 of 218 in 8 files
+M13 · the refusal stops naming the remedy
+    node: runtime GREEN 0 of 247 in 4 files · desktop RED 1 of 218 in 8 files
+M14 · a QUEUED message flushes onto the old sign-in
+    node: runtime GREEN 0 of 247 in 4 files · desktop RED 1 of 218 in 8 files
+M15 · the disclosure never carries it, so no surface can render it
+    node: runtime GREEN 0 of 247 in 4 files · desktop RED 1 of 218 in 8 files
+M16 · the disclosure ASKS instead of reading the latch (a subprocess per publish)
+    node: runtime GREEN 0 of 247 in 4 files · desktop RED 1 of 218 in 8 files
+M17 · the close result is invented, so a refused close still reopens
+    node: runtime GREEN 0 of 247 in 4 files · desktop RED 1 of 218 in 8 files
+M18 · the bar is never drawn
+    dom:  RED 5 of 17 in 3 files
+M19 · an ABSENT disclosure reads as a supersession (the flicker before the host answers)
+    dom:  RED 7 of 17 in 3 files
+M20 · the button is live during another command (a double press double-reopens)
+    dom:  RED 1 of 17 in 3 files
+M21 · the button asks for nothing (106's control that cannot act)
+    dom:  RED 1 of 17 in 3 files
+M22 · the sentence stops saying nothing is lost
+    dom:  RED 1 of 17 in 3 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    node: runtime GREEN 0 of 247 in 4 files · desktop GREEN 0 of 218 in 8 files
+    dom:  GREEN 0 of 17 in 3 files

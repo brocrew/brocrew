@@ -1,0 +1,50 @@
+# 169 mutations — HEAD 1b8c0bb + working tree
+# 2026-08-16T04:49:36Z
+
+M0  CONTROL (no mutation) — baseline dom=164 desktop=88
+    dom GREEN 0 of 164 in 4 files
+          desktop GREEN 0 of 88 in 4 files
+
+M1 · 🔴 THE MEASUREMENT · the button stops reading the blocker, so Send is lit over `../../escape` again — exactly what the PM drove in the running app on 8f30309
+    dom RED 17 of 164 in 4 files
+          desktop GREEN 0 of 88 in 4 files
+M2 · the PREDICATE stops reading it, so the button greys and ⌘↵ still launches — one send path guarded is the bug 102 shipped and 103 fixed by moving the rule here
+    dom GREEN 0 of 164 in 4 files
+          desktop RED 1 of 88 in 4 files
+M3 · ⛔ 118 · the reason stops being RENDERED, so the control is dead and silent — a grey button saying 'later' with no later, which is the state 106 refuses outright
+    dom RED 2 of 164 in 4 files
+          desktop GREEN 0 of 88 in 4 files
+M4 · the launcher stops blocking on an UNNAMED profile, so `+ New profile…` with an empty box launches — and 167's `chosenProfile` floor turns it into a press that does nothing
+    dom RED 2 of 164 in 4 files
+          desktop GREEN 0 of 88 in 4 files
+M5 · the blocker speaks while a launch is IN FLIGHT, so 'BroBot is starting this conversation…' is replaced by a complaint about a field behind it (103's own feedback)
+    dom RED 1 of 164 in 4 files
+          desktop GREEN 0 of 88 in 4 files
+M6 · ⛔ 032 · the renderer gets its OWN name rule — a plausible 'no separators' check in place of the one predicate the boundary and the path derivation both hold it to
+    dom RED 17 of 164 in 4 files
+          desktop GREEN 0 of 88 in 4 files
+M7 · the WIRE stops refining `profileId`, so the two ends disagree in the direction that matters: the launcher refuses what the host would now accept, and a path reaches `mkdir`
+    dom GREEN 0 of 164 in 4 files
+          desktop RED 15 of 88 in 4 files
+M8 · §2 · the origin chip goes back to `in provider home` — the shortest sentence in the app that only made sense to someone who had read the source
+    dom RED 2 of 164 in 4 files
+          desktop RED 1 of 88 in 4 files
+M9 · §2 · the row swept out of the USER's own folder says `your own provider home` again — 151's exact complaint, on the exact surface the person read it on
+    dom RED 1 of 164 in 4 files
+          desktop RED 1 of 88 in 4 files
+M10 · §2 · the scan summary names the repo's directory again — and it is the APP's own per-profile homes it reads, so this is also the sentence naming the wrong folder
+    dom RED 1 of 164 in 4 files
+          desktop RED 1 of 88 in 4 files
+M11 · §2 · the Sessions filter's `why` is TYPED rather than composed, so it says the right thing today and silently omits the third provider the day there is one
+    dom RED 2 of 164 in 4 files
+          desktop RED 2 of 88 in 4 files
+M12 · §2 · the composed phrase names only the FIRST provider — every 'Claude's and Codex's' sentence quietly drops one, which is the failure typing them out would have made permanent
+    dom GREEN 0 of 164 in 4 files
+          desktop RED 1 of 88 in 4 files
+M13 · ⛔ the sweep takes a sentence it must NOT take · `whyNoDirectInput` is reworded, reopening the claim 116/118 negotiated down from an unmeasured one about capabilities
+    dom GREEN 0 of 164 in 4 files
+          desktop RED 2 of 88 in 4 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    dom GREEN 0 of 164 in 4 files
+          desktop GREEN 0 of 88 in 4 files

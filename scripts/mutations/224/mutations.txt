@@ -1,0 +1,77 @@
+# 224 mutations — HEAD 0786bcb + working tree
+# 2026-08-27T14:14:30Z
+
+M0  CONTROL (no mutation) — baseline scripts=232
+    scripts GREEN 0 of 232 in 15 files
+
+M1 · ⛔ `riskOf` answers 'app' for a step nobody has classified instead of refusing — the number this file exists to state drifts upwards every time somebody writes a new step
+    scripts RED 1 of 232 in 15 files
+M2 · an EXPOSED step is counted towards the instrument's strength — the headline claims a step that can still go red for a mood as one that can only go red for the app
+    scripts RED 3 of 232 in 15 files
+M3 · the line stops NAMING the exposed steps — 224 §5 asks for them individually because a count of dangerous steps is not something anybody can act on
+    scripts RED 2 of 232 in 15 files
+M4 · the line's exposed branch is never taken, so a run with thirty steps that can go red for a provider's choice reports that none of them can
+    scripts RED 2 of 232 in 15 files
+M5 · a claim outside a live step's REACH is counted as model-dependent — two different facts summed into one excuse (an OS-owned dialog is not a mood)
+    scripts RED 2 of 232 in 15 files
+M6 · ⛔ 224 §4's two halves collapse: every exposed step is reported as reclassifiable, so the list of steps that CANNOT be told from a defect — the finding — disappears
+    scripts RED 1 of 232 in 15 files
+M7 · ⛔ the parser returns what it managed instead of refusing what it cannot read — a census with holes in it reports as complete, which is 196's failure one level down
+    scripts RED 1 of 232 in 15 files
+M8 · comments are no longer blanked, so the word `step()` in a sentence is read as a step registration and the parser refuses the whole file over prose
+    scripts RED 1 of 232 in 15 files
+M9 · the call pattern widens back to a bare `step(`, which also matches the English inside a template literal — `${steps.length} step(s)` becomes a step
+    scripts RED 5 of 232 in 15 files
+M10 · a step named by a CONSTANT stops resolving — the twelve steps registered that way become unreadable, and a census that skipped them silently would be twelve short
+    scripts RED 5 of 232 in 15 files
+M11 · a step leaves the census, so a step the run offers has no stated meaning for its reds
+    scripts RED 1 of 232 in 15 files
+M12 · …and the other direction: the census names a step nothing registers, so the instrument's strength is claimed over a check that does not exist
+    scripts RED 2 of 232 in 15 files
+M13 · ⛔ step 68 leaves GUARDED while still answering `unasserted(...)` — the census counts it as a step that can only go red for the app, which overstates the instrument
+    scripts RED 1 of 232 in 15 files
+M14 · ⛔ a step that still THROWS is claimed as guarded — the census describing an intention the code does not have, which is the headline saying a red cannot happen when it can
+    scripts RED 1 of 232 in 15 files
+M15 · a step is in BOTH lists, so what a red from it means depends on which list you read
+    scripts RED 3 of 232 in 15 files
+M16 · a reason becomes a shrug — `flaky` is the word this whole dispatch exists to replace
+    scripts RED 1 of 232 in 15 files
+M17 · a `cause` nobody defined, so a step is neither a provider's choice nor a limit of the instrument and is silently absent from both numbers
+    scripts RED 1 of 232 in 15 files
+M18 · an exposed step stops saying whether a control exists — 224 §4 asks for exactly that list, and an entry with no answer joins the half that could be reclassified
+    scripts RED 1 of 232 in 15 files
+M19 · ⛔ THE DEFECT · step 68 stops reporting either half as an unreached claim, so a model that proposes a plan without attempting Bash is a FAIL again — 219 and 221, twice over
+    scripts RED 1 of 232 in 15 files
+M20 · ⛔ THE DEFECT · step 19 throws for a model that answered in prose — 221's red, on a step whose own comments say four times over that this is a fact about the model
+    scripts RED 1 of 232 in 15 files
+M21 · ⛔ THE DEFECT · step 12's reasoning half stops being a claim, so a Codex turn that reasoned nowhere reds a step that asserted a dozen other things correctly (221)
+    scripts RED 1 of 232 in 15 files
+M22 · the run stops PRINTING the census line — §5's number lives only in a response doc, which is where the last three numbers this project quoted went stale
+    scripts RED 1 of 232 in 15 files
+M23 · 🔴 224 §4's TRAP, opened · step 68 stops reading the ledger at all, so "the model never called it" is decided by the one surface that could have stopped drawing
+    scripts RED 1 of 232 in 15 files
+M24 · 🔴 the same for step 19 · an ExitPlanMode the app RECORDED and never rendered is 030 failing, and it becomes a blank — the card asking you to approve what you were never shown
+    scripts RED 1 of 232 in 15 files
+M25 · 🔴 and step 12 · reasoning that arrived and cannot be OPENED is the summary flip being off, and it becomes a blank — 027's whole subject, hidden behind the new label
+    scripts RED 1 of 232 in 15 files
+M26 · 🔴 step 19's blank swallows every throw and not just the wait's timeout, so a turn still raising cards at the approval cap — 031's re-prompting pathology, the one thing that counter exists to catch — is reported as a model that never proposed a plan
+    scripts RED 1 of 232 in 15 files
+M27 · 🔴 step 68's CONTROL 1 goes, so a planning turn that produced nothing at all — and a dead app is one way to produce nothing — reports a blank instead of a red
+    scripts RED 1 of 232 in 15 files
+M28 · 🔴 step 68's CONTROL 2 goes, so a ledger full of tool calls beside a transcript that carried none to an outcome — the renderer dropping rows — becomes a blank about the model
+    scripts RED 1 of 232 in 15 files
+M29 · 🔴 164's OWN REGRESSION becomes a blank · a Grep row that ends in error — the plan-mode floor refusing the search tool, which is the whole of 164 — stops being red
+    scripts RED 1 of 232 in 15 files
+M30 · 🔴 a Bash row left running for the whole budget becomes a blank — the app took the command and never showed an outcome, and the step would report that the model never tried
+    scripts RED 1 of 232 in 15 files
+M31 · 🔴 step 19's CONTROL 1 goes, so a session that produced nothing at all reports "the model never proposed a plan" — a blank claimed over a dead app
+    scripts RED 1 of 232 in 15 files
+M33 · 🔴 the three tools that ask a HUMAN stop being excluded from CONTROL 2, so a model that goes straight to planning — EnterPlanMode then ExitPlanMode, both parked on a card nothing here may answer — reds this step on a perfectly healthy app
+    scripts RED 1 of 232 in 15 files
+M34 · 🔴 step 12 stops asking the LEDGER, so reasoning the app recorded and never drew — the renderer dropping thinking entries — is reported as a Codex turn that reasoned nowhere
+    scripts RED 1 of 232 in 15 files
+M32 · 🔴 step 19's CONTROL 3 goes, so a plan turn PARKED on a card nobody could answer — 055's measured failure, exactly — is reported as a model that chose not to plan
+    scripts RED 1 of 232 in 15 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    scripts GREEN 0 of 232 in 15 files

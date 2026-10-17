@@ -1,0 +1,95 @@
+# 234 mutations — HEAD 18e4a35 + working tree
+# 2026-08-28T15:12:08Z
+
+M0  CONTROL (no mutation) — baseline runtime=1292 desktop=2549 dom=673 scripts=233
+    runtime GREEN 0 of 1292 in 40 files · desktop GREEN 0 of 2549 in 134 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 233 in 15 files
+
+M1  · 🔴 THE DEFECT, verbatim (231, from 216's own out-of-scope note) · the flush publishes `sent` and `user_turn` over an `abandoned` teardown has already written for the same message
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 1 of 2549 in 134 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 233 in 15 files
+M2  · ⛔ §1 · the check BEFORE the handover goes, so the provider is handed a message the ledger has already ended — a turn started on a session that is going away
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 1 of 2549 in 134 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 233 in 15 files
+M3  · 🔴 §1 · the ownership predicate itself always says yes — every suspension point above keeps its call and none of them means anything
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 2 of 2549 in 134 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 233 in 15 files
+M4  · ⛔ §1 · ⚑ THE FIX THE REVIEW REJECTED, put back · `abandonQueued` reads `flushing` instead of `handingOver`, so a message still at the path re-check or the turn gate is described as one that may have reached the agent
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 1 of 2549 in 134 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 233 in 15 files
+M5  · ⛔ §1 · the abandon says nothing about what it does not know, so a message that may have reached the provider is recorded with the bare word that means it never left
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 1 of 2549 in 134 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 233 in 15 files
+M6  · ⚠️ §1 · the handover marker is never cleared, so a send that THREW leaves it standing over a message that is still queued — and the next abandon inherits a doubt it has no right to. ⚑ Re-argued after run 1: the first label said *every* later abandon claims one, which identity comparison makes impossible; the throw is the only path the `finally` is on
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 1 of 2549 in 134 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 233 in 15 files
+M7  · 🔴 §1 · teardown publishes the ending without TAKING it — `session.queued` survives, the flush finds it still holds, and the ledger gets both endings the other way round
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 2 of 2549 in 134 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 233 in 15 files
+M8  · 🔴 §2 · THE DEFECT (227 M4 / 228 M1), verbatim · the busy selector asks for WORDS again, so a staged file with an empty box offers neither Queue nor Interrupt-and-send
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 2 of 2549 in 134 files · dom RED 1 of 673 in 43 files · scripts GREEN 0 of 233 in 15 files
+M9  · ⛔ §2 · the buttons ask the new rule and the HINT asks the old one, so the sentence under the composer describes a state the controls are not in (223's tooltip defect again)
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 2 of 2549 in 134 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 233 in 15 files
+M10 · ⚠️ §2 · the selector forgets it is about a BUSY turn, so an idle composer offers to queue behind a turn that is not running
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 1 of 2549 in 134 files · dom RED 32 of 673 in 43 files · scripts GREEN 0 of 233 in 15 files
+M11 · 🔴 §2 · THE DEFECT (228 M2), verbatim · `closing` goes back below the state gate, so a conversation closed with a card open still says to answer the request above
+    runtime GREEN 0 of 1292 in 40 files · desktop GREEN 0 of 2549 in 134 files · dom RED 1 of 673 in 43 files · scripts GREEN 0 of 233 in 15 files
+M12 · ⛔ §2 · the ENDED early-out goes, so a conversation that is over is told it is closing — losing the one remedy a close does not take away (reopen it from the rail)
+    runtime GREEN 0 of 1292 in 40 files · desktop GREEN 0 of 2549 in 134 files · dom RED 1 of 673 in 43 files · scripts GREEN 0 of 233 in 15 files
+M13 · ⛔ §2 · `interruptible` goes back to a constant, so the stop button is offered for a turn the close is already ending — the DEAD PROP restored
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 1 of 2549 in 134 files · dom RED 2 of 673 in 43 files · scripts GREEN 0 of 233 in 15 files
+M14 · 🔴 §2 · the KEY stops reading it while the button keeps reading it — 094's finding upside down, one affordance gated and the others not
+    runtime GREEN 0 of 1292 in 40 files · desktop GREEN 0 of 2549 in 134 files · dom RED 1 of 673 in 43 files · scripts GREEN 0 of 233 in 15 files
+M15 · ⚠️ §2 · ⚑ found in review · the paint stops following the sentence, so a closing conversation reads the closing sentence in the amber that means *frozen on YOU*
+    runtime GREEN 0 of 1292 in 40 files · desktop GREEN 0 of 2549 in 134 files · dom RED 1 of 673 in 43 files · scripts GREEN 0 of 233 in 15 files
+M16 · 🔴 §3 · THE DEFECT (228 L1), verbatim · the host stops owning the content rule, so a main-process caller can queue a blank turn or destroy a running one to send spaces
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 5 of 2549 in 134 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 233 in 15 files
+M17 · ⛔ §3 · the gate asks for WORDS rather than the shared predicate, so 220's adoption blocker comes back at a THIRD layer: an attachment-only send is refused by the host
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 5 of 2549 in 134 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 233 in 15 files
+M18 · ⛔ §3 · the go-ahead stops handing over its content, so the fourth turn-taking path is the one that skips the rule — 148 H2's shape, one dispatch later
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 1 of 2549 in 134 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 233 in 15 files
+M19 · 🔴 §3 · THE DEFECT (228 M3), verbatim · the fourth wire verb goes back to `min(1)`, the rule 221 removed from the other three, so a whitespace go-ahead is an accepted command
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 4 of 2549 in 134 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 233 in 15 files
+M20 · ⛔ §3 · the go-ahead's text stops being OPTIONAL, so 085's leave — stopping planning without saying anything on the user's behalf — becomes a rejected command
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 3 of 2549 in 134 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 233 in 15 files
+M21 · ⛔ §3 · the wire table loses the fourth verb's row, so a rule the schema holds is described by nothing — the way a table goes quietly stale
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 2 of 2549 in 134 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 233 in 15 files
+M22 · ⚠️ §3 · a row OVER-claims its verbs, so the census measures a rule against a command that strips the field entirely and reports a refusal nobody makes
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 2 of 2549 in 134 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 233 in 15 files
+M23 · ⛔ §3 · the GATE table loses the row for the refusal the host now makes, so a throw a person can reach is described by nothing and nobody has said whether it is knowable
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 1 of 2549 in 134 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 233 in 15 files
+M24 · 🔴 §4 · THE DEFECT (227 LOW 1), verbatim · containment goes back to a SUBSTRING test, so a legal folder named `..prefix` makes the chip say a file plainly inside is outside
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 1 of 2549 in 134 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 233 in 15 files
+M25 · ⛔ §4 · the exact-`..` case goes, so the working directory's own PARENT reads as inside it — the segment fix over-narrowed instead of over-broad
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 1 of 2549 in 134 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 233 in 15 files
+M26 · ⛔ the live step that carries §2's gesture leaves the run, and the step census that is supposed to name exactly the steps the smoke offers says nothing
+    runtime GREEN 0 of 1292 in 40 files · desktop GREEN 0 of 2549 in 134 files · dom GREEN 0 of 673 in 43 files · scripts RED 3 of 233 in 15 files
+M27 · ⛔ 149 M12, re-anchored and re-run · the plan go-ahead skips the turn gate (THE H2 DEFECT)
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 2 of 2549 in 134 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 233 in 15 files
+M28 · ⛔ 149 M13, re-anchored and re-run · the plan gate runs BELOW the release, so the plan is lost for a turn that never went
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 1 of 2549 in 134 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 233 in 15 files
+M29 · ⛔ 149 M15, re-anchored and re-run · queueing stops asking whether the credential the conversation holds is still the machine's
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 2 of 2549 in 134 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 233 in 15 files
+M30 · 🔒 216 M5, re-anchored and re-run · a path OUTSIDE the working directory stops saying so, so the agent's own permission card is the first place anybody notices
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 9 of 2549 in 134 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 233 in 15 files
+M31 · ⛔ 216 M20, re-anchored and re-run · the ordinary SEND stops re-checking at all
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 5 of 2549 in 134 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 233 in 15 files
+M32 · ⛔ 216 M21, re-anchored and re-run · the queued FLUSH stops asking whether the session can take a turn — the turn nobody pressed anything for
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 3 of 2549 in 134 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 233 in 15 files
+M33 · ⛔ 216 M22, re-anchored and re-run · the interrupt's SECOND check is removed — THE 148 M1 TOCTOU
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 2 of 2549 in 134 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 233 in 15 files
+M34 · ⛔ 216 M24 (203 M30), re-anchored and re-run · ordinary `send` stops asking whether the session can take a turn
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 10 of 2549 in 134 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 233 in 15 files
+M35 · 🔴 219 M1, re-anchored and re-run · the pane computes a reason and never has one, so Send is lit and full-accent in a conversation the host will refuse
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 1 of 2549 in 134 files · dom RED 9 of 673 in 43 files · scripts GREEN 0 of 233 in 15 files
+M36 · ⛔ 219 M5c, re-anchored and re-run · the two reasons swap precedence, so a conversation on its way out is told to reopen on the current sign-in
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 1 of 2549 in 134 files · dom RED 2 of 673 in 43 files · scripts GREEN 0 of 233 in 15 files
+M37 · ⛔ 219 M7, re-anchored and re-run · the busy branch loses its `blocked` guard, so `queue-prompt` and `interrupt-send-prompt` are lit over a reason the pane already holds
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 2 of 2549 in 134 files · dom RED 1 of 673 in 43 files · scripts GREEN 0 of 233 in 15 files
+M38 · ⛔ 221 M9, re-anchored and re-run · the wire table loses a row, so a rule the schema holds is described by nothing
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 1 of 2549 in 134 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 233 in 15 files
+M39 · ⛔ 221 M10, re-anchored and re-run · a row's PROBE stops breaking the rule it names, so the row describes a rule that may not exist
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 1 of 2549 in 134 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 233 in 15 files
+M40 · ⛔ 232 M6 (216 M20), re-anchored and re-run · the ordinary SEND stops re-checking, so a path replaced between the chip and the press is sent as what the person attached
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 5 of 2549 in 134 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 233 in 15 files
+M41 · ⛔ 232 M9 (216 M24), re-anchored and re-run · ordinary `send` stops asking whether the session can take a turn
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 10 of 2549 in 134 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 233 in 15 files
+M42 · ⛔ 232 M14 (221 M9), re-anchored and re-run · the wire table loses a row
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 1 of 2549 in 134 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 233 in 15 files
+M43 · 🔒 232 M24 (216 M5), re-anchored and re-run · a path OUTSIDE the working directory stops saying so, on the ONE-observation form
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 16 of 2549 in 134 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 233 in 15 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1292 in 40 files · desktop GREEN 0 of 2549 in 134 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 233 in 15 files

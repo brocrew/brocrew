@@ -1,0 +1,154 @@
+# The update rehearsal's lanes, run inside the private sandbox that is also their feed. Kept in
+# BroCrew's repository and placed in the sandbox as `.github/workflows/rehearsal.yml` by
+# `scripts/update-rehearsal-feed.mjs sandbox-push`; it never runs in BroCrew's repository.
+#
+# Staged by hand beforehand: A (0.0.98) is this repository's latest release and B (0.0.99) a draft,
+# both built by BroCrew's `update-rehearsal.yml` from `source_sha`. Each lane installs A, lets
+# it make its data, and says when it is ready; B is published once every lane is; each lane then
+# updates A to B through its window and checks what is left.
+#
+# ⛔ The app reads this private feed with the run's own short-lived token, given to it in its
+# environment only (`private: true` in its `app-update.yml`). ⚑ A job has one token: the one a lane's
+# app holds can also write commit statuses here, as the lane does to say it is ready, and ends with
+# the job. No other credential is used, and nothing here is ever made public.
+name: Update rehearsal
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: The BroCrew commit A and B were built from
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: update-rehearsal
+  cancel-in-progress: false
+
+jobs:
+  b-metadata:
+    name: B's update files, from its draft
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # ⚑ A draft is seen only by a token that may push.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/update-rehearsal-feed.mjs b-metadata "$GITHUB_REPOSITORY" b-metadata
+      - uses: actions/upload-artifact@v4
+        with:
+          name: b-metadata
+          path: b-metadata
+          if-no-files-found: error
+          retention-days: 7
+
+  windows:
+    name: Windows, on the ${{ matrix.workspace }} workspace
+    needs: b-metadata
+    runs-on: windows-2022
+    timeout-minutes: 110
+    permissions:
+      contents: read
+      statuses: write
+    strategy:
+      fail-fast: false
+      matrix:
+        workspace: [default, another]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+      - uses: actions/download-artifact@v4
+        with:
+          name: b-metadata
+          path: dist/b
+      - name: A's installer and update file, from its release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download v0.0.98 --repo "$GITHUB_REPOSITORY" --dir dist/a --pattern '*-Setup-*-x64.exe' --pattern latest.yml
+      - name: Install A, make data, update to B through the window, and check what is left
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: node scripts/update-rehearsal-lane.mjs windows-${{ matrix.workspace }} evidence -- node scripts/windows-update-test.mjs --dist-a dist/a --dist-b dist/b --evidence evidence --workspace ${{ matrix.workspace }} --feed-github ${{ github.repository }} --feed-private --marker-a "a-$env:SOURCE_SHA" --marker-b "b-$env:SOURCE_SHA" --source-sha "$env:SOURCE_SHA"
+      - name: Keep the evidence with the run
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-windows-${{ matrix.workspace }}
+          path: evidence
+          if-no-files-found: error
+          retention-days: 30
+
+  macos:
+    name: Mac, the guided route
+    needs: b-metadata
+    runs-on: macos-15
+    timeout-minutes: 110
+    permissions:
+      contents: read
+      statuses: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+      - uses: actions/download-artifact@v4
+        with:
+          name: b-metadata
+          path: dist/b
+      - name: A's disk image and update file, from its release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download v0.0.98 --repo "$GITHUB_REPOSITORY" --dir dist/a --pattern '*-arm64.dmg' --pattern latest-mac.yml
+      - name: Install A, make data, update to B through the window and the disk image, and check what is left
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: node scripts/update-rehearsal-lane.mjs macos evidence -- node scripts/mac-update-test.mjs --dist-a dist/a --dist-b dist/b --evidence evidence --feed-github "$GITHUB_REPOSITORY" --feed-private --marker-a "a-$SOURCE_SHA" --marker-b "b-$SOURCE_SHA" --source-sha "$SOURCE_SHA"
+      - name: Keep the evidence with the run
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-macos
+          path: evidence
+          if-no-files-found: error
+          retention-days: 30
+
+  release-b:
+    name: Publish B once every lane is ready
+    needs: b-metadata
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: write
+      statuses: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/update-rehearsal-feed.mjs release-b private "$GITHUB_REPOSITORY"

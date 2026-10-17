@@ -1,0 +1,63 @@
+# 209 mutations — HEAD 2f2c513 + working tree
+# 2026-08-24T13:09:57Z
+
+M0  CONTROL (no mutation) — baseline scripts=202 desktop=2254 dom=553
+    scripts GREEN 0 of 202 in 13 files · desktop GREEN 0 of 2254 in 117 files · dom GREEN 0 of 553 in 34 files
+
+M1  · ⛔ THE DEFECT, verbatim · a step's claim list is ignored, so three claims are one PASS again — the shape that made 138's run report `1 ASSERTED, 2 ASSERTED, 3 NOT ASSERTED` as a clean step
+    scripts RED 3 of 202 in 13 files · desktop GREEN 0 of 2254 in 117 files · dom GREEN 0 of 553 in 34 files
+M2  · ⛔ H1 · a step whose EVERY claim went unreached reads as a PASS — the fourth cell erased one level down
+    scripts RED 1 of 202 in 13 files · desktop GREEN 0 of 2254 in 117 files · dom GREEN 0 of 553 in 34 files
+M3  · ⛔ H1 · the claims never leave `outcomeVerdict`, so the run counts steps and nothing else — the mechanism present and inert
+    scripts RED 3 of 202 in 13 files · desktop GREEN 0 of 2254 in 117 files · dom GREEN 0 of 553 in 34 files
+M4  · ⛔ H1 · the headline stops reporting claims at all, which is the sentence 206 asked for
+    scripts RED 2 of 202 in 13 files · desktop GREEN 0 of 2254 in 117 files · dom GREEN 0 of 553 in 34 files
+M5  · ⚠️ H1 · the headline stops NAMING the unreached claims, leaving a count nobody can act on (196's own rule, one level down)
+    scripts RED 1 of 202 in 13 files · desktop GREEN 0 of 2254 in 117 files · dom GREEN 0 of 553 in 34 files
+M6  · ⛔ H1 · `claims()` accepts an empty list — a step whose claims filtered down to none reports as an honest blank and counts zero in both columns (129's trap)
+    scripts RED 1 of 202 in 13 files · desktop GREEN 0 of 2254 in 117 files · dom GREEN 0 of 553 in 34 files
+M7  · ⛔ H1 · a claim with no verdict is accepted, so `{claim, verdict: 'PROBABLY'}` counts as neither asserted nor unasserted and silently shrinks the denominator
+    scripts RED 1 of 202 in 13 files · desktop GREEN 0 of 2254 in 117 files · dom GREEN 0 of 553 in 34 files
+M8  · ⛔ H1 · a step writes its verdict into a sentence again — the exact form 206 H1 found, put back on step 63
+    scripts RED 1 of 202 in 13 files · desktop GREEN 0 of 2254 in 117 files · dom GREEN 0 of 553 in 34 files
+M9  · ⛔ THE DEFECT, verbatim · the query is unscoped again, so it answers about whichever session has the most turns — step 6's, on any run where 6 went further than 48
+    scripts RED 2 of 202 in 13 files · desktop GREEN 0 of 2254 in 117 files · dom GREEN 0 of 553 in 34 files
+M10 · ⚠️ H1 · the scope is built but the ORDER still crosses sessions — `ordinal` counts turns within a session, so ordering by it over the whole table compares turn NUMBERS
+    scripts RED 2 of 202 in 13 files · desktop GREEN 0 of 2254 in 117 files · dom GREEN 0 of 553 in 34 files
+M11 · 🔒 H1 · an id of any shape is concatenated into the SQL — `queryDatabase` runs a statement, not a bound parameter
+    scripts RED 1 of 202 in 13 files · desktop GREEN 0 of 2254 in 117 files · dom GREEN 0 of 553 in 34 files
+M12 · ⛔ THE DEFECT, verbatim · a missing marker reads as nothing missing — `hasTranscript`'s boolean, where a session that is NOT in the isolated home is indistinguishable from one that is
+    scripts RED 2 of 202 in 13 files · desktop GREEN 0 of 2254 in 117 files · dom GREEN 0 of 553 in 34 files
+M13 · ⛔ H3 · an UNFINISHED walk asserts absence — the whole finding: 'I looked and it is not there' and 'I could not look' become one sentence again
+    scripts RED 2 of 202 in 13 files · desktop GREEN 0 of 2254 in 117 files · dom GREEN 0 of 553 in 34 files
+M14 · ⚠️ H3 · the asymmetry is lost — a marker that WAS found fails because the walk also stopped somewhere else, which is a red nobody could act on (176's rule)
+    scripts RED 1 of 202 in 13 files · desktop GREEN 0 of 2254 in 117 files · dom GREEN 0 of 553 in 34 files
+M15 · ⛔ H3 · a scan for NO markers reports nothing missing, forever — 129's trap on the side of the guard where an empty list looks most like a pass
+    scripts RED 1 of 202 in 13 files · desktop GREEN 0 of 2254 in 117 files · dom GREEN 0 of 553 in 34 files
+M16 · ⛔ THE DEFECT, verbatim · `single-instance.ts` states again, unattributed, that `live-hosts.ts` is cross-process — telling a future implementer a backstop exists that does not
+    scripts GREEN 0 of 202 in 13 files · desktop RED 1 of 2254 in 117 files · dom GREEN 0 of 553 in 34 files
+M17 · ⛔ H2 · the live-host directory really IS shared beyond its module, so the fact the corrected comment states is false — asserted rather than believed
+    scripts GREEN 0 of 202 in 13 files · desktop RED 1 of 2254 in 117 files · dom GREEN 0 of 553 in 34 files
+M18 · ⛔ H2 · `home-boot.ts` says again, unattributed, that the app does NOT call `requestSingleInstanceLock` — false since 198, at `index.ts:791`
+    scripts GREEN 0 of 202 in 13 files · desktop RED 1 of 2254 in 117 files · dom GREEN 0 of 553 in 34 files
+M19 · ⛔ THE DEFECT, verbatim · the export truncates the final pathname in its first syscall and removes it on failure — a second export destroying the first one's bytes
+    scripts GREEN 0 of 202 in 13 files · desktop RED 20 of 2254 in 117 files · dom GREEN 0 of 553 in 34 files
+M20 · ⛔ M3 · only the DELETE half is put back: the good export survives the truncation and is removed by the failure path anyway
+    scripts GREEN 0 of 202 in 13 files · desktop RED 2 of 2254 in 117 files · dom GREEN 0 of 553 in 34 files
+M21 · ⛔ M3 · the scratch file is never renamed, so a SUCCESSFUL export writes nothing where it said it did — the fix breaking the feature it protects
+    scripts GREEN 0 of 202 in 13 files · desktop RED 17 of 2254 in 117 files · dom GREEN 0 of 553 in 34 files
+M22 · ⚠️ M3 · the scratch file wears the provider's own extension, so a native export leaves something `discoverSessionsIn` and the provider both offer as a conversation
+    scripts GREEN 0 of 202 in 13 files · desktop RED 1 of 2254 in 117 files · dom GREEN 0 of 553 in 34 files
+M23 · ⛔ THE DEFECT, verbatim · a pure permission GRANT falls through to the question branch — no scope, 'asks more than one question', and Reject as the only decision
+    scripts GREEN 0 of 202 in 13 files · desktop RED 3 of 2254 in 117 files · dom RED 1 of 553 in 34 files
+M24 · ⛔ M1 · the grant's scope lines are empty, so the row shows nothing a person could weigh while offering them an Approve
+    scripts GREEN 0 of 202 in 13 files · desktop RED 1 of 2254 in 117 files · dom RED 1 of 553 in 34 files
+M25 · ⛔ M1 · zero questions maps to the `multiple` limit again — the sentence 'asks more than one question' about a request that asks none
+    scripts GREEN 0 of 202 in 13 files · desktop RED 1 of 2254 in 117 files · dom GREEN 0 of 553 in 34 files
+M26 · ⛔ THE DEFECT, verbatim · the projection never reads the sent flag, so every button stays live after the first click and the last visible choice can lose to the first
+    scripts GREEN 0 of 202 in 13 files · desktop RED 2 of 2254 in 117 files · dom RED 1 of 553 in 34 files
+M27 · ⛔ M2 · the flag reaches the row and the BUTTONS ignore it — the same defect one component along, where nothing else would notice
+    scripts GREEN 0 of 202 in 13 files · desktop GREEN 0 of 2254 in 117 files · dom RED 1 of 553 in 34 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    scripts GREEN 0 of 202 in 13 files · desktop GREEN 0 of 2254 in 117 files · dom GREEN 0 of 553 in 34 files

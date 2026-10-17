@@ -1,0 +1,31 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "types": ["node"],
+    "noEmit": true,
+    // ⛔ **What lets TypeScript see a `.mjs` from `scripts/` at all** — tests in this project import
+    // modules there that carry no declaration file (`scripts/lib/hidden-launch.mjs`, the planted
+    // userData fixture), and without `allowJs` each such import is `TS7016` under `strict`.
+    // ⚠️ No `checkJs`: TypeScript reads their shapes and does not check their bodies.
+    "allowJs": true
+  },
+  "include": [
+    "src/main/**/*.ts",
+    "src/preload/**/*.ts",
+    "src/shared/**/*.ts",
+    "test/**/*.ts",
+    // ⛔ 706 · the tests only `pnpm run ci` runs (`vitest.gate-only.config.ts`) — typechecked like any other.
+    "gate-only/**/*.ts",
+    // The measurement harnesses (046). They never run in `pnpm run ci`, which is exactly why they
+    // have to be TYPECHECKED by it: a smoke that no longer compiles is discovered the day you
+    // reach for it, which is the day you needed it.
+    "smoke/**/*.ts",
+    "electron.vite.config.ts",
+    "theme-native.vite.config.ts",
+    "drizzle.config.ts",
+    "vitest.config.ts",
+    "vitest.dom.config.ts"
+  ],
+  "exclude": ["test/**/*.render.test.ts", "test/dom/**"]
+}

@@ -1,0 +1,34 @@
+# 325 mutations — HEAD a452048 + working tree
+# 2026-09-04T16:06:58Z
+# project-reachability v1 topology=unproved — For each row, run every baseline project whose tests can conservatively reach an edited path; any unknown path runs every project, and every omitted measurement is written NOT RUN (out of reach), never GREEN.
+
+M0  CONTROL (no mutation) — baseline runtime=1577 desktop=3280 dom=924 scripts=329 shared=3
+    runtime GREEN 0 of 1577 in 52 files · desktop GREEN 0 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files · shared GREEN 0 of 3 in 1 files
+
+M1 · ⛔ THE DEFECT, verbatim · the directory is removed BEFORE the reap, so the removal races whatever the launch is still doing — `324`'s merge exactly, and the state every `*:check` in this repo is still in
+    runtime GREEN 0 of 1577 in 52 files · desktop GREEN 0 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts RED 4 of 329 in 19 files · shared GREEN 0 of 3 in 1 files
+M2 · 🔴 the completeness condition is dropped, so the directory comes off whether or not anything is still alive. ⚠️ Every assertion about the RESULT still passes — `removed` is true and the reap did happen — which is why the killer has to watch the ORDER
+    runtime GREEN 0 of 1577 in 52 files · desktop GREEN 0 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts RED 2 of 329 in 19 files · shared GREEN 0 of 3 in 1 files
+M3 · ⛔ the old fail-open, moved into the new place: only the ALIVE list is consulted, so a process the instrument could not verify either way counts as a gone one. ⚑ This is exactly what `holdersOf` did by returning `[]` from a `catch` — *"I could not find out"* and *"nothing is there"* as the same answer
+    runtime GREEN 0 of 1577 in 52 files · desktop GREEN 0 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts RED 1 of 329 in 19 files · shared GREEN 0 of 3 in 1 files
+M4 · ⚠️ the teardown asks politely instead of killing, spending `owned-process`'s ten SIGTERM attempts before it escalates — a window in which the provider child this dispatch is about goes on writing. ⛔ `quit:check` is the instrument that measures a graceful quit; this one has already asked every question it had
+    runtime GREEN 0 of 1577 in 52 files · desktop GREEN 0 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts RED 4 of 329 in 19 files · shared GREEN 0 of 3 in 1 files
+M5 · 🔴 children are offered BEFORE their parents. ⚠️ Every pid is still found, so a test that only checks membership goes green — and `createOwnedProcessLifecycle.remember()` refuses a pid whose parent it has not seen, so the whole subtree under it is never signalled and the teardown waits for processes it never told to die
+    runtime GREEN 0 of 1577 in 52 files · desktop GREEN 0 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts RED 2 of 329 in 19 files · shared GREEN 0 of 3 in 1 files
+M6 · ⛔ the walk stops at direct children, so the Electron helpers are found and the `codex app-server`'s OWN descendants are not — the sandboxed commands `202` names as the one orphan shape its measurement does not cover
+    runtime GREEN 0 of 1577 in 52 files · desktop GREEN 0 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts RED 2 of 329 in 19 files · shared GREEN 0 of 3 in 1 files
+M7 · 🔴 the cycle guard goes, so a torn `ps` read that names a parent which is also a descendant makes the walk run forever — a teardown that hangs signals nothing, removes nothing and reports nothing. ⚠️ This row's first version mutated a `pid === parent` check instead and SURVIVED, which is how that check was found to be dead code: `seen` already covers the one-element cycle, and the test that was meant to kill it put the bad row outside the subtree where the walk never reaches it
+    runtime GREEN 0 of 1577 in 52 files · desktop GREEN 0 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts RED 1 of 329 in 19 files · shared GREEN 0 of 3 in 1 files
+M8 · ⚠️ any line at all is parsed as a pid pair, so `ps`'s own header and its error text become processes the teardown waits for. ⛔ `owned-process` would refuse to remember them and the reap could never complete — the gate fails closed, on nothing
+    runtime GREEN 0 of 1577 in 52 files · desktop GREEN 0 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts RED 1 of 329 in 19 files · shared GREEN 0 of 3 in 1 files
+M9 · 🔴 the check keeps its own removal below the launch again — the one line whose position IS the defect. ⚑ It is put back exactly where `stop()` had it, after the reap, which is the version that failed `324`'s merge and passed twice afterwards
+    runtime GREEN 0 of 1577 in 52 files · desktop GREEN 0 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts RED 1 of 329 in 19 files · shared GREEN 0 of 3 in 1 files
+M10 · ⛔ the launch is owned but its family is never discovered, so the teardown waits for the `.bin/electron` shim alone and reports `complete` with four Electron processes and a provider child still coming down
+    runtime GREEN 0 of 1577 in 52 files · desktop GREEN 0 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts RED 1 of 329 in 19 files · shared GREEN 0 of 3 in 1 files
+M11 · ⚠️ the helpers are no longer remembered while the app is UP. ⛔ `refreshDescendants` is a no-op once the launcher is gone, so a crash between the attach and the teardown leaves four Electron processes that nothing has authority to signal · **expected SURVIVED**: the teardown's own discovery covers the ordinary path, and this row is about the crash path — recorded rather than left as a gap · `fixture:check` only
+    runtime GREEN 0 of 1577 in 52 files · desktop GREEN 0 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files · shared GREEN 0 of 3 in 1 files
+M12 · ⚠️ the ownership capture stops retrying, so the `#!/bin/sh` shim's `exec` window — the few milliseconds in which one pid names two programs — makes the check throw before it has measured anything. ⛔ It fails CLOSED, which is why this is the least bad of the failures available here · `fixture:check` only
+    runtime GREEN 0 of 1577 in 52 files · desktop GREEN 0 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files · shared GREEN 0 of 3 in 1 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1577 in 52 files · desktop GREEN 0 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files · shared GREEN 0 of 3 in 1 files

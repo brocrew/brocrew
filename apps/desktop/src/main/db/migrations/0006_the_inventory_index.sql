@@ -1,0 +1,1 @@
+CREATE INDEX `events_inventory_idx` ON `events` (`session_id`,`generation`,`ordinal`) WHERE "events"."type" = 'tool_inventory';

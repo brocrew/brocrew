@@ -1,0 +1,103 @@
+# 258 mutations — HEAD b163da5 + working tree
+# 2026-09-02T11:09:54Z
+
+M0  CONTROL (no mutation) — baseline runtime=1461 desktop=2996 dom=788 scripts=299
+    runtime GREEN 0 of 1461 in 47 files · desktop GREEN 0 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+
+M1 · 🔴 THE DEFECT, verbatim · the fold goes back to 253's handoff, so the level arrives and stops. Every surface below is reading a registry nothing ever writes — the schedule is on the wire, in the Events tab, and nowhere a person looks
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 22 of 2996 in 156 files · dom RED 1 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M2 · 🔴 `undefined` collapses into `[]` · a frame that did not STATE the level erases one that is still going to fire. §1's most important rule, and what `222` cost a dispatch — and here the frames carrying only `dropped` and `source` are the normal shape
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 2 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M3 · ⛔ the level MERGES instead of replacing · a job the provider stopped naming stays on screen for ever, which is the stale indicator `247` carried the SDK's own instruction to prevent: *replace your set with each payload rather than pairing edges*
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 8 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M4 · ⚠️ `dropped` stops travelling with the jobs · the count describes a level that no longer stands, so the bar's heading and its shortfall notice are about two different payloads
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 2 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M5 · ⚠️ the rows are ALIASED out of the event · the fold and whatever else holds that event share one array, which is how two folds come to disagree later for no reason
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 1 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M6 · ⛔ a level frame decides whether the conversation is open · `sleeping` gets a second writer, so a replayed ledger whose last level lands after the ending re-opens a closed conversation's schedule. One fact, one writer — `061` finding 6
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 1 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M7 · 🔴 the schedule is SWEPT at a close, exactly like `248`'s registry · this is the ruling `253` handed over, made the wrong way: a resumed session was measured reporting the same job back BEFORE its own first prompt, so *it is gone* is the false statement
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 5 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M8 · ⛔ a CLOSED conversation still promises a wake-up · the heading keeps saying *will wake this conversation* over a session that is over, which is the sentence that invites someone to close the app and expect their 2 a.m. job to run
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 3 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M9 · ⚠️ a RECORDING promises one too · `markReadOnly` deliberately does not set `ended`, so this is the one state where a word surface could still say `scheduled` about a transcript nothing is running behind
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 1 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M10 · ⛔ a REOPENED conversation never wakes · the ledger being replayed ends with the previous life closing, so a resumed session says its jobs cannot fire — for ever, or until a turn ends and restates the level
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 1 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M11 · 🔴 a released slab forgets the schedule · and this registry loses more by it than `248`'s does: a level is restated at TURN END and nowhere else, so the next restatement is a whole turn away rather than a frame away (064, 061 finding 5)
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 3 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M12 · ⛔ the carry is built and never applied · `foldWindow` ignores it, so the copy above is made, handed over and dropped — the same silence one layer down
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 2 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M13 · ⚠️ the carried rows are ALIASED · two folds share one array across a release, which is the reason every neighbour in this function is copied one level deep
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 1 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M14 · ⛔ a release resurrects a closed schedule as a live one · `sleeping` is a fact about the CONVERSATION and not about the window, and dropping it is `061` finding 5 said about the flag instead of about the status
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 1 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts RED 1 of 299 in 18 files
+M15 · ⛔ `somethingScheduled` ignores `dropped` · the one payload the provider already told us was short is the one every word surface answers *idle* on. `247` §3: a registry that quietly undercounts is worse than none
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 3 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M16 · 🔴 `somethingScheduled` ignores `sleeping` · a conversation that is over reads `Scheduled`, promising a wake-up nothing can deliver — §2's ruling defeated in the one predicate every word surface asks
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 3 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M17 · ⚠️ the two predicates are collapsed into one · the BAR stops drawing for a closed conversation, which is the only surface with room for the sentence that says why. The words go quiet correctly and the explanation goes with them
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 1 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M18 · 🔴 the heading counts the rows it can LIST · `248`'s defect reintroduced verbatim: a level naming rows this app cannot name opens with *0 jobs will wake this conversation*, which is the state `250` had to route `PANEL_EMPTY_WORDS.unnamed` around
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 3 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M19 · 🔴 the heading makes a PROMISE again · *"1 job will wake this conversation"* is a claim about the future, and the level is restated only at TURN END — so a job the model deleted mid-turn, or a one-shot whose time has passed, goes on being promised for as long as nobody speaks. The first draft of this file said exactly that; the adversarial pass took it out
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 12 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M20 · ⚠️ the closed sentence stops naming the way out · `239`'s rule is that the sentence raising the alarm names the instrument, and this app HAS one — Resume, under the closed threads in the sidebar
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 2 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M21 · ⚠️ the pill writes its own literal · the bar says *still scheduled* and the pill says something else, which is the drift `222` §4 forbids and the one `250`'s adversarial pass took back out of this very file
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 4 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M22 · ⚠️ the pill wears `live` · a blue that means work is in progress, over a conversation whose provider is doing nothing at all. The WORD was the fix; a hue that claims a running machine is a second, louder claim nobody measured
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 1 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M23 · ⛔ the plate's accessible name loses the fifth facet · the sighted reading of this state is the bar above the composer, so the one person who cannot see it is told a conversation is idle when it is going to wake at 2 a.m.
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 1 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M24 · 🔴 `250 M1` CARRIED FORWARD · the word ignores the BACKGROUND registry again, so the pill says Idle over a command the OS reports alive. The anchor moved because this dispatch made the branch a block; the defect is `250`'s, unchanged, and its own test still kills it
+    runtime RED 1 of 1461 in 47 files · desktop RED 15 of 2996 in 156 files · dom RED 2 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M25 · 🔴 `250 M7` CARRIED FORWARD · a WORKING turn is relabelled — the pill stops saying the model is working the moment anything is detached, trading one wrong word for another. Same row, re-pointed at the block the fifth facet grew
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 2 of 2996 in 156 files · dom RED 1 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M26 · ⛔ `scheduled` outranks a PERMISSION · a conversation frozen on a card the user must answer reads *Scheduled*, and `063`/`079` §5's guarantee — an unanswered card always has a visible trace — is gone for something that is not even happening yet
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 1 of 2996 in 156 files · dom RED 1 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M27 · ⚠️ `scheduled` outranks `background` · something that WILL happen talks over something that IS happening, and the one word this surface has stops naming the one a person could act on — `248`'s bar is the one with a Stop button behind it
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 1 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M28 · ⛔ `scheduled` talks over the ENDING · hoisted above `isOver`'s three returns, so a conversation that is finished or has errored reads *Scheduled* — the terminal fact is the larger one, exactly as it is for `background`
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 2 of 2996 in 156 files · dom RED 1 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M29 · 🔴 the RAIL goes quiet · `recordFacets` stops asking, so every conversation in the rail — which is most of them, since only one is on screen (064) — reads `claude · idle` while it holds a cron
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 6 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M30 · 🔴 the HEADER goes quiet · the pane stops passing it, so the pill above the conversation disagrees with the bar a few inches below it — 099, restaged for a fifth fact
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 3 of 2996 in 156 files · dom RED 1 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M31 · ⛔ the facet is built but never carried · `sessionFacets` drops it, so every surface downstream reads an object the fact never reached
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 9 of 2996 in 156 files · dom RED 1 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M32 · 🔴 the pane reads the READING window · a reader who has paged back past the level sees the bar empty and the pill say Idle, about a job that is still going to fire. Every record helper in the suite leaves the two projections as ONE object, which is what makes this row worth having (064)
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 1 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M33 · 🔴 `250 M17` CARRIED FORWARD · the words stop being chosen — one sentence for four states, and it is the one that enumerates a list a cron is not in. the person's second sentence, restored: *It currently shows 'Nothing is waiting'*
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 9 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M34 · ⛔ the panel stops asking · the paragraph is chosen from a field nothing fills, so the drawer goes back to *Questions, permissions, running agents and the checklist appear here* over a conversation with a 2 a.m. appointment
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 7 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M35 · ⚠️ the render test stops stripping the component's own prose · SSR emits template comments verbatim, so `bar()` strips them before any assertion sees them — the discipline that three assertions in `background-bar.render.test.ts` were found passing over. ⚠️ It dies on the `<!---->` equality rather than on a leaked word, and that is stated rather than claimed: THIS component's seven template comments happen to contain none of the strings its negatives name, so what the row proves is that the stripping is load-bearing at all
+    runtime RED 1 of 1461 in 47 files · desktop RED 1 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts RED 1 of 299 in 18 files
+M36 · ⚠️ the cut slices UTF-16 UNITS · a prompt ending on an emoji at the boundary renders a lone surrogate — `�` on screen, from the one function whose whole job is not to mislead about what a machine has promised to do
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 1 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M37 · ⛔ the prompt is drawn RAW · a cron prompt can be written by a model acting on a web page it read, and a newline in it turns one row into two on the one surface whose job is saying what this machine will do unattended. U+202E does worse and says nothing at all
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 4 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M38 · ⛔ the closed conversation's sentence is not drawn · the heading drops the promise and nothing takes its place, so the bar shows jobs beside no explanation of why they are quiet
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 1 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M39 · ⚠️ the shortfall notice is not drawn · the heading counts every row the provider sent and the list shows fewer, with nothing on screen to reconcile the two — a list that looks complete is read as complete (092, 247 §3)
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 1 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M40 · ⛔ a job with neither a schedule nor a prompt draws an empty row · both fields are optional and both are `z.string()` with no minimum, so this is reachable rather than defensive — and a row a person cannot name is a row they cannot act on (106)
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 3 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M41 · 🔴 the DRAWER's bot prints `idle` above its own paragraph · `250` found this surface in review and fixed it with a one-off `standing === 'background'` written into the component; the fifth facet walked straight through it. the person's exact complaint, restored INSIDE the panel by the dispatch that quotes him — found by this diff's own adversarial pass
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 2 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M42 · 🔴 `253 M25` CARRIED FORWARD · the fold starts making a transcript ROW per level. `253` guarded this as a compile floor; `258` turned it into a RULING with a measurement behind it — a cron firing re-emits the level every couple of minutes — so the row it retired has to come back pointed at the arm that now writes a registry. ⚠️ Through `notice` rather than a hand-built item: the first form hardcoded `provider: 'claude'` and tripped `provider-neutrality.test.ts` as well, which would have read as a far wider blast radius than the defect has
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 2 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M43 · 🔴 the FOURTH door stops waking it · `case 'session'` un-ends a transcript without going through `markReopened`, so a ledger with two lives folds to `ended: false` with the schedule asleep: the bar says *this conversation is closed* over a live conversation, and the pill and the rail go back to `Idle`. Found by the adversarial pass over this diff, by three angles independently — the doc-comment had claimed there were three doors
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 1 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M44 · 🔴 the bare row's ID is drawn RAW · `schedule` and `prompt` both go through the quoting and this one did not — and it is the ONE cell that can be the whole row. A job id carrying U+202E reorders everything after it on the surface whose stated job is saying what this machine has promised to do while nobody is watching
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 2 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M45 · ⛔ a counted cut points nowhere · the cell's title goes back to the fixed caveat and drops the whole string, so a row can announce *+N more characters* with those characters reachable in no surface at all — `092`'s rule broken by the very field written to keep it. `ScheduleShown.full` was computed and read by nothing until the adversarial pass said so
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 1 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M46 · 🔴 `250 M23` CARRIED FORWARD · the plate's accessible name loses the FOURTH facet, so a screen reader hears *claude — idle, live* over work the sighted reading shows in a list with a stop button. Its anchor moved because 258 declared the fifth prop beside it — the same line, one facet wider
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 3 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M47 · 🔴 the FIFTH facet never reaches the plate at all · declared nowhere, so every caller's `v-bind` drops it onto the root element as a stray attribute and the screen-reader sentence `258` added becomes a branch no call site can produce — `222` §4's *a word nothing can produce*, created by the fix for it, which is exactly what `250 M23` records happening the first time. Found by the render sweep, which only reaches this state because `M23` SURVIVED and said its axis was missing
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 1 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1461 in 47 files · desktop GREEN 0 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files

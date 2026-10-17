@@ -1,0 +1,189 @@
+#!/usr/bin/env bash
+#
+# 165 · the mutation harness — and it lives HERE, in the repo, on purpose.
+#
+# The harness 146 built and 147/151/153/154/157/160/163 re-pointed in turn. It lives in the repo for
+# the reason 145 LOW 2 gave: a mutation table nobody can replay is a claim (113). Anyone at this
+# commit can run `scripts/mutations/165/mutate.sh` and get `mutations.txt` back.
+#
+# Each mutation is THE DEFECT, reverted verbatim (131) — see `mutations.py`, which is also the thing
+# that refuses to proceed when a target string is not found exactly once.
+#
+# ## Three ways this harness lied before it worked, all still guarded
+#
+# ⛔ **The pristine copy was keyed by BASENAME**, and this repo has two `session-store.ts`. Keyed by
+# full relative path here too, and `verify_restore` compares bytes after every restore.
+#
+# ⛔ **"Non-zero test count" was not enough.** A corrupted tree made three suites fail to COLLECT
+# while vitest went on reporting a stable, non-zero, wrong number. Every run is compared against the
+# M0 baseline and a short run is reported as INVALID rather than as a verdict.
+#
+# ⛔ **157's dry-run corrupted all three source files** because a hand-rolled `git checkout` loop was
+# used instead of this script. ⚠️ **Do not apply `mutations.py` by hand.**
+#
+# ⚑ **All three projects, and each is real here.** The launch options and the provider's path rule
+# are `runtime`; the read is `desktop`; the panel's order, label and empty-case are only assertable
+# in a browser, which is `dom`.
+#
+# ⚠️ **`apply()` writes each edit as it goes**, unlike 164's, which computed every edit from the
+# ORIGINAL text and wrote them afterwards — so a mutation with two edits to ONE file silently lost
+# the first. M12 here has two, and this is the version that applies both.
+#
+# ⛔ **What this table CANNOT catch:** whether the provider actually loads the file it derives. M1
+# and M3 redden because tests assert the OPTIONS, which is the assertion 026 and 056 did not have;
+# that the agent then remembers across a real second session is proven only in
+# `smoke/auto-memory-probe.smoke.ts`.
+#
+# (old note) **`runtime` and `desktop`, and both are real here.** The launch option, the refusal clause and
+# the `Explore` ruling all live in `packages/runtime` and are asserted by `claude-runtime`; the two
+# labels the model reads live in the desktop main process. `dom` is NOT run: no mutation below
+# renders anything, so every row would print `NO-TESTS`, which reads like a gap and is an absence of
+# subject.
+#
+# ⚠️ **`workspace` and `instructions` are both desktop filters, deliberately.** The wording function
+# is in `instructions.ts` and the sentence is in `workspace.ts`, but the assertions that read them
+# end to end — hint text, both provider files, regeneration — are in `workspace.test.ts`. Running one
+# without the other would leave half the table green for lack of a test rather than for lack of a
+# defect.
+#
+# ⛔ **What this table CANNOT catch, and the reason a live probe exists.** No mutation here can tell
+# you whether the child was ever offered a `Glob`. M1 removes the launch option and the unit suite
+# reddens only because a test asserts the OPTION — which is exactly the assertion 150 did not have.
+# The capability itself is proven in `smoke/plan-mode-probe.smoke.ts`, against a real session.
+#
+# Usage:  scripts/mutations/165/mutate.sh [index …]      (no args = M0 control + every mutation)
+
+set -uo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$HERE/../../.." && pwd)"
+# ⚠️ `.txt`, not `.log` — `.gitignore` line 27 is `*.log`, so the artefact 145 LOW 2 asked for would
+# have been untracked.
+LOG="$HERE/mutations.txt"
+
+export PATH="$HOME/.nvm/versions/node/v24.0.2/bin:$PATH"
+
+# The files a mutation may touch. The pristine copy is taken from these and ONLY these, so a
+# mutation that wrote anywhere else would survive restoration.
+FILES=(
+  "packages/runtime/src/claude/claude-runtime.ts"
+  "packages/runtime/src/claude/auto-memory.ts"
+  "apps/desktop/src/main/runtime/instructions.ts"
+  "apps/desktop/src/renderer/src/components/SessionInstructions.vue"
+)
+
+# ⚠️ **Derived from the files the table TOUCHES** (147 M17, 149). A green from a filter that never
+# selected the assertion looks exactly like a green from a missing assertion, and only the second is
+# a real gap.
+RUNTIME_FILTERS=(claude-runtime auto-memory conformance)
+DESKTOP_FILTERS=(instructions)
+DOM_FILTERS=(instructions)
+
+# ⛔ **The verdict and the lock live in ONE file now** (196 H1/H2, from 193).
+#
+# Every table carried its own byte-identical `run_suite`, and every copy read the verdict out of
+# vitest's stdout while discarding the process's exit status — so a run whose tests all passed and
+# which exited `1` printed `GREEN`. `PIPESTATUS`/`$?` were captured in 0 of 32 tables. The lock,
+# where a table had one at all, was table-local: two tables took two different locks and edited one
+# working tree. Both are fixed in `scripts/mutations/lib/harness.sh`, which is where the fourth
+# verdict (`ERROR`) and `acquire_tree_lock` now are.
+TABLE_ID="$(basename "$HERE")"
+# shellcheck source=../lib/harness.sh
+. "$ROOT/scripts/mutations/lib/harness.sh"
+acquire_tree_lock
+
+WORK="$(mktemp -d)"
+PRISTINE="$WORK/pristine"
+
+restore() {
+  for f in "${FILES[@]}"; do
+    cp "$PRISTINE/$f" "$ROOT/$f"
+  done
+  # ⚠️ Vite caches transformed modules; a stale cache is how a mutation run reports the PREVIOUS
+  # tree's result. Cleared on every restore, not once at the start.
+  rm -rf "$ROOT/node_modules/.vite" "$ROOT/apps/desktop/node_modules/.vite" 2>/dev/null
+}
+
+# 129's rule: every way this script can end, including a broken pipe from `head`.
+trap 'restore; rm -rf "$WORK"; release_tree_lock' EXIT PIPE INT TERM HUP
+
+mkdir -p "$PRISTINE"
+for f in "${FILES[@]}"; do
+  mkdir -p "$PRISTINE/$(dirname "$f")"
+  cp "$ROOT/$f" "$PRISTINE/$f"
+done
+
+# Called after every restore; a mismatch means the tree is no longer the tree under test and every
+# verdict after it would be about something else.
+verify_restore() {
+  for f in "${FILES[@]}"; do
+    if ! cmp -s "$PRISTINE/$f" "$ROOT/$f"; then
+      echo "!! RESTORE FAILED for $f — every verdict after this point is void" >&2
+      exit 3
+    fi
+  done
+  end_active_mutation || exit 8
+}
+
+BASE_RUNTIME="-"
+BASE_DESKTOP="-"
+BASE_DOM="-"
+
+run_both() {
+  printf 'runtime %s\n          desktop %s\n          dom     %s' \
+    "$(run_suite runtime "$BASE_RUNTIME" "${RUNTIME_FILTERS[@]}")" \
+    "$(run_suite desktop "$BASE_DESKTOP" "${DESKTOP_FILTERS[@]}")" \
+    "$(run_suite 'dom (chromium)' "$BASE_DOM" "${DOM_FILTERS[@]}")"
+}
+
+COUNT="$(python3 "$HERE/mutations.py" --count)"
+if [[ $# -gt 0 ]]; then
+  INDICES=("$@")
+else
+  INDICES=($(seq 0 $((COUNT - 1))))
+fi
+
+begin_mutation_log "$LOG" "$#" || exit 7
+
+{
+  echo "# 165 mutations — HEAD $(cd "$ROOT" && git rev-parse --short HEAD 2>/dev/null || echo '?') + working tree"
+  echo "# $(date -u +%FT%TZ)"
+  print_mutation_reachability_declaration
+  echo
+
+  # The baseline every later run is measured against, taken on the unmutated tree.
+  BASE_RUNTIME="$(suite_count runtime "${RUNTIME_FILTERS[@]}")"
+  BASE_DESKTOP="$(suite_count desktop "${DESKTOP_FILTERS[@]}")"
+  BASE_DOM="$(suite_count 'dom (chromium)' "${DOM_FILTERS[@]}")"
+  require_healthy_baselines || exit 5
+  begin_mutation_control M0
+  echo "M0  CONTROL (no mutation) — baseline runtime=$BASE_RUNTIME desktop=$BASE_DESKTOP dom=$BASE_DOM"
+  echo "    $(run_both)"
+  restore && verify_restore
+  require_healthy_control M0 || exit 5
+  echo
+
+  for i in "${INDICES[@]}"; do
+    name="$(python3 "$HERE/mutations.py" --name "$i")"
+    if ! python3 "$HERE/mutations.py" "$ROOT" "$i"; then
+      echo "$name"
+      echo "    !! DID NOT APPLY — this mutation proves nothing"
+      restore && verify_restore
+      continue
+    fi
+    begin_active_mutation "$i" || exit 8
+    echo "$name"
+    echo "    $(run_both)"
+    restore && verify_restore
+  done
+
+  echo
+  begin_mutation_control M-END
+  echo "M-END  CONTROL on the restored tree (no restoration drift)"
+  echo "    $(run_both)"
+  restore && verify_restore
+  require_healthy_control M-END || exit 6
+} 2>&1 | tee "$MUTATION_LOG_PARTIAL"
+MUTATION_LOG_PIPESTATUS=("${PIPESTATUS[@]}")
+publish_mutation_log "${MUTATION_LOG_PIPESTATUS[0]}" "${MUTATION_LOG_PIPESTATUS[1]}"
+exit $?

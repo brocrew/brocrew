@@ -1,0 +1,61 @@
+# 222 mutations — HEAD 569988d + working tree
+# 2026-08-27T10:00:01Z
+
+M0  CONTROL (no mutation) — baseline desktop=2502 dom=651 shared=3 runtime=1283 scripts=3
+    desktop GREEN 0 of 2502 in 133 files · dom GREEN 0 of 651 in 42 files · shared GREEN 0 of 3 in 1 files · runtime GREEN 0 of 1283 in 40 files · scripts GREEN 0 of 3 in 1 files
+
+M1 · ⛔ THE DEFECT · nothing derives the ending, so every closed conversation is described by its status alone — 220's three threads behind one word
+    desktop RED 9 of 2502 in 133 files · dom GREEN 0 of 651 in 42 files · shared GREEN 0 of 3 in 1 files · runtime GREEN 0 of 1283 in 40 files · scripts GREEN 0 of 3 in 1 files
+M2 · …and the same on the offerable half, so the reopen list loses it while the library keeps it — one conversation, two answers
+    desktop RED 1 of 2502 in 133 files · dom GREEN 0 of 651 in 42 files · shared GREEN 0 of 3 in 1 files · runtime GREEN 0 of 1283 in 40 files · scripts GREEN 0 of 3 in 1 files
+M3 · an OPEN turn's null erases the ending before it, so a conversation that is running again looks like one we hold no turns for
+    desktop RED 1 of 2502 in 133 files · dom GREEN 0 of 651 in 42 files · shared GREEN 0 of 3 in 1 files · runtime GREEN 0 of 1283 in 40 files · scripts GREEN 0 of 3 in 1 files
+M4 · the FIRST ending wins instead of the last, so work already redone is still reported as unfinished
+    desktop RED 1 of 2502 in 133 files · dom GREEN 0 of 651 in 42 files · shared GREEN 0 of 3 in 1 files · runtime GREEN 0 of 1283 in 40 files · scripts GREEN 0 of 3 in 1 files
+M5 · a stored reason the enum does not know is handed out as itself, so an older build's value reaches a surface that has no word for it
+    desktop RED 1 of 2502 in 133 files · dom GREEN 0 of 651 in 42 files · shared GREEN 0 of 3 in 1 files · runtime GREEN 0 of 1283 in 40 files · scripts GREEN 0 of 3 in 1 files
+M6 · …and the other direction: every stored reason reads as `unknown`, so a clean finish is reported as an ending nobody saw
+    desktop RED 19 of 2502 in 133 files · dom GREEN 0 of 651 in 42 files · shared GREEN 0 of 3 in 1 files · runtime GREEN 0 of 1283 in 40 files · scripts GREEN 0 of 3 in 1 files
+M7 · the library's own row loses it, so the Sessions page and the reopen list disagree about the same conversation
+    desktop RED 1 of 2502 in 133 files · dom GREEN 0 of 651 in 42 files · shared GREEN 0 of 3 in 1 files · runtime GREEN 0 of 1283 in 40 files · scripts GREEN 0 of 3 in 1 files
+M8 · a conversation the provider holds and we never ran is back-filled as `completed` — the exact fabrication 045 added `unknown` to refuse
+    desktop RED 1 of 2502 in 133 files · dom GREEN 0 of 651 in 42 files · shared GREEN 0 of 3 in 1 files · runtime GREEN 0 of 1283 in 40 files · scripts GREEN 0 of 3 in 1 files
+M9 · ⛔ 208 H3 · the turn's ending is hard-coded `ended` again, so a teardown that could NOT confirm the provider stopped writes the same durable ending as one that could
+    desktop RED 1 of 2502 in 133 files · dom GREEN 0 of 651 in 42 files · shared GREEN 0 of 3 in 1 files · runtime GREEN 0 of 1283 in 40 files · scripts GREEN 0 of 3 in 1 files
+M10 · …and the same lie pointed the other way: every close records `unknown`, so a conversation you closed yourself comes back saying nobody saw it end
+    desktop RED 6 of 2502 in 133 files · dom GREEN 0 of 651 in 42 files · shared GREEN 0 of 3 in 1 files · runtime GREEN 0 of 1283 in 40 files · scripts GREEN 0 of 3 in 1 files
+M11 · `completed` is not a finish, so a clean conversation wears an unfinished word
+    desktop RED 4 of 2502 in 133 files · dom RED 3 of 651 in 42 files · shared GREEN 0 of 3 in 1 files · runtime GREEN 0 of 1283 in 40 files · scripts GREEN 0 of 3 in 1 files
+M12 · nothing is ever unfinished, so 220's three threads read exactly as they did
+    desktop RED 4 of 2502 in 133 files · dom RED 2 of 651 in 42 files · shared GREEN 0 of 3 in 1 files · runtime GREEN 0 of 1283 in 40 files · scripts GREEN 0 of 3 in 1 files
+M13 · the rail never names an ending, so the column that answers *what can I pick up* goes back to saying only when
+    desktop RED 4 of 2502 in 133 files · dom RED 1 of 651 in 42 files · shared GREEN 0 of 3 in 1 files · runtime GREEN 0 of 1283 in 40 files · scripts GREEN 0 of 3 in 1 files
+M14 · …and the rail names EVERY ending, which is the noise 151 took out of that column
+    desktop RED 1 of 2502 in 133 files · dom GREEN 0 of 651 in 42 files · shared GREEN 0 of 3 in 1 files · runtime GREEN 0 of 1283 in 40 files · scripts GREEN 0 of 3 in 1 files
+M15 · the Sessions page says nothing for a finish, so an empty cell means BOTH *it finished* and *we hold no closed turn* — the ambiguity `completed`'s word exists to end
+    desktop RED 2 of 2502 in 133 files · dom RED 1 of 651 in 42 files · shared GREEN 0 of 3 in 1 files · runtime GREEN 0 of 1283 in 40 files · scripts GREEN 0 of 3 in 1 files
+M16 · two endings share one word — 220's complaint, reproduced one layer up
+    desktop RED 3 of 2502 in 133 files · dom RED 2 of 651 in 42 files · shared GREEN 0 of 3 in 1 files · runtime GREEN 0 of 1283 in 40 files · scripts GREEN 0 of 3 in 1 files
+M17 · ⛔ 208 H3 · `unknown` claims the turn never finished, rather than that nobody saw it — a statement about a provider we stopped watching
+    desktop RED 1 of 2502 in 133 files · dom RED 1 of 651 in 42 files · shared GREEN 0 of 3 in 1 files · runtime GREEN 0 of 1283 in 40 files · scripts GREEN 0 of 3 in 1 files
+M18 · the ending outranks the REFUSAL on the rail, so the row stops saying what you can do with it and says how it ended instead (151's stated order, reversed)
+    desktop RED 3 of 2502 in 133 files · dom RED 1 of 651 in 42 files · shared GREEN 0 of 3 in 1 files · runtime GREEN 0 of 1283 in 40 files · scripts GREEN 0 of 3 in 1 files
+M19 · the rail's hover loses the whole sentence, so the 200px column's one word is all there is (219's rule: a label a person can act on)
+    desktop RED 2 of 2502 in 133 files · dom RED 1 of 651 in 42 files · shared GREEN 0 of 3 in 1 files · runtime GREEN 0 of 1283 in 40 files · scripts GREEN 0 of 3 in 1 files
+M20 · the Sessions page's offerable half loses its ending cell entirely
+    desktop GREEN 0 of 2502 in 133 files · dom RED 1 of 651 in 42 files · shared GREEN 0 of 3 in 1 files · runtime GREEN 0 of 1283 in 40 files · scripts GREEN 0 of 3 in 1 files
+M21 · …and the UNRESUMABLE half loses its cell — the only surface where that half's ending is readable at all, because its rail row spends its one line on the refusal
+    desktop GREEN 0 of 2502 in 133 files · dom RED 1 of 651 in 42 files · shared GREEN 0 of 3 in 1 files · runtime GREEN 0 of 1283 in 40 files · scripts GREEN 0 of 3 in 1 files
+M22 · every ending is painted in the attention channel, so a list of finished conversations shouts at its own ordinary case (081's one colour, spent)
+    desktop GREEN 0 of 2502 in 133 files · dom RED 1 of 651 in 42 files · shared GREEN 0 of 3 in 1 files · runtime GREEN 0 of 1283 in 40 files · scripts GREEN 0 of 3 in 1 files
+M23 · the shared enum loses `unknown`, so the member 045 added for *we did not observe how it went* stops existing above the database that still stores it
+    desktop RED 2 of 2502 in 133 files · dom GREEN 0 of 651 in 42 files · shared GREEN 0 of 3 in 1 files · runtime GREEN 0 of 1283 in 40 files · scripts GREEN 0 of 3 in 1 files
+M24 · …and it gains a sixth the CHECK constraint has never heard of, which is the drift the census exists to catch in the direction nobody expects
+    desktop RED 3 of 2502 in 133 files · dom GREEN 0 of 651 in 42 files · shared GREEN 0 of 3 in 1 files · runtime GREEN 0 of 1283 in 40 files · scripts GREEN 0 of 3 in 1 files
+M25 · ⚑ 151 M28 AND 154 M4, re-anchored and re-run · a running conversation is offered for reopening from the unresumable half, because `hideOpen` stops reaching it
+    desktop RED 2 of 2502 in 133 files · dom RED 1 of 651 in 42 files · shared GREEN 0 of 3 in 1 files · runtime GREEN 0 of 1283 in 40 files · scripts GREEN 0 of 3 in 1 files
+M26 · ⛔ · step 44b reports a bare sentence instead of per-claim verdicts, so the one live step that presses 220's gesture can go green while asserting nothing (209 §9, 206 H1)
+    desktop GREEN 0 of 2502 in 133 files · dom GREEN 0 of 651 in 42 files · shared GREEN 0 of 3 in 1 files · runtime GREEN 0 of 1283 in 40 files · scripts RED 1 of 3 in 1 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    desktop GREEN 0 of 2502 in 133 files · dom GREEN 0 of 651 in 42 files · shared GREEN 0 of 3 in 1 files · runtime GREEN 0 of 1283 in 40 files · scripts GREEN 0 of 3 in 1 files

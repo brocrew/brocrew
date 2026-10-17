@@ -1,0 +1,47 @@
+# 163 mutations — HEAD eb0ebf4 + working tree
+# 2026-08-15T20:19:26Z
+
+M0  CONTROL (no mutation) — baseline desktop=136 dom=4
+    desktop GREEN 0 of 136 in 5 files
+          dom GREEN 0 of 4 in 1 files
+
+M1 · 068 finding 1 IS BACK · a repeat signal exits at once, through the middle of the teardown — what the kernel used to do for us
+    desktop RED 2 of 136 in 5 files
+          dom GREEN 0 of 4 in 1 files
+M2 · …and the opposite: the repeat is absorbed FOREVER, so SIGTERM stops working (094/095)
+    desktop RED 2 of 136 in 5 files
+          dom GREEN 0 of 4 in 1 files
+M3 · the impatience clock starts on the FIRST signal, so one polite quit is cut short at 20s
+    desktop RED 3 of 136 in 5 files
+          dom GREEN 0 of 4 in 1 files
+M4 · the first signal does not quit at all — the listeners exist and the app ignores them
+    desktop RED 3 of 136 in 5 files
+          dom GREEN 0 of 4 in 1 files
+M5 · ⛔ 075 IS BACK · the listeners move to the top of the main script, where Chromium overwrites them and they never fire
+    desktop RED 1 of 136 in 5 files
+          dom GREEN 0 of 4 in 1 files
+M6 · …or they go entirely, leaving Chromium's one-shot handler in charge again
+    desktop RED 1 of 136 in 5 files
+          dom GREEN 0 of 4 in 1 files
+M7 · 151's sentence IS BACK for both branches · a killed conversation is told no turn was ever taken in it
+    desktop RED 1 of 136 in 5 files
+          dom GREEN 0 of 4 in 1 files
+M8 · …and the branch inverts, so a session that genuinely never started is described as having stopped partway
+    desktop RED 2 of 136 in 5 files
+          dom GREEN 0 of 4 in 1 files
+M9 · the ref row stops saying whether it is a ref, so only its prose can be asked (the state step 44 read a placeholder in)
+    desktop GREEN 0 of 136 in 5 files
+          dom RED 1 of 4 in 1 files
+M10 · …or it always says yes, so the placeholder claims to be a thread id
+    desktop GREEN 0 of 136 in 5 files
+          dom RED 1 of 4 in 1 files
+M11 · the ref is never written to the row at all, so nothing can ever be reopened
+    desktop RED 28 of 136 in 5 files
+          dom GREEN 0 of 4 in 1 files
+M12 · ⛔ the PM's ruling, reverted · the ref waits for the next convenient write — the session's END — so a crash before that loses it
+    desktop RED 15 of 136 in 5 files
+          dom GREEN 0 of 4 in 1 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    desktop GREEN 0 of 136 in 5 files
+          dom GREEN 0 of 4 in 1 files

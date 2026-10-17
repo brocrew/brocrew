@@ -1,0 +1,4 @@
+# Every text file is checked out with LF line endings on every system, as the repository stores
+# it, so a test that reads source and a build that hashes its migrations read the same text on
+# Windows as elsewhere. Git still detects binary files on its own.
+* text=auto eol=lf

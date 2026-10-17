@@ -1,0 +1,356 @@
+# HELD: the public update rehearsal publishes releases to a public repository, so it is kept out of .github/workflows/ until the owner says yes, present, at go-public; nothing may be able to publish publicly before that.
+# To restore it then: copy this file over .github/workflows/update-rehearsal.yml, bring back the public arm of planOf and the anonymous reads in scripts/update-rehearsal-feed.mjs from the parent of the commit that added this file, and remove that commit's guard test.
+#
+# The update rehearsal: two releases of one tree, A (0.0.98) and B (0.0.99), on a feed that is
+# never the one real releases use. On fresh Windows and Mac runners, A is installed, makes its own
+# data, finds B through its window, and updates to it through the window's own buttons; then the
+# data, the recovery copy and a second start are checked. `scripts/windows-update-test.mjs` and
+# `scripts/mac-update-test.mjs` say each step and what it proves; their evidence is kept with the
+# run, and a missing piece of evidence fails it.
+#
+# Opt-in, from a pushed tag (`git tag update-rehearsal-local-1 && git push origin update-rehearsal-local-1`):
+#   update-rehearsal-local-N   the feed is a server on each runner; nothing is published anywhere.
+#   update-rehearsal-N         the private sandbox `brocrew/brobot-update-rehearsal`, read through
+#                              electron-updater's private-GitHub path. This builds A and B; while
+#                              this repository holds no token for the sandbox, the lanes run in the
+#                              sandbox itself, staged by hand (`scripts/update-rehearsal-feed.mjs`
+#                              publish-a, then sandbox-push). Once the `update-rehearsal` environment
+#                              holds UPDATE_REHEARSAL_TOKEN (to publish) and
+#                              UPDATE_REHEARSAL_READ_TOKEN (read-only, the one the app under test is
+#                              given), and the repository variable UPDATE_REHEARSAL_RUNS_HERE is
+#                              `true`, they run here instead.
+#   update-rehearsal-public-N  the anonymous path, on the public repository the repository variable
+#                              UPDATE_REHEARSAL_PUBLIC_REPO names, in the `update-rehearsal-public`
+#                              environment. Refused while either is missing or the repository is
+#                              private. Run only with the owner's explicit yes, given at that moment.
+#
+# ⚑ A and B are the same code packaged twice, each with its own marker: this proves the transport,
+# the version choice, the replacement, the relaunch and B's first-start recovery copy, not a change
+# of code or schema.
+name: Update rehearsal
+
+on:
+  push:
+    tags: ['update-rehearsal-*']
+
+permissions:
+  contents: read
+
+env:
+  ELECTRON_CACHE: ${{ github.workspace }}/.cache/electron
+  electron_config_cache: ${{ github.workspace }}/.cache/electron
+  ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.cache/electron-builder
+
+concurrency:
+  group: update-rehearsal
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: What this tag rehearses
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      mode: ${{ steps.plan.outputs.mode }}
+      repo: ${{ steps.plan.outputs.repo }}
+      runs_here: ${{ steps.plan.outputs.runs_here }}
+      environment: ${{ steps.plan.outputs.environment }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+      - id: plan
+        env:
+          PUBLIC_REPO: ${{ vars.UPDATE_REHEARSAL_PUBLIC_REPO }}
+          PRODUCTION_REPO: ${{ vars.RELEASE_REPO || github.repository }}
+          RUNS_HERE: ${{ vars.UPDATE_REHEARSAL_RUNS_HERE }}
+        run: node scripts/update-rehearsal-feed.mjs plan "$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+
+  leak:
+    name: No name the repo must not carry
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+      - name: The leak guard, patterns required
+        env:
+          BROBOT_LEAK_PATTERNS: ${{ secrets.BROBOT_LEAK_PATTERNS }}
+        run: node scripts/leak-check.mjs --require-patterns
+
+  windows:
+    name: Build A and B for Windows (NSIS, x64, unsigned)
+    needs: [plan, leak]
+    # ⚑ `windows-2022`: pnpm's node-gyp does not know the Visual Studio of `windows-latest` (`windows.yml`).
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: pnpm
+      - uses: actions/cache@v4
+        with:
+          path: .cache
+          key: ${{ runner.os }}-electron-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-electron-
+      - run: pnpm install --frozen-lockfile
+      - name: Build once, then package A and B
+        shell: bash
+        env:
+          MODE: ${{ needs.plan.outputs.mode }}
+          REPO: ${{ needs.plan.outputs.repo }}
+        run: |
+          set -euo pipefail
+          pnpm --filter @brobot2/desktop run build
+          for one in a b; do
+            version="$(node scripts/update-rehearsal-feed.mjs version "$one")"
+            mapfile -t feed < <(node scripts/update-rehearsal-feed.mjs builder-args "$MODE" "$REPO")
+            pnpm --filter @brobot2/desktop exec electron-builder --win nsis --x64 --config electron-builder.yml \
+              -c.extraMetadata.version="$version" -c.extraMetadata.rehearsalMarker="$one-$GITHUB_SHA" "${feed[@]}" \
+              -c.directories.output="dist-rehearsal/$one" --publish never
+            node scripts/update-rehearsal-feed.mjs check-package "$MODE" "$REPO" "$version" \
+              "apps/desktop/dist-rehearsal/$one" "apps/desktop/dist-rehearsal/$one/win-unpacked/resources/app-update.yml"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rehearsal-windows
+          path: |
+            apps/desktop/dist-rehearsal/*/BroCrew-Setup-*-x64.exe
+            apps/desktop/dist-rehearsal/*/BroCrew-Setup-*-x64.exe.blockmap
+            apps/desktop/dist-rehearsal/*/latest.yml
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  macos:
+    name: Build A and B for the Mac (dmg and zip, Apple silicon, signed ad hoc)
+    needs: [plan, leak]
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: pnpm
+      - uses: actions/cache@v4
+        with:
+          path: .cache
+          key: ${{ runner.os }}-electron-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-electron-
+      - run: pnpm install --frozen-lockfile
+      - name: Build once, then package A and B
+        env:
+          MODE: ${{ needs.plan.outputs.mode }}
+          REPO: ${{ needs.plan.outputs.repo }}
+        run: |
+          set -euo pipefail
+          [ "$(uname -m)" = arm64 ] || { echo "this runner is $(uname -m), not Apple silicon"; exit 1; }
+          pnpm --filter @brobot2/desktop run build
+          for one in a b; do
+            version="$(node scripts/update-rehearsal-feed.mjs version "$one")"
+            feed=()
+            while IFS= read -r line; do feed+=("$line"); done < <(node scripts/update-rehearsal-feed.mjs builder-args "$MODE" "$REPO")
+            pnpm --filter @brobot2/desktop exec electron-builder --mac dmg zip dir --arm64 --config electron-builder.yml \
+              -c.mac.identity=- -c.extraMetadata.version="$version" -c.extraMetadata.rehearsalMarker="$one-$GITHUB_SHA" "${feed[@]}" \
+              -c.directories.output="dist-rehearsal/$one" --publish never
+            node scripts/update-rehearsal-feed.mjs check-package "$MODE" "$REPO" "$version" \
+              "apps/desktop/dist-rehearsal/$one" "apps/desktop/dist-rehearsal/$one/mac-arm64/BroCrew.app/Contents/Resources/app-update.yml"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rehearsal-macos
+          path: |
+            apps/desktop/dist-rehearsal/*/BroCrew-*-arm64.dmg
+            apps/desktop/dist-rehearsal/*/BroCrew-*-arm64.dmg.blockmap
+            apps/desktop/dist-rehearsal/*/BroCrew-*-arm64-mac.zip
+            apps/desktop/dist-rehearsal/*/BroCrew-*-arm64-mac.zip.blockmap
+            apps/desktop/dist-rehearsal/*/latest-mac.yml
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  # The private rehearsal while this repository holds no token for the sandbox: what to run next.
+  sandbox:
+    name: Stage the private sandbox by hand
+    needs: [plan, windows, macos]
+    if: needs.plan.outputs.runs_here != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Say how
+        run: |
+          {
+            echo "A and B are built for the private sandbox. With a token that may write there, from BroBot's repository at $GITHUB_SHA:"
+            echo '```'
+            echo "gh run download $GITHUB_RUN_ID --repo $GITHUB_REPOSITORY --dir <folder>"
+            echo "node scripts/update-rehearsal-feed.mjs publish-a private ${{ needs.plan.outputs.repo }} <folder>"
+            echo "node scripts/update-rehearsal-feed.mjs sandbox-push ${{ needs.plan.outputs.repo }} $GITHUB_SHA"
+            echo "gh workflow run rehearsal.yml --repo ${{ needs.plan.outputs.repo }} -f source_sha=$GITHUB_SHA"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # A is published as the feed's latest release, and B as a draft with every file. B is published
+  # only once every lane is ready.
+  publish-a:
+    name: Publish A, and B as a draft
+    needs: [plan, windows, macos]
+    if: needs.plan.outputs.mode != 'local' && needs.plan.outputs.runs_here == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: ${{ needs.plan.outputs.environment }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+      - uses: actions/download-artifact@v4
+        with:
+          path: rehearsal
+          merge-multiple: true
+      - name: A published, B a draft, every file on the feed
+        env:
+          FEED_TOKEN: ${{ secrets.UPDATE_REHEARSAL_TOKEN }}
+          MODE: ${{ needs.plan.outputs.mode }}
+          REPO: ${{ needs.plan.outputs.repo }}
+        run: node scripts/update-rehearsal-feed.mjs publish-a "$MODE" "$REPO" rehearsal
+
+  release-b:
+    name: Publish B once every lane is ready
+    needs: [plan, publish-a]
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment: ${{ needs.plan.outputs.environment }}
+    permissions:
+      contents: read
+      statuses: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+      - name: Wait for every lane, then publish B
+        env:
+          FEED_TOKEN: ${{ secrets.UPDATE_REHEARSAL_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+          MODE: ${{ needs.plan.outputs.mode }}
+          REPO: ${{ needs.plan.outputs.repo }}
+        run: node scripts/update-rehearsal-feed.mjs release-b "$MODE" "$REPO"
+
+  windows-update:
+    name: Windows, on the ${{ matrix.workspace }} workspace
+    needs: [plan, windows, publish-a]
+    # ⚑ A lane runs on a staged feed, or serves its own: never on a feed whose staging was skipped.
+    if: ${{ !cancelled() && needs.plan.outputs.runs_here == 'true' && needs.windows.result == 'success' && (needs.plan.outputs.mode == 'local' || needs.publish-a.result == 'success') }}
+    runs-on: windows-2022
+    timeout-minutes: 110
+    environment: ${{ needs.plan.outputs.environment }}
+    permissions:
+      contents: read
+      statuses: write
+    strategy:
+      fail-fast: false
+      matrix:
+        workspace: [default, another]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # ⚑ The test needs Node's own modules only: no install.
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+      - uses: actions/download-artifact@v4
+        with:
+          name: rehearsal-windows
+          path: apps/desktop/dist-rehearsal
+      - name: Install A, make data, update to B through the window, and check what is left
+        shell: bash
+        env:
+          # ⚑ Read-only, and only where the feed is private: it is what the app under test is given.
+          GH_TOKEN: ${{ needs.plan.outputs.mode == 'private' && secrets.UPDATE_REHEARSAL_READ_TOKEN || '' }}
+          GITHUB_TOKEN: ${{ github.token }}
+          MODE: ${{ needs.plan.outputs.mode }}
+          REPO: ${{ needs.plan.outputs.repo }}
+          WORKSPACE: ${{ matrix.workspace }}
+        run: |
+          set -euo pipefail
+          harness=(node scripts/windows-update-test.mjs --dist-a apps/desktop/dist-rehearsal/a --dist-b apps/desktop/dist-rehearsal/b --evidence evidence --workspace "$WORKSPACE" --marker-a "a-$GITHUB_SHA" --marker-b "b-$GITHUB_SHA" --source-sha "$GITHUB_SHA")
+          case "$MODE" in
+            local) "${harness[@]}" --feed-url http://127.0.0.1:47122/ --serve-local ;;
+            private) node scripts/update-rehearsal-lane.mjs "windows-$WORKSPACE" evidence -- "${harness[@]}" --feed-github "$REPO" --feed-private ;;
+            public) node scripts/update-rehearsal-lane.mjs "windows-$WORKSPACE" evidence -- "${harness[@]}" --feed-github "$REPO" ;;
+            *) echo "no mode $MODE"; exit 2 ;;
+          esac
+      - name: Keep the evidence with the run
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-windows-${{ matrix.workspace }}
+          path: evidence
+          if-no-files-found: error
+          retention-days: 30
+
+  macos-update:
+    name: Mac, the guided route
+    needs: [plan, macos, publish-a]
+    if: ${{ !cancelled() && needs.plan.outputs.runs_here == 'true' && needs.macos.result == 'success' && (needs.plan.outputs.mode == 'local' || needs.publish-a.result == 'success') }}
+    runs-on: macos-15
+    timeout-minutes: 110
+    environment: ${{ needs.plan.outputs.environment }}
+    permissions:
+      contents: read
+      statuses: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+      - uses: actions/download-artifact@v4
+        with:
+          name: rehearsal-macos
+          path: apps/desktop/dist-rehearsal
+      - name: Install A, make data, update to B through the window and the disk image, and check what is left
+        env:
+          GH_TOKEN: ${{ needs.plan.outputs.mode == 'private' && secrets.UPDATE_REHEARSAL_READ_TOKEN || '' }}
+          GITHUB_TOKEN: ${{ github.token }}
+          MODE: ${{ needs.plan.outputs.mode }}
+          REPO: ${{ needs.plan.outputs.repo }}
+        run: |
+          set -euo pipefail
+          harness=(node scripts/mac-update-test.mjs --dist-a apps/desktop/dist-rehearsal/a --dist-b apps/desktop/dist-rehearsal/b --evidence evidence --marker-a "a-$GITHUB_SHA" --marker-b "b-$GITHUB_SHA" --source-sha "$GITHUB_SHA")
+          case "$MODE" in
+            local) "${harness[@]}" --feed-url http://127.0.0.1:47122/ --serve-local ;;
+            private) node scripts/update-rehearsal-lane.mjs macos evidence -- "${harness[@]}" --feed-github "$REPO" --feed-private ;;
+            public) node scripts/update-rehearsal-lane.mjs macos evidence -- "${harness[@]}" --feed-github "$REPO" ;;
+            *) echo "no mode $MODE"; exit 2 ;;
+          esac
+      - name: Keep the evidence with the run
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-macos
+          path: evidence
+          if-no-files-found: error
+          retention-days: 30

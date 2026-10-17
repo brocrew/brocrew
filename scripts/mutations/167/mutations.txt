@@ -1,0 +1,47 @@
+# 167 mutations — HEAD 6fef071 + working tree
+# 2026-08-16T03:52:51Z
+
+M0  CONTROL (no mutation) — baseline dom=96 desktop=77
+    dom GREEN 0 of 96 in 4 files
+          desktop GREEN 0 of 77 in 3 files
+
+M1 · ⛔ THE FEATURE · the payload stops reading the picker, so the menu is decorative and every conversation starts as BroBot — 013's two-doors bug in the profile axis
+    dom RED 3 of 96 in 4 files
+          desktop GREEN 0 of 77 in 3 files
+M2 · a profile chosen from the list is sent, but a NEW name is not — the create half alone goes silently back to BroBot, which is the failure a person would report as 'it did nothing'
+    dom RED 5 of 96 in 4 files
+          desktop GREEN 0 of 77 in 3 files
+M3 · the launch stops refusing an unusable profile, so a half-typed name reaches the wire and the words in the composer are eaten by a schema error
+    dom RED 3 of 96 in 4 files
+          desktop GREEN 0 of 77 in 3 files
+M4 · the clash check goes, so typing the name of an existing profile is called NEW and the surface promises an empty memory over a home full of somebody's work
+    dom RED 3 of 96 in 4 files
+          desktop GREEN 0 of 77 in 3 files
+M5 · the clash check becomes case-SENSITIVE — 'Developer' beside 'developer' is one directory on the macOS default volume and two on a case-sensitive one, so the profile a session runs in would depend on the disk
+    dom RED 1 of 96 in 4 files
+          desktop GREEN 0 of 77 in 3 files
+M6 · ⛔ 032 · the shape rule becomes a SECOND predicate — a plausible 'no separators' check in place of the one `isPathSegment` the boundary and the path derivation both hold it to
+    dom RED 12 of 96 in 4 files
+          desktop GREEN 0 of 77 in 3 files
+M7 · `canCreateProfile` goes back to `!== null`, so a call site that forgot the prop is read as 'the list arrived' and 'New profile…' is offered against a list nobody has
+    dom RED 1 of 96 in 4 files
+          desktop GREEN 0 of 77 in 3 files
+M8 · `listProfileIds` stops guaranteeing the default, so a fresh install — which has no `provider-homes` directory at all — offers an EMPTY menu and BroBot cannot be started
+    dom GREEN 0 of 96 in 4 files
+          desktop RED 5 of 77 in 3 files
+M9 · it stops scoping to the pinned project, so a profile under another project is offered — and choosing it would provision a SECOND home of that name under `default` instead
+    dom GREEN 0 of 96 in 4 files
+          desktop RED 1 of 77 in 3 files
+M10 · the host answers the default alone rather than asking the seam, so the menu never shows a profile that exists and creating one appears to do nothing
+    dom GREEN 0 of 96 in 4 files
+          desktop RED 1 of 77 in 3 files
+M11 · §2 · the default profile is shown as the bare id again, so the product's own agent reads as an unset field wherever a profile is named
+    dom RED 4 of 96 in 4 files
+          desktop GREEN 0 of 77 in 3 files
+M12 · ⛔ §4's own finding, restored · the unresumable list calls a conversation swept out of the USER's provider home a `default` profile — a home it has never been in
+    dom RED 1 of 96 in 4 files
+          desktop GREEN 0 of 77 in 3 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    dom GREEN 0 of 96 in 4 files
+          desktop GREEN 0 of 77 in 3 files

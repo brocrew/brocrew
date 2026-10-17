@@ -1,0 +1,61 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+out/
+*.tsbuildinfo
+
+# Electron / packaging artifacts
+release/
+apps/desktop/out/
+apps/desktop/dist/
+
+# Test / coverage
+coverage/
+.vitest/
+
+# Local dev databases (the real DB lives under Electron userData, outside the repo)
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+*.db
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS
+.DS_Store
+
+# Env
+.env
+.env.*
+!.env.example
+
+# A review agent given `isolation: worktree` gets a checkout of this repo INSIDE this repo (114).
+# This machine already ignores it through `.git/info/exclude`, which is local and untracked — so
+# on any other checkout a live reviewer would show up as 1,125 untracked files, one `git add -A`
+# away from being committed into itself. That is the shape of the accident 062 paid for.
+#
+# ⚠️ **Deliberately only the worktrees, and the rest of `.claude/` is NOT ignored here.** The other
+# ten Claude Code artifacts (`scheduled_tasks.json`, `agent-registry.json`, `checkpoints/`, …) are
+# still covered only by `.git/info/exclude` and `~/.gitignore_global` — machine-local, exactly the
+# mechanism this line exists to stop relying on. Ignoring them all in a tracked file would also
+# pre-decide that no `.claude/` content may ever be committed, which is not this task's to decide.
+# `**/` rather than a root anchor, matching the form `.git/info/exclude` already uses.
+**/.claude/worktrees/
+
+# Python bytecode from the mutation census/harness
+__pycache__/
+
+# The mutation harness's one repository-global tree lock (196 H2). A run in progress owns it; a
+# leftover one is a machine fact for a person to look at, never something to commit.
+scripts/mutations/.tree-lock/
+
+# A table run's stream before it is published, and what an interrupted run leaves; only the
+# finished mutations.txt is the table's record.
+scripts/mutations/*/mutations.txt.partial*

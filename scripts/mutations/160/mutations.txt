@@ -1,0 +1,77 @@
+# 160 mutations — HEAD 81ac83b + working tree
+# 2026-08-15T14:03:21Z
+
+M0  CONTROL (no mutation) — baseline runtime=329 desktop=47
+    runtime GREEN 0 of 329 in 4 files
+          desktop GREEN 0 of 47 in 4 files
+
+M1 · 153 §2 IS BACK · the personal homes rejoin protectedRoots, so a Claude session is refused ~/.claude and ~/.codex again
+    runtime GREEN 0 of 329 in 4 files
+          desktop RED 2 of 47 in 4 files
+M2 · …and the guard leaves entirely, dropping the ONE root that has a neighbour reason (069 A1 reopens)
+    runtime GREEN 0 of 329 in 4 files
+          desktop RED 1 of 47 in 4 files
+M3 · the RULE is deleted from where the roots are produced, so the next widening has nothing to answer to (§4)
+    runtime GREEN 0 of 329 in 4 files
+          desktop RED 1 of 47 in 4 files
+M4 · …and 069 A1 stops being named, so `userData` reads as a preference rather than an incident
+    runtime GREEN 0 of 329 in 4 files
+          desktop RED 1 of 47 in 4 files
+M5 · the cwd check stops refusing the app's own data, so `cwd: <userData>/provider-homes` is selectable again
+    runtime GREEN 0 of 329 in 4 files
+          desktop RED 4 of 47 in 4 files
+M6 · …and the opposite over-revert: a personal home is refused as a cwd again, which the CLI does not do
+    runtime GREEN 0 of 329 in 4 files
+          desktop RED 1 of 47 in 4 files
+M7 · the refusal claims a reach this app no longer has — 153's wording, restored verbatim
+    runtime RED 1 of 329 in 4 files
+          desktop RED 2 of 47 in 4 files
+M8 · 157 IS BACK · auto selects a named permissions profile, which -32600s beside `sandbox`
+    runtime RED 2 of 329 in 4 files
+          desktop GREEN 0 of 47 in 4 files
+M9 · …and ask does too, which is the half that breaks 001 non-negotiable 1 (an accepted card doing nothing)
+    runtime RED 1 of 329 in 4 files
+          desktop GREEN 0 of 47 in 4 files
+M10 · auto loses the machine — `read-only` instead of `danger-full-access`, so `ps` and the user's own files go with it
+    runtime RED 6 of 329 in 4 files
+          desktop GREEN 0 of 47 in 4 files
+M11 · …and ask stops prompting — `danger-full-access` instead of `read-only`
+    runtime RED 9 of 329 in 4 files
+          desktop GREEN 0 of 47 in 4 files
+M12 · the two modes are swapped — ask runs unattended and auto prompts
+    runtime RED 15 of 329 in 4 files
+          desktop GREEN 0 of 47 in 4 files
+M13 · the reviewer is no longer pinned to `user`, so a host config can route escalation to an auto-approver
+    runtime RED 6 of 329 in 4 files
+          desktop GREEN 0 of 47 in 4 files
+M14 · the stale `[permissions.*]` block is never removed at START
+    runtime RED 1 of 329 in 4 files
+          desktop GREEN 0 of 47 in 4 files
+M15 · …nor at RESUME, which is the path a 157-era home actually arrives by
+    runtime RED 1 of 329 in 4 files
+          desktop GREEN 0 of 47 in 4 files
+M16 · the removal runs AFTER the spawn, so the app-server has already read the block
+    runtime RED 1 of 329 in 4 files
+          desktop GREEN 0 of 47 in 4 files
+M17 · 🔒 the ownership check is bypassed, so ANY config.toml in a Codex home is deleted
+    runtime RED 3 of 329 in 4 files
+          desktop GREEN 0 of 47 in 4 files
+M18 · …and the opposite: the removal is a no-op, so the block it reported removing is still there
+    runtime RED 3 of 329 in 4 files
+          desktop GREEN 0 of 47 in 4 files
+M19 · the header match becomes a substring search, so a file merely MENTIONING BroBot is deleted
+    runtime RED 1 of 329 in 4 files
+          desktop GREEN 0 of 47 in 4 files
+M20 · a protected root stops being refused when only the REAL path lands in it (a symlink launders the credential store)
+    runtime RED 1 of 329 in 4 files
+          desktop GREEN 0 of 47 in 4 files
+M21 · …and the session's own carve-out stops requiring BOTH spellings, so a symlinked cwd carves out `userData`
+    runtime RED 2 of 329 in 4 files
+          desktop GREEN 0 of 47 in 4 files
+M22 · the wide scan narrows back to `file_path`, so `Glob`'s optional `path` walks into the app's data uncheck
+    runtime RED 2 of 329 in 4 files
+          desktop RED 4 of 47 in 4 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 329 in 4 files
+          desktop GREEN 0 of 47 in 4 files

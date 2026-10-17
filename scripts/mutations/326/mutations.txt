@@ -1,0 +1,50 @@
+# 326 mutations — HEAD 73a2afa + working tree
+# 2026-09-04T18:21:35Z
+# project-reachability v1 topology=unproved — For each row, run every baseline project whose tests can conservatively reach an edited path; any unknown path runs every project, and every omitted measurement is written NOT RUN (out of reach), never GREEN.
+
+M0  CONTROL (no mutation) — baseline runtime=1577 desktop=3280 dom=924 scripts=358 shared=3
+    runtime GREEN 0 of 1577 in 52 files · desktop GREEN 0 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 358 in 20 files · shared GREEN 0 of 3 in 1 files
+
+M1 · ⛔ THE DEFECT, verbatim · `lsof` exiting 1 becomes *"nothing is listening"* again whatever it said on stderr, so a complaining or a killed `lsof` is indistinguishable from an empty port. ⚑ This is the fail-open rebuilt one layer in from where it was removed — and `stderr` is the discriminator the old `holdersOf` threw away (`stdio: […, 'ignore']`)
+    runtime GREEN 0 of 1577 in 52 files · desktop GREEN 0 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts RED 1 of 358 in 20 files · shared GREEN 0 of 3 in 1 files
+M2 · 🔴 a FAILURE is reported as a free port. ⚠️ `325` measured what this costs: a stand-in `lsof` that exits non-zero declares a held port free in 4 ms, 3 of 3, with every Electron process still in the table
+    runtime GREEN 0 of 1577 in 52 files · desktop GREEN 0 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts RED 1 of 358 in 20 files · shared GREEN 0 of 3 in 1 files
+M3 · ⛔ a zero exit whose pids this cannot parse becomes an empty port — but a zero exit means `lsof` MATCHED, so this is the check failing to read an answer being reported as the kernel saying there is nobody there
+    runtime GREEN 0 of 1577 in 52 files · desktop GREEN 0 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts RED 1 of 358 in 20 files · shared GREEN 0 of 3 in 1 files
+M4 · ⛔ every bind failure that is not `EADDRINUSE` is read as a free port. ⚠️ `EACCES` on a privileged port and `EMFILE` on a machine out of descriptors are this check being unable to ask — and a machine out of descriptors is a LOADED machine, which is when every failure in this family happens
+    runtime GREEN 0 of 1577 in 52 files · desktop GREEN 0 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts RED 1 of 358 in 20 files · shared GREEN 0 of 3 in 1 files
+M5 · 🔴 the allocator probe can no longer see a HELD port at all, so it answers `unknown` while the app is up and `free` the moment it is not. ⛔ Without the positive half, `quit:check`'s port assertion is satisfied by an instrument that never says held
+    runtime GREEN 0 of 1577 in 52 files · desktop GREEN 0 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts RED 1 of 358 in 20 files · shared GREEN 0 of 3 in 1 files
+M6 · ⚠️ the fast DECISION starts carrying an empty `pids`, so a caller can print an identification it never made. ⛔ Keeping the two shapes apart is what stops `couldBindPort` being mistaken for `whoHoldsPort`; an empty list reads as *"held by nobody"*
+    runtime GREEN 0 of 1577 in 52 files · desktop GREEN 0 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts RED 2 of 358 in 20 files · shared GREEN 0 of 3 in 1 files
+M7 · ⛔ THE DEFECT, verbatim · the free fact is sampled LAST again, so *"has the app gone?"* cannot be answered until a CDP probe and a port probe have both returned. ⚑ This is the shape that produced `still running 21304ms later` about an app that had already exited — and every timestamp in the loop is still taken correctly, which is why the killer has to be about ORDER
+    runtime GREEN 0 of 1577 in 52 files · desktop RED 1 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts RED 1 of 358 in 20 files · shared GREEN 0 of 3 in 1 files
+M8 · 🔴 the process fact is stamped when the ANSWER came back rather than when it was asked, so the cost of everything before it in the iteration is charged to the app again. ⚠️ Sampling first is only half the repair: on the 21 s run the reported number would still have been the `lsof`
+    runtime GREEN 0 of 1577 in 52 files · desktop RED 1 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts RED 1 of 358 in 20 files · shared GREEN 0 of 3 in 1 files
+M9 · ⚠️ …and the same for the port, which is the one an unbounded probe can move furthest
+    runtime GREEN 0 of 1577 in 52 files · desktop RED 1 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts RED 1 of 358 in 20 files · shared GREEN 0 of 3 in 1 files
+M10 · ⛔ the port budget goes back to being measured from the GESTURE, so the app is charged for the time this check spent asking — `326` §1's second half, and the reason moving `alive()` up on its own was measured and reverted by `325`
+    runtime GREEN 0 of 1577 in 52 files · desktop RED 1 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts RED 1 of 358 in 20 files · shared GREEN 0 of 3 in 1 files
+M11 · 🔴 *"I do not know"* becomes *"free"* at the one place it decides a timestamp. ⛔ The third state is worth nothing if a caller collapses it: this is `holdersOf`'s `catch` wearing a `state` field
+    runtime GREEN 0 of 1577 in 52 files · desktop GREEN 0 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts RED 1 of 358 in 20 files · shared GREEN 0 of 3 in 1 files
+M12 · ⛔ the port instrument is never proved able to see THIS app, so every assertion about the port being released passes over a probe that might answer `free` unconditionally — 241's vacuity, aimed at the instrument 326 introduced
+    runtime GREEN 0 of 1577 in 52 files · desktop RED 1 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts RED 1 of 358 in 20 files · shared GREEN 0 of 3 in 1 files
+M13 · ⚠️ an unreadable port stops being reported as the INSTRUMENT and is reported as the app holding the port. ⛔ It is still red, which is why this row is about the message and not about the verdict: a person debugging a broken `lsof` would be sent to look at the product, which is 326's own subject in miniature
+    runtime GREEN 0 of 1577 in 52 files · desktop RED 1 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 358 in 20 files · shared GREEN 0 of 3 in 1 files
+M14 · ⛔ `window:check` keeps its own removal below the launch again — the one line whose POSITION is the defect. ⚑ It is put back exactly where the old `stop()` had it, after a wait on the port, which is the version that failed `324`'s merge with ENOTEMPTY
+    runtime GREEN 0 of 1577 in 52 files · desktop GREEN 0 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts RED 1 of 358 in 20 files · shared GREEN 0 of 3 in 1 files
+M15 · ⛔ …and the same in `quit:check`, which spawns the provider children that made this a dispatch: `325` found `provider-homes/…/codex/models_cache.json` written into the temp home at the second the check was tearing down
+    runtime GREEN 0 of 1577 in 52 files · desktop GREEN 0 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts RED 1 of 358 in 20 files · shared GREEN 0 of 3 in 1 files
+M16 · ⚠️ `window:check` no longer remembers the Electron helpers while the app is UP. ⛔ `refreshDescendants` is a no-op once the launcher is gone and `remember()` refuses a pid whose parent it never saw, so a crash between the window appearing and the teardown leaves four processes that nothing has authority to signal
+    runtime GREEN 0 of 1577 in 52 files · desktop GREEN 0 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts RED 1 of 358 in 20 files · shared GREEN 0 of 3 in 1 files
+M17 · ⚠️ …and the same in `quit:check`, where the gap is wider: it settles for three seconds with a live app before it asks anything
+    runtime GREEN 0 of 1577 in 52 files · desktop GREEN 0 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts RED 1 of 358 in 20 files · shared GREEN 0 of 3 in 1 files
+M18 · 🔴 a teardown that THROWS replaces the failure being reported instead of being appended to it. ⛔ That is the exact shape of the merge failure `325` was dispatched for: the run would name its own `rmSync` where it should have named what the app did
+    runtime GREEN 0 of 1577 in 52 files · desktop GREEN 0 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts RED 1 of 358 in 20 files · shared GREEN 0 of 3 in 1 files
+M19 · ⛔ `quit:check` owns its launch but never discovers its family, so the teardown waits for the `.bin/electron` shim alone and reports `complete` with four Electron processes and a provider child still coming down
+    runtime GREEN 0 of 1577 in 52 files · desktop GREEN 0 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts RED 1 of 358 in 20 files · shared GREEN 0 of 3 in 1 files
+M20 · ⚠️ `lsof` is bounded so tightly that it can never answer, so `whoHoldsPort` returns `unknown` for every port on every machine and `quit:check` cannot find the app to ask it to quit. ⚑ Killed ONLY by the one test that talks to the real binary — the five classification rows above are this file's model of `lsof` checked against this file's model of `lsof`, and this is the row that proves the oracle beside them is doing work
+    runtime GREEN 0 of 1577 in 52 files · desktop GREEN 0 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts RED 1 of 358 in 20 files · shared GREEN 0 of 3 in 1 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1577 in 52 files · desktop GREEN 0 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 358 in 20 files · shared GREEN 0 of 3 in 1 files

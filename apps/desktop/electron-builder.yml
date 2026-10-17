@@ -1,0 +1,163 @@
+# Packaging wiring for the desktop app (014, BUILT AND PROVEN in 020).
+#
+# This file has now been executed. `pnpm run package` builds it, and `pnpm run smoke:packaged`
+# drives the result — so the claims below are measurements, not intentions.
+#
+# What IS verified, on the built artifact:
+#   - the build runs end to end: electron-builder 26.15.3, macOS arm64, dmg + dir
+#   - the bundled codex reports the PINNED version (measured at 0.146.0; the pin is 0.160.0 now, and
+#     the packaged build has not been re-run since) from
+#     <Resources>/codex-vendor/aarch64-apple-darwin/bin/codex
+#   - a real Codex session starts and streams INSIDE the packaged app, and the running pid's
+#     executable is that bundled binary — read from the OS, so a PATH lookup cannot fake it
+#   - removing that binary surfaces the actionable CodexUnavailableError, not a raw spawn ENOENT
+#   - better-sqlite3 loads from app.asar.unpacked. It needed NO Electron-ABI rebuild: its prebuilt
+#     .node is N-API (60 napi_* imports, no libnode linkage), which 014 could not know without
+#     building. asarUnpack alone was the requirement.
+#   - the codex vendor tree ships ONCE (the negation below holds: no @openai/codex-darwin-arm64
+#     entry in app.asar)
+#
+# Claude Code does not ship. A person installs it (https://code.claude.com/docs/en/setup), and
+# `src/main/runtime/claude-program.ts` finds it and gives the Agent SDK its absolute path on every
+# launch. So the archive holds no Agent SDK platform package
+# (`@anthropic-ai/claude-agent-sdk-<platform>`, the SDK's optional dependencies), each a whole
+# Claude Code binary of 200 MB and more: the negation under `files:` keeps them out. The SDK's own
+# JavaScript still ships; it starts the person's Claude Code. `smoke:packaged` and both platforms'
+# packaged checks fail a build that carries a platform package or a `claude`.
+#
+# Measured on this machine (Apple silicon, macOS 25.3): a build's time goes to copying, not to the
+# Electron download. In the installed .app, Electron is 275 MB, the codex vendor tree 308 MB and the
+# asar 36 MB.
+# (And codex 0.146.0. At 0.160.0 the codex vendor tree is 318 MB, its binary 241,555,024 bytes.)
+# Codex ships its own runtime, and that — not this app's code — is most of the size.
+#
+# What is STILL not verified, and must not be claimed:
+#   - any platform other than macOS arm64 on this machine. ⚑ F072 added Windows x64 (an unsigned
+#     NSIS installer, built by `.github/workflows/windows.yml` on GitHub's Windows runner, which runs
+#     `scripts/windows-packaged-check.mjs` against the result). Intel mac / Linux still need their own
+#     @openai/codex-<platform> package and a mapping here; the resolver fails them closed.
+#   - distribution. Checked on the artifact rather than assumed: it IS signed (Apple Development:
+#     an individual identity, not a distribution one) and the hardened runtime IS on
+#     (flags=0x10000(runtime)) with electron-builder's standard Electron entitlements — allow-jit,
+#     allow-unsigned-executable-memory, disable-library-validation. What is missing is a
+#     **Developer ID Application** certificate and **notarization**, so a copy downloaded to
+#     another Mac is still Gatekeeper-blocked; and there is no update channel. Those three are the
+#     real distribution gap, not signing in general.
+#
+# Why extraResources and not asar: the bundled `codex` is a native Mach-O executable (with its
+# own sibling tools — codex-path/rg, codex-resources/zsh — that it locates relative to itself).
+# A binary cannot execute from inside app.asar, so the whole vendor tree is copied beside it:
+#   <app>.app/Contents/Resources/codex-vendor/aarch64-apple-darwin/bin/codex
+# which is exactly `join(process.resourcesPath, 'codex-vendor', triple, 'bin', 'codex')`.
+# ⚑ W4.90 — the name the OS shows: the bundle (`BroCrew.app`), the menu bar, the Dock, Cmd-Tab, the
+# Windows executable, its shortcuts, its entry in Apps, and both installers. ⛔ The app id stays:
+# macOS knows the app by it, and the NSIS installer's registry keys are a UUID of it, so an
+# installer of BroCrew replaces an install of BroBot or BroBot2 rather than adding a second app. ⛔ And the
+# data folder does not follow `productName` anywhere: `data-folder.ts` pins it, and the app's
+# own name — the package's `name`, which also names the Keychain entry its saved keys are sealed
+# with — stays `@brobot2/desktop`.
+appId: com.brobot2.desktop
+productName: BroCrew
+directories:
+  output: dist
+files:
+  - out/**
+  # electron-builder ALWAYS packs production node_modules (optionalDependencies included) in a
+  # separate collection pass that a custom `files` pattern does not scope — only an explicit
+  # negation reaches it. Without this line the ~310MB codex vendor tree ships TWICE: once here
+  # (dead weight — unreachable, and un-executable inside asar) and once via extraResources.
+  # ⚑ One line per bundled platform (F072): a package another platform skipped matches nothing.
+  - '!node_modules/@openai/codex-darwin-arm64/**'
+  - '!node_modules/@openai/codex-win32-x64/**'
+  # No Claude Code in the app: every Agent SDK platform package, at whatever depth the collection
+  # pass lays it out, is a whole Claude Code binary. The hyphen in `claude-agent-sdk-*` keeps
+  # `@anthropic-ai/claude-agent-sdk` itself, which starts the person's Claude Code, in the app.
+  - '!**/node_modules/@anthropic-ai/claude-agent-sdk-*/**'
+asar: true
+asarUnpack:
+  # better-sqlite3 is a native addon, and `dlopen` cannot open a file inside app.asar. Its
+  # prebuilt binary is N-API — verified on the artifact itself: the .node imports 60 napi_*
+  # symbols and links no libnode — so it is ABI-stable across Node and Electron and needs NO
+  # rebuild for Electron 43, which 014 assumed would be the hard part. It only has to be a real
+  # file on disk, which is all this does.
+  - '**/node_modules/better-sqlite3/**'
+extraResources:
+  - from: resources/built-in-skills
+    to: built-in-skills
+  # The notices for everything the app redistributes — the bundled Codex and its tools, the Agent
+  # SDK, Electron, the typeface and the npm packages (`scripts/third-party-notices.mjs` writes the
+  # generated part).
+  # Several licenses require their text to travel with every copy, so every built artifact gets one.
+  - from: THIRD-PARTY-NOTICES.md
+    to: THIRD-PARTY-NOTICES.md
+  # The built-in themes, read-only beside the app: `<resources>/themes/<id>/theme.json` and its
+  # pictures, which the theme store loads as built-ins. Everything in `resources/themes` ships, so
+  # a local-only theme never sits there (`the-themes-the-app-ships-are-valid.test.ts`).
+  - from: resources/themes
+    to: themes
+mac:
+  # ⚑ F082 — BroCrew's logo: the idle avatar on a navy rounded tile, made from `icons/idle.png` by
+  # `scripts/make-brobot-icon.py` into `build/`. electron-builder copies it into the bundle's
+  # `Resources` and names it in `Info.plist`, and the dmg's volume takes it too. The Dock, Cmd-Tab,
+  # Finder and the About panel show it. Run from source, `index.ts` hands the Dock
+  # `build/icon-1024.png`.
+  icon: build/icon.icns
+  # The bundled Codex for macOS arm64 (014). ⚑ Under `mac:` since F072: electron-builder adds a
+  # platform's own `extraResources` to the shared ones above, and each platform copies only the
+  # Codex build it can run — `codex-binary.ts`' `BUNDLED_CODEX` names the same package and triple.
+  extraResources:
+    - from: node_modules/@openai/codex-darwin-arm64/vendor
+      to: codex-vendor
+    # The logo as a picture the app can read (`nativeImage` can't read the .icns): the Dock label
+    # (`main/dock-label.ts`) paints its band over it.
+    - from: build/icon-1024.png
+      to: icon-1024.png
+    # ⛔ Electron's own license and Chromium's notices: electron-builder DELETES both from a macOS
+    # build (they sit beside `Electron.app`, not in it — `electronMac.js`), while a Windows build
+    # keeps them in its install folder (`LICENSE` renamed `LICENSE.electron.txt`). So the Mac copies
+    # them in, under the same names.
+    - from: node_modules/electron/dist/LICENSE
+      to: LICENSE.electron.txt
+    - from: node_modules/electron/dist/LICENSES.chromium.html
+      to: LICENSES.chromium.html
+  # arm64 only, and said out loud: the bundled codex is the darwin-arm64 platform package, so a
+  # universal or x64 artifact would ship an app whose Codex cannot run. The resolver fails those
+  # closed with a clear message; building them needs the other platform packages first.
+  target:
+    - target: dmg
+      arch: [arm64]
+    # `dir` is not a second product: it is what KEEPS dist/mac-arm64/BroCrew.app on disk after the
+    # dmg is wrapped, and that unpacked bundle is the thing `pnpm run smoke:packaged` drives. Drop
+    # it and the proof silently has nothing to run against.
+    - target: dir
+      arch: [arm64]
+# ⚑ F072 — Windows x64, unsigned: a beta tester accepts SmartScreen's warning (More info → Run
+# anyway). Built on GitHub's Windows runner (`.github/workflows/windows.yml`), never on the Mac.
+win:
+  # ⚑ F082 — the same logo, the tile filling the square. electron-builder writes it into the
+  # executable, and the installer and its uninstaller take it as theirs. The shortcuts and the Apps
+  # entry show the executable's icon, and so does the window: one given no icon of its own takes the
+  # executable's, and with it the taskbar's. So the window names none.
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch: [x64]
+  # The bundled Codex for Windows x64, laid out as on the Mac: `codex-vendor/<triple>/bin/codex.exe`.
+  extraResources:
+    - from: node_modules/@openai/codex-win32-x64/vendor
+      to: codex-vendor
+# ⚑ W4.90 — `BroCrew-<version>-arm64.dmg`, said rather than left to the default.
+dmg:
+  artifactName: ${productName}-${version}-${arch}.${ext}
+nsis:
+  # A per-user install: no administrator prompt, and the tester can choose the folder.
+  # ⚑ W4.90 — an install of BroBot or BroBot2 is replaced, not joined: same app id, so the same
+  # registry keys; the installer runs the old uninstaller (keeping app data) and installs into the old
+  # folder, nested: a person's install lands in `…\Programs\BroBot\BroCrew`, and a silent update
+  # keeps the folder it finds.
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  artifactName: ${productName}-Setup-${version}-x64.${ext}

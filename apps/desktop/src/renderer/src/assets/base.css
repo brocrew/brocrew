@@ -1,0 +1,438 @@
+/*
+ * The app's global stylesheet: the reset, the font, and the few element defaults
+ * every component inherits.
+ *
+ * It holds NO design values of its own — every colour, size and radius below
+ * resolves through `tokens.css`, which is the single source for those. The split
+ * is deliberate: tokens are the design system's vocabulary, this file is how the
+ * document speaks it.
+ */
+
+@import './tokens.css';
+/* 🎨 W4.165 · the shared layer: Ida's new tokens and `bb-*` classes (see the file's own note). */
+@import './classes.css';
+
+/*
+ * Inter, bundled — no CDN. The app is an offline desktop window with
+ * `overflow: hidden`; a webfont arriving late over the network would reflow the
+ * whole shell in front of the user. One variable file covers every weight the
+ * design uses (400/570/620/680/700/800) and any intermediate a component needs.
+ * The same face on every platform keeps text widths, and the tests that measure them, identical.
+ */
+@font-face {
+  font-family: Inter; /* raw: names the bundled face it declares */
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('./fonts/InterVariable.woff2') format('woff2');
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  /*
+   * ⛔ **The DOCUMENT does not scroll, and that is deliberate** — a desktop shell that
+   * rubber-bands under the titlebar is not this app. ⚠️ **It is also half of a defect.** Overflow
+   * on the root element is propagated to the viewport, so `hidden` here means
+   * `documentElement.scrollWidth` equals the viewport at every size: whatever falls off the right
+   * edge is not behind a scrollbar, it is nowhere. The other half is `.app`'s
+   * `min-width: var(--app-min-w)`, which is why {@link #app} below carries the reach.
+   */
+  overflow: hidden;
+  background: var(--bg-glow), var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--type-body);
+  font-synthesis: none;
+  line-height: var(--leading-normal);
+  text-rendering: geometricPrecision;
+}
+
+/*
+ * 🔴 **The window can be narrower than the app, and this is where that becomes a scrollbar instead
+ * of a silent cut** (338; found by 335 one layer behind the dispatch sheet it was sent to fix).
+ *
+ * `.app` is `min-width: var(--app-min-w)` — 1180 px — and `BrowserWindow` sets no minimum, so the
+ * window is free to be narrower than the frame it contains. Measured in a real window, before this
+ * rule existed: at a 1000 px viewport, 23 elements carrying a `data-cy` were outside it and NOTHING
+ * on the page could be scrolled sideways by any gesture — not the document (`hidden`, above), not
+ * `body`, not `#app`. The first things to go are the titlebar's right-hand cluster at **1165**
+ * (the theme toggle, and the strip that carries the build line and the startup error), then the
+ * send button at **1114**, gone entirely at **1086**.
+ *
+ * ⚑ **The reach lives HERE rather than on `html`/`body`** so the document keeps its fixed shell:
+ * only the app frame moves, and only when it does not fit. Above 1180 there is no overflow, so
+ * there is no scrollbar and this rule changes nothing — measured identical at 1180, 1200 and 1440.
+ *
+ * ⛔ **`scrollbar-width: thin` and NOT `scrollbar-color`.** Every scroll container in this app pairs
+ * the two, and this one may not: `scrollbar-color` inherits as an ALREADY-SUBSTITUTED value
+ * (`DocumentBody.vue` carries the measurement), so declaring it on the element every surface
+ * descends from pushes the dark thumb into all of them. Measured: 122 elements resolve an explicit
+ * `scrollbar-color` today, 307 with one line here. `scrollbar-width` does not inherit, which is the
+ * whole reason only one of the pair is safe at the root of the tree.
+ *
+ * ⚠️ **`overflow-y: hidden` costs the frame the bar's height, and `.app` is sized for it.** A
+ * horizontal scrollbar is 11 px of `#app`'s content box (measured); a frame keyed to `100vh` would
+ * overflow it and lose its bottom 11 px to this clip. `RuntimeScreen.vue`'s `.app` is `height: 100%`
+ * for that reason, and `app-frame-reachable.dom.test.ts` puts a `100vh` fixture on the same path to
+ * keep the two facts attached.
+ */
+#app {
+  height: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: var(--type-caption);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.card {
+  padding: var(--space-6) var(--space-7);
+  border: var(--border-width) solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+button {
+  padding: var(--space-3) var(--space-6);
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--panel-2);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+button.primary {
+  border: var(--border-width) solid var(--accent-border);
+  background: var(--accent-fill-weak);
+  color: var(--accent-text);
+  font-weight: var(--fw-semibold);
+}
+
+button.primary:hover:not(:disabled) {
+  background: var(--accent-fill-strong);
+}
+
+button.danger {
+  border-color: var(--danger);
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+input,
+select,
+textarea {
+  padding: var(--space-3) var(--space-4);
+  border: var(--border-width) solid var(--control-border);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+}
+
+input:focus,
+select:focus,
+textarea:focus,
+button:focus-visible,
+a:focus-visible,
+summary:focus-visible,
+[tabindex]:not([tabindex='-1']):focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+
+::selection {
+  background: var(--selection-bg);
+}
+
+/* The icon sprite is mounted at the app root; every component draws from it. */
+.icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+/* ---------------------------------------------------------------------------------------------
+   Rendered chat markdown — the SHARED stylesheet for every surface that renders what an agent
+   said: the reply itself, its reasoning (027), its checklist's plan document (028) and a
+   sub-agent's answer (029).
+
+   GLOBAL, and that is the fix rather than the shortcut. These rules used to live in
+   AssistantMessage.vue's `<style scoped>` as `.md-chat :deep(...)`, which compiles to a selector
+   carrying THAT component's scope id — so the identical `.md-chat` markup in the other three
+   rendered with no code blocks, no lists, no headings and no tables at all, and nothing said so.
+   A scoped rule cannot style another component's DOM, so a stylesheet shared by four components
+   has to be one. Same renderer as the white paper (lib/markdown.ts), restyled for the dark chat.
+   --------------------------------------------------------------------------------------------- */
+.md-chat > :first-child {
+  margin-top: 0;
+}
+
+.md-chat > :last-child {
+  margin-bottom: 0;
+}
+
+.md-chat p {
+  margin: 0 0 var(--space-4);
+}
+
+.md-chat ul,
+.md-chat ol {
+  margin: 0 0 var(--space-4);
+  padding-left: var(--space-9);
+}
+
+.md-chat li {
+  margin: var(--space-1) 0;
+}
+
+/* markdown-it wraps LOOSE list items (a blank line between bullets — common in agent replies) in
+   a <p>, which would otherwise add a paragraph's bottom margin inside every bullet on top of the
+   item's own. Same for the last paragraph in a blockquote. */
+.md-chat li > p:last-child,
+.md-chat blockquote > p:last-child {
+  margin-bottom: 0;
+}
+
+.md-chat h1,
+.md-chat h2,
+.md-chat h3,
+.md-chat h4,
+.md-chat h5,
+.md-chat h6 {
+  margin: var(--space-6) 0 var(--space-3);
+  color: var(--text);
+  font-weight: var(--fw-bold);
+}
+
+/* A chat bubble is not a document: even a # heading stays near body size, or one enthusiastic
+   reply shouts over the whole transcript. The ladder still has to DESCEND, though — the token
+   names are a trap (--text-md is 11px, SMALLER than --text-base at 11.5px), and reading them as a
+   scale put h2, the level agents use most, below the body text it introduces. */
+/*
+ * Size headings and code relative to their surrounding text (`--text-reading`) so fixed tokens cannot make a heading smaller than its paragraph.
+ */
+.md-chat h1 {
+  font-size: var(--type-md-h1);
+}
+
+.md-chat h2 {
+  font-size: var(--type-md-h2);
+}
+
+.md-chat h3 {
+  font-size: var(--type-md-h3);
+}
+
+.md-chat h4,
+.md-chat h5,
+.md-chat h6 {
+  font-size: var(--type-md-h4);
+}
+
+.md-chat strong {
+  color: var(--text);
+}
+
+.md-chat a {
+  color: var(--accent-text-soft);
+}
+
+/* A path a message names that main found: it reads as a file, in monospace, and presses like a
+   link. Global, because replies, the person's own messages and the cards all draw it. The focus
+   ring is the one every button has. */
+.message-path-open,
+.message-path-show {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+
+.message-path-open {
+  color: var(--accent-text-soft);
+  font-family: var(--font-mono);
+  font-size: var(--type-code-inline);
+  text-align: inherit;
+  text-decoration: none;
+  text-underline-offset: 2px;
+  overflow-wrap: anywhere;
+}
+
+code .message-path-open {
+  font-size: inherit;
+}
+
+.message-path-open:hover,
+.message-path-open:focus-visible {
+  text-decoration: underline;
+}
+
+.message-path-show {
+  display: inline-grid;
+  margin-left: var(--space-1);
+  border-radius: var(--radius-2xs);
+  color: var(--muted);
+  place-items: center;
+  vertical-align: middle;
+}
+
+.message-path-show .icon {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+
+.message-path-show:hover,
+.message-path-show:focus-visible {
+  color: var(--accent-text-soft);
+}
+
+.message-path-failure {
+  margin: var(--space-2) 0 0;
+  color: var(--muted);
+  font-size: var(--type-caption);
+}
+
+.md-chat code {
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-2xs);
+  background: var(--code-bg-weak);
+  color: var(--code-text);
+  /* Not the `font` shorthand: it resets weight and style, so `**bold `code`**` came out regular. */
+  font-family: var(--font-mono);
+  font-size: var(--type-code-inline);
+  line-height: var(--leading-normal);
+}
+
+/* Code keeps its own lines: `pre` does not soft-wrap, so the transcript's inherited
+   `overflow-wrap: anywhere` cannot shred it, and a long line scrolls THIS block rather than
+   widening the chat — which holds because the grid column is `minmax(0, 1fr)` over a
+   `min-width: 0` column, the same chain that keeps a long path from pushing the pane sideways. */
+.md-chat pre {
+  margin: 0 0 var(--space-4);
+  padding: var(--space-5);
+  border: var(--border-width) solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--code-bg);
+  overflow-x: auto;
+}
+
+.md-chat pre code {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+/* An image is markdown too, and `html: false` does not disable `![…](…)`. Unconstrained, a wide
+   one is the single thing on this surface that can still push the conversation sideways — nothing
+   wraps an <img>.
+
+   ⚠️ 069 finding 2 called these three lines "the tell": the element was seen here, and the ORIGIN of
+   its `src` was not, so a layout rule was written for the exact element that was also a click-free
+   outbound beacon. Only an inline `data:image/…` reaches this selector now — `markdown.ts` renders
+   every other destination as an inert link — and a CSP refuses the rest a second time. */
+.md-chat img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* What a destination that may not be fetched looks like: the text the model wrote, followed by
+   where it actually pointed. Quiet, because it is usually nothing — an agent writing a relative
+   image path in a reply is far more often a mistake than an attack — and legible, because the one
+   time it is not, the destination is the whole story. */
+.md-chat .refused-image,
+.md-doc .refused-image {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+/* Where a link REALLY goes, when its own text claimed somewhere else (074, from 069 finding 8). The
+   same grammar as the refused destination above, and deliberately NOT a hover affordance: the whole
+   finding is that a reader cannot tell, so the telling may not depend on them already suspecting.
+   Every other link — the overwhelming majority, whose text claims no host at all — carries its
+   destination in `title` and nothing here. */
+.md-chat .link-target,
+.md-doc .link-target {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--type-caption);
+  overflow-wrap: anywhere;
+}
+
+.md-chat blockquote {
+  margin: 0 0 var(--space-4);
+  padding: var(--space-1) 0 var(--space-1) var(--space-5);
+  border-left: var(--border-accent-width) solid var(--line-strong);
+  color: var(--muted);
+}
+
+.md-chat hr {
+  margin: var(--space-6) 0;
+  border: 0;
+  border-top: var(--border-width) solid var(--line);
+}
+
+.md-chat table {
+  margin: 0 0 var(--space-4);
+  border-collapse: collapse;
+}
+
+.md-chat th,
+.md-chat td {
+  padding: var(--space-2) var(--space-4);
+  border: var(--border-width) solid var(--line);
+  text-align: left;
+}
+
+/* Static status labels remain visible when motion is reduced. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+/* A theme that turns the app's own fades and slides off: the same as Reduce Motion. */
+:root[data-motion='none'] *,
+:root[data-motion='none'] *::before,
+:root[data-motion='none'] *::after {
+  animation: none !important;
+  transition: none !important;
+  scroll-behavior: auto !important;
+}
+/* A theme that shows pictures in grey. */
+:root[data-pictures='grey'] img {
+  filter: grayscale(1);
+}

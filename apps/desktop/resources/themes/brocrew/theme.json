@@ -1,0 +1,49 @@
+{
+  "format": 1,
+  "id": "brocrew",
+  "name": "BroCrew",
+  "author": "BroBot",
+  "description": "Deep indigo, crew orange and mint, with a faint network of connected agents.",
+  "extends": "defined",
+  "status": { "waiting": "#553500", "success": "#024a33", "danger": "#7a1824", "auto": "#663000" },
+  "frame": { "ink": "#f1f2ff", "paper": "#14173a", "accent": "#ff8a5c" },
+  "content": { "ink": "#171a3a", "paper": "#ffffff", "accent": "#e8572a", "accent2": "#7c83ff" },
+  "shared": { "fonts": { "body": ["Inter", "Avenir Next", "sans-serif"] } },
+  "type": {
+    "display": {
+      "font": ["Avenir Next", "Avenir", "Inter"],
+      "weight": 700,
+      "letterSpacing": -0.01
+    },
+    "brand": { "font": ["Avenir Next"], "weight": 700 }
+  },
+  "titlebar": { "background": "#10132f", "ink": "#e9eaff" },
+  "rail": {
+    "background": {
+      "color": "#1b1f4b",
+      "layers": [
+        { "image": "assets/network.png", "size": 280, "position": "top left", "repeat": true }
+      ]
+    }
+  },
+  "brand": {
+    "mark": { "layers": [{ "image": "assets/crew.png", "size": "contain", "repeat": false }] },
+    "markInk": "transparent"
+  },
+  "conversation": {
+    "background": {
+      "color": "#fbfaf7",
+      "layers": [
+        { "image": "assets/network-light.png", "size": 280, "position": "top left", "repeat": true }
+      ]
+    }
+  },
+  "tokens": {
+    "content": {
+      "accent-text": "#b13c0b",
+      "paper-link": "#b13c0b",
+      "accent-2-text": "#565bb5",
+      "accent-solid-bg": "#cf4719"
+    }
+  }
+}

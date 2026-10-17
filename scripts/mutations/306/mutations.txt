@@ -1,0 +1,24 @@
+# 306 mutations — HEAD 66f712e + working tree
+# 2026-09-04T13:49:36Z
+# project-reachability v1 topology=unproved — For each row, run every baseline project whose tests can conservatively reach an edited path; any unknown path runs every project, and every omitted measurement is written NOT RUN (out of reach), never GREEN.
+
+M0  CONTROL (no mutation) — baseline runtime=1577 desktop=3280 dom=924 scripts=319
+    runtime GREEN 0 of 1577 in 52 files · desktop GREEN 0 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 319 in 18 files
+
+M1 · ⛔ `fixture:check` leaves the ci chain — 306's whole subject, put back. The instrument still exists, still passes when run by hand, and guards nothing: *'a correct policy that nothing calls leaves the defect exactly where it was'*. ⚑ This is the state `301` shipped and reported, and the state acceptance #6 was written to catch
+    runtime GREEN 0 of 1577 in 52 files · desktop RED 2 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 319 in 18 files
+M2 · ⛔ …and the subtler one, which is `241 M11`'s defect at the new gate: it runs BEFORE `build`, so it launches whatever the last run left on disk and reports a green about a bundle that is not the one under test
+    runtime GREEN 0 of 1577 in 52 files · desktop RED 1 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 319 in 18 files
+M3 · 🔴 the roster stops being DERIVED and becomes the gates somebody remembered — which is the whole defect this file exists to end. `fixture:check` was invisible to the two per-instrument assertions in `one-app.test.ts` for exactly this reason, and so would the fifth gate be
+    runtime GREEN 0 of 1577 in 52 files · desktop RED 1 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 319 in 18 files
+M4 · ⛔ the after-`build` comparison is inverted, so the rule complains about the gates that are correctly placed and passes the one that is not. ⚑ A row about the DIRECTION rather than the existence of the check: `241 M11` is the defect it is guarding
+    runtime GREEN 0 of 1577 in 52 files · desktop RED 1 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 319 in 18 files
+M5 · 🔴 the opt-out sentence widens to something nearly every file contains, so ANY gate can leave the chain by saying nothing in particular — the rule survives as text and stops discriminating. ⚠️ Killed only by the NEGATIVE control (a gate that must NOT satisfy the sentence); every positive assertion in the file passes on the mutant
+    runtime GREEN 0 of 1577 in 52 files · desktop RED 1 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 319 in 18 files
+M6 · ⚠️ the chain rule is computed over NOTHING — `193`'s vacuity in the guard written to stop a gate rotting outside the chain: every gate could leave and the assertion would still print an empty list. ⛔ EXPECTED SURVIVED: this repository has no test of its tests, and the row is here so that absence is recorded rather than inferred
+    runtime GREEN 0 of 1577 in 52 files · desktop GREEN 0 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 319 in 18 files
+M7 · ⚠️ the five pins on `fixture-follow-check.mjs` stop asserting a count, so a weakened instrument — `301 M22`-`M26`, every one of them — passes the guard that was added to kill it. ⛔ EXPECTED SURVIVED, same reason as `M6`
+    runtime GREEN 0 of 1577 in 52 files · desktop GREEN 0 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 319 in 18 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1577 in 52 files · desktop GREEN 0 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 319 in 18 files

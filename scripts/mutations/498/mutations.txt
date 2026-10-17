@@ -1,0 +1,30 @@
+# 498 mutations — HEAD 660c63d3 + working tree
+# 2026-09-17T08:24:18Z
+# project-reachability v1 topology=unproved — For each row, run every baseline project whose tests can conservatively reach an edited path; any unknown path runs every project, and every omitted measurement is written NOT RUN (out of reach), never GREEN.
+
+M0  CONTROL (no mutation) — baseline runtime=1793 desktop=5844 dom=1508 scripts=745 shared=4
+    runtime GREEN 0 of 1793 in 62 files · desktop GREEN 0 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+
+M1 · 🔴 the withdrawn premise is back, verbatim · *A person is supervising this session and answers the approval prompts* — unhedged, in the file written into the cwd of every conversation that names no folder, and false in `auto`. ⛔ `086`'s direction: an agent told a person is watching may act MORE freely than one told the truth
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 3 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M2 · ⚠️ …and the same premise WITHOUT the word the member pins · *somebody is watching* has no single word it must reach for, which is why `NO_TEXT_PROMISES_A_WATCHER` exists beside the list. ⛔ A member alone would have let this through
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 2 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M3 · ⛔ the over-correction: the premise goes and takes the INSTRUCTION with it · *ask when something is destructive or ambiguous rather than guessing* is a real instruction, followable in both approval modes, and it is the half that had to survive. ⚠️ A sweep that deleted the whole paragraph would pass every negative in this section
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 1 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M4 · 🔴 `supervising` leaves `NOT_IN_THE_FACTORY_TEXT` · a deletion is undone by the next person who finds the sentence sensible; a member cannot be. ⛔ The census that walks the list is DERIVED from it and would go green — the pin by name is the assertion that fails
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 1 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M5 · ⛔ a member of the claim census is deleted · `is watching` goes, and every text passes a census that no longer asks the question. ⚑ The key list is pinned by name for exactly this, one subject over from `a-bound-written-as-the-constant-cannot-pin-it`
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 2 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M6 · ⚠️ a pattern stops matching anything real · `supervis…` narrows to a word no sentence uses, so the member is present, the loop runs and nothing is measured. ⛔ The planted sentence per member is what catches it — standing rule 4, a negative is only as strong as its search shape
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 1 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M7 · 🔴 a pattern is widened until it refuses a TRUE sentence · dropping the predicate leaves *a person* on its own, which condemns *only a person can answer it* — enforced by `mayAnswerAsAHuman` and conditional on the app asking. ⛔ The over-correction control and the roster loop both fail, which is the point: this census must not be able to delete the sentences a person is legitimately named in
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 2 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M8 · ⚠️ the negative spelling slips out of `attended or not` · *you are never running unattended* promises exactly what *a person is supervising* promises, and `\battended\b` does not match inside `unattended`. ⛔ A member that reads as present and answers nothing
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 1 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M9 · ⛔ the member is weakened from the WORD to the sentence that shipped · `is supervising this session` catches one phrasing and lets every other through, which is the defect the list's own docblock exists to refuse — *a list of WORDS rather than a list of sentences*
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 1 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M10 · 🔴 the kept instruction becomes a DESCRIBE · *destructive or ambiguous work is escalated to a person* asserts a mechanism instead of asking the agent to do anything, trips no pattern in either census, and is standing rule 8's defect arriving through the repair. ⛔ Only the assertion that pins the instruction BY ITS WORDS catches it
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 1 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1793 in 62 files · desktop GREEN 0 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files

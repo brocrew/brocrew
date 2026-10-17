@@ -1,0 +1,66 @@
+# 271 mutations — HEAD 73a2afa + working tree
+# 2026-09-04T18:13:05Z
+# project-reachability v1 topology=unproved — For each row, run every baseline project whose tests can conservatively reach an edited path; any unknown path runs every project, and every omitted measurement is written NOT RUN (out of reach), never GREEN.
+
+M0  CONTROL (no mutation) — baseline runtime=1577 desktop=3280 dom=924 scripts=329
+    runtime GREEN 0 of 1577 in 52 files · desktop GREEN 0 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files
+
+M1 · ⚑ the shutdown says nothing again · the one-line report is gone, which is the state 270 measured a minute in and could not attribute a millisecond of to a step
+    runtime GREEN 0 of 1577 in 52 files · desktop RED 14 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files
+M2 · ⚠️ the report is written ONLY when it is slow · so nobody has ever seen a fast one, and 'is this normal?' becomes unanswerable at the exact moment it is asked
+    runtime GREEN 0 of 1577 in 52 files · desktop RED 13 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files
+M3 · 🔴 a step that THREW reports nothing · stamped inside the try, so the most interesting row a report can have — a failure that took forty seconds — is the one it drops
+    runtime GREEN 0 of 1577 in 52 files · desktop RED 13 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files
+M4 · ⚠️ Electron's late phases are stamped against the EPOCH · `will-quit at +1774040000000ms` is the same event and no finding at all — the number only means something against the gesture
+    runtime GREEN 0 of 1577 in 52 files · desktop GREEN 0 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files
+M5 · ⚠️ a phase with no quit behind it is dressed up as `+0ms` · Electron shutting the app down through a door this module never saw is the most interesting thing the line can say
+    runtime GREEN 0 of 1577 in 52 files · desktop RED 1 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files
+M6 · 🔴 the window is told AFTER the teardown · which on an idle app is after the window has already gone: the whole four steps finish inside one microtask drain (270 finding 1). ⚑ ANCHOR CORRECTED IN PLACE BY 294 — the second edit anchored on `readyToExit` AND the quit call as one string; 294 arms the last-resort exit between them. Same defect, same kill.
+    runtime GREEN 0 of 1577 in 52 files · desktop RED 13 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files
+M7 · ⚠️ every deferred press announces again · one IPC send per impatient ⌘Q into a window already showing the shade — harmless, and exactly the kind of harmless nobody notices growing
+    runtime GREEN 0 of 1577 in 52 files · desktop RED 4 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files
+M8 · 🔴 a window that cannot be told stops the app closing · the announcement is the first statement of the quit, so an unguarded throw here skips all four ordered steps
+    runtime GREEN 0 of 1577 in 52 files · desktop RED 1 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files
+M9 · 🔴 the second ⌘Q buys nothing again · absorbed and unanswered, which is 270's person pressing the one key that could have helped and being told nothing at all
+    runtime GREEN 0 of 1577 in 52 files · desktop RED 4 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files
+M10 · ⚠️ a reaper's first SIGTERM counts as impatience · which quietly shortens 163's measured 'shut down properly, take as long as that takes' to twenty seconds
+    runtime GREEN 0 of 1577 in 52 files · desktop RED 1 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files
+M11 · ⚠️ every further press restarts the clock · a budget any repeat can extend is not a budget, and impatience is exactly the state in which a person presses repeatedly
+    runtime GREEN 0 of 1577 in 52 files · desktop RED 2 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files
+M12 · 🔴 nothing bounds Electron's own shutdown · the app's four steps finish in 1–2 ms and everything after `app.quit()` is unbounded again, which is where 270's minute has to have been. ⚑ ANCHOR CORRECTED IN PLACE BY 294 — the bound is no longer a `setTimeout` in this process (it never once fired; see 294), so the row now removes the call that arms the closer. The DEFECT is unchanged and is now the one 270 actually reported.
+    runtime GREEN 0 of 1577 in 52 files · desktop RED 12 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files
+M13 · 🔴 the deadline is armed at the GESTURE · so it fires over a teardown still in flight and abandons the archive write the whole ordered shutdown exists to protect
+    runtime GREEN 0 of 1577 in 52 files · desktop RED 5 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files
+M14 · ⚠️ a stop that says nothing looks like a crash · every reaper, smoke and agent on this machine reads how the app went, and a shutdown whose engine tail was CUT must be distinguishable from one that died. ⚑ RE-AIMED IN PLACE BY 294 — its old site is gone: the cut is no longer `deps.exit(0)` in this process but a SIGKILL from the closer, which cannot carry an exit code at all (see 294 on what that costs). The nearest live form of the same property is the sentence the closer prints; without it the stop is silent and unattributable.
+    runtime GREEN 0 of 1577 in 52 files · desktop RED 1 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files
+M15 · 🔴 the shade lets the press through · every control behind it is about to lose its database, and a press that reaches one gets better-sqlite3's own message — what 270 saw
+    runtime GREEN 0 of 1577 in 52 files · desktop GREEN 0 of 3280 in 176 files · dom RED 1 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files
+M16 · 🔴 the shade is positioned against its parent · so it covers the transcript and leaves the titlebar and the rail live beside a message saying the app is closing
+    runtime GREEN 0 of 1577 in 52 files · desktop GREEN 0 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files
+M17 · 🔴 the shade is solid black · which is 270's own finding wearing the fix's clothes: *'the entire BroBot window became black'*, now on purpose
+    runtime GREEN 0 of 1577 in 52 files · desktop GREEN 0 of 3280 in 176 files · dom RED 1 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files
+M18 · 🔴 nothing subscribes · the channel, the preload and the shade all exist and the window is never told, which is the app exactly as 270 found it
+    runtime GREEN 0 of 1577 in 52 files · desktop RED 2 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files
+M19 · ⚠️ the unsubscribe is dropped · every re-mounted renderer stacks another listener on a channel that fires exactly once, and nothing on screen ever differs
+    runtime GREEN 0 of 1577 in 52 files · desktop RED 1 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files
+M20 · 🔴 only the first window is told · a second window goes on drawing an ordinary application beside one that says the app is closing — two answers to one fact (076 §3, 187 §1)
+    runtime GREEN 0 of 1577 in 52 files · desktop RED 1 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files
+M21 · ⚑ Electron's phases are not registered · `noteQuitPhase` stays perfectly correct and is never called, so 'was the minute ours or the engine's?' is unanswerable again
+    runtime GREEN 0 of 1577 in 52 files · desktop RED 1 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files
+M22 · ⚠️ the preload never lets go · `off` removed from the forwarder, so the renderer's own unsubscribe returns a function that unsubscribes nothing
+    runtime GREEN 0 of 1577 in 52 files · desktop RED 1 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files
+M23 · 🔴 the first quit signal does not quit at all · the listeners exist and the app ignores them, which is 094/095 — restores `163 M4`, whose anchor 271 moved into `askElectronToQuit`
+    runtime GREEN 0 of 1577 in 52 files · desktop RED 3 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files
+M24 · 🔴 068 finding 1 IS BACK · a repeat exits at once, through the middle of the teardown — what the kernel used to do for us. Restores `163 M1` at 271's spelling, where the guard now lives in `beImpatient` and serves ⌘Q as well as a signal
+    runtime GREEN 0 of 1577 in 52 files · desktop RED 6 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files
+M25 · 🔴 …and the opposite: the repeat is absorbed FOREVER, so nothing can insist — SIGTERM stops working (094/095) and so does the second ⌘Q 271 added. Restores `163 M2`
+    runtime GREEN 0 of 1577 in 52 files · desktop RED 4 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files
+M26 · ⛔ BOTH instruments leave the ci chain · `window:check` and `quit:check` still exist, still pass when run by hand, and guard nothing — *'a correct policy that nothing calls leaves the defect exactly where it was'*. Restores `241 M10`, whose anchor 271 lengthened
+    runtime GREEN 0 of 1577 in 52 files · desktop RED 4 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files
+M28 · ⚠️ one `try` around the whole walk · the first window whose `webContents` has already gone takes the shutdown notice away from every window after it — the defect the per-window guard exists to avoid, reintroduced by catching in the tidier place. ⚑ Found reviewing 271's own diff, which is why it is numbered last rather than beside `M20`
+    runtime GREEN 0 of 1577 in 52 files · desktop RED 1 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files
+M27 · 🔴 only the CLOSING instrument leaves the chain · the narrower half of `M26`, and the one that reads as tidying rather than as removal: an app that opens is still proved and an app that closes is not, which is the repository exactly as 270 found it
+    runtime GREEN 0 of 1577 in 52 files · desktop RED 3 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1577 in 52 files · desktop GREEN 0 of 3280 in 176 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files

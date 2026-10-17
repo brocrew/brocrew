@@ -1,0 +1,53 @@
+# 157 mutations — HEAD 66616a2 + working tree
+# 2026-08-15T05:03:13Z
+
+M0  CONTROL (no mutation) — baseline runtime=339
+    runtime: GREEN 0 of 339 in 4 files
+
+M1 · THE 069 A1 HOLE, BACK · auto denies nothing, so ~/.codex/auth.json is readable again
+    runtime: RED 13 of 339 in 4 files
+M2 · …and the opposite failure: no carve-outs, so a session cannot reach its own cwd or home
+    runtime: RED 5 of 339 in 4 files
+M3 · the two loops swap order, so the deny beats the carve-out it contains
+    runtime: RED 1 of 339 in 4 files
+M4 · the blanket grant becomes read-only — auto keeps the machine but loses every write
+    runtime: RED 4 of 339 in 4 files
+M5 · the network stays off, which :workspace does and danger-full-access never did
+    runtime: RED 1 of 339 in 4 files
+M6 · ask extends :workspace, so an in-cwd write stops prompting (001 non-negotiable 1)
+    runtime: RED 1 of 339 in 4 files
+M7 · ask gains the deny set, so every APPROVED write silently does nothing
+    runtime: RED 1 of 339 in 4 files
+M8 · the default profile becomes the unattended one — a selector-less request stops asking
+    runtime: RED 2 of 339 in 4 files
+M9 · default_permissions is dropped — the server warns and falls back to its own defaults
+    runtime: RED 2 of 339 in 4 files
+M10 · TOML escaping is dropped, so a path with a quote or a newline breaks the file (153)
+    runtime: RED 1 of 339 in 4 files
+M11 · the profile is written AFTER the spawn, so the app-server never reads it
+    runtime: RED 2 of 339 in 4 files
+M12 · resume does not write it, so a home provisioned before this change can never reopen
+    runtime: RED 1 of 339 in 4 files
+M13 · the 0600 mode is dropped from the file the deny set lives in
+    runtime: RED 1 of 339 in 4 files
+M14 · a symlinked provider home is followed instead of refused
+    runtime: RED 1 of 339 in 4 files
+M15 · thread/start sends the legacy sandbox alongside the profile — -32600 on every launch
+    runtime: RED 4 of 339 in 4 files
+M16 · turn/start stops carrying the profile, so a mid-conversation mode switch is silent
+    runtime: RED 6 of 339 in 4 files
+M17 · the two modes' profiles are swapped — ask runs unattended and auto prompts
+    runtime: RED 12 of 339 in 4 files
+M18 · the validator stops reading activePermissionProfile — any profile passes as ours
+    runtime: RED 1 of 339 in 4 files
+M19 · …and stops checking that auto still has the whole machine writable
+    runtime: RED 1 of 339 in 4 files
+M20 · …and stops checking that auto still has the network danger-full-access had
+    runtime: RED 1 of 339 in 4 files
+M21 · confinedRoots returns one spelling, so a symlinked root is denied under only one name
+    runtime: RED 2 of 339 in 4 files
+M22 · …and the reach-in filter is bypassed, so a symlinked cwd carves out the credential store
+    runtime: RED 1 of 339 in 4 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime: GREEN 0 of 339 in 4 files

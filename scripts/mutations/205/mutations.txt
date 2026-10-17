@@ -1,0 +1,53 @@
+# 205 mutations — HEAD 97acc70 + working tree
+# 2026-08-23T09:55:41Z
+
+M0  CONTROL (no mutation) — baseline desktop=2240 dom=551
+    desktop GREEN 0 of 2240 in 117 files · dom GREEN 0 of 551 in 34 files
+
+M1 · ⛔ THE DEFECT, verbatim · nothing is projected at all — the queue is empty however many conversations are frozen, which is the app as 195 H3 found it
+    desktop RED 23 of 2240 in 117 files · dom RED 6 of 551 in 34 files
+M2 · it lists every OPEN conversation rather than the ones that need you — a dashboard that is always full is a dashboard nobody reads (031)
+    desktop RED 1 of 2240 in 117 files · dom GREEN 0 of 551 in 34 files
+M3 · the row names the SESSION ID rather than the folder, so six rows read as six uuids
+    desktop RED 1 of 2240 in 117 files · dom GREEN 0 of 551 in 34 files
+M4 · ⛔ the O(1) gate is gone, so every open conversation's `items` is walked on every render — 099's defect, in the surface built after it
+    desktop RED 1 of 2240 in 117 files · dom GREEN 0 of 551 in 34 files
+M5 · ⛔ the scope is not disclosed at all — the row says what is asked and never what approving it authorizes (071, from 069 finding 1)
+    desktop RED 3 of 2240 in 117 files · dom RED 1 of 551 in 34 files
+M6 · the provider's one-sentence summary REPLACES the disclosure instead of standing beside it — the older shape, which disclosed less than the truncation did
+    desktop RED 3 of 2240 in 117 files · dom RED 1 of 551 in 34 files
+M7 · ⛔ `underDisclosed` is dropped, so a request BroBot cannot fully represent is shown as though the scope on screen were the whole of it (181)
+    desktop RED 1 of 2240 in 117 files · dom RED 1 of 551 in 34 files
+M8 · …and the bound is dropped with it: the disclosure is short and nothing says by how much
+    desktop RED 1 of 2240 in 117 files · dom RED 1 of 551 in 34 files
+M9 · ⛔ the age is invented where there is none — `?? 0` on a card the fold had no clock for, which reads as the oldest thing on the screen (086, in a comparator)
+    desktop RED 2 of 2240 in 117 files · dom GREEN 0 of 551 in 34 files
+M10 · a clockless card sorts FIRST rather than last, so an unknown age outranks a measured one
+    desktop RED 1 of 2240 in 117 files · dom GREEN 0 of 551 in 34 files
+M11 · newest first — the freshest request at the top and the 63-second freeze at the bottom
+    desktop RED 2 of 2240 in 117 files · dom RED 1 of 551 in 34 files
+M12 · the order is whatever the records arrived in, which is the order you happened to open them — not a fact about urgency
+    desktop RED 3 of 2240 in 117 files · dom RED 1 of 551 in 34 files
+M13 · ⛔ no decision is offered at all — 195 H3's *"or an answer control"*, put back
+    desktop RED 3 of 2240 in 117 files · dom RED 1 of 551 in 34 files
+M14 · every outcome is offered rather than the ones the request accepts — a button the provider never said it would take
+    desktop RED 1 of 2240 in 117 files · dom RED 1 of 551 in 34 files
+M15 · ⛔ a MULTI-SELECT question gets one-click options, so one click sends one answer to a question that asked for several and calls it the answer
+    desktop RED 1 of 2240 in 117 files · dom RED 1 of 551 in 34 files
+M16 · …and a SECRET one does too, so the provider's sensitive answer goes on a dashboard
+    desktop RED 1 of 2240 in 117 files · dom GREEN 0 of 551 in 34 files
+M17 · ⛔ Reject disappears from a question this surface cannot answer, so a row that can do nothing at all is offered — which is `106`'s defect exactly
+    desktop RED 4 of 2240 in 117 files · dom RED 1 of 551 in 34 files
+M18 · ⛔ THE HOME BADGE, back on the fixture · the rail counts the demo seed's projects again, on a button whose own chip says "soon" (205 §1, the lie it replaced)
+    desktop GREEN 0 of 2240 in 117 files · dom RED 2 of 551 in 34 files
+M19 · the header stat counts the seed again, so *"Needs you"* names something other than the list under it
+    desktop RED 1 of 2240 in 117 files · dom RED 1 of 551 in 34 files
+M20 · the queue claims to be a placeholder, so a real permission is drawn beside a chip that says nothing here is wired
+    desktop GREEN 0 of 2240 in 117 files · dom RED 1 of 551 in 34 files
+M21 · ⛔ the good state is an empty box — no rows and nothing saying why, which reads as a surface that failed to load (037's rule)
+    desktop GREEN 0 of 2240 in 117 files · dom RED 2 of 551 in 34 files
+M22 · ⛔ THE ROW'S OWN CONVERSATION, lost · the click carries the FIRST request in the queue instead of the one that was pressed — every owner check in 203 passes, and the wrong agent is answered
+    desktop GREEN 0 of 2240 in 117 files · dom RED 1 of 551 in 34 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    desktop GREEN 0 of 2240 in 117 files · dom GREEN 0 of 551 in 34 files

@@ -1,0 +1,27 @@
+# 176 mutations — HEAD 231420e + working tree
+# 2026-08-16T22:45:49Z
+
+M0  CONTROL (no mutation) — baseline scripts=150
+    scripts GREEN 0 of 150 in 7 files
+
+M1 · ⛔ an empty marker list is accepted instead of refused — 129's trap: the caller's session id came back undefined and the scan is green forever
+    scripts RED 1 of 150 in 7 files
+M2 · ⚠️ the length floor goes, so a two-character marker is accepted and matches every file on the disk — a scan that always fires is as useless as one that never does
+    scripts RED 1 of 150 in 7 files
+M3 · 🔴 names are matched EXACTLY instead of by substring — `<session id>.jsonl` stops matching the session id, and so does every Codex `rollout-<stamp>-<thread id>.jsonl`
+    scripts RED 6 of 150 in 7 files
+M4 · ⚠️ only FILES are named, so a project bucket carrying our cwd is invisible until a transcript lands in it — the first observable moment of a leak is lost
+    scripts RED 1 of 150 in 7 files
+M5 · ⛔ the walk stops at the top level — the retired control's two-file keyhole, rebuilt: a leak into `projects/`, `todos/` or `tasks/` is not looked at
+    scripts RED 6 of 150 in 7 files
+M6 · the walk FOLLOWS symlinks — a personal home links out to plugin checkouts and worktrees, so this leaves the home and walks half the disk
+    scripts RED 1 of 150 in 7 files
+M7 · ⚠️ the content scan goes silent about what it could NOT read — a scan that read nothing at all now reports exactly what a scan that read everything reports
+    scripts RED 1 of 150 in 7 files
+M8 · 🔒 a finding carries the marker VALUE where its label belongs, so `describeHits` prints it — one caller's needle is the machine's own refresh token, and this is the mutation that writes a credential into a CI log
+    scripts RED 1 of 150 in 7 files
+M9 · 🔒 the same, on the path scan every one of the seven callers uses — the label is the only reason a failure message is safe to print, and this takes it away
+    scripts RED 3 of 150 in 7 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    scripts GREEN 0 of 150 in 7 files

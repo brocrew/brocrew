@@ -1,0 +1,37 @@
+# 187 mutations — HEAD a333ba3 + working tree
+# 2026-08-18T23:04:39Z
+
+M0  CONTROL (no mutation) — baseline runtime=1182 desktop=2089 dom=530
+    runtime GREEN 0 of 1182 in 40 files | desktop GREEN 0 of 2089 in 106 files | dom GREEN 0 of 530 in 31 files
+
+M1  · ⛔ the matcher answers exact-only, so the two ends drift again (169 §1)
+    runtime GREEN 0 of 1182 in 40 files | desktop RED 5 of 2089 in 106 files | dom RED 1 of 530 in 31 files
+M2  · ⛔ the boundary stops asking — the renderer is the only rule again
+    runtime GREEN 0 of 1182 in 40 files | desktop RED 16 of 2089 in 106 files | dom GREEN 0 of 530 in 31 files
+M3  · ⛔ the matcher is case-SENSITIVE — one rule, wrong at both ends
+    runtime GREEN 0 of 1182 in 40 files | desktop RED 5 of 2089 in 106 files | dom RED 1 of 530 in 31 files
+M4  · ⛔ the exact spelling stops winning on a tree that holds both variants
+    runtime GREEN 0 of 1182 in 40 files | desktop RED 1 of 2089 in 106 files | dom GREEN 0 of 530 in 31 files
+M5  · ⛔ a file dropped for budget produces NO row again (168 M2, half 1)
+    runtime GREEN 0 of 1182 in 40 files | desktop RED 1 of 2089 in 106 files | dom GREEN 0 of 530 in 31 files
+M6  · ⛔ the budget counts FILE BYTES ONLY — the cap and the emitted text disagree again
+    runtime GREEN 0 of 1182 in 40 files | desktop RED 1 of 2089 in 106 files | dom GREEN 0 of 530 in 31 files
+M7  · ⛔ the budget is spent in PROMPT order — the nearest rules vanish first
+    runtime GREEN 0 of 1182 in 40 files | desktop RED 2 of 2089 in 106 files | dom GREEN 0 of 530 in 31 files
+M8  · ⛔ the profile's own memory loses its priority — identity gives way first
+    runtime GREEN 0 of 1182 in 40 files | desktop RED 2 of 2089 in 106 files | dom GREEN 0 of 530 in 31 files
+M9  · ⛔ the drawer calls a budget drop 'not read', which is not what happened
+    runtime GREEN 0 of 1182 in 40 files | desktop GREEN 0 of 2089 in 106 files | dom RED 1 of 530 in 31 files
+M10 · ⛔ the cardless memory write is unbounded again (168 M3)
+    runtime RED 1 of 1182 in 40 files | desktop GREEN 0 of 2089 in 106 files | dom GREEN 0 of 530 in 31 files
+M11 · ⛔ the file already on disk is not charged — an Edit grows past the cap in steps
+    runtime RED 1 of 1182 in 40 files | desktop GREEN 0 of 2089 in 106 files | dom GREEN 0 of 530 in 31 files
+M12 · ⛔ an EXISTING file spends the count bound — a full directory cannot be consolidated
+    runtime RED 1 of 1182 in 40 files | desktop GREEN 0 of 2089 in 106 files | dom GREEN 0 of 530 in 31 files
+M13 · ⛔ an input too large to walk passes instead of failing closed
+    runtime RED 1 of 1182 in 40 files | desktop GREEN 0 of 2089 in 106 files | dom GREEN 0 of 530 in 31 files
+M14 · ⛔ a directory that cannot be read is reported as empty
+    runtime RED 1 of 1182 in 40 files | desktop GREEN 0 of 2089 in 106 files | dom GREEN 0 of 530 in 31 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1182 in 40 files | desktop GREEN 0 of 2089 in 106 files | dom GREEN 0 of 530 in 31 files

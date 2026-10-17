@@ -1,0 +1,38 @@
+# 172 mutations — HEAD 3e8adea + working tree
+# 2026-08-30T22:20:03Z
+
+M0  CONTROL (no mutation) — baseline desktop=105 dom=50
+    desktop GREEN 0 of 105 in 3 files
+          dom     GREEN 0 of 50 in 2 files
+
+M1 · ⛔ 172 · the store stops asking about a session it has no record for — the reported defect, reverted: the events go on piling into `earlyEvents` and the rail never lists it
+    desktop RED 3 of 105 in 3 files
+          dom     GREEN 0 of 50 in 2 files
+M2 · ⚠️ the bound comes off, so every event for an unknown session asks again — the request storm, at streaming rate, each answer carrying every open conversation's history window
+    desktop RED 2 of 105 in 3 files
+          dom     GREEN 0 of 50 in 2 files
+M3 · 🔴 172's second layer · the hand-over looks its own live session up with `find` again — which drops any row with no provider ref, i.e. a Claude session in its first turn
+    desktop RED 1 of 105 in 3 files
+          dom     GREEN 0 of 50 in 2 files
+M4 · 🔴 `findLive` acquires `find`'s ref requirement, so the same session is dropped one layer down — the same defect through the other door
+    desktop RED 1 of 105 in 3 files
+          dom     GREEN 0 of 50 in 2 files
+M5 · the row comes back without its PROFILE, so an attached conversation is described as belonging to the default agent — 167 §0's coalesce, one layer down
+    desktop RED 3 of 105 in 3 files
+          dom     GREEN 0 of 50 in 2 files
+M6 · the row comes back without the mode it was CREATED with, so the hand-over says *'how this session originally ran was never recorded'* about a session that recorded it
+    desktop RED 1 of 105 in 3 files
+          dom     GREEN 0 of 50 in 2 files
+M7 · an unreadable ref takes the whole row with it again, so a live session loses its profile and its mode over a column the hand-over never reads
+    desktop RED 1 of 105 in 3 files
+          dom     GREEN 0 of 50 in 2 files
+M8 · ⛔ the rail row is drawn and does nothing — the conversation is back in the list and still unreachable, which is 106's *no control that cannot act* on the ticket's own subject
+    desktop GREEN 0 of 105 in 3 files
+          dom     RED 1 of 50 in 2 files
+M9 · the drawer names the DEFAULT profile whatever the session is running in, so the reading the PM could not make by eye stays unmakeable
+    desktop GREEN 0 of 105 in 3 files
+          dom     RED 1 of 50 in 2 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    desktop GREEN 0 of 105 in 3 files
+          dom     GREEN 0 of 50 in 2 files

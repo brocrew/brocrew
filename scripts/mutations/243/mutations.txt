@@ -1,0 +1,27 @@
+# 243 mutations — HEAD 3e8adea + working tree
+# 2026-08-31T02:29:05Z
+
+M0  CONTROL (no mutation) — baseline runtime=1342 desktop=2618 dom=686 scripts=250
+    runtime GREEN 0 of 1342 in 42 files · desktop GREEN 0 of 2618 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 250 in 15 files
+
+M1 · 🔴 THE DEFECT, verbatim · the contended wait goes back to `Atomics.wait`, so the thread that asked for the lock runs nothing at all until it gets it — 2 005 ms of dead window on a 2 s hold, and up to LOCK_TIMEOUT_MS before the app can even say no
+    runtime RED 3 of 1342 in 42 files · desktop GREEN 0 of 2618 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 250 in 15 files
+M2 · 🔴 the body is not awaited · the signature now admits `() => Promise<T>`, so a lock that releases when `fn` SUSPENDS rather than when it finishes lets two bodies into one home — type-checks perfectly, reads correctly, and is silently wrong
+    runtime RED 2 of 1342 in 42 files · desktop GREEN 0 of 2618 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 250 in 15 files
+M3 · ⛔ `provisionProviderHome` stops awaiting its own lock · it resolves while another process still holds the home, so the caller is handed a directory that does not exist yet
+    runtime RED 2 of 1342 in 42 files · desktop GREEN 0 of 2618 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 250 in 15 files
+M4 · ⛔ …and `provisionCodexAuth` does the same with the CREDENTIAL · the launch proceeds into a home whose auth.json has not been written
+    runtime RED 3 of 1342 in 42 files · desktop GREEN 0 of 2618 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 250 in 15 files
+M5 · ⛔ the LAUNCH stops awaiting the home · `startSession` carries a Promise where the provider home path belongs, which is the shape every `=> string` seam in this file was widened to a union to make impossible
+    runtime GREEN 0 of 1342 in 42 files · desktop RED 11 of 2618 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 250 in 15 files
+M6 · ⛔ …and so does the RESUME · the one-of-N-call-sites shape 233's review named: the same rule, fixed at the launch and missed at the reopen
+    runtime GREEN 0 of 1342 in 42 files · desktop RED 6 of 2618 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 250 in 15 files
+M7 · 🔴 the home seam is called and not awaited · TypeScript's void-return bivariance accepts it, the promise is dropped, and `prepareProviderHome` hands back a home whose directory has not been made — the whole tree still compiles
+    runtime GREEN 0 of 1342 in 42 files · desktop RED 1 of 2618 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 250 in 15 files
+M8 · 🔴 …and the CREDENTIAL seam the same way · the launch is told the home is ready while the copy of auth.json is still in flight
+    runtime GREEN 0 of 1342 in 42 files · desktop RED 1 of 2618 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 250 in 15 files
+M9 · ⚑ `reprovision` becomes `async`, so two refusals decided BEFORE any I/O — the Claude arm and the unknown-profile rule — turn into rejections a caller must await to see
+    runtime GREEN 0 of 1342 in 42 files · desktop RED 2 of 2618 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 250 in 15 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1342 in 42 files · desktop GREEN 0 of 2618 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 250 in 15 files

@@ -1,0 +1,33 @@
+# 200 mutations — HEAD 346e9dc + working tree
+# 2026-08-21T18:46:10Z
+
+M0  CONTROL (no mutation) — baseline runtime=1248
+    runtime GREEN 0 of 1248 in 40 files
+
+M1 · ⛔ THE DEFECT, verbatim · no thread gate at all — scope decided by method NAME, so every method outside the nine gets no correlation (the pre-200 code)
+    runtime RED 5 of 1248 in 40 files
+M2 · ⛔ THE BRIEF, verbatim · the gate has no exemption, so every frame naming another thread dies — including the CHILD's `thread/status/changed`, which is every sub-agent ending
+    runtime RED 1 of 1248 in 40 files
+M3 · absence is read as a foreign thread · a frame that names no thread is dropped, which is every id-less diagnostic AND `account/rateLimits/updated` — the only warning before the wall
+    runtime RED 10 of 1248 in 40 files
+M4 · ⛔ the gate sits BELOW `thread/settings/updated` · the half of 192 H3 that bites — a foreign thread's non-prompting profile reaches `checkSettingsProfile` and KILLS the session
+    runtime RED 1 of 1248 in 40 files
+M5 · the gate reads the wrong id · `turnId` where `threadId` belongs, so a foreign thread running the same turn id passes and the predicate answers a question nobody asked
+    runtime RED 26 of 1248 in 40 files
+M6 · the exemption is WIDENED to `error` · one method's 'the id is my subject' reading applied to a frame whose id is its scope, so somebody else's error becomes ours
+    runtime RED 2 of 1248 in 40 files
+M7 · `turn/diff/updated` is not turn-scoped (the pre-200 set) · a late full snapshot from a finished turn OVERWRITES the running turn's Changes, because the fold is later-record-wins
+    runtime RED 1 of 1248 in 40 files
+M8 · ⛔ 192's OTHER request, granted · `error` joins the turn-scoped set, and an out-of-turn credential error is silently dropped — `isCurrentProviderTurn` is false when no turn is bound
+    runtime RED 1 of 1248 in 40 files
+M9 · ⛔ the drop is not counted · the gate works and says nothing, so a gate that starts dropping frames and a provider that stopped sending them read identically (184's failure)
+    runtime RED 3 of 1248 in 40 files
+M10 · the denominator is counted AFTER the drop · `seen` stops being what the transport delivered and becomes what survived, which is the one number that cannot answer §3's question
+    runtime RED 1 of 1248 in 40 files
+M11 · the breakdown collapses into one bucket · the counter says how many were refused and never which method, so the report cannot say what the provider is actually sending
+    runtime RED 2 of 1248 in 40 files
+M12 · 🔒 the counter is UNBOUNDED · its key is a string off the wire, so a provider emitting distinct method names grows a diagnostic map without limit (052's subject on 200's surface)
+    runtime RED 1 of 1248 in 40 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1248 in 40 files

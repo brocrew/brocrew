@@ -1,0 +1,37 @@
+# 185 mutations — HEAD 1f6ba90 + working tree
+# 2026-08-18T03:17:36Z
+
+M0  CONTROL (no mutation) — baseline runtime=1140 desktop=2065
+    runtime GREEN 0 of 1140 in 39 files | desktop GREEN 0 of 2065 in 105 files
+
+M1  · ⛔ the check's deadline releases only its waiter again — path A's defect, verbatim
+    runtime GREEN 0 of 1140 in 39 files | desktop RED 1 of 2065 in 105 files
+M2  · ⛔ the sign-in reservation cancels nothing — `PENDING_SIGN_IN`'s old body
+    runtime GREEN 0 of 1140 in 39 files | desktop RED 3 of 2065 in 105 files
+M3  · ⛔ the Cancel button skips a sign-in that has not finished starting
+    runtime GREEN 0 of 1140 in 39 files | desktop RED 2 of 2065 in 105 files
+M4  · ⛔ the quit walks past a credential check in flight
+    runtime GREEN 0 of 1140 in 39 files | desktop RED 1 of 2065 in 105 files
+M5  · ⛔ a Cancel landing as the sign-in returns is lost again
+    runtime GREEN 0 of 1140 in 39 files | desktop RED 1 of 2065 in 105 files
+M6  · ⛔ `initialize` is unbounded again — the wait that started all of this
+    runtime RED 2 of 1140 in 39 files | desktop GREEN 0 of 2065 in 105 files
+M7  · ⛔ the CHECK spawns with nothing that owns the child
+    runtime RED 1 of 1140 in 39 files | desktop GREEN 0 of 2065 in 105 files
+M8  · ⛔ the SIGN-IN spawns with nothing that owns the child
+    runtime RED 1 of 1140 in 39 files | desktop GREEN 0 of 2065 in 105 files
+M9  · ⛔ Cancel waits forever on the app-server it is cancelling, so nothing is reaped
+    runtime RED 1 of 1140 in 39 files | desktop GREEN 0 of 2065 in 105 files
+M10 · ⛔ the handshake bound equals the host's, so the generic deadline fires first again
+    runtime RED 1 of 1140 in 39 files | desktop GREEN 0 of 2065 in 105 files
+M11 · ⛔ a fail-open successor erases the still-pending predecessor's slot (182 M1)
+    runtime RED 2 of 1140 in 39 files | desktop GREEN 0 of 2065 in 105 files
+M12 · ⛔ an arrival waits only for the LAST live boot, not for every one
+    runtime RED 1 of 1140 in 39 files | desktop GREEN 0 of 2065 in 105 files
+M13 · ⛔ the queue wait cannot be cancelled — a caller who gave up keeps its place (182 L1)
+    runtime RED 1 of 1140 in 39 files | desktop GREEN 0 of 2065 in 105 files
+M14 · ⛔ a sign-in cancelled before it started spawns an app-server anyway
+    runtime RED 1 of 1140 in 39 files | desktop GREEN 0 of 2065 in 105 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1140 in 39 files | desktop GREEN 0 of 2065 in 105 files

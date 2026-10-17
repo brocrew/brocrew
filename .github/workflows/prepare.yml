@@ -1,0 +1,179 @@
+# Preparation for a freeze, on GitHub's Linux runners instead of a Mac: format the changed files,
+# lint the formatted tree, check it for names the repo must not carry, regenerate the mutation
+# census, and typecheck. Started by a push to a `gate/prepare-*` branch, or by hand once this file
+# is on the default branch (`gh workflow run prepare.yml --ref <branch>`). A push needs no
+# registration, so it works from any branch that carries this file.
+#
+# It never pushes and never commits. What it changed comes back as `prepare.patch` in the
+# `prepare` artifact, next to every log, and the run fails if lint, the leak check, the census or
+# the typecheck fails — but the patch is uploaded either way, so a failing check still shows what
+# was written.
+#
+# One secret: the leak check reads its patterns from `BROBOT_LEAK_PATTERNS`, as in `ci.yml`, and
+# prints neither a pattern nor a matched line. A run without the secret skips that check and says so.
+#
+# ⛔ The census is regenerated WITHOUT retirement flags. A row that stopped measuring is reported
+# in `census.log` and the run fails; naming a retirement stays a decision made by hand.
+name: Prepare
+
+on:
+  push:
+    branches: ['gate/prepare-*']
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'The commit or branch to prepare (default: the ref this run was started on)'
+        required: false
+        default: ''
+      paths:
+        description: 'Files for prettier, separated by spaces (default: the whole tree)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prepare-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The workflow's own files live outside the checkout, so the patch holds only source changes.
+      - name: Say what is being prepared
+        env:
+          WANTED_PATHS: ${{ inputs.paths }}
+        shell: bash
+        run: |
+          set -uo pipefail
+          echo "OUT=${RUNNER_TEMP}/prepare-out" >> "$GITHUB_ENV"
+          OUT="${RUNNER_TEMP}/prepare-out"
+          mkdir -p "$OUT"
+          git rev-parse HEAD 'HEAD^{tree}' > "$OUT"/input-pin.txt
+          # No paths (a push, or a run without them): the whole tree. It is prettier-clean on the
+          # branches the team lands from, so only the files an author left unformatted change.
+          if [ -n "${WANTED_PATHS}" ]; then
+            tr -s ' \n' '\n\n' <<< "${WANTED_PATHS}" > "$OUT"/wanted.txt
+            # Only files that exist; prettier's own ignore file decides the rest.
+            while IFS= read -r f; do [ -n "$f" ] && [ -f "$f" ] && printf '%s\n' "$f"; done \
+              < "$OUT"/wanted.txt | sort -u > "$OUT"/format-paths.txt
+            wc -l < "$OUT"/format-paths.txt | sed 's/^ *//; s/$/ files to format/'
+          else
+            echo "the whole tree" | tee "$OUT"/format-paths.txt
+          fi
+
+      - name: Format
+        id: format
+        continue-on-error: true
+        env:
+          WANTED_PATHS: ${{ inputs.paths }}
+        shell: bash
+        run: |
+          set -uo pipefail
+          rc=0
+          if [ -z "${WANTED_PATHS}" ]; then
+            pnpm exec prettier --write --ignore-unknown . > "$OUT"/format.log 2>&1 || rc=$?
+          elif [ -s "$OUT"/format-paths.txt ]; then
+            xargs pnpm exec prettier --write --ignore-unknown < "$OUT"/format-paths.txt \
+              > "$OUT"/format.log 2>&1 || rc=$?
+          else
+            echo "nothing to format" > "$OUT"/format.log
+          fi
+          cat "$OUT"/format.log
+          exit "$rc"
+
+      # On the formatted tree, so a lint error is never one the patch already fixes.
+      - name: Lint
+        id: lint
+        continue-on-error: true
+        shell: bash
+        run: pnpm run lint 2>&1 | tee "$OUT"/lint.log; exit "${PIPESTATUS[0]}"
+
+      - name: Leak check
+        id: leak
+        continue-on-error: true
+        env:
+          BROBOT_LEAK_PATTERNS: ${{ secrets.BROBOT_LEAK_PATTERNS }}
+        shell: bash
+        run: pnpm run leak:check 2>&1 | tee "$OUT"/leak-check.log; exit "${PIPESTATUS[0]}"
+
+      - name: Regenerate the mutation census
+        id: census
+        continue-on-error: true
+        shell: bash
+        run: python3 scripts/mutations/census.py 2>&1 | tee "$OUT"/census.log; exit "${PIPESTATUS[0]}"
+
+      - name: Check the census
+        id: census_check
+        continue-on-error: true
+        shell: bash
+        run: python3 scripts/mutations/census.py --check 2>&1 | tee "$OUT"/census-check.log; exit "${PIPESTATUS[0]}"
+
+      - name: Typecheck
+        id: typecheck
+        continue-on-error: true
+        shell: bash
+        run: pnpm run typecheck 2>&1 | tee "$OUT"/typecheck.log; exit "${PIPESTATUS[0]}"
+
+      - name: Collect what changed
+        if: always()
+        shell: bash
+        run: |
+          set -uo pipefail
+          git add -A
+          git diff --cached --binary > "$OUT"/prepare.patch
+          git diff --cached --stat > "$OUT"/prepare.stat
+          {
+            echo "### prepare"
+            echo "| step | result |"
+            echo "|---|---|"
+            echo "| format | ${{ steps.format.outcome }} |"
+            echo "| lint | ${{ steps.lint.outcome }} |"
+            echo "| leak check | ${{ steps.leak.outcome }} |"
+            echo "| census | ${{ steps.census.outcome }} |"
+            echo "| census --check | ${{ steps.census_check.outcome }} |"
+            echo "| typecheck | ${{ steps.typecheck.outcome }} |"
+            echo
+            echo "Files in the patch: $(git diff --cached --name-only | wc -l | tr -d ' ')"
+          } | tee "$OUT"/summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: prepare
+          path: ${{ runner.temp }}/prepare-out/
+
+      - name: Fail if any check did
+        if: always()
+        shell: bash
+        run: |
+          failed=0
+          [ "${{ steps.lint.outcome }}" = success ] || { echo "lint failed"; failed=1; }
+          [ "${{ steps.leak.outcome }}" = success ] || { echo "the leak check failed"; failed=1; }
+          [ "${{ steps.census.outcome }}" = success ] || { echo "census regeneration failed"; failed=1; }
+          [ "${{ steps.census_check.outcome }}" = success ] || { echo "census --check failed"; failed=1; }
+          [ "${{ steps.typecheck.outcome }}" = success ] || { echo "typecheck failed"; failed=1; }
+          [ "${{ steps.format.outcome }}" = success ] || { echo "prettier failed (a file with a syntax error?)"; failed=1; }
+          exit "$failed"

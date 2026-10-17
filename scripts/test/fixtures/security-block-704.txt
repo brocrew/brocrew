@@ -1,0 +1,102 @@
+## 6 · 🔒 The security block, verbatim, every dispatch
+
+⛔ **`:9444` and the default userData are THE PERSON'S.** Do not touch, read, reload, seed or attach to
+them. **Every launch needs its own free port and its own `--user-data-dir`, and must assert its own
+pid is the listener.** ⚠️ **Never run `clean-base`, not even `--dry-run`.**
+⛔ **NEVER READ, COPY OR WRITE A CREDENTIAL: an `auth.json`, a token file, a keychain entry.**
+⚑ **That is the whole of it.** ⚠️ **The rest of `provider-homes/` is DISPOSABLE TEST DATA and may be
+read.**
+
+> 🔴 **NARROWED 2026-09-21, on the person's instruction, because the old version was too wide.**
+> ⛔ **It used to say *do not read, copy or write anything under his `provider-homes/`*.**
+> ⚑ **His words:** ⚠️ ***"BroBot project is something we will clean install multiple times and it has
+> nothing but test data… `provider-homes/` is disposable and will be deleted in the next test
+> iteration. What could I possibly have there that warrants this restriction? It SHOULD be
+> scrapped."***
+>
+> ⚑ **He is right, and the reason the old rule existed is ONE FILE.** ⛔ **`auth.json` is a COPY of
+> his real `~/.codex/auth.json`** — `clean-base`'s own report says *"Codex copies `~/.codex/auth.json`
+> into the new home on the first conversation"* — 🔴 **so reading it would pull a live credential into
+> a transcript, and that is the only harm the directory-wide ban was ever preventing.**
+> ⚠️ **Everything else in there — an agent's memory, its instructions, its session files — is test
+> data that the next wipe destroys, and reading it is how we answer questions like `HO-095` §3.3.**
+>
+> ⛔ **What still stands, unchanged:** ⚑ **you may not WRITE anywhere under the person's userData** — ⛔ no
+> seat excepted, ⚠️ **and you may not hand-provision a managed home —
+> `436` and `437` both hit that wall and the product's own copy-once path is the way** (§6.1).
+
+> 🔴 **NO SEAT IS EXEMPT — not even the frontend** (2026-09-24, replacing the 2026-09-21 exception).
+> ⚑ **the person: *"we should always keep brobot running on my machine up to date."*** His window on `:9444`
+> is the PM's deployment of `main`, rebuilt and relaunched after every landing. ⛔ **The frontend seat
+> runs its own `electron-vite dev` on ITS OWN port and ITS OWN `--user-data-dir`**, like every seat, and
+> shows its work by photograph (rule 17.2) and in its own window. ⛔ **Never stop, restart or attach a
+> dev server to the `:9444` app** — it is the person's, and he is testing on it live.
+>
+> 🔴 **AND NO OTHER BROBOT WINDOW ON HIS SCREEN** (2026-09-24). ⚑ the person, after mistaking a seat's demo
+> window for his own: ***"I don't want two brobot windows please.. I want only the one with my conversations"***.
+> ⚑ **Photograph with the DOM runner** — `test/dom/**` + `page.screenshot`, no Electron, no port. ⛔ **A step
+> that truly needs Electron opens it on your own userData and port and CLOSES it by pid the moment the step
+> ends** — never left open between steps, never across a dispatch. ⚑ **Since `695` the app launches hidden:
+> pass `--brobot-hidden`** (a command-line switch, never an env var) to every Electron you start — it is never
+> shown, is titled *BroBot2 — test*, and runs unthrottled. ⛔ A shown window is the exception and says why.
+
+
+🔴 **What *cleaning up BroBot* means, stated positively, because the negative alone has been
+misread.** ⛔ **It means the BroBot installation and nothing else:**
+`~/Library/Application Support/@brobot2/desktop` — its ledger, its workspace, its `provider-homes/`.
+⚑ **The purpose is to simulate a FRESH INSTALL so the person can test from scratch.**
+
+> ⛔ **`clean up BroBot` ≠ `clean up ~/.claude` and `~/.codex`.** ⚠️ **Those are THE PERSON'S OWN Claude and
+> Codex — months of history, thousands of sessions, nothing of this project in them.** 🔴 **Deleting
+> them is unrecoverable and it is the single worst thing anyone working here could do.**
+
+⚠️ **And know what this block IS.** ⛔ **It is tooling discipline for the PM and for every dispatched
+agent, because both of us run commands on his real machine.** ⚑ **It is NOT a product requirement and
+BroBot does not render it to its own agents** — 🔴 **`552` §Q4 asked what the app should render from
+this block and the question was wrong; the answer is *nothing*, because the block is about US.**
+⚠️ **the person's own words:** ***"the ~/.claude and ~/.codex is for YOU the project manager to NOT delete
+it or touch it while cleaning up my brobot installation. Same for the agents we're dispatching work
+to."***
+
+⚑ **And so is the app's OWN lifecycle path, including the Codex arm it provisions for itself.**
+`scripts/lifecycle-runner.mjs` defaults to `codex`, runs in its own `/private/tmp/brobot2-lifecycle/<run>`
+tree, and its stage calls the product's **own** copy-once `provisionCodexAuth` against that run's
+homes — ⚑ **that is the app doing what it does on a real install, and it is how the Slice 4 exit got
+Codex 24/26 on live turns.** ⛔ **What this block forbids is YOU hand-copying his credential into a
+home you built** — `436` and `437` both hit that wall because they were provisioning managed homes
+**outside** the app. ⚠️ **So: a live Codex arm is reachable through the product's own path and only
+through it.** 🔴 **If you need one, use that path; do not build your own and do not report the arm as
+unreachable without trying it.**
+
+⚑ **`pnpm run ci` IS PERMITTED, whole, and running it is not a breach of any clause above.** Its
+`build`, `window:check`, `quit:check` and `fixture:check` steps launch Electron on their **own
+temporary `--user-data-dir`**, as they have for every dispatch in this project; ⛔ **that is not
+the person's app, not his userData, and not his `auth.json`.** ⚠️ **`436` terminated its gate mid-suite
+because this was not written down, and came back with no commit and no green.** 🔴 **A dispatch that
+cannot gate cannot land — so if you believe a rule above forbids the gate, say so and gate anyway;
+the rule is about HIS app, never about ours.**
+
+### ⚑ 6.1 · How to take a LIVE provider arm safely — the recipe, not the prohibition
+
+⛔ **Two dispatches hit a wall in September because this was written nowhere.** ⚑ **`581` did it
+correctly on 2026-09-20 and this is its shape, so the next one copies rather than rediscovers:**
+
+| | |
+|---|---|
+| **the binary** | ⚑ **the one the desktop package BUNDLES** (`@openai/codex@…-darwin-arm64`), through the product's own `SpawnCodexTransport` — ⛔ **not a system install** |
+| **the endpoint** | ⚑ **a local FAKE Responses provider** that records the complete request body and returns a minimal completed answer — 🔴 **no model account, no token, no spend** |
+| **the port** | ⚑ **`127.0.0.1` from `listen(0)`**, and ⛔ **assert your own process id IS the listener before starting a turn** |
+| **the homes** | ⚑ **your own scratch root, `HOME`, `CODEX_HOME` and config per arm** — ⛔ **never his `provider-homes/`, never an `auth.json`** |
+| **the shape** | ⚑ **TWO ARMS and a control.** ⚠️ An arm that differs in one fact is what makes the other arm's result mean something |
+| **afterwards** | ⚑ **remove the fixtures; keep the TABLE and the METHOD as the durable record** |
+
+⚠️ **And bound every protocol and shutdown wait** — ⛔ **`581` used 30s; a stalled call is NOT
+PERFORMED, never failed** (rule 13).
+
+🔴 **What a capture like this can and cannot say — quote it, because it bounds every such result:**
+
+> ⛔ ***"This captures what the provider put in its model-bound request, not a hosted model's
+> obedience to the text."***
+
+🔴 **And it propagates — see §16.** If you spawn agents of your own, this block goes into
+**their** prompts verbatim, as bytes. ⚠️ **Paraphrasing it is how it was breached** (`417` §8).

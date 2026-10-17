@@ -1,0 +1,183 @@
+[
+  {
+    "name": "M0",
+    "exit": 0,
+    "passed": 82,
+    "failed": 0,
+    "failures": []
+  },
+  {
+    "name": "684-M1",
+    "exit": 1,
+    "passed": 71,
+    "failed": 11,
+    "failures": [
+      "\u00a72 \u00b7 an unrecorded role, which is not a worker \u26a0\ufe0f \u2026and every common rule still applies to it, because none of them is about being a worker",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider claude/brobot: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider claude/project-manager: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider claude/worker: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider claude/null: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider codex/brobot: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider codex/project-manager: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider codex/worker: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider codex/null: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider the old text passes the old guards while missing the new obligation",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider each load-bearing clause has its own failing control; no numeric ceiling is added"
+    ]
+  },
+  {
+    "name": "684-M2",
+    "exit": 1,
+    "passed": 71,
+    "failed": 11,
+    "failures": [
+      "\u00a72 \u00b7 an unrecorded role, which is not a worker \u26a0\ufe0f \u2026and every common rule still applies to it, because none of them is about being a worker",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider claude/brobot: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider claude/project-manager: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider claude/worker: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider claude/null: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider codex/brobot: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider codex/project-manager: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider codex/worker: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider codex/null: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider the old text passes the old guards while missing the new obligation",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider each load-bearing clause has its own failing control; no numeric ceiling is added"
+    ]
+  },
+  {
+    "name": "684-M3",
+    "exit": 1,
+    "passed": 71,
+    "failed": 11,
+    "failures": [
+      "\u00a72 \u00b7 an unrecorded role, which is not a worker \u26a0\ufe0f \u2026and every common rule still applies to it, because none of them is about being a worker",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider claude/brobot: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider claude/project-manager: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider claude/worker: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider claude/null: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider codex/brobot: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider codex/project-manager: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider codex/worker: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider codex/null: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider the old text passes the old guards while missing the new obligation",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider each load-bearing clause has its own failing control; no numeric ceiling is added"
+    ]
+  },
+  {
+    "name": "684-M4",
+    "exit": 1,
+    "passed": 72,
+    "failed": 10,
+    "failures": [
+      "684 \u00b7 what reaches a person is short, whatever the role or provider claude/brobot: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider claude/project-manager: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider claude/worker: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider claude/null: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider codex/brobot: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider codex/project-manager: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider codex/worker: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider codex/null: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider the old text passes the old guards while missing the new obligation",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider each load-bearing clause has its own failing control; no numeric ceiling is added"
+    ]
+  },
+  {
+    "name": "684-M5",
+    "exit": 1,
+    "passed": 72,
+    "failed": 10,
+    "failures": [
+      "684 \u00b7 what reaches a person is short, whatever the role or provider claude/brobot: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider claude/project-manager: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider claude/worker: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider claude/null: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider codex/brobot: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider codex/project-manager: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider codex/worker: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider codex/null: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider the old text passes the old guards while missing the new obligation",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider each load-bearing clause has its own failing control; no numeric ceiling is added"
+    ]
+  },
+  {
+    "name": "684-M6",
+    "exit": 1,
+    "passed": 72,
+    "failed": 10,
+    "failures": [
+      "684 \u00b7 what reaches a person is short, whatever the role or provider claude/brobot: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider claude/project-manager: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider claude/worker: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider claude/null: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider codex/brobot: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider codex/project-manager: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider codex/worker: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider codex/null: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider the old text passes the old guards while missing the new obligation",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider each load-bearing clause has its own failing control; no numeric ceiling is added"
+    ]
+  },
+  {
+    "name": "684-M7",
+    "exit": 1,
+    "passed": 72,
+    "failed": 10,
+    "failures": [
+      "684 \u00b7 what reaches a person is short, whatever the role or provider claude/brobot: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider claude/project-manager: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider claude/worker: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider claude/null: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider codex/brobot: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider codex/project-manager: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider codex/worker: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider codex/null: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider the old text passes the old guards while missing the new obligation",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider each load-bearing clause has its own failing control; no numeric ceiling is added"
+    ]
+  },
+  {
+    "name": "684-M8",
+    "exit": 1,
+    "passed": 72,
+    "failed": 10,
+    "failures": [
+      "684 \u00b7 what reaches a person is short, whatever the role or provider claude/brobot: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider claude/project-manager: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider claude/worker: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider claude/null: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider codex/brobot: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider codex/project-manager: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider codex/worker: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider codex/null: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider the old text passes the old guards while missing the new obligation",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider each load-bearing clause has its own failing control; no numeric ceiling is added"
+    ]
+  },
+  {
+    "name": "377-M4",
+    "exit": 1,
+    "passed": 70,
+    "failed": 12,
+    "failures": [
+      "\u00a71 \u00b7 three texts, and the selector really chooses between them \u2691 \u2026and the reply sentence S2 was held for DID ship, naming a tool that exists",
+      "\u00a72 \u00b7 an unrecorded role, which is not a worker \u26a0\ufe0f \u2026and every common rule still applies to it, because none of them is about being a worker",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider claude/brobot: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider claude/project-manager: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider claude/worker: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider claude/null: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider codex/brobot: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider codex/project-manager: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider codex/worker: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider codex/null: person, agent and unknown-reader clauses reach the launch",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider the old text passes the old guards while missing the new obligation",
+      "684 \u00b7 what reaches a person is short, whatever the role or provider each load-bearing clause has its own failing control; no numeric ceiling is added"
+    ]
+  },
+  {
+    "name": "M-END",
+    "exit": 0,
+    "passed": 82,
+    "failed": 0,
+    "failures": []
+  }
+]

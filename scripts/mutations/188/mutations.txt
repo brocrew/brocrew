@@ -1,0 +1,49 @@
+# 188 mutations — HEAD f458f23 + working tree
+# 2026-08-19T19:38:00Z
+
+M0  CONTROL (no mutation) — baseline runtime=1200 desktop=2097 dom=530 scripts=157
+    runtime GREEN 0 of 1200 in 40 files | desktop GREEN 0 of 2097 in 107 files | dom GREEN 0 of 530 in 31 files | scripts GREEN 0 of 157 in 8 files
+
+M1  · ⛔ 168 M4 · the removal runs AFTER the attestation again, so an unparseable generated config can never be cleaned
+    runtime RED 1 of 1200 in 40 files | desktop GREEN 0 of 2097 in 107 files | dom GREEN 0 of 530 in 31 files | scripts GREEN 0 of 157 in 8 files
+M2  · ⛔ the generated-header fail-safe is dropped — it now deletes ANY `config.toml` out of a Codex home, including one this app never wrote
+    runtime RED 6 of 1200 in 40 files | desktop RED 1 of 2097 in 107 files | dom GREEN 0 of 530 in 31 files | scripts GREEN 0 of 157 in 8 files
+M3  · ⛔ 168 L2 · a home that is only PREPARED keeps its stale policy — adoption-only and never-relaunched homes go back to being unreachable
+    runtime GREEN 0 of 1200 in 40 files | desktop RED 1 of 2097 in 107 files | dom GREEN 0 of 530 in 31 files | scripts GREEN 0 of 157 in 8 files
+M4  · ⛔ 168 L3 · every ABSOLUTE string grants again, so a path-shaped `content` is the reason a write outside the directory is allowed
+    runtime RED 2 of 1200 in 40 files | desktop GREEN 0 of 2097 in 107 files | dom GREEN 0 of 530 in 31 files | scripts GREEN 0 of 157 in 8 files
+M5  · ⛔ …and the mirror: the REFUSAL narrows to declared fields too, so `{file_path: <inside>, path: '../../out.txt'}` sails through on the file beside it
+    runtime RED 5 of 1200 in 40 files | desktop GREEN 0 of 2097 in 107 files | dom GREEN 0 of 530 in 31 files | scripts GREEN 0 of 157 in 8 files
+M6  · ⛔ 182 M4 · the reset goes back to `Math.max` across BOTH windows, beside a percentage that belongs to one of them
+    runtime RED 1 of 1200 in 40 files | desktop GREEN 0 of 2097 in 107 files | dom GREEN 0 of 530 in 31 files | scripts GREEN 0 of 157 in 8 files
+M7  · ⛔ the watch keeps nothing — every frame is judged alone again, so a sparse frame downgrades a wall the provider never withdrew
+    runtime RED 1 of 1200 in 40 files | desktop GREEN 0 of 2097 in 107 files | dom GREEN 0 of 530 in 31 files | scripts GREEN 0 of 157 in 8 files
+M8  · ⛔ …and the dedup goes, so a hundred-turn conversation gets a hundred identical warnings (177 measured one or two frames per turn)
+    runtime RED 4 of 1200 in 40 files | desktop GREEN 0 of 2097 in 107 files | dom GREEN 0 of 530 in 31 files | scripts GREEN 0 of 157 in 8 files
+M9  · ⛔ the expiry fires on every frame, so the merge never happens at all
+    runtime RED 3 of 1200 in 40 files | desktop GREEN 0 of 2097 in 107 files | dom GREEN 0 of 530 in 31 files | scripts GREEN 0 of 157 in 8 files
+M10 · ⛔ the handle stops passing its watch — the wiring, not the class: production goes back to the per-frame reading while the class's own tests stay green
+    runtime RED 1 of 1200 in 40 files | desktop GREEN 0 of 2097 in 107 files | dom GREEN 0 of 530 in 31 files | scripts GREEN 0 of 157 in 8 files
+M11 · ⛔ 182 M5 · `showBufferingUi: true` is chatter again — the turn pauses and the app says nothing
+    runtime RED 3 of 1200 in 40 files | desktop GREEN 0 of 2097 in 107 files | dom GREEN 0 of 530 in 31 files | scripts GREEN 0 of 157 in 8 files
+M12 · ⛔ …and the other way: the flag stops gating, so the provider's own `false` becomes a transcript line on every routine frame
+    runtime RED 2 of 1200 in 40 files | desktop GREEN 0 of 2097 in 107 files | dom GREEN 0 of 530 in 31 files | scripts GREEN 0 of 157 in 8 files
+M13 · ⛔ 168 M6 · a null profile is refused whatever it means, so a pre-profile Codex row loses every generated image on re-derivation
+    runtime GREEN 0 of 1200 in 40 files | desktop RED 1 of 2097 in 107 files | dom GREEN 0 of 530 in 31 files | scripts GREEN 0 of 157 in 8 files
+M14 · ⛔ …and the mirror: a USER-HOME row is read as `default`, so the app claims to serve files it never owned
+    runtime GREEN 0 of 1200 in 40 files | desktop RED 1 of 2097 in 107 files | dom GREEN 0 of 530 in 31 files | scripts GREEN 0 of 157 in 8 files
+M15 · ⛔ 168 L5 · an explicit null in a bundle collapses to `default` again, so a `~/.claude` conversation comes back claiming a home of ours
+    runtime GREEN 0 of 1200 in 40 files | desktop RED 1 of 2097 in 107 files | dom GREEN 0 of 530 in 31 files | scripts GREEN 0 of 157 in 8 files
+M16 · ⚠️ 182 L2 · `realPath` climbs ONE level again — the contract its own comment states is false, and no current call site is deep enough to notice
+    runtime GREEN 0 of 1200 in 40 files | desktop GREEN 0 of 2097 in 107 files | dom GREEN 0 of 530 in 31 files | scripts GREEN 0 of 157 in 8 files
+M17 · ⛔ 182 L3 · the under-disclosed row leaks a BASENAME — no separator, so the old assertion could not see it
+    runtime GREEN 0 of 1200 in 40 files | desktop GREEN 0 of 2097 in 107 files | dom RED 1 of 530 in 31 files | scripts GREEN 0 of 157 in 8 files
+M18 · ⛔ 182 M8 · the leak scan stops looking without saying so, so a truncated walk and a clean one are the same answer again
+    runtime GREEN 0 of 1200 in 40 files | desktop GREEN 0 of 2097 in 107 files | dom GREEN 0 of 530 in 31 files | scripts RED 1 of 157 in 8 files
+M19 · ⛔ 182 M7 · the run lock is not taken, so two smokes can own one evidence tree
+    runtime GREEN 0 of 1200 in 40 files | desktop GREEN 0 of 2097 in 107 files | dom GREEN 0 of 530 in 31 files | scripts RED 1 of 157 in 8 files
+M20 · ⛔ …and provenance is unbounded: nothing is ever pruned, so `keep` is a number the caller passes and nobody honours
+    runtime GREEN 0 of 1200 in 40 files | desktop GREEN 0 of 2097 in 107 files | dom GREEN 0 of 530 in 31 files | scripts RED 1 of 157 in 8 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1200 in 40 files | desktop GREEN 0 of 2097 in 107 files | dom GREEN 0 of 530 in 31 files | scripts GREEN 0 of 157 in 8 files

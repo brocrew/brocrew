@@ -1,0 +1,78 @@
+name: Mac guided update rehearsal
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mac-update-rehearsal-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  ELECTRON_CACHE: ${{ github.workspace }}/.cache/electron
+  electron_config_cache: ${{ github.workspace }}/.cache/electron
+  ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.cache/electron-builder
+
+jobs:
+  rehearse:
+    name: Package A and B and rehearse the guided Mac update
+    if: github.repository == 'brocrew/brocrew' && github.event.repository.private == true
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: pnpm
+      - uses: actions/cache@v4
+        with:
+          path: .cache
+          key: ${{ runner.os }}-electron-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-electron-
+      - name: Require a private hosted Apple silicon runner
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$(uname -m)" = arm64
+          test "$GITHUB_REPOSITORY" = brocrew/brocrew
+      - run: pnpm install --frozen-lockfile
+      - name: Check the pure rehearsal helpers
+        run: pnpm exec vitest run --project scripts scripts/test/mac-update-test.test.mjs
+      - name: Build once and package A and B with distinct markers
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm --filter @brobot2/desktop run build
+          for one in a:0.0.98 b:0.0.99; do
+            pnpm --filter @brobot2/desktop exec electron-builder --mac dmg zip --arm64 --config electron-builder.yml \
+              -c.mac.identity=- \
+              -c.extraMetadata.version="${one#*:}" \
+              -c.extraMetadata.rehearsalMarker="mac-${one%%:*}-$GITHUB_SHA" \
+              -c.publish.provider=generic -c.publish.url=http://127.0.0.1:47123/ \
+              -c.directories.output="dist-mac-update/${one%%:*}" --publish never
+          done
+      - name: Rehearse the normal guided update on fictional data
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/mac-update-test.mjs \
+            --dist-a apps/desktop/dist-mac-update/a \
+            --dist-b apps/desktop/dist-mac-update/b \
+            --feed-url http://127.0.0.1:47123/ --serve-local \
+            --marker-a "mac-a-$GITHUB_SHA" --marker-b "mac-b-$GITHUB_SHA" \
+            --source-sha "$GITHUB_SHA" --evidence mac-update-results
+      - name: Keep success or failure evidence privately
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-guided-update-evidence
+          path: mac-update-results
+          if-no-files-found: error
+          retention-days: 14

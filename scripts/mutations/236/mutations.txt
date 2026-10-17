@@ -1,0 +1,101 @@
+# 236 mutations — HEAD cb7b7e4 + working tree
+# 2026-08-28T19:34:44Z
+
+M0  CONTROL (no mutation) — baseline runtime=1318 desktop=2586 dom=686 scripts=241
+    runtime GREEN 0 of 1318 in 41 files · desktop GREEN 0 of 2586 in 134 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+
+M1  · 🔴 THE DEFECT, verbatim (231 #7, from 194 H4) · the comparison is never made, so a bundle exported after a SECOND life is answered with “you already have this” and its new half is discarded in silence
+    runtime GREEN 0 of 1318 in 41 files · desktop RED 2 of 2586 in 134 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M2  · ⛔ the report is not made at all — the host stops asking, so the surface has nothing to say and the old sentence is the only one left
+    runtime GREEN 0 of 1318 in 41 files · desktop RED 1 of 2586 in 134 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M3  · ⛔ STRICTLY greater becomes merely different, so every ordinary re-import of an older export raises an alarm about a file that has nothing in it a person could act on
+    runtime GREEN 0 of 1318 in 41 files · desktop RED 1 of 2586 in 134 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M4  · ⛔ the surface drops the third sentence, so a newer file is told “you already have this” again — the host compares and nobody reads the answer
+    runtime GREEN 0 of 1318 in 41 files · desktop GREEN 0 of 2586 in 134 files · dom RED 1 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M5  · ⛔ the sentence loses its NUMBERS · “a newer copy exists” is a claim the reader can neither check nor act on, which is the old defect with better manners
+    runtime GREEN 0 of 1318 in 41 files · desktop GREEN 0 of 2586 in 134 files · dom RED 1 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M6  · 🔴 THE DEFECT, verbatim (231 #5) · Open answers with the session id alone, so the older of two pending requests lands at ordinary scroll position with nothing saying which card you asked for
+    runtime GREEN 0 of 1318 in 41 files · desktop RED 2 of 2586 in 134 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M7  · ⛔ `focus` stops being EXPOSED — 205 wrote it for exactly this and wired only the panel's half, which is how both halves survived ten dispatches
+    runtime GREEN 0 of 1318 in 41 files · desktop GREEN 0 of 2586 in 134 files · dom RED 3 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M8  · ⛔ the pane is unreachable: the template ref goes, so the call is written and lands on null every time
+    runtime GREEN 0 of 1318 in 41 files · desktop RED 1 of 2586 in 134 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M9  · ⛔ the tick goes, so Open is asked of a pane that has not mounted yet — the id is carried and still nothing is focused
+    runtime GREEN 0 of 1318 in 41 files · desktop RED 1 of 2586 in 134 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M10 · ⛔ a MISS is swallowed · `focus` claims success it did not have, so landing silently at the wrong scroll position is the fallback as well as the defect
+    runtime GREEN 0 of 1318 in 41 files · desktop GREEN 0 of 2586 in 134 files · dom RED 1 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M11 · 🔴 THE DEFECT, verbatim (231 #4) · the backstop is not consulted, so the ~1 ms window Chromium loses puts two hosts on one database again
+    runtime GREEN 0 of 1318 in 41 files · desktop RED 2 of 2586 in 134 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M12 · 🔴 FAIL-CLOSED · an undecidable gate stands the launch down, which is 191 M5 exactly: a second gate of our own that can refuse to start the app
+    runtime GREEN 0 of 1318 in 41 files · desktop RED 2 of 2586 in 134 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M13 · ⛔ a gate that THROWS takes the launch with it — the seam's own fail-open removed
+    runtime GREEN 0 of 1318 in 41 files · desktop RED 1 of 2586 in 134 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M14 · ⛔ the `second-instance` handler is registered before the gate again, so a process the gate stood down answers for a `userData` it does not hold
+    runtime GREEN 0 of 1318 in 41 files · desktop RED 1 of 2586 in 134 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M15 · ⛔ the gate goes GLOBAL rather than per-`userData` — 198 §1's measurement reversed, and every live smoke in this repository refuses to start
+    runtime GREEN 0 of 1318 in 41 files · desktop RED 3 of 2586 in 134 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M16 · 🔴 the artefact a finished run leaves behind is HONOURED rather than broken, so the app refuses to start until somebody deletes a file by hand — 191 M5's exact failure
+    runtime GREEN 0 of 1318 in 41 files · desktop RED 1 of 2586 in 134 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M17 · 🔴 THE DEFECT, verbatim (231 #10) · staging computes from the PROP, which is a render behind, so the second of two drops in one tick overwrites the first and that file is silently gone
+    runtime GREEN 0 of 1318 in 41 files · desktop RED 1 of 2586 in 134 files · dom RED 4 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M18 · 🔴 the window is never opened: the commit does not record what it just decided, so every reader is a render behind again
+    runtime GREEN 0 of 1318 in 41 files · desktop GREEN 0 of 2586 in 134 files · dom RED 4 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M19 · ⛔ the window never closes, so a parent that changed the list on its own is ignored for the life of the composer
+    runtime GREEN 0 of 1318 in 41 files · desktop GREEN 0 of 2586 in 134 files · dom RED 1 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M20 · ⛔ 227 LOW 4 · the dedupe goes back to exact strings alone, so two spellings of one file are two chips and the agent is told to read it twice
+    runtime GREEN 0 of 1318 in 41 files · desktop GREEN 0 of 2586 in 134 files · dom RED 1 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M21 · ⛔ …and the other half: a case variant is FOLDED in silence, so on a case-sensitive volume a second real file is dropped with nothing said (106)
+    runtime GREEN 0 of 1318 in 41 files · desktop GREEN 0 of 2586 in 134 files · dom RED 1 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M22 · ⛔ the refusal stops naming the spelling it collided with, so a person is left staring at a chip whose name does not match what they just dropped
+    runtime GREEN 0 of 1318 in 41 files · desktop GREEN 0 of 2586 in 134 files · dom RED 1 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M23 · 🔴 227 LOW 3 · the restore CHOOSES again instead of merging, so a refused message's attachments vanish whenever something was staged while it was in flight
+    runtime GREEN 0 of 1318 in 41 files · desktop RED 2 of 2586 in 134 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M24 · ⛔ the merge ignores the CEILING, so a refused message can push the list past ten and leave Send lit over something the wire refuses
+    runtime GREEN 0 of 1318 in 41 files · desktop RED 1 of 2586 in 134 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M25 · ⛔ what did not fit is dropped in SILENCE — the count that lets the screen say so always reads zero
+    runtime GREEN 0 of 1318 in 41 files · desktop RED 1 of 2586 in 134 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M26 · ⛔ …and the screen stops saying it, so the number is computed and thrown away
+    runtime GREEN 0 of 1318 in 41 files · desktop RED 1 of 2586 in 134 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M27 · ⛔ 233's residual · the doc comment goes back to `pid n/a (SDK-managed)` as a statement of what the app does, about a provider that has had a real pid since 233
+    runtime GREEN 0 of 1318 in 41 files · desktop RED 1 of 2586 in 134 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M28 · ⚑ 169 M1, re-anchored by 236 and re-run · 🔴 THE MEASUREMENT · the button stops reading the blocker, so Send is lit over `../../escape` again — exactly what the PM drove in the running app on 8f30309
+    runtime GREEN 0 of 1318 in 41 files · desktop RED 2 of 2586 in 134 files · dom RED 27 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M29 · ⚑ 198 M2, re-anchored by 236 and re-run · ⛔ the loser stands down and starts the app anyway — a quit is not a fence, and constructing the host is 194 H1's whole mechanism
+    runtime GREEN 0 of 1318 in 41 files · desktop RED 2 of 2586 in 134 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M30 · ⚑ 198 M6, re-anchored by 236 and re-run · ⛔ a SECOND GATE of our own, which is the thing 191 M5 reports going stale: a sticky refusal that outlives the process that earned it
+    runtime GREEN 0 of 1318 in 41 files · desktop RED 7 of 2586 in 134 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M31 · ⚑ 216 M13, re-anchored by 236 and re-run · 🔴 §2 · what was attached is NOT SHOWN — the person's rule broken at the composer: an injection the UI does not display
+    runtime GREEN 0 of 1318 in 41 files · desktop GREEN 0 of 2586 in 134 files · dom RED 16 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M32 · ⚑ 216 M14, re-anchored by 236 and re-run · 🔴 §2 · attaching stops being UNDOABLE before send (211: a half-formed attachment is the same defect as a half-formed draft)
+    runtime GREEN 0 of 1318 in 41 files · desktop GREEN 0 of 2586 in 134 files · dom RED 2 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M33 · ⚑ 216 M15, re-anchored by 236 and re-run · ⛔ §2 · the attachments outlive their send and ride along on the NEXT message, silently, because the chip looks the same
+    runtime GREEN 0 of 1318 in 41 files · desktop GREEN 0 of 2586 in 134 files · dom RED 4 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M34 · ⚑ 216 M55, re-anchored by 236 and re-run · ⛔ review · the restore writes the attachment book unguarded, so something attached while a failed send was in flight is silently replaced by the list that just failed (the rule was MOVED into `drafts.ts` to be reachable at all — the `RuntimeScreen` version survived the table, as three dispatches predicted it would)
+    runtime GREEN 0 of 1318 in 41 files · desktop RED 3 of 2586 in 134 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M35 · ⚑ 217 M8, re-anchored by 236 and re-run · ⛔ §2 · a launch that never opened hands back the words and drops the paths, so the restored draft looks whole and is not (211's defect wearing a new coat)
+    runtime GREEN 0 of 1318 in 41 files · desktop RED 2 of 2586 in 134 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M36 · ⚑ 217 M9, re-anchored by 236 and re-run · ⛔ §2 · a conversation that opened but could not send its first message hands back the words alone, losing what was attached to them
+    runtime GREEN 0 of 1318 in 41 files · desktop RED 2 of 2586 in 134 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M37 · ⚑ 218 M11, re-anchored by 236 and re-run · 🔴 §2 · a drop REPLACES what is staged instead of adding to it, so dropping a second file silently removes the first
+    runtime GREEN 0 of 1318 in 41 files · desktop GREEN 0 of 2586 in 134 files · dom RED 8 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M38 · ⚑ 218 M12, re-anchored by 236 and re-run · ⛔ §2 · the same path attaches twice, so the message names it twice and the agent reads it twice
+    runtime GREEN 0 of 1318 in 41 files · desktop GREEN 0 of 2586 in 134 files · dom RED 2 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M39 · ⚑ 218 M15, re-anchored by 236 and re-run · ⛔ §2 · a refusal from an earlier drop is never cleared, so a message that WAS attached still carries a sentence saying it was not
+    runtime GREEN 0 of 1318 in 41 files · desktop GREEN 0 of 2586 in 134 files · dom RED 1 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M40 · ⚑ 218 M16, re-anchored by 236 and re-run · ⛔ §2 · the drop stops asking about the mount's opt-in, so a composer with no paperclip silently accepts files anyway — two answers to one question (acceptance 7)
+    runtime GREEN 0 of 1318 in 41 files · desktop GREEN 0 of 2586 in 134 files · dom RED 1 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M41 · ⚑ 218 M17, re-anchored by 236 and re-run · ⛔ §2 · the drop stops asking about the STATE, so files can be attached to a launch already in flight — there is nothing to attach them to
+    runtime GREEN 0 of 1318 in 41 files · desktop GREEN 0 of 2586 in 134 files · dom RED 2 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M42 · ⚑ 219 M8, re-anchored by 236 and re-run · 🔴 §1 · the Send button stops reading `blocked` — the four jobs 217 named, minus the first one a person meets
+    runtime GREEN 0 of 1318 in 41 files · desktop RED 2 of 2586 in 134 files · dom RED 27 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M43 · ⚑ 221 M14, re-anchored by 236 and re-run · ⛔ §2 · the hand-back keeps the words and loses what was ATTACHED to them — a draft that looks whole and is not (217 M9 re-anchored here so that it is RE-RUN)
+    runtime GREEN 0 of 1318 in 41 files · desktop RED 2 of 2586 in 134 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M44 · ⚑ 221 M27, re-anchored by 236 and re-run · ⛔ §5 · the composer's dedupe is removed, so the same path attached twice is two chips — the renderer half of the same property, which the resolution above only feeds
+    runtime GREEN 0 of 1318 in 41 files · desktop GREEN 0 of 2586 in 134 files · dom RED 2 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M45 · ⚑ 223 M3, re-anchored by 236 and re-run · ⛔ 221 §6 REVERSED · the computed stops counting attachments, so an attachment-only message is refused again and a working feature hides behind a dead control
+    runtime GREEN 0 of 1318 in 41 files · desktop RED 2 of 2586 in 134 files · dom RED 3 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M46 · ⚑ 223 M16, re-anchored by 236 and re-run · ⚑ 169 M1 AND 219 M8, re-anchored and re-run · the button stops reading `blocked`, so Send is lit over `../../escape` and over a superseded sign-in again
+    runtime GREEN 0 of 1318 in 41 files · desktop RED 2 of 2586 in 134 files · dom RED 27 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1318 in 41 files · desktop GREEN 0 of 2586 in 134 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files

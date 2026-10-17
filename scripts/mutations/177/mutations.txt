@@ -1,0 +1,37 @@
+# 177 mutations — HEAD a557e1e + working tree
+# 2026-08-16T23:36:47Z
+
+M0  CONTROL (no mutation) — baseline runtime=1074 desktop=2053 dom=522
+    runtime GREEN 0 of 1074 in 35 files · desktop GREEN 0 of 2053 in 104 files · dom GREEN 0 of 522 in 30 files
+
+M1 · ⛔ the wall the provider reports directly is ignored — only a percentage can speak
+    runtime RED 1 of 1074 in 35 files · desktop GREEN 0 of 2053 in 104 files · dom GREEN 0 of 522 in 30 files
+M2 · ⛔ `spendControlReached` is dropped — the workspace's own limit is silent
+    runtime RED 2 of 1074 in 35 files · desktop GREEN 0 of 2053 in 104 files · dom GREEN 0 of 522 in 30 files
+M3 · ⛔ the floor goes to 0 — every routine heartbeat speaks, which is 074's noise back
+    runtime RED 3 of 1074 in 35 files · desktop GREEN 0 of 2053 in 104 files · dom GREEN 0 of 522 in 30 files
+M4 · ⛔ the floor goes to 101 — nothing ever warns, which is HEAD before 177
+    runtime RED 2 of 1074 in 35 files · desktop GREEN 0 of 2053 in 104 files · dom GREEN 0 of 522 in 30 files
+M5 · ⚠️ the boundary off-by-one — exactly at the floor stays silent
+    runtime RED 1 of 1074 in 35 files · desktop GREEN 0 of 2053 in 104 files · dom GREEN 0 of 522 in 30 files
+M6 · ⚠️ `resetsAt` read as milliseconds — it is epoch SECONDS, so the line still says 'resets', in 1970
+    runtime RED 1 of 1074 in 35 files · desktop GREEN 0 of 2053 in 104 files · dom GREEN 0 of 522 in 30 files
+M7 · ⛔ the quiet frame is DROPPED rather than kept as chatter — nothing visible changes and the ledger loses the snapshot
+    runtime RED 4 of 1074 in 35 files · desktop GREEN 0 of 2053 in 104 files · dom GREEN 0 of 522 in 30 files
+M8 · ⛔ `model/rerouted` goes back to chatter — 177 §2's whole subject
+    runtime RED 4 of 1074 in 35 files · desktop GREEN 0 of 2053 in 104 files · dom GREEN 0 of 522 in 30 files
+M9 · ⚠️ the reroute sentence loses the model you ASKED for — half the fact
+    runtime RED 2 of 1074 in 35 files · desktop GREEN 0 of 2053 in 104 files · dom GREEN 0 of 522 in 30 files
+M10 · ⚠️ `model/verification` is promoted too — the over-broad reading of §2
+    runtime RED 2 of 1074 in 35 files · desktop GREEN 0 of 2053 in 104 files · dom GREEN 0 of 522 in 30 files
+M11 · ⛔ the drawer's old scoping — an id the catalogue does not list yields an EMPTY, disabled menu that blames the provider
+    runtime GREEN 0 of 1074 in 35 files · desktop RED 1 of 2053 in 104 files · dom GREEN 0 of 522 in 30 files
+M12 · ⚠️ the drawer pools without SAYING so — `effortsArePooled` back to `model === null`
+    runtime GREEN 0 of 1074 in 35 files · desktop RED 1 of 2053 in 104 files · dom GREEN 0 of 522 in 30 files
+M13 · ⛔ THE DEFECT 176 REPORTED — the launcher's menu pools across every model regardless of which one is named, so `haiku` is offered `xhigh`
+    runtime GREEN 0 of 1074 in 35 files · desktop GREEN 0 of 2053 in 104 files · dom RED 1 of 522 in 30 files
+M14 · ⚠️ only the PRIMARY window is read — a secondary one at 99% is invisible
+    runtime RED 1 of 1074 in 35 files · desktop GREEN 0 of 2053 in 104 files · dom GREEN 0 of 522 in 30 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1074 in 35 files · desktop GREEN 0 of 2053 in 104 files · dom GREEN 0 of 522 in 30 files

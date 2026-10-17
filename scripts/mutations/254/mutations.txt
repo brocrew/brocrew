@@ -1,0 +1,89 @@
+# 254 mutations — HEAD 658baaf + working tree
+# 2026-09-01T00:05:37Z
+
+M0  CONTROL (no mutation) — baseline runtime=1391 desktop=2818 dom=758 scripts=261
+    runtime GREEN 0 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+
+M1 · ⛔ §2 · the ceiling is gone, so a clipboard holding a 400 MB bitmap writes 400 MB into a directory BroBot is only borrowing — `106`'s cap with no sentence and no bound
+    runtime GREEN 0 of 1391 in 44 files · desktop RED 1 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M2 · 🔴 §2 · the ceiling is checked AFTER the write, so a refused paste leaves the file it just refused sitting on the disk for somebody to attach later
+    runtime GREEN 0 of 1391 in 44 files · desktop RED 1 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M3 · ⚠️ §2 · off by one at the bound — an image of exactly the permitted size is refused, and the sentence tells the person to save a file that was never too big
+    runtime GREEN 0 of 1391 in 44 files · desktop RED 1 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M4 · ⛔ §2 · an undecodable clipboard becomes a 0-byte `.png` staged as an attachment — a whole turn spent to learn there was nothing in it
+    runtime GREEN 0 of 1391 in 44 files · desktop RED 2 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M5 · 🔴 §2 · the module decides for ITSELF what the path it wrote is, skipping the one classifier every other gesture ends in — no control-character gate, no `realpath`, and an `outside` caption asserted rather than derived (`197`'s two classifiers, a third time)
+    runtime GREEN 0 of 1391 in 44 files · desktop RED 3 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M6 · 🔴 §2 · the sweep deletes whatever it finds, so one wrong `root` takes somebody's documents with it — the blast radius the name pattern exists to make zero
+    runtime GREEN 0 of 1391 in 44 files · desktop RED 1 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M7 · ⛔ §2 · the sweep ignores AGE and removes every pasted image at start, including the one still staged in a draft the person came back to finish
+    runtime GREEN 0 of 1391 in 44 files · desktop RED 3 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M8 · ⚠️ §2 · a missing directory throws instead of being the ordinary first run — the app refuses to open because there was no week-old screenshot to remove
+    runtime GREEN 0 of 1391 in 44 files · desktop RED 1 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M9 · ⚠️ §2 · the TTL argument is ignored and the shipped week is hard-coded, so the rule can only be exercised by waiting seven days — which means it is never exercised
+    runtime GREEN 0 of 1391 in 44 files · desktop RED 1 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M10 · ⛔ §2 · nothing ever calls the sweep, so 'who deletes them' is answered by a function that runs on no path — the directory grows for as long as the app is installed
+    runtime GREEN 0 of 1391 in 44 files · desktop RED 1 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M11 · 🔴 §2 · ⌘V is not wired at all — the person's actual gesture, silently doing nothing, which is the state this whole dispatch exists to end
+    runtime GREEN 0 of 1391 in 44 files · desktop RED 1 of 2818 in 147 files · dom RED 9 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M12 · ⛔ §2 · the paste swallows its own event, so a clipboard carrying an image AND text loses the words — the composer eating a paste it did not need to intercept
+    runtime GREEN 0 of 1391 in 44 files · desktop RED 1 of 2818 in 147 files · dom RED 1 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M13 · 🔴 §2 · the paste ignores `canStage`, so a composer that greys the paperclip and refuses a drop still writes a file to disk — three answers to one question, and this is the gesture whose side effect is a FILE (218's acceptance 7)
+    runtime GREEN 0 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom RED 1 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M14 · ⛔ §2 · the clipboard is read even when the pasted entry HAS a path, so copying a file in Finder writes a second copy of it — and hands the agent a path nobody can find again
+    runtime GREEN 0 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom RED 2 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M15 · 🔴 §2 · THE DEFECT · a pasted screenshot never reaches main at all, so the one clipboard with no path behind it — the whole feature — stages nothing
+    runtime GREEN 0 of 1391 in 44 files · desktop RED 1 of 2818 in 147 files · dom RED 7 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M16 · ⛔ §2 · a paste carrying more than one picture drops the rest in SILENCE — `106`'s rule, on the gesture where the person has no way to tell what was taken
+    runtime GREEN 0 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom RED 1 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M17 · 🔴 §2 · the paste writes the staged list itself instead of going through `stage()` — the FOURTH code path `218`'s census exists to prevent, skipping the dedup, the ceiling, the case rule and the pending-staged window all at once
+    runtime GREEN 0 of 1391 in 44 files · desktop RED 2 of 2818 in 147 files · dom RED 4 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M18 · 🔴 §2 · THE DISPATCH'S OWN REQUIREMENT · the chip shows the filename BroBot invented, so a screenshot reads exactly like a file the person chose by name — presenting an invention as their choice
+    runtime GREEN 0 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom RED 4 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M19 · ⛔ §2 · the size goes, so two screenshots on one strip are indistinguishable and the chip says the same eighteen characters about both
+    runtime GREEN 0 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom RED 1 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M20 · ⚠️ §2 · the row never says it is a paste in the markup, so every instrument that checks the distinction is reading an attribute that is always the same
+    runtime GREEN 0 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom RED 2 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M21 · ⛔ §2 · the glyph is the file icon again, so the one place the difference can show without lying about `kind` shows nothing
+    runtime GREEN 0 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom RED 1 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M22 · ⚠️ §2 · the undo names a path nobody has ever seen — *"Don't send /…/pasted-images/pasted-a3f9….png"* on the one control that exists to let somebody change their mind (`106` from the other side: words that do not describe what pressing it undoes)
+    runtime GREEN 0 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom RED 2 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M23 · ⛔ CARRIED FORWARD from `216 M38` · the import ALLOWLIST is blinded, so `import * as fs` on the route stops being caught — the `M11` shape again, on the census that bounds the clipboard exception. The anchor moved when 254 made the allowlist per-file; the defect did not
+    runtime GREEN 0 of 1391 in 44 files · desktop RED 1 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M24 · 🔴 the module that WRITES an attachment is dropped from the route, so every rule in the census stops looking at it — a hole exactly where the read would be added, and one that closes in silence (the `runtime-host.ts` finding, repeated)
+    runtime GREEN 0 of 1391 in 44 files · desktop INVALID (collected 2814 of 2818, exit 1) · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M25 · ⚠️ the paste handler reads the file it just wrote — the 'improvement' that would make BroBot the reader, arriving through the one door where main legitimately holds bytes
+    runtime GREEN 0 of 1391 in 44 files · desktop RED 3 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M26 · ⚠️ §4 · the live step joins the run UNCLASSIFIED, so `224` §5's number counts a step that can go red for the provider as one that can only go red for an app defect
+    runtime GREEN 0 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts RED 3 of 261 in 16 files
+M30 · 🔴 THE ONE THAT KILLED THE FEATURE · the pasted image goes back inside `userData`, which is this app's sole `protectedRoots` entry — so Claude's prompt guard REFUSES the read above the mode check, with no card, in `ask` and in `auto` alike. Chip, file, classifier and transcript all work; the model never sees the picture
+    runtime GREEN 0 of 1391 in 44 files · desktop RED 2 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M31 · 🔴 the chip trusts a renderer-side FLAG again instead of the name main chose — so a screenshot restored from the queue reverts to its invented filename (`overTheWire` drops the flag) and a forged flag on any path renders as *an image you pasted* with the real path only in a hover title
+    runtime GREEN 0 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom RED 2 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M32 · ⛔ the chip's numbers come from the wrong bytes — the IHDR is read at the signature's offsets, so every pasted image reports a size that is not its own
+    runtime GREEN 0 of 1391 in 44 files · desktop RED 2 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M33 · 🔴 the MEGAPIXEL bound is gone, so a 20,000 × 20,000 canvas is decoded and re-encoded in the process that owns every live session — and the byte ceiling that was supposed to catch it is checked on a buffer that never finishes being built
+    runtime GREEN 0 of 1391 in 44 files · desktop RED 1 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M34 · 🔴 the name is random again rather than a digest of the bytes, so ⌘V twice is two files, two chips reading identically, two identical undos, and the same picture quoted to the model twice — with `stage()`'s duplicate rule unreachable by construction
+    runtime GREEN 0 of 1391 in 44 files · desktop RED 3 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M35 · ⛔ a re-paste does not TOUCH the file it matched, so a screenshot from last week, pasted again this morning, is staged and then swept out from under the composer
+    runtime GREEN 0 of 1391 in 44 files · desktop RED 7 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M36 · ⛔ the sweep runs only at START, so the week-long bound holds only for a process that restarts more often than the bound — and `window-all-closed` deliberately does not quit
+    runtime GREEN 0 of 1391 in 44 files · desktop RED 1 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M37 · 🔴 TEXT no longer wins, so copying a range out of Numbers — plain text AND a picture of it on one pasteboard — stages a bitmap of the thing the person was pasting as words, behind a chip that shows no filename and no preview
+    runtime GREEN 0 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom RED 1 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M38 · ⛔ the ceiling is no longer a precondition on the WRITE, so a paste refused by `stage()` leaves a PNG on disk that no chip, no draft and no transcript ever referenced, for the whole TTL
+    runtime GREEN 0 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom RED 1 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M40 · ⛔ the clipboard is read AFTER the path round trip, re-opening the window in which a clipboard manager — or Universal Clipboard — can put something else on the pasteboard and have main write and stage THAT, invisibly, behind a chip with no filename and no preview
+    runtime GREEN 0 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M41 · 🔴 THE ONE THAT WOULD HAVE SHIPPED · the pasted directory is `dirname(userData)` with a bare name, which is app-owned only by accident of the DEV app's name — the packaged app is `productName: BroBot2`, so this creates, lists and unlinks inside `~/Library/Application Support/pasted-images`, among every other app's data
+    runtime GREEN 0 of 1391 in 44 files · desktop RED 1 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M42 · 🔴 the write goes back to `wx` + tolerate-EEXIST, so a second paste of the same picture while the first is still writing hands the agent a PARTIAL file — and content addressing makes a truncated one match that screenshot forever
+    runtime GREEN 0 of 1391 in 44 files · desktop RED 1 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M43 · ⛔ a clipboard flavour that merely EXISTS counts as text, so an image re-put with an empty `text/plain` beside it — clipboard managers, Universal Clipboard, several capture tools — is swallowed in total silence: no chip, no refusal, no IPC
+    runtime GREEN 0 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom RED 1 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M44 · ⚠️ the sweep runs AFTER the write instead of before it, so it can race the very file it has just created — the paste stages a path that a moment later is not there
+    runtime GREEN 0 of 1391 in 44 files · desktop RED 1 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files

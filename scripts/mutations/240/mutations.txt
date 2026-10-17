@@ -1,0 +1,37 @@
+# 240 mutations — HEAD 20110e0 + working tree
+# 2026-08-28T23:48:52Z
+
+M0  CONTROL (no mutation) — baseline runtime=1336 desktop=2604 dom=686 scripts=241
+    runtime GREEN 0 of 1336 in 42 files · desktop GREEN 0 of 2604 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+
+M1 · 🔴 THE DEFECT, verbatim (233's stated limit) · the SIGTERM grace goes back to racing the LEADER's exit, which is already settled — so SIGTERM and SIGKILL leave together and no descendant of ours ever gets an instant to shut down
+    runtime RED 2 of 1336 in 42 files · desktop GREEN 0 of 2604 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M2 · ⛔ …and the same at the FINAL grace · `close()` resolves the moment the leader is gone, over a group that is still being killed — which is what the host reads as *everything it created is confirmed down*
+    runtime RED 1 of 1336 in 42 files · desktop GREEN 0 of 2604 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M3 · 🔴 the question is asked and the answer is thrown away · a group with a live member reads as quiet, so every grace returns at once and the teardown is back where 240 found it
+    runtime RED 3 of 1336 in 42 files · desktop GREEN 0 of 2604 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M4 · ⛔ a spawn that never produced a process waits for its group anyway · four seconds added to a quit over a child that never existed — 233's point, on the teardown's side
+    runtime RED 1 of 1336 in 42 files · desktop GREEN 0 of 2604 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M5 · 🔴 THE DEFECT, verbatim (238 §3) · the release unlinks by PATH again, so a lock its holder never created is destroyed and a lock its holder DID create is left signed by a live pid — the two halves of one unconditional line
+    runtime RED 2 of 1336 in 42 files · desktop GREEN 0 of 2604 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M6 · ⛔ the stamp is not retracted · a lockfile that outlives its own release still names a running process, and `ownerIsGone` asks `kill(pid, 0)` — so the home is locked for the life of the app rather than for two seconds
+    runtime RED 1 of 1336 in 42 files · desktop GREEN 0 of 2604 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M7 · ⛔ the identity check is dropped and the truncate kept · the release goes back to removing whatever is at the path, including the live lock a contender took while we were inside `fn()`
+    runtime RED 1 of 1336 in 42 files · desktop GREEN 0 of 2604 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M8 · ⛔ …and the over-correction, which is the failure mode a careless fix produces · a release that unlinks NOTHING leaves every home locked by its own last holder
+    runtime RED 4 of 1336 in 42 files · desktop GREEN 0 of 2604 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M9 · ⛔ the clause is gone again (233's residual, restored) · the CLI explains itself on the way out and the user is shown a sentence that does not say it
+    runtime RED 2 of 1336 in 42 files · desktop GREEN 0 of 2604 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M10 · ⛔ THE ONE-OF-N-CALL-SITES SHAPE · the clause is restored at the ending that CLOSES and not at the ending that THROWS, so the fix reaches one of `runLoop`'s two exits
+    runtime RED 1 of 1336 in 42 files · desktop GREEN 0 of 2604 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M11 · ⛔ the clause is appended when there is nothing to append · every ordinary failure in the product ends with a dangling `. stderr: `
+    runtime RED 1 of 1336 in 42 files · desktop GREEN 0 of 2604 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M12 · ⛔ the clause is unbounded · 4 KiB of a provider's stderr in the one sentence a person reads when a session dies
+    runtime RED 1 of 1336 in 42 files · desktop GREEN 0 of 2604 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M13 · ⚑ `exited` settles on a TIMER rather than on the process — 229 H1's *a bound became the receipt* in its purest form · no row in any table mutates the construction of this promise, and §1 leans on it being a fact
+    runtime RED 1 of 1336 in 42 files · desktop GREEN 0 of 2604 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+M14 · ⚑ a spawn that never produced a process never settles `exited` — so the launch id stays refused for the rest of the app run over a child that never existed (233's own branch, on the Codex side, which 233's table guards only for Claude)
+    runtime RED 2 of 1336 in 42 files · desktop GREEN 0 of 2604 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1336 in 42 files · desktop GREEN 0 of 2604 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 241 in 15 files

@@ -1,0 +1,45 @@
+# 196 mutations — HEAD bc795a5 + working tree
+# 2026-08-20T22:15:41Z
+
+M0  CONTROL (no mutation) — baseline scripts=179 runtime=1201 desktop=2097
+    scripts GREEN 0 of 179 in 11 files | runtime GREEN 0 of 1201 in 40 files | desktop GREEN 0 of 2097 in 107 files
+
+M1  · ⛔ H1 · the exit status is discarded again — the verdict is read from vitest's stdout alone, exactly as all 32 tables did
+    scripts RED 3 of 179 in 11 files | runtime GREEN 0 of 1201 in 40 files | desktop GREEN 0 of 2097 in 107 files
+M2  · ⛔ H1 · the fourth verdict is gone, so a run whose tests ALL PASSED and whose process exited 1 prints GREEN
+    scripts RED 2 of 179 in 11 files | runtime GREEN 0 of 1201 in 40 files | desktop GREEN 0 of 2097 in 107 files
+M3  · ⚠️ H1 · a short run is reported as ERROR rather than INVALID, so 'the tree is not the tree under test' is buried under 'the process was unhappy'
+    scripts RED 2 of 179 in 11 files | runtime GREEN 0 of 1201 in 40 files | desktop GREEN 0 of 2097 in 107 files
+M4  · ⛔ H2 · the lock goes back inside the table's own directory, so two tables take two different locks and edit one working tree
+    scripts RED 2 of 179 in 11 files | runtime GREEN 0 of 1201 in 40 files | desktop GREEN 0 of 2097 in 107 files
+M5  · ⛔ H2 · release drops its ownership check, so a table that never took the lock deletes the one somebody else is holding
+    scripts RED 1 of 179 in 11 files | runtime GREEN 0 of 1201 in 40 files | desktop GREEN 0 of 2097 in 107 files
+M6  · ⛔ H3 · the span check is gone, so a strictly increasing sequence with a hole in it is called gap-free — the exact defect 193 found
+    scripts RED 1 of 179 in 11 files | runtime GREEN 0 of 1201 in 40 files | desktop GREEN 0 of 2097 in 107 files
+M7  · ⛔ H3 · an EMPTY ledger is gap-free again — `some` is false over nothing, and the export could carry no entries at all
+    scripts RED 1 of 179 in 11 files | runtime GREEN 0 of 1201 in 40 files | desktop GREEN 0 of 2097 in 107 files
+M8  · ⚠️ H3 · a non-integer ordinal is no longer named — `last - first + 1` is NaN and compares false against everything, so the check silently stops checking
+    scripts RED 1 of 179 in 11 files | runtime GREEN 0 of 1201 in 40 files | desktop GREEN 0 of 2097 in 107 files
+M9  · ⛔ H1 · a not-asserted return is a pass again, which is how `85/85` came to include four steps that checked nothing
+    scripts RED 1 of 179 in 11 files | runtime GREEN 0 of 1201 in 40 files | desktop GREEN 0 of 2097 in 107 files
+M10 · ⛔ H1 · the headline sums the blanks back into `passed`, so the count is honest in the cells and a lie in the one number anybody reads
+    scripts RED 2 of 179 in 11 files | runtime GREEN 0 of 1201 in 40 files | desktop GREEN 0 of 2097 in 107 files
+M11 · ⚠️ H1 · the headline stops NAMING the blanks, leaving a count nobody can act on
+    scripts RED 2 of 179 in 11 files | runtime GREEN 0 of 1201 in 40 files | desktop GREEN 0 of 2097 in 107 files
+M12 · ⛔ M2 · the depth bound stops being recorded, so a leak below it reports as absence
+    scripts RED 1 of 179 in 11 files | runtime GREEN 0 of 1201 in 40 files | desktop GREEN 0 of 2097 in 107 files
+M13 · ⛔ M2 · a directory that would not open is silent again — one unreadable folder and the whole home reads clean
+    scripts RED 1 of 179 in 11 files | runtime GREEN 0 of 1201 in 40 files | desktop GREEN 0 of 2097 in 107 files
+M14 · ⛔ M2 · `complete` answers only the hit cap, which is the 188 state: one of three ways to stop early reported, and two silent
+    scripts RED 2 of 179 in 11 files | runtime GREEN 0 of 1201 in 40 files | desktop GREEN 0 of 2097 in 107 files
+M15 · ⛔ M2 · the depth bound goes back to 6 — 156 directories under `~/.claude` and 1,627 under `~/.codex` unvisited, on every run, saying nothing
+    scripts RED 1 of 179 in 11 files | runtime GREEN 0 of 1201 in 40 files | desktop GREEN 0 of 2097 in 107 files
+M16 · ⛔ M4 · a codex-labelled Fake publishes Claude's card again, so 55 construction sites go on certifying Claude behaviour under a Codex name
+    scripts GREEN 0 of 179 in 11 files | runtime RED 1 of 1201 in 40 files | desktop GREEN 0 of 2097 in 107 files
+M17 · ⛔ M4 · the standing grant is Claude's for both, so the codex Fake offers `allow_for_session` and then asks again — 182 H4 with a new label
+    scripts GREEN 0 of 179 in 11 files | runtime RED 1 of 1201 in 40 files | desktop GREEN 0 of 2097 in 107 files
+M18 · ⛔ M4 · both providers return one catalogue again, so a host that hands Codex's menu Claude's models cannot be caught by any assertion on it
+    scripts GREEN 0 of 179 in 11 files | runtime GREEN 0 of 1201 in 40 files | desktop RED 1 of 2097 in 107 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    scripts GREEN 0 of 179 in 11 files | runtime GREEN 0 of 1201 in 40 files | desktop GREEN 0 of 2097 in 107 files

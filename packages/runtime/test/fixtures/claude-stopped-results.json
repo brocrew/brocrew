@@ -1,0 +1,327 @@
+{
+  "_provenance": "709 · measured, not written: the bundled Claude CLI 2.1.287 driven through the product's own ClaudeRuntime against a scripted loopback model (packages/runtime/smoke/loopback-claude.ts), no token, no spend. Each value is the turn's own `result` frame, verbatim. Regenerate with `pnpm run probe:claude-stopped-word`.",
+  "_order": "stoppedStreaming: interrupt() called +405 ms, its receipt +406 ms, this result +520 ms. stoppedInTool: interrupt() called +2404 ms, its receipt +2407 ms, this result +2508 ms. cancelledCard: no interrupt() at all — the card's Cancel answers canUseTool with interrupt:true, and this result is the turn's only ending.",
+  "finishes": {
+    "duration_api_ms": 18,
+    "stop_reason": "end_turn",
+    "session_id": "c085e595-c3a0-4fa1-a0f3-0ebc808e8068",
+    "total_cost_usd": 0.000016,
+    "usage": {
+      "input_tokens": 11,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "output_tokens": 1,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "",
+      "iterations": [],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "modelUsage": {
+      "claude-haiku-4-5": {
+        "inputTokens": 11,
+        "outputTokens": 1,
+        "cacheReadInputTokens": 0,
+        "cacheCreationInputTokens": 0,
+        "webSearchRequests": 0,
+        "costUSD": 0.000016,
+        "contextWindow": 200000,
+        "maxOutputTokens": 32000,
+        "thinkingTokens": 0,
+        "canonicalModel": "claude-haiku-4-5",
+        "provider": "firstParty",
+        "costBasis": "list"
+      }
+    },
+    "permission_denials": [],
+    "terminal_reason": "completed",
+    "fast_mode_state": "off",
+    "fast_mode_disabled_reason": "sdk_opt_in_required",
+    "subagent_stats": {
+      "spawned": 0,
+      "requested": {
+        "background": 0,
+        "foreground": 0,
+        "unset": 0
+      },
+      "started_in_background": 0,
+      "max_depth": 0,
+      "spawned_by_subagents": 0,
+      "completed": 0,
+      "failed": 0,
+      "killed": {
+        "parent": 0,
+        "user": 0,
+        "system": 0
+      },
+      "refused": {
+        "depth_limit": 0,
+        "concurrency_limit": 0,
+        "budget": 0
+      },
+      "by_type": {}
+    },
+    "is_error": false,
+    "num_turns": 1,
+    "subtype": "success",
+    "api_error_status": null,
+    "result": "ok",
+    "ttft_ms": 52,
+    "type": "result",
+    "duration_ms": 67,
+    "uuid": "aaa9c2c8-3d55-4632-b309-e7e98cfb60c7",
+    "ttft_stream_ms": 51,
+    "time_to_request_ms": 41,
+    "first_content_frame_ms": 52,
+    "queued_turn_count": 0,
+    "result_index": 0
+  },
+  "cancelledCard": {
+    "duration_api_ms": 28,
+    "stop_reason": "tool_use",
+    "session_id": "0121792b-2aba-4a34-a012-78869941b85e",
+    "total_cost_usd": 0.000016,
+    "usage": {
+      "input_tokens": 11,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "output_tokens": 1,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "",
+      "iterations": [],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "modelUsage": {
+      "claude-haiku-4-5": {
+        "inputTokens": 11,
+        "outputTokens": 1,
+        "cacheReadInputTokens": 0,
+        "cacheCreationInputTokens": 0,
+        "webSearchRequests": 0,
+        "costUSD": 0.000016,
+        "contextWindow": 200000,
+        "maxOutputTokens": 32000,
+        "thinkingTokens": 0,
+        "canonicalModel": "claude-haiku-4-5",
+        "provider": "firstParty",
+        "costBasis": "list"
+      }
+    },
+    "permission_denials": [
+      {
+        "tool_name": "Bash",
+        "tool_use_id": "toolu_709_card",
+        "tool_input": {
+          "command": "perl -e 'print 709'",
+          "description": "709 cancel"
+        }
+      }
+    ],
+    "terminal_reason": "aborted_tools",
+    "fast_mode_state": "off",
+    "fast_mode_disabled_reason": "sdk_opt_in_required",
+    "subagent_stats": {
+      "spawned": 0,
+      "requested": {
+        "background": 0,
+        "foreground": 0,
+        "unset": 0
+      },
+      "started_in_background": 0,
+      "max_depth": 0,
+      "spawned_by_subagents": 0,
+      "completed": 0,
+      "failed": 0,
+      "killed": {
+        "parent": 0,
+        "user": 0,
+        "system": 0
+      },
+      "refused": {
+        "depth_limit": 0,
+        "concurrency_limit": 0,
+        "budget": 0
+      },
+      "by_type": {}
+    },
+    "is_error": true,
+    "num_turns": 3,
+    "subtype": "error_during_execution",
+    "errors": ["[ede_diagnostic] result_type=user last_content_type=n/a stop_reason=tool_use"],
+    "type": "result",
+    "duration_ms": 124,
+    "uuid": "4430764d-18a6-4271-9908-3a6dd0ef5e0c",
+    "queued_turn_count": 0,
+    "result_index": 0
+  },
+  "stoppedStreaming": {
+    "duration_api_ms": 0,
+    "stop_reason": null,
+    "session_id": "523bf2a0-e1bd-47f1-aacd-6167157b3869",
+    "total_cost_usd": 0,
+    "usage": {
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "output_tokens": 0,
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "",
+      "iterations": [],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "modelUsage": {},
+    "permission_denials": [],
+    "terminal_reason": "aborted_streaming",
+    "fast_mode_state": "off",
+    "fast_mode_disabled_reason": "sdk_opt_in_required",
+    "subagent_stats": {
+      "spawned": 0,
+      "requested": {
+        "background": 0,
+        "foreground": 0,
+        "unset": 0
+      },
+      "started_in_background": 0,
+      "max_depth": 0,
+      "spawned_by_subagents": 0,
+      "completed": 0,
+      "failed": 0,
+      "killed": {
+        "parent": 0,
+        "user": 0,
+        "system": 0
+      },
+      "refused": {
+        "depth_limit": 0,
+        "concurrency_limit": 0,
+        "budget": 0
+      },
+      "by_type": {}
+    },
+    "is_error": true,
+    "num_turns": 2,
+    "subtype": "error_during_execution",
+    "errors": ["[ede_diagnostic] result_type=user last_content_type=n/a stop_reason=null"],
+    "type": "result",
+    "duration_ms": 97,
+    "uuid": "035e41e7-2e31-4cd1-9ed9-f11e9d13f999",
+    "queued_turn_count": 0,
+    "result_index": 0
+  },
+  "stoppedInTool": {
+    "duration_api_ms": 17,
+    "stop_reason": "tool_use",
+    "session_id": "e50bc734-6f2e-4ebc-8068-2e0f7b68927d",
+    "total_cost_usd": 0.000016,
+    "usage": {
+      "input_tokens": 11,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "output_tokens": 1,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "",
+      "iterations": [],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "modelUsage": {
+      "claude-haiku-4-5": {
+        "inputTokens": 11,
+        "outputTokens": 1,
+        "cacheReadInputTokens": 0,
+        "cacheCreationInputTokens": 0,
+        "webSearchRequests": 0,
+        "costUSD": 0.000016,
+        "contextWindow": 200000,
+        "maxOutputTokens": 32000,
+        "thinkingTokens": 0,
+        "canonicalModel": "claude-haiku-4-5",
+        "provider": "firstParty",
+        "costBasis": "list"
+      }
+    },
+    "permission_denials": [],
+    "terminal_reason": "aborted_tools",
+    "fast_mode_state": "off",
+    "fast_mode_disabled_reason": "sdk_opt_in_required",
+    "subagent_stats": {
+      "spawned": 0,
+      "requested": {
+        "background": 0,
+        "foreground": 0,
+        "unset": 0
+      },
+      "started_in_background": 0,
+      "max_depth": 0,
+      "spawned_by_subagents": 0,
+      "completed": 0,
+      "failed": 0,
+      "killed": {
+        "parent": 0,
+        "user": 0,
+        "system": 0
+      },
+      "refused": {
+        "depth_limit": 0,
+        "concurrency_limit": 0,
+        "budget": 0
+      },
+      "by_type": {}
+    },
+    "is_error": true,
+    "num_turns": 3,
+    "subtype": "error_during_execution",
+    "errors": ["[ede_diagnostic] result_type=user last_content_type=n/a stop_reason=tool_use"],
+    "type": "result",
+    "duration_ms": 2112,
+    "uuid": "0c610029-c71f-4371-b519-4a92397bba52",
+    "queued_turn_count": 0,
+    "result_index": 0
+  }
+}

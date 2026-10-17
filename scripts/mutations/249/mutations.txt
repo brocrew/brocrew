@@ -1,0 +1,55 @@
+# 249 mutations — HEAD 4d771e8 + working tree
+# 2026-08-31T20:14:12Z
+
+M0  CONTROL (no mutation) — baseline runtime=1371 desktop=2776 dom=722 scripts=261
+    runtime GREEN 0 of 1371 in 43 files · desktop GREEN 0 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+
+M1 · 🔴 the CAPTURE flag goes · the palette's listener becomes one more bubble-phase listener on `window`, so whether it runs before `RuntimeScreen`'s stub is decided by which component mounted first — the fragile version this dispatch deliberately did not ship
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 1 of 2776 in 144 files · dom RED 24 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M2 · 🔴 ⌘K is no longer STOPPED, only answered · the palette opens and `RuntimeScreen`'s stub says "Command palette — not wired yet." over the top of it — 106 giving both answers to one press, which is worse than the stub 249 replaced
+    runtime GREEN 0 of 1371 in 43 files · desktop GREEN 0 of 2776 in 144 files · dom RED 2 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M3 · 🔴 THE ROW THIS TABLE EXISTS FOR · Escape stops being claimed, so closing the palette ALSO reaches `ConversationPane.vue:652-658` and interrupts the running turn — one key doing two unrelated things at once, which is the exact sentence that file's own comment forbids
+    runtime GREEN 0 of 1371 in 43 files · desktop GREEN 0 of 2776 in 144 files · dom RED 1 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M4 · ⛔ the teardown loses `capture` · `removeEventListener` with mismatched options removes NOTHING, so every unmounted palette keeps claiming ⌘K for the life of the window
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 1 of 2776 in 144 files · dom RED 23 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M5 · 🔴 ⌘↵ and ⇧⌘↵ are swallowed · 223's send chords run a palette row instead of sending the message they were aimed at — a gesture answered by the surface covering the one it belongs to, which is 169's finding with the two halves swapped
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 1 of 2776 in 144 files · dom RED 1 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M6 · ⚠️ ⌘N is TAKEN rather than yielded · the palette binds a transition `RuntimeScreen` already owns, so one action has two bindings (076) and the launcher is reached two ways that can drift
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 1 of 2776 in 144 files · dom RED 1 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M7 · ⛔ the one-question-at-a-time guard asks the overlay STORE again · every modal `ConversationPane` raises — the image viewer, the workflow-output reader, the child-work reader — is a local ref that never touches that store, so ⌘K over a tool-result image answers "no dialog" and opens the palette inside that host's Tab trap. ⚑ 249's own adversarial pass found this; the guard now counts mounted hosts
+    runtime GREEN 0 of 1371 in 43 files · desktop GREEN 0 of 2776 in 144 files · dom RED 1 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M8 · 🔴 Tab refocuses the box instead of cycling · in the no-match state that makes *Open All conversations* — the only control on screen — reachable by mouse and not by keyboard: 106's control-that-cannot-act, restricted to the people least able to work around it. ⚑ This is the first version 249 wrote, reverted; its own adversarial pass caught it
+    runtime GREEN 0 of 1371 in 43 files · desktop GREEN 0 of 2776 in 144 files · dom RED 2 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M9 · ⛔ the highlighted row is no longer scrolled into view · the panel caps at 66vh and a dozen conversations overflow it, so ArrowDown walks the cursor off screen and Enter runs a row nobody can see. ⚑ Also found by 249's own review, not by a test that existed
+    runtime GREEN 0 of 1371 in 43 files · desktop GREEN 0 of 2776 in 144 files · dom RED 1 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M10 · ⚠️ Enter does nothing on a miss · the sentence names *Open All conversations* and the button acts, but the key everything else in this panel uses does not — the button/chord split 169 spent a dispatch closing
+    runtime GREEN 0 of 1371 in 43 files · desktop GREEN 0 of 2776 in 144 files · dom RED 1 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M11 · ⛔ `pressable` is restated rather than called · the palette gets its own copy of the two clauses, which is the second implementation 169 forbids and the way the rail row and the palette row come to offer a gesture on different terms
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 1 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M12 · ⛔ the `!reopening` half of `pressable` goes · a reopen already in flight is offered again from the palette while the rail row showing it is inert — two reopens racing each other's transcripts, which is 102's defect through a door 102 could not see
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 1 of 2776 in 144 files · dom RED 1 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M13 · ⛔ the bands stop being ranked · they draw in build order, so typing a folder name puts the highlight on the third visible row while the first row is what every palette a person has used would have run — two orders, one cursor
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 2 of 2776 in 144 files · dom RED 1 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M14 · ⚠️ the `this` band stops checking the row exists · a conversation whose `meta` has not arrived gets export rows labelled with an invented folder name — 086's fabricated value, on a control that would then act on it
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 1 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M15 · 🔴 "the closed list has not answered yet" becomes a count of zero · the palette reports having searched 0 closed conversations before the two IPC reads return, which is 119's wrong number wearing a real number's clothes — and the number a person would trust
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 2 of 2776 in 144 files · dom RED 1 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M16 · ⛔ the no-match sentence promises to carry the query · it offers to search every conversation on this machine FOR what was typed, and the rail's `go` emit takes a place and nothing else — so the person lands on an empty search box, which is 104's control describing a state it is not in
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 1 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M17 · ⛔ `onScreenId` reverts to `activeId` · *"Export this conversation"* is offered while the reader is on Home or the Sessions page, naming a conversation that is not on screen — and the rail's highlighted row goes with it, since 249 gave both readers one name
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 1 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M18 · ⚠️ the ARIA claim goes back to unconditional · in the no-match state the box says `aria-expanded="true"` and points `aria-controls` at an element that is not in the document — 106 one layer down, in the prose the app speaks to assistive tech
+    runtime GREEN 0 of 1371 in 43 files · desktop GREEN 0 of 2776 in 144 files · dom RED 1 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M19 · 🔴 the cursor goes back to being an INDEX · the rail's two closed-thread reads answer a moment after mount and insert rows ABOVE it, so ⌘K → ArrowDown ×2 → the reads land moves the highlight from `Home` onto `Reopen <a conversation>` with no gesture — and Enter then launches a provider process nobody picked. ⚑ 249's own review; the ordinary startup path
+    runtime GREEN 0 of 1371 in 43 files · desktop GREEN 0 of 2776 in 144 files · dom RED 3 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M20 · ⛔ the export refusal stops being read through `readableError` · a full disk puts `Error invoking remote method 'runtime:command': Error: EACCES: permission denied, mkdir` on a person's screen — a library talking, which 221 §3 spent a dispatch removing from one surface and this would have added back on another
+    runtime GREEN 0 of 1371 in 43 files · desktop GREEN 0 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M21 · ⛔ the scope sentence counts the LISTS instead of the rows built from them · one un-pressable closed thread and the foot says it searched a conversation whose name then answers *"Nothing matches"* — the one sentence in this dispatch whose whole job is to be measurable, over-counted by exactly the rows it skipped
+    runtime GREEN 0 of 1371 in 43 files · desktop GREEN 0 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M22 · ⛔ the failure sentence outranks a COUNT it should not · `refreshClosed` keeps the rows a previous successful read gave it when a later one throws, so the palette draws *Reopen checkout* over a sentence saying the closed conversations were not searched. ⚑ This is the defect 249's own review found INSIDE 249's own fix for the previous one
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 1 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M23 · ⚠️ a keyword match ranks level with a visible one again · a conversation whose opening line reads *"download the nightly build"* loses the query `download` to two export rows that show the word nowhere, and Enter writes a file instead of jumping to it
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 2 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1371 in 43 files · desktop GREEN 0 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files

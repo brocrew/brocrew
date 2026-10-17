@@ -1,0 +1,34 @@
+# 497 mutations — HEAD 660c63d3 + working tree
+# 2026-09-17T07:44:20Z
+# project-reachability v1 topology=unproved — For each row, run every baseline project whose tests can conservatively reach an edited path; any unknown path runs every project, and every omitted measurement is written NOT RUN (out of reach), never GREEN.
+
+M0  CONTROL (no mutation) — baseline runtime=1793 desktop=5844 dom=1508 scripts=745 shared=4
+    runtime GREEN 0 of 1793 in 62 files · desktop GREEN 0 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+
+M1 · 🔴 `merge` leaves the forbidden list · the census in §2 walks that list, so it goes GREEN the moment a member is deleted — the sentence can then come back with nothing to notice, which is precisely why a deletion was refused in favour of a member (`a-bound-written-as-the-constant-cannot-pin-it`, one subject over)
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 1 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M2 · 🔴 `production` leaves the forbidden list · the other half of HO-035, unpinned the same way and with the same silence
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 1 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M3 · ⛔ the member becomes the SENTENCE instead of the word · the list's own rule is *a list of WORDS rather than a list of sentences, because the thing to keep out is the mechanism, not one phrasing of it* — and every paraphrase HO-035 withdrew (*never land a branch*, *no PR merge*, *propose and let a person integrate*) walks straight through
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 1 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M4 · 🔴 the conventions rule goes back to CODE and A REPOSITORY · HO-035's test, failed in the layer every agent of every project reads: an agent planning a holiday has neither, so the one sentence telling it what to do when two halves of its instructions disagree has no referent at all
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 2 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M5 · ⛔ the widening takes the RULE with it · the nouns are gone and so is the conflict-disclosure clause HO-009 §3 asked for by name — *an agent's effective instructions are ours plus a place's, and we control only one half* — which is the over-deletion this dispatch's own review named as the likeliest way to get a sweep wrong
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 1 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M6 · 🔴 BroBot is told not to WRITE CODE and RUN COMMANDS again · two of the three prohibited acts are software, so the agent this branch addresses reads two thirds of its only prohibition as somebody else's — and the same rule one tier down has always shipped verb-generic, which is the product's own proof the software verbs bought nothing
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 2 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M7 · ⛔ `deeply` comes off the widened verb · the rule becomes absolute and contradicts the three neighbours that tell this identity to understand what the person wants, to read a stall with `list_tasks` and to relay a person's rule — a widening that changed the meaning while passing every domain-noun assertion
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 1 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M8 · 🔴 the project manager scopes by TICKET, SPEC and REPOSITORY OUTLINE again · the colon makes those three the whole of the bound, so a manager outside software is handed a limit measured in artefacts it does not have and either cannot scope at all or scopes without any bound
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 2 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M9 · ⛔ the scoping line keeps its generic words and loses its BOUND · *investigate only far enough* with nothing saying how far is the sentence doing none of its work, and it passes every noun census in this table
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 1 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M10 · 🔴 the memory rule's examples are widened SILENTLY · `497`'s lens flagged *how to build and test here… what is flaky* and the repair kept it deliberately — the criterion before the em-dash is domain-free and self-sufficient, and build and test commands are the highest-yield thing a coding agent re-derives every session. ⛔ This row is the difference between reversing that decision and drifting past it
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 1 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M11 · ⚠️ the project manager's `implement` is widened silently · the second exemption, kept because two independent readers refused to call it domain-specific — and kept VISIBLY, so the day somebody disagrees it is a decision at a test rather than a word in a diff
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 1 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M12 · 🔴 the sweep takes `364`'s reachability out with the rule · the withdrawn rule and the true measurement lived in the same paragraph, and the measurement was never about merging — *a conversation can be pointed at a real repository today* is where an agent can be POINTED, is still true, and is what the unattended-autonomy question rests on. ⛔ Removing both is the one way this sweep could have made the product less safe
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 1 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1793 in 62 files · desktop GREEN 0 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files

@@ -1,0 +1,25 @@
+# 180 mutations — HEAD a86ffe4 + working tree
+# 2026-08-17T02:42:20Z
+
+M0  CONTROL (no mutation) — baseline runtime=1084 desktop=2053
+    runtime GREEN 0 of 1084 in 36 files · desktop GREEN 0 of 2053 in 104 files
+
+M1 · ⛔ the gate does not WAIT — pre-180 exactly: both app-servers spawn in one tick
+    runtime RED 3 of 1084 in 36 files · desktop GREEN 0 of 2053 in 104 files
+M2 · ⛔ the slot is released at acquisition — a gate that holds nothing
+    runtime RED 3 of 1084 in 36 files · desktop GREEN 0 of 2053 in 104 files
+M3 · ⚠️ the probe holds the home across its whole `model/list`, not just the handshake
+    runtime RED 2 of 1084 in 36 files · desktop GREEN 0 of 2053 in 104 files
+M4 · ⛔ the queue is keyed lexically — `/var/…` and `/private/var/…` become two homes
+    runtime RED 1 of 1084 in 36 files · desktop GREEN 0 of 2053 in 104 files
+M5 · ⛔ the fail-open timer goes — one stuck app-server forbids every later launch
+    runtime RED 1 of 1084 in 36 files · desktop GREEN 0 of 2053 in 104 files
+M6 · ⛔ the transport stops recognising the sqlite death — the Rust line is forwarded again
+    runtime RED 1 of 1084 in 36 files · desktop GREEN 0 of 2053 in 104 files
+M7 · ⛔ the message stops naming the home — a sentence with nothing actionable in it
+    runtime RED 1 of 1084 in 36 files · desktop GREEN 0 of 2053 in 104 files
+M8 · ⛔ `cancelWith` goes back to ignoring an ALREADY-aborted signal — 070's leak, reachable
+    runtime RED 3 of 1084 in 36 files · desktop GREEN 0 of 2053 in 104 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1084 in 36 files · desktop GREEN 0 of 2053 in 104 files

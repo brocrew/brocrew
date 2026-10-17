@@ -1,0 +1,59 @@
+# 253 mutations — HEAD 658baaf + working tree
+# 2026-08-31T23:22:14Z
+
+M0  CONTROL (no mutation) — baseline runtime=1391 desktop=2818 dom=758 scripts=261
+    runtime GREEN 0 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+
+M1 · 🔴 THE DEFECT, verbatim · the `Stop` hook is never installed, so BroBot is back to knowing nothing about the job the person was promised. The tool call scrolls away and the schedule goes with it
+    runtime RED 5 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M2 · ⛔ the hook reads the level and drops it · `noteSessionCrons` stops publishing, so the one channel that carries the fact is open and connected to nothing — 235's *live mechanism with no live input*, inverted
+    runtime RED 3 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M3 · ⛔ the hook reads the WRONG field · `background_tasks` is the other array on the same payload and it is about work running NOW. Reading it here would make a detached command look like a schedule, which is the one confusion `scheduled-work.ts` opens by refusing
+    runtime RED 3 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M4 · 🔴 the reader DECIDES · a `Stop` hook that does not continue can restart a turn, and this one exists to copy a field out. A display fact gets a veto over whether the conversation is allowed to end
+    runtime RED 4 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M5 · 🔴 a payload we could not read CLEARS the list · `undefined` — which the SDK's own type says an older CLI sends — stops meaning *we were not told* and starts meaning *the job is gone*. A person watches their schedule vanish because a field changed shape
+    runtime RED 2 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M6 · ⚠️ a hostile payload takes the turn with it · the read is no longer wrapped, so a getter that throws surfaces inside the CLI's hook machinery at the exact moment a turn is trying to end. A display fact may not wedge a conversation
+    runtime RED 1 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M7 · ⛔ the EMPTY level is suppressed with the unreadable ones · nothing can ever say *the provider reports no scheduled jobs*, so a registry that showed one keeps showing it after `CronDelete` — 222's stale indicator, on the other event
+    runtime RED 2 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M8 · 🔴 253's OWN first draft, restored · the empty level is emitted at `system/init` again. The capture killed it twice: a scheduled FIRE re-announces `init` on the same stream, so a live job is blanked for the whole fired turn; and a RESUMED session still holds its crons, so the replayed ledger this was correcting was already right
+    runtime RED 4 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M9 · ⚑ every turn end publishes again · the `Stop` hook fires at every turn end and usually restates the same set, so a conversation grows one ledger row per turn forever to say nothing new — 052's hazard by a slower route
+    runtime RED 4 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M10 · ⚠️ the level becomes a SEQUENCE · a payload that merely reorders the same jobs counts as a change, so a provider that lists them differently between turns republishes forever and every consumer re-renders a list that did not move
+    runtime RED 1 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M11 · ⛔ a shortfall hides behind an unchanged set · `dropped` leaves the fingerprint, so a payload carrying rows this app cannot list looks identical to one that did not. A person is being told less than before and nothing says so — 092's rule, defeated by a cache
+    runtime RED 1 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M12 · 🔴 247's exact bug, put back · the clip is written the way `truncate` is — keep `max` and THEN append an ellipsis, so its output is `max + 1`. The schema rejects precisely the strings that were bounded, and `toWireEvent` degrades the WHOLE event to `unknown`: the row is lost, not trimmed
+    runtime RED 3 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M13 · ⛔ the bound is written to the provider's DOCUMENTED cap · 1000 rather than 1024, so the `… [+N chars]` marker the provider appends to a clipped prompt is itself clipped off. The one signal that says *there was more* is the thing that gets cut
+    runtime RED 1 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M14 · ⛔ the prompt is passed through unbounded · a model writes cron prompts, so this is free text arriving from the provider and going straight at a `.max()` schema
+    runtime RED 1 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M15 · ⚠️ the id is passed through unbounded · same failure, on the one field the whole level is keyed by — so the event that degrades is the one that identifies the jobs
+    runtime RED 1 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M16 · ⛔ the cap is gone · one malformed payload becomes a permanent row in every store downstream (052), and the level fails its own schema on the way out
+    runtime RED 1 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M17 · ⚠️ the cap is SILENT · rows past the ceiling are dropped without being counted, so a registry showing 100 of 107 says nothing about the seven. A cap is never silent
+    runtime RED 1 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M18 · ⛔ a row with a BLANK id becomes a row · it cannot be told apart from the next blank one, so the fingerprint stops being stable and a list shows an entry nobody can name
+    runtime RED 1 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M19 · ⚠️ an unreadable row is dropped in silence · the second half of `dropped`'s job. A payload of three jobs where one has no id shows two rows and claims to be complete
+    runtime RED 2 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M20 · ⚠️ a field is copied without checking its type · `recurring` arrives as whatever the payload held, so a string walks into a `z.boolean()` and the whole event degrades
+    runtime RED 1 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M21 · 🔴 a schedule counts as the model WORKING · its Claude producer is the `Stop` hook, so it is emitted at the instant a turn ENDS. Every conversation that ever scheduled anything latches busy, with no ending coming — an unchanged level is never republished
+    runtime RED 3 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M22 · ⛔ the wire's own cap goes · the producer's ceiling is not the wire's, and this is the one that holds when the payload did not come from this adapter — a re-folded ledger row, or a future producer
+    runtime RED 1 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M23 · ⛔ the schema end of 247's bound · `.max(1000)` against a producer that legitimately emits the provider's cap PLUS its marker. Same degradation, arrived at from the other side
+    runtime RED 2 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M24 · ⚠️ the raw stream stops describing it · the debug drawer is where you check what the provider really said, and an empty line there is the one place a new variant can hide
+    runtime GREEN 0 of 1391 in 44 files · desktop RED 2 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M25 · ⚠️ the fold starts making a row · 253's dispatch says *no renderer*; this arm is the compile floor and nothing else. A transcript row per level change would bury the conversation under its own schedule
+    runtime GREEN 0 of 1391 in 44 files · desktop RED 4 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files

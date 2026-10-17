@@ -1,0 +1,86 @@
+{
+  "formatVersion": 1,
+  "version": "v23",
+  "skills": [
+    {
+      "name": "delegate",
+      "description": "Before assigning work or choosing helpers, reuse the best-fitting profile or service, name one result owner, and choose a supported model for each handoff.",
+      "reminder": {
+        "codex": "delegate — Before handoff: one fitting owner, reusable profile or service, and supported model.",
+        "claude": "brobot:delegate — Before handoff: one fitting owner, reusable profile or service, and supported model."
+      },
+      "sha256": "ee8a3a0e76d146e25cb9018d806a550c48e58740031604669edd64b5ce644c02",
+      "bytes": 4128
+    },
+    {
+      "name": "hand-back",
+      "description": "During work or before completion, keep evidence findable, resolve required results and questions, and hand back once.",
+      "reminder": {
+        "codex": "hand-back — Before returning: resolve dependencies, keep evidence and report once.",
+        "claude": "brobot:hand-back — Before returning: resolve dependencies, keep evidence and report once."
+      },
+      "sha256": "17fd7d89242f92d1d84324f79a29997d62235dc153d60ec5fdeb47ff5e167e85",
+      "bytes": 3475
+    },
+    {
+      "name": "split-work",
+      "description": "Before dividing an outcome, choose bounded pieces by project kind, outputs and dependencies; keep one owner responsible for integration.",
+      "reminder": {
+        "codex": "split-work — Before dividing: bounded pieces, dependencies and integration.",
+        "claude": "brobot:split-work — Before dividing: bounded pieces, dependencies and integration."
+      },
+      "sha256": "9973342315cf3e9e2253466dd31b8463dbdfe50cf0206aa4f7f75a8255fe4a0c",
+      "bytes": 3008
+    },
+    {
+      "name": "ask-and-wait",
+      "description": "When the person must answer or act, track the question or task, name what ends the wait, and manage the follow-up.",
+      "reminder": {
+        "codex": "ask-and-wait — When the person must answer or act: track it and name the wait.",
+        "claude": "brobot:ask-and-wait — When the person must answer or act: track it and name the wait."
+      },
+      "sha256": "54e4c2ac52786c8cea2e6e1c88d1119ec9b6828a15530024b52132cc7f7e3632",
+      "bytes": 4077
+    },
+    {
+      "name": "remember",
+      "description": "Before unfamiliar work, after a tested reusable lesson, or on a memory request, use permitted saved methods and memory.",
+      "reminder": {
+        "codex": "remember — Before unfamiliar work or handback: use relevant methods; save tested lessons if allowed.",
+        "claude": "brobot:remember — Before unfamiliar work or handback: use relevant methods; save tested lessons if allowed."
+      },
+      "sha256": "7dd3a69ad4a03c446240058e1632c2eeceadd06e54421d1898c5e9687d7c9e17",
+      "bytes": 2549
+    },
+    {
+      "name": "build-a-team",
+      "description": "Use delegate to choose helpers.",
+      "reminder": {
+        "codex": "build-a-team — Before choosing helpers: see delegate.",
+        "claude": "brobot:build-a-team — Before choosing helpers: see delegate."
+      },
+      "sha256": "abbc7334ecd7bc78c5d81fca224e9a2653581696458d0bcb0bcea6a289d97b7f",
+      "bytes": 225
+    },
+    {
+      "name": "add-a-capability",
+      "description": "When the needed tool is missing, check available tools and existing connections; propose a reviewed local build only if the person wants one.",
+      "reminder": {
+        "codex": "add-a-capability — When a tool is missing: existing connection first; build only if wanted.",
+        "claude": "brobot:add-a-capability — When a tool is missing: existing connection first; build only if wanted."
+      },
+      "sha256": "fd7f379e9db0211ece943b3d8051e6815df819df5c726d4ecd5e6165027a0419",
+      "bytes": 2751
+    },
+    {
+      "name": "build-software",
+      "description": "Before building software or any file-changing script or command, name one owner and an independent checker and verify the result.",
+      "reminder": {
+        "codex": "build-software — Before building or file-changing code: owner and checker verify it.",
+        "claude": "brobot:build-software — Before building or file-changing code: owner and checker verify it."
+      },
+      "sha256": "39a4b1e8c996872657aa97d9d0fba93e0048d15dd8226d709e4b3167e8555e79",
+      "bytes": 2782
+    }
+  ]
+}

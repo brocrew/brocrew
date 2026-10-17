@@ -1,0 +1,282 @@
+# Check whole-tree coverage against the committed floors on GitHub's Linux runners.
+# Use the same sealed shards as the local slow lane
+# (`coverage-measurement.config.ts`: eight Node, sixteen browser), as a parallel matrix; each uploads
+# its blob and report, one job merges the blobs natively in the recorded order, and the gate CLI
+# compares every area and metric with `coverage-floors.json` in check-only mode.
+#
+# It never commits or pushes. Raised floors come back as `raised-floors.json` in the `coverage-result`
+# artifact only when every row passes and no test failed beyond the known census pair; landing them is
+# the landing seat's change, by the usual expected-old compare-and-swap.
+#
+# Started: by hand (`workflow_dispatch`, input `commit`), by a push to a `gate/coverage-*` branch
+# (a push needs no registration), and nightly.
+# ⚠️ A schedule runs the copy of this file on the DEFAULT branch, so the nightly run starts only once
+# the file is there; it measures `develop`.
+#
+# ⚠️ The floors were measured on a Mac. A test that is a fact of the Mac skips here, so a row can sit
+# lower on Linux for that reason alone; the first run says which rows.
+name: Coverage
+
+on:
+  push:
+    branches: ['gate/coverage-*']
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: 'The commit or branch to measure (default: the ref this run was started on)'
+        required: false
+        default: ''
+  schedule:
+    - cron: '0 2 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: coverage-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # What to measure: the input, else `develop` for the nightly run, else the commit that started the run.
+  MEASURE: ${{ inputs.commit || (github.event_name == 'schedule' && 'develop') || github.sha }}
+
+jobs:
+  shard:
+    name: ${{ matrix.step }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { step: node-01-of-08, set: node, shard: 1/8 }
+          - { step: node-02-of-08, set: node, shard: 2/8 }
+          - { step: node-03-of-08, set: node, shard: 3/8 }
+          - { step: node-04-of-08, set: node, shard: 4/8 }
+          - { step: node-05-of-08, set: node, shard: 5/8 }
+          - { step: node-06-of-08, set: node, shard: 6/8 }
+          - { step: node-07-of-08, set: node, shard: 7/8 }
+          - { step: node-08-of-08, set: node, shard: 8/8 }
+          - { step: dom-01-of-16, set: dom, shard: 1/16 }
+          - { step: dom-02-of-16, set: dom, shard: 2/16 }
+          - { step: dom-03-of-16, set: dom, shard: 3/16 }
+          - { step: dom-04-of-16, set: dom, shard: 4/16 }
+          - { step: dom-05-of-16, set: dom, shard: 5/16 }
+          - { step: dom-06-of-16, set: dom, shard: 6/16 }
+          - { step: dom-07-of-16, set: dom, shard: 7/16 }
+          - { step: dom-08-of-16, set: dom, shard: 8/16 }
+          - { step: dom-09-of-16, set: dom, shard: 9/16 }
+          - { step: dom-10-of-16, set: dom, shard: 10/16 }
+          - { step: dom-11-of-16, set: dom, shard: 11/16 }
+          - { step: dom-12-of-16, set: dom, shard: 12/16 }
+          - { step: dom-13-of-16, set: dom, shard: 13/16 }
+          - { step: dom-14-of-16, set: dom, shard: 14/16 }
+          - { step: dom-15-of-16, set: dom, shard: 15/16 }
+          - { step: dom-16-of-16, set: dom, shard: 16/16 }
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.MEASURE }}
+          persist-credentials: false
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # `coverage-measurement.config.ts` sits at the root and imports the Vue plugin, which only the
+      # desktop app depends on, so pnpm links it there and not at the root. One link, in this run's
+      # checkout, lets the config load; no tracked file changes.
+      - name: Let the measurement config import the Vue plugin
+        run: |
+          mkdir -p node_modules/@vitejs
+          ln -s "$(readlink -f apps/desktop/node_modules/@vitejs/plugin-vue)" node_modules/@vitejs/plugin-vue
+
+      # `cli-equivalence` chooses the real `~/.claude` and `~/.codex` as a working directory, and a
+      # fresh runner has neither CLI's home. Empty is enough; nothing reads them.
+      - name: Give the runner the two CLI homes
+        run: mkdir -p ~/.claude ~/.codex
+
+      - name: Install the Chromium the browser tests run in
+        if: matrix.set == 'dom'
+        run: pnpm --filter @brobot2/desktop exec playwright install --with-deps chromium
+
+      # A failing test is not a failed measurement: the shard still writes its blob and report, and the
+      # gate judges the tests. So the step passes when both files exist and fails, right here, when
+      # they do not (a config that would not load, a crash, a timeout).
+      - name: Measure shard ${{ matrix.shard }} (${{ matrix.set }})
+        env:
+          COVERAGE_PROJECT_SET: ${{ matrix.set }}
+          COVERAGE_STEP: ${{ matrix.step }}
+          COVERAGE_ARTIFACT_ROOT: ${{ runner.temp }}/coverage
+        run: |
+          set +e
+          pnpm exec vitest run --config coverage-measurement.config.ts --shard=${{ matrix.shard }}
+          code=$?
+          run="$COVERAGE_ARTIFACT_ROOT/runs/$COVERAGE_STEP"
+          if [ ! -s "$run/blob.json" ] || [ ! -s "$run/tests.json" ]; then
+            echo "::error::shard ${{ matrix.step }} produced no blob or report (vitest exited $code)"
+            exit 1
+          fi
+          echo "vitest exited $code; the blob and the report are there"
+
+      - name: Gather this shard's blob and report
+        if: always()
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p "$RUNNER_TEMP/out/blob" "$RUNNER_TEMP/out/tests"
+          run="$RUNNER_TEMP/coverage/runs/${{ matrix.step }}"
+          cp "$run/blob.json" "$RUNNER_TEMP/out/blob/${{ matrix.step }}.json"
+          cp "$run/tests.json" "$RUNNER_TEMP/out/tests/${{ matrix.step }}.json"
+          ls -l "$RUNNER_TEMP/out/blob" "$RUNNER_TEMP/out/tests"
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: blob-${{ matrix.step }}
+          path: ${{ runner.temp }}/out/blob/
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: tests-${{ matrix.step }}
+          path: ${{ runner.temp }}/out/tests/
+          if-no-files-found: error
+
+  merge:
+    name: merge and compare with the floors
+    needs: shard
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.MEASURE }}
+          persist-credentials: false
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # `coverage-measurement.config.ts` sits at the root and imports the Vue plugin, which only the
+      # desktop app depends on, so pnpm links it there and not at the root. One link, in this run's
+      # checkout, lets the config load; no tracked file changes.
+      - name: Let the measurement config import the Vue plugin
+        run: |
+          mkdir -p node_modules/@vitejs
+          ln -s "$(readlink -f apps/desktop/node_modules/@vitejs/plugin-vue)" node_modules/@vitejs/plugin-vue
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: blob-*
+          path: ${{ runner.temp }}/blobs
+          merge-multiple: true
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: tests-*
+          path: ${{ runner.temp }}/tests
+          merge-multiple: true
+
+      # The blobs merge in file-name order, which is the recorded order: the browser shards, then the
+      # Node ones, each by number.
+      # Fewer blobs than the matrix has shards would merge into a smaller measurement and could read as a
+      # pass, so the job stops here and names what is missing.
+      - name: Every shard's blob and report arrived
+        shell: bash
+        run: |
+          set -uo pipefail
+          expected="node-01-of-08 node-02-of-08 node-03-of-08 node-04-of-08 node-05-of-08 node-06-of-08 node-07-of-08 node-08-of-08"
+          for n in $(seq -f '%02g' 1 16); do expected="$expected dom-$n-of-16"; done
+          missing=""
+          for step in $expected; do
+            [ -s "$RUNNER_TEMP/blobs/$step.json" ] && [ -s "$RUNNER_TEMP/tests/$step.json" ] || missing="$missing $step"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::missing blob or report from:$missing ($(ls "$RUNNER_TEMP/blobs" | wc -l | tr -d ' ') of 24 blobs)"
+            exit 1
+          fi
+          echo "all 24 shards' blobs and reports are here"
+
+      - name: Merge the shard blobs natively
+        id: merge
+        env:
+          COVERAGE_PROJECT_SET: all
+          COVERAGE_STEP: merged
+          COVERAGE_ARTIFACT_ROOT: ${{ runner.temp }}/coverage
+        run: |
+          set +e
+          ls "$RUNNER_TEMP/blobs" | tee "$RUNNER_TEMP/merge-order.txt"
+          pnpm exec vitest --config coverage-measurement.config.ts --merge-reports "$RUNNER_TEMP/blobs" --reporter=json
+          code=$?
+          if [ ! -s "$COVERAGE_ARTIFACT_ROOT/runs/merged/coverage/coverage-final.json" ]; then
+            echo "::error::the merge produced no coverage report (vitest exited $code)"
+            exit 1
+          fi
+          echo "vitest exited $code; the merged report is there"
+
+      # Allowed to fail so the table and the artifacts are still written; the last step of the job fails on
+      # this step's outcome, so a failed comparison never ends as a green job.
+      - name: Compare every area with the committed floors
+        id: gate
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -uo pipefail
+          reports=()
+          for f in "$RUNNER_TEMP"/tests/*.json; do reports+=(--test-report "$f"); done
+          node scripts/coverage-gate.mjs --check-only \
+            --repo "$GITHUB_WORKSPACE" \
+            --coverage-final "$RUNNER_TEMP/coverage/runs/merged/coverage/coverage-final.json" \
+            "${reports[@]}" \
+            --out "$RUNNER_TEMP/result" | tee "$RUNNER_TEMP/gate.log"
+          exit "${PIPESTATUS[0]}"
+
+      - name: Write the table to the job summary
+        if: always()
+        shell: bash
+        run: |
+          if [ -f "$RUNNER_TEMP/result/table.md" ]; then cat "$RUNNER_TEMP/result/table.md" >> "$GITHUB_STEP_SUMMARY"
+          else echo "No table: the merge or the comparison did not produce one (merge: ${{ steps.merge.outcome }}, gate: ${{ steps.gate.outcome }})." >> "$GITHUB_STEP_SUMMARY"; fi
+
+      - name: Gather the result
+        if: always()
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p "$RUNNER_TEMP/final"
+          cp -R "$RUNNER_TEMP/result/." "$RUNNER_TEMP/final/" 2> /dev/null || true
+          cp "$RUNNER_TEMP/merge-order.txt" "$RUNNER_TEMP/gate.log" "$RUNNER_TEMP/final/" 2> /dev/null || true
+          cp "$RUNNER_TEMP/coverage/runs/merged/coverage/coverage-final.json" "$RUNNER_TEMP/coverage/runs/merged/coverage/coverage-summary.json" "$RUNNER_TEMP/final/" 2> /dev/null || true
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: coverage-result
+          path: ${{ runner.temp }}/final/
+          if-no-files-found: warn
+
+      - name: Fail when the merge or a row did
+        if: always()
+        shell: bash
+        run: |
+          [ "${{ steps.merge.outcome }}" = success ] || { echo "the native merge produced no report"; exit 1; }
+          case "${{ steps.gate.outcome }}" in success) exit 0 ;; *) echo "the comparison with the floors failed (below a floor, an unreached source, or a test beyond the known pair)"; exit 1 ;; esac

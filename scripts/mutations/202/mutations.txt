@@ -1,0 +1,61 @@
+# 202 mutations — HEAD a75d006 + working tree
+# 2026-08-21T22:33:16Z
+
+M0  CONTROL (no mutation) — baseline desktop=2142 runtime=1283 scripts=183
+    desktop GREEN 0 of 2142 in 110 files · runtime GREEN 0 of 1283 in 40 files · scripts GREEN 0 of 183 in 11 files
+
+M1 · ⛔ THE DEFECT, verbatim · the credential CHECK takes no launch — the shutting-down host still spawns an app-server for a command queued behind the quit
+    desktop RED 4 of 2142 in 110 files · runtime GREEN 0 of 1283 in 40 files · scripts GREEN 0 of 183 in 11 files
+M2 · ⛔ THE DEFECT, verbatim · the SIGN-IN takes no launch — a quit neither refuses a new one nor reaches one already in its handshake
+    desktop RED 5 of 2142 in 110 files · runtime GREEN 0 of 1283 in 40 files · scripts GREEN 0 of 183 in 11 files
+M3 · ⛔ THE DEFECT, verbatim · the teardown is not registered — the three-second bound is again the whole of what the app remembers about a child due to die at about t+8s
+    desktop RED 1 of 2142 in 110 files · runtime GREEN 0 of 1283 in 40 files · scripts GREEN 0 of 183 in 11 files
+M4 · ⛔ THE DEFECT, verbatim · `dispose` records the teardown and returns a receipt that certifies nothing — 180's `cancelWith` lesson, in the file that reaps the app-server
+    desktop GREEN 0 of 2142 in 110 files · runtime RED 1 of 1283 in 40 files · scripts GREEN 0 of 183 in 11 files
+M5 · ⛔ a second `cancel` walks past the teardown in flight instead of joining it — the quit arriving behind the user's Cancel is told the sign-in is over while it is not
+    desktop GREEN 0 of 2142 in 110 files · runtime RED 1 of 1283 in 40 files · scripts GREEN 0 of 183 in 11 files
+M6 · ⛔ THE DEFECT, verbatim · `close()` takes the void `Query.close()` and resolves — it proves only that BroBot stopped HOLDING the query, which is what 186 found from the other side
+    desktop GREEN 0 of 2142 in 110 files · runtime RED 3 of 1283 in 40 files · scripts GREEN 0 of 183 in 11 files
+M7 · ⛔ the receipt is asked for and not awaited — the same `void` in a different place
+    desktop GREEN 0 of 2142 in 110 files · runtime RED 2 of 1283 in 40 files · scripts GREEN 0 of 183 in 11 files
+M8 · ⛔ the model probe's teardown is fired and forgotten again — 068 finding 7's launch, a real CLI child up to fifteen seconds, released by nobody the quit could wait on
+    desktop GREEN 0 of 2142 in 110 files · runtime RED 1 of 1283 in 40 files · scripts GREEN 0 of 183 in 11 files
+M9 · ⛔ THE DEFECT, verbatim · `start` passes no signal to the boot gate — a queued launch sits out its full fifteen seconds and spawns at t+15s, five after the quit stopped waiting
+    desktop GREEN 0 of 2142 in 110 files · runtime RED 1 of 1283 in 40 files · scripts GREEN 0 of 183 in 11 files
+M10 · ⛔ …and neither does the model probe, which is the app-server that usually wins this race (180): it boots first, because the launcher asks on mount
+    desktop GREEN 0 of 2142 in 110 files · runtime RED 1 of 1283 in 40 files · scripts GREEN 0 of 183 in 11 files
+M11 · ⛔ an abandoned wait is treated as 180's fail-open — the signal reaches the gate and the gate hands out a slot anyway, which is the same spawn arriving sooner
+    desktop GREEN 0 of 2142 in 110 files · runtime RED 4 of 1283 in 40 files · scripts GREEN 0 of 183 in 11 files
+M12 · ⛔ 180's FAIL-OPEN is treated as an abandonment — a stuck predecessor now forbids every later launch, which is the deadlock 180 explicitly chose against
+    desktop GREEN 0 of 2142 in 110 files · runtime RED 6 of 1283 in 40 files · scripts GREEN 0 of 183 in 11 files
+M13 · 🔴 THE DEFECT, verbatim · `send` pushes the user message without re-asking whether the turn it opened is still running — the one a user meets, and it can run consequential tools
+    desktop GREEN 0 of 2142 in 110 files · runtime RED 2 of 1283 in 40 files · scripts GREEN 0 of 183 in 11 files
+M14 · ⛔ the re-check asks the WEAKER question — `hasActiveTurn` passes whenever any turn is open, and one is open in the case that matters: the user typed the next thing
+    desktop GREEN 0 of 2142 in 110 files · runtime RED 1 of 1283 in 40 files · scripts GREEN 0 of 183 in 11 files
+M15 · ⛔ the three settings control requests are unbounded again — an SDK that never answers hangs the send IPC for the life of the app, with a turn open and a person waiting
+    desktop GREEN 0 of 2142 in 110 files · runtime RED 1 of 1283 in 40 files · scripts GREEN 0 of 183 in 11 files
+M16 · 🔴 THE DEFECT, verbatim · the lockfile names no owner — a hard death leaves a file nothing can ever decide is dead, and provisioning that home fails FOREVER (198's #1)
+    desktop GREEN 0 of 2142 in 110 files · runtime RED 1 of 1283 in 40 files · scripts GREEN 0 of 183 in 11 files
+M17 · 🔴 …and the other half: a stale lock is never broken, whatever it says about itself
+    desktop GREEN 0 of 2142 in 110 files · runtime RED 3 of 1283 in 40 files · scripts GREEN 0 of 183 in 11 files
+M18 · 🔒 every lock is broken, alive or not — a lock that breaks itself for everybody is not a lock, and this one serializes credential writes into one home
+    desktop GREEN 0 of 2142 in 110 files · runtime RED 4 of 1283 in 40 files · scripts GREEN 0 of 183 in 11 files
+M19 · 🔒 a lock stamped by ANOTHER machine is judged against our own process table — a live holder elsewhere reads as a corpse because its pid means nothing here
+    desktop GREEN 0 of 2142 in 110 files · runtime RED 1 of 1283 in 40 files · scripts GREEN 0 of 183 in 11 files
+M20 · ⛔ an UNSTAMPED lock is broken whatever its age — the microseconds between taking the lock and saying so become a window in which anyone may take it from you
+    desktop GREEN 0 of 2142 in 110 files · runtime RED 2 of 1283 in 40 files · scripts GREEN 0 of 183 in 11 files
+M21 · 🔒 `describeScan` reads an unfinished walk as clean — 196 M2's defect restored one layer up, in the idiom nine probes now use to say nothing leaked
+    desktop GREEN 0 of 2142 in 110 files · runtime GREEN 0 of 1283 in 40 files · scripts RED 2 of 183 in 11 files
+M22 · ⛔ the boot slot is released at acquisition — a gate that holds nothing (180 M2 carried: its anchor was a line 202 restructured)
+    desktop GREEN 0 of 2142 in 110 files · runtime RED 10 of 1283 in 40 files · scripts GREEN 0 of 183 in 11 files
+M23 · ⛔ the check's deadline releases only its WAITER — the child keeps the home's boot gate and outlives the answer (185 M1 carried: `owner.abort()` is now the registry's)
+    desktop RED 1 of 2142 in 110 files · runtime GREEN 0 of 1283 in 40 files · scripts GREEN 0 of 183 in 11 files
+M24 · ⛔ the sign-in reservation cancels nothing — `PENDING_SIGN_IN`'s original body, the one state in which the button did nothing (185 M2 carried)
+    desktop RED 2 of 2142 in 110 files · runtime GREEN 0 of 1283 in 40 files · scripts GREEN 0 of 183 in 11 files
+M25 · ⛔ the quit cannot reach a credential check in flight — the abort no longer travels to the app-server (185 M4 carried: `authChecks` is gone, the launch's signal replaced it)
+    desktop RED 3 of 2142 in 110 files · runtime GREEN 0 of 1283 in 40 files · scripts GREEN 0 of 183 in 11 files
+M26 · ⛔ a Cancel landing as the sign-in RETURNS is lost again — the window `cancelWith` cannot cover (185 M5 carried: the controller is the launch's now)
+    desktop RED 1 of 2142 in 110 files · runtime GREEN 0 of 1283 in 40 files · scripts GREEN 0 of 183 in 11 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    desktop GREEN 0 of 2142 in 110 files · runtime GREEN 0 of 1283 in 40 files · scripts GREEN 0 of 183 in 11 files

@@ -1,0 +1,17 @@
+{
+  "format": 1,
+  "id": "defined",
+  "name": "Defined",
+  "author": "BroBot",
+  "description": "Clear lines and calm colours: every shade worked out from nine settings.",
+  "frame": { "ink": "#e3e8f4", "paper": "#182135", "accent": "#a7b7ff" },
+  "content": { "ink": "#1b2238", "paper": "#ffffff", "accent": "#4f46e5" },
+  "shared": {
+    "page": 7,
+    "line": 16,
+    "tint": 10,
+    "shadow": { "strength": 9 },
+    "borderWidth": 1,
+    "radius": 12
+  }
+}

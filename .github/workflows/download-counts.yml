@@ -1,0 +1,84 @@
+# Once a day, how many times each release file has been downloaded — written down on the
+# `download-counts` branch as `downloads.csv`. See docs/public-repo-checks.md.
+#
+# ⚑ Run whenever the repository is public, whatever its name and owner, and never on a private one.
+# A scheduled run's event names no repository, so the first job asks GitHub.
+name: Download counts
+
+on:
+  schedule:
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: download-counts
+  cancel-in-progress: false
+
+jobs:
+  visibility:
+    name: is this repository public?
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      public: ${{ steps.ask.outputs.public }}
+    steps:
+      - id: ask
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: echo "public=$(gh api "repos/$GITHUB_REPOSITORY" --jq '.private | not')" >> "$GITHUB_OUTPUT"
+
+  record:
+    name: record the day's download counts
+    needs: visibility
+    if: needs.visibility.outputs.public == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # ⚑ The one job here that writes, and it writes only its own branch.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Every release and its files
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases" > "$RUNNER_TEMP/releases.json"
+
+      - name: The record's branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git ls-remote --exit-code --heads origin download-counts > /dev/null; then
+            git fetch --depth=1 origin download-counts
+            git worktree add -B download-counts "$RUNNER_TEMP/counts" FETCH_HEAD
+          else
+            git worktree add --detach "$RUNNER_TEMP/counts"
+            git -C "$RUNNER_TEMP/counts" checkout --orphan download-counts
+            git -C "$RUNNER_TEMP/counts" rm -rfq .
+          fi
+
+      - name: Write the day down
+        shell: bash
+        run: |
+          set -euo pipefail
+          day="$(date -u +%F)"
+          node scripts/download-counts.mjs "$RUNNER_TEMP/releases.json" \
+            "$RUNNER_TEMP/counts/downloads.csv" "$day" >> "$GITHUB_STEP_SUMMARY"
+          cd "$RUNNER_TEMP/counts"
+          git add downloads.csv
+          if git diff --cached --quiet; then
+            echo "Nothing changed since the last record."
+            exit 0
+          fi
+          git -c user.name='github-actions[bot]' \
+            -c user.email='41898099+github-actions[bot]@users.noreply.github.com' \
+            commit -q -m "Download counts on $day"
+          git push origin download-counts

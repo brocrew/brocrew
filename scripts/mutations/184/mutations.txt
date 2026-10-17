@@ -1,0 +1,29 @@
+# 184 mutations — HEAD 5c5ed95 + working tree
+# 2026-08-18T02:03:23Z
+
+M0  CONTROL (no mutation) — baseline runtime=1127
+    runtime GREEN 0 of 1127 in 38 files
+
+M1 · ⛔ the key is `itemId` alone again — 182 H3's defect, verbatim
+    runtime RED 4 of 1127 in 38 files
+M2 · ⛔ a frame that declared no thread and no turn is filed under empty ids
+    runtime RED 2 of 1127 in 38 files
+M3 · ⛔ the LOOKUP throws its identity away — every file card goes blank again
+    runtime RED 17 of 1127 in 38 files
+M4 · ⛔ `patchUpdated` leaves the turn gate — foreign frames evict the live entry
+    runtime RED 2 of 1127 in 38 files
+M5 · ⛔ the three parts are joined without length prefixes — two triples, one key
+    runtime RED 1 of 1127 in 38 files
+M6 · ⛔ the TURN drops out of the key — a later turn inherits the earlier one's files
+    runtime RED 2 of 1127 in 38 files
+M7 · ⛔ the THREAD drops out of the key — a child thread answers for the parent
+    runtime RED 1 of 1127 in 38 files
+M8 · ⛔ the identities are read off the ITEM instead of the notification wrapping it
+    runtime RED 15 of 1127 in 38 files
+M9 · ⛔ only the THREAD stops being required — half of M2, on its own evidence
+    runtime RED 1 of 1127 in 38 files
+M10 · ⛔ only the TURN stops being required — the other half
+    runtime RED 2 of 1127 in 38 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1127 in 38 files

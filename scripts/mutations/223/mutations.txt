@@ -1,0 +1,43 @@
+# 223 mutations — HEAD 6a0d6a3 + working tree
+# 2026-08-27T12:19:26Z
+
+M0  CONTROL (no mutation) — baseline desktop=2507 dom=667
+    desktop GREEN 0 of 2507 in 134 files · dom GREEN 0 of 667 in 43 files
+
+M1 · ⛔ THE DEFECT · the button goes back to `!canType || blocked !== null`, so Send is lit and inert on an empty box — 221's measurement, put back
+    desktop RED 1 of 2507 in 134 files · dom RED 9 of 667 in 43 files
+M2 · …and the opposite: the button ignores CONTENT the other way and is dark even with words in the box — 118's 'there is no later', which is worse than a lit dead control
+    desktop RED 1 of 2507 in 134 files · dom RED 30 of 667 in 43 files
+M3 · ⛔ 221 §6 REVERSED · the computed stops counting attachments, so an attachment-only message is refused again and a working feature hides behind a dead control
+    desktop RED 1 of 2507 in 134 files · dom RED 3 of 667 in 43 files
+M4 · the shared predicate stops trimming, so a message of nothing but spaces lights Send and starts a turn — 077's rule enforced in letter and not in fact (221's second half)
+    desktop RED 7 of 2507 in 134 files · dom RED 2 of 667 in 43 files
+M5 · ⛔ 169 · the dark button's tooltip says `Send` again, so the control is refused and unexplained — 106 exactly, on the state a person meets first
+    desktop RED 1 of 2507 in 134 files · dom RED 4 of 667 in 43 files
+M6 · 🔴 the EMPTY-BOX sentence outranks `blocked`, so a superseded sign-in is answered with 'type a message' — the one action that cannot possibly help (219 §1, reversed)
+    desktop GREEN 0 of 2507 in 134 files · dom RED 2 of 667 in 43 files
+M7 · the sentence stops naming the ACTION and names the state instead, so a dark button says what is wrong and not what would fix it (118's 'there IS a later')
+    desktop GREEN 0 of 2507 in 134 files · dom RED 3 of 667 in 43 files
+M8 · the sentence names attaching on a mount that does not offer it — 106 one layer down, in the prose: a way forward that is not there
+    desktop GREEN 0 of 2507 in 134 files · dom RED 1 of 667 in 43 files
+M17 · ⛔ THE REGRESSION 223 INTRODUCED AND AN ADVERSARIAL PASS CAUGHT · the state clause loses its sentence, so a dark Send on an ENDED conversation tells you to type into a locked box and to use a paperclip the same render disabled — 118's 'there IS a later', reversed
+    desktop GREEN 0 of 2507 in 134 files · dom RED 1 of 667 in 43 files
+M9 · ⛔ §3 · the FOLDER tests lose their prompt, so every 'this folder blocks Send' assertion passes with the folder gate deleted — the entanglement 216 and 221 both hit
+    desktop GREEN 0 of 2507 in 134 files · dom RED 5 of 667 in 43 files
+M10 · ⛔ §3 · the same for the NAME tests — 169 §1's corpus goes back to measuring its own gate AND the absence of a content gate in one assertion
+    desktop GREEN 0 of 2507 in 134 files · dom RED 6 of 667 in 43 files
+M11 · ⛔ §3 · the one the census found beyond the nine · a restored folder that no longer exists is asserted to disable Send with an EMPTY box — green with the folder check deleted. ⚠️ SURVIVED its first run: removing a draft only WEAKENS a test, and a weaker expect still passes. It is killable because each of these files now asserts its own non-vacuity
+    desktop GREEN 0 of 2507 in 134 files · dom RED 1 of 667 in 43 files
+M12 · ⛔ the 'type, then read the button' instrument stops TYPING — the trap 223 fell into writing this file, and it turns every one of those tests into a test of the initial state
+    desktop GREEN 0 of 2507 in 134 files · dom RED 4 of 667 in 43 files
+M13 · ⛔ the renderer STORE drops its early-out, so a dead send reaches the wire again — and the census is what catches it, because an IMPORT is not a call
+    desktop RED 3 of 2507 in 134 files · dom GREEN 0 of 667 in 43 files
+M14 · ⛔ the WIRE's shaped schema stops refining, so `text: z.string()` accepts a message with no words and nothing attached — 221's defect with the bound removed instead of shared
+    desktop RED 5 of 2507 in 134 files · dom GREEN 0 of 667 in 43 files
+M15 · the census's comment stripper is disarmed, so a rule MENTIONED in prose counts as a rule asked — 206 H1's own failure mode, in the instrument built to avoid it
+    desktop RED 1 of 2507 in 134 files · dom GREEN 0 of 667 in 43 files
+M16 · ⚑ 169 M1 AND 219 M8, re-anchored and re-run · the button stops reading `blocked`, so Send is lit over `../../escape` and over a superseded sign-in again
+    desktop RED 1 of 2507 in 134 files · dom RED 26 of 667 in 43 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    desktop GREEN 0 of 2507 in 134 files · dom GREEN 0 of 667 in 43 files

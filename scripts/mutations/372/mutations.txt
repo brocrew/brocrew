@@ -1,0 +1,20 @@
+# 372 mutations — HEAD 2431e10 + working tree
+# 2026-09-07T16:08:29Z
+# project-reachability v1 topology=unproved — For each row, run every baseline project whose tests can conservatively reach an edited path; any unknown path runs every project, and every omitted measurement is written NOT RUN (out of reach), never GREEN.
+
+M0  CONTROL (no mutation) — baseline runtime=1690 desktop=3831 dom=1145 scripts=625 shared=4
+    runtime GREEN 0 of 1690 in 58 files · desktop GREEN 0 of 3831 in 207 files · dom GREEN 0 of 1145 in 84 files · scripts GREEN 0 of 625 in 29 files · shared GREEN 0 of 4 in 1 files
+
+M1 · 🔴 THE SECOND SAME-KEYSTROKE BYPASS · the deepest existing ancestor keeps the caller's spelling again, so both protected-root comparisons can miss one physical root and classify its path as `outside` instead of `refused`
+    runtime RED 1 of 1690 in 58 files · desktop GREEN 0 of 3831 in 207 files · dom GREEN 0 of 1145 in 84 files · scripts GREEN 0 of 625 in 29 files · shared GREEN 0 of 4 in 1 files
+M2 · ⛔ the OS-home boundary keeps the cwd's alternate spelling, so neither its lexical nor purportedly-real arm recognizes home and the project walk reads the personal `CLAUDE.md` files above the repository
+    runtime GREEN 0 of 1690 in 58 files · desktop RED 1 of 3831 in 207 files · dom GREEN 0 of 1145 in 84 files · scripts GREEN 0 of 625 in 29 files · shared GREEN 0 of 4 in 1 files
+M3 · ⚠️ the asset door preserves an untrusted URL's case, so a real generated image inside the provider-homes root is classified outside and returned as a 404; the paired outside-root request remains refused
+    runtime GREEN 0 of 1690 in 58 files · desktop RED 1 of 3831 in 207 files · dom GREEN 0 of 1145 in 84 files · scripts GREEN 0 of 625 in 29 files · shared GREEN 0 of 4 in 1 files
+M4 · ⚠️ the shared text-file door preserves a provider-recorded path's case, so a real file inside its declared read root becomes `not-readable`; an equally cased file outside the root is still the control
+    runtime GREEN 0 of 1690 in 58 files · desktop RED 1 of 3831 in 207 files · dom GREEN 0 of 1145 in 84 files · scripts GREEN 0 of 625 in 29 files · shared GREEN 0 of 4 in 1 files
+M5 · ⚠️ the Codex image resolver preserves the provider claim's case, so an existing raster inside `generated_images` is discarded as outside; a same-shaped real file beyond that root remains null
+    runtime RED 1 of 1690 in 58 files · desktop GREEN 0 of 3831 in 207 files · dom GREEN 0 of 1145 in 84 files · scripts GREEN 0 of 625 in 29 files · shared GREEN 0 of 4 in 1 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1690 in 58 files · desktop GREEN 0 of 3831 in 207 files · dom GREEN 0 of 1145 in 84 files · scripts GREEN 0 of 625 in 29 files · shared GREEN 0 of 4 in 1 files

@@ -1,0 +1,75 @@
+# 211 mutations — HEAD c653772 + working tree
+# 2026-08-25T02:35:25Z
+
+M0  CONTROL (no mutation) — baseline desktop=2296 dom=562 scripts=9
+    desktop GREEN 0 of 2296 in 123 files · dom GREEN 0 of 562 in 36 files · scripts GREEN 0 of 9 in 1 files
+
+M1  · ⛔ THE DEFECT, verbatim · the provider resets to the default when you come back — 210's `chose Claude, got Codex`, reproduced twice
+    desktop GREEN 0 of 2296 in 123 files · dom RED 1 of 562 in 36 files · scripts GREEN 0 of 9 in 1 files
+M2  · ⛔ THE DEFECT · the folder comes back blank — the right prompt, in the wrong working directory
+    desktop GREEN 0 of 2296 in 123 files · dom RED 2 of 562 in 36 files · scripts GREEN 0 of 9 in 1 files
+M3  · ⛔ THE DEFECT · the profile resets to BroBot — the right prompt, under the wrong identity, with the wrong memory
+    desktop GREEN 0 of 2296 in 123 files · dom RED 1 of 562 in 36 files · scripts GREEN 0 of 9 in 1 files
+M4  · §1 · the surface never reports what was chosen, so the frame holds an empty draft and the restore has nothing to restore
+    desktop GREEN 0 of 2296 in 123 files · dom RED 3 of 562 in 36 files · scripts GREEN 0 of 9 in 1 files
+M5  · ⛔ §1 · a FAILED launch clears the settings while `NewConversation` hands the words back — the defect arriving from the failure path instead of from navigation
+    desktop RED 3 of 2296 in 123 files · dom GREEN 0 of 562 in 36 files · scripts GREEN 0 of 9 in 1 files
+M6  · §1 · a conversation that opened does NOT consume the draft — the next launcher opens pre-loaded with the last conversation's provider, profile and folder
+    desktop RED 2 of 2296 in 123 files · dom GREEN 0 of 562 in 36 files · scripts GREEN 0 of 9 in 1 files
+M7  · §1 · the fine-tune fold comes back SHUT over a restored model — the launch is set up one way and the strip reads like defaults (030/106's hidden state)
+    desktop GREEN 0 of 2296 in 123 files · dom RED 1 of 562 in 36 files · scripts GREEN 0 of 9 in 1 files
+M8  · §1 · a restored folder is never re-checked, so a directory deleted while you were away keeps Send lit — 203's defect, arriving through the restore
+    desktop GREEN 0 of 2296 in 123 files · dom RED 1 of 562 in 36 files · scripts GREEN 0 of 9 in 1 files
+M9  · ⛔ THE DEFECT, verbatim · the card claims the whole APP is quiet while the live queue beside it offers a decision — 210's screen, in the largest type on it
+    desktop RED 4 of 2296 in 123 files · dom GREEN 0 of 562 in 36 files · scripts GREEN 0 of 9 in 1 files
+M10 · ⛔ §2 · *safe to close the app* is back — the sentence this card has never been able to back, about running conversations it has never read (202)
+    desktop RED 2 of 2296 in 123 files · dom GREEN 0 of 562 in 36 files · scripts GREEN 0 of 9 in 1 files
+M11 · §2 · the pill says ALL CAUGHT UP again — the same whole-app claim in the badge
+    desktop RED 2 of 2296 in 123 files · dom GREEN 0 of 562 in 36 files · scripts GREEN 0 of 9 in 1 files
+M12 · §2 · the seed's digest is gated on the LIVE queue again — 205's silent inversion, where fixture bullets appear only while a real conversation is waiting
+    desktop RED 1 of 2296 in 123 files · dom GREEN 0 of 562 in 36 files · scripts GREEN 0 of 9 in 1 files
+M13 · ⛔ §3 · a session reopened part-way through its ledger names itself after the oldest message it happens to hold — a row that INVENTS one looks exactly like a row that knows
+    desktop RED 1 of 2296 in 123 files · dom RED 1 of 562 in 36 files · scripts GREEN 0 of 9 in 1 files
+M14 · 🔒 §3 · a line only a PROVIDER FILE claims becomes the row's identity (074) — the shape that made `approved, ship it` read as something the person typed
+    desktop RED 1 of 2296 in 123 files · dom GREEN 0 of 562 in 36 files · scripts GREEN 0 of 9 in 1 files
+M15 · §3 · the LATEST message overwrites the opening, so the row's identity changes under the reader every turn
+    desktop RED 1 of 2296 in 123 files · dom GREEN 0 of 562 in 36 files · scripts GREEN 0 of 9 in 1 files
+M16 · §3 · a pasted multi-line prompt keeps its newlines — a row of blanks where the cue should be
+    desktop RED 1 of 2296 in 123 files · dom GREEN 0 of 562 in 36 files · scripts GREEN 0 of 9 in 1 files
+M17 · §3 · the bound goes, so a 9,000-character paste becomes the row's title and its `title` attribute
+    desktop RED 1 of 2296 in 123 files · dom RED 1 of 562 in 36 files · scripts GREEN 0 of 9 in 1 files
+M18 · ⛔ THE DEFECT, verbatim · the row draws no opening line — two conversations sharing a profile and a folder read `workspace-a / codex · idle`, twice
+    desktop GREEN 0 of 2296 in 123 files · dom RED 3 of 562 in 36 files · scripts GREEN 0 of 9 in 1 files
+M19 · §4 · the toggle stops showing the boundaries it names — turning it on changes nothing, which is the tooltip false in the other direction
+    desktop RED 4 of 2296 in 123 files · dom RED 1 of 562 in 36 files · scripts GREEN 0 of 9 in 1 files
+M20 · ⛔ THE DEFECT, verbatim · every recognized whisper is back in the conversation — 210's 208 `item/plan/delta` markers, over the plan they buried
+    desktop RED 7 of 2296 in 123 files · dom RED 1 of 562 in 36 files · scripts GREEN 0 of 9 in 1 files
+M21 · ⛔ §4 · the OTHER half of `debug shows everything` — `visibleItems` short-circuits again, so the filter is correct and the whole transcript ignores it
+    desktop RED 2 of 2296 in 123 files · dom RED 1 of 562 in 36 files · scripts GREEN 0 of 9 in 1 files
+M22 · §4 · the tooltip promises `idle gaps` again — a noun no mode has ever been able to show, because an `idle` status appends no item at all
+    desktop RED 2 of 2296 in 123 files · dom GREEN 0 of 562 in 36 files · scripts GREEN 0 of 9 in 1 files
+M23 · §4 · a superseded tool call is drawn again in the lifecycle view — the checklist and the calls it was built from, the same fact twice
+    desktop RED 2 of 2296 in 123 files · dom GREEN 0 of 562 in 36 files · scripts GREEN 0 of 9 in 1 files
+M24 · ⛔ §4 · the raw row loses the category, so the classification the conversation no longer draws is countable NOWHERE — a filter blinding the instrument that justifies it
+    desktop RED 3 of 2296 in 123 files · dom GREEN 0 of 562 in 36 files · scripts GREEN 0 of 9 in 1 files
+M25 · §5 · a boundary exactly now schedules a zero-delay timeout that re-reads the same minute and schedules another — a spin, on the cheapest thing on the screen
+    desktop RED 4 of 2296 in 123 files · dom GREEN 0 of 562 in 36 files · scripts GREEN 0 of 9 in 1 files
+M26 · ⛔ §5 · the clock ticks once and stops — 210's `opened at 00:43, still 00:43 at 00:46`, one minute later than before
+    desktop RED 2 of 2296 in 123 files · dom GREEN 0 of 562 in 36 files · scripts GREEN 0 of 9 in 1 files
+M27 · §5 · the timer outlives the surface that owns it — 099's cost, on every visit to Home
+    desktop RED 1 of 2296 in 123 files · dom GREEN 0 of 562 in 36 files · scripts GREEN 0 of 9 in 1 files
+M28 · ⛔ THE DEFECT, verbatim · LOCAL TIME is the navigation-time snapshot again — the seed's frozen night under a heading that says what time it is
+    desktop RED 1 of 2296 in 123 files · dom GREEN 0 of 562 in 36 files · scripts GREEN 0 of 9 in 1 files
+M29 · §5 · the greeting and the stat read different clocks — 009's `one surface, two claims about the time of day`, restored
+    desktop RED 1 of 2296 in 123 files · dom GREEN 0 of 562 in 36 files · scripts GREEN 0 of 9 in 1 files
+M30 · ⛔ criterion 8 · a billed message is counted once per FILE that replayed it, so every run that reopens a conversation reports more spend than it made
+    desktop GREEN 0 of 2296 in 123 files · dom GREEN 0 of 562 in 36 files · scripts RED 1 of 9 in 1 files
+M31 · ⛔ criterion 8 · a model this file has no rate for is folded into the total as FREE — a confident number with a whole model missing from it
+    desktop GREEN 0 of 2296 in 123 files · dom GREEN 0 of 562 in 36 files · scripts RED 1 of 9 in 1 files
+M32 · criterion 8 · the total stops SAYING that a model went unpriced, so the omission is silent — the one thing worse than no total
+    desktop GREEN 0 of 2296 in 123 files · dom GREEN 0 of 562 in 36 files · scripts RED 1 of 9 in 1 files
+M33 · criterion 8 · a cache write whose TTL the wire did not state is charged at the DEARER 1-hour rate, so the run overstates what it spent
+    desktop GREEN 0 of 2296 in 123 files · dom GREEN 0 of 562 in 36 files · scripts RED 1 of 9 in 1 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    desktop GREEN 0 of 2296 in 123 files · dom GREEN 0 of 562 in 36 files · scripts GREEN 0 of 9 in 1 files

@@ -1,0 +1,39 @@
+# 233 mutations — HEAD e2e9a3f + working tree
+# 2026-08-28T13:24:36Z
+
+M0  CONTROL (no mutation) — baseline runtime=1305 desktop=2513 dom=668 scripts=233
+    runtime GREEN 0 of 1305 in 40 files · desktop GREEN 0 of 2513 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+
+M1 · 🔴 THE DEFECT, verbatim (229 H1) · the two promises collapsed back into one — the launch is owned against our own bounded teardown, so a Claude that resolves close() while its child lives is recorded as terminated
+    runtime GREEN 0 of 1305 in 40 files · desktop RED 5 of 2513 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M2 · ⛔ §3 · the bound is measured against our own teardown again, so `stopped` goes back to meaning `close() answered in time` — and `writerStopped` certifies a file that may still be being written
+    runtime GREEN 0 of 1305 in 40 files · desktop RED 1 of 2513 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M3 · ⛔ §2 · the Claude handle answers the termination question with its own teardown — the exact substitution 229 H1 names, one method further down
+    runtime RED 3 of 1305 in 40 files · desktop GREEN 0 of 2513 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M4 · ⛔ the fact becomes an assumption · the witness reports `nothing running` whether or not a child was ever spawned, which is a resolved promise with nothing behind it
+    runtime RED 3 of 1305 in 40 files · desktop GREEN 0 of 2513 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M5 · ⛔ §2 · `start` stops handing the SDK our spawn, so the CLI child goes back to being the SDK's private property and there is no fact to publish
+    runtime RED 6 of 1305 in 40 files · desktop GREEN 0 of 2513 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M6 · ⛔ the RESUME half — the one 233's first draft left untested. `resumeOptions` spreads `optionsFor`, so the hook has to be written twice; deleting this one compiled and kept every test green until the adversarial pass asked
+    runtime RED 1 of 1305 in 40 files · desktop GREEN 0 of 2513 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M7 · ⛔ an ERROR is read as a death · the SDK forwards its abort to `spawn({signal})`, so a live child emits AbortError at the graceful window — settling here reports termination at the moment we ASKED for a kill
+    runtime RED 1 of 1305 in 40 files · desktop GREEN 0 of 2513 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M8 · ⛔ 074's rule dropped · the pid of a process that has exited is republished, and Node does not clear it — `codex-transport.ts` carries the measurement across v20/v22/v24 and Electron 43
+    runtime RED 1 of 1305 in 40 files · desktop GREEN 0 of 2513 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M9 · 🔴 the stderr drain removed · `SpawnedProcess` has no `stderr` member, so nothing in the SDK reads a custom child's — an unconsumed pipe wedges the CLI once the buffer fills
+    runtime RED 1 of 1305 in 40 files · desktop GREEN 0 of 2513 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M10 · one fact, two promises · the no-child branch mints a fresh `Promise.resolve()` per call, so `awaitProcessExit`'s stated idempotence holds for a session that spawned and silently breaks for one that did not
+    runtime RED 1 of 1305 in 40 files · desktop GREEN 0 of 2513 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M11 · ⛔ FOUND BY THIS DISPATCH'S OWN ADVERSARIAL PASS · `handBack` registers the bounded close again, so pressing Close during a start and Reopen straight after frees the id while the CLI child is alive — under a comment promising exactly the opposite
+    runtime GREEN 0 of 1305 in 40 files · desktop RED 1 of 2513 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M12 · ⛔ the third hand-back site · `giveUpOnLaunch` owns a provider that arrived after the launch was abandoned against the teardown rather than against the process
+    runtime GREEN 0 of 1305 in 40 files · desktop RED 1 of 2513 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M13 · ⛔ Codex answers with a settled promise · the same over-claim as Claude's, made by a transport that genuinely owns a pid
+    runtime RED 2 of 1305 in 40 files · desktop GREEN 0 of 2513 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M14 · Codex stops collecting the exit at all · `onExit` no longer settles the fact, so the promise the transport publishes is one nothing can resolve
+    runtime RED 1 of 1305 in 40 files · desktop GREEN 0 of 2513 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M15 · the header says the pid belongs to the SDK again — a sentence this dispatch makes false by spawning the child itself
+    runtime GREEN 0 of 1305 in 40 files · desktop RED 1 of 2513 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1305 in 40 files · desktop GREEN 0 of 2513 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files

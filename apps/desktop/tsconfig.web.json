@@ -1,0 +1,25 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["vite/client"],
+    "jsx": "preserve",
+    "noEmit": true
+  },
+  "include": [
+    "src/renderer/**/*.ts",
+    "src/renderer/**/*.vue",
+    "src/renderer/**/*.d.ts",
+    "src/shared/**/*.ts",
+    // A test that RENDERS a component is a renderer file: it imports an SFC, so it has to be
+    // checked by vue-tsc rather than by the node project's plain tsc.
+    "test/**/*.render.test.ts",
+    // ⚠️ The engine tier (083) is renderer code twice over: it imports SFCs *and* it touches
+    // `document`, `HTMLElement` and `getComputedStyle`, none of which are in the node project's
+    // `lib`. Everything under `test/dom` — the harness included, which is why this is the
+    // directory rather than the `.dom.test.ts` suffix.
+    "test/dom/**/*.ts",
+    // 🎨 The design tool's scenes (`vitest.look.config.ts`): renderer code, mounted in Chromium.
+    "look/**/*.ts"
+  ]
+}

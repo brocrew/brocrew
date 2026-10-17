@@ -1,0 +1,50 @@
+# 166 mutations — HEAD 671484a + working tree
+# 2026-08-16T02:16:21Z
+
+M0  CONTROL (no mutation) — baseline runtime=331 desktop=31
+    runtime GREEN 0 of 331 in 4 files
+          desktop GREEN 0 of 31 in 1 files
+
+M1 · ⛔ THE FEATURE · the launch option goes, so the provider derives the per-cwd directory again and the same developer meets a blank memory in the next repository
+    runtime RED 3 of 331 in 4 files
+          desktop GREEN 0 of 31 in 1 files
+M2 · the directory becomes the provider HOME itself — a plausible simplification that also widens §2's exemption to every file in the home, including settings.json
+    runtime RED 10 of 331 in 4 files
+          desktop RED 1 of 31 in 1 files
+M3 · 🔴 106's OWN PREDICTION · the ultracode line assigns instead of merging, so every ultracode session silently loses its memory directory
+    runtime RED 2 of 331 in 4 files
+          desktop GREEN 0 of 31 in 1 files
+M4 · the model probe stops sending it, so ONE profile has two answers to where it remembers
+    runtime RED 1 of 331 in 4 files
+          desktop GREEN 0 of 31 in 1 files
+M5 · ⛔ THE CARD IS BACK · `continue` instead of `allow`, which hands the call to the rule engine and publishes the permission request 166 exists to remove
+    runtime RED 1 of 331 in 4 files
+          desktop GREEN 0 of 31 in 1 files
+M6 · the exemption widens from the memory directory to the whole provider home — plans, CLAUDE.md and settings.json all stop raising cards
+    runtime RED 2 of 331 in 4 files
+          desktop GREEN 0 of 31 in 1 files
+M7 · ⛔ 032's SECOND PREDICATE · containment becomes a `startsWith` on `file_path`, so the prefix trap opens and every other string in the input stops being examined
+    runtime RED 2 of 331 in 4 files
+          desktop GREEN 0 of 31 in 1 files
+M8 · the exemption moves ABOVE the plan-mode floor, so a planning session writes outside its plan file — 150's carve-out widened by association
+    runtime RED 1 of 331 in 4 files
+          desktop GREEN 0 of 31 in 1 files
+M9 · it moves ABOVE the protected-path refusal, so a symlink out of the memory directory carries a write into the credential store with nothing to click
+    runtime RED 1 of 331 in 4 files
+          desktop GREEN 0 of 31 in 1 files
+M10 · it moves ABOVE 063's question routing, so a question can be answered by the app instead of by the user by naming a path inside the memory directory
+    runtime RED 1 of 331 in 4 files
+          desktop GREEN 0 of 31 in 1 files
+M11 · the drawer keeps looking where the memory USED to be, so the surface 165 built goes blank the moment 166 moves the file
+    runtime GREEN 0 of 331 in 4 files
+          desktop RED 3 of 31 in 1 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 331 in 4 files
+          desktop GREEN 0 of 31 in 1 files
+
+# ⛔ 188 (from 168 L6): this artefact records a WORKING-TREE run against HEAD 671484a and carries no
+# content hashes, so on its own it cannot say whether the files it mutated are still the files these
+# results were measured against. `scripts/mutations/CENSUS.md` is that attestation now — it pins the
+# SHA-256 of every file this table touches and names which of these rows can still apply at all.
+# ⚠️ Six of the eleven rows in this table can NOT: they are retired in place, and their RED is history.

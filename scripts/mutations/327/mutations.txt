@@ -1,0 +1,72 @@
+# 327 mutations — HEAD 286b48a + working tree
+# 2026-09-04T20:43:49Z
+# project-reachability v1 topology=unproved — For each row, run every baseline project whose tests can conservatively reach an edited path; any unknown path runs every project, and every omitted measurement is written NOT RUN (out of reach), never GREEN.
+
+M0  CONTROL (no mutation) — baseline runtime=1605 desktop=3287 dom=924 scripts=329 shared=3
+    runtime GREEN 0 of 1605 in 53 files · desktop GREEN 0 of 3287 in 177 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files · shared GREEN 0 of 3 in 1 files
+
+M1 · ⛔ THE DEFECT, verbatim · the row goes back to the word `mcp` — the whole ticket. ⚠️ Every other fact still lands, which is why the killer has to assert the NAME
+    runtime RED 6 of 1605 in 53 files · desktop GREEN 0 of 3287 in 177 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files · shared GREEN 0 of 3 in 1 files
+M2 · 🔴 THE DEFECT's other half · the result repeats the CALL instead of saying what came back — `316`'s `summary: "mcpToolCall"`, and the failure reason with it
+    runtime RED 12 of 1605 in 53 files · desktop GREEN 0 of 3287 in 177 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files · shared GREEN 0 of 3 in 1 files
+M3 · ⛔ the arguments are dropped and the item TYPE stands where they were — the `itemSummary` fallback this kind used to reach
+    runtime RED 5 of 1605 in 53 files · desktop GREEN 0 of 3287 in 177 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files · shared GREEN 0 of 3 in 1 files
+M4 · ⚠️ the SERVER is dropped from the name, so a row names a tool without saying whose — two servers exposing `search` become one row
+    runtime RED 6 of 1605 in 53 files · desktop GREEN 0 of 3287 in 177 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files · shared GREEN 0 of 3 in 1 files
+M5 · ⚠️ the TOOL is dropped, so every call to one server reads identically
+    runtime RED 5 of 1605 in 53 files · desktop GREEN 0 of 3287 in 177 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files · shared GREEN 0 of 3 in 1 files
+M6 · 🔴 the two halves are swapped — a name that is well-formed, plausible, and names the wrong thing in both positions
+    runtime RED 5 of 1605 in 53 files · desktop GREEN 0 of 3287 in 177 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files · shared GREEN 0 of 3 in 1 files
+M7 · ⛔ the malformed guard becomes `||`, so a missing server INVENTS one out of the tool name — `mcp__echo_probe` reads as a server called `echo_probe`
+    runtime RED 5 of 1605 in 53 files · desktop GREEN 0 of 3287 in 177 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files · shared GREEN 0 of 3 in 1 files
+M8 · 🔴 THE BRIEF's own version · only `error.message` is read, which is what `327` §2.2 asked for — and the row then says nothing at all about a tool that THREW, the commoner of the two measured failures
+    runtime RED 7 of 1605 in 53 files · desktop GREEN 0 of 3287 in 177 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files · shared GREEN 0 of 3 in 1 files
+M9 · 🔴 the mirror · only the result is read, so a TIMEOUT — which carries no result at all — settles as the word `done` beside a red dot
+    runtime RED 11 of 1605 in 53 files · desktop GREEN 0 of 3287 in 177 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files · shared GREEN 0 of 3 in 1 files
+M10 · ⛔ the bare-string `error` branch goes, so a non-conformant server's reason falls through to `done` — `068`'s hazard, on the one field it was found on
+    runtime RED 1 of 1605 in 53 files · desktop GREEN 0 of 3287 in 177 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files · shared GREEN 0 of 3 in 1 files
+M11 · ⚠️ the provider's multi-line failure is left as sent, so `\n\nCaused by:\n    ` pushes the sentence that says WHAT failed past a `white-space: nowrap` clip
+    runtime RED 2 of 1605 in 53 files · desktop GREEN 0 of 3287 in 177 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files · shared GREEN 0 of 3 in 1 files
+M12 · 🔴 the truthiness trap · `0` is dropped, so the duration disappears from exactly the rows where how FAST it failed is the interesting part — measured, the thrown arm reported `durationMs: 0`
+    runtime RED 2 of 1605 in 53 files · desktop GREEN 0 of 3287 in 177 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files · shared GREEN 0 of 3 in 1 files
+M13 · ⚑ THE CONTROL in the other direction · the duration is read for every tool item, which changes what every shell row in the app shows — a widening this dispatch was not asked for
+    runtime RED 1 of 1605 in 53 files · desktop GREEN 0 of 3287 in 177 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files · shared GREEN 0 of 3 in 1 files
+M14 · ⚠️ a nonsense negative duration is admitted, and fails schema validation for the WHOLE event rather than costing its own field
+    runtime RED 1 of 1605 in 53 files · desktop GREEN 0 of 3287 in 177 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files · shared GREEN 0 of 3 in 1 files
+M15 · ⛔ the duration is put on the CALL as well, where the wire says `null` — a row that states how long something took before it has finished, and a field `toolCallSchema` does not declare at all
+    runtime RED 1 of 1605 in 53 files · desktop GREEN 0 of 3287 in 177 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files · shared GREEN 0 of 3 in 1 files
+M16 · 🔴 the remainder is not stated, so a 90 047-character answer and a 201-character one render as the same row — `187 §2`'s rule, dropped
+    runtime RED 4 of 1605 in 53 files · desktop GREEN 0 of 3287 in 177 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files · shared GREEN 0 of 3 in 1 files
+M17 · ⚠️ off by one · a result that exactly FITS is reported as bounded, so the row claims a loss that did not happen
+    runtime RED 1 of 1605 in 53 files · desktop GREEN 0 of 3287 in 177 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files · shared GREEN 0 of 3 in 1 files
+M18 · ⛔ the cap is raised past anything real, so ninety kilobytes of a third party's output is cloned across IPC and written to the ledger twice
+    runtime RED 4 of 1605 in 53 files · desktop GREEN 0 of 3287 in 177 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files · shared GREEN 0 of 3 in 1 files
+M19 · 🔴 `316`'s OTHER shape, repeated here · the payload is replaced WHOLESALE by an erasure marker instead of truncated, so what the server said is gone from a summary line
+    runtime RED 4 of 1605 in 53 files · desktop GREEN 0 of 3287 in 177 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files · shared GREEN 0 of 3 in 1 files
+M20 · ⚠️ the ARGUMENTS escape the bound — the half of the row nobody thinks of as a payload, and the one a caller controls directly
+    runtime RED 1 of 1605 in 53 files · desktop GREEN 0 of 3287 in 177 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files · shared GREEN 0 of 3 in 1 files
+M21 · ⛔ the NAME escapes the bound · it stopped being a literal from a Map in this very dispatch, and `toolCallSchema.name` carries no `.max()` — found reviewing 327's own diff
+    runtime RED 1 of 1605 in 53 files · desktop GREEN 0 of 3287 in 177 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files · shared GREEN 0 of 3 in 1 files
+M22 · ⚠️ the join goes back to interpolation, so a call with NO arguments opens its result row with a dangling em dash
+    runtime RED 1 of 1605 in 53 files · desktop GREEN 0 of 3287 in 177 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files · shared GREEN 0 of 3 in 1 files
+M23 · ⛔ an absent `arguments` is narrated as the string `null` rather than left empty — a row that says the model sent something it did not
+    runtime RED 1 of 1605 in 53 files · desktop GREEN 0 of 3287 in 177 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files · shared GREEN 0 of 3 in 1 files
+M24 · ⚑ the empty-result word is invented rather than borrowed · `316`'s memory call really did return `{}`, and Claude's own row says `done`
+    runtime RED 2 of 1605 in 53 files · desktop GREEN 0 of 3287 in 177 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files · shared GREEN 0 of 3 in 1 files
+M25 · ⚠️ `structuredContent` is never read, so a server that sends only the machine half settles as `done` with its answer discarded
+    runtime RED 2 of 1605 in 53 files · desktop GREEN 0 of 3287 in 177 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files · shared GREEN 0 of 3 in 1 files
+M26 · ⛔ `appContext` is carried onto the row after all — machinery for a payload nobody has measured, which is the ruling `327` §2.5 made in the other direction
+    runtime RED 1 of 1605 in 53 files · desktop GREEN 0 of 3287 in 177 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files · shared GREEN 0 of 3 in 1 files
+M27 · ⚠️ the result summary is left unbounded on the `structuredContent` path only — one escape route out of three, which is the shape a partial fix leaves behind
+    runtime RED 1 of 1605 in 53 files · desktop GREEN 0 of 3287 in 177 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files · shared GREEN 0 of 3 in 1 files
+M28 · 🔴 the row ignores the provider's own number and prints the host-clock span instead — measured, 7 ms of envelopes for a call the provider timed at 4, and worse under load
+    runtime GREEN 0 of 1605 in 53 files · desktop RED 3 of 3287 in 177 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files · shared GREEN 0 of 3 in 1 files
+M29 · ⛔ `248`, undone · the provider's duration is printed for DETACHED work too, so a command that is still running gets a completion time beside `still running`
+    runtime GREEN 0 of 1605 in 53 files · desktop RED 2 of 3287 in 177 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files · shared GREEN 0 of 3 in 1 files
+M30 · 🔴 the truthiness trap again, one layer up · the FOLD drops a measured `0`, so the normalizer's care is undone between it and the screen
+    runtime GREEN 0 of 1605 in 53 files · desktop RED 1 of 3287 in 177 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files · shared GREEN 0 of 3 in 1 files
+M31 · ⚠️ the card row writes a `durationMs` its own type does not declare and nothing can render — an object spread writes past a declared type with no error, which is how the first draft of this dispatch shipped it
+    runtime GREEN 0 of 1605 in 53 files · desktop RED 1 of 3287 in 177 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files · shared GREEN 0 of 3 in 1 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1605 in 53 files · desktop GREEN 0 of 3287 in 177 files · dom GREEN 0 of 924 in 67 files · scripts GREEN 0 of 329 in 19 files · shared GREEN 0 of 3 in 1 files

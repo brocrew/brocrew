@@ -1,0 +1,18 @@
+# 493 mutations — HEAD cf724d26 + working tree
+# 2026-09-16T16:11:15Z
+# project-reachability v1 topology=unproved — For each row, run every baseline project whose tests can conservatively reach an edited path; any unknown path runs every project, and every omitted measurement is written NOT RUN (out of reach), never GREEN.
+
+M0  CONTROL (no mutation) — baseline runtime=1792 desktop=5761 dom=1497 scripts=745 shared=4
+    runtime GREEN 0 of 1792 in 62 files · desktop GREEN 0 of 5761 in 295 files · dom GREEN 0 of 1497 in 105 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+
+M1 · 🔴 BroBot is specially seeded with global interrupt reach · the ordinary path can interrupt and end its cross-project PM without any person's edit
+    runtime GREEN 0 of 1792 in 62 files · desktop RED 3 of 5761 in 295 files · dom GREEN 0 of 1497 in 105 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M2 · ⛔ `can_interrupt` is ruled global · every unchosen identity resolves to `any`, so the same ordinary refusal disappears without a BroBot-specific seed
+    runtime GREEN 0 of 1792 in 62 files · desktop RED 10 of 5761 in 295 files · dom RED 1 of 1497 in 105 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M3 · 🔴 `message_agent` reads the interrupt column · BroBot's seeded global message grant becomes inert and the ordinary cross-project work is refused
+    runtime GREEN 0 of 1792 in 62 files · desktop RED 37 of 5761 in 295 files · dom GREEN 0 of 1497 in 105 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M4 · ⚠️ the interrupt disclosure claims the messaging widening · `any` again says it reaches a conversation whoever started it, while both destructive doors still require command provenance
+    runtime GREEN 0 of 1792 in 62 files · desktop RED 2 of 5761 in 295 files · dom RED 1 of 1497 in 105 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1792 in 62 files · desktop GREEN 0 of 5761 in 295 files · dom GREEN 0 of 1497 in 105 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files

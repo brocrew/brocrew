@@ -1,0 +1,242 @@
+# The Windows build (F072): an UNSIGNED NSIS installer of BroBot for Windows x64, built on GitHub's
+# Windows runner and published as a prerelease on the tag that started it, so a beta tester can download
+# and install it (Windows SmartScreen warns: More info → Run anyway). This workflow signs nothing.
+#
+# ⚑ Build the branch the app is really run from: `develop` (what BroBot's own window runs: dev, the
+# prompts and the UI together), or `main` once it carries the UI. A branch without the Providers
+# screen gives the tester no way to enter an API key, and on Windows a key is the way in.
+#
+# ⚑ Opt-in, so it does not spend Windows minutes on every push:
+#   - a pushed tag `windows-beta-*` builds the commit it names — the way to build `develop` without
+#     committing on it: `git tag windows-beta-1 develop && git push origin windows-beta-1`;
+#   - a pushed tag `beta-*` builds Windows AND the Mac (`macos.yml`) into one prerelease;
+#   - by hand: `gh workflow run windows.yml --ref develop` (or Actions → Windows build → Run
+#     workflow, and pick the branch), once this file is on the default branch;
+#   - a push to `develop` or `main` whose head commit message carries `+ci:windows` (or `+ci`) as a
+#     word of its own.
+#
+# ⚑ It needs no secret of its own: the job's `GITHUB_TOKEN` (with `contents: write`, on that job
+# only) publishes the installer.
+#
+# ⚑ What it proves on the runner before anything is published — `scripts/windows-packaged-check.mjs`
+# on the unpacked build: Codex is in it and runs, and no Claude Code is; the database module loads
+# inside the packaged app; the Claude API key reaches Claude Code the way BroBot hands it over on
+# Windows while a command Claude Code runs does not see it (a fake key, a local server playing the
+# model, and the newest tested Claude Code, named in
+# `apps/desktop/src/main/runtime/claude-code-tested.json` and installed with npm outside the app);
+# and the app, launched on the runner's empty profile, keeps its data in
+# `%APPDATA%\@brobot2\desktop`, whatever the app is called.
+name: Windows build
+
+on:
+  push:
+    branches: [develop, main]
+    # ⚑ A push matches when its branch OR its tag does.
+    tags: ['windows-beta-*', 'beta-*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # Electron and electron-builder downloads in one workspace folder, so one cache entry keeps them.
+  # `electron_config_cache` is the name Electron's own install step reads.
+  ELECTRON_CACHE: ${{ github.workspace }}/.cache/electron
+  electron_config_cache: ${{ github.workspace }}/.cache/electron
+  ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.cache/electron-builder
+
+jobs:
+  flags:
+    name: Does this push ask for a Windows build?
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      win: ${{ steps.flags.outputs.win }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - id: flags
+        shell: bash
+        run: |
+          msg="$(git log -1 --pretty=%B)"
+          if printf '%s' "$msg" | grep -qE '(^|[[:space:]])\+ci(:windows)?([[:space:]]|$)'; then
+            win=true
+          else
+            win=false
+          fi
+          echo "win=$win" >> "$GITHUB_OUTPUT"
+          echo "The head commit asks for a Windows build (+ci / +ci:windows): $win"
+
+  windows:
+    name: Build the Windows installer (NSIS, x64, unsigned)
+    needs: flags
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.ref, 'refs/tags/windows-beta-') ||
+      startsWith(github.ref, 'refs/tags/beta-') ||
+      needs.flags.outputs.win == 'true'
+    # ⚑ `windows-2022`, not `windows-latest`: installing runs node-gyp for better-sqlite3 (it builds
+    # nothing — the package ships its Windows prebuild — but node-gyp must first find a Visual Studio
+    # it knows), and pnpm's node-gyp 11 does not know the Visual Studio 2026 the Windows Server 2025
+    # image carries. Measured on the first run (`windows-beta-1`): "could not find a version of
+    # Visual Studio 2017 or newer to use". The 2022 image carries Visual Studio 2022.
+    runs-on: windows-2022
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    # One build per branch at a time: a newer build replaces one still running. ⚑ Here and not on
+    # the workflow, so a push that asks for no build cannot cancel one that is running.
+    concurrency:
+      group: windows-build-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: pnpm
+
+      - name: Cache Electron downloads
+        uses: actions/cache@v4
+        with:
+          path: .cache
+          key: ${{ runner.os }}-electron-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-electron-
+
+      # pnpm installs the win32 build of Codex (its optional platform package), which the app
+      # carries, and the Agent SDK's Claude Code package, which the build leaves out. The database
+      # module carries its own Windows prebuild.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The recovery tests on this OS's own file system: real data folders and the real recovery
+      # service, with no credentials and no Electron. Before packaging, which rebuilds the database
+      # module for Electron. A run that collects no test fails, so a moved folder cannot pass.
+      - name: Recovery tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          report="${RUNNER_TEMP//\\//}/recovery-tests.json"
+          pnpm exec vitest run --project desktop test/recovery/ --reporter=default --reporter=json --outputFile.json="$report"
+          node -e "const r = require(process.argv[1]); if (!(r.numTotalTests > 0 && r.numPassedTests > 0)) { console.error('The recovery tests collected no test.'); process.exit(1) } console.log(r.numPassedTests + ' recovery tests passed.')" "$report"
+
+      # The installer carries `THIRD-PARTY-NOTICES.md`; its list of npm packages must be the one
+      # this lockfile installs.
+      - name: The third-party notices are up to date
+        run: node scripts/third-party-notices.mjs --check
+
+      - name: Build and package (NSIS, x64, unsigned)
+        run: pnpm --filter @brobot2/desktop package:win
+
+      # The app carries no Claude Code, so the check runs the newest tested version, installed with
+      # npm outside the app as a person would. npm puts the native program at `bin/claude.exe` in
+      # the package.
+      - name: Install Claude Code (the newest tested version) outside the app
+        id: claude
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./apps/desktop/src/main/runtime/claude-code-tested.json').newest")"
+          prefix="${RUNNER_TEMP//\\//}/claude-code"
+          npm install --prefix "$prefix" --no-audit --no-fund "@anthropic-ai/claude-code@$version"
+          program="$prefix/node_modules/@anthropic-ai/claude-code/bin/claude.exe"
+          [ -f "$program" ] || { echo "npm installed Claude Code $version, and there is no $program"; exit 1; }
+          echo "program=$program" >> "$GITHUB_OUTPUT"
+          echo "Claude Code $version: $program"
+
+      - name: Check the build (Codex and no Claude Code, the database module, the API key's way in, the data folder)
+        env:
+          BROBOT_CHECK_CLAUDE: ${{ steps.claude.outputs.program }}
+        run: node scripts/windows-packaged-check.mjs apps/desktop/dist/win-unpacked
+
+      # Every build is version `0.0.0` until releases are numbered, so its tag — or, built from a
+      # branch, its commit — is what tells two installers apart: `BroCrew-Setup-0.0.0-x64-windows-beta-1.exe`,
+      # or `BroCrew-Setup-0.0.0-x64-1a2b3c4.exe`.
+      - name: Name the installer by its commit
+        id: installer
+        shell: bash
+        run: |
+          set -euo pipefail
+          built=$(ls apps/desktop/dist/*.exe | head -n 1)
+          if [ "$GITHUB_REF_TYPE" = tag ]; then label="$GITHUB_REF_NAME"; else label=$(git rev-parse --short=7 HEAD); fi
+          named="apps/desktop/dist/$(basename "$built" .exe)-${label}.exe"
+          mv "$built" "$named"
+          echo "path=$named" >> "$GITHUB_OUTPUT"
+          echo "Installer: $named ($(du -h "$named" | cut -f1))"
+
+      - name: Keep the installer with this run
+        continue-on-error: true # a full artifact quota must not fail a good build
+        uses: actions/upload-artifact@v4
+        with:
+          name: brobot2-windows
+          path: ${{ steps.installer.outputs.path }}
+          if-no-files-found: error
+          retention-days: 7
+
+      # ⚑ A tag build is published as a prerelease ON ITS OWN TAG (`windows-beta-N`), and nothing
+      # else is: the job's token may not create a ref at a commit whose workflow files differ from the
+      # default branch's (that needs the `workflows` permission, which this token never has) —
+      # measured on `windows-beta-3`: creating a `dev-latest` tag answered HTTP 403 "Resource not
+      # accessible by integration". `--verify-tag` publishes on the tag that was pushed and creates
+      # none. ⚑ A build from a branch keeps its installer with the run only (the step above).
+      # ⚑ W4.96 — a `beta-*` tag is built by this workflow and `macos.yml` into one prerelease:
+      # whichever job comes second finds the release made and adds its file to it. The words are
+      # `scripts/beta-release.mjs`'s, the same in both jobs.
+      # ⛔ A release carries no name the repo must not carry, in a file or a file's name; with no
+      # patterns configured it fails rather than skip.
+      - name: The leak guard, patterns required
+        if: >-
+          startsWith(github.ref, 'refs/tags/windows-beta-') ||
+          startsWith(github.ref, 'refs/tags/beta-')
+        env:
+          BROBOT_LEAK_PATTERNS: ${{ secrets.BROBOT_LEAK_PATTERNS }}
+        shell: bash
+        run: node scripts/leak-check.mjs --require-patterns
+
+      - name: Publish a prerelease on the pushed tag
+        # ⚑ Only on a tag that names this platform: a hand-run on another tag publishes nothing.
+        if: >-
+          startsWith(github.ref, 'refs/tags/windows-beta-') ||
+          startsWith(github.ref, 'refs/tags/beta-')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INSTALLER: ${{ steps.installer.outputs.path }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          title="$(node scripts/beta-release.mjs title "$GITHUB_REF_NAME")"
+          notes="$(node scripts/beta-release.mjs notes "$GITHUB_REF_NAME" "${GITHUB_SHA::7}")"
+          [ -n "$title" ] && [ -n "$notes" ] || { echo "No title or notes for $GITHUB_REF_NAME"; exit 1; }
+          # ⚑ The release first, with no file — one call — and then the file, so a `beta-*` tag's two
+          # jobs never race on a draft: whichever comes second finds the release and adds to it.
+          if ! gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --prerelease --title "$title" --notes "$notes"; then
+            gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" > /dev/null
+            echo "The release is already there (the other platform's build made it)."
+          fi
+          gh release upload "$GITHUB_REF_NAME" "$INSTALLER" --repo "$GITHUB_REPOSITORY" --clobber
+
+  # The recovery window through the built app's real entry, on Windows (`recovery-real-entry.yml`).
+  # Its own job, asked for as the build is, and waiting for nothing but that question: a red unit
+  # test or a failed package cannot stop it, and a red check cannot stop a beta build.
+  recovery-real-entry:
+    name: Recovery real-entry check (Windows)
+    needs: flags
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.ref, 'refs/tags/windows-beta-') ||
+      startsWith(github.ref, 'refs/tags/beta-') ||
+      needs.flags.outputs.win == 'true'
+    uses: ./.github/workflows/recovery-real-entry.yml
+    with:
+      runner: windows-2022
+      evidence: recovery-evidence-windows

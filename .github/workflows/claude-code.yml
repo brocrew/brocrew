@@ -1,0 +1,227 @@
+# Runs BroBot's Claude runtime against the oldest and the newest Claude Code version named in
+# `apps/desktop/src/main/runtime/claude-code-tested.json`, on macOS and Windows.
+#
+# Each day it runs instead against the newest Claude Code published on npm. Claude Code's installer
+# updates itself almost daily, so the newest version tested would otherwise fall behind what people
+# run. When that run passes on both systems, a branch raising `newest` to it is pushed
+# (`scripts/claude-code-newest.mjs`), to be merged into `dev` locally like any other branch; when it
+# fails, the run fails, so it is seen before people update to it. It opens no pull request.
+#
+# The app carries no Claude Code; a person installs it. This installs each version from npm, whose
+# install puts the native program at `node_modules/@anthropic-ai/claude-code/bin/claude.exe` on
+# every system, and runs `pnpm run probe:claude-installed` against it with a local server playing
+# the model and a fake API key (`packages/runtime/smoke/claude-installed-probe.smoke.ts`). It needs
+# no secret; each run's evidence folder is uploaded with the run.
+name: Claude Code versions
+
+on:
+  push:
+    branches: [develop, main]
+  schedule:
+    - cron: '23 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # The daily run reads the newest published Claude Code ONCE, here, so every system runs it and the
+  # raise below names exactly what ran; and it runs nothing when the file already names it.
+  published:
+    name: The newest published Claude Code
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+      newer: ${{ steps.read.outputs.newer }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Read it
+        id: read
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(npm view @anthropic-ai/claude-code version)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          node scripts/claude-code-newest.mjs newer --published "$version"
+
+  probe:
+    name: Claude Code ${{ matrix.which }} on ${{ matrix.os }}
+    needs: published
+    # On a push the job above is skipped, and this runs; on the daily run, only for a newer version.
+    if: >-
+      always() && (github.event_name != 'schedule' || needs.published.outputs.newer == 'true')
+    runs-on: ${{ matrix.os }}
+    # The probe's own deadline is 31 minutes (a passing run takes seconds); the rest is the install.
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        # `windows-2022`, as in `windows.yml`: pnpm's node-gyp does not know the 2025 image's Visual
+        # Studio. Its Git Bash is what Claude Code's Bash tool runs.
+        os: [macos-15, windows-2022]
+        # The daily run tries the newest published version; a push, the two the file names.
+        which: ${{ github.event_name == 'schedule' && fromJSON('["published"]') || fromJSON('["oldest","newest"]') }}
+    # One run per branch, machine and version at a time: a newer push replaces one still running.
+    concurrency:
+      group: claude-code-${{ github.ref }}-${{ matrix.os }}-${{ matrix.which }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: pnpm
+
+      # The probe launches no app, so Electron's own download is skipped.
+      - name: Install dependencies
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+        run: pnpm install --frozen-lockfile
+
+      - name: Which Claude Code version
+        id: which
+        shell: bash
+        env:
+          WHICH: ${{ matrix.which }}
+          PUBLISHED: ${{ needs.published.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ "$WHICH" = published ]; then
+            version="$PUBLISHED"
+            where="the newest published"
+          else
+            version=$(node -p "require('./apps/desktop/src/main/runtime/claude-code-tested.json')[process.argv[1]]" "$WHICH")
+            where="the $WHICH tested"
+          fi
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "No version for $where Claude Code (read: $version)"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "$where Claude Code: $version"
+
+      - name: Install Claude Code ${{ steps.which.outputs.version }} from npm
+        shell: bash
+        env:
+          VERSION: ${{ steps.which.outputs.version }}
+        run: |
+          set -euo pipefail
+          prefix=$(node -p "require('path').join(process.env.RUNNER_TEMP, 'claude-' + process.env.VERSION)")
+          npm install --prefix "$prefix" --no-audit --no-fund "@anthropic-ai/claude-code@$VERSION"
+          program=$(node -p "require('path').join(process.argv[1], 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe')" "$prefix")
+          echo "BROBOT_PROBE_CLAUDE=$program" >> "$GITHUB_ENV"
+
+      - name: The program under test
+        shell: bash
+        env:
+          VERSION: ${{ steps.which.outputs.version }}
+          DISABLE_AUTOUPDATER: '1'
+        run: |
+          node -e "
+            const program = process.env.BROBOT_PROBE_CLAUDE
+            const said = require('child_process')
+              .execFileSync(program, ['--version'], { encoding: 'utf8', timeout: 60000 })
+              .trim()
+            console.log('BROBOT_PROBE_CLAUDE=' + program)
+            console.log('It says: ' + said)
+            if (!said.includes(process.env.VERSION)) {
+              console.log('It is not Claude Code ' + process.env.VERSION)
+              process.exit(1)
+            }
+          "
+
+      - name: Run BroBot's runtime against it
+        run: pnpm run probe:claude-installed
+
+      # The newest run under `/tmp/brobot2-probe-runs` on macOS, `%TEMP%\brobot2-probe-runs` on
+      # Windows (`scripts/lib/smoke-globalsetup.mjs`).
+      - name: Find the evidence
+        id: evidence
+        if: always()
+        shell: bash
+        run: |
+          node -e "
+            const fs = require('fs'), os = require('os'), path = require('path')
+            const base = process.platform === 'win32' ? os.tmpdir() : fs.realpathSync('/tmp')
+            const root = path.join(base, 'brobot2-probe-runs')
+            const runs = fs.existsSync(root)
+              ? fs.readdirSync(root).filter((name) => !name.startsWith('.') && name !== 'latest').sort()
+              : []
+            const run = runs.at(-1)
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, 'path=' + (run === undefined ? '' : path.join(root, run)) + '\n')
+            console.log('Evidence: ' + (run === undefined ? 'none' : path.join(root, run)))
+          "
+
+      - name: Keep the evidence with this run
+        if: always() && steps.evidence.outputs.path != ''
+        continue-on-error: true # a full artifact quota must not fail a run
+        uses: actions/upload-artifact@v4
+        with:
+          name: claude-code-${{ matrix.which }}-${{ matrix.os }}
+          path: ${{ steps.evidence.outputs.path }}
+          if-no-files-found: warn
+          retention-days: 7
+
+  # The daily run's verdict on the newest version tested, in the run's summary: raised when the newest
+  # published version passed on both systems. A run that failed has already failed this workflow
+  # above, and this job fails too.
+  raise-newest:
+    name: Raise the newest version tested
+    needs: [published, probe]
+    if: >-
+      always() && github.event_name == 'schedule' && needs.published.outputs.newer == 'true' &&
+      needs.probe.result != 'cancelled'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: What the run means
+        id: meant
+        shell: bash
+        env:
+          PUBLISHED: ${{ needs.published.outputs.version }}
+          PASSED: ${{ needs.probe.result == 'success' }}
+        run: node scripts/claude-code-newest.mjs decide --published "$PUBLISHED" --passed "$PASSED"
+
+      # One branch per version, pushed once: a later run of the same version leaves it as it is, and
+      # says so. Merging it stays local, with the other branches.
+      - name: Push the raise as a branch
+        if: steps.meant.outputs.decision == 'raise'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.meant.outputs.version }}
+        run: |
+          set -euo pipefail
+          branch="auto/claude-code-tested-$VERSION"
+          remote="https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git"
+          if git ls-remote --exit-code --heads "$remote" "$branch" > /dev/null; then
+            said="The branch \`$branch\` raising the newest version tested to $VERSION is already pushed; merge it into \`dev\`."
+          else
+            git switch -c "$branch"
+            git add apps/desktop/src/main/runtime/claude-code-tested.json
+            git -c user.name="github-actions[bot]" \
+              -c user.email="41898099+github-actions[bot]@users.noreply.github.com" \
+              commit -m "The newest Claude Code tested is $VERSION" \
+              -m "BroBot's runtime passed on Claude Code $VERSION, the newest published, on macOS and Windows in the daily run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID."
+            git push "$remote" "$branch"
+            said="Pushed the branch \`$branch\`, which raises the newest version tested to $VERSION; merge it into \`dev\`."
+          fi
+          echo "$said"
+          echo "$said" >> "$GITHUB_STEP_SUMMARY"

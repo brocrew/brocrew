@@ -1,0 +1,77 @@
+# 165 mutations — HEAD c897111 + working tree
+# 2026-08-16T00:50:12Z
+
+M0  CONTROL (no mutation) — baseline runtime=309 desktop=30 dom=15
+    runtime GREEN 0 of 309 in 3 files
+          desktop GREEN 0 of 30 in 1 files
+          dom     GREEN 0 of 15 in 1 files
+
+M1 · ⛔ 026 IS BACK · the flag returns and the feature the person asked for is off again
+    runtime RED 4 of 309 in 3 files
+          desktop GREEN 0 of 30 in 1 files
+          dom     GREEN 0 of 15 in 1 files
+M2 · …or it returns as '0' — a meaning that depends on the CLI's coercion rather than on us
+    runtime RED 4 of 309 in 3 files
+          desktop GREEN 0 of 30 in 1 files
+          dom     GREEN 0 of 15 in 1 files
+M3 · 🔴 THE INVISIBLE ONE · the preset goes back to being conditional, so a session with no instruction file gets an EMPTY system prompt and no memory section
+    runtime RED 2 of 309 in 3 files
+          desktop GREEN 0 of 30 in 1 files
+          dom     GREEN 0 of 15 in 1 files
+M4 · …or the preset is sent as a bare string, which REPLACES it and strips the tool and permission instructions 001 depends on
+    runtime RED 6 of 309 in 3 files
+          desktop GREEN 0 of 30 in 1 files
+          dom     GREEN 0 of 15 in 1 files
+M5 · `append: ''` when there is no hint — appending nothing and appending an empty string are different statements, and 158's drawer reports the second
+    runtime RED 2 of 309 in 3 files
+          desktop GREEN 0 of 30 in 1 files
+          dom     GREEN 0 of 15 in 1 files
+M6 · the sanitiser 'improves' on the provider and keeps hyphens and underscores — every path with one now names a directory the CLI never writes to
+    runtime RED 1 of 309 in 3 files
+          desktop GREEN 0 of 30 in 1 files
+          dom     GREEN 0 of 15 in 1 files
+M7 · ⛔ the cwd is no longer REAL-PATHED · on macOS every /var path looks in an empty directory and a written memory reads as missing
+    runtime RED 1 of 309 in 3 files
+          desktop GREEN 0 of 30 in 1 files
+          dom     GREEN 0 of 15 in 1 files
+M8 · the 200-character cap goes, so two long paths that differ stop being told apart
+    runtime RED 1 of 309 in 3 files
+          desktop GREEN 0 of 30 in 1 files
+          dom     GREEN 0 of 15 in 1 files
+M9 · 🔴 the memory is APPENDED as well as shown · the provider already sent it, so the model gets it twice and the panel claims BroBot chose to send it
+    runtime GREEN 0 of 309 in 3 files
+          desktop RED 3 of 30 in 1 files
+          dom     GREEN 0 of 15 in 1 files
+M10 · …or it is charged to the APPEND budget it never spends, silently shrinking the profile and project memory that is actually appended
+    runtime GREEN 0 of 309 in 3 files
+          desktop RED 2 of 30 in 1 files
+          dom     GREEN 0 of 15 in 1 files
+M11 · an EMPTY index becomes an item — a heading over no text, 086 in the other direction
+    runtime GREEN 0 of 309 in 3 files
+          desktop RED 1 of 30 in 1 files
+          dom     GREEN 0 of 15 in 1 files
+M12 · 🔒 the guarded reader is bypassed · a SYMLINKED MEMORY.md is followed, which is the attack the whole module exists to refuse
+    runtime GREEN 0 of 309 in 3 files
+          desktop RED 1 of 30 in 1 files
+          dom     GREEN 0 of 15 in 1 files
+M13 · Codex is read for too, a provider with no agent-written memory at this pin
+    runtime GREEN 0 of 309 in 3 files
+          desktop RED 1 of 30 in 1 files
+          dom     GREEN 0 of 15 in 1 files
+M14 · the panel's 'is there anything' test goes back to `!== null`, so a session shape without the field renders an EMPTY instructions block
+    runtime GREEN 0 of 309 in 3 files
+          desktop GREEN 0 of 30 in 1 files
+          dom     RED 1 of 15 in 1 files
+M15 · the label stops naming the AGENT as the author — three provenances, one word
+    runtime GREEN 0 of 309 in 3 files
+          desktop GREEN 0 of 30 in 1 files
+          dom     RED 1 of 15 in 1 files
+M16 · the memory row renders AFTER what BroBot appended, so the panel's order stops describing the order the model receives them in
+    runtime GREEN 0 of 309 in 3 files
+          desktop GREEN 0 of 30 in 1 files
+          dom     RED 1 of 15 in 1 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 309 in 3 files
+          desktop GREEN 0 of 30 in 1 files
+          dom     GREEN 0 of 15 in 1 files

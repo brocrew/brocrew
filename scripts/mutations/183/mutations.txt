@@ -1,0 +1,35 @@
+# 183 mutations — HEAD 0b098db + working tree
+# 2026-08-18T00:52:41Z
+
+M0  CONTROL (no mutation) — baseline runtime=1117
+    runtime GREEN 0 of 1117 in 38 files
+
+M1 · ⛔ every failure is an absence again — the reported defect, verbatim
+    runtime RED 15 of 1117 in 38 files
+M2 · ⛔ `stat` instead of `lstat` — it follows the link, so the distinction is erased
+    runtime RED 14 of 1117 in 38 files
+M3 · ⛔ a missing child under a plain file stops being absent (ENOTDIR dropped)
+    runtime RED 3 of 1117 in 38 files
+M4 · ⛔ ordinary prose becomes a link nobody can follow — the regression 183 SHIPPED
+    runtime RED 2 of 1117 in 38 files
+M5 · ⛔ exploit A — a dangling link in the workspace is `own` again
+    runtime RED 7 of 1117 in 38 files
+M6 · ⛔ the wide scan stops reporting it — the one refusal `auto` cannot skip
+    runtime RED 3 of 1117 in 38 files
+M7 · ⛔ a dangling ROOT is attested again — 182 H1's `attestedRoot` half
+    runtime RED 1 of 1117 in 38 files
+M8 · ⛔ exploit B — the lexical fallback returns and the cardless memory allow with it
+    runtime RED 2 of 1117 in 38 files
+M9 · ⛔ the guard hook stops refusing it (door one of two)
+    runtime RED 2 of 1117 in 38 files
+M10 · ⛔ …and `canUseTool` stops refusing it (door two of two)
+    runtime RED 1 of 1117 in 38 files
+M11 · ⛔ a path-scoped exempt READ takes the cardless exit on a path nobody could place
+    runtime RED 1 of 1117 in 38 files
+M12 · ⛔ the SECOND copy of the climb — `sqlite_home` guesses lexically again
+    runtime RED 1 of 1117 in 38 files
+M13 · ⛔ …and the over-refusal twin: no Codex home may be created on first use
+    runtime RED 13 of 1117 in 38 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1117 in 38 files

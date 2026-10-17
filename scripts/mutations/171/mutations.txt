@@ -1,0 +1,69 @@
+# 171 mutations — HEAD a01a29d + working tree
+# 2026-08-16T15:01:36Z
+
+M0  CONTROL (no mutation) — baseline runtime=250 desktop=151 dom=5
+    runtime GREEN 0 of 250 in 2 files
+          desktop GREEN 0 of 151 in 4 files
+          dom     GREEN 0 of 5 in 1 files
+
+M1 · ⛔ 171 §1 · the refusal message goes back to claiming the DIRECTORY is unreachable — *'The app refuses its own data directory to every session, in every mode'* — which a Bash command walks past in either mode
+    runtime RED 2 of 250 in 2 files
+          desktop GREEN 0 of 151 in 4 files
+          dom     GREEN 0 of 5 in 1 files
+M2 · 🔴 168 H1 · the guard hook stops yielding in `auto` and forces a card instead (080's defect) — so the uncarded route the corrected comment describes is no longer what happens
+    runtime RED 4 of 250 in 2 files
+          desktop GREEN 0 of 151 in 4 files
+          dom     GREEN 0 of 5 in 1 files
+M3 · 🔴 the callback's auto-approve early return is removed, so a yielded call in yolo reaches the card composer — the SECOND door, and the one the hook alone cannot prove shut
+    runtime RED 11 of 250 in 2 files
+          desktop GREEN 0 of 151 in 4 files
+          dom     GREEN 0 of 5 in 1 files
+M4 · 🔴 the wide-scan deny is removed from the hook, so the PAIRED POSITIVE goes — a structured tool naming the app's own data stops being refused in `ask`
+    runtime RED 8 of 250 in 2 files
+          desktop RED 4 of 151 in 4 files
+          dom     GREEN 0 of 5 in 1 files
+M5 · ⛔ 171 §2 · the shared label goes back to `AUTO`, the name the Claude CLI gives an allowlist that grows by consent
+    runtime GREEN 0 of 250 in 2 files
+          desktop RED 6 of 151 in 4 files
+          dom     RED 1 of 5 in 1 files
+M6 · the host's own wording goes back to `— no prompts`, which describes the app's cards and stops there — the reading that let 168 H1 stand for three dispatches
+    runtime GREEN 0 of 250 in 2 files
+          desktop RED 1 of 151 in 4 files
+          dom     GREEN 0 of 5 in 1 files
+M7 · the PENDING disclosure keeps the old word, so a requested switch is announced under the name of a mode this app does not have
+    runtime GREEN 0 of 250 in 2 files
+          desktop RED 2 of 151 in 4 files
+          dom     GREEN 0 of 5 in 1 files
+M8 · the header pill goes back to `AUTO · unattended` — `unattended` says who is watching, which is not what a reader needs to know about this mode
+    runtime GREEN 0 of 250 in 2 files
+          desktop RED 2 of 151 in 4 files
+          dom     GREEN 0 of 5 in 1 files
+M9 · ⛔ 171 §3 · the launcher stops saying what yolo means, so the consequence is stated nowhere a user meets the choice at creation
+    runtime GREEN 0 of 250 in 2 files
+          desktop GREEN 0 of 151 in 4 files
+          dom     RED 3 of 5 in 1 files
+M10 · Controls stops saying it, so a conversation switched to yolo mid-flight is never told what it was switched to
+    runtime GREEN 0 of 250 in 2 files
+          desktop RED 1 of 151 in 4 files
+          dom     GREEN 0 of 5 in 1 files
+M11 · Controls waits for the turn to ADOPT the switch before saying anything, so the consequence arrives after the decision rather than with it
+    runtime GREEN 0 of 250 in 2 files
+          desktop RED 1 of 151 in 4 files
+          dom     GREEN 0 of 5 in 1 files
+M12 · the sentence stops naming the CLIs' own flags and stops naming what is reachable — the vague version, which is the one a Claude Code user reads as the accumulating 'Auto'
+    runtime GREEN 0 of 250 in 2 files
+          desktop RED 1 of 151 in 4 files
+          dom     RED 1 of 5 in 1 files
+M13 · the launcher's tooltip goes back to *'Fixed when the session starts'*, which 034 made false and nobody revisited — a permanent choice a button on the next screen changes
+    runtime GREEN 0 of 250 in 2 files
+          desktop GREEN 0 of 151 in 4 files
+          dom     RED 1 of 5 in 1 files
+M14 · a session in a LIST reports the ENUM again, so a row that ran allow-all comes back on the resume list saying `auto` — the one word this dispatch is about
+    runtime GREEN 0 of 250 in 2 files
+          desktop GREEN 0 of 151 in 4 files
+          dom     RED 1 of 5 in 1 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 250 in 2 files
+          desktop GREEN 0 of 151 in 4 files
+          dom     GREEN 0 of 5 in 1 files

@@ -1,0 +1,59 @@
+# 251 mutations — HEAD 4d771e8 + working tree
+# 2026-08-31T21:40:52Z
+
+M0  CONTROL (no mutation) — baseline runtime=1371 desktop=2776 dom=722 scripts=261
+    runtime GREEN 0 of 1371 in 43 files · desktop GREEN 0 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+
+M1 · 🔴 249's DEFECT, verbatim · the palette claims its key in the body of `setup`, where there is no `window` — and every SSR test that renders the rail imports it, which is how `250`'s `idle-truth.render.test.ts` turned `main` red with seven ReferenceErrors
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 9 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M2 · ⛔ the SECOND component with the same shape · `OverlayHost` had the identical line and survived only because every overlay is behind a `v-if` no SSR test had opened. Satisfied by accident is not satisfied
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 2 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M3 · 🔴 the join is not made · the registry carries the provider's row untouched, so every row is back to the model's DESCRIPTION of the work and the person's Monitor is unfindable again
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 15 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M4 · 🔴 the command is forgotten across a RELEASE · a level frame arriving after the slab holding the call was released takes the command back off a row that has not changed — the one case `carryForward` proves is reachable, since it carries the registry and no items
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 1 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M5 · ⚠️ an EMPTY summary is carried as a command · `tool_call.summary` is `z.string()` with no minimum, so the row holds a command with nothing in it and the fallback that would have named it never runs
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 1 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M6 · ⛔ a SUB-AGENT's own command cannot be found · the lookup reads the top-level index only, and a child's call is deliberately not in it — so the rows hardest to identify from a description are exactly the ones that keep showing one (248 §5 measured agents joining the level set)
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 1 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M7 · 🔴 THE DEFECT, verbatim · the row says what the model CALLED the work and never what it is running. This is the ticket: *"the person asked for the command, because the CLI shows it"*
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 17 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M8 · ⛔ a whitespace-only description is SHOWN · the row renders nothing at all while offering a Stop button beside it, which is 106 with the control still lit
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 1 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M9 · ⛔ the last resort is BLANK · a row with no description and no reachable call loses even the id the Stop sends, so the one thing a person could act on is unnamed (106)
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 3 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M10 · ⛔ nothing is quoted · a command carrying a newline turns one registry row into two on the surface whose whole job is saying what is running (232 §2)
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 5 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M11 · 🔴 the defect THIS dispatch wrote, put back · the gate narrows to C0/DEL, which is where it started. `hasControlCharacter` covers neither U+2028 — so a LINE SEPARATOR splits a registry row in two (found by this diff's own test) — nor the BIDI overrides, which reorder what the row draws without changing what it holds (CVE-2021-42574, found by the adversarial pass, by two reviewers independently), on the one surface a person reads before deciding it is safe to close the app
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 2 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M12 · ⚠️ the row is unbounded again · `tool_call.summary` has no `.max()` on the wire, so a generated one-liner makes 248's one standing block a page of its own
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 4 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M13 · ⛔ cut by UTF-16 unit · a command whose 160th character is astral renders a lone surrogate — `�` on screen, from the one function whose job is not to mislead about what ran
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 1 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M14 · 🔴 the cut goes SILENT · the row shows 160 characters of a 400-character command and says nothing about the rest, which is 092 exactly and the reason the CSS ellipsis was removed in the first place
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 5 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M15 · ⚠️ the note loses its singular · `+1 more characters`, which is the kind of sentence that tells a reader nobody looked at this surface
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 1 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M16 · 🔴 the shared quoter stops escaping what `JSON.stringify` LEAVES · it escapes C0, the quote and the backslash and nothing else, so U+2028 and every bidi override come out as themselves and BOTH callers regress at once — the registry row splits or reorders, and the handed-path block a model parses can be extended by its own content (232 §2, 227 HIGH 2)
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 3 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M17 · 🔴 the component re-decides the vocabulary · it prints the provider's description again, so the fold's answer is computed and thrown away — 222 §4's one-vocabulary rule broken at the last inch
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 3 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M18 · ⚠️ the tool's own name is dropped · the row shows a bare command where the card shows `Bash` beside it, so the two surfaces print one fact in two shapes (099/064)
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 2 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M19 · ⛔ the counted note never reaches the DOM · the ceiling still cuts and the row still knows by how much, and a person reads a command that looks complete
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 1 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M20 · ⚠️ the whole string is unreachable · the title goes, so the only copy of a cut command is on a card that a released slab may no longer be holding
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 1 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M21 · ⛔ the row stops saying WHICH answer it is showing · a description and a command become indistinguishable to a reader and to every test that checks the join was taken
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 4 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M22 · ⚠️ the live step joins the run UNCLASSIFIED · 224 §5's number then counts a step that can report an unreached provider claim as one that only ever goes red for an app defect
+    runtime GREEN 0 of 1371 in 43 files · desktop GREEN 0 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts RED 3 of 261 in 16 files
+M23 · 🔴 248 M10, re-anchored · the level is MERGED rather than replaced. The SDK's own doc: *replace their set with each payload rather than pairing edges, so a missed bookend cannot wedge a stale running indicator* — and 222 is what a stale one costs. ⚠️ 251 §4 forbids changing these semantics, so the protection travels rather than lapsing
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 11 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M24 · 🔴 248 M11, re-anchored · ABSENT is read as EMPTY, so every frame carrying only an ending clears the registry — which is the traffic most likely to arrive while something else is still running
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 2 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M25 · 🔴 232 M16, re-anchored · the model-facing block interpolates the pathname RAW again, so a legal filename writes BroBot's own sentences (227 HIGH 2). ⚠️ 232's own row named the local `quoted` alias this dispatch replaced with the shared function, and a retired row protects nothing
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 6 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1371 in 43 files · desktop GREEN 0 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files

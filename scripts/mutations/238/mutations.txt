@@ -1,0 +1,51 @@
+# 238 mutations — HEAD cb7b7e4 + working tree
+# 2026-08-28T19:51:43Z
+
+M0  CONTROL (no mutation) — baseline runtime=1324 desktop=2579 dom=673 scripts=241
+    runtime GREEN 0 of 1324 in 42 files · desktop GREEN 0 of 2579 in 135 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 241 in 15 files
+
+M1 · 🔴 THE DEFECT, verbatim (208 H1) · the derived id keeps the caller's spelling, so `Developer` and `developer` are two relational identities over one physical home
+    runtime GREEN 0 of 1324 in 42 files · desktop RED 7 of 2579 in 135 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 241 in 15 files
+M2 · ⛔ the row's own name disagrees with its key · the slug is stored as the caller spelled it, so `id` and `slug` can no longer be re-derived from each other
+    runtime RED 1 of 1324 in 42 files · desktop RED 4 of 2579 in 135 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 241 in 15 files
+M3 · ⛔ the TABLE stops answering · the unique index goes back to BINARY, so the rule lives only in whichever writer remembers it — which is the state 208 H1 found
+    runtime GREEN 0 of 1324 in 42 files · desktop RED 1 of 2579 in 135 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 241 in 15 files
+M4 · ⛔ the fold drifts away from SQLite's · Unicode `toLowerCase` derives `dév` for a row the migration and the index key as `dÉv`, which is the same split identity one alphabet over
+    runtime GREEN 0 of 1324 in 42 files · desktop RED 2 of 2579 in 135 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 241 in 15 files
+M5 · ⛔ the variant rows are left behind · the merge moves the sessions and then keeps both identities, so the ledger still holds two names for one home
+    runtime GREEN 0 of 1324 in 42 files · desktop RED 10 of 2579 in 135 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 241 in 15 files
+M6 · ⛔ every group is renumbered, not only the collided ones · a profile whose middle session was deleted holds 0 and 2 legitimately (`max + 1`), and a count-based renumber silently closes that gap and hands out a position the next launch will collide with
+    runtime GREEN 0 of 1324 in 42 files · desktop RED 1 of 2579 in 135 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 241 in 15 files
+M7 · ⛔ THE 204 M13 SHAPE, one migration later · the two-phase park is removed and final positions are assigned in one statement, into a unique index that is already in force — so a merge of two spellings that each ran three sessions fails on a real ledger
+    runtime GREEN 0 of 1324 in 42 files · desktop RED 9 of 2579 in 135 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 241 in 15 files
+M8 · ⛔ the merged identity is born on the wrong day · `created_at` is taken from the LATER spelling, so a profile's history starts after conversations it already held
+    runtime GREEN 0 of 1324 in 42 files · desktop RED 1 of 2579 in 135 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 241 in 15 files
+M9 · ⛔ the merged life is ordered by id · two spellings interleave in TIME, and ordering the union by anything else makes `rotation` a sort key rather than a position
+    runtime GREEN 0 of 1324 in 42 files · desktop RED 3 of 2579 in 135 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 241 in 15 files
+M10 · 🔴 the DIRECTORY name is folded too · `provider_session.profile_id` is what four path derivations read, so folding it sends a conversation recorded under `Developer` to a folder it never ran in — 149's failure shape, arriving as the fix for a different one
+    runtime GREEN 0 of 1324 in 42 files · desktop RED 3 of 2579 in 135 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 241 in 15 files
+M11 · ⛔ the backfill stops being idempotent · a plain INSERT over an identity whose canonical row already exists throws, and a migration whose second run cannot complete is one nobody can repair a half-applied database with (0013's own rule)
+    runtime GREEN 0 of 1324 in 42 files · desktop RED 16 of 2579 in 135 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 241 in 15 files
+M12 · ⛔ the migration is silently NEVER APPLIED · drizzle decides by timestamp, not by name or hash, so a `when` that is not after the previous entry's skips the file forever on every database that has already migrated — with no error anywhere
+    runtime GREEN 0 of 1324 in 42 files · desktop RED 8 of 2579 in 135 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 241 in 15 files
+M13 · 🔴 THE DEFECT, verbatim (208 M1) · the restore is decided by BYTES again, so a contender that judged an empty corpse never puts back the live lock it renamed away — and two processes provision one home at once
+    runtime RED 2 of 1324 in 42 files · desktop GREEN 0 of 2579 in 135 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 241 in 15 files
+M14 · ⛔ the judgement is assembled out of two different files again · the age comes from a fresh `lstat` of the PATH rather than from the descriptor the bytes were read through, so 'this file said nothing' and 'this file is old' stop being facts about one file
+    runtime RED 1 of 1324 in 42 files · desktop GREEN 0 of 2579 in 135 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 241 in 15 files
+M15 · ⛔ the put-back is gone · the break checks what it moved, finds somebody else's live lock, and destroys it anyway — the check without the consequence
+    runtime RED 2 of 1324 in 42 files · desktop GREEN 0 of 2579 in 135 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 241 in 15 files
+M16 · 🔒 (202 M17, re-anchored) a stale lock is never broken, whatever it says about itself — 198's *'most likely way to brick the app'*, back
+    runtime RED 9 of 1324 in 42 files · desktop GREEN 0 of 2579 in 135 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 241 in 15 files
+M17 · 🔒 (202 M18, re-anchored) every lock is broken, alive or not — a lock that breaks itself for everybody is not a lock, and this one serializes credential writes into one home
+    runtime RED 9 of 1324 in 42 files · desktop GREEN 0 of 2579 in 135 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 241 in 15 files
+M18 · ⛔ the parked range goes back to resting on an unstated bound · `1000000000 + rowid` assumes no ledger holds a rotation that big, and one row that does collides with the park itself — inside drizzle's single transaction, which is an app that will not start
+    runtime GREEN 0 of 1324 in 42 files · desktop RED 1 of 2579 in 135 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 241 in 15 files
+M19 · ⛔ a lock path that will not OPEN yields no judgement · a file at mode 0000 left by a run under another uid, or a dangling symlink, can then never be broken and every later provisioning of that home times out forever — 191 M5's *fails forever*, arriving as the fix for a different finding
+    runtime RED 2 of 1324 in 42 files · desktop GREEN 0 of 2579 in 135 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 241 in 15 files
+M20 · ⛔ …and the same for a path that opens but will not READ · a DIRECTORY at the lock path becomes unbreakable, which is the half the first repair covered and the half a one-branch fix would have left
+    runtime RED 1 of 1324 in 42 files · desktop GREEN 0 of 2579 in 135 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 241 in 15 files
+M21 · 🔒 (204 M2, re-anchored) the profile id forgets its PROJECT — `agp:<slug>` instead of `agp:<project>:<slug>` · 204's row anchored on the line 238 M1 replaces, so it retires in place (142) and the behaviour it guarded is carried here
+    runtime GREEN 0 of 1324 in 42 files · desktop RED 5 of 2579 in 135 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 241 in 15 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1324 in 42 files · desktop GREEN 0 of 2579 in 135 files · dom GREEN 0 of 673 in 43 files · scripts GREEN 0 of 241 in 15 files

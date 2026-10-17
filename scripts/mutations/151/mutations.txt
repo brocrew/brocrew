@@ -1,0 +1,87 @@
+# 151 mutations — HEAD 66a8acf + working tree
+# 2026-08-15T00:31:09Z
+
+M0  CONTROL (no mutation) — baseline desktop=190 dom=133
+    node: desktop GREEN 0 of 190 in 6 files
+    dom:  GREEN 0 of 133 in 5 files
+
+M1 · a row we hold NOTHING of is offered Read — 106's button onto an empty pane
+    node: desktop RED 2 of 190 in 6 files
+M2 · the refusal is ignored and every row offers a reopen (118's rule gone)
+    node: desktop RED 3 of 190 in 6 files
+M3 · an inert row is a BUTTON again — the control that cannot act (106)
+    dom:  RED 1 of 133 in 5 files
+M4 · a row stays pressable while its reopen is in flight (102's double-press)
+    dom:  RED 2 of 133 in 5 files
+M5 · the press guard goes, so a second click double-reopens
+    dom:  RED 1 of 133 in 5 files
+M6 · a press on a readable row reopens it instead of reading it
+    dom:  RED 3 of 133 in 5 files
+M7 · the rail stops forwarding Read to the screen (118, the hop nothing crossed)
+    dom:  RED 3 of 133 in 5 files
+M8 · a failed reopen is outranked by the row's ordinary line (100)
+    node: desktop RED 1 of 190 in 6 files
+M9 · a reopen in flight shows the stale failure under it instead of saying so
+    node: desktop RED 1 of 190 in 6 files
+M10 · a retry is still painted as a failure while it is trying again
+    node: desktop RED 1 of 190 in 6 files
+M11 · an inert row says nothing about why it is inert (106)
+    node: desktop RED 1 of 190 in 6 files
+M12 · the refusal is dropped from the inert row's hover — the other half lost
+    node: desktop RED 1 of 190 in 6 files
+M13 · a row that cannot reopen dates itself instead of saying why (086)
+    node: desktop RED 1 of 190 in 6 files
+M14 · the whole sentence stops reaching the hover, so 200px is all a reader gets
+    node: desktop RED 1 of 190 in 6 files
+M15 · the plate claims the conversation is still live (the invented state 086 forbids)
+    node: desktop RED 1 of 190 in 6 files
+M16 · an ERRORED row is flattened into an ordinary closed one
+    node: desktop RED 1 of 190 in 6 files
+M17 · a conversation with no directory gets a blank label instead of its id
+    node: desktop RED 1 of 190 in 6 files
+M18 · the person's avatar goes — the one thing he asked for by name
+    dom:  RED 2 of 133 in 5 files
+M19 · the closed rows lose the open rows' grid, so the two lists drift apart
+    dom:  RED 1 of 133 in 5 files
+M20 · an inert row still looks pressable
+    dom:  RED 1 of 133 in 5 files
+M21 · a failed reopen is not painted as a fault
+    dom:  RED 1 of 133 in 5 files
+M22 · the cancel is gone — 102's wedge, back, with no way out but quitting
+    dom:  RED 1 of 133 in 5 files
+M23 · a settled reopen never clears the flag, so the row says 'reopening…' for ever
+    dom:  RED 1 of 133 in 5 files
+M24 · a failed reopen never reaches the row it was pressed on (100)
+    dom:  RED 1 of 133 in 5 files
+M25 · the count answers 0 before it has looked — a wrong number in a real one's clothes
+    dom:  RED 2 of 133 in 5 files
+M26 · the summary counts what was FETCHED, not what a reader would find
+    dom:  RED 1 of 133 in 5 files
+M27 · a running conversation is offered for reopening again (090)
+    node: desktop RED 1 of 190 in 6 files
+M28 · …and the same, on the unresumable half this ticket widened it to
+    node: desktop RED 1 of 190 in 6 files
+M29 · a list that could not be READ renders as an empty one
+    dom:  RED 1 of 133 in 5 files
+M30 · 'ago' loses its seconds, so everything just closed reads as 0m
+    node: desktop RED 2 of 190 in 6 files
+M31 · a clock ahead of ours reports a negative age
+    node: desktop RED 1 of 190 in 6 files
+M32 · the refusal goes back to jargon — the sentence the person could not parse
+    node: desktop RED 1 of 190 in 6 files
+M33 · …and it names the wrong provider, on every row
+    node: desktop RED 1 of 190 in 6 files
+M34 · the never-started row goes back to naming a handshake nobody has heard of
+    node: desktop RED 1 of 190 in 6 files
+M35 · the unreadable-ref row does too
+    node: desktop RED 1 of 190 in 6 files
+M36 · the unresumable half stops saying whether we hold its messages
+    node: desktop RED 1 of 190 in 6 files
+M37 · …and says it backwards
+    node: desktop RED 2 of 190 in 6 files
+M38 · THE ONE THAT MATTERS · the reopen list is deleted rather than moved
+    dom:  RED 1 of 133 in 5 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    node: desktop GREEN 0 of 190 in 6 files
+    dom:  GREEN 0 of 133 in 5 files

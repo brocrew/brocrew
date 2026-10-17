@@ -1,0 +1,1 @@
+CREATE INDEX `events_mcp_request_idx` ON `events` (`created_at`) WHERE "events"."type" in ('mcp_server_requested', 'mcp_server_request_settled');

@@ -1,0 +1,171 @@
+# What a public repository checks on every push and pull request: the commits — their messages and
+# who made them — and a scan of the whole history for secrets. See docs/public-repo-checks.md.
+#
+# ⚑ Run whenever the repository is public, whatever its name and owner, and never on a private one.
+# Where the secrets are missing on a public repository, the checks fail rather than skip.
+name: Public checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  commits:
+    name: commit messages and identities
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+
+      # ⚑ The commits this push or pull request adds: a pull request's own, a push's since the commit
+      # it replaced, a new branch's past the default branch, and the whole history otherwise (the
+      # repository's first push, or a push that replaced history).
+      - name: Which commits this run checks
+        id: commits
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.pull_request.head.sha || github.sha }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          zero=0000000000000000000000000000000000000000
+          if [ "$EVENT" = pull_request ]; then
+            revisions="$BASE..$AFTER"
+          elif [ "$EVENT" = push ] && [ -n "$BEFORE" ] && [ "$BEFORE" != "$zero" ] \
+            && git cat-file -e "$BEFORE^{commit}" 2> /dev/null \
+            && git merge-base --is-ancestor "$BEFORE" "$AFTER"; then
+            revisions="$BEFORE..$AFTER"
+          elif [ "$GITHUB_REF_NAME" != "$DEFAULT_BRANCH" ] \
+            && git rev-parse -q --verify "refs/remotes/origin/$DEFAULT_BRANCH" > /dev/null; then
+            revisions="origin/$DEFAULT_BRANCH..$AFTER"
+          else
+            revisions="$AFTER"
+          fi
+          echo "revisions=$revisions" >> "$GITHUB_OUTPUT"
+
+      # ⛔ The patterns come from secrets, so a log never names them, and the check prints none.
+      # ⚑ Required wherever the secrets reach: a push, a run by hand, and a pull request from a branch
+      # of this repository. A pull request from a fork gets no secrets, so it is checked for card ids
+      # and checked again, whole, by the push its merge makes. The identities are checked on a push:
+      # a pull request from outside carries its author's own.
+      - name: Plain words, and the public identity
+        env:
+          REVISIONS: ${{ steps.commits.outputs.revisions }}
+          REQUIRE: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && '--require-patterns' || '' }}
+          IDENTITIES: ${{ github.event_name == 'push' && '--require-identities' || '' }}
+          BROBOT_LEAK_PATTERNS: ${{ secrets.BROBOT_LEAK_PATTERNS }}
+          BROBOT_COMMIT_PATTERNS: ${{ secrets.BROBOT_COMMIT_PATTERNS }}
+          BROBOT_COMMIT_IDENTITIES: ${{ github.event_name == 'push' && vars.BROBOT_COMMIT_IDENTITIES || '' }}
+        run: node scripts/leak-check.mjs $REQUIRE $IDENTITIES --commits "$REVISIONS"
+
+      # ⚑ An annotated tag's tagger and message are public too.
+      - name: The tag pushed, if annotated
+        if: github.event_name == 'push' && github.ref_type == 'tag'
+        env:
+          BROBOT_LEAK_PATTERNS: ${{ secrets.BROBOT_LEAK_PATTERNS }}
+          BROBOT_COMMIT_PATTERNS: ${{ secrets.BROBOT_COMMIT_PATTERNS }}
+          BROBOT_COMMIT_IDENTITIES: ${{ vars.BROBOT_COMMIT_IDENTITIES }}
+        run: node scripts/leak-check.mjs --require-patterns --require-identities --tag "$GITHUB_REF_NAME"
+
+      # ⚑ A pull request's title and branch name become words in the history at its merge. Read
+      # from the environment, so they never pass through a shell.
+      - name: The pull request's title and branch name
+        if: github.event_name == 'pull_request'
+        env:
+          REQUIRE: ${{ github.event.pull_request.head.repo.full_name == github.repository && '--require-patterns' || '' }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BRANCH: ${{ github.head_ref }}
+          BROBOT_LEAK_PATTERNS: ${{ secrets.BROBOT_LEAK_PATTERNS }}
+          BROBOT_COMMIT_PATTERNS: ${{ secrets.BROBOT_COMMIT_PATTERNS }}
+        run: node scripts/leak-check.mjs $REQUIRE --pull-request
+
+      # ⛔ The tree and its file names, with the patterns required where the secret reaches.
+      - name: No name the repo must not carry, in a file or a file's name
+        env:
+          REQUIRE: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && '--require-patterns' || '' }}
+          BROBOT_LEAK_PATTERNS: ${{ secrets.BROBOT_LEAK_PATTERNS }}
+        run: node scripts/leak-check.mjs $REQUIRE
+
+  secrets:
+    name: secret scan
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+
+      # ⚑ Pinned: this version, and the sha256 its release publishes for this file. A new version is
+      # a change to both lines, read against that release's `checksums.txt`.
+      - name: Install gitleaks
+        shell: bash
+        env:
+          GITLEAKS_VERSION: 8.30.1
+          GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/gitleaks.tar.gz"
+          curl -fsSL -o "$archive" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  $archive" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/bin"
+          tar -xzf "$archive" -C "$RUNNER_TEMP/bin" gitleaks
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      # ⛔ Before anything real is scanned: a fake secret made here is found and hidden, in the output
+      # and in the report, or nothing is scanned.
+      - name: Redaction holds on a fake secret
+        run: node scripts/secret-scan-redaction-check.mjs gitleaks
+
+      # ⚑ The whole history, which in the public repository begins at its first commit, the fresh
+      # export. A made-up value the rules match is allowed in .gitleaks.toml or on its line.
+      # ⛔ gitleaks answers 0 when git fails under it and it scanned nothing, so the step also
+      # requires its own count of the commits it scanned to be more than none.
+      - name: Scan the history
+        shell: bash
+        # ⛔ Not `--verbose`, which prints the text around a finding: the log carries gitleaks' own
+        # summary only, and a finding is printed from its redacted report as rule, file, line and
+        # commit.
+        run: |
+          set -uo pipefail
+          log="$RUNNER_TEMP/gitleaks.log"
+          report="$RUNNER_TEMP/gitleaks.json"
+          gitleaks git . --config .gitleaks.toml --redact --no-banner --exit-code 1 \
+            --report-format json --report-path "$report" > "$log" 2>&1
+          found=$?
+          sed 's/\x1b\[[0-9;]*m//g' "$log"
+          if [ "$found" -ne 0 ]; then
+            if [ -s "$report" ]; then
+              jq -r '.[] | "\(.RuleID)  \(.File):\(.StartLine)  commit \(.Commit[0:9])"' "$report"
+            fi
+            echo "gitleaks stopped the scan (exit $found): findings above by rule, file, line and commit"
+            exit 1
+          fi
+          scanned="$(sed 's/\x1b\[[0-9;]*m//g' "$log" | sed -n 's/.* \([0-9][0-9]*\) commits scanned.*/\1/p' | tail -1)"
+          if [ "${scanned:-0}" -eq 0 ]; then
+            echo "gitleaks scanned no commit, so this scan proves nothing"
+            exit 1
+          fi

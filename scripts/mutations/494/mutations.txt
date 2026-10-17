@@ -1,0 +1,40 @@
+# 494 mutations — HEAD 660c63d3 + working tree
+# 2026-09-17T05:54:33Z
+# project-reachability v1 topology=unproved — For each row, run every baseline project whose tests can conservatively reach an edited path; any unknown path runs every project, and every omitted measurement is written NOT RUN (out of reach), never GREEN.
+
+M0  CONTROL (no mutation) — baseline runtime=1793 desktop=5844 dom=1508 scripts=745 shared=4
+    runtime GREEN 0 of 1793 in 62 files · desktop GREEN 0 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+
+M1 · 🔴 THE OLD POPULATION, backfilled · a decision written before `477` carries no actor, and this names a person for it — HO-029 §2.2's *every event written before this answers unknown* turned into a guess about rows nobody can ever check
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 3 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M2 · ⛔ the asking CONVERSATION is dropped · an agent's cancel reports the bare word, so a parent reading `stalled_by` can no longer join the row to the ledger that made the press — `WorkInterruptedEvent.agent`'s whole reason, one producer over
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 1 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M3 · ⚠️ THE APP IS NAMED AS A PERSON · the member `mayAnswerAsAHuman` makes unreachable is reported as the one actor this app cannot claim on somebody's behalf — the false sentence `222` shipped, arriving through a row the app never writes
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 1 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M4 · ⛔ the LEDGER boundary is removed · a word from a build whose vocabulary has moved is reported as itself rather than dropped, so a reading prints an actor this build has no sentence for — `isWhoDidIt`'s rule, and criterion 18's confident claim
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 1 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M5 · ⚠️ the reading vocabulary stops being DERIVED · `the-app-itself` is admitted as a member, so a census walking the list reports a coverage no producer can reach — the exact test `WHO_ASKED_IT_TO_STOP`'s removed third member failed
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 5 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M6 · ⛔ one phrasing becomes two · every non-agent actor is spelled as a person, so the caller this app has no word for is reported as one — `stoppedBy`'s own rule that a surface wanting its own phrasing would be the second vocabulary
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 1 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M7 · 🔴 every decision becomes an ask · `allow` and `deny` name their answerer as the author of whatever ended the turn next, so a person who approved a tool is reported as having stopped the work — the join reading the event TYPE instead of the one outcome
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 5 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M8 · ⛔ a cancel this app cannot name INHERITS the last ask · an agent that asked earlier in the same turn is reported as the author of a press it never made — `491`'s defect, moved from the turn boundary onto the actor itself
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 2 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M9 · ⚠️ the task fold remembers every outcome · `stalled_by` names whoever allowed a tool, for a turn something else stopped — the same defect as M7 in the field `492` measured, and the one a parent reads in `list_tasks`
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 1 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M10 · ⛔ the FIRST ask wins · an agent's earlier Stop outranks the person's Cancel that actually ended the turn, so `stalled_by` names the agent — `394`'s *the last ask wins*, inverted, and measured where the two producers DIVERGE
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 3 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M11 · 🔴 the task query forgets the new type · a task a person cancelled derives `stalled_by: null` after a restart while a live host names them — *live-correct and replay-wrong*, the fourth time that is the shape and the reason the fold and the statement are censused against each other
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 4 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M12 · ⛔ the turn-ending query forgets it · `lastEndedTurn` answers `who: null` for the same press the task row names, so one `AgentCard` carries two answers about one act — `484`'s own defect, restored on the reader `484` built
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 3 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M13 · ⚠️ the conversation-level ask forgets it · `lastAskToStop` reports *no row says* beside a `lastEndedTurn` that names a person, which is the pair a reader has to choose between and the reason this query moved at all
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 5 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M14 · ⛔ the outcome narrowing goes · every decision becomes a conversation-level ask, so `lastAskToStop` reports the person who pressed *Allow* as the last one who asked this work to stop — M7's defect in the SQL rather than in the fold
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 2 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M15 · ⚠️ the two row SHAPES are read as one · a decision row falls into the flat reader, whose `by` is an object rather than a word, so it is dropped — the repaired field answers `null` again and only for this one reader, which is the half-fix HO-030 §2 argues against
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 4 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1793 in 62 files · desktop GREEN 0 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files

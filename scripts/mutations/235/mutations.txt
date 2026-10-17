@@ -1,0 +1,45 @@
+# 235 mutations — HEAD c5d244a + working tree
+# 2026-08-28T16:03:52Z
+
+M0  CONTROL (no mutation) — baseline runtime=1318 desktop=2544 dom=668 scripts=241
+    runtime GREEN 0 of 1318 in 41 files · desktop GREEN 0 of 2544 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 241 in 15 files
+
+M1 · 🔴 THE DEFECT, verbatim (230 M3's residual) · the replacement stops saying what it replaced, so an erased tool_call and a turn that called no tools are the same ledger
+    runtime RED 4 of 1318 in 41 files · desktop RED 3 of 2544 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 241 in 15 files
+M2 · ⛔ the human/live-smoke half · the label stops naming the erasure, so the one surface a live step can read (`describeEvent` → `.rdetail`) goes back to looking like chatter
+    runtime RED 3 of 1318 in 41 files · desktop RED 3 of 2544 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 241 in 15 files
+M3 · ⛔ the OTHER door · `toRuntimeEvent` builds its own unmarked `unknown` again — the 'changed the rule at ONE of its N call sites' class, which is what 233's adversarial pass found in 233's own diff
+    runtime RED 3 of 1318 in 41 files · desktop GREEN 0 of 2544 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 241 in 15 files
+M4 · ⛔ the WIRE door · the boundary wraps our own malformed event as if it were provider chatter again, which is the exact confusion 235 exists to end
+    runtime GREEN 0 of 1318 in 41 files · desktop RED 5 of 2544 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 241 in 15 files
+M5 · a hostile `type` is echoed into a log line and a DOM row — the guard that says a name has to look like a name is removed
+    runtime RED 1 of 1318 in 41 files · desktop GREEN 0 of 2544 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 241 in 15 files
+M6 · reading the type off a candidate that has already failed validation is done without a guard, so a throwing getter or a revoked proxy takes the event pump with it
+    runtime RED 1 of 1318 in 41 files · desktop RED 1 of 2544 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 241 in 15 files
+M7 · a frame with no readable name is given one anyway — `degradedFrom` stops meaning 'this is what it was' and starts meaning 'this is what we guessed'
+    runtime RED 1 of 1318 in 41 files · desktop GREEN 0 of 2544 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 241 in 15 files
+M8 · ⛔ honest chatter is branded an erasure · `wrapUnknown` fills the field in from the payload, so a provider frame that merely CONTAINS `type: 'tool_call'` is reported as one of ours that we lost (007 P2-8, on the other side)
+    runtime RED 17 of 1318 in 41 files · desktop GREEN 0 of 2544 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 241 in 15 files
+M9 · ⛔ THE 206 H2 DEFECT, verbatim · the verdict is read from the LAST `Tests` line in captured stdout again, so a nested vitest summary decides whether a mutation was killed
+    runtime GREEN 0 of 1318 in 41 files · desktop GREEN 0 of 2544 in 134 files · dom GREEN 0 of 668 in 43 files · scripts RED 3 of 241 in 15 files
+M10 · a missing report reads as zeros instead of as NO-REPORT — the fallback to the weaker channel that is how the weaker channel stays in use
+    runtime GREEN 0 of 1318 in 41 files · desktop GREEN 0 of 2544 in 134 files · dom GREEN 0 of 668 in 43 files · scripts RED 1 of 241 in 15 files
+M11 · the lock collision prints its arguments the wrong way round again, so the one instruction an interrupted operator is given raises ValueError (four dispatches recorded this and none fixed it)
+    runtime GREEN 0 of 1318 in 41 files · desktop GREEN 0 of 2544 in 134 files · dom GREEN 0 of 668 in 43 files · scripts RED 1 of 241 in 15 files
+M12 · ⛔ THE 56-TABLE LINE, verbatim · the hand-written trap put back inside the installer, so an interrupt cleans up twice and the second pass runs `cp` from a pristine copy that the first pass deleted
+    runtime GREEN 0 of 1318 in 41 files · desktop GREEN 0 of 2544 in 134 files · dom GREEN 0 of 668 in 43 files · scripts RED 3 of 241 in 15 files
+M13 · the restore runs with no pristine copy to restore from — one `cp` error per file, on top of whatever actually went wrong, which is where a real RESTORE FAILED gets buried
+    runtime GREEN 0 of 1318 in 41 files · desktop GREEN 0 of 2544 in 134 files · dom GREEN 0 of 668 in 43 files · scripts RED 1 of 241 in 15 files
+M14 · the wire boundary degrades in silence · 085's rule, on the one event that means an adapter is emitting frames the contract refuses
+    runtime GREEN 0 of 1318 in 41 files · desktop RED 1 of 2544 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 241 in 15 files
+M15 · the field is taken back off the schema, so the marker is stripped by the very next boundary that re-validates the frame — present on the object, absent from the contract
+    runtime RED 1 of 1318 in 41 files · desktop GREEN 0 of 2544 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 241 in 15 files
+M16 · ⛔ the marker's namespace is shared with provider data again · a Codex item whose own kind string is `degraded:tool_call` renders byte-identically to a real erasure on the ONE row a live step reads
+    runtime RED 1 of 1318 in 41 files · desktop GREEN 0 of 2544 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 241 in 15 files
+M18 · ⛔ the cleanup aborts before it lets go of the lock · `$WORK` unguarded under the `set -u` every table sets, so a run that died before the scratch dir existed leaks the repository-global tree lock and refuses every later mutation run
+    runtime GREEN 0 of 1318 in 41 files · desktop GREEN 0 of 2544 in 134 files · dom GREEN 0 of 668 in 43 files · scripts RED 1 of 241 in 15 files
+M17 · ⛔ the guard goes back one call too late · Zod reads the discriminant off the candidate before we do, so a throwing getter escapes BOTH doors and takes the event pump with it — through a function documented 'Never throws' since HO-001
+    runtime RED 1 of 1318 in 41 files · desktop RED 1 of 2544 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 241 in 15 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1318 in 41 files · desktop GREEN 0 of 2544 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 241 in 15 files

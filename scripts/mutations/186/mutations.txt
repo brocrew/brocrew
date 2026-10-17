@@ -1,0 +1,31 @@
+# 186 mutations — HEAD f3eb698 + working tree
+# 2026-08-18T04:22:06Z
+
+M0  CONTROL (no mutation) — baseline runtime=1157 desktop=2066
+    runtime GREEN 0 of 1157 in 39 files | desktop GREEN 0 of 2066 in 105 files
+
+M1  · ⛔ `allow_all_for_session` is counted as a refusal again (§1 A)
+    runtime RED 1 of 1157 in 39 files | desktop RED 1 of 2066 in 105 files
+M2  · ⛔ an unattended session raises a card again (§1 C)
+    runtime RED 1 of 1157 in 39 files | desktop RED 4 of 2066 in 105 files
+M3  · ⛔ the wholesale grant is recorded and never consulted again (§1 B)
+    runtime RED 1 of 1157 in 39 files | desktop RED 1 of 2066 in 105 files
+M4  · ⛔ an answer is no longer validated against what the card OFFERED (§3's own find)
+    runtime RED 1 of 1157 in 39 files | desktop GREEN 0 of 2066 in 105 files
+M5  · ⛔ a settled card keeps its offer, so `not-pending` is reported as `not-offered`
+    runtime RED 1 of 1157 in 39 files | desktop GREEN 0 of 2066 in 105 files
+M6  · ⛔ the launch gate never holds — `start` resolves in its own tick again
+    runtime RED 1 of 1157 in 39 files | desktop GREEN 0 of 2066 in 105 files
+M7  · ⛔ a launch cancelled while held hangs instead of rejecting
+    runtime RED 1 of 1157 in 39 files | desktop GREEN 0 of 2066 in 105 files
+M8  · ⛔ the gate stops counting arrivals — the witness 176 §12 is about
+    runtime RED 1 of 1157 in 39 files | desktop GREEN 0 of 2066 in 105 files
+M9  · ⛔ the provider's record goes back inside the runtime object (no relaunch)
+    runtime RED 1 of 1157 in 39 files | desktop GREEN 0 of 2066 in 105 files
+M10 · ⛔ a provider that lost its own state resumes anyway
+    runtime RED 1 of 1157 in 39 files | desktop GREEN 0 of 2066 in 105 files
+M11 · ⛔ the id counter goes back on the runtime, so a second process collides
+    runtime RED 1 of 1157 in 39 files | desktop RED 5 of 2066 in 105 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1157 in 39 files | desktop GREEN 0 of 2066 in 105 files

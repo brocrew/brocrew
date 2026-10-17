@@ -1,0 +1,14 @@
+# The secret scan's configuration (`.github/workflows/public-checks.yml`): gitleaks' own rules, and
+# the one made-up value the tree carries in a form they match.
+#
+# ⚑ A made-up value in a test line is allowed on its line, with `gitleaks:allow` and the reason.
+# A recorded fixture cannot carry a comment, so its value is allowed here, by its exact shape.
+title = "brobot"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "a probe's own made-up nonce, recorded in a wire fixture"
+regexTarget = "match"
+regexes = ['''WIRE327_\d+_\d+''']

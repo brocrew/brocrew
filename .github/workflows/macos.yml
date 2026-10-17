@@ -1,0 +1,258 @@
+# The Mac build (W4.96): BroBot for Macs with Apple silicon, as a `.dmg`, signed AD HOC and not
+# notarized, built on GitHub's Apple-silicon runner and published as a prerelease on the tag that
+# started it. The release has no Apple Developer ID signature or notarization. Its ad
+# hoc signature is what makes macOS 15 and later offer "Open Anyway" in Privacy & Security for a
+# download, rather than call it damaged (`docs/install-macos.md`).
+#
+# ⚑ Build the branch the app is really run from: `develop` (what BroBot's own window runs: dev, the
+# prompts and the UI together), or `main` once it carries the UI — as the Windows build does.
+#
+# ⚑ Opt-in, so it does not spend macOS minutes on every push:
+#   - a pushed tag `mac-beta-*` builds the commit it names: `git tag mac-beta-1 develop && git push
+#     origin mac-beta-1`;
+#   - a pushed tag `beta-*` builds the Mac AND Windows (`windows.yml`) into one prerelease;
+#   - by hand: Actions → macOS build → Run workflow, once this file is on the default branch;
+#   - a push to `develop` or `main` whose head commit message carries `+ci:mac` (or `+ci`) as a word
+#     of its own.
+#
+# ⚑ It needs no secret of its own: the job's `GITHUB_TOKEN` (with `contents: write`, on that job
+# only) publishes the disk image.
+#
+# ⚑ What it proves on the runner before anything is published — `scripts/macos-packaged-check.mjs`
+# on the app and the disk image: the app's name and id; that it carries no Claude Code; that the ad
+# hoc signature holds (`codesign --verify --deep --strict`) on the app, on the bundled Codex and on
+# the app in the disk image; that Codex runs, and so does the newest tested Claude Code
+# (`apps/desktop/src/main/runtime/claude-code-tested.json`) installed with npm outside the app; that
+# the database module loads inside the packaged app; that the app starts on a data folder of its
+# own; and that, launched on the runner's empty profile, it keeps its data in
+# `~/Library/Application Support/@brobot2/desktop`. It cannot prove what a person's Mac does with a
+# quarantined download: "Open Anyway" is a person's click.
+name: macOS build
+
+on:
+  push:
+    branches: [develop, main]
+    # ⚑ A push matches when its branch OR its tag does.
+    tags: ['mac-beta-*', 'beta-*']
+  workflow_dispatch:
+    inputs:
+      guided_update_rehearsal:
+        description: Rehearse the guided update privately instead of the ordinary Mac build
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  # Electron and electron-builder downloads in one workspace folder, so one cache entry keeps them.
+  # `electron_config_cache` is the name Electron's own install step reads.
+  ELECTRON_CACHE: ${{ github.workspace }}/.cache/electron
+  electron_config_cache: ${{ github.workspace }}/.cache/electron
+  ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.cache/electron-builder
+
+jobs:
+  flags:
+    name: Does this push ask for a Mac build?
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      mac: ${{ steps.flags.outputs.mac }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - id: flags
+        shell: bash
+        run: |
+          msg="$(git log -1 --pretty=%B)"
+          if printf '%s' "$msg" | grep -qE '(^|[[:space:]])\+ci(:mac)?([[:space:]]|$)'; then
+            mac=true
+          else
+            mac=false
+          fi
+          echo "mac=$mac" >> "$GITHUB_OUTPUT"
+          echo "The head commit asks for a Mac build (+ci / +ci:mac): $mac"
+
+  macos:
+    name: Build the Mac app (dmg, Apple silicon, signed ad hoc)
+    needs: flags
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.guided_update_rehearsal != true) ||
+      startsWith(github.ref, 'refs/tags/mac-beta-') ||
+      startsWith(github.ref, 'refs/tags/beta-') ||
+      needs.flags.outputs.mac == 'true'
+    # ⚑ Apple silicon: the app is arm64 only (its bundled Codex is the darwin-arm64 build), and the
+    # check runs Codex, Claude Code and the app itself, so the runner must be able to run them.
+    runs-on: macos-15
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    # One build per ref at a time: a newer build replaces one still running. ⚑ Here and not on the
+    # workflow, so a push that asks for no build cannot cancel one that is running.
+    concurrency:
+      group: mac-build-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: pnpm
+
+      - name: Cache Electron downloads
+        uses: actions/cache@v4
+        with:
+          path: .cache
+          key: ${{ runner.os }}-electron-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-electron-
+
+      # pnpm installs the darwin-arm64 build of Codex (its optional platform package), which the app
+      # carries, and the Agent SDK's Claude Code package, which the build leaves out. The database
+      # module carries its own macOS prebuild.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The recovery tests on this OS's own file system: real data folders and the real recovery
+      # service, with no credentials and no Electron. Before packaging, which rebuilds the database
+      # module for Electron. A run that collects no test fails, so a moved folder cannot pass.
+      - name: Recovery tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          report="$RUNNER_TEMP/recovery-tests.json"
+          pnpm exec vitest run --project desktop test/recovery/ --reporter=default --reporter=json --outputFile.json="$report"
+          node -e "const r = require(process.argv[1]); if (!(r.numTotalTests > 0 && r.numPassedTests > 0)) { console.error('The recovery tests collected no test.'); process.exit(1) } console.log(r.numPassedTests + ' recovery tests passed.')" "$report"
+
+      # ⚑ `-c.mac.identity=-` (the `package:mac-beta` script) signs AD HOC: electron-builder 26 signs
+      # with the identity `-` through `@electron/osx-sign`, with its default hardened runtime and
+      # entitlements (`allow-jit`, `allow-unsigned-executable-memory`, `disable-library-validation`).
+      # With no identity at all it would sign nothing, and a download of that app reads as damaged.
+      # ⚑ Only here: a person's own `pnpm run package` keeps signing with whatever identity they have.
+      - name: Build and package (dmg, arm64, signed ad hoc)
+        run: pnpm --filter @brobot2/desktop package:mac-beta
+
+      - name: Find the disk image
+        id: dmg
+        shell: bash
+        run: |
+          set -euo pipefail
+          built=$(ls apps/desktop/dist/*.dmg | head -n 1)
+          echo "path=$built" >> "$GITHUB_OUTPUT"
+          echo "Disk image: $built ($(du -h "$built" | cut -f1))"
+
+      # The app carries no Claude Code, so the check runs the newest tested version, installed with
+      # npm outside the app as a person would. npm puts the native program at `bin/claude.exe` in
+      # the package, on the Mac too.
+      - name: Install Claude Code (the newest tested version) outside the app
+        id: claude
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./apps/desktop/src/main/runtime/claude-code-tested.json').newest")"
+          prefix="$RUNNER_TEMP/claude-code"
+          npm install --prefix "$prefix" --no-audit --no-fund "@anthropic-ai/claude-code@$version"
+          program="$prefix/node_modules/@anthropic-ai/claude-code/bin/claude.exe"
+          [ -f "$program" ] || { echo "npm installed Claude Code $version, and there is no $program"; exit 1; }
+          echo "program=$program" >> "$GITHUB_OUTPUT"
+          echo "Claude Code $version: $program"
+
+      - name: Check the build (name and id, no Claude Code inside, the ad hoc signature, Codex and Claude Code run, the database module, the disk image, the app's start and its data folder)
+        env:
+          BROBOT_CHECK_CLAUDE: ${{ steps.claude.outputs.program }}
+        run: node scripts/macos-packaged-check.mjs apps/desktop/dist/mac-arm64/BroCrew.app "${{ steps.dmg.outputs.path }}"
+
+      # Every build is version `0.0.0` until releases are numbered, so its tag — or, built from a
+      # branch, its commit — is what tells two disk images apart: `BroCrew-0.0.0-arm64-mac-beta-1.dmg`,
+      # or `BroCrew-0.0.0-arm64-1a2b3c4.dmg`.
+      - name: Name the disk image by its commit
+        id: image
+        shell: bash
+        env:
+          BUILT: ${{ steps.dmg.outputs.path }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF_TYPE" = tag ]; then label="$GITHUB_REF_NAME"; else label=$(git rev-parse --short=7 HEAD); fi
+          named="apps/desktop/dist/$(basename "$BUILT" .dmg)-${label}.dmg"
+          mv "$BUILT" "$named"
+          echo "path=$named" >> "$GITHUB_OUTPUT"
+          echo "Disk image: $named ($(du -h "$named" | cut -f1))"
+
+      - name: Keep the disk image with this run
+        continue-on-error: true # a full artifact quota must not fail a good build
+        uses: actions/upload-artifact@v4
+        with:
+          name: brobot-macos
+          path: ${{ steps.image.outputs.path }}
+          if-no-files-found: error
+          retention-days: 7
+
+      # ⚑ A tag build is published as a prerelease ON ITS OWN TAG, as the Windows build is, and with
+      # `--verify-tag` for the same reason (the job's token may not create a ref — `windows.yml`). ⚑ A
+      # `beta-*` tag is built by both workflows into one prerelease: whichever job comes second finds
+      # the release made and adds its file to it. The words are `scripts/beta-release.mjs`'s, the same
+      # in both jobs.
+      # ⛔ A release carries no name the repo must not carry, in a file or a file's name; with no
+      # patterns configured it fails rather than skip.
+      - name: The leak guard, patterns required
+        if: >-
+          startsWith(github.ref, 'refs/tags/mac-beta-') ||
+          startsWith(github.ref, 'refs/tags/beta-')
+        env:
+          BROBOT_LEAK_PATTERNS: ${{ secrets.BROBOT_LEAK_PATTERNS }}
+        shell: bash
+        run: node scripts/leak-check.mjs --require-patterns
+
+      - name: Publish a prerelease on the pushed tag
+        # ⚑ Only on a tag that names this platform: a hand-run on another tag publishes nothing.
+        if: >-
+          startsWith(github.ref, 'refs/tags/mac-beta-') ||
+          startsWith(github.ref, 'refs/tags/beta-')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE: ${{ steps.image.outputs.path }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          title="$(node scripts/beta-release.mjs title "$GITHUB_REF_NAME")"
+          notes="$(node scripts/beta-release.mjs notes "$GITHUB_REF_NAME" "${GITHUB_SHA::7}")"
+          [ -n "$title" ] && [ -n "$notes" ] || { echo "No title or notes for $GITHUB_REF_NAME"; exit 1; }
+          # ⚑ The release first, with no file — one call — and then the file, so a `beta-*` tag's two
+          # jobs never race on a draft: whichever comes second finds the release and adds to it.
+          if ! gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --prerelease --title "$title" --notes "$notes"; then
+            gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" > /dev/null
+            echo "The release is already there (the other platform's build made it)."
+          fi
+          gh release upload "$GITHUB_REF_NAME" "$IMAGE" --repo "$GITHUB_REPOSITORY" --clobber
+
+  guided-update-rehearsal:
+    name: Opt-in guided update rehearsal
+    if: github.event_name == 'workflow_dispatch' && inputs.guided_update_rehearsal == true
+    uses: ./.github/workflows/mac-update-test.yml
+    permissions:
+      contents: read
+
+  # The recovery window through the built app's real entry, on macOS (`recovery-real-entry.yml`).
+  # Its own job, asked for as the build is, and waiting for nothing but that question: a red unit
+  # test or a failed package cannot stop it, and a red check cannot stop a beta build.
+  recovery-real-entry:
+    name: Recovery real-entry check (macOS)
+    needs: flags
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.ref, 'refs/tags/mac-beta-') ||
+      startsWith(github.ref, 'refs/tags/beta-') ||
+      needs.flags.outputs.mac == 'true'
+    uses: ./.github/workflows/recovery-real-entry.yml
+    with:
+      runner: macos-15
+      evidence: recovery-evidence-macos

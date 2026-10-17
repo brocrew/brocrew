@@ -1,0 +1,61 @@
+# 170 mutations — HEAD 87854a0 + working tree
+# 2026-08-16T14:06:36Z
+
+M0  CONTROL (no mutation) — baseline runtime=249 desktop=39 dom=18
+    runtime GREEN 0 of 249 in 2 files
+          desktop GREEN 0 of 39 in 1 files
+          dom     GREEN 0 of 18 in 1 files
+
+M1 · 🔴 168 H2 · the exemption root stops being attested, so `memory -> <providerHome>` widens the cardless write to the whole profile home — instructions, config, anything addressed through the alias
+    runtime RED 3 of 249 in 2 files
+          desktop GREEN 0 of 39 in 1 files
+          dom     GREEN 0 of 18 in 1 files
+M2 · the attestation resolves the PARENT lexically, so a provider home under macOS's `/var/folders/…` (really `/private/var/…`) is never attested and every ordinary memory write is carded — the fix, too strict
+    runtime RED 2 of 249 in 2 files
+          desktop GREEN 0 of 39 in 1 files
+          dom     GREEN 0 of 18 in 1 files
+M3 · the attestation requires the root to EXIST, so the FIRST write into `memory/` or `plans/` — the one that creates the directory, and the whole case the carve-out is for — raises a card
+    runtime RED 6 of 249 in 2 files
+          desktop GREEN 0 of 39 in 1 files
+          dom     GREEN 0 of 18 in 1 files
+M4 · ⛔ 168 H3 · the agent-memory read stops following, so the symlinked index the PROVIDER already loaded is refused here — no visibility and no protection, which is the state the ruling exists to end
+    runtime GREEN 0 of 249 in 2 files
+          desktop RED 2 of 39 in 1 files
+          dom     GREEN 0 of 18 in 1 files
+M5 · the same refusal from the OTHER guard — `stat` still follows but `O_NOFOLLOW` is kept, so the kernel refuses at `open` instead of the `lstat` refusing at step 1 (the pair 158 built deliberately, so both halves are measured)
+    runtime GREEN 0 of 249 in 2 files
+          desktop RED 1 of 39 in 1 files
+          dom     GREEN 0 of 18 in 1 files
+M6 · ⛔ THE SILENCE · every read failure collapses to `null` again, so a `MEMORY.md` the provider loaded and BroBot could not read looks exactly like a session with no memory
+    runtime GREEN 0 of 249 in 2 files
+          desktop RED 3 of 39 in 1 files
+          dom     GREEN 0 of 18 in 1 files
+M7 · …and the other polarity: a DANGLING link becomes a refusal, so the panel warns about a file that steered nothing — the provider's own `stat` failed the same way
+    runtime GREEN 0 of 249 in 2 files
+          desktop RED 6 of 39 in 1 files
+          dom     GREEN 0 of 18 in 1 files
+M8 · the redirection is compared against the LEXICAL provider home, so every ordinary macOS session reports a link that is not there — the `/var` → `/private/var` trap, in the false-positive direction
+    runtime GREEN 0 of 249 in 2 files
+          desktop RED 1 of 39 in 1 files
+          dom     GREEN 0 of 18 in 1 files
+M9 · the READER stops reporting where it really read from, so nothing downstream can disclose the redirection — the text is shown under a path it did not come from
+    runtime GREEN 0 of 249 in 2 files
+          desktop RED 1 of 39 in 1 files
+          dom     GREEN 0 of 18 in 1 files
+M10 · the DRAWER's link line renders nothing — the read is honest and the panel is not, which is the same defect one layer up
+    runtime GREEN 0 of 249 in 2 files
+          desktop GREEN 0 of 39 in 1 files
+          dom     RED 1 of 18 in 1 files
+M11 · 🔴 168 H4 · the chain's home exclusion drops the real-form test, so a cwd under `/tmp/home-alias -> $HOME` walks to the alias and BroBot appends the personal `~/.claude/CLAUDE.md` under a path that names nothing personal
+    runtime GREEN 0 of 249 in 2 files
+          desktop RED 2 of 39 in 1 files
+          dom     GREEN 0 of 18 in 1 files
+M12 · §4 · the workspace label goes back to a lexical compare, so BroBot's OWN generated file reached through an aliased cwd is presented as project memory the user wrote
+    runtime GREEN 0 of 249 in 2 files
+          desktop RED 1 of 39 in 1 files
+          dom     GREEN 0 of 18 in 1 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 249 in 2 files
+          desktop GREEN 0 of 39 in 1 files
+          dom     GREEN 0 of 18 in 1 files

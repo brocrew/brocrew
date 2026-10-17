@@ -1,0 +1,29 @@
+# 179 mutations — HEAD 54a2839 + working tree
+# 2026-08-17T04:14:18Z
+
+M0  CONTROL (no mutation) — baseline desktop=2060 dom=527
+    desktop GREEN 0 of 2060 in 105 files · dom GREEN 0 of 527 in 31 files
+
+M1 · ⛔ the model row loses its fallback — pre-179 exactly: the ellipsis is back
+    desktop RED 5 of 2060 in 105 files · dom GREEN 0 of 527 in 31 files
+M2 · ⛔ the request is shown UNMARKED — a claim we cannot back (177's reroute)
+    desktop RED 5 of 2060 in 105 files · dom GREEN 0 of 527 in 31 files
+M3 · ⛔ our request WINS over the provider's report — a rerouted session names the wrong model
+    desktop RED 4 of 2060 in 105 files · dom GREEN 0 of 527 in 31 files
+M4 · ⛔ the reasoning row loses the same fallback
+    desktop RED 2 of 2060 in 105 files · dom GREEN 0 of 527 in 31 files
+M5 · ⛔ `reopened()` clears nothing — the row says `ended` for the whole second life
+    desktop RED 3 of 2060 in 105 files · dom GREEN 0 of 527 in 31 files
+M6 · ⛔ …and it clears UNCONDITIONALLY — a session mid-turn knocked back to idle
+    desktop RED 1 of 2060 in 105 files · dom GREEN 0 of 527 in 31 files
+M7 · ⛔ the resume path never calls it — the store knows the rule and nobody asks
+    desktop RED 2 of 2060 in 105 files · dom GREEN 0 of 527 in 31 files
+M8 · ⛔ the launcher blames a provider that never spoke — a limit invented from silence
+    desktop GREEN 0 of 2060 in 105 files · dom RED 1 of 527 in 31 files
+M9 · ⛔ the sentence goes back to being a tooltip — nothing on screen says why
+    desktop GREEN 0 of 2060 in 105 files · dom RED 1 of 527 in 31 files
+M10 · ⛔ the dead control is not even greyed (118)
+    desktop GREEN 0 of 2060 in 105 files · dom RED 1 of 527 in 31 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    desktop GREEN 0 of 2060 in 105 files · dom GREEN 0 of 527 in 31 files

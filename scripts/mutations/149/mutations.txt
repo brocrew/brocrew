@@ -1,0 +1,75 @@
+# 149 mutations — HEAD 2d7b4b6 + working tree
+# 2026-08-14T21:52:21Z
+
+M0  CONTROL (no mutation) — baseline runtime=256 desktop=238 dom=30
+    node: runtime GREEN 0 of 256 in 5 files · desktop GREEN 0 of 238 in 9 files
+    dom:  GREEN 0 of 30 in 4 files
+
+M1 · the turn-path read is the BLOCKING one wrapped in a promise (H4, undone)
+    node: runtime RED 2 of 256 in 5 files · desktop GREEN 0 of 238 in 9 files
+M2 · the asynchronous read has no deadline
+    node: runtime RED 1 of 256 in 5 files · desktop GREEN 0 of 238 in 9 files
+M3 · a deadline `security` can ignore (SIGTERM, inside a Keychain prompt)
+    node: runtime RED 1 of 256 in 5 files · desktop GREEN 0 of 238 in 9 files
+M4 · the LAUNCH read goes back to being unbounded
+    node: runtime RED 1 of 256 in 5 files · desktop GREEN 0 of 238 in 9 files
+M5 · a killed read THROWS instead of yielding null (fail-open, lost)
+    node: runtime RED 1 of 256 in 5 files · desktop GREEN 0 of 238 in 9 files
+M6 · the non-blocking provider skips the parse it shares with its twin
+    node: runtime RED 1 of 256 in 5 files · desktop GREEN 0 of 238 in 9 files
+M7 · the handle is handed the BLOCKING reader again (H4, arriving through the wiring)
+    node: runtime RED 1 of 256 in 5 files · desktop GREEN 0 of 238 in 9 files
+M8 · a Keychain that yields nothing counts as a supersession
+    node: runtime RED 1 of 256 in 5 files · desktop GREEN 0 of 238 in 9 files
+M9 · the answer does not latch
+    node: runtime RED 2 of 256 in 5 files · desktop GREEN 0 of 238 in 9 files
+M10 · the launch credential is never recorded (THE detection, disabled)
+    node: runtime RED 4 of 256 in 5 files · desktop GREEN 0 of 238 in 9 files
+M11 · a RESUMED session gets no credential watch
+    node: runtime RED 1 of 256 in 5 files · desktop GREEN 0 of 238 in 9 files
+M12 · the plan go-ahead skips the gate (THE H2 DEFECT)
+    node: runtime GREEN 0 of 256 in 5 files · desktop RED 1 of 238 in 9 files
+M13 · the plan gate runs BELOW the release, so the plan is lost for a turn that never went
+    node: runtime GREEN 0 of 256 in 5 files · desktop RED 1 of 238 in 9 files
+M14 · ordinary `send` stops asking
+    node: runtime GREEN 0 of 256 in 5 files · desktop RED 6 of 238 in 9 files
+M15 · queueing stops asking
+    node: runtime GREEN 0 of 256 in 5 files · desktop RED 1 of 238 in 9 files
+M16 · the queued flush stops asking (the turn nobody pressed anything for)
+    node: runtime GREEN 0 of 256 in 5 files · desktop RED 1 of 238 in 9 files
+M17 · the interrupt's SECOND check is removed (THE 148 M1 TOCTOU)
+    node: runtime GREEN 0 of 256 in 5 files · desktop RED 1 of 238 in 9 files
+M18 · the check itself is a no-op
+    node: runtime GREEN 0 of 256 in 5 files · desktop RED 10 of 238 in 9 files
+M19 · the state is published AFTER the throw, so the bar arrives after the refusal
+    node: runtime GREEN 0 of 256 in 5 files · desktop RED 2 of 238 in 9 files
+M20 · the refusal stops being true of a RENEWAL (149 §6)
+    node: runtime GREEN 0 of 256 in 5 files · desktop RED 1 of 238 in 9 files
+M21 · a reconnecting surface is handed the BARE liveness (THE H5 DEFECT)
+    node: runtime GREEN 0 of 256 in 5 files · desktop RED 1 of 238 in 9 files
+M22 · the dedupe key outlives the sink it describes
+    node: runtime GREEN 0 of 256 in 5 files · desktop RED 1 of 238 in 9 files
+M23 · the tracker publishes a SHORTER disclosure (the queued banner, wiped)
+    node: runtime GREEN 0 of 256 in 5 files · desktop RED 1 of 238 in 9 files
+M24 · the disclosure ASKS instead of reading the latch (a subprocess per publish)
+    node: runtime GREEN 0 of 256 in 5 files · desktop RED 2 of 238 in 9 files
+M25 · a record that ENDED cannot be adopted again (THE H1 DEFECT — the person's own report)
+    node: runtime GREEN 0 of 256 in 5 files · desktop RED 1 of 238 in 9 files
+M26 · a hand-over folds the previous life in on top of this one
+    node: runtime GREEN 0 of 256 in 5 files · desktop RED 1 of 238 in 9 files
+M27 · `resume` reports success over a record the window cannot show (039)
+    node: runtime GREEN 0 of 256 in 5 files · desktop RED 1 of 238 in 9 files
+M28 · the button is live over live work again
+    dom:  RED 2 of 30 in 4 files
+M29 · a card open no longer holds the button back (146 §1 by a third road)
+    dom:  RED 1 of 30 in 4 files
+M30 · the bar stops saying what reopening costs
+    dom:  RED 3 of 30 in 4 files
+M31 · the bar goes back to accusing somebody of switching account
+    dom:  RED 2 of 30 in 4 files
+M32 · the plan go-ahead button stays live on a superseded sign-in (148 H2, renderer half)
+    dom:  RED 1 of 30 in 4 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    node: runtime GREEN 0 of 256 in 5 files · desktop GREEN 0 of 238 in 9 files
+    dom:  GREEN 0 of 30 in 4 files

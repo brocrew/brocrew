@@ -1,0 +1,90 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1790676652301,
+      "tag": "0000_the_tree",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1790830976669,
+      "tag": "0001_the_model_list",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1790868253982,
+      "tag": "0002_no_agent_limit",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1790903801348,
+      "tag": "0003_the_api_keys",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1790916874356,
+      "tag": "0004_no_stream_fragments",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1790949058579,
+      "tag": "0005_the_fold_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1790960695483,
+      "tag": "0006_the_inventory_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1791855756209,
+      "tag": "0007_the_mcp_request_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1792036800000,
+      "tag": "0008_work_receipt_reads",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1792051367003,
+      "tag": "0009_the_fold_index_ends_passed_up_questions",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1792108800000,
+      "tag": "0010_the_legacy_stall_cut",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1792174407156,
+      "tag": "0011_the_transcript_copy_goes",
+      "breakpoints": true
+    }
+  ]
+}

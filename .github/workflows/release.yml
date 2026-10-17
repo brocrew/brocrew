@@ -1,0 +1,299 @@
+# BroCrew's releases (W4.109): a pushed version tag builds Windows and the Mac, checks both, and
+# publishes ONE GitHub release with the files BroCrew's updater reads.
+#
+#   - `vX.Y.Z`        → a full release: what every BroCrew that checks for updates is offered;
+#   - `vX.Y.Z-beta.N` → a prerelease: offered only to a BroCrew whose person chose beta updates.
+#
+# ⚑ The version comes from the tag (`-c.extraMetadata.version`), so a release needs no commit that
+# bumps a number. ⛔ Only the version: the app's name — the package's `name`, which places its data
+# folder and names its Keychain entry — never moves (`apps/desktop/src/main/data-folder.ts`).
+#
+# ⚑ Where releases live, and where every BroCrew built here looks for its updates, is ONE setting:
+# the repository variable `RELEASE_REPO` (owner/repo), else the repository this workflow runs in
+# — the public repository, once there is one. ⛔ It must be that repository: the job's token publishes only
+# to its own, so a release built here pointing elsewhere would offer updates nobody can publish.
+#
+# What each build proves before anything is published: the platform check (Codex in the app and no
+# Claude Code, the newest tested Claude Code installed outside it, the database module, the data
+# folder — `scripts/windows-packaged-check.mjs`,
+# `scripts/macos-packaged-check.mjs`) and `scripts/release-check.mjs` — the update file names this
+# version and every file it names is there, with the size and sha512 it says; the app looks at this
+# repository. Beside the builds, the recovery window is checked through the app's real entry on
+# both systems (`recovery-real-entry.yml`). Only when all four pass does the `publish` job, in the
+# `release` environment (where a reviewer can be required), attest the files (on a public
+# repository) and publish them as one release.
+#
+# ⚑ Unsigned on Windows and signed ad hoc on the Mac, as the beta builds are (`windows.yml`,
+# `macos.yml`, whose `*-beta-*` tags hand out builds and are not read by the updater).
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+env:
+  ELECTRON_CACHE: ${{ github.workspace }}/.cache/electron
+  electron_config_cache: ${{ github.workspace }}/.cache/electron
+  ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.cache/electron-builder
+
+jobs:
+  plan:
+    name: What this tag releases
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      beta: ${{ steps.plan.outputs.beta }}
+      repo: ${{ steps.plan.outputs.repo }}
+      owner: ${{ steps.plan.outputs.owner }}
+      name: ${{ steps.plan.outputs.name }}
+    steps:
+      - id: plan
+        shell: bash
+        env:
+          RELEASE_REPO: ${{ vars.RELEASE_REPO || github.repository }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)(-beta\.[0-9]+)?$ ]]; then
+            echo "$GITHUB_REF_NAME is not a version tag (vX.Y.Z or vX.Y.Z-beta.N): nothing is released"
+            exit 1
+          fi
+          version="${GITHUB_REF_NAME#v}"
+          beta=false; [ -n "${BASH_REMATCH[2]}" ] && beta=true
+          if [ "$RELEASE_REPO" != "$GITHUB_REPOSITORY" ]; then
+            echo "RELEASE_REPO is $RELEASE_REPO, but this workflow can publish only to $GITHUB_REPOSITORY"
+            exit 1
+          fi
+          {
+            echo "version=$version"
+            echo "beta=$beta"
+            echo "repo=$RELEASE_REPO"
+            echo "owner=${RELEASE_REPO%%/*}"
+            echo "name=${RELEASE_REPO#*/}"
+          } >> "$GITHUB_OUTPUT"
+          echo "Releasing BroCrew $version (beta: $beta) to $RELEASE_REPO"
+
+  # A release carries no name the repo must not carry, in its files or their names. The patterns
+  # come from the repository secret; a release run without them fails rather than skip.
+  leak:
+    name: No name the repo must not carry
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+      - name: The leak guard, patterns required
+        env:
+          BROBOT_LEAK_PATTERNS: ${{ secrets.BROBOT_LEAK_PATTERNS }}
+        run: node scripts/leak-check.mjs --require-patterns
+
+  windows:
+    name: Build for Windows (NSIS, x64, unsigned)
+    needs: [plan, leak]
+    # ⚑ `windows-2022`: pnpm's node-gyp does not know the Visual Studio of `windows-latest` (`windows.yml`).
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: pnpm
+      - uses: actions/cache@v4
+        with:
+          path: .cache
+          key: ${{ runner.os }}-electron-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-electron-
+      - run: pnpm install --frozen-lockfile
+      # The installer carries `THIRD-PARTY-NOTICES.md`; its list of npm packages must be the one
+      # this lockfile installs.
+      - name: The third-party notices are up to date
+        run: node scripts/third-party-notices.mjs --check
+      - name: Build and package (NSIS, x64, unsigned)
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm --filter @brobot2/desktop run build
+          pnpm --filter @brobot2/desktop exec electron-builder --win nsis --x64 --config electron-builder.yml \
+            -c.extraMetadata.version=${{ needs.plan.outputs.version }} \
+            -c.publish.provider=github -c.publish.owner=${{ needs.plan.outputs.owner }} -c.publish.repo=${{ needs.plan.outputs.name }} \
+            --publish never
+      # The app carries no Claude Code: the check runs the newest tested one, installed with npm
+      # outside the app, as `windows.yml` does.
+      - name: Install Claude Code (the newest tested version) outside the app
+        id: claude
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./apps/desktop/src/main/runtime/claude-code-tested.json').newest")"
+          prefix="${RUNNER_TEMP//\\//}/claude-code"
+          npm install --prefix "$prefix" --no-audit --no-fund "@anthropic-ai/claude-code@$version"
+          program="$prefix/node_modules/@anthropic-ai/claude-code/bin/claude.exe"
+          [ -f "$program" ] || { echo "npm installed Claude Code $version, and there is no $program"; exit 1; }
+          echo "program=$program" >> "$GITHUB_OUTPUT"
+          echo "Claude Code $version: $program"
+      - name: Check the build (Codex and no Claude Code, the database module, the API key's way in, the data folder)
+        env:
+          BROBOT_CHECK_CLAUDE: ${{ steps.claude.outputs.program }}
+        run: node scripts/windows-packaged-check.mjs apps/desktop/dist/win-unpacked
+      - name: Check the update files (version, sizes, sha512, where the app looks)
+        run: node scripts/release-check.mjs apps/desktop/dist ${{ needs.plan.outputs.version }} ${{ needs.plan.outputs.repo }} apps/desktop/dist/win-unpacked/resources/app-update.yml
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: |
+            apps/desktop/dist/BroCrew-Setup-${{ needs.plan.outputs.version }}-x64.exe
+            apps/desktop/dist/BroCrew-Setup-${{ needs.plan.outputs.version }}-x64.exe.blockmap
+            apps/desktop/dist/latest.yml
+          if-no-files-found: error
+          retention-days: 7
+
+  macos:
+    name: Build for the Mac (dmg and zip, Apple silicon, signed ad hoc)
+    needs: [plan, leak]
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: pnpm
+      - uses: actions/cache@v4
+        with:
+          path: .cache
+          key: ${{ runner.os }}-electron-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-electron-
+      - run: pnpm install --frozen-lockfile
+      - name: The third-party notices are up to date
+        run: node scripts/third-party-notices.mjs --check
+      # ⚑ `zip` beside the `dmg`: the updater's Mac file (`latest-mac.yml` names both). `dir` keeps the
+      # unpacked app for the check. `-c.mac.identity=-` signs ad hoc, as `package:mac-beta` does.
+      - name: Build and package (dmg and zip, arm64, signed ad hoc)
+        run: |
+          set -euo pipefail
+          pnpm --filter @brobot2/desktop run build
+          pnpm --filter @brobot2/desktop exec electron-builder --mac dmg zip dir --arm64 --config electron-builder.yml \
+            -c.mac.identity=- \
+            -c.extraMetadata.version=${{ needs.plan.outputs.version }} \
+            -c.publish.provider=github -c.publish.owner=${{ needs.plan.outputs.owner }} -c.publish.repo=${{ needs.plan.outputs.name }} \
+            --publish never
+      # The app carries no Claude Code: the check runs the newest tested one, installed with npm
+      # outside the app, as `macos.yml` does.
+      - name: Install Claude Code (the newest tested version) outside the app
+        id: claude
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./apps/desktop/src/main/runtime/claude-code-tested.json').newest")"
+          prefix="$RUNNER_TEMP/claude-code"
+          npm install --prefix "$prefix" --no-audit --no-fund "@anthropic-ai/claude-code@$version"
+          program="$prefix/node_modules/@anthropic-ai/claude-code/bin/claude.exe"
+          [ -f "$program" ] || { echo "npm installed Claude Code $version, and there is no $program"; exit 1; }
+          echo "program=$program" >> "$GITHUB_OUTPUT"
+          echo "Claude Code $version: $program"
+      - name: Check the build (no Claude Code inside, the ad hoc signature, Codex and Claude Code run, the database module, the disk image, the data folder)
+        env:
+          BROBOT_CHECK_CLAUDE: ${{ steps.claude.outputs.program }}
+        run: node scripts/macos-packaged-check.mjs apps/desktop/dist/mac-arm64/BroCrew.app apps/desktop/dist/BroCrew-${{ needs.plan.outputs.version }}-arm64.dmg
+      - name: Check the update files (version, sizes, sha512, where the app looks)
+        run: node scripts/release-check.mjs apps/desktop/dist ${{ needs.plan.outputs.version }} ${{ needs.plan.outputs.repo }} apps/desktop/dist/mac-arm64/BroCrew.app/Contents/Resources/app-update.yml
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-macos
+          path: |
+            apps/desktop/dist/BroCrew-${{ needs.plan.outputs.version }}-arm64.dmg
+            apps/desktop/dist/BroCrew-${{ needs.plan.outputs.version }}-arm64.dmg.blockmap
+            apps/desktop/dist/BroCrew-${{ needs.plan.outputs.version }}-arm64-mac.zip
+            apps/desktop/dist/BroCrew-${{ needs.plan.outputs.version }}-arm64-mac.zip.blockmap
+            apps/desktop/dist/latest-mac.yml
+          if-no-files-found: error
+          retention-days: 7
+
+  # The recovery window through the built app's real entry, on both systems
+  # (`recovery-real-entry.yml`, the same check the beta builds run). Jobs of this run, so they check
+  # the tag's own commit, and `publish` needs both: no earlier run, on this commit or another,
+  # stands in for them.
+  recovery-windows:
+    name: Recovery real-entry check (Windows)
+    uses: ./.github/workflows/recovery-real-entry.yml
+    with:
+      runner: windows-2022
+      evidence: recovery-evidence-windows
+
+  recovery-macos:
+    name: Recovery real-entry check (macOS)
+    uses: ./.github/workflows/recovery-real-entry.yml
+    with:
+      runner: macos-15
+      evidence: recovery-evidence-macos
+
+  publish:
+    name: Publish the release
+    needs: [plan, windows, macos, recovery-windows, recovery-macos]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # ⚑ Where a required reviewer can hold the release until it is approved (a setting of the repository).
+    environment: release
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # ⚑ Only the builds' files: the recovery checks keep their evidence as artifacts of this run
+      # too, and none of it belongs in a release.
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release
+          merge-multiple: true
+      # ⚑ Who built each file, checkable by anyone (`gh attestation verify`). ⚠️ GitHub attests only
+      # on a public repository on its ordinary plans, so a private one skips it.
+      - name: Attest the files
+        if: ${{ !github.event.repository.private }}
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: release/*
+      # ⚑ A draft first, with every file, then published: nobody's updater ever reads a release whose
+      # files are still arriving. `--verify-tag` publishes on the pushed tag and creates no ref.
+      - name: Publish one release with every file
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ needs.plan.outputs.repo }}
+          BETA: ${{ needs.plan.outputs.beta }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          title="$(node scripts/beta-release.mjs title "$GITHUB_REF_NAME")"
+          notes="$(node scripts/beta-release.mjs notes "$GITHUB_REF_NAME" "${GITHUB_SHA::7}")"
+          [ -n "$title" ] && [ -n "$notes" ] || { echo "No title or notes for $GITHUB_REF_NAME"; exit 1; }
+          if gh release view "$GITHUB_REF_NAME" --repo "$REPO" > /dev/null 2>&1; then
+            echo "The release is already there (a re-run): replacing its files."
+            gh release upload "$GITHUB_REF_NAME" release/* --repo "$REPO" --clobber
+            exit 0
+          fi
+          gh release create "$GITHUB_REF_NAME" release/* --repo "$REPO" --verify-tag --draft \
+            --title "$title" --notes "$notes"
+          if [ "$BETA" = true ]; then
+            gh release edit "$GITHUB_REF_NAME" --repo "$REPO" --draft=false --prerelease --latest=false
+          else
+            gh release edit "$GITHUB_REF_NAME" --repo "$REPO" --draft=false --latest
+          fi
+          gh release view "$GITHUB_REF_NAME" --repo "$REPO" --json name,isPrerelease,isDraft,assets \
+            --jq '"\(.name): prerelease \(.isPrerelease), draft \(.isDraft), \(.assets | length) files"'

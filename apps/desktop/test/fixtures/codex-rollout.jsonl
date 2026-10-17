@@ -1,0 +1,11 @@
+{"type":"session_meta","timestamp":"2026-04-22T15:48:56.010Z","payload":{"id":"019db5aa-6765-7d31-801f-bdceed422f03","timestamp":"2026-04-22T15:48:56.010Z","cwd":"/tmp/scratch","originator":"codex_vscode","cli_version":"0.39.0","instructions":null}}
+{"type":"turn_context","timestamp":"2026-04-22T15:48:56.100Z","payload":{"cwd":"/tmp/scratch","approval_policy":"never","sandbox_policy":{"mode":"danger-full-access"},"model":"gpt-5-codex","effort":"high","summary":"auto"}}
+{"type":"response_item","timestamp":"2026-04-22T15:48:57.000Z","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"count the lines in notes.txt"}]}}
+{"type":"event_msg","timestamp":"2026-04-22T15:48:57.100Z","payload":{"type":"user_message","message":"count the lines in notes.txt"}}
+{"type":"response_item","timestamp":"2026-04-22T15:48:58.000Z","payload":{"type":"reasoning","summary":[{"type":"summary_text","text":"**Counting the lines**"}],"content":null,"encrypted_content":"gAAAAAB-opaque"}}
+{"type":"response_item","timestamp":"2026-04-22T15:48:59.000Z","payload":{"type":"function_call","name":"shell","arguments":"{\"command\":[\"bash\",\"-lc\",\"wc -l notes.txt\"],\"workdir\":\"/tmp/scratch\"}","call_id":"call_ABC123"}}
+{"type":"response_item","timestamp":"2026-04-22T15:49:00.000Z","payload":{"type":"function_call_output","call_id":"call_ABC123","output":"{\"output\":\"      12 notes.txt\"}"}}
+{"type":"response_item","timestamp":"2026-04-22T15:49:01.000Z","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"There are 12 lines."}]}}
+{"type":"event_msg","timestamp":"2026-04-22T15:49:01.100Z","payload":{"type":"agent_message","message":"There are 12 lines."}}
+{"type":"event_msg","timestamp":"2026-04-22T15:49:01.200Z","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"output_tokens":20,"total_tokens":120}}}}
+not json at all

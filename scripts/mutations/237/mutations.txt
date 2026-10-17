@@ -1,0 +1,79 @@
+# 237 mutations — HEAD 20110e0 + working tree
+# 2026-08-28T23:39:28Z
+
+M0  CONTROL (no mutation) — baseline runtime=1324 desktop=2610 dom=686 scripts=250
+    runtime GREEN 0 of 1324 in 42 files · desktop GREEN 0 of 2610 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 250 in 15 files
+
+M1  · ⛔ THE DEFECT, verbatim (230 H1) · the tab promises everything again — the verdict is hard-coded true, so a released or frozen window reports itself as the whole session and every absence conclusion in the smoke is read off a partial list
+    runtime GREEN 0 of 1324 in 42 files · desktop RED 5 of 2610 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 250 in 15 files
+M2  · ⛔ only the RELEASE half — a window the reader has scrolled off the tail of claims to be complete, which is the cheaper of the two states and the silent one
+    runtime GREEN 0 of 1324 in 42 files · desktop RED 3 of 2610 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 250 in 15 files
+M3  · ⛔ only the TAIL half — a window whose oldest 1,251 events were released claims to be complete, which is 230 H1's headline case
+    runtime GREEN 0 of 1324 in 42 files · desktop RED 2 of 2610 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 250 in 15 files
+M4  · ⛔ the fact stops riding on the list — `data-whole` is not rendered, so the one read every refusal in the smoke rests on has nothing to read
+    runtime GREEN 0 of 1324 in 42 files · desktop RED 4 of 2610 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 250 in 15 files
+M5  · ⚠️ the count of what is missing is not rendered — `data-behind`, which is the only number distinguishing a frozen window from a quiet session
+    runtime GREEN 0 of 1324 in 42 files · desktop RED 2 of 2610 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 250 in 15 files
+M6  · ⛔ the sentence a PERSON reads is gone — the attribute survives, so the machine half still passes while the panel is back to saying nothing about what it holds
+    runtime GREEN 0 of 1324 in 42 files · desktop RED 6 of 2610 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 250 in 15 files
+M7  · ⚠️ the singular loses its verb again — “1 newer event have arrived”, the value between the two the other cases cover
+    runtime GREEN 0 of 1324 in 42 files · desktop RED 1 of 2610 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 250 in 15 files
+M8  · 🔴 the smoke TRUSTS the attribute instead of deriving the verdict from the two facts it is made of — so one lost binding refuses four steps with a message saying the window is fine (found by 237's adversarial pass over its own diff)
+    runtime GREEN 0 of 1324 in 42 files · desktop GREEN 0 of 2610 in 135 files · dom GREEN 0 of 686 in 44 files · scripts RED 1 of 250 in 15 files
+M9  · ⚠️ the rows are counted by being `li` again — the empty state is one too, so a session with nothing in it refuses with “1 row(s) from ordinal 0” and misdescribes its own evidence
+    runtime GREEN 0 of 1324 in 42 files · desktop GREEN 0 of 2610 in 135 files · dom GREEN 0 of 686 in 44 files · scripts RED 1 of 250 in 15 files
+M10 · ⛔ step 19 concludes that the model never proposed a plan without asking whether the list it read was the whole session
+    runtime GREEN 0 of 1324 in 42 files · desktop GREEN 0 of 2610 in 135 files · dom GREEN 0 of 686 in 44 files · scripts RED 1 of 250 in 15 files
+M11 · ⛔ THE DEFECT one level up (230 H2) · `departed` is computed the wrong way round, so a step that LEFT the exposed list is invisible and one that stayed is reported as gone
+    runtime GREEN 0 of 1324 in 42 files · desktop GREEN 0 of 2610 in 135 files · dom GREEN 0 of 686 in 44 files · scripts RED 2 of 250 in 15 files
+M12 · ⛔ nothing is ever unexplained — the ledger becomes decoration and a departure needs no entry at all
+    runtime GREEN 0 of 1324 in 42 files · desktop GREEN 0 of 2610 in 135 files · dom GREEN 0 of 686 in 44 files · scripts RED 1 of 250 in 15 files
+M13 · ⚠️ the run stops PRINTING what left — the census keeps the number and no reader ever sees it, which is the trap this file's own docstring names
+    runtime GREEN 0 of 1324 in 42 files · desktop GREEN 0 of 2610 in 135 files · dom GREEN 0 of 686 in 44 files · scripts RED 1 of 250 in 15 files
+M14 · 🔴 the frozen baseline is paired with a CALLER's inventory again — every synthetic classification in the suite reports all thirty as departed, and the arithmetic tests start measuring the real repository's history (found by 237's adversarial pass over its own diff)
+    runtime GREEN 0 of 1324 in 42 files · desktop GREEN 0 of 2610 in 135 files · dom GREEN 0 of 686 in 44 files · scripts RED 1 of 250 in 15 files
+M15 · ⛔ a token nobody has classified answers `app` instead of throwing — the default that would raise the number this file exists to state, every time somebody wrote a new step
+    runtime GREEN 0 of 1324 in 42 files · desktop GREEN 0 of 2610 in 135 files · dom GREEN 0 of 686 in 44 files · scripts RED 1 of 250 in 15 files
+M16 · ⛔ the departure names a control that is not in the step — the reclassification moved a label and built nothing, which is 224 §4's list going back to being an intention
+    runtime GREEN 0 of 1324 in 42 files · desktop GREEN 0 of 2610 in 135 files · dom GREEN 0 of 686 in 44 files · scripts RED 1 of 250 in 15 files
+M17 · ⛔ the ledger says the step went somewhere it did not — `to: 'app'` while it sits in GUARDED, which is the silent improvement §2 exists to stop, one field over
+    runtime GREEN 0 of 1324 in 42 files · desktop GREEN 0 of 2610 in 135 files · dom GREEN 0 of 686 in 44 files · scripts RED 1 of 250 in 15 files
+M18 · ⛔ the step 237 itself exposed is dropped from the frozen list, so it can leave again in silence — the residual named in §2, put back
+    runtime GREEN 0 of 1324 in 42 files · desktop GREEN 0 of 2610 in 135 files · dom GREEN 0 of 686 in 44 files · scripts RED 1 of 250 in 15 files
+M19 · ⛔ the baseline is edited to match today — `7` removed, so the one real departure reports as none and the list goes on looking untouched
+    runtime GREEN 0 of 1324 in 42 files · desktop GREEN 0 of 2610 in 135 files · dom GREEN 0 of 686 in 44 files · scripts RED 1 of 250 in 15 files
+M20 · ⚠️ a step may leave the census without being retired — the roster ratchet is released while the floor still reads 97
+    runtime GREEN 0 of 1324 in 42 files · desktop GREEN 0 of 2610 in 135 files · dom GREEN 0 of 686 in 44 files · scripts RED 2 of 250 in 15 files
+M35 · ⛔ the frozen list drifts to a SUBSET of today's exposed list — `69` is still exposed and in no baseline, so the ratchet quietly stops ratcheting on it and its departure would be free
+    runtime GREEN 0 of 1324 in 42 files · desktop GREEN 0 of 2610 in 135 files · dom GREEN 0 of 686 in 44 files · scripts RED 1 of 250 in 15 files
+M21 · ⚠️ step 7 falls out of GUARDED into the app default — the census counts a step that reports two unreached claims as one that can only go red for an app defect, and the ledger goes on saying it went to GUARDED
+    runtime GREEN 0 of 1324 in 42 files · desktop GREEN 0 of 2610 in 135 files · dom GREEN 0 of 686 in 44 files · scripts RED 5 of 250 in 15 files
+M22 · ⚠️ step 56 goes back to the app default — the catalogue-dependent half is counted as a step that can only go red for an app defect
+    runtime GREEN 0 of 1324 in 42 files · desktop GREEN 0 of 2610 in 135 files · dom GREEN 0 of 686 in 44 files · scripts RED 6 of 250 in 15 files
+M23 · 🔴 THE DEFECT, verbatim (231/237 §4) · the ban is back — step 7 throws the moment a reasoning disclosure is on screen, which is the renderer doing the right thing
+    runtime GREEN 0 of 1324 in 42 files · desktop GREEN 0 of 2610 in 135 files · dom GREEN 0 of 686 in 44 files · scripts RED 1 of 250 in 15 files
+M24 · ⛔ the two branches stop being checked for being exactly one — an entry drawing BOTH a pill and a disclosure, or neither, is the renderer having lost its v-if/v-else and passes
+    runtime GREEN 0 of 1324 in 42 files · desktop GREEN 0 of 2610 in 135 files · dom GREEN 0 of 686 in 44 files · scripts RED 1 of 250 in 15 files
+M25 · ⛔ the disclosure is never OPENED — the claim that an offer to expand has something behind it goes back to being made by banning the offer
+    runtime GREEN 0 of 1324 in 42 files · desktop GREEN 0 of 2610 in 135 files · dom GREEN 0 of 686 in 44 files · scripts RED 1 of 250 in 15 files
+M26 · ⚠️ 027's caption is read off a presentational class again, so a stylesheet rename reds the step with “the app misleads users about whose words these are”
+    runtime GREEN 0 of 1324 in 42 files · desktop GREEN 0 of 2610 in 135 files · dom GREEN 0 of 686 in 44 files · scripts RED 1 of 250 in 15 files
+M27 · ⛔ the third reasoning state loses its own branch — a quiet turn prints “no reasoning this session” and “reasoning without words this run” side by side, in one report
+    runtime GREEN 0 of 1324 in 42 files · desktop GREEN 0 of 2610 in 135 files · dom GREEN 0 of 686 in 44 files · scripts RED 1 of 250 in 15 files
+M28 · ⛔ THE DEFECT (235 §3) · the marker the smoke matches is not the one the runtime writes, so the control reports an all-clear it never checked
+    runtime GREEN 0 of 1324 in 42 files · desktop GREEN 0 of 2610 in 135 files · dom GREEN 0 of 686 in 44 files · scripts RED 2 of 250 in 15 files
+M29 · ⛔ an erasure that lost its own NAME stops counting — which is exactly the shape a `tool_call` whose `type` field was dropped arrives in
+    runtime GREEN 0 of 1324 in 42 files · desktop GREEN 0 of 2610 in 135 files · dom GREEN 0 of 686 in 44 files · scripts RED 2 of 250 in 15 files
+M30 · ⚠️ the type-less form matches nothing — 235's note 4 (“was anything of ours erased at all”) becomes a filter on the string `undefined`
+    runtime GREEN 0 of 1324 in 42 files · desktop GREEN 0 of 2610 in 135 files · dom GREEN 0 of 686 in 44 files · scripts RED 1 of 250 in 15 files
+M31 · ⛔ step 19 blanks on a plan tool the WIRE erased — the silence is reported as the model's choice
+    runtime GREEN 0 of 1324 in 42 files · desktop GREEN 0 of 2610 in 135 files · dom GREEN 0 of 686 in 44 files · scripts RED 1 of 250 in 15 files
+M32 · ⛔ step 68 blanks on a search or Bash frame the WIRE erased
+    runtime GREEN 0 of 1324 in 42 files · desktop GREEN 0 of 2610 in 135 files · dom GREEN 0 of 686 in 44 files · scripts RED 1 of 250 in 15 files
+M33 · ⛔ step 7 blanks on reasoning the WIRE erased — the one absence site 237 §5's own instruction did not name, because 224's three are not the same three
+    runtime GREEN 0 of 1324 in 42 files · desktop GREEN 0 of 2610 in 135 files · dom GREEN 0 of 686 in 44 files · scripts RED 1 of 250 in 15 files
+M34 · ⛔ step 12 stops reading the ledger for reasoning at all — `codexThinkingEvents` stays at zero, the control that makes its blank honest can never fire, and step 7's copy of the same line keeps the file-wide grep green
+    runtime GREEN 0 of 1324 in 42 files · desktop GREEN 0 of 2610 in 135 files · dom GREEN 0 of 686 in 44 files · scripts RED 1 of 250 in 15 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1324 in 42 files · desktop GREEN 0 of 2610 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 250 in 15 files

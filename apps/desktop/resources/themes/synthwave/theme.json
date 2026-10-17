@@ -1,0 +1,92 @@
+{
+  "format": 1,
+  "id": "synthwave",
+  "name": "Synthwave",
+  "author": "BroBot",
+  "description": "Night purple with neon pink and cyan, and a glowing grid on the horizon.",
+  "extends": "defined",
+  "frame": { "ink": "#f6efff", "paper": "#120a26", "accent": "#01cdfe" },
+  "content": {
+    "ink": "#f6efff",
+    "paper": "#221345",
+    "accent": "#ff71ce",
+    "accent2": "#01cdfe",
+    "scheme": "dark"
+  },
+  "status": { "waiting": "#fffb96", "success": "#05ffa1", "danger": "#ff8fb0", "auto": "#ffb36b" },
+  "shared": { "radius": 10, "shadow": { "style": "glow", "color": "#ff71ce" } },
+  "titlebar": {
+    "background": {
+      "layers": [
+        {
+          "gradient": {
+            "type": "linear",
+            "angle": 90,
+            "stops": [
+              { "color": "#1a0d36", "at": 0 },
+              { "color": "#2a0f45", "at": 50 },
+              { "color": "#1a0d36", "at": 100 }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "rail": {
+    "background": {
+      "layers": [
+        {
+          "gradient": {
+            "type": "linear",
+            "angle": 180,
+            "stops": [
+              { "color": "#1c0f3a", "at": 0 },
+              { "color": "#2b1150", "at": 55 },
+              { "color": "#4a1460", "at": 100 }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "brand": {
+    "mark": {
+      "layers": [
+        {
+          "gradient": {
+            "type": "linear",
+            "angle": 145,
+            "stops": [
+              { "color": "#ff71ce", "at": 0 },
+              { "color": "#01cdfe", "at": 100 }
+            ]
+          }
+        }
+      ]
+    },
+    "markInk": "#120a26"
+  },
+  "conversation": {
+    "background": {
+      "color": "#160c2e",
+      "layers": [
+        {
+          "pattern": { "kind": "lines", "color": "rgb(255 113 206 / 13%)", "size": 64, "angle": 90 }
+        },
+        { "pattern": { "kind": "lines", "color": "rgb(1 205 254 / 10%)", "size": 32 } }
+      ]
+    }
+  },
+  "tokens": {
+    "frame": { "muted": "#c4b2ec", "faint": "#b29fdf", "accent-text": "#8be9ff" },
+    "content": {
+      "accent-text": "#ff9fe0",
+      "accent-link": "#5ee3ff",
+      "paper-link": "#5ee3ff",
+      "muted": "#c4b2ec",
+      "faint": "#b8a5e6",
+      "placeholder": "#a893d9",
+      "focus-ring-color": "#01cdfe"
+    }
+  }
+}

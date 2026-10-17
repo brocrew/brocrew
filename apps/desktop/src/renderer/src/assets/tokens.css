@@ -1,0 +1,841 @@
+/* BroBot global design tokens — W4.212, approved v3 direction.
+ * All legacy and shared-class names live here. Small text has a 12px floor.
+ * The existing navy frame and light content/overlay scopes stay in place.
+ * Window, rail, drawer and transcript geometry is retained; no responsive migration.
+ */
+:root {
+  --icon-stroke: 1.6;
+  --disabled-opacity: 0.55;
+  --rail-w-wide: 266.2px;
+  --dialog-padding-small: 16px;
+  --zero: 0px;
+  color-scheme: dark;
+  --bg: #14173a;
+  --rail: #1b1f4b;
+  --panel: #202344;
+  --panel-2: #272a4a;
+  --panel-3: #2e3150;
+  --raised: #303352;
+  --line: rgba(233, 234, 255, 0.1);
+  --line-strong: rgba(233, 234, 255, 0.2);
+  --control-border: #7f879c;
+  --text: #f1f2ff;
+  --text-soft: #dfe1fb;
+  --muted: #b7bbe6;
+  --faint: #a6aad8;
+  --accent: #ff8a5c;
+  --accent-2: #9aa0ff;
+  --waiting: #ffc857;
+  --success: #2dd4a7;
+  --danger: #ff6b81;
+  --auto: #ff9f68;
+  --ready: #aeb8c7;
+  --info-bg: rgba(154, 160, 255, 0.09);
+  --waiting-bg: rgba(242, 184, 101, 0.1);
+  --success-bg: rgba(101, 214, 158, 0.1);
+  --danger-bg: rgba(255, 127, 141, 0.1);
+  --ready-bg: rgba(255, 255, 255, 0.026);
+  --state-ready: var(--ready);
+  --state-inflight: var(--accent);
+  --state-waiting: var(--waiting);
+  --state-queued: var(--accent-2);
+  --state-landed: var(--success);
+  --state-failed: var(--danger);
+  --state-auto: var(--auto);
+  --accent-fill: rgba(255, 107, 53, 0.14);
+  --accent-fill-weak: rgba(255, 107, 53, 0.1);
+  --accent-fill-strong: rgba(255, 107, 53, 0.26);
+  --accent-border: rgba(255, 138, 92, 0.55);
+  --accent-border-weak: rgba(255, 138, 92, 0.3);
+  --accent-text: #ffb393;
+  --accent-ink: #14173a;
+  --waiting-ink: #1a1208;
+  --waiting-text: #f0d5a6;
+  --danger-text: #f0b6bc;
+  --danger-border: rgba(255, 127, 141, 0.3);
+  --placeholder: #93a4c2;
+  --surface-header-bg: rgba(28, 38, 60, 0.72);
+  --composer-bg: rgba(26, 36, 58, 0.78);
+  --drawer-bg: rgba(26, 36, 58, 0.4);
+  --accent-glow: 0 0 0 3px rgba(255, 138, 92, 0.14);
+  --accent-glow-weak: 0 0 0 3px rgba(255, 138, 92, 0.1);
+  --success-text: #a9dec2;
+  --success-border: rgba(101, 214, 158, 0.16);
+  /* Diff content is always paper, including when opened over navy chrome. */
+  --diff-add-bg: #edf8f3;
+  --diff-add-edge: #167458;
+  --diff-del-bg: #fff0f1;
+  --diff-del-edge: #aa4050;
+  --paper-bg: #fbfaf7;
+  --paper-bar: #f3f2ee;
+  --paper-seg-bg: #ffffff;
+  --paper-ink: #171a3a;
+  --paper-ink2: #262a4d;
+  --paper-ink-strong: #0d1119;
+  --paper-muted: #545877;
+  --paper-line: #d0ccc2;
+  --paper-code-bg: #f3f2ee;
+  --paper-link: #3f45c8;
+  --paper-shadow: 0 2px 14px rgba(0, 0, 0, 0.35);
+  --paper-wash: none;
+  --badge-ink: #ffffff;
+  --overlay-backdrop: rgba(20, 23, 58, 0.58);
+  --toast-bg: rgba(38, 52, 80, 0.97);
+  --toast-shadow: 0 14px 40px rgba(0, 0, 0, 0.34);
+  --traffic-close: #ff5f57;
+  --traffic-min: #febc2e;
+  --traffic-max: #28c840;
+  --traffic-glyph: rgba(16, 20, 28, 0.66);
+  --app-bg: #14173a;
+  --titlebar-bg: #10132f;
+  --rail-bg:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='280' height='330'%3E%3Cg stroke='%23ffffff' stroke-opacity='0.1' stroke-width='1.2'%3E%3Cline x1='30' y1='40' x2='140' y2='25'/%3E%3Cline x1='140' y1='25' x2='220' y2='110'/%3E%3Cline x1='30' y1='40' x2='90' y2='150'/%3E%3Cline x1='90' y1='150' x2='220' y2='110'/%3E%3Cline x1='90' y1='150' x2='180' y2='220'/%3E%3Cline x1='180' y1='220' x2='220' y2='110'/%3E%3Cline x1='90' y1='150' x2='40' y2='250'/%3E%3Cline x1='40' y1='250' x2='130' y2='300'/%3E%3Cline x1='130' y1='300' x2='180' y2='220'/%3E%3Cline x1='180' y1='220' x2='250' y2='280'/%3E%3Cline x1='250' y1='280' x2='220' y2='110'/%3E%3Cline x1='130' y1='300' x2='250' y2='280'/%3E%3C/g%3E%3Cg fill='%23ff8a5c' fill-opacity='0.16000000000000003'%3E%3Ccircle cx='30' cy='40' r='6'/%3E%3Ccircle cx='140' cy='25' r='4'/%3E%3Ccircle cx='220' cy='110' r='4'/%3E%3Ccircle cx='90' cy='150' r='6'/%3E%3Ccircle cx='180' cy='220' r='4'/%3E%3Ccircle cx='40' cy='250' r='4'/%3E%3Ccircle cx='250' cy='280' r='6'/%3E%3Ccircle cx='130' cy='300' r='4'/%3E%3C/g%3E%3C/svg%3E")
+      0 0 / 280px 330px,
+    linear-gradient(180deg, #1b1f4b 0%, #171a42 60%, #1d1747 100%);
+  /* The same drawing as longhands, for the rail's own background: the network over the gradient. */
+  --rail-art:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='280' height='330'%3E%3Cg stroke='%23ffffff' stroke-opacity='0.1' stroke-width='1.2'%3E%3Cline x1='30' y1='40' x2='140' y2='25'/%3E%3Cline x1='140' y1='25' x2='220' y2='110'/%3E%3Cline x1='30' y1='40' x2='90' y2='150'/%3E%3Cline x1='90' y1='150' x2='220' y2='110'/%3E%3Cline x1='90' y1='150' x2='180' y2='220'/%3E%3Cline x1='180' y1='220' x2='220' y2='110'/%3E%3Cline x1='90' y1='150' x2='40' y2='250'/%3E%3Cline x1='40' y1='250' x2='130' y2='300'/%3E%3Cline x1='130' y1='300' x2='180' y2='220'/%3E%3Cline x1='180' y1='220' x2='250' y2='280'/%3E%3Cline x1='250' y1='280' x2='220' y2='110'/%3E%3Cline x1='130' y1='300' x2='250' y2='280'/%3E%3C/g%3E%3Cg fill='%23ff8a5c' fill-opacity='0.16000000000000003'%3E%3Ccircle cx='30' cy='40' r='6'/%3E%3Ccircle cx='140' cy='25' r='4'/%3E%3Ccircle cx='220' cy='110' r='4'/%3E%3Ccircle cx='90' cy='150' r='6'/%3E%3Ccircle cx='180' cy='220' r='4'/%3E%3Ccircle cx='40' cy='250' r='4'/%3E%3Ccircle cx='250' cy='280' r='6'/%3E%3Ccircle cx='130' cy='300' r='4'/%3E%3C/g%3E%3C/svg%3E"),
+    linear-gradient(180deg, #1b1f4b 0%, #171a42 60%, #1d1747 100%);
+  --rail-art-position: 0 0, 0% 0%;
+  --rail-art-size: 280px 330px, auto;
+  --summarised-fade: 0.5;
+  --radius-2xs: 4px;
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius: 12px;
+  --radius-card: 14px;
+  --radius-lg: 18px;
+  --radius-pill: 999px;
+  /* Legacy radii: in-between values kept for an identical look; the theme settings fold them
+     into the radius scale and remove them. */
+  --radius-seg-group: 7px;
+  --radius-seg: 5px;
+  --radius-seg-tight: 3px;
+  --radius-paper: 9px;
+  --radius-toast: 9px;
+  --radius-field-legacy: 7px;
+  --radius-bar: 2px;
+  --radius-code-inline: 2px;
+  --shadow: 0 24px 80px rgba(0, 0, 0, 0.42);
+  --focus-ring-color: rgba(255, 138, 92, 0.72);
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 3px;
+  --selection-bg: rgba(255, 138, 92, 0.28);
+  --titlebar-h: 32px;
+  --rail-w: 251.68px;
+  --rail-w-collapsed: 64px;
+  /* The width of the strip a theme may draw down the left menu's right edge. */
+  --rail-edge-w: 8px;
+  --app-min-w: 1180px;
+  --lane-w: 200px;
+  --lane-clear: calc(var(--space-5) + var(--lane-w) + var(--space-5));
+  --surface-tuck: 20px;
+  --surface-header-h: 64px;
+  --measure-message: 760px;
+  --measure-composer: 820px;
+  --transcript-min: 560px;
+  /* The transcript's comfortable width: the message measure and the reading column's padding on
+     both sides (760 + 2 × 24). The right panel grows only once the transcript has it. */
+  --transcript-comfort: 808px;
+  --tab-h: 40px;
+  --drawer-solid: #1f2350;
+  --avatar: 28px;
+  --font-sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  /* Legacy type names: aliases of the type scale, still read by the role maps in lib/ and by
+     tests; stylesheets read --type-* directly. Removed once nothing reads them. */
+  --text-2xl: var(--type-title);
+  --text-xl: var(--type-heading);
+  --text-lg: var(--type-reading);
+  --text-ml: var(--type-body);
+  --text-base: var(--type-body);
+  --text-reading: var(--type-reading);
+  --text-md: var(--type-small);
+  --text-sm: var(--type-small);
+  --text-xs: var(--type-caption);
+  --text-2xs: var(--type-caption);
+  --text-3xs: var(--type-caption);
+  --text-4xs: var(--type-caption);
+  --text-5xs: var(--type-caption);
+  --text-6xs: var(--type-caption);
+  --text-7xs: var(--type-caption);
+  --fw-normal: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 650;
+  --fw-section: 650;
+  --fw-heavy: 700;
+  --leading-tight: 1.2;
+  --leading-snug: 1.3;
+  --leading-normal: 1.45;
+  --leading-relaxed: 1.55;
+  --leading-reading: 1.6;
+  --tracking-tight: -0.018em;
+  --tracking-hero: -0.03em;
+  --tracking-normal: 0;
+  --tracking-label: 0.045em;
+  --tracking-wider: 0.06em;
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 6px;
+  --space-4: 8px;
+  --space-5: 10px;
+  --space-6: 12px;
+  --space-7: 14px;
+  --space-8: 16px;
+  --space-9: 18px;
+  --space-10: 20px;
+  --space-11: 22px;
+  --space-12: 24px;
+  --space-14: 28px;
+  --bg-glow: none;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-fast: 120ms;
+  --dur-medium: 180ms;
+  --chat-bg: transparent;
+  --type-caption: 12px;
+  --type-small: 13px;
+  --type-body: 14px;
+  --type-reading: 15px;
+  --type-heading: 18px;
+  --type-title: 22px;
+  --type-display: 28px;
+  --type-md-h1: 1.3em;
+  --type-md-h2: 1.15em;
+  --type-md-h3: 1.05em;
+  --type-md-h4: 1em;
+  --type-code-inline: max(var(--type-caption), 0.88em);
+  --space-13: 26px;
+  --space-16: 32px;
+  --space-20: 40px;
+  --space-24: 48px;
+  --space-28: 56px;
+  --space-32: 64px;
+  --drawer-w-min: 360px;
+  --drawer-w-max: 560px;
+  --drawer-min: var(--drawer-w-min);
+  --drawer-max: var(--drawer-w-max);
+  --drawer-preferred: 532px;
+  --border-width: 1px;
+  --border-accent-width: 2px;
+  --border-edge-width: 3px;
+  --control-h: 36px;
+  --control-h-touch: 44px;
+  --control-icon: 36px;
+  --icon-sm: 14px;
+  --icon: 18px;
+  --icon-lg: 22px;
+  --icon-display: 28px;
+  --status-dot: 6px;
+  --avatar-main: 76px;
+  --avatar-compact: 62px;
+  --avatar-card: 46px;
+  --avatar-small: 36px;
+  --card-padding: var(--space-8);
+  --section-gap: var(--space-6);
+  --control-gap: var(--space-3);
+  --dialog-w: 960px;
+  --dialog-max-h: 880px;
+  --dialog-gutter: 24px;
+  --dialog-padding: 24px;
+  --menu-min-w: 220px;
+  --reader-nav-w: 232px;
+  --reader-measure: 68ch;
+  --z-menu: 20;
+  --z-rail: 30;
+  --z-panel: 40;
+  --z-dialog: 50;
+  --z-toast: 60;
+  --motion-none: 0s;
+  --file-image-bg: #e0f7ef;
+  --file-image-ink: #0f8a6a;
+  --file-pdf-bg: #ffe8ec;
+  --file-pdf-ink: #c62844;
+  --file-svg-bg: #eef0ff;
+  --file-svg-ink: #3f45c8;
+  --reader-min-h: 360px;
+  --row-icon: 36px;
+  --metric-min: 128px;
+  --tile-min: 100px;
+  --grid-card-min: 188px;
+  --rail-menu-w: 260px;
+  --reading-inset: 18px;
+  --max-code-h: 400px;
+  --section-marker: 24px;
+  --meter-h: 8px;
+  --bar-height: 6px;
+  --thin-rule: 1px;
+  --bubble-tip: 10px;
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.18), 0 9px 32px rgba(0, 0, 0, 0.22);
+  --shadow-menu: 0 16px 40px -8px rgba(23, 26, 58, 0.25);
+  --shadow-dialog: 0 28px 70px -14px rgba(23, 26, 58, 0.35);
+  --shadow-float: 0 2px 10px rgb(0 0 0 / 25%);
+  --backdrop-blur: 4px;
+  /* Legacy colours: hand-picked variants kept for an identical look; the theme settings
+     replace them with values derived from the core colours above, and remove them. */
+  --chrome-text: #e9eaff;
+  --chrome-selection: rgba(255, 107, 53, 0.18);
+  --neutral-glyph: #aab4c2;
+  --accent-text-weak: #ffb393;
+  --brand-mark-fg: #dce2ff;
+  --accent-text-soft: #ffb393;
+  --accent-text-pale: #ffc4ab;
+  --waiting-fill-hover: #f6c375;
+  --waiting-text-soft: #c9bdab;
+  --waiting-text-label: #e8c487;
+  --waiting-text-weak: #c9a873;
+  --waiting-text-hint: #cdb98d;
+  --danger-text-soft: #ffc6cc;
+  --danger-text-pale: #ffdadd;
+  --danger-text-notice: #d69aa2;
+  --danger-fill-hover: rgba(255, 127, 141, 0.22);
+  --code-text: #d8d6ce;
+  --code-text-dim: #aeb8c8;
+  --code-text-quiet: #98a3b4;
+  --mono-text: #c7d2e4;
+  --mono-text-dim: #9aa4b4;
+  --code-bg: rgba(17, 24, 40, 0.24);
+  --code-bg-weak: rgba(17, 24, 40, 0.2);
+  --waiting-card-bg: linear-gradient(180deg, rgba(67, 62, 63, 0.56), rgba(39, 44, 58, 0.88));
+  --waiting-card-border: rgba(242, 184, 101, 0.28);
+  --waiting-card-line: rgba(242, 184, 101, 0.15);
+  --waiting-pill-border: rgba(242, 184, 101, 0.2);
+  --waiting-glow: 0 0 0 3px rgba(242, 184, 101, 0.1);
+  --waiting-glow-wide: 0 0 0 5px rgba(242, 184, 101, 0.08);
+  --input-card-bg: linear-gradient(180deg, rgba(37, 51, 79, 0.86), rgba(32, 44, 69, 0.86));
+  --accent-pill-border: rgba(255, 138, 92, 0.3);
+  --composer-frozen-bg: rgba(47, 49, 56, 0.5);
+  --composer-frozen-border: rgba(242, 184, 101, 0.22);
+  --attention-bg: rgba(26, 36, 58, 0.33);
+  --accent-pill-bg: rgba(255, 107, 53, 0.08);
+  --accent-link: #8d9de7;
+  --success-border-soft: rgba(101, 214, 158, 0.2);
+  --closing-shade-bg: rgba(20, 23, 58, 0.86);
+  --wash-1: rgba(255, 255, 255, 0.012);
+  --wash-2: rgba(255, 255, 255, 0.025);
+  --wash-3: rgba(255, 255, 255, 0.026);
+  --wash-4: rgba(255, 255, 255, 0.035);
+  --wash-5: rgba(255, 255, 255, 0.05);
+  --sheen: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --scrollbar-thumb: rgba(255, 255, 255, 0.12);
+  --brand-mark-bg: #ffffff;
+  --brand-mark-border: rgba(233, 234, 255, 0.2);
+  --accent-border-hover: rgba(255, 138, 92, 0.7);
+  --sync-dot-glow: 0 0 0 4px rgba(101, 214, 158, 0.08);
+  --surface-edge: rgba(226, 231, 241, 0.5);
+}
+[data-chat-theme='light'],
+[data-on-white] {
+  color-scheme: light;
+  --chat-bg: var(--paper-bg);
+  /* The same network, faint, behind the paper. */
+  --paper-wash: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='280' height='330'%3E%3Cg stroke='%231b1f4b' stroke-opacity='0.06' stroke-width='1.2'%3E%3Cline x1='36.44' y1='39.12' x2='135.54' y2='25.61'/%3E%3Cline x1='143.08' y1='28.28' x2='216.92' y2='106.72'/%3E%3Cline x1='33.11' y1='45.71' x2='86.89' y2='144.29'/%3E%3Cline x1='96.21' y1='148.09' x2='215.7' y2='111.32'/%3E%3Cline x1='95.13' y1='153.99' x2='176.45' y2='217.24'/%3E%3Cline x1='181.54' y1='215.77' x2='218.46' y2='114.23'/%3E%3Cline x1='87.09' y1='155.81' x2='42.01' y2='245.98'/%3E%3Cline x1='43.93' y1='252.19' x2='126.07' y2='297.81'/%3E%3Cline x1='132.38' y1='296.18' x2='177.62' y2='223.82'/%3E%3Cline x1='183.42' y1='222.93' x2='245.06' y2='275.77'/%3E%3Cline x1='248.87' y1='273.6' x2='220.78' y2='114.43'/%3E%3Cline x1='134.44' y1='299.26' x2='243.59' y2='281.07'/%3E%3C/g%3E%3Cg fill='%23e8572a' fill-opacity='0.1'%3E%3Ccircle cx='30' cy='40' r='6'/%3E%3Ccircle cx='140' cy='25' r='4'/%3E%3Ccircle cx='220' cy='110' r='4'/%3E%3Ccircle cx='90' cy='150' r='6'/%3E%3Ccircle cx='180' cy='220' r='4'/%3E%3Ccircle cx='40' cy='250' r='4'/%3E%3Ccircle cx='250' cy='280' r='6'/%3E%3Ccircle cx='130' cy='300' r='4'/%3E%3C/g%3E%3C/svg%3E");
+  --panel-2: #f7f6f2;
+  --panel-3: #eceae4;
+  --panel: #ffffff;
+  --surface-header-bg: #ffffff;
+  --composer-bg: #ffffff;
+  --drawer-bg: #f3f2ee;
+  --drawer-solid: #f3f2ee;
+  --overlay-backdrop: rgb(38 51 80 / 28%);
+  --line: #e5e2db;
+  --line-strong: #d0ccc2;
+  --summarised-fade: 0.62;
+  --text: #171a3a;
+  --text-soft: #262a4d;
+  --muted: #545877;
+  --faint: #5e6b82;
+  --placeholder: #6a6e8a;
+  --accent: #cf4719;
+  --accent-2: #3f45c8;
+  --info-bg: #eef0ff;
+  --accent-fill: #fff0e8;
+  --accent-fill-weak: #fff6f1;
+  --accent-fill-strong: #ffe1d2;
+  --accent-border: #f5b79b;
+  --accent-border-weak: #f9d3c2;
+  --accent-glow: 0 0 0 3px rgba(232, 87, 42, 0.14);
+  --accent-glow-weak: 0 0 0 3px rgba(232, 87, 42, 0.1);
+  --accent-text: #b13c0b;
+  --accent-ink: #ffffff;
+  --waiting: #784f10;
+  --waiting-bg: rgba(149, 99, 20, 0.09);
+  --waiting-text: #925f0e;
+  --waiting-ink: #fff;
+  --danger: #c62844;
+  --danger-bg: rgba(180, 69, 80, 0.08);
+  --danger-border: rgba(180, 69, 80, 0.3);
+  --danger-text: #9f1225;
+  --success: #0e8264;
+  --success-text: #0b6e55;
+  --success-border: rgba(22, 129, 104, 0.3);
+  --success-bg: rgba(22, 129, 104, 0.08);
+  --ready: #67748a;
+  --ready-bg: rgba(40, 51, 78, 0.04);
+  --focus-ring-color: #3f45c8;
+  --selection-bg: rgba(232, 87, 42, 0.2);
+  --toast-bg: rgba(255, 255, 255, 0.97);
+  --toast-shadow: 0 14px 40px rgba(40, 51, 78, 0.18);
+  --shadow-card: 0 1px 2px rgba(23, 26, 58, 0.06), 0 8px 24px -10px rgba(23, 26, 58, 0.18);
+  --shadow: var(--shadow-dialog);
+  --paper-shadow: var(--shadow-menu);
+  --auto: #a25819;
+  /* Legacy colours: hand-picked variants kept for an identical look; the theme settings
+     replace them with values derived from the core colours above, and remove them. */
+  --attention-bg: rgba(40, 51, 78, 0.022);
+  --code-bg: #f3f2ee;
+  --code-bg-weak: #f7f6f2;
+  --wash-1: rgba(40, 51, 78, 0.02);
+  --wash-2: rgba(40, 51, 78, 0.035);
+  --wash-3: rgba(40, 51, 78, 0.045);
+  --wash-5: rgba(40, 51, 78, 0.07);
+  --scrollbar-thumb: rgba(40, 51, 78, 0.2);
+  --code-text: #1f2537;
+  --code-text-dim: #3f4555;
+  --code-text-quiet: #555c6e;
+  --mono-text: var(--paper-ink2);
+  --mono-text-dim: var(--paper-muted);
+  --brand-mark-bg: linear-gradient(145deg, rgba(232, 87, 42, 0.16), rgba(63, 69, 200, 0.11));
+  --accent-pill-border: #f5b79b;
+  --accent-text-soft: #b13c0b;
+  --accent-text-pale: #b13c0b;
+  --accent-pill-bg: #fff6f1;
+  --accent-link: #3f45c8;
+  --waiting-pill-border: rgba(149, 99, 20, 0.3);
+  --waiting-glow: 0 0 0 3px rgba(149, 99, 20, 0.1);
+  --waiting-glow-wide: 0 0 0 5px rgba(149, 99, 20, 0.08);
+  --waiting-card-bg: linear-gradient(180deg, #fffaf1, #fbf0dd);
+  --waiting-card-border: rgba(149, 99, 20, 0.32);
+  --waiting-card-line: rgba(149, 99, 20, 0.16);
+  --waiting-text-soft: #6b5b22;
+  --waiting-text-label: #8b5d07;
+  --waiting-text-weak: #746528;
+  --waiting-text-hint: #925f0e;
+  --waiting-fill-hover: #9a6908;
+  --danger-fill-hover: rgba(180, 69, 80, 0.16);
+  --danger-text-soft: #9f1225;
+  --danger-text-pale: #9f1225;
+  --danger-text-notice: #9f1225;
+  --success-border-soft: rgba(22, 129, 104, 0.28);
+  --neutral-glyph: #67748a;
+  --input-card-bg: linear-gradient(180deg, #fff, #fafbfe);
+  --composer-frozen-bg: rgba(149, 99, 20, 0.06);
+  --composer-frozen-border: rgba(149, 99, 20, 0.28);
+}
+:root,
+[data-chat-theme='light'],
+[data-on-white] {
+  --role-prose: var(--text-base);
+  --role-label: var(--text-sm);
+  --role-value: var(--text-3xs);
+  --role-meta: var(--text-5xs);
+  --role-field: var(--text-6xs);
+  --accent-alpha-22: color-mix(in srgb, var(--accent) 22%, transparent);
+  --accent-mix-4: color-mix(in srgb, var(--accent) 4%, var(--panel));
+  --accent-mix-5: color-mix(in srgb, var(--accent) 5%, var(--panel));
+  --accent-mix-8: color-mix(in srgb, var(--accent) 8%, var(--panel));
+  --accent-mix-10: color-mix(in srgb, var(--accent) 10%, var(--panel));
+  --accent-mix-12: color-mix(in srgb, var(--accent) 12%, var(--panel));
+  /* Words in the second accent. Classic draws them in the second accent itself. */
+  --accent-2-text: var(--accent-2);
+  /* The fill behind words in --accent-ink: segmented tabs, send buttons, a running chip. */
+  --accent-solid-bg: var(--accent);
+  --state-ready: var(--ready);
+  --state-inflight: var(--accent);
+  --state-waiting: var(--waiting);
+  --state-queued: var(--accent-2);
+  --state-landed: var(--success);
+  --state-failed: var(--danger);
+  --state-auto: var(--auto);
+}
+
+/* Existing wide-window rail geometry; responsive work is deferred. */
+@media (min-width: 1400px) {
+  :root {
+    --rail-w: var(--rail-w-wide);
+  }
+}
+
+/* Existing shared-dialog token overrides, moved from classes.css unchanged. */
+@media (max-width: 560px) {
+  :root {
+    --dialog-gutter: var(--zero);
+    --dialog-padding: var(--dialog-padding-small);
+    --control-h: var(--control-h-touch);
+    --control-icon: var(--control-h-touch);
+  }
+}
+
+/* ------------------------------------------------------------------ themes */
+
+/* Theme settings. A theme sets only these, on :root[data-theme='<id>']. Without a data-theme,
+ * or with data-theme='classic', the window paints the hand-picked values above and nothing below
+ * applies. The defaults are the derived look's settings: the ones the theme check assumes for a
+ * setting a theme leaves unset (DEFAULT_SEEDS in shared/themes/contrast.ts). Declared on :root
+ * only: a redeclaration in the light scope would hide a theme's root block from the content area. */
+:root {
+  --frame-ink: #e3e8f4;
+  --frame-paper: #182135;
+  --frame-accent: #a7b7ff;
+  --content-ink: #1b2238;
+  --content-paper: #ffffff;
+  --content-accent: #4f46e5;
+  --content-accent-2: #7953b9;
+  --status-waiting: #784f10;
+  --status-success: #05725a;
+  --status-danger: #ac3d49;
+  --status-auto: #9a510d;
+  --page-depth: 7%;
+  --line-strength: 16%;
+  --tint-strength: 10%;
+  --shadow-strength: 9%;
+  /* Unset: shadows are then black on the frame and the ink on content. */
+  --shadow-color: initial;
+  --radius-base: 12px;
+  --type-base: 14px;
+  --type-ratio: 1.26;
+  /* The fonts for conversation titles and for the name beside the logo. */
+  --font-display: 'Avenir Next', Avenir, var(--font-sans);
+  --font-brand: 'Avenir Next', Avenir, var(--font-sans);
+  --kind-1: #366f83;
+  --kind-2: #a23e50;
+  --kind-3: #806120;
+  --kind-4: #5958fa;
+  --kind-5: #10765e;
+  --kind-6: #a25819;
+  --kind-7: #7953b9;
+  --kind-8: #46536d;
+  /* Per-component settings a theme may set. Unset (initial): each place that reads one paints
+     its own fallback, as it does today. */
+  --bevel-dark: initial;
+  --bevel-light: initial;
+  --brand-mark-color: initial;
+  --brand-mark-edge: initial;
+  --brand-mark-figure: initial;
+  --brand-mark-image: initial;
+  --brand-mark-ink: initial;
+  --brand-mark-position: initial;
+  --brand-mark-rendering: initial;
+  --brand-mark-repeat: initial;
+  --brand-mark-size: initial;
+  --composer-field-bg: initial;
+  --composer-field-ink: initial;
+  --composer-field-line: initial;
+  --composer-surround-color: initial;
+  --composer-surround-image: initial;
+  --composer-surround-position: initial;
+  --composer-surround-rendering: initial;
+  --composer-surround-repeat: initial;
+  --composer-surround-size: initial;
+  --conversation-bg-color: initial;
+  --conversation-bg-image: initial;
+  --conversation-bg-position: initial;
+  --conversation-bg-rendering: initial;
+  --conversation-bg-repeat: initial;
+  --conversation-bg-size: initial;
+  --drawer-card-bg: initial;
+  --drawer-card-ink: initial;
+  --drawer-card-line: initial;
+  --drawer-panel-bg-color: initial;
+  --drawer-panel-bg-image: initial;
+  --drawer-panel-bg-position: initial;
+  --drawer-panel-bg-rendering: initial;
+  --drawer-panel-bg-repeat: initial;
+  --drawer-panel-bg-size: initial;
+  --drawer-tabs-bg-color: initial;
+  --drawer-tabs-bg-image: initial;
+  --drawer-tabs-bg-position: initial;
+  --drawer-tabs-bg-rendering: initial;
+  --drawer-tabs-bg-repeat: initial;
+  --drawer-tabs-bg-size: initial;
+  --font-style-brand: initial;
+  --font-style-display: initial;
+  --fw-brand: initial;
+  --fw-display: initial;
+  --rail-bg-color: initial;
+  --rail-bg-image: initial;
+  --rail-bg-position: initial;
+  --rail-bg-rendering: initial;
+  --rail-bg-repeat: initial;
+  --rail-bg-size: initial;
+  --rail-edge-color: initial;
+  --rail-edge-image: initial;
+  --rail-edge-position: initial;
+  --rail-edge-rendering: initial;
+  --rail-edge-repeat: initial;
+  --rail-edge-size: initial;
+  --rail-item-active-bg: initial;
+  --rail-item-active-ink: initial;
+  --rail-item-hover-bg: initial;
+  --rail-item-hover-ink: initial;
+  --titlebar-bg-color: initial;
+  --titlebar-bg-image: initial;
+  --titlebar-bg-position: initial;
+  --titlebar-bg-rendering: initial;
+  --titlebar-bg-repeat: initial;
+  --titlebar-bg-size: initial;
+  --titlebar-ink: initial;
+  --titlebar-ink-glow: initial;
+  --tracking-brand: initial;
+  --tracking-display: initial;
+  --window-bg-color: initial;
+  --window-bg-image: initial;
+  --window-bg-position: initial;
+  --window-bg-rendering: initial;
+  --window-bg-repeat: initial;
+  --window-bg-size: initial;
+  /* The title bar's text glow, when a theme gives it a colour; unset, no glow. */
+  --titlebar-ink-glow-shadow: 0 0 6px var(--titlebar-ink-glow);
+  /* The title bar's status words under a theme's title-bar ink, worked out from it as the frame's
+     are from the frame's ink; unset, they keep the frame's. */
+  --titlebar-waiting: oklch(
+    from color-mix(in oklab, var(--status-waiting) 40%, var(--titlebar-ink)) l calc(c * 2.5) h
+  );
+  --titlebar-danger: oklch(
+    from color-mix(in oklab, var(--status-danger) 40%, var(--titlebar-ink)) l calc(c * 2.5) h
+  );
+}
+
+/* What a Themes card's preview paints its frame and its page with. Each card's stylesheet sets them
+   for its own theme; unset, the preview paints the app's own. */
+:root {
+  --preview-frame: initial;
+  --preview-page: initial;
+}
+
+/* A derived theme: every value below is worked out from the settings. Two zones read the same
+ * formulas through the zone aliases --z-*: the frame (:root) from the frame's settings, the light
+ * scope from the content's. The selectors are no more specific than the classic rules above, so
+ * they win by order, and a theme's own root block and hand-tuned colours still win over them. */
+
+/* The frame, and what the whole window shares. */
+:root:where([data-theme]:not([data-theme='classic'])) {
+  --z-ink: var(--frame-ink);
+  --z-paper: var(--frame-paper);
+  --z-accent: var(--frame-accent);
+  --z-shadow: var(--shadow-color, #000);
+  /* The page behind the window, the window behind everything, the title bar and the left menu
+     are the frame's paper, plain: the colour the theme check measures the frame's text on.
+     Classic's drawn rail and its glow are Classic's own. */
+  --bg: var(--frame-paper);
+  --bg-glow: none;
+  --app-bg: var(--frame-paper);
+  --titlebar-bg: var(--frame-paper);
+  --rail: var(--frame-paper);
+  --rail-bg: var(--frame-paper);
+  --rail-art: none;
+  /* On a frame, a status colour is the content's, mixed toward the frame's ink and given back its
+     colour, so it reads on a dark frame and a light one alike. */
+  --waiting: oklch(
+    from color-mix(in oklab, var(--status-waiting) 40%, var(--frame-ink)) l calc(c * 2.5) h
+  );
+  --success: oklch(
+    from color-mix(in oklab, var(--status-success) 40%, var(--frame-ink)) l calc(c * 2.5) h
+  );
+  --danger: oklch(
+    from color-mix(in oklab, var(--status-danger) 40%, var(--frame-ink)) l calc(c * 2.5) h
+  );
+  --auto: oklch(
+    from color-mix(in oklab, var(--status-auto) 40%, var(--frame-ink)) l calc(c * 2.5) h
+  );
+  --accent-2: oklch(
+    from color-mix(in oklab, var(--content-accent-2) 40%, var(--frame-ink)) l calc(c * 2.5) h
+  );
+
+  /* Document paper is paper in both zones, so it is worked out from the content's settings. */
+  --paper-bg: color-mix(in oklab, var(--content-ink) var(--page-depth), var(--content-paper));
+  --paper-ink: var(--content-ink);
+  --paper-ink2: color-mix(in oklab, var(--content-ink) 85%, var(--content-paper));
+  --paper-muted: color-mix(in oklab, var(--content-ink) 76%, var(--content-paper));
+  --paper-line: color-mix(in oklab, var(--content-ink) var(--line-strength), var(--content-paper));
+  --paper-link: color-mix(in oklab, var(--content-accent) 85%, var(--content-ink));
+  --paper-code-bg: color-mix(
+    in oklab,
+    var(--content-accent) calc(var(--tint-strength) * 0.7),
+    var(--content-paper)
+  );
+  --file-image-ink: var(--kind-1);
+  --file-image-bg: color-mix(in oklab, var(--kind-1) 10%, var(--content-paper));
+  --file-pdf-ink: var(--kind-2);
+  --file-pdf-bg: color-mix(in oklab, var(--kind-2) 10%, var(--content-paper));
+  --file-svg-ink: var(--kind-3);
+  --file-svg-bg: color-mix(in oklab, var(--kind-3) 10%, var(--content-paper));
+
+  /* Shape and type. At radius 12px and type 14px × 1.26 these are classic's exact values. No text
+     size goes below the 12px floor, whatever a theme's size and ratio. */
+  --radius-2xs: calc(var(--radius-base) / 3);
+  --radius-xs: calc(var(--radius-base) / 2);
+  --radius-sm: calc(var(--radius-base) * 2 / 3);
+  --radius-md: calc(var(--radius-base) * 2 / 3);
+  --radius: var(--radius-base);
+  --radius-card: calc(var(--radius-base) * 7 / 6);
+  --radius-lg: calc(var(--radius-base) * 1.5);
+  --type-caption: max(12px, round(calc(var(--type-base) / pow(var(--type-ratio), 0.5)), 1px));
+  --type-small: max(12px, round(calc(var(--type-base) / pow(var(--type-ratio), 0.25)), 1px));
+  --type-body: max(12px, var(--type-base));
+  --type-reading: max(12px, round(calc(var(--type-base) * pow(var(--type-ratio), 0.25)), 1px));
+  --type-heading: max(12px, round(calc(var(--type-base) * var(--type-ratio)), 1px));
+  --type-title: max(12px, round(calc(var(--type-base) * pow(var(--type-ratio), 2)), 1px));
+  --type-display: max(12px, round(calc(var(--type-base) * pow(var(--type-ratio), 3)), 1px));
+}
+
+/* The content zone. */
+:where(:root[data-theme]:not([data-theme='classic']))
+  :is([data-chat-theme='light'], [data-on-white]) {
+  --z-ink: var(--content-ink);
+  --z-paper: var(--content-paper);
+  --z-accent: var(--content-accent);
+  --z-shadow: var(--shadow-color, var(--content-ink));
+  --waiting: var(--status-waiting);
+  --success: var(--status-success);
+  --danger: var(--status-danger);
+  --auto: var(--status-auto);
+  --accent-2: var(--content-accent-2);
+  --chat-bg: var(--paper-bg);
+  /* Classic's drawn network is Classic's own. A theme's page is its paper, plain, unless the theme
+     sets a background of its own, which the theme check measures. */
+  --paper-wash: none;
+  --drawer-bg: color-mix(in oklab, var(--z-ink) calc(var(--page-depth) + 2%), var(--z-paper));
+  --drawer-solid: var(--drawer-bg);
+  --surface-header-bg: var(--z-paper);
+  --composer-bg: var(--z-paper);
+  --shadow: var(--shadow-dialog);
+  --paper-shadow: var(--shadow-menu);
+}
+
+/* Both zones: the same formulas, each zone through its own aliases. */
+:root:where([data-theme]:not([data-theme='classic'])),
+:where(:root[data-theme]:not([data-theme='classic']))
+  :is([data-chat-theme='light'], [data-on-white]) {
+  --panel: var(--z-paper);
+  --panel-2: color-mix(in oklab, var(--z-ink) 3%, var(--z-paper));
+  /* A question card waiting for an answer is a card: the panel the check measures cards on. */
+  --input-card-bg: var(--panel);
+  --panel-3: color-mix(in oklab, var(--z-ink) 9%, var(--z-paper));
+  /* Words in the second accent: the second accent a step toward the ink, as --accent-text is. */
+  --accent-2-text: color-mix(in oklab, var(--accent-2) 80%, var(--z-ink));
+  --line: color-mix(in oklab, var(--z-ink) var(--line-strength), var(--z-paper));
+  --line-strong: color-mix(in oklab, var(--z-ink) calc(var(--line-strength) * 1.7), var(--z-paper));
+
+  --text: var(--z-ink);
+  --chrome-text: var(--text);
+  --text-soft: color-mix(in oklab, var(--z-ink) 85%, var(--z-paper));
+  --muted: color-mix(in oklab, var(--z-ink) 76%, var(--z-paper));
+  --faint: color-mix(in oklab, var(--z-ink) 72%, var(--z-paper));
+  --placeholder: var(--faint);
+
+  --accent: var(--z-accent);
+  --accent-ink: var(--z-paper);
+  /* A bevelled control's two edges, unless a theme sets them: a lighter and a darker paper. */
+  --control-bevel-light: color-mix(in oklab, var(--z-paper) 40%, white);
+  --control-bevel-dark: color-mix(in oklab, var(--z-ink) 45%, var(--z-paper));
+  --control-bevel-raised:
+    inset 1px 1px 0 var(--bevel-light, var(--control-bevel-light)),
+    inset -1px -1px 0 var(--bevel-dark, var(--control-bevel-dark));
+  --control-bevel-sunk:
+    inset 1px 1px 0 var(--bevel-dark, var(--control-bevel-dark)),
+    inset -1px -1px 0 var(--bevel-light, var(--control-bevel-light));
+  /* A solid primary button under the pointer: its accent, a step toward its text. */
+  --accent-solid-hover: color-mix(in oklab, var(--accent-solid-bg) 88%, var(--accent-ink));
+  --accent-text: color-mix(in oklab, var(--z-accent) 80%, var(--z-ink));
+  --accent-text-weak: var(--accent-text);
+  --accent-text-soft: var(--accent-text);
+  --accent-text-pale: var(--accent-text);
+  --accent-link: var(--accent-text);
+  --accent-fill: color-mix(in oklab, var(--z-accent) var(--tint-strength), var(--z-paper));
+  --accent-fill-weak: color-mix(
+    in oklab,
+    var(--z-accent) calc(var(--tint-strength) * 0.7),
+    var(--z-paper)
+  );
+  --accent-fill-strong: color-mix(
+    in oklab,
+    var(--z-accent) calc(var(--tint-strength) * 1.6),
+    var(--z-paper)
+  );
+  --accent-pill-bg: var(--accent-fill-weak);
+  --info-bg: var(--accent-fill-weak);
+  --accent-border: color-mix(
+    in oklab,
+    var(--z-accent) calc(var(--tint-strength) * 3.5),
+    var(--z-paper)
+  );
+  --accent-border-weak: color-mix(
+    in oklab,
+    var(--z-accent) calc(var(--tint-strength) * 2.2),
+    var(--z-paper)
+  );
+  --accent-border-hover: color-mix(
+    in oklab,
+    var(--z-accent) calc(var(--tint-strength) * 4.5),
+    var(--z-paper)
+  );
+  --accent-pill-border: var(--accent-border);
+  --focus-ring-color: var(--z-accent);
+  --selection-bg: color-mix(in srgb, var(--z-accent) 22%, transparent);
+  --accent-glow: 0 0 0 3px color-mix(in srgb, var(--z-accent) 14%, transparent);
+  --accent-glow-weak: 0 0 0 3px color-mix(in srgb, var(--z-accent) 10%, transparent);
+
+  --waiting-bg: color-mix(in srgb, var(--waiting) 9%, transparent);
+  --waiting-text: color-mix(in oklab, var(--waiting) 85%, var(--z-ink));
+  /* Every form of waiting and error text is the status's text form, which the check measures. */
+  --waiting-text-label: var(--waiting-text);
+  --waiting-text-soft: var(--waiting-text);
+  --waiting-text-hint: var(--waiting-text);
+  --waiting-text-weak: var(--waiting-text);
+  --danger-text-notice: var(--danger-text);
+  --danger-text-pale: var(--danger-text);
+  --danger-text-soft: var(--danger-text);
+  /* Text on a waiting-coloured pill is the zone's paper, as far from the waiting colour as the page. */
+  --waiting-ink: var(--z-paper);
+  --success-bg: color-mix(in srgb, var(--success) 8%, transparent);
+  --success-border: color-mix(in srgb, var(--success) 30%, transparent);
+  --success-text: color-mix(in oklab, var(--success) 85%, var(--z-ink));
+  --danger-bg: color-mix(in srgb, var(--danger) 8%, transparent);
+  --danger-border: color-mix(in srgb, var(--danger) 30%, transparent);
+  --danger-text: color-mix(in oklab, var(--danger) 85%, var(--z-ink));
+
+  --shadow-card:
+    0 1px 2px color-mix(in srgb, var(--z-shadow) calc(var(--shadow-strength) * 1.1), transparent),
+    0 6px 18px color-mix(in srgb, var(--z-shadow) var(--shadow-strength), transparent);
+  --shadow-menu: 0 12px 32px
+    color-mix(in srgb, var(--z-shadow) calc(var(--shadow-strength) * 1.5), transparent);
+  --shadow-dialog: 0 24px 80px
+    color-mix(in srgb, var(--z-shadow) calc(var(--shadow-strength) * 2.2), transparent);
+}
+
+/* A theme's shadow style, in both zones. Soft is the shadows above. Hard: offset, with no blur.
+ * Glow: around the box, in the shadow colour. Shadows sit outside the boxes that hold text, so no
+ * style changes what any text is read against. */
+:root:where([data-theme]:not([data-theme='classic'])[data-shadow-style='hard']),
+:where(:root[data-theme]:not([data-theme='classic'])[data-shadow-style='hard'])
+  :is([data-chat-theme='light'], [data-on-white]) {
+  --shadow-card: 2px 2px 0
+    color-mix(in srgb, var(--z-shadow) calc(var(--shadow-strength) * 2.5), transparent);
+  --shadow-menu: 4px 4px 0
+    color-mix(in srgb, var(--z-shadow) calc(var(--shadow-strength) * 3), transparent);
+  --shadow-dialog: 6px 6px 0
+    color-mix(in srgb, var(--z-shadow) calc(var(--shadow-strength) * 3.5), transparent);
+}
+:root:where([data-theme]:not([data-theme='classic'])[data-shadow-style='glow']),
+:where(:root[data-theme]:not([data-theme='classic'])[data-shadow-style='glow'])
+  :is([data-chat-theme='light'], [data-on-white]) {
+  --shadow-card: 0 0 12px
+    color-mix(in srgb, var(--z-shadow) calc(var(--shadow-strength) * 3), transparent);
+  --shadow-menu: 0 0 20px
+    color-mix(in srgb, var(--z-shadow) calc(var(--shadow-strength) * 3.5), transparent);
+  --shadow-dialog: 0 0 32px
+    color-mix(in srgb, var(--z-shadow) calc(var(--shadow-strength) * 4), transparent);
+}
+
+/* A card in the right-hand panel under a theme that gives cards an ink: its text is that ink, and
+ * its soft, secondary and faint text are worked out from the ink and the card's fill, as a zone's
+ * are from its ink and paper. */
+:root[data-card-ink] .card-section {
+  --text: var(--drawer-card-ink);
+  --text-soft: color-mix(in oklab, var(--drawer-card-ink) 85%, var(--drawer-card-bg, var(--panel)));
+  --muted: color-mix(in oklab, var(--drawer-card-ink) 76%, var(--drawer-card-bg, var(--panel)));
+  --faint: color-mix(in oklab, var(--drawer-card-ink) 72%, var(--drawer-card-bg, var(--panel)));
+  --placeholder: var(--faint);
+}

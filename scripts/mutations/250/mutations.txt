@@ -1,0 +1,63 @@
+# 250 mutations — HEAD 4d771e8 + working tree
+# 2026-08-31T20:59:36Z
+
+M0  CONTROL (no mutation) — baseline runtime=1371 desktop=2776 dom=722 scripts=261
+    runtime GREEN 0 of 1371 in 43 files · desktop GREEN 0 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+
+M1 · 🔴 THE DEFECT, verbatim · the word ignores the registry again, so the pill says Idle, the rail says `claude · idle` and the drawer says Nothing is waiting — over a command the OS reports alive. This is the line the person watched be wrong, twice
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 14 of 2776 in 144 files · dom RED 2 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M2 · ⛔ the facet is built but never carried · `sessionFacets` drops it, so every surface downstream is reading an object the fact never reached — the same silence, one layer up
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 11 of 2776 in 144 files · dom RED 2 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M3 · 🔴 the RAIL goes quiet · `recordFacets` stops asking, so every conversation in the rail — which is most of them, since only one is on screen (064) — reads `claude · idle`
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 8 of 2776 in 144 files · dom RED 1 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M4 · 🔴 the HEADER goes quiet · the pane stops passing it, so the pill above the conversation disagrees with the registry a few inches below it — 099, restaged
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 3 of 2776 in 144 files · dom RED 2 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M5 · ⛔ background work outranks a PERMISSION · a conversation frozen on a card the user must answer reads `still running`, and 063/079 §5's guarantee — an unanswered card always has a visible trace — is gone. 229: this asks nothing and blocks nothing
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 5 of 2776 in 144 files · dom RED 1 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M6 · ⚠️ it talks over `unknown` · the host has said nothing about this session and the app claims to know what it is doing — 081's faceless ring is a refusal, and a refusal a smaller fact can override is not one
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 3 of 2776 in 144 files · dom RED 1 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M7 · ⚠️ a WORKING turn is relabelled · the pill stops saying the model is working the moment anything is detached, which trades one wrong word for another — 081's one-word rule is that the surface says the most important thing, and a live turn is it
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 2 of 2776 in 144 files · dom RED 1 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M8 · ⛔ a SECOND phrase for one fact · the rail prints `claude · background` while the registry above the composer and the tool card both say *still running* — 222 §4's one-vocabulary rule, which exists because a person must not meet two names for one thing
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 5 of 2776 in 144 files · dom RED 1 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M9 · 🔴 the pill says Idle again by the shortest possible route · the derivation is right and the label lies, which is the failure a `Record<Standing, string>` exists to make loud
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 5 of 2776 in 144 files · dom RED 1 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M10 · ⚠️ the pill wears the blank tone · `idle`'s own absence of colour, on the one state that is not idle — the impression this dispatch exists to remove, kept in CSS
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 1 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M11 · ⚠️ the screen reader is left with the old sentence · *claude — idle, live* over work the sighted reading shows in a list with a stop button. The one person who cannot see that list is the one this omission costs
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 3 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M12 · ⛔ the predicate reads only the rows it can NAME · a level payload the provider sent with no `task_id` — counted by `normalize.ts` precisely because it can be neither listed nor stopped — makes every surface answer *idle* while something is running. 247 §3: a registry that quietly undercounts is worse than none
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 1 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M13 · ⚠️ the other direction · every conversation ever opened reads *still running*, including one that has never seen a level payload — a badge that never comes down is a badge nobody reads (037)
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 12 of 2776 in 144 files · dom RED 1 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M14 · ⛔ the fact is folded into `empty` · the paragraph vanishes in the one state that most needs a sentence, leaving the blank column 067's review named — the fix for one lie reintroducing a different one
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 2 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M15 · ⛔ it is counted as WAITING · the composer freezes, the drawer badges and 205's attention bar rises for work that asks nothing — 229's ruling exactly, and 108's asymmetry (counted as HAPPENING, never as WAITING) broken in the one line that states it
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 2 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M16 · 🔴 the projection stops knowing · `stillRunning` is hard-false, so the drawer says *Nothing is waiting* over a running command — the person's third sighting, restored
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 5 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M17 · ⚠️ the words stop being chosen · one sentence for three states, and it is the one that is false while work runs
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 5 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M24 · 🔴 the sentence points at a bar that did not render · a level that names rows this app cannot list (`dropped` without `running`) draws no `BackgroundBar` at all, because its `v-if` counts `running.length` — so *'it is listed above the composer'* sends the reader to nothing. Found by the adversarial pass over 250's diff, which RENDERED the state
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 2 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M26 · 🔴 the DRAWER's bot says `idle` again · `SessionBot` renders inside `SessionPanel`, a few lines above the paragraph that says work is still running — so the tab shows both at once, which is the person's own complaint surviving inside the panel 250 was fixing. The fifth word surface, and neither the dispatch nor the first draft of this diff listed it
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 1 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M27 · ⚠️ Home enumerates the standings again · *'Every open conversation is either working or idle'* is a list of two over a vocabulary of eight, on the one surface the person scans — and it goes stale, silently, every time the vocabulary grows. 250's first fix widened the list to three and the adversarial pass over its own diff pointed out that it was still incomplete; the claim is the ABSENCE of an enumeration, not a particular sentence
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 1 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M25 · ⚠️ `runningNamed` stops being the BAR's own condition · the sentence and the widget come to disagree about whether there is a list to look at, which is 223's rule in the one place 250 had to obey it twice
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 1 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M18 · ⚠️ the alarm loses its instrument · the sentence says work is running and no longer says where to look for it — 239's rule is that a refusal states its own workaround, and this app HAS the instrument, six inches down
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 4 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M19 · ⚠️ the pane reads the READING window · a person who scrolls back through a long conversation makes the header pill go quiet about work that is still running — 064's whole subject, and 061 finding 5's list of what reading old history was allowed to change
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 1 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M20 · 🔴 the RAIL reads the reading window · every conversation the reader is not looking at reports on a fold that stopped at the last page they scrolled to. The rail exists to describe exactly those conversations (064)
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 1 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M21 · ⚠️ the component holds the literal again · the rule is right, the projection is right, and the heading is a hard-coded string that cannot be wrong in one direction only
+    runtime GREEN 0 of 1371 in 43 files · desktop GREEN 0 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M22 · ⚠️ the cross-surface handle goes · `data-running` is what lets a test read WHICH sentence rendered without matching prose, and 099's parity checks are built on exactly these attributes
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 2 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+M23 · 🔴 the defect 250's own adversarial pass found · the plate's accessible name loses the fourth facet, so a screen reader hears *claude — idle, live* over work the sighted reading shows in a list with a stop button. Every caller spreads the whole facets object, so the fact still ARRIVES — as a stray `detached="true"` on the root element, reaching nothing. 222 §4's *a word nothing can produce*, created by the fix for it
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 3 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1371 in 43 files · desktop GREEN 0 of 2776 in 144 files · dom GREEN 0 of 722 in 47 files · scripts GREEN 0 of 261 in 16 files

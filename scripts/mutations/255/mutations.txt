@@ -1,0 +1,65 @@
+# 255 mutations — HEAD 658baaf + working tree
+# 2026-09-01T01:06:15Z
+
+M0  CONTROL (no mutation) — baseline runtime=1391 desktop=2818 dom=758 scripts=261
+    runtime GREEN 0 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+
+M1 · 🔴 THE WHOLE DESIGN, inverted · the `v-for` slices instead of classing, so the list holds the viewport and `ledgerRows` answers 'the model never called Bash' off sixty-eight rows — 211 §4's blinded instrument on the one surface that exists to be unblindable
+    runtime GREEN 0 of 1391 in 44 files · desktop RED 2 of 2818 in 147 files · dom RED 16 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M2 · 🔴 a folded row is BLANK · the detail is the text `ledgerRows` and 235's erasure marker read, and every row nobody is looking at loses it
+    runtime GREEN 0 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom RED 5 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M3 · 🔴 a folded row is not a row · `data-type` is what makes an `<li>` countable, and without it `ledgerReach`'s `shown` and every type filter see the drawn band only
+    runtime GREEN 0 of 1391 in 44 files · desktop RED 1 of 2818 in 147 files · dom RED 10 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M4 · ⛔ 211 M24's defect, re-homed · the raw row loses the CATEGORY off screen, so the classification the conversation no longer draws is countable only in the viewport
+    runtime GREEN 0 of 1391 in 44 files · desktop RED 1 of 2818 in 147 files · dom RED 1 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M5 · 🔴 the row height is rounded · `offsetHeight` is an integer, so a 35.5 px row measures 36 and every folded row is half a pixel too tall — 2,466 px of lie by the end of a full window, which is 69 rows and past the overscan
+    runtime GREEN 0 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom RED 3 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M6 · ⛔ a folded row has no size · `content-visibility: hidden` with nothing to size it collapses to nothing, and five thousand rows fit in one screen that scrolls nowhere
+    runtime GREEN 0 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom RED 7 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M7 · ⛔ the containment goes · the decoration is deferred and the engine lays out and paints five thousand rows anyway, which is the half of the cost that is not Vue's
+    runtime GREEN 0 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom RED 1 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M8 · ⛔ the folded height is a guess rather than the row's own arithmetic · the tokens and the engine disagree, so every open pays a second full layout of five thousand rows to correct it — silently, because the answer still comes out right
+    runtime GREEN 0 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom RED 1 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M9 · ⛔ the band never moves · the hysteresis returns for every scroll, so a reader scrolls into four thousand rows that were never decorated
+    runtime GREEN 0 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom RED 3 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M10 · ⛔ there is no hysteresis · the band is re-derived on every `scroll` event, so Vue re-runs the `v-for` over five thousand rows once a frame — the freeze moved from the open to the gesture
+    runtime GREEN 0 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom RED 1 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M11 · ⛔ the overscan is gone · the band is exactly the viewport, so it moves on the next row and the hysteresis it was there to give protects nothing
+    runtime GREEN 0 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom RED 1 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M12 · ⛔ the slice is not re-derived when the window GROWS · a followed stream scrolls to its newest line and that line is folded, so a live session appears to go blank on its own tail. This row exists because the argument that a growing list always produces a scroll event was made, believed, and measured false
+    runtime GREEN 0 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom RED 1 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M13 · ⛔ the follow is never released · `onScroll` stops being called, so a reader who scrolled back to read something is dragged to the bottom by the next event
+    runtime GREEN 0 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom RED 1 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M14 · ⛔ scrolling does not re-slice · the band is set once at mount and the reader scrolls off the end of it
+    runtime GREEN 0 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom RED 3 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M15 · ⛔ the row is never measured · the slice arithmetic runs on the estimate for the life of the tab. ⚠️ The stylesheet still sizes the rows correctly, so the SCROLLBAR is fine and only the mapping drifts — 69 rows by the bottom, where the newest event is
+    runtime GREEN 0 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom RED 2 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M16 · ⛔ `data-drawn` reports the window rather than the fold · the one attribute that says this list is virtualized at all, saying it is not
+    runtime GREEN 0 of 1391 in 44 files · desktop RED 1 of 2818 in 147 files · dom RED 1 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M17 · ⚠️ the first frame decorates one row · SSR and the frame before the measurement draw a single line over a full window
+    runtime GREEN 0 of 1391 in 44 files · desktop RED 2 of 2818 in 147 files · dom RED 2 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M18 · ⚠️ the band is off by one at its far edge · the last row of the drawn range is folded while `data-drawn` goes on counting it
+    runtime GREEN 0 of 1391 in 44 files · desktop RED 1 of 2818 in 147 files · dom RED 3 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M19 · 🔴 THE 145.6 ms, verbatim · the formatter is rebuilt on every call, so five thousand rows construct five thousand `Intl.DateTimeFormat`s — 212's number, restored
+    runtime GREEN 0 of 1391 in 44 files · desktop RED 1 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M20 · 🔴 …and by the route that hid it · back to `Date.prototype.toLocaleTimeString`, which builds its formatter from the intrinsic where no counter can see it
+    runtime GREEN 0 of 1391 in 44 files · desktop RED 1 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M21 · ⛔ the tooltip loses the time · `new Intl.DateTimeFormat(locale)` defaults to `date` where `toLocaleString()` defaults to date AND time, so the whole moment becomes a day
+    runtime GREEN 0 of 1391 in 44 files · desktop RED 1 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M22 · ⚠️ nothing is guarded at all · a moment that is not one reaches the formatter, and where `Date` printed `Invalid Date` a `RangeError` now comes out of a timestamp, on a row
+    runtime GREEN 0 of 1391 in 44 files · desktop RED 1 of 2818 in 147 files · dom RED 3 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M28 · 🔴 THE DEFECT the adversarial pass found, verbatim · the guard checks `Number.isFinite` and nothing else, so a FINITE time value out of `Date`'s range — `9e15`, which an imported bundle can carry — reaches `Intl.DateTimeFormat.format`, which throws where `toLocaleTimeString` merely printed `Invalid Date`. A `RangeError` inside a Vue render, on a surface with no error boundary
+    runtime GREEN 0 of 1391 in 44 files · desktop RED 1 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M23 · ⚠️ the row shape calls itself an event again · 122's census counts every object in `src` that assigns a `type` it cannot read back to a literal, because ONE place may construct a `status` event — and a row-shape named `type` is a second writer it cannot tell apart from a real one
+    runtime GREEN 0 of 1391 in 44 files · desktop RED 1 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M24 · ⚠️ the instrument's ledger read moves and nothing notices · the smoke asks for the type a different way, and the `dom` test goes on certifying a query nobody makes
+    runtime GREEN 0 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts RED 1 of 261 in 16 files
+M25 · ⚠️ …and the same drift from the other side · the `dom` test stops mirroring the smoke, so the read it proves against a folded list is no longer the read the smoke makes
+    runtime GREEN 0 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts RED 1 of 261 in 16 files
+M26 · ⚠️ the colour key is dropped in the derivation · every raw row is drawn at one loudness, which is what `kindOf` exists to prevent — and nothing in the suite read it until 255 moved it
+    runtime GREEN 0 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom RED 1 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+M27 · ⚠️ `drawn` counts the BAND rather than its intersection with the rows · a window that has just released a page reports a drawn row where there is none
+    runtime GREEN 0 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom RED 1 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1391 in 44 files · desktop GREEN 0 of 2818 in 147 files · dom GREEN 0 of 758 in 49 files · scripts GREEN 0 of 261 in 16 files

@@ -1,0 +1,83 @@
+# 232 mutations — HEAD e2e9a3f + working tree
+# 2026-08-28T11:31:52Z
+
+M0  CONTROL (no mutation) — baseline runtime=1292 desktop=2532 dom=668 scripts=233
+    runtime GREEN 0 of 1292 in 40 files · desktop GREEN 0 of 2532 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+
+M1  · 🔴 THE DEFECT, verbatim (227 HIGH 1) · the re-check stops comparing the canonical PATH, so a staged file replaced by a link to ~/.ssh/id_rsa is sent as what the person attached
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 5 of 2532 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M2  · ⛔ §1 · the re-check stops comparing the KIND — the case existing coverage called acceptable: a file that became a folder goes out as a folder nobody chose
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 2 of 2532 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M3  · 🔴 §1 · the comparison is COMPUTED and then ignored, which is the shape of the original defect: main asked the filesystem again and never asked whether the answer changed
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 7 of 2532 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M4  · ⚠️ §1 · the refusal names only what was attached and not where it now leads, so the person is told something changed and cannot see what
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 1 of 2532 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M5  · ⛔ §1 · the post-recheck DEDUPE goes, so a forged or replayed command carrying one path twice tells the agent to read it twice and makes the transcript claim two attachments
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 1 of 2532 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M6  · ⛔ 216 M20, re-anchored and re-run · the ordinary SEND stops re-checking at all
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 5 of 2532 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M7  · 🔴 216 M33, re-anchored and re-run · the interrupting send stops checking BEFORE it kills the running turn — now a replacement, not only a vanished path, destroys the thinking in flight and then refuses
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 2 of 2532 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M8  · 🔴 §1 · the UNATTENDED FLUSH stops re-checking — the widest version of the window, minutes long, with nobody at the keyboard and a chip on screen that stopped being true
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 14 of 2532 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M9  · ⛔ 216 M24 (203 M30), re-anchored and re-run · ordinary `send` stops asking whether the session can take a turn
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 8 of 2532 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M10 · ⛔ §1 · QUEUE ACCEPTANCE stops checking, so a path already gone is taken now and refused minutes later with nobody watching
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 1 of 2532 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M11 · 🔴 §2 · the control-character rule matches NOTHING, so the predicate is a name with no rule behind it and both doors that call it wave everything through
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 5 of 2532 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M12 · 🔴 THE DEFECT (227 HIGH 2) · the classifier stops refusing a control-bearing name, so one selection reaches the model as two BroBot-authored records
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 1 of 2532 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M13 · 🔒 216 M44, re-anchored and re-run · the WIRE door stops requiring an absolute path
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 3 of 2532 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M14 · ⛔ 221 M9, re-anchored and re-run · the wire table loses a row, so a rule the schema holds is described by nothing
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 1 of 2532 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M15 · 🔒 216 M43, re-anchored and re-run · a RELATIVE path is no longer refused, so `realpath` resolves it against the MAIN PROCESS's own cwd and a file nobody chose is disclosed as the user's own attachment
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 3 of 2532 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M16 · 🔴 THE DEFECT, verbatim (227 HIGH 2) · the model-facing block interpolates the pathname RAW again, so a legal filename writes BroBot's own sentences
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 5 of 2532 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M17 · ⛔ §2 · the WIRE stops refusing a control character, so a forged or replayed command carries one straight past the door the classifier is doubled at
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 1 of 2532 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M18 · ⚠️ §2 · the one refusal that may not repeat its path repeats it, putting the control characters onto the very surface the refusal is read on
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 3 of 2532 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M19 · 🔴 218 M19, re-anchored and re-run · a dropped FOLDER stops being one path
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 6 of 2532 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M20 · ⛔ 218 M20, re-anchored and re-run · refusals are swallowed, so a dropped file that has since been deleted vanishes with no chip and no sentence
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 3 of 2532 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M21 · 🔴 THE DEFECT, verbatim (227 MEDIUM 5) · the CAP goes silent again — eleven files dropped, ten chips, and the eleventh gone with nothing on screen that changed
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 1 of 2532 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M22 · ⚠️ 216 M2, re-anchored and re-run · a dangling symlink says the FILE is missing rather than that the shortcut is broken — two different fixes, one sentence
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 3 of 2532 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M23 · ⚠️ §3 · the cap's sentence counts the WHOLE drop rather than what was left over, so the number a person reads is not the number of things they lost
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 8 of 2532 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M24 · 🔒 216 M5, re-anchored and re-run (227 MEDIUM 1) · a path OUTSIDE the working directory stops saying so — and the anchor is now the ONE-observation form, so this also pins that the caller resolved the target
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 8 of 2532 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M25 · 🔴 221 M24, re-anchored and re-run · the chip carries the SPELLING again rather than the resolved path, so one folder staged by two routes is two attachments
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 8 of 2532 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M26 · ⛔ 231 · the classifier goes back to SYNCHRONOUS filesystem calls, so the unattended queue flush parks Electron's main process on whatever the path is mounted from
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 2 of 2532 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M27 · ⛔ §5 · the live step that stages a path and CHANGES it underneath disappears from the run, and the census stops describing what the smoke offers
+    runtime GREEN 0 of 1292 in 40 files · desktop GREEN 0 of 2532 in 134 files · dom GREEN 0 of 668 in 43 files · scripts RED 1 of 233 in 15 files
+M28 · ⚠️ §2 · the control-character rule narrows to the two characters that break TODAY's block, so the rule describes this version of the grammar rather than the class
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 2 of 2532 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M29 · 🔴 review · the CAPTION pass re-baselines the record consent is measured against, so one debounced re-caption between the swap and the press launders the replacement and 227 HIGH 1 walks through the launcher's door with the fix in place
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 1 of 2532 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M30 · 🔴 review · the control-character gate reads the SPELLING and not the resolved target, so a symlink named report.txt pointing at a newline-bearing name is accepted, its bytes reach the chip, and the wire then refuses a chip the person was already shown
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 1 of 2532 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M31 · ⚠️ review · the refusal for a replacement that is still THERE claims it was moved or deleted — the sentence §1 forbids, arriving through the one replacement consentChanged cannot see
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 1 of 2532 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M32 · 🔴 review · the one-at-a-time queue rule stops being ATOMIC — the re-check goes back between the refusal and the assignment it guards, so two queue commands in flight both pass and the first message is destroyed with no ending
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 1 of 2532 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M33 · 🔴 review · the interrupt's queue latch drops back below the path re-check, so a turn that terminalizes inside that filesystem round trip lets the queued message start its own turn — and the interrupt then kills the message it was supposed to come after
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 1 of 2532 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M36 · ⛔ 203 M32, re-anchored and re-run · the interrupt's breadcrumb is written ABOVE everything that can refuse, so a turn the gate rejects leaves a trail saying the user interrupted something they did not
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 2 of 2532 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M37 · ⛔ 217 M19, re-anchored and re-run · the caption pass echoes what it was handed instead of taking the verdict's answer, so the mark it exists to re-decide is never re-decided
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 2 of 2532 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M35 · ⛔ 216 M1, re-anchored and re-run · a path that does not exist is accepted at the picker, so the refusal arrives after Send instead of before it
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 9 of 2532 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M34 · ⚠️ review · `gone` crosses the WIRE, so DroppedPathVerdict grows a third field the type does not declare and the renderer receives something its contract does not describe
+    runtime GREEN 0 of 1292 in 40 files · desktop RED 3 of 2532 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1292 in 40 files · desktop GREEN 0 of 2532 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files

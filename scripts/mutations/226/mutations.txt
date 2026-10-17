@@ -1,0 +1,69 @@
+# 226 mutations — HEAD 2deb899 + working tree
+# 2026-08-27T23:25:38Z
+
+M0  CONTROL (no mutation) — baseline runtime=1292 desktop=2507 dom=668 scripts=233
+    runtime GREEN 0 of 1292 in 40 files · desktop GREEN 0 of 2507 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+
+M1 · ⛔ THE HOLE · the report path stops asking whether this thread is OURS, so any conversation on the connection can write a card onto this one — 226 as a hole in 200 rather than a correction to it
+    runtime RED 2 of 1292 in 40 files · desktop GREEN 0 of 2507 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M2 · the gate never calls the reader at all — every frame a child sends about itself is refused unread, which is the state 225 reported and 226 measured the cause of
+    runtime RED 6 of 1292 in 40 files · desktop GREEN 0 of 2507 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M3 · a method nobody wrote a branch for is read as something — the switch stops falling through to nothing, so an unrecognised frame becomes a card event
+    runtime RED 1 of 1292 in 40 files · desktop GREEN 0 of 2507 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M4 · the report is read from the frame's own `agentId` field instead of the `threadId` the provider actually keys these on — a lookup that can never hit, failing silently
+    runtime RED 6 of 1292 in 40 files · desktop GREEN 0 of 2507 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M5 · ⛔ THE DEFECT · a descendant's birth is not read, so a depth-2 agent is known only by going active and draws as `nested agent` with no name and no parent — 225 finding 1, verbatim
+    runtime RED 2 of 1292 in 40 files · desktop GREEN 0 of 2507 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M6 · the birth is not REGISTERED as it is emitted, so the grandchild's own `active` finds no entry and `observe` opens a second, anonymous card beside the named one
+    runtime RED 1 of 1292 in 40 files · desktop GREEN 0 of 2507 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M7 · `item/completed` announces the birth a second time — the byte-identical item 033 was dispatched over, so every grandchild arrives twice
+    runtime RED 1 of 1292 in 40 files · desktop GREEN 0 of 2507 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M8 · ⛔ THE DEFECT · a child's `turn/completed` is not read, so its ending carries no outcome — the `ENDED · usage not reported` face 225 saw, and 033's sentence back
+    runtime RED 4 of 1292 in 40 files · desktop GREEN 0 of 2507 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M9 · every child ending is reported as a SUCCESS — the fail-closed mapping 055 built for the parent's own turn is swapped for the happy reading, so a failed child says completed
+    runtime RED 2 of 1292 in 40 files · desktop GREEN 0 of 2507 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M10 · the outcome is reported once per FRAME rather than once per turn, so a provider that repeats `turn/completed` ends the same card again and again
+    runtime RED 1 of 1292 in 40 files · desktop GREEN 0 of 2507 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M11 · the duration is read off the notification instead of out of its `turn`, so a child that ran for seven seconds reports no time at all
+    runtime RED 3 of 1292 in 40 files · desktop GREEN 0 of 2507 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M12 · ⛔ the card reports the child's LAST request instead of its whole spend — `mergeUsage` keeps the larger of what it has, so the number shown becomes whichever single request happened to be biggest
+    runtime RED 1 of 1292 in 40 files · desktop GREEN 0 of 2507 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M13 · a reading with no number in it writes a zero — `0k tokens` over a real measurement, which is the fabricated blank 111 built `usage not reported` to avoid
+    runtime RED 1 of 1292 in 40 files · desktop GREEN 0 of 2507 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M14 · the tool count moves when a call STARTS — work the child has begun reported as work it has done, which is 074's reading one surface over
+    runtime RED 1 of 1292 in 40 files · desktop GREEN 0 of 2507 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M15 · everything a child does counts as a tool call — its own prose and its reasoning included, so the card reports a number that is not a measurement of anything
+    runtime RED 2 of 1292 in 40 files · desktop GREEN 0 of 2507 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M16 · `adopted` becomes a DEDUCTION from `dropped` rather than a subset of it — the equality `probe:foreign-thread` checks against an independent tee stops holding, and the only thing keeping that counter honest would have to be relaxed to accommodate this change
+    runtime RED 2 of 1292 in 40 files · desktop GREEN 0 of 2507 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M17 · ⛔ 226 §3 · the rail's collapsed summary is hidden rather than removed, so the sentence `N closed threads hidden` stays in the document while the rows are on screen — 225 finding 2, which is exactly what a script reading the DOM sees
+    runtime GREEN 0 of 1292 in 40 files · desktop GREEN 0 of 2507 in 134 files · dom RED 1 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M18 · ⛔ step 17 asserts the silence §1 disproved — a Codex child that names how it ended reds the step on a healthy run, which is the measured-false claim turned into a gate
+    runtime GREEN 0 of 1292 in 40 files · desktop GREEN 0 of 2507 in 134 files · dom GREEN 0 of 668 in 43 files · scripts RED 1 of 233 in 15 files
+M19 · the outcome and usage claims are computed and never reach the verdict — 206 H1's whole subject: a claim that lives in the step and not in the headline
+    runtime GREEN 0 of 1292 in 40 files · desktop GREEN 0 of 2507 in 134 files · dom GREEN 0 of 668 in 43 files · scripts RED 1 of 233 in 15 files
+M20 · ⛔ a child's SECOND turn can never report how it went — the outcome is refused for every turn after the first, so a resumed child's ending is silently discarded
+    runtime RED 1 of 1292 in 40 files · desktop GREEN 0 of 2507 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M21 · ⛔ THE HOLE · a thread nothing ANNOUNCED is read like a child — `observe` fails open by design, so any thread that ever went active would hand this conversation its token totals, its tool counts, its outcome and the births it announces
+    runtime RED 1 of 1292 in 40 files · desktop GREEN 0 of 2507 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M22 · ⛔ 075 · a card the PARENT turn already closed goes on speaking — its own `turn/completed` lands after the terminal turn, and a late token reading puts it back in `open` to be closed a second time on the next turn
+    runtime RED 1 of 1292 in 40 files · desktop GREEN 0 of 2507 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M23 · the boundary closes the card and does not SEAL it, which is the same hole reached from the other side — `note` leaves the tracker able to speak about a card `deliver` just closed
+    runtime RED 1 of 1292 in 40 files · desktop GREEN 0 of 2507 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M24 · ⛔ a birth may name OUR OWN thread — the one door that writes an id it did not read from `threadId`, so the session grows a sub-agent card of itself that progresses whenever it works and ends whenever it goes idle
+    runtime RED 1 of 1292 in 40 files · desktop GREEN 0 of 2507 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M25 · a card that has ENDED goes on making progress — `status` has refused this since 033 and the two new progress paths must, or an event about a closed card re-opens it
+    runtime RED 1 of 1292 in 40 files · desktop GREEN 0 of 2507 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M26 · a negative number is rendered as a measurement — the usage schema has no lower bound, so `durationMs: -1` validates, survives `mergeUsage` and draws as a negative duration instead of falling back to the honest blank
+    runtime RED 1 of 1292 in 40 files · desktop GREEN 0 of 2507 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M27 · the duration is this TURN's rather than the child's whole life, beside tokens and tool counts that are lifetime totals — `mergeUsage` keeps the max, so the card reports everything it ever spent in the time of whichever single turn was longest
+    runtime RED 1 of 1292 in 40 files · desktop GREEN 0 of 2507 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M28 · `finished` writes `working`, which only the status stream may write — after a `turn/completed` a REPEATED `active` then reads as a fresh transition, emitting a spurious progress and re-arming everything behind it
+    runtime RED 1 of 1292 in 40 files · desktop GREEN 0 of 2507 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files
+M29 · the snapshot reads a card's usage with a bare descendant query, so a grandchild's number is reported as its parent's — 035's hazard, on the field 226 added
+    runtime GREEN 0 of 1292 in 40 files · desktop GREEN 0 of 2507 in 134 files · dom GREEN 0 of 668 in 43 files · scripts RED 1 of 233 in 15 files
+M30 · ⛔ step 17's naming check EXEMPTS a card that says its parent was never reported — after 226 that card is the regression, so the exemption waves through exactly what it was written to catch
+    runtime GREEN 0 of 1292 in 40 files · desktop GREEN 0 of 2507 in 134 files · dom GREEN 0 of 668 in 43 files · scripts RED 1 of 233 in 15 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1292 in 40 files · desktop GREEN 0 of 2507 in 134 files · dom GREEN 0 of 668 in 43 files · scripts GREEN 0 of 233 in 15 files

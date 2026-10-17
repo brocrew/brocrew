@@ -1,0 +1,37 @@
+# 181 mutations — HEAD d66c53d + working tree
+# 2026-08-17T11:09:54Z
+
+M0  CONTROL (no mutation) — baseline runtime=1095 dom=528
+    runtime GREEN 0 of 1095 in 37 files · dom GREEN 0 of 528 in 31 files
+
+M1 · ⛔ the card says `file` again — the reported defect, verbatim
+    runtime RED 3 of 1095 in 37 files · dom GREEN 0 of 528 in 31 files
+M2 · ⛔ the paths never reach the scope — the disclosure block goes back to empty
+    runtime RED 1 of 1095 in 37 files · dom GREEN 0 of 528 in 31 files
+M3 · ⛔ full disclosure claimed even when nothing was named
+    runtime RED 2 of 1095 in 37 files · dom GREEN 0 of 528 in 31 files
+M4 · ⛔ …and the opposite: every file named and the ⚠ banner still on it
+    runtime RED 1 of 1095 in 37 files · dom GREEN 0 of 528 in 31 files
+M5 · ⛔ §1b's sentence goes back to a word that explains nothing
+    runtime RED 1 of 1095 in 37 files · dom GREEN 0 of 528 in 31 files
+M6 · ⛔ the tracker is never fed — the correlation exists and nothing reaches it
+    runtime RED 2 of 1095 in 37 files · dom GREEN 0 of 528 in 31 files
+M7 · ⛔ an EMPTY changes array erases what we hold — the card's files depend on frame order
+    runtime RED 1 of 1095 in 37 files · dom GREEN 0 of 528 in 31 files
+M8 · ⛔ …and never replaced: a revised patch is approved against its first draft
+    runtime RED 1 of 1095 in 37 files · dom GREEN 0 of 528 in 31 files
+M9 · ⛔ a rename forgets where it came from — a file out of nowhere
+    runtime RED 2 of 1095 in 37 files · dom GREEN 0 of 528 in 31 files
+M10 · ⛔ an unreadable kind is called `modified` — a claim about a file nobody described
+    runtime RED 1 of 1095 in 37 files · dom GREEN 0 of 528 in 31 files
+M11 · ⛔ the per-item map is unbounded (052's shape, on a long conversation)
+    runtime RED 1 of 1095 in 37 files · dom GREEN 0 of 528 in 31 files
+M12 · ⛔ `1 file change were approved` — the grammar bug, restored
+    runtime GREEN 0 of 1095 in 37 files · dom RED 1 of 528 in 31 files
+M13 · ⛔ …and the agreement broken at the OTHER count
+    runtime GREEN 0 of 1095 in 37 files · dom RED 1 of 528 in 31 files
+M14 · ⛔ the new hook leaves the tab-flow table — the walk stops guarding it
+    runtime GREEN 0 of 1095 in 37 files · dom RED 1 of 528 in 31 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1095 in 37 files · dom GREEN 0 of 528 in 31 files

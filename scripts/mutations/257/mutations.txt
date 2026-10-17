@@ -1,0 +1,50 @@
+# 257 mutations — HEAD d18ef19 + working tree
+# 2026-09-01T22:23:22Z
+
+M0  CONTROL (no mutation) — baseline runtime=1461 desktop=2996 dom=788 scripts=299
+    runtime GREEN 0 of 1461 in 47 files · desktop GREEN 0 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+
+M1 · 🔴 THE DEFECT, verbatim · every `system/init` resets the level again, so a scheduled job waking the session empties the registry of a conversation that is holding live detached work — the card goes blank while the command runs
+    runtime RED 3 of 1461 in 47 files · desktop GREEN 0 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M2 · 🔴 the same defect by the other route · the flag never latches, so every `init` is a first one and the guard above is decoration
+    runtime RED 2 of 1461 in 47 files · desktop GREEN 0 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M3 · ⛔ the level is not reset at all (247 M14, moved) · the SDK says the set is per-process and that nothing is emitted at startup, so a restarted CLI inherits the previous process's tasks and a reopened conversation resurrects a row for work that died
+    runtime RED 1 of 1461 in 47 files · desktop GREEN 0 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M4 · ⛔ …and the shortfall outlives the set it described (248) · an EMPTY level goes out still claiming to be understating itself
+    runtime GREEN 0 of 1461 in 47 files · desktop GREEN 0 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M5 · ⛔ the guard is inverted · the FIRST init is treated as the wake-up and every later one as the restart, so the ledger's replayed phantom is never corrected and every cron fire clears the registry
+    runtime RED 5 of 1461 in 47 files · desktop GREEN 0 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M6 · 🔴 THE DEFECT, verbatim · Codex's sign-in is reserved per PROFILE again, while the redirect port it protects belongs to the machine. Two profiles both spawn an app-server, both advertise localhost:1455, and the first flow dies in a browser tab with no explanation
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 1 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M7 · ⚠️ the opposite over-correction · Claude's sign-in is reserved provider-wide too, which is a claim about a contended resource nobody has found — 257 §1 says say what you did and why, and this is the version with no reason behind it
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 1 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M8 · ⛔ the guard is gone entirely · the second sign-in is admitted, spawns its own app-server and opens its own browser URL — which is the state 256 measured
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 3 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M9 · ⛔ the refusal stops naming the holder · back to *"already in progress for this profile"*, which is actively wrong when the holder is a different one and is the sentence a person reads while their other browser tab dies
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 1 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M10 · ⛔ Cancel reaches ANOTHER profile's flow · the provider-wide key hands back somebody else's sign-in and the button tears it down, which is the port collision arriving through the control that exists to fix it
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 1 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M11 · ⛔ Cancel skips a sign-in that has not finished starting (185 M3, moved) · the reservation is the ONLY thing either Cancel or a quit can find while the handshake hangs, and a detached app-server holding the redirect port outlives both
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 3 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M12 · 🔴 THE DEFECT, verbatim · the probe runs in DEFAULT_PROFILE_ID's home again, so every profile's launcher is shown the default profile's catalogue — 256 H1, and the sentence in the doc that the code did not do
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 4 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M13 · ⛔ the cache key forgets the profile · one entry per provider for the whole app, so the second profile to ask is served the first one's answer without a spawn to notice
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 3 of 2996 in 156 files · dom RED 1 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M14 · 🔴 a question creates a profile · the existence guard goes, so rendering a launcher for a name somebody is still typing lays down a provider home and copies the machine Codex credential into it — 098's *asking a question wrote a credential to disk*, through the menu
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 1 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M15 · ⛔ a settled sign-in leaves the old menu in place · the one moment the catalogue can change under a running app, and the app keeps showing what the previous account could run
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 1 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+!! M16 · ⛔ …and the re-copy door is left open too · `reprovisionProviderAuth` replaces the credential and the memoized menu survives it: anchor found 0 times in apps/desktop/src/main/runtime/runtime-host.ts (expected exactly 1)
+M16 · ⛔ …and the re-copy door is left open too · `reprovisionProviderAuth` replaces the credential and the memoized menu survives it
+    !! DID NOT APPLY — this mutation proves nothing
+M17 · ⚠️ the invalidation over-reaches · one credential moving drops every profile's menu, so the next launcher mount re-spawns a provider child per home for an answer that had not changed
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 3 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M18 · ⚠️ the bound is gone · one never-invalidated promise becomes N never-invalidated promises, which is 257 §2's own warning
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 1 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M19 · ⚠️ the bound evicts the NEWEST · the map stays bounded and the entry the person is looking at is the one thrown away, so the profile in front of them is re-probed on every ask
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 1 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+M20 · ⛔ the screen asks about a profile that does not exist · every keystroke in the launcher's new-profile box becomes a question, and on the host's side a question is a home with a credential in it
+    runtime GREEN 0 of 1461 in 47 files · desktop RED 2 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1461 in 47 files · desktop GREEN 0 of 2996 in 156 files · dom GREEN 0 of 788 in 53 files · scripts GREEN 0 of 299 in 18 files

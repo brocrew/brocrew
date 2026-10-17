@@ -1,0 +1,24 @@
+# 491 mutations — HEAD ae4611dc + working tree
+# 2026-09-16T14:23:39Z
+# project-reachability v1 topology=unproved — For each row, run every baseline project whose tests can conservatively reach an edited path; any unknown path runs every project, and every omitted measurement is written NOT RUN (out of reach), never GREEN.
+
+M0  CONTROL (no mutation) — baseline runtime=1792 desktop=5760 dom=1497 scripts=745 shared=4
+    runtime GREEN 0 of 1792 in 62 files · desktop GREEN 0 of 5760 in 295 files · dom GREEN 0 of 1497 in 105 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+
+M1 · 🔴 `stalled_at` is hard-wired to null at the public door · the ledger still holds the terminal time, but the supervisor can no longer distinguish the first ending from the later turn it can also see
+    runtime GREEN 0 of 1792 in 62 files · desktop RED 4 of 5760 in 295 files · dom GREEN 0 of 1497 in 105 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M2 · ⛔ `stalled_by` is hard-wired to null at the public door · a person's real Stop still writes its neighbouring ask, and `list_tasks` reports the act while naming nobody
+    runtime GREEN 0 of 1792 in 62 files · desktop RED 3 of 5760 in 295 files · dom GREEN 0 of 1497 in 105 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M3 · 🔴 `given_to_is` is hard-wired to null at the public door · the holder's live card still says `waiting_permission`, but the task row goes back to the exact state BroBot could not distinguish from a permanently empty field
+    runtime GREEN 0 of 1792 in 62 files · desktop RED 4 of 5760 in 295 files · dom GREEN 0 of 1497 in 105 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M4 · ⚠️ closed history gets the holder's live clause · one conversation's current permission is again printed on every task it ever held, turning a true conversation-wide state into a task-specific implication
+    runtime GREEN 0 of 1792 in 62 files · desktop RED 2 of 5760 in 295 files · dom GREEN 0 of 1497 in 105 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M5 · 🔴 a new turn does not clear the idle ask · cancelling a later permission, which writes no ask of its own, falsely attributes that new task's interrupted turn to the person who pressed Stop while nothing was running
+    runtime GREEN 0 of 1792 in 62 files · desktop RED 1 of 5760 in 295 files · dom GREEN 0 of 1497 in 105 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M6 · ⛔ the narrow task read drops `user_turn` · the live fold has the boundary and the replayed/product read does not, so the same idle person's name crosses into a later task only after the database is read back
+    runtime GREEN 0 of 1792 in 62 files · desktop RED 2 of 5760 in 295 files · dom GREEN 0 of 1497 in 105 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M7 · 🔴 every non-null `stalled_by` becomes the person constant · null causes still read null and the person's Stop still looks right, while an agent's recorded id is erased
+    runtime GREEN 0 of 1792 in 62 files · desktop RED 1 of 5760 in 295 files · dom GREEN 0 of 1497 in 105 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1792 in 62 files · desktop GREEN 0 of 5760 in 295 files · dom GREEN 0 of 1497 in 105 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files

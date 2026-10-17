@@ -1,0 +1,53 @@
+# 217 mutations — HEAD 3151a36 + working tree
+# 2026-08-26T11:27:51Z
+
+M0  CONTROL (no mutation) — baseline desktop=2416 dom=612 scripts=3
+    desktop GREEN 0 of 2416 in 128 files · dom GREEN 0 of 612 in 40 files · scripts GREEN 0 of 3 in 1 files
+
+M1 · 🔴 §1 · the launcher loses `can-attach`, so there is no paperclip on the surface where a conversation BEGINS — the exact gap the person hit in the running app at 3151a36
+    desktop GREEN 0 of 2416 in 128 files · dom RED 1 of 612 in 40 files · scripts GREEN 0 of 3 in 1 files
+M2 · ⛔ §1 · the launcher stops handing the composer what is staged, so a picked file never appears as a chip and the person has no way to see what they attached
+    desktop GREEN 0 of 2416 in 128 files · dom RED 9 of 612 in 40 files · scripts GREEN 0 of 3 in 1 files
+M3 · ⛔ §2 · the launcher stops handing the composer its FOLDER, so every chip reads "no folder yet" even after a folder has been chosen
+    desktop GREEN 0 of 2416 in 128 files · dom RED 2 of 612 in 40 files · scripts GREEN 0 of 3 in 1 files
+M4 · 🔴 §1 · `startWith` goes back to taking only the text — the one-parameter handler bound to a three-value emit, which is how the paths were lost in the first place
+    desktop GREEN 0 of 2416 in 128 files · dom RED 3 of 612 in 40 files · scripts GREEN 0 of 3 in 1 files
+M5 · 🔴 §1 · the `start` emit drops the paths, so the launch carries the words alone
+    desktop GREEN 0 of 2416 in 128 files · dom RED 3 of 612 in 40 files · scripts GREEN 0 of 3 in 1 files
+M6 · 🔴 §1 · `RuntimeScreen.start` stops ACCEPTING the paths, so the four hops before it end at a function that has nowhere to put them
+    desktop RED 1 of 2416 in 128 files · dom GREEN 0 of 612 in 40 files · scripts GREEN 0 of 3 in 1 files
+M7 · 🔴 §1 · the first message's `store.send` loses its attachments argument — the last of the four hops, and the one the wire actually reads
+    desktop RED 1 of 2416 in 128 files · dom GREEN 0 of 612 in 40 files · scripts GREEN 0 of 3 in 1 files
+M8 · ⛔ §2 · a launch that never opened hands back the words and drops the paths, so the restored draft looks whole and is not (211's defect wearing a new coat)
+    desktop RED 2 of 2416 in 128 files · dom GREEN 0 of 612 in 40 files · scripts GREEN 0 of 3 in 1 files
+M9 · ⛔ §2 · a conversation that opened but could not send its first message hands back the words alone, losing what was attached to them
+    desktop RED 2 of 2416 in 128 files · dom GREEN 0 of 612 in 40 files · scripts GREEN 0 of 3 in 1 files
+M10 · 🔴 §2 · the chip loses its THIRD state, so with no folder chosen — the launcher's commonest case — every attachment is marked `outside` a directory nobody has picked yet (⚠️ DELETING the line came back INVALID rather than RED: it orphans the `v-else-if` and 141 files fail to COLLECT, which is 216's broken-chain lesson in a mutation)
+    desktop GREEN 0 of 2416 in 128 files · dom RED 2 of 612 in 40 files · scripts GREEN 0 of 3 in 1 files
+M11 · ⛔ §2 · `cwdKnown` answers yes for a blank folder, which is the same defect from the other side: the honest caption never renders
+    desktop GREEN 0 of 2416 in 128 files · dom RED 2 of 612 in 40 files · scripts GREEN 0 of 3 in 1 files
+M12 · 🔴 §2 · nothing re-evaluates the mark when the folder changes, so it goes STALE — the one thing §2 names outright
+    desktop GREEN 0 of 2416 in 128 files · dom RED 2 of 612 in 40 files · scripts GREEN 0 of 3 in 1 files
+M13 · ⛔ §2 · the re-check asks main about the OLD folder, so the answer is fresh and wrong
+    desktop GREEN 0 of 2416 in 128 files · dom RED 2 of 612 in 40 files · scripts GREEN 0 of 3 in 1 files
+M14 · ⚠️ §2 · the out-of-order guard goes, so a slow answer about a folder the box has moved on from overwrites the right one
+    desktop GREEN 0 of 2416 in 128 files · dom RED 1 of 612 in 40 files · scripts GREEN 0 of 3 in 1 files
+M15 · ⛔ §2 · the re-check runs with NOTHING staged, so every keystroke in the folder field is an IPC round trip for people who never attach anything
+    desktop GREEN 0 of 2416 in 128 files · dom RED 1 of 612 in 40 files · scripts GREEN 0 of 3 in 1 files
+M16 · 🔴 §2 · the sweep stops pinning the LAUNCHER's slot, so a half-composed first message and the files staged for it are thrown away while you read something else
+    desktop RED 3 of 2416 in 128 files · dom GREEN 0 of 612 in 40 files · scripts GREEN 0 of 3 in 1 files
+M17 · ⛔ §2 · a failed launch stops handing the paths back to the launcher, so the words return and the attachment does not
+    desktop GREEN 0 of 2416 in 128 files · dom RED 1 of 612 in 40 files · scripts GREEN 0 of 3 in 1 files
+M18 · ⛔ §2 · the caption pass stops BOUNDING the list, so a renderer can make main stat as many paths as it likes on the main thread (⚑ MOVED out of the `ipcMain.handle` callback into `handed-path.ts` — 217's own table found the row surviving there, unreachable)
+    desktop RED 1 of 2416 in 128 files · dom GREEN 0 of 612 in 40 files · scripts GREEN 0 of 3 in 1 files
+M19 · ⛔ §2 · the caption pass echoes what it was handed instead of using the verdict, so the mark it exists to re-decide is never re-decided
+    desktop RED 1 of 2416 in 128 files · dom GREEN 0 of 612 in 40 files · scripts GREEN 0 of 3 in 1 files
+M20 · ⛔ the CENSUS loses its ANCHOR on the handler 217 added, so it reads an empty slice and every rule over it passes over nothing (⚠️ deleting the assertion instead is unkillable by construction — nothing else asserts it — so the row blinds the slice)
+    desktop RED 1 of 2416 in 128 files · dom GREEN 0 of 612 in 40 files · scripts GREEN 0 of 3 in 1 files
+M21 · ⚠️ the launch-draft test goes back to a FLAT draft prop — the shortcut that passed only because nothing in that file ever re-rendered, which 217 exposed
+    desktop GREEN 0 of 2416 in 128 files · dom RED 1 of 612 in 40 files · scripts GREEN 0 of 3 in 1 files
+M22 · ⛔ 206 H1 · the live step writes its own verdict into a sentence instead of returning typed claims, so a run cannot tell asserted from merely printed
+    desktop GREEN 0 of 2416 in 128 files · dom GREEN 0 of 612 in 40 files · scripts RED 1 of 3 in 1 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    desktop GREEN 0 of 2416 in 128 files · dom GREEN 0 of 612 in 40 files · scripts GREEN 0 of 3 in 1 files

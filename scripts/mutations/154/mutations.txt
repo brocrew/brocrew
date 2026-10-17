@@ -1,0 +1,51 @@
+# 154 mutations — HEAD f8a5a5b + working tree
+# 2026-08-15T02:09:44Z
+
+M0  CONTROL (no mutation) — baseline desktop=222 dom=140
+    node: GREEN 0 of 222 in 7 files
+    dom:  GREEN 0 of 140 in 5 files
+
+M1 · THE REPORTED DEFECT · the read-only row from ~/.claude is back on the rail
+    node: RED 4 of 222 in 7 files
+M2 · …and the inverse: every unresumable row is dropped, so the rail loses that half
+    node: RED 5 of 222 in 7 files
+M3 · the renderer works the rule out for itself again (032 — two implementations)
+    node: RED 1 of 222 in 7 files
+M4 · hideOpen stops reaching the unresumable half (151's rule, in the same walk)
+    node: RED 2 of 222 in 7 files
+M5 · the store answers NO for every row, so the rail shows them all again
+    node: RED 3 of 222 in 7 files
+M6 · …and YES for every row, which empties the rail's closed list entirely
+    node: RED 5 of 222 in 7 files
+M7 · adopted alone is the rule, so an app-owned adopted row leaves the rail too
+    node: RED 18 of 222 in 7 files
+M8 · a null profile alone is the rule, and the adopted_at half stops being read
+    node: RED 1 of 222 in 7 files
+M9 · the library derives Origin a second time instead of reading the row (032)
+    node: RED 1 of 222 in 7 files
+M10 · …or stops asking at all, and every recorded row reads as ours
+    node: RED 4 of 222 in 7 files
+M11 · the read-only banner stops saying whose conversation this is, and where from
+    node: RED 1 of 222 in 7 files
+M12 · the recording's one sentence goes back to the other noun
+    node: RED 1 of 222 in 7 files
+M13 · the rail's empty state promises a home to conversations it will never show
+    dom:  RED 1 of 140 in 5 files
+M14 · …and the empty state grows the hint the person ruled out (§2, 106, 031)
+    dom:  RED 1 of 140 in 5 files
+M15 · the menu item goes back to the second noun for the same thing
+    dom:  RED 1 of 140 in 5 files
+M16 · …or the LABEL lands and the page it opens keeps the old one
+    dom:  RED 1 of 140 in 5 files
+M17 · 153's subtitle is overwritten by the rename instead of kept
+    dom:  RED 1 of 140 in 5 files
+M18 · the Origin facet arrives pre-narrowed to the rows the rail stopped showing
+    dom:  RED 18 of 140 in 5 files
+M19 · the scan control keeps the noun its own title already contradicted
+    dom:  RED 1 of 140 in 5 files
+M20 · …and so does the sentence a reader meets when the page is holding nothing
+    dom:  RED 1 of 140 in 5 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    node: GREEN 0 of 222 in 7 files
+    dom:  GREEN 0 of 140 in 5 files

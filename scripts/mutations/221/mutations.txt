@@ -1,0 +1,65 @@
+# 221 mutations — HEAD 5c20d30 + working tree
+# 2026-08-26T22:06:48Z
+
+M0  CONTROL (no mutation) — baseline desktop=2480 dom=649 scripts=3
+    desktop GREEN 0 of 2480 in 132 files · dom GREEN 0 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+
+M1  · 🔴 §1 · THE DEFECT, verbatim: the wire holds `text` to `min(1)` again, so a message that is nothing but an attachment is refused by the one layer between two ends that both accept it — 220's adoption blocker
+    desktop RED 6 of 2480 in 132 files · dom GREEN 0 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M2  · ⛔ §1 · the refine stops counting what is ATTACHED, which is the same defect wearing the new mechanism: an attachment is content, and this is the clause that says so
+    desktop RED 5 of 2480 in 132 files · dom GREEN 0 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M3  · ⛔ §1 · the wire refuses NOTHING — 118's opposite defect, and the direction a fix under time pressure takes: an empty message with nothing attached starts a turn
+    desktop RED 4 of 2480 in 132 files · dom GREEN 0 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M4  · ⚠️ §1 · the shared predicate stops TRIMMING, so a message of nothing but spaces starts a turn — the half of 077's rule `min(1)` never actually enforced
+    desktop RED 6 of 2480 in 132 files · dom GREEN 0 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M5  · ⛔ §1/§3 · the refusal goes back to being a library talking: zod's own words reach a person's screen instead of a sentence (169 §1, 118)
+    desktop RED 1 of 2480 in 132 files · dom GREEN 0 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M6  · 🔴 §1 · the COMPOSER stops calling the shared predicate, so the button and the wire hold two copies of one rule again — 216 M48 re-anchored here so that it is RE-RUN
+    desktop GREEN 0 of 2480 in 132 files · dom RED 2 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M7  · ⛔ §1 · the renderer store swallows an attachment-only send and reports it as sent — 216 M56 re-anchored here so that it is RE-RUN
+    desktop RED 3 of 2480 in 132 files · dom GREEN 0 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M8  · ⛔ §1 · only ONE verb gets the new shape and `queueMessage` keeps the old line — the exact drift `sendShaped` exists to prevent, and the reason 220 could measure `send` while two identical defects sat unmeasured beside it
+    desktop RED 6 of 2480 in 132 files · dom GREEN 0 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M9  · ⛔ §1b · the wire table loses a row, so a rule the schema holds is described by nothing — the way a table goes quietly stale, which is what 219 §2 exists to prevent
+    desktop RED 1 of 2480 in 132 files · dom GREEN 0 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M10 · ⛔ §1b · a row's PROBE stops breaking the rule it names, so the row describes a rule that may not exist — a table pinned to prose rather than to the schema
+    desktop RED 1 of 2480 in 132 files · dom GREEN 0 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M11 · ⚠️ §1b · the `text` row is marked `reachable`, so the table stops claiming the thing it exists to claim: that nothing a composer can build is refused by the wire
+    desktop RED 1 of 2480 in 132 files · dom GREEN 0 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M12 · ⛔ §2 · a launch that opened and could not send its first message drops the words entirely — typed, cleared from the composer on send, and held by nothing
+    desktop RED 1 of 2480 in 132 files · dom GREEN 0 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M13 · ⛔ §2 · the words go back to the LAUNCHER instead — a page this launch has already emptied of its provider, profile and folder (211 §1's defect from the other end)
+    desktop RED 2 of 2480 in 132 files · dom GREEN 0 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M14 · ⛔ §2 · the hand-back keeps the words and loses what was ATTACHED to them — a draft that looks whole and is not (217 M9 re-anchored here so that it is RE-RUN)
+    desktop RED 2 of 2480 in 132 files · dom GREEN 0 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M15 · 🔴 §3 · the library's search box loses its bound, so a paste past 200 characters reaches `listLibrary` and answers with `query: Too big…` on the library page
+    desktop RED 1 of 2480 in 132 files · dom GREEN 0 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M16 · ⛔ §3 · the box carries a number of its OWN rather than the schema's constant — one rule in two places, which is the shape 169 §1 is about and the shape 221 §1 fixed
+    desktop RED 1 of 2480 in 132 files · dom GREEN 0 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M17 · ⛔ §3 · the launcher's FOLDER field loses the ceiling `checkCwd` holds
+    desktop RED 1 of 2480 in 132 files · dom GREEN 0 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M18 · ⛔ §3 · the library's bundle-path field loses the ceiling `importBundleFile` holds
+    desktop RED 1 of 2480 in 132 files · dom GREEN 0 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M19 · ⚠️ §3 · the schema's query bound is widened past what the field enforces, so the two stop describing one rule and the constant is decoration
+    desktop RED 2 of 2480 in 132 files · dom GREEN 0 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M20 · ⚠️ §3 · the `checkCwd` path ceiling is widened, so an unbounded string crosses the boundary and main does work on the renderer's behalf
+    desktop RED 1 of 2480 in 132 files · dom GREEN 0 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M21 · 🔴 §4 · THE VACUITY CLASS, verbatim: `fakeBridge` stops validating, so a store test can assert a shape the wire rejects — which is how the 🔴-flagged attachment-only test sat green over a defect a person hit on their first gesture
+    desktop RED 1 of 2480 in 132 files · dom GREEN 0 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M22 · ⛔ §4 · the wrapper skips the three SEND verbs, which is the exemption that would have been written by anyone whose store test went red for a good reason
+    desktop RED 1 of 2480 in 132 files · dom GREEN 0 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M23 · ⛔ §4 · the wrapper parses and then answers anyway — validation with no consequence, which reads as validation in every diff
+    desktop RED 1 of 2480 in 132 files · dom GREEN 0 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M24 · 🔴 §5 · the chip carries the SPELLING again rather than the resolved path, so one folder staged by two routes is two attachments the model reads twice — 220's finding
+    desktop RED 2 of 2480 in 132 files · dom GREEN 0 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M25 · ⛔ §5 · a FOLDER keeps its spelling while a file resolves — half a fix, and the half that leaves 220's exact case (a directory, dropped and picked) unrepaired
+    desktop RED 1 of 2480 in 132 files · dom GREEN 0 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M26 · ⛔ §5 · a folder is reported as a file, so the agent reaches for the wrong tool (216 M4 re-anchored here so that it is RE-RUN)
+    desktop RED 7 of 2480 in 132 files · dom GREEN 0 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M27 · ⛔ §5 · the composer's dedupe is removed, so the same path attached twice is two chips — the renderer half of the same property, which the resolution above only feeds
+    desktop GREEN 0 of 2480 in 132 files · dom RED 1 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M28 · ⛔ · step 11g reports a bare sentence instead of per-claim verdicts, so the one live step that presses 220's gesture can go green while asserting nothing (209 §9, 206 H1)
+    desktop GREEN 0 of 2480 in 132 files · dom GREEN 0 of 649 in 42 files · scripts RED 1 of 3 in 1 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    desktop GREEN 0 of 2480 in 132 files · dom GREEN 0 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files

@@ -1,0 +1,246 @@
+# The testers' upgrade path, on GitHub's runners: the released beta each tester runs is downloaded
+# and installed, it makes fictional data through its own window, and the candidate built from this
+# run's commit is installed over it by hand: its Windows installer over the old one, and on the Mac
+# the app replaced in Applications. The candidate's first and second starts are then checked
+# against what the beta left: a checked recovery copy before READY, every row and raw byte kept, the
+# schema moved to the candidate's, no recovery window and no dialog of the app's own but its setup
+# for a provider that is not ready on the runner, and both conversations carried on with the key the
+# beta saved. Claude Code is installed at the version whose scheduling was measured, with managed
+# settings that send it to a second local scripted model: the beta's Claude conversations schedule
+# jobs through Claude Code's own tool, and the candidate carries one on. A beta with the scheduling
+# switch stamps each job's receipt with its calendar, so the candidate keeps the jobs' times and
+# owes nothing at its first open; an earlier beta's jobs have no time the candidate can know, and
+# it starts their conversation once to say so. The check reads which kind of beta it upgrades from
+# the receipts, and expects each. On the Mac, macOS itself asks a person
+# before it hands that key to the new program: with nobody to answer on a runner, the job passes
+# with that limit said in its result when the app refuses plainly and keeps answering. After those
+# checks, the Mac forgets the beta's sealing entry, as a Mac that never ran the beta would, and the
+# candidate saves the key itself and starts one new Claude conversation, answered by the scripted
+# model: the beta's own Claude conversation is not carried on there. Each step
+# is described in `scripts/upgrade-path.mjs`; its evidence is kept with the run for a week, and a
+# missing piece of evidence fails it.
+#
+# Run it on a commit that carries the app's whole window (develop, or a branch cut from it): the
+# check expects that setup at launch, and a commit without the window's half of the app fails it.
+#
+# Opt-in, so it spends no runner minutes on ordinary pushes: by hand (Actions → Upgrade path → Run
+# workflow), or a pushed tag `upgrade-path-*`. It starts from the newest tester betas; by hand any
+# beta can be named, and a tag whose name holds `-before-the-switch-` starts from the last betas
+# without the scheduling switch (windows-beta-14, mac-beta-3). It publishes nothing: the run's
+# token only reads the releases, and the model is a local scripted one.
+name: Upgrade path
+
+on:
+  push:
+    tags: ['upgrade-path-*']
+  workflow_dispatch:
+    inputs:
+      windows_beta:
+        description: The Windows beta a tester runs
+        default: windows-beta-21
+        type: string
+      mac_beta:
+        description: The Mac beta a tester runs
+        default: mac-beta-10
+        type: string
+      candidate_version:
+        description: The version the candidate is stamped with
+        default: 0.1.0
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  ELECTRON_CACHE: ${{ github.workspace }}/.cache/electron
+  electron_config_cache: ${{ github.workspace }}/.cache/electron
+  ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.cache/electron-builder
+  WINDOWS_BETA: ${{ inputs.windows_beta || (contains(github.ref_name, '-before-the-switch-') && 'windows-beta-14' || 'windows-beta-21') }}
+  MAC_BETA: ${{ inputs.mac_beta || (contains(github.ref_name, '-before-the-switch-') && 'mac-beta-3' || 'mac-beta-10') }}
+  CANDIDATE_VERSION: ${{ inputs.candidate_version || '0.1.0' }}
+  # Where the lane's scripted Claude model listens, named to Claude Code in its managed settings.
+  UPGRADE_PATH_CLAUDE_PORT: '9360'
+
+concurrency:
+  group: upgrade-path-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    name: Windows, from the tester's beta to the candidate
+    if: github.repository == 'brocrew/brocrew'
+    # `windows-2022`, as `windows.yml`: pnpm's node-gyp does not know the 2025 image's Visual Studio.
+    runs-on: windows-2022
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: pnpm
+      - uses: actions/cache@v4
+        with:
+          path: .cache
+          key: ${{ runner.os }}-electron-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-electron-
+      - run: pnpm install --frozen-lockfile
+
+      # The check's own rules, on planted losses: a rule that could not fail proves nothing below.
+      - name: The check's own rules fail what they should
+        run: pnpm exec vitest run --project scripts scripts/test/upgrade-path.test.mjs
+
+      - name: Fetch the beta a tester runs, as its release publishes it
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p upgrade-path-beta upgrade-path-evidence
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$WINDOWS_BETA" > upgrade-path-evidence/beta-release.json
+          gh release download "$WINDOWS_BETA" --repo "$GITHUB_REPOSITORY" \
+            --pattern '*-Setup-*-x64*.exe' --dir upgrade-path-beta
+          ls -la upgrade-path-beta
+
+      - name: Build the candidate from this commit (NSIS, x64, unsigned)
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm --filter @brobot2/desktop run build
+          pnpm --filter @brobot2/desktop exec electron-builder --win nsis --x64 --config electron-builder.yml \
+            -c.extraMetadata.version="$CANDIDATE_VERSION" --publish never
+          ls -la apps/desktop/dist
+
+      # Anthropic's own installer, at the measured version; Claude Code's machine-wide managed
+      # settings, which it reads whatever settings files the app lets it load, name the lane's model.
+      - name: Install Claude Code, sent to the lane's scripted model
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = node scripts/lib/scripted-claude.mjs version
+          & ([scriptblock]::Create((Invoke-RestMethod https://claude.ai/install.ps1))) $version
+          New-Item -ItemType Directory -Force 'C:\Program Files\ClaudeCode' | Out-Null
+          node scripts/lib/scripted-claude.mjs managed-settings $env:UPGRADE_PATH_CLAUDE_PORT |
+            Out-File -Encoding ascii 'C:\Program Files\ClaudeCode\managed-settings.json'
+          Get-Content 'C:\Program Files\ClaudeCode\managed-settings.json'
+          & "$env:USERPROFILE\.local\bin\claude.exe" --version
+
+      # On Windows BroBot hands a saved key to Claude Code as the host managing its provider, and
+      # Claude Code then ignores the endpoint settings name; it still takes a proxy and an extra
+      # certificate authority from its environment. This run's own authority, never kept, signs
+      # the certificate the lane's stand-in for Anthropic's API answers with behind its proxy.
+      - name: A certificate authority of this run's own, for the lane's stand-in API
+        shell: bash
+        env:
+          MSYS_NO_PATHCONV: '1'
+        run: |
+          set -euo pipefail
+          mkdir -p upgrade-path-tls
+          cd upgrade-path-tls
+          openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj '/CN=upgrade-path scratch authority' \
+            -addext 'basicConstraints=critical,CA:TRUE' -addext 'keyUsage=critical,keyCertSign,cRLSign' \
+            -keyout ca.key -out ca.pem
+          openssl req -newkey rsa:2048 -nodes -subj '/CN=api.anthropic.com' -keyout api.key -out api.csr
+          printf '%s\n' 'subjectAltName=DNS:api.anthropic.com' 'basicConstraints=CA:FALSE' \
+            'keyUsage=digitalSignature,keyEncipherment' 'extendedKeyUsage=serverAuth' > api.ext
+          openssl x509 -req -in api.csr -CA ca.pem -CAkey ca.key -CAcreateserial -days 2 \
+            -extfile api.ext -out api.pem
+          openssl verify -CAfile ca.pem api.pem
+
+      - name: Install the beta, make data with it, install the candidate over it, and check
+        shell: bash
+        env:
+          UPGRADE_PATH_TLS_DIR: upgrade-path-tls
+        run: >-
+          node scripts/upgrade-path.mjs --os windows
+          --beta-tag "$WINDOWS_BETA" --beta-release upgrade-path-evidence/beta-release.json
+          --beta-dir upgrade-path-beta
+          --candidate-dir apps/desktop/dist
+          --candidate-version "$CANDIDATE_VERSION" --source-sha "$GITHUB_SHA"
+          --evidence upgrade-path-evidence
+
+      - name: Keep the evidence, whatever happened
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: upgrade-path-windows
+          path: upgrade-path-evidence
+          if-no-files-found: error
+          retention-days: 7
+
+  mac:
+    name: Mac, from the tester's beta to the candidate
+    if: github.repository == 'brocrew/brocrew'
+    runs-on: macos-15
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: pnpm
+      - uses: actions/cache@v4
+        with:
+          path: .cache
+          key: ${{ runner.os }}-electron-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-electron-
+      - run: pnpm install --frozen-lockfile
+
+      - name: The check's own rules fail what they should
+        run: pnpm exec vitest run --project scripts scripts/test/upgrade-path.test.mjs
+
+      - name: Fetch the beta a tester runs, as its release publishes it
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p upgrade-path-beta upgrade-path-evidence
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$MAC_BETA" > upgrade-path-evidence/beta-release.json
+          gh release download "$MAC_BETA" --repo "$GITHUB_REPOSITORY" \
+            --pattern '*-arm64*.dmg' --dir upgrade-path-beta
+          ls -la upgrade-path-beta
+
+      # Signed ad hoc (`-c.mac.identity=-`), as the betas are: a person replaces one ad hoc app with
+      # another, and the Keychain sees a different program.
+      - name: Build the candidate from this commit (dmg, arm64, signed ad hoc)
+        run: |
+          set -euo pipefail
+          pnpm --filter @brobot2/desktop run build
+          pnpm --filter @brobot2/desktop exec electron-builder --mac dmg --arm64 --config electron-builder.yml \
+            -c.mac.identity=- -c.extraMetadata.version="$CANDIDATE_VERSION" --publish never
+          ls -la apps/desktop/dist
+
+      # Anthropic's own installer, at the measured version; Claude Code's machine-wide managed
+      # settings, which it reads whatever settings files the app lets it load, name the lane's model.
+      - name: Install Claude Code, sent to the lane's scripted model
+        run: |
+          set -euo pipefail
+          version=$(node scripts/lib/scripted-claude.mjs version)
+          curl -fsSL https://claude.ai/install.sh | bash -s "$version"
+          sudo mkdir -p '/Library/Application Support/ClaudeCode'
+          node scripts/lib/scripted-claude.mjs managed-settings "$UPGRADE_PATH_CLAUDE_PORT" |
+            sudo tee '/Library/Application Support/ClaudeCode/managed-settings.json'
+          "$HOME/.local/bin/claude" --version
+
+      - name: Install the beta, make data with it, replace it with the candidate, and check
+        run: >-
+          node scripts/upgrade-path.mjs --os mac
+          --beta-tag "$MAC_BETA" --beta-release upgrade-path-evidence/beta-release.json
+          --beta-dir upgrade-path-beta
+          --candidate-dir apps/desktop/dist
+          --candidate-version "$CANDIDATE_VERSION" --source-sha "$GITHUB_SHA"
+          --evidence upgrade-path-evidence
+
+      - name: Keep the evidence, whatever happened
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: upgrade-path-mac
+          path: upgrade-path-evidence
+          if-no-files-found: error
+          retention-days: 7

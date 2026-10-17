@@ -1,0 +1,4 @@
+# The leak guard's deliberate exceptions (scripts/leak-check.mjs): a tracked file that may carry a
+# mention, whatever its count, and why. Keep it short; a line whose file carries no mention any more
+# fails the guard, so an exception that excuses nothing does not linger.
+# path<TAB>reason

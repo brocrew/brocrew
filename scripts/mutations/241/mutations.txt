@@ -1,0 +1,37 @@
+# 241 mutations — HEAD 0602acb + working tree
+# 2026-08-29T16:11:42Z
+
+M0  CONTROL (no mutation) — baseline runtime=1324 desktop=2617 dom=686 scripts=250
+    runtime GREEN 0 of 1324 in 42 files · desktop GREEN 0 of 2617 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 250 in 15 files · window GREEN
+
+M1  · 🔴 THE DEFECT, verbatim · the scheme registration goes back inside `start()`, where 236 §3's await moved it past `ready` — it throws from the first statement and the app opens NO WINDOW, with every suite still green
+    runtime GREEN 0 of 1324 in 42 files · desktop RED 2 of 2617 in 135 files · dom INVALID (collected 677 of 686, exit 1) · scripts RED 3 of 250 in 15 files · window RED
+M2  · ⛔ the registration is DELETED — the scheme is never privileged at all, so a generated image loads from nowhere and nothing is logged (067's original failure). ⚠️ GREEN in `window` by design: the app still opens
+    runtime GREEN 0 of 1324 in 42 files · desktop RED 5 of 2617 in 135 files · dom GREEN 0 of 686 in 44 files · scripts RED 3 of 250 in 15 files · window GREEN
+M3  · ⛔ still module scope, but BELOW `runAsSoleInstance({` — which works today only because that call's first await yields back here. A placement whose correctness depends on what the line above it does is the shape 236 already broke once
+    runtime RED 4 of 1324 in 42 files · desktop INVALID (collected 2599 of 2617, exit 1) · dom GREEN 0 of 686 in 44 files · scripts RED 3 of 250 in 15 files · window GREEN
+M4  · ⛔ the `await` in front of the gate is dropped — the naive 'fix' the dispatch forbids. `start` runs before `ready` again and the app opens, and 236 §3's backstop is gone: a Promise is never 'taken', so a second live host is never refused
+    runtime RED 3 of 1324 in 42 files · desktop RED 5 of 2617 in 135 files · dom GREEN 0 of 686 in 44 files · scripts INVALID (collected 35 of 250, exit 1) · window GREEN
+M5  · ⛔ the socket-length precondition is raised out of the way — the check may then run on a path where the gate fails open, which is the exact configuration that hid 241 from smoke:ui, smoke:resume and smoke:packaged
+    runtime RED 1 of 1324 in 42 files · desktop RED 1 of 2617 in 135 files · dom GREEN 0 of 686 in 44 files · scripts RED 3 of 250 in 15 files · window GREEN
+M6  · ⛔ the check looks for a socket the gate never writes — so 'the backstop ran' is asserted about a name nothing binds
+    runtime RED 4 of 1324 in 42 files · desktop RED 1 of 2617 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 250 in 15 files · window RED
+M7  · ⛔ the gate assertion is neutered — the check goes green on a launch whose gate failed open, and starts reporting the masked configuration as a healthy one
+    runtime GREEN 0 of 1324 in 42 files · desktop RED 1 of 2617 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 250 in 15 files · window GREEN
+M8  · ⛔ the page filter drops back to `type === 'page'` — a target exists the moment `new BrowserWindow()` runs, so the check passes on an empty window (measured: 0.8 s, `(untitled)`) and stops meaning that the renderer loaded
+    runtime GREEN 0 of 1324 in 42 files · desktop RED 1 of 2617 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 250 in 15 files · window GREEN
+M9  · ⛔ the app is killed by HANDLE instead of by GROUP — `.bin/electron` is a shim, so this kills the shim and not the app. ⚠️ SURVIVED round 1 on a vacuous pin: the liveness probe `process.kill(-child.pid, 0)` satisfied the same substring the SIGKILL was pinned by
+    runtime GREEN 0 of 1324 in 42 files · desktop RED 1 of 2617 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 250 in 15 files · window GREEN
+M10 · ⛔ `window:check` is removed from the ci chain — the instrument still exists, still passes when run by hand, and guards nothing. 'A correct policy that nothing calls leaves the defect exactly where it was'
+    runtime GREEN 0 of 1324 in 42 files · desktop RED 1 of 2617 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 250 in 15 files · window GREEN
+M11 · ⛔ …and the subtler one: it runs BEFORE `build`, so it launches whatever the last run left on disk — a green about a bundle that is not the one under test
+    runtime GREEN 0 of 1324 in 42 files · desktop RED 1 of 2617 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 250 in 15 files · window GREEN
+M12 · ⛔ the gate's PRIVATE name grows past `sun_path` again — 236's review shortened it for exactly this reason. `listen` fails, the gate fails open on every ordinary directory, and the window check catches it because the socket it looks for is never written
+    runtime GREEN 0 of 1324 in 42 files · desktop RED 4 of 2617 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 250 in 15 files · window RED
+M13 · 🔴 the PORT CHASE is removed — the check goes back to trusting the group signal, which is what left a full Electron running for six hours and turned M11's `dom` and `scripts` columns into INVALID/RED in round 1
+    runtime GREEN 0 of 1324 in 42 files · desktop RED 1 of 2617 in 135 files · dom NO-REPORT (exit 143) · scripts GREEN 0 of 250 in 15 files · window GREEN
+M14 · ⛔ a leak stops being a failure — the check reaps what it can, finds the app still holding its port, and prints its green anyway. ⚠️ This was the shipped behaviour in round 1 (a `console.error` and exit 0), and it is why the leak went unnoticed for six hours
+    runtime GREEN 0 of 1324 in 42 files · desktop RED 1 of 2617 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 250 in 15 files · window GREEN
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1324 in 42 files · desktop GREEN 0 of 2617 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 250 in 15 files · window GREEN

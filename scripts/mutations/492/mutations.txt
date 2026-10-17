@@ -1,0 +1,32 @@
+# 492 mutations — HEAD 660c63d3 + working tree
+# 2026-09-17T04:53:21Z
+# project-reachability v1 topology=unproved — For each row, run every baseline project whose tests can conservatively reach an edited path; any unknown path runs every project, and every omitted measurement is written NOT RUN (out of reach), never GREEN.
+
+M0  CONTROL (no mutation) — baseline runtime=1793 desktop=5844 dom=1508 scripts=745 shared=4
+    runtime GREEN 0 of 1793 in 62 files · desktop GREEN 0 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+
+M1 · 🔴 THE DEFECT, restored · the frame is never sent, so a cancel on this door refuses the tool locally and the provider carries on — `483`'s measurement exactly, and the reason *the whole turn is asked to stop* would be a sentence about nothing
+    runtime RED 2 of 1793 in 62 files · desktop RED 3 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M2 · ⛔ the latch comes back beside the frame · the ask goes out AND the local bit is set, so a turn Codex completes ordinarily — the race where it finished before the frame landed — is renamed `interrupted` again, which is the half `HO-032` §1 asked to be shown gone
+    runtime RED 1 of 1793 in 62 files · desktop RED 1 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M3 · ⚠️ DENY stops the turn too · the two answers collapse back into one act from the other direction — a person refusing one tool call loses the whole turn, which is the destruction `478` F3 says the label is what buys consent for
+    runtime RED 1 of 1793 in 62 files · desktop RED 1 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M4 · 🔴 the door answers everybody else's card · `settleRequests()` safe-rejects every OTHER open card as `{outcome:'deny'}` and writes no row for any of them — HO-005 Q2 arriving through a person's own press, and the act `INTERRUPT_RAILS`' `a-person-is-being-asked` refuses an agent for
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 1 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M5 · ⛔ a local terminal instead of an ask · `forceEnd` declares the turn over from inside this app and the provider is never told, which is `483`'s defect wearing the repair's clothes — the word would be right and the work would still be running
+    runtime RED 2 of 1793 in 62 files · desktop RED 1 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M6 · ⚠️ the frame names the CURRENT turn rather than the card's · a person answers whenever they get to it, so the id this app happens to be holding is not the one the decision is about — `serverRequestScopeProblem` validated the card's own `turnId` and that is the faithful source. ⛔ Killed by a SOURCE census and the table says so
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 1 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M7 · 🔴 the card claims the turn is already over · *is interrupted* is the claim `RuntimeHost.interruptAgent` refuses to make on either provider — Claude forces its own terminal, Codex waits on a `turn/completed` that may never come — and it is the sentence `483` found false on the one door where nothing was ever asked
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 8 of 5844 in 299 files · dom RED 1 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M8 · ⛔ the two doors spell the claim separately · the STRING is identical and every value assertion still passes, which is the whole hazard: one act described from two places, free to drift the next time either is edited. ⚑ HO-030 §2 — a sentence that differs between surfaces teaches a reader that the sentence is optional
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 1 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M9 · 🔴 the shared claim becomes the one this app may not make · `stopped` is what `interrupt_agent` has refused to say since `395`, and moving it into the constant makes BOTH surfaces say it at once — the cost of sharing bytes, paid for by the tests that read the value rather than the constant
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 7 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M10 · ⚠️ the door that DID keep the word loses it · a command or file approval's cancel stops latching, so the turn Codex reports completed after `{decision:'cancel'}` is no longer classified — `HO-032` §5's *leave it byte-identical and prove you did*, proven by the row that would break it. ⛔ **BOTH latches, and that is a finding**: this path sets the bit twice — once in `respondPermission`, once in the approval handler's continuation — so either line alone is unkillable and neither is protected by any test
+    runtime RED 1 of 1793 in 62 files · desktop RED 4 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M11 · ⛔ the frame goes out BEFORE the tool result · the provider is asked to stop while it is still holding our call, and arm A measured what that costs: the app-server completes the dangling call ITSELF five ms after `turn/completed`, with no `serverRequest/resolved`, so this adapter goes on holding an id the provider has already torn down
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 1 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1793 in 62 files · desktop GREEN 0 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files

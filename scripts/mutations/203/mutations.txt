@@ -1,0 +1,75 @@
+# 203 mutations — HEAD 545a0c9 + working tree
+# 2026-08-22T02:45:19Z
+
+M0  CONTROL (no mutation) — baseline desktop=2191 dom=541
+    desktop GREEN 0 of 2191 in 113 files · dom GREEN 0 of 541 in 33 files
+
+M1 · ⛔ THE DEFECT, verbatim · `require` takes the caller and does not ask — every control verb is back to a session id and nothing else
+    desktop RED 17 of 2191 in 113 files · dom GREEN 0 of 541 in 33 files
+M2 · the owner check itself passes anything — one predicate, and this is it disarmed
+    desktop RED 19 of 2191 in 113 files · dom GREEN 0 of 541 in 33 files
+M3 · ownership is object IDENTITY, not the owner id — so a window that reattached after a reload becomes a stranger to its own session
+    desktop RED 229 of 2191 in 113 files · dom GREEN 0 of 541 in 33 files
+M4 · `close` skips its own check — the one control verb that does not go through `require`
+    desktop RED 3 of 2191 in 113 files · dom GREEN 0 of 541 in 33 files
+M5 · …and `close` refuses an UNKNOWN id too, so the Close button stops being safe to press twice (062's tolerance, lost to the fix)
+    desktop RED 3 of 2191 in 113 files · dom GREEN 0 of 541 in 33 files
+M6 · ⛔ `noteUserCommand` forgets the caller — a stranger forges durable, ordinal-stamped `user_command` rows into somebody else's ledger (203 §1, this dispatch's own finding)
+    desktop RED 1 of 2191 in 113 files · dom GREEN 0 of 541 in 33 files
+M7 · `attachHeldSession` stops asking — 062's *told, not attached* undone by the same predicate that now guards the verbs
+    desktop RED 3 of 2191 in 113 files · dom GREEN 0 of 541 in 33 files
+M8 · the owner check runs AFTER the phase check, so a stranger asking about a session that is still STARTING is told so — a timing oracle over somebody else's conversation
+    desktop RED 1 of 2191 in 113 files · dom GREEN 0 of 541 in 33 files
+M9 · the refusal is thrown RAW — the diagnostic, with both owner ids in it, reaches the renderer as the sentence a person reads (100's split, inverted)
+    desktop RED 19 of 2191 in 113 files · dom GREEN 0 of 541 in 33 files
+M10 · the IPC door stops naming the caller on `send` — the shape of the whole defect, one verb at a time
+    desktop RED 14 of 2191 in 113 files · dom GREEN 0 of 541 in 33 files
+M11 · …nor on the permission answer, which is the verb 195 opens with
+    desktop RED 3 of 2191 in 113 files · dom GREEN 0 of 541 in 33 files
+M12 · …nor on the approval mode, so a stranger can turn a conversation to auto-approve
+    desktop RED 3 of 2191 in 113 files · dom GREEN 0 of 541 in 33 files
+M13 · ⛔ THE DEFECT, verbatim · View → Reload is back — one keystroke, every conversation in the window
+    desktop RED 1 of 2191 in 113 files · dom GREEN 0 of 541 in 33 files
+M14 · …and Force Reload with it
+    desktop RED 1 of 2191 in 113 files · dom GREEN 0 of 541 in 33 files
+M15 · DevTools is offered in a PACKAGED build too, so a shipped app has a route to the one reload no template can remove
+    desktop RED 1 of 2191 in 113 files · dom GREEN 0 of 541 in 33 files
+M16 · the menu loses Copy — the cheapest way to pass *no reload* is to ship no menu
+    desktop RED 1 of 2191 in 113 files · dom GREEN 0 of 541 in 33 files
+M17 · ⛔ nothing installs it — the template is written and Electron never sees it, so the default menu (and its Reload) is back
+    desktop RED 1 of 2191 in 113 files · dom GREEN 0 of 541 in 33 files
+M18 · ⛔ THE DEFECT, verbatim · the row is back to one word for two different asks — `waiting`, whether it is a permission that freezes the composer or a question that does not
+    desktop RED 2 of 2191 in 113 files · dom RED 1 of 541 in 33 files
+M19 · …and the rail renders the coarse standing again, so the words exist only in the `aria-label` (the state the PM measured)
+    desktop GREEN 0 of 2191 in 113 files · dom RED 1 of 541 in 33 files
+M20 · ⛔ there is no live count — the only number on the rail is the seed's Home badge again
+    desktop GREEN 0 of 2191 in 113 files · dom RED 1 of 541 in 33 files
+M21 · the count is written over `needing` rather than the standing, so a plan go-ahead — which blocks nothing and is deliberately NOT waiting — inflates a number its rows disagree with
+    desktop GREEN 0 of 2191 in 113 files · dom RED 1 of 541 in 33 files
+M22 · …or over the row COUNT, which is the same defect with a rounder number
+    desktop GREEN 0 of 2191 in 113 files · dom RED 2 of 541 in 33 files
+M23 · ⛔ THE DEFECT, verbatim · the home is provisioned BEFORE the cwd is resolved — a mistyped folder leaves a credential-bearing home and a profile in the menu forever
+    desktop RED 2 of 2191 in 113 files · dom GREEN 0 of 541 in 33 files
+M24 · `launchBlocked` stops weighing a folder that was REFUSED, so Send is lit over the sentence saying it cannot be used (169's shape, one field over)
+    desktop GREEN 0 of 2191 in 113 files · dom RED 4 of 541 in 33 files
+M25 · ⛔ Send goes dead while a check is merely IN FLIGHT — a 200 ms hole after every keystroke, and a permanent one if the bridge cannot answer (the live smoke found this one)
+    desktop GREEN 0 of 2191 in 113 files · dom RED 2 of 541 in 33 files
+M26 · typing CLEARS what the app knew instead of asking — the pre-203 renderer exactly
+    desktop GREEN 0 of 2191 in 113 files · dom RED 3 of 541 in 33 files
+M27 · ⛔ `checkCwd` answers `ok` for everything — the launcher and the launch stop agreeing, which is the one thing 076 §3 exists to prevent
+    desktop RED 1 of 2191 in 113 files · dom GREEN 0 of 541 in 33 files
+M28 · `checkCwd` sends a blank path through `resolveCwd`, so a keystroke on an empty box creates the workspace directory
+    desktop RED 1 of 2191 in 113 files · dom GREEN 0 of 541 in 33 files
+M29 · the picker's verdict is thrown away, so a folder just refused by the native dialog leaves Send lit until something else asks
+    desktop GREEN 0 of 2191 in 113 files · dom RED 2 of 541 in 33 files
+M30 · ordinary `send` stops asking whether the session can take a turn (149 M14 carried: the anchor gained a caller)
+    desktop RED 6 of 2191 in 113 files · dom GREEN 0 of 541 in 33 files
+M31 · the interrupt breadcrumb is gone entirely — 085's original report (150 M25 carried: `noteUserCommand` gained a caller)
+    desktop RED 2 of 2191 in 113 files · dom GREEN 0 of 541 in 33 files
+M32 · …and written ABOVE the sign-in gate again, so a refused turn claims a gesture (150 M26 carried, 148 L2, 039)
+    desktop RED 2 of 2191 in 113 files · dom GREEN 0 of 541 in 33 files
+M33 · the launcher stops blocking on an UNNAMED profile, so `+ New profile…` with an empty box launches (169 M4 carried: `launchBlocked` grew a folder clause)
+    desktop GREEN 0 of 2191 in 113 files · dom RED 2 of 541 in 33 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    desktop GREEN 0 of 2191 in 113 files · dom GREEN 0 of 541 in 33 files

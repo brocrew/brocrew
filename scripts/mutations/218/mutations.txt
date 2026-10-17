@@ -1,0 +1,65 @@
+# 218 mutations — HEAD fb37935 + working tree
+# 2026-08-26T18:22:42Z
+
+M0  CONTROL (no mutation) — baseline desktop=2442 dom=637 scripts=3
+    desktop GREEN 0 of 2442 in 129 files · dom GREEN 0 of 637 in 41 files · scripts GREEN 0 of 3 in 1 files
+
+M1 · 🔴 §1 · a dropped file becomes a document this window will navigate to — which is the hazard the whole of §1 exists to rule out, because `installSessionRelease` closes every conversation the window owns on `did-navigate` (062, 094)
+    desktop RED 10 of 2442 in 129 files · dom GREEN 0 of 637 in 41 files · scripts GREEN 0 of 3 in 1 files
+M2 · 🔒 §1 · a dropped file is handed to the BROWSER — the other side effect a drop could have, and one nobody would see: the file opens in Finder behind the window
+    desktop RED 6 of 2442 in 129 files · dom GREEN 0 of 637 in 41 files · scripts GREEN 0 of 3 in 1 files
+M3 · 🔒 §2 · the preload stops resolving a path and reads the FILE instead — `215` §3.3's byte authority acquired through a door `216`'s census could not see, because a `File` never touches `node:fs`
+    desktop RED 2 of 2442 in 129 files · dom GREEN 0 of 637 in 41 files · scripts GREEN 0 of 3 in 1 files
+M4 · ⛔ §2 · the composer reads a dropped file's bytes on its way past — the 'improvement' that would make BroBot the reader, which is the one thing `216` chose not to be
+    desktop RED 1 of 2442 in 129 files · dom RED 13 of 637 in 41 files · scripts GREEN 0 of 3 in 1 files
+M5 · 🔴 §3 · a dropped FOLDER is walked — `webkitGetAsEntry`, the API that turns one path into a listing, against the dispatch's *'do not enumerate, do not expand, do not count'*
+    desktop RED 1 of 2442 in 129 files · dom GREEN 0 of 637 in 41 files · scripts GREEN 0 of 3 in 1 files
+M6 · 🔴 §2 · THE LIVE-MEASURED ONE · the drop target goes back to counting `dragenter` alone. Chromium delivered `dragover` with NO preceding `dragenter` through its own drag pipeline (218's smoke, measured twice), so the composer stays dark for a drag plainly over it and the whole gesture looks broken
+    desktop GREEN 0 of 2442 in 129 files · dom RED 1 of 637 in 41 files · scripts GREEN 0 of 3 in 1 files
+M6b · 🔴 §2 · REVIEW · the drop target stops asking whether a drop is still possible, so a permission card arriving mid-drag leaves the composer saying `Drop to attach` over a drop it will then silently ignore — 106's exact shape, found reviewing this dispatch's own diff
+    desktop GREEN 0 of 2442 in 129 files · dom RED 1 of 637 in 41 files · scripts GREEN 0 of 3 in 1 files
+M7 · 🔴 §2 · `dragover` stops being accepted, so no `drop` event ever reaches this composer at all and the file falls through to the window
+    desktop GREEN 0 of 2442 in 129 files · dom RED 1 of 637 in 41 files · scripts GREEN 0 of 3 in 1 files
+M8 · ⛔ §2 · the target lights up for ANY drag, so dragging a URL or a selection of text over the composer invites a gesture that can only end in a refusal
+    desktop GREEN 0 of 2442 in 129 files · dom RED 3 of 637 in 41 files · scripts GREEN 0 of 3 in 1 files
+M9 · ⛔ §2 · the target never goes away — held after the drop and after the drag leaves, so the composer permanently claims to be waiting for a file
+    desktop GREEN 0 of 2442 in 129 files · dom RED 2 of 637 in 41 files · scripts GREEN 0 of 3 in 1 files
+M10 · ⛔ §2 · the enter counter becomes a boolean, so crossing from the chip strip onto the textarea flickers the invitation off exactly as you reach the thing you are aiming at
+    desktop GREEN 0 of 2442 in 129 files · dom RED 1 of 637 in 41 files · scripts GREEN 0 of 3 in 1 files
+M11 · 🔴 §2 · a drop REPLACES what is staged instead of adding to it, so dropping a second file silently removes the first
+    desktop GREEN 0 of 2442 in 129 files · dom RED 2 of 637 in 41 files · scripts GREEN 0 of 3 in 1 files
+M12 · ⛔ §2 · the same path attaches twice, so the message names it twice and the agent reads it twice
+    desktop GREEN 0 of 2442 in 129 files · dom RED 1 of 637 in 41 files · scripts GREEN 0 of 3 in 1 files
+M13 · ⛔ §2 · the ceiling goes SILENT — drop twelve files and ten appear, with nothing anywhere saying what happened to the other two (106)
+    desktop GREEN 0 of 2442 in 129 files · dom RED 1 of 637 in 41 files · scripts GREEN 0 of 3 in 1 files
+M14 · 🔴 §2 · a drop with no usable path does NOTHING instead of saying why — the exact shape `106`/`118`/`169` forbid: a gesture allowed to happen and then quietly ignored
+    desktop GREEN 0 of 2442 in 129 files · dom RED 3 of 637 in 41 files · scripts GREEN 0 of 3 in 1 files
+M15 · ⛔ §2 · a refusal from an earlier drop is never cleared, so a message that WAS attached still carries a sentence saying it was not
+    desktop GREEN 0 of 2442 in 129 files · dom RED 1 of 637 in 41 files · scripts GREEN 0 of 3 in 1 files
+M16 · ⛔ §2 · the drop stops asking about the mount's opt-in, so a composer with no paperclip silently accepts files anyway — two answers to one question (acceptance 7)
+    desktop GREEN 0 of 2442 in 129 files · dom RED 1 of 637 in 41 files · scripts GREEN 0 of 3 in 1 files
+M17 · ⛔ §2 · the drop stops asking about the STATE, so files can be attached to a launch already in flight — there is nothing to attach them to
+    desktop GREEN 0 of 2442 in 129 files · dom RED 2 of 637 in 41 files · scripts GREEN 0 of 3 in 1 files
+M18 · 🔴 §2 · the drop classifies against NO folder, so every chip reads `outside` however plainly the file is inside the conversation's own directory (217's `~` defect, by another route)
+    desktop RED 1 of 2442 in 129 files · dom RED 2 of 637 in 41 files · scripts GREEN 0 of 3 in 1 files
+M19 · 🔴 §3 · a dropped FOLDER stops being one path — the classifier drops directories, so dropping a folder attaches nothing and says nothing
+    desktop RED 2 of 2442 in 129 files · dom GREEN 0 of 637 in 41 files · scripts GREEN 0 of 3 in 1 files
+M20 · ⛔ §2 · refusals are swallowed, so a dropped file that has since been deleted vanishes with no chip and no sentence — one fewer answer than there were paths
+    desktop RED 3 of 2442 in 129 files · dom GREEN 0 of 637 in 41 files · scripts GREEN 0 of 3 in 1 files
+M21 · 🔒 §2 · the READ is unbounded, so a drop of a thousand files makes main `realpathSync` every one of them, synchronously, before anything else can happen
+    desktop RED 1 of 2442 in 129 files · dom GREEN 0 of 637 in 41 files · scripts GREEN 0 of 3 in 1 files
+M22 · 🔴 THE ONE THAT WAS REALLY BROKEN · the staged paths cross the bridge as Vue PROXIES, and structured clone refuses a Proxy — so pressing Send with anything attached puts `An object could not be cloned.` on screen and ends the session with no turn. Shipped in `216`, live on both surfaces until `218`'s smoke pressed the button
+    desktop RED 3 of 2442 in 129 files · dom GREEN 0 of 637 in 41 files · scripts GREEN 0 of 3 in 1 files
+M23 · ⛔ · …and the call site, which is the other half of the same defect: the boundary helper is right and `send` goes back to spreading the array around it
+    desktop RED 1 of 2442 in 129 files · dom GREEN 0 of 637 in 41 files · scripts GREEN 0 of 3 in 1 files
+M24 · ⛔ · the wire shape stops being pinned — a spread carries whatever the renderer happened to be holding, so a fourth field reaches main and the schema is the only thing left refusing it
+    desktop RED 1 of 2442 in 129 files · dom GREEN 0 of 637 in 41 files · scripts GREEN 0 of 3 in 1 files
+M25 · ⛔ · the drop census is BLINDED — it lists the web read APIs and matches none of them, so `216`'s rule silently stops covering the half `218` added
+    desktop RED 1 of 2442 in 129 files · dom GREEN 0 of 637 in 41 files · scripts GREEN 0 of 3 in 1 files
+M26 · ⛔ · the acceptance-7 census stops seeing a call the formatter WRAPPED, which is how its first version counted two writers where there are three
+    desktop RED 2 of 2442 in 129 files · dom GREEN 0 of 637 in 41 files · scripts GREEN 0 of 3 in 1 files
+M27 · ⛔ · step 11f reports a bare sentence instead of per-claim verdicts, so a live step can go green while asserting nothing (209 §9)
+    desktop GREEN 0 of 2442 in 129 files · dom GREEN 0 of 637 in 41 files · scripts RED 1 of 3 in 1 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    desktop GREEN 0 of 2442 in 129 files · dom GREEN 0 of 637 in 41 files · scripts GREEN 0 of 3 in 1 files

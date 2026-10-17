@@ -1,0 +1,78 @@
+# 153 mutations — HEAD 0a0cfbb + working tree
+# 2026-08-15T01:25:50Z
+
+M0  CONTROL (no mutation) — baseline runtime=232 desktop=90 dom=36
+    node: runtime GREEN 0 of 232 in 2 files
+          desktop GREEN 0 of 90 in 6 files
+    dom:  GREEN 0 of 36 in 3 files
+
+M1 · THE 152 §4.5 DEFECT · a newline is a skip again, so a real path is never examined
+    node: runtime RED 2 of 232 in 2 files
+          desktop GREEN 0 of 90 in 6 files
+M2 · THE OTHER HALF · a `content` field is counted as the path that proves the write
+    node: runtime RED 1 of 232 in 2 files
+          desktop GREEN 0 of 90 in 6 files
+M3 · an unresolvable path in a write-shaped tool goes back to being an exemption
+    node: runtime RED 1 of 232 in 2 files
+          desktop GREEN 0 of 90 in 6 files
+M4 · …and the over-long case flips the other way, refusing every real plan document
+    node: runtime RED 3 of 232 in 2 files
+          desktop GREEN 0 of 90 in 6 files
+M5 · a relative string stops being resolved, so an escape rides in beside the plan file
+    node: runtime RED 1 of 232 in 2 files
+          desktop GREEN 0 of 90 in 6 files
+M6 · a call naming NO path is vacuously allowed again (150's rule)
+    node: runtime RED 4 of 232 in 2 files
+          desktop GREEN 0 of 90 in 6 files
+M7 · the refusal tells the model that the user's own folder is BroBot2's data (086)
+    node: runtime RED 1 of 232 in 2 files
+          desktop RED 2 of 90 in 6 files
+M8 · the homes are protected only once they already exist — absent on the machine that needs it
+    node: runtime GREEN 0 of 232 in 2 files
+          desktop RED 2 of 90 in 6 files
+M9 · a relocation REPLACES the canonical home instead of being added to it
+    node: runtime GREEN 0 of 232 in 2 files
+          desktop RED 1 of 90 in 6 files
+M10 · the same directory is listed twice, so the set is not a set
+    node: runtime GREEN 0 of 232 in 2 files
+          desktop RED 2 of 90 in 6 files
+M11 · the personal homes REPLACE the app's own data root — 071's hole, reopened
+    node: runtime GREEN 0 of 232 in 2 files
+          desktop RED 1 of 90 in 6 files
+M12 · …and the whole fix is unwired: the app stops handing them over at all
+    node: runtime GREEN 0 of 232 in 2 files
+          desktop RED 1 of 90 in 6 files
+M13 · a personal home raises a CARD instead of being refused (031's fatigue rule)
+    node: runtime RED 6 of 232 in 2 files
+          desktop RED 5 of 90 in 6 files
+M14 · the SECOND door stops repeating the refusal (071's one rule, both doors)
+    node: runtime RED 95 of 232 in 2 files
+          desktop RED 6 of 90 in 6 files
+M15 · a personal provider home may be chosen as a cwd again
+    node: runtime GREEN 0 of 232 in 2 files
+          desktop RED 3 of 90 in 6 files
+M16 · only the home ITSELF is refused, so a directory inside one is fine
+    node: runtime GREEN 0 of 232 in 2 files
+          desktop RED 2 of 90 in 6 files
+M17 · the check moves below the existence probe, so an absent home says 'create it'
+    node: runtime GREEN 0 of 232 in 2 files
+          desktop RED 1 of 90 in 6 files
+M18 · THE 152 §4.4 DEFECT · an approved plan resumes planning, floor back up
+    node: runtime GREEN 0 of 232 in 2 files
+          desktop RED 1 of 90 in 6 files
+M19 · …and the inverse: nothing ever comes back planning, so 030 is undone
+    node: runtime GREEN 0 of 232 in 2 files
+          desktop RED 2 of 90 in 6 files
+M20 · the HANDLE is told it is planning while the provider is told it is not
+    node: runtime GREEN 0 of 232 in 2 files
+          desktop RED 1 of 90 in 6 files
+M21 · …and the mirror: the PROVIDER is put back into plan mode while the floor is down
+    node: runtime GREEN 0 of 232 in 2 files
+          desktop RED 1 of 90 in 6 files
+M22 · the jargon returns to the first place a user meets it
+    dom:  RED 1 of 36 in 3 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    node: runtime GREEN 0 of 232 in 2 files
+          desktop GREEN 0 of 90 in 6 files
+    dom:  GREEN 0 of 36 in 3 files

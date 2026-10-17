@@ -1,0 +1,53 @@
+# 164 mutations — HEAD 695326c + working tree
+# 2026-08-15T23:42:34Z
+
+M0  CONTROL (no mutation) — baseline runtime=212 desktop=36
+    runtime GREEN 0 of 212 in 1 files
+          desktop GREEN 0 of 36 in 2 files
+
+M1 · ⛔ 150 IS BACK · the launch option goes, so the session has no search tool at all and the floor goes on exempting two names that cannot be called
+    runtime RED 2 of 212 in 1 files
+          desktop GREEN 0 of 36 in 2 files
+M2 · `preset:default` is dropped — `--tools Grep,Glob` NARROWS the pool, so plan mode gets its search by taking Read/Write/Bash away from every session
+    runtime RED 2 of 212 in 1 files
+          desktop GREEN 0 of 36 in 2 files
+M3 · ⚠️ the vocabulary is bought with `allowedTools` instead · same two tools, and `canUseTool` is no longer invoked for either (001 non-negotiable 1)
+    runtime RED 2 of 212 in 1 files
+          desktop GREEN 0 of 36 in 2 files
+M4 · only `preset:default` survives — an option that looks configured and adds nothing
+    runtime RED 2 of 212 in 1 files
+          desktop GREEN 0 of 36 in 2 files
+M5 · the vocabulary is set only for a session LAUNCHED planning — one that enters plan mode mid-conversation keeps the toolset of the session it used to be
+    runtime RED 1 of 212 in 1 files
+          desktop GREEN 0 of 36 in 2 files
+M6 · ⛔ one string for three refusals IS BACK · every refusal says 'may not run commands'
+    runtime RED 1 of 212 in 1 files
+          desktop GREEN 0 of 36 in 2 files
+M7 · a refused WRITE is told it may not run commands
+    runtime RED 1 of 212 in 1 files
+          desktop GREEN 0 of 36 in 2 files
+M8 · a refused SUBAGENT is told it may not run commands — the tester's own sentence
+    runtime RED 1 of 212 in 1 files
+          desktop GREEN 0 of 36 in 2 files
+M9 · a tool the app has never heard of is given a story it cannot support
+    runtime RED 1 of 212 in 1 files
+          desktop GREEN 0 of 36 in 2 files
+M10 · ⛔ the `Explore` subagent is let in · `Task` joins the exemptions, so a floor decides what a spawned agent may do by reading a string in the model's own input
+    runtime RED 5 of 212 in 1 files
+          desktop GREEN 0 of 36 in 2 files
+M11 · ⛔ the generated workspace file claims to be checked into a codebase again, three lines above the CLI saying the directory is not a repository
+    runtime GREEN 0 of 212 in 1 files
+          desktop RED 1 of 36 in 2 files
+M12 · …and the collapse the other way: every project file is labelled BroBot's own
+    runtime GREEN 0 of 212 in 1 files
+          desktop RED 1 of 36 in 2 files
+M13 · ⛔ the isolation goes back to being silent — true, unstated, and therefore a guardrail the user believes is there
+    runtime GREEN 0 of 212 in 1 files
+          desktop RED 2 of 36 in 2 files
+M14 · …or it is stated to Claude only, leaving the Codex profile isolated and untold
+    runtime GREEN 0 of 212 in 1 files
+          desktop RED 1 of 36 in 2 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 212 in 1 files
+          desktop GREEN 0 of 36 in 2 files

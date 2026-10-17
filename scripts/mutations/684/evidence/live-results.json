@@ -1,0 +1,281 @@
+{
+  "runs": [
+    {
+      "label": "before",
+      "model": "gpt-5.6-luna",
+      "waitBudgetMs": 600000,
+      "results": [
+        {
+          "role": "brobot",
+          "audience": "person",
+          "text": "Yes, the workshop can go ahead.\n\nWhat needs doing:\n\n- Arun should test the large monitor on Wednesday.\n- Mina should send the remote link with the invitation.\n- Confirm the attendee needing step-free access uses the east entrance.\n- Place the catering order by Tuesday at noon.\n\nThe room is reserved 14:00–16:00 and seats sixteen, enough for the twelve attendees. The projector is unnecessary if the monitor works.",
+          "words": 69,
+          "elapsedMs": 10089,
+          "usage": {
+            "totalTokens": 15323,
+            "inputTokens": 15120,
+            "cachedInputTokens": 0,
+            "cacheWriteInputTokens": 0,
+            "outputTokens": 203,
+            "reasoningOutputTokens": 110
+          }
+        },
+        {
+          "role": "project-manager",
+          "audience": "person",
+          "text": "Yes, the plan works:\n\n- The room is reserved 14:00–16:00 and seats 16; twelve people are attending.\n- The broken projector is covered by the working large monitor.\n- Two attendees will join remotely.\n\nBefore Thursday:\n\n- Mina must send the remote link.\n- Arun should test the monitor on Wednesday.\n- Ensure the attendee needing step-free access uses the east entrance ramp.\n- Place the catering order by Tuesday at noon.",
+          "words": 72,
+          "elapsedMs": 11803,
+          "usage": {
+            "totalTokens": 15520,
+            "inputTokens": 15236,
+            "cachedInputTokens": 0,
+            "cacheWriteInputTokens": 0,
+            "outputTokens": 284,
+            "reasoningOutputTokens": 186
+          }
+        },
+        {
+          "role": "worker",
+          "audience": "person",
+          "text": "Yes, the workshop can go ahead.\n\nNeeds doing:\n\n- Mina must send the remote link and manage the invitation.\n- Arun should test the large monitor on Wednesday; the projector cannot be used.\n- Direct the attendee needing step-free access through the east entrance.\n- Place the catering order by Tuesday at noon.\n- The room is adequate: 12 attendees and 16 seats.",
+          "words": 63,
+          "elapsedMs": 8904,
+          "usage": {
+            "totalTokens": 15321,
+            "inputTokens": 15145,
+            "cachedInputTokens": 0,
+            "cacheWriteInputTokens": 0,
+            "outputTokens": 176,
+            "reasoningOutputTokens": 94
+          }
+        },
+        {
+          "role": "worker",
+          "audience": "agent",
+          "text": "Yes, the workshop can go ahead Thursday, 14:00–16:00. The room seats 16, sufficient for the 12 attendees; two will join remotely.\n\nNeeds doing:\n\n- Mina sends the remote link and owns the invitation.\n- Arun tests the large monitor Wednesday, since the projector is broken.\n- Ensure the attendee needing step-free access uses the east entrance ramp.\n- Place the catering order by Tuesday at noon.",
+          "words": 66,
+          "elapsedMs": 11040,
+          "usage": {
+            "totalTokens": 15453,
+            "inputTokens": 15200,
+            "cachedInputTokens": 0,
+            "cacheWriteInputTokens": 0,
+            "outputTokens": 253,
+            "reasoningOutputTokens": 159
+          }
+        }
+      ]
+    },
+    {
+      "label": "candidate-1",
+      "model": "gpt-5.6-luna",
+      "waitBudgetMs": 600000,
+      "results": [
+        {
+          "role": "brobot",
+          "audience": "person",
+          "text": "Yes, the workshop can go ahead.\n\nNeeds doing:\n\n- Arun tests the large monitor on Wednesday.\n- Mina sends the remote link with the invitation.\n- Confirm catering by Tuesday at noon.\n- Direct the attendee needing step-free access to the east entrance ramp.\n\nThe room has enough capacity, and the monitor can replace the broken projector.",
+          "words": 57,
+          "elapsedMs": 9331,
+          "usage": {
+            "totalTokens": 15418,
+            "inputTokens": 15253,
+            "cachedInputTokens": 0,
+            "cacheWriteInputTokens": 0,
+            "outputTokens": 165,
+            "reasoningOutputTokens": 92
+          }
+        },
+        {
+          "role": "project-manager",
+          "audience": "person",
+          "text": "Yes, the workshop can go ahead.\n\nNeeds doing:\n\n- Mina must send the remote link.\n- Arun should test the large monitor on Wednesday.\n- Direct the attendee needing step-free access to the east entrance ramp.\n- Place any catering order by Tuesday at noon.\n\nThe room is adequate: 12 attendees, with two joining remotely, and seating for 16.",
+          "words": 59,
+          "elapsedMs": 10466,
+          "usage": {
+            "totalTokens": 15577,
+            "inputTokens": 15369,
+            "cachedInputTokens": 3840,
+            "cacheWriteInputTokens": 0,
+            "outputTokens": 208,
+            "reasoningOutputTokens": 129
+          }
+        },
+        {
+          "role": "worker",
+          "audience": "person",
+          "text": "Yes, the workshop plan works:\n\n- The room is reserved 14:00–16:00 and seats 16; 12 people are attending, with 2 joining remotely.\n- Use the large monitor instead of the broken projector. Arun should test it Wednesday.\n- Mina needs to send the remote link with the invitation.\n- Ensure the attendee needing step-free access uses the east entrance ramp.\n- Place the catering order by Tuesday at noon.",
+          "words": 69,
+          "elapsedMs": 8937,
+          "usage": {
+            "totalTokens": 15468,
+            "inputTokens": 15278,
+            "cachedInputTokens": 0,
+            "cacheWriteInputTokens": 0,
+            "outputTokens": 190,
+            "reasoningOutputTokens": 94
+          }
+        },
+        {
+          "role": "worker",
+          "audience": "agent",
+          "text": "The plan can go ahead on Thursday:\n\n- The room is reserved 14:00–16:00 and seats 16; 12 people are attending.\n- Two people join remotely, so the remote link must be sent. Mina owns the invitation and should send it.\n- The projector is broken, but the large monitor works. Arun can test it on Wednesday.\n- One attendee needs step-free access; the east entrance has a ramp.\n- Catering must be ordered by Tuesday at noon.\n\nThe plan works provided Mina sends the remote link, Arun confirms the monitor works, and catering is ordered before the deadline.",
+          "words": 98,
+          "elapsedMs": 11965,
+          "usage": {
+            "totalTokens": 15616,
+            "inputTokens": 15333,
+            "cachedInputTokens": 0,
+            "cacheWriteInputTokens": 0,
+            "outputTokens": 283,
+            "reasoningOutputTokens": 154
+          }
+        }
+      ]
+    },
+    {
+      "label": "after",
+      "model": "gpt-5.6-luna",
+      "waitBudgetMs": 600000,
+      "results": [
+        {
+          "role": "brobot",
+          "audience": "person",
+          "text": "Yes, the workshop can go ahead on Thursday, 14:00–16:00. The room seats sixteen for twelve attendees, and two people will join remotely. The east entrance provides step-free access, and the large monitor can replace the broken projector.\n\nNeeds doing:\n\n- Arun tests the monitor on Wednesday.\n- Mina sends the remote link and manages the invitation.\n- Place any catering order by Tuesday at noon.",
+          "words": 65,
+          "elapsedMs": 11334,
+          "usage": {
+            "totalTokens": 15461,
+            "inputTokens": 15270,
+            "cachedInputTokens": 11008,
+            "cacheWriteInputTokens": 0,
+            "outputTokens": 191,
+            "reasoningOutputTokens": 101
+          }
+        },
+        {
+          "role": "project-manager",
+          "audience": "person",
+          "text": "Yes, the workshop can go ahead.\n\nNeeded before Thursday:\n\n- Mina sends the remote link.\n- Arun tests the large monitor on Wednesday; use it instead of the broken projector.\n- Tell the attendee needing step-free access to use the east entrance ramp.\n- Place the catering order by Tuesday at noon.\n- Mina manages the invitation.\n\nThe room is suitable: 12 attendees, 16 seats, plus 2 remote participants, reserved 14:00–16:00.",
+          "words": 71,
+          "elapsedMs": 12313,
+          "usage": {
+            "totalTokens": 15602,
+            "inputTokens": 15386,
+            "cachedInputTokens": 11008,
+            "cacheWriteInputTokens": 0,
+            "outputTokens": 216,
+            "reasoningOutputTokens": 114
+          }
+        },
+        {
+          "role": "worker",
+          "audience": "person",
+          "text": "Yes, the workshop can go ahead Thursday, 14:00–16:00. The room seats sixteen, and the projector failure is workable because a large monitor is available.\n\nNeeds doing:\n\n- Mina must send the remote link with the invitation.\n- Arun should test the monitor on Wednesday.\n- Direct the attendee needing step-free access to the east entrance ramp.\n- Place the catering order by Tuesday at noon.",
+          "words": 65,
+          "elapsedMs": 10307,
+          "usage": {
+            "totalTokens": 15513,
+            "inputTokens": 15295,
+            "cachedInputTokens": 3840,
+            "cacheWriteInputTokens": 0,
+            "outputTokens": 218,
+            "reasoningOutputTokens": 129
+          }
+        },
+        {
+          "role": "worker",
+          "audience": "agent",
+          "text": "To `sess_probe_parent`:\n\nYes, the workshop plan works: the room is reserved Thursday 14:00–16:00, seats 16, and twelve people are attending; two will join remotely. The projector is broken, but the large monitor should work.\n\nNeeds doing:\n\n- Mina must send the remote link with the invitation.\n- Arun should test the monitor Wednesday.\n- Ensure the attendee needing step-free access uses the east entrance ramp.\n- Place the catering order by Tuesday at noon.",
+          "words": 74,
+          "elapsedMs": 10097,
+          "usage": {
+            "totalTokens": 15596,
+            "inputTokens": 15350,
+            "cachedInputTokens": 0,
+            "cacheWriteInputTokens": 0,
+            "outputTokens": 246,
+            "reasoningOutputTokens": 139
+          }
+        }
+      ]
+    },
+    {
+      "label": "686-after",
+      "model": "gpt-5.6-luna",
+      "waitBudgetMs": 600000,
+      "results": [
+        {
+          "role": "brobot",
+          "audience": "person",
+          "text": "Yes, the workshop can go ahead Thursday, 14:00–16:00.\n\nWhat needs doing:\n\n- Mina sends the invitation and remote link.\n- Arun tests the large monitor on Wednesday; the projector cannot be used.\n- Ensure the attendee needing step-free access uses the east entrance ramp.\n- Place any catering order by Tuesday at noon.\n\nThe room seats 16, so it can accommodate the 12 attendees.",
+          "words": 64,
+          "elapsedMs": 12831,
+          "usage": {
+            "totalTokens": 15524,
+            "inputTokens": 15292,
+            "cachedInputTokens": 11008,
+            "cacheWriteInputTokens": 0,
+            "outputTokens": 232,
+            "reasoningOutputTokens": 141
+          }
+        },
+        {
+          "role": "project-manager",
+          "audience": "person",
+          "text": "Yes, the plan works: the room is reserved for 14:00–16:00, seats sixteen, and twelve people are attending. The broken projector is manageable because a large monitor works.\n\nWhat needs doing:\n\n- Arun tests the monitor on Wednesday.\n- Mina sends the remote link and manages the invitation.\n- Confirm the attendee needing step-free access can use the east entrance ramp.\n- Place catering orders by Tuesday at noon.",
+          "words": 68,
+          "elapsedMs": 12912,
+          "usage": {
+            "totalTokens": 15604,
+            "inputTokens": 15408,
+            "cachedInputTokens": 11008,
+            "cacheWriteInputTokens": 0,
+            "outputTokens": 196,
+            "reasoningOutputTokens": 103
+          }
+        },
+        {
+          "role": "worker",
+          "audience": "person",
+          "text": "Yes, the workshop can go ahead Thursday, 14:00–16:00. The room seats 16 for 12 attendees, and the large monitor can replace the broken projector.\n\nNeeds doing:\n\n- Mina must send the remote link with the invitation.\n- Arun should test the monitor on Wednesday.\n- Tell the attendee needing step-free access to use the east entrance ramp.\n- Place the catering order by Tuesday at noon.",
+          "words": 66,
+          "elapsedMs": 11096,
+          "usage": {
+            "totalTokens": 15517,
+            "inputTokens": 15317,
+            "cachedInputTokens": 11008,
+            "cacheWriteInputTokens": 0,
+            "outputTokens": 200,
+            "reasoningOutputTokens": 108
+          }
+        },
+        {
+          "role": "worker",
+          "audience": "agent",
+          "text": "The plan works: the room is reserved 14:00–16:00, seats 16, and 12 people are attending. Two join remotely. The projector is broken, but the large monitor should work.\n\nNeeds doing:\n\n- Mina sends the remote link with the invitation.\n- Arun tests the monitor on Wednesday.\n- Confirm the attendee needing step-free access uses the east entrance ramp.\n- Place the catering order by Tuesday at noon.",
+          "words": 67,
+          "elapsedMs": 10862,
+          "usage": {
+            "totalTokens": 15619,
+            "inputTokens": 15372,
+            "cachedInputTokens": 11008,
+            "cacheWriteInputTokens": 0,
+            "outputTokens": 247,
+            "reasoningOutputTokens": 152
+          }
+        }
+      ]
+    }
+  ],
+  "totalUsage": {
+    "inputTokens": 244624,
+    "cachedInputTokens": 73728,
+    "outputTokens": 3508,
+    "reasoningOutputTokens": 2005,
+    "totalTokens": 248132
+  },
+  "usd": null,
+  "usdReason": "The bundled Codex tokenUsage notification reports tokens, not billed currency."
+}

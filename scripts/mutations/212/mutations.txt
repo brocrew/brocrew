@@ -1,0 +1,27 @@
+# 212 mutations — HEAD 7bd5dcf + working tree
+# 2026-08-25T05:34:17Z
+
+M0  CONTROL (no mutation) — baseline desktop=2298 dom=566 scripts=3
+    desktop GREEN 0 of 2298 in 123 files · dom GREEN 0 of 566 in 37 files · scripts GREEN 0 of 3 in 1 files
+
+M1  · ⛔ THE DEFECT · the tab you pressed is never marked selected — 210's `I clicked once and wondered whether the app had noticed`
+    desktop RED 3 of 2298 in 123 files · dom RED 6 of 566 in 37 files · scripts GREEN 0 of 3 in 1 files
+M2  · ⛔ the ACTIVE LABEL is never drawn — and since 088 the label IS the marker, so this is the acknowledgement disappearing while `data-active` still says it happened
+    desktop RED 2 of 2298 in 123 files · dom RED 1 of 566 in 37 files · scripts GREEN 0 of 3 in 1 files
+M3  · the column stops saying which tab it is on — `data-tab` frozen at the tab it mounted with, so every later gesture reads as a drawer that never moved
+    desktop GREEN 0 of 2298 in 123 files · dom RED 2 of 566 in 37 files · scripts GREEN 0 of 3 in 1 files
+M4  · the ink never brightens on the tab you pressed — 088 left exactly two marks for `active` after the underline went, and this is the other one
+    desktop GREEN 0 of 2298 in 123 files · dom RED 1 of 566 in 37 files · scripts GREEN 0 of 3 in 1 files
+M5  · the acknowledged tab's BODY never arrives — the strip moves, the panel does not, which is the half of the gesture a `data-active` assertion alone would not notice
+    desktop GREEN 0 of 2298 in 123 files · dom RED 29 of 566 in 37 files · scripts GREEN 0 of 3 in 1 files
+M6  · ⛔ THE REGRESSION 212 §3 EXISTS TO HOLD · picking a conversation stops being synchronous — the selection now arrives a microtask later, exactly as it would the day this preference went over IPC, and 210's sentence comes back for a reason nobody would look for in a storage change
+    desktop RED 1 of 2298 in 123 files · dom GREEN 0 of 566 in 37 files · scripts GREEN 0 of 3 in 1 files
+M7  · the conversation you picked is never selected at all — `place` moves and `activeId` does not, so the rail marks nothing and the pane draws whatever was already there
+    desktop RED 3 of 2298 in 123 files · dom GREEN 0 of 566 in 37 files · scripts GREEN 0 of 3 in 1 files
+M8  · 095's guard is dropped — a late answer takes the surface again, which is the paired negative that stops the synchronous claim above passing over a no-op
+    desktop RED 3 of 2298 in 123 files · dom GREEN 0 of 566 in 37 files · scripts GREEN 0 of 3 in 1 files
+M9  · ⛔ 206 H1's defect, in the step 212 added · `7d2` writes its own verdict into a sentence instead of returning a typed one — the step still prints the truth on its own line and sums as one clean PASS
+    desktop GREEN 0 of 2298 in 123 files · dom GREEN 0 of 566 in 37 files · scripts RED 1 of 3 in 1 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    desktop GREEN 0 of 2298 in 123 files · dom GREEN 0 of 566 in 37 files · scripts GREEN 0 of 3 in 1 files

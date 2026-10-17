@@ -1,0 +1,55 @@
+# 204 mutations — HEAD 5393068 + working tree
+# 2026-08-22T17:26:47Z
+
+M0  CONTROL (no mutation) — baseline desktop=2215
+    desktop GREEN 0 of 2215 in 115 files
+
+M1 · ⛔ THE DEFECT, verbatim · the session row never names an identity — `profile_id` is a free string again and `agent_profile_id` is never written
+    desktop RED 11 of 2215 in 115 files
+M2 · the profile id forgets its PROJECT — `agp:<slug>` instead of `agp:<project>:<slug>`, so two projects' `developer` collapse into one identity in the database as well as on disk
+    desktop RED 2 of 2215 in 115 files
+M3 · the id is not derived at all — a per-call suffix, so one identity gets a new row every time a conversation starts in it
+    desktop RED 40 of 2215 in 115 files
+M4 · `INSERT`, not `INSERT OR IGNORE` — the second conversation in a profile throws on the identity it is supposed to reuse
+    desktop RED 34 of 2215 in 115 files
+M5 · nothing creates the PROJECT row, so the first conversation in a profile has no identity to belong to — the migration's project INSERT, removed
+    desktop RED 295 of 2215 in 115 files
+M6 · `identityOf` answers for a session that has NO profile — a LEFT JOIN, so a conversation from the user's own home is reported as belonging to an identity of ours
+    desktop RED 1 of 2215 in 115 files
+M7 · ⛔ THE OTHER HALF, verbatim · `rotation` is the provider's zero again — every session of a profile claims position 0 (194 H5: *"new sessions commonly persist provider rotation 0"*)
+    desktop RED 22 of 2215 in 115 files
+M8 · the next position is a COUNT rather than `max + 1`, so a gap in a profile's history hands out a number that is already taken
+    desktop RED 1 of 2215 in 115 files
+M9 · ⛔ the unique key is gone from the migration — `agent_profile + rotation` stops being a key and the database is back to holding two rows for one identity
+    desktop RED 1 of 2215 in 115 files
+M10 · `currentSessionFor` answers with the OLDEST session of a profile — the domain's *"the current one of possibly many"*, read backwards
+    desktop RED 2 of 2215 in 115 files
+M11 · the REF is overwritten with our position — a bundle exported at rotation 7 resumes against a handle that says 0, which is a provider fact replaced by one of ours
+    desktop RED 1 of 2215 in 115 files
+M12 · ⚠️ THE REFUSAL, disarmed · an adopted row takes the profile's next position instead of the one it arrived with, so importing a bundle renumbers a life it was never part of
+    desktop RED 1 of 2215 in 115 files
+M13 · ⛔ the backfill writes the identity and the position in TWO statements — seventeen `default` rows land on `(default, 0)` in the gap between them and the migration fails on a real ledger
+    desktop RED 5 of 2215 in 115 files
+M14 · the backfill numbers a profile's life by ID rather than by when each session STARTED, so the positions are alphabetical and the current one is whichever id sorts last
+    desktop RED 1 of 2215 in 115 files
+M15 · the project row is `INSERT`, not `INSERT OR IGNORE` — the backfill stops being idempotent and a repair run fails on the row it wrote itself
+    desktop RED 1 of 2215 in 115 files
+M16 · a backfilled profile is stamped with the migration's CLOCK — the day of the upgrade recorded as the day the identity was born
+    desktop RED 1 of 2215 in 115 files
+M17 · the migration stops being additive — the free string is dropped once the relation exists, and 139 call sites plus every provider-home path lose the name of their folder
+    desktop RED 541 of 2215 in 115 files
+M18 · the FK is declared without a REFERENCES, so `agent_profile_id` is a free string too and a session can name an identity that does not exist
+    desktop RED 1 of 2215 in 115 files
+M19 · ⛔ THE COALESCING BUG, verbatim (168 L5 · 182 · 188) · an adopted row's null profile becomes `default`, so a conversation swept out of the user's OWN `~/.claude` is recorded as living in a home of ours
+    desktop RED 3 of 2215 in 115 files
+M20 · …and the same bug in the MIGRATION's profile insert — every row on disk with a null profile is given the `default` identity, including the ones we never owned
+    desktop RED 1 of 2215 in 115 files
+M21 · the OTHER null loses its home — a PRE-PROFILE row (`adopted_at` null) is left unattributed, though it ran in `default` and every read of it already resolves that way
+    desktop RED 2 of 2215 in 115 files
+M22 · `agent_profile.display_name` is not created — the person's human name per profile has nowhere to land, and adding it later means moving ledgers
+    desktop RED 541 of 2215 in 115 files
+M23 · `parent_session_id` is a free string rather than a self-FK, so the spawned-agent tree can point at a session that never existed
+    desktop RED 1 of 2215 in 115 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    desktop GREEN 0 of 2215 in 115 files

@@ -1,0 +1,50 @@
+# 487 mutations — HEAD 660c63d3 + working tree
+# 2026-09-17T00:53:13Z
+# project-reachability v1 topology=unproved — For each row, run every baseline project whose tests can conservatively reach an edited path; any unknown path runs every project, and every omitted measurement is written NOT RUN (out of reach), never GREEN.
+
+M0  CONTROL (no mutation) — baseline runtime=1793 desktop=5844 dom=1508 scripts=745 shared=4
+    runtime GREEN 0 of 1793 in 62 files · desktop GREEN 0 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+
+M1 · 🔴 THE DEFECT, restored at its root · `publishedOffer` publishes what the producer handed it and nothing else, so every fail-closed card goes back to an offer with no answer on it and a person holds a card they cannot press
+    runtime RED 12 of 1793 in 62 files · desktop RED 14 of 5844 in 299 files · dom RED 4 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M2 · ⛔ the floor is kept only where there was already something · the exact reading that shipped — *an EMPTY offer means nothing may be pressed* — which leaves the one card `483` traced as reachable unanswerable and every other card unchanged
+    runtime RED 7 of 1793 in 62 files · desktop RED 13 of 5844 in 299 files · dom RED 3 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M3 · ⚠️ the de-duplication goes · a provider that already named `decline` gets two Deny buttons, because the row is built from the offer and a repeat in it is a repeat on screen
+    runtime RED 10 of 1793 in 62 files · desktop RED 1 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M4 · 🔴 the floor WIDENS · `allow` rides in beside the two refusals, so every card advertises a positive the gate will reject — `482`'s *it is never a widening* turned false, and the exact lie about scope `023 P1-F` exists to prevent
+    runtime RED 19 of 1793 in 62 files · desktop RED 13 of 5844 in 299 files · dom RED 3 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M5 · ⛔ the Codex command producer publishes the gate's members raw again · the four short shapes come back at once, and the two the census calls controls do not move — which is what makes this row about the OFFER rather than about the floor
+    runtime RED 8 of 1793 in 62 files · desktop GREEN 0 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M6 · 🔴 the card stops saying WHY it cannot be allowed · the offer keeps both refusals and the reason is never written, so the fact rides on nothing again and every surface shows two buttons over silence
+    runtime RED 8 of 1793 in 62 files · desktop GREEN 0 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M7 · ⛔ BroBot's own fail-closed is reported as the provider offering nothing · the sentence `483` found, restored one layer deeper: the word is right for two branches and blames somebody else on the reachable one
+    runtime RED 7 of 1793 in 62 files · desktop GREEN 0 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M8 · ⚠️ an undisplayable grant stops failing positives closed · the gate the offer is derived from goes unrestricted, so a card whose scope could not be shown offers Approve — `036 P1-F #5`, and the one thing 487 had to leave exactly as strict
+    runtime RED 5 of 1793 in 62 files · desktop GREEN 0 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M9 · ⛔ the withheld sentence goes back to blaming the provider · the exact copy `483` found on the card, restored as the thing the reachable branch renders
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 3 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M10 · ⚠️ the sentence names the shape it could not describe · the positives were withheld so that a person would not be granted something they were never shown, and a negative that spells it out hands back exactly what withholding them was for
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 2 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M11 · ⛔ the sentence stops telling a person what they can still do · it says only what is missing, on the one screen whose whole repair is that there IS something to press (`106` from the other side)
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 1 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M12 · 🔴 the WORD decides whether, instead of only why · the adapter's reason is returned without ever looking at the offer, so a request carrying a positive AND a word paints *no way to allow this* directly above a live Approve — 487's own sentence, pointing the other way ⚑ PREMISE RE-AIMED BY 487's OWN REVIEW
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 1 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M13 · 🔴 the CARD falls silent · both refusals are drawn and nothing above them says why there is no Approve, which is the state `482` and `483` both measured and neither could repair
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 6 of 5844 in 299 files · dom RED 1 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M14 · ⛔ HOME and the person's queue fall silent together · the row stops carrying the sentence, so the card explains itself and the two surfaces a person answers from say nothing — HO-030 §2's *trains the reader out of looking*, exactly
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 10 of 5844 in 299 files · dom RED 1 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M15 · 🔴 Home tells a person to open a card and allow it, on a card nothing can allow · `483`'s own finding on this line — it points through a door that still cannot do what it names — restored by making the instruction unconditional again
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 1 of 5844 in 299 files · dom RED 1 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M16 · ⚠️ the person's queue draws the sentence only where there is nothing to press · the row keeps the field and renders it under the `noAnswerHere` condition instead, which is the one state 487 says this is NOT: a row that can be refused and cannot be allowed
+    runtime GREEN 0 of 1793 in 62 files · desktop GREEN 0 of 5844 in 299 files · dom RED 1 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M17 · ⛔ the double publishes an offer the real adapters could not · `simulatePermission` skips the floor, so every desktop test that answers a fail-closed card is exercising a surface against a rule the shipped app applies and this one does not
+    runtime RED 1 of 1793 in 62 files · desktop RED 7 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M18 · 🔴 the residual arm asks for an EMPTY row instead of for NO POSITIVE · a Codex command approval persisted before 487 offering `['decline','cancel']` and no reason falls through to silence on every surface, and Home goes back to telling a person to open it and allow it — `483`'s defect surviving the repair, on replayed data
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 1 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M19 · ⛔ the person's queue says *refusing still works* over zero buttons · the sentence is drawn beside a `noAnswerHere` that has already taken every control away, so a row whose answer is on its way tells a person to refuse a card they can no longer press — `468`'s false instruction with a new subject
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 2 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M20 · ⚠️ the sentence asserts an ACCEPT was offered · `outcomeOfCodexDecision` returns null for anything it cannot read, not only the amendment forms, so a list of two refusals and one token this app could not parse is reported as *the ways to accept it* — a claim about the provider drawn from something we could not read
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 1 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1793 in 62 files · desktop GREEN 0 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files

@@ -1,0 +1,61 @@
+# 146 mutations — HEAD 5670e66 + working tree
+# 2026-08-14T16:22:04Z
+
+M0  CONTROL (no mutation) — baseline runtime=419 desktop=207 dom=27
+    node: runtime GREEN 0 of 419 in 5 files · desktop GREEN 0 of 207 in 7 files
+    dom:  GREEN 0 of 27 in 3 files
+
+M1 · every refusal settles the card again (THE §1 DEFECT)
+    node: runtime GREEN 0 of 419 in 5 files · desktop RED 1 of 207 in 7 files
+M2 · the host stops saying the request survived
+    node: runtime GREEN 0 of 419 in 5 files · desktop RED 2 of 207 in 7 files
+M3 · markAnswerRefused writes a note instead
+    node: runtime GREEN 0 of 419 in 5 files · desktop RED 1 of 207 in 7 files
+M4 · the sentence is never drawn on a live card
+    dom:  RED 1 of 27 in 3 files
+M5 · a refusal writes nothing at all
+    node: runtime GREEN 0 of 419 in 5 files · desktop RED 2 of 207 in 7 files
+M6 · a settling refusal stops settling (the paired positive)
+    node: runtime GREEN 0 of 419 in 5 files · desktop RED 1 of 207 in 7 files
+M7 · `in` instead of Object.hasOwn (the constructor crash)
+    node: runtime RED 1 of 419 in 5 files · desktop GREEN 0 of 207 in 7 files
+M8 · a non-string member reaches .trim() again
+    node: runtime RED 1 of 419 in 5 files · desktop GREEN 0 of 207 in 7 files
+M9 · the IPC answer map goes back to z.record
+    node: runtime RED 1 of 419 in 5 files · desktop GREEN 0 of 207 in 7 files
+M10 · the IPC answer map keeps Object.prototype
+    node: runtime RED 1 of 419 in 5 files · desktop GREEN 0 of 207 in 7 files
+M11 · Claude's answers dictionary goes back to {}
+    node: runtime RED 1 of 419 in 5 files · desktop GREEN 0 of 207 in 7 files
+M12 · Codex's response payload goes back to {}
+    node: runtime RED 1 of 419 in 5 files · desktop GREEN 0 of 207 in 7 files
+M13 · the card's draft goes back to a plain object
+    dom:  RED 1 of 27 in 3 files
+M14 · the card's answer payload keeps Object.prototype
+    dom:  RED 1 of 27 in 3 files
+M15 · duplicateAnswerKey never finds one
+    node: runtime RED 3 of 419 in 5 files · desktop GREEN 0 of 207 in 7 files
+M16 · Claude publishes duplicate prompt text again
+    node: runtime RED 1 of 419 in 5 files · desktop GREEN 0 of 207 in 7 files
+M17 · Codex publishes duplicate ids again
+    node: runtime RED 1 of 419 in 5 files · desktop GREEN 0 of 207 in 7 files
+M18 · replay casts again (143's shape)
+    node: runtime RED 2 of 419 in 5 files · desktop RED 2 of 207 in 7 files
+M19 · boundStoredEvent stops parsing user_input_request
+    node: runtime GREEN 0 of 419 in 5 files · desktop RED 2 of 207 in 7 files
+M20 · membership goes back to trim-equivalence
+    node: runtime RED 3 of 419 in 5 files · desktop GREEN 0 of 207 in 7 files
+M21 · the card trims what it sends again
+    dom:  RED 1 of 27 in 3 files
+M22 · Codex drops non-empty option descriptions (145 MEDIUM 3's green)
+    node: runtime RED 1 of 419 in 5 files · desktop GREEN 0 of 207 in 7 files
+M23 · Claude drops non-empty option descriptions
+    node: runtime RED 1 of 419 in 5 files · desktop GREEN 0 of 207 in 7 files
+M24 · CSS hides only the SECOND described row
+    dom:  RED 1 of 27 in 3 files
+M25 · CSS hides only the SECRET field
+    dom:  RED 1 of 27 in 3 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    node: runtime GREEN 0 of 419 in 5 files · desktop GREEN 0 of 207 in 7 files
+    dom:  GREEN 0 of 27 in 3 files

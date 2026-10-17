@@ -1,0 +1,38 @@
+# 496 mutations — HEAD 660c63d3 + working tree
+# 2026-09-17T06:42:28Z
+# project-reachability v1 topology=unproved — For each row, run every baseline project whose tests can conservatively reach an edited path; any unknown path runs every project, and every omitted measurement is written NOT RUN (out of reach), never GREEN.
+
+M0  CONTROL (no mutation) — baseline runtime=1793 desktop=5844 dom=1508 scripts=745 shared=4
+    runtime GREEN 0 of 1793 in 62 files · desktop GREEN 0 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+
+M1 · 🔴 THE DEFECT, restored · the door admits every state, so a parent whose reach admits ends a child parked on a person's card and that card is settled by a gesture the person never saw — `493`'s measurement exactly
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 11 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M2 · ⛔ the rail is never ASKED · the vocabulary exists, the sentence is right, and the verb walks past it — a door that answers nothing is the shape `341` calls a rail nobody proved can fail
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 11 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M3 · ⛔ the refusal is returned and the teardown runs ANYWAY · the payload says the card was protected and the conversation is gone — the one shape that satisfies a refusal assertion while performing the act
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 7 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M4 · 🔴 the state is asked BEFORE the capability floor · `341` inverted at this door — a caller a person never granted `can_interrupt` learns that somebody is being asked something in a conversation it may not touch
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 2 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M5 · ⚠️ the rail refuses MORE than was ruled · a child that is merely WORKING can no longer be ended by the parent that made it, which is the widening §4 of the brief forbids and the one a door written from a status name rather than from the ruling would produce
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 6 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M6 · ⛔ the shared word means two things · `until-a-person-changes-it` at one door and `while-this-holds` at the other, which is the *one word, two things* `374` refuses and `419` bought the shared-name exception by measuring
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 8 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M7 · 🔴 the rail carries a remedy it cannot keep · `withdraw-the-work-or-ask-about-it` in the field a model reads as *the act that clears THIS call* — and withdrawing leaves the child parked on the card, so the identical call meets this rail again
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 7 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M8 · ⚠️ the sentence stops naming the act · the way out the PO named — *withdraw the work, or wait for the person* — goes, and with `remedy` correctly `null` the refusal then carries it nowhere at all
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 3 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M9 · ⛔ the end door speaks the INTERRUPT door's sentence · a caller that asked to END is told *cutting into it* and *Nothing was interrupted* — a fact about a call it did not make, which is HO-015 §2, and the one clause a shared member could never have carried
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 1 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M10 · 🔴 the PERSON is refused too · the rail moves onto `close`, which is the door a person's press actually reaches — *an agent may not, a person may* collapses into *nobody may*, and a card becomes a thing no gesture in this app can get past
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 520 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M11 · ⛔ the refusal tears the card down on its way out · the call is refused, the payload is right, and the thing it exists to protect is settled anyway — the shape that passes a refusal assertion and fails the person
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 8 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M12 · ⚠️ a refused end writes the ask anyway · `recordTheAsk` moves above the rail, so the ledger holds *somebody asked this work to stop* about a call that was refused — `withdrawTask`'s ordering rule broken at a second venue
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 3 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M13 · 🔴 the tool answers `ok` over the refusal · the host refuses, the arm that carries it goes, and `end_agent` tells a model *that agent has ended* about a conversation that is still there with its card open — criterion 15's shape at the newest door
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 10 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+M14 · ⚠️ the two halves are written twice · the text a person reads is composed beside the payload a model reads instead of from it — `492`'s criterion 20 defect, one door over, and the sentence that drifts is the one further from the table
+    runtime GREEN 0 of 1793 in 62 files · desktop RED 1 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1793 in 62 files · desktop GREEN 0 of 5844 in 299 files · dom GREEN 0 of 1508 in 106 files · scripts GREEN 0 of 745 in 35 files · shared GREEN 0 of 4 in 1 files

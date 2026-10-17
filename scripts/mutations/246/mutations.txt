@@ -1,0 +1,33 @@
+# 246 mutations — HEAD 5e2cde8 + working tree
+# 2026-08-31T02:52:12Z
+
+M0  CONTROL (no mutation) — baseline runtime=1336 desktop=2644 dom=686 scripts=261
+    runtime GREEN 0 of 1336 in 42 files · desktop GREEN 0 of 2644 in 137 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 261 in 16 files
+
+M1 · 🔴 246's defect, reverted verbatim · the fold stops recognizing the turn's OWN terminal message, so `turn failed: <the 177-char envelope>` is drawn again beside the envelope it repeats — 244's *"made the user read the same machine error twice before stating the ending"*
+    runtime GREEN 0 of 1336 in 42 files · desktop RED 12 of 2644 in 137 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 261 in 16 files
+M2 · 🔴 the other half · the envelope is never opened, so what reaches the person is `{"type":"error","status":400,…}` on a one-line hairline that ellipses it
+    runtime GREEN 0 of 1336 in 42 files · desktop RED 7 of 2644 in 137 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 261 in 16 files
+M3 · ⚠️ the SHALLOWEST message wins · the transport's *"Request failed"* replaces the sentence that says what actually happened
+    runtime GREEN 0 of 1336 in 42 files · desktop RED 1 of 2644 in 137 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 261 in 16 files
+M4 · ⚠️ whitespace stops counting as absent · a payload carrying `"message": "   "` becomes a notice with nothing in it, which is worse than the envelope
+    runtime GREEN 0 of 1336 in 42 files · desktop RED 1 of 2644 in 137 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 261 in 16 files
+M5 · ⚠️ one unwrap instead of four · an envelope whose message is itself an envelope stays shut
+    runtime GREEN 0 of 1336 in 42 files · desktop RED 1 of 2644 in 137 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 261 in 16 files
+M6 · ⚠️ the bare `turn failed` stops being the ending — `completeTurn` emits it when the provider named no reason, and the transcript says `turn failed` twice in a row again
+    runtime GREEN 0 of 1336 in 42 files · desktop RED 3 of 2644 in 137 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 261 in 16 files
+M7 · 🔴 the memory is never taken · nothing was said earlier as far as the ending knows, so every cause is stated twice
+    runtime GREEN 0 of 1336 in 42 files · desktop RED 4 of 2644 in 137 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 261 in 16 files
+M8 · ⚠️ the RAW half of the comparison goes · a credential refusal drawn in our words (098) no longer silences the provider's verbatim repeat of it on the ending
+    runtime GREEN 0 of 1336 in 42 files · desktop RED 1 of 2644 in 137 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 261 in 16 files
+M9 · ⚠️ the SHOWN half goes · two differently-worded envelopes carrying one sentence are read as two failures
+    runtime GREEN 0 of 1336 in 42 files · desktop RED 1 of 2644 in 137 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 261 in 16 files
+M10 · ⚠️ the memory outlives the turn it belongs to · a ledger that ends mid-turn is replayed prompt → prompt, and the first turn's cause silences the second turn's ending
+    runtime GREEN 0 of 1336 in 42 files · desktop RED 2 of 2644 in 137 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 261 in 16 files
+M11 · ⛔ the ending branch stops terminalizing the session · a FATAL error phrased as the turn's ending leaves the composer open on a session that is over — the cost of the early return, if nothing holds it
+    runtime GREEN 0 of 1336 in 42 files · desktop RED 1 of 2644 in 137 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 261 in 16 files
+M12 · ⚠️ the new live step joins the run unclassified · `224` §5's number would count a step that reports an unreached claim as one that can only go red for an app defect
+    runtime GREEN 0 of 1336 in 42 files · desktop GREEN 0 of 2644 in 137 files · dom GREEN 0 of 686 in 44 files · scripts RED 3 of 261 in 16 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1336 in 42 files · desktop GREEN 0 of 2644 in 137 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 261 in 16 files

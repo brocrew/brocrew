@@ -1,0 +1,73 @@
+# 248 mutations — HEAD 52d5bc2 + working tree
+# 2026-08-31T12:14:47Z
+
+M0  CONTROL (no mutation) — baseline runtime=1371 desktop=2685 dom=694 scripts=261
+    runtime GREEN 0 of 1371 in 43 files · desktop GREEN 0 of 2685 in 139 files · dom GREEN 0 of 694 in 46 files · scripts GREEN 0 of 261 in 16 files
+
+M1 · 🔴 THE DEFECT, verbatim · no receipt is ever a detachment again, so the Bash card settles green at 6 102 ms for a command that runs to 36 150 ms — 245's whole finding, back
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 8 of 2685 in 139 files · dom GREEN 0 of 694 in 46 files · scripts GREEN 0 of 261 in 16 files
+M2 · ⛔ the trap 247 §3 named · the card is gated on HAVING a stop id instead of on the flag — and Codex puts a `processId` on every PTY-backed command, foreground included, so every finished Codex command reads 'still running' on the adapter that implements no stop
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 1 of 2685 in 139 files · dom GREEN 0 of 694 in 46 files · scripts GREEN 0 of 261 in 16 files
+M3 · ⚠️ the receipt ASSIGNS rather than merges · nothing on the wire orders the ending against the receipt, so a command that has already finished goes back to 'still running'
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 1 of 2685 in 139 files · dom GREEN 0 of 694 in 46 files · scripts GREEN 0 of 261 in 16 files
+M4 · ⚠️ a sub-agent's OWN detached command loses the fact · 248 §5 measured a dispatched agent running a Bash of its own, and nothing stops that child asking to detach it
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 1 of 2685 in 139 files · dom GREEN 0 of 694 in 46 files · scripts GREEN 0 of 261 in 16 files
+M5 · ⛔ the card's dot ignores the detachment · `ok:true` wins, so the row is green and successful while the work runs on — 245's *green settled Bash card*, in one line
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 3 of 2685 in 139 files · dom GREEN 0 of 694 in 46 files · scripts GREEN 0 of 261 in 16 files
+M6 · ⚠️ the row prints the DETACHMENT's duration · '1.2 s' beside work that ran for half a minute, which is the same lie in a smaller font
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 2 of 2685 in 139 files · dom GREEN 0 of 694 in 46 files · scripts GREEN 0 of 261 in 16 files
+M7 · ⛔ the ending never reaches the card · 245's other half — *reconcile final task completion to that card: ABSENT · 1, measured Claude card never changed*
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 7 of 2685 in 139 files · dom GREEN 0 of 694 in 46 files · scripts GREEN 0 of 261 in 16 files
+M8 · ⚠️ the ending does not stamp WHEN it landed · the card can say it finished and not how long it took, so the completion record is half a record
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 1 of 2685 in 139 files · dom GREEN 0 of 694 in 46 files · scripts GREEN 0 of 261 in 16 files
+M9 · ⚠️ `toolRowFor` stops looking on the cards · a child's call is deliberately not in `toolItems`, so its ending would land nowhere and its row would claim forever
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 1 of 2685 in 139 files · dom GREEN 0 of 694 in 46 files · scripts GREEN 0 of 261 in 16 files
+M10 · 🔴 the level is MERGED rather than replaced · the SDK's own doc: *replace their set with each payload rather than pairing edges, so a missed bookend cannot wedge a stale running indicator* — and 222 is what a stale indicator costs
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 3 of 2685 in 139 files · dom GREEN 0 of 694 in 46 files · scripts GREEN 0 of 261 in 16 files
+M11 · ⛔ ABSENT is read as EMPTY · every frame that carries only an ending would clear the registry, which is the traffic most likely to arrive while something is still running
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 1 of 2685 in 139 files · dom GREEN 0 of 694 in 46 files · scripts GREEN 0 of 261 in 16 files
+M12 · ⚠️ the cap goes silent · a registry that quietly undercounts is worse than none (247 §3), because a list that looks complete is read as complete
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 1 of 2685 in 139 files · dom GREEN 0 of 694 in 46 files · scripts GREEN 0 of 261 in 16 files
+M13 · ⛔ the registry outlives the conversation · a closed, read-only or reopened conversation goes on naming work that died with the CLI child — 222's stale indicator, arriving through the store instead of through a missed bookend
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 1 of 2685 in 139 files · dom GREEN 0 of 694 in 46 files · scripts GREEN 0 of 261 in 16 files
+M14 · ⛔ …and so does the CARD · it is the one row here with a result, so the sweep above it skips it by design and nothing else would ever correct the claim
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 3 of 2685 in 139 files · dom GREEN 0 of 694 in 46 files · scripts GREEN 0 of 261 in 16 files
+M15 · ⚠️ a rolled window forgets what is running · the level is not an item, so the events that would restate it are exactly the ones a slab release throws away — and a conversation long enough to roll is one you have stopped watching
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 1 of 2685 in 139 files · dom GREEN 0 of 694 in 46 files · scripts GREEN 0 of 261 in 16 files
+M16 · ⚠️ the carry ALIASES the outgoing fold's array · two folds sharing one array is a way for them to disagree later for no reason (the rule `activity` and `meter` already follow)
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 1 of 2685 in 139 files · dom GREEN 0 of 694 in 46 files · scripts GREEN 0 of 261 in 16 files
+M17 · ⚠️ the sweep loses to the level · a conversation quit mid-command replays saying 'still running' about a dead process, forever
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 3 of 2685 in 139 files · dom GREEN 0 of 694 in 46 files · scripts GREEN 0 of 261 in 16 files
+M18 · ⚠️ the sweep outranks the OUTCOME · a `task_notification` that lands after a reopen renders as the sweep rather than as the ending it is — `ToolEntry`'s precedence rule, inverted (*the real result still wins wherever there is one*)
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 7 of 2685 in 139 files · dom RED 1 of 694 in 46 files · scripts GREEN 0 of 261 in 16 files
+M19 · ⛔ the button is offered where nothing can act · 106's rule outright, and on Codex it would call a method the adapter does not implement
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 1 of 2685 in 139 files · dom RED 1 of 694 in 46 files · scripts GREEN 0 of 261 in 16 files
+M20 · ⚠️ the row keeps inviting a second press · stopTask promises a notification, not a death (233/240), so a button that stayed live would read as one that did nothing
+    runtime GREEN 0 of 1371 in 43 files · desktop GREEN 0 of 2685 in 139 files · dom RED 1 of 694 in 46 files · scripts GREEN 0 of 261 in 16 files
+M21 · ⛔ the pane reads ABSENCE as permission · `!== false` turns every adapter's silence into a positive claim, which is 150/148 L3 exactly — and Codex says nothing at all
+    runtime GREEN 0 of 1371 in 43 files · desktop GREEN 0 of 2685 in 139 files · dom RED 1 of 694 in 46 files · scripts GREEN 0 of 261 in 16 files
+M22 · ⛔ the host claims a stop it never made · an adapter with no such method would answer 'the request went out' — 233/240's distinction, discarded at the one place it is made
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 1 of 2685 in 139 files · dom GREEN 0 of 694 in 46 files · scripts GREEN 0 of 261 in 16 files
+M23 · ⛔ the liveness publishes an explicit `false` · 148 L3's finding, one field over: `=== true` turned every adapter's silence into a positive claim, and absence is what an adapter with nothing to say is entitled to
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 1 of 2685 in 139 files · dom GREEN 0 of 694 in 46 files · scripts GREEN 0 of 261 in 16 files
+M24 · ⚠️ a failed stop says nothing · a control that failed silently is a control that cannot act pretending it can (106), and 118 is why the sentence goes beside the session
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 1 of 2685 in 139 files · dom GREEN 0 of 694 in 46 files · scripts GREEN 0 of 261 in 16 files
+M25 · ⚠️ the registry stops saying it is UNDERSTATING itself · 092's no-silent-cap rule, and 247 §3's sharpening of it for this event
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 1 of 2685 in 139 files · dom GREEN 0 of 694 in 46 files · scripts GREEN 0 of 261 in 16 files
+M26 · ⚠️ a CHILD's detached command goes back to reading as an ordinary receipt · 248 §5 measured a dispatched agent running a Bash of its own, so this is the same lie one level down, on a row a different component draws
+    runtime GREEN 0 of 1371 in 43 files · desktop GREEN 0 of 2685 in 139 files · dom RED 2 of 694 in 46 files · scripts GREEN 0 of 261 in 16 files
+M27 · ⚠️ the new live step joins the run unclassified · 224 §5's number would count a step that reports an unreached claim as one that can only go red for an app defect
+    runtime GREEN 0 of 1371 in 43 files · desktop GREEN 0 of 2685 in 139 files · dom GREEN 0 of 694 in 46 files · scripts RED 4 of 261 in 16 files
+M28 · ⚠️ the card stops carrying the CORRELATION with the registry · the bar offers to stop a piece of work and the row saying 'still running' has nothing on screen tying the two together, so a reader cannot tell that they are one thing
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 1 of 2685 in 139 files · dom GREEN 0 of 694 in 46 files · scripts GREEN 0 of 261 in 16 files
+M29 · 🔴 THE ADVERSARIAL PASS'S OWN FINDING, reverted verbatim · the detached sweep goes back onto the TURN-end path, so the registry empties and every card flips to 'did not finish' at the instant 245's window opens — the defect this dispatch exists to end, inverted
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 2 of 2685 in 139 files · dom GREEN 0 of 694 in 46 files · scripts GREEN 0 of 261 in 16 files
+M30 · ⛔ a child's row loses what it learned when its card reclaims it · the one path that exists BECAUSE something arrived late is the one that drops what arrived in the meantime
+    runtime GREEN 0 of 1371 in 43 files · desktop RED 1 of 2685 in 139 files · dom GREEN 0 of 694 in 46 files · scripts GREEN 0 of 261 in 16 files
+M31 · ⛔ a stop that never landed keeps the control · the only button for still-running work sits at 'Stopping…' for ever — 106's control that cannot act, manufactured by the app
+    runtime GREEN 0 of 1371 in 43 files · desktop GREEN 0 of 2685 in 139 files · dom RED 1 of 694 in 46 files · scripts GREEN 0 of 261 in 16 files
+M32 · ⚠️ the level RE-EMISSION drops the shortfall again · the 'this list is understating itself' notice is wiped one millisecond after it appears, while the set is still short
+    runtime RED 1 of 1371 in 43 files · desktop GREEN 0 of 2685 in 139 files · dom GREEN 0 of 694 in 46 files · scripts GREEN 0 of 261 in 16 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1371 in 43 files · desktop GREEN 0 of 2685 in 139 files · dom GREEN 0 of 694 in 46 files · scripts GREEN 0 of 261 in 16 files

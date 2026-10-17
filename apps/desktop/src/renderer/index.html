@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BroCrew</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        /* ⛔ **The pre-token frame** (391). This sheet is parsed before `tokens.css` is
+           imported, so these two ARE the app for one paint. The ground is left to the window:
+           the main process paints it in the workspace's theme (the app's own `--bg` when it has
+           none), so a themed window doesn't flash the default colour first. The ink is `--text`,
+           restated because there is nothing yet to read it from. */
+        background: transparent;
+        color: #e3e8f4;
+        font-family:
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          'Segoe UI',
+          Roboto,
+          Helvetica,
+          Arial,
+          sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

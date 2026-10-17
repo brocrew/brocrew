@@ -1,0 +1,157 @@
+{
+  "version": 1,
+  "floors": {
+    "main": {
+      "lines": 898,
+      "branches": 857,
+      "functions": 868
+    },
+    "preload": {
+      "lines": 111,
+      "branches": 0,
+      "functions": 90
+    },
+    "renderer": {
+      "lines": 818,
+      "branches": 797,
+      "functions": 839
+    },
+    "shared": {
+      "lines": 974,
+      "branches": 918,
+      "functions": 990
+    },
+    "runtime": {
+      "lines": 966,
+      "branches": 901,
+      "functions": 974
+    },
+    "other packages": {
+      "lines": 875,
+      "branches": null,
+      "functions": 0
+    },
+    "overall": {
+      "lines": 881,
+      "branches": 842,
+      "functions": 863
+    }
+  },
+  "measuredCommit": "96a2a11b0b5076406bb510302354546d4b96e28c",
+  "counts": {
+    "main": {
+      "lines": {
+        "covered": 18850,
+        "total": 20973
+      },
+      "branches": {
+        "covered": 16707,
+        "total": 19493
+      },
+      "functions": {
+        "covered": 4296,
+        "total": 4947
+      }
+    },
+    "preload": {
+      "lines": {
+        "covered": 24,
+        "total": 216
+      },
+      "branches": {
+        "covered": 0,
+        "total": 5
+      },
+      "functions": {
+        "covered": 17,
+        "total": 188
+      }
+    },
+    "renderer": {
+      "lines": {
+        "covered": 12575,
+        "total": 15362
+      },
+      "branches": {
+        "covered": 15515,
+        "total": 19452
+      },
+      "functions": {
+        "covered": 3674,
+        "total": 4375
+      }
+    },
+    "shared": {
+      "lines": {
+        "covered": 2200,
+        "total": 2258
+      },
+      "branches": {
+        "covered": 2333,
+        "total": 2541
+      },
+      "functions": {
+        "covered": 519,
+        "total": 524
+      }
+    },
+    "runtime": {
+      "lines": {
+        "covered": 6503,
+        "total": 6728
+      },
+      "branches": {
+        "covered": 5890,
+        "total": 6536
+      },
+      "functions": {
+        "covered": 1400,
+        "total": 1437
+      }
+    },
+    "other packages": {
+      "lines": {
+        "covered": 7,
+        "total": 8
+      },
+      "branches": {
+        "covered": 0,
+        "total": 0
+      },
+      "functions": {
+        "covered": 0,
+        "total": 1
+      }
+    },
+    "overall": {
+      "lines": {
+        "covered": 40159,
+        "total": 45545
+      },
+      "branches": {
+        "covered": 40445,
+        "total": 48027
+      },
+      "functions": {
+        "covered": 9906,
+        "total": 11472
+      }
+    }
+  },
+  "tests": {
+    "passed": 18977,
+    "failed": 2,
+    "skipped": 10
+  },
+  "qualifiedFailures": [
+    [
+      "scripts/test/mutation-census.test.mjs",
+      "mutation census machine attestation (264 E2/E7) ⛔ the generated prose and machine record still match the live definitions and artefacts"
+    ],
+    [
+      "scripts/test/mutation-census.test.mjs",
+      "every shim table holding a recorded retirement can be dry-run (596 §4.1) ⚑ names them, dry-runs each green with `--table`, and shows one refusing without it"
+    ]
+  ],
+  "reviewedChange": null
+}

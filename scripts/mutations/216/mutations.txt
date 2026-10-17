@@ -1,0 +1,121 @@
+# 216 mutations — HEAD bee978d + working tree
+# 2026-08-26T02:44:05Z
+
+M0  CONTROL (no mutation) — baseline desktop=2402 dom=597 scripts=3
+    desktop GREEN 0 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+
+M1  · ⛔ THE DEFECT · a path that does not exist is accepted at the picker, so the refusal arrives after Send instead of before it (106, 118, 169)
+    desktop RED 6 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M2  · ⚠️ §3 · a dangling symlink says the FILE is missing rather than that the shortcut is broken — two different fixes, one sentence
+    desktop RED 1 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M3  · ⛔ §3 · a socket, fifo or device is handed over as a file, spending a turn to learn the agent cannot read it
+    desktop RED 1 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M4  · ⛔ §3 · a folder is reported as a file, so the agent reaches for the wrong tool
+    desktop RED 4 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M5  · 🔒 §3 · a path OUTSIDE the working directory stops saying so, so the agent's own permission card is the first place anybody notices
+    desktop RED 1 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M6  · ⚠️ §3 · an unknown working directory reads as INSIDE — a containment claim nothing backs (086)
+    desktop RED 1 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M7  · 🔴 THE DEFECT, verbatim · the path never reaches the provider at all — measured at the pin, plain text is the ONLY form a model sees (216 §1)
+    desktop RED 8 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M8  · ⛔ §2 · the path is silently CONCATENATED with no label, so the model and the reader cannot tell the person's words from BroBot's (214, from the other end)
+    desktop RED 2 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M9  · 🔒 §3 · the message stops saying a path is outside the working directory
+    desktop RED 1 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M10 · 🔴 214's DEFECT FROM THE OTHER END · the composed text is stored as the person's turn, so the transcript renders BroBot's sentence as something they typed
+    desktop RED 1 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M11 · ⛔ the no-byte-authority census loses its teeth, so a later change can load the bytes in main and acquire 215 §3.3's authority with nothing to notice
+    desktop RED 1 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M12 · ⛔ THE CONTROL 213 WENT LOOKING FOR is gone from the composer
+    desktop GREEN 0 of 2402 in 127 files · dom RED 4 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M13 · 🔴 §2 · what was attached is NOT SHOWN — the person's rule broken at the composer: an injection the UI does not display
+    desktop GREEN 0 of 2402 in 127 files · dom RED 4 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M14 · 🔴 §2 · attaching stops being UNDOABLE before send (211: a half-formed attachment is the same defect as a half-formed draft)
+    desktop GREEN 0 of 2402 in 127 files · dom RED 1 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M15 · ⛔ §2 · the attachments outlive their send and ride along on the NEXT message, silently, because the chip looks the same
+    desktop GREEN 0 of 2402 in 127 files · dom RED 1 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M16 · 🔴 214's DEFECT FROM THE OTHER END, in the transcript · the attachment is rendered INSIDE the person's own message body
+    desktop GREEN 0 of 2402 in 127 files · dom RED 3 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M17 · ⛔ §2 · a message QUEUED behind a running turn sends its words and silently drops its attachments — the chip vanishing as if it had gone (215 §3.2's hazard, narrowly)
+    desktop RED 2 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M18 · ⛔ §2 · the flushed turn is RECORDED without its attachments, so a replayed conversation loses what was handed over
+    desktop RED 2 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M19 · ⛔ §2 · the interrupting send drops them, so redirecting an agent loses the file you were redirecting it to
+    desktop RED 1 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M20 · ⛔ §3 · the SEND stops re-checking, so a path that vanished between choosing and sending is handed to the agent anyway
+    desktop RED 2 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M21 · ⛔ 149 M16, moved · the queued FLUSH stops asking whether the session can take a turn — the turn nobody pressed anything for
+    desktop RED 1 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M22 · ⛔ 149 M17, moved · the interrupt's SECOND check is removed — THE 148 M1 TOCTOU
+    desktop RED 1 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M23 · ⛔ 203 M10, moved · the IPC door stops naming the CALLER on `send` — the shape of the whole 203 defect, one verb at a time
+    desktop RED 16 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M24 · ⛔ 203 M30, moved · ordinary `send` stops asking whether the session can take a turn
+    desktop RED 7 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M25 · ⛔ 215 §3.5's bound · a replayed turn's attachments are unbounded, so a ledger row from a later build hands the renderer whatever it holds
+    desktop RED 1 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M26 · ⚠️ §2 · the transcript drops the attachment on the way to the bubble, so a replayed conversation shows the words and not what went with them
+    desktop RED 1 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M27 · 🔴 019's BUG WITH A FILENAME ON IT · the attachment book stops being pruned with the drafts, so a closed conversation's paths outlive it (moved into `drafts.ts` — see the docstring: the two books became one because the SCREEN version was unkillable)
+    desktop RED 1 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M28 · ⛔ §2 · the book hands out its own array, so a caller that pushes mutates it behind its back and the reactive Map never sees the change
+    desktop RED 1 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M29 · ⛔ §2 · the renderer store sends the words down one branch and the attachments down none, so a busy agent silently loses them
+    desktop RED 2 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M30 · ⛔ 206 H1 · the live step writes its own verdict into a sentence instead of returning typed claims, so a run cannot tell asserted from merely printed
+    desktop GREEN 0 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts RED 1 of 3 in 1 files
+M31 · 🔴 review · a queued message whose file VANISHED goes back to the `catch` and sits there forever — no event, no error, nobody told
+    desktop RED 1 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M32 · ⛔ review · the ending drops its reason, so a message abandoned because its file went away is shown as one abandoned because the conversation ended — a transcript stating something that did not happen
+    desktop RED 1 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M33 · 🔴 review · the interrupting send stops checking BEFORE it kills the running turn, so a vanished path destroys the thinking in flight and then refuses to send anything
+    desktop RED 1 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M34 · ⛔ review · the QUEUED event carries no paths, so the one window where attaching is still undoable is the one window that cannot show what was attached
+    desktop RED 1 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M35 · 🔴 review · the WAITING bubble hides its attachments — the person's rule broken at the one moment the injection has not happened yet
+    desktop GREEN 0 of 2402 in 127 files · dom RED 1 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M36 · 🔴 review · `put it back in the composer` returns the words without the paths, so the restored draft looks whole and is not
+    desktop GREEN 0 of 2402 in 127 files · dom RED 1 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M37 · ⛔ review · the true reason is not preferred over the default wording, so a file that was deleted reads as a conversation that ended
+    desktop GREEN 0 of 2402 in 127 files · dom RED 1 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M38 · ⛔ review · the import ALLOWLIST is blinded, so `import * as fs` on the route stops being caught — the `M11` shape again, on the second census
+    desktop RED 1 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M39 · 🔴 review · the replay bound SLICES before it filters, so a stored row that leads with malformed entries evicts every valid path from the window (the mutation the old fixture could not see, because it put the malformed entries last)
+    desktop RED 1 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M40 · ⛔ review · the replay bound covers the SENT turn only, leaving the two queue events unbounded — the gap exactly where the next event that carries paths would fall
+    desktop RED 1 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M41 · ⛔ review · the flushed turn records the QUEUE-TIME copy, so a path whose kind changed while the message waited goes to the agent as one thing and into the ledger as another
+    desktop RED 1 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M42 · 🔴 review · the replay bound SPREADS the stored object, so it holds the array length and the path length and nothing else — a bundle carries a megabyte in a field nobody declared, straight through to the renderer
+    desktop RED 1 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M43 · 🔒 review · a RELATIVE path is resolved against the MAIN PROCESS's own cwd instead of being refused, so a renderer sending `.env` has a file nobody chose disclosed to the agent as the user's own attachment
+    desktop RED 1 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M44 · 🔒 review · the WIRE door stops requiring an absolute path — the first of the three bounds, and the one its own comment claimed to hold
+    desktop RED 1 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M45 · ⛔ review · the wire door stops BOUNDING the array, so a renderer posts 100,000 paths and main stats every one of them synchronously before the turn goes out
+    desktop RED 1 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M46 · 🔴 review · THE COMPOSER GRID · the chip list becomes an ordinary grid item again, so staging one attachment throws the text field into the button column and drops the send button onto a second row (the defect `visible()` cannot see)
+    desktop GREEN 0 of 2402 in 127 files · dom RED 1 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M47 · ⛔ review · the attach button falls off the composer's sizing rule and paints as a bordered pill beside the flat send button
+    desktop GREEN 0 of 2402 in 127 files · dom RED 1 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M48 · 🔴 review · an attachment stops counting as something to send, so with an empty box and a folder staged the Send button is lit and pressing it does nothing at all (the fix is `canSend`, not the button's `:disabled` — tightening that broke ten launcher assertions, because the launcher gates Send on the folder and the profile, not the prompt)
+    desktop GREEN 0 of 2402 in 127 files · dom RED 1 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M49 · ⛔ review · the FOLD drops the ending's reason, so a message abandoned because its file was deleted renders as one abandoned because the conversation ended
+    desktop RED 1 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M51 · ⛔ review · the queued bubble is pushed WITHOUT its paths, so a page that never saw the queueing shows a message that claims to carry nothing
+    desktop RED 1 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M52 · ⛔ review · the CENSUS's comment stripper latches on a `/*` inside a string literal again, so both rules silently stop reading the file at that line
+    desktop RED 1 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M53 · ⛔ review · the allowlist stops seeing the DEFAULT binding in a combined import, so `import fs, { statSync }` reports only the allowed half and `fs.open` walks through
+    desktop RED 1 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M54 · ⛔ review · the side-door rule is blinded, so `await import('node:fs')` and `createRequire(...)('fs')` acquire the whole module with both censuses green
+    desktop RED 1 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M55 · ⛔ review · the restore writes the attachment book unguarded, so something attached while a failed send was in flight is silently replaced by the list that just failed (the rule was MOVED into `drafts.ts` to be reachable at all — the `RuntimeScreen` version survived the table, as three dispatches predicted it would)
+    desktop RED 2 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M56 · ⛔ review · the renderer store swallows an attachment-only send and reports it as sent
+    desktop RED 1 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+M57 · ⛔ review · the OUTSIDE mark is painted on every attachment, so a transcript claims every file was outside the folder — something false about what was consented to
+    desktop GREEN 0 of 2402 in 127 files · dom RED 1 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    desktop GREEN 0 of 2402 in 127 files · dom GREEN 0 of 597 in 39 files · scripts GREEN 0 of 3 in 1 files

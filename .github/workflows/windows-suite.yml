@@ -1,0 +1,185 @@
+# The whole test suite on Windows: every project but `dom` in the four shards ci.yml runs on
+# Linux, and the DOM project in its sixteen groups, each group in a browser of its own, on
+# windows-2022.
+#
+# Only on a pushed `gate/windows-suite-*` branch, or by hand, and only in the private repository.
+# It references no secret and signs in to nothing. Every test process runs in the fictional home
+# the vitest configs give it (`scripts/lib/tests-run-in-a-fictional-home.mjs`), as on Linux; like
+# ci.yml, it leaves `BROBOT_TESTS_START_NO_PROGRAM` unset, since many tests start git or a worker.
+#
+# The checkout keeps the runner's own line-ending setting, which a Windows developer's clone has
+# too, and the log says what it is.
+#
+# Each job keeps its Vitest reports and the failing tests, with the first lines of each failure,
+# as an artifact.
+name: Windows suite
+
+on:
+  push:
+    branches: ['gate/windows-suite-*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-suite-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: test ${{ matrix.shard }}/4 (Windows)
+    if: github.repository == 'brocrew/brocrew' && github.event.repository.private == true
+    # `windows-2022`, as windows.yml explains: installing needs a Visual Studio node-gyp knows.
+    runs-on: windows-2022
+    env:
+      PYTHONUTF8: '1'
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # TEMP is the profile's own temp folder, where a person's data lives, by its long name. The
+      # runner's default spells it with the short name RUNNER~1, which path checks tell apart from
+      # the long one; a folder elsewhere, as `runner.temp` on D:, inherits that drive's wider access
+      # list, which the owner-only checks report. The log shows the folder's access list.
+      - name: Use the profile's temp folder by its long name
+        shell: pwsh
+        run: |
+          $temp = Join-Path $env:USERPROFILE 'AppData\Local\Temp'
+          if ($temp.Contains('~') -or -not (Test-Path -LiteralPath $temp -PathType Container)) {
+            throw "no profile temp folder by its long name at $temp"
+          }
+          icacls $temp
+          "TEMP=$temp" >> $env:GITHUB_ENV
+          "TMP=$temp" >> $env:GITHUB_ENV
+
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: pnpm
+
+      - name: How the checkout ends its lines
+        run: git config --show-origin --get-all core.autocrlf || echo 'core.autocrlf is not set'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # As ci.yml: `cli-equivalence` chooses the real `~/.claude` and `~/.codex` as a working
+      # directory, and a fresh runner has neither. Empty is enough; nothing reads them.
+      - name: Give the runner the two CLI homes
+        run: mkdir -p ~/.claude ~/.codex
+
+      - name: vitest, every project but dom (shard ${{ matrix.shard }} of 4)
+        run: |
+          mkdir -p windows-suite
+          pnpm exec vitest run --project '!dom' --shard=${{ matrix.shard }}/4 \
+            --reporter=default --reporter=json \
+            --outputFile.json=windows-suite/test-${{ matrix.shard }}.json
+
+      - name: The failing tests
+        if: always()
+        run: |
+          mkdir -p windows-suite
+          node .github/windows-suite-failures.mjs windows-suite | tee windows-suite/failures.txt
+
+      - name: Keep the reports with this run
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-suite-test-${{ matrix.shard }}
+          path: windows-suite/
+          retention-days: 14
+          if-no-files-found: warn
+
+  dom:
+    name: dom groups ${{ matrix.part }}/4 (Windows)
+    if: github.repository == 'brocrew/brocrew' && github.event.repository.private == true
+    runs-on: windows-2022
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        # Four jobs of four groups each: the sixteen groups ci.yml runs in one job.
+        part: [1, 2, 3, 4]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # As in `test`: the profile's own temp folder, by its long name.
+      - name: Use the profile's temp folder by its long name
+        shell: pwsh
+        run: |
+          $temp = Join-Path $env:USERPROFILE 'AppData\Local\Temp'
+          if ($temp.Contains('~') -or -not (Test-Path -LiteralPath $temp -PathType Container)) {
+            throw "no profile temp folder by its long name at $temp"
+          }
+          icacls $temp
+          "TEMP=$temp" >> $env:GITHUB_ENV
+          "TMP=$temp" >> $env:GITHUB_ENV
+
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: pnpm
+
+      - name: How the checkout ends its lines
+        run: git config --show-origin --get-all core.autocrlf || echo 'core.autocrlf is not set'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # `playwright` fetches no browser on install. Windows needs no system libraries for it.
+      - name: Install the Chromium the DOM tests run in
+        run: pnpm --filter @brobot2/desktop exec playwright install chromium
+
+      # The same Vitest arguments `scripts/test-dom-in-groups.mjs` gives each group, run here
+      # directly: that script starts `vitest` without a shell, which finds no `vitest.cmd` on
+      # Windows.
+      - name: The DOM project, four of the sixteen groups, each in its own browser
+        run: |
+          mkdir -p windows-suite
+          failed=0
+          first=$(( (${{ matrix.part }} - 1) * 4 + 1 ))
+          for group in $(seq "$first" $(( first + 3 ))); do
+            echo "DOM group $group of 16"
+            pnpm exec vitest run --project dom --shard="$group/16" \
+              --reporter=default --reporter=json \
+              --outputFile.json="windows-suite/dom-$group.json" || failed=1
+          done
+          exit "$failed"
+
+      - name: The failing tests
+        if: always()
+        run: |
+          mkdir -p windows-suite
+          node .github/windows-suite-failures.mjs windows-suite | tee windows-suite/failures.txt
+
+      - name: Keep the reports with this run
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-suite-dom-${{ matrix.part }}
+          path: windows-suite/
+          retention-days: 14
+          if-no-files-found: warn

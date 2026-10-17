@@ -1,0 +1,127 @@
+{
+  "//": "Captured verbatim off a real Codex 0.146.0 app-server by 327. See the response doc.",
+  "capturedAt": "2026-09-04",
+  "appServer": "0.146.0",
+  "mcpSdk": "1.29.0",
+  "items": {
+    "ok_started": {
+      "type": "mcpToolCall",
+      "id": "exec-348f90ab-3164-4442-b06e-a944cd2f8047",
+      "server": "brobot_327_wire",
+      "tool": "echo_probe",
+      "status": "inProgress",
+      "arguments": {
+        "token": "WIRE327_97120_1788545406114"
+      },
+      "appContext": null,
+      "pluginId": null,
+      "result": null,
+      "error": null,
+      "durationMs": null
+    },
+    "ok_completed": {
+      "type": "mcpToolCall",
+      "id": "exec-348f90ab-3164-4442-b06e-a944cd2f8047",
+      "server": "brobot_327_wire",
+      "tool": "echo_probe",
+      "status": "completed",
+      "arguments": {
+        "token": "WIRE327_97120_1788545406114"
+      },
+      "appContext": null,
+      "pluginId": null,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "BROBOT_327_MCP_OK:WIRE327_97120_1788545406114:server_pid=97181"
+          }
+        ],
+        "structuredContent": {
+          "token": "WIRE327_97120_1788545406114",
+          "server_pid": 97181,
+          "outcome": "ok"
+        },
+        "_meta": null
+      },
+      "error": null,
+      "durationMs": 3
+    },
+    "tool_failed": {
+      "type": "mcpToolCall",
+      "id": "exec-d2f91a90-3361-4205-a262-336d74f43824",
+      "server": "brobot_327_wire",
+      "tool": "fail_probe",
+      "status": "failed",
+      "arguments": {
+        "token": "WIRE327_97120_1788545406114"
+      },
+      "appContext": null,
+      "pluginId": null,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "BROBOT_327_MCP_BOOM:WIRE327_97120_1788545406114:server_pid=97181"
+          }
+        ],
+        "structuredContent": null,
+        "_meta": null
+      },
+      "error": null,
+      "durationMs": 0
+    },
+    "transport_failed": {
+      "type": "mcpToolCall",
+      "id": "exec-9c7ebb8b-6f82-40ef-bd51-cbae3fdb58b3",
+      "server": "brobot_327_wire",
+      "tool": "hang_probe",
+      "status": "failed",
+      "arguments": {
+        "token": "WIRE327_97120_1788545406114"
+      },
+      "appContext": null,
+      "pluginId": null,
+      "result": null,
+      "error": {
+        "message": "tool call error: tool call failed for `brobot_327_wire/hang_probe`\n\nCaused by:\n    timed out awaiting tools/call after 4s"
+      },
+      "durationMs": 4002
+    },
+    "oversized_completed": {
+      "type": "mcpToolCall",
+      "id": "exec-57467b86-5459-4d62-9dc1-ccefad02c793",
+      "server": "brobot_327_wire",
+      "tool": "big_probe",
+      "status": "completed",
+      "arguments": {
+        "token": "WIRE327_97120_1788545406114",
+        "bytes": 90000
+      },
+      "appContext": null,
+      "pluginId": null,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "<90047 characters, elided — see oversized.contentTextSha256>"
+          }
+        ],
+        "structuredContent": {
+          "token": "WIRE327_97120_1788545406114",
+          "bytes": 90000,
+          "tail": "BROBOT_327_MCP_BIG_TAIL"
+        },
+        "_meta": null
+      },
+      "error": null,
+      "durationMs": 1
+    }
+  },
+  "oversized": {
+    "note": "The only field this file edits: the 90047-character result text is recorded by LENGTH here rather than by its bytes, so the repository does not carry 90 KB of filler. Everything else in every item is verbatim.",
+    "contentTextChars": 90047,
+    "contentTextSha256": "de8074e2190ca4148952a474ce3913ff191e63aea01f37fa110b8947fca39d85",
+    "resultJsonBytes": 90206
+  }
+}

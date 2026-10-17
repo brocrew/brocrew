@@ -1,0 +1,5 @@
+# The leak guard's baseline (scripts/leak-check.mjs): per tracked file, how many of its lines carry a
+# mention this repo must not carry — paths and counts, never the text. A file not listed may carry
+# none, and a listed file no more than its count. It only shrinks: `node scripts/leak-check.mjs
+# --shrink` lowers it. It is empty, so the guard is absolute.
+# path<TAB>count

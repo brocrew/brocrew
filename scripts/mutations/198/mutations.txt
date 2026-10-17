@@ -1,0 +1,57 @@
+# 198 mutations — HEAD 8d5d157 + working tree
+# 2026-08-21T10:08:16Z
+
+M0  CONTROL (no mutation) — baseline desktop=2127
+    desktop GREEN 0 of 2127 in 108 files
+
+M1  · ⛔ THE DEFECT · there is no lock at all — every launch starts a second database, a second set of homes and a second host, which is 191 H6/H7/H8 and 194 H1/H2 at once
+    desktop RED 4 of 2127 in 108 files
+M2  · ⛔ the loser stands down and starts the app anyway — a quit is not a fence, and constructing the host is 194 H1's whole mechanism
+    desktop RED 2 of 2127 in 108 files
+M3  · ⛔ 106 IS BACK · a second launch does nothing visible: no window comes forward
+    desktop RED 1 of 2127 in 108 files
+M4  · ⛔ …and nothing is said, so a double-click that looks like a no-op IS one
+    desktop RED 1 of 2127 in 108 files
+M5  · ⛔ no `second-instance` handler at all — the running app never hears the launch
+    desktop RED 1 of 2127 in 108 files
+M6  · ⛔ a SECOND GATE of our own, which is the thing 191 M5 reports going stale: a sticky refusal that outlives the process that earned it
+    desktop RED 4 of 2127 in 108 files
+M7  · ⛔ the notice stops naming what a second copy would share, so the sentence is a refusal with no reason in it (151/169's register)
+    desktop RED 1 of 2127 in 108 files
+M8  · ⛔ THE DEFECT · the directory answers 'nothing is running' whatever is running, so startup repair walks over a live conversation exactly as 194 H1 describes
+    desktop RED 4 of 2127 in 108 files
+M9  · ⛔ the ledger stops mattering, so a host over ANOTHER database strands a row here — 074's defect, reintroduced by its own guard
+    desktop RED 9 of 2127 in 108 files
+M10 · ⛔ a host is asked about ITSELF, so the guard becomes permanent rather than about other hosts
+    desktop RED 1 of 2127 in 108 files
+M11 · ⛔ joining the directory does nothing, so every host is invisible to every other
+    desktop RED 4 of 2127 in 108 files
+M12 · ⛔ the running window is told before it is raised, so the sheet arrives on a window still behind whatever the user was looking at
+    desktop RED 1 of 2127 in 108 files
+M13 · ⛔ 194 H1's SECOND failure · a rebuild in flight is invisible, because `rebuildLedger` refuses a session in `slots` and so no slot ever names one
+    desktop RED 1 of 2127 in 108 files
+M14 · ⛔ …and the other half: a session in a slot is invisible, so a live conversation is settled while its provider is mid-answer
+    desktop RED 3 of 2127 in 108 files
+M15 · ⛔ 062 IS BACK · only REGISTERED sessions count, so the window between reserving an id and the provider arriving is one a second host repairs straight through
+    desktop RED 1 of 2127 in 108 files
+M16 · ⛔ the constructor asks nobody and hands the repair an empty set — the guard exists and is not wired, which is `orphan-runs.test.ts`'s own lesson about its own repair
+    desktop RED 3 of 2127 in 108 files
+M17 · ⛔ the STORE ignores what is running and settles every busy-looking row
+    desktop RED 282 of 2127 in 108 files
+M18 · ⛔ …and reports rows SCANNED as rows settled, so the launch log claims repairs the app deliberately did not make
+    desktop RED 1 of 2127 in 108 files
+M19 · ⛔ the rebuild marker of a live build is cleared again — the caller is then told the import succeeded while the old projection stays active
+    desktop RED 1 of 2127 in 108 files
+M20 · ⛔ two hosts can reserve one conversation again: both read the same `nextOrdinal`, one loses the unique-index race and stops recording for the rest of that session's life
+    desktop RED 1 of 2127 in 108 files
+M21 · ⛔ the refusal loses its way forward, so a person is told no and given nothing to do (151's register, and `session-unavailable.test.ts`'s rule)
+    desktop RED 1 of 2127 in 108 files
+M22 · ⛔ 191 H8 · a second host rebuilds a conversation the first is running, promoting a new active generation underneath a live writer
+    desktop RED 1 of 2127 in 108 files
+M23 · ⚑ 163 M5, restored · 075 IS BACK · the listeners move to module scope, where Chromium overwrites them and they never fire
+    desktop RED 1 of 2127 in 108 files
+M24 · ⚑ 163 M6, restored · …or they go entirely, leaving Chromium's one-shot handler in charge again
+    desktop RED 1 of 2127 in 108 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    desktop GREEN 0 of 2127 in 108 files

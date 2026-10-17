@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BroCrew</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        /* The pre-token frame: parsed before `tokens.css` is imported, so these two are the
+           window for one paint. This window sits on light paper, so they are `--paper-bg` and
+           the paper's `--text`, restated because there is nothing yet to read them from. */
+        background: #fdfdff;
+        color: #2d3753;
+        font-family:
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          'Segoe UI',
+          Roboto,
+          Helvetica,
+          Arial,
+          sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="./src/recovery.ts"></script>
+  </body>
+</html>

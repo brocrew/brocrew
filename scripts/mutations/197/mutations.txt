@@ -1,0 +1,63 @@
+# 197 mutations — HEAD 3648374 + working tree
+# 2026-08-21T00:12:43Z
+
+M0  CONTROL (no mutation) — baseline runtime=1224 desktop=2106
+    runtime GREEN 0 of 1224 in 40 files | desktop GREEN 0 of 2106 in 107 files
+
+M1  · ⛔ H1 · the classifier stops asking whether the string could name a file at all, so 190 H1's over-long payload is a TARGET again and spends zero bytes
+    runtime RED 1 of 1224 in 40 files | desktop GREEN 0 of 2106 in 107 files
+M2  · ⛔ H1 · the classifier stops asking WHICH FIELD, so an absolute `content` is a target again — 168 L3, in the accounting this time
+    runtime RED 5 of 1224 in 40 files | desktop GREEN 0 of 2106 in 107 files
+M3  · ⛔ H1 · the BOUND grows its own second classifier again — `isAbsolute` in all but name, which is exactly the state 190 measured
+    runtime RED 5 of 1224 in 40 files | desktop GREEN 0 of 2106 in 107 files
+M4  · ⛔ H1 · a stat that FAILED is zero bytes again — the last step of the bypass
+    runtime RED 2 of 1224 in 40 files | desktop GREEN 0 of 2106 in 107 files
+M5  · ⛔ H1 · a target nobody could weigh is allowed through rather than refused
+    runtime RED 1 of 1224 in 40 files | desktop GREEN 0 of 2106 in 107 files
+M6  · ⚠️ H1 · the key stops travelling with the value, so every string is judged under no key and the grant and the bound part company again
+    runtime RED 5 of 1224 in 40 files | desktop GREEN 0 of 2106 in 107 files
+M7  · ⛔ M5 · the walk stops at the FILE limit again, so 5,001 files hide every byte after them and a directory over 64 MiB keeps growing
+    runtime RED 1 of 1224 in 40 files | desktop GREEN 0 of 2106 in 107 files
+M8  · ⛔ M5 · the walk stops SAYING it stopped — a partial byte total reported as whole
+    runtime RED 1 of 1224 in 40 files | desktop GREEN 0 of 2106 in 107 files
+M9  · ⛔ M5 · a partial sum is allowed to say 'under', which is the one direction it cannot be sound in
+    runtime RED 1 of 1224 in 40 files | desktop GREEN 0 of 2106 in 107 files
+M10 · ⚠️ M5 · a dirent the stat then refused to weigh is counted as zero rather than voiding the measurement
+    runtime RED 1 of 1224 in 40 files | desktop GREEN 0 of 2106 in 107 files
+M11 · ⛔ M6 · the sentence promises that every other write still asks — false in auto mode, and read as an assurance
+    runtime RED 2 of 1224 in 40 files | desktop GREEN 0 of 2106 in 107 files
+M12 · ⛔ M6 · the folder moves to the END of the sentence, past the 200 code units the ledger keeps — the row stops before the one thing a person can act on
+    runtime RED 2 of 1224 in 40 files | desktop GREEN 0 of 2106 in 107 files
+M13 · ⛔ M6 · 'we could not measure it' is announced as 'this write is over 64 MB' — a number nobody compared it to
+    runtime RED 2 of 1224 in 40 files | desktop GREEN 0 of 2106 in 107 files
+M14 · ⛔ M6 · 'we could not read your call' is announced as 'over 256 KB', for the same reason and in the other direction
+    runtime RED 1 of 1224 in 40 files | desktop GREEN 0 of 2106 in 107 files
+M15 · ⛔ H2 · the credential door stops asking the rule — 190 H2 exactly: a read-looking question provisions a second spelling of an existing profile
+    runtime GREEN 0 of 1224 in 40 files | desktop RED 5 of 2106 in 107 files
+M16 · ⛔ H2 · the door accepts a profile nobody has ever started, so a gesture creates one as a side effect of asking about it
+    runtime GREEN 0 of 1224 in 40 files | desktop RED 3 of 2106 in 107 files
+M17 · ⛔ H2 · the door FOLDS a case variant instead of refusing it — the answer 187 ruled against, because it sends a value that is not the one on screen
+    runtime GREEN 0 of 1224 in 40 files | desktop RED 6 of 2106 in 107 files
+M18 · ⛔ H2 · the rule runs AFTER the directory is made, so a refused gesture still leaves the spelling behind and the next attempt is an exact match
+    runtime GREEN 0 of 1224 in 40 files | desktop RED 4 of 2106 in 107 files
+M19 · ⚠️ H2 · the host folds the refusal into 'could not ask', so the app's own decision is reported as the provider failing to answer (086)
+    runtime GREEN 0 of 1224 in 40 files | desktop RED 1 of 2106 in 107 files
+M20 · ⛔ H2 · the rule moves onto `prepareProviderHome`, which is the RESUME path — 187's measured trap, and it strands every pre-187 row
+    runtime GREEN 0 of 1224 in 40 files | desktop RED 13 of 2106 in 107 files
+M21 · ⛔ 187 M11, re-anchored · the file already on disk is not charged, so an Edit grows one memory past the cap a kilobyte at a time
+    runtime RED 1 of 1224 in 40 files | desktop GREEN 0 of 2106 in 107 files
+M22 · ⛔ 187 M12, re-anchored · an EXISTING file spends the count bound, so a full directory can never be consolidated — the only pruning move the agent has
+    runtime RED 4 of 1224 in 40 files | desktop GREEN 0 of 2106 in 107 files
+M23 · ⛔ 187 M13, re-anchored · an input too large to walk PASSES instead of failing closed — 'we stopped looking' read as 'we found nothing'
+    runtime RED 1 of 1224 in 40 files | desktop GREEN 0 of 2106 in 107 files
+M24 · ⛔ 187 M14, re-anchored · a directory that cannot be read is reported as empty
+    runtime RED 2 of 1224 in 40 files | desktop GREEN 0 of 2106 in 107 files
+M25 · ⛔ 188 M4, re-anchored · every ABSOLUTE string grants again, so a path-shaped `content` is the reason a write outside the directory is allowed (168 L3)
+    runtime RED 2 of 1224 in 40 files | desktop GREEN 0 of 2106 in 107 files
+M26 · ⚑ the paired POSITIVE · every memory write is refused, so the fix is 'deny everything' — which every row above would still call a success
+    runtime RED 25 of 1224 in 40 files | desktop GREEN 0 of 2106 in 107 files
+M27 · ⚑ the paired NEGATIVE · nothing is ever refused for size, so 166's cardless write is unbounded again — the state 187 §3 exists to end
+    runtime RED 9 of 1224 in 40 files | desktop GREEN 0 of 2106 in 107 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1224 in 40 files | desktop GREEN 0 of 2106 in 107 files

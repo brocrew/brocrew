@@ -1,0 +1,73 @@
+# 150 mutations — HEAD fc6a445 + working tree
+# 2026-08-14T23:07:30Z
+
+M0  CONTROL (no mutation) — baseline runtime=453 desktop=515 dom=45
+    node: runtime GREEN 0 of 453 in 5 files · desktop GREEN 0 of 515 in 18 files
+    dom:  GREEN 0 of 45 in 4 files
+
+M1 · an APPROVED plan no longer lifts the floor (THE FIELD DEFECT — the bricked session)
+    node: runtime RED 2 of 453 in 5 files · desktop RED 2 of 515 in 18 files
+M2 · a REJECTED plan lifts it too — approval stops being the thing that matters
+    node: runtime RED 2 of 453 in 5 files · desktop RED 1 of 515 in 18 files
+M3 · EnterPlanMode stops RAISING the floor (the other edge, unsynchronized again)
+    node: runtime RED 1 of 453 in 5 files · desktop RED 1 of 515 in 18 files
+M4 · the release is REQUESTED, not settled — pending forever, and the next turn puts it back
+    node: runtime RED 2 of 453 in 5 files · desktop RED 2 of 515 in 18 files
+M5 · no card is ever recorded as a plan gesture, so nothing can move plan mode
+    node: runtime RED 2 of 453 in 5 files · desktop RED 2 of 515 in 18 files
+M6 · `settle` moves only `effective`, so `requested` drags the floor back up
+    node: runtime RED 2 of 453 in 5 files · desktop GREEN 0 of 515 in 18 files
+M7 · the DURABLE half never runs — a resume after approval comes back planning
+    node: runtime GREEN 0 of 453 in 5 files · desktop RED 2 of 515 in 18 files
+M8 · every plan move is recorded as a RELEASE, whichever way it went
+    node: runtime GREEN 0 of 453 in 5 files · desktop RED 1 of 515 in 18 files
+M9 · the plan file is refused again (THE §0b DEFECT — plans in one shot, from memory)
+    node: runtime RED 1 of 453 in 5 files · desktop GREEN 0 of 515 in 18 files
+M10 · a call naming NO path is vacuously allowed through the plan-file hole
+    node: runtime RED 1 of 453 in 5 files · desktop GREEN 0 of 515 in 18 files
+M11 · the hole stops checking WHERE the path is, so any write passes as a plan write
+    node: runtime RED 6 of 453 in 5 files · desktop GREEN 0 of 515 in 18 files
+M12 · the exemption widens from the plans directory to the whole provider home
+    node: runtime RED 1 of 453 in 5 files · desktop GREEN 0 of 515 in 18 files
+M13 · `ToolSearch` is denied again (THE §1 DEFECT — Grep and Glob unreachable)
+    node: runtime RED 2 of 453 in 5 files · desktop GREEN 0 of 515 in 18 files
+M14 · the refusal goes back to promising reads it refuses (086)
+    node: runtime RED 1 of 453 in 5 files · desktop GREEN 0 of 515 in 18 files
+M15 · `Bash` joins the exemption list — the ruling, reversed
+    node: runtime RED 15 of 453 in 5 files · desktop GREEN 0 of 515 in 18 files
+M16 · the transcript's request index is an ordinary object again (THE 148 H3 DEFECT)
+    node: runtime GREEN 0 of 453 in 5 files · desktop RED 2 of 515 in 18 files
+M17 · the record's draft store is an ordinary object again — `__proto__` as a draft
+    node: runtime GREEN 0 of 453 in 5 files · desktop RED 9 of 515 in 18 files
+M18 · a blank option label becomes a card again on CLAUDE
+    node: runtime GREEN 0 of 453 in 5 files · desktop RED 1 of 515 in 18 files
+M19 · …and on CODEX
+    node: runtime RED 1 of 453 in 5 files · desktop GREEN 0 of 515 in 18 files
+M20 · only an EXACTLY empty label counts, so `"   "` sails through both adapters
+    node: runtime RED 1 of 453 in 5 files · desktop RED 1 of 515 in 18 files
+M21 · the predicate TRIMS the provider's labels instead of refusing the call (143/146)
+    node: runtime RED 2 of 453 in 5 files · desktop RED 1 of 515 in 18 files
+M22 · a question with a MISSING id is published again (THE 148 M5 DEFECT)
+    node: runtime RED 2 of 453 in 5 files · desktop GREEN 0 of 515 in 18 files
+M23 · the empty-id test stops agreeing with the writer it mirrors
+    node: runtime RED 2 of 453 in 5 files · desktop GREEN 0 of 515 in 18 files
+M24 · the DUPLICATE-id refusal is removed — and 150's own check must not cover for it
+    node: runtime RED 1 of 453 in 5 files · desktop GREEN 0 of 515 in 18 files
+M25 · the interrupt breadcrumb is gone entirely (085's original report)
+    node: runtime GREEN 0 of 453 in 5 files · desktop RED 2 of 515 in 18 files
+M26 · …and written ABOVE the gate again, so a refused turn claims a gesture (148 L2, 039)
+    node: runtime GREEN 0 of 453 in 5 files · desktop RED 2 of 515 in 18 files
+M27 · Codex is handed an explicit `signInSuperseded: false` again (148 L3)
+    node: runtime GREEN 0 of 453 in 5 files · desktop RED 1 of 515 in 18 files
+M28 · an unclassified answer fault stops reaching the session banner (148 L5)
+    node: runtime GREEN 0 of 453 in 5 files · desktop RED 5 of 515 in 18 files
+M29 · a skipped ledger row goes back to being silent to everyone (150's §6 ruling)
+    node: runtime GREEN 0 of 453 in 5 files · desktop RED 1 of 515 in 18 files
+M30 · the bar's clauses are reordered — the remedy before what went wrong (148 L6)
+    dom:  RED 1 of 45 in 4 files
+M31 · the option chips are in the DOM but not on screen (148 L4's false green)
+    dom:  RED 4 of 45 in 4 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    node: runtime GREEN 0 of 453 in 5 files · desktop GREEN 0 of 515 in 18 files
+    dom:  GREEN 0 of 45 in 4 files

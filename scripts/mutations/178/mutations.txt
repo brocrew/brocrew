@@ -1,0 +1,21 @@
+# 178 mutations — HEAD c887b0e + working tree
+# 2026-08-17T01:02:25Z
+
+M0  CONTROL (no mutation) — baseline scripts=151 dom=523
+    scripts GREEN 0 of 151 in 7 files · dom GREEN 0 of 523 in 30 files
+
+M1 · ⛔ the instructions block loses its entry — the walk stops knowing it is an Info read
+    scripts RED 1 of 151 in 7 files · dom RED 1 of 523 in 30 files
+M2 · ⛔ the `injected-` family goes — the container is guarded and the FILE rows are not
+    scripts RED 1 of 151 in 7 files · dom RED 1 of 523 in 30 files
+M3 · ⛔ filed under `context` — the wrong belief 174 §5c actually wrote down
+    scripts RED 2 of 151 in 7 files · dom RED 1 of 523 in 30 files
+M4 · ⛔ the REFUSED row loses its entry — 170's subject, unguarded
+    scripts RED 1 of 151 in 7 files · dom RED 1 of 523 in 30 files
+M5 · ⚠️ the family prefix loses its trailing dash — a family that swallows its neighbours
+    scripts RED 1 of 151 in 7 files · dom GREEN 0 of 523 in 30 files
+M6 · ⚠️ the family is misspelled `inject-` — a plausible name that matches nothing
+    scripts RED 2 of 151 in 7 files · dom RED 1 of 523 in 30 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    scripts GREEN 0 of 151 in 7 files · dom GREEN 0 of 523 in 30 files

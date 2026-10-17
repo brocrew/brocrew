@@ -1,0 +1,139 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`a theme becomes one block of custom properties > Valentine 1`] = `
+"@font-face {
+  font-family: "brobot-theme-valentine-1";
+  src: url("brobot-theme://valentine/assets/fonts/script.woff2") format("woff2");
+  font-display: swap;
+}
+:root[data-theme='valentine'] {
+  --frame-ink: #fff2f5;
+  --frame-paper: #3d0a1a;
+  --frame-accent: #ff8fab;
+  --content-ink: #3a1020;
+  --content-paper: #fffafb;
+  --content-accent: #d6336c;
+  --page-depth: 7%;
+  --line-strength: 16%;
+  --tint-strength: 10%;
+  --shadow-strength: 9%;
+  --border-width: 1px;
+  --radius-base: 12px;
+  --rail-bg-color: #5a0f26;
+  --rail-bg-image: url("brobot-theme://valentine/assets/hearts.png");
+  --rail-bg-size: 64px;
+  --rail-bg-position: center;
+  --rail-bg-repeat: repeat;
+  --rail-bg-rendering: auto;
+  --brand-mark-color: #c2185b;
+  --brand-mark-image: url("brobot-theme://valentine/assets/heart.png");
+  --brand-mark-size: 70%;
+  --brand-mark-position: center;
+  --brand-mark-repeat: no-repeat;
+  --brand-mark-rendering: auto;
+  --brand-mark-ink: #00000000;
+  --font-display: "Baskerville", "Libre Baskerville", serif, var(--font-sans);
+  --fw-display: 600;
+  --font-style-display: italic;
+  --font-brand: "brobot-theme-valentine-1", var(--font-sans);
+  --conversation-bg-color: #fdf0f3;
+  --conversation-bg-image: none;
+  --conversation-bg-size: auto;
+  --conversation-bg-position: 0% 0%;
+  --conversation-bg-repeat: repeat;
+  --conversation-bg-rendering: auto;
+  --brand-mark-figure: hidden;
+  --muted: #ffc9d6;
+  --faint: #ffc9d6;
+}
+:root[data-theme='valentine'] [data-chat-theme='light'],
+:root[data-theme='valentine'] [data-on-white] {
+  --accent-solid-bg: #cd3168;
+}
+"
+`;
+
+exports[`a theme becomes one block of custom properties > Windows 95 1`] = `
+":root[data-theme='win95'] {
+  --frame-ink: #000000;
+  --frame-paper: #c0c0c0;
+  --frame-accent: #000080;
+  --content-ink: #000000;
+  --content-paper: #ffffff;
+  --content-accent: #000080;
+  --status-waiting: #553500;
+  --status-success: #024a33;
+  --status-danger: #7a1824;
+  --status-auto: #663000;
+  --page-depth: 7%;
+  --line-strength: 16%;
+  --tint-strength: 10%;
+  --shadow-strength: 0%;
+  --border-width: 1px;
+  --radius-base: 0px;
+  --font-sans: "Microsoft Sans Serif", "Tahoma", "Verdana", ui-sans-serif, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: "Courier New", ui-monospace, Menlo, Consolas, monospace;
+  --window-bg-color: #008080;
+  --window-bg-image: none;
+  --window-bg-size: auto;
+  --window-bg-position: 0% 0%;
+  --window-bg-repeat: repeat;
+  --window-bg-rendering: auto;
+  --rail-bg-color: #c0c0c0;
+  --rail-bg-image: none;
+  --rail-bg-size: auto;
+  --rail-bg-position: 0% 0%;
+  --rail-bg-repeat: repeat;
+  --rail-bg-rendering: auto;
+  --rail-item-active-bg: #000080;
+  --rail-item-active-ink: #ffffff;
+  --rail-item-hover-bg: #000080;
+  --rail-item-hover-ink: #ffffff;
+  --titlebar-bg-color: #000080;
+  --titlebar-bg-image: none;
+  --titlebar-bg-size: auto;
+  --titlebar-bg-position: 0% 0%;
+  --titlebar-bg-repeat: repeat;
+  --titlebar-bg-rendering: auto;
+  --titlebar-ink: #ffffff;
+  --brand-mark-color: #c0c0c0;
+  --brand-mark-image: url("brobot-theme://win95/assets/flag.png");
+  --brand-mark-size: contain;
+  --brand-mark-position: center;
+  --brand-mark-repeat: no-repeat;
+  --brand-mark-rendering: pixelated;
+  --brand-mark-ink: #00000000;
+  --conversation-bg-color: #ffffff;
+  --conversation-bg-image: none;
+  --conversation-bg-size: auto;
+  --conversation-bg-position: 0% 0%;
+  --conversation-bg-repeat: repeat;
+  --conversation-bg-rendering: auto;
+  --drawer-panel-bg-color: #7fcfcf;
+  --drawer-panel-bg-image: none;
+  --drawer-panel-bg-size: auto;
+  --drawer-panel-bg-position: 0% 0%;
+  --drawer-panel-bg-repeat: repeat;
+  --drawer-panel-bg-rendering: auto;
+  --drawer-tabs-bg-color: #c0c0c0;
+  --drawer-tabs-bg-image: none;
+  --drawer-tabs-bg-size: auto;
+  --drawer-tabs-bg-position: 0% 0%;
+  --drawer-tabs-bg-repeat: repeat;
+  --drawer-tabs-bg-rendering: auto;
+  --drawer-card-bg: #c0c0c0;
+  --drawer-card-ink: #000000;
+  --drawer-card-line: #808080;
+  --bevel-light: #ffffff;
+  --bevel-dark: #0a0a0a;
+  --scrollbar-thumb-color: #767676;
+  --scrollbar-track-color: #dfdfdf;
+  --scrollbar-track-image: repeating-conic-gradient(#ffffff 0 25%, transparent 0 50%);
+  --scrollbar-track-size: 2px 2px;
+  --scrollbar-track-position: top left;
+  --scrollbar-track-repeat: repeat;
+  --scrollbar-track-rendering: auto;
+  --brand-mark-figure: hidden;
+}
+"
+`;

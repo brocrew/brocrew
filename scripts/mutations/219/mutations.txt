@@ -1,0 +1,65 @@
+# 219 mutations — HEAD c4ca568 + working tree
+# 2026-08-26T20:11:49Z
+
+M0  CONTROL (no mutation) — baseline desktop=2460 dom=649 scripts=3
+    desktop GREEN 0 of 2460 in 131 files · dom GREEN 0 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+
+M1 · 🔴 §1 · THE DEFECT, verbatim: the pane computes a reason and never has one — which is the state 217 §9 found, where Send is lit and full-accent in a conversation the host will refuse, and the press hands the words back with a red error
+    desktop RED 1 of 2460 in 131 files · dom RED 7 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M2 · 🔴 §1 · the computed is right and the pane never hands it over — the same defect one line further out, and the one a source census of the MOUNT is what catches
+    desktop RED 3 of 2460 in 131 files · dom RED 7 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M3 · ⛔ §1 · THE OPPOSITE DEFECT (118): every conversation is blocked, including the ones that would have worked — a control disabled for a state that was fine
+    desktop GREEN 0 of 2460 in 131 files · dom RED 4 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M4 · ⛔ §1 · the reason displaces a BETTER sentence: `blocked` outranks every state hint, so a card waiting to be answered stops saying so and an ended conversation stops saying it is over — 147's acceptance 7 is the other instrument that catches this
+    desktop GREEN 0 of 2460 in 131 files · dom RED 3 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M5 · ⛔ §1 · the gate is narrowed to `idle`, so a RUNNING turn is un-gated again — the host refuses a queue on the same credential (`assertCanTakeTurn(session, 'queue')`), so ⌘↵ over a superseded sign-in goes back to being a press that cannot work
+    desktop GREEN 0 of 2460 in 131 files · dom RED 1 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M5b · 🔴 §2 · ⚑ THE SECOND FINDING, reverted verbatim: a conversation being CLOSED stops gating its composer. The header plate beside it draws the word `closing` from the same `record.phase`, and Send sits lit next to it until the press comes back *"cannot send: session ... is still closing"* — 217 §9's defect, one fact over, found by 219 §2's own enumeration
+    desktop RED 1 of 2460 in 131 files · dom RED 2 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M5c · ⛔ §2 · the two reasons swap precedence, so a conversation on its way out is told to reopen on the current sign-in — a remedy that cannot save THIS session, which is 118's *"there is no later"* wearing an actionable-looking sentence
+    desktop GREEN 0 of 2460 in 131 files · dom RED 2 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M6 · 🔴 §1 · the reason is EMPTY: the button still greys, and there is nothing to read — 118's whole point, since a greyed control with no later is the thing being removed
+    desktop RED 1 of 2460 in 131 files · dom RED 1 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M7 · ⛔ §1 · ⚑ THE SECOND DEFECT, found in 219's own diff: the busy branch loses its guard, so `queue-prompt` and `interrupt-send-prompt` are lit, full-accent, and pressing either does NOTHING AT ALL — no message, no error, because `canSend` refuses them silently
+    desktop GREEN 0 of 2460 in 131 files · dom RED 1 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M8 · 🔴 §1 · the Send button stops reading `blocked` — the four jobs 217 named, minus the first one a person meets
+    desktop GREEN 0 of 2460 in 131 files · dom RED 25 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M9 · ⛔ §1 · the button is dark and its tooltip still says `Send` — the refusal is enforced and unexplained, which is 106 exactly
+    desktop GREEN 0 of 2460 in 131 files · dom RED 4 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M10 · ⛔ §1 · the foot stops rendering the reason, so the only place the sentence appears is a tooltip — invisible to anyone who does not hover the thing they already cannot press
+    desktop GREEN 0 of 2460 in 131 files · dom RED 9 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M11 · 🔴 §1 · the host's exception text is forwarded raw to the surface — 202 §3 had to unpick exactly this class, and the dispatch names it
+    desktop RED 2 of 2460 in 131 files · dom RED 1 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M12 · ⛔ §1 · the composer reprints the BAR's opening clause, which is on screen at the same moment by construction — 085's *"one refusal rendered twice"*
+    desktop RED 2 of 2460 in 131 files · dom RED 1 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M13 · ⛔ §1 · the sentence says what is wrong and names no way out — 106's *"no control that cannot act"*, with the reason but not the later
+    desktop RED 1 of 2460 in 131 files · dom RED 1 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M14 · 🔒 §1 · the sentence claims WHICH account, which the app cannot know: the Keychain blob carries no identity at all (147 §1, re-measured in 149), so this is 039's invented fact
+    desktop RED 1 of 2460 in 131 files · dom GREEN 0 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M15 · 🔴 §2 · the row for the one refusal this window CAN see says it can never see it — a table that has stopped describing the code is worse than no table
+    desktop RED 1 of 2460 in 131 files · dom GREEN 0 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M16 · ⛔ §2 · a refusal is dropped from the table, so the host throws seven times and the list accounts for six — the exact drift the census exists to catch
+    desktop RED 2 of 2460 in 131 files · dom GREEN 0 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M17 · ⛔ §2 · a row points at a line that is not in the method it names — the row reads true and is about nothing, which is how a doc rots without saying so
+    desktop RED 1 of 2460 in 131 files · dom GREEN 0 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M18 · ⛔ §2 · a `closing` disclosure is added to `SessionLiveness`, so the renderer would have TWO answers to one question — the phase it wrote itself and a field the host publishes. That is the drift 064 and 099 are both about, and the table pins its absence rather than remembering it
+    desktop RED 1 of 2460 in 131 files · dom GREEN 0 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M18b · ⛔ §2 · the `still-closing` verdict goes back to `never` — the answer 219 §2 gave on its FIRST pass and the self-review overturned. It reads plausible (the host holds `closing`, no disclosure carries it) and it is wrong: the renderer writes that phase itself, before it awaits (089). A table this confidently wrong is worse than no table
+    desktop RED 1 of 2460 in 131 files · dom GREEN 0 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M19 · ⛔ §2 · the census's slice runs past the end of each method, so every 'body' is most of the class and every throw count is wrong — caught by the non-vacuity floor rather than by the rule, which is what that floor is for
+    desktop RED 3 of 2460 in 131 files · dom GREEN 0 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M20 · ⛔ §2 · the census stops counting throws at all, so every method matches a table of any size — the silent-zero failure that 216 M11 taught this suite to fear
+    desktop RED 2 of 2460 in 131 files · dom GREEN 0 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M21 · 🔴 §3 · the LAUNCHER loses `blocked` — 217 §9's defect pointing the other way, and the direction a test written only about the pane would never have seen
+    desktop RED 2 of 2460 in 131 files · dom RED 23 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M22 · ⛔ §3 · the launcher stops listening for `@update:attachments` — 216's actual shipped defect, restored: every path a person staged there is cleared and thrown on the floor
+    desktop RED 1 of 2460 in 131 files · dom RED 3 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M23 · ⛔ §3 · the parity extractor reports every prop as supplied by every mount — the DANGEROUS parser failure, because it makes the file green forever rather than loud
+    desktop RED 3 of 2460 in 131 files · dom GREEN 0 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M24 · ⛔ §3 · a deliberate difference names the WRONG mount, so the exemption stops being about the thing it excuses — an exemption that cannot go stale is the only kind worth having
+    desktop RED 1 of 2460 in 131 files · dom GREEN 0 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files
+M25 · ⛔ · step 47 reports a bare sentence instead of per-claim verdicts, so a live step can go green while asserting nothing (209 §9, 206 H1)
+    desktop GREEN 0 of 2460 in 131 files · dom GREEN 0 of 649 in 42 files · scripts RED 1 of 3 in 1 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    desktop GREEN 0 of 2460 in 131 files · dom GREEN 0 of 649 in 42 files · scripts GREEN 0 of 3 in 1 files

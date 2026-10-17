@@ -1,0 +1,85 @@
+# The recovery window through the built app's real entry (`scripts/recovery-real-entry-check.mjs`),
+# on one runner: hidden launches on synthetic data folders, each on its own temp folder and
+# debugging port, driven over CDP and ended by pid. A hidden window needs no display.
+#
+# ⚑ One definition, called by three workflows: `windows.yml` and `macos.yml` run it beside their
+# builds and never wait for their unit tests, so a red unit test cannot hide what this measures;
+# `release.yml` runs it on both systems and publishes nothing unless both pass, in the same run and
+# so on the tag's own commit.
+#
+# It fails the job when any scenario fails or the check cannot run: no build, no Electron, no
+# window, no debugging port, or a launch it could not end or clean up. What it saw is kept as an
+# artifact whether it passed or not; the fixtures are synthetic and hold no credentials.
+name: Recovery real-entry check
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        description: The runner to check on, as the calling build names it.
+        required: true
+        type: string
+      evidence:
+        description: The name of the artifact that keeps what the check saw.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  ELECTRON_CACHE: ${{ github.workspace }}/.cache/electron
+  electron_config_cache: ${{ github.workspace }}/.cache/electron
+  ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.cache/electron-builder
+
+jobs:
+  check:
+    name: Recovery real-entry check
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: pnpm
+
+      - name: Cache Electron downloads
+        uses: actions/cache@v4
+        with:
+          path: .cache
+          key: ${{ runner.os }}-electron-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-electron-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The app's own build, not packaged, so the database module stays the one Node loads for the
+      # fixtures. With `--no-build` the check refuses a build older than the sources.
+      - name: Build the app
+        run: pnpm --filter @brobot2/desktop build
+
+      - name: Recovery real-entry check
+        shell: bash
+        env:
+          BROBOT_RECOVERY_EVIDENCE: ${{ runner.temp }}/recovery-evidence
+        run: node scripts/recovery-real-entry-check.mjs --no-build
+
+      # The run's summary.json and report.txt, and per scenario the app's own output, every step's
+      # result and the page after each step.
+      - name: Keep what the check saw
+        if: always()
+        continue-on-error: true # a full artifact quota must not hide the check's own result
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.evidence }}
+          path: ${{ runner.temp }}/recovery-evidence
+          if-no-files-found: warn
+          retention-days: 14

@@ -1,0 +1,39 @@
+# 199 mutations — HEAD 9df1a86 + working tree
+# 2026-08-21T12:34:05Z
+
+M0  CONTROL (no mutation) — baseline runtime=1240 desktop=2136
+    runtime GREEN 0 of 1240 in 40 files · desktop GREEN 0 of 2136 in 110 files
+
+M1 · the handle's ref does not follow · `handle.ref` goes on naming the conversation the provider left, so the archive, the hand-over and the `session:'ended'` all name it too
+    runtime RED 1 of 1240 in 40 files · desktop GREEN 0 of 2136 in 110 files
+M2 · ⛔ THE DEFECT, verbatim · nothing reads `new_conversation_id` — the pre-199 code
+    runtime RED 1 of 1240 in 40 files · desktop GREEN 0 of 2136 in 110 files
+M3 · the reset moves the ref through the OPENING door instead · `sessionStarted`'s guard drops it on the floor, so the identity silently does not move at all
+    runtime RED 1 of 1240 in 40 files · desktop GREEN 0 of 2136 in 110 files
+M4 · the seam cites nothing · the row says a reset happened and not which signal reported it, so a reader cannot tell where the claim came from
+    runtime GREEN 0 of 1240 in 40 files · desktop RED 2 of 2136 in 110 files
+M5 · the new ref is INVENTED rather than derived · rotation resets to 0, so the ref names a conversation no resume can match
+    runtime RED 1 of 1240 in 40 files · desktop GREEN 0 of 2136 in 110 files
+M6 · a re-announcement of the SAME conversation is treated as a reset · a seam is drawn where nothing happened and the ref is rewritten with itself
+    runtime RED 2 of 1240 in 40 files · desktop GREEN 0 of 2136 in 110 files
+M7 · a reset before the handshake names the session · `system/init` stops being the only door to a first identity, and the resume barrier is bypassed
+    runtime RED 2 of 1240 in 40 files · desktop GREEN 0 of 2136 in 110 files
+M8 · ⛔ the row a resume reopens from is never updated · everything on screen is right and the work is still lost at the next launch
+    runtime GREEN 0 of 1240 in 40 files · desktop RED 1 of 2136 in 110 files
+M9 · the DOUBLE stops following the reset (186's argument) · the Fake's `handle.ref` lies, so its `session:'ended'` writes the abandoned conversation back over the row on close
+    runtime GREEN 0 of 1240 in 40 files · desktop RED 1 of 2136 in 110 files
+M10 · ⛔ THE DEFECT, verbatim · a refusal falls through to `unknown{activity}` — chatter, filtered out of the reading view, an empty turn with no explanation (the pre-199 code)
+    runtime RED 4 of 1240 in 40 files · desktop GREEN 0 of 2136 in 110 files
+M11 · the refusal is surfaced with neither its category nor its explanation · a line that says something happened and nothing about what
+    runtime RED 4 of 1240 in 40 files · desktop GREEN 0 of 2136 in 110 files
+M12 · the refusal ENDS the session · a turn that produced nothing is reported as a conversation that is over
+    runtime RED 2 of 1240 in 40 files · desktop GREEN 0 of 2136 in 110 files
+M13 · the reset is filed as lifecycle chrome after all · an `info` notice, which is exactly what the reading view drops — the row is not quiet, it is absent
+    runtime GREEN 0 of 1240 in 40 files · desktop RED 5 of 2136 in 110 files
+M14 · the transcript's own ref does not follow · the header and the exporter go on naming the conversation the provider left, under a row that says it left
+    runtime GREEN 0 of 1240 in 40 files · desktop RED 1 of 2136 in 110 files
+M15 · the reading view hides the row · the seam exists, is drawn, and is only ever on screen in the mode nobody reads in
+    runtime GREEN 0 of 1240 in 40 files · desktop RED 3 of 2136 in 110 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1240 in 40 files · desktop GREEN 0 of 2136 in 110 files

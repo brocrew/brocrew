@@ -1,0 +1,41 @@
+# 242 mutations — HEAD 3e8adea + working tree
+# 2026-08-31T00:13:08Z
+
+M0  CONTROL (no mutation) — baseline runtime=1336 desktop=2621 dom=686 scripts=261
+    runtime GREEN 0 of 1336 in 42 files · desktop GREEN 0 of 2621 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 261 in 16 files
+
+M1 · 🔴 242's defect, reverted verbatim · the evidence root goes back under `os.tmpdir()` — 48 bytes of `/var/folders/…/T`, so the gate's socket is 120 against a 104-byte sun_path and `236` §3 is inert in every live instrument again
+    runtime GREEN 0 of 1336 in 42 files · desktop GREEN 0 of 2621 in 135 files · dom GREEN 0 of 686 in 44 files · scripts RED 7 of 261 in 16 files
+M2 · ⚠️ the root stops being narrowed — `/tmp` is world-writable where `os.tmpdir()` was not, and a smoke's evidence tree holds copied provider auth
+    runtime GREEN 0 of 1336 in 42 files · desktop GREEN 0 of 2621 in 135 files · dom GREEN 0 of 686 in 44 files · scripts RED 14 of 261 in 16 files
+M3 · ⛔ a RUN stops declaring its budget — the fail-fast comes off, so a tree whose gate cannot fit is discovered at step 90 if at all, after the tokens are spent
+    runtime GREEN 0 of 1336 in 42 files · desktop GREEN 0 of 2621 in 135 files · dom GREEN 0 of 686 in 44 files · scripts RED 1 of 261 in 16 files
+M4 · ⚠️ the per-call limit is wrong rather than absent — 4096 instead of macOS's 104, which is the shape a budget check takes when somebody 'fixes' it against the Linux number
+    runtime GREEN 0 of 1336 in 42 files · desktop GREEN 0 of 2621 in 135 files · dom GREEN 0 of 686 in 44 files · scripts RED 2 of 261 in 16 files
+M5 · 🔴 the UI smoke's root goes back to `os.tmpdir()` at the call site — the same defect as M1 one layer up, and the one a future dispatch would reintroduce by copying an old line
+    runtime GREEN 0 of 1336 in 42 files · desktop GREEN 0 of 2621 in 135 files · dom GREEN 0 of 686 in 44 files · scripts RED 1 of 261 in 16 files
+M6 · ⛔ `smoke:ui` stops asking whether the gate engaged — 98 steps that pass whether the feature is alive or inert, which is exactly the state 241 §3 found
+    runtime GREEN 0 of 1336 in 42 files · desktop GREEN 0 of 2621 in 135 files · dom GREEN 0 of 686 in 44 files · scripts RED 1 of 261 in 16 files
+M7 · ⛔ `smoke:resume` stops asking — one file per row, because a pin that loops over three scripts has to fail for each of them separately or it is checking one
+    runtime GREEN 0 of 1336 in 42 files · desktop GREEN 0 of 2621 in 135 files · dom GREEN 0 of 686 in 44 files · scripts RED 1 of 261 in 16 files
+M8 · ⛔ `smoke:packaged` stops asking — the artefact a person double-clicks, and the launch shape the 8/24 double-launch race was measured on
+    runtime GREEN 0 of 1336 in 42 files · desktop GREEN 0 of 2621 in 135 files · dom GREEN 0 of 686 in 44 files · scripts RED 1 of 261 in 16 files
+M9 · 🔴 the witness trusts the PATH and never connects — which is the check a reasonable person writes first, and which passes over the stale socket every POSIX launch after the first leaves behind
+    runtime GREEN 0 of 1336 in 42 files · desktop GREEN 0 of 2621 in 135 files · dom GREEN 0 of 686 in 44 files · scripts RED 4 of 261 in 16 files
+M10 · ⚠️ the witness loses its sun_path pre-check, so *'no name of this length can exist'* comes back as *'the app never ran'* — the confusion 241 §3 spent a dispatch on
+    runtime GREEN 0 of 1336 in 42 files · desktop GREEN 0 of 2621 in 135 files · dom GREEN 0 of 686 in 44 files · scripts RED 1 of 261 in 16 files
+M11 · ⚠️ anything that answers is accepted as the gate — a name some other program owns reads as `236` §3 holding this userData
+    runtime GREEN 0 of 1336 in 42 files · desktop GREEN 0 of 2621 in 135 files · dom GREEN 0 of 686 in 44 files · scripts RED 1 of 261 in 16 files
+M12 · 🔴 242 §3's defect, reverted verbatim · the listener folds events during a hand-over again, into a transcript `replayInto` is about to clear — three per Codex reopen, and the fourth reported as *'event stream gap: expected ordinal 108, got 111'*
+    runtime GREEN 0 of 1336 in 42 files · desktop RED 2 of 2621 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 261 in 16 files
+M13 · 🔴 the same defect through the other door · the hold is never TAKEN, so the listener's guard is correct and always satisfied
+    runtime GREEN 0 of 1336 in 42 files · desktop RED 4 of 2621 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 261 in 16 files
+M16 · 🔴 the hold is a BOOLEAN again — a second reopen of one session lowers it while the first is still waiting on the provider, and 242 §3's defect is back through 242 §3's own fix. ⚠️ Found by an adversarial pass over this diff, not by the suite
+    runtime GREEN 0 of 1336 in 42 files · desktop RED 1 of 2621 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 261 in 16 files
+M14 · ⛔ the hold is never let go of — a reopen the host REFUSED leaves its held events in a buffer whose only other reader runs on success, so this window received them and will never draw them
+    runtime GREEN 0 of 1336 in 42 files · desktop RED 1 of 2621 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 261 in 16 files
+M15 · ⚠️ the store asks the host about a session it is already being handed — a round trip carrying every open conversation's history window, to be told what is on its way
+    runtime GREEN 0 of 1336 in 42 files · desktop RED 1 of 2621 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 261 in 16 files
+
+M-END  CONTROL on the restored tree (no restoration drift)
+    runtime GREEN 0 of 1336 in 42 files · desktop GREEN 0 of 2621 in 135 files · dom GREEN 0 of 686 in 44 files · scripts GREEN 0 of 261 in 16 files
