@@ -20,7 +20,13 @@ import {
   OPENED_FOR_RECOVERY_LINE,
   READY_LINE,
 } from '../../apps/desktop/src/main/recovery/log-lines.ts'
-import { SCRIPTED_MODEL, press, sleep, until } from './update-rehearsal-app.mjs'
+import {
+  SCRIPTED_MODEL,
+  saveRehearsalCodexKey,
+  press,
+  sleep,
+  until,
+} from './update-rehearsal-app.mjs'
 import { STATE_FILES } from './update-rehearsal.mjs'
 import { rehearsalStateKept } from './update-rehearsal-state.mjs'
 
@@ -74,10 +80,8 @@ export async function aConversation(cdp) {
  * is typed, not saved through the bridge: the window's own book is what it writes at quit.
  */
 export async function makeData(cdp, { say }) {
-  const keyed = await cdp.evaluate(
-    `return await window.api.runtime.setApiKey({ provider: 'codex', key: 'sk-update-rehearsal-not-a-real-key' }).then(() => 'kept').catch((e) => 'ERROR: ' + String(e))`,
-  )
-  if (keyed !== 'kept') throw new Error(`the fake Codex key was not kept: ${String(keyed)}`)
+  await saveRehearsalCodexKey(cdp)
+  say('the fictional Codex key is saved and usable')
   const input = '[data-cy="prompt-input"]'
   if (
     !(await until(

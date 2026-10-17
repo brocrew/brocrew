@@ -11,6 +11,7 @@ import {
 import { SANDBOX_FEED, STATE_FILES, VERSION_A, VERSION_B } from './update-rehearsal.mjs'
 import { rehearsalStateKept } from './update-rehearsal-state.mjs'
 import { aConversation } from './update-rehearsal-data.mjs'
+import { SCRIPTED_MODEL } from './update-rehearsal-app.mjs'
 
 export const FEED_URL = 'http://127.0.0.1:47123/'
 export { STATE_FILES, VERSION_A, VERSION_B }
@@ -332,10 +333,31 @@ export function verifyCheckpoint(manifest, files, expected) {
 }
 
 /** Start the fixture turn on the same configured local model as the Windows rehearsal. */
-export async function startLocalModelTurn(cdp, text) {
+export async function startLocalModelTurn(cdp, text, { record = () => {} } = {}) {
+  record('conversation-create-requested', { provider: 'codex', model: SCRIPTED_MODEL })
   const sessionId = await aConversation(cdp)
+  record('conversation-created', { sessionId, provider: 'codex', model: SCRIPTED_MODEL })
+  record('turn-send-requested', { sessionId })
   await cdp.evaluate(
     `return await window.api.runtime.send({sessionId:${JSON.stringify(sessionId)},text:${JSON.stringify(text)}})`,
   )
+  record('turn-sent', { sessionId })
   return sessionId
+}
+
+/** A timeout receipt keeps event kinds and states, never message bodies or credentials. */
+export async function localModelTurnFacts(cdp, sessionId, responseId) {
+  return cdp.evaluate(`
+    const history = await window.api.runtime.latestHistory({sessionId:${JSON.stringify(sessionId)}})
+    const events = (history?.entries ?? []).map(one => one.event)
+    const kinds = new Set(['session','provider_turn','assistant_delta','assistant_message','turn','status','error'])
+    return {
+      responseRecorded: ${JSON.stringify(responseId)}.length > 0 && JSON.stringify(history).includes(${JSON.stringify(responseId)}),
+      providerSessionStarted: events.some(one=>one.type === 'session' && ['started','resumed'].includes(one.state)),
+      eventCounts:Object.fromEntries([...kinds,'other'].map(kind=>[kind,events.filter(one=>(kinds.has(one.type) ? one.type : 'other') === kind).length])),
+      turnCounts:Object.fromEntries(['completed','failed','interrupted'].map(state=>[state,events.filter(one=>one.type === 'turn' && one.state === state).length])),
+      statusCounts:Object.fromEntries(['idle','working','waiting_permission','ended','errored'].map(state=>[state,events.filter(one=>one.type === 'status' && one.state === state).length])),
+      hasError:events.some(one=>one.type === 'error'),
+    }
+  `)
 }

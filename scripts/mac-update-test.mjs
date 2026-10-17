@@ -22,6 +22,7 @@ import {
   requireEvidence,
   statePreserved,
   startLocalModelTurn,
+  localModelTurnFacts,
   READY_LINE,
   FAIL_LINE,
   STATE_FILES,
@@ -37,6 +38,8 @@ import {
 } from './lib/update-rehearsal.mjs'
 import {
   SCRIPTED_MODEL,
+  aScriptedModel,
+  saveRehearsalCodexKey,
   closeExpectedLaunchSetup,
   codexConfigFor,
 } from './lib/update-rehearsal-app.mjs'
@@ -568,56 +571,16 @@ try {
       feed.listen(Number(feedUrl.port), '127.0.0.1', done)
     })
   }
-  let replies = 0
-  model = createServer((request, response) => {
-    const chunks = []
-    request.on('data', (chunk) => chunks.push(chunk))
-    request.on('end', () => {
-      if (request.method !== 'POST' || !request.url.startsWith('/v1/'))
-        return response.writeHead(404).end()
-      JSON.parse(Buffer.concat(chunks).toString('utf8'))
-      const id = `resp_mac_fixture_${++replies}`
-      response.writeHead(200, { 'content-type': 'text/event-stream' })
-      const send = (type, payload) =>
-        response.write(`event: ${type}\ndata: ${JSON.stringify({ type, ...payload })}\n\n`)
-      send('response.created', { response: { id } })
-      send('response.output_item.done', {
-        output_index: 0,
-        item: {
-          type: 'message',
-          id: `msg_${id}`,
-          status: 'completed',
-          role: 'assistant',
-          content: [
-            {
-              type: 'output_text',
-              text: `Fictional Mac rehearsal ${id}: café ☕`,
-              annotations: [],
-            },
-          ],
-        },
-      })
-      send('response.completed', {
-        response: {
-          id,
-          usage: {
-            input_tokens: 1,
-            input_tokens_details: { cached_tokens: 0 },
-            output_tokens: 1,
-            output_tokens_details: { reasoning_tokens: 0 },
-            total_tokens: 2,
-          },
-        },
-      })
-      response.end()
-    })
-  })
-  await new Promise((done, failed) => {
-    model.once('error', failed)
-    model.listen(0, '127.0.0.1', done)
-  })
+  model = await aScriptedModel(null, () => new Date().toISOString())
+  summary.fixture = {
+    provider: 'codex',
+    model: SCRIPTED_MODEL,
+    phase: 'model-configured',
+    modelRequests: model.requests,
+    turns: [],
+  }
   await mkdir(codexHome, { recursive: true })
-  await writeFile(join(codexHome, 'config.toml'), codexConfigFor(model.address().port))
+  await writeFile(join(codexHome, 'config.toml'), codexConfigFor(model.port))
   const attached = await plist('/usr/bin/hdiutil', [
     'attach',
     join(distA, metaA.url),
@@ -662,21 +625,43 @@ try {
     return state.kind === 'idle' && state.upToDate
   }, 'A-only feed up to date')
   passed('installed-a-normal-launch-and-feed', { data, version: VERSION_A })
-  await cdpA.evaluate(
-    'return await window.api.runtime.setApiKey({provider:"codex",key:"sk-mac-fictional-not-a-real-key"})',
-  )
+  summary.fixture.phase = 'saving-key'
+  const keyStatus = await saveRehearsalCodexKey(cdpA, {
+    record: (facts) => {
+      summary.fixture.key = facts
+    },
+  })
+  summary.fixture.phase = 'key-saved'
+  passed('fixture-key-saved-and-usable', keyStatus)
   const conversations = []
   for (let index = 0; index < 2; index++) {
-    const expected = `resp_mac_fixture_${replies + 1}`
-    const sessionId = await startLocalModelTurn(cdpA, `Fictional rehearsal ${index}: café ☕`)
+    const turn = { index, phase: 'creating-conversation', steps: [] }
+    summary.fixture.turns.push(turn)
+    let expected
+    const sessionId = await startLocalModelTurn(cdpA, `Fictional rehearsal ${index}: café ☕`, {
+      record: (phase, facts) => {
+        turn.phase = phase
+        turn.steps.push({ phase, ...facts })
+        if (phase === 'conversation-created') {
+          expected = model.nextResponseId()
+          turn.expectedResponseId = expected
+          passed('fixture-conversation-created', facts)
+        }
+        if (phase === 'turn-sent') passed('fixture-turn-sent', facts)
+      },
+    })
     conversations.push(sessionId)
-    await waitFor(
-      () =>
-        cdpA.evaluate(
-          `return JSON.stringify(await window.api.runtime.latestHistory({sessionId:${JSON.stringify(sessionId)}})).includes(${JSON.stringify(expected)})`,
-        ),
-      'A local-model turn recorded',
-    )
+    turn.phase = 'awaiting-response'
+    await waitFor(async () => {
+      turn.history = await localModelTurnFacts(cdpA, sessionId, expected)
+      turn.modelResponseCompleted = model.requests.some(
+        (one) => one.responseId === expected && one.completed,
+      )
+      return turn.history.responseRecorded && turn.modelResponseCompleted
+    }, `A local-model turn recorded (turn ${index}; see fixture progress)`)
+    turn.phase = 'response-recorded'
+    turn.responseId = expected
+    passed('fixture-response-recorded', { sessionId, responseId: expected })
   }
   for (const sessionId of conversations)
     await cdpA.evaluate(
@@ -717,12 +702,11 @@ try {
       ),
     'A saves real renderer draft',
   )
-  summary.fixture = {
+  Object.assign(summary.fixture, {
     conversations,
-    provider: 'codex',
-    model: SCRIPTED_MODEL,
-    localModelRequests: replies,
-  }
+    phase: 'data-recorded',
+    localModelRequests: model.requests.filter((one) => one.responseId !== null).length,
+  })
   const registryFixture = JSON.parse(await readFile(registry, 'utf8'))
   const otherWorkspace = join(process.env.RUNNER_TEMP, 'fictional-other-workspace')
   await mkdir(otherWorkspace)
@@ -946,7 +930,7 @@ try {
   await cdpSecond.evaluate(
     `return await window.api.runtime.resume({sessionId:${JSON.stringify(conversations[0])}})`,
   )
-  const resumedResponse = `resp_mac_fixture_${replies + 1}`
+  const resumedResponse = model.nextResponseId()
   await cdpSecond.evaluate(
     `return await window.api.runtime.send({sessionId:${JSON.stringify(conversations[0])},text:"Fictional turn after the guided update"})`,
   )
@@ -959,7 +943,7 @@ try {
   )
   passed('second-b-start-no-copy-no-self-offer-and-local-resume', {
     copies: copiesAfterFirst,
-    replies,
+    replies: model.requests.filter((one) => one.responseId !== null).length,
   })
   await screenshot(cdpSecond, 'b-second-ready.png')
   await quit()

@@ -239,6 +239,7 @@ export async function screenshot(cdp, file) {
  */
 export async function aScriptedModel(holdMarker, stamp) {
   const log = []
+  const requests = []
   let held = null
   let heldOnce = false
   const server = createServer((request, response) => {
@@ -246,7 +247,21 @@ export async function aScriptedModel(holdMarker, stamp) {
     request.on('data', (chunk) => chunks.push(chunk))
     request.on('end', () => {
       const id = `resp_update_rehearsal_${String(log.length + 1)}`
-      const hold = !heldOnce && Buffer.concat(chunks).toString('utf8').includes(holdMarker)
+      const hold =
+        typeof holdMarker === 'string' &&
+        !heldOnce &&
+        Buffer.concat(chunks).toString('utf8').includes(holdMarker)
+      const requestPath = request.url.split('?')[0]
+      const receipt = {
+        received: true,
+        post: request.method === 'POST',
+        responsesRoute: ['/v1/responses', '/responses'].includes(requestPath),
+        modelsRoute: ['/v1/models', '/models'].includes(requestPath),
+        responseId: request.method === 'POST' ? id : null,
+        held: hold,
+        completed: false,
+      }
+      requests.push(receipt)
       log.push(`${stamp()} ${request.method} ${request.url}${hold ? ' (held)' : ''}`)
       if (request.method !== 'POST') return response.writeHead(404).end()
       const send = (kind, payload) =>
@@ -277,6 +292,7 @@ export async function aScriptedModel(holdMarker, stamp) {
           },
         })
         response.end()
+        receipt.completed = true
       }
       if (hold) {
         heldOnce = true
@@ -288,16 +304,52 @@ export async function aScriptedModel(holdMarker, stamp) {
   return {
     port: server.address().port,
     log,
+    requests,
+    nextResponseId: () => `resp_update_rehearsal_${String(log.length + 1)}`,
+    closeAllConnections: () => server.closeAllConnections(),
     isHolding: () => held !== null,
     release: () => {
       held?.()
       held = null
     },
-    close: () => {
+    close: (done) => {
       held?.()
-      server.close()
+      server.close(done)
     },
   }
+}
+
+/** Save the fictional key through the same window API on either platform; keep status only. */
+export async function saveRehearsalCodexKey(cdp, { record = () => {} } = {}) {
+  const facts = await cdp.evaluate(`
+    let saved
+    try {
+      saved = await window.api.runtime.setApiKey({provider:'codex',key:'sk-update-rehearsal-not-a-real-key'})
+    } catch {
+      return {provider:'codex',providerMatches:false,set:false,inUse:false,refused:false,threw:true,notice:false,unreadable:false}
+    }
+    return {
+      provider:'codex', providerMatches:saved?.provider === 'codex',
+      set:saved?.set === true, inUse:saved?.inUse === true,
+      refused:typeof saved?.refused === 'string', notice:typeof saved?.notice === 'string',
+      unreadable:saved?.readState === 'unreadable',
+      threw:false,
+    }
+  `)
+  record(facts)
+  if (
+    !facts?.providerMatches ||
+    !facts.set ||
+    !facts.inUse ||
+    facts.refused ||
+    facts.threw ||
+    facts.unreadable
+  ) {
+    throw new Error(
+      'The fictional Codex key was not saved and usable; see the recorded key status.',
+    )
+  }
+  return facts
 }
 
 export const SCRIPTED_MODEL = 'gpt-5.4'

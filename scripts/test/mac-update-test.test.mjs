@@ -18,6 +18,7 @@ import {
   registryPreserved,
   statePreserved,
   startLocalModelTurn,
+  localModelTurnFacts,
   verifyCheckpoint,
   CHECKPOINT_LINE,
   READY_LINE,
@@ -434,4 +435,79 @@ test('a wrong provider, model or missing conversation id cannot receive the fixt
     await assert.rejects(startLocalModelTurn(cdp, 'A fictional first turn'))
     assert.equal(sent, false)
   }
+})
+
+test('fixture progress locates create, send and their refusals without claiming a response', async () => {
+  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
+  for (const failAt of [null, 'create', 'send']) {
+    const steps = []
+    const runtime = {
+      createSession: async (input) => {
+        if (failAt === 'create') throw new Error('fixture-create-refused')
+        return {
+          sessionId: 'fictional-session',
+          provider: input.provider,
+          settings: { model: input.model },
+        }
+      },
+      send: async () => {
+        if (failAt === 'send') throw new Error('fixture-send-refused')
+      },
+    }
+    const cdp = { evaluate: (body) => new AsyncFunction('window', body)({ api: { runtime } }) }
+    const run = startLocalModelTurn(cdp, 'Fictional turn', {
+      record: (phase, facts) => steps.push({ phase, ...facts }),
+    })
+    if (failAt) await assert.rejects(run)
+    else assert.equal(await run, 'fictional-session')
+    const expected = ['conversation-create-requested']
+    if (failAt !== 'create') expected.push('conversation-created', 'turn-send-requested')
+    if (!failAt) expected.push('turn-sent')
+    assert.deepEqual(
+      steps.map((one) => one.phase),
+      expected,
+    )
+    assert.equal(
+      steps.some((one) => one.phase === 'response-recorded'),
+      false,
+    )
+  }
+})
+
+test('turn timeout facts keep session and failure states while discarding message bodies', async () => {
+  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
+  const history = {
+    entries: [
+      { event: { type: 'session', state: 'started', ref: { private: 'discard-session-detail' } } },
+      { event: { type: 'status', state: 'working' } },
+      { event: { type: 'error', message: 'discard-error-detail' } },
+      { event: { type: 'turn', state: 'failed' } },
+      { event: { type: 'status', state: 'idle' } },
+    ],
+  }
+  const runtime = { latestHistory: async () => history }
+  const cdp = { evaluate: (body) => new AsyncFunction('window', body)({ api: { runtime } }) }
+  const facts = await localModelTurnFacts(cdp, 'fictional-session', 'resp_fictional_1')
+  assert.equal(facts.responseRecorded, false)
+  assert.equal(facts.providerSessionStarted, true)
+  assert.equal(facts.hasError, true)
+  assert.deepEqual(facts.turnCounts, { completed: 0, failed: 1, interrupted: 0 })
+  assert.deepEqual(facts.statusCounts, {
+    working: 1,
+    idle: 1,
+    waiting_permission: 0,
+    ended: 0,
+    errored: 0,
+  })
+  assert.equal(facts.eventCounts.status, 2)
+  assert.equal(JSON.stringify(facts).includes('discard-'), false)
+  history.entries.push({ event: { type: 'assistant_message', text: 'Fixture resp_fictional_1' } })
+  assert.equal(
+    (await localModelTurnFacts(cdp, 'fictional-session', 'resp_fictional_1')).responseRecorded,
+    true,
+  )
+  assert.equal(
+    (await localModelTurnFacts(cdp, 'fictional-session', 'resp_other')).responseRecorded,
+    false,
+  )
 })
