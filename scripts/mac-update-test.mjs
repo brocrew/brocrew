@@ -34,6 +34,7 @@ import {
   feedToken,
   servedUpdateFile,
 } from './lib/update-rehearsal.mjs'
+import { closeExpectedLaunchSetup } from './lib/update-rehearsal-app.mjs'
 
 // Installation, launches and process signals are confined to a fresh hosted runner.
 assertHostedMac(process.env, process.platform, process.arch)
@@ -635,6 +636,8 @@ try {
   )
   summary.embeddedFeed = embeddedFeed
   let cdpA = await launch('a', 9339, VERSION_A, values['marker-a'])
+  summary.expectedSetupDialog = await closeExpectedLaunchSetup(cdpA)
+  passed('expected-setup-dialog-closed', summary.expectedSetupDialog)
   await cdpA.evaluate(
     'return await window.api.updates.set({checkAutomatically:true,channel:"stable"})',
   )

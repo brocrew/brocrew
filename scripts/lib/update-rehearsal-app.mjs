@@ -163,6 +163,46 @@ export const shown = (cdp, selector) =>
     `return document.querySelector(${JSON.stringify(selector)})?.textContent?.replace(/\\s+/g, ' ').trim() ?? null`,
   )
 
+/** Confirm and close the provider setup that a fresh runner's first launch must show. */
+export async function closeExpectedLaunchSetup(cdp, { wait = 60_000 } = {}) {
+  const dialogs = () =>
+    cdp.evaluate(`return [...document.querySelectorAll('dialog[open], [role=dialog], [role=alertdialog], [aria-modal=true]')]
+      .filter((one) => one.getClientRects().length > 0)
+      .map((one) => ({
+        label: one.getAttribute('aria-label'),
+        provider: one.querySelector('[data-provider][data-step]')?.getAttribute('data-provider') ?? null,
+      }))`)
+  const open = await until(
+    async () => {
+      const now = await dialogs()
+      return now.length > 0 ? now : null
+    },
+    wait,
+    250,
+  )
+  if (open?.length !== 1 || open[0].label !== 'Set up Claude' || open[0].provider !== 'claude') {
+    throw new Error(`the expected Set up Claude dialog was not shown: ${JSON.stringify(open)}`)
+  }
+  const pressed =
+    await cdp.evaluate(`const close = document.querySelector('[role=dialog] button[aria-label="Close setup"]')
+    if (close === null) return false
+    close.click()
+    return true`)
+  if (!pressed) throw new Error('the expected setup dialog has no Close setup button')
+  const closed = await until(
+    async () => ((await dialogs()).length === 0 ? true : null),
+    15_000,
+    250,
+  )
+  const remembered = await cdp.evaluate(
+    `return localStorage.getItem('brobot2.providerSetupDismissed') === 'true'`,
+  )
+  if (!closed || !remembered) {
+    throw new Error('closing the setup did not leave the window clear and remember the choice')
+  }
+  return { expected: 'Set up Claude', provider: 'claude', closed: true, remembered: true }
+}
+
 /** The updates menu, opened from the rail's workspace button if it is not open already. */
 export async function openTheUpdatesMenu(cdp) {
   if ((await shown(cdp, '[data-cy="updates-menu"]')) !== null) return

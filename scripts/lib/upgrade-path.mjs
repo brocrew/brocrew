@@ -426,8 +426,46 @@ export function draftsKept(before, after) {
   return problems
 }
 
+/** Keep the person's choice while allowing valid cleanup progress and bounded recent history. */
+function transcriptRetentionKept(before, after, bytes) {
+  const periods = [30, 90, 365, 'forever']
+  const problems = []
+  if (!periods.includes(before?.period) || after?.period !== before.period)
+    problems.push('its transcript retention choice changed')
+  const number = (value) => Number.isSafeInteger(value) && value >= 0
+  const cursor = after?.scanAfter === undefined ? '' : after.scanAfter
+  if (
+    bytes > 65536 ||
+    !number(after?.checkedAt) ||
+    typeof cursor !== 'string' ||
+    cursor.length > 4096 ||
+    cursor.startsWith('/') ||
+    cursor.includes('\\') ||
+    cursor.split('/').some((part) => part === '..' || part === '.')
+  )
+    problems.push('its transcript cleanup progress is invalid')
+  if (
+    !Array.isArray(after?.cleared) ||
+    after.cleared.length > 100 ||
+    after.cleared.some(
+      (line) =>
+        line === null ||
+        typeof line !== 'object' ||
+        Array.isArray(line) ||
+        ![line.at, line.days, line.conversations, line.bytes].every(number) ||
+        (line.stoppedEarly !== undefined && line.stoppedEarly !== true) ||
+        (line.conversations === 0 && line.stoppedEarly !== true),
+    )
+  )
+    problems.push('its transcript cleanup history is invalid')
+  return problems
+}
+
 /** The files compared by their own contract rather than by what they still contain. */
-const STATE_RULES = { 'drafts.json': draftsKept }
+const STATE_RULES = {
+  'drafts.json': draftsKept,
+  'transcript-retention.json': transcriptRetentionKept,
+}
 
 /**
  * What became of the state files the beta left. One that went, or that no longer says what the beta
@@ -455,7 +493,7 @@ export function stateKept(before, after, names, rules = STATE_RULES) {
       const then = JSON.parse(Buffer.from(was).toString('utf8'))
       const now = JSON.parse(Buffer.from(is).toString('utf8'))
       const rule = rules[name]
-      if (rule !== undefined) problems = rule(then, now)
+      if (rule !== undefined) problems = rule(then, now, Buffer.from(is).length)
       else if (contains(now, then)) problems = []
     } catch {
       // Not JSON on one side: its bytes changed and nothing shows the content was kept.

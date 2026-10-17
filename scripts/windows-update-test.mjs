@@ -68,6 +68,7 @@ import {
   aRecord,
   aScriptedModel,
   attach,
+  closeExpectedLaunchSetup,
   codexConfigFor,
   menuSays,
   openTheUpdatesMenu,
@@ -429,6 +430,8 @@ try {
     'a-first.log',
   )
   const cdpA1 = await attach(9339)
+  summary.steps.expectedSetupDialog = await closeExpectedLaunchSetup(cdpA1)
+  check(true, 'A first showed the expected Claude setup dialog, and closing it cleared the window')
   const first = await cdpA1.evaluate('return await window.api.updates.read()')
   check(first.version === VERSION_A, `A says it is ${String(first.version)}`)
   const builtA = await cdpA1.evaluate('return await window.api.getAppInfo()')

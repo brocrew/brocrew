@@ -646,6 +646,98 @@ describe('the state files the beta left', () => {
   })
 })
 
+describe('the transcript retention choice and mutable cleanup progress', () => {
+  const name = 'transcript-retention.json'
+  const earlier = {
+    period: 90,
+    checkedAt: 10,
+    cleared: [{ at: 10, days: 90, conversations: 2, bytes: 40 }],
+  }
+  const next = {
+    period: 90,
+    checkedAt: 20,
+    scanAfter: 'default/orchard/codex/sessions/2026/01/kept.jsonl',
+    cleared: [{ at: 20, days: 90, conversations: 0, bytes: 0, stoppedEarly: true }],
+  }
+  const check = (after, before = earlier) =>
+    stateKept(
+      { [name]: Buffer.from(JSON.stringify(before)) },
+      { [name]: Buffer.from(JSON.stringify(after)) },
+      [name],
+    )
+  it('accepts a new check, cursor and bounded history while keeping the exact choice', () => {
+    expect(check(next)).toEqual({ lost: [], rewritten: [name], appeared: [] })
+    expect(
+      check({
+        ...next,
+        scanAfter: '',
+        cleared: Array.from({ length: 100 }, (_, i) => ({
+          at: i,
+          days: 30,
+          conversations: 1,
+          bytes: 20,
+        })),
+      }).lost,
+    ).toEqual([])
+    for (const period of [30, 90, 365, 'forever'])
+      expect(check({ ...next, period }, { ...earlier, period }).lost).toEqual([])
+  })
+  it.each([30, 365, 'forever', '90', null])(
+    'refuses changing the person’s choice to %s',
+    (period) => {
+      expect(check({ ...next, period }).lost).toEqual([
+        `${name}: its transcript retention choice changed`,
+      ])
+    },
+  )
+  it.each([
+    { checkedAt: -1 },
+    { checkedAt: '20' },
+    { checkedAt: null },
+    { scanAfter: 7 },
+    { scanAfter: null },
+    { scanAfter: '/outside' },
+    { scanAfter: '../outside' },
+    { scanAfter: 'default/../outside' },
+    { scanAfter: 'default/./outside' },
+    { scanAfter: 'default\\outside' },
+    { scanAfter: 'x'.repeat(4097) },
+  ])('refuses invalid progress %j', (changed) => {
+    expect(check({ ...next, ...changed }).lost).toEqual([
+      `${name}: its transcript cleanup progress is invalid`,
+    ])
+  })
+  it.each(
+    [
+      null,
+      {},
+      Array(101).fill(next.cleared[0]),
+      [null],
+      [{ at: 20, days: 90, conversations: 0, bytes: 0 }],
+      [{ at: 20, days: -1, conversations: 1, bytes: 20 }],
+      [{ at: 20, days: 90, conversations: 1, bytes: -1 }],
+      [{ at: 20, days: 90, conversations: 1.5, bytes: 20 }],
+      [{ at: 20, days: 90, conversations: 1, bytes: 20, stoppedEarly: false }],
+    ].map((cleared) => [cleared]),
+  )('refuses invalid history %j', (cleared) => {
+    expect(check({ ...next, cleared }).lost).toEqual([
+      `${name}: its transcript cleanup history is invalid`,
+    ])
+  })
+  it('refuses a file larger than the app can read, even if its parsed fields are valid', () => {
+    const before = { [name]: Buffer.from(JSON.stringify(earlier)) }
+    const after = { [name]: Buffer.from(JSON.stringify(next) + ' '.repeat(65536)) }
+    expect(stateKept(before, after, [name]).lost).toEqual([
+      `${name}: its transcript cleanup progress is invalid`,
+    ])
+  })
+  it('still refuses a missing or unreadable retention file', () => {
+    const before = { [name]: Buffer.from(JSON.stringify(earlier)) }
+    expect(stateKept(before, {}, [name]).lost).toEqual([`${name}: it is gone`])
+    expect(stateKept(before, { [name]: Buffer.from('unreadable') }, [name]).lost).toHaveLength(1)
+  })
+})
+
 describe('the computer’s list of workspaces', () => {
   const before = {
     version: 1,
