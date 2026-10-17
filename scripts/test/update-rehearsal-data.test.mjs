@@ -370,3 +370,56 @@ describe('what a start said about its recovery copy', () => {
     ])
   })
 })
+
+describe('the rehearsal keeps the retention choice while cleanup progresses', () => {
+  const name = 'transcript-retention.json'
+  const before = { period: 90, checkedAt: 10, cleared: [] }
+  const after = {
+    ...before,
+    checkedAt: 20,
+    scanAfter: '2026/entry',
+    cleared: [{ at: 20, days: 90, conversations: 1, bytes: 12 }],
+  }
+  const snapshot = (value) => ({
+    tables: {},
+    transcripts: {},
+    summary: { counts: {} },
+    state: { [name]: value === null ? null : Buffer.from(JSON.stringify(value)) },
+  })
+
+  it('accepts forward checkedAt and valid cleanup progress at every live-data comparison', () => {
+    expect(compareData(snapshot(before), snapshot(after)).problems).toEqual([])
+    expect(sameData(snapshot(before), snapshot(after))).toEqual([])
+    expect(
+      compareData(snapshot(before), snapshot(after), { goneOn: ['fictional'] }).problems,
+    ).toEqual([])
+  })
+
+  it('refuses a changed retention period and a missing file', () => {
+    expect(compareData(snapshot(before), snapshot({ ...after, period: 365 })).problems).toEqual([
+      `${name} changed`,
+    ])
+    expect(compareData(snapshot(before), snapshot(null)).problems).toEqual([`${name} is gone`])
+    expect(sameData(snapshot(before), snapshot(null))).toContain(`${name} is gone`)
+  })
+
+  it('validates progress instead of ignoring the retention file', () => {
+    for (const damaged of [
+      { ...after, checkedAt: -1 },
+      { ...after, cleared: [{}] },
+    ]) {
+      expect(compareData(snapshot(before), snapshot(damaged)).problems).toEqual([`${name} changed`])
+    }
+    const malformed = snapshot(after)
+    malformed.state[name] = Buffer.from('{')
+    expect(compareData(snapshot(before), malformed).problems).toEqual([`${name} changed`])
+  })
+
+  it('still compares every byte of other state files', () => {
+    const was = snapshot(before)
+    const now = snapshot(after)
+    was.state['workspace.json'] = Buffer.from('{"name":"Fictional"}')
+    now.state['workspace.json'] = Buffer.from('{ "name": "Fictional" }')
+    expect(compareData(was, now).problems).toEqual(['workspace.json changed'])
+  })
+})

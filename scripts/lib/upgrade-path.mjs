@@ -462,7 +462,7 @@ function transcriptRetentionKept(before, after, bytes) {
 }
 
 /** The files compared by their own contract rather than by what they still contain. */
-const STATE_RULES = {
+export const STATE_RULES = {
   'drafts.json': draftsKept,
   'transcript-retention.json': transcriptRetentionKept,
 }

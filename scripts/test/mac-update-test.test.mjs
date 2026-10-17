@@ -356,3 +356,31 @@ test('the package an app archive carries is read as @electron/asar writes it', a
     rmSync(root, { recursive: true, force: true })
   }
 })
+
+test('accepts cleanup progress but refuses a changed retention choice or a missing file', () => {
+  const name = 'transcript-retention.json'
+  const bytes = (value) => Buffer.from(JSON.stringify(value))
+  const before = { period: 90, checkedAt: 10, cleared: [] }
+  const after = { ...before, checkedAt: 20, scanAfter: '2026/entry' }
+  const was = { [name]: bytes(before) }
+  assert.doesNotThrow(() => statePreserved(was, { [name]: bytes(after) }))
+  for (const damaged of [
+    { ...after, period: 365 },
+    { ...after, checkedAt: -1 },
+    { ...after, cleared: [{}] },
+  ]) {
+    assert.throws(() => statePreserved(was, { [name]: bytes(damaged) }), /State bytes changed/)
+  }
+  assert.throws(() => statePreserved(was, {}), /State presence changed/)
+  assert.throws(() => statePreserved(was, { [name]: Buffer.from('{') }), /State bytes changed/)
+  for (const other of ['workspace.json', 'drafts.json']) {
+    assert.throws(
+      () =>
+        statePreserved(
+          { ...was, [other]: Buffer.from('{"name":"Fictional"}') },
+          { [name]: bytes(after), [other]: Buffer.from('{ "name": "Fictional" }') },
+        ),
+      /State bytes changed/,
+    )
+  }
+})

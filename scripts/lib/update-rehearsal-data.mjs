@@ -22,6 +22,7 @@ import {
 } from '../../apps/desktop/src/main/recovery/log-lines.ts'
 import { press, sleep, until } from './update-rehearsal-app.mjs'
 import { STATE_FILES } from './update-rehearsal.mjs'
+import { rehearsalStateKept } from './update-rehearsal-state.mjs'
 
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex')
 
@@ -387,7 +388,7 @@ export function compareData(before, after, { goneOn = [] } = {}) {
       }
       continue
     }
-    if (bytes === null ? now !== null : now === null || !now.equals(bytes)) {
+    if (!rehearsalStateKept(name, bytes, now)) {
       problems.push(`${name} ${bytes === null ? 'appeared' : now === null ? 'is gone' : 'changed'}`)
     }
   }

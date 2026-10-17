@@ -9,6 +9,7 @@ import {
   READY_LINE,
 } from '../../apps/desktop/src/main/recovery/log-lines.ts'
 import { SANDBOX_FEED, STATE_FILES, VERSION_A, VERSION_B } from './update-rehearsal.mjs'
+import { rehearsalStateKept } from './update-rehearsal-state.mjs'
 
 export const FEED_URL = 'http://127.0.0.1:47123/'
 export { STATE_FILES, VERSION_A, VERSION_B }
@@ -146,9 +147,7 @@ export function statePreserved(before, after) {
     )
     if (before[name] !== undefined)
       requireEvidence(
-        Buffer.isBuffer(before[name]) &&
-          Buffer.isBuffer(after[name]) &&
-          before[name].equals(after[name]),
+        rehearsalStateKept(name, before[name], after[name]),
         `State bytes changed: ${name}`,
       )
   }
