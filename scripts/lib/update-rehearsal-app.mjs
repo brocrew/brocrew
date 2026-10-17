@@ -300,10 +300,12 @@ export async function aScriptedModel(holdMarker, stamp) {
   }
 }
 
+export const SCRIPTED_MODEL = 'gpt-5.4'
+
 /** The Codex profile home's `config.toml` that sends every turn to the scripted model. */
 export function codexConfigFor(modelPort) {
   return [
-    'model = "gpt-5.4"',
+    `model = ${JSON.stringify(SCRIPTED_MODEL)}`,
     'model_provider = "update_rehearsal"',
     '',
     '[model_providers.update_rehearsal]',

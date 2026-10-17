@@ -20,7 +20,7 @@ import {
   OPENED_FOR_RECOVERY_LINE,
   READY_LINE,
 } from '../../apps/desktop/src/main/recovery/log-lines.ts'
-import { press, sleep, until } from './update-rehearsal-app.mjs'
+import { SCRIPTED_MODEL, press, sleep, until } from './update-rehearsal-app.mjs'
 import { STATE_FILES } from './update-rehearsal.mjs'
 import { rehearsalStateKept } from './update-rehearsal-state.mjs'
 
@@ -57,12 +57,15 @@ async function send(cdp, id, text) {
 /** A Codex conversation, started through the window's bridge. */
 export async function aConversation(cdp) {
   const created = await cdp.evaluate(
-    `return await window.api.runtime.createSession({ provider: 'codex', approvalMode: 'auto' }).then((one) => one.sessionId).catch((e) => 'ERROR: ' + String(e))`,
+    `return await window.api.runtime.createSession({ provider: 'codex', model: ${JSON.stringify(SCRIPTED_MODEL)}, approvalMode: 'auto' }).catch((e) => 'ERROR: ' + String(e))`,
   )
-  if (typeof created !== 'string' || created.startsWith('ERROR')) {
-    throw new Error(`no conversation: ${String(created)}`)
+  if (typeof created?.sessionId !== 'string' || created.sessionId.length === 0) {
+    throw new Error(`no conversation: ${typeof created === 'string' ? created : 'no session id'}`)
   }
-  return created
+  if (created.provider !== 'codex' || created.settings?.model !== SCRIPTED_MODEL) {
+    throw new Error('the conversation did not start on the configured local model')
+  }
+  return created.sessionId
 }
 
 /**

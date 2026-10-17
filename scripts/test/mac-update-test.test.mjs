@@ -17,11 +17,14 @@ import {
   recoveryOrder,
   registryPreserved,
   statePreserved,
+  startLocalModelTurn,
   verifyCheckpoint,
   CHECKPOINT_LINE,
   READY_LINE,
   STATE_FILES,
 } from '../lib/mac-update-test.mjs'
+
+import { SCRIPTED_MODEL, codexConfigFor } from '../lib/update-rehearsal-app.mjs'
 
 const runner = {
   GITHUB_ACTIONS: 'true',
@@ -382,5 +385,53 @@ test('accepts cleanup progress but refuses a changed retention choice or a missi
         ),
       /State bytes changed/,
     )
+  }
+})
+
+test('the first fixture turn uses the provider and model configured for the local server', async () => {
+  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
+  const calls = []
+  const runtime = {
+    createSession: async (input) => {
+      calls.push(['create', input])
+      return {
+        sessionId: 'fictional-session',
+        provider: input.provider,
+        settings: { model: input.model },
+      }
+    },
+    send: async (input) => calls.push(['send', input]),
+  }
+  const cdp = { evaluate: (body) => new AsyncFunction('window', body)({ api: { runtime } }) }
+  assert.equal(await startLocalModelTurn(cdp, 'A fictional first turn'), 'fictional-session')
+  assert.deepEqual(calls, [
+    ['create', { provider: 'codex', model: SCRIPTED_MODEL, approvalMode: 'auto' }],
+    ['send', { sessionId: 'fictional-session', text: 'A fictional first turn' }],
+  ])
+  assert.equal(/^model = "([^"]+)"/m.exec(codexConfigFor(47124))?.[1], calls[0][1].model)
+  assert.match(codexConfigFor(47124), /base_url = "http:\/\/127\.0\.0\.1:47124\/v1"/)
+})
+
+test('a wrong provider, model or missing conversation id cannot receive the fixture message', async () => {
+  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
+  for (const created of [
+    { sessionId: 'fictional-session', provider: 'claude', settings: { model: SCRIPTED_MODEL } },
+    {
+      sessionId: 'fictional-session',
+      provider: 'codex',
+      settings: { model: 'fictional-other-model' },
+    },
+    { provider: 'codex', settings: { model: SCRIPTED_MODEL } },
+  ]) {
+    let sent = false
+    const runtime = {
+      createSession: async () => created,
+      send: async () => {
+        sent = true
+      },
+    }
+    const cdp = { evaluate: (body) => new AsyncFunction('window', body)({ api: { runtime } }) }
+    await assert.rejects(startLocalModelTurn(cdp, 'A fictional first turn'))
+    assert.equal(sent, false)
   }
 })

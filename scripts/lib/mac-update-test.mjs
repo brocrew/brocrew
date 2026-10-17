@@ -10,6 +10,7 @@ import {
 } from '../../apps/desktop/src/main/recovery/log-lines.ts'
 import { SANDBOX_FEED, STATE_FILES, VERSION_A, VERSION_B } from './update-rehearsal.mjs'
 import { rehearsalStateKept } from './update-rehearsal-state.mjs'
+import { aConversation } from './update-rehearsal-data.mjs'
 
 export const FEED_URL = 'http://127.0.0.1:47123/'
 export { STATE_FILES, VERSION_A, VERSION_B }
@@ -328,4 +329,13 @@ export function verifyCheckpoint(manifest, files, expected) {
     'Required fixture state is missing from the checkpoint.',
   )
   return { id: manifest.id, databaseSha256: manifest.database.sha256, files: manifest.files }
+}
+
+/** Start the fixture turn on the same configured local model as the Windows rehearsal. */
+export async function startLocalModelTurn(cdp, text) {
+  const sessionId = await aConversation(cdp)
+  await cdp.evaluate(
+    `return await window.api.runtime.send({sessionId:${JSON.stringify(sessionId)},text:${JSON.stringify(text)}})`,
+  )
+  return sessionId
 }

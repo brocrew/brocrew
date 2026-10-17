@@ -21,6 +21,7 @@ import {
   registryPreserved,
   requireEvidence,
   statePreserved,
+  startLocalModelTurn,
   READY_LINE,
   FAIL_LINE,
   STATE_FILES,
@@ -34,7 +35,11 @@ import {
   feedToken,
   servedUpdateFile,
 } from './lib/update-rehearsal.mjs'
-import { closeExpectedLaunchSetup } from './lib/update-rehearsal-app.mjs'
+import {
+  SCRIPTED_MODEL,
+  closeExpectedLaunchSetup,
+  codexConfigFor,
+} from './lib/update-rehearsal-app.mjs'
 
 // Installation, launches and process signals are confined to a fresh hosted runner.
 assertHostedMac(process.env, process.platform, process.arch)
@@ -612,10 +617,7 @@ try {
     model.listen(0, '127.0.0.1', done)
   })
   await mkdir(codexHome, { recursive: true })
-  await writeFile(
-    join(codexHome, 'config.toml'),
-    `model = "gpt-5.4"\nmodel_provider = "mac_fixture"\n[model_providers.mac_fixture]\nname = "Fictional loopback model"\nbase_url = "http://127.0.0.1:${model.address().port}/v1"\nrequires_openai_auth = true\nrequest_max_retries = 0\nstream_max_retries = 0\n`,
-  )
+  await writeFile(join(codexHome, 'config.toml'), codexConfigFor(model.address().port))
   const attached = await plist('/usr/bin/hdiutil', [
     'attach',
     join(distA, metaA.url),
@@ -665,18 +667,13 @@ try {
   )
   const conversations = []
   for (let index = 0; index < 2; index++) {
-    const created = await cdpA.evaluate(
-      'return await window.api.runtime.createSession({provider:"codex",approvalMode:"auto"})',
-    )
-    conversations.push(created.sessionId)
     const expected = `resp_mac_fixture_${replies + 1}`
-    await cdpA.evaluate(
-      `return await window.api.runtime.send({sessionId:${JSON.stringify(created.sessionId)},text:${JSON.stringify(`Fictional rehearsal ${index}: café ☕`)}})`,
-    )
+    const sessionId = await startLocalModelTurn(cdpA, `Fictional rehearsal ${index}: café ☕`)
+    conversations.push(sessionId)
     await waitFor(
       () =>
         cdpA.evaluate(
-          `return JSON.stringify(await window.api.runtime.latestHistory({sessionId:${JSON.stringify(created.sessionId)}})).includes(${JSON.stringify(expected)})`,
+          `return JSON.stringify(await window.api.runtime.latestHistory({sessionId:${JSON.stringify(sessionId)}})).includes(${JSON.stringify(expected)})`,
         ),
       'A local-model turn recorded',
     )
@@ -720,7 +717,12 @@ try {
       ),
     'A saves real renderer draft',
   )
-  summary.fixture = { conversations, localModelRequests: replies }
+  summary.fixture = {
+    conversations,
+    provider: 'codex',
+    model: SCRIPTED_MODEL,
+    localModelRequests: replies,
+  }
   const registryFixture = JSON.parse(await readFile(registry, 'utf8'))
   const otherWorkspace = join(process.env.RUNNER_TEMP, 'fictional-other-workspace')
   await mkdir(otherWorkspace)
