@@ -18,6 +18,9 @@ import {
   registryPreserved,
   statePreserved,
   startLocalModelTurn,
+  MAC_KEYCHAIN_REFUSAL,
+  isMacKeychainRefusal,
+  withMacKeychainRecovery,
   localModelTurnFacts,
   verifyCheckpoint,
   CHECKPOINT_LINE,
@@ -510,4 +513,197 @@ test('turn timeout facts keep session and failure states while discarding messag
     (await localModelTurnFacts(cdp, 'fictional-session', 'resp_other')).responseRecorded,
     false,
   )
+})
+
+const keychainFailure = (said = MAC_KEYCHAIN_REFUSAL) =>
+  Object.assign(new Error('fixture refusal'), { refusal: { said } })
+const unreadableKey = { providerMatches: true, set: true, inUse: false, unreadable: true }
+
+test('only the exact plain Mac Keychain refusal qualifies, including its fixed IPC envelope', () => {
+  assert.equal(isMacKeychainRefusal(keychainFailure()), true)
+  assert.equal(
+    isMacKeychainRefusal(
+      keychainFailure(
+        `Error invoking remote method 'runtime:command': Error: ${MAC_KEYCHAIN_REFUSAL}`,
+      ),
+    ),
+    true,
+  )
+  for (const said of [
+    MAC_KEYCHAIN_REFUSAL.replace('Codex', 'Claude'),
+    MAC_KEYCHAIN_REFUSAL.replace(
+      'macOS may be waiting for permission to read its saved key. ',
+      'It was saved with a Keychain entry this version of BroCrew doesn’t have. ',
+    ),
+    MAC_KEYCHAIN_REFUSAL.replace('can’t', "can't"),
+    MAC_KEYCHAIN_REFUSAL + ' Extra words.',
+    'Prefix: ' + MAC_KEYCHAIN_REFUSAL,
+    'The key was refused for another reason.',
+    undefined,
+  ])
+    assert.equal(isMacKeychainRefusal({ refusal: { said } }), false)
+  assert.equal(isMacKeychainRefusal(new Error(MAC_KEYCHAIN_REFUSAL)), false)
+})
+
+function keyRecoveryFixture({
+  platform = 'darwin',
+  error = keychainFailure(),
+  status = unreadableKey,
+  traffic = false,
+  retryError,
+  saveError,
+} = {}) {
+  const trace = [],
+    limits = []
+  let attempts = 0,
+    posts = 0
+  const options = {
+    platform,
+    attempt: async () => {
+      trace.push('attempt')
+      attempts++
+      if (attempts === 1) {
+        if (traffic) posts++
+        if (error) throw error
+      }
+      if (attempts === 2 && retryError) throw retryError
+      return 'fixture-response'
+    },
+    keyStatus: async () => {
+      trace.push('status')
+      return status
+    },
+    posts: () => posts,
+    stop: async () => {
+      trace.push('stop')
+    },
+    forgetEntry: async () => {
+      trace.push('forget-entry')
+    },
+    start: async () => {
+      trace.push('start')
+    },
+    save: async () => {
+      trace.push('save')
+      if (saveError) throw saveError
+    },
+    recordLimit: (said) => {
+      limits.push(said)
+      trace.push('limit')
+    },
+  }
+  return { options, trace, limits, attempts: () => attempts }
+}
+
+test('a verified Mac refusal records the exact limit and retries after a fresh entry and saved key', async () => {
+  const fixture = keyRecoveryFixture()
+  assert.equal(await withMacKeychainRecovery(fixture.options), 'fixture-response')
+  assert.deepEqual(fixture.trace, [
+    'attempt',
+    'status',
+    'limit',
+    'stop',
+    'forget-entry',
+    'start',
+    'save',
+    'attempt',
+  ])
+  assert.deepEqual(fixture.limits, [MAC_KEYCHAIN_REFUSAL])
+  assert.equal(fixture.attempts(), 2)
+})
+
+test('other refusals, Windows, usable keys and model traffic never trigger recovery', async () => {
+  for (const changes of [
+    { error: keychainFailure('Another refusal') },
+    { platform: 'win32' },
+    { status: { ...unreadableKey, inUse: true } },
+    { status: { ...unreadableKey, set: false } },
+    { status: { ...unreadableKey, unreadable: false } },
+    { status: { ...unreadableKey, providerMatches: false } },
+    { traffic: true },
+  ]) {
+    const fixture = keyRecoveryFixture(changes)
+    await assert.rejects(withMacKeychainRecovery(fixture.options))
+    assert.deepEqual(fixture.limits, [])
+    assert.equal(fixture.trace.includes('forget-entry'), false)
+    assert.equal(fixture.attempts(), 1)
+  }
+})
+
+test('a failed fresh save or failed retry still fails, without a second recovery', async () => {
+  for (const changes of [
+    { retryError: keychainFailure() },
+    { retryError: keychainFailure('A different retry refusal') },
+    { saveError: new Error('fictional fresh save refused') },
+  ]) {
+    const fixture = keyRecoveryFixture(changes)
+    await assert.rejects(withMacKeychainRecovery(fixture.options))
+    assert.equal(fixture.trace.filter((one) => one === 'forget-entry').length, 1)
+    assert.equal(fixture.limits.length, 1)
+    assert.equal(fixture.attempts(), changes.saveError ? 1 : 2)
+  }
+})
+
+test('a normal fixture turn does not touch the sealing entry or claim a limit', async () => {
+  const fixture = keyRecoveryFixture({ error: null })
+  assert.equal(await withMacKeychainRecovery(fixture.options), 'fixture-response')
+  assert.deepEqual(fixture.trace, ['attempt'])
+  assert.deepEqual(fixture.limits, [])
+})
+
+test('the Mac create path keeps answered and thrown app refusals structured for narrow recovery', async () => {
+  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
+  for (const rejected of [false, true]) {
+    let sent = false
+    const runtime = {
+      createSession: async (input) => {
+        assert.equal(input.answerARefusal, true)
+        if (rejected) throw new Error(MAC_KEYCHAIN_REFUSAL)
+        return { refused: { reason: 'sign-in', said: MAC_KEYCHAIN_REFUSAL } }
+      },
+      send: async () => {
+        sent = true
+      },
+    }
+    const cdp = { evaluate: (body) => new AsyncFunction('window', body)({ api: { runtime } }) }
+    await assert.rejects(
+      startLocalModelTurn(cdp, 'fictional turn', { answerARefusal: true }),
+      (error) => isMacKeychainRefusal(error),
+    )
+    assert.equal(sent, false)
+  }
+})
+
+test('after a refused resume, the same conversation is resumed and sent once after recovery', async () => {
+  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
+  let available = false,
+    sends = 0,
+    resumes = 0
+  const runtime = {
+    createSession: async () => {
+      throw new Error('must resume the existing conversation')
+    },
+    resume: async ({ sessionId }) => {
+      assert.equal(sessionId, 'fictional-existing-session')
+      resumes++
+      if (!available)
+        throw new Error(
+          `Error invoking remote method 'runtime:command': Error: ${MAC_KEYCHAIN_REFUSAL}`,
+        )
+    },
+    send: async ({ sessionId }) => {
+      assert.equal(sessionId, 'fictional-existing-session')
+      sends++
+    },
+  }
+  const cdp = { evaluate: (body) => new AsyncFunction('window', body)({ api: { runtime } }) }
+  const fixture = keyRecoveryFixture()
+  fixture.options.attempt = () =>
+    startLocalModelTurn(cdp, 'fictional resumed turn', { sessionId: 'fictional-existing-session' })
+  fixture.options.save = async () => {
+    available = true
+  }
+  assert.equal(await withMacKeychainRecovery(fixture.options), 'fictional-existing-session')
+  assert.equal(resumes, 2)
+  assert.equal(sends, 1)
 })

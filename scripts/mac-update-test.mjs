@@ -23,6 +23,7 @@ import {
   statePreserved,
   startLocalModelTurn,
   localModelTurnFacts,
+  withMacKeychainRecovery,
   READY_LINE,
   FAIL_LINE,
   STATE_FILES,
@@ -30,6 +31,7 @@ import {
   VERSION_B,
 } from './lib/mac-update-test.mjs'
 import { verifyCheckpoint } from './lib/mac-update-test.mjs'
+import { keychainEntryFor, resultLine } from './lib/upgrade-path.mjs'
 import {
   appUpdateProblems,
   feedFromArgs,
@@ -96,6 +98,7 @@ const summary = {
   sameCode: true,
   scriptedCopyIsFinderDrag: false,
   assertions: [],
+  knownLimits: [],
   launches: [],
   launchAttempts: [],
   quarantine: [],
@@ -280,7 +283,13 @@ async function connect(url) {
   channels.push(result)
   return result
 }
-async function launch(stage, port, version, marker) {
+async function launch(
+  stage,
+  port,
+  version,
+  marker,
+  { expectedConversations = stage === 'a' ? 0 : 2 } = {},
+) {
   const log = join(evidence, `${stage}.log`)
   await run('/usr/bin/open', [
     '-n',
@@ -371,7 +380,7 @@ async function launch(stage, port, version, marker) {
     'A recovery choice window remains open.',
   )
   requireEvidence(
-    info.db.providerSessionCount === (stage === 'a' ? 0 : 2),
+    info.db.providerSessionCount === expectedConversations,
     'Unexpected data folder or conversation count.',
   )
   const packaged = await bundleChecked(app, version, marker)
@@ -435,6 +444,81 @@ async function quit() {
   active = null
   passed('verified-child-quit', { pid: child.pid, signal: 'SIGTERM' })
 }
+/** On this fresh hosted runner, forget only this packaged app's sealing entry, never its password. */
+async function forgetHostedSealingEntry() {
+  const name = packageOfAsar(join(app, 'Contents', 'Resources', 'app.asar')).name
+  requireEvidence(
+    name === '@brobot2/desktop',
+    'Unexpected packaged app name for the sealing entry.',
+  )
+  const { service, account } = keychainEntryFor(name)
+  try {
+    await run('/usr/bin/security', ['delete-generic-password', '-s', service, '-a', account])
+  } catch (error) {
+    if (error.code !== 44)
+      throw new Error('The hosted app sealing entry could not be forgotten.', { cause: error })
+  }
+  try {
+    await run('/usr/bin/security', ['find-generic-password', '-s', service, '-a', account])
+  } catch (error) {
+    if (error.code !== 44)
+      throw new Error('The hosted sealing entry absence could not be verified.', { cause: error })
+    return
+  }
+  throw new Error('The hosted app sealing entry still exists.')
+}
+
+async function fixtureWithKeyRecovery(attempt, { getPage, setPage, stage, version, marker }) {
+  let copiesBeforeFresh
+  return withMacKeychainRecovery({
+    platform: process.platform,
+    attempt,
+    posts: () => model.requests.filter((one) => one.post).length,
+    keyStatus: () =>
+      getPage().evaluate(`const status = await window.api.runtime.apiKeyStatus({provider:'codex'})
+      return {providerMatches:status?.provider === 'codex',set:status?.set === true,inUse:status?.inUse === true,unreadable:status?.readState === 'unreadable'}`),
+    recordLimit: (sentence, status) => {
+      if (!summary.knownLimits.includes(sentence)) summary.knownLimits.push(sentence)
+      summary.fixture.recoveries ??= []
+      summary.fixture.recoveries.push({ stage, key: status })
+    },
+    stop: async () => {
+      copiesBeforeFresh = await checkpointIds()
+      const page = getPage()
+      await quit()
+      page.close()
+    },
+    forgetEntry: forgetHostedSealingEntry,
+    start: async () => {
+      const freshStage = `${stage}-fresh-key-${summary.fixture.recoveries.length}`
+      const expectedConversations =
+        stage === 'a'
+          ? new Set(summary.fixture.turns.map((one) => one.sessionId).filter(Boolean)).size
+          : 2
+      setPage(
+        await launch(freshStage, stage === 'a' ? 9339 : 9341, version, marker, {
+          expectedConversations,
+        }),
+      )
+      requireEvidence(
+        JSON.stringify(await checkpointIds()) === JSON.stringify(copiesBeforeFresh),
+        'A fresh-key restart made an extra recovery copy.',
+      )
+      recoveryOrder(await readFile(join(evidence, `${freshStage}.log`), 'utf8'), {
+        checkpoint: false,
+      })
+    },
+    save: async () => {
+      const facts = await saveRehearsalCodexKey(getPage(), {
+        record: (one) => {
+          summary.fixture.key = one
+        },
+      })
+      passed('fresh-build-fixture-key-saved-and-usable', facts)
+    },
+  })
+}
+
 function databaseSnapshot(file) {
   const db = new DatabaseSync(file, { readOnly: true })
   try {
@@ -638,18 +722,33 @@ try {
     const turn = { index, phase: 'creating-conversation', steps: [] }
     summary.fixture.turns.push(turn)
     let expected
-    const sessionId = await startLocalModelTurn(cdpA, `Fictional rehearsal ${index}: café ☕`, {
-      record: (phase, facts) => {
-        turn.phase = phase
-        turn.steps.push({ phase, ...facts })
-        if (phase === 'conversation-created') {
-          expected = model.nextResponseId()
-          turn.expectedResponseId = expected
-          passed('fixture-conversation-created', facts)
-        }
-        if (phase === 'turn-sent') passed('fixture-turn-sent', facts)
+    const sessionId = await fixtureWithKeyRecovery(
+      () =>
+        startLocalModelTurn(cdpA, `Fictional rehearsal ${index}: café ☕`, {
+          sessionId: turn.sessionId,
+          answerARefusal: true,
+          record: (phase, facts) => {
+            turn.phase = phase
+            turn.steps.push({ phase, ...facts })
+            if (phase === 'conversation-created' || phase === 'conversation-resumed') {
+              turn.sessionId = facts.sessionId
+              expected = model.nextResponseId()
+              turn.expectedResponseId = expected
+              passed('fixture-conversation-created', facts)
+            }
+            if (phase === 'turn-sent') passed('fixture-turn-sent', facts)
+          },
+        }),
+      {
+        getPage: () => cdpA,
+        setPage: (page) => {
+          cdpA = page
+        },
+        stage: 'a',
+        version: VERSION_A,
+        marker: values['marker-a'],
       },
-    })
+    )
     conversations.push(sessionId)
     turn.phase = 'awaiting-response'
     await waitFor(async () => {
@@ -903,7 +1002,7 @@ try {
   await quit()
   cdpB.close()
   const copiesAfterFirst = await checkpointIds()
-  const cdpSecond = await launch('b-second', 9341, VERSION_B, values['marker-b'])
+  let cdpSecond = await launch('b-second', 9341, VERSION_B, values['marker-b'])
   recoveryOrder(await readFile(join(evidence, 'b-second.log'), 'utf8'), { checkpoint: false })
   requireEvidence(
     JSON.stringify(await checkpointIds()) === JSON.stringify(copiesAfterFirst),
@@ -927,12 +1026,24 @@ try {
       read.checkAutomatically
     )
   }, 'B does not offer itself or change update settings')
-  await cdpSecond.evaluate(
-    `return await window.api.runtime.resume({sessionId:${JSON.stringify(conversations[0])}})`,
-  )
-  const resumedResponse = model.nextResponseId()
-  await cdpSecond.evaluate(
-    `return await window.api.runtime.send({sessionId:${JSON.stringify(conversations[0])},text:"Fictional turn after the guided update"})`,
+  let resumedResponse
+  await fixtureWithKeyRecovery(
+    () =>
+      startLocalModelTurn(cdpSecond, 'Fictional turn after the guided update', {
+        sessionId: conversations[0],
+        record: (phase) => {
+          if (phase === 'conversation-resumed') resumedResponse = model.nextResponseId()
+        },
+      }),
+    {
+      getPage: () => cdpSecond,
+      setPage: (page) => {
+        cdpSecond = page
+      },
+      stage: 'b',
+      version: VERSION_B,
+      marker: values['marker-b'],
+    },
   )
   await waitFor(
     () =>
@@ -1000,6 +1111,11 @@ try {
       await new Promise((done) => server.close(done))
     }
   await mkdir(evidence, { recursive: true })
+  summary.result = resultLine({
+    failures: summary.success ? [] : ['rehearsal failed'],
+    knownLimits: summary.knownLimits,
+  })
+  console.log(summary.result)
   await writeFile(join(evidence, 'summary.json'), JSON.stringify(summary, null, 2))
   if (summary.success !== true) process.exitCode = 1
 }

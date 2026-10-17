@@ -332,17 +332,84 @@ export function verifyCheckpoint(manifest, files, expected) {
   return { id: manifest.id, databaseSha256: manifest.database.sha256, files: manifest.files }
 }
 
-/** Start the fixture turn on the same configured local model as the Windows rehearsal. */
-export async function startLocalModelTurn(cdp, text, { record = () => {} } = {}) {
-  record('conversation-create-requested', { provider: 'codex', model: SCRIPTED_MODEL })
-  const sessionId = await aConversation(cdp)
-  record('conversation-created', { sessionId, provider: 'codex', model: SCRIPTED_MODEL })
+export const MAC_KEYCHAIN_REFUSAL =
+  'BroCrew can’t read the API key saved for Codex on this computer. macOS may be waiting for permission to read its saved key. Save it again under “API key” on the Codex card in Providers, or remove it there to use your sign-in instead.'
+
+/** Only the exact app refusal, optionally in Electron's fixed transport envelope, is this limit. */
+export function isMacKeychainRefusal(error) {
+  const refused = error?.refusal
+  return [
+    MAC_KEYCHAIN_REFUSAL,
+    `Error invoking remote method 'runtime:command': Error: ${MAC_KEYCHAIN_REFUSAL}`,
+  ].includes(refused?.said)
+}
+
+/** Forget only the hosted app's sealing entry, then let that build save its own fictional key. */
+export async function withMacKeychainRecovery({
+  platform,
+  attempt,
+  keyStatus,
+  posts,
+  stop,
+  forgetEntry,
+  start,
+  save,
+  recordLimit,
+}) {
+  const before = posts()
+  try {
+    return await attempt()
+  } catch (error) {
+    if (platform !== 'darwin' || !isMacKeychainRefusal(error) || posts() !== before) throw error
+    const status = await keyStatus()
+    if (!status?.providerMatches || !status.set || status.inUse || !status.unreadable) throw error
+    recordLimit(MAC_KEYCHAIN_REFUSAL, status)
+    await stop()
+    await forgetEntry()
+    await start()
+    await save()
+    // One recovery only: an unsuccessful retry remains a failed rehearsal.
+    return await attempt()
+  }
+}
+
+/** Start or resume the fixture turn on the configured local model, preserving plain refusals. */
+export async function startLocalModelTurn(
+  cdp,
+  text,
+  { record = () => {}, sessionId: existing, answerARefusal = false } = {},
+) {
+  let sessionId = existing
+  if (sessionId === undefined) {
+    record('conversation-create-requested', { provider: 'codex', model: SCRIPTED_MODEL })
+    sessionId = await aConversation(cdp, { answerARefusal })
+    record('conversation-created', { sessionId, provider: 'codex', model: SCRIPTED_MODEL })
+  } else {
+    record('conversation-resume-requested', { sessionId })
+    await fixtureCommand(
+      cdp,
+      `return await window.api.runtime.resume({sessionId:${JSON.stringify(sessionId)}})`,
+    )
+    record('conversation-resumed', { sessionId })
+  }
   record('turn-send-requested', { sessionId })
-  await cdp.evaluate(
+  await fixtureCommand(
+    cdp,
     `return await window.api.runtime.send({sessionId:${JSON.stringify(sessionId)},text:${JSON.stringify(text)}})`,
   )
   record('turn-sent', { sessionId })
   return sessionId
+}
+
+async function fixtureCommand(cdp, body) {
+  const result = await cdp.evaluate(`try { ${body}; } catch(error) {
+    return {fixtureRefused:true,said:typeof error?.message === 'string' ? error.message : String(error)}
+  }`)
+  if (result?.fixtureRefused) {
+    const error = new Error('The fixture resume or message was refused.')
+    error.refusal = { said: result.said }
+    throw error
+  }
 }
 
 /** A timeout receipt keeps event kinds and states, never message bodies or credentials. */
