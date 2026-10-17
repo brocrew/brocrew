@@ -125,7 +125,7 @@ describe('the Themes section', () => {
   })
 
   it('a preview shows its own theme, not the one the window wears', async () => {
-    applyTheme({ format: 1, id: 'win95', name: 'W', frame: { paper: '#c0c0c0' } })
+    applyTheme({ format: 1, id: 'retro-desktop', name: 'W', frame: { paper: '#c0c0c0' } })
     const m = mount(ThemesSection, { themes: fakeBridge('classic') }, { width: 900 })
     await settle()
     const rail = (id: string) =>

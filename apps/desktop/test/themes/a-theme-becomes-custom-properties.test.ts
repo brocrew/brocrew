@@ -26,8 +26,8 @@ describe('a theme becomes one block of custom properties', () => {
     expect(themeCss(sample('valentine'))).toMatchSnapshot()
   })
 
-  it('Windows 95', () => {
-    expect(themeCss(sample('win95'))).toMatchSnapshot()
+  it('Retro Desktop', () => {
+    expect(themeCss(sample('retro-desktop'))).toMatchSnapshot()
   })
 
   it('declares on its own root, with hand-tuned content colours in the light zone only', () => {
@@ -208,15 +208,15 @@ describe('a background never becomes a shorthand', () => {
 })
 
 describe('keyword settings become attributes on the root', () => {
-  it('Windows 95 sets its controls and scrollbars, E-ink its pictures and motion', () => {
-    expect(themeAttributes(sample('win95'))).toEqual({
+  it('Retro Desktop sets its controls and scrollbars, Paper its pictures and motion', () => {
+    expect(themeAttributes(sample('retro-desktop'))).toEqual({
       'data-shadow-style': 'hard',
       'data-controls': 'bevel',
       'data-scrollbar': 'bevel',
       // Its cards have an ink, so every text inside them takes it.
       'data-card-ink': '',
     })
-    expect(themeAttributes(sample('eink'))).toEqual({
+    expect(themeAttributes(sample('paper'))).toEqual({
       'data-pictures': 'grey',
       'data-motion': 'none',
     })

@@ -392,11 +392,11 @@ export const SAMPLES: Record<string, Sample> = {
       'assets/heart.png': samples('#c2185b', '#ff4d7d'),
     },
   },
-  win95: {
+  'retro-desktop': {
     file: {
       format: 1,
-      id: 'win95',
-      name: 'Windows 95',
+      id: 'retro-desktop',
+      name: 'Retro Desktop',
       extends: 'defined',
       localOnly: true,
       status: { waiting: '#553500', success: '#024a33', danger: '#7a1824', auto: '#663000' },
@@ -442,11 +442,11 @@ export const SAMPLES: Record<string, Sample> = {
     assets: { 'assets/flag.png': png(256, 224) },
     pictures: { 'assets/flag.png': samples('#000000', '#ffffff') },
   },
-  eink: {
+  paper: {
     file: {
       format: 1,
-      id: 'e-ink',
-      name: 'E-ink',
+      id: 'paper',
+      name: 'Paper',
       extends: 'defined',
       status: { waiting: '#553500', success: '#024a33', danger: '#7a1824', auto: '#663000' },
       frame: { ink: '#111111', paper: '#f3f1ec', accent: '#111111' },
@@ -559,11 +559,11 @@ export const SAMPLES: Record<string, Sample> = {
       'assets/crew.png': samples('#14173a', '#ff8a5c'),
     },
   },
-  dbz: {
+  'green-sky': {
     file: {
       format: 1,
-      id: 'dbz',
-      name: 'Dragon Ball Z',
+      id: 'green-sky',
+      name: 'Green Sky',
       extends: 'defined',
       status: { waiting: '#3d2600', success: '#013324', danger: '#5c0f18', auto: '#4a2300' },
       localOnly: true,
@@ -573,7 +573,7 @@ export const SAMPLES: Record<string, Sample> = {
         display: { font: ['Avenir Next'], weight: 800, style: 'italic' },
         brand: { font: ['Impact', 'Avenir Next Condensed'] },
       },
-      window: { background: { layers: [{ image: 'assets/namek.png', size: 'cover' }] } },
+      window: { background: { layers: [{ image: 'assets/sky.png', size: 'cover' }] } },
       titlebar: { background: '#4a1a08', ink: '#ffffff', inkGlow: 'rgb(120 40 0 / 50%)' },
       rail: { background: 'rgb(18 34 96 / 88%)', glass: { blur: 10, saturate: 1.2 } },
       conversation: { background: 'rgb(246 255 240 / 88%)', glass: { blur: 7, saturate: 1.2 } },
@@ -581,7 +581,7 @@ export const SAMPLES: Record<string, Sample> = {
         {
           type: 'float',
           zone: 'conversation',
-          image: 'assets/balls.png',
+          image: 'assets/orbs.png',
           anchor: 'top-right',
           x: 40,
           y: 40,
@@ -602,8 +602,8 @@ export const SAMPLES: Record<string, Sample> = {
         },
       },
     },
-    assets: { 'assets/namek.png': png(2400, 1350, 3_500_000), 'assets/balls.png': png(440, 300) },
-    pictures: { 'assets/namek.png': samples('#1f3d2a', '#d8f0c8') },
+    assets: { 'assets/sky.png': png(2400, 1350, 3_500_000), 'assets/orbs.png': png(440, 300) },
+    pictures: { 'assets/sky.png': samples('#1f3d2a', '#d8f0c8') },
   },
   zen: {
     file: {

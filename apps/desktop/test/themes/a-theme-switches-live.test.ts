@@ -59,20 +59,20 @@ function sample(name: string): Theme {
 describe('a theme goes on, switches and comes off without a reload', () => {
   it('puts its stylesheet in one style element and names it on the root', () => {
     const { doc, root, head } = fakeDocument()
-    expect(applyTheme(sample('win95'), { doc })).toEqual({ ok: true, id: 'win95' })
+    expect(applyTheme(sample('retro-desktop'), { doc })).toEqual({ ok: true, id: 'retro-desktop' })
     expect(head.children.map((c) => c.id)).toEqual([THEME_STYLE_ID])
-    expect(head.children[0]!.textContent).toMatch(/^:root\[data-theme='win95'\] \{/)
-    expect(root.getAttribute('data-theme')).toBe('win95')
+    expect(head.children[0]!.textContent).toMatch(/^:root\[data-theme='retro-desktop'\] \{/)
+    expect(root.getAttribute('data-theme')).toBe('retro-desktop')
     expect(root.getAttribute('data-controls')).toBe('bevel')
   })
 
   it('switching replaces the stylesheet and clears the last theme’s attributes', () => {
     const { doc, root, head } = fakeDocument()
-    applyTheme(sample('win95'), { doc })
-    applyTheme(sample('eink'), { doc })
+    applyTheme(sample('retro-desktop'), { doc })
+    applyTheme(sample('paper'), { doc })
     expect(head.children).toHaveLength(1)
-    expect(head.children[0]!.textContent).toMatch(/^:root\[data-theme='e-ink'\] \{/)
-    expect(root.getAttribute('data-theme')).toBe('e-ink')
+    expect(head.children[0]!.textContent).toMatch(/^:root\[data-theme='paper'\] \{/)
+    expect(root.getAttribute('data-theme')).toBe('paper')
     expect(root.getAttribute('data-controls')).toBeNull()
     expect(root.getAttribute('data-scrollbar')).toBeNull()
     expect(root.getAttribute('data-pictures')).toBe('grey')
@@ -80,7 +80,7 @@ describe('a theme goes on, switches and comes off without a reload', () => {
 
   it('null takes the theme off: the app’s own look comes back', () => {
     const { doc, root, head } = fakeDocument()
-    applyTheme(sample('win95'), { doc })
+    applyTheme(sample('retro-desktop'), { doc })
     expect(applyTheme(null, { doc })).toEqual({ ok: true, id: null })
     expect(head.children).toHaveLength(0)
     expect([...root.attributes.keys()]).toEqual([])

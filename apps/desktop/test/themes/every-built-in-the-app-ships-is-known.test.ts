@@ -21,15 +21,12 @@ const LISTED = SHIPPED.filter((id) => !HIDDEN_BASES.includes(id))
 const KNOWN_NOT_SHIPPED = [
   'beach',
   'cartoon',
-  'dbz',
-  'e-ink',
+  'paper',
   'kids',
   'luxury',
-  'mario',
   'notebook',
   'sober',
   'valentine',
-  'win95',
   'zen',
 ]
 

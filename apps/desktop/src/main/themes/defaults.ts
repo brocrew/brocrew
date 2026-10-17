@@ -15,12 +15,9 @@ export const BUILT_IN_THEME_IDS = [
   'luxury',
   'beach',
   'valentine',
-  'win95',
-  'e-ink',
+  'paper',
   'notebook',
-  'dbz',
   'zen',
-  'mario',
 ] as const
 /**
  * Built-ins the app ships only as a base a saved theme may extend: not listed, and not chosen.

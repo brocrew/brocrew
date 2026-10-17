@@ -108,7 +108,7 @@ describe('the window takes its theme before it draws, and follows every change',
     const [first, second] = [b.pending.shift()!, b.pending.shift()!]
     second(reading(sample('zen')))
     await settle()
-    first(reading(sample('win95')))
+    first(reading(sample('retro-desktop')))
     await settle()
     expect(page.attributes.get('data-theme')).toBe('zen')
   })
@@ -131,14 +131,14 @@ describe('the window takes its theme before it draws, and follows every change',
     b.change({ active: 'zen', previous: 'classic' })
     b.pending.shift()!(reading(sample('zen')))
     await settle()
-    b.change({ active: 'win95', previous: 'zen', actor: 'Research' })
-    b.pending.shift()!(reading(sample('win95')))
+    b.change({ active: 'retro-desktop', previous: 'zen', actor: 'Research' })
+    b.pending.shift()!(reading(sample('retro-desktop')))
     await settle()
     expect(told.map((c) => [c.actor, c.previous, c.active])).toEqual([
       [undefined, 'classic', 'zen'],
-      ['Research', 'zen', 'win95'],
+      ['Research', 'zen', 'retro-desktop'],
     ])
-    expect(page.attributes.get('data-theme')).toBe('win95')
+    expect(page.attributes.get('data-theme')).toBe('retro-desktop')
   })
 
   it('an agent’s change whose read a person’s change overtook is never reported', async () => {
@@ -148,12 +148,12 @@ describe('the window takes its theme before it draws, and follows every change',
     startWindowTheme(b.themes, { doc: page.doc, onChange: (c) => told.push(c) })
     b.pending.shift()!(reading(null))
     await settle()
-    b.change({ active: 'win95', previous: 'classic', actor: 'Research' })
+    b.change({ active: 'retro-desktop', previous: 'classic', actor: 'Research' })
     const agents = b.pending.shift()!
-    b.change({ active: 'zen', previous: 'win95' })
+    b.change({ active: 'zen', previous: 'retro-desktop' })
     b.pending.shift()!(reading(sample('zen')))
     await settle()
-    agents(reading(sample('win95')))
+    agents(reading(sample('retro-desktop')))
     await settle()
     expect(told.map((c) => [c.actor, c.active])).toEqual([[undefined, 'zen']])
     expect(page.attributes.get('data-theme')).toBe('zen')
@@ -167,9 +167,9 @@ describe('the window takes its theme before it draws, and follows every change',
     b.pending.shift()!(reading(sample('zen')))
     await settle()
     b.failNext()
-    b.change({ active: 'win95', previous: 'zen', actor: 'Research' })
+    b.change({ active: 'retro-desktop', previous: 'zen', actor: 'Research' })
     await settle()
-    b.change({ active: 'win95', previous: 'zen', actor: 'Research' })
+    b.change({ active: 'retro-desktop', previous: 'zen', actor: 'Research' })
     b.pending.shift()!({ outcome: 'refused', rail: 'theme-unknown', problems: [] })
     await settle()
     expect(told).toEqual([])
@@ -182,10 +182,16 @@ describe('the window takes its theme before it draws, and follows every change',
     startWindowTheme(b.themes, { doc: page.doc, onChange: (c) => told.push(c) })
     b.pending.shift()!(reading(null))
     const rows = [
-      { id: 'win95', name: 'W', source: 'built-in' as const, status: 'ok' as const, version: 'v2' },
+      {
+        id: 'retro-desktop',
+        name: 'W',
+        source: 'built-in' as const,
+        status: 'ok' as const,
+        version: 'v2',
+      },
     ]
-    b.change({ active: 'win95', previous: 'classic', actor: 'Research', themes: rows })
-    b.pending.shift()!(reading(sample('win95')))
+    b.change({ active: 'retro-desktop', previous: 'classic', actor: 'Research', themes: rows })
+    b.pending.shift()!(reading(sample('retro-desktop')))
     await settle()
     expect(told).toEqual([])
   })
@@ -196,10 +202,10 @@ describe('the window takes its theme before it draws, and follows every change',
     const heard: string[] = []
     const stop = onThemesChanged((c) => heard.push(c.active))
     b.change({ active: 'zen' })
-    b.change({ active: 'win95' })
+    b.change({ active: 'retro-desktop' })
     stop()
     b.change({ active: 'classic' })
-    expect(heard).toEqual(['zen', 'win95'])
+    expect(heard).toEqual(['zen', 'retro-desktop'])
     expect(b.listeners).toHaveLength(1)
     followed.stop()
   })
@@ -223,7 +229,7 @@ describe('the window takes its theme before it draws, and follows every change',
     void followed.ready.then(() => (ready = true))
     b.change({ active: 'zen' })
     const [first, second] = [b.pending.shift()!, b.pending.shift()!]
-    first(reading(sample('win95')))
+    first(reading(sample('retro-desktop')))
     await settle()
     expect(ready).toBe(false)
     expect(page.attributes.has('data-theme')).toBe(false)

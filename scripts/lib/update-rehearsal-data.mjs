@@ -62,8 +62,14 @@ async function send(cdp, id, text) {
 
 /** A Codex conversation, started through the window's bridge. */
 export async function aConversation(cdp, { answerARefusal = false } = {}) {
+  const options = {
+    provider: 'codex',
+    model: SCRIPTED_MODEL,
+    approvalMode: 'auto',
+    ...(answerARefusal ? { answerARefusal: true } : {}),
+  }
   const created = await cdp.evaluate(
-    `return await window.api.runtime.createSession({ provider: 'codex', model: ${JSON.stringify(SCRIPTED_MODEL)}, approvalMode: 'auto'${answerARefusal ? ', answerARefusal: true' : ''} }).catch((e) => ${answerARefusal ? "({refused:{said:typeof e?.message === 'string' ? e.message : String(e)}})" : "'ERROR: ' + String(e)"})`,
+    `return await window.api.runtime.createSession(${JSON.stringify(options)}).catch((e) => ${JSON.stringify(answerARefusal)} ? ({refused:{said:typeof e?.message === 'string' ? e.message : String(e)}}) : 'ERROR: ' + String(e))`,
   )
   if (answerARefusal && created?.refused) {
     const error = new Error('The fixture conversation was refused.')

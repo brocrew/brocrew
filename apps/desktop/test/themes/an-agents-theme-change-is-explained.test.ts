@@ -6,11 +6,11 @@ import { themeChangeNotices } from '../../src/renderer/src/lib/theme-change-noti
 const rows: ThemeRow[] = [
   { id: 'classic', name: 'Classic', source: 'built-in', status: 'ok' },
   { id: 'zen', name: 'Zen', source: 'built-in', status: 'ok' },
-  { id: 'win95', name: 'Windows 95', source: 'built-in', status: 'ok' },
+  { id: 'retro-desktop', name: 'Retro Desktop', source: 'built-in', status: 'ok' },
 ]
 const change = (over: Partial<ThemeChanged>): ThemeChanged => ({
-  active: 'win95',
-  requested: 'win95',
+  active: 'retro-desktop',
+  requested: 'retro-desktop',
   themes: rows,
   previous: 'zen',
   actor: 'Research',
@@ -25,7 +25,7 @@ describe('an agent’s theme change is explained, with no button', () => {
     expect(overlays.toasts.value).toEqual([])
     notice(change({}))
     expect(overlays.toasts.value).toEqual([
-      { id: expect.any(Number), text: 'Research changed the theme to Windows 95.' },
+      { id: expect.any(Number), text: 'Research changed the theme to Retro Desktop.' },
     ])
   })
 
@@ -33,10 +33,10 @@ describe('an agent’s theme change is explained, with no button', () => {
     const overlays = createOverlayStore(() => undefined)
     const notice = themeChangeNotices(overlays)
     notice(change({}))
-    notice(change({ active: 'zen', previous: 'win95', actor: undefined }))
+    notice(change({ active: 'zen', previous: 'retro-desktop', actor: undefined }))
     expect(overlays.toasts.value).toEqual([])
     notice(change({}))
-    notice(change({ active: 'classic', previous: 'win95', actor: 'Design' }))
+    notice(change({ active: 'classic', previous: 'retro-desktop', actor: 'Design' }))
     expect(overlays.toasts.value.map((t) => t.text)).toEqual([
       'Design changed the theme to Classic.',
     ])
