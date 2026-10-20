@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
-import { closeSync, openSync, readSync } from 'node:fs'
-import { basename, join, resolve } from 'node:path'
+import { closeSync, lstatSync, openSync, readSync } from 'node:fs'
+import { basename, dirname, join, resolve } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import { readUpdateFile } from '../release-check.mjs'
 import {
@@ -12,6 +12,7 @@ import { SANDBOX_FEED, STATE_FILES, VERSION_A, VERSION_B } from './update-rehear
 import { rehearsalStateKept } from './update-rehearsal-state.mjs'
 import { aConversation } from './update-rehearsal-data.mjs'
 import { SCRIPTED_MODEL } from './update-rehearsal-app.mjs'
+import { readStateEntry, SKILL_TREE_NAMES, skillTreeStateDigest } from './skill-tree-state.mjs'
 
 export const FEED_URL = 'http://127.0.0.1:47123/'
 export { STATE_FILES, VERSION_A, VERSION_B }
@@ -20,6 +21,20 @@ export { CHECKPOINT_LINE, FAIL_LINE, READY_LINE }
 /** Packaged launches keep their list apart from development launches' workspaces.json. */
 export function packagedRegistryFile(dataRoot) {
   return join(dataRoot, 'packaged-workspaces.json')
+}
+
+/** Guided downloads can choose a numbered name when Downloads already holds the feed's name. */
+export function downloadedImagePath(state, downloads) {
+  requireEvidence(
+    state?.kind === 'ready' &&
+      state.how === 'opened' &&
+      typeof state.path === 'string' &&
+      state.path === resolve(state.path) &&
+      dirname(state.path) === resolve(downloads) &&
+      state.path.endsWith('.dmg'),
+    'The app did not report a downloaded disk image in Downloads.',
+  )
+  return state.path
 }
 
 export function requireEvidence(condition, message) {
@@ -160,6 +175,35 @@ export function statePreserved(before, after) {
   }
 }
 
+/** Plain files stay byte-for-byte; trees carry sorted paths, file hashes and executable bits. */
+export function stateBytes(folder) {
+  const state = {}
+  for (const name of STATE_FILES) {
+    const path = join(folder, name)
+    try {
+      lstatSync(path)
+    } catch (error) {
+      if (error.code === 'ENOENT') continue
+      throw error
+    }
+    // Do not turn broken links or a disappearing nested file into an absent state entry.
+    state[name] = readStateEntry(path)
+  }
+  return state
+}
+
+export function stateDigest(name, bytes) {
+  return SKILL_TREE_NAMES.includes(name)
+    ? skillTreeStateDigest(bytes)
+    : { bytes: bytes.length, sha256: hash(bytes) }
+}
+
+export function stateSummary(state) {
+  return Object.fromEntries(
+    Object.entries(state).map(([name, bytes]) => [name, stateDigest(name, bytes)]),
+  )
+}
+
 export function registryPreserved(before, after, reopenedPath) {
   const valid = (book) => {
     requireEvidence(
@@ -295,8 +339,10 @@ export function verifyCheckpoint(manifest, files, expected) {
   requireEvidence(manifest.database?.file === 'database.sqlite', 'Wrong checkpoint database path.')
   const checked = (name, entry) => {
     const bytes = files[name]
+    requireEvidence(Buffer.isBuffer(bytes), `Checkpoint state is missing: ${name}.`)
+    const digest = stateDigest(name, bytes)
     requireEvidence(
-      Buffer.isBuffer(bytes) && bytes.length === entry.bytes && hash(bytes) === entry.sha256,
+      digest.bytes === entry.bytes && digest.sha256 === entry.sha256,
       `Checkpoint bytes or SHA-256 differ for ${name}.`,
     )
   }
@@ -328,7 +374,10 @@ export function verifyCheckpoint(manifest, files, expected) {
       `Checkpoint presence differs for ${file.name}.`,
     )
     if (file.present)
-      requireEvidence(hash(baseline) === file.sha256, `Checkpoint did not preserve ${file.name}.`)
+      requireEvidence(
+        Buffer.isBuffer(baseline) && baseline.equals(files[file.name]),
+        `Checkpoint did not preserve ${file.name}.`,
+      )
   }
   requireEvidence(
     files['drafts.json'] && files['workspace.json'],

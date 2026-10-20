@@ -12,6 +12,7 @@ import {
   assertOwnedProcess,
   dataPreserved,
   diskImageFrom,
+  downloadedImagePath,
   FEED_URL,
   hash,
   mountedImageOf,
@@ -25,9 +26,10 @@ import {
   startLocalModelTurn,
   localModelTurnFacts,
   withMacKeychainRecovery,
+  stateBytes,
+  stateSummary,
   READY_LINE,
   FAIL_LINE,
-  STATE_FILES,
   VERSION_A,
   VERSION_B,
 } from './lib/mac-update-test.mjs'
@@ -545,12 +547,6 @@ function databaseSnapshot(file) {
     db.close()
   }
 }
-async function stateBytes() {
-  const result = {}
-  for (const name of STATE_FILES)
-    if (await exists(join(data, name))) result[name] = await readFile(join(data, name))
-  return result
-}
 async function nativeFiles(folder) {
   const files = {}
   if (!(await exists(folder))) return files
@@ -600,7 +596,7 @@ async function checkNativePrefixes(natives) {
 async function checkRetention(before, state, natives, settingsBefore, registryBefore) {
   const after = databaseSnapshot(join(data, 'brobot2.sqlite'))
   const comparison = dataPreserved(before, after)
-  statePreserved(state, await stateBytes())
+  statePreserved(state, stateBytes(data))
   registryPreserved(registryBefore, JSON.parse(await readFile(registry, 'utf8')), data)
   requireEvidence(
     hash(await readFile(settings)) === hash(settingsBefore),
@@ -818,7 +814,7 @@ try {
   })
   await writeFile(registry, JSON.stringify(registryFixture, null, 2))
   const beforeButtons = databaseSnapshot(join(data, 'brobot2.sqlite'))
-  const stateBeforeButtons = await stateBytes()
+  const stateBeforeButtons = stateBytes(data)
   requireEvidence(
     stateBeforeButtons['provider-usage.json'] !== undefined,
     'A settling quit did not preserve provider usage state.',
@@ -835,12 +831,7 @@ try {
     JSON.stringify(
       {
         database: beforeButtons,
-        state: Object.fromEntries(
-          Object.entries(stateBeforeButtons).map(([name, bytes]) => [
-            name,
-            { bytes: bytes.length, sha256: hash(bytes) },
-          ]),
-        ),
+        state: stateSummary(stateBeforeButtons),
         native: nativeBeforeButtons,
         registry: registryFixture,
       },
@@ -895,7 +886,10 @@ try {
     'guided Download completes',
     600_000,
   )
-  const image = join(downloads, published.url)
+  const image = downloadedImagePath(
+    (await cdpA.evaluate('return await window.api.updates.read()')).state,
+    downloads,
+  )
   requireEvidence(
     (await realpath(image)) === image &&
       (await lstat(image)).size === published.size &&
@@ -933,7 +927,7 @@ try {
   await quit()
   cdpA.close()
   const before = databaseSnapshot(join(data, 'brobot2.sqlite')),
-    state = await stateBytes()
+    state = stateBytes(data)
   const natives = await nativeFiles(nativeRoot),
     settingsBefore = await readFile(settings)
   const registryBefore = JSON.parse(await readFile(registry, 'utf8'))
@@ -954,12 +948,7 @@ try {
     JSON.stringify(
       {
         database: before,
-        state: Object.fromEntries(
-          Object.entries(state).map(([name, bytes]) => [
-            name,
-            { bytes: bytes.length, sha256: hash(bytes) },
-          ]),
-        ),
+        state: stateSummary(state),
         natives,
         registry: registryBefore,
       },
@@ -980,9 +969,10 @@ try {
   requireEvidence(added.length === 1, 'B must make exactly one new checked recovery copy.')
   const checkpoint = join(data, 'backups', added[0]),
     manifest = JSON.parse(await readFile(join(checkpoint, 'manifest.json'), 'utf8'))
-  const files = { 'database.sqlite': await readFile(join(checkpoint, 'database.sqlite')) }
-  for (const name of STATE_FILES)
-    if (await exists(join(checkpoint, name))) files[name] = await readFile(join(checkpoint, name))
+  const files = {
+    ...stateBytes(checkpoint),
+    'database.sqlite': await readFile(join(checkpoint, 'database.sqlite')),
+  }
   const checked = verifyCheckpoint(manifest, files, {
     id: added[0],
     workspaceId: (await readFile(join(data, 'backups', 'workspace-id'), 'utf8')).trim(),

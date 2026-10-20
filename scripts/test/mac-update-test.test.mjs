@@ -1,6 +1,17 @@
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  chmodSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -10,6 +21,7 @@ import {
   assertOwnedProcess,
   dataPreserved,
   diskImageFrom,
+  downloadedImagePath,
   hash,
   mountedImageOf,
   nativeTranscriptsPresent,
@@ -23,12 +35,15 @@ import {
   isMacKeychainRefusal,
   withMacKeychainRecovery,
   localModelTurnFacts,
+  stateBytes,
+  stateSummary,
   verifyCheckpoint,
   CHECKPOINT_LINE,
   READY_LINE,
   STATE_FILES,
 } from '../lib/mac-update-test.mjs'
 import { rememberWorkspace, workspaceListFile } from '../../apps/desktop/src/main/workspaces.ts'
+import { readSkillTree } from '../../apps/desktop/src/main/recovery/trees.ts'
 
 import { SCRIPTED_MODEL, codexConfigFor } from '../lib/update-rehearsal-app.mjs'
 
@@ -95,6 +110,21 @@ test('mount evidence names the actual downloaded image rather than another volum
   })
   assert.throws(() => mountedImageOf({ images: [own, own] }, image))
   assert.throws(() => mountedImageOf({ images: [{ ...own, 'system-entities': [] }] }, image))
+})
+
+test('checks the actual opened download path, including collision-safe numbered names', () => {
+  const downloads = resolve('fictional-downloads')
+  const ready = { kind: 'ready', how: 'opened', path: join(downloads, 'BroCrew (1).dmg') }
+  assert.equal(downloadedImagePath(ready, downloads), ready.path)
+  for (const state of [
+    { ...ready, kind: 'available' },
+    { ...ready, how: 'restart' },
+    { ...ready, path: null },
+    { ...ready, path: join(downloads, 'nested', 'BroCrew.dmg') },
+    { ...ready, path: join(downloads, '..', 'BroCrew.dmg') },
+    { ...ready, path: join(downloads, 'BroCrew.zip') },
+  ])
+    assert.throws(() => downloadedImagePath(state, downloads))
 })
 
 test('never signals a reused PID, changed command, hidden launch or unrelated app', () => {
@@ -182,6 +212,133 @@ test('keeps both present and absent workspace state files', () => {
   assert.throws(() => statePreserved(before, {}))
   assert.throws(() => statePreserved(before, { ...before, 'workspaces.json': Buffer.from('{}') }))
   assert.throws(() => statePreserved(before, { 'drafts.json': Buffer.from('changed') }))
+})
+
+function skillFixture(folder) {
+  mkdirSync(join(folder, 'skills', 'café', 'empty'), { recursive: true })
+  mkdirSync(join(folder, 'skills', 'café', 'scripts'))
+  mkdirSync(join(folder, 'skills-off', 'retained'), { recursive: true })
+  writeFileSync(join(folder, 'skills', 'café', 'SKILL.md'), 'Fictional café ☕')
+  writeFileSync(join(folder, 'skills', 'café', 'scripts', 'run.sh'), '#!/bin/sh\nexit 0\n')
+  chmodSync(join(folder, 'skills', 'café', 'scripts', 'run.sh'), 0o700)
+  writeFileSync(join(folder, 'skills-off', 'retained', 'data.bin'), Buffer.from([0, 255, 1]))
+  writeFileSync(join(folder, 'drafts.json'), '{"drafts":[]}')
+}
+
+test('captures both skill trees by content and detects edits, removals, additions and moves', () => {
+  const root = mkdtempSync(join(tmpdir(), 'mac-state-trees-'))
+  try {
+    const original = join(root, 'original')
+    skillFixture(original)
+    const before = stateBytes(original)
+    const listing = JSON.parse(before.skills).entries
+    assert.deepEqual(
+      listing.map((one) => one.path),
+      ['café', 'café/SKILL.md', 'café/empty', 'café/scripts', 'café/scripts/run.sh'],
+    )
+    if (process.platform !== 'win32')
+      assert.equal(listing.find((one) => one.path.endsWith('run.sh')).executable, true)
+    assert.equal(before['skills-conversion.json'], undefined)
+    const copy = join(root, 'copy')
+    cpSync(original, copy, { recursive: true })
+    assert.doesNotThrow(() => statePreserved(before, stateBytes(copy)))
+    // Recreating a file changes filesystem identity, but leaves the same sorted content evidence.
+    const doc = join(copy, 'skills', 'café', 'SKILL.md')
+    rmSync(doc)
+    writeFileSync(doc, 'Fictional café ☕')
+    statePreserved(before, stateBytes(copy))
+    const mutations = [
+      () => writeFileSync(doc, 'Changed fictional skill'),
+      () => rmSync(join(copy, 'skills-off', 'retained', 'data.bin')),
+      () => writeFileSync(join(copy, 'skills', 'café', 'new'), 'new supporting file'),
+      () =>
+        renameSync(join(copy, 'skills', 'café', 'empty'), join(copy, 'skills', 'café', 'moved')),
+      () => rmSync(join(copy, 'skills'), { recursive: true }),
+    ]
+    if (process.platform !== 'win32')
+      mutations.push(() => chmodSync(join(copy, 'skills', 'café', 'scripts', 'run.sh'), 0o600))
+    for (const mutate of mutations) {
+      rmSync(copy, { recursive: true })
+      cpSync(original, copy, { recursive: true })
+      mutate()
+      assert.throws(() => statePreserved(before, stateBytes(copy)))
+    }
+    rmSync(join(original, 'skills-off'), { recursive: true })
+    mkdirSync(join(original, 'skills-off'))
+    const empty = stateBytes(original)
+    assert.deepEqual(JSON.parse(empty['skills-off']).entries, [])
+    rmSync(join(original, 'skills-off'), { recursive: true })
+    assert.throws(() => statePreserved(empty, stateBytes(original)))
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('refuses state symlinks, including broken links, at the root and inside trees', () => {
+  const root = mkdtempSync(join(tmpdir(), 'mac-state-links-'))
+  try {
+    skillFixture(root)
+    for (const [path, type] of [
+      [join(root, 'skills', 'café', 'linked'), 'dir'],
+      [join(root, 'skills-off'), 'dir'],
+      [join(root, 'drafts.json'), 'file'],
+    ]) {
+      rmSync(path, { recursive: true, force: true })
+      symlinkSync(join(root, 'missing-target'), path, type)
+      assert.throws(() => stateBytes(root), /link/)
+      rmSync(path)
+    }
+    writeFileSync(join(root, 'skills-off'), 'A tree replaced by a file')
+    assert.throws(() => stateBytes(root), /folder/)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('Mac evidence and recovery verification use the recovery writer tree digest', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'mac-checkpoint-trees-'))
+  try {
+    skillFixture(root)
+    const state = stateBytes(root)
+    const { manifest, files, expected } = checkpoint()
+    // Obtain manifest values from the production reader, independently of the harness helper.
+    for (const name of ['skills', 'skills-off']) {
+      const { bytes, sha256 } = await readSkillTree(join(root, name))
+      Object.assign(
+        manifest.files.find((one) => one.name === name),
+        { present: true, bytes, sha256 },
+      )
+      assert.deepEqual(stateSummary(state)[name], { bytes, sha256 })
+      files[name] = state[name]
+      expected.state[name] = state[name]
+    }
+    assert.doesNotThrow(() => verifyCheckpoint(manifest, files, expected))
+    for (const name of ['skills', 'skills-off']) {
+      assert.throws(() => verifyCheckpoint(manifest, { ...files, [name]: undefined }, expected))
+      const changed = structuredClone(manifest)
+      changed.files.find((one) => one.name === name).bytes++
+      assert.throws(() => verifyCheckpoint(changed, files, expected))
+    }
+    writeFileSync(join(root, 'skills-off', 'retained', 'data.bin'), Buffer.from([0, 254, 1]))
+    const damaged = stateBytes(root)
+    assert.throws(() =>
+      verifyCheckpoint(manifest, { ...files, 'skills-off': damaged['skills-off'] }, expected),
+    )
+    const now = await readSkillTree(join(root, 'skills-off'))
+    Object.assign(
+      manifest.files.find((one) => one.name === 'skills-off'),
+      {
+        bytes: now.bytes,
+        sha256: now.sha256,
+      },
+    )
+    // A self-consistent copy of the wrong tree must still fail against A's baseline.
+    assert.throws(() =>
+      verifyCheckpoint(manifest, { ...files, 'skills-off': damaged['skills-off'] }, expected),
+    )
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
 })
 
 test('requires the native log of each recorded conversation rather than unrelated JSONL fixtures', () => {
