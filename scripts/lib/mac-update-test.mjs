@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { closeSync, openSync, readSync } from 'node:fs'
-import { basename, resolve } from 'node:path'
+import { basename, join, resolve } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import { readUpdateFile } from '../release-check.mjs'
 import {
@@ -16,6 +16,11 @@ import { SCRIPTED_MODEL } from './update-rehearsal-app.mjs'
 export const FEED_URL = 'http://127.0.0.1:47123/'
 export { STATE_FILES, VERSION_A, VERSION_B }
 export { CHECKPOINT_LINE, FAIL_LINE, READY_LINE }
+
+/** Packaged launches keep their list apart from development launches' workspaces.json. */
+export function packagedRegistryFile(dataRoot) {
+  return join(dataRoot, 'packaged-workspaces.json')
+}
 
 export function requireEvidence(condition, message) {
   if (!condition) throw new Error(message)

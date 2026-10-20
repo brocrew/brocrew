@@ -1,6 +1,6 @@
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -14,6 +14,7 @@ import {
   mountedImageOf,
   nativeTranscriptsPresent,
   packageOfAsar,
+  packagedRegistryFile,
   recoveryOrder,
   registryPreserved,
   statePreserved,
@@ -27,6 +28,7 @@ import {
   READY_LINE,
   STATE_FILES,
 } from '../lib/mac-update-test.mjs'
+import { rememberWorkspace, workspaceListFile } from '../../apps/desktop/src/main/workspaces.ts'
 
 import { SCRIPTED_MODEL, codexConfigFor } from '../lib/update-rehearsal-app.mjs'
 
@@ -209,6 +211,24 @@ test('requires the native log of each recorded conversation rather than unrelate
   assert.throws(() =>
     nativeTranscriptsPresent(snapshot, { ...files, 'other/rollout-native-first.jsonl': {} }),
   )
+})
+
+test('reads the registry a normal packaged launch writes on a fresh Mac', () => {
+  const appData = mkdtempSync(join(tmpdir(), 'fictional-mac-registry-'))
+  try {
+    const dataRoot = join(appData, '@brobot2')
+    const userData = join(dataRoot, 'desktop')
+    const appRegistry = workspaceListFile({ appData, userData, hidden: false, packaged: true })
+    rememberWorkspace(appRegistry, userData, 10)
+    const rehearsalRegistry = packagedRegistryFile(dataRoot)
+    assert.equal(rehearsalRegistry, appRegistry)
+    assert.equal(existsSync(join(dataRoot, 'workspaces.json')), false)
+    const before = JSON.parse(readFileSync(rehearsalRegistry, 'utf8'))
+    rememberWorkspace(appRegistry, userData, 11)
+    registryPreserved(before, JSON.parse(readFileSync(rehearsalRegistry, 'utf8')), userData)
+  } finally {
+    rmSync(appData, { recursive: true, force: true })
+  }
 })
 
 test('keeps normal-launch registry rows and unknown fields allowing only the current opening time', () => {

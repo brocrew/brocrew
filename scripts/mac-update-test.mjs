@@ -16,6 +16,7 @@ import {
   hash,
   mountedImageOf,
   packageOfAsar,
+  packagedRegistryFile,
   nativeTranscriptsPresent,
   recoveryOrder,
   registryPreserved,
@@ -86,7 +87,7 @@ const app = '/Applications/BroCrew.app',
   dataRoot = join(homedir(), 'Library', 'Application Support', '@brobot2')
 const data = join(dataRoot, 'desktop')
 const settings = join(dataRoot, 'settings.json')
-const registry = join(dataRoot, 'workspaces.json')
+const registry = packagedRegistryFile(dataRoot)
 const codexHome = join(data, 'provider-homes', 'default', 'brobot', 'codex')
 const nativeRoot = join(codexHome, 'sessions')
 const downloads = join(homedir(), 'Downloads')
@@ -617,7 +618,8 @@ try {
     !(await exists(app)) &&
       !(await exists(data)) &&
       !(await exists(settings)) &&
-      !(await exists(registry)),
+      !(await exists(registry)) &&
+      !(await exists(join(dataRoot, 'workspaces.json'))),
     'Runner already has BroCrew or its data; refusing installation.',
   )
   await mkdir(evidence, { recursive: true })
