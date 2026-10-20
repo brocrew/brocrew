@@ -23,7 +23,9 @@ const PACKAGES_FROM = [
  */
 export function isLeftOutside(id: string): boolean {
   const absolute = posix.isAbsolute(id) || win32.isAbsolute(id)
-  return !id.startsWith('.') && !absolute && !id.startsWith('@brobot2/')
+  // Rollup can pass a workspace-relative entry before Vite has resolved it to an absolute path.
+  const workspaceFile = /^(?:apps|packages)\//.test(id.replaceAll('\\', '/'))
+  return !id.startsWith('.') && !absolute && !workspaceFile && !id.startsWith('@brobot2/')
 }
 
 /**

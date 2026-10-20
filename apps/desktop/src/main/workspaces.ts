@@ -1,3 +1,4 @@
+import { PACKAGED_WORKSPACE_LIST } from './workspace-routing'
 import {
   existsSync,
   mkdirSync,
@@ -24,15 +25,9 @@ import { PROVIDER_HOMES_DIRNAME } from './runtime/provider-homes'
 import { insideBySpelling, samePath } from './same-folder'
 
 /**
- * 🔴 **W4.131 · A2 — the workspaces a person has opened, and opening another.**
- *
- * Use the default folder or the launch's own `--user-data-dir`, and carry that same folder through restarts. {@link rememberWorkspace} records it for the chooser; startup does not read the list to choose or wait on other listed folders. An unavailable network share therefore cannot block this launch.
- *
- * ⚑ **The list lives beside every workspace, never in one**: `<appData>/@brobot2/workspaces.json`,
- * paths and when each was last opened. ⚑ **A workspace's name lives in its folder**
- * (`workspace.json`, `data-folder.ts`), so it moves with it and the list never disagrees with it.
- * ⚑ A hidden launch — every test, smoke and probe — keeps a list of its own, in its own folder, and
- * never adds itself to anything.
+ * Packaged and development builds keep separate lists beside their workspaces. Hidden copies
+ * keep a private list. Explicit restarts keep their folder; a packaged Finder launch can reopen
+ * its last workspace without inspecting other workspace contents.
  */
 
 /** One workspace in the list file. */
@@ -46,10 +41,15 @@ export function workspaceListFile(where: {
   readonly appData: string
   readonly userData: string
   readonly hidden: boolean
+  readonly packaged?: boolean
 }): string {
   return where.hidden
     ? join(where.userData, 'workspaces.json')
-    : join(where.appData, DATA_FOLDER[0], 'workspaces.json')
+    : join(
+        where.appData,
+        DATA_FOLDER[0],
+        where.packaged ? PACKAGED_WORKSPACE_LIST : 'workspaces.json',
+      )
 }
 
 /** The newest list format this build writes; a newer one is left as it is. */
@@ -192,6 +192,7 @@ export function forgetWorkspace(file: string, path: string, now: number): void {
  * (`NESTED_USERDATA_SIGNS`), and a test holds the two lists in step.
  */
 export const BROBOT_FOLDER_SIGNS = Object.freeze([
+  'skills-conversion.json',
   'brobot2.sqlite',
   'brobot2.sqlite-wal',
   'brobot2.sqlite-shm',
@@ -392,6 +393,11 @@ export async function makeWorkspaceFolder(
   }
   nameWorkspace(folder, name)
   return unlimited
+}
+
+/** Only the explicit create action may give a configured workspace its first database. */
+export function createFirstWorkspaceDatabase(folder: string): void {
+  writeFileSync(join(folder, 'brobot2.sqlite'), '', { flag: 'wx', mode: 0o600 })
 }
 
 /** Keep `name` as the workspace's own, in its folder (`workspace.json`). */

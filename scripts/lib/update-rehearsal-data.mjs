@@ -28,6 +28,7 @@ import {
   until,
 } from './update-rehearsal-app.mjs'
 import { STATE_FILES } from './update-rehearsal.mjs'
+import { readStateEntry, SKILL_TREE_NAMES, skillTreeStateDigest } from './skill-tree-state.mjs'
 import { rehearsalStateKept } from './update-rehearsal-state.mjs'
 
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex')
@@ -256,7 +257,7 @@ export function dataOf(folder) {
   const state = {}
   for (const name of STATE_FILES) {
     const path = join(folder, name)
-    state[name] = existsSync(path) ? readFileSync(path) : null
+    state[name] = existsSync(path) ? readStateEntry(path) : null
   }
   return {
     tables,
@@ -275,7 +276,11 @@ export function dataOf(folder) {
       state: Object.fromEntries(
         Object.entries(state).map(([name, bytes]) => [
           name,
-          bytes === null ? null : { bytes: bytes.length, sha256: sha256(bytes) },
+          bytes === null
+            ? null
+            : SKILL_TREE_NAMES.includes(name)
+              ? skillTreeStateDigest(bytes)
+              : { bytes: bytes.length, sha256: sha256(bytes) },
         ]),
       ),
     },
@@ -531,8 +536,11 @@ export function verifyCheckpoint(copy) {
       problems.push(`${file.name} is missing`)
       continue
     }
-    const bytes = readFileSync(path)
-    if (bytes.length !== file.bytes || sha256(bytes) !== file.sha256)
+    const bytes = readStateEntry(path)
+    const digest = SKILL_TREE_NAMES.includes(file.name)
+      ? skillTreeStateDigest(bytes)
+      : { bytes: bytes.length, sha256: sha256(bytes) }
+    if (digest.bytes !== file.bytes || digest.sha256 !== file.sha256)
       problems.push(`${file.name} is not as its manifest says`)
   }
   return {
@@ -598,7 +606,7 @@ export function copyHoldsTheData(copy, data) {
   ]
   for (const name of STATE_FILES) {
     const path = join(copy.dir, name)
-    const copied = existsSync(path) ? readFileSync(path) : null
+    const copied = existsSync(path) ? readStateEntry(path) : null
     const left = data.state[name] ?? null
     if (copied === null ? left !== null : left === null || !copied.equals(left)) {
       problems.push(`${name} in the copy is not the one that was left`)

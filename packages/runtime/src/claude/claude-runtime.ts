@@ -1,6 +1,11 @@
+import type { ManagedPluginMcpServer } from '../managed-plugin-mcp'
 import { managedTranscriptSettings } from './app-transcript-retention'
 import { randomUUID } from 'node:crypto'
-import { claudeBuiltInSkillOptions, verifyClaudeBuiltInSkills } from '../built-in-skills'
+import {
+  BUILT_IN_SKILLS_FAILURE,
+  claudeBuiltInSkillOptions,
+  verifyClaudeBuiltInSkills,
+} from '../built-in-skills'
 import { closeSync, existsSync, openSync, readdirSync, readSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
@@ -929,6 +934,8 @@ function promptGuardHooks(
 
 /** The subset of the SDK `Query` this adapter drives — kept minimal so tests can inject a fake. */
 export interface ClaudeQuery extends AsyncIterable<SDKMessage> {
+  setMcpServers?(servers: NonNullable<Options['mcpServers']>): Promise<unknown>
+  reloadPlugins?(): Promise<unknown>
   interrupt(): Promise<unknown>
   /**
    * Detach the SDK transport: after `close()` no further messages arrive (teardown).
@@ -1701,6 +1708,29 @@ export class ClaudeSessionHandle implements SessionHandle {
     this.cardWithdrawn,
   )
 
+  private pluginRefresh?: (
+    servers: readonly ManagedPluginMcpServer[],
+  ) => NonNullable<Options['mcpServers']>
+  configurePluginRefresh(build: NonNullable<ClaudeSessionHandle['pluginRefresh']>): void {
+    this.pluginRefresh = build
+  }
+  async refreshManagedPlugins(servers: readonly ManagedPluginMcpServer[]): Promise<void> {
+    try {
+      if (!this.query?.setMcpServers || !this.pluginRefresh)
+        throw new Error('Plugin unavailable. Try again.')
+      const result = await this.query.setMcpServers(this.pluginRefresh(servers))
+      if (
+        result &&
+        typeof result === 'object' &&
+        'errors' in result &&
+        result.errors &&
+        Object.keys(result.errors).length
+      )
+        throw new Error('Plugin unavailable. Try again.')
+    } catch {
+      throw new Error('Plugin unavailable. Try again.')
+    }
+  }
   private query: ClaudeQuery | null = null
   /** Who the CLI said this session is signed in as ({@link account}); `undefined` until it has. */
   private accountSaid: SessionAccount | null | undefined = undefined
@@ -1742,10 +1772,23 @@ export class ClaudeSessionHandle implements SessionHandle {
    * here — ⚑ **save the one after a `conversation_reset`, which is read for the ref and nothing else**
    * (`721` · R75, {@link resetPending}). See the gate in `runLoop` and {@link validateInitRef}.
    */
+  private sharedSkillsRoot?: string
+  noteSharedSkills(root: string | undefined): void {
+    this.sharedSkillsRoot = root
+  }
+  private withSharedSkills(folders: readonly string[]): readonly string[] {
+    return this.sharedSkillsRoot ? [...new Set([...folders, this.sharedSkillsRoot])] : folders
+  }
   private builtInSkills?: BuiltInSkillsContext
+  private skillCatalogueConfirmed = false
 
   noteBuiltInSkills(context: BuiltInSkillsContext | undefined): void {
     this.builtInSkills = context
+    this.skillCatalogueConfirmed = false
+  }
+
+  builtInSkillsConfirmed(): boolean {
+    return this.skillCatalogueConfirmed
   }
 
   private initRead = false
@@ -1888,7 +1931,7 @@ export class ClaudeSessionHandle implements SessionHandle {
    */
   launchFlagSettings(providerHome: string, kept: KeptRuleLists): Settings {
     this.keptRules = kept
-    return flagSettingsFor(providerHome, kept, this.folders.effective)
+    return flagSettingsFor(providerHome, kept, this.withSharedSkills(this.folders.effective))
   }
 
   /**
@@ -2985,7 +3028,11 @@ export class ClaudeSessionHandle implements SessionHandle {
         // model field happened to be empty is the silent half of `an-unenumerated-state-counts-as-
         // success`. This arm's only condition is that the frame IS an init.
         if (message.type === 'system' && message.subtype === 'init') {
-          if (this.builtInSkills) verifyClaudeBuiltInSkills(message, this.builtInSkills)
+          this.skillCatalogueConfirmed = false
+          if (this.builtInSkills) {
+            verifyClaudeBuiltInSkills(message, this.builtInSkills)
+            this.skillCatalogueConfirmed = true
+          }
           this.publishToolInventory(message)
         }
         const candidate = claudeSessionRef(message, this.cwd, this.rotation)
@@ -3499,7 +3546,13 @@ export class ClaudeSessionHandle implements SessionHandle {
   }
 
   private async applyPendingSettings(): Promise<void> {
+    const turnId = this.machine.activeTurnId
     try {
+      if (this.sharedSkillsRoot) {
+        if (!this.query?.reloadPlugins) throw new Error(BUILT_IN_SKILLS_FAILURE)
+        await withDeadline(this.query.reloadPlugins(), 10_000, 'reloadPlugins')
+      }
+
       if (this.models.pending) {
         // `setModel(undefined)` is the SDK's own way to say "back to the default" — its signature is
         // `setModel(model?: string)` and the doc reads "or undefined to use the default". So handing
@@ -3549,7 +3602,9 @@ export class ClaudeSessionHandle implements SessionHandle {
           // is no lower settings layer for it to fall back to, so clearing IS the launch state. `{}`
           // would leave a key the launch never wrote.
           await this.settled(
-            this.query.applyFlagSettings({ permissions: flagPermissionsOf(this.keptRules, next) }),
+            this.query.applyFlagSettings({
+              permissions: flagPermissionsOf(this.keptRules, this.withSharedSkills(next)),
+            }),
             'applyFlagSettings',
           )
         }
@@ -3575,9 +3630,10 @@ export class ClaudeSessionHandle implements SessionHandle {
       // `completeTurn` had that debt absorb this very failure — leaving the turn open forever, which
       // is the "session bricked by its own error path" the comment above is about.
       // ⚑ Before the push: the message never left this app (F080 — a burst it joined runs on).
-      this.machine.failTurn(`could not apply the queued settings: ${errorMessage(error)}`, {
-        neverSent: true,
-      })
+      if (this.machine.activeTurnId === turnId)
+        this.machine.failTurn(`could not apply the queued settings: ${errorMessage(error)}`, {
+          neverSent: true,
+        })
       throw error
     }
   }
@@ -5261,8 +5317,11 @@ export class ClaudeRuntime implements AgentRuntime {
       auth,
       kept,
       opts.builtInSkills,
+      opts.sharedSkillsRoot,
+      opts.managedPluginMcp,
     )
     handle.noteBuiltInSkills(opts.builtInSkills)
+    handle.noteSharedSkills(opts.sharedSkillsRoot)
     // **`ultracode`, and it is set HERE rather than inside `optionsFor` on purpose** (106).
     //
     // ⚠️ `optionsFor` is shared with `resume`, which spreads its result — so a line added there
@@ -5702,8 +5761,11 @@ export class ClaudeRuntime implements AgentRuntime {
         auth,
         kept,
         options.builtInSkills,
+        options.sharedSkillsRoot,
+        options.managedPluginMcp,
       )
       handle.noteBuiltInSkills(options.builtInSkills)
+      handle.noteSharedSkills(options.sharedSkillsRoot)
       // One witness per launch, taken from the options this launch was built with, so an API key
       // filed against them reaches this spawn's descriptor ({@link launchKeys}).
       child = this.spawnWitness(built)
@@ -5780,8 +5842,11 @@ export class ClaudeRuntime implements AgentRuntime {
     /** The kept rules, already read the launch's way ({@link keptRulesForALaunch}). */
     kept: KeptRuleLists = {},
     builtInSkills?: BuiltInSkillsContext,
+    sharedSkillsRoot?: string,
+    managedPluginMcp?: readonly ManagedPluginMcpServer[],
     // ⚑ `settings` is always the OBJECT form here, said in the type so `start` can merge onto it.
   ): Omit<Options, 'settings'> & { settings: Settings } {
+    handle.noteSharedSkills(sharedSkillsRoot)
     // The cwd and the home used to arrive as two loose parameters and now arrive as one object
     // (071) — the same one the guard hook derives its plan and memory allowances from, so nothing
     // can build a query with a working directory the hook has not seen.
@@ -5799,7 +5864,10 @@ export class ClaudeRuntime implements AgentRuntime {
     // instance, so calling it in both halves of a conditional spread would construct two servers and
     // hand the child the second while the first sat unreferenced — a leak that a `typeof` check
     // would have hidden completely, because both objects are perfectly valid.
-    const mcpServers = claudeMcpServersFor(agentTools, externalMcp?.servers ?? [])
+    const mcpServers = claudeMcpServersFor(agentTools, externalMcp?.servers ?? [], managedPluginMcp)
+    handle.configurePluginRefresh(
+      (next) => claudeMcpServersFor(agentTools, externalMcp?.servers ?? [], next) ?? {},
+    )
     // ⛔ **The same argument, read a second time and for the surface** (358). `353` proved the
     // ordinary path really does put these five into the child's inventory and that a launch without
     // them puts in none — but a declaration that is made and does not arrive is exactly what the
@@ -5884,7 +5952,7 @@ export class ClaudeRuntime implements AgentRuntime {
       // ISOLATION IS ORTHOGONAL TO APPROVALS (078): `settingSources: []` and the app-owned home stay
       // in BOTH modes. Yolo drops prompting; it does not un-isolate the profile or leak auth.
       settingSources: [],
-      ...(builtInSkills ? claudeBuiltInSkillOptions(builtInSkills) : {}),
+      ...(builtInSkills ? claudeBuiltInSkillOptions(builtInSkills, sharedSkillsRoot) : {}),
       // ⚠️ INSTALLED IN EVERY QUERY, in every mode (050). This line used to read
       // `...(autoApprove ? {} : { hooks: … })`, and omitting the guard is what made `auto → ask` a
       // change of disclosure rather than a change of policy: with the guard gone AND

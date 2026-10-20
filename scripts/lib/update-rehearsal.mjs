@@ -22,6 +22,9 @@ export const LANES = ['windows-default', 'windows-another', 'macos']
  * a test holds the two lists equal.
  */
 export const STATE_FILES = [
+  'skills',
+  'skills-off',
+  'skills-conversion.json',
   'transcript-retention.json',
   'active-theme.json',
   'dock-label.json',

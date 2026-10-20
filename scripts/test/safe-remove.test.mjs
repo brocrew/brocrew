@@ -12,8 +12,8 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { join, parse } from 'node:path'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   descend,
   forbiddenRoots,
@@ -33,6 +33,7 @@ import {
  */
 const roots = []
 afterEach(() => {
+  vi.restoreAllMocks()
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
 })
 
@@ -281,31 +282,37 @@ describe('the two rules that only a seam makes testable', () => {
    * comment that no mutation could turn red, which is the same as not having it (`351`'s reading of
    * the unkillable-line class).
    */
-  it('⛔ refuses a path owned by somebody else, and accepts the same path owned by us', () => {
-    const root = fixture()
-    const userData = join(root, 'ud')
-    mkdirSync(join(userData, 'brobot-workspace'), { recursive: true })
-    const mine = process.getuid()
+  it.skipIf(process.platform === 'win32')(
+    '⛔ refuses a path owned by somebody else, and accepts the same path owned by us',
+    () => {
+      const root = fixture()
+      const userData = join(root, 'ud')
+      mkdirSync(join(userData, 'brobot-workspace'), { recursive: true })
+      const mine = process.getuid()
 
-    const theirs = mayRemove(anchorAt(userData), 'brobot-workspace', {
-      expect: 'dir',
-      uid: mine + 1,
-    })
-    expect(theirs.kind).toBe('refused')
-    expect(theirs.why).toContain(`not by uid ${String(mine + 1)}`)
+      const theirs = mayRemove(anchorAt(userData), 'brobot-workspace', {
+        expect: 'dir',
+        uid: mine + 1,
+      })
+      expect(theirs.kind).toBe('refused')
+      expect(theirs.why).toContain(`not by uid ${String(mine + 1)}`)
 
-    expect(
-      mayRemove(anchorAt(userData), 'brobot-workspace', { expect: 'dir', uid: mine }).kind,
-    ).toBe('ok')
-    expect(existsSync(join(userData, 'brobot-workspace'))).toBe(true)
-  })
+      expect(
+        mayRemove(anchorAt(userData), 'brobot-workspace', { expect: 'dir', uid: mine }).kind,
+      ).toBe('ok')
+      expect(existsSync(join(userData, 'brobot-workspace'))).toBe(true)
+    },
+  )
 
-  it('⛔ an anchor owned by somebody else is refused before anything under it is walked', () => {
-    const root = fixture()
-    const anchor = trustedAnchor(root, elsewhere({ uid: process.getuid() + 1 }))
-    expect(anchor.kind).toBe('refused')
-    expect(anchor.why).toContain('is owned by uid')
-  })
+  it.skipIf(process.platform === 'win32')(
+    '⛔ an anchor owned by somebody else is refused before anything under it is walked',
+    () => {
+      const root = fixture()
+      const anchor = trustedAnchor(root, elsewhere({ uid: process.getuid() + 1 }))
+      expect(anchor.kind).toBe('refused')
+      expect(anchor.why).toContain('is owned by uid')
+    },
+  )
 
   it('⛔ a removal must NAME what it expects to find — there is no default kind', () => {
     const root = fixture()
@@ -374,7 +381,9 @@ describe('the anchor, which is the one directory everything else is proved again
   })
 
   it('⛔ refuses the filesystem root', () => {
-    expect(trustedAnchor('/').why).toContain('filesystem root')
+    const verdict = trustedAnchor(parse(tmpdir()).root)
+    expect(verdict.kind).toBe('refused')
+    expect(verdict.why).toContain(process.platform === 'win32' ? 'contains' : 'filesystem root')
   })
 
   it('⛔ refuses the checkout it is running from', () => {
@@ -422,21 +431,22 @@ describe('the anchor, which is the one directory everything else is proved again
 })
 
 describe('the roots a reset must never be pointed at', () => {
+  const home = join(parse(tmpdir()).root, 'home', 'someone')
+  const codex = join(home, '.codex')
+  const claude = join(home, '.claude')
+  const redirectedCodex = join(parse(tmpdir()).root, 'elsewhere', 'codex')
+  const redirectedClaude = join(parse(tmpdir()).root, 'elsewhere', 'claude')
+  const repo = join(parse(tmpdir()).root, 'repo')
   it('⚑ says for EACH root whether being INSIDE it is also forbidden', () => {
     const named = forbiddenRoots({
-      home: '/home/someone',
-      env: { CODEX_HOME: '/elsewhere/codex' },
-      repoRoot: '/repo',
+      home,
+      env: { CODEX_HOME: redirectedCodex },
+      repoRoot: repo,
     })
     // ⛔ The home directory is the one exception, and it is load-bearing: the userData this reset
     // empties lives inside `$HOME`. A blanket rule would refuse every ordinary run.
-    expect(named.find((r) => r.path === '/home/someone').inside).toBe(false)
-    for (const path of [
-      '/home/someone/.codex',
-      '/home/someone/.claude',
-      '/elsewhere/codex',
-      '/repo',
-    ]) {
+    expect(named.find((r) => r.path === home).inside).toBe(false)
+    for (const path of [codex, claude, redirectedCodex, repo]) {
       expect(
         named.find((r) => r.path === path).inside,
         `${path} should forbid being inside it`,
@@ -446,32 +456,26 @@ describe('the roots a reset must never be pointed at', () => {
 
   it('names the home directory, both conventional provider homes, and any redirect', () => {
     const named = forbiddenRoots({
-      home: '/home/someone',
-      env: { CODEX_HOME: '/elsewhere/codex', CLAUDE_CONFIG_DIR: '/elsewhere/claude' },
-      repoRoot: '/repo',
+      home,
+      env: { CODEX_HOME: redirectedCodex, CLAUDE_CONFIG_DIR: redirectedClaude },
+      repoRoot: repo,
     }).map((root) => root.path)
-    expect(named).toEqual([
-      '/home/someone',
-      '/home/someone/.codex',
-      '/home/someone/.claude',
-      '/elsewhere/codex',
-      '/elsewhere/claude',
-      '/repo',
-    ])
+    expect(named).toEqual([home, codex, claude, redirectedCodex, redirectedClaude, repo])
   })
 
   it('⚠️ an EMPTY redirect is not a redirect — it must not add the empty string as a root', () => {
     const named = forbiddenRoots({
-      home: '/home/someone',
+      home,
       env: { CODEX_HOME: '', CLAUDE_CONFIG_DIR: '   ' },
     }).map((root) => root.path)
-    expect(named).toEqual(['/home/someone', '/home/someone/.codex', '/home/someone/.claude'])
+    expect(named).toEqual([home, codex, claude])
   })
 
   it('⛔ `isAncestor` appends the separator, so a sibling with a longer name is not inside', () => {
-    expect(isAncestor('/a/b', '/a/b/c')).toBe(true)
-    expect(isAncestor('/a/b', '/a/b-evil/c')).toBe(false)
-    expect(isAncestor('/a/b', '/a/b')).toBe(false)
+    const parent = join(parse(tmpdir()).root, 'a', 'b')
+    expect(isAncestor(parent, join(parent, 'c'))).toBe(true)
+    expect(isAncestor(parent, join(parse(tmpdir()).root, 'a', 'b-evil', 'c'))).toBe(false)
+    expect(isAncestor(parent, parent)).toBe(false)
   })
 
   it('🔒 this machine really has a home directory, so the guard above is not vacuous', () => {
@@ -549,25 +553,51 @@ describe('🔴 the two containment directions the first draft did not have', () 
     expect(anchor.kind, anchor.why ?? '').toBe('trusted')
   })
 
-  it('⛔ a forbidden root that could not be RESOLVED refuses the run, rather than being skipped', () => {
+  // chmod cannot make a directory unreadable to its owner on Windows.
+  it.skipIf(process.platform === 'win32')(
+    '⛔ a forbidden root that could not be RESOLVED refuses the run, rather than being skipped',
+    () => {
+      const root = fixture()
+      const home = join(root, 'home')
+      const locked = join(home, 'locked')
+      mkdirSync(join(locked, '.codex'), { recursive: true })
+      const userData = join(root, 'ud')
+      mkdirSync(userData, { recursive: true })
+      chmodSync(locked, 0o000)
+      try {
+        const anchor = trustedAnchor(userData, {
+          home,
+          cwd: root,
+          env: { CODEX_HOME: join(locked, '.codex') },
+        })
+        expect(anchor.kind).toBe('refused')
+        expect(anchor.why).toContain('could not be resolved')
+      } finally {
+        chmodSync(locked, 0o700)
+      }
+    },
+  )
+
+  it('⛔ a forbidden root whose read fails is refused on every platform', () => {
     const root = fixture()
     const home = join(root, 'home')
-    const locked = join(home, 'locked')
-    mkdirSync(join(locked, '.codex'), { recursive: true })
+    const codex = join(home, 'private', '.codex')
     const userData = join(root, 'ud')
-    mkdirSync(userData, { recursive: true })
-    chmodSync(locked, 0o000)
-    try {
-      const anchor = trustedAnchor(userData, {
-        home,
-        cwd: root,
-        env: { CODEX_HOME: join(locked, '.codex') },
-      })
-      expect(anchor.kind).toBe('refused')
-      expect(anchor.why).toContain('could not be resolved')
-    } finally {
-      chmodSync(locked, 0o700)
-    }
+    mkdirSync(codex, { recursive: true })
+    mkdirSync(userData)
+    const actual = realpathSync.native
+    vi.spyOn(realpathSync, 'native').mockImplementation((path) => {
+      if (path === codex) throw Object.assign(new Error('unreadable fixture'), { code: 'EACCES' })
+      return actual(path)
+    })
+    const answer = trustedAnchor(userData, {
+      home,
+      cwd: root,
+      env: { CODEX_HOME: codex },
+    })
+    expect(answer.kind).toBe('refused')
+    expect(answer.why).toContain('could not be resolved')
+    expect(existsSync(userData)).toBe(true)
   })
 })
 

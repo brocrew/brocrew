@@ -72,15 +72,25 @@ describe('resolveAssetRequest — serves an image, and only an image (067)', () 
     expect(asset?.path).toContain('exec-1.png')
   })
 
-  it('round-trips a path with spaces, `#`, `?` and a `/`-looking escape', () => {
-    // Default macOS paths include the space in “Application Support”. Encode the entire path
-    // as one URL segment so filenames cannot restructure it; otherwise images fail to load on
-    // default installs.
-    const path = image('a b#c?d.png')
+  it('round-trips a path with spaces and `#`', () => {
+    const path = image('a b#c.png')
     const url = assetUrl(path)
     expect(url).not.toContain(' ')
-    expect(resolveAssetRequest(url)?.path).toContain('a b#c?d.png')
+    expect(resolveAssetRequest(url)?.path).toContain('a b#c.png')
   })
+
+  it.skipIf(process.platform === 'win32')(
+    'round-trips a path with `?` and a `/`-looking escape',
+    () => {
+      // Default macOS paths include the space in “Application Support”. Encode the entire path
+      // as one URL segment so filenames cannot restructure it; otherwise images fail to load on
+      // default installs.
+      const path = image('a b#c?d.png')
+      const url = assetUrl(path)
+      expect(url).not.toContain(' ')
+      expect(resolveAssetRequest(url)?.path).toContain('a b#c?d.png')
+    },
+  ) // Windows forbids '?' in filenames; the space and # round-trip above still runs.
 
   it('🔴 372 · a case alias of an image is served under the file’s OWN spelling', () => {
     // ⚑ **The half of 372 that R92 left standing** (`726`'s review). The path this door answers with

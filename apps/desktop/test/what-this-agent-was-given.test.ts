@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
@@ -272,7 +272,7 @@ describe('F093 · what an agent was given', () => {
     expect(given.thisConversation?.text).toContain(
       'This folder persists: files you leave here are still here in later conversations.',
     )
-    expect(given.memory.map((one) => one.path.split('/').at(-1))).toContain('MEMORY.md')
+    expect(given.memory.map((one) => basename(one.path))).toContain('MEMORY.md')
     expect(JSON.stringify(given.memory)).not.toContain('one line per change')
     expect(given.tools.count).toBe(agentToolsFor(host, lead).tools.length)
 
@@ -946,7 +946,7 @@ describe('F093 · what an agent was given', () => {
     expect(claude?.nextOffset).toBe(20)
     const second = host.agentMemoryPage('lead', 20, 20)
     const rest = second.stores.find((one) => one.provider === 'claude')
-    expect(rest?.entries.map((one) => one.path.split('/').at(-1))).toEqual([
+    expect(rest?.entries.map((one) => basename(one.path))).toEqual([
       'topic-20.md',
       'topic-21.md',
       'topic-22.md',

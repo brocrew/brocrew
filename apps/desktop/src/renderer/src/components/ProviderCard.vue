@@ -1417,7 +1417,7 @@ watch(
 .standing.ready {
   background: var(--success-bg);
   border-color: var(--success-border);
-  color: var(--success);
+  color: var(--success-text);
 }
 .standing.not-ready {
   background: var(--waiting-bg);

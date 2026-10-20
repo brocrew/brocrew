@@ -67,3 +67,59 @@ describe('the text pack kept on a launch', () => {
     expect(aLaunchRecordIn({ placement: 'first-message', textPack })?.textPack).toBeUndefined()
   })
 })
+
+it('keeps an explicitly empty installed view instead of inventing defaults', () => {
+  const empty = { version: 'v23', reminder: '', listed: [], catalogueRevision: 4, versions: [] }
+  expect(
+    aLaunchRecordIn({ placement: 'first-message', builtInSkills: empty })?.builtInSkills,
+  ).toEqual(empty)
+})
+it('keeps more than eight version pins and refuses a mismatched pin or an overfull record', () => {
+  const listed = Array.from({ length: 12 }, (_, index) => ({
+    name: `personal-recipe-${index}`,
+    description: 'A fictional recipe.',
+    descriptionMayBeCut: false as const,
+    path: `/fictional/skills/personal-recipe-${index}/SKILL.md`,
+    scope: null,
+  }))
+  const versions = listed.map((one) => ({
+    id: `person/${one.name}`,
+    versionId: `person/${one.name}@v1`,
+    version: 'v1',
+    alias: one.name,
+    sourceSha256: 'a'.repeat(64),
+    sha256: 'b'.repeat(64),
+    bytes: 128,
+    requirement: null,
+  }))
+  const offered = {
+    version: 'v23',
+    reminder: 'A fictional installed reminder.',
+    listed,
+    versions,
+    catalogueRevision: 5,
+  }
+  expect(
+    aLaunchRecordIn({ placement: 'first-message', builtInSkills: offered })?.builtInSkills,
+  ).toEqual(offered)
+  expect(
+    aLaunchRecordIn({
+      placement: 'first-message',
+      builtInSkills: {
+        ...offered,
+        versions: [{ ...versions[0], alias: 'wrong' }, ...versions.slice(1)],
+      },
+    })?.builtInSkills,
+  ).toBeUndefined()
+  const many = Array.from({ length: 65 }, (_, index) => ({
+    ...listed[0],
+    name: `recipe-${index}`,
+    path: `/fictional/skills/recipe-${index}/SKILL.md`,
+  }))
+  expect(
+    aLaunchRecordIn({
+      placement: 'first-message',
+      builtInSkills: { ...offered, versions: undefined, listed: many },
+    })?.builtInSkills,
+  ).toBeUndefined()
+})

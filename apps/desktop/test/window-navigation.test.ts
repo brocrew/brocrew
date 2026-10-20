@@ -99,8 +99,8 @@ describe('the packaged app permits exactly one document', () => {
     for (const candidate of [
       INDEX_URL.replace('file://', 'file://localhost'),
       INDEX_URL.replace('file://', 'file://LOCALHOST'),
-      // Four slashes: `pathname` keeps a leading `//`, which `normalize` collapses. Same file.
-      INDEX_URL.replace('file:///', 'file:////'),
+      // On POSIX, four slashes normalize to this file. On Windows they spell a different UNC-like URL.
+      ...(process.platform === 'win32' ? [] : [INDEX_URL.replace('file:///', 'file:////')]),
     ]) {
       expect(permitsNavigation(PACKAGED, candidate), candidate).toBe(true)
     }
@@ -751,7 +751,10 @@ describe('D-032 · nothing in the window makes a blob URL or a frame but the fil
   const rendererSources = (): Map<string, string> => {
     const sources = new Map<string, string>()
     const look = (file: string): void =>
-      void sources.set(file.slice(join(HERE, '..').length + 1), readFileSync(file, 'utf8'))
+      void sources.set(
+        relative(join(HERE, '..'), file).replaceAll('\\', '/'),
+        readFileSync(file, 'utf8'),
+      )
     const walk = (dir: string): void => {
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
         const child = join(dir, entry.name)

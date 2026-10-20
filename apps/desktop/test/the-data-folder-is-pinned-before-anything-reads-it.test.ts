@@ -144,6 +144,7 @@ function firstStatementAfterImports(source: string): string {
       continue
     }
     const end = rest.indexOf('\n')
+    if (rest.startsWith('try {\n')) return rest.slice(0, rest.indexOf('\n', end + 1))
     return end === -1 ? rest : rest.slice(0, end)
   }
 }
@@ -169,7 +170,10 @@ function takesElectronsApp(source: string): boolean {
 
 describe('§2 · nothing reads the folder before the pin', () => {
   it('🔴 the pin is the first thing index.ts does once its imports are in', () => {
-    expect(firstStatementAfterImports(indexSource())).toBe('pinTheDataFolder(app)')
+    expect(firstStatementAfterImports(indexSource())).toBe('try {\n  pinTheDataFolder(app)')
+    expect(indexSource()).toMatch(
+      /try \{\n {2}pinTheDataFolder\(app\)\n {2}workspaceStartup\(app\)\?\.assertDatabase\(\)\n\} catch/,
+    )
     // ⚑ One fact over: the same reading sees a module-scope read put in front of it.
     const early = [
       "import { app } from 'electron'",

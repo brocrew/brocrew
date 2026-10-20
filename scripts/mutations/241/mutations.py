@@ -61,7 +61,7 @@ GATE = "apps/desktop/src/main/one-host-gate.ts"
 CHECK = "scripts/window-opens-check.mjs"
 PKG = "package.json"
 
-REGISTER = "protocol.registerSchemesAsPrivileged([ASSET_SCHEME_PRIVILEGES])"
+REGISTER = "protocol.registerSchemesAsPrivileged([\n  ASSET_SCHEME_PRIVILEGES,\n  THEME_SCHEME_PRIVILEGES,\n  PLUGIN_SCHEME,\n])"
 
 # (name, [(file, old, new), ...])
 MUTATIONS = [
@@ -71,16 +71,16 @@ MUTATIONS = [
         "236 §3's await moved it past `ready` — it throws from the first statement and the app "
         "opens NO WINDOW, with every suite still green",
         [
-            # ⚑ **theme host · re-anchored in place, not retired** — NOT VERIFIED. Both schemes share the registration; deletion or late placement remains the same defect.
-            (INDEX, "\nprotocol.registerSchemesAsPrivileged([ASSET_SCHEME_PRIVILEGES, THEME_SCHEME_PRIVILEGES])\n", "\n"),
+            # ⚑ **plugin UI host · re-anchored in place, not retired** — NOT VERIFIED. All three schemes share the registration; deletion or late placement remains the same defect.
+            (INDEX, "\nprotocol.registerSchemesAsPrivileged([\n  ASSET_SCHEME_PRIVILEGES,\n  THEME_SCHEME_PRIVILEGES,\n  PLUGIN_SCHEME,\n])\n", "\n"),
             (
                 INDEX,
                 # ⚑ **re-anchored in place, not retired** — `start` now takes the one-app gate's
                 # answer as its parameter; the defect this edit puts back (the registration as the
                 # first statement of `start`) is unchanged.
-                # ⚑ **theme host · re-anchored in place, not retired** — NOT VERIFIED. Both schemes share the registration; deletion or late placement remains the same defect.
+                # ⚑ **plugin UI host · re-anchored in place, not retired** — NOT VERIFIED. All three schemes share the registration; deletion or late placement remains the same defect.
                 "function start(ownership: HostGateVerdict): void {\n",
-                "function start(ownership: HostGateVerdict): void {\n  protocol.registerSchemesAsPrivileged([ASSET_SCHEME_PRIVILEGES, THEME_SCHEME_PRIVILEGES])\n",
+                "function start(ownership: HostGateVerdict): void {\n  protocol.registerSchemesAsPrivileged([\n  ASSET_SCHEME_PRIVILEGES,\n  THEME_SCHEME_PRIVILEGES,\n  PLUGIN_SCHEME,\n])\n",
             ),
         ],
     ),
@@ -88,21 +88,21 @@ MUTATIONS = [
         "M2  · ⛔ the registration is DELETED — the scheme is never privileged at all, so a "
         "generated image loads from nowhere and nothing is logged (067's original failure). ⚠️ "
         "GREEN in `window` by design: the app still opens",
-        # ⚑ **theme host · re-anchored in place, not retired** — NOT VERIFIED. Both schemes share the registration; deletion or late placement remains the same defect.
-        [(INDEX, "\nprotocol.registerSchemesAsPrivileged([ASSET_SCHEME_PRIVILEGES, THEME_SCHEME_PRIVILEGES])\n", "\n")],
+        # ⚑ **plugin UI host · re-anchored in place, not retired** — NOT VERIFIED. All three schemes share the registration; deletion or late placement remains the same defect.
+        [(INDEX, "\nprotocol.registerSchemesAsPrivileged([\n  ASSET_SCHEME_PRIVILEGES,\n  THEME_SCHEME_PRIVILEGES,\n  PLUGIN_SCHEME,\n])\n", "\n")],
     ),
     (
         "M3  · ⛔ still module scope, but BELOW `runAsSoleInstance({` — which works today only "
         "because that call's first await yields back here. A placement whose correctness depends on "
         "what the line above it does is the shape 236 already broke once",
         [
-            # ⚑ **theme host · re-anchored in place, not retired** — NOT VERIFIED. Both schemes share the registration; deletion or late placement remains the same defect.
-            (INDEX, "\nprotocol.registerSchemesAsPrivileged([ASSET_SCHEME_PRIVILEGES, THEME_SCHEME_PRIVILEGES])\n", "\n"),
+            # ⚑ **plugin UI host · re-anchored in place, not retired** — NOT VERIFIED. All three schemes share the registration; deletion or late placement remains the same defect.
+            (INDEX, "\nprotocol.registerSchemesAsPrivileged([\n  ASSET_SCHEME_PRIVILEGES,\n  THEME_SCHEME_PRIVILEGES,\n  PLUGIN_SCHEME,\n])\n", "\n"),
             (
                 INDEX,
-                # ⚑ **theme host · re-anchored in place, not retired** — NOT VERIFIED. Both schemes share the registration; deletion or late placement remains the same defect.
+                # ⚑ **plugin UI host · re-anchored in place, not retired** — NOT VERIFIED. All three schemes share the registration; deletion or late placement remains the same defect.
                 "void runAsSoleInstance({",
-                "protocol.registerSchemesAsPrivileged([ASSET_SCHEME_PRIVILEGES, THEME_SCHEME_PRIVILEGES])\nvoid runAsSoleInstance({",
+                "protocol.registerSchemesAsPrivileged([\n  ASSET_SCHEME_PRIVILEGES,\n  THEME_SCHEME_PRIVILEGES,\n  PLUGIN_SCHEME,\n])\nvoid runAsSoleInstance({",
             ),
         ],
     ),

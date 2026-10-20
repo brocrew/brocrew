@@ -77,22 +77,30 @@ afterEach(() => {
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 describe('§0 · a spawn that failed, measured', () => {
-  it('⚑ the machine’s own EMFILE: no process, NO streams, and the errno one tick later', async () => {
-    const real = measureARealSpawnFailure('EMFILE')
-    expect(real.stdio).toBe('undefined')
-    expect(real.error.code).toBe('EMFILE')
-    // ⚑ the bound the witness waits: heard before a macrotask queued the moment `spawn` returned
-    expect(real.heard).toBe('before a macrotask')
-    expect(await shapeOf(aSpawnThatRanOutOf('EMFILE', real.error.path))).toEqual(real)
-  })
+  // This measurement lowers a POSIX descriptor limit through /bin/sh; the adapter controls below
+  // still run on Windows with the measured failure shapes.
+  it.skipIf(process.platform === 'win32')(
+    '⚑ the machine’s own EMFILE: no process, NO streams, and the errno one tick later',
+    async () => {
+      const real = measureARealSpawnFailure('EMFILE')
+      expect(real.stdio).toBe('undefined')
+      expect(real.error.code).toBe('EMFILE')
+      // ⚑ the bound the witness waits: heard before a macrotask queued the moment `spawn` returned
+      expect(real.heard).toBe('before a macrotask')
+      expect(await shapeOf(aSpawnThatRanOutOf('EMFILE', real.error.path))).toEqual(real)
+    },
+  )
 
-  it('⚑ …and a refusal after the pipes were made: no process, three streams (EACCES, measured)', async () => {
-    const real = measureARealSpawnFailure('EACCES')
-    expect(real.stdio).toBe('three streams')
-    expect(real.error.code).toBe('EACCES')
-    expect(real.heard).toBe('before a macrotask')
-    expect(await shapeOf(aSpawnRefusedAfterItsPipes('EACCES', real.error.path))).toEqual(real)
-  })
+  it.skipIf(process.platform === 'win32')(
+    '⚑ …and a refusal after the pipes were made: no process, three streams (EACCES, measured)',
+    async () => {
+      const real = measureARealSpawnFailure('EACCES')
+      expect(real.stdio).toBe('three streams')
+      expect(real.error.code).toBe('EACCES')
+      expect(real.heard).toBe('before a macrotask')
+      expect(await shapeOf(aSpawnRefusedAfterItsPipes('EACCES', real.error.path))).toEqual(real)
+    },
+  )
 })
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────

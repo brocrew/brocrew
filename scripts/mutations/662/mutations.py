@@ -269,13 +269,14 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
             ),
             (
                 CODEX,
-                "        'turn/start',\n        turnStartParams(\n          this._ref!.sessionId,\n          text,\n",
-                "        'turn/start',\n        { origin, ...turnStartParams(\n          this._ref!.sessionId,\n          text,\n",
+                "          'turn/start',\n          turnStartParams(\n            this._ref!.sessionId,\n            text,\n",
+                "          'turn/start',\n          { origin, ...turnStartParams(\n            this._ref!.sessionId,\n            text,\n",
             ),
+            # The wire send is now a closure shared with the pre-turn skill reload.
             (
                 CODEX,
-                "          askedModel,\n        ),\n      ),\n    ).then(",
-                "          askedModel,\n        ) },\n      ),\n    ).then(",
+                "            askedModel,\n          ),\n        )\n      const request =",
+                "            askedModel,\n          ) },\n        )\n      const request =",
             ),
         ],
     ),

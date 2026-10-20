@@ -1,3 +1,5 @@
+import { pluginsBridge } from './plugins'
+import type { SkillsRequest, SkillsReply } from '../shared/skills-window'
 import {
   TRANSCRIPT_RETENTION_CHANNELS,
   type TranscriptRetention,
@@ -196,6 +198,8 @@ function command(payload: RuntimeCommand): Promise<unknown> {
 }
 
 const runtime: RuntimeBridge = Object.freeze({
+  skills: (request: SkillsRequest): Promise<SkillsReply> =>
+    command({ kind: 'skills', request }) as Promise<SkillsReply>,
   // 🔴 **716 · one verb, two answers** — an input that asks for its refusal ANSWERED
   // (`answerARefusal`, `710` F-7) is handed over whole, and the bridge's signature types what comes
   // back. ⚑ Still the literal this preload builds, around a primitive it did not.
@@ -973,6 +977,7 @@ const api = Object.freeze({
   }),
   runtime,
   themes: themesBridge(ipcRenderer),
+  plugins: pluginsBridge(ipcRenderer),
   /**
    * 🔴 **W4.109 · B1 — updates** (`main/updates.ts` decides; every call answers the new snapshot).
    * ⚑ `onChanged` is told every move: a check, a download's progress, a restart that waits.

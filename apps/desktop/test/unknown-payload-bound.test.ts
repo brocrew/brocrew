@@ -1,6 +1,6 @@
 import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
@@ -348,7 +348,7 @@ describe('no production source builds an unknown event around the bound', () => 
     const offenders: string[] = []
     for (const root of roots) {
       for (const file of sources(root)) {
-        if (doors.includes(file.split('/').pop() ?? '')) continue
+        if (doors.includes(basename(file))) continue
         const text = readFileSync(file, 'utf8')
         // `type: 'unknown'` appears in TYPE positions too — `Extract<RuntimeEvent, {type:'unknown'}>`
         // is the ordinary way to name the variant and carries no payload. What matters is a value

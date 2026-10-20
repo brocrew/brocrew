@@ -102,6 +102,10 @@ describe('a launch says where it waited', () => {
   let host: RuntimeHost
   let db: ReturnType<typeof openDatabase>
   let leadRead: (() => Promise<WindowReadResult>) | undefined
+  let buildHost: (bounds?: {
+    launchTimeoutMs?: number
+    codexResumeTimeoutMs?: number
+  }) => RuntimeHost
 
   beforeEach(() => {
     folder = mkdtempSync(join(tmpdir(), 'brocrew-start-attempts-'))
@@ -113,51 +117,54 @@ describe('a launch says where it waited', () => {
     leadRead = undefined
     runtime = new PhasedRuntime('codex', { sessions: new FakeProviderSessions() })
     let counter = 0
-    host = new RuntimeHost({
-      store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(folder, 'exports'),
-      createRuntime: () => runtime,
-      prepareProviderHome: (provider) => join(folder, 'provider-homes', provider),
-      providerHomePath: (provider) => join(folder, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => requested ?? join(folder, 'scratch', sessionId),
-      newSessionId: () => `sess_${++counter}`,
-      now: () => clock++,
-      windowReader: {
-        read: async () => leadRead?.() ?? { kind: 'leads', rows: [] },
-        close: async () => {},
-      },
-      limitsWriterStamp: limitsWriterSampler(db, () => true),
-      readInstructions: () => ({
-        instructions: {
-          injected: [],
-          agentMemory: [],
-          provider: [],
-          refused: [],
-          note: '',
-          recallsReported: true,
-          writesReported: true,
-          composed: null,
+    buildHost = (bounds = { launchTimeoutMs: 80 }) =>
+      new RuntimeHost({
+        store,
+        discoverSessions: NO_DISCOVERY,
+        nativeTranscriptPath: () => null,
+        exportDirectory: () => join(folder, 'exports'),
+        createRuntime: () => runtime,
+        prepareProviderHome: (provider) => join(folder, 'provider-homes', provider),
+        providerHomePath: (provider) => join(folder, 'provider-homes', provider),
+        resolveCwd: (sessionId, requested) => requested ?? join(folder, 'scratch', sessionId),
+        newSessionId: () => `sess_${++counter}`,
+        now: () => clock++,
+        windowReader: {
+          read: async () => leadRead?.() ?? { kind: 'leads', rows: [] },
+          close: async () => {},
         },
-        systemHint: undefined,
-        ...(leadRead === undefined ? {} : { firstTurnLead: 'fictional conversation lead' }),
-      }),
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CODEX_HOME',
-        model: 'fictional-model',
-        authNote: null,
-        files: [],
-      }),
-      launchTimeoutMs: 80,
-      reopenLeadsGraceMs: 200,
-      closeDrainTimeoutMs: 40,
-      recordStartAttempt: (line) => lines.push(line),
-    })
+        limitsWriterStamp: limitsWriterSampler(db, () => true),
+        readInstructions: () => ({
+          instructions: {
+            injected: [],
+            agentMemory: [],
+            provider: [],
+            refused: [],
+            note: '',
+            recallsReported: true,
+            writesReported: true,
+            composed: null,
+          },
+          systemHint: undefined,
+          ...(leadRead === undefined ? {} : { firstTurnLead: 'fictional conversation lead' }),
+        }),
+        readProviderConfig: (_provider, home) => ({
+          home,
+          homeEnv: 'CODEX_HOME',
+          model: 'fictional-model',
+          authNote: null,
+          files: [],
+        }),
+        ...bounds,
+        reopenLeadsGraceMs: 200,
+        closeDrainTimeoutMs: 40,
+        recordStartAttempt: (line) => lines.push(line),
+      })
+    host = buildHost()
   })
 
   afterEach(async () => {
+    vi.useRealTimers()
     await host.closeAll()
     db.close()
     rmSync(folder, { recursive: true, force: true })
@@ -216,6 +223,113 @@ describe('a launch says where it waited', () => {
     })
     expect(resumed[0]!.attempt).not.toBe(lines[0]!.attempt)
   })
+
+  it('a Codex resume can take twenty seconds, stays active, and records its sixty-second limit', async () => {
+    await host.closeAll()
+    host = buildHost({})
+    const sink = new Sink()
+    const { sessionId } = await host.createSession({ provider: 'codex' }, sink)
+    await host.close(sessionId, sink)
+    let release!: () => void
+    runtime.answerLate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const resumed = host.resumeSession(sessionId, sink)
+    const keepAlive = setInterval(() => {}, 1_000)
+    let state = 'pending'
+    const outcome = resumed.then(
+      () => {
+        state = 'ready'
+        return state
+      },
+      () => {
+        state = 'failed'
+        return state
+      },
+    )
+    try {
+      while (runtime.handles.length < 2) await new Promise<void>((resolve) => setImmediate(resolve))
+      await vi.advanceTimersByTimeAsync(20_000)
+      expect(state).toBe('pending')
+      expect(lines.filter((one) => one.opening === 'resume')).toMatchObject([
+        { stage: 'began', timeoutMs: 60_000 },
+      ])
+      expect(host.agentCard(sessionId, sink, null)?.state).toMatchObject({ is: 'active' })
+      release()
+      expect(await outcome).toBe('ready')
+      expect(lines.filter((one) => one.opening === 'resume')).toMatchObject([
+        { stage: 'began', timeoutMs: 60_000 },
+        { stage: 'ended', timeoutMs: 60_000, outcome: 'ready' },
+      ])
+    } finally {
+      release()
+      vi.useRealTimers()
+      await resumed.catch(() => undefined)
+      await host.closeAll()
+      clearInterval(keepAlive)
+    }
+  })
+
+  it('a fresh Codex start still expires at fifteen seconds', async () => {
+    await host.closeAll()
+    host = buildHost({})
+    runtime.stallAfter = 'thread-sent'
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const started = host.createSession({ provider: 'codex' }, new Sink())
+    const failure = started.catch((error: unknown) => error)
+    try {
+      while (!lines.some((one) => one.stage === 'began'))
+        await new Promise<void>((resolve) => setImmediate(resolve))
+      await vi.advanceTimersByTimeAsync(14_999)
+      expect(ended()).toHaveLength(0)
+      await vi.advanceTimersByTimeAsync(1)
+      expect(await failure).toMatchObject({ message: expect.stringContaining('within 15s') })
+      expect(lines).toMatchObject([
+        { stage: 'began', opening: 'fresh', timeoutMs: 15_000 },
+        { stage: 'ended', opening: 'fresh', timeoutMs: 15_000, outcome: 'timed-out' },
+      ])
+    } finally {
+      vi.useRealTimers()
+      await failure
+    }
+  })
+
+  it.each([
+    ['codex', 60_000],
+    ['claude', 15_000],
+  ] as const)(
+    'an unanswered %s resume expires at its own %i ms limit',
+    async (provider, timeoutMs) => {
+      await host.closeAll()
+      runtime = new PhasedRuntime(provider, { sessions: new FakeProviderSessions() })
+      host = buildHost({})
+      const sink = new Sink()
+      const { sessionId } = await host.createSession({ provider }, sink)
+      await host.close(sessionId, sink)
+      runtime.stallAfter = 'thread-sent'
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      const resumed = host.resumeSession(sessionId, sink)
+      const failure = resumed.catch((error: unknown) => error)
+      try {
+        while (!lines.some((one) => one.opening === 'resume'))
+          await new Promise<void>((resolve) => setImmediate(resolve))
+        await vi.advanceTimersByTimeAsync(timeoutMs - 1)
+        expect(ended().filter((one) => one.opening === 'resume')).toHaveLength(0)
+        await vi.advanceTimersByTimeAsync(1)
+        expect(await failure).toMatchObject({
+          message: expect.stringContaining(`within ${timeoutMs / 1000}s`),
+        })
+        expect(lines.filter((one) => one.opening === 'resume')).toMatchObject([
+          { stage: 'began', timeoutMs },
+          { stage: 'ended', timeoutMs, outcome: 'timed-out' },
+        ])
+      } finally {
+        vi.useRealTimers()
+        await failure
+      }
+    },
+  )
 
   async function heldLead() {
     const { sessionId } = await host.createSession({ provider: 'codex' }, new Sink())
@@ -341,6 +455,7 @@ describe('a launch says where it waited', () => {
       'phases',
       'lastPhase',
       'responseBytes',
+      'timeoutMs',
     ])
     for (const line of lines) for (const key of Object.keys(line)) expect(allowed).toContain(key)
   })
@@ -506,6 +621,7 @@ describe('the start-attempts file', () => {
     session: 'sess_1',
     provider: 'codex',
     opening: 'resume',
+    timeoutMs: 60_000,
     at: '2026-10-13T23:00:00.000Z',
     stage: 'began',
   })

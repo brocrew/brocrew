@@ -1519,6 +1519,7 @@ describe('379 · a task you can see', () => {
         // id. ⛔ It mints nothing and hands nothing over; it takes the caller's own id and its words.
         findKeptFiles: true,
         searchWork: true,
+        searchPastWork: true,
         // ⚑ **724 · a reader** — a NAME for a conversation.
         whatToCallTheConversation: true,
         // ⚑ **D-016 · commit 7 · R3 — two readers** — a conversation named by the piece it owns, and
@@ -1607,6 +1608,7 @@ describe('379 · a task you can see', () => {
         'requestAnAction',
         'requestMcpServer',
         'restoreAsAnAgent',
+        'searchPastWork',
         'searchWork',
         'takeBackPiece',
         'takeBackWhatItsQuestionMadeFalse',

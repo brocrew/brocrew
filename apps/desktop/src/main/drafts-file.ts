@@ -3,7 +3,7 @@ import { lutimesSync, readFileSync, realpathSync } from 'node:fs'
 import { readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { isPastedImage } from '../shared/runtime-ipc'
-import type { SavedDrafts } from '../shared/saved-drafts'
+import { conversationOfSlot, type SavedDrafts } from '../shared/saved-drafts'
 import { pastedImagesRoot } from './runtime/pasted-image'
 import { savedDraftsFrom } from './saved-drafts'
 
@@ -89,8 +89,8 @@ export async function readDraftsFile(userData: string): Promise<DraftsFile> {
 
 export interface DraftWriter {
   /**
-   * Write this book — shaped by `savedDraftsFrom` first — once the write in flight is done. ⚑ A book
-   * marked `last` answers the quit's request (`app:last-draft-save`), and only such a book is counted.
+   * Merge recognised slots and explicit removals once the write in flight is done. A book marked
+   * `last` answers the quit's request; an omitted slot never clears a previously saved draft.
    */
   write(raw: unknown): Promise<void>
   /**
@@ -113,19 +113,27 @@ export interface DraftWriter {
  * place (`pasted-image.ts`' rule, for its reason), readable by this user only (`0600`: what somebody
  * typed and did not send).
  *
- * ⚠️ **Saves arriving while one is written are COALESCED to the newest**: the renderer sends the whole
- * book each time, so only the last one matters, and two writes racing to one name is how a file ends
- * up holding the older of them.
+ * Saves arriving during a write are merged by slot, with the newest value winning. Only an
+ * explicit removal clears a slot; a missing slot in an incomplete handover loses nothing.
+ * Quit snapshots cannot clear slots, and snapshots arriving past the quit deadline are ignored.
  *
  * ⚑ **A part file an earlier run left — a kill inside a write — is removed before the first write of
  * this one**: it holds somebody's words, and nothing else would ever look at it.
  */
 export function createDraftWriter(userData: string): DraftWriter {
-  let latest: SavedDrafts | null = null
+  let pending: SavedDrafts | null = null
+  let kept: SavedDrafts = { drafts: [] }
+  let expired = false
+  let quitting = false
+  let quitDeadline = Infinity
   let writing: Promise<void> | null = null
   let expected = 0
   let arrived = 0
   // ⚑ Whether the most recent write reached the disk — what a quit that waited for it reports.
+  let loaded = false
+  let accepted = 0
+  let saved = 0
+  let lastSavedAt: number | null = null
   let lastFailed = false
   const listeners = new Set<() => void>()
   const tell = (): void => {
@@ -144,6 +152,8 @@ export function createDraftWriter(userData: string): DraftWriter {
     }
   })()
 
+  const initial = readDraftsFile(userData)
+
   async function writeOnce(saved: SavedDrafts): Promise<boolean> {
     const path = savedDraftsPath(userData)
     const part = `${path}.${randomBytes(6).toString('hex')}.part`
@@ -155,6 +165,10 @@ export function createDraftWriter(userData: string): DraftWriter {
           mode: 0o600,
         },
       )
+      if (expired || performance.now() >= quitDeadline) {
+        await rm(part, { force: true })
+        return false
+      }
       await rename(part, path)
       return true
     } catch (error) {
@@ -166,17 +180,74 @@ export function createDraftWriter(userData: string): DraftWriter {
 
   return {
     write(raw) {
-      latest = savedDraftsFrom(raw)
-      if (expected > 0 && (raw as { last?: unknown } | null)?.last === true) arrived += 1
+      if (
+        expired ||
+        performance.now() >= quitDeadline ||
+        typeof raw !== 'object' ||
+        raw === null ||
+        !Array.isArray((raw as SavedDrafts).drafts)
+      )
+        return Promise.resolve()
+      accepted += 1
+      const packet = raw as SavedDrafts
+      const slots = new Map(pending?.drafts.map((draft) => [draft.slot, draft]))
+      const cleared = new Set(pending?.cleared)
+      if (!quitting && Array.isArray(packet.cleared)) {
+        for (const slot of packet.cleared) {
+          if (typeof slot !== 'string' || conversationOfSlot(slot) === undefined) continue
+          slots.delete(slot)
+          cleared.add(slot)
+        }
+      }
+      for (const draft of savedDraftsFrom(raw).drafts) {
+        slots.set(draft.slot, draft)
+        cleared.delete(draft.slot)
+      }
+      pending = { drafts: [...slots.values()], cleared: [...cleared] }
+      if (expected > 0 && packet.last === true) arrived += 1
       if (writing === null) {
         writing = (async () => {
           try {
             await leftovers
-            while (latest !== null) {
-              const next = latest
-              latest = null
-              lastFailed = !(await writeOnce(next))
+            const file = await initial
+            if (file.kind === 'unreadable') {
+              pending = null
+              lastFailed = true
+              return
             }
+            if (!loaded) {
+              kept = savedDraftsFrom(file.kind === 'book' ? file.raw : null)
+              loaded = true
+            }
+            while (pending !== null && !expired) {
+              const slots = new Map(kept.drafts.map((draft) => [draft.slot, draft]))
+              const packet = pending
+              pending = null
+              for (const slot of packet.cleared ?? []) slots.delete(slot)
+              for (const draft of packet.drafts) slots.set(draft.slot, draft)
+              const next = { drafts: [...slots.values()] }
+              lastFailed = !(await writeOnce(next))
+              if (lastFailed) {
+                // More changes can arrive while the disk write is awaiting an answer.
+                const waiting = pending as SavedDrafts | null
+                const retained = new Map(packet.drafts.map((draft) => [draft.slot, draft]))
+                const cleared = new Set(packet.cleared)
+                for (const slot of waiting?.cleared ?? []) {
+                  retained.delete(slot)
+                  cleared.add(slot)
+                }
+                for (const draft of waiting?.drafts ?? []) {
+                  retained.set(draft.slot, draft)
+                  cleared.delete(draft.slot)
+                }
+                pending = { drafts: [...retained.values()], cleared: [...cleared] }
+                break
+              }
+              kept = next
+              saved += 1
+              lastSavedAt = Date.now()
+            }
+            if (expired) pending = null
           } finally {
             writing = null
             tell()
@@ -191,11 +262,30 @@ export function createDraftWriter(userData: string): DraftWriter {
     },
 
     expectQuitSaves(windows) {
+      console.info(
+        'BroCrew draft save status:',
+        JSON.stringify({
+          accepted,
+          saved,
+          lastSavedAt,
+          loaded,
+          slots: kept.drafts.map((draft) => ({
+            slot: draft.slot,
+            characters: draft.text.length,
+            attachments: draft.attached.length,
+          })),
+          characters: kept.drafts.reduce((sum, draft) => sum + draft.text.length, 0),
+          pending: pending?.drafts.length ?? 0,
+          writing: writing !== null,
+        }),
+      )
+      quitting = true
       expected = windows
       arrived = 0
     },
 
     quitSaves(withinMs) {
+      quitDeadline = performance.now() + withinMs
       const done = (): boolean => arrived >= expected && writing === null
       if (done()) return Promise.resolve(lastFailed ? 'failed' : 'saved')
       return new Promise((resolve) => {
@@ -205,6 +295,10 @@ export function createDraftWriter(userData: string): DraftWriter {
         }
         const timer = setTimeout(() => finish('unanswered'), withinMs)
         function finish(outcome: 'saved' | 'failed' | 'unanswered'): void {
+          if (outcome === 'unanswered') {
+            expired = true
+            pending = null
+          }
           clearTimeout(timer)
           listeners.delete(check)
           resolve(outcome)

@@ -301,7 +301,7 @@ export interface TreeEnding {
  * number and creation time. When the reading is not back by then, the processes earlier readings
  * found are ended: a slow table never takes the time the ending needs.
  */
-export async function endTree(t: TreeEnding): Promise<void> {
+export async function endTree(t: TreeEnding): Promise<boolean> {
   const start = t.now()
   const budgetEnd = start + t.budgetMs
   const endBy = budgetEnd - ENDING_RESERVE_MS
@@ -330,6 +330,7 @@ export async function endTree(t: TreeEnding): Promise<void> {
   }
   const leaderRuns = t.leaderEndedAt() === null
   if (leaderRuns) t.endLeader()
+  const cleanedReading = read
   const targets = others().filter((row) => t.isRunning(row.pid))
   if (targets.length === 0) ender.dismiss()
   const endings = targets.length === 0 ? new Map() : await ender.end(targets, left(budgetEnd))
@@ -337,7 +338,7 @@ export async function endTree(t: TreeEnding): Promise<void> {
   const still = [...endings]
     .filter(([, ending]) => ending === 'alive' || ending === 'failed')
     .map(([key, ending]) => `${key} ${ending}`)
-  if (!read) {
+  if (!cleanedReading) {
     t.warn(
       `codex app-server ${String(leaderPid)}: the process table was not read in time, so only ` +
         'the processes found before were ended; what it started since may still be running',
@@ -350,4 +351,5 @@ export async function endTree(t: TreeEnding): Promise<void> {
         still.join(', '),
     )
   }
+  return cleanedReading != null && leaderGone && still.length === 0
 }

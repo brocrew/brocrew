@@ -13,6 +13,8 @@ describe('what a worker bundle leaves outside', () => {
     )
     expect(isLeftOutside('D:/a/brobot2/apps/desktop/src/main/window-reader.worker.ts')).toBe(false)
     expect(isLeftOutside('\\\\server\\share\\brobot2\\worker.ts')).toBe(false)
+    expect(isLeftOutside('apps/desktop/src/main/window-reader.worker.ts')).toBe(false)
+    expect(isLeftOutside('apps\\desktop\\src\\main\\window-reader.worker.ts')).toBe(false)
   })
 
   it('this repository’s own code by every other spelling goes inside', () => {

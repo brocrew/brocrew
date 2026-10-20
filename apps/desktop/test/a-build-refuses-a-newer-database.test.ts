@@ -374,6 +374,8 @@ describe('§5 · the wiring in main', () => {
       /if \(error instanceof NewerDatabaseError \|\| error instanceof UnreadableDatabaseError\) \{\s+const again = await theVerdictBeforeTheData\(ownership\)/,
     )
     expect(means).toMatch(/if \(error instanceof NewerDatabaseError\) \{[\s\S]*?kind: 'newer',/)
-    expect(index).not.toContain('showErrorBox')
+    expect(means).not.toContain('showErrorBox')
+    const failure = body('async function endAFailedStart(', '\n}\n')
+    expect(failure.slice(failure.indexOf('theDataOpened = false'))).not.toContain('showErrorBox')
   })
 })

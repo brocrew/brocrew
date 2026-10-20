@@ -1,3 +1,4 @@
+import type { SkillsRequest, SkillsReply } from './skills-window'
 import type { LinkResolution } from './link-resolution'
 import { pathTail } from './path-tail'
 export type { LinkResolution } from './link-resolution'
@@ -8059,6 +8060,7 @@ export interface StopBackgroundWorkInput {
 
 /** The renderer→main command union — the wire shape `runtimeCommandSchema` validates. */
 export type RuntimeCommand =
+  | { kind: 'skills'; request: SkillsRequest }
   | { kind: 'resolveLink'; target: string }
   | ({ kind: 'createSession' } & CreateSessionInput & { readonly answerARefusal?: true })
   | ({ kind: 'send' } & SendInput)
@@ -8879,6 +8881,7 @@ export type RuntimeCommandKind = RuntimeCommand['kind']
 
 /** What each command resolves to. The rest are acknowledgements. */
 export interface RuntimeCommandResults {
+  skills: SkillsReply
   /** ⚑ **716** · {@link RefusedLaunch} only when the command asked for one (`answerARefusal`). */
   createSession: CreatedSession | RefusedLaunch
   send: void
@@ -9487,6 +9490,7 @@ export type RuntimeCommandResult<K extends RuntimeCommandKind> = RuntimeCommandR
  * gone; `onEvent` returns its own unsubscribe.
  */
 export interface RuntimeBridge {
+  skills(request: SkillsRequest): Promise<SkillsReply>
   /**
    * 🔴 **716 · `710` F-7 — a refusal ANSWERED, with its word, when the input asks**
    * (`answerARefusal: true`, {@link RefusedLaunch}); every other call is typed and answered as it was.

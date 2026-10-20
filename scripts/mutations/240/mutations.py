@@ -107,7 +107,7 @@ MUTATIONS = [
         [
             (
                 TRANSPORT,
-                "    if (await this.awaitGroupQuiet(this.opts.killGraceMs)) return\n"
+                "    if (await this.awaitGroupQuiet(this.opts.killGraceMs)) return true\n"
                 "    // ⚑ **Only if something is still there.**",
                 "    await this.awaitExit(this.opts.killGraceMs)\n"
                 "    // ⚑ **Only if something is still there.**",
@@ -121,7 +121,7 @@ MUTATIONS = [
         [
             (
                 TRANSPORT,
-                "    if (await this.awaitGroupQuiet(this.opts.killGraceMs)) return\n    console.warn(",
+                "    if (await this.awaitGroupQuiet(this.opts.killGraceMs)) return true\n    console.warn(",
                 "    await this.awaitExit(this.opts.killGraceMs)\n    if (false) console.warn(",
             )
         ],
@@ -143,8 +143,8 @@ MUTATIONS = [
         [
             (
                 TRANSPORT,
-                "    if (pid === undefined) return true // nothing was ever spawned",
-                "    if (pid === undefined) return false // nothing was ever spawned",
+                "  private groupIsQuiet(): boolean {\n    const pid = this.child.pid\n    if (pid === undefined) return true // nothing was ever spawned",
+                "  private groupIsQuiet(): boolean {\n    const pid = this.child.pid\n    if (pid === undefined) return false // nothing was ever spawned",
             )
         ],
     ),

@@ -85,6 +85,13 @@
       "when": 1792174407156,
       "tag": "0011_the_transcript_copy_goes",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1792262746788,
+      "tag": "0012_skills_catalogue",
+      "breakpoints": true
     }
   ]
 }

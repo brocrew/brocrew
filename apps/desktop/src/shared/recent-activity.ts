@@ -3,6 +3,18 @@ import type { DigestRead } from './digest'
 
 export const RECENT_ACTIVITY_LINES = 200
 
+export interface SkillImportNotice {
+  readonly id: string
+  readonly at: number
+  readonly name: string
+  readonly existing: string
+  readonly imported: string
+}
+
+export function skillImportWords(line: SkillImportNotice): string {
+  return `Two different skills were named ${line.name}. Both are kept: ${line.existing} and ${line.imported}.`
+}
+
 export interface ActivityLine {
   readonly id: string
   readonly at: number
@@ -15,6 +27,7 @@ export interface ActivityLine {
 
 export interface RecentActivityReading {
   readonly transcriptsCleared?: readonly TranscriptsCleared[]
+  readonly skillImports?: readonly SkillImportNotice[]
   readonly window: { readonly from: number; readonly to: number }
   readonly read: DigestRead
   readonly lines: readonly ActivityLine[]

@@ -147,18 +147,17 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "M12 · 🔴 a launch that names its own folder (`--user-data-dir`) is moved to the default "
         f"folder — every restart, reopen and other workspace lands on the wrong data · killed by `{WORKSPACES}`",
         [(DATA,
-          "  if (app.commandLine.hasSwitch('user-data-dir')) return\n",
-          "  if (false) return\n")],
+          # ⚑ **1169.7 · re-anchored in place, not retired** — the pin now branches on `isPackaged`; the same defect sits in the unpackaged arm of `pinTheDataFolder`
+          "    if (explicit) return\n    folder = defaultDataFolder(app.getPath('appData'))\n",
+          "    if (false) return\n    folder = defaultDataFolder(app.getPath('appData'))\n")],
     ),
     (
         "M13 · 🔴 **the person's rule broken** · the launch reads `workspaces.json` and opens the most "
         f"recently listed folder, even one that is gone · killed by `{WORKSPACES}`",
         [(DATA,
-          "  const folder = defaultDataFolder(app.getPath('appData'))\n",
-          "  let folder = defaultDataFolder(app.getPath('appData'))\n"
-          "  try {\n"
-          "    folder = (JSON.parse(readFileSync(join(app.getPath('appData'), '@brobot2', 'workspaces.json'), 'utf8')) as { workspaces: { path: string }[] }).workspaces[0]?.path ?? folder\n"
-          "  } catch {}\n")],
+          # ⚑ **1169.7 · re-anchored in place, not retired** — the pin now branches on `isPackaged`; the same defect sits in the unpackaged arm of `pinTheDataFolder`
+          "    folder = defaultDataFolder(app.getPath('appData'))\n",
+          "    folder = defaultDataFolder(app.getPath('appData'))\n    try {\n      folder = (JSON.parse(readFileSync(join(app.getPath('appData'), '@brobot2', 'workspaces.json'), 'utf8')) as { workspaces: { path: string }[] }).workspaces[0]?.path ?? folder\n    } catch {}\n")],
     ),
     (
         "M14 · a launch matches its own entry by reading every listed folder on the disk — one on a "

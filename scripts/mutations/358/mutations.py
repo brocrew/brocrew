@@ -263,9 +263,9 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         [
             (
                 CLAUDE,
-                # ⚑ **W4.480 · re-anchored in place, not retired** — NOT VERIFIED; source-only. Held: running it needs W4’s written lift. Built-in skills moved the anchor; original defect, ID and killer retained.
-                "        if (message.type === 'system' && message.subtype === 'init') {\n          if (this.builtInSkills) verifyClaudeBuiltInSkills(message, this.builtInSkills)\n          this.publishToolInventory(message)",
-                "        if (message.type === 'system' && message.subtype === 'init' && message.model) {\n          if (this.builtInSkills) verifyClaudeBuiltInSkills(message, this.builtInSkills)\n          this.publishToolInventory(message)",
+                # Source-only re-anchor; the mutation verdict has not been re-verified.
+                "        if (message.type === 'system' && message.subtype === 'init') {\n          this.skillCatalogueConfirmed = false",
+                "        if (message.type === 'system' && message.subtype === 'init' && message.model) {\n          this.skillCatalogueConfirmed = false",
             )
         ],
     ),

@@ -36,7 +36,7 @@ function functionIn(code: string, head: string): string {
 
 /** Every way `name` is used in `code`, past its import. */
 function usesOf(code: string, name: string): string[] {
-  const body = code.slice(code.indexOf('\npinTheDataFolder(app)'))
+  const body = code.slice(code.indexOf('\ntry {\n  pinTheDataFolder(app)'))
   return [...body.matchAll(new RegExp(`^.*\\b${name}\\b.*$`, 'gm'))].map((match) => match[0].trim())
 }
 
@@ -116,7 +116,7 @@ describe('the open path', () => {
     const init = functionIn(CODE, 'function initDatabase(')
     const said = init.indexOf('if (presentation.hidden) sayAtOnce(OPENED_NORMALLY_LINE)')
     for (const before of [
-      'const database = openDatabase(dbPath)',
+      'return openDatabase(dbPath, existing ? { fileMustExist: true } : undefined)',
       'openOrRefuse(',
       'applyMigrations(database, migrationsFolder)',
       'db = database',
@@ -146,12 +146,62 @@ function stopsBeforeTheData(code: string): boolean {
   )
 }
 
+function supervisorWaitsForTheData(code: string): boolean {
+  // The controller owns list loading and supervisor attachment; its factory is inert.
+  // Count across the entire entry, so a second/early admission or a direct bypass fails too.
+  if (
+    [...code.matchAll(/\bpluginController\s*\.\s*start\s*\(/g)].length !== 1 ||
+    /\bpluginSupervisor\s*\.\s*start\s*\(/.test(code)
+  )
+    return false
+  const start = functionIn(code, 'function start(ownership: HostGateVerdict): void {')
+  const steps = [
+    'const verdict = await theVerdictBeforeTheData(ownership)',
+    'host = createRuntimeHost(initDatabase())',
+    'theDataOpened = true',
+    'pluginSupervisorRoot({',
+    'pluginController.start({',
+  ].map((step) => start.indexOf(step))
+  return steps.every((at, i) => at >= 0 && (i === 0 || at > steps[i - 1]!))
+}
+
 describe('the check stands between the start and its data', () => {
   it('stops right after the check, before the time zone, the database and the host', () => {
     expect(stopsBeforeTheData(CODE)).toBe(true)
     expect(CODE.indexOf('keepTheSystemZone(')).toBeLessThan(
       CODE.indexOf('host = createRuntimeHost(initDatabase())'),
     )
+  })
+
+  it('admits the plugin supervisor only after the workspace data has opened', () => {
+    expect(supervisorWaitsForTheData(CODE)).toBe(true)
+    expect(CODE.match(/pluginController\.start\(/g)).toHaveLength(1)
+    const block = CODE.match(
+      / {6}try \{\s+const root = pluginSupervisorRoot\(\{[\s\S]*?\n {6}\} catch \{[\s\S]*?\n {6}\}/,
+    )?.[0]
+    expect(block).toBeDefined()
+    if (!block) throw new Error('the supervisor startup block is missing')
+    const early = CODE.replace(block, '').replace(
+      '      host = createRuntimeHost(initDatabase())',
+      `${block}\n      host = createRuntimeHost(initDatabase())`,
+    )
+    expect(early).not.toBe(CODE)
+    expect(supervisorWaitsForTheData(early)).toBe(false)
+  })
+
+  it('refuses duplicate controller admission and a direct supervisor bypass', () => {
+    for (const planted of [
+      CODE.replace(
+        'pluginController.start({',
+        'pluginController.start({})\npluginController.start({',
+      ),
+      `${CODE}\npluginController.start({})`,
+      CODE.replace('pluginController.start({', 'pluginSupervisor.start({'),
+      `${CODE}\npluginSupervisor.start({})`,
+    ]) {
+      expect(planted).not.toBe(CODE)
+      expect(supervisorWaitsForTheData(planted)).toBe(false)
+    }
   })
 
   it('and the pin fails when the stop goes, the test flips, or a quit no longer stops it', () => {
@@ -251,8 +301,13 @@ describe('a start that never opened its data', () => {
   })
 
   it('a start that failed once its check let it open the data ends in the recovery window too', () => {
-    // A person's launch never ends in a bare error box, or in silence.
-    expect(CODE).not.toContain('showErrorBox')
+    // A lost configured workspace exits; failures opening its data still use recovery.
+    const failedStart = functionIn(CODE, 'async function endAFailedStart(')
+    const recovery = failedStart.indexOf('theDataOpened = false')
+    expect(failedStart.slice(0, recovery)).toMatch(
+      /if \(error instanceof WorkspaceUnavailable\) \{[\s\S]*dialog\.showErrorBox[\s\S]*endTheProcess\(1\)/,
+    )
+    expect(failedStart.slice(recovery)).not.toContain('showErrorBox')
     const caught = CODE.slice(
       CODE.indexOf('.catch((error: unknown) => {', CODE.indexOf('.whenReady()')),
       CODE.indexOf('\nconst lifetime = createAppLifetime('),
@@ -268,11 +323,33 @@ describe('a start that never opened its data', () => {
     expect(functionIn(CODE, 'function stopWhatTheStartStarted(')).toMatch(
       /stoppingTheStart \?\?= \(async \(\) => \{[\s\S]*\['stop its archive work', \(\) => started\.stopSweeping\(\)\],\s+\['close its conversations', \(\) => started\.closeAll\(\)\],\s+\['drain its archive work', \(\) => started\.drainArchiveWork\(\)\],/,
     )
-    expect(CODE).toContain(
-      'closeAllSessions: () => stoppingTheStart ?? host?.closeAll() ?? Promise.resolve(),',
-    )
+    // The original failed-start promise is still awaited; plugins must quit even if it rejects.
+    const closesSessions =
+      /closeAllSessions: async \(\) => \{\s+try \{\s+await \(stoppingTheStart \?\? host\?\.closeAll\(\) \?\? Promise\.resolve\(\)\)\s+\} finally \{\s+await pluginController\.close\(\)\s+await pluginSupervisor\.quit\(\)\s+\}\s+\},/
+    expect(CODE).toMatch(closesSessions)
+    expect(
+      closesSessions.test(
+        CODE.replace(
+          'await (stoppingTheStart ?? host?.closeAll() ?? Promise.resolve())',
+          'await host?.closeAll()',
+        ),
+      ),
+    ).toBe(false)
+    expect(
+      closesSessions.test(
+        CODE.replace(
+          '} finally {\n      await pluginController.close()\n      await pluginSupervisor.quit()',
+          '} catch {\n      await pluginController.close()\n      await pluginSupervisor.quit()',
+        ),
+      ),
+    ).toBe(false)
+    expect(
+      closesSessions.test(
+        CODE.replace('} finally {\n      await pluginController.close()', '} finally {'),
+      ),
+    ).toBe(false)
     expect(CODE).toMatch(
-      /drainArchiveWork: async \(\) => \{\s+await transcriptRetention\?\.stop\(\)\s+await \(stoppingTheStart \?\? host\?\.drainArchiveWork\(\) \?\? Promise\.resolve\(\)\)\s+await themes\?\.close\(\)\s+\}/,
+      /drainArchiveWork: async \(\) => \{\s+await updates\?\.drain\(\)\s+await transcriptRetention\?\.stop\(\)\s+await \(stoppingTheStart \?\? host\?\.drainArchiveWork\(\) \?\? Promise\.resolve\(\)\)\s+await themes\?\.close\(\)\s+\}/,
     )
     // On what the failure means: a failed migration; a database the open refused, checked again
     // so a newer one is offered its copy; anything else with its own words, and a way to try again.

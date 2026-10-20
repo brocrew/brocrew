@@ -1,3 +1,4 @@
+import { managedPluginHttpServers, type ManagedPluginMcpServer } from '../managed-plugin-mcp'
 import { createSdkMcpServer, tool, type McpServerConfig } from '@anthropic-ai/claude-agent-sdk'
 import { z, type ZodRawShape } from 'zod'
 import { agentToolHandlerObject, type AgentToolset } from '../agent-tools'
@@ -61,6 +62,7 @@ import { CLAUDE_TOOL_NAMING, qualifyWith } from '../tool-inventory'
 export function claudeMcpServersFor(
   toolset: AgentToolset | undefined,
   external: readonly { readonly name: string; readonly url: string }[] = [],
+  managed: readonly ManagedPluginMcpServer[] = [],
 ): Record<string, McpServerConfig> | undefined {
   // ⚠️ **An empty toolset is not the same as no toolset, and both answer `undefined` here.** A
   // server advertising nothing would still appear in the child's inventory and in its prompt — a
@@ -72,7 +74,9 @@ export function claudeMcpServersFor(
   // person gave. ⛔ A session holding neither answers `undefined` exactly as it always has, so
   // nothing changes for a launch nobody granted anything.
   const ownServer = toolset === undefined || toolset.tools.length === 0 ? null : toolset.server
-  if (ownServer === null && external.length === 0) return undefined
+  // Managed BroCrew routes are explicit too; provider-owned plugin discovery stays excluded.
+  const pluginServers = managedPluginHttpServers(managed)
+  if (ownServer === null && external.length === 0 && managed.length === 0) return undefined
   const servers: Record<string, McpServerConfig> = {}
   // ⛔ **Every external name checked BEFORE anything is constructed** — see the docblock. A
   // duplicate is a throw and never a silent overwrite.
@@ -92,6 +96,11 @@ export function claudeMcpServersFor(
     // `canUseTool` like every other consequential call, which is the whole reason HO-040 §4.1 says
     // external tools are governed by permissions rather than by our rails.
     servers[one.name] = { type: 'http', url: one.url }
+  }
+  for (const [name, config] of Object.entries(pluginServers)) {
+    if ([...taken].some((existing) => existing.toLowerCase() === name.toLowerCase()))
+      throw new Error('Plugin unavailable. Try again.')
+    servers[name] = config
   }
   if (ownServer === null) return servers
   return {

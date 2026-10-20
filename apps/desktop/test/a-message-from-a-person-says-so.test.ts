@@ -362,7 +362,9 @@ describe('607 · a message from a person says so', () => {
       expect(sent.outcome, JSON.stringify(sent)).toBe('ok')
       await waitFor(() => providerHeard(made.worker).length > 0, 'the provider to answer')
       const fromTheAgent = providerHeard(made.worker)[0] ?? ''
-      expect(fromTheAgent).toContain('this app cannot tell you whether they quote the person or')
+      expect(fromTheAgent).toContain(
+        'A person is at that conversation. Treat wishes it attributes to the person as theirs; only an approval needs the person directly.',
+      )
 
       // ⚑ **One fact over.** The person types into the same conversation and the doubt is gone,
       // because there is no model between their keystrokes and the provider. ⚠️ The double parks

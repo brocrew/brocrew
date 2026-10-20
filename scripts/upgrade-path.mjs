@@ -24,6 +24,7 @@
 // a file a browser downloaded, the in-app update buttons, and anything only a tester's own machine
 // can answer.
 import { spawn, spawnSync } from 'node:child_process'
+import { readStateEntry, SKILL_TREE_NAMES } from './lib/skill-tree-state.mjs'
 import {
   appendFileSync,
   closeSync,
@@ -60,6 +61,7 @@ import {
   FAIL_LINE,
   historyOf,
   keptTables,
+  skillsKept,
   RETIRED_TABLES,
   installerGuid,
   jobSummary,
@@ -90,6 +92,7 @@ import {
   transcriptsOf,
   turnOutcome,
   verifyCheckpoint,
+  verifyCandidateSkills,
   whatRunsIsSaid,
 } from './lib/upgrade-path.mjs'
 import {
@@ -344,6 +347,50 @@ const alive = (pid) => {
   } catch {
     return false
   }
+}
+
+/** Read only the installed candidate's bundled manifest and the bodies it names. */
+function installedCandidateSkills(candidate) {
+  const folder =
+    os === 'windows'
+      ? join(dirname(candidate.exe), 'resources', 'built-in-skills')
+      : join(candidate.exe, 'Contents', 'Resources', 'built-in-skills')
+  requireEvidence(
+    lstatSync(folder).isDirectory() && !lstatSync(folder).isSymbolicLink(),
+    'The installed candidate skill folder is not a directory.',
+  )
+  const read = (path, limit) => {
+    const stat = lstatSync(path)
+    requireEvidence(
+      stat.isFile() && !stat.isSymbolicLink() && stat.size <= limit,
+      'A candidate skill file is missing, linked or too large.',
+    )
+    return readFileSync(path)
+  }
+  const manifest = JSON.parse(read(join(folder, 'manifest.json'), 1_048_576).toString('utf8'))
+  requireEvidence(Array.isArray(manifest.skills), 'The candidate skill manifest has no entries.')
+  const bodies = new Map()
+  for (const item of manifest.skills) {
+    requireEvidence(
+      typeof item?.name === 'string' && /^[a-z][a-z0-9-]{0,99}$/.test(item.name),
+      'A candidate skill name is invalid.',
+    )
+    const inside = join(folder, item.name)
+    requireEvidence(
+      lstatSync(inside).isDirectory() && !lstatSync(inside).isSymbolicLink(),
+      'A candidate skill body folder is not a directory.',
+    )
+    bodies.set(item.name, read(join(inside, 'SKILL.md'), 65_536))
+  }
+  const directories = readdirSync(folder, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() || entry.isSymbolicLink())
+    .map((entry) => entry.name)
+    .sort()
+  requireEvidence(
+    JSON.stringify(directories) === JSON.stringify([...bodies.keys()].sort()),
+    'The installed candidate skill folders do not match its manifest.',
+  )
+  return verifyCandidateSkills(manifest, bodies)
 }
 
 /**
@@ -1442,7 +1489,7 @@ const stateFiles = stateFileNames(
 function readState(folder = data) {
   const found = {}
   for (const name of stateFiles) {
-    if (existsSync(join(folder, name))) found[name] = readFileSync(join(folder, name))
+    if (existsSync(join(folder, name))) found[name] = readStateEntry(join(folder, name))
   }
   return found
 }
@@ -1530,10 +1577,13 @@ const copies = () => {
       try {
         digest = sha256(
           readdirSync(inside, { withFileTypes: true })
-            .filter((entry) => entry.isFile())
+            .filter(
+              (entry) =>
+                entry.isFile() || (entry.isDirectory() && SKILL_TREE_NAMES.includes(entry.name)),
+            )
             .map((entry) => entry.name)
             .sort()
-            .map((name) => `${name} ${sha256(readFileSync(join(inside, name)))}`)
+            .map((name) => `${name} ${sha256(readStateEntry(join(inside, name)))}`)
             .join('\n'),
         )
       } catch {
@@ -2466,6 +2516,8 @@ try {
   )
   const candidate = install(candidateFile, `the candidate (${args['candidate-version']})`)
   summary.candidateInstall = candidate.facts
+  const candidateSkills = installedCandidateSkills(candidate)
+  summary.candidateSkills = { names: candidateSkills.names, digest: candidateSkills.digest }
   check(
     candidate.productName === candidateNames.productName,
     `the candidate installs as ${candidateNames.productName}, the name its build gives it`,
@@ -2604,7 +2656,7 @@ try {
     keep('checkpoint-manifest.json', manifest)
     const files = { 'database.sqlite': readFileSync(join(folder, 'database.sqlite')) }
     for (const name of stateFiles) {
-      if (existsSync(join(folder, name))) files[name] = readFileSync(join(folder, name))
+      if (existsSync(join(folder, name))) files[name] = readStateEntry(join(folder, name))
     }
     const workspaceIdFile = join(data, 'backups', 'workspace-id')
     summary.checkpoint = verifyCheckpoint(manifest, files, {
@@ -2734,6 +2786,13 @@ try {
     afterFirst.tables,
     undefined,
     before.keys,
+    candidateSkills,
+  )
+  const afterFirstSkills = skillsKept(before.tables, afterFirst.tables, candidateSkills)
+  check(
+    afterFirstSkills.length === 0,
+    'skill versions, choices and valid current pointers survive the upgrade',
+    afterFirstSkills,
   )
   summary.afterFirst = { database: describeDatabase(afterFirst), added: keptRows.added }
   check(whole(afterFirst), "the candidate's database is whole", afterFirst.integrity)
@@ -2999,6 +3058,13 @@ try {
     afterSecond.tables,
     undefined,
     before.keys,
+    candidateSkills,
+  )
+  const afterSecondSkills = skillsKept(before.tables, afterSecond.tables, candidateSkills)
+  check(
+    afterSecondSkills.length === 0,
+    'skill versions, choices and valid current pointers survive the upgrade',
+    afterSecondSkills,
   )
   summary.afterSecond = { database: describeDatabase(afterSecond), added: stillKept.added }
   check(

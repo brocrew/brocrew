@@ -15,6 +15,7 @@ export const WINDOW_READ_BOUNDS = {
 
 export const windowReadQuery = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('routes') }).strict(),
+  z.object({ kind: z.literal('incidents') }).strict(),
   z
     .object({
       kind: z.literal('activity'),
@@ -66,7 +67,24 @@ export interface WindowFiles {
 export interface WindowActivity extends RecentActivityReading {
   readonly kind: 'activity'
 }
-export type WindowReadResult = WindowRoutes | WindowLeads | WindowFiles | WindowActivity
+export interface IncidentReading {
+  readonly sessionId: string
+  readonly pieces: ReturnType<SessionStore['openPiecesOf']>
+  readonly work: ReturnType<SessionStore['reconciliationWork']>
+  readonly routes: ReturnType<SessionStore['routedRequestsOf']>
+  readonly messages: ReturnType<SessionStore['messagesWaitingIn']>
+  readonly stop: ReturnType<SessionStore['lastAskToStop']>
+  readonly piecesSkipped: readonly SkippedRow[]
+  readonly routesSkipped: readonly SkippedRow[]
+  readonly messagesSkipped: readonly SkippedRow[]
+  readonly stopSkipped: readonly SkippedRow[]
+}
+export interface WindowIncidents {
+  readonly kind: 'incidents'
+  readonly owners: readonly IncidentReading[]
+}
+export type WindowReadResult =
+  WindowRoutes | WindowLeads | WindowFiles | WindowActivity | WindowIncidents
 
 const skipped = z.union([z.number().int().nonnegative().safe(), z.literal('the-whole-ledger')])
 const walk = z
@@ -79,6 +97,29 @@ const walk = z
   })
   .strict()
 export const windowReadResult = z.discriminatedUnion('kind', [
+  z
+    .object({
+      kind: z.literal('incidents'),
+      owners: z
+        .array(
+          z
+            .object({
+              sessionId: z.string().min(1),
+              pieces: z.array(z.unknown()).max(WINDOW_READ_BOUNDS.rows),
+              work: z.array(z.unknown()).max(WINDOW_READ_BOUNDS.rows),
+              routes: z.array(z.unknown()).max(WINDOW_READ_BOUNDS.rows),
+              messages: z.array(z.unknown()).max(WINDOW_READ_BOUNDS.rows),
+              stop: z.unknown(),
+              piecesSkipped: z.array(skipped).max(WINDOW_READ_BOUNDS.rows),
+              routesSkipped: z.array(skipped).max(WINDOW_READ_BOUNDS.rows),
+              messagesSkipped: z.array(skipped).max(WINDOW_READ_BOUNDS.rows),
+              stopSkipped: z.array(skipped).max(WINDOW_READ_BOUNDS.rows),
+            })
+            .strict(),
+        )
+        .max(WINDOW_READ_BOUNDS.sessions),
+    })
+    .strict(),
   z
     .object({
       kind: z.literal('activity'),
@@ -145,9 +186,9 @@ export interface WindowStoreReader {
   close(): Promise<void>
 }
 
-/** `failed`: the worker answered that its read failed; `unavailable`: no worker could read. */
+/** `busy`: all native permits are held; `failed`: the worker could not complete its read. */
 export class WindowReadUnavailable extends Error {
-  constructor(readonly why: 'unavailable' | 'failed' | 'restart' = 'unavailable') {
+  constructor(readonly why: 'unavailable' | 'failed' | 'restart' | 'busy' = 'unavailable') {
     super(
       why === 'restart'
         ? 'The window’s record could not be read. Restart BroCrew to try again.'

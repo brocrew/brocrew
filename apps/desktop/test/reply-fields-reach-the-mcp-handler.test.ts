@@ -45,15 +45,22 @@ describe('reply field failures travel through the real MCP server', () => {
     piece = given.piece
     const tools = agentToolsFor(host, worker).tools
     tool = tools.find((one) => one.name === 'reply_to_parent')!
-    otherTool = tools.find((one) => one.name === 'get_agent_status')!
+    otherTool = tools.find((one) => one.name === 'interrupt_agent')!
     expect(tools.filter((one) => one.handlerOwnsMissingInput).map((one) => one.name)).toEqual([
+      'list_agents',
+      'get_agent_status',
       'give_work',
       'message_agent',
+      'read_document',
       'reply_to_parent',
+      'list_tasks',
       'answer_question',
+      'list_questions',
       'ask_question',
+      'read_transcript',
       'update_work',
       'take_on_work',
+      'find_files',
     ])
     updateTool = tools.find((one) => one.name === 'update_work')!
     closes = []

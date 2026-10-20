@@ -1,7 +1,7 @@
-import { link, lstat, mkdir, opendir, realpath, rename, rmdir, unlink } from 'node:fs/promises'
+import { link, lstat, mkdir, readdir, realpath, rename, rmdir, unlink } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { setImmediate } from 'node:timers/promises'
-import { basename, dirname, join, relative, resolve } from 'node:path'
+import { basename, dirname, join, relative, resolve, sep } from 'node:path'
 import type { BigIntStats } from 'node:fs'
 import type { Provider } from '@brobot2/shared'
 import type { TranscriptRetention } from '../shared/transcript-retention'
@@ -27,7 +27,22 @@ export interface TranscriptClearList {
   readonly rootIdentity: BigIntStats | null
   readonly entries: readonly TranscriptToClear[]
 }
+export interface TranscriptClearBatch extends TranscriptClearList {
+  /** The last examined name; a later start can resume after a completed batch. */
+  readonly through: string
+}
 export type ProviderHomeInUse = (home: string, provider: Provider) => boolean
+const SCAN_BATCH_SIZE = 4
+const scanKey = (root: string, path: string) => relative(root, path).split(sep).join('/')
+const compareScanKeys = (one: string, two: string): number => {
+  const left = one.split('/')
+  const right = two.split('/')
+  for (let index = 0; index < Math.min(left.length, right.length); index++) {
+    if (left[index]! < right[index]!) return -1
+    if (left[index]! > right[index]!) return 1
+  }
+  return Math.sign(left.length - right.length)
+}
 
 async function plainDirectory(path: string): Promise<boolean> {
   try {
@@ -37,12 +52,16 @@ async function plainDirectory(path: string): Promise<boolean> {
     return false
   }
 }
-async function* children(path: string): AsyncGenerator<string> {
+async function* children(
+  path: string,
+  includes: (child: string) => boolean = () => true,
+): AsyncGenerator<string> {
   if (!(await plainDirectory(path))) return
   const canonical = await realpath(path)
-  const directory = await opendir(canonical)
-  for await (const entry of directory) {
-    yield join(canonical, entry.name)
+  for (const name of (await readdir(canonical)).sort()) {
+    const child = join(canonical, name)
+    if (!includes(child)) continue
+    yield child
     await setImmediate()
   }
 }
@@ -86,6 +105,150 @@ async function describe(path: string, cutoff: number, depth = 0): Promise<Entry[
   }
 }
 
+async function* scannedFiles(
+  root: string,
+  period: TranscriptRetention,
+  now: number,
+  inUse: ProviderHomeInUse,
+  after: string,
+  before: string,
+): AsyncGenerator<{ path: string; candidate: TranscriptToClear | null }> {
+  const cutoff = now - (period as number) * DAY
+  const overlaps = (path: string): boolean => {
+    const key = scanKey(root, path)
+    return (
+      (compareScanKeys(key, after) >= 0 || after.startsWith(`${key}/`)) &&
+      (before === '' || compareScanKeys(key, before) <= 0)
+    )
+  }
+  const scanChildren = (path: string) => children(path, overlaps)
+  for await (const workspace of scanChildren(root))
+    for await (const profile of scanChildren(workspace)) {
+      for (const provider of ['claude', 'codex'] as const) {
+        const home = join(profile, provider)
+        if (!overlaps(home) || inUse(home, provider) || !(await plainDirectory(home))) continue
+        const add = async (
+          file: string,
+          session: string,
+          directory: string | null,
+        ): Promise<TranscriptToClear | null> => {
+          if (inUse(home, provider) || !(await inside(root, file))) return null
+          const transcript = await describe(file, cutoff)
+          if (transcript === null || transcript.length !== 1 || transcript[0]!.directory)
+            return null
+          let accompanying: Entry[] = []
+          if (directory !== null) {
+            try {
+              await lstat(directory)
+              if (!(await inside(root, directory))) return null
+              const read = await describe(directory, cutoff)
+              if (read === null) return null
+              accompanying = read
+            } catch (error) {
+              if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return null
+            }
+          }
+          return {
+            home,
+            provider,
+            session,
+            file,
+            directory,
+            cutoff,
+            entries: [...accompanying, ...transcript],
+          }
+        }
+        const considered = (path: string) => {
+          const key = scanKey(root, path)
+          return (
+            compareScanKeys(key, after) > 0 && (before === '' || compareScanKeys(key, before) <= 0)
+          )
+        }
+        if (provider === 'claude') {
+          for await (const project of scanChildren(join(home, 'projects'))) {
+            if (!(await plainDirectory(project))) continue
+            for await (const file of scanChildren(project)) {
+              if (!considered(file)) continue
+              const match = /^([a-zA-Z0-9_-]{1,200})\.jsonl$/.exec(basename(file))
+              yield {
+                path: file,
+                candidate: match ? await add(file, match[1]!, join(project, match[1]!)) : null,
+              }
+            }
+          }
+        } else {
+          const walk = async function* (
+            path: string,
+            depth = 0,
+          ): AsyncGenerator<{ path: string; candidate: TranscriptToClear | null }> {
+            if (depth > 8) return
+            for await (const file of scanChildren(path)) {
+              const match =
+                /^rollout-.+-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/i.exec(
+                  basename(file),
+                )
+              if (considered(file))
+                yield { path: file, candidate: match ? await add(file, match[1]!, null) : null }
+              if (!match && (await plainDirectory(file))) yield* walk(file, depth + 1)
+            }
+          }
+          yield* walk(join(home, 'sessions'))
+        }
+      }
+    }
+}
+
+async function* batchesAtRoot(
+  root: string,
+  rootIdentity: BigIntStats,
+  period: TranscriptRetention,
+  now: number,
+  inUse: ProviderHomeInUse,
+  after: string,
+  before: string,
+  maxBatchAgeMs: number,
+): AsyncGenerator<TranscriptClearBatch> {
+  let examined: { path: string; candidate: TranscriptToClear | null }[] = []
+  let beganAt = performance.now()
+  const batch = (): TranscriptClearBatch => ({
+    root,
+    rootIdentity,
+    through: scanKey(root, examined[examined.length - 1]!.path),
+    entries: examined
+      .flatMap(({ candidate }) => (candidate === null ? [] : [candidate]))
+      .sort((a, b) => {
+        const ageA = a.entries.find((entry) => entry.path === a.file)!.stat.mtimeNs
+        const ageB = b.entries.find((entry) => entry.path === b.file)!.stat.mtimeNs
+        return ageA < ageB ? -1 : ageA > ageB ? 1 : a.file < b.file ? -1 : a.file > b.file ? 1 : 0
+      }),
+  })
+  for await (const one of scannedFiles(root, period, now, inUse, after, before)) {
+    examined.push(one)
+    if (examined.length < SCAN_BATCH_SIZE && performance.now() - beganAt < maxBatchAgeMs) continue
+    yield batch()
+    examined = []
+    beganAt = performance.now()
+  }
+  if (examined.length > 0) yield batch()
+}
+
+/** Yield bounded, deterministic batches so a slow scan can still delete before the deadline. */
+export async function* batchesToClear(
+  userData: string,
+  period: TranscriptRetention,
+  now: number,
+  inUse: ProviderHomeInUse,
+  after = '',
+  before = '',
+  maxBatchAgeMs = 1_000,
+): AsyncGenerator<TranscriptClearBatch> {
+  if (period === 'forever') return
+  const root = await ownedRoot(userData)
+  if (root === null) return
+  const rootIdentity = await lstat(root, { bigint: true })
+  yield* batchesAtRoot(root, rootIdentity, period, now, inUse, after, before, maxBatchAgeMs)
+}
+
 /** Decide from names and ages only. Nothing outside this workspace's managed homes is listed. */
 export async function whatToClear(
   userData: string,
@@ -97,67 +260,9 @@ export async function whatToClear(
   const root = await ownedRoot(userData)
   if (root === null) return { root: '', rootIdentity: null, entries: [] }
   const rootIdentity = await lstat(root, { bigint: true })
-  const cutoff = now - period * DAY
   const entries: TranscriptToClear[] = []
-  for await (const workspace of children(root))
-    for await (const profile of children(workspace)) {
-      for (const provider of ['claude', 'codex'] as const) {
-        const home = join(profile, provider)
-        if (inUse(home, provider) || !(await plainDirectory(home))) continue
-        const add = async (
-          file: string,
-          session: string,
-          directory: string | null,
-        ): Promise<void> => {
-          if (inUse(home, provider) || !(await inside(root, file))) return
-          const transcript = await describe(file, cutoff)
-          if (transcript === null || transcript.length !== 1 || transcript[0]!.directory) return
-          let accompanying: Entry[] = []
-          if (directory !== null) {
-            try {
-              await lstat(directory)
-              if (!(await inside(root, directory))) return
-              const read = await describe(directory, cutoff)
-              if (read === null) return
-              accompanying = read
-            } catch (error) {
-              if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return
-            }
-          }
-          entries.push({
-            home,
-            provider,
-            session,
-            file,
-            directory,
-            cutoff,
-            entries: [...accompanying, ...transcript],
-          })
-        }
-        if (provider === 'claude') {
-          for await (const project of children(join(home, 'projects'))) {
-            if (!(await plainDirectory(project))) continue
-            for await (const file of children(project)) {
-              const match = /^([a-zA-Z0-9_-]{1,200})\.jsonl$/.exec(basename(file))
-              if (match) await add(file, match[1]!, join(project, match[1]!))
-            }
-          }
-        } else {
-          const walk = async (path: string, depth = 0): Promise<void> => {
-            if (depth > 8) return
-            for await (const file of children(path)) {
-              const match =
-                /^rollout-.+-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/i.exec(
-                  basename(file),
-                )
-              if (match) await add(file, match[1]!, null)
-              else if (await plainDirectory(file)) await walk(file, depth + 1)
-            }
-          }
-          await walk(join(home, 'sessions'))
-        }
-      }
-    }
+  for await (const batch of batchesAtRoot(root, rootIdentity, period, now, inUse, '', '', Infinity))
+    entries.push(...batch.entries)
   return { root, rootIdentity, entries }
 }
 
@@ -228,6 +333,8 @@ export async function clearTranscripts(
         }
         if (!(await stageIsSame())) throw new Error('The transcript staging directory changed.')
         const moved = join(staging.path, randomUUID())
+        if (!current() || inUse(candidate.home, candidate.provider))
+          return { conversations, bytes, stopped: true }
         await rename(entry.path, moved)
         let verified = false
         let verificationFailure: unknown

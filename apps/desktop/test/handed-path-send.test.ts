@@ -207,7 +207,7 @@ describe('handing the agent a path, through the host (216)', () => {
     // ⛔ To the provider: composed, labelled, with the path in it — §1's measured "text or nothing".
     expect(runtime.sent).toHaveLength(1)
     expect(runtime.sent[0]).toContain('read this for me')
-    expect(runtime.sent[0]).toContain(file.path)
+    expect(runtime.sent[0]).toContain(JSON.stringify(file.path))
     expect(runtime.sent[0]).toContain('Attached by the user')
 
     // ⛔ To the ledger: the split. `214` from the other end — a transcript that stored the composed
@@ -249,7 +249,7 @@ describe('handing the agent a path, through the host (216)', () => {
 
     await host.sendInterrupting(sessionId, 'actually, this', new NullSink(), [file])
 
-    expect(runtime.sent.at(-1)).toContain(file.path)
+    expect(runtime.sent.at(-1)).toContain(JSON.stringify(file.path))
     expect(turns(sessionId).at(-1)?.attachments).toEqual([file])
     expect(turns(sessionId).at(-1)?.text).toBe('actually, this')
   })
@@ -275,7 +275,7 @@ describe('handing the agent a path, through the host (216)', () => {
     const last = turns(sessionId).at(-1)
     expect(last?.text).toBe('and then this')
     expect(last?.attachments).toEqual([file])
-    expect(runtime.sent.at(-1)).toContain(file.path)
+    expect(runtime.sent.at(-1)).toContain(JSON.stringify(file.path))
   })
 
   it('🔴 a path that vanishes while the message WAITS ends it — it does not sit there forever', async () => {
@@ -628,16 +628,19 @@ describe('handing the agent a path, through the host (216)', () => {
     expect(runtime.calls.interrupts).toBe(before)
   })
 
-  it('⚠️ a socket is refused rather than handed over as a file', async () => {
-    // ⛔ `183`/`190` refuse the same shapes: an agent's `Read` cannot make sense of one, and handing
-    // it over would spend a turn to learn that.
-    const fifo = join(cwd, 'a-pipe')
-    execFileSync('mkfifo', [fifo])
+  it.skipIf(process.platform === 'win32')(
+    '⚠️ a socket is refused rather than handed over as a file',
+    async () => {
+      // ⛔ The other doors refuse the same shapes: an agent's `Read` cannot make sense of one, and handing
+      // it over would spend a turn to learn that.
+      const fifo = join(cwd, 'a-pipe')
+      execFileSync('mkfifo', [fifo])
 
-    const verdict = await classifyHandedPath(fifo, cwd)
-    expect('refusal' in verdict).toBe(true)
-    if ('refusal' in verdict) expect(verdict.refusal).toContain('not a file or a folder')
-  })
+      const verdict = await classifyHandedPath(fifo, cwd)
+      expect('refusal' in verdict).toBe(true)
+      if ('refusal' in verdict) expect(verdict.refusal).toContain('not a file or a folder')
+    },
+  ) // The fixture creates a POSIX FIFO at a file pathname, unavailable on Windows.
 
   // ⚑ `726` · R92 — *"the exact attachments this session was handed (262 §2)"* was here: five tests
   // on the per-session grant set that carved a pasted image back out of `protectedRoots`. R92

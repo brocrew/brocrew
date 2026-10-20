@@ -125,11 +125,8 @@ import { runtimePathCalls, useMessagePaths } from '../composables/useMessagePath
  */
 const props = defineProps<{
   record: SessionRecord
-  /**
-   * ⚑ **2026-09-30 · the whole forest, folded as the Team page folds it** — the main panel's Graph
-   * tab draws it. `null` until the band's poll has read it.
-   */
-  forest?: ForestView | null
+  /** The main panel reads the forest lazily; `null` means it has not been read. */
+  forest?: ForestView | null | (() => ForestView | null)
   mode: TranscriptMode
   /** Whether lifecycle notices are shown inline in the conversation (079 §3). */
   debug: boolean
@@ -1336,12 +1333,14 @@ const hostSays = computed((): AgentState | null =>
   props.record.phase === 'recorded' ? (props.listedState ?? null) : null,
 )
 
-const agentFacets = computed(() =>
-  hostSays.value === null
+const agentFacets = computed(() => ({
+  ...(hostSays.value === null
     ? sessionFacets(facetInput.value)
     : // What it needs a person for is this view's own to say: the cards it holds open.
-      facetsOfState(hostSays.value, sessionFacets(facetInput.value).needing),
-)
+      facetsOfState(hostSays.value, sessionFacets(facetInput.value).needing)),
+  // A pending launch is current even while the transcript still shows the previous turn.
+  ...(props.launching === true ? { being: 'starting' as const } : {}),
+}))
 
 /**
  * ⚑ **D-017b · whose window takes this conversation's turns, when it is not this one** — see

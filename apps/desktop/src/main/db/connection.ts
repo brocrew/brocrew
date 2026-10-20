@@ -14,8 +14,11 @@ export type AppStatement = Database.Statement
  * pragmas BroBot2 relies on. Foreign keys must be enabled per connection
  * (002 SQLite port notes) for the events → provider_session FK to be enforced.
  */
-export function openDatabase(file: string): AppDatabase {
-  const db = new Database(file)
+export function openDatabase(
+  file: string,
+  options?: { readonly fileMustExist: boolean },
+): AppDatabase {
+  const db = new Database(file, options)
   db.pragma('journal_mode = WAL')
   db.pragma('foreign_keys = ON')
   return db

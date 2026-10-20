@@ -10,6 +10,12 @@ import {
 import { DO_IT_HERE, MOVE_IT } from '../../shared/move-request'
 import { themeAgentTools } from '../themes/agent-tools'
 import { WORK_SEARCH_SCOPES, workSearchQuery } from '../../shared/work-search'
+import {
+  pastWorkSearchQuery,
+  PAST_WORK_SEARCH_DESCRIPTION,
+  pastWorkSearchInWords,
+  pastWorkSearchRefusal,
+} from '../../shared/past-work-search'
 import { WORK_STATE_WORD } from '../../shared/work-state-words'
 import {
   WORK_SEARCH_WORDS,
@@ -661,6 +667,7 @@ export const TOOL_NAMES = [
    */
   'request_action',
   ...THEME_TOOL_NAMES,
+  'search_past_work',
 ] as const
 
 export type ToolName = (typeof TOOL_NAMES)[number]
@@ -4678,6 +4685,7 @@ export interface AgentToolHost {
   /** ⚑ **D-037 · `find_files`** — the files kept on the caller's tree or everywhere. */
   findKeptFiles: RuntimeHost['findKeptFiles']
   searchWork?: RuntimeHost['searchWork']
+  searchPastWork?: RuntimeHost['searchPastWork']
   /**
    * 🔴 **724 · `720` F-C — what a sentence calls a conversation: its agent's name** — ⚑ **D-016 ·
    * commit 7 · R3 — where a piece in the sentence already names that conversation** (the holder of
@@ -5479,6 +5487,140 @@ export function agentToolsFor(
       .describe('Set this when a person has to do something before anything else can happen.'),
   }
 
+  /** The advertised reader fields also supply their handler-side type checks. */
+  const readerInputs = {
+    list_agents: {
+      archived: z
+        .boolean()
+        .optional()
+        .describe(
+          'true lists the archived conversations you can reach instead, the most recently archived first, each with when it was archived and by whom. Leave it out for the conversations that are not archived.',
+        ),
+    },
+    get_agent_status: {
+      agent: z
+        .string()
+        .describe('The agent, by the piece it owns (W1.2) or by its id from list_agents.'),
+    },
+    read_document: {
+      resource: z
+        .string()
+        .describe(
+          'The resource id — res_… — as a reply names it, list_tasks naming its piece, list_tasks with made, or find_files.',
+        ),
+    },
+    list_tasks: {
+      piece: z
+        .string()
+        .optional()
+        .describe(
+          'A piece you, or another conversation of your profile, hold or gave — its label (W1.2) or its id — to read its record. Leave it out for your board.',
+        ),
+      made: z
+        .boolean()
+        .optional()
+        .describe(
+          `true lists the files your profile’s conversations made, newest first — at most ${String(MADE_FILES_LISTED)} — each with the piece it was kept on and when. Refused with piece.`,
+        ),
+      state: documentedToolEnum(
+        TOOL_INPUT_ENUMS['list_tasks:state'],
+        'Which pieces of your board to list.',
+        'Refused with piece or made.',
+      ).optional(),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(ENDED_LISTED_AT_MOST)
+        .optional()
+        .describe(`${LIMIT_DESCRIBED('pieces')} Refused with piece or made.`),
+    },
+    list_questions: {
+      state: documentedToolEnum(
+        TOOL_INPUT_ENUMS['list_questions:state'],
+        'Which questions to list.',
+      ).optional(),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(ENDED_LISTED_AT_MOST)
+        .optional()
+        .describe(LIMIT_DESCRIBED('questions')),
+    },
+    read_transcript: {
+      agent: z
+        .string()
+        .describe('The agent, by the piece it owns (W1.2) or by its id from list_agents.'),
+      turns_back: z
+        .number()
+        .optional()
+        .describe(
+          `How many of its turns to read, newest last: 1 to ${String(TURNS_BACK_MAX)}; ${String(TURNS_BACK_DEFAULT)} when left out.`,
+        ),
+      search: z
+        .string()
+        .optional()
+        .describe(
+          'Read instead the turns whose messages or answers contain these words (letters matched regardless of case).',
+        ),
+    },
+    find_files: {
+      where: documentedToolEnum(TOOL_INPUT_ENUMS['find_files:where'], 'Where to look.').optional(),
+      words: z
+        .string()
+        .optional()
+        .describe(
+          `Words a file must hold, separated by spaces, at most ${String(MOST_WORDS_FOUND)}; case does not matter. Leave it out to list the files.`,
+        ),
+      older_than: z
+        .string()
+        .optional()
+        .describe(
+          'The id (res_…) an earlier answer gave to go on from: only files kept before it.',
+        ),
+    },
+  } satisfies Record<string, z.ZodRawShape>
+
+  /** Read field types here and combine them with each reader's existing value rules. */
+  const readerFieldRefusal = (
+    name: keyof typeof readerInputs,
+    args: Readonly<Record<string, unknown>>,
+    valueProblems: readonly string[] = [],
+  ): AgentToolAnswer | null => {
+    const parsed = z.object(readerInputs[name]).strict().safeParse(args)
+    const issues: z.core.$ZodIssue[] = (parsed.success ? [] : parsed.error.issues)
+      .filter(
+        (issue) =>
+          issue.code === 'unrecognized_keys' ||
+          (issue.code === 'invalid_type' &&
+            ['string', 'boolean', 'number'].includes(issue.expected)),
+      )
+      .map((issue) => {
+        if (issue.code !== 'invalid_type' || args[String(issue.path[0])] !== undefined) return issue
+        const field = String(issue.path[0])
+        const message =
+          field === 'agent'
+            ? 'required; name the agent by the piece it owns (W1.2) or its id'
+            : field === 'resource'
+              ? 'required; send the resource id (res_…)'
+              : 'required; send text'
+        return { code: 'custom', path: issue.path, message }
+      })
+    const remaining = valueProblems.filter(
+      (problem) =>
+        !issues.some((issue) => issue.path.length > 0 && problem.startsWith(String(issue.path[0]))),
+    )
+    if (issues.length === 0 && remaining.length === 0) return null
+    const detail = workRequestRefused(issues, args, Object.keys(readerInputs[name]))
+    return refusalAnswer(
+      refuseTool(
+        'malformed-request',
+        remaining.length === 0 ? detail : { problems: [...detail.problems, ...remaining] },
+      ),
+    )
+  }
+
   /**
    * ⚠️ **`ToolName`, not `string`** (405). Every definition below is now the thing
    * {@link RuntimeHost.noteRefusal} is handed the name of, and typing the array is what makes that
@@ -5488,6 +5630,7 @@ export function agentToolsFor(
   const tools: (AgentToolDefinition & { readonly name: ToolName })[] = [
     {
       name: 'list_agents',
+      handlerOwnsMissingInput: true,
       /**
        * 🔴 **The sentence states the INVARIANT, not one caller's answer** (433, standing rule 8).
        *
@@ -5587,23 +5730,22 @@ export function agentToolsFor(
        * ⚑ **A reader of the conversations the caller may reach.** `agentsVisibleTo` filters by the caller's own reach and an empty answer is a sentence (`644`); there is nothing here to ask a person about.
        */
       beyondItsRails: 'nothing-its-rails-do-not-cover',
-      input: {
-        archived: z
-          .boolean()
-          .optional()
-          .describe(
-            'true lists the archived conversations you can reach instead, the most recently archived first, each with when it was archived and by whom. Leave it out for the conversations that are not archived.',
-          ),
-      },
+      input: Object.fromEntries(
+        Object.entries(readerInputs.list_agents).map(([field, schema]) => [
+          field,
+          agentToolHandlerInput(schema),
+        ]),
+      ),
       call: (args) =>
         guarded(async () => {
+          args = toolArgumentsAtHandler(args)
           if (args.archived !== undefined && typeof args.archived !== 'boolean') {
-            return refusalAnswer(
-              refuseTool('malformed-request', {
-                problems: ['archived, when given, must be true or false'],
-              }),
-            )
+            return readerFieldRefusal('list_agents', args, [
+              'archived, when given, must be true or false',
+            ])!
           }
+          const fieldRefusal = readerFieldRefusal('list_agents', args)
+          if (fieldRefusal !== null) return fieldRefusal
           if (args.archived === true) {
             const { archived, notListed, readAt } = host.archivedVisibleTo(by, me)
             const more =
@@ -5649,6 +5791,7 @@ export function agentToolsFor(
     },
     {
       name: 'get_agent_status',
+      handlerOwnsMissingInput: true,
       // ⚑ **The second half is 433's invariant again** — enumerating and inspecting are one
       // question asked for a set and for one id, so a caller cannot be told about an agent
       // `list_agents` would not name, and is never refused one it would.
@@ -5666,18 +5809,20 @@ export function agentToolsFor(
        * ⚑ **The same read for one id**, folded with the same entitlement — `agentCard` answers `null` for *not there* and *not yours* alike.
        */
       beyondItsRails: 'nothing-its-rails-do-not-cover',
-      input: {
-        agent: z
-          .string()
-          .describe('The agent, by the piece it owns (W1.2) or by its id from list_agents.'),
-      },
+      input: Object.fromEntries(
+        Object.entries(readerInputs.get_agent_status).map(([field, schema]) => [
+          field,
+          agentToolHandlerInput(schema),
+        ]),
+      ),
       call: (args) =>
         guarded(async () => {
+          args = toolArgumentsAtHandler(args)
           if (typeof args.agent !== 'string' || args.agent.length === 0) {
-            return refusalAnswer(
-              refuseTool('malformed-request', { problems: ['agent is required'] }),
-            )
+            return readerFieldRefusal('get_agent_status', args, ['agent is required'])!
           }
+          const fieldRefusal = readerFieldRefusal('get_agent_status', args)
+          if (fieldRefusal !== null) return fieldRefusal
           // 🔴 **D-016 · commit 7 · R1 — a label names its piece's owner**, before any rail reads the
           // target; one that names nothing this caller may reach reads as an unknown id below.
           const agent = host.theConversationAddressed(args.agent, by, me, 'messaging')
@@ -6349,6 +6494,7 @@ export function agentToolsFor(
     },
     {
       name: 'read_document',
+      handlerOwnsMissingInput: true,
       /**
        * 🔴 **D-016 · a RESOURCE, by its id** — an input its giver handed over, or a file the agent
        * holding it kept or handed back with its reply, which this app keeps for the piece (plan
@@ -6369,21 +6515,21 @@ export function agentToolsFor(
        * so this tool and the person's window narrow through one rule — `169` §1.
        */
       beyondItsRails: 'nothing-its-rails-do-not-cover',
-      input: {
-        resource: z
-          .string()
-          .describe(
-            'The resource id — res_… — as a reply names it, list_tasks naming its piece, list_tasks with made, or find_files.',
-          ),
-      },
+      input: Object.fromEntries(
+        Object.entries(readerInputs.read_document).map(([field, schema]) => [
+          field,
+          agentToolHandlerInput(schema),
+        ]),
+      ),
       call: (args) =>
         guarded(async () => {
+          args = toolArgumentsAtHandler(args)
           const { resource } = args
           if (typeof resource !== 'string' || resource.length === 0) {
-            return refusalAnswer(
-              refuseTool('malformed-request', { problems: ['resource is required'] }),
-            )
+            return readerFieldRefusal('read_document', args, ['resource is required'])!
           }
+          const fieldRefusal = readerFieldRefusal('read_document', args)
+          if (fieldRefusal !== null) return fieldRefusal
           // ⛔ **Nothing here asks who may read what** — the module note's rule. ⚑ What arrives is a
           // `RESOURCE_RAILS` refusal already in `341`'s shape, so it is carried rather than
           // translated: the store's absence, an id that names nothing, and the byte rails.
@@ -6617,6 +6763,7 @@ export function agentToolsFor(
     },
     {
       name: 'list_tasks',
+      handlerOwnsMissingInput: true,
       description:
         'Your pieces of work: named, one piece’s record — its state, current status line, the last exchange with the agent holding it, its open questions, its children and its resources — the inputs it was given and what was made for it; unnamed, your board — the open pieces you hold (your own root among them) and gave: waiting, working or stalled, and any you gave whose answer has not reached you. An open piece an archived conversation holds is named in one line and not listed. The ones that ended are counted and not listed: state: "all" lists them too and "ended" only them, a line each, newest first and as many as limit says; name one to read its record. A piece another conversation of your profile holds or gave can be named too. Labels (W1.2) and ids both name a piece. made: true lists instead the files your profile’s conversations made.',
       /**
@@ -6629,73 +6776,46 @@ export function agentToolsFor(
        * `read_document`.
        */
       beyondItsRails: 'nothing-its-rails-do-not-cover',
-      input: {
-        piece: z
-          .string()
-          .optional()
-          .describe(
-            'A piece you, or another conversation of your profile, hold or gave — its label (W1.2) or its id — to read its record. Leave it out for your board.',
-          ),
-        made: z
-          .boolean()
-          .optional()
-          .describe(
-            `true lists the files your profile’s conversations made, newest first — at most ${String(MADE_FILES_LISTED)} — each with the piece it was kept on and when. Refused with piece.`,
-          ),
-        state: documentedToolEnum(
-          TOOL_INPUT_ENUMS['list_tasks:state'],
-          'Which pieces of your board to list.',
-          'Refused with piece or made.',
-        ).optional(),
-        limit: z
-          .number()
-          .int()
-          .min(1)
-          .max(ENDED_LISTED_AT_MOST)
-          .optional()
-          .describe(`${LIMIT_DESCRIBED('pieces')} Refused with piece or made.`),
-      },
+      input: Object.fromEntries(
+        Object.entries(readerInputs.list_tasks).map(([field, schema]) => [
+          field,
+          agentToolHandlerInput(schema),
+        ]),
+      ),
       call: (args) =>
         guarded(async () => {
+          args = toolArgumentsAtHandler(args)
           const named = args.piece
           if (named !== undefined && (typeof named !== 'string' || named.length === 0)) {
-            return refusalAnswer(
-              refuseTool('malformed-request', {
-                problems: ['piece, when given, must be a label or an id'],
-              }),
-            )
+            return readerFieldRefusal('list_tasks', args, [
+              'piece, when given, must be a label or an id',
+            ])!
           }
           const made = args.made
           if (made !== undefined && typeof made !== 'boolean') {
-            return refusalAnswer(
-              refuseTool('malformed-request', {
-                problems: ['made, when given, must be true or false'],
-              }),
-            )
+            return readerFieldRefusal('list_tasks', args, [
+              'made, when given, must be true or false',
+            ])!
           }
           if (made === true && named !== undefined) {
-            return refusalAnswer(
-              refuseTool('malformed-request', {
-                problems: ['made and piece cannot be given together'],
-              }),
-            )
+            return readerFieldRefusal('list_tasks', args, [
+              'made and piece cannot be given together',
+            ])!
           }
           const asked = theListingAsked(args.state, args.limit)
           if ('problems' in asked) {
-            return refusalAnswer(refuseTool('malformed-request', { problems: asked.problems }))
+            return readerFieldRefusal('list_tasks', args, asked.problems)!
           }
           if (
             (args.state !== undefined || args.limit !== undefined) &&
             (named !== undefined || made === true)
           ) {
-            return refusalAnswer(
-              refuseTool('malformed-request', {
-                problems: [
-                  'state and limit are for the board: they cannot be given with piece or made',
-                ],
-              }),
-            )
+            return readerFieldRefusal('list_tasks', args, [
+              'state and limit are for the board: they cannot be given with piece or made',
+            ])!
           }
+          const fieldRefusal = readerFieldRefusal('list_tasks', args)
+          if (fieldRefusal !== null) return fieldRefusal
           if (made === true) {
             // 🔴 **D-024 · R3 — what this conversation's profile made**, newest first, each with the
             // piece it was kept on and when; the rest counted. ⚑ Named by its id, which
@@ -7550,6 +7670,7 @@ export function agentToolsFor(
     },
     {
       name: 'list_questions',
+      handlerOwnsMissingInput: true,
       description:
         // ⚑ **679 · the last clause names `asked_by` beside the id** — each row carries both, and two
         // rows can share an id (`675` F-b), where the id alone is refused.
@@ -7561,25 +7682,21 @@ export function agentToolsFor(
        * listed, never whose.
        */
       beyondItsRails: 'nothing-its-rails-do-not-cover',
-      input: {
-        state: documentedToolEnum(
-          TOOL_INPUT_ENUMS['list_questions:state'],
-          'Which questions to list.',
-        ).optional(),
-        limit: z
-          .number()
-          .int()
-          .min(1)
-          .max(ENDED_LISTED_AT_MOST)
-          .optional()
-          .describe(LIMIT_DESCRIBED('questions')),
-      },
+      input: Object.fromEntries(
+        Object.entries(readerInputs.list_questions).map(([field, schema]) => [
+          field,
+          agentToolHandlerInput(schema),
+        ]),
+      ),
       call: (args) =>
         guarded(async () => {
+          args = toolArgumentsAtHandler(args)
           const asked = theListingAsked(args.state, args.limit)
           if ('problems' in asked) {
-            return refusalAnswer(refuseTool('malformed-request', { problems: asked.problems }))
+            return readerFieldRefusal('list_questions', args, asked.problems)!
           }
+          const fieldRefusal = readerFieldRefusal('list_questions', args)
+          if (fieldRefusal !== null) return fieldRefusal
           // ⛔ **No argument names anybody, and no rails**, as for `list_tasks`' board: there is
           // nobody to name, so nobody to refuse. ⚑ `me` is minted by this toolset from the session
           // it was built for and cannot be handed another — which is the entitlement, and it is
@@ -8874,28 +8991,19 @@ export function agentToolsFor(
        * shared service ({@link AgentToolHost.readTranscript}). ⚠️ A READER: nothing is sent.
        */
       name: 'read_transcript',
+      handlerOwnsMissingInput: true,
       description:
         'Read a conversation below you — one you started, or one started under it — or another conversation of your own profile: the last message it received (and who sent it) with its latest words back, then its last turns, or the turns whose words contain a search. Use it when a notice about work you gave out is not enough; name it by a piece it owns (W1.2) — list_tasks names the pieces you gave — or by its id.',
       beyondItsRails: 'nothing-its-rails-do-not-cover',
-      input: {
-        agent: z
-          .string()
-          .describe('The agent, by the piece it owns (W1.2) or by its id from list_agents.'),
-        turns_back: z
-          .number()
-          .optional()
-          .describe(
-            `How many of its turns to read, newest last: 1 to ${String(TURNS_BACK_MAX)}; ${String(TURNS_BACK_DEFAULT)} when left out.`,
-          ),
-        search: z
-          .string()
-          .optional()
-          .describe(
-            'Read instead the turns whose messages or answers contain these words (letters matched regardless of case).',
-          ),
-      },
+      input: Object.fromEntries(
+        Object.entries(readerInputs.read_transcript).map(([field, schema]) => [
+          field,
+          agentToolHandlerInput(schema),
+        ]),
+      ),
       call: (args) =>
         guarded(async () => {
+          args = toolArgumentsAtHandler(args)
           const problems: string[] = []
           const agent = args.agent
           if (typeof agent !== 'string' || agent.length === 0) problems.push('agent is required')
@@ -8913,8 +9021,10 @@ export function agentToolsFor(
             problems.push('search, when given, must be some words')
           }
           if (problems.length > 0 || typeof agent !== 'string' || typeof turnsBack !== 'number') {
-            return refusalAnswer(refuseTool('malformed-request', { problems }))
+            return readerFieldRefusal('read_transcript', args, problems)!
           }
+          const fieldRefusal = readerFieldRefusal('read_transcript', args)
+          if (fieldRefusal !== null) return fieldRefusal
           // 🔴 **D-016 · commit 7 · R1 — a label names its piece's owner** when this caller may reach
           // it or read it — the chain below it, or (D-024 · R2) a conversation of its own profile, as
           // an id is read; one that names nothing it may read is out of that reach, as an unknown id
@@ -9391,6 +9501,7 @@ export function agentToolsFor(
     },
     {
       name: 'find_files',
+      handlerOwnsMissingInput: true,
       /**
        * 🔴 **D-037 · the files this app keeps, found** — a list, or a search by words, on the
        * caller's tree or everywhere; each readable by its id with `read_document`.
@@ -9406,26 +9517,15 @@ export function agentToolsFor(
        * and ⛔ none asks who is calling.
        */
       beyondItsRails: 'nothing-its-rails-do-not-cover',
-      input: {
-        where: documentedToolEnum(
-          TOOL_INPUT_ENUMS['find_files:where'],
-          'Where to look.',
-        ).optional(),
-        words: z
-          .string()
-          .optional()
-          .describe(
-            `Words a file must hold, separated by spaces, at most ${String(MOST_WORDS_FOUND)}; case does not matter. Leave it out to list the files.`,
-          ),
-        older_than: z
-          .string()
-          .optional()
-          .describe(
-            'The id (res_…) an earlier answer gave to go on from: only files kept before it.',
-          ),
-      },
+      input: Object.fromEntries(
+        Object.entries(readerInputs.find_files).map(([field, schema]) => [
+          field,
+          agentToolHandlerInput(schema),
+        ]),
+      ),
       call: (args) =>
         guarded(async () => {
+          args = toolArgumentsAtHandler(args)
           const problems: string[] = []
           const where = args.where ?? 'tree'
           if (where !== 'tree' && where !== 'everywhere') {
@@ -9459,8 +9559,10 @@ export function agentToolsFor(
             problems.push('older_than, when given, must be a file’s id (res_…)')
           }
           if (problems.length > 0) {
-            return refusalAnswer(refuseTool('malformed-request', { problems }))
+            return readerFieldRefusal('find_files', args, problems)!
           }
+          const fieldRefusal = readerFieldRefusal('find_files', args)
+          if (fieldRefusal !== null) return fieldRefusal
           const found = await host.findKeptFiles(me, {
             where: where === 'everywhere' ? 'everywhere' : 'tree',
             words,
@@ -9469,13 +9571,9 @@ export function agentToolsFor(
           if (!found.ok) {
             // ⚑ **The argument is what is wrong, and the answer says how to mend it**: the id came
             // from an earlier answer of this tool, not from a reply or a piece record.
-            return refusalAnswer(
-              refuseTool('malformed-request', {
-                problems: [
-                  `older_than names no file this app keeps: pass the id an earlier find_files answer gave, or leave it out to start from the newest`,
-                ],
-              }),
-            )
+            return readerFieldRefusal('find_files', args, [
+              `older_than names no file this app keeps: pass the id an earlier find_files answer gave, or leave it out to start from the newest`,
+            ])!
           }
           const scope = where === 'everywhere' ? 'kept anywhere' : 'on your tree'
           const lines = found.files.map((one) => foundFileLine(one, found.readAt))
@@ -9902,6 +10000,27 @@ export function agentToolsFor(
             readAt: Date.now(),
           }),
       ),
+      {
+        name: 'search_past_work' as const,
+        description: PAST_WORK_SEARCH_DESCRIPTION,
+        beyondItsRails: 'nothing-its-rails-do-not-cover' as const,
+        input: pastWorkSearchQuery.shape,
+        call: (args: Record<string, unknown>) =>
+          guarded(async () => {
+            const input = pastWorkSearchQuery.safeParse(args)
+            const found = input.success
+              ? ((await host.searchPastWork?.(me, input.data.words)) ?? {
+                  ok: false as const,
+                  reason: 'unavailable' as const,
+                })
+              : { ok: false as const, reason: 'invalid' as const }
+            if (!found.ok) {
+              const refused = pastWorkSearchRefusal(found.reason)
+              return answer(refused, `refused (${refused.rail}): ${refused.reason}`)
+            }
+            return answer({ outcome: 'ok', hits: found.hits }, pastWorkSearchInWords(found.hits))
+          }),
+      },
     ].map(recordsWhatItRefused),
   }
 }

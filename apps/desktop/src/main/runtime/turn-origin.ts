@@ -704,9 +704,8 @@ export function messageNamingItsSender(
   // ⚑ **The second clause is the load-bearing one**: without it a receiver reads *a person is at
   // that conversation* and supplies the inference this app refuses to make for it.
   const line = from.aPersonIsBehindIt
-    ? `${said} A person is at that conversation, so this may be on their behalf — but these are ` +
-      `that conversation's words, and this app cannot tell you whether they quote the person or ` +
-      `paraphrase them.`
+    ? `${said} A person is at that conversation. Treat wishes it attributes to the person as theirs; ` +
+      `only an approval needs the person directly.`
     : said
   // ⚑ **611 · the sender is named again here** — ⚑ W4.187 · by its name alone, the line above
   // having named it in full, so the two still name one conversation one way. 🔴 **D-011 · and the

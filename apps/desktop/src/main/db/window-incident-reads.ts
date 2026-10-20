@@ -4,6 +4,11 @@ import { rowsUnreadOnce, type RowsUnread, type SessionStore } from './session-st
 import type { LimitsWriterStamp } from './fresh-limits-snapshot'
 import type { WindowWriterStamp } from './window-writer-stamp'
 import { sameWindowWriter } from './window-routing-reads'
+import {
+  WindowReadUnavailable,
+  type IncidentReading,
+  type WindowIncidents,
+} from './window-read-protocol'
 
 export const INCIDENT_READ_LIMIT = { entries: 512, bytes: 4 * 1024 * 1024 } as const
 type Stamp = { window: WindowWriterStamp; content: LimitsWriterStamp }
@@ -23,9 +28,12 @@ function same(before: Stamp | null, after: Stamp | null): boolean {
   )
 }
 
-/** Reuses complete database facts only during a synchronous incident window read. */
+/** Supplies worker facts to one window answer, or reuses complete synchronous reads. */
 export class WindowIncidentReads {
-  private readonly context = new AsyncLocalStorage<{ active: boolean }>()
+  private readonly context = new AsyncLocalStorage<{
+    active: boolean
+    owners?: ReadonlyMap<string, IncidentReading>
+  }>()
   private readonly kept = new Map<string, Kept>()
   private stamp: Stamp | null = null
   private bytes = 0
@@ -43,8 +51,15 @@ export class WindowIncidentReads {
     this.epoch++
   }
 
-  run<T>(answer: () => T): T {
-    const scope = { active: true }
+  run<T>(answer: () => T, snapshot?: WindowIncidents): T {
+    const scope = {
+      active: true,
+      ...(snapshot === undefined
+        ? {}
+        : {
+            owners: new Map(snapshot.owners.map((row) => [row.sessionId, row])),
+          }),
+    }
     try {
       return this.context.run(scope, answer)
     } finally {
@@ -106,26 +121,79 @@ export class WindowIncidentReads {
   }
 
   store(original: SessionStore): SessionStore {
+    const current = () => {
+      const scope = this.context.getStore()
+      if (scope?.active !== true || scope.owners === undefined) return undefined
+      return scope.owners
+    }
+    const fact = (
+      id: string,
+      unread: RowsUnread | undefined,
+      kind: 'messages' | 'stop' | 'pieces' | 'routes',
+    ) => {
+      const owners = current()
+      if (owners === undefined) return undefined
+      const row = owners.get(id)
+      if (row === undefined) throw new WindowReadUnavailable()
+      for (const ordinal of row[`${kind}Skipped`]) unread?.in(id)(ordinal)
+      return row
+    }
     return new Proxy(original, {
       get: (store, key) => {
+        if (key === 'reconciliationOwners')
+          return () => {
+            const owners = current()
+            return owners === undefined ? store.reconciliationOwners() : [...owners.keys()]
+          }
+        if (key === 'reconciliationWork')
+          return (holders?: ReadonlySet<string>, unread?: RowsUnread) => {
+            const owners = current()
+            if (owners === undefined) return store.reconciliationWork(holders, unread)
+            return [...(holders ?? owners.keys())].flatMap((id) => {
+              const row = fact(id, unread, 'pieces')
+              if (row === undefined) throw new WindowReadUnavailable()
+              return structuredClone(row.work)
+            })
+          }
+        if (key === 'openPiecesOf')
+          return (id: string, unread?: RowsUnread) => {
+            const row = fact(id, unread, 'pieces')
+            return row === undefined ? store.openPiecesOf(id, unread) : structuredClone(row.pieces)
+          }
+        if (key === 'routedRequestsOf')
+          return (id: string, unread?: RowsUnread) => {
+            const row = fact(id, unread, 'routes')
+            return row === undefined
+              ? store.routedRequestsOf(id, unread)
+              : structuredClone(row.routes)
+          }
         if (key === 'messagesWaitingIn')
-          return (id: string, unread?: RowsUnread, maximumRows?: number) =>
-            this.context.getStore()?.active === true
+          return (id: string, unread?: RowsUnread, maximumRows?: number) => {
+            const row = fact(id, unread, 'messages')
+            if (row !== undefined) {
+              if (maximumRows !== undefined) throw new WindowReadUnavailable()
+              return structuredClone(row.messages)
+            }
+            return this.context.getStore()?.active === true
               ? this.read(
                   JSON.stringify([key, id, maximumRows]),
                   (note) => store.messagesWaitingIn(id, note, maximumRows),
                   unread,
                 )
               : store.messagesWaitingIn(id, unread, maximumRows)
+          }
         if (key === 'lastAskToStop')
-          return (id: string, unread?: RowsUnread) =>
-            this.context.getStore()?.active === true
+          return (id: string, unread?: RowsUnread) => {
+            const row = fact(id, unread, 'stop')
+            if (row !== undefined) return structuredClone(row.stop)
+            return this.context.getStore()?.active === true
               ? this.read(
                   JSON.stringify([key, id]),
                   (note) => store.lastAskToStop(id, note),
                   unread,
                 )
               : store.lastAskToStop(id, unread)
+          }
         const value: unknown = Reflect.get(store, key, store)
         return typeof value === 'function' ? value.bind(store) : value
       },

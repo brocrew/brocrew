@@ -870,7 +870,7 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
       ),
       line,
     ).toBe(true)
-    const about = `paraphrase them. This message is about ${made.label} · read the brief and report (answered).`
+    const about = `only an approval needs the person directly. This message is about ${made.label} · read the brief and report (answered).`
     expect(line.slice(-about.length)).toBe(about)
     // ⛔ …and a note that names no piece carries no such sentence.
     await letTheTurnFinish(made.worker)
@@ -885,7 +885,7 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
     expect(plainLine).toContain(
       `Sent by ${nameOf('pm')} (pm), who gave you work that is now closed. A person is at`,
     )
-    expect(plainLine.endsWith('paraphrase them.')).toBe(true)
+    expect(plainLine.endsWith('only an approval needs the person directly.')).toBe(true)
     expect(plainTurn).not.toContain('This message is about')
   })
 

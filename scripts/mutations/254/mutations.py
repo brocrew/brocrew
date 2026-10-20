@@ -410,8 +410,8 @@ MUTATIONS = [
         [
             (
                 COMPOSER,
-                "      label: pasted ? pastedImageLabel(handed.pasted) : pathTail(handed.path),",
-                "      label: pathTail(handed.path),",
+                "      label: pasted ? pastedImageLabel(handed.pasted) : pathTail(handed.path) || handed.path,",
+                "      label: pathTail(handed.path) || handed.path,",
             )
         ],
     ),

@@ -15,7 +15,11 @@ import { type AppDatabase, openDatabase } from '../../src/main/db/connection'
 import { applyMigrations } from '../../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../../src/main/db/session-store'
 import { NO_DISCOVERY } from '../../src/main/adopt/discover-sessions'
-import { RuntimeHost, type RuntimeEventSink } from '../../src/main/runtime/runtime-host'
+import {
+  RuntimeHost,
+  type RuntimeHostDeps,
+  type RuntimeEventSink,
+} from '../../src/main/runtime/runtime-host'
 import { toolsToldInTextFor } from '../../src/main/runtime/agent-tools'
 import { readSessionInstructions } from '../../src/main/runtime/instructions'
 import { profileBundleSpans, thisConversationSpans } from '../../src/main/runtime/factory-text'
@@ -166,7 +170,7 @@ export class F093World {
     return join(this.root(), profileId, provider)
   }
 
-  buildHost(withInstructions = true): RuntimeHost {
+  buildHost(withInstructions = true, extra: Partial<RuntimeHostDeps> = {}): RuntimeHost {
     const userData = this.userData
     const built = new RuntimeHost({
       store: this.store,
@@ -221,6 +225,7 @@ export class F093World {
             },
           }
         : {}),
+      ...extra,
     })
     this.hosts.push(built)
     return built

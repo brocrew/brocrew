@@ -1,3 +1,4 @@
+import type { ManagedPluginMcpServer } from './managed-plugin-mcp'
 import type { CodexCopyIdentity } from './internal/auth'
 import type { Provider, SessionStatus } from '@brobot2/shared'
 import type { ApprovalModeState } from './approval-mode'
@@ -55,6 +56,10 @@ export interface ProviderRuntimeContext {
   startPhases?: StartPhaseSink
   /** Completed immutable view for this launch, prepared only inside its managed home. */
   builtInSkills?: BuiltInSkillsContext
+  /** The writable skills root shared by every profile. */
+  sharedSkillsRoot?: string
+  /** Hide retained native originals before a provider reads its skill catalogue. */
+  beforeSkillDiscovery?: () => Promise<void>
   /**
    * Whether this session PROMPTS for consequential actions, or runs them unattended (078).
    *
@@ -270,6 +275,8 @@ export interface ProviderRuntimeContext {
    * launched before this field existed.
    */
   externalMcp?: ExternalMcpReach
+  /** Authenticated per-launch plugin broker routes; absent preserves existing launch behavior. */
+  managedPluginMcp?: readonly ManagedPluginMcpServer[]
   /**
    * Absolute folders granted by work this conversation holds, in addition to its unchanged cwd. They widen access through the provider's engine without asking there while the corresponding work is open.
    *
@@ -609,14 +616,11 @@ export interface StartOptions extends ProviderRuntimeContext {
 }
 
 /**
- * Context required to resume a persisted session (the provider home, from 015).
- *
- * ⚠️ **Almost a bare alias, and 106 still leans on that** — {@link StartOptions.ultracode} is
- * start-only *because* this type cannot carry it, which is a stronger guarantee than a rule someone
- * has to remember. It carries exactly ONE thing `StartOptions` adds, and only because 158 measured
- * what its absence cost.
+ * Context for resuming a persisted session, including instructions and ownership notification.
  */
 export interface ResumeOptions extends ProviderRuntimeContext {
+  /** Retain ownership of an allocated resume handle even if its handshake fails. */
+  onSessionCreated?: (handle: SessionHandle) => void
   /**
    * The instruction text to append on the way back in — {@link StartOptions.systemHint}, re-sent.
    *
@@ -793,6 +797,11 @@ export type TurnProvenance =
  *    is eventually answered — by the app, or safe-rejected on teardown.
  */
 export interface SessionHandle {
+  /** Whether this launch's SDK init confirmed the installed skill catalogue. */
+  builtInSkillsConfirmed?(): boolean
+  /** Refresh only at a turn boundary; absent means this provider needs a managed reopen. */
+  refreshManagedPlugins?(servers: readonly ManagedPluginMcpServer[]): Promise<void>
+
   /**
    * Stable, persistable identity for this session, or `null` until a real,
    * schema-validated provider ref exists — **never a synthesized/placeholder
@@ -888,18 +897,10 @@ export interface SessionHandle {
    * What each seam settles on:
    *  - **Claude** — `once('exit')` on the CLI child this app spawned (233). A resolved promise with
    *    no child ever spawned means exactly that: nothing is running.
-   *  - **Codex** — `once('exit')` on the `app-server` leader (already collected since 031; 233 only
-   *    published it). ⚠️ Narrower than it looks: it is the LEADER's exit, and `killGroup`'s
-   *    single-process fallback path can leave descendants of a detached group unsignalled.
-   *
-   * ⛔ **And "narrower than it looks" was itself narrower than it looked** (240). Measured on a real
-   * leader that spawns a real descendant: this promise settled in **1–2 ms**, and a descendant of
-   * that leader was still running every time. What made the whole ownership claim honest was not a
-   * change here but a change to Codex's `close()`, which now waits for the process GROUP to empty
-   * rather than for the leader; the two halves of `Promise.all([teardown, exit])` in
-   * `RuntimeHost.terminationOf` were never interchangeable, and this is the half that only ever
-   * spoke for one process. ⚠️ **Neither half can see a descendant that called `setsid`** —
-   * `CodexTransport.exited` carries the measurement and the reason.
+   *  - **Codex** — the leader's exit and positive cleanup of its owned group/tree when the
+   *    transport provides both. A fake or older transport can expose the weaker leader-only fact.
+   *    Cleanup never settles because its time budget elapsed. A descendant that escaped the owned
+   *    group or a process absent from every tree reading remains outside that evidence.
    */
   awaitProcessExit?(): Promise<void> | undefined
 

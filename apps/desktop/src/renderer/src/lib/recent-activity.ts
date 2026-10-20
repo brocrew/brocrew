@@ -49,7 +49,9 @@ export type ActivitySays = 'not-read' | 'read-in-part' | 'nothing-recorded' | 'l
 export function activitySays(reading: RecentActivityReading | null): ActivitySays {
   if (reading === null) return 'not-read'
   if (reading.read.rowsUnread > 0 || (reading.read.ledgersSkipped ?? 0) > 0) return 'read-in-part'
-  return reading.lines.length === 0 && !reading.transcriptsCleared?.length
+  return reading.lines.length === 0 &&
+    !reading.transcriptsCleared?.length &&
+    !reading.skillImports?.length
     ? 'nothing-recorded'
     : 'lines'
 }

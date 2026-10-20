@@ -1,0 +1,18 @@
+{
+  "name": "@brocrew/chrome-plugin",
+  "version": "0.1.2",
+  "private": true,
+  "type": "module",
+  "description": "Chrome profiles and browser tools for BroCrew",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "express": "4.22.3",
+    "playwright-core": "1.61.0"
+  },
+  "devDependencies": {
+    "@types/express": "5.0.6",
+    "@types/node": "22.19.15",
+    "esbuild": "0.25.12",
+    "typescript": "5.9.3"
+  }
+}

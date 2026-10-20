@@ -1,0 +1,344 @@
+{
+  "productionSource": "agent-chrome code only",
+  "sharedCount": 11,
+  "extra": "shared/browser/launchGuard.ts is an approved addition to planned purposes; no current macOS-alert import/module, so omitted",
+  "stripped": "All old comments; source-project imports/defaults/addresses; client material; person-step extension records/waits. No profiles, auth data, downloads, dashboard, proxy, deployment, local builds or integration tests copied.",
+  "files": [
+    {
+      "source": "agent-chrome/src/app.ts",
+      "destination": "plugins/chrome/src/app.ts",
+      "sourceSha256": "b11111e45b64025d899f3ca3ae9c7d4fee82ad8a83ef7756c8de10179c19c601",
+      "changes": "local shared imports; explicit private file root; separate person auth; authenticated readiness; typed tabs; removed person-step records; comments/client references removed; runtime version derives from release manifest metadata, no shared literal fallback",
+      "destinationSha256": "d02af49af74ac41ae5c98259e62e562e06b6621f42162aa04f3a81be9e28a5b0"
+    },
+    {
+      "source": "agent-chrome/src/browser/chromeBrowser.ts",
+      "destination": "plugins/chrome/src/browser/chromeBrowser.ts",
+      "sourceSha256": "b504f5128ab5f51b3d5dd875a197b137d0da27bfadbb1a59ff79d11b530449bf",
+      "changes": "Private staging in every mode; CDP always allowAndName under private downloads; no OS Downloads fallback; local imports and comments/client material removed; queued permission rechecks or private-directory lstat/realpath fences; 0.1.1: minimal explicit owned arguments, drop all Playwright defaults, preserve private download staging/CDP in both modes; 0.1.2: the OS credential store for branded Chrome profiles; downloads bounded and unattended headless downloads denied",
+      "destinationSha256": "5a6cad4b594373152270aa3f7fda706cb8375b8be7f1fff5e6e9f2642cc0770a"
+    },
+    {
+      "source": "agent-chrome/src/browser/downloadRouter.ts",
+      "destination": "plugins/chrome/src/browser/downloadRouter.ts",
+      "sourceSha256": "12020639ab8cffae01fdf118081d0a39700617da4988c83061cf04d1a1073350",
+      "changes": "Local imports; removed personal Downloads preference resolver; placement/collision behavior retained inside private root; comments/client material removed; queued permission rechecks or private-directory lstat/realpath fences; 0.1.2: downloads bounded per download and per profile per hour; fail closed when the download policy cannot be set; 0.1.2: a released claim stays counted until its own download ends",
+      "destinationSha256": "2cebd8ed730175530c1b0bac59befe18d34ef94f0c02ac4b1c27f66d85f7cc4b"
+    },
+    {
+      "source": "agent-chrome/src/browser/processes.ts",
+      "destination": "plugins/chrome/src/browser/processes.ts",
+      "sourceSha256": "42216ec4d9253ca718eb7d2f9b8e3390b4494b6a562704e1c46c584b22e1d293",
+      "changes": "relative shared imports; comments and client references removed; private configuration adjustments listed in README; 0.1.2: on Windows no sweep by process number; the host's job holds every browser process",
+      "destinationSha256": "66503e0b5c4bb04ed399019efbed8fe89f0c32c14e3c3095e179f02f11786f50"
+    },
+    {
+      "source": "agent-chrome/src/browser/profileBrowser.ts",
+      "destination": "plugins/chrome/src/browser/profileBrowser.ts",
+      "sourceSha256": "f61ed5491f8270359481b8743f84714e32b38cc07741ead9ef40a031d4570cdc",
+      "changes": "relative shared imports; comments and client references removed; private configuration adjustments listed in README",
+      "destinationSha256": "9d18dda9317b7c56ea23b02ae41afd7f7a4a492c3a1fdca085365a83304d5f0e"
+    },
+    {
+      "source": "agent-chrome/src/config.ts",
+      "destination": "plugins/chrome/src/config.ts",
+      "sourceSha256": "bcfdb65f3a973fdcf06019e18593ff04d2dadd557fcd30e1198c7963c910c29c",
+      "changes": "replaced repo/home fallbacks with explicit private roots and separate auth; no legacy source paths; comments/client references removed; queued permission rechecks or private-directory lstat/realpath fences",
+      "destinationSha256": "b18106780362b185f46456be4b0c6bdcfef98b966c45bebf5e59aeb9b17759aa"
+    },
+    {
+      "source": "agent-chrome/src/extensions.ts",
+      "destination": "plugins/chrome/src/extensions.ts",
+      "sourceSha256": "6cf1a73d29035bf2268c1ebe252a264f624fad21f61458855d0f7d181fa1320e",
+      "changes": "relative shared imports; comments and client references removed; private configuration adjustments listed in README; private descendant checks for extension reads",
+      "destinationSha256": "be35b6d4afb35522a96e47172e3a336151e54aac52f2fd7f563146e6c62a6693"
+    },
+    {
+      "source": "agent-chrome/src/files.ts",
+      "destination": "plugins/chrome/src/files.ts",
+      "sourceSha256": "c6d8941c4288c8d165628e7a754404961ab24b44b3d5b78ea34270e8bc13882b",
+      "changes": "relative shared imports; comments and client references removed; private configuration adjustments listed in README",
+      "destinationSha256": "4f3bdb50b232b4c35d2696a1c7dff33d5d821071ab292ebc46701106dda0c51f"
+    },
+    {
+      "source": "agent-chrome/src/http/adminRoutes.ts",
+      "destination": "plugins/chrome/src/http/adminRoutes.ts",
+      "sourceSha256": "3370f79a2891ae2826aa7094cbf35ef599c5a3224cde962adcee84dbd78b7c08",
+      "changes": "removed source relay headers/person-step display; typed bounded tabs; generic Chrome missing words; comments/client references removed",
+      "destinationSha256": "591af4a8e097a49dff6e7f3cc0a4e0fef28876d10859ec433de4ba67386947a9"
+    },
+    {
+      "source": "agent-chrome/src/http/auth.ts",
+      "destination": "plugins/chrome/src/http/auth.ts",
+      "sourceSha256": "f53297ac679f4ef750aa0a3ef9a3819a2351613c51f5449ee4e2e2358b1c9cd3",
+      "changes": "separate MCP/person bearer checks; health authenticated; Origin refused; comments/client references removed",
+      "destinationSha256": "17d7a75c22b23dc290975a38d1eeb5d99eea3f48b7824b0c0f54e59b5fc3bd87"
+    },
+    {
+      "source": "agent-chrome/src/index.ts",
+      "destination": "plugins/chrome/src/index.ts",
+      "sourceSha256": "e46fb1a8b4c2fffcef1d49c2fc8d34636794ba13fdc94890e82b8768eb0681b2",
+      "changes": "relative shared imports; comments and client references removed; private configuration adjustments listed in README; 0.1.1: global orphan sweep skipped: PID1/temp names cannot prove BroCrew ownership and may belong to other apps or personal automation; authenticated readiness and exact-run host guardian kept",
+      "destinationSha256": "4f9a07ab6f942b8579ceffe619fc1109da3c2458bb1df6fbe6df2884220eddcd"
+    },
+    {
+      "source": "agent-chrome/src/localFileGuard.ts",
+      "destination": "plugins/chrome/src/localFileGuard.ts",
+      "sourceSha256": "4a181411254b4d73550527b10364d0423ff285d75662692d3f2c7999a909e7a9",
+      "changes": "removed source-project default workspace/Downloads fallbacks; comments/client references removed",
+      "destinationSha256": "a61a7c5ca65ceb25661addaffc4969bbe2842ab38dac4ffe28d4c5842786afb0"
+    },
+    {
+      "source": "agent-chrome/src/logger.ts",
+      "destination": "plugins/chrome/src/logger.ts",
+      "sourceSha256": "ad4f26cfc66eb94d6bf2c7e96ca5e4f73b0825a3e9c519b6aa252a5c7abb14d0",
+      "changes": "relative shared imports; comments and client references removed; private configuration adjustments listed in README",
+      "destinationSha256": "ab403f5587a0ec6b478223bbc1171986277a09a9857b75d97de50363830d3589"
+    },
+    {
+      "source": "agent-chrome/src/openWindow.ts",
+      "destination": "plugins/chrome/src/openWindow.ts",
+      "sourceSha256": "8f300d39e00ac2452a0295edd9375f256f65a751c983834eb9d2adb683ffa371",
+      "changes": "relative shared imports; comments and client references removed; private configuration adjustments listed in README",
+      "destinationSha256": "e95a9dcd94621bcd094304d6b89007f820e6d8a1ef0d4a6c5597347662c11289"
+    },
+    {
+      "source": "agent-chrome/src/prefs.ts",
+      "destination": "plugins/chrome/src/prefs.ts",
+      "sourceSha256": "0f05da74437b4c8d400d2247c6231ed4226f10f86feea26e858eb4ee509f9d8b",
+      "changes": "relative shared imports; comments and client references removed; private configuration adjustments listed in README; queued permission rechecks or private-directory lstat/realpath fences",
+      "destinationSha256": "087afa5bff3df230f532fae06533cb7637beadf33f281c35f8794ad6cf535339"
+    },
+    {
+      "source": "agent-chrome/src/privateModes.ts",
+      "destination": "plugins/chrome/src/privateModes.ts",
+      "sourceSha256": "17765b7a55f2b823ebd3ffe6c63f64ec5d5681ea0925335ebf12d1b890b2ee18",
+      "changes": "relative shared imports; comments and client references removed; private configuration adjustments listed in README",
+      "destinationSha256": "bc90b208091aa79c83986cf18d96d55b10a778614304d48968aba763ae939a68"
+    },
+    {
+      "source": "agent-chrome/src/profiles/store.ts",
+      "destination": "plugins/chrome/src/profiles/store.ts",
+      "sourceSha256": "8ee534d273c5954b6338670c06f17e07167a3fd1cf8f9de25dd95dc5c2d79ffe",
+      "changes": "relative shared imports; comments and client references removed; private configuration adjustments listed in README; queued permission rechecks or private-directory lstat/realpath fences",
+      "destinationSha256": "33d97d7bac71219dc0b59a416f8f70dc1fa1a9224949095aae7fc27834438fbc"
+    },
+    {
+      "source": "agent-chrome/src/restoreSession.ts",
+      "destination": "plugins/chrome/src/restoreSession.ts",
+      "sourceSha256": "e908d8ff7e22867a7bf74c89b8021492c4e85e947d88eee23654638fc3fa0458",
+      "changes": "relative shared imports; comments and client references removed; private configuration adjustments listed in README; current restore eligibility checked inside queue and after preparation",
+      "destinationSha256": "85b3d8558de6b88da7049817582160ff99454e9d3d66038f31121ec33ba2e7e3"
+    },
+    {
+      "source": "agent-chrome/src/settled.ts",
+      "destination": "plugins/chrome/src/settled.ts",
+      "sourceSha256": "3da32d47b9eed00f0f2647698b2a64635426856679be964bbcc6a2ee07d802ee",
+      "changes": "relative shared imports; comments and client references removed; private configuration adjustments listed in README",
+      "destinationSha256": "4fa75765d86f0fbfe0f2044fd2adbbc36fd5f1ed36cd53f5c72e38fe4839dcbb"
+    },
+    {
+      "source": "agent-chrome/src/tabs.ts",
+      "destination": "plugins/chrome/src/tabs.ts",
+      "sourceSha256": "3a892b377e1e18d017c9289f44198ef97f90d3c64ade3d02a8e7360d206ccc89",
+      "changes": "relative shared imports; comments and client references removed; private configuration adjustments listed in README",
+      "destinationSha256": "712b9e8bccbc06d85ad4e92dcbf6f25515c46d61eae5726e8258fd6c60eeb9ac"
+    },
+    {
+      "source": "agent-chrome/src/toolError.ts",
+      "destination": "plugins/chrome/src/toolError.ts",
+      "sourceSha256": "5f1133ee87d68c5985471bc1924b8593cb500f2a110b1f4ec92901372bded9c9",
+      "changes": "relative shared imports; comments and client references removed; private configuration adjustments listed in README",
+      "destinationSha256": "b2fef7e8649caf208c459bf322ea6fa59ffcfd4f9c480cace5a53d200bc1075b"
+    },
+    {
+      "source": "agent-chrome/src/tools/common.ts",
+      "destination": "plugins/chrome/src/tools/common.ts",
+      "sourceSha256": "d615113464b1f70e0602c85955cee01b502b2de9c731a151406f4642267d526e",
+      "changes": "relative shared imports; comments and client references removed; private configuration adjustments listed in README; queued permission rechecks or private-directory lstat/realpath fences",
+      "destinationSha256": "34b45a09ffdba6319b317732e2c3358d8fb628e72a3347939a3c1f46ccec2b27"
+    },
+    {
+      "source": "agent-chrome/src/tools/index.ts",
+      "destination": "plugins/chrome/src/tools/index.ts",
+      "sourceSha256": "23f8ed4bafd42f3578e915f835a195c99bd8092d7215b4dd812b0fe406768569",
+      "changes": "private downloads; reviewed errors; source dashboard instructions replaced by Plugins screen; comments/client references removed; queued permission rechecks or private-directory lstat/realpath fences; 0.1.1: back/forward wait for commit; URL/reload retain DOM load wait; 0.1.2: a download is watched for before the click or navigation that starts it; a headless wait ignores earlier denied downloads; 0.1.2: tool descriptions name the private files and downloads folders by their absolute paths",
+      "destinationSha256": "8e834d000de963db7471f919cb1188479cfec3fc2114034c34af0dbbedfad08e"
+    },
+    {
+      "source": "agent-chrome/src/tools/modeSwitch.ts",
+      "destination": "plugins/chrome/src/tools/modeSwitch.ts",
+      "sourceSha256": "6d1a1e320441853106f782db11138159e4c37bb4c0609fc7a14dae453fb1248f",
+      "changes": "relative shared imports; comments and client references removed; private configuration adjustments listed in README",
+      "destinationSha256": "d1466339f2d4c6658a7f67024086e3eb041a535967abf22ecbdec0acc68ced3b"
+    },
+    {
+      "source": "agent-chrome/src/tools/profileTools.ts",
+      "destination": "plugins/chrome/src/tools/profileTools.ts",
+      "sourceSha256": "9721e990933f3f1ed0b214f6ed2f59b9d6ce0674914cd888d727f484720af0c5",
+      "changes": "no person-step session/notice or waiting-for-user state; opens windows immediately; comments/client references removed; queued permission rechecks or private-directory lstat/realpath fences",
+      "destinationSha256": "d760552bd31ed159e882e367772fb1c1eebae0d1025f7da63beda9b847147f5e"
+    },
+    {
+      "source": "agent-chrome/src/tools/schema.ts",
+      "destination": "plugins/chrome/src/tools/schema.ts",
+      "sourceSha256": "b0e9c93b9401c0f9773e99ead06155c27dd07bc21f331989662f16a5dc0b7e11",
+      "changes": "relative shared imports; comments and client references removed; private configuration adjustments listed in README",
+      "destinationSha256": "f15d8362fbac6cd7998e5907704bfdb74031a073ac950f943b2441505ac7aa52"
+    },
+    {
+      "source": "agent-chrome/src/tools/showHide.ts",
+      "destination": "plugins/chrome/src/tools/showHide.ts",
+      "sourceSha256": "dc1950bfce49cfabf39cafe8dbd599f54cd0482ce99141515e9b71aeb0b063b1",
+      "changes": "relative shared imports; comments and client references removed; private configuration adjustments listed in README; queued permission rechecks or private-directory lstat/realpath fences",
+      "destinationSha256": "0b016ac5cc502489cb74898f775e568cd99dacf8a8672487736e82ba1276cee7"
+    },
+    {
+      "source": "agent-chrome/src/tools/shownPath.ts",
+      "destination": "plugins/chrome/src/tools/shownPath.ts",
+      "sourceSha256": "1cfcde0b7c318d1a12361ed286fb065c68d70892a816ada0178c9511f4d07c15",
+      "changes": "relative shared imports; comments and client references removed; private configuration adjustments listed in README",
+      "destinationSha256": "782b50847a0ab15f76df554e88ac5d701d35ac273f8755edb889985ddb01faa7"
+    },
+    {
+      "source": "agent-chrome/src/windows.ts",
+      "destination": "plugins/chrome/src/windows.ts",
+      "sourceSha256": "777309b706e08f33e49260285063b18725aab95fcf2585db5a0c57cd8fee28ca",
+      "changes": "removed person-step record, wait timer and callbacks; window opens return when opened, do not wait for person; comments/client references removed; queued permission rechecks or private-directory lstat/realpath fences",
+      "destinationSha256": "8f41062faf3ae8ecfe0ce6a4bdb097c76c0479aea93df88f98cbcfa99683e79f"
+    },
+    {
+      "source": "shared/src/toolServer.ts",
+      "destination": "plugins/chrome/src/shared/toolServer.ts",
+      "sourceSha256": "50f904ca8d90b6000b2b0884a15ecf6d60c97974b2c05133a8bc1107c6669f5c",
+      "changes": "local imports preserved; comments and client references removed; runtime version derives from release manifest metadata, no shared literal fallback",
+      "destinationSha256": "eb9cd938673ff23dee812dc07dd902203de4d594fd9cf8e54963b77c40fb63bf"
+    },
+    {
+      "source": "shared/src/httpMcpServer.ts",
+      "destination": "plugins/chrome/src/shared/httpMcpServer.ts",
+      "sourceSha256": "c71a24656c238ed8e7193474d39479a6533ade767dd4887ed5247af3ae802ecd",
+      "changes": "local imports preserved; comments and client references removed",
+      "destinationSha256": "97b5b9d122ddebc88526ce2c700b870d5db03fb9a507fb3a5e35088005f0f255"
+    },
+    {
+      "source": "shared/src/requestSignal.ts",
+      "destination": "plugins/chrome/src/shared/requestSignal.ts",
+      "sourceSha256": "1888f4574d5de40abb89f475ae466d7408c606137f6142075fd0af7351dbc76f",
+      "changes": "local imports preserved; comments and client references removed",
+      "destinationSha256": "eb6c2f737d1933211d4c8d101f8af9f70e973dc952f3f6be17aaec6b920f89b1"
+    },
+    {
+      "source": "shared/src/strictArgs.ts",
+      "destination": "plugins/chrome/src/shared/strictArgs.ts",
+      "sourceSha256": "3725f9b98e0c79a687ffd518d1e9c69e8857c0a13ec8ebbe07060d41fb7702a9",
+      "changes": "local imports preserved; comments and client references removed",
+      "destinationSha256": "40d2792cbfbe4ae7c7e717d46543f04350a991579ec049c38da6f1775c06717e"
+    },
+    {
+      "source": "shared/src/browser/browser-launch.ts",
+      "destination": "plugins/chrome/src/shared/browser/browser-launch.ts",
+      "sourceSha256": "b837637e5731efa50470128ce57fd139253da7b666a959a1bd54c06ab701820d",
+      "changes": "local imports preserved; comments and client references removed; queued permission rechecks or private-directory lstat/realpath fences; 0.1.1: explicit ignoreAllDefaultArgs option, both pre/post-import private fences preserved; 0.1.2: Chrome alone gets the account's real home for the OS credential store; the server's home is unchanged",
+      "destinationSha256": "b5364316cefcd79f45b671652bccca942a110bf3457ea570d4e700b1d1b941be"
+    },
+    {
+      "source": "shared/src/browser/browser-lease.ts",
+      "destination": "plugins/chrome/src/shared/browser/browser-lease.ts",
+      "sourceSha256": "3d899e058d6394c37f7d377436c564a1d4be0708fc4dfab85ac7b127d6f8c1f0",
+      "changes": "local imports preserved; comments and client references removed",
+      "destinationSha256": "5dc58aa481fc419b0c93d8f2d8b3517473e997f1d65cfd61f15e8cb5b5b1a0fc"
+    },
+    {
+      "source": "shared/src/browser/chromeUa.ts",
+      "destination": "plugins/chrome/src/shared/browser/chromeUa.ts",
+      "sourceSha256": "42bd8af19463c5f45977afc5bbf1967d25ce2fe7e8aae0dc2b903266a69c4dd0",
+      "changes": "local imports preserved; comments and client references removed",
+      "destinationSha256": "bb30088d5b92fdd36455582766f4865e6e37b412d90ecf89eab88b2ca473a70f"
+    },
+    {
+      "source": "shared/src/browser/launchConfig.ts",
+      "destination": "plugins/chrome/src/shared/browser/launchConfig.ts",
+      "sourceSha256": "4c03dbd0fd27df7ce97cc190561c319660a300db7bb741b21168e68f77522a51",
+      "changes": "local imports preserved; comments and client references removed",
+      "destinationSha256": "b7584bfa073f1cf237ca3116556b2090c5524a37ce315d9f187894ba4fcfc900"
+    },
+    {
+      "source": "shared/src/browser/pagesClosed.ts",
+      "destination": "plugins/chrome/src/shared/browser/pagesClosed.ts",
+      "sourceSha256": "b14e2a96ce97c57015f659b65c06ec7331a2759ebfac0469ef2b9eafd57bd849",
+      "changes": "local imports preserved; comments and client references removed",
+      "destinationSha256": "9dfccf2ab8327a99cf77db49d6f2b717139c9f3303cc4f6a5c7801a5a3585ebb"
+    },
+    {
+      "source": "shared/src/browser/shutdownSignals.ts",
+      "destination": "plugins/chrome/src/shared/browser/shutdownSignals.ts",
+      "sourceSha256": "184da1bd35ef2fa69c2db79322e728e10956f574354376a4f7aafbdf5a7d221b",
+      "changes": "local imports preserved; comments and client references removed",
+      "destinationSha256": "9051755e06160950d1cd1b5846b18994f99f9add2bebb2cf3bd487238da1337a"
+    },
+    {
+      "source": "shared/src/browser/launchGuard.ts",
+      "destination": "plugins/chrome/src/shared/browser/launchGuard.ts",
+      "sourceSha256": "d8c0bb8b6efae7abbaf835d2f73fef2afb257500dc3fb8821ac9308641f0dca4",
+      "changes": "explicit addition beyond planned helper purposes: preserve assertOwnProfileDir fence as separate module; no alert helper exists in current import closure; comments/client references removed; queued permission rechecks or private-directory lstat/realpath fences; 0.1.1: all defaults may be dropped only with exactly one user-data-dir equal to the validated private profile; generic approved refusal; 0.1.2: the real account's own Chrome directory stays refused beside the supplied LOCALAPPDATA",
+      "destinationSha256": "c55672ddca332b683ab5a1b1da21dbd497de3b70fe292541dd5570afbccfbcab"
+    },
+    {
+      "source": "agent-chrome/src/testSupport.ts",
+      "destination": "plugins/chrome/test/fakes.ts",
+      "sourceSha256": "e41f6a93e38d3bcc42e76a63357eef93af38552684f39fe09d52f3fceb71137e",
+      "changes": "fake browser/page only; local imports, comments removed, no integration tests or Chrome launch",
+      "destinationSha256": "bbd988b0d3ee8d07b0a6755f4ea7b9226324603144d4461e79ca3568f442e48d"
+    },
+    {
+      "source": "agent-chrome/src/browser/launchArgs.ts",
+      "destination": "plugins/chrome/src/browser/launchArgs.ts",
+      "sourceSha256": "00d16dfd40601eaee51656e7b2e03079e4a58ef8b88c1c288565093782a7a319",
+      "destinationSha256": "a91c872c567214c9101d279f88207ff4327788986e18a9d9271172dcb42b570b",
+      "changes": "0.1.1: minimal launch-argument builder; comments and source-specific environment descriptions removed; local imports; no runtime dependency on source repo; 0.1.2: the OS credential store for branded Chrome profiles"
+    }
+  ],
+  "metadata": {
+    "source": "agent-chrome/package.json",
+    "destination": "plugins/chrome/package.json",
+    "sourceSha256": "25dabff73274d95272fd6d693d823fe8dd13b3906f4a742f786b7d5c357acb34",
+    "changes": "renamed; source-local dependency/scripts removed; exact direct production pins match source lock (SDK1.32.1, Express4.22.3, PlaywrightCore1.61.0); dev-only build tooling pinned separately; production metadata/hooks sanitized at build",
+    "destinationSha256": "153b9ff0f41dba03877ea830da37b71aecf08d3b07c2b845f78da6d4846f565d"
+  },
+  "recheckedCurrentSource": true,
+  "packageAdditions": [
+    {
+      "destination": "plugins/chrome/src/privatePaths.ts",
+      "reason": "Package-owned private child-directory lstat/realpath validation; authored here, no upstream copy",
+      "destinationSha256": "ab551f910e464ce8fbc0a254382fe534aee73446837fe51ba4f394a3118153f5"
+    }
+  ],
+  "upstreamBase": "e7f626a16b1c30559befbc1356d98520e108a369",
+  "upstreamCommit": "8b2627f5dbf86f749b53ca0fbf93e3b645b698e2",
+  "baseVerification": {
+    "matchedSourceFiles": 42,
+    "method": "SHA-256 of git show bytes for every recorded source file and package metadata"
+  },
+  "skippedUpstream": [
+    {
+      "source": "agent-chrome/src/browser/strayBrowsers.ts",
+      "decision": "skip",
+      "reason": "Global orphan/temp-profile matching does not prove exact-run ownership; could terminate browsers belonging to other apps or personal automation. Existing exact-run guardian/exit fencing covers BroCrew children; no replacement added.",
+      "sourceSha256": "8d9c2511de84531092e930f4381c494ffc08b7bb7cb7c1195ba71831d9d30af7"
+    },
+    {
+      "source": "agent-chrome/src/browser/strayBrowsers.test.ts",
+      "decision": "skip",
+      "reason": "Global orphan/temp-profile matching does not prove exact-run ownership; could terminate browsers belonging to other apps or personal automation. Existing exact-run guardian/exit fencing covers BroCrew children; no replacement added.",
+      "sourceSha256": "89ec23e8d80f1723540e4418b08cc42f67d55b769504646e5f4284f2b2c8fa8a"
+    },
+    {
+      "source": "agent-chrome/src/index.ts",
+      "decision": "skip",
+      "reason": "Global orphan/temp-profile matching does not prove exact-run ownership; could terminate browsers belonging to other apps or personal automation. Existing exact-run guardian/exit fencing covers BroCrew children; no replacement added.",
+      "sourceSha256": "e46fb1a8b4c2fffcef1d49c2fc8d34636794ba13fdc94890e82b8768eb0681b2",
+      "scope": "global sweep hooks only"
+    }
+  ]
+}

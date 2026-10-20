@@ -433,8 +433,8 @@ describe('§3 · no text main or a package composes writes a task number of its 
     expect(spellingsIn("heading: '## How you work',")).toEqual([])
   })
 
-  // The two existing prints are headings or config comments; the theme's hex colour is not a task either.
-  it('🔴 the population is exactly the five prints that are not a task', () => {
+  // The exact exceptions are Markdown headings, config comments and a CSS colour.
+  it('🔴 the population is exactly the seven prints that are not a task', () => {
     const files = walked()
     // ⚑ non-vacuity: the walk reaches every file a receipt or a notice is composed in
     for (const must of [
@@ -454,7 +454,10 @@ describe('§3 · no text main or a package composes writes a task number of its 
     )
     expect(found.sort()).toEqual(
       [
-        // ⚑ the two dynamic Markdown headings in the instructions a model is given
+        // These plugin sections are Markdown headings, never task-number prints.
+        "apps/desktop/src/main/plugins/instructions.ts · : `## ${PLUGINS_HEADING}\\n\\n${pluginInstructionParagraphs(entries).join('\\n\\n')}`",
+        'apps/desktop/src/main/runtime/factory-text.ts · heading: `## ${PLUGINS_HEADING}`,',
+        // The other dynamic Markdown headings in the instructions a model is given
         'apps/desktop/src/main/runtime/factory-text.ts · heading: `## ${YOUR_OWN_INSTRUCTIONS_HEADING}`,',
         'apps/desktop/src/main/runtime/factory-text.ts · heading: `## ${SAVED_METHODS_HEADING}`,',
         // ⚑ the same saved-methods heading, found in a Codex lead to scrub its index lines

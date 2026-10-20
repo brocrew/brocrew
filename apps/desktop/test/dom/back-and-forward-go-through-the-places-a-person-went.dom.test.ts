@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
+import { fictionalSkills } from '../../look/fixtures/skills'
 import RuntimeScreen from '../../src/renderer/src/components/RuntimeScreen.vue'
 import { createSessionStore, type SessionStore } from '../../src/renderer/src/lib/session-store'
 import { createAgentStore } from '../../src/renderer/src/lib/agent-store'
@@ -78,6 +79,7 @@ const walk = () => ({
 })
 const forestWalk = () => ({ ...walk(), walk: 'every-conversation-this-app-placed' as const })
 const runtime = {
+  skills: vi.fn<RuntimeBridge['skills']>(fictionalSkills().bridge),
   onEvent: vi.fn(() => () => {}),
   onLiveness: vi.fn(() => () => {}),
   onChanged: vi.fn((listener: Parameters<RuntimeBridge['onChanged']>[0]) => {
@@ -356,6 +358,17 @@ it('Settings tabs stay in one history place and Back returns to the conversation
   expect(m.q('settings-tab-providers').getAttribute('aria-selected')).toBe('true')
   await press('settings-tab-tools')
   expect(on('tools-register')).toBe(true)
+  await press('settings-tab-skills')
+  expect(on('skills-section')).toBe(true)
+  expect(m.all('skill-row')).toHaveLength(2)
+  expect(m.all('skill-detail')).toHaveLength(2)
+  for (const detail of m.all('skill-detail')) {
+    expect(detail.querySelector('summary')?.textContent).toBe('Skill text')
+    ;(detail as HTMLDetailsElement).open = true
+    expect(detail.querySelector('[data-cy="skill-source"]')?.textContent).toContain(
+      'Check the flour',
+    )
+  }
   await press('settings-tab-general')
   expect(on('attention-signals-switch')).toBe(true)
   expect(back().title).toContain('Back to')

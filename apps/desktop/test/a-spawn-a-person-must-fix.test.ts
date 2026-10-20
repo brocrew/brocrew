@@ -245,25 +245,52 @@ describe('710 · R51 — a spawn a person must fix', () => {
   // ───────────────────────────────────────────────────────────────────────────────
 
   describe('§0 · what Node stamps on a spawn it refuses', () => {
+    const refusedProgramUnderFile = async (): Promise<Error> => {
+      const aFile = join(root, 'app.asar')
+      writeFileSync(aFile, 'not a directory')
+      return new Promise<Error>((resolve, reject) => {
+        try {
+          const child = spawn(join(aFile, 'claude'), [], { stdio: 'ignore' })
+          child.once('error', resolve)
+          child.once('exit', () => reject(new Error('the program under a file started')))
+        } catch (error) {
+          if (error instanceof Error) resolve(error)
+          else reject(error)
+        }
+      })
+    }
+
     /**
      * ⚑ **The reader's `syscall` rule rests on this**: a spawn Node refuses AT ONCE is thrown with
      * `syscall: 'spawn'`, one it defers carries `'spawn <file>'` (`705` §0) — both begin `spawn`.
      * ⚑ A path through a regular FILE is `ENOTDIR` — the packaged app's binary left inside
      * `app.asar`, `claude-child.ts`' own note — and nothing runs: there is no program to start.
      */
-    it('⚑ a program under a regular file is ENOTDIR, thrown at once, and its syscall is a spawn', () => {
-      const aFile = join(root, 'app.asar')
-      writeFileSync(aFile, 'not a directory')
-      let thrown: unknown = null
-      try {
-        const child = spawn(join(aFile, 'claude'), [], { stdio: 'ignore' })
-        child.on('error', () => {})
-      } catch (error) {
-        thrown = error
-      }
-      expect(thrown).toBeInstanceOf(Error)
-      expect(thrown).toMatchObject({ code: 'ENOTDIR', syscall: 'spawn' })
-    })
+    it.skipIf(process.platform === 'win32')(
+      '⚑ a program under a regular file is ENOTDIR, thrown at once, and its syscall is a spawn',
+      () => {
+        const aFile = join(root, 'app.asar')
+        writeFileSync(aFile, 'not a directory')
+        let thrown: unknown = null
+        try {
+          const child = spawn(join(aFile, 'claude'), [], { stdio: 'ignore' })
+          child.on('error', () => {})
+        } catch (error) {
+          thrown = error
+        }
+        expect(thrown).toBeInstanceOf(Error)
+        expect(thrown).toMatchObject({ code: 'ENOTDIR', syscall: 'spawn' })
+      },
+    ) // This measures POSIX Node's synchronous spawn errno; Windows reports it differently.
+
+    it.runIf(process.platform === 'win32')(
+      '⚑ a program under a regular file is refused by the Windows spawn',
+      async () => {
+        const error = await refusedProgramUnderFile()
+        expect(error.message).toContain('spawn')
+        expect((error as NodeJS.ErrnoException).code).toBeTruthy()
+      },
+    )
   })
 
   // ───────────────────────────────────────────────────────────────────────────────
@@ -423,7 +450,7 @@ describe('710 · R51 — a spawn a person must fix', () => {
     // ⛔ **§3 is the reader's own, and ⛔ rather than 🔴** (review of `710`): the reader is new in
     // `710`, so on `main` these cannot run at all — their only RED there is the missing export. R51's
     // behavioural RED is §1 and §4.
-    it('⛔ the shape §0 measured is read as its code', () => {
+    it.skipIf(process.platform === 'win32')('⛔ the shape §0 measured is read as its code', () => {
       const aFile = join(root, 'app.asar')
       writeFileSync(aFile, 'not a directory')
       let thrown: unknown = null
@@ -433,7 +460,28 @@ describe('710 · R51 — a spawn a person must fix', () => {
         thrown = error
       }
       expect(spawnNoWaitClearsOf(thrown)).toBe('ENOTDIR')
-    })
+    }) // The paired synthetic errno controls below run on every platform.
+
+    it.runIf(process.platform === 'win32')(
+      '⛔ reads the Windows spawn refusal as its code',
+      async () => {
+        const aFile = join(root, 'app.asar')
+        writeFileSync(aFile, 'not a directory')
+        const error = await new Promise<Error>((resolve, reject) => {
+          try {
+            const child = spawn(join(aFile, 'claude'), [], { stdio: 'ignore' })
+            child.once('error', resolve)
+            child.once('exit', () => reject(new Error('the program under a file started')))
+          } catch (thrown) {
+            if (thrown instanceof Error) resolve(thrown)
+            else reject(thrown)
+          }
+        })
+        const code = (error as NodeJS.ErrnoException).code
+        expect(code).toMatch(/^(ENOENT|ENOTDIR|EACCES)$/)
+        expect(spawnNoWaitClearsOf(error)).toBe(code)
+      },
+    )
 
     it('⛔ a spawn’s person code answers its code — deferred, thrown at once, or synchronous', () => {
       expect(spawnNoWaitClearsOf(errno('ENOENT', 'spawn /x/claude'))).toBe('ENOENT')

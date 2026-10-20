@@ -1,0 +1,32 @@
+{
+  "sourceCommit": "6f9aa92139201f15b655b406d5c8737db033785f",
+  "baseArchiveSha256": "b3abe51ddeef240895ca6d9147e607cc32637edfe22c87ebc53a9050e27a2076",
+  "scope": "UI-only restyle and draw() presentation grouping. Neutral light/dark palette; BroCrew font stack, profile cards and rounded controls. RPC, refresh, actions, reply decoder and all server/runtime bytes unchanged from c197085cf.",
+  "files": [
+    {
+      "path": "ui/index.html",
+      "sourceSha256": "958d1c374eed5e713e5d0a1828a4cc7d1fd20098d6086616a6707c6586fcbed5",
+      "destinationSha256": "baf3425f863eba3e29b1444118222af629ccc4e78005610f4f36da9d539e4d48",
+      "change": "screen heading and grouped-profile container structure"
+    },
+    {
+      "path": "ui/app.js",
+      "sourceSha256": "12d273181e62b6cca82618d94bb768e01cd358b8fb957f08e1e5a70bb767316d",
+      "destinationSha256": "654ed310b362933ddf63feb01913d351f12fa8ea204bea2970fe63d8da810f96",
+      "change": "reply decoder from slice 12b plus draw()-only profile grouping; RPC/actions unchanged"
+    },
+    {
+      "path": "ui/style.css",
+      "sourceSha256": "3d64c0d0058d1011ef6e29755279e0c4e8725e4c3e9b75769cbff30896512eda",
+      "destinationSha256": "9b92e8f8af8bf490b634b0bac25a248c4906b7aed61bfaa7fd03b160a52bce04",
+      "change": "neutral light/dark palette, BroCrew font stack, cards and rounded controls"
+    },
+    {
+      "path": "manifest-template.json",
+      "sourceSha256": "ee06d55b2e575d6ee0931da42ed0ecf9169ec88f00066e7f2707e4692d193d79",
+      "destinationSha256": "ee06d55b2e575d6ee0931da42ed0ecf9169ec88f00066e7f2707e4692d193d79",
+      "change": "byte-identical"
+    }
+  ],
+  "previousUiCommit": "c197085cf3b15dba2e8607b30ea122552629c7ae"
+}

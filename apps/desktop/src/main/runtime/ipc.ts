@@ -1,3 +1,4 @@
+import { SkillsRequest } from '../../shared/skills-window'
 import { LINK_TARGET_LIMIT } from '../../shared/link-resolution'
 import { MOVE_WORDS } from '../../shared/move-request'
 import type { IpcMainInvokeEvent, WebContents } from 'electron'
@@ -1024,6 +1025,7 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
   // ⛔ **D-020 · strict, both** (`z.strictObject`): a field nobody declared is a REFUSAL, not a
   // silent strip — the `grant` inside is already refused so (`capabilityGrantSchema`), and a
   // person's settings are the last place a mistyped field should be dropped without a word.
+  z.strictObject({ kind: z.literal('skills'), request: SkillsRequest }),
   z.strictObject({ kind: z.literal('agentIdentities') }),
   z.strictObject({
     kind: z.literal('setCapabilities'),
@@ -1446,6 +1448,7 @@ const DURING_A_QUIT: Record<RuntimeCommandKind, QuitRuling> = {
   // conversation, and by the time this door is closed there is no give left to refuse — so the
   // write would change a row nothing will read before the process ends, and the person would be
   // told it took effect.
+  skills: 'refused',
   agentIdentities: 'refused',
   setCapabilities: 'refused',
   // 🔴 **516 · refused, with the capability door above as the precedent and one reason of its own.**
@@ -1806,6 +1809,7 @@ export function noPersonBehindIt(kind: RuntimeCommandKind): string {
  * without asking, or which agents there are.
  */
 const WHAT_A_PERSONS_VERB_DOES: Partial<Record<RuntimeCommandKind, string>> = {
+  skills: 'reads and saves skills and agent choices',
   agentIdentities: 'reads every agent and what each may do',
   agentInstructions: 'reads an agent’s own instructions',
   agentMemory: 'reads an agent’s own memory',
@@ -2209,7 +2213,7 @@ export async function executeRuntimeCommand(
     case 'workIncidentsForAPerson':
       // A read, and it takes no sink and no owner, as its neighbours. It sends each piece's label,
       // title, holder and giver names and what is wrong with it; no brief and no transcript.
-      return host.workIncidentsForAPerson()
+      return host.workIncidentsForWindow()
     case 'waitingOnWhoWroteForAPerson':
       // This read sends the window the piece's label, title, holder name and the moment its turn
       // ended. It sends no brief, prompt, transcript or the person's own words.
@@ -2424,6 +2428,9 @@ export async function executeRuntimeCommand(
       // conversation to own. Synchronous host-side — it is a `stat` — and returned without an
       // `await` for the same reason `profiles` is.
       return host.checkCwd(command.path)
+    case 'skills':
+      requireAPerson(sink, command.kind)
+      return await host.skillsForAPerson(command.request)
     case 'agentIdentities':
       requireAPerson(sink, command.kind)
       return host.agentIdentities()

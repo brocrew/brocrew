@@ -3,6 +3,7 @@ import { WindowIncidentReads, INCIDENT_READ_LIMIT } from '../src/main/db/window-
 import { rowsUnreadOnce, type SessionStore } from '../src/main/db/session-store'
 import type { WindowWriterStamp } from '../src/main/db/window-writer-stamp'
 import type { LimitsWriterStamp } from '../src/main/db/fresh-limits-snapshot'
+import { WindowReadUnavailable, type WindowIncidents } from '../src/main/db/window-read-protocol'
 
 function fixture() {
   const writer = {}
@@ -44,6 +45,64 @@ function fixture() {
 }
 
 describe('window incident dependency reuse', () => {
+  it('uses only the scoped worker facts and replays each dependency’s unread rows', async () => {
+    const f = fixture()
+    const snapshot: WindowIncidents = {
+      kind: 'incidents',
+      owners: [
+        {
+          sessionId: 'one',
+          pieces: [],
+          work: [],
+          routes: [],
+          piecesSkipped: [],
+          routesSkipped: [],
+          messages: [
+            {
+              messageId: 'held',
+              kind: 'work',
+              text: 'Fictional words.',
+              attachments: [],
+              authorship: {},
+              at: 1,
+            },
+          ],
+          stop: null,
+          messagesSkipped: [2],
+          stopSkipped: [3, 'the-whole-ledger'],
+        },
+      ],
+    }
+    f.cache.run(() => {
+      const unread = rowsUnreadOnce()
+      const first = f.store.messagesWaitingIn('one', unread)
+      expect(first).toEqual(snapshot.owners[0]?.messages)
+      expect(unread.count).toBe(1)
+      Object.assign(first, { 0: 'Changed by a caller.' })
+      expect(f.store.messagesWaitingIn('one')).toEqual(snapshot.owners[0]?.messages)
+      expect(f.store.lastAskToStop('one', unread)).toBeNull()
+      expect(f.store.reconciliationOwners()).toEqual(['one'])
+      expect(f.store.reconciliationWork()).toEqual([])
+      expect(f.store.openPiecesOf('one')).toEqual([])
+      expect(f.store.routedRequestsOf('one')).toEqual([])
+      expect(f.routes).not.toHaveBeenCalled()
+      expect(unread.count).toBe(2)
+      expect(unread.ledgersSkipped).toBe(1)
+      expect(() => f.store.messagesWaitingIn('missing')).toThrow(WindowReadUnavailable)
+      expect(() => f.store.lastAskToStop('missing')).toThrow(WindowReadUnavailable)
+      expect(() => f.store.messagesWaitingIn('one', undefined, 1)).toThrow(WindowReadUnavailable)
+      expect(f.held).not.toHaveBeenCalled()
+      expect(f.stop).not.toHaveBeenCalled()
+    }, snapshot)
+    await f.cache.run(async () => {
+      await Promise.resolve()
+      f.store.messagesWaitingIn('one')
+      f.store.lastAskToStop('one')
+    }, snapshot)
+    expect(f.held).toHaveBeenCalledOnce()
+    expect(f.stop).toHaveBeenCalledOnce()
+  })
+
   it('reuses only the two facts in scope, separates owners and row bounds, and isolates mutations', () => {
     const { cache, store, held, stop, routes } = fixture()
     const first = cache.run(() => store.messagesWaitingIn('one'))

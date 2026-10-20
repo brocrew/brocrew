@@ -23,6 +23,7 @@ import {
   REPORT_ORDER,
   UPDATE_SETTINGS_PART,
   UPDATES,
+  WORKSPACE,
   WORKSPACES,
   WORKSPACES_PART,
   SIGN_IN_CHANGES_PART,
@@ -157,6 +158,7 @@ describe('§1 · the source census — a new durable write under userData must n
       // downloads. REMOVED: a fresh install has neither (`UPDATES`).
       "'update-settings.json'",
       "'updates'",
+      "'updates', 'staging'",
       // ⚑ **W4.131 · A2** — a hidden launch's own list of workspaces. REMOVED (`WORKSPACES`).
       "'workspaces.json'",
       // The conversations a person archived, removed with the ledger whose rows they name (`LEDGER`).
@@ -165,6 +167,8 @@ describe('§1 · the source census — a new durable write under userData must n
       'BACKUPS_DIRNAME',
       // The ledger itself, as the recovery code names it (`brobot2.sqlite`, `LEDGER`).
       'DATABASE_FILE',
+      // Shared skill folders and their import receipts are removed with the workspace.
+      'OFF_SKILLS_DIRNAME',
       'PROVIDER_HOMES_DIRNAME',
       // The records of a restore, and the database a restore set aside (`RECOVERY`).
       'RECOVERY_DIRNAME',
@@ -175,6 +179,8 @@ describe('§1 · the source census — a new durable write under userData must n
       'RESOURCES_DIRNAME',
       // ⚑ **744's unsent drafts** (R100) — removed with the ledger their slots name (`DRAFTS`).
       'SAVED_DRAFTS_FILE',
+      'SHARED_SKILLS_DIRNAME',
+      'SKILLS_CONVERSION_FILE',
       // Each launch's timing, and the file it is moved to once full. REMOVED with the ledger whose
       // conversations they time (`LEDGER`).
       'START_ATTEMPTS_FILE',
@@ -199,6 +205,10 @@ describe('§1 · the source census — a new durable write under userData must n
     expect(code('apps/desktop/src/main/runtime/provider-homes.ts')).toContain(
       "export const PROVIDER_HOMES_DIRNAME = 'provider-homes'",
     )
+    const sharedSkills = code('apps/desktop/src/main/skills/shared-paths.ts')
+    expect(sharedSkills).toContain("export const SHARED_SKILLS_DIRNAME = 'skills'")
+    expect(sharedSkills).toContain("export const OFF_SKILLS_DIRNAME = 'skills-off'")
+    expect(sharedSkills).toContain("export const SKILLS_CONVERSION_FILE = 'skills-conversion.json'")
     expect(code('apps/desktop/src/main/resources/resources.ts')).toContain(
       "export const RESOURCES_DIRNAME = 'resources'",
     )
@@ -423,6 +433,7 @@ describe('§2 · the manifest agrees with the product it is a manifest of', () =
     )
     const cli = CLI_SOURCE
     expect(cli).toContain(`const MIGRATIONS = ${String(migrations.length)}`)
+    expect(cli).toContain('no personal skills or skill choices')
   })
 })
 
@@ -526,6 +537,21 @@ describe('§9 · the module defaults, for a caller that does not pass options', 
       expect(plan.actions).toContainEqual({ rel, expect: 'file', why: UPDATES })
     }
   })
+})
+
+it('classifies private update staging as disposable updates, never durable state', () => {
+  const userData = fixture()
+  mkdirSync(join(userData, 'updates', 'staging'), { recursive: true })
+  writeFileSync(
+    join(userData, 'updates', 'staging', 'Fern.partial'),
+    'A fictional interrupted download',
+  )
+  const plan = planCleanBase(trustedAnchor(userData, { repoRoot: REPO, home: fixture(), env: {} }))
+  expect(MANIFEST).toContainEqual(
+    expect.objectContaining({ name: 'updates', expect: 'dir', why: UPDATES }),
+  )
+  expect(plan.actions).toContainEqual({ rel: 'updates', expect: 'dir', why: UPDATES })
+  expect(plan.actions.some((action) => action.rel.startsWith('updates/'))).toBe(false)
 })
 
 describe('§10d · what the app did about scheduled jobs', () => {
@@ -635,6 +661,9 @@ describe('§11 · ⛔ 539 · the signs a nested userData is recognised by', () =
       // program may keep an `updates` folder or an `update-settings.json`. ⚑ F096's
       // `provider-usage.json` too: a name any program reading a provider's usage could pick.
     ).toEqual([
+      // Other apps can keep skill folders; the BroCrew conversion receipt is a sign.
+      'skills',
+      'skills-off',
       'active-theme.json',
       // Any program may keep a label of its own in a file of this name.
       'dock-label.json',
@@ -731,4 +760,27 @@ describe('§12 · ⛔ W4.117 · a link that leads nowhere is refused, not read a
     expect(refusal).toContain("console.error(`${out.join('\\n')}\\n\\n  ⛔ refused · ${nowhere}`)")
     expect(refusal).toContain('process.exitCode = 1')
   })
+})
+
+it('plans active/off shared trees and their conversion receipt without applying the plan', () => {
+  const root = fixture()
+  for (const name of ['skills', 'skills-off']) {
+    mkdirSync(join(root, name, 'recipe-check'), { recursive: true })
+    writeFileSync(join(root, name, 'recipe-check/SKILL.md'), 'A fictional recipe.')
+  }
+  writeFileSync(join(root, 'skills-conversion.json'), '{"version":1,"receipts":[]}\n')
+  const plan = planCleanBase(trustedAnchor(root, { repoRoot: REPO, home: fixture(), env: {} }))
+  for (const name of ['skills', 'skills-off', 'skills-conversion.json']) {
+    expect(plan.actions).toContainEqual({
+      rel: name,
+      expect: name.endsWith('.json') ? 'file' : 'dir',
+      why: WORKSPACE,
+    })
+    expect(
+      readFileSync(
+        join(root, name.endsWith('.json') ? name : `${name}/recipe-check/SKILL.md`),
+        'utf8',
+      ),
+    ).toContain(name.endsWith('.json') ? 'receipts' : 'fictional recipe')
+  }
 })

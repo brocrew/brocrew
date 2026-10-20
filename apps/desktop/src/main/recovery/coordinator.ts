@@ -5,6 +5,7 @@ import type {
   StartupVerdict,
 } from '../../shared/recovery'
 import type { HostGateVerdict } from '../one-host-gate'
+import { PACKAGED_WORKSPACE_REFUSAL } from '../workspace-routing'
 import {
   CheckpointFailed,
   CheckpointNoRoom,
@@ -93,6 +94,7 @@ export interface CoordinatorDeps {
   readonly build: string | null
   /** A packaged release makes a copy at its first start on existing data. */
   readonly packaged: boolean
+  readonly requireExistingDatabase?: boolean
   /**
    * The one-app check's answer. Asked once per check, restore or return, so an answer that was
    * `unknown` may be asked again when the person tries again.
@@ -466,6 +468,8 @@ async function decide(
     ...(deps.freeBytes === undefined ? {} : { freeBytes: deps.freeBytes }),
   })
   if (database.kind === 'absent') {
+    if (deps.requireExistingDatabase)
+      return failed('database-unreadable', false, PACKAGED_WORKSPACE_REFUSAL)
     const stray = await strayData(userData, fs)
     return stray === null ? OPEN_NOT_NEEDED : failed('database-unreadable', false, stray)
   }

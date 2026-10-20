@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useTranscriptRetention } from '../composables/useTranscriptRetention'
 import {
   TRANSCRIPT_RETENTION_CHOICES,
@@ -21,8 +21,11 @@ import { platformHere } from '../lib/this-computer'
 import ProvidersScreen from './ProvidersScreen.vue'
 import ToolsRegister from './ToolsRegister.vue'
 import ThemesSection from './ThemesSection.vue'
+import SkillsSection from './SkillsSection.vue'
+import PluginsSection from './PluginsSection.vue'
+import type { PluginsClient } from '../../../shared/plugin-settings'
 
-export type SettingsTab = 'providers' | 'tools' | 'themes' | 'general'
+export type SettingsTab = 'providers' | 'tools' | 'skills' | 'plugins' | 'themes' | 'general'
 
 const props = withDefaults(
   defineProps<{
@@ -33,6 +36,7 @@ const props = withDefaults(
     lists?: ModelLists
     store?: AgentStore
     toolsNow?: number
+    plugins?: PluginsClient
   }>(),
   { tab: 'providers', lists: undefined, store: undefined, toolsNow: undefined },
 )
@@ -45,12 +49,32 @@ const emit = defineEmits<{
   addServer: []
 }>()
 
-const tabs: readonly { id: SettingsTab; label: string }[] = [
+const pluginEnabled = ref(Boolean(props.plugins))
+let live = true
+onUnmounted(() => {
+  live = false
+})
+onMounted(async () => {
+  if (props.plugins) return
+  try {
+    const answer = await window.api?.plugins?.request({ kind: 'availability' })
+    if (live) pluginEnabled.value = Boolean(answer?.ok && answer.available)
+  } catch {
+    /* keep the unavailable feature hidden */
+  }
+})
+const activeTab = computed(() =>
+  props.tab === 'plugins' && !pluginEnabled.value ? 'providers' : props.tab,
+)
+const allTabs: readonly { id: SettingsTab; label: string }[] = [
   { id: 'providers', label: 'Providers' },
   { id: 'tools', label: 'Tools' },
+  { id: 'skills', label: 'Skills' },
+  { id: 'plugins', label: 'Plugins' },
   { id: 'themes', label: 'Themes' },
   { id: 'general', label: 'General' },
 ]
+const tabs = computed(() => allTabs.filter((tab) => tab.id !== 'plugins' || pluginEnabled.value))
 const attentionSignals = useAttentionSignals()
 const debugMode = useDebugMode()
 const transcripts = useTranscriptRetention()
@@ -98,21 +122,21 @@ const attentionHelp = /win/i.test(platformHere())
     : 'When BroCrew is in the background, show the count on its icon where your desktop supports it.'
 
 async function tabKey(event: KeyboardEvent, current: SettingsTab): Promise<void> {
-  const at = tabs.findIndex((item) => item.id === current)
+  const at = tabs.value.findIndex((item) => item.id === current)
   const next =
     event.key === 'ArrowRight'
-      ? (at + 1) % tabs.length
+      ? (at + 1) % tabs.value.length
       : event.key === 'ArrowLeft'
-        ? (at + tabs.length - 1) % tabs.length
+        ? (at + tabs.value.length - 1) % tabs.value.length
         : event.key === 'Home'
           ? 0
           : event.key === 'End'
-            ? tabs.length - 1
+            ? tabs.value.length - 1
             : -1
   if (next < 0) return
   event.preventDefault()
   const parent = (event.currentTarget as HTMLElement).parentElement
-  emit('update:tab', tabs[next]!.id)
+  emit('update:tab', tabs.value[next]!.id)
   await nextTick()
   parent?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus()
 }
@@ -133,9 +157,9 @@ async function tabKey(event: KeyboardEvent, current: SettingsTab): Promise<void>
         :id="`settings-tab-${item.id}`"
         type="button"
         role="tab"
-        :aria-selected="props.tab === item.id"
+        :aria-selected="activeTab === item.id"
         :aria-controls="`settings-panel-${item.id}`"
-        :tabindex="props.tab === item.id ? 0 : -1"
+        :tabindex="activeTab === item.id ? 0 : -1"
         :data-cy="`settings-tab-${item.id}`"
         @click="emit('update:tab', item.id)"
         @keydown="tabKey($event, item.id)"
@@ -144,7 +168,7 @@ async function tabKey(event: KeyboardEvent, current: SettingsTab): Promise<void>
       </button>
     </div>
     <div
-      v-if="props.tab === 'providers'"
+      v-if="activeTab === 'providers'"
       id="settings-panel-providers"
       class="settings-content"
       role="tabpanel"
@@ -162,7 +186,7 @@ async function tabKey(event: KeyboardEvent, current: SettingsTab): Promise<void>
       />
     </div>
     <div
-      v-else-if="props.tab === 'tools'"
+      v-else-if="activeTab === 'tools'"
       id="settings-panel-tools"
       class="settings-content"
       role="tabpanel"
@@ -177,7 +201,25 @@ async function tabKey(event: KeyboardEvent, current: SettingsTab): Promise<void>
       />
     </div>
     <div
-      v-else-if="props.tab === 'themes'"
+      v-else-if="activeTab === 'skills'"
+      id="settings-panel-skills"
+      class="settings-content settings-simple"
+      role="tabpanel"
+      aria-labelledby="settings-tab-skills"
+    >
+      <SkillsSection />
+    </div>
+    <div
+      v-else-if="activeTab === 'plugins'"
+      id="settings-panel-plugins"
+      class="settings-content settings-simple"
+      role="tabpanel"
+      aria-labelledby="settings-tab-plugins"
+    >
+      <PluginsSection :client="props.plugins" />
+    </div>
+    <div
+      v-else-if="activeTab === 'themes'"
       id="settings-panel-themes"
       class="settings-content settings-simple"
       role="tabpanel"
@@ -372,6 +414,7 @@ async function tabKey(event: KeyboardEvent, current: SettingsTab): Promise<void>
 }
 .settings-tabs {
   display: flex;
+  flex-wrap: wrap;
   flex: none;
   gap: var(--space-12);
   margin: 0 var(--space-24);
@@ -407,6 +450,9 @@ async function tabKey(event: KeyboardEvent, current: SettingsTab): Promise<void>
 .settings-simple {
   overflow-y: auto;
   padding: var(--space-12) var(--space-24);
+}
+#settings-panel-plugins {
+  padding-inline: var(--space-12);
 }
 .general-panel {
   gap: var(--space-8);

@@ -18,6 +18,7 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { refuseQuestion } from '../src/main/runtime/question-rails'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
@@ -25,28 +26,16 @@ import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runt
 import type { TranscriptEvent } from '../src/shared/runtime-ipc'
 
 /**
- * # F020 · a withdraw refused because the question was just answered says so, and where the answer is
- *
- * Landing coverage for `39c9978d`. An agent that withdrew its own question after it had been answered
- * or declined was told only that it had no open question by that id, and reported without the
- * answer that was on its way. ⚑ Now the refusal says the question was already answered (or
- * declined), that nothing was withdrawn, and puts first what to do about the answer — by where it
- * is: held behind a turn being stopped for it, held until that turn ends, held until the usage limit
- * resets, or already sent. ⚑ The detail carries `state`, `at` and `itsAnswer`.
- *
- * ⛔ Every other refusal of `withdraw_question` is unchanged: an unknown id, somebody else's
- * question, a provider's own question, another ending. And a question still open IS withdrawn.
- *
- * ⚑ Every arm runs on the real chain BroBot → Ada → Ali, built through `give_work` in `auto` (the
- * harness of `message-now-stops-the-turn-it-reads-in`): Ali asks Ada, and a BUSY Ali — a thinking
- * burst, so its handle is `working` with no card up — is what holds Ada's answer in its mailbox.
+ * An agent's own ended question reports when it ended. Answered and declined questions also
+ * explain where to read the reply. Unknown ids, other askers and provider questions stay private.
+ * The chain uses fake providers and temporary data throughout.
  */
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
 const HOUR = 3_600_000
 
-/** ⚑ The rail's own sentence, which every refusal that is not about an answered question keeps. */
+/** Unknown questions and questions the caller does not own keep the generic refusal. */
 const NO_OPEN_QUESTION =
   'you have no open question by that id — you did not ask it, or it has ended — so nothing was withdrawn. Use the id ask_question returned; withdrawing this one again will never succeed.'
 
@@ -310,6 +299,12 @@ describe('F020 · a withdraw of a question already answered says so, and where i
 
   const quoting = (id: string): string => `quoting ${id}.`
 
+  const endedAt = (asker: string, id: string): string => {
+    const at = questionOf(asker, id)?.endedAt
+    expect(typeof at).toBe('number')
+    return new Date(at!).toISOString()
+  }
+
   /** ⚑ Nothing was withdrawn: the fold still reads the ending, and no withdrawal was written. */
   const nothingWasWithdrawn = (ali: string, id: string, state: 'answered' | 'rejected'): void => {
     expect(questionOf(ali, id)?.state).toBe(state)
@@ -337,7 +332,8 @@ describe('F020 · a withdraw of a question already answered says so, and where i
         detail: { question: id, state: 'answered', itsAnswer: 'already-sent' },
       })
       expect(refused.reason).toBe(
-        'read its answer, which was sent to you as a message: that question was already answered, so nothing was withdrawn.',
+        'read its answer, which was sent to you as a message: that question was already answered, so nothing was withdrawn.' +
+          ` This question ended at ${endedAt(ali, id)}. No withdrawal is needed.`,
       )
       // ⚑ `at` is when it ended, as the fold has it.
       const at = (refused.detail as { at?: unknown }).at
@@ -361,7 +357,8 @@ describe('F020 · a withdraw of a question already answered says so, and where i
         detail: { question: id, state: 'answered', itsAnswer: 'held-until-this-turn-ends' },
       })
       expect(refused.reason).toBe(
-        'end this turn to read its answer before you report on that question: it was already answered, so nothing was withdrawn, and its answer is held for you until this turn ends.',
+        'end this turn to read its answer before you report on that question: it was already answered, so nothing was withdrawn, and its answer is held for you until this turn ends.' +
+          ` This question ended at ${endedAt(ali, id)}. No withdrawal is needed.`,
       )
       nothingWasWithdrawn(ali, id, 'answered')
 
@@ -403,7 +400,8 @@ describe('F020 · a withdraw of a question already answered says so, and where i
         detail: { question: id, state: 'answered', itsAnswer: 'held-and-this-turn-is-stopping' },
       })
       expect(refused.reason).toBe(
-        'stop here and read its answer: that question was already answered, so nothing was withdrawn. This turn is being stopped, so its answer, held for you, comes in now.',
+        'stop here and read its answer: that question was already answered, so nothing was withdrawn. This turn is being stopped, so its answer, held for you, comes in now.' +
+          ` This question ended at ${endedAt(ali, id)}. No withdrawal is needed.`,
       )
       nothingWasWithdrawn(ali, id, 'answered')
 
@@ -462,7 +460,8 @@ describe('F020 · a withdraw of a question already answered says so, and where i
         detail: { question: id, state: 'answered', itsAnswer: 'held-until-the-limit-resets' },
       })
       expect(refused.reason).toBe(
-        'end this turn to read its answer before you report on that question: it was already answered, so nothing was withdrawn, and its answer is held for you until this turn ends, or longer if your usage limit still holds then.',
+        'end this turn to read its answer before you report on that question: it was already answered, so nothing was withdrawn, and its answer is held for you until this turn ends, or longer if your usage limit still holds then.' +
+          ` This question ended at ${endedAt(ali, id)}. No withdrawal is needed.`,
       )
       nothingWasWithdrawn(ali, id, 'answered')
     })
@@ -486,7 +485,8 @@ describe('F020 · a withdraw of a question already answered says so, and where i
         detail: { question: id, state: 'rejected', itsAnswer: 'held-until-this-turn-ends' },
       })
       expect(refused.reason).toBe(
-        'end this turn to read the reply declining it before you report on that question: it was already declined, so nothing was withdrawn, and the reply declining it is held for you until this turn ends.',
+        'end this turn to read the reply declining it before you report on that question: it was already declined, so nothing was withdrawn, and the reply declining it is held for you until this turn ends.' +
+          ` This question ended at ${endedAt(ali, id)}. No withdrawal is needed.`,
       )
       // ⛔ …and never in an answer's words.
       expect(String(refused.reason)).not.toContain('already answered')
@@ -514,13 +514,14 @@ describe('F020 · a withdraw of a question already answered says so, and where i
         itsAnswer: 'already-sent',
       })
       expect(refused.reason).toBe(
-        'read the reply declining it, which was sent to you as a message: that question was already declined, so nothing was withdrawn.',
+        'read the reply declining it, which was sent to you as a message: that question was already declined, so nothing was withdrawn.' +
+          ` This question ended at ${endedAt(ali, id)}. No withdrawal is needed.`,
       )
     })
   })
 
-  describe('§3 · every other refusal of withdraw_question is unchanged', () => {
-    it('⚑ a question still open IS withdrawn — and withdrawing it again is the plain refusal, with no answer to point at', async () => {
+  describe('§3 · known endings and private or unknown questions', () => {
+    it('⚑ a question still open is withdrawn once; a repeat names its withdrawal time', async () => {
       const { ali, aliPiece, adaTools } = await aChainOfThree()
       const id = await aliAsks(ali, aliPiece)
       const withdrawn = await withdraw(ali, id)
@@ -530,14 +531,59 @@ describe('F020 · a withdraw of a question already answered says so, and where i
       const late = await answerAs(adaTools, ali, id)
       expect(late.rail, JSON.stringify(late)).toBe('question-has-already-ended')
 
-      // ⛔ Withdrawn is another ending: the rail's own sentence, and a detail with nothing beside the id.
+      // A repeat reports the ending without writing another withdrawal.
       const again = await withdraw(ali, id)
       expect(again).toMatchObject({
         outcome: 'refused',
         rail: 'no-open-question-you-asked-by-that-name',
       })
-      expect(again.reason).toBe(NO_OPEN_QUESTION)
-      expect(again.detail).toEqual({ question: id })
+      expect(again.reason).toBe(
+        `This question was already withdrawn at ${endedAt(ali, id)}. No withdrawal is needed.`,
+      )
+      expect(again.detail).toEqual({
+        question: id,
+        state: 'withdrawn',
+        at: questionOf(ali, id)?.endedAt,
+      })
+      expect(
+        ledger(ali).filter(
+          (event) => event.type === 'question_withdrawn' && event.requestId === id,
+        ),
+      ).toHaveLength(1)
+      expect(String(again.reason)).not.toContain(id)
+    })
+
+    it('a question ended with its work reports when it ended, without claiming an answer', async () => {
+      const { ali, aliPiece, adaTools } = await aChainOfThree()
+      const id = await aliAsks(ali, aliPiece)
+      const closed = await callOn(adaTools, 'update_work', { piece: aliPiece, close: true })
+      expect(closed.outcome, JSON.stringify(closed)).toBe('ok')
+      expect(questionOf(ali, id)?.state).toBe('work-closed')
+      const refused = await withdraw(ali, id)
+      expect(refused.reason).toBe(
+        `This question ended at ${endedAt(ali, id)}. No withdrawal is needed.`,
+      )
+      expect(refused.detail).toEqual({
+        question: id,
+        state: 'work-closed',
+        at: questionOf(ali, id)?.endedAt,
+      })
+      expect(
+        ledger(ali).some((event) => event.type === 'question_withdrawn' && event.requestId === id),
+      ).toBe(false)
+      expect(String(refused.reason)).not.toContain(id)
+    })
+
+    it('a known ending without a usable timestamp still says no withdrawal is needed', () => {
+      for (const at of [undefined, Number.NaN]) {
+        const refusal = refuseQuestion('no-open-question-you-asked-by-that-name', {
+          question: 'req_private-example',
+          state: 'withdrawn',
+          ...(at === undefined ? {} : { at }),
+        })
+        expect(refusal.reason).toBe('This question has already ended. No withdrawal is needed.')
+        expect(refusal.reason).not.toContain('req_private-example')
+      }
     })
 
     it('⛔ an id nobody asked: the plain refusal, unchanged', async () => {

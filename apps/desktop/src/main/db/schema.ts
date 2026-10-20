@@ -1,6 +1,7 @@
 import { sql, type SQL } from 'drizzle-orm'
 import {
   check,
+  foreignKey,
   index,
   integer,
   sqliteTable,
@@ -1588,3 +1589,92 @@ export const workLegacyStallCut = sqliteTable('work_legacy_stall_cut', {
   generation: integer('generation').notNull(),
   throughOrdinal: integer('through_ordinal').notNull(),
 })
+
+/** Immutable source versions; provider-home views are derived from these bytes later. */
+export const skillVersion = sqliteTable(
+  'skill_version',
+  {
+    id: text('id').primaryKey(),
+    skillId: text('skill_id').notNull(),
+    versionKey: text('version_key').notNull(),
+    metadata: text('metadata').notNull(),
+    body: text('body').notNull(),
+    sha256: text('sha256').notNull(),
+    bytes: integer('bytes').notNull(),
+    pluginId: text('plugin_id'),
+    packageVersion: text('package_version'),
+    packageSha256: text('package_sha256'),
+    packageManifestSha256: text('package_manifest_sha256'),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => [
+    uniqueIndex('skill_version_release_uq').on(t.skillId, t.versionKey),
+    uniqueIndex('skill_version_owner_uq').on(t.skillId, t.id),
+    index('skill_version_package_idx').on(t.pluginId, t.packageVersion),
+    check(
+      'skill_version_metadata_ck',
+      sql`json_valid(${t.metadata}) AND length(CAST(${t.metadata} AS BLOB)) <= 8192`,
+    ),
+    check(
+      'skill_version_bytes_ck',
+      sql`typeof(${t.bytes}) = 'integer' AND ${t.bytes} BETWEEN 1 AND 65536 AND length(CAST(${t.body} AS BLOB)) = ${t.bytes}`,
+    ),
+    check(
+      'skill_version_package_ck',
+      sql`(${t.pluginId} IS NULL AND ${t.packageVersion} IS NULL AND ${t.packageSha256} IS NULL AND ${t.packageManifestSha256} IS NULL) OR (${t.pluginId} IS NOT NULL AND ${t.packageVersion} IS NOT NULL AND ${t.packageSha256} IS NOT NULL AND ${t.packageManifestSha256} IS NOT NULL)`,
+    ),
+  ],
+)
+
+/** One current version per source-qualified skill, without changing prior versions. */
+export const skillCurrent = sqliteTable(
+  'skill_current',
+  {
+    id: text('id').primaryKey(),
+    alias: text('alias').notNull(),
+    currentVersion: text('current_version').notNull(),
+    active: integer('active', { mode: 'boolean' }).notNull(),
+  },
+  (t) => [
+    uniqueIndex('skill_current_alias_uq').on(t.alias),
+    foreignKey({
+      columns: [t.id, t.currentVersion],
+      foreignColumns: [skillVersion.skillId, skillVersion.id],
+    }),
+    check('skill_current_active_ck', sql`${t.active} IN (0, 1)`),
+  ],
+)
+
+/** A person's saved next-start choice, attached to an identity rather than its display name. */
+export const skillSelection = sqliteTable(
+  'skill_selection',
+  {
+    identityId: text('identity_id')
+      .notNull()
+      .references(() => agentIdentity.id, { onDelete: 'cascade' }),
+    skillId: text('skill_id')
+      .notNull()
+      .references(() => skillCurrent.id, { onDelete: 'cascade' }),
+    choice: text('choice').notNull(),
+  },
+  (t) => [
+    uniqueIndex('skill_selection_identity_uq').on(t.identityId, t.skillId),
+    index('skill_selection_skill_idx').on(t.skillId),
+    check('skill_selection_choice_ck', sql`${t.choice} IN ('default', 'on', 'off')`),
+  ],
+)
+
+/** Compare-and-swap revision for catalogue edits and selections in one transaction. */
+export const skillCatalogueState = sqliteTable(
+  'skill_catalogue_state',
+  {
+    id: integer('id').primaryKey(),
+    revision: integer('revision').notNull(),
+  },
+  (t) => [
+    check(
+      'skill_catalogue_state_ck',
+      sql`${t.id} = 1 AND typeof(${t.revision}) = 'integer' AND ${t.revision} >= 0`,
+    ),
+  ],
+)

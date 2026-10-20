@@ -5,14 +5,13 @@ import {
   fstatSync,
   lstatSync,
   mkdirSync,
-  openSync,
   readSync,
   renameSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { join } from 'node:path'
-import { aStagingName, createFreshFile } from '@brobot2/runtime/provider-home'
+import { aStagingName, createFreshFile, openNotThroughALink } from '@brobot2/runtime/provider-home'
 
 export const WORKSPACE_DIRNAME = 'brobot-workspace'
 
@@ -68,7 +67,7 @@ function retireWorkspaceInstructions(workspace: string, name: string): void {
   if (candidate === null || !candidate.isFile() || candidate.size > RETIRED_FILE_MAX_BYTES) return
   let fd: number
   try {
-    fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
+    fd = openNotThroughALink(path, constants.O_RDONLY | constants.O_NONBLOCK)
   } catch {
     return
   }

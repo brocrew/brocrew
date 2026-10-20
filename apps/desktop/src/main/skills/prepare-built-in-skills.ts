@@ -22,15 +22,22 @@ import {
   verifyBuiltInSkills,
   type VerifiedBuiltInSkills,
 } from './built-in-catalogue'
+import { selectedSkillView } from './selected-skill-view'
+import { retainSkillView, sweepSkillViews } from './sweep-skill-views'
+import type { SkillLaunchSelection } from './launch-selection'
+import type { InstalledSkillVersion } from '../../shared/skills-installation'
 import { builtInSkillView, installNewSkillView, type NewSkillViewStorage } from './skill-view'
 
 export { BUILT_IN_SKILLS_FAILURE } from '../../shared/built-in-skills'
 
 export interface PreparedBuiltInSkills {
+  readonly sharedRoot?: string
   readonly context: BuiltInSkillsContext
   readonly reminder: string
   readonly version: string
   readonly isCurrent: () => boolean
+  readonly catalogueRevision?: number
+  readonly versions?: readonly InstalledSkillVersion[]
 }
 
 function boundedFile(path: string, maximum: number): string {
@@ -172,6 +179,7 @@ function ownedViewStorage(managedRoot: string, home: string, current: () => bool
   }
   return {
     storage,
+    verify,
     release() {
       for (const item of files.values()) {
         try {
@@ -181,7 +189,7 @@ function ownedViewStorage(managedRoot: string, home: string, current: () => bool
         }
       }
       for (const pin of pins) pin.release()
-      // Incomplete and older views remain outside discovery. No path-based deletion adopts replacements.
+      // A later launch sweeps incomplete views and copies whose providers have stopped.
     },
   }
 }
@@ -194,36 +202,58 @@ export async function prepareBuiltInSkills(input: {
   shipped: () => VerifiedBuiltInSkills
   /** The skills a text pack gives, already held to the shipped catalogue's rules. */
   skills?: VerifiedBuiltInSkills
+  allShipped?: boolean
   canCreateAgents: boolean
   isCoordinator: boolean
+  selection?: Pick<SkillLaunchSelection, 'revision' | 'skills'>
   isCurrent: () => boolean
+  /** Settles only after the provider is confirmed stopped, including a slow close. */
+  inUseUntil?: Promise<void>
 }): Promise<PreparedBuiltInSkills> {
   try {
     const bundle = input.skills ?? input.shipped()
-    const selected = creationAllowedSkills(
-      bundle.catalogue,
-      input.canCreateAgents,
-      input.isCoordinator,
+    const selected = input.allShipped
+      ? bundle.catalogue.skills
+      : creationAllowedSkills(bundle.catalogue, input.canCreateAgents, input.isCoordinator)
+    if (
+      input.selection?.skills.some(
+        (skill) =>
+          skill.requirement !== null &&
+          !input.canCreateAgents &&
+          !(skill.requirement === 'create-agents-or-coordinator' && input.isCoordinator),
+      )
     )
-    const view = builtInSkillView(input.provider, bundle, selected)
+      throw new Error('Skill grant is no longer available.')
+    const expanded = input.selection
+      ? selectedSkillView(
+          input.provider,
+          input.selection.skills,
+          bundle,
+          input.skills !== undefined,
+        )
+      : undefined
+    const view = expanded ?? builtInSkillView(input.provider, bundle, selected)
     const ancestry = trustProviderHomeAncestry(input.managedRoot, input.providerHome, {
       includeLeaf: true,
     })
+    const owned = ownedViewStorage(input.managedRoot, resolve(input.providerHome), () => {
+      ancestry.verify()
+      return input.isCurrent()
+    })
     try {
-      return await withProviderHomeLock(
+      const installedView = await withProviderHomeLock(
         input.providerHome,
         async () => {
-          const owned = ownedViewStorage(input.managedRoot, resolve(input.providerHome), () => {
-            ancestry.verify()
-            return input.isCurrent()
-          })
-          try {
-            const installed = await installNewSkillView(owned.storage, view, input.isCurrent)
-            if (!input.isCurrent()) throw new Error('Skill launch is no longer current.')
-            return {
+          const installed = await installNewSkillView(owned.storage, view, input.isCurrent)
+          if (!input.isCurrent()) throw new Error('Skill launch is no longer current.')
+          ancestry.verify()
+          retainSkillView(installed.root, input.inUseUntil)
+          return {
+            root: installed.root,
+            prepared: {
               context: {
                 root: installed.discoveryPath,
-                skills: selected.map((item) => ({
+                skills: view.skills.map((item) => ({
                   name: input.provider === 'claude' ? `brobot:${item.name}` : item.name,
                   description: item.description,
                   path: join(
@@ -234,12 +264,13 @@ export async function prepareBuiltInSkills(input: {
                   ),
                 })),
               },
-              reminder: builtInSkillReminders(input.provider, selected),
+              reminder: expanded?.reminder ?? builtInSkillReminders(input.provider, selected),
+              ...(input.selection && expanded
+                ? { catalogueRevision: input.selection.revision, versions: expanded.versions }
+                : {}),
               version: bundle.catalogue.version,
               isCurrent: input.isCurrent,
-            }
-          } finally {
-            owned.release()
+            },
           }
         },
         {
@@ -249,7 +280,14 @@ export async function prepareBuiltInSkills(input: {
           },
         },
       )
+      owned.verify()
+      if (!input.isCurrent()) throw new Error('Skill launch is no longer current.')
+      // Publish this launch first. Cleanup owns its pins and contains its failures; neither the
+      // backlog nor another launch's sweep belongs on the provider's start path.
+      void sweepSkillViews(input.managedRoot, resolve(input.providerHome), installedView.root)
+      return installedView.prepared
     } finally {
+      owned.release()
       ancestry.release()
     }
   } catch (error) {

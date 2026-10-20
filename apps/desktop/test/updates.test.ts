@@ -602,6 +602,7 @@ describe('§4 · the Mac’s guided download, against a local server', () => {
     const to = join(aFolder(), 'BroBot-0.2.0-arm64.dmg')
     const percents: number[] = []
     const path = await downloadChecked({
+      stagingFolder: aFolder(),
       url: downloadUrlOf({ provider: 'generic', url: feed.url }, '0.2.0', 'BroBot-0.2.0-arm64.dmg'),
       sha512: sum,
       to,
@@ -618,6 +619,7 @@ describe('§4 · the Mac’s guided download, against a local server', () => {
     const to = join(aFolder(), 'BroBot-0.2.0-arm64.dmg')
     await expect(
       downloadChecked({
+        stagingFolder: aFolder(),
         url: `${feed.url}BroBot-0.2.0-arm64.dmg`,
         sha512: sum,
         to,
@@ -644,6 +646,7 @@ describe('§4 · the Mac’s guided download, against a local server', () => {
       const to = join(aFolder(), 'BroBot-0.2.0-arm64.dmg')
       await expect(
         downloadChecked({
+          stagingFolder: aFolder(),
           url: `http://127.0.0.1:${String(port)}${path}`,
           sha512: sum,
           to,
@@ -661,6 +664,7 @@ describe('§4 · the Mac’s guided download, against a local server', () => {
     const to = join(aFolder(), 'BroBot-0.2.0-arm64.dmg')
     writeFileSync(to, image)
     await downloadChecked({
+      stagingFolder: aFolder(),
       url: `${feed.url}BroBot-0.2.0-arm64.dmg`,
       sha512: sum,
       to,
@@ -669,6 +673,7 @@ describe('§4 · the Mac’s guided download, against a local server', () => {
     expect(feed.requests).toEqual([])
     await expect(
       downloadChecked({
+        stagingFolder: aFolder(),
         url: `${feed.url}gone.dmg`,
         sha512: sum,
         to: `${to}-2`,
@@ -869,7 +874,9 @@ describe('§5 · the wiring', () => {
     )
     expect(app.match(/\.install\(true, true\)/g)).toHaveLength(1)
     // ⛔ …and any quit stops a restart that waits.
-    expect(app).toContain("  app.on('before-quit', () => updates.stop())")
+    expect(app).toContain(
+      "  const stop = (): void => {\n    guidedDownloads.abort()\n    updates.stop()\n  }\n  app.on('before-quit', stop)",
+    )
   })
 
   it('⚑ a check carries no per-install id', () => {
@@ -883,9 +890,13 @@ describe('§5 · the wiring', () => {
   it('⚑ started once main has its host and its IPC', () => {
     const index = read('../src/main/index.ts')
     const ipc = index.indexOf('      registerIpc(host, localZone)')
-    const started = index.indexOf('      startUpdates({ app, host, hidden: presentation.hidden })')
+    const started = index.indexOf(
+      '      updates = startUpdates({ app, host, hidden: presentation.hidden })',
+    )
     expect(ipc).toBeGreaterThan(-1)
     expect(started).toBeGreaterThan(ipc)
+    expect(index).toContain('  stopArchiveWork: () => {\n    updates?.stop()')
+    expect(index).toContain('  drainArchiveWork: async () => {\n    await updates?.drain()')
   })
 })
 

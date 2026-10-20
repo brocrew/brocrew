@@ -56,6 +56,7 @@
 # data folder does not follow `productName` anywhere: `data-folder.ts` pins it, and the app's
 # own name — the package's `name`, which also names the Keychain entry its saved keys are sealed
 # with — stays `@brobot2/desktop`.
+beforePack: ./build/before-pack.cjs
 appId: com.brobot2.desktop
 productName: BroCrew
 directories:
@@ -105,7 +106,18 @@ mac:
   # The bundled Codex for macOS arm64 (014). ⚑ Under `mac:` since F072: electron-builder adds a
   # platform's own `extraResources` to the shared ones above, and each platform copies only the
   # Codex build it can run — `codex-binary.ts`' `BUNDLED_CODEX` names the same package and triple.
+  # Preserve the already-signed pinned Node bytes; the runtime descriptor hashes them.
+  signIgnore:
+    - 'plugin-node/node$'
   extraResources:
+    - from: resources/plugin-node
+      to: plugin-node
+    - from: resources/plugin-host
+      to: plugin-host
+      filter: ['**/*.mjs', '**/*.ps1']
+    - from: resources/plugin-supervisor
+      to: plugin-supervisor
+      filter: ['**/*.cjs']
     - from: node_modules/@openai/codex-darwin-arm64/vendor
       to: codex-vendor
     # The logo as a picture the app can read (`nativeImage` can't read the .icns): the Dock label
@@ -143,9 +155,18 @@ win:
     - target: nsis
       arch: [x64]
   # The bundled Codex for Windows x64, laid out as on the Mac: `codex-vendor/<triple>/bin/codex.exe`.
+  # The plugin host as on the Mac; its pinned `node.exe` is the official signed build, kept unchanged.
   extraResources:
     - from: node_modules/@openai/codex-win32-x64/vendor
       to: codex-vendor
+    - from: resources/plugin-node
+      to: plugin-node
+    - from: resources/plugin-host
+      to: plugin-host
+      filter: ['**/*.mjs', '**/*.ps1']
+    - from: resources/plugin-supervisor
+      to: plugin-supervisor
+      filter: ['**/*.cjs']
 # ⚑ W4.90 — `BroCrew-<version>-arm64.dmg`, said rather than left to the default.
 dmg:
   artifactName: ${productName}-${version}-${arch}.${ext}

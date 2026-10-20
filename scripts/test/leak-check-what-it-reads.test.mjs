@@ -121,17 +121,29 @@ describe('leak:check · it counts LINES, one file at a time', () => {
     expect(text).toContain('  notes/….md:2')
   })
 
-  it('a path with a colon or a space in it is read whole, and matched to its baseline line', () => {
+  it('a path with a space is read whole, and matched to its baseline line', () => {
     const root = aRepo({
-      files: { 'a:b.md': 'zork-co\n', 'my notes.md': 'clean\nacme-widgets\n' },
-      baseline: ['a:b.md\t1', 'my notes.md\t1'],
+      files: { 'my notes.md': 'clean\nacme-widgets\n' },
+      baseline: ['my notes.md\t1'],
     })
-    expect(found(root)).toEqual([
-      ['a:b.md', [1]],
-      ['my notes.md', [2]],
-    ])
+    expect(found(root)).toEqual([['my notes.md', [2]]])
     expect(check(root).passed).toBe(true)
   })
+
+  it.skipIf(process.platform === 'win32')(
+    'a path with a colon is read whole, and matched to its baseline line',
+    () => {
+      const root = aRepo({
+        files: { 'a:b.md': 'zork-co\n', 'my notes.md': 'clean\nacme-widgets\n' },
+        baseline: ['a:b.md\t1', 'my notes.md\t1'],
+      })
+      expect(found(root)).toEqual([
+        ['a:b.md', [1]],
+        ['my notes.md', [2]],
+      ])
+      expect(check(root).passed).toBe(true)
+    },
+  ) // Windows cannot create a filename containing a colon; the space case above still runs.
 })
 
 describe('leak:check · tracked files, as they are in the working tree', () => {

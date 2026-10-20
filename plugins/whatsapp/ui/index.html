@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>WhatsApp</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main>
+      <header class="screen-heading">
+        <h1>WhatsApp</h1>
+        <p id="status" role="status">Connecting…</p>
+      </header>
+      <section id="link" aria-label="Phone">
+        <p id="account" hidden></p>
+        <div id="pairing" hidden>
+          <canvas id="code" width="0" height="0" aria-label="QR code"></canvas>
+          <p>
+            On your phone, open WhatsApp → Settings → Linked devices → Link a device, and scan this
+            code.
+          </p>
+        </div>
+        <p id="expired" hidden>Code expired.</p>
+        <p id="remove-on-phone" hidden>
+          Logged out here. Also remove this device on your phone: WhatsApp → Linked devices.
+        </p>
+        <p id="unlink-question" hidden>
+          Log out of WhatsApp? Agents lose WhatsApp until you link a phone again.
+        </p>
+        <div class="actions">
+          <button id="link-phone" hidden>Link a phone</button>
+          <button id="new-code" hidden>Show a new code</button>
+          <button id="unlink" hidden>Log out</button>
+          <button id="unlink-confirmed" class="danger" hidden>Log out</button>
+        </div>
+      </section>
+      <section class="setting">
+        <label class="switch"
+          ><input id="read" type="checkbox" role="switch" disabled /> Read conversations</label
+        >
+        <p class="help">Agents can read your chats, messages and contacts.</p>
+      </section>
+      <section class="setting">
+        <label class="switch"
+          ><input id="prefix" type="checkbox" role="switch" disabled /> Start messages with
+          🤖</label
+        >
+        <p class="help">Messages agents send begin with 🤖.</p>
+      </section>
+      <section class="setting">
+        <h2>Groups</h2>
+        <p class="help">Agents can send only to groups you turn on.</p>
+        <div class="group-controls">
+          <input
+            id="group-filter"
+            type="search"
+            placeholder="Filter groups"
+            aria-label="Filter groups"
+            maxlength="128"
+          />
+          <button id="refresh-groups" type="button">Refresh</button>
+        </div>
+        <ul id="groups"></ul>
+      </section>
+    </main>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

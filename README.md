@@ -98,6 +98,10 @@ BroCrew keeps each key encrypted on your machine: on a Mac with a key held in yo
 - **You stay in charge.** Agents ask you before going further than their provider's permission system allows on its own. [Safety](#safety), below, says exactly what that means for Claude and for Codex.
 - **Any project, either provider.** The same app that hands out a coding task can hand out any other kind, and an agent in that same window can run on Claude or on Codex.
 
+## Plugins
+
+Install plugins from **Settings → Plugins**. **Chrome** lets agents use Google Chrome with its own separate profiles. **WhatsApp** lets agents read your WhatsApp chats when you allow it, and send to the groups you choose. BroCrew downloads plugins from their GitHub releases and checks them before they run. Plugins run with your computer user’s rights; they are not sandboxed.
+
 ## Safety
 
 BroCrew doesn't sandbox its agents itself. What an agent may do is decided by Claude's or Codex's own permission system, the same one you'd get running their command-line tools directly:
@@ -111,6 +115,8 @@ One rule BroCrew enforces itself: when an agent starts another agent, the new on
 Agents run with your user account's permissions. A command an agent runs can read anything your account can: your files, and credentials stored for your account, such as other apps' saved logins and keys. So approve commands the way you would in your own terminal.
 
 **BroCrew can start turns by itself.** A job an agent scheduled, work one agent hands another, a reminder to an agent that stopped with work still open, or a turn picked up again after a restart, or after Claude Code or Codex stopped in the middle of one: each is a turn you didn't type, and your provider bills it like any other. BroCrew never picks up again a turn that was stopped, and sends no reminders to a conversation you stopped until you write to it again.
+
+Plugins run with your computer user’s rights; they are not sandboxed. Install only plugins you trust.
 
 **Your API keys.** On a Mac, BroCrew hands your Anthropic key to Claude without putting it anywhere an agent's commands can see. On Windows the key is in the Claude CLI's own environment: the CLI keeps it out of the commands it runs, but a command running as you could still read it from there. Codex keeps your OpenAI key in a file in BroCrew's data folder, readable by your user account, so any command an agent runs could read it, even one Codex runs in its sandbox without asking you.
 
@@ -126,7 +132,7 @@ Agents run with your user account's permissions. A command an agent runs can rea
 - **Claude**, through Anthropic's Claude Agent SDK and Claude Code, with your Anthropic API key. A downloaded BroCrew uses the Claude Code you install; run from source, it uses the one that comes with the SDK.
 - **Codex**, through the bundled Codex app server, with your OpenAI API key.
 
-Either way, you bring your own key and pay the provider directly. BroCrew has no servers of its own. It contacts GitHub, to check for updates, and Anthropic or OpenAI when you press **Check it works** on a key. The Claude Code and Codex programs it runs talk to their own providers.
+Either way, you bring your own key and pay the provider directly. BroCrew has no servers of its own. It contacts GitHub to check for updates, read the plugin list and download plugins, and Anthropic or OpenAI when you press **Check it works** on a key. The Claude Code and Codex programs it runs talk to their own providers, and the WhatsApp plugin talks to WhatsApp.
 
 ## License
 

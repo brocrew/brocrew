@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 import type { Provider } from '@brobot2/shared'
-import { BUILT_IN_SKILL_NAMES } from '../../shared/built-in-skills'
+import { SKILL_LIMITS } from '../../shared/skills-catalogue'
 import {
   skillDigest,
   verifyBuiltInSkills,
@@ -12,7 +12,12 @@ export interface BuiltInSkillView {
   readonly provider: Provider
   readonly digest: string
   readonly files: ReadonlyMap<string, string>
-  readonly skills: readonly BuiltInSkill[]
+  readonly skills: readonly {
+    readonly name: string
+    readonly description: string
+    readonly sha256: string
+    readonly bytes: number
+  }[]
   readonly discoveryRoot: 'claude-plugin' | 'codex/skills'
 }
 
@@ -72,6 +77,12 @@ export async function installNewSkillView(
   }
   checkCurrent()
   const expectedRoot = view.provider === 'claude' ? 'claude-plugin' : 'codex/skills'
+  if (
+    view.skills.length > SKILL_LIMITS.selected ||
+    [...view.files.values()].reduce((sum, text) => sum + Buffer.byteLength(text, 'utf8'), 0) >
+      SKILL_LIMITS.selectedBytes
+  )
+    throw new Error('Too many installed skills.')
   const expected = new Set<string>()
   const names = new Set<string>()
   if (view.discoveryRoot !== expectedRoot) throw new Error('Unexpected skill discovery root.')
@@ -84,7 +95,7 @@ export async function installNewSkillView(
     }
   }
   for (const item of view.skills) {
-    if (!BUILT_IN_SKILL_NAMES.includes(item.name) || names.has(item.name)) {
+    if (!/^[a-z][a-z0-9-]{0,63}$/.test(item.name) || names.has(item.name)) {
       throw new Error('Unexpected installed skill name.')
     }
     names.add(item.name)
@@ -108,6 +119,18 @@ export async function installNewSkillView(
   const root = await storage.reserve(view.digest)
   checkCurrent()
   const directories = new Set<string>()
+  const ensure = async (path: string) => {
+    const components = path.split('/')
+    for (let i = 1; i <= components.length; i++) {
+      const directory = components.slice(0, i).join('/')
+      if (!directories.has(directory)) {
+        await storage.createDirectory(root, directory)
+        checkCurrent()
+        directories.add(directory)
+      }
+    }
+  }
+  await ensure(view.discoveryRoot)
   for (const [path, text] of view.files) {
     const components = path.split('/')
     for (let i = 1; i < components.length; i++) {

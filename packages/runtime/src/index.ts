@@ -617,3 +617,14 @@ export { RequestBroker } from './internal/request-broker'
 
 // Re-export the session-status contract from shared for convenience.
 export { sessionStatusSchema, type SessionStatus } from '@brobot2/shared'
+
+export {
+  managedPluginHttpServers,
+  withManagedPluginMcp,
+  type ManagedPluginMcpServer,
+} from './managed-plugin-mcp'
+
+export {
+  withManagedPluginAttachments,
+  type ManagedPluginAttachmentSource,
+} from './managed-plugin-session'

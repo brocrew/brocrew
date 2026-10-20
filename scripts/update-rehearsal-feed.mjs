@@ -47,10 +47,12 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
  */
 export const SANDBOX_FILES = [
   '.nvmrc',
+  'apps/desktop/src/main/db/skill-catalogue-tables.ts',
   'apps/desktop/src/main/last-resort-exit.ts',
   'apps/desktop/src/main/recovery/log-lines.ts',
   'scripts/lib/hidden-launch.mjs',
   'scripts/lib/mac-update-test.mjs',
+  'scripts/lib/skill-tree-state.mjs',
   'scripts/lib/update-rehearsal-app.mjs',
   'scripts/lib/update-rehearsal-data.mjs',
   'scripts/lib/update-rehearsal-state.mjs',

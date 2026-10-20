@@ -206,7 +206,7 @@ MUTATIONS = [
                 # drops it from the RESUME.
                 # ⚑ **provider-followups-1 · re-anchored in place, not retired** — provider follow-ups 1 sends the overlay (servers and the planning switch) through threadConfigOverlay; the mutation is the same, a resume declares none
                 # ⚑ W4.189 · re-anchored in place: the overlay carries the work folders too.
-                "  params.config = threadConfigOverlay(externalMcp, kept, workRoots)\n  return params\n}\n\n/**\n * What the SERVER said",
+                "  params.config = threadConfigOverlay(externalMcp, kept, workRoots, managedPluginMcp)\n  return params\n}\n\n/**\n * What the SERVER said",
                 "  return params\n}\n\n/**\n * What the SERVER said",
             )
         ],

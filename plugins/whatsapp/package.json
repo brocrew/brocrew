@@ -1,0 +1,17 @@
+{
+  "name": "@brocrew/whatsapp-plugin",
+  "version": "0.1.3",
+  "private": true,
+  "type": "module",
+  "description": "WhatsApp chats and group messages for BroCrew",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "express": "4.22.3"
+  },
+  "devDependencies": {
+    "@types/express": "5.0.6",
+    "@types/node": "22.19.15",
+    "esbuild": "0.25.12",
+    "typescript": "5.9.3"
+  }
+}

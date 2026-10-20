@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { Worker } from 'node:worker_threads'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
 import type { FakeSessionHandle, ResumeOptions, SessionRef, StartOptions } from '@brobot2/runtime'
@@ -11,8 +12,17 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { limitsWriterSampler } from '../src/main/db/fresh-limits-snapshot'
 import { windowWriterSampler } from '../src/main/db/window-writer-stamp'
+import { WindowReadEngine } from '../src/main/db/window-read-engine'
+import { WindowWorkerReader } from '../src/main/db/window-worker-reader'
+import {
+  WINDOW_READ_BOUNDS,
+  WindowReadUnavailable,
+  type WindowStoreReader,
+} from '../src/main/db/window-read-protocol'
+import { bundleAWorker } from './helpers/bundle-a-worker'
+import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
-import { RuntimeHost } from '../src/main/runtime/runtime-host'
+import { RuntimeHost, type RuntimeHostDeps } from '../src/main/runtime/runtime-host'
 import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
@@ -1984,6 +1994,216 @@ describe('a work wait is reconciled without a window', () => {
     }
   })
 
+  it('reads incident facts off the writer and sees a just-written held message or ending', async () => {
+    const { owner, work } = await create()
+    waiting(owner, work.piece)
+    await host.interrupt(owner, window)
+    await cycle()
+    ;(host as unknown as { workReconciler: { close(): void } }).workReconciler.close()
+    clearInterval(
+      (host as unknown as { reconciliationTimer: ReturnType<typeof setInterval> })
+        .reconciliationTimer,
+    )
+    const slots = (host as unknown as { slots: Map<string, unknown> }).slots
+    const adopted = new Map(slots)
+    slots.clear()
+    const engine = new WindowReadEngine(join(userData, 'brobot2.sqlite'))
+    const deps = (host as unknown as { deps: RuntimeHostDeps }).deps
+    const nativeHeld = vi.spyOn(store, 'messagesWaitingIn').mockImplementation(() => {
+      throw new Error('held messages folded on main')
+    })
+    const nativeStop = vi.spyOn(store, 'lastAskToStop').mockImplementation(() => {
+      throw new Error('Stop folded on main')
+    })
+    const read = vi.fn<WindowStoreReader['read']>(async (query) => engine.read(query))
+    deps.windowReader = { read, close: async () => {} }
+    const look = () => executeRuntimeCommand(host, window, { kind: 'workIncidentsForAPerson' })
+    try {
+      expect(await look()).toMatchObject({ rows: [{ piece: work.piece }], rowsUnread: 0 })
+      record(owner, {
+        type: 'message_queued',
+        messageId: 'fresh-held',
+        text: 'Carry on.',
+        kind: 'work',
+      })
+      expect(await look()).toMatchObject({ rows: [], rowsUnread: 0 })
+      record(owner, {
+        type: 'message_unqueued',
+        messageId: 'fresh-held',
+        text: 'Carry on.',
+        reason: 'sent',
+      })
+      expect(await look()).toMatchObject({ rows: [{ piece: work.piece }], rowsUnread: 0 })
+      record(owner, { type: 'status', state: 'working' })
+      const stale = engine.read({ kind: 'incidents' })
+      let release!: () => void
+      read.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            release = () => resolve(stale)
+          }),
+      )
+      const pending = look()
+      await expect(look()).rejects.toThrow(WindowReadUnavailable)
+      record(owner, {
+        type: 'message_queued',
+        messageId: 'during-read',
+        text: 'New words.',
+        kind: 'work',
+      })
+      release()
+      expect(await pending).toMatchObject({ rows: [], rowsUnread: 0 })
+      expect(read).toHaveBeenCalledTimes(5)
+      expect(read.mock.calls.every(([query]) => query.kind === 'incidents')).toBe(true)
+      expect(await look()).toMatchObject({ rows: [], rowsUnread: 0 })
+      expect(read).toHaveBeenCalledTimes(5)
+      expect(nativeHeld).not.toHaveBeenCalled()
+      expect(nativeStop).not.toHaveBeenCalled()
+    } finally {
+      delete deps.windowReader
+      engine.close()
+      for (const [id, slot] of adopted) slots.set(id, slot)
+    }
+  })
+
+  async function incidentWindow() {
+    const { owner, work } = await create()
+    waiting(owner, work.piece)
+    await host.interrupt(owner, window)
+    await cycle()
+    ;(host as unknown as { workReconciler: { close(): void } }).workReconciler.close()
+    clearInterval(
+      (host as unknown as { reconciliationTimer: ReturnType<typeof setInterval> })
+        .reconciliationTimer,
+    )
+    const slots = (host as unknown as { slots: Map<string, unknown> }).slots
+    const adopted = new Map(slots)
+    slots.clear()
+    const engine = new WindowReadEngine(join(userData, 'brobot2.sqlite'))
+    const deps = (host as unknown as { deps: RuntimeHostDeps }).deps
+    const read = vi.fn<WindowStoreReader['read']>(async (query) => engine.read(query))
+    deps.windowReader = { read, close: async () => {} }
+    const main = vi.spyOn(host, 'workIncidentsForAPerson')
+    return {
+      owner,
+      work,
+      engine,
+      read,
+      main,
+      look: () => executeRuntimeCommand(host, window, { kind: 'workIncidentsForAPerson' }),
+      close() {
+        delete deps.windowReader
+        engine.close()
+        for (const [id, slot] of adopted) slots.set(id, slot)
+      },
+    }
+  }
+
+  it.each(['failed', 'abandoned', 'unsampled', 'moved'] as const)(
+    'incident worker %s gets fresh main answers at most once per thirty seconds',
+    async (failure) => {
+      const fixture = await incidentWindow()
+      let at = 1000
+      vi.spyOn(performance, 'now').mockImplementation(() => at)
+      if (failure === 'unsampled') stampsAvailable = false
+      else if (failure === 'moved')
+        fixture.read.mockImplementation(async (query) => {
+          const result = fixture.engine.read(query)
+          record(fixture.owner, { type: 'status', state: 'working' })
+          return result
+        })
+      else
+        fixture.read.mockRejectedValue(
+          new WindowReadUnavailable(failure === 'failed' ? 'failed' : 'unavailable'),
+        )
+      try {
+        expect(await fixture.look()).toMatchObject({
+          rows: [{ piece: fixture.work.piece }],
+          rowsUnread: 0,
+        })
+        expect(fixture.main).toHaveBeenCalledTimes(1)
+        record(fixture.owner, {
+          type: 'message_queued',
+          messageId: 'fresh-during-outage',
+          text: 'Fictional words.',
+          kind: 'work',
+        })
+        for (at of [1001, 16000, 30999])
+          await expect(fixture.look()).rejects.toThrow(WindowReadUnavailable)
+        expect(fixture.main).toHaveBeenCalledTimes(1)
+        at = 31000
+        expect(await fixture.look()).toMatchObject({ rows: [], rowsUnread: 0 })
+        expect(fixture.main).toHaveBeenCalledTimes(2)
+        record(fixture.owner, {
+          type: 'message_unqueued',
+          messageId: 'fresh-during-outage',
+          text: 'Fictional words.',
+          reason: 'sent',
+        })
+        at = 61000
+        expect(await fixture.look()).toMatchObject({
+          rows: [{ piece: fixture.work.piece }],
+          rowsUnread: 0,
+        })
+        expect(fixture.main).toHaveBeenCalledTimes(3)
+      } finally {
+        fixture.close()
+      }
+    },
+  )
+
+  it('incident worker busy never runs the main fallback', async () => {
+    const fixture = await incidentWindow()
+    try {
+      fixture.read.mockRejectedValueOnce(new WindowReadUnavailable('busy'))
+      await expect(fixture.look()).rejects.toThrow(WindowReadUnavailable)
+      expect(fixture.main).not.toHaveBeenCalled()
+      let release!: () => void
+      fixture.read.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            release = () => resolve(fixture.engine.read({ kind: 'incidents' }))
+          }),
+      )
+      const first = fixture.look()
+      await expect(fixture.look()).rejects.toThrow(WindowReadUnavailable)
+      expect(fixture.main).not.toHaveBeenCalled()
+      release()
+      expect(await first).toMatchObject({ rows: [{ piece: fixture.work.piece }] })
+      expect(fixture.main).not.toHaveBeenCalled()
+      const admitted = host as unknown as { windowReadCallers: number }
+      admitted.windowReadCallers = WINDOW_READ_BOUNDS.callers
+      await expect(fixture.look()).rejects.toThrow(WindowReadUnavailable)
+      expect(fixture.main).not.toHaveBeenCalled()
+      admitted.windowReadCallers = 0
+    } finally {
+      fixture.close()
+    }
+  })
+
+  it('incident worker quit refuses a late failure without a main fallback', async () => {
+    const fixture = await incidentWindow()
+    try {
+      let reject!: (error: unknown) => void
+      fixture.read.mockImplementationOnce(
+        () =>
+          new Promise((_resolve, fail) => {
+            reject = fail
+          }),
+      )
+      const pending = fixture.look()
+      ;(host as unknown as { launches: { closeAdmission(): void } }).launches.closeAdmission()
+      reject(new WindowReadUnavailable('failed'))
+      await expect(pending).rejects.toThrow(WindowReadUnavailable)
+      await expect(fixture.look()).rejects.toThrow(/shutting down/)
+      delete (host as unknown as { deps: RuntimeHostDeps }).deps.windowReader
+      await expect(host.workIncidentsForWindow()).rejects.toThrow(WindowReadUnavailable)
+      expect(fixture.main).not.toHaveBeenCalled()
+    } finally {
+      fixture.close()
+    }
+  })
+
   it.runIf(process.env['W736_INCIDENT_BENCH'] !== undefined)(
     'measures main-thread incident reads by dependency on a large fictional ledger',
     async () => {
@@ -2120,10 +2340,27 @@ describe('a work wait is reconciled without a window', () => {
           }
         }
       }
-      const measure = (name: string) => {
+      const mode = process.env['W896_INCIDENT_MODE'] ?? 'main'
+      let reader: WindowWorkerReader | undefined
+      if (mode === 'worker') {
+        const entry = await bundleAWorker(
+          'src/main/window-reader.worker.ts',
+          userData,
+          'incident-worker.cjs',
+        )
+        reader = new WindowWorkerReader(
+          new Worker(entry, { workerData: { file: join(userData, 'brobot2.sqlite') } }),
+        )
+        ;(host as unknown as { deps: RuntimeHostDeps }).deps.windowReader = reader
+      }
+      const measure = async (name: string) => {
         trace = {}
         const began = performance.now()
-        const answer = host.workIncidentsForAPerson()
+        const cpu = process.threadCpuUsage()
+        const answer =
+          mode === 'worker' ? await host.workIncidentsForWindow() : host.workIncidentsForAPerson()
+        const used = process.threadCpuUsage(cpu)
+        const mainThreadMs = (used.user + used.system) / 1000
         const ms = performance.now() - began
         const methods = trace
         trace = undefined
@@ -2135,20 +2372,23 @@ describe('a work wait is reconciled without a window', () => {
           groups[classify(method)] = group
         }
         expect(answer.rowsUnread).toBe(0)
-        return { name, ms, rows: answer.rows.length, groups, methods }
+        return { name, ms, mainThreadMs, rows: answer.rows.length, groups, methods }
       }
       // Unadopted conversations read their held messages from the record, not a live mailbox.
       const slots = (host as unknown as { slots: Map<string, unknown> }).slots
       const adopted = new Map(slots)
       slots.clear()
       try {
-        const cold = measure('cold')
-        const steady = Array.from({ length: 10 }, () => measure('unchanged'))
-        const writing = Array.from({ length: 10 }, () => {
+        const cold = await measure('cold')
+        const steady: Awaited<ReturnType<typeof measure>>[] = []
+        for (let i = 0; i < 10; i++) steady.push(await measure('unchanged'))
+        const writing: Awaited<ReturnType<typeof measure>>[] = []
+        for (let i = 0; i < 10; i++) {
           append(owners[0]!.owner, { type: 'status', state: 'working' })
-          return measure('after working status')
-        })
+          writing.push(await measure('after working status'))
+        }
         const result = {
+          mode,
           source: process.env['W736_INCIDENT_BENCH'],
           adopted: false,
           owners: owners.length,
@@ -2166,7 +2406,18 @@ describe('a work wait is reconciled without a window', () => {
         console.log('Main-thread incidents', JSON.stringify(result))
         if (process.env['W736_INCIDENT_OUTPUT'])
           writeFileSync(process.env['W736_INCIDENT_OUTPUT'], JSON.stringify(result, null, 2))
+        if (mode === 'worker') {
+          expect(writing.every((one) => one.mainThreadMs < 10)).toBe(true)
+          expect(
+            writing.every(
+              (one) =>
+                one.methods['messagesWaitingIn'] === undefined &&
+                one.methods['lastAskToStop'] === undefined,
+            ),
+          ).toBe(true)
+        }
       } finally {
+        await reader?.close()
         for (const [id, slot] of adopted) slots.set(id, slot)
       }
     },

@@ -1,5 +1,16 @@
+import { withManagedPluginAttachments } from '@brobot2/runtime'
+import type { WorkspacePluginAttachments } from '../plugins/attachments'
+import {
+  readPluginInstructions,
+  pluginInstructionSection,
+  PLUGINS_HEADING,
+  type PluginInstructionSource,
+} from '../plugins/instructions'
+import type { SkillsRequest, SkillsReply, SkillsWindow } from '../../shared/skills-window'
+import type { PastWorkSearchResult } from '../../shared/past-work-search'
+import type { PastWorkSearchReader } from '../db/past-work-search-reader'
 import type { TranscriptsCleared } from '../../shared/transcript-retention'
-import type { RecentActivityReading } from '../../shared/recent-activity'
+import type { RecentActivityReading, SkillImportNotice } from '../../shared/recent-activity'
 import { pathTail } from '../../shared/path-tail'
 import {
   linkKindOf,
@@ -65,6 +76,8 @@ import type { ThemeStore } from '../themes/store'
 import type { AnsweredQuestion, ConversationProviderBlock } from '../../shared/runtime-ipc'
 import { CurrentProviderLimitFacts, type CurrentFact } from './current-provider-limit-facts'
 import type { MainThreadWork } from '../stall-watch'
+import type { SkillLaunchSelection } from '../skills/launch-selection'
+import type { SkillGrants } from '../../shared/skills-catalogue'
 import type { PreparedBuiltInSkills } from '../skills/prepare-built-in-skills'
 import type { SavedMethodsUse } from '../../shared/saved-methods'
 import {
@@ -1034,6 +1047,7 @@ import type { WaitingOnWhoWrote } from '../../shared/waiting-on-who-wrote'
 import type { KeptReading, KeptUsage } from '../provider-usage-file'
 import type { KeptAccounts, KnownAccount } from '../provider-accounts-file'
 import {
+  whatChangedBlock,
   HISTORICAL_LEADS_OPEN_WITH,
   LEADS_OPEN_WITH,
   leadRowsFrom,
@@ -2141,6 +2155,7 @@ type WindowReadMiss =
   | 'writer-moved'
   | 'writer-unsampled'
   | 'worker-read-failed'
+  | 'worker-busy'
   | 'worker-gone'
   | 'worker-needs-restart'
 
@@ -2158,6 +2173,7 @@ class WindowReadMissed extends WindowReadUnavailable {
 function whyTheWorkerMissed(error: unknown, signal: AbortSignal | undefined): unknown {
   if (signal?.aborted === true || !(error instanceof WindowReadUnavailable)) return error
   if (error.why === 'restart') return new WindowReadMissed('worker-needs-restart')
+  if (error.why === 'busy') return new WindowReadMissed('worker-busy')
   return new WindowReadMissed(error.why === 'failed' ? 'worker-read-failed' : 'worker-gone')
 }
 
@@ -2178,6 +2194,9 @@ const A_WAIT_ENDS_WITHIN_MS = 30 * 24 * 60 * 60 * 1000
 
 /** How often each cause of a window read answered on the main thread is logged, at most. */
 const SAY_A_WINDOW_READ_MISS_EVERY_MS = 60_000
+
+/** Maximum frequency of a canonical incident read while the worker cannot answer. */
+const INCIDENT_MAIN_READ_EVERY_MS = 30_000
 
 /** The page a start nobody hands on carries: nothing, and everything before `next` still to read. */
 function noPageBefore(next: number): HistoryWindow {
@@ -2498,7 +2517,13 @@ const RESOURCE_SAMPLE_MS = 5_000
 
 /** The seams the host is built on — all injected, so the whole host runs against `FakeRuntime`. */
 export interface RuntimeHostDeps {
+  prepareSharedSkills?: () => Promise<void>
+  beforeSkillDiscovery?: () => Promise<void>
+  sharedSkillsRoot?: () => Promise<string>
+  closeSharedSkills?: () => void
+  skillsForAPerson?: SkillsWindow
   transcriptsCleared?: (from: number, to: number) => Promise<readonly TranscriptsCleared[]>
+  skillImports?: (from: number, to: number) => Promise<readonly SkillImportNotice[]>
 
   readonly themes?: Pick<ThemeStore, 'refresh' | 'snapshot' | 'raw' | 'save' | 'set'>
   /** Records synchronous work without timing provider waits. */
@@ -2524,12 +2549,15 @@ export interface RuntimeHostDeps {
   prepareProviderHome(provider: Provider, profileId: string): string | Promise<string>
   /** Wait for transcript clearing before a provider process can start. */
   beforeProviderLaunch?: () => Promise<void>
+  readSelectedSkills?: (profileId: string | null, grants: SkillGrants) => SkillLaunchSelection
   prepareBuiltInSkills?: (input: {
     provider: Provider
     providerHome: string
     canCreateAgents: boolean
     isCoordinator: boolean
     isCurrent: () => boolean
+    inUseUntil?: Promise<void>
+    selection?: Pick<SkillLaunchSelection, 'revision' | 'skills'>
     /** The launch's one reading of a text pack ({@link RuntimeHostDeps.readTextPack}). */
     pack?: TextPackRead
   }) => Promise<PreparedBuiltInSkills>
@@ -2789,7 +2817,11 @@ export interface RuntimeHostDeps {
   windowReader?: WindowStoreReader
   windowWriterStamp?: (query: WindowReadQuery) => WindowWriterStamp | null
   workSearchReader?: WorkSearchReader
+  pastWorkSearchReader?: Pick<PastWorkSearchReader, 'read' | 'close'>
   limitsWriterStamp?: () => LimitsWriterStamp | null
+  /** The same real controller that makes Settings → Plugins available. */
+  plugins?: PluginInstructionSource
+  pluginAttachments?: Pick<WorkspacePluginAttachments, 'agent'>
   /**
    * **The instruction files this launch will append, read now** (158) — the profile's own memory,
    * the cwd chain, and the app's own workspace file, each with the text that goes to the model.
@@ -2880,8 +2912,10 @@ export interface RuntimeHostDeps {
    * {@link DEFAULT_INTERRUPT_WAIT_MS}.
    */
   interruptWaitMs?: number
-  /** How long a launch may go unanswered before the host gives up on it (102). */
+  /** How long a launch may go unanswered; also overrides the resume limit unless given separately. */
   launchTimeoutMs?: number
+  /** How long reopening a Codex conversation may go unanswered. */
+  codexResumeTimeoutMs?: number
   /**
    * How long a reopened Codex thread's leads read may still take once its provider has answered;
    * past it the whole text is owed. {@link DEFAULT_REOPEN_LEADS_GRACE_MS} when not given.
@@ -3408,8 +3442,11 @@ interface HostedSession {
    */
   itsQuestionsAsLastSaid: { readonly said: string; readonly at: number } | null
   whoWaitedAsLastSaid: { readonly said: string; readonly at: number } | null
+  /** Last accepted plugin section; staged updates commit with their user_turn. */
+  pluginsAsLastSaid: string | null
   turnBlockSnapshot: TurnBlockSnapshot
   pendingTurnBlock: {
+    plugins: string | null
     readonly next: TurnBlockSnapshot
     readonly words: string
     readonly questions: HostedSession['itsQuestionsAsLastSaid']
@@ -6059,28 +6096,10 @@ const TOOL_CALLS_REMEMBERED = 256
 const DEFAULT_INTERRUPT_WAIT_MS = 2_000
 const DEFAULT_CLOSE_DRAIN_TIMEOUT_MS = 5_000
 
-/**
- * **How long a launch may go unanswered before the host stops waiting for it** (102).
- *
- * ⚠️ **The same fifteen seconds `listModels` has had since 058, and that is the argument.** 100
- * found a slot wedged in `starting` with no way out but quitting the app, and named the asymmetry:
- * `start`/`resume` await a handshake with no deadline while the sibling probe — the same transport,
- * the same spawn, strictly more round trips — is bounded. Nothing anywhere states a reason for the
- * difference and 070's `Launch.signal` was built to act on exactly this case, so it is an omission,
- * not a decision. The sibling's bound is the precedent 102 was told to follow.
- *
- * **Measured before it was chosen** (`smoke/handshake-latency-probe.smoke.ts`, against the bundled
- * binary in a throwaway home): a healthy `thread/start` answers in **80-83 ms warm and 530-916 ms
- * cold**, and a `thread/resume` of a one-turn rollout in **83-109 ms**. Fifteen seconds is ~16× the
- * worst cold launch observed and ~180× the median. It is a bound on a provider that has stopped
- * talking, not a performance budget.
- *
- * ⚠️ **What was NOT measured**: a resume of a very large rollout. The floor is a one-turn thread,
- * so the headroom above is honest about the case it saw. Nobody is trapped by the number either
- * way — {@link RuntimeHost.cancelLaunch} means the user never has to reach it, and a launch it cuts
- * short can simply be made again.
- */
+/** A fresh start or Claude reopen must answer within fifteen seconds. */
 const DEFAULT_LAUNCH_TIMEOUT_MS = 15_000
+// Large Codex rollouts take seconds to reload even without returning past turns.
+const DEFAULT_CODEX_RESUME_TIMEOUT_MS = 60_000
 
 /**
  * How long a reopen waits, once its provider has answered, for the read of what its Codex thread
@@ -7585,6 +7604,7 @@ export class RuntimeHost implements LiveHost {
   private readonly closeDrainTimeoutMs: number
   private readonly interruptWaitMs: number
   private readonly launchTimeoutMs: number
+  private readonly codexResumeTimeoutMs: number
   private readonly reopenLeadsGraceMs: number
   private readonly recordStartAttempt: ((line: StartAttemptLine) => void) | undefined
   private readonly monotonicNow: () => number
@@ -8264,6 +8284,11 @@ export class RuntimeHost implements LiveHost {
     { readonly stamp: WindowWriterStamp; readonly read: Promise<WindowReadResult> } | undefined
   private windowRoutesKept:
     { readonly stamp: WindowWriterStamp; readonly result: WindowReadResult } | undefined
+  private windowIncidentsPending:
+    { readonly stamp: WindowWriterStamp; readonly read: Promise<WindowReadResult> } | undefined
+  private lastIncidentMainReadAt: number | undefined
+  private windowIncidentsKept:
+    { readonly stamp: WindowWriterStamp; readonly result: WindowReadResult } | undefined
   /** Each cause of a window read answered on the main thread: how many, and when it was last said. */
   private readonly windowReadMisses = new Map<
     WindowReadMiss,
@@ -8311,6 +8336,8 @@ export class RuntimeHost implements LiveHost {
     this.closeDrainTimeoutMs = deps.closeDrainTimeoutMs ?? DEFAULT_CLOSE_DRAIN_TIMEOUT_MS
     this.interruptWaitMs = deps.interruptWaitMs ?? DEFAULT_INTERRUPT_WAIT_MS
     this.launchTimeoutMs = deps.launchTimeoutMs ?? DEFAULT_LAUNCH_TIMEOUT_MS
+    this.codexResumeTimeoutMs =
+      deps.codexResumeTimeoutMs ?? deps.launchTimeoutMs ?? DEFAULT_CODEX_RESUME_TIMEOUT_MS
     this.reopenLeadsGraceMs = deps.reopenLeadsGraceMs ?? DEFAULT_REOPEN_LEADS_GRACE_MS
     this.recordStartAttempt = deps.recordStartAttempt
     this.monotonicNow = deps.monotonicNow ?? (() => performance.now())
@@ -13558,7 +13585,11 @@ export class RuntimeHost implements LiveHost {
           'The launch was cancelled while cleanup finished.',
         )
     }
-    const timing = this.timeTheLaunch(slot.id, opening)
+    const timeoutMs =
+      opening.provider === 'codex' && opening.kind === 'resume'
+        ? this.codexResumeTimeoutMs
+        : this.launchTimeoutMs
+    const timing = this.timeTheLaunch(slot.id, opening, timeoutMs)
     const started = (async () =>
       this.startedAfterARefusedCopy(
         slot.profileId,
@@ -13567,9 +13598,9 @@ export class RuntimeHost implements LiveHost {
       ))()
     let stopClock = (): void => {}
     const expiry = new Promise<'expired'>((resolve) => {
-      const timer = setTimeout(() => resolve('expired'), this.launchTimeoutMs)
+      const timer = setTimeout(() => resolve('expired'), timeoutMs)
       // Unref'd like every other bound in this app: a launch nobody is waiting for must not be the
-      // reason a quit takes fifteen seconds.
+      // reason a quit waits for the start limit.
       if (typeof timer.unref === 'function') timer.unref()
       stopClock = () => clearTimeout(timer)
     })
@@ -13593,8 +13624,8 @@ export class RuntimeHost implements LiveHost {
       throw new SessionUnavailable(
         'took-too-long',
         `session ${slot.id} was given up on: its provider did not answer within ` +
-          `${this.launchTimeoutMs}ms (reserved ${openingForMs}ms ago by ${ownerName(slot.ownerId)})`,
-        { waitedForMs: this.launchTimeoutMs, openingForMs },
+          `${timeoutMs}ms (reserved ${openingForMs}ms ago by ${ownerName(slot.ownerId)})`,
+        { waitedForMs: timeoutMs, openingForMs },
       )
     }
     try {
@@ -13624,6 +13655,7 @@ export class RuntimeHost implements LiveHost {
   private timeTheLaunch(
     session: string,
     opening: { readonly provider: Provider; readonly kind: 'fresh' | 'resume' },
+    timeoutMs: number,
   ): { readonly phase: StartPhaseSink; readonly end: (outcome: StartAttemptOutcome) => void } {
     const write = this.recordStartAttempt
     const of = {
@@ -13632,6 +13664,7 @@ export class RuntimeHost implements LiveHost {
       session,
       provider: opening.provider,
       opening: opening.kind,
+      timeoutMs,
     }
     const began = this.monotonicNow()
     const phases: Partial<Record<StartPhase, number>> = {}
@@ -17197,17 +17230,18 @@ export class RuntimeHost implements LiveHost {
       .filter((one) => one.requestId === input.requestId)
     const open = rows.some((one) => REQUEST_IS_OPEN[one.state])
     const asked = this.deps.store.questionsRaisedIn(speaking).get(input.requestId)
-    // ⚑ **F020 — its own question, answered or declined: said so, and where the answer is**, so it
-    // does not go on without it.
+    // Only the caller's own app question may expose its known ending and answer delivery.
     const ended = open || asked?.raisedBy !== 'this-app' ? undefined : rows.at(-1)
-    if (ended !== undefined && (ended.state === 'answered' || ended.state === 'rejected')) {
+    if (ended !== undefined && !REQUEST_IS_OPEN[ended.state]) {
       return {
         ok: false,
         refusal: refuseQuestion('no-open-question-you-asked-by-that-name', {
           question: input.requestId,
           state: ended.state,
           ...(ended.endedAt === null ? {} : { at: ended.endedAt }),
-          itsAnswer: this.whereItsAnswerIs(session, input.requestId),
+          ...(ended.state === 'answered' || ended.state === 'rejected'
+            ? { itsAnswer: this.whereItsAnswerIs(session, input.requestId) }
+            : {}),
         }),
       }
     }
@@ -19133,7 +19167,8 @@ export class RuntimeHost implements LiveHost {
   }
 
   private sampleWindowWriter(query: WindowReadQuery): WindowWriterStamp | null {
-    if (this.deps.windowWriterStamp !== undefined) return this.deps.windowWriterStamp(query)
+    if (query.kind !== 'incidents' && this.deps.windowWriterStamp !== undefined)
+      return this.deps.windowWriterStamp(query)
     const stamp = this.deps.limitsWriterStamp?.() ?? null
     return stamp === null
       ? null
@@ -19159,21 +19194,25 @@ export class RuntimeHost implements LiveHost {
       const before = this.sampleWindowWriter(query)
       if (before === null) {
         this.windowRoutesKept = undefined
+        this.windowIncidentsKept = undefined
         throw new WindowReadMissed('writer-unsampled')
       }
-      if (query.kind === 'routes' && sameWindowWriter(this.windowRoutesKept?.stamp ?? null, before))
-        return compose(this.windowRoutesKept!.result)
+      const reusable = query.kind === 'routes' || query.kind === 'incidents'
+      const kept = query.kind === 'incidents' ? this.windowIncidentsKept : this.windowRoutesKept
+      if (reusable && kept !== undefined && sameWindowWriter(kept.stamp, before))
+        return compose(kept.result)
       let pending: Promise<WindowReadResult>
       let origin = before
-      if (query.kind === 'routes') {
-        let shared = this.windowRoutesPending
+      if (reusable) {
+        const key = query.kind === 'incidents' ? 'windowIncidentsPending' : 'windowRoutesPending'
+        let shared = this[key]
         if (shared === undefined) {
           shared = { stamp: before, read: reader.read(query) }
-          this.windowRoutesPending = shared
+          this[key] = shared
           const owned = shared
           void owned.read
             .finally(() => {
-              if (this.windowRoutesPending === owned) this.windowRoutesPending = undefined
+              if (this[key] === owned) this[key] = undefined
             })
             .catch(() => {})
         }
@@ -19190,6 +19229,7 @@ export class RuntimeHost implements LiveHost {
       const after = this.sampleWindowWriter(query)
       if (sameWindowWriter(origin, before) && sameWindowWriter(origin, after)) {
         if (query.kind === 'routes') this.windowRoutesKept = { stamp: after!, result }
+        if (query.kind === 'incidents') this.windowIncidentsKept = { stamp: after!, result }
         return compose(result)
       }
     }
@@ -20151,7 +20191,7 @@ export class RuntimeHost implements LiveHost {
         const outstanding = this.oneWaitReadPerAnswer(counting)(owner)
         const held = new Map(
           composeWhatEachPieceIsWaitingOn(
-            this.deps.store.piecesOwnedBy(owner, counting).filter((one) => TASK_IS_OPEN[one.state]),
+            this.deps.store.openPiecesOf(owner, counting),
             () => outstanding,
           ).map((one) => [one.piece, one]),
         )
@@ -20696,6 +20736,40 @@ export class RuntimeHost implements LiveHost {
 
   workIncidentsForAPerson(): LedgerWalk<WorkIncident> {
     return this.windowIncidentReads.run(() => this.readWorkIncidentsForAPerson())
+  }
+
+  /** Reads historical incident facts off main before composing with the current live state. */
+  async workIncidentsForWindow(): Promise<LedgerWalk<WorkIncident>> {
+    if (this.launches.closed) throw new WindowReadUnavailable()
+    if (this.deps.windowReader === undefined) return this.workIncidentsForAPerson()
+    if (
+      this.windowReadCallers >= WINDOW_READ_BOUNDS.callers ||
+      this.windowIncidentsPending !== undefined
+    )
+      throw new WindowReadUnavailable('busy')
+    this.windowReadCallers++
+    let missed: WindowReadMiss
+    try {
+      return await this.freshWindowQuery({ kind: 'incidents' }, (result) => {
+        if (result.kind !== 'incidents') throw new WindowReadMissed('worker-gone')
+        return this.windowIncidentReads.run(() => this.readWorkIncidentsForAPerson(), result)
+      })
+    } catch (error) {
+      if (!(error instanceof WindowReadMissed) || this.launches.closed) throw error
+      if (error.missed === 'worker-busy') throw error
+      missed = error.missed
+    } finally {
+      this.windowReadCallers--
+    }
+    // The monotonic clock bounds heavy fallback work even if the system clock changes.
+    const at = performance.now()
+    if (
+      this.lastIncidentMainReadAt !== undefined &&
+      at - this.lastIncidentMainReadAt < INCIDENT_MAIN_READ_EVERY_MS
+    )
+      throw new WindowReadUnavailable()
+    this.lastIncidentMainReadAt = at
+    return this.answeredOnTheMainThread(missed, () => this.workIncidentsForAPerson())
   }
 
   private readWorkIncidentsForAPerson(): LedgerWalk<WorkIncident> {
@@ -21634,14 +21708,26 @@ export class RuntimeHost implements LiveHost {
       lines: result.lines,
       capped: result.capped,
     }
-    if (!this.deps.transcriptsCleared) return answer
-    try {
-      const cleared = await this.deps.transcriptsCleared(input.from, input.to)
-      if (this.launches.closed) throw new WindowReadUnavailable()
-      return cleared.length === 0 ? answer : { ...answer, transcriptsCleared: cleared }
-    } catch {
-      if (this.launches.closed) throw new WindowReadUnavailable()
-      return { ...answer, read: { ...answer.read, rowsUnread: answer.read.rowsUnread + 1 } }
+    const [cleared, imports] = await Promise.allSettled([
+      this.deps.transcriptsCleared?.(input.from, input.to) ?? Promise.resolve([]),
+      this.deps.skillImports?.(input.from, input.to) ?? Promise.resolve([]),
+    ])
+    if (this.launches.closed) throw new WindowReadUnavailable()
+    return {
+      ...answer,
+      ...(cleared.status === 'fulfilled' && cleared.value.length
+        ? { transcriptsCleared: cleared.value }
+        : {}),
+      ...(imports.status === 'fulfilled' && imports.value.length
+        ? { skillImports: imports.value }
+        : {}),
+      read: {
+        ...answer.read,
+        rowsUnread:
+          answer.read.rowsUnread +
+          Number(cleared.status === 'rejected') +
+          Number(imports.status === 'rejected'),
+      },
     }
   }
 
@@ -23108,6 +23194,25 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
+  async searchPastWork(asAgent: string, words: string): Promise<PastWorkSearchResult> {
+    const source = this.deps.store.pastWorkSearchSource(asAgent)
+    if (source === null || this.deps.pastWorkSearchReader === undefined || this.launches.closed)
+      return { ok: false, reason: 'unavailable' }
+    const found = await this.deps.pastWorkSearchReader.read(source, asAgent, words)
+    if (this.launches.closed) return { ok: false, reason: 'unavailable' }
+    if (!found.ok) return found
+    const current = this.deps.store.pastWorkSearchSource(asAgent)
+    if (current === null || current.profile !== source.profile)
+      return { ok: false, reason: 'unavailable' }
+    const allowed = new Set(current.versions.map(([conversation]) => conversation))
+    if (found.hits.some((hit) => !allowed.has(hit.conversation)))
+      return { ok: false, reason: 'unavailable' }
+    return {
+      ok: true,
+      hits: found.hits.map((hit) => ({ ...hit, archived: this.archived.has(hit.conversation) })),
+    }
+  }
+
   /**
    * 🔴 **The one cause the APP writes as a conversation stops, settled then** (404, criterion 4).
    *
@@ -23857,6 +23962,7 @@ export class RuntimeHost implements LiveHost {
        * so *no row* and *no rules* are the same answer.
        */
       configured: profileSlug === null ? null : this.deps.store.configuredLayerFor(profileSlug),
+      plugins: readPluginInstructions(this.deps.plugins),
       // ⚑ **F006 — which build is running**, as the window's title bar says it.
       build: this.theBuildRunning(),
       // 🔴 **D-024 · R1 — the profile's other conversations** ({@link otherConversationsOf}).
@@ -23942,21 +24048,35 @@ export class RuntimeHost implements LiveHost {
         isCoordinator: profileId === DEFAULT_PROFILE_ID,
       }
     }
+    const sharedRoot = await this.deps.sharedSkillsRoot?.()
+    if (sharedRoot) await this.deps.prepareSharedSkills?.()
     const selected = permissions()
+    let selection: SkillLaunchSelection | undefined
+    try {
+      selection = this.deps.readSelectedSkills?.(
+        profileId === null ? null : foldProfileName(profileId),
+        selected,
+      )
+    } catch (cause) {
+      throw new Error(BUILT_IN_SKILLS_FAILURE, { cause })
+    }
     const isCurrent = () =>
       this.whyNotOurs(slot) === null &&
       !slot.launch.signal.aborted &&
+      (selection?.isCurrent() ?? true) &&
       JSON.stringify(permissions()) === JSON.stringify(selected)
     const installed = await this.deps.prepareBuiltInSkills({
       provider,
       providerHome,
+      ...(selection ? { selection } : {}),
       ...selected,
       isCurrent,
+      inUseUntil: slot.launch.settled,
       ...(pack ? { pack } : {}),
     })
     if (!isCurrent())
       throw new Error('Built-in skills could not be prepared. Nothing was overwritten.')
-    return installed
+    return sharedRoot ? { ...installed, sharedRoot } : installed
   }
 
   /** Whether a key is saved for a provider: then it is what a launch runs on, not the login. */
@@ -23965,6 +24085,27 @@ export class RuntimeHost implements LiveHost {
       return this.deps.apiKeys?.status(provider).set === true
     } catch {
       return true
+    }
+  }
+
+  private runtimeWithPlugins(
+    runtime: AgentRuntime,
+    provider: Provider,
+    profileId: string | null,
+  ): AgentRuntime {
+    try {
+      if (!this.deps.pluginAttachments) return runtime
+      return withManagedPluginAttachments(
+        runtime,
+        this.deps.pluginAttachments.agent([
+          AGENT_TOOL_SERVER,
+          ...(externalMcpContext(this.deps.store, provider, profileId).externalMcp?.servers.map(
+            (one) => one.name,
+          ) ?? []),
+        ]),
+      )
+    } catch {
+      return runtime
     }
   }
 
@@ -24022,7 +24163,8 @@ export class RuntimeHost implements LiveHost {
     // The runtime first: it is made with the program it runs, so a program this computer lacks is
     // refused here in its own words, before a model list is asked whose failure would read as a
     // list that names no model.
-    const runtime = this.deps.createRuntime(input.provider)
+    const rawRuntime = this.deps.createRuntime(input.provider)
+    const runtime = this.runtimeWithPlugins(rawRuntime, input.provider, profileId)
     // 🔴 **D-042 · R1 — every start names its model and effort** (024's effort, 038's model): what
     // the caller named, else this agent's default, else the last pair a person picked on this
     // provider, else the provider's own default BY NAME — {@link theSelectedModel}, after the home is
@@ -24097,12 +24239,23 @@ export class RuntimeHost implements LiveHost {
     const handle = await this.awaitLaunch(
       slot,
       { provider: input.provider, kind: 'fresh' },
-      (startPhases) =>
-        runtime.start({
+      (startPhases) => {
+        if (builtInSkills && !builtInSkills.isCurrent()) throw new Error(BUILT_IN_SKILLS_FAILURE)
+        return runtime.start({
           startPhases,
           cwd,
           providerHome,
-          ...(builtInSkills ? { builtInSkills: builtInSkills.context } : {}),
+          ...(builtInSkills
+            ? {
+                builtInSkills: builtInSkills.context,
+                ...(builtInSkills.sharedRoot
+                  ? {
+                      sharedSkillsRoot: builtInSkills.sharedRoot,
+                      beforeSkillDiscovery: this.deps.beforeSkillDiscovery,
+                    }
+                  : {}),
+              }
+            : {}),
           approvalMode,
           // The launch's own cancel (070). It is what a Close, a Cancel or a quit during this await
           // reaches — the provider, rather than the promise waiting for it.
@@ -24143,7 +24296,8 @@ export class RuntimeHost implements LiveHost {
           ...externalMcpContext(this.deps.store, input.provider, profileId),
           // ⚑ **W4.189** — the folders its open pieces grant it, as on a resume (none on a first start).
           ...workFoldersIn(this.theWorkFoldersALaunchCarries(id)),
-        }),
+        })
+      },
     )
 
     // ⚠️ **Nothing may await between here and `register`.** See {@link SessionSlot}: a close that
@@ -25298,12 +25452,23 @@ export class RuntimeHost implements LiveHost {
     currentPiece: string | null = null,
   ): string {
     // ⚑ …and this app's own block last, after the message ({@link whatThisAppAddsAtItsEnd}).
-    const words = `${this.withWhatThisLifeStillOwes(session, said)}\n\n${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
+    const plugins = pluginInstructionSection(readPluginInstructions(this.deps.plugins))
+    const refresh =
+      plugins !== null &&
+      plugins !== session.pluginsAsLastSaid &&
+      !session.firstTurnLead?.includes(plugins)
+        ? `\n\n${whatChangedBlock([plugins])}`
+        : ''
+    const words = `${this.withWhatThisLifeStillOwes(session, said)}${refresh}\n\n${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     // ⚑ **F093 · R2 — the whole text, kept for the turn's row** ({@link HostedSession.wordsJustHandedOver}):
     // both doors that frame words compose their last step here, just before the hand-over.
     session.wordsJustHandedOver = words
     if (session.pendingTurnBlock !== null)
-      session.pendingTurnBlock = { ...session.pendingTurnBlock, words }
+      session.pendingTurnBlock = {
+        ...session.pendingTurnBlock,
+        words,
+        plugins: plugins ?? session.pluginsAsLastSaid,
+      }
     return words
   }
 
@@ -25343,6 +25508,7 @@ export class RuntimeHost implements LiveHost {
       } else waiting = null
     }
     session.pendingTurnBlock = {
+      plugins: session.pluginsAsLastSaid,
       next: changed.next,
       words: '',
       questions: session.itsQuestionsAsLastSaid,
@@ -25358,7 +25524,15 @@ export class RuntimeHost implements LiveHost {
       waiting,
       extra: changed.extra,
     })
-    if (!session.builtInSkills) return added
+    const sharedRoot = session.builtInSkills?.sharedRoot
+    const context = sharedRoot
+      ? `${added}\nShared skills: ${sharedRoot}. Add or edit a skill there; every agent sees it from its next turn.`
+      : added
+    if (
+      !session.builtInSkills ||
+      (session.provider === 'claude' && session.handle.builtInSkillsConfirmed?.() === true)
+    )
+      return context
     const grants =
       this.deps.store.capabilitiesOf(foldProfileName(session.profileId)) ?? DEFAULT_CAPABILITIES
     const reminders = permittedInstalledSkillReminders(
@@ -25366,7 +25540,7 @@ export class RuntimeHost implements LiveHost {
       grants.canCreateAgents === 'any',
       session.profileId === DEFAULT_PROFILE_ID,
     )
-    return reminders === '' ? added : `${added}\n${reminders}`
+    return reminders === '' ? context : `${context}\n${reminders}`
   }
 
   private factsForTheTurnBlock(
@@ -26506,6 +26680,7 @@ export class RuntimeHost implements LiveHost {
         theMessagesOf(event).map((one) => one.text),
       )
       if (sent !== undefined && session.pendingTurnBlock?.words === sent) {
+        session.pluginsAsLastSaid = session.pendingTurnBlock.plugins
         session.turnBlockSnapshot = session.pendingTurnBlock.next
         session.itsQuestionsAsLastSaid = session.pendingTurnBlock.questions
         session.whoWaitedAsLastSaid = session.pendingTurnBlock.waiting
@@ -38924,6 +39099,11 @@ export class RuntimeHost implements LiveHost {
     )
   }
 
+  async skillsForAPerson(request: SkillsRequest): Promise<SkillsReply> {
+    if (!this.deps.skillsForAPerson) return { operation: 'refused', reason: 'source-unavailable' }
+    return this.deps.skillsForAPerson(request)
+  }
+
   agentIdentities(): AgentIdentities {
     const identities = this.deps.store.agentIdentities()
     const withRows = new Set(identities.map((identity) => identity.slug))
@@ -40563,6 +40743,10 @@ export class RuntimeHost implements LiveHost {
           ? {
               builtInSkills: {
                 version: builtInSkills.version,
+                ...(builtInSkills.catalogueRevision === undefined
+                  ? {}
+                  : { catalogueRevision: builtInSkills.catalogueRevision }),
+                ...(builtInSkills.versions ? { versions: builtInSkills.versions } : {}),
                 reminder: builtInSkills.reminder,
                 listed: builtInSkills.context.skills.map((skill) => ({
                   ...skill,
@@ -42589,7 +42773,8 @@ export class RuntimeHost implements LiveHost {
     const recordedModel = row.model ?? undefined
     // The runtime first, as a start makes it: a missing program is refused in its own words, never
     // as a list that names no model.
-    const runtime = this.deps.createRuntime(row.provider)
+    const rawRuntime = this.deps.createRuntime(row.provider)
+    const runtime = this.runtimeWithPlugins(rawRuntime, row.provider, row.profileId)
     const selected = await this.theSelectedModel(row.provider, row.profileId, profileId, {
       ...(recordedModel === undefined ? {} : { model: recordedModel }),
       ...(recordedEffort === undefined ? {} : { effort: recordedEffort }),
@@ -42677,10 +42862,21 @@ export class RuntimeHost implements LiveHost {
             AbortSignal.any([slot.launch.signal, leadsDone.signal]),
           ).catch(() => null)
         }
+        if (builtInSkills && !builtInSkills.isCurrent()) throw new Error(BUILT_IN_SKILLS_FAILURE)
         return runtime.resume(row.ref, {
           startPhases,
           providerHome,
-          ...(builtInSkills ? { builtInSkills: builtInSkills.context } : {}),
+          ...(builtInSkills
+            ? {
+                builtInSkills: builtInSkills.context,
+                ...(builtInSkills.sharedRoot
+                  ? {
+                      sharedSkillsRoot: builtInSkills.sharedRoot,
+                      beforeSkillDiscovery: this.deps.beforeSkillDiscovery,
+                    }
+                  : {}),
+              }
+            : {}),
           approvalMode,
           signal: slot.launch.signal, // as in `startSession` (070)
           ...(reasoningEffort ? { reasoningEffort } : {}),
@@ -43877,6 +44073,14 @@ export class RuntimeHost implements LiveHost {
       aPersonLastWroteAt: options.continuesARecording ? this.whenAPersonLastWroteIn(id) : null,
       itsQuestionsAsLastSaid: null,
       whoWaitedAsLastSaid: null,
+      pluginsAsLastSaid: (() => {
+        // Claude receives the current section in its freshly rendered system prompt.
+        // Codex must replace any live metadata updates retained in its thread.
+        if (options.continuesARecording && provider !== 'claude') return null
+        const composed = options.instructions?.thisConversation
+        const span = composed?.spans.find((span) => span.heading === PLUGINS_HEADING)
+        return composed && span ? composed.text.slice(span.start, span.end).trimEnd() : null
+      })(),
       turnBlockSnapshot: EMPTY_TURN_BLOCK,
       pendingTurnBlock: null,
       finishedSinceItsLastTurn: [],
@@ -44186,13 +44390,17 @@ export class RuntimeHost implements LiveHost {
    * is complete, and taking it late would race a session that finished early out of the picture.
    */
   async closeAll(): Promise<void> {
+    this.deps.store.closePastWorkSearch?.()
+    this.deps.closeSharedSkills?.()
     this.windowIncidentReads.invalidate()
     this.windowRoutesKept = undefined
+    this.windowIncidentsKept = undefined
     this.workReconciler?.close()
     clearInterval(this.reconciliationTimer)
     this.launches.closeAdmission()
     const limitsClosed = this.deps.limitsReader?.close() ?? Promise.resolve()
     const workSearchClosed = this.deps.workSearchReader?.close() ?? Promise.resolve()
+    const pastWorkSearchClosed = this.deps.pastWorkSearchReader?.close() ?? Promise.resolve()
     const windowReadsClosed = this.deps.windowReader?.close() ?? Promise.resolve()
     if (this.providerLimitExpiry !== null) clearTimeout(this.providerLimitExpiry)
     this.providerLimitExpiry = null
@@ -44233,6 +44441,7 @@ export class RuntimeHost implements LiveHost {
         terminated,
         limitsClosed,
         workSearchClosed,
+        pastWorkSearchClosed,
         windowReadsClosed,
       ])
     } finally {
@@ -46144,6 +46353,7 @@ export class RuntimeHost implements LiveHost {
       event.type === 'compaction' ||
       (event.type === 'turn' && event.state === 'failed' && event.wordOf === 'this-app')
     ) {
+      session.pluginsAsLastSaid = null
       session.firstTurnLead = session.lifeLead
       session.firstTurnLeadIs = 'whole'
     }

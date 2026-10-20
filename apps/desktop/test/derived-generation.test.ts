@@ -848,7 +848,10 @@ describe('the derived-generation contract (065)', () => {
       const sites: Record<string, number> = {}
       for (const file of files) {
         const count = [...file.code.matchAll(/\.ledgerStatus\s*\(/g)].length
-        if (count > 0) sites[file.path.slice(file.path.indexOf('/src/main/'))] = count
+        if (count > 0) {
+          const portable = file.path.replaceAll('\\', '/')
+          sites[portable.slice(portable.indexOf('/src/main/'))] = count
+        }
       }
       expect(sites, 'the scan found the wrong contract call sites').toEqual({
         '/src/main/archive/derive-ledger.ts': 1,

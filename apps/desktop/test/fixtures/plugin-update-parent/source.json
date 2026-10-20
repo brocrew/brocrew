@@ -1,0 +1,107 @@
+{
+  "commit": "22aea5a794eb6263f5a004853156449679d348fb",
+  "files": [
+    {
+      "path": "apps/desktop/src/main/plugins/state/store.ts",
+      "file": "state-store.ts",
+      "sourceSha256": "71dfb0d52c0cd1eff643c11e1c72e44cda388a5658d9b4c5c283a0d19c3e9b56",
+      "imports": {
+        "./state-format": "./format",
+        "./state-disk": "./disk",
+        "./state-machine": "./machine"
+      }
+    },
+    {
+      "path": "apps/desktop/src/main/plugins/state/disk.ts",
+      "file": "state-disk.ts",
+      "sourceSha256": "9cb73535050405a81dc7d3461df1cf43bc282296a2da5bf29a5e1ebb445238c3",
+      "imports": {
+        "../../../src/main/plugins/state/fence": "./fence",
+        "../../../src/main/plugins/package-digests": "../package-digests",
+        "./state-format": "./format",
+        "./state-machine": "./machine"
+      }
+    },
+    {
+      "path": "apps/desktop/src/main/plugins/state/machine.ts",
+      "file": "state-machine.ts",
+      "sourceSha256": "c6d07de668e8da9f79309cf2f46d07c7b93a7edd3dffad998b9a3c7745702139",
+      "imports": {
+        "../../../src/main/plugins/package-digests": "../package-digests",
+        "./state-format": "./format"
+      }
+    },
+    {
+      "path": "apps/desktop/src/main/plugins/state/format.ts",
+      "file": "state-format.ts",
+      "sourceSha256": "f0ce7d57e8cd1100938a7985a25a69bf5a7d0f0cc329806126d1de46dba58033",
+      "imports": {
+        "../../../src/shared/skills-catalogue": "../../../shared/skills-catalogue",
+        "../../../src/main/plugins/package-digests": "../package-digests",
+        "../../../src/main/plugins/strict-json": "../strict-json"
+      }
+    },
+    {
+      "path": "apps/desktop/src/main/plugins/lifecycle/controller.ts",
+      "file": "lifecycle-controller.ts",
+      "sourceSha256": "4d968baeb7f65d0a3cf1b50cdf221161d6fd604939ed2f5585609e4d0b0801e9",
+      "imports": {
+        "../../../src/main/plugins/lifecycle/profile-ledger": "./profile-ledger",
+        "../../../src/main/plugins/lifecycle/adapters": "./adapters",
+        "../../../src/main/plugins/lifecycle/proposals": "./proposals",
+        "../../../src/main/plugins/package-digests": "../package-digests",
+        "../../../src/main/plugins/package-verifier": "../package-verifier",
+        "../../../src/main/plugins/supervisor/protocol": "../supervisor/protocol",
+        "../../../src/main/plugins/lifecycle/download": "./download",
+        "./lifecycle-files": "./files",
+        "../../../src/main/plugins/lifecycle/vault": "./vault",
+        "../../../src/main/plugins/lifecycle/types": "./types",
+        "../../../src/shared/plugin-settings": "../../../shared/plugin-settings"
+      }
+    },
+    {
+      "path": "apps/desktop/src/main/plugins/lifecycle/files.ts",
+      "file": "lifecycle-files.ts",
+      "sourceSha256": "3d310255c5d32942eac48a827b5116ed64cbd7ba9511bcd52a73ee83c52517cc",
+      "imports": {
+        "../../../src/main/plugins/node-host-files": "../node-host-files",
+        "./state-format": "../state/format",
+        "../../../src/main/plugins/supervisor/protocol": "../supervisor/protocol"
+      }
+    },
+    {
+      "path": "apps/desktop/src/main/plugins/lifecycle/person-control.ts",
+      "file": "lifecycle-person-control.ts",
+      "sourceSha256": "2a55a1a369c5733032bb53d4451750ffb53747b39947353b064adfefc9be3e4c",
+      "imports": {
+        "../../../src/main/plugins/lifecycle/proposals": "./proposals",
+        "../../../src/main/plugins/node-host-files": "../node-host-files",
+        "../../../src/main/plugins/supervisor/protocol": "../supervisor/protocol",
+        "../../../src/main/plugins/lifecycle/transport": "./transport",
+        "./lifecycle-controller": "./controller",
+        "../../../src/main/plugins/lifecycle/types": "./types",
+        "./state-format": "../state/format"
+      }
+    },
+    {
+      "path": "apps/desktop/src/main/plugins/lifecycle/settings-client.ts",
+      "file": "lifecycle-settings-client.ts",
+      "sourceSha256": "5aa1fb875f42c882b6813e829a2ad87fd971c02a92b4b055cc9180af37a4e62f",
+      "imports": {
+        "../../../src/main/plugins/lifecycle/proposals": "./proposals",
+        "../../../src/main/plugins/package-digests": "../package-digests",
+        "../../../src/main/plugins/settings": "../settings",
+        "../../../src/main/plugins/ui/host": "../ui/host",
+        "../../../src/main/plugins/ui/rpc": "../ui/rpc",
+        "../../../src/main/plugins/package-schema": "../package-schema",
+        "../../../src/main/plugins/lifecycle/vault": "./vault",
+        "./lifecycle-person-control": "./person-control",
+        "../../../src/main/plugins/lifecycle/types": "./types",
+        "./state-format": "../state/format",
+        "../../../src/shared/plugin-settings": "../../../shared/plugin-settings",
+        "../../../src/main/plugins/package-verifier": "../package-verifier",
+        "../../../src/main/plugins/supervisor/protocol": "../supervisor/protocol"
+      }
+    }
+  ]
+}

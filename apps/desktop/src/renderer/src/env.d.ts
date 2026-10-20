@@ -1,3 +1,4 @@
+import type { PluginsClient } from '../../shared/plugin-settings'
 import type { TranscriptRetention } from '../../shared/transcript-retention'
 import type { AttentionSignal } from '../../shared/attention-signals'
 import type { DockLabel, DockLabelChange } from '../../shared/dock-label'
@@ -41,6 +42,7 @@ declare global {
     api: {
       getAppInfo: () => Promise<AppInfo>
       themes: ThemesBridge
+      plugins?: PluginsClient
       /** The page's own freeze report, for the stall log beside main's stalls. */
       recordPagePerformance: (report: PagePerformanceReport) => Promise<PageReportAnswer>
       /** 🔴 **B1 · updates** — every call answers the new snapshot (`shared/updates.ts`). */

@@ -48,12 +48,12 @@ export const PASTED = 'pasted images'
  */
 export const DRAFTS = 'unsent drafts'
 /**
- * 🔴 **The updater's, in a hidden launch's data folder** — REMOVED: a fresh install has neither.
+ * The updater's disposable files, including private staging, are removed on a clean base.
  *
- * ⚑ Only a hidden launch (a test, a smoke, a probe) writes them: its own update switch, which
- * starts off (`main/update-settings.ts`), and the Mac image it downloads, which a person's launch
- * puts in Downloads (`main/updates-in-the-app.ts`). ⚠️ A person's switch is one per computer, in
- * `<appData>/@brobot2/settings.json`, beside every data folder — so no reset of one touches it.
+ * Every launch may leave a partial under `updates/staging`. A hidden launch also keeps its
+ * downloaded images and its own update switch here. Ordinary launches publish final images in
+ * Downloads, outside this reset. The person's switch is one per computer, in
+ * `<appData>/@brobot2/settings.json`, so resetting one data folder does not touch it.
  */
 export const UPDATES = 'updates'
 /**
@@ -115,6 +115,14 @@ export const REPORT_ORDER = Object.freeze([
  * that, if it ever appears, the report calls it the ledger instead of {@link OTHER}.
  */
 export const MANIFEST = Object.freeze([
+  { name: 'skills', expect: 'dir', why: WORKSPACE, source: 'main/skills/shared-library.ts' },
+  { name: 'skills-off', expect: 'dir', why: WORKSPACE, source: 'main/skills/shared-library.ts' },
+  {
+    name: 'skills-conversion.json',
+    expect: 'file',
+    why: WORKSPACE,
+    source: 'main/skills/shared-library.ts',
+  },
   { name: 'active-theme.json', expect: 'file', why: WORKSPACE, source: 'main/themes/state.ts' },
   { name: 'dock-label.json', expect: 'file', why: WORKSPACE, source: 'main/dock-label.ts' },
   {
@@ -406,6 +414,7 @@ export const EXPORTS_DIRNAME = 'exports'
  * this list refuses to use for exactly that reason.
  */
 export const NESTED_USERDATA_SIGNS = Object.freeze([
+  'skills-conversion.json',
   'brobot2.sqlite',
   'brobot2.sqlite-wal',
   'brobot2.sqlite-shm',

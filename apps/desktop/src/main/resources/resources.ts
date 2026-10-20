@@ -6,7 +6,6 @@ import {
   fstatSync,
   lstatSync,
   mkdirSync,
-  openSync,
   readSync,
   realpathSync,
   renameSync,
@@ -330,7 +329,7 @@ export function readOfferedResource(
   }
   let fd: number
   try {
-    fd = openSync(realPath, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
+    fd = openNotThroughALink(realPath, constants.O_RDONLY | constants.O_NONBLOCK)
   } catch {
     return { ok: false, refusal: refuseResource('resource-unreadable', { path: realPath }) }
   }

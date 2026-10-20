@@ -16,6 +16,7 @@ import type { Provider } from '@brobot2/shared'
 import type { AgentMemoryStore } from '../../shared/agent-memory'
 import type { SnapshotAnswer } from '../../shared/provider-snapshots'
 import type { TurnAsSent } from '../../shared/turn-as-sent'
+import { INSTALLED_SKILL_BYTE_LIMIT } from '../../shared/skills-installation'
 import {
   WROTE_IT_MEANS,
   type OwnInstructions,
@@ -325,7 +326,39 @@ const KNOWN_KINDS: ReadonlySet<string> = new Set<GivenFileKind>([
 const BuiltInSkillsRecord = z
   .object({
     version: z.string().min(1).max(80),
-    reminder: z.string().min(1).max(8192),
+    reminder: z.string().max(16_384),
+    catalogueRevision: z.number().int().nonnegative().safe().optional(),
+    versions: z
+      .array(
+        z
+          .object({
+            id: z.string().min(1).max(256),
+            versionId: z.string().min(1).max(256),
+            version: z.string().min(1).max(80),
+            alias: z.string().regex(/^[a-z][a-z0-9-]{0,63}$/),
+            sourceSha256: z.string().regex(/^[a-f0-9]{64}$/),
+            sha256: z.string().regex(/^[a-f0-9]{64}$/),
+            bytes: z.number().int().min(1).max(INSTALLED_SKILL_BYTE_LIMIT),
+            requirement: z.enum(['create-agents', 'create-agents-or-coordinator']).nullable(),
+            textPackDigest: z
+              .string()
+              .regex(/^[a-f0-9]{64}$/)
+              .optional(),
+            textPackVersion: z.string().min(1).max(80).optional(),
+            textPackSourceSha256: z
+              .string()
+              .regex(/^[a-f0-9]{64}$/)
+              .optional(),
+          })
+          .strict()
+          .refine((one) =>
+            one.textPackDigest === undefined
+              ? one.textPackVersion === undefined && one.textPackSourceSha256 === undefined
+              : one.textPackVersion !== undefined && one.textPackSourceSha256 !== undefined,
+          ),
+      )
+      .max(64)
+      .optional(),
     listed: z
       .array(
         z
@@ -338,10 +371,24 @@ const BuiltInSkillsRecord = z
           })
           .strict(),
       )
-      .min(6)
-      .max(8),
+      .max(64),
   })
   .strict()
+  .refine((value) =>
+    value.listed.length === 0 ? value.reminder === '' : value.reminder.length > 0,
+  )
+  .refine((value) => new Set(value.listed.map((one) => one.name)).size === value.listed.length)
+  .refine((value) => new Set(value.listed.map((one) => one.path)).size === value.listed.length)
+  .refine(
+    (value) =>
+      value.versions === undefined ||
+      (value.versions.length === value.listed.length &&
+        new Set(value.versions.map((one) => one.id)).size === value.versions.length &&
+        value.versions.every((one, index) => {
+          const name = value.listed[index]?.name
+          return name === one.alias || name === `brobot:${one.alias}`
+        })),
+  )
 
 /** A launch's use of a text pack, read back as {@link TextPackUse} says it. */
 const TextPackUseRecord: z.ZodType<TextPackUse> = z

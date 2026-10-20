@@ -1,10 +1,15 @@
+import { launchSkillSelections } from '../src/main/skills/launch-selection'
+import { SqliteSkillCatalogue } from '../src/main/skills/catalogue-store'
+import { readBuiltInSkills, prepareBuiltInSkills } from '../src/main/skills/prepare-built-in-skills'
+import { aLaunchRecordIn } from '../src/main/runtime/what-this-agent-was-given'
+import { createHash } from 'node:crypto'
 import manifest from '../resources/built-in-skills/manifest.json'
 import {
   BuiltInSkillCatalogueSchema,
   creationAllowedSkills,
   builtInSkillReminders,
 } from '../src/main/skills/built-in-catalogue'
-import { BUILT_IN_SKILLS_FAILURE } from '../src/shared/built-in-skills'
+import { BUILT_IN_SKILLS_FAILURE, BUILT_IN_SKILL_NAMES } from '../src/shared/built-in-skills'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -77,6 +82,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
       super(provider, { sessions })
     }
     override async start(options: StartOptions): ReturnType<FakeRuntime['start']> {
+      launchContexts.push({ kind: 'start', context: options.builtInSkills })
       const handle = await super.start(options)
       if (options.agentTools) this.handed.push(options.agentTools)
       started.push(handle)
@@ -87,6 +93,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
       ref: SessionRef,
       options: ResumeOptions,
     ): ReturnType<FakeRuntime['resume']> {
+      launchContexts.push({ kind: 'resume', context: options.builtInSkills })
       const handle = await super.resume(ref, options)
       if (options.agentTools) this.handed.push(options.agentTools)
       await heldProviderReturn(handle, 'resume')
@@ -113,6 +120,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
     await held.waiting
   }
 
+  let launchContexts: { kind: 'start' | 'resume'; context: StartOptions['builtInSkills'] }[]
   let userData: string
   let root: string
   let db: AppDatabase
@@ -200,6 +208,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
 
   beforeEach(() => {
     heldReturn = null
+    launchContexts = []
     userData = mkdtempSync(join(tmpdir(), 'brobot2-stop-questions-'))
     root = mkdtempSync(join(tmpdir(), 'brobot2-stop-questions-root-'))
     db = openDatabase(join(userData, 'brobot2.sqlite'))
@@ -452,6 +461,203 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
       })
     }
   }
+
+  function selectedHost(beforeInstructions?: () => void) {
+    const source = readBuiltInSkills(join(import.meta.dirname, '../resources/built-in-skills'))
+    const catalogue = new SqliteSkillCatalogue(db, source)
+    host = buildHost(false, {
+      readSelectedSkills: launchSkillSelections(db, () => source),
+      prepareBuiltInSkills: ({ pack, ...input }) =>
+        prepareBuiltInSkills({
+          ...input,
+          managedRoot: userData,
+          shipped: () => source,
+          ...(pack?.kind === 'read' ? { skills: pack.pack.skills } : {}),
+        }),
+      readInstructions: (provider, cwd, providerHome) => {
+        beforeInstructions?.()
+        return {
+          instructions: readSessionInstructions({ provider, cwd, providerHome, home: userData })
+            .instructions,
+          systemHint: undefined,
+        }
+      },
+    })
+    const identity = db.prepare('SELECT id FROM agent_identity WHERE slug = ?').get('worker') as {
+      id: string
+    }
+    const revision = () => catalogue.list().revision
+    const draft = (name: string, text: string, reminder = 'Check quantities.') => {
+      const description = 'Check a fictional recipe.'
+      const body = `---\nname: ${name}\ndescription: ${description}\n---\n\n${text}\n`
+      return {
+        name,
+        description,
+        body,
+        reminder,
+        path: `${name}/SKILL.md`,
+        bytes: Buffer.byteLength(body),
+        sha256: createHash('sha256').update(body).digest('hex'),
+      }
+    }
+    return { catalogue, identity: identity.id, revision, draft }
+  }
+  it.each(['claude', 'codex'] as const)(
+    '%s still opens a new identity with its ordinary default skills',
+    async (provider) => {
+      await personOpens('worker', provider)
+      await host.closeAll()
+      selectedHost()
+      const sessionId = await personOpens('new-recipe-writer', provider)
+      const skills = launchContexts.at(-1)?.context?.skills
+      expect(skills?.length).toBeGreaterThanOrEqual(6)
+      expect(skills?.length).toBeLessThanOrEqual(8)
+      expect(
+        skills?.every((one) =>
+          BUILT_IN_SKILL_NAMES.includes(
+            one.name.replace(/^brobot:/, '') as (typeof BUILT_IN_SKILL_NAMES)[number],
+          ),
+        ),
+      ).toBe(true)
+      expect(ledger(sessionId).some((event) => event.type === 'launched')).toBe(true)
+    },
+  )
+  it.each(['claude', 'codex'] as const)(
+    '%s starts with zero selected skills and resumes with current personal versions and grant-limited reminders',
+    async (provider) => {
+      const seeded = await personOpens('worker', provider)
+      await host.closeAll()
+      const { catalogue, identity, revision, draft } = selectedHost()
+      expect(store.setCapabilities('worker', { canCreateAgents: 'any' })).toBe(true)
+      for (const skill of catalogue.list().items)
+        catalogue.select(identity, skill.id, 'off', revision())
+      const worker = await personOpens('worker', provider)
+      expect(launchContexts.at(-1)?.context?.skills).toEqual([])
+      expect(composedEndOfTheCurrentLife(worker)).not.toContain('delegate — ')
+      await host.close(worker, window)
+      for (const skill of catalogue.list().items)
+        catalogue.select(identity, skill.id, 'default', revision())
+      for (const name of ['crumb-check', 'oven-check', 'flour-check']) {
+        catalogue.savePersonal(draft(name, 'A fictional recipe.'), revision())
+        catalogue.select(identity, `person/${name}`, 'on', revision())
+      }
+      await host.resumeSession(worker, window)
+      expect(launchContexts.at(-1)?.kind).toBe('resume')
+      expect(launchContexts.at(-1)?.context?.skills).toHaveLength(11)
+      const source = catalogue.detail('person/crumb-check')!
+      const block = await theBlockOfATurn(worker, 'Check the fictional recipe.', window, window)
+      expect(block).toContain(`${source.alias} — Check quantities.`)
+      const launched = ledger(worker)
+        .filter((event) => event.type === 'launched')
+        .at(-1)
+      if (!launched || launched.type !== 'launched') throw new Error('Missing launch record')
+      const given = aLaunchRecordIn(launched.given)
+      expect(given?.builtInSkills?.listed).toHaveLength(11)
+      expect(given?.builtInSkills?.versions?.find((one) => one.id === source.id)?.versionId).toBe(
+        source.versionId,
+      )
+      catalogue.savePersonal(
+        draft('crumb-check', 'A changed fictional recipe.', 'Check fictional temperatures.'),
+        revision(),
+        source.versionId,
+      )
+      expect(composedEndOfTheCurrentLife(worker)).toContain(`${source.alias} — Check quantities.`)
+      expect(composedEndOfTheCurrentLife(worker)).not.toContain('Check fictional temperatures.')
+      expect(store.setCapabilities('worker', { canCreateAgents: 'none' })).toBe(true)
+      const revoked = composedEndOfTheCurrentLife(worker)
+      expect(revoked).not.toContain('build-a-team — ')
+      expect(revoked).not.toContain('add-a-capability — ')
+      expect(revoked).toContain(`${source.alias} — Check quantities.`)
+      await host.close(worker, window)
+      await host.resumeSession(worker, window)
+      expect(launchContexts.at(-1)?.context?.skills).toHaveLength(9)
+      expect(composedEndOfTheCurrentLife(worker)).toContain(
+        `${source.alias} — Check fictional temperatures.`,
+      )
+      expect(seeded).not.toBe(worker)
+    },
+  )
+  for (const provider of ['claude', 'codex'] as const)
+    for (const opening of ['start', 'resume'] as const) {
+      it(`${provider} ${opening} checks the catalogue again before invoking the provider`, async () => {
+        const seeded = await personOpens('worker', provider)
+        await host.closeAll()
+        let change = () => {}
+        const { catalogue, identity, revision } = selectedHost(() => change())
+        change = () => {
+          catalogue.select(identity, 'built-in/remember', 'off', revision())
+        }
+        const before = launchContexts.length
+        const operation =
+          opening === 'start'
+            ? host.createSession(
+                { provider, profileId: 'worker', approvalMode: 'ask', cwd: root },
+                window,
+              )
+            : host.resumeSession(seeded, window)
+        await expect(operation).rejects.toThrow(BUILT_IN_SKILLS_FAILURE)
+        expect(launchContexts).toHaveLength(before)
+      })
+    }
+  for (const provider of ['claude', 'codex'] as const)
+    for (const opening of ['start', 'resume'] as const) {
+      it.each(['revision', 'grant', 'cancel'] as const)(
+        `${provider} ${opening} refuses registration after a held %s change`,
+        async (change) => {
+          const seeded = await personOpens('worker', provider)
+          await host.closeAll()
+          const { catalogue, identity, revision } = selectedHost()
+          expect(store.setCapabilities('worker', { canCreateAgents: 'any' })).toBe(true)
+          let release!: () => void
+          const held = {
+            opening,
+            handle: null as FakeSessionHandle | null,
+            waiting: new Promise<void>((done) => {
+              release = done
+            }),
+            release: () => release(),
+            closed: false,
+          }
+          heldReturn = held
+          const previous =
+            opening === 'resume'
+              ? ledger(seeded).filter((one) => one.type === 'launched').length
+              : 0
+          const operation =
+            opening === 'start'
+              ? host.createSession(
+                  { provider, profileId: 'worker', approvalMode: 'ask', cwd: root },
+                  window,
+                )
+              : host.resumeSession(seeded, window)
+          const outcome = operation.then(
+            () => true,
+            () => false,
+          )
+          try {
+            await waitFor(() => held.handle !== null, 'fictional native launch return')
+            const sessionId = opening === 'start' ? `sess_${counter}` : seeded
+            let closed: Promise<void> | undefined
+            if (change === 'revision')
+              catalogue.select(identity, 'built-in/remember', 'off', revision())
+            if (change === 'grant')
+              expect(store.setCapabilities('worker', { canCreateAgents: 'none' })).toBe(true)
+            if (change === 'cancel') closed = host.close(sessionId, window)
+            held.release()
+            expect(await outcome).toBe(false)
+            await closed
+            expect(held.closed).toBe(true)
+            expect(ledger(sessionId).filter((one) => one.type === 'launched')).toHaveLength(
+              previous,
+            )
+            expect(ledger(sessionId).filter((one) => one.type === 'user_turn')).toHaveLength(0)
+          } finally {
+            held.release()
+            heldReturn = null
+          }
+        },
+      )
+    }
 
   it('reads a text pack once for each launch, and hands its skills and its instructions that one reading', async () => {
     const readings: TextPackRead[] = []

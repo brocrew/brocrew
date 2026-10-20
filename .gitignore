@@ -59,3 +59,8 @@ scripts/mutations/.tree-lock/
 # A table run's stream before it is published, and what an interrupted run leaves; only the
 # finished mutations.txt is the table's record.
 scripts/mutations/*/mutations.txt.partial*
+
+# Generated app-supplied plugin Node runtime (explicit packaging step).
+apps/desktop/resources/plugin-node/
+apps/desktop/resources/plugin-node.prepared/
+apps/desktop/resources/plugin-supervisor/

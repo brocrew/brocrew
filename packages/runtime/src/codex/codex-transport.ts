@@ -151,6 +151,8 @@ export interface CodexTransport {
    * and its absence must be read as *"this transport cannot say"* and never as an exit.
    */
   readonly exited?: Promise<void>
+  /** Positive cleanup fact for the owned group/tree; never a teardown deadline. */
+  readonly quiesced?: Promise<void>
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -302,6 +304,8 @@ export class SpawnCodexTransport implements CodexTransport {
    * fact three lines of `doReapGroup` computed and dropped on the floor.
    */
   readonly exited: Promise<void>
+  readonly quiesced: Promise<void>
+  private markQuiesced!: () => void
   private markExited!: () => void
   private readonly opts: Required<Omit<SpawnCodexOptions, 'cwd' | 'env'>>
   /**
@@ -330,9 +334,13 @@ export class SpawnCodexTransport implements CodexTransport {
       processTable: options.processTable ?? readTable,
     }
     this.sqliteHome = options.env['CODEX_SQLITE_HOME'] ?? options.env['CODEX_HOME'] ?? ''
+    const groupQuiet = new Promise<void>((resolve) => {
+      this.markQuiesced = resolve
+    })
     this.exited = new Promise<void>((resolve) => {
       this.markExited = resolve
     })
+    this.quiesced = Promise.all([this.exited, groupQuiet]).then(() => undefined)
     // `detached` → the child leads its own process group; teardown kills the
     // whole group (negative pid) so descendants don't survive. `env` REPLACES the
     // inherited environment with the caller's copy — always, since it is now
@@ -647,7 +655,10 @@ export class SpawnCodexTransport implements CodexTransport {
 
   /** The bounded process-group teardown, single-flight — runs at most once per transport (031). */
   private reapGroup(): Promise<void> {
-    return (this.reaping ??= this.doReapGroup())
+    return (this.reaping ??= this.doReapGroup().then((quiet) => {
+      if (quiet) this.markQuiesced()
+      else if (process.platform !== 'win32') void this.observeGroupExit()
+    }))
   }
 
   /**
@@ -677,7 +688,7 @@ export class SpawnCodexTransport implements CodexTransport {
    * because two of its three graces now end as soon as the group is empty rather than always
    * expiring.
    */
-  private async doReapGroup(): Promise<void> {
+  private async doReapGroup(): Promise<boolean> {
     // End stdin so a cooperative leader can exit; ignore if it's already gone.
     try {
       this.child.stdin.end()
@@ -690,18 +701,29 @@ export class SpawnCodexTransport implements CodexTransport {
     // SIGKILL whatever is still there.
     await this.awaitExit(gracefulStopMs(process.platform, this.opts))
     this.killGroup('SIGTERM')
-    if (await this.awaitGroupQuiet(this.opts.killGraceMs)) return
+    if (await this.awaitGroupQuiet(this.opts.killGraceMs)) return true
     // ⚑ **Only if something is still there.** Signalling a group we have just proven empty would be
     // a `kill(-pid, …)` at a pid that no longer belongs to us — see {@link killGroup} on reuse.
     this.killGroup('SIGKILL')
     // Bounded even here: an unreapable child (D-state / blocked reaping) must not hang teardown
     // forever — return once the final grace elapses regardless, and SAY so, because a teardown that
     // gave up and a teardown that finished are two different facts.
-    if (await this.awaitGroupQuiet(this.opts.killGraceMs)) return
+    if (await this.awaitGroupQuiet(this.opts.killGraceMs)) return true
     console.warn(
       `codex app-server group ${this.child.pid ?? '(no pid)'} still had a member ` +
         `${this.opts.killGraceMs}ms after SIGKILL — a descendant it spawned may still be running`,
     )
+    return false
+  }
+
+  private async observeGroupExit(): Promise<void> {
+    while (!this.groupIsQuiet()) {
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, 1000)
+        timer.unref?.()
+      })
+    }
+    this.markQuiesced()
   }
 
   /**
@@ -712,10 +734,10 @@ export class SpawnCodexTransport implements CodexTransport {
    * number alone. The tree is what the table shows then, with every process an earlier reading found
    * ({@link lookAtTheTree}); `close()` resolves once they are gone, or says which may not be.
    */
-  private async reapWindowsTree(): Promise<void> {
+  private async reapWindowsTree(): Promise<boolean> {
     const pid = this.child.pid
-    if (pid === undefined) return // nothing was ever spawned, so nothing is running
-    await endTree({
+    if (pid === undefined) return true // nothing was ever spawned, so nothing is running
+    return endTree({
       leader: { pid, startedAt: this.startedAt },
       leaderEndedAt: () => this.endedAt,
       awaitLeader: (ms) => this.awaitExit(ms),
@@ -766,7 +788,7 @@ export class SpawnCodexTransport implements CodexTransport {
       process.kill(-pid, 0)
       return false
     } catch (error) {
-      return (error as NodeJS.ErrnoException).code !== 'EPERM'
+      return (error as NodeJS.ErrnoException).code === 'ESRCH'
     }
   }
 

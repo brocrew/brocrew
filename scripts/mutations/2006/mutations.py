@@ -253,7 +253,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M34 · RuntimeScreen hands the conversation pane no forest, so the Graph tab of every conversation says 'Nothing has been read about this workspace yet.' for ever — killed by the new source test in `the-graph-is-moved-by-hand-grows-with-its-cards-and-is-fed-by-the-screen.dom.test.ts` — killed by `the-graph-is-moved-by-hand-grows-with-its-cards-and-is-fed-by-the-screen.dom.test.ts`",
         [
-            (RUNTIME_SCREEN_VUE, "            :record=\"active\"\n            :forest=\"conversationForestView\"\n", "            :record=\"active\"\n"),
+            # Source-only reanchor to the lazy forest getter; NOT VERIFIED.
+            (RUNTIME_SCREEN_VUE, "            :record=\"active\"\n            :forest=\"readConversationForest\"\n", "            :record=\"active\"\n"),
         ],
     ),
     (

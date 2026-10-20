@@ -11,7 +11,7 @@
 # Started: by hand (`workflow_dispatch`, input `commit`), by a push to a `gate/coverage-*` branch
 # (a push needs no registration), and nightly.
 # ⚠️ A schedule runs the copy of this file on the DEFAULT branch, so the nightly run starts only once
-# the file is there; it measures `develop`.
+# the file is there; it measures COVERAGE_BRANCH when set, else the repository's default branch.
 #
 # ⚠️ The floors were measured on a Mac. A test that is a fact of the Mac skips here, so a row can sit
 # lower on Linux for that reason alone; the first run says which rows.
@@ -37,8 +37,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  # What to measure: the input, else `develop` for the nightly run, else the commit that started the run.
-  MEASURE: ${{ inputs.commit || (github.event_name == 'schedule' && 'develop') || github.sha }}
+  # What to measure: the input, else COVERAGE_BRANCH or the default branch for nightly, else the triggering commit.
+  MEASURE: ${{ inputs.commit || (github.event_name == 'schedule' && (vars.COVERAGE_BRANCH || github.event.repository.default_branch)) || github.sha }}
 
 jobs:
   shard:

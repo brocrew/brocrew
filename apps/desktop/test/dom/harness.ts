@@ -1,5 +1,6 @@
 import { createApp, nextTick, type Component } from 'vue'
 import { expect } from 'vitest'
+import type ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import type { CreatedSession, TranscriptEvent } from '../../src/shared/runtime-ipc'
 import { createSessionRecord, type SessionRecord } from '../../src/renderer/src/lib/session-record'
 import { applyEvent, createTranscript } from '../../src/renderer/src/lib/transcript'
@@ -502,8 +503,16 @@ export const toldProps = (
   over: Record<string, unknown> = {},
 ): Record<string, unknown> => ({ instructions, relaunched: false, ...over })
 
-export const paneProps = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
+type ConversationPaneProps = InstanceType<typeof ConversationPane>['$props']
+type MutablePaneProps = {
+  -readonly [Key in keyof ConversationPaneProps]: ConversationPaneProps[Key]
+}
+
+export const paneProps = (
+  over: Record<string, unknown> = {},
+): MutablePaneProps & Record<string, unknown> => ({
   record: record([permission('req_1'), { type: 'status', state: 'waiting_permission' } as never]),
+  cwd: META.cwd,
   mode: 'normal' as const,
   debug: false,
   // ⚠️ **`false`, to match `conversation-chrome.render.test.ts` exactly.** It was `true` here, and

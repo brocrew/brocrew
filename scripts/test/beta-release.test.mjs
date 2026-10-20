@@ -46,10 +46,10 @@ describe('§2 · the words', () => {
     expect(mac).not.toContain('Windows')
   })
 
-  it('⚑ Windows: SmartScreen, the BroBot and BroBot2 replacement, and the keys pages as they are today', () => {
+  it('Windows: SmartScreen and the keys pages', () => {
     const win = notesOf('windows-beta-4', '1a2b3c4')
     expect(win).toContain('More info, then Run anyway')
-    expect(win).toContain('Already have BroBot or BroBot2?')
+    expect(win).not.toContain('Already have BroBot or BroBot2')
     expect(win).toContain('platform.claude.com/settings/keys')
     expect(win).toContain('your Claude Code login on this PC')
     expect(win).not.toContain('console.anthropic.com')
@@ -71,6 +71,9 @@ describe('§2 · the words', () => {
       const notes = notesOf(tag, '1a2b3c4')
       expect(notes, tag).toContain('save an Anthropic API key on the Claude card')
       expect(notes, tag).toContain('Check it works')
+      expect(notes, tag).toContain('open Settings → Providers')
+      expect(notes, tag).not.toContain('Providers in the left rail')
+      expect(notes, tag).not.toContain('Already have BroBot or BroBot2')
       const install = notes.indexOf(
         'To use Claude, install Claude Code first, from Anthropic: https://code.claude.com/docs/en/setup. Codex comes with BroCrew.',
       )

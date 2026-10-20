@@ -1041,7 +1041,7 @@ const chips = computed<Chip[]>(() =>
     return {
       handed,
       pasted,
-      label: pasted ? pastedImageLabel(handed.pasted) : pathTail(handed.path),
+      label: pasted ? pastedImageLabel(handed.pasted) : pathTail(handed.path) || handed.path,
       glyph: pasted ? '#i-image' : handed.kind === 'directory' ? '#i-folder' : '#i-file',
       // ⛔ **The undo names the same thing the label does.** *"Don't send
       // /Users/…/pasted-images/pasted-a3f9….png"* is a sentence about a file the person has never

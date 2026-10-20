@@ -202,6 +202,7 @@ const SAMPLES: Record<RuntimeCommandKind, RuntimeCommand> = {
   // 355 · the capability door. ⚠️ The grant names every field, always — the wire refuses a payload
   // that drops one — so this sample is the whole schema at its ruled defaults, which is the shape a
   // sheet with nothing touched sends.
+  skills: { kind: 'skills', request: { operation: 'list', offset: 0 } },
   agentIdentities: { kind: 'agentIdentities' },
   // 419 · ⚠️ **A name nothing has created**: a sample that got PAST the quit door would still be a
   // legal creation rather than a collision, and a sample that could fail for a second reason cannot
@@ -389,6 +390,7 @@ class WindowSink extends RecordingSink {
 
 /** The verbs `ipc.ts` refuses unless a person is asking. */
 const NEEDS_A_PERSON = new Set<RuntimeCommandKind>([
+  'skills',
   'agentIdentities',
   'setCapabilities',
   // 🔴 **433's provider door, gated with the capability three and NOT because provider is a

@@ -244,7 +244,8 @@ describe('§3 · F-R18 · one count, one sentence', () => {
     const found: string[] = []
     for (const file of rendererFiles(RENDERER)) {
       const count = pluralisesRows(code(readFileSync(file, 'utf8')))
-      for (let i = 0; i < count; i++) found.push(file.slice(RENDERER.length + 1))
+      for (let i = 0; i < count; i++)
+        found.push(file.slice(RENDERER.length + 1).replaceAll('\\', '/'))
     }
     expect(found.sort()).toEqual(['components/WorkingTogether.vue', 'lib/rows-unread.ts'])
     // ⚑ …and the WorkingTogether one is the spawn list's, not a work list's

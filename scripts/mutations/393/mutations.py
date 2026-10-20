@@ -302,7 +302,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
             # ⚑ **W4.601 · re-anchored in place, not retired** — NOT VERIFIED; source-only. v17 appends two sentences to the core paragraph that carries the rule, so its tail moved; the plant still appends what the app does with silence to that paragraph
             # ⚑ **W4.643 · re-anchored in place, not retired** — NOT VERIFIED; source-only. v21 rewrote the sentence this row's defect lives in; the same defect, applied to the v21 sentence that carries it
             # ⚑ **W4.669 · re-anchored in place, not retired** — verified RED alone (verify_row; 377 M4 by a plant against `a-check-in-is-a-question.test.ts` §1, whose §2 waits on request_action). v22 rewords the core sentence this row's defect lives in; the same defect, applied to the v22 sentence that carries it
-            (FACTORY, "    'person or project facts. Use relevant skills; report missing guidance and continue ' +\n    'permitted work.',\n", "    'person or project facts. Use relevant skills; report missing guidance and continue ' +\n    'permitted work. If you do not reply, the task is recorded as a failure.',\n"),
+            # NOT VERIFIED; source-only anchor update. The planted defect is unchanged.
+            (FACTORY, "    'separate task facts. Use relevant skills; report missing guidance and continue ' +\n    'permitted work.',\n", "    'separate task facts. Use relevant skills; report missing guidance and continue ' +\n    'permitted work. If you do not reply, the task is recorded as a failure.',\n"),
         ],
     ),
 ]

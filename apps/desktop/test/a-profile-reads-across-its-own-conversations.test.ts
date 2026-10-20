@@ -736,13 +736,16 @@ describe('D-024 · a profile reads across its own conversations', () => {
       rail: 'malformed-request',
     })
     expect(problemsOf(beside)).toContain('made and piece cannot be given together')
-    for (const made of ['yes', 1]) {
+    for (const [made, kind] of [
+      ['yes', 'text'],
+      [1, 'a number'],
+    ] as const) {
       const refused = await callOn(ali1, 'list_tasks', { made })
       expect(refused, JSON.stringify(made)).toMatchObject({
         outcome: 'refused',
         rail: 'malformed-request',
       })
-      expect(problemsOf(refused)).toContain('made, when given, must be true or false')
+      expect(problemsOf(refused)).toContain(`made: expected true or false, got ${kind}`)
     }
 
     // ⚑ The paired positives: `made` alone is a list, `piece` alone is a record, `false` is the board.

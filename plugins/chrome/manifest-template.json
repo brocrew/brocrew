@@ -1,0 +1,185 @@
+{
+  "format": 1,
+  "id": "chrome",
+  "version": "0.1.2",
+  "sourceCommit": "2618dab1b1e3672bdddae5ed771a0ecf84e0002e",
+  "platforms": [
+    {
+      "os": "darwin",
+      "cpu": "arm64"
+    }
+  ],
+  "hostApi": {
+    "major": 1,
+    "minMinor": 0,
+    "maxMinor": 0,
+    "requiredFeatures": []
+  },
+  "toolApi": {
+    "major": 1,
+    "minMinor": 0,
+    "maxMinor": 0,
+    "requiredFeatures": []
+  },
+  "uiApi": {
+    "major": 1,
+    "minMinor": 0,
+    "maxMinor": 0,
+    "requiredFeatures": []
+  },
+  "dataSchema": 1,
+  "files": [],
+  "server": {
+    "entry": "server.mjs",
+    "mcpPath": "/mcp",
+    "adminPath": "/v1"
+  },
+  "skills": [],
+  "serviceTemplates": [],
+  "ui": {
+    "entry": "ui/index.html",
+    "assets": [
+      {
+        "path": "ui/index.html",
+        "mime": "text/html"
+      },
+      {
+        "path": "ui/app.js",
+        "mime": "text/javascript"
+      },
+      {
+        "path": "ui/style.css",
+        "mime": "text/css"
+      }
+    ],
+    "methodSchemas": {
+      "read": {
+        "type": "object",
+        "properties": {
+          "surface": {
+            "type": "string",
+            "enum": ["chrome"],
+            "maxLength": 6
+          }
+        },
+        "required": ["surface"],
+        "additionalProperties": false
+      },
+      "subscribe": {
+        "type": "object",
+        "properties": {
+          "surface": {
+            "type": "string",
+            "enum": ["chrome"],
+            "maxLength": 6
+          }
+        },
+        "required": ["surface"],
+        "additionalProperties": false
+      },
+      "unsubscribe": {
+        "type": "object",
+        "properties": {
+          "subscriptionId": {
+            "type": "string",
+            "maxLength": 64
+          }
+        },
+        "required": ["subscriptionId"],
+        "additionalProperties": false
+      },
+      "proposeConfig": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": ["create-profile", "set-enabled", "open-window"],
+            "maxLength": 32
+          },
+          "profile": {
+            "type": "string",
+            "maxLength": 32
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": ["action", "profile"],
+        "additionalProperties": false
+      }
+    },
+    "texts": [
+      {
+        "id": "title",
+        "text": "Chrome"
+      },
+      {
+        "id": "profile-name",
+        "text": "Profile name"
+      },
+      {
+        "id": "create-profile",
+        "text": "Create profile"
+      },
+      {
+        "id": "profiles",
+        "text": "Profiles"
+      },
+      {
+        "id": "open-tabs",
+        "text": "Open tabs"
+      },
+      {
+        "id": "enable",
+        "text": "Enable"
+      },
+      {
+        "id": "disable",
+        "text": "Disable"
+      },
+      {
+        "id": "needs-setup",
+        "text": "Needs setup"
+      },
+      {
+        "id": "running",
+        "text": "Running"
+      },
+      {
+        "id": "unavailable",
+        "text": "Plugin unavailable. Try again."
+      },
+      {
+        "id": "open-window",
+        "text": "Open window"
+      },
+      {
+        "id": "no-profiles",
+        "text": "No profiles yet. Create one to get started."
+      },
+      {
+        "id": "open",
+        "text": "Open"
+      },
+      {
+        "id": "closed",
+        "text": "Closed"
+      }
+    ]
+  },
+  "permissions": {
+    "description": "Uses your installed Google Chrome with its own separate profiles. Agents can read pages, use sites and save downloads in the plugin's private storage. You choose which profiles agents may use.",
+    "resources": [
+      {
+        "id": "browser-profiles",
+        "label": "Enabled Chrome profiles",
+        "read": true,
+        "write": true
+      }
+    ]
+  },
+  "dataCompatibility": {
+    "minSchema": 1,
+    "maxSchema": 1
+  }
+}

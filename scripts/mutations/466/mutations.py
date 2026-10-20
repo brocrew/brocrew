@@ -116,7 +116,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         # `project` became `digest` in silenceOf's signature. Same swap of the two `if` blocks as
         # 466's original row, over today's text.
         # ⚑ **Recent activity replaced the digest card · re-anchored in place, not retired** — the strongest-first rule moved to Recent activity's `activitySays`: read in part is asked before lines; the plant still asks it after.
-        [(ACTIVITY_LIB, "  if (reading.read.rowsUnread > 0 || (reading.read.ledgersSkipped ?? 0) > 0) return 'read-in-part'\n  return reading.lines.length === 0 && !reading.transcriptsCleared?.length\n    ? 'nothing-recorded'\n    : 'lines'\n", "  if (reading.lines.length > 0 || reading.transcriptsCleared?.length) return 'lines'\n  if (reading.read.rowsUnread > 0 || (reading.read.ledgersSkipped ?? 0) > 0) return 'read-in-part'\n  return 'nothing-recorded'\n")],
+        # Imported skill notices join the lines; the partial-read arm must still be first.
+        [(ACTIVITY_LIB, "  if (reading.read.rowsUnread > 0 || (reading.read.ledgersSkipped ?? 0) > 0) return 'read-in-part'\n  return reading.lines.length === 0 &&\n    !reading.transcriptsCleared?.length &&\n    !reading.skillImports?.length\n    ? 'nothing-recorded'\n    : 'lines'\n", "  if (reading.lines.length > 0 || reading.transcriptsCleared?.length || reading.skillImports?.length) return 'lines'\n  if (reading.read.rowsUnread > 0 || (reading.read.ledgersSkipped ?? 0) > 0) return 'read-in-part'\n  return 'nothing-recorded'\n")],
     ),
     (
         "M2 · ⛔ the torn arm fires on EVERY project · `> 0` becomes `>= 0`, so a whole record is "

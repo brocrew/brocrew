@@ -22,6 +22,8 @@ interface StartAttemptOf {
   readonly session: string
   readonly provider: Provider
   readonly opening: 'fresh' | 'resume'
+  /** The limit chosen for this launch, in milliseconds. */
+  readonly timeoutMs: number
   /** When the line was made, in UTC. */
   readonly at: string
 }

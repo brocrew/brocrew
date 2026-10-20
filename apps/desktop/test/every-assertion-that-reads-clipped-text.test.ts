@@ -946,6 +946,8 @@ const HAND_ROLLED: Readonly<Record<string, Question>> = {
   'three-surfaces-read-the-new-field.dom.test.ts': 'does-this-box-fit',
   'two-sentences-a-person-chooses-on.dom.test.ts': 'does-this-box-fit',
   'what-an-agent-was-told.dom.test.ts': 'does-this-box-fit',
+  // The group list has a bounded box; its contents overflow so only the list scrolls.
+  'whatsapp-settings.dom.test.ts': 'does-this-box-fit',
   // ⚑ **668** — the generations graph must scroll INSIDE its own box and never the page; the pair
   // is the premise (this family IS wider than the box) beside the page's own no-overflow claim.
   'who-called-whom-as-generations.dom.test.ts': 'does-this-box-fit',

@@ -1,4 +1,5 @@
 import { createRequire } from 'node:module'
+import { relative } from 'node:path'
 import { COVERAGE_AREAS, COVERAGE_METRICS, nextCoverageFloors } from './coverage-floors.mjs'
 
 const require = createRequire(import.meta.url)
@@ -38,7 +39,9 @@ export function areaOf(file) {
  */
 export function countSources(rawCoverage, sources, root) {
   const map = createCoverageMap(rawCoverage)
-  const known = new Map(map.files().map((file) => [file.slice(root.length + 1), file]))
+  const known = new Map(
+    map.files().map((file) => [relative(root, file).replaceAll('\\', '/'), file]),
+  )
   const counts = Object.fromEntries(
     COVERAGE_AREAS.map((area) => [
       area,
@@ -121,7 +124,7 @@ export function tableMarkdown(rows) {
  */
 export function failedTests(report, root) {
   const rows = report.testResults.flatMap((file) => {
-    const name = file.name.slice(root.length + 1)
+    const name = relative(root, file.name).replaceAll('\\', '/')
     const assertions = file.assertionResults.filter((one) => one.status === 'failed')
     const entries = assertions.map((one) => [name, one.fullName])
     const broken = file.status === 'failed' || (file.message ?? '') !== ''

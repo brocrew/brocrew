@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeRuntime } from '@brobot2/runtime'
@@ -397,7 +397,7 @@ describe('a profile name is unique at the boundary — since 417, the only place
       })
       // The id a legacy row carries. `prepareProviderHome` is what resume calls with it.
       await expect(realHome('claude', 'Developer')).resolves.not.toThrow()
-      expect(await realHome('claude', 'Developer')).toContain(`${HOME_FOLDER}/Developer/`)
+      expect(await realHome('claude', 'Developer')).toContain(`${HOME_FOLDER}${sep}Developer${sep}`)
     })
 
     it('⚑ …and on this volume that path IS the folder the session already ran in', async () => {

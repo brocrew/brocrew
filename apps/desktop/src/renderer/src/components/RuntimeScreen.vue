@@ -2781,6 +2781,7 @@ const theForestView = computed(() => foldTheForest(theForest.value, beingDone.va
 const conversationForestView = computed(() =>
   foldTheForest(cast.forest.value, cast.reading.value?.atWork ?? null),
 )
+const readConversationForest = () => conversationForestView.value
 
 /** ⚑ **One fold for both drawings of the forest** — the Team page's and a conversation's tab. */
 function foldTheForest(forest: TheWholeForest | null, atWork: WhatIsBeingDone | null) {
@@ -4036,7 +4037,7 @@ onUnmounted(() => {
             v-else-if="surface === 'conversation' && active?.meta"
             ref="pane"
             :record="active"
-            :forest="conversationForestView"
+            :forest="readConversationForest"
             :mode="mode"
             :debug="debug"
             :drawer-open="drawerOpen"

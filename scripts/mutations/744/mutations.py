@@ -159,7 +159,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     ),
     (
         f"M14 · 🔴 the screen's keeper is never told of the quit's request · killed by `{NODE}`",
-        [(KEPT, "        onLastSave: bridge?.onLastDraftSave,\n", "")],
+        [(KEPT, "      onLastSave: bridge?.onLastDraftSave,\n", "")],
     ),
     (
         f"M15 · 🔴 `keepTheDraftBook` restores without asking the sweep to hold · killed by `{NODE}`",
@@ -173,9 +173,9 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     ),
     (
         "M17 · ⛔ a book that was never READ is saved — an empty window writes over the file and erases "
-        f"the last run's drafts · killed by `{NODE}`",
-        [(KEPT, "  if (launch !== undefined && launch !== null) keepFrom(launch)\n",
-          "  if (launch !== undefined) keepFrom(launch ?? { drafts: [] })\n")],
+        f"the last run's drafts · killed by `{NODE} apps/desktop/test/a-late-draft-save-cannot-empty-the-book.test.ts`",
+        [(FILE, "            if (file.kind === 'unreadable') {\n",
+          "            if (false) {\n")],
     ),
     (
         "M18 · 🔴 the handoff answers EVERY time — a second setup restores the launch's drafts, words "
@@ -183,18 +183,18 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         [(KEPT, "      if (taken) return undefined\n", "")],
     ),
     (
-        "M19 · ⛔ a second setup never asks main again — a hot reload restores nothing and saves nothing "
+        "M19 · ⛔ a second setup never asks main again — a hot reload restores nothing "
         f"· killed by `{NODE}`",
-        [(KEPT, "      if (saved !== null && !stopped) keepFrom(saved)\n", "      void saved\n")],
+        [(KEPT, "        .then(bridge.savedDrafts)\n", "        .then(() => null)\n")],
     ),
     (
         "M20 · ⛔ a setup that stops does not hand its book over — the next setup reads an older one · "
         f"killed by `{NODE}`",
-        [(KEPT, "      keeper?.flush()\n", "")],
+        [(KEPT, "      keeper?.flush()\n      keeper?.stop()", "      keeper?.stop()")],
     ),
     (
         f"M21 · 🔴 the app mounts without the drafts it read — nothing is restored · killed by `{NODE}`",
-        [(ENTRY, "provide(SAVED_DRAFTS, handOver(saved))", "provide(SAVED_DRAFTS, handOver(null))")],
+        [(ENTRY, "provide(SAVED_DRAFTS, handoff)", "provide(SAVED_DRAFTS, null)")],
     ),
     (
         f"M22 · 🔴 the screen is handed no drafts — nothing restored, nothing kept · killed by `{NODE}`",
@@ -276,7 +276,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M37 · ⛔ saves are coalesced to the OLDEST waiting — the file ends one book behind the window · "
         f"killed by `{NODE}`",
-        [(FILE, "      latest = savedDraftsFrom(raw)\n", "      latest ??= savedDraftsFrom(raw)\n")],
+        [(FILE, "        slots.set(draft.slot, draft)\n", "        if (!slots.has(draft.slot)) slots.set(draft.slot, draft)\n")],
     ),
     (
         f"M38 · ⛔ a save that cannot be written is THROWN at the window · killed by `{NODE}`",
@@ -328,12 +328,12 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M47 · ⛔ the window's LAST book (marked `last`) is never counted — the quit waits out its bound "
         f"every time · killed by `{NODE}`",
-        [(FILE, "      if (expected > 0 && (raw as { last?: unknown } | null)?.last === true) arrived += 1\n", "")],
+        [(FILE, "      if (expected > 0 && packet.last === true) arrived += 1\n", "")],
     ),
     (
         "M48 · ⛔ ANY save counts as the last book — an ordinary save in flight lets the quit go before "
         f"the window's answer is written · killed by `{NODE}`",
-        [(FILE, "      if (expected > 0 && (raw as { last?: unknown } | null)?.last === true) arrived += 1\n",
+        [(FILE, "      if (expected > 0 && packet.last === true) arrived += 1\n",
           "      if (expected > 0) arrived += 1\n")],
     ),
     (

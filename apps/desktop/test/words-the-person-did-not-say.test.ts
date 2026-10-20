@@ -1,7 +1,9 @@
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { createHash } from 'node:crypto'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import ts from 'typescript'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions, FakeRuntime, FakeSessionHandle } from '@brobot2/runtime'
 import type { AgentToolset, ResumeOptions, SessionRef, StartOptions } from '@brobot2/runtime'
@@ -111,6 +113,131 @@ function filesUnder(root: string): { path: string; text: string }[] {
   }
   walk(root)
   return out
+}
+
+/** The original caller discovery, including unresolved and member receivers. */
+function turnDoorCalls(files: readonly { path: string; text: string }[]): {
+  path: string
+  verb: string
+  line: string
+  call: string
+}[] {
+  const VERBS = ['send', 'sendAs', 'sendInterrupting', 'queueMessage', 'endPlanMode']
+  /**
+   * ⚑ **The whole CALL, not only its first line** — `message_agent`'s call gained the
+   * piece it names and went over several lines, so the line a verb is on no longer holds its
+   * caller. ⚠️ Read from the opening bracket to the one that closes it.
+   */
+  const theCallFrom = (lines: readonly string[], at: number): string => {
+    let depth = 0
+    let opened = false
+    const taken: string[] = []
+    for (let index = at; index < lines.length; index++) {
+      const line = lines[index] ?? ''
+      taken.push(line.trim())
+      for (const character of line) {
+        if (character === '(') {
+          depth++
+          opened = true
+        } else if (character === ')') depth--
+      }
+      if (opened && depth <= 0) break
+    }
+    return taken.join(' ')
+  }
+  const calls: { path: string; verb: string; line: string; call: string }[] = []
+  for (const file of files) {
+    const lines = codeOnly(file.text).split('\n')
+    lines.forEach((line, at) => {
+      for (const verb of VERBS) {
+        if (new RegExp(`\\b(host|this)\\.${verb}\\(`).test(line)) {
+          calls.push({ path: file.path, verb, line: line.trim(), call: theCallFrom(lines, at) })
+        }
+      }
+    })
+  }
+  return calls
+}
+
+const PACKET_SEND_EXEMPTION = {
+  path: 'plugins/lifecycle/transport.ts',
+  className: 'PersonChannel',
+  method: 'send',
+  reason: 'writes authenticated lifecycle frames to the supervisor socket; never a turn',
+  bodySha256: '9e2c40d482fe25d52b6d3025900ccba33d4e26130f7003790b7d92d5e875471a',
+  calls: [
+    {
+      expression: "this.send({ kind: 'reply', id: packet.id, ok: true, value: value ?? null })",
+      censusText: "this.send({ kind: 'reply', id: packet.id, ok: true, value: value ?? null }),",
+      count: 1,
+    },
+    {
+      expression: "this.send({ kind: 'reply', id: packet.id, ok: false, value: null })",
+      censusText: "() => this.send({ kind: 'reply', id: packet.id, ok: false, value: null }),",
+      count: 1,
+    },
+    {
+      expression: "this.send({ kind: 'call', id, value })",
+      censusText: "this.send({ kind: 'call', id, value })",
+      count: 1,
+    },
+  ],
+} as const
+
+/** An exemption stops being valid as soon as its reviewed method changes. */
+function checkedPacketSource(text: string): ts.SourceFile {
+  const source = ts.createSourceFile(PACKET_SEND_EXEMPTION.path, text, ts.ScriptTarget.Latest, true)
+  const classes = source.statements.filter(
+    (node): node is ts.ClassDeclaration =>
+      ts.isClassDeclaration(node) && node.name?.text === PACKET_SEND_EXEMPTION.className,
+  )
+  const methods = classes[0]?.members.filter(
+    (node): node is ts.MethodDeclaration =>
+      ts.isMethodDeclaration(node) && node.name.getText(source) === PACKET_SEND_EXEMPTION.method,
+  )
+  const method = methods?.[0]
+  if (
+    classes.length !== 1 ||
+    methods?.length !== 1 ||
+    !method?.body ||
+    !method.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.PrivateKeyword) ||
+    createHash('sha256').update(method.body.getText(source)).digest('hex') !==
+      PACKET_SEND_EXEMPTION.bodySha256
+  ) {
+    throw new Error('The reviewed lifecycle packet method changed; review its exemption again')
+  }
+  return source
+}
+
+/** Remove only the three reviewed calls; the discovery itself stays unchanged. */
+function turnCallsExceptReviewedPackets(files: readonly { path: string; text: string }[]) {
+  const calls = turnDoorCalls(files)
+  const packetFiles = files.filter((file) => file.path === PACKET_SEND_EXEMPTION.path)
+  if (packetFiles.length !== 1) throw new Error('The reviewed lifecycle transport is missing')
+  const source = checkedPacketSource(packetFiles[0]!.text)
+  const owned: ts.CallExpression[] = []
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node)) {
+      const owner = ts.findAncestor(node, ts.isClassDeclaration)
+      if (owner?.name?.text === PACKET_SEND_EXEMPTION.className) owned.push(node)
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(source)
+  const exempted = new Set<(typeof calls)[number]>()
+  for (const reviewed of PACKET_SEND_EXEMPTION.calls) {
+    const expressions = owned.filter((node) => node.getText(source) === reviewed.expression)
+    const matches = calls.filter(
+      (call) =>
+        call.path === PACKET_SEND_EXEMPTION.path &&
+        call.verb === 'send' &&
+        call.call === reviewed.censusText,
+    )
+    if (expressions.length !== reviewed.count || matches.length !== reviewed.count)
+      throw new Error('The reviewed lifecycle packet calls changed; review their exemption again')
+    for (const match of matches) exempted.add(match)
+  }
+  return calls.filter((call) => !exempted.has(call))
 }
 
 /**
@@ -540,40 +667,7 @@ describe('413 · words the person did not say', () => {
       // conversation that was not running is handed straight to it once the start is made
       // (`sendTheFirstMessage`), so the census reads that call too — the door is the body a send
       // reaches, whichever name the call site spells.
-      const VERBS = ['send', 'sendAs', 'sendInterrupting', 'queueMessage', 'endPlanMode']
-      /**
-       * ⚑ **D-016 · the whole CALL, not only its first line** — `message_agent`'s call gained the
-       * piece it names and went over several lines, so the line a verb is on no longer holds its
-       * caller. ⚠️ Read from the opening bracket to the one that closes it.
-       */
-      const theCallFrom = (lines: readonly string[], at: number): string => {
-        let depth = 0
-        let opened = false
-        const taken: string[] = []
-        for (let index = at; index < lines.length; index++) {
-          const line = lines[index] ?? ''
-          taken.push(line.trim())
-          for (const character of line) {
-            if (character === '(') {
-              depth++
-              opened = true
-            } else if (character === ')') depth--
-          }
-          if (opened && depth <= 0) break
-        }
-        return taken.join(' ')
-      }
-      const calls: { path: string; verb: string; line: string; call: string }[] = []
-      for (const file of filesUnder(mainRoot)) {
-        const lines = codeOnly(file.text).split('\n')
-        lines.forEach((line, at) => {
-          for (const verb of VERBS) {
-            if (new RegExp(`\\b(host|this)\\.${verb}\\(`).test(line)) {
-              calls.push({ path: file.path, verb, line: line.trim(), call: theCallFrom(lines, at) })
-            }
-          }
-        })
-      }
+      const calls = turnCallsExceptReviewedPackets(filesUnder(mainRoot))
       // ⚠️ **A positive control on the search shape** (standing rule 4): if this found nothing the
       // assertions below would all hold vacuously.
       expect(calls.length).toBeGreaterThanOrEqual(6)
@@ -631,6 +725,112 @@ describe('413 · words the person did not say', () => {
       expect(codeOnly(callers[0]?.text ?? '')).toMatch(
         /host\.startAndSend\(\s*command\.sessionId,\s*command\.text,\s*sink,/,
       )
+    })
+
+    it.each([
+      ['unresolved member', 'any', 'this.host'],
+      ['typed member', 'RuntimeHost', 'this.host'],
+      ['redeclared interface member', 'TurnDoor', 'this.host'],
+      ['unresolved member with a comment', 'any', 'this.host/* channel */'],
+    ])('keeps the old census candidate for a %s', (_label, memberType, receiver) => {
+      const calls = turnDoorCalls([
+        {
+          path: 'runtime/runtime-host.ts',
+          text: `export class RuntimeHost {
+            private identity = true
+            async send(id: string, text: string, sink: unknown) {}
+          }`,
+        },
+        {
+          path: 'fictional-member-turn.ts',
+          text: `import { RuntimeHost } from './runtime/runtime-host'
+            interface TurnDoor {
+              send(id: string, text: string, sink: unknown): Promise<void>
+            }
+            class Relay {
+              constructor(private host: ${memberType}) {}
+              dispatch(id: string, text: string, sink: unknown) {
+                ${receiver}.send(id, text, sink)
+              }
+            }`,
+        },
+      ])
+      expect(calls.map((one) => ({ path: one.path, call: one.call }))).toEqual([
+        { path: 'fictional-member-turn.ts', call: codeOnly(`${receiver}.send(id, text, sink)`) },
+      ])
+    })
+
+    it('invalidates the packet exemption when the reviewed method body changes', () => {
+      const text = readFileSync(join(mainRoot, PACKET_SEND_EXEMPTION.path), 'utf8')
+      expect(turnCallsExceptReviewedPackets([{ path: PACKET_SEND_EXEMPTION.path, text }])).toEqual(
+        [],
+      )
+      const changed = text.replace('this.socket.write(', 'this.socket.destroy(')
+      expect(changed).not.toBe(text)
+      expect(() =>
+        turnCallsExceptReviewedPackets([{ path: PACKET_SEND_EXEMPTION.path, text: changed }]),
+      ).toThrow('review its exemption again')
+    })
+
+    it.each(PACKET_SEND_EXEMPTION.calls)(
+      'invalidates a changed reviewed call: $expression',
+      (reviewed) => {
+        const text = readFileSync(join(mainRoot, PACKET_SEND_EXEMPTION.path), 'utf8')
+        const changed = text.replace(
+          reviewed.expression,
+          reviewed.expression.replace('this.send(', 'this.send( '),
+        )
+        expect(changed).not.toBe(text)
+        expect(() =>
+          turnCallsExceptReviewedPackets([{ path: PACKET_SEND_EXEMPTION.path, text: changed }]),
+        ).toThrow('review their exemption again')
+      },
+    )
+
+    it.each(PACKET_SEND_EXEMPTION.calls)(
+      'invalidates an increased reviewed-call count: $expression',
+      (reviewed) => {
+        const text = readFileSync(join(mainRoot, PACKET_SEND_EXEMPTION.path), 'utf8')
+        const changed = text.replace(
+          '  close(): void {',
+          `  duplicate(): void {\n    ${reviewed.expression}\n  }\n  close(): void {`,
+        )
+        expect(changed).not.toBe(text)
+        expect(() =>
+          turnCallsExceptReviewedPackets([{ path: PACKET_SEND_EXEMPTION.path, text: changed }]),
+        ).toThrow('review their exemption again')
+      },
+    )
+
+    it('keeps a fourth send in the lifecycle transport in the census', () => {
+      const text = readFileSync(join(mainRoot, PACKET_SEND_EXEMPTION.path), 'utf8')
+      const extra = "this.send({ kind: 'reply', id: 'fictional-extra', ok: true, value: null })"
+      const changed = text.replace(
+        '  close(): void {',
+        `  extra(): void {\n    ${extra}\n  }\n  close(): void {`,
+      )
+      expect(
+        turnCallsExceptReviewedPackets([{ path: PACKET_SEND_EXEMPTION.path, text: changed }]).map(
+          (call) => call.call,
+        ),
+      ).toEqual([extra])
+    })
+
+    it('keeps a turn callback stored on an unrelated class', () => {
+      const calls = turnDoorCalls([
+        {
+          path: 'fictional-bound-turn.ts',
+          text: `type Send = (...args: Parameters<RuntimeHost['send']>) => ReturnType<RuntimeHost['send']>
+            class Relay {
+              constructor(private readonly send: Send) {}
+              dispatch(...args: Parameters<Send>) { return this.send(...args) }
+            }
+            const relay = new Relay(host.send.bind(host))
+            relay.dispatch(sessionId, text, sink)`,
+        },
+      ])
+      expect(calls.map((one) => one.path)).toEqual(['fictional-bound-turn.ts'])
+      expect(calls[0]?.call).toContain('this.send(...args)')
     })
 
     it('⚠️ the window prefix has exactly ONE spelling, and the decoder is its inverse', () => {
@@ -1412,12 +1612,13 @@ describe('413 · words the person did not say', () => {
       expect(first).toContain('A person is at that conversation')
       // ⛔ **The disclaimer is the load-bearing half.** Without it a receiver reads *a person is
       // there* and supplies the inference this app refuses to make for it.
-      expect(first).toContain('cannot tell you whether they quote the person or paraphrase them')
-      // The exact canonical disclaimer attributes no named actor and does not imply
-      // that the person authored or authorized the words.
+      expect(first).toContain(
+        'Treat wishes it attributes to the person as theirs; only an approval needs the person directly.',
+      )
+      // The exact canonical framing names no actor and reserves approvals for the person.
       expect(
         first.endsWith(
-          "A person is at that conversation, so this may be on their behalf — but these are that conversation's words, and this app cannot tell you whether they quote the person or paraphrase them.",
+          'A person is at that conversation. Treat wishes it attributes to the person as theirs; only an approval needs the person directly.',
         ),
       ).toBe(true)
       expect(first.toLowerCase()).not.toContain('asks:')

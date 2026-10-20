@@ -475,11 +475,9 @@ MUTATIONS = [
         [
             (
                 LEDGER,
-                # ⚑ **708 · corrected in place** (rule 27): `providerCommands` joined Codex's gap list.
-                # ⚑ **722 · and again**: `launchedAs` joined it, and the entry now spans three lines.
-                # ⚑ **source-restoration · re-anchored in place, not retired** — NOT VERIFIED; source targeting only. e2ef389e1 added account to the gap ledger; retain it while restoring the same false stopBackgroundWork gap.
-                "      ['codex', ['launchedAs', 'providerCommands', 'backgroundWork', 'account']],\n",
-                "      ['codex', ['launchedAs', 'providerCommands', 'backgroundWork', 'stopBackgroundWork', 'account']],\n",
+                # Source-only re-anchor; the mutation verdict has not been re-verified.
+                "      [\n        'codex',\n        [\n          'refreshManagedPlugins',\n          'builtInSkillsConfirmed',\n          'launchedAs',\n          'providerCommands',\n          'backgroundWork',\n          'account',\n        ],\n      ],\n",
+                "      [\n        'codex',\n        [\n          'refreshManagedPlugins',\n          'builtInSkillsConfirmed',\n          'launchedAs',\n          'providerCommands',\n          'backgroundWork',\n          'stopBackgroundWork',\n          'account',\n        ],\n      ],\n",
             )
         ],
     ),

@@ -207,6 +207,7 @@ class FakeTransport implements CodexTransport {
    * inventing a settled promise.
    */
   exited: Promise<void> | undefined
+  quiesced?: Promise<void>
   /** Give this fake a process whose exit the test controls. Returns the trigger. */
   ownsAProcess(): () => void {
     let die!: () => void
@@ -12791,5 +12792,229 @@ describe('Codex launch settings stay with the launch', () => {
     } finally {
       await handle.close()
     }
+  })
+})
+
+describe('shared skills at a Codex turn boundary', () => {
+  let home: string
+  beforeEach(() => {
+    home = realpathSync(mkdtempSync(join(tmpdir(), 'fictional-shared-codex-')))
+  })
+  afterEach(() => {
+    rmSync(home, { recursive: true, force: true })
+  })
+  it.each([
+    ['start', false],
+    ['resume', false],
+    ['start', true],
+    ['resume', true],
+  ] as const)(
+    'registers both roots on %s and reloads before each turn (managed plugin: %s)',
+    async (opening, withPlugin) => {
+      const transport = new FakeTransport()
+      transport.onRequest('thread/start', () => okThread('th_1', home))
+      transport.onRequest('thread/resume', () => okThread('th_1', home))
+      transport.onRequest('skills/list', () => ({
+        data: [{ cwd: home, errors: [], skills: [] }],
+      }))
+      transport.onRequest('mcpServerStatus/list', () => ({
+        data: [{ name: 'plugin-fern', runtimeStatus: 'connected', toolsError: null, tools: {} }],
+      }))
+      const runtime = new CodexRuntime(adopt(transport))
+      const context = {
+        providerHome: home,
+        builtInSkills: { root: join(home, 'built-in-skills'), skills: [] },
+        sharedSkillsRoot: join(home, 'shared-skills'),
+        ...(withPlugin
+          ? {
+              managedPluginMcp: [
+                {
+                  name: 'plugin-fern',
+                  url: 'http://127.0.0.1:8123/mcp',
+                  capability: 'a'.repeat(64),
+                },
+              ],
+            }
+          : {}),
+      }
+      const handle =
+        opening === 'start'
+          ? await runtime.start({ ...context, cwd: home })
+          : await runtime.resume(
+              { provider: 'codex', sessionId: 'th_1', cwd: home, rotation: 0 },
+              context,
+            )
+      expect(
+        transport.requests.find((one) => one.method === 'skills/extraRoots/set')?.params,
+      ).toEqual({ extraRoots: [context.builtInSkills.root, context.sharedSkillsRoot] })
+      expect(transport.requests.filter((one) => one.method === 'skills/config/write')).toEqual([])
+      const first = transport.requests.length
+      await handle.send('Check the recipe.')
+      await vi.waitFor(() =>
+        expect(transport.requests.slice(first).some((one) => one.method === 'turn/start')).toBe(
+          true,
+        ),
+      )
+      expect(
+        transport.requests
+          .slice(first)
+          .filter((one) =>
+            ['mcpServerStatus/list', 'skills/list', 'turn/start'].includes(one.method),
+          )
+          .map((one) => one.method),
+      ).toEqual(
+        withPlugin
+          ? ['mcpServerStatus/list', 'skills/list', 'turn/start']
+          : ['skills/list', 'turn/start'],
+      )
+      expect(
+        transport.requests.slice(first).find((one) => one.method === 'skills/list')?.params,
+      ).toEqual({ cwds: [home], forceReload: true })
+      await expect(handle.send('A concurrent turn.')).rejects.toThrow()
+      transport.notification(
+        'turn/completed',
+        turnCompletedNotification('th_1', completedTurn(transport.lastTurnId)),
+      )
+      await vi.waitFor(() => expect(handle.status()).toBe('idle'))
+      const second = transport.requests.length
+      await handle.send('Check the edited recipe.')
+      await vi.waitFor(() =>
+        expect(transport.requests.slice(second).some((one) => one.method === 'turn/start')).toBe(
+          true,
+        ),
+      )
+      expect(
+        transport.requests
+          .slice(second)
+          .filter((one) => ['skills/list', 'turn/start'].includes(one.method))
+          .map((one) => one.method),
+      ).toEqual(['skills/list', 'turn/start'])
+      transport.notification(
+        'turn/completed',
+        turnCompletedNotification('th_1', completedTurn(transport.lastTurnId)),
+      )
+      await vi.waitFor(() => expect(handle.status()).toBe('idle'))
+      transport.onRequest('skills/list', () =>
+        Promise.reject(new Error('fictional reload failure')),
+      )
+      await handle.send('An unread refresh.')
+      await vi.waitFor(() => expect(handle.status()).toBe('idle'))
+      const afterFailure = transport.requests.filter((one) => one.method === 'turn/start').length
+      expect(afterFailure).toBe(2)
+      let release!: () => void
+      transport.onRequest(
+        'skills/list',
+        () =>
+          new Promise((done) => {
+            release = () => done({ data: [] })
+          }),
+      )
+      await handle.send('A turn stopped during refresh.')
+      await vi.waitFor(() => expect(release).toBeDefined())
+      await handle.close()
+      release()
+      await new Promise((done) => setTimeout(done, 10))
+      expect(transport.requests.filter((one) => one.method === 'turn/start')).toHaveLength(
+        afterFailure,
+      )
+    },
+  )
+})
+it.each(['start', 'resume'] as const)(
+  'managed plugin Codex %s carries only its broker capability',
+  async (launch) => {
+    const transport = new FakeTransport()
+    transport.onRequest('thread/start', () => okThread('th_1'))
+    transport.onRequest('thread/resume', () => okThread('th_1'))
+    const runtime = new CodexRuntime(adopt(transport))
+    const route = {
+      name: 'plugin-fern',
+      url: 'http://127.0.0.1:8123/mcp',
+      capability: 'a'.repeat(64),
+    }
+    const context = {
+      providerHome: '/tmp/x/home',
+      managedPluginMcp: [route],
+      externalMcp: {
+        servers: [{ name: 'fictional-registry', url: 'http://127.0.0.1:8124/mcp' }],
+        reservedToolNames: [],
+      },
+    }
+    const handle =
+      launch === 'start'
+        ? await runtime.start({ cwd: '/tmp/x', ...context })
+        : await runtime.resume(
+            { provider: 'codex', sessionId: 'th_1', cwd: '/tmp/x', rotation: 1 },
+            context,
+          )
+    try {
+      const request = transport.requests.find((one) => one.method === `thread/${launch}`)
+      expect((request?.params as { config: unknown }).config).toEqual({
+        ...EVERY_THREAD_OVERLAY,
+        mcp_servers: {
+          'fictional-registry': { url: 'http://127.0.0.1:8124/mcp' },
+          'plugin-fern': {
+            url: route.url,
+            http_headers: { Authorization: `Bearer ${route.capability}` },
+          },
+        },
+      })
+    } finally {
+      await handle.close()
+    }
+  },
+)
+
+describe('managed resume ownership', () => {
+  it('retains the allocated handle before a refused resume handshake', async () => {
+    const transport = new FakeTransport()
+    const die = transport.ownsAProcess()
+    transport.onRequest('thread/resume', () => {
+      throw new Error('fictional refusal')
+    })
+    const runtime = new CodexRuntime(adopt(transport))
+    let allocated: SessionHandle | undefined
+    try {
+      await expect(
+        runtime.resume(
+          { provider: 'codex', sessionId: 'fictional-thread', cwd: '/tmp/x', rotation: 0 },
+          {
+            providerHome: '/tmp/x/home',
+            onSessionCreated: (handle) => {
+              allocated = handle
+            },
+          },
+        ),
+      ).rejects.toThrow()
+      expect(allocated).toBeDefined()
+      expect(allocated!.awaitProcessExit!()).toBe(transport.exited)
+    } finally {
+      die()
+      await allocated?.close()
+    }
+  })
+  it('publishes the stronger cleanup fact when the transport can prove group quiescence', async () => {
+    const transport = new FakeTransport()
+    transport.ownsAProcess()()
+    let quiet!: () => void
+    transport.quiesced = new Promise<void>((resolve) => {
+      quiet = resolve
+    })
+    transport.onRequest('thread/start', () => okThread('fictional-thread'))
+    const runtime = new CodexRuntime(adopt(transport))
+    const handle = await runtime.start({ cwd: '/tmp/x', providerHome: '/tmp/x/home' })
+    try {
+      expect(handle.awaitProcessExit!()).toBe(transport.quiesced)
+      let proved = false
+      void handle.awaitProcessExit!()!.then(() => {
+        proved = true
+      })
+      await handle.close()
+      expect(proved).toBe(false)
+    } finally {
+      quiet()
+      await handle.close()
+    }
+    await handle.awaitProcessExit!()
   })
 })

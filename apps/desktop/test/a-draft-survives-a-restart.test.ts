@@ -526,7 +526,7 @@ describe('§3 · the last run’s drafts are read BEFORE the window draws, bound
     }
   })
 
-  it('⛔ nothing READ — nothing restored and nothing SAVED, whatever is typed', async () => {
+  it('a failed restore still keeps newly typed slots through the merging writer', async () => {
     vi.useFakeTimers()
     try {
       const book = createDraftBook()
@@ -543,7 +543,9 @@ describe('§3 · the last run’s drafts are read BEFORE the window draws, bound
       await nextTick()
       vi.advanceTimersByTime(DRAFT_SAVE_DELAY_MS)
       keeping.stop()
-      expect(saves).toEqual([])
+      expect(saves.at(-1)?.drafts).toEqual([
+        { slot: NEW_CONVERSATION, text: 'typed now', attached: [] },
+      ])
     } finally {
       vi.useRealTimers()
     }
@@ -570,6 +572,7 @@ describe('§3 · the last run’s drafts are read BEFORE the window draws, bound
     // ⚑ the first setup handed over its book as it stopped
     expect(one.saves.at(-1)).toEqual({
       drafts: [{ slot: NEW_CONVERSATION, text: 'typed since launch', attached: [] }],
+      cleared: [draftKey(A)],
     })
 
     const second = createDraftBook()
@@ -889,10 +892,12 @@ describe('§4 · the file — in the app’s own userData, whole, and read as un
   })
 
   it('⛔ a last book that could NOT be written is reported as failed — never as saved', async () => {
+    const writer = createDraftWriter(userData)
+    await writer.write({ drafts: [] })
+    rmSync(join(userData, SAVED_DRAFTS_FILE))
     mkdirSync(join(userData, SAVED_DRAFTS_FILE))
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     try {
-      const writer = createDraftWriter(userData)
       writer.expectQuitSaves(1)
       const waiting = writer.quitSaves(1_000)
       void writer.write({
@@ -993,7 +998,7 @@ describe('§5 · the wiring — `main.ts`, `RuntimeScreen` and main’s doors, w
 
   it('🔴 the drafts are read BEFORE the app mounts, and handed to it once', () => {
     expect(read('../src/renderer/src/main.ts')).toMatch(
-      /savedDraftsBeforeDrawing\(window\.api\?\.savedDrafts\)\.then\(\(saved\) => \{\n\s+createApp\(App\)\.provide\(SAVED_DRAFTS, handOver\(saved\)\)\.mount\('#app'\)/,
+      /draftHandoffBeforeDrawing\(window\.api\?\.savedDrafts\)\.then\(\(handoff\) => \{\n\s+createApp\(App\)\.provide\(SAVED_DRAFTS, handoff\)\.mount\('#app'\)/,
     )
   })
 

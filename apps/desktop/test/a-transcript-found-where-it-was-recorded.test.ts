@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeRuntime, claudeProjectDirName, type SessionRef } from '@brobot2/runtime'
@@ -221,13 +221,7 @@ describe('the whole round, through the host', () => {
     const round = await aRound(() => '-private-somewhere-real')
     // ⛔ On `main` it was never found where the CLI recorded it (`706` F-5).
     expect(round.exported).toBe(
-      join(
-        dir,
-        'exports',
-        'projects',
-        '-private-somewhere-real',
-        `${round.recorded.split('/').pop()}`,
-      ),
+      join(dir, 'exports', 'projects', '-private-somewhere-real', basename(round.recorded)),
     )
     expect(readFileSync(round.exported, 'utf8')).toBe(readFileSync(round.recorded, 'utf8'))
   })
@@ -235,7 +229,7 @@ describe('the whole round, through the host', () => {
   it('⚑ THE CONTROL — the ordinary case exports as it always did', async () => {
     const round = await aRound((named) => named)
     expect(round.exported).toBe(
-      join(dir, 'exports', 'projects', round.named, `${round.recorded.split('/').pop()}`),
+      join(dir, 'exports', 'projects', round.named, basename(round.recorded)),
     )
     expect(readFileSync(round.exported, 'utf8')).toBe(readFileSync(round.recorded, 'utf8'))
   })

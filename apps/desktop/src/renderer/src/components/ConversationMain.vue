@@ -14,8 +14,8 @@ import { useMainTab, type MainTab } from '../composables/useMainTab'
 
 const props = defineProps<{
   conversation: string
-  /** ⚑ The whole forest, folded as the Team page folds it — `null` until it has been read. */
-  forest: ForestView | null
+  /** The forest is read only by the graph or a file's link to its holder. */
+  forest: ForestView | null | (() => ForestView | null)
   /** ⚑ **UI-002 · the files on this conversation's tree** — absent or `null` is *not read yet*. */
   files?: FilesRead | null
   /** ⚑ `true` where a reader can open a file, so the Files tab's lines are presses. */
@@ -32,11 +32,12 @@ const emit = defineEmits<{
 }>()
 
 const tab = useMainTab()
-const graphView = computed(() => conversationForest(props.forest, props.conversation))
+const forest = computed(() => (typeof props.forest === 'function' ? props.forest() : props.forest))
+const graphView = computed(() => conversationForest(forest.value, props.conversation))
 /** A different tree gets a fresh viewport; a stand-in keeps its predecessor's tree key. */
 const graphTree = computed<string | undefined>((previous) => {
   const root = graphView.value?.rows.find((row) => row.kind === 'a-conversation')?.conversation
-  return root && previous && (props.forest?.placeOf?.get(previous) ?? previous) === root
+  return root && previous && (forest.value?.placeOf?.get(previous) ?? previous) === root
     ? previous
     : root
 })
@@ -83,7 +84,7 @@ function showFiles(piece: string): void {
 /** The conversation holding each piece the forest draws, for the Files tab's links. */
 const holders = computed(() => {
   const held = new Map<string, string>()
-  for (const row of props.forest?.rows ?? []) {
+  for (const row of forest.value?.rows ?? []) {
     if (row.taskRow !== null) held.set(row.taskRow.piece, row.conversation)
   }
   return held

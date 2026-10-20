@@ -452,8 +452,10 @@ const standing = computed(() => standingOf(props.facets))
 const onPurpose = computed(() =>
   standing.value === 'elsewhere' ? (props.waitsOnPurpose ?? null) : null,
 )
-const statusLabel = computed(
-  () => props.providerLimit?.word ?? onPurpose.value?.says ?? STANDING_LABEL[standing.value],
+const statusLabel = computed(() =>
+  props.facets.being === 'starting'
+    ? 'Starting'
+    : (props.providerLimit?.word ?? onPurpose.value?.says ?? STANDING_LABEL[standing.value]),
 )
 const statusDetail = computed(() => props.providerLimit?.detail ?? onPurpose.value?.whole)
 const statusTone = computed(() => STANDING_TONE[standing.value])

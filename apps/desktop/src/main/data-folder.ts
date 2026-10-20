@@ -1,25 +1,22 @@
-import { mkdirSync, readFileSync } from 'node:fs'
+import {
+  PACKAGED_WORKSPACE_REFUSAL,
+  requiresWorkspacePolicy,
+  workspaceRouting,
+} from './workspace-routing'
+import { claimPackagedWorkspace } from './workspace-routing-store'
+import { ExistingWorkspace } from './workspace-startup'
+import { mkdirSync, readFileSync, statSync } from 'node:fs'
 import { basename, join, resolve } from 'node:path'
 
 /**
- * 🔴 **Where this app keeps its data — pinned, so no name the OS shows can move it** (W4.90).
+ * Keep the default data folder at <appData>/@brobot2/desktop while the bundle and installers are
+ * named BroCrew. Electron otherwise derives userData from the app's product or package name, so
+ * a display-name change could make existing conversations, keys and settings appear to vanish.
  *
- * ⚑ **What Electron does when nothing pins it** (Electron 43.2.0, read from its source): the
- * default `userData` is `<appData>/<app name>` (`shell/common/electron_paths.cc`), and the app name
- * is the packaged `package.json`'s `productName`, else its `name` (`lib/browser/init.ts`), else the
- * name the executable carries. ⚑ Measured on a packaged build: electron-builder writes no
- * `productName` into the app's `package.json`, so every build — a developer's and a packaged one,
- * on macOS and on Windows — has kept its data in `<appData>/@brobot2/desktop`, the package's npm
- * `name`. The same name labels the macOS Keychain entry `safeStorage` seals saved keys with
- * (`"<app name> Safe Storage"`), so the name must not move either.
- *
- * ⛔ **So this pins the folder rather than trusting the derivation**: the bundle and the installers
- * are called *BroBot*, and a name that ever reached the derivation — a `productName` in the
- * package, an executable's own name — would move every person's conversations, keys and settings
- * to a new, empty folder.
- *
- * ⚠️ **A launch that names its own folder keeps it** (`--user-data-dir`): every test and live smoke
- * runs that way, and Electron applies the switch before this runs.
+ * The package name remains @brobot2/desktop. Its macOS Keychain entry is still
+ * "@brobot2/desktop Safe Storage"; changing the product's displayed name must not rename it.
+ * Packaged Finder launches can reopen their last workspace. Explicit folders are kept only when
+ * the workspace routing policy permits this build to open them.
  */
 export const DATA_FOLDER = ['@brobot2', 'desktop'] as const
 
@@ -30,22 +27,59 @@ export function defaultDataFolder(appData: string): string {
 
 /** The part of Electron's `app` the pin uses. */
 export interface PinnableApp {
-  getPath(name: 'appData'): string
+  getPath(name: 'appData' | 'userData'): string
+  readonly isPackaged?: boolean
+  getAppPath?(): string
   setPath(name: 'userData', path: string): void
   readonly commandLine: { hasSwitch(name: string): boolean }
 }
 
-/**
- * Pin `userData` to {@link defaultDataFolder} — called at module scope in `index.ts`, before
- * anything reads it — unless the launch named its own folder.
- *
- * ⚠️ The folder is made first, for a first launch on a new machine. ⚑ A folder that cannot be made
- * (its path is a file, a disk is gone) is not this call's to report: Electron accepts the path
- * either way, and opening the database there says what went wrong, as it always has.
- */
+const existingWorkspaces = new WeakMap<PinnableApp, ExistingWorkspace>()
+
+export function workspaceStartup(app: PinnableApp): ExistingWorkspace | undefined {
+  return existingWorkspaces.get(app)
+}
+
+/** Select and fence the workspace before Chromium's lock or any database access. */
 export function pinTheDataFolder(app: PinnableApp): void {
-  if (app.commandLine.hasSwitch('user-data-dir')) return
-  const folder = defaultDataFolder(app.getPath('appData'))
+  existingWorkspaces.delete(app)
+  const explicit = app.commandLine.hasSwitch('user-data-dir')
+  let folder: string
+  if (typeof app.isPackaged === 'boolean') {
+    const hidden = app.commandLine.hasSwitch('brobot-hidden')
+    const appData = app.getPath('appData')
+    const routing = workspaceRouting(
+      appData,
+      app.isPackaged,
+      app.isPackaged && app.getAppPath ? requiresWorkspacePolicy(app.getAppPath()) : false,
+      { readOnly: hidden },
+    )
+    folder = explicit
+      ? app.getPath('userData')
+      : ((app.isPackaged ? routing.first : undefined) ?? defaultDataFolder(appData))
+    const refusal = routing.refusal(folder)
+    if (refusal) throw new Error(refusal)
+    const existing =
+      app.isPackaged && (routing.configured || (explicit ? routing.known(folder) : routing.first))
+    if (existing) {
+      try {
+        const root = statSync(folder)
+        if (!root.isDirectory()) throw new Error(PACKAGED_WORKSPACE_REFUSAL)
+        if (routing.configured) existingWorkspaces.set(app, new ExistingWorkspace(folder, root))
+      } catch {
+        throw new Error(PACKAGED_WORKSPACE_REFUSAL)
+      }
+    }
+    if (app.isPackaged && !hidden) claimPackagedWorkspace(appData, folder)
+    if (explicit) return
+    if (existing) {
+      app.setPath('userData', folder)
+      return
+    }
+  } else {
+    if (explicit) return
+    folder = defaultDataFolder(app.getPath('appData'))
+  }
   try {
     mkdirSync(folder, { recursive: true })
   } catch {

@@ -1,3 +1,4 @@
+import type { InstalledSkillVersion } from './skills-installation'
 import type { LaunchSetting, LaunchSettingKey, LaunchSettingValue } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import type { MemoryStoreState } from './agent-memory'
@@ -433,6 +434,8 @@ export interface GivenSkills {
 
 /** The app-owned skill view installed for this launch, distinct from a provider's catalogue. */
 export interface GivenBuiltInSkills {
+  readonly catalogueRevision?: number
+  readonly versions?: readonly InstalledSkillVersion[]
   readonly version: string
   readonly reminder: string
   readonly listed: readonly GivenSkill[]

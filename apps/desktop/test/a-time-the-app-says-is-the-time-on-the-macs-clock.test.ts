@@ -74,9 +74,10 @@ const disk = vi.hoisted(() => ({
 vi.mock('node:fs', async (importOriginal) => {
   const real = await importOriginal<typeof import('node:fs')>()
   type Any = (...given: unknown[]) => unknown
+  const zoneKey = (path: string): string => path.replaceAll('\\', '/')
   const served = (path: unknown): path is string =>
     typeof path === 'string' &&
-    (path === '/etc/localtime' || path.startsWith('/usr/share/zoneinfo/'))
+    (zoneKey(path) === '/etc/localtime' || zoneKey(path).startsWith('/usr/share/zoneinfo/'))
   const watchedFolder = (path: unknown): path is string =>
     path === '/etc' || path === '/var/db/timezone'
   const realpathSync = Object.assign(
@@ -88,8 +89,9 @@ vi.mock('node:fs', async (importOriginal) => {
     ...real,
     readFileSync: (path: unknown, ...rest: unknown[]): unknown => {
       if (!served(path)) return (real.readFileSync as Any)(path, ...rest)
-      disk.reads.push(path)
-      const file = disk.files.get(path)
+      const key = zoneKey(path)
+      disk.reads.push(key)
+      const file = disk.files.get(key)
       if (file === undefined) {
         throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
           code: 'ENOENT',
@@ -1382,6 +1384,7 @@ describe('§5 · the window, main and the host agree on the zone', () => {
         'themes = new ThemeStore({',
         ANYTHING,
         'await themes.start()',
+        'workspaceStartup(app)?.assertDatabase()',
         'stopThemeIpc = registerThemeIpc(ipcMain, themes, (change) => {',
         ANYTHING,
         'host = createRuntimeHost(initDatabase())',
@@ -1449,8 +1452,8 @@ describe('§5 · the window, main and the host agree on the zone', () => {
     // The workspace's theme is waited for beside the zone, never instead of it.
     const MOUNT = inOrder(
       'void Promise.all([keepTheMacZone(window.api), themeBeforeDrawing(windowTheme)]).then(() =>',
-      'savedDraftsBeforeDrawing(window.api?.savedDrafts).then((saved) => {',
-      "createApp(App).provide(SAVED_DRAFTS, handOver(saved)).mount('#app')",
+      'draftHandoffBeforeDrawing(window.api?.savedDrafts).then((handoff) => {',
+      "createApp(App).provide(SAVED_DRAFTS, handoff).mount('#app')",
     )
     const failing = (source: string): string[] =>
       Object.entries(PRELOAD)

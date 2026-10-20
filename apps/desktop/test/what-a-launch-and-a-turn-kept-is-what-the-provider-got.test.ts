@@ -131,7 +131,7 @@ describe('F093 · R2 — kept as the provider got it', () => {
     expect(attached?.text).toBe('read this for me')
     expect(attached?.attachments).toEqual([file])
     expect(attached?.sent).toBe(handed.sends[1])
-    expect(attached?.sent).toContain(file.path)
+    expect(attached?.sent).toContain(JSON.stringify(file.path))
   })
 
   it('🔴 a turn of several held messages keeps the one text that carried them all', async () => {

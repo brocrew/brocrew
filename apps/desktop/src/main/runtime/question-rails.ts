@@ -459,18 +459,11 @@ export interface QuestionRefusalDetail {
    * `CHANNEL_REFUSALS`.
    */
   because?: ChannelRefusal
-  /**
-   * The state that made it an ending — present on `question-has-already-ended`, and ⚑ **F020** on
-   * `no-open-question-you-asked-by-that-name` when the caller's own question was answered or
-   * declined.
-   */
+  /** The ending that prevents an answer, or explains why the caller's own question needs no withdrawal. */
   state?: RoutedRequest['state']
-  /** ⚑ **F020** — when it was answered or declined, epoch ms, beside that {@link state}. */
+  /** When that question ended, in epoch milliseconds. */
   at?: number
-  /**
-   * ⚑ **F020 · where the answer to the caller's own question is** — beside that {@link state}: held
-   * for it, behind a turn asked to stop for it or until that turn ends, or already sent to it.
-   */
+  /** Where the answer or decline to the caller's own question can be read. */
   itsAnswer?: AnAnswerOnItsWay
   /** What the answer machinery said — present only on `that-answer-cannot-be-sent`. */
   said?: string
@@ -650,6 +643,23 @@ function aQuestionThatWasAnsweredSentence(detail: QuestionRefusalDetail): string
   }
 }
 
+/** Explain a known ending without copying the caller's question id into the reason. */
+function aQuestionThatEndedSentence(detail: QuestionRefusalDetail): string {
+  if (detail.state === undefined || REQUEST_IS_OPEN[detail.state]) {
+    return QUESTION_SENTENCES['no-open-question-you-asked-by-that-name']
+  }
+  const instant = new Date(detail.at ?? Number.NaN)
+  const ended = Number.isNaN(instant.getTime())
+    ? 'This question has already ended. No withdrawal is needed.'
+    : detail.state === 'withdrawn'
+      ? `This question was already withdrawn at ${instant.toISOString()}. No withdrawal is needed.`
+      : `This question ended at ${instant.toISOString()}. No withdrawal is needed.`
+  return (detail.state === 'answered' || detail.state === 'rejected') &&
+    detail.itsAnswer !== undefined
+    ? `${aQuestionThatWasAnsweredSentence(detail)} ${ended}`
+    : ended
+}
+
 /**
  * ⚑ **F020 · the words every answer quotes its question by** ({@link answerText}) — and so how the
  * host finds an answer held for its asker (`RuntimeHost.whereItsAnswerIs`): one spelling for both.
@@ -688,7 +698,7 @@ export function refuseQuestion(
       rail === 'answer-too-long'
         ? answerTooLongSentence(detail)
         : rail === 'no-open-question-you-asked-by-that-name'
-          ? aQuestionThatWasAnsweredSentence(detail)
+          ? aQuestionThatEndedSentence(detail)
           : QUESTION_SENTENCES[rail],
     ),
     remedy: questionRemedyOf(rail),

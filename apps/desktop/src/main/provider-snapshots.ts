@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { ipcMain } from './app-ipc'
 import type { Provider } from '@brobot2/shared'
 import {
   PROVIDER_SNAPSHOTS_CHANNELS,

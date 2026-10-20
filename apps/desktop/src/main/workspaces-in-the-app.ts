@@ -1,8 +1,11 @@
+import { ipcMain } from './app-ipc'
+import { claimPackagedWorkspace, WORKSPACE_LIST_REFUSAL } from './workspace-routing-store'
+import { requiresWorkspacePolicy, workspaceRouting } from './workspace-routing'
 import { spawn } from 'node:child_process'
 import { statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname } from 'node:path'
-import { ipcMain, shell, type App, type IpcMainInvokeEvent } from 'electron'
+import { shell, type App, type IpcMainInvokeEvent } from 'electron'
 import {
   WORKSPACES_CHANNELS,
   type WorkspaceChanged,
@@ -22,6 +25,7 @@ import {
   asStartedOn,
   aWorkspaceName,
   checkWorkspaceFolder,
+  createFirstWorkspaceDatabase,
   folderForANewWorkspace,
   forgetWorkspace,
   howToStart,
@@ -54,10 +58,12 @@ export function startWorkspaces(options: {
 }): void {
   const { app } = options
   const userData = app.getPath('userData')
+  const requiredPolicy = app.isPackaged && requiresWorkspacePolicy(app.getAppPath())
   const listFile = workspaceListFile({
     appData: app.getPath('appData'),
     userData,
     hidden: options.hidden,
+    packaged: app.isPackaged,
   })
   const defaultFolder = defaultDataFolder(app.getPath('appData'))
   /** The account's home: Electron's is the account's, whatever a test's environment says. */
@@ -79,7 +85,16 @@ export function startWorkspaces(options: {
     }
   }
 
-  const listed = (): string[] => readWorkspaceList(listFile).map((one) => one.path)
+  const buildRefusal = (folder: string, toMake = false): string | null => {
+    const routing = workspaceRouting(app.getPath('appData'), app.isPackaged, requiredPolicy, {
+      readOnly: options.hidden || toMake,
+    })
+    return toMake ? routing.creationRefusal(folder) : routing.refusal(folder)
+  }
+  const listed = (): string[] =>
+    readWorkspaceList(listFile)
+      .map((one) => one.path)
+      .filter((folder) => buildRefusal(folder) === null)
   /**
    * The list's own spelling of `folder`, when it lists it: the one its BroBot was started with.
    * ⚑ By spelling — as asked, and as BroBot is started on it — so no listed folder is read: one on a
@@ -89,17 +104,22 @@ export function startWorkspaces(options: {
     const started = asStartedOn(folder)
     return listed().find((one) => samePath(one, folder) || samePath(one, started)) ?? null
   }
-  const check = (folder: string, toMake: boolean): WorkspaceFolderVerdict =>
-    checkWorkspaceFolder(folder, { toMake, listed: listed(), platform: process.platform })
+  const check = (folder: string, toMake: boolean): WorkspaceFolderVerdict => {
+    const refusal = buildRefusal(folder, toMake)
+    return refusal
+      ? { path: folder, ok: false, refusal, warning: null, exists: false, isBroBots: false }
+      : checkWorkspaceFolder(folder, { toMake, listed: listed(), platform: process.platform })
+  }
   /**
    * ⛔ **A hidden launch — a test — starts, makes, renames and deletes only folders beside its own**,
    * and never the default one: a test's window can ask for any path, and none of a person's is a
    * test's.
    */
-  const outOfReach = (folder: string): string | null =>
-    options.hidden && (sameFolder(folder, defaultFolder) || !isWithin(folder, dirname(userData)))
+  const outOfReach = (folder: string, toMake = false): string | null =>
+    buildRefusal(folder, toMake) ??
+    (options.hidden && (sameFolder(folder, defaultFolder) || !isWithin(folder, dirname(userData)))
       ? `A hidden copy of BroCrew works only on the folders beside its own: ${folder}`
-      : null
+      : null)
   /**
    * What a delete is checked against (`delete-workspace.ts`), read when it is asked. ⛔ **A hidden
    * launch — a test — guards the home its own environment names** (`HOME`, Node's `homedir`) and no
@@ -155,6 +175,15 @@ export function startWorkspaces(options: {
    * address on, or the new window would have no page.
    */
   const openOn = async (folder: string): Promise<string | null> => {
+    const refusal = buildRefusal(folder)
+    if (refusal) return refusal
+    if (app.isPackaged && !options.hidden) {
+      try {
+        claimPackagedWorkspace(app.getPath('appData'), folder)
+      } catch {
+        return WORKSPACE_LIST_REFUSAL
+      }
+    }
     const start = howToStart(
       process.execPath,
       argumentsToOpen(folder, {
@@ -193,7 +222,7 @@ export function startWorkspaces(options: {
 
   ipcMain.handle(WORKSPACES_CHANNELS.list, (): Promise<WorkspaceRow[]> =>
     workspaceRows({
-      listed: readWorkspaceList(listFile),
+      listed: readWorkspaceList(listFile).filter((row) => buildRefusal(row.path) === null),
       thisOne: userData,
       defaultFolder,
       ask: (folder) => whoIsOn(folder),
@@ -206,9 +235,9 @@ export function startWorkspaces(options: {
     async (_event, path: unknown): Promise<WorkspaceOpened> => {
       const folder = aPath(path)
       if (folder === null) return { opened: false, refusal: 'A workspace is a folder’s path.' }
-      if (sameFolder(folder, userData)) return { opened: true, path: userData, warning: null }
       const outside = outOfReach(folder) ?? beingDeleted(folder)
       if (outside !== null) return { opened: false, refusal: outside }
+      if (sameFolder(folder, userData)) return { opened: true, path: userData, warning: null }
       const verdict = check(folder, false)
       if (!verdict.ok) return { opened: false, refusal: verdict.refusal ?? 'It cannot be opened.' }
       // ⚑ Started as the list spells it, so its gate and its window are the ones already there; a
@@ -233,7 +262,7 @@ export function startWorkspaces(options: {
         return { opened: false, refusal: 'A workspace is a folder’s path.' }
       }
       const folder = chosen ?? folderForANewWorkspace(newWorkspacesHome, name)
-      const outside = outOfReach(folder)
+      const outside = outOfReach(folder, true)
       if (outside !== null) return { opened: false, refusal: outside }
       const verdict = check(folder, true)
       if (!verdict.ok) return { opened: false, refusal: verdict.refusal ?? 'It cannot be made.' }
@@ -242,6 +271,14 @@ export function startWorkspaces(options: {
       }
       try {
         const unlimited = await makeWorkspaceFolder(verdict.path, name)
+        if (
+          app.isPackaged &&
+          workspaceRouting(app.getPath('appData'), true, requiredPolicy, {
+            readOnly: options.hidden,
+          }).configured
+        ) {
+          createFirstWorkspaceDatabase(verdict.path)
+        }
         if (unlimited !== null) {
           console.warn(
             `BroCrew made ${verdict.path}, but could not make it readable by you alone: ${unlimited}`,

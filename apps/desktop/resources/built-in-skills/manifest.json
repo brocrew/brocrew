@@ -1,6 +1,6 @@
 {
   "formatVersion": 1,
-  "version": "v23",
+  "version": "v24",
   "skills": [
     {
       "name": "delegate",
@@ -49,8 +49,8 @@
         "codex": "remember — Before unfamiliar work or handback: use relevant methods; save tested lessons if allowed.",
         "claude": "brobot:remember — Before unfamiliar work or handback: use relevant methods; save tested lessons if allowed."
       },
-      "sha256": "7dd3a69ad4a03c446240058e1632c2eeceadd06e54421d1898c5e9687d7c9e17",
-      "bytes": 2549
+      "sha256": "4c607cb58859a74cd45b425e56ef8a309f8c1485494b8b86c959c47cd6f0c71d",
+      "bytes": 2517
     },
     {
       "name": "build-a-team",

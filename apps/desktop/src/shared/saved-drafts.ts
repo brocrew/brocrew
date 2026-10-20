@@ -34,6 +34,8 @@ export interface SavedDrafts {
    * — the one main waits for. Every other save leaves it out.
    */
   last?: true
+  /** Slots explicitly emptied since the previous handover; absence alone clears nothing. */
+  cleared?: string[]
 }
 
 /**

@@ -444,18 +444,23 @@ describe('🔒 the reader refuses what it must', () => {
     expect(result.refused).toEqual([{ path: join(cwd, 'CLAUDE.md'), reason: 'not-a-regular-file' }])
   })
 
-  it('⛔ …and a FIFO, which would otherwise block the launch forever', () => {
-    // The case that is worse than wrong: a named pipe with no writer blocks on `read`
-    // indefinitely, so the session never starts and nothing says why — from a file the agent can
-    // create in its own cwd. The refusal comes from the `stat` before anything is opened (and the
-    // open is `O_NONBLOCK` besides, since `733`), which is why this test can run at all.
-    execFileSync('mkfifo', [join(cwd, 'CLAUDE.md')])
+  it.skipIf(process.platform === 'win32')(
+    '⛔ …and a FIFO, which would otherwise block the launch forever',
+    () => {
+      // The case that is worse than wrong: a named pipe with no writer blocks on `read`
+      // indefinitely, so the session never starts and nothing says why — from a file the agent can
+      // create in its own cwd. The refusal comes from the `stat` before anything is opened (and the
+      // open is `O_NONBLOCK` besides), which is why this test can run at all.
+      execFileSync('mkfifo', [join(cwd, 'CLAUDE.md')])
 
-    const result = read()
+      const result = read()
 
-    expect(result.injected).toEqual([])
-    expect(result.refused).toEqual([{ path: join(cwd, 'CLAUDE.md'), reason: 'not-a-regular-file' }])
-  })
+      expect(result.injected).toEqual([])
+      expect(result.refused).toEqual([
+        { path: join(cwd, 'CLAUDE.md'), reason: 'not-a-regular-file' },
+      ])
+    },
+  ) // This fixture requires POSIX mkfifo; Windows named pipes do not occupy this file path.
 
   it('⛔ an OVERSIZED file is cut at the cap, and the cap is enforced DURING the read', () => {
     // ⚠️ The distinction 158 §1 insists on: a reader that trusted `stat.size` to size a buffer
@@ -931,20 +936,23 @@ describe('the agent’s own memory', () => {
     })
   })
 
-  it('🔒 a link to a FIFO is still refused — following relaxed one question, not the reader', () => {
-    // ⚠️ The guard that matters most on this path: a named pipe with no writer blocks on `read`
-    // forever, so the session never starts and nothing says why. `stat` follows the link and the
-    // regular-file test still runs BEFORE anything is opened, which is why this test terminates.
-    const fifo = join(root, 'pipe')
-    execFileSync('mkfifo', [fifo])
-    mkdirSync(join(memoryIndex(), '..'), { recursive: true })
-    symlinkSync(fifo, memoryIndex())
+  it.skipIf(process.platform === 'win32')(
+    '🔒 a link to a FIFO is still refused — following relaxed one question, not the reader',
+    () => {
+      // ⚠️ The guard that matters most on this path: a named pipe with no writer blocks on `read`
+      // forever, so the session never starts and nothing says why. `stat` follows the link and the
+      // regular-file test still runs BEFORE anything is opened, which is why this test terminates.
+      const fifo = join(root, 'pipe')
+      execFileSync('mkfifo', [fifo])
+      mkdirSync(join(memoryIndex(), '..'), { recursive: true })
+      symlinkSync(fifo, memoryIndex())
 
-    const result = read()
+      const result = read()
 
-    expect(result.agentMemory).toEqual([])
-    expect(result.refused).toContainEqual({ path: memoryIndex(), reason: 'not-a-regular-file' })
-  })
+      expect(result.agentMemory).toEqual([])
+      expect(result.refused).toContainEqual({ path: memoryIndex(), reason: 'not-a-regular-file' })
+    },
+  ) // This fixture requires POSIX mkfifo; ordinary link checks still run on Windows.
 
   /**
    * 🔴 **This test used to assert the opposite, and 314 §3 is the reversal.**

@@ -139,30 +139,36 @@ describe('what it refuses, and why each refusal is its own word (108)', () => {
     expect(readWorkflowOutput(join(root, 'never-existed.output'))).toBe('gone')
   })
 
-  it('🔴 731 · a file this user may not read is `unreadable` — it is there — never `gone`', () => {
-    // ⛔ On `main` every failed `open` was `gone`, and the viewer said *"no longer on disk"* about a
-    // file that is there. The extension list had kept most such files from arriving; it is gone.
-    if (process.getuid?.() === 0) return // root reads a 0000 file, so there is nothing to refuse
-    const locked = write('locked.output', 'secret-shaped text')
-    chmodSync(locked, 0o000)
-    try {
-      expect(readWorkflowOutput(locked)).toBe('unreadable')
-    } finally {
-      chmodSync(locked, 0o600)
-    }
-  })
+  it.skipIf(process.platform === 'win32')(
+    '🔴 731 · a file this user may not read is `unreadable` — it is there — never `gone`',
+    () => {
+      // ⛔ On `main` every failed `open` was `gone`, and the viewer said *"no longer on disk"* about a
+      // file that is there. The extension list had kept most such files from arriving; it is gone.
+      if (process.getuid?.() === 0) return // root reads a 0000 file, so there is nothing to refuse
+      const locked = write('locked.output', 'secret-shaped text')
+      chmodSync(locked, 0o000)
+      try {
+        expect(readWorkflowOutput(locked)).toBe('unreadable')
+      } finally {
+        chmodSync(locked, 0o600)
+      }
+    },
+  ) // chmod 000 does not deny reads through a Windows ACL.
 
-  it('🔴 731 · a socket is `not-readable` — it cannot be shown as text — never `gone`', async () => {
-    const path = join(root, 'listening.output')
-    const server = createServer()
-    await new Promise<void>((resolve) => server.listen(path, resolve))
-    try {
-      // ⛔ On `main`: `gone` (open(2) refuses a socket with EOPNOTSUPP, and every refusal was `gone`).
-      expect(readWorkflowOutput(path)).toBe('not-readable')
-    } finally {
-      await new Promise<void>((resolve) => server.close(() => resolve()))
-    }
-  })
+  it.skipIf(process.platform === 'win32')(
+    '🔴 731 · a socket is `not-readable` — it cannot be shown as text — never `gone`',
+    async () => {
+      const path = join(root, 'listening.output')
+      const server = createServer()
+      await new Promise<void>((resolve) => server.listen(path, resolve))
+      try {
+        // ⛔ On `main`: `gone` (open(2) refuses a socket with EOPNOTSUPP, and every refusal was `gone`).
+        expect(readWorkflowOutput(path)).toBe('not-readable')
+      } finally {
+        await new Promise<void>((resolve) => server.close(() => resolve()))
+      }
+    },
+  ) // This fixture binds a POSIX-domain socket to a filesystem path.
 
   it('a relative path, and a path with a NUL, are refused before any syscall', () => {
     // A NUL truncates at the syscall boundary, so the name that would be opened is not the name we
@@ -194,15 +200,18 @@ describe('what it refuses, and why each refusal is its own word (108)', () => {
     expect(readWorkflowOutput(root)).toBe('not-readable')
   })
 
-  it('a fifo is refused rather than read — it would block the MAIN process forever', () => {
-    // ⚠️ **The one refusal whose absence is a HANG rather than a hole — and this test found it.**
-    // The module originally opened without `O_NONBLOCK` and checked `isFile()` afterwards, on the
-    // theory that `readSync` was the blocking call. It is `open(2)` itself: on a fifo with no
-    // writer it never returns, in the process that must never stutter. Written as a normal
-    // assertion, this test froze the whole suite instead of failing — which is why the fix is
-    // `O_NONBLOCK` on the open and not a better check after it.
-    const fifo = join(root, 'pipe.output')
-    execFileSync('mkfifo', [fifo])
-    expect(readWorkflowOutput(fifo)).toBe('not-readable')
-  })
+  it.skipIf(process.platform === 'win32')(
+    'a fifo is refused rather than read — it would block the MAIN process forever',
+    () => {
+      // ⚠️ **The one refusal whose absence is a HANG rather than a hole — and this test found it.**
+      // The module originally opened without `O_NONBLOCK` and checked `isFile()` afterwards, on the
+      // theory that `readSync` was the blocking call. It is `open(2)` itself: on a fifo with no
+      // writer it never returns, in the process that must never stutter. Written as a normal
+      // assertion, this test froze the whole suite instead of failing — which is why the fix is
+      // `O_NONBLOCK` on the open and not a better check after it.
+      const fifo = join(root, 'pipe.output')
+      execFileSync('mkfifo', [fifo])
+      expect(readWorkflowOutput(fifo)).toBe('not-readable')
+    },
+  ) // This fixture requires POSIX mkfifo; Windows named pipes have another pathname form.
 })

@@ -60,7 +60,7 @@ async function settings(
   return { m, tab }
 }
 
-it('opens Providers by default and moves the existing content between four tabs', async () => {
+it('opens Providers by default and moves the existing Settings content between tabs', async () => {
   const { m, tab } = await settings()
   expect(m.q('settings-screen').querySelector('h1')?.textContent).toBe('Settings')
   expect(m.all('provider-card')).toHaveLength(2)
@@ -71,6 +71,9 @@ it('opens Providers by default and moves the existing content between four tabs'
   expect(tab.value).toBe('tools')
   expect(m.all('tools-register')).toHaveLength(1)
   expect(m.all('provider-card')).toHaveLength(0)
+  m.q('settings-tab-skills').click()
+  await nextTick()
+  expect(m.all('skills-section')).toHaveLength(1)
   m.q('settings-tab-themes').click()
   await nextTick()
   expect(m.all('themes-section')).toHaveLength(1)

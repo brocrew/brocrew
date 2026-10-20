@@ -211,6 +211,9 @@ interface ContractLedger {
  * heuristic anywhere in that chain — an optional member is a key like any other.
  */
 const CONTRACT_MEMBERS: Record<keyof SessionHandle, string> = {
+  builtInSkillsConfirmed:
+    'whether SDK init confirmed the installed skill catalogue for this launch',
+  refreshManagedPlugins: 'refresh managed tool attachments at a turn boundary where supported',
   ref: 'stable identity, or null until the provider gives one (011)',
   launchedAs: 'the id a launch asked for, before any init names it — never a ref (722 · R79)',
   agentInfo: 'what the provider says it is running (081)',
@@ -901,6 +904,9 @@ const codexDriver: Driver = {
       'the approval profile rides on `turn/start`, so the SERVER does the not-asking and there is ' +
       'no card for this adapter to suppress (034, measured on the live app-server)',
     gaps: {
+      refreshManagedPlugins:
+        'Codex has no per-thread MCP configuration update; the managed wrapper reopens between turns',
+      builtInSkillsConfirmed: 'Codex does not use the Claude SDK skill catalogue confirmation',
       // ⚑ **722 · a gap by design**: the thread id is in `thread/start`'s own answer, so a Codex
       // launch has its ref before `start()` resolves and there is no window for this to cover.
       launchedAs:
@@ -1039,6 +1045,10 @@ const fakeDriver: Driver = {
     wholesaleGrant: 'standing',
     unattended: 'no-card',
     gaps: {
+      refreshManagedPlugins:
+        'The base Fake has no external plugin connection; wrapper controls supply a refresh fake',
+      builtInSkillsConfirmed:
+        'The base Fake receives no SDK init; receipt tests supply their own method',
       launchedAs: 'the Fake confirms its ref at construction — there is no pre-init window (722)',
       agentInfo:
         'the Fake runs no model, so it has nothing a provider reported; `agent-rows.test.ts` ' +
@@ -1644,6 +1654,8 @@ describe('conformance · the gap ledger (186)', () => {
       [
         'fake',
         [
+          'refreshManagedPlugins',
+          'builtInSkillsConfirmed',
           // 722 · R79: a pre-init window only a Claude launch has — the Fake's ref is set at birth.
           'launchedAs',
           'agentInfo',
@@ -1733,7 +1745,17 @@ describe('conformance · the gap ledger (186)', () => {
       //
       // ⚑ **`launchedAs` JOINED both doubles' lists in 722, by design**: it covers Claude's window
       // between `start()` and the first init, and a Codex thread id is in `thread/start`'s answer.
-      ['codex', ['launchedAs', 'providerCommands', 'backgroundWork', 'account']],
+      [
+        'codex',
+        [
+          'refreshManagedPlugins',
+          'builtInSkillsConfirmed',
+          'launchedAs',
+          'providerCommands',
+          'backgroundWork',
+          'account',
+        ],
+      ],
     ])
     // Every gap carries a REASON, and a blank one is not a reason. This is what stops the list
     // being closed by writing `''` next to a member somebody did not want to think about.

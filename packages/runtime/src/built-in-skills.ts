@@ -26,18 +26,14 @@ export function validateBuiltInSkills(
   platform: NodeJS.Platform = process.platform,
 ): void {
   const path = rulesOf(platform)
-  if (
-    !isQualified(context.root, platform) ||
-    context.skills.length < 6 ||
-    context.skills.length > 8
-  ) {
+  if (!isQualified(context.root, platform) || context.skills.length > 64) {
     throw new Error(BUILT_IN_SKILLS_FAILURE)
   }
   const names = new Set<string>()
   for (const skill of context.skills) {
     const bare = provider === 'claude' ? skill.name.replace(/^brobot:/, '') : skill.name
     if (
-      !/^[a-z]+(?:-[a-z]+)*$/.test(bare) ||
+      !/^[a-z][a-z0-9-]{0,63}$/.test(bare) ||
       names.has(skill.name) ||
       (provider === 'claude' && skill.name !== `brobot:${bare}`) ||
       skill.path !==
@@ -51,9 +47,14 @@ export function validateBuiltInSkills(
   }
 }
 
-export function claudeBuiltInSkillOptions(context: BuiltInSkillsContext) {
+export function claudeBuiltInSkillOptions(context: BuiltInSkillsContext, sharedRoot?: string) {
   validateBuiltInSkills(context, 'claude')
-  return { plugins: [{ type: 'local' as const, path: context.root }] }
+  return {
+    plugins: [
+      { type: 'local' as const, path: context.root },
+      ...(sharedRoot ? [{ type: 'local' as const, path: sharedRoot }] : []),
+    ],
+  }
 }
 
 /**
@@ -193,9 +194,12 @@ export async function registerCodexBuiltInSkills(
   context: BuiltInSkillsContext,
   cwd: string,
   request: (method: 'skills/extraRoots/set' | 'skills/list', params: object) => Promise<unknown>,
+  sharedRoot?: string,
 ): Promise<void> {
   validateBuiltInSkills(context, 'codex')
-  await request('skills/extraRoots/set', { extraRoots: [context.root] })
+  await request('skills/extraRoots/set', {
+    extraRoots: [context.root, ...(sharedRoot ? [sharedRoot] : [])],
+  })
   const catalogue = await request('skills/list', { cwds: [cwd], forceReload: true })
   verifyCodexBuiltInSkills(catalogue, context, cwd)
 }

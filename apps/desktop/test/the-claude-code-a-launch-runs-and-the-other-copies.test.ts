@@ -1,5 +1,7 @@
 import {
+  appendFileSync,
   chmodSync,
+  linkSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -9,7 +11,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, sep } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   findClaudeProgram,
@@ -18,6 +20,28 @@ import {
 } from '../src/main/runtime/claude-program'
 import { claudeAnswer, providerVersionsReader } from '../src/main/runtime/provider-versions'
 import { A_STANDING_WARNS } from '../src/shared/runtime-ipc'
+
+const versionProgram = vi.hoisted(() => ({
+  run: null as
+    null | ((file: string, callback: (error: Error | null, output: string) => void) => boolean),
+}))
+
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>()
+  return {
+    ...actual,
+    execFile: ((...args: unknown[]) => {
+      const [file, , , callback] = args as [
+        string,
+        string[],
+        object,
+        (error: Error | null, output: string) => void,
+      ]
+      if (versionProgram.run?.(file, callback)) return {} as ReturnType<typeof actual.execFile>
+      return Reflect.apply(actual.execFile, actual, args) as ReturnType<typeof actual.execFile>
+    }) as typeof actual.execFile,
+  }
+})
 
 /**
  * The Claude Code a launch runs, and the other copies installed beside it: the first one found runs,
@@ -267,16 +291,28 @@ describe('an answer is kept only while the same file answers', () => {
   let dir: string
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'brobot2-claude-copies-'))
+    if (process.platform === 'win32') {
+      versionProgram.run = (file, callback) => {
+        if (!file.startsWith(`${dir}${sep}`)) return false
+        appendFileSync(`${file}.asked`, 'x\n')
+        callback(null, `${readFileSync(file, 'utf8')} (Claude Code)\n`)
+        return true
+      }
+    }
   })
   afterEach(() => {
+    versionProgram.run = null
     vi.restoreAllMocks()
     rmSync(dir, { recursive: true, force: true })
   })
 
   /** A Claude Code that prints this version and counts how often it was asked. */
   const aClaude = (path: string, version: string): string => {
-    writeFileSync(path, `#!/bin/sh\necho x >> "${path}.asked"\necho "${version} (Claude Code)"\n`)
-    chmodSync(path, 0o755)
+    if (process.platform === 'win32') writeFileSync(path, version)
+    else {
+      writeFileSync(path, `#!/bin/sh\necho x >> "${path}.asked"\necho "${version} (Claude Code)"\n`)
+      chmodSync(path, 0o755)
+    }
     return path
   }
   const noCodex = (): never => {
@@ -314,7 +350,8 @@ describe('an answer is kept only while the same file answers', () => {
     const before = aClaude(join(versions, '2.1.290'), '2.1.290')
     const after = aClaude(join(versions, '2.1.292'), '2.1.292')
     const link = join(dir, 'claude')
-    symlinkSync(before, link)
+    if (process.platform === 'win32') linkSync(before, link)
+    else symlinkSync(before, link)
     const read = providerVersionsReader(noCodex, () => ({
       path: link,
       from: 'native-installer',
@@ -323,7 +360,8 @@ describe('an answer is kept only while the same file answers', () => {
     }))
     expect((await read()).claude.version).toBe('2.1.290')
     unlinkSync(link)
-    symlinkSync(after, link)
+    if (process.platform === 'win32') linkSync(after, link)
+    else symlinkSync(after, link)
     const { claude } = await read()
     expect(claude.version).toBe('2.1.292')
     expect(claude.program?.standing).toBe('newer-than-tested')
@@ -348,8 +386,11 @@ describe('an answer is kept only while the same file answers', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     const first = aClaude(join(dir, 'first'), '2.1.292')
     const silent = join(dir, 'silent')
-    writeFileSync(silent, `#!/bin/sh\necho x >> "${silent}.asked"\necho "hello"\n`)
-    chmodSync(silent, 0o755)
+    if (process.platform === 'win32') writeFileSync(silent, 'hello')
+    else {
+      writeFileSync(silent, `#!/bin/sh\necho x >> "${silent}.asked"\necho "hello"\n`)
+      chmodSync(silent, 0o755)
+    }
     const read = providerVersionsReader(noCodex, () => ({
       path: first,
       from: 'native-installer',

@@ -290,7 +290,17 @@ it('the IPC host uses only the worker answer, and never falls back on failure', 
     read: vi.fn(async () => expected),
     close: vi.fn(async () => {}),
   }
+  const imports = vi.fn(async () => [
+    {
+      id: 'fictional-import',
+      at: 500,
+      name: 'recipe-check',
+      existing: 'recipe-check',
+      imported: 'recipe-check-2',
+    },
+  ])
   const host = new RuntimeHost({
+    skillImports: imports,
     store,
     createRuntime: () => new FakeRuntime('codex'),
     discoverSessions: NO_DISCOVERY,
@@ -327,8 +337,14 @@ it('the IPC host uses only the worker answer, and never falls back on failure', 
     read: expected.read,
     lines: expected.lines,
     capped: expected.capped,
+    skillImports: await imports(),
   })
-  expect(worker.read).toHaveBeenCalledExactlyOnceWith(query)
+  expect(imports).toHaveBeenCalledWith(100, 1000)
+  imports.mockRejectedValueOnce(new Error('fictional history read failure'))
+  await expect(executeRuntimeCommand(host, sink, command)).resolves.toMatchObject({
+    read: { rowsUnread: expected.read.rowsUnread + 1 },
+  })
+  expect(worker.read).toHaveBeenNthCalledWith(1, query)
   expect(scan).not.toHaveBeenCalled()
   expect(oldScan).not.toHaveBeenCalled()
   expect(naming).not.toHaveBeenCalled()

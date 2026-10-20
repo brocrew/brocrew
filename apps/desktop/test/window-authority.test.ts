@@ -311,6 +311,7 @@ const CLASSIFIED: Record<
    * ownership, and which this boundary knows nothing about. Its census lives with the rails, in
    * `the-rails-before-anything-can-reach-them.test.ts`, where the reason for it is.
    */
+  skills: 'no session',
   agentIdentities: 'no session',
   setCapabilities: 'no session',
   // ⚑ **516 · the registry's two writes name no conversation either.** ⛔ A registered server is

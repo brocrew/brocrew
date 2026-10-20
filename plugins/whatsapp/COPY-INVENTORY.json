@@ -1,0 +1,359 @@
+{
+  "sources": {
+    "whatsapp-mcp": {
+      "commit": "7d6a06dcdce1f01dfb24f60e1030d5efba9f3b88",
+      "license": "MIT, Copyright (c) 2025 Luke Harries"
+    },
+    "source project": {
+      "commit": "59c886cde0428ae98290e2397ffe5dea4401ca58"
+    },
+    "brocrew": {
+      "commit": "95537b28febd9c3439cde017e2200be4241b46af"
+    }
+  },
+  "notCopied": "No WhatsApp session, keys, message store, contacts, media, drafts, the security-code sender, notify-me, panels or container build.",
+  "files": [
+    {
+      "destination": "plugins/whatsapp/bridge/UPSTREAM-LICENSE",
+      "sources": [
+        {
+          "project": "whatsapp-mcp",
+          "path": "LICENSE",
+          "sha256": "86861f8ef4b108e301646f0f599eda922838d14c20303115c243338a70f9c3a0"
+        }
+      ],
+      "changes": "Unchanged MIT notice.",
+      "destinationSha256": "86861f8ef4b108e301646f0f599eda922838d14c20303115c243338a70f9c3a0"
+    },
+    {
+      "destination": "plugins/whatsapp/bridge/main.go",
+      "sources": [
+        {
+          "project": "whatsapp-mcp",
+          "path": "whatsapp-bridge/main.go",
+          "lines": "1-49, 727-1008",
+          "sha256": "0f8a6ac2875e77b9ef4000c75b4722ac35fd7e4770042164bd050fba5e54b998"
+        }
+      ],
+      "changes": "Configuration on standard input; loopback listener on a free port; exits on stdin close, signal, unlink (code 3); the owner-only umask is skipped on Windows.",
+      "destinationSha256": "a6a1e3acb89de1a0199fa46eefe0e4f4d4325f42ab12b588d2dc7a96c1e452d5"
+    },
+    {
+      "destination": "plugins/whatsapp/bridge/store.go",
+      "sources": [
+        {
+          "project": "whatsapp-mcp",
+          "path": "whatsapp-bridge/main.go",
+          "lines": "50-175",
+          "sha256": "0f8a6ac2875e77b9ef4000c75b4722ac35fd7e4770042164bd050fba5e54b998"
+        },
+        {
+          "project": "source project",
+          "path": "infra/whatsapp/whatsapp-bridge-upsert.patch",
+          "sha256": "141121c4de5799d0770b2d1a8066fa6398760e2dd37a449a4057bbe46d573bac"
+        }
+      ],
+      "changes": "modernc SQLite; private paths; upsert keeps own-send marks; media fields; sent_by_agent column.",
+      "destinationSha256": "7363f939f053512336f4a8b876d856682a9e72b744ea7f0111e09b9407e66de8"
+    },
+    {
+      "destination": "plugins/whatsapp/bridge/session.go",
+      "sources": [
+        {
+          "project": "whatsapp-mcp",
+          "path": "whatsapp-bridge/main.go",
+          "lines": "176-205, 375-487, 803-905, 1009-1186",
+          "sha256": "0f8a6ac2875e77b9ef4000c75b4722ac35fd7e4770042164bd050fba5e54b998"
+        },
+        {
+          "project": "source project",
+          "path": "infra/whatsapp/bridge_pairing.go",
+          "sha256": "959733b645e26f828e56a63fa99e4eaa479451d120638cc1791265d10d13b18c"
+        },
+        {
+          "project": "source project",
+          "path": "infra/whatsapp/whatsapp-bridge-pairing.patch",
+          "sha256": "699160274d48aba5a4d7a06c1e84cf7dc2c1bd8b63db387d099fef18f9cd565d"
+        },
+        {
+          "project": "source project",
+          "path": "infra/whatsapp/whatsapp-bridge-privacy.patch",
+          "sha256": "b15f54d736adfb6423caf0cec3219fddd978d13dd4bd42fb370386ab016df90e"
+        },
+        {
+          "project": "source project",
+          "path": "infra/whatsapp/whatsapp-bridge-compat.patch",
+          "sha256": "ad95860ee580eb2271ffbc7deda204b5ff90bbd2b9a15e9959eb86b44e301c65"
+        }
+      ],
+      "changes": "QR as a module pattern for the page, never logged; states for the page; logout ends the run; no broadcast or newsletter chats. The settings Refresh bypasses the group cache.",
+      "destinationSha256": "81dbfb3f62ca0c3a558d39b3629a43d89ea68b93c982c3962303f09c1c96403a"
+    },
+    {
+      "destination": "plugins/whatsapp/bridge/send.go",
+      "sources": [
+        {
+          "project": "whatsapp-mcp",
+          "path": "whatsapp-bridge/main.go",
+          "lines": "206-374",
+          "sha256": "0f8a6ac2875e77b9ef4000c75b4722ac35fd7e4770042164bd050fba5e54b998"
+        },
+        {
+          "project": "source project",
+          "path": "infra/whatsapp/bridge_groups.go",
+          "lines": "1-330",
+          "sha256": "2f408b242e13e9de233a31c3c11d12388c388e7f3bbedc81c5c766eceb2ca5f5"
+        },
+        {
+          "project": "source project",
+          "path": "infra/whatsapp/bridge_own.go",
+          "sha256": "924917b244bacfc84a5823c79cdf5d6236905b27ba26cf545596864133c58dbd"
+        }
+      ],
+      "changes": "Sends only to the account's groups; file opened without links inside the files folder, size and SHA-256 checked, upload hash checked; own sends stored.",
+      "destinationSha256": "ba6af6844dec82d644cb5e710ae841904ccb9c7f9bfd86f3e0fc0dcf3bd21cec"
+    },
+    {
+      "destination": "plugins/whatsapp/bridge/media.go",
+      "sources": [
+        {
+          "project": "whatsapp-mcp",
+          "path": "whatsapp-bridge/main.go",
+          "lines": "488-678",
+          "sha256": "0f8a6ac2875e77b9ef4000c75b4722ac35fd7e4770042164bd050fba5e54b998"
+        },
+        {
+          "project": "source project",
+          "path": "infra/whatsapp/bridge_groups.go",
+          "lines": "331-573",
+          "sha256": "2f408b242e13e9de233a31c3c11d12388c388e7f3bbedc81c5c766eceb2ca5f5"
+        },
+        {
+          "project": "source project",
+          "path": "servers/whatsapp_media.py",
+          "sha256": "8449452e4c0d9e2cad75a9eb013fab4e97a79f8815ae74008f09ba279dddd1c9"
+        }
+      ],
+      "changes": "Photos and PDFs only, 25 MB, type from bytes, exclusive write in the downloads folder, re-encoded preview.",
+      "destinationSha256": "0a406668487271d9e0417364d26ecc6bd2252c205d117d9884be84e3730152a5"
+    },
+    {
+      "destination": "plugins/whatsapp/bridge/sniff.go",
+      "sources": [
+        {
+          "project": "source project",
+          "path": "infra/whatsapp/bridge_groups.go",
+          "lines": "574-992",
+          "sha256": "2f408b242e13e9de233a31c3c11d12388c388e7f3bbedc81c5c766eceb2ca5f5"
+        }
+      ],
+      "changes": "Copied; size limits restated for 0.1.0 (documents 100 MB).",
+      "destinationSha256": "e36f04a974d27d22112bf5e884c5b93c1459d90808393ec05b2dafa2a18e1138"
+    },
+    {
+      "destination": "plugins/whatsapp/bridge/archive.go",
+      "sources": [
+        {
+          "project": "source project",
+          "path": "infra/whatsapp/bridge_archive.go",
+          "sha256": "7d9cedcdddc7d886d2bbcaecccc725873f79a1c7a3f870d930619f31a46fd9ac"
+        }
+      ],
+      "changes": "Copied; comments that named other files removed.",
+      "destinationSha256": "6588c2c697ee08485a96328dc611dbc5caa2d9e67e4594a8a842d25a72a93888"
+    },
+    {
+      "destination": "plugins/whatsapp/bridge/archive_test.go",
+      "sources": [
+        {
+          "project": "source project",
+          "path": "infra/whatsapp/bridge_archive_test.go",
+          "sha256": "c4486ee41d6571b96e475649e50ef362a4d08254fb92a9367b33ac808b4629d9"
+        }
+      ],
+      "changes": "Copied; size pins follow the 100 MB limit.",
+      "destinationSha256": "0be9c7a315062ee006c117c38dd0bb1dd8d2274310f240ce2856d78f7cd63c1f"
+    },
+    {
+      "destination": "plugins/whatsapp/bridge/sniff_test.go",
+      "sources": [
+        {
+          "project": "source project",
+          "path": "infra/whatsapp/bridge_groups_test.go",
+          "sha256": "6426f0b934cee5eb9512c72d87687a6d59c03ac338fee97b86d08f6ec9f85697"
+        }
+      ],
+      "changes": "Limiter, transport and file-typing tests; sizes follow the 0.1.0 limits.",
+      "destinationSha256": "95b48cc9d5e362961dbc1e0415afe791d0488390b789b2993d3777d5944876ac"
+    },
+    {
+      "destination": "plugins/whatsapp/bridge/read.go",
+      "sources": [
+        {
+          "project": "whatsapp-mcp",
+          "path": "whatsapp-mcp-server/whatsapp.py",
+          "lines": "124-620",
+          "sha256": "dc0e013ece15aab71c53433d8bdcaa84912c4a5f5b98df727914e7ef01b5ed1b"
+        }
+      ],
+      "changes": "Queries rewritten as bridge routes; searches escape % and _.",
+      "destinationSha256": "765bd711019c65341eddf2a3f56aa0b79bbc29543b50a7fddd11bd5a4326f75a"
+    },
+    {
+      "destination": "plugins/whatsapp/bridge/api.go",
+      "sources": [
+        {
+          "project": "whatsapp-mcp",
+          "path": "whatsapp-bridge/main.go",
+          "lines": "679-726",
+          "sha256": "0f8a6ac2875e77b9ef4000c75b4722ac35fd7e4770042164bd050fba5e54b998"
+        }
+      ],
+      "changes": "Replaced: token-only loopback routes, bounded JSON bodies, no Origin. The groups request accepts a refresh flag.",
+      "destinationSha256": "975fd21bdc9e35ebf65df2d79f027f88fbef375aaddb412c4c22057a34515853"
+    },
+    {
+      "destination": "plugins/whatsapp/src/tools/index.ts",
+      "sources": [
+        {
+          "project": "whatsapp-mcp",
+          "path": "whatsapp-mcp-server/main.py",
+          "sha256": "5c9c59adcab09d6ee0bedfe2e9eb68c3dca47616cb669f096d16f714ad78f3a3"
+        },
+        {
+          "project": "source project",
+          "path": "servers/whatsapp_groups.py",
+          "sha256": "6d72e2fbecf8cfabc6efb113d0c97fc370c43f9612487a2b17e908d8362a473f"
+        },
+        {
+          "project": "source project",
+          "path": "servers/whatsapp_hub.py",
+          "sha256": "36203330bf996251e46100fb3d86d9289c5250a556a3762b2bdbcc8ca3084ffe"
+        }
+      ],
+      "changes": "Seven tools; reading behind the person's switch; sending only to writable groups; fixed refusals.",
+      "destinationSha256": "e9f853f55d4364223c9fe400e6d05498f6c28873740b004c87b0377c3d7bfadc"
+    },
+    {
+      "destination": "plugins/whatsapp/src/policy.ts",
+      "sources": [
+        {
+          "project": "source project",
+          "path": "servers/whatsapp_groups.py",
+          "lines": "28-440",
+          "sha256": "6d72e2fbecf8cfabc6efb113d0c97fc370c43f9612487a2b17e908d8362a473f"
+        }
+      ],
+      "changes": "Send limits and duplicate rule in Node.",
+      "destinationSha256": "93ef13e67d9cb3360b507bb5a4308939bbbe4dc546cc9b68ca28e67762a0ed8b"
+    },
+    {
+      "destination": "plugins/whatsapp/src/localFileGuard.ts",
+      "sources": [
+        {
+          "project": "brocrew",
+          "path": "plugins/chrome/src/localFileGuard.ts",
+          "sha256": "a61a7c5ca65ceb25661addaffc4969bbe2842ab38dac4ffe28d4c5842786afb0"
+        }
+      ],
+      "changes": "One root, absolute paths only; no home mapping or whole-file read.",
+      "destinationSha256": "5f4363e8672784993adf724be4c6b075a25e69606d77652cd3d48b9292a4806f"
+    },
+    {
+      "destination": "plugins/whatsapp/src/http/auth.ts",
+      "sources": [
+        {
+          "project": "brocrew",
+          "path": "plugins/chrome/src/http/auth.ts",
+          "sha256": "17d7a75c22b23dc290975a38d1eeb5d99eea3f48b7824b0c0f54e59b5fc3bd87"
+        }
+      ],
+      "changes": "Unchanged.",
+      "destinationSha256": "17d7a75c22b23dc290975a38d1eeb5d99eea3f48b7824b0c0f54e59b5fc3bd87"
+    },
+    {
+      "destination": "plugins/whatsapp/src/logger.ts",
+      "sources": [
+        {
+          "project": "brocrew",
+          "path": "plugins/chrome/src/logger.ts",
+          "sha256": "ab403f5587a0ec6b478223bbc1171986277a09a9857b75d97de50363830d3589"
+        }
+      ],
+      "changes": "Unchanged.",
+      "destinationSha256": "ab403f5587a0ec6b478223bbc1171986277a09a9857b75d97de50363830d3589"
+    },
+    {
+      "destination": "plugins/whatsapp/src/privatePaths.ts",
+      "sources": [
+        {
+          "project": "brocrew",
+          "path": "plugins/chrome/src/privatePaths.ts",
+          "sha256": "ab551f910e464ce8fbc0a254382fe534aee73446837fe51ba4f394a3118153f5"
+        }
+      ],
+      "changes": "Unchanged.",
+      "destinationSha256": "ab551f910e464ce8fbc0a254382fe534aee73446837fe51ba4f394a3118153f5"
+    },
+    {
+      "destination": "plugins/whatsapp/src/shared/httpMcpServer.ts",
+      "sources": [
+        {
+          "project": "brocrew",
+          "path": "plugins/chrome/src/shared/httpMcpServer.ts",
+          "sha256": "97b5b9d122ddebc88526ce2c700b870d5db03fb9a507fb3a5e35088005f0f255"
+        }
+      ],
+      "changes": "Loopback host fixed; unused options removed.",
+      "destinationSha256": "d27905c7f609ee604c9ea5ea36708d574f22d8aec466f3fd785526943c041b16"
+    },
+    {
+      "destination": "plugins/whatsapp/src/shared/requestSignal.ts",
+      "sources": [
+        {
+          "project": "brocrew",
+          "path": "plugins/chrome/src/shared/requestSignal.ts",
+          "sha256": "eb6c2f737d1933211d4c8d101f8af9f70e973dc952f3f6be17aaec6b920f89b1"
+        }
+      ],
+      "changes": "Unchanged.",
+      "destinationSha256": "eb6c2f737d1933211d4c8d101f8af9f70e973dc952f3f6be17aaec6b920f89b1"
+    },
+    {
+      "destination": "plugins/whatsapp/src/shared/strictArgs.ts",
+      "sources": [
+        {
+          "project": "brocrew",
+          "path": "plugins/chrome/src/shared/strictArgs.ts",
+          "sha256": "40d2792cbfbe4ae7c7e717d46543f04350a991579ec049c38da6f1775c06717e"
+        }
+      ],
+      "changes": "Strings and numbers only.",
+      "destinationSha256": "3410244ca1fe0da558a3d471813f2445918c729ceb382c190db9fb65f662bea1"
+    },
+    {
+      "destination": "plugins/whatsapp/src/shared/toolServer.ts",
+      "sources": [
+        {
+          "project": "brocrew",
+          "path": "plugins/chrome/src/shared/toolServer.ts",
+          "sha256": "eb9cd938673ff23dee812dc07dd902203de4d594fd9cf8e54963b77c40fb63bf"
+        }
+      ],
+      "changes": "Image results; no resources.",
+      "destinationSha256": "36c389ff2cf6b03e4ed282b044bdeeb688d6145cc5dfccd3e067595465a6a641"
+    },
+    {
+      "destination": "plugins/whatsapp/src/tools/schema.ts",
+      "sources": [
+        {
+          "project": "brocrew",
+          "path": "plugins/chrome/src/tools/schema.ts",
+          "sha256": "f15d8362fbac6cd7998e5907704bfdb74031a073ac950f943b2441505ac7aa52"
+        }
+      ],
+      "changes": "Strings and numbers only.",
+      "destinationSha256": "73d65ad2174bbe5b01090ce0b7e9ea30cb3361c2da52dfb608845e356227b644"
+    }
+  ]
+}

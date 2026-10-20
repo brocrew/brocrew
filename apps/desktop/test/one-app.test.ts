@@ -837,10 +837,15 @@ describe('one app per userData (198)', () => {
      */
     describe('241 · what must happen before ready', () => {
       const root = readFileSync(join(here, '../src/main/index.ts'), 'utf8')
-      const REGISTER =
-        'protocol.registerSchemesAsPrivileged([ASSET_SCHEME_PRIVILEGES, THEME_SCHEME_PRIVILEGES])'
+      const REGISTER = [
+        'protocol.registerSchemesAsPrivileged([',
+        '  ASSET_SCHEME_PRIVILEGES,',
+        '  THEME_SCHEME_PRIVILEGES,',
+        '  PLUGIN_SCHEME,',
+        '])',
+      ].join('\n')
 
-      it('declares both asset schemes at module scope before ready', () => {
+      it('declares both asset schemes and the isolated plugin scheme at module scope before ready', () => {
         const at = root.indexOf(`\n${REGISTER}`)
         // ⚑ **Column 0 is the assertion.** Anywhere indented is inside something, and inside
         // something is inside a call somebody can put an `await` in front of — which is exactly
@@ -941,7 +946,7 @@ describe('one app per userData (198)', () => {
         // written and the launch would report a broken gate; if the limit were raised, the check
         // could run on a path where the gate fails open — which is the blindness itself.
         expect(check).toContain(`const GATE_SOCKET = 'one-host.sock'`)
-        expect(hostGatePath('/x', 'darwin')).toBe('/x/one-host.sock')
+        expect(hostGatePath('/x', 'darwin')).toBe(join('/x', 'one-host.sock'))
         // ⚠️ **A regex with an end-of-line, and `toContain('… = 104')` was VACUOUS** (found by this
         // dispatch's own mutation run, `M5`, which survived): `104` is a prefix of `1040`, so the
         // assertion passed against a limit raised tenfold — the precise weakening it exists to stop.

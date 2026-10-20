@@ -11,13 +11,15 @@
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "start": "electron-vite build && electron .",
-    "typecheck": "vue-tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.node.json",
+    "typecheck": "vue-tsc --noEmit -p tsconfig.web.json && pnpm run typecheck:node",
+    "typecheck:node": "node --max-old-space-size=3072 node_modules/typescript/bin/tsc --noEmit -p tsconfig.node.json",
     "rebuild:electron": "electron-rebuild -f -w better-sqlite3",
     "db:generate:unstamped": "drizzle-kit generate",
     "db:check": "drizzle-kit check",
-    "package": "electron-vite build && electron-builder --mac --arm64 --config electron-builder.yml",
-    "package:win": "electron-vite build && electron-builder --win --x64 --config electron-builder.yml",
-    "package:mac-beta": "electron-vite build && electron-builder --mac --arm64 --config electron-builder.yml -c.mac.identity=-"
+    "package": "node ../../scripts/check-no-plugin-gate-inputs.mjs && node ../../scripts/prepare-plugin-node.mjs && electron-vite build && electron-builder --mac --arm64 --config electron-builder.yml",
+    "package:win": "node ../../scripts/check-no-plugin-gate-inputs.mjs && node ../../scripts/prepare-plugin-node.mjs && electron-vite build && electron-builder --win --x64 --config electron-builder.yml",
+    "package:mac-beta": "node ../../scripts/check-no-plugin-gate-inputs.mjs && node ../../scripts/prepare-plugin-node.mjs && electron-vite build && electron-builder --mac --arm64 --config electron-builder.yml -c.mac.identity=-",
+    "prepare:plugin-node": "node ../../scripts/prepare-plugin-node.mjs"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.287",

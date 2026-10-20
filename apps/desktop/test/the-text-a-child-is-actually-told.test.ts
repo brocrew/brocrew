@@ -354,7 +354,7 @@ describe('§1 · one instruction set', () => {
       const plain = composeProfileBundle(context())
       const granted = composeProfileBundle(context({ capabilities: GRANTED }))
       expect(plain).toContain(
-        'Save only tested reusable lessons when permitted, without person or project facts.',
+        'Save tested lessons and person-set conventions when permitted; separate task facts.',
       )
       expect(granted).toContain(
         'A specialist may keep work that is small, tightly connected, covered by an exact installed procedure, or cheaper to do than hand off.',

@@ -307,7 +307,9 @@ describe('theme tools use the workspace store and carry their facts once', () =>
         reason: one.reason,
       })
       expect(refused.text).toContain(one.privateText)
-      expect(JSON.stringify(refused.structured!['detail'])).toContain(one.privateText)
+      expect(JSON.stringify(refused.structured!['detail'])).toContain(
+        JSON.stringify(one.privateText).slice(1, -1),
+      )
       const kept = receipts.slice(before)
       expect(kept).toHaveLength(1)
       expect(kept[0]).toEqual({

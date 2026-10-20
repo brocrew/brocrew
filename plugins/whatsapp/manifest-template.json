@@ -1,0 +1,228 @@
+{
+  "format": 1,
+  "id": "whatsapp",
+  "version": "0.1.3",
+  "sourceCommit": "0000000000000000000000000000000000000000",
+  "platforms": [
+    {
+      "os": "darwin",
+      "cpu": "arm64"
+    }
+  ],
+  "hostApi": {
+    "major": 1,
+    "minMinor": 0,
+    "maxMinor": 0,
+    "requiredFeatures": []
+  },
+  "toolApi": {
+    "major": 1,
+    "minMinor": 0,
+    "maxMinor": 0,
+    "requiredFeatures": []
+  },
+  "uiApi": {
+    "major": 1,
+    "minMinor": 0,
+    "maxMinor": 0,
+    "requiredFeatures": []
+  },
+  "dataSchema": 1,
+  "files": [],
+  "server": {
+    "entry": "server.mjs",
+    "mcpPath": "/mcp",
+    "adminPath": "/v1"
+  },
+  "skills": [],
+  "serviceTemplates": [],
+  "ui": {
+    "entry": "ui/index.html",
+    "assets": [
+      {
+        "path": "ui/index.html",
+        "mime": "text/html"
+      },
+      {
+        "path": "ui/app.js",
+        "mime": "text/javascript"
+      },
+      {
+        "path": "ui/style.css",
+        "mime": "text/css"
+      }
+    ],
+    "methodSchemas": {
+      "read": {
+        "type": "object",
+        "properties": {
+          "surface": {
+            "type": "string",
+            "enum": ["whatsapp"],
+            "maxLength": 8
+          }
+        },
+        "required": ["surface"],
+        "additionalProperties": false
+      },
+      "subscribe": {
+        "type": "object",
+        "properties": {
+          "surface": {
+            "type": "string",
+            "enum": ["whatsapp"],
+            "maxLength": 8
+          }
+        },
+        "required": ["surface"],
+        "additionalProperties": false
+      },
+      "unsubscribe": {
+        "type": "object",
+        "properties": {
+          "subscriptionId": {
+            "type": "string",
+            "maxLength": 64
+          }
+        },
+        "required": ["subscriptionId"],
+        "additionalProperties": false
+      },
+      "proposeConfig": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "link-phone",
+              "unlink-phone",
+              "set-read",
+              "set-prefix",
+              "set-group-write",
+              "refresh-groups"
+            ],
+            "maxLength": 32
+          },
+          "group": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": ["action"],
+        "additionalProperties": false
+      }
+    },
+    "texts": [
+      {
+        "id": "title",
+        "text": "WhatsApp"
+      },
+      {
+        "id": "not-linked",
+        "text": "Not linked."
+      },
+      {
+        "id": "linked",
+        "text": "Linked."
+      },
+      {
+        "id": "connecting",
+        "text": "Connecting…"
+      },
+      {
+        "id": "unavailable",
+        "text": "Plugin unavailable. Try again."
+      },
+      {
+        "id": "link-phone",
+        "text": "Link a phone"
+      },
+      {
+        "id": "scan",
+        "text": "On your phone, open WhatsApp → Settings → Linked devices → Link a device, and scan this code."
+      },
+      {
+        "id": "code-expired",
+        "text": "Code expired."
+      },
+      {
+        "id": "new-code",
+        "text": "Show a new code"
+      },
+      {
+        "id": "log-out",
+        "text": "Log out"
+      },
+      {
+        "id": "log-out-confirm",
+        "text": "Log out of WhatsApp? Agents lose WhatsApp until you link a phone again."
+      },
+      {
+        "id": "remove-on-phone",
+        "text": "Logged out here. Also remove this device on your phone: WhatsApp → Linked devices."
+      },
+      {
+        "id": "read",
+        "text": "Read conversations"
+      },
+      {
+        "id": "read-help",
+        "text": "Agents can read your chats, messages and contacts."
+      },
+      {
+        "id": "groups",
+        "text": "Groups"
+      },
+      {
+        "id": "groups-help",
+        "text": "Agents can send only to groups you turn on."
+      },
+      {
+        "id": "can-write",
+        "text": "Can write"
+      },
+      {
+        "id": "no-groups",
+        "text": "No groups yet."
+      },
+      {
+        "id": "prefix",
+        "text": "Start messages with 🤖"
+      },
+      {
+        "id": "prefix-help",
+        "text": "Messages agents send begin with 🤖."
+      },
+      {
+        "id": "filter-groups",
+        "text": "Filter groups"
+      },
+      {
+        "id": "refresh",
+        "text": "Refresh"
+      },
+      {
+        "id": "refreshing",
+        "text": "Refreshing…"
+      }
+    ]
+  },
+  "permissions": {
+    "description": "Links to your WhatsApp account as a linked device. Agents can read your chats only while Read conversations is on, and send only to the groups you turn on. The session and messages stay in the plugin's private storage.",
+    "resources": [
+      {
+        "id": "whatsapp",
+        "label": "WhatsApp chats and the groups you turn on",
+        "read": true,
+        "write": true
+      }
+    ]
+  },
+  "dataCompatibility": {
+    "minSchema": 1,
+    "maxSchema": 1
+  }
+}

@@ -24,7 +24,6 @@ import {
 } from './database-facts'
 import {
   assertOwnedPathsAreReal,
-  contentAt,
   copyDurably,
   errorCode,
   nodeFs,
@@ -53,6 +52,8 @@ import {
 } from './layout'
 import { CHECKPOINT_LINE } from './log-lines'
 import { APP_STATE_FILES } from './state-files'
+import { copySkillTree, readSkillTree, stateContentAt as contentAt } from './trees'
+import { SKILL_TREES, SKILLS_CONVERSION_FILE } from '../skills/shared-paths'
 
 /**
  * The checked copies in `backups/`: whether a start needs one, making one, which ones this build
@@ -771,6 +772,30 @@ async function copyStateFiles(
   folder: string,
   fs: RecoveryFs,
 ): Promise<ManifestFile[]> {
+  const names = [...SKILL_TREES, SKILLS_CONVERSION_FILE]
+  const states = (root: string) => Promise.all(names.map((name) => contentAt(join(root, name), fs)))
+  let last: unknown = new Error('Skills could not be read.')
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const before = JSON.stringify(await states(userData))
+      const result = await copyStateFilesOnce(userData, folder, fs)
+      if (
+        JSON.stringify(await states(userData)) === before &&
+        JSON.stringify(await states(folder)) === before
+      )
+        return result
+    } catch (error) {
+      last = error
+    }
+  }
+  throw last
+}
+
+async function copyStateFilesOnce(
+  userData: string,
+  folder: string,
+  fs: RecoveryFs,
+): Promise<ManifestFile[]> {
   const files: ManifestFile[] = []
   for (const file of APP_STATE_FILES) {
     const source = stateFile(userData, file)
@@ -779,19 +804,21 @@ async function copyStateFiles(
       await assertOwnedPathsAreReal(userData, [copy], fs)
       await retrying(async () => {
         // A try a briefly held file stopped may have left part of a copy.
-        await fs.rm(copy, { force: true })
-        await copyDurably(source, copy, fs)
+        await fs.rm(copy, { recursive: file.kind === 'tree', force: true })
+        if (file.kind === 'tree') await copySkillTree(source, copy, fs)
+        else await copyDurably(source, copy, fs)
       })
     } catch (error) {
       if (errorCode(error) !== 'ENOENT' || (await pathExists(source, fs))) throw error
       files.push({ name: file.name, present: false })
       continue
     }
+    const tree = file.kind === 'tree' ? await readSkillTree(copy, fs) : null
     files.push({
       name: file.name,
       present: true,
-      bytes: (await fs.lstat(copy)).size,
-      sha256: await sha256Of(copy, fs),
+      bytes: tree?.bytes ?? (await fs.lstat(copy)).size,
+      sha256: tree?.sha256 ?? (await sha256Of(copy, fs)),
     })
   }
   return files
@@ -932,7 +959,11 @@ async function unfinished(
     const inside = await lstatOrNull(join(folder, entry), fs)
     if (inside === null) continue
     changedAt = Math.max(changedAt, inside.mtimeMs)
-    if (!inside.isFile() || !isTheWritersName(entry)) onlyTheWritersFiles = false
+    if (
+      !(inside.isFile() || (inside.isDirectory() && SKILL_TREES.includes(entry))) ||
+      !isTheWritersName(entry)
+    )
+      onlyTheWritersFiles = false
     if (entry === UNFINISHED_FILE && inside.isFile()) marked = true
   }
   return { kind: 'unfinished', changedAt, marked, onlyTheWritersFiles }
@@ -967,7 +998,9 @@ async function wholeness(
     } catch {
       return 'unknown'
     }
-    if (stats === null || !stats.isFile() || stats.size !== bytes) return 'not-whole'
+    if (SKILL_TREES.includes(name)) {
+      if (!stats?.isDirectory() || stats.isSymbolicLink()) return 'not-whole'
+    } else if (stats === null || !stats.isFile() || stats.size !== bytes) return 'not-whole'
   }
   return 'whole'
 }

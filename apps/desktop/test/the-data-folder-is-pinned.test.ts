@@ -78,7 +78,7 @@ describe('§1 · the pin', () => {
       expect(found, `index.ts no longer has ${code}`).toBeGreaterThan(-1)
       return found
     }
-    const pinned = at('\npinTheDataFolder(app)\n')
+    const pinned = at('\n  pinTheDataFolder(app)\n')
     expect(pinned).toBeLessThan(at('\nprotocol.registerSchemesAsPrivileged('))
     expect(pinned).toBeLessThan(at('\nvoid runAsSoleInstance({'))
     expect(at('\nnameTheAppToWindows(app)\n')).toBeLessThan(at('\nvoid runAsSoleInstance({'))

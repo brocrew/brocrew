@@ -4,6 +4,7 @@ import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import vue from '@vitejs/plugin-vue'
 import { cspMetaTag } from './src/shared/content-security-policy'
 import { describeBuild, readBuildBranches } from './src/main/build-stamp'
+import { buildPluginSupervisor } from '../../scripts/build-plugin-supervisor.mjs'
 
 // Bundle the internal workspace packages into main/preload (they are TS source,
 // not publishable JS), while letting real deps (better-sqlite3, drizzle-orm, …)
@@ -125,17 +126,19 @@ export default defineConfig(({ command }) => {
         externalizeDepsPlugin({ exclude: workspacePackages }),
         copyMigrations(),
         stampReachedTheBundle(build.id),
+        { name: 'brocrew:plugin-supervisor', closeBundle: () => buildPluginSupervisor() },
       ],
     },
     preload: {
       plugins: [externalizeDepsPlugin({ exclude: workspacePackages })],
-      // Two preloads: the app window's, and the recovery window's (`window.recovery` only). Both are
-      // sandboxed and cannot load a shared chunk, so the two share no module but `electron`.
+      // Three preloads: the app window's, the recovery window's (`window.recovery` only), and the isolated plugin DOM bridge. They are
+      // sandboxed and cannot load a shared chunk, so the entries share no module but `electron`.
       build: {
         rollupOptions: {
           input: {
             index: resolve(__dirname, 'src/preload/index.ts'),
             recovery: resolve(__dirname, 'src/preload/recovery.ts'),
+            'plugin-ui': resolve(__dirname, 'src/preload/plugin-ui.ts'),
           },
         },
       },

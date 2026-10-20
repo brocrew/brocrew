@@ -48,16 +48,17 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "M1 · 🔴 every launch with its own `--user-data-dir` — every test and smoke — makes the "
         f"shared real folder · killed by `{PINNED}`",
         [(FOLDER,
-          "  if (app.commandLine.hasSwitch('user-data-dir')) return\n",
-          "  mkdirSync(defaultDataFolder(app.getPath('appData')), { recursive: true })\n"
-          "  if (app.commandLine.hasSwitch('user-data-dir')) return\n")],
+          # ⚑ **1169.7 · re-anchored in place, not retired** — the pin now branches on `isPackaged`; the same defect sits in the unpackaged arm of `pinTheDataFolder`
+          "    if (explicit) return\n    folder = defaultDataFolder(app.getPath('appData'))\n",
+          "    mkdirSync(defaultDataFolder(app.getPath('appData')), { recursive: true })\n    if (explicit) return\n    folder = defaultDataFolder(app.getPath('appData'))\n")],
     ),
     (
         "M2 · 🔴 `setPath` runs before the folder exists, and Electron throws on a first launch · "
         f"killed by `{PINNED}`",
         [(FOLDER,
-          "  const folder = defaultDataFolder(app.getPath('appData'))\n",
-          "  const folder = defaultDataFolder(app.getPath('appData'))\n  app.setPath('userData', folder)\n"),
+          # ⚑ **1169.7 · re-anchored in place, not retired** — the pin now branches on `isPackaged`; the same defect sits in the unpackaged arm of `pinTheDataFolder`
+          "    folder = defaultDataFolder(app.getPath('appData'))\n",
+          "    folder = defaultDataFolder(app.getPath('appData'))\n    app.setPath('userData', folder)\n"),
          (FOLDER,
           "  app.setPath('userData', folder)\n}\n",
           "}\n")],
@@ -122,8 +123,9 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "M11 · the folder is pinned under the home folder, not `appData` · killed by "
         f"`{PINNED}`",
         [(FOLDER,
-          "  const folder = defaultDataFolder(app.getPath('appData'))\n",
-          "  const folder = defaultDataFolder(app.getPath('home' as 'appData'))\n")],
+          # ⚑ **1169.7 · re-anchored in place, not retired** — the pin now branches on `isPackaged`; the same defect sits in the unpackaged arm of `pinTheDataFolder`
+          "    folder = defaultDataFolder(app.getPath('appData'))\n",
+          "    folder = defaultDataFolder(app.getPath('home' as 'appData'))\n")],
     ),
     (
         "M12 · 🔴 the check launches the app on a self-hosted runner, which can be a person's "

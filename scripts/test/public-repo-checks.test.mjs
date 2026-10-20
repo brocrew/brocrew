@@ -403,6 +403,50 @@ describe('the workflows · run on a public repository, whatever it is named, and
   const jobsOf = (yaml) =>
     [...yaml.slice(yaml.indexOf('\njobs:\n')).matchAll(/^ {2}(\w[\w-]*):\n/gm)].map((one) => one[1])
 
+  it.each([
+    ['schedule', '', 'main', 'develop', 'develop'],
+    ['schedule', '', 'main', '', 'main'],
+    ['schedule', '', 'develop', '', 'develop'],
+    ['workflow_dispatch', 'release-candidate', 'main', 'develop', 'release-candidate'],
+    ['workflow_dispatch', '', 'main', 'develop', 'triggering-commit'],
+    ['push', '', 'main', 'develop', 'triggering-commit'],
+  ])(
+    'coverage selects the ref for %s (%s, default %s, override %s)',
+    (event, commit, branch, override, expected) => {
+      const coverage = read('.github/workflows/coverage.yml')
+      const expression = coverage.match(/^ {2}MEASURE: \$\{\{ (.+) \}\}$/m)?.[1]
+      expect(expression).toBeDefined()
+      const measure = new Function('inputs', 'github', 'vars', `return (${expression})`)(
+        { commit },
+        {
+          event_name: event,
+          event: { repository: { default_branch: branch } },
+          sha: 'triggering-commit',
+        },
+        { COVERAGE_BRANCH: override },
+      )
+      expect(measure).toBe(expected)
+      const checkouts = coverage.split(/- uses: actions\/checkout@[^\n]+/).slice(1)
+      expect(checkouts).toHaveLength(2)
+      for (const checkout of checkouts) {
+        expect(checkout.split(/\n\s*- /)[0]).toContain('ref: ${{ env.MEASURE }}')
+      }
+    },
+  )
+
+  it.each(['claude-code.yml', 'download-counts.yml'])(
+    '%s keeps scheduled checkouts on the triggering default branch',
+    (name) => {
+      const workflow = read(`.github/workflows/${name}`)
+      expect(workflow).toMatch(/^ {2}schedule:/m)
+      const checkouts = workflow.split(/- uses: actions\/checkout@[^\n]+/).slice(1)
+      expect(checkouts.length).toBeGreaterThan(0)
+      for (const checkout of checkouts) {
+        expect(checkout.split(/\n\s*- /)[0]).not.toMatch(/^\s+ref:/m)
+      }
+    },
+  )
+
   it('⛔ the public checks and every release require the leak patterns, and check the tree’s file names', () => {
     expect(checks).toContain(
       'node scripts/leak-check.mjs $REQUIRE $IDENTITIES --commits "$REVISIONS"',

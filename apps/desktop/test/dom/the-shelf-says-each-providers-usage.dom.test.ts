@@ -61,20 +61,20 @@ const text = (el: Element): string => (el.textContent ?? '').replace(/\s+/g, ' '
 const frame = (): Promise<void> => new Promise((done) => requestAnimationFrame(() => done()))
 
 /**
- * Read the strip after its font has loaded and both dimensions stay unchanged for two frames.
+ * Read the strip after its font has loaded and both dimensions stay unchanged for at least 150 ms.
  * Width changes can wrap a cell even when an intervening height returns to the earlier value.
  */
 async function steadyHeight(el: Element): Promise<number> {
   await drawnReady()
   let before = el.getBoundingClientRect()
-  let steady = 0
+  let steadySince = performance.now()
   const sizes: string[] = []
-  for (let i = 0; i < 60; i += 1) {
+  for (let i = 0; i < 180; i += 1) {
     await frame()
     const now = el.getBoundingClientRect()
     sizes.push(`${now.width} × ${now.height}`)
-    steady = now.width === before.width && now.height === before.height ? steady + 1 : 0
-    if (steady === 2) return now.height
+    if (now.width !== before.width || now.height !== before.height) steadySince = performance.now()
+    if (performance.now() - steadySince >= 150) return now.height
     before = now
   }
   throw new Error(`the strip size never settled; last reads ${sizes.slice(-6).join(', ')}`)
@@ -130,6 +130,27 @@ describe('the shelf says each provider’s usage', () => {
     expect(text(m.q('shelf-settings'))).not.toContain('90%')
     expect(text(m.q('shelf-settings'))).not.toContain('3%')
     expect(m.all('shelf-missing')).toHaveLength(0)
+  })
+
+  it('waits through a delayed resize after an initially steady layout', async () => {
+    await drawnReady()
+    const box = document.createElement('div')
+    box.style.cssText = 'width: 100px; height: 10px'
+    document.body.append(box)
+    let resize: number
+    let frames = 0
+    const later = (): void => {
+      frames += 1
+      if (frames === 5) box.style.height = '30px'
+      else resize = requestAnimationFrame(later)
+    }
+    resize = requestAnimationFrame(later)
+    try {
+      expect(await steadyHeight(box)).toBe(30)
+    } finally {
+      cancelAnimationFrame(resize)
+      box.remove()
+    }
   })
 
   it('⛔ a further window does not grow the strip', async () => {

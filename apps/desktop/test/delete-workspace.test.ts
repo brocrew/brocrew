@@ -560,7 +560,7 @@ describe('§2 · a delete: the Trash, and the row off the list', () => {
       refusal: `BroCrew could not move this folder to ${whereDeletedFoldersGo(process.platform)}, so nothing was deleted: this disk has no Trash`,
     })
     expect(existsSync(join(kept, 'brobot2.sqlite'))).toBe(true)
-    expect(readFileSync(listFile, 'utf8')).toContain(kept)
+    expect(readWorkspaceList(listFile).map((one) => one.path)).toContain(kept)
   })
 
   it('🔴 on Windows the same refusal names the Recycle Bin', async () => {

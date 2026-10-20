@@ -414,10 +414,10 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         [
             (
                 CLAUDE,
-                "    const mcpServers = claudeMcpServersFor(agentTools, externalMcp?.servers ?? [])",
+                "    const mcpServers = claudeMcpServersFor(agentTools, externalMcp?.servers ?? [], managedPluginMcp)",
                 "    const mcpServers =\n"
-                "      claudeMcpServersFor(agentTools, externalMcp?.servers ?? []) ??\n"
-                "      claudeMcpServersFor(agentTools, externalMcp?.servers ?? [])",
+                "      claudeMcpServersFor(agentTools, externalMcp?.servers ?? [], managedPluginMcp) ??\n"
+                "      claudeMcpServersFor(agentTools, externalMcp?.servers ?? [], managedPluginMcp)",
             )
         ],
     ),

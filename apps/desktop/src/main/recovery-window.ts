@@ -71,7 +71,7 @@ export function openRecoveryWindow(options: RecoveryWindowOptions): BrowserWindo
  * so no other page can restore, return or read the history.
  */
 export function registerRecoveryIpc(
-  ipc: IpcMain,
+  ipc: Pick<IpcMain, 'handle'>,
   window: () => BrowserWindow | null,
   calls: RecoveryCalls,
 ): void {

@@ -1,0 +1,172 @@
+# Private, disposable offline proof of the Chrome plugin on Windows x64: the packaged app installs
+# it from a local fake list, an agent uses it through the Node CDP fixture browser, and its live tabs,
+# restart, uninstall and reinstall are checked, with Windows' own facts: the plugin root's access
+# list, a second account's view of the root and the supervisor's pipe, a Chrome a person opened left
+# running, nothing of the plugin left after the app quits. No signing key, token or provider account.
+# WhatsApp, built on Linux as its release builds it, is installed, started, shown not linked on its
+# Configure page and uninstalled, with nothing of it left running. No phone is linked.
+name: Windows plugin gate
+on:
+  push:
+    branches: ['gate/plugin-windows-*']
+permissions:
+  contents: read
+jobs:
+  windows:
+    if: >-
+      github.repository == 'brocrew/brocrew' &&
+      github.event.repository.private == true &&
+      startsWith(github.ref, 'refs/heads/gate/plugin-windows-')
+    # `windows-2022`, as windows.yml explains: installing needs a Visual Studio node-gyp knows.
+    runs-on: windows-2022
+    timeout-minutes: 60
+    concurrency:
+      group: plugin-windows-${{ github.ref }}
+      cancel-in-progress: false
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Refuse self-hosted runners
+        run: test "$RUNNER_ENVIRONMENT" = github-hosted
+      # As windows-suite.yml: the profile's own temp folder, by its long name.
+      - name: Use the profile's temp folder by its long name
+        shell: pwsh
+        run: |
+          $temp = Join-Path $env:USERPROFILE 'AppData\Local\Temp'
+          if ($temp.Contains('~') -or -not (Test-Path -LiteralPath $temp -PathType Container)) {
+            throw "no profile temp folder by its long name at $temp"
+          }
+          "TEMP=$temp" >> $env:GITHUB_ENV
+          "TMP=$temp" >> $env:GITHUB_ENV
+      # The archives are compared byte for byte with a build on another system: the checkout keeps
+      # each file's own line endings.
+      - name: Keep line endings as committed
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22.23.3'
+      - name: Retain the release toolchain path
+        run: echo "PLUGIN_GATE_NODE22=$(node -p process.execPath)" >> "$GITHUB_ENV"
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: The plugin host's Windows tests
+        run: pnpm exec vitest run apps/desktop/test/plugin-windows-host.test.ts
+      - name: Build, install, use, restart and remove Chrome in the packaged app
+        if: success() || failure()
+        env:
+          PLUGIN_GATE_OUT: ${{ runner.temp }}/plugin-windows-gate
+        run: node scripts/gates/plugin-windows/gate.mjs "$PLUGIN_GATE_NODE22"
+      - name: Keep the fictional run's diagnostics after a failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin-windows-diagnostics
+          path: ${{ runner.temp }}/plugin-windows-gate/diagnostics
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Keep only the closed summary and the archives' digests
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin-windows-summary
+          path: |
+            ${{ runner.temp }}/plugin-windows-gate/summary.json
+            ${{ runner.temp }}/plugin-windows-gate/archives.json
+          if-no-files-found: warn
+          retention-days: 7
+  whatsapp-release:
+    if: >-
+      github.repository == 'brocrew/brocrew' &&
+      github.event.repository.private == true &&
+      startsWith(github.ref, 'refs/heads/gate/plugin-windows-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Refuse self-hosted runners
+        run: test "$RUNNER_ENVIRONMENT" = github-hosted
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22.23.3'
+      # The plugin's release workflow pins the same Go.
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.27.2'
+          cache: false
+      - name: Build the WhatsApp release as the pinned commit and compare it with the pins
+        run: node scripts/gates/plugin-windows/whatsapp-release.mjs "$RUNNER_TEMP/whatsapp-release" "$(command -v node)" "$(command -v go)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: whatsapp-release
+          path: ${{ runner.temp }}/whatsapp-release
+          if-no-files-found: error
+          retention-days: 7
+  whatsapp:
+    needs: whatsapp-release
+    runs-on: windows-2022
+    timeout-minutes: 60
+    concurrency:
+      group: plugin-windows-whatsapp-${{ github.ref }}
+      cancel-in-progress: false
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Refuse self-hosted runners
+        run: test "$RUNNER_ENVIRONMENT" = github-hosted
+      - name: Use the profile's temp folder by its long name
+        shell: pwsh
+        run: |
+          $temp = Join-Path $env:USERPROFILE 'AppData\Local\Temp'
+          if ($temp.Contains('~') -or -not (Test-Path -LiteralPath $temp -PathType Container)) {
+            throw "no profile temp folder by its long name at $temp"
+          }
+          "TEMP=$temp" >> $env:GITHUB_ENV
+          "TMP=$temp" >> $env:GITHUB_ENV
+      - name: Keep line endings as committed
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: whatsapp-release
+          path: ${{ runner.temp }}/whatsapp-release
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install, start, configure and remove WhatsApp in the packaged app
+        env:
+          PLUGIN_GATE_OUT: ${{ runner.temp }}/plugin-windows-whatsapp
+        run: node scripts/gates/plugin-windows/whatsapp.mjs "$RUNNER_TEMP/whatsapp-release"
+      - name: Keep the fictional run's diagnostics after a failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin-windows-whatsapp-diagnostics
+          path: ${{ runner.temp }}/plugin-windows-whatsapp/diagnostics
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Keep only the closed summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin-windows-whatsapp-summary
+          path: ${{ runner.temp }}/plugin-windows-whatsapp/summary.json
+          if-no-files-found: warn
+          retention-days: 7

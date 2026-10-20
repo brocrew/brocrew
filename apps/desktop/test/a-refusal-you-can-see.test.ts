@@ -551,7 +551,7 @@ describe('405 · a refusal you can see', () => {
       })
       expect(answered.structured).toMatchObject({ outcome: 'refused', rail: 'resource-too-large' })
       expect(answered.text).toContain(file)
-      expect(JSON.stringify(answered.structured!['detail'])).toContain(file)
+      expect(JSON.stringify(answered.structured!['detail'])).toContain(JSON.stringify(file))
       const rows = refusalsIn(pm)
       expect(rows).toHaveLength(1)
       expect(rows[0]?.told).toEqual({ text: answered.structured!['reason'], dropped: 0 })

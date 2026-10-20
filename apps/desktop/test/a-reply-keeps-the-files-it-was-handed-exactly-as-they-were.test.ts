@@ -1656,7 +1656,13 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
         expect(
           (fresh.prepare('SELECT count(*) AS n FROM __drizzle_migrations').get() as { n: number })
             .n,
-        ).toBe(12)
+        ).toBe(
+          (
+            JSON.parse(readFileSync(join(migrationsFolder, 'meta/_journal.json'), 'utf8')) as {
+              entries: unknown[]
+            }
+          ).entries.length,
+        )
       } finally {
         fresh.close()
       }

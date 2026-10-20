@@ -66,8 +66,8 @@ export class WindowWorkerReader implements WindowStoreReader {
   }
 
   async read(input: WindowReadQuery, signal?: AbortSignal): Promise<WindowReadResult> {
-    if (this.closed || this.failed || this.pending.size >= WINDOW_READ_BOUNDS.pending)
-      throw new WindowReadUnavailable()
+    if (this.closed || this.failed) throw new WindowReadUnavailable()
+    if (this.pending.size >= WINDOW_READ_BOUNDS.pending) throw new WindowReadUnavailable('busy')
     const query = windowReadQuery.parse(input)
     if (signal?.aborted) throw new WindowReadUnavailable()
     if (!Number.isSafeInteger(this.nextId + 1)) throw new WindowReadUnavailable()

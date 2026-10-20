@@ -33,7 +33,8 @@ function git(cwd: string, ...args: string[]): string {
     stdio: ['ignore', 'pipe', 'pipe'],
     env: {
       PATH: process.env['PATH'],
-      GIT_CONFIG_GLOBAL: os.devNull,
+      // Git for Windows cannot open os.devNull as a config file; this absent scratch path is empty.
+      GIT_CONFIG_GLOBAL: join(scratch, 'empty.gitconfig'),
       GIT_CONFIG_NOSYSTEM: '1',
       GIT_OPTIONAL_LOCKS: '0',
     },

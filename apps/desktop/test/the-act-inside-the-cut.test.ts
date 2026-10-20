@@ -31,6 +31,7 @@ import { INTERRUPT_RAILS, refuseInterrupt } from '../src/main/runtime/interrupt-
 import { RESOURCE_RAILS, refuseResource } from '../src/main/resources/resources'
 import { MODEL_RAILS, refuseModel, type ModelRefusalDetail } from '../src/main/runtime/model-rails'
 import { RAIL_PERMANENCES } from '../src/shared/refusals'
+import { pastWorkSearchRefusal } from '../src/shared/past-work-search'
 import {
   WORK_SEARCH_RAILS,
   WORK_SEARCH_REFUSAL_WORDS,
@@ -358,18 +359,37 @@ const VOCABULARIES: readonly {
             { argument: 'answers', limit: 1280, was: 12_800_000 },
             { argument: 'cannot_answer', limit: 1280, was: 12_800_000 },
           ].map((detail) => refuseQuestion(rail, detail as never).reason)
-        : // ⚑ **F020** — a withdraw of the caller's own question that was answered or declined says
-          // where its answer is: each arm, and the sentence a detail without them gets.
+        : // Known endings include their time; answered questions still say where to read the reply.
           rail === 'no-open-question-you-asked-by-that-name'
           ? [
               {},
-              { state: 'answered', itsAnswer: 'held-and-this-turn-is-stopping' },
-              { state: 'answered', itsAnswer: 'held-until-this-turn-ends' },
-              { state: 'answered', itsAnswer: 'already-sent' },
-              { state: 'answered', itsAnswer: 'held-until-the-limit-resets' },
-              { state: 'rejected', itsAnswer: 'held-and-this-turn-is-stopping' },
-              { state: 'rejected', itsAnswer: 'held-until-this-turn-ends' },
-              { state: 'rejected', itsAnswer: 'already-sent' },
+              {
+                state: 'answered',
+                at: 1_700_000_000_000,
+                itsAnswer: 'held-and-this-turn-is-stopping',
+              },
+              { state: 'answered', at: 1_700_000_000_000, itsAnswer: 'held-until-this-turn-ends' },
+              { state: 'answered', at: 1_700_000_000_000, itsAnswer: 'already-sent' },
+              {
+                state: 'answered',
+                at: 1_700_000_000_000,
+                itsAnswer: 'held-until-the-limit-resets',
+              },
+              {
+                state: 'rejected',
+                at: 1_700_000_000_000,
+                itsAnswer: 'held-and-this-turn-is-stopping',
+              },
+              { state: 'rejected', at: 1_700_000_000_000, itsAnswer: 'held-until-this-turn-ends' },
+              { state: 'rejected', at: 1_700_000_000_000, itsAnswer: 'already-sent' },
+              {
+                state: 'rejected',
+                at: 1_700_000_000_000,
+                itsAnswer: 'held-until-the-limit-resets',
+              },
+              { state: 'work-closed', at: 1_700_000_000_000 },
+              { state: 'withdrawn', at: 1_700_000_000_000 },
+              { state: 'withdrawn' },
             ].map((detail) => refuseQuestion(rail, detail as never).reason)
           : [refuseQuestion(rail as never).reason],
   },
@@ -413,6 +433,18 @@ const OVERRIDES: readonly {
   readonly spreadAs: string
   readonly sentence: string
 }[] = [
+  {
+    key: 'WORK_SEARCH_RAILS|work-search-invalid/past-work',
+    rail: 'work-search-invalid',
+    spreadAs: 'refusalReason',
+    sentence: pastWorkSearchRefusal('invalid').reason,
+  },
+  {
+    key: 'WORK_SEARCH_RAILS|work-search-unavailable/past-work',
+    rail: 'work-search-unavailable',
+    spreadAs: 'refusalReason',
+    sentence: pastWorkSearchRefusal('unavailable').reason,
+  },
   // The longest fixed file-kind wording retains the summary action inside the cut.
   {
     key: 'RESOURCE_RAILS|resource-not-a-form-this-app-keeps/reply-file-kind',
@@ -622,6 +654,8 @@ function everyRow(): Row[] {
  * moved.
  */
 const ACT: Readonly<Record<string, string>> = {
+  'WORK_SEARCH_RAILS|work-search-invalid/past-work': 'Use one to 20 search words',
+  'WORK_SEARCH_RAILS|work-search-unavailable/past-work': 'Try again',
   'WORK_SEARCH_RAILS|work-search-invalid':
     'Use a listed scope and state, at most 20 words, and a limit from 1 to 50',
   'WORK_SEARCH_RAILS|work-search-cursor-invalid': 'Start the search again',
@@ -831,6 +865,8 @@ const ACT: Readonly<Record<string, string>> = {
     'end this turn to read the reply declining it before you report on that question',
   'QUESTION_RAILS|no-open-question-you-asked-by-that-name/8':
     'read the reply declining it, which was sent to you as a message',
+  'QUESTION_RAILS|no-open-question-you-asked-by-that-name/9':
+    'end this turn to read the reply declining it before you report on that question',
   // ⚑ The act first; the length and the limit after it.
   'QUESTION_RAILS|answer-too-long/1':
     'shorten your answer, or put the long form in a file and name its full path in your answer',
@@ -914,6 +950,10 @@ const NO_ACT: Readonly<Record<string, string>> = {
   // ⚑ **D-016 · commit 5** — its twin, for a piece the caller closed with `update_work`.
   'TOOL_REFUSALS|that-piece-was-already-closed':
     'what the caller asked for already holds — there is nothing left to do',
+  // Known endings require no withdrawal; there is no further act to repeat.
+  'QUESTION_RAILS|no-open-question-you-asked-by-that-name/10': 'the question already ended',
+  'QUESTION_RAILS|no-open-question-you-asked-by-that-name/11': 'the question was already withdrawn',
+  'QUESTION_RAILS|no-open-question-you-asked-by-that-name/12': 'the question already ended',
   // These endings say why no further answer is owed; none offers a repeatable act.
   'QUESTION_RAILS|question-has-already-ended':
     'the question ended, so no further answer is owed or repeatable',
@@ -1144,7 +1184,9 @@ describe('675 · the vocabularies this census reads are ALL of them', () => {
     const spread = everyModule()
       .flatMap((file) => theOverridesIn(file.source))
       .filter((name) => !NOT_A_REFUSALS_REASON.includes(name))
-    expect([...new Set(spread)].sort()).toEqual(OVERRIDES.map((one) => one.spreadAs).sort())
+    expect([...new Set(spread)].sort()).toEqual(
+      [...new Set(OVERRIDES.map((one) => one.spreadAs))].sort(),
+    )
     // ⚑ The exception is still there to be excepted — a name that no longer occurs is a claim
     // about nothing.
     for (const name of NOT_A_REFUSALS_REASON) {

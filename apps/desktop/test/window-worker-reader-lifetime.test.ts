@@ -153,11 +153,15 @@ describe('window reader owns its native connection until confirmed exit', () => 
     const answers = Array.from({ length: WINDOW_READ_BOUNDS.pending }, () =>
       reader.read({ kind: 'routes' }).catch((error) => error),
     )
-    await expect(reader.read({ kind: 'routes' })).rejects.toThrow(WindowReadUnavailable)
+    const overflow = reader.read({ kind: 'routes' })
+    await expect(overflow).rejects.toThrow(WindowReadUnavailable)
+    await expect(overflow).rejects.toMatchObject({ why: 'busy' })
     expect(worker.sent).toEqual([])
     worker.emit('exit', 1)
-    for (const answer of await Promise.all(answers))
+    for (const answer of await Promise.all(answers)) {
       expect(answer).toBeInstanceOf(WindowReadUnavailable)
+      expect(answer).toMatchObject({ why: 'unavailable' })
+    }
     await reader.close()
   })
 

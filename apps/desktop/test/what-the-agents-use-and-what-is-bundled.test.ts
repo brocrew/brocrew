@@ -1,4 +1,12 @@
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  appendFileSync,
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -9,6 +17,43 @@ import {
 } from '../src/main/runtime/process-listing'
 import { providerVersionsReader } from '../src/main/runtime/provider-versions'
 import type { CodexProgram } from '../src/main/runtime/codex-binary'
+
+type VersionFixture = {
+  output: string
+  homeTo?: string
+  codexHomeTo?: string
+  claudeEnvironmentTo?: string
+  countTo?: string
+  requiresFile?: string
+}
+
+const versionPrograms = vi.hoisted(() => ({
+  run: null as
+    | null
+    | ((
+        file: string,
+        options: { env?: Record<string, string> },
+        callback: (error: Error | null, output: string) => void,
+      ) => boolean),
+}))
+
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>()
+  return {
+    ...actual,
+    execFile: ((...args: unknown[]) => {
+      const [file, , options, callback] = args as [
+        string,
+        string[],
+        { env?: Record<string, string> },
+        (error: Error | null, output: string) => void,
+      ]
+      if (versionPrograms.run?.(file, options, callback))
+        return {} as ReturnType<typeof actual.execFile>
+      return Reflect.apply(actual.execFile, actual, args) as ReturnType<typeof actual.execFile>
+    }) as typeof actual.execFile,
+  }
+})
 
 /**
  * # ⚑ What the agents use, and which programs this install bundles
@@ -92,19 +137,47 @@ describe('listProcesses', () => {
 
 describe('providerVersionsReader', () => {
   let dir: string
+  const fixtures = new Map<string, VersionFixture>()
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'brobot2-versions-'))
+    if (process.platform === 'win32') {
+      versionPrograms.run = (file, options, callback) => {
+        const fixture = fixtures.get(file)
+        if (fixture === undefined) return false
+        const env = options.env ?? {}
+        if (fixture.homeTo) writeFileSync(fixture.homeTo, env.HOME ?? '')
+        if (fixture.codexHomeTo) writeFileSync(fixture.codexHomeTo, env.CODEX_HOME ?? '')
+        if (fixture.claudeEnvironmentTo) {
+          writeFileSync(
+            fixture.claudeEnvironmentTo,
+            `${env.HOME ?? ''} ${env.CLAUDE_CONFIG_DIR ?? ''} ${env.DISABLE_AUTOUPDATER ?? ''}`,
+          )
+        }
+        if (fixture.countTo) appendFileSync(fixture.countTo, 'x\n')
+        if (fixture.requiresFile && !existsSync(fixture.requiresFile)) {
+          callback(new Error('fixture program exited with code 3'), '')
+        } else callback(null, fixture.output)
+        return true
+      }
+    }
   })
   afterEach(() => {
+    versionPrograms.run = null
+    fixtures.clear()
     vi.restoreAllMocks()
     rmSync(dir, { recursive: true, force: true })
   })
 
   /** A program that prints what a codex binary prints for `--version`, and says what home it ran in. */
-  function aProgram(body: string): string {
+  function aProgram(body: string, fixture: VersionFixture): string {
     const path = join(dir, 'codex')
-    writeFileSync(path, `#!/bin/sh\n${body}\n`)
-    chmodSync(path, 0o755)
+    if (process.platform === 'win32') {
+      writeFileSync(path, 'fixture program')
+      fixtures.set(path, fixture)
+    } else {
+      writeFileSync(path, `#!/bin/sh\n${body}\n`)
+      chmodSync(path, 0o755)
+    }
     return path
   }
 
@@ -114,6 +187,11 @@ describe('providerVersionsReader', () => {
   it('🔴 Codex’s version is what the bundled binary prints, read in a home of its own that is removed after', async () => {
     const binary = aProgram(
       `echo "codex-cli 0.160.0"\necho "$HOME" > "${join(dir, 'home')}"\necho "$CODEX_HOME" > "${join(dir, 'codexhome')}"`,
+      {
+        output: 'codex-cli 0.160.0',
+        homeTo: join(dir, 'home'),
+        codexHomeTo: join(dir, 'codexhome'),
+      },
     )
     const read = providerVersionsReader(() => carried(binary), NO_CLAUDE)
     const versions = await read()
@@ -143,12 +221,15 @@ describe('providerVersionsReader', () => {
 
   it('⚑ a pre-release part, or a build part, is read with the version', async () => {
     const pre = providerVersionsReader(
-      () => carried(aProgram('echo "codex-cli 0.161.0-alpha.3"')),
+      () =>
+        carried(
+          aProgram('echo "codex-cli 0.161.0-alpha.3"', { output: 'codex-cli 0.161.0-alpha.3' }),
+        ),
       NO_CLAUDE,
     )
     expect((await pre()).codex.version).toBe('0.161.0-alpha.3')
     const build = providerVersionsReader(
-      () => carried(aProgram('echo "codex-cli 0.161.0+b5"')),
+      () => carried(aProgram('echo "codex-cli 0.161.0+b5"', { output: 'codex-cli 0.161.0+b5' })),
       NO_CLAUDE,
     )
     expect((await build()).codex.version).toBe('0.161.0+b5')
@@ -156,7 +237,10 @@ describe('providerVersionsReader', () => {
 
   it('⛔ an answer that holds for the run is asked once: a second read does not run the binary again', async () => {
     const counter = join(dir, 'runs')
-    const binary = aProgram(`echo x >> "${counter}"\necho "codex-cli 0.160.0"`)
+    const binary = aProgram(`echo x >> "${counter}"\necho "codex-cli 0.160.0"`, {
+      output: 'codex-cli 0.160.0',
+      countTo: counter,
+    })
     const read = providerVersionsReader(() => carried(binary), NO_CLAUDE)
     await read()
     await read()
@@ -166,7 +250,10 @@ describe('providerVersionsReader', () => {
 
   it('⚑ a binary that prints no version says so, once and for the run', async () => {
     const counter = join(dir, 'runs')
-    const binary = aProgram(`echo x >> "${counter}"\necho "hello"`)
+    const binary = aProgram(`echo x >> "${counter}"\necho "hello"`, {
+      output: 'hello',
+      countTo: counter,
+    })
     const read = providerVersionsReader(() => carried(binary), NO_CLAUDE)
     const said = `Codex, the copy BroCrew carries, at ${binary}, did not say which version it is, so it may not run.`
     expect((await read()).codex).toEqual({
@@ -219,6 +306,7 @@ describe('providerVersionsReader', () => {
     const flag = join(dir, 'ok')
     const binary = aProgram(
       `echo "$HOME" > "${join(dir, 'home')}"\nif [ -e "${flag}" ]; then echo "codex-cli 0.160.0"; else exit 3; fi`,
+      { output: 'codex-cli 0.160.0', homeTo: join(dir, 'home'), requiresFile: flag },
     )
     const read = providerVersionsReader(() => carried(binary), NO_CLAUDE)
     const said = `Codex, the copy BroCrew carries, at ${binary}, could not be asked its version just now; it is asked again next time.`
@@ -240,13 +328,18 @@ describe('providerVersionsReader', () => {
 
   it('⚑ Claude’s version is what the person’s own Claude Code prints, read in a home of its own and told not to update', async () => {
     const path = join(dir, 'claude')
-    writeFileSync(
-      path,
-      `#!/bin/sh\necho "$HOME $CLAUDE_CONFIG_DIR $DISABLE_AUTOUPDATER" > "${join(dir, 'ran')}"\necho "2.1.287 (Claude Code)"\n`,
-    )
-    chmodSync(path, 0o755)
+    if (process.platform === 'win32') {
+      writeFileSync(path, 'fixture program')
+      fixtures.set(path, { output: '2.1.287 (Claude Code)', claudeEnvironmentTo: join(dir, 'ran') })
+    } else {
+      writeFileSync(
+        path,
+        `#!/bin/sh\necho "$HOME $CLAUDE_CONFIG_DIR $DISABLE_AUTOUPDATER" > "${join(dir, 'ran')}"\necho "2.1.287 (Claude Code)"\n`,
+      )
+      chmodSync(path, 0o755)
+    }
     const read = providerVersionsReader(
-      () => carried(aProgram('echo "codex-cli 0.160.0"')),
+      () => carried(aProgram('echo "codex-cli 0.160.0"', { output: 'codex-cli 0.160.0' })),
       () => ({ path, from: 'native-installer', update: { command: 'claude update' }, others: [] }),
     )
     const { claude } = await read()
@@ -260,7 +353,9 @@ describe('providerVersionsReader', () => {
 
   it('⚑ no Claude Code on this computer is the lookup’s own sentence, and is asked again next time', async () => {
     const asked = vi.fn(NO_CLAUDE)
-    const read = providerVersionsReader(() => carried(aProgram('echo "codex-cli 0.160.0"')), asked)
+    const read = providerVersionsReader(() => {
+      throw new Error('no Codex here')
+    }, asked)
     const { claude } = await read()
     expect(claude).toMatchObject({ version: null, reason: 'no Claude Code here' })
     expect(claude.program?.standing).toBe('missing')

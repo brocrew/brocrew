@@ -122,6 +122,7 @@ const THE_SPLIT: Readonly<Record<ToolName, BeyondItsRails>> = {
   // is sent, nobody is woken and nothing starts.
   find_files: 'nothing-its-rails-do-not-cover',
   search_work: 'nothing-its-rails-do-not-cover',
+  search_past_work: 'nothing-its-rails-do-not-cover',
   // It brings an archived conversation back to the lists, as a person's Restore does, and sends
   // nothing of its own: what starts is what the app starts for words and jobs the conversation
   // already held, as `message_agent`'s words start a stopped one.
@@ -392,7 +393,7 @@ describe('486 · the doors our own verbs do not need', () => {
         .replace(/\/\*[\s\S]*?\*\//g, ' ')
         .replace(/^\s*\/\/.*$/gm, ' ')
       const bodies = new Map<string, string>()
-      for (const match of code.matchAll(/name: '(\w+)',/g)) {
+      for (const match of code.matchAll(/name: '(\w+)'(?: as const)?,/g)) {
         // ⚠️ **From inside the closure, not from `call:`** — the parameter is literally spelled
         // `args`, so a body sliced from the declaration reads its own signature as an argument use
         // and every door would look inverted.

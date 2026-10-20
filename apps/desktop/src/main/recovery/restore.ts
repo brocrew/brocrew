@@ -27,7 +27,6 @@ import { migrationsOf } from './database-facts'
 import {
   OwnedPathIsALink,
   assertOwnedPathsAreReal,
-  contentAt,
   copyDurably,
   errorCode,
   nodeFs,
@@ -68,6 +67,8 @@ import {
   workspaceIdFile,
 } from './layout'
 import { APP_STATE_FILES } from './state-files'
+import { copySkillTree, stateContentAt as contentAt } from './trees'
+import { SKILL_TREES, SKILLS_CONVERSION_FILE } from '../skills/shared-paths'
 
 /**
  * The restore engine: it installs a checkpoint's copy as the workspace's database, puts the newer
@@ -809,9 +810,13 @@ function asState(entry: InstalledFile): FileState {
 
 function namesTheParticipantsThisBuildMoves(journal: RestoreJournal): boolean {
   const names = journal.participants.map((participant) => participant.live)
+  const legacy = PARTICIPANT_NAMES.filter(
+    (name) => !SKILL_TREES.includes(name) && name !== SKILLS_CONVERSION_FILE,
+  )
   return (
-    names.length === PARTICIPANT_NAMES.length &&
-    PARTICIPANT_NAMES.every((name) => names.includes(name))
+    (names.length === PARTICIPANT_NAMES.length &&
+      PARTICIPANT_NAMES.every((name) => names.includes(name))) ||
+    (names.length === legacy.length && legacy.every((name) => names.includes(name)))
   )
 }
 
@@ -893,7 +898,8 @@ async function stage(run: Run, manifest: CheckpointManifest): Promise<void> {
     const copy = pathOf(userData, participant, 'incoming')
     await assertOwnedPathsAreReal(userData, [source, copy], fs)
     if (!(await pathExists(source, fs))) refuse(FAILED_CHECK)
-    await copyDurably(source, copy, fs)
+    if (SKILL_TREES.includes(participant.live)) await copySkillTree(source, copy, fs)
+    else await copyDurably(source, copy, fs)
     if (!holds(await contentAt(copy, fs), participant.becomes)) refuse(FAILED_CHECK)
   }
 

@@ -105,7 +105,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "M8 · a declined question withdrawn is the plain refusal — the reply declining it is "
         f"never pointed at · killed by `{WITHDRAW}`",
         [(HOST,
-          "(ended.state === 'answered' || ended.state === 'rejected')",
+          "ended.state === 'answered' || ended.state === 'rejected'",
           "(ended.state === 'answered')")],
     ),
     (

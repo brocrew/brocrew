@@ -207,6 +207,7 @@ function fakeBridge() {
   }
 
   const impl: RuntimeBridge = {
+    skills: async () => ({ operation: 'refused', reason: 'source-unavailable' }),
     createSession: async (input) => {
       calls.push(`create:${input.provider}`)
       if (stall && input.launchKey !== undefined) return neverAnswers(input.launchKey)
@@ -2482,6 +2483,28 @@ describe('the session store', () => {
     expect(await store.cancelLaunch()).toBe(false)
     expect(store.live.value).toHaveLength(1)
     store.dispose()
+  })
+
+  it('keeps a long Codex reopen visibly starting until the host answers', async () => {
+    const bridge = fakeBridge()
+    const store = createSessionStore(bridge)
+    bridge.__stall()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const reopening = store.resume('sess_orchard')
+    try {
+      expect(bridge.__stalledCount()).toBe(1)
+      await vi.advanceTimersByTimeAsync(20_000)
+      expect(store.isLaunching('sess_orchard')).toBe(true)
+      expect(store.resumeError.value).toBeNull()
+      expect(await store.cancelLaunch('sess_orchard')).toBe(true)
+      expect(await reopening).toBeNull()
+      expect(store.isLaunching('sess_orchard')).toBe(false)
+    } finally {
+      vi.useRealTimers()
+      await store.cancelLaunch('sess_orchard')
+      await reopening
+      store.dispose()
+    }
   })
 
   it('stops a REOPEN that is still opening, and leaves no half-attached session (102)', async () => {

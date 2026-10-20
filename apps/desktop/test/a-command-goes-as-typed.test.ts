@@ -722,7 +722,7 @@ describe('708 · R42 — a person’s command goes to the provider exactly as ty
       const replacement = providerHeard(id)[1] ?? ''
       expect(framedAsAPersons(replacement), replacement).toBe(true)
       expect(replacement).toContain('/frobnicate now')
-      expect(replacement).toContain(file.path)
+      expect(replacement).toContain(JSON.stringify(file.path))
     })
 
     it('🔴 713 · `708` H-4 — …and the other way round: a command the first gate let through goes bare after the stop', async () => {

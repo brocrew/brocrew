@@ -294,7 +294,7 @@ describe('F093 · C9 d · one message as the model got it, on a real host', () =
       expect(got.words).toEqual(['look at this'])
       expect(got.words.join('\n')).not.toContain(file.path)
       const message = got.parts.at(-1)
-      expect(message?.text).toContain(file.path)
+      expect(message?.text).toContain(JSON.stringify(file.path))
       expect(message?.text).toBe(echoes(id)[1])
     })
   })

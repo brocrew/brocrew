@@ -1,3 +1,4 @@
+import type { ManagedPluginMcpServer } from '../src/managed-plugin-mcp'
 import { readFileSync } from 'node:fs'
 import { createServer, type Server } from 'node:http'
 import { fileURLToPath } from 'node:url'
@@ -239,6 +240,7 @@ class FakeQuery implements ClaudeQuery {
 async function capturedOptions(
   launch: 'start' | 'resume',
   externalMcp?: ExternalMcpReach,
+  managedPluginMcp?: readonly ManagedPluginMcpServer[],
 ): Promise<Options> {
   const query = new FakeQuery()
   let captured: Options | undefined
@@ -253,6 +255,7 @@ async function capturedOptions(
     providerHome: '/tmp/x/home',
     agentTools: TOOLSET,
     ...(externalMcp === undefined ? {} : { externalMcp }),
+    managedPluginMcp,
   }
   const handle =
     launch === 'start'
@@ -342,3 +345,32 @@ describe('516 §4 · what a launch is actually handed', () => {
     expect(options.disallowedTools).toEqual(['AskUserQuestion'])
   })
 })
+
+it.each(['start', 'resume'] as const)(
+  'managed plugin Claude %s carries only its broker capability',
+  async (launch) => {
+    const route = {
+      name: 'plugin-fern',
+      url: 'http://127.0.0.1:8123/mcp',
+      capability: 'a'.repeat(64),
+    }
+    const options = await capturedOptions(
+      launch,
+      {
+        servers: [{ name: 'fictional-registry', url: 'http://127.0.0.1:8124/mcp' }],
+        reservedToolNames: [],
+      },
+      [route],
+    )
+    expect(options.strictMcpConfig).toBe(true)
+    expect(options.mcpServers?.['plugin-fern']).toEqual({
+      type: 'http',
+      url: route.url,
+      headers: { Authorization: `Bearer ${route.capability}` },
+    })
+    expect(options.mcpServers?.['fictional-registry']).toEqual({
+      type: 'http',
+      url: 'http://127.0.0.1:8124/mcp',
+    })
+  },
+)

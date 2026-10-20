@@ -330,6 +330,9 @@ function limitOf(provider: Provider) {
   font-size: var(--type-body);
   line-height: var(--leading-relaxed);
 }
+.page-head .per-workspace {
+  color: var(--text-soft);
+}
 /* Each card spans the rows of this grid as its own (a subgrid), one row per part, so a part starts
    at the same height in both cards whatever the other parts hold. */
 .cards {

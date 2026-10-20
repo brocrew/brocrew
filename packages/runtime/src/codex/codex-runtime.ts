@@ -1,3 +1,4 @@
+import { withManagedPluginMcp, type ManagedPluginMcpServer } from '../managed-plugin-mcp'
 import { BUILT_IN_SKILLS_FAILURE, registerCodexBuiltInSkills } from '../built-in-skills'
 import type { BuiltInSkillsContext, StartPhaseSink } from '../runtime'
 import { realpathSync } from 'node:fs'
@@ -78,6 +79,10 @@ import type { LaunchSetting } from '../launch-settings'
 import { sessionRefSchema, type SessionRef } from '../session-ref'
 import { authStateReason, blocksLaunch } from '../auth-state'
 import { probeCodexAuth } from './auth-probe'
+import {
+  MANAGED_PLUGIN_READY_WITHIN_MS,
+  waitForManagedPluginTools,
+} from './managed-plugin-readiness'
 import { AsyncQueue } from '../internal/async-queue'
 import {
   AuthUnavailableError,
@@ -1792,6 +1797,7 @@ function threadConfigOverlay(
   externalMcp: ExternalMcpReach | undefined,
   kept: readonly KeptToolApproval[],
   workRoots: readonly string[],
+  managedPluginMcp: readonly ManagedPluginMcpServer[] = [],
 ): { [key in string]?: JsonValue } {
   const overlay: { [key in string]?: JsonValue } = {
     ...CODEX_PLAN_TOOL_CONFIG,
@@ -1799,7 +1805,7 @@ function threadConfigOverlay(
     ...(codexExternalMcpConfig(externalMcp, kept) ?? {}),
   }
   if (workRoots.length > 0) overlay['sandbox_workspace_write.writable_roots'] = [...workRoots]
-  return overlay
+  return withManagedPluginMcp(overlay, managedPluginMcp)
 }
 
 function threadStartParams(
@@ -1813,6 +1819,7 @@ function threadStartParams(
   kept: readonly KeptToolApproval[] = [],
   /** 🔴 W4.189 — the launch's work folders, in `ask` only ({@link workRootsFor}). */
   workRoots: readonly string[],
+  managedPluginMcp: readonly ManagedPluginMcpServer[] = [],
 ): ThreadStartParams {
   const params: ThreadStartParams = { cwd, ...approvalProfileFor({ approvalMode }) }
   if (model) params.model = model
@@ -1820,7 +1827,7 @@ function threadStartParams(
   // for the four-arm measurement that found this door and for why it is not the home's
   // `config.toml` — and the planning tool, on every thread ({@link CODEX_PLAN_TOOL_CONFIG}), and
   // (W4.189) the work folders, so the thread's sandbox and its first turn's agree.
-  params.config = threadConfigOverlay(externalMcp, kept, workRoots)
+  params.config = threadConfigOverlay(externalMcp, kept, workRoots, managedPluginMcp)
   // 🔴 **The five tools, and the ONLY place this adapter declares them** (348).
   //
   // ⛔ **`thread/resume` takes none, and it does not need to.** `ThreadResumeParams` has no such
@@ -1887,6 +1894,7 @@ function threadResumeParams(
   kept: readonly KeptToolApproval[] = [],
   /** 🔴 W4.189 — the work folders this launch carries, in `ask` only, as on a start. */
   workRoots: readonly string[],
+  managedPluginMcp: readonly ManagedPluginMcpServer[] = [],
 ): ThreadResumeParams {
   // The mode is re-applied on RESUME (078): a resumed yolo session that fell back to `ask` would
   // start prompting unexpectedly, and the reverse would be far worse.
@@ -1925,7 +1933,7 @@ function threadResumeParams(
   // this thread's configuration for THIS app-server, and a resume is a new one. 🔴 **W4.189 · and so
   // are the work folders**, for the same reason: a resume that dropped them would reopen without its
   // grants until its first turn re-pinned them.
-  params.config = threadConfigOverlay(externalMcp, kept, workRoots)
+  params.config = threadConfigOverlay(externalMcp, kept, workRoots, managedPluginMcp)
   return params
 }
 
@@ -2686,6 +2694,11 @@ export class CodexSessionHandle implements SessionHandle {
   private currentStatus: SessionStatus = 'idle'
   /** The current local↔provider turn binding, or null between turns (029, 023 P1-C). */
   private currentTurn: CodexTurn | null = null
+  private managedPluginsChecked = false
+  private managedPluginWait: {
+    localId: CodexTurn['localId']
+    controller: AbortController
+  } | null = null
   private messageTurn: CodexTurn | null = null
   private messageCalls = new MessageActCalls()
   /**
@@ -2884,6 +2897,9 @@ export class CodexSessionHandle implements SessionHandle {
     seedWorkFolders: readonly string[] = [],
     private readonly memoryConfig?: CodexMemoryConfigResult,
     private readonly builtInSkills?: BuiltInSkillsContext,
+    private readonly sharedSkillsRoot?: string,
+    private readonly beforeSkillDiscovery?: () => Promise<void>,
+    private readonly managedPluginMcp?: readonly ManagedPluginMcpServer[],
   ) {
     // Never seed `_ref` from the requested resume ref: it is latched only once
     // the handshake response is validated (and, for resume, matched) — emit().
@@ -3120,18 +3136,9 @@ export class CodexSessionHandle implements SessionHandle {
     return this.transport.pid
   }
 
-  /**
-   * ⛔ **The termination fact** (233) — see {@link SessionHandle.awaitProcessExit} and
-   * {@link CodexTransport.exited}, which is where the reasoning and the caveat live.
-   *
-   * Through the same sanctioned accessor `providerPid` uses and for the same reason. ⚠️ **A
-   * transport that owns no process returns `undefined` here, and it is NOT coalesced to
-   * `Promise.resolve()`** — that would be this dispatch's own defect in one character: a settled
-   * promise with nothing proven. `undefined` is the host's signal to fall back to the weaker,
-   * visible thing it did before, which is what "cannot say" has to cost.
-   */
+  /** The strongest available transport fact: group/tree cleanup, or the leader-only fallback. */
   awaitProcessExit(): Promise<void> | undefined {
-    return this.transport.exited
+    return this.transport.quiesced ?? this.transport.exited
   }
 
   /** What Codex reports it is running; kept CURRENT as the session changes it (081). */
@@ -3290,8 +3297,13 @@ export class CodexSessionHandle implements SessionHandle {
     await this.assertCredentialUsable()
     if (this.builtInSkills) {
       try {
-        await registerCodexBuiltInSkills(this.builtInSkills, this.cwd, (method, params) =>
-          withDeadline(this.transport.request(method, params), COMMAND_LIST_TIMEOUT_MS, method),
+        await this.beforeSkillDiscovery?.()
+        await registerCodexBuiltInSkills(
+          this.builtInSkills,
+          this.cwd,
+          (method, params) =>
+            withDeadline(this.transport.request(method, params), COMMAND_LIST_TIMEOUT_MS, method),
+          this.sharedSkillsRoot,
         )
       } catch (cause) {
         throw new Error(BUILT_IN_SKILLS_FAILURE, { cause })
@@ -3326,6 +3338,7 @@ export class CodexSessionHandle implements SessionHandle {
               this.externalMcp,
               kept,
               workRoots,
+              this.managedPluginMcp,
             ),
           )
         : // `developerInstructions` re-applied on resume when the caller sends one (158). The
@@ -3355,6 +3368,7 @@ export class CodexSessionHandle implements SessionHandle {
               systemHint,
               kept,
               workRoots,
+              this.managedPluginMcp,
             ),
           )
     // The handshake reports BOTH the effective model and the reasoning effort (082, fixing 081).
@@ -3744,7 +3758,10 @@ export class CodexSessionHandle implements SessionHandle {
     approvalMode: ApprovalMode | undefined,
     folders: readonly string[],
   ): readonly string[] {
-    const roots = workRootsFor(approvalMode, folders)
+    const roots = workRootsFor(
+      approvalMode,
+      this.sharedSkillsRoot ? [...new Set([...folders, this.sharedSkillsRoot])] : folders,
+    )
     for (const root of roots) this.workFoldersSent.add(root)
     return roots
   }
@@ -5795,45 +5812,107 @@ export class CodexSessionHandle implements SessionHandle {
     // `ordinaryUsageAllowed`), and it never comes on a rolling frame: ask again rather than infer
     // from a reset time — see {@link RateLimitWatch}. Not awaited, as at session start.
     if (this.rateLimits.awaitingTheProvidersWord()) this.readRateLimitBaseline()
-    void Promise.resolve(
-      this.transport.request(
-        'turn/start',
-        turnStartParams(
-          this._ref!.sessionId,
-          text,
-          askedEffort,
-          approvalMode,
-          askBaseline,
-          workRoots,
-          collaborationModeFor(phase, intended),
-          askedModel,
-        ),
-      ),
-    ).then(
-      (result) => this.onTurnStartResult(localId, result),
-      (error: unknown) => {
-        // A failed turn/start terminalizes the just-begun turn (error→failed→idle) —
-        // but ONLY if it is still the current turn (never terminalize a later one, 029).
-        if (this.currentTurn?.localId === localId) {
-          this.currentTurn = null
-          // The profile rode on that request, so a request that never landed adopted nothing. The
-          // overstatement above is only tolerable because the next turn corrects it; there is no
-          // next turn here, so it is corrected now. `requested` survives — the user's choice did
-          // not fail, the turn did. All four roll back for the same reason and at the same moment:
-          // a session left claiming a model or an effort the server was never told about is the
-          // same defect as one claiming a mode, in a place a user is more likely to read.
-          this.approvals.rollback(modeBefore)
-          this.models.rollback(settingsBefore.model)
-          this.efforts.rollback(settingsBefore.effort)
-          this.plan.rollback(settingsBefore.phase)
-          this.folders.rollback(settingsBefore.workFolders)
-          // `failTurn`: a turn the provider refused to start sent no terminal and owes none.
-          // See the Claude adapter's copy of this call for what routing it through `completeTurn`
-          // costs when the previous turn was stopped (123, review).
-          this.machine.failTurn(`turn/start failed: ${errorMessage(error)}`)
-        }
-      },
-    )
+    this.startAfterManagedPlugins(localId, () => {
+      const send = () =>
+        this.transport.request(
+          'turn/start',
+          turnStartParams(
+            this._ref!.sessionId,
+            text,
+            askedEffort,
+            approvalMode,
+            askBaseline,
+            workRoots,
+            collaborationModeFor(phase, intended),
+            askedModel,
+          ),
+        )
+      const request = this.sharedSkillsRoot
+        ? Promise.resolve()
+            .then(() => this.beforeSkillDiscovery?.())
+            .then(() =>
+              withDeadline(
+                this.transport.request('skills/list', { cwds: [this.cwd], forceReload: true }),
+                COMMAND_LIST_TIMEOUT_MS,
+                'skills/list',
+              ),
+            )
+            .then(() => {
+              if (this.currentTurn?.localId !== localId || this.currentTurn.interruptPending)
+                throw new Error('turn interrupted')
+              return send()
+            })
+        : send()
+      void Promise.resolve(request).then(
+        (result) => this.onTurnStartResult(localId, result),
+        (error: unknown) => {
+          // A failed turn/start terminalizes the just-begun turn (error→failed→idle) —
+          // but ONLY if it is still the current turn (never terminalize a later one).
+          if (this.currentTurn?.localId === localId) {
+            this.currentTurn = null
+            // The profile rode on that request, so a request that never landed adopted nothing. The
+            // overstatement above is only tolerable because the next turn corrects it; there is no
+            // next turn here, so it is corrected now. `requested` survives — the user's choice did
+            // not fail, the turn did. All four roll back for the same reason and at the same moment:
+            // a session left claiming a model or an effort the server was never told about is the
+            // same defect as one claiming a mode, in a place a user is more likely to read.
+            this.approvals.rollback(modeBefore)
+            this.models.rollback(settingsBefore.model)
+            this.efforts.rollback(settingsBefore.effort)
+            this.plan.rollback(settingsBefore.phase)
+            this.folders.rollback(settingsBefore.workFolders)
+            // `failTurn`: a turn the provider refused to start sent no terminal and owes none.
+            // See the Claude adapter's copy of this call for what routing it through `completeTurn`
+            // costs when the previous turn was stopped.
+            this.machine.failTurn(`turn/start failed: ${errorMessage(error)}`)
+          }
+        },
+      )
+    })
+  }
+
+  private startAfterManagedPlugins(localId: CodexTurn['localId'], dispatch: () => void): void {
+    if (this.managedPluginsChecked || !this.managedPluginMcp?.length) {
+      dispatch()
+      return
+    }
+    this.managedPluginsChecked = true
+    const waiting = { localId, controller: new AbortController() }
+    this.managedPluginWait = waiting
+    void waitForManagedPluginTools(
+      this.transport,
+      this._ref!.sessionId,
+      this.managedPluginMcp.map((server) => server.name),
+      waiting.controller.signal,
+    ).then((outcome) => {
+      if (this.managedPluginWait !== waiting) return
+      this.managedPluginWait = null
+      if (this.isShuttingDown || this.currentTurn?.localId !== localId || outcome === 'cancelled')
+        return
+      if (outcome !== 'ready')
+        this.emit(
+          wrapUnknown(
+            'codex',
+            {
+              method: 'managed-plugin/discovery',
+              outcome,
+              withinMs: MANAGED_PLUGIN_READY_WITHIN_MS,
+              message: 'Plugin unavailable. Try again.',
+            },
+            'lifecycle',
+            'managed-plugin/discovery',
+          ),
+        )
+      dispatch()
+    })
+  }
+
+  private cancelManagedPluginWait(): void {
+    const waiting = this.managedPluginWait
+    if (!waiting) return
+    this.managedPluginWait = null
+    this.managedPluginsChecked = false
+    waiting.controller.abort()
   }
 
   /**
@@ -6100,6 +6179,12 @@ export class CodexSessionHandle implements SessionHandle {
     }
     this.machine.requestInterrupt()
     this.settleRequests()
+    if (this.managedPluginWait && this.managedPluginWait.localId === this.currentTurn?.localId) {
+      this.cancelManagedPluginWait()
+      this.currentTurn = null
+      this.machine.forceEnd(false)
+      return
+    }
     // ⚠️ **Without a `currentTurn` there is no id to interrupt, and that is a REAL limit rather than
     // a shrug** (123). `turn/interrupt` addresses a thread turn; work Codex is doing outside one has
     // no address on this protocol. So the local half still happens — the cards are settled and
@@ -6460,6 +6545,7 @@ export class CodexSessionHandle implements SessionHandle {
   }
 
   private async doClose(): Promise<void> {
+    this.cancelManagedPluginWait()
     // ⛔ **The registry watch stops FIRST, on both paths** (275). It is the one thing here that would
     // otherwise send a request into a transport being closed, and `273` is the dispatch that
     // established what that costs — a clean quit that prints a handler exception. Idempotent, so the
@@ -6658,6 +6744,9 @@ export class CodexRuntime implements AgentRuntime {
       opts.workFolders,
       memoryConfig,
       opts.builtInSkills,
+      opts.sharedSkillsRoot,
+      opts.beforeSkillDiscovery,
+      opts.managedPluginMcp,
     )
     handle.noteLaunchAccount(launchAccount, launchCopy)
     handle.noteStartPhases(phase)
@@ -6877,6 +6966,9 @@ export class CodexRuntime implements AgentRuntime {
       options.workFolders,
       memoryConfig,
       options.builtInSkills,
+      options.sharedSkillsRoot,
+      options.beforeSkillDiscovery,
+      options.managedPluginMcp,
     )
     handle.noteLaunchAccount(launchAccount, launchCopy)
     handle.noteStartPhases(phase)
@@ -6886,6 +6978,7 @@ export class CodexRuntime implements AgentRuntime {
       // malformed-but-non-rejecting resume can no longer masquerade as 'resumed'.
       // …and the MODEL it was created with (038). Previously `undefined`, which let the app-server
       // apply its own configured default to a thread that had deliberately chosen otherwise.
+      options.onSessionCreated?.(handle)
       await handle.begin('resumed', options.model, options.systemHint, bootSettled)
       if (cancel.cancelled) throw new Error('codex resume was cancelled')
       // ⛔ **The one level a RESUME must state, and a start must not** (275, found reviewing this

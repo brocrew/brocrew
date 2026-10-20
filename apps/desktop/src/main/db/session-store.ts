@@ -1,4 +1,6 @@
 import { withOptionalIndexes } from './optional-indexes'
+import { searchPastWork, closePastWorkSearch, pastWorkSource } from './past-work-search'
+import type { PastWorkSearchResult, PastWorkSource } from '../../shared/past-work-search'
 import {
   workRecoveryEvent,
   reconciliationReceipt,
@@ -2289,6 +2291,9 @@ export interface SessionStore {
    * from the row the full read produces.
    */
   recordedOne(sessionId: string): RecordedSession | null
+  searchPastWork(caller: string, words: string): PastWorkSearchResult
+  closePastWorkSearch(): void
+  pastWorkSearchSource(caller: string): PastWorkSource | null
   /**
    * ⚑ **D-017 · R10 — every conversation that can never be reopened and was replaced, with the one
    * that took its place**, read off the old ledgers' `replaced_by` rows — one scan, for the host's
@@ -4254,6 +4259,9 @@ export const NULL_SESSION_STORE: SessionStore = {
   unresumable: () => [],
   recorded: () => [],
   recordedOne: () => null,
+  searchPastWork: () => ({ ok: false, reason: 'unavailable' }),
+  closePastWorkSearch: () => {},
+  pastWorkSearchSource: () => null,
   replacements: () => [],
   // ⚑ **D-029** — a store with no ledger has scheduled nothing.
   newestScheduleLevels: () => [],
@@ -14262,6 +14270,18 @@ export function createSessionStore(
     },
 
     replyQuestionWithoutARequest,
+
+    searchPastWork(caller, words) {
+      return searchPastWork(connection, this, caller, words)
+    },
+
+    pastWorkSearchSource(caller) {
+      return pastWorkSource(connection, caller)
+    },
+
+    closePastWorkSearch() {
+      closePastWorkSearch(connection)
+    },
 
     piecesOwnedBy(owner, unread) {
       return piecesOfSession(owner, unread?.in(owner))

@@ -157,6 +157,47 @@ describe('canonical window worker folds and independent live-store reads', () =>
     return actual
   }
 
+  it('reads incident dependencies canonically, including corrupt rows and changed generations', () => {
+    store.ensurePersonalRoot('alpha', 1)
+    store.ensurePersonalRoot('beta', 1)
+    row('alpha', 'message_queued', {
+      type: 'message_queued',
+      messageId: 'held',
+      kind: 'work',
+      text: 'Fictional words.',
+    })
+    row('alpha', 'message_unqueued', '{')
+    row('alpha', 'work_interrupted', '{')
+    const compare = () => {
+      const actual = engine.read({ kind: 'incidents' })
+      if (actual.kind !== 'incidents') throw new Error('wrong incident result')
+      expect(actual.owners.map((one) => one.sessionId).sort()).toEqual(['alpha', 'beta'])
+      for (const one of actual.owners) {
+        const fresh = createSessionStore(db)
+        const messages = rowsUnreadOnce()
+        const stop = rowsUnreadOnce()
+        const pieces = rowsUnreadOnce()
+        const routes = rowsUnreadOnce()
+        expect(one.pieces).toEqual(fresh.openPiecesOf(one.sessionId, pieces))
+        expect(one.work).toEqual(fresh.reconciliationWork(new Set([one.sessionId]), pieces))
+        expect(one.routes).toEqual(fresh.routedRequestsOf(one.sessionId, routes))
+        expect(one.messages).toEqual(fresh.messagesWaitingIn(one.sessionId, messages))
+        expect(one.stop).toEqual(fresh.lastAskToStop(one.sessionId, stop))
+        expect(one.messagesSkipped.length).toBe(messages.count + messages.ledgersSkipped)
+        expect(one.stopSkipped.length).toBe(stop.count + stop.ledgersSkipped)
+        expect(one.piecesSkipped.length).toBe(pieces.count + pieces.ledgersSkipped)
+        expect(one.routesSkipped.length).toBe(routes.count + routes.ledgersSkipped)
+      }
+      return actual
+    }
+    const first = compare().owners.find((one) => one.sessionId === 'alpha')!
+    expect(first.messagesSkipped.length).toBeGreaterThan(0)
+    expect(first.stopSkipped.length).toBeGreaterThan(0)
+    db.prepare('UPDATE events SET generation = 3 WHERE session_id = ?').run('alpha')
+    expect(compare().owners.find((one) => one.sessionId === 'alpha')?.messagesSkipped).toEqual([])
+    expect(() => engine.read({ kind: 'incidents' }, () => true)).toThrow(WindowReadUnavailable)
+  })
+
   it('preserves routes, questions, corruption counts, endings and generation changes', () => {
     expect(routesMatch().questions.rows).toHaveLength(1)
     row('alpha', 'request_resolved', '{')

@@ -46,6 +46,7 @@ export interface StepHooks {
 }
 
 export interface RecoveryFileHandle {
+  stat?(): Promise<RecoveryStats>
   read(
     buffer: Uint8Array,
     offset: number,
@@ -60,6 +61,9 @@ export interface RecoveryFileHandle {
 export interface RecoveryStats {
   readonly size: number
   readonly mtimeMs: number
+  readonly mode?: number
+  readonly dev?: number
+  readonly ino?: number
   isFile(): boolean
   isDirectory(): boolean
   /** A symbolic link; on Windows a junction too. Only `lstat` can answer true. */
@@ -84,7 +88,7 @@ export interface RecoveryFs {
   rmdir(path: string): Promise<void>
   /** A new folder whose name starts with `prefix`; returns its path. */
   mkdtemp(prefix: string): Promise<string>
-  open(path: string, flags: string, mode?: number): Promise<RecoveryFileHandle>
+  open(path: string, flags: string, mode?: number, noFollow?: boolean): Promise<RecoveryFileHandle>
   /** Follows a link to what it points at. */
   stat(path: string): Promise<RecoveryStats>
   /** The entry itself, a link included. */
@@ -111,9 +115,14 @@ export const nodeFs: RecoveryFs = {
   },
   rmdir: (path) => nodeFsPromises.rmdir(path),
   mkdtemp: (prefix) => nodeFsPromises.mkdtemp(prefix),
-  open: async (path, flags, mode) => {
-    const handle = await nodeFsPromises.open(path, flags, mode)
+  open: async (path, flags, mode, noFollow) => {
+    const handle = await nodeFsPromises.open(
+      path,
+      noFollow ? constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK : flags,
+      mode,
+    )
     return {
+      stat: () => handle.stat(),
       read: (buffer, offset, length, position) => handle.read(buffer, offset, length, position),
       writeFile: (data) => handle.writeFile(data),
       sync: () => handle.sync(),

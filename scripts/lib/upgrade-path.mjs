@@ -5,6 +5,8 @@
 // inputs.
 import { createHash } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
+import { SKILL_CATALOGUE_TABLES } from '../../apps/desktop/src/main/db/skill-catalogue-tables.ts'
+import { SKILL_TREE_NAMES, skillTreeStateDigest } from './skill-tree-state.mjs'
 
 // The lines a start prints, as the candidate's own source spells them: the lane reads them only in
 // the candidate's logs, and runs from the candidate's commit.
@@ -23,6 +25,9 @@ export { CHECKPOINT_LINE, FAIL_LINE, READY_LINE, RECOVERY_ONLY_LINE }
  */
 export const MAY_MOVE_AT_A_START = {
   provider_session: ['status', 'updated_at', 'closed_by_the_quit_at'],
+  // Built-in text updates move only these pointers; skillsKept checks their targets and preserves personal/plugin heads.
+  skill_current: ['current_version'],
+  skill_catalogue_state: ['revision'],
 }
 
 /**
@@ -264,13 +269,122 @@ export function canonicalRow(row, ignored = []) {
   )
 }
 
+// Only a verified installed bundle can authorize an availability change.
+const verifiedSkillMembership = new WeakMap()
+
+function hasExactKeys(value, keys) {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    Object.keys(value).length === keys.length &&
+    keys.every((key) => Object.hasOwn(value, key))
+  )
+}
+
+/** Verify the candidate's manifest and body bytes before using its shipped membership. */
+export function verifyCandidateSkills(manifest, bodies) {
+  requireEvidence(
+    hasExactKeys(manifest, ['formatVersion', 'version', 'skills']) &&
+      manifest.formatVersion === 1 &&
+      typeof manifest.version === 'string' &&
+      /^v\d+(?:\.\d+)?$/.test(manifest.version) &&
+      Array.isArray(manifest.skills) &&
+      bodies instanceof Map &&
+      bodies.size === manifest.skills.length,
+    'The candidate skill manifest is invalid.',
+  )
+  // Names and count come from the candidate, while each entry keeps the app's strict format.
+  const names = new Set()
+  for (const item of manifest.skills) {
+    requireEvidence(
+      hasExactKeys(item, ['name', 'description', 'reminder', 'sha256', 'bytes']) &&
+        typeof item.name === 'string' &&
+        /^[a-z][a-z0-9-]{0,99}$/.test(item.name) &&
+        !names.has(item.name) &&
+        typeof item.description === 'string' &&
+        item.description.length > 0 &&
+        item.description.length <= 500 &&
+        hasExactKeys(item.reminder, ['codex', 'claude']) &&
+        typeof item.reminder.codex === 'string' &&
+        item.reminder.codex.length >= 1 &&
+        item.reminder.codex.length <= 240 &&
+        typeof item.reminder.claude === 'string' &&
+        item.reminder.claude.length >= 1 &&
+        item.reminder.claude.length <= 247 &&
+        item.reminder.codex.startsWith(`${item.name} — `) &&
+        item.reminder.claude === `brobot:${item.reminder.codex}` &&
+        !/[\r\n]/.test(item.description + item.reminder.codex + item.reminder.claude) &&
+        Number.isInteger(item.bytes) &&
+        item.bytes > 0 &&
+        item.bytes <= 65_536 &&
+        typeof item.sha256 === 'string' &&
+        /^[a-f0-9]{64}$/.test(item.sha256),
+      'A candidate skill manifest entry is invalid.',
+    )
+    const body = bodies.get(item.name)
+    requireEvidence(
+      Buffer.isBuffer(body) && body.length === item.bytes && sha256(body) === item.sha256,
+      'A candidate skill body does not match its manifest.',
+    )
+    const text = body.toString('utf8')
+    const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/.exec(text)?.[1]
+    const lines = frontmatter?.split(/\r?\n/) ?? []
+    requireEvidence(
+      Buffer.from(text, 'utf8').equals(body) &&
+        lines.filter((line) => line.startsWith('name: ')).length === 1 &&
+        lines.includes(`name: ${item.name}`) &&
+        lines.filter((line) => line.startsWith('description: ')).length === 1 &&
+        lines.includes(`description: ${item.description}`),
+      'Candidate skill frontmatter does not match its manifest.',
+    )
+    names.add(item.name)
+  }
+  const proof = Object.freeze({
+    names: Object.freeze([...names]),
+    digest: sha256(Buffer.from(JSON.stringify(manifest))),
+  })
+  verifiedSkillMembership.set(proof, names)
+  return proof
+}
+
+function skillAvailabilityMatches(old, now, before, after, candidateSkills) {
+  const names = verifiedSkillMembership.get(candidateSkills)
+  if (
+    !names ||
+    !now ||
+    ![0, 1].includes(old.active) ||
+    now.active !== 1 - old.active ||
+    canonicalRow(old, ['active']) !== canonicalRow(now, ['active'])
+  )
+    return false
+  const name = old.id?.startsWith('built-in/') ? old.id.slice('built-in/'.length) : undefined
+  if (!name || old.alias !== name || now.active !== Number(names.has(name))) return false
+  // A built-in-looking id alone is not evidence of a built-in origin.
+  return [before, after].every((tables) => {
+    const version = tables.skill_version?.find((row) => row.id === old.current_version)
+    try {
+      const meta = JSON.parse(version?.metadata)
+      return version.skill_id === old.id && meta.origin?.kind === 'built-in' && meta.name === name
+    } catch {
+      return false
+    }
+  })
+}
+
 /**
  * Whether every row the beta left is still in the candidate's database, whole: each table's rows
  * as a multiset, every column but the few a start may move. Rows the candidate added are counted,
  * not refused: they are evidence for a reader. A table that went is a loss. Each lost row says
  * whether its key is gone or which of its columns changed, where `keys` names the table's key.
  */
-export function rowsPreserved(before, after, mayMove = MAY_MOVE_AT_A_START, keys = {}) {
+export function rowsPreserved(
+  before,
+  after,
+  mayMove = MAY_MOVE_AT_A_START,
+  keys = {},
+  candidateSkills,
+) {
   const lost = []
   const added = {}
   for (const [table, rows] of Object.entries(before)) {
@@ -294,6 +408,18 @@ export function rowsPreserved(before, after, mayMove = MAY_MOVE_AT_A_START, keys
       const count = left.get(key) ?? 0
       if (count > 0) {
         left.set(key, count - 1)
+        continue
+      }
+      const available =
+        table === 'skill_current' &&
+        now.find(
+          (one) =>
+            (left.get(canonicalRow(one, ignored)) ?? 0) > 0 &&
+            skillAvailabilityMatches(row, one, before, after, candidateSkills),
+        )
+      if (available) {
+        const changedKey = canonicalRow(available, ignored)
+        left.set(changedKey, left.get(changedKey) - 1)
         continue
       }
       const named = keyOf(row)
@@ -776,6 +902,11 @@ export function jobSummary(summary) {
     '',
     `- Checks: ${String(held)} held, ${String(summary.checks.length - held)} did not.`,
   ]
+  if (summary.candidateSkills !== undefined) {
+    lines.push(
+      `- Verified candidate built-in skills: ${summary.candidateSkills.names.join(', ') || 'none'}.`,
+    )
+  }
   if (summary.savedKeyAfterTheUpgrade !== undefined) {
     lines.push(`- The saved key after the upgrade: ${summary.savedKeyAfterTheUpgrade}`)
   }
@@ -877,6 +1008,15 @@ export function verifyCheckpoint(manifest, files, expected) {
   requireEvidence(manifest.database?.file === 'database.sqlite', 'The copy names another database.')
   const bytesMatch = (name, entry) => {
     const bytes = files[name]
+    if (SKILL_TREE_NAMES.includes(name)) {
+      requireEvidence(bytes !== undefined, `The copy does not hold ${name}.`)
+      const tree = skillTreeStateDigest(bytes)
+      requireEvidence(
+        tree.bytes === entry.bytes && tree.sha256 === entry.sha256,
+        `The copy changed ${name}.`,
+      )
+      return
+    }
     requireEvidence(
       bytes !== undefined && bytes.length === entry.bytes && sha256(bytes) === entry.sha256,
       `The copy's ${name} is not the one its manifest describes.`,
@@ -900,7 +1040,10 @@ export function verifyCheckpoint(manifest, files, expected) {
     )
     if (file.present) {
       bytesMatch(file.name, file)
-      requireEvidence(sha256(baseline) === file.sha256, `The copy changed ${file.name}.`)
+      requireEvidence(
+        Buffer.from(baseline).equals(Buffer.from(files[file.name])),
+        `The copy changed ${file.name}.`,
+      )
     } else {
       requireEvidence(files[file.name] === undefined, `The copy holds ${file.name}, listed absent.`)
     }
@@ -911,4 +1054,91 @@ export function verifyCheckpoint(manifest, files, expected) {
     reason: manifest.reason,
     madeBy: manifest.madeBy,
   }
+}
+
+/** Skill versions and choices survive an upgrade; only verified built-in pointers may advance. */
+export function skillsKept(before, after, candidateSkills) {
+  const failures = []
+  for (const table of SKILL_CATALOGUE_TABLES)
+    if (!Array.isArray(after[table])) failures.push(`${table} is missing`)
+  if (failures.length) return failures
+  const kept = rowsPreserved(
+    Object.fromEntries(SKILL_CATALOGUE_TABLES.map((name) => [name, before[name] ?? []])),
+    after,
+    {},
+    { skill_current: ['id'], skill_version: ['id'] },
+  )
+  for (const lost of kept.lost) {
+    if (lost.table !== 'skill_current' && lost.table !== 'skill_catalogue_state')
+      failures.push(`${lost.table} lost or changed a row`)
+  }
+  const versions = new Map(after.skill_version.map((row) => [row.id, row]))
+  const aliases = new Set()
+  for (const head of after.skill_current) {
+    const version = versions.get(head.current_version)
+    if (!version || version.skill_id !== head.id) {
+      failures.push('a skill head has no matching version')
+      continue
+    }
+    if (aliases.has(head.alias)) failures.push('a skill alias is duplicated')
+    aliases.add(head.alias)
+    let meta
+    try {
+      meta = JSON.parse(version.metadata)
+    } catch {
+      failures.push('skill metadata is unreadable')
+      continue
+    }
+    if (
+      typeof version.body !== 'string' ||
+      meta.alias !== head.alias ||
+      sha256(Buffer.from(version.body, 'utf8')) !== version.sha256 ||
+      Buffer.byteLength(version.body, 'utf8') !== version.bytes ||
+      meta.sha256 !== version.sha256 ||
+      meta.bytes !== version.bytes
+    )
+      failures.push('a skill version does not match its bytes')
+    if (
+      head.id.startsWith('built-in/') &&
+      (meta.origin?.kind !== 'built-in' ||
+        head.id !== `built-in/${meta.name}` ||
+        head.alias !== meta.name)
+    )
+      failures.push('a built-in head changed origin')
+  }
+  for (const old of before.skill_current ?? []) {
+    const now = after.skill_current.find((row) => row.id === old.id)
+    if (
+      !now ||
+      (now.active !== old.active
+        ? !skillAvailabilityMatches(old, now, before, after, candidateSkills)
+        : canonicalRow(now, ['current_version']) !== canonicalRow(old, ['current_version']))
+    ) {
+      failures.push('an existing skill head changed')
+      continue
+    }
+    if (now.current_version !== old.current_version && !old.id.startsWith('built-in/'))
+      failures.push('an upgrade changed a personal or plugin version')
+  }
+  const was = before.skill_catalogue_state ?? []
+  const now = after.skill_catalogue_state
+  const moved = after.skill_current.some((head) => {
+    const old = (before.skill_current ?? []).find((row) => row.id === head.id)
+    return old?.current_version !== head.current_version || old?.active !== head.active
+  })
+  if (moved && (!now[0] || now[0].revision <= (was[0]?.revision ?? 0)))
+    failures.push('a changed catalogue did not advance its revision')
+  if (now.length > 1 || (was.length && now.length !== 1))
+    failures.push('the catalogue revision row disappeared')
+  if (
+    now.some(
+      (row) =>
+        row.id !== 1 ||
+        !Number.isSafeInteger(row.revision) ||
+        row.revision < 0 ||
+        (was[0] && row.revision < was[0].revision),
+    )
+  )
+    failures.push('the catalogue revision went backwards')
+  return failures
 }

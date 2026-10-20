@@ -129,6 +129,6 @@ describe('a draft restored at launch (744 · R100)', () => {
 
     expect(book.read(SLOT)).toBe('')
     expect(book.paths.read(SLOT)).toEqual([])
-    expect(saves.at(-1)).toEqual({ drafts: [] })
+    expect(saves.at(-1)).toEqual({ drafts: [], cleared: [SLOT] })
   })
 })

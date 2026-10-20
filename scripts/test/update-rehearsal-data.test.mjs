@@ -1,5 +1,14 @@
 import { createHash } from 'node:crypto'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import {
+  chmodSync,
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -21,6 +30,7 @@ import {
   whatTheDataLacks,
 } from '../lib/update-rehearsal-data.mjs'
 import { STATE_FILES } from '../lib/update-rehearsal.mjs'
+import { readStateEntry, SKILL_TREE_NAMES, skillTreeStateDigest } from '../lib/skill-tree-state.mjs'
 
 /**
  * The update rehearsal's data checks, held on files made here: what a data folder holds read from
@@ -255,10 +265,16 @@ function aCopy(folder, version = '0.0.99', id = '0b5e2a3c-1d4f-4a6b-8c9d-0e1f2a3
   copy.close()
   const files = STATE_FILES.map((name) => {
     try {
-      const bytes = readFileSync(join(folder, name))
-      writeFileSync(join(dir, name), bytes)
-      return { name, present: true, bytes: bytes.length, sha256: sha256(bytes) }
-    } catch {
+      const bytes = readStateEntry(join(folder, name))
+      const tree = SKILL_TREE_NAMES.includes(name)
+      if (tree) cpSync(join(folder, name), join(dir, name), { recursive: true })
+      else writeFileSync(join(dir, name), bytes)
+      const digest = tree
+        ? skillTreeStateDigest(bytes)
+        : { bytes: bytes.length, sha256: sha256(bytes) }
+      return { name, present: true, ...digest }
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error
       return { name, present: false }
     }
   })
@@ -293,6 +309,53 @@ function aCopy(folder, version = '0.0.99', id = '0b5e2a3c-1d4f-4a6b-8c9d-0e1f2a3
 }
 
 describe('a recovery copy, checked against its manifest', () => {
+  it('keeps active and off skill trees and receipts, and detects changed assets, modes and missing trees', () => {
+    const folder = aDataFolder()
+    for (const name of SKILL_TREE_NAMES) {
+      const skill = join(folder, name, 'recipe-check')
+      mkdirSync(join(skill, 'assets'), { recursive: true })
+      mkdirSync(join(skill, 'empty'))
+      writeFileSync(join(skill, 'SKILL.md'), 'A fictional recipe.')
+      writeFileSync(join(skill, 'assets/map.bin'), new Uint8Array([1, 2, 3]))
+      writeFileSync(join(skill, 'run.sh'), '#!/bin/sh\nexit 0\n')
+      chmodSync(join(skill, 'run.sh'), 0o700)
+    }
+    writeFileSync(join(folder, 'skills-conversion.json'), '{"version":1,"receipts":[]}\n')
+    const dir = aCopy(folder)
+    run(
+      folder,
+      `CREATE TABLE __drizzle_migrations (id INTEGER PRIMARY KEY, hash TEXT, created_at NUMERIC);
+      INSERT INTO __drizzle_migrations (hash, created_at) VALUES ('h0', 100), ('h1', 200);`,
+    )
+    const before = dataOf(folder)
+    const copy = { dir, id: dir.split(/[\\/]/).at(-1) }
+    expect(verifyCheckpoint(copy).problems).toEqual([])
+    expect(copyHoldsTheData(copy, before)).toEqual([])
+    for (const name of SKILL_TREE_NAMES)
+      expect(before.summary.state[name]).toEqual(
+        skillTreeStateDigest(readStateEntry(join(folder, name))),
+      )
+    writeFileSync(join(folder, 'skills/recipe-check/assets/map.bin'), new Uint8Array([3, 2, 1]))
+    writeFileSync(join(folder, 'skills-conversion.json'), '{"version":1,"receipts":[{}]}\n')
+    expect(compareData(before, dataOf(folder)).problems).toEqual([
+      'skills changed',
+      'skills-conversion.json changed',
+    ])
+    writeFileSync(join(dir, 'skills-off/recipe-check/assets/map.bin'), new Uint8Array([4, 5, 6]))
+    expect(verifyCheckpoint(copy).problems).toContain('skills-off is not as its manifest says')
+    expect(copyHoldsTheData(copy, before)).toContain(
+      'skills-off in the copy is not the one that was left',
+    )
+    // Executable bits participate in the tree digest on systems that preserve them.
+    if (process.platform !== 'win32') {
+      const script = join(dir, 'skills/recipe-check/run.sh')
+      chmodSync(script, 0o600)
+      expect(verifyCheckpoint(copy).problems).toContain('skills is not as its manifest says')
+    }
+    rmSync(join(folder, 'skills-off'), { recursive: true })
+    expect(compareData(before, dataOf(folder)).problems).toContain('skills-off is gone')
+  })
+
   it('a copy made as the app makes one holds what its manifest says, and is found with who made it', () => {
     const folder = aDataFolder()
     aCopy(folder)

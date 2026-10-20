@@ -1,11 +1,13 @@
+import { ipcMain } from './app-ipc'
 import { mkdirSync } from 'node:fs'
 import { basename, join } from 'node:path'
-import { BrowserWindow, ipcMain, net, shell } from 'electron'
+import { BrowserWindow, net, shell } from 'electron'
 import type { App } from 'electron'
 import type { AppUpdater, BaseUpdater } from 'electron-updater'
 import { UPDATES_CHANNELS, type UpdateChannel } from '../shared/updates'
 import { defaultDataFolder } from './data-folder'
 import {
+  clearUpdateStaging,
   diskImageOf,
   downloadChecked,
   downloadUrlOf,
@@ -53,8 +55,9 @@ export function startUpdates(options: {
   readonly host: RuntimeHost
   /** A hidden launch (every test and smoke): its own settings, and no Finder window. */
   readonly hidden: boolean
-}): Updates {
+}): Updates & { drain(): Promise<void> } {
   const { app } = options
+  clearUpdateStaging(app.getPath('userData'))
   const feed = app.isPackaged ? feedOfTheApp(join(process.resourcesPath, 'app-update.yml')) : null
   const settings = updateSettingsOf({
     appData: app.getPath('appData'),
@@ -127,6 +130,8 @@ export function startUpdates(options: {
     }
   })
 
+  const guidedDownloads = new AbortController()
+  const pendingGuides = new Set<Promise<string>>()
   const updates = createUpdates({
     version: app.getVersion(),
     notHere: !app.isPackaged ? 'a-development-build' : feed === null ? 'no-release-feed' : null,
@@ -166,6 +171,7 @@ export function startUpdates(options: {
       app.quit()
     },
     guide: async (found, onPercent) => {
+      guidedDownloads.signal.throwIfAborted()
       if (feed === null) throw new Error('this build has no release feed')
       const image = diskImageOf(found)
       if (image === null) throw new Error(`release ${found.version} has no disk image for the Mac`)
@@ -174,21 +180,34 @@ export function startUpdates(options: {
         ? join(app.getPath('userData'), 'updates')
         : app.getPath('downloads')
       mkdirSync(folder, { recursive: true })
+      const stagingFolder = join(app.getPath('userData'), 'updates', 'staging')
+      mkdirSync(stagingFolder, { recursive: true, mode: 0o700 })
       const token = privateFeedToken(feed, process.env)
       const url =
         token === null || feed.provider !== 'github'
           ? downloadUrlOf(feed, found.version, image.url)
           : await privateDownloadUrlOf({ feed, version: found.version, file: image.url, token })
-      const path = await downloadChecked({
+      guidedDownloads.signal.throwIfAborted()
+      const pending = downloadChecked({
         url,
         sha512: image.sha512,
+        signal: guidedDownloads.signal,
         to: join(folder, basename(image.url)),
+        stagingFolder,
         onPercent,
         // ⚑ Its own user agent: Electron's carries this BroCrew's version, and a download says no
         // more than a check does (electron-updater's say `electron-builder`).
         fetch: ((input: string, init?: RequestInit) =>
           net.fetch(input, { ...init, headers: { 'user-agent': 'BroCrew' } })) as typeof fetch,
       })
+      pendingGuides.add(pending)
+      let path: string
+      try {
+        path = await pending
+      } finally {
+        pendingGuides.delete(pending)
+      }
+      guidedDownloads.signal.throwIfAborted()
       // ⚑ A hidden launch opens nothing on anybody's screen.
       if (!options.hidden) {
         const failure = await shell.openPath(path)
@@ -226,7 +245,11 @@ export function startUpdates(options: {
 
   // ⛔ Any quit ends the updates: a restart that waits is not installed by a look that answers
   // while the app is closing.
-  app.on('before-quit', () => updates.stop())
+  const stop = (): void => {
+    guidedDownloads.abort()
+    updates.stop()
+  }
+  app.on('before-quit', stop)
   ipcMain.handle(UPDATES_CHANNELS.read, () => updates.snapshot())
   ipcMain.handle(UPDATES_CHANNELS.checkNow, () => updates.checkNow())
   ipcMain.handle(UPDATES_CHANNELS.set, (_event, change: unknown) =>
@@ -236,5 +259,12 @@ export function startUpdates(options: {
   ipcMain.handle(UPDATES_CHANNELS.restartWhenQuiet, () => updates.restartWhenQuiet())
   ipcMain.handle(UPDATES_CHANNELS.cancelRestart, () => updates.cancelRestart())
   updates.start()
-  return updates
+  return {
+    ...updates,
+    stop,
+    drain: async () => {
+      stop()
+      await Promise.allSettled([...pendingGuides])
+    },
+  }
 }

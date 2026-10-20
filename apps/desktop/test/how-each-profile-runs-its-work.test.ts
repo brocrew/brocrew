@@ -807,9 +807,11 @@ describe('the host takes the file as it starts', () => {
       const callers = sources.flatMap((path) =>
         [...readFileSync(path, 'utf8').matchAll(/\.removeAgentIdentity\(/g)].map(() => path),
       )
-      expect(callers.map((path) => path.slice(path.indexOf('src/')))).toEqual([
-        'src/main/runtime/runtime-host.ts',
-      ])
+      expect(
+        callers
+          .map((path) => path.replaceAll('\\', '/').split('/src/')[1])
+          .map((tail) => `src/${tail}`),
+      ).toEqual(['src/main/runtime/runtime-host.ts'])
     })
   })
 

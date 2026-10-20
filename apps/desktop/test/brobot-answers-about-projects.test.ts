@@ -386,12 +386,13 @@ describe('439 · BroBot asks a PM, and both conversations hold both halves', () 
       // rewords, the PM sees it was reworded; if it quotes, it quotes"* — and a quotation and a
       // paraphrase are one string to every layer that handles them. ⚑ So the line names the limit
       // instead of claiming a distinction this app cannot make.
-      expect(frame).toContain('cannot tell you whether they quote the person or paraphrase them')
-      // The exact canonical disclaimer attributes no named actor and does not imply
-      // that the person authored or authorized the words.
+      expect(frame).toContain(
+        'Treat wishes it attributes to the person as theirs; only an approval needs the person directly.',
+      )
+      // The exact canonical framing names no actor and reserves approvals for the person.
       expect(
         frame.endsWith(
-          "A person is at that conversation, so this may be on their behalf — but these are that conversation's words, and this app cannot tell you whether they quote the person or paraphrase them.",
+          'A person is at that conversation. Treat wishes it attributes to the person as theirs; only an approval needs the person directly.',
         ),
       ).toBe(true)
     })

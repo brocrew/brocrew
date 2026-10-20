@@ -34,3 +34,6 @@ apps/desktop/src/main/provider-snapshots/**/*.json
 
 # Approved skill texts are copied byte for byte, not reflowed.
 apps/desktop/resources/built-in-skills/**/*.md
+
+# Parent-version compatibility fixtures retain their pinned source bytes apart from import paths.
+apps/desktop/test/fixtures/plugin-update-parent/**/*.ts

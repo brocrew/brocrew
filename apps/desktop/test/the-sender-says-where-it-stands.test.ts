@@ -251,7 +251,7 @@ describe('D-011 · the sender says where it stands', () => {
     expect(theTagIn(turn)).toBe(`Sent by ${nameOf('pm')} (pm), who gave you ${label}.`)
     // 🔴 **F088 · and the line says so, last**, by its label and title — open, so with no word on
     // how it ended.
-    const about = `paraphrase them. This message is about ${label} · Build the index.`
+    const about = `only an approval needs the person directly. This message is about ${label} · Build the index.`
     expect((turn.split('\n')[0] ?? '').slice(-about.length)).toBe(about)
   })
 
@@ -297,7 +297,7 @@ describe('D-011 · the sender says where it stands', () => {
     )
     // 🔴 **F088 · and the piece it is about, marked as it stands when the words GO** — answered,
     // which it was not when they were held.
-    const about = `paraphrase them. This message is about ${label} · Build the index (answered).`
+    const about = `only an approval needs the person directly. This message is about ${label} · Build the index (answered).`
     expect((turn.split('\n')[0] ?? '').slice(-about.length)).toBe(about)
   })
 })

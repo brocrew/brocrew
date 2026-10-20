@@ -108,11 +108,12 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M8 · 🔴 a message whose queued settings were refused before the push ends the wake it "
         f"was to join · killed by `{RESULT}`",
+        # The queued-settings failure now sits inside the active-turn guard.
         [(ADAPTER,
-          "      this.machine.failTurn(`could not apply the queued settings: ${errorMessage(error)}`, {\n"
-          "        neverSent: true,\n"
-          "      })\n",
-          "      this.machine.failTurn(`could not apply the queued settings: ${errorMessage(error)}`)\n")],
+          "        this.machine.failTurn(`could not apply the queued settings: ${errorMessage(error)}`, {\n"
+          "          neverSent: true,\n"
+          "        })\n",
+          "        this.machine.failTurn(`could not apply the queued settings: ${errorMessage(error)}`)\n")],
     ),
     (
         "M9 · 🔴 a wake BEFORE the last message makes the last exchange \"not an answer\" · "

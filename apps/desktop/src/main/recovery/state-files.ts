@@ -1,3 +1,4 @@
+import { SKILL_CATALOGUE_TABLES } from '../db/skill-catalogue-tables'
 import { PROVIDER_HOMES_DIRNAME } from '../runtime/provider-homes'
 import type { RestoreRule } from './contract'
 import { BACKUPS_DIRNAME, DATABASE_FILE, RECOVERY_DIRNAME, familyOf } from './layout'
@@ -11,6 +12,7 @@ import { BACKUPS_DIRNAME, DATABASE_FILE, RECOVERY_DIRNAME, familyOf } from './la
 
 export interface AppStateFile {
   readonly name: string
+  readonly kind?: 'tree'
   /**
    * `with-the-database`: a restore installs the checkpoint's copy with the database and sets the
    * live one aside with the newer database. `kept-current`: copied too, but a restore leaves the
@@ -26,7 +28,30 @@ export interface NotState {
   readonly why: string
 }
 
+export const SKILL_CATALOGUE_RECOVERY = {
+  tables: SKILL_CATALOGUE_TABLES,
+  restore: 'with-the-database',
+  why: 'Skill source versions, current pointers and agent choices restore together in SQLite; generated provider views are not backup state.',
+} as const
+
 export const APP_STATE_FILES: readonly AppStateFile[] = [
+  {
+    name: 'skills',
+    kind: 'tree',
+    restore: 'with-the-database',
+    why: 'The shared writable skill folders, including their supporting files.',
+  },
+  {
+    name: 'skills-off',
+    kind: 'tree',
+    restore: 'with-the-database',
+    why: 'Shared skills turned off, kept whole so they can be turned on again.',
+  },
+  {
+    name: 'skills-conversion.json',
+    restore: 'with-the-database',
+    why: 'Import receipts prevent later launches from overwriting edits or recreating deletions.',
+  },
   {
     name: 'transcript-retention.json',
     restore: 'kept-current',
@@ -148,7 +173,7 @@ export const NOT_STATE: readonly NotState[] = [
       "Each launch's timing, kept for diagnosing a slow start: about those launches, not the " +
       'data; never copied or restored, and a reset may drop it.',
   },
-  { name: 'updates', why: 'Downloaded updates, not state.' },
+  { name: 'updates', why: 'Downloaded updates and their private staging files, not state.' },
   { name: 'one-host.sock', why: 'The live socket that keeps one app on this folder.' },
   {
     name: '.oh-*',

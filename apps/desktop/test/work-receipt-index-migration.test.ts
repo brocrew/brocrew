@@ -64,6 +64,7 @@ it('upgrades from 0007 without losing old rows and makes the automatic pre-migra
   cpSync(migrations, old, { recursive: true })
   const journalPath = join(old, 'meta/_journal.json')
   const journal = JSON.parse(readFileSync(journalPath, 'utf8')) as { entries: { idx: number }[] }
+  const currentMigrationCount = journal.entries.length
   journal.entries = journal.entries.filter((one) => one.idx <= 7)
   writeFileSync(journalPath, JSON.stringify(journal))
   applyMigrations(db, old)
@@ -117,8 +118,11 @@ it('upgrades from 0007 without losing old rows and makes the automatic pre-migra
   applyMigrations(db, migrations)
   expect(db.prepare('SELECT * FROM events ORDER BY ordinal').all()).toEqual(before)
   plans()
-  // Twelve including the legacy stall boundary and removal of the duplicate transcript.
-  expect(db.prepare('SELECT count(*) AS n FROM __drizzle_migrations').get()).toEqual({ n: 12 })
+  expect(db.prepare('SELECT count(*) AS n FROM __drizzle_migrations').get()).toEqual({
+    n: currentMigrationCount,
+  })
   applyMigrations(db, migrations)
-  expect(db.prepare('SELECT count(*) AS n FROM __drizzle_migrations').get()).toEqual({ n: 12 })
+  expect(db.prepare('SELECT count(*) AS n FROM __drizzle_migrations').get()).toEqual({
+    n: currentMigrationCount,
+  })
 })

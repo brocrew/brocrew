@@ -1,3 +1,8 @@
+import {
+  pluginInstructionParagraphs,
+  PLUGINS_HEADING,
+  type PluginInstructionEntry,
+} from '../plugins/instructions'
 import { type ConversationAtLaunch, type ProfileCapabilities } from '../../shared/capabilities'
 import { BUILD_IS_DEV, BUILD_IS_UNRECORDED } from '@brobot2/shared'
 // ⚑ **583 · the axis the instructions sheet is grouped on** — see {@link profileBundleSpans}.
@@ -382,12 +387,13 @@ const CORE_TEXT = [
     'affect the next step. Do not routinely poll active agents. Before one completion message, ' +
     'check required answers, helper results and what was verified; say what remains unchecked. ' +
     'Incomplete work is not done.',
-  "Follow the person's scope and stops, and tell your giver. Only the person grants approvals. " +
+  "Follow the person's scope and stops, and tell your giver. Only the person approves; use " +
+    'wishes attributed by your giver or BroBot unless contradicted. ' +
     'Follow current permissions, tool contracts and refusals. Use the assigned folder; create ' +
     'one only for saved work. Follow local conventions; explain conflicts. Keep finished files ' +
     'on the piece so agents can find them. Read your saved methods as scoped, fallible guidance ' +
-    'and open only relevant ones. Save only tested reusable lessons when permitted, without ' +
-    'person or project facts. Use relevant skills; report missing guidance and continue ' +
+    'and open only relevant ones. Save tested lessons and person-set conventions when permitted; ' +
+    'separate task facts. Use relevant skills; report missing guidance and continue ' +
     'permitted work.',
 ] as const
 
@@ -503,6 +509,8 @@ export interface InstructionContext {
   readonly displayName?: string | null
   /** The profile's saved methods as this launch read them; no section when not given. */
   readonly savedMethods?: SavedMethodsReading
+  /** The real controller's current catalogue; null/absent means no Plugins section. */
+  readonly plugins?: readonly PluginInstructionEntry[] | null
   /** Where this conversation is working — the RESOLVED cwd. */
   readonly cwd: string
   /**
@@ -873,6 +881,13 @@ function thisConversationSections(
       whose: 'dynamic',
       heading: `## ${SAVED_METHODS_HEADING}`,
       blocks: savedMethodsParagraphs(context.savedMethods),
+    })
+  }
+  if (context.plugins != null) {
+    sections.push({
+      whose: 'dynamic',
+      heading: `## ${PLUGINS_HEADING}`,
+      blocks: pluginInstructionParagraphs(context.plugins),
     })
   }
   return sections

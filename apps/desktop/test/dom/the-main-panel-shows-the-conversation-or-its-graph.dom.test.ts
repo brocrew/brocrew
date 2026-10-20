@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
-import { defineComponent, h, nextTick, shallowReactive } from 'vue'
+import { computed, defineComponent, h, nextTick, ref, shallowReactive } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import type { ForestView } from '../../src/renderer/src/lib/the-forest'
@@ -230,6 +230,46 @@ const kept = (piece: string): KeptFile => ({
 })
 
 describe('the main panel shows the conversation, or its whole tree', () => {
+  it('folds lazily across pushes, shows the newest graph, and stops folding when hidden again', async () => {
+    const push = ref(0)
+    let folds = 0
+    const forest = computed(() => {
+      folds++
+      return viewOf([conv(ID, null, { identity: `worker-${push.value}` })])
+    })
+    const readForest = () => forest.value
+    const host = defineComponent(
+      () => () =>
+        h('div', [
+          h('output', String(push.value)),
+          h(ConversationPane, paneProps({ forest: readForest })),
+        ]),
+    )
+    const m = mount(host, {})
+    for (let i = 1; i <= 20; i++) {
+      push.value = i
+      await nextTick()
+    }
+    expect(folds).toBe(0)
+    await toGraph(m)
+    expect(folds).toBe(1)
+    expect(card(m, ID).textContent).toContain('worker-20')
+    push.value = 21
+    await forestDrawn()
+    expect(folds).toBe(2)
+    expect(card(m, ID).textContent).toContain('worker-21')
+    m.q('main-tab-conversation').click()
+    await nextTick()
+    for (let i = 22; i <= 40; i++) {
+      push.value = i
+      await nextTick()
+    }
+    expect(folds).toBe(2)
+    await toGraph(m)
+    expect(folds).toBe(3)
+    expect(card(m, ID).textContent).toContain('worker-40')
+  })
+
   it('🔴 two tabs over the conversation — and the graph hides it, never unmounts it', async () => {
     const m = await show(FOREST())
     const tabs = m.q('main-tabs')

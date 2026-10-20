@@ -1,3 +1,15 @@
+import { workspaceLaunchMessage } from './workspace-routing'
+import { WorkspacePluginAttachments } from './plugins/attachments'
+import { pluginWorkspaceIdentity } from './plugins/supervisor/client'
+import { registerPluginSettings } from './plugins/settings'
+import { productionPluginController } from './plugins/production'
+import { PluginSupervisorAttachment, pluginSupervisorRoot } from './plugins/supervisor/client'
+import { PLUGIN_SCHEME } from './plugins/ui/assets'
+import { installPluginUiRpc } from './plugins/ui/host'
+import { ipcMain } from './app-ipc'
+import { SharedSkillDiscovery } from './skills/shared-discovery'
+import { convertSharedSkills } from './skills/shared-conversion'
+import { SharedSkillLibrary } from './skills/shared-library'
 import { providerProcessesAreInFlight } from './runtime/live-hosts'
 import { TranscriptRetentionHost, transcriptStartupWasInterrupted } from './transcript-retention'
 import {
@@ -23,7 +35,7 @@ import {
   BrowserWindow,
   clipboard,
   dialog,
-  ipcMain,
+  ipcMain as pluginIpcMain,
   Menu,
   nativeImage,
   powerMonitor,
@@ -64,6 +76,7 @@ import { windowWriterSampler } from './db/window-writer-stamp'
 import { startLimitsReader } from './db/start-limits-reader'
 import { startWindowReader } from './db/start-window-reader'
 import { startWorkSearch } from './db/start-work-search'
+import { startPastWorkSearch } from './db/start-past-work-search'
 import { createAppLifetime } from './app-lifetime'
 import { armLastResortExit } from './last-resort-exit'
 import { ownershipFrom, runAsSoleInstance, type OwnershipAsked } from './single-instance'
@@ -261,13 +274,28 @@ import {
   defaultDataFolder,
   nameTheAppToWindows,
   pinTheDataFolder,
+  workspaceStartup,
   workspaceOf,
 } from './data-folder'
 import { whoMayReadTheDataFolder } from './data-folder-privacy'
+import { WorkspaceUnavailable } from './workspace-startup'
+import { nodeFs as recoveryFiles } from './recovery/files'
 
 // Pin the data folder before `ready` and the single-instance lock read it.
 // OS display names must not move existing data; see `data-folder.ts`.
-pinTheDataFolder(app)
+// A workspace that cannot open stops the launch with a message.
+try {
+  pinTheDataFolder(app)
+  workspaceStartup(app)?.assertDatabase()
+} catch (error) {
+  try {
+    const message = workspaceLaunchMessage(error)
+    if (app.commandLine.hasSwitch('brobot-hidden')) console.error(message)
+    else dialog.showErrorBox('BroCrew', message)
+  } finally {
+    app.exit(1)
+  }
+}
 // Give Windows the app id used by its shortcuts.
 nameTheAppToWindows(app)
 
@@ -290,7 +318,11 @@ const STDERR_FD = 2
  * evaluation keeps the registration synchronous. A refused second launch only changes its
  * own process registry: the protocol handler, database and window are still created by `start()`.
  */
-protocol.registerSchemesAsPrivileged([ASSET_SCHEME_PRIVILEGES, THEME_SCHEME_PRIVILEGES])
+protocol.registerSchemesAsPrivileged([
+  ASSET_SCHEME_PRIVILEGES,
+  THEME_SCHEME_PRIVILEGES,
+  PLUGIN_SCHEME,
+])
 
 /**
  * Cache the memory of spawned processes that Chromium's metrics exclude. A synchronous
@@ -370,6 +402,8 @@ let thisBuildsMigrations: readonly BuildMigration[] | null = null
  * before the app quits so no provider child outlives the window.
  */
 let host: RuntimeHost | null = null
+const pluginSupervisor = new PluginSupervisorAttachment()
+let updates: ReturnType<typeof startUpdates> | null = null
 let transcriptRetention: TranscriptRetentionHost | undefined
 let signalFirstWindowLoad!: () => void
 const firstWindowLoad = new Promise<void>((resolve) => {
@@ -462,9 +496,18 @@ class MigrationFailed extends Error {}
 
 /** Open the DB under Electron userData and migrate BEFORE any window opens. */
 function initDatabase(): AppDatabase {
+  const existing = workspaceStartup(app)
+  existing?.assertDatabase()
   const dbPath = join(app.getPath('userData'), 'brobot2.sqlite')
   const migrationsFolder = resolveMigrationsFolder()
-  const database = openDatabase(dbPath)
+  const database = (() => {
+    try {
+      return openDatabase(dbPath, existing ? { fileMustExist: true } : undefined)
+    } catch (error) {
+      existing?.assertDatabase()
+      throw error
+    }
+  })()
   // Never run on a database a newer build migrated, one whose migration record cannot be read, or
   // one this build's migrations do not lead to (`db/newer-database.ts`): the start-up check refused
   // these before, and this refuses one that changed since. Asked before any migration, so a refusal
@@ -569,6 +612,8 @@ function builtInSkillsResources(): string {
     : join(app.getAppPath(), 'resources', 'built-in-skills')
 }
 
+const pluginController = productionPluginController()
+
 function createRuntimeHost(database: AppDatabase): RuntimeHost {
   // The shipped skills this run offers, read once as it starts, before any launch; a text pack
   // stands in under their version.
@@ -581,6 +626,10 @@ function createRuntimeHost(database: AppDatabase): RuntimeHost {
     }
   }
   const userData = app.getPath('userData')
+  const sharedSkills = new SharedSkillLibrary(userData)
+  const skillsReady = firstWindowLoad.then(() => convertSharedSkills(userData, database))
+  void skillsReady.catch(() => console.warn('Skills could not be read.'))
+  const sharedDiscovery = new SharedSkillDiscovery(userData, skillsReady, shippedSkills)
   // Refresh generated workspace instructions on launch and recreate a deleted workspace.
   // Unchanged files are left alone. A symlink or file at `brobot-workspace` is refused without
   // blocking the app's window; `resolveSessionCwd` retries for sessions using the default cwd
@@ -712,9 +761,24 @@ function createRuntimeHost(database: AppDatabase): RuntimeHost {
   ))
   retention.start()
   const runtimeHost = new RuntimeHost({
+    plugins: pluginController,
+    pluginAttachments: {
+      agent: (occupied) =>
+        new WorkspacePluginAttachments(
+          pluginSupervisor,
+          pluginWorkspaceIdentity(app.getPath('userData')),
+        ).agent(occupied),
+    },
+    skillImports: (from, to) => sharedSkills.recentImports(from, to),
+    sharedSkillsRoot: () => sharedDiscovery.root(),
+    prepareSharedSkills: () => sharedDiscovery.prepareLaunch(),
+    beforeSkillDiscovery: () => sharedDiscovery.library.beforeOffer(),
+    closeSharedSkills: () => sharedDiscovery.close(),
+    skillsForAPerson: sharedDiscovery.window,
     afterFirstWindowLoad: firstWindowLoad,
     transcriptsCleared: (from, to) => transcriptRetention?.recent(from, to) ?? Promise.resolve([]),
     workSearchReader: startWorkSearch(database.name),
+    pastWorkSearchReader: startPastWorkSearch(),
     windowReader: startWindowReader(database.name),
     themes: themes ?? undefined,
     mainThreadWork,
@@ -746,6 +810,7 @@ function createRuntimeHost(database: AppDatabase): RuntimeHost {
           appData: app.getPath('appData'),
           userData,
           hidden: presentation.hidden,
+          packaged: app.isPackaged,
         }),
         workspaceOf: brobotWorkspace,
       })
@@ -772,6 +837,7 @@ function createRuntimeHost(database: AppDatabase): RuntimeHost {
     prepareBuiltInSkills: ({ pack, ...input }) =>
       prepareBuiltInSkills({
         ...input,
+        allShipped: true,
         managedRoot: providerHomesRoot(userData),
         shipped: shippedSkills,
         ...(pack?.kind === 'read' ? { skills: pack.pack.skills } : {}),
@@ -1203,6 +1269,12 @@ async function pick(
 }
 
 function registerIpc(runtimeHost: RuntimeHost, localZone: () => LocalZone | null): void {
+  installPluginUiRpc(pluginIpcMain)
+  registerPluginSettings(
+    ipcMain,
+    (event) => BrowserWindow.fromWebContents(event.sender),
+    pluginController,
+  )
   ipcMain.handle(TRANSCRIPT_RETENTION_CHANNELS.read, () => transcriptRetention!.read())
   ipcMain.handle(TRANSCRIPT_RETENTION_CHANNELS.set, (_event, period: unknown) => {
     if (!isTranscriptRetention(period)) throw new Error('Invalid transcript retention.')
@@ -1551,6 +1623,8 @@ function sayAtOnce(line: string): void {
  * said on the console, so it is never silent.
  */
 function theRecoveryService(launchOwnership: HostGateVerdict): RecoveryService {
+  const existing = workspaceStartup(app)
+  existing?.assertDatabase()
   const { commit } = buildIdentity()
   const userData = app.getPath('userData')
   const asker = ownershipFrom(launchOwnership, () => claimSoleHost(userData))
@@ -1561,6 +1635,12 @@ function theRecoveryService(launchOwnership: HostGateVerdict): RecoveryService {
     appVersion: app.getVersion(),
     build: commit === '' ? null : commit,
     packaged: app.isPackaged,
+    ...(existing
+      ? {
+          requireExistingDatabase: true,
+          fs: { ...recoveryFiles, mkdir: existing.mkdir.bind(existing) },
+        }
+      : {}),
     ownership: asker.ask,
     log: sayAtOnce,
     working: (what) => sayWorkingIfItTakesLong(what),
@@ -1595,6 +1675,7 @@ async function theVerdictBeforeTheData(launchOwnership: HostGateVerdict): Promis
   checkingTheData = true
   try {
     const verdict = await service.inspect()
+    workspaceStartup(app)?.assertDatabase()
     // The open reads the database against the same migrations, to refuse one that changed since.
     if (verdict.kind === 'open') {
       thisBuildsMigrations = await buildLineage(resolveMigrationsFolder())
@@ -1671,6 +1752,22 @@ function endInRecovery(verdict: StartupVerdict): void {
  */
 async function endAFailedStart(error: unknown, ownership: HostGateVerdict): Promise<void> {
   if (closedWhileCheckingSaid) return
+  try {
+    workspaceStartup(app)?.assertDatabase()
+  } catch (refusal) {
+    error = refusal
+  }
+  if (error instanceof WorkspaceUnavailable) {
+    try {
+      const message = workspaceLaunchMessage(error)
+      if (presentation.hidden) sayAtOnce(message)
+      else dialog.showErrorBox('BroCrew', message)
+    } finally {
+      startFailed = true
+      endTheProcess(1)
+    }
+    return
+  }
   // The app's own window is not this start's from here, so a quit, even during the stop, exits 1.
   theDataOpened = false
   try {
@@ -1736,7 +1833,11 @@ function stopWhatTheStartStarted(): Promise<void> {
     void dockLabel?.then((label) => label.stop())
     await themes?.close().catch(() => undefined)
     const started = host
-    if (started === null) return
+    if (started === null) {
+      await pluginController.close()
+      await pluginSupervisor.quit()
+      return
+    }
     for (const [what, step] of [
       ['stop its archive work', () => started.stopSweeping()],
       ['close its conversations', () => started.closeAll()],
@@ -1748,6 +1849,8 @@ function stopWhatTheStartStarted(): Promise<void> {
         sayAtOnce(`BroCrew failed to ${what} after its failed start: ${inspect(error)}`)
       }
     }
+    await pluginController.close()
+    await pluginSupervisor.quit()
   })()
   return stoppingTheStart
 }
@@ -1983,6 +2086,7 @@ function startTheDockLabel(): void {
       appData: app.getPath('appData'),
       userData,
       hidden: presentation.hidden,
+      packaged: app.isPackaged,
     }),
     defaultFolder,
   })
@@ -2132,6 +2236,7 @@ function start(ownership: HostGateVerdict): void {
       })
       readLocalTimeFrom(localZone)
       themes = new ThemeStore({
+        assertWorkspace: () => workspaceStartup(app)?.assertDatabase(),
         ...themeRoots({
           appData: app.getPath('appData'),
           userData: app.getPath('userData'),
@@ -2150,6 +2255,7 @@ function start(ownership: HostGateVerdict): void {
         },
       })
       await themes.start()
+      workspaceStartup(app)?.assertDatabase()
       stopThemeIpc = registerThemeIpc(ipcMain, themes, (change) => {
         for (const window of BrowserWindow.getAllWindows()) {
           if (window.isDestroyed() || window.webContents.isDestroyed()) continue
@@ -2166,7 +2272,7 @@ function start(ownership: HostGateVerdict): void {
       startTheDockLabel()
       // Start updates for packaged builds with a release feed: check at launch and once daily
       // when enabled, with the window reading and controlling `updates-in-the-app.ts`.
-      startUpdates({ app, host, hidden: presentation.hidden })
+      updates = startUpdates({ app, host, hidden: presentation.hidden })
       // List, open and create workspaces through `workspaces-in-the-app.ts`. A visible launch
       // adds its folder to the list. Its actual data folder was already chosen by
       // `pinTheDataFolder` or `--user-data-dir`; listing workspaces does not choose it.
@@ -2189,6 +2295,33 @@ function start(ownership: HostGateVerdict): void {
       installAssetProtocol(session.defaultSession.protocol)
       installThemeProtocol(session.defaultSession.protocol, themes)
       theDataOpened = true
+      // The workspace is open; plugin startup must not block the rest of the app.
+      // Hidden starts require an explicit scratch root and never fall back to the live one.
+      try {
+        const root = pluginSupervisorRoot({
+          appData: app.getPath('appData'),
+          hidden: presentation.hidden,
+          scratchRoot: app.commandLine.getSwitchValue('plugin-global-root'),
+        })
+        if (root && ownership === 'sole') {
+          pluginController.start({
+            devSource: !app.isPackaged
+              ? { isPackaged: app.isPackaged, appData: app.getPath('appData') }
+              : undefined,
+            root,
+            workspaceRoot: app.getPath('userData'),
+            resourcesRoot: app.isPackaged
+              ? process.resourcesPath
+              : join(__dirname, '../../resources'),
+            build: buildIdentity().id,
+            appVersion: app.getVersion(),
+            supervisor: pluginSupervisor,
+          })
+        }
+      } catch {
+        // Plugin unavailability cannot prevent agents or the rest of the app from starting.
+        console.warn('[plugins] plugin-initialization-failed')
+      }
       createWindow()
       handOverToTheAppWindow()
 
@@ -2320,7 +2453,14 @@ const lifetime = createAppLifetime({
       }
     }
   },
-  closeAllSessions: () => stoppingTheStart ?? host?.closeAll() ?? Promise.resolve(),
+  closeAllSessions: async () => {
+    try {
+      await (stoppingTheStart ?? host?.closeAll() ?? Promise.resolve())
+    } finally {
+      await pluginController.close()
+      await pluginSupervisor.quit()
+    }
+  },
   // Save windows' final drafts after conversations close, as a separately timed shutdown step.
   // See {@link theLastDraftSaves}.
   keepUnsentDrafts: () => theLastDraftSaves(),
@@ -2328,6 +2468,7 @@ const lifetime = createAppLifetime({
   // (046 review, P2): a pass still running when the connection closes would throw against it. It
   // ends at the next boundary.
   stopArchiveWork: () => {
+    updates?.stop()
     void transcriptRetention?.stop()
     host?.stopSweeping()
     stopThemeIpc?.()
@@ -2337,6 +2478,7 @@ const lifetime = createAppLifetime({
   },
   // …and then WAIT for the work already admitted, so the database closes under nobody (062).
   drainArchiveWork: async () => {
+    await updates?.drain()
     await transcriptRetention?.stop()
     await (stoppingTheStart ?? host?.drainArchiveWork() ?? Promise.resolve())
     await themes?.close()

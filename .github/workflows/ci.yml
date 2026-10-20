@@ -30,6 +30,43 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  plugins:
+    name: plugins
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      PLUGIN_CI_NODE_VERSION: '24.22.0'
+      PLUGIN_CI_PNPM_VERSION: '10.11.0'
+      PLUGIN_CI_GO_VERSION: '1.27.2'
+      GOTOOLCHAIN: local
+      GOFLAGS: -mod=readonly
+      CGO_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install pinned pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: ${{ env.PLUGIN_CI_PNPM_VERSION }}
+
+      - name: Setup pinned Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.PLUGIN_CI_NODE_VERSION }}
+          cache: pnpm
+
+      - name: Setup pinned Go when a plugin has a module
+        if: hashFiles('plugins/**/go.mod') != ''
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.PLUGIN_CI_GO_VERSION }}
+          cache: false
+
+      - name: Check every configured plugin
+        run: node scripts/check-plugins.mjs
+
   check:
     name: ${{ matrix.check }}
     runs-on: ubuntu-latest

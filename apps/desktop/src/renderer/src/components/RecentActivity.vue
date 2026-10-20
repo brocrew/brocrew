@@ -2,7 +2,11 @@
 import { transcriptsClearedWords } from '../../../shared/transcript-retention'
 import { computed } from 'vue'
 import { clockTime } from '../../../shared/clock'
-import { RECENT_ACTIVITY_LINES, type RecentActivityReading } from '../../../shared/recent-activity'
+import {
+  RECENT_ACTIVITY_LINES,
+  skillImportWords,
+  type RecentActivityReading,
+} from '../../../shared/recent-activity'
 import {
   ACTIVITY_WINDOWS,
   activitySays,
@@ -83,6 +87,19 @@ const someClaimed = computed(() => props.reading?.lines.some((line) => line.regi
           <p class="hint">Try a longer time window.</p>
         </div>
 
+        <article v-if="props.reading?.skillImports?.length" class="activity-card bb-card">
+          <p
+            v-for="line in props.reading.skillImports"
+            :key="line.id"
+            class="line import-line"
+            data-cy="activity-skill-import"
+          >
+            <time class="at" :datetime="new Date(line.at).toISOString()">{{
+              clockTime(line.at)
+            }}</time>
+            <span class="import-words">{{ skillImportWords(line) }}</span>
+          </p>
+        </article>
         <article v-if="props.reading?.transcriptsCleared?.length" class="activity-card bb-card">
           <p
             v-for="line in props.reading.transcriptsCleared"
@@ -299,6 +316,16 @@ const someClaimed = computed(() => props.reading?.lines.some((line) => line.regi
 
 .line:disabled {
   cursor: default;
+}
+
+.import-line {
+  margin: 0;
+  cursor: default;
+}
+
+.import-words {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .at {

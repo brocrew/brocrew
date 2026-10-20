@@ -23,6 +23,7 @@
 import { existsSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { dirname, join, parse } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { NODE_VERSION } from './prepare-plugin-node.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const DESKTOP = join(ROOT, 'apps', 'desktop')
@@ -132,6 +133,7 @@ function bundledVersions() {
     `- Claude Agent SDK (\`@anthropic-ai/claude-agent-sdk\`) ${sdk?.version ?? 'unknown'}`,
     `- Codex CLI ${codex}`,
     `- Electron ${electron}`,
+    `- Standalone Node.js ${NODE_VERSION} (Mac arm64 and Windows x64 plugin host)`,
   ]
 }
 

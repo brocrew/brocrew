@@ -1,13 +1,20 @@
-import { readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { mkdtempSync, mkdirSync, realpathSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
+import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'
+import * as claudeTools from '../src/claude/agent-tools'
 import { claudeMcpServersFor } from '../src/claude/agent-tools'
+import { ClaudeRuntime, type ClaudeQuery, type QueryFactory } from '../src/claude/claude-runtime'
+import { AsyncQueue } from '../src/internal/async-queue'
+import {
+  withManagedPluginAttachments,
+  type ManagedPluginAttachment,
+} from '../src/managed-plugin-session'
+import type { SessionHandle } from '../src/runtime'
+import { TheCliAnswersInOrder } from './the-cli-answers-in-order'
 import { agentToolStringEnum, type AgentToolset } from '../src/agent-tools'
-
-const here = dirname(fileURLToPath(import.meta.url))
-const adapter = join(here, '../src/claude/claude-runtime.ts')
 
 const oneTool: AgentToolset = {
   server: 'brobot',
@@ -40,25 +47,124 @@ describe('347 · the Claude half of the tool asymmetry', () => {
     expect(claudeMcpServersFor({ server: 'brobot', tools: [] })).toBeUndefined()
   })
 
-  it('🔴 the adapter builds the server exactly ONCE per query', () => {
-    // ⛔ **`createSdkMcpServer` returns a LIVE instance**, so calling it twice constructs two servers
-    // and hands the child one while the other is dropped on the floor. ⚠️ Nothing observable
-    // distinguishes the two objects — both are perfectly valid — so this is pinned from the source
-    // rather than from behaviour, which is the only place the difference exists.
-    const source = readFileSync(adapter, 'utf8')
-    const start = source.indexOf('  private optionsFor(')
-    expect(start).toBeGreaterThan(-1)
-    const body = source.slice(start, source.indexOf('\n  }\n', start))
-    const built = body.match(/claudeMcpServersFor\(/g) ?? []
-    expect(built).toHaveLength(1)
-    // ⚑ Non-vacuity: it really is built here, and really is assigned.
-    // ⚑ **516 · it takes a second argument now**, and the assertion moved with the line rather than
-    // being relaxed to a prefix: the granted external servers ride the launch context, and a call
-    // that dropped them would build a child whose registry grant silently did nothing.
-    expect(body).toContain(
-      'const mcpServers = claudeMcpServersFor(agentTools, externalMcp?.servers ?? [])',
-    )
-    expect(body).toContain('if (mcpServers) options.mcpServers = mcpServers')
+  it('🔴 the adapter builds the server exactly ONCE per query', async () => {
+    // Count live constructions, including discarded instances, rather than lazy callback sites.
+    const built = vi.spyOn(claudeTools, 'claudeMcpServersFor')
+    try {
+      for (const resume of [false, true]) {
+        built.mockClear()
+        const root = realpathSync(mkdtempSync(join(tmpdir(), 'fictional-claude-build-')))
+        const providerHome = join(root, 'home')
+        mkdirSync(providerHome)
+        const frames = new AsyncQueue<SDKMessage>()
+        const cli = new TheCliAnswersInOrder()
+        const setMcpServers = vi.fn<NonNullable<ClaudeQuery['setMcpServers']>>(async () => ({
+          added: [],
+          removed: [],
+          errors: {},
+        }))
+        const query: ClaudeQuery = {
+          interrupt: async () => {},
+          close: () => frames.close(),
+          return: async () => frames.close(),
+          setMcpServers,
+          [Symbol.asyncIterator]: () => cli.over(frames[Symbol.asyncIterator]()),
+        }
+        const queryFactory = vi.fn((args: Parameters<QueryFactory>[0]) => {
+          cli.listen(args.prompt)
+          return query
+        })
+        const route = {
+          name: 'plugin-fern',
+          url: 'http://127.0.0.1:8123/mcp',
+          capability: 'a'.repeat(64),
+        }
+        let attachment: ManagedPluginAttachment = { revision: 'one', servers: [route] }
+        const runtime = withManagedPluginAttachments(
+          new ClaudeRuntime(queryFactory, async () => true),
+          {
+            read: async () => attachment,
+            close: async () => {},
+          },
+        )
+        const options = {
+          cwd: root,
+          providerHome,
+          agentTools: oneTool,
+          externalMcp: {
+            servers: [{ name: 'person-server', url: 'http://127.0.0.1:9234/mcp' }],
+            reservedToolNames: [],
+          },
+        }
+        let handle: SessionHandle | undefined
+        try {
+          handle = resume
+            ? await runtime.resume(
+                { provider: 'claude', sessionId: 'fictional-thread', cwd: root, rotation: 0 },
+                options,
+              )
+            : await runtime.start(options)
+          expect(built).toHaveBeenCalledTimes(1)
+          expect(queryFactory).toHaveBeenCalledTimes(1)
+          expect(queryFactory.mock.calls[0]![0].options.mcpServers).toBe(
+            built.mock.results[0]!.value,
+          )
+          expect(built.mock.results[0]!.value).toMatchObject({
+            brobot: { type: 'sdk' },
+            'person-server': { type: 'http' },
+            'plugin-fern': { type: 'http' },
+          })
+          const finishTurn = async () => {
+            frames.push({ type: 'result', subtype: 'success', is_error: false } as SDKMessage)
+            await vi.waitFor(() => expect(handle!.status()).toBe('idle'))
+          }
+          await handle.send('fictional first turn')
+          attachment = { revision: 'two', servers: [{ ...route, name: 'plugin-willow' }] }
+          await expect(handle.send('fictional busy turn')).rejects.toThrow()
+          expect(built).toHaveBeenCalledTimes(1)
+          expect(setMcpServers).not.toHaveBeenCalled()
+          await finishTurn()
+
+          await handle.send('fictional changed inventory')
+          expect(built).toHaveBeenCalledTimes(2)
+          expect(setMcpServers).toHaveBeenCalledTimes(1)
+          expect(setMcpServers.mock.calls[0]![0]).toBe(built.mock.results[1]!.value)
+          expect(Object.keys(built.mock.results[1]!.value!).sort()).toEqual([
+            'brobot',
+            'person-server',
+            'plugin-willow',
+          ])
+          await finishTurn()
+
+          await handle.send('fictional unchanged inventory')
+          expect(built).toHaveBeenCalledTimes(2)
+          expect(setMcpServers).toHaveBeenCalledTimes(1)
+          await finishTurn()
+
+          attachment = { revision: 'three', servers: [] }
+          await handle.send('fictional removed inventory')
+          expect(built).toHaveBeenCalledTimes(3)
+          expect(setMcpServers).toHaveBeenCalledTimes(2)
+          expect(setMcpServers.mock.calls[1]![0]).toBe(built.mock.results[2]!.value)
+          expect(Object.keys(built.mock.results[2]!.value!).sort()).toEqual([
+            'brobot',
+            'person-server',
+          ])
+          expect(queryFactory).toHaveBeenCalledTimes(1)
+          await finishTurn()
+        } finally {
+          await handle?.close()
+          for (const result of built.mock.results) {
+            if (result.type === 'return' && result.value?.brobot?.type === 'sdk') {
+              await result.value.brobot.instance.close()
+            }
+          }
+          rmSync(root, { recursive: true, force: true })
+        }
+      }
+    } finally {
+      built.mockRestore()
+    }
   })
 })
 

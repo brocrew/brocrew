@@ -57,6 +57,7 @@ import { isProxy, isRef, toRaw } from 'vue'
  *    different object than the one the drop produced.
  */
 export const NOT_THE_WIRE: ReadonlySet<string> = new Set([
+  'onClosed', // Plugin-screen lifecycle push; the listener remains in preload.
   'onEvent',
   'onLiveness',
   'onClosing',

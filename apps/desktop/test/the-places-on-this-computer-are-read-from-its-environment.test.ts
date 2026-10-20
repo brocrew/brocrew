@@ -28,7 +28,7 @@ import { aProtectedPlace, thePlacesOnThisComputer } from '../src/main/protected-
  * to run if they resolve anywhere else.
  */
 
-const ENV_KEYS = ['HOME', 'CODEX_HOME', 'CLAUDE_CONFIG_DIR'] as const
+const ENV_KEYS = ['HOME', 'USERPROFILE', 'CODEX_HOME', 'CLAUDE_CONFIG_DIR'] as const
 
 describe.sequential(
   'the places on this computer, from the environment and the workspace list',
@@ -43,10 +43,12 @@ describe.sequential(
       theirs = mkdtempSync(join(tmpdir(), 'brobot2-their-home-'))
       saved = {
         HOME: process.env['HOME'],
+        USERPROFILE: process.env['USERPROFILE'],
         CODEX_HOME: process.env['CODEX_HOME'],
         CLAUDE_CONFIG_DIR: process.env['CLAUDE_CONFIG_DIR'],
       }
       process.env['HOME'] = theirs
+      process.env['USERPROFILE'] = theirs
       process.env['CODEX_HOME'] = join(theirs, '.codex')
       process.env['CLAUDE_CONFIG_DIR'] = join(theirs, '.claude')
     })

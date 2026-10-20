@@ -207,7 +207,7 @@ MUTATIONS = [
         [
             (
                 CODEXR,
-                "  awaitProcessExit(): Promise<void> | undefined {\n    return this.transport.exited\n  }",
+                "  awaitProcessExit(): Promise<void> | undefined {\n    return this.transport.quiesced ?? this.transport.exited\n  }",
                 "  awaitProcessExit(): Promise<void> | undefined {\n    return Promise.resolve()\n  }",
             )
         ],

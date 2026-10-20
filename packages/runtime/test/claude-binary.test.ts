@@ -84,7 +84,11 @@ describe('§0 · the SDK’s missing program — measured, not assumed', () => {
 
   it('⛔ the program is where the SDK looks when the architecture is this machine’s', () => {
     const found = binary.claudeProgramWhereTheSdkLooks?.()
-    expect(found).toMatch(/claude-agent-sdk-[a-z0-9]+-[a-z0-9]+\/claude$/)
+    expect(found).toMatch(
+      process.platform === 'win32'
+        ? /claude-agent-sdk-[a-z0-9]+-[a-z0-9]+[\\/]claude\.exe$/
+        : /claude-agent-sdk-[a-z0-9]+-[a-z0-9]+\/claude$/,
+    )
   })
 })
 
@@ -223,24 +227,28 @@ describe('§3 · `folderAPersonMustFixOf` — the nearest code decides, and a sp
     Object.assign(new Error(`${code}: ${syscall}`), { code, syscall, ...(path ? { path } : {}) })
   const read = (error: unknown): unknown => runtime.folderAPersonMustFixOf?.(error) ?? null
 
-  it('🔴 a real `mkdir` the disk refused is read as its code, with the path Node named', () => {
-    const locked = join(home, 'locked')
-    mkdirSync(locked)
-    chmodSync(locked, 0o500)
-    let thrown: unknown = null
-    try {
-      mkdirSync(join(locked, 'provider-home'))
-    } catch (error) {
-      thrown = error
-    }
-    chmodSync(locked, 0o700)
-    expect((thrown as { code?: unknown }).code).toBe('EACCES')
-    expect(read(thrown)).toEqual({
-      code: 'EACCES',
-      path: join(locked, 'provider-home'),
-      syscall: 'mkdir',
-    })
-  })
+  // Windows does not implement chmod as a directory traversal denial.
+  it.skipIf(process.platform === 'win32')(
+    '🔴 a real `mkdir` the disk refused is read as its code, with the path Node named',
+    () => {
+      const locked = join(home, 'locked')
+      mkdirSync(locked)
+      chmodSync(locked, 0o500)
+      let thrown: unknown = null
+      try {
+        mkdirSync(join(locked, 'provider-home'))
+      } catch (error) {
+        thrown = error
+      }
+      chmodSync(locked, 0o700)
+      expect((thrown as { code?: unknown }).code).toBe('EACCES')
+      expect(read(thrown)).toEqual({
+        code: 'EACCES',
+        path: join(locked, 'provider-home'),
+        syscall: 'mkdir',
+      })
+    },
+  )
 
   it('🔴 every code a person must fix, raw or as a cause', () => {
     for (const code of ['EACCES', 'EPERM', 'EROFS', 'ENOSPC', 'EDQUOT', 'ENOTDIR']) {

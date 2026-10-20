@@ -52,9 +52,7 @@ export function titleOf(tag) {
 const WINDOWS = `**Windows (x64):**
 1. Download \`BroCrew-Setup-….exe\` below. If your browser says the file is not commonly downloaded, choose Keep.
 2. Open it. Windows says "Windows protected your PC": choose More info, then Run anyway.
-3. Install for yourself only ("Only for me"), so no administrator is needed.
-
-Already have BroBot or BroBot2? This installer replaces it: your conversations, settings and saved keys stay, and the Start menu and desktop shortcut are now called BroCrew. It goes in a folder inside the old one, such as \`…\\Programs\\BroBot\\BroCrew\`: that is expected. An old app pinned to the taskbar needs pinning again.`
+3. Install for yourself only ("Only for me"), so no administrator is needed.`
 
 const MAC = `**macOS (Apple silicon: M1 or later; macOS 15 or later):**
 1. Download \`BroCrew-….dmg\` below, open it, and drag BroCrew into Applications.
@@ -62,11 +60,9 @@ const MAC = `**macOS (Apple silicon: M1 or later; macOS 15 or later):**
 3. Within the hour, open System Settings → Privacy & Security. Under Security, next to the line about BroCrew, choose Open Anyway, confirm with your password or Touch ID (an administrator's, on a standard account), and choose Open Anyway once more. (Right-click → Open no longer does this on macOS 15.)
 4. Only if macOS says BroCrew "is damaged": in Terminal, run \`xattr -dr com.apple.quarantine /Applications/BroCrew.app\`, then open it again.
 
-Already have BroBot or BroBot2 in Applications? Move it to the Trash once BroCrew works: they use the same data, and an old copy opened by mistake would run old code on it.
-
 BroCrew keeps its data in \`~/Library/Application Support/@brobot2/desktop\`. A BroCrew you run from source on the same Mac uses the same folder.`
 
-const KEYS = `open Providers in the left rail, save an Anthropic API key on the Claude card (from ${ANTHROPIC_KEYS}) and an OpenAI API key on the Codex card (from ${OPENAI_KEYS}), and press Check it works on each.`
+const KEYS = `open Settings → Providers, save an Anthropic API key on the Claude card (from ${ANTHROPIC_KEYS}) and an OpenAI API key on the Codex card (from ${OPENAI_KEYS}), and press Check it works on each.`
 
 const CLAUDE_CODE = `To use Claude agents, install Claude Code from ${CLAUDE_CODE_SETUP}. BroCrew does not include it: it runs the Claude Code installed on your computer. Codex comes with BroCrew.`
 
@@ -74,8 +70,8 @@ const CLAUDE_CODE = `To use Claude agents, install Claude Code from ${CLAUDE_COD
 const CLAUDE_CODE_FIRST = `To use Claude, install Claude Code first, from Anthropic: ${CLAUDE_CODE_SETUP}. Codex comes with BroCrew.`
 
 const SIGN_IN = {
-  windows: `open Providers in the left rail, and save an API key on the Claude card (from ${ANTHROPIC_KEYS}) and on the Codex card (from ${OPENAI_KEYS}). With no Claude key saved, BroCrew runs Claude on your Claude Code login on this PC: sign in to it once by running \`claude\` in PowerShell.`,
-  mac: `open Providers in the left rail, and save an API key on the Claude card (from ${ANTHROPIC_KEYS}) and on the Codex card (from ${OPENAI_KEYS}). With no key saved, BroCrew uses the Claude and Codex logins already on the Mac.`,
+  windows: `open Settings → Providers, and save an API key on the Claude card (from ${ANTHROPIC_KEYS}) and on the Codex card (from ${OPENAI_KEYS}). With no Claude key saved, BroCrew runs Claude on your Claude Code login on this PC: sign in to it once by running \`claude\` in PowerShell.`,
+  mac: `open Settings → Providers, and save an API key on the Claude card (from ${ANTHROPIC_KEYS}) and on the Codex card (from ${OPENAI_KEYS}). With no key saved, BroCrew uses the Claude and Codex logins already on the Mac.`,
 }
 
 /** Each platform's install page, in the repository. */

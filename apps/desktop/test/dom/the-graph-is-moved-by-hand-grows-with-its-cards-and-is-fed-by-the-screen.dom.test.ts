@@ -324,7 +324,8 @@ describe('the Graph is moved by hand, grows with its cards, and is fed by the sc
 
       // ⚑ The pane is handed the Graph tab's forest, folded off the band's own read: the forest the
       // poll took and what each running conversation was last told.
-      expect(pane).toContain(':forest="conversationForestView"')
+      expect(pane).toContain(':forest="readConversationForest"')
+      expect(screen).toContain('const readConversationForest = () => conversationForestView.value')
       expect(graphFold).toContain(
         'foldTheForest(cast.forest.value, cast.reading.value?.atWork ?? null)',
       )

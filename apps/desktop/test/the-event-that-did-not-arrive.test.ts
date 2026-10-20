@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
@@ -506,7 +506,7 @@ describe('§4 · no source in the app writes the retired sentences', () => {
       const code = codeOf(readFileSync(file, 'utf8'))
       return code.includes('event stream gap') || code.includes('event out of order')
     })
-    expect(still.map((file) => file.slice(file.lastIndexOf('/') + 1))).toEqual([])
+    expect(still.map((file) => basename(file))).toEqual([])
   })
 
   /**
@@ -518,8 +518,6 @@ describe('§4 · no source in the app writes the retired sentences', () => {
     const found = everyAppSource().filter((file) =>
       codeOf(readFileSync(file, 'utf8')).includes(NOT_REACHED_THIS_WINDOW),
     )
-    expect(found.map((file) => file.slice(file.lastIndexOf('/') + 1))).toEqual([
-      'session-record.ts',
-    ])
+    expect(found.map((file) => basename(file))).toEqual(['session-record.ts'])
   })
 })

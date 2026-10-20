@@ -14,6 +14,7 @@ date). The rest is written by hand, from each component's own files.
 - [Claude Agent SDK](#claude-agent-sdk)
 - [Codex CLI, and what its package bundles](#codex-cli)
 - [Electron and Chromium](#electron-and-chromium)
+- [Standalone Node.js](#standalone-nodejs)
 - [The Inter typeface](#the-inter-typeface)
 - [Code derived from other projects](#code-derived-from-other-projects)
 - [npm packages in the app](#npm-packages-in-the-app) (generated)
@@ -88,6 +89,14 @@ Copyright (c) 2023-2025 The Ratatui Developers
 - **The notices of Chromium, Node.js and everything else Electron includes** are in
   `LICENSES.chromium.html`, as Electron publishes them.
 
+## Standalone Node.js
+
+The Mac arm64 build carries an unmodified standalone Node.js runtime for plugin servers,
+separately from Electron. Its version is under "Bundled versions". Node.js is licensed under
+the MIT License, Copyright Node.js contributors. All rights reserved. The text is under
+"License texts". The complete upstream licence, including the notices for Node.js's bundled
+components, ships at `Resources/plugin-node/LICENSE` and accompanies its durable runtime copy.
+
 ## The Inter typeface
 
 - `InterVariable.woff2`, drawn in the window. Copyright (c) 2016 The Inter Project Authors
@@ -110,6 +119,7 @@ Copyright (c) 2023-2025 The Ratatui Developers
 - Claude Agent SDK (`@anthropic-ai/claude-agent-sdk`) 0.3.287
 - Codex CLI 0.160.0
 - Electron 43.2.0
+- Standalone Node.js 24.22.0 (Mac arm64 and Windows x64 plugin host)
 
 ### npm packages in the app
 
@@ -602,6 +612,30 @@ but not limited to, the implied warranties of merchantability and fitness
 for a particular purpose.  The software provided hereunder is on an "as is"
 basis, and the Zsh Development Group have no obligation to provide
 maintenance, support, updates, enhancements, or modifications.
+```
+
+### Node.js's license (MIT)
+
+```
+Copyright Node.js contributors. All rights reserved.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to
+deal in the Software without restriction, including without limitation the
+rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+sell copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+IN THE SOFTWARE.
 ```
 
 ### Electron's license (MIT)

@@ -73,6 +73,7 @@ export interface ThemeStoreOptions {
   readonly openFolder: (path: string) => Promise<void>
   readonly files?: ThemeCommitFiles
   readonly watch?: (path: string, recursive: boolean, changed: () => void) => () => void
+  readonly assertWorkspace?: () => void
 }
 
 interface ThemeEntry {
@@ -404,8 +405,12 @@ export class ThemeStore implements ThemeAssetRegistry {
   }
 
   private async reload(): Promise<void> {
-    // Making the library folder may fail; whether it is there is decided by the look below.
-    await mkdir(this.options.library, { recursive: true }).catch(() => undefined)
+    this.options.assertWorkspace?.()
+    // The library may be new; its parent must already exist.
+    await mkdir(this.options.library).catch((error: unknown) => {
+      if (saysAbsent(error)) throw error
+    })
+    this.options.assertWorkspace?.()
     const library = await themeFolderState(this.options.library, this.files.lstat)
     this.libraryRoot = library.kind === 'here' ? library.root : null
     // Where a folder of themes couldn't be looked at or listed, the themes known from the last

@@ -980,6 +980,11 @@ describe('484 · state a supervisor can trust', () => {
         actor: 'none',
         because: 'It reads recorded work facts without claiming who changed them.',
       },
+      search_past_work: {
+        describes: false,
+        actor: 'none',
+        because: 'It reads past records without claiming who changed them.',
+      },
       find_files: {
         describes: true,
         actor: 'added_by',

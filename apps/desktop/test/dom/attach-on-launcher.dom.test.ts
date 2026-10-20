@@ -179,6 +179,18 @@ describe('the launcher can attach (217 §1)', () => {
     expect((view.q('prompt-input') as HTMLTextAreaElement).value).not.toContain(INSIDE.path)
   })
 
+  it('shows the root folder as / and still names it on the detach control', async () => {
+    view = launcherWith([{ path: '/', kind: 'directory', outsideCwd: false }])
+    await nextTick()
+
+    expect(view.q('attached-directory').textContent).toBe('/')
+    expect(view.q('attached-directory').getAttribute('title')).toBe('/')
+    expect(view.q('detach-directory').getAttribute('title')).toBe('Don’t send /')
+    view.q('detach-directory').click()
+    await nextTick()
+    expect(held()).toEqual([])
+  })
+
   it('🔴 it is UNDOABLE before the conversation starts', async () => {
     view = launcherWith([INSIDE, { path: '/work/alpha/src', kind: 'directory', outsideCwd: false }])
     await nextTick()

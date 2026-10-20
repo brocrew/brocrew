@@ -40,14 +40,20 @@ export const SAVED_DRAFTS_WITHIN_MS = 3_000
  */
 export interface SavedDraftsHandoff {
   take(): SavedDrafts | null | undefined
+  /** The original read may answer after the drawing deadline. */
+  ready?: Promise<SavedDrafts | null>
 }
 
 export const SAVED_DRAFTS: InjectionKey<SavedDraftsHandoff> = Symbol('saved-drafts')
 
 /** The handoff `main.ts` provides, over what it read before mounting. */
-export function handOver(saved: SavedDrafts | null): SavedDraftsHandoff {
+export function handOver(
+  saved: SavedDrafts | null,
+  ready?: Promise<SavedDrafts | null>,
+): SavedDraftsHandoff {
   let taken = false
   return {
+    ready,
     take() {
       if (taken) return undefined
       taken = true
@@ -62,8 +68,8 @@ export function handOver(saved: SavedDrafts | null): SavedDraftsHandoff {
  * composer draws"*).
  *
  * ⛔ **`null` means NOT READ — no bridge, an error, no answer in time, or main's own answer that the
- * file is there and cannot be read — and then nothing is saved this run either**: a save writes the
- * whole book, and one that never received the file's drafts would erase them.
+ * file is there and cannot be read. No snapshot is saved until the original read succeeds;
+ * drawing past the deadline does not discard its eventual answer.
  */
 export async function savedDraftsBeforeDrawing(
   ask: (() => Promise<SavedDrafts | null>) | undefined,
@@ -81,6 +87,20 @@ export async function savedDraftsBeforeDrawing(
   } finally {
     clearTimeout(timer)
   }
+}
+
+/** Drawing may time out; a successful late read still starts draft saving. */
+export async function draftHandoffBeforeDrawing(
+  ask: (() => Promise<SavedDrafts | null>) | undefined,
+  withinMs: number = SAVED_DRAFTS_WITHIN_MS,
+): Promise<SavedDraftsHandoff> {
+  const ready =
+    ask === undefined
+      ? Promise.resolve(null)
+      : Promise.resolve()
+          .then(ask)
+          .catch(() => null)
+  return handOver(await savedDraftsBeforeDrawing(() => ready, withinMs), ready)
 }
 
 /**
@@ -135,8 +155,8 @@ export function restoreDrafts(book: DraftBook, saved: SavedDrafts): string[] {
 }
 
 export interface DraftKeeper {
-  /** Hand the book to main now, and cancel the save that was waiting. */
-  flush(): void
+  /** Hand the book and any explicit removals to main, cancelling the waiting save. */
+  flush(cleared?: readonly string[]): void
   stop(): void
 }
 
@@ -178,23 +198,48 @@ export function keepDraftsOnDisk(
   const delayMs = options.delayMs ?? DRAFT_SAVE_DELAY_MS
   const page = options.page ?? thisPage()
   let timer: ReturnType<typeof setTimeout> | null = null
-  const handOver = (last: boolean): void => {
+  let previous = new Set(draftsToSave(book).drafts.map((draft) => draft.slot))
+  const cleared = new Set<string>()
+  const handOver = (last: boolean, removed: readonly string[] = []): void => {
     if (timer !== null) clearTimeout(timer)
     timer = null
     try {
       const saved = draftsToSave(book)
-      void Promise.resolve(save(last ? { ...saved, last: true } : saved)).catch(() => undefined)
+      for (const slot of removed) cleared.add(slot)
+      const present = new Set(saved.drafts.map((draft) => draft.slot))
+      for (const slot of previous) if (!present.has(slot)) cleared.add(slot)
+      for (const slot of present) cleared.delete(slot)
+      const removals = [...cleared]
+      cleared.clear()
+      previous = new Set(saved.drafts.map((draft) => draft.slot))
+      const packet = removals.length === 0 ? saved : { ...saved, cleared: removals }
+      void Promise.resolve(save(last ? { ...packet, last: true } : packet)).catch(() => {
+        for (const slot of removals) if (!previous.has(slot)) cleared.add(slot)
+      })
     } catch {
       // A bridge that is gone is a window that is gone; there is nobody left to tell.
     }
   }
   const flush = (): void => handOver(false)
+  // Remember removals even when a slot appears and empties before the save watcher runs.
+  const stopWatchingRemovals = watch(
+    () => [...new Set([...book.keys(), ...book.paths.keys()])],
+    (now, before) => {
+      const present = new Set(now)
+      for (const slot of before) if (!present.has(slot)) cleared.add(slot)
+      for (const slot of present) cleared.delete(slot)
+    },
+    { flush: 'sync' },
+  )
   const stopWatchingBook = watch(
     () => draftsToSave(book),
     (now, before) => {
-      const emptied = before.drafts.some(
-        (draft) => !now.drafts.some((each) => each.slot === draft.slot),
-      )
+      const present = new Set(now.drafts.map((draft) => draft.slot))
+      for (const slot of previous) if (!present.has(slot)) cleared.add(slot)
+      for (const slot of present) cleared.delete(slot)
+      const emptied =
+        cleared.size > 0 ||
+        before.drafts.some((draft) => !now.drafts.some((each) => each.slot === draft.slot))
       if (emptied || options.closing()) flush()
       else timer ??= setTimeout(flush, delayMs)
     },
@@ -205,8 +250,9 @@ export function keepDraftsOnDisk(
   const stopAnswering = options.onLastSave?.(() => handOver(true))
   page?.addEventListener('pagehide', flush)
   return {
-    flush,
+    flush: (removed) => handOver(false, removed),
     stop() {
+      stopWatchingRemovals()
       stopWatchingBook()
       stopWatchingClosing()
       stopAnswering?.()
@@ -241,9 +287,8 @@ export interface DraftBridge {
  *
  * ⚑ **The first setup of the page** takes what `main.ts` read before mounting, restores it at once —
  * before anything draws — holds the conversations it restored, and keeps the book on disk from then
- * on. ⚑ **A later setup** (a hot reload of the screen) asks main again: the setup before it handed
- * over its book as it stopped, and main answers only once that save is on disk. ⛔ **Nothing read
- * means nothing saved**, on either path.
+ * on. A later setup asks main again. Saving and the final-save listener are installed even if the
+ * restore is slow or fails; main merges partial books and refuses to replace an unreadable file.
  */
 export function keepTheDraftBook(options: {
   book: DraftBook
@@ -257,26 +302,52 @@ export function keepTheDraftBook(options: {
   const save = bridge?.saveDrafts
   let keeper: DraftKeeper | null = null
   let stopped = false
+  let stopWaiting: (() => void) | undefined
   const keepFrom = (saved: SavedDrafts): void => {
     sweep.holdRestored(restoreDrafts(book, saved))
-    if (save !== undefined) {
-      keeper = keepDraftsOnDisk(book, (latest) => save(latest), {
-        closing: options.closing,
-        page: options.page,
-        onLastSave: bridge?.onLastDraftSave,
-      })
-    }
+  }
+  const restoreWhenReady = (ready: Promise<SavedDrafts | null>): void => {
+    const touched = new Set(draftsToSave(book).drafts.map((draft) => draft.slot))
+    stopWaiting = watch(
+      () => draftsToSave(book),
+      (now, before) => {
+        for (const draft of [...now.drafts, ...before.drafts]) touched.add(draft.slot)
+      },
+      { flush: 'sync' },
+    )
+    void ready.then((saved) => {
+      stopWaiting?.()
+      if (saved !== null && !stopped) {
+        keepFrom({ drafts: saved.drafts.filter((draft) => !touched.has(draft.slot)) })
+        const latest = draftsToSave(book)
+        const present = new Set(latest.drafts.map((draft) => draft.slot))
+        const cleared = [...touched].filter((slot) => !present.has(slot))
+        keeper?.flush(cleared)
+      }
+    })
   }
   const launch = handoff?.take()
   if (launch !== undefined && launch !== null) keepFrom(launch)
-  else if (launch === undefined && handoff !== null) {
-    void savedDraftsBeforeDrawing(bridge?.savedDrafts).then((saved) => {
-      if (saved !== null && !stopped) keepFrom(saved)
+  else if (launch === null && handoff?.ready !== undefined) restoreWhenReady(handoff.ready)
+  else if (launch === undefined && handoff !== null && bridge?.savedDrafts !== undefined) {
+    restoreWhenReady(
+      Promise.resolve()
+        .then(bridge.savedDrafts)
+        .catch(() => null),
+    )
+  }
+  // Main merges individual slots and protects an unreadable file, so saving need not wait for restore.
+  if (save !== undefined) {
+    keeper = keepDraftsOnDisk(book, (latest) => save(latest), {
+      closing: options.closing,
+      page: options.page,
+      onLastSave: bridge?.onLastDraftSave,
     })
   }
   return {
     stop() {
       stopped = true
+      stopWaiting?.()
       // ⚑ Handed over as it stops, so a setup that follows reads this book rather than an older one.
       keeper?.flush()
       keeper?.stop()

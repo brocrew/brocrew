@@ -212,6 +212,9 @@ MUTATIONS = [
             )
         ],
     ),
+    # Retired: alreadyPublished() and generated workspace publication were removed by
+    # 58398c57a. The retirement reader is a different operation; the old definition
+    # and evidence are preserved rather than reassigned to it.
     (
         "M9 · ⛔ only the COMPARISON follows again · a link whose target already holds the generated "
         "text reads as 'nothing to do', so the workspace keeps a link into somebody else's file "
@@ -224,6 +227,9 @@ MUTATIONS = [
             )
         ],
     ),
+    # Retired: alreadyPublished() and generated workspace publication were removed by
+    # 58398c57a. The retirement reader is a different operation; the old definition
+    # and evidence are preserved rather than reassigned to it.
     (
         "M10 · 🔴 the comparison can BLOCK · without O_NONBLOCK, a FIFO at CLAUDE.md — which the "
         "workload can create, because this directory is its cwd — makes `open` wait for a writer "

@@ -1,6 +1,5 @@
 import {
   chmodSync,
-  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -140,9 +139,37 @@ describe('bundled codex binary', () => {
       throw new Error('no Claude Code here')
     }
 
-    it('in a source run: the copy BroCrew carries, at the path a launch runs', async () => {
+    it.skipIf(process.platform === 'win32')(
+      'in a source run: the copy BroCrew carries, at the path a launch runs',
+      async () => {
+        const pkg = join(scratch, 'node_modules', DARWIN.package)
+        const binary = sayingAVersion(plantBinary(pkg, 'vendor'))
+        writeFileSync(join(pkg, 'package.json'), '{}')
+        const context = {
+          ...darwinArm,
+          isPackaged: false,
+          resourcesPath: '',
+          resolvePackageJson: () => join(pkg, 'package.json'),
+        }
+        expect(resolveCodexProgram(context)).toEqual({ path: binary, from: 'carried' })
+        const { codex } = await providerVersionsReader(
+          () => resolveCodexProgram(context),
+          noClaude,
+        )()
+        expect(codex.program).toMatchObject({
+          standing: 'tested',
+          from: 'carried',
+          path: binary,
+          tested: null,
+          help: null,
+          said: `Codex 0.160.0, the copy BroCrew carries, at ${binary}.`,
+        })
+      },
+    )
+
+    it('a source run resolves the carried path and provenance on every platform', () => {
       const pkg = join(scratch, 'node_modules', DARWIN.package)
-      const binary = sayingAVersion(plantBinary(pkg, 'vendor'))
+      const binary = plantBinary(pkg, 'vendor')
       writeFileSync(join(pkg, 'package.json'), '{}')
       const context = {
         ...darwinArm,
@@ -151,25 +178,28 @@ describe('bundled codex binary', () => {
         resolvePackageJson: () => join(pkg, 'package.json'),
       }
       expect(resolveCodexProgram(context)).toEqual({ path: binary, from: 'carried' })
-      const { codex } = await providerVersionsReader(() => resolveCodexProgram(context), noClaude)()
-      expect(codex.program).toMatchObject({
-        standing: 'tested',
-        from: 'carried',
-        path: binary,
-        tested: null,
-        help: null,
-        said: `Codex 0.160.0, the copy BroCrew carries, at ${binary}.`,
-      })
     })
 
-    it('in a download: the same words, at the path in its resources', async () => {
-      const binary = sayingAVersion(plantBinary(scratch, PACKAGED_CODEX_DIR))
+    it.skipIf(process.platform === 'win32')(
+      'in a download: the same words, at the path in its resources',
+      async () => {
+        const binary = sayingAVersion(plantBinary(scratch, PACKAGED_CODEX_DIR))
+        const context = { ...darwinArm, isPackaged: true, resourcesPath: scratch }
+        expect(resolveCodexProgram(context)).toEqual({ path: binary, from: 'carried' })
+        const { codex } = await providerVersionsReader(
+          () => resolveCodexProgram(context),
+          noClaude,
+        )()
+        expect(codex.program?.said).toBe(`Codex 0.160.0, the copy BroCrew carries, at ${binary}.`)
+        // ⚑ Plain words: the path is the real one, and nothing else says how the copy is packed.
+        expect(codex.program?.said.replace(binary, '')).not.toMatch(/vendor|SDK/i)
+      },
+    )
+
+    it('a download resolves the carried resources path and provenance on every platform', () => {
+      const binary = plantBinary(scratch, PACKAGED_CODEX_DIR)
       const context = { ...darwinArm, isPackaged: true, resourcesPath: scratch }
       expect(resolveCodexProgram(context)).toEqual({ path: binary, from: 'carried' })
-      const { codex } = await providerVersionsReader(() => resolveCodexProgram(context), noClaude)()
-      expect(codex.program?.said).toBe(`Codex 0.160.0, the copy BroCrew carries, at ${binary}.`)
-      // ⚑ Plain words: the path is the real one, and nothing else says how the copy is packed.
-      expect(codex.program?.said.replace(binary, '')).not.toMatch(/vendor|SDK/i)
     })
 
     it('a copy that is not there is the program’s own sentence, and nothing runs', async () => {
@@ -213,13 +243,17 @@ describe('bundled codex binary', () => {
       )
     })
 
-    it('a binary that exists but cannot execute gets the same actionable error', () => {
-      const binary = plantBinary(scratch, PACKAGED_CODEX_DIR)
-      chmodSync(binary, 0o644)
-      expect(() =>
-        resolveCodexBinary({ ...darwinArm, isPackaged: true, resourcesPath: scratch }),
-      ).toThrow(/missing or not executable/)
-    })
+    // chmod's executable bits have no effect on Windows access checks.
+    it.skipIf(process.platform === 'win32')(
+      'a binary that exists but cannot execute gets the same actionable error',
+      () => {
+        const binary = plantBinary(scratch, PACKAGED_CODEX_DIR)
+        chmodSync(binary, 0o644)
+        expect(() =>
+          resolveCodexBinary({ ...darwinArm, isPackaged: true, resourcesPath: scratch }),
+        ).toThrow(/missing or not executable/)
+      },
+    )
   })
 
   it('an unsupported platform says which platform, and which two are bundled', () => {
@@ -358,12 +392,9 @@ describe('bundled codex binary', () => {
       // The thunk-count test proves codexCommand is CALLED; this proves the value is what SPAWNS.
       // Without it, a codex branch that called the thunk and discarded the result — falling back
       // to the default bare-`codex` transport — would pass every unit test in the repo. The
-      // recorder script writes its own $0: if the spawned argv0 is the script's path, the chain
-      // resolver → seams → runtime → transport → spawn held end to end.
-      const recorder = join(scratch, 'record-codex')
-      const witness = join(scratch, 'spawned.txt')
-      writeFileSync(recorder, `#!/bin/sh\necho "$0" > "${witness}"\ncat > /dev/null\n`)
-      chmodSync(recorder, 0o755)
+      // The native Node executable gives a real cross-platform child. Its spawnfile proves the
+      // resolver → seams → runtime → transport → spawn path without a POSIX shell witness.
+      const recorder = process.execPath
 
       const runtime = createProviderRuntime('codex', {
         codexCommand: () => recorder,
@@ -377,12 +408,8 @@ describe('bundled codex binary', () => {
         .transportFactory
       const transport = factory({ cwd: scratch, providerHome: scratch })
       try {
-        const deadline = Date.now() + 5000
-        while (!existsSync(witness) && Date.now() < deadline) {
-          await new Promise((resolve) => setTimeout(resolve, 25))
-        }
-        expect(existsSync(witness)).toBe(true)
-        expect(readFileSync(witness, 'utf8').trim()).toBe(recorder)
+        const spawned = (transport as unknown as { child: { spawnfile: string } }).child
+        expect(spawned.spawnfile).toBe(recorder)
       } finally {
         await transport.close()
       }

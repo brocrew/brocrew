@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>Chrome</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main>
+      <header class="screen-heading">
+        <h1>Chrome</h1>
+        <p id="status" role="status">Needs setup</p>
+      </header>
+      <section aria-label="Profiles" id="profiles"></section>
+      <form id="create">
+        <label
+          >Profile name
+          <input
+            id="name"
+            required
+            maxlength="32"
+            pattern="[a-z0-9-]{1,32}"
+            autocomplete="off" /></label
+        ><button>Create profile</button>
+      </form>
+    </main>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

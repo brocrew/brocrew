@@ -230,10 +230,37 @@ describe('ending a tree within its budget', () => {
     })
     const started = Date.now()
 
-    await endTree(ending)
+    expect(await endTree(ending)).toBe(false)
 
     expect(Date.now() - started).toBeLessThan(budgetMs)
     expect(said.ended).toEqual([seenChild])
+    expect(said.warnings.join(' ')).toContain('not read in time')
+  })
+
+  it('a table arriving while awaiting leader exit cannot prove an unprocessed descendant is gone', async () => {
+    let release!: (value: TableReading) => void
+    const running = new Set([4101, 4102])
+    const { ending, said } = aTreeToEnd({
+      read: () =>
+        new Promise((resolve) => {
+          release = resolve
+        }),
+      running,
+      leaderStays: true,
+      budgetMs,
+    })
+    let waits = 0
+    ending.awaitLeader = async () => {
+      if (++waits === 1) return false
+      release({ at: STARTED + 6n * SECOND, rows: [leaderRow, child] })
+      await Promise.resolve()
+      return true
+    }
+
+    expect(await endTree(ending)).toBe(false)
+    expect(waits).toBe(2)
+    expect(said.ended).toEqual([])
+    expect(running.has(child.pid)).toBe(true)
     expect(said.warnings.join(' ')).toContain('not read in time')
   })
 
@@ -245,7 +272,7 @@ describe('ending a tree within its budget', () => {
       budgetMs,
     })
 
-    await endTree(ending)
+    expect(await endTree(ending)).toBe(true)
 
     expect(said.leaderEnded).toBe(true)
     expect(said.ended).toEqual([child])

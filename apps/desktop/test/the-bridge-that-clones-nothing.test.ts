@@ -214,6 +214,21 @@ type VerbRow =
 const THE_SHEETS_GRANT = '[field.key, set[field.key] === true ? value[field.key] : null]'
 
 const HOW_EACH_VERB_IS_BUILT: Record<RuntimeCommandKind, VerbRow> = {
+  skills: {
+    how: 'handed-over',
+    note: 'The Skills page builds a list request and a toggle request from primitive folder/enabled fields; neither hands over a reactive skill object. The DOM controls exercise structured clone before each fake reply.',
+    producers: [
+      {
+        at: 'src/renderer/src/components/SkillsSection.vue',
+        builds: "callSkills()({ operation: 'shared-list' })",
+      },
+      {
+        at: 'src/renderer/src/components/SkillsSection.vue',
+        builds:
+          "operation: 'shared-toggle',\n      folder: skill.folder,\n      enabled: !skill.enabled,",
+      },
+    ],
+  },
   // ── the launcher and the conversation ────────────────────────────────────────────────────────
   createSession: { how: 'plain-by-construction' },
   send: { how: 'plain-by-construction' },
@@ -711,7 +726,7 @@ describe('§2 · every renderer→main verb is accounted for (361 §1)', () => {
     // ⚑ And `setServicesOn`, a person's services switch: 114 → 115.
     // ⚑ And `stoppedWorkForAPerson`, the pieces whose helper stopped: 115 → 116.
     // Link resolution, both typed-wait verbs and recent activity are present in the same bridge.
-    expect(Object.keys(HOW_EACH_VERB_IS_BUILT)).toHaveLength(120)
+    expect(Object.keys(HOW_EACH_VERB_IS_BUILT)).toHaveLength(121)
     // ⚑ 8 → 10 at `744`: `savedDrafts`, `saveDrafts`. 10 → 9 at D-016: `getDemoSeed` out.
     // ⚑ 9 → 10 at D-031: `localZone`.
     expect(Object.keys(THE_APP_CHANNELS)).toHaveLength(10)
@@ -921,7 +936,7 @@ describe('§2 · every renderer→main verb is accounted for (361 §1)', () => {
       // ⚑ `stoppedWorkForAPerson` moves the MIDDLE number by one: it carries no payload.
       // Link resolution and action answers build literals; incident reads carry no payload.
       // Recent activity adds one plain packet, built from two numeric window bounds.
-      86, 27, 7,
+      86, 27, 8,
     ])
   })
 
@@ -938,6 +953,7 @@ describe('§2 · every renderer→main verb is accounted for (361 §1)', () => {
       'searchWork',
       'setCapabilities',
       'setSessionSetting',
+      'skills',
     ])
   })
 
@@ -1031,6 +1047,16 @@ function preloadSurface(): Map<string, string> {
   expect(surface.get('themes')).toMatch(/^ {2}themes: themesBridge\(ipcRenderer\),/)
   // This member is an object of verbs, read separately below, not a subscription exemption.
   surface.delete('themes')
+  expect(surface.get('plugins')).toMatch(/^ {2}plugins: pluginsBridge\(ipcRenderer\),/)
+  surface.delete('plugins')
+  const plugins = membersOf(
+    withoutProse(source('src/preload/plugins.ts')).replace(/^ {4}(?=\w)/gm, '  '),
+  )
+  expect([...plugins.keys()].sort()).toEqual(['onClosed', 'request'])
+  expect(plugins.get('onClosed')).toContain('ipc.on(PLUGIN_SCREEN_CLOSED, notify)')
+  expect(plugins.get('onClosed')).toContain('ipc.off(PLUGIN_SCREEN_CLOSED, notify)')
+  for (const [name, body] of plugins)
+    surface.set(name, body.replace('ipc.invoke', 'ipcRenderer.invoke'))
   return surface
 }
 
@@ -1734,7 +1760,9 @@ describe('§8 · the session store crosses a wire, and one of its two verbs can 
     const renderer = join(HERE, '..', 'src/renderer')
     const builders = readdirSync(renderer, { recursive: true, encoding: 'utf8' })
       .filter((name) => name.endsWith('.ts') || name.endsWith('.vue'))
-      .map((name) => [name, readFileSync(join(renderer, name), 'utf8')] as const)
+      .map(
+        (name) => [name.replaceAll('\\', '/'), readFileSync(join(renderer, name), 'utf8')] as const,
+      )
       .map(([name, code]) => [name, code.split(/\bof: '/).length - 1] as const)
       .filter(([, count]) => count > 0)
       .sort()
@@ -1793,6 +1821,7 @@ describe('§9 · every handed-over verb names its producers, and they exist (473
       'searchWork',
       'setCapabilities',
       'setSessionSetting',
+      'skills',
     ])
     for (const [kind, entry] of handed) {
       expect(
@@ -1804,7 +1833,7 @@ describe('§9 · every handed-over verb names its producers, and they exist (473
     // producer, and a missing one is invisible to every assertion that walks the list it is not in.
     // ⚑ UI-012 · `setSessionSetting`'s one producer became two: the picker's model, then its effort.
     // ⚑ …and three: plan mode is built where the agent card asks for it, not relayed from a tab.
-    expect(handed.reduce((so, [, entry]) => so + entry.producers.length, 0)).toBe(15)
+    expect(handed.reduce((so, [, entry]) => so + entry.producers.length, 0)).toBe(17)
   })
 
   it('🔴 and each producer really builds it, in the file the row names', () => {

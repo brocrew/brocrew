@@ -106,6 +106,30 @@ describe('Recent activity', () => {
     expect(m.all('activity-not-read')).toHaveLength(0)
   })
 
+  it('explains a kept skill collision as a dated activity line instead of an empty window', () => {
+    const value = reading([])
+    const { m } = page({
+      ...value,
+      skillImports: [
+        {
+          id: 'fictional-import',
+          at: NOW - MINUTE,
+          name: 'recipe-check',
+          existing: 'recipe-check',
+          imported: 'recipe-check-2',
+        },
+      ],
+    })
+    const row = m.q('activity-skill-import')
+    expect(row.textContent).toContain(
+      'Two different skills were named recipe-check. Both are kept: recipe-check and recipe-check-2.',
+    )
+    expect(row.querySelector('time')?.getAttribute('datetime')).toBe(
+      new Date(NOW - MINUTE).toISOString(),
+    )
+    expect(m.all('activity-empty')).toHaveLength(0)
+  })
+
   it('a window read only in part is never said to be empty', () => {
     for (const read of [{ rowsUnread: 3 }, { ledgersSkipped: 1 }]) {
       const { m } = page(reading([], read))
@@ -664,6 +688,20 @@ it('Recent activity reports a transcript cleanup without claiming that nothing h
   const { m } = page(value)
   expect(m.q('activity-transcripts-cleared').textContent).toContain(
     'Cleared the transcripts of 3 conversations unused for 90 days, freeing 1.2 GB.',
+  )
+  expect(m.all('activity-empty')).toHaveLength(0)
+})
+
+it('Recent activity names an early stop even when no transcript was cleared', () => {
+  const value = {
+    ...reading([]),
+    transcriptsCleared: [
+      { at: NOW - 1000, days: 90, conversations: 0, bytes: 0, stoppedEarly: true as const },
+    ],
+  }
+  const { m } = page(value)
+  expect(m.q('activity-transcripts-cleared').textContent).toContain(
+    'Transcript clearing stopped after 15 seconds so agents could start. No transcripts were cleared. The rest will be checked next time BroCrew starts.',
   )
   expect(m.all('activity-empty')).toHaveLength(0)
 })

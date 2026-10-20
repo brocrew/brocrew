@@ -177,7 +177,9 @@ describe('what a message’s text names', () => {
       expect(messagePathOf(text, 'C:\\work', windows), text).toBeNull()
     }
     // …and a Windows path on a Mac is no path there.
-    expect(messagePathOf('C:\\Users\\ada\\notes.md', null, place)).toBeNull()
+    expect(
+      messagePathOf('C:\\Users\\ada\\notes.md', null, { ...place, platform: 'darwin' }),
+    ).toBeNull()
   })
 
   it('Windows: a program or script is only shown, a document opens', async () => {

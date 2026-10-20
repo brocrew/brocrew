@@ -11,8 +11,12 @@ import {
 import type { BuiltInSkillsContext } from '../src/runtime'
 
 const names = ['delegate', 'hand-back', 'split-work', 'ask-and-wait', 'remember', 'build-software']
+// The default fixtures must be absolute on the machine running the test; explicit Windows and
+// Darwin path cases below still use their own literal platform paths.
+const FICTIONAL = process.platform === 'win32' ? 'C:\\tmp\\fictional' : '/tmp/fictional'
+const WORK = process.platform === 'win32' ? 'C:\\tmp\\work' : '/tmp/work'
 function context(provider: 'claude' | 'codex'): BuiltInSkillsContext {
-  const root = `/tmp/fictional/${provider}`
+  const root = join(FICTIONAL, provider)
   return {
     root,
     skills: names.map((name) => ({
@@ -26,7 +30,7 @@ function codexList() {
   return {
     data: [
       {
-        cwd: '/tmp/work',
+        cwd: WORK,
         errors: [],
         skills: context('codex').skills.map((skill) => ({ ...skill, enabled: true })),
       },
@@ -58,7 +62,7 @@ describe('built-in skill discovery in fictional protocol responses', () => {
         enabled: true,
       })
       await expect(
-        registerCodexBuiltInSkills(offered, '/tmp/work', async (method) => {
+        registerCodexBuiltInSkills(offered, WORK, async (method) => {
           calls.push(method)
           return method === 'skills/list' ? response : {}
         }),
@@ -87,7 +91,7 @@ describe('built-in skill discovery in fictional protocol responses', () => {
     { plugin: 'inline[0]', type: 'manifest-validation-error', message: 'Fictional diagnostic.' },
     {
       plugin: 'synced[2]',
-      path: '/tmp/fictional/claude',
+      path: context('claude').root,
       type: 'unknown-new-type',
       message: 'Fictional diagnostic.',
     },
@@ -112,28 +116,33 @@ describe('built-in skill discovery in fictional protocol responses', () => {
     response.data[0]!.skills.push({
       name: 'personal-skill',
       description: 'Unrelated personal skill.',
-      path: '/tmp/personal/SKILL.md',
+      path: join(FICTIONAL, '..', 'personal', 'SKILL.md'),
       enabled: true,
     })
     Object.assign(response.data[0]!, {
-      errors: [{ path: '/tmp/personal/invalid/SKILL.md', message: 'Unrelated diagnostic.' }],
+      errors: [
+        {
+          path: join(FICTIONAL, '..', 'personal', 'invalid', 'SKILL.md'),
+          message: 'Unrelated diagnostic.',
+        },
+      ],
     })
     await expect(
-      registerCodexBuiltInSkills(offered, '/tmp/work', async (method) =>
+      registerCodexBuiltInSkills(offered, WORK, async (method) =>
         method === 'skills/list' ? response : {},
       ),
     ).resolves.toBeUndefined()
   })
   it('passes only the explicit local plugin path to Claude', () => {
     expect(claudeBuiltInSkillOptions(context('claude'))).toEqual({
-      plugins: [{ type: 'local', path: '/tmp/fictional/claude' }],
+      plugins: [{ type: 'local', path: context('claude').root }],
     })
   })
   it('accepts the named plugin and exact offered skill names', () => {
     expect(() =>
       verifyClaudeBuiltInSkills(
         {
-          plugins: [{ name: 'brobot', path: '/tmp/fictional/claude' }],
+          plugins: [{ name: 'brobot', path: context('claude').root }],
           skills: context('claude').skills.map((skill) => skill.name),
         },
         context('claude'),
@@ -148,11 +157,11 @@ describe('built-in skill discovery in fictional protocol responses', () => {
   ] as const) {
     it(`rejects Claude's ${change}`, () => {
       const message = {
-        plugins: [{ name: 'brobot', path: '/tmp/fictional/claude' }],
+        plugins: [{ name: 'brobot', path: context('claude').root }],
         skills: context('claude').skills.map((skill) => skill.name),
       }
       if (change === 'missing-plugin') message.plugins = []
-      if (change === 'wrong-path') message.plugins[0]!.path = '/tmp/other'
+      if (change === 'wrong-path') message.plugins[0]!.path = join(FICTIONAL, '..', 'other')
       if (change === 'missing-skill') message.skills.pop()
       if (change === 'duplicate-skill') message.skills.push(message.skills[0]!)
       expect(() => verifyClaudeBuiltInSkills(message, context('claude'))).toThrow()
@@ -164,11 +173,11 @@ describe('built-in skill discovery in fictional protocol responses', () => {
       skills: offered.skills.map((skill) => skill.name),
     })
     it('accepts the offered folder spelled another way', () => {
-      for (const path of ['/tmp/fictional/./claude', '/tmp/fictional/claude/'])
+      for (const path of [`${FICTIONAL}/./claude`, `${FICTIONAL}/claude/`])
         expect(() => verifyClaudeBuiltInSkills(reported(path), context('claude'))).not.toThrow()
     })
     it('accepts a resolved report of a folder offered unresolved', () => {
-      const root = '/tmp/fictional//claude'
+      const root = `${FICTIONAL}//claude`
       const offered = {
         root,
         skills: context('claude').skills.map((skill) => ({
@@ -177,14 +186,10 @@ describe('built-in skill discovery in fictional protocol responses', () => {
         })),
       }
       expect(() =>
-        verifyClaudeBuiltInSkills(reported('/tmp/fictional/claude', offered), offered),
+        verifyClaudeBuiltInSkills(reported(context('claude').root, offered), offered),
       ).not.toThrow()
     })
-    for (const path of [
-      'fictional/claude',
-      '/tmp/fictional/claude/..',
-      '/tmp/fictional/claude-old',
-    ])
+    for (const path of ['fictional/claude', `${FICTIONAL}/claude/..`, `${FICTIONAL}/claude-old`])
       it(`rejects ${path}, which is not the offered folder`, () => {
         expect(() => verifyClaudeBuiltInSkills(reported(path), context('claude'))).toThrow()
       })
@@ -192,11 +197,11 @@ describe('built-in skill discovery in fictional protocol responses', () => {
       expect(() =>
         verifyClaudeBuiltInSkills(
           {
-            ...reported('/tmp/fictional/claude'),
+            ...reported(context('claude').root),
             plugin_errors: [
               {
                 plugin: 'synced[0]',
-                path: '/tmp/fictional/./claude',
+                path: `${FICTIONAL}/./claude`,
                 type: 'path-not-found',
                 message: 'Fictional diagnostic.',
               },
@@ -336,16 +341,14 @@ describe('built-in skill discovery in fictional protocol responses', () => {
   describe('Codex reports the cwd and each skill’s file in the system’s own form', () => {
     it('takes them spelled another way, and keeps case on other systems', () => {
       const response = codexList()
-      response.data[0]!.cwd = '/tmp/work/'
-      response.data[0]!.skills[0]!.path = '/tmp/fictional/./codex/delegate/SKILL.md'
-      expect(() => verifyCodexBuiltInSkills(response, context('codex'), '/tmp/work')).not.toThrow()
+      response.data[0]!.cwd = `${WORK}/`
+      response.data[0]!.skills[0]!.path = `${FICTIONAL}/./codex/delegate/SKILL.md`
+      expect(() => verifyCodexBuiltInSkills(response, context('codex'), WORK)).not.toThrow()
       for (const change of ['cwd', 'path'] as const) {
         const cased = codexList()
         if (change === 'cwd') cased.data[0]!.cwd = '/tmp/Work'
         else cased.data[0]!.skills[0]!.path = '/tmp/Fictional/codex/delegate/SKILL.md'
-        expect(() =>
-          verifyCodexBuiltInSkills(cased, context('codex'), '/tmp/work', 'darwin'),
-        ).toThrow()
+        expect(() => verifyCodexBuiltInSkills(cased, context('codex'), WORK, 'darwin')).toThrow()
       }
     })
     describe('on Windows', () => {
@@ -462,14 +465,14 @@ describe('built-in skill discovery in fictional protocol responses', () => {
   })
   it('registers roots then forces a catalogue read, before the caller opens a thread', async () => {
     const calls: { method: string; params: object }[] = []
-    await registerCodexBuiltInSkills(context('codex'), '/tmp/work', async (method, params) => {
+    await registerCodexBuiltInSkills(context('codex'), WORK, async (method, params) => {
       calls.push({ method, params })
       return method === 'skills/list' ? codexList() : {}
     })
     calls.push({ method: 'thread/start', params: {} })
     expect(calls).toEqual([
-      { method: 'skills/extraRoots/set', params: { extraRoots: ['/tmp/fictional/codex'] } },
-      { method: 'skills/list', params: { cwds: ['/tmp/work'], forceReload: true } },
+      { method: 'skills/extraRoots/set', params: { extraRoots: [context('codex').root] } },
+      { method: 'skills/list', params: { cwds: [WORK], forceReload: true } },
       { method: 'thread/start', params: {} },
     ])
   })
@@ -487,19 +490,21 @@ describe('built-in skill discovery in fictional protocol responses', () => {
         entry = response.data[0]!
       if (change === 'missing') entry.skills.pop()
       if (change === 'disabled') entry.skills[0]!.enabled = false
-      if (change === 'path') entry.skills[0]!.path = '/tmp/foreign/SKILL.md'
+      if (change === 'path') entry.skills[0]!.path = join(FICTIONAL, '..', 'foreign', 'SKILL.md')
       if (change === 'description') entry.skills[0]!.description = 'Other text'
       if (change === 'duplicate') entry.skills.push(entry.skills[0]!)
       if (change === 'errors')
-        Object.assign(entry, { errors: [{ path: '/tmp/fictional/codex/invalid/SKILL.md' }] })
-      if (change === 'cwd') entry.cwd = '/tmp/other'
-      expect(() => verifyCodexBuiltInSkills(response, context('codex'), '/tmp/work')).toThrow()
+        Object.assign(entry, {
+          errors: [{ path: join(context('codex').root, 'invalid', 'SKILL.md') }],
+        })
+      if (change === 'cwd') entry.cwd = join(FICTIONAL, '..', 'other')
+      expect(() => verifyCodexBuiltInSkills(response, context('codex'), WORK)).toThrow()
     })
   }
   it('a failed registration never reads the list or continues', async () => {
     const calls: string[] = []
     await expect(
-      registerCodexBuiltInSkills(context('codex'), '/tmp/work', async (method) => {
+      registerCodexBuiltInSkills(context('codex'), WORK, async (method) => {
         calls.push(method)
         throw new Error('fictional refusal')
       }),

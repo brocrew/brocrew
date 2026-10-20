@@ -1,3 +1,6 @@
+import { FakeRuntime } from '@brobot2/runtime'
+import { NULL_SESSION_STORE } from '../src/main/db/session-store'
+import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { joinLiveHosts, providerProcessesAreInFlight } from '../src/main/runtime/live-hosts'
 import { createLaunchRegistry } from '../src/main/runtime/launch-registry'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
@@ -16,15 +19,21 @@ import {
   renameSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { clearTranscripts, whatToClear } from '../src/main/transcript-retention-files'
+import {
+  batchesToClear,
+  clearTranscripts,
+  whatToClear,
+} from '../src/main/transcript-retention-files'
 import { TranscriptRetentionHost } from '../src/main/transcript-retention'
 import { transcriptsClearedWords } from '../src/shared/transcript-retention'
 
 const filesystemGate = vi.hoisted(() => ({
+  beforeMkdir: null as null | ((path: string) => Promise<void>),
   beforeUnlink: null as null | ((path: string) => Promise<void>),
-  beforeScan: null as null | (() => Promise<void>),
+  beforeScan: null as null | ((path: string) => Promise<void>),
+  beforeStat: null as null | ((path: string) => Promise<void>),
   beforeRename: null as null | ((from: string, to: string) => Promise<void>),
   afterRename: null as null | ((from: string, to: string) => Promise<void>),
 }))
@@ -32,9 +41,17 @@ vi.mock('node:fs/promises', async (original) => {
   const actual = await original<typeof import('node:fs/promises')>()
   return {
     ...actual,
-    opendir: async (...args: Parameters<typeof actual.opendir>) => {
-      await filesystemGate.beforeScan?.()
-      return actual.opendir(...args)
+    mkdir: async (...args: Parameters<typeof actual.mkdir>) => {
+      await filesystemGate.beforeMkdir?.(String(args[0]))
+      return actual.mkdir(...args)
+    },
+    readdir: async (...args: Parameters<typeof actual.readdir>) => {
+      await filesystemGate.beforeScan?.(String(args[0]))
+      return actual.readdir(...args)
+    },
+    lstat: async (...args: Parameters<typeof actual.lstat>) => {
+      await filesystemGate.beforeStat?.(String(args[0]))
+      return actual.lstat(...args)
     },
     rename: async (
       from: Parameters<typeof actual.rename>[0],
@@ -63,7 +80,9 @@ beforeEach(() => {
   mkdirSync(data)
 })
 afterEach(() => {
+  filesystemGate.beforeMkdir = null
   filesystemGate.beforeScan = null
+  filesystemGate.beforeStat = null
   filesystemGate.beforeUnlink = null
   filesystemGate.beforeRename = null
   filesystemGate.afterRename = null
@@ -86,6 +105,7 @@ const codex = (id: string, days: number) =>
     days,
   )
 const unused = () => false
+const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
 it('one rule clears both providers at 91 days, retains 89 days and everything outside their transcripts', async () => {
   const a = claude(OLD, 91),
@@ -119,6 +139,12 @@ it('Forever clears nothing; exact-boundary and newly touched files stay', async 
   utimesSync(b, NOW / 1000, NOW / 1000)
   expect(await clearTranscripts(plan, unused)).toEqual({ conversations: 0, bytes: 0 })
   expect(existsSync(a) && existsSync(b)).toBe(true)
+})
+it('a bounded directory batch visits older eligible transcripts first', async () => {
+  const newer = claude('a-newer', 100)
+  const older = claude('b-older', 365)
+  const plan = await whatToClear(data, 90, NOW, unused)
+  expect(plan.entries.map((entry) => entry.file)).toEqual([older, newer])
 })
 it('linked homes, transcript files and accompanying folders never reach another home', async () => {
   const outside = join(dir, 'fictional-personal')
@@ -367,6 +393,399 @@ it('a launch requested during scanning waits until the whole clearing pass ends'
     await pass
     await h.stop()
   }
+})
+
+it('a scan that never settles releases the first launch at the deadline and records no deletion', async () => {
+  const target = claude(OLD, 365)
+  let release!: () => void
+  let entered!: () => void
+  const arrived = new Promise<void>((resolve) => {
+    entered = resolve
+  })
+  const held = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  filesystemGate.beforeScan = async () => {
+    entered()
+    await held
+  }
+  const host = new TranscriptRetentionHost(data, unused, () => NOW, false, 20)
+  const pass = host.run()
+  try {
+    await arrived
+    let launched = false
+    const launch = host.beforeLaunch().then(() => {
+      launched = true
+    })
+    await wait(60)
+    expect(launched).toBe(true)
+    expect(existsSync(target)).toBe(true)
+    expect((await host.recent(0, NOW))[0]).toMatchObject({ conversations: 0, stoppedEarly: true })
+    expect(transcriptsClearedWords((await host.recent(0, NOW))[0]!)).toBe(
+      'Transcript clearing stopped after 15 seconds so agents could start. No transcripts were cleared. The rest will be checked next time BroCrew starts.',
+    )
+    release()
+    await Promise.all([pass, launch])
+    expect(existsSync(target)).toBe(true)
+  } finally {
+    release()
+    await pass
+    await host.stop()
+  }
+})
+
+it('a normal startup pass still deletes and records its completed check', async () => {
+  const target = claude(OLD, 365)
+  const host = new TranscriptRetentionHost(data, unused, () => NOW, false, 500)
+  await host.run()
+  await host.beforeLaunch()
+  expect(existsSync(target)).toBe(false)
+  expect(await host.recent(0, NOW)).toMatchObject([{ conversations: 1 }])
+  expect((await host.recent(0, NOW))[0]?.stoppedEarly).toBeUndefined()
+  expect(JSON.parse(readFileSync(join(data, 'transcript-retention.json'), 'utf8'))).toMatchObject({
+    checkedAt: NOW,
+    scanAfter: '',
+  })
+  await host.stop()
+})
+
+it('a deletion already in flight settles, but no later deletion starts after the deadline', async () => {
+  const first = claude(OLD, 365)
+  const second = claude(RECENT, 365)
+  const firstBytes = statSync(first).size
+  let release!: () => void
+  let entered!: () => void
+  const arrived = new Promise<void>((resolve) => {
+    entered = resolve
+  })
+  const held = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  let unlinks = 0
+  filesystemGate.beforeUnlink = async () => {
+    unlinks++
+    if (unlinks === 1) {
+      entered()
+      await held
+    }
+  }
+  const host = new TranscriptRetentionHost(data, unused, () => NOW, false, 20)
+  const pass = host.run()
+  try {
+    await arrived
+    const launch = host.beforeLaunch()
+    await wait(60)
+    await launch
+    release()
+    await pass
+    expect(existsSync(first)).toBe(false)
+    expect(existsSync(second)).toBe(true)
+    expect(unlinks).toBe(1)
+    const line = (await host.recent(0, NOW))[0]!
+    expect(line).toMatchObject({ conversations: 1, stoppedEarly: true })
+    expect(transcriptsClearedWords(line)).toBe(
+      `Transcript clearing stopped after 15 seconds so agents could start. Cleared the transcripts of 1 conversation unused for 90 days, freeing ${firstBytes} B. The rest will be checked next time BroCrew starts.`,
+    )
+  } finally {
+    release()
+    await pass
+    await host.stop()
+  }
+})
+
+it('a staged move that settles after the deadline restores its file before the pass ends', async () => {
+  const target = claude(OLD, 365)
+  let release!: () => void
+  let entered!: () => void
+  const arrived = new Promise<void>((resolve) => {
+    entered = resolve
+  })
+  const held = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  filesystemGate.beforeRename = async (from) => {
+    if (from === target) {
+      entered()
+      await held
+    }
+  }
+  vi.spyOn(console, 'warn').mockImplementation(() => {})
+  const host = new TranscriptRetentionHost(data, unused, () => NOW, false, 20)
+  const pass = host.run()
+  try {
+    await arrived
+    const launch = host.beforeLaunch()
+    await wait(60)
+    await launch
+    release()
+    await pass
+    expect(readFileSync(target, 'utf8')).toBe('fictional transcript\n')
+    expect(
+      readdirSync(join(data, 'provider-homes')).some((name) =>
+        name.startsWith('.transcript-cleanup-'),
+      ),
+    ).toBe(false)
+    expect((await host.recent(0, NOW))[0]).toMatchObject({ conversations: 0, stoppedEarly: true })
+  } finally {
+    release()
+    await pass
+    await host.stop()
+  }
+})
+
+it('a move held in staging setup cannot start after the deadline releases a real launch', async () => {
+  const target = claude(OLD, 365)
+  let release!: () => void
+  let entered!: () => void
+  const arrived = new Promise<void>((resolve) => {
+    entered = resolve
+  })
+  const held = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  filesystemGate.beforeMkdir = async (path) => {
+    if (path.includes('.transcript-cleanup-')) {
+      entered()
+      await held
+    }
+  }
+  let moves = 0
+  filesystemGate.beforeRename = async (from) => {
+    if (from === target) moves++
+  }
+  const clearing = new TranscriptRetentionHost(
+    data,
+    () => live.providerProcessesInFlight(),
+    () => NOW,
+    false,
+    15_000,
+  )
+  const runtime = new FakeRuntime('codex')
+  const live = new RuntimeHost({
+    store: NULL_SESSION_STORE,
+    discoverSessions: NO_DISCOVERY,
+    nativeTranscriptPath: () => null,
+    exportDirectory: () => join(data, 'exports'),
+    createRuntime: () => runtime,
+    prepareProviderHome: (provider) => home(provider),
+    providerHomePath: (provider) => home(provider),
+    resolveCwd: () => dir,
+    newSessionId: () => 'sess_orchard',
+    beforeProviderLaunch: (): Promise<void> => clearing.beforeLaunch(),
+    readProviderConfig: (_provider, home) => ({
+      home,
+      homeEnv: 'CODEX_HOME',
+      model: 'fictional-model',
+      authNote: null,
+      files: [],
+    }),
+  })
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  const pass = clearing.run()
+  try {
+    await arrived
+    const opening = live.createSession(
+      { provider: 'codex' },
+      {
+        ownerId: 'fictional-window',
+        aPersonIsBehindIt: true,
+        alive: true,
+        send() {},
+        sendLiveness() {},
+      },
+    )
+    void opening.catch(() => undefined)
+    await vi.advanceTimersByTimeAsync(15_000)
+    const opened = await opening
+    expect(opened.provider).toBe('codex')
+    expect(live.providerProcessesInFlight()).toBe(true)
+    release()
+    await pass
+    expect(moves).toBe(0)
+    expect(readFileSync(target, 'utf8')).toBe('fictional transcript\n')
+  } finally {
+    vi.useRealTimers()
+    release()
+    await pass
+    await live.closeAll()
+    await clearing.stop()
+  }
+})
+
+it.each([30, 90] as const)(
+  'a held old scan cannot undo the cursor reset when the choice is set to %i days',
+  async (period) => {
+    for (let i = 0; i < 5; i++) claude(`a-${i}`, 1)
+    let release!: () => void
+    let entered!: () => void
+    const arrived = new Promise<void>((resolve) => {
+      entered = resolve
+    })
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    filesystemGate.beforeStat = async (path) => {
+      if (path.endsWith('a-4.jsonl')) {
+        entered()
+        await held
+      }
+    }
+    const host = new TranscriptRetentionHost(data, unused, () => NOW, false, 15_000)
+    const pass = host.run()
+    try {
+      await arrived
+      await host.set(period)
+      release()
+      await pass
+      expect(
+        JSON.parse(readFileSync(join(data, 'transcript-retention.json'), 'utf8')),
+      ).toMatchObject({ period, scanAfter: '' })
+    } finally {
+      release()
+      await pass
+      await host.stop()
+    }
+  },
+)
+
+it('resume skips completed subtrees before listing or yielding their children', async () => {
+  const projects = join(home('claude'), 'projects')
+  for (let i = 0; i < 20; i++)
+    file(join(projects, `a-${String(i).padStart(2, '0')}`, 'kept.jsonl'), 1)
+  const cursor = 'default/fictional-agent/claude/projects/m-cursor/kept.jsonl'
+  file(join(projects, 'm-cursor', 'kept.jsonl'), 1)
+  const target = file(join(projects, 'z-later', 'eligible.jsonl'), 365)
+  const visited: string[] = []
+  filesystemGate.beforeScan = async (path) => {
+    visited.push(path)
+  }
+  const selected: string[] = []
+  for await (const batch of batchesToClear(data, 90, NOW, unused, cursor))
+    selected.push(...batch.entries.map((one) => one.file))
+  expect(selected).toEqual([target])
+  expect(visited.filter((path) => dirname(path) === projects && path.includes('/a-'))).toEqual([])
+})
+
+it('a resumed Codex directory skips its nonmatching pre-cursor files', async () => {
+  const kept = codex(OLD, 1)
+  const target = codex(RECENT, 365)
+  const folder = dirname(kept)
+  for (let i = 0; i < 20; i++) file(join(folder, `a-${i}.txt`), 1)
+  const read: string[] = []
+  filesystemGate.beforeStat = async (path) => {
+    if (dirname(path) === folder && basename(path).startsWith('a-')) read.push(path)
+  }
+  const cursor = `default/fictional-agent/codex/sessions/2026/01/01/${basename(kept)}`
+  const selected: string[] = []
+  for await (const batch of batchesToClear(data, 90, NOW, unused, cursor))
+    selected.push(...batch.entries.map((one) => one.file))
+  expect(selected).toEqual([target])
+  expect(read).toEqual([])
+})
+
+it('a slow finite kept prefix cannot exhaust every resumed start before a later eligible file', async () => {
+  const projects = join(home('claude'), 'projects')
+  for (let i = 0; i < 20; i++)
+    file(join(projects, `a-${String(i).padStart(2, '0')}`, 'kept.jsonl'), 1)
+  file(join(projects, 'm-cursor', 'kept.jsonl'), 1)
+  const target = file(join(projects, 'z-later', 'eligible.jsonl'), 365)
+  writeFileSync(
+    join(data, 'transcript-retention.json'),
+    JSON.stringify({
+      period: 90,
+      checkedAt: 0,
+      scanAfter: 'default/fictional-agent/claude/projects/m-cursor/kept.jsonl',
+      cleared: [],
+    }),
+  )
+  let elapsed = 0
+  vi.spyOn(performance, 'now').mockImplementation(() => elapsed)
+  filesystemGate.beforeScan = async (path) => {
+    if (dirname(path) === projects && path.includes('/a-')) elapsed += 2_000
+  }
+  const host = new TranscriptRetentionHost(data, unused, () => NOW, false, 10_000)
+  try {
+    await host.run()
+    expect(existsSync(target)).toBe(false)
+  } finally {
+    await host.stop()
+  }
+})
+
+it('a cut pass resumes past kept files and clears later eligible files over later starts', async () => {
+  const project = join(home('claude'), 'projects', '-fictional')
+  for (let index = 0; index < 12; index++)
+    file(join(project, `a-${String(index).padStart(2, '0')}.jsonl`), 1)
+  const eligible = file(join(project, 'z-eligible.jsonl'), 365)
+  for (const [blocked, expectedCursor] of [
+    ['a-04', 'a-03'],
+    ['a-08', 'a-07'],
+  ] as const) {
+    let release!: () => void
+    let entered!: () => void
+    const arrived = new Promise<void>((resolve) => {
+      entered = resolve
+    })
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    filesystemGate.beforeStat = async (path) => {
+      if (path.endsWith(`${blocked}.jsonl`)) {
+        entered()
+        await held
+      }
+    }
+    // Batches are cut by size, never by scan time, and the deadline passes only when the test says.
+    const clock = vi.spyOn(performance, 'now').mockReturnValue(0)
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const host = new TranscriptRetentionHost(data, unused, () => NOW, false, 20)
+    const pass = host.run()
+    try {
+      await arrived
+      const launch = host.beforeLaunch()
+      await vi.advanceTimersByTimeAsync(20)
+      await launch
+      release()
+      await pass
+      expect(existsSync(eligible)).toBe(true)
+      expect(
+        JSON.parse(readFileSync(join(data, 'transcript-retention.json'), 'utf8')).scanAfter,
+      ).toBe(`default/fictional-agent/claude/projects/-fictional/${expectedCursor}.jsonl`)
+    } finally {
+      release()
+      await pass
+      await host.stop()
+      vi.useRealTimers()
+      clock.mockRestore()
+    }
+  }
+  filesystemGate.beforeStat = null
+  const final = new TranscriptRetentionHost(data, unused, () => NOW, false, 500)
+  await final.run()
+  expect(existsSync(eligible)).toBe(false)
+  expect(JSON.parse(readFileSync(join(data, 'transcript-retention.json'), 'utf8')).scanAfter).toBe(
+    '',
+  )
+  await final.stop()
+})
+
+it('changing the retention period resets a partial scan to the beginning', async () => {
+  writeFileSync(
+    join(data, 'transcript-retention.json'),
+    JSON.stringify({
+      period: 90,
+      checkedAt: 0,
+      scanAfter: 'default/fictional-agent/claude/projects/-fictional/a-07.jsonl',
+      cleared: [],
+    }),
+  )
+  const host = new TranscriptRetentionHost(data, unused, () => NOW)
+  await host.set(30)
+  expect(JSON.parse(readFileSync(join(data, 'transcript-retention.json'), 'utf8'))).toMatchObject({
+    period: 30,
+    scanAfter: '',
+  })
+  await host.stop()
 })
 
 it('the saved choice survives restart; only a new app session can clear again', async () => {

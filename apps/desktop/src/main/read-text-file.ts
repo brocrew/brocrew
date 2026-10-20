@@ -2,12 +2,13 @@ import {
   closeSync,
   constants,
   fstatSync,
-  openSync,
+  lstatSync,
   readSync,
   realpathSync,
   statSync,
 } from 'node:fs'
 import { isAbsolute } from 'node:path'
+import { openNotThroughALink } from '@brobot2/runtime/provider-home'
 
 /**
  * **Opening one file, safely** — the half every file door in this app has in common (112).
@@ -73,17 +74,18 @@ export function realPathOf(path: string): RealPath {
 /**
  * Why `open(2)` refused, in the three words a viewer has — asked of what is THERE, not of the code.
  *
- * `ELOOP` is the swap: `gone`. ⚑ **731 · the rest is no longer `gone` by default.** Until `731` every
- * failure was, and the extension lists kept most of the other causes from ever arriving; without
- * them a socket or a file this user may not read reached `open` and was drawn as *"no longer on
- * disk"* about a file that is there (`731`'s review). So the path is asked: nothing there is `gone`,
- * a socket or a device is `not-readable`, and a regular file that would not open (`EACCES`, a
- * descriptor shortage) is `unreadable`. ⚠️ Asked by `stat` and not by the error's code, because
+ * `ELOOP` usually means a swapped-in link: `gone`. The Windows regular-file fence also refuses
+ * directories with that code, so distinguish them with `lstat`, without following a link.
+ * Other failures are not `gone` by default: a socket or a file this user may not read would
+ * otherwise be drawn as *"no longer on disk"* about a file that is there. So the path is asked:
+ * nothing there is `gone`, a socket or a device is `not-readable`, and a regular file that would
+ * not open (`EACCES`, a descriptor shortage) is `unreadable`. Other failures are classified by `stat`, because
  * libuv names a socket's `EOPNOTSUPP` on macOS only as *"Unknown system error -102"* (measured).
  */
 function whyItDidNotOpen(realPath: string, error: unknown): ReadRefusal {
-  if ((error as { code?: unknown }).code === 'ELOOP') return 'gone'
   try {
+    if ((error as { code?: unknown }).code === 'ELOOP')
+      return lstatSync(realPath).isDirectory() ? 'not-readable' : 'gone'
     return statSync(realPath).isFile() ? 'unreadable' : 'not-readable'
   } catch {
     return 'gone'
@@ -109,7 +111,7 @@ function whyItDidNotOpen(realPath: string, error: unknown): ReadRefusal {
 export function readTextFile(realPath: string, max: number): TextFile | ReadRefusal {
   let fd: number
   try {
-    fd = openSync(realPath, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
+    fd = openNotThroughALink(realPath, constants.O_RDONLY | constants.O_NONBLOCK)
   } catch (error) {
     return whyItDidNotOpen(realPath, error)
   }

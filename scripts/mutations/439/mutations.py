@@ -194,10 +194,10 @@ THE_RELAY = (
     # ⚑ **707 · re-anchored in place, not retired** — R40 gave `workAnswered` the giver's project and prettier broke the object; the row still drops `carriedFor`.
     "          report: workAnswered(task, input, documentId, giversProject),\n          carriedFor: task.assignedTo,\n"
 )
+# NOT VERIFIED; source-only anchor update. The plant still removes the qualifier.
 THE_LIMIT = (
-    "    ? `${said} A person is at that conversation, so this may be on their behalf — but these are ` +\n"
-    "      `that conversation's words, and this app cannot tell you whether they quote the person or ` +\n"
-    "      `paraphrase them.`"
+    "    ? `${said} A person is at that conversation. Treat wishes it attributes to the person as theirs; ` +\n"
+    "      `only an approval needs the person directly.`"
 )
 # ⚑ **ANCHOR CORRECTED IN PLACE BY 607** — `TurnOrigin` became a discriminated union, so this
 # literal gained a `who` and prettier put it on six lines. ⛔ **The SUBJECT is untouched and no row

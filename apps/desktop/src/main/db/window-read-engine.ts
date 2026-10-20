@@ -12,6 +12,7 @@ import {
   windowReadQuery,
   WindowReadUnavailable,
   type RoutingReading,
+  type IncidentReading,
   type SkippedRow,
   type WindowReadQuery,
   type WindowReadResult,
@@ -99,7 +100,57 @@ export class WindowReadEngine {
       this.db.prepare("SELECT rootpage FROM sqlite_schema WHERE name = 'events'").get()
       const store = createSessionStore(bounded)
       let result: WindowReadResult
-      if (query.kind === 'activity') {
+      if (query.kind === 'incidents') {
+        const owners = store.reconciliationOwners()
+        if (owners.length > WINDOW_READ_BOUNDS.sessions) throw new WindowReadUnavailable()
+        const readings: IncidentReading[] = []
+        for (const sessionId of owners) {
+          if (abandoned()) throw new WindowReadUnavailable()
+          const piecesSkipped = new Set<SkippedRow>()
+          const routesSkipped = new Set<SkippedRow>()
+          const messagesSkipped = new Set<SkippedRow>()
+          const stopSkipped = new Set<SkippedRow>()
+          const noted = (skipped: Set<SkippedRow>): RowsUnread => {
+            const unread = rowsUnreadOnce()
+            return {
+              in: (id) => (ordinal) => {
+                if (id !== sessionId) throw new WindowReadUnavailable()
+                skipped.add(ordinal)
+                unread.in(id)(ordinal)
+              },
+              get count() {
+                return unread.count
+              },
+              get ledgersSkipped() {
+                return unread.ledgersSkipped
+              },
+            }
+          }
+          const pieces = store.openPiecesOf(sessionId, noted(piecesSkipped))
+          // The canonical work reader shares the open-piece fold already read for this owner.
+          const foldedStore: typeof store = {
+            ...store,
+            openPiecesOf: (owner, unread) => {
+              if (owner !== sessionId) throw new WindowReadUnavailable()
+              for (const ordinal of piecesSkipped) unread?.in(owner)(ordinal)
+              return pieces
+            },
+          }
+          readings.push({
+            sessionId,
+            pieces,
+            work: foldedStore.reconciliationWork(new Set([sessionId]), noted(piecesSkipped)),
+            routes: store.routedRequestsOf(sessionId, noted(routesSkipped)),
+            messages: store.messagesWaitingIn(sessionId, noted(messagesSkipped)),
+            stop: store.lastAskToStop(sessionId, noted(stopSkipped)),
+            piecesSkipped: [...piecesSkipped],
+            routesSkipped: [...routesSkipped],
+            messagesSkipped: [...messagesSkipped],
+            stopSkipped: [...stopSkipped],
+          })
+        }
+        result = { kind: 'incidents', owners: readings }
+      } else if (query.kind === 'activity') {
         const reading = recentActivity(store, query.from, query.to)
         if (reading.read.ledgers > WINDOW_READ_BOUNDS.sessions) throw new WindowReadUnavailable()
         result = { kind: 'activity', ...reading }

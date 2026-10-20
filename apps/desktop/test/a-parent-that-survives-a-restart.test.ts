@@ -632,11 +632,16 @@ describe('373 · a parent that survives a restart', () => {
       // ⚑ **Ten**: `0009_the_fold_index_ends_passed_up_questions.sql` recreates an index and adds
       // no column.
       // The next migration captures ledger ordinals, not conversation commanders.
-      const migrations = readdirSync(migrationsFolder)
+      const migrationFiles = readdirSync(migrationsFolder)
         .filter((name) => name.endsWith('.sql'))
+        .sort()
+      const journal = JSON.parse(
+        readFileSync(join(migrationsFolder, 'meta/_journal.json'), 'utf8'),
+      ) as { entries: { tag: string }[] }
+      expect(migrationFiles).toEqual(journal.entries.map((entry) => `${entry.tag}.sql`).sort())
+      const everything = migrationFiles
         .map((name) => readFileSync(join(migrationsFolder, name), 'utf8'))
-      expect(migrations).toHaveLength(12)
-      const everything = migrations.join('\n')
+        .join('\n')
       // ⚠️ **Not flanked by a letter or a digit**: D-016's `work` table has an index named
       // `work_owner_idx` — the owner of a PIECE, not a commander of a conversation — and a bare
       // substring search reads `owner_id` in it. ⛔ Not `\b` either: `_` is a word character, so

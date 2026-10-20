@@ -1,3 +1,5 @@
+import { pinTheDataFolder, workspaceStartup } from '../src/main/data-folder'
+import { whoIsOn } from '../src/main/one-host-gate'
 import type { EventEmitter } from 'node:events'
 import {
   existsSync,
@@ -14,13 +16,57 @@ import type { App } from 'electron'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { WORKSPACES_CHANNELS, type WorkspaceRow } from '../src/shared/workspaces'
 import { startWorkspaces } from '../src/main/workspaces-in-the-app'
+import { claimPackagedWorkspace } from '../src/main/workspace-routing-store'
 
 type Handler = (event: unknown, ...args: unknown[]) => unknown
 const fake = vi.hoisted(() => ({
   handlers: new Map<string, Handler>(),
   launches: [] as { command: string; args: string[] }[],
   failLaunch: false,
+  onWrite: undefined as ((operation: string) => void) | undefined,
 }))
+
+vi.mock('node:fs', async (original) => {
+  const fs = await original<typeof import('node:fs')>()
+  return {
+    ...fs,
+    mkdirSync: (...args: Parameters<typeof fs.mkdirSync>) => {
+      fake.onWrite?.('mkdir')
+      return fs.mkdirSync(...args)
+    },
+    writeFileSync: (...args: Parameters<typeof fs.writeFileSync>) => {
+      fake.onWrite?.('write')
+      return fs.writeFileSync(...args)
+    },
+    renameSync: (...args: Parameters<typeof fs.renameSync>) => {
+      fake.onWrite?.('rename')
+      return fs.renameSync(...args)
+    },
+    linkSync: (...args: Parameters<typeof fs.linkSync>) => {
+      fake.onWrite?.('link')
+      return fs.linkSync(...args)
+    },
+    unlinkSync: (...args: Parameters<typeof fs.unlinkSync>) => {
+      fake.onWrite?.('unlink')
+      return fs.unlinkSync(...args)
+    },
+    openSync: (...args: Parameters<typeof fs.openSync>) => {
+      const flags = args[1]
+      if (
+        typeof flags === 'string'
+          ? /[wa+]/.test(flags)
+          : (flags &
+              (fs.constants.O_WRONLY |
+                fs.constants.O_RDWR |
+                fs.constants.O_CREAT |
+                fs.constants.O_TRUNC)) !==
+            0
+      )
+        fake.onWrite?.('open-for-write')
+      return fs.openSync(...args)
+    },
+  }
+})
 
 vi.mock('electron', () => ({
   ipcMain: { handle: (channel: string, handler: Handler) => fake.handlers.set(channel, handler) },
@@ -56,6 +102,7 @@ const ask = async <T = unknown>(channel: string, ...args: unknown[]): Promise<T>
 }
 
 beforeEach(() => {
+  fake.onWrite = undefined
   root = realpathSync(mkdtempSync(join(tmpdir(), 'brobot-workspace-wiring-')))
   userData = join(root, 'current')
   appData = join(root, 'app-data')
@@ -74,6 +121,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  fake.onWrite = undefined
   fake.handlers.clear()
   rmSync(root, { recursive: true, force: true })
 })
@@ -159,3 +207,222 @@ it('reports a failed launch and leaves the new folder available to retry', async
   fake.failLaunch = false
   expect(await ask(WORKSPACES_CHANNELS.open, path)).toMatchObject({ opened: true, path })
 })
+
+it('a public dev window refuses packaged-owned folders before checks, reads or spawn', async () => {
+  vi.mocked(whoIsOn).mockClear()
+  const reserved = ['copper', 'fern', 'birch'].map((name) => join(root, name))
+  mkdirSync(join(appData, '@brobot2'), { recursive: true })
+  writeFileSync(
+    join(appData, '@brobot2', 'packaged-workspaces.json'),
+    JSON.stringify({
+      version: 1,
+      workspaces: reserved.map((path, lastOpenedAt) => ({ path, lastOpenedAt })),
+    }),
+  )
+  // Stale legacy entries must disappear without asking those folders for their names or gates.
+  writeFileSync(
+    join(appData, '@brobot2', 'workspaces.json'),
+    JSON.stringify({
+      version: 1,
+      workspaces: reserved.map((path, lastOpenedAt) => ({ path, lastOpenedAt })),
+    }),
+  )
+  fake.handlers.clear()
+  const paths: Record<string, string> = { userData, appData, home: join(root, 'home') }
+  startWorkspaces({
+    app: {
+      isPackaged: false,
+      getPath: (name: string) => paths[name],
+      getAppPath: () => join(root, 'fictional-app'),
+    } as unknown as App,
+    hidden: false,
+    pickFolder: async () => null,
+  })
+  for (const folder of reserved) {
+    expect(await ask(WORKSPACES_CHANNELS.open, folder)).toEqual({
+      opened: false,
+      refusal: 'This workspace opens in the BroCrew app in Applications.',
+    })
+    expect(await ask(WORKSPACES_CHANNELS.checkFolder, folder, false)).toMatchObject({
+      ok: false,
+      refusal: 'This workspace opens in the BroCrew app in Applications.',
+    })
+    expect(await ask(WORKSPACES_CHANNELS.create, { path: folder, name: 'Copper' })).toMatchObject({
+      opened: false,
+    })
+    expect(existsSync(folder)).toBe(false)
+  }
+  expect(fake.launches).toEqual([])
+  const rows = await ask<WorkspaceRow[]>(WORKSPACES_CHANNELS.list)
+  expect(rows.map((row) => row.path)).toEqual([userData])
+  expect(vi.mocked(whoIsOn).mock.calls.filter(([folder]) => reserved.includes(folder))).toEqual([])
+})
+
+it('the one packaged executable opens another workspace and Finder subsequently reopens that one', async () => {
+  const copper = join(root, 'copper'),
+    fern = join(root, 'fern')
+  for (const folder of [copper, fern]) {
+    mkdirSync(folder)
+    writeFileSync(join(folder, 'brobot2.sqlite'), '')
+  }
+  const config = join(appData, '@brobot2'),
+    appPath = join(root, 'packaged')
+  mkdirSync(config, { recursive: true })
+  mkdirSync(appPath)
+  writeFileSync(join(appPath, 'package.json'), JSON.stringify({ requireWorkspacePolicy: true }))
+  writeFileSync(
+    join(config, 'workspace-policy.json'),
+    JSON.stringify({
+      version: 1,
+      firstWorkspace: copper,
+      packagedForbidden: [join(config, 'desktop')],
+      developmentForbidden: [copper, fern],
+    }),
+  )
+  const set: string[] = []
+  const paths: Record<string, string> = { userData: copper, appData, home: join(root, 'home') }
+  const app = {
+    isPackaged: true,
+    getAppPath: () => appPath,
+    getPath: (name: string) => paths[name]!,
+    setPath: (_name: string, folder: string) => set.push(folder),
+    commandLine: { hasSwitch: () => false },
+  }
+  fake.handlers.clear()
+  startWorkspaces({ app: app as unknown as App, hidden: false, pickFolder: async () => null })
+  expect(await ask(WORKSPACES_CHANNELS.open, fern)).toMatchObject({ opened: true, path: fern })
+  expect(fake.launches).toEqual([
+    process.platform === 'win32'
+      ? { command: process.execPath, args: [`--user-data-dir=${fern}`] }
+      : {
+          command: '/bin/sh',
+          args: [
+            '-c',
+            '"$0" "$@" </dev/null >/dev/null 2>&1 &',
+            process.execPath,
+            `--user-data-dir=${fern}`,
+          ],
+        },
+  ])
+  pinTheDataFolder(app)
+  expect(set).toEqual([fern])
+  rmSync(join(config, 'workspace-policy.json'))
+  await expect(ask(WORKSPACES_CHANNELS.open, join(config, 'desktop'))).rejects.toThrow(
+    "couldn't read its list of workspaces",
+  )
+  expect(fake.launches).toHaveLength(1)
+})
+
+it('explicit configured creation supplies its first database before requesting the separate launch', async () => {
+  const config = join(appData, '@brobot2'),
+    appPath = join(root, 'packaged'),
+    target = join(root, 'birch')
+  mkdirSync(config, { recursive: true })
+  mkdirSync(appPath)
+  writeFileSync(join(appPath, 'package.json'), JSON.stringify({ requireWorkspacePolicy: true }))
+  writeFileSync(
+    join(config, 'workspace-policy.json'),
+    JSON.stringify({
+      version: 1,
+      firstWorkspace: userData,
+      packagedForbidden: [],
+      developmentForbidden: [],
+    }),
+  )
+  writeFileSync(
+    join(config, 'packaged-workspaces.json'),
+    JSON.stringify({ version: 1, workspaces: [{ path: userData, lastOpenedAt: 1 }] }),
+  )
+  fake.handlers.clear()
+  startWorkspaces({
+    app: {
+      isPackaged: true,
+      getPath: (name: string) =>
+        ({ userData, appData, home: root })[name as 'userData' | 'appData' | 'home'],
+      getAppPath: () => appPath,
+    } as unknown as App,
+    hidden: true,
+    pickFolder: async () => null,
+  })
+  expect(await ask(WORKSPACES_CHANNELS.create, { name: 'Birch', path: target })).toMatchObject({
+    opened: true,
+  })
+  expect(readFileSync(join(target, 'brobot2.sqlite')).length).toBe(0)
+  const child = {
+    isPackaged: true,
+    getPath: (name: 'appData' | 'userData') => (name === 'appData' ? appData : target),
+    getAppPath: () => appPath,
+    setPath: () => {},
+    commandLine: { hasSwitch: (name: string) => ['brobot-hidden', 'user-data-dir'].includes(name) },
+  }
+  pinTheDataFolder(child)
+  expect(() => workspaceStartup(child)?.assertDatabase()).not.toThrow()
+  expect(fake.launches).toHaveLength(1)
+})
+
+it.each(['listed', 'owned', 'reserved'] as const)(
+  'Create admission refuses missing %s targets before writing',
+  async (kind) => {
+    const config = join(appData, '@brobot2'),
+      appPath = join(root, 'packaged')
+    const target = join(root, 'copper'),
+      firstReserved = join(root, 'reserved-first')
+    mkdirSync(config, { recursive: true })
+    mkdirSync(appPath)
+    writeFileSync(join(appPath, 'package.json'), JSON.stringify({ requireWorkspacePolicy: true }))
+    writeFileSync(
+      join(config, 'workspace-policy.json'),
+      JSON.stringify({
+        version: 1,
+        firstWorkspace: kind === 'reserved' ? firstReserved : userData,
+        packagedForbidden: [],
+        developmentForbidden: kind === 'reserved' ? [target] : [],
+      }),
+    )
+    const rows = [{ path: userData, lastOpenedAt: 1 }]
+    if (kind === 'listed') rows.push({ path: target, lastOpenedAt: 2 })
+    writeFileSync(
+      join(config, 'packaged-workspaces.json'),
+      JSON.stringify({ version: 1, workspaces: rows }),
+    )
+    if (kind === 'owned') claimPackagedWorkspace(appData, target)
+    fake.handlers.clear()
+    startWorkspaces({
+      app: {
+        isPackaged: true,
+        getPath: (name: string) =>
+          ({ userData, appData, home: root })[name as 'userData' | 'appData' | 'home'],
+        getAppPath: () => appPath,
+      } as unknown as App,
+      hidden: false,
+      pickFolder: async () => null,
+    })
+    const writes: string[] = [],
+      targets = kind === 'reserved' ? [target, firstReserved] : [target]
+    fake.onWrite = (operation) => writes.push(operation)
+    const observed = []
+    for (const path of targets) {
+      const preview = await ask<{ ok: boolean; refusal: string | null }>(
+        WORKSPACES_CHANNELS.checkFolder,
+        path,
+        true,
+      )
+      const created = await ask(WORKSPACES_CHANNELS.create, { name: 'Copper', path })
+      observed.push({
+        preview: { ok: preview.ok, refusal: preview.refusal },
+        created,
+        exists: existsSync(path),
+      })
+    }
+    fake.onWrite = undefined
+    expect({ observed, writes, launches: fake.launches.length }).toEqual({
+      observed: targets.map(() => ({
+        preview: { ok: false, refusal: "This workspace can't be opened in this app." },
+        created: { opened: false, refusal: "This workspace can't be opened in this app." },
+        exists: false,
+      })),
+      writes: [],
+      launches: 0,
+    })
+  },
+)

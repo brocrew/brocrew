@@ -1,5 +1,5 @@
-import type { AgentIdentity } from '../../../shared/runtime-ipc'
-import { agentName } from '../../../shared/runtime-ipc'
+import type { AgentIdentityName } from '../../../shared/runtime-ipc'
+import { agentName, DEFAULT_PROFILE_ID, foldProfileName } from '../../../shared/runtime-ipc'
 import type { LedgerWalkKind } from '../../../shared/questions'
 import { walkCovers } from '../../../shared/questions'
 import type {
@@ -245,7 +245,7 @@ export interface ForestViewInput {
   readonly forest: TheWholeForest | null
   readonly atWork: WhatIsBeingDone | null
   readonly waits: WhatEachConversationIsWaitingOn | null
-  readonly identities: readonly AgentIdentity[] | null
+  readonly identities: readonly AgentIdentityName[] | null
   /** ⛔ **The conversations THIS WINDOW holds** — what tells *open in another window* from *here*. */
   readonly held: ReadonlySet<string>
   /**
@@ -315,17 +315,16 @@ export function forestView(input: ForestViewInput): ForestView | null {
   if (forest === null) return null
 
   const atWork = input.atWork === null ? null : byConversation(input.atWork)
-  /**
-   * ⚑ **The app's ONE naming function, and it already answers for `null`** — `agentName` falls
-   * through to `profileLabel`, which is `DEFAULT_PROFILE_LABEL` for a conversation this app never
-   * placed as an identity.
-   *
-   * ⛔ **A first version wrote its own fallback here** — *"a conversation"* — and
-   * that string is user-visible and nobody had classified it. ⚠️ It was
-   * not only uncensused, it was a SECOND answer to a question `working-together.ts:775` already
-   * answers the same way for the same nullable column.
-   */
-  const named = (identity: string | null): string => agentName(identity, input.identities)
+  // Resolve the roster once; row lookups keep the shared naming and fallback rules.
+  const names = new Map<string, string>()
+  for (const identity of input.identities ?? []) {
+    const slug = identity.slug
+    if (!names.has(slug)) names.set(slug, agentName(slug, [identity]))
+  }
+  const named = (identity: string | null): string => {
+    const slug = foldProfileName(identity ?? DEFAULT_PROFILE_ID)
+    return names.get(slug) ?? agentName(slug, null)
+  }
 
   // ⛔ **Two passes, because the walk is HETEROGENEOUS and a task may precede nothing.** The rows
   // arrive as `[conversation, ...its tasks]` in `updated_at DESC` order, so a conversation's

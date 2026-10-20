@@ -1,8 +1,6 @@
 /**
- * 🔴 **W4.131 · A2 — the workspaces a person has opened, and opening another** (`main/workspaces.ts`
- * decides; the footer's chooser draws it, A3).
- *
- * A workspace is a data folder. Launch uses the default or its own `--user-data-dir`; this list feeds only the chooser and never delays a restart to select a folder.
+ * Workspaces are independent data folders. Packaged Finder launches reopen their last workspace;
+ * explicit restarts retain their folder. Packaged and development builds keep separate lists.
  */
 
 /** Whether a listed workspace runs now, as its folder's gate answers. */
