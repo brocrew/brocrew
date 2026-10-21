@@ -335,22 +335,9 @@ const SURFACES: readonly Surface[] = [
      * for lost a settings frame and a disclosure fold; 35 still refuses a mount that rendered a
      * banner and three words, which is the only thing it was ever asked to refuse.
      */
-    evidence: [
-      'launcher-column',
-      'provider-is-fixed',
-      // ⚑ **579 · the restyled control** (`EXT-010` §2.2) — it gained a `--wash-2` fill and a
-      // `--line-strong` edge, which is exactly the kind of element `080`'s defect stranded.
-      'launch-approval-mode',
-      'launch-approval-governs',
-      // ⚑ **579 · reached through {@link Surface.reveal}**, so the fold is covered rather than
-      // skipped.
-      'profile-credential',
-      'launch-approval-bound',
-      'command-error',
-      'prompt-input',
-    ],
-    reveal: ['launcher-why-credential', 'launcher-why-approval'],
-    minElements: 35,
+    // The shortened launcher retains the composer and model picker; explanation folds are gone.
+    evidence: ['launcher-column', 'model-picker-face', 'command-error', 'prompt-input'],
+    minElements: 25,
     innerCy: 'launcher-column',
   },
   {

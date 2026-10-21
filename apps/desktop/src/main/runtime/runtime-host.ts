@@ -39138,6 +39138,7 @@ export class RuntimeHost implements LiveHost {
       // ⚠️ A separate command would have been a second moment, and two moments is how the sentence
       // a person reads and the value their launch sends come apart.
       defaultApprovalMode: this.deps.store.defaultApprovalMode(),
+      defaultApprovalModeChosen: this.deps.store.defaultApprovalModeChosen(),
       // 🔴 **516 · the registry, carried on the read the window already makes** (`507` §5). ⛔ **Not
       // a second read door**, and the reason is sharper than `defaultApprovalMode`'s beside it: the
       // sheet draws a tick-box per registered server against the ids each identity holds, and two

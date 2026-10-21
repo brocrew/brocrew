@@ -263,14 +263,14 @@ describe('§2 · frozen on a permission card: Stop instead of answering, in R43�
 /* ------------------------------------------------------------------ §3 */
 
 describe('§3 · the approval mode, on the agent card, while a mode waits for the next message', () => {
-  /** What the approval mode's panel says of the mode, once its face is pressed. */
-  const approvalSays = async (m: Mounted): Promise<string> => {
-    const face = m.q('card-approval')
-    expect(visible(face)).toBe(true)
-    face.click()
-    await nextTick()
-    await nextTick()
-    return (m.q('card-approval-now').textContent ?? '').trim()
+  /** The switch's explanation describes the confirmed mode without changing it. */
+  const approvalSays = (m: Mounted): string => {
+    const face = m.q('card-approval') as HTMLInputElement
+    assertDrawn(face, 'the approval switch', m.host)
+    expect(face.getAttribute('role')).toBe('switch')
+    expect(face.checked).toBe(false)
+    expect(face.dataset.mode).toBe('ask')
+    return face.closest('label')?.getAttribute('title') ?? ''
   }
 
   it('🔴 a pending mode says what the mode does, and nothing about the turn — no Stop, no interrupt', async () => {
@@ -278,7 +278,8 @@ describe('§3 · the approval mode, on the agent card, while a mode waits for th
       drawerOpen: true,
       drawerTab: 'open',
     })
-    const said = await approvalSays(m)
+    expect(m.q('card-approval').dataset.pending).toBe('auto')
+    const said = approvalSays(m)
     expect(said).toBe(
       `This session asks what its provider’s own CLI asks by default. You have asked it to stop asking — that takes effect from your next message, because neither provider can change the mode of a turn ${PENDING_TAIL}`,
     )
@@ -290,7 +291,8 @@ describe('§3 · the approval mode, on the agent card, while a mode waits for th
       drawerOpen: true,
       drawerTab: 'open',
     })
-    expect(await approvalSays(m)).toBe(
+    expect(m.q('card-approval').dataset.pending).toBe('')
+    expect(approvalSays(m)).toBe(
       'This session asks what its provider’s own CLI asks by default. Changes apply from your next message.',
     )
   })

@@ -265,9 +265,13 @@ describe('500 · the setting he should only ever make once', () => {
         .get()
       expect(row).toEqual({ default_approval_mode: null })
       expect(store.defaultApprovalMode()).toBe('ask')
+      expect(store.defaultApprovalModeChosen()).toBe(false)
       // ⚑ **The paired positive**: the fold is reading this column and not answering a constant.
       store.setDefaultApprovalMode('auto')
       expect(store.defaultApprovalMode()).toBe('auto')
+      expect(store.defaultApprovalModeChosen()).toBe(true)
+      store.setDefaultApprovalMode('ask')
+      expect(store.defaultApprovalModeChosen()).toBe(true)
     })
 
     /**

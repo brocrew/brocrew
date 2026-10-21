@@ -67,6 +67,7 @@ import WorkingTogether from './WorkingTogether.vue'
  * the surface above, not here.
  */
 const props = defineProps<{
+  approvalSaving?: boolean
   /**
    * What is OPEN — the session's control projection (064).
    *
@@ -251,6 +252,7 @@ const controls = useConversationControls({
   capabilities: () => props.capabilities ?? null,
   fixed: () => props.fixed ?? true,
   recorded: () => props.recorded ?? false,
+  saving: () => props.approvalSaving ?? false,
   setApprovalMode: (mode) => emit('setApprovalMode', mode),
   setSessionSetting: (body) => emit('setSessionSetting', body),
 })

@@ -118,12 +118,8 @@ async function open(width: number, over: Record<string, unknown> = {}): Promise<
  * would have stopped measuring the longest thing on the screen the day it went behind a press.
  */
 async function openWide(width: number, over: Record<string, unknown> = {}): Promise<Mounted> {
-  const m = await open(width, over)
-  for (const opener of ['launcher-why-credential', 'launcher-why-approval']) {
-    ;(m.q(opener) as HTMLButtonElement).click()
-  }
-  await nextTick()
-  return m
+  // Exercise the longer first-choice state instead of the removed explanation folds.
+  return open(width, { ...over, approvalDefaultChosen: false })
 }
 
 /**
@@ -180,10 +176,10 @@ describe('the launcher cannot scroll sideways, at any width (101 §2)', () => {
     // The positive that makes the walk mean something: the surface really has laid something out.
     // ⚑ **579 · ONE note is always on now** (`EXT-010` §2.1) — `provider-is-fixed`. The credential
     // sentence is behind a press, and the state that lays it out is the sweep below.
-    expect(m.q('provider-is-fixed').getBoundingClientRect().height).toBeGreaterThan(0)
+    expect(m.q('model-picker-face').getBoundingClientRect().height).toBeGreaterThan(0)
     // ⛔ **The control is the other thing that must have a box**, and since `579` it is a filled,
     // bordered one — a width sweep over a column whose loudest element had collapsed would pass.
-    expect(m.q('launch-approval-mode').getBoundingClientRect().height).toBeGreaterThan(0)
+    expect(m.q('prompt-input').getBoundingClientRect().height).toBeGreaterThan(0)
     expect(overflowing(m), `at ${width}px, resting`).toEqual([])
   })
 
@@ -191,13 +187,16 @@ describe('the launcher cannot scroll sideways, at any width (101 §2)', () => {
    * 🔴 **579 · the same sweep with both folds OPEN**, which is now the widest content this column
    * has to lay out and the only state the adapter's credential sentence is measured in.
    */
-  it.each([1200, 1180, 900, 600, 400, 320, 184])('at %ipx, with both folds open', async (width) => {
-    const m = await openWide(width)
-    expect(m.q('provider-is-fixed').getBoundingClientRect().height).toBeGreaterThan(0)
-    expect(m.q('profile-credential').getBoundingClientRect().height).toBeGreaterThan(0)
-    expect(m.q('launch-approval-bound').getBoundingClientRect().height).toBeGreaterThan(0)
-    expect(overflowing(m), `at ${width}px, opened`).toEqual([])
-  })
+  it.each([1200, 1180, 900, 600, 400, 320, 184])(
+    'at %ipx, with the first mode choice',
+    async (width) => {
+      const m = await openWide(width)
+      expect(m.q('model-picker-face').getBoundingClientRect().height).toBeGreaterThan(0)
+      expect(m.q('choose-ask').getBoundingClientRect().height).toBeGreaterThan(0)
+      expect(m.q('choose-auto').getBoundingClientRect().height).toBeGreaterThan(0)
+      expect(overflowing(m), `at ${width}px, opened`).toEqual([])
+    },
+  )
 
   it.each([1200, 600, 400])('…and while it is opening a conversation, at %ipx', async (width) => {
     // The one state with controls of its own — the composer foot's Cancel and the header's
@@ -253,9 +252,9 @@ describe('the launcher cannot scroll sideways, at any width (101 §2)', () => {
     // credential sentence and the launch failure. ⛔ **579 · and the click came BACK**: `417`
     // deleted a fold that held CONTROLS, `EXT-010` §2.1 added two that hold EXPLANATION, and
     // *every note at once* is again a state a person reaches by pressing.
-    expect(m.q('provider-is-fixed')).toBeTruthy()
-    expect(m.q('profile-credential')).toBeTruthy()
-    expect(m.q('launch-approval-bound')).toBeTruthy()
+    expect(m.q('model-picker-face')).toBeTruthy()
+    expect(m.q('choose-ask')).toBeTruthy()
+    expect(m.q('choose-auto')).toBeTruthy()
     expect(m.q('command-error')).toBeTruthy()
     expect(overflowing(m)).toEqual([])
   })
@@ -331,7 +330,7 @@ describe('every state the mock switches between renders (101)', () => {
     for (const width of [1200, 1180]) {
       const m = await open(width)
       expect(m.q('new-conversation-surface').getAttribute('data-chat-theme')).toBe('light')
-      expect(m.q('provider-is-fixed')).toBeTruthy()
+      expect(m.q('model-picker-face')).toBeTruthy()
       expect(overflowing(m)).toEqual([])
       m.unmount()
     }
@@ -401,7 +400,7 @@ describe('the notes are one grammar in two registers (101 §7)', () => {
     // so the assertion would have been true of a page that never had one — see the deleted test at
     // the foot of this block for the rule it belonged to.
     // Paired positive: the surface rendered.
-    expect(m.q('provider-is-fixed')).toBeTruthy()
+    expect(m.q('model-picker-face')).toBeTruthy()
   })
 
   it('the group never renders EMPTY, which is 24px of unexplained gap (review)', () => {
@@ -470,8 +469,8 @@ describe('the notes are one grammar in two registers (101 §7)', () => {
     expect(group.getBoundingClientRect().bottom).toBeLessThanOrEqual(
       m.q('composer-band').getBoundingClientRect().top,
     )
-    expect(before(m.q('composer-band'), m.q('provider-is-fixed'))).toBe(true)
-    expect(before(m.q('composer-band'), m.q('profile-credential'))).toBe(true)
+    expect(before(m.q('composer-band'), m.q('model-picker-face'))).toBe(true)
+    expect(before(m.q('composer-band'), m.q('choose-ask'))).toBe(true)
 
     // 2 · the error's text is the adapter's sentence and nothing else — seven live-smoke steps read
     // exactly this element's `textContent`, and a heading folded into it would change all of them.

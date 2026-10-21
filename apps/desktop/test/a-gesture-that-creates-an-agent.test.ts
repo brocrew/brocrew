@@ -351,7 +351,7 @@ describe('§2 · the provider the front door runs on, resolved', () => {
     expect(store).toContain('asked ?? runsOnIn(list, slug)?.provider ?? fallback')
   })
 
-  it('🔴 the SENTENCE and the PAYLOAD read one value, so the screen cannot name a provider the launch did not use', () => {
+  it('🔴 the MODEL PICKER and the PAYLOAD read the resolved provider', () => {
     const screen = withoutProse(
       readFileSync(join(SRC, 'renderer/src/components/RuntimeScreen.vue'), 'utf8'),
     )
@@ -378,8 +378,10 @@ describe('§2 · the provider the front door runs on, resolved', () => {
     const door = withoutProse(
       readFileSync(join(SRC, 'renderer/src/components/NewConversation.vue'), 'utf8'),
     )
-    // …and on the far side of the prop, one name feeds both the words and the wire.
-    expect(door).toContain('providerIsFixed(props.defaultProvider)')
+    expect(door).toContain(':shown="shownPick"')
+    const pick = door.slice(door.indexOf('const shownPick ='), door.indexOf('const shownEmpty ='))
+    expect(pick).toContain('provider: props.defaultProvider,')
+    expect(pick).toContain('provider: props.defaultProvider, ...starts')
     expect(door).toContain('provider: props.defaultProvider,')
   })
 

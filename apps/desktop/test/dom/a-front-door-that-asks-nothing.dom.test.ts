@@ -2,16 +2,10 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { defineComponent, h, nextTick, ref, type Component } from 'vue'
 import { allProviderCapabilities } from '../../../../packages/runtime/src/capabilities'
-import { YOLO_MEANS } from '../../src/renderer/src/lib/approval-mode'
 import NewConversation from '../../src/renderer/src/components/NewConversation.vue'
 import { createAttachmentBook, NEW_CONVERSATION } from '../../src/renderer/src/lib/drafts'
-import { providerIsFixed } from '../../src/renderer/src/lib/front-door-words'
 import { NO_LAUNCH_CHOICES, type LaunchChoices } from '../../src/renderer/src/lib/launch-choices'
-import {
-  DEFAULT_PROFILE_ID,
-  providerName,
-  type CreateSessionInput,
-} from '../../src/shared/runtime-ipc'
+import { DEFAULT_PROFILE_ID, type CreateSessionInput } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll, visible, type Mounted } from './harness'
 
 /**
@@ -96,6 +90,7 @@ const OFFERED = ['model-picker-face'] as const
  * NOT fold, because folding the scope of a control while making it louder is the worse defect
  * `579`'s brief names.
  */
+// The approved short launcher removes the explanation stack and persistent mode editor.
 const VOCABULARY = {
   always: [
     'attach-path',
@@ -103,56 +98,21 @@ const VOCABULARY = {
     'composer-hint',
     'prompt-input',
     'send-prompt',
-    // 🔴 **500 · the one SETTING this column holds** (HO-036 §3.1). ⚠️ **`launch-approval-press` is
-    // in this list because these fixtures mount with the row READ** (`defaultApprovalMode: 'ask'`);
-    // the unread state drops it, and is enumerated in {@link STATES} like every other state is.
-    // ⚑ **579 · `launch-approval-governs` joins them and never leaves**, the unread frame included:
-    // *what this governs* is true before the row has been read.
-    'launch-approval',
-    'launch-approval-governs',
-    'launch-approval-mode',
-    'launch-approval-press',
-    'launch-approval-says',
     'launcher-choices',
-    // 🔴 **579 · the clause that could not fold with the credential sentence** — *a copy is kept
-    // here* / *nothing is kept here*, rendered from `profileCredential().copies` INSIDE the
-    // opener, so it is part of the button's accessible name. ⛔ It is `always` because the fact it
-    // reports is true in every state; what folds is the adapter's paragraph explaining it.
-    'launcher-sign-in-glance',
-    // ⚑ **579 · the two presses**, and they are `always` for the reason the bodies are not: an
-    // opener is drawn whatever a person has pressed, and that is what makes the explanation
-    // REACHABLE rather than removed.
-    'launcher-why-approval',
-    'launcher-why-credential',
-    // ⚑ **UI-012 · the one model picker** — closed, it is its face and an empty panel.
     'model-picker',
     'model-picker-face',
     'model-picker-panel',
-    'provider-is-fixed',
   ],
-  /**
-   * Nobody has answered yet, which is the state every front door mounts in. ⚑ UI-012 · the same
-   * set: what the list says lives in the picker's panel, so the column has nothing to add.
-   */
   asking: [
     'attach-path',
     'composer-band',
     'composer-hint',
     'prompt-input',
     'send-prompt',
-    'launch-approval',
-    'launch-approval-governs',
-    'launch-approval-mode',
-    'launch-approval-press',
-    'launch-approval-says',
     'launcher-choices',
-    'launcher-sign-in-glance',
-    'launcher-why-approval',
-    'launcher-why-credential',
     'model-picker',
     'model-picker-face',
     'model-picker-panel',
-    'provider-is-fixed',
   ],
 } as const
 
@@ -291,62 +251,28 @@ describe('§1 · the screen asks for nothing, and the composer is what is left',
     why: string
     over: Record<string, unknown>
     adds: string[]
-    /** ⚑ **500 · what a state takes AWAY**, which no state needed until the setting had three. */
     drops?: string[]
-    /**
-     * ⚑ **579 · the openers to press before the column is read** — the first state in this table
-     * that is reached by a GESTURE rather than by a prop, because the two explanations `EXT-010`
-     * §2.1 folded are reached that way too.
-     */
     press?: string[]
   }[] = [
-    // ⚑ **UI-012 · the five rows about the model list went with the column's model sentences** — a
-    // catalogue, a refused probe, a level's description, a model with no levels and a held rung
-    // all draw inside the picker's panel now, which the column census cannot see while it is shut.
     {
-      // 🔴 **500 · the mode a person set once is `auto`** — the state `HO-036` §3.1 exists for, and
-      // the one `417` removed from this screen with the checkbox. ⛔ **Both halves of `367`'s
-      // disclosure arrive together**: the shared sentence and the ADAPTER's own note for the
-      // provider this launch runs on. `design-v2-map.ts` rules that a surface drawing one of them
-      // tells a person strictly less than the running app already does.
-      why: 'the person set yolo once: the door says what that removes, before they type',
+      why: 'a saved Auto default needs no repeat choice',
       over: { defaultApprovalMode: 'auto' },
-      adds: ['yolo-means', 'yolo-reach'],
-    },
-    {
-      // ⚠️ **500 · the row has not been read yet**, which is every front door's first frame and is
-      // NOT `ask` — `086`'s rule, on the one control where the wrong default is dangerous in both
-      // directions. ⛔ There is nothing to promise about a press that cannot be made, so the
-      // consequence line goes; the control and its bound stay, because what they say is still true.
-      why: 'nobody has answered the policy read: the control says so and offers no press',
-      over: { defaultApprovalMode: null },
       adds: [],
-      drops: ['launch-approval-press'],
     },
     {
-      why: 'the launch was refused, so the blocking group is up',
+      why: 'an unread default blocks sending and shows the choice',
+      over: { defaultApprovalMode: null },
+      adds: ['first-approval-choice', 'choose-ask', 'choose-auto'],
+    },
+    {
+      why: 'a never-chosen default has no preselection',
+      over: { approvalDefaultChosen: false },
+      adds: ['first-approval-choice', 'choose-ask', 'choose-auto'],
+    },
+    {
+      why: 'a refused launch keeps its error',
       over: { error: 'no such binary — is codex installed?' },
       adds: ['command-error', 'launch-blocked'],
-    },
-    {
-      // 🔴 **579 · the paired POSITIVE for the two absences above** (`EXT-010` §2.1). ⛔ Without
-      // this row the fold would be indistinguishable from a deletion: every other state asserts
-      // the two hooks are NOT in the column, and a dispatch that had simply removed the sentences
-      // would satisfy all of them. ⚑ **This is the row that says the explanation is still there**,
-      // one press away, under the hooks it has always had.
-      why: 'a person pressed both openers: the explanation is behind them, not gone',
-      over: {},
-      press: ['launcher-why-credential', 'launcher-why-approval'],
-      adds: ['profile-credential', 'launch-approval-bound'],
-    },
-    {
-      // ⚠️ **…and ONE press opens ONE fold** — the detector for the row above. A pair of openers
-      // wired to the same flag would pass it, and would mean a person asking about a sign-in got
-      // a paragraph about approvals as well.
-      why: 'one press opens one fold and leaves the other closed',
-      over: {},
-      press: ['launcher-why-credential'],
-      adds: ['profile-credential'],
     },
   ]
 
@@ -465,7 +391,6 @@ describe('§2 · what the one remaining door opens, field by field', () => {
       // ⛔ **The fail-safe.** `null` is *the policy read has not landed*; a launch must carry a
       // word, and the word is the one that keeps somebody being asked. ⚠️ The CONTROL says the row
       // is unread rather than claiming `ask` — that half is asserted in §4.
-      [null, 'ask'],
     ] as const) {
       const { m, started } = open({ defaultApprovalMode: set })
       await nextTick()
@@ -490,152 +415,23 @@ describe('§2 · what the one remaining door opens, field by field', () => {
   })
 })
 
-describe('§3 · the one default that is permanent says so', () => {
-  it('⛔ the sentence is on the screen, above the composer', async () => {
-    await page.viewport(REAL.width, REAL.height)
-    const { m } = open()
-    await nextTick()
-    const said = m.q('provider-is-fixed')
-    expect(visible(said), 'a disclosure at zero height is not a disclosure').toBe(true)
-    expect((said.textContent ?? '').trim()).toBe(providerIsFixed('codex'))
-  })
-
-  it('🔴 it names the provider it is actually about — and the two do not say the same thing', async () => {
-    await page.viewport(REAL.width, REAL.height)
-    const onClaude = open({ defaultProvider: 'claude' })
-    await nextTick()
-    const claude = (onClaude.m.q('provider-is-fixed').textContent ?? '').trim()
-    // ⚑ The display name (`151`), never the wire id — `PROVIDER_NAME` is what a person reads.
-    expect(claude).toContain(providerName('claude'))
-    expect(claude).not.toContain(providerName('codex'))
-    expect(claude, 'the wire id reached a sentence a person reads').not.toContain('claude')
-    // ⚠️ The distinctness check: a sentence that read the same for both would be describing the
-    // app rather than reporting this conversation, which is the whole defect it exists against.
-    expect(claude).not.toBe(providerIsFixed('codex'))
-    expect(claude).toBe(providerIsFixed('claude'))
-  })
-
-  it('⛔ and since 579 it is the ONLY always-on line, full stop', async () => {
-    await page.viewport(REAL.width, REAL.height)
-    const { m } = open()
-    await nextTick()
-    const notes = [...m.host.querySelectorAll('.note')].map((el) => el.getAttribute('data-cy'))
-    // 🔴 **ONE, and it is the always-on one** (579). ⚑ UI-012 · `model-say`, `310`'s sentence,
-    // moved into the model picker's panel with the list it is about, so nothing on the column says
-    // *asking* any more. ⚑ **`EXT-010` §2.1 took the other two away from this stack**, and `031`'s rule is the reason
-    // the PO gave in different words: *"a line that is always on is a line nobody reads."* The
-    // credential explanation and the setting's bound are one press each now, under
-    // `launcher-why-credential` and `launcher-why-approval`; what stays is the one sentence about a
-    // decision this screen makes permanently and silently, which is the one a person cannot check
-    // any other way.
-    expect(notes, 'the note stack, in order').toEqual(['provider-is-fixed'])
-    // ⛔ **And the openers are there**, so this is *folded* rather than *deleted* — the same
-    // distinction {@link STATES}' last two rows draw against the column's whole vocabulary.
-    expect(m.all('launcher-why-credential')).toHaveLength(1)
-    expect(m.all('launcher-why-approval')).toHaveLength(1)
-  })
-
-  it('⚑ …so 031 still holds: ONE always-on line, and the fold holds the bulk', async () => {
-    await page.viewport(REAL.width, REAL.height)
-    const { m } = open()
-    await nextTick()
-    const notes = [...m.host.querySelectorAll('.note')].map((el) => el.getAttribute('data-cy'))
-    expect(notes, '031: a line that is always on is a line nobody reads').toEqual([
-      'provider-is-fixed',
-    ])
-    // 🔴 **579 · the measurement, and it is the whole of `EXT-010` §2.1.** ⛔ In the state a person
-    // actually meets — a provider resolved, a catalogue that answered, nothing typed — the screen
-    // held THREE paragraphs of standing prose and now holds one. ⚠️ **Asserted as a character
-    // count over the notes that are on screen**, not as a list of names, because the claim the PO
-    // made is about how much there is to read and a list of names cannot go red when a sentence
-    // doubles in length.
-    const ink = notes
-      .map((cy) => (m.q(cy as string).textContent ?? '').trim().length)
-      .reduce((a, b) => a + b, 0)
-    expect(ink, 'one sentence, and the openers are not sentences').toBeLessThan(200)
-    // ⚑ **The paired positive**: the words behind the presses really are the long ones, so the
-    // number above is a fold and not a deletion.
-    ;(m.q('launcher-why-credential') as HTMLButtonElement).click()
-    ;(m.q('launcher-why-approval') as HTMLButtonElement).click()
-    await nextTick()
-    const folded =
-      (m.q('profile-credential').textContent ?? '').trim().length +
-      (m.q('launch-approval-bound').textContent ?? '').trim().length
-    expect(
-      folded,
-      'the fold is holding the bulk of what a person used to have to pass',
-    ).toBeGreaterThan(ink * 2)
-  })
-})
-
-describe('§4 · 367’s disclosure is not deleted by the simplification', () => {
-  /**
-   * 🔴 **REWRITTEN AT `500`, and the rewrite is the disclosure surviving rather than being deleted.**
-   *
-   * ⛔ This read *"the launcher no longer arms yolo, so it no longer needs to disclose it"* — true
-   * from `417` until `HO-036` §3.1, which gives the launcher a mode again. ⚑ **`367`'s disclosure
-   * is unchanged**: the same constant, the same adapter-owned second half, the same pairing rule.
-   * What moved is WHEN this screen owes it, and the answer is *exactly when the launch will use it*.
-   *
-   * ⚠️ **The checkbox stays gone.** `auto-approve` is still in {@link STILL_GONE}: the mode is not
-   * a per-launch choice here, it is a SETTING, and the difference is what `launch-approval-bound`
-   * says in words.
-   */
-  it('⛔ the launcher discloses yolo exactly when the launch will use it, and never arms it per launch', async () => {
-    await page.viewport(REAL.width, REAL.height)
-    // 1 · the person has not turned it on — nothing to disclose, and the paired positive is the
-    //     control itself, so this is not a test satisfied by a surface that rendered nothing.
-    const asking = open({ defaultApprovalMode: 'ask' })
-    await nextTick()
-    expect(asking.m.q('launch-approval-mode').dataset.mode).toBe('ask')
-    expect(asking.m.host.querySelector('[data-cy="yolo-means"]')).toBeNull()
-    expect(asking.m.host.querySelector('[data-cy="yolo-reach"]')).toBeNull()
-    asking.m.unmount()
-
-    // 2 · they did, once — both halves, and they are the bytes the drawer renders.
-    const yolo = open({ defaultApprovalMode: 'auto' })
-    await nextTick()
-    expect(yolo.m.q('yolo-means').textContent ?? '').toContain(YOLO_MEANS)
-    // ⚠️ **Held in a const, so the narrowing survives the read** — two calls are two values to the
-    // typechecker, and `note` lives only on the `available` arm.
-    const approvals = allProviderCapabilities().codex.approvals
-    expect(approvals.state).toBe('available')
-    expect(yolo.m.q('yolo-reach').textContent?.trim()).toBe(
-      approvals.state === 'available' ? (approvals.note ?? '') : '',
-    )
-    // ⛔ **And the checkbox is still gone in the state that would have wanted it most.**
-    expect(yolo.m.host.querySelector('[data-cy="auto-approve"]')).toBeNull()
-    yolo.m.unmount()
-  })
-
-  it('⚑ the credential line — 329’s "before, not after" — is behind a press and still BEFORE', async () => {
-    await page.viewport(REAL.width, REAL.height)
-    const { m } = open()
-    await nextTick()
-    // ⛔ **`329`'s rule was *before the choice, not after*** — its defect was a credential sentence
-    // that only appeared once `SignInPanel` did, which is after a launch had already failed.
-    // ⚑ **A press is still before the choice**: nothing has started, and the opener naming the
-    // subject is on screen from the first frame.
-    expect(m.all('profile-credential'), 'it is folded, not standing').toEqual([])
-    const opener = m.q('launcher-why-credential')
-    expect(visible(opener)).toBe(true)
-    expect(opener.getAttribute('aria-expanded')).toBe('false')
-    // ⚠️ **The opener names its own subject**, which is what makes the fold honest rather than a
-    // place to hide something — two folds on one column and *what this is* would name neither.
-    expect((opener.textContent ?? '').toLowerCase()).toContain('sign-in')
-    ;(opener as HTMLButtonElement).click()
-    await nextTick()
-    expect(opener.getAttribute('aria-expanded')).toBe('true')
-    const line = m.q('profile-credential')
-    expect(visible(line)).toBe(true)
-    expect((line.textContent ?? '').trim()).not.toBe('')
-    // The adapter's own words, never this repo's: `copies` is the one bit a test can assert
-    // without comparing a string to the constant it was built from.
-    expect(line.getAttribute('data-copies')).toBe('yes')
-    // ⛔ **And it closes again**, so `aria-expanded` is reporting a state rather than a constant.
-    ;(opener as HTMLButtonElement).click()
-    await nextTick()
-    expect(m.all('profile-credential')).toEqual([])
-    expect(opener.getAttribute('aria-expanded')).toBe('false')
-  })
+describe('the explanation stack is removed from the short launcher', () => {
+  it.each(['claude', 'codex'] as const)(
+    'keeps the composer and model choice for %s',
+    async (provider) => {
+      await page.viewport(REAL.width, REAL.height)
+      const { m } = open({ defaultProvider: provider })
+      await nextTick()
+      for (const cy of [
+        'provider-is-fixed',
+        'launcher-why-credential',
+        'launcher-why-approval',
+        'launch-approval-mode',
+      ]) {
+        expect(m.all(cy)).toHaveLength(0)
+      }
+      expect(visible(m.q('prompt-input'))).toBe(true)
+      expect(visible(m.q('model-picker-face'))).toBe(true)
+    },
+  )
 })

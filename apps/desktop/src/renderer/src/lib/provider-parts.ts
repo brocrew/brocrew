@@ -8,10 +8,10 @@ export const PROVIDER_PARTS = ['login', 'key', 'version', 'usage', 'resources', 
 
 export type ProviderPart = (typeof PROVIDER_PARTS)[number]
 
-/** Open the first time the screen is shown: what a glance is for. Version and Models start folded. */
+/** Usage and running work open at first. Setup is the entry to login and API keys. */
 export const OPEN_AT_FIRST: Readonly<Record<ProviderPart, boolean>> = {
-  login: true,
-  key: true,
+  login: false,
+  key: false,
   version: false,
   usage: true,
   resources: true,

@@ -9,7 +9,7 @@ import {
   type ProviderPart,
 } from '../../src/renderer/src/lib/provider-parts'
 import { providersBridge } from '../../look/fixtures/providers'
-import { drawnReady } from './drawn'
+import { assertDrawn, drawnReady } from './drawn'
 import { mount, unmountAll, type Mounted } from './harness'
 
 /**
@@ -98,6 +98,43 @@ describe('the providers’ cards line up part by part', () => {
       0,
     )
   })
+
+  it.each(['claude', 'codex'])(
+    'keeps the other card compact while setting up %s',
+    async (provider) => {
+      const m = await screen(WIDTHS[0])
+      const other = provider === 'claude' ? 'codex' : 'claude'
+      const folded = ['login', 'key'] as const
+      const heights = folded.map(
+        (part) => partOf(m, other, part).section.getBoundingClientRect().height,
+      )
+      card(m, provider).querySelector<HTMLButtonElement>('[data-cy="provider-set-up"]')!.click()
+      await nextTick()
+      await drawnReady()
+      const setup = card(m, provider).querySelector<HTMLElement>(
+        '[data-cy="provider-inline-setup"]',
+      )!
+      assertDrawn(setup.querySelector<HTMLElement>('h3')!, 'setup heading', m.host)
+      for (const [index, part] of folded.entries()) {
+        const { section, press, body } = partOf(m, other, part)
+        expect(press.getAttribute('aria-expanded')).toBe('false')
+        expect(shown(body)).toBe(false)
+        expect(section.getBoundingClientRect().height).toBeCloseTo(heights[index]!, 0)
+        assertDrawn(press, `${other} ${part}`, m.host)
+      }
+      expect(topOf(partOf(m, other, 'key').section)).toBeCloseTo(
+        partOf(m, other, 'login').section.getBoundingClientRect().bottom,
+        0,
+      )
+      setup.querySelector<HTMLButtonElement>('.setup-heading button')!.click()
+      await nextTick()
+      for (const part of PARTS) {
+        expect(
+          topOf(card(m, provider).querySelector<HTMLElement>(`[data-cy="${part}"]`)!),
+        ).toBeCloseTo(topOf(card(m, other).querySelector<HTMLElement>(`[data-cy="${part}"]`)!), 0)
+      }
+    },
+  )
 
   it('⛔ the page’s own words end above the cards, on a page taller than the window', async () => {
     const m = await screen(WIDTHS[0])

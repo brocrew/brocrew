@@ -549,23 +549,12 @@ describe('529 §4 · things you press stayed within reach of the conversation', 
    * 🔴 **The ruling's exception, as a measurement rather than a comment** (`HO-050` §1.2,
    * `514` F1).
    */
-  it('🔴 the yolo disclosure is inside the panel that holds the confirm it describes', async () => {
+  it('the approved mode switch replaces the old confirmation popup', async () => {
     const m = await drawerAt('open')
-    m.q('card-approval').click()
-    await nextTick()
-    await nextTick()
-    const approvals = m.q('card-approval-panel')
-    const confirm = m.q('card-approval-confirm')
-
-    expect(approvals.contains(confirm), 'the confirm left its own panel').toBe(true)
-    for (const hook of ['yolo-means', 'yolo-reach', 'yolo-means-descendants']) {
-      const said = m.q(hook)
-      expect(approvals.contains(said), `${hook} is not beside the confirm it describes`).toBe(true)
-      expect(visible(said)).toBe(true)
-    }
-    // ⚑ **And it reads.** The whole of `514` F1 is that a caveat a person does not take in is a
-    // caveat placed too late; 8 px was the other way of placing it too late.
-    expect(px(m.q('yolo-means'))).toBe(tokenPx(ROLE_SIZE.prose, approvals))
+    const toggle = m.q('card-approval')
+    expect(toggle.getAttribute('role')).toBe('switch')
+    expect(toggle.parentElement?.title).toContain('next message')
+    expect(m.all('card-approval-panel')).toHaveLength(0)
   })
 
   /** ⚑ The label the Info grants row really wears — read off the row the drawer drew. */

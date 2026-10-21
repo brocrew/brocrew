@@ -118,7 +118,7 @@ it('keeps loading distinct from an empty list and a list containing only other a
   for (const rows of [[], [row('other', 'Other', 1, 'designer')]]) {
     const empty = open(rows)
     await nextTick()
-    expect(empty.m.q('recent-empty').textContent).toContain('No conversations with BroBot yet')
+    expect(empty.m.q('recent-empty').textContent).toContain('No conversations yet.')
     empty.m.unmount()
   }
 })

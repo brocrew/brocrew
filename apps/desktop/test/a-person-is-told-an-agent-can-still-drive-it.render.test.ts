@@ -259,8 +259,11 @@ describe('349 §3b · a person taking a conversation over is told an agent can s
     // ⚑ **563 · the reading the card owes those two negatives.** `data-cy="card-approval"` is an
     // existence positive; the mode a person reads there is what makes the negatives about words.
     expect(stillControls.replace(/<!--[\s\S]*?-->/g, '')).toMatch(
-      /data-cy="card-approval"[^>]*>\s*YOLO off\s*</,
+      /data-cy="card-approval"[^>]*data-mode="ask"[^>]*>/,
     )
+    const mode = stillControls.match(/<input[^>]*data-cy="card-approval"[^>]*>/)?.[0]
+    expect(mode).toContain('role="switch"')
+    expect(mode).not.toMatch(/\schecked(?:\s|=|>)/)
     expect(stillControls).not.toContain('has-a-commander')
     expect(stillControls).not.toContain('Another caller')
   })

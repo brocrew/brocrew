@@ -19,7 +19,6 @@ import StartAsAgent from '../../src/renderer/src/components/StartAsAgent.vue'
 import OverlayHost from '../../src/renderer/src/components/OverlayHost.vue'
 import WorkSearchDialog from '../../src/renderer/src/components/WorkSearchDialog.vue'
 import ScheduledJobDialog from '../../src/renderer/src/components/ScheduledJobDialog.vue'
-import ProviderSetupWizard from '../../src/renderer/src/components/ProviderSetupWizard.vue'
 import SessionTools from '../../src/renderer/src/components/SessionTools.vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import CanonicalDocumentViewer from '../../src/renderer/src/components/CanonicalDocumentViewer.vue'
@@ -130,41 +129,6 @@ const OUTPUT: WorkflowOutputResult = {
 }
 
 const TOOLS: ToolRegistry = { set: null, dropped: 0, at: null }
-
-/** A provider's setup at its install step: the widest, with the command and its Copy. */
-const SETUP_AT_INSTALL = {
-  provider: 'claude',
-  version: {
-    version: null,
-    reason: 'Not found.',
-    program: {
-      standing: 'missing',
-      from: null,
-      path: null,
-      version: null,
-      tested: { oldest: '2.1.0', newest: '2.1.290' },
-      said: 'Not found on this computer.',
-      help: { label: 'How to install', url: 'https://example.com/install' },
-      update: null,
-      others: [],
-      updatedFrom: null,
-    },
-  },
-  setup: {
-    tool: 'The Tool',
-    install: { command: `install ${'a'.repeat(200)}`, docs: 'https://example.com/docs' },
-    signInCommand: 'the-tool',
-    platform: 'macOS',
-    shell: 'Terminal',
-  },
-  auth: { state: 'absent', reason: 'Never signed in.' },
-  keyRefused: false,
-  signIn: { state: 'absent', reason: 'Signs in with its command.', checkedAgainst: 'test' },
-  reprovision: { state: 'absent', reason: 'Nothing to copy.', checkedAgainst: 'test' },
-  busy: 'idle',
-  notice: null,
-  recheck: async () => undefined,
-} as const
 
 /**
  * ⚠️ **One stub for the whole file, installed before anything mounts.** `useAgentStore` memoises
@@ -516,19 +480,6 @@ const PATHS = [
   },
   // ⚑ **D-017b · the kept-open pane's two hosts (`701`) went with the pane**: a conversation the quit
   // left open opens in the one full view, whose hosts are `ConversationPane`'s above.
-  // A provider's setup, from its card's Set up and by itself at launch.
-  {
-    host: 'ProviderCard',
-    panel: 'ProviderSetupWizard',
-    cy: 'provider-setup-dialog',
-    open: () => h(ProviderSetupWizard, SETUP_AT_INSTALL),
-  },
-  {
-    host: 'ProviderSetupAtLaunch',
-    panel: 'ProviderSetupWizard',
-    cy: 'provider-setup-dialog',
-    open: () => h(ProviderSetupWizard, SETUP_AT_INSTALL),
-  },
 ] as const
 
 const Layer = defineComponent({
@@ -717,13 +668,12 @@ describe('§3 · the mount sites are counted from the source (390 §3)', () => {
     // somewhere new.
     expect(found.get('CanonicalDocumentOverlay')).toBe(1)
     expect(found.has('ProjectWorkspace')).toBe(false)
-    expect(found.get('ProviderCard')).toBe(1)
-    expect(found.get('ProviderSetupAtLaunch')).toBe(1)
+    // Setup lives inside the provider cards; neither entry opens a dialog.
+    expect(found.has('ProviderCard')).toBe(false)
+    expect(found.has('ProviderSetupAtLaunch')).toBe(false)
     expect([...found.keys()].sort()).toEqual([
       'CanonicalDocumentOverlay',
       'ConversationPane',
-      'ProviderCard',
-      'ProviderSetupAtLaunch',
       'ReadingPane',
       'RuntimeScreen',
       'ScheduleBar',
@@ -736,7 +686,7 @@ describe('§3 · the mount sites are counted from the source (390 §3)', () => {
     const censused = new Set(PATHS.map((path) => path.host))
     expect([...censused].sort()).toEqual([...found.keys()].sort())
     const sites = [...found.values()].reduce((all, one) => all + one, 0)
-    expect(sites, 'a mount site appeared that this file has never opened').toBe(18)
+    expect(sites, 'a mount site appeared that this file has never opened').toBe(16)
   })
 
   /**

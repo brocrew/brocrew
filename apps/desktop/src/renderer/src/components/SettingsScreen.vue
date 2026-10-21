@@ -77,6 +77,23 @@ const allTabs: readonly { id: SettingsTab; label: string }[] = [
 const tabs = computed(() => allTabs.filter((tab) => tab.id !== 'plugins' || pluginEnabled.value))
 const attentionSignals = useAttentionSignals()
 const debugMode = useDebugMode()
+const approvalSaving = ref(false)
+const approvalError = ref<string | null>(null)
+async function saveApprovalDefault(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement
+  if (!props.store || approvalSaving.value) return
+  const requested = input.checked ? 'auto' : 'ask'
+  input.checked = props.store.identities.value?.defaultApprovalMode === 'auto'
+  approvalSaving.value = true
+  approvalError.value = null
+  try {
+    approvalError.value = await props.store.setApprovalDefault(requested)
+  } finally {
+    approvalSaving.value = false
+    input.checked = props.store.identities.value?.defaultApprovalMode === 'auto'
+  }
+}
+
 const transcripts = useTranscriptRetention()
 async function keepTranscripts(event: Event): Promise<void> {
   const select = event.target as HTMLSelectElement
@@ -234,6 +251,29 @@ async function tabKey(event: KeyboardEvent, current: SettingsTab): Promise<void>
       role="tabpanel"
       aria-labelledby="settings-tab-general"
     >
+      <section v-if="props.store" class="setting-card" data-cy="settings-approval-default">
+        <div class="setting-copy">
+          <h2 id="settings-approval-label">New conversations</h2>
+          <p>
+            {{
+              props.store.identities.value?.defaultApprovalMode === 'auto'
+                ? 'Runs without asking. Use it only where you trust the agent with your files.'
+                : 'Asks when an action needs permission.'
+            }}
+          </p>
+          <p v-if="approvalError" role="alert">{{ approvalError }}</p>
+        </div>
+        <span>Ask</span
+        ><input
+          type="checkbox"
+          role="switch"
+          aria-label="Auto for new conversations"
+          data-cy="settings-approval-switch"
+          :checked="props.store.identities.value?.defaultApprovalMode === 'auto'"
+          :disabled="approvalSaving || !props.store.identities.value"
+          @change="saveApprovalDefault"
+        /><span>Auto</span>
+      </section>
       <section class="setting-card" data-cy="transcript-retention">
         <span class="setting-icon" aria-hidden="true"
           ><svg class="icon"><use href="#i-clock" /></svg

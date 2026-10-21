@@ -153,17 +153,6 @@ const DELIBERATE: Record<string, { withheldBy: Mount | 'both'; why: string }> = 
       'hint`s bare `state === "busy"` fallback is still unreachable, because `!interruptible` ' +
       'implies `closing` implies `blocked !== null`, and the `blocked` branch wins first.',
   },
-  blocked: {
-    withheldBy: 'launcher',
-    why:
-      '🔴 **417, HO-022 §2 — the launcher has nothing left to refuse a press over.** `219` was ' +
-      'about the PANE withholding this (169 → 219) and that half is still asserted below, ' +
-      'unexempted. The launcher’s half carried `launchBlocked`, which was the refusal of the ' +
-      'profile name box and the folder field; both controls are gone with every other question ' +
-      'the front door used to ask, so the value could only ever be `null` now. ⛔ **This ' +
-      'exemption is not a licence for a NEW refusal to go unbound** — if the launcher ever grows ' +
-      'a reason a send cannot happen, this entry has to go and the parity rule takes over again.',
-  },
   cwd: {
     withheldBy: 'launcher',
     why:
@@ -271,15 +260,9 @@ describe('219 §3 · every load-bearing prop reaches BOTH mounts', () => {
     // line of a loop. It was withheld by the pane from 169 until 219, and THAT is the half 219 is
     // about — the pane is the mount with a live session, a queue and a closing phase behind it.
     expect(handed.pane.props).toContain('blocked')
-    // ⚑ **417 (HO-022 §2) took the launcher's half, and it is named rather than deleted.** The
-    // launcher's `blocked` was `launchBlocked` — the profile name box's refusal and the folder
-    // field's — and both controls went with everything else the front door used to ask. The
-    // exemption is live: the loop above would fail if the note named the wrong mount, and the
-    // staleness rule below fails the day the launcher binds it again.
-    expect(handed.launcher.props.has('blocked')).toBe(false)
-    expect(DELIBERATE.blocked?.withheldBy, '`blocked` is excused, but not for the launcher').toBe(
-      'launcher',
-    )
+    // The launcher also blocks sending until the first Ask/Auto choice is made.
+    expect(handed.launcher.props).toContain('blocked')
+    expect(DELIBERATE.blocked).toBeUndefined()
   })
 })
 

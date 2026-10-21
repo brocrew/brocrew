@@ -28,7 +28,6 @@ const SMOKE = join(ROOT, 'scripts/ui-live-smoke.mjs')
 const INFO = join(ROOT, 'apps/desktop/src/renderer/src/components/SessionInfo.vue')
 /** ⚑ 579 · the front door, which has two folds of its own since `EXT-010` §2.1. */
 const LAUNCHER = join(ROOT, 'apps/desktop/src/renderer/src/components/NewConversation.vue')
-const FRONT_DOOR_WORDS = join(ROOT, 'apps/desktop/src/renderer/src/lib/front-door-words.ts')
 const INSTRUCTIONS = join(ROOT, 'apps/desktop/src/renderer/src/components/SessionInstructions.vue')
 const SHEET = join(ROOT, 'apps/desktop/src/renderer/src/components/AgentInstructionsSheet.vue')
 
@@ -188,77 +187,15 @@ describe('356 · the live steps still open what they read', () => {
     expect(read(INSTRUCTIONS)).toContain(':data-scope="item.scope"')
   })
 
-  /**
-   * 🔴 **579 · the front door folded its credential sentence, and the same live step still reads
-   * it** (`EXT-010` §2.1).
-   *
-   * ⛔ **Nothing else in `ci` can see this.** `front-door-hook-reach.test.mjs` asks *does the
-   * renderer DRAW this hook*, and it reads source — so `data-cy="profile-credential"` inside a
-   * `v-if` is still "drawn", and that file stays green over a step that would now read `''` and
-   * throw *"the launcher says nothing about this profile's sign-in"* — accusing the PRODUCT of the
-   * thing the STEP stopped doing, which is `097`'s class exactly.
-   *
-   * ⚠️ **And the order is the whole claim**, as it is for `356`'s two rules above: a step that
-   * pressed after reading would satisfy a `toContain` and prove nothing.
-   */
-  it('⛔ the front-door step presses the credential disclosure BEFORE it reads the sentence', () => {
-    const press = at(smoke, "clickWhenReady(cdp, 'launcher-why-credential')")
-    const asserts = at(smoke, "the launcher says nothing about this profile's sign-in")
-
-    expect(press, 'the front-door step no longer opens the credential disclosure').toBeGreaterThan(
-      -1,
-    )
-    expect(
-      asserts,
-      'the front-door step no longer asserts the credential sentence',
-    ).toBeGreaterThan(-1)
-    expect(press, 'the press must come before the read it makes possible').toBeLessThan(asserts)
-  })
-
-  it('⚑ …and the front door really draws that opener, and the body behind it', () => {
+  it('the short launcher smoke chooses Ask only when the first-choice control is present', () => {
     const launcher = read(LAUNCHER)
-    expect(launcher).toContain('data-cy="launcher-why-credential"')
-    expect(launcher).toContain('data-cy="profile-credential"')
-    // ⛔ **The body is behind the press, which is what makes the order rule above load-bearing.**
-    // A day when this is no longer true is a day the press is dead weight and this file should say
-    // so rather than going on requiring it.
-    // ⚠️ **Read off the OPENER's own state, not off the body's `v-if` line** (579 review):
-    // `329 M2` mutates the credential block, and a census that pinned the exact source line a
-    // mutation edits makes that row killable by a grep — its RED then says nothing about any
-    // behavioural gate (`a-source-census-that-pins-a-line-kills-every-row-on-it`). ⚑ What is
-    // asserted instead is the PAIRING: the opener reports a state, and the body is conditional on
-    // the same key the opener toggles.
-    expect(launcher).toContain(`:aria-expanded="open.has('credential')"`)
-    expect(launcher).toContain(`@click="toggle('credential')"`)
-  })
-
-  /**
-   * ⛔ **579 · every fold on that column has a word a person presses, and the word is not typed in
-   * the template.**
-   *
-   * ⚑ **This is the reader `FOLDED_ON_THE_FRONT_DOOR` was missing.** Its docblock claims *"a third
-   * fold cannot reach this screen without somebody writing the word a person presses"*, and the
-   * `Record`'s type only gives `toggle()` safety — nothing tied a key to a control. ⚠️ A claim with
-   * no instrument is `a-safety-sentence-with-no-test-is-a-comment`, one register down.
-   */
-  it('⛔ every key in the front door’s fold table has an opener that renders its word', () => {
-    const words = read(FRONT_DOOR_WORDS)
-    const launcher = read(LAUNCHER)
-    const table = words.slice(words.indexOf('export const FOLDED_ON_THE_FRONT_DOOR = {'))
-    const keys = [...table.slice(0, table.indexOf('} as const')).matchAll(/^ {2}(\w+):/gm)].map(
-      (hit) => hit[1],
-    )
-    // ⚑ Non-vacuity first: the slice really found the table, not an empty string.
-    expect(keys.length, 'the fold table was not read').toBeGreaterThan(1)
-    for (const key of keys) {
-      expect(launcher, `no opener for the "${key}" fold`).toContain(`data-cy="launcher-why-${key}"`)
-      expect(launcher, `the "${key}" opener does not render the table's word`).toContain(
-        `FOLDED_ON_THE_FRONT_DOOR.${key}`,
-      )
-    }
-    // ⛔ **The plant**: a key nobody has drawn a control for must fail this, or the loop is
-    // asserting over whatever happens to exist.
-    expect(launcher).not.toContain('data-cy="launcher-why-nobodyHasBuiltThis"')
+    expect(launcher).toContain(':data-cy="`choose-${mode}`"')
+    expect(launcher).toContain("['ask', 'auto'] as const")
+    expect(smoke).toContain("querySelector('[data-cy=choose-ask]')")
+    expect(smoke).toContain("clickWhenReady(cdp, 'choose-ask')")
+    expect(smoke).toContain('the first launcher can send without an approval choice')
+    expect(smoke).not.toContain("clickWhenReady(cdp, 'launcher-why-credential')")
+    expect(launcher).not.toContain('data-cy="launcher-why-credential"')
   })
 
   it('⚑ this file can tell a present string from an absent one — the instrument, self-tested', () => {

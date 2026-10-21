@@ -5,7 +5,6 @@ import { allProviderCapabilities } from '../../../../packages/runtime/src/capabi
 import NewConversation from '../../src/renderer/src/components/NewConversation.vue'
 import { providerForALaunch } from '../../src/renderer/src/lib/agent-store'
 import { createAttachmentBook, NEW_CONVERSATION } from '../../src/renderer/src/lib/drafts'
-import { providerIsFixed } from '../../src/renderer/src/lib/front-door-words'
 import { NO_LAUNCH_CHOICES, type LaunchChoices } from '../../src/renderer/src/lib/launch-choices'
 import { createModelLists, type ModelLists } from '../../src/renderer/src/lib/model-lists'
 import { theList } from '../../src/shared/model-choice'
@@ -305,7 +304,7 @@ describe('§3 · the choices are reachable from THIS screen, and they reach the 
     const door = open()
     door.answers.value = { claude: MEASURED_CLAUDE, codex: REFUSED }
     await nextTick()
-    expect((door.m.q('provider-is-fixed').textContent ?? '').trim()).toBe(providerIsFixed('codex'))
+    expect(door.m.all('provider-is-fixed')).toHaveLength(0)
     // ⚑ UI-012 (R-3) · picking a Claude MODEL is choosing Claude.
     await openPicker(door.m)
     await draftRow(door.m, 'claude', 'haiku')
@@ -313,7 +312,7 @@ describe('§3 · the choices are reachable from THIS screen, and they reach the 
     // ⚑ **One value, three readers.** The face shows it, the sentence names it, and the launch runs
     // on it — because all three read the one resolution.
     expect((door.m.q('model-picker-face').textContent ?? '').trim()).toBe('Claude · haiku')
-    expect((door.m.q('provider-is-fixed').textContent ?? '').trim()).toBe(providerIsFixed('claude'))
+    expect(door.m.all('provider-is-fixed')).toHaveLength(0)
     await send(door.m)
     expect(door.started[0]?.provider).toBe('claude')
     expect(door.started[0]?.model).toBe('haiku')

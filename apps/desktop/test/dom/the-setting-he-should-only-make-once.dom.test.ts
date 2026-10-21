@@ -8,11 +8,6 @@ import NewConversation from '../../src/renderer/src/components/NewConversation.v
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
 import StartAsAgent from '../../src/renderer/src/components/StartAsAgent.vue'
 import { YOLO_MEANS } from '../../src/renderer/src/lib/approval-mode'
-import {
-  LAUNCH_APPROVAL_BOUND,
-  LAUNCH_APPROVAL_GOVERNS,
-  launchApprovalView,
-} from '../../src/renderer/src/lib/front-door-words'
 import { NO_LAUNCH_CHOICES, type LaunchChoices } from '../../src/renderer/src/lib/launch-choices'
 import { createAttachmentBook, NEW_CONVERSATION } from '../../src/renderer/src/lib/drafts'
 import { DEFAULT_PROFILE_ID, type CreateSessionInput } from '../../src/shared/runtime-ipc'
@@ -108,156 +103,25 @@ afterEach(async () => {
   await page.viewport(ORIGINAL.width, ORIGINAL.height)
 })
 
-describe('§1 · the control, and the three states it can be in', () => {
-  it('⚑ it says what new conversations do, and what the press would do', async () => {
-    await page.viewport(REAL.width, REAL.height)
-    const { m } = openFrontDoor()
-    await nextTick()
-    const button = m.q('launch-approval-mode')
-    expect(visible(button)).toBe(true)
-    expect(button.dataset.mode).toBe('ask')
-    expect(button.getAttribute('aria-pressed')).toBe('false')
-    // ⛔ **The derivation's own words, not a second copy typed into the template.**
-    expect(m.q('launch-approval-says').textContent?.trim()).toBe(launchApprovalView('ask').heading)
-    expect(m.q('launch-approval-press').textContent?.trim()).toBe(launchApprovalView('ask').press)
-    // 🔴 **579 · the SCOPE is on the control and the DETAIL is behind a press** (`EXT-010` §2.2).
-    // ⛔ The label is what stops the fold making this read as a per-conversation toggle, so it is
-    // asserted here, beside the state, and against the view rather than against a literal.
-    expect(m.q('launch-approval-governs').textContent?.trim()).toBe(
-      launchApprovalView('ask').governs,
-    )
-    expect(m.all('launch-approval-bound'), 'the bound is folded, not standing').toEqual([])
-    ;(m.q('launcher-why-approval') as HTMLButtonElement).click()
-    await nextTick()
-    expect(m.q('launch-approval-bound').textContent?.trim()).toBe(LAUNCH_APPROVAL_BOUND)
-  })
-
-  /**
-   * 🔴 **579 · the half of `EXT-010` §2.2 that a fold could have taken away** — and it is the
-   * defect the brief names as worse than the one it sent me for: *"a control that looks like a
-   * per-conversation toggle but changes every future conversation."*
-   *
-   * ⛔ **Derived, not typed.** The label comes off the same view the state does, so a surface
-   * cannot draw one without the other; and the assertion below is that what a person sees WITHOUT
-   * pressing anything already says this is not about the conversation they are about to start.
-   */
-  it('🔴 what a person reads without pressing anything says it is EVERY conversation', async () => {
-    await page.viewport(REAL.width, REAL.height)
-    for (const mode of ['ask', 'auto', null] as const) {
-      const { m } = openFrontDoor({ defaultApprovalMode: mode })
+// The launcher no longer edits the saved default. First-choice gating is covered in
+// first-approval-choice.dom.test.ts; these checks retain saved-mode payload coverage.
+describe('the saved mode reaches a new conversation', () => {
+  it.each(['ask', 'auto'] as const)(
+    'starts with the saved %s mode without another choice',
+    async (mode) => {
+      await page.viewport(REAL.width, REAL.height)
+      const { m, started, set } = openFrontDoor({
+        defaultApprovalMode: mode,
+        approvalDefaultChosen: true,
+      })
       await nextTick()
-      const standing = `${m.q('launch-approval').innerText}`.toLowerCase()
-      expect(standing, `${mode}: the scope is behind a press`).toContain(
-        LAUNCH_APPROVAL_GOVERNS.toLowerCase(),
-      )
-      // ⛔ **And it is not there only because the folded paragraph leaked into the read.**
-      expect(m.all('launch-approval-bound'), `${mode}: the bound is standing`).toEqual([])
-      m.unmount()
-    }
-  })
-
-  it('⚠️ …and the detector: the scope really can be missing from that read', async () => {
-    // ⚑ **The plant `a-positive-assertion-must-differ-from-the-default` asks for.** The assertion
-    // above is a `toContain` over a subtree, which is exactly the shape that passes on a
-    // neighbouring element — so this removes the label and shows the reading follows it.
-    await page.viewport(REAL.width, REAL.height)
-    const { m } = openFrontDoor()
-    await nextTick()
-    m.q('launch-approval-governs').remove()
-    expect(`${m.q('launch-approval').innerText}`.toLowerCase()).not.toContain(
-      LAUNCH_APPROVAL_GOVERNS.toLowerCase(),
-    )
-  })
-
-  it('⛔ in yolo it says so, and both halves of 367’s disclosure arrive', async () => {
-    await page.viewport(REAL.width, REAL.height)
-    const { m } = openFrontDoor({ defaultApprovalMode: 'auto' })
-    await nextTick()
-    const button = m.q('launch-approval-mode')
-    expect(button.dataset.mode).toBe('auto')
-    expect(button.getAttribute('aria-pressed')).toBe('true')
-    expect(m.q('launch-approval-press').textContent?.trim()).toBe(launchApprovalView('auto').press)
-    // 🔴 **The shared constant, byte for byte** — the same one the agent card's panel renders.
-    expect(m.q('yolo-means').textContent ?? '').toContain(YOLO_MEANS)
-    // ⛔ **And the half only the ADAPTER can write, for the provider THIS launch will run on.**
-    const codex = allProviderCapabilities().codex.approvals
-    expect(codex.state).toBe('available')
-    expect(m.q('yolo-reach').textContent?.trim()).toBe(
-      codex.state === 'available' ? codex.note : '',
-    )
-  })
-
-  /**
-   * ⚠️ **The state `086` rules on: nobody has answered, so there is nothing to press and nothing to
-   * claim.** ⛔ Drawn *asking* it would claim a person is being consulted when nobody knows; drawn
-   * *yolo* it would claim a consent nobody has given.
-   */
-  it('⚠️ before the policy read lands there is no press, and the launch still sends ask', async () => {
-    await page.viewport(REAL.width, REAL.height)
-    const { m, started, set } = openFrontDoor({ defaultApprovalMode: null })
-    await nextTick()
-    const button = m.q('launch-approval-mode') as HTMLButtonElement
-    expect(button.dataset.mode).toBe('')
-    expect(button.disabled).toBe(true)
-    expect(m.host.querySelector('[data-cy="launch-approval-press"]')).toBeNull()
-    expect(m.host.querySelector('[data-cy="yolo-means"]')).toBeNull()
-    // ⛔ **Pressing it asks for nothing** — the press is disabled AND the handler has no answer, so
-    // neither half alone is what makes this true.
-    button.click()
-    await nextTick()
-    expect(set).toEqual([])
-    // ⚑ **…and the door still works**, in the word that keeps somebody being asked.
-    ;(m.q('send-prompt') as HTMLButtonElement).click()
-    await nextTick()
-    expect(started[0]?.approvalMode).toBe('ask')
-  })
-
-  /**
-   * 🔴 **The payload, across all three states, and `500`'s own mutation table is why it is HERE.**
-   *
-   * ⛔ The row that makes this door go back to `417`'s hard-coded `'ask'` SURVIVED its first
-   * verification: every other assertion in this section mounts with the default already `'ask'`, so
-   * the mutated door and the real one agreed on every cell the file could see. ⚠️
-   * `a-comparison-tested-where-both-sides-agree-measures-nothing`, found by the table rather than by
-   * review. ⚑ **The divergent cell is `auto`**, and it belongs in the file the row names.
-   */
-  it('🔴 what the door SENDS is the mode the person set, and ask until the row is read', async () => {
-    await page.viewport(REAL.width, REAL.height)
-    for (const [set, sent] of [
-      ['ask', 'ask'],
-      ['auto', 'auto'],
-      [null, 'ask'],
-    ] as const) {
-      const { m, started } = openFrontDoor({ defaultApprovalMode: set })
-      await nextTick()
+      expect(m.all('first-approval-choice')).toHaveLength(0)
       ;(m.q('send-prompt') as HTMLButtonElement).click()
       await nextTick()
-      expect(started, JSON.stringify(set)).toHaveLength(1)
-      expect(started[0]?.approvalMode, JSON.stringify(set)).toBe(sent)
-      // ⚑ **And nothing else moved on the wire** — the setting is the only field it decides.
-      expect(started[0]?.profileId).toBe(DEFAULT_PROFILE_ID)
-      expect(started[0]?.provider).toBe('codex')
-      m.unmount()
-    }
-  })
-
-  it('🔴 the press asks for the OTHER mode, from the same key the sentence was read from', async () => {
-    await page.viewport(REAL.width, REAL.height)
-    const asking = openFrontDoor({ defaultApprovalMode: 'ask' })
-    await nextTick()
-    ;(asking.m.q('launch-approval-mode') as HTMLButtonElement).click()
-    await nextTick()
-    expect(asking.set).toEqual(['auto'])
-    asking.m.unmount()
-
-    // ⛔ **The other direction, at the same moment** — a press that always asked for `auto` would
-    // pass the cell above and would be a control a person could not turn off.
-    const yolo = openFrontDoor({ defaultApprovalMode: 'auto' })
-    await nextTick()
-    ;(yolo.m.q('launch-approval-mode') as HTMLButtonElement).click()
-    await nextTick()
-    expect(yolo.set).toEqual(['ask'])
-  })
+      expect(started[0]?.approvalMode).toBe(mode)
+      expect(set).toEqual([])
+    },
+  )
 })
 
 describe('§2 · the second door a person starts a conversation from', () => {
@@ -402,15 +266,9 @@ describe('§3 · the sentence the host already composed, and nothing was holding
     )
     expect(visible(m.q('card-approval-pending'))).toBe(true)
     const face = m.q('card-approval')
-    expect(face.textContent?.trim()).toBe('YOLO off')
+    expect((face as HTMLInputElement).checked).toBe(false)
     expect(face.dataset.pending).toBe('auto')
-    // …and the host's own composed sentence, in the panel the face opens.
-    face.click()
-    await nextTick()
-    await nextTick()
-    expect(m.q('card-approval-note').textContent?.trim()).toBe(
-      'approvals: ask · YOLO from your next message',
-    )
+    expect(face.closest('label')?.title).toContain('next message')
     // ⚑ **The control for the reading**: with nothing pending, there is no line under the plate,
     // and the face carries no pending mode — so the assertions above are about the pending half.
     m.unmount()
@@ -429,7 +287,7 @@ describe('§3 · the sentence the host already composed, and nothing was holding
     )
     await nextTick()
     expect(settled.all('card-approval-pending')).toHaveLength(0)
-    expect(settled.q('card-approval').textContent?.trim()).toBe('YOLO off')
+    expect((settled.q('card-approval') as HTMLInputElement).checked).toBe(false)
     expect(settled.q('card-approval').dataset.pending).toBe('')
   })
 })

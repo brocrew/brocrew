@@ -227,3 +227,50 @@ it('a failed transcript retention save restores what was actually kept', async (
   )
   expect(select.value).toBe('90')
 })
+
+it('saves the new-conversation default and preserves the confirmed value on refusal', async () => {
+  providersBridge()
+  let answer: (value: { defaultApprovalMode: 'ask' | 'auto' }) => void = () => {}
+  let fail: (error: Error) => void = () => {}
+  const save = vi.fn(
+    () =>
+      new Promise<{ defaultApprovalMode: 'ask' | 'auto' }>((resolve, reject) => {
+        answer = resolve
+        fail = reject
+      }),
+  )
+  const store = createAgentStore({
+    ...window.api.runtime,
+    agentIdentities: async () => ({ ...identities, defaultApprovalModeChosen: false }),
+    setDefaultApprovalMode: save,
+  })
+  await store.load()
+  const m = mount(
+    SettingsScreen,
+    { tab: 'general', capabilities: null, warnings: null, clock: 0, store },
+    { width: 1000, height: 900 },
+  )
+  const input = m.q('settings-approval-switch') as HTMLInputElement
+  input.click()
+  await nextTick()
+  expect(save).toHaveBeenLastCalledWith({ mode: 'auto' })
+  expect(input.disabled).toBe(true)
+  expect(input.checked).toBe(false)
+  fail(new Error('Could not save the default.'))
+  await vi.waitFor(() => expect(input.disabled).toBe(false))
+  expect(input.checked).toBe(false)
+  expect(m.q('settings-approval-default').querySelector('[role="alert"]')?.textContent).toContain(
+    'Could not save',
+  )
+  input.click()
+  await nextTick()
+  answer({ defaultApprovalMode: 'auto' })
+  await vi.waitFor(() => expect(input.checked).toBe(true))
+  expect(store.identities.value?.defaultApprovalModeChosen).toBe(true)
+  input.click()
+  await nextTick()
+  expect(save).toHaveBeenLastCalledWith({ mode: 'ask' })
+  answer({ defaultApprovalMode: 'ask' })
+  await vi.waitFor(() => expect(input.checked).toBe(false))
+  expect(m.q('settings-approval-default').querySelector('[role="alert"]')).toBeNull()
+})

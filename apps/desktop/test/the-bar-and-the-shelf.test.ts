@@ -259,8 +259,8 @@ describe('§1 · every absent word the shelf draws is the map’s (389 §1)', ()
     // ⚑ The agent card's approval mode states it in both modes and opens the change.
     const controls = read(`${COMPONENTS}/CardApproval.vue`)
     expect(controls).toContain('data-cy="card-approval"')
-    expect(controls).toContain('{{ props.approval.word }}')
-    expect(controls).toContain('{{ props.approval.note }}')
+    expect(controls).toContain('role="switch"')
+    expect(controls).toContain(':checked="props.approval.mode === \'auto\'"')
     const fold = read(`${RENDERER}/composables/useConversationControls.ts`)
     expect(fold).toContain('note: session.approvalNote')
   })
@@ -339,7 +339,7 @@ describe('§3 · the shelf makes no project claim (389 §3)', () => {
 /* ------------------------------------------------------------- §4 · the credential stays a sentence */
 
 describe('§4 · no credential token on the shelf (389 §4)', () => {
-  it('⛔ the shelf says nothing about a credential, and the launcher keeps it behind a press', () => {
+  it('the shelf and the short launcher make no credential claim', () => {
     // 🔴 `profileCredential()` returns a sentence and a tone because what happens to a credential
     // differs between providers in KIND. `329` corrected the invention of a one-word status once;
     // a six-cell strip has no room for the sentence and no right to a token instead.
@@ -347,16 +347,11 @@ describe('§4 · no credential token on the shelf (389 §4)', () => {
     expect(SHELF).not.toContain('credential-words')
     expect(SHELF).not.toMatch(/credential/i)
 
-    // ⚑ **The control, and it is the positive that makes the absence a decision**: the product DOES
-    // say this, on the one surface that can carry a paragraph at all.
-    // ⚠️ **579 · one press away, not standing** (`EXT-010` §2.1) — *"a sign-in explanation nobody
-    // opening a conversation is wondering about… behind a disclosure."* ⛔ `code()` strips comments
-    // and cannot see a `v-if`, so this assertion would have stayed green while the sentence above
-    // it went false; the opener is named here so the title and the assertion say one thing.
     const launcher = code(read(`${COMPONENTS}/NewConversation.vue`))
-    expect(launcher).toContain('profile-credential')
-    expect(launcher).toContain('launcher-why-credential')
-    expect(launcher).toMatch(/credential/i)
+    expect(launcher).not.toContain('data-cy="profile-credential"')
+    expect(launcher).not.toContain('data-cy="launcher-why-credential"')
+    const provider = code(read(`${COMPONENTS}/ProviderCard.vue`))
+    expect(provider).toContain('data-cy="provider-key"')
   })
 })
 
