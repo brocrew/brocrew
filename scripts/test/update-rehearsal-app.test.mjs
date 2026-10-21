@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
-import { test } from 'vitest'
+import { describe, expect, it, test } from 'vitest'
 import {
-  closeExpectedLaunchSetup,
-  saveRehearsalCodexKey,
   aScriptedModel,
+  closeExpectedLaunchSetup,
+  devToolsCalls,
+  saveRehearsalCodexKey,
 } from '../lib/update-rehearsal-app.mjs'
 
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
@@ -170,4 +171,70 @@ test('the shared model still holds and releases the Windows refusal turn', async
     model.closeAllConnections()
     await new Promise((done) => model.close(done))
   }
+})
+
+/**
+ * The rehearsal's DevTools calls, held on a socket made here: each call is answered, refused or
+ * failed in bounded time, so a window that stops answering ends the lane with its method named.
+ */
+
+/** A DevTools socket that answers only when told to. */
+function aSocket() {
+  const target = new EventTarget()
+  const sent = []
+  return {
+    sent,
+    addEventListener: (...args) => target.addEventListener(...args),
+    send: (text) => sent.push(JSON.parse(text)),
+    answer: (message) =>
+      target.dispatchEvent(Object.assign(new Event('message'), { data: JSON.stringify(message) })),
+    close: () => target.dispatchEvent(new Event('close')),
+  }
+}
+
+describe('devToolsCalls', () => {
+  it('answers a call with its result, and refuses one with the window’s error', async () => {
+    const socket = aSocket()
+    const send = devToolsCalls(socket, { answerWithin: 1_000 })
+    const answered = send('Runtime.evaluate', { expression: '1' })
+    const refused = send('Page.captureScreenshot')
+    expect(socket.sent.map((one) => one.method)).toEqual([
+      'Runtime.evaluate',
+      'Page.captureScreenshot',
+    ])
+    socket.answer({ id: socket.sent[1].id, error: { message: 'Not attached' } })
+    socket.answer({ id: socket.sent[0].id, result: { result: { value: 1 } } })
+    await expect(answered).resolves.toEqual({ result: { value: 1 } })
+    await expect(refused).rejects.toThrow('Page.captureScreenshot: Not attached')
+  })
+
+  it('fails a call the window never answers, naming its method', async () => {
+    const socket = aSocket()
+    const send = devToolsCalls(socket, { answerWithin: 50 })
+    const started = Date.now()
+    await expect(send('Page.captureScreenshot', { format: 'png' })).rejects.toThrow(
+      'Page.captureScreenshot: the window did not answer in 0.05 s',
+    )
+    expect(Date.now() - started).toBeLessThan(1_000)
+    // ⚑ A late answer to a call already failed is dropped, and a later call still works.
+    socket.answer({ id: socket.sent[0].id, result: {} })
+    const next = send('Runtime.evaluate')
+    socket.answer({ id: socket.sent[1].id, result: { ok: true } })
+    await expect(next).resolves.toEqual({ ok: true })
+  })
+
+  it('fails every waiting call, and each later one, once the connection closes', async () => {
+    const socket = aSocket()
+    const send = devToolsCalls(socket, { answerWithin: 60_000 })
+    const waiting = [send('Runtime.evaluate'), send('Input.dispatchMouseEvent')]
+    socket.close()
+    await expect(waiting[0]).rejects.toThrow(
+      'Runtime.evaluate: the window’s DevTools connection closed',
+    )
+    await expect(waiting[1]).rejects.toThrow(
+      'Input.dispatchMouseEvent: the window’s DevTools connection closed',
+    )
+    await expect(send('Runtime.evaluate')).rejects.toThrow('connection closed')
+    expect(socket.sent).toHaveLength(2)
+  })
 })

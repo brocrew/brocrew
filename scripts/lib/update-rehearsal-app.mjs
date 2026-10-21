@@ -58,10 +58,53 @@ export function aRecord(results, name) {
 }
 
 /**
- * One window over the DevTools protocol: `evaluate` runs an async function body in the page, and
- * `send` any protocol method. Waits for the window to offer `window.api`.
+ * Protocol calls over an open DevTools `socket`. ⛔ A call fails, naming its method, when the
+ * window does not answer it within `answerWithin` ms or the connection closes: `until` keeps its
+ * time only between calls, so one unanswered call would otherwise wait for ever.
  */
-export async function attach(port, { wait = 180_000 } = {}) {
+export function devToolsCalls(socket, { answerWithin = 120_000 } = {}) {
+  let next = 0
+  let closed = null
+  const pending = new Map()
+  socket.addEventListener('message', ({ data }) => {
+    const message = JSON.parse(data)
+    pending.get(message.id)?.(message)
+  })
+  socket.addEventListener('close', () => {
+    closed = 'the window’s DevTools connection closed'
+    for (const settle of pending.values()) settle({ error: { message: closed } })
+  })
+  return (method, params = {}) =>
+    new Promise((done, failed) => {
+      if (closed !== null) {
+        failed(new Error(`${method}: ${closed}`))
+        return
+      }
+      const id = ++next
+      const settle = (message) => {
+        clearTimeout(timer)
+        pending.delete(id)
+        if (message.error) failed(new Error(`${method}: ${message.error.message}`))
+        else done(message.result)
+      }
+      const timer = setTimeout(
+        () =>
+          settle({
+            error: { message: `the window did not answer in ${String(answerWithin / 1000)} s` },
+          }),
+        answerWithin,
+      )
+      pending.set(id, settle)
+      socket.send(JSON.stringify({ id, method, params }))
+    })
+}
+
+/**
+ * One window over the DevTools protocol: `evaluate` runs an async function body in the page, and
+ * `send` any protocol method, each answered within `answerWithin` ms or failed. Waits for the
+ * window to offer `window.api`.
+ */
+export async function attach(port, { wait = 180_000, answerWithin = 120_000 } = {}) {
   const target = await until(async () => {
     try {
       const pages = await (await fetch(`http://127.0.0.1:${String(port)}/json/list`)).json()
@@ -73,25 +116,21 @@ export async function attach(port, { wait = 180_000 } = {}) {
   if (target === null) throw new Error(`no window on DevTools port ${String(port)}`)
   const socket = new WebSocket(target.webSocketDebuggerUrl)
   await new Promise((done, failed) => {
-    socket.addEventListener('open', done, { once: true })
-    socket.addEventListener('error', failed, { once: true })
+    const timer = setTimeout(
+      () => failed(new Error(`the window on DevTools port ${String(port)} accepted no connection`)),
+      answerWithin,
+    )
+    socket.addEventListener('open', () => done(clearTimeout(timer)), { once: true })
+    socket.addEventListener(
+      'error',
+      () => {
+        clearTimeout(timer)
+        failed(new Error(`the window on DevTools port ${String(port)} refused the connection`))
+      },
+      { once: true },
+    )
   })
-  let next = 0
-  const pending = new Map()
-  socket.addEventListener('message', ({ data }) => {
-    const message = JSON.parse(data)
-    pending.get(message.id)?.(message)
-    pending.delete(message.id)
-  })
-  const send = (method, params = {}) =>
-    new Promise((done, failed) => {
-      const id = ++next
-      pending.set(id, (message) => {
-        if (message.error) failed(new Error(`${method}: ${message.error.message}`))
-        else done(message.result)
-      })
-      socket.send(JSON.stringify({ id, method, params }))
-    })
+  const send = devToolsCalls(socket, { answerWithin })
   const evaluate = async (body) => {
     const result = await send('Runtime.evaluate', {
       expression: `(async () => { ${body} })()`,
