@@ -729,7 +729,6 @@ import {
   type ResumableSessionInfo,
   type RunningState,
   type UnresumableSessionInfo,
-  YOLO_LABEL,
   // ⚑ **D-027 · the most messages one turn delivers** — see `theTurnItTakes` — and the messages
   // a turn delivered.
   MAX_TURN_PARTS,
@@ -6775,7 +6774,7 @@ function approvalDisclosure(session: {
     approvalNote:
       requested === effective
         ? note
-        : `${note} · ${requested === 'auto' ? YOLO_LABEL : 'ask'} from your next message`,
+        : `${note} · ${requested === 'auto' ? 'Auto' : 'Ask'} from your next message`,
     // Copied out of the handle, which is the one place that knows (058) — the same rule the mode
     // above follows, and for the same reason: a second copy kept host-side would be right until it
     // was not. A plain array, so the dedupe in `publishStateIfChanged` sees it change.
@@ -7070,24 +7069,17 @@ function instructionsFor(session: {
  * approvals also drops the SANDBOX on Codex and nothing equivalent exists on Claude, and that is
  * provider knowledge. `ask` gets no note — the normal, safe mode needs no banner.
  *
- * ⛔ **The word is {@link YOLO_LABEL} and it used to be `AUTO`** (171 §2, from 168 H1). The CLI this
- * app is meant to feel like has a mode called Auto and it is an allowlist that grows by consent;
- * this one is `--dangerously-skip-permissions` / `--yolo`. Naming ours after theirs was the defect —
- * the behaviour is right and stays. The enum is untouched: `auto` is persisted and travels the IPC.
- *
- * ⚠️ **`— no prompts` became `— nothing is asked` in the same pass.** *"No prompts"* describes the
- * app's own cards and stops there, which is the reading that let *"Bash raises a card in every
- * mode"* stand in `confinement.ts` for three dispatches. What is true is the wider sentence.
+ * The app names the modes Ask and Auto. Provider flags and persisted mode values stay unchanged.
  */
 function describeApprovalMode(provider: Provider, mode: 'ask' | 'auto'): string {
   // EVERY session states its mode (082, and reviewer 079-B4): showing nothing for `ask` meant a
   // checked yolo box next to a running ask-session looked like yolo was simply broken — the mode
   // was invisible, so there was nothing to contradict the box. A blank that means "ask" is not a
   // disclosure.
-  if (mode !== 'auto') return 'approvals: ask'
+  if (mode !== 'auto') return 'approvals: Ask'
   return provider === 'codex'
-    ? `⚠ approvals: ${YOLO_LABEL} — nothing is asked · sandbox OFF`
-    : `⚠ approvals: ${YOLO_LABEL} — nothing is asked`
+    ? `⚠ approvals: Auto — nothing is asked · sandbox OFF`
+    : `⚠ approvals: Auto — nothing is asked`
 }
 
 /**

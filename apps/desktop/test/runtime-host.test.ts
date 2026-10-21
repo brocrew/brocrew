@@ -1002,7 +1002,7 @@ describe('RuntimeHost — approval mode (078)', () => {
     expect(created.approvalMode).toBe('ask')
     // Every session states its mode (082): a blank that means "ask" is not a disclosure, and it
     // left a checked yolo box next to a running ask-session looking like yolo was broken.
-    expect(created.approvalNote).toBe('approvals: ask')
+    expect(created.approvalNote).toBe('approvals: Ask')
     await host.closeAll()
   })
 
@@ -1014,9 +1014,8 @@ describe('RuntimeHost — approval mode (078)', () => {
     )
     expect(started[0]?.approvalMode).toBe('auto')
     expect(created.approvalMode).toBe('auto')
-    // ⛔ **`YOLO`, not `AUTO`** (171 §2): the CLI this app is meant to feel like has a mode called
-    // Auto and it is an allowlist that grows by consent. This one is `--yolo`.
-    expect(created.approvalNote).toContain('YOLO')
+    // The approved panel wording is Ask/Auto; provider behaviour and sandbox claims stay the same.
+    expect(created.approvalNote).toContain('Auto')
     expect(created.approvalNote, 'the old word is gone, not merely joined').not.toContain('AUTO')
     // ⚠️ …and it says what is not asked rather than what is not shown. *"No prompts"* described the
     // app's own cards and stopped there — the reading that let *"Bash raises a card in every mode"*
@@ -1032,7 +1031,7 @@ describe('RuntimeHost — approval mode (078)', () => {
       { provider: 'claude', approvalMode: 'auto' },
       new RecordingSink(),
     )
-    expect(created.approvalNote).toContain('YOLO')
+    expect(created.approvalNote).toContain('Auto')
     expect(created.approvalNote).not.toContain('AUTO')
     expect(created.approvalNote).not.toContain('sandbox')
     await host.closeAll()
@@ -1042,7 +1041,7 @@ describe('RuntimeHost — approval mode (078)', () => {
     const { host } = yoloHost()
     for (const provider of ['claude', 'codex'] as Provider[]) {
       const created = await host.createSession({ provider }, new RecordingSink())
-      expect(created.approvalNote, provider).toBe('approvals: ask')
+      expect(created.approvalNote, provider).toBe('approvals: Ask')
       // Neutral, not a warning: only the unattended mode shouts.
       expect(created.approvalNote).not.toContain('⚠')
     }
@@ -1068,7 +1067,7 @@ describe('RuntimeHost — approval mode (078)', () => {
     // The Fake honours the same next-turn contract as the real adapters, so nothing has moved yet.
     expect(disclosure.approvalMode, 'still what the session is running under').toBe('ask')
     expect(disclosure.pendingApprovalMode).toBe('auto')
-    expect(disclosure.approvalNote).toBe('approvals: ask · YOLO from your next message')
+    expect(disclosure.approvalNote).toBe('approvals: Ask · Auto from your next message')
     await host.closeAll()
   })
 
@@ -1104,7 +1103,7 @@ describe('RuntimeHost — approval mode (078)', () => {
       // (058): an absent field would be indistinguishable from an older host that could not answer.
       blanketGrants: [],
       pendingApprovalMode: 'auto',
-      approvalNote: 'approvals: ask · YOLO from your next message',
+      approvalNote: 'approvals: Ask · Auto from your next message',
     })
 
     const before = approvals().length

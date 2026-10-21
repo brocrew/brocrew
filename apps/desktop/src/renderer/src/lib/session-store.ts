@@ -836,6 +836,13 @@ export function createSessionStore(bridge: RuntimeBridge): SessionStore {
    */
   const sessions = reactive(new Map<string, SessionRecord>())
   const providerBlocks = createProviderBlockStore()
+  const approvalChoices = new Map<
+    string,
+    {
+      requested: 'ask' | 'auto'
+      nativePending: 'ask' | 'auto' | null
+    }
+  >()
   const launchError = ref<string | null>(null)
   const launchRefusal = ref<LaunchRefusal | null>(null)
   const resumeError = ref<string | null>(null)
@@ -1182,7 +1189,17 @@ export function createSessionStore(bridge: RuntimeBridge): SessionStore {
 
   const unsubscribeLiveness = bridge.onLiveness((message) => {
     providerBlocks.accept(message.sessionId, message.liveness)
-    acceptLiveness(slot(message.sessionId), message.liveness)
+    const record = slot(message.sessionId)
+    const choice = approvalChoices.get(message.sessionId)
+    if (choice && message.liveness.approval)
+      choice.nativePending = message.liveness.approval.pendingApprovalMode
+    acceptLiveness(record, message.liveness)
+    if (choice && record.meta)
+      record.meta = {
+        ...record.meta,
+        pendingApprovalMode:
+          choice.requested === record.meta.approvalMode ? null : choice.requested,
+      }
   })
 
   /**
@@ -2425,14 +2442,25 @@ export function createSessionStore(bridge: RuntimeBridge): SessionStore {
     },
 
     async setApprovalMode(sessionId, mode) {
+      const record = sessions.get(sessionId)
+      if (!record?.meta) return
+      // The choice moves now; the current turn keeps its confirmed mode.
+      const choice = { requested: mode, nativePending: record.meta.pendingApprovalMode }
+      approvalChoices.set(sessionId, choice)
+      record.meta = {
+        ...record.meta,
+        pendingApprovalMode: mode === record.meta.approvalMode ? null : mode,
+      }
       const { value: disclosure } = await forSession(sessionId, () =>
         bridge.setApprovalMode({ sessionId, mode }),
       )
-      const record = sessions.get(sessionId)
-      // A refused command leaves the record alone: the header keeps saying what the session was
-      // last known to be doing, and the error surfaces on its own. Writing the requested mode here
-      // would make a failed switch look like a successful one.
-      if (disclosure && record?.meta) record.meta = { ...record.meta, ...disclosure }
+      if (approvalChoices.get(sessionId) !== choice) return
+      approvalChoices.delete(sessionId)
+      // Keep unrelated updates, and restore the latest native choice on refusal.
+      if (record.meta)
+        record.meta = disclosure
+          ? { ...record.meta, ...disclosure }
+          : { ...record.meta, pendingApprovalMode: choice.nativePending }
     },
 
     /**
@@ -2461,6 +2489,7 @@ export function createSessionStore(bridge: RuntimeBridge): SessionStore {
     },
 
     dispose() {
+      approvalChoices.clear()
       providerBlocks.dispose()
       unsubscribeEvents()
       unsubscribeLiveness()

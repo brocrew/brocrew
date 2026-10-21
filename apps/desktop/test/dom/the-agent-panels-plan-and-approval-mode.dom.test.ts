@@ -130,7 +130,7 @@ describe('plan first, beside the model and effort', () => {
   })
 })
 
-// The approved switch replaces the disclosure/confirm popup; the confirmed and queued facts stay separate.
+// The switch now shows the chosen side immediately; the header keeps the current mode.
 describe('the approval switch beside the plate', () => {
   it.each(['ask', 'auto'] as const)(
     'shows confirmed %s and asks for the opposite mode',
@@ -144,7 +144,7 @@ describe('the approval switch beside the plate', () => {
       face.click()
       await settle()
       expect(asked.approval).toEqual([mode === 'auto' ? 'ask' : 'auto'])
-      expect(face.checked).toBe(mode === 'auto')
+      expect(face.checked).toBe(mode !== 'auto')
     },
   )
   it('cannot change a fixed conversation', async () => {
@@ -157,10 +157,10 @@ describe('the approval switch beside the plate', () => {
     expect(asked.approval).toEqual([])
     expect(m.q('card-run-plan').title).toBe(FIXED_SAYS)
   })
-  it('a queued change does not pretend the current turn already changed', async () => {
+  it('a queued choice moves the switch while the header keeps the current mode', async () => {
     const { m } = thePane({ approvalMode: 'ask', pendingApprovalMode: 'auto' })
     await settle()
-    expect((m.q('card-approval') as HTMLInputElement).checked).toBe(false)
+    expect((m.q('card-approval') as HTMLInputElement).checked).toBe(true)
     expect(m.q('card-approval').dataset.pending).toBe('auto')
     expect(m.q('card-approval').parentElement?.title).toContain('next message')
   })

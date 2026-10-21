@@ -368,7 +368,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         [
             (
                 "apps/desktop/src/renderer/src/components/CardApproval.vue",
-                "      :checked=\"props.approval.mode === 'auto'\"\n",
+                "      :checked=\"(props.approval.pending ?? props.approval.mode) === 'auto'\"\n",
                 "",
             )
         ],

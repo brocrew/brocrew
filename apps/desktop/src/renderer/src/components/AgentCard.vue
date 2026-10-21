@@ -1212,11 +1212,11 @@ button.run-effort[aria-expanded='true'] {
   border-color: var(--line-strong);
 }
 
-/* The approval mode's now and next, under the agent's state. */
+/* The chosen mode applies with the next message. */
 .approval-pending {
   margin: 0;
-  color: var(--text-soft);
-  font-size: var(--type-caption);
+  color: var(--accent-text);
+  font-size: var(--type-small);
 }
 
 @container agent-card (max-width: 430px) {

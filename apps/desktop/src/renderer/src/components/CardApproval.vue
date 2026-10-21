@@ -5,7 +5,6 @@ const emit = defineEmits<{ choose: [mode: 'ask' | 'auto'] }>()
 function choose(event: Event): void {
   const input = event.target as HTMLInputElement
   const mode = input.checked ? 'auto' : 'ask'
-  input.checked = props.approval.mode === 'auto'
   if (props.approval.changeable && !props.approval.saving) emit('choose', mode)
 }
 </script>
@@ -21,7 +20,7 @@ function choose(event: Event): void {
       :data-mode="props.approval.mode"
       :data-changeable="props.approval.changeable"
       :data-pending="props.approval.pending ?? ''"
-      :checked="props.approval.mode === 'auto'"
+      :checked="(props.approval.pending ?? props.approval.mode) === 'auto'"
       :disabled="!props.approval.changeable || props.approval.saving"
       @change="choose"
     />

@@ -145,7 +145,8 @@ it('does not ask again when a default is already saved', async () => {
   expect((m.q('send-prompt') as HTMLButtonElement).disabled).toBe(false)
 })
 
-it('a switch waits for the saved state and stays unchanged on refusal', async () => {
+// The switch now moves immediately; a refused request restores its previous side.
+it('a switch moves at once and returns to the saved state on refusal', async () => {
   const approval = reactive<{ -readonly [K in keyof ApprovalControl]: ApprovalControl[K] }>({
     mode: 'ask',
     pending: null,
@@ -162,10 +163,12 @@ it('a switch waits for the saved state and stays unchanged on refusal', async ()
   })
   let finish: () => void = () => {}
   const save = vi.fn(async () => {
+    approval.pending = 'auto'
     approval.saving = true
     await new Promise<void>((resolve) => {
       finish = resolve
     })
+    approval.pending = null
     approval.saving = false
   })
   const m = mount(
@@ -177,7 +180,7 @@ it('a switch waits for the saved state and stays unchanged on refusal', async ()
   input.click()
   await settle()
   expect(input.disabled).toBe(true)
-  expect(input.checked).toBe(false)
+  expect(input.checked).toBe(true)
   finish()
   await settle()
   expect(input.disabled).toBe(false)

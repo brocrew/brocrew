@@ -2689,6 +2689,40 @@ describe('the session store', () => {
     store.dispose()
   })
 
+  it.each(['ask', 'auto'] as const)(
+    'keeps native %s updates while a choice is awaiting its answer',
+    async (nativeMode) => {
+      const bridge = fakeBridge()
+      let refuse: (error: Error) => void = () => {}
+      bridge.setApprovalMode = () =>
+        new Promise((_resolve, reject) => {
+          refuse = reject
+        })
+      const store = createSessionStore(bridge)
+      const id = (await store.create({ provider: 'codex' }))!
+      const saving = store.setApprovalMode(id, 'auto')
+      expect(store.get(id)?.meta?.pendingApprovalMode).toBe('auto')
+      bridge.__liveness(id, 'live', {
+        approval: {
+          approvalMode: nativeMode,
+          pendingApprovalMode: null,
+          approvalNote: nativeMode,
+          blanketGrants: [],
+        },
+      })
+      expect(store.get(id)?.meta?.approvalMode).toBe(nativeMode)
+      expect(store.get(id)?.meta?.pendingApprovalMode).toBe(nativeMode === 'auto' ? null : 'auto')
+      const record = store.get(id)!
+      record.meta = { ...record.meta!, cwd: '/work/fictional-bakery' }
+      refuse(new Error('Mode could not be saved'))
+      await saving
+      expect(record.meta?.approvalMode).toBe(nativeMode)
+      expect(record.meta?.pendingApprovalMode).toBeNull()
+      expect(record.meta?.cwd).toBe('/work/fictional-bakery')
+      store.dispose()
+    },
+  )
+
   it('recomputes the open list as sessions come and go', async () => {
     // The list is a computed over a reactive Map; if Map mutations were not tracked, the sidebar
     // would simply never update — a failure that looks like nothing happening at all.
