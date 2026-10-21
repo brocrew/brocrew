@@ -172,12 +172,9 @@ describe('§2 · "model and approvals you can change later, in the Open tab" —
     const approval = withoutProse(
       readFileSync(join(SRC, 'renderer/src/components/CardApproval.vue'), 'utf8'),
     )
-    const confirm = approval.slice(approval.indexOf('v-if="props.approval.changeable"'))
-    expect(confirm, 'the confirm is no longer gated on the mode being changeable').toMatch(
-      /^v-if="props\.approval\.changeable"\s+type="button"/,
-    )
-    expect(confirm.slice(0, 400)).toContain('data-cy="card-approval-confirm"')
-    expect(confirm.slice(0, 400)).toContain('@click="confirm"')
+    expect(approval).toContain('role="switch"')
+    expect(approval).toContain(':disabled="!props.approval.changeable || props.approval.saving"')
+    expect(approval).toContain('@change="choose"')
     const controls = withoutProse(
       readFileSync(join(SRC, 'renderer/src/composables/useConversationControls.ts'), 'utf8'),
     )

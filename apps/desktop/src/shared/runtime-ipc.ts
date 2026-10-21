@@ -605,6 +605,8 @@ export interface AgentIdentities {
    * person presses resolve it in the renderer and put the answer on the wire as an ordinary
    * `approvalMode`.
    */
+  /** Whether the launch default was explicitly saved, rather than the safe fallback. */
+  readonly defaultApprovalModeChosen?: boolean
   readonly defaultApprovalMode: 'ask' | 'auto'
   /**
    * 🔴 **Every external MCP server a person has registered** (516) — GLOBAL, and since 524 each row

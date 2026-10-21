@@ -694,7 +694,11 @@ export function createAgentStore(bridge: RuntimeBridge): AgentStore {
         // the next launch an `ask`. ⚠️ The direction of the lie is the dangerous one.
         const held = identities.value
         if (held !== null) {
-          identities.value = { ...held, defaultApprovalMode: now.defaultApprovalMode }
+          identities.value = {
+            ...held,
+            defaultApprovalMode: now.defaultApprovalMode,
+            defaultApprovalModeChosen: true,
+          }
         }
         return null
       } catch (error) {

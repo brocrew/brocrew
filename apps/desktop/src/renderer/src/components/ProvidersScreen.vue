@@ -343,6 +343,14 @@ function limitOf(provider: Provider) {
   row-gap: 0;
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
+/* Setup has different rows; keep the other card's folded sections compact. */
+.cards:has(.inline-setup) :deep(.card) {
+  grid-row: auto;
+  grid-template-rows: none;
+}
+.cards:has(.inline-setup) :deep(.inline-setup) {
+  grid-row: auto;
+}
 .debug {
   position: relative;
   display: flex;

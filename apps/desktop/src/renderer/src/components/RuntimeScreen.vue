@@ -286,6 +286,7 @@ import { resolveMessageLink } from '../lib/runtime-message-links'
 import DeleteConversation from './DeleteConversation.vue'
 import IconSprite from './IconSprite.vue'
 import NewConversation from './NewConversation.vue'
+import { createLaunchGuard, saveFirstApproval } from '../lib/first-approval'
 import OverlayHost, { provideOverlayLayer } from './OverlayHost.vue'
 import { createPlaceHistory, type HistoryEntry, type Place } from '../lib/place-history'
 import { aDialogIsOpen } from '../lib/a-dialog-is-open'
@@ -1735,6 +1736,7 @@ function restoreRefused(slot: string, text: string, attachments: HandedPath[]): 
  * ({@link startPlaced}): the conversation opened, or THIS launch was refused, in the host's words.
  */
 interface LaunchTold {
+  navigated?(): void
   opened?(): void
   refused?(sentence: string): void
 }
@@ -1746,6 +1748,18 @@ interface LaunchTold {
  * there is no "first message" special case in the store or the host, and the transcript records
  * this turn exactly like the ones that follow it.
  */
+const frontDoorLaunch = createLaunchGuard()
+
+async function startFromFrontDoor(
+  input: CreateSessionInput,
+  firstMessage: string,
+  attachments: HandedPath[] = [],
+): Promise<void> {
+  await frontDoorLaunch.run((release) =>
+    start(input, firstMessage, attachments, 'front-door', { navigated: release }),
+  )
+}
+
 async function start(
   input: CreateSessionInput,
   firstMessage: string,
@@ -1784,8 +1798,22 @@ async function start(
     }
     return
   }
+  if (door === 'front-door') {
+    const refusal = await saveFirstApproval(
+      sessionId,
+      input.approvalMode,
+      agentStore.identities.value?.defaultApprovalModeChosen,
+      (mode) => agentStore.setApprovalDefault(mode),
+    )
+    if (refusal !== null) {
+      store.launchError.value = refusal
+      restoreRefused(draftSlot(null), firstMessage, attachments)
+      return
+    }
+  }
   told.opened?.()
   showConversation(sessionId, from)
+  told.navigated?.()
   // 🔴 **UI-012 · R-1 — a launch spends the form's pick**: the host made it the last pick, which the
   // form starts on from now (`09` §8), and a pick still held here would outrank every later one —
   // a drawer's or a sheet's too. ⚑ The provider stays: a Codex pick chose Codex.
@@ -4130,7 +4158,7 @@ onUnmounted(() => {
             v-else
             :recent="rail?.theOneList ?? null"
             @open="select"
-            :busy="store.isLaunching()"
+            :busy="frontDoorLaunch.busy.value || store.isLaunching()"
             :error="store.launchError.value"
             :refused-as="store.launchRefusal.value"
             :debug="debug"
@@ -4138,6 +4166,7 @@ onUnmounted(() => {
             :handing="drafts.paths.handing(draftSlot(null))"
             :default-provider="frontDoorProvider"
             :default-approval-mode="frontDoorApproval"
+            :approval-default-chosen="agentStore.identities.value?.defaultApprovalModeChosen"
             :capabilities="capabilities"
             :programs="programs"
             :choices="launchChoices"
@@ -4145,7 +4174,7 @@ onUnmounted(() => {
             @set-approval-default="(mode) => void setApprovalDefault(mode)"
             @auth-changed="authChangedFor"
             @open-providers="openSettings('providers')"
-            @start="start"
+            @start="startFromFrontDoor"
             @cancel="store.cancelLaunch()"
             @update:draft="(text) => drafts.write(draftSlot(null), text)"
             @toggle-debug="debug = !debug"

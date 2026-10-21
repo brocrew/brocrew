@@ -1,13 +1,13 @@
 {
   "schema": 1,
   "summary": {
-    "definedRows": 10860,
+    "definedRows": 10863,
     "tables": 496,
-    "retiredRows": 2382,
+    "retiredRows": 2389,
     "rowsByRunState": {
       "complete": 1173,
       "partial-or-invalid": 708,
-      "unrun": 8979
+      "unrun": 8982
     },
     "tablesByRunState": {
       "complete": 60,
@@ -7646,6 +7646,7 @@
       "retiredRows": [
         "M1",
         "M4",
+        "M8",
         "M9",
         "M10",
         "M11",
@@ -7654,6 +7655,7 @@
       "retirements": {
         "M1": "anchor-absent",
         "M4": "anchor-absent",
+        "M8": "anchor-absent",
         "M9": "anchor-absent",
         "M10": "file-gone",
         "M11": "file-gone",
@@ -14853,7 +14855,7 @@
         },
         {
           "id": "217:M8",
-          "fingerprint": "d68b93c46060fa3091d9c6924b7e58fa1b752ca356ad6572fc4d3911cd4234a7"
+          "fingerprint": "8d51a94778b37861a24b364191924a6e589c72192efd6c746d0dae6a2ebdee4f"
         },
         {
           "id": "217:M9",
@@ -14912,7 +14914,7 @@
           "fingerprint": "e8f4588ee1246e861d837f18fac2559167011c6b5858702a97456d171c7efa86"
         }
       ],
-      "definitionFingerprint": "5a3da1729a02e4cc2102013b03b8d980324ac4bc2b2427f8a188549e4fd15863",
+      "definitionFingerprint": "d1b489291bb5dfa900e7dc7b96ee1f6b1f06565c2877fac8ee52a8b70517206a",
       "retiredRows": [
         "M2",
         "M3",
@@ -18251,7 +18253,7 @@
         },
         {
           "id": "236:M35",
-          "fingerprint": "7bbc79a0229b4cb0458611104cb9e91249a53d32e2cce812da14abc452ad6d64"
+          "fingerprint": "e66f400e1f0dd62b9592a37c78902c8e8c9b3fc4a8e6fed0e71562e1ae19f3db"
         },
         {
           "id": "236:M36",
@@ -18298,7 +18300,7 @@
           "fingerprint": "de83f464549928b4d93f949d66ecdda1bb057c2d937ded46caf247b3e43b6133"
         }
       ],
-      "definitionFingerprint": "887ea6bcf480e771d4fe20063f80661ab241400c6c9f55964300d3255316db84",
+      "definitionFingerprint": "008160627cc15400e78bb97b5f890b9300c87929db526ff063bea5b85973b5fc",
       "retiredRows": [
         "M17",
         "M18",
@@ -31917,8 +31919,16 @@
         }
       ],
       "definitionFingerprint": "ae746b4c534a9653ccd54360d58ccf0cca8137d37fc6267d74351f1e60892586",
-      "retiredRows": [],
-      "retirements": {},
+      "retiredRows": [
+        "M2",
+        "M5",
+        "M10"
+      ],
+      "retirements": {
+        "M2": "anchor-absent",
+        "M5": "anchor-absent",
+        "M10": "anchor-absent"
+      },
       "state": "unrun",
       "artifact": null,
       "artifactRows": 0,
@@ -36303,7 +36313,7 @@
     },
     {
       "table": "367",
-      "definedRows": 18,
+      "definedRows": 20,
       "canonicalRows": [
         "M1",
         "M2",
@@ -36322,7 +36332,9 @@
         "M15",
         "M18",
         "M16",
-        "M17"
+        "M17",
+        "M19",
+        "M20"
       ],
       "rows": [
         {
@@ -36396,19 +36408,33 @@
         {
           "id": "367:M17",
           "fingerprint": "3d2770717a9ad0f5d7c2f932f685d263da962d24301e076e3c5b59eebe368c1a"
+        },
+        {
+          "id": "367:M19",
+          "fingerprint": "f8c03baa9955a4bc2e0f4ce123b7a99a52aec80a77c8305bdeb4ffcef6b09fb8"
+        },
+        {
+          "id": "367:M20",
+          "fingerprint": "423c2d25e8e529207be964f13e7bb1890a81efb1f21aa0651ab93940fbe391ba"
         }
       ],
-      "definitionFingerprint": "7a4b202c5cf0019a6d6050d139bdcbc7c445fd22222ba1b8bf355dc8d9e5cc7f",
+      "definitionFingerprint": "15206c30518fa3c834dd395a6073edce96426be5393a4abdbf7042eb8df24f18",
       "retiredRows": [
+        "M6",
+        "M7",
         "M8",
         "M9",
+        "M10",
         "M18",
         "M16",
         "M17"
       ],
       "retirements": {
+        "M6": "anchor-absent",
+        "M7": "anchor-absent",
         "M8": "anchor-absent",
         "M9": "anchor-absent",
+        "M10": "anchor-absent",
         "M18": "anchor-absent",
         "M16": "file-gone",
         "M17": "file-gone"
@@ -49739,7 +49765,7 @@
     },
     {
       "table": "500",
-      "definedRows": 14,
+      "definedRows": 15,
       "canonicalRows": [
         "M1",
         "M2",
@@ -49754,7 +49780,8 @@
         "M11",
         "M12",
         "M13",
-        "M14"
+        "M14",
+        "M15"
       ],
       "rows": [
         {
@@ -49787,15 +49814,15 @@
         },
         {
           "id": "500:M8",
-          "fingerprint": "6a39fb4ab50aca98e1e2c2f84d42563fe789ebf5a2d6dc4dc4c30898b3ad2629"
+          "fingerprint": "c2244393dc8b7273ed9de9533c1c19677e0f42a02bb9adb25ec1d23e21eddd9f"
         },
         {
           "id": "500:M9",
-          "fingerprint": "cdf6f0f50ee18112b9f3feaf939c4e3098d3d22c218c39eb4557029ca0ff52cc"
+          "fingerprint": "0dd71b7a271ffda190675d3c224669015c2a43cd9fe45652dfdf5dd28ed52c45"
         },
         {
           "id": "500:M10",
-          "fingerprint": "59d095ad00a188f6a65b1e2b6a9608d3fdacdfadc96cceb68787b6c9e7126aa8"
+          "fingerprint": "ece91280b6ea36184d771dc24786aabd4574146e5600d7082c52216d97a5ecd2"
         },
         {
           "id": "500:M11",
@@ -49812,9 +49839,13 @@
         {
           "id": "500:M14",
           "fingerprint": "b5bddf98d7807642bfa5f3e8209f7235aa131e60f7bb50f3af4211f060725f53"
+        },
+        {
+          "id": "500:M15",
+          "fingerprint": "bc9e08fe526b17581045aa1e679b8b8f74fa773a2eff4d286882c3c05fc9d3a4"
         }
       ],
-      "definitionFingerprint": "a9263e962ef821f5dc3821f59f1539e231655ba9fcef8e140a899e6aa7528f27",
+      "definitionFingerprint": "fbcaa6b38e9578db91f6fc03b1f423580bd78999c99c951cee593b9b6ccd406b",
       "retiredRows": [],
       "retirements": {},
       "state": "unrun",

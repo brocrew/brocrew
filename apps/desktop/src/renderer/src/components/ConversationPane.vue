@@ -2131,6 +2131,7 @@ onUnmounted(() => {
         :can-open-document="mayOpenADocument"
         @open-document="(resourceId) => void openResource(resourceId)"
         :session="props.record.meta"
+        :approval-saving="props.record.busy"
         :state="control"
         :shown="transcript"
         :mode="props.mode"

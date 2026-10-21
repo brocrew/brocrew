@@ -2243,15 +2243,10 @@ async function clickWhenReady(cdp, cy) {
   await cdp.evaluate(CLICK(cy))
 }
 
-/**
- * Ask for the other approval mode from the agent card on the Open tab: the mode beside the plate
- * opens what the mode means, and the change is that panel's confirm. While a change is queued the
- * same confirm takes it back.
- */
+/** Change the confirmed mode with the switch in the Open tab. */
 async function pressApproval(cdp) {
   await ensureTab(cdp, 'open')
   await clickWhenReady(cdp, 'card-approval')
-  await clickWhenReady(cdp, 'card-approval-confirm')
 }
 
 /**
@@ -8562,14 +8557,16 @@ async function main() {
       //
       // Left in the box on purpose — this step goes on to send a message anyway.
       await cdp.evaluate(SET_VALUE('prompt-input', 'hello'))
-      // 🔴 **579 · the credential sentence is behind a press now** (`EXT-010` §2.1) — *"a sign-in
-      // explanation nobody opening a conversation is wondering about… behind a disclosure."*
-      // ⛔ **Pressed here rather than dropped from the read.** The sentence is the ADAPTER's and it
-      // reaches this screen through the capability wire, which is the one trip only a live run
-      // sees; a step that stopped reading it would take that coverage with it, and one that read
-      // it without pressing would compare `''` to a regex forever. ⚠️ **`329`'s claim is *before
-      // the choice*, and a press is still before the choice** — nothing has started.
-      await clickWhenReady(cdp, 'launcher-why-credential')
+      const needsChoice = await cdp.evaluate(
+        `return Boolean(document.querySelector('[data-cy=choose-ask]'))`,
+      )
+      if (needsChoice) {
+        const disabled = await cdp.evaluate(
+          `return document.querySelector('[data-cy=send-prompt]')?.disabled === true`,
+        )
+        if (!disabled) throw new Error('the first launcher can send without an approval choice')
+        await clickWhenReady(cdp, 'choose-ask')
+      }
       const surface = await waitFor(
         'the new-conversation surface',
         async () =>
@@ -8596,12 +8593,6 @@ async function main() {
             // name it in a docblock, outside the template.
             // (No backticks in here either: this whole block is one template literal.)
             asked: [...el.querySelectorAll('[data-cy]')].map((node) => node.dataset.cy),
-            // 329 · what this profile does with your SIGN-IN, said before the choice is made.
-            // The launcher's own model probe is what performs the copy, so this is the screen
-            // that has to disclose it. Read live because the sentence is the adapter's and
-            // reaches here through the capability wire — a render test cannot see that trip.
-            profileCredential: el.querySelector('[data-cy=profile-credential]')?.innerText?.trim() ?? '',
-            profileCopies: el.querySelector('[data-cy=profile-credential]')?.dataset?.copies ?? null,
             // 169 §1 · whether the one control on this page can ACT. The PM found it enabled over a
             // profile name the host refuses, so presence is no longer the interesting fact.
             sendEnabled: (() => {
@@ -8683,25 +8674,6 @@ async function main() {
             `measured nothing`,
         )
       }
-      // ⛔ **329 §4.1 · what this profile does with your SIGN-IN, said before anything starts.**
-      // `417` kept this line and deleted everything around it; ⚑ **`579` put it behind the press
-      // performed above** (`EXT-010` §2.1), so the one sentence standing on this screen without a
-      // press is `provider-is-fixed`. It is read live because the sentence is the adapter's and
-      // reaches here through the capability wire, which a render test cannot see.
-      if (!/sign-in/.test(surface.profileCredential))
-        throw new Error(
-          `the launcher says nothing about this profile's sign-in: "${surface.profileCredential}"`,
-        )
-      if (surface.profileCopies !== 'yes' && surface.profileCopies !== 'no')
-        throw new Error(
-          `the credential line does not say whether a copy is made: ${surface.profileCopies}`,
-        )
-      // ⚑ The whole point of the timing clause: on a profile that EXISTS the copy is not waiting
-      // on the user, and the launcher's own model probe is one of the things that makes it.
-      if (surface.profileCopies === 'yes' && !/models it can run/.test(surface.profileCredential))
-        throw new Error(
-          `the credential line does not say when the copy happens: "${surface.profileCredential}"`,
-        )
       // ⚑ Send is pressable with words in the box and nothing else to fill in — which, since
       // `417`, is the whole of what this screen can be in.
       if (surface.sendEnabled !== true)

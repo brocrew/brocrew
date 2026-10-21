@@ -8,10 +8,6 @@ import ConversationPane from '../../src/renderer/src/components/ConversationPane
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
 import { usePersistentChoice } from '../../src/renderer/src/composables/usePersistentToggle'
 import { FIXED_SAYS } from '../../src/renderer/src/composables/useConversationControls'
-import {
-  YOLO_MEANS,
-  YOLO_MEANS_FOR_AGENTS_IT_STARTS,
-} from '../../src/renderer/src/lib/approval-mode'
 import { DEFAULT_TAB, DRAWER_TABS, isDrawerTab } from '../../src/renderer/src/lib/drawer'
 import { LEAVE_PLAN_UNAVAILABLE } from '../../src/renderer/src/lib/plan-mode'
 import type {
@@ -76,10 +72,6 @@ const settle = async (): Promise<void> => {
   }
 }
 
-/** The approval mode's own panel, open — `null` while it is shut. */
-const openPanel = (m: Mounted): HTMLElement | null =>
-  m.host.querySelector<HTMLElement>('[data-cy="card-approval-panel"]:popover-open')
-
 const said = (el: Element): string => (el.textContent ?? '').replace(/\s+/g, ' ').trim()
 
 describe('plan first, beside the model and effort', () => {
@@ -138,134 +130,39 @@ describe('plan first, beside the model and effort', () => {
   })
 })
 
-describe('the approval mode, beside the plate', () => {
-  it('shows the mode now, and opens what the mode means before anything changes', async () => {
-    const { m, asked } = thePane()
-    await settle()
-    const face = m.q('card-approval')
-    expect(face.tagName).toBe('BUTTON')
-    expect(said(face)).toBe('YOLO off')
-    // Top right of the identity: in the name's row, at its end.
-    expect(m.q('session-bot-name').parentElement?.contains(face)).toBe(true)
-    expect(face.getAttribute('aria-haspopup')).toBe('dialog')
-    expect(face.getAttribute('aria-expanded')).toBe('false')
-    expect(openPanel(m)).toBeNull()
-
-    face.click()
-    await settle()
-    const panel = openPanel(m)
-    expect(panel, 'the press opened nothing').not.toBeNull()
-    expect(face.getAttribute('aria-expanded')).toBe('true')
-    // The disclosure, whole and readable, before the confirm.
-    const means = m.q('yolo-means')
-    expect(visible(means)).toBe(true)
-    expect(said(means)).toContain(YOLO_MEANS)
-    expect(said(m.q('yolo-means-descendants'))).toBe(YOLO_MEANS_FOR_AGENTS_IT_STARTS)
-    const reach = allProviderCapabilities().claude.approvals
-    expect(said(m.q('yolo-reach'))).toBe(reach.state === 'available' ? (reach.note ?? '') : '')
-    expect(said(m.q('card-approval-now'))).toContain('Changes apply from your next message.')
-    // ⛔ Opening asked for nothing: the change is the confirm.
-    expect(asked.approval).toEqual([])
-
-    const confirm = m.q('card-approval-confirm')
-    expect(said(confirm)).toBe('Turn YOLO on from your next message')
-    confirm.click()
-    await settle()
-    expect(asked.approval).toEqual(['auto'])
-    expect(openPanel(m), 'the confirm left the panel open').toBeNull()
-    expect(document.activeElement).toBe(face)
-  })
-
-  it('Escape closes the panel, asks for nothing, and gives focus back to the face', async () => {
-    const { m, asked } = thePane()
-    await settle()
-    m.q('card-approval').click()
-    await settle()
-    expect(openPanel(m)).not.toBeNull()
-    await userEvent.keyboard('{Escape}')
-    await settle()
-    expect(openPanel(m)).toBeNull()
-    expect(document.activeElement).toBe(m.q('card-approval'))
-    expect(asked.approval).toEqual([])
-  })
-
-  it('while a change waits: the mode now, and the mode from the next message, both ways', async () => {
-    const toYolo = thePane({ approvalMode: 'ask', pendingApprovalMode: 'auto' })
-    await settle()
-    expect(said(toYolo.m.q('card-approval'))).toBe('YOLO off')
-    expect(toYolo.m.q('card-approval').dataset.pending).toBe('auto')
-    expect(said(toYolo.m.q('card-approval-pending'))).toBe('Ask now · YOLO from your next message')
-    // Its panel takes the queued change back rather than asking for it again.
-    toYolo.m.q('card-approval').click()
-    await settle()
-    expect(said(toYolo.m.q('card-approval-confirm'))).toBe('Keep asking')
-    toYolo.m.q('card-approval-confirm').click()
-    await settle()
-    expect(toYolo.asked.approval).toEqual(['ask'])
-    toYolo.m.unmount()
-
-    const toAsk = thePane({
-      approvalMode: 'auto',
-      pendingApprovalMode: 'ask',
-      approvalNote: 'approvals: YOLO',
-    })
-    await settle()
-    expect(said(toAsk.m.q('card-approval'))).toBe('YOLO now')
-    expect(said(toAsk.m.q('card-approval-pending'))).toBe('YOLO now · Ask from your next message')
-    toAsk.m.unmount()
-
-    // The control: nothing queued, no line.
-    const steady = thePane()
-    await settle()
-    expect(steady.m.all('card-approval-pending')).toHaveLength(0)
-    expect(said(steady.m.q('card-approval'))).toBe('YOLO off')
-  })
-})
-
-describe('a conversation whose settings are fixed', () => {
-  it('reads its approval mode and plan, and changes neither', async () => {
+// The approved switch replaces the disclosure/confirm popup; the confirmed and queued facts stay separate.
+describe('the approval switch beside the plate', () => {
+  it.each(['ask', 'auto'] as const)(
+    'shows confirmed %s and asks for the opposite mode',
+    async (mode) => {
+      const { m, asked } = thePane({ approvalMode: mode })
+      await settle()
+      const face = m.q('card-approval') as HTMLInputElement
+      expect(face.getAttribute('role')).toBe('switch')
+      expect(face.checked).toBe(mode === 'auto')
+      expect(m.q('session-bot-name').parentElement?.contains(face)).toBe(true)
+      face.click()
+      await settle()
+      expect(asked.approval).toEqual([mode === 'auto' ? 'ask' : 'auto'])
+      expect(face.checked).toBe(mode === 'auto')
+    },
+  )
+  it('cannot change a fixed conversation', async () => {
     const { m, asked } = thePane({}, { fixed: true })
     await settle()
-    const plan = m.q('card-run-plan')
-    expect(plan.tagName).toBe('SPAN')
-    expect(plan.title).toBe(FIXED_SAYS)
-    plan.click()
-
-    const face = m.q('card-approval')
-    expect(face.dataset.changeable).toBe('false')
+    const face = m.q('card-approval') as HTMLInputElement
+    expect(face.disabled).toBe(true)
     face.click()
     await settle()
-    expect(openPanel(m)).not.toBeNull()
-    expect(said(m.q('card-approval-fixed'))).toBe(FIXED_SAYS)
-    expect(m.all('card-approval-confirm')).toHaveLength(0)
     expect(asked.approval).toEqual([])
-    expect(asked.settings).toEqual([])
-
-    // The control: the same conversation, live, offers both.
-    const live = thePane()
-    await settle()
-    expect(live.m.q('card-run-plan').tagName).toBe('BUTTON')
-    expect(live.m.q('card-approval').dataset.changeable).toBe('true')
+    expect(m.q('card-run-plan').title).toBe(FIXED_SAYS)
   })
-})
-
-describe('the YOLO meaning on a conversation whose settings are fixed', () => {
-  it('is shown for a pending switch to YOLO, and not for a plain Ask', async () => {
-    const pendingYolo = thePane(
-      { approvalMode: 'ask', pendingApprovalMode: 'auto' },
-      { fixed: true },
-    )
+  it('a queued change does not pretend the current turn already changed', async () => {
+    const { m } = thePane({ approvalMode: 'ask', pendingApprovalMode: 'auto' })
     await settle()
-    pendingYolo.m.q('card-approval').click()
-    await settle()
-    expect(pendingYolo.m.all('yolo-means')).toHaveLength(1)
-
-    // The control: the same fixed conversation with nothing pending says nothing about YOLO.
-    const plainAsk = thePane({ approvalMode: 'ask' }, { fixed: true })
-    await settle()
-    plainAsk.m.q('card-approval').click()
-    await settle()
-    expect(plainAsk.m.all('yolo-means')).toHaveLength(0)
+    expect((m.q('card-approval') as HTMLInputElement).checked).toBe(false)
+    expect(m.q('card-approval').dataset.pending).toBe('auto')
+    expect(m.q('card-approval').parentElement?.title).toContain('next message')
   })
 })
 
@@ -354,30 +251,15 @@ describe('keyboard reach and accessible names', () => {
     expect(asked.settings).toEqual([{ kind: 'planMode', on: true }])
   })
 
-  it('the approval mode is a named button whose panel is a named dialog, worked by keys', async () => {
-    const { m, asked } = thePane({ approvalMode: 'ask', pendingApprovalMode: 'auto' })
+  it('the switch is reachable and works with Space', async () => {
+    const { m, asked } = thePane()
     await settle()
     const face = m.q('card-approval')
-    const named = page.getByRole('button', {
-      name: 'Approval mode: YOLO off; YOLO from your next message',
-    })
-    expect(named.elements()).toEqual([face])
-
+    expect(page.getByRole('switch', { name: 'Auto mode' }).elements()).toEqual([face])
     face.focus()
-    await userEvent.keyboard('{Enter}')
+    await userEvent.keyboard(' ')
     await settle()
-    const panel = openPanel(m)
-    expect(panel).not.toBeNull()
-    expect(page.getByRole('dialog', { name: 'Approval mode' }).elements()).toEqual([panel])
-    // Focus is on the panel, so the meaning is read before a key can change the mode.
-    expect(document.activeElement).toBe(panel)
-    await userEvent.tab()
-    expect(document.activeElement).toBe(m.q('card-approval-confirm'))
-    await userEvent.keyboard('{Escape}')
-    await settle()
-    expect(openPanel(m)).toBeNull()
-    expect(document.activeElement).toBe(face)
-    expect(asked.approval).toEqual([])
+    expect(asked.approval).toEqual(['auto'])
   })
 })
 

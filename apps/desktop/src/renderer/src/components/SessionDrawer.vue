@@ -49,6 +49,7 @@ import SessionWork from './SessionWork.vue'
  * The drawer shares the conversation body's light scope so adjacent panels, overlays and image chrome use a coherent surface. Documents inside a tab retain their own paper body and Markdown/Raw views.
  */
 const props = defineProps<{
+  approvalSaving?: boolean
   session: CreatedSession
   /** What is OPEN — the session's control projection (064), never the fold on screen. */
   state: TranscriptState
@@ -465,6 +466,7 @@ function steer(event: KeyboardEvent, at: number): DrawerTab | null {
       :aria-labelledby="stop ? tabDomId(stop) : undefined"
     >
       <SessionPanel
+        :approval-saving="props.approvalSaving"
         v-if="props.tab === 'open'"
         :state="props.state"
         :shown="props.shown"

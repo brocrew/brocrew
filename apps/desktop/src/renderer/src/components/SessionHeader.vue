@@ -2,7 +2,6 @@
 import type { ProviderLimitDisplay } from '../lib/provider-limit-status'
 import { computed, nextTick, onScopeDispose, ref, watch } from 'vue'
 import {
-  YOLO_LABEL,
   type CreatedSession,
   type ProviderCapabilityMap,
   type SessionStatus,
@@ -405,9 +404,11 @@ const providerDetail = computed(() => {
  */
 const yoloTitle = computed(() => {
   const session = props.session
+  if (session?.approvalMode === 'ask')
+    return 'Asks when an action needs permission. Change it in the drawer’s Open tab.'
   const status = session ? props.capabilities?.[session.provider]?.approvals : undefined
   const declared = status?.state === 'available' ? status.note : undefined
-  return `Yolo — the CLIs’ --dangerously-skip-permissions and --yolo. This session runs commands and edits files without asking, except what the provider’s own plan mode asks while it plans, and nothing this app configures confines them. ${declared ?? ''} Change it in the drawer’s Open tab.`.replace(
+  return `Auto — the CLIs’ --dangerously-skip-permissions and --yolo. This session runs commands and edits files without asking, except what the provider’s own plan mode asks while it plans, and nothing this app configures confines them. ${declared ?? ''} Change it in the drawer’s Open tab.`.replace(
     /\s+/g,
     ' ',
   )
@@ -700,14 +701,14 @@ const panelToggleName = computed(() =>
            ⚑ **Both live smoke steps read this pill with `/YOLO/`**, a regex over the trimmed text,
            so the shorter mark does not move them. -->
       <span
-        v-if="session && session.approvalMode === 'auto'"
+        v-if="session"
         class="liveness auto yolo-mark"
         data-cy="session-approval-indicator"
         :data-mode="session.approvalMode"
         :data-pending="session.pendingApprovalMode ?? ''"
         :title="yoloTitle"
       >
-        <span class="dot"></span>{{ YOLO_LABEL }}
+        <span class="dot"></span>{{ session.approvalMode === 'auto' ? 'Auto' : 'Ask' }}
       </span>
 
       <!-- What the agent is doing and when it last reported, at the end of the line. It takes

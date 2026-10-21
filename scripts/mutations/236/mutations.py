@@ -421,8 +421,9 @@ MUTATIONS = [
         [
             (
                 SCREEN,
-                '      restoreRefused(draftSlot(null), firstMessage, attachments)',
-                '      drafts.write(draftSlot(null), firstMessage)',
+                # Source-only NOT VERIFIED: keep the failed-creation attachment-loss subject.
+                '      restoreRefused(draftSlot(null), firstMessage, attachments)\n    }\n    return\n  }',
+                '      drafts.write(draftSlot(null), firstMessage)\n    }\n    return\n  }',
             ),
         ],
     ),

@@ -307,7 +307,7 @@ describe('the top bar states and does not act (079 §1)', () => {
   it('says nothing about approvals while the session still asks, and shouts when it stops', async () => {
     // A permanent "approvals: ask" is a label nobody keeps reading; the whole value of the pill is
     // that its appearance is the news (082).
-    expect(await pane()).not.toContain('data-cy="session-approval-indicator"')
+    expect(await pane()).toContain('data-cy="session-approval-indicator"')
 
     const auto = await pane({
       record: record([], { ...META, approvalMode: 'auto', approvalNote: 'approvals: auto' }),
@@ -317,7 +317,7 @@ describe('the top bar states and does not act (079 §1)', () => {
     // `--dangerously-skip-permissions`. `the-conversation-header.test.ts` §2 asserts that
     // disclosure clauses stay out of the mark while both facts remain in `yoloTitle`. This
     // block pins the visible word read by two live smoke steps using `/YOLO/`.
-    expect(auto).toContain('YOLO')
+    expect(auto).toContain('Auto')
     expect(auto, 'the word it was named after is gone').not.toContain('AUTO')
     // ⚠️ **And the two clauses really are off this surface**, so the shortening is measured here
     // rather than only asserted one file over.
@@ -327,7 +327,7 @@ describe('the top bar states and does not act (079 §1)', () => {
     // is `a-source-census-must-strip-prose-before-it-asserts` arriving through a render instead of
     // through a file read. ⚑ The paired positive is the line above: `YOLO` survives the strip.
     const seen = auto.replace(/<!--[\s\S]*?-->/g, ' ')
-    expect(seen, 'the strip ate the mark as well').toContain('YOLO')
+    expect(seen, 'the strip ate the mark as well').toContain('Auto')
     expect(seen).not.toContain('nothing is confined')
     expect(seen).not.toContain('nothing is asked')
     // Read-only up top: the toggle is on the agent card, and one `data-cy` cannot mean both.
@@ -508,7 +508,7 @@ describe('one drawer, every tab live (079 §2 → 096 → 508)', () => {
     expect(tag(html, 'card-run-model')).toMatch(/^<button/)
     expect(tag(html, 'card-run-effort')).toMatch(/^<button/)
     expect(tag(html, 'card-run-plan')).toMatch(/^<button/)
-    expect(tag(html, 'card-approval')).toMatch(/^<button/)
+    expect(tag(html, 'card-approval')).toMatch(/^<input/)
     // App reading appearance belongs to the titlebar, outside conversation-specific controls.
     expect(html).not.toContain('data-cy="toggle-chat-theme"')
     // 034/076's rule, said where the change is asked for.
@@ -547,40 +547,32 @@ describe('one drawer, every tab live (079 §2 → 096 → 508)', () => {
     expect(none).not.toContain('data-cy="info-grants"')
   })
 
-  it('⛔ says what yolo MEANS at the second place the mode is chosen — and nothing while it asks (171 §3)', async () => {
-    // In yolo, shell commands do not respect a `userData` boundary. The launcher discloses
-    // this when its box is armed; this button is the other entry into that mode and needs the
-    // same disclosure.
-    // ⚑ **The face opens a panel and changes nothing itself**: the confirm that changes the mode
-    // exists only once the panel is open, so the meaning is on screen before the decision. SSR
-    // cannot open it; what it is shown to say is pinned in
-    // `dom/the-agent-panels-plan-and-approval-mode.dom.test.ts`.
+  it('uses a real Ask/Auto switch on the agent card', async () => {
     const asking = await drawer({ tab: 'open' })
-    expect(tag(asking, 'card-approval')).toContain('aria-haspopup="dialog"')
-    expect(tag(asking, 'card-approval-panel')).toContain('role="dialog"')
+    expect(tag(asking, 'card-approval')).toContain('role="switch"')
+    expect(tag(asking, 'card-approval')).toContain('data-mode="ask"')
     expect(asking).not.toContain('data-cy="card-approval-confirm"')
-    expect(asking).not.toContain('data-cy="yolo-means"')
-
-    // 🔴 **529 · and the disclosure is INSIDE what the face opens, ahead of the confirm** — the
-    // ruling's own exception (`HO-050` §1.2): `514` F1 is *a caveat placed after the verdict argues
-    // with a decision the reader has already taken*. Read off the component, in order.
-    const source = readFileSync(
-      fileURLToPath(new URL('../src/renderer/src/components/CardApproval.vue', import.meta.url)),
-      'utf8',
-    )
-    const template = source.slice(source.indexOf('<template>'))
-    const panel = template.indexOf('data-cy="card-approval-panel"')
-    const means = template.indexOf('data-cy="yolo-means"')
-    const confirm = template.indexOf('data-cy="card-approval-confirm"')
-    expect(panel, 'the panel is not in the template').toBeGreaterThan(-1)
-    expect(means, 'the disclosure is not inside the panel').toBeGreaterThan(panel)
-    expect(confirm, 'the confirm comes before what it confirms').toBeGreaterThan(means)
-    for (const said of ['yolo-reach', 'yolo-means-descendants']) {
-      const at = template.indexOf(`data-cy="${said}"`)
-      expect(at, `${said} is not between the disclosure and the confirm`).toBeGreaterThan(means)
-      expect(at).toBeLessThan(confirm)
-    }
+    expect(asking).not.toContain('data-cy="card-approval-panel"')
   })
+
+  it.each(['ask', 'auto'] as const)(
+    'the bar and the card switch both state a conversation running in %s',
+    async (mode) => {
+      const meta: CreatedSession = {
+        ...META,
+        approvalMode: mode,
+        approvalNote: `approvals: ${mode}`,
+      }
+      const bar = await pane({ record: record([], meta) })
+      const mark = tag(bar, 'session-approval-indicator')
+      // The pill's own text, not its title, which names the mode as well.
+      const word = bar.slice(bar.indexOf(mark) + mark.length).match(/^(?:<[^>]*>)*([^<]*)/)?.[1]
+      expect(word?.trim()).toBe(mode === 'auto' ? 'Auto' : 'Ask')
+      const card = tag(await drawer({ session: meta, tab: 'open' }), 'card-approval')
+      expect(card).toContain(`data-mode="${mode}"`)
+      expect(/\schecked(?=[\s>=/])/.test(card)).toBe(mode === 'auto')
+    },
+  )
 })
 
 describe('the attention model, built (079 §5)', () => {
@@ -668,7 +660,7 @@ describe('the attention model, built (079 §5)', () => {
     // records. ⛔ What this line is FOR is unchanged: an unattended session still SAYS so on the
     // bar, without the drawer being open, which is `063`'s rule and the whole of this test.
     expect(html).toContain('data-cy="session-approval-indicator"')
-    expect(html).toContain('YOLO')
+    expect(html).toContain('Auto')
   })
 })
 

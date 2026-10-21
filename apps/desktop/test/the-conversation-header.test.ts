@@ -250,7 +250,9 @@ describe('§2 · the yolo mark on the bar (579)', () => {
     const from = HEADER.indexOf('data-cy="session-approval-indicator"')
     expect(from, 'the mark is not in this component any more').toBeGreaterThan(-1)
     const mark = HEADER.slice(from, HEADER.indexOf('</span>', HEADER.indexOf('</span>', from) + 1))
-    expect(mark, 'the mark stopped rendering the label').toContain('{{ YOLO_LABEL }}')
+    expect(mark, 'the mark stopped rendering the label').toContain(
+      "session.approvalMode === 'auto' ? 'Auto' : 'Ask'",
+    )
     // ⛔ **The two clauses are gone from the BAR** — the reversal, stated as an assertion.
     expect(mark).not.toContain('nothing is asked')
     expect(mark).not.toContain('nothing is confined')

@@ -98,20 +98,7 @@ import {
   type PickedModel,
 } from '../lib/model-lists'
 import { useModelLists } from '../composables/useModelLists'
-import { profileCredential } from '../lib/profile-credential'
-// ⛔ **The sentence lives in a lib so a test can hold the exact string** (standing rule 5, and
-// `384 §1.1`'s precedent for `PROFILE_OWNS`). A safety sentence written inline is one a census
-// cannot pin by name, and this one is load-bearing — see {@link providerIsFixed}.
-import {
-  CHANGEABLE_LIVE_IN,
-  FOLDED_ON_THE_FRONT_DOOR,
-  LAUNCH_APPROVAL_BOUND,
-  launchApprovalView,
-  providerIsFixed,
-  signInAtAGlance,
-  type FoldedExplanation,
-} from '../lib/front-door-words'
-import { YOLO_MEANS } from '../lib/approval-mode'
+import { CHANGEABLE_LIVE_IN } from '../lib/front-door-words'
 import type { DraftHanding } from '../lib/drafts'
 import { readableError } from '../lib/session-record'
 import type { SendIntent } from '../lib/session-store'
@@ -211,102 +198,106 @@ const LAUNCHER_FACETS = sessionFacets({
  * form-submit inside a disclosure, and only the form captured the provider select, so picking
  * Claude and typing started Codex. There is one door, and now there is nothing on it to miss.
  */
-const props = defineProps<{
-  busy: boolean
-  error: string | null
-  recent?: readonly ListedConversation[] | null
-  /**
-   * 🔴 **725 · `716` F-1 — the word main refused this surface's last start with**
-   * (`store.launchRefusal`), or `null`/absent where it gave none — see {@link theCheckCanSayMore}.
-   * ⚑ Optional, and absent runs the check exactly as before: a mount that hands no word is a mount
-   * that knows only the sentence.
-   */
-  refusedAs?: LaunchRefusal | null
-  debug: boolean
-  /** What is typed on THIS surface and not yet sent (019) — its own slot, no session id yet. */
-  draft: string
-  /**
-   * ⛔ **The FIRST message's attachment transaction** (217, 292 §2) — owned by the caller and keyed
-   * `NEW_CONVERSATION`, exactly as {@link draft} is, for the same `019` reason: this surface is
-   * torn down whenever a conversation opens over it, so anything it owned itself would not survive
-   * leaving and coming back. ⚑ It rides in the draft book's own `paths` shelf, which `keepOnly`
-   * already prunes with the words — so there is no second lifetime to get wrong.
-   *
-   * ⚠️ **A LIST was not enough, and this surface is where that is easiest to see** (`288` H2). It
-   * is unmounted for as long as any conversation is on screen, so a screenshot pasted here and
-   * answered after you opened a thread reached nothing at all. ⛔ **Required**: the failure mode of
-   * a missing one is silence, and the typechecker is the only reader this repository has for
-   * `RuntimeScreen`'s bindings.
-   */
-  handing: DraftHanding
-  /**
-   * 🔴 **What this conversation will run on, and cannot stop running on** (417, 423).
-   *
-   * ⚠️ **It stopped being a default the moment the select went**, and at `423` it stopped being a
-   * constant. Its source is now `RuntimeScreen.frontDoorProvider` — *BroBot's identity's provider,
-   * or `DEFAULT_PROVIDER` when that identity has not said* — which is `admitGive`'s resolution
-   * order with the giver term removed, because a launch has no parent. ⛔ **The name stays
-   * `defaultProvider` because that is what it is to THIS surface**: a value it did not choose,
-   * cannot move, and must say out loud.
-   *
-   * 🔴 **This screen CAN move it since `435`, and only before the conversation starts** (HO-025 §4).
-   * ⚑ Since UI-012 the model picker writes the asked term that `providerForALaunch` ranks first —
-   * a model is a provider's — so this prop is still the resolved answer: see {@link startOn}.
-   * ⛔ **Once the conversation is open
-   * nothing anywhere can move it**, as `417 §3` measured, which is why it is SAID rather than merely
-   * obeyed: see {@link providerIsFixed}. ⚑ The sentence, the control and the payload below read this
-   * one prop, so the screen cannot name a provider the launch did not use.
-   */
-  defaultProvider: Provider
-  /**
-   * 🔴 **The mode this conversation will begin in, because a person set it once** (500,
-   * HO-036 §3.1) — *"a person sets their approval mode once, and every conversation they start
-   * begins there."*
-   *
-   * ⛔ **`null` is *nobody has answered yet* and it is not `ask`** — `086`'s rule, on the one
-   * control where the wrong default is dangerous in both directions. It arrives null until
-   * `agentStore.load()` answers, which is the SAME window {@link defaultProvider} has and which
-   * `RuntimeScreen.frontDoorProvider`'s docblock rules open on purpose. ⚑ **The launch still sends
-   * `'ask'` in that window** — see {@link settings} — and the control SAYS the row has not been
-   * read rather than drawing a state nobody has established.
-   *
-   * ⚑ **Resolved by the screen and passed in, exactly as {@link defaultProvider} is**, so the
-   * sentence this surface shows and the value the launch sends are one value and cannot come
-   * apart. ⛔ **That placement is also the safety property**: the default is spent HERE, above the
-   * IPC boundary, so nothing below it — and therefore no spawn — can read it.
-   */
-  defaultApprovalMode: 'ask' | 'auto' | null
-  /**
-   * What each provider can do, declared by its adapter (039) — the only thing this surface is
-   * allowed to consult when deciding what it may say.
-   *
-   * `null` while the fetch is in flight, and it means **say nothing**: a sentence shown on a guess
-   * and then withdrawn is worse than one that arrives a moment late.
-   */
-  capabilities: ProviderCapabilityMap | null
-  /**
-   * The program each provider runs on this computer, as the screen above read it
-   * (`providerVersions`). The form speaks only when the one it starts on is missing, unreadable or
-   * older than the versions tested ({@link A_STANDING_WARNS}); absent says nothing.
-   */
-  programs?: Readonly<Partial<Record<Provider, ProviderProgram>>> | null
-  /**
-   * 🔴 **UI-012 · the window's model lists** — injectable for tests; the window's one holder
-   * otherwise (`useModelLists`). ⚑ BroBot's two lists are already being read by the screen above
-   * (`RuntimeScreen.shownProfiles`), so the picker's face costs no provider child.
-   */
-  lists?: ModelLists
-  /**
-   * 🔴 **The three answers a person may have given before pressing send** (435, HO-025 §4/§5) —
-   * owned by the screen above, because this one is torn down when a conversation opens over it.
-   *
-   * ⛔ **See {@link LaunchChoices} for why it is not a `ref` in here**: `210` typed a prompt, chose
-   * Claude, looked at another conversation and came back to the prompt under Codex. ⚑ Every one of
-   * these may be unanswered, and an unanswered one is what makes this door's launch byte-identical
-   * to the one `417` shipped.
-   */
-  choices: LaunchChoices
-}>()
+const props = withDefaults(
+  defineProps<{
+    busy: boolean
+    error: string | null
+    recent?: readonly ListedConversation[] | null
+    /**
+     * 🔴 **725 · `716` F-1 — the word main refused this surface's last start with**
+     * (`store.launchRefusal`), or `null`/absent where it gave none — see {@link theCheckCanSayMore}.
+     * ⚑ Optional, and absent runs the check exactly as before: a mount that hands no word is a mount
+     * that knows only the sentence.
+     */
+    refusedAs?: LaunchRefusal | null
+    debug: boolean
+    /** What is typed on THIS surface and not yet sent (019) — its own slot, no session id yet. */
+    draft: string
+    /**
+     * ⛔ **The FIRST message's attachment transaction** (217, 292 §2) — owned by the caller and keyed
+     * `NEW_CONVERSATION`, exactly as {@link draft} is, for the same `019` reason: this surface is
+     * torn down whenever a conversation opens over it, so anything it owned itself would not survive
+     * leaving and coming back. ⚑ It rides in the draft book's own `paths` shelf, which `keepOnly`
+     * already prunes with the words — so there is no second lifetime to get wrong.
+     *
+     * ⚠️ **A LIST was not enough, and this surface is where that is easiest to see** (`288` H2). It
+     * is unmounted for as long as any conversation is on screen, so a screenshot pasted here and
+     * answered after you opened a thread reached nothing at all. ⛔ **Required**: the failure mode of
+     * a missing one is silence, and the typechecker is the only reader this repository has for
+     * `RuntimeScreen`'s bindings.
+     */
+    handing: DraftHanding
+    /**
+     * 🔴 **What this conversation will run on, and cannot stop running on** (417, 423).
+     *
+     * ⚠️ **It stopped being a default the moment the select went**, and at `423` it stopped being a
+     * constant. Its source is now `RuntimeScreen.frontDoorProvider` — *BroBot's identity's provider,
+     * or `DEFAULT_PROVIDER` when that identity has not said* — which is `admitGive`'s resolution
+     * order with the giver term removed, because a launch has no parent. ⛔ **The name stays
+     * `defaultProvider` because that is what it is to THIS surface**: a value it did not choose,
+     * cannot move, and must say out loud.
+     *
+     * 🔴 **This screen CAN move it since `435`, and only before the conversation starts** (HO-025 §4).
+     * ⚑ Since UI-012 the model picker writes the asked term that `providerForALaunch` ranks first —
+     * a model is a provider's — so this prop is still the resolved answer: see {@link startOn}.
+     * ⛔ **Once the conversation is open
+     * nothing anywhere can move it**, as `417 §3` measured, which is why it is SAID rather than merely
+     * obeyed: see {@link providerIsFixed}. ⚑ The sentence, the control and the payload below read this
+     * one prop, so the screen cannot name a provider the launch did not use.
+     */
+    defaultProvider: Provider
+    /**
+     * 🔴 **The mode this conversation will begin in, because a person set it once** (500,
+     * HO-036 §3.1) — *"a person sets their approval mode once, and every conversation they start
+     * begins there."*
+     *
+     * ⛔ **`null` is *nobody has answered yet* and it is not `ask`** — `086`'s rule, on the one
+     * control where the wrong default is dangerous in both directions. It arrives null until
+     * `agentStore.load()` answers, which is the SAME window {@link defaultProvider} has and which
+     * `RuntimeScreen.frontDoorProvider`'s docblock rules open on purpose. ⚑ **The launch still sends
+     * `'ask'` in that window** — see {@link settings} — and the control SAYS the row has not been
+     * read rather than drawing a state nobody has established.
+     *
+     * ⚑ **Resolved by the screen and passed in, exactly as {@link defaultProvider} is**, so the
+     * sentence this surface shows and the value the launch sends are one value and cannot come
+     * apart. ⛔ **That placement is also the safety property**: the default is spent HERE, above the
+     * IPC boundary, so nothing below it — and therefore no spawn — can read it.
+     */
+    defaultApprovalMode: 'ask' | 'auto' | null
+    approvalDefaultChosen?: boolean
+    /**
+     * What each provider can do, declared by its adapter (039) — the only thing this surface is
+     * allowed to consult when deciding what it may say.
+     *
+     * `null` while the fetch is in flight, and it means **say nothing**: a sentence shown on a guess
+     * and then withdrawn is worse than one that arrives a moment late.
+     */
+    capabilities: ProviderCapabilityMap | null
+    /**
+     * The program each provider runs on this computer, as the screen above read it
+     * (`providerVersions`). The form speaks only when the one it starts on is missing, unreadable or
+     * older than the versions tested ({@link A_STANDING_WARNS}); absent says nothing.
+     */
+    programs?: Readonly<Partial<Record<Provider, ProviderProgram>>> | null
+    /**
+     * 🔴 **UI-012 · the window's model lists** — injectable for tests; the window's one holder
+     * otherwise (`useModelLists`). ⚑ BroBot's two lists are already being read by the screen above
+     * (`RuntimeScreen.shownProfiles`), so the picker's face costs no provider child.
+     */
+    lists?: ModelLists
+    /**
+     * 🔴 **The three answers a person may have given before pressing send** (435, HO-025 §4/§5) —
+     * owned by the screen above, because this one is torn down when a conversation opens over it.
+     *
+     * ⛔ **See {@link LaunchChoices} for why it is not a `ref` in here**: `210` typed a prompt, chose
+     * Claude, looked at another conversation and came back to the prompt under Codex. ⚑ Every one of
+     * these may be unanswered, and an unanswered one is what makes this door's launch byte-identical
+     * to the one `417` shipped.
+     */
+    choices: LaunchChoices
+  }>(),
+  { approvalDefaultChosen: undefined },
+)
 
 const emit = defineEmits<{
   /**
@@ -494,31 +485,6 @@ const signInCapability = computed<CapabilityStatus>(
 )
 const reprovisionCapability = computed<CapabilityStatus>(
   () => props.capabilities?.[props.defaultProvider]?.reprovisionAuth ?? pendingCapability,
-)
-
-/**
- * 🔴 **What this profile does with your sign-in, before you commit to it** (329 §4.1/§4.2).
- *
- * ⛔ **The third credential capability, and the only one that is not about a button.** `signIn` and
- * `reprovisionAuth` above are read by `SignInPanel`, which by design *"only appears after a
- * launch"* — so until now nothing on this screen said anything about a credential before the
- * decision was made, while the screen itself was busy making a copy of one.
- *
- * ⚠️ **Indexed like its two neighbours, and it must NOT be inferred from `reprovisionCapability`.** Both
- * happen to be `available` on the same provider today; one is *"you may press a button to re-copy"*
- * and the other is *"a copy was made without anyone pressing anything"*, and reading the second off
- * the first is exactly the inference `039` exists to stop.
- */
-const homeCredentialCapability = computed<CapabilityStatus>(
-  () => props.capabilities?.[props.defaultProvider]?.homeCredential ?? pendingCapability,
-)
-
-/** The sentence and its register, from `profile-credential.ts` — this file writes neither. */
-const credentialLine = computed(() =>
-  // ⚠️ **`'existing'`, and the branch that chose it is gone with `+ New profile…`** (417) — see
-  // the template comment, and `CredentialWhen`'s own docblock for why a seeded profile is never
-  // the `'new'` case.
-  profileCredential(homeCredentialCapability.value, 'existing'),
 )
 
 /**
@@ -906,98 +872,25 @@ onMounted(() => {
  */
 const sends = computed(() => theFormSends(props.choices, heldList.value))
 
-/**
- * 🔴 **The control's words, from the one derivation** (500) — see {@link launchApprovalView}.
- *
- * ⚠️ **The view and {@link settings} read the same prop**, which is `frontDoorProvider`'s rule one
- * setting over: what this screen SAYS and what the launch SENDS cannot come apart, because there is
- * one value and neither of them re-ranks it.
- */
-const approvalView = computed(() => launchApprovalView(props.defaultApprovalMode))
+const firstApproval = ref<'ask' | 'auto' | null>(null)
+const needsApproval = computed(
+  () => props.approvalDefaultChosen === false || props.defaultApprovalMode === null,
+)
+const launchMode = computed(() =>
+  needsApproval.value ? firstApproval.value : props.defaultApprovalMode,
+)
+const approvalBlocked = computed(() =>
+  props.defaultApprovalMode === null || launchMode.value === null
+    ? 'Choose Ask or Auto before sending.'
+    : null,
+)
 
-/**
- * # 🔴 What is behind a press, and what a press does to this screen (579, `EXT-010` §2.1)
- *
- * ⛔ **`SessionInfo.vue`'s idiom, not a new one** — a chevron button carrying `aria-expanded`, and
- * a body under a `v-if`. ⚑ **The `Set` is that panel's shape too**, kept even at two members
- * because {@link FOLDED_ON_THE_FRONT_DOOR} is a table a third row can be added to, and a pair of
- * booleans is the thing that stops being right the moment somebody does.
- *
- * ## ⚠️ Closed by default, and that IS the change
- *
- * ⛔ **Not remembered across mounts, and deliberately.** This surface is torn down the moment a
- * conversation opens over it, so *remembering* would mean writing a person's reading habits to the
- * ledger to save them one press — ⚑ and the whole dispatch is about what the screen shows a person
- * who has not asked for anything.
- *
- */
-const open = ref<Set<FoldedExplanation>>(new Set())
-
-/** ⚑ **A new `Set` rather than a mutation**, so the `ref` actually reports the change. */
-function toggle(which: FoldedExplanation): void {
-  const next = new Set(open.value)
-  if (!next.delete(which)) next.add(which)
-  open.value = next
-}
-
-/**
- * 🔴 **The setting's accessible name, and why it needs three ids** (579, `EXT-010` §2.2).
- *
- * ⛔ **Shortening the button's face moved the SUBJECT out of its accessible name.** It read
- * *"New conversations ask you first"* and now reads *"Asks you first"*, with `Every new
- * conversation` beside it as a `<p>` — and a `<p>` next to a button is not part of anything a
- * screen reader announces. ⚠️ **The `auto` arm made that measurable rather than theoretical**: its
- * press line is *"Press to be asked again, as the provider’s own CLI asks by default"* (`736`;
- * *"…before anything consequential"* until then), which names no scope either, so a non-sighted
- * person would have heard *"Does not ask"* about nothing at all.
- *
- * ⚑ **So the label is the pair** — what it governs, then its state — and the consequence line is
- * the DESCRIPTION, which is what `aria-describedby` is for and what keeps *press to…* out of the
- * name a chooser reads aloud in a list of controls.
- *
- * ⚠️ **`useId` and not a literal**, because two mounts of this component in one document would
- * otherwise point every button at the first one's paragraph — which is not hypothetical: the dom
- * tests mount it twice in a file, and `profile-credential.dom.test.ts` does exactly that to
- * compare two providers side by side.
- */
 const recentHeadingId = useId()
-const governsId = useId()
-const saysId = useId()
-const pressId = useId()
-
-/**
- * 🔴 **The differing half of the yolo sentence, for the provider this launch will run on** (500,
- * from 367 / HO-011 §3.2).
- *
- * ⛔ **The same computed as `useConversationControls`', because it is the same disclosure at the other
- * moment of choice** — 171 §3's argument for sharing `YOLO_MEANS`, extended to the half `171` did
- * not have, and now extended back to the door `417` took the mode away from. ⚑ **Two halves, and
- * `design-v2-map.ts` rules that a surface showing one of them tells a person strictly less than
- * the running app already does.**
- *
- * ⚠️ **Indexed, never recognised** — the provider is a key; no provider name appears in this
- * expression, which is `039`'s rule and what
- * `a-mode-that-says-what-it-does.test.ts` §2 pins at every surface that reads the note.
- */
-const yoloReach = computed(() => {
-  const status = props.capabilities?.[props.defaultProvider]?.approvals
-  return status?.state === 'available' ? (status.note ?? '') : ''
-})
-
-/**
- * ⛔ **What the press asks for** — read off the VIEW, so the button's sentence and the value it
- * sends are the same key. A `!== 'auto'` computed here would be a second derivation of the thing
- * {@link launchApprovalView} exists to derive once.
- */
-function pressApproval(): void {
-  const next = approvalView.value.next
-  if (next !== null) emit('setApprovalDefault', next)
-}
 
 const settings = computed<CreateSessionInput>(() => ({
   provider: props.defaultProvider,
   profileId: DEFAULT_PROFILE_ID,
-  approvalMode: props.defaultApprovalMode ?? 'ask',
+  approvalMode: launchMode.value ?? 'ask',
   ...(sends.value === null ? {} : { model: sends.value.model }),
   ...(sends.value?.effort == null ? {} : { reasoningEffort: sends.value.effort }),
 }))
@@ -1014,6 +907,7 @@ function startWith(
   _intent: SendIntent = 'now',
   attachments: HandedPath[] = [],
 ): void {
+  if (approvalBlocked.value !== null || props.busy) return
   lastTried = text
   lastTriedPaths = attachments
   // 098: mark this failure as OURS to interpret — see `launchedFromHere` above for why it is kept
@@ -1086,7 +980,6 @@ watch(
               <svg class="icon"><use href="#i-bot" /></svg>
             </div>
             <h2 class="bb-title">What should we work through?</h2>
-            <p>A fresh thread with BroBot, on the live runtime — it remembers your history.</p>
           </div>
 
           <div
@@ -1138,6 +1031,7 @@ watch(
             :draft="props.draft"
             :handing="props.handing"
             :can-attach="true"
+            :blocked="approvalBlocked"
             @send="startWith"
             @interrupt="emit('cancel')"
             @update:draft="(text) => emit('update:draft', text)"
@@ -1159,80 +1053,29 @@ watch(
               </div>
             </div>
 
-            <p class="note warn" data-cy="provider-is-fixed">
-              {{ providerIsFixed(props.defaultProvider) }}
-            </p>
-
-            <button
-              class="why"
-              :class="{ consequence: credentialLine.tone === 'consequence' }"
-              type="button"
-              :aria-expanded="open.has('credential')"
-              :data-tone="credentialLine.tone"
-              data-cy="launcher-why-credential"
-              @click="toggle('credential')"
-            >
-              <svg class="icon chev" :class="{ down: open.has('credential') }">
-                <use href="#i-chevron" />
-              </svg>
-              {{ FOLDED_ON_THE_FRONT_DOOR.credential }}
-              <span class="glance" data-cy="launcher-sign-in-glance">{{
-                signInAtAGlance(credentialLine.copies)
-              }}</span>
-            </button>
-            <p
-              v-if="open.has('credential')"
-              class="note"
-              :class="credentialLine.tone === 'consequence' ? 'warn' : 'advice'"
-              :data-copies="credentialLine.copies ? 'yes' : 'no'"
-              data-cy="profile-credential"
-            >
-              {{ credentialLine.text }}
-            </p>
-
-            <div class="setting" data-cy="launch-approval">
-              <p :id="governsId" class="governs" data-cy="launch-approval-governs">
-                {{ approvalView.governs }}
-              </p>
-              <button
-                class="approval bb-button"
-                :class="{ auto: approvalView.mode === 'auto', unread: approvalView.mode === null }"
-                type="button"
-                data-cy="launch-approval-mode"
-                :data-mode="approvalView.mode ?? ''"
-                :disabled="approvalView.next === null"
-                :aria-pressed="
-                  approvalView.mode === null ? undefined : approvalView.mode === 'auto'
-                "
-                :aria-labelledby="`${governsId} ${saysId}`"
-                :aria-describedby="approvalView.press ? pressId : undefined"
-                @click="pressApproval"
-              >
-                <strong :id="saysId" data-cy="launch-approval-says">{{
-                  approvalView.heading
-                }}</strong>
-                <small v-if="approvalView.press" :id="pressId" data-cy="launch-approval-press">
-                  {{ approvalView.press }}
-                </small>
-              </button>
-              <p v-if="approvalView.mode === 'auto'" class="note warn" data-cy="yolo-means">
-                {{ YOLO_MEANS }}
-                <span v-if="yoloReach" data-cy="yolo-reach">{{ yoloReach }}</span>
-              </p>
-              <button
-                class="why"
-                type="button"
-                :aria-expanded="open.has('approval')"
-                data-cy="launcher-why-approval"
-                @click="toggle('approval')"
-              >
-                <svg class="icon chev" :class="{ down: open.has('approval') }">
-                  <use href="#i-chevron" />
-                </svg>
-                {{ FOLDED_ON_THE_FRONT_DOOR.approval }}
-              </button>
-              <p v-if="open.has('approval')" class="note advice" data-cy="launch-approval-bound">
-                {{ LAUNCH_APPROVAL_BOUND }}
+            <div v-if="needsApproval" class="setting" data-cy="first-approval-choice">
+              <p class="governs">CHOOSE HOW THIS AGENT WORKS</p>
+              <div class="first-approval-buttons">
+                <button
+                  v-for="mode in ['ask', 'auto'] as const"
+                  :key="mode"
+                  type="button"
+                  class="bb-button"
+                  :class="{ 'bb-button--primary': firstApproval === mode }"
+                  :data-cy="`choose-${mode}`"
+                  :aria-pressed="firstApproval === mode"
+                  :disabled="props.busy"
+                  @click="firstApproval = mode"
+                >
+                  {{ mode === 'ask' ? 'Ask' : 'Auto' }}
+                </button>
+              </div>
+              <p v-if="firstApproval" class="note" data-cy="first-approval-description">
+                {{
+                  firstApproval === 'ask'
+                    ? 'Asks when an action needs permission.'
+                    : 'Runs without asking. Use it only where you trust the agent with your files.'
+                }}
               </p>
             </div>
           </div>
@@ -1243,9 +1086,7 @@ watch(
           data-cy="recent-conversations"
         >
           <h2 :id="recentHeadingId" class="bb-heading">Pick up a conversation</h2>
-          <p class="recent-intro">
-            BroBot’s recent conversations. Matching titles move first as you type.
-          </p>
+
           <p v-if="props.recent == null" class="recent-empty bb-card" data-cy="recent-loading">
             Reading recent conversations…
           </p>
@@ -1254,7 +1095,7 @@ watch(
             class="recent-empty bb-card"
             data-cy="recent-empty"
           >
-            No conversations with BroBot yet. Send a message to start one.
+            No conversations yet.
           </p>
           <div v-else class="recent-grid">
             <button
@@ -1287,6 +1128,10 @@ watch(
 </template>
 
 <style scoped>
+.first-approval-buttons {
+  display: flex;
+  gap: var(--space-4);
+}
 .conversation-pane {
   display: flex;
   min-width: 0;

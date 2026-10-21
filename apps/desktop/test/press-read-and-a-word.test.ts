@@ -123,7 +123,7 @@ describe('529 §1 · the two sentences that moved have one home', () => {
     expect(controls).not.toContain('has-a-commander')
     expect(controls).not.toContain('grants')
     // …paired, so the negatives are about the blocks and not about an empty read.
-    expect(controls).toContain('data-cy="card-approval-panel"')
+    expect(controls).toContain('role="switch"')
     expect(controls).toContain('data-cy="card-approval"')
   })
 
