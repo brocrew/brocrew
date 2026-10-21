@@ -77,7 +77,7 @@ describe('Claude’s “nothing to copy” sentence', () => {
     expect(offered).not.toContain('data-cy="sign-in-no-copy"')
   })
 
-  it('🔴 the model picker gives it as what to do when Claude could not be asked its models', () => {
+  it('🔴 the model picker directs missing setup to Settings instead of showing raw diagnostics', () => {
     const field = modelField({
       catalogue: { ok: false, reason: 'refused', detail: 'credentials expired' },
       profileExists: true,
@@ -86,7 +86,8 @@ describe('Claude’s “nothing to copy” sentence', () => {
       reprovision: declared.reprovisionAuth,
     })
     expect(field.state).toBe('refused')
-    expect(field.remedy).toBe(NOTHING_TO_COPY)
-    expect(field.remedy).toContain(WHAT_TO_DO)
+    expect(field.message).toBe("claude isn't set up. Set it up in Settings → Providers.")
+    expect(field.notSetUp).toBe(true)
+    expect(field.detail).toBe('credentials expired')
   })
 })

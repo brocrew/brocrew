@@ -260,7 +260,10 @@ describe('§1 · every absent word the shelf draws is the map’s (389 §1)', ()
     const controls = read(`${COMPONENTS}/CardApproval.vue`)
     expect(controls).toContain('data-cy="card-approval"')
     expect(controls).toContain('role="switch"')
-    expect(controls).toContain(':checked="props.approval.mode === \'auto\'"')
+    // The approved 0.1.3 switch shows the pending choice before the current mode changes.
+    expect(controls).toContain(
+      ':checked="(props.approval.pending ?? props.approval.mode) === \'auto\'"',
+    )
     const fold = read(`${RENDERER}/composables/useConversationControls.ts`)
     expect(fold).toContain('note: session.approvalNote')
   })

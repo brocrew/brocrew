@@ -168,6 +168,7 @@ MUTATIONS = [
             )
         ],
     ),
+    # Source-only anchor repair; NOT VERIFIED.
     (
         "M7 · ⛔ the screen stops passing what the person asked for, which is the same defect one "
         "layer out — and the shape a reviewer is likeliest to read as tidying, because the call "
@@ -175,7 +176,7 @@ MUTATIONS = [
         [
             (
                 SCREEN,
-                "    DEFAULT_PROVIDER,\n    launchChoices.value.provider,\n  ),",
+                '      DEFAULT_PROVIDER,\n      launchChoices.value.provider,\n    ),',
                 "    DEFAULT_PROVIDER,\n  ),",
             )
         ],

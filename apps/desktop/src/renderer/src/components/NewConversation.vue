@@ -76,6 +76,7 @@ export function blockingGroupShows(input: {
 </script>
 
 <script setup lang="ts">
+import { defaultModel } from '../lib/provider-models'
 import { computed, nextTick, onMounted, ref, useId, watch } from 'vue'
 import type {
   AuthState,
@@ -91,12 +92,7 @@ import { sessionFacets } from '../lib/agent-state'
 import { fullTime } from '../lib/clock'
 import type { LaunchChoices } from '../lib/launch-choices'
 // 🔴 **UI-012 · the one model picker, and the lists it reads** — see `lib/model-lists.ts`.
-import {
-  theFormSends,
-  theFormStartsOn,
-  type ModelLists,
-  type PickedModel,
-} from '../lib/model-lists'
+import { theFormSends, type ModelLists, type PickedModel } from '../lib/model-lists'
 import { useModelLists } from '../composables/useModelLists'
 import { CHANGEABLE_LIVE_IN } from '../lib/front-door-words'
 import type { DraftHanding } from '../lib/drafts'
@@ -245,6 +241,7 @@ const props = withDefaults(
      * obeyed: see {@link providerIsFixed}. ⚑ The sentence, the control and the payload below read this
      * one prop, so the screen cannot name a provider the launch did not use.
      */
+    providerReadiness?: Readonly<Partial<Record<Provider, boolean | null>>> | null
     defaultProvider: Provider
     /**
      * 🔴 **The mode this conversation will begin in, because a person set it once** (500,
@@ -296,7 +293,7 @@ const props = withDefaults(
      */
     choices: LaunchChoices
   }>(),
-  { approvalDefaultChosen: undefined },
+  { approvalDefaultChosen: undefined, providerReadiness: null },
 )
 
 const emit = defineEmits<{
@@ -327,7 +324,7 @@ const emit = defineEmits<{
    */
   'auth-changed': [profileId: string]
   /** ⚑ W4.10 · a person asked for the Providers screen from a sign-in problem here. */
-  'open-providers': []
+  'open-providers': [provider?: Provider]
   /**
    * ⛔ **A person answered one of the three** (435) — the whole object, not a patch.
    *
@@ -772,17 +769,20 @@ const heldList = computed(() => {
  * §8: *"last one picked"*), else what the host would start BroBot on — shown by name, like any
  * choice. ⚑ `null` while nothing names one; the face then says why in {@link shownEmpty}.
  */
+const modelMatchesProvider = computed(
+  () => props.choices.provider === null || props.choices.provider === props.defaultProvider,
+)
+
 const shownPick = computed<PickedModel | null>(() => {
   const model = props.choices.model.trim()
-  if (model !== '') {
-    // ⚑ The resolved provider — `providerForALaunch` ranks the pick's own first (no second spelling).
+  if (model !== '' && modelMatchesProvider.value) {
     return {
       provider: props.defaultProvider,
       model,
       effort: props.choices.reasoningEffort === '' ? null : props.choices.reasoningEffort,
     }
   }
-  const starts = theFormStartsOn(heldList.value)
+  const starts = defaultModel(heldList.value)
   return starts === null ? null : { provider: props.defaultProvider, ...starts }
 })
 
@@ -790,12 +790,7 @@ const shownPick = computed<PickedModel | null>(() => {
  * ⚑ **The face's words when nothing names a model** — still asking, the read itself failed, or the
  * list answered and names none; the panel says why in the provider's own words (`model-field.ts`).
  */
-const shownEmpty = computed(() => {
-  const name = PROVIDER_NAME[props.defaultProvider]
-  const state = lists.value.held(props.defaultProvider)?.state
-  if (state === 'unread') return `${name} could not be asked`
-  return state === 'answered' ? `${name} names no model to start on` : `Asking ${name}…`
-})
+const shownEmpty = computed(() => 'Choose a model')
 
 /**
  * ⚑ **Take, on the form: the pick is held by the screen above** ({@link LaunchChoices}) — and a
@@ -870,7 +865,11 @@ onMounted(() => {
  * another** (`09` §8) — see `theFormSends`. ⚑ With no last pick, or one the host starts on anyway,
  * the three fields stand.
  */
-const sends = computed(() => theFormSends(props.choices, heldList.value))
+const sends = computed(() =>
+  modelMatchesProvider.value
+    ? theFormSends(props.choices, heldList.value)
+    : defaultModel(heldList.value),
+)
 
 const firstApproval = ref<'ask' | 'auto' | null>(null)
 const needsApproval = computed(
@@ -880,9 +879,13 @@ const launchMode = computed(() =>
   needsApproval.value ? firstApproval.value : props.defaultApprovalMode,
 )
 const approvalBlocked = computed(() =>
-  props.defaultApprovalMode === null || launchMode.value === null
-    ? 'Choose Ask or Auto before sending.'
-    : null,
+  props.providerReadiness?.[props.defaultProvider] === false
+    ? `${PROVIDER_NAME[props.defaultProvider]} isn't set up. Set it up in Settings → Providers.`
+    : props.providerReadiness !== null && props.providerReadiness[props.defaultProvider] !== true
+      ? `${PROVIDER_NAME[props.defaultProvider]} · Checking…`
+      : props.defaultApprovalMode === null || launchMode.value === null
+        ? 'Choose Ask or Auto before sending.'
+        : null,
 )
 
 const recentHeadingId = useId()
@@ -1042,6 +1045,8 @@ watch(
                 <span class="lbl">model</span>
                 <ModelPicker
                   :providers="providers"
+                  :readiness="props.providerReadiness"
+                  :set-up="(provider) => emit('open-providers', provider)"
                   :shown="shownPick"
                   :empty="shownEmpty"
                   take-words="Start on this"

@@ -151,19 +151,19 @@ MUTATIONS = [
         [
             (
                 HOST,
-                "    ? `⚠ approvals: ${YOLO_LABEL} — nothing is asked · sandbox OFF`\n    : `⚠ approvals: ${YOLO_LABEL} — nothing is asked`\n",
-                "    ? `⚠ approvals: ${YOLO_LABEL} — no prompts · sandbox OFF`\n    : `⚠ approvals: ${YOLO_LABEL} — no prompts`\n",
+                "    ? `⚠ approvals: Auto — nothing is asked · sandbox OFF`\n    : `⚠ approvals: Auto — nothing is asked`\n",
+                "    ? `⚠ approvals: Auto — no prompts · sandbox OFF`\n    : `⚠ approvals: Auto — no prompts`\n",
             )
         ],
     ),
     (
-        "M7 · the PENDING disclosure keeps the old word, so a requested switch is announced under "
-        "the name of a mode this app does not have",
+        "M7 · the pending disclosure uses legacy YOLO instead of Ask/Auto; "
+        "the approved 0.1.3 words replace YOLO. Host proof UNRUN on the new wording.",
         [
             (
                 HOST,
-                "        : `${note} · ${requested === 'auto' ? YOLO_LABEL : 'ask'} from your next message`,\n",
-                "        : `${note} · ${requested === 'auto' ? 'AUTO' : 'ask'} from your next message`,\n",
+                "        : `${note} · ${requested === 'auto' ? 'Auto' : 'Ask'} from your next message`,\n",
+                "        : `${note} · ${requested === 'auto' ? 'YOLO' : 'Ask'} from your next message`,\n",
             )
         ],
     ),

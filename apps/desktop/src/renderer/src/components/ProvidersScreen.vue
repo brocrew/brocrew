@@ -45,6 +45,7 @@ const props = withDefaults(
     clock: number
     lists?: ModelLists
     embedded?: boolean
+    setupProvider?: Provider | null
   }>(),
   { lists: undefined, embedded: false },
 )
@@ -237,6 +238,7 @@ function limitOf(provider: Provider) {
           v-for="provider in providers"
           :key="provider"
           :provider="provider"
+          :setup-requested="props.setupProvider === provider"
           :capabilities="props.capabilities"
           :limit="limitOf(provider)"
           :limits-read="limitsRead"

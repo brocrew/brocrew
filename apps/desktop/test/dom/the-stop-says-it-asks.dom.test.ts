@@ -263,12 +263,12 @@ describe('§2 · frozen on a permission card: Stop instead of answering, in R43�
 /* ------------------------------------------------------------------ §3 */
 
 describe('§3 · the approval mode, on the agent card, while a mode waits for the next message', () => {
-  /** The switch's explanation describes the confirmed mode without changing it. */
-  const approvalSays = (m: Mounted): string => {
+  /** The explanation keeps the confirmed mode; the approved 0.1.3 switch shows the choice. */
+  const approvalSays = (m: Mounted, chosenAuto = false): string => {
     const face = m.q('card-approval') as HTMLInputElement
     assertDrawn(face, 'the approval switch', m.host)
     expect(face.getAttribute('role')).toBe('switch')
-    expect(face.checked).toBe(false)
+    expect(face.checked).toBe(chosenAuto)
     expect(face.dataset.mode).toBe('ask')
     return face.closest('label')?.getAttribute('title') ?? ''
   }
@@ -279,7 +279,10 @@ describe('§3 · the approval mode, on the agent card, while a mode waits for th
       drawerTab: 'open',
     })
     expect(m.q('card-approval').dataset.pending).toBe('auto')
-    const said = approvalSays(m)
+    const said = approvalSays(m, true)
+    expect(m.q('card-approval-pending').textContent?.trim()).toBe(
+      'Auto starts with your next message.',
+    )
     expect(said).toBe(
       `This session asks what its provider’s own CLI asks by default. You have asked it to stop asking — that takes effect from your next message, because neither provider can change the mode of a turn ${PENDING_TAIL}`,
     )

@@ -7,9 +7,16 @@ import { createAgentStore } from '../../src/renderer/src/lib/agent-store'
 import { createModelLists } from '../../src/renderer/src/lib/model-lists'
 import { useOverlays } from '../../src/renderer/src/lib/overlay-store'
 import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
-import type { AgentIdentities, RuntimeBridge, ResumedSession } from '../../src/shared/runtime-ipc'
+import type {
+  AgentIdentities,
+  ModelList,
+  Provider,
+  RuntimeBridge,
+  ResumedSession,
+} from '../../src/shared/runtime-ipc'
 import type { ResolvedMessageLink } from '../../src/renderer/src/lib/message-links'
 import { applyTheme } from '../../src/renderer/src/lib/apply-theme'
+import { forgetProfileSignIns } from '../../src/renderer/src/composables/useProfileSignIn'
 import { mount, unmountAll, META } from './harness'
 
 // The computer the window runs on, set by each test rather than read from the runner's.
@@ -26,6 +33,7 @@ vi.mock('../../src/renderer/src/components/ProviderSetupAtLaunch.vue', () => ({
 
 let sessions: SessionStore
 let agentStore: ReturnType<typeof createAgentStore>
+let modelLists: ReturnType<typeof createModelLists>
 vi.mock('../../src/renderer/src/composables/useSessionStore', () => ({
   useSessionStore: () => sessions,
 }))
@@ -33,7 +41,7 @@ vi.mock('../../src/renderer/src/composables/useAgentStore', () => ({
   useAgentStore: () => agentStore,
 }))
 vi.mock('../../src/renderer/src/composables/useModelLists', () => ({
-  useModelLists: () => createModelLists(() => window.api.runtime),
+  useModelLists: () => modelLists,
 }))
 
 const agents: AgentIdentities = {
@@ -199,6 +207,7 @@ beforeEach(() => {
   } as unknown as Window['api']
   sessions = createSessionStore(window.api.runtime as RuntimeBridge)
   agentStore = createAgentStore(window.api.runtime)
+  modelLists = createModelLists(() => window.api.runtime)
 })
 
 let hostSaysChanged: Parameters<RuntimeBridge['onChanged']>[0] | null = null
@@ -964,4 +973,61 @@ it('a conversation that can’t be opened again keeps the window where it is and
   expect(m.all('message-link')).toHaveLength(0)
   expect((m.q('nav-back') as HTMLButtonElement).disabled).toBe(false)
   expect(runtime.send).not.toHaveBeenCalled()
+})
+
+it('keeps the model a person picked when changing the front-door provider', async () => {
+  forgetProfileSignIns()
+  window.api.runtime.modelList = async ({
+    provider,
+  }: {
+    provider: Provider
+  }): Promise<ModelList> => ({
+    provider,
+    notAsked: null,
+    standIn: null,
+    lastPicked: null,
+    startsOn: { model: `${provider}-default`, effort: 'high', from: 'its-default' },
+    models: [
+      {
+        id: `${provider}-default`,
+        label: 'Default model',
+        addedBy: 'the-provider',
+        isDefault: true,
+        efforts: [{ id: 'high', label: 'High' }],
+        defaultEffort: 'high',
+      },
+      {
+        id: `${provider}-special`,
+        label: 'Selected model',
+        addedBy: 'the-provider',
+        efforts: [{ id: 'high', label: 'High' }],
+        defaultEffort: 'high',
+      },
+    ],
+  })
+  try {
+    const { m, press } = await screen()
+    await press('new-conversation')
+    m.q('model-picker-face').click()
+    await settle()
+    await settle()
+    const target = (m.q('model-picker-choose-claude') as HTMLInputElement).checked
+      ? 'codex'
+      : 'claude'
+    expect((m.q(`model-picker-choose-${target}`) as HTMLInputElement).disabled).toBe(false)
+    m.q(`model-picker-choose-${target}`).click()
+    await settle()
+    expect(m.q('model-picker-panel').textContent).toContain('Selected model')
+    const chosen = m.host.querySelector<HTMLInputElement>(
+      `[data-cy="model-picker-row"][data-model="${target}-special"] input`,
+    )!
+    chosen.click()
+    await settle()
+    m.q('model-picker-take').click()
+    await settle()
+    expect(m.q('model-picker-face').textContent).toContain(`${target}-special`)
+    expect(m.q('model-picker-face').textContent).toContain('high')
+  } finally {
+    Reflect.deleteProperty(window.api.runtime, 'modelList')
+  }
 })

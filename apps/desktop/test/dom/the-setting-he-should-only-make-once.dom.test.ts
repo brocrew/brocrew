@@ -253,20 +253,20 @@ describe('§3 · the sentence the host already composed, and nothing was holding
           ...META,
           approvalMode: 'ask',
           pendingApprovalMode: 'auto',
-          approvalNote: 'approvals: ask · YOLO from your next message',
+          approvalNote: 'approvals: Ask · Auto from your next message',
         },
         capabilities: allProviderCapabilities(),
       }),
       PANE,
     )
     await nextTick()
-    // ⛔ **Now and next, beside the plate**, without a press.
+    // The approved 0.1.3 control shows the choice now and names it as pending in plain words.
     expect(m.q('card-approval-pending').textContent?.trim()).toBe(
-      'Ask now · YOLO from your next message',
+      'Auto starts with your next message.',
     )
     expect(visible(m.q('card-approval-pending'))).toBe(true)
     const face = m.q('card-approval')
-    expect((face as HTMLInputElement).checked).toBe(false)
+    expect((face as HTMLInputElement).checked).toBe(true)
     expect(face.dataset.pending).toBe('auto')
     expect(face.closest('label')?.title).toContain('next message')
     // ⚑ **The control for the reading**: with nothing pending, there is no line under the plate,
@@ -279,7 +279,7 @@ describe('§3 · the sentence the host already composed, and nothing was holding
           ...META,
           approvalMode: 'ask',
           pendingApprovalMode: null,
-          approvalNote: 'approvals: ask',
+          approvalNote: 'approvals: Ask',
         },
         capabilities: allProviderCapabilities(),
       }),

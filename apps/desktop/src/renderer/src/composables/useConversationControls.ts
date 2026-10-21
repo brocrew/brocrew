@@ -1,6 +1,5 @@
 import { computed, type ComputedRef } from 'vue'
 import {
-  YOLO_LABEL,
   type CreatedSession,
   type ProviderCapabilityMap,
   type SetSessionSettingInput,
@@ -87,7 +86,7 @@ export interface ConversationControls {
   chooseApproval(mode: 'ask' | 'auto'): void
 }
 
-const modeWord = (mode: 'ask' | 'auto'): string => (mode === 'auto' ? YOLO_LABEL : 'Ask')
+const modeWord = (mode: 'ask' | 'auto'): string => (mode === 'auto' ? 'Auto' : 'Ask')
 
 export function useConversationControls(
   sources: ConversationControlsSources,
@@ -148,7 +147,7 @@ export function useConversationControls(
     const mode = session.approvalMode
     const pending = session.pendingApprovalMode
     const auto = mode === 'auto'
-    const word = auto ? `${YOLO_LABEL} now` : `${YOLO_LABEL} off`
+    const word = modeWord(mode)
     const nowSays = auto
       ? 'This session runs commands and edits files without asking, except what the provider’s own plan mode asks while it plans.'
       : 'This session asks what its provider’s own CLI asks by default.'
@@ -162,9 +161,7 @@ export function useConversationControls(
     const status = capabilities?.[session.provider]?.approvals
     const changeable = !sources.fixed()
     const next = (pending ?? mode) === 'auto' ? 'ask' : 'auto'
-    const pendingLine = pending
-      ? `${modeWord(mode)} now · ${modeWord(pending)} from your next message`
-      : null
+    const pendingLine = pending ? `${modeWord(pending)} starts with your next message.` : null
     return {
       mode,
       saving: sources.saving?.() ?? false,
@@ -179,10 +176,10 @@ export function useConversationControls(
       next,
       confirmWords: pending
         ? auto
-          ? `Keep ${YOLO_LABEL} on`
+          ? 'Keep Auto on'
           : 'Keep asking'
         : next === 'auto'
-          ? `Turn ${YOLO_LABEL} on from your next message`
+          ? 'Turn Auto on from your next message'
           : 'Ask again from your next message',
     }
   })

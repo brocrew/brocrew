@@ -172,6 +172,8 @@ import { providerForALaunch, providersNotChosenIn } from '../lib/agent-store'
 import { NO_LAUNCH_CHOICES, type LaunchChoices } from '../lib/launch-choices'
 import { pickInAConversation, type PickedModel } from '../lib/model-lists'
 import { useModelLists } from '../composables/useModelLists'
+import { useProfileSignIn } from '../composables/useProfileSignIn'
+import { providerReady, readyProvider } from '../lib/provider-models'
 import { conversationsToReopen, type AConversationToReopen } from '../lib/reopening'
 import { oneReadAtATime } from '../lib/one-read-at-a-time'
 import { handedBackSays } from '../lib/handing-it-back'
@@ -437,6 +439,14 @@ const pane = ref<InstanceType<typeof ConversationPane> | null>(null)
  */
 const { place, activeId, active, surface, view, showConversation } = useSurface(store)
 const settingsTab = ref<SettingsTab>('providers')
+const setupProvider = ref<Provider | null>(null)
+function openProviderSettings(provider?: Provider): void {
+  setupProvider.value = provider ?? null
+  openSettings('providers')
+  void nextTick(() => {
+    if (setupProvider.value === provider) setupProvider.value = null
+  })
+}
 
 function openSettings(tab: SettingsTab = 'providers'): void {
   settingsTab.value = tab
@@ -1230,17 +1240,20 @@ const frontDoorApproval = computed<'ask' | 'auto' | null>(
 )
 
 const frontDoorProvider = computed<Provider>(() =>
-  // 🔴 **The asked term is FIRST, and it is the whole of `435`'s change here** (HO-025 §4). The
-  // front door offers a provider again, and *which provider will this conversation start on* still
-  // has exactly one derivation — this one. ⛔ The control does not preview the answer; it moves the
-  // first term and reads the result back, so the sentence, the select and the payload cannot come
-  // apart. See `providerForALaunch`'s own docblock for why the term is a parameter rather than a
-  // `??` at this call site.
-  providerForALaunch(
-    agentStore.identities.value,
-    DEFAULT_PROFILE_ID,
-    DEFAULT_PROVIDER,
-    launchChoices.value.provider,
+  readyProvider(
+    // 🔴 **The asked term is FIRST, and it is the whole of `435`'s change here** (HO-025 §4). The
+    // front door offers a provider again, and *which provider will this conversation start on* still
+    // has exactly one derivation — this one. ⛔ The control does not preview the answer; it moves the
+    // first term and reads the result back, so the sentence, the select and the payload cannot come
+    // apart. See `providerForALaunch`'s own docblock for why the term is a parameter rather than a
+    // `??` at this call site.
+    providerForALaunch(
+      agentStore.identities.value,
+      DEFAULT_PROFILE_ID,
+      DEFAULT_PROVIDER,
+      launchChoices.value.provider,
+    ),
+    launchReadiness.value,
   ),
 )
 
@@ -1422,6 +1435,25 @@ watch(place, () => void readPrograms())
  * (293 §5, {@link authChangedFor}).
  */
 const modelLists = useModelLists()
+const launchSignIns = Object.fromEntries(
+  (Object.keys(PROVIDER_NAME) as Provider[]).map((provider) => [
+    provider,
+    useProfileSignIn(provider, DEFAULT_PROFILE_ID),
+  ]),
+) as Record<Provider, ReturnType<typeof useProfileSignIn>>
+const launchReadiness = computed(
+  () =>
+    Object.fromEntries(
+      (Object.keys(PROVIDER_NAME) as Provider[]).map((provider) => [
+        provider,
+        providerReady(
+          modelLists.held(provider),
+          launchSignIns[provider].auth,
+          programs.value?.[provider],
+        ),
+      ]),
+    ) as Record<Provider, boolean | null>,
+)
 
 /**
  * ⚑ **A person's pick in the open conversation, carried out** — see `pickInAConversation`.
@@ -1616,6 +1648,10 @@ const draftKeyForActive = computed(() => draftSlot(activeId.value))
  * never be two of it.
  */
 const launchChoices = ref<LaunchChoices>({ ...NO_LAUNCH_CHOICES })
+watch(frontDoorProvider, (provider, before) => {
+  if (provider !== before && launchChoices.value.provider !== provider)
+    launchChoices.value = { ...launchChoices.value, provider, model: '', reasoningEffort: '' }
+})
 
 /**
  * A draft belongs to a conversation for as long as that conversation is open — OR for as long as
@@ -4037,6 +4073,7 @@ onUnmounted(() => {
             v-else-if="surface === 'settings'"
             data-chat-theme="light"
             v-model:tab="settingsTab"
+            :setup-provider="setupProvider"
             :capabilities="capabilities"
             :warnings="persons.limits.value"
             :clock="clock"
@@ -4165,6 +4202,7 @@ onUnmounted(() => {
             :draft="drafts.read(draftSlot(null))"
             :handing="drafts.paths.handing(draftSlot(null))"
             :default-provider="frontDoorProvider"
+            :provider-readiness="launchReadiness"
             :default-approval-mode="frontDoorApproval"
             :approval-default-chosen="agentStore.identities.value?.defaultApprovalModeChosen"
             :capabilities="capabilities"
@@ -4173,7 +4211,7 @@ onUnmounted(() => {
             @update:choices="(next) => (launchChoices = next)"
             @set-approval-default="(mode) => void setApprovalDefault(mode)"
             @auth-changed="authChangedFor"
-            @open-providers="openSettings('providers')"
+            @open-providers="openProviderSettings"
             @start="startFromFrontDoor"
             @cancel="store.cancelLaunch()"
             @update:draft="(text) => drafts.write(draftSlot(null), text)"

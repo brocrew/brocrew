@@ -4,7 +4,6 @@ import {
   type ModelFieldState,
   type ModelFieldWorld,
 } from '../src/renderer/src/lib/model-field'
-import { COPY_MACHINE_SIGN_IN, SIGN_IN_HERE } from '../src/renderer/src/lib/credential-words'
 import type { CapabilityStatus, ModelChoice } from '../src/shared/runtime-ipc'
 
 /**
@@ -38,24 +37,6 @@ const ROWS: ModelChoice[] = [
 /** Codex's real shape: it can be signed into inside a profile, and copied into (098). */
 const CODEX_SIGN_IN: CapabilityStatus = { state: 'available', note: 'its own account' }
 const CODEX_COPY: CapabilityStatus = { state: 'available', note: 'shares one token' }
-
-/**
- * Claude's real shape, and it is the interesting one: NEITHER gesture exists, and the reason on
- * `reprovisionAuth` is already an instruction — *"starting a Claude conversation renews it"*. That is the
- * machine sign-in the ticket asks for, and it arrives from the adapter rather than from us.
- */
-const CLAUDE_SIGN_IN: CapabilityStatus = {
-  state: 'absent',
-  reason: 'Claude sessions use your machine login directly — there is no separate sign-in here.',
-  checkedAgainst: 'the pinned SDK declares no login verb',
-}
-const CLAUDE_COPY: CapabilityStatus = {
-  state: 'absent',
-  reason:
-    'There is nothing to copy — Claude sessions read your machine login directly. If it has ' +
-    'expired, starting a Claude conversation renews it.',
-  checkedAgainst: 'internal/auth.ts copies only the Codex auth.json',
-}
 
 function world(over: Partial<ModelFieldWorld> = {}): ModelFieldWorld {
   return {
@@ -126,58 +107,35 @@ describe('310 §2 · the model field says WHICH silence it is in', () => {
     expect(field.remedy).toBeNull()
   })
 
-  it('🔴 a REFUSED probe carries the provider’s own diagnostic and what to do about it', () => {
-    // 098's lesson on the path that never had it: the sentence in a `console.warn` is accurate and
-    // useless. What a person needs is that sentence AND the gesture.
+  it('gives a setup instruction while keeping the diagnostic out of visible text', () => {
     const field = modelField(
-      world({ catalogue: { ok: false, reason: 'refused', detail: 'not logged in' } }),
+      world({
+        catalogue: {
+          ok: false,
+          reason: 'refused',
+          detail: 'not logged in at /fictional/auth.json',
+        },
+      }),
     )
     expect(field.state).toBe('refused')
     expect(field.choices).toBeNull()
-    expect(field.message).toContain('not logged in')
-    expect(field.message).toContain('codex')
-    expect(field.tone, 'this one IS something being wrong').toBe('warn')
-    // ⛔ **In the button's own words** — `credential-words.ts`, imported by `SignInPanel.vue` too,
-    // so the two cannot drift into naming one gesture two ways.
-    //
-    // ⚠️ **This line compares the app's string to the same constant the app built it from**, so on
-    // its own it would pass over any wording at all. It is kept because it pins the SHAPE (a remedy
-    // that names the gesture); the claim that the wording matches the panel's button is made in
-    // `model-silence.render.test.ts` — ⛔ which `417` DELETED with the launcher's model box
-    // (HO-022 §2), so this file is what measures `say`, `tone` and `remedy` on their own. 🔴 A
-    // finding for the plan, not a reason to weaken the assertion below.
-    expect(field.remedy).toContain(SIGN_IN_HERE)
+    expect(field.message).toBe("codex isn't set up. Set it up in Settings → Providers.")
+    expect(field.detail).toBe('not logged in at /fictional/auth.json')
+    expect(field.notSetUp).toBe(true)
+    expect(field.retry).toBe(false)
   })
 
-  it('⛔ the remedy is read off the CAPABILITIES, so the other provider gets its own answer', () => {
-    // 039: no `provider === …` anywhere. Claude declares both gestures absent, and its own
-    // `reprovisionAuth.reason` is the instruction — the machine sign-in, in the adapter's words.
-    const claude = modelField(
+  it('offers a plain retry for failures that do not prove missing setup', () => {
+    const field = modelField(
       world({
-        provider: 'claude',
-        signIn: CLAUDE_SIGN_IN,
-        reprovision: CLAUDE_COPY,
-        catalogue: { ok: false, reason: 'refused', detail: 'credentials expired' },
+        catalogue: { ok: false, reason: 'refused', detail: 'network failed at /fictional/socket' },
       }),
     )
-    expect(claude.state).toBe('refused')
-    expect(claude.remedy, 'the machine sign-in, from `capabilities.ts`').toContain(
-      'starting a Claude conversation renews it',
-    )
-    expect(claude.remedy, 'and NOT the gesture this provider does not have').not.toContain(
-      SIGN_IN_HERE,
-    )
-
-    // …and the middle case: no sign-in, but a copy. The panel's other button, by its own label.
-    const copyOnly = modelField(
-      world({
-        signIn: CLAUDE_SIGN_IN,
-        reprovision: CODEX_COPY,
-        catalogue: { ok: false, reason: 'refused', detail: 'x' },
-      }),
-    )
-    expect(copyOnly.remedy).toContain(COPY_MACHINE_SIGN_IN)
-    expect(copyOnly.remedy).not.toContain(SIGN_IN_HERE)
+    expect(field.state).toBe('refused')
+    expect(field.message).toBe("codex didn't answer. Try again.")
+    expect(field.detail).toBe('network failed at /fictional/socket')
+    expect(field.retry).toBe(true)
+    expect(field.remedy).toBeNull()
   })
 
   it('⛔ an EMPTY list is the provider answering, never "we could not ask" (058 review’s rule)', () => {

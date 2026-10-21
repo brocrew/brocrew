@@ -205,6 +205,7 @@ MUTATIONS = [
             )
         ],
     ),
+    # Source-only anchor repair; NOT VERIFIED.
     (
         "M10 · 🔴 the unread row launches in Auto · `null` — *the policy read has not landed* — stops "
         "blocking the send once a first choice is pressed, so the window before a database read "
@@ -218,8 +219,8 @@ MUTATIONS = [
         [
             (
                 DOOR,
-                "  props.defaultApprovalMode === null || launchMode.value === null\n",
-                "  launchMode.value === null\n",
+                '      : props.defaultApprovalMode === null || launchMode.value === null\n',
+                "      : launchMode.value === null\n",
             )
         ],
     ),
@@ -286,6 +287,7 @@ MUTATIONS = [
         ],
     ),
     # ── the unread default, the other way it can decide ─────────────────────────────────────────
+    # Source-only anchor repair; NOT VERIFIED.
     (
         # ⚑ New with the approved first-run design, beside M10: the other way an unread
         # default can decide the mode. Nothing is chosen, nothing is read, and the send goes out with
@@ -296,8 +298,8 @@ MUTATIONS = [
         [
             (
                 DOOR,
-                "  props.defaultApprovalMode === null || launchMode.value === null\n",
-                "  false\n",
+                '      : props.defaultApprovalMode === null || launchMode.value === null\n',
+                "      : false\n",
             )
         ],
     ),

@@ -19,6 +19,7 @@ import type {
 import { PROVIDER_NAME } from '../../../shared/runtime-ipc'
 import { MODEL_CHOICE_SAID, sameModel, theListedRow } from '../../../shared/model-choice'
 import { modelField } from '../lib/model-field'
+import { defaultModel, providerReady } from '../lib/provider-models'
 import {
   inTheListsSpelling,
   isNoLongerListed,
@@ -63,6 +64,8 @@ const props = withDefaults(
   defineProps<{
     /** Whose models it lists — a conversation's one provider, the sheet's, or both on the form. */
     providers: readonly Provider[]
+    readiness?: Readonly<Partial<Record<Provider, boolean | null>>> | null
+    setUp?: (provider: Provider) => void
     /** Whose list to read — absent is BroBot's, the door's own default. */
     profileId?: string
     /** What the face shows, and what the draft starts on unless {@link drafted} says otherwise. */
@@ -95,6 +98,8 @@ const props = withDefaults(
   }>(),
   {
     profileId: undefined,
+    readiness: null,
+    setUp: undefined,
     empty: 'Nothing chosen',
     reported: null,
     drafted: null,
@@ -129,6 +134,7 @@ const draft = ref<{ provider: Provider; model: string } | null>(null)
 /** The effort a person last named in this panel (or the shown one) — the host's rule keeps it. */
 const chosenEffort = ref<string | null>(null)
 /** The provider whose add field is open. */
+const selectedProvider = ref<Provider | null>(null)
 const adding = ref<Provider | null>(null)
 const addName = ref('')
 /** What a provider's list door last said — a refusal, or an id already listed. */
@@ -178,9 +184,23 @@ const sections = computed(() =>
     const held = store.value.held(provider, props.profileId)
     const list = held?.state === 'answered' ? held.list : null
     const name = PROVIDER_NAME[provider]
+    const ready =
+      props.readiness !== null && provider in props.readiness
+        ? props.readiness[provider]
+        : providerReady(held)
     const field =
       held?.state === 'unread'
-        ? { message: held.why, tone: 'warn' as const, remedy: null }
+        ? {
+            message:
+              ready === false
+                ? `${name} isn't set up. Set it up in Settings → Providers.`
+                : `${name} didn't answer. Try again.`,
+            tone: 'warn' as const,
+            remedy: null,
+            detail: held.why,
+            retry: ready !== false,
+            notSetUp: ready === false,
+          }
         : modelField({
             catalogue:
               list === null
@@ -189,6 +209,7 @@ const sections = computed(() =>
                     ok: true,
                     models: list.models.filter((row) => row.addedBy === 'the-provider'),
                   }),
+            ready,
             profileExists: true,
             provider: name,
             signIn: props.capabilities?.[provider]?.signIn ?? PENDING,
@@ -197,6 +218,7 @@ const sections = computed(() =>
     const current = startsOn.value?.provider === provider ? startsOn.value.model : null
     return {
       provider,
+      ready,
       name,
       list,
       field,
@@ -207,6 +229,32 @@ const sections = computed(() =>
     }
   }),
 )
+
+const visibleSections = computed(() =>
+  props.providers.length > 1
+    ? sections.value.filter((section) => section.provider === selectedProvider.value)
+    : sections.value,
+)
+
+function selectProvider(provider: Provider): void {
+  if (sections.value.find((section) => section.provider === provider)?.ready !== true) return
+  selectedProvider.value = provider
+  adding.value = null
+  const starts =
+    startsOn.value?.provider === provider ? startsOn.value : defaultModel(listOf(provider))
+  draft.value = starts == null ? null : { provider, model: starts.model }
+  chosenEffort.value = starts?.effort ?? null
+  refusal.value = null
+}
+
+function requestSetup(provider: Provider): void {
+  hide()
+  props.setUp?.(provider)
+}
+
+async function retry(provider: Provider): Promise<void> {
+  await store.value.read(provider, props.profileId)
+}
 
 const draftList = computed(() => (draft.value === null ? null : listOf(draft.value.provider)))
 const offered = computed(() =>
@@ -219,7 +267,9 @@ const draftEffort = computed(() =>
 )
 /** ⚑ The pick Take would send — `null` while no model is drafted, or no effort is named. */
 const pick = computed<PickedModel | null>(() =>
-  draft.value === null || draftEffort.value === undefined
+  draft.value === null ||
+  draftEffort.value === undefined ||
+  sections.value.find((section) => section.provider === draft.value?.provider)?.ready !== true
     ? null
     : { ...draft.value, effort: draftEffort.value },
 )
@@ -313,15 +363,54 @@ watch(
   },
 )
 
+watch(
+  () => sections.value.map((section) => `${section.provider}:${section.ready}`).join(','),
+  () => {
+    if (
+      isOpen.value &&
+      (selectedProvider.value === null ||
+        sections.value.find((section) => section.provider === selectedProvider.value)?.ready !==
+          true)
+    )
+      seed()
+  },
+)
+
+watch(
+  () => (selectedProvider.value === null ? null : listOf(selectedProvider.value)),
+  (list) => {
+    if (
+      props.providers.length > 1 &&
+      isOpen.value &&
+      draft.value === null &&
+      list !== null &&
+      selectedProvider.value !== null
+    )
+      selectProvider(selectedProvider.value)
+  },
+)
+
 /** ⚑ The draft starts on what the face shows. */
 function seed(): void {
-  const starts = startsOn.value
+  const preferred = startsOn.value?.provider
+  const available = sections.value.filter((section) => section.ready === true)
+  const provider =
+    available.find((section) => section.provider === preferred)?.provider ??
+    available[0]?.provider ??
+    null
+  selectedProvider.value = provider
+  const starts =
+    props.providers.length === 1 || provider === preferred
+      ? startsOn.value
+      : provider === null
+        ? null
+        : defaultModel(listOf(provider))
   draft.value =
-    starts === null
+    starts === null || provider === null
       ? null
       : {
-          provider: starts.provider,
-          model: inTheListsSpelling(listOf(starts.provider), starts.model),
+          provider,
+          model: inTheListsSpelling(listOf(provider), starts.model),
         }
   chosenEffort.value = starts?.effort ?? null
 }
@@ -345,19 +434,19 @@ async function open(): Promise<void> {
   const reads = props.providers.map((provider) => store.value.read(provider, props.profileId))
   await nextTick()
   const within = panel.value
-  const aRow =
+  const aRow = () =>
     within?.querySelector<HTMLElement>('[data-cy="model-picker-row"] input:checked') ??
     within?.querySelector<HTMLElement>('[data-cy="model-picker-row"] input') ??
     within?.querySelector<HTMLElement>('[data-cy="model-picker-add-open"]')
-  const first = openAt === 'effort' ? (anEffort() ?? aRow) : aRow
+  const first = openAt === 'effort' ? (anEffort() ?? aRow()) : aRow()
   first?.focus()
-  if (openAt !== 'effort' || anEffort() !== null) return
-  // Asked for the efforts before the list that names them arrived: they take focus once it does,
-  // unless the person has moved it meanwhile.
+  if (first != null && (openAt !== 'effort' || anEffort() !== null)) return
+  const focusWhileWaiting = document.activeElement
   await Promise.allSettled(reads)
   await nextTick()
-  const level = anEffort()
-  if (isOpen.value && level !== null && document.activeElement === (first ?? null)) level.focus()
+  const arrived = openAt === 'effort' ? (anEffort() ?? aRow()) : aRow()
+  if (isOpen.value && arrived != null && document.activeElement === focusWhileWaiting)
+    arrived.focus()
 }
 
 /** ⚑ Closed by any means: the draft and a half-typed name go with it. */
@@ -402,6 +491,7 @@ onBeforeUnmount(() => {
 defineExpose({ panelId, isOpen, openedFrom })
 
 function draftModel(provider: Provider, model: string): void {
+  if (sections.value.find((section) => section.provider === provider)?.ready !== true) return
   draft.value = { provider, model }
   refusal.value = null
 }
@@ -413,7 +503,12 @@ function draftAnEffort(effort: string): void {
 
 async function commit(): Promise<void> {
   const chosen = pick.value
-  if (chosen === null || busy.value) return
+  if (
+    chosen === null ||
+    busy.value ||
+    sections.value.find((section) => section.provider === chosen.provider)?.ready !== true
+  )
+    return
   busy.value = true
   refusal.value = null
   try {
@@ -432,6 +527,7 @@ async function commit(): Promise<void> {
 /* ------------------------------------------------------------------ a person's own models */
 
 async function openAdd(provider: Provider): Promise<void> {
+  if (sections.value.find((section) => section.provider === provider)?.ready !== true) return
   adding.value = provider
   addName.value = ''
   listSaid.value = { ...listSaid.value, [provider]: undefined }
@@ -446,7 +542,12 @@ async function openAdd(provider: Provider): Promise<void> {
  */
 async function add(provider: Provider): Promise<void> {
   const id = addName.value.trim()
-  if (id === '' || busy.value) return
+  if (
+    id === '' ||
+    busy.value ||
+    sections.value.find((section) => section.provider === provider)?.ready !== true
+  )
+    return
   const name = PROVIDER_NAME[provider]
   const list = listOf(provider)
   const listed = list === null ? undefined : theListedRow(list.models, id)
@@ -557,8 +658,64 @@ async function focusAddOpen(provider: Provider): Promise<void> {
       <div v-if="isOpen" class="inside">
         <p v-if="props.note" class="said" data-cy="model-picker-note">{{ props.note }}</p>
 
+        <fieldset
+          v-if="props.providers.length > 1"
+          class="provider-choices"
+          data-cy="model-picker-providers"
+        >
+          <legend>Provider</legend>
+          <div v-for="section in sections" :key="section.provider" class="provider-choice">
+            <label class="pick">
+              <input
+                type="radio"
+                :name="`${panelId}-provider`"
+                :value="section.provider"
+                :data-cy="`model-picker-choose-${section.provider}`"
+                :checked="selectedProvider === section.provider"
+                :disabled="section.ready !== true"
+                @change="selectProvider(section.provider)"
+              />
+              <span
+                >{{ section.name
+                }}{{
+                  section.ready === false
+                    ? ' · Not set up'
+                    : section.ready !== true
+                      ? ' · Checking…'
+                      : ''
+                }}</span
+              >
+            </label>
+            <button
+              v-if="section.ready === false && props.setUp"
+              type="button"
+              class="add-open"
+              :data-cy="`model-picker-setup-${section.provider}`"
+              @click="requestSetup(section.provider)"
+            >
+              Set up in Settings
+            </button>
+            <span
+              v-if="section.ready !== true && section.field.retry"
+              class="said"
+              data-cy="model-picker-said"
+              :title="section.field.detail"
+              >{{ section.field.message }}</span
+            >
+            <button
+              v-if="section.ready !== true && section.field.retry"
+              type="button"
+              class="add-open"
+              data-cy="model-picker-retry"
+              @click="retry(section.provider)"
+            >
+              Try again
+            </button>
+          </div>
+        </fieldset>
+
         <section
-          v-for="section in sections"
+          v-for="section in visibleSections"
           :key="section.provider"
           class="provider"
           data-cy="model-picker-provider"
@@ -570,15 +727,25 @@ async function focusAddOpen(provider: Provider): Promise<void> {
             class="said"
             :class="{ warn: section.field.tone === 'warn' }"
             data-cy="model-picker-said"
+            :title="section.field.detail"
           >
             {{ section.field.message }}
             <strong v-if="section.field.remedy" data-cy="model-picker-remedy">{{
               section.field.remedy
             }}</strong>
           </p>
+          <button
+            v-if="section.field.retry"
+            type="button"
+            class="add-open"
+            data-cy="model-picker-retry"
+            @click="retry(section.provider)"
+          >
+            Try again
+          </button>
 
           <div
-            v-for="one in section.rows"
+            v-for="one in section.ready === true ? section.rows : []"
             :key="one.id"
             class="row"
             data-cy="model-picker-row"
@@ -646,7 +813,7 @@ async function focusAddOpen(provider: Provider): Promise<void> {
             </button>
           </div>
           <button
-            v-else
+            v-else-if="section.ready === true"
             class="add-open"
             type="button"
             data-cy="model-picker-add-open"
@@ -664,7 +831,11 @@ async function focusAddOpen(provider: Provider): Promise<void> {
           </p>
         </section>
 
-        <fieldset v-if="draft !== null" class="efforts" data-cy="model-picker-efforts">
+        <fieldset
+          v-if="draft !== null && selectedProvider === draft.provider"
+          class="efforts"
+          data-cy="model-picker-efforts"
+        >
           <legend>Effort</legend>
           <label
             v-for="level in levels"
@@ -724,6 +895,27 @@ async function focusAddOpen(provider: Provider): Promise<void> {
 </template>
 
 <style scoped>
+.provider-choices {
+  border: 0;
+  border-bottom: var(--border-width) solid var(--line);
+  margin: 0 0 var(--space-3);
+  padding: 0 0 var(--space-3);
+  display: flex;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+.provider-choices legend {
+  font-size: var(--type-caption);
+  color: var(--muted);
+  margin-bottom: var(--space-2);
+}
+.provider-choice {
+  display: grid;
+  gap: var(--space-1);
+}
+.provider-choice .add-open {
+  margin-left: var(--space-5);
+}
 .model-picker {
   display: inline-flex;
   min-width: 0;

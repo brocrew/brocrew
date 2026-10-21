@@ -211,6 +211,7 @@ MUTATIONS = [
         [(FORM, "    folded.value === DEFAULT_PROFILE_ID &&", "    false &&")],
     ),
     # ── §4 · the provider ─────────────────────────────────────────────────────────────────────
+    # Source-only anchor repair; NOT VERIFIED.
     (
         "M12 · 🔴 `DEFAULT_PROVIDER` goes back to being THE ANSWER · the identity's column is never "
         "consulted on a launch, which is the state `420` §1.1 measured and `419` F3 wrote the fix "
@@ -226,12 +227,7 @@ MUTATIONS = [
         [
             (
                 SCREEN,
-                """  providerForALaunch(
-    agentStore.identities.value,
-    DEFAULT_PROFILE_ID,
-    DEFAULT_PROVIDER,
-    launchChoices.value.provider,
-  ),""",
+                '    providerForALaunch(\n      agentStore.identities.value,\n      DEFAULT_PROFILE_ID,\n      DEFAULT_PROVIDER,\n      launchChoices.value.provider,\n    ),',
                 "  DEFAULT_PROVIDER,",
             )
         ],

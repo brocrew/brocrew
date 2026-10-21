@@ -375,14 +375,17 @@ describe('§4 · the sentence the PO ruled owed, and it is derived rather than t
     expect(YOLO_MEANS_FOR_AGENTS_IT_STARTS).not.toMatch(/unsafe|danger|careful|be aware|warning/i)
   })
 
-  it('the current conversation chooses its mode through the confirmed-state switch', () => {
+  it('the current conversation shows its mode choice immediately while it is pending', () => {
     const controls = readFileSync(
       join(HERE, '../src/renderer/src/components/CardApproval.vue'),
       'utf8',
     )
     expect(controls).toContain('data-cy="card-approval"')
     expect(controls).toContain('role="switch"')
-    expect(controls).toContain(':checked="props.approval.mode === \'auto\'"')
+    // The approved 0.1.3 switch shows the choice; the header keeps the confirmed current mode.
+    expect(controls).toContain(
+      ':checked="(props.approval.pending ?? props.approval.mode) === \'auto\'"',
+    )
   })
 })
 

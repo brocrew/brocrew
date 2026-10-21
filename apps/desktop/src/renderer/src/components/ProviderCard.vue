@@ -61,6 +61,7 @@ import SignInPanel from './SignInPanel.vue'
  */
 const props = withDefaults(
   defineProps<{
+    setupRequested?: boolean
     provider: Provider
     capabilities: ProviderCapabilityMap | null
     /** This provider's usage warning, or `null` when it has sent none. */
@@ -474,10 +475,13 @@ const listSays = computed(() => {
   if (now === null || now.state === 'asking') {
     return { message: `Reading ${name.value}’s models…`, tone: 'note' as const, remedy: null }
   }
-  if (now.state === 'unread') return { message: now.why, tone: 'warn' as const, remedy: null }
-  if (now.list.notAsked === null) return null
+  const catalogue =
+    now.state === 'unread'
+      ? { ok: false as const, reason: 'refused' as const, detail: now.why }
+      : now.list.notAsked
+  if (catalogue === null) return null
   return modelField({
-    catalogue: now.list.notAsked,
+    catalogue,
     profileExists: true,
     provider: name.value,
     signIn: signIn.value,
@@ -658,6 +662,21 @@ function beginSetup(): void {
   setupCopySays.value = null
   settingUp.value = true
 }
+watch(
+  () => props.setupRequested,
+  (requested) => {
+    if (!requested) return
+    beginSetup()
+    void nextTick(() =>
+      document
+        .querySelector<HTMLElement>(
+          `[data-cy="provider-card"][data-provider="${props.provider}"] [data-cy="provider-inline-setup"] button`,
+        )
+        ?.focus(),
+    )
+  },
+  { immediate: true },
+)
 function useSetupKey(): void {
   setupKey.value = true
   setupExternal.value = false
@@ -1475,6 +1494,7 @@ watch(
           class="line"
           :class="{ warn: listSays.tone === 'warn' }"
           data-cy="provider-models-said"
+          :title="'detail' in listSays ? listSays.detail : undefined"
         >
           {{ listSays.message }}
           <strong v-if="listSays.remedy">{{ listSays.remedy }}</strong>

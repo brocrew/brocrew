@@ -5,7 +5,7 @@ import {
   TRANSCRIPT_RETENTION_CHOICES,
   isTranscriptRetention,
 } from '../../../shared/transcript-retention'
-import type { ProviderCapabilityMap } from '../../../shared/runtime-ipc'
+import type { Provider, ProviderCapabilityMap } from '../../../shared/runtime-ipc'
 import type { ProviderLimitsView } from '../lib/persons-queue'
 import type { ModelLists } from '../lib/model-lists'
 import type { AgentStore } from '../lib/agent-store'
@@ -29,6 +29,7 @@ export type SettingsTab = 'providers' | 'tools' | 'skills' | 'plugins' | 'themes
 
 const props = withDefaults(
   defineProps<{
+    setupProvider?: Provider | null
     tab?: SettingsTab
     capabilities: ProviderCapabilityMap | null
     warnings: ProviderLimitsView | null
@@ -193,6 +194,7 @@ async function tabKey(event: KeyboardEvent, current: SettingsTab): Promise<void>
     >
       <ProvidersScreen
         embedded
+        :setup-provider="props.setupProvider"
         :capabilities="props.capabilities"
         :warnings="props.warnings"
         :clock="props.clock"

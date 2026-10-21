@@ -266,6 +266,7 @@ MUTATIONS = [
         ],
     ),
     # ── M12-M13 · the remedy, in the button's own words ───────────────────────
+    # Retired: the plain-error picker removed the old in-profile capability remedy.
     (
         "M12 · ⛔ the remedy stops being asked of the CAPABILITIES · every provider is offered the "
         "profile sign-in, so a Claude user whose machine login expired is pointed at a button that "
@@ -279,6 +280,7 @@ MUTATIONS = [
             )
         ],
     ),
+    # Retired: the plain-error picker removed the old in-profile capability remedy.
     (
         "M13 · ⚠️ the model field invents its own wording for a gesture the panel already names · "
         "one button, two phrasings, which teaches a person there are two gestures — 308 §5's mistake "

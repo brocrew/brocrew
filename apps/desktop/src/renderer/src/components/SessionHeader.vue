@@ -408,7 +408,7 @@ const yoloTitle = computed(() => {
     return 'Asks when an action needs permission. Change it in the drawer’s Open tab.'
   const status = session ? props.capabilities?.[session.provider]?.approvals : undefined
   const declared = status?.state === 'available' ? status.note : undefined
-  return `Auto — the CLIs’ --dangerously-skip-permissions and --yolo. This session runs commands and edits files without asking, except what the provider’s own plan mode asks while it plans, and nothing this app configures confines them. ${declared ?? ''} Change it in the drawer’s Open tab.`.replace(
+  return `Auto. This session runs commands and edits files without asking, except what the provider’s own plan mode asks while it plans, and nothing this app configures confines them. ${declared ?? ''} Change it in the drawer’s Open tab.`.replace(
     /\s+/g,
     ' ',
   )
@@ -709,6 +709,9 @@ const panelToggleName = computed(() =>
         :title="yoloTitle"
       >
         <span class="dot"></span>{{ session.approvalMode === 'auto' ? 'Auto' : 'Ask' }}
+        <span v-if="session.pendingApprovalMode" data-cy="session-approval-next">
+          → {{ session.pendingApprovalMode === 'auto' ? 'Auto' : 'Ask' }} next message
+        </span>
       </span>
 
       <!-- What the agent is doing and when it last reported, at the end of the line. It takes

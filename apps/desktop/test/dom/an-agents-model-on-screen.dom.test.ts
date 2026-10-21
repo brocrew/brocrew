@@ -643,7 +643,7 @@ describe('685 §5 · an agent that has never run, and no list', () => {
     const onClaude = await control('claude')
     await press(onClaude.m, 'model-picker-face')
     expect(words(onClaude.m.q('model-picker-said'))).toContain(
-      'Claude could not be asked what it can run: not signed in',
+      "Claude isn't set up. Set it up in Settings → Providers.",
     )
     // ⚑ The control: the same answer, read for the other provider, is a list.
     const onCodex = await control('codex')

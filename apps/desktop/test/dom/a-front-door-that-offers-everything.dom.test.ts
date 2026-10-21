@@ -440,19 +440,27 @@ describe('§3 · the choices are reachable from THIS screen, and they reach the 
     asking.answers.value = { claude: 'pending', codex: 'pending' }
     await nextTick()
     await openPicker(asking.m)
-    const said = (m: Mounted, provider: Provider): string =>
-      section(m, provider).querySelector('[data-cy="model-picker-said"]')?.textContent?.trim() ?? ''
-    expect(said(asking.m, 'codex'), 'a provider was blamed for a list that never answered').toBe(
-      'Asking Codex what it can run…',
-    )
+    // Unknown readiness is disabled as Checking… in the approved 0.1.3 picker.
+    for (const provider of ['claude', 'codex']) {
+      const radio = asking.m.q(`model-picker-choose-${provider}`) as HTMLInputElement
+      expect(radio.disabled).toBe(true)
+      expect(radio.closest('label')?.textContent).toContain(' · Checking…')
+    }
+    expect(asking.m.all('model-picker-row')).toHaveLength(0)
+    expect(asking.m.all('model-picker-effort-none')).toHaveLength(0)
+    expect(asking.m.q('model-picker-panel').textContent).not.toMatch(/did not say|no effort levels/)
     asking.m.unmount()
 
     // ⚠️ **And a model a person added while the provider cannot be asked**: its efforts are
     // UNKNOWN, never *"none"* — the host's own reading.
-    const refused = open()
-    refused.answers.value = { claude: REFUSED, codex: REFUSED }
+    // A confirmed usable sign-in still permits a named model when its catalogue read fails.
+    const refused = open({ providerReadiness: { claude: true, codex: true } })
+    const transient = { ...REFUSED, detail: 'temporary transport failure' }
+    refused.answers.value = { claude: transient, codex: transient }
     await nextTick()
     await openPicker(refused.m)
+    refused.m.q('model-picker-choose-codex').click()
+    await settle()
     section(refused.m, 'codex')
       .querySelector<HTMLButtonElement>('[data-cy="model-picker-add-open"]')!
       .click()

@@ -558,7 +558,8 @@ describe('the host and the renderer cannot disagree about what is running (100)'
       // default. `discloseReopened` says *"chosen now; how this session originally ran was never
       // recorded"* when the row does not know, and a lookup that dropped the column would put that
       // sentence on a session whose mode is written down two fields away.
-      expect(second.get(sessionId)?.meta?.approvalNote).toBe('approvals: ask')
+      // The approved 0.1.3 disclosure uses the same Ask/Auto names as the panel and header.
+      expect(second.get(sessionId)?.meta?.approvalNote).toBe('approvals: Ask')
       second.dispose()
 
       // ⚠️ **And a ref this build cannot READ costs the row nothing either.** `toResumable` drops

@@ -1,5 +1,5 @@
 import type { CapabilityStatus, ModelCatalogue, ModelChoice } from '../../../shared/runtime-ipc'
-import { COPY_MACHINE_SIGN_IN, SIGN_IN_HERE } from './credential-words'
+import { needsProviderSetup } from './provider-models'
 
 /**
  * 🔴 **What the model field may say, decided ONCE** (310).
@@ -38,9 +38,7 @@ import { COPY_MACHINE_SIGN_IN, SIGN_IN_HERE } from './credential-words'
  *
  * ⛔ **It never names a provider.** `039`'s rule, enforced by `provider-neutrality.test.ts`: the id
  * arrives as {@link ModelFieldWorld.provider} and is interpolated, never compared. Every remedy is
- * decided from the CAPABILITIES the adapters declare — which is how one function says *"sign in to
- * this profile"* on one provider and *"starting a Claude conversation renews it"* on the other
- * without knowing either of their names.
+ * kept out of the visible diagnostic. Missing setup points to Settings; other failures can retry.
  */
 
 /**
@@ -60,6 +58,9 @@ export type ModelFieldState = 'listed' | 'empty' | 'asking' | 'no-profile' | 'cl
 export type ModelFieldTone = 'note' | 'warn'
 
 export interface ModelField {
+  retry?: boolean
+  detail?: string
+  notSetUp?: boolean
   state: ModelFieldState
   /**
    * The rows to offer, or `null` when there is no menu to offer.
@@ -95,6 +96,7 @@ export interface ModelField {
 }
 
 export interface ModelFieldWorld {
+  ready?: boolean | null
   /**
    * What this provider said about this profile, or `null` when no answer is held.
    *
@@ -147,30 +149,6 @@ function comingWithTheProfile(): string {
     'The model list arrives once this profile exists — it is created when the conversation ' +
     'starts, not now.'
   )
-}
-
-/**
- * What to offer a person whose probe was refused — in the words of the gesture that would fix it.
- *
- * ⛔ **Decided from the declared capabilities, never from the provider's name** (039). Codex
- * declares `signIn: available`, so the remedy is the panel's primary button. Claude declares both
- * `absent`, and its `reprovisionAuth.reason` is already an INSTRUCTION rather than an explanation —
- * *"If it has expired, starting a Claude conversation renews it"* — which is the machine
- * sign-in, in the adapter's own words. Writing a parallel sentence here would be a second copy to
- * keep true; `capabilities.ts` is the one place either is edited.
- *
- * ⚠️ **A refused probe is not proof of a credential problem** — a missing binary refuses too — so
- * this is offered as the thing to check rather than asserted as the cause. The catalogue's own
- * `detail` is what says what actually happened, and it is rendered beside this.
- */
-function remedyFor(world: ModelFieldWorld): string {
-  if (world.signIn.state === 'available') {
-    return `If this profile is not signed in: ${SIGN_IN_HERE}.`
-  }
-  if (world.reprovision.state === 'available') {
-    return `If this profile is not signed in: ${COPY_MACHINE_SIGN_IN}.`
-  }
-  return world.reprovision.reason
 }
 
 /**
@@ -247,11 +225,17 @@ export function modelField(world: ModelFieldWorld): ModelField {
   // an empty string here, so this is a shape the type allows and the producer does not — and a
   // sentence ending in *"what it can run: "* is worse than the same sentence without a clause.
   const said = held.detail.trim()
+  const notSetUp = world.ready === false || needsProviderSetup(said)
   return {
     state: 'refused',
     choices: null,
-    message: `${world.provider} could not be asked what it can run${said === '' ? '.' : `: ${said}`}`,
+    message: notSetUp
+      ? `${world.provider} isn't set up. Set it up in Settings → Providers.`
+      : `${world.provider} didn't answer. Try again.`,
     tone: 'warn',
-    remedy: remedyFor(world),
+    remedy: null,
+    detail: said,
+    notSetUp,
+    retry: !notSetUp,
   }
 }

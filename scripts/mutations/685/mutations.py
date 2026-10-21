@@ -130,6 +130,7 @@ MUTATIONS = [
             )
         ],
     ),
+    # Source-only anchor repair; NOT VERIFIED.
     (
         "M6 · ⚑ **the provider's own diagnostic is dropped** · *not signed in* was the only copy — "
         "killed by `an-agents-model-on-screen.test.ts` · killed by `an-agents-model-on-screen.dom.test.ts` (named by W4.78)",
@@ -137,8 +138,8 @@ MUTATIONS = [
             (
                 "apps/desktop/src/renderer/src/lib/model-field.ts",
                 # ⚑ **W4.78 · re-anchored in place, not retired** — whatTheCatalogueLets went in 6d2d195d (UI-012). The picker now hands list.notAsked to modelField, which is where a refused list's own diagnostic ('not signed in') is drawn. The NAMED node killer only pins the host's list.notAsked.detail and the door's refusal, so it would not kill. The DOM twin does ('Codex answered while Claude refused' expects 'Claude could not be asked what it can run: not signed in'), and so does model-field.test.ts. (moved from agent-model-choice.ts)
-                "    message: `${world.provider} could not be asked what it can run${said === '' ? '.' : `: ${said}`}`,\n",
-                "    message: `${world.provider} could not be asked what it can run.`,\n",
+                '    detail: said,\n',
+                "    detail: '',\n",
             )
         ],
     ),
