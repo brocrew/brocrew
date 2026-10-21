@@ -5,6 +5,7 @@ BroCrew's Windows installer is not signed. Windows will warn you about it, and t
 ## Before you install
 
 - **Windows 10 or 11, 64-bit (x64).**
+- **Not tested yet on a PC your organisation manages.** If your work or school sets up Claude Code on this PC for you, for example so it signs in only with the organisation's account, BroCrew may not be able to use your own API key there.
 - **Git for Windows, recommended.** Claude runs its commands best in Git Bash, so install Git for Windows from <https://git-scm.com/download/win> first, with the default options.
 - **Claude Code, to use Claude agents.** Install Claude Code first, from Anthropic: <https://code.claude.com/docs/en/setup>. BroCrew does not include it: it runs the Claude Code installed on your PC. Codex comes with BroCrew.
 - **An API key for each agent you want to use:**
