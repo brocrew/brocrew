@@ -159,31 +159,9 @@ describe('§2 · the words are the adapter’s, and the renderer holds no copy',
   })
 
   it('⚑ …and the surfaces read it through the capability, by index and never by name', () => {
-    // The positive half. A `not.toContain` over a renderer that never reads the entry at all would
-    // also be green, and the surfaces that still NAME the mode are the ones that must.
-    //
-    // 🔴 **`417` took `components/NewConversation.vue` off this list** (HO-022 §2 — *"Opening a new
-    // conversation opens a conversation with BroBot. That is all."*). The launcher lost the
-    // `auto-approve` box along with everything else it used to ask for, so it cannot reach
-    // `approvalMode: 'auto'` at all and its copy of the disclosure had nothing left to disclose.
-    //
-    // 🔴 **`500` PUT IT BACK, and added a second door beside it** (HO-036 §3.1 — *"a person sets
-    // their approval mode once, and every conversation they start begins there"*). ⛔ The launcher
-    // can reach `auto` again — not through a per-launch checkbox, which is still gone, but because
-    // a person's SETTING decides what it sends — and `StartAsAgent.vue` is the other door the same
-    // setting reaches. ⚑ **A door that can begin unattended and says nothing is the gap `367`
-    // closed**, so both of them render the pair and both are asked for it here.
-    //
-    // ⛔ **The disclosure itself is untouched and the strict half above is unchanged.** `367` named
-    // three surfaces; four render it now, each reading the note BY INDEX so no surface can compare
-    // a provider by name. ⚠️ The launcher's other claim is unchanged too and lives where it did:
-    // `test/dom/a-front-door-that-asks-nothing.dom.test.ts` §4 — no `auto-approve`, and the pair
-    // drawn exactly when the launch will use the mode.
-    for (const file of [
-      'composables/useConversationControls.ts',
-      'components/NewConversation.vue',
-      'components/StartAsAgent.vue',
-    ]) {
+    // Adapter-specific disclosures remain on the conversation controls and placed launcher.
+    // The front door uses the selected Ask/Auto description instead of an always-visible card.
+    for (const file of ['composables/useConversationControls.ts', 'components/StartAsAgent.vue']) {
       const code = withoutProse(readFileSync(join(SRC, 'renderer/src', file), 'utf8'))
       expect(code, file).toMatch(/capabilities\?\.\[[^\]]+\]\?\.approvals/)
     }

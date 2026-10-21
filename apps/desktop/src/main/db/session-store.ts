@@ -2051,6 +2051,7 @@ export interface SessionStore {
    * ⛔ **Nothing below the IPC boundary reads this.** It is spent at the two doors a person
    * presses, and no rail reads it: a conversation an agent starts runs in its giver's mode.
    */
+  defaultApprovalModeChosen(): boolean
   defaultApprovalMode(): 'ask' | 'auto'
   /**
    * Record what a person chose. ⚠️ **It changes nothing that is running and nothing that has run**
@@ -4028,6 +4029,7 @@ export const NULL_SESSION_STORE: SessionStore = {
   // ⛔ **`'ask'` for a host with no database**, which is the narrowest answer rather than the
   // convenient one: a store that cannot tell you what a person chose has not learned that they
   // chose to stop being asked. Same direction as `spawnPolicy` above, arrived at from the other end.
+  defaultApprovalModeChosen: () => false,
   defaultApprovalMode: () => 'ask',
   setDefaultApprovalMode: () => {},
   parentOf: () => null,
@@ -12793,6 +12795,12 @@ export function createSessionStore(
 
     setSpawningEnabled(enabled) {
       spawnSql().writePolicy.run(enabled ? 1 : 0, now())
+    },
+
+    defaultApprovalModeChosen() {
+      const row = spawnSql().readApprovalDefault.get() as
+        { default_approval_mode: string | null } | undefined
+      return row?.default_approval_mode === 'ask' || row?.default_approval_mode === 'auto'
     },
 
     defaultApprovalMode() {

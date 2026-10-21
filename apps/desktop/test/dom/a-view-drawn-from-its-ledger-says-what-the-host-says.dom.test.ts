@@ -393,12 +393,8 @@ describe('what the header and the drawer say of a view drawn from its ledger', (
       const fixed = await controls(await looked(over))
       expect(fixed.picker, `${name}: the model picker`).toBe(false)
       expect(fixed.mode.dataset.changeable, `${name}: the approval mode`).toBe('false')
-      // …and its panel, opened, explains instead of offering the change.
-      fixed.mode.click()
-      await settle()
-      const panel = fixed.mode.parentElement?.querySelector('[data-cy="card-approval-panel"]')
-      expect(panel?.querySelector('[data-cy="card-approval-fixed"]'), `${name}: why`).not.toBeNull()
-      expect(panel?.querySelector('[data-cy="card-approval-confirm"]'), name).toBeNull()
+      expect((fixed.mode as HTMLInputElement).disabled, name).toBe(true)
+      expect(fixed.mode.closest('label')?.title, `${name}: why`).toContain('can’t be changed')
     }
   })
 })

@@ -12,6 +12,7 @@ import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
 import type { ProviderSetupSays } from '../../src/renderer/src/lib/provider-setup'
 import type {
   ApiKeyStatus,
+  RuntimeBridge,
   AuthState,
   CapabilityStatus,
   Provider,
@@ -650,109 +651,53 @@ const CAPS = {
   codex: { signIn: AVAILABLE, reprovisionAuth: ABSENT },
 } as unknown as ProviderCapabilityMap
 
-describe('§7 · at launch it opens only when a provider isn’t ready', () => {
-  it('🔴 the program is missing: its setup opens at the install step', async () => {
-    theBridge({ claude: version('missing'), claudeAuth: SIGNED_OUT, codexAuth: SIGNED_IN })
-    const m = mount(ProviderSetupAtLaunch, { capabilities: CAPS }, { width: 10, height: 10 })
-    await settled()
-    expect(m.q('provider-setup-dialog').dataset.provider).toBe('claude')
-    expect(stepOf(m)).toBe('install')
-  })
-
-  it('a provider signed out opens on its sign-in', async () => {
-    theBridge({ claude: version('tested'), claudeAuth: SIGNED_IN, codexAuth: SIGNED_OUT })
-    const m = mount(ProviderSetupAtLaunch, { capabilities: CAPS }, { width: 10, height: 10 })
-    await settled()
-    expect(m.q('provider-setup-dialog').dataset.provider).toBe('codex')
-    expect(stepOf(m)).toBe('sign-in')
-  })
-
-  it('🔴 Use an API key instead closes it, opens Providers, and names whose key field to go to', async () => {
-    theBridge({ claude: version('tested'), claudeAuth: SIGNED_OUT, codexAuth: SIGNED_IN })
-    const opened: string[] = []
-    const m = mount(
-      ProviderSetupAtLaunch,
-      { capabilities: CAPS, onOpenProviders: () => opened.push('providers') },
-      { width: 10, height: 10 },
-    )
-    await settled()
-    expect(stepOf(m)).toBe('sign-in')
-    expect(useKeyAsked().value).toBeNull()
-    m.q('setup-use-key').click()
-    await settled()
-    expect(opened).toEqual(['providers'])
-    expect(useKeyAsked().value).toBe('claude')
-    expect(m.all('provider-setup-dialog')).toHaveLength(0)
-  })
-
-  it('🔴 a saved key that can’t be read opens the setup, with main’s own sentence', async () => {
-    const reason =
-      'BroBot can’t read the API key saved for Codex on this computer. macOS may be waiting for permission to read its saved key.'
-    theBridge({
-      claude: version('tested'),
-      claudeAuth: SIGNED_IN,
-      codexAuth: ON_A_KEY,
-      codexKey: { set: true, inUse: false, readState: 'unreadable', unreadableReason: reason },
-    })
-    const m = mount(ProviderSetupAtLaunch, { capabilities: CAPS }, { width: 10, height: 10 })
-    await settled()
-    expect(m.q('provider-setup-dialog').dataset.provider).toBe('codex')
-    expect(kindOf(m)).toBe('key-unreadable')
-    expect(text(m.q('setup-says'))).toBe(reason)
-  })
-
-  it('⚑ the control: a saved key not read yet opens nothing', async () => {
-    theBridge({
-      claude: version('tested'),
-      claudeAuth: SIGNED_IN,
-      codexAuth: ON_A_KEY,
-      codexKey: { set: true, inUse: false, readState: 'not-checked' },
-    })
-    const m = mount(ProviderSetupAtLaunch, { capabilities: CAPS }, { width: 10, height: 10 })
-    await settled()
-    expect(m.all('provider-setup-dialog')).toHaveLength(0)
-  })
-
-  it('⚑ control: every provider ready, nothing opens', async () => {
-    const runtime = theBridge({
-      claude: version('newer-than-tested'),
-      claudeAuth: SIGNED_IN,
-      codexAuth: SIGNED_IN,
-    })
-    const m = mount(ProviderSetupAtLaunch, { capabilities: CAPS }, { width: 10, height: 10 })
-    await settled()
-    expect(runtime.checkProviderAuth).toHaveBeenCalled()
-    expect(m.all('provider-setup-dialog')).toHaveLength(0)
-  })
-
-  it('closed once, it does not open by itself again', async () => {
-    theBridge({ claude: version('missing'), claudeAuth: SIGNED_OUT, codexAuth: SIGNED_IN })
-    const first = mount(ProviderSetupAtLaunch, { capabilities: CAPS }, { width: 10, height: 10 })
-    await settled()
-    first.q('setup-close').click()
-    await settled()
-    expect(first.all('provider-setup-dialog')).toHaveLength(0)
-    first.unmount()
-    forgetProfileSignIns()
-
-    const again = mount(ProviderSetupAtLaunch, { capabilities: CAPS }, { width: 10, height: 10 })
-    await settled()
-    expect(again.all('provider-setup-dialog')).toHaveLength(0)
-  })
+// The Claude-first popup was replaced by equal provider cards. Unknown facts do not redirect.
+describe('first run routes only when no provider is ready', () => {
+  it.each([
+    [SIGNED_OUT, SIGNED_OUT, 1],
+    [SIGNED_IN, SIGNED_OUT, 0],
+    [SIGNED_OUT, SIGNED_IN, 0],
+    [SIGNED_IN, SIGNED_IN, 0],
+    [{ state: 'unknown', reason: 'Cannot check' } as AuthState, SIGNED_OUT, 0],
+  ])(
+    'routes from readiness facts without a provider popup',
+    async (claudeAuth, codexAuth, count) => {
+      theBridge({ claude: version('tested'), claudeAuth, codexAuth })
+      const open = vi.fn()
+      const m = mount(ProviderSetupAtLaunch, { capabilities: CAPS, onOpenProviders: open })
+      await settled()
+      expect(open).toHaveBeenCalledTimes(count)
+      expect(m.all('provider-setup-dialog')).toHaveLength(0)
+      await settled()
+      expect(open).toHaveBeenCalledTimes(count)
+    },
+  )
 })
 
 /* ------------------------------------------------------------------ §8 the card's Set up */
 
 describe('§8 · the Providers card’s Set up opens it', () => {
-  function theCard(auth: AuthState, program: ProviderVersion = version('tested')) {
+  function theCard(
+    auth: AuthState,
+    program: ProviderVersion = version('tested'),
+    options: { savedKey?: boolean; capabilities?: ProviderCapabilityMap | null } = {},
+  ) {
     const runtime = {
       checkProviderAuth: vi.fn(async () => auth),
       apiKeyStatus: vi.fn(async () => ({
         provider: 'claude',
-        set: false,
+        set: options.savedKey ?? false,
         setAt: null,
         inUse: false,
       })),
+      setApiKey: vi.fn(async (): Promise<Awaited<ReturnType<RuntimeBridge['setApiKey']>>> => ({
+        provider: 'claude',
+        set: false,
+        setAt: null,
+        inUse: false,
+        refused: 'Storage unavailable.',
+      })),
+      checkApiKey: vi.fn(),
       signInProvider: vi.fn(),
       cancelProviderSignIn: vi.fn(),
       reprovisionProviderAuth: vi.fn(),
@@ -778,7 +723,7 @@ describe('§8 · the Providers card’s Set up opens it', () => {
       ProviderCard as Component,
       {
         provider: 'claude',
-        capabilities: CAPS,
+        capabilities: options.capabilities === undefined ? CAPS : options.capabilities,
         limit: null,
         limitsRead: true,
         clock: Date.now(),
@@ -797,53 +742,106 @@ describe('§8 · the Providers card’s Set up opens it', () => {
     return { m, runtime, readVersions }
   }
 
-  it('Set up opens the first step to do; Next reads the version and the login again', async () => {
-    const { m, runtime, readVersions } = theCard(SIGNED_OUT)
+  it('keeps setup inside its card, and Cancel restores the normal sections', async () => {
+    const { m } = theCard(SIGNED_OUT)
     await settled()
-    expect(m.all('provider-setup-dialog')).toHaveLength(0)
     m.q('provider-set-up').click()
     await settled()
-    expect(stepOf(m)).toBe('sign-in')
-    const asked = runtime.checkProviderAuth.mock.calls.length
-    await next(m)
+    expect(m.all('provider-inline-setup')).toHaveLength(1)
+    expect(m.all('provider-setup-dialog')).toHaveLength(0)
+    expect(m.all('provider-status')).toHaveLength(0)
+    expect(m.all('provider-key')).toHaveLength(0)
+    expect((m.q('setup-check') as HTMLButtonElement).disabled).toBe(true)
+    m.q('setup-use-key').click()
+    await settled()
+    expect(m.q('setup-key-input').getAttribute('type')).toBe('password')
+    const cancel = [...m.q('provider-inline-setup').querySelectorAll('button')].find(
+      (b) => b.textContent?.trim() === 'Cancel',
+    )!
+    cancel.click()
+    await settled()
+    expect(m.all('provider-inline-setup')).toHaveLength(0)
+    expect(m.all('provider-status')).toHaveLength(1)
+  })
+  it('Check re-reads readiness and Done closes the flow without another provider prompt', async () => {
+    const { m, runtime, readVersions } = theCard(SIGNED_IN)
+    await settled()
+    m.q('provider-set-up').click()
+    await settled()
+    m.q('setup-check').click()
+    await settled()
     expect(readVersions).toHaveBeenCalledTimes(1)
-    expect(runtime.checkProviderAuth.mock.calls.length).toBe(asked + 1)
-    expect(stepOf(m)).toBe('sign-in')
-  })
-
-  it('🔴 installed and signed out: the card says nothing about installing, and Set up Claude opens at sign-in', async () => {
-    const { m } = theCard(SIGNED_OUT)
+    expect(runtime.checkProviderAuth).toHaveBeenCalledTimes(2)
+    expect(m.q('setup-ready').textContent).toContain('Claude is ready.')
+    m.q('setup-done').click()
     await settled()
-    // The card follows the real state: the program was found, so no install sentence or command.
-    expect(text(m.host)).not.toMatch(/\binstall\b/i)
-    expect(m.host.textContent).not.toContain(SETUP.install!.command)
-    expect(m.all('provider-setup')).toHaveLength(0)
-    const setUp = m.q('provider-set-up')
-    expect(text(setUp)).toBe('Set up Claude')
-    setUp.click()
-    await settled()
-    expect(stepOf(m)).toBe('sign-in')
+    expect(m.all('provider-inline-setup')).toHaveLength(0)
+    expect(m.all('setup-other')).toHaveLength(0)
   })
-
-  it('⚑ the control: a program not found opens the setup at its install step', async () => {
-    const { m } = theCard(SIGNED_OUT, version('missing'))
+  it('a failed readiness check never claims Done', async () => {
+    const { m, runtime } = theCard(SIGNED_IN)
     await settled()
     m.q('provider-set-up').click()
     await settled()
-    expect(stepOf(m)).toBe('install')
-    expect(text(m.q('setup-command'))).toBe(SETUP.install!.command)
+    runtime.checkProviderAuth.mockRejectedValueOnce(new Error('Cannot reach provider'))
+    m.q('setup-check').click()
+    await settled()
+    expect(m.all('setup-done')).toHaveLength(0)
+    expect(m.q('provider-inline-setup').textContent).toContain('Not connected yet')
   })
-
-  it('Escape closes it and gives focus back to Set up', async () => {
-    const { m } = theCard(SIGNED_OUT)
+  it('does not check or claim Done after an API-key save is refused', async () => {
+    const { m, runtime } = theCard(SIGNED_OUT)
     await settled()
-    const button = m.q('provider-set-up')
-    button.focus()
-    button.click()
+    m.q('provider-set-up').click()
     await settled()
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    m.q('setup-use-key').click()
     await settled()
-    expect(m.all('provider-setup-dialog')).toHaveLength(0)
-    expect(document.activeElement).toBe(button)
+    const field = m.q('setup-key-input') as HTMLInputElement
+    field.value = 'fictional-key-for-test'
+    field.dispatchEvent(new Event('input', { bubbles: true }))
+    await nextTick()
+    m.q('setup-check').click()
+    await settled()
+    expect(runtime.setApiKey).toHaveBeenCalledWith({
+      provider: 'claude',
+      key: 'fictional-key-for-test',
+    })
+    expect(runtime.checkApiKey).not.toHaveBeenCalled()
+    expect(field.value).toBe('')
+    expect(m.all('setup-done')).toHaveLength(0)
+    expect(m.q('provider-inline-setup').textContent).toContain('Storage unavailable.')
+  })
+  it.each([{ savedKey: true }, { capabilities: null }])(
+    'does not offer sign-in with a saved key or unread capabilities: %j',
+    async (options) => {
+      const { m, runtime } = theCard(SIGNED_OUT, version('tested'), options)
+      await settled()
+      m.q('provider-set-up').click()
+      await settled()
+      const signIn = m.q('setup-sign-in') as HTMLButtonElement
+      expect(signIn.disabled).toBe(true)
+      signIn.click()
+      await settled()
+      expect(m.all('setup-command')).toHaveLength(0)
+      expect(runtime.signInProvider).not.toHaveBeenCalled()
+    },
+  )
+  it('uses the existing machine sign-in command when the provider has no in-app sign-in', async () => {
+    const { m, runtime } = theCard(SIGNED_OUT)
+    await settled()
+    m.q('provider-set-up').click()
+    await settled()
+    m.q('setup-sign-in').click()
+    await settled()
+    expect(m.q('setup-command').textContent).toBe(SETUP.signInCommand)
+    expect(runtime.signInProvider).not.toHaveBeenCalled()
+    m.q('setup-copy').click()
+    await settled()
+    expect(copied).toEqual([SETUP.signInCommand])
+    expect((m.q('setup-check') as HTMLButtonElement).disabled).toBe(false)
+    runtime.checkProviderAuth.mockResolvedValueOnce(SIGNED_IN)
+    m.q('setup-check').click()
+    await settled()
+    expect(m.q('setup-ready').textContent).toContain('Claude is ready.')
   })
 })

@@ -42,8 +42,7 @@ import { useModelLists } from '../composables/useModelLists'
 import type { ProviderSetupSays } from '../lib/provider-setup'
 import { keyCantBeRead as theKeyCantBeRead, unreadableKeySays } from '../lib/saved-key'
 import { useKeyAsked } from '../composables/useKeyAsked'
-import OverlayHost from './OverlayHost.vue'
-import ProviderSetupWizard from './ProviderSetupWizard.vue'
+import { isReady } from '../lib/provider-setup-steps'
 import ProviderMark from './ProviderMark.vue'
 import SignInPanel from './SignInPanel.vue'
 
@@ -640,12 +639,86 @@ const resourcesTitle = computed(() =>
 /* ------------------------------------------------------------------ setup */
 
 const settingUp = ref(false)
-const keyPart = ref<HTMLElement | null>(null)
-
-function startFromSetup(): void {
-  settingUp.value = false
-  emit('startConversation')
+const setupKey = ref(false)
+const setupExternal = ref(false)
+const setupCopySays = ref<string | null>(null)
+const setupStep = ref<1 | 2 | 3>(1)
+const setupChecking = ref(false)
+const setupBusy = computed(() => setupChecking.value || keyBusy.value || authBusy.value !== 'idle')
+const canSetUpSignIn = computed(
+  () =>
+    keyStatus.value?.set === false &&
+    (signIn.value.state === 'available' ||
+      (props.capabilities?.[props.provider]?.signIn.state === 'absent' && Boolean(props.setup))),
+)
+function beginSetup(): void {
+  setupStep.value = 1
+  setupKey.value = false
+  setupExternal.value = false
+  setupCopySays.value = null
+  settingUp.value = true
 }
+function useSetupKey(): void {
+  setupKey.value = true
+  setupExternal.value = false
+}
+async function setupSignIn(): Promise<void> {
+  if (setupBusy.value || !canSetUpSignIn.value) return
+  setupKey.value = false
+  if (signIn.value.state === 'available') await signInHere()
+  else setupExternal.value = true
+}
+async function copySetupCommand(): Promise<void> {
+  if (!props.setup) return
+  try {
+    await navigator.clipboard.writeText(props.setup.signInCommand)
+    setupCopySays.value = 'Copied.'
+  } catch {
+    setupCopySays.value = 'Could not copy. Select the command and copy it yourself.'
+  }
+}
+function closeSetup(): void {
+  if (setupBusy.value) return
+  keyDraft.value = ''
+  settingUp.value = false
+}
+async function checkSetup(): Promise<void> {
+  if (setupBusy.value) return
+  setupChecking.value = true
+  setupStep.value = 2
+  try {
+    if (setupKey.value && keyDraft.value.trim()) {
+      await saveKey()
+      if (keySaid.value?.tone === 'warn') return
+    }
+    if (keyStatus.value?.set) {
+      await checkKey()
+      if (keySaid.value?.tone === 'warn') return
+    }
+    await aPersonChecksAgain()
+    await readKey()
+    if (
+      isReady({
+        version: props.version,
+        setup: props.setup,
+        auth: auth.value,
+        keyRefused: keyRefusedSays.value !== null,
+        keyUnreadable: keyCantBeRead.value ? keyInUseSays.value : null,
+      }) === true
+    )
+      setupStep.value = 3
+    else
+      noticeSays(
+        auth.value?.state === 'usable'
+          ? 'The provider program is not ready. Check its version below.'
+          : 'Not connected yet. Sign in or check your API key, then try again.',
+        true,
+      )
+  } finally {
+    setupChecking.value = false
+  }
+}
+const keyPart = ref<HTMLElement | null>(null)
 
 /** The key lives on this card: close setup and put focus in its part. */
 function toTheKeyField(): void {
@@ -657,11 +730,6 @@ function toTheKeyField(): void {
       keyPart.value?.querySelector<HTMLElement>('.part-body :is(input, button)')?.focus()
     }, 0),
   )
-}
-
-function openKeyFromSetup(): void {
-  settingUp.value = false
-  toTheKeyField()
 }
 
 /** The setup window at launch asked for this provider's key field: go to it once it is drawn. */
@@ -712,7 +780,9 @@ onMounted(() => {
  */
 const whatEachPartSays = computed<Record<ProviderPart, string | null>>(() => {
   const loginSays = [
-    auth.value !== null && auth.value.state !== 'usable' ? auth.value.state : null,
+    auth.value !== null && auth.value.state !== 'usable' && auth.value.state !== 'absent'
+      ? auth.value.state
+      : null,
     authNoticeWarns.value ? authNotice.value : null,
   ].filter((said): said is string => said !== null)
   const key = keyStatus.value
@@ -791,6 +861,14 @@ watch(
           <svg class="icon" aria-hidden="true"><use href="#i-more" /></svg>
         </button>
       </header>
+      <p v-if="standing.tone !== 'ready'" class="line">
+        {{
+          props.version?.program?.from === 'carried'
+            ? `${name} is included.`
+            : `Set up ${props.setup?.tool ?? name}.`
+        }}
+        Sign in or use an API key.
+      </p>
       <p
         v-if="atItsLimit"
         class="at-limit"
@@ -807,33 +885,11 @@ watch(
           class="bb-button"
           :class="{ 'bb-button--primary': standing.tone !== 'ready' }"
           data-cy="provider-set-up"
-          @click="settingUp = true"
+          @click="beginSetup"
         >
           Set up {{ name }}
         </button>
       </div>
-      <OverlayHost v-if="settingUp" :label="`Set up ${name}`" @close="settingUp = false">
-        <ProviderSetupWizard
-          :provider="props.provider"
-          :mark-kind="markKind"
-          :version="props.version"
-          :setup="props.setup"
-          :auth="auth"
-          :key-refused="keyRefusedSays !== null"
-          :key-unreadable="keyCantBeRead ? keyInUseSays : null"
-          :sign-in="signIn"
-          :reprovision="reprovision"
-          :busy="authBusy"
-          :notice="authNotice"
-          :recheck="aPersonChecksAgain"
-          @close="settingUp = false"
-          @start="startFromSetup"
-          @sign-in="signInHere"
-          @cancel-sign-in="cancelSignIn"
-          @reprovision="copyMachineSignIn"
-          @open-key="openKeyFromSetup"
-        />
-      </OverlayHost>
 
       <p v-if="limitsDisplay" data-cy="provider-limits-reading">
         {{ limitsDisplayLabel(limitsDisplay) }}
@@ -843,7 +899,123 @@ watch(
       </p>
     </div>
 
-    <section class="part" data-cy="provider-status" :data-open="isOpen('login')">
+    <section v-if="settingUp" class="part inline-setup" data-cy="provider-inline-setup">
+      <div class="setup-heading">
+        <h3>Set up {{ name }}</h3>
+        <button
+          type="button"
+          class="bb-button bb-button--quiet"
+          :disabled="setupBusy"
+          @click="closeSetup"
+        >
+          Cancel
+        </button>
+      </div>
+      <ol class="setup-steps" aria-label="Setup steps">
+        <li :aria-current="setupStep === 1 ? 'step' : undefined">1 · Connect</li>
+        <li :aria-current="setupStep === 2 ? 'step' : undefined">2 · Check</li>
+        <li :aria-current="setupStep === 3 ? 'step' : undefined">3 · Done</li>
+      </ol>
+      <template v-if="setupStep !== 3">
+        <p class="line">Sign in or use an API key.</p>
+        <div class="actions">
+          <button
+            type="button"
+            class="bb-button"
+            data-cy="setup-sign-in"
+            :disabled="setupBusy || !canSetUpSignIn"
+            :title="!canSetUpSignIn && signIn.state !== 'available' ? signIn.reason : undefined"
+            @click="setupSignIn"
+          >
+            Sign in
+          </button>
+          <button
+            type="button"
+            class="bb-button"
+            data-cy="setup-use-key"
+            :disabled="setupBusy"
+            @click="useSetupKey"
+          >
+            Use an API key
+          </button>
+          <button
+            v-if="authBusy === 'signing-in'"
+            type="button"
+            class="bb-button"
+            @click="cancelSignIn"
+          >
+            Cancel sign-in
+          </button>
+        </div>
+        <div v-if="setupExternal && props.setup" class="setup-command">
+          <p class="line">
+            Run this command in {{ props.setup.shell }}. Follow its sign-in, then come back here.
+          </p>
+          <code data-cy="setup-command">{{ props.setup.signInCommand }}</code>
+          <button type="button" class="bb-button" data-cy="setup-copy" @click="copySetupCommand">
+            Copy command
+          </button>
+          <p v-if="setupCopySays" class="line quiet" role="status">{{ setupCopySays }}</p>
+        </div>
+        <label v-if="setupKey" class="setup-key"
+          >API key<input
+            v-model="keyDraft"
+            class="bb-input"
+            type="password"
+            autocomplete="off"
+            :disabled="setupBusy"
+            :placeholder="`Paste your ${name} API key`"
+            data-cy="setup-key-input"
+        /></label>
+        <p v-if="setupKey || keyStatus?.set" class="line quiet">{{ checkSpends }}</p>
+        <p v-if="signIn.state !== 'available' && !setupKey && !props.setup" class="line quiet">
+          {{ signIn.reason }}
+        </p>
+        <p v-if="props.version?.program?.standing === 'missing'" class="line warn">
+          {{ props.version.program.said
+          }}<a
+            v-if="props.setup?.install"
+            :href="props.setup.install.docs"
+            target="_blank"
+            rel="noopener"
+            >Install {{ name }}</a
+          >
+        </p>
+        <div class="actions">
+          <button
+            type="button"
+            class="bb-button bb-button--primary"
+            data-cy="setup-check"
+            :disabled="
+              setupBusy ||
+              !(setupExternal || auth?.state === 'usable' || keyStatus?.set || keyDraft.trim())
+            "
+            @click="checkSetup"
+          >
+            {{ setupChecking ? 'Checking…' : 'Check' }}
+          </button>
+        </div>
+      </template>
+      <template v-else
+        ><p class="line" data-cy="setup-ready">{{ name }} is ready.</p>
+        <button
+          type="button"
+          class="bb-button bb-button--primary"
+          data-cy="setup-done"
+          @click="closeSetup"
+        >
+          Done
+        </button></template
+      >
+      <p v-if="authNotice" class="line" :class="{ warn: authNoticeWarns }" role="status">
+        {{ authNotice }}
+      </p>
+      <p v-if="keySaid" class="line" :class="{ warn: keySaid.tone === 'warn' }" role="status">
+        {{ keySaid.text }}
+      </p>
+    </section>
+
+    <section v-if="!settingUp" class="part" data-cy="provider-status" :data-open="isOpen('login')">
       <h3>
         <button
           type="button"
@@ -909,7 +1081,13 @@ watch(
       </div>
     </section>
 
-    <section ref="keyPart" class="part" data-cy="provider-key" :data-open="isOpen('key')">
+    <section
+      v-if="!settingUp"
+      ref="keyPart"
+      class="part"
+      data-cy="provider-key"
+      :data-open="isOpen('key')"
+    >
       <h3>
         <button
           type="button"
@@ -1362,6 +1540,47 @@ watch(
 </template>
 
 <style scoped>
+.inline-setup {
+  grid-row: span 2;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+.setup-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+.setup-steps {
+  display: flex;
+  gap: var(--space-8);
+  padding: 0;
+  margin: 0;
+  list-style: none;
+  font-size: var(--type-small);
+  color: var(--muted);
+}
+.setup-steps [aria-current] {
+  color: var(--accent-text);
+  font-weight: var(--fw-semibold);
+}
+.setup-command {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-4);
+}
+.setup-command code {
+  overflow-wrap: anywhere;
+}
+.setup-key {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  font-size: var(--type-small);
+}
+
 /* One row per part, shared with the other providers' cards through the screen's grid, so the same
    part starts at the same height in every card. Alone, the rows are its own. */
 .card {

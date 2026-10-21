@@ -375,17 +375,14 @@ describe('§4 · the sentence the PO ruled owed, and it is derived rather than t
     expect(YOLO_MEANS_FOR_AGENTS_IT_STARTS).not.toMatch(/unsafe|danger|careful|be aware|warning/i)
   })
 
-  it('⚑ it is rendered where the mode is CHOSEN, which is the one requirement the PO stated', () => {
-    // ⛔ **A constant nothing renders is a comment.** The clause rides the same paragraph and the
-    // same `v-if` as the two halves `367` shipped; the DOM assertion is
-    // `test/dom/yolo-disclosure.dom.test.ts` §3 and this is the source-level pin that the span
-    // exists at all.
+  it('the current conversation chooses its mode through the confirmed-state switch', () => {
     const controls = readFileSync(
       join(HERE, '../src/renderer/src/components/CardApproval.vue'),
       'utf8',
     )
-    expect(controls).toContain('YOLO_MEANS_FOR_AGENTS_IT_STARTS')
-    expect(controls).toContain('data-cy="yolo-means-descendants"')
+    expect(controls).toContain('data-cy="card-approval"')
+    expect(controls).toContain('role="switch"')
+    expect(controls).toContain(':checked="props.approval.mode === \'auto\'"')
   })
 })
 

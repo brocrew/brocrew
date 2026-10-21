@@ -168,6 +168,7 @@ MUTATIONS = [
         ],
     ),
     (
+        # ⛔ **RETIRED BY RULING:** the bar's mark says Ask or Auto now, so the word YOLO this row guards is gone by design (daa7c0144, the approved first-run design).
         "M8 · the header pill goes back to `AUTO · unattended` — `unattended` says who is watching, "
         "which is not what a reader needs to know about this mode. "
         "⚑ ANCHOR CORRECTED IN PLACE BY 579 relay 3b, TWICE OVER: the mark MOVED from the warnings "

@@ -122,6 +122,7 @@ MUTATIONS = [
         ],
     ),
     (
+        # ⛔ **RETIRED BY RULING:** the launcher no longer says anything about a credential; sign-in moved to provider setup (daa7c0144, the approved first-run design).
         "M2 · 🔴 the launcher says nothing at all about a credential — the state the app shipped in, "
         "where the screen making the copy was the one surface silent about it. "
         "⚑ ANCHOR CORRECTED IN PLACE BY 579: the element carries a `v-if` of its own now, and a "
@@ -166,6 +167,7 @@ MUTATIONS = [
         [(FIELD, "return when === 'new'", "return when !== 'new'")],
     ),
     (
+        # ⛔ **RETIRED BY RULING:** the launcher's credential line this row reads is gone; sign-in moved to provider setup (daa7c0144, the approved first-run design).
         "M5 · ⛔ the line is read off `reprovisionAuth` instead of `homeCredential` — *you may press "
         "a button to re-copy* rendered as *a copy was already made*. ⚑ Both are `available` on one "
         "provider and `absent` on the other, which is exactly why `039` forbids the inference: the "
@@ -241,6 +243,7 @@ MUTATIONS = [
         ],
     ),
     (
+        # ⛔ **RETIRED BY RULING:** the launcher's credential line this row reads is gone; sign-in moved to provider setup (daa7c0144, the approved first-run design).
         "M10 · 🔴 a capability that has NOT ARRIVED is presented as a confident answer — the "
         "launcher tells a person nothing of their sign-in is written here on the strength of a "
         "fetch that has not returned. ⚑ `310`'s whole lesson on a second field: a silence rendered "

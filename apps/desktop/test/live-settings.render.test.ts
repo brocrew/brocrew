@@ -104,15 +104,18 @@ function render(props: {
  */
 function element(html: string, cy: string): string {
   const found =
-    html.match(new RegExp(`<(button|span|p|div)[^>]*data-cy="${cy}"[^>]*>[\\s\\S]*?</\\1>`))?.[0] ??
-    ''
+    html.match(
+      new RegExp(`<(button|span|p|div|label)[^>]*data-cy="${cy}"[^>]*>[\\s\\S]*?</\\1>`),
+    )?.[0] ?? ''
   expect(found, `nothing with data-cy="${cy}" was rendered`).not.toBe('')
   return found
 }
 
 /** The opening tag alone, for its attributes. */
 function tag(html: string, cy: string): string {
-  return element(html, cy).replace(/>[\s\S]*$/, '>')
+  const found = html.match(new RegExp(`<[^>]+data-cy="${cy}"[^>]*>`))?.[0] ?? ''
+  expect(found, `nothing with data-cy="${cy}" was rendered`).not.toBe('')
+  return found
 }
 
 const text = (html: string): string =>
@@ -258,6 +261,8 @@ describe('the live settings, on the agent card (076)', () => {
     expect(tag(html, 'card-run-plan')).toMatch(/^<span/)
     expect(tag(html, 'card-run-plan')).toContain(FIXED_SAYS)
     expect(tag(html, 'card-approval')).toContain('data-changeable="false"')
+    expect(tag(html, 'card-approval')).toContain('role="switch"')
+    expect(tag(html, 'card-approval')).toContain('disabled')
 
     // The control: the same conversation, not fixed, offers all three.
     const live = await render({
@@ -266,6 +271,7 @@ describe('the live settings, on the agent card (076)', () => {
     expect(tag(live, 'card-run-model')).toMatch(/^<button/)
     expect(tag(live, 'card-run-plan')).toMatch(/^<button/)
     expect(tag(live, 'card-approval')).toContain('data-changeable="true"')
+    expect(tag(live, 'card-approval')).not.toContain('disabled')
   })
 
   it('a conversation drawn from its ledger is not offered plan first — its next start leaves it', async () => {

@@ -12,10 +12,6 @@ import type { CreatedSession } from '../../src/shared/runtime-ipc'
 import CardApproval from '../../src/renderer/src/components/CardApproval.vue'
 import { useConversationControls } from '../../src/renderer/src/composables/useConversationControls'
 import SessionHeader from '../../src/renderer/src/components/SessionHeader.vue'
-import {
-  YOLO_MEANS,
-  YOLO_MEANS_FOR_AGENTS_IT_STARTS,
-} from '../../src/renderer/src/lib/approval-mode'
 import { assertDrawn, cutsOf, drawnReady } from './drawn'
 import { mount, unmountAll, type Mounted } from './harness'
 
@@ -176,8 +172,7 @@ describe('§2 · wherever a session in that mode appears — the mark NAMES it a
     const said = (pill.textContent ?? '').replace(/\s+/g, ' ').trim()
     // ⚑ **The word, and nothing but the word** — the live smokes read this element with `/YOLO/`
     // over its trimmed text, so that is what has to survive.
-    expect(said).toMatch(/YOLO/)
-    expect(said, 'the mark grew a clause again without this file being told').toBe('YOLO')
+    expect(said, 'the mark grew a clause again without this file being told').toBe('Auto')
 
     // 🔴 **The reversal's price, paid in the title rather than left unpaid.** ⛔ Both facts, in a
     // person's words, on the element a person hovers.
@@ -204,7 +199,11 @@ describe('§2 · wherever a session in that mode appears — the mark NAMES it a
     // to render. 082's rule — a permanent "approvals: ask" is a label nobody keeps reading.
     const m = header(SESSION({ approvalMode: 'ask', approvalNote: 'approvals: ask' }))
     await nextTick()
-    expect(m.all('session-approval-indicator')).toHaveLength(0)
+    expect(m.q('session-approval-indicator').textContent?.trim()).toBe('Ask')
+    expect(m.q('session-approval-indicator').title).toContain(
+      'Asks when an action needs permission.',
+    )
+    expect(m.q('session-approval-indicator').title).not.toContain('without asking')
     expect(m.all('conversation-title'), 'the header itself rendered').toHaveLength(1)
     // ⚑ **563 · and the header is READ, not counted.** ⛔ `toHaveLength(1)` says an element is in
     // the tree — the count spelling of `not.toBeNull()` — and a header that rendered every cell
@@ -312,123 +311,29 @@ describe('§2 · wherever a session in that mode appears — the mark NAMES it a
   })
 })
 
-describe('§3 · the other moment of choice — the agent card says the same two halves', () => {
-  // ⚑ `caps` is a parameter since `417`: the map that never arrived is a state this surface has to
-  // render, and it was the LAUNCHER that used to be mounted without one (see the §1 note above).
-  // ⚑ The approval mode's panel draws on a press, so the mount presses its face first.
-  const controls = async (
-    session: CreatedSession,
-    caps: unknown = allProviderCapabilities(),
-    fixed = false,
-  ): Promise<Mounted> => {
-    const approval = useConversationControls({
-      session: () => session,
-      capabilities: () => caps as never,
-      fixed: () => fixed,
-      recorded: () => false,
-      setApprovalMode: () => {},
-      setSessionSetting: () => {},
-    }).approval.value
-    const m = mount(CardApproval, { approval }, { width: 420, height: 800 })
-    m.q('card-approval').click()
-    await nextTick()
-    await nextTick()
-    return m
-  }
-
-  it('⛔ a session switched to yolo HERE is told exactly what a session launched into it is', async () => {
-    const m = await controls(SESSION({ provider: 'codex', providerHome: '/homes/codex' }))
-    const said = (m.q('yolo-means').textContent ?? '').trim()
-    expect(said).toContain(YOLO_MEANS)
-    expect((m.q('yolo-reach').textContent ?? '').trim()).toBe(declaredNote('codex'))
-  })
-
-  it('⚑ a PENDING switch gets it too — the sentence is about what you just asked for', async () => {
-    const m = await controls(SESSION({ approvalMode: 'ask', pendingApprovalMode: 'auto' }))
-    expect((m.q('yolo-reach').textContent ?? '').trim()).toBe(declaredNote('claude'))
-  })
-
-  it('⚠️ …and an `ask` session is told both halves BEFORE it confirms the switch', async () => {
-    // ⛔ **The rule turned the right way round by the panel.** The old column told an `ask`
-    // session neither half until it had already pressed; the panel opens on the press and the
-    // change is its confirm, so the consequence is read before the decision (`514` F1).
-    const m = await controls(
-      SESSION({ approvalMode: 'ask', approvalNote: 'approvals: ask', pendingApprovalMode: null }),
-    )
-    expect(m.q('card-approval').textContent?.trim()).toBe('YOLO off')
-    expect(m.q('card-approval-note').textContent?.trim()).toBe('approvals: ask')
-    expect((m.q('yolo-means').textContent ?? '').trim()).toContain(YOLO_MEANS)
-    expect(m.q('card-approval-confirm').textContent?.trim()).toBe(
-      'Turn YOLO on from your next message',
-    )
-  })
-
-  it('⚠️ …and a fixed `ask` session, which can choose nothing, is told neither half', async () => {
-    // Paired with a positive from the same mount: the panel is open and says why, and it is the
-    // sentence that is absent rather than the whole panel.
-    const m = await controls(
-      SESSION({ approvalMode: 'ask', approvalNote: 'approvals: ask', pendingApprovalMode: null }),
-      allProviderCapabilities(),
-      true,
-    )
-    expect(m.q('card-approval-note').textContent?.trim()).toBe('approvals: ask')
-    expect(m.all('card-approval-fixed')).toHaveLength(1)
-    expect(m.all('card-approval-confirm')).toHaveLength(0)
-    expect(m.all('yolo-means')).toHaveLength(0)
-    expect(m.all('yolo-reach')).toHaveLength(0)
-  })
-
-  it('⚑ a map that never arrived loses the second half and keeps the first', async () => {
-    // ⛔ **Kept from `417`'s deleted §1, on the surface that survives.** `RuntimeScreen` leaves
-    // `capabilities` null when the fetch fails, and the drawer takes it null by default in the
-    // shared fixture (`harness.ts`'s `drawerProps`) because *"not declared yet"* is a state it has
-    // to draw. The shared sentence is still true and still the thing a person most needs; a "not
-    // declared" clause bolted onto a safety disclosure would be noise at the one moment it is read.
-    //
-    // ⚠️ The launcher was where this was measured and the launcher is gone — but `yoloReach`
-    // returning `''` for an absent map is `useConversationControls`' own `reach`, and the card is
-    // the only door left, so the half that measures a surviving surface is the half that stays.
-    const m = await controls(SESSION(), null)
-    await nextTick()
-    // 🔴 **499 · the paragraph carries a THIRD clause and it does NOT come from the map**
-    // (HO-037 §1). ⛔ That is the point of asserting it here, in the one test whose subject is a
-    // map that never arrived: the descendants half is a product sentence, not an adapter
-    // declaration, so it survives exactly the failure that takes `yolo-reach` away.
-    const said = (m.q('yolo-means').textContent ?? '').trim()
-    expect(said).toContain(YOLO_MEANS)
-    expect((m.q('yolo-means-descendants').textContent ?? '').trim()).toBe(
-      YOLO_MEANS_FOR_AGENTS_IT_STARTS,
-    )
-    expect(said.replace(YOLO_MEANS, '').replace(YOLO_MEANS_FOR_AGENTS_IT_STARTS, '').trim()).toBe(
-      '',
-    )
-    expect(m.all('yolo-reach')).toHaveLength(0)
-  })
-
-  it('🔴 the reach READS as one sentence — the span is inline, not a second column', async () => {
-    // ⛔ **Kept from `417`'s deleted §1, where the defect was FOUND and where it no longer can be.**
-    // On the launcher `.note` was `display: flex` with its bullet as the `::before`, so the reach
-    // span — a bare second child — was blockified into a second FLEX ITEM and the two halves
-    // rendered side by side, in two columns. It was inside the paragraph, it had a height, it was
-    // outside the fold: every rule the tests knew about was satisfied by a paragraph nobody could
-    // read as one sentence, and a screenshot is what found it.
-    //
-    // ⚑ **The launcher is gone and this surface is not**, so the half that measures the surviving
-    // one stays. The panel's paragraph is a plain block, which is a DIFFERENT reason for the same
-    // answer — it was the paired positive in §1 and it is the whole assertion here.
-    //
-    // ⚠️ `display` is the value that tells the two apart and cannot be faked: a flex item's
-    // computed display is BLOCKIFIED whatever the stylesheet asks for, so `inline` here is a
-    // statement that this span is in ordinary text flow.
-    const m = await controls(SESSION())
-    await nextTick()
-    const reach = m.q('yolo-reach')
-    expect(getComputedStyle(reach).display, 'a flex item would report `block`').toBe('inline')
-    // …and the paired positive from the same mount: it is inside the shared sentence's paragraph
-    // and it has a height, so `inline` is not the answer for an element nobody renders.
-    expect(m.q('yolo-means').contains(reach), 'one paragraph, not two').toBe(true)
-    expect(reach.getBoundingClientRect().height, 'a hidden disclosure is not one').toBeGreaterThan(
-      0,
-    )
-  })
+// The approved Ask/Auto switch replaces the disclosure panel and its confirm button.
+describe('the agent card uses the confirmed mode', () => {
+  it.each(['claude', 'codex'] as const)(
+    'keeps the %s switch on the confirmed value',
+    async (provider) => {
+      for (const mode of ['ask', 'auto'] as const) {
+        const approval = useConversationControls({
+          session: () => SESSION({ provider, approvalMode: mode }),
+          capabilities: () => allProviderCapabilities(),
+          fixed: () => false,
+          recorded: () => false,
+          setApprovalMode: () => {},
+          setSessionSetting: () => {},
+        }).approval.value!
+        const m = mount(CardApproval, { approval })
+        await nextTick()
+        const input = m.q('card-approval') as HTMLInputElement
+        expect(input.checked).toBe(mode === 'auto')
+        expect(input.disabled).toBe(false)
+        expect(input.closest('label')?.textContent?.replace(/\s/g, '')).toBe('AskAuto')
+        expect(input.closest('label')?.title).toContain('next message')
+        m.unmount()
+      }
+    },
+  )
 })

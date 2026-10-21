@@ -15,6 +15,7 @@ import { LEAVE_PLAN_UNAVAILABLE } from '../lib/plan-mode'
 export interface ConversationControlsSources {
   readonly session: () => CreatedSession | null
   readonly capabilities: () => ProviderCapabilityMap | null
+  readonly saving?: () => boolean
   /** Nothing set here would reach the conversation (`CreatedSession.settingsFixed`). */
   readonly fixed: () => boolean
   /** Drawn from its ledger: its next start leaves planning, so plan first is not offered. */
@@ -52,6 +53,7 @@ export interface PlanControl {
 }
 
 export interface ApprovalControl {
+  readonly saving?: boolean
   readonly mode: 'ask' | 'auto'
   readonly pending: 'ask' | 'auto' | null
   /** The mode now, as the button shows it. */
@@ -165,6 +167,7 @@ export function useConversationControls(
       : null
     return {
       mode,
+      saving: sources.saving?.() ?? false,
       pending,
       word,
       pendingLine,

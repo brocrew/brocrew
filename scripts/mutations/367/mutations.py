@@ -26,6 +26,7 @@ say is HOW, and the two adapters do opposite things:
 | `M12`-`M15` | ⚑ **dom** — §2, the pill and its tooltip |
 | `M16`, `M17` | ⚑ **desktop** — `a-mode-that-says-what-it-does.render.test.ts`, the guardrails |
 | `M18` | 🔴 **dom** — §1's computed-`display` assertion, which a probe screenshot bought |
+| `M19`, `M20` | ⚑ **desktop** — `conversation-chrome.render.test.ts`, the Ask/Auto bar and switch |
 
 ## ⚠️ What this table deliberately does NOT contain
 
@@ -131,6 +132,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     ),
     # ── §2 · the words leak into the renderer ───────────────────────────────────────────────────
     (
+        # ⛔ **RETIRED BY RULING:** the launcher no longer shows a mode sentence, so there is no copy of the adapter's (daa7c0144, the approved first-run design).
         "M6 · ⛔ 039's own defect: the launcher keeps a COPY of the adapter's sentence as a "
         "fallback · it names no provider, so the neutrality census cannot see it, and it goes stale "
         "the first time an adapter's policy moves",
@@ -147,6 +149,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     ),
     # ── §3 · before a person chooses it ─────────────────────────────────────────────────────────
     (
+        # ⛔ **RETIRED BY RULING:** the launcher's mode sentence is gone; the first choice says Ask or Auto in plain words (daa7c0144, the approved first-run design).
         "M7 · 🔴 §2.1 · the launcher stops saying the differing half, so the moment of choice is "
         "back to `171`'s one sentence for both — the state this dispatch was sent to fix",
         [
@@ -185,6 +188,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     ),
     # ── §4 · the other moment of choice ─────────────────────────────────────────────────────────
     (
+        # ⛔ **RETIRED BY RULING:** the card's yolo panel and its reach sentence are gone; M19 and M20 hold the mode on the bar and the switch (daa7c0144, the approved first-run design).
         "M10 · ⛔ Controls stops saying it, so a conversation switched to yolo mid-flight is told "
         "strictly less than one launched into it — the drift `171 §3`'s shared constant existed to "
         "prevent, reappearing one clause along · killed by `a-mode-that-says-what-it-does.dom.test.ts` · killed by `yolo-disclosure.dom.test.ts`",
@@ -341,4 +345,33 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
             )
         ],
     ),
+    # ── the Ask/Auto bar and switch, which state the conversation's mode after the first-run design ──
+    (
+        # ⚑ New with the approved first-run design, which removed the yolo panel M10 was anchored in.
+        # M10's intent, that the conversation's surfaces state the mode it runs in, now sits on the
+        # bar's Ask/Auto mark and the card's switch.
+        "M19 · 🔴 the bar says Ask over a conversation running in Auto · the mark stops reading the "
+        "session's mode, so the one surface on screen without the drawer open tells a person they "
+        "are being asked when nothing will ask · killed by `conversation-chrome.render.test.ts`",
+        [
+            (
+                HEADER,
+                "{{ session.approvalMode === 'auto' ? 'Auto' : 'Ask' }}",
+                "{{ 'Ask' }}",
+            )
+        ],
+    ),
+    (
+        "M20 · ⛔ the card's switch stops reading the mode · it draws Ask for a conversation running "
+        "in Auto, so the control that changes the mode states the wrong one · killed by "
+        "`conversation-chrome.render.test.ts`",
+        [
+            (
+                "apps/desktop/src/renderer/src/components/CardApproval.vue",
+                "      :checked=\"props.approval.mode === 'auto'\"\n",
+                "",
+            )
+        ],
+    ),
 ]
+

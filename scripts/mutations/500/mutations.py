@@ -37,7 +37,9 @@ echoing the request, and a launch made before the policy read lands sends `ask`.
 | M1, M2 | `apps/desktop/test/the-setting-he-should-only-make-once.test.ts` §3 + §4 |
 | M3, M4, M5 | …the same file's §1 |
 | M6, M7 | …§2, the door a person presses |
-| M8, M9, M10 | `apps/desktop/test/dom/the-setting-he-should-only-make-once.dom.test.ts` §1 |
+| M8 | `apps/desktop/test/dom/the-setting-he-should-only-make-once.dom.test.ts`, `first-approval-choice.dom.test.ts` |
+| M9 | `apps/desktop/test/dom/settings-page.dom.test.ts`, the Settings switch |
+| M10, M15 | `apps/desktop/test/dom/first-approval-choice.dom.test.ts`, the unread default |
 | M11, M12 | …the dom file's §2, the second door a person starts from |
 | M13, M14 | `apps/desktop/test/the-setting-he-should-only-make-once.test.ts` §5, the words |
 
@@ -174,37 +176,50 @@ MUTATIONS = [
     # ── the front door ──────────────────────────────────────────────────────────────────────────
     (
         "M8 · 🔴 the payload stops reading the prop · the front door goes back to `417`'s hard-coded "
-        "`'ask'` while the control beside it still says *yolo* — the sentence and the payload come "
-        "apart, which is the one thing `frontDoorProvider`'s ruling forbids",
+        "`'ask'` while the saved or chosen mode says Auto — the screen and the payload come "
+        "apart, which is the one thing `frontDoorProvider`'s ruling forbids · killed by "
+        "`the-setting-he-should-only-make-once.dom.test.ts` · killed by `first-approval-choice.dom.test.ts`",
+        # ⚑ re-anchored in place, not retired — the approved first-run design resolves the
+        # launch mode in `launchMode` (the saved default, or the first choice when none is saved), and
+        # the payload reads that. The plant still sends a constant `'ask'` over a saved or chosen Auto.
         [
             (
                 DOOR,
-                "  approvalMode: props.defaultApprovalMode ?? 'ask',\n",
+                "  approvalMode: launchMode.value ?? 'ask',\n",
                 "  approvalMode: 'ask',\n",
             )
         ],
     ),
     (
         "M9 · ⛔ the press asks for the mode it is already in · read off the current state rather "
-        "than the view's `next`, so the control can be turned on and never off",
+        "than the view's `next`, so the control can be turned on and never off · killed by "
+        "`settings-page.dom.test.ts`",
+        # ⚑ re-anchored in place, not retired — the approved first-run design moved the
+        # control that edits the saved default from the launcher to the Settings switch. The plant
+        # still asks for Auto on every press, so the switch can be turned on and never off.
         [
             (
-                DOOR,
-                "  const next = approvalView.value.next\n"
-                "  if (next !== null) emit('setApprovalDefault', next)\n",
-                "  if (props.defaultApprovalMode !== null) emit('setApprovalDefault', 'auto')\n",
+                "apps/desktop/src/renderer/src/components/SettingsScreen.vue",
+                "  const requested = input.checked ? 'auto' : 'ask'\n",
+                "  const requested = 'auto'\n",
             )
         ],
     ),
     (
-        "M10 · 🔴 the unread row launches in yolo · `null` — *the policy read has not landed* — is "
-        "resolved to `auto` instead of `ask`, so the window before a database read answers decides "
-        "what an agent may do without asking",
+        "M10 · 🔴 the unread row launches in Auto · `null` — *the policy read has not landed* — stops "
+        "blocking the send once a first choice is pressed, so the window before a database read "
+        "answers lets a conversation start in the mode just pressed, Auto included, and saves that "
+        "choice over a default nobody has read · killed by "
+        "`first-approval-choice.dom.test.ts` · killed by `the-screen-whose-job-is-start-typing.dom.test.ts`",
+        # ⚑ re-anchored in place, not retired — the approved first-run design no longer
+        # resolves an unread default to a mode at all: it blocks the send (`approvalBlocked`) until the
+        # read lands. The subject is unchanged, an unread row must not decide what an agent may do
+        # without asking; the plant drops the unread half of the block.
         [
             (
                 DOOR,
-                "  approvalMode: props.defaultApprovalMode ?? 'ask',\n",
-                "  approvalMode: props.defaultApprovalMode ?? 'auto',\n",
+                "  props.defaultApprovalMode === null || launchMode.value === null\n",
+                "  launchMode.value === null\n",
             )
         ],
     ),
@@ -267,6 +282,22 @@ MUTATIONS = [
                 # ⚑ **728 · re-anchored in place, not retired** — 728 (R93) says the planning exception in the same sentence; the row's subject is unchanged
                 "  auto: 'Press to stop being asked — new conversations will run commands and edit files unattended, except what a provider’s own plan mode asks while it plans.',\n",
                 "  auto: 'Press to stop being asked.',\n",
+            )
+        ],
+    ),
+    # ── the unread default, the other way it can decide ─────────────────────────────────────────
+    (
+        # ⚑ New with the approved first-run design, beside M10: the other way an unread
+        # default can decide the mode. Nothing is chosen, nothing is read, and the send goes out with
+        # the payload's `?? 'ask'` fallback instead of waiting.
+        "M15 · 🔴 the unread row falls back to a mode · the block is gone, so a send made before the "
+        "policy read lands and before any choice launches with the payload's fallback instead of "
+        "being held · killed by `first-approval-choice.dom.test.ts`",
+        [
+            (
+                DOOR,
+                "  props.defaultApprovalMode === null || launchMode.value === null\n",
+                "  false\n",
             )
         ],
     ),

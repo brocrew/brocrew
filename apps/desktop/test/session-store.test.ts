@@ -2669,6 +2669,26 @@ describe('the session store', () => {
     store.dispose()
   })
 
+  it('a refused mode change clears saving, preserves the mode and exposes the error', async () => {
+    const bridge = fakeBridge()
+    let refuse: (error: Error) => void = () => {}
+    bridge.setApprovalMode = () =>
+      new Promise((_resolve, reject) => {
+        refuse = reject
+      })
+    const store = createSessionStore(bridge)
+    const id = (await store.create({ provider: 'codex' }))!
+    const saving = store.setApprovalMode(id, 'auto')
+    expect(store.get(id)?.busy).toBe(true)
+    expect(store.get(id)?.meta?.approvalMode).toBe('ask')
+    refuse(new Error('Mode could not be saved'))
+    await saving
+    expect(store.get(id)?.busy).toBe(false)
+    expect(store.get(id)?.meta?.approvalMode).toBe('ask')
+    expect(store.get(id)?.error).toContain('Mode could not be saved')
+    store.dispose()
+  })
+
   it('recomputes the open list as sessions come and go', async () => {
     // The list is a computed over a reactive Map; if Map mutations were not tracked, the sidebar
     // would simply never update — a failure that looks like nothing happening at all.

@@ -4,7 +4,6 @@ import { describe, expect, it } from 'vitest'
 import { providerForALaunch } from '../src/renderer/src/lib/agent-store'
 import { NO_LAUNCH_CHOICES } from '../src/renderer/src/lib/launch-choices'
 import { theDraftEffort, theFormSends } from '../src/renderer/src/lib/model-lists'
-import { providerIsFixed } from '../src/renderer/src/lib/front-door-words'
 import {
   DEFAULT_PROFILE_ID,
   type AgentIdentities,
@@ -96,14 +95,12 @@ describe('§1 · an untouched door sends what 417 sent, byte for byte', () => {
     expect(literal).not.toContain('projectSlug')
   })
 
-  it('⚑ …and the sentence 417 shipped is unchanged, because it is still true', () => {
-    // ⛔ **HO-025 §4 is explicit that the provider is the one that does NOT stay changeable** —
-    // *"changing it means a new conversation, and the app should SAY that rather than offer a
-    // control that silently relaunches."* ⚑ A control that chooses it BEFORE the conversation
-    // starts is not that control, and the sentence beneath it is what says so.
-    expect(providerIsFixed('codex')).toContain('it is fixed when the conversation starts')
-    // ⚠️ Read off the component, so a surface that stopped rendering it goes red here too.
-    expect(source(DOOR)).toContain('providerIsFixed(props.defaultProvider)')
+  it('keeps provider selection in the model picker without the removed explanatory card', () => {
+    const door = source(DOOR)
+    expect(door).toContain('<ModelPicker')
+    expect(door).toContain(':shown="shownPick"')
+    expect(door).toContain(':take="startOn"')
+    expect(door).not.toContain('providerIsFixed(props.defaultProvider)')
   })
 })
 

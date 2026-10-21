@@ -378,7 +378,7 @@ describe('the launcher survives a map that does not name its provider (417)', ()
     // answer"* — and what stays here is the half SSR can still answer: the three capability
     // computeds index a map that does not name this provider WITHOUT throwing, and the surface
     // comes back whole.
-    expect(html).toContain('data-cy="launcher-why-credential"')
+    expect(html).toContain('data-cy="model-picker-face"')
     // ⚠️ **The floor that makes the survival claim non-vacuous**: a render that threw would have
     // rejected, and one that produced a stub would not carry the column and the composer too.
     expect(html).toContain('data-cy="launcher-column"')
