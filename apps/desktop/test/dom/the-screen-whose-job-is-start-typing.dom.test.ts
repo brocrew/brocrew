@@ -94,7 +94,8 @@ describe('the short launcher keeps typing first', () => {
       'launch-approval-mode',
     ])
       expect(m.all(cy)).toHaveLength(0)
-    expect(m.q('launcher-column').querySelectorAll('.note')).toHaveLength(0)
+    expect(m.q('launcher-column').querySelectorAll('.note')).toHaveLength(1)
+    assertDrawn(m.q('first-approval-description'), 'the preselected mode explains its consequence')
     assertDrawn(m.q('model-picker-face'), 'the model choice stays readable')
     expect(m.q('prompt-input').getBoundingClientRect().height).toBeGreaterThan(0)
   })
@@ -107,12 +108,14 @@ describe('the short launcher keeps typing first', () => {
       'prompt-input',
       'attach-path',
       'model-picker-face',
+      'choose-ask',
+      'choose-auto',
     ])
     expect((m.q('send-prompt') as HTMLButtonElement).disabled).toBe(true)
     await userEvent.tab({ shift: true })
     await vi.waitFor(() => expect(document.activeElement).toBe(m.q('toggle-debug-mode')))
   })
-  it('adds two explicit choices, with no preselected mode, only on the first start', async () => {
+  it('leaves both explicit choices unselected before the first start', async () => {
     await page.viewport(REAL.width, REAL.height)
     const m = open({ approvalDefaultChosen: false })
     await caretIn(m)

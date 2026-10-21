@@ -3575,12 +3575,12 @@ A row that cannot apply is RETIRED IN PLACE: its definition stays in its table a
 | 166 | `packages/runtime/src/claude/claude-runtime.ts` | `4b374fe31ed27f41` |
 | 167 | `apps/desktop/src/main/runtime/provider-homes.ts` | `c6b3c4cfb2f456c7` |
 | 167 | `apps/desktop/src/main/runtime/runtime-host.ts` | `74e9db5dde857eeb` |
-| 167 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `63d76f500ad7b4a1` |
+| 167 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `7a28ea730e162725` |
 | 167 | `apps/desktop/src/renderer/src/components/ResumableSessions.vue` | `2cdb15152af12fb8` |
 | 167 | `apps/desktop/src/shared/runtime-ipc.ts` | `c8a8bc2b39e3a688` |
 | 169 | `apps/desktop/src/main/db/session-store.ts` | `4a88bb4886586463` |
 | 169 | `apps/desktop/src/main/runtime/ipc.ts` | `98fad05d51d5bd0a` |
-| 169 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `63d76f500ad7b4a1` |
+| 169 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `7a28ea730e162725` |
 | 169 | `apps/desktop/src/renderer/src/components/PromptComposer.vue` | `92e2492fd437c1c7` |
 | 169 | `apps/desktop/src/renderer/src/components/ResumableSessions.vue` | `2cdb15152af12fb8` |
 | 169 | `apps/desktop/src/renderer/src/components/SessionLibrary.vue` | `f2ac9a6a4a56ac82` |
@@ -3591,7 +3591,7 @@ A row that cannot apply is RETIRED IN PLACE: its definition stays in its table a
 | 170 | `apps/desktop/src/renderer/src/components/SessionInstructions.vue` | `9882a3acd6808a1b` |
 | 170 | `packages/runtime/src/internal/confinement.ts` | `5eaffb144bfe0cfb` |
 | 171 | `apps/desktop/src/main/runtime/runtime-host.ts` | `74e9db5dde857eeb` |
-| 171 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `63d76f500ad7b4a1` |
+| 171 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `7a28ea730e162725` |
 | 171 | `apps/desktop/src/renderer/src/components/SessionControls.vue` | `(file no longer in the tree)` |
 | 171 | `apps/desktop/src/renderer/src/components/SessionHeader.vue` | `aedda295022c7c40` |
 | 171 | `apps/desktop/src/renderer/src/lib/approval-mode.ts` | `e9783fd14407a341` |
@@ -3605,14 +3605,14 @@ A row that cannot apply is RETIRED IN PLACE: its definition stays in its table a
 | 172 | `apps/desktop/src/renderer/src/lib/session-store.ts` | `67705ffbb9a10aaf` |
 | 175 | `apps/desktop/src/main/process-tree.ts` | `94a51e8ed3c4ae4a` |
 | 176 | `scripts/lib/personal-home-guard.mjs` | `725e09715aef9a0e` |
-| 177 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `63d76f500ad7b4a1` |
+| 177 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `7a28ea730e162725` |
 | 177 | `apps/desktop/src/renderer/src/lib/effort-menu.ts` | `(file no longer in the tree)` |
 | 177 | `apps/desktop/src/renderer/src/lib/model-lists.ts` | `726ad46f36d18778` |
 | 177 | `packages/runtime/src/codex/normalize.ts` | `cfaa6b7f9681f56c` |
 | 178 | `scripts/lib/tab-flow.mjs` | `42bdfd5267991002` |
 | 179 | `apps/desktop/src/main/db/session-store.ts` | `4a88bb4886586463` |
 | 179 | `apps/desktop/src/main/runtime/runtime-host.ts` | `74e9db5dde857eeb` |
-| 179 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `63d76f500ad7b4a1` |
+| 179 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `7a28ea730e162725` |
 | 180 | `packages/runtime/src/codex/codex-runtime.ts` | `59538c0c8ecf9dc1` |
 | 180 | `packages/runtime/src/codex/codex-transport.ts` | `014c118d947f5f80` |
 | 180 | `packages/runtime/src/codex/home-boot.ts` | `564234e8740ca6e4` |
@@ -3761,7 +3761,7 @@ A row that cannot apply is RETIRED IN PLACE: its definition stays in its table a
 | 203 | `apps/desktop/src/main/index.ts` | `302581af56d59338` |
 | 203 | `apps/desktop/src/main/runtime/ipc.ts` | `98fad05d51d5bd0a` |
 | 203 | `apps/desktop/src/main/runtime/runtime-host.ts` | `74e9db5dde857eeb` |
-| 203 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `63d76f500ad7b4a1` |
+| 203 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `7a28ea730e162725` |
 | 203 | `apps/desktop/src/renderer/src/components/SideRail.vue` | `fb50eedea31aff20` |
 | 203 | `apps/desktop/src/renderer/src/lib/agent-state.ts` | `594a955882f3ae22` |
 | 204 | `apps/desktop/src/main/db/identity.ts` | `271eefe7900b6221` |
@@ -3785,7 +3785,7 @@ A row that cannot apply is RETIRED IN PLACE: its definition stays in its table a
 | 211 | `apps/desktop/src/renderer/src/components/DigestCard.vue` | `(file no longer in the tree)` |
 | 211 | `apps/desktop/src/renderer/src/components/EventStream.vue` | `4a976b76dd5e6758` |
 | 211 | `apps/desktop/src/renderer/src/components/HomeSurface.vue` | `(file no longer in the tree)` |
-| 211 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `63d76f500ad7b4a1` |
+| 211 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `7a28ea730e162725` |
 | 211 | `apps/desktop/src/renderer/src/components/SideRail.vue` | `fb50eedea31aff20` |
 | 211 | `apps/desktop/src/renderer/src/components/WhileYouWereAway.vue` | `(file no longer in the tree)` |
 | 211 | `apps/desktop/src/renderer/src/composables/useMinuteClock.ts` | `8ddfa4215d30f06f` |
@@ -3824,7 +3824,7 @@ A row that cannot apply is RETIRED IN PLACE: its definition stays in its table a
 | 216 | `apps/desktop/test/no-byte-authority.test.ts` | `eab0f10465154490` |
 | 216 | `scripts/ui-live-smoke.mjs` | `c0c19623fd4c802c` |
 | 217 | `apps/desktop/src/main/runtime/handed-path.ts` | `fb203c82b8d16471` |
-| 217 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `63d76f500ad7b4a1` |
+| 217 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `7a28ea730e162725` |
 | 217 | `apps/desktop/src/renderer/src/components/PromptComposer.vue` | `92e2492fd437c1c7` |
 | 217 | `apps/desktop/src/renderer/src/components/RuntimeScreen.vue` | `f138ae4d7c4a76a8` |
 | 217 | `apps/desktop/src/renderer/src/lib/drafts.ts` | `a0a0c7fd8da552f8` |
@@ -3840,7 +3840,7 @@ A row that cannot apply is RETIRED IN PLACE: its definition stays in its table a
 | 218 | `apps/desktop/test/one-way-to-stage.test.ts` | `825e78af62bbfd95` |
 | 218 | `scripts/ui-live-smoke.mjs` | `c0c19623fd4c802c` |
 | 219 | `apps/desktop/src/renderer/src/components/ConversationPane.vue` | `4aed7aa3718ca5a4` |
-| 219 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `63d76f500ad7b4a1` |
+| 219 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `7a28ea730e162725` |
 | 219 | `apps/desktop/src/renderer/src/components/PromptComposer.vue` | `92e2492fd437c1c7` |
 | 219 | `apps/desktop/src/renderer/src/lib/send-refusals.ts` | `546a9884761d4cf4` |
 | 219 | `apps/desktop/src/shared/runtime-ipc.ts` | `c8a8bc2b39e3a688` |
@@ -3849,7 +3849,7 @@ A row that cannot apply is RETIRED IN PLACE: its definition stays in its table a
 | 219 | `scripts/ui-live-smoke.mjs` | `c0c19623fd4c802c` |
 | 221 | `apps/desktop/src/main/runtime/handed-path.ts` | `fb203c82b8d16471` |
 | 221 | `apps/desktop/src/main/runtime/ipc.ts` | `98fad05d51d5bd0a` |
-| 221 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `63d76f500ad7b4a1` |
+| 221 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `7a28ea730e162725` |
 | 221 | `apps/desktop/src/renderer/src/components/PromptComposer.vue` | `92e2492fd437c1c7` |
 | 221 | `apps/desktop/src/renderer/src/components/RuntimeScreen.vue` | `f138ae4d7c4a76a8` |
 | 221 | `apps/desktop/src/renderer/src/components/SessionLibrary.vue` | `f2ac9a6a4a56ac82` |
@@ -4047,7 +4047,7 @@ A row that cannot apply is RETIRED IN PLACE: its definition stays in its table a
 | 273 | `apps/desktop/src/renderer/src/components/SideRail.vue` | `fb50eedea31aff20` |
 | 273 | `apps/desktop/src/renderer/src/lib/app-closing.ts` | `8dcc7c84a64edd40` |
 | 273 | `scripts/app-closes-check.mjs` | `2496dec297ae5ce3` |
-| 274 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `63d76f500ad7b4a1` |
+| 274 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `7a28ea730e162725` |
 | 274 | `apps/desktop/test/dom/effort-asked.dom.test.ts` | `(file no longer in the tree)` |
 | 274 | `apps/desktop/test/fixtures/effort-launches.ts` | `e9d6b6bccbaf9112` |
 | 275 | `packages/runtime/smoke/codex-background-probe.smoke.ts` | `b93b8defb28b92ff` |
@@ -4082,7 +4082,7 @@ A row that cannot apply is RETIRED IN PLACE: its definition stays in its table a
 | 287 | `packages/runtime/src/codex/codex-runtime.ts` | `59538c0c8ecf9dc1` |
 | 292 | `apps/desktop/src/renderer/src/components/CommandPalette.vue` | `e88bfd3a545f0e25` |
 | 292 | `apps/desktop/src/renderer/src/components/ConversationPane.vue` | `4aed7aa3718ca5a4` |
-| 292 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `63d76f500ad7b4a1` |
+| 292 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `7a28ea730e162725` |
 | 292 | `apps/desktop/src/renderer/src/components/PromptComposer.vue` | `92e2492fd437c1c7` |
 | 292 | `apps/desktop/src/renderer/src/components/SessionDrawer.vue` | `5bf71733c8321f7d` |
 | 292 | `apps/desktop/src/renderer/src/lib/command-palette.ts` | `7622e3e0f8e7478e` |
@@ -4325,7 +4325,7 @@ A row that cannot apply is RETIRED IN PLACE: its definition stays in its table a
 | 308 | `apps/desktop/test/disclosure-answers-to-the-code.test.ts` | `410322460ab8cfcf` |
 | 310 | `apps/desktop/src/main/runtime/runtime-host.ts` | `74e9db5dde857eeb` |
 | 310 | `apps/desktop/src/renderer/src/components/ModelPicker.vue` | `4657e6150521c7f9` |
-| 310 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `63d76f500ad7b4a1` |
+| 310 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `7a28ea730e162725` |
 | 310 | `apps/desktop/src/renderer/src/components/SessionSettings.vue` | `(file no longer in the tree)` |
 | 310 | `apps/desktop/src/renderer/src/lib/model-field.ts` | `a2873c9dd3aabf80` |
 | 313 | `apps/desktop/src/renderer/src/components/ConversationPane.vue` | `4aed7aa3718ca5a4` |
@@ -4374,7 +4374,7 @@ A row that cannot apply is RETIRED IN PLACE: its definition stays in its table a
 | 327 | `apps/desktop/src/renderer/src/lib/tool-outcome.ts` | `6d41f45b6528fd33` |
 | 327 | `apps/desktop/src/renderer/src/lib/transcript.ts` | `c131eea955847918` |
 | 327 | `packages/runtime/src/codex/normalize.ts` | `cfaa6b7f9681f56c` |
-| 329 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `63d76f500ad7b4a1` |
+| 329 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `7a28ea730e162725` |
 | 329 | `apps/desktop/src/renderer/src/components/SessionLibrary.vue` | `f2ac9a6a4a56ac82` |
 | 329 | `apps/desktop/src/renderer/src/lib/front-door-words.ts` | `d07cb3c3d235be02` |
 | 329 | `apps/desktop/src/renderer/src/lib/profile-credential.ts` | `2bd68b35f91e61a1` |
@@ -4446,7 +4446,7 @@ A row that cannot apply is RETIRED IN PLACE: its definition stays in its table a
 | 343 | `scripts/demo-seed-payload.mjs` | `(file no longer in the tree)` |
 | 344 | `apps/desktop/src/renderer/src/assets/tokens.css` | `e4958f7d47906014` |
 | 344 | `apps/desktop/src/renderer/src/components/ConversationPane.vue` | `4aed7aa3718ca5a4` |
-| 344 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `63d76f500ad7b4a1` |
+| 344 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `7a28ea730e162725` |
 | 344 | `apps/desktop/src/renderer/src/components/ProjectWorkspace.vue` | `(file no longer in the tree)` |
 | 344 | `apps/desktop/src/renderer/src/components/ReadingPane.vue` | `ecc6af493b7c83ad` |
 | 344 | `apps/desktop/src/renderer/src/components/RuntimeScreen.vue` | `f138ae4d7c4a76a8` |
@@ -4528,7 +4528,7 @@ A row that cannot apply is RETIRED IN PLACE: its definition stays in its table a
 | 360 | `scripts/lib/owned-process.mjs` | `72a93569846abb80` |
 | 360 | `scripts/lib/owned-teardown.mjs` | `cafbdbcdf291d81d` |
 | 360 | `scripts/window-opens-check.mjs` | `90e601f4bab28f78` |
-| 361 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `63d76f500ad7b4a1` |
+| 361 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `7a28ea730e162725` |
 | 361 | `apps/desktop/src/shared/runtime-ipc.ts` | `c8a8bc2b39e3a688` |
 | 361 | `apps/desktop/test/an-agent-gives-work-a-person-decides.demo.test.ts` | `e5c15b50d9d26150` |
 | 361 | `apps/desktop/test/dom/setup/the-window-is-a-wire.ts` | `e88f64a65894a485` |
@@ -4542,7 +4542,7 @@ A row that cannot apply is RETIRED IN PLACE: its definition stays in its table a
 | 366 | `apps/desktop/src/main/runtime/agent-tools.ts` | `0183840feac3eca9` |
 | 366 | `apps/desktop/src/main/runtime/spawn-rails.ts` | `85acf461dfa9eef2` |
 | 367 | `apps/desktop/src/renderer/src/components/CardApproval.vue` | `5e9cba1df2e087b2` |
-| 367 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `63d76f500ad7b4a1` |
+| 367 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `7a28ea730e162725` |
 | 367 | `apps/desktop/src/renderer/src/components/RecruitSheet.vue` | `(file no longer in the tree)` |
 | 367 | `apps/desktop/src/renderer/src/components/SessionHeader.vue` | `aedda295022c7c40` |
 | 367 | `apps/desktop/src/renderer/src/composables/useConversationControls.ts` | `d52d4bf8ca606cb9` |
@@ -4561,7 +4561,7 @@ A row that cannot apply is RETIRED IN PLACE: its definition stays in its table a
 | 371 | `apps/desktop/src/main/runtime/runtime-host.ts` | `74e9db5dde857eeb` |
 | 371 | `apps/desktop/src/main/runtime/scratch-cwd.ts` | `b7ef0daaf9adcb39` |
 | 371 | `apps/desktop/src/main/runtime/spawn-rails.ts` | `85acf461dfa9eef2` |
-| 371 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `63d76f500ad7b4a1` |
+| 371 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `7a28ea730e162725` |
 | 372 | `apps/desktop/src/main/asset-protocol.ts` | `043cc245961e68a5` |
 | 372 | `apps/desktop/src/main/read-text-file.ts` | `8eb84232ce836d3d` |
 | 372 | `apps/desktop/src/main/runtime/instructions.ts` | `bee20699a98a85d3` |
@@ -4614,7 +4614,7 @@ A row that cannot apply is RETIRED IN PLACE: its definition stays in its table a
 | 383 | `scripts/clean-base.mjs` | `5721d735f0b49c1b` |
 | 384 | `apps/desktop/src/main/runtime/provider-config.ts` | `1c7e41f2008c57d7` |
 | 384 | `apps/desktop/src/renderer/src/assets/tokens.css` | `e4958f7d47906014` |
-| 384 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `63d76f500ad7b4a1` |
+| 384 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `7a28ea730e162725` |
 | 384 | `apps/desktop/src/renderer/src/components/RuntimeScreen.vue` | `f138ae4d7c4a76a8` |
 | 384 | `apps/desktop/src/renderer/src/components/SessionInfo.vue` | `9a41b8b43d8ed9b1` |
 | 384 | `apps/desktop/src/renderer/src/lib/credential-words.ts` | `a90435dbffcc5e93` |
@@ -4780,7 +4780,7 @@ A row that cannot apply is RETIRED IN PLACE: its definition stays in its table a
 | 425 | `apps/desktop/src/renderer/src/lib/describe-event.ts` | `d78c16b3f0000525` |
 | 425 | `apps/desktop/src/renderer/src/lib/transcript.ts` | `c131eea955847918` |
 | 425 | `apps/desktop/src/shared/refusals.ts` | `268211e913235005` |
-| 427 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `63d76f500ad7b4a1` |
+| 427 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `7a28ea730e162725` |
 | 427 | `apps/desktop/src/renderer/src/lib/project-store.ts` | `(file no longer in the tree)` |
 | 427 | `apps/desktop/src/renderer/src/lib/session-record.ts` | `85a0e7d17def4625` |
 | 427 | `apps/desktop/test/what-a-person-reads-when-a-door-refuses.test.ts` | `5795b4a46f4bd26c` |
@@ -4809,7 +4809,7 @@ A row that cannot apply is RETIRED IN PLACE: its definition stays in its table a
 | 434 | `apps/desktop/src/renderer/src/lib/persons-queue.ts` | `ed822c3bf836b9bb` |
 | 434 | `apps/desktop/src/renderer/src/lib/user-input-offer.ts` | `3bb85af04f4b22c3` |
 | 435 | `apps/desktop/src/renderer/src/components/ModelPicker.vue` | `4657e6150521c7f9` |
-| 435 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `63d76f500ad7b4a1` |
+| 435 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `7a28ea730e162725` |
 | 435 | `apps/desktop/src/renderer/src/components/RuntimeScreen.vue` | `f138ae4d7c4a76a8` |
 | 435 | `apps/desktop/src/renderer/src/lib/agent-store.ts` | `b08dcdffe4915484` |
 | 435 | `apps/desktop/src/renderer/src/lib/effort-menu.ts` | `(file no longer in the tree)` |
@@ -5066,7 +5066,7 @@ A row that cannot apply is RETIRED IN PLACE: its definition stays in its table a
 | 499 | `packages/runtime/src/approval-mode.ts` | `74f00164173a3ded` |
 | 500 | `apps/desktop/src/main/db/session-store.ts` | `4a88bb4886586463` |
 | 500 | `apps/desktop/src/main/runtime/runtime-host.ts` | `74e9db5dde857eeb` |
-| 500 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `63d76f500ad7b4a1` |
+| 500 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `7a28ea730e162725` |
 | 500 | `apps/desktop/src/renderer/src/components/SettingsScreen.vue` | `842d0168b6dda745` |
 | 500 | `apps/desktop/src/renderer/src/components/StartAsAgent.vue` | `3284c6a2540ed83e` |
 | 500 | `apps/desktop/src/renderer/src/lib/front-door-words.ts` | `d07cb3c3d235be02` |
@@ -6024,7 +6024,7 @@ A row that cannot apply is RETIRED IN PLACE: its definition stays in its table a
 | 724 | `apps/desktop/src/shared/tasks.ts` | `7e1a05d7b53f36f1` |
 | 725 | `apps/desktop/src/renderer/src/components/AttentionQueue.vue` | `f5aa2beff1232e8a` |
 | 725 | `apps/desktop/src/renderer/src/components/ConversationPane.vue` | `4aed7aa3718ca5a4` |
-| 725 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `63d76f500ad7b4a1` |
+| 725 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `7a28ea730e162725` |
 | 725 | `apps/desktop/src/renderer/src/components/OutgoingEntry.vue` | `b5d73a8d577d7686` |
 | 725 | `apps/desktop/src/renderer/src/components/PermissionCard.vue` | `f12c327f9bd89239` |
 | 725 | `apps/desktop/src/renderer/src/components/ProjectWorkspace.vue` | `(file no longer in the tree)` |

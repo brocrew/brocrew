@@ -102,6 +102,10 @@ const VOCABULARY = {
     'model-picker',
     'model-picker-face',
     'model-picker-panel',
+    'first-approval-choice',
+    'choose-ask',
+    'choose-auto',
+    'first-approval-description',
   ],
   asking: [
     'attach-path',
@@ -113,6 +117,10 @@ const VOCABULARY = {
     'model-picker',
     'model-picker-face',
     'model-picker-panel',
+    'first-approval-choice',
+    'choose-ask',
+    'choose-auto',
+    'first-approval-description',
   ],
 } as const
 
@@ -262,12 +270,14 @@ describe('§1 · the screen asks for nothing, and the composer is what is left',
     {
       why: 'an unread default blocks sending and shows the choice',
       over: { defaultApprovalMode: null },
-      adds: ['first-approval-choice', 'choose-ask', 'choose-auto'],
+      adds: [],
+      drops: ['first-approval-description'],
     },
     {
       why: 'a never-chosen default has no preselection',
       over: { approvalDefaultChosen: false },
-      adds: ['first-approval-choice', 'choose-ask', 'choose-auto'],
+      adds: [],
+      drops: ['first-approval-description'],
     },
     {
       why: 'a refused launch keeps its error',

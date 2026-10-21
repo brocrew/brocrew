@@ -115,7 +115,8 @@ describe('the saved mode reaches a new conversation', () => {
         approvalDefaultChosen: true,
       })
       await nextTick()
-      expect(m.all('first-approval-choice')).toHaveLength(0)
+      expect(m.all('first-approval-choice')).toHaveLength(1)
+      expect(m.q('choose-' + mode).getAttribute('aria-pressed')).toBe('true')
       ;(m.q('send-prompt') as HTMLButtonElement).click()
       await nextTick()
       expect(started[0]?.approvalMode).toBe(mode)

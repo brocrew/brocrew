@@ -875,8 +875,8 @@ const firstApproval = ref<'ask' | 'auto' | null>(null)
 const needsApproval = computed(
   () => props.approvalDefaultChosen === false || props.defaultApprovalMode === null,
 )
-const launchMode = computed(() =>
-  needsApproval.value ? firstApproval.value : props.defaultApprovalMode,
+const launchMode = computed(
+  () => firstApproval.value ?? (needsApproval.value ? null : props.defaultApprovalMode),
 )
 const approvalBlocked = computed(() =>
   props.providerReadiness?.[props.defaultProvider] === false
@@ -1058,26 +1058,28 @@ watch(
               </div>
             </div>
 
-            <div v-if="needsApproval" class="setting" data-cy="first-approval-choice">
-              <p class="governs">CHOOSE HOW THIS AGENT WORKS</p>
+            <div class="setting" data-cy="first-approval-choice">
+              <p class="governs">
+                {{ needsApproval ? 'CHOOSE HOW THIS AGENT WORKS' : 'HOW THIS AGENT WORKS' }}
+              </p>
               <div class="first-approval-buttons">
                 <button
                   v-for="mode in ['ask', 'auto'] as const"
                   :key="mode"
                   type="button"
                   class="bb-button"
-                  :class="{ 'bb-button--primary': firstApproval === mode }"
+                  :class="{ 'bb-button--primary': launchMode === mode }"
                   :data-cy="`choose-${mode}`"
-                  :aria-pressed="firstApproval === mode"
+                  :aria-pressed="launchMode === mode"
                   :disabled="props.busy"
                   @click="firstApproval = mode"
                 >
                   {{ mode === 'ask' ? 'Ask' : 'Auto' }}
                 </button>
               </div>
-              <p v-if="firstApproval" class="note" data-cy="first-approval-description">
+              <p v-if="launchMode" class="note" data-cy="first-approval-description">
                 {{
-                  firstApproval === 'ask'
+                  launchMode === 'ask'
                     ? 'Asks when an action needs permission.'
                     : 'Runs without asking. Use it only where you trust the agent with your files.'
                 }}

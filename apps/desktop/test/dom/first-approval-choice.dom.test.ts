@@ -65,6 +65,12 @@ it.each(['ask', 'auto'] as const)(
     )
     expect(start).not.toHaveBeenCalled()
     expect(m.all('first-approval-description')).toHaveLength(0)
+    expect(m.q('first-approval-choice').querySelector('.governs')?.textContent?.trim()).toBe(
+      'CHOOSE HOW THIS AGENT WORKS',
+    )
+    expect(m.q('choose-ask').getAttribute('aria-pressed')).toBe('false')
+    expect(m.q('choose-auto').getAttribute('aria-pressed')).toBe('false')
+    expect(m.host.textContent).toContain('Choose Ask or Auto before sending.')
     m.q('choose-' + mode).click()
     await settle()
     expect(send.disabled).toBe(false)
@@ -124,26 +130,65 @@ it.each([null, 'ask', 'auto'] as const)(
   },
 )
 
-it('does not ask again when a default is already saved', async () => {
-  providersBridge()
-  const m = mount(NewConversation, {
-    busy: false,
-    error: null,
-    debug: false,
-    draft: 'Write a menu.',
-    recent: [],
-    defaultProvider: 'claude',
-    defaultApprovalMode: 'auto',
-    approvalDefaultChosen: true,
-    capabilities: CAPABILITY_FIXTURE,
-    choices: NO_LAUNCH_CHOICES,
-    lists: createModelLists(() => window.api.runtime),
-    handing: createAttachmentBook().handing(NEW_CONVERSATION),
-  })
-  await settle()
-  expect(m.all('first-approval-choice')).toHaveLength(0)
-  expect((m.q('send-prompt') as HTMLButtonElement).disabled).toBe(false)
-})
+it.each(['ask', 'auto'] as const)(
+  'preselects saved %s and changes only this launch, leaving its default alone',
+  async (mode) => {
+    providersBridge()
+    const savedDefault = ref(mode)
+    const save = vi.fn(async (next: 'ask' | 'auto') => {
+      savedDefault.value = next
+      return null
+    })
+    const start = vi.fn(async (input: CreateSessionInput) => {
+      await saveFirstApproval('fictional-new', input.approvalMode, true, save)
+    })
+    const m = mount(NewConversation, {
+      busy: false,
+      error: null,
+      debug: false,
+      draft: 'Write a menu.',
+      recent: [],
+      defaultProvider: 'claude',
+      defaultApprovalMode: savedDefault.value,
+      approvalDefaultChosen: true,
+      capabilities: CAPABILITY_FIXTURE,
+      choices: NO_LAUNCH_CHOICES,
+      lists: createModelLists(() => window.api.runtime),
+      handing: createAttachmentBook().handing(NEW_CONVERSATION),
+      onStart: start,
+    })
+    await settle()
+    await drawnReady()
+    assertDrawn(m.q('first-approval-choice'), 'per-conversation approval choice')
+    expect(m.q('first-approval-choice').querySelector('.governs')?.textContent?.trim()).toBe(
+      'HOW THIS AGENT WORKS',
+    )
+    expect(m.q('choose-' + mode).getAttribute('aria-pressed')).toBe('true')
+    expect(m.q('first-approval-description').textContent).toContain(
+      mode === 'ask'
+        ? 'Asks when an action needs permission.'
+        : 'Runs without asking. Use it only where you trust the agent with your files.',
+    )
+    expect((m.q('send-prompt') as HTMLButtonElement).disabled).toBe(false)
+    const next = mode === 'ask' ? 'auto' : 'ask'
+    m.q('choose-' + next).click()
+    await settle()
+    expect(m.q('choose-' + next).getAttribute('aria-pressed')).toBe('true')
+    expect(m.q('choose-' + mode).getAttribute('aria-pressed')).toBe('false')
+    expect(m.q('first-approval-description').textContent).toContain(
+      next === 'ask'
+        ? 'Asks when an action needs permission.'
+        : 'Runs without asking. Use it only where you trust the agent with your files.',
+    )
+    expect(save).not.toHaveBeenCalled()
+    m.q('send-prompt').click()
+    await settle()
+    expect(start).toHaveBeenCalledTimes(1)
+    expect(start.mock.calls[0]![0].approvalMode).toBe(next)
+    expect(save).not.toHaveBeenCalled()
+    expect(savedDefault.value).toBe(mode)
+  },
+)
 
 // The switch now moves immediately; a refused request restores its previous side.
 it('a switch moves at once and returns to the saved state on refusal', async () => {
