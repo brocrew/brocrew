@@ -577,6 +577,7 @@ const fileManager = fileManagerHere()
     <!-- Its profile's sign-in, when it has expired or is missing: renewed here, without a restart. -->
     <div v-if="signInNeeded && props.profileSignIn" class="card-sign-in" data-cy="card-sign-in">
       <SignInPanel
+        :provider="props.profileSignIn.provider"
         :state="props.profileSignIn.auth"
         :sign-in="props.signInCapability ?? PENDING_CAPABILITY"
         :reprovision="props.reprovisionCapability ?? PENDING_CAPABILITY"
@@ -597,7 +598,7 @@ const fileManager = fileManagerHere()
       @click="emit('openInputs')"
     >
       <svg class="icon" aria-hidden="true"><use href="#i-info" /></svg>
-      What this agent receives
+      Instructions, memory and tools
     </button>
 
     <!-- ⚑ **3 · Whatever else is known about it**, and the caller's slot at the end. ⚠️ On the

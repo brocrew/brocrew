@@ -163,7 +163,7 @@ describe('the strip picks the agent that is doing something', () => {
       }),
     })
     const box = m.q('cast-sub-agents')
-    expect(box.querySelector('.title')?.textContent?.trim()).toBe('Sub agents')
+    expect(box.querySelector('.title')?.textContent?.trim()).toBe('Started here')
     expect(box.querySelector('.count')?.textContent?.trim()).toBe('(2)')
     expect(box.contains(m.q('cast-children-strip'))).toBe(true)
     expect(m.all('cast-children-empty')).toHaveLength(0)

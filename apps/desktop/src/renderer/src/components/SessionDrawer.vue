@@ -454,7 +454,7 @@ function steer(event: KeyboardEvent, at: number): DrawerTab | null {
         data-cy="drawer-show-open"
         @click="emit('update:tab', 'open')"
       >
-        Show in Open
+        Show in Agent
         <svg class="icon arrow"><use href="#i-arrow" /></svg>
       </button>
     </div>

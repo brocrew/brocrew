@@ -1,3 +1,4 @@
+// The approved plain words replace the former labels; the state and gesture checks remain.
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, ref, type Component } from 'vue'
 import ProviderCard from '../../src/renderer/src/components/ProviderCard.vue'
@@ -214,7 +215,9 @@ describe('§1 · 25cca325 · the API key field — the key leaves the field as i
     const door = held<ApiKeyChanged>()
     const { m, runtime } = theCard({ setApiKey: () => door.promise })
     await settled()
-    expect(text(m.q('provider-key-none'))).toBe('No key saved. A saved key outranks the sign-in.')
+    expect(text(m.q('provider-key-none'))).toBe(
+      'No API key saved. You can sign in instead. If you save a key, new conversations will use it instead of your signed-in account.',
+    )
 
     await typeKey(m, `  ${FAKE}  `)
     saveButton(m).click()

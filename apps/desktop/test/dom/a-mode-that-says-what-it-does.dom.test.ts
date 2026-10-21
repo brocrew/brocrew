@@ -225,7 +225,7 @@ describe('§2 · wherever a session in that mode appears — the mark NAMES it a
     expect(codexTitle).toContain(declaredNote('codex'))
     expect(claudeTitle).not.toBe(codexTitle)
     // ⛔ It still says where to change it — the tooltip's original job, which a rewrite could drop.
-    expect(claudeTitle).toContain('in the drawer’s Open tab')
+    expect(claudeTitle).toContain('in the drawer’s Agent tab')
   })
 
   /**
@@ -244,7 +244,7 @@ describe('§2 · wherever a session in that mode appears — the mark NAMES it a
       cwd: '/Users/somebody/a/deliberately/very/long/working/directory/for/this/measurement',
       settings: {
         model: null,
-        pendingModel: null,
+        pendingModel: { value: 'fictional-next-model' },
         reasoningEffort: null,
         pendingReasoningEffort: null,
         planMode: true,

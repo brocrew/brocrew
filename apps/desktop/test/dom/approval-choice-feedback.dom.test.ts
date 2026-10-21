@@ -84,6 +84,7 @@ it.each(['ask', 'auto'] as const)(
       `${nowWord} → ${nextWord} next message`,
     )
     expect(m.host.textContent).not.toMatch(/\bYOLO\b/)
+    expect(m.all('live-settings-pending')).toHaveLength(0)
     answers[0]!.resolve({
       approvalMode: mode,
       pendingApprovalMode: next,

@@ -143,8 +143,8 @@ const view = computed(() =>
           </p>
           <!-- ⛔ **The one line every surface draws for this fact** — see `WorkFacts.vue`. -->
           <WorkFacts :reading="row" />
-          <p v-if="row.definitionOfDone !== undefined" class="condition" data-cy="work-row-done">
-            Done when: {{ row.definitionOfDone ?? 'Not recorded' }}
+          <p v-if="row.definitionOfDone" class="condition" data-cy="work-row-done">
+            Done when: {{ row.definitionOfDone }}
           </p>
           <p v-if="row.said" class="said" :title="row.said" data-cy="work-row-said">
             {{ row.said }}

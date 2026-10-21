@@ -135,8 +135,8 @@ const pressable = (one: CastTask): boolean => props.canOpen && one.piece.from !=
           plainLine(props.root.title)
         }}</span>
       </span>
-      <p v-if="props.root.definitionOfDone !== undefined" class="tbrief open">
-        Done when: {{ props.root.definitionOfDone ?? 'Not recorded' }}
+      <p v-if="props.root.definitionOfDone" class="tbrief open">
+        Done when: {{ props.root.definitionOfDone }}
       </p>
     </li>
     <li
@@ -207,14 +207,11 @@ const pressable = (one: CastTask): boolean => props.canOpen && one.piece.from !=
         >
       </component>
       <p
-        v-if="
-          (one === current || props.mode === 'all') &&
-          one.piece.reading.definitionOfDone !== undefined
-        "
+        v-if="(one === current || props.mode === 'all') && one.piece.reading.definitionOfDone"
         class="tbrief open"
         data-cy="cast-work-done"
       >
-        Done when: {{ one.piece.reading.definitionOfDone ?? 'Not recorded' }}
+        Done when: {{ one.piece.reading.definitionOfDone }}
       </p>
       <template v-if="one === current && briefOf(one)">
         <p :ref="watchBrief" class="tbrief" :class="{ open: briefOpen }" data-cy="cast-work-brief">

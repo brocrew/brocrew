@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { AuthState, CapabilityStatus } from '../../../shared/runtime-ipc'
+import {
+  PROVIDER_NAME,
+  type Provider,
+  type AuthState,
+  type CapabilityStatus,
+} from '../../../shared/runtime-ipc'
 // ⛔ **The labels are shared rather than written here** (310). 310's model field points a person at
 // one of these two gestures when a catalogue probe is refused, and it must do so in the button's own
 // words — see `credential-words.ts` for why a second phrasing would be a second gesture.
@@ -33,6 +38,7 @@ import { COPY_MACHINE_SIGN_IN, SIGN_IN_HERE } from '../lib/credential-words'
  */
 
 const props = defineProps<{
+  provider: Provider
   /** The credential's standing, or `null` before anyone has asked. */
   state: AuthState | null
   /** Whether this provider can be signed into inside the profile — asked, never inferred (039). */
@@ -75,11 +81,11 @@ const visible = computed(() => props.state !== null && props.state.state !== 'us
 const heading = computed(() => {
   switch (props.state?.state) {
     case 'stale':
-      return 'This profile’s sign-in has expired'
+      return `Sign in again to use ${PROVIDER_NAME[props.provider]} with this agent`
     case 'absent':
-      return 'This profile is not signed in'
+      return `Sign in to use ${PROVIDER_NAME[props.provider]} with this agent`
     case 'unknown':
-      return 'Could not check this profile’s sign-in'
+      return `Couldn't check this agent's ${PROVIDER_NAME[props.provider]} sign-in`
     default:
       return ''
   }
@@ -179,9 +185,8 @@ const idle = computed(() => props.busy === 'idle')
          beside the button rather than after pressing it, because it should change which button they
          press. -->
     <p v-if="explainsTheChoice" class="sign-in-caveat" data-cy="sign-in-caveat">
-      Copying is quicker, but it shares one sign-in with the CLI on your machine — whichever one
-      renews it next will expire the other. Signing in here gives this profile its own, so neither
-      can break the other.
+      Sign in here to keep this agent's login separate. Copying your computer's existing login is
+      quicker, but either login may stop working when the other refreshes.
     </p>
     <!-- ⚠️ When a remedy is NOT on offer, the provider's own reason takes its place. The renderer
          owns no copy of its own for this, so a reason that goes stale is fixed in one place — and

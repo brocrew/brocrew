@@ -1,3 +1,4 @@
+// The approved plain words replace the former labels; the state and gesture checks remain.
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
@@ -479,9 +480,9 @@ describe('§2 · the three sentences 531 repaired, by name', () => {
   // *is it drawn at all* instead (`invert-a-defect-assertion-never-delete-it`). ⚑ **D-016 deleted
   // the Home row itself**, and that negative went with the row it was about.
   const REPAIRED: readonly [string, string][] = [
-    ['rail-sessions', "Conversations from here, and from Claude's and Codex's own folders"],
+    ['rail-sessions', 'Includes chats from Claude and Codex on this computer.'],
     // ⚑ D-016 · ruling 12 — the switch names the START it refuses (`spawnSafetyView`).
-    ['rail-spawning-line', 'Agents may start new conversations. Press to stop that.'],
+    ['rail-spawning-line', 'Click to prevent new conversations. Current work will continue.'],
   ]
 
   for (const width of [251.68, WIDE_RAIL_W]) {

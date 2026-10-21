@@ -592,7 +592,7 @@ describe('500 · the setting he should only ever make once', () => {
       // ⚑ **The tab's own label, read off `DRAWER_TABS` and never typed** — `CHANGEABLE_LIVE_IN`'s
       // rule, which is what makes renaming the tab rename this sentence.
       expect(LAUNCH_APPROVAL_BOUND).toContain(CHANGEABLE_LIVE_IN)
-      expect(CHANGEABLE_LIVE_IN).toContain('Open')
+      expect(CHANGEABLE_LIVE_IN).toContain('Agent')
     })
 
     /**

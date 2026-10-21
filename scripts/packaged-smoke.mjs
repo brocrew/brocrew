@@ -175,6 +175,27 @@ async function waitFor(what, predicate, timeoutMs = 60_000, pollMs = 250) {
   }
 }
 
+// Release title bars hide schema text; the database still reports its migration count over IPC.
+async function thePackagedDatabaseOpened(cdp) {
+  const migrations = await waitFor(
+    'the app to report a positive migration count',
+    async () =>
+      await cdp.evaluate(`
+        if (!document.querySelector('[data-cy=app-info]')) return null
+        const info = await window.api.getAppInfo()
+        const count = info?.db?.migrationsApplied
+        return Number.isInteger(count) && count > 0 ? count : null
+      `),
+    15_000,
+  ).catch(async (error) => {
+    const text = await cdp.evaluate(
+      `return document.querySelector('[data-cy=app-info]')?.innerText.replace(/\\s+/g, ' ').trim() ?? null`,
+    )
+    throw new Error(`${error.message} — the packaged app's footer reads "${text}"`)
+  })
+  return `schema ${migrations} — the count came out of a SQLite file the packaged binary opened`
+}
+
 /** The version this build was pinned to, read from the manifest rather than hardcoded here. */
 function pinnedCodexVersion() {
   const manifest = JSON.parse(readFileSync(join(REPO_ROOT, 'apps/desktop/package.json'), 'utf8'))
@@ -917,36 +938,7 @@ async function main() {
       // failure this step exists to rule out.
       '2b the packaged app opened its database — better-sqlite3 loaded from app.asar.unpacked',
       async () => {
-        // The header claims this; nothing asserted it. The schema version is READ FROM THE DB, so a
-        // native module that failed to dlopen out of app.asar.unpacked cannot produce one — and this
-        // is the module whose packaging 014 expected to be the hard part.
-        // ⚠️ **The wait is for the SCHEMA, not for the element** (066). This used to return the
-        // element's text as soon as there was any — and there always is: `Saved locally` is
-        // static, and only the `v{version} · schema {n}` span beside it waits on the `app:info`
-        // IPC. So the wait was satisfied in the first poll, before the answer could arrive, and
-        // the step failed with `reports no database schema: "Saved locally"` against a packaged
-        // app that had in fact opened its database — schema and all, WAL included, as its own
-        // user-data directory showed afterwards.
-        const info = await waitFor(
-          'the app to report its schema',
-          async () => {
-            const text = await cdp.evaluate(
-              `return document.querySelector('[data-cy=app-info]')?.innerText.replace(/\\s+/g, ' ').trim() ?? null`,
-            )
-            return /schema \d+/.test(text ?? '') ? text : null
-          },
-          15_000,
-        ).catch(async (error) => {
-          // A startup error renders in its own span beside this one, so a failure that IS the
-          // native module failing to load says so rather than looking like a slow read.
-          const text = await cdp.evaluate(
-            `return document.querySelector('[data-cy=app-info]')?.innerText.replace(/\\s+/g, ' ').trim() ?? null`,
-          )
-          throw new Error(`${error.message} — the packaged app's footer reads "${text}"`)
-        })
-        const schema = /schema (\d+)/.exec(info ?? '')
-        if (!schema) throw new Error(`the packaged app reports no database schema: "${info}"`)
-        return `"${info}" — the schema came out of a SQLite file the packaged binary opened`
+        return await thePackagedDatabaseOpened(cdp)
       },
     )
 

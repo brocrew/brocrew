@@ -14,13 +14,13 @@ import type { SessionStatus } from '../../../shared/runtime-ipc'
 export const DRAWER_TABS = [
   {
     id: 'open',
-    label: 'Open',
+    label: 'Agent',
     icon: '#i-alert',
     /**
      * Where a permission or a question waits — the only tab that can demand attention — and the
      * agent's own card, which holds its model, reasoning, plan mode and approvals.
      */
-    hint: 'The agent, its model, plan mode and approvals; permissions, questions and the checklist',
+    hint: 'Agent settings, current work and anything waiting for you.',
   },
   {
     id: 'events',

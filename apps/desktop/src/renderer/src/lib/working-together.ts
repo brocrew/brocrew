@@ -83,7 +83,7 @@ import { A_PERSON_ADDRESSED } from './outgoing-card'
  */
 
 /** ⛔ **The ONE empty that is about the conversation**, rather than about a read or about this app. */
-export const NO_SPAWNED_CONVERSATIONS = 'No spawned conversations'
+export const NO_SPAWNED_CONVERSATIONS = 'No conversations started'
 
 /**
  * ⛔ **The sentence this band no longer says** — kept as a constant, and the keeping is deliberate.

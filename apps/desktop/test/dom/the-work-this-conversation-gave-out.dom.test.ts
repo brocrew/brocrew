@@ -96,7 +96,7 @@ describe('§1 · the strip still fits the column it lives in', () => {
     unmountAll()
     const legacy = show(workRow({ definitionOfDone: null }))
     await nextTick()
-    expect(legacy.q('work-row-done').textContent?.trim()).toBe('Done when: Not recorded')
+    expect(legacy.all('work-row-done')).toHaveLength(0)
     unmountAll()
     const unread = show(workRow())
     await nextTick()

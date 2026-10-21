@@ -8,6 +8,7 @@ import { readableError } from '../lib/session-record'
  * conversation and its agent card ask once and always agree.
  */
 export interface ProfileSignIn {
+  readonly provider: Provider
   /** The latest answer, or `null` before the first one. */
   auth: AuthState | null
   busy: 'idle' | 'checking' | 'copying' | 'signing-in'
@@ -50,6 +51,7 @@ export function useProfileSignIn(provider: Provider, profileId: string): Profile
   }
 
   const one: ProfileSignIn = reactive({
+    provider,
     auth: null,
     busy: 'idle',
     notice: null,

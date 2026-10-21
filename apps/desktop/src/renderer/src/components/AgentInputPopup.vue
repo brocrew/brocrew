@@ -167,7 +167,7 @@ const versionLine = computed(() => {
   <section class="input-popup" aria-labelledby="input-popup-title" data-cy="input-popup">
     <header class="popup-head">
       <div class="popup-title">
-        <h2 id="input-popup-title" class="bb-title">What this agent receives</h2>
+        <h2 id="input-popup-title" class="bb-title">Instructions, memory and tools</h2>
         <p class="popup-who">
           <span data-cy="input-popup-who">{{ props.who }}</span>
           <span v-if="props.profile" class="bb-chip bb-chip--accent">{{ props.profile }}</span>

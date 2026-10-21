@@ -50,6 +50,7 @@ describe('Claude’s “nothing to copy” sentence', () => {
       createSSRApp({
         render: () =>
           h(SignInPanel as never, {
+            provider: 'claude',
             state: notSignedIn,
             signIn: declared.signIn,
             reprovision: declared.reprovisionAuth,
@@ -65,6 +66,7 @@ describe('Claude’s “nothing to copy” sentence', () => {
       createSSRApp({
         render: () =>
           h(SignInPanel as never, {
+            provider: 'codex',
             state: notSignedIn,
             signIn: codex.signIn,
             reprovision: codex.reprovisionAuth,

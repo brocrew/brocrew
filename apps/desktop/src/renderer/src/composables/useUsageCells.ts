@@ -59,7 +59,7 @@ export interface UsageCell {
 export const TOTALS: ReadonlySet<string> = new Set(['agents', 'memory'])
 
 /** What not read yet is, in the title bar's line. */
-export const NOT_READ_MARK = '—'
+export const NOT_READ_MARK = '?'
 
 /** The provider's reading for a window; one the provider named a bucket for is not the window. */
 function readingIn(
@@ -95,6 +95,7 @@ export interface UsageCells {
   readonly cells: ComputedRef<readonly UsageCell[]>
   /** Provider usage, running and working totals, then process memory. */
   readonly line: ComputedRef<string>
+  readonly description: ComputedRef<string>
 }
 
 export function useUsageCells(): UsageCells {
@@ -243,5 +244,19 @@ export function useUsageCells(): UsageCells {
     return [...providers, agents, now === null ? NOT_READ_MARK : now.memory].join(' · ')
   })
 
-  return { cells: computed(() => [...usageCells.value, ...totals.value]), line }
+  const description = computed(() =>
+    [
+      ...windows.value.flatMap(({ provider, windows: theirs }) =>
+        theirs.map(
+          ({ word, reading }) =>
+            `${PROVIDER_NAME[provider]} ${word} usage: ${
+              reading?.usedPercent == null ? 'unknown' : `${Math.round(reading.usedPercent)}% used`
+            }${reading?.unconfirmed === true ? ` (${UNCONFIRMED_USAGE})` : ''}`,
+        ),
+      ),
+      ...totals.value.map((cell) => cell.name),
+    ].join('. '),
+  )
+
+  return { cells: computed(() => [...usageCells.value, ...totals.value]), line, description }
 }

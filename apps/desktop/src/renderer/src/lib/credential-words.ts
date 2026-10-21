@@ -27,14 +27,8 @@
  * 🔒 Nothing here is a credential, a token or an account name — these are labels on buttons.
  */
 
-/**
- * The panel's PRIMARY button — offered when the provider declares `signIn` available.
- *
- * ⚠️ It says *"this profile"* and that is load-bearing: a credential lives in a profile home, so
- * signing in is per profile and not per app. See `SignInPanel.vue`'s own note on why this one is
- * first and primary — it is the remedy that does not recur.
- */
-export const SIGN_IN_HERE = 'Sign in to this profile'
+/** Sign in separately for this agent, when its provider supports that action. */
+export const SIGN_IN_HERE = 'Sign in for this agent'
 
 /**
  * The panel's fast, temporary remedy — offered when the provider declares `reprovisionAuth`

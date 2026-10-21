@@ -74,14 +74,17 @@ describe('the usage line', () => {
     const line = m.q('app-usage')
     const said = (line.textContent ?? '').trim()
     expect(said).toBe('Claude 5h 28% · week 61% · Codex week 35% · 2 agents · 1 working · 1.3 GB')
-    expect(line.getAttribute('aria-label')).toBe(`Usage and agents: ${said}`)
-    expect(line.title).toBe(said)
+    // Short cells retain full plain usage sentences for hover and accessibility.
+    expect(line.getAttribute('aria-label')).toBe(line.title)
+    expect(line.title).toContain('Claude 5-hour usage: 28% used')
+    expect(line.title).toContain('Claude weekly usage: 61% used')
+    expect(line.title).toContain('Codex weekly usage: 35% used')
   })
 
-  it('⚑ before anything is read it says so with a dash, and keeps every window', async () => {
+  it('⚑ before anything is read it says so with a question mark, and keeps every window', async () => {
     const m = await bar({ claude: [], codex: [] })
     expect((m.q('app-usage').textContent ?? '').trim()).toBe(
-      'Claude 5h — · week — · Codex week — · — agents · —',
+      'Claude 5h ? · week ? · Codex week ? · ? agents · ?',
     )
   })
 

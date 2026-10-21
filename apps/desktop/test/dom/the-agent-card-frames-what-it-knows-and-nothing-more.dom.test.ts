@@ -550,7 +550,7 @@ describe('every chip wears the dot of the plate beside it', () => {
 
     const sections = [
       { cy: 'card-task', title: 'Current task' },
-      { cy: 'cast-sub-agents', title: 'Sub agents' },
+      { cy: 'cast-sub-agents', title: 'Started here' },
       { cy: 'panel-assets', title: 'Images' },
     ]
     for (const one of sections) {

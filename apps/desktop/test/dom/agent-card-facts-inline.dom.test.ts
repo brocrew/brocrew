@@ -128,7 +128,7 @@ describe('durable card facts in the conversation', () => {
         expect(visible(m.q('model-got-switch'))).toBe(true)
         m.q('model-got-switch').click()
         await nextTick()
-        expect(body.textContent).toContain('Hide what the model got')
+        expect(body.textContent).toContain('Hide what was sent to the AI')
       }
       expect(m.all('outside-card')).toHaveLength(1)
     })

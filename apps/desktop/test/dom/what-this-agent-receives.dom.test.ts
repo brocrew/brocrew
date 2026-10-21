@@ -21,7 +21,7 @@ import { mount, record, unmountAll, type Mounted, openWorkReports } from './harn
 import { givenAnswer, modelGotAnswer } from './what-this-agent-was-given.fixture'
 
 /**
- * 🔴 **F093 · "What this agent receives"** — each tab draws the one read, and a part the app does
+ * 🔴 **F093 · "Instructions, memory and tools"** — each tab draws the one read, and a part the app does
  * not record yet says so rather than drawing nothing or a guess.
  */
 
@@ -83,6 +83,9 @@ describe('F093 · the overview', () => {
   it('says which launch it describes, the provider version, and the sizes', async () => {
     const m = popup()
     await settle()
+    expect(m.host.querySelector('#input-popup-title')?.textContent?.trim()).toBe(
+      'Instructions, memory and tools',
+    )
     expect(m.q('input-popup-who').textContent).toBe('Ada')
     expect(m.q('input-popup-version').textContent).toContain('2.1.287')
     expect(m.q('input-launch').textContent).toContain('What its last launch gave it')
@@ -231,7 +234,9 @@ describe('F093 · with each message', () => {
       { width: 600 },
     )
     expect(m.all('what-the-model-got')).toHaveLength(0)
+    expect(m.q('model-got-switch').textContent?.trim()).toBe('Show what was sent to the AI')
     await press(m, 'model-got-switch')
+    expect(m.q('model-got-switch').textContent?.trim()).toBe('Hide what was sent to the AI')
     expect(m.q('what-the-model-got-words').textContent).toBe('Look at this.')
     expect(m.q('what-the-model-got-attached').textContent).toContain('/work/a.png')
     expect(m.q('what-the-model-got-lines').textContent).toContain(NOT_YET)

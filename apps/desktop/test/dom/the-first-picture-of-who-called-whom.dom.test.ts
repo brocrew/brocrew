@@ -622,7 +622,10 @@ describe('§1 · the property — who started it, what it started, and what pass
     // card, it is “Current task”.
     expect(m.q('cast-taken-heading').textContent?.trim()).toBe('Current task')
     // ⛔ …and the empty child list still says what it is, rather than being hidden by the work.
-    expect(m.q('cast-children-empty').textContent).toContain('No spawned conversations')
+    expect(m.q('cast-children-empty').textContent).toContain('No conversations started')
+    expect(m.q('cast-children-empty').textContent).toContain(
+      'Conversations this agent starts appear here.',
+    )
   })
 })
 
@@ -630,9 +633,12 @@ describe('§1 · the property — who started it, what it started, and what pass
 
 describe('§2 · the three empties, and none of them is “0 spawned”', () => {
   /** ⚑ **A complete, empty child list** — the only state that may draw the sentence. */
-  it('⚑ a complete empty list says No spawned conversations, and says it once', async () => {
+  it('⚑ a complete empty list says No conversations started, and says it once', async () => {
     const m = await show({ read: answer() })
-    expect(m.q('cast-children-empty').textContent).toContain('No spawned conversations')
+    expect(m.q('cast-children-empty').textContent).toContain('No conversations started')
+    expect(m.q('cast-children-empty').textContent).toContain(
+      'Conversations this agent starts appear here.',
+    )
     expect(m.all('cast-children-doubt')).toHaveLength(0)
     expect(m.all('cast-children-short')).toHaveLength(0)
     expect(m.q('working-together').textContent).not.toContain('0 spawned')
@@ -711,7 +717,7 @@ describe('§2 · the three empties, and none of them is “0 spawned”', () => 
   /**
    * 🔴 **A list that read NO rows because it could not read any of them.** ⛔ This is the state a
    * mutation walked through: `rows.length === 0` is true, and without the fourth condition on
-   * {@link ListCoverage.count} the band draws *No spawned conversations* over a walk that refused
+   * {@link ListCoverage.count} the band draws *No conversations started* over a walk that refused
    * every row it had. ⚠️ `452` §5.1's forbidden sentence, reached from the other side.
    */
   it('🔴 a list that could not read ANY of its rows is not an empty list', async () => {
@@ -722,14 +728,14 @@ describe('§2 · the three empties, and none of them is “0 spawned”', () => 
     })
     expect(m.all('cast-children-empty')).toHaveLength(0)
     expect(m.q('cast-children-short').textContent).toContain('3 rows could not be read')
-    expect(m.q('working-together').textContent).not.toContain('No spawned conversations')
+    expect(m.q('working-together').textContent).not.toContain('No conversations started')
   })
 
   /**
    * ⛔ **And a refused read with no rows is not an empty list either** — the same sentence, reached
    * through the refusal rather than through an unread row.
    */
-  it('⛔ a refused read holding no cards still never says No spawned conversations', async () => {
+  it('⛔ a refused read holding no cards still never says No conversations started', async () => {
     const m = await show({ answered: false, read: answer() })
     expect(m.all('cast-children-empty')).toHaveLength(0)
     // 🔴 **The positive control, and `631` had emptied it.** ⛔ With `cast-refusal` unrendered this
@@ -1402,6 +1408,9 @@ describe('§6 · measured ink at the narrowest column the drawer ever takes', ()
       expect(hooks, `the sweep did not read ${cy}`).toContain(cy)
     }
 
+    expect(m.q('cast-sub-agents').querySelector('.title [title]')?.getAttribute('title')).toBe(
+      'Started here',
+    )
     const lost = carriers.filter((c) => c.cut !== null && !c.recovered)
     expect(lost.map(describeCarrier), 'ink a person cannot read and cannot recover').toEqual([])
   })
@@ -1693,8 +1702,10 @@ describe('§8 · the pane draws no empty answer, and every word of the band is o
     // every sentence that would have gone behind one.
     expect(m.all('cast-why')).toHaveLength(0)
     expect(m.q('cast-children-empty').checkVisibility()).toBe(true)
-    expect(m.q('cast-children-empty').textContent).toContain('No spawned conversations')
-    expect(m.q('cast-children-empty').textContent).toContain('appears here when this one spawns it')
+    expect(m.q('cast-children-empty').textContent).toContain('No conversations started')
+    expect(m.q('cast-children-empty').textContent).toContain(
+      'Conversations this agent starts appear here.',
+    )
     // ⚑ W4.74 · an answered band says no age, however old: it is read again on every move of its
     // work (D-033). The age line, kept after a refusal, is drawn in the open — see the age test.
     expect(m.all('cast-age')).toHaveLength(0)

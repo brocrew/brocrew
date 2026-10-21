@@ -136,9 +136,7 @@ async function runSearch(more = false): Promise<void> {
                 }}
                 · {{ hit.owner.name ?? hit.owner.profile ?? 'an agent this app cannot name' }}</span
               >
-              <span v-if="hit.definition_of_done !== undefined"
-                >Done when: {{ hit.definition_of_done ?? 'Not recorded' }}</span
-              >
+              <span v-if="hit.definition_of_done">Done when: {{ hit.definition_of_done }}</span>
               <span v-if="hit.status"
                 >Status: {{ hit.status
                 }}<template v-if="hit.clipped.status"> (clipped)</template></span
