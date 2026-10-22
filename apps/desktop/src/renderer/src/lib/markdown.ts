@@ -124,6 +124,11 @@ export function isLocalLinkPath(path: string): boolean {
   )
 }
 
+/** A Windows share (`\\server\share\…`): drawn like a local path, but never opened. */
+export function isNetworkPath(path: string): boolean {
+  return path.startsWith('\\\\') && path.length <= MAX_MESSAGE_PATH_LENGTH && !path.includes('\0')
+}
+
 function localLinkKey(path: string): string | null {
   try {
     return encodeURIComponent(path)
@@ -152,7 +157,7 @@ for (const md of [renderer, chatRenderer]) {
       for (const token of block.children ?? []) {
         if (token.type === 'link_open') {
           const path = token.attrGet('href')?.trim() ?? ''
-          const key = isLocalLinkPath(path) ? localLinkKey(path) : null
+          const key = isLocalLinkPath(path) || isNetworkPath(path) ? localLinkKey(path) : null
           links.push(key)
           if (key !== null) {
             token.attrSet(LOCAL_LINK_ATTRIBUTE, path)
@@ -330,7 +335,9 @@ for (const md of [renderer, chatRenderer]) {
     // can produce, so the null case is a guard rather than a branch anyone reaches.
     let open = index - 1
     while (open >= 0 && tokens[open]?.type !== 'link_open') open -= 1
-    const href = open >= 0 ? (tokens[open]?.attrGet('href')?.trim() ?? '') : ''
+    // A local link has lost its `href` by now; its destination is still on `data-local-path`.
+    const destination = tokens[open]?.attrGet('href') ?? tokens[open]?.attrGet(LOCAL_LINK_ATTRIBUTE)
+    const href = open >= 0 ? (destination?.trim() ?? '') : ''
     if (/^brocrew:/i.test(href) || tokens[open]?.meta?.messageLink === true) return '</button>'
     if (href === '') return finish('')
     // ⚠️ **An image's alt is the visible text of a link that wraps one**, and `content` is its raw
@@ -368,12 +375,13 @@ for (const md of [renderer, chatRenderer]) {
     // Never over an author's own `[text](url "title")` — that title is something a human wrote about
     // the link, and replacing it with the URL would drop information to add none.
     if (token && href !== '' && token.attrGet('title') === null) token.attrSet('title', href)
-    if (token && href.startsWith('\\\\')) {
-      token.attrSet('title', href)
+    const localKey = token?.meta?.localFileKey
+    // A local path is never a link: the window draws its own Copy and Open beside it.
+    if (token && (href.startsWith('\\\\') || typeof localKey === 'string')) {
+      if (href.startsWith('\\\\')) token.attrSet('title', href)
       token.attrs?.splice(token.attrIndex('href'), 1)
     }
     const opened = self.renderToken(tokens, index, options)
-    const localKey = token?.meta?.localFileKey
     return typeof localKey === 'string' ? `${LOCAL_LINK_START}${localKey}-->${opened}` : opened
   }
 }

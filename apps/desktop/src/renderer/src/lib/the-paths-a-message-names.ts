@@ -4,8 +4,14 @@ import {
   MAX_MESSAGE_PATHS,
   type MessagePath,
 } from '../../../shared/runtime-ipc'
-import { isLocalLinkPath, LOCAL_LINK_START, LOCAL_LINK_END, LOCAL_LABEL_END } from './markdown'
-import { openName, showName, type FoundMessagePath } from './message-paths'
+import {
+  isLocalLinkPath,
+  isNetworkPath,
+  LOCAL_LINK_START,
+  LOCAL_LINK_END,
+  LOCAL_LABEL_END,
+} from './markdown'
+import type { FoundMessagePath } from './message-paths'
 
 /**
  * Path-like text in a rendered message: found first, then marked once main said what it is.
@@ -127,7 +133,7 @@ export function pathsNamedIn(rendered: string): string[] {
   const links = localLinksIn(rendered)
   // A link to a file on this computer is asked about by its destination, under the same rules.
   for (const link of links) {
-    if (preferred.size < MAX_MESSAGE_PATHS) preferred.add(link.path)
+    if (preferred.size < MAX_MESSAGE_PATHS && !isNetworkPath(link.path)) preferred.add(link.path)
   }
   // The walk reads the message with each local link held in a slot of its own.
   const html = localSlotsIn(rendered, links)
@@ -153,31 +159,59 @@ export interface PathWords {
   readonly fileManager: string
 }
 
-/** The attribute the main control carries the text on, and the second control's. */
+/** The attribute the Open control carries the text on, and the Copy control's. */
 export const PATH_ATTRIBUTE = 'data-message-path'
-export const SHOW_ATTRIBUTE = 'data-message-path-show'
+export const COPY_ATTRIBUTE = 'data-message-path-copy'
 
-/** The controls for one found path. Every value in it is escaped. */
+const icon = (id: string): string =>
+  `<svg class="icon" aria-hidden="true"><use href="#${id}"></use></svg>`
+
+/** The path as text a person can read and select, then its Copy control. Values arrive escaped. */
+function pathAndCopy(kind: string, display: string, title: string): string {
+  return (
+    `<span class="message-path" data-kind="${kind}">` +
+    `<span class="message-path-text" data-cy="message-path-text" title="${title}">${display}</span>` +
+    `<button type="button" class="message-path-icon" data-cy="message-path-copy" ` +
+    `${COPY_ATTRIBUTE}="${display}" title="Copy path" aria-label="Copy path">${icon('i-copy')}</button>`
+  )
+}
+
+/**
+ * One found path: its text, which is not a control, then Copy and Open. Copy takes the path as it
+ * is drawn; Open sends the text as written, and main decides whether it opens or only shows.
+ */
 export function pathMarkup(
   found: FoundMessagePath,
   words: PathWords,
   display: string = found.text,
 ): string {
-  const text = escaped(found.text)
-  const title = escaped(found.absolute)
   const opens = words.canOpen && found.opens
-  const show = escaped(showName(found.name, words.fileManager))
-  const main = opens ? escaped(openName(found.name)) : show
-  const second = words.canOpen
-    ? `<button type="button" class="message-path-show" data-cy="message-path-show" ` +
-      `${SHOW_ATTRIBUTE}="${text}" title="${title}" aria-label="${show}">` +
-      `<svg class="icon" aria-hidden="true"><use href="#i-folder"></use></svg></button>`
-    : ''
+  const name = opens ? 'Open file' : escaped(`Show in ${words.fileManager}`)
   return (
-    `<span class="message-path" data-kind="${found.kind}">` +
-    `<button type="button" class="message-path-open" data-cy="message-path" ` +
-    `${PATH_ATTRIBUTE}="${text}" data-opens="${opens ? 'true' : 'false'}" title="${title}" ` +
-    `aria-label="${main}">${escaped(display)}</button>${second}</span>`
+    pathAndCopy(found.kind, escaped(display), escaped(found.absolute)) +
+    `<button type="button" class="message-path-icon" data-cy="message-path" ` +
+    `${PATH_ATTRIBUTE}="${escaped(found.text)}" data-opens="${opens ? 'true' : 'false'}" ` +
+    `title="${name}" aria-label="${name}">${icon(opens ? 'i-open' : 'i-folder')}</button></span>`
+  )
+}
+
+/** A path main has not answered for yet: its text only, until the icons can say what they do. */
+function pendingPathMarkup(path: string): string {
+  const said = escaped(path)
+  return (
+    `<span class="message-path" data-kind="file">` +
+    `<span class="message-path-text" data-cy="message-path-text" title="${said}">${said}</span></span>`
+  )
+}
+
+/** A network share: main never reads one, so Open stays off and says why. */
+function networkPathMarkup(path: string): string {
+  const said = escaped(path)
+  return (
+    pathAndCopy('file', said, said) +
+    `<button type="button" class="message-path-icon" data-cy="message-path-network" ` +
+    `aria-disabled="true" title="Network paths can't be opened here." aria-label="Open file">` +
+    `${icon('i-open')}</button></span>`
   )
 }
 
@@ -253,7 +287,7 @@ function localLinksIn(html: string): LocalLink[] {
     } catch {
       continue
     }
-    if (!isLocalLinkPath(path)) continue
+    if (!isLocalLinkPath(path) && !isNetworkPath(path)) continue
     const ending = `${LOCAL_LINK_END}${key}-->`
     const end = html.indexOf(ending, at)
     if (end === -1) continue
@@ -292,17 +326,20 @@ function markLocalLinksIn(
 ): string {
   let out = html
   links.forEach((link, index) => {
-    const answer = known(link.path)
+    const network = isNetworkPath(link.path)
+    const answer = network ? undefined : known(link.path)
     const label = link.label.trim()
     const sameAsPath = label === '' || unescaped(label) === link.path
+    const caption = sameAsPath ? '' : `<span class="message-path-label">${link.label}</span> `
     out = out.replace(localSlot(index), () =>
-      answer === undefined
-        ? link.markup
-        : `${sameAsPath ? '' : `<span class="message-path-label">${link.label}</span> `}${
-            answer.found
+      network
+        ? caption + networkPathMarkup(link.path)
+        : answer === undefined
+          ? caption + pendingPathMarkup(link.path)
+          : caption +
+            (answer.found
               ? pathMarkup(answer, words, answer.absolute)
-              : `<span title="${escaped(link.path)}">${escaped(link.path)}</span>`
-          }`,
+              : `<span title="${escaped(link.path)}">${escaped(link.path)}</span>`),
     )
   })
   return out
@@ -311,9 +348,9 @@ function markLocalLinksIn(
 /** Which control a click landed on, and the text it names. */
 export function pathClicked(
   target: EventTarget | null,
-): { text: string; pressed: 'open' | 'show' } | null {
-  const shown = markedValueAt(target, SHOW_ATTRIBUTE)
-  if (shown !== null) return { text: shown, pressed: 'show' }
+): { text: string; pressed: 'open' | 'copy' } | null {
+  const copied = markedValueAt(target, COPY_ATTRIBUTE)
+  if (copied !== null) return { text: copied, pressed: 'copy' }
   const opened = markedValueAt(target, PATH_ATTRIBUTE)
   return opened === null ? null : { text: opened, pressed: 'open' }
 }

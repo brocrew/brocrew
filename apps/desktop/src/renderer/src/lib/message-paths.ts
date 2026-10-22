@@ -31,7 +31,6 @@ export function fileManagerWord(platform: string): string {
   return 'your file manager'
 }
 
-export const openName = (name: string): string => `Open ${name}`
 export const showName = (name: string, fileManager: string): string =>
   `Show ${name} in ${fileManager}`
 
@@ -54,7 +53,7 @@ export function pressFailedWords(
     return `BroCrew can't tell where that ${kind} is from here. Ask the agent for its full path.`
   }
   if (pressed === 'open') {
-    return `That ${kind} didn't open. Use the folder button to show it in ${fileManager}.`
+    return `That ${kind} didn't open. Copy its path and open it from ${fileManager}.`
   }
   return `${capitalised(fileManager)} didn't show that ${kind}. Try again.`
 }

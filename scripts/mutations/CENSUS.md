@@ -3669,7 +3669,7 @@ A row that cannot apply is RETIRED IN PLACE: its definition stays in its table a
 | 199 | `packages/runtime/src/claude/normalize.ts` | `bc13698447f4c7d1` |
 | 199 | `packages/runtime/src/fake-runtime.ts` | `7dca8079433ea7b8` |
 | 200 | `packages/runtime/src/codex/codex-runtime.ts` | `59538c0c8ecf9dc1` |
-| 2001 | `apps/desktop/src/renderer/src/assets/base.css` | `bbcbcf5cf76eabc5` |
+| 2001 | `apps/desktop/src/renderer/src/assets/base.css` | `80a7561101cb5cfb` |
 | 2001 | `apps/desktop/src/renderer/src/assets/tokens.css` | `e4958f7d47906014` |
 | 2001 | `apps/desktop/src/renderer/src/components/AgentCard.vue` | `49988c856cb6677a` |
 | 2001 | `apps/desktop/src/renderer/src/components/AgentState.vue` | `0584e62cd1879026` |
@@ -4420,7 +4420,7 @@ A row that cannot apply is RETIRED IN PLACE: its definition stays in its table a
 | 337 | `apps/desktop/src/renderer/src/components/RuntimeScreen.vue` | `f138ae4d7c4a76a8` |
 | 337 | `apps/desktop/src/renderer/src/lib/dispatch-route.ts` | `(file no longer in the tree)` |
 | 338 | `apps/desktop/src/main/index.ts` | `302581af56d59338` |
-| 338 | `apps/desktop/src/renderer/src/assets/base.css` | `bbcbcf5cf76eabc5` |
+| 338 | `apps/desktop/src/renderer/src/assets/base.css` | `80a7561101cb5cfb` |
 | 338 | `apps/desktop/src/renderer/src/assets/tokens.css` | `e4958f7d47906014` |
 | 338 | `apps/desktop/src/renderer/src/components/RuntimeScreen.vue` | `f138ae4d7c4a76a8` |
 | 338 | `apps/desktop/test/app-frame-window.test.ts` | `7815ab1b87239700` |
@@ -4900,7 +4900,7 @@ A row that cannot apply is RETIRED IN PLACE: its definition stays in its table a
 | 453 | `apps/desktop/src/renderer/src/components/PersonsQueue.vue` | `abafc11ec9785f1a` |
 | 453 | `apps/desktop/src/renderer/src/lib/persons-queue.ts` | `ed822c3bf836b9bb` |
 | 455 | `apps/desktop/src/main/runtime/runtime-host.ts` | `74e9db5dde857eeb` |
-| 455 | `apps/desktop/src/renderer/src/assets/base.css` | `bbcbcf5cf76eabc5` |
+| 455 | `apps/desktop/src/renderer/src/assets/base.css` | `80a7561101cb5cfb` |
 | 455 | `apps/desktop/src/renderer/src/assets/tokens.css` | `e4958f7d47906014` |
 | 455 | `apps/desktop/src/renderer/src/components/OverlayHost.vue` | `eeef6083cdbe99bf` |
 | 455 | `apps/desktop/src/renderer/src/components/SessionTools.vue` | `5f40a8461d842c5b` |

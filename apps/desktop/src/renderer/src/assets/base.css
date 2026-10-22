@@ -266,54 +266,48 @@ summary:focus-visible,
   color: var(--accent-text-soft);
 }
 
-/* A path a message names that main found: it reads as a file, in monospace, and presses like a
-   link. Global, because replies, the person's own messages and the cards all draw it. The focus
-   ring is the one every button has. */
-.message-path-open,
-.message-path-show {
-  padding: 0;
-  border: 0;
-  background: none;
-  font: inherit;
-  cursor: pointer;
-}
-
-.message-path-open {
+/* A path a message names that main found: it reads as a file, in monospace and the link colour,
+   and is plain text a person can select. Two small icons follow it, Copy and Open. Global, because
+   replies, the person's own messages and the cards all draw it. */
+.message-path-text {
   color: var(--accent-text-soft);
   font-family: var(--font-mono);
   font-size: var(--type-code-inline);
-  text-align: inherit;
-  text-decoration: none;
-  text-underline-offset: 2px;
   overflow-wrap: anywhere;
 }
 
-code .message-path-open {
+code .message-path-text {
   font-size: inherit;
 }
 
-.message-path-open:hover,
-.message-path-open:focus-visible {
-  text-decoration: underline;
-}
-
-.message-path-show {
+.message-path-icon {
   display: inline-grid;
   margin-left: var(--space-1);
+  padding: 0;
+  border: 0;
   border-radius: var(--radius-2xs);
+  background: none;
   color: var(--muted);
+  font: inherit;
+  cursor: pointer;
   place-items: center;
   vertical-align: middle;
 }
 
-.message-path-show .icon {
+.message-path-icon .icon {
   width: var(--icon-sm);
   height: var(--icon-sm);
 }
 
-.message-path-show:hover,
-.message-path-show:focus-visible {
+.message-path-icon:hover,
+.message-path-icon:focus-visible {
   color: var(--accent-text-soft);
+}
+
+.message-path-icon[aria-disabled='true'] {
+  color: var(--muted);
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .message-path-failure {

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { defineComponent, h, nextTick, ref, shallowRef } from 'vue'
 import TranscriptView from '../../src/renderer/src/components/TranscriptView.vue'
@@ -68,6 +68,8 @@ function installMain(
     opened?: OpenMessagePathResult
     revealed?: RevealResult
     resolved?: Readonly<Record<string, string>>
+    /** Holds every answer until this resolves. */
+    held?: Promise<void>
   } = {},
 ): FakeMain {
   const main: FakeMain = { asks: [], opens: [], reveals: [] }
@@ -77,6 +79,7 @@ function installMain(
     runtime: {
       resolveMessagePaths: async (ask: MessagePathAsk): Promise<MessagePath[]> => {
         main.asks.push(ask)
+        await options.held
         return ask.texts.map((text) =>
           missing.has(text) || (existing !== null && !existing.has(text))
             ? { text, found: false }
@@ -149,10 +152,17 @@ const controls = (view: Mounted): HTMLButtonElement[] =>
   view.all('message-path') as HTMLButtonElement[]
 const controlFor = (view: Mounted, text: string): HTMLButtonElement | undefined =>
   controls(view).find((button) => button.dataset.messagePath === text)
-const showFor = (view: Mounted, text: string): HTMLButtonElement | undefined =>
-  (view.all('message-path-show') as HTMLButtonElement[]).find(
-    (button) => button.dataset.messagePathShow === text,
-  )
+/** The drawn path beside an Open control: plain text, never a control itself. */
+const textOf = (control: HTMLElement): HTMLElement =>
+  control.closest('.message-path')!.querySelector<HTMLElement>('.message-path-text')!
+const textFor = (view: Mounted, text: string): HTMLElement | undefined => {
+  const control = controlFor(view, text)
+  return control ? textOf(control) : undefined
+}
+const copyFor = (view: Mounted, text: string): HTMLButtonElement =>
+  controlFor(view, text)!
+    .closest('.message-path')!
+    .querySelector<HTMLButtonElement>('[data-cy="message-path-copy"]')!
 
 describe('a path main found becomes a control', () => {
   it('links Application Support in prose and inline code without swallowing the sentence', async () => {
@@ -162,16 +172,17 @@ describe('a path main found becomes a control', () => {
     const { view } = await transcript([said(text)])
     const links = controls(view)
     expect(links).toHaveLength(2)
-    expect(links.map((button) => button.textContent)).toEqual([path, path])
-    expect(links.every((button) => button.title === path)).toBe(true)
+    const texts = view.all('message-path-text')
+    expect(texts.map((one) => one.textContent)).toEqual([path, path])
+    expect(texts.every((one) => one.title === path)).toBe(true)
     expect(view.q('assistant-markdown').textContent?.trim()).toBe(text.replaceAll('`', ''))
-    expect(view.q('assistant-markdown').querySelector('code button')?.textContent).toBe(path)
+    expect(view.q('assistant-markdown').querySelector('code .message-path-text')?.textContent).toBe(
+      path,
+    )
     links[0]!.click()
     await settle()
     expect(main.opens).toEqual([{ sessionId: 'sess_1', text: path }])
-    showFor(view, path)!.click()
-    await settle()
-    expect(main.reveals).toEqual([{ sessionId: 'sess_1', text: path }])
+    expect(main.reveals).toEqual([])
     expect(main.asks).toHaveLength(1)
     expect(main.asks[0]!.texts).toContain(path)
     expect(main.asks[0]!.texts.length).toBeLessThanOrEqual(50)
@@ -207,7 +218,7 @@ describe('a path main found becomes a control', () => {
     const main = installMain({ existing: [path] })
     const { view } = await transcript([said(`See ${path}${after}`)])
     expect(main.asks[0]!.texts).toContain(path)
-    expect(controls(view).map((button) => button.textContent)).toEqual([path])
+    expect(view.all('message-path-text').map((one) => one.textContent)).toEqual([path])
     expect(view.q('assistant-markdown').textContent?.trim()).toBe(`See ${path}${after}`)
   })
   it('draws the path as written, with the full path in its hover', async () => {
@@ -215,10 +226,9 @@ describe('a path main found becomes a control', () => {
     const { view } = await transcript([said('The message is in projects/x/report.md now.')])
     const control = controlFor(view, 'projects/x/report.md')
     expect(control, 'the found path drew no control').toBeDefined()
-    expect(control!.textContent).toBe('projects/x/report.md')
-    expect(control!.title).toBe(`${HERE}/projects/x/report.md`)
+    expect(textOf(control!).textContent).toBe('projects/x/report.md')
+    expect(textOf(control!).title).toBe(`${HERE}/projects/x/report.md`)
     expect(control!.type).toBe('button')
-    expect(showFor(view, 'projects/x/report.md')!.title).toBe(`${HERE}/projects/x/report.md`)
     // The sentence reads as it did: the full stop stays after the control.
     expect(view.q('assistant-markdown').textContent?.trim()).toBe(
       'The message is in projects/x/report.md now.',
@@ -301,8 +311,8 @@ describe('asking main', () => {
   })
 })
 
-describe('the two presses', () => {
-  it('the main control asks main to open the text as written, in this conversation', async () => {
+describe('the path and its two icons', () => {
+  it('Open asks main to open the text as written, in this conversation', async () => {
     const main = installMain()
     const { view } = await transcript([said('See projects/x/report.md')])
     controlFor(view, 'projects/x/report.md')!.click()
@@ -312,52 +322,121 @@ describe('the two presses', () => {
     expect(view.all('message-path-failure')).toHaveLength(0)
   })
 
-  it('the second control asks main to show it, and never to open it', async () => {
+  it('the path itself is coloured text, neither a link nor a control', async () => {
     const main = installMain()
     const { view } = await transcript([said('See projects/x/report.md')])
-    showFor(view, 'projects/x/report.md')!.click()
+    const text = textFor(view, 'projects/x/report.md')!
+    expect(text.tagName).toBe('SPAN')
+    expect(text.closest('a, button')).toBeNull()
+    expect(getComputedStyle(text).color).not.toBe(
+      getComputedStyle(view.q('assistant-markdown')).color,
+    )
+    text.click()
     await settle()
-    expect(main.reveals).toEqual([{ sessionId: 'sess_1', text: 'projects/x/report.md' }])
     expect(main.opens).toEqual([])
+    expect(main.reveals).toEqual([])
   })
 
-  it('a click on the folder icon inside the second control lands on it', async () => {
+  it('Copy writes the path as drawn, then says Copied on the icon', async () => {
+    const main = installMain()
+    const written = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue()
+    try {
+      const { view } = await transcript([said('See projects/x/report.md')])
+      const copy = copyFor(view, 'projects/x/report.md')
+      expect(copy.getAttribute('aria-label')).toBe('Copy path')
+      expect(copy.title).toBe('Copy path')
+      copy.querySelector('svg')!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      await settle()
+      expect(written).toHaveBeenCalledWith('projects/x/report.md')
+      expect(copy.getAttribute('aria-label')).toBe('Copied')
+      expect(copy.querySelector('use')!.getAttribute('href')).toBe('#i-check')
+      expect(main.opens).toEqual([])
+    } finally {
+      written.mockRestore()
+    }
+  })
+
+  it('keeps Copied for its whole time after a second copy, then puts Copy back', async () => {
+    installMain()
+    const written = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue()
+    const { view } = await transcript([said('See projects/x/report.md')])
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      const copy = copyFor(view, 'projects/x/report.md')
+      copy.click()
+      await settle()
+      vi.advanceTimersByTime(1000)
+      copy.click()
+      await settle()
+      // Past the first copy's 1600 ms, inside the second's.
+      vi.advanceTimersByTime(700)
+      expect(copy.getAttribute('aria-label')).toBe('Copied')
+      expect(copy.querySelector('use')!.getAttribute('href')).toBe('#i-check')
+      vi.advanceTimersByTime(1000)
+      expect(copy.getAttribute('aria-label')).toBe('Copy path')
+      expect(copy.title).toBe('Copy path')
+      expect(copy.querySelector('use')!.getAttribute('href')).toBe('#i-copy')
+      expect(written).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+      written.mockRestore()
+    }
+  })
+
+  it('says what to do when the clipboard refuses the copy', async () => {
+    installMain()
+    const written = vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new Error('no'))
+    try {
+      const { view } = await transcript([said('See projects/x/report.md')])
+      copyFor(view, 'projects/x/report.md').click()
+      await settle()
+      expect(view.q('message-path-failure').textContent?.trim()).toBe(
+        "That path didn't copy. Select its text and copy it instead.",
+      )
+    } finally {
+      written.mockRestore()
+    }
+  })
+
+  it('a click on the glyph inside Open lands on it', async () => {
     const main = installMain()
     const { view } = await transcript([said('See projects/x/report.md')])
-    const icon = showFor(view, 'projects/x/report.md')!.querySelector('svg')!
+    const icon = controlFor(view, 'projects/x/report.md')!.querySelector('svg')!
     icon.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await settle()
-    expect(main.reveals).toHaveLength(1)
+    expect(main.opens).toHaveLength(1)
   })
 
-  it('Tab reaches both controls and Enter presses them', async () => {
+  it('Tab reaches Copy, then Open, and Enter presses them', async () => {
     const main = installMain()
-    const { view } = await transcript([typed('Look at projects/x/report.md')])
-    view.q('before').focus()
-    await userEvent.tab()
-    expect(document.activeElement).toBe(controlFor(view, 'projects/x/report.md'))
-    await userEvent.keyboard('{Enter}')
-    await settle()
-    expect(main.opens).toEqual([{ sessionId: 'sess_1', text: 'projects/x/report.md' }])
-    await userEvent.tab()
-    expect(document.activeElement).toBe(showFor(view, 'projects/x/report.md'))
-    await userEvent.keyboard('{Enter}')
-    await settle()
-    expect(main.reveals).toEqual([{ sessionId: 'sess_1', text: 'projects/x/report.md' }])
+    const written = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue()
+    try {
+      const { view } = await transcript([typed('Look at projects/x/report.md')])
+      view.q('before').focus()
+      await userEvent.tab()
+      expect(document.activeElement).toBe(copyFor(view, 'projects/x/report.md'))
+      await userEvent.keyboard('{Enter}')
+      await settle()
+      expect(written).toHaveBeenCalledWith('projects/x/report.md')
+      await userEvent.tab()
+      expect(document.activeElement).toBe(controlFor(view, 'projects/x/report.md'))
+      await userEvent.keyboard('{Enter}')
+      await settle()
+      expect(main.opens).toEqual([{ sessionId: 'sess_1', text: 'projects/x/report.md' }])
+    } finally {
+      written.mockRestore()
+    }
   })
 
-  it('names a file main may open "Open", and one it only shows "Show … in" the file manager', async () => {
+  it('names Open "Open file" where main opens it, and "Show in" the file manager where it only shows', async () => {
     installMain()
     const { view } = await transcript([said('Read projects/x/report.md, then run bin/go.command')])
-    expect(controlFor(view, 'projects/x/report.md')!.getAttribute('aria-label')).toBe(
-      'Open report.md',
-    )
-    expect(showFor(view, 'projects/x/report.md')!.getAttribute('aria-label')).toBe(
-      `Show report.md in ${FILE_MANAGER}`,
-    )
-    expect(controlFor(view, 'bin/go.command')!.getAttribute('aria-label')).toBe(
-      `Show go.command in ${FILE_MANAGER}`,
-    )
+    const opens = controlFor(view, 'projects/x/report.md')!
+    expect(opens.getAttribute('aria-label')).toBe('Open file')
+    expect(opens.title).toBe('Open file')
+    const shows = controlFor(view, 'bin/go.command')!
+    expect(shows.getAttribute('aria-label')).toBe(`Show in ${FILE_MANAGER}`)
+    expect(shows.title).toBe(`Show in ${FILE_MANAGER}`)
   })
 
   it('a press on a path that is gone says so, and what to do', async () => {
@@ -416,8 +495,7 @@ describe('the recovery window', () => {
     expect(bridge.pathAsks).toEqual([{ sessionId: 'conv-header', texts: ['projects/x/report.md'] }])
     const control = controlFor(view, 'projects/x/report.md')
     expect(control, 'the found path drew no control').toBeDefined()
-    expect(control!.getAttribute('aria-label')).toBe(`Show report.md in ${FILE_MANAGER}`)
-    expect(view.all('message-path-show')).toHaveLength(0)
+    expect(control!.getAttribute('aria-label')).toBe(`Show in ${FILE_MANAGER}`)
     control!.click()
     await settle()
     expect(bridge.pathsShown).toEqual([{ sessionId: 'conv-header', text: 'projects/x/report.md' }])
@@ -427,7 +505,7 @@ describe('the recovery window', () => {
     // Planted: this window has no open call, so an `opens: true` cannot make it one.
     const { view } = await history({ paths: (ask) => ask.texts.map((text) => found(text)) })
     expect(controlFor(view, 'projects/x/report.md')!.getAttribute('aria-label')).toBe(
-      `Show report.md in ${FILE_MANAGER}`,
+      `Show in ${FILE_MANAGER}`,
     )
   })
 
@@ -500,18 +578,31 @@ describe('a link to a file on this computer offers the same controls as a path i
       expect(main.asks.flatMap((ask) => ask.texts)).toContain(path)
       const control = controlFor(view, path)
       expect(control, 'the link drew no control').toBeDefined()
-      expect(control!.textContent).toBe(path)
-      expect(control!.title).toBe(path)
+      expect(textOf(control!).textContent).toBe(path)
+      expect(textOf(control!).title).toBe(path)
       expect(control!.getAttribute('data-opens')).toBe('false')
       expect(view.q('assistant-markdown').textContent).toContain('The app, version 1.2.3')
-      expect(showFor(view, path)!.getAttribute('aria-label')).toBe('Show app.apk in Explorer')
+      expect(control!.getAttribute('aria-label')).toBe('Show in Explorer')
       expect(anchors(view)).toHaveLength(0)
       control!.click()
       await settle()
       expect(main.opens).toEqual([{ sessionId: 'sess_1', text: path }])
-      showFor(view, path)!.click()
-      await settle()
-      expect(main.reveals).toEqual([{ sessionId: 'sess_1', text: path }])
+    })
+
+    it('copies a drive path with its backslashes, never as %5C', async () => {
+      onWindows()
+      const path = 'C:\\Users\\fictional\\AppData\\Roaming\\@brobot2\\desktop\\out\\app.apk'
+      installMain({ existing: [path] })
+      const written = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue()
+      try {
+        const { view } = await transcript([said(link('The app', path))])
+        copyFor(view, path).click()
+        await settle()
+        expect(written).toHaveBeenCalledWith(path)
+        expect(written.mock.calls[0]![0]).not.toContain('%5C')
+      } finally {
+        written.mockRestore()
+      }
     })
 
     it('keeps `\\_` and spaces in an angle-bracketed destination', async () => {
@@ -519,9 +610,9 @@ describe('a link to a file on this computer offers the same controls as a path i
       const path = 'C:\\Users\\fictional\\My Files\\a\\_b\\notes.md'
       installMain({ existing: [path] })
       const { view } = await transcript([said(link('notes', `<${path}>`))])
-      expect(controlFor(view, path)?.textContent).toBe(path)
-      expect(controlFor(view, path)?.title).toBe(path)
-      expect(showFor(view, path)?.getAttribute('aria-label')).toBe('Show notes.md in Explorer')
+      expect(textFor(view, path)?.textContent).toBe(path)
+      expect(textFor(view, path)?.title).toBe(path)
+      expect(controlFor(view, path)?.getAttribute('aria-label')).toBe('Open file')
     })
 
     it('takes a forward-slash drive path the same way', async () => {
@@ -530,26 +621,45 @@ describe('a link to a file on this computer offers the same controls as a path i
       const absolute = 'C:\\Users\\fictional\\out\\report.md'
       const main = installMain({ existing: [path], resolved: { [path]: absolute } })
       const { view } = await transcript([said(link('the report', path))])
-      expect(controlFor(view, path)?.textContent).toBe(absolute)
-      expect(controlFor(view, path)?.title).toBe(absolute)
+      expect(textFor(view, path)?.textContent).toBe(absolute)
+      expect(textFor(view, path)?.title).toBe(absolute)
       controlFor(view, path)!.click()
       await settle()
       expect(main.opens).toEqual([{ sessionId: 'sess_1', text: path }])
     })
 
-    it('leaves a share a link with a readable hover: main opens no share', async () => {
+    it('draws a share with Copy and a disabled Open that says why: main opens no share', async () => {
       onWindows()
       const path = '\\\\fileserver\\team\\out\\report.md'
       const main = installMain()
-      const { view } = await transcript([said(link('the report', path))])
-      expect(main.asks.flatMap((ask) => ask.texts)).not.toContain(path)
-      expect(controls(view)).toHaveLength(0)
-      expect(anchors(view)[0]!.title).toBe(path)
-      expect(anchors(view)[0]!.hasAttribute('href')).toBe(false)
-      anchors(view)[0]!.click()
-      await settle()
-      expect(main.opens).toEqual([])
-      expect(main.reveals).toEqual([])
+      const written = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue()
+      try {
+        const { view } = await transcript([said(link('the report', path))])
+        expect(main.asks.flatMap((ask) => ask.texts)).not.toContain(path)
+        expect(controls(view)).toHaveLength(0)
+        expect(anchors(view)).toHaveLength(0)
+        const share = view.q('message-path-network')
+        const text = share
+          .closest('.message-path')!
+          .querySelector<HTMLElement>('.message-path-text')!
+        expect(text.textContent).toBe(path)
+        expect(text.title).toBe(path)
+        expect(share.getAttribute('aria-disabled')).toBe('true')
+        expect(share.title).toBe("Network paths can't be opened here.")
+        share.click()
+        text.click()
+        await settle()
+        expect(main.opens).toEqual([])
+        expect(main.reveals).toEqual([])
+        share
+          .closest('.message-path')!
+          .querySelector<HTMLButtonElement>('[data-cy="message-path-copy"]')!
+          .click()
+        await settle()
+        expect(written).toHaveBeenCalledWith(path)
+      } finally {
+        written.mockRestore()
+      }
     })
   })
 
@@ -559,9 +669,9 @@ describe('a link to a file on this computer offers the same controls as a path i
     const main = installMain({ existing: [path] })
     const { view } = await transcript([said(link('the report', path))])
     await capture(view, 'mac')
-    expect(controlFor(view, path)?.textContent).toBe(path)
-    expect(controlFor(view, path)?.title).toBe(path)
-    expect(showFor(view, path)?.getAttribute('aria-label')).toBe('Show report.md in Finder')
+    expect(textFor(view, path)?.textContent).toBe(path)
+    expect(textFor(view, path)?.title).toBe(path)
+    expect(controlFor(view, path)?.getAttribute('aria-label')).toBe('Open file')
     controlFor(view, path)!.click()
     await settle()
     expect(main.opens).toEqual([{ sessionId: 'sess_1', text: path }])
@@ -577,8 +687,8 @@ describe('a link to a file on this computer offers the same controls as a path i
     const { view } = await transcript([said(link('report.pdf', path!))])
     expect(main.asks.flatMap((ask) => ask.texts)).toEqual([path])
     const control = controlFor(view, path!)!
-    expect(control.textContent).toBe(absolute)
-    expect(control.title).toBe(absolute)
+    expect(textOf(control).textContent).toBe(absolute)
+    expect(textOf(control).title).toBe(absolute)
     expect(view.q('assistant-markdown').textContent).toContain('report.pdf')
     control.click()
     await settle()
@@ -590,8 +700,8 @@ describe('a link to a file on this computer offers the same controls as a path i
     const main = installMain({ existing: [path] })
     const { view } = await transcript([said(link('notes', `<${path}>`))])
     expect(main.asks.flatMap((ask) => ask.texts)).toEqual([path])
-    expect(controlFor(view, path)?.textContent).toBe(path)
-    expect(controlFor(view, path)?.title).toBe(path)
+    expect(textFor(view, path)?.textContent).toBe(path)
+    expect(textFor(view, path)?.title).toBe(path)
   })
 
   it.each(['report.md', 'notes/x.md', 'x'])(
@@ -601,8 +711,8 @@ describe('a link to a file on this computer offers the same controls as a path i
       const main = installMain({ existing: [path], resolved: { [path]: absolute } })
       const { view } = await transcript([said(link('the report', path))])
       expect(main.asks.flatMap((ask) => ask.texts)).toEqual([path])
-      expect(controlFor(view, path)?.textContent).toBe(absolute)
-      expect(controlFor(view, path)?.title).toBe(absolute)
+      expect(textFor(view, path)?.textContent).toBe(absolute)
+      expect(textFor(view, path)?.title).toBe(absolute)
       controlFor(view, path)!.click()
       await settle()
       expect(main.opens).toEqual([{ sessionId: 'sess_1', text: path }])
@@ -702,8 +812,8 @@ describe('a link to a file on this computer offers the same controls as a path i
       const { view } = await transcript([said(`Before [document](<${path}>) after.`)])
       const control = controlFor(view, path)
       expect(control).toBeDefined()
-      expect(control!.textContent).toBe(path)
-      expect(control!.title).toBe(path)
+      expect(textOf(control!).textContent).toBe(path)
+      expect(textOf(control!).title).toBe(path)
       expect(anchors(view)).toHaveLength(0)
       expect(view.q('assistant-markdown').textContent?.trim()).toBe(
         `Before document ${path} after.`,
@@ -726,7 +836,7 @@ describe('a link to a file on this computer offers the same controls as a path i
         `Before ${label} ${path} after.`,
       )
       expect(anchors(view)).toHaveLength(0)
-      expect(controlFor(view, path)?.textContent).toBe(path)
+      expect(textFor(view, path)?.textContent).toBe(path)
       controlFor(view, path)!.click()
       await settle()
       expect(main.opens).toEqual([{ sessionId: 'sess_1', text: path }])
@@ -744,13 +854,43 @@ describe('a link to a file on this computer offers the same controls as a path i
     expect(main.reveals).toEqual([])
   })
 
+  it('draws a link to a file as plain path text while main has not answered, never as a link', async () => {
+    const path = '/tmp/report.md'
+    let release!: () => void
+    const main = installMain({
+      existing: [path],
+      held: new Promise<void>((done) => (release = done)),
+    })
+    const { view } = await transcript([said(`See [${path}](${path}).`)])
+    expect(main.asks.flatMap((ask) => ask.texts)).toEqual([path])
+    const body = view.q('assistant-markdown')
+    expect(body.querySelector('a')).toBeNull()
+    const pending = view.q('message-path-text')
+    expect(pending.textContent).toBe(path)
+    expect(pending.closest('a, button')).toBeNull()
+    expect(getComputedStyle(pending).color).not.toBe(getComputedStyle(body).color)
+    expect(view.all('message-path-copy')).toHaveLength(0)
+    expect(controls(view)).toHaveLength(0)
+    pending.click()
+    await settle()
+    expect(main.opens).toEqual([])
+    release()
+    await settle()
+    expect(body.querySelector('a')).toBeNull()
+    expect(textFor(view, path)?.textContent).toBe(path)
+    expect(copyFor(view, path)).toBeDefined()
+    controlFor(view, path)!.click()
+    await settle()
+    expect(main.opens).toEqual([{ sessionId: 'sess_1', text: path }])
+  })
+
   it('acts on where the link goes, not on what it says, and shows where it goes', async () => {
     const path = '/Users/fictional/private/keys.txt'
     const main = installMain({ existing: [path] })
     const { view } = await transcript([said(`See [report.pdf](${path} "report.pdf").`)])
     const control = controlFor(view, path)!
-    expect(control.textContent).toBe(path)
-    expect(control.title).toBe(path)
+    expect(textOf(control).textContent).toBe(path)
+    expect(textOf(control).title).toBe(path)
     expect(controlFor(view, 'report.pdf')).toBeUndefined()
     control.click()
     await settle()
