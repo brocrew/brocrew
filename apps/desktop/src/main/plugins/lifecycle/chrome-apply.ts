@@ -3,12 +3,26 @@ import type { PluginNodeReady } from '../node-host'
 import { PluginSupervisorError } from '../supervisor/protocol'
 
 const profile = z.string().regex(/^[a-z0-9-]{1,32}$/)
-export const ChromeProposal = z.discriminatedUnion('action', [
+/** Durable changes understood by earlier owners; destructive page commands are never stored. */
+export const ChromeLedgerProposal = z.discriminatedUnion('action', [
   z.strictObject({ action: z.literal('create-profile'), profile }),
   z.strictObject({ action: z.literal('set-enabled'), profile, enabled: z.boolean() }),
   z.strictObject({ action: z.literal('open-window'), profile }),
 ])
+export const ChromeProposal = z.union([
+  ChromeLedgerProposal,
+  z
+    .strictObject({ action: z.literal('delete-profile'), profile, confirm: profile })
+    .refine((input) => input.confirm === input.profile),
+])
 export type ChromeProposal = z.infer<typeof ChromeProposal>
+/** Record the real disable prerequisite; the confirmed delete stays live and is never replayed. */
+export function chromeProfileIntent(input: ChromeProposal): z.infer<typeof ChromeLedgerProposal> {
+  const proposal = ChromeProposal.parse(input)
+  return proposal.action === 'delete-profile'
+    ? { action: 'set-enabled', profile: proposal.profile, enabled: false }
+    : proposal
+}
 /** Fixed reviewed admin adapter. Neither routes, credentials nor arbitrary JSON come from the page. */
 export async function applyChromeProfile(
   connection: PluginNodeReady,
@@ -30,6 +44,10 @@ export async function applyChromeProfile(
     case 'open-window':
       path = '/profiles/' + proposal.profile + '/open'
       body = {}
+      break
+    case 'delete-profile':
+      path = '/profiles/' + proposal.profile + '/delete'
+      body = { confirm: proposal.profile }
       break
   }
   const abort = new AbortController()

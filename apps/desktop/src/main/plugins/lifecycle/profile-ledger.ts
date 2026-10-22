@@ -3,7 +3,8 @@ import { lstat, readdir, rename, unlink } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
-import { PluginProposal } from './proposals'
+import { ChromeLedgerProposal } from './chrome-apply'
+import { WhatsAppProposal } from './whatsapp-apply'
 import {
   digest,
   immutableFile,
@@ -32,12 +33,14 @@ const Checkpoint = z
     previous: Previous,
   })
   .refine((value) => (value.revision === 0) === (value.previous === null))
+// The durable grammar stays readable after a rollback; live destructive commands cannot enter it.
+const LedgerProposal = z.union([ChromeLedgerProposal, WhatsAppProposal])
 const Intent = z.strictObject({
   format: z.union([z.literal(1), z.literal(2)]),
   installId: z.uuid(),
   revision: Revision.refine((value) => value > 0),
   previous: Previous,
-  proposal: PluginProposal,
+  proposal: LedgerProposal,
 })
 const TAIL_LIMIT = 16
 const refuse = (): never => {
@@ -256,7 +259,7 @@ export class PluginProfileLedger {
     format: 1 | 2 = 1,
   ): Promise<number> {
     if (!Number.isSafeInteger(expected) || expected < 0) return refuse()
-    const proposal = PluginProposal.parse(input),
+    const proposal = LedgerProposal.parse(input),
       state = await this.state(installId, true, format === 2)
     // Keep existing apps able to configure installations until the legacy history is exhausted.
     if (format === 2 && !state.hasV2 && expected < 4096) format = 1

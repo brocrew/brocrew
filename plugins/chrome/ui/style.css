@@ -111,7 +111,7 @@ button {
   white-space: nowrap;
 }
 #create button,
-.profile-actions button:last-child {
+.profile-actions button:nth-child(2) {
   background: var(--button);
   color: var(--button-ink);
   border-color: var(--button);

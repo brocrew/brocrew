@@ -22,6 +22,7 @@ export function createChromeBrowser(
 ): ChromeBrowser {
   return new ChromeBrowser({
     dirOf: store.dirOf,
+    profileExists: (name) => store.get(name) !== undefined,
     logger,
     ...(idleMs !== undefined ? { idleMs } : {}),
     ...(browser ? { browser } : {}),

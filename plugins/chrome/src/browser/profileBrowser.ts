@@ -8,6 +8,7 @@ export interface ProfileBrowser {
     generation: number
   }>
   close(profile: string): Promise<void>
+  removeWhenIdle(profile: string, remove: () => void): Promise<void>
   state(profile: string): {
     mode: BrowserMode
     generation: number
