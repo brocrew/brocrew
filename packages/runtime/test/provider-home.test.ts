@@ -151,7 +151,7 @@ describe('202 · the provisioning lock survives its owner dying (191 M5)', () =>
 
   /** A pid that certainly belongs to no live process: a child that has already exited. */
   const deadPid = (): number => {
-    const done = spawnSync('/bin/sh', ['-c', 'exit 0'])
+    const done = spawnSync(process.execPath, ['-e', 'process.exit(0)'])
     if (done.pid === undefined) throw new Error('could not produce a dead pid')
     return done.pid
   }
@@ -178,7 +178,7 @@ describe('202 · the provisioning lock survives its owner dying (191 M5)', () =>
     // The pairing, and it is the assertion that matters most: a lock that breaks itself for
     // everybody is not a lock. A real second process, not this one — `withProviderHomeLock` treats
     // its OWN pid as re-entrant and would wait on it for a different reason.
-    const alive = spawn('/bin/sh', ['-c', 'sleep 5'])
+    const alive = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 5000)'])
     try {
       held(`${hostname()}\n${alive.pid}\n2026-08-21T00:00:00.000Z\n`)
       let ran = false

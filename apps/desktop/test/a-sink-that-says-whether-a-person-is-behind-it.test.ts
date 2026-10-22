@@ -602,10 +602,14 @@ describe('349 · a sink that says whether a person is behind it', () => {
       const sources = mainSources()
       // Non-vacuity: the sweep really reached the two files that implement the interface.
       expect(
-        sources.map((file) => file.path).filter((path) => path.endsWith('runtime/ipc.ts')),
+        sources
+          .map((file) => file.path)
+          .filter((path) => path.replaceAll('\\', '/').endsWith('runtime/ipc.ts')),
       ).toHaveLength(1)
       expect(
-        sources.map((file) => file.path).filter((path) => path.endsWith('runtime/runtime-host.ts')),
+        sources
+          .map((file) => file.path)
+          .filter((path) => path.replaceAll('\\', '/').endsWith('runtime/runtime-host.ts')),
       ).toHaveLength(1)
 
       // ⚑ **Non-vacuity for the PATTERN as well as for the sweep**: it really does match both

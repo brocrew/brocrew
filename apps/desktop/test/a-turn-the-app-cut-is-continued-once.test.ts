@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -244,7 +244,7 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
       this.asked.push(ref.sessionId)
       this.startedAt.push(performance.now())
       const failing = this.stops.startsFailFor
-      if (failing !== undefined && options.providerHome.includes(`/${failing}/`)) {
+      if (failing !== undefined && options.providerHome.includes(`${sep}${failing}${sep}`)) {
         throw new Error('the provider could not start')
       }
       if (this.stops.beforeTheProviderIsUp !== undefined) {

@@ -263,7 +263,8 @@ describe('Remove', () => {
         kept: 'Bash(make build *)',
       }),
     ).toEqual({ removed: true })
-    expect(statSync(PROJECT_FILE()).mode & 0o777).toBe(0o644)
+    // Windows uses access lists; chmod does not supply POSIX permission bits.
+    if (process.platform !== 'win32') expect(statSync(PROJECT_FILE()).mode & 0o777).toBe(0o644)
   })
 })
 

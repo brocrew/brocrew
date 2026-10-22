@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, sep } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { trustedAnchor } from '../lib/safe-remove.mjs'
 
@@ -41,14 +41,14 @@ describe('351 M33 · the anchor is spelled as the disk spells it', () => {
     expect(anchor.kind, anchor.why ?? '').toBe('trusted')
     expect(anchor.lexical).toBe(typed)
     // ⛔ Not the case that was typed: the one on disk.
-    expect(anchor.real.endsWith('/Kept')).toBe(true)
-    expect(anchor.real.endsWith('/kept')).toBe(false)
+    expect(anchor.real.endsWith(sep + 'Kept')).toBe(true)
+    expect(anchor.real.endsWith(sep + 'kept')).toBe(false)
   })
 
   it('⚑ CONTROL · typed as the disk spells it, the two spellings agree', () => {
     const root = aFolderSpelled('Kept')
     const anchor = trustedAnchor(join(root, 'Kept'), scratch(root))
     expect(anchor.kind, anchor.why ?? '').toBe('trusted')
-    expect(anchor.real.endsWith('/Kept')).toBe(true)
+    expect(anchor.real.endsWith(sep + 'Kept')).toBe(true)
   })
 })

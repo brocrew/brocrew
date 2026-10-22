@@ -231,20 +231,24 @@ describe('§2 · 🔒 the containment rail — and it REFUSES rather than merely
     expect(storeOf('rootless', 'claude').entries[0]?.amendable).toBe(true)
   })
 
-  it('🔴 a REFUSED source still carries its reason, so `unreadable` is never silent', () => {
-    const dir = claudeAutoMemoryDir(plantHome('sealed', 'claude'))
-    mkdirSync(dir, { recursive: true })
-    const sealed = join(dir, 'MEMORY.md')
-    writeFileSync(sealed, 'BROBOT-625-SEALED\n')
-    chmodSync(sealed, 0o000)
-    try {
-      const store = storeOf('sealed', 'claude')
-      expect(store.state).toBe('unreadable')
-      expect(store.refused.map((row) => row.path)).toContain(sealed)
-    } finally {
-      chmodSync(sealed, 0o600)
-    }
-  })
+  // Windows chmod cannot construct a POSIX permission denial.
+  it.skipIf(process.platform === 'win32')(
+    '🔴 a REFUSED source still carries its reason, so `unreadable` is never silent',
+    () => {
+      const dir = claudeAutoMemoryDir(plantHome('sealed', 'claude'))
+      mkdirSync(dir, { recursive: true })
+      const sealed = join(dir, 'MEMORY.md')
+      writeFileSync(sealed, 'BROBOT-625-SEALED\n')
+      chmodSync(sealed, 0o000)
+      try {
+        const store = storeOf('sealed', 'claude')
+        expect(store.state).toBe('unreadable')
+        expect(store.refused.map((row) => row.path)).toContain(sealed)
+      } finally {
+        chmodSync(sealed, 0o600)
+      }
+    },
+  )
 })
 
 describe('§3 · ⚠️ the moment — and it is NOT the conversation’s', () => {

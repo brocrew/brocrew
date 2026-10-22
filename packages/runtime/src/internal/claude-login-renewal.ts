@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdirSync, realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { delimiter, dirname, join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 /**
  * Renewing the person's own Claude Code login by running their own Claude Code.
@@ -137,7 +137,7 @@ function pathKeyOf(env: NodeJS.ProcessEnv): string {
 
 function pathOf(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): string[] {
   return (env[pathKeyOf(env)] ?? '')
-    .split(platform === 'win32' ? ';' : delimiter)
+    .split(platform === 'win32' ? ';' : ':')
     .filter((dir) => dir !== '')
 }
 
@@ -168,7 +168,7 @@ export function claudeRenewalEnv(
     }
     const key = pathKeyOf(handed)
     const path = [...new Set([...folders, ...pathOf(handed, platform)])]
-    handed[key] = path.join(platform === 'win32' ? ';' : delimiter)
+    handed[key] = path.join(platform === 'win32' ? ';' : ':')
   }
   return handed
 }

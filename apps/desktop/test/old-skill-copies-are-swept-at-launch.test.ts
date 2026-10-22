@@ -12,7 +12,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir, hostname } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { once } from 'node:events'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -89,7 +89,7 @@ describe.each(['claude', 'codex'] as const)('%s launches sweep old skill copies'
     const prepared = await launch(provider)
     expect(existsSync(old)).toBe(false)
     expect(existsSync(unfinished)).toBe(false)
-    expect(copies()).toEqual([viewRoot(prepared.context.root, provider).split('/').at(-1)])
+    expect(copies()).toEqual([basename(viewRoot(prepared.context.root, provider))])
     expect(readable(prepared)).toBe(true)
     expect(readFileSync(join(unrelated, 'note.txt'), 'utf8')).toBe('Keep my fictional note.')
     expect(readFileSync(join(home, 'brobot-skills-not-generated'), 'utf8')).toBe('Keep this too.')

@@ -286,7 +286,7 @@ describe('theme file changes at real filesystem boundaries', () => {
       const files: ThemeReadFiles = {
         ...THEME_READ_FILES,
         open: async (path, flags) => {
-          expect(flags & constants.O_NOFOLLOW).toBe(constants.O_NOFOLLOW)
+          expect(flags & (constants.O_NOFOLLOW ?? 0)).toBe(constants.O_NOFOLLOW ?? 0)
           const handle = await THEME_READ_FILES.open(path, flags)
           observations.push(observeHandle(handle))
           return handle
@@ -365,7 +365,7 @@ describe('theme file changes at real filesystem boundaries', () => {
         await rename(leaf, join(fixture.outside, 'original.png'))
         await symlink(foreign, leaf)
         attempted = true
-        expect(flags & constants.O_NOFOLLOW).toBe(constants.O_NOFOLLOW)
+        expect(flags & (constants.O_NOFOLLOW ?? 0)).toBe(constants.O_NOFOLLOW ?? 0)
         const handle = await THEME_READ_FILES.open(path, flags)
         observations.push(observeHandle(handle))
         return handle
@@ -376,30 +376,34 @@ describe('theme file changes at real filesystem boundaries', () => {
     expect(observations).toHaveLength(0)
   })
 
-  it('rechecks pinned parent identity after opening the original descriptor, before reading', async () => {
-    const folder = await putTheme(fixture.library, 'mine', childTheme('mine'), {
-      'assets/red.png': RED_PNG,
-    })
-    const observations: ReturnType<typeof observeHandle>[] = []
-    const files: ThemeReadFiles = {
-      ...THEME_READ_FILES,
-      open: async (path, flags) => {
-        const handle = await THEME_READ_FILES.open(path, flags)
-        observations.push(observeHandle(handle))
-        await rename(join(folder, 'assets'), join(fixture.outside, 'original-assets'))
-        await mkdir(join(folder, 'assets'))
-        await writeFile(join(folder, 'assets/red.png'), Buffer.alloc(RED_PNG.length, 0xfa))
-        return handle
-      },
-    }
-    expect(await readThemeFile(folder, 'assets/red.png', RED_PNG.length, files)).toEqual({
-      ok: false,
-      failure: 'changed',
-    })
-    expect(observations).toHaveLength(1)
-    expect(observations[0]!.read).not.toHaveBeenCalled()
-    await closedHandle(observations[0]!)
-  })
+  // Windows prevents renaming an ancestor of an open file.
+  it.skipIf(process.platform === 'win32')(
+    'rechecks pinned parent identity after opening the original descriptor, before reading',
+    async () => {
+      const folder = await putTheme(fixture.library, 'mine', childTheme('mine'), {
+        'assets/red.png': RED_PNG,
+      })
+      const observations: ReturnType<typeof observeHandle>[] = []
+      const files: ThemeReadFiles = {
+        ...THEME_READ_FILES,
+        open: async (path, flags) => {
+          const handle = await THEME_READ_FILES.open(path, flags)
+          observations.push(observeHandle(handle))
+          await rename(join(folder, 'assets'), join(fixture.outside, 'original-assets'))
+          await mkdir(join(folder, 'assets'))
+          await writeFile(join(folder, 'assets/red.png'), Buffer.alloc(RED_PNG.length, 0xfa))
+          return handle
+        },
+      }
+      expect(await readThemeFile(folder, 'assets/red.png', RED_PNG.length, files)).toEqual({
+        ok: false,
+        failure: 'changed',
+      })
+      expect(observations).toHaveLength(1)
+      expect(observations[0]!.read).not.toHaveBeenCalled()
+      await closedHandle(observations[0]!)
+    },
+  )
 
   it('rejects a changed final pathname after reading only the pinned original bytes', async () => {
     const folder = await putTheme(fixture.library, 'mine', childTheme('mine'), {

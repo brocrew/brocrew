@@ -204,12 +204,15 @@ describe('the index a launch reads', () => {
   })
 
   it('opens no index.md that is not a plain file, so a pipe there cannot hold the launch', () => {
-    const piped = aStore({ 'rotate-log.md': METHOD })
-    execFileSync('mkfifo', [join(piped, SAVED_METHODS_INDEX)])
-    expect(read(piped)).toMatchObject({
-      kind: 'refused',
-      refusal: { kind: 'not-a-file', what: 'the-index' },
-    })
+    // Windows has named pipes, not filesystem FIFOs. The directory case runs on both systems.
+    if (process.platform !== 'win32') {
+      const piped = aStore({ 'rotate-log.md': METHOD })
+      execFileSync('mkfifo', [join(piped, SAVED_METHODS_INDEX)])
+      expect(read(piped)).toMatchObject({
+        kind: 'refused',
+        refusal: { kind: 'not-a-file', what: 'the-index' },
+      })
+    }
     const folderNamedIndex = aStore()
     mkdirSync(join(folderNamedIndex, SAVED_METHODS_INDEX))
     expect(read(folderNamedIndex)).toMatchObject({

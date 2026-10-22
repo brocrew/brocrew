@@ -199,7 +199,7 @@ describe('hosted-only launch ladder with inert process IO', () => {
     expect(specs[4].program).toBe('/usr/bin/sandbox-exec')
     expect(specs[4].args).toEqual([
       '-f',
-      '/fictional/root/sandbox.sb',
+      join('/fictional/root', 'sandbox.sb'),
       context.executable,
       ...specs[2].args,
     ])

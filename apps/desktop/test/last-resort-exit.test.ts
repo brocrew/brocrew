@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   armLastResortExit,
@@ -69,7 +69,7 @@ function stubbornApp(budgetMs: number, exitAfterMs: number | null): string {
     file,
     [
       `import { spawn } from 'node:child_process'`,
-      `import { armLastResortExit } from '${MODULE}'`,
+      `import { armLastResortExit } from ${JSON.stringify(pathToFileURL(MODULE).href)}`,
       `armLastResortExit(`,
       `  { spawn, now: () => Date.now(), execPath: process.execPath, pid: process.pid, env: process.env },`,
       `  ${String(budgetMs)},`,

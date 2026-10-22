@@ -93,8 +93,8 @@ function fixture(fail, { corrupt = false, snapshotFails = false, missingRoute = 
     unknownPluginState,
     pluginStateSnapshot: async (root, global, workspace, port) => {
       expect(root).toBe('/fictional/root')
-      expect(global).toBe('/fictional/root/g')
-      expect(workspace).toBe('/fictional/root/wa')
+      expect(global).toBe(path.join('/fictional/root', 'g'))
+      expect(workspace).toBe(path.join('/fictional/root', 'wa'))
       expect(port).toBe(12004)
       return {
         ...unknownPluginState(),

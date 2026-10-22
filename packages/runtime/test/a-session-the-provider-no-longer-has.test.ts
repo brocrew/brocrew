@@ -88,7 +88,7 @@ async function codexResume(
     chmodSync(sessions, 0o000)
     locked.push(sessions)
   }
-  const codex = aCodexThatRefuses(join(root, 'bin'), scenario, CODEX_PROTOCOL_VERSION)
+  const codex = aCodexThatRefuses(join(root, 'bin'), scenario, CODEX_PROTOCOL_VERSION, cwd)
   return new CodexRuntime(createSpawnTransportFactory(codex))
     .resume(
       { provider: 'codex', sessionId: A_CODEX_THREAD, cwd, rotation: 0 },
@@ -221,22 +221,26 @@ describe('706 · Claude and the double — the same field, where each already kn
     expect(markedGone(outcome)).toBe(true)
   })
 
-  it('⛔ …and the same probe on a home it could not READ — a doubt, never a session that is gone', async () => {
-    // ⚠️ **`706` review**: the probe was `existsSync`, which answers `false` for EACCES too.
-    const root = scratch()
-    const home = join(root, 'home')
-    const projects = join(home, 'projects')
-    mkdirSync(projects, { recursive: true })
-    chmodSync(projects, 0o000)
-    locked.push(projects)
-    const outcome = await new ClaudeRuntime()
-      .resume(claudeRef(root), { providerHome: home })
-      .catch((error: unknown) => error)
-    expect(outcome).toBeInstanceOf(ResumeError)
-    expect(markedGone(outcome)).toBe(false)
-    // ⚑ …and it says what refused it: the kernel's answer rides as the cause.
-    expect(((outcome as Error).cause as { code?: unknown }).code).toBe('EACCES')
-  })
+  // Windows chmod cannot construct a POSIX permission denial.
+  it.skipIf(process.platform === 'win32')(
+    '⛔ …and the same probe on a home it could not READ — a doubt, never a session that is gone',
+    async () => {
+      // ⚠️ **`706` review**: the probe was `existsSync`, which answers `false` for EACCES too.
+      const root = scratch()
+      const home = join(root, 'home')
+      const projects = join(home, 'projects')
+      mkdirSync(projects, { recursive: true })
+      chmodSync(projects, 0o000)
+      locked.push(projects)
+      const outcome = await new ClaudeRuntime()
+        .resume(claudeRef(root), { providerHome: home })
+        .catch((error: unknown) => error)
+      expect(outcome).toBeInstanceOf(ResumeError)
+      expect(markedGone(outcome)).toBe(false)
+      // ⚑ …and it says what refused it: the kernel's answer rides as the cause.
+      expect(((outcome as Error).cause as { code?: unknown }).code).toBe('EACCES')
+    },
+  )
 
   /**
    * ⚑ **The real adapter, stopped right after its probe** — a query factory that refuses, and a
@@ -361,33 +365,41 @@ describe('706 · Claude and the double — the same field, where each already kn
     expect(markedGone(outcome)).toBe(true)
   })
 
-  it('⛔ …and a `projects/` that can be entered but not LISTED is a doubt — the transcript may be in a folder it cannot see', async () => {
-    // ⚠️ **`706` review, round four**: search without read — the first lookup meets an absence, and
-    // only the listing is refused.
-    const root = realpathSync(scratch())
-    const home = join(root, 'home')
-    plantTranscript(home, 'elsewhere')
-    const projects = join(home, 'projects')
-    chmodSync(projects, 0o311)
-    locked.push(projects)
-    const outcome = await probed(root, home)
-    expect(outcome).toBeInstanceOf(ResumeError)
-    expect(markedGone(outcome)).toBe(false)
-    expect(((outcome as Error).cause as { code?: unknown }).code).toBe('EACCES')
-  })
+  // Windows chmod cannot construct a POSIX permission denial.
+  it.skipIf(process.platform === 'win32')(
+    '⛔ …and a `projects/` that can be entered but not LISTED is a doubt — the transcript may be in a folder it cannot see',
+    async () => {
+      // ⚠️ **`706` review, round four**: search without read — the first lookup meets an absence, and
+      // only the listing is refused.
+      const root = realpathSync(scratch())
+      const home = join(root, 'home')
+      plantTranscript(home, 'elsewhere')
+      const projects = join(home, 'projects')
+      chmodSync(projects, 0o311)
+      locked.push(projects)
+      const outcome = await probed(root, home)
+      expect(outcome).toBeInstanceOf(ResumeError)
+      expect(markedGone(outcome)).toBe(false)
+      expect(((outcome as Error).cause as { code?: unknown }).code).toBe('EACCES')
+    },
+  )
 
-  it('⛔ …and an unreadable folder with NONE holding it is a doubt, never a session that is gone', async () => {
-    const root = realpathSync(scratch())
-    const home = join(root, 'home')
-    const unreadable = join(home, 'projects', 'could-be-it')
-    mkdirSync(unreadable, { recursive: true })
-    chmodSync(unreadable, 0o000)
-    locked.push(unreadable)
-    const outcome = await probed(root, home)
-    expect(outcome).toBeInstanceOf(ResumeError)
-    expect(markedGone(outcome)).toBe(false)
-    expect(((outcome as Error).cause as { code?: unknown }).code).toBe('EACCES')
-  })
+  // Windows chmod cannot construct a POSIX permission denial.
+  it.skipIf(process.platform === 'win32')(
+    '⛔ …and an unreadable folder with NONE holding it is a doubt, never a session that is gone',
+    async () => {
+      const root = realpathSync(scratch())
+      const home = join(root, 'home')
+      const unreadable = join(home, 'projects', 'could-be-it')
+      mkdirSync(unreadable, { recursive: true })
+      chmodSync(unreadable, 0o000)
+      locked.push(unreadable)
+      const outcome = await probed(root, home)
+      expect(outcome).toBeInstanceOf(ResumeError)
+      expect(markedGone(outcome)).toBe(false)
+      expect(((outcome as Error).cause as { code?: unknown }).code).toBe('EACCES')
+    },
+  )
 
   it('⛔ …and a probe that could not ASK is a failure of the attempt', async () => {
     const root = scratch()

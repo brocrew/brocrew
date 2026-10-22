@@ -260,7 +260,7 @@ describe('§3 · what may be a workspace', () => {
   const as = (toMake: boolean, listed: readonly string[] = []) => ({
     toMake,
     listed,
-    platform: 'darwin' as const,
+    platform: process.platform === 'win32' ? ('win32' as const) : ('darwin' as const),
   })
 
   it('🔴 an empty folder, or a BroBot workspace — never a folder of somebody’s files', () => {
@@ -644,7 +644,9 @@ describe('§7 · whether a workspace runs now: its gate, asked', () => {
       expect(await claimSoleHost(long, process.platform, seams)).toBe('sole')
       expect(await whoIsOn(long, process.platform, seams)).toBe('open')
     } finally {
-      rmSync(hostGatePath(long, process.platform, seams), { force: true })
+      // A Windows gate is a named pipe, not a directory entry to unlink.
+      if (process.platform !== 'win32')
+        rmSync(hostGatePath(long, process.platform, seams), { force: true })
     }
   })
 })

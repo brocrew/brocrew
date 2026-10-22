@@ -163,118 +163,123 @@ describe('238 · the provisioning lock, contended by real processes (208 M1)', (
   })
   afterEach(() => rmSync(root, { recursive: true, force: true }))
 
-  describe('⛔ §1 · a contender parked inside its own judgement', () => {
-    /**
-     * Plant a FIFO at the lock path, aged past {@link LOCK_UNSTAMPED_GRACE_MS}'s two seconds.
-     *
-     * ⚑ A FIFO reads as *the* corpse M1 needs: `fstat` says old, the read says nothing, so the
-     * contender judges "unstamped and aged" — and then blocks in `open()` until this process opens
-     * the write end, which is the handle the test needs on a window that is otherwise microseconds.
-     */
-    const plantAgedFifo = (): void => {
-      execFileSync('mkfifo', [lock])
-      const old = Date.now() / 1000 - 60
-      utimesSync(lock, old, old)
-    }
-
-    /** Open the write end once the contender has opened the read end — the handshake, without a hang. */
-    const meetTheReader = (): number => {
-      const until = Date.now() + 10_000
-      for (;;) {
-        try {
-          // ⚠️ NON-blocking, so a contender that died on its way here fails this test instead of
-          // wedging it: a plain `open(fifo, 'w')` would block forever with no reader.
-          return openSync(lock, constants.O_WRONLY | constants.O_NONBLOCK)
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== 'ENXIO') throw error
-        }
-        if (Date.now() > until) throw new Error('the contender never opened the fifo')
-        pause(2)
+  // Windows has no filesystem FIFOs; its named pipes are not lockfile entries.
+  describe.skipIf(process.platform === 'win32')(
+    '⛔ §1 · a contender parked inside its own judgement',
+    () => {
+      /**
+       * Plant a FIFO at the lock path, aged past {@link LOCK_UNSTAMPED_GRACE_MS}'s two seconds.
+       *
+       * ⚑ A FIFO reads as *the* corpse M1 needs: `fstat` says old, the read says nothing, so the
+       * contender judges "unstamped and aged" — and then blocks in `open()` until this process opens
+       * the write end, which is the handle the test needs on a window that is otherwise microseconds.
+       */
+      const plantAgedFifo = (): void => {
+        execFileSync('mkfifo', [lock])
+        const old = Date.now() / 1000 - 60
+        utimesSync(lock, old, old)
       }
-    }
 
-    it('🔴 breaks nothing when the file at the path is not the file it judged', async () => {
-      plantAgedFifo()
-      // 900 ms of timeout: long enough that a contender which DOES take the lock has said so, short
-      // enough that the honest outcome (waiting on a live holder) arrives inside the test.
-      const run = contend(['once', home, '900', '20'])
-      const writer = meetTheReader()
+      /** Open the write end once the contender has opened the read end — the handshake, without a hang. */
+      const meetTheReader = (): number => {
+        const until = Date.now() + 10_000
+        for (;;) {
+          try {
+            // ⚠️ NON-blocking, so a contender that died on its way here fails this test instead of
+            // wedging it: a plain `open(fifo, 'w')` would block forever with no reader.
+            return openSync(lock, constants.O_WRONLY | constants.O_NONBLOCK)
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== 'ENXIO') throw error
+          }
+          if (Date.now() > until) throw new Error('the contender never opened the fifo')
+          pause(2)
+        }
+      }
 
-      // ⛔ **The live lock, placed while the contender is parked.** Stamped with THIS process's pid,
-      // which is alive, so once the contender re-judges it must wait rather than break again.
-      const live = `${lock}.incoming`
-      const bytes = `${hostname()}\n${process.pid}\n2026-08-28T00:00:00.000Z\n`
-      writeFileSync(live, bytes)
-      renameSync(live, lock)
-      pause(5) // so the install's own ctime cannot be mistaken for the contender's, below
-      const before = statSync(lock)
+      it('🔴 breaks nothing when the file at the path is not the file it judged', async () => {
+        plantAgedFifo()
+        // 900 ms of timeout: long enough that a contender which DOES take the lock has said so, short
+        // enough that the honest outcome (waiting on a live holder) arrives inside the test.
+        const run = contend(['once', home, '900', '20'])
+        const writer = meetTheReader()
 
-      closeSync(writer) // EOF: the contender's read returns, and it acts on a judgement of the FIFO
-      const { said, stderr, code } = await run
+        // ⛔ **The live lock, placed while the contender is parked.** Stamped with THIS process's pid,
+        // which is alive, so once the contender re-judges it must wait rather than break again.
+        const live = `${lock}.incoming`
+        const bytes = `${hostname()}\n${process.pid}\n2026-08-28T00:00:00.000Z\n`
+        writeFileSync(live, bytes)
+        renameSync(live, lock)
+        pause(5) // so the install's own ctime cannot be mistaken for the contender's, below
+        const before = statSync(lock)
 
-      expect(said, `contender said nothing (stderr: ${stderr})`).toHaveLength(1)
-      expect(said[0]!.entered, 'a second process entered the critical section over one home').toBe(
-        false,
-      )
-      expect(said[0]!.error).toMatch(/timed out acquiring provisioning lock/)
-      // ⚑ …and it waited on the RIGHT holder, which is how we know it re-read the restored file
-      // rather than simply failing to find anything.
-      expect(said[0]!.error).toContain(`held by pid ${process.pid}`)
-      expect(code).toBe(0)
+        closeSync(writer) // EOF: the contender's read returns, and it acts on a judgement of the FIFO
+        const { said, stderr, code } = await run
 
-      // ⛔ The live lock is still there, and it is the SAME FILE — restored by `link`, so the inode
-      // the holder has open by fd is the inode the path still names.
-      expect(existsSync(lock), 'the live lock was destroyed by somebody else’s break').toBe(true)
-      const after = statSync(lock)
-      expect(after.ino).toBe(before.ino)
-      expect(readFileSync(lock, 'utf8')).toBe(bytes)
+        expect(said, `contender said nothing (stderr: ${stderr})`).toHaveLength(1)
+        expect(
+          said[0]!.entered,
+          'a second process entered the critical section over one home',
+        ).toBe(false)
+        expect(said[0]!.error).toMatch(/timed out acquiring provisioning lock/)
+        // ⚑ …and it waited on the RIGHT holder, which is how we know it re-read the restored file
+        // rather than simply failing to find anything.
+        expect(said[0]!.error).toContain(`held by pid ${process.pid}`)
+        expect(code).toBe(0)
 
-      // ⛔ **ANTI-VACUITY, and it has to be this rather than the obvious pairing.** A contender that
-      // never reached `breakStaleLock` at all would leave the live lock untouched too and report the
-      // same timeout — so "untouched" alone measures nothing. `ctime` is the witness that it DID:
-      // `rename` + `link` + `unlink` each bump it while leaving `ino` and `mtime` alone, which is
-      // also why {@link isSameFile} compares mtime and not ctime.
-      //
-      // ⚠️ The pairing one reaches for first — the same park with nothing swapped in — cannot be
-      // written: the file at the path would still be the FIFO, and the break's confirming read
-      // would block in `open()` forever. That is a pre-existing property of a FIFO planted at a lock
-      // path (the pre-238 code read it with `readFileSync` and blocked identically), not something
-      // this change introduces. The next test carries that half instead.
-      expect(
-        after.ctimeMs,
-        'the contender never touched the file — the test proved nothing',
-      ).not.toBe(before.ctimeMs)
-    })
+        // ⛔ The live lock is still there, and it is the SAME FILE — restored by `link`, so the inode
+        // the holder has open by fd is the inode the path still names.
+        expect(existsSync(lock), 'the live lock was destroyed by somebody else’s break').toBe(true)
+        const after = statSync(lock)
+        expect(after.ino).toBe(before.ino)
+        expect(readFileSync(lock, 'utf8')).toBe(bytes)
 
-    it('⚑ …the pairing: a judgement made through this construction still ACQUIRES the home', async () => {
-      // The third outcome, and the one that says the fix costs nothing when it fires wrongly: the
-      // file swapped in is a DIFFERENT inode but an equally dead one, so the break is refused once
-      // (identity mismatch) and then made properly on the next iteration.
-      //
-      // ⚠️ **What this does NOT witness, said rather than implied** (review). `entered === true`
-      // holds whether or not the put-back happened — measured: with the 238 fix reverted this test
-      // stays green, 5 runs out of 5. Its job is the anti-vacuity half of the construction above
-      // (a contender parked on a FIFO can reach a break and come out the other side); the assertion
-      // that the RESTORE happened is the `ctimeMs` witness in the previous test, and the assertion
-      // that a refused break is not a wedge is `entered === true` here.
-      plantAgedFifo()
-      const run = contend(['once', home, '2000', '20'])
-      const writer = meetTheReader()
+        // ⛔ **ANTI-VACUITY, and it has to be this rather than the obvious pairing.** A contender that
+        // never reached `breakStaleLock` at all would leave the live lock untouched too and report the
+        // same timeout — so "untouched" alone measures nothing. `ctime` is the witness that it DID:
+        // `rename` + `link` + `unlink` each bump it while leaving `ino` and `mtime` alone, which is
+        // also why {@link isSameFile} compares mtime and not ctime.
+        //
+        // ⚠️ The pairing one reaches for first — the same park with nothing swapped in — cannot be
+        // written: the file at the path would still be the FIFO, and the break's confirming read
+        // would block in `open()` forever. That is a pre-existing property of a FIFO planted at a lock
+        // path (the pre-238 code read it with `readFileSync` and blocked identically), not something
+        // this change introduces. The next test carries that half instead.
+        expect(
+          after.ctimeMs,
+          'the contender never touched the file — the test proved nothing',
+        ).not.toBe(before.ctimeMs)
+      })
 
-      const corpse = `${lock}.incoming`
-      writeFileSync(corpse, '')
-      const old = Date.now() / 1000 - 60
-      utimesSync(corpse, old, old)
-      renameSync(corpse, lock)
+      it('⚑ …the pairing: a judgement made through this construction still ACQUIRES the home', async () => {
+        // The third outcome, and the one that says the fix costs nothing when it fires wrongly: the
+        // file swapped in is a DIFFERENT inode but an equally dead one, so the break is refused once
+        // (identity mismatch) and then made properly on the next iteration.
+        //
+        // ⚠️ **What this does NOT witness, said rather than implied** (review). `entered === true`
+        // holds whether or not the put-back happened — measured: with the 238 fix reverted this test
+        // stays green, 5 runs out of 5. Its job is the anti-vacuity half of the construction above
+        // (a contender parked on a FIFO can reach a break and come out the other side); the assertion
+        // that the RESTORE happened is the `ctimeMs` witness in the previous test, and the assertion
+        // that a refused break is not a wedge is `entered === true` here.
+        plantAgedFifo()
+        const run = contend(['once', home, '2000', '20'])
+        const writer = meetTheReader()
 
-      closeSync(writer)
-      const { said, stderr } = await run
+        const corpse = `${lock}.incoming`
+        writeFileSync(corpse, '')
+        const old = Date.now() / 1000 - 60
+        utimesSync(corpse, old, old)
+        renameSync(corpse, lock)
 
-      expect(said, `contender said nothing (stderr: ${stderr})`).toHaveLength(1)
-      expect(said[0]!.entered, 'one refused break left the home unacquirable').toBe(true)
-      expect(said[0]!.error).toBeNull()
-    })
-  })
+        closeSync(writer)
+        const { said, stderr } = await run
+
+        expect(said, `contender said nothing (stderr: ${stderr})`).toHaveLength(1)
+        expect(said[0]!.entered, 'one refused break left the home unacquirable').toBe(true)
+        expect(said[0]!.error).toBeNull()
+      })
+    },
+  )
 
   describe('⛔ §2 · the two-process barrier', () => {
     /**
@@ -623,7 +628,8 @@ describe('243 · a contended acquisition does not stop the thread that asked for
 
     expect(existsSync(target), 'it resolved before it had made the directory').toBe(true)
     expect(lstatSync(target).isDirectory()).toBe(true)
-    expect(lstatSync(target).mode & 0o777).toBe(0o700)
+    // Windows uses access lists; chmod does not supply POSIX permission bits.
+    if (process.platform !== 'win32') expect(lstatSync(target).mode & 0o777).toBe(0o700)
     // ⚠️ The premise: this really did wait for another process, rather than breaking a corpse.
     expect(elapsed, 'the holder was still holding when we asked').toBeGreaterThan(300)
     await until(() => holder.said.length > 0, 5_000, 'the holder to report')
@@ -644,7 +650,8 @@ describe('243 · a contended acquisition does not stop the thread that asked for
     const dest = join(home, 'auth.json')
     expect(existsSync(dest), 'it resolved before it had written the credential').toBe(true)
     expect(readFileSync(dest, 'utf8')).toContain('contended')
-    expect(lstatSync(dest).mode & 0o777).toBe(0o600)
+    // Windows uses access lists; chmod does not supply POSIX permission bits.
+    if (process.platform !== 'win32') expect(lstatSync(dest).mode & 0o777).toBe(0o600)
     expect(elapsed, 'the holder was still holding when we asked').toBeGreaterThan(300)
     await until(() => holder.said.length > 0, 5_000, 'the holder to report')
     expect(holder.said[0]?.entered, 'the other process really held the lock').toBe(true)
@@ -747,33 +754,40 @@ describe('293 §1 · the ancestry check survives the wait that follows it', () =
     await until(() => existsSync(ready), `the holder to take the lock (${holder.stderr()})`)
   }
 
-  it('🔴 refuses the home when the validated ancestor becomes a symlink during the wait', async () => {
-    await holdTheLock(target, 900)
+  // Windows holds the live contender's ancestor against renaming.
+  it.skipIf(process.platform === 'win32')(
+    '🔴 refuses the home when the validated ancestor becomes a symlink during the wait',
+    async () => {
+      await holdTheLock(target, 900)
 
-    // ⛔ Started, not awaited: the walk runs, the acquisition finds the lock held, and the swap
-    // below lands while it is in `await delay(pollMs)` — which is the whole interleaving.
-    const provisioning = provisionProviderHome(managed, target).then(
-      () => null,
-      (error: unknown) => (error instanceof Error ? error : new Error(String(error))),
-    )
-    await new Promise((r) => setTimeout(r, 60))
-    swapTheAncestor()
+      // ⛔ Started, not awaited: the walk runs, the acquisition finds the lock held, and the swap
+      // below lands while it is in `await delay(pollMs)` — which is the whole interleaving.
+      const provisioning = provisionProviderHome(managed, target).then(
+        () => null,
+        (error: unknown) => (error instanceof Error ? error : new Error(String(error))),
+      )
+      await new Promise((r) => setTimeout(r, 60))
+      swapTheAncestor()
 
-    const refusal = await provisioning
-    expect(refusal, 'a provisioning that escaped the managed root reported success').toBeInstanceOf(
-      Error,
-    )
-    expect((refusal as Error).message).toMatch(/symlink|replaced|no longer the directory/)
+      const refusal = await provisioning
+      expect(
+        refusal,
+        'a provisioning that escaped the managed root reported success',
+      ).toBeInstanceOf(Error)
+      expect((refusal as Error).message).toMatch(/symlink|replaced|no longer the directory/)
 
-    // 🔴 **The finding itself.** Before 293 this directory was created, and `prepareProviderHome`
-    // copied `auth.json` into it on the next line of the real caller.
-    expect(existsSync(join(outside, 'codex')), 'a provider home was created OUTSIDE the root').toBe(
-      false,
-    )
-    // ⚠️ …and not the sidecar either: the lockfile is derived from the same path, so a check that
-    // ran only after acquisition would leave `codex.lock` out here as its own escape.
-    expect(readdirSync(outside), 'something was written outside the managed root').toEqual([])
-  }, 30_000)
+      // 🔴 **The finding itself.** Before 293 this directory was created, and `prepareProviderHome`
+      // copied `auth.json` into it on the next line of the real caller.
+      expect(
+        existsSync(join(outside, 'codex')),
+        'a provider home was created OUTSIDE the root',
+      ).toBe(false)
+      // ⚠️ …and not the sidecar either: the lockfile is derived from the same path, so a check that
+      // ran only after acquisition would leave `codex.lock` out here as its own escape.
+      expect(readdirSync(outside), 'something was written outside the managed root').toEqual([])
+    },
+    30_000,
+  )
 
   it('⚑ …the pairing: the same contended provisioning still succeeds when nothing is swapped', async () => {
     // Without this, the assertion above is satisfied by a provisioning that refuses every contended
@@ -784,45 +798,51 @@ describe('293 §1 · the ancestry check survives the wait that follows it', () =
 
     expect(existsSync(target), 'the contended provisioning never made the home').toBe(true)
     expect(lstatSync(target).isDirectory()).toBe(true)
-    expect(lstatSync(target).mode & 0o777).toBe(0o700)
+    // Windows uses access lists; chmod does not supply POSIX permission bits.
+    if (process.platform !== 'win32') expect(lstatSync(target).mode & 0o777).toBe(0o700)
     expect(readdirSync(outside)).toEqual([])
   }, 30_000)
 
-  it('🔴 refuses the CREDENTIAL when the ancestor is swapped while its copy waits', async () => {
-    // The consequence rather than its cause, and one function later: `provisionProviderHome` can
-    // return honestly and the ancestor still be swapped before the credential is written.
-    mkdirSync(target, { recursive: true, mode: 0o700 })
-    // ⛔ **The escape has to be LANDABLE, or the test measures `ENOENT`** (measured: without this
-    // line the copy failed for want of a directory, the assertions all held, and the check under
-    // test never ran). So the outside tree is complete before the swap and a credential written
-    // through the symlink has somewhere to go.
-    mkdirSync(join(outside, 'codex'), { recursive: true, mode: 0o700 })
-    const source = join(root, 'personal-auth.json')
-    writeFileSync(source, '{"tokens":{"access_token":"must-not-escape"}}')
-    await holdTheLock(target, 900)
+  // Windows holds the live contender's ancestor against renaming.
+  it.skipIf(process.platform === 'win32')(
+    '🔴 refuses the CREDENTIAL when the ancestor is swapped while its copy waits',
+    async () => {
+      // The consequence rather than its cause, and one function later: `provisionProviderHome` can
+      // return honestly and the ancestor still be swapped before the credential is written.
+      mkdirSync(target, { recursive: true, mode: 0o700 })
+      // ⛔ **The escape has to be LANDABLE, or the test measures `ENOENT`** (measured: without this
+      // line the copy failed for want of a directory, the assertions all held, and the check under
+      // test never ran). So the outside tree is complete before the swap and a credential written
+      // through the symlink has somewhere to go.
+      mkdirSync(join(outside, 'codex'), { recursive: true, mode: 0o700 })
+      const source = join(root, 'personal-auth.json')
+      writeFileSync(source, '{"tokens":{"access_token":"must-not-escape"}}')
+      await holdTheLock(target, 900)
 
-    const copying = provisionCodexAuth(target, {
-      sourceAuthPath: source,
-      managedRoot: managed,
-    }).then(
-      () => null,
-      (error: unknown) => (error instanceof Error ? error : new Error(String(error))),
-    )
-    await new Promise((r) => setTimeout(r, 60))
-    swapTheAncestor()
+      const copying = provisionCodexAuth(target, {
+        sourceAuthPath: source,
+        managedRoot: managed,
+      }).then(
+        () => null,
+        (error: unknown) => (error instanceof Error ? error : new Error(String(error))),
+      )
+      await new Promise((r) => setTimeout(r, 60))
+      swapTheAncestor()
 
-    const refusal = await copying
-    expect(refusal, 'a credential write into an escaped home reported success').toBeInstanceOf(
-      Error,
-    )
-    // ⚠️ …and refused by the ancestry check rather than by a missing directory, which is the
-    // difference between this test and the vacuous first draft of it.
-    expect((refusal as Error).message).toMatch(/symlink|replaced|no longer the directory/)
-    expect(
-      existsSync(join(outside, 'codex', 'auth.json')),
-      'the Codex credential was written outside the managed root',
-    ).toBe(false)
-  }, 30_000)
+      const refusal = await copying
+      expect(refusal, 'a credential write into an escaped home reported success').toBeInstanceOf(
+        Error,
+      )
+      // ⚠️ …and refused by the ancestry check rather than by a missing directory, which is the
+      // difference between this test and the vacuous first draft of it.
+      expect((refusal as Error).message).toMatch(/symlink|replaced|no longer the directory/)
+      expect(
+        existsSync(join(outside, 'codex', 'auth.json')),
+        'the Codex credential was written outside the managed root',
+      ).toBe(false)
+    },
+    30_000,
+  )
 
   it('⚑ …and the pairing for the credential: an undisturbed contended copy still lands', async () => {
     mkdirSync(target, { recursive: true, mode: 0o700 })
@@ -833,6 +853,8 @@ describe('293 §1 · the ancestry check survives the wait that follows it', () =
     await provisionCodexAuth(target, { sourceAuthPath: source, managedRoot: managed })
 
     expect(readFileSync(join(target, 'auth.json'), 'utf8')).toContain('contended')
-    expect(lstatSync(join(target, 'auth.json')).mode & 0o777).toBe(0o600)
+    // Windows uses access lists; chmod does not supply POSIX permission bits.
+    if (process.platform !== 'win32')
+      expect(lstatSync(join(target, 'auth.json')).mode & 0o777).toBe(0o600)
   }, 30_000)
 })

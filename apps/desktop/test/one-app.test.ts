@@ -551,8 +551,8 @@ describe('one app per userData (198)', () => {
       })
 
       it('🔴 the SECOND claim on one userData loses — which is the race Chromium loses', async () => {
-        expect(await claimSoleHost(dir, 'darwin')).toBe('sole')
-        expect(await claimSoleHost(dir, 'darwin')).toBe('taken')
+        expect(await claimSoleHost(dir, process.platform)).toBe('sole')
+        expect(await claimSoleHost(dir, process.platform)).toBe('taken')
       })
 
       it('⛔ …and a DIFFERENT userData is untouched, or every live smoke would break', async () => {
@@ -560,21 +560,25 @@ describe('one app per userData (198)', () => {
         // gate that was global rather than per-directory would refuse all of them.
         const other = mkdtempSync(join(tmpdir(), 'brobot2-gate-'))
         try {
-          expect(await claimSoleHost(dir, 'darwin')).toBe('sole')
-          expect(await claimSoleHost(other, 'darwin')).toBe('sole')
+          expect(await claimSoleHost(dir, process.platform)).toBe('sole')
+          expect(await claimSoleHost(other, process.platform)).toBe('sole')
         } finally {
           rmSync(other, { recursive: true, force: true })
         }
       })
 
-      it('🔴 a path left behind by a dead process is BROKEN, not honoured', async () => {
-        // ⛔ This is the branch that answers `191` M5, and it is not a corner: a clean quit leaves
-        // the path behind, so every launch after the first one takes it. A gate that honoured the
-        // artefact would refuse to start the app and there would be no way out but `rm`.
-        writeFileSync(hostGatePath(dir, 'darwin'), 'not a socket')
+      // A stale filesystem socket has no Windows named-pipe counterpart.
+      it.skipIf(process.platform === 'win32')(
+        '🔴 a path left behind by a dead process is BROKEN, not honoured',
+        async () => {
+          // ⛔ This is the branch that answers `191` M5, and it is not a corner: a clean quit leaves
+          // the path behind, so every launch after the first one takes it. A gate that honoured the
+          // artefact would refuse to start the app and there would be no way out but `rm`.
+          writeFileSync(hostGatePath(dir, 'darwin'), 'not a socket')
 
-        expect(await claimSoleHost(dir, 'darwin')).toBe('sole')
-      })
+          expect(await claimSoleHost(dir, 'darwin')).toBe('sole')
+        },
+      )
 
       it('⛔ the path is inside the userData, and a Windows pipe is not a path at all', () => {
         expect(hostGatePath(dir, 'darwin')).toBe(join(realpathSync.native(dir), 'one-host.sock'))
@@ -668,12 +672,15 @@ describe('one app per userData (198)', () => {
         }
       })
 
-      it('⛔ …and a SHORT userData keeps its gate inside, where it binds', async () => {
-        expect(hostGatePath(dir, 'darwin').length).toBeLessThanOrEqual(104)
-        expect(hostGatePath(dir, 'darwin')).toBe(join(realpathSync.native(dir), 'one-host.sock'))
-        expect(await claimSoleHost(dir, 'darwin')).toBe('sole')
-        expect(await claimSoleHost(dir, 'darwin')).toBe('taken')
-      })
+      it.skipIf(process.platform === 'win32')(
+        '⛔ …and a SHORT userData keeps its gate inside, where it binds',
+        async () => {
+          expect(hostGatePath(dir, 'darwin').length).toBeLessThanOrEqual(104)
+          expect(hostGatePath(dir, 'darwin')).toBe(join(realpathSync.native(dir), 'one-host.sock'))
+          expect(await claimSoleHost(dir, 'darwin')).toBe('sole')
+          expect(await claimSoleHost(dir, 'darwin')).toBe('taken')
+        },
+      )
     })
 
     /**

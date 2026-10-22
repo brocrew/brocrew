@@ -38,8 +38,8 @@ function scratch() {
 }
 const read = (name) => fs.readFileSync(path.join(repository, name), 'utf8')
 // The Mac gate fixtures require POSIX ownership and descriptor paths.
-describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => {
-  it('requires a hosted Mac, the BroCrew repository and a packaged-gate ref', () => {
+describe.skipIf(process.platform === 'win32')('the private packaged Chrome gate', () => {
+  it('cannot run the journey on a public ref, other repository or local machine', () => {
     const env = {
       RUNNER_ENVIRONMENT: 'github-hosted',
       GITHUB_ACTIONS: 'true',
@@ -63,9 +63,7 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
     expect(() => requireCI(env, 'linux', 'arm64')).toThrow()
     expect(() => requireCI(env, 'darwin', 'x64')).toThrow()
     const workflow = read('.github/workflows/plugin-packaged-gate.yml')
-    expect(workflow).toContain("github.repository == 'brocrew/brocrew'")
-    expect(workflow).toContain("startsWith(github.ref, 'refs/heads/gate/plugin-packaged-')")
-    expect(workflow).not.toContain('github.event.repository.private')
+    expect(workflow).toContain('github.event.repository.private == true')
     expect(workflow).toContain('persist-credentials: false')
     expect(workflow).not.toContain('workflow_dispatch')
     expect(workflow).not.toMatch(/secrets\.|contents: write|gh |git push/)

@@ -12,7 +12,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { hostname, tmpdir } from 'node:os'
-import { basename, dirname, join } from 'node:path'
+import { basename, dirname, join, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
@@ -113,7 +113,7 @@ function aTrash(root: string) {
       const plain = folder.startsWith('/System/Volumes/Data/')
         ? folder.slice('/System/Volumes/Data'.length)
         : folder
-      if (!plain.startsWith(`${root}/`)) {
+      if (!plain.startsWith(`${root}${sep}`)) {
         throw new Error(`the test's Trash was handed a folder outside its root: ${folder}`)
       }
       renameSync(folder, join(bin, `${String(taken.length)}-${basename(folder)}`))

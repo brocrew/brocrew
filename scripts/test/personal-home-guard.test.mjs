@@ -269,26 +269,30 @@ describe('the walk itself', () => {
     expect(scan.hits.map((hit) => hit.path)).toEqual([join(deep, `${OURS[0].value}.jsonl`)])
   })
 
-  it('SAYS a directory would not open, but does not call one that is simply absent a hole', () => {
-    const root = decoy()
-    const shut = join(root, 'shut')
-    mkdirSync(join(shut, 'inside'), { recursive: true })
-    writeFileSync(join(shut, 'inside', `${OURS[0].value}.jsonl`), '')
-    chmodSync(shut, 0o000)
-    try {
-      const scan = pathsNaming(root, OURS)
-      expect(scan.hits, 'the leak is inside the closed directory').toEqual([])
-      expect(scan.complete, 'an unreadable directory read as a clean one').toBe(false)
-      expect(scan.unreadable).toEqual([shut])
-      expect(whyIncomplete(scan)).toMatch(/would not open/)
-    } finally {
-      chmodSync(shut, 0o700)
-    }
-    // ⚑ …and the paired positive is the same tree with the door open.
-    const opened = pathsNaming(root, OURS)
-    expect(opened.complete).toBe(true)
-    expect(opened.hits).toHaveLength(1)
-  })
+  // Windows chmod cannot construct a POSIX permission denial.
+  it.skipIf(process.platform === 'win32')(
+    'SAYS a directory would not open, but does not call one that is simply absent a hole',
+    () => {
+      const root = decoy()
+      const shut = join(root, 'shut')
+      mkdirSync(join(shut, 'inside'), { recursive: true })
+      writeFileSync(join(shut, 'inside', `${OURS[0].value}.jsonl`), '')
+      chmodSync(shut, 0o000)
+      try {
+        const scan = pathsNaming(root, OURS)
+        expect(scan.hits, 'the leak is inside the closed directory').toEqual([])
+        expect(scan.complete, 'an unreadable directory read as a clean one').toBe(false)
+        expect(scan.unreadable).toEqual([shut])
+        expect(whyIncomplete(scan)).toMatch(/would not open/)
+      } finally {
+        chmodSync(shut, 0o700)
+      }
+      // ⚑ …and the paired positive is the same tree with the door open.
+      const opened = pathsNaming(root, OURS)
+      expect(opened.complete).toBe(true)
+      expect(opened.hits).toHaveLength(1)
+    },
+  )
 
   it('caps the report at `limit` so one bad run cannot print ten thousand lines', () => {
     const root = decoy()
@@ -340,21 +344,25 @@ describe('the walk itself', () => {
       expect(describeScan(pathsNaming(root, OURS))).toBe('none')
     })
 
-    it('⛔ an unfinished walk is never clean, even with no hits', () => {
-      const root = decoy()
-      // A directory that exists and will not open: the walk cannot say what is inside it.
-      const shut = join(root, 'shut')
-      mkdirSync(shut, { recursive: true })
-      mkdirSync(join(shut, 'inner'), { recursive: true })
-      chmodSync(shut, 0o000)
-      try {
-        const said = describeScan(pathsNaming(root, OURS))
-        expect(said).not.toBe('none')
-        expect(said).toMatch(/stopped looking/)
-      } finally {
-        chmodSync(shut, 0o700)
-      }
-    })
+    // Windows chmod cannot construct a POSIX permission denial.
+    it.skipIf(process.platform === 'win32')(
+      '⛔ an unfinished walk is never clean, even with no hits',
+      () => {
+        const root = decoy()
+        // A directory that exists and will not open: the walk cannot say what is inside it.
+        const shut = join(root, 'shut')
+        mkdirSync(shut, { recursive: true })
+        mkdirSync(join(shut, 'inner'), { recursive: true })
+        chmodSync(shut, 0o000)
+        try {
+          const said = describeScan(pathsNaming(root, OURS))
+          expect(said).not.toBe('none')
+          expect(said).toMatch(/stopped looking/)
+        } finally {
+          chmodSync(shut, 0o700)
+        }
+      },
+    )
 
     it('names what it found, and folds several walks into one sentence', () => {
       const a = decoy()
@@ -365,20 +373,24 @@ describe('the walk itself', () => {
       expect(said).not.toBe('none')
     })
 
-    it('⛔ says BOTH when it found something and could not finish', () => {
-      const root = decoy()
-      writeFileSync(join(root, `${OURS[0].value}.jsonl`), '')
-      const shut = join(root, 'shut')
-      mkdirSync(shut, { recursive: true })
-      chmodSync(shut, 0o000)
-      try {
-        const said = describeScan(pathsNaming(root, OURS))
-        expect(said).toContain(OURS[0].label)
-        expect(said).toMatch(/stopped looking/)
-      } finally {
-        chmodSync(shut, 0o700)
-      }
-    })
+    // Windows chmod cannot construct a POSIX permission denial.
+    it.skipIf(process.platform === 'win32')(
+      '⛔ says BOTH when it found something and could not finish',
+      () => {
+        const root = decoy()
+        writeFileSync(join(root, `${OURS[0].value}.jsonl`), '')
+        const shut = join(root, 'shut')
+        mkdirSync(shut, { recursive: true })
+        chmodSync(shut, 0o000)
+        try {
+          const said = describeScan(pathsNaming(root, OURS))
+          expect(said).toContain(OURS[0].label)
+          expect(said).toMatch(/stopped looking/)
+        } finally {
+          chmodSync(shut, 0o700)
+        }
+      },
+    )
   })
 
   /**
@@ -412,39 +424,47 @@ describe('the walk itself', () => {
       expect(said).not.toBe('none')
     })
 
-    it('⛔ a missing marker from an UNFINISHED walk is not known to be absent', () => {
-      // The finding itself: "I looked and it is not there" and "I could not look" were one word.
-      const root = decoy()
-      const shut = join(root, 'shut')
-      mkdirSync(shut, { recursive: true })
-      chmodSync(shut, 0o000)
-      try {
-        const said = describeMissing(pathsNaming(root, OURS), OURS)
-        expect(said).toMatch(/NOT known to be absent/)
-        expect(said).toMatch(/would not open/)
-      } finally {
-        chmodSync(shut, 0o700)
-      }
-    })
+    // Windows chmod cannot construct a POSIX permission denial.
+    it.skipIf(process.platform === 'win32')(
+      '⛔ a missing marker from an UNFINISHED walk is not known to be absent',
+      () => {
+        // The finding itself: "I looked and it is not there" and "I could not look" were one word.
+        const root = decoy()
+        const shut = join(root, 'shut')
+        mkdirSync(shut, { recursive: true })
+        chmodSync(shut, 0o000)
+        try {
+          const said = describeMissing(pathsNaming(root, OURS), OURS)
+          expect(said).toMatch(/NOT known to be absent/)
+          expect(said).toMatch(/would not open/)
+        } finally {
+          chmodSync(shut, 0o700)
+        }
+      },
+    )
 
-    it('⚑ …but a marker that WAS found needs no completeness — a hit is proof', () => {
-      // The asymmetry, asserted. Failing this row because the walk also stopped somewhere else
-      // would be a red nobody could act on, which is 176's own rule about measuring the machine.
-      const root = decoy()
-      for (const marker of OURS) writeFileSync(join(root, `${marker.value}.jsonl`), '')
-      const shut = join(root, 'shut')
-      mkdirSync(shut, { recursive: true })
-      chmodSync(shut, 0o000)
-      try {
-        const scan = pathsNaming(root, OURS)
-        expect(scan.complete).toBe(false) // the walk really did stop early
-        expect(describeMissing(scan, OURS)).toBe('none')
-        // …and the OTHER direction over the same scan still refuses to call it clean.
-        expect(describeScan(scan)).toMatch(/stopped looking/)
-      } finally {
-        chmodSync(shut, 0o700)
-      }
-    })
+    // Windows chmod cannot construct a POSIX permission denial.
+    it.skipIf(process.platform === 'win32')(
+      '⚑ …but a marker that WAS found needs no completeness — a hit is proof',
+      () => {
+        // The asymmetry, asserted. Failing this row because the walk also stopped somewhere else
+        // would be a red nobody could act on, which is 176's own rule about measuring the machine.
+        const root = decoy()
+        for (const marker of OURS) writeFileSync(join(root, `${marker.value}.jsonl`), '')
+        const shut = join(root, 'shut')
+        mkdirSync(shut, { recursive: true })
+        chmodSync(shut, 0o000)
+        try {
+          const scan = pathsNaming(root, OURS)
+          expect(scan.complete).toBe(false) // the walk really did stop early
+          expect(describeMissing(scan, OURS)).toBe('none')
+          // …and the OTHER direction over the same scan still refuses to call it clean.
+          expect(describeScan(scan)).toMatch(/stopped looking/)
+        } finally {
+          chmodSync(shut, 0o700)
+        }
+      },
+    )
 
     it('throws on an empty marker list, exactly as every other entry point does', () => {
       // A row that scanned for nothing would report "nothing missing" forever — 129's trap, on the

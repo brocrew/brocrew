@@ -28,9 +28,16 @@ export type ResumeRefusal =
 export const A_CODEX_THREAD = '01a0d52b-4ac7-7060-9f71-9ad6fd1088dc'
 
 /** An executable `codex` under `dir` that plays `scenario`, reporting `version` at `initialize`. */
-export function aCodexThatRefuses(dir: string, scenario: ResumeRefusal, version: string): string {
+export function aCodexThatRefuses(
+  dir: string,
+  scenario: ResumeRefusal,
+  version: string,
+  cwd: string,
+): string {
   mkdirSync(dir, { recursive: true })
-  const path = join(dir, `codex-${scenario}.mjs`)
+  // Windows starts Node directly; its app-server argument selects this fixture in the child cwd.
+  const path =
+    process.platform === 'win32' ? join(cwd, 'app-server') : join(dir, `codex-${scenario}.mjs`)
   writeFileSync(
     path,
     [
@@ -43,7 +50,7 @@ export function aCodexThatRefuses(dir: string, scenario: ResumeRefusal, version:
     ].join('\n'),
   )
   chmodSync(path, 0o755)
-  return path
+  return process.platform === 'win32' ? process.execPath : path
 }
 
 /**

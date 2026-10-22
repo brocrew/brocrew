@@ -135,7 +135,9 @@ describe('exporting a session', () => {
     fixture = { sessionId: named?.sessionId ?? '', cwd: named?.cwd ?? '', text }
   })
 
+  const importedDatabases: AppDatabase[] = []
   afterEach(() => {
+    for (const connection of importedDatabases.splice(0)) if (connection.open) connection.close()
     db.close()
     rmSync(dir, { recursive: true, force: true })
   })
@@ -655,6 +657,7 @@ describe('exporting a session', () => {
       name: string,
     ): { store: SessionStore; host: RuntimeHost; close: () => void } => {
       const otherDb = openDatabase(join(dir, name))
+      importedDatabases.push(otherDb)
       applyMigrations(otherDb, migrations)
       const other = createSessionStore(otherDb)
       return {

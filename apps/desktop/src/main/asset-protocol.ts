@@ -58,7 +58,7 @@ export function resolveAssetRequest(url: string): AssetResponse | null {
   // `pathname` is `/<encoded path>`. One segment by construction (`assetUrl` encodes the whole
   // path), and a request that brings more than one is not one we made.
   const encoded = parsed.pathname.replace(/^\//, '')
-  if (encoded === '' || encoded.includes('/')) return null
+  if (encoded === '' || encoded.includes('/') || encoded.includes('\\')) return null
   let candidate: string
   try {
     candidate = decodeURIComponent(encoded)

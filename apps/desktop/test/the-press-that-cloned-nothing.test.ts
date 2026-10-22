@@ -817,7 +817,13 @@ describe('§4 · one function builds every permission this app sends (473 §2)',
     // one test file in this tree, so a census built on one is short before it starts (361 §6).
     const builders = readdirSync(renderer, { recursive: true, encoding: 'utf8' })
       .filter((name) => name.endsWith('.ts') || name.endsWith('.vue'))
-      .map((name) => [name, withoutProse(readFileSync(join(renderer, name), 'utf8'))] as const)
+      .map(
+        (name) =>
+          [
+            name.replaceAll('\\', '/'),
+            withoutProse(readFileSync(join(renderer, name), 'utf8')),
+          ] as const,
+      )
       .map(([name, code]) => [name, (code.match(BUILDS_AN_OUTCOME) ?? []).length] as const)
       .filter(([, count]) => count > 0)
       .sort()
@@ -856,7 +862,13 @@ describe('§4 · one function builds every permission this app sends (473 §2)',
     // whole assertion, and the control below is what makes zero mean something.
     const casts = readdirSync(renderer, { recursive: true, encoding: 'utf8' })
       .filter((name) => name.endsWith('.ts') || name.endsWith('.vue'))
-      .map((name) => [name, withoutProse(readFileSync(join(renderer, name), 'utf8'))] as const)
+      .map(
+        (name) =>
+          [
+            name.replaceAll('\\', '/'),
+            withoutProse(readFileSync(join(renderer, name), 'utf8')),
+          ] as const,
+      )
       .filter(([, code]) => (code.match(CASTS_TO_A_DECISION) ?? []).length > 0)
       .map(([name]) => name)
     expect(casts).toEqual([])

@@ -97,8 +97,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         [
             (
                 CENSUS,
-                "const THE_LANGUAGE = /\\/node_modules\\/typescript\\/lib\\//",
-                "const THE_LANGUAGE = /\\/node_modules\\//",
+                r"const THE_LANGUAGE = /[\\/]node_modules[\\/]typescript[\\/]lib[\\/]/",
+                r"const THE_LANGUAGE = /[\\/]node_modules[\\/]/",
             ),
         ],
     ),

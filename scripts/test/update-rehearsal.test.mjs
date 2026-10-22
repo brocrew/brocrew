@@ -321,7 +321,7 @@ describe('⛔ what goes to the private sandbox', () => {
       if (seen.has(path)) return
       seen.add(path)
       for (const [, spec] of read(path).matchAll(/from '(\.{1,2}\/[^']+)'/g)) {
-        walk(normalize(join(dirname(path), spec)))
+        walk(normalize(join(dirname(path), spec)).replaceAll('\\', '/'))
       }
     }
     for (const entry of entries) walk(entry)

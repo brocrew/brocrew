@@ -443,7 +443,7 @@ A row that cannot apply is RETIRED IN PLACE: its definition stays in its table a
 | 662 | 18 | 18 | 0 | unrun | 0 | `e55a822d4b173fda` |
 | 663 | 55 | 17 | 38 | unrun | 0 | `f4e857ac8dc88ed5` |
 | 664 | 3 | 3 | 0 | unrun | 0 | `dab25e1357a997d6` |
-| 665 | 41 | 37 | 4 | unrun | 0 | `47e0b4d9416d4c59` |
+| 665 | 41 | 37 | 4 | unrun | 0 | `46ae7c455d4456fa` |
 | 667 | 22 | 17 | 5 | unrun | 0 | `78b91df127824ff0` |
 | 668 | 30 | 18 | 12 | unrun | 0 | `3540feaf5c2f5f9d` |
 | 669 | 65 | 52 | 13 | unrun | 0 | `439e40404bc5e152` |
@@ -4151,7 +4151,7 @@ A row that cannot apply is RETIRED IN PLACE: its definition stays in its table a
 | 3005 | `apps/desktop/src/main/runtime/runtime-host.ts` | `5ae4758136c2f4d9` |
 | 3005 | `packages/runtime/src/claude/normalize.ts` | `bc13698447f4c7d1` |
 | 3006 | `apps/desktop/src/main/runtime/process-listing.ts` | `80e596ef87534f70` |
-| 3006 | `apps/desktop/src/main/runtime/provider-versions.ts` | `a793d7b065ce5ac7` |
+| 3006 | `apps/desktop/src/main/runtime/provider-versions.ts` | `604c98c212467e50` |
 | 3006 | `apps/desktop/src/main/runtime/runtime-host.ts` | `5ae4758136c2f4d9` |
 | 3006 | `packages/runtime/src/claude/normalize.ts` | `bc13698447f4c7d1` |
 | 3006 | `packages/runtime/src/codex/normalize.ts` | `cfaa6b7f9681f56c` |
@@ -4470,7 +4470,7 @@ A row that cannot apply is RETIRED IN PLACE: its definition stays in its table a
 | 347 | `apps/desktop/smoke/an-agent-spawns-an-agent.smoke.ts` | `de39129c6476cffe` |
 | 347 | `apps/desktop/src/main/runtime/agent-tools.ts` | `0183840feac3eca9` |
 | 347 | `apps/desktop/src/main/runtime/runtime-host.ts` | `5ae4758136c2f4d9` |
-| 347 | `apps/desktop/test/the-caller-that-may-command-but-not-watch.test.ts` | `9c0352fbf33097ad` |
+| 347 | `apps/desktop/test/the-caller-that-may-command-but-not-watch.test.ts` | `1eb38430dd09ee1d` |
 | 347 | `packages/runtime/src/claude/agent-tools.ts` | `ff7c0d71262a4bf0` |
 | 347 | `packages/runtime/src/claude/claude-runtime.ts` | `4b374fe31ed27f41` |
 | 348 | `apps/desktop/smoke/a-codex-agent-spawns-an-agent.smoke.ts` | `0dc3a040e15fc931` |
@@ -4562,7 +4562,7 @@ A row that cannot apply is RETIRED IN PLACE: its definition stays in its table a
 | 371 | `apps/desktop/src/main/runtime/scratch-cwd.ts` | `b7ef0daaf9adcb39` |
 | 371 | `apps/desktop/src/main/runtime/spawn-rails.ts` | `85acf461dfa9eef2` |
 | 371 | `apps/desktop/src/renderer/src/components/NewConversation.vue` | `1172bf99056f053f` |
-| 372 | `apps/desktop/src/main/asset-protocol.ts` | `043cc245961e68a5` |
+| 372 | `apps/desktop/src/main/asset-protocol.ts` | `4906dedb1826a5a6` |
 | 372 | `apps/desktop/src/main/read-text-file.ts` | `8eb84232ce836d3d` |
 | 372 | `apps/desktop/src/main/runtime/instructions.ts` | `bee20699a98a85d3` |
 | 372 | `packages/runtime/src/codex/generated-image.ts` | `fac5f0178a180414` |
@@ -5558,7 +5558,7 @@ A row that cannot apply is RETIRED IN PLACE: its definition stays in its table a
 | 664 | `apps/desktop/src/main/db/session-store.ts` | `8a1abe58b6ce7957` |
 | 665 | `apps/desktop/smoke/lifecycle-stage.smoke.ts` | `111f0aa1e3e78912` |
 | 665 | `scripts/lib/matrix-record.mjs` | `119eed95814c5a27` |
-| 665 | `scripts/lib/page-ipc-census.mjs` | `aef8a0126642cbd4` |
+| 665 | `scripts/lib/page-ipc-census.mjs` | `e9e7095978f0887f` |
 | 665 | `scripts/lib/security-block.txt` | `fdc042d50c8d4722` |
 | 665 | `scripts/lib/smoke-price.mjs` | `a86bfbe7def25a24` |
 | 665 | `scripts/resume-live-smoke.mjs` | `9a3169c39827a402` |
@@ -6046,7 +6046,7 @@ A row that cannot apply is RETIRED IN PLACE: its definition stays in its table a
 | 725 | `apps/desktop/src/renderer/src/lib/transcript.ts` | `c131eea955847918` |
 | 725 | `apps/desktop/src/renderer/src/lib/where-the-work-is.ts` | `e756e710a2ea8128` |
 | 725 | `apps/desktop/src/renderer/src/lib/working-together.ts` | `b5e1242c800d2c77` |
-| 726 | `apps/desktop/src/main/asset-protocol.ts` | `043cc245961e68a5` |
+| 726 | `apps/desktop/src/main/asset-protocol.ts` | `4906dedb1826a5a6` |
 | 726 | `apps/desktop/src/main/child-work.ts` | `6cf62695e3a402e0` |
 | 726 | `apps/desktop/src/main/resources/resources.ts` | `5ba453793844a3fd` |
 | 726 | `apps/desktop/src/main/runtime/agent-tools.ts` | `0183840feac3eca9` |

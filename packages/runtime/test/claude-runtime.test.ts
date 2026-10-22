@@ -10,7 +10,7 @@ import {
 } from 'node:fs'
 import { EventEmitter } from 'node:events'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type {
   AccountInfo,
@@ -3146,7 +3146,7 @@ describe('ClaudeRuntime — config-independent prompting (007 P1-6)', () => {
       approval: 'auto',
     })
     expect(o.permissionMode).toBe('plan')
-    expect(settings['memory-folder']).toMatch(/^\/tmp\/x\/home/)
+    expect(settings['memory-folder']).toBe(join('/tmp/x/home', 'memory'))
   })
 
   it('the checklist tools raise no card — and the exempt set IS 028’s recognized set (032)', async () => {
@@ -5746,7 +5746,7 @@ describe('session approvals actually hold (031)', () => {
       allow_for_session: [{ kind: 'tool', tool: 'Bash', content: 'make build *' }],
       allow_all_for_session: [{ kind: 'tool', tool: 'Bash' }],
       allow_always: [{ kind: 'tool', tool: 'Bash', content: 'make build *' }],
-      alwaysFile: '/tmp/x/.claude/settings.local.json',
+      alwaysFile: resolve('/tmp/x', '.claude/settings.local.json'),
     })
     await handle.respondPermission('tu_1', { outcome: 'allow_always' })
     const rule = { toolName: 'Bash', ruleContent: 'make build *' }
@@ -6613,7 +6613,7 @@ describe('the model list, asked of the provider rather than written down (058)',
     // …and 166's flag settings for the same reason: the CLI resolves the memory directory at
     // startup whether or not a turn follows, so a probe that pointed somewhere else would be a
     // second answer to "where does this profile remember things". ONE derivation, both launches.
-    expect(built().options.settings).toEqual({ autoMemoryDirectory: '/tmp/x/home/memory' })
+    expect(built().options.settings).toEqual({ autoMemoryDirectory: join('/tmp/x/home', 'memory') })
   })
 
   it('gives up on a CLI that is alive but silent, instead of never settling', async () => {

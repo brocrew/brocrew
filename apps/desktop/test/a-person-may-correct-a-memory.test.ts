@@ -276,17 +276,21 @@ describe('§2 · 🔒 the rail — a write follows NO link, which is the opposit
     expect(existsSync(entry)).toBe(true)
   })
 
-  it('⚑ a store this app cannot write answers `write-failed`, and changes nothing', async () => {
-    const dir = plantStore('sealed', { 'MEMORY.md': 'SEALED\n', 'x.md': 'X\n' })
-    chmodSync(dir, 0o500)
-    try {
-      const outcome = await amend('sealed', { entry: join(dir, 'x.md') })
-      expect(!outcome.done && outcome.refused).toBe('write-failed')
-      expect(existsSync(join(dir, 'x.md'))).toBe(true)
-    } finally {
-      chmodSync(dir, 0o700)
-    }
-  })
+  // Windows chmod cannot construct a POSIX permission denial.
+  it.skipIf(process.platform === 'win32')(
+    '⚑ a store this app cannot write answers `write-failed`, and changes nothing',
+    async () => {
+      const dir = plantStore('sealed', { 'MEMORY.md': 'SEALED\n', 'x.md': 'X\n' })
+      chmodSync(dir, 0o500)
+      try {
+        const outcome = await amend('sealed', { entry: join(dir, 'x.md') })
+        expect(!outcome.done && outcome.refused).toBe('write-failed')
+        expect(existsSync(join(dir, 'x.md'))).toBe(true)
+      } finally {
+        chmodSync(dir, 0o700)
+      }
+    },
+  )
 
   it('⛔ every refusal has a sentence, and every sentence names what to do next', () => {
     expect(Object.keys(REFUSAL_MEANS).sort()).toEqual([...AMENDMENT_REFUSED].sort())

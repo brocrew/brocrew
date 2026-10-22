@@ -288,7 +288,8 @@ describe('the two gates, merged in place (314 §1)', () => {
       writeFileSync(config(), CODEX_OWN)
       chmodSync(config(), 0o644)
       ensureCodexMemoryConfig(home)
-      expect(statSync(config()).mode & 0o777).toBe(0o644)
+      // Windows uses access lists; chmod does not supply POSIX permission bits.
+      if (process.platform !== 'win32') expect(statSync(config()).mode & 0o777).toBe(0o644)
     })
 
     it('⛔ leaves an unparseable config exactly as it was, and says why', () => {
@@ -325,22 +326,26 @@ describe('the two gates, merged in place (314 §1)', () => {
       expect(readFileSync(config(), 'utf8')).toContain('/Users/someone/dev/other')
     })
 
-    it('⛔ an UNREADABLE config is refused, never overwritten with a fresh one', () => {
-      // ⚠️ **Unreadable is not absent, and collapsing the two would be 312's whole-file rewrite
-      // arrived at by an error path.** A permission wall, a broken mount, a file being replaced —
-      // none of them is "this home has no config", and the one thing that must not follow from not
-      // being able to read Codex's entries is deleting them.
-      writeFileSync(config(), CODEX_OWN)
-      chmodSync(config(), 0o000)
-      try {
-        const result = ensureCodexMemoryConfig(home)
-        expect(result.outcome).toBe('refused')
-        expect(result.why).toContain('not readable')
-      } finally {
-        chmodSync(config(), 0o600)
-      }
-      expect(readFileSync(config(), 'utf8')).toBe(CODEX_OWN)
-    })
+    // Windows chmod cannot construct a POSIX permission denial.
+    it.skipIf(process.platform === 'win32')(
+      '⛔ an UNREADABLE config is refused, never overwritten with a fresh one',
+      () => {
+        // ⚠️ **Unreadable is not absent, and collapsing the two would be 312's whole-file rewrite
+        // arrived at by an error path.** A permission wall, a broken mount, a file being replaced —
+        // none of them is "this home has no config", and the one thing that must not follow from not
+        // being able to read Codex's entries is deleting them.
+        writeFileSync(config(), CODEX_OWN)
+        chmodSync(config(), 0o000)
+        try {
+          const result = ensureCodexMemoryConfig(home)
+          expect(result.outcome).toBe('refused')
+          expect(result.why).toContain('not readable')
+        } finally {
+          chmodSync(config(), 0o600)
+        }
+        expect(readFileSync(config(), 'utf8')).toBe(CODEX_OWN)
+      },
+    )
 
     it('⚠️ a home that does not exist is a `failed`, not a throw — a launch must not die over memory', () => {
       const result = ensureCodexMemoryConfig(join(home, 'not-there'))
