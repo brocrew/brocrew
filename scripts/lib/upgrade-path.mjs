@@ -403,20 +403,20 @@ export function rowsPreserved(
       (keys[table] ?? []).length > 0
         ? JSON.stringify(keys[table].map((column) => comparable(row[column])))
         : null
-    const newNullableColumn =
+    const migrationDefaults =
       table === 'identity_instruction'
-        ? 'author'
+        ? { author: null }
         : table === 'identity_memory_amendment'
-          ? 'source_id'
-          : null
-    const hasNewColumn =
-      newNullableColumn !== null && now.some((one) => Object.hasOwn(one, newNullableColumn))
+          ? { source_id: null, outcome: 'done', actual: null, settled_by: null, settled_at: null }
+          : {}
+    const addedColumns = Object.entries(migrationDefaults).filter(([column]) =>
+      now.some((one) => Object.hasOwn(one, column)),
+    )
     for (const original of rows) {
-      // Legacy rows gain only the migration's null default; existing values compare exactly.
-      const row =
-        hasNewColumn && !Object.hasOwn(original, newNullableColumn)
-          ? { ...original, [newNullableColumn]: null }
-          : original
+      // Only missing legacy fields gain this migration's defaults; recorded values stay exact.
+      const row = { ...original }
+      for (const [column, value] of addedColumns)
+        if (!Object.hasOwn(original, column)) row[column] = value
       const key = canonicalRow(row, ignored)
       const count = left.get(key) ?? 0
       if (count > 0) {
