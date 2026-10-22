@@ -410,3 +410,44 @@ describe('what the window reads off main', () => {
     )
   })
 })
+
+describe('a web link that wraps an image', () => {
+  it('leaves no link inside the label and keeps the anchors balanced', () => {
+    const html = renderChatMarkdown(
+      '[![badge](https://img.example.org/b.svg)](https://site.example.org/)',
+    )
+    const out = markPathsIn(html, () => undefined, MAC)
+    const opens = out.match(/<a[\s>]/g)?.length ?? 0
+    const closes = out.match(/<\/a>/g)?.length ?? 0
+    expect(opens).toBe(closes)
+    const label = /class="message-web-text"[^>]*>([\s\S]*?)<\/span>/.exec(out)
+    if (label) expect(label[1]).not.toContain('<a')
+  })
+})
+
+describe('a local link destination written with percent-encoding', () => {
+  const written = (destination: string): string | null =>
+    /data-local-path="([^"]*)"/.exec(renderChatMarkdown(`[x](${destination})`))?.[1] ?? null
+
+  it('reads %20 as a space', () => {
+    expect(written('/Users/fictional/My%20Files/a.md')).toBe('/Users/fictional/My Files/a.md')
+  })
+
+  it.each([
+    ['%2e%2e', '/Users/fictional/%2e%2e/a.md', '/Users/fictional/../a.md'],
+    ['%5c', '/Users/fictional/a%5cb.md', '/Users/fictional/a\\b.md'],
+    ['%3A', '/Users/fictional/a%3Ab.md', '/Users/fictional/a:b.md'],
+  ])('reads %s as the character it names, which a path may carry', (_name, destination, path) => {
+    expect(written(destination)).toBe(path)
+  })
+
+  it.each([
+    ['a null character', '/Users/fictional/a%00b.md'],
+    ['a line break', '/Users/fictional/a%0Ab.md'],
+    ['a leading double slash', '%2F%2Fhost.example/a.md'],
+    ['a scheme', 'http%3A//host.example/a.md'],
+    ['a network share', '%5C%5Cserver%5Cshare%5Ca.md'],
+  ])('keeps %s as written', (_name, destination) => {
+    expect(written(destination)).toBe(destination)
+  })
+})
