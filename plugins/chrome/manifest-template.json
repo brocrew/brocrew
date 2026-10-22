@@ -93,7 +93,7 @@
         "properties": {
           "action": {
             "type": "string",
-            "enum": ["create-profile", "set-enabled", "open-window"],
+            "enum": ["create-profile", "set-enabled", "open-window", "delete-profile"],
             "maxLength": 32
           },
           "profile": {
@@ -102,6 +102,10 @@
           },
           "enabled": {
             "type": "boolean"
+          },
+          "confirm": {
+            "type": "string",
+            "maxLength": 32
           }
         },
         "required": ["action", "profile"],
