@@ -175,6 +175,10 @@ export class ApiKeys {
     return (await this.current(provider))?.key ?? null
   }
 
+  revision(provider: Provider): number {
+    return this.changes.get(provider) ?? 0
+  }
+
   /** Concurrent launches share one read; only readability, never the key, is cached. */
   current(provider: Provider): Promise<OpenKey | null> {
     const kept = this.store.keptApiKey(provider)
