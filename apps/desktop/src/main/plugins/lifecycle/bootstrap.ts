@@ -1,12 +1,12 @@
-import { loadRepoPluginList } from '../catalogue/repo-list'
+import { loadRepoPluginList, parseRepoPluginList } from '../catalogue/repo-list'
 import { localPluginArchive } from '../catalogue/local'
 import { devPluginArchive } from '../catalogue/dev-source'
 import { createPublicKey } from 'node:crypto'
 import { join } from 'node:path'
 import { lstat } from 'node:fs/promises'
 import { GlobalPluginState } from '../state/store'
-import { immutableFile, sourceBytes } from '../node-host-files'
-import { PLUGIN_LIMITS } from '../package-digests'
+import { immutableFile, sourceBytes, verifyImmutableFile } from '../node-host-files'
+import { PLUGIN_LIMITS, pluginSha256 } from '../package-digests'
 import { thisMachine } from '../package-schema'
 import { createRepoAwarePluginVerifier } from '../package-verifier'
 import { createSupervisorLifecycle } from './supervisor'
@@ -42,6 +42,18 @@ export async function bootstrapPluginLifecycle(options: {
     }).verifyCatalogue(catalogue.bytes, catalogue.signature).entries.length
   )
     throw new Error('unavailable')
+  let repoList: { bytes: Uint8Array; sha256: string; appVersion: string } | undefined
+  if (repo?.repoList) {
+    if (!repo.appVersion) throw new Error('unavailable')
+    const bytes = await sourceBytes(repo.repoList.path, PLUGIN_LIMITS.catalogueBytes)
+    await verifyImmutableFile(repo.repoList.path, bytes)
+    if (
+      pluginSha256(bytes) !== repo.repoList.sha256 ||
+      parseRepoPluginList(bytes, target, repo.appVersion).sha256 !== repo.catalogueSha256
+    )
+      throw new Error('unavailable')
+    repoList = { bytes, sha256: repo.repoList.sha256, appVersion: repo.appVersion }
+  }
   const root = join(options.root, 'state')
   const exists = await lstat(root).then(
     () => true,
@@ -88,6 +100,7 @@ export async function bootstrapPluginLifecycle(options: {
         state,
         pinnedPublicKey,
         repoCatalogueSha256: repo?.catalogueSha256,
+        repoList,
         target,
         catalogue,
         names: repo?.names ?? { chrome: 'Chrome' },
@@ -103,6 +116,11 @@ export async function bootstrapPluginLifecycle(options: {
               return {
                 catalogue: { bytes: list.bytes, signature: Buffer.alloc(0) },
                 repoCatalogueSha256: list.sha256,
+                repoList: {
+                  bytes: list.rawBytes,
+                  sha256: list.repoList.sha256,
+                  appVersion: repo.appVersion!,
+                },
                 names: Object.fromEntries(list.entries.map((entry) => [entry.id, entry.name])),
               }
             }

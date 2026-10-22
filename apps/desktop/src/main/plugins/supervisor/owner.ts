@@ -111,10 +111,17 @@ export class PluginSupervisor {
     if (this.agentBridge) refuse()
     this.agentBridge = bridge
   }
+  /** Remaining wall-clock time in the owner's bounded cleanup, for trusted child teardown. */
+  remainingDrainMs(): number {
+    return this.drainDeadline === undefined
+      ? (this.options.drainWithin ?? OWNER_LIMITS.drain)
+      : Math.max(0, this.drainDeadline - performance.now())
+  }
   private revocationFailed = false
   private server: Server | undefined
   private timer: ReturnType<typeof setInterval> | undefined
   private drainWork: Promise<boolean> | undefined
+  private drainDeadline: number | undefined
   private release!: () => void
   private releaseDone!: Promise<void>
   private stopped!: () => void
@@ -450,6 +457,7 @@ export class PluginSupervisor {
   }
   private drain(): Promise<boolean> {
     this.drainWork ??= (async () => {
+      this.drainDeadline = performance.now() + (this.options.drainWithin ?? OWNER_LIMITS.drain)
       const result = await bounded(
         (async () => {
           await Promise.all(this.revocations)

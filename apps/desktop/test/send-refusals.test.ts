@@ -348,9 +348,13 @@ describe('219 §2 · the table names every refusal on the send path', () => {
     expect(bodies.send).toContain('this.requireToMessage(')
     expect(bodies.send).toContain('this.assertCanTakeTurn(')
     expect(bodies.send).toContain('recheckHandedPaths(')
-    // ⚑ …and its catch waits out a stop under it before anything else.
-    expect(bodies.send).toContain(
-      "if (how.onAStop === 'start-it-again' && this.itStoppedUnder(session)) {\n        return this.aDeliveryAStopCaught(sessionId, text, by, attachments, how)\n      }",
+    // Both retry catches preserve an explicit cancellation instead of sending the words again.
+    const sendCode = bodies.send.replace(/\s+/g, ' ')
+    expect(sendCode).toContain(
+      "if ( how.onAStop === 'start-it-again' && !(error instanceof StoppedBeforeSend) && this.itStoppedUnder(session) ) { return this.aDeliveryAStopCaught(sessionId, text, by, attachments, how) }",
+    )
+    expect(sendCode).toContain(
+      "if ( how.onAStop === 'start-it-again' && !(error instanceof TurnInProgress) && !(error instanceof StoppedBeforeSend) && this.itStoppedUnder(session) ) { return this.aDeliveryAStopCaught(sessionId, text, by, attachments, how) }",
     )
     // ⛔ **670 · and the public door IS that body**, with a rule for a lost race and nothing else.
     // A second gate — or a second way in — added to the one-line door would sit outside this census,

@@ -158,7 +158,7 @@ MUTATIONS = [
         "M7 · 🔴 **the retraction read runs on every poll** · five seconds, whether or not anything "
         "has walled — the cost this guard exists to refuse, on the path `533` already narrowed "
         "three ways before parsing a single payload",
-        [(STORE, "    if (walls.length === 0) return []\n", "")],
+        [(STORE, "    if (relevant.length === 0) return []\n", "")],
     ),
     (
         "M8 · ⚠️ **an all-clear loses its window on the way out of the database** · `M4` arriving "

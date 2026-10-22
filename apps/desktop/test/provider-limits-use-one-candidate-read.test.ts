@@ -17,6 +17,7 @@ describe('provider limits use one candidate read', () => {
   let db: AppDatabase
   let store: SessionStore
   let calls: string[]
+  let inputs: { sql: string; args: unknown[] }[]
   let work: MainThreadWork
   let ordinal: number
 
@@ -25,6 +26,7 @@ describe('provider limits use one candidate read', () => {
     db = openDatabase(':memory:')
     applyMigrations(db, migrations)
     calls = []
+    inputs = []
     let clock = 0
     work = new MainThreadWork(() => clock++)
     const prepare = db.prepare.bind(db)
@@ -34,6 +36,7 @@ describe('provider limits use one candidate read', () => {
         const read = statement[name].bind(statement)
         vi.spyOn(statement, name).mockImplementation((...args: unknown[]) => {
           calls.push(sql)
+          inputs.push({ sql, args })
           return read(...args)
         })
       }
@@ -85,6 +88,71 @@ describe('provider limits use one candidate read', () => {
   }
 
   const candidateReads = () => calls.filter((sql) => sql.includes('payload LIKE ?'))
+
+  it('same-account relaunches after a standing wall do not re-query conversation turns', () => {
+    const first = conversation('fern-relaunch')
+    row(first, { message: wall }, now - 1000)
+    const accountLives = [{ sessionId: first, since: 0, account: 'fern-account' }]
+    for (let n = 0; n < 20; n++) {
+      const id = conversation(`willow-relaunch-${n}`)
+      accountLives.push({ sessionId: id, since: 0, account: 'willow-account' })
+      for (let life = 1; life <= 3; life++)
+        accountLives.push({ sessionId: id, since: now - 900 + life, account: 'willow-account' })
+      store.append(id, ordinal++, { type: 'user_turn', text: 'fictional work' }, now - 501)
+      store.append(id, ordinal++, { type: 'turn', state: 'completed' }, now - 500)
+    }
+    expect(store.providerLimitsSeen(now, undefined, accountLives).rows).toHaveLength(1)
+    calls.length = 0
+    expect(store.providerLimitsSeen(now + 1, undefined, accountLives).rows).toHaveLength(1)
+    expect(calls.filter((sql) => /FROM turn\s+t\b/.test(sql))).toEqual([])
+  })
+
+  it('keeps account retractions between polls and revisits only a session whose turn completed', () => {
+    const first = conversation('fern')
+    const second = conversation('willow')
+    row(first, { message: wall }, now - 1000)
+    const accountLives = [
+      { sessionId: first, since: 0, account: 'fern-account' },
+      { sessionId: second, since: 0, account: 'willow-account' },
+    ]
+    const complete = (id: string, at: number) => {
+      store.append(id, ordinal++, { type: 'user_turn', text: 'fictional work' }, at - 1)
+      store.append(id, ordinal++, { type: 'turn', state: 'completed' }, at)
+    }
+    complete(second, now - 500)
+    const before = store.providerLimitsSeen(now, undefined, accountLives)
+    expect(before.rows).toHaveLength(1)
+    calls.length = 0
+    expect(store.providerLimitsSeen(now + 1, undefined, accountLives).rows).toEqual(before.rows)
+    expect(calls.filter((sql) => /FROM turn\s+t\b/.test(sql))).toEqual([])
+    complete(second, now - 100)
+    calls.length = 0
+    expect(store.providerLimitsSeen(now + 2, undefined, accountLives).rows).toEqual(before.rows)
+    const turnReads = calls.filter((sql) => /FROM turn\s+t\b/.test(sql))
+    for (const sql of turnReads) expect(sql).toMatch(/t\.session_id\s*=/)
+    const switched = [
+      ...accountLives,
+      { sessionId: second, since: now - 300, account: 'cedar-account' },
+    ]
+    calls.length = 0
+    expect(store.providerLimitsSeen(now + 2, undefined, switched).rows).toEqual(before.rows)
+    const historical = calls.filter((sql) => /FROM turn\s+t\b/.test(sql))
+    expect(historical).toHaveLength(1)
+    const bound = [...inputs].reverse().find((one) => one.sql === historical[0])!.args[0] as {
+      sessionLives: string
+    }
+    expect(JSON.parse(bound.sessionLives)).toEqual(
+      switched.filter((life) => life.sessionId === second),
+    )
+    const plan = db.prepare(`EXPLAIN QUERY PLAN ${historical[0]!}`).all({
+      oldest: now - 1000,
+      sessionLives: JSON.stringify(switched.filter((life) => life.sessionId === second)),
+      sessionId: second,
+    }) as { detail: string }[]
+    expect(plan.map((one) => one.detail).join(' ')).toMatch(/SEARCH t USING INDEX turn_session_idx/)
+    complete(first, now)
+    expect(store.providerLimitsSeen(now + 3, undefined, accountLives).rows).toEqual([])
+  })
 
   it('counts raw candidate ledgers even when every matching row is torn', () => {
     const first = conversation('first')

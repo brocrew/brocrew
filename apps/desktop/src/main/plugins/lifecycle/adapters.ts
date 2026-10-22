@@ -1,3 +1,4 @@
+import type { PluginRemovalOutcome } from '../../../shared/plugin-settings'
 import type { PluginNodeReady } from '../node-host'
 import { PluginSupervisorError } from '../supervisor/protocol'
 import type { createLifecycleAgentBridge } from './agent-bridge'
@@ -22,7 +23,10 @@ export interface PluginAdapter {
    * The plugin's own clean-up while it still runs, before it is uninstalled. A plugin that has one also has
    * its private data folder deleted with it.
    */
-  uninstall?(connection: PluginNodeReady, signal: AbortSignal): Promise<void>
+  uninstall?(
+    connection: PluginNodeReady,
+    signal: AbortSignal,
+  ): Promise<PluginRemovalOutcome['logout']>
 }
 const adapters: Readonly<Record<string, PluginAdapter>> = Object.freeze({
   chrome: {

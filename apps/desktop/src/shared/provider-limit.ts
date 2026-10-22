@@ -73,6 +73,25 @@ import { PROVIDER_NAME } from './runtime-ipc'
  */
 export const PROVIDER_WALL_LOOKBACK_MS = 31 * 24 * 60 * 60 * 1000
 
+export interface ProviderLimitAccountLife {
+  readonly sessionId: string
+  readonly since: number
+  readonly account: string | null
+}
+
+/** Resolves records against one immutable snapshot of known launch identities. */
+export function providerLimitAccounts(lives: readonly ProviderLimitAccountLife[]) {
+  const sessions = new Map<string, ProviderLimitAccountLife[]>()
+  for (const life of lives) {
+    const held = sessions.get(life.sessionId) ?? []
+    held.push(life)
+    sessions.set(life.sessionId, held)
+  }
+  for (const held of sessions.values()) held.sort((a, b) => b.since - a.since)
+  return (sessionId: string, at: number): string | null =>
+    sessions.get(sessionId)?.find((life) => life.since <= at)?.account ?? null
+}
+
 /**
  * ⛔ **How much of a person's work this wall has taken** — two words, and the provider chooses
  * which by what it reported rather than this app by a threshold.
@@ -98,6 +117,7 @@ export type LimitStanding =
  * and there is nothing on it a window could not have been told twice.
  */
 export interface ProviderLimitSeen {
+  readonly account?: string
   /** Which provider walled — read off the provider's own sentence, which opens with its name. */
   readonly provider: Provider
   /**
@@ -260,6 +280,7 @@ export function readProviderLimit(said: string, at: number): ProviderLimitSeen |
  * provider that returned a completed turn was not refusing anything at that instant.
  */
 export interface ProviderTakingWork {
+  readonly account?: string
   /** Which provider was answering. */
   readonly provider: Provider
   /**
@@ -294,7 +315,7 @@ export interface ProviderTakingWork {
  * change riding on a behaviour change, which `533 M4` anchors on besides.
  */
 export const providerLimitKey = (seen: ProviderLimitSeen): string =>
-  `${seen.provider} ${seen.window}`
+  `${seen.provider} ${seen.window}${seen.account === undefined ? '' : ` ${seen.account}`}`
 
 /**
  * 🔴 **Whether a later record disproves this wall** (586, `HO-080` §1).
@@ -344,6 +365,7 @@ const retractedBy = (wall: ProviderLimitSeen, takingWork: readonly ProviderTakin
   takingWork.some(
     (one) =>
       one.provider === wall.provider &&
+      (one.account === undefined || wall.account === undefined || one.account === wall.account) &&
       one.at > wall.at &&
       (one.window === '' || one.window === wall.window),
   )
@@ -393,10 +415,15 @@ export function foldProviderLimits(
     if (held === undefined || one.at >= held.at) newest.set(providerLimitKey(one), one)
   }
   const walled = new Set(
-    [...newest.values()].filter((one) => one.standing === 'stopped').map((one) => one.provider),
+    [...newest.values()]
+      .filter((one) => one.standing === 'stopped')
+      .map((one) => `${one.provider}\u0000${one.account ?? ''}`),
   )
   return [...newest.values()]
-    .filter((one) => one.standing === 'stopped' || !walled.has(one.provider))
+    .filter(
+      (one) =>
+        one.standing === 'stopped' || !walled.has(`${one.provider}\u0000${one.account ?? ''}`),
+    )
     .sort(
       (left, right) =>
         STANDING_RANK[left.standing] - STANDING_RANK[right.standing] ||
