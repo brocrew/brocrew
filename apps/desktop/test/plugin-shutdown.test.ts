@@ -305,6 +305,114 @@ describe.skipIf(process.platform === 'win32')(
         if (!closed) await first.client.uninstall('chrome').catch(() => undefined)
       }
     })
+    it('keeps the person bridge open for a crash revoke pending at last-lease drain', async () => {
+      const f = await fixture()
+      const first = await attached(f)
+      await first.client.install('chrome')
+      const ack = deferred<boolean>()
+      const revoke = vi.spyOn(first.sink.sink, 'revoke').mockImplementationOnce(() => ack.promise)
+      first.fake.runs[0]!.exit.resolve({ exited: true })
+      await vi.waitFor(() => expect(revoke).toHaveBeenCalled())
+      const closing = first.lease.close()
+      let settled = false
+      void closing.finally(() => {
+        settled = true
+      })
+      try {
+        await vi.waitFor(() => expect(first.fake.runs[0]!.process.stop).toHaveBeenCalled())
+        await new Promise<void>((resolve) => setImmediate(resolve))
+        expect(settled).toBe(false)
+        await expect(first.client.catalogue()).resolves.toMatchObject([{ state: 'Unavailable' }])
+        ack.resolve(true)
+        expect(await closing).toBe(true)
+        expect(await phase(f.root)).toBe('stopped')
+        expect(first.service.controller.cleanForShutdown()).toBe(true)
+        const state = reopenLifecycleFixture(f)
+        const second = await attached(f, state)
+        expect(await second.client.catalogue()).toMatchObject([{ state: 'Running' }])
+        await second.client.close()
+        expect(await second.lease.close()).toBe(true)
+      } finally {
+        ack.resolve(true)
+        await closing.catch(() => undefined)
+      }
+    })
+    it('ends an unresponsive person channel before the owner drain deadline', async () => {
+      const f = await fixture()
+      const first = await attached(f)
+      await first.client.install('chrome')
+      const ack = deferred<boolean>()
+      const revoke = vi.spyOn(first.sink.sink, 'revoke').mockImplementationOnce(() => ack.promise)
+      first.fake.runs[0]!.exit.resolve({ exited: true })
+      await vi.waitFor(() => expect(revoke).toHaveBeenCalled())
+      const closing = first.lease.close()
+      try {
+        // The owner fixture allows one second; the consumer intentionally never replies in it.
+        await new Promise<void>((resolve) => setTimeout(resolve, 1100))
+        expect(await closing).toBe(true)
+        expect(await phase(f.root)).toBe('stopped')
+        await expect(first.client.catalogue()).rejects.toThrow()
+        const state = reopenLifecycleFixture(f)
+        const second = await attached(f, state)
+        expect(await second.client.catalogue()).toMatchObject([{ state: 'Running' }])
+        await second.client.close()
+        expect(await second.lease.close()).toBe(true)
+      } finally {
+        ack.resolve(true)
+        await closing.catch(() => undefined)
+      }
+    })
+    it('acknowledges a proven exit arriving at the drain boundary before closing person control', async () => {
+      const f = await fixture()
+      const run = await attached(f)
+      await run.client.install('chrome')
+      const entered = deferred<void>(),
+        release = deferred<void>(),
+        ack = deferred<boolean>()
+      const process = run.fake.runs[0]!
+      vi.mocked(process.process.stop).mockImplementation(async () => {
+        entered.resolve()
+        await release.promise
+        process.exit.resolve({ exited: true })
+        return { exited: true }
+      })
+      const revoke = vi.spyOn(run.sink.sink, 'revoke').mockImplementationOnce(() => ack.promise)
+      const closing = run.owner.shutdown()
+      try {
+        await entered.promise
+        process.exit.resolve({ exited: true })
+        release.resolve()
+        await vi.waitFor(() => expect(revoke).toHaveBeenCalled())
+        ack.resolve(true)
+        expect(await closing).toBe(true)
+        expect(await phase(f.root)).toBe('stopped')
+      } finally {
+        release.resolve()
+        ack.resolve(true)
+        await closing.catch(() => undefined)
+      }
+    })
+    it.each(['failed acknowledgement', 'unproved exit'] as const)(
+      'closes person control and attempts every child stop after a crash with %s',
+      async (failure) => {
+        const f = await fixture()
+        const run = await attached(f)
+        await run.client.install('chrome')
+        const revoke = vi
+          .spyOn(run.sink.sink, 'revoke')
+          .mockResolvedValue(failure !== 'failed acknowledgement')
+        run.fake.runs[0]!.exit.resolve({ exited: failure !== 'unproved exit' })
+        await vi.waitFor(() => expect(revoke).toHaveBeenCalled())
+        await expect(run.service.controller.drain()).rejects.toMatchObject({
+          code: 'cleanup-pending',
+        })
+        expect(await run.owner.shutdown()).toBe(false)
+        await expect(run.client.catalogue()).rejects.toThrow()
+        expect(run.fake.runs[0]!.process.stop).toHaveBeenCalled()
+        expect(run.service.controller.cleanForShutdown()).toBe(false)
+        expect(await phase(f.root)).toBe('blocked')
+      },
+    )
     it('intentional drain cannot turn an unproved exact-run exit into clean shutdown', async () => {
       let rejectExit!: (error: Error) => void
       const exit = new Promise<void>((_resolve, reject) => {

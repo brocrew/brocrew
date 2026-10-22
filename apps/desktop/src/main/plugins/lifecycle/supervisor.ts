@@ -62,7 +62,10 @@ export async function createSupervisorLifecycle(options: {
       // Intent precedes the concurrent host stops in the owner's child drain. Each exact run must
       // still prove exit, and neither a failed consumer nor another child skips the remaining work.
       const drained = controller.drain()
-      const results = await Promise.allSettled([agents.close(), bridge.close(), drained])
+      // Crash revocations need the person channel until the bounded drain has settled.
+      // A failed drain still closes every route; its failure remains in the results below.
+      const personClosed = drained.catch(() => undefined).then(() => bridge.close())
+      const results = await Promise.allSettled([agents.close(), personClosed, drained])
       if (results.some((one) => one.status !== 'fulfilled') || !controller.cleanForShutdown())
         throw new PluginSupervisorError('cleanup-pending')
       closed = true
