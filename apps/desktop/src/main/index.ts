@@ -138,7 +138,7 @@ import {
 } from './dock-label'
 import { DOCK_LABEL_CHANNELS, isDockLabelChange } from '../shared/dock-label'
 import { freeBytesOn, nativeTranscriptPath } from './archive/native-file'
-import { createSessionStore } from './db/session-store'
+import { createMemoryAmendmentObserver, createSessionStore } from './db/session-store'
 import { applyMigrations } from './db/migrate'
 import { NewerDatabaseError, openOrRefuse, UnreadableDatabaseError } from './db/newer-database'
 import type { RecoveryService, StartupVerdict } from '../shared/recovery'
@@ -197,7 +197,11 @@ import {
 } from './saved-methods'
 import { createSavedMethodService } from './saved-method-service'
 import { createMethodChangeStore } from './db/method-changes'
-import { stageKnowledgeFile, sweepKnowledgeStages } from './runtime/agent-memory'
+import {
+  createMemoryService,
+  stageKnowledgeFile,
+  sweepKnowledgeStages,
+} from './runtime/agent-memory'
 import { ApiKeys, askTheProvider, safeStorageCipher } from './runtime/api-keys'
 import { listProcesses, memoryOf } from './runtime/process-listing'
 import { providerUsageFile, readKeptUsage, writeKeptUsage } from './provider-usage-file'
@@ -764,7 +768,7 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
   ))
   retention.start()
   // Recovery observes interrupted operations before any host door can remove their identity.
-  let savedMethodsChanged: (slug: string) => void = () => {}
+  let knowledgeChanged: (slug: string) => void = () => {}
   const methodKnowledge = await createSavedMethodService({
     homesRoot: providerHomesRoot(userData),
     folderOf: (slug) => savedMethodsFolder(userData, slug),
@@ -773,7 +777,18 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
     now: Date.now,
     stage: stageKnowledgeFile,
     sweep: sweepKnowledgeStages,
-    changed: (slug) => savedMethodsChanged(slug),
+    changed: (slug) => knowledgeChanged(slug),
+  })
+  const memoryKnowledge = await createMemoryService({
+    store,
+    inputsOf: (slug) => ({
+      profileId: slug,
+      homesRoot: providerHomesRoot(userData),
+      homeOf: (provider) => deriveProviderHome(userData, { profileId: slug, provider }),
+    }),
+    now: Date.now,
+    reconcile: createMemoryAmendmentObserver(database, Date.now).reconcile,
+    changed: (slug) => knowledgeChanged(slug),
   })
   const runtimeHost = new RuntimeHost({
     plugins: pluginController,
@@ -791,6 +806,7 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
     closeSharedSkills: () => sharedDiscovery.close(),
     skillsForAPerson: sharedDiscovery.window,
     savedMethods: methodKnowledge,
+    memoryKnowledge,
     afterFirstWindowLoad: firstWindowLoad,
     transcriptsCleared: (from, to) => transcriptRetention?.recent(from, to) ?? Promise.resolve([]),
     workSearchReader: startWorkSearch(database.name),
@@ -1133,7 +1149,7 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
             'the process memory read',
           ),
   })
-  savedMethodsChanged = () => runtimeHost.savedMethodsChanged()
+  knowledgeChanged = () => runtimeHost.agentKnowledgeChanged()
   return runtimeHost
 }
 

@@ -30,6 +30,8 @@ import type { AgentIdentity } from './runtime-ipc'
 export interface IdentityUse {
   /** An unfinished filesystem change still holds its recoverable originals. */
   readonly hasUnfinishedMethodChange?: boolean
+  readonly hasUnfinishedMemoryChange?: boolean
+  readonly isChangingMemory?: boolean
 
   /**
    * ⛔ **The identity this is about, FOLDED** — the same key {@link AgentIdentity.slug} carries, so
@@ -159,6 +161,8 @@ export const WHAT_HOLDS_AN_IDENTITY = [
   'this-app',
   'a-launch',
   'unfinished-method-change',
+  'unfinished-memory-change',
+  'memory-change-in-flight',
 ] as const
 
 /** One of {@link WHAT_HOLDS_AN_IDENTITY}. */
@@ -176,6 +180,8 @@ export const HOLDING_SAYS: Readonly<Record<WhatHoldsAnIdentity, string>> = {
   'this-app': 'this app ships this name, so the next launch would bring it back',
   'a-launch': 'a conversation is starting as it right now',
   'unfinished-method-change': "a change to its saved methods didn't finish and needs checking",
+  'unfinished-memory-change': "a change to its memory didn't finish and needs checking",
+  'memory-change-in-flight': 'a change to its memory is still running',
 }
 
 /**
@@ -191,6 +197,8 @@ export function whatHoldsIt(use: IdentityUse): readonly WhatHoldsAnIdentity[] {
   if (use.thisAppMintsIt) held.push('this-app')
   if (use.isLaunching) held.push('a-launch')
   if (use.hasUnfinishedMethodChange) held.push('unfinished-method-change')
+  if (use.hasUnfinishedMemoryChange) held.push('unfinished-memory-change')
+  if (use.isChangingMemory) held.push('memory-change-in-flight')
   return held
 }
 
