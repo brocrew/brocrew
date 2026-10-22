@@ -231,8 +231,8 @@
           "sha256": "36203330bf996251e46100fb3d86d9289c5250a556a3762b2bdbcc8ca3084ffe"
         }
       ],
-      "changes": "Seven tools; reading behind the person's switch; sending only to writable groups; fixed refusals.",
-      "destinationSha256": "e9f853f55d4364223c9fe400e6d05498f6c28873740b004c87b0377c3d7bfadc"
+      "changes": "Seven tools; reading behind the person's switch; sending only to writable groups; fixed refusals; recheck the selected group permission after file preparation and before send reservation",
+      "destinationSha256": "c4947b76dba360cb398857e38b50d99c4d79b8beee2f1e5616548eb2d7772733"
     },
     {
       "destination": "plugins/whatsapp/src/policy.ts",

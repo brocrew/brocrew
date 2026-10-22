@@ -162,8 +162,8 @@
       "source": "agent-chrome/src/tools/index.ts",
       "destination": "plugins/chrome/src/tools/index.ts",
       "sourceSha256": "23f8ed4bafd42f3578e915f835a195c99bd8092d7215b4dd812b0fe406768569",
-      "changes": "private downloads; reviewed errors; source dashboard instructions replaced by Plugins screen; comments/client references removed; queued permission rechecks or private-directory lstat/realpath fences; 0.1.1: back/forward wait for commit; URL/reload retain DOM load wait; 0.1.2: a download is watched for before the click or navigation that starts it; a headless wait ignores earlier denied downloads; 0.1.2: tool descriptions name the private files and downloads folders by their absolute paths",
-      "destinationSha256": "8e834d000de963db7471f919cb1188479cfec3fc2114034c34af0dbbedfad08e"
+      "changes": "private downloads; reviewed errors; source dashboard instructions replaced by Plugins screen; comments/client references removed; queued permission rechecks or private-directory lstat/realpath fences; 0.1.1: back/forward wait for commit; URL/reload retain DOM load wait; 0.1.2: a download is watched for before the click or navigation that starts it; a headless wait ignores earlier denied downloads; 0.1.2: tool descriptions name the private files and downloads folders by their absolute paths; download waits describe serialized tool calls and independent events; agent clicks and navigation use the combined download tool",
+      "destinationSha256": "1f84cdef6ae43a48fa597ffd53bbdcae8e6a975ca2ca37c85a9020d60105665b"
     },
     {
       "source": "agent-chrome/src/tools/modeSwitch.ts",
