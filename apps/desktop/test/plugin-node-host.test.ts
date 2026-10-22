@@ -301,6 +301,65 @@ describe.skipIf(process.platform === 'win32')('app-supplied plugin Node host', (
   afterAll(async () => {
     if (root) await rm(root, { recursive: true, force: true })
   })
+  it('starts a verified hook-only package with no MCP or configuration server', async () => {
+    const { host } = await context()
+    const body = `import http from 'node:http'; import fs from 'node:fs';
+const auth = JSON.parse(fs.readFileSync(process.env.BROCREW_PLUGIN_AUTH, 'utf8'));
+const server = http.createServer((req,res) => {
+ if (req.url !== '/v1/hooks/healthz' || req.headers.authorization !== 'Bearer ' + auth.hookToken) { res.writeHead(401); res.end('{}'); return; }
+ res.writeHead(200, {'content-type':'application/json'}); res.end(JSON.stringify({ok:true,version:'1.0.0',hookProtocol:1}));
+});
+server.listen(0,'127.0.0.1',()=>process.send({channel:'brocrew-plugin-node:v1',runId:process.env.BROCREW_PLUGIN_RUN_ID,type:'listening',port:server.address().port}));
+process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
+`
+    const files = new Map([['dist/recipe.mjs', Buffer.from(body)]])
+    const manifest = {
+      ...manifestFor(files),
+      format: 2 as const,
+      id: 'fictional-context',
+      version: '1.0.0',
+      authors: ['brocrew'],
+      platforms: [{ os: process.platform, cpu: process.arch }],
+      server: null,
+      toolApi: null,
+      ui: null,
+      uiApi: null,
+      skills: [],
+      serviceTemplates: [],
+      executor: { kind: 'node' as const, entry: 'dist/recipe.mjs' },
+      hooks: [
+        {
+          id: 'related-titles',
+          kind: 'turn.context.titles',
+          api: 1,
+          optional: true as const,
+          inputs: ['resource-titles' as const],
+        },
+      ],
+    }
+    const value = packageFixture({ files, manifest: manifest as ReturnType<typeof manifestFor> })
+    const checked = createPluginVerifier({
+      pinnedPublicKey: fictionalPublicKey,
+      target: { os: process.platform as 'darwin' | 'linux', cpu: process.arch as 'arm64' | 'x64' },
+    })
+      .verifyCatalogue(value.bytes, value.signature)
+      .verifyPackage(value.manifest.id, value.manifest.version, value.archive)
+    const handle = await host.start({
+      package: checked,
+      releaseDigest: value.release.archive.sha256,
+    })
+    const ready = await handle.ready()
+    expect(() => ready.mcp()).toThrow()
+    expect(() => ready.admin()).toThrow()
+    const hooks = Reflect.get(ready, 'hooks') as () => {
+      url: string
+      headers: Record<string, string>
+    }
+    expect(typeof hooks).toBe('function')
+    expect((await fetch(hooks().url + '/healthz', { headers: hooks().headers })).status).toBe(200)
+    expect(JSON.stringify(ready)).not.toContain('Bearer')
+    expect(await handle.stop()).toEqual({ exited: true })
+  })
   it('removes the bootstrap auth file at listening, before the first authenticated readiness check', async () => {
     const { host, home } = await context()
     const body = source.replace(
