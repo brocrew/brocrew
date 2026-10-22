@@ -9,7 +9,6 @@ jobs:
   packaged:
     if: >-
       github.repository == 'brocrew/brocrew' &&
-      github.event.repository.private == true &&
       startsWith(github.ref, 'refs/heads/gate/plugin-packaged-')
     runs-on: macos-15
     timeout-minutes: 45

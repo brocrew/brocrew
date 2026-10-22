@@ -2,7 +2,7 @@
 # Linux, and the DOM project in its sixteen groups, each group in a browser of its own, on
 # windows-2022.
 #
-# Only on a pushed `gate/windows-suite-*` branch, or by hand, and only in the private repository.
+# Only on a pushed `gate/windows-suite-*` branch, or by hand, and only in the BroCrew repository.
 # It references no secret and signs in to nothing. Every test process runs in the fictional home
 # the vitest configs give it (`scripts/lib/tests-run-in-a-fictional-home.mjs`), as on Linux; like
 # ci.yml, it leaves `BROBOT_TESTS_START_NO_PROGRAM` unset, since many tests start git or a worker.
@@ -29,7 +29,7 @@ concurrency:
 jobs:
   test:
     name: test ${{ matrix.shard }}/4 (Windows)
-    if: github.repository == 'brocrew/brocrew' && github.event.repository.private == true
+    if: github.repository == 'brocrew/brocrew'
     # `windows-2022`, as windows.yml explains: installing needs a Visual Studio node-gyp knows.
     runs-on: windows-2022
     env:
@@ -106,7 +106,7 @@ jobs:
 
   dom:
     name: dom groups ${{ matrix.part }}/4 (Windows)
-    if: github.repository == 'brocrew/brocrew' && github.event.repository.private == true
+    if: github.repository == 'brocrew/brocrew'
     runs-on: windows-2022
     timeout-minutes: 60
     strategy:
