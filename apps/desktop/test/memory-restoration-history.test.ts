@@ -279,8 +279,12 @@ describe('memory restoration keeps absence, source and author in the existing hi
         unknown
       >[]
       expect(
-        after.map(({ source_id, ...row }) => {
+        after.map(({ source_id, outcome, actual, settled_by, settled_at, ...row }) => {
           expect(source_id).toBeNull()
+          expect(outcome).toBe('done')
+          expect(actual).toBeNull()
+          expect(settled_by).toBeNull()
+          expect(settled_at).toBeNull()
           return row
         }),
       ).toEqual(before)
