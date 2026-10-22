@@ -68,9 +68,11 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M3 · an empty model from the window is asked for as a model, so the answer is "
         f"\"not captured\" and not the default · killed by `{CHANNELS}`",
-        [(SNAPSHOTS,
-          "      return snapshotFor(provider, typeof model === 'string' && model !== '' ? model : null)\n",
-          "      return snapshotFor(provider, typeof model === 'string' ? model : null)\n")],
+        # This row follows the same behavior after provider facts moved into the registry.
+        [("apps/desktop/src/main/provider-snapshots.ts",
+          # ⚑ **provider registry · re-anchored in place, not retired** — The parsed provider replaces the raw input; treating an empty model string as a model still changes the same answer.
+          "      return snapshotFor(parsed.data, typeof model === 'string' && model !== '' ? model : null)\n",
+          "      return snapshotFor(parsed.data, typeof model === 'string' ? model : null)\n")],
     ),
     (
         "M4 · only the first date in a part is made a placeholder — a pattern replaces once · "

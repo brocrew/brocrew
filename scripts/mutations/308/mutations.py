@@ -73,7 +73,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "only the bytes it is measured against moved",
         [
             (
-                CFG,
+                # Provider facts live in the shared registry; this row plants the same fault there.
+                "packages/shared/src/providers/configuration.ts",
                 "    option: 'mcpServers',\n"
                 "    label: \"this session's own tools and any external servers granted to it, as MCP servers\",\n"
                 "    stance: 'passed',\n",
@@ -92,7 +93,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "`516`**, which widened the label; the deletion is the same deletion",
         [
             (
-                CFG,
+                # Provider facts live in the shared registry; this row plants the same fault there.
+                "packages/shared/src/providers/configuration.ts",
                 "  {\n"
                 "    option: 'mcpServers',\n"
                 "    label: \"this session's own tools and any external servers granted to it, as MCP servers\",\n"
@@ -108,7 +110,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "in the one place this app had already been bitten by it",
         [
             (
-                CFG,
+                # Provider facts live in the shared registry; this row plants the same fault there.
+                "packages/shared/src/providers/configuration.ts",
                 "{ name: '.claude.json', note: \"the SDK's own state — not a file you edit to add tools\" },",
                 "{ name: '.claude.json', note: \"the SDK's own state — add MCP servers here\" },",
             )
@@ -120,7 +123,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "reaches nothing",
         [
             (
-                CFG,
+                # Provider facts live in the shared registry; this row plants the same fault there.
+                "packages/shared/src/providers/configuration.ts",
                 "  { option: 'settingSources', label: 'settingSources: []', stance: 'pinned' },",
                 "  { option: 'settingSource', label: 'settingSources: []', stance: 'pinned' },",
             )
@@ -131,7 +135,9 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "home. ⚑ The one claim on this surface a user can ACT on — it is how they would export a "
         "home by hand — and `CLAUDE_CONFIG_DIR` is the variable whose emptiness `childEnvAdditions` "
         "refuses a launch over",
-        [(CFG, "    homeEnv: 'CLAUDE_CONFIG_DIR',", "    homeEnv: 'CLAUDE_HOME',")],
+        # This row follows the same behavior after provider facts moved into the registry.
+        # ⚑ **provider registry · re-anchored in place, not retired** — The config layout moved into shared data; naming the wrong home variable restores the same error.
+        [("packages/shared/src/providers/configuration.ts", "  homeEnv: 'CLAUDE_CONFIG_DIR',\n", "  homeEnv: 'CLAUDE_HOME',\n")],
     ),
     (
         "M6 · ⚠️ the Codex credential note goes back to *'the machine credential, copied in once at "
@@ -141,10 +147,12 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "than inferred",
         [
             (
-                CFG,
+                # This row follows the same behavior after provider facts moved into the registry.
+                "packages/shared/src/providers/configuration.ts",
                 # The referenced sign-in button was renamed; this existing expected-survivor row keeps its credential-provenance defect.
-                "        note: 'the credential this profile runs on, at 0600 — copied from ~/.codex, or minted here by \"Sign in for this agent\"',",
-                "        note: 'the machine credential, copied in once at 0600',",
+                # ⚑ **provider registry · re-anchored in place, not retired** — The credential note moved with the layout; the old wording still misstates the profile credential as a one-time machine copy.
+                "      note: 'the credential this profile runs on, at 0600 — copied from ~/.codex, or minted here by \"Sign in for this agent\"',\n",
+                "      note: 'the machine credential, copied in once at 0600',\n",
             )
         ],
     ),
@@ -202,23 +210,26 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "member of the table rather than merely to exist",
         [
             (
-                CFG,
-                "    model: CLAUDE_MODEL_NOTE,",
-                "    model: 'programmatic — MCP servers, tools and prompt are passed as SDK query() options',",
+                # This row follows the same behavior after provider facts moved into the registry.
+                "packages/shared/src/providers/configuration.ts",
+                # The hand-written sentence omits current passed options and the file-settings disclosure.
+                "  model: CLAUDE_MODEL_NOTE,\n",
+                "  model: 'programmatic — MCP servers, tools and prompt are passed as SDK query() options',\n",
             )
         ],
     ),
     (
-        "M12 · ⚠️ the sentence names every member of the table and describes one of them WRONGLY — "
-        "`mcpServers` is still in the table as `absent`, still named, and the prose now says it is "
-        "passed. ⛔ EXPECTED SURVIVED, and it is the honest bound of the whole design: the table is "
-        "checked against the code, the sentence is checked against the table, and the English "
-        "between them is checked by a person",
+        "M12 · the sentence names every measured option but describes its passed options as NOT "
+        "passed, while the measured table stays correct. The old absent-clause replacement became "
+        "a no-op when every current option became passed; the registry snapshot now pins the "
+        "same false-disclosure subject against the current sentence",
         [
             (
-                CFG,
-                "    model: CLAUDE_MODEL_NOTE,",
-                "    model: CLAUDE_MODEL_NOTE.replace('NOT passed', 'passed'),",
+                # This row follows the same behavior after provider facts moved into the registry.
+                "packages/shared/src/providers/configuration.ts",
+                # The current layout has no absent clause; reverse its present disclosure instead.
+                "  model: CLAUDE_MODEL_NOTE,\n",
+                "  model: CLAUDE_MODEL_NOTE.replace('are passed as SDK query() options', 'are NOT passed as SDK query() options'),\n",
             )
         ],
     ),

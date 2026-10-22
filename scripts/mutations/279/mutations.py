@@ -388,7 +388,8 @@ MUTATIONS = [
         "· EXPECTED (NOT MEASURED): runtime 1 red of 1472",
         [
             (
-                XCAPS,
+                # Provider facts live in the shared registry; this row plants the same fault there.
+                "packages/shared/src/providers/codex-capabilities.ts",
                 # ⚑ **713 · corrected in place** (standing rule 27): Codex's note says `/compact` still
                 # works there now (`R59`). Same collapse, same replacement; re-verified RED alone.
                 "    note: \"Codex's own skills, typed with a leading $. Codex publishes no slash commands over its app-server, so this list is skills and nothing else. /compact still works here: BroCrew turns it into Codex's own compaction request.\",",

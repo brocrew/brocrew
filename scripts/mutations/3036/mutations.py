@@ -106,10 +106,12 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "M6 · 🔴 **the reach by the wrong provider** · Claude asking first is said to write without "
         "asking, and Codex asking first to still ask before changing anything · killed by "
         f"`{GRANT}`",
-        [(HOST,
+        # This row follows the same behavior after provider facts moved into the registry.
+        [("apps/desktop/src/main/runtime/runtime-host.ts",
           # ⚑ **provider selection refactor · re-anchored in place, not retired** — The null case is explicit and the provider choice is exhaustive; reversing its values preserves the original wrong-reach fault.
-          "      : providerValue(row.provider, { claude: 'reads', codex: 'writes' })\n",
-          "      : providerValue(row.provider, { claude: 'writes', codex: 'reads' })\n")],
+          # ⚑ **provider registry · re-anchored in place, not retired** — The descriptor supplies grant reach; reversing reads and writes preserves the original wrong-provider fault and the null case.
+          "    return row === null ? 'reads' : providerDescriptor(row.provider).approval.grantReach\n",
+          "    return row === null ? 'reads' : providerDescriptor(row.provider).approval.grantReach === 'writes' ? 'reads' : 'writes'\n")],
     ),
     (
         "M7 · `~/x` is joined under the giver's folder instead of the home folder, so the grant names "

@@ -141,9 +141,11 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M8 · Codex's receipt promises a sign-in look and a cleared-limit notice Codex never gives — "
         f"words an agent waits on that cannot happen · killed by `{USAGE}`",
-        [(HOST,
+        # This row follows the same behavior after provider facts moved into the registry.
+        [("apps/desktop/src/main/runtime/runtime-host.ts",
           # ⚑ **provider selection refactor · re-anchored in place, not retired** — The limit receipt now uses an exhaustive selector; selecting the longer sign-in notice for every provider makes the same false promise.
-          "    const sooner = providerValue(provider, { claude: true, codex: false })\n",
+          # ⚑ **provider registry · re-anchored in place, not retired** — The descriptor supplies the sign-in notice fact; forcing it true makes the same unsupported promise for Codex.
+          "    const sooner = providerDescriptor(provider).limitClearsOnSignInChange\n",
           "    const sooner = true\n")],
     ),
     # USAGE · §4 › '🔴 W4.172 · the receipt says what really ends the wait: the reset at the latest,

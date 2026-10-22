@@ -240,7 +240,9 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         # Codex's ask row. Killed by `a-mode-a-child-inherits.test.ts`,
         # `a-mode-a-child-inherits.test.ts`.
         [
-            (MODES, "  codex: { ask: ['the-card-before-an-act', 'the-sandbox-around-an-act'], auto: [] },", "  codex: { ask: ['the-card-before-an-act'], auto: [] },"),
+            # This row follows the same behavior after provider facts moved into the registry.
+            # ⚑ **provider registry · re-anchored in place, not retired** — The protection declaration is now a descriptor field; removing the sandbox from Codex Ask preserves the original incomplete disclosure.
+            ("packages/shared/src/providers.ts", "        ask: ['the-card-before-an-act', 'the-sandbox-around-an-act'],\n        auto: [],\n", "        ask: ['the-card-before-an-act'],\n        auto: [],\n"),
         ],
     ),
     (

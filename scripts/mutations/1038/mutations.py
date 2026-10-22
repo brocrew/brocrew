@@ -46,13 +46,17 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M3 · Codex auto still reads as sandboxed · the table says Codex auto keeps the sandbox past the folder, the old premise F050 corrected, so the table and the wire profile (danger-full-access) disagree — killed by `a-mode-a-child-inherits.test.ts`, `a-mode-a-child-inherits.test.ts`",
         [
-            (APPROVAL_MODE, "  codex: { ask: ['the-card-before-an-act', 'the-sandbox-around-an-act'], auto: [] },", "  codex: { ask: ['the-card-before-an-act', 'the-sandbox-around-an-act'], auto: ['the-sandbox-around-an-act'] },"),
+            # This row follows the same behavior after provider facts moved into the registry.
+            # ⚑ **provider registry · re-anchored in place, not retired** — The protection declaration is now a descriptor field; claim the sandbox remains in Auto again.
+            ("packages/shared/src/providers.ts", "        ask: ['the-card-before-an-act', 'the-sandbox-around-an-act'],\n        auto: [],\n", "        ask: ['the-card-before-an-act', 'the-sandbox-around-an-act'],\n        auto: ['the-sandbox-around-an-act'],\n"),
         ],
     ),
     (
         "M4 · Claude ask keeps nothing past its folder · the table carries 499's old empty ask row over, so no give from a Claude ask giver is ever wider and the rail refuses nothing — killed by `a-mode-a-child-inherits.test.ts`, `a-mode-a-child-inherits.test.ts`",
         [
-            (APPROVAL_MODE, "  claude: { ask: ['the-card-before-an-act'], auto: [] },", "  claude: { ask: [], auto: [] },"),
+            # This row follows the same behavior after provider facts moved into the registry.
+            # ⚑ **provider registry · re-anchored in place, not retired** — The protection declaration is now a descriptor field; omit the card from the Claude Ask case again.
+            ("packages/shared/src/providers.ts", "      protections: { ask: ['the-card-before-an-act'], auto: [] },\n", "      protections: { ask: [], auto: [] },\n"),
         ],
     ),
     (

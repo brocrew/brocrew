@@ -306,7 +306,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "`available` for a provider whose `turn/start` carries no sender",
         [
             (
-                CODEX_CAPS,
+                # Provider facts live in the shared registry; this row plants the same fault there.
+                "packages/shared/src/providers/codex-capabilities.ts",
                 "  turnProvenance: {\n    state: 'absent',\n",
                 "  turnProvenance: {\n    state: 'available',\n",
             )

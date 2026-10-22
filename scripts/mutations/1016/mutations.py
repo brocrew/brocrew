@@ -480,13 +480,17 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M42 · listProviderHomes walks every folder under the managed root, not only `default`, so a home this app never laid down is listed and adopted as if it were under `default` — killed by `provider-homes.test.ts`, `profile-uniqueness.test.ts`",
         [
-            (PROVIDER_HOMES, "  const root = join(providerHomesRoot(userData), HOME_FOLDER)\n  if (!existsSync(root)) return []\n\n  const homes: ExistingProviderHome[] = []\n  for (const profileId of subdirectories(root)) {\n    if (!isPathSegment(profileId)) continue\n    for (const provider of subdirectories(join(root, profileId))) {\n      if (provider !== 'claude' && provider !== 'codex') continue\n      homes.push({ profileId, provider, path: join(root, profileId, provider) })\n    }\n  }\n  return homes\n", "  const root = providerHomesRoot(userData)\n  if (!existsSync(root)) return []\n\n  const homes: ExistingProviderHome[] = []\n  for (const folder of subdirectories(root)) {\n    for (const profileId of subdirectories(join(root, folder))) {\n      if (!isPathSegment(profileId)) continue\n      for (const provider of subdirectories(join(root, folder, profileId))) {\n        if (provider !== 'claude' && provider !== 'codex') continue\n        homes.push({ profileId, provider, path: join(root, folder, profileId, provider) })\n      }\n    }\n  }\n  return homes\n"),
+            # This row follows the same behavior after provider facts moved into the registry.
+            # ⚑ **provider registry · re-anchored in place, not retired** — The schema now validates directory names; scanning beside the managed home folder still adopts homes this app did not create.
+            ("apps/desktop/src/main/runtime/provider-homes.ts", "  const root = join(providerHomesRoot(userData), HOME_FOLDER)\n  if (!existsSync(root)) return []\n\n  const homes: ExistingProviderHome[] = []\n  for (const profileId of subdirectories(root)) {\n    if (!isPathSegment(profileId)) continue\n    for (const provider of subdirectories(join(root, profileId))) {\n      const parsed = providerSchema.safeParse(provider)\n      if (!parsed.success) continue\n      homes.push({ profileId, provider: parsed.data, path: join(root, profileId, provider) })\n    }\n  }\n  return homes\n", "  const root = providerHomesRoot(userData)\n  if (!existsSync(root)) return []\n\n  const homes: ExistingProviderHome[] = []\n  for (const folder of subdirectories(root)) {\n    for (const profileId of subdirectories(join(root, folder))) {\n      if (!isPathSegment(profileId)) continue\n      for (const provider of subdirectories(join(root, folder, profileId))) {\n        const parsed = providerSchema.safeParse(provider)\n        if (!parsed.success) continue\n        homes.push({ profileId, provider: parsed.data, path: join(root, folder, profileId, provider) })\n      }\n    }\n  }\n  return homes\n"),
         ],
     ),
     (
         "M43 · the path listProviderHomes reports for a home omits the `default` folder, so adoption looks for the conversation where no home lies — killed by `adopt-sessions.test.ts`",
         [
-            (PROVIDER_HOMES, "homes.push({ profileId, provider, path: join(root, profileId, provider) })", "homes.push({ profileId, provider, path: join(providerHomesRoot(userData), profileId, provider) })"),
+            # This row follows the same behavior after provider facts moved into the registry.
+            # ⚑ **provider registry · re-anchored in place, not retired** — Only the validated provider expression changed; dropping the managed folder from the returned path restores the same fault.
+            ("apps/desktop/src/main/runtime/provider-homes.ts", "      homes.push({ profileId, provider: parsed.data, path: join(root, profileId, provider) })\n", "      homes.push({ profileId, provider: parsed.data, path: join(providerHomesRoot(userData), profileId, provider) })\n"),
         ],
     ),
     (

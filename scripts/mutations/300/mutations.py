@@ -475,7 +475,8 @@ MUTATIONS = [
         "that never sends one, which is 300 §3's *'fake tail'* in the one place a person would read "
         "it. ⚠️ TYPES only: `state: 'available'` with a `reason` beside it fails `tsc` and passes "
         "esbuild, so this row is expected to survive all four projects",
-        [(CLAUDE_CAPS, "  commandOutput: {\n    state: 'absent',", "  commandOutput: {\n    state: 'available',")],
+        # Provider facts live in the shared registry; this row plants the same fault there.
+        [("packages/shared/src/providers/claude-capabilities.ts", "  commandOutput: {\n    state: 'absent',", "  commandOutput: {\n    state: 'available',")],
     ),
 ]
 

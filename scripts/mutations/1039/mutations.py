@@ -40,7 +40,9 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "M2 · the tools' words ride the wrong provider · toolsToldInTextFor answers for Claude instead of Codex, so a Codex conversation's lead never tells it how to use the tools (the F055 parity gap) and Claude reads them twice, in its catalogue and in its system prompt — killed by `the-tools-reach-codex-in-its-lead-and-a-refused-start-is-told-in-words.test.ts` — killed by `the-tools-reach-codex-in-its-lead-and-a-refused-start-is-told-in-words.test.ts`",
         [
             # ⚑ **provider selection refactor · re-anchored in place, not retired** — The exhaustive selector still chooses which provider receives tool instructions in its lead; reverse that choice.
-            (AGENT_TOOLS, "  return providerValue(provider, { claude: false, codex: true })\n    ? { server: AGENT_TOOL_SERVER, instructions: AGENT_TOOL_INSTRUCTIONS }\n    : undefined\n", "  return providerValue(provider, { claude: true, codex: false })\n    ? { server: AGENT_TOOL_SERVER, instructions: AGENT_TOOL_INSTRUCTIONS }\n    : undefined\n"),
+            # This row follows the same behavior after provider facts moved into the registry.
+            # ⚑ **provider registry · re-anchored in place, not retired** — The registry supplies the placement fact; negating it sends the tool instructions to the wrong provider as before.
+            ("apps/desktop/src/main/runtime/agent-tools.ts", "  return providerDescriptor(provider).toolInstructionsInText\n    ? { server: AGENT_TOOL_SERVER, instructions: AGENT_TOOL_INSTRUCTIONS }\n    : undefined\n", "  return !providerDescriptor(provider).toolInstructionsInText\n    ? { server: AGENT_TOOL_SERVER, instructions: AGENT_TOOL_INSTRUCTIONS }\n    : undefined\n"),
         ],
     ),
     (

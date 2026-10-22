@@ -228,7 +228,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         [
             # ⚑ **736 · corrected in place** — the note now also names a grant or a kept rule; the row
             # still drops both claims it guards.
-            (CLAUDECAPS, "whatever the server says about the tool — unless you allowed that tool for the conversation or kept a rule that allows it — and a form the server sends reaches you to answer.", "and each of its tool calls asks you the same way every other consequential action does."),
+            # Provider facts live in the shared registry; this row plants the same fault there.
+            ("packages/shared/src/providers/claude-capabilities.ts", "whatever the server says about the tool — unless you allowed that tool for the conversation or kept a rule that allows it — and a form the server sends reaches you to answer.", "and each of its tool calls asks you the same way every other consequential action does."),
         ],
     ),
     (
@@ -292,9 +293,11 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         ],
     ),
     (
-        f"M34 · ⚠️ **the plan note promises a floor again** · *\"brobot2 refuses every tool that would change anything\"* — killed by `{CHROME}`",
+        f"M34 · ⚠️ **the plan note promises a floor again** · *\"brobot2 refuses every tool that would change anything\"* — killed by `{CHROME}`, `providers.test.ts`",
         [
-            (CLAUDECAPS, "      'While it is planning, Claude’s own plan mode governs what it does: it asks you before it ' +\n      'changes your files, runs a command it cannot tell is harmless, or uses a server’s tool, even ' +\n      'in a conversation that does not otherwise ask you first.',\n", "      'While it is planning it may read, and brobot2 refuses every tool that would change anything.',\n"),
+            # Provider facts live in the shared registry; this row plants the same fault there.
+            # The original renderer killer survived this fault; the pre-move descriptor snapshot pins the moved note.
+            ("packages/shared/src/providers/claude-capabilities.ts", "      'While it is planning, Claude’s own plan mode governs what it does: it asks you before it ' +\n      'changes your files, runs a command it cannot tell is harmless, or uses a server’s tool, even ' +\n      'in a conversation that does not otherwise ask you first.',\n", "      'While it is planning it may read, and brobot2 refuses every tool that would change anything.',\n"),
         ],
     ),
 ]

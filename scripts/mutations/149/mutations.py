@@ -259,9 +259,11 @@ MUTATIONS = [
         "node",
         [
             (
-                HOST,
-                "  claude: 'this computer has moved on to a different one since — a renewal counts',",
-                "  claude: 'somebody replaced the one this computer had',",
+                # This row follows the same behavior after provider facts moved into the registry.
+                "packages/shared/src/providers.ts",
+                # ⚑ **provider registry · re-anchored in place, not retired** — The sign-in wording moved into its descriptor; the same replacement again loses the renewal explanation.
+                "      changeWords: 'this computer has moved on to a different one since — a renewal counts',\n",
+                "      changeWords: 'somebody replaced the one this computer had',\n",
             )
         ],
     ),

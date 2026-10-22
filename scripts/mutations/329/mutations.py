@@ -262,7 +262,8 @@ MUTATIONS = [
         "the disclosure inverted at its source, with the code unchanged and still copying",
         [
             (
-                CAPS_CODEX,
+                # Provider facts live in the shared registry; this row plants the same fault there.
+                "packages/shared/src/providers/codex-capabilities.ts",
                 "  homeCredential: {\n    state: 'available',",
                 "  homeCredential: {\n    state: 'absent',\n    reason: 'Nothing of your sign-in is written into this profile.',\n    checkedAgainst: 'the adapter, which no longer says',",
             )
@@ -273,7 +274,8 @@ MUTATIONS = [
         "so a person is warned about a copy that 015 forbids anyone to make",
         [
             (
-                CAPS_CLAUDE,
+                # Provider facts live in the shared registry; this row plants the same fault there.
+                "packages/shared/src/providers/claude-capabilities.ts",
                 "  homeCredential: {\n    state: 'absent',",
                 "  homeCredential: {\n    state: 'available',\n    note: 'This profile keeps a sign-in of its own, and it starts as a copy of yours.',",
             )
@@ -285,7 +287,8 @@ MUTATIONS = [
         "shape, which survived the entire suite for want of a gate",
         [
             (
-                CAPS_CODEX,
+                # Provider facts live in the shared registry; this row plants the same fault there.
+                "packages/shared/src/providers/codex-capabilities.ts",
                 # ⚑ **The fallback sign-in · re-anchored in place, not retired** — the note now also says where a copy comes from when the computer has none; the plant still drops *never replaced on its own*.
                 "is made once, is readable only by you, and is never replaced on its own.",
                 "is made once, is readable only by you, and is refreshed from your machine when it changes.",
@@ -297,7 +300,8 @@ MUTATIONS = [
         "misreading `328` reported, promoted from the reader's head into the product's own words",
         [
             (
-                CAPS_CODEX,
+                # Provider facts live in the shared registry; this row plants the same fault there.
+                "packages/shared/src/providers/codex-capabilities.ts",
                 "Where your machine’s Codex CLI has one, it starts as a copy of that",
                 "It is created here, separately from the one your machine’s Codex CLI uses",
             )
@@ -308,7 +312,8 @@ MUTATIONS = [
         "this project two false absences to introduce names no evidence at all",
         [
             (
-                CAPS_CLAUDE,
+                # Provider facts live in the shared registry; this row plants the same fault there.
+                "packages/shared/src/providers/claude-capabilities.ts",
                 # ⚠️ **Anchor corrected in place — the LABEL is untouched** (142). The first
                 # version replaced only the PREFIX, so the mutant kept `provisionCodexAuth`,
                 # `child-env.ts` and the test's own name: it still named evidence, every gate

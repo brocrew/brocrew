@@ -150,10 +150,12 @@ MUTATIONS = [
         "and stops there — the reading that let 168 H1 stand for three dispatches",
         [
             (
-                HOST,
+                # This row follows the same behavior after provider facts moved into the registry.
+                "apps/desktop/src/main/runtime/runtime-host.ts",
                 # ⚑ **provider selection refactor · re-anchored in place, not retired** — The two approval sentences are values in the exhaustive selection; restore the same misleading wording for both.
-                "    claude: `⚠ approvals: Auto — nothing is asked`,\n    codex: `⚠ approvals: Auto — nothing is asked · sandbox OFF`,\n",
-                "    claude: `⚠ approvals: Auto — no prompts`,\n    codex: `⚠ approvals: Auto — no prompts · sandbox OFF`,\n",
+                # ⚑ **provider registry · re-anchored in place, not retired** — Both strings now come from descriptors; transform their shared return to restore the same misleading wording for both providers.
+                "  return providerDescriptor(provider).approval.autoNote\n",
+                "  return providerDescriptor(provider).approval.autoNote.replace('nothing is asked', 'no prompts')\n",
             )
         ],
     ),

@@ -141,7 +141,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M20 · ⛔ **Codex's note stops saying its road takes no instructions** — the one place a "
         "person reads it before the refusal does — killed by `compact-on-both-providers.test.ts` (713)",
-        [(CODEX_CAPS, "compaction request — Codex takes no instructions for one',", "compaction request',")],
+        # Provider facts live in the shared registry; this row plants the same fault there.
+        [("packages/shared/src/providers/codex-capabilities.ts", "compaction request — Codex takes no instructions for one',", "compaction request',")],
     ),
     # ── A, from 713's review · a compaction the bound gave up on (M22-M26) ─────────────────
     (

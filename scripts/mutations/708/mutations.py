@@ -129,7 +129,9 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "M15 · ⛔ **Codex's prefix is `/`** — a person's `/review` on Codex goes bare, where Codex "
         "has no such command — killed by `a-command-goes-as-typed.test.ts` "
         "and `claude-provider-commands-ask.test.ts` (708)",
-        [(PREFIXES, "  codex: CODEX_COMMAND_PREFIX,\n", "  codex: CLAUDE_COMMAND_PREFIX,\n")],
+        # This row follows the same behavior after provider facts moved into the registry.
+        # ⚑ **provider registry · re-anchored in place, not retired** — The prefix map now derives from descriptor fields; selecting the Claude descriptor for Codex restores the original wrong-prefix mapping.
+        [("packages/runtime/src/provider-commands.ts", "  (provider) => providerDescriptor(provider).commandPrefix,\n", "  (provider) => providerDescriptor(provider === 'codex' ? 'claude' : provider).commandPrefix,\n")],
     ),
     # ── B · the Claude adapter's ask ───────────────────────────────────────────────────────
     (

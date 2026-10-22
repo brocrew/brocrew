@@ -116,7 +116,8 @@ MUTATIONS = [
         "dom GREEN",
         [
             (
-                MEM,
+                # Provider facts live in the shared registry; this row plants the same fault there.
+                "packages/shared/src/providers/codex-memory-settings.ts",
                 "    key: 'dedicated_tools',\n    value: true,\n",
                 "    key: 'dedicated_tools',\n    value: false,\n",
             )
@@ -128,7 +129,8 @@ MUTATIONS = [
         "· EXPECTED (NOT MEASURED): runtime red, desktop red, dom GREEN",
         [
             (
-                MEM,
+                # Provider facts live in the shared registry; this row plants the same fault there.
+                "packages/shared/src/providers/codex-memory-settings.ts",
                 "    table: 'features',\n    key: 'memories',\n    value: true,\n",
                 "    table: 'features',\n    key: 'memories',\n    value: false,\n",
             )
@@ -141,7 +143,8 @@ MUTATIONS = [
         "· EXPECTED (NOT MEASURED): runtime red, desktop red, dom GREEN",
         [
             (
-                MEM,
+                # Provider facts live in the shared registry; this row plants the same fault there.
+                "packages/shared/src/providers/codex-memory-settings.ts",
                 "    key: 'use_memories',\n    value: true,\n",
                 "    key: 'use_memories',\n    value: false,\n",
             )
@@ -154,7 +157,8 @@ MUTATIONS = [
         "· EXPECTED (NOT MEASURED): runtime red, desktop red, dom GREEN",
         [
             (
-                MEM,
+                # Provider facts live in the shared registry; this row plants the same fault there.
+                "packages/shared/src/providers/codex-memory-settings.ts",
                 "    key: 'generate_memories',\n    value: true,\n",
                 "    key: 'generate_memories',\n    value: false,\n",
             )
@@ -168,7 +172,8 @@ MUTATIONS = [
         "— ⚠️ that desktop GREEN is the finding, not an omission",
         [
             (
-                MEM,
+                # Provider facts live in the shared registry; this row plants the same fault there.
+                "packages/shared/src/providers/codex-memory-settings.ts",
                 "  {\n    table: 'memories',\n    key: 'use_memories',\n    value: true,\n    why: 'the whole surface; false removes the memory summary and all four tools',\n  },\n",
                 "",
             )
@@ -313,7 +318,8 @@ MUTATIONS = [
         "is told about half of it · EXPECTED (NOT MEASURED): desktop 1 red, runtime GREEN, dom GREEN",
         [
             (
-                DISCLOSURE,
+                # Provider facts live in the shared registry; this row plants the same fault there.
+                "packages/shared/src/providers/configuration.ts",
                 # ⚠️ **ANCHOR CORRECTED at `605`, and the SUBJECT is untouched** — the row still
                 # hard-codes the keys the sentence renders. ⛔ `605` split the clause in two so the
                 # tools and the servers could each say whether the app-server remembers them,
@@ -330,7 +336,8 @@ MUTATIONS = [
         "· EXPECTED (NOT MEASURED): desktop 1 red, runtime GREEN, dom GREEN",
         [
             (
-                DISCLOSURE,
+                # Provider facts live in the shared registry; this row plants the same fault there.
+                "packages/shared/src/providers/configuration.ts",
                 "const CODEX_MEMORY_KEYS = CODEX_MEMORY_SETTINGS.map((one) => `${one.table}.${one.key}`)\n",
                 "const CODEX_MEMORY_KEYS = CODEX_MEMORY_SETTINGS.map((one) => one.key)\n",
             )
@@ -343,9 +350,11 @@ MUTATIONS = [
         "· EXPECTED (NOT MEASURED): desktop 1 red, runtime GREEN, dom GREEN",
         [
             (
-                DISCLOSURE,
-                "        note: 'MCP servers + preferences, and the memory keys above — Codex writes here too, so BroCrew merges and never rewrites it',\n",
-                "        note: 'MCP servers + preferences; absent means built-in defaults',\n",
+                # This row follows the same behavior after provider facts moved into the registry.
+                "packages/shared/src/providers/configuration.ts",
+                # ⚑ **provider registry · re-anchored in place, not retired** — The config layout moved into shared data; the same old note hides that the app writes and merges memory settings.
+                "      note: 'MCP servers + preferences, and the memory keys above — Codex writes here too, so BroCrew merges and never rewrites it',\n",
+                "      note: 'MCP servers + preferences; absent means built-in defaults',\n",
             )
         ],
     ),
@@ -356,9 +365,11 @@ MUTATIONS = [
         "· EXPECTED (NOT MEASURED): desktop 2 red, runtime GREEN, dom GREEN",
         [
             (
-                DISCLOSURE,
-                "    model: CODEX_MODEL_NOTE,\n",
-                "    model:\n      'file-based — config.toml in this home is where MCP servers and preferences are declared',\n",
+                # This row follows the same behavior after provider facts moved into the registry.
+                "packages/shared/src/providers/configuration.ts",
+                # ⚑ **provider registry · re-anchored in place, not retired** — The config layout moved into shared data; the old summary still omits the memory keys written by the app.
+                "  model: CODEX_MODEL_NOTE,\n",
+                "  model: 'file-based — config.toml in this home is where MCP servers and preferences are declared',\n",
             )
         ],
     ),

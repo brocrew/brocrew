@@ -81,7 +81,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "M1 · 🔴 THE DEFECT THIS DISPATCH IS NAMED AFTER: one sentence for both providers · Codex "
         "is declared with Claude's note, so the app says the same thing to two adapters that do "
         "opposite things — which is exactly what `329` had to fix once already on `homeCredential`",
-        [(CODEX, CODEX_NOTE, CLAUDE_NOTE)],
+        # Provider facts live in the shared registry; this row plants the same fault there.
+        [("packages/shared/src/providers/codex-capabilities.ts", CODEX_NOTE, CLAUDE_NOTE)],
     ),
     (
         "M2 · 🔴 THE SENTENCE THE PM RELAYED FROM `366` MID-DISPATCH: the Codex half is written as "
@@ -90,7 +91,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "network, and `ask` buys consent rather than containment (HO-011 §2)",
         [
             (
-                CODEX,
+                # Provider facts live in the shared registry; this row plants the same fault there.
+                "packages/shared/src/providers/codex-capabilities.ts",
                 CODEX_NOTE,
                 "    note: 'On Codex this mode takes the sandbox off: with approvals on, Codex runs "
                 "read-only and waits for you; with them off it runs danger-full-access, which "
@@ -104,7 +106,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "confines a Claude session",
         [
             (
-                CLAUDE,
+                # Provider facts live in the shared registry; this row plants the same fault there.
+                "packages/shared/src/providers/claude-capabilities.ts",
                 CLAUDE_NOTE,
                 "    note: 'On Claude this mode is the sandbox coming off: with approvals on the "
                 "session is confined to its working directory, and with them off it is not.',\n",
@@ -117,7 +120,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "command walking past in both modes, and `171` corrected the same one in `refusalMessage`",
         [
             (
-                CLAUDE,
+                # Provider facts live in the shared registry; this row plants the same fault there.
+                "packages/shared/src/providers/claude-capabilities.ts",
                 CLAUDE_NOTE,
                 "    note: 'On Claude nothing is sandboxed in either mode. What this mode removes "
                 "is the card; the only check left refuses any path inside this app’s own data.',\n",
@@ -128,7 +132,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "M5 · the note is emptied to the empty string the optional field allows · the entry is "
         "still `available`, still compiles, and discloses nothing — the shape a declaration decays "
         "into when nobody asserts that it SAYS something",
-        [(CODEX, CODEX_NOTE, "    note: '',\n")],
+        # Provider facts live in the shared registry; this row plants the same fault there.
+        [("packages/shared/src/providers/codex-capabilities.ts", CODEX_NOTE, "    note: '',\n")],
     ),
     # ── §2 · the words leak into the renderer ───────────────────────────────────────────────────
     (

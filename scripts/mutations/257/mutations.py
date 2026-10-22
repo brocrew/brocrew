@@ -158,9 +158,11 @@ MUTATIONS = [
         "both advertise localhost:1455, and the first flow dies in a browser tab with no explanation",
         [
             (
-                HOST,
+                # This row follows the same behavior after provider facts moved into the registry.
+                "apps/desktop/src/main/runtime/runtime-host.ts",
                 # ⚑ **provider selection refactor · re-anchored in place, not retired** — The sign-in scope now uses an exhaustive selector; putting every provider under its profile still wrongly splits the machine-wide sign-in.
-                "  return providerValue(provider, { claude: false, codex: true })\n    ? provider\n    : `${provider}:${profileId}`\n",
+                # ⚑ **provider registry · re-anchored in place, not retired** — The registry supplies port scope; keying every reservation per profile still splits the machine-wide sign-in.
+                "  return providerDescriptor(provider).signIn.portScope === 'machine'\n    ? provider\n    : `${provider}:${profileId}`\n",
                 "  return `${provider}:${profileId}`\n",
             )
         ],
@@ -171,9 +173,11 @@ MUTATIONS = [
         "why, and this is the version with no reason behind it",
         [
             (
-                HOST,
+                # This row follows the same behavior after provider facts moved into the registry.
+                "apps/desktop/src/main/runtime/runtime-host.ts",
                 # ⚑ **provider selection refactor · re-anchored in place, not retired** — The sign-in scope now uses an exhaustive selector; using only the provider still wrongly combines profile-scoped sign-ins.
-                "  return providerValue(provider, { claude: false, codex: true })\n    ? provider\n    : `${provider}:${profileId}`\n",
+                # ⚑ **provider registry · re-anchored in place, not retired** — The registry supplies port scope; keying every reservation only by provider still combines profile-scoped sign-ins.
+                "  return providerDescriptor(provider).signIn.portScope === 'machine'\n    ? provider\n    : `${provider}:${profileId}`\n",
                 "  return provider\n",
             )
         ],

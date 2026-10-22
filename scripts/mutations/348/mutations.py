@@ -384,7 +384,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "this session's five tools goes to `config.toml` and finds nothing there",
         [
             (
-                CFG,
+                # Provider facts live in the shared registry; this row plants the same fault there.
+                "packages/shared/src/providers/configuration.ts",
                 "export const CODEX_THREAD_START_CLAIMS: readonly SdkOptionClaim[] = [\n  {\n    option: 'dynamicTools',",
                 "export const CODEX_THREAD_START_CLAIMS: readonly SdkOptionClaim[] = []\nconst UNUSED_348: readonly SdkOptionClaim[] = [\n  {\n    option: 'dynamicTools',",
             )
@@ -393,14 +394,16 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M29 · ⚠️ the block claims a field the adapter never sets · `308`'s original defect, in the "
         "other provider's block",
-        [(CFG, "    option: 'dynamicTools',", "    option: 'mcpServers',")],
+        # Provider facts live in the shared registry; this row plants the same fault there.
+        [("packages/shared/src/providers/configuration.ts", "    option: 'dynamicTools',", "    option: 'mcpServers',")],
     ),
     (
         "M30 · 🔴 the sentence stops naming what rides on the wire · the table still says it and the "
         "one line a person reads no longer does",
         [
             (
-                CFG,
+                # Provider facts live in the shared registry; this row plants the same fault there.
+                "packages/shared/src/providers/configuration.ts",
                 # ⚠️ **ANCHOR CORRECTED at `605`, SUBJECT untouched** — the row still deletes the
                 # whole wire clause. ⛔ `605` added a second claim to the table and SPLIT the
                 # trailing sentence, because the app-server remembers `dynamicTools` and does not
@@ -417,7 +420,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "warned about, made by a dispatch that writes nothing into that file",
         [
             (
-                CFG,
+                # Provider facts live in the shared registry; this row plants the same fault there.
+                "packages/shared/src/providers/configuration.ts",
                 # ⚠️ **ANCHOR CORRECTED at `605`, SUBJECT untouched** — the row still makes the
                 # sentence claim the wire payloads live in `config.toml`, which is the promise
                 # `348`'s brief warned about. ⚑ Re-verified RED by hand.

@@ -375,7 +375,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         f"your folder\"*, false of the default preset (measured: `/tmp` written unasked) — killed by `{MODE}` (736)",
         [
             (
-                CAPABILITIES,
+                # Provider facts live in the shared registry; this row plants the same fault there.
+                "packages/shared/src/providers/codex-capabilities.ts",
                 # ⚑ Re-anchored at `736`'s review: the note now also says the home's config can open it.
                 "with approvals on it writes in your folder and the temporary folders without asking, and cannot write anywhere else or reach the network unless you approve it or the config.toml of this identity opens it;",
                 "with approvals on it cannot write outside your folder or reach the network, and",
