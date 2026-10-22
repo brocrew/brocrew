@@ -5,8 +5,8 @@ import {
   SUPPORTED_PROVIDERS,
   providerDescriptor,
   providerRecord,
-  providerSchema,
 } from '../src/providers'
+import { providerSchema } from '../src/provider-schema'
 
 describe('the declared providers', () => {
   it('preserves the current provider facts and capabilities', () => {

@@ -8,7 +8,8 @@ import { z } from 'zod'
  * this with the full RuntimeEvent taxonomy from HO-001 §6.
  */
 
-export { providerSchema, providerValue } from './providers'
+export { providerSchema } from './provider-schema'
+export { providerValue } from './providers'
 export type { Provider } from './providers'
 
 /**

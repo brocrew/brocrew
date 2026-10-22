@@ -200,8 +200,8 @@ export const CLAUDE_COMMAND_PREFIX = providerDescriptor('claude').commandPrefix
  * Codex's `skills/list` answered — which is `R42`'s *"if Codex publishes no command list there,
  * its messages keep the frame"* — and the host asks for a list only where the prefix is `/`.
  *
- * ⚠️ **`satisfies Record<Provider, …>`**, so a third provider fails to compile here rather than
- * falling through to a prefix nobody measured.
+ * Each prefix comes from the provider's required descriptor field, so a new provider must supply
+ * its own measured spelling.
  */
 export const PROVIDER_COMMAND_PREFIX = providerRecord(
   (provider) => providerDescriptor(provider).commandPrefix,

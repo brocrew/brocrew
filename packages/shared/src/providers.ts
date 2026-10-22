@@ -3,7 +3,6 @@ import {
   CODEX_CONFIG_LAYOUT,
   type ProviderConfigLayout,
 } from './providers/configuration'
-import { z } from 'zod'
 import type { ProviderCapabilities } from './provider-capabilities'
 import { CLAUDE_CAPABILITIES } from './providers/claude-capabilities'
 import { CODEX_CAPABILITIES } from './providers/codex-capabilities'
@@ -209,9 +208,10 @@ export const PROVIDER_DESCRIPTORS = [
   },
 ] as const satisfies readonly ProviderDescriptor[]
 
-export const providerSchema = z.enum(PROVIDER_DESCRIPTORS.map((item) => item.id))
-export type Provider = z.infer<typeof providerSchema>
-export const SUPPORTED_PROVIDERS: readonly Provider[] = providerSchema.options
+export type Provider = (typeof PROVIDER_DESCRIPTORS)[number]['id']
+export const SUPPORTED_PROVIDERS: readonly Provider[] = PROVIDER_DESCRIPTORS.map(
+  (descriptor) => descriptor.id,
+)
 
 /** The declaration for a validated provider id. */
 export function providerDescriptor<P extends Provider>(
