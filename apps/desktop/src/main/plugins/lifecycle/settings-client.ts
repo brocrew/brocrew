@@ -10,7 +10,7 @@ import { PluginPackageVault } from './vault'
 import { ConsumerCommand, connectPersonPluginControl } from './person-control'
 import type { WorkspaceProjection } from './types'
 import { Installation } from '../state/format'
-import { PLUGIN_STATES } from '../../../shared/plugin-settings'
+import { PLUGIN_STATES, pluginRemovalOutcome } from '../../../shared/plugin-settings'
 import { createRepoAwarePluginVerifier } from '../package-verifier'
 import { PluginSupervisorError } from '../supervisor/protocol'
 
@@ -111,15 +111,32 @@ export async function connectPluginSettings(options: {
     channel.close()
     throw new PluginSupervisorError('unavailable')
   }
+  if (modern) {
+    // Older owners reject this request without losing the person channel. Keep their old format.
+    await channel.call({ kind: 'configure-ledger', format: 2 }).then(
+      (reply) => {
+        try {
+          z.strictObject({
+            format: z.literal(2),
+            maxRevision: z.literal(Number.MAX_SAFE_INTEGER),
+          }).parse(reply)
+        } catch {
+          channel.close()
+          throw new PluginSupervisorError('incompatible')
+        }
+      },
+      () => undefined,
+    )
+  }
   return {
     async catalogue() {
       const cards = Cards.parse(await channel.call({ kind: modern ? 'list-v2' : 'list' }))
-      return modern
-        ? cards
-        : cards.map((card) => ({
-            ...card,
-            uninstallDeletesData: Boolean(pluginAdapter(card.id)?.uninstall),
-          }))
+      // Project reviewed local adapter capabilities without expanding the legacy owner wire.
+      return cards.map((card) => ({
+        ...card,
+        ...(!modern ? { uninstallDeletesData: Boolean(pluginAdapter(card.id)?.uninstall) } : {}),
+        hasRemoteLogout: Boolean(pluginAdapter(card.id)?.uninstall),
+      }))
     },
     ...(modern
       ? {
@@ -142,6 +159,16 @@ export async function connectPluginSettings(options: {
       const result = await Promise.allSettled([closing, removing])
       if (result.some((one) => one.status !== 'fulfilled'))
         throw new PluginSupervisorError('unavailable')
+      const reply = result[1]
+      if (!reply || reply.status !== 'fulfilled') throw new PluginSupervisorError('unavailable')
+      // Legacy owners returned only true; local deletion never proves remote logout.
+      if (reply.value === true) {
+        if (pluginAdapter(pluginId)?.uninstall) return { data: 'deleted', logout: 'unconfirmed' }
+        return
+      }
+      const outcome = pluginRemovalOutcome(reply.value)
+      if (!outcome) throw new PluginSupervisorError('unavailable')
+      return outcome
     },
     async screen(pluginId): Promise<PluginUiHostOptions> {
       const generation = (generations.get(pluginId) ?? 0) + 1

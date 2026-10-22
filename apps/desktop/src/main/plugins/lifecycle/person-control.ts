@@ -21,6 +21,7 @@ const Request = z.discriminatedUnion('kind', [
   }),
   z.strictObject({ kind: z.literal('list') }),
   z.strictObject({ kind: z.literal('list-v2') }),
+  z.strictObject({ kind: z.literal('configure-ledger'), format: z.literal(2) }),
   z.strictObject({ kind: z.literal('refresh'), catalogueDigest: Hex }),
   z.strictObject({ kind: z.literal('update'), pluginId: id, operationId: z.uuid() }),
   z.strictObject({ kind: z.literal('install'), pluginId: id, operationId: z.uuid() }),
@@ -32,7 +33,11 @@ const Request = z.discriminatedUnion('kind', [
     pluginId: id,
     installId: z.uuid(),
     incarnation: z.uuid(),
-    revision: z.number().int().nonnegative().max(4095),
+    revision: z
+      .number()
+      .int()
+      .nonnegative()
+      .max(Number.MAX_SAFE_INTEGER - 1),
     proposal: PluginProposal,
   }),
   z.strictObject({ kind: z.literal('detach') }),
@@ -75,6 +80,8 @@ export async function servePersonPluginControl(options: {
       attaching: boolean
       lost: boolean
       failed: boolean
+      ledgerV2?: boolean
+      legacyIds?: readonly string[]
       detaching?: Promise<void>
     }>()
   let closing = false
@@ -115,12 +122,18 @@ export async function servePersonPluginControl(options: {
       if (request.kind === 'attach') {
         if (session.handle || session.attaching || session.lost || session.failed)
           throw new PluginSupervisorError('unavailable')
-        // Older windows may retain a previous list. Only refresh changes the owner's admitted list.
+        // Snapshot actual source provenance, never today's IDs or caller-supplied metadata.
+        session.legacyIds =
+          request.catalogueDigest === undefined
+            ? undefined
+            : options.controller.legacyCatalogueIds(request.catalogueDigest)
         clearTimeout(authentication)
         session.attaching = true
         // A closed channel was this consumer's only route to its plugins, so the consumer ended
         // with it: every notice to it holds, and a lost session detaches without its answer.
         const tell = async (command: z.infer<typeof ConsumerCommand>): Promise<unknown> => {
+          const id = command.kind === 'reconcile' ? command.change.pluginId : command.pluginId
+          if (session.legacyIds && !session.legacyIds.includes(id)) return true
           if (!channel.open) return true
           try {
             return await channel.call(command)
@@ -165,19 +178,27 @@ export async function servePersonPluginControl(options: {
       }
       if (!session.handle || session.failed) throw new PluginSupervisorError('unavailable')
       const handle = session.handle
+      if (
+        'pluginId' in request &&
+        session.legacyIds &&
+        !session.legacyIds.includes(request.pluginId)
+      )
+        throw new PluginSupervisorError('incompatible')
+      const visible = (id: string) => !session.legacyIds || session.legacyIds.includes(id)
       switch (request.kind) {
         case 'list':
-          return (await options.controller.status()).cards.map(
-            ({ id, name, state, installed, priorityClamped }) => ({
+          if (!session.legacyIds) throw new PluginSupervisorError('incompatible')
+          return (await options.controller.status()).cards
+            .filter((card) => visible(card.id))
+            .map(({ id, name, state, installed, priorityClamped }) => ({
               id,
               name,
               state,
               installed,
               ...(priorityClamped !== undefined ? { priorityClamped } : {}),
-            }),
-          )
+            }))
         case 'list-v2':
-          return (await options.controller.status()).cards
+          return (await options.controller.status()).cards.filter((card) => visible(card.id))
         case 'refresh':
           await options.controller.refreshCatalogue(request.catalogueDigest)
           return true
@@ -188,14 +209,24 @@ export async function servePersonPluginControl(options: {
           await options.controller.install(handle, request.pluginId, request.operationId)
           return true
         case 'uninstall':
-          await options.controller.uninstall(handle, request.pluginId, request.operationId)
-          return true
+          return (
+            (await options.controller.uninstall(handle, request.pluginId, request.operationId)) ??
+            true
+          )
         case 'screen': {
           const screen = options.controller.screen(handle, request.pluginId)
           return screen.installation
         }
+        case 'configure-ledger':
+          session.ledgerV2 = true
+          return { format: 2, maxRevision: Number.MAX_SAFE_INTEGER }
         case 'apply':
-          await options.controller.applyProfile(handle, request)
+          if (!session.ledgerV2 && request.revision > 4095)
+            throw new PluginSupervisorError('incompatible')
+          await options.controller.applyProfile(handle, {
+            ...request,
+            ledgerFormat: session.ledgerV2 ? 2 : 1,
+          })
           return true
         case 'read': {
           const screen = options.controller.screen(handle, request.pluginId)
@@ -205,6 +236,7 @@ export async function servePersonPluginControl(options: {
             handle,
             request.pluginId,
             request.installId,
+            session.ledgerV2 === true,
           )
           const snapshot = await options.read(request.pluginId, await screen.connection)
           // Recheck after the asynchronous read so uninstall never publishes a stale snapshot.
@@ -216,6 +248,7 @@ export async function servePersonPluginControl(options: {
                 handle,
                 request.pluginId,
                 request.installId,
+                session.ledgerV2 === true,
               )) ||
             !snapshot ||
             typeof snapshot !== 'object' ||
@@ -236,6 +269,8 @@ export async function servePersonPluginControl(options: {
       attaching: boolean
       lost: boolean
       failed: boolean
+      ledgerV2?: boolean
+      legacyIds?: readonly string[]
       detaching?: Promise<void>
     }
 
@@ -269,10 +304,17 @@ export async function servePersonPluginControl(options: {
   server.on('error', () => {
     for (const channel of channels) channel.close()
   })
+  const endConsumers = () => {
+    closing = true
+    for (const channel of channels) channel.close()
+  }
   return {
     path,
-    async close(): Promise<void> {
+    endConsumers,
+    async close(options: { endConsumers?: boolean } = {}): Promise<void> {
       closing = true
+      // Ending the only person route also ends its consumer's authority when grace expires.
+      if (options.endConsumers) endConsumers()
       await Promise.allSettled([...sessions].map(detach))
       for (const channel of channels) channel.close()
       await Promise.all([...channels].map((channel) => channel.settled()))

@@ -2,26 +2,29 @@ import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import { createHash } from 'node:crypto'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { startBridge, type Bridge } from '../src/bridge.js'
 import { loadConfig } from '../src/config.js'
 import { silentLogger } from '../src/logger.js'
+import { createSettingsStore } from '../src/settings.js'
 
 const cleanup: Array<() => void | Promise<void>> = []
 afterEach(async () => {
   for (const fn of cleanup.splice(0).reverse()) await fn()
+  vi.restoreAllMocks()
 })
 
 /** A stand-in for the Go program: it reads its configuration line, serves /status and /unlink, and records what it was given. */
 const FAKE = `#!${process.execPath}
 const http = require('node:http'), fs = require('node:fs'), path = require('node:path')
-let line = '', started = false
+let line = '', started = false, dataDir = ''
 process.stdin.setEncoding('utf8')
 process.stdin.on('data', (chunk) => {
   line += chunk
   if (started || !line.includes('\\n')) return
   started = true
   const cfg = JSON.parse(line.slice(0, line.indexOf('\\n')))
+  dataDir = cfg.dataDir
   fs.writeFileSync(path.join(cfg.dataDir, 'fake-run.json'), JSON.stringify({
     pid: process.pid, cwd: process.cwd(), env: Object.keys(process.env).sort(), config: cfg,
   }))
@@ -32,7 +35,16 @@ process.stdin.on('data', (chunk) => {
     if (req.url === '/unlink') {
       fs.appendFileSync(path.join(cfg.dataDir, '..', 'fake-log-outs'), process.pid + '\\n')
       const confirmed = !fs.existsSync(path.join(cfg.dataDir, 'fake-unconfirmed'))
-      setTimeout(() => { res.end(JSON.stringify({ ok: true, confirmed })); setTimeout(() => process.exit(3), 20) }, 300)
+      const finish = () => {
+        if (fs.existsSync(path.join(cfg.dataDir, 'fake-hold-unlink'))) { setTimeout(finish, 20); return }
+        res.end(JSON.stringify({ ok: true, confirmed })); setTimeout(() => process.exit(3), 20)
+      }
+      setTimeout(finish, 300)
+      return
+    }
+    if (req.url === '/pair') {
+      fs.appendFileSync(path.join(cfg.dataDir, '..', 'fake-pairs'), process.pid + '\\n')
+      res.end(JSON.stringify({ state: 'pairing', expired: false, account: '' }))
       return
     }
     if (req.url === '/groups') {
@@ -50,7 +62,7 @@ process.stdin.on('data', (chunk) => {
   })
   server.listen(0, '127.0.0.1', () => process.stdout.write(JSON.stringify({ listening: server.address().port }) + '\\n'))
 })
-process.stdin.on('end', () => process.exit(0))
+process.stdin.on('end', () => process.exit(dataDir && fs.existsSync(path.join(dataDir, 'fake-phone-logout-on-close')) ? 3 : 0))
 `
 
 async function until(check: () => boolean, ms = 10_000): Promise<void> {
@@ -74,6 +86,7 @@ function setup(program = FAKE, built = program) {
     { mode: 0o600 },
   )
   const config = loadConfig({ BROCREW_WHATSAPP_DATA: home, BROCREW_WHATSAPP_AUTH: authPath })
+  const settings = createSettingsStore(config.home)
   const packaged = path.join(home, 'package-whatsapp-bridge')
   fs.writeFileSync(packaged, program, { mode: 0o400 })
   let unlinked = 0
@@ -83,7 +96,10 @@ function setup(program = FAKE, built = program) {
       program: packaged,
       sha256: createHash('sha256').update(built).digest('hex'),
       logger: silentLogger,
-      onUnlinked: () => unlinked++,
+      onUnlinked: () => {
+        unlinked++
+        settings.forgetGroups()
+      },
       pollMs: 50,
     })
     cleanup.push(() => started.close())
@@ -101,7 +117,7 @@ function setup(program = FAKE, built = program) {
         })
       : null
   }
-  return { config, bridge, begin, run, unlinked: () => unlinked }
+  return { config, settings, bridge, begin, run, unlinked: () => unlinked }
 }
 
 describe('the bridge program', () => {
@@ -255,5 +271,92 @@ describe('the bridge program', () => {
     const second = run()!.pid
     await bridge.close()
     expect(() => process.kill(second, 0)).toThrow()
+  })
+
+  it('records and wipes a phone-side logout received while closing', async () => {
+    const { bridge, config, settings, run, unlinked } = setup()
+    await until(() => bridge.status().state === 'unlinked')
+    fs.writeFileSync(path.join(config.bridgeData, 'fake-linked'), '')
+    fs.writeFileSync(path.join(config.bridgeData, 'messages.db'), 'older messages')
+    fs.writeFileSync(path.join(config.downloads, 'photo.jpg'), 'older photo')
+    fs.writeFileSync(path.join(config.scratch, 'upload'), 'older upload')
+    settings.setWritable('120363000000000001@g.us', true)
+    await until(() => bridge.status().state === 'linked')
+    fs.writeFileSync(path.join(config.bridgeData, 'fake-phone-logout-on-close'), '')
+    const pending = path.join(config.home, 'log-out.pending')
+    let recordedBeforeWipe = false
+    const remove = fs.rmSync
+    vi.spyOn(fs, 'rmSync').mockImplementation((...args) => {
+      if (args[0] === config.bridgeData) recordedBeforeWipe = fs.existsSync(pending)
+      return remove(...args)
+    })
+
+    await bridge.close()
+    expect(recordedBeforeWipe).toBe(true)
+    expect(unlinked()).toBe(1)
+    expect(fs.existsSync(path.join(config.bridgeData, 'messages.db'))).toBe(false)
+    expect(fs.readdirSync(config.downloads)).toEqual([])
+    expect(fs.readdirSync(config.scratch)).toEqual([])
+    expect(settings.get().writable).toEqual([])
+    expect(bridge.groups()).toEqual([])
+    expect(bridge.status().state).toBe('unlinked')
+    expect(fs.existsSync(pending)).toBe(false)
+    expect(run()).toBeNull()
+  })
+
+  it('finishes a failed close-time wipe before accepting a new link', async () => {
+    const { bridge, begin, config, settings, unlinked } = setup()
+    await until(() => bridge.status().state === 'unlinked')
+    fs.writeFileSync(path.join(config.bridgeData, 'fake-linked'), '')
+    fs.writeFileSync(path.join(config.bridgeData, 'messages.db'), 'older messages')
+    fs.writeFileSync(path.join(config.bridgeData, 'fake-phone-logout-on-close'), '')
+    settings.setWritable('120363000000000001@g.us', true)
+    await until(() => bridge.status().state === 'linked')
+    const remove = fs.rmSync
+    const interrupted = vi.spyOn(fs, 'rmSync').mockImplementation((...args) => {
+      if (args[0] === config.bridgeData) throw new Error('fictional interrupted wipe')
+      return remove(...args)
+    })
+    try {
+      await bridge.close()
+    } finally {
+      interrupted.mockRestore()
+    }
+    expect(fs.existsSync(path.join(config.home, 'log-out.pending'))).toBe(true)
+    expect(unlinked()).toBe(0)
+    expect(bridge.status().state).toBe('unlinked')
+    fs.writeFileSync(path.join(config.bridgeData, 'fake-hold-unlink'), '')
+    const next = begin()
+    try {
+      await until(() => fs.existsSync(path.join(config.home, 'fake-log-outs')))
+      expect(await next.pair()).toBe(false)
+      expect(next.status().state).toBe('unlinked')
+      expect(fs.existsSync(path.join(config.home, 'fake-pairs'))).toBe(false)
+      expect(fs.existsSync(path.join(config.bridgeData, 'messages.db'))).toBe(true)
+    } finally {
+      fs.rmSync(path.join(config.bridgeData, 'fake-hold-unlink'), { force: true })
+    }
+    await until(() => unlinked() === 1)
+    expect(fs.existsSync(path.join(config.bridgeData, 'messages.db'))).toBe(false)
+    expect(settings.get().writable).toEqual([])
+    expect(fs.existsSync(path.join(config.home, 'log-out.pending'))).toBe(false)
+  })
+
+  it('preserves local data and group switches on an ordinary close', async () => {
+    const { bridge, config, settings, unlinked } = setup()
+    await until(() => bridge.status().state === 'unlinked')
+    fs.writeFileSync(path.join(config.bridgeData, 'messages.db'), 'kept messages')
+    fs.writeFileSync(path.join(config.downloads, 'photo.jpg'), 'kept photo')
+    fs.writeFileSync(path.join(config.scratch, 'upload'), 'kept upload')
+    settings.setWritable('120363000000000001@g.us', true)
+    await bridge.close()
+    expect(unlinked()).toBe(0)
+    expect(fs.readFileSync(path.join(config.bridgeData, 'messages.db'), 'utf8')).toBe(
+      'kept messages',
+    )
+    expect(fs.readFileSync(path.join(config.downloads, 'photo.jpg'), 'utf8')).toBe('kept photo')
+    expect(fs.readFileSync(path.join(config.scratch, 'upload'), 'utf8')).toBe('kept upload')
+    expect(settings.get().writable).toEqual(['120363000000000001@g.us'])
+    expect(fs.existsSync(path.join(config.home, 'log-out.pending'))).toBe(false)
   })
 })

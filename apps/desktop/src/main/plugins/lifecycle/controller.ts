@@ -1,4 +1,5 @@
 import { newerPluginVersion } from '../catalogue/newer-version'
+import { parseRepoPluginList } from '../catalogue/repo-list'
 import { PluginProfileLedger } from './profile-ledger'
 import { pluginAdapter } from './adapters'
 import { PluginProposal, proposalFor } from './proposals'
@@ -19,7 +20,7 @@ import type {
   Installation,
   PluginReleasePin,
 } from './types'
-import type { PluginCard } from '../../../shared/plugin-settings'
+import type { PluginCard, PluginRemovalOutcome } from '../../../shared/plugin-settings'
 
 const refuse = (): never => {
   throw new PluginSupervisorError('unavailable')
@@ -67,6 +68,7 @@ export class PluginLifecycleController {
   private readonly runs = new Map<string, Running>()
   private readonly attempted = new Set<string>()
   private readonly localOperations = new Set<string>()
+  private readonly admittedCatalogues = new Map<string, readonly string[]>()
   private readonly cleanup = new Set<string>()
   private draining = false
   private drained = false
@@ -93,7 +95,12 @@ export class PluginLifecycleController {
           options.repoCatalogueSha256,
         ),
       )
-      controller.catalogue() // Signature, complete schema and all persistent release pins first.
+      const catalogue = controller.catalogue() // Complete verification before retaining provenance.
+      controller.retainCatalogue(
+        options.catalogue.bytes,
+        catalogue.entries.map((one) => one.id),
+      )
+      controller.retainRepoList(options.repoList, options.repoCatalogueSha256)
       await options.state.withExclusive(() => controller.recover())
       return controller
     } catch {
@@ -118,19 +125,57 @@ export class PluginLifecycleController {
   catalogueIdentity(): string {
     return pluginSha256(this.options.catalogue.bytes)
   }
+  private retainCatalogue(bytes: Uint8Array, ids: readonly string[]): void {
+    const digest = pluginSha256(bytes)
+    if (this.admittedCatalogues.has(digest)) return
+    // Never evict a source underneath an attached or returning older app.
+    if (this.admittedCatalogues.size >= 512) throw new PluginSupervisorError('incompatible')
+    this.admittedCatalogues.set(digest, Object.freeze([...new Set(ids)].sort()))
+  }
+  private retainRepoList(source: LifecycleOptions['repoList'], expected: string | undefined): void {
+    if (!source) return
+    if (
+      this.options.pinnedPublicKey !== null ||
+      !expected ||
+      pluginSha256(source.bytes) !== source.sha256
+    )
+      return refuse()
+    const parsed = parseRepoPluginList(source.bytes, this.options.target, source.appVersion)
+    if (parsed.sha256 !== expected) return refuse()
+    const fresh = parsed.legacyCatalogues.filter((one) => !this.admittedCatalogues.has(one.sha256))
+    if (this.admittedCatalogues.size + fresh.length > 512)
+      throw new PluginSupervisorError('incompatible')
+    for (const view of fresh)
+      this.retainCatalogue(
+        view.bytes,
+        view.releases.map((one) => one.id),
+      )
+  }
+  /** Only sources actually verified and admitted by this owner identify a legacy client's IDs. */
+  legacyCatalogueIds(digest: string): readonly string[] {
+    const ids = this.admittedCatalogues.get(digest)
+    if (!ids) throw new PluginSupervisorError('incompatible')
+    return ids
+  }
   async refreshCatalogue(expectedDigest: string): Promise<void> {
     if (!/^[a-f0-9]{64}$/.test(expectedDigest) || !this.options.refreshCatalogue) return refuse()
     await this.options.state.withExclusive(async () => {
       const next = await this.options.refreshCatalogue!()
-      createRepoAwarePluginVerifier({
+      const verified = createRepoAwarePluginVerifier({
         pinnedPublicKey: this.options.pinnedPublicKey,
         repoCatalogueSha256: next.repoCatalogueSha256,
         target: this.options.target,
         knownReleases: this.pins(),
       }).verifyCatalogue(next.catalogue.bytes, next.catalogue.signature)
       if (pluginSha256(next.catalogue.bytes) !== expectedDigest) return refuse()
+      this.retainRepoList(next.repoList, next.repoCatalogueSha256)
+      this.retainCatalogue(
+        next.catalogue.bytes,
+        verified.entries.map((one) => one.id),
+      )
       this.options.catalogue = next.catalogue
       this.options.repoCatalogueSha256 = next.repoCatalogueSha256
+      this.options.repoList = next.repoList
       this.options.names = next.names
     })
   }
@@ -770,10 +815,10 @@ export class PluginLifecycleController {
   }
   /** A running plugin's own clean-up before uninstall, such as logging out of an account. Its failure is not refused:
    * the plugin's data is deleted below either way. */
-  private async beforeRemoval(id: string): Promise<void> {
+  private async beforeRemoval(id: string): Promise<PluginRemovalOutcome['logout']> {
     const adapter = pluginAdapter(id),
       running = this.runs.get(id)
-    if (!adapter?.uninstall || !running || running.ended) return
+    if (!adapter?.uninstall || !running || running.ended) return 'unconfirmed'
     let timer: ReturnType<typeof setTimeout> | undefined
     try {
       const connection = await Promise.race([
@@ -782,15 +827,19 @@ export class PluginLifecycleController {
           timer = setTimeout(() => reject(new Error('unavailable')), 5000)
         }),
       ])
-      await adapter.uninstall(connection, new AbortController().signal)
+      return await adapter.uninstall(connection, new AbortController().signal)
     } catch {
-      // Logged out or not, the data goes.
+      // Local deletion can finish even when remote removal was not confirmed.
+      return 'unconfirmed'
     } finally {
       clearTimeout(timer)
     }
   }
-  private async finishRemoval(effect: Effect, install: Installation): Promise<void> {
-    await this.beforeRemoval(install.pluginId)
+  private async finishRemoval(
+    effect: Effect,
+    install: Installation,
+  ): Promise<PluginRemovalOutcome['logout']> {
+    const logout = await this.beforeRemoval(install.pluginId)
     const results = await Promise.allSettled([
       this.stop(install.pluginId, effect.operationId),
       this.revoke(install),
@@ -800,8 +849,10 @@ export class PluginLifecycleController {
       return pending()
     }
     await this.removeFiles(install, effect.operationId)
-    if (pluginAdapter(install.pluginId)?.uninstall)
-      await this.options.runtime.removeData?.(install.pluginId)
+    if (pluginAdapter(install.pluginId)?.uninstall) {
+      if (!this.options.runtime.removeData) return pending()
+      await this.options.runtime.removeData(install.pluginId)
+    }
     const state = this.options.state.inspect()
     // The effect is durable first. A crash here still has a pending journal resolution and
     // recovery must finish it; a committed effect alone is never activation/exit authority.
@@ -819,8 +870,13 @@ export class PluginLifecycleController {
     // Cohort receipts clear in the reserved completion. Any older/offline receipt is only a
     // cleanup obligation: the tombstone already invalidates it, never authority to reactivate.
     this.cleanup.delete(install.pluginId)
+    return logout
   }
-  private async remove(id: string, operationId: string, compensates: string | null): Promise<void> {
+  private async remove(
+    id: string,
+    operationId: string,
+    compensates: string | null,
+  ): Promise<PluginRemovalOutcome['logout']> {
     const state = this.options.state.inspect(),
       before = this.current(id)
     if (!before) return refuse()
@@ -851,16 +907,17 @@ export class PluginLifecycleController {
       compensates,
     }
     await this.effects.write(effect)
-    await this.finishRemoval(effect, operation.next!)
+    return this.finishRemoval(effect, operation.next!)
   }
   async uninstall(
     handle: LifecycleWorkspace,
     id: string,
     operationId: string = randomUUID(),
-  ): Promise<void> {
+  ): Promise<PluginRemovalOutcome | void> {
     this.workspace(handle)
     if (!idSchema.safeParse(id).success || !z.uuid().safeParse(operationId).success) return refuse()
     let absent = false
+    let logout: PluginRemovalOutcome['logout'] = 'unconfirmed'
     const token = this.block(id) // Synchronous denial before the queue, tombstone, or any consumer awaits.
     try {
       await this.options.state.withExclusive(async () => {
@@ -890,12 +947,13 @@ export class PluginLifecycleController {
           if (prior.status === 'completed') return
           const effect = await this.effects.read(prior.operation.request.operationId)
           if (!effect || !prior.operation.next) return pending()
-          await this.finishRemoval(effect, prior.operation.next)
+          logout = await this.finishRemoval(effect, prior.operation.next)
           return
         }
-        await this.remove(id, operationId, null)
+        logout = await this.remove(id, operationId, null)
       })
       if (this.blocks.get(id) === token) this.blocks.delete(id)
+      if (pluginAdapter(id)?.uninstall) return { data: 'deleted', logout }
     } catch {
       if (absent) {
         if (!this.cleanup.has(id) && this.blocks.get(id) === token) this.blocks.delete(id)
@@ -976,11 +1034,12 @@ export class PluginLifecycleController {
     handle: LifecycleWorkspace,
     id: string,
     installId: string,
+    allowLedgerV2 = true,
   ): Promise<number> {
     return this.options.state.withExclusive(async () => {
       const screen = this.screen(handle, id)
       if (!pluginAdapter(id) || screen.installation.installId !== installId) return refuse()
-      return new PluginProfileLedger(this.options.root).revision(installId)
+      return new PluginProfileLedger(this.options.root).revision(installId, allowLedgerV2)
     })
   }
   async applyProfile(
@@ -991,6 +1050,7 @@ export class PluginLifecycleController {
       incarnation: string
       revision: number
       proposal: unknown
+      ledgerFormat?: 1 | 2
     },
   ): Promise<void> {
     const proposal = PluginProposal.parse(input.proposal)
@@ -1011,6 +1071,7 @@ export class PluginLifecycleController {
         input.installId,
         input.revision,
         proposal,
+        input.ledgerFormat ?? 1,
       )
       const abort = new AbortController()
       this.profileCalls.set(input.pluginId, abort)
@@ -1091,6 +1152,14 @@ export class PluginLifecycleController {
         return pending()
       }
     })
+  }
+
+  /** Cleanup follows retained consumer bindings even after their exact plugin run has exited. */
+  consumerReceipts(handle: LifecycleWorkspace) {
+    return [...this.workspace(handle).receipts.values()].map(({ pluginId, installId }) => ({
+      pluginId,
+      installId,
+    }))
   }
 
   /** Private supervisor view of already reconciled workspace consumers. No person authority. */

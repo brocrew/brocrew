@@ -328,7 +328,8 @@ describe('§4 · Providers stops calling the key ready, until a turn or a check 
   let counter: number
   let window: RecordingSink
   let keySavedAt: number
-  let checkSays: ApiKeyCheck
+  let checkSays: ApiKeyCheck | Promise<ApiKeyCheck>
+  let checksStarted: number
 
   beforeEach(async () => {
     userData = mkdtempSync(join(tmpdir(), 'brobot2-f101-'))
@@ -339,6 +340,7 @@ describe('§4 · Providers stops calling the key ready, until a turn or a check 
     keySavedAt = 1
     keys = new ApiKeys(store, CIPHER, () => keySavedAt)
     checkSays = { ok: true }
+    checksStarted = 0
     handles = []
     moved = []
     counter = 0
@@ -347,7 +349,10 @@ describe('§4 · Providers stops calling the key ready, until a turn or a check 
       store,
       apiKeys: keys,
       providersMoved: (message) => moved.push(message),
-      askTheProvider: async () => checkSays,
+      askTheProvider: async () => {
+        checksStarted++
+        return checkSays
+      },
       discoverSessions: NO_DISCOVERY,
       nativeTranscriptPath: () => null,
       exportDirectory: () => join(userData, 'exports'),
@@ -508,6 +513,43 @@ describe('§4 · Providers stops calling the key ready, until a turn or a check 
     await host.checkApiKey('claude')
     expect(host.apiKeyStatus('claude')).not.toHaveProperty('refusedForBilling')
   })
+
+  it.each(['save', 'remove-and-save'] as const)(
+    'a late check failure leaves the replacement key alone after %s, even in the same clock tick',
+    async (change) => {
+      let finish!: (answer: ApiKeyCheck) => void
+      checkSays = new Promise((resolve) => {
+        finish = resolve
+      })
+      const checking = host.checkApiKey('claude')
+      await waitFor(() => checksStarted === 1, 'the first key check')
+      if (change === 'remove-and-save') await host.removeApiKey('claude')
+      await host.setApiKey('claude', 'sk-fictional-replacement')
+      finish({ ok: false, cannotPay: true, reason: 'fictional billing refusal' })
+      await checking
+      expect(host.apiKeyStatus('claude')).not.toHaveProperty('refusedForBilling')
+    },
+  )
+
+  it.each(['save', 'remove-and-save'] as const)(
+    'a late check success leaves the replacement key’s refusal alone after %s',
+    async (change) => {
+      let finish!: (answer: ApiKeyCheck) => void
+      checkSays = new Promise((resolve) => {
+        finish = resolve
+      })
+      const checking = host.checkApiKey('claude')
+      await waitFor(() => checksStarted === 1, 'the first key check')
+      if (change === 'remove-and-save') await host.removeApiKey('claude')
+      await host.setApiKey('claude', 'sk-fictional-replacement')
+      checkSays = { ok: false, cannotPay: true, reason: 'fictional billing refusal' }
+      await host.checkApiKey('claude')
+      expect(host.apiKeyStatus('claude').refusedForBilling).toBeDefined()
+      finish({ ok: true, answeredARequest: true })
+      await checking
+      expect(host.apiKeyStatus('claude').refusedForBilling).toBeDefined()
+    },
+  )
 
   it('⚑ the words for the way out follow the platform: on Windows, whether Claude Code’s login is there', () => {
     const aLogin = JSON.stringify({ claudeAiOauth: { accessToken: 'fake-token', expiresAt: 1 } })

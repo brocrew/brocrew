@@ -12,6 +12,7 @@ const client = props.client ?? window.api?.plugins
 const cards = ref<PluginCard[]>([]),
   query = ref(''),
   error = ref(''),
+  removalNotice = ref(''),
   busy = ref(false),
   /** The plugin an install is starting, so the wait reads as progress, not a fault. */
   starting = ref<string | null>(null)
@@ -146,8 +147,15 @@ async function change(kind: 'install' | 'update' | 'uninstall', card: PluginCard
   if (!alive) return
   starting.value = null
   busy.value = false
-  if (answer.ok && answer.cards) cards.value = answer.cards
-  else error.value = unavailable
+  if (answer.ok && answer.cards) {
+    cards.value = answer.cards
+    if (kind === 'uninstall' && answer.removal) {
+      removalNotice.value =
+        answer.removal.logout === 'confirmed'
+          ? `${card.name}'s local data was deleted and its device was logged out.`
+          : `${card.name}'s local data was deleted. Logout was not confirmed. Open Linked devices on your phone and remove this device if it is still listed.`
+    }
+  } else error.value = unavailable
 }
 onMounted(async () => {
   stop =
@@ -210,6 +218,9 @@ onUnmounted(() => {
       Couldn't check for plugin updates. Check your connection and try again.
     </p>
     <p v-if="error" role="status" class="plugin-error" data-cy="plugins-error">{{ error }}</p>
+    <p v-if="removalNotice" role="status" class="plugin-trust" data-cy="plugins-removal-notice">
+      {{ removalNotice }}
+    </p>
     <div v-if="selected" class="plugin-configuration" data-cy="plugin-configuration">
       <header>
         <h2>{{ selected.name }}</h2>
@@ -305,9 +316,12 @@ onUnmounted(() => {
           data-cy="plugin-confirmation"
         >
           <p v-if="card.uninstallDeletesData">
-            Uninstall {{ card.name }} from all workspaces. This logs it out and deletes its data.
+            Uninstall {{ card.name }} from all workspaces and delete its local data.
           </p>
           <p v-else>Uninstall {{ card.name }} from all workspaces. Its data will be kept.</p>
+          <p v-if="card.hasRemoteLogout">
+            If logout cannot be confirmed, you will need to remove the linked device on your phone.
+          </p>
           <button
             class="bb-button"
             type="button"

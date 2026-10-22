@@ -98,7 +98,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "M7 · an answer held at Claude's usage limit is said as coming when this turn ends · "
         f"killed by `{WITHDRAW}`",
         [(HOST,
-          "    if (this.theResetItWaitsFor(session.provider) !== null) return 'held-until-the-limit-resets'\n",
+          "    if (\n      this.theResetItWaitsFor(session.provider, this.limitAccountOf(session.id, this.now())) !==\n      null\n    )\n      return 'held-until-the-limit-resets'\n",
           "")],
     ),
     (

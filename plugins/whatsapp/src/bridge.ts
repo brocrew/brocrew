@@ -357,13 +357,28 @@ export function startBridge(options: {
     const end = (code: number | null) => {
       if (ended) return
       ended = true
+      // A phone-side logout must survive shutdown or an interrupted local wipe.
+      if (code === EXIT_UNLINKED) fs.writeFileSync(pending, '', { mode: 0o600 })
       clearTimeout(ready)
       lines.close()
       if (child === started) {
         child = undefined
         port = 0
       }
-      if (closing) return
+      if (closing) {
+        if (code === EXIT_UNLINKED) {
+          status = unavailableStatus('unlinked')
+          wipeOnExit = true
+          try {
+            wipe()
+            wipeOnExit = false
+          } catch {
+            // The pending marker keeps the data unavailable until a later start finishes.
+            logger.error('bridge logout wipe deferred')
+          }
+        }
+        return
+      }
       if (code === EXIT_UNLINKED || wipeOnExit) {
         // A log out that ended with no answer from the bridge was not confirmed by WhatsApp.
         if (wipeOnExit && !logoutAnswered) removeOnPhone = true
@@ -402,6 +417,7 @@ export function startBridge(options: {
     },
     call,
     async pair() {
+      if (closing || wipeOnExit) return false
       try {
         // Inside the five seconds the app gives a settings change.
         const reply = await call('/pair', {}, { timeoutMs: 4500 })

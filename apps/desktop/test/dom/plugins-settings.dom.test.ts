@@ -40,6 +40,8 @@ it('uses explicitly fake install/uninstall seams, searches, configures its measu
   m.q('plugin-uninstall').click()
   await nextTick()
   expect(m.q('plugin-confirmation').textContent).toContain('Its data will be kept.')
+  expect(m.q('plugin-confirmation').textContent?.toLowerCase()).not.toContain('phone')
+  expect(m.q('plugin-confirmation').textContent?.toLowerCase()).not.toContain('linked device')
   expect(f.calls.filter((c) => c.kind === 'uninstall')).toHaveLength(0)
   m.q('plugin-uninstall-confirm').click()
   await vi.waitFor(() => expect(m.q('plugin-state').textContent).toBe('Available'))
@@ -408,7 +410,7 @@ it('offers the current update on every page opening and tells the truth about da
       path: '__screenshots__/plugin-uninstall-truth.png',
     })
   expect(m.q('plugin-confirmation').textContent).toContain(
-    'Uninstall WhatsApp from all workspaces. This logs it out and deletes its data.',
+    'Uninstall WhatsApp from all workspaces and delete its local data.',
   )
   m.q('settings-tab-general').click()
   await nextTick()
@@ -535,4 +537,37 @@ it('keeps Running and Configure beside a quiet failed-refresh notice', async () 
   m.q('plugin-configure').click()
   await vi.waitFor(() => expect(m.all('plugin-stage')).toHaveLength(1))
   expect(f.calls.some((call) => call.kind === 'configure')).toBe(true)
+})
+
+it('keeps phone-removal guidance after uninstall removes the configuration page', async () => {
+  const f = fictionalPlugins()
+  f.set([
+    {
+      id: 'whatsapp',
+      name: 'WhatsApp',
+      installed: true,
+      state: 'Running',
+      uninstallDeletesData: true,
+      hasRemoteLogout: true,
+    },
+  ])
+  const request = f.client.request.bind(f.client)
+  f.client.request = async (input) => {
+    const answer = await request(input)
+    return input.kind === 'uninstall' && answer.ok
+      ? { ...answer, removal: { data: 'deleted' as const, logout: 'unconfirmed' as const } }
+      : answer
+  }
+  const m = mount(settingsWindow('plugins', 'classic', f.client), {}, { width: 1180, height: 900 })
+  await vi.waitFor(() => expect(m.all('plugin-uninstall')).toHaveLength(1))
+  m.q('plugin-uninstall').click()
+  await nextTick()
+  expect(m.q('plugin-confirmation').textContent).not.toContain('This logs it out')
+  expect(m.q('plugin-confirmation').textContent).toContain('If logout cannot be confirmed')
+  m.q('plugin-uninstall-confirm').click()
+  await vi.waitFor(() => expect(m.all('plugin-uninstall')).toHaveLength(0))
+  expect(m.q('plugins-removal-notice').textContent).toContain('local data was deleted')
+  expect(m.q('plugins-removal-notice').textContent).toContain('WhatsApp')
+  expect(m.q('plugins-removal-notice').textContent).toContain('Linked devices')
+  expect(m.all('plugin-configuration')).toHaveLength(0)
 })
