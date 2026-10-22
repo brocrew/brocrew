@@ -379,7 +379,9 @@ describe('marking what main found', () => {
     const fenced = renderChatMarkdown('```\nprojects/x/report.md\n```')
     expect(markPathsIn(fenced, () => FOUND('projects/x/report.md'), MAC)).toBe(fenced)
     const linked = renderChatMarkdown('[projects/x/report.md](https://example.com/a)')
-    expect(markPathsIn(linked, () => FOUND('projects/x/report.md'), MAC)).toBe(linked)
+    const out = markPathsIn(linked, () => FOUND('projects/x/report.md'), MAC)
+    expect(out).not.toContain('data-message-path=')
+    expect(out).toContain('data-message-link="https://example.com/a"')
   })
 })
 

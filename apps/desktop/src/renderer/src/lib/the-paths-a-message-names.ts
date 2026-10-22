@@ -248,7 +248,31 @@ export function markPathsIn(
       return out + run.slice(end)
     },
   })
-  return markLocalLinksIn(marked, links, known, words)
+  return markLocalLinksIn(markWebLinksIn(marked), links, known, words)
+}
+
+/** The attributes a web link's Copy and Open controls carry the address on. */
+export const LINK_COPY_ATTRIBUTE = 'data-message-link-copy'
+export const LINK_ATTRIBUTE = 'data-message-link'
+
+const A_WEB_ANCHOR = /<a href="(https?:\/\/[^"]*)"([^>]*)>([\s\S]*?)<\/a>/gi
+
+/**
+ * Every web link in a message: its text, which is not a control, then Copy and Open. Images the
+ * message could not draw stay the link they are, and so does anything that is not http or https.
+ */
+function markWebLinksIn(html: string): string {
+  return html.replace(A_WEB_ANCHOR, (whole, href: string, rest: string, label: string) => {
+    if (rest.includes('refused-image')) return whole
+    return (
+      `<span class="message-path message-web" data-kind="link">` +
+      `<span class="message-path-text message-web-text" data-cy="message-link-text" title="${href}">${label}</span>` +
+      `<button type="button" class="message-path-icon" data-cy="message-link-copy" ` +
+      `${LINK_COPY_ATTRIBUTE}="${href}" title="Copy link" aria-label="Copy link">${icon('#i-copy')}</button>` +
+      `<button type="button" class="message-path-icon" data-cy="message-link-open" ` +
+      `${LINK_ATTRIBUTE}="${href}" title="Open link" aria-label="Open link">${icon('#i-open')}</button></span>`
+    )
+  })
 }
 
 /** A rendered link to a local path, with what its destination names. */
@@ -349,9 +373,13 @@ function markLocalLinksIn(
 /** Which control a click landed on, and the text it names. */
 export function pathClicked(
   target: EventTarget | null,
-): { text: string; pressed: 'open' | 'copy' } | null {
+): { text: string; pressed: 'open' | 'copy'; link: boolean } | null {
+  const linkCopied = markedValueAt(target, LINK_COPY_ATTRIBUTE)
+  if (linkCopied !== null) return { text: linkCopied, pressed: 'copy', link: true }
+  const linkOpened = markedValueAt(target, LINK_ATTRIBUTE)
+  if (linkOpened !== null) return { text: linkOpened, pressed: 'open', link: true }
   const copied = markedValueAt(target, COPY_ATTRIBUTE)
-  if (copied !== null) return { text: copied, pressed: 'copy' }
+  if (copied !== null) return { text: copied, pressed: 'copy', link: false }
   const opened = markedValueAt(target, PATH_ATTRIBUTE)
-  return opened === null ? null : { text: opened, pressed: 'open' }
+  return opened === null ? null : { text: opened, pressed: 'open', link: false }
 }
