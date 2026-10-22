@@ -167,9 +167,10 @@ export function createProfileStore(opts: { home: string; now?: () => Date }): Pr
     remove(name) {
       const { all, index } = must(name)
       const dir = dirOf(name)
+      // Keep the name reserved if disk removal fails, so old sign-ins cannot be reused.
+      fs.rmSync(dir, { recursive: true, force: true })
       all.splice(index, 1)
       write(all)
-      fs.rmSync(dir, { recursive: true, force: true })
     },
   }
 }
