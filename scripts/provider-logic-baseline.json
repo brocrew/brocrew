@@ -1,6 +1,5 @@
 {
-  "apps/desktop/src/main/index.ts": 1,
   "apps/desktop/src/main/provider-snapshots.ts": 2,
   "apps/desktop/src/main/runtime/provider-homes.ts": 2,
-  "apps/desktop/src/main/runtime/runtime-host.ts": 33
+  "apps/desktop/src/main/runtime/runtime-host.ts": 6
 }
