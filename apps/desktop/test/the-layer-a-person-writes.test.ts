@@ -12,7 +12,11 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { composeProfileBundle, type InstructionContext } from '../src/main/runtime/factory-text'
+import {
+  composeProfileBundle,
+  thisConversationSpans,
+  type InstructionContext,
+} from '../src/main/runtime/factory-text'
 import { BUNDLE_LEAF, publishProfileBundle } from '../src/main/runtime/profile-bundle'
 import { readSessionInstructions } from '../src/main/runtime/instructions'
 import {
@@ -115,7 +119,13 @@ describe('582 · the layer a person writes', () => {
         const composed = composeProfileBundle(ctx)
         bundles.push(composed)
         const bundle = publishProfileBundle(provider, providerHome, composed)
-        const read = readSessionInstructions({ provider, cwd, providerHome, bundle })
+        const read = readSessionInstructions({
+          provider,
+          cwd,
+          providerHome,
+          bundle,
+          thisConversation: thisConversationSpans(ctx),
+        })
         reads.push(read)
         return { instructions: read.instructions, systemHint: undefined, memoryLoaded: null }
       },
@@ -201,6 +211,22 @@ describe('582 · the layer a person writes', () => {
   // ───────────────────────────────────────────────────────────────────────────────────────────
   // §2 · versioned and revertable — HO-009 §1.2
   // ───────────────────────────────────────────────────────────────────────────────────────────
+
+  it.each(['none', 'propose', 'relay', null] as const)(
+    'launches with the fixed rule policy under dormant value %s',
+    async (held) => {
+      await bringIdentityIntoBeing('worker')
+      expect(store.setCapabilities('worker', { canWriteRules: held })).toBe(true)
+      const opened = await personOpens('worker')
+      expect(reads.at(-1)?.instructions.composed).toContain(
+        "- You can read any agent's standing rules and propose a replacement; the person decides. A BroBot conversation the person started may also save one directly, but never its own. Each version keeps its author and reason, and the person can undo it.",
+      )
+      expect(reads.at(-1)?.instructions.composed).not.toContain(
+        "save a person's rule for another agent",
+      )
+      await host.close(opened, window)
+    },
+  )
 
   describe('§2 · nothing is ever replaced', () => {
     it('🔴 a second save APPENDS, and the first version is still readable', async () => {

@@ -34,33 +34,10 @@ const PANE = join(SRC, 'renderer/src/components/ConversationPane.vue')
 const SCREEN = join(SRC, 'renderer/src/components/RuntimeScreen.vue')
 
 /**
- * 🔴 **470 · a grant that waits for the next launch** — HO-028 §3, ruled.
- *
- * ## ⛔ The boundary, in one paragraph
- *
- * **A grant read when a conversation STARTS reaches one already running only when it is
- * reopened.** ⚑ The PO ruled the BEHAVIOUR correct and the silence wrong:
- *
- * > ⚑ *"The grant change applies when the conversation next starts, and the app discloses that
- * > plainly."* ⛔ **Not an automatic restart** — *"that destroys in-flight work to apply a
- * > setting."* ⚠️ *"Offer the person a relaunch if they want it applied now — their press, never
- * > ours."*
- *
- * ⚑ **`canWriteRules` is that grant**: "What you may do" renders one of three sentences from it at
- * launch, while `propose_agent_rules` reads the row again on every call.
- *
- * ## 🔴 Why an untested sentence is not a disclosure
- *
- * HO-028 §3 again: *"Disclosed, it is a boundary. Undisclosed, it is the F4 substitution hole
- * reopening quietly."* ⛔ **So the sentence and the boundary are asserted in ONE test** (§2): the
- * grant is changed on a real store, the rule-writing rail answers the change on the same live
- * conversation, the provider handle is never re-launched — and the clause a person reads about
- * each of those halves is asserted beside the measurement that makes it true.
- *
- * ⚑ **Real host, real SQLite, real migrations, real rails**, on `408`'s rig. The instructions are
- * composed, published and read by the functions the composition root calls, and the only double
- * is the provider: it records the text the exact `StartOptions` / `ResumeOptions` carried, so an
- * absence below is an absence from the launch object rather than from the test's attention.
+ * Real host, SQLite and tool rails with a recording fake provider. Messaging changes affect
+ * the next call while launch text changes only after reopening. Standing-rule authority is
+ * fixed for every legacy grant value. The dormant descriptor remains schema metadata, and
+ * the renderer's generic Reopen, draft and cost contracts are checked separately below.
  */
 
 class RecordingSink implements RuntimeEventSink {
@@ -85,7 +62,7 @@ class RecordingSink implements RuntimeEventSink {
 interface Launched {
   kind: 'start' | 'resume'
   who: string
-  /** The instructions this launch carried — where the relay sentence a model reads lives. */
+  /** The instructions carried by this start or resume. */
   hint: string
 }
 
@@ -125,14 +102,22 @@ class WatchingRuntime extends FakeRuntime {
   }
 }
 
-/**
- * Two of the three sentences "What you may do" renders from `canWriteRules`, pinned by their words:
- * `relay`, and `none`, which is also what an unconfigured row reads.
- */
-const RELAY_AND_RECORD =
+const RETIRED_RELAY =
   "- You may propose rules for approval, or save a person's rule for another agent when they " +
   'gave it in this conversation.'
-const RELAY_IF_YOU_CAN = "- You may not change or propose other agents' standing rules."
+const RETIRED_RULE_DENIAL = "- You may not change or propose other agents' standing rules."
+const FIXED_RULES =
+  "- You can read any agent's standing rules and propose a replacement; the person decides. " +
+  'A BroBot conversation the person started may also save one directly, but never its own. ' +
+  'Each version keeps its author and reason, and the person can undo it.'
+const MAY_MESSAGE = '- You may message any conversation.'
+const MAY_NOT_MESSAGE = '- You may not send messages to other conversations.'
+
+function expectFixedRules(hint: string): void {
+  expect(hint).toContain(FIXED_RULES)
+  expect(hint).not.toContain(RETIRED_RELAY)
+  expect(hint).not.toContain(RETIRED_RULE_DENIAL)
+}
 
 /** Prose stripped from a component, both grammars — `464`'s rule, on `464`'s reason. */
 function withoutProse(source: string): string {
@@ -233,14 +218,11 @@ describe('470 · a grant that waits for the next launch', () => {
     await host.close(id, window)
   }
 
-  const grant = (profileId: string, canWriteRules: 'none' | 'propose' | 'relay'): void => {
+  const grant = (profileId: string, canWriteRules: 'none' | 'propose' | 'relay' | null): void => {
     expect(store.setCapabilities(profileId, { canWriteRules })).toBe(true)
   }
 
-  /**
-   * The rule-writing rail's answer to the exact same request, made from the same live
-   * conversation: a rule for `worker` that a person gave the caller, relayed.
-   */
+  /** The retired relay request shape must remain refused, including after a reopen. */
   const askToRelayARule = async (caller: string): Promise<string> => {
     const tool = agentToolsFor(host, caller).tools.find((one) => one.name === 'propose_agent_rules')
     if (tool === undefined) throw new Error('no such tool: propose_agent_rules')
@@ -258,6 +240,23 @@ describe('470 · a grant that waits for the next launch', () => {
     return String(answered.outcome === 'ok' ? 'ok' : answered.rail)
   }
 
+  const callOn = async (
+    caller: string,
+    name: string,
+    args: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> => {
+    const tool = agentToolsFor(host, caller).tools.find((one) => one.name === name)
+    if (tool === undefined) throw new Error(`no such tool: ${name}`)
+    return (await tool.call(args)).structured as Record<string, unknown>
+  }
+
+  const messageWorker = (caller: string, worker: string): Promise<Record<string, unknown>> =>
+    callOn(caller, 'message_agent', {
+      agent: worker,
+      kind: 'note',
+      text: 'A fictional fixture note.',
+    })
+
   /** Every launch this app has made for one identity, oldest first. */
   const launchesFor = (who: string): Launched[] => launches.filter((one) => one.who === who)
 
@@ -271,7 +270,7 @@ describe('470 · a grant that waits for the next launch', () => {
   // §1 · the schema declares WHEN, so the sentence cannot be attached to the wrong grant
   // ─────────────────────────────────────────────────────────────────────────────────────────
 
-  describe('§1 · the disclosure is a field of the grant, not a constant beside it', () => {
+  describe('§1 · dormant disclosure metadata stays intact without granting live authority', () => {
     it('⛔ every capability answers the question, and exactly one of them has something to say', () => {
       // 🔴 **Required and not optional, which is the whole forcing function.** HO-008 §3's promise
       // is that a new capability costs one entry in `CAPABILITY_FIELDS`; ⛔ a capability whose
@@ -284,12 +283,7 @@ describe('470 · a grant that waits for the next launch', () => {
         if (said !== null) expect(said.length, field.key).toBeGreaterThan(80)
       }
       const speaking = CAPABILITY_FIELDS.filter((field) => field.whenItTakesEffect !== null)
-      // ⚑ **Named, so that a second one is a decision rather than a drift.** What makes a field owe
-      // a sentence is being READ AT LAUNCH: "What you may do" renders one of three sentences from
-      // `canWriteRules`, so a conversation already running was told one of them and goes on
-      // believing it. ⚠️ Every
-      // other grant is read by a rail on the call it answers, so an edit to it is answered by the
-      // next thing that asks.
+      // The legacy descriptor is preserved even though the field is hidden and authority is fixed.
       expect(speaking.map((field) => field.key)).toEqual(['canWriteRules'])
     })
 
@@ -322,13 +316,11 @@ describe('470 · a grant that waits for the next launch', () => {
       expect(planted.toLowerCase(), 'the sentence failed to load').toContain(other.toLowerCase())
     })
 
-    it('⚠️ it says BOTH clocks, and promises nothing about what a running model knows', () => {
+    it('⚠️ the dormant descriptor retains both clocks without promising what a running model knows', () => {
       const said = capabilityField('canWriteRules').whenItTakesEffect ?? ''
-      // 1 · the half that waits — `capabilityLines`, read once into the launch's "What you may do".
+      // Preserve the stored descriptor's wording without treating it as current launch policy.
       expect(said).toContain('A conversation reads this when it starts')
       expect(said).toContain('one already running keeps what it was told')
-      // 2 · the half that is NOW — `proposeAgentRules` reads the row on every call — and what a
-      //     narrowing never does: unwrite a version, which is text a person owns.
       expect(said).toContain('Narrowing it stops new requests')
       expect(said).toContain('never removes rules that are already saved')
       // 3 · ⛔ **and the thing it must not say.** The dispatch's §3: *"Do not write a sentence
@@ -361,23 +353,21 @@ describe('470 · a grant that waits for the next launch', () => {
   // §2 · the boundary and the sentence, measured together — HO-028 §3's own requirement
   // ─────────────────────────────────────────────────────────────────────────────────────────
 
-  describe('§2 · a live change: the rail moves, the launch object does not', () => {
+  describe('§2 · legacy rules stay fixed; live messaging changes wait only in the launch snapshot', () => {
     it('a legacy grant change cannot reactivate the relay or relaunch a conversation', async () => {
       await bringIdentityIntoBeing('lead')
       await bringIdentityIntoBeing('worker')
 
-      // 1 · a conversation opens as an identity nobody has granted anything — so it is told it
-      //     can only pass a rule on.
+      // An unconfigured legacy value receives the same fixed policy.
       const lead = await personOpens('lead')
       expect(launchesFor('lead').at(-1)?.kind).toBe('start')
-      expect(launchesFor('lead').at(-1)?.hint).toContain(RELAY_IF_YOU_CAN)
+      expectFixedRules(launchesFor('lead').at(-1)?.hint ?? '')
       const atLaunch = launchesFor('lead').length
 
       // The retired shortcut is refused regardless of this legacy value.
       expect(await askToRelayARule(lead)).toBe('malformed-request')
 
-      // 3 · the person widens the grant. ⛔ **Nothing is launched by the write** — `setCapabilities`
-      //     touches no slot and no handle.
+      // Changing the stored legacy value launches nothing and grants no new authority.
       // ⚑ **Compared against the SAME population**: `atLaunch` counts `lead`'s launches and this
       // counts every launch.
       const everyLaunch = launches.length
@@ -391,19 +381,18 @@ describe('470 · a grant that waits for the next launch', () => {
       // 5 · 🔴 **…and `lead`'s own provider handle was never re-launched**, so the words it was
       //     started with are still the ones it has — the first clause of the sentence, measured.
       expect(launchesFor('lead')).toHaveLength(atLaunch)
-      expect(launchesFor('lead').at(-1)?.hint).toContain(RELAY_IF_YOU_CAN)
-      expect(launchesFor('lead').at(-1)?.hint).not.toContain(RELAY_AND_RECORD)
+      expectFixedRules(launchesFor('lead').at(-1)?.hint ?? '')
       expect(capabilityField('canWriteRules').whenItTakesEffect).toContain(
         'A conversation reads this when it starts, so one already running keeps what it was told.',
       )
 
-      // 6 · ⚑ **And the remedy the sheet offers is the one that works.** Close and open it again —
-      //     `RuntimeScreen.closeAndReopen`, the gesture `147` built and `470` gave a second caller.
+      // Reopening refreshes the launch object without granting the retired shortcut.
       await closeAndReopen(lead)
       expect(launchesFor('lead')).toHaveLength(atLaunch + 1)
       expect(launchesFor('lead').at(-1)?.kind).toBe('resume')
-      expect(launchesFor('lead').at(-1)?.hint).toContain(RELAY_AND_RECORD)
-      expect(launchesFor('lead').at(-1)?.hint).not.toContain(RELAY_IF_YOU_CAN)
+      expectFixedRules(launchesFor('lead').at(-1)?.hint ?? '')
+      expect(await askToRelayARule(lead)).toBe('malformed-request')
+      expect(store.ownInstructionsOf('worker').versions).toHaveLength(0)
     })
 
     it('changing a legacy grant leaves person rules saved and keeps the relay refused', async () => {
@@ -413,7 +402,7 @@ describe('470 · a grant that waits for the next launch', () => {
       grant('lead', 'relay')
 
       const lead = await personOpens('lead')
-      expect(launchesFor('lead').at(-1)?.hint).toContain(RELAY_AND_RECORD)
+      expectFixedRules(launchesFor('lead').at(-1)?.hint ?? '')
       const atLaunch = launchesFor('lead').length
       expect(await askToRelayARule(lead)).toBe('malformed-request')
       expect(store.ownInstructionsOf('worker').versions).toHaveLength(1)
@@ -431,12 +420,115 @@ describe('470 · a grant that waits for the next launch', () => {
       )
       // the words it was launched with: unchanged, because nothing re-launched this handle.
       expect(launchesFor('lead')).toHaveLength(atLaunch)
-      expect(launchesFor('lead').at(-1)?.hint).toContain(RELAY_AND_RECORD)
+      expectFixedRules(launchesFor('lead').at(-1)?.hint ?? '')
 
       await closeAndReopen(lead)
+      expect(launchesFor('lead')).toHaveLength(atLaunch + 1)
       expect(launchesFor('lead').at(-1)?.kind).toBe('resume')
-      expect(launchesFor('lead').at(-1)?.hint).toContain(RELAY_IF_YOU_CAN)
-      expect(launchesFor('lead').at(-1)?.hint).not.toContain(RELAY_AND_RECORD)
+      expectFixedRules(launchesFor('lead').at(-1)?.hint ?? '')
+      expect(await askToRelayARule(lead)).toBe('malformed-request')
+      expect(store.ownInstructionsOf('worker').versions).toHaveLength(1)
+    })
+
+    it.each(['none', 'propose', 'relay', null] as const)(
+      'legacy %s keeps the fixed launch policy and cannot reactivate relay',
+      async (legacy) => {
+        await bringIdentityIntoBeing('lead')
+        await bringIdentityIntoBeing('worker')
+        grant('lead', legacy)
+        const lead = await personOpens('lead')
+        expectFixedRules(launchesFor('lead').at(-1)?.hint ?? '')
+        const atLaunch = launchesFor('lead').length
+        expect(await askToRelayARule(lead)).toBe('malformed-request')
+        const direct = {
+          agent: 'worker',
+          current_version: 0,
+          current_rules: '',
+          rules: 'A fictional direct write.',
+          why: 'A fixture checks the fixed caller boundary.',
+        }
+        expect(await callOn(lead, 'write_agent_rules', direct)).toMatchObject({
+          outcome: 'refused',
+          rail: 'may-not-write-rules',
+        })
+        expect(store.ownInstructionsOf('worker').versions).toHaveLength(0)
+        await closeAndReopen(lead)
+        expect(launchesFor('lead')).toHaveLength(atLaunch + 1)
+        expect(launchesFor('lead').at(-1)?.kind).toBe('resume')
+        expectFixedRules(launchesFor('lead').at(-1)?.hint ?? '')
+        expect(await askToRelayARule(lead)).toBe('malformed-request')
+        expect(await callOn(lead, 'write_agent_rules', direct)).toMatchObject({
+          outcome: 'refused',
+          rail: 'may-not-write-rules',
+        })
+        expect(
+          await callOn(lead, 'propose_agent_rules', {
+            agent: 'worker',
+            current_version: 0,
+            rules: 'A fictional proposal.',
+            why: 'A fixture checks the person decision boundary.',
+          }),
+        ).toMatchObject({ outcome: 'ok', wrote: 'a-request' })
+        expect(store.ownInstructionsOf('worker').versions).toHaveLength(0)
+      },
+    )
+
+    it('a real message grant widens at the rail while launch text changes only on reopen', async () => {
+      await bringIdentityIntoBeing('lead')
+      const worker = await personOpens('worker')
+      expect(store.setCapabilities('lead', { canMessage: 'none' })).toBe(true)
+      const lead = await personOpens('lead')
+      const snapshot = launchesFor('lead').at(-1)?.hint ?? ''
+      expect(snapshot).toContain(MAY_NOT_MESSAGE)
+      expect(snapshot).not.toContain(MAY_MESSAGE)
+      expectFixedRules(snapshot)
+      const atLaunch = launchesFor('lead').length
+      expect(await messageWorker(lead, worker)).toMatchObject({
+        outcome: 'refused',
+        rail: 'may-not-message',
+      })
+      const everyLaunch = launches.length
+      expect(store.setCapabilities('lead', { canMessage: 'any' })).toBe(true)
+      expect(launches.length, 'the write launched something').toBe(everyLaunch)
+      expect(await messageWorker(lead, worker)).toMatchObject({ outcome: 'ok' })
+      expect(launchesFor('lead')).toHaveLength(atLaunch)
+      expect(launchesFor('lead').at(-1)?.hint).toBe(snapshot)
+      await closeAndReopen(lead)
+      expect(launchesFor('lead')).toHaveLength(atLaunch + 1)
+      expect(launchesFor('lead').at(-1)?.kind).toBe('resume')
+      const refreshed = launchesFor('lead').at(-1)?.hint ?? ''
+      expect(refreshed).toContain(MAY_MESSAGE)
+      expect(refreshed).not.toContain(MAY_NOT_MESSAGE)
+      expectFixedRules(refreshed)
+    })
+
+    it('a real message grant narrows at the rail while the provider keeps its earlier launch text', async () => {
+      await bringIdentityIntoBeing('lead')
+      const worker = await personOpens('worker')
+      expect(store.setCapabilities('lead', { canMessage: 'any' })).toBe(true)
+      const lead = await personOpens('lead')
+      const snapshot = launchesFor('lead').at(-1)?.hint ?? ''
+      expect(snapshot).toContain(MAY_MESSAGE)
+      expect(snapshot).not.toContain(MAY_NOT_MESSAGE)
+      expectFixedRules(snapshot)
+      const atLaunch = launchesFor('lead').length
+      expect(await messageWorker(lead, worker)).toMatchObject({ outcome: 'ok' })
+      const everyLaunch = launches.length
+      expect(store.setCapabilities('lead', { canMessage: 'none' })).toBe(true)
+      expect(launches.length, 'the write launched something').toBe(everyLaunch)
+      expect(await messageWorker(lead, worker)).toMatchObject({
+        outcome: 'refused',
+        rail: 'may-not-message',
+      })
+      expect(launchesFor('lead')).toHaveLength(atLaunch)
+      expect(launchesFor('lead').at(-1)?.hint).toBe(snapshot)
+      await closeAndReopen(lead)
+      expect(launchesFor('lead')).toHaveLength(atLaunch + 1)
+      expect(launchesFor('lead').at(-1)?.kind).toBe('resume')
+      const refreshed = launchesFor('lead').at(-1)?.hint ?? ''
+      expect(refreshed).toContain(MAY_NOT_MESSAGE)
+      expect(refreshed).not.toContain(MAY_MESSAGE)
+      expectFixedRules(refreshed)
     })
   })
 
@@ -463,7 +555,7 @@ describe('470 · a grant that waits for the next launch', () => {
       expect(pane).toContain('data-cy="sign-in-cost"')
     })
 
-    it('⛔ the grant sheet reads the same table, and spells no capability key to do it', () => {
+    it('⛔ the grant sheet shares the table and names the dormant key only to hide it', () => {
       const sheet = withoutProse(readFileSync(SHEET, 'utf8'))
       expect(sheet).toContain(
         `import { reopeningSays, type AConversationToReopen } from '../lib/reopening'`,
@@ -479,11 +571,14 @@ describe('470 · a grant that waits for the next launch', () => {
       )
       expect(sheet).toContain('moved.value.size > 0 || externalMcpMoved.value')
       expect(sheet).toContain('{{ field.whenItTakesEffect }}')
-      // 🔴 **`the-rails-a-message-passes.test.ts` §8's claim, re-asserted in the dispatch that added
-      // a control to one grant and not the others.** ⛔ The narrowing is declared in the SCHEMA and
-      // read here as a field, so the component still cannot say which grant it is talking about.
+      // Allow only the explicit dormant-field filter; all rendering and disclosure stay generic.
+      const hiddenRulesFilter = "props.fields.filter((field) => field.key !== 'canWriteRules')"
+      expect(sheet.split(hiddenRulesFilter)).toHaveLength(2)
+      const genericSheet = sheet.replace(hiddenRulesFilter, 'props.fields')
       for (const field of CAPABILITY_FIELDS) {
-        expect(sheet, `${field.key} is spelled in the sheet`).not.toContain(field.key)
+        expect(genericSheet, `${field.key} is spelled outside the dormant filter`).not.toContain(
+          field.key,
+        )
         expect(sheet, `${field.column} is spelled in the sheet`).not.toContain(field.column)
       }
       // ⚑ …and the hooks are built from the field rather than typed out.

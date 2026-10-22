@@ -183,7 +183,8 @@ describe('standing-rule authority belongs to the host and changes remain attribu
     )
   const call = async (me: string, name: string, args: Record<string, unknown>) => {
     const tool = tools.get(me)?.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`missing tool ${name}`)
+    expect(tool, `registered tool ${name}`).toBeDefined()
+    if (tool === undefined) throw new Error('unreachable missing tool')
     return (await tool.call(args)).structured as Record<string, unknown>
   }
 
@@ -255,7 +256,7 @@ describe('standing-rule authority belongs to the host and changes remain attribu
     expect(replace(primary)).toMatchObject({ ok: true, result: { conversation: primary } })
   })
 
-  it('refuses the old shortcut, exposes a usable read, and leaves direct writing off the public tools', async () => {
+  it('refuses the old shortcut and exposes the bound direct-write door with the book', async () => {
     await start('lark')
     const me = await start(DEFAULT_PROFILE_ID)
     const current = await call(me, 'read_agent_rules', { agent: 'lark' })
@@ -277,7 +278,7 @@ describe('standing-rule authority belongs to the host and changes remain attribu
         current_version: 0,
       }),
     ).toMatchObject({ outcome: 'ok', wrote: 'a-request' })
-    expect(tools.get(me)?.tools.some((one) => one.name === 'write_agent_rules')).toBe(false)
+    expect(tools.get(me)?.tools.some((one) => one.name === 'write_agent_rules')).toBe(true)
     expect(store.ownInstructionsOf('lark').versions).toEqual([])
   })
 
@@ -343,6 +344,142 @@ describe('standing-rule authority belongs to the host and changes remain attribu
         author: { profile: DEFAULT_PROFILE_ID },
       },
     })
+  })
+
+  it('identifies a person-approved proposal when the direct tool replaces it', async () => {
+    await start('lark')
+    const proposer = await start('wren')
+    const asked = propose(proposer, 'Approved proposal')
+    if (!asked.ok) throw new Error('proposal refused')
+    expect(host.decideInstruction(asked.askId, true, window)).toEqual({ outcome: 'taken' })
+    const me = await start(DEFAULT_PROFILE_ID)
+    const written = await call(me, 'write_agent_rules', {
+      agent: 'lark',
+      current_version: 1,
+      current_rules: 'Approved proposal',
+      rules: 'Revised checklist',
+      why: 'Clarify the sequence',
+    })
+    expect(written).toMatchObject({
+      outcome: 'ok',
+      previousVersion: 1,
+      version: 2,
+      replacedPersonVersion: 1,
+    })
+    expect(store.ownInstructionsOf('lark').versions[1]).toMatchObject({
+      whoWroteIt: 'an-agents-proposal',
+      by: { who: 'a-person' },
+      text: 'Approved proposal',
+    })
+  })
+
+  it('binds a real direct tool write to the running author and returns metadata only', async () => {
+    await start('lark')
+    const me = await start(DEFAULT_PROFILE_ID)
+    store.setAgentDisplayName(DEFAULT_PROFILE_ID, 'Coordinator')
+    const written = await call(me, 'write_agent_rules', {
+      agent: 'lark',
+      current_version: 0,
+      current_rules: '',
+      rules: 'Read the checklist first.',
+      why: 'Keep the work reviewable.',
+    })
+    expect(written).toMatchObject({
+      outcome: 'ok',
+      profile: 'lark',
+      conversation: me,
+      previousVersion: 0,
+      version: 1,
+      author: { profile: DEFAULT_PROFILE_ID, name: 'Coordinator' },
+    })
+    expect(written).not.toHaveProperty('rules')
+    expect(written).not.toHaveProperty('text')
+    expect(written).not.toHaveProperty('reason')
+    expect(store.ownInstructionsOf('lark').versions[0]).toMatchObject({
+      text: 'Read the checklist first.',
+      author: { profile: DEFAULT_PROFILE_ID, name: 'Coordinator' },
+      said: 'Keep the work reviewable.',
+      whoWroteIt: 'an-agent-direct',
+      conversation: me,
+    })
+    expect(store.instructionUnread('lark').unread).toBe(true)
+  })
+
+  it('refuses ordinary tool callers and self-targets without trusting claimed actor fields', async () => {
+    await start('lark')
+    const ordinary = await start('wren')
+    const primary = await start(DEFAULT_PROFILE_ID)
+    const input = {
+      agent: 'lark',
+      current_version: 0,
+      current_rules: '',
+      rules: 'Replacement',
+      why: 'Explain this change',
+    }
+    for (const held of ['none', 'propose', 'relay'] as const) {
+      store.setCapabilities('wren', { canWriteRules: held })
+      expect(await call(ordinary, 'write_agent_rules', input)).toMatchObject({
+        outcome: 'refused',
+        rail: 'may-not-write-rules',
+      })
+    }
+    expect(
+      await call(primary, 'write_agent_rules', { ...input, agent: DEFAULT_PROFILE_ID }),
+    ).toMatchObject({ outcome: 'refused', rail: 'may-not-write-rules' })
+    expect(
+      await call(primary, 'write_agent_rules', {
+        ...input,
+        author: { profile: 'wren', name: 'Forged' },
+      }),
+    ).toMatchObject({ outcome: 'refused', rail: 'malformed-request' })
+    expect(store.ownInstructionsOf('lark').versions).toEqual([])
+  })
+
+  it('does not let a stale tool read replace a newer person save', async () => {
+    await start('lark')
+    const me = await start(DEFAULT_PROFILE_ID)
+    const seen = await call(me, 'read_agent_rules', { agent: 'lark' })
+    policy().instructAgent('lark', 'The person saved this later', undefined, window, {
+      expectedVersion: 0,
+      currentText: '',
+    })
+    expect(
+      await call(me, 'write_agent_rules', {
+        agent: 'lark',
+        current_version: seen['version'],
+        current_rules: seen['text'],
+        rules: 'Stale replacement',
+        why: 'Based on an old read',
+      }),
+    ).toMatchObject({ outcome: 'refused', rail: 'malformed-request' })
+    expect(store.ownInstructionsOf('lark').versions).toHaveLength(1)
+    expect(store.ownInstructionsOf('lark').versions[0]?.text).toBe('The person saved this later')
+  })
+
+  it('requires the complete bounded baseline and reason on the direct tool', async () => {
+    await start('lark')
+    const me = await start(DEFAULT_PROFILE_ID)
+    const input = {
+      agent: 'lark',
+      current_version: 0,
+      current_rules: '',
+      rules: 'Replacement',
+      why: 'Explain the replacement',
+    }
+    for (const changed of [
+      { current_rules: undefined },
+      { current_version: -1 },
+      { current_version: Number.MAX_SAFE_INTEGER + 1 },
+      { why: '   ' },
+      { rules: 'x'.repeat(16001) },
+    ]) {
+      expect(await call(me, 'write_agent_rules', { ...input, ...changed })).toMatchObject({
+        outcome: 'refused',
+        rail: 'malformed-request',
+      })
+      expect(store.ownInstructionsOf('lark').versions).toEqual([])
+    }
+    expect(await call(me, 'write_agent_rules', input)).toMatchObject({ outcome: 'ok', version: 1 })
   })
 
   it('allows only a person to undo or acknowledge, and Undo supersedes pending proposals', async () => {

@@ -888,6 +888,11 @@ describe('484 · state a supervisor can trust', () => {
           '484 · `turn_interrupted` says the turn was stopped, and the asker is on the neighbouring row of the same ledger',
       },
       // ⚑ **D-016** — `list_projects` (*the same act on the project read*) is gone with projects.
+      write_agent_rules: {
+        describes: false,
+        actor: 'the caller',
+        because: 'It reports this caller’s own attributed rules write, with a metadata receipt.',
+      },
       read_agent_rules: {
         describes: false,
         actor: 'n/a',

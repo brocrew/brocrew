@@ -106,6 +106,9 @@ const GRANTS_HEADING = '## What you may do'
 const SPAWNING_OFF =
   '- This app currently blocks creating agents and starting new agent conversations. Giving work to an existing conversation still depends on your permissions.'
 
+const FIXED_RULE_POLICY =
+  "- You can read any agent's standing rules and propose a replacement; the person decides. A BroBot conversation the person started may also save one directly, but never its own. Each version keeps its author and reason, and the person can undo it."
+
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 const SRC = join(here, '../src')
@@ -1354,11 +1357,8 @@ describe('§8 · what the host tells the reader, at a launch and at a reopen', (
     expect(ctx.capabilities).toEqual(DEFAULT_CAPABILITIES)
     expect(ctx.capabilities?.canWriteRules).toBe('none')
     expect(store.capabilitiesOf('a-fresh-one')).toEqual(ctx.capabilities)
-    // ⛔ **So the grant section says `none` on the line a model reads**, which is a real answer and
-    // not the absence this branch used to render.
-    expect(thisConversationText(ctx)).toContain(
-      "- You may not change or propose other agents' standing rules.",
-    )
+    // The stored legacy grant is retained; launch words disclose the fixed role policy.
+    expect(thisConversationText(ctx)).toContain(FIXED_RULE_POLICY)
   })
 
   it('⛔ …and the SECOND launch of the same identity does carry them — the paired positive', async () => {
@@ -1614,9 +1614,9 @@ describe('§9 · one agent instruction set', () => {
       thisConversationText({ ...context(), capabilities })
     expect(told(narrow)).toContain('- You may not send messages to other conversations.')
     expect(told(wide)).toContain('- You may message any conversation.')
-    expect(told(proposing)).toContain(
-      "- You may propose other agents' standing rules; the person must approve before they are saved.",
-    )
+    for (const allowed of [narrow, wide, proposing]) {
+      expect(told(allowed)).toContain(FIXED_RULE_POLICY)
+    }
   })
 })
 // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -1778,7 +1778,9 @@ describe('§10 · a grant says its own value, and every grant says one', () => {
   })
 
   it('moves exactly the permission whose resolved value changed', () => {
-    const fields = CAPABILITY_FIELDS.filter((field) => field.key !== 'maxDepth')
+    const fields = CAPABILITY_FIELDS.filter(
+      (field) => field.key !== 'maxDepth' && field.key !== 'canWriteRules',
+    )
     for (const field of fields) {
       const [low, high] = endsOf(field)
       const a = grantLines(
@@ -1887,12 +1889,6 @@ function expectedPermissions(allowed: ProfileCapabilities): string[] {
     allowed.canCreateAgents === 'any'
       ? '- You may create agents and give them their initial rules.'
       : '- You may not create agents.',
-    {
-      none: "- You may not change or propose other agents' standing rules.",
-      propose:
-        "- You may propose other agents' standing rules; the person must approve before they are saved.",
-      relay:
-        "- You may propose rules for approval, or save a person's rule for another agent when they gave it in this conversation.",
-    }[allowed.canWriteRules],
+    FIXED_RULE_POLICY,
   ]
 }
