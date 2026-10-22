@@ -16,7 +16,7 @@ import { tmpdir } from 'node:os'
 import { join, sep } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { ProgressListener, StartupVerdict } from '../../src/shared/recovery'
-import { inWords, listCheckpoints } from '../../src/main/recovery/checkpoint'
+import { inWords, isIntact, listCheckpoints } from '../../src/main/recovery/checkpoint'
 import {
   createRecoveryService,
   createRecoveryServiceForTests,
@@ -336,6 +336,91 @@ describe('a copy before a migration', () => {
       detail: await noRoom(userData),
     })
     expect(existsSync(fixture.checkpoints[0]!.dir)).toBe(true)
+  })
+
+  it.each(['copy', 'verify', 'files', 'manifest'] as const)(
+    'keeps the newest verified fallback when newer copies are damaged and the replacement stops at %s',
+    async (stoppedAt) => {
+      const userData = join(await aRoot(), 'data')
+      const fixture = await makeRecoveryFixture(userData, {
+        migrations: THIS_BUILD,
+        checkpoints: [
+          dated(12),
+          dated(9),
+          { ...dated(2), fault: 'copy-changed' },
+          { ...dated(1), fault: 'copy-changed' },
+        ],
+        now,
+      })
+      const oldest = fixture.checkpoints[0]!
+      const fallback = fixture.checkpoints[1]!
+      const before = await treeOf(fallback.dir)
+      const checked = { folder: fallback.dir, manifest: fallback.manifest }
+      expect(await isIntact(checked)).toBe(true)
+      const reached: { step: string; fallbackExists: boolean }[] = []
+      const { deps, seen } = checkOf(userData, {
+        buildMigrationsFolder: await aBuildWithOneMoreMigration(),
+        now: () => now,
+        freeBytes: () => (existsSync(oldest.dir) ? 0 : 1_000_000_000),
+        beforeCheckpointStep: (step) => {
+          reached.push({ step, fallbackExists: existsSync(fallback.dir) })
+          if (step === stoppedAt) throw new Error('the synthetic replacement stopped')
+        },
+      })
+
+      expect(await inspect(deps)).toEqual({
+        kind: 'failed',
+        reason: 'checkpoint-failed',
+        canRetry: true,
+        detail: expect.stringContaining('the synthetic replacement stopped'),
+      })
+      expect(existsSync(oldest.dir), 'low-space pruning ran before the replacement').toBe(false)
+      expect(reached.at(-1)?.step).toBe(stoppedAt)
+      expect(reached.every(({ fallbackExists }) => fallbackExists)).toBe(true)
+      expect(await treeOf(fallback.dir)).toEqual(before)
+      expect(await isIntact(checked)).toBe(true)
+      expect((await listCheckpoints(userData)).map(({ manifest }) => manifest.id).sort()).toEqual(
+        fixture.checkpoints
+          .slice(1)
+          .map(({ id }) => id)
+          .sort(),
+      )
+      expect(seen.lines).not.toContain(CHECKPOINT_LINE)
+    },
+  )
+
+  it('keeps the only compatible verified copy on low space beside newer unusable copies', async () => {
+    const userData = join(await aRoot(), 'data')
+    const fixture = await makeRecoveryFixture(userData, {
+      migrations: THIS_BUILD,
+      checkpoints: [
+        dated(10),
+        { ...dated(3), appVersion: '0.2.0' },
+        { ...dated(2), fault: 'another-workspace' },
+        { ...dated(1), fault: 'copy-changed' },
+      ],
+      now,
+    })
+    const only = fixture.checkpoints[0]!
+    const checked = { folder: only.dir, manifest: only.manifest }
+    const before = await treeOf(backupsDir(userData))
+    expect(await isIntact(checked)).toBe(true)
+    const { deps, seen } = checkOf(userData, {
+      packaged: true,
+      appVersion: '0.1.1',
+      now: () => now,
+      freeBytes: () => 0,
+    })
+
+    expect(await inspect(deps)).toEqual({
+      kind: 'failed',
+      reason: 'checkpoint-failed',
+      canRetry: true,
+      detail: await noRoom(userData),
+    })
+    expect(await treeOf(backupsDir(userData))).toEqual(before)
+    expect(await isIntact(checked)).toBe(true)
+    expect(seen.lines).not.toContain(CHECKPOINT_LINE)
   })
 
   it('is made and checked before a pending migration, said once, and the data is unchanged', async () => {
