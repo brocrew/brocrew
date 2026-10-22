@@ -694,7 +694,7 @@ describe('§1 · one instruction set', () => {
       expect(TOOL_NAMES as readonly string[], `${named} is a tool`).toContain(named)
     }
     expect(pm).toContain(
-      'Use ask_question for decisions or observations; request_action for actions the person must take.',
+      'Ask your questions with ask_question, even to agents; notes expect none. request_action tracks the person's actions. Never guarantee replies.',
     )
     // ⚑ **It INSTRUCTS and does not DESCRIBE** (HO-015 §2): nothing about where a question came
     // from, how it got here, or what the app did with it.
