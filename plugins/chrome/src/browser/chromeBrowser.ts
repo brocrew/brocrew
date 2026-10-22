@@ -36,6 +36,7 @@ export const KILL_GRACE_MS = 3000
 export const WAIT_POLL_MS = 1500
 export interface ChromeBrowserOptions {
   dirOf: (profile: string) => string
+  profileExists?: (profile: string) => boolean
   logger?: Logger
   idleMs?: number
   afterIdleClose?: (profile: string) => void | Promise<void>
@@ -72,6 +73,8 @@ interface Entry {
   idleTimer: ReturnType<typeof setTimeout> | null
   touched: number
   life: Promise<unknown>
+  lifePending: number
+  removing: boolean
   pageListeners: Set<(page: Page) => void>
   closedListeners: Set<(generation: number) => void>
   endedHooks: Array<() => void>
@@ -192,6 +195,8 @@ export class ChromeBrowser implements ProfileBrowser {
         idleTimer: null,
         touched: 0,
         life: Promise.resolve(),
+        lifePending: 0,
+        removing: false,
         pageListeners: new Set(),
         closedListeners: new Set(),
         downloads: null,
@@ -202,12 +207,17 @@ export class ChromeBrowser implements ProfileBrowser {
     return e
   }
   private lifecycle<T>(e: Entry, fn: () => Promise<T>): Promise<T> {
+    if (e.removing) return Promise.reject(new ProfileInUseError())
+    e.lifePending++
     const run = e.life.then(fn, fn)
-    e.life = run.then(
+    const settled = run.finally(() => {
+      e.lifePending--
+    })
+    e.life = settled.then(
       () => undefined,
       () => undefined,
     )
-    return run
+    return settled
   }
   dir(profile: string): string {
     return this.opts.dirOf(profile)
@@ -226,6 +236,8 @@ export class ChromeBrowser implements ProfileBrowser {
     generation: number
   }> {
     if (this.shuttingDown) throw new Error('the server is shutting down')
+    if (this.opts.profileExists?.(profile) === false) throw new Error('profile does not exist')
+    if (this.entries.get(profile)?.removing) throw new ProfileInUseError()
     const dir = this.dir(profile)
     const e = this.entry(profile)
     return this.lifecycle(e, async () => {
@@ -643,8 +655,31 @@ export class ChromeBrowser implements ProfileBrowser {
   exclusive<T>(profile: string, fn: () => Promise<T>): Promise<T> {
     return this.serializer.runExclusive(profile, fn)
   }
+  /** A person may remove closed data only while no browser work can acquire it. */
+  removeWhenIdle(profile: string, remove: () => void): Promise<void> {
+    return this.exclusive(profile, async () => {
+      const e = this.entry(profile)
+      const busy = () =>
+        e.ctx !== null ||
+        e.lifePending > 0 ||
+        e.waiters > 0 ||
+        e.barrier.inFlight() > 0 ||
+        e.barrier.isTransitioning()
+      if (e.removing || busy()) throw new ProfileInUseError()
+      e.removing = true
+      try {
+        if (await this.lockHeld(this.dir(profile))) throw new ProfileInUseError()
+        if (busy()) throw new ProfileInUseError()
+        remove()
+      } finally {
+        e.removing = false
+      }
+    })
+  }
   operate<T>(profile: string, fn: () => Promise<T>): Promise<T> {
-    return this.entry(profile).barrier.runOp(fn)
+    const e = this.entry(profile)
+    if (e.removing) return Promise.reject(new ProfileInUseError())
+    return e.barrier.runOp(fn)
   }
   touch(profile: string): void {
     const e = this.entries.get(profile)

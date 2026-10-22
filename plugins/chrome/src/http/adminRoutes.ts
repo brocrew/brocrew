@@ -36,6 +36,7 @@ export const ADMIN_ERRORS = {
   temporary:
     'A temporary profile has no account: it cannot be opened for the user and cannot get extension, settings, sync or keep-running access.',
   inUse: 'The profile is open in another Chrome.',
+  deleteInUse: 'Turn this profile off and wait for agent work to finish, then try again.',
   noBrowser: 'Install Google Chrome, then try again.',
   failed: 'The request could not be completed.',
 } as const
@@ -206,11 +207,12 @@ export function registerAdminRoutes(app: Express, deps: AdminDeps): void {
     if (!body) return fail(res, 400, ADMIN_ERRORS.body)
     if (body.confirm !== name) return fail(res, 400, ADMIN_ERRORS.confirm)
     try {
-      await browser.exclusive(name, async () => {
-        await browser.close(name)
+      await browser.removeWhenIdle(name, () => {
+        store.setFlags(name, { enabled: false })
         store.remove(name)
       })
-    } catch {
+    } catch (error) {
+      if (error instanceof ProfileInUseError) return fail(res, 409, ADMIN_ERRORS.deleteInUse)
       return fail(res, 409, ADMIN_ERRORS.failed)
     }
     deps.logger.info('profile deleted')
