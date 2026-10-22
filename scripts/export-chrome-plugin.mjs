@@ -153,6 +153,9 @@ it('publishes exactly the built archives and their fixed repository pins, one ta
   expect(entry.targets.map((one: { os: string; cpu: string }) => 'chrome-' + one.os + '-' + one.cpu)).toEqual(names)
   for (const [index, name] of names.entries()) {
     const target = entry.targets[index]
+    const manifest = JSON.parse(fs.readFileSync(path.join(folder!, name, 'package/plugin.json'), 'utf8'))
+    expect(manifest.sourceCommit).toBe(entry.sourceCommit)
+    if (process.env.GITHUB_SHA) expect(manifest.sourceCommit).toBe(process.env.GITHUB_SHA)
     const bytes = fs.readFileSync(path.join(folder!, name + '.tar.gz'))
     expect(bytes.length).toBe(target.bytes)
     expect(createHash('sha256').update(bytes).digest('hex')).toBe(target.sha256)
@@ -170,7 +173,7 @@ permissions:
   contents: read
 jobs:
   release:
-    if: github.repository == 'brocrew/brocrew-plugin-chrome' && github.event.repository.private == true
+    if: github.repository == 'brocrew/brocrew-plugin-chrome' && github.event.repository.private == true && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -210,6 +213,52 @@ jobs:
           test "$TAG" = "v$(node -p "require('./plugins/chrome/manifest-template.json').version")"
           gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "$TAG" --notes 'Chrome plugin for BroCrew'
           gh release upload "$TAG" artifact/chrome-darwin-arm64.tar.gz artifact/chrome-win32-x64.tar.gz artifact/plugin-list-entry.json
+  build-only:
+    if: github.repository == 'brocrew/brocrew-plugin-chrome' && github.event.repository.private == true && github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22.23.3'
+      - run: npm ci --legacy-peer-deps --ignore-scripts --no-audit --no-fund
+      - run: npm ci --prefix plugins/chrome --ignore-scripts --no-audit --no-fund
+      - run: npm run typecheck
+      - name: Refuse modified or extra package sources
+        run: |
+          set -eu
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain --untracked-files=all --ignored=matching -- plugins/chrome/src plugins/chrome/ui plugins/chrome/bridge plugins/chrome/build.mjs plugins/chrome/manifest-template.json plugins/chrome/package.json plugins/chrome/package-lock.json scripts/release.mjs package.json package-lock.json)"
+      - run: npm run build -- artifact
+      - run: npm run build -- artifact-repeat
+      - name: Verify reproducible archive bytes
+        run: diff -r artifact artifact-repeat
+      - run: npm test
+        env:
+          BROCREW_CHROME_TEST_ARTIFACT: \${{ github.workspace }}/artifact
+      - name: Record source and toolchain receipts
+        run: |
+          set -eu
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain --untracked-files=all --ignored=matching -- plugins/chrome/src plugins/chrome/ui plugins/chrome/bridge plugins/chrome/build.mjs plugins/chrome/manifest-template.json plugins/chrome/package.json plugins/chrome/package-lock.json scripts/release.mjs package.json package-lock.json)"
+          git rev-parse HEAD > artifact/source-commit.txt
+          node --version > artifact/node-version.txt
+          npm --version > artifact/npm-version.txt
+          node -p "require('./plugins/chrome/node_modules/esbuild/package.json').version" > artifact/esbuild-version.txt
+          sha256sum package-lock.json plugins/chrome/package-lock.json scripts/release.mjs plugins/chrome/build.mjs .github/workflows/release.yml > artifact/build-inputs.sha256
+          sha256sum artifact/*.tar.gz artifact/plugin-list-entry.json > artifact/downloads.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chrome-build-only-\${{ github.sha }}
+          path: artifact/
+          if-no-files-found: error
+          retention-days: 14
 `
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)
   exportChromePlugin(path.resolve(process.argv[2] ?? ''))

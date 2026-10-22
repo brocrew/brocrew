@@ -143,6 +143,8 @@ it.skipIf(!folder)('publishes exactly the built archives and their fixed reposit
     expect(gunzipSync(bytes).equals(fs.readFileSync(path.join(folder!, name, 'whatsapp.tar')))).toBe(true)
     expect(target.url).toBe('https://github.com/brocrew/brocrew-plugin-whatsapp/releases/download/v' + entry.version + '/' + name + '.tar.gz')
     const manifest = JSON.parse(fs.readFileSync(path.join(folder!, name, 'package/plugin.json'), 'utf8'))
+    expect(manifest.sourceCommit).toBe(entry.sourceCommit)
+    if (process.env.GITHUB_SHA) expect(manifest.sourceCommit).toBe(process.env.GITHUB_SHA)
     expect(manifest.platforms).toEqual([{ os: target.os, cpu: target.cpu }])
   }
 })
@@ -156,7 +158,7 @@ permissions:
   contents: read
 jobs:
   release:
-    if: github.repository == 'brocrew/brocrew-plugin-whatsapp' && github.event.repository.private == true
+    if: github.repository == 'brocrew/brocrew-plugin-whatsapp' && github.event.repository.private == true && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -205,6 +207,62 @@ jobs:
           test "$TAG" = "v$(node -p "require('./plugins/whatsapp/manifest-template.json').version")"
           gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "$TAG" --notes 'WhatsApp plugin for BroCrew'
           gh release upload "$TAG" artifact/whatsapp-darwin-arm64.tar.gz artifact/whatsapp-win32-x64.tar.gz artifact/plugin-list-entry.json
+  build-only:
+    if: github.repository == 'brocrew/brocrew-plugin-whatsapp' && github.event.repository.private == true && github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22.23.3'
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.27.2'
+          cache: false
+      - run: npm ci --legacy-peer-deps --ignore-scripts --no-audit --no-fund
+      - run: npm ci --prefix plugins/whatsapp --ignore-scripts --no-audit --no-fund
+      - run: npm run typecheck
+      - run: go vet ./... && go test ./... && GOOS=windows GOARCH=amd64 go vet ./...
+        working-directory: plugins/whatsapp/bridge
+        env:
+          CGO_ENABLED: '0'
+          GOTOOLCHAIN: local
+      - name: Refuse modified or extra package sources
+        run: |
+          set -eu
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain --untracked-files=all --ignored=matching -- plugins/whatsapp/src plugins/whatsapp/ui plugins/whatsapp/bridge plugins/whatsapp/build.mjs plugins/whatsapp/manifest-template.json plugins/whatsapp/package.json plugins/whatsapp/package-lock.json scripts/release.mjs package.json package-lock.json)"
+      - run: BROCREW_GO="$(command -v go)" npm run build -- artifact
+      - run: BROCREW_GO="$(command -v go)" npm run build -- artifact-repeat
+      - name: Verify reproducible archive bytes
+        run: diff -r artifact artifact-repeat
+      - run: npm test
+        env:
+          BROCREW_WHATSAPP_TEST_ARTIFACT: \${{ github.workspace }}/artifact
+      - name: Record source and toolchain receipts
+        run: |
+          set -eu
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain --untracked-files=all --ignored=matching -- plugins/whatsapp/src plugins/whatsapp/ui plugins/whatsapp/bridge plugins/whatsapp/build.mjs plugins/whatsapp/manifest-template.json plugins/whatsapp/package.json plugins/whatsapp/package-lock.json scripts/release.mjs package.json package-lock.json)"
+          git rev-parse HEAD > artifact/source-commit.txt
+          node --version > artifact/node-version.txt
+          npm --version > artifact/npm-version.txt
+          node -p "require('./plugins/whatsapp/node_modules/esbuild/package.json').version" > artifact/esbuild-version.txt
+          go version > artifact/go-version.txt
+          sha256sum package-lock.json plugins/whatsapp/package-lock.json scripts/release.mjs plugins/whatsapp/build.mjs .github/workflows/release.yml > artifact/build-inputs.sha256
+          sha256sum artifact/*.tar.gz artifact/plugin-list-entry.json > artifact/downloads.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: whatsapp-build-only-\${{ github.sha }}
+          path: artifact/
+          if-no-files-found: error
+          retention-days: 14
 `
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)
   exportWhatsAppPlugin(path.resolve(process.argv[2] ?? ''))
