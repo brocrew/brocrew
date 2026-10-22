@@ -1,4 +1,5 @@
 import { mkdir, mkdtemp, realpath, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { GlobalPluginState } from '../src/main/plugins/state/store'
@@ -58,7 +59,9 @@ export async function fixture(
   includeSkills = false,
   id = 'chrome',
 ) {
-  const parent = await realpath(await mkdtemp('/tmp/fictional-lifecycle-'))
+  // POSIX needs short Unix socket paths; Windows uses named pipes and its own temp directory.
+  const temp = process.platform === 'win32' ? tmpdir() : '/tmp'
+  const parent = await realpath(await mkdtemp(join(temp, 'fictional-lifecycle-')))
   homes.push(parent)
   const root = join(parent, 'global'),
     workspace = join(parent, 'workspace')
