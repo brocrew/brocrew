@@ -14,7 +14,7 @@ import {
 import { join, resolve } from 'node:path'
 import { trustProviderHomeAncestry, withProviderHomeLock } from '@brobot2/runtime/provider-home'
 import type { BuiltInSkillsContext } from '@brobot2/runtime'
-import type { Provider } from '@brobot2/shared'
+import { providerValue, type Provider } from '@brobot2/shared'
 import { BUILT_IN_SKILLS_FAILURE, BUILT_IN_SKILL_NAMES } from '../../shared/built-in-skills'
 import {
   builtInSkillReminders,
@@ -254,11 +254,13 @@ export async function prepareBuiltInSkills(input: {
               context: {
                 root: installed.discoveryPath,
                 skills: view.skills.map((item) => ({
-                  name: input.provider === 'claude' ? `brobot:${item.name}` : item.name,
+                  name: providerValue(input.provider, { claude: true, codex: false })
+                    ? `brobot:${item.name}`
+                    : item.name,
                   description: item.description,
                   path: join(
                     installed.discoveryPath,
-                    input.provider === 'claude' ? 'skills' : '',
+                    providerValue(input.provider, { claude: 'skills', codex: '' }),
                     item.name,
                     'SKILL.md',
                   ),
