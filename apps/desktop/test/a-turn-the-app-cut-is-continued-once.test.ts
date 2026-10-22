@@ -3,7 +3,13 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { FakeProviderSessions, FakeRuntime, FakeSessionHandle } from '@brobot2/runtime'
+import {
+  FakeProviderSessions,
+  FakeRuntime,
+  FakeSessionHandle,
+  CodexSessionHandle,
+} from '@brobot2/runtime'
+import type { CodexTransport } from '@brobot2/runtime'
 import type { ResumeOptions, SessionRef, StartOptions } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
@@ -108,6 +114,8 @@ function aGate(): Gate {
 
 /** How a life's provider behaves. */
 interface Stops {
+  provider?: Provider
+  savedKeyRevision?: number
   /** Its sign-in check waits for this gate: the last wait before held words are handed over. */
   signInGate?: Gate
   /** The account its provider names: a fictional one, none, or no answer at all. */
@@ -161,7 +169,7 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
   let window: RecordingSink
   const tick = (): number => clock++
 
-  const fitted = (handle: FakeSessionHandle, stops: Stops): FakeSessionHandle => {
+  const fitted = (handle: FakeSessionHandle, stops: Stops, home: string): FakeSessionHandle => {
     const account = stops.account ?? 'ada'
     const fake = handle as unknown as {
       account?: () => unknown
@@ -184,6 +192,15 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
     if (stops.tag !== undefined) {
       const tag = stops.tag
       ;(handle as unknown as { signInTag: () => string }).signInTag = () => tag
+    }
+    if (stops.savedKeyRevision !== undefined) {
+      writeFileSync(
+        join(home, 'brobot-api-key-login.json'),
+        JSON.stringify({ setAt: stops.savedKeyRevision }),
+      )
+      const keyHandle = new CodexSessionHandle({} as CodexTransport, root, 0, home)
+      keyHandle.noteLaunchAccount('api-key')
+      Object.defineProperty(handle, 'signInTag', { value: () => keyHandle.signInTag() })
     }
     if (stops.turnsStayOpen === true) {
       handle.send = async (): Promise<void> => {
@@ -217,7 +234,7 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
       super(provider, { sessions: issued })
     }
     override async start(options: StartOptions): Promise<FakeSessionHandle> {
-      const handle = fitted(await super.start(options), this.stops)
+      const handle = fitted(await super.start(options), this.stops, options.providerHome)
       this.asked.push(handle.ref.sessionId)
       this.startedAt.push(performance.now())
       handles.push(handle)
@@ -233,7 +250,7 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
       if (this.stops.beforeTheProviderIsUp !== undefined) {
         await this.stops.beforeTheProviderIsUp.promise
       }
-      const handle = fitted(await super.resume(ref, options), this.stops)
+      const handle = fitted(await super.resume(ref, options), this.stops, options.providerHome)
       handles.push(handle)
       return handle
     }
@@ -396,7 +413,12 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
   const aTurnRunsIn = async (stops: Stops = {}): Promise<string> => {
     starts(CUT - 60_000, { turnsStayOpen: true, ...stops })
     const { sessionId } = await now.host.createSession(
-      { provider: 'claude', profileId: 'agent-a', approvalMode: 'auto', cwd: root },
+      {
+        provider: stops.provider ?? 'claude',
+        profileId: 'agent-a',
+        approvalMode: 'auto',
+        cwd: root,
+      },
       window,
     )
     await settle()
@@ -1675,6 +1697,38 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
   const aPersonCloses = (id: string): Promise<void> => now.host.close(id, window)
 
   describe('a program that stopped while its turn ran', () => {
+    it('carries on a Codex program cut on the same saved-key revision', async () => {
+      const a = await aTurnRunsIn({ provider: 'codex', savedKeyRevision: 17 })
+      itsProgramStops(a)
+      await waitFor(() => !running(now, a), 'the saved-key program to end')
+      await waitFor(() => continuations(a).length === 1, 'the saved-key continuation')
+      expect(stateOf(a)).toBe('sent')
+      expect(askedFor(now, a)).toBe(2)
+    })
+
+    it.each(['quit', 'crash'] as const)(
+      'carries on a Codex saved-key turn after a %s',
+      async (kind) => {
+        const a = await aTurnRunsIn({ provider: 'codex', savedKeyRevision: 17 })
+        if (kind === 'quit') await now.host.closeAll()
+        starts(SOON, { provider: 'codex', savedKeyRevision: 17 })
+        await waitFor(
+          () => continuations(a).length === 1,
+          'the saved-key continuation after restart',
+        )
+        expect(stateOf(a)).toBe('sent')
+      },
+    )
+
+    it('does not continue a Codex saved-key cut on a replacement key revision', async () => {
+      const a = await aTurnRunsIn({ provider: 'codex', savedKeyRevision: 17 })
+      await now.host.closeAll()
+      starts(SOON, { provider: 'codex', savedKeyRevision: 18 })
+      await settle()
+      expect(continuations(a)).toEqual([])
+      expect(stateOf(a)).toEqual({ ended: 'not-same-account' })
+    })
+
     it('is started once after the wait, and its words go as that life’s first turn', async () => {
       const a = await aTurnRunsIn()
       const stopped = performance.now()
