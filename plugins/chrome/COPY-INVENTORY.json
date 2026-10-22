@@ -303,8 +303,8 @@
     "source": "agent-chrome/package.json",
     "destination": "plugins/chrome/package.json",
     "sourceSha256": "25dabff73274d95272fd6d693d823fe8dd13b3906f4a742f786b7d5c357acb34",
-    "changes": "renamed; source-local dependency/scripts removed; exact direct production pins match source lock (SDK1.32.1, Express4.22.3, PlaywrightCore1.61.0); dev-only build tooling pinned separately; production metadata/hooks sanitized at build; standalone package version 0.1.2",
-    "destinationSha256": "faf8f727e29504db400152d38b9350962f03758885df95e475b616aa118c1c44"
+    "changes": "renamed; source-local dependency/scripts removed; exact direct production pins match source lock (SDK1.32.1, Express4.22.3, PlaywrightCore1.61.0); dev-only build tooling pinned separately; production metadata/hooks sanitized at build; standalone package version 0.1.2; next immutable author-bearing package version",
+    "destinationSha256": "c3a56833bda556526ebed47a099faf5d8eb3b264105d2f96d727747ae6185c23"
   },
   "recheckedCurrentSource": true,
   "packageAdditions": [

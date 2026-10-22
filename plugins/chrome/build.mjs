@@ -187,6 +187,7 @@ export async function buildChromePackage(
   fs.writeFileSync(path.join(destination, 'chrome.tar'), archive)
   const release = {
     id: manifest.id,
+    authors: manifest.authors,
     version: manifest.version,
     sourceCommit: manifest.sourceCommit,
     platforms: manifest.platforms,

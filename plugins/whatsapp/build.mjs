@@ -241,6 +241,7 @@ export async function buildWhatsAppPackage(
   fs.writeFileSync(path.join(destination, 'whatsapp.tar'), archive)
   const release = {
     id: manifest.id,
+    authors: manifest.authors,
     version: manifest.version,
     sourceCommit: manifest.sourceCommit,
     platforms: manifest.platforms,

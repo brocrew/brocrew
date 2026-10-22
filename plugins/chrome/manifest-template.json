@@ -1,7 +1,7 @@
 {
-  "format": 1,
+  "format": 2,
   "id": "chrome",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "sourceCommit": "2618dab1b1e3672bdddae5ed771a0ecf84e0002e",
   "platforms": [
     {
@@ -13,7 +13,7 @@
     "major": 1,
     "minMinor": 0,
     "maxMinor": 0,
-    "requiredFeatures": []
+    "requiredFeatures": ["contributions-v1"]
   },
   "toolApi": {
     "major": 1,
@@ -181,5 +181,11 @@
   "dataCompatibility": {
     "minSchema": 1,
     "maxSchema": 1
-  }
+  },
+  "authors": ["brocrew"],
+  "executor": {
+    "kind": "node",
+    "entry": "server.mjs"
+  },
+  "hooks": []
 }

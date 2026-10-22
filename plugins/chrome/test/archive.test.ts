@@ -33,13 +33,13 @@ async function builtInventory(
   expect(artifact, 'Build a fresh artifact and set BROCREW_CHROME_TEST_ARTIFACT').toBeTruthy()
   const archive = fs.readFileSync(path.join(artifact!, 'chrome.tar'))
   const release = JSON.parse(fs.readFileSync(path.join(artifact!, 'fixture-release.json'), 'utf8'))
-  const catalogue = signed({ format: 1, entries: [release] })
+  const catalogue = signed({ format: 2, entries: [release] })
   const pkg = createPluginVerifier({
     pinnedPublicKey: fictionalPublicKey,
     target: { os: 'darwin', cpu: 'arm64' },
   })
     .verifyCatalogue(catalogue.bytes, catalogue.signature)
-    .verifyPackage('chrome', '0.1.2', archive)
+    .verifyPackage('chrome', release.version, archive)
   const built = await import(pathToFileURL(path.join(artifact!, 'package/server.mjs')).href)
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'fictional-built-inventory-'))
   const store = built.createProfileStore({ home })
@@ -196,7 +196,7 @@ describe('Chrome release fixture', () => {
         const release = JSON.parse(
           fs.readFileSync(path.join(artifact!, 'fixture-release.json'), 'utf8'),
         )
-        const catalogue = signed({ format: 1, entries: [release] })
+        const catalogue = signed({ format: 2, entries: [release] })
         const checked = createPluginVerifier({
           pinnedPublicKey: fictionalPublicKey,
           target: { os: 'darwin', cpu: 'arm64' },
@@ -266,7 +266,7 @@ describe('Chrome release fixture', () => {
       fs.rmSync(root, { recursive: true, force: true })
     }
   })
-  it('binds the complete built 0.1.2 inventory and pins allowlist parity with no filtered list', async () => {
+  it('binds the complete built author-bearing inventory and pins allowlist parity with no filtered list', async () => {
     await builtInventory(async ({ view, inventory, agent }) => {
       const advertised = inventory.tools.map((tool) => tool.name).sort()
       expect(advertised).toHaveLength(34)
@@ -407,7 +407,7 @@ describe('Chrome release fixture', () => {
     const archive = fs.readFileSync(path.join(root, 'chrome.tar'))
     const release = JSON.parse(fs.readFileSync(path.join(root, 'fixture-release.json'), 'utf8'))
     expect(release.archive.sha256).toBe(hash(archive))
-    const catalogue = signed({ format: 1, entries: [release] })
+    const catalogue = signed({ format: 2, entries: [release] })
     const verifier = createPluginVerifier({
       pinnedPublicKey: fictionalPublicKey,
       target: { os: 'darwin', cpu: 'arm64' },
