@@ -1,3 +1,4 @@
+import { providerValue } from '@brobot2/shared'
 import { refusalReason } from '../../shared/refusals'
 import {
   aPieceNotEndedItsQuestionsUnread,
@@ -901,7 +902,7 @@ const undrivenNotice = (
  * Codex conversation stays open after the refusal, and a reopen since is still said.
  */
 function theLoginSentence(login: StoppedOnALogin): string {
-  const onCodex = login.provider === 'codex'
+  const onCodex = providerValue(login.provider, { claude: false, codex: true })
   const refused = onCodex
     ? login.onAKey === true
       ? 'its turn failed because the API key its Codex conversation was started with was refused, so a person needs to check or replace that key under “API key” on the Codex card in Providers'
