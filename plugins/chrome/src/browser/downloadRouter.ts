@@ -10,7 +10,7 @@ export interface DownloadSession {
 }
 export type FrameIds = () => Promise<ReadonlySet<string>>
 export interface Capture {
-  end(completed?: boolean): void
+  end(completed?: boolean, savedGuid?: string): void
 }
 interface Rec {
   name: string
@@ -48,10 +48,10 @@ class CaptureImpl implements Capture {
     readonly frames: FrameIds,
     private readonly router: DownloadRouter,
   ) {}
-  end(completed = false): void {
+  end(completed = false, savedGuid?: string): void {
     if (this.ended) return
     this.ended = true
-    this.router.release(this, completed)
+    this.router.release(this, completed, savedGuid)
   }
 }
 export interface RouterOptions {
@@ -173,15 +173,15 @@ export class DownloadRouter {
       if (rec.state !== 'canceled' && !rec.owner) this.place(guid, rec)
     })
   }
-  release(c: CaptureImpl, completed = false): void {
+  release(c: CaptureImpl, completed = false, savedGuid?: string): void {
     this.captures.delete(c)
     for (const [guid, rec] of this.recs) {
       if (rec.owner !== c) continue
       rec.owner = null
-      // Success may refer to a previously queued download, not this claim.
-      // Keep monitoring a running claim until Chrome proves its completion;
-      // only then can it be forgotten. Late events can still trip the size cap.
-      if (completed) {
+      // Only the saved file's claim succeeded. A different download must still
+      // pass the unattended policy, even if the tool saved an older queued file.
+      if (completed && guid === savedGuid) {
+        // Late events still enforce the size cap until this file completes.
         rec.releasedAfterSuccess = true
         if (rec.state === 'completed') this.discardCompleted(guid, rec)
         continue
@@ -199,8 +199,7 @@ export class DownloadRouter {
   private discardCompleted(guid: string, rec: Rec): void {
     rec.state = 'canceled'
     this.recs.delete(guid)
-    // The successful tool has already saved its result. A different captured
-    // file is discarded, rather than becoming an unclaimed quota bypass.
+    // The matching tool has saved this file; remove only its staging copy.
     void fs.promises
       .rm(path.join(this.o.dir, guid), { force: true })
       .catch(() => this.o.onPolicyFailure())

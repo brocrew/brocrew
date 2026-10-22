@@ -260,8 +260,9 @@ export function productionPluginController() {
       await update()
     },
     async uninstall(id) {
-      await current().uninstall(id)
+      const outcome = await current().uninstall(id)
       await update()
+      return outcome
     },
     screen(id) {
       return current().screen(id)

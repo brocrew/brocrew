@@ -134,6 +134,7 @@ describe.skipIf(process.platform === 'win32')(
       await f.controller.uninstall(f.handle, 'whatsapp')
       expect(shown(f.events)).toEqual([
         'log-out /uninstall',
+        'log-out /status',
         'stop',
         'remove-code',
         'remove-data whatsapp',

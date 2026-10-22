@@ -1,4 +1,6 @@
 import { z } from 'zod'
+import type { PluginRemovalOutcome } from '../../../shared/plugin-settings'
+import { readAdminJson } from './admin-read'
 import type { PluginNodeReady } from '../node-host'
 import { PluginSupervisorError } from '../supervisor/protocol'
 
@@ -57,11 +59,11 @@ export async function applyWhatsAppSettings(
 
 /** How long uninstalling waits for the plugin's log out; the plugin gives up after 40 seconds. */
 export const WHATSAPP_UNINSTALL_MS = 45_000
-/** Before its data is deleted: log out of WhatsApp, phone side included, and wait for the plugin's own wipe. */
+/** Wait for the local wipe, then read whether WhatsApp confirmed removing the device. */
 export async function logOutBeforeUninstall(
   connection: PluginNodeReady,
   signal: AbortSignal,
-): Promise<void> {
+): Promise<PluginRemovalOutcome['logout']> {
   const admin = connection.admin()
   const response = await fetch(admin.url + '/uninstall', {
     method: 'POST',
@@ -72,4 +74,8 @@ export async function logOutBeforeUninstall(
   })
   void response.body?.cancel().catch(() => undefined)
   if (response.status !== 200) throw new PluginSupervisorError('unavailable')
+  const status = z
+    .object({ state: z.string(), removeOnPhone: z.boolean().optional() })
+    .parse(await readAdminJson(admin.url + '/status', admin.headers, signal, 128 * 1024))
+  return status.state === 'unlinked' && status.removeOnPhone === false ? 'confirmed' : 'unconfirmed'
 }

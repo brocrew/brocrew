@@ -79,10 +79,14 @@ describe('fixed person-only WhatsApp settings mapping', () => {
 
 describe('uninstalling', () => {
   it('asks the plugin to log out and waits for its answer', async () => {
-    const fetch = vi.fn(async () => new Response('{}', { status: 200 }))
+    const fetch = vi.fn(async (url: string) =>
+      Response.json(url.endsWith('/uninstall') ? {} : { state: 'unlinked', removeOnPhone: false }),
+    )
     vi.stubGlobal('fetch', fetch)
-    await logOutBeforeUninstall(connection, new AbortController().signal)
-    expect(fetch).toHaveBeenCalledOnce()
+    await expect(logOutBeforeUninstall(connection, new AbortController().signal)).resolves.toBe(
+      'confirmed',
+    )
+    expect(fetch).toHaveBeenCalledTimes(2)
     expect(fetch).toHaveBeenCalledWith(
       'http://127.0.0.1:1/v1/uninstall',
       expect.objectContaining({
