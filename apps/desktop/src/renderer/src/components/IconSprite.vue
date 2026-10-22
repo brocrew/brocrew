@@ -15,6 +15,9 @@
       <rect x="5" y="7" width="14" height="11" rx="3" />
       <path d="M12 3v4M8.5 12h.01M15.5 12h.01M9 16h6M3 11v4M21 11v4" />
     </symbol>
+    <symbol id="i-book" viewBox="0 0 24 24">
+      <path d="M12 5c-3-2-6-2-9-1v15c3-1 6-1 9 1 3-2 6-2 9-1V4c-3-1-6-1-9 1zM12 5v15" />
+    </symbol>
     <symbol id="i-chat" viewBox="0 0 24 24">
       <path
         d="M20 15a4 4 0 0 1-4 4H8l-5 3 1.5-4.5A7 7 0 0 1 3 13V9a6 6 0 0 1 6-6h7a5 5 0 0 1 5 5z"

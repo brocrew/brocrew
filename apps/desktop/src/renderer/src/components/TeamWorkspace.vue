@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import AgentBookButton from './AgentBookButton.vue'
 import type { AgentIdentities } from '../../../shared/runtime-ipc'
 import type { WhatIsBeingDone } from '../../../shared/what-is-being-done'
 import type { AgentStore } from '../lib/agent-store'
@@ -576,14 +577,11 @@ function pressForest(row: ForestRow): void {
               </div>
             </details>
 
-            <button
-              class="card-door"
-              type="button"
+            <AgentBookButton
+              :profile-slug="member.identity.slug"
               :data-cy="`team-shapes-${member.identity.slug}`"
-              @click="emit('openShapes', member.identity.slug)"
-            >
-              What shapes this agent
-            </button>
+              @open="(profile) => emit('openShapes', profile)"
+            />
 
             <details class="card-more">
               <summary :data-cy="`team-more-${member.identity.slug}`">
@@ -936,24 +934,6 @@ function pressForest(row: ForestRow): void {
   color: var(--paper-ink);
 }
 
-.card-door {
-  display: block;
-  width: 100%;
-  margin-top: var(--space-7);
-  border: 0;
-  border-top: var(--border-width) solid var(--paper-line);
-  padding: var(--space-5) 0 0;
-  background: none;
-  color: var(--paper-muted);
-  cursor: pointer;
-  font: inherit;
-  font-size: var(--type-caption);
-  text-align: left;
-}
-
-.card-door:hover {
-  color: var(--paper-ink);
-}
 .more-body {
   display: flex;
   flex-direction: column;

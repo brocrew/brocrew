@@ -381,6 +381,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
+  openBook: [profileSlug: string]
   /** ⛔ The text, the intent, and the paths handed with it (216) — one event, so they cannot part. */
   send: [text: string, intent: SendIntent, attachments: HandedPath[]]
   decide: [requestId: string, decision: PermissionDecision]
@@ -2165,6 +2166,7 @@ onUnmounted(() => {
         @refresh-config="emit('refreshConfig')"
         @open-instructions="instructionsFor = props.record.sessionId"
         @open-inputs="inputsFor = props.record.sessionId"
+        @open-book="(profile) => emit('openBook', profile)"
         @set-approval-mode="(mode) => emit('setApprovalMode', mode)"
         @set-session-setting="(body) => emit('setSessionSetting', body)"
       />

@@ -1375,7 +1375,7 @@ function overlayLabel(overlay: Overlay): string {
     case 'externalMcpServers':
       return 'External tools'
     case 'agentSections':
-      return 'What shapes this agent'
+      return 'Agent knowledge'
     case 'agentCapabilities':
       return agentHeadingFor(overlay.profileSlug)
     case 'startAsAgent':
@@ -4147,6 +4147,7 @@ onUnmounted(() => {
             @respond="respond"
             @move="moveFromConversation"
             @open-conversation="goToTheWork"
+            @open-book="(profileSlug) => overlays.open({ kind: 'agentSections', profileSlug })"
             @interrupt="stopIt"
             :on-stop-background-work="stopBackgroundWork"
             :on-read-command-output="readCommandOutput"

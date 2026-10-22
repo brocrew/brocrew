@@ -190,6 +190,7 @@ const emit = defineEmits<{
   openDocument: [resourceId: string]
   /** ⚑ **F093 · open "What this agent receives"** — passed straight up. */
   openInputs: []
+  openBook: [profileSlug: string]
   compactNow: [intent: 'now' | 'queue']
   /** The card's approval mode and Plan chip ask for a change, passed straight up. */
   setApprovalMode: [mode: 'ask' | 'auto']
@@ -342,6 +343,7 @@ const panel = computed(() => sessionPanel(props.state))
       @open-conversation="(conversation) => emit('openConversation', conversation)"
       @open-document="(resourceId) => emit('openDocument', resourceId)"
       @open-inputs="emit('openInputs')"
+      @open-book="(profile) => emit('openBook', profile)"
       @compact-now="(intent) => emit('compactNow', intent)"
     >
       <!-- 🔴 **547 · who called whom** — the conversations around this one, and the work that
