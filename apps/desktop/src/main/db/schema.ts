@@ -1566,6 +1566,10 @@ export const identityMemoryAmendment = sqliteTable(
     textAfter: text('text_after'),
     createdAt: integer('created_at').notNull(),
     sourceId: text('source_id').references((): AnySQLiteColumn => identityMemoryAmendment.id),
+    outcome: text('outcome').notNull().default('done'),
+    actual: text('actual', { mode: 'json' }),
+    settledBy: text('settled_by', { mode: 'json' }),
+    settledAt: integer('settled_at'),
   },
   (t) => [
     /** ⚑ **The read the popup makes** — this identity's amendments, newest first. */
@@ -1575,6 +1579,9 @@ export const identityMemoryAmendment = sqliteTable(
      * fact said where a reader of the schema will look for it.
      */
     uniqueIndex('identity_memory_amendment_seq_uq').on(t.identityId, t.seq),
+    uniqueIndex('identity_memory_amendment_one_pending_uq')
+      .on(t.identityId)
+      .where(sql`${t.outcome} = 'pending'`),
     check('identity_memory_amendment_seq_ck', sql`${t.seq} >= 1`),
     check(
       'identity_memory_amendment_act_ck',
@@ -1596,11 +1603,45 @@ export const identityMemoryAmendment = sqliteTable(
     ),
     check(
       'identity_memory_amendment_source_ck',
-      sql`${t.sourceId} is null or (${t.sourceId} <> ${t.id} and ${t.act} in ('removed', 'restored'))`,
+      sql`${t.sourceId} is null or (${t.sourceId} <> ${t.id} and (${t.act} in ('removed', 'restored') or (${t.act} = 'corrected' and (${t.outcome} = 'pending' or ${t.actual} is not null))))`,
     ),
     check(
       'identity_memory_amendment_source_person_ck',
       sql`${t.sourceId} is null or (case when json_valid(${t.by}) then json_extract(${t.by}, '$.who') is 'a-person' else 0 end)`,
+    ),
+    check(
+      'identity_memory_amendment_outcome_ck',
+      sql`${t.outcome} IN ('pending', 'done', 'partial', 'unchanged')`,
+    ),
+    check(
+      'identity_memory_amendment_recovery_person_ck',
+      sql`(${t.outcome} = 'done' AND ${t.actual} IS NULL AND ${t.settledBy} IS NULL AND ${t.settledAt} IS NULL) OR (CASE WHEN json_valid(${t.by}) THEN json_extract(${t.by}, '$.who') IS 'a-person' ELSE 0 END)`,
+    ),
+    check(
+      'identity_memory_amendment_recovery_ck',
+      sql`(
+  ${t.outcome} IN ('pending', 'done') AND ${t.actual} IS NULL AND ${t.settledBy} IS NULL AND ${t.settledAt} IS NULL
+) OR (
+  ${t.outcome} IN ('done', 'partial', 'unchanged') AND ${t.actual} IS NOT NULL AND
+  ${t.settledBy} IS NOT NULL AND ${t.settledAt} IS NOT NULL AND
+  typeof(${t.settledAt}) = 'integer' AND ${t.settledAt} >= 0 AND ${t.settledAt} <= 9007199254740991 AND
+  CASE WHEN json_valid(${t.actual}) THEN
+    json_type(${t.actual}) IS 'object' AND
+    CASE json_type(${t.actual}, '$.fingerprint')
+      WHEN 'null' THEN 1
+      WHEN 'text' THEN length(json_extract(${t.actual}, '$.fingerprint')) = 64 AND json_extract(${t.actual}, '$.fingerprint') NOT GLOB '*[^0-9a-f]*'
+      ELSE 0
+    END AND
+    CASE WHEN json_type(${t.actual}, '$.unreadable') IS NULL THEN 1
+      WHEN json_type(${t.actual}, '$.unreadable') IS 'true' THEN
+        ${t.outcome} = 'partial' AND json_type(${t.actual}, '$.fingerprint') IS 'null'
+      ELSE 0
+    END
+  ELSE 0 END AND
+  CASE WHEN json_valid(${t.settledBy}) THEN
+    json_type(${t.settledBy}) IS 'object' AND coalesce(json_extract(${t.settledBy}, '$.who'), '') IN ('a-person', 'the-app-itself')
+  ELSE 0 END
+)`,
     ),
   ],
 )
