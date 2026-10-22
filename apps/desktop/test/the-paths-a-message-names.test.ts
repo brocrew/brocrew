@@ -420,8 +420,8 @@ describe('a web link that wraps an image', () => {
     const opens = out.match(/<a[\s>]/g)?.length ?? 0
     const closes = out.match(/<\/a>/g)?.length ?? 0
     expect(opens).toBe(closes)
-    const label = /class="message-web-text"[^>]*>([\s\S]*?)<\/span>/.exec(out)
-    if (label) expect(label[1]).not.toContain('<a')
+    expect(out).not.toContain('data-message-link')
+    expect(out).not.toContain('message-web')
   })
 })
 

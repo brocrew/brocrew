@@ -1024,15 +1024,15 @@ describe('a web link in a message shows its text, then Copy and Open', () => {
     expect(opened).toHaveBeenCalledWith(url, '_blank', 'noopener')
   })
 
-  it('keeps a linked web image from reopening a link around the controls', async () => {
+  it('leaves a linked web image as it was, with no controls and no link around any', async () => {
     installMain()
     const { view } = await transcript([
       said('[![badge](https://img.example.org/b.svg)](https://site.example.org/)'),
     ])
-    const text = view.q('message-link-text')
-    expect(text.closest('a')).toBeNull()
-    expect(view.q('message-link-copy').closest('a')).toBeNull()
-    expect(view.q('message-link-open').closest('a')).toBeNull()
+    expect(view.all('message-link-text')).toHaveLength(0)
+    expect(view.all('message-link-copy')).toHaveLength(0)
+    expect(view.all('message-link-open')).toHaveLength(0)
+    expect(view.q('assistant-markdown').querySelector('a button')).toBeNull()
   })
 
   it('leaves a web image as the link it is', async () => {
