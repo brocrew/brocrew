@@ -19,10 +19,10 @@ Use it for coding, writing, research or other projects, with your own Claude or 
 
 Get the latest build from the [Releases page](https://github.com/brocrew/brocrew/releases/latest):
 
-| Your computer | File |
-| --- | --- |
-| Mac with Apple Silicon (M1 or later) | `BroCrew-<version>-arm64.dmg` |
-| Windows 10 or 11, 64-bit (beta) | `BroCrew-Setup-<version>-x64.exe` |
+| Your computer                        | File                              |
+| ------------------------------------ | --------------------------------- |
+| Mac with Apple Silicon (M1 or later) | `BroCrew-<version>-arm64.dmg`     |
+| Windows 10 or 11, 64-bit (beta)      | `BroCrew-Setup-<version>-x64.exe` |
 
 The downloads aren't signed yet, so your computer will warn you the first time. Follow the [Mac install guide](docs/install-macos.md) or [Windows install guide](docs/install-windows.md) to open the app.
 
