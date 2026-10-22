@@ -95,6 +95,8 @@ export function closerProgram(
     `const tick=setInterval(()=>{` +
     // The app left on its own — the ordinary case, and the reason this polls instead of sleeping.
     `if(process.ppid!==target){clearInterval(tick);process.exit(0)}` +
+    // Windows retains the original parent id after exit; a missing pid ends the watch early.
+    `if(process.platform==="win32"){try{process.kill(target,0)}catch(e){if(e&&e.code==="ESRCH"){clearInterval(tick);process.exit(0)}}}` +
     `if(Date.now()<due)return;` +
     `clearInterval(tick);` +
     // ⚑ W4.128 · Windows: the pid is still the app's only while it is a process of the app's image.

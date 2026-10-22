@@ -84,9 +84,13 @@ async function codexResume(
   if (plant === 'its-archived-rollout') aRolloutOf(home, A_CODEX_THREAD, 'archived_sessions')
   if (plant === 'an-unreadable-sessions-tree') {
     const sessions = join(home, 'sessions')
-    mkdirSync(sessions)
-    chmodSync(sessions, 0o000)
-    locked.push(sessions)
+    // Windows chmod cannot deny a directory read; a file at the tree root also refuses readdir.
+    if (process.platform === 'win32') writeFileSync(sessions, 'not a directory')
+    else {
+      mkdirSync(sessions)
+      chmodSync(sessions, 0o000)
+      locked.push(sessions)
+    }
   }
   const codex = aCodexThatRefuses(join(root, 'bin'), scenario, CODEX_PROTOCOL_VERSION, cwd)
   return new CodexRuntime(createSpawnTransportFactory(codex))

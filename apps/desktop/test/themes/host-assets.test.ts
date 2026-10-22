@@ -373,7 +373,12 @@ describe('theme file changes at real filesystem boundaries', () => {
     }
     expect((await readThemeFile(folder, 'assets/red.png', RED_PNG.length, files)).ok).toBe(false)
     expect(attempted).toBe(true)
-    expect(observations).toHaveLength(0)
+    // Windows has no O_NOFOLLOW; the opened target must still be refused before any read.
+    expect(observations).toHaveLength(process.platform === 'win32' ? 1 : 0)
+    for (const observed of observations) {
+      expect(observed.read).not.toHaveBeenCalled()
+      await closedHandle(observed)
+    }
   })
 
   // Windows prevents renaming an ancestor of an open file.

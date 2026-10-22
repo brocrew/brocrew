@@ -622,7 +622,7 @@ describe('349 · a sink that says whether a person is behind it', () => {
         (file.code.match(DECLARES_A_PERSON) ?? []).map(() => file.path),
       )
       expect(declaring).toHaveLength(1)
-      expect(declaring[0]).toMatch(/runtime\/ipc\.ts$/)
+      expect(declaring[0]).toMatch(/runtime[\\/]ipc\.ts$/)
 
       // ⚑ …and it is the sink built from a real `WebContents`, not some other literal in that file.
       const ipc = strippedOfProse(readFileSync(join(here, '../src/main/runtime/ipc.ts'), 'utf8'))

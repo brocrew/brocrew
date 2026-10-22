@@ -4131,6 +4131,7 @@ describe('CodexRuntime — config-independent prompting (007 P1-6)', () => {
       const runtime = new CodexRuntime(adopt(transport))
       // Six fictional skills, listed back by Codex as the check expects.
       const root = resolve('/tmp/fictional/codex')
+      const cwd = resolve('/tmp/x')
       const skills = {
         root,
         skills: [
@@ -4150,15 +4151,15 @@ describe('CodexRuntime — config-independent prompting (007 P1-6)', () => {
       transport.onRequest('skills/list', () => ({
         data: [
           {
-            cwd: '/tmp/x',
+            cwd,
             errors: [],
             skills: skills.skills.map((one) => ({ ...one, enabled: true })),
           },
         ],
       }))
       const handle = await runtime.start({
-        cwd: '/tmp/x',
-        providerHome: '/tmp/x/home',
+        cwd,
+        providerHome: join(cwd, 'home'),
         builtInSkills: skills,
         startPhases: (phase) => said.push(phase),
       })

@@ -3,7 +3,8 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { afterEach, describe, expect, it } from 'vitest'
+import { runInNewContext } from 'node:vm'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   armLastResortExit,
   closerProgram,
@@ -123,8 +124,8 @@ describe('the last-resort exit (294)', () => {
     const app = await launch(stubbornApp(1_500, null))
     expect(Number.isInteger(app.pid)).toBe(true)
     try {
-      // Politeness first, so the kill below cannot be confused with the signal working.
-      process.kill(app.pid, 'SIGTERM')
+      // Windows forcefully terminates SIGTERM targets even when they installed a handler.
+      if (process.platform !== 'win32') process.kill(app.pid, 'SIGTERM')
       await sleep(700)
       expect(alive(app.pid), 'it left on a signal it was written to ignore').toBe(true)
 
@@ -190,6 +191,43 @@ describe('the last-resort exit (294)', () => {
     } finally {
       app.kill()
     }
+  })
+
+  it('stands down before the deadline when Windows retains a departed parent id', () => {
+    const exited = new Error('the closer exited')
+    const kill = vi.fn(() => {
+      throw Object.assign(new Error('no process'), { code: 'ESRCH' })
+    })
+    const exit = vi.fn(() => {
+      throw exited
+    })
+    const require = vi.fn()
+    const error = vi.fn()
+    const clearInterval = vi.fn()
+    let tick = (): void => {}
+    runInNewContext(
+      closerProgram(4242, 10_000, 10_000, {
+        image: 'BroCrew.exe',
+        tasklist: 'C:\\Windows\\System32\\tasklist.exe',
+      }),
+      {
+        process: { platform: 'win32', ppid: 4242, kill, exit },
+        Date: { now: () => 300 },
+        setInterval: (callback: () => void) => {
+          tick = callback
+          return 1
+        },
+        clearInterval,
+        console: { error },
+        require,
+      },
+    )
+    expect(() => tick()).toThrow(exited)
+    expect(kill.mock.calls).toEqual([[4242, 0]])
+    expect(exit).toHaveBeenCalledWith(0)
+    expect(clearInterval).toHaveBeenCalledWith(1)
+    expect(require).not.toHaveBeenCalled()
+    expect(error).not.toHaveBeenCalled()
   })
 
   /**

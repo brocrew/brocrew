@@ -459,8 +459,9 @@ describe('F074 · a usage limit is named, and what the app would start waits for
           const handle = await super.start(options)
           Object.defineProperty(handle, 'signInTag', {
             value: () => {
-              if (!knownA && !options.providerHome.includes('/willow/')) return null
-              return options.providerHome.includes('/willow/') ? 'willow-account' : 'fern-account'
+              const willow = options.providerHome.split(/[\\/]/).includes('willow')
+              if (!knownA && !willow) return null
+              return willow ? 'willow-account' : 'fern-account'
             },
           })
           return handle
