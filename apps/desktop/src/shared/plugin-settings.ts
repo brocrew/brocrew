@@ -20,6 +20,8 @@ export interface PluginCard {
   priorityClamped?: boolean | null
   installedVersion?: string
   updateVersion?: string
+  /** Installed package is manageable but has no release admitted for this app. */
+  updatesUnavailable?: true
   uninstallDeletesData?: boolean
   hasRemoteLogout?: boolean
 }
