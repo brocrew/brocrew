@@ -169,7 +169,7 @@ import {
   type LaunchSetting,
   type ProviderCommand,
 } from '@brobot2/runtime'
-import { providerValue, type Provider, type SessionStatus } from '@brobot2/shared'
+import { providerSchema, providerValue, type Provider, type SessionStatus } from '@brobot2/shared'
 import { assetUrl } from '../../shared/asset-url'
 import { goAheadNotSent } from '../../shared/the-go-ahead'
 import { archivedInMemory, type ArchivedConversations } from '../archived-file'
@@ -36547,19 +36547,20 @@ export class RuntimeHost implements LiveHost {
         })
       }
     }
-    if (providers.has('claude')) {
+    for (const provider of providerSchema.options) {
+      if (!providers.has(provider)) continue
       cannot.push(
-        'Claude Code’s prompt history in an agent’s folder, which every conversation of that agent ' +
-          'shares, isn’t changed.',
-      )
-    }
-    if (providers.has('codex')) {
-      cannot.push(
-        'Codex’s own list of conversations in an agent’s folder isn’t changed; it then names a ' +
-          'transcript that’s gone.',
-      )
-      cannot.push(
-        'Codex keeps no memory note BroCrew can tie to one conversation, so none is listed.',
+        ...providerValue(provider, {
+          claude: [
+            'Claude Code’s prompt history in an agent’s folder, which every conversation of that agent ' +
+              'shares, isn’t changed.',
+          ],
+          codex: [
+            'Codex’s own list of conversations in an agent’s folder isn’t changed; it then names a ' +
+              'transcript that’s gone.',
+            'Codex keeps no memory note BroCrew can tie to one conversation, so none is listed.',
+          ],
+        }),
       )
     }
     if (parts.some((part) => part.kind === 'provider-files')) {
