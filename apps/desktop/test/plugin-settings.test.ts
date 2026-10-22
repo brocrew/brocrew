@@ -371,3 +371,22 @@ it('refuses malformed removal facts without forwarding private reply bytes', asy
   expect(answer).toEqual({ ok: false, error: 'Plugin unavailable. Try again.' })
   expect(JSON.stringify(answer)).not.toContain('fictional-private-diagnostic')
 })
+
+it('keeps Configure available and carries the plain update-unavailable reason for an installed card', async () => {
+  const f = setup()
+  vi.mocked(f.controller.catalogue).mockResolvedValue([
+    {
+      id: 'chrome',
+      name: 'Fictional Cedar',
+      installed: true,
+      state: 'Running',
+      updatesUnavailable: true,
+    },
+  ])
+  expect(await f.call({ kind: 'list' })).toMatchObject({
+    ok: true,
+    cards: [{ installed: true, state: 'Running', updatesUnavailable: true }],
+  })
+  expect(await f.call({ kind: 'configure', id: 'chrome', screenId, bounds })).toEqual({ ok: true })
+  expect(await f.call({ kind: 'update', id: 'chrome' })).toMatchObject({ ok: false })
+})
