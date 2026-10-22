@@ -305,7 +305,7 @@ MUTATIONS = [
         [
             (
                 HOST,
-                "      if (!this.deps.store.removeAgentIdentity(folded)) {\n        if (this.deps.store.hasPendingMethodChange(folded))\n          return { ok: false, rail: 'it-is-still-held', held: ['unfinished-method-change'] }\n        return { ok: false, rail: 'no-such-agent' }\n      }\n",
+                "      if (!this.deps.store.removeAgentIdentity(folded)) {\n        if (this.deps.store.hasPendingMemoryAmendment(folded))\n          return { ok: false, rail: 'it-is-still-held', held: ['unfinished-memory-change'] }\n        if (this.deps.store.hasPendingMethodChange(folded))\n          return { ok: false, rail: 'it-is-still-held', held: ['unfinished-method-change'] }\n        return { ok: false, rail: 'no-such-agent' }\n      }\n",
                 "      this.deps.store.removeAgentIdentity(folded)\n",
             )
         ],

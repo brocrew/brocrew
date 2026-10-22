@@ -1,13 +1,19 @@
+import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { FakeRuntime, claudeAutoMemoryDir } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
-import { createSessionStore } from '../src/main/db/session-store'
+import {
+  createMemoryAmendmentObserver,
+  createSessionStore,
+  type SessionStore,
+} from '../src/main/db/session-store'
+import { createMemoryService, type MemoryWriteSeams } from '../src/main/runtime/agent-memory'
 import { readSessionInstructions } from '../src/main/runtime/instructions'
 import type { AccessLists } from '../src/main/recovery/windows-privacy'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
@@ -77,53 +83,88 @@ const homeOf = (provider: Provider, profileId: string): string =>
  */
 /** ⚠️ **Reset per test**, so a session id never depends on how many tests ran before it. */
 let counter = 0
-const hostDeps = (): ConstructorParameters<typeof RuntimeHost>[0] => ({
-  store: createSessionStore(db),
-  discoverSessions: NO_DISCOVERY,
-  nativeTranscriptPath: () => null,
-  exportDirectory: () => join(userData, 'exports'),
-  createRuntime: (provider: Provider) => new FakeRuntime(provider),
-  prepareProviderHome: (provider, profileId) => {
-    const home = homeOf(provider, profileId)
-    mkdirSync(home, { recursive: true })
-    return home
-  },
-  providerHomePath: (provider, profileId) => homeOf(provider, profileId),
-  // ⛔ **The seam the containment check hangs off.** A host wired without it makes NOTHING
-  // amendable — see §2's last case, which is the fail-closed direction stated as a test.
-  providerHomesRoot: () => join(userData, 'provider-homes'),
-  resolveCwd: (sessionId, requested) => requested ?? join(userData, 'scratch', sessionId),
-  newSessionId: () => `sess_${String(++counter)}`,
-  readProviderConfig: (provider, home) => ({
-    home,
-    homeEnv: 'CLAUDE_CONFIG_DIR',
-    model: 'm',
-    authNote: null,
-    files: [],
-  }),
-  // ⛔ **The REAL launch reader, not a stub** — §3 is about what a conversation was GIVEN, and a
-  // stubbed reader would make that assertion about the fixture instead of about the app.
-  // ⚑ The composition root wraps it in a bundle publish; nothing here needs one, and the reader's
-  // own contract is that an absent bundle is every host test that is not about instructions.
-  readInstructions: (provider, cwd, providerHome) => {
-    const read = readSessionInstructions({ provider, cwd, providerHome })
-    // ⚑ **The composition root's own three fields**, and `systemHint` comes from the reader's
-    // `composed` for its stated reason: one composition, handed to the adapter from the same
-    // field the panel draws.
-    return {
-      instructions: read.instructions,
-      systemHint: read.instructions.composed ?? undefined,
-      memoryLoaded: read.memoryLoaded,
-    }
-  },
-})
+const originalFingerprint = createHash('sha256').update(THE_FALSE_NOTE).digest('hex')
+async function hostDeps(
+  options: {
+    store?: SessionStore
+    writes?: MemoryWriteSeams
+    beforeEffect?: () => Promise<void>
+    closeWaitMs?: number
+    closeGate?: Promise<void>
+  } = {},
+): Promise<ConstructorParameters<typeof RuntimeHost>[0]> {
+  const store = options.store ?? createSessionStore(db)
+  const memoryKnowledge = await createMemoryService({
+    store,
+    inputsOf: (slug) => ({
+      profileId: slug,
+      homesRoot: join(userData, 'provider-homes'),
+      homeOf: (provider) => homeOf(provider, slug),
+    }),
+    now: Date.now,
+    reconcile: createMemoryAmendmentObserver(db).reconcile,
+    seams: { writes: options.writes, beforeEffect: options.beforeEffect },
+  })
+  return {
+    store,
+    memoryKnowledge:
+      options.closeGate !== undefined
+        ? {
+            ...memoryKnowledge,
+            close: async () => {
+              await memoryKnowledge.close(options.closeWaitMs)
+              await options.closeGate
+            },
+          }
+        : options.closeWaitMs === undefined
+          ? memoryKnowledge
+          : { ...memoryKnowledge, close: () => memoryKnowledge.close(options.closeWaitMs) },
+    discoverSessions: NO_DISCOVERY,
+    nativeTranscriptPath: () => null,
+    exportDirectory: () => join(userData, 'exports'),
+    createRuntime: (provider: Provider) => new FakeRuntime(provider),
+    prepareProviderHome: (provider, profileId) => {
+      const home = homeOf(provider, profileId)
+      mkdirSync(home, { recursive: true })
+      return home
+    },
+    providerHomePath: (provider, profileId) => homeOf(provider, profileId),
+    // ⛔ **The seam the containment check hangs off.** A host wired without it makes NOTHING
+    // amendable — see §2's last case, which is the fail-closed direction stated as a test.
+    providerHomesRoot: () => join(userData, 'provider-homes'),
+    resolveCwd: (sessionId, requested) => requested ?? join(userData, 'scratch', sessionId),
+    newSessionId: () => `sess_${String(++counter)}`,
+    readProviderConfig: (provider, home) => ({
+      home,
+      homeEnv: 'CLAUDE_CONFIG_DIR',
+      model: 'm',
+      authNote: null,
+      files: [],
+    }),
+    // ⛔ **The REAL launch reader, not a stub** — §3 is about what a conversation was GIVEN, and a
+    // stubbed reader would make that assertion about the fixture instead of about the app.
+    // ⚑ The composition root wraps it in a bundle publish; nothing here needs one, and the reader's
+    // own contract is that an absent bundle is every host test that is not about instructions.
+    readInstructions: (provider, cwd, providerHome) => {
+      const read = readSessionInstructions({ provider, cwd, providerHome })
+      // ⚑ **The composition root's own three fields**, and `systemHint` comes from the reader's
+      // `composed` for its stated reason: one composition, handed to the adapter from the same
+      // field the panel draws.
+      return {
+        instructions: read.instructions,
+        systemHint: read.instructions.composed ?? undefined,
+        memoryLoaded: read.memoryLoaded,
+      }
+    },
+  }
+}
 
-beforeEach(() => {
+beforeEach(async () => {
   counter = 0
   userData = mkdtempSync(join(tmpdir(), 'brobot2-memory-door-'))
   db = openDatabase(join(userData, 'brobot2.sqlite'))
   applyMigrations(db, migrationsFolder)
-  host = new RuntimeHost(hostDeps())
+  host = new RuntimeHost(await hostDeps())
   sink = new RecordingSink()
 })
 
@@ -177,7 +218,7 @@ describe('§1 · ⛔ the read reaches the store with NO conversation open', () =
 })
 
 describe('§2 · 🔴 the act and its record land together', () => {
-  it('Windows corrections and a removal keep request order and record the actual previous text', async () => {
+  it('queued changes recheck the displayed text after an earlier correction', async () => {
     identity('brobot')
     const { note } = plantTheNight('brobot')
     let release = (): void => {}
@@ -205,11 +246,19 @@ describe('§2 · 🔴 the act and its record land together', () => {
         return `D:PAI(A;OICI;FA;;;${me})(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)`
       },
     }
-    const ordered = new RuntimeHost({ ...hostDeps(), memoryWrites: { platform: 'win32', lists } })
+    const ordered = new RuntimeHost(await hostDeps({ writes: { platform: 'win32', lists } }))
     try {
       const ask = (act: 'corrected' | 'removed', text: string) =>
         ordered.amendAgentMemory(
-          { profileId: 'brobot', provider: 'claude', entry: note, act, text },
+          {
+            profileId: 'brobot',
+            provider: 'claude',
+            entry: note,
+            fingerprint: originalFingerprint,
+            confirmed: true,
+            act,
+            text,
+          },
           sink,
         )
       const a = ask('corrected', 'FIRST\n')
@@ -218,27 +267,24 @@ describe('§2 · 🔴 the act and its record land together', () => {
       const removed = ask('removed', '')
       await new Promise<void>((resolve) => setImmediate(resolve))
       expect(readFileSync(note, 'utf8')).toBe(THE_FALSE_NOTE)
-      expect(ordered.agentMemory('brobot').amendments).toEqual([])
+      expect(ordered.agentMemory('brobot').amendments[0]?.outcome).toBe('pending')
       release()
       const answers = await Promise.all([a, b, removed])
-      expect(answers.map((answer) => answer?.done)).toEqual([true, true, true])
+      expect(answers.map((answer) => answer?.done)).toEqual([true, false, false])
+      expect(
+        answers
+          .slice(1)
+          .every((answer) => answer?.done === false && answer.refused === 'changed-or-unreadable'),
+      ).toBe(true)
       expect(
         answers.map((answer) =>
           answer?.done ? [answer.amendment.textBefore, answer.amendment.textAfter] : null,
         ),
-      ).toEqual([
-        [THE_FALSE_NOTE, 'FIRST\n'],
-        ['FIRST\n', 'SECOND\n'],
-        ['SECOND\n', null],
-      ])
-      expect(existsSync(note)).toBe(false)
+      ).toEqual([[THE_FALSE_NOTE, 'FIRST\n'], null, null])
+      expect(readFileSync(note, 'utf8')).toBe('FIRST\n')
       expect(
         ordered.agentMemory('brobot').amendments.map((row) => [row.textBefore, row.textAfter]),
-      ).toEqual([
-        ['SECOND\n', null],
-        ['FIRST\n', 'SECOND\n'],
-        [THE_FALSE_NOTE, 'FIRST\n'],
-      ])
+      ).toEqual([[THE_FALSE_NOTE, 'FIRST\n']])
     } finally {
       release()
       await ordered.closeAll()
@@ -250,7 +296,15 @@ describe('§2 · 🔴 the act and its record land together', () => {
     const { note } = plantTheNight('brobot')
 
     const answered = await host.amendAgentMemory(
-      { profileId: 'brobot', provider: 'claude', entry: note, act: 'removed', text: '' },
+      {
+        profileId: 'brobot',
+        provider: 'claude',
+        entry: note,
+        fingerprint: originalFingerprint,
+        confirmed: true,
+        act: 'removed',
+        text: '',
+      },
       sink,
     )
 
@@ -278,6 +332,8 @@ describe('§2 · 🔴 the act and its record land together', () => {
         profileId: 'brobot',
         provider: 'claude',
         entry: note,
+        fingerprint: originalFingerprint,
+        confirmed: true,
         act: 'corrected',
         text: 'BROBOT-625-A-PARKED-AGENT-IS-DISTINGUISHABLE\n',
       },
@@ -301,6 +357,8 @@ describe('§2 · 🔴 the act and its record land together', () => {
         profileId: 'brobot',
         provider: 'claude',
         entry: join(userData, 'provider-homes', 'default', 'brobot', 'claude', 'memory', 'gone.md'),
+        fingerprint: originalFingerprint,
+        confirmed: true,
         act: 'removed',
         text: '',
       },
@@ -308,7 +366,7 @@ describe('§2 · 🔴 the act and its record land together', () => {
     )
 
     expect(answered?.done).toBe(false)
-    expect(answered?.done === false && answered.refused).toBe('no-such-entry')
+    expect(answered?.done === false && answered.refused).toBe('changed-or-unreadable')
     // ⛔ **The store comes back either way**, so a person sees what is actually there — `425`.
     expect(JSON.stringify(answered?.reading.stores)).toContain(THE_FALSE_NOTE.trim())
     // 🔴 **And nothing was recorded**, which is `HO-029` §3: a surface may not report an act as
@@ -330,12 +388,19 @@ describe('§2 · 🔴 the act and its record land together', () => {
     const { note } = plantTheNight('brobot')
     const store = createSessionStore(db)
     const refusing = new RuntimeHost({
-      ...hostDeps(),
-      store: { ...store, writeMemoryAmendment: () => null },
+      ...(await hostDeps({ store: { ...store, settleMemoryAmendment: () => false } })),
     })
     try {
       const answered = await refusing.amendAgentMemory(
-        { profileId: 'brobot', provider: 'claude', entry: note, act: 'removed', text: '' },
+        {
+          profileId: 'brobot',
+          provider: 'claude',
+          entry: note,
+          fingerprint: originalFingerprint,
+          confirmed: true,
+          act: 'removed',
+          text: '',
+        },
         sink,
       )
       expect(answered?.done).toBe(false)
@@ -343,8 +408,14 @@ describe('§2 · 🔴 the act and its record land together', () => {
       // 🔴 **The file really is gone**, which is what makes `write-failed`'s sentence false here
       // and this word necessary.
       expect(existsSync(note)).toBe(false)
-      expect(answered?.reading.amendments).toEqual([])
-      expect(REFUSAL_MEANS['not-recorded']).toContain('not in the history')
+      expect(answered?.reading.amendments[0]).toMatchObject({
+        outcome: 'pending',
+        textBefore: THE_FALSE_NOTE,
+      })
+      expect(answered?.reading.needsChecking).toBe(true)
+      expect(REFUSAL_MEANS['not-recorded']).toBe(
+        "BroCrew couldn't record this change. Look at the entry before trying again.",
+      )
       // ⚑ **The control**: the word it is NOT still promises the thing that would be false.
       expect(REFUSAL_MEANS['write-failed']).toContain('Nothing changed')
     } finally {
@@ -356,7 +427,15 @@ describe('§2 · 🔴 the act and its record land together', () => {
     const { note } = plantTheNight('ghost')
 
     const answered = await host.amendAgentMemory(
-      { profileId: 'ghost', provider: 'claude', entry: note, act: 'removed', text: '' },
+      {
+        profileId: 'ghost',
+        provider: 'claude',
+        entry: note,
+        fingerprint: originalFingerprint,
+        confirmed: true,
+        act: 'removed',
+        text: '',
+      },
       sink,
     )
 
@@ -385,7 +464,15 @@ describe('§3 · ⚠️ a change reaches the agent from its NEXT conversation', 
     expect(
       (
         await host.amendAgentMemory(
-          { profileId: 'brobot', provider: 'claude', entry: note, act: 'removed', text: '' },
+          {
+            profileId: 'brobot',
+            provider: 'claude',
+            entry: note,
+            fingerprint: originalFingerprint,
+            confirmed: true,
+            act: 'removed',
+            text: '',
+          },
           sink,
         )
       )?.done,
@@ -439,7 +526,12 @@ describe('§4 · 🔒 the door, and who may reach it', () => {
       ).toBeGreaterThan(at)
       return ipcCode.slice(at, next)
     }
-    for (const kind of ['agentMemory', 'amendAgentMemory']) {
+    for (const kind of [
+      'agentMemory',
+      'amendAgentMemory',
+      'undoAgentMemory',
+      'checkInterruptedMemory',
+    ]) {
       expect(bodyOf(kind), `${kind} is not gated on a person asking`).toContain(
         'requireAPerson(sink, command.kind)',
       )
@@ -456,7 +548,12 @@ describe('§4 · 🔒 the door, and who may reach it', () => {
     )
     // ⚑ **The positive control**: the sweep really is reading the tool inventory.
     expect(tools).toContain('give_work')
-    for (const kind of ['agentMemory', 'amendAgentMemory']) {
+    for (const kind of [
+      'agentMemory',
+      'amendAgentMemory',
+      'undoAgentMemory',
+      'checkInterruptedMemory',
+    ]) {
       expect(tools, `${kind} is reachable from a tool`).not.toContain(kind)
     }
     // 🔴 **And the sentence that states it**, so a reader meets the ruling where the vocabulary
@@ -464,20 +561,283 @@ describe('§4 · 🔒 the door, and who may reach it', () => {
     expect(A_PERSON_DID_THIS).toContain('Only a person')
   })
 
-  it('⛔ the app itself performing an amendment is recorded as the app, never as a person', async () => {
-    // ⚠️ **The window wire refuses a caller that is not a person** — `requireAPerson`, asserted in
-    // `the-memory-door-refuses-an-agent.test.ts`'s shape and by `window-authority.test.ts`'s table.
-    // ⛔ **This is the half BELOW that gate**: if something ever did reach the host as the app, the
-    // record says the app. 🔴 It is `477`'s finding — provenance is not derivable from the act —
-    // and it is why the row carries `by` rather than a vocabulary with one member.
+  it('refuses the app at the host mutation door without changing or recording an entry', async () => {
+    // Startup may observe an interrupted change as the app; it cannot initiate an amendment.
     identity('brobot')
     const { note } = plantTheNight('brobot')
 
     const answered = await host.amendAgentMemory(
-      { profileId: 'brobot', provider: 'claude', entry: note, act: 'removed', text: '' },
+      {
+        profileId: 'brobot',
+        provider: 'claude',
+        entry: note,
+        fingerprint: originalFingerprint,
+        confirmed: true,
+        act: 'removed',
+        text: '',
+      },
       THE_APP_ITSELF,
     )
 
-    expect(answered?.done === true && answered.amendment.by).toEqual({ who: 'the-app-itself' })
+    expect(answered).toBeNull()
+    expect(readFileSync(note, 'utf8')).toBe(THE_FALSE_NOTE)
+    expect(host.agentMemory('brobot').amendments).toEqual([])
+  })
+})
+
+describe('durable memory operations through the person window doors', () => {
+  it('requires confirmation and the displayed fingerprint before recording an intent', async () => {
+    identity('lark')
+    const { note } = plantTheNight('lark')
+    const asked = {
+      profileId: 'lark',
+      provider: 'claude' as const,
+      entry: note,
+      act: 'removed' as const,
+      text: '',
+      fingerprint: originalFingerprint,
+      confirmed: true,
+    }
+    const no = await host.amendAgentMemory({ ...asked, confirmed: false }, sink)
+    expect(no?.done === false && no.refused).toBe('confirmation-required')
+    const stale = await host.amendAgentMemory({ ...asked, fingerprint: '0'.repeat(64) }, sink)
+    expect(stale?.done === false && stale.refused).toBe('changed-or-unreadable')
+    expect(readFileSync(note, 'utf8')).toBe(THE_FALSE_NOTE)
+    expect(host.agentMemory('lark').amendments).toEqual([])
+  })
+
+  it('restores the exact saved text and reverses that restoration, through the host', async () => {
+    identity('lark')
+    const { note } = plantTheNight('lark')
+    const removed = await host.amendAgentMemory(
+      {
+        profileId: 'lark',
+        provider: 'claude',
+        entry: note,
+        act: 'removed',
+        text: '',
+        fingerprint: originalFingerprint,
+        confirmed: true,
+      },
+      sink,
+    )
+    expect(removed?.done).toBe(true)
+    if (!removed?.done) throw new Error('Expected a recorded removal')
+    const asked = { profileId: 'lark', sourceId: removed.amendment.id, confirmed: true }
+    expect(await host.undoAgentMemory(asked, THE_APP_ITSELF)).toBeNull()
+    const restored = await host.undoAgentMemory(asked, sink)
+    expect(restored?.done).toBe(true)
+    expect(readFileSync(note, 'utf8')).toBe(THE_FALSE_NOTE)
+    if (!restored?.done) throw new Error('Expected a recorded restoration')
+    expect(restored.amendment).toMatchObject({
+      act: 'restored',
+      sourceId: removed.amendment.id,
+      by: { who: 'a-person' },
+    })
+    expect(
+      (await host.undoAgentMemory({ ...asked, sourceId: restored.amendment.id }, sink))?.done,
+    ).toBe(true)
+    expect(existsSync(note)).toBe(false)
+  })
+
+  it('uses the same unfinished-memory reason in the roster and removal, until a person checks it', async () => {
+    identity('lark')
+    const { note } = plantTheNight('lark')
+    const store = createSessionStore(db)
+    expect(
+      store.beginMemoryAmendment(
+        {
+          profileSlug: 'lark',
+          provider: 'claude',
+          entry: note,
+          act: 'removed',
+          by: { who: 'a-person' },
+          textBefore: THE_FALSE_NOTE,
+          textAfter: null,
+        },
+        Date.now(),
+      ),
+    ).not.toBeNull()
+    expect(host.agentMemory('lark').needsChecking).toBe(true)
+    expect(
+      host.agentIdentities().use.find((one) => one.slug === 'lark')?.hasUnfinishedMemoryChange,
+    ).toBe(true)
+    expect(host.removeAgent('lark')).toMatchObject({
+      ok: false,
+      rail: 'it-is-still-held',
+      held: ['unfinished-memory-change'],
+    })
+    expect(
+      await host.checkInterruptedMemory({ profileId: 'lark', confirmed: true }, THE_APP_ITSELF),
+    ).toBeNull()
+    expect(
+      (await host.checkInterruptedMemory({ profileId: 'lark', confirmed: true }, sink))?.done,
+    ).toBe(true)
+    const reading = host.agentMemory('lark')
+    expect(reading.needsChecking).toBeUndefined()
+    expect(reading.amendments[0]).toMatchObject({
+      outcome: 'unchanged',
+      by: { who: 'a-person' },
+      settlement: { by: { who: 'a-person' } },
+    })
+    expect(host.removeAgent('lark')).toEqual({ ok: true, slug: 'lark' })
+  })
+
+  it('rechecks a memory intent that appears at the transactional removal guard', async () => {
+    identity('lark')
+    const { note } = plantTheNight('lark')
+    const store = createSessionStore(db)
+    const racing = new RuntimeHost(
+      await hostDeps({
+        store: {
+          ...store,
+          removeAgentIdentity: (slug) => {
+            store.beginMemoryAmendment(
+              {
+                profileSlug: slug,
+                provider: 'claude',
+                entry: note,
+                act: 'removed',
+                by: { who: 'a-person' },
+                textBefore: THE_FALSE_NOTE,
+                textAfter: null,
+              },
+              Date.now(),
+            )
+            return store.removeAgentIdentity(slug)
+          },
+        },
+      }),
+    )
+    try {
+      expect(racing.removeAgent('lark')).toMatchObject({
+        ok: false,
+        rail: 'it-is-still-held',
+        held: ['unfinished-memory-change'],
+      })
+      expect(racing.agentIdentities().identities.some((one) => one.slug === 'lark')).toBe(true)
+      expect(readFileSync(note, 'utf8')).toBe(THE_FALSE_NOTE)
+    } finally {
+      await racing.closeAll()
+    }
+  })
+
+  it('makes no late reading after a bounded quit while an intent is in flight', async () => {
+    identity('lark')
+    const { note } = plantTheNight('lark')
+    let release!: () => void
+    let entered!: () => void
+    const paused = new Promise<void>((yes) => {
+      release = yes
+    })
+    const waiting = new Promise<void>((yes) => {
+      entered = yes
+    })
+    const store = createSessionStore(db)
+    const reads = vi.fn(store.memoryAmendmentsOf)
+    const quitting = new RuntimeHost(
+      await hostDeps({
+        store: { ...store, memoryAmendmentsOf: reads },
+        closeWaitMs: 0,
+        beforeEffect: async () => {
+          entered()
+          await paused
+        },
+      }),
+    )
+    try {
+      const change = quitting.amendAgentMemory(
+        {
+          profileId: 'lark',
+          provider: 'claude',
+          entry: note,
+          act: 'removed',
+          text: '',
+          fingerprint: originalFingerprint,
+          confirmed: true,
+        },
+        sink,
+      )
+      await waiting
+      expect(
+        quitting.agentIdentities().use.find((one) => one.slug === 'lark')?.isChangingMemory,
+      ).toBe(true)
+      await quitting.closeAll()
+      const before = reads.mock.calls.length
+      release()
+      expect(await change).toBeNull()
+      expect(reads.mock.calls.length).toBe(before)
+      expect(readFileSync(note, 'utf8')).toBe(THE_FALSE_NOTE)
+      expect(store.hasPendingMemoryAmendment('lark')).toBe(true)
+    } finally {
+      release()
+      await quitting.closeAll()
+    }
+  })
+})
+
+describe('memory shutdown and missing-service boundaries', () => {
+  it('waits for memory to close even when a session close rejects', async () => {
+    identity('lark')
+    let release!: () => void
+    const gate = new Promise<void>((yes) => {
+      release = yes
+    })
+    const gated = new RuntimeHost(await hostDeps({ closeWaitMs: 0, closeGate: gate }))
+    let restoreClose = (): void => {}
+    try {
+      await gated.createSession({ provider: 'claude', profileId: 'lark' }, sink)
+      const close = vi
+        .spyOn(gated, 'close')
+        .mockRejectedValueOnce(new Error('Fictional session close failure'))
+      restoreClose = () => {
+        close.mockRestore()
+      }
+      const closing = gated.closeAll()
+      let settled = false
+      void closing.then(
+        () => {
+          settled = true
+        },
+        () => {
+          settled = true
+        },
+      )
+      await new Promise<void>((yes) => setImmediate(yes))
+      expect(settled).toBe(false)
+      release()
+      await expect(closing).rejects.toThrow('Fictional session close failure')
+    } finally {
+      release()
+      restoreClose()
+      await gated.closeAll()
+    }
+  })
+  it('does not attempt a change when no durable service was bound', async () => {
+    identity('lark')
+    const { note } = plantTheNight('lark')
+    const deps = await hostDeps()
+    const unbound = new RuntimeHost({ ...deps, memoryKnowledge: undefined })
+    try {
+      expect(
+        await unbound.amendAgentMemory(
+          {
+            profileId: 'lark',
+            provider: 'claude',
+            entry: note,
+            act: 'removed',
+            text: '',
+            fingerprint: originalFingerprint,
+            confirmed: true,
+          },
+          sink,
+        ),
+      ).toBeNull()
+      expect(readFileSync(note, 'utf8')).toBe(THE_FALSE_NOTE)
+      expect(host.agentMemory('lark').amendments).toEqual([])
+    } finally {
+      await unbound.closeAll()
+      await deps.memoryKnowledge?.close(0)
+    }
   })
 })

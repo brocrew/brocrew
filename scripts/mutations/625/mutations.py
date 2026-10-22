@@ -97,17 +97,17 @@ NO_HOME = (
     "  const read = STORE_READER[provider](home)"
 )
 PROVIDERS = "const PROVIDERS = Object.keys(STORE_READER) as readonly Provider[]"
-TEXT_AFTER = "        textAfter: command.act === 'removed' ? null : command.text,"
-WHO = "        by: whoDidIt(by),\n        textBefore: outcome.textBefore,"
+TEXT_AFTER = "            textAfter: said.act === 'removed' ? null : said.text,"
+WHO = "      { ...plan, profileSlug: slug, by: { who: 'a-person' } },"
 EXISTENCE = (
-    "    if (this.deps.store.agentIdentities().every(({ slug }) => slug !== profileId)) return null"
+    "    const profileId = foldProfileName(command.profileId)\n"
+    "    if (this.deps.store.agentIdentities().every(({ slug }) => slug !== profileId)) return null\n"
+    "    const result = await this.deps.memoryKnowledge?.amend("
 )
 NEWEST_FIRST = (
     "           FROM identity_memory_amendment WHERE identity_id = ? ORDER BY seq DESC`,"
 )
-NOT_RECORDED = (
-    "      return { done: false, refused: 'not-recorded', reading: this.agentMemory(profileId) }"
-)
+NOT_RECORDED = "      issues.add(slug)\n      return failed('not-recorded')"
 GATE_WRITE = "      requireAPerson(sink, command.kind)\n      return host.amendAgentMemory(command, sink)"
 # ⚑ **W4.170** — F093's follow-up (8efcfba7) gave the paged arm a gate of its own and kept this
 # one before the first-page read; the anchor is the first-page arm's gate, as it was.
@@ -179,29 +179,23 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     ),
     # ── C · the record, and what it is allowed to claim ────────────────────────────────────────
     (
-        "M8 · ⛔ **a removal records the text it did NOT write** · `textAfter` carries the "
-        "command's text on both acts. ⚠️ **The database is what stops it** — "
-        "`identity_memory_amendment_after_matches_act_ck` — so the row cannot land and the act's "
-        "record is lost after the file is already gone. 🔴 It is the row that proves the CHECK is "
-        "doing work rather than restating a rule the writer keeps",
-        [(HOST, TEXT_AFTER, "        textAfter: command.text,")],
+        "M8 · a removal plans replacement text instead of absence. The intent validation refuses "
+        "the mismatched pair before any file effect; a confirmed removal must still succeed.",
+        [(MEM, TEXT_AFTER, "            textAfter: said.text,")],
     ),
     (
-        "M9 · 🔴 **a person's removal is recorded as the app's** · `whoDidIt` is replaced by the "
-        "app's own actor. ⛔ **`EXT-015` §3.3 is *never let a person's edit look like the agent's "
-        "own*** — and this is the inverse failure, which is worse in the direction that matters: a "
-        "record saying the app removed a memory nobody can then find a person for. ⚑ `477`'s "
-        "finding is why the column exists at all — provenance is not derivable from the act",
-        [(HOST, WHO, "        by: THE_APP_DID_IT,\n        textBefore: outcome.textBefore,")],
+        "M9 · a person's intent loses its initiating authority. Replacing the bound person with "
+        "the app actor must be refused by the intent store; it must not silently disable a person's edit.",
+        [(MEM, WHO, "      { ...plan, profileSlug: slug, by: { who: 'the-app-itself' } },")],
     ),
     (
-        "M10 · ⛔ **a slug with no identity row has its memory removed anyway** · the existence "
-        "check goes. ⚠️ **The FILE is the damage, not the missing row**: the check runs before "
-        "anything reaches the filesystem, so without it a caller naming a profile this app has no "
-        "identity for still gets a `unlink` — and `writeMemoryAmendment` then refuses, leaving the "
-        "act performed and unrecorded. 🔴 Criterion 12 at this door, and the one ordering that "
-        "makes a probe impossible",
-        [(HOST, EXISTENCE, "    if (profileId === '') return null")],
+        "M10 · the host no longer answers an absent identity before asking the memory service. "
+        "The service still refuses the write, but the host must return null for a missing identity "
+        "rather than a reading that suggests it exists.",
+        [(HOST, EXISTENCE,
+          "    const profileId = foldProfileName(command.profileId)\n"
+          "    if (profileId === '') return null\n"
+          "    const result = await this.deps.memoryKnowledge?.amend(")],
     ),
     (
         "M11 · ⚠️ **the history reads oldest first** · the amendments statement orders ascending. "
@@ -219,7 +213,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "memory is intact while it is gone. ⚑ **Found reviewing this dispatch's own diff**, and it "
         "is `two-questions-about-one-address`: one word was carrying *the filesystem refused* and "
         "*the record refused*, and only the first sentence is ever true of both",
-        [(HOST, NOT_RECORDED, "      return { done: false, refused: 'write-failed', reading: this.agentMemory(profileId) }")],
+        [(MEM, NOT_RECORDED, "      issues.add(slug)\n      return failed('write-failed')")],
     ),
     # ── D · the door, and the one authority it has ─────────────────────────────────────────────
     (
@@ -239,5 +233,13 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "about a HUMAN, and an agent reading another agent's memory is not something anybody has "
         "asked for · killed by `the-memory-door.test.ts` (named by W4.170) · killed by `an-agent-memory-read-asks-a-person-on-both-arms.test.ts` (named by W4.170)",
         [(IPC, GATE_READ, "      return host.agentMemory(command.profileId)")],
+    ),
+    (
+        "M15 · a pending memory intent is reported as a missing identity after the removal "
+        "transaction refuses. The door must retain the same unfinished-memory reason as the roster.",
+        [(HOST,
+          "        if (this.deps.store.hasPendingMemoryAmendment(folded))\n"
+          "          return { ok: false, rail: 'it-is-still-held', held: ['unfinished-memory-change'] }\n",
+          "")],
     ),
 ]

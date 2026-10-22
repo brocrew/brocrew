@@ -1353,14 +1353,33 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
    * ⚑ **`act` is `z.enum(MEMORY_EDIT)`**, so the closed vocabulary is enforced at the door as
    * well as by the column's CHECK. ⛔ A word this build does not know never reaches the filesystem.
    */
-  z.object({
-    kind: z.literal('amendAgentMemory'),
-    profileId: profileId.unwrap(),
-    provider: providerSchema,
-    entry: z.string().min(1).max(4096),
-    act: z.enum([...MEMORY_EDIT]),
-    text: memoryText,
-  }),
+  z
+    .object({
+      kind: z.literal('amendAgentMemory'),
+      profileId: profileId.unwrap(),
+      provider: providerSchema,
+      entry: z.string().min(1).max(4096),
+      act: z.enum([...MEMORY_EDIT]),
+      text: memoryText,
+      fingerprint: z.string().regex(/^[0-9a-f]{64}$/),
+      confirmed: z.boolean(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('undoAgentMemory'),
+      profileId: profileId.unwrap(),
+      sourceId: z.string().min(1).max(1024),
+      confirmed: z.boolean(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('checkInterruptedMemory'),
+      profileId: profileId.unwrap(),
+      confirmed: z.boolean(),
+    })
+    .strict(),
   /**
    * 🔴 **582 · a person answering one ask an agent made** (`HO-009` §2.2).
    *
@@ -1628,12 +1647,10 @@ const DURING_A_QUIT: Record<RuntimeCommandKind, QuitRuling> = {
   // F093 · C9 d. ⛔ **Refused, with `whatThisAgentWasGiven` directly above as the precedent**: a read
   // whose answer nothing will draw while the app is going away.
   whatTheModelGot: 'refused',
-  // 625. ⛔ **Refused, and the DESTRUCTIVE direction is not an exemption worth making** — which is
-  // `removeAgent`'s own ruling below, at the same price. ⚠️ **Sharper here than there:** this write
-  // is NOT transactional with its record. The file changes, then the row is written; a quit that
-  // lands between them leaves a store short an entry and nothing saying why, which is the one
-  // outcome `EXT-015` §3.3 exists to prevent.
+  // Refused during quit: no new memory change may start while its service is closing.
   amendAgentMemory: 'refused',
+  undoAgentMemory: 'refused',
+  checkInterruptedMemory: 'refused',
   // 582. ⛔ **Refused**: a decision answered during a quit settles a card nobody will see settle, and the person presses it again on the
   // next launch where the sheet can show them what happened.
   decideInstruction: 'refused',
@@ -1916,6 +1933,8 @@ const WHAT_A_PERSONS_VERB_DOES: Partial<Record<RuntimeCommandKind, string>> = {
   instructAgent: 'changes an agent’s own instructions',
   decideInstruction: 'approves or declines rules proposed for an agent',
   amendAgentMemory: 'changes an agent’s own memory',
+  undoAgentMemory: 'undoes a change to an agent’s memory',
+  checkInterruptedMemory: 'records what happened to an interrupted memory change',
   setAgentDisplayName: 'renames an agent',
   setAgentModelAndEffort: 'sets the model an agent starts on',
   setAgentProvider: 'sets the provider an agent runs on',
@@ -2754,6 +2773,12 @@ export async function executeRuntimeCommand(
       // question arrives with the door rather than after it.
       requireAPerson(sink, command.kind)
       return host.amendAgentMemory(command, sink)
+    case 'undoAgentMemory':
+      requireAPerson(sink, command.kind)
+      return host.undoAgentMemory(command, sink)
+    case 'checkInterruptedMemory':
+      requireAPerson(sink, command.kind)
+      return host.checkInterruptedMemory(command, sink)
     case 'decideInstruction':
       // ⛔ **`requireAPerson`, and `HO-009` §2.2 is what makes it load-bearing**: *"An agent
       // proposes. A proposal is a card; approval writes it."* ⚑ Approval is the only thing that

@@ -296,12 +296,21 @@ const SAMPLES: Record<RuntimeCommandKind, RuntimeCommand> = {
   whatTheModelGot: { kind: 'whatTheModelGot', sessionId: SESSION, ordinal: 0 },
   amendAgentMemory: {
     kind: 'amendAgentMemory',
+    fingerprint: '0'.repeat(64),
+    confirmed: true,
     profileId: 'pm',
     provider: 'claude',
     entry: '/nowhere/memory/MEMORY.md',
     act: 'removed',
     text: '',
   },
+  undoAgentMemory: {
+    kind: 'undoAgentMemory',
+    profileId: 'lark',
+    sourceId: 'mem:lark:1',
+    confirmed: true,
+  },
+  checkInterruptedMemory: { kind: 'checkInterruptedMemory', profileId: 'lark', confirmed: true },
   decideInstruction: { kind: 'decideInstruction', askId: 'iprop_1', approve: true },
   decideMcpServerRequest: { kind: 'decideMcpServerRequest', requestId: 'msreq_1', approve: true },
   removeAgent: { kind: 'removeAgent', profileId: 'pm' },
@@ -483,6 +492,8 @@ const NEEDS_A_PERSON = new Set<RuntimeCommandKind>([
   // something anybody has asked for.
   'agentMemory',
   'amendAgentMemory',
+  'undoAgentMemory',
+  'checkInterruptedMemory',
   // F093 · ⚑ **The agent-input popup's read, gated for `agentMemory`'s reason**: it carries an
   // agent's memory verbatim, and its own instructions.
   'whatThisAgentWasGiven',

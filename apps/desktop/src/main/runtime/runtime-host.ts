@@ -1017,16 +1017,19 @@ import type {
   AgentMemoryAmended,
   AgentMemoryReading,
   MemoryAmendmentAsked,
+  MemoryUndoAsked,
+  MemoryCheckAsked,
+  MemoryChecked,
 } from '../../shared/agent-memory'
+import { memoryChangeRefusal } from '../../shared/agent-memory'
 // ⛔ **625 · the ONE module in this feature that touches the filesystem**, which is why the host
 // imports its two functions rather than learning to walk a store — `no-byte-authority.test.ts`
 // pins this file at zero `node:fs` imports.
 import {
-  amendAgentMemory,
   readAgentMemory,
   readAgentMemoryPaged,
   type AgentMemoryInputs,
-  type MemoryWriteSeams,
+  type MemoryService,
 } from './agent-memory'
 import {
   aLaunchRecordIn,
@@ -2617,8 +2620,8 @@ export interface RuntimeHostDeps {
    * no root.)
    */
   providerHomesRoot?(): string
-  /** Filesystem permission operations used by the memory correction door. */
-  memoryWrites?: MemoryWriteSeams
+  /** Awaited before the host is constructed; owns memory operations and their shutdown. */
+  memoryKnowledge?: MemoryService
   /**
    * The credential gestures a person can make about a profile home (098) — check, re-copy, sign in.
    *
@@ -7504,8 +7507,6 @@ function tieInWords(how: TiedOutside['how'], here: string, other: string): strin
 }
 
 export class RuntimeHost implements LiveHost {
-  /** Windows corrections and removals hold the entry through the filesystem act and its audit. */
-  private readonly memoryAmendments = new Map<string, Promise<void>>()
   /**
    * Every session id this host owns — from the moment it is RESERVED, not from the moment a
    * provider answers. See {@link SessionSlot}.
@@ -39324,14 +39325,25 @@ export class RuntimeHost implements LiveHost {
       this.launchesByIdentity(stillStarting),
     ).map((use) => ({
       ...use,
+      ...this.memoryHolding(use.slug),
       ...(this.deps.store.hasPendingMethodChange(use.slug)
         ? { hasUnfinishedMethodChange: true }
         : {}),
     }))
   }
 
-  /** A durable method change moved the roster's removal predicate. */
-  savedMethodsChanged(): void {
+  private memoryHolding(slug: string): {
+    hasUnfinishedMemoryChange?: true
+    isChangingMemory?: true
+  } {
+    if (this.deps.memoryKnowledge?.busy(slug)) return { isChangingMemory: true }
+    return this.deps.store.hasPendingMemoryAmendment(slug) || this.deps.memoryKnowledge?.held(slug)
+      ? { hasUnfinishedMemoryChange: true }
+      : {}
+  }
+
+  /** A durable knowledge change moved the roster's removal predicate. */
+  agentKnowledgeChanged(): void {
     this.theWorldMoved('agents')
   }
 
@@ -40919,6 +40931,10 @@ export class RuntimeHost implements LiveHost {
       profileId,
       stores: read.stores,
       amendments: this.deps.store.memoryAmendmentsOf(profileId),
+      ...(this.deps.memoryKnowledge?.busy(profileId) ? { changing: true as const } : {}),
+      ...(this.memoryHolding(profileId).hasUnfinishedMemoryChange
+        ? { needsChecking: true as const }
+        : {}),
       // ⛔ **The walk's OWN stamp, not `this.now()`** — the reader takes it above its first syscall
       // (`stamp-a-measurement-when-you-ask-not-when-it-answers`), and a number taken here would
       // date the listing with the moment the last file finished.
@@ -40938,6 +40954,10 @@ export class RuntimeHost implements LiveHost {
       profileId,
       stores: read.stores,
       amendments: this.deps.store.memoryAmendmentsOf(profileId),
+      ...(this.deps.memoryKnowledge?.busy(profileId) ? { changing: true as const } : {}),
+      ...(this.memoryHolding(profileId).hasUnfinishedMemoryChange
+        ? { needsChecking: true as const }
+        : {}),
       readAt: read.readAt,
     }
   }
@@ -41352,109 +41372,82 @@ export class RuntimeHost implements LiveHost {
   }
 
   /**
-   * 🔴 **A person removes or corrects one entry in an agent's memory** (625, `EXT-015` §3.2 · §3.3)
-   * — the write, and the record that outlives the file.
-   *
-   * ## ⛔ The file changes FIRST and the row is written second
-   *
-   * ⚠️ **They are not transactional with each other and cannot be**: one is a filesystem act and
-   * one is a database row. ⛔ **A row written first can describe a removal that never happened**,
-   * which is criterion 18 written into the durable record; a row written second can miss one that
-   * did, which is a person looking at a store short an entry with nothing saying why. ⚑ The second
-   * is recoverable by looking and the first is not — see `SessionStore.writeMemoryAmendment`.
-   *
-   * ## ⛔ A REFUSAL answers a reading, not an error
-   *
-   * ⚑ **`425`'s rule that a refusal carries its remedy.** The store comes back either way, so a
-   * person who pressed a control for an entry the agent had already rewritten sees what is
-   * actually there instead of an alert. ⚠️ **Which refusal it was is ON THE ANSWER**, as one of
-   * `AMENDMENT_REFUSED`, beside the reading — not on the sink: a window that had to correlate a
-   * refusal event with a reply would be reading two things to learn one.
-   *
-   * ## ⚠️ Nothing running moves
-   *
-   * ⛔ **`readSessionInstructions` takes a conversation's copy at ITS launch** (158 §2), so a live
-   * conversation goes on reporting the entry it was given — `EXT-015` §2.1's *"a change reaches
-   * the agent from its next conversation"*, and this method does nothing to make it otherwise.
-   * ⚑ `the-memory-door.test.ts` §3 is what holds that, in both directions: the running
-   * conversation keeps the entry, and a conversation started afterwards does not have it.
+   * A person changes the displayed entry through the awaited memory service. Its intent keeps
+   * the original text durable before the file changes. The reading reports the observed outcome;
+   * a running conversation retains the copy taken at its launch.
    */
   async amendAgentMemory(
     command: MemoryAmendmentAsked,
     by: Caller,
   ): Promise<AgentMemoryAmended | null> {
-    if ((this.deps.memoryWrites?.platform ?? process.platform) !== 'win32') {
-      return this.performMemoryAmendment(command, by)
-    }
-    const key = JSON.stringify([
-      foldProfileName(command.profileId),
-      command.provider,
-      command.entry.toLowerCase(),
-    ])
-    const previous = this.memoryAmendments.get(key) ?? Promise.resolve()
-    const result = previous.then(() => this.performMemoryAmendment(command, by))
-    const settled = result.then(
-      () => undefined,
-      () => undefined,
-    )
-    this.memoryAmendments.set(key, settled)
-    try {
-      return await result
-    } finally {
-      if (this.memoryAmendments.get(key) === settled) this.memoryAmendments.delete(key)
-    }
-  }
-
-  private async performMemoryAmendment(
-    command: MemoryAmendmentAsked,
-    by: Caller,
-  ): Promise<AgentMemoryAmended | null> {
+    if (whoDidIt(by).who !== 'a-person' || this.closing || !this.deps.memoryKnowledge) return null
     const profileId = foldProfileName(command.profileId)
-    // ⛔ **EXISTENCE before anything touches the filesystem** — criterion 12 at this door, and
-    // ordered so that probing for an identity cannot be done by watching a store get walked
-    // (`refuse-on-entitlement-before-refusing-on-existence`, read for its ordering half).
     if (this.deps.store.agentIdentities().every(({ slug }) => slug !== profileId)) return null
-    const outcome = await amendAgentMemory(
+    const result = await this.deps.memoryKnowledge?.amend(
       {
-        ...this.memoryInputs(profileId),
+        profile: profileId,
         provider: command.provider,
         entry: command.entry,
         act: command.act,
         text: command.text,
+        fingerprint: command.fingerprint,
+        confirmed: command.confirmed,
       },
-      this.deps.memoryWrites,
+      whoDidIt(by),
     )
-    if (!outcome.done) {
-      return { done: false, refused: outcome.refused, reading: this.agentMemory(profileId) }
-    }
-    const amendment = this.deps.store.writeMemoryAmendment(
-      {
-        profileSlug: profileId,
-        provider: command.provider,
-        entry: outcome.entry,
-        act: command.act,
-        by: whoDidIt(by),
-        textBefore: outcome.textBefore,
-        // ⛔ **`null` for a removal, and the column CHECKs the pair** — the act word and this field
-        // cannot come apart in a rule a writer has to keep.
-        textAfter: command.act === 'removed' ? null : command.text,
-      },
-      this.now(),
+    if (this.closing) return null
+    const reading = this.agentMemory(profileId)
+    return result?.ok && result.amendment
+      ? { done: true, amendment: result.amendment, reading }
+      : {
+          done: false,
+          refused: memoryChangeRefusal(result?.ok === false ? result.reason : undefined),
+          reading,
+        }
+  }
+
+  async undoAgentMemory(command: MemoryUndoAsked, by: Caller): Promise<AgentMemoryAmended | null> {
+    if (whoDidIt(by).who !== 'a-person' || this.closing || !this.deps.memoryKnowledge) return null
+    const profileId = foldProfileName(command.profileId)
+    if (this.deps.store.agentIdentities().every(({ slug }) => slug !== profileId)) return null
+    const result = await this.deps.memoryKnowledge?.undo(
+      profileId,
+      command.sourceId,
+      command.confirmed,
+      whoDidIt(by),
     )
-    // ⚑ **`agents`, for `instructAgent`'s reason one method down**: what an identity has written
-    // down is a fact about the identity, and a surface listing identities may be drawing it.
-    this.theWorldMoved('agents')
-    // ⛔ **`null` here means the file DID change and the record did NOT get written.** ⚠️ The
-    // existence check above makes it unreachable through this door; what can still produce it is
-    // an identity row that goes away between that check and this write. 🔴 **It answers
-    // `not-recorded` rather than `write-failed`**, and the word was added reviewing this diff:
-    // that one's sentence promises *nothing changed*, which is exactly the reassuring lie
-    // criterion 18 exists to prevent. ⚑ A surface told the act landed would be reporting an act
-    // the record cannot confirm, which is `HO-029` §3.
-    if (amendment === null) {
-      return { done: false, refused: 'not-recorded', reading: this.agentMemory(profileId) }
-    }
-    return { done: true, amendment, reading: this.agentMemory(profileId) }
+    if (this.closing) return null
+    const reading = this.agentMemory(profileId)
+    return result?.ok && result.amendment
+      ? { done: true, amendment: result.amendment, reading }
+      : {
+          done: false,
+          refused: memoryChangeRefusal(result?.ok === false ? result.reason : undefined),
+          reading,
+        }
+  }
+
+  async checkInterruptedMemory(
+    command: MemoryCheckAsked,
+    by: Caller,
+  ): Promise<MemoryChecked | null> {
+    if (whoDidIt(by).who !== 'a-person' || this.closing || !this.deps.memoryKnowledge) return null
+    const profileId = foldProfileName(command.profileId)
+    if (this.deps.store.agentIdentities().every(({ slug }) => slug !== profileId)) return null
+    const result = await this.deps.memoryKnowledge?.checkInterrupted(
+      profileId,
+      command.confirmed,
+      whoDidIt(by),
+    )
+    if (this.closing) return null
+    const reading = this.agentMemory(profileId)
+    return result?.ok
+      ? { done: true, reading }
+      : {
+          done: false,
+          refused: memoryChangeRefusal(result?.ok === false ? result.reason : undefined),
+          reading,
+        }
   }
 
   /**
@@ -41794,6 +41787,8 @@ export class RuntimeHost implements LiveHost {
       // ⚠️ **`false` here would mean the row went between the read and the write.** It is reported
       // as the same refusal a missing name gets, because that is what it now is.
       if (!this.deps.store.removeAgentIdentity(folded)) {
+        if (this.deps.store.hasPendingMemoryAmendment(folded))
+          return { ok: false, rail: 'it-is-still-held', held: ['unfinished-memory-change'] }
         if (this.deps.store.hasPendingMethodChange(folded))
           return { ok: false, rail: 'it-is-still-held', held: ['unfinished-method-change'] }
         return { ok: false, rail: 'no-such-agent' }
@@ -44776,6 +44771,7 @@ export class RuntimeHost implements LiveHost {
    * is complete, and taking it late would race a session that finished early out of the picture.
    */
   async closeAll(): Promise<void> {
+    const memoryClosed = this.deps.memoryKnowledge?.close() ?? Promise.resolve()
     this.deps.store.closePastWorkSearch?.()
     this.deps.closeSharedSkills?.()
     this.windowIncidentReads.invalidate()
@@ -44829,8 +44825,11 @@ export class RuntimeHost implements LiveHost {
         workSearchClosed,
         pastWorkSearchClosed,
         windowReadsClosed,
+        memoryClosed,
       ])
     } finally {
+      // A failed session close must still leave memory quiescent before SQLite closes.
+      await Promise.allSettled([memoryClosed])
       // 🔴 **692 · …and recorded once the teardown is over** (R34c). ⛔ A crash, a kill or a forced
       // exit that lands before this line records NOTHING, so what the quit was closing comes back
       // closed — which is what R34c rules and what the rail's hover tells a person. ⚠️ **In a
