@@ -5,6 +5,7 @@ import { BrowserWindow, net, shell } from 'electron'
 import type { App } from 'electron'
 import type { AppUpdater, BaseUpdater } from 'electron-updater'
 import { UPDATES_CHANNELS, type UpdateChannel } from '../shared/updates'
+import { shownVersion } from './build-identity'
 import { defaultDataFolder } from './data-folder'
 import {
   clearUpdateStaging,
@@ -133,7 +134,7 @@ export function startUpdates(options: {
   const guidedDownloads = new AbortController()
   const pendingGuides = new Set<Promise<string>>()
   const updates = createUpdates({
-    version: app.getVersion(),
+    version: shownVersion(app.getVersion(), app.isPackaged),
     notHere: !app.isPackaged ? 'a-development-build' : feed === null ? 'no-release-feed' : null,
     installs: process.platform === 'darwin' ? 'guided' : 'on-restart',
     settings: {

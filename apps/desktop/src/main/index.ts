@@ -68,7 +68,7 @@ import {
   RUNTIME_STATES_CHANNEL,
   type RuntimeChangeSubject,
 } from '../shared/runtime-ipc'
-import { buildBranches, buildIdentity } from './build-identity'
+import { buildBranches, buildIdentity, shownVersion } from './build-identity'
 import { LIMITS_DISPLAY_CHANGED_CHANNEL } from '../shared/limits-display'
 import { LimitsReaderLifetime } from './db/limits-reader-lifetime'
 import { limitsWriterSampler } from './db/fresh-limits-snapshot'
@@ -589,7 +589,7 @@ function readAppInfo(): AppInfo {
     windowTitle: windowTitleFor(presentation, dataFolder),
     // Name the workspace in the rail footer without including a person's name.
     workspace: workspaceOf(app.getPath('userData'), dataFolder === null),
-    version: app.getVersion(),
+    version: shownVersion(app.getVersion(), app.isPackaged),
     step: 'Step 0',
     // Use the commit and branch identities baked into the build. A packaged app has no repository,
     // and runtime git reads could describe a different checkout from the running code.
@@ -2162,7 +2162,10 @@ function start(ownership: HostGateVerdict): void {
       // Install the app menu before any ordinary or recovery window. Electron's default Reload
       // navigates and releases conversations, so `app-menu.ts` removes it. Set the displayed
       // BroBot labels without changing `app.getName()`, which also determines the data folder.
-      app.setAboutPanelOptions({ applicationName: PERSONS_TITLE })
+      app.setAboutPanelOptions({
+        applicationName: PERSONS_TITLE,
+        applicationVersion: shownVersion(app.getVersion(), app.isPackaged),
+      })
       Menu.setApplicationMenu(
         Menu.buildFromTemplate(
           appMenuTemplate({

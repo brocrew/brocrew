@@ -15,11 +15,17 @@ export const WORKSPACE_POLICY_FILE = 'workspace-policy.json'
 export const PACKAGED_WORKSPACE_LIST = 'packaged-workspaces.json'
 export const OTHER_BUILD_REFUSAL = 'This workspace opens in the BroCrew app in Applications.'
 export const PACKAGED_WORKSPACE_REFUSAL = "This workspace can't be opened in this app."
+/** A folder the policy keeps for a development build of BroCrew, as the packaged app is told. */
+export const DEVELOPMENT_BUILD_REFUSAL =
+  'This workspace opens in a development build of BroCrew, not in this app. Open it from that build.'
 export function workspaceLaunchMessage(error: unknown): string {
   return error instanceof Error &&
-    [OTHER_BUILD_REFUSAL, PACKAGED_WORKSPACE_REFUSAL, WORKSPACE_LIST_REFUSAL].includes(
-      error.message,
-    )
+    [
+      OTHER_BUILD_REFUSAL,
+      DEVELOPMENT_BUILD_REFUSAL,
+      PACKAGED_WORKSPACE_REFUSAL,
+      WORKSPACE_LIST_REFUSAL,
+    ].includes(error.message)
     ? error.message
     : WORKSPACE_LIST_REFUSAL
 }
@@ -136,7 +142,7 @@ export function workspaceRouting(
   const refusal = (folder: string): string | null =>
     forbidden.some((one) => within(folder, one))
       ? packaged
-        ? PACKAGED_WORKSPACE_REFUSAL
+        ? DEVELOPMENT_BUILD_REFUSAL
         : OTHER_BUILD_REFUSAL
       : null
   const reserved = policy ? [policy.firstWorkspace, ...policy.developmentForbidden] : []

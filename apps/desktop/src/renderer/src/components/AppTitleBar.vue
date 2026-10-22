@@ -125,7 +125,8 @@ const branchWords = computed(() => {
 const buildTitle = computed(() => {
   const read = props.info
   if (!read) return ''
-  const name = `${read.name} v${read.version}`
+  // A release's number reads `v0.1.6`; a source build's version is a word (`dev e76e7c6`).
+  const name = `${read.name} ${/^\d/.test(read.version) ? 'v' : ''}${read.version}`
   if (read.build.id === 'dev') {
     return `${name} — development build: this window is rebuilt as you save, so no commit describes it`
   }

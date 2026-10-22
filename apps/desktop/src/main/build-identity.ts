@@ -44,6 +44,21 @@ export function buildIdentity(): BuildStamp {
   }
 }
 
+/**
+ * The version a person reads in About, the updates menu and the title bar. A release says the
+ * number it was packaged with. A source build's `package.json` holds a placeholder (`0.0.0`), so
+ * it says `dev` and the commit it was built from instead, or only `dev` when no commit describes it.
+ */
+export function shownVersion(
+  appVersion: string,
+  packaged: boolean,
+  build: BuildStamp = buildIdentity(),
+): string {
+  if (packaged) return appVersion
+  if (build.commit === '') return 'dev'
+  return `dev ${build.id}${build.dirty ? '-dirty' : ''}`
+}
+
 declare const __BUILD_BRANCHES__: unknown
 
 /** One branch as the stamp wrote it — checked here, so a malformed stamp reads as *"not known"*. */
