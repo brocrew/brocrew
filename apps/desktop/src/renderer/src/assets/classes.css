@@ -82,6 +82,57 @@
   color: var(--accent-text);
   border-radius: var(--radius-sm);
 }
+/* The icon tile's other tones, one per state colour. */
+.bb-icon-box--success {
+  background: var(--success-bg);
+  color: var(--success-text);
+}
+.bb-icon-box--danger {
+  background: var(--danger-bg);
+  color: var(--danger-text);
+}
+.bb-icon-box--waiting {
+  background: var(--waiting-bg);
+  color: var(--waiting-text);
+}
+.bb-icon-box--quiet {
+  background: var(--wash-2);
+  color: var(--muted);
+}
+.bb-icon-box > .icon {
+  width: var(--icon);
+  height: var(--icon);
+}
+/* One entry in a card's list: its time, a tile in its state's colour, then its words (a main
+   line and a quieter second one) and whatever follows them. */
+.bb-entry {
+  display: flex;
+  align-items: center;
+  gap: var(--space-7);
+  padding: var(--space-7) var(--space-8);
+  font-size: var(--type-body);
+  line-height: var(--leading-snug);
+}
+.bb-entry + .bb-entry {
+  border-top: var(--border-width) solid var(--line);
+}
+.bb-entry-time {
+  flex: none;
+  min-width: 8ch;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--type-small);
+}
+.bb-entry-words {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: var(--space-2);
+}
+.bb-entry-detail {
+  color: var(--muted);
+  font-size: var(--type-small);
+}
 .bb-button {
   display: inline-flex;
   justify-content: center;

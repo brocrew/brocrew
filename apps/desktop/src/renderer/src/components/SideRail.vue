@@ -1824,7 +1824,7 @@ const platform = platformHere()
 
 /* A row a theme gives an ink draws all its text in it: the name and the lines under it. */
 .rail-item.active {
-  --row-muted: var(--rail-item-active-ink, var(--muted));
+  --row-muted: var(--rail-item-active-ink, var(--text));
   border-color: var(--accent-border);
   background: var(--rail-item-active-bg, var(--chrome-selection));
   color: var(--rail-item-active-ink, var(--text));

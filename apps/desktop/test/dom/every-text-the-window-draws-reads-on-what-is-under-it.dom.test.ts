@@ -2,12 +2,15 @@ import { afterAll, afterEach, describe, expect, it, onTestFinished } from 'vites
 import { page, userEvent } from 'vitest/browser'
 import { type Component } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
+import RecentActivity from '../../src/renderer/src/components/RecentActivity.vue'
 import { applyTheme } from '../../src/renderer/src/lib/apply-theme'
+import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
 import { theList } from '../../src/shared/model-choice'
 import { resolveTheme, type Theme } from '../../src/shared/themes/theme'
 import { validateTheme } from '../../src/shared/themes/validate'
 import { settle } from '../../look/fixtures/window'
 import { wearTheme } from '../../look/fixtures/themes'
+import { ACTIVITY_NOW, ACTIVITY_WINDOW, EVERY_CARD } from '../../look/fixtures/recent-activity'
 import DEFINED_FILE from '../../resources/themes/defined/theme.json'
 import {
   openAChildsWork,
@@ -16,6 +19,7 @@ import {
   press,
   stackingWindow,
 } from './a-window-with-a-workflow-and-nested-agents'
+import { aWaitingPageWithEveryCard } from './a-waiting-page-with-every-card'
 import { META, mount, paneProps, record, unmountAll } from './harness'
 import { paintedReadings, pictures } from './what-is-painted-under'
 
@@ -261,6 +265,62 @@ const STATES: readonly [string, () => Promise<Element>][] = [
       return m.host
     },
   ],
+  [
+    'the Recent activity page, every kind of card, a line under the pointer',
+    async () => {
+      await page.viewport(1200, 900)
+      const m = mount(
+        RecentActivity as Component,
+        { reading: EVERY_CARD, windowMs: ACTIVITY_WINDOW, clock: ACTIVITY_NOW },
+        { width: 1200, height: 900 },
+      )
+      await settle()
+      const line = m.host.querySelector<HTMLElement>('[data-cy="activity-line"]')
+      if (line) await userEvent.hover(line)
+      await pause(300)
+      return m.host
+    },
+  ],
+  [
+    'Waiting on you, with usage, stopped work and requests, each request’s details open',
+    async () => {
+      await page.viewport(1200, 900)
+      const m = await aWaitingPageWithEveryCard(1180, 900)
+      // A closed disclosure draws nothing to read, so each request's details are open.
+      for (const more of m.host.querySelectorAll<HTMLDetailsElement>('details.pq-more'))
+        more.open = true
+      await pause()
+      return m.host
+    },
+  ],
+  [
+    'Waiting on you with every kind of card, details open, scrolled to the to-dos',
+    async () => {
+      await page.viewport(1200, 900)
+      const m = await aWaitingPageWithEveryCard(1180, 900, true)
+      for (const more of m.host.querySelectorAll<HTMLDetailsElement>('details.pq-more'))
+        more.open = true
+      const list = m.host.querySelector<HTMLElement>('.attention-list')
+      const todos = m.host.querySelector<HTMLElement>('[data-cy="todos-group"]')
+      if (list && todos)
+        list.scrollTop += todos.getBoundingClientRect().top - list.getBoundingClientRect().top
+      await pause()
+      return m.host
+    },
+  ],
+  [
+    'Waiting on you with every kind of card, details open, scrolled to its end',
+    async () => {
+      await page.viewport(1200, 900)
+      const m = await aWaitingPageWithEveryCard(1180, 900, true)
+      for (const more of m.host.querySelectorAll<HTMLDetailsElement>('details.pq-more'))
+        more.open = true
+      const list = m.host.querySelector<HTMLElement>('.attention-list')
+      if (list) list.scrollTop = list.scrollHeight
+      await pause()
+      return m.host
+    },
+  ],
 ]
 
 /**
@@ -273,7 +333,9 @@ interface Proof {
 }
 
 const PROOF: Record<string, Proof> = {
-  'docked, a workflow under the pointer': { read: ['[data-cy="workflow-head"]:hover'] },
+  'docked, a workflow under the pointer': {
+    read: ['[data-cy="workflow-head"]:hover', '.rail-item.active [data-place]'],
+  },
   'sub-agents nested three deep': { read: ['.subagent .subagent .subagent'] },
   'the right-hand panel floating': { read: ['.session-drawer.fit-overlay'] },
   'turns before the last compaction, scrolled into view': { read: ['.summarised-out'] },
@@ -296,6 +358,29 @@ const PROOF: Record<string, Proof> = {
   },
   'the model picker open': { read: ['[data-cy="model-picker-panel"]:popover-open'] },
   'the sign-in bar, its button under the pointer': { read: ['.sign-in-bar-button:hover'] },
+  'the Recent activity page, every kind of card, a line under the pointer': {
+    read: [
+      '[data-cy="activity-skill-import"]',
+      '[data-cy="activity-transcripts-cleared"]',
+      '[data-cy="activity-line"]:hover',
+      '[data-cy="activity-claimed-note"]',
+    ],
+  },
+  'Waiting on you, with usage, stopped work and requests, each request’s details open': {
+    read: [
+      'details.pq-more[open] .pq-more-body',
+      '[data-cy="persons-queue-wall-says-claude"]',
+      '[data-cy="persons-queue-stall"] .pq-stall-says',
+      '[data-cy="persons-queue-stopped-says-work_41"]',
+      '.pq-row .pq-hop',
+    ],
+  },
+  'Waiting on you with every kind of card, details open, scrolled to the to-dos': {
+    read: ['[data-cy="waiting-todo-head-req_todo"]', '.wait-says', '.asks > .ask .ask-text'],
+  },
+  'Waiting on you with every kind of card, details open, scrolled to its end': {
+    read: ['.request-who', '.reply-who'],
+  },
 }
 
 type Readings = Awaited<ReturnType<typeof paintedReadings>>
@@ -396,6 +481,7 @@ const ORIGINAL = { width: window.innerWidth, height: window.innerHeight }
 afterEach(() => {
   applyTheme(null)
   unmountAll()
+  usePersonsQueue().forget()
   delete (window as { api?: unknown }).api
 })
 afterAll(async () => {

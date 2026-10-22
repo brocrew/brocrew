@@ -111,7 +111,7 @@ describe('the candidates a message names', () => {
         MAC,
       )
       expect(out.match(/data-cy="message-path"/g)).toHaveLength(1)
-      expect(out).toContain(`>${path}</button>`)
+      expect(out).toContain(`>${path}</span>`)
       expect(out).toContain(`</span>${after}</p>`)
       expect(pathsNamedIn(source).length).toBeLessThanOrEqual(50)
     }
@@ -225,12 +225,12 @@ describe('marking what main found', () => {
     const answers = new Map([SPACED, second].map((path) => [path, FOUND(path)]))
     const out = markPathsIn(source, (path) => answers.get(path), MAC)
     expect(out.match(/data-cy="message-path"/g)).toHaveLength(2)
-    expect(out).toContain(`>${SPACED}</button>`)
+    expect(out).toContain(`>${SPACED}</span>`)
     expect(out).toContain('</span> for details and ')
     expect(out).toContain('</span> next.</p>')
     const code = markPathsIn(renderChatMarkdown(`\`${SPACED}\``), (path) => answers.get(path), MAC)
     expect(code).toContain(`<code><span class="message-path"`)
-    expect(code).toContain(`>${SPACED}</button>`)
+    expect(code).toContain(`>${SPACED}</span>`)
   })
 
   it('resolves synthetic spaced paths through the unchanged asynchronous main resolver', async () => {
@@ -252,7 +252,7 @@ describe('marking what main found', () => {
         )
         const out = markPathsIn(source, (candidate) => answers.get(candidate), MAC)
         expect(out.match(/data-cy="message-path"/g)).toHaveLength(1)
-        expect(out).toContain(`>${path}</button>`)
+        expect(out).toContain(`>${path}</span>`)
         expect(out).toContain(' for details.')
         expect(asks.length).toBeLessThanOrEqual(50)
       }
@@ -276,8 +276,9 @@ describe('marking what main found', () => {
     const out = markPathsIn(html, (text) => answers.get(text), MAC)
     expect(out).toContain('data-message-path="projects/x/report.md"')
     expect(out).toContain('title="/Users/someone/work/projects/x/report.md"')
-    expect(out).toContain('aria-label="Open report.md"')
-    expect(out).toContain('aria-label="Show report.md in Finder"')
+    expect(out).toContain('aria-label="Open file"')
+    expect(out).toContain('data-message-path-copy="projects/x/report.md"')
+    expect(out).toContain('aria-label="Copy path"')
     expect(out).not.toContain('data-message-path="gone/missing.md"')
     // The full stop after the missing path is where it was.
     expect(out).toContain('gone/missing.md.</p>')
@@ -287,24 +288,80 @@ describe('marking what main found', () => {
     expect(markPathsIn(html, () => undefined, MAC)).toBe(html)
   })
 
+  it('draws a link to a file as path text, never a link, before and without an answer', () => {
+    const source = renderChatMarkdown('See [/tmp/report.md](/tmp/report.md).')
+    expect(source).not.toContain('href=')
+    const pending = markPathsIn(source, () => undefined, MAC)
+    expect(pending).not.toContain('<a')
+    expect(pending).toContain('<span class="message-path-text" data-cy="message-path-text"')
+    expect(pending).toContain('>/tmp/report.md</span>')
+    expect(pending).not.toContain('<button')
+    // A web link is still a link.
+    expect(renderChatMarkdown('[site](https://example.com/a)')).toContain(
+      'href="https://example.com/a"',
+    )
+  })
+
   it('names a path main will only show as Show, in the words of the platform', () => {
     const shown = FOUND('bin/run.command', { opens: false })
     const out = markPathsIn(renderChatMarkdown('Run bin/run.command'), () => shown, {
       canOpen: true,
       fileManager: 'Explorer',
     })
-    expect(out).toContain('aria-label="Show run.command in Explorer"')
+    expect(out).toContain('aria-label="Show in Explorer"')
     expect(out).not.toContain('aria-label="Open')
   })
 
-  it('draws one control that shows, and no second one, where the window may not open', () => {
+  it('names Open "Show in" the file manager where the window may not open, and keeps Copy', () => {
     const out = markPathsIn(html, () => FOUND('projects/x/report.md'), {
       canOpen: false,
       fileManager: 'Finder',
     })
-    expect(out).toContain('aria-label="Show report.md in Finder"')
-    expect(out).not.toContain('data-cy="message-path-show"')
+    expect(out).toContain('aria-label="Show in Finder"')
+    expect(out).toContain('aria-label="Copy path"')
     expect(out).not.toContain('aria-label="Open')
+  })
+
+  it('draws a picture on this computer as its path with Copy and Open, never a link or an image', () => {
+    const path = '/tmp/report.png'
+    const source = renderChatMarkdown(
+      `See ![screenshot](${path}) and ![badge](https://example.com/b.png).`,
+    )
+    expect(source).not.toContain('<img')
+    expect(source).not.toContain(`href="${path}"`)
+    expect(source).toContain('<a href="https://example.com/b.png" class="refused-image">')
+    expect(pathsNamedIn(source)).toEqual([path])
+    const out = markPathsIn(source, () => FOUND(path, { absolute: path }), MAC)
+    expect(out).toContain('<span class="message-path-label">screenshot</span>')
+    expect(out).toContain(`>${path}</span>`)
+    expect(out).toContain(`data-message-path-copy="${path}"`)
+    expect(out).toContain(`data-message-path="${path}"`)
+    expect(out).not.toContain(`href="${path}"`)
+    const inside = renderChatMarkdown(`[![screenshot](${path})](https://example.com/a)`)
+    expect(inside).not.toContain(`href="${path}"`)
+    expect(inside.match(/<a\b/g)).toHaveLength(1)
+  })
+
+  it('draws a Windows link destination for Copy with its backslashes, never %5C', () => {
+    const path = 'C:\\Users\\someone\\out\\app.apk'
+    const out = markPathsIn(
+      renderChatMarkdown(`See [the app](${path}).`),
+      () => FOUND(path, { absolute: path }),
+      MAC,
+    )
+    expect(out).toContain(`data-message-path-copy="${path}"`)
+    expect(out).not.toContain('%5C')
+  })
+
+  it('draws a network share with Copy and an Open that is off and says why, without asking main', () => {
+    const path = '\\\\server\\share\\report.md'
+    const source = renderChatMarkdown(`See [the report](<${path}>).`)
+    expect(pathsNamedIn(source)).toEqual([])
+    const out = markPathsIn(source, () => undefined, MAC)
+    expect(out).toContain(`data-message-path-copy="${path}"`)
+    expect(out).toContain('aria-disabled="true" title="Network paths can\'t be opened here."')
+    expect(out).not.toContain('data-message-path=')
+    expect(out).not.toContain('<a ')
   })
 
   it('escapes what main said before it reaches the markup', () => {
@@ -343,7 +400,9 @@ describe('what the window reads off main', () => {
     expect(pressFailedWords('gone', 'file', 'Finder', 'open')).toBe(
       "That file isn't there any more. Ask the agent where it is now.",
     )
-    expect(pressFailedWords('failed', 'file', 'Finder', 'open')).toContain('show it in Finder')
+    expect(pressFailedWords('failed', 'file', 'Finder', 'open')).toBe(
+      "That file didn't open. Copy its path and open it from Finder.",
+    )
     expect(pressFailedWords('failed', 'folder', 'your file manager', 'show')).toBe(
       "Your file manager didn't show that folder. Try again.",
     )
