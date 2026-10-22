@@ -2,12 +2,14 @@ import { afterAll, afterEach, describe, expect, it, onTestFinished } from 'vites
 import { page, userEvent } from 'vitest/browser'
 import { type Component } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
+import RecentActivity from '../../src/renderer/src/components/RecentActivity.vue'
 import { applyTheme } from '../../src/renderer/src/lib/apply-theme'
 import { theList } from '../../src/shared/model-choice'
 import { resolveTheme, type Theme } from '../../src/shared/themes/theme'
 import { validateTheme } from '../../src/shared/themes/validate'
 import { settle } from '../../look/fixtures/window'
 import { wearTheme } from '../../look/fixtures/themes'
+import { ACTIVITY_NOW, ACTIVITY_WINDOW, EVERY_CARD } from '../../look/fixtures/recent-activity'
 import DEFINED_FILE from '../../resources/themes/defined/theme.json'
 import {
   openAChildsWork,
@@ -261,6 +263,22 @@ const STATES: readonly [string, () => Promise<Element>][] = [
       return m.host
     },
   ],
+  [
+    'the Recent activity page, every kind of card, a line under the pointer',
+    async () => {
+      await page.viewport(1200, 900)
+      const m = mount(
+        RecentActivity as Component,
+        { reading: EVERY_CARD, windowMs: ACTIVITY_WINDOW, clock: ACTIVITY_NOW },
+        { width: 1200, height: 900 },
+      )
+      await settle()
+      const line = m.host.querySelector<HTMLElement>('[data-cy="activity-line"]')
+      if (line) await userEvent.hover(line)
+      await pause(300)
+      return m.host
+    },
+  ],
 ]
 
 /**
@@ -296,6 +314,14 @@ const PROOF: Record<string, Proof> = {
   },
   'the model picker open': { read: ['[data-cy="model-picker-panel"]:popover-open'] },
   'the sign-in bar, its button under the pointer': { read: ['.sign-in-bar-button:hover'] },
+  'the Recent activity page, every kind of card, a line under the pointer': {
+    read: [
+      '[data-cy="activity-skill-import"]',
+      '[data-cy="activity-transcripts-cleared"]',
+      '[data-cy="activity-line"]:hover',
+      '[data-cy="activity-claimed-note"]',
+    ],
+  },
 }
 
 type Readings = Awaited<ReturnType<typeof paintedReadings>>

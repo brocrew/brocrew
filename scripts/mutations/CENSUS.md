@@ -4170,7 +4170,7 @@ A row that cannot apply is RETIRED IN PLACE: its definition stays in its table a
 | 301 | `apps/desktop/src/renderer/src/components/DigestCard.vue` | `(file no longer in the tree)` |
 | 301 | `apps/desktop/src/renderer/src/components/DocumentDrawer.vue` | `(file no longer in the tree)` |
 | 301 | `apps/desktop/src/renderer/src/components/HomeSurface.vue` | `(file no longer in the tree)` |
-| 301 | `apps/desktop/src/renderer/src/components/RecentActivity.vue` | `96da338b2bbd32a5` |
+| 301 | `apps/desktop/src/renderer/src/components/RecentActivity.vue` | `d7ebe86795228ec4` |
 | 301 | `apps/desktop/src/renderer/src/components/SessionLibrary.vue` | `f2ac9a6a4a56ac82` |
 | 301 | `apps/desktop/src/renderer/src/components/SideRail.vue` | `69e3c66d5e0fac41` |
 | 301 | `apps/desktop/test/entities.test.ts` | `c6297a25805de3c6` |
@@ -5366,7 +5366,7 @@ A row that cannot apply is RETIRED IN PLACE: its definition stays in its table a
 | 605 | `packages/runtime/src/codex/codex-runtime.ts` | `59538c0c8ecf9dc1` |
 | 605 | `packages/runtime/src/codex/external-mcp.ts` | `5526f248fdcceb4e` |
 | 606 | `apps/desktop/src/renderer/src/components/HomeSurface.vue` | `(file no longer in the tree)` |
-| 606 | `apps/desktop/src/renderer/src/components/RecentActivity.vue` | `96da338b2bbd32a5` |
+| 606 | `apps/desktop/src/renderer/src/components/RecentActivity.vue` | `d7ebe86795228ec4` |
 | 606 | `apps/desktop/src/renderer/src/components/RuntimeScreen.vue` | `f138ae4d7c4a76a8` |
 | 606 | `apps/desktop/src/renderer/src/components/SideRail.vue` | `69e3c66d5e0fac41` |
 | 606 | `apps/desktop/src/renderer/src/components/WaitingOnYou.vue` | `45ac5b609f06c378` |
