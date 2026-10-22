@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { providerSchema } from '@brobot2/shared'
 import type { AppDatabase } from './connection'
 import type { ActedBy } from '../../shared/who-did-it'
 import type {
@@ -26,7 +27,7 @@ export function validMemoryIntent(said: MemoryAmendmentWrite, at: number): boole
     said.entry.length > 0 &&
     Buffer.byteLength(said.entry, 'utf8') <= 8192 &&
     !said.entry.includes('\0') &&
-    ['claude', 'codex'].includes(said.provider) &&
+    providerSchema.safeParse(said.provider).success &&
     (said.sourceId === undefined ||
       (typeof said.sourceId === 'string' &&
         said.sourceId.length > 0 &&
