@@ -2,7 +2,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import { createHash } from 'node:crypto'
-import { afterEach, describe, expect, it } from 'vitest'
+import { Readable } from 'node:stream'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { loadConfig } from '../src/config.js'
@@ -10,10 +11,12 @@ import { startWhatsApp, VERSION } from '../src/app.js'
 import { silentLogger } from '../src/logger.js'
 import { REFUSALS, fileRefusal } from '../src/refusals.js'
 import { createSettingsStore } from '../src/settings.js'
+import * as localFileGuard from '../src/localFileGuard.js'
 import { ALLOTMENT, ALTOS, FakeBridge, INES, ROWING } from './fakes.js'
 
 const cleanup: Array<() => void | Promise<void>> = []
 afterEach(async () => {
+  vi.restoreAllMocks()
   for (const fn of cleanup.splice(0).reverse()) await fn()
 })
 const temporary = () => {
@@ -442,6 +445,48 @@ describe('sending', () => {
     ).toBe(refused(REFUSALS['file-type']))
     expect(bridge.sends()).toHaveLength(2)
   })
+
+  it.each([ROWING.name, ROWING.jid])(
+    'rechecks Can write after preparing a file for %s',
+    async (group) => {
+      const { call, bridge, config, settings, refusals } = await boot({
+        writable: [ROWING.jid],
+      })
+      const file = path.join(config.files, 'minutes.pdf')
+      fs.writeFileSync(file, '%PDF-1.7\nfictional minutes\n')
+      const open = localFileGuard.openGuardedFile
+      const preparing = vi
+        .spyOn(localFileGuard, 'openGuardedFile')
+        .mockImplementationOnce((...args) => {
+          const guarded = open(...args)
+          return {
+            ...guarded,
+            stream: () =>
+              Readable.from(
+                (async function* () {
+                  for await (const chunk of guarded.stream()) {
+                    settings.setWritable(ROWING.jid, false)
+                    yield chunk
+                  }
+                })(),
+              ),
+          }
+        })
+
+      const result = await call('send_to_group', { group, file })
+      expect(preparing).toHaveBeenCalledOnce()
+      expect(settings.get().writable).toEqual([])
+      expect(bridge.sends()).toEqual([])
+      expect(result.content[0].text).toBe(refused(REFUSALS['cannot-write']))
+      expect(refusals().map((one) => one.refused)).toEqual(['cannot-write'])
+
+      settings.setWritable(ROWING.jid, true)
+      expect((await call('send_to_group', { group, file })).content[0].text).toBe(
+        JSON.stringify({ sent: true, group: ROWING.name, file: 'minutes.pdf' }),
+      )
+      expect(bridge.sends()).toHaveLength(1)
+    },
+  )
 
   it('says the plugin is unavailable, not a refusal, when the bridge fails a send', async () => {
     const { call, bridge, refusals } = await boot({ writable: [ROWING.jid] })
