@@ -145,7 +145,7 @@ function localLinkKey(path: string): string | null {
 function percentDecoded(path: string): string {
   try {
     const decoded = decodeURIComponent(path)
-    return isLocalLinkPath(decoded) && !/\p{Cc}/u.test(decoded) ? decoded : path
+    return isLocalLinkPath(decoded) && !/[\p{Cc}\p{Cf}]/u.test(decoded) ? decoded : path
   } catch {
     return path
   }
