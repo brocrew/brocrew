@@ -137,6 +137,15 @@ function localLinkKey(path: string): string | null {
   }
 }
 
+/** A destination read back from percent-encoding, or as written when it is not valid encoding. */
+function percentDecoded(path: string): string {
+  try {
+    return decodeURIComponent(path)
+  } catch {
+    return path
+  }
+}
+
 for (const md of [renderer, chatRenderer]) {
   const parse = md.helpers.parseLinkDestination
   md.helpers.parseLinkDestination = (str, start, max) => {
@@ -144,7 +153,12 @@ for (const md of [renderer, chatRenderer]) {
     if (!result.ok) return result
     const angled = str.charCodeAt(start) === 0x3c
     const raw = str.slice(angled ? start + 1 : start, angled ? result.pos - 1 : result.pos)
-    return A_WINDOWS_PATH.test(raw) ? { ...result, str: raw } : result
+    if (A_WINDOWS_PATH.test(raw)) return { ...result, str: raw }
+    // Written bare, a local destination's `%20` is how markdown spells a space; in `<…>` it is
+    // literal text.
+    return !angled && isLocalLinkPath(result.str)
+      ? { ...result, str: percentDecoded(result.str) }
+      : result
   }
   // HTML attribute escaping is enough for paths; URL encoding would lose literal percent names.
   const normalize = md.normalizeLink

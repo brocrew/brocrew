@@ -678,6 +678,41 @@ describe('a link to a file on this computer offers the same controls as a path i
   })
 
   it.each([
+    ['the findings board', 'a label that differs from the path'],
+    [
+      '/Users/fictional/Library/Application Support/app/findings/README.md',
+      'a label that is the path',
+    ],
+  ])('reads %s with %%20 in its destination as the path with spaces (%s)', async (label) => {
+    onPlatform('MacIntel')
+    const written = '/Users/fictional/Library/Application%20Support/app/findings/README.md'
+    const path = '/Users/fictional/Library/Application Support/app/findings/README.md'
+    const main = installMain({ existing: [path] })
+    const clip = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue()
+    const { view } = await transcript([said(link(label!, written))])
+    expect(main.asks.flatMap((ask) => ask.texts)).toEqual([path])
+    const control = controlFor(view, path)!
+    expect(textOf(control).textContent).toBe(path)
+    expect(view.q('assistant-markdown').textContent).not.toContain('%20')
+    if (label !== path) expect(view.q('assistant-markdown').textContent).toContain(label)
+    copyFor(view, path).click()
+    await settle()
+    expect(clip).toHaveBeenCalledWith(path)
+    control.click()
+    await settle()
+    expect(main.opens).toEqual([{ sessionId: 'sess_1', text: path }])
+  })
+
+  it('keeps a destination that is not valid percent-encoding as written', async () => {
+    onPlatform('MacIntel')
+    const path = '/Users/fictional/out/100%.md'
+    const main = installMain({ existing: [path] })
+    const { view } = await transcript([said(link('the report', path))])
+    expect(main.asks.flatMap((ask) => ask.texts)).toEqual([path])
+    expect(controlFor(view, path)).toBeDefined()
+  })
+
+  it.each([
     ['reports/x.md', `${HERE}/reports/x.md`],
     ['./x', `${HERE}/x`],
     ['../x', '/Users/someone/x'],
