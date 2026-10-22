@@ -5,6 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import type { Page } from 'playwright-core'
 import type { BrowserMode, ProfileBrowser } from '../src/browser/profileBrowser.js'
+import { ProfileInUseError } from '../src/browser/profileBrowser.js'
 import type { KeyedSerializer } from '../src/shared/browser/browser-lease.js'
 import { createProfileStore } from '../src/profiles/store.js'
 import type { ProfileStore } from '../src/profiles/store.js'
@@ -14,7 +15,7 @@ import type { WindowTasks } from '../src/windows.js'
 import type { ToolDeps } from '../src/tools/index.js'
 import { createAgentChromeTools } from '../src/tools/index.js'
 export function tmpDir(prefix = 'agent-chrome-test-'): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), prefix))
+  return fs.mkdtempSync(path.join(process.platform === 'win32' ? os.tmpdir() : '/tmp', prefix))
 }
 export class FakeLocator {
   calls: Array<[string, unknown?]> = []
@@ -268,6 +269,7 @@ export class FakeBrowser implements ProfileBrowser {
   private closedListeners = new Map<string, Array<(g: number) => void>>()
   private chains = new Map<string, Promise<unknown>>()
   private waits = new Map<string, (r: 'pages-closed' | 'timeout') => void>()
+  private operations = new Map<string, number>()
   ensureError: Error | null = null
   constructor(private readonly dirFor: (profile: string) => string) {}
   async ensure(
@@ -353,8 +355,20 @@ export class FakeBrowser implements ProfileBrowser {
   dir(profile: string): string {
     return this.dirFor(profile)
   }
-  operate<T>(_profile: string, fn: () => Promise<T>): Promise<T> {
-    return fn()
+  removeWhenIdle(profile: string, remove: () => void): Promise<void> {
+    return this.exclusive(profile, async () => {
+      if (this.state(profile) || (this.operations.get(profile) ?? 0) > 0)
+        throw new ProfileInUseError()
+      remove()
+    })
+  }
+  async operate<T>(profile: string, fn: () => Promise<T>): Promise<T> {
+    this.operations.set(profile, (this.operations.get(profile) ?? 0) + 1)
+    try {
+      return await fn()
+    } finally {
+      this.operations.set(profile, this.operations.get(profile)! - 1)
+    }
   }
   touch(profile: string): void {
     this.touches.push(profile)

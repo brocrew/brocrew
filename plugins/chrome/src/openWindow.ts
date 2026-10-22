@@ -21,6 +21,7 @@ export function createProfileOpener(opts: {
   logger: Logger
   startUrl?: string
   now?: () => Date
+  profileExists?: (profile: string) => boolean
 }): ProfileOpener {
   const { browser, logger } = opts
   const startUrl = opts.startUrl ?? OPEN_START_URL
@@ -29,6 +30,7 @@ export function createProfileOpener(opts: {
     async open(profile) {
       try {
         await browser.exclusive(profile, async () => {
+          if (opts.profileExists?.(profile) === false) throw new Error('profile does not exist')
           if (browser.state(profile)?.mode !== 'visible') {
             const known = profileTabs(deps, profile)
             const first =

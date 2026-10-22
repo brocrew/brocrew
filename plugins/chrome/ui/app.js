@@ -3,6 +3,10 @@ const pending = new Map()
 let revision = 0
 let next = 0
 let closed = false
+let deleting = null
+let deletionError = ''
+let deletionPending = false
+let lastSnapshot = null
 const status = document.querySelector('#status')
 function rpc(method, payload) {
   if (pending.size >= 4 || closed) return Promise.reject(new Error('busy'))
@@ -48,6 +52,36 @@ function action(label, payload) {
   button.addEventListener('click', () => propose(payload))
   return button
 }
+async function confirmDelete(profile) {
+  if (deletionPending) return
+  const wasEnabled = lastSnapshot.profiles.find((value) => value.name === profile)?.enabled === true
+  deletionPending = true
+  deletionError = ''
+  draw(lastSnapshot)
+  try {
+    await rpc('proposeConfig', { action: 'delete-profile', profile, confirm: profile })
+    deleting = null
+    await refresh()
+  } catch {
+    deletionError =
+      'Couldn’t delete this profile. Turn it off and wait for agent work to finish, then try again.'
+    try {
+      const snapshot = await rpc('read', { surface: 'chrome' })
+      draw(snapshot)
+      const retained = snapshot.profiles.find((value) => value.name === profile)
+      if (!retained) deleting = null
+      else if (retained.enabled === false)
+        deletionError = wasEnabled
+          ? 'Couldn’t remove all of this profile’s data; it’s turned off. Try again.'
+          : 'Couldn’t delete this profile. It’s turned off. Wait for agent work to finish, then try again.'
+    } catch {
+      // Keep the refusal and the last known state when the fresh read is unavailable.
+    }
+  } finally {
+    deletionPending = false
+    if (lastSnapshot) draw(lastSnapshot)
+  }
+}
 function draw(snapshot) {
   if (
     !snapshot ||
@@ -57,6 +91,7 @@ function draw(snapshot) {
   )
     throw new Error('invalid')
   revision = snapshot.configRevision
+  lastSnapshot = snapshot
   status.textContent = 'Running'
   const profiles = document.querySelector('#profiles')
   profiles.replaceChildren()
@@ -80,8 +115,43 @@ function draw(snapshot) {
       }),
       action('Open window', { action: 'open-window', profile: profile.name }),
     )
+    const remove = text('button', 'Delete')
+    remove.addEventListener('click', () => {
+      if (deletionPending) return
+      deleting = profile.name
+      deletionError = ''
+      draw(lastSnapshot)
+    })
+    actions.append(remove)
     heading.append(name, state, actions)
     row.append(heading)
+    if (deleting === profile.name) {
+      const confirmation = document.createElement('section')
+      confirmation.className = 'profile-delete-confirmation'
+      confirmation.append(
+        text(
+          'p',
+          `Delete “${profile.name}”? This removes its browsing data, cookies, sign-ins and profile downloads. Agents can no longer use it.`,
+        ),
+      )
+      const cancel = text('button', 'Cancel')
+      cancel.disabled = deletionPending
+      cancel.addEventListener('click', () => {
+        if (deletionPending) return
+        deleting = null
+        deletionError = ''
+        draw(lastSnapshot)
+      })
+      const confirm = text(
+        'button',
+        deletionPending ? 'Deleting…' : deletionError ? 'Try again' : 'Delete profile',
+      )
+      confirm.disabled = deletionPending
+      confirm.addEventListener('click', () => void confirmDelete(profile.name))
+      confirmation.append(cancel, confirm)
+      if (deletionError) confirmation.append(text('p', deletionError))
+      row.append(confirmation)
+    }
     const tabs = document.createElement('ul')
     tabs.className = 'profile-tabs'
     for (const tab of snapshot.tabs.slice(0, 200)) {

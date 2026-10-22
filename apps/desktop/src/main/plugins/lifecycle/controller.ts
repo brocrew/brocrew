@@ -3,6 +3,7 @@ import { pluginNodePolicy } from '../node-policy'
 import { newerPluginVersion } from '../catalogue/newer-version'
 import { parseRepoPluginList } from '../catalogue/repo-list'
 import { PluginProfileLedger } from './profile-ledger'
+import { chromeProfileIntent, ChromeProposal } from './chrome-apply'
 import { pluginAdapter } from './adapters'
 import { PluginProposal, proposalFor } from './proposals'
 import { pluginSha256 } from '../package-digests'
@@ -1096,7 +1097,9 @@ export class PluginLifecycleController {
       await new PluginProfileLedger(this.options.root).reserve(
         input.installId,
         input.revision,
-        proposal,
+        input.pluginId === 'chrome'
+          ? chromeProfileIntent(ChromeProposal.parse(proposal))
+          : proposal,
         input.ledgerFormat ?? 1,
       )
       const abort = new AbortController()
