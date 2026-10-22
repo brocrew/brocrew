@@ -255,7 +255,7 @@ export function markPathsIn(
 export const LINK_COPY_ATTRIBUTE = 'data-message-link-copy'
 export const LINK_ATTRIBUTE = 'data-message-link'
 
-const A_WEB_ANCHOR = /<a href="(https?:\/\/[^"]*)"([^>]*)>([\s\S]*?)<\/a>/gi
+const A_WEB_ANCHOR = /<a href="(https?:\/\/[^"]*)"([^>]*)>((?:(?!<a[\s>])[\s\S])*?)<\/a>/gi
 
 /**
  * Every web link in a message: its text, which is not a control, then Copy and Open. Images the
