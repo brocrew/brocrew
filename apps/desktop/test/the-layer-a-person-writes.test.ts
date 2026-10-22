@@ -1,3 +1,4 @@
+import { agentCallerId } from '../src/main/runtime/agent-tools'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -241,9 +242,7 @@ describe('582 · the layer a person writes', () => {
     it('⛔ the SCHEMA refuses a version that claims to bring back one after it', async () => {
       await bringIdentityIntoBeing('worker')
       host.instructAgent('worker', 'Rule one.', undefined, window)
-      // ⚑ **The rail is the CHECK and not a guard in code**, which is what makes it hold against a
-      // hand-written `INSERT` as well as against this app's own door.
-      expect(() =>
+      expect(
         store.writeOwnInstructions(
           {
             profileSlug: 'worker',
@@ -256,6 +255,16 @@ describe('582 · the layer a person writes', () => {
           },
           clock,
         ),
+      ).toBeNull()
+      // The database also refuses a bypass of the store's earlier guard.
+      expect(() =>
+        db
+          .prepare(
+            `INSERT INTO identity_instruction
+        (id, identity_id, version, text, wrote_it, by, brought_back, created_at)
+        VALUES ('bad-restore', 'aid:worker', 2, 'x', 'a-person', ?, 9, ?)`,
+          )
+          .run(JSON.stringify({ who: 'a-person' }), clock),
       ).toThrow(/identity_instruction_brought_back_ck|CHECK/)
     })
 
@@ -327,7 +336,7 @@ describe('582 · the layer a person writes', () => {
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§4 · the agent’s ask', () => {
-    /** ⚑ An agent granted the narrow arm of the ladder, asking about `worker`. */
+    /** Legacy grant values remain stored but do not authorize these requests. */
     const anAgentThatMayAsk = async (held: 'propose' | 'relay'): Promise<string> => {
       await bringIdentityIntoBeing('worker')
       await bringIdentityIntoBeing('asker')
@@ -339,8 +348,14 @@ describe('582 · the layer a person writes', () => {
       const asking = await anAgentThatMayAsk('propose')
       const asked = host.proposeAgentRules(
         asking,
-        { about: 'worker', text: 'Never force-push.', why: 'it keeps coming up', relaying: false },
-        window,
+        {
+          about: 'worker',
+          text: 'Never force-push.',
+          why: 'it keeps coming up',
+          relaying: false,
+          expectedVersion: 0,
+        },
+        { ownerId: agentCallerId(asking) },
       )
       expect(asked.ok && asked.wrote).toBe('a-request')
       // ⛔ **`HO-009` §2.2's gate, measured**: the ask exists and the rules do not.
@@ -362,8 +377,14 @@ describe('582 · the layer a person writes', () => {
       const asking = await anAgentThatMayAsk('propose')
       const asked = host.proposeAgentRules(
         asking,
-        { about: 'worker', text: 'Never force-push.', why: 'it keeps coming up', relaying: false },
-        window,
+        {
+          about: 'worker',
+          text: 'Never force-push.',
+          why: 'it keeps coming up',
+          relaying: false,
+          expectedVersion: 0,
+        },
+        { ownerId: agentCallerId(asking) },
       )
       const askId = asked.ok && asked.wrote === 'a-request' ? asked.askId : ''
       expect(host.decideInstruction(askId, false, window)).toEqual({ outcome: 'taken' })
@@ -372,67 +393,64 @@ describe('582 · the layer a person writes', () => {
       await host.close(asking, window)
     })
 
-    it('🔴 a RELAY writes immediately, and the version says this app did not check the claim', async () => {
+    it('refuses the historical relay shortcut even with its old grant', async () => {
       const asking = await anAgentThatMayAsk('relay')
-      const relayed = host.proposeAgentRules(
+      const refused = host.proposeAgentRules(
         asking,
-        { about: 'worker', text: 'Never force-push.', why: 'The person said so', relaying: true },
-        window,
+        {
+          about: 'worker',
+          text: 'Never force-push.',
+          why: 'The person said so',
+          relaying: true,
+          expectedVersion: 0,
+        },
+        { ownerId: agentCallerId(asking) },
       )
-      expect(relayed.ok && relayed.wrote).toBe('a-version')
-      const inForce = whatIsInForce(host.agentInstructions('worker').own)
-      expect([inForce?.whoWroteIt, inForce?.said, inForce?.conversation]).toEqual([
-        'relayed-from-user',
-        'The person said so',
-        asking,
-      ])
-      // ⛔ **The PROVENANCE is a claim, and the sentence beside it says so** — `HO-009` §2.2 makes
-      // *relayed from user* the authorization, and the one honest thing to render is that nobody
-      // verified it.
-      expect(WROTE_IT_MEANS[inForce!.whoWroteIt]).toContain('did not check')
-      // ⚑ **And the next launch composes it**, which is the half a relay is FOR.
-      const second = await personOpens('worker')
-      expect(seen.at(-1)?.configured).toBe('Never force-push.')
-      await host.close(second, window)
+      expect(!refused.ok && refused.rail).toBe('malformed-request')
+      expect(host.agentInstructions('worker').own.versions).toEqual([])
+      expect(host.agentInstructions('worker').waiting).toEqual([])
       await host.close(asking, window)
     })
 
-    // 🔴 **Standing rule 3: a rail demonstrated by an actual REFUSAL, paired with the same call one
-    // fact over ALLOWED, and tested where the two readings DIVERGE.**
-    it('⛔ the ladder REFUSES a relay from `propose` and ALLOWS the same call as a proposal', async () => {
+    it('refuses a relay claim and allows the same replacement as a proposal', async () => {
       const asking = await anAgentThatMayAsk('propose')
       const said = {
         about: 'worker',
         text: 'Never force-push.',
         why: 'The person said so',
       }
-      const refused = host.proposeAgentRules(asking, { ...said, relaying: true }, window)
+      const refused = host.proposeAgentRules(
+        asking,
+        { ...said, relaying: true, expectedVersion: 0 },
+        { ownerId: agentCallerId(asking) },
+      )
       expect(refused.ok).toBe(false)
-      expect(!refused.ok && refused.rail).toBe('may-not-relay-a-rule')
+      expect(!refused.ok && refused.rail).toBe('malformed-request')
       // ⛔ **Nothing was written, which is what makes this a refusal rather than a downgrade.**
       expect(store.ownInstructionsOf('worker').versions).toEqual([])
       expect(host.agentInstructions('worker').waiting).toEqual([])
       // ⚑ **ONE FACT OVER — the identical call without the claim — is ALLOWED.** This is the pair
       // that makes the rail measured rather than asserted: the two readings diverge here and
       // nowhere else.
-      const allowed = host.proposeAgentRules(asking, { ...said, relaying: false }, window)
+      const allowed = host.proposeAgentRules(
+        asking,
+        { ...said, relaying: false, expectedVersion: 0 },
+        { ownerId: agentCallerId(asking) },
+      )
       expect(allowed.ok && allowed.wrote).toBe('a-request')
       await host.close(asking, window)
     })
 
-    it('⛔ an identity with NO grant meets the wall before its agent name is looked at', async () => {
+    it('a known agent without a rule grant still receives the target lookup result', async () => {
       await bringIdentityIntoBeing('worker')
       await bringIdentityIntoBeing('asker')
       const asking = await personOpens('asker')
-      // ⚑ **`refuse-on-entitlement-before-refusing-on-existence`, measured where it bites**: the
-      // agent named does not exist, and the refusal still names the GRANT — so the refusal cannot
-      // be used to enumerate this app's identities.
       const refused = host.proposeAgentRules(
         asking,
-        { about: 'nobody-at-all', text: 'x', why: 'y', relaying: false },
-        window,
+        { about: 'nobody-at-all', text: 'x', why: 'y', relaying: false, expectedVersion: 0 },
+        { ownerId: agentCallerId(asking) },
       )
-      expect(!refused.ok && refused.rail).toBe('may-not-write-rules')
+      expect(!refused.ok && refused.rail).toBe('no-such-agent')
       await host.close(asking, window)
     })
 
@@ -440,8 +458,8 @@ describe('582 · the layer a person writes', () => {
       const asking = await anAgentThatMayAsk('propose')
       const refused = host.proposeAgentRules(
         asking,
-        { about: 'nobody-at-all', text: 'x', why: 'y', relaying: false },
-        window,
+        { about: 'nobody-at-all', text: 'x', why: 'y', relaying: false, expectedVersion: 0 },
+        { ownerId: agentCallerId(asking) },
       )
       expect(!refused.ok && refused.rail).toBe('no-such-agent')
       await host.close(asking, window)
@@ -451,8 +469,14 @@ describe('582 · the layer a person writes', () => {
       const asking = await anAgentThatMayAsk('propose')
       host.proposeAgentRules(
         asking,
-        { about: 'worker', text: 'The agent’s idea.', why: 'mine', relaying: false },
-        window,
+        {
+          about: 'worker',
+          text: 'The agent’s idea.',
+          why: 'mine',
+          relaying: false,
+          expectedVersion: 0,
+        },
+        { ownerId: agentCallerId(asking) },
       )
       host.instructAgent('worker', 'The person’s own rule.', undefined, window)
       // ⛔ **Otherwise a person answers a card describing a world that moved** — they write their

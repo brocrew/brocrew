@@ -138,11 +138,11 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
           "const reaching = files")],
     ),
     (
-        "M12 · a memory note is amendable by the page it sits on, not by its position among all "
-        f"of them · killed by `{PAGES}`",
+        "M12 · amendment is wrongly limited to the first window page · killed by "
+        f"`{PAGES}`",
         [(MEMORY,
-          "item.kind === 'agent-memory' || paged.firstListed.includes(basename(item.path))",
-          "item.kind === 'agent-memory' || page.offset === 0")],
+          '    const entries: AgentMemoryEntry[] = paged.memory.map((item) => ({\n      ...item,\n      amendable: amendable(item.path, item.link, root),\n    }))',
+          '    const entries: AgentMemoryEntry[] = paged.memory.map((item) => ({\n      ...item,\n      amendable: page.offset === 0 && amendable(item.path, item.link, root),\n    }))')],
     ),
     (
         "M13 · a request that names only a limit is not paged · killed by "

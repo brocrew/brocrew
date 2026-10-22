@@ -512,6 +512,97 @@ describe('558 · every identity he has', () => {
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§3 · the removal', () => {
+    it('keeps an identity while its recoverable method change is unfinished', () => {
+      host.createAgent({ slug: 'lark', displayName: null, provider: null })
+      const change = store.beginMethodChange(
+        'lark',
+        {
+          operation: 'delete',
+          sourceId: null,
+          target: 'review.md',
+          files: [
+            {
+              name: 'review.md',
+              before: {
+                base64: '',
+                fingerprint: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+                mode: 0o600,
+              },
+              after: null,
+              afterMode: null,
+            },
+          ],
+        },
+        { who: 'a-person' },
+        tick(),
+      )!
+      expect(change).not.toBeNull()
+      const use = useOf('lark')
+      expect(Reflect.get(use, 'hasUnfinishedMethodChange')).toBe(true)
+      expect(whatHoldsIt(use)).toEqual(['unfinished-method-change'])
+      expect(host.removeAgent('lark')).toEqual({
+        ok: false,
+        rail: 'it-is-still-held',
+        held: ['unfinished-method-change'],
+      })
+      expect(store.agentIdentities().some((one) => one.slug === 'lark')).toBe(true)
+      expect(
+        store.settleMethodChange(
+          'lark',
+          change.id,
+          'done',
+          [{ name: 'review.md', fingerprint: null, mode: null }],
+          { who: 'a-person' },
+        ),
+      ).toBe(true)
+      expect(whatHoldsIt(useOf('lark'))).toEqual([])
+      expect(host.removeAgent('lark')).toEqual({ ok: true, slug: 'lark' })
+    })
+
+    it('answers honestly if an unfinished change appears at the store removal guard', () => {
+      host.createAgent({ slug: 'wren', displayName: null, provider: null })
+      const remove = store.removeAgentIdentity
+      store.removeAgentIdentity = (slug) => {
+        store.beginMethodChange(
+          slug,
+          {
+            operation: 'delete',
+            sourceId: null,
+            target: 'review.md',
+            files: [
+              {
+                name: 'review.md',
+                before: {
+                  base64: '',
+                  fingerprint: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+                  mode: 0o600,
+                },
+                after: null,
+                afterMode: null,
+              },
+            ],
+          },
+          { who: 'a-person' },
+          tick(),
+        )
+        return remove(slug)
+      }
+      expect(host.removeAgent('wren')).toEqual({
+        ok: false,
+        rail: 'it-is-still-held',
+        held: ['unfinished-method-change'],
+      })
+      expect(store.agentIdentities().some((one) => one.slug === 'wren')).toBe(true)
+    })
+
+    it('refreshes the roster when a saved-method change begins or settles', () => {
+      const announce = Reflect.get(host, 'savedMethodsChanged') as () => void
+      expect(announce).toBeTypeOf('function')
+      const before = said.length
+      announce.call(host)
+      expect(said.slice(before)).toEqual([expect.objectContaining({ what: 'agents' })])
+    })
+
     /** ⚑ THE CONTROL: an identity nothing holds goes, and the row really leaves the table. */
     it('⚑ an identity nothing has ever run is removed, and the row goes', () => {
       host.createAgent({ slug: 'never-run', displayName: null, provider: null })
@@ -860,12 +951,12 @@ describe('558 · every identity he has', () => {
      * while its prose does not is `a-number-can-survive-the-death-of-its-derivation`; this is the
      * line that makes the next member correct them.
      */
-    it('⚑ three reasons, each with its own sentence, and the sentences are distinct', () => {
-      // ⚑ **D-016 · `a-project` went with projects** — four became three.
+    it('each removal reason has its own distinct sentence', () => {
+      // The unfinished recovery keeps its original bytes until settlement.
       expect(
         WHAT_HOLDS_AN_IDENTITY.length,
         'the vocabulary moved — correct every sentence that says how many there are',
-      ).toBe(3)
+      ).toBe(4)
       expect(Object.keys(HOLDING_SAYS).sort()).toEqual([...WHAT_HOLDS_AN_IDENTITY].sort())
       const says = Object.values(HOLDING_SAYS)
       expect(new Set(says).size).toBe(says.length)

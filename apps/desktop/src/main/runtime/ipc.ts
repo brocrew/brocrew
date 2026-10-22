@@ -48,7 +48,7 @@ import {
   type AnyCapabilityField,
   type CapabilityGrant,
 } from '../../shared/capabilities'
-import { MEMORY_AMENDMENT } from '../../shared/agent-memory'
+import { MEMORY_EDIT } from '../../shared/agent-memory'
 import { OWN_INSTRUCTIONS_CHARS } from '../../shared/own-instructions'
 // ⚑ **625 · a CONSTANT, and this file still imports nothing from `node:fs`** — which is what
 // `no-byte-authority.test.ts` measures. ⛔ The cap the wire bound is derived from is the one the
@@ -1239,12 +1239,84 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
    */
   z.object({
     kind: z.literal('instructAgent'),
+    baseline: z
+      .object({ expectedVersion: z.number().int().min(0), currentText: ownInstructions })
+      .optional(),
     profileId: profileId.unwrap(),
     text: ownInstructions,
     broughtBack: z.number().int().min(1).optional(),
   }),
   /** 🔴 **582 · the read** — every version, and every ask waiting against this identity. */
   z.object({ kind: z.literal('agentInstructions'), profileId: profileId.unwrap() }),
+  z
+    .object({
+      kind: z.literal('agentMethods'),
+      profileId: profileId.unwrap(),
+      offset: z.number().int().min(0).max(1_000_000).optional(),
+      limit: z.number().int().min(1).max(100).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('agentMethodBody'),
+      profileId: profileId.unwrap(),
+      key: z.string().min(1).max(1024),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('agentMethodChanges'),
+      profileId: profileId.unwrap(),
+      offset: z.number().int().min(0).max(1_000_000).optional(),
+      limit: z.number().int().min(1).max(100).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('removeAgentMethod'),
+      profileId: profileId.unwrap(),
+      selection: z
+        .object({
+          confirmed: z.boolean(),
+          key: z.string().min(1).max(1024),
+          fingerprint: z
+            .string()
+            .regex(/^[0-9a-f]{64}$/)
+            .nullable(),
+          indexState: z.enum(['absent', 'ok', 'problem']),
+          indexFingerprint: z
+            .string()
+            .regex(/^[0-9a-f]{64}$/)
+            .nullable(),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('undoAgentMethod'),
+      profileId: profileId.unwrap(),
+      changeId: z.string().min(1).max(1024),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('checkInterruptedAgentMethods'),
+      profileId: profileId.unwrap(),
+      confirmed: z.boolean(),
+    })
+    .strict(),
+  z.object({ kind: z.literal('agentRulesUnread'), profileId: profileId.unwrap() }),
+  z.object({
+    kind: z.literal('undoAgentRules'),
+    profileId: profileId.unwrap(),
+    expectedVersion: z.number().int().min(1),
+  }),
+  z.object({
+    kind: z.literal('markAgentRulesSeen'),
+    profileId: profileId.unwrap(),
+    throughVersion: z.number().int().min(0),
+  }),
   /**
    * 🔴 **625 · the memory read** — every provider's store for this identity, taken right now.
    * ⚑ **F093 · paged** with `offset` and `limit`.
@@ -1278,7 +1350,7 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
    * ⚠️ **No `.min(1)`**: an empty correction is a real act — a person emptying an entry rather than
    * removing it — and the two are different facts the record keeps apart.
    *
-   * ⚑ **`act` is `z.enum(MEMORY_AMENDMENT)`**, so the closed vocabulary is enforced at the door as
+   * ⚑ **`act` is `z.enum(MEMORY_EDIT)`**, so the closed vocabulary is enforced at the door as
    * well as by the column's CHECK. ⛔ A word this build does not know never reaches the filesystem.
    */
   z.object({
@@ -1286,7 +1358,7 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
     profileId: profileId.unwrap(),
     provider: providerSchema,
     entry: z.string().min(1).max(4096),
-    act: z.enum([...MEMORY_AMENDMENT]),
+    act: z.enum([...MEMORY_EDIT]),
     text: memoryText,
   }),
   /**
@@ -1537,6 +1609,15 @@ const DURING_A_QUIT: Record<RuntimeCommandKind, QuitRuling> = {
   // database rather than the direction, because a read that opens a statement against a store the
   // quit is tearing down is the same hazard as a write.
   agentInstructions: 'refused',
+  agentMethods: 'refused',
+  agentMethodBody: 'refused',
+  agentMethodChanges: 'refused',
+  removeAgentMethod: 'refused',
+  undoAgentMethod: 'refused',
+  checkInterruptedAgentMethods: 'refused',
+  agentRulesUnread: 'refused',
+  undoAgentRules: 'refused',
+  markAgentRulesSeen: 'refused',
   // 625. ⛔ **Refused, with `agentInstructions` directly above as the precedent**, and one reason
   // more: this read walks two provider homes, and a quit that is tearing the app down is the worst
   // moment to start a filesystem walk whose answer nothing will draw.
@@ -1812,6 +1893,15 @@ const WHAT_A_PERSONS_VERB_DOES: Partial<Record<RuntimeCommandKind, string>> = {
   skills: 'reads and saves skills and agent choices',
   agentIdentities: 'reads every agent and what each may do',
   agentInstructions: 'reads an agent’s own instructions',
+  agentMethods: 'reads saved methods',
+  agentMethodBody: 'reads a saved method',
+  agentMethodChanges: 'reads saved-method history',
+  removeAgentMethod: 'removes a saved method',
+  undoAgentMethod: 'undoes a saved-method change',
+  checkInterruptedAgentMethods: 'checks an interrupted saved-method change',
+  agentRulesUnread: 'reads unread standing-rule changes',
+  undoAgentRules: 'undoes the latest standing-rule change',
+  markAgentRulesSeen: 'marks displayed standing-rule changes as read',
   agentMemory: 'reads an agent’s own memory',
   agentModelAndEffort: 'reads the model an agent starts on',
   modelList: 'reads the models a provider offers',
@@ -2577,7 +2667,13 @@ export async function executeRuntimeCommand(
       // `propose_instruction` until `618` and no tool has ever been called that**; nothing read it,
       // which is why nothing went red.
       requireAPerson(sink, command.kind)
-      return host.instructAgent(command.profileId, command.text, command.broughtBack, sink)
+      return host.instructAgent(
+        command.profileId,
+        command.text,
+        command.broughtBack,
+        sink,
+        command.baseline,
+      )
     case 'agentInstructions':
       // ⛔ **`requireAPerson` on a READ, which is rarer in this switch than on a write.** ⚠️ The
       // reason is not secrecy — an agent already receives its own rules in its bundle at every
@@ -2585,6 +2681,38 @@ export async function executeRuntimeCommand(
       // the verb lives on the window wire for the sheet that draws them.
       requireAPerson(sink, command.kind)
       return host.agentInstructions(command.profileId)
+    case 'agentMethods':
+      requireAPerson(sink, command.kind)
+      return host.agentMethods(command.profileId, command.offset ?? 0, command.limit ?? 50, sink)
+    case 'agentMethodBody':
+      requireAPerson(sink, command.kind)
+      return host.agentMethodBody(command.profileId, command.key, sink)
+    case 'agentMethodChanges':
+      requireAPerson(sink, command.kind)
+      return host.agentMethodChanges(
+        command.profileId,
+        command.offset ?? 0,
+        command.limit ?? 50,
+        sink,
+      )
+    case 'removeAgentMethod':
+      requireAPerson(sink, command.kind)
+      return host.removeAgentMethod(command.profileId, command.selection, sink)
+    case 'undoAgentMethod':
+      requireAPerson(sink, command.kind)
+      return host.undoAgentMethod(command.profileId, command.changeId, sink)
+    case 'checkInterruptedAgentMethods':
+      requireAPerson(sink, command.kind)
+      return host.checkInterruptedAgentMethods(command.profileId, command.confirmed, sink)
+    case 'agentRulesUnread':
+      requireAPerson(sink, command.kind)
+      return host.agentRulesUnread(command.profileId)
+    case 'undoAgentRules':
+      requireAPerson(sink, command.kind)
+      return host.undoAgentRules(command.profileId, command.expectedVersion, sink)
+    case 'markAgentRulesSeen':
+      requireAPerson(sink, command.kind)
+      return host.markAgentRulesSeen(command.profileId, command.throughVersion, sink)
     case 'agentMemory':
       // ⚑ **F093 · C8 b — paged when a page is named**, behind the same gate; else the first
       // twenty, as before.
