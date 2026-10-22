@@ -94,6 +94,7 @@ STORE = "apps/desktop/src/main/db/session-store.ts"
 HOST = "apps/desktop/src/main/runtime/runtime-host.ts"
 CAPS = "apps/desktop/src/shared/capabilities.ts"
 
+# These role/provenance anchors follow the current host; no new mutation run is claimed.
 MUTATIONS = [
     # ---- A · the seam ---------------------------------------------------------------------------
     (
@@ -170,69 +171,12 @@ MUTATIONS = [
         ],
     ),
     # ---- C · the ladder --------------------------------------------------------------------------
-    (
-        "M6 · 🔴 **a caller granted `propose` may RELAY** · the gate `HO-009` §2.2 opens for exactly "
-        "one holder, removed by a comparison — an agent writes a durable rule with no person in the "
-        "loop, on the strength of its own claim",
-        [
-            (
-                HOST,
-                "    if (said.relaying && !mayRelayRules(allowed.canWriteRules)) {",
-                "    if (false && said.relaying && !mayRelayRules(allowed.canWriteRules)) {",
-            )
-        ],
-    ),
-    (
-        "M7 · ⛔ **nobody may relay** · the one exception `HO-009` §2.2 makes is unreachable, so "
-        "*relayed from user* is a provenance nothing can write and BroBot's relay is a message "
-        "again — which is the thing `HO-063` gap 4 exists to stop",
-        [
-            (
-                HOST,
-                "    if (said.relaying && !mayRelayRules(allowed.canWriteRules)) {",
-                "    if (said.relaying) {",
-            )
-        ],
-    ),
-    (
-        "M8 · ⛔ **a refused relay becomes a silent proposal** · `371`'s disclosure defect on the "
-        "one argument where the claim IS the authorization: a model told its relay was accepted, "
-        "about a claim this app decided not to trust",
-        [
-            (
-                HOST,
-                "      return no('may-not-relay-a-rule', { you: caller.profileId })\n",
-                "      said = { ...said, relaying: false }\n",
-            )
-        ],
-    ),
-    (
-        "M9 · 🔴 **the subject is asked before the grant** · "
-        "`refuse-on-entitlement-before-refusing-on-existence` inverted — a caller with no grant "
-        "learns which identities exist from the shape of its refusal",
-        # ⚑ Landing D-016b (5e931be8, the tree) · re-anchored in place, not retired —
-        # refuse-on-entitlement-before-refusing-on-existence still holds: proposeAgentRules asks the
-        # grant (may-not-write-rules) before the subject (no-such-agent), and the test 'an identity
-        # with NO grant meets the wall before its agent name is looked at' asserts it. The caller
-        # lookup is now this.runningAs(me) (spawnFacts(by).liveParent(me) is gone), and the plant
-        # inserts the subject-existence check above it. Killed by
-        # `the-layer-a-person-writes.test.ts`.
-        [
-            (HOST, '    const caller = this.runningAs(me)\n    const allowed = caller === null ? null : this.deps.store.capabilitiesOf(caller.profileId)\n    // ⚠️ **`caller === null` is in the SAME condition**', "    const about0 = foldProfileName(said.about)\n    if (this.deps.store.capabilitiesOf(about0) === null) {\n      return no('no-such-agent', { agent: about0 })\n    }\n    const caller = this.runningAs(me)\n    const allowed = caller === null ? null : this.deps.store.capabilitiesOf(caller.profileId)\n    // ⚠️ **`caller === null` is in the SAME condition**"),
-        ],
-    ),
+    ('M6 · an ordinary agent can write standing rules directly', [(HOST, '    if (author === null || author.profile !== DEFAULT_PROFILE_ID)', '    if (author === null)')]),
+    ('M7 · the primary agent is refused its direct-write role', [(HOST, '    if (author === null || author.profile !== DEFAULT_PROFILE_ID)', '    if (author === null || author.profile === DEFAULT_PROFILE_ID)')]),
+    ('M8 · a refused historical relay is silently turned into a proposal', [(HOST, '    if (said.relaying)\n', '    if (false && said.relaying)\n')]),
+    ('M9 · a caller can borrow another running conversation for rule access', [(HOST, '    if (sessionSpeakingAs(by) !== me) return null', '    if (false && sessionSpeakingAs(by) !== me) return null')]),
     # ---- D · what is recorded, and what is shown -------------------------------------------------
-    (
-        "M10 · ⛔ **a relay is recorded as a person's own keystroke** · killed by the CHECK as well "
-        "as by the fold, which is what makes the two provenance columns one fact rather than two",
-        [
-            (
-                HOST,
-                "          whoWroteIt: 'relayed-from-user',",
-                "          whoWroteIt: 'a-person',",
-            )
-        ],
-    ),
+    ('M10 · a direct agent change is recorded as a person save', [(HOST, "        whoWroteIt: 'an-agent-direct',", "        whoWroteIt: 'a-person',")]),
     (
         "M11 · ⚠️ **an unreadable provenance folds to `a-person`** · a hand-edited row makes this "
         "app assert that the person wrote something he may never have seen — 086 in the direction that "
@@ -245,21 +189,7 @@ MUTATIONS = [
             )
         ],
     ),
-    (
-        "M12 · 🔴 **a person's own save leaves an older ask standing** · they write their rules and "
-        "then approve a proposal on top of them, so the act they performed LAST is not the one in "
-        "force",
-        [
-            (
-                HOST,
-                "    for (const waiting of this.deps.store.instructionAsksWaiting()) {\n"
-                "      if (waiting.asked.about !== foldProfileName(profileSlug)) continue\n"
-                "      this.endInstructionAsk(waiting.asked.askId, 'superseded', whoDidIt(by))\n"
-                "    }\n",
-                "",
-            )
-        ],
-    ),
+    ('M12 · a person save leaves stale rule proposals waiting', [(HOST, '    this.supersedeInstructionAsks(profileSlug, whoDidIt(by))', '    // Stale proposals were left waiting.')]),
     (
         "M13 · ⛔ **a blank version renders an empty heading** · 086 in the other direction: the "
         "bundle tells an agent there is a rule and does not say what it is",

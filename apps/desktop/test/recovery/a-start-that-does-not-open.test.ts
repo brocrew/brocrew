@@ -80,7 +80,7 @@ describe('the open path', () => {
     expect(tail.endsWith('sayAtOnce(READY_LINE)\n      void letGoOfOldCopies()\n    })')).toBe(true)
     for (const step of [
       'createWindow()',
-      'host = createRuntimeHost(initDatabase())',
+      'host = await createRuntimeHost(initDatabase())',
       'startRederive(host)',
       'startStallWatch(',
       'process.on(signal, () => lifetime.quitSignal(signal))',
@@ -157,7 +157,7 @@ function supervisorWaitsForTheData(code: string): boolean {
   const start = functionIn(code, 'function start(ownership: HostGateVerdict): void {')
   const steps = [
     'const verdict = await theVerdictBeforeTheData(ownership)',
-    'host = createRuntimeHost(initDatabase())',
+    'host = await createRuntimeHost(initDatabase())',
     'theDataOpened = true',
     'pluginSupervisorRoot({',
     'pluginController.start({',
@@ -169,7 +169,7 @@ describe('the check stands between the start and its data', () => {
   it('stops right after the check, before the time zone, the database and the host', () => {
     expect(stopsBeforeTheData(CODE)).toBe(true)
     expect(CODE.indexOf('keepTheSystemZone(')).toBeLessThan(
-      CODE.indexOf('host = createRuntimeHost(initDatabase())'),
+      CODE.indexOf('host = await createRuntimeHost(initDatabase())'),
     )
   })
 
@@ -182,8 +182,8 @@ describe('the check stands between the start and its data', () => {
     expect(block).toBeDefined()
     if (!block) throw new Error('the supervisor startup block is missing')
     const early = CODE.replace(block, '').replace(
-      '      host = createRuntimeHost(initDatabase())',
-      `${block}\n      host = createRuntimeHost(initDatabase())`,
+      '      host = await createRuntimeHost(initDatabase())',
+      `${block}\n      host = await createRuntimeHost(initDatabase())`,
     )
     expect(early).not.toBe(CODE)
     expect(supervisorWaitsForTheData(early)).toBe(false)

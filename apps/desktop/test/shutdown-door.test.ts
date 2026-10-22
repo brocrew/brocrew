@@ -265,6 +265,29 @@ const SAMPLES: Record<RuntimeCommandKind, RuntimeCommand> = {
   // see `DURING_A_QUIT`, where each says why in its own words.
   instructAgent: { kind: 'instructAgent', profileId: 'pm', text: 'never force-push' },
   agentInstructions: { kind: 'agentInstructions', profileId: 'pm' },
+  agentMethods: { kind: 'agentMethods', profileId: 'lark' },
+  agentMethodBody: { kind: 'agentMethodBody', profileId: 'lark', key: 'method:review.md' },
+  agentMethodChanges: { kind: 'agentMethodChanges', profileId: 'lark' },
+  removeAgentMethod: {
+    kind: 'removeAgentMethod',
+    profileId: 'lark',
+    selection: {
+      confirmed: true,
+      key: 'method:review.md',
+      fingerprint: null,
+      indexState: 'absent',
+      indexFingerprint: null,
+    },
+  },
+  undoAgentMethod: { kind: 'undoAgentMethod', profileId: 'lark', changeId: 'method-change-one' },
+  checkInterruptedAgentMethods: {
+    kind: 'checkInterruptedAgentMethods',
+    profileId: 'lark',
+    confirmed: true,
+  },
+  agentRulesUnread: { kind: 'agentRulesUnread', profileId: 'pm' },
+  undoAgentRules: { kind: 'undoAgentRules', profileId: 'pm', expectedVersion: 1 },
+  markAgentRulesSeen: { kind: 'markAgentRulesSeen', profileId: 'pm', throughVersion: 1 },
   // 625 · ⚑ Two doors onto an agent's MEMORY, both `refused` during a quit — see `DURING_A_QUIT`.
   // ⛔ The write is the sharper case there: it is not transactional with its record, so a quit
   // landing between the file and the row leaves a store short an entry and nothing saying why.
@@ -440,6 +463,15 @@ const NEEDS_A_PERSON = new Set<RuntimeCommandKind>([
   // against the identity and the verb lives on the window wire for the sheet that draws them.
   'instructAgent',
   'agentInstructions',
+  'agentMethods',
+  'agentMethodBody',
+  'agentMethodChanges',
+  'removeAgentMethod',
+  'undoAgentMethod',
+  'checkInterruptedAgentMethods',
+  'agentRulesUnread',
+  'undoAgentRules',
+  'markAgentRulesSeen',
   'decideInstruction',
   // Approving registers a server agents may then use.
   'decideMcpServerRequest',

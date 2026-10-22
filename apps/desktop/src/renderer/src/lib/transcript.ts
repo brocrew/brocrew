@@ -49,7 +49,7 @@ import {
   type AgentMessageKind,
   type WorkReport,
 } from '../../../shared/tasks'
-import { endingMeans } from '../../../shared/own-instructions'
+import { endingMeans, rulesChangeLabel } from '../../../shared/own-instructions'
 import {
   anEarlierMcpServerRequestEnded,
   isMcpServerRequestEnding,
@@ -5478,6 +5478,15 @@ function foldEvent(
      * {@link ENDING_MEANS}, rendered from the word (standing rule 8), so a fifth ending cannot
      * arrive here as an unexplained string.
      */
+    case 'instruction_changed': {
+      notice(
+        state,
+        'info',
+        `${rulesChangeLabel({ whoWroteIt: 'an-agent-direct', author: event.author })} · ${event.profile} · v${event.version}`,
+      )
+      return
+    }
+
     case 'instruction_settled': {
       notice(state, 'info', `Rules asked for earlier: ${endingMeans(event.ending)}.`)
       return

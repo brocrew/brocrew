@@ -12,8 +12,7 @@ import { F093World } from './lib/f093-host'
  * ⚑ The contract (§1.7): `limit` defaults to 20 and is at most 100; each store carries `total` and
  * `nextOffset` (`null` after the last page); the fixed files are on page one only; a page ends at its
  * 256 KiB budget and `nextOffset` points at the file that did not fit, so no file falls between two
- * pages; **entries past a store's first 20 topic files come with `amendable: false`** — by where they
- * are in the store, not by which page they are on.
+ * pages. Managed entries on every page can be amended through a fresh guarded selection.
  *
  * ⚑ The dev's test reads `host.agentMemoryPage` directly with offset 0 and 20; these go through
  * `executeRuntimeCommand`, as the preload's `agentMemory` does, and read a second full page, the last
@@ -79,7 +78,7 @@ describe('F093 · memory pages, through the window’s door', () => {
     expect(names(second)).toEqual(topics(20, 40))
     expect(second.total).toBe(46)
     expect(second.nextOffset).toBe(40)
-    expect(second.entries.some((one) => one.amendable)).toBe(false)
+    expect(second.entries.every((one) => one.amendable)).toBe(true)
   })
 
   it('⚑ the last page is partial and says it is the last', async () => {
@@ -88,10 +87,10 @@ describe('F093 · memory pages, through the window’s door', () => {
     expect(names(last)).toEqual(topics(40, 45))
     expect(last.nextOffset).toBeNull()
     expect(last.total).toBe(46)
-    expect(last.entries.some((one) => one.amendable)).toBe(false)
+    expect(last.entries.every((one) => one.amendable)).toBe(true)
   })
 
-  it('⛔ a page that straddles the twentieth file: amendable up to it, and not past it — whatever the page', async () => {
+  it('managed entries remain amendable when a page straddles the launch limit', async () => {
     seed(45)
     const straddle = await page({ offset: 15, limit: 10 })
     expect(names(straddle)).toEqual(topics(15, 25))
@@ -100,7 +99,7 @@ describe('F093 · memory pages, through the window’s door', () => {
       straddle.entries.map((one) => [basename(one.path), one.amendable]),
     )
     for (const name of topics(15, 20)) expect(amendable[name], name).toBe(true)
-    for (const name of topics(20, 25)) expect(amendable[name], name).toBe(false)
+    for (const name of topics(20, 25)) expect(amendable[name], name).toBe(true)
   })
 
   it('⚑ an offset at or past the end is an empty last page, and still says how many there are', async () => {

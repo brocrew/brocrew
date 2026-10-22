@@ -536,6 +536,10 @@ describe('477 · who did it', () => {
       records: true,
       because: '477 · `by` — five writers, two kinds of actor, one row',
     },
+    instruction_changed: {
+      records: true,
+      because: 'The writing conversation and snapshotted author are bound by the host.',
+    },
     instruction_settled: {
       records: true,
       because:
