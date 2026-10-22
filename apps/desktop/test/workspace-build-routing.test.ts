@@ -14,6 +14,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'vitest'
 import { defaultDataFolder, pinTheDataFolder, type PinnableApp } from '../src/main/data-folder'
 import {
+  DEVELOPMENT_BUILD_REFUSAL,
   OTHER_BUILD_REFUSAL,
   PACKAGED_WORKSPACE_REFUSAL,
   WORKSPACE_LIST_REFUSAL,
@@ -163,7 +164,7 @@ it('explicit packaged launches cannot open the main default either', () => {
   policy()
   list(PACKAGED_WORKSPACE_LIST, [[first, 1]])
   const a = app(true, defaultDataFolder(appData), true)
-  expect(() => pinTheDataFolder(a.fake)).toThrow("can't be opened")
+  expect(() => pinTheDataFolder(a.fake)).toThrow('opens in a development build of BroCrew')
   expect(a.set).toEqual([])
   expect(existsSync(defaultDataFolder(appData))).toBe(false)
 })
@@ -215,6 +216,12 @@ it.skipIf(process.platform === 'win32')(
 it('pins the approved refusal words without exposing an unknown error', () => {
   expect(OTHER_BUILD_REFUSAL).toBe('This workspace opens in the BroCrew app in Applications.')
   expect(PACKAGED_WORKSPACE_REFUSAL).toBe("This workspace can't be opened in this app.")
+  expect(DEVELOPMENT_BUILD_REFUSAL).toBe(
+    'This workspace opens in a development build of BroCrew, not in this app. Open it from that build.',
+  )
+  expect(workspaceLaunchMessage(new Error(DEVELOPMENT_BUILD_REFUSAL))).toBe(
+    DEVELOPMENT_BUILD_REFUSAL,
+  )
   expect(WORKSPACE_LIST_REFUSAL).toBe("BroCrew couldn't read its list of workspaces.")
   expect(workspaceLaunchMessage(new Error('fictional internal detail'))).toBe(
     WORKSPACE_LIST_REFUSAL,

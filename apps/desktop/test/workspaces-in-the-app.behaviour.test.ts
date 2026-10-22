@@ -426,3 +426,56 @@ it.each(['listed', 'owned', 'reserved'] as const)(
     })
   },
 )
+
+it.each(['open', 'closed'] as const)(
+  'the installed app says plainly that a development build keeps the default folder (that window %s)',
+  async (state) => {
+    const config = join(appData, '@brobot2'),
+      appPath = join(root, 'packaged'),
+      main = join(config, 'desktop'),
+      copper = join(root, 'copper')
+    for (const folder of [main, copper]) {
+      mkdirSync(folder, { recursive: true })
+      writeFileSync(join(folder, 'brobot2.sqlite'), '')
+    }
+    mkdirSync(appPath)
+    writeFileSync(join(appPath, 'package.json'), '{}')
+    writeFileSync(
+      join(config, 'workspace-policy.json'),
+      JSON.stringify({
+        version: 1,
+        firstWorkspace: copper,
+        packagedForbidden: [main],
+        developmentForbidden: [copper],
+      }),
+    )
+    writeFileSync(
+      join(config, 'packaged-workspaces.json'),
+      JSON.stringify({ version: 1, workspaces: [{ path: copper, lastOpenedAt: 1 }] }),
+    )
+    vi.mocked(whoIsOn).mockImplementation(async (folder) => (folder === main ? state : 'closed'))
+    fake.handlers.clear()
+    startWorkspaces({
+      app: {
+        isPackaged: true,
+        getPath: (name: string) =>
+          ({ userData: copper, appData, home: root })[name as 'userData' | 'appData' | 'home'],
+        getAppPath: () => appPath,
+      } as unknown as App,
+      hidden: false,
+      pickFolder: async () => null,
+    })
+    const plainly =
+      'This workspace opens in a development build of BroCrew, not in this app. Open it from that build.'
+    expect(await ask(WORKSPACES_CHANNELS.open, main)).toEqual({ opened: false, refusal: plainly })
+    expect(await ask(WORKSPACES_CHANNELS.checkFolder, main, false)).toMatchObject({
+      ok: false,
+      refusal: plainly,
+    })
+    expect(fake.launches).toEqual([])
+    expect((await ask<WorkspaceRow[]>(WORKSPACES_CHANNELS.list)).map((row) => row.path)).toEqual([
+      copper,
+    ])
+    vi.mocked(whoIsOn).mockImplementation(async () => 'open')
+  },
+)

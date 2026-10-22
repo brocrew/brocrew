@@ -85,7 +85,9 @@ describe('ae53076e · main hands the menu and the About panel the person’s nam
               void themes?.showDefault().catch(() => undefined)
             },
           })`)
-    expect(source).toMatch(/app\.setAboutPanelOptions\(\{ applicationName: PERSONS_TITLE \}\)/)
+    expect(source).toMatch(
+      /app\.setAboutPanelOptions\(\{\s*applicationName: PERSONS_TITLE,\s*applicationVersion: shownVersion\(app\.getVersion\(\), app\.isPackaged\),\s*\}\)/,
+    )
     // ⛔ The paired negative: the technical name is no longer the menu's.
     expect(source).not.toMatch(/appMenuTemplate\(\{ appName: app\.getName\(\)/)
   })
