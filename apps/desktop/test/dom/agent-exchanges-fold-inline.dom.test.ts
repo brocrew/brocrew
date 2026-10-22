@@ -605,8 +605,8 @@ describe('agent exchanges fold inline', () => {
         text === '/tmp/menu.md'
           ? { text, found: true, kind: 'file', absolute: text, name: 'menu.md', opens: true }
           : { text, found: false },
-      press: async (text, action) => {
-        presses.push(`${action}:${text}`)
+      press: async (text) => {
+        presses.push(`open:${text}`)
         return null
       },
     }
@@ -659,13 +659,13 @@ describe('agent exchanges fold inline', () => {
     expect(m.all('question-words')).toHaveLength(0)
     await expand(m)
     const links = [
-      ...m.q('question-words').querySelectorAll<HTMLButtonElement>('.message-path-open'),
+      ...m.q('question-words').querySelectorAll<HTMLButtonElement>('[data-message-path]'),
     ]
     expect(links).toHaveLength(1)
-    expect(m.q('question-part-part').querySelector('.message-path-open')?.textContent).toBe(
+    expect(m.q('question-part-part').querySelector('.message-path-text')?.textContent).toBe(
       '/tmp/menu.md',
     )
-    expect(links.every((el) => el.textContent === '/tmp/menu.md')).toBe(true)
+    expect(links.every((el) => el.dataset.messagePath === '/tmp/menu.md')).toBe(true)
     links[0]!.click()
     await nextTick()
     expect(presses).toEqual(['open:/tmp/menu.md'])
@@ -674,7 +674,7 @@ describe('agent exchanges fold inline', () => {
     expect(m.all('question-option').every((el) => el.tagName !== 'BUTTON')).toBe(true)
     m.unmount()
     const readOnly = mount(QuestionCard, { reading, markdown: true, paths: null })
-    expect(readOnly.host.querySelectorAll('.message-path-open')).toHaveLength(0)
+    expect(readOnly.host.querySelectorAll('.message-path')).toHaveLength(0)
     expect(readOnly.q('question-words').textContent).toContain('/tmp/menu.md')
   })
   it('a same-mounted route corrected to the person restores the full question and its answer controls', async () => {

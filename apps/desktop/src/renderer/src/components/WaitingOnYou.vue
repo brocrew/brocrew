@@ -607,8 +607,6 @@ const showConversations = computed(() => attention.value.live > 0 || onlyYou.val
 }
 
 .usage {
-  display: flex;
-  flex-direction: column;
   padding: 0;
   margin: 0 0 var(--space-8);
   gap: var(--space-6);
@@ -620,8 +618,10 @@ const showConversations = computed(() => attention.value.live > 0 || onlyYou.val
 .usage-unread,
 .attention-list :deep(.pq-row),
 .attention-list :deep(.pq-stall),
+.attention-list :deep(.wait),
+.attention-list :deep(.request),
 .attention-list :deep(.reply),
-.attention-list :deep(.ask),
+.attention-list :deep(.asks > .ask),
 .attention-list :deep(.attention-request),
 .attention-list :deep(.attention-clear) {
   min-width: 0;
@@ -632,10 +632,18 @@ const showConversations = computed(() => attention.value.live > 0 || onlyYou.val
   box-shadow: var(--shadow-card);
 }
 
+/* A usage card, like a request card: its sentence on the top line, its door at the foot. */
+.usage-limit {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-4);
+}
+
 .usage-says {
   margin: 0;
   color: var(--waiting-text-label);
-  font-size: var(--type-small);
+  font-size: var(--type-caption);
   line-height: var(--leading-relaxed);
 }
 
@@ -644,7 +652,12 @@ const showConversations = computed(() => attention.value.live > 0 || onlyYou.val
 }
 
 .usage-door {
-  margin-top: var(--space-4);
+  margin-top: auto;
+}
+
+/* A provider's usage alone takes the whole row rather than leave half of it empty. */
+.usage > .usage-limit:only-child {
+  grid-column: 1 / -1;
 }
 
 .usage-unread {
@@ -676,6 +689,8 @@ const showConversations = computed(() => attention.value.live > 0 || onlyYou.val
 }
 
 .attention-list :deep(.persons-queue:not(.floating)),
+.attention-list :deep(.waits:not(.floating)),
+.attention-list :deep(.requests:not(.floating)),
 .attention-list :deep(.replies:not(.floating)),
 .attention-list :deep(.asks:not(.floating)) {
   padding: 0;
@@ -683,13 +698,22 @@ const showConversations = computed(() => attention.value.live > 0 || onlyYou.val
 
 .attention-list :deep(.pq-rows),
 .attention-list :deep(.pq-stalled),
+.attention-list :deep(.waits),
+.attention-list :deep(.requests),
 .attention-list :deep(.replies),
 .attention-list :deep(.asks),
 .attention-list :deep(.attention-rows) {
   gap: var(--space-6);
 }
 
+/* Every card on the page shares one grid: a column, then two from 832px. */
+.usage,
 .attention-list :deep(.pq-rows),
+.attention-list :deep(.pq-stalled),
+.attention-list :deep(.waits),
+.attention-list :deep(.requests),
+.attention-list :deep(.replies),
+.attention-list :deep(.asks),
 .attention-list :deep(.attention-rows) {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -697,7 +721,13 @@ const showConversations = computed(() => attention.value.live > 0 || onlyYou.val
 }
 
 @container waiting-requests (min-width: 832px) {
+  .usage,
   .attention-list :deep(.pq-rows),
+  .attention-list :deep(.pq-stalled),
+  .attention-list :deep(.waits),
+  .attention-list :deep(.requests),
+  .attention-list :deep(.replies),
+  .attention-list :deep(.asks),
   .attention-list :deep(.attention-rows) {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     align-items: stretch;
@@ -706,6 +736,13 @@ const showConversations = computed(() => attention.value.live > 0 || onlyYou.val
 
 .attention-list :deep(.pq-row) {
   align-content: start;
+}
+
+/* The rules an agent asked for, in the request card's own code box: its panel, line and ink. */
+.attention-list :deep(.ask-text) {
+  border: var(--border-width) solid var(--line);
+  background: var(--panel);
+  color: var(--text);
 }
 
 .attention-list :deep(.pq-request-line code) {
@@ -719,8 +756,10 @@ const showConversations = computed(() => attention.value.live > 0 || onlyYou.val
 }
 
 .attention-list :deep(.pq-stall),
+.attention-list :deep(.wait),
+.attention-list :deep(.request),
 .attention-list :deep(.reply),
-.attention-list :deep(.ask) {
+.attention-list :deep(.asks > .ask) {
   gap: var(--space-4);
 }
 
@@ -728,11 +767,30 @@ const showConversations = computed(() => attention.value.live > 0 || onlyYou.val
   margin: 0;
 }
 
+/* Each card, like a request card: its top line in the request's caption type, and its controls at
+   the foot, so cards on one row end level; a door alone sits at the bottom right. */
 .attention-list :deep(.pq-stall-says),
+.attention-list :deep(.pq-stop-who),
+.attention-list :deep(.wait-head),
+.attention-list :deep(.request-who),
 .attention-list :deep(.reply-who),
 .attention-list :deep(.ask-who) {
-  font-size: var(--type-small);
+  font-size: var(--type-caption);
   line-height: var(--leading-relaxed);
+}
+
+.attention-list :deep(.pq-stall > .pq-go),
+.attention-list :deep(.pq-stop-actions),
+.attention-list :deep(.wait-controls),
+.attention-list :deep(.request-controls),
+.attention-list :deep(.ask-controls),
+.attention-list :deep(.reply-go) {
+  margin-top: auto;
+}
+
+.attention-list :deep(.pq-stall > .pq-go),
+.attention-list :deep(.reply-go) {
+  align-self: flex-end;
 }
 
 .attention-list :deep(.pq-stall-said),
@@ -747,7 +805,9 @@ const showConversations = computed(() => attention.value.live > 0 || onlyYou.val
 .attention-list :deep(.pq-go),
 .attention-list :deep(.reply-go),
 .attention-list :deep(.request-open),
-.attention-list :deep(.ask-controls > button) {
+.attention-list :deep(.ask-controls > button),
+.attention-list :deep(.wait-controls > button),
+.attention-list :deep(.request-controls > button) {
   display: inline-flex;
   min-height: var(--control-h);
   align-items: center;
@@ -766,7 +826,9 @@ const showConversations = computed(() => attention.value.live > 0 || onlyYou.val
 .attention-list :deep(.pq-go:hover),
 .attention-list :deep(.reply-go:hover),
 .attention-list :deep(.request-open:hover),
-.attention-list :deep(.ask-controls > button:hover) {
+.attention-list :deep(.ask-controls > button:hover),
+.attention-list :deep(.wait-controls > button:hover:not(:disabled)),
+.attention-list :deep(.request-controls > button:hover:not(:disabled)) {
   border-color: var(--accent-border);
   background: var(--accent-fill);
 }

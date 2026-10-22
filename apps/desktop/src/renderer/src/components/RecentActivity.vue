@@ -40,6 +40,13 @@ const days = computed(() => byDay(props.reading?.lines ?? [], props.clock))
 const windowWords = computed(
   () => ACTIVITY_WINDOWS.find((one) => one.ms === props.windowMs)?.label ?? 'chosen time window',
 )
+/** Each state's tile colour; a start keeps the tile's own accent. */
+const TONE: Readonly<Record<string, string>> = {
+  finished: 'bb-icon-box--success',
+  failed: 'bb-icon-box--danger',
+  started: '',
+  stopped: 'bb-icon-box--quiet',
+}
 const someClaimed = computed(() => props.reading?.lines.some((line) => line.register === 'claimed'))
 </script>
 
@@ -91,23 +98,36 @@ const someClaimed = computed(() => props.reading?.lines.some((line) => line.regi
           <p
             v-for="line in props.reading.skillImports"
             :key="line.id"
-            class="line import-line"
+            class="line notice bb-entry"
             data-cy="activity-skill-import"
           >
-            <time class="at" :datetime="new Date(line.at).toISOString()">{{
+            <time class="at bb-entry-time" :datetime="new Date(line.at).toISOString()">{{
               clockTime(line.at)
             }}</time>
-            <span class="import-words">{{ skillImportWords(line) }}</span>
+            <span class="mark bb-icon-box bb-icon-box--waiting" aria-hidden="true">
+              <svg class="icon"><use href="#i-alert" /></svg>
+            </span>
+            <span class="words bb-entry-words">
+              <span class="who import-words">{{ skillImportWords(line) }}</span>
+            </span>
           </p>
         </article>
         <article v-if="props.reading?.transcriptsCleared?.length" class="activity-card bb-card">
           <p
             v-for="line in props.reading.transcriptsCleared"
             :key="line.at"
+            class="line notice bb-entry"
             data-cy="activity-transcripts-cleared"
           >
-            <time :datetime="new Date(line.at).toISOString()">{{ clockTime(line.at) }}</time>
-            {{ transcriptsClearedWords(line) }}
+            <time class="at bb-entry-time" :datetime="new Date(line.at).toISOString()">{{
+              clockTime(line.at)
+            }}</time>
+            <span class="mark bb-icon-box bb-icon-box--quiet" aria-hidden="true">
+              <svg class="icon"><use href="#i-archive" /></svg>
+            </span>
+            <span class="words bb-entry-words">
+              <span class="who">{{ transcriptsClearedWords(line) }}</span>
+            </span>
           </p>
         </article>
         <article v-if="days.length > 0" class="activity-card bb-card" data-cy="activity-list">
@@ -120,7 +140,7 @@ const someClaimed = computed(() => props.reading?.lines.some((line) => line.regi
               <li v-for="line in day.lines" :key="line.id">
                 <button
                   type="button"
-                  class="line"
+                  class="line bb-entry"
                   :disabled="line.conversation === null"
                   :title="
                     line.conversation === null ? 'No conversation to open' : 'Open the conversation'
@@ -130,17 +150,19 @@ const someClaimed = computed(() => props.reading?.lines.some((line) => line.regi
                   :data-register="line.register"
                   @click="line.conversation !== null && emit('open', line.conversation)"
                 >
-                  <time class="at" :datetime="new Date(line.at).toISOString()">{{
+                  <time class="at bb-entry-time" :datetime="new Date(line.at).toISOString()">{{
                     clockTime(line.at)
                   }}</time>
-                  <span class="mark" :class="line.what" aria-hidden="true">
+                  <span class="mark bb-icon-box" :class="TONE[line.what]" aria-hidden="true">
                     <svg class="icon"><use :href="WHAT_ICON[line.what]" /></svg>
                   </span>
-                  <span class="words">
+                  <span class="words bb-entry-words">
                     <span class="who" :title="REGISTER_SAYS[line.register]"
                       ><strong>{{ line.agent }}</strong> {{ WHAT_WORDS[line.what] }}</span
                     >
-                    <span class="piece" :title="pieceWords(line)">{{ pieceWords(line) }}</span>
+                    <span class="piece bb-entry-detail" :title="pieceWords(line)">{{
+                      pieceWords(line)
+                    }}</span>
                   </span>
                   <svg v-if="line.conversation !== null" class="icon open" aria-hidden="true">
                     <use href="#i-arrow" />
@@ -187,7 +209,7 @@ const someClaimed = computed(() => props.reading?.lines.some((line) => line.regi
   min-height: var(--surface-header-h);
   flex: 0 0 auto;
   align-items: center;
-  padding: var(--space-6) var(--space-9) var(--space-6) var(--space-11);
+  padding: var(--space-10) var(--space-12);
   border-bottom: var(--border-width) solid var(--line);
   background: var(--surface-header-bg);
 }
@@ -209,9 +231,9 @@ const someClaimed = computed(() => props.reading?.lines.some((line) => line.regi
   min-height: 0;
   flex: 1;
   flex-direction: column;
-  padding: var(--space-8) var(--space-11);
+  padding: var(--space-10) var(--space-12);
   overflow-y: auto;
-  gap: var(--space-6);
+  gap: var(--space-8);
 }
 
 .window-choice {
@@ -266,6 +288,8 @@ const someClaimed = computed(() => props.reading?.lines.some((line) => line.regi
   overflow: hidden;
 }
 
+/* Every card's entries are one row: the time, a tile in the entry's own colour, the words, and the
+   way to the conversation where there is one. */
 .day + .day {
   border-top: var(--border-width) solid var(--line);
 }
@@ -273,8 +297,10 @@ const someClaimed = computed(() => props.reading?.lines.some((line) => line.regi
 .day-head {
   display: flex;
   margin: 0;
-  padding: var(--space-5) var(--space-7);
+  align-items: baseline;
+  padding: var(--space-6) var(--space-8);
   border-bottom: var(--border-width) solid var(--line);
+  background: var(--panel-2);
   color: var(--muted);
   font-size: var(--type-small);
   font-weight: var(--fw-normal);
@@ -283,6 +309,7 @@ const someClaimed = computed(() => props.reading?.lines.some((line) => line.regi
 
 .day-head strong {
   color: var(--text);
+  font-size: var(--type-body);
   font-weight: var(--fw-semibold);
 }
 
@@ -296,74 +323,31 @@ const someClaimed = computed(() => props.reading?.lines.some((line) => line.regi
   border-top: var(--border-width) solid var(--line);
 }
 
+/* A line is a button: no button chrome, the whole row the press. */
 .line {
-  display: flex;
   width: 100%;
-  align-items: center;
-  padding: var(--space-5) var(--space-7);
+  margin: 0;
   border: 0;
   background: transparent;
   color: inherit;
   font: inherit;
+  font-size: var(--type-body);
   text-align: left;
   cursor: pointer;
-  gap: var(--space-6);
 }
 
 .line:hover:not(:disabled) {
   background: var(--wash-3, var(--panel-2));
 }
 
-.line:disabled {
+.line:disabled,
+.line.notice {
   cursor: default;
-}
-
-.import-line {
-  margin: 0;
-  cursor: default;
-}
-
-.import-words {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.at {
-  flex: none;
-  min-width: 5ch;
-  color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: var(--type-small);
-}
-
-.mark {
-  display: grid;
-  width: 26px;
-  height: 26px;
-  flex: none;
-  border: var(--border-width) solid var(--line);
-  border-radius: var(--radius-sm);
-  place-items: center;
-}
-
-.mark.failed {
-  color: var(--danger-text);
-}
-
-.mark .icon {
-  width: 13px;
-  height: 13px;
-}
-
-.words {
-  display: grid;
-  min-width: 0;
-  flex: 1;
-  gap: var(--space-1);
 }
 
 .who {
   color: var(--text-soft);
+  overflow-wrap: anywhere;
 }
 
 .who strong {
@@ -373,15 +357,13 @@ const someClaimed = computed(() => props.reading?.lines.some((line) => line.regi
 
 .piece {
   overflow: hidden;
-  color: var(--muted);
-  font-size: var(--type-small);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .icon.open {
-  width: 13px;
-  height: 13px;
+  width: var(--icon);
+  height: var(--icon);
   flex: none;
   color: var(--muted);
   transform: rotate(-45deg);
@@ -389,9 +371,9 @@ const someClaimed = computed(() => props.reading?.lines.some((line) => line.regi
 
 .foot {
   margin: 0;
-  padding: var(--space-4) var(--space-7);
+  padding: var(--space-6) var(--space-8);
   border-top: var(--border-width) solid var(--line);
   color: var(--muted);
-  font-size: var(--type-caption);
+  font-size: var(--type-small);
 }
 </style>
