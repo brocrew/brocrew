@@ -59,13 +59,10 @@ export function sharedLifecycleWorkspaces(
         return async (handle: LifecycleWorkspace) => {
           const client = clients.get(handle)
           if (!client) return
+          const receipts = target.consumerReceipts(client.actual)
           clients.delete(handle)
           const proofs = await Promise.allSettled(
-            target
-              .agentAttachments(client.sink.workspaceId)
-              .map((view) =>
-                client.sink.revoke(view.installation.pluginId, view.installation.installId),
-              ),
+            receipts.map((receipt) => client.sink.revoke(receipt.pluginId, receipt.installId)),
           )
           if (proofs.some((one) => one.status !== 'fulfilled' || one.value !== true)) {
             clients.set(handle, client) // Its consumer may detach again, as when its channel closes.

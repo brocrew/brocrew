@@ -365,7 +365,9 @@ async function removeKey(): Promise<void> {
     keySaid.value = {
       text:
         changed.notice ??
-        `Key removed. ${name.value}’s new conversations start on its sign-in again.`,
+        (loginBehindTheKey.value
+          ? `Key removed. ${name.value}’s new conversations start on its sign-in again.`
+          : 'Key removed.'),
       tone: 'note',
     }
   } catch (error) {
@@ -376,13 +378,13 @@ async function removeKey(): Promise<void> {
 }
 
 /**
- * Whether a login sits behind the saved key, so removing the key leaves something to run on. Main
- * says `false` where there is none (a computer whose tool was never signed in); absent means it
- * does not say, and the usual words hold.
+ * Only a confirmed sign-in can be offered as what runs after removing the saved key.
  */
 const loginBehindTheKey = computed(() => {
-  const state = auth.value as { loginBehindTheKey?: boolean } | null
-  return state?.loginBehindTheKey !== false
+  const state = auth.value
+  return (
+    state?.state === 'usable' && (state.login === 'account' || state.loginBehindTheKey === true)
+  )
 })
 
 const keyInUseSays = computed(() => {
@@ -401,7 +403,7 @@ const keyInUseSays = computed(() => {
 /** What pressing the check sends, said under it before it is pressed. */
 const checkSpends = computed(() =>
   keyStatus.value?.aCheckSpendsAToken === true
-    ? `Checking sends ${name.value} one short message, which costs a tiny amount.`
+    ? `Checking sends ${name.value} “Hi”, which costs a tiny amount.`
     : `Checking only asks ${name.value} for its model list, which costs nothing.`,
 )
 
@@ -413,7 +415,7 @@ const renewalSends = computed(() =>
   props.capabilities?.[props.provider]?.loginRenewalMessage?.state === 'available' &&
   keyStatus.value !== null &&
   !keyStatus.value.set
-    ? `When this login has expired, starting a conversation renews it by sending ${name.value} one short message.`
+    ? `When this login has expired, starting a conversation renews it by sending ${name.value} “ok”, with the instruction “Reply with: ok”.`
     : null,
 )
 
@@ -452,7 +454,10 @@ async function checkKey(): Promise<void> {
 const keyRefusedSays = computed<string | null>(() => {
   const refused = keyStatus.value?.set === true ? keyStatus.value.refusedForBilling : undefined
   if (refused === undefined) return null
-  const login = refused.aLoginRunsWithoutIt ? ', or remove it to run on the sign-in' : ''
+  const login =
+    refused.aLoginRunsWithoutIt && loginBehindTheKey.value
+      ? ', or remove it to run on the sign-in'
+      : ''
   return (
     `A request on this key was refused at ${fullTime(refused.at)}: the account the key belongs ` +
     `to can’t pay for it. Add credit to that account, or replace the key${login}. This clears once ` +

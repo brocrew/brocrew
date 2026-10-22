@@ -430,7 +430,12 @@ export class ChromeBrowser implements ProfileBrowser {
     })
     return { dir, session, captures: 0, chain: Promise.resolve(), router }
   }
-  async captureDownloads<T>(profile: string, page: Page, fn: () => Promise<T>): Promise<T> {
+  async captureDownloads<T>(
+    profile: string,
+    page: Page,
+    fn: () => Promise<T>,
+    savedFile?: () => string | undefined,
+  ): Promise<T> {
     const e = this.entries.get(profile)
     const d = e?.downloads
     const ctx = e?.ctx
@@ -464,13 +469,19 @@ export class ChromeBrowser implements ProfileBrowser {
       return frameIdsOf(tree.frameTree)
     })
     let completed = false
+    let savedGuid: string | undefined
     try {
       await apply()
       const result = await fn()
+      const saved = savedFile?.()
+      if (saved !== undefined) {
+        const relative = path.relative(d.dir, saved)
+        if (path.dirname(relative) === '.') savedGuid = relative
+      }
       completed = true
       return result
     } finally {
-      capture.end(completed)
+      capture.end(completed, savedGuid)
       void held.session?.then((s) => s.detach()).catch(() => undefined)
       d.captures--
       await apply()
