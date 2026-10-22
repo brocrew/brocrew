@@ -137,10 +137,15 @@ function localLinkKey(path: string): string | null {
   }
 }
 
-/** A destination read back from percent-encoding, or as written when it is not valid encoding. */
+/**
+ * A destination read back from percent-encoding. As written when it is not valid encoding, when
+ * the result carries a control character, or when it would no longer be a local path (`%2F%2F…`,
+ * `http%3A…`, `%5C%5C…`).
+ */
 function percentDecoded(path: string): string {
   try {
-    return decodeURIComponent(path)
+    const decoded = decodeURIComponent(path)
+    return isLocalLinkPath(decoded) && !/\p{Cc}/u.test(decoded) ? decoded : path
   } catch {
     return path
   }
