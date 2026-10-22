@@ -135,7 +135,8 @@ import {
   watch,
   watchEffect,
 } from 'vue'
-import { DEFAULT_CONVERSATION_PROVIDER, type AppInfo } from '@brobot2/shared'
+import { DEFAULT_CONVERSATION_PROVIDER } from '@brobot2/shared/providers'
+import type { AppInfo } from '@brobot2/shared'
 import type {
   ChildWorkInput,
   ChildSendResult,

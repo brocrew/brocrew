@@ -1,5 +1,5 @@
 import { computed, type ComputedRef } from 'vue'
-import { providerDescriptor, providerRecord } from '@brobot2/shared'
+import { providerDescriptor, providerRecord } from '@brobot2/shared/providers'
 import {
   PROVIDER_NAME,
   type Provider,

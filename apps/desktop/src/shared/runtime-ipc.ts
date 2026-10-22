@@ -141,10 +141,8 @@ import {
   DEFAULT_IDENTITY_PROVIDER,
   providerDescriptor,
   providerRecord,
-  type Provider,
-  type SessionStatus,
-  type TurnEnding,
-} from '@brobot2/shared'
+} from '@brobot2/shared/providers'
+import type { Provider, SessionStatus, TurnEnding } from '@brobot2/shared'
 import type { AgentState } from './agent-state'
 // ⚑ **The capability schema, which is a `src/shared` module and holds no zod** (355) — the same
 // rule this file is written under, so the renderer may name a capability without paying for a
