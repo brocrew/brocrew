@@ -17,11 +17,27 @@ import {
   cleanupLifecycleFixtures,
   reopenLifecycleFixture,
 } from './plugin-lifecycle-fixtures'
-import { createProfileStore } from '../../../plugins/chrome/src/profiles/store'
-import { registerAdminRoutes } from '../../../plugins/chrome/src/http/adminRoutes'
-import { TabRegistry } from '../../../plugins/chrome/src/tabs'
-import { silentLogger } from '../../../plugins/chrome/src/logger'
-import { FakeBrowser } from '../../../plugins/chrome/test/fakes'
+// Load the real package at runtime: its source is typechecked by the package's own project,
+// rather than importing its browser libraries into the host's Node-only compiler project.
+import {
+  profileFixtureDeps,
+  type TestProfiles,
+} from '../../../plugins/chrome/test/host-test-fixture'
+const { createProfileStore } = await vi.importActual<{
+  createProfileStore(options: { home: string }): TestProfiles
+}>('../../../plugins/chrome/src/profiles/store')
+const { registerAdminRoutes } = await vi.importActual<{
+  registerAdminRoutes(app: unknown, deps: unknown): void
+}>('../../../plugins/chrome/src/http/adminRoutes')
+const { TabRegistry } = await vi.importActual<{
+  TabRegistry: new () => unknown
+}>('../../../plugins/chrome/src/tabs')
+const { silentLogger } = await vi.importActual<{ silentLogger: unknown }>(
+  '../../../plugins/chrome/src/logger',
+)
+const { FakeBrowser } = await vi.importActual<{
+  FakeBrowser: new (dirOf: (name: string) => string) => unknown
+}>('../../../plugins/chrome/test/fakes')
 
 const closers: Array<() => unknown | Promise<unknown>> = []
 afterEach(async () => {
@@ -110,19 +126,7 @@ it.each(['success', 'lost-reply', 'partial-removal'] as const)(
           routes.set(path, handler)
         },
       } as never,
-      {
-        store: profiles,
-        browser,
-        tabs: new TabRegistry(),
-        windows: {} as never,
-        logger: silentLogger,
-        opener: {
-          async open() {
-            throw new Error('No browser is launched')
-          },
-        },
-        version: 'fictional',
-      },
+      profileFixtureDeps(profiles, browser, new TabRegistry(), silentLogger),
     )
     let deletes = 0
     vi.stubGlobal(
