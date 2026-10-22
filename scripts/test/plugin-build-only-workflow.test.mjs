@@ -52,6 +52,26 @@ for (const [plugin, exportPlugin] of [
         }),
       ).toBe(false)
     }
+    const releaseCondition = conditions[0]
+    const buildCondition = conditions[1]
+    expect(
+      runInNewContext(
+        releaseCondition,
+        event(`brocrew/brocrew-plugin-${plugin}`, 'workflow_dispatch', 'refs/tags/v0.1.0'),
+      ),
+    ).toBe(false)
+    expect(
+      runInNewContext(
+        releaseCondition,
+        event(`brocrew/brocrew-plugin-${plugin}`, 'push', 'refs/heads/main'),
+      ),
+    ).toBe(false)
+    expect(
+      runInNewContext(
+        buildCondition,
+        event(`brocrew/brocrew-plugin-${plugin}`, 'push', 'refs/tags/v0.1.0'),
+      ),
+    ).toBe(false)
     expect(dryRun).toContain('    permissions:\n      contents: read\n')
     expect(dryRun).toContain('persist-credentials: false')
     expect(dryRun).not.toMatch(
@@ -98,10 +118,9 @@ for (const [plugin, exportPlugin] of [
     expect(dryRun).toContain('artifact/build-inputs.sha256')
     expect(dryRun).toContain('artifact/downloads.sha256')
     expect(dryRun).toContain('artifact/source-commit.txt')
-    const releaseTests = readFileSync(
-      join(folder, `source/plugins/${plugin}/test/release.test.ts`),
-      'utf8',
+    const releaseTests = readFileSync(join(folder, `source/release-test/release.test.ts`), 'utf8')
+    expect(releaseTests).toContain(
+      'expect(manifest.sourceCommit).toBe(process.env.BROCREW_PLUGIN_SOURCE_COMMIT)',
     )
-    expect(releaseTests).toContain('expect(manifest.sourceCommit).toBe(process.env.GITHUB_SHA)')
   })
 }

@@ -2,35 +2,12 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { copyPluginSource } from './plugin-source.mjs'
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 export function exportWhatsAppPlugin(destination) {
   if (!path.isAbsolute(destination) || fs.existsSync(destination))
     throw new Error('Use a fresh absolute export folder')
-  const plugin = path.join(destination, 'plugins/whatsapp')
-  fs.mkdirSync(plugin, { recursive: true })
-  for (const name of [
-    'src',
-    'bridge',
-    'ui',
-    'test',
-    'COPY-INVENTORY.json',
-    'README.md',
-    'UPSTREAM-CHANGES.md',
-    'build.mjs',
-    'manifest-template.json',
-    'package.json',
-    'package-lock.json',
-    'tsconfig.json',
-    'vitest.config.ts',
-  ]) {
-    fs.cpSync(path.join(root, 'plugins/whatsapp', name), path.join(plugin, name), {
-      recursive: true,
-      filter(source) {
-        if (fs.lstatSync(source).isSymbolicLink()) throw new Error('No linked export inputs')
-        return true
-      },
-    })
-  }
+  copyPluginSource(root, destination, 'whatsapp')
   fs.mkdirSync(path.join(destination, 'scripts/lib'), { recursive: true })
   for (const name of ['tests-run-in-a-fictional-home.mjs', 'a-test-sees-no-real-home.setup.mjs'])
     fs.copyFileSync(
@@ -57,8 +34,8 @@ export function exportWhatsAppPlugin(destination) {
         type: 'module',
         license: 'Apache-2.0',
         scripts: {
-          build: 'node scripts/release.mjs',
-          test: 'vitest run --config plugins/whatsapp/vitest.config.ts',
+          build: 'node scripts/build-plugin-release.mjs whatsapp',
+          test: 'vitest run --config vitest.release.config.mts',
           typecheck: 'tsc --noEmit -p plugins/whatsapp/tsconfig.json',
         },
         devDependencies: { vitest: '4.1.10', typescript: '5.9.3', '@types/node': '22.19.15' },
@@ -81,44 +58,26 @@ export function exportWhatsAppPlugin(destination) {
     path.join(destination, 'README.md'),
     '# WhatsApp plugin for BroCrew\n\nThis repository is a clean source export of the WhatsApp plugin maintained and integration-tested with BroCrew. It contains no app history, no WhatsApp session and no messages. Its release workflow builds reproducible archives for macOS arm64 and Windows x64 with Go 1.27.2 and no cgo, runs the tests with a fake bridge and made-up chats, and emits the entry for BroCrew’s plugin list. Users install from Settings → Plugins and link a phone by scanning a QR code; they run no commands and supply no key or token.\n\nBroCrew installs the archive for its own system; on Windows that needs an app whose plugin host runs plugins there. The plugin’s own notes are in `plugins/whatsapp/README.md`; the copied code’s MIT notice is in `plugins/whatsapp/bridge/UPSTREAM-LICENSE`.\n',
   )
-  fs.writeFileSync(path.join(destination, 'scripts/release.mjs'), releaseScript)
-  fs.writeFileSync(path.join(plugin, 'test/release.test.ts'), releaseTest)
+  for (const script of ['plugin-source.mjs', 'build-plugin-release.mjs'])
+    fs.copyFileSync(path.join(root, 'scripts', script), path.join(destination, 'scripts', script))
+  fs.mkdirSync(path.join(destination, 'release-test'))
+  fs.writeFileSync(path.join(destination, 'release-test/release.test.ts'), releaseTest)
+  fs.writeFileSync(
+    path.join(destination, 'vitest.release.config.mts'),
+    `import { defineConfig } from 'vitest/config'
+import { THE_GUARD, theTestsEnv } from './scripts/lib/tests-run-in-a-fictional-home.mjs'
+export default defineConfig({
+  test: { environment: 'node', env: theTestsEnv(), setupFiles: [THE_GUARD],
+    include: ['plugins/whatsapp/test/**/*.test.ts', 'release-test/*.test.ts'],
+    exclude: ['plugins/chrome/test/archive.test.ts'],
+  },
+})
+`,
+  )
+
   fs.mkdirSync(path.join(destination, '.github/workflows'), { recursive: true })
   fs.writeFileSync(path.join(destination, '.github/workflows/release.yml'), workflow)
 }
-const releaseScript = `import fs from 'node:fs'
-import path from 'node:path'
-import { execFileSync } from 'node:child_process'
-import { createHash } from 'node:crypto'
-import { gzipSync } from 'node:zlib'
-import { buildWhatsAppPackage, WHATSAPP_TARGETS } from '../plugins/whatsapp/build.mjs'
-const commit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()
-const out = path.resolve(process.argv[2] ?? 'artifact')
-fs.mkdirSync(out)
-const targets = []
-let version
-for (const target of WHATSAPP_TARGETS) {
-  const name = 'whatsapp-' + target.os + '-' + target.cpu
-  const built = path.join(out, name)
-  const release = await buildWhatsAppPackage(built, commit, undefined, target)
-  version = release.version
-  const bytes = gzipSync(fs.readFileSync(path.join(built, 'whatsapp.tar')), { level: 9 })
-  // zlib emits a host-specific OS byte. Canonicalize it; payload and trailer stay unchanged.
-  bytes[9] = 255
-  fs.writeFileSync(path.join(out, name + '.tar.gz'), bytes)
-  targets.push({ os: target.os, cpu: target.cpu,
-    url: 'https://github.com/brocrew/brocrew-plugin-whatsapp/releases/download/v' + version + '/' + name + '.tar.gz',
-    sha256: createHash('sha256').update(bytes).digest('hex'), bytes: bytes.length,
-    compression: 'tar.gz', manifestSha256: release.manifestSha256 })
-}
-const entry = {
-  id: 'whatsapp', name: 'WhatsApp',
-  description: 'Lets agents read your WhatsApp chats when you allow it, and send to the groups you choose.',
-  version, minAppVersion: '0.0.0', sourceCommit: commit, targets,
-}
-fs.writeFileSync(path.join(out, 'plugin-list-entry.json'), JSON.stringify(entry, null, 2) + '\\n')
-console.log(JSON.stringify(targets.map((one) => ({ os: one.os, cpu: one.cpu, bytes: one.bytes, sha256: one.sha256 }))))
-`
 const releaseTest = `import fs from 'node:fs'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
@@ -144,7 +103,7 @@ it.skipIf(!folder)('publishes exactly the built archives and their fixed reposit
     expect(target.url).toBe('https://github.com/brocrew/brocrew-plugin-whatsapp/releases/download/v' + entry.version + '/' + name + '.tar.gz')
     const manifest = JSON.parse(fs.readFileSync(path.join(folder!, name, 'package/plugin.json'), 'utf8'))
     expect(manifest.sourceCommit).toBe(entry.sourceCommit)
-    if (process.env.GITHUB_SHA) expect(manifest.sourceCommit).toBe(process.env.GITHUB_SHA)
+    expect(manifest.sourceCommit).toBe(process.env.BROCREW_PLUGIN_SOURCE_COMMIT)
     expect(manifest.platforms).toEqual([{ os: target.os, cpu: target.cpu }])
   }
 })
@@ -154,6 +113,11 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      source_commit:
+        description: Reviewed public monorepo commit (full SHA)
+        required: true
+        type: string
 permissions:
   contents: read
 jobs:
@@ -163,6 +127,9 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: write
+    env:
+      BROCREW_PLUGIN_SOURCE_COMMIT: \${{ inputs.source_commit || vars.PLUGIN_SOURCE_COMMIT }}
+      BROCREW_MONOREPO_ROOT: \${{ github.workspace }}/.canonical
     steps:
       - uses: actions/checkout@v7
         with:
@@ -175,6 +142,14 @@ jobs:
         with:
           go-version: '1.27.2'
           cache: false
+      - name: Validate explicit canonical source pin
+        run: node -e 'if (!/^[a-f0-9]{40}$/.test(process.env.BROCREW_PLUGIN_SOURCE_COMMIT || "")) throw new Error("A full reviewed source pin is required")'
+      - uses: actions/checkout@v7
+        with:
+          repository: brocrew/brocrew
+          ref: \${{ env.BROCREW_PLUGIN_SOURCE_COMMIT }}
+          path: .canonical
+          persist-credentials: false
       - run: npm ci --legacy-peer-deps --ignore-scripts --no-audit --no-fund
       - run: npm ci --prefix plugins/whatsapp --ignore-scripts --no-audit --no-fund
       - run: npm run typecheck
@@ -212,6 +187,9 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
+    env:
+      BROCREW_PLUGIN_SOURCE_COMMIT: \${{ inputs.source_commit || vars.PLUGIN_SOURCE_COMMIT }}
+      BROCREW_MONOREPO_ROOT: \${{ github.workspace }}/.canonical
     steps:
       - uses: actions/checkout@v7
         with:
@@ -224,6 +202,14 @@ jobs:
         with:
           go-version: '1.27.2'
           cache: false
+      - name: Validate explicit canonical source pin
+        run: node -e 'if (!/^[a-f0-9]{40}$/.test(process.env.BROCREW_PLUGIN_SOURCE_COMMIT || "")) throw new Error("A full reviewed source pin is required")'
+      - uses: actions/checkout@v7
+        with:
+          repository: brocrew/brocrew
+          ref: \${{ env.BROCREW_PLUGIN_SOURCE_COMMIT }}
+          path: .canonical
+          persist-credentials: false
       - run: npm ci --legacy-peer-deps --ignore-scripts --no-audit --no-fund
       - run: npm ci --prefix plugins/whatsapp --ignore-scripts --no-audit --no-fund
       - run: npm run typecheck
@@ -236,7 +222,7 @@ jobs:
         run: |
           set -eu
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test -z "$(git status --porcelain --untracked-files=all --ignored=matching -- plugins/whatsapp/src plugins/whatsapp/ui plugins/whatsapp/bridge plugins/whatsapp/build.mjs plugins/whatsapp/manifest-template.json plugins/whatsapp/package.json plugins/whatsapp/package-lock.json scripts/release.mjs package.json package-lock.json)"
+          test -z "$(git status --porcelain --untracked-files=all --ignored=matching -- plugins/whatsapp/src plugins/whatsapp/ui plugins/whatsapp/bridge plugins/whatsapp/build.mjs plugins/whatsapp/manifest-template.json plugins/whatsapp/package.json plugins/whatsapp/package-lock.json scripts/build-plugin-release.mjs scripts/plugin-source.mjs package.json package-lock.json)"
       - run: BROCREW_GO="$(command -v go)" npm run build -- artifact
       - run: BROCREW_GO="$(command -v go)" npm run build -- artifact-repeat
       - name: Verify reproducible archive bytes
@@ -248,13 +234,13 @@ jobs:
         run: |
           set -eu
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test -z "$(git status --porcelain --untracked-files=all --ignored=matching -- plugins/whatsapp/src plugins/whatsapp/ui plugins/whatsapp/bridge plugins/whatsapp/build.mjs plugins/whatsapp/manifest-template.json plugins/whatsapp/package.json plugins/whatsapp/package-lock.json scripts/release.mjs package.json package-lock.json)"
+          test -z "$(git status --porcelain --untracked-files=all --ignored=matching -- plugins/whatsapp/src plugins/whatsapp/ui plugins/whatsapp/bridge plugins/whatsapp/build.mjs plugins/whatsapp/manifest-template.json plugins/whatsapp/package.json plugins/whatsapp/package-lock.json scripts/build-plugin-release.mjs scripts/plugin-source.mjs package.json package-lock.json)"
           git rev-parse HEAD > artifact/source-commit.txt
           node --version > artifact/node-version.txt
           npm --version > artifact/npm-version.txt
           node -p "require('./plugins/whatsapp/node_modules/esbuild/package.json').version" > artifact/esbuild-version.txt
           go version > artifact/go-version.txt
-          sha256sum package-lock.json plugins/whatsapp/package-lock.json scripts/release.mjs plugins/whatsapp/build.mjs .github/workflows/release.yml > artifact/build-inputs.sha256
+          sha256sum package-lock.json plugins/whatsapp/package-lock.json scripts/build-plugin-release.mjs scripts/plugin-source.mjs plugins/whatsapp/build.mjs .github/workflows/release.yml > artifact/build-inputs.sha256
           sha256sum artifact/*.tar.gz artifact/plugin-list-entry.json > artifact/downloads.sha256
       - uses: actions/upload-artifact@v4
         with:
