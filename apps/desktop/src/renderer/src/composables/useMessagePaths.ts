@@ -208,6 +208,7 @@ export function usePathsIn(
         return
       }
       if (hit.link) {
+        if (!/^https?:\/\//i.test(hit.text)) return
         // The window-open hand-off: main sends only http and https to the browser.
         window.open(hit.text, '_blank', 'noopener')
         return
