@@ -20,25 +20,27 @@ that table; the rest are the ways the arrangement can rot.
 |---|---|
 | `M1`-`M5` | ⚑ **`desktop`** — the disclosure lying about the adapter, in five different shapes |
 | `M7`-`M11` | ⚑ **`desktop`** — the CHECK weakened until it stops discriminating; each is killed by a control written for it |
-| `M6`, `M12` | ⚠️ **nothing** — recorded as expected SURVIVED with the reason, rather than left to read as a gap |
+| `M6`, `M12` | ⚑ **`shared`** — the provider descriptor snapshot pins the exact disclosure text |
 
 ## ⛔ What this table cannot reach, said out loud
 
-⚠️ **`M12` is the honest bound of the whole design.** The table is held to the adapter and the
+⚠️ **`M12` records the bound of the source-derived check.** The table is held to the adapter and the
 sentence is held to NAME every member of the table — so a row cannot go unmentioned and a mention
-cannot be invented. What survives is English: a sentence that names `mcpServers` and describes its
-stance wrongly. Nothing in this repository can check that, and `M12` says so with a row instead of
-with a promise.
+cannot be invented. That check alone cannot detect English that names every option but describes
+its stance wrongly. The provider descriptor snapshot now kills `M12` by pinning the exact rendered
+sentence. It detects a text change; it does not interpret the sentence or derive its meaning from
+the adapter.
 
 ⚠️ **`M6` is the Codex half**, and it is the second finding of the sweep rather than the first. The
 `auth.json` note said *"the machine credential, copied in once at 0600"*. That is the PROVISIONING
 rule and the app ships two gestures that write the file afterwards — `reprovisionCodexAuth`
 overwrites it from `~/.codex`, and `startCodexLogin` has the app-server mint a brand-new credential
 into the home, after which the file is that profile's own login and not the machine's at all.
-⛔ Nothing derives it: it was found by reading, and putting the old sentence back was MEASURED
-against the whole suite rather than inferred from the row's shape — **5,827 of 5,828 green**, and
-the one red is `mutation-census.test.mjs`, which fires for any edit to a tracked file and would fire
-for a row that changed nothing at all. See `mutate.sh` for why that column is not evidence.
+The original whole-suite measurement left that wording alive: **5,827 of 5,828 green**, with only
+`mutation-census.test.mjs` red. That check fires for any edit to a tracked file, so it was not
+evidence of a semantic guard. The provider descriptor snapshot now kills `M6` by pinning the exact
+credential note. As with `M12`, this catches a change to reviewed text; it does not derive the
+credential's provenance from the sign-in implementation.
 
 ⚠️ **No row mutates `claude-runtime.ts`.** The test READS it and 24 other tables MUTATE it; a row
 here that moved `strictMcpConfig` or deleted `tools:` would be measuring somebody else's anchor.
@@ -142,14 +144,14 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M6 · ⚠️ the Codex credential note goes back to *'the machine credential, copied in once at "
         "0600'* — true of `provisionCodexAuth` and false of the home, because `reprovisionCodexAuth` "
-        "overwrites it and `startCodexLogin` mints a new one into it. ⛔ EXPECTED SURVIVED: this was "
-        "found by reading, nothing derives it, and the row is here so the gap is recorded rather "
-        "than inferred",
+        "overwrites it and `startCodexLogin` mints a new one into it. The provider descriptor "
+        "snapshot kills this row by pinning the exact reviewed note; it does not derive the "
+        "credential's provenance from the sign-in implementation",
         [
             (
                 # This row follows the same behavior after provider facts moved into the registry.
                 "packages/shared/src/providers/configuration.ts",
-                # The referenced sign-in button was renamed; this existing expected-survivor row keeps its credential-provenance defect.
+                # The referenced sign-in button was renamed; the row keeps its credential-provenance defect.
                 # ⚑ **provider registry · re-anchored in place, not retired** — The credential note moved with the layout; the old wording still misstates the profile credential as a one-time machine copy.
                 "      note: 'the credential this profile runs on, at 0600 — copied from ~/.codex, or minted here by \"Sign in for this agent\"',\n",
                 "      note: 'the machine credential, copied in once at 0600',\n",

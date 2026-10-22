@@ -47,9 +47,9 @@
 #    every table run from now on inherits a uniformly RED `scripts` column that says nothing about
 #    the row. ⚠️ **Reported to `298`, whose runner this is; not fixed from here** (`lib/**` is its
 #    seat, and a filter written from outside it is exactly the collision `301` §5 exists to stop).
-#  * `M6` and `M12` are ⚠️ **expected SURVIVED** and are here anyway. `M6` puts back a Codex
-#    credential sentence nothing derives; `M12` makes the English lie while the table stays honest.
-#    Both are RECORDED rather than discovered later as a surprise.
+#  * `M6` and `M12` originally survived the semantic checks. The provider descriptor snapshot now
+#    kills both by pinning the exact reviewed text. It detects a wording change, without deriving
+#    credential provenance (`M6`) or interpreting the sentence's claim about options (`M12`).
 #
 # ## ⛔ Why no row mutates the adapter
 #
