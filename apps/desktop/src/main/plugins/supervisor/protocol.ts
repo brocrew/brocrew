@@ -35,11 +35,13 @@ export type WireVersion = z.infer<typeof Wire>
 export const RENEW_RETRY = 'renew-retry'
 /** The owner takes a closed person channel as the end of its consumer, so the app may reconnect. */
 export const LOST_CHANNEL_ENDS = 'lost-channel-ends'
+/** Person configuration can explicitly negotiate checkpoint ledgers and safe-integer revisions. */
+export const CONFIGURATION_LEDGER_V2 = 'configuration-ledger-v2'
 export const OWNER_WIRE: WireVersion = {
   major: 1,
   minMinor: 0,
   maxMinor: 0,
-  features: [RENEW_RETRY, LOST_CHANNEL_ENDS],
+  features: [RENEW_RETRY, LOST_CHANNEL_ENDS, CONFIGURATION_LEDGER_V2],
 }
 /** Every copy of the app sharing the plugin root reads this strictly: it never gains a field. */
 export const OwnerRecord = z.strictObject({

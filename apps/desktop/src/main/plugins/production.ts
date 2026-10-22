@@ -260,8 +260,9 @@ export function productionPluginController() {
       await update()
     },
     async uninstall(id) {
-      await current().uninstall(id)
+      const outcome = await current().uninstall(id)
       await update()
+      return outcome
     },
     screen(id) {
       return current().screen(id)
@@ -363,6 +364,7 @@ export function productionPluginController() {
                 appVersion: options.appVersion,
                 catalogue: catalogueEntries.catalogue,
                 catalogueSha256: catalogueEntries.sha256,
+                repoList: catalogueEntries.repoList,
                 personKey,
                 names,
                 fixtureSource: options.fixtureSource,
