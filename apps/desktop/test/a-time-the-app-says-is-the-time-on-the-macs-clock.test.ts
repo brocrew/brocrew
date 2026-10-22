@@ -1387,7 +1387,7 @@ describe('§5 · the window, main and the host agree on the zone', () => {
         'workspaceStartup(app)?.assertDatabase()',
         'stopThemeIpc = registerThemeIpc(ipcMain, themes, (change) => {',
         ANYTHING,
-        'host = createRuntimeHost(initDatabase())',
+        'host = await createRuntimeHost(initDatabase())',
         'registerIpc(host, localZone)',
       ),
       'the window asks main for it': inOrder("ipcMain.handle('app:local-zone', () => localZone())"),

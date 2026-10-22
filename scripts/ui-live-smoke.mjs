@@ -5345,6 +5345,7 @@ async function main() {
       // it call the verb. ⚠️ **Added by the dispatch that SHIPPED the types**, which is `097`'s
       // correction being followed rather than re-learned.
       'instruction_proposed',
+      'instruction_changed',
       'instruction_settled',
       // An agent asked the person to register an MCP server, and how that ended. Whitelisted for the
       // reason above: only an agent can ask.

@@ -1,3 +1,4 @@
+import { agentCallerId } from '../src/main/runtime/agent-tools'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -137,8 +138,14 @@ describe('477 M22 · the Events tab names who settled an instruction ask', () =>
     const asking = await personOpens('asker')
     const asked = host.proposeAgentRules(
       asking,
-      { about: 'worker', text: 'Never force-push.', why: 'it keeps coming up', relaying: false },
-      window,
+      {
+        about: 'worker',
+        text: 'Never force-push.',
+        why: 'it keeps coming up',
+        relaying: false,
+        expectedVersion: 0,
+      },
+      { ownerId: agentCallerId(asking) },
     )
     if (!asked.ok || asked.wrote !== 'a-request') throw new Error('the ask was not written')
     // ⚑ **The premise**: the ask really is open, so what follows settles something.

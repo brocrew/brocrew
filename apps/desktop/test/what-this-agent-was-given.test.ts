@@ -954,9 +954,9 @@ describe('F093 · what an agent was given', () => {
       'topic-24.md',
     ])
     expect(rest?.nextOffset).toBeNull()
-    // ⛔ Past the twenty the amend door can find, nothing is offered for a change it would refuse.
+    // Main resolves managed entries from every page again before changing them.
     expect(claude?.entries.every((one) => one.amendable)).toBe(true)
-    expect(rest?.entries.some((one) => one.amendable)).toBe(false)
+    expect(rest?.entries.every((one) => one.amendable)).toBe(true)
   })
 
   it('⚑ the latest context reading rides on what is being done, and gives the read its share of the window', async () => {

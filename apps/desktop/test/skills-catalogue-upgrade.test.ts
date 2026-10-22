@@ -34,6 +34,10 @@ const resources = join(here, '../resources/built-in-skills')
 const journal = JSON.parse(readFileSync(join(migrations, 'meta/_journal.json'), 'utf8')) as {
   entries: { tag: string; when: number }[]
 }
+const catalogueMigration = journal.entries.findIndex(
+  (entry) => entry.tag === '0012_skills_catalogue',
+)
+if (catalogueMigration < 1) throw new Error('The skills catalogue migration boundary is missing')
 const source = () =>
   verifyBuiltInSkills(
     JSON.parse(readFileSync(join(resources, 'manifest.json'), 'utf8')),
@@ -76,7 +80,7 @@ function priorMigrations() {
   cpSync(migrations, folder, { recursive: true })
   writeFileSync(
     join(folder, 'meta/_journal.json'),
-    JSON.stringify({ ...journal, entries: journal.entries.slice(0, -1) }),
+    JSON.stringify({ ...journal, entries: journal.entries.slice(0, catalogueMigration) }),
   )
   return folder
 }
@@ -128,8 +132,7 @@ describe('skills follow the database upgrade and recovery boundary', () => {
     const before = migrationsRecordedIn(db)
     const failing = join(root, 'failing-migrations')
     cpSync(migrations, failing, { recursive: true })
-    const latest = journal.entries.at(-1)!.tag
-    const sql = join(failing, `${latest}.sql`)
+    const sql = join(failing, `${journal.entries[catalogueMigration]!.tag}.sql`)
     writeFileSync(
       sql,
       readFileSync(sql, 'utf8') +
@@ -151,7 +154,7 @@ describe('skills follow the database upgrade and recovery boundary', () => {
     expect(howTheDatabaseFits(db, current).kind).toBe('fits')
     expect(howTheDatabaseFits(db, old).kind).toBe('newer')
   })
-  it('upgrades a 12 checkpoint to 13, restores 12, rehearses 13 again and returns to saved choices/history', async () => {
+  it('upgrades a pre-skills checkpoint, restores it, rehearses the current migrations and returns to saved choices/history', async () => {
     const userData = join(root, 'pre-skills-workspace')
     mkdirSync(userData)
     const file = join(userData, 'brobot2.sqlite')
@@ -184,7 +187,7 @@ describe('skills follow the database upgrade and recovery boundary', () => {
     )
     catalogue.select('aid:recipe-worker', first.id, 'off', catalogue.list().revision)
     const second = catalogue.detail(first.id)!
-    expect(migrationsRecordedIn(db)).toHaveProperty('migrations.length', 13)
+    expect(migrationsRecordedIn(db)).toHaveProperty('migrations.length', journal.entries.length)
     db.close()
     const lineage = await buildLineage(migrations)
     await restore({
@@ -201,7 +204,7 @@ describe('skills follow the database upgrade and recovery boundary', () => {
     expect(db.prepare("SELECT name FROM sqlite_schema WHERE name LIKE 'skill_%'").all()).toEqual([])
     applyMigrations(db, migrations)
     catalogue = new SqliteSkillCatalogue(db, source())
-    expect(migrationsRecordedIn(db)).toHaveProperty('migrations.length', 13)
+    expect(migrationsRecordedIn(db)).toHaveProperty('migrations.length', journal.entries.length)
     expect(catalogue.list().total).toBe(8)
     expect(db.prepare('SELECT * FROM agent_identity').all()).toEqual(oldRows)
     expect(db.prepare('SELECT * FROM skill_selection').all()).toEqual([])
@@ -210,7 +213,7 @@ describe('skills follow the database upgrade and recovery boundary', () => {
     await returnToNewer({ userData })
     db = database(file)
     catalogue = new SqliteSkillCatalogue(db, source())
-    expect(migrationsRecordedIn(db)).toHaveProperty('migrations.length', 13)
+    expect(migrationsRecordedIn(db)).toHaveProperty('migrations.length', journal.entries.length)
     expect(db.prepare('SELECT * FROM agent_identity').all()).toEqual(oldRows)
     expect(catalogue.detail(first.id)?.body).toBe(second.body)
     expect(catalogue.detail(first.id, first.versionId)?.body).toBe(first.body)

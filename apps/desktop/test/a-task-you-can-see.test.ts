@@ -1566,6 +1566,7 @@ describe('379 · a task you can see', () => {
         readTranscript: true,
         // 🔴 **582 · it reaches no conversation and mints no piece** (`HO-009` §2.2).
         proposeAgentRules: true,
+        readAgentRules: true,
         // ⚑ Readers that turn an id into the link a tool result carries; they mint nothing.
         navigationIdentity: true,
         navigationProfileForConversation: true,
@@ -1602,6 +1603,7 @@ describe('379 · a task you can see', () => {
         'questionsListedFor',
         'queueMessage',
         'raiseAQuestion',
+        'readAgentRules',
         'readResource',
         'readTranscript',
         'replyToParent',

@@ -195,6 +195,9 @@ import {
   savedMethodsUseOf,
   withTheLinesSent,
 } from './saved-methods'
+import { createSavedMethodService } from './saved-method-service'
+import { createMethodChangeStore } from './db/method-changes'
+import { stageKnowledgeFile, sweepKnowledgeStages } from './runtime/agent-memory'
 import { ApiKeys, askTheProvider, safeStorageCipher } from './runtime/api-keys'
 import { listProcesses, memoryOf } from './runtime/process-listing'
 import { providerUsageFile, readKeptUsage, writeKeptUsage } from './provider-usage-file'
@@ -614,7 +617,7 @@ function builtInSkillsResources(): string {
 
 const pluginController = productionPluginController()
 
-function createRuntimeHost(database: AppDatabase): RuntimeHost {
+async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
   // The shipped skills this run offers, read once as it starts, before any launch; a text pack
   // stands in under their version.
   const shippedSkills = keptShippedSkills(builtInSkillsResources())
@@ -760,6 +763,18 @@ function createRuntimeHost(database: AppDatabase): RuntimeHost {
     transcriptStartupWasInterrupted(store),
   ))
   retention.start()
+  // Recovery observes interrupted operations before any host door can remove their identity.
+  let savedMethodsChanged: (slug: string) => void = () => {}
+  const methodKnowledge = await createSavedMethodService({
+    homesRoot: providerHomesRoot(userData),
+    folderOf: (slug) => savedMethodsFolder(userData, slug),
+    identities: () => store.agentIdentities(),
+    changes: createMethodChangeStore(database, Date.now),
+    now: Date.now,
+    stage: stageKnowledgeFile,
+    sweep: sweepKnowledgeStages,
+    changed: (slug) => savedMethodsChanged(slug),
+  })
   const runtimeHost = new RuntimeHost({
     plugins: pluginController,
     pluginAttachments: {
@@ -775,6 +790,7 @@ function createRuntimeHost(database: AppDatabase): RuntimeHost {
     beforeSkillDiscovery: () => sharedDiscovery.library.beforeOffer(),
     closeSharedSkills: () => sharedDiscovery.close(),
     skillsForAPerson: sharedDiscovery.window,
+    savedMethods: methodKnowledge,
     afterFirstWindowLoad: firstWindowLoad,
     transcriptsCleared: (from, to) => transcriptRetention?.recent(from, to) ?? Promise.resolve([]),
     workSearchReader: startWorkSearch(database.name),
@@ -1117,6 +1133,7 @@ function createRuntimeHost(database: AppDatabase): RuntimeHost {
             'the process memory read',
           ),
   })
+  savedMethodsChanged = () => runtimeHost.savedMethodsChanged()
   return runtimeHost
 }
 
@@ -2270,7 +2287,7 @@ function start(ownership: HostGateVerdict): void {
           }
         }
       })
-      host = createRuntimeHost(initDatabase())
+      host = await createRuntimeHost(initDatabase())
       registerIpc(host, localZone)
       startTheDockLabel()
       // Start updates for packaged builds with a release feed: check at launch and once daily

@@ -123,7 +123,11 @@ export const MEMORY_STORE_IS: Readonly<Record<MemoryStoreState, string>> = {
  * {@link WROTE_IT_MEANS} takes: it says a person replaced the text, never that the new text is
  * right.
  */
-export const MEMORY_AMENDMENT = ['removed', 'corrected'] as const
+export const MEMORY_AMENDMENT = ['removed', 'corrected', 'restored'] as const
+
+/** Ordinary edits cannot request a restoration or supply its saved text. */
+export const MEMORY_EDIT = ['removed', 'corrected'] as const
+export type MemoryEditAct = (typeof MEMORY_EDIT)[number]
 
 /** One of {@link MEMORY_AMENDMENT}. */
 export type MemoryAmendmentAct = (typeof MEMORY_AMENDMENT)[number]
@@ -138,6 +142,7 @@ export type MemoryAmendmentAct = (typeof MEMORY_AMENDMENT)[number]
 export const AMENDMENT_MEANS: Readonly<Record<MemoryAmendmentAct, string>> = {
   removed: 'a person took this entry out of the agent’s memory',
   corrected: 'a person replaced what this entry said',
+  restored: 'a person brought this back from its saved copy',
 }
 
 /**
@@ -283,9 +288,12 @@ export interface MemoryAmendment {
    * ⛔ **What the entry said BEFORE**, verbatim — the whole reason this row is written rather than
    * derived.
    */
-  readonly textBefore: string
+  /** Null explicitly records that no entry existed before a restoration. */
+  readonly textBefore: string | null
   /** ⛔ **What it says now**, or `null` for a removal. The two cannot come apart — the schema CHECKs it. */
   readonly textAfter: string | null
+  /** The deletion restored, or the restoration reversed; absent for ordinary old edits. */
+  readonly sourceId?: string
   /** When the act was performed — epoch milliseconds, this machine's wall clock. */
   readonly at: number
 }
@@ -383,7 +391,7 @@ export interface MemoryAmendmentAsked {
    */
   readonly entry: string
   /** One of {@link MEMORY_AMENDMENT}. */
-  readonly act: MemoryAmendmentAct
+  readonly act: MemoryEditAct
   /** ⛔ **The replacement for `corrected`**, and ignored for `removed`. */
   readonly text: string
 }
@@ -409,7 +417,8 @@ export interface MemoryAmendmentWrite {
   /** Who this app believes performed the act, at the moment it was performed. */
   readonly by: ActedBy
   /** ⛔ **What was there, verbatim**, read inside the guarded walk that performed the act. */
-  readonly textBefore: string
+  /** Null explicitly records that no entry existed before a restoration. */
+  readonly textBefore: string | null
   /**
    * ⛔ **What is there now, or `null` for a removal.**
    *
@@ -417,6 +426,8 @@ export interface MemoryAmendmentWrite {
    * this field cannot come apart in the database rather than in a rule a writer has to keep.
    */
   readonly textAfter: string | null
+  /** The deletion restored, or the restoration reversed; absent for ordinary old edits. */
+  readonly sourceId?: string
 }
 
 /**
