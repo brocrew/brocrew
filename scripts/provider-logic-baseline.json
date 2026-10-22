@@ -21,8 +21,5 @@
   "apps/desktop/src/main/skills/prepare-built-in-skills.ts": 2,
   "apps/desktop/src/main/skills/selected-skill-view.ts": 4,
   "apps/desktop/src/main/skills/skill-view.ts": 6,
-  "apps/desktop/src/main/transcript-retention-files.ts": 1,
-  "packages/runtime/src/built-in-skills.ts": 3,
-  "packages/runtime/src/default-by-name.ts": 1,
-  "packages/runtime/src/fake-runtime.ts": 3
+  "apps/desktop/src/main/transcript-retention-files.ts": 1
 }

@@ -1,4 +1,4 @@
-import type { Provider, SessionStatus } from '@brobot2/shared'
+import { providerValue, type Provider, type SessionStatus } from '@brobot2/shared'
 import { wrapUnknown, type RuntimeEvent, type UnknownCategory } from './events'
 import {
   answerToForward,
@@ -88,12 +88,12 @@ const CODEX_OFFER: readonly PermissionOutcome[] = ['allow', 'allow_for_session',
 
 /** The decision set the card publishes, keyed by the provider this double is standing in for. */
 function offerFor(provider: Provider): readonly PermissionOutcome[] {
-  return provider === 'codex' ? CODEX_OFFER : OPAQUE_OFFER
+  return providerValue(provider, { claude: OPAQUE_OFFER, codex: CODEX_OFFER })
 }
 
 /** Which outcome grants standing permission for the tool, per provider (see {@link CODEX_OFFER}). */
 function standingGrantOf(provider: Provider): PermissionOutcome {
-  return provider === 'codex' ? 'allow_for_session' : 'allow_all_for_session'
+  return providerValue(provider, { claude: 'allow_all_for_session', codex: 'allow_for_session' })
 }
 
 function chunkText(text: string): string[] {
@@ -533,7 +533,9 @@ export class FakeSessionHandle implements SessionHandle {
       scope: {
         // Codex names the folder its command runs in; Claude's shell keeps a `cd` between calls, so
         // its card names none.
-        cwd: this.ref.provider === 'codex' ? this.ref.cwd : undefined,
+        cwd: providerValue(this.ref.provider, { claude: false, codex: true })
+          ? this.ref.cwd
+          : undefined,
         paths: [],
         networkHosts: [],
         // `session`, because one of the offered decisions grants standing permission — the same
