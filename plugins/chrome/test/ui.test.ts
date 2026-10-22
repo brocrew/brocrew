@@ -51,14 +51,14 @@ function screen() {
     nodes,
     events,
     packets,
-    reply(result: unknown, source: unknown = window) {
+    reply(result: unknown, source: unknown = window, packet = packets[0], ok = true) {
       events.get('message')!({
         source,
         origin,
         data: {
           channel: 'brocrew-plugin-ui:v1',
-          requestId: packets[0].requestId,
-          ok: true,
+          requestId: packet.requestId,
+          ok,
           data: result,
         },
       })
@@ -94,7 +94,11 @@ it('uses only bounded DOM RPC, displays current windows/tabs as text, and propos
   const heading = row.children[0]
   expect(heading.children.slice(0, 2).map((child) => child.textContent)).toEqual(['fern', 'Open'])
   const actions = heading.children[2]
-  expect(actions.children.map((child) => child.textContent)).toEqual(['Disable', 'Open window'])
+  expect(actions.children.map((child) => child.textContent)).toEqual([
+    'Disable',
+    'Open window',
+    'Delete',
+  ])
   expect(row.children[1].textContent).toBe('Open tabs')
   const tab = row.children[2].children[0]
   expect(tab.children.map((child) => child.textContent)).toEqual([
@@ -121,3 +125,102 @@ it('shows the reviewed empty-profile message', async () => {
     'No profiles yet. Create one to get started.',
   )
 })
+it('names the profile and deleted data before the person confirms, and Cancel sends no proposal', async () => {
+  const view = screen()
+  const snapshot = {
+    configRevision: 3,
+    profiles: [{ name: 'fern', enabled: true, open: false }],
+    tabs: [],
+  }
+  view.reply(snapshot)
+  await Promise.resolve()
+  await Promise.resolve()
+  view.nodes
+    .get('#profiles')!
+    .children[0].children[0].children[2].children[2].listeners.get('click')!({})
+  const confirmation = view.nodes.get('#profiles')!.children[0].children[1]
+  expect(confirmation.children[0].textContent).toBe(
+    'Delete “fern”? This removes its browsing data, cookies, sign-ins and profile downloads. Agents can no longer use it.',
+  )
+  expect(view.packets).toHaveLength(1)
+  confirmation.children[1].listeners.get('click')!({})
+  expect(view.nodes.get('#profiles')!.children[0].children).toHaveLength(1)
+  expect(view.packets).toHaveLength(1)
+  view.events.get('pagehide')!({})
+})
+it('sends only the confirmed person proposal and keeps a plain retry message on refusal', async () => {
+  const view = screen()
+  const snapshot = {
+    configRevision: 3,
+    profiles: [{ name: 'fern', enabled: true, open: true }],
+    tabs: [],
+  }
+  view.reply(snapshot)
+  await Promise.resolve()
+  await Promise.resolve()
+  view.nodes
+    .get('#profiles')!
+    .children[0].children[0].children[2].children[2].listeners.get('click')!({})
+  const confirmation = view.nodes.get('#profiles')!.children[0].children[1]
+  confirmation.children[2].listeners.get('click')!({})
+  const proposal = view.packets.at(-1)!
+  expect(proposal).toMatchObject({
+    method: 'proposeConfig',
+    payload: { action: 'delete-profile', profile: 'fern', confirm: 'fern' },
+    configRevision: 3,
+  })
+  view.reply(undefined, undefined, proposal, false)
+  await Promise.resolve()
+  await Promise.resolve()
+  expect(view.packets.at(-1)?.method).toBe('read')
+  view.reply(snapshot, undefined, view.packets.at(-1))
+  await Promise.resolve()
+  await Promise.resolve()
+  const refusal = view.nodes.get('#profiles')!.children[0].children[1]
+  expect(refusal.children.at(-1)!.textContent).toContain(
+    'Turn it off and wait for agent work to finish',
+  )
+  expect(view.packets.filter((p) => p.method === 'proposeConfig')).toHaveLength(1)
+  view.events.get('pagehide')!({})
+})
+
+it.each([true, false])(
+  'explains a failed delete using the actual enabled transition: %s',
+  async (wasEnabled) => {
+    const view = screen()
+    view.reply({
+      configRevision: 3,
+      profiles: [{ name: 'fern', enabled: wasEnabled, open: false }],
+      tabs: [],
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+    view.nodes
+      .get('#profiles')!
+      .children[0].children[0].children[2].children[2].listeners.get('click')!({})
+    view.nodes.get('#profiles')!.children[0].children[1].children[2].listeners.get('click')!({})
+    view.reply(undefined, undefined, view.packets.at(-1), false)
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(view.packets.at(-1)?.method).toBe('read')
+    view.reply(
+      { configRevision: 4, profiles: [{ name: 'fern', enabled: false, open: false }], tabs: [] },
+      undefined,
+      view.packets.at(-1),
+    )
+    await Promise.resolve()
+    await Promise.resolve()
+    const confirmation = view.nodes.get('#profiles')!.children[0].children[1]
+    expect(confirmation.children.at(-1)?.textContent).toBe(
+      wasEnabled
+        ? 'Couldn’t remove all of this profile’s data; it’s turned off. Try again.'
+        : 'Couldn’t delete this profile. It’s turned off. Wait for agent work to finish, then try again.',
+    )
+    expect(
+      view.nodes.get('#profiles')!.children[0].children[0].children[2].children[0].textContent,
+    ).toBe('Enable')
+    expect(view.packets.filter((packet) => packet.method === 'proposeConfig')).toHaveLength(1)
+    expect(confirmation.children[2].textContent).toBe('Try again')
+    view.events.get('pagehide')!({})
+  },
+)

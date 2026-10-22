@@ -21,6 +21,12 @@ describe('fixed person-only Chrome profile action mapping', () => {
       200,
     ],
     [{ action: 'open-window', profile: 'birch' }, '/profiles/birch/open', {}, 202],
+    [
+      { action: 'delete-profile', profile: 'birch', confirm: 'birch' },
+      '/profiles/birch/delete',
+      { confirm: 'birch' },
+      200,
+    ],
   ])(
     'maps a validated action to only its own fixed admin endpoint',
     async (proposal, path, body, status) => {
@@ -47,6 +53,7 @@ describe('fixed person-only Chrome profile action mapping', () => {
     { action: 'open-window', profile: '../foreign' },
     { action: 'set-enabled', profile: 'birch', enabled: true, url: 'http://foreign.invalid/' },
     { action: 'delete-profile', profile: 'birch' },
+    { action: 'delete-profile', profile: 'birch', confirm: 'fern' },
   ])('rejects unreviewed actions/fields before any request', async (proposal) => {
     const fetch = vi.fn()
     vi.stubGlobal('fetch', fetch)
