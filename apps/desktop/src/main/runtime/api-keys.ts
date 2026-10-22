@@ -138,6 +138,7 @@ type ReadState = { sealed: string; setAt: number; unreadableReason?: string }
 export class ApiKeys {
   private readonly readability = new Map<Provider, ReadState>()
   private readonly changes = new Map<Provider, number>()
+  private readonly lastSavedAt = new Map<Provider, number>()
   private readonly operations = new Map<Provider, Promise<unknown>>()
   private readonly reads = new Map<
     Provider,
@@ -173,6 +174,10 @@ export class ApiKeys {
 
   async read(provider: Provider): Promise<string | null> {
     return (await this.current(provider))?.key ?? null
+  }
+
+  revision(provider: Provider): number {
+    return this.changes.get(provider) ?? 0
   }
 
   /** Concurrent launches share one read; only readability, never the key, is cached. */
@@ -221,8 +226,13 @@ export class ApiKeys {
       })
       if (this.changes.get(provider) !== change)
         return 'The saved key changed while this save was waiting. Try again.'
-      const setAt = this.clock()
+      const previous = Math.max(
+        this.lastSavedAt.get(provider) ?? -1,
+        this.store.keptApiKey(provider)?.setAt ?? -1,
+      )
+      const setAt = Math.max(this.clock(), previous + 1)
       this.store.keepSealedApiKey(provider, sealed, setAt)
+      this.lastSavedAt.set(provider, setAt)
       this.readability.set(provider, { sealed, setAt })
       return null
     } catch {
@@ -241,6 +251,8 @@ export class ApiKeys {
   }
 
   remove(provider: Provider): boolean {
+    const setAt = this.store.keptApiKey(provider)?.setAt
+    if (setAt !== undefined) this.lastSavedAt.set(provider, setAt)
     this.changes.set(provider, (this.changes.get(provider) ?? 0) + 1)
     this.readability.delete(provider)
     this.reads.delete(provider)
