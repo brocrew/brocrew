@@ -11,7 +11,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   AuthUnavailableError,
@@ -3094,15 +3094,17 @@ describe('CodexRuntime — every launch keeps Codex’s own agents (D-014)', () 
     const root = mkdtempSync(join(tmpdir(), 'brobot2-d014-argv-'))
     try {
       const out = join(root, 'argv.json')
-      const codex = join(root, 'codex')
+      const codex = process.platform === 'win32' ? join(root, 'app-server') : join(root, 'codex')
       writeFileSync(
         codex,
-        `#!${process.execPath}\nrequire('node:fs').writeFileSync(${JSON.stringify(out)}, JSON.stringify(process.argv.slice(2)))\n`,
+        `#!${process.execPath}\nrequire('node:fs').writeFileSync(${JSON.stringify(out)}, JSON.stringify(process.platform === 'win32' ? ['app-server', ...process.argv.slice(2)] : process.argv.slice(2)))\n`,
       )
       chmodSync(codex, 0o755)
       const home = join(root, 'home')
       mkdirSync(home)
-      const transport = createSpawnTransportFactory(codex)({ cwd: root, providerHome: home }) as {
+      const transport = createSpawnTransportFactory(
+        process.platform === 'win32' ? process.execPath : codex,
+      )({ cwd: root, providerHome: home }) as {
         exited?: Promise<void>
       }
       await transport.exited
@@ -4128,7 +4130,7 @@ describe('CodexRuntime — config-independent prompting (007 P1-6)', () => {
       const said: string[] = []
       const runtime = new CodexRuntime(adopt(transport))
       // Six fictional skills, listed back by Codex as the check expects.
-      const root = '/tmp/fictional/codex'
+      const root = resolve('/tmp/fictional/codex')
       const skills = {
         root,
         skills: [
@@ -4141,7 +4143,7 @@ describe('CodexRuntime — config-independent prompting (007 P1-6)', () => {
         ].map((name) => ({
           name,
           description: `Description of ${name}.`,
-          path: `${root}/${name}/SKILL.md`,
+          path: join(root, name, 'SKILL.md'),
         })),
       }
       transport.onRequest('skills/extraRoots/set', () => ({}))

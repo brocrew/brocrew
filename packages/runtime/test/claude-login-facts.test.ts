@@ -90,7 +90,7 @@ describe('claudeLoginFacts', () => {
 })
 
 describe('claudeLoginState', () => {
-  it('🔴 a saved key is what runs: it outranks the login, does not expire, and the keychain is never read', () => {
+  it('🔴 a saved key outranks the login, does not expire, and never reads a Mac keychain', () => {
     const reader = vi.fn(() => blob())
     expect(
       claudeLoginState(
@@ -102,8 +102,10 @@ describe('claudeLoginState', () => {
       state: 'usable',
       login: 'api-key',
       expiresAt: null,
+      ...(process.platform === 'win32' ? { loginBehindTheKey: true } : {}),
     })
-    expect(reader).not.toHaveBeenCalled()
+    // Windows reports the file login behind a saved key; Mac keychain reads remain forbidden here.
+    expect(reader).toHaveBeenCalledTimes(process.platform === 'win32' ? 1 : 0)
   })
 
   it('🔴 with no key the login’s facts are the answer: an account, its plan, and its end', () => {

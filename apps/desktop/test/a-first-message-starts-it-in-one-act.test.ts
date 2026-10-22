@@ -592,7 +592,7 @@ describe('735, D-017b · a person’s message continues a conversation in one ac
       expect(launches.length - before).toBe(1)
       await waitFor(() => answered(id, 'read this, please'), 'the answer')
       // ⚑ The attachment rode with the words, as a send's does.
-      expect(answered(id, notes.path)).toBe(true)
+      expect(answered(id, JSON.stringify(notes.path).slice(1, -1))).toBe(true)
       expect(listed(id)).toEqual({ running: 'in-a-window' })
     })
   })

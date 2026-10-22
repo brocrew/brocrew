@@ -124,15 +124,15 @@ export function providerVersionsReader(
 const VERSION_TIMEOUT_MS = 15_000
 
 /**
- * Which file a path runs now: where it points, and that file's size and time. Anthropic's installer
+ * Which file a path runs now: where it points, and that file's identity, size and time. Anthropic's installer
  * updates by pointing `~/.local/bin/claude` at the new version; npm and Homebrew replace the file
  * in place.
  */
 function theFileItRuns(path: string): string {
   try {
     const real = realpathSync(path)
-    const stat = statSync(real)
-    return `${path}\n${real}\n${String(stat.size)}\n${String(stat.mtimeMs)}`
+    const stat = statSync(real, { bigint: true })
+    return `${path}\n${real}\n${String(stat.dev)}\n${String(stat.ino)}\n${String(stat.size)}\n${String(stat.mtimeNs)}\n${String(stat.ctimeNs)}`
   } catch {
     return path
   }

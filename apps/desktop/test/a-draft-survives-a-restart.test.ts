@@ -630,7 +630,9 @@ describe('§4 · the file — in the app’s own userData, whole, and read as un
 
     // ⛔ R100: kept in the app's own userData — one file, no part left behind
     expect(readdirSync(userData).sort()).toEqual([SAVED_DRAFTS_FILE, 'present.md'])
-    expect(statSync(join(userData, SAVED_DRAFTS_FILE)).mode & 0o777).toBe(0o600)
+    // Windows uses access lists; chmod does not supply POSIX permission bits.
+    if (process.platform !== 'win32')
+      expect(statSync(join(userData, SAVED_DRAFTS_FILE)).mode & 0o777).toBe(0o600)
     expect(await readBack()).toEqual(saved)
   })
 
@@ -796,16 +798,20 @@ describe('§4 · the file — in the app’s own userData, whole, and read as un
     expect(await readDraftsFile(userData)).toEqual({ kind: 'none' })
   })
 
-  it('⛔ a file that is THERE and cannot be read is UNREADABLE — answered, never thrown — and the window saves nothing over it', async () => {
-    const file = join(userData, SAVED_DRAFTS_FILE)
-    writeFileSync(file, JSON.stringify({ version: 1, drafts: [] }))
-    chmodSync(file, 0o000)
-    try {
-      expect(await readDraftsFile(userData)).toEqual({ kind: 'unreadable', why: 'EACCES' })
-    } finally {
-      chmodSync(file, 0o600)
-    }
-  })
+  // Windows chmod cannot construct a POSIX permission denial.
+  it.skipIf(process.platform === 'win32')(
+    '⛔ a file that is THERE and cannot be read is UNREADABLE — answered, never thrown — and the window saves nothing over it',
+    async () => {
+      const file = join(userData, SAVED_DRAFTS_FILE)
+      writeFileSync(file, JSON.stringify({ version: 1, drafts: [] }))
+      chmodSync(file, 0o000)
+      try {
+        expect(await readDraftsFile(userData)).toEqual({ kind: 'unreadable', why: 'EACCES' })
+      } finally {
+        chmodSync(file, 0o600)
+      }
+    },
+  )
 
   it('⛔ a file ANOTHER build wrote (another version) is unreadable too — left for a build that can read it', async () => {
     writeFileSync(

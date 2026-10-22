@@ -714,7 +714,9 @@ describe('340 · a session an agent may drive and may not decide for', () => {
       expect(host).toContain('claimSession(sessionId: string, sink: RuntimeEventSink)')
       expect(ipc).toContain('host.claimSession(')
       // ⚑ …and the sweep really reached the tool layer, so its silence below means something.
-      expect(sources.some((path) => path.endsWith('runtime/agent-tools.ts'))).toBe(true)
+      expect(
+        sources.some((path) => path.replaceAll('\\', '/').endsWith('runtime/agent-tools.ts')),
+      ).toBe(true)
       // Exactly one caller, ANYWHERE under `src/main`, and it is the IPC dispatcher.
       const callers = everything.match(/host\.claimSession\(/g) ?? []
       expect(callers).toHaveLength(1)

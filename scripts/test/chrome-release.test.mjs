@@ -74,12 +74,16 @@ describe('Chrome release builder', () => {
     ).rejects.toThrow('empty output')
     expect(fs.readFileSync(path.join(output, 'keep.txt'), 'utf8')).toBe('keep')
   })
-  it('signs only with scratch keys and refuses hash, passphrase and verification failures', () => {
-    const result = spawnSync('python3', ['scripts/test/sign-plugin-catalogue.test.py'], {
-      encoding: 'utf8',
-      timeout: 30_000,
-    })
-    expect(result.stderr).toContain('OK')
-    expect(result.status).toBe(0)
-  })
+  // The release signer requires a POSIX tty and owner/mode checks; it does not run on Windows.
+  it.skipIf(process.platform === 'win32')(
+    'signs only with scratch keys and refuses hash, passphrase and verification failures',
+    () => {
+      const result = spawnSync('python3', ['scripts/test/sign-plugin-catalogue.test.py'], {
+        encoding: 'utf8',
+        timeout: 30_000,
+      })
+      expect(result.stderr).toContain('OK')
+      expect(result.status).toBe(0)
+    },
+  )
 })

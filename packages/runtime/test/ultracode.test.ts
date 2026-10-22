@@ -1,3 +1,4 @@
+import { join } from 'node:path'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import type { EffortLevel, Options, SDKMessage } from '@anthropic-ai/claude-agent-sdk'
@@ -89,7 +90,7 @@ describe('ultracode is a boolean setting and never a reasoning level (106)', () 
     // move every ultracode session's memory back to the per-cwd default.
     expect(options().settings, 'the flag-settings layer is where it goes').toEqual({
       ultracode: true,
-      autoMemoryDirectory: `${START.providerHome}/memory`,
+      autoMemoryDirectory: join(START.providerHome, 'memory'),
     })
     // ⚠️ The pairing that makes the line above mean something. A launch that had smuggled it onto
     // the effort axis would ALSO satisfy an assertion about `settings` if both were written.
@@ -108,7 +109,7 @@ describe('ultracode is a boolean setting and never a reasoning level (106)', () 
     expect(options().effort).toBe('low')
     expect(options().settings).toEqual({
       ultracode: true,
-      autoMemoryDirectory: `${START.providerHome}/memory`,
+      autoMemoryDirectory: join(START.providerHome, 'memory'),
     })
 
     await handle.close()
@@ -144,7 +145,7 @@ describe('ultracode is a boolean setting and never a reasoning level (106)', () 
     // changed at 166 is the surrounding claim, not this one**: the layer is no longer empty, because
     // `autoMemoryDirectory` is written on every launch. So the assertion is about the KEY's absence
     // rather than the object's, which is what "not asked for is not false" actually meant.
-    expect(options().settings).toEqual({ autoMemoryDirectory: `${START.providerHome}/memory` })
+    expect(options().settings).toEqual({ autoMemoryDirectory: join(START.providerHome, 'memory') })
     expect('ultracode' in (options().settings as object)).toBe(false)
 
     await handle.close()
@@ -204,7 +205,7 @@ describe('ultracode does not survive a resume as a claimed state (106)', () => {
     // not in it, not that nothing is. A test asserting the object's absence would now fail for the
     // right feature and pass for the wrong reason if `ultracode` were ever added back to `resume`.
     expect(options().settings, 'a reopen keeps the profile’s memory directory').toEqual({
-      autoMemoryDirectory: '/tmp/x/home/memory',
+      autoMemoryDirectory: join('/tmp/x/home', 'memory'),
     })
     expect(
       'ultracode' in (options().settings as object),
