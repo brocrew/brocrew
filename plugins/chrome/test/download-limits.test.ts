@@ -116,7 +116,7 @@ it.each([true, false])(
       h.begin(`fern-tool-${i}`)
       await flush()
       // The tool saved and removed its artifact; its CDP completion can arrive late.
-      capture.end(true)
+      capture.end(true, `fern-tool-${i}`)
       h.progress(`fern-tool-${i}`, 1, 'completed')
     }
     expect(h.session.send).not.toHaveBeenCalled()
@@ -138,19 +138,19 @@ it.each([true, false])(
     const capture = h.router.capture(async () => new Set(['fern-frame']))
     h.begin('fern-second')
     await flush()
-    capture.end(true) // The tool saved D1; this does not prove D2 has finished.
+    capture.end(true, 'fern-older') // Saving the older file does not finish this claim.
     h.progress('fern-second', MAX_DOWNLOAD_BYTES + 1)
     expect(h.session.send).toHaveBeenCalledWith('Browser.cancelDownload', { guid: 'fern-second' })
   },
 )
-it('discards the released extra file only after its own completed event', async () => {
+it('discards the saved claim only after its own completed event', async () => {
   const h = fixture(true)
   const capture = h.router.capture(async () => new Set(['fern-frame']))
   h.begin('fern-extra')
   await flush()
   const staged = path.join(h.dir, 'fern-extra')
   fs.writeFileSync(staged, 'fictional bytes')
-  capture.end(true)
+  capture.end(true, 'fern-extra')
   expect(fs.existsSync(staged)).toBe(true)
   h.progress('fern-extra', 15, 'completed')
   await vi.waitFor(() => expect(fs.existsSync(staged)).toBe(false))
