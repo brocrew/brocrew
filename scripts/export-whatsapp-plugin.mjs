@@ -158,7 +158,7 @@ permissions:
   contents: read
 jobs:
   release:
-    if: github.repository == 'brocrew/brocrew-plugin-whatsapp' && github.event.repository.private == true && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    if: github.repository == 'brocrew/brocrew-plugin-whatsapp' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -195,7 +195,7 @@ jobs:
           BROBOT_LEAK_PATTERNS: \${{ secrets.BROBOT_LEAK_PATTERNS }}
           BROBOT_COMMIT_PATTERNS: \${{ secrets.BROBOT_COMMIT_PATTERNS }}
           BROBOT_COMMIT_IDENTITIES: \${{ vars.BROBOT_COMMIT_IDENTITIES }}
-      - name: Attach verified archives to the private release
+      - name: Attach verified archives to the release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
@@ -203,12 +203,11 @@ jobs:
           TAG: \${{ github.ref_name }}
         run: |
           set -eu
-          test "$(gh api repos/brocrew/brocrew-plugin-whatsapp --jq .private)" = true
           test "$TAG" = "v$(node -p "require('./plugins/whatsapp/manifest-template.json').version")"
           gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "$TAG" --notes 'WhatsApp plugin for BroCrew'
           gh release upload "$TAG" artifact/whatsapp-darwin-arm64.tar.gz artifact/whatsapp-win32-x64.tar.gz artifact/plugin-list-entry.json
   build-only:
-    if: github.repository == 'brocrew/brocrew-plugin-whatsapp' && github.event.repository.private == true && github.event_name == 'workflow_dispatch'
+    if: github.repository == 'brocrew/brocrew-plugin-whatsapp' && github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
