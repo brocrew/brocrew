@@ -15,7 +15,7 @@ import {
 
 /**
  * What a pane hands its messages so a path in them can be pressed: one conversation, main's answers
- * for it so far, and the two presses.
+ * for it so far, and the press that opens.
  */
 export interface PathsHere {
   readonly sessionId: string | null
@@ -24,8 +24,11 @@ export interface PathsHere {
   known(text: string): MessagePath | undefined
   /** Asks main about the texts it has not been asked about yet, in one call. */
   ask(texts: readonly string[]): void
-  /** Opens or shows the path a text names. Resolves to the line to show when it did not work. */
-  press(text: string, pressed: 'open' | 'show'): Promise<string | null>
+  /**
+   * Opens the path a text names, or shows it where main will not open it or the window may not.
+   * Resolves to the line to show when it did not work.
+   */
+  press(text: string): Promise<string | null>
 }
 
 /**
@@ -93,13 +96,13 @@ export function useMessagePaths(
           () => settle(fresh, []),
         )
       },
-      async press(text, pressed) {
+      async press(text) {
         if (text === '') return null
         const answer = known(text)
         const kind = answer?.found === true ? answer.kind : 'file'
-        const opening = pressed === 'open' && here.open !== null
+        const opening = here.open !== null
         try {
-          if (opening && here.open !== null) {
+          if (here.open !== null) {
             const did = await here.open({ sessionId: session, text })
             return did.ok ? null : pressFailedWords(did.reason, kind, fileManager, 'open')
           }
@@ -123,6 +126,30 @@ export interface PathsInAMessage {
   readonly failure: Ref<string | null>
   /** Delegated: bind it once on the element holding the message. */
   clicked(event: MouseEvent): void
+}
+
+const COPIED_FOR_MS = 1600
+/** Each Copy button's pending reset, so the latest copy always gets its whole "Copied" time. */
+const copiedResets = new WeakMap<Element, ReturnType<typeof setTimeout>>()
+
+/** The Copy control's brief "Copied", drawn on the pressed button itself so focus stays on it. */
+function showCopied(target: EventTarget | null): void {
+  const button = (target as Partial<Element> | null)?.closest?.('.message-path-icon')
+  const glyph = button?.querySelector('use')
+  if (!button || !glyph) return
+  glyph.setAttribute('href', '#i-check')
+  button.setAttribute('title', 'Copied')
+  button.setAttribute('aria-label', 'Copied')
+  clearTimeout(copiedResets.get(button))
+  copiedResets.set(
+    button,
+    setTimeout(() => {
+      copiedResets.delete(button)
+      glyph.setAttribute('href', '#i-copy')
+      button.setAttribute('title', 'Copy path')
+      button.setAttribute('aria-label', 'Copy path')
+    }, COPIED_FOR_MS),
+  )
 }
 
 /**
@@ -168,7 +195,16 @@ export function usePathsIn(
       if (!here || hit === null) return
       event.preventDefault()
       failure.value = null
-      void here.press(hit.text, hit.pressed).then((said) => {
+      if (hit.pressed === 'copy') {
+        navigator.clipboard.writeText(hit.text).then(
+          () => showCopied(event.target),
+          () => {
+            failure.value = "That path didn't copy. Select its text and copy it instead."
+          },
+        )
+        return
+      }
+      void here.press(hit.text).then((said) => {
         failure.value = said
       })
     },

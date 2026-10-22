@@ -532,7 +532,8 @@ describe('the sprite has every glyph the badges name', () => {
     // an app-owned C and OpenAI's own image files replace the two unused provider symbols.
     // `#i-shield` went with the Waiting on you footer, and `#i-hourglass` came as the plate's
     // corner mark for an agent waiting on another agent (`#i-clock` is that corner's wake-up).
-    expect(ids.length).toBe(46)
+    // 47 with `#i-open`, the Open icon after a path in a message.
+    expect(ids.length).toBe(47)
   })
 
   /**
