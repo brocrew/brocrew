@@ -419,6 +419,8 @@ export function createWhatsAppTools(deps: ToolDeps): ToolHandler[] {
           )
             throw refusals.refuse(tool, file === undefined ? 'too-long' : 'caption-too-long')
           const attached = file === undefined ? undefined : await attachment(tool, file)
+          // File preparation can outlast a change to the selected group's permission.
+          groupNamed(tool, group.jid)
           const reservation = deps.policy.reserve(group.jid, text, attached?.sha256)
           if (!reservation.ok) throw refusals.refuse(tool, reservation.why)
           const sent = settings.get().prefix
