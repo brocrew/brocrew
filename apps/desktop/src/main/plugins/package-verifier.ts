@@ -15,6 +15,7 @@ import {
   type PluginManifest,
   type PluginRelease,
 } from './package-schema'
+import { PLUGIN_FRAMEWORK_FEATURES } from './hooks/definitions'
 import { strictPluginJson } from './strict-json'
 import { refusePlugin } from './verification-error'
 
@@ -39,6 +40,10 @@ export interface PluginVerifierOptions {
     readonly tools: PluginApiSupport
     readonly ui: PluginApiSupport
   }
+}
+const packages = new WeakMap<object, string>()
+export function verifiedPluginDigest(value: unknown): string | undefined {
+  return value !== null && typeof value === 'object' ? packages.get(value) : undefined
 }
 export interface VerifiedPluginPackage {
   readonly manifest: Readonly<PluginManifest>
@@ -135,9 +140,13 @@ function catalogueVerifier(
 ) {
   const target = PluginTarget.safeParse(options.target)
   if (!target.success) refusePlugin('target')
-  const defaultApi = { major: 1, minor: 0, features: [] }
+  const defaultApi = { major: 1, minor: 0, features: [] as string[] }
   const support = structuredClone(
-    options.apiSupport ?? { host: defaultApi, tools: defaultApi, ui: defaultApi },
+    options.apiSupport ?? {
+      host: { ...defaultApi, features: [...PLUGIN_FRAMEWORK_FEATURES] },
+      tools: defaultApi,
+      ui: defaultApi,
+    },
   )
   const pins = new Map<string, PluginReleasePin>()
   const remember = (pin: PluginReleasePin, into: Map<string, PluginReleasePin>) => {
@@ -243,7 +252,7 @@ function catalogueVerifier(
               refusePlugin('invalid')
           }
           const host = compatible(manifest.hostApi, support.host)
-          return Object.freeze({
+          const result = Object.freeze({
             manifest: freeze(manifest),
             compatibility: Object.freeze({
               host,
@@ -256,6 +265,8 @@ function catalogueVerifier(
               return body === undefined ? undefined : Uint8Array.from(body)
             },
           })
+          packages.set(result, release.archive.sha256)
+          return result
         },
       })
     },

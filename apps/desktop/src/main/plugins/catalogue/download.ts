@@ -10,6 +10,8 @@ export class PluginDownloadError extends Error {
 }
 export const PLUGIN_LIST_URL =
   'https://raw.githubusercontent.com/brocrew/brocrew/main/plugins/catalogue.json'
+export const PLUGIN_LIST_V2_URL = PLUGIN_LIST_URL.replace('catalogue.json', 'catalogue-v2.json')
+const catalogueUrl = (url: string) => url === PLUGIN_LIST_URL || url === PLUGIN_LIST_V2_URL
 const releasePath = /^\/brocrew\/[A-Za-z0-9_.-]+\/releases\/download\/[^/]+\/[^/]+$/
 export function assertPluginArchiveUrl(value: string): void {
   const url = allowed(value, true)
@@ -34,10 +36,10 @@ function allowed(value: string, initial: boolean): URL {
     ].includes(url.hostname)
   )
     return invalid()
-  if (url.hostname === 'raw.githubusercontent.com' && url.href !== PLUGIN_LIST_URL) return invalid()
+  if (url.hostname === 'raw.githubusercontent.com' && !catalogueUrl(url.href)) return invalid()
   if (url.hostname === 'github.com' && (!releasePath.test(url.pathname) || url.search))
     return invalid()
-  if (initial && url.hostname !== 'github.com' && url.href !== PLUGIN_LIST_URL) return invalid()
+  if (initial && url.hostname !== 'github.com' && !catalogueUrl(url.href)) return invalid()
   return url
 }
 /** Shared catalogue/archive transport. Three redirects, credential-free HTTPS:443, exact hosts,
@@ -80,9 +82,7 @@ export async function downloadPluginBytes(options: {
         if (!location) return invalid()
         const next = allowed(new URL(location, url).href, false)
         if (
-          releaseChain
-            ? next.hostname === 'raw.githubusercontent.com'
-            : next.href !== PLUGIN_LIST_URL
+          releaseChain ? next.hostname === 'raw.githubusercontent.com' : next.href !== options.url
         )
           return invalid()
         url = next

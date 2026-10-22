@@ -3,6 +3,7 @@ import { SkillName, SkillDigest, SkillRelease, SKILL_LIMITS } from '../../shared
 import { PLUGIN_LIMITS } from './package-digests'
 import { pluginPackagePath, PluginPackagePaths } from './package-path'
 import { strictPluginJson } from './strict-json'
+import { HookDeclaration } from './hooks/definitions'
 import { refusePlugin } from './verification-error'
 
 const integer = z.number().int().nonnegative().safe()
@@ -69,7 +70,23 @@ const catalogue = z.strictObject({
   format: z.literal(1),
   entries: z.array(release).max(PLUGIN_LIMITS.catalogueEntries),
 })
-export type PluginRelease = z.infer<typeof release>
+export const PluginAuthors = z
+  .array(z.string().regex(/^[a-z][a-z0-9-]{0,63}$/))
+  .min(1)
+  .max(8)
+  .refine(
+    (authors) =>
+      new Set(authors).size === authors.length &&
+      authors.join(',') === [...authors].sort().join(','),
+  )
+const versionedRelease = release
+  .extend({ authors: PluginAuthors.optional(), legacy: z.literal(true).optional() })
+  .refine((entry) => !(entry.legacy && entry.authors))
+const versionedCatalogue = z.strictObject({
+  format: z.literal(2),
+  entries: z.array(versionedRelease).max(PLUGIN_LIMITS.catalogueEntries),
+})
+export type PluginRelease = z.infer<typeof release> & { authors?: string[]; legacy?: true }
 
 const file = z.strictObject({
   path,
@@ -177,7 +194,23 @@ const manifest = z.strictObject({
   }),
   dataCompatibility: z.strictObject({ minSchema: integer, maxSchema: integer }),
 })
-export type PluginManifest = z.infer<typeof manifest>
+const executor = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('node'), entry: path }),
+  z.strictObject({ kind: z.literal('remote') }),
+  z.strictObject({ kind: z.literal('none') }),
+])
+const versionedManifest = manifest.extend({
+  format: z.literal(2),
+  authors: PluginAuthors.optional(),
+  executor,
+  hooks: z.array(HookDeclaration).max(32),
+})
+export type PluginManifest = Omit<z.infer<typeof manifest>, 'format'> & {
+  format: 1 | 2
+  authors?: string[]
+  executor?: z.infer<typeof executor>
+  hooks?: HookDeclaration[]
+}
 
 function unique(values: readonly string[]): void {
   if (new Set(values).size !== values.length) refusePlugin('invalid')
@@ -235,7 +268,9 @@ function schemaRules(root: PluginValueSchema): void {
 }
 
 export function parsePluginCatalogue(bytes: Uint8Array): PluginRelease[] {
-  const parsed = catalogue.safeParse(strictPluginJson(bytes, PLUGIN_LIMITS.catalogueBytes))
+  const parsed = z
+    .union([catalogue, versionedCatalogue])
+    .safeParse(strictPluginJson(bytes, PLUGIN_LIMITS.catalogueBytes))
   if (!parsed.success) refusePlugin('invalid')
   const entries = parsed.data.entries
   unique(entries.map((value) => `${value.id}/${value.version}`))
@@ -244,7 +279,9 @@ export function parsePluginCatalogue(bytes: Uint8Array): PluginRelease[] {
 }
 
 export function parsePluginManifest(bytes: Uint8Array): PluginManifest {
-  const parsed = manifest.safeParse(strictPluginJson(bytes, PLUGIN_LIMITS.manifestBytes))
+  const parsed = z
+    .union([manifest, versionedManifest])
+    .safeParse(strictPluginJson(bytes, PLUGIN_LIMITS.manifestBytes))
   if (!parsed.success) refusePlugin('invalid')
   const result = parsed.data
   targets(result.platforms)
@@ -276,6 +313,17 @@ export function parsePluginManifest(bytes: Uint8Array): PluginManifest {
       result.server.mcpPath === result.server.adminPath
     )
       refusePlugin('invalid')
+  }
+  if (result.format === 2) {
+    unique(result.hooks.map((hook) => hook.id))
+    if (result.executor.kind === 'node') {
+      reference(result.executor.entry)
+      if (
+        !/\.(?:cjs|mjs|js)$/.test(result.executor.entry) ||
+        (result.server && result.server.entry !== result.executor.entry)
+      )
+        refusePlugin('invalid')
+    } else if (result.server !== null) refusePlugin('invalid')
   }
   unique(result.skills.map((value) => value.name))
   for (const entry of result.skills) {
