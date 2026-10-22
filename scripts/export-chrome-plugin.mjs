@@ -2,33 +2,12 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { copyPluginSource } from './plugin-source.mjs'
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 export function exportChromePlugin(destination) {
   if (!path.isAbsolute(destination) || fs.existsSync(destination))
     throw new Error('Use a fresh absolute export folder')
-  const plugin = path.join(destination, 'plugins/chrome')
-  fs.mkdirSync(plugin, { recursive: true })
-  for (const name of [
-    'src',
-    'COPY-INVENTORY.json',
-    'UPSTREAM-CHANGES.md',
-    'ui',
-    'test',
-    'build.mjs',
-    'manifest-template.json',
-    'package.json',
-    'package-lock.json',
-    'tsconfig.json',
-    'vitest.config.ts',
-  ]) {
-    fs.cpSync(path.join(root, 'plugins/chrome', name), path.join(plugin, name), {
-      recursive: true,
-      filter(source) {
-        if (fs.lstatSync(source).isSymbolicLink()) throw new Error('No linked export inputs')
-        return source !== path.join(root, 'plugins/chrome/test/archive.test.ts')
-      },
-    })
-  }
+  copyPluginSource(root, destination, 'chrome')
   fs.mkdirSync(path.join(destination, 'scripts/lib'), { recursive: true })
   for (const name of ['tests-run-in-a-fictional-home.mjs', 'a-test-sees-no-real-home.setup.mjs'])
     fs.copyFileSync(
@@ -45,16 +24,6 @@ export function exportChromePlugin(destination) {
     path.join(root, 'scripts/test/chrome-release-guards.test.mjs'),
     path.join(destination, 'scripts/test/chrome-release-guards.test.mjs'),
   )
-  const testConfig = path.join(plugin, 'vitest.config.ts')
-  fs.writeFileSync(
-    testConfig,
-    fs
-      .readFileSync(testConfig, 'utf8')
-      .replace(
-        "include: ['plugins/chrome/test/**/*.test.ts']",
-        "include: ['plugins/chrome/test/**/*.test.ts', 'scripts/test/chrome-release-guards.test.mjs']",
-      ),
-  )
   fs.mkdirSync(path.join(destination, 'scripts/leak-guard'), { recursive: true })
   for (const name of ['baseline.txt', 'allowed.txt'])
     fs.writeFileSync(path.join(destination, 'scripts/leak-guard', name), '')
@@ -70,8 +39,8 @@ export function exportChromePlugin(destination) {
         type: 'module',
         license: 'Apache-2.0',
         scripts: {
-          build: 'node scripts/release.mjs',
-          test: 'vitest run --config plugins/chrome/vitest.config.ts',
+          build: 'node scripts/build-plugin-release.mjs chrome',
+          test: 'vitest run --config vitest.release.config.mts',
           typecheck: 'tsc --noEmit -p plugins/chrome/tsconfig.json',
         },
         devDependencies: { vitest: '4.1.10', typescript: '5.9.3', '@types/node': '22.19.15' },
@@ -94,44 +63,26 @@ export function exportChromePlugin(destination) {
     path.join(destination, 'README.md'),
     '# Chrome plugin for BroCrew\n\nThis repository is a clean source export of the Chrome plugin maintained and integration-tested with BroCrew. It contains no app history or client data. Its release workflow builds a deterministic archive, runs tests with fake browsers and emits the entry for BroCrew’s plugin list. Users install from Settings → Plugins; they run no commands and supply no key or token.\n\nThe first supported app target is macOS arm64. Windows and Linux app hosts are not enabled by this release. App-level archive verification and lifecycle tests remain in the BroCrew source repository.\n',
   )
-  fs.writeFileSync(path.join(destination, 'scripts/release.mjs'), releaseScript)
-  fs.writeFileSync(path.join(plugin, 'test/release.test.ts'), releaseTest)
+  for (const script of ['plugin-source.mjs', 'build-plugin-release.mjs'])
+    fs.copyFileSync(path.join(root, 'scripts', script), path.join(destination, 'scripts', script))
+  fs.mkdirSync(path.join(destination, 'release-test'))
+  fs.writeFileSync(path.join(destination, 'release-test/release.test.ts'), releaseTest)
+  fs.writeFileSync(
+    path.join(destination, 'vitest.release.config.mts'),
+    `import { defineConfig } from 'vitest/config'
+import { THE_GUARD, theTestsEnv } from './scripts/lib/tests-run-in-a-fictional-home.mjs'
+export default defineConfig({
+  test: { environment: 'node', env: theTestsEnv(), setupFiles: [THE_GUARD],
+    include: ['plugins/chrome/test/**/*.test.ts', 'release-test/*.test.ts', 'scripts/test/chrome-release-guards.test.mjs'],
+    exclude: ['plugins/chrome/test/archive.test.ts'],
+  },
+})
+`,
+  )
+
   fs.mkdirSync(path.join(destination, '.github/workflows'), { recursive: true })
   fs.writeFileSync(path.join(destination, '.github/workflows/release.yml'), workflow)
 }
-const releaseScript = `import fs from 'node:fs'
-import path from 'node:path'
-import { execFileSync } from 'node:child_process'
-import { createHash } from 'node:crypto'
-import { gzipSync } from 'node:zlib'
-import { buildChromePackage, CHROME_TARGETS } from '../plugins/chrome/build.mjs'
-const commit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()
-const out = path.resolve(process.argv[2] ?? 'artifact')
-fs.mkdirSync(out)
-const targets = []
-let version
-for (const target of CHROME_TARGETS) {
-  const name = 'chrome-' + target.os + '-' + target.cpu
-  const built = path.join(out, name)
-  const release = await buildChromePackage(built, commit, target)
-  version = release.version
-  const bytes = gzipSync(fs.readFileSync(path.join(built, 'chrome.tar')), { level: 9 })
-  // zlib emits a host-specific OS byte. Canonicalize it; payload and trailer stay unchanged.
-  bytes[9] = 255
-  fs.writeFileSync(path.join(out, name + '.tar.gz'), bytes)
-  targets.push({ os: target.os, cpu: target.cpu,
-    url: 'https://github.com/brocrew/brocrew-plugin-chrome/releases/download/v' + version + '/' + name + '.tar.gz',
-    sha256: createHash('sha256').update(bytes).digest('hex'), bytes: bytes.length,
-    compression: 'tar.gz', manifestSha256: release.manifestSha256 })
-}
-const entry = {
-  id: 'chrome', name: 'Chrome',
-  description: 'Lets agents use Google Chrome with its own separate profiles: read pages, use sites and save downloads.',
-  version, minAppVersion: '0.0.0', sourceCommit: commit, targets,
-}
-fs.writeFileSync(path.join(out, 'plugin-list-entry.json'), JSON.stringify(entry, null, 2) + '\\n')
-console.log(JSON.stringify(targets.map((one) => ({ os: one.os, cpu: one.cpu, bytes: one.bytes, sha256: one.sha256 }))))
-`
 const releaseTest = `import fs from 'node:fs'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
@@ -155,7 +106,7 @@ it('publishes exactly the built archives and their fixed repository pins, one ta
     const target = entry.targets[index]
     const manifest = JSON.parse(fs.readFileSync(path.join(folder!, name, 'package/plugin.json'), 'utf8'))
     expect(manifest.sourceCommit).toBe(entry.sourceCommit)
-    if (process.env.GITHUB_SHA) expect(manifest.sourceCommit).toBe(process.env.GITHUB_SHA)
+    expect(manifest.sourceCommit).toBe(process.env.BROCREW_PLUGIN_SOURCE_COMMIT)
     const bytes = fs.readFileSync(path.join(folder!, name + '.tar.gz'))
     expect(bytes.length).toBe(target.bytes)
     expect(createHash('sha256').update(bytes).digest('hex')).toBe(target.sha256)
@@ -169,6 +120,11 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      source_commit:
+        description: Reviewed public monorepo commit (full SHA)
+        required: true
+        type: string
 permissions:
   contents: read
 jobs:
@@ -178,6 +134,9 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: write
+    env:
+      BROCREW_PLUGIN_SOURCE_COMMIT: \${{ inputs.source_commit || vars.PLUGIN_SOURCE_COMMIT }}
+      BROCREW_MONOREPO_ROOT: \${{ github.workspace }}/.canonical
     steps:
       - uses: actions/checkout@v7
         with:
@@ -186,6 +145,14 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: '22.23.3'
+      - name: Validate explicit canonical source pin
+        run: node -e 'if (!/^[a-f0-9]{40}$/.test(process.env.BROCREW_PLUGIN_SOURCE_COMMIT || "")) throw new Error("A full reviewed source pin is required")'
+      - uses: actions/checkout@v7
+        with:
+          repository: brocrew/brocrew
+          ref: \${{ env.BROCREW_PLUGIN_SOURCE_COMMIT }}
+          path: .canonical
+          persist-credentials: false
       - run: npm ci --legacy-peer-deps --ignore-scripts --no-audit --no-fund
       - run: npm ci --prefix plugins/chrome --ignore-scripts --no-audit --no-fund
       - run: npm run typecheck
@@ -218,6 +185,9 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
+    env:
+      BROCREW_PLUGIN_SOURCE_COMMIT: \${{ inputs.source_commit || vars.PLUGIN_SOURCE_COMMIT }}
+      BROCREW_MONOREPO_ROOT: \${{ github.workspace }}/.canonical
     steps:
       - uses: actions/checkout@v7
         with:
@@ -226,6 +196,14 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: '22.23.3'
+      - name: Validate explicit canonical source pin
+        run: node -e 'if (!/^[a-f0-9]{40}$/.test(process.env.BROCREW_PLUGIN_SOURCE_COMMIT || "")) throw new Error("A full reviewed source pin is required")'
+      - uses: actions/checkout@v7
+        with:
+          repository: brocrew/brocrew
+          ref: \${{ env.BROCREW_PLUGIN_SOURCE_COMMIT }}
+          path: .canonical
+          persist-credentials: false
       - run: npm ci --legacy-peer-deps --ignore-scripts --no-audit --no-fund
       - run: npm ci --prefix plugins/chrome --ignore-scripts --no-audit --no-fund
       - run: npm run typecheck
@@ -233,7 +211,7 @@ jobs:
         run: |
           set -eu
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test -z "$(git status --porcelain --untracked-files=all --ignored=matching -- plugins/chrome/src plugins/chrome/ui plugins/chrome/bridge plugins/chrome/build.mjs plugins/chrome/manifest-template.json plugins/chrome/package.json plugins/chrome/package-lock.json scripts/release.mjs package.json package-lock.json)"
+          test -z "$(git status --porcelain --untracked-files=all --ignored=matching -- plugins/chrome/src plugins/chrome/ui plugins/chrome/bridge plugins/chrome/build.mjs plugins/chrome/manifest-template.json plugins/chrome/package.json plugins/chrome/package-lock.json scripts/build-plugin-release.mjs scripts/plugin-source.mjs package.json package-lock.json)"
       - run: npm run build -- artifact
       - run: npm run build -- artifact-repeat
       - name: Verify reproducible archive bytes
@@ -245,12 +223,12 @@ jobs:
         run: |
           set -eu
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test -z "$(git status --porcelain --untracked-files=all --ignored=matching -- plugins/chrome/src plugins/chrome/ui plugins/chrome/bridge plugins/chrome/build.mjs plugins/chrome/manifest-template.json plugins/chrome/package.json plugins/chrome/package-lock.json scripts/release.mjs package.json package-lock.json)"
+          test -z "$(git status --porcelain --untracked-files=all --ignored=matching -- plugins/chrome/src plugins/chrome/ui plugins/chrome/bridge plugins/chrome/build.mjs plugins/chrome/manifest-template.json plugins/chrome/package.json plugins/chrome/package-lock.json scripts/build-plugin-release.mjs scripts/plugin-source.mjs package.json package-lock.json)"
           git rev-parse HEAD > artifact/source-commit.txt
           node --version > artifact/node-version.txt
           npm --version > artifact/npm-version.txt
           node -p "require('./plugins/chrome/node_modules/esbuild/package.json').version" > artifact/esbuild-version.txt
-          sha256sum package-lock.json plugins/chrome/package-lock.json scripts/release.mjs plugins/chrome/build.mjs .github/workflows/release.yml > artifact/build-inputs.sha256
+          sha256sum package-lock.json plugins/chrome/package-lock.json scripts/build-plugin-release.mjs scripts/plugin-source.mjs plugins/chrome/build.mjs .github/workflows/release.yml > artifact/build-inputs.sha256
           sha256sum artifact/*.tar.gz artifact/plugin-list-entry.json > artifact/downloads.sha256
       - uses: actions/upload-artifact@v4
         with:
