@@ -19,6 +19,25 @@ export interface PluginCard {
   installedVersion?: string
   updateVersion?: string
   uninstallDeletesData?: boolean
+  hasRemoteLogout?: boolean
+}
+/** Closed uninstall facts; remote removal is never inferred from deleting local data. */
+export interface PluginRemovalOutcome {
+  data: 'deleted'
+  logout: 'confirmed' | 'unconfirmed'
+}
+export function pluginRemovalOutcome(value: unknown): PluginRemovalOutcome | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const result = value as Partial<PluginRemovalOutcome>
+  if (
+    Object.keys(value).length !== 2 ||
+    !Object.hasOwn(value, 'data') ||
+    !Object.hasOwn(value, 'logout') ||
+    result.data !== 'deleted' ||
+    (result.logout !== 'confirmed' && result.logout !== 'unconfirmed')
+  )
+    return null
+  return { data: 'deleted', logout: result.logout }
 }
 export interface PluginScreenBounds {
   x: number
@@ -40,6 +59,7 @@ export type PluginSettingsReply =
       available?: boolean
       listState?: PluginListState
       refreshFailed?: boolean
+      removal?: PluginRemovalOutcome
     }
   | { ok: false; listState: 'not-published' | 'fetch-error' }
   | { ok: false; error: 'Plugin unavailable. Try again.' }

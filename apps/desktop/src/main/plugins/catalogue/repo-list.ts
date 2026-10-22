@@ -73,33 +73,44 @@ export function parseRepoPluginList(input: Uint8Array, target: PluginTarget, app
       return fail()
     for (const one of entry.targets) assertPluginArchiveUrl(one.url)
   }
-  const releases = list.entries.flatMap((entry) => {
-    const selected = entry.targets.find((one) => one.os === target.os && one.cpu === target.cpu)
-    if (!selected || !compatible(appVersion, entry.minAppVersion)) return []
-    return [
-      {
-        id: entry.id,
-        version: entry.version,
-        sourceCommit: entry.sourceCommit,
-        description: entry.description,
-        platforms: [{ os: selected.os, cpu: selected.cpu }],
-        archive: {
-          url: selected.url,
-          size: selected.bytes,
-          sha256: selected.sha256,
-          compression: selected.compression,
+  const view = (version: string) => {
+    const releases = list.entries.flatMap((entry) => {
+      const selected = entry.targets.find((one) => one.os === target.os && one.cpu === target.cpu)
+      if (!selected || !compatible(version, entry.minAppVersion)) return []
+      return [
+        {
+          id: entry.id,
+          version: entry.version,
+          sourceCommit: entry.sourceCommit,
+          description: entry.description,
+          platforms: [{ os: selected.os, cpu: selected.cpu }],
+          archive: {
+            url: selected.url,
+            size: selected.bytes,
+            sha256: selected.sha256,
+            compression: selected.compression,
+          },
+          manifestSha256: selected.manifestSha256,
         },
-        manifestSha256: selected.manifestSha256,
-      },
-    ]
-  })
-  const bytes = Buffer.from(JSON.stringify({ format: 1, entries: releases }))
-  return {
-    entries: list.entries,
-    releases: parsePluginCatalogue(bytes),
-    bytes,
-    sha256: pluginSha256(bytes),
+      ]
+    })
+    const bytes = Buffer.from(JSON.stringify({ format: 1, entries: releases }))
+    return { releases: parsePluginCatalogue(bytes), bytes, sha256: pluginSha256(bytes) }
   }
+  // Every older app view changes only at a declared minimum-version threshold.
+  const versions = new Set([
+    '0.0.0',
+    ...list.entries
+      .map((entry) => entry.minAppVersion)
+      .filter((minimum) => compatible(appVersion, minimum)),
+  ])
+  const views = new Map(
+    [...versions].map((version) => {
+      const parsed = view(version)
+      return [parsed.sha256, parsed] as const
+    }),
+  )
+  return { entries: list.entries, ...view(appVersion), legacyCatalogues: [...views.values()] }
 }
 /** The endpoint is app-owned and fixed. Local inputs come only from trusted app launch code. */
 export async function loadRepoPluginList(options: {
@@ -144,5 +155,18 @@ export async function loadRepoPluginList(options: {
     async (stage) => immutableFile(join(stage, 'catalogue.json'), parsed.bytes),
     async (directory) => verifyImmutableFile(join(directory, 'catalogue.json'), parsed.bytes),
   )
-  return { ...parsed, catalogue: join(kept, 'catalogue.json') }
+  const rawSha256 = pluginSha256(input)
+  const rawLists = await privateChild(options.root, 'repo-lists')
+  const raw = await publishPrivateDirectory(
+    rawLists,
+    rawSha256,
+    async (stage) => immutableFile(join(stage, 'catalogue.json'), input),
+    async (directory) => verifyImmutableFile(join(directory, 'catalogue.json'), input),
+  )
+  return {
+    ...parsed,
+    catalogue: join(kept, 'catalogue.json'),
+    repoList: { path: join(raw, 'catalogue.json'), sha256: rawSha256 },
+    rawBytes: Buffer.from(input),
+  }
 }
