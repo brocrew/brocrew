@@ -350,17 +350,15 @@ describe('the renderer never decides a capability by recognising a provider (039
     expect(sites[0]?.comparison).toBe(true)
   })
 
-  it('…and the top bar’s two permits admit those two lines only: a third provider-named line there is still caught', () => {
+  it('…and the top bar has no permits, including for its former provider rows', () => {
     const name = 'renderer/src/composables/useUsageCells.ts'
     const real = readFileSync(join(SRC, name), 'utf8')
-    // The premise: the file as it stands is wholly allowed, by exactly its two permitted lines.
     const clean = providerLiteralSites(name, real)
-    expect(clean.map((site) => site.code).sort()).toEqual([
-      "claude: ['5-hour', 'weekly'],",
-      "codex: ['weekly'],",
-    ])
-    expect(clean.filter((site) => !isAllowed(site))).toEqual([])
+    expect(clean).toEqual([])
+    expect(ALLOWED).toEqual([])
     for (const third of [
+      "  claude: ['5-hour', 'weekly'],",
+      "  codex: ['weekly'],",
       "const LABELS = { codex: 'weekly only' }",
       "const hide = (p: string) => p === 'codex'",
       // The same key with another value is another line, and is not permitted.
@@ -372,10 +370,6 @@ describe('the renderer never decides a capability by recognising a provider (039
         third,
       ).toEqual([third.trim()])
     }
-    // And the same two lines in any other file are not permitted.
-    expect(isAllowed({ ...clean[0]!, file: 'renderer/src/components/SessionLibrary.vue' })).toBe(
-      false,
-    )
   })
 
   it('none of them is a comparison — an allowlist is not a way to smuggle one in', () => {
@@ -385,27 +379,12 @@ describe('the renderer never decides a capability by recognising a provider (039
     expect(sites.filter((site) => site.comparison).map(describeSite)).toEqual([])
   })
 
-  it('the count 039 reports: 5 allowlisted lines, 0 logic', () => {
-    // The acceptance criterion, as a number rather than a claim. Before: 4 literals — the picker's
-    // two, the default, and `planAvailable`. After: the same three, and nothing deciding anything.
-    //
-    // ⚠️ **Three became four in 169, and the unit became a LINE.** The fourth is `PROVIDER_NAME`,
-    // the display-name table 151's register needed in the renderer's reach; it names both providers
-    // on one line, so counting literals would have read it as four new leaks. What the number is
-    // for is unchanged: `logic` must stay zero, and every allowed line must be one somebody argued
-    // for in `ALLOWED`.
-    //
-    // ⚑ **Four became TWO at 417** (HO-022 §2). The two that left are the picker's `<option>`s —
-    // there is no provider picker, so there is nothing to offer and nothing to allowlist. ⛔ **The
-    // number moving DOWN is the only direction this file welcomes**: every permit is a line
-    // somebody argued for, and the count is what makes adding one deliberate.
-    //
-    // ⚠️ **Three became five with the top bar's table** of the windows each provider's cells wait
-    // for. Both go back out when main reports those windows.
+  it('the renderer has zero allowlisted provider lines and zero provider logic', () => {
+    // Display names, defaults and usage windows now come from the registry.
     const { sites } = scanRenderer()
     expect({
       allowlisted: new Set(sites.filter((s) => !s.comparison).map(describeSite)).size,
       logic: sites.filter((s) => s.comparison).length,
-    }).toEqual({ allowlisted: 5, logic: 0 })
+    }).toEqual({ allowlisted: 0, logic: 0 })
   })
 })

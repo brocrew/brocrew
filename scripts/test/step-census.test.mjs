@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { constantFrom } from '../lib/app-source.mjs'
+import { constantFrom, providerRoster } from '../lib/app-source.mjs'
 import {
   CENSUS,
   DEPARTED,
@@ -128,12 +128,7 @@ describe('660 · step 82’s bound is DERIVED from the roster it prices, never t
     const [, rowProviders, rowOutcomes, criterion17, criterion20] = units.map(Number)
 
     // ⚑ The providers and outcomes, read from the product as step 82 reads them.
-    const contracts = readFileSync(join(here, '../../packages/shared/src/contracts.ts'), 'utf8')
-    const providers = [
-      ...contracts
-        .match(/providerSchema\s*=\s*z\.enum\(\[([^\]]+)]\)/)[1]
-        .matchAll(/['"]([^'"]+)['"]/g),
-    ]
+    const providers = providerRoster()
     const offer = readFileSync(
       join(here, '../../apps/desktop/src/renderer/src/lib/permission-offer.ts'),
       'utf8',

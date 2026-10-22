@@ -2,11 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, expect, it } from 'vitest'
-import {
-  PROVIDER_DESCRIPTORS,
-  SUPPORTED_PROVIDERS,
-  type ProviderDescriptor,
-} from '@brobot2/shared'
+import { PROVIDER_DESCRIPTORS, SUPPORTED_PROVIDERS, type ProviderDescriptor } from '@brobot2/shared'
 
 const descriptors = PROVIDER_DESCRIPTORS as unknown as ProviderDescriptor[]
 const ids = SUPPORTED_PROVIDERS as unknown as string[]
@@ -47,7 +43,9 @@ it('builds optional strict usage fields for every registered descriptor', () => 
   expect(
     protocol.limitsReadInput.safeParse({ ...input, signInChangedAt: {}, usage: {} }).success,
   ).toBe(true)
-  expect(protocol.limitsReadInput.safeParse({ ...input, usage: { unknown: [] } }).success).toBe(false)
+  expect(protocol.limitsReadInput.safeParse({ ...input, usage: { unknown: [] } }).success).toBe(
+    false,
+  )
 })
 
 it('gives a newly registered provider its own persisted usage arrays and reads its rows', () => {

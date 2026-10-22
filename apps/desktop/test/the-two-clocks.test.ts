@@ -898,7 +898,11 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
       // measurement rather than a reader pointed at a file that moved (standing rule 34.2).
       expect(host_).toContain('deps.closeDrainTimeoutMs ?? DEFAULT_CLOSE_DRAIN_TIMEOUT_MS')
       expect(host_).toContain('deps.interruptWaitMs ?? DEFAULT_INTERRUPT_WAIT_MS')
-      expect(host_).toContain('deps.launchTimeoutMs ?? DEFAULT_LAUNCH_TIMEOUT_MS')
+      expect(host_).toContain('const defaults = providerDescriptor(provider).launch')
+      expect(host_).toContain('fresh: deps.launchTimeoutMs ?? defaults.freshTimeoutMs')
+      expect(host_).toContain(
+        'resume: resumeOverrides[provider] ?? deps.launchTimeoutMs ?? defaults.resumeTimeoutMs',
+      )
     })
 
     /**

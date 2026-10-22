@@ -80,8 +80,7 @@ export function constantFrom(name) {
   return found
 }
 
-/** Read the registry's default without evaluating app code or matching comments. */
-export function providerDefaultFrom(source, kind = 'conversation') {
+function descriptorRowsFrom(source) {
   const tree = ts.createSourceFile('providers.ts', source, ts.ScriptTarget.Latest, true)
   const declaration = tree.statements
     .filter(ts.isVariableStatement)
@@ -99,20 +98,26 @@ export function providerDefaultFrom(source, kind = 'conversation') {
   if (!array || !ts.isArrayLiteralExpression(array)) {
     throw new Error('The provider registry is not a readable array declaration.')
   }
-  const property = (object, key) => {
-    if (!ts.isObjectLiteralExpression(object)) return undefined
-    return object.properties.find(
-      (entry) =>
-        ts.isPropertyAssignment(entry) &&
-        (ts.isIdentifier(entry.name) || ts.isStringLiteral(entry.name)) &&
-        entry.name.text === key,
-    )?.initializer
-  }
+  return array.elements
+}
+
+function descriptorProperty(object, key) {
+  if (!ts.isObjectLiteralExpression(object)) return undefined
+  return object.properties.find(
+    (entry) =>
+      ts.isPropertyAssignment(entry) &&
+      (ts.isIdentifier(entry.name) || ts.isStringLiteral(entry.name)) &&
+      entry.name.text === key,
+  )?.initializer
+}
+
+/** Read the registry's default without evaluating app code or matching comments. */
+export function providerDefaultFrom(source, kind = 'conversation') {
   const defaults = []
-  for (const row of array.elements) {
-    const id = property(row, 'id')
-    const flags = property(row, 'defaults')
-    const flag = flags && property(flags, kind)
+  for (const row of descriptorRowsFrom(source)) {
+    const id = descriptorProperty(row, 'id')
+    const flags = descriptorProperty(row, 'defaults')
+    const flag = flags && descriptorProperty(flags, kind)
     if (
       !id ||
       !ts.isStringLiteral(id) ||
@@ -125,6 +130,34 @@ export function providerDefaultFrom(source, kind = 'conversation') {
   }
   if (defaults.length !== 1) throw new Error(`Expected one default provider for ${kind}.`)
   return defaults[0]
+}
+
+/** Literal ids and display names in the same order as the app's provider registry. */
+export function providerRosterFrom(source) {
+  const seen = new Set()
+  const roster = descriptorRowsFrom(source).map((row) => {
+    const id = descriptorProperty(row, 'id')
+    const name = descriptorProperty(row, 'displayName')
+    if (
+      !id ||
+      !ts.isStringLiteral(id) ||
+      !id.text ||
+      seen.has(id.text) ||
+      !name ||
+      !ts.isStringLiteral(name) ||
+      !name.text
+    ) {
+      throw new Error('The provider registry has an unreadable or duplicate roster entry.')
+    }
+    seen.add(id.text)
+    return { provider: id.text, name: name.text }
+  })
+  if (roster.length === 0) throw new Error('The provider registry has no roster entries.')
+  return roster
+}
+
+export function providerRoster() {
+  return providerRosterFrom(readFileSync(join(DESKTOP, DECLARED_IN.DEFAULT_PROVIDER), 'utf8'))
 }
 
 /**

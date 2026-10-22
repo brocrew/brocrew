@@ -282,11 +282,33 @@ function hasExactKeys(value, keys) {
   )
 }
 
+function validSkillReminder(item, format) {
+  const reminder = item.reminder
+  if (
+    format === 1 &&
+    !(
+      hasExactKeys(reminder, ['codex', 'claude']) &&
+      typeof reminder.claude === 'string' &&
+      reminder.claude.length <= 247 &&
+      reminder.claude === `brobot:${reminder.codex}`
+    )
+  )
+    return false
+  const text = format === 1 ? reminder.codex : reminder
+  return (
+    typeof text === 'string' &&
+    text.length >= 1 &&
+    text.length <= 240 &&
+    text.startsWith(`${item.name} — `) &&
+    !/[\r\n]/.test(text)
+  )
+}
+
 /** Verify the candidate's manifest and body bytes before using its shipped membership. */
 export function verifyCandidateSkills(manifest, bodies) {
   requireEvidence(
     hasExactKeys(manifest, ['formatVersion', 'version', 'skills']) &&
-      manifest.formatVersion === 1 &&
+      [1, 2].includes(manifest.formatVersion) &&
       typeof manifest.version === 'string' &&
       /^v\d+(?:\.\d+)?$/.test(manifest.version) &&
       Array.isArray(manifest.skills) &&
@@ -305,16 +327,8 @@ export function verifyCandidateSkills(manifest, bodies) {
         typeof item.description === 'string' &&
         item.description.length > 0 &&
         item.description.length <= 500 &&
-        hasExactKeys(item.reminder, ['codex', 'claude']) &&
-        typeof item.reminder.codex === 'string' &&
-        item.reminder.codex.length >= 1 &&
-        item.reminder.codex.length <= 240 &&
-        typeof item.reminder.claude === 'string' &&
-        item.reminder.claude.length >= 1 &&
-        item.reminder.claude.length <= 247 &&
-        item.reminder.codex.startsWith(`${item.name} — `) &&
-        item.reminder.claude === `brobot:${item.reminder.codex}` &&
-        !/[\r\n]/.test(item.description + item.reminder.codex + item.reminder.claude) &&
+        validSkillReminder(item, manifest.formatVersion) &&
+        !/[\r\n]/.test(item.description) &&
         Number.isInteger(item.bytes) &&
         item.bytes > 0 &&
         item.bytes <= 65_536 &&

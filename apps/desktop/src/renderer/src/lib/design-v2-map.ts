@@ -150,11 +150,12 @@ export interface FieldMapping {
 
 const IPC = 'apps/desktop/src/shared/runtime-ipc.ts'
 const CAPS = 'apps/desktop/src/shared/capabilities.ts'
-const RUNTIME_CAPS = 'packages/runtime/src/capabilities.ts'
+const PROVIDER_CAPABILITIES = 'packages/shared/src/provider-capabilities.ts'
 const EVENTS = 'packages/runtime/src/events.ts'
 const PERMISSION = 'packages/runtime/src/permission.ts'
 const CHILD = 'packages/runtime/src/child-conversation.ts'
 const CONTRACTS = 'packages/shared/src/contracts.ts'
+const PROVIDERS = 'packages/shared/src/providers.ts'
 const LIB = 'apps/desktop/src/renderer/src/lib'
 const AGENT_STATE = `${LIB}/agent-state.ts`
 const TOOLS = `${LIB}/tool-inventory.ts`
@@ -208,7 +209,7 @@ const CONVERSATION: readonly FieldMapping[] = [
     kind: 'fact',
     binding: {
       state: 'bound',
-      from: [ref(IPC, 'CreatedSession.provider'), ref(CONTRACTS, 'Provider')],
+      from: [ref(IPC, 'CreatedSession.provider'), ref(PROVIDERS, 'Provider')],
     },
     absent:
       '`Provider not specified` — the mock’s own word, and correct: a draft has a chosen provider, never an absent one.',
@@ -337,8 +338,8 @@ const LAUNCH: readonly FieldMapping[] = [
     binding: {
       state: 'derived',
       from: [
-        ref(RUNTIME_CAPS, 'ProviderCapabilities.planMode'),
-        ref(RUNTIME_CAPS, 'CapabilityStatus'),
+        ref(PROVIDER_CAPABILITIES, 'ProviderCapabilities.planMode'),
+        ref(PROVIDER_CAPABILITIES, 'CapabilityStatus'),
       ],
       note: '⛔ **Not a boolean.** `CapabilityStatus` is a union whose `unavailable` arms are REQUIRED to carry a reason, which is `030`’s honest-absence rule held up by the type system. `textOrUnknown()` flattens it to `Reported available` / `Reported unavailable` and throws the reason away — the one thing a person needs when the answer is no.',
     },
@@ -368,7 +369,7 @@ const LAUNCH: readonly FieldMapping[] = [
       state: 'derived',
       from: [
         ref(CREDENTIAL, 'profileCredential'),
-        ref(RUNTIME_CAPS, 'ProviderCapabilities.homeCredential'),
+        ref(PROVIDER_CAPABILITIES, 'ProviderCapabilities.homeCredential'),
       ],
       note: '⚠️ **The product’s answer is a paragraph and the mock’s slot is a chip.** `profileCredential()` returns a sentence plus a `tone`, because what has happened to a credential differs between the providers in KIND — one keeps a copy that shares a rotating token, the other keeps nothing. There is no one-word status to put in a chip, and inventing one is exactly what `329` corrected.',
     },
@@ -1251,9 +1252,9 @@ export const DISCLOSURE_FIELDS: readonly DisclosureSlot[] = [
     binding: {
       state: 'derived',
       from: [
-        ref(RUNTIME_CAPS, 'ProviderCapabilities.homeCredential'),
-        ref(RUNTIME_CAPS, 'ProviderCapabilities.signIn'),
-        ref(RUNTIME_CAPS, 'ProviderCapabilities.reprovisionAuth'),
+        ref(PROVIDER_CAPABILITIES, 'ProviderCapabilities.homeCredential'),
+        ref(PROVIDER_CAPABILITIES, 'ProviderCapabilities.signIn'),
+        ref(PROVIDER_CAPABILITIES, 'ProviderCapabilities.reprovisionAuth'),
         ref(CREDENTIAL, 'profileCredential'),
       ],
       note: '⚠️ **Three product capabilities, one mock slot.** `329` split them deliberately: `homeCredential` answers *what has already happened to a credential*, `signIn` and `reprovisionAuth` answer *what this app may DO about one*, and a provider can plausibly have any without the others. `profileCredential()` already joins the first with a timing clause. The other two are BUTTON availabilities with their own sentences and v2.3 has nowhere to put them.',
@@ -1286,7 +1287,10 @@ export const DISCLOSURE_FIELDS: readonly DisclosureSlot[] = [
     slot: '<provider>.modes[auto].disclosure',
     binding: {
       state: 'bound',
-      from: [ref(APPROVALS, 'YOLO_MEANS'), ref(RUNTIME_CAPS, 'ProviderCapabilities.approvals')],
+      from: [
+        ref(APPROVALS, 'YOLO_MEANS'),
+        ref(PROVIDER_CAPABILITIES, 'ProviderCapabilities.approvals'),
+      ],
       note: '⛔ **Two halves and they must both be rendered.** `YOLO_MEANS` is the SHARED sentence — nothing is asked, and a command reaches what you can — and `capabilities[provider].approvals.note` is the half that is this provider’s alone. `CardApproval.vue` draws exactly this pair, and since `500` so do the two doors a PERSON starts a conversation from — a default of `auto` means a launch can begin in the mode, so the door that begins it owes the same two halves. `a-mode-that-says-what-it-does.test.ts` pins all three by clause. A slot that took one would tell a person strictly less than the running app already does.',
     },
     absent: 'n/a — both halves always exist.',

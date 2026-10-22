@@ -1,4 +1,4 @@
-import { providerDescriptor, providerRecord, type Provider } from '@brobot2/shared'
+import { providerDescriptor, providerRecord } from '@brobot2/shared'
 
 /**
  * **The commands the agent already has** (279) — the provider-neutral vocabulary for them.

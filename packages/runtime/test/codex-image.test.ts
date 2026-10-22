@@ -198,7 +198,10 @@ describe('what Claude does with images — measured, and the answer is nothing (
     // The keyword is `image`, not `imageGeneration`: a capability named `imageGen`, `image_gen` or
     // `imageOutput` is exactly as much of a reason to re-read this verdict, and the narrow spelling
     // would have missed every one of them.
-    const source = readFileSync(join(HERE, '..', 'src', 'claude', 'capabilities.ts'), 'utf8')
+    const source = readFileSync(
+      join(HERE, '../../shared/src/providers/claude-capabilities.ts'),
+      'utf8',
+    )
     expect(source).toContain('planMode')
     expect(source.toLowerCase()).not.toContain('image')
   })

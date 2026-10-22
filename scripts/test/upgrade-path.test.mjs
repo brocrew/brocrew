@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { providerRoster } from '../lib/app-source.mjs'
 import {
   A_STANDING_STOPS_SETUP,
   appExeIn,
@@ -1052,11 +1053,7 @@ describe('the app’s setup at launch, as the check expects it', () => {
 
   it('asks about the app’s own providers in its order, and stops on the standings the app warns of', () => {
     const shared = readFileSync(join(ROOT, 'apps/desktop/src/shared/runtime-ipc.ts'), 'utf8')
-    const names = /export const PROVIDER_NAME: Record<Provider, string> = \{([^}]*)\}/.exec(shared)
-    expect(names, 'PROVIDER_NAME is no longer where this reads it').not.toBeNull()
-    expect(
-      [...names[1].matchAll(/(\w+): '([^']+)'/g)].map(([, provider, name]) => ({ provider, name })),
-    ).toEqual(LAUNCH_SETUP_PROVIDERS)
+    expect(providerRoster()).toEqual(LAUNCH_SETUP_PROVIDERS)
     const warns = /export const A_STANDING_WARNS:[^=]*= \{([^}]*)\}/.exec(shared)
     expect(warns, 'A_STANDING_WARNS is no longer where this reads it').not.toBeNull()
     expect(
@@ -1979,14 +1976,27 @@ describe('skill catalogue upgrade evidence', () => {
     if (fault === 'unknown-reminder-key') entry.reminder.extra = true
     expect(() => verifyCandidateSkills(manifest, bodies)).toThrow()
   })
-  it('accepts reminders at the app format limits', () => {
+  it.each([1, 2])('accepts reminders at the app format limits for format %d', (format) => {
     const { manifest, bodies } = candidateBundle(['delegate'])
-    const reminder = manifest.skills[0].reminder
-    reminder.codex = 'delegate — ' + 'x'.repeat(240 - 'delegate — '.length)
-    reminder.claude = `brobot:${reminder.codex}`
-    expect(reminder.claude).toHaveLength(247)
+    manifest.formatVersion = format
+    const text = 'delegate — ' + 'x'.repeat(240 - 'delegate — '.length)
+    manifest.skills[0].reminder = format === 1 ? { codex: text, claude: `brobot:${text}` } : text
     expect(verifyCandidateSkills(manifest, bodies).names).toEqual(['delegate'])
   })
+  it.each(['pair', 'wrong-name', 'multiline', 'too-long'])(
+    'refuses a neutral candidate reminder with %s',
+    (fault) => {
+      const { manifest, bodies } = candidateBundle(['delegate'])
+      manifest.formatVersion = 2
+      const entry = manifest.skills[0]
+      if (fault !== 'pair') entry.reminder = entry.reminder.codex
+      if (fault === 'wrong-name') entry.reminder = 'other — Use fake data.'
+      if (fault === 'multiline') entry.reminder += '\nMore words.'
+      if (fault === 'too-long')
+        entry.reminder = 'delegate — ' + 'x'.repeat(241 - 'delegate — '.length)
+      expect(() => verifyCandidateSkills(manifest, bodies)).toThrow()
+    },
+  )
   it('verifies the candidate source bundle with the same body checks', () => {
     const folder = join(
       dirname(fileURLToPath(import.meta.url)),
