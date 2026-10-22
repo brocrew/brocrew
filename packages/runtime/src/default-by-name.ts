@@ -1,4 +1,4 @@
-import type { Provider } from '@brobot2/shared'
+import { providerValue, type Provider } from '@brobot2/shared'
 import { CLAUDE_DEFAULT_BY_NAME } from './claude/default-by-name'
 
 /** ⚑ **D-042 · a model and the effort it runs at, both named.** */
@@ -14,5 +14,5 @@ export interface ModelByName {
  * ⛔ `null` is *read the list*, never *send nothing*.
  */
 export function theDefaultByName(provider: Provider): ModelByName | null {
-  return provider === 'claude' ? CLAUDE_DEFAULT_BY_NAME : null
+  return providerValue(provider, { claude: CLAUDE_DEFAULT_BY_NAME, codex: null })
 }

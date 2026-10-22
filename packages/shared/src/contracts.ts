@@ -12,6 +12,14 @@ import { z } from 'zod'
 export const providerSchema = z.enum(['claude', 'codex'])
 export type Provider = z.infer<typeof providerSchema>
 
+/** Select a value only after every provider has supplied an answer. */
+export function providerValue<const T>(
+  provider: Provider,
+  values: Readonly<Record<Provider, T>>,
+): T {
+  return values[provider]
+}
+
 /**
  * Orthogonal provider-session status machine.
  * Describes the conversation, not the task.

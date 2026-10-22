@@ -1,4 +1,5 @@
 import { posix, win32 } from 'node:path'
+import { providerValue } from '@brobot2/shared'
 import type { BuiltInSkillsContext } from './runtime'
 
 export const BUILT_IN_SKILLS_FAILURE =
@@ -31,13 +32,21 @@ export function validateBuiltInSkills(
   }
   const names = new Set<string>()
   for (const skill of context.skills) {
-    const bare = provider === 'claude' ? skill.name.replace(/^brobot:/, '') : skill.name
+    const bare = providerValue(provider, { claude: true, codex: false })
+      ? skill.name.replace(/^brobot:/, '')
+      : skill.name
     if (
       !/^[a-z][a-z0-9-]{0,63}$/.test(bare) ||
       names.has(skill.name) ||
-      (provider === 'claude' && skill.name !== `brobot:${bare}`) ||
+      (providerValue(provider, { claude: true, codex: false }) &&
+        skill.name !== `brobot:${bare}`) ||
       skill.path !==
-        path.join(context.root, provider === 'claude' ? 'skills' : '', bare, 'SKILL.md') ||
+        path.join(
+          context.root,
+          providerValue(provider, { claude: 'skills', codex: '' }),
+          bare,
+          'SKILL.md',
+        ) ||
       !skill.description ||
       skill.description.length > 500
     ) {
