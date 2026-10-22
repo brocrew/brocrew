@@ -1,4 +1,4 @@
-import { withManagedPluginAttachments } from '@brobot2/runtime'
+import { StoppedBeforeSend, withManagedPluginAttachments } from '@brobot2/runtime'
 import type { WorkspacePluginAttachments } from '../plugins/attachments'
 import {
   readPluginInstructions,
@@ -964,7 +964,11 @@ import {
   freshLimitsSnapshot,
   type LimitsWriterStamp,
 } from '../db/fresh-limits-snapshot'
-import type { LimitsReadInput, LimitsReadResult } from '../db/limits-read-protocol'
+import {
+  LIMITS_READ_BOUNDS,
+  type LimitsReadInput,
+  type LimitsReadResult,
+} from '../db/limits-read-protocol'
 import { sameWindowWriter, WindowRoutingReads } from '../db/window-routing-reads'
 import { WindowIncidentReads } from '../db/window-incident-reads'
 import type { WindowWriterStamp } from '../db/window-writer-stamp'
@@ -1036,7 +1040,9 @@ import type { ActedBy } from '../../shared/who-did-it'
 // ({@link wallsFromUsage}), folded with the store's by the same fold.
 import {
   foldProviderLimits,
+  PROVIDER_WALL_LOOKBACK_MS,
   wallsFromUsage,
+  type ProviderLimitAccountLife,
   type ProviderLimitSeen,
 } from '../../shared/provider-limit'
 import type { StalledWork } from '../../shared/stalled-work'
@@ -2626,6 +2632,7 @@ export interface RuntimeHostDeps {
    * provider on its machine login, and refuses to keep a key, saying so.
    */
   apiKeys?: Pick<ApiKeys, 'status' | 'remove'> & {
+    revision?(provider: Provider): number
     set(provider: Provider, key: string): string | null | Promise<string | null>
     read(provider: Provider): string | null | Promise<string | null>
   }
@@ -8049,6 +8056,7 @@ export class RuntimeHost implements LiveHost {
   private readonly itsIdentity = new WeakMap<HostedSession, Promise<string | null>>()
   /** ⚑ …and once answered, for a reader that cannot wait. */
   private readonly identityKnown = new WeakMap<HostedSession, string | null>()
+  private readonly limitAccountLives = new Map<string, Map<number, string | null>>()
   /** ⚑ The lives this app started only to continue a cut turn, once their words were held. */
   private readonly cutStartedTheLife = new WeakSet<HostedSession>()
   /** ⚑ Each life's own `launched` row, as it was recorded: what binds its account to its turns. */
@@ -9530,14 +9538,21 @@ export class RuntimeHost implements LiveHost {
    * read that failed all hold. ⛔ Stricter than the hold an ordinary send meets
    * ({@link theResetItWaitsFor}), which only a known reset holds.
    */
-  private aLimitMayStillHold(provider: Provider): boolean {
+  private aLimitMayStillHold(
+    provider: Provider,
+    account: string | null = null,
+    captured?: LedgerWalk<ProviderLimitSeen>,
+  ): boolean {
     try {
       const now = this.now()
-      const walk = this.deps.store.providerLimitsSeen(now, this.signInChangedAt)
+      const walk =
+        captured ??
+        this.deps.store.providerLimitsSeen(now, this.signInChangedAt, this.limitAccountSnapshot())
       if (walk.rowsUnread > 0) return true
       return walk.rows.some(
         (wall) =>
           wall.provider === provider &&
+          (account === null || wall.account === undefined || wall.account === account) &&
           wall.standing === 'stopped' &&
           (wall.resetsAt === null || wall.resetsAt > now),
       )
@@ -9550,8 +9565,8 @@ export class RuntimeHost implements LiveHost {
   /** ⚑ Whether a cut's continuation waits on its provider's usage limit, as its kind is held. */
   private itsLimitHolds(record: CutRecord, provider: Provider): boolean {
     return record.kind === 'program' || record.kind === 'limit'
-      ? this.aLimitMayStillHold(provider)
-      : this.theResetItWaitsFor(provider) !== null
+      ? this.aLimitMayStillHold(provider, record.expected)
+      : this.theResetItWaitsFor(provider, record.expected) !== null
   }
 
   /** ⚑ Whether a limit's cut is past the longest it is waited for, counted from its cut. */
@@ -9863,14 +9878,30 @@ export class RuntimeHost implements LiveHost {
       const waiting = this.theLimitsCutsOf(provider)
       if (waiting.length === 0) return
       const now = this.now()
-      const standing = this.theResetItWaitsFor(provider)
-      // ⚑ A limit that may still stand with no reset to wait for is looked at again later.
-      const mayStillHold = this.aLimitMayStillHold(provider)
+      let walk: LedgerWalk<ProviderLimitSeen> | undefined
+      try {
+        const epoch = this.providerLimitEpoch
+        walk = this.deps.store.providerLimitsSeen(
+          now,
+          this.signInChangedAt,
+          this.limitAccountSnapshot(),
+        )
+        this.wallsForTheHold = { at: now, rows: walk.rows }
+        this.prepareProviderLimitFacts(walk, now, epoch)
+      } catch (error) {
+        this.wallsForTheHold = null
+        this.invalidateProviderLimitFacts()
+        console.warn(`runtime host could not read the providers' limits: ${errorMessage(error)}`)
+      }
       let soonest: number | null = null
       const due: string[] = []
       for (const conversation of waiting) {
         const record = this.cutsKept.cuts[conversation]
         if (record === undefined) continue
+        const standing =
+          walk === undefined ? null : this.theResetItWaitsFor(provider, record.expected)
+        const mayStillHold =
+          walk === undefined || this.aLimitMayStillHold(provider, record.expected, walk)
         // ⚑ Not before the reset its own turn named, nor while a limit of its provider stands — which
         // may be another sign-in's, so it only delays — and never past a day from its cut.
         const reset = Math.max(record.resetsAt ?? 0, standing ?? 0)
@@ -9932,7 +9963,10 @@ export class RuntimeHost implements LiveHost {
         return
       }
       // A limit that stands again waits again, for its own reset.
-      if (this.aLimitMayStillHold(provider) || (record.resetsAt ?? 0) > this.now()) {
+      if (
+        this.aLimitMayStillHold(provider, record.expected) ||
+        (record.resetsAt ?? 0) > this.now()
+      ) {
         this.wakeTheLimitsCuts(provider)
         return
       }
@@ -10016,6 +10050,7 @@ export class RuntimeHost implements LiveHost {
       identity = null
     }
     this.identityKnown.set(session, identity)
+    this.recordLimitAccount(session)
     if (identity !== null) this.keepItsLife(session, identity)
     return identity
   }
@@ -10035,6 +10070,7 @@ export class RuntimeHost implements LiveHost {
 
   /** ⚑ What was kept of deleted conversations' cuts and lives, let go. ⛔ It never throws. */
   private forgetTheirCuts(gone: ReadonlySet<string>): void {
+    for (const id of gone) this.limitAccountLives.delete(id)
     const left = <T>(rows: Readonly<Record<string, T>>): Record<string, T> =>
       Object.fromEntries(Object.entries(rows).filter(([id]) => !gone.has(id)))
     const cuts = left(this.cutsKept.cuts)
@@ -13263,7 +13299,10 @@ export class RuntimeHost implements LiveHost {
         return
       }
       // 🔴 **F074 — at its provider's usage limit, the wake-up waits for the reset.**
-      const until = this.theResetItWaitsFor(startable.provider)
+      const until = this.theResetItWaitsFor(
+        startable.provider,
+        this.limitAccountOf(conversation, this.now()),
+      )
       if (until !== null) {
         this.setItsWakeUpTimer(conversation, wakeUp, until - this.now() + this.afterALimitResetsMs)
         return
@@ -17306,7 +17345,11 @@ export class RuntimeHost implements LiveHost {
       session.mailbox.some((one) => one.text.includes(quoting)) ||
       this.answersOnTheirWay.has(questionKey(session.id, requestId))
     if (!held) return 'already-sent'
-    if (this.theResetItWaitsFor(session.provider) !== null) return 'held-until-the-limit-resets'
+    if (
+      this.theResetItWaitsFor(session.provider, this.limitAccountOf(session.id, this.now())) !==
+      null
+    )
+      return 'held-until-the-limit-resets'
     return session.stopStillAsked === null
       ? 'held-until-this-turn-ends'
       : 'held-and-this-turn-is-stopping'
@@ -18834,7 +18877,10 @@ export class RuntimeHost implements LiveHost {
     }
     // Only eligible automatic words depend on the provider's current reset.
     return (
-      automaticWordsWait && (session === null || this.theResetItWaitsFor(session.provider) === null)
+      automaticWordsWait &&
+      (session === null ||
+        this.theResetItWaitsFor(session.provider, this.limitAccountOf(session.id, this.now())) ===
+          null)
     )
   }
 
@@ -19768,7 +19814,12 @@ export class RuntimeHost implements LiveHost {
         const fact =
           !current || person === undefined
             ? ({ status: 'unavailable' } as const)
-            : this.providerLimitFacts.hold(session.provider, person, now)
+            : this.providerLimitFacts.hold(
+                session.provider,
+                person,
+                now,
+                this.limitAccountOf(session.id, now),
+              )
         return fact.status === 'unavailable'
           ? { ...row, holdReasonStatus: 'unavailable' as const }
           : { ...row, holdReasonStatus: 'current' as const, holdReason: fact.value }
@@ -19846,7 +19897,11 @@ export class RuntimeHost implements LiveHost {
     const epoch = this.providerLimitEpoch
     let walk: LedgerWalk<ProviderLimitSeen>
     try {
-      walk = this.deps.store.providerLimitsSeen(now, this.signInChangedAt)
+      walk = this.deps.store.providerLimitsSeen(
+        now,
+        this.signInChangedAt,
+        this.limitAccountSnapshot(),
+      )
     } catch (error) {
       this.invalidateProviderLimitFacts()
       throw error
@@ -19882,6 +19937,7 @@ export class RuntimeHost implements LiveHost {
     return reader.read({
       capturedAt: this.now(),
       signInChangedAt: Object.fromEntries(this.signInChangedAt),
+      accountLives: this.limitAccountSnapshot(),
       usage: { claude: capturedUsage('claude'), codex: capturedUsage('codex') },
     })
   }
@@ -26248,7 +26304,11 @@ export class RuntimeHost implements LiveHost {
       })
       handed = await recheckHandedPaths(attachments, session.cwd)
     } catch (error) {
-      if (how.onAStop === 'start-it-again' && this.itStoppedUnder(session)) {
+      if (
+        how.onAStop === 'start-it-again' &&
+        !(error instanceof StoppedBeforeSend) &&
+        this.itStoppedUnder(session)
+      ) {
         return this.aDeliveryAStopCaught(sessionId, text, by, attachments, how)
       }
       // ⚑ A person's own words on a sign-in that moved are the press its reopen asks for: held, and
@@ -26351,6 +26411,7 @@ export class RuntimeHost implements LiveHost {
       if (
         how.onAStop === 'start-it-again' &&
         !(error instanceof TurnInProgress) &&
+        !(error instanceof StoppedBeforeSend) &&
         this.itStoppedUnder(session)
       ) {
         return this.aDeliveryAStopCaught(sessionId, text, by, attachments, how)
@@ -27129,6 +27190,8 @@ export class RuntimeHost implements LiveHost {
         console.warn(`runtime session ${session.id} failed to interrupt: ${errorMessage(error)}`)
       })
       await settledWithin(asked, this.interruptWaitMs)
+      // A retired handle cannot become idle; carry only the replacement words after its exit.
+      if (this.itStoppedUnder(session)) return this.send(session.id, text, by, attachments)
       // ⚠️ **704 · on Codex this is the only bound on the TURN.** Claude's `interrupt()` bounds its
       // own ack and forces the terminal (074); Codex's forces nothing while a turn is open, so a
       // Codex turn still running at the end of these five seconds refuses the send.
@@ -31852,22 +31915,82 @@ export class RuntimeHost implements LiveHost {
     )
   }
 
-  /**
-   * 🔴 **F074 — when the usage limit a provider is at resets**, or `null` when it is at none this
-   * app can wait out — the latest reset among this provider's `stopped` walls, read off the fold the
-   * limits warning reads ({@link limitsForAPerson}: one derivation of *what is one wall*), and only
-   * one still ahead. ⛔ **A wall with no reset holds nothing**: there is no moment to wait for, and a
-   * hold nothing could end would stop every turn the app starts for that provider.
-   *
-   * ⚑ Read at most once per {@link WALLS_READ_FOR_MS}, and again after any row that can move a wall
-   * ({@link deliver}). ⚠️ A read that fails holds nothing, and says so.
-   */
-  private theResetItWaitsFor(provider: Provider): number | null {
+  /** Records identity at launch or provider events, never during a limits read. */
+  private recordLimitAccount(session: HostedSession): void {
+    let identity: string | null = null
+    try {
+      const known = this.identityKnown.get(session)
+      if (known != null) identity = known
+      else if (session.provider === 'codex') {
+        const tag = session.handle.signInTag?.() ?? null
+        identity = tag === null ? null : `codex:${tag}`
+      } else {
+        const account = session.handle.account?.()
+        identity =
+          account == null
+            ? null
+            : `claude:${this.digestOfAnAccount(account.email, account.organization)}`
+      }
+    } catch {
+      identity = null
+    }
+    const lives = this.limitAccountLives.get(session.id) ?? new Map<number, string | null>()
+    if (
+      lives.has(session.lifeSince) &&
+      (lives.get(session.lifeSince) === identity ||
+        (lives.get(session.lifeSince) !== null && identity === null))
+    )
+      return
+    lives.set(session.lifeSince, identity)
+    const floor = session.lifeSince - PROVIDER_WALL_LOOKBACK_MS
+    const previous = Math.max(-Infinity, ...[...lives.keys()].filter((since) => since < floor))
+    for (const since of lives.keys()) if (since < previous) lives.delete(since)
+    this.limitAccountLives.set(session.id, lives)
+    const life = this.providerLimitLives.get(session.id)?.life
+    if (life !== undefined) this.providerLimitFacts.bindAccount(session.id, life, identity)
+    this.wallsForTheHold = null
+    this.invalidateProviderLimitFacts()
+  }
+
+  private limitAccountSnapshot(): ProviderLimitAccountLife[] | undefined {
+    const lives = new Map<string, ProviderLimitAccountLife>()
+    const keep = (sessionId: string, since: number, account: string | null) =>
+      lives.set(JSON.stringify([sessionId, since]), { sessionId, since, account })
+    for (const [sessionId, life] of Object.entries(this.cutsKept.lives))
+      keep(sessionId, life.since, life.identity)
+    for (const [sessionId, history] of this.limitAccountLives)
+      for (const [since, account] of history) keep(sessionId, since, account)
+    // Incomplete identities retain the provider-wide gate rather than lifting every hold.
+    if (lives.size > LIMITS_READ_BOUNDS.rows) return undefined
+    return [...lives.values()]
+  }
+
+  /** The account of a recorded life; unknown identities keep provider-wide behavior. */
+  private limitAccountOf(conversation: string, at: number): string | null {
+    let latest = -Infinity
+    let identity: string | null = null
+    for (const [since, account] of this.limitAccountLives.get(conversation) ?? []) {
+      if (since <= at && since > latest) {
+        latest = since
+        identity = account
+      }
+    }
+    if (latest !== -Infinity) return identity
+    const kept = this.cutsKept.lives[conversation]
+    return kept !== undefined && at >= kept.since ? kept.identity : null
+  }
+
+  /** The latest future reset for this account, or for the provider when its account is unknown. */
+  private theResetItWaitsFor(provider: Provider, account: string | null = null): number | null {
     const now = this.now()
     if (this.wallsForTheHold === null || now - this.wallsForTheHold.at > WALLS_READ_FOR_MS) {
       try {
         const epoch = this.providerLimitEpoch
-        const walk = this.deps.store.providerLimitsSeen(now, this.signInChangedAt)
+        const walk = this.deps.store.providerLimitsSeen(
+          now,
+          this.signInChangedAt,
+          this.limitAccountSnapshot(),
+        )
         this.wallsForTheHold = { at: now, rows: walk.rows }
         this.prepareProviderLimitFacts(walk, now, epoch)
       } catch (error) {
@@ -31877,12 +32000,16 @@ export class RuntimeHost implements LiveHost {
       }
     }
     let until: number | null = null
+    let providerUntil: number | null = null
     for (const wall of this.wallsForTheHold.rows) {
       if (wall.provider !== provider || wall.standing !== 'stopped') continue
       if (wall.resetsAt === null || wall.resetsAt <= now) continue
+      if (providerUntil === null || wall.resetsAt > providerUntil) providerUntil = wall.resetsAt
+      if (account !== null && wall.account !== undefined && wall.account !== account) continue
       if (until === null || wall.resetsAt > until) until = wall.resetsAt
     }
-    if (this.providerLimitFacts.gate(provider, until, now)) this.publishProviderLimitFactsSoon()
+    if (this.providerLimitFacts.gate(provider, providerUntil, now))
+      this.publishProviderLimitFactsSoon()
     this.armProviderLimitExpiry()
     return until
   }
@@ -31900,7 +32027,10 @@ export class RuntimeHost implements LiveHost {
    */
   private itWaitsForItsLimit(session: HostedSession, aPersonsOwn: boolean): boolean {
     if (aPersonsOwn) return false
-    const until = this.theResetItWaitsFor(session.provider)
+    const until = this.theResetItWaitsFor(
+      session.provider,
+      this.limitAccountOf(session.id, this.now()),
+    )
     if (until === null) return false
     this.goAtTheReset(session.provider, until)
     return true
@@ -31942,10 +32072,11 @@ export class RuntimeHost implements LiveHost {
   private lookAtTheLimitAgain(provider: Provider): void {
     this.wallsForTheHold = null
     this.invalidateProviderLimitFacts()
-    if (this.theResetItWaitsFor(provider) !== null) return
-    const set = this.theResets.get(provider)
-    if (set !== undefined) clearTimeout(set.timer)
-    this.theResets.delete(provider)
+    if (this.theResetItWaitsFor(provider) === null) {
+      const set = this.theResets.get(provider)
+      if (set !== undefined) clearTimeout(set.timer)
+      this.theResets.delete(provider)
+    }
     this.letWhatWaitsGo(provider)
     this.wakeTheLimitsCuts(provider)
   }
@@ -32112,7 +32243,11 @@ export class RuntimeHost implements LiveHost {
     const session = this.slots.get(this.theOneInItsPlace(sessionId))?.session ?? null
     // ⚑ Only where something the app or an agent sent is held there: a person's own words go.
     if (session === null || session.mailbox.every(aPersonsOwn)) return null
-    const limit = this.whatItsLimitHolds(session.provider)
+    const limit = this.whatItsLimitHolds(
+      session.provider,
+      false,
+      this.limitAccountOf(session.id, this.now()),
+    )
     // ⚑ **W4.172** — and behind a turn, a card in one, or a person's turn about to replace it, it
     // waits for that too: the receipt says so in place of *"until it is free"*
     // ({@link whyWhatIsHeldWaits}), so it says both.
@@ -32139,8 +32274,12 @@ export class RuntimeHost implements LiveHost {
    * ({@link whyItWaitsForItsSignIn}), and this says what they wait for after it — a change of
    * sign-in is behind them then, so it is not offered as a way out.
    */
-  private whatItsLimitHolds(provider: Provider, afterAReopen = false): string | null {
-    const until = this.theResetItWaitsFor(provider)
+  private whatItsLimitHolds(
+    provider: Provider,
+    afterAReopen = false,
+    account: string | null = null,
+  ): string | null {
+    const until = this.theResetItWaitsFor(provider, account)
     if (until === null) return null
     const name = PROVIDER_NAME[provider]
     const minutes = Math.max(1, Math.ceil(this.lookAtTheLimitAgainMs / 60_000))
@@ -34294,6 +34433,7 @@ export class RuntimeHost implements LiveHost {
     Provider,
     { readonly setAt: number; readonly at: number }
   >()
+  private readonly keyChanges = new Map<Provider, number>()
 
   /** 🔒 **Where a provider's API key stands** — never the key, which the window is not told. */
   apiKeyStatus(provider: Provider): ApiKeyStatus {
@@ -34360,6 +34500,7 @@ export class RuntimeHost implements LiveHost {
     }
     const refused = await keys.set(provider, key)
     if (refused !== null) return { ...this.apiKeyStatus(provider), refused }
+    this.keyChanges.set(provider, (this.keyChanges.get(provider) ?? 0) + 1)
     this.keyRefusedForBilling.delete(provider)
     const notice = await this.bringTheKeyToItsHomes(provider)
     this.providerLoginChanged(provider)
@@ -34375,6 +34516,7 @@ export class RuntimeHost implements LiveHost {
     const keys = this.deps.apiKeys
     if (!keys) return this.apiKeyStatus(provider)
     keys.remove(provider)
+    this.keyChanges.set(provider, (this.keyChanges.get(provider) ?? 0) + 1)
     this.keyRefusedForBilling.delete(provider)
     const notice = await this.bringTheKeyToItsHomes(provider)
     this.providerLoginChanged(provider)
@@ -34395,6 +34537,9 @@ export class RuntimeHost implements LiveHost {
     if (!keys || !ask)
       return { ok: false, reason: 'This build of BroCrew cannot check an API key.' }
     const card = provider === 'claude' ? 'Claude' : 'Codex'
+    const change = this.keyChanges.get(provider)
+    const revision = keys.revision?.(provider)
+    const setAt = keys.status(provider).setAt
     let key: string | null
     try {
       key = await keys.read(provider)
@@ -34410,7 +34555,12 @@ export class RuntimeHost implements LiveHost {
     const moved = await this.bringTheKeyToItsHomes(provider)
     if (moved !== null) return { ok: false, reason: moved }
     const said = await ask(provider, key)
-    const setAt = keys.status(provider).setAt
+    if (
+      this.keyChanges.get(provider) !== change ||
+      keys.revision?.(provider) !== revision ||
+      keys.status(provider).setAt !== setAt
+    )
+      return said
     if (!said.ok && said.cannotPay === true && setAt !== null) {
       this.noteTheKeyRefusedForBilling(provider, setAt)
     }
@@ -44165,7 +44315,14 @@ export class RuntimeHost implements LiveHost {
     if (this.deps.turnsTheAppCut !== undefined) void this.identityOf(session)
     const life = {}
     this.providerLimitLives.set(id, { provider, life })
-    this.providerLimitFacts.begin(id, life, provider, !options.continuesARecording)
+    this.providerLimitFacts.begin(
+      id,
+      life,
+      provider,
+      !options.continuesARecording,
+      this.limitAccountOf(id, session.lifeSince),
+    )
+    this.recordLimitAccount(session)
     // ⚑ **D-029 · its wake-up is this life's now**: its stop arms the next — ⚑ the start its plan
     // asked for is made, whoever made it, and noted so it is not made again — ⚑ and what it began
     // from is let go once it is past its time with no word from its provider.
@@ -45721,7 +45878,11 @@ export class RuntimeHost implements LiveHost {
     // 🔴 **W4.172 · F095 — and a limit the current sign-in reached holds it after the reopen too**:
     // the reopen alone does not send it (W1 read *"goes in as it starts"* on words that waited).
     // ⚑ The reopen is not held for the limit ({@link flushQueued}), so only what follows it changes.
-    const limit = this.whatItsLimitHolds(session.provider, true)
+    const limit = this.whatItsLimitHolds(
+      session.provider,
+      true,
+      this.limitAccountOf(session.id, this.now()),
+    )
     const reopens = (waitsFor: keyof typeof A_REOPEN_WAITS_FOR): string => {
       const { reopens: when, then, sooner } = A_REOPEN_WAITS_FOR[waitsFor]
       const first = limit === null ? `${when}${then ?? ''}.` : `${when}.`
@@ -46182,6 +46343,8 @@ export class RuntimeHost implements LiveHost {
       this.noteStaleEvent(session)
       return
     }
+    if (given.type === 'session' || given.type === 'error' || given.type === 'turn')
+      this.recordLimitAccount(session)
     const event = this.withoutTheIndexLines(
       session,
       this.sayingARefusedCopyIsReplaced(session, given),

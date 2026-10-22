@@ -92,6 +92,7 @@ export class LimitsReadEngine {
       const canonical = createSessionStore(bounded, () => evaluatedAt).providerLimitsSeen(
         evaluatedAt,
         signInChangedAt,
+        wanted.accountLives,
       )
       materialization.assert()
       const near = wallsFromUsage(wanted.usage, canonical.rows, evaluatedAt)

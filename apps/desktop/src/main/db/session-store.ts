@@ -72,7 +72,9 @@ import {
   PHRASES,
   PROVIDER_WALL_LOOKBACK_MS,
   foldProviderLimits,
+  providerLimitAccounts,
   readProviderLimit,
+  type ProviderLimitAccountLife,
   type ProviderLimitSeen,
   type ProviderTakingWork,
 } from '../../shared/provider-limit'
@@ -2818,6 +2820,7 @@ export interface SessionStore {
   providerLimitsSeen(
     now: number,
     signInChangedAt?: ReadonlyMap<Provider, number>,
+    accountLives?: readonly ProviderLimitAccountLife[],
   ): LedgerWalk<ProviderLimitSeen>
   /**
    * Reads ahead, for about `budgetMs`, what {@link providerLimitsSeen} keeps between calls: the
@@ -5530,6 +5533,7 @@ interface AddedWallRow {
  * and retract them. ⚑ Kept per connection, so every store on one connection shares it and the
  * watch's queue.
  */
+type SessionTakingWork = ProviderTakingWork & { readonly session_id: string }
 interface WallsRead {
   /** What the watch had counted when it was read whole; `null` for a read that is not kept. */
   readonly stamp: WallWatchStamp | null
@@ -5544,8 +5548,8 @@ interface WallsRead {
   readonly launches: Map<string, Launch[]>
   /** The conversations launched too often for their launches to be kept. */
   readonly launchesNotKept: Set<string>
-  /** The newest clear of each provider and window, and the torn clears, by rowid. */
-  readonly clears: Map<string, ProviderTakingWork>
+  /** The newest clear of each provider, conversation and window; torn clears are held by rowid. */
+  readonly clears: Map<string, SessionTakingWork>
   readonly torn: Map<number, TornClear>
   /** Where its clears' next slice begins; `null` once they are read whole. */
   clearsNext: { readonly at: number; readonly row: number } | null
@@ -7730,9 +7734,8 @@ export function createSessionStore(
    * ⚑ So `end_reason = 'completed'` IS *a `turn` event with `state: 'completed'`*, indexed, one row
    * per turn instead of one row per event.
    *
-   * ⚠️ **`MAX` per provider and not the rows**, because the only question is *was this provider
-   * answering after that wall was recorded* — {@link foldProviderLimits} compares one instant per
-   * provider and a list would be the same answer spelled longer.
+   * The newest completed turn is kept per provider and conversation. A conversation crossing an
+   * account boundary is read separately through its session index when identities are available.
    *
    * ⛔ **No `generation` filter**, for `selectProviderWalls`' reason exactly: a wall is a fact about
    * the provider's account, and a projection this app has replaced has not un-answered a turn.
@@ -7748,19 +7751,19 @@ export function createSessionStore(
    * stamp: a record older than the wall could not retract it.
    */
   const selectTurnsCompletedSince = db.prepare(
-    `SELECT ps.provider AS provider, MAX(t.closed_at) AS at
+    `SELECT t.session_id, ps.provider AS provider, MAX(t.closed_at) AS at
        FROM turn t JOIN provider_session ps ON ps.id = t.session_id
       WHERE t.end_reason = 'completed' AND t.closed_at > ?
-      GROUP BY ps.provider`,
+      GROUP BY ps.provider, t.session_id`,
   )
   // The newest of each provider over one slice of the turn table: how `provider_wall_turns` is
   // filled. ⚑ Every turn: the newest completed turn is the answer whatever wall it is asked about.
   const selectTurnsCompletedIn = db.prepare(
-    `SELECT ps.provider AS provider, MAX(t.closed_at) AS at
+    `SELECT t.session_id, ps.provider AS provider, MAX(t.closed_at) AS at
        FROM turn t JOIN provider_session ps ON ps.id = t.session_id
       WHERE t.rowid > @after AND t.rowid <= @after + ${TURNS_READ_AT_ONCE}
         AND t.end_reason = 'completed'
-      GROUP BY ps.provider`,
+      GROUP BY ps.provider, t.session_id`,
   )
   const selectNewestTurnRow = db.prepare(`SELECT coalesce(max(rowid), 0) AS last FROM turn`)
   /**
@@ -7773,8 +7776,8 @@ export function createSessionStore(
    * what lets `allowed (five_hour)` disprove a `five_hour` wall and leave a `seven_day` one
    * standing — `HO-080` §1.2's requirement, and no completed turn can meet it.
    *
-   * ⚠️ **Grouped by `(provider, window)`**, because those are the two fields a retraction matches
-   * on; `json_extract` answers `NULL` for a payload with no `window` key and such a row could only
+   * Grouped by provider, conversation and window so different accounts remain distinct.
+   * `json_extract` answers `NULL` for a payload with no `window` key and such a row could only
    * come from a schema that no longer exists. ⛔ **It does not match "no wall"** — this said so until
    * `676`'s review: `takingWorkSince` folds `NULL` to `''`, which `foldProviderLimits` reads as *the
    * provider as a whole*, so a no-window clear retracts every wall of its provider.
@@ -7788,13 +7791,33 @@ export function createSessionStore(
    * counts what was left out.
    */
   const selectLimitsClearedSince = db.prepare(
-    `SELECT ps.provider AS provider,
+    `SELECT e.session_id, ps.provider AS provider,
             CASE WHEN json_valid(e.payload) THEN json_extract(e.payload, '$.window') END AS window,
             MAX(e.created_at) AS at
        FROM events e JOIN provider_session ps ON ps.id = e.session_id
       WHERE e.type = 'provider_limit_clear' AND likelihood(e.created_at > ?, 0.00001) AND json_valid(e.payload)
-      GROUP BY ps.provider, window`,
+      GROUP BY ps.provider, e.session_id, window`,
   )
+  const accountLifeAt = (at: string) =>
+    `(SELECT MAX(json_extract(value, '$.since')) FROM json_each(@sessionLives)
+       WHERE json_extract(value, '$.since') <= ${at})`
+  const accountTurnsSql = `SELECT t.session_id, ps.provider, MAX(t.closed_at) AS at,
+            ${accountLifeAt('t.closed_at')} AS life
+       FROM turn t JOIN provider_session ps ON ps.id = t.session_id
+      WHERE t.end_reason = 'completed' AND t.closed_at > @oldest
+        AND t.session_id = @sessionId
+      GROUP BY ps.provider, t.session_id, life`
+  const accountClearsSql = `SELECT e.session_id, ps.provider,
+            CASE WHEN json_valid(e.payload) THEN json_extract(e.payload, '$.window') END AS window,
+            MAX(e.created_at) AS at,
+            ${accountLifeAt('e.created_at')} AS life
+       FROM events e JOIN provider_session ps ON ps.id = e.session_id
+      WHERE e.type = 'provider_limit_clear' AND likelihood(e.created_at > @oldest, 0.00001)
+        AND json_valid(e.payload)
+        AND e.session_id = @sessionId
+      GROUP BY ps.provider, e.session_id, window, life`
+  const selectAccountTurnsCompletedOf = db.prepare(accountTurnsSql)
+  const selectAccountLimitsClearedOf = db.prepare(accountClearsSql)
   /**
    * ⚑ **676** — the torn clears {@link selectLimitsClearedSince} leaves out, for its walk's count.
    * ⚠️ **The ACTIVE generation only** (`676`'s review): the walk counts rows, and a torn clear a
@@ -7807,20 +7830,26 @@ export function createSessionStore(
        FROM events e
       WHERE e.type = 'provider_limit_clear' AND likelihood(e.created_at > ?, 0.00001) AND NOT json_valid(e.payload)`,
   )
-  // A kept clear is the newest of its provider and window.
+  // A kept clear is the newest of its provider, conversation and window.
   const keepTheNewestClear = (
-    clears: Map<string, ProviderTakingWork>,
-    row: { readonly provider: string; readonly window: string | null; readonly at: number },
+    clears: Map<string, SessionTakingWork>,
+    row: {
+      readonly session_id: string
+      readonly provider: string
+      readonly window: string | null
+      readonly at: number
+    },
   ) => {
     // ⚑ **`null` is a payload with no `window` key and it folds to `''`**, which this app reads
     // as *the provider as a whole*. It is unreachable from the current schema and it is written
     // rather than asserted away, because a stored row outlives the code that wrote it.
-    const clear: ProviderTakingWork = {
+    const clear: SessionTakingWork = {
+      session_id: row.session_id,
       provider: row.provider as Provider,
       window: row.window ?? '',
       at: row.at,
     }
-    const key = `${clear.provider}\u0000${clear.window}`
+    const key = `${clear.provider}\u0000${clear.session_id}\u0000${clear.window}`
     const held = clears.get(key)
     if (held === undefined || clear.at > held.at) clears.set(key, clear)
   }
@@ -7850,6 +7879,7 @@ export function createSessionStore(
     if (read.clearsNext === null) return true
     if (read.stamp === null) {
       for (const row of selectLimitsClearedSince.all(read.since) as {
+        session_id: string
         provider: string
         window: string | null
         at: number
@@ -7880,16 +7910,21 @@ export function createSessionStore(
     return true
   }
   // The newest completed turn of each provider after `oldest`.
-  function completedTurnsSince(read: WallsRead, oldest: number): ProviderTakingWork[] {
+  function completedTurnsSince(read: WallsRead, oldest: number): SessionTakingWork[] {
     const watch = read.stamp === null ? null : wallWatch()
-    let rows: { provider: string; at: number }[]
+    let rows: { session_id: string; provider: string; at: number }[]
     if (watch === null) {
       rows = selectTurnsCompletedSince.all(oldest) as typeof rows
     } else {
       if (read.stamp !== null) fillTheTurns(read.stamp, watch, Number.POSITIVE_INFINITY)
       rows = watch.turnsSince.all(oldest) as typeof rows
     }
-    return rows.map((row) => ({ provider: row.provider as Provider, window: '', at: row.at }))
+    return rows.map((row) => ({
+      session_id: row.session_id,
+      provider: row.provider as Provider,
+      window: '',
+      at: row.at,
+    }))
   }
   /**
    * Fills `provider_wall_turns`, a slice of the turn table at a time, until it is filled or `until`
@@ -7914,10 +7949,11 @@ export function createSessionStore(
     while (after < filled.last) {
       const from = after
       const rows = phase('fill-turns', () => selectTurnsCompletedIn.all({ after: from })) as {
+        session_id: string
         provider: string
         at: number
       }[]
-      for (const row of rows) watch.keepTurn.run({ provider: row.provider, at: row.at })
+      for (const row of rows) watch.keepTurn.run(row)
       after += TURNS_READ_AT_ONCE
       watch.turnsReadTo.run(after)
       if (after < filled.last && performance.now() >= until) return false
@@ -7927,7 +7963,7 @@ export function createSessionStore(
   /**
    * 🔴 **Every record that could retract one of these walls, and nothing wider** (586, `HO-080` §1).
    *
-   * ⛔ **Bounded by the OLDEST wall in the list**, which is the only floor that loses nothing: a
+   * ⛔ **Bounded by the oldest unexpired wall in the list**, which is the only floor that loses nothing: a
    * record stamped before every standing wall cannot be newer than any of them, and
    * {@link foldProviderLimits} requires strictly newer. ⚑ So the reads below answer about the
    * narrowest window that can still change an answer.
@@ -7946,9 +7982,12 @@ export function createSessionStore(
     read: WallsRead,
     // ⚑ **676 · each torn clear this read left out** — warned and counted by the caller's walk.
     noteTorn: (sessionId: string, ordinal: number) => void,
+    accountLives: readonly ProviderLimitAccountLife[] | undefined,
+    evaluatedAt: number,
   ): ProviderTakingWork[] => {
-    if (walls.length === 0) return []
-    const oldest = Math.min(...walls.map((one) => one.at))
+    const relevant = walls.filter((wall) => wall.resetsAt === null || wall.resetsAt > evaluatedAt)
+    if (relevant.length === 0) return []
+    const oldest = Math.min(...relevant.map((one) => one.at))
     phase('read-clears', () => readTheClearsOn(read, Number.POSITIVE_INFINITY))
     // The torn clears were read with the clears above; this counts them.
     phase('read-torn-clears', () => {
@@ -7957,9 +7996,51 @@ export function createSessionStore(
           noteTorn(torn.session_id, torn.ordinal)
       }
     })
-    const turns = phase('read-completed-turns', () => completedTurnsSince(read, oldest))
-    const cleared = [...read.clears.values()].filter((one) => one.at > oldest)
-    return [...turns, ...cleared]
+    const turnRows = (rows: unknown): SessionTakingWork[] =>
+      (rows as { session_id: string; provider: Provider; at: number }[]).map((row) => ({
+        ...row,
+        window: '',
+      }))
+    const clearRows = (rows: unknown): SessionTakingWork[] =>
+      (rows as { session_id: string; provider: Provider; window: string | null; at: number }[]).map(
+        (row) => ({ ...row, window: row.window ?? '' }),
+      )
+    // Read-only connections use one grouped scan; writable ones use the incremental summary.
+    let turns = phase('read-completed-turns', () => completedTurnsSince(read, oldest))
+    let cleared = [...read.clears.values()].filter((one) => one.at > oldest)
+    const accountOf = accountLives === undefined ? undefined : providerLimitAccounts(accountLives)
+    if (accountLives !== undefined && accountOf !== undefined) {
+      const sessions = new Map<string, ProviderLimitAccountLife[]>()
+      for (const life of accountLives) {
+        const lives = sessions.get(life.sessionId) ?? []
+        lives.push(life)
+        sessions.set(life.sessionId, lives)
+      }
+      for (const [sessionId, lives] of sessions) {
+        lives.sort((a, b) => a.since - b.since)
+        let previous = accountOf(sessionId, oldest)
+        let split = false
+        for (const life of lives) {
+          if (life.since <= oldest || life.since > evaluatedAt) continue
+          if (life.account !== previous) split = true
+          previous = life.account
+        }
+        if (!split) continue
+        const input = { oldest, sessionId, sessionLives: JSON.stringify(lives) }
+        if (turns.some((row) => row.session_id === sessionId)) {
+          const rows = turnRows(selectAccountTurnsCompletedOf.all(input))
+          turns = [...turns.filter((row) => row.session_id !== sessionId), ...rows]
+        }
+        if (cleared.some((row) => row.session_id === sessionId)) {
+          const rows = clearRows(selectAccountLimitsClearedOf.all(input))
+          cleared = [...cleared.filter((row) => row.session_id !== sessionId), ...rows]
+        }
+      }
+    }
+    return [...turns, ...cleared].map(({ session_id, provider, window, at }) => {
+      const account = accountOf?.(session_id, at) ?? null
+      return { provider, window, at, ...(account === null ? {} : { account }) }
+    })
   }
 
   /**
@@ -8011,11 +8092,14 @@ export function createSessionStore(
       turnsReadTo: db.prepare(`UPDATE temp.provider_wall_watch SET turns_after = ? WHERE id = 0`),
       emptyTurns: db.prepare(`DELETE FROM temp.provider_wall_turns`),
       keepTurn: db.prepare(
-        `INSERT OR REPLACE INTO temp.provider_wall_turns (provider, at)
-         VALUES (@provider, max(@at, coalesce(
-           (SELECT at FROM temp.provider_wall_turns WHERE provider = @provider), @at)))`,
+        `INSERT OR REPLACE INTO temp.provider_wall_turns (provider, session_id, at)
+         VALUES (@provider, @session_id, max(@at, coalesce(
+           (SELECT at FROM temp.provider_wall_turns
+             WHERE provider = @provider AND session_id = @session_id), @at)))`,
       ),
-      turnsSince: db.prepare(`SELECT provider, at FROM temp.provider_wall_turns WHERE at > ?`),
+      turnsSince: db.prepare(
+        `SELECT provider, session_id, at FROM temp.provider_wall_turns WHERE at > ?`,
+      ),
     }
     return wallWatchStatements
   }
@@ -13655,7 +13739,8 @@ export function createSessionStore(
     piecesWaitingOnWhoWroteIn(owner, unread) {
       return piecesWaitingOnWhoWroteIn(owner, unread?.in(owner))
     },
-    providerLimitsSeen(now, signInChangedAt) {
+    providerLimitsSeen(now, signInChangedAt, accountLives) {
+      const accountOf = accountLives === undefined ? undefined : providerLimitAccounts(accountLives)
       const since = now - PROVIDER_WALL_LOOKBACK_MS
       const read = phase('read-walls', () => theWallsRead(since))
       const candidates = [...read.rows.values()].filter((row) => row.created_at >= since)
@@ -13671,8 +13756,9 @@ export function createSessionStore(
             rowsUnread += 1
             return []
           }
-          const wall = row.said
-          if (wall === null) return []
+          if (row.said === null) return []
+          const account = accountOf?.(row.session_id, row.created_at) ?? null
+          const wall = account === null ? row.said : { ...row.said, account }
           // ⚑ **A wall the sign-in before reached is not this sign-in's** — left out before the fold:
           // one recorded before the change, and one recorded after it by a life that began before
           // it, whose turn ran on the login before.
@@ -13684,10 +13770,16 @@ export function createSessionStore(
         }),
       )
       const retractions = phase('retractions', () =>
-        takingWorkSince(seen, read, (sessionId, ordinal) => {
-          noteUnreadRow(sessionId, ordinal, undefined)
-          rowsUnread += 1
-        }),
+        takingWorkSince(
+          seen,
+          read,
+          (sessionId, ordinal) => {
+            noteUnreadRow(sessionId, ordinal, undefined)
+            rowsUnread += 1
+          },
+          accountLives,
+          now,
+        ),
       )
       return {
         // ⛔ **Folded HERE and not in the window** (533 §2.3). ⚠️ The fold needs the whole

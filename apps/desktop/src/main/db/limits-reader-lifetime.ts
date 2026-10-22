@@ -11,7 +11,7 @@ export interface LimitsReader {
   readonly whenExited: Promise<void>
 }
 
-type Context = Pick<LimitsReadInput, 'capturedAt' | 'signInChangedAt' | 'usage'>
+type Context = Pick<LimitsReadInput, 'capturedAt' | 'signInChangedAt' | 'usage' | 'accountLives'>
 type OwnedReader = { readonly reader: LimitsReader; expectedExit: boolean }
 type Change = {
   readonly why: 'scope' | 'unavailable' | 'closed'

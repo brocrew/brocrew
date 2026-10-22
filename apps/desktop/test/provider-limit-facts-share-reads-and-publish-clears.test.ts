@@ -11,12 +11,15 @@ import { LimitsReadEngine } from '../src/main/db/limits-read-engine'
 import { LimitsReaderLifetime, type LimitsReader } from '../src/main/db/limits-reader-lifetime'
 import type { LimitsReadInput, LimitsReadResult } from '../src/main/db/limits-read-protocol'
 import { limitsWriterSampler } from '../src/main/db/fresh-limits-snapshot'
+import { NO_CUTS_KEPT } from '../src/main/turns-the-app-cut-file'
+import { CurrentProviderLimitFacts } from '../src/main/runtime/current-provider-limit-facts'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { resourcesRoot } from '../src/main/resources/resources'
 import {
   RuntimeHost,
   THE_APP_ITSELF,
   type RuntimeEventSink,
+  type RuntimeHostDeps,
 } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
@@ -50,12 +53,16 @@ class DeferredLimitsReader implements LimitsReader {
     })
   }
   finish(): LimitsReadResult {
+    const captured = this.capture()
+    captured.release()
+    return captured.result
+  }
+  capture() {
     if (this.pending === null) throw new Error('No fictional native read was selected')
     const { input, resolve } = this.pending
     this.pending = null
     const result = this.engine.read(input)
-    resolve(result)
-    return result
+    return { result, release: () => resolve(result) }
   }
   stop(): Promise<void> {
     this.engine.close()
@@ -91,6 +98,96 @@ const drain = async (): Promise<void> => {
 }
 
 describe('provider facts use existing reads and existing live carriers', () => {
+  it('another account expiry does not retire a longer conversation fact or hold', () => {
+    const facts = new CurrentProviderLimitFacts()
+    const life = {}
+    facts.begin('fern-expiry', life, 'claude', true, 'fern-account')
+    facts.observe(
+      'fern-expiry',
+      life,
+      'claude',
+      { type: 'error', message: UNKNOWN, fatal: false },
+      AT - 10,
+    )
+    const wall = {
+      provider: 'claude' as const,
+      window: 'five_hour',
+      standing: 'stopped' as const,
+      resetsAt: AT + 120_000,
+      at: AT - 5,
+      said: UNKNOWN,
+      account: 'fern-account',
+    }
+    facts.prepare(
+      {
+        walk: 'every-provider-wall-recently-recorded',
+        rows: [wall, { ...wall, account: 'willow-account', resetsAt: AT + 1_000 }],
+        ledgers: 1,
+        rowsUnread: 0,
+      },
+      AT,
+    )
+    facts.gate('claude', AT + 120_000, AT)
+    facts.expire(AT + 1_001)
+    expect(facts.block('fern-expiry', life, 'claude', false, false, AT + 1_001)).toEqual({
+      status: 'current',
+      value: { provider: 'claude', resetsAt: AT + 120_000 },
+    })
+    expect(facts.hold('claude', false, AT + 1_001, 'fern-account')).toEqual({
+      status: 'current',
+      value: { is: 'provider-limit', provider: 'claude', resetsAt: AT + 120_000 },
+    })
+    expect(facts.nextChange(AT + 1_001)).toBe(AT + 120_000)
+    expect(facts.block('fern-expiry', life, 'claude', false, false, AT + 120_001)).toEqual({
+      status: 'unavailable',
+    })
+  })
+
+  it('resolving a life identity retires history confirmed under the unknown-account fallback', () => {
+    const facts = new CurrentProviderLimitFacts()
+    const life = {}
+    facts.begin('fern-history', life, 'claude', true)
+    facts.observe(
+      'fern-history',
+      life,
+      'claude',
+      {
+        type: 'error',
+        message: UNKNOWN,
+        fatal: false,
+      },
+      AT - 10,
+    )
+    const wall = {
+      provider: 'claude' as const,
+      window: 'five_hour',
+      standing: 'stopped' as const,
+      resetsAt: AT + 120_000,
+      at: AT - 5,
+      said: UNKNOWN,
+      account: 'willow-account',
+    }
+    const walk = {
+      walk: 'every-provider-wall-recently-recorded' as const,
+      rows: [wall],
+      ledgers: 1,
+      rowsUnread: 0,
+    }
+    facts.prepare(walk, AT)
+    expect(facts.lastKnown('fern-history', life, 'claude', false, AT)).toMatchObject({
+      resetsAt: AT + 120_000,
+    })
+    facts.bindAccount('fern-history', life, 'fern-account')
+    expect(facts.lastKnown('fern-history', life, 'claude', false, AT)).toBeNull()
+    facts.prepare(
+      { ...walk, rows: [{ ...wall, account: 'fern-account', resetsAt: AT + 60_000 }] },
+      AT + 1,
+    )
+    expect(facts.lastKnown('fern-history', life, 'claude', false, AT + 1)).toMatchObject({
+      resetsAt: AT + 60_000,
+    })
+  })
+
   let directory: string
   let db: AppDatabase
   let store: SessionStore
@@ -102,7 +199,7 @@ describe('provider facts use existing reads and existing live carriers', () => {
   let serial: number
   let native: DeferredLimitsReader | undefined
 
-  function anotherHost(withReader = false): RuntimeHost {
+  function anotherHost(withReader = false, extra: Partial<RuntimeHostDeps> = {}): RuntimeHost {
     const issued = new FakeProviderSessions()
     const file = join(directory, 'ledger.sqlite')
     if (withReader) native = new DeferredLimitsReader(new LimitsReadEngine(file, () => ++clock))
@@ -146,6 +243,7 @@ describe('provider facts use existing reads and existing live carriers', () => {
         authNote: null,
         files: [],
       }),
+      ...extra,
     })
   }
 
@@ -196,6 +294,57 @@ describe('provider facts use existing reads and existing live carriers', () => {
       .flatMap((row) => row.moved)
       .filter((row) => row.conversation === id)
       .at(-1)
+
+  it('does not promote a worker snapshot after its captured launch identity resolves', async () => {
+    await host.closeAll()
+    let account: { email: string } | undefined
+    let kept = NO_CUTS_KEPT
+    const issued = new FakeProviderSessions()
+    host = anotherHost(true, {
+      createRuntime: (provider) => {
+        const runtime = new ProviderDouble(provider, handles, issued, anOpenGate())
+        const start = runtime.start.bind(runtime)
+        vi.spyOn(runtime, 'start').mockImplementation(async (options) => {
+          const handle = await start(options)
+          Object.defineProperty(handle, 'account', { value: () => account })
+          return handle
+        })
+        return runtime
+      },
+      turnsTheAppCut: {
+        read: () => kept,
+        write: (value) => {
+          kept = value
+        },
+      },
+      accountWaitMs: 1000,
+    })
+    const a = await live()
+    host.resumableSessions()
+    await eventually(() => native?.calls.length === 1)
+    const boundary = host as unknown as { prepareProviderLimitFacts(...args: unknown[]): void }
+    const prepare = vi.spyOn(boundary, 'prepareProviderLimitFacts')
+    const captured = native!.capture()
+    const sample = limitsWriterSampler(
+      db,
+      () => store.canReadFreshSnapshot?.() === true,
+      () => clock,
+    )
+    const before = sample()!
+    account = { email: 'fern@example.test' }
+    await eventually(() => kept.lives[a.id]?.identity !== undefined)
+    const after = sample()!
+    expect(after.totalChanges).toBe(before.totalChanges)
+    expect(after.dataVersion).toBe(before.dataVersion)
+    captured.release()
+    await drain()
+    expect(prepare).not.toHaveBeenCalled()
+    const fresh = host.readLimitsDisplay()
+    await eventually(() => native?.calls.length === 2)
+    native!.finish()
+    expect(await fresh).toMatchObject({ is: 'read' })
+    expect(prepare).toHaveBeenCalledOnce()
+  })
 
   it('keeps ordinary idle state after a normal completion and after a restart without a life', async () => {
     const a = await live('auto')

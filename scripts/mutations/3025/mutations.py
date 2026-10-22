@@ -127,8 +127,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "M10 · 🔴 the hold reads the old sign-in's walls: the limits are not shown, but what waited "
         f"still waits for their reset · killed by `{USAGE}` and `{SIGNIN}`",
         [(HOST,
-          # ⚑ **source-restoration · re-anchored in place, not retired** — NOT VERIFIED; source targeting only. held: running it needs W4's written lift. 5ae6a3206 names the hold's walk before publishing derived facts. Omit only the sign-in-change cutoff for this hold read, retaining epoch qualification and display preparation.
-          "        const epoch = this.providerLimitEpoch\n        const walk = this.deps.store.providerLimitsSeen(now, this.signInChangedAt)\n",
-          "        const epoch = this.providerLimitEpoch\n        const walk = this.deps.store.providerLimitsSeen(now)\n")],
+          "        const epoch = this.providerLimitEpoch\n        const walk = this.deps.store.providerLimitsSeen(\n          now,\n          this.signInChangedAt,\n          this.limitAccountSnapshot(),\n        )\n",
+          "        const epoch = this.providerLimitEpoch\n        const walk = this.deps.store.providerLimitsSeen(\n          now,\n          undefined,\n          this.limitAccountSnapshot(),\n        )\n")],
     ),
 ]

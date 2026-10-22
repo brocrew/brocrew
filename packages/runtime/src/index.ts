@@ -626,5 +626,6 @@ export {
 
 export {
   withManagedPluginAttachments,
+  StoppedBeforeSend,
   type ManagedPluginAttachmentSource,
 } from './managed-plugin-session'

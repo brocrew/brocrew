@@ -332,7 +332,7 @@ describe('§1 · 25cca325 · the API key field — the key leaves the field as i
 /* ================================================================ §2 · a saved key outranks a sign-in */
 
 describe('§2 · 25cca325 · while a key is saved, a sign-in is not offered, and the card says why', () => {
-  it('🔴 a saved key in use: no Sign in, no Copy, and the sentence that says to remove the key', async () => {
+  it('a saved key with no sign-in offers no sign-in fallback', async () => {
     const { m } = theCard({
       checkProviderAuth: async () => SIGNED_OUT,
       apiKeyStatus: async () => ({ ...A_KEY }),
@@ -342,19 +342,17 @@ describe('§2 · 25cca325 · while a key is saved, a sign-in is not offered, and
     expect(m.all('sign-in-start')).toHaveLength(0)
     expect(m.all('sign-in-reprovision')).toHaveLength(0)
     expect(text(m.q('sign-in-unavailable'))).toBe(
-      'An API key is saved for Claude, and it is what Claude runs on. Remove it under “API key” below to use a sign-in instead.',
+      'An API key is saved for Claude, and it is what Claude runs on.',
     )
   })
 
-  it('⚑ a saved key this Mac cannot read: the first sentence is shortened', async () => {
+  it('an unreadable saved key with no sign-in keeps the sentence short', async () => {
     const { m } = theCard({
       checkProviderAuth: async () => SIGNED_OUT,
       apiKeyStatus: async () => ({ ...A_KEY, inUse: false }),
     })
     await settled()
-    expect(text(m.q('sign-in-unavailable'))).toBe(
-      'An API key is saved for Claude. Remove it under “API key” below to use a sign-in instead.',
-    )
+    expect(text(m.q('sign-in-unavailable'))).toBe('An API key is saved for Claude.')
   })
 
   it('⚑ the control: no key saved — Sign in and Copy are both offered, and the field is pointed at', async () => {
@@ -618,7 +616,7 @@ describe('§5 · 5d5a991a · the card says what new conversations start on in th
 })
 
 describe('§5 · a saved key whose account can’t pay is not ready', () => {
-  const ON_THE_KEY = { ...SIGNED_IN, login: 'api-key' } as AuthState
+  const ON_THE_KEY = { ...SIGNED_IN, login: 'api-key', loginBehindTheKey: true } as AuthState
   const REFUSED_AT = NOW - 30_000
   const refused = (aLoginRunsWithoutIt: boolean): ApiKeyStatus => ({
     ...A_KEY,
@@ -651,6 +649,18 @@ describe('§5 · a saved key whose account can’t pay is not ready', () => {
     expect(line).not.toContain('remove it')
   })
 
+  it.each([false, undefined])(
+    'a refused key never promises a sign-in when its presence is %s',
+    async (behind) => {
+      const { m } = theCard({
+        checkProviderAuth: async () => ({ ...ON_THE_KEY, loginBehindTheKey: behind }),
+        apiKeyStatus: async () => refused(true),
+      })
+      await settled()
+      expect(text(m.q('provider-key-refused'))).not.toContain('remove it to run on the sign-in')
+    },
+  )
+
   it('⚑ control: a key nothing refused is Ready, with no such line', async () => {
     const { m } = theCard({
       checkProviderAuth: async () => ON_THE_KEY,
@@ -668,7 +678,7 @@ describe('§5 · a saved key whose account can’t pay is not ready', () => {
     })
     await settled()
     expect(text(m.q('provider-key-check-sends'))).toBe(
-      'Checking sends Claude one short message, which costs a tiny amount.',
+      'Checking sends Claude “Hi”, which costs a tiny amount.',
     )
     expect(visible(m.q('provider-key-check-sends'))).toBe(true)
     const button = m.q('provider-key-check') as HTMLButtonElement
@@ -684,7 +694,7 @@ describe('§5 · a saved key whose account can’t pay is not ready', () => {
 
 describe('what the app sends to a provider is said where a person sees it', () => {
   const RENEWAL =
-    'When this login has expired, starting a conversation renews it by sending Claude one short message.'
+    'When this login has expired, starting a conversation renews it by sending Claude “ok”, with the instruction “Reply with: ok”.'
 
   it('a Codex key check says it only asks for the model list', async () => {
     const { m } = theCard(
@@ -726,7 +736,9 @@ describe('what the app sends to a provider is said where a person sees it', () =
       if (renews) {
         expect(line).not.toBeNull()
         expect(visible(line!)).toBe(true)
-        expect(text(line!)).toContain('renews it by sending Codex one short message')
+        expect(text(line!)).toContain(
+          'renews it by sending Codex “ok”, with the instruction “Reply with: ok”',
+        )
       } else expect(line).toBeNull()
     },
   )
