@@ -740,8 +740,8 @@ describe('a link to a file on this computer offers the same controls as a path i
     ])
     expect(main.asks).toEqual([])
     expect(controls(view)).toHaveLength(0)
+    expect(view.all('message-link-text').map((one) => one.title)).toEqual(['https://example.com/a'])
     expect(anchors(view).map((a) => a.getAttribute('href'))).toEqual([
-      'https://example.com/a',
       'mailto:test@example.com',
       '#part',
       '',
@@ -926,13 +926,75 @@ describe('a link to a file on this computer offers the same controls as a path i
     )
   })
 
-  it('does not touch a web or script link', async () => {
+  it('does not ask main about a web link or draw a script link as one', async () => {
     const main = installMain()
     const { view } = await transcript([
       said('See [site](https://example.com/a) and [x](javascript:alert(1)).'),
     ])
     expect(controls(view)).toHaveLength(0)
     expect(main.asks.flatMap((ask) => ask.texts)).not.toContain('https://example.com/a')
-    expect(anchors(view).map((a) => a.getAttribute('href'))).toEqual(['https://example.com/a'])
+    expect(anchors(view)).toHaveLength(0)
+    expect(view.all('message-link-text').map((one) => one.textContent)).toEqual(['site'])
+  })
+})
+
+describe('a web link in a message shows its text, then Copy and Open', () => {
+  const url = 'https://docs.example.org/guide?topic=a%20b&page=2#setup'
+  const anchors = (view: Mounted): HTMLAnchorElement[] => [
+    ...view.q('assistant-markdown').querySelectorAll('a'),
+  ]
+
+  it('draws the text as plain text with the address on hover, Copy before Open', async () => {
+    installMain()
+    const { view } = await transcript([said(`Read [the guide](${url}) or ${url}.`)])
+    expect(anchors(view)).toHaveLength(0)
+    const texts = view.all('message-link-text')
+    expect(texts).toHaveLength(2)
+    expect(texts[0]!.textContent).toBe('the guide')
+    expect(texts.every((one) => one.title === url)).toBe(true)
+    const group = texts[0]!.closest('.message-path')!
+    const buttons = [...group.querySelectorAll('button')]
+    expect(buttons.map((one) => one.getAttribute('aria-label'))).toEqual(['Copy link', 'Open link'])
+    expect(buttons.map((one) => one.title)).toEqual(['Copy link', 'Open link'])
+  })
+
+  it('copies the exact address, query and fragment included, and says Copied', async () => {
+    installMain()
+    const written = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue()
+    const { view } = await transcript([said(`Read [the guide](${url}).`)])
+    const copy = view.q('message-link-copy') as HTMLButtonElement
+    copy.click()
+    await settle()
+    expect(written).toHaveBeenCalledWith(url)
+    expect(copy.getAttribute('aria-label')).toBe('Copied')
+  })
+
+  it('says what to do when the clipboard refuses the copy', async () => {
+    installMain()
+    vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new Error('no'))
+    const { view } = await transcript([said(`Read [the guide](${url}).`)])
+    ;(view.q('message-link-copy') as HTMLButtonElement).click()
+    await settle()
+    expect(view.q('message-path-failure').textContent).toBe(
+      "That link didn't copy. Select its text and copy it instead.",
+    )
+  })
+
+  it('opens the address through the window-open route', async () => {
+    installMain()
+    const opened = vi.spyOn(window, 'open').mockReturnValue(null)
+    const { view } = await transcript([said(`Read [the guide](${url}).`)])
+    ;(view.q('message-link-open') as HTMLButtonElement).click()
+    await settle()
+    expect(opened).toHaveBeenCalledWith(url, '_blank', 'noopener')
+  })
+
+  it('leaves a web image as the link it is', async () => {
+    installMain()
+    const { view } = await transcript([said('![chart](https://cdn.example.org/chart.png)')])
+    expect(anchors(view).map((a) => a.getAttribute('href'))).toEqual([
+      'https://cdn.example.org/chart.png',
+    ])
+    expect(view.all('message-link-text')).toHaveLength(0)
   })
 })

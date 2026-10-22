@@ -280,6 +280,11 @@ code .message-path-text {
   font-size: inherit;
 }
 
+.message-web-text {
+  font-family: inherit;
+  font-size: inherit;
+}
+
 .message-path-icon {
   display: inline-grid;
   margin-left: var(--space-1);
