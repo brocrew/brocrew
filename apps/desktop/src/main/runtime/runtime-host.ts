@@ -298,6 +298,7 @@ import {
   admitAReplacement,
   admitGive,
   giveRequestSchema,
+  labelsSaid,
   refuse,
   takeOnWorkRequestSchema,
   workRequestRefused,
@@ -7285,15 +7286,6 @@ export type WhatAPieceIsToIt =
       readonly label: string
     }
   | { readonly is: 'none' }
-
-/**
- * ⚑ **D-016 · one piece a conversation holds, with who gave it** — its root (`giver: null`: a
- * person), or an open piece given to it — by a conversation, or by a person when it took the work
- * on (`giver: null` too, D-016 · commit 6).
- */
-interface HeldByIt extends HeldPiece {
-  readonly giver: string | null
-}
 
 /**
  * 🔴 **What an AGENT's creation answers with** (419) — an identity, or the rail that stopped it.
@@ -28537,8 +28529,10 @@ export class RuntimeHost implements LiveHost {
         if (active.length > 1)
           return malformed(['Your current work is unclear. Name the parent in piece.'])
         parent = active.length === 1 ? this.deps.store.workById(active[0]!.piece) : root
-      } else if (root !== null) parent = root
+      } else if (root !== null && this.theParentInItsPlace(session.id) === null) parent = root
       else {
+        // A helper's request from a person hangs under the work it was given, while it holds some;
+        // its own root takes only what it is asked while it holds none.
         const personParts = theMessagesOf(opening).filter((part) =>
           TURN_AUTHORSHIP_KEYS.every((key) => key === 'movedFrom' || part[key] === undefined),
         )
@@ -28550,7 +28544,14 @@ export class RuntimeHost implements LiveHost {
         const open = owned.filter(
           (piece) => TASK_IS_OPEN[piece.state] && piece.briefHandedOver === true,
         )
+        const given = open.filter((piece) => piece.giver !== null)
         if (explicit !== undefined) parent = this.deps.store.workById(explicit.piece)
+        else if (given.length > 1)
+          return malformed([
+            `Say which of your pieces this is for (${labelsSaid(given.map((piece) => piece.label))}): name it in piece.`,
+          ])
+        else if (given.length === 1) parent = this.deps.store.workById(given[0]!.piece)
+        else if (root !== null) parent = root
         else if (open.length > 1)
           return malformed(['Your current work is unclear. Name the parent in piece.'])
         else parent = open.length === 1 ? this.deps.store.workById(open[0]!.piece) : null
@@ -28718,6 +28719,7 @@ export class RuntimeHost implements LiveHost {
         const session = this.slots.get(giving.sessionId)?.session ?? null
         return session !== null && session.turnOpened ? session.itsTurnDrives : null
       },
+      isAHelper: () => this.theParentInItsPlace(giving.sessionId) !== null,
       // ⚑ **`can_assign_work`, asked of the caller alone** — the give has no conversation yet.
       mayGiveWork: () => this.mayReachAtAll('assign', by),
       depthOf: (piece) => this.deps.store.depthOf(piece),
@@ -29219,7 +29221,7 @@ export class RuntimeHost implements LiveHost {
    * its own new root (R11). ⚑ **D-022 · R4 — and whether each has reached it**: its root always
    * has; a piece has unless its give still waits to be sent to it ({@link itsGiveStillWaits}).
    */
-  private heldBy(conversation: string): readonly HeldByIt[] {
+  private heldBy(conversation: string): readonly HeldPiece[] {
     const root = this.deps.store.rootOf(conversation)
     return [
       ...(root === null
@@ -29318,6 +29320,12 @@ export class RuntimeHost implements LiveHost {
         if (folded !== null && (folded === undefined || !TASK_IS_OPEN[folded.state])) {
           return no(
             `on.agent names ${named.label}, which has ended: say what the piece waits on now`,
+          )
+        }
+        // A piece its own holder also holds is work that holder is doing, not a wait on anyone.
+        if (this.theOneInItsPlace(named.owner) === this.theOneInItsPlace(row.owner)) {
+          return no(
+            `on.agent names ${named.label}, which this piece's holder holds too: an agent cannot wait on itself. Name what ${named.label} waits on instead, or set the status without on`,
           )
         }
         return { ok: true, on: { kind: 'agent', piece: named.piece, label: named.label } }

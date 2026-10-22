@@ -321,11 +321,23 @@ describe('a to-do for a person', () => {
       [...host.resumableSessions(), ...host.unresumableSessions()].find(
         (one) => one.sessionId === ada,
       )
-    // The row reads its newest open piece, W1.2: it waits on W1.1, which Ada holds.
+    // The row reads its newest open piece, W1.2: it waits on W1.1.1, which Ada gave another agent.
     const theNewest = (on: Record<string, unknown>) =>
       call(agentToolsFor(host, ada), 'update_work', { piece: other.label, status: 'waiting', on })
-    expect(await theNewest({ agent: 'W1.1' })).toMatchObject({ outcome: 'ok' })
-    expect(listedAda()?.waitingOnPurpose).toMatchObject({ label: other.label, agentName: 'Ada' })
+    const handedOn = await call(agentToolsFor(host, ada), 'give_work', {
+      definition_of_done: 'The requested result and its checks are recorded.',
+      profile: 'writer',
+      new: true,
+      piece: 'W1.1',
+      title: 'Check the copy',
+      brief: 'check the copy',
+    })
+    expect(handedOn).toMatchObject({ outcome: 'ok', label: 'W1.1.1' })
+    expect(await theNewest({ agent: 'W1.1.1' })).toMatchObject({ outcome: 'ok' })
+    expect(listedAda()?.waitingOnPurpose).toMatchObject({
+      label: other.label,
+      agentName: host.whatToCallTheConversation(handedOn.agent as string),
+    })
     const ofItsGiver = await asks(ada, 'the-parent')
     expect(await theNewest({ agent: ofItsGiver })).toMatchObject({ outcome: 'ok' })
     expect(listedAda()?.waitingOnPurpose).toMatchObject({

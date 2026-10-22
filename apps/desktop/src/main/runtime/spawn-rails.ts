@@ -356,7 +356,7 @@ const PROTECTION_SAID: Readonly<Record<Protection, string>> = {
 }
 
 /** ⚑ `W1.2, W1.3 and W1.5` — the labels a sentence names, in the order it was handed them. */
-const labelsSaid = (labels: readonly string[] | undefined): string => {
+export const labelsSaid = (labels: readonly string[] | undefined): string => {
   const all = labels ?? []
   if (all.length <= 1) return all[0] ?? '?'
   return `${all.slice(0, -1).join(', ')} and ${String(all[all.length - 1])}`
@@ -397,7 +397,7 @@ export function describeRail(rail: SpawnRail, detail: SpawnRefusalDetail = {}): 
     case 'no-piece-to-give-from':
       return 'Do the work here until you hold a piece; list_tasks shows your board. You hold no open piece that has reached you, so there is nothing to hang this under and nothing was given.'
     case 'name-the-piece-you-give-from':
-      return `You hold more than one piece (${labelsSaid(detail.held)}), so say which one this is part of: give again naming it as piece.`
+      return `Say which of your pieces this is for (${labelsSaid(detail.held)}): give again naming it as piece.`
     case 'no-piece-you-hold-by-that-name':
       return 'You hold no open piece by that name, so nothing was given. list_tasks names what you hold.'
     case 'too-deep':
@@ -753,6 +753,8 @@ export interface HeldPiece {
    * one open piece, and under the root only when there is none.
    */
   readonly root: boolean
+  /** The conversation that gave it; `null` for its root or a piece it took on for a person. */
+  readonly giver: string | null
   /**
    * 🔴 **D-022 · R4 — whether its brief has reached the caller**: its root always has (it is the
    * conversation's own work); a piece has unless its give still waits to be sent to it — held in the
@@ -790,6 +792,11 @@ export interface GiveFacts {
    * (D-027), or no turn this app sent is open.
    */
   readonly drivenByTheTurn: () => string | null
+  /**
+   * Whether the caller is a helper: a conversation another one started, whose own root holds only
+   * what a person asked it directly.
+   */
+  readonly isAHelper: () => boolean
   /** ⚑ `can_assign_work` asked of the caller alone — `admitReachAtAll('assign', …)`. */
   readonly mayGiveWork: () => MessageRefusal | null
   /**
@@ -1082,17 +1089,25 @@ export function admitGive(
   } else {
     // 🔴 **D-022 · R4 — only a piece whose brief has reached it counts**: the ONE such piece; of
     // several, the one the turn it is in drives; with none, its root (commit 6 · R2); else
-    // ambiguous, naming them. ⚑ A root owner that took work on hangs what it gives under that work,
-    // and a helper holds no root.
+    // ambiguous, naming them. ⚑ A root owner that took work on hangs what it gives under that work.
+    // ⛔ A helper never uses its own root while it holds a piece someone gave it, whose brief may
+    // still be on its way: that work belongs in the tree it was given in.
     const received = held.filter((one) => !one.root && one.received)
+    const givenToIt = held.filter((one) => !one.root && one.giver !== null)
+    const notItsRoot = received.length === 0 && givenToIt.length > 0 && facts.isAHelper()
     const drives = received.length > 1 ? facts.drivenByTheTurn() : null
     const inferred =
       received.length === 1
         ? received[0]
         : received.length > 1
           ? received.find((one) => one.piece === drives)
-          : held.find((one) => one.root)
+          : notItsRoot
+            ? undefined
+            : held.find((one) => one.root)
     if (inferred === undefined) {
+      if (notItsRoot) {
+        return no('name-the-piece-you-give-from', { held: givenToIt.map((one) => one.label) })
+      }
       return received.length > 1
         ? no('name-the-piece-you-give-from', { held: received.map((one) => one.label) })
         : no('no-piece-to-give-from')

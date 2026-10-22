@@ -281,7 +281,9 @@ describe('personal work fields and their existing ownership boundaries', () => {
     )
     const no = await call(first.owner, 'take_on_work', requested)
     expect(no.structured).toMatchObject({ outcome: 'refused', rail: 'malformed-request' })
-    expect(no.text).toContain('Your current work is unclear. Name the parent in piece.')
+    expect(no.text).toContain(
+      `Say which of your pieces this is for (${first.label} and ${second.label}): name it in piece.`,
+    )
     expect(world.store.piecesOwnedBy(first.owner)).toHaveLength(2)
     const yes = await call(first.owner, 'take_on_work', { ...requested, piece: second.label })
     expect(yes.structured).toMatchObject({ outcome: 'ok', under: second.label })

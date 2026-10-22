@@ -97,8 +97,9 @@ function facts(
   return {
     asked,
     giver: () => GIVER,
-    held: () => [{ piece: 'work_root', label: 'W1', root: true, received: true }],
+    held: () => [{ piece: 'work_root', label: 'W1', root: true, giver: null, received: true }],
     drivenByTheTurn: () => null,
+    isAHelper: () => false,
     mayGiveWork: () => null,
     depthOf: () => 0,
     capabilitiesOf: (slug) => (slug === 'pm' || slug === 'worker' ? DEFAULT_CAPABILITIES : null),
