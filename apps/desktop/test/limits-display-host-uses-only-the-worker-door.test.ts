@@ -59,7 +59,7 @@ const drain = async () => {
   for (let n = 0; n < 8; n++) await new Promise<void>((resolve) => setImmediate(resolve))
 }
 
-function fixture() {
+function fixture(runtime = new FakeRuntime('claude')) {
   const reader = new Reader()
   const lifetime = new LimitsReaderLifetime('fictional.sqlite', () => reader)
   const canonical = vi.fn(() => {
@@ -71,7 +71,7 @@ function fixture() {
     limitsReader: lifetime,
     now: () => ++clock,
     discoverSessions: NO_DISCOVERY,
-    createRuntime: () => new FakeRuntime('claude'),
+    createRuntime: () => runtime,
     resolveCwd: () => '/fictional',
     prepareProviderHome: () => '/fictional',
     providerHomePath: () => '/fictional',
@@ -98,6 +98,28 @@ function fixture() {
 }
 
 describe('the window display door is independent of current and admission facts', () => {
+  it('captures the known account life for the production worker without reading the writer', async () => {
+    const runtime = new FakeRuntime('codex')
+    const start = runtime.start.bind(runtime)
+    vi.spyOn(runtime, 'start').mockImplementation(async (options) => {
+      const handle = await start(options)
+      Object.defineProperty(handle, 'signInTag', { value: () => 'fern-account' })
+      return handle
+    })
+    const { host, reader, sink, canonical } = fixture(runtime)
+    const { sessionId } = await host.createSession({ provider: 'codex' }, sink)
+    const answer = host.readLimitsDisplay()
+    await drain()
+    expect(reader.calls.at(-1)?.accountLives).toContainEqual({
+      sessionId,
+      since: expect.any(Number),
+      account: 'codex:fern-account',
+    })
+    reader.finish()
+    expect(await answer).toMatchObject({ is: 'read' })
+    expect(canonical).not.toHaveBeenCalled()
+  })
+
   it('the legacy limits IPC also awaits the worker without reading its writer', async () => {
     const { host, reader, sink, canonical } = fixture()
     const answer = executeRuntimeCommand(host, sink, { kind: 'limitsForAPerson' })

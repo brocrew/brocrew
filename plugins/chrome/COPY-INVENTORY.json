@@ -15,15 +15,15 @@
       "source": "agent-chrome/src/browser/chromeBrowser.ts",
       "destination": "plugins/chrome/src/browser/chromeBrowser.ts",
       "sourceSha256": "b504f5128ab5f51b3d5dd875a197b137d0da27bfadbb1a59ff79d11b530449bf",
-      "changes": "Private staging in every mode; CDP always allowAndName under private downloads; no OS Downloads fallback; local imports and comments/client material removed; queued permission rechecks or private-directory lstat/realpath fences; 0.1.1: minimal explicit owned arguments, drop all Playwright defaults, preserve private download staging/CDP in both modes; 0.1.2: the OS credential store for branded Chrome profiles; downloads bounded and unattended headless downloads denied",
-      "destinationSha256": "5a6cad4b594373152270aa3f7fda706cb8375b8be7f1fff5e6e9f2642cc0770a"
+      "changes": "Private staging in every mode; CDP always allowAndName under private downloads; no OS Downloads fallback; local imports and comments/client material removed; queued permission rechecks or private-directory lstat/realpath fences; 0.1.1: minimal explicit owned arguments, drop all Playwright defaults, preserve private download staging/CDP in both modes; 0.1.2: the OS credential store for branded Chrome profiles; downloads bounded and unattended headless downloads denied; capture completion identifies the staging file actually saved",
+      "destinationSha256": "5fd0c093d500026fb70c9d05f8f732dff25c6fa713b2bd574d3f5f5886f391f1"
     },
     {
       "source": "agent-chrome/src/browser/downloadRouter.ts",
       "destination": "plugins/chrome/src/browser/downloadRouter.ts",
       "sourceSha256": "12020639ab8cffae01fdf118081d0a39700617da4988c83061cf04d1a1073350",
-      "changes": "Local imports; removed personal Downloads preference resolver; placement/collision behavior retained inside private root; comments/client material removed; queued permission rechecks or private-directory lstat/realpath fences; 0.1.2: downloads bounded per download and per profile per hour; fail closed when the download policy cannot be set; 0.1.2: a released claim stays counted until its own download ends",
-      "destinationSha256": "2cebd8ed730175530c1b0bac59befe18d34ef94f0c02ac4b1c27f66d85f7cc4b"
+      "changes": "Local imports; removed personal Downloads preference resolver; placement/collision behavior retained inside private root; comments/client material removed; queued permission rechecks or private-directory lstat/realpath fences; 0.1.2: downloads bounded per download and per profile per hour; fail closed when the download policy cannot be set; 0.1.2: a released claim stays counted until its own download ends; only the saved download claim is released as successful; other visible downloads retain unattended policy and quota",
+      "destinationSha256": "dc7bfc60b17d677d16e856c185018f3142b0346a45d1f1988c286406d3a87a5d"
     },
     {
       "source": "agent-chrome/src/browser/processes.ts",
@@ -36,8 +36,8 @@
       "source": "agent-chrome/src/browser/profileBrowser.ts",
       "destination": "plugins/chrome/src/browser/profileBrowser.ts",
       "sourceSha256": "f61ed5491f8270359481b8743f84714e32b38cc07741ead9ef40a031d4570cdc",
-      "changes": "relative shared imports; comments and client references removed; private configuration adjustments listed in README",
-      "destinationSha256": "9d18dda9317b7c56ea23b02ae41afd7f7a4a492c3a1fdca085365a83304d5f0e"
+      "changes": "relative shared imports; comments and client references removed; private configuration adjustments listed in README; capture completion accepts the saved staging path",
+      "destinationSha256": "d6e356e3a7c4af5d75868aba103aef58d1ff56c40a295ed10cd131a03cc8115c"
     },
     {
       "source": "agent-chrome/src/config.ts",
@@ -162,8 +162,8 @@
       "source": "agent-chrome/src/tools/index.ts",
       "destination": "plugins/chrome/src/tools/index.ts",
       "sourceSha256": "23f8ed4bafd42f3578e915f835a195c99bd8092d7215b4dd812b0fe406768569",
-      "changes": "private downloads; reviewed errors; source dashboard instructions replaced by Plugins screen; comments/client references removed; queued permission rechecks or private-directory lstat/realpath fences; 0.1.1: back/forward wait for commit; URL/reload retain DOM load wait; 0.1.2: a download is watched for before the click or navigation that starts it; a headless wait ignores earlier denied downloads; 0.1.2: tool descriptions name the private files and downloads folders by their absolute paths",
-      "destinationSha256": "8e834d000de963db7471f919cb1188479cfec3fc2114034c34af0dbbedfad08e"
+      "changes": "private downloads; reviewed errors; source dashboard instructions replaced by Plugins screen; comments/client references removed; queued permission rechecks or private-directory lstat/realpath fences; 0.1.1: back/forward wait for commit; URL/reload retain DOM load wait; 0.1.2: a download is watched for before the click or navigation that starts it; a headless wait ignores earlier denied downloads; 0.1.2: tool descriptions name the private files and downloads folders by their absolute paths; download waits describe serialized tool calls and independent events; agent clicks and navigation use the combined download tool; the saved staging file identifies the completed capture",
+      "destinationSha256": "abe3e07e65f59d40228cb16f48090724b4e5a03e8e94ac009ac3ab31b6ac7d52"
     },
     {
       "source": "agent-chrome/src/tools/modeSwitch.ts",
@@ -303,8 +303,8 @@
     "source": "agent-chrome/package.json",
     "destination": "plugins/chrome/package.json",
     "sourceSha256": "25dabff73274d95272fd6d693d823fe8dd13b3906f4a742f786b7d5c357acb34",
-    "changes": "renamed; source-local dependency/scripts removed; exact direct production pins match source lock (SDK1.32.1, Express4.22.3, PlaywrightCore1.61.0); dev-only build tooling pinned separately; production metadata/hooks sanitized at build",
-    "destinationSha256": "153b9ff0f41dba03877ea830da37b71aecf08d3b07c2b845f78da6d4846f565d"
+    "changes": "renamed; source-local dependency/scripts removed; exact direct production pins match source lock (SDK1.32.1, Express4.22.3, PlaywrightCore1.61.0); dev-only build tooling pinned separately; production metadata/hooks sanitized at build; standalone package version 0.1.2",
+    "destinationSha256": "faf8f727e29504db400152d38b9350962f03758885df95e475b616aa118c1c44"
   },
   "recheckedCurrentSource": true,
   "packageAdditions": [

@@ -151,13 +151,13 @@ THE_ATTACHMENTS_GUARD = (
     "            END\n"
 )
 THE_CLEAR_WINDOW = (
+    "    `SELECT e.session_id, ps.provider AS provider,\n"
     "            CASE WHEN json_valid(e.payload) THEN json_extract(e.payload, '$.window') END AS window,\n"
 )
 # Source targeting only, NOT VERIFIED: preserve the torn-clear guards around the date predicate.
 THE_CLEAR_FILTER = "      WHERE e.type = 'provider_limit_clear' AND likelihood(e.created_at > ?, 0.00001) AND json_valid(e.payload)\n"
 THE_CLEAR_COUNTED = (
-    # ⚑ **source-restoration · re-anchored in place, not retired** — NOT VERIFIED; source targeting only. 12c3d591f wrapped retraction reads in phase; still keep the warning and omit the torn-clear count.
-    "          noteUnreadRow(sessionId, ordinal, undefined)\n          rowsUnread += 1\n"
+    "            noteUnreadRow(sessionId, ordinal, undefined)\n            rowsUnread += 1\n"
 )
 
 # Resume no longer re-grants handed paths. Keep the removed-code anchor recorded as retired.
@@ -559,7 +559,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "M34 · 🔴 **the retraction read reads a torn clear raw** · the limit band RAISES whenever a "
         "wall stands and one clear is torn",
         [
-            (STORE, THE_CLEAR_WINDOW, "            json_extract(e.payload, '$.window') AS window,\n"),
+            (STORE, THE_CLEAR_WINDOW, "    `SELECT e.session_id, ps.provider AS provider,\n            json_extract(e.payload, '$.window') AS window,\n"),
             (
                 STORE,
                 THE_CLEAR_FILTER,
@@ -580,7 +580,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     ),
     (
         "M36 · ⚠️ **a torn clear is left out and not counted** · the band says every row was read",
-        [(STORE, THE_CLEAR_COUNTED, "          noteUnreadRow(sessionId, ordinal, undefined)\n")],
+        [(STORE, THE_CLEAR_COUNTED, "            noteUnreadRow(sessionId, ordinal, undefined)\n")],
     ),
     # ── what `676`'s own review found ─────────────────────────────────────────────────────────
     (

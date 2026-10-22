@@ -45,6 +45,8 @@ export const LifecyclePlan = z.union([
     appVersion: z.string().min(1).max(80).optional(),
     catalogue: path,
     catalogueSha256: hex,
+    /** App-verified raw source; never supplied over the person or agent channel. */
+    repoList: z.strictObject({ path, sha256: hex }).optional(),
     personKey: hex,
     names: z.record(z.string(), z.string().min(1).max(128)),
     /** Explicit scratch proof only; the production app never supplies this. */

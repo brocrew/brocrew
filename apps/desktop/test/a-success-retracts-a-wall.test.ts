@@ -88,6 +88,14 @@ const providerSaidClear = (
 /* ───────────────── §1 · the retraction, where it is supposed to fire ───────────────── */
 
 describe('§1 · a provider that worked after the wall has disproved it', () => {
+  it('known accounts keep separate walls and only the matching account retracts one', () => {
+    const fern = { ...wall(CODEX_WALL), account: 'fern-account' }
+    const willow = { ...wall(CODEX_WALL), account: 'willow-account' }
+    expect(foldProviderLimits([fern, willow], [], NOW)).toHaveLength(2)
+    const completed = { ...aTurnCompleted('codex', NOW - HOUR), account: 'willow-account' }
+    expect(foldProviderLimits([fern, willow], [completed], NOW)).toEqual([fern])
+    expect(foldProviderLimits([fern], [aTurnCompleted('codex', NOW - HOUR)], NOW)).toEqual([])
+  })
   it('🔴 a completed turn AFTER the wall retracts it — the whole of `HO-080` §1', () => {
     // Plant a `stopped` wall from three hours ago, followed by successful Claude answers, to
     // check that success retracts it.
@@ -538,6 +546,30 @@ describe('§6 · his own state, planted in a database and read back', () => {
     put(id, { type: 'turn', state }, ended)
   }
 
+  it.each(['turn', 'clear'] as const)(
+    'keeps an earlier account’s %s when the same conversation later changes accounts',
+    (kind) => {
+      conversation('sess_fern')
+      conversation('sess_switch')
+      walled('sess_fern')
+      for (const at of [NOW - 2 * HOUR, NOW - HOUR]) {
+        if (kind === 'turn') aTurn('sess_switch', at)
+        else
+          put(
+            'sess_switch',
+            { type: 'provider_limit_clear', window: 'five_hour', source: 'rate_limit_event' },
+            at,
+          )
+      }
+      const accountLives = [
+        { sessionId: 'sess_fern', since: 0, account: 'fern-account' },
+        { sessionId: 'sess_switch', since: 0, account: 'fern-account' },
+        { sessionId: 'sess_switch', since: NOW - 1.5 * HOUR, account: 'willow-account' },
+      ]
+      expect(store.providerLimitsSeen(NOW, undefined, accountLives).rows).toEqual([])
+    },
+  )
+
   it('🔴 the wall stands while nothing has answered', () => {
     conversation('sess_claude')
     walled('sess_claude')
@@ -649,14 +681,29 @@ describe('§6 · his own state, planted in a database and read back', () => {
     } finally {
       capture.mockRestore()
     }
-    expect(statements).toHaveLength(1)
-    const plan = (): string =>
-      (db.prepare(`EXPLAIN QUERY PLAN ${statements[0]!}`).all(0) as { detail: string }[])
+    expect(statements.length).toBeGreaterThan(0)
+    const plan = (sql: string): string =>
+      (
+        db.prepare(`EXPLAIN QUERY PLAN ${sql}`).all(
+          ...(sql.includes('@sessionLives')
+            ? [
+                {
+                  oldest: 0,
+                  sessionLives: '[]',
+                  ...(sql.includes('@sessionId') ? { sessionId: 'sess_fixture' } : {}),
+                },
+              ]
+            : [0]),
+        ) as { detail: string }[]
+      )
         .map((one) => one.detail)
         .join(' ')
-    expect(plan()).toContain('events_provider_clear_idx')
+    for (const sql of statements) {
+      if (sql.includes('@sessionId')) expect(plan(sql)).toMatch(/SEARCH e USING INDEX/)
+      else expect(plan(sql)).toContain('events_provider_clear_idx')
+    }
     db.exec('DROP INDEX events_provider_clear_idx')
-    expect(plan()).not.toContain('events_provider_clear_idx')
+    for (const sql of statements) expect(plan(sql)).not.toContain('events_provider_clear_idx')
   })
 
   it('🔴 his whole screenshot, end to end: two records in, one sentence out, then nothing', () => {
