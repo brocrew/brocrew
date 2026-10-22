@@ -17,17 +17,7 @@ import {
   type BigIntStats,
 } from 'node:fs'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
-import {
-  aStagingName,
-  createFreshFile,
-  isStillTheFileOpened,
-  claudeAutoMemoryDir,
-  claudeAutoMemoryIndex,
-  codexMemoryDir,
-  codexAdHocNotesDir,
-  CODEX_MEMORY_STORE_FILES,
-  isClaudeMemoryTopic,
-} from '@brobot2/runtime'
+import { aStagingName, createFreshFile, isStillTheFileOpened } from '@brobot2/runtime'
 import {
   captureMethodFileGuard,
   readKnowledgeFileCapture,
@@ -47,6 +37,7 @@ import type {
 import { keepToThisUser, verifyFileToThisUser, type AccessLists } from '../recovery/windows-privacy'
 import {
   AGENT_MEMORY_NOTES_SHOWN,
+  MEMORY_STORE_LAYOUT,
   memoryStoreCounts,
   readAgentMemoryPage,
   readAgentMemorySelection,
@@ -796,16 +787,12 @@ function memoryLocation(
 ): MemoryLocation | null {
   if (inputs.homesRoot === null || !PROVIDERS.includes(provider)) return null
   const home = inputs.homeOf(provider)
-  const fixed =
-    provider === 'claude'
-      ? [claudeAutoMemoryIndex(home)]
-      : CODEX_MEMORY_STORE_FILES.map((file) => join(codexMemoryDir(home), ...file.at))
+  const layout = MEMORY_STORE_LAYOUT[provider]
+  const fixed = layout.fixedFiles(home)
   const name = basename(entry)
   if (!safeMethodFileName(name)) return null
-  const notes = provider === 'claude' ? claudeAutoMemoryDir(home) : codexAdHocNotesDir(home)
-  const known =
-    fixed.includes(entry) ||
-    (dirname(entry) === notes && (provider === 'codex' || isClaudeMemoryTopic(name)))
+  const notes = layout.notesFolder(home)
+  const known = fixed.includes(entry) || (dirname(entry) === notes && layout.acceptsNote(name))
   if (!known) return null
   const folder = fixed.includes(entry) ? dirname(fixed.find((path) => path === entry)!) : notes
   const derived = join(folder, name)

@@ -1887,22 +1887,45 @@ export function readAgentMemoryPage(
   }
 }
 
+interface MemoryStoreLayout {
+  readonly fixedFiles: (home: string) => readonly string[]
+  readonly notesFolder: (home: string) => string
+  readonly listNotes: (folder: string) => { names: string[] }
+  readonly acceptsNote: (name: string) => boolean
+}
+
+/** The reader and writer use the same provider-owned memory locations and note names. */
+export const MEMORY_STORE_LAYOUT: Readonly<Record<Provider, MemoryStoreLayout>> = {
+  claude: {
+    fixedFiles: (home) => [claudeAutoMemoryIndex(home)],
+    notesFolder: claudeAutoMemoryDir,
+    listNotes: claudeMemoryTopics,
+    acceptsNote: isClaudeMemoryTopic,
+  },
+  codex: {
+    fixedFiles: (home) =>
+      CODEX_MEMORY_STORE_FILES.map((file) => join(codexMemoryDir(home), ...file.at)),
+    notesFolder: codexAdHocNotesDir,
+    listNotes: adHocNotes,
+    // The caller checks safe Markdown filenames before asking about provider eligibility.
+    acceptsNote: () => true,
+  },
+}
+
 /** Resolve a selected entry against fresh names, then let the bounded page reader read it. */
 export function readAgentMemorySelection(
   provider: Provider,
   providerHome: string,
   entry: string,
 ): InjectedInstruction | undefined {
-  const isClaude = provider === 'claude'
-  const fixed = isClaude
-    ? [claudeAutoMemoryIndex(providerHome)]
-    : CODEX_MEMORY_STORE_FILES.map((file) => join(codexMemoryDir(providerHome), ...file.at))
+  const layout = MEMORY_STORE_LAYOUT[provider]
+  const fixed = layout.fixedFiles(providerHome)
   if (fixed.includes(entry))
     return readAgentMemoryPage(provider, providerHome, 0, 1).memory.find(
       (item) => item.path === entry,
     )
-  const folder = isClaude ? claudeAutoMemoryDir(providerHome) : codexAdHocNotesDir(providerHome)
-  const names = isClaude ? claudeMemoryTopics(folder).names : adHocNotes(folder).names
+  const folder = layout.notesFolder(providerHome)
+  const names = layout.listNotes(folder).names
   const offset = names.findIndex((name) => join(folder, name) === entry)
   if (offset < 0) return undefined
   // A changed ordering can refuse the selection; it cannot redirect it to another file.
