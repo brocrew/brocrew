@@ -64,6 +64,7 @@ import {
   skillsKept,
   RETIRED_TABLES,
   installerGuid,
+  isPublishedRelease,
   jobSummary,
   lastResortStop,
   LAUNCH_SETUP_DISMISSED_KEY,
@@ -2091,7 +2092,7 @@ try {
   // ── 1 · the beta, the very file the release offers, installed as a person installs it ────────
   const release = JSON.parse(readFileSync(resolve(args['beta-release']), 'utf8'))
   must(
-    release.tag_name === args['beta-tag'] && release.prerelease === true && release.draft === false,
+    isPublishedRelease(release, args['beta-tag']),
     `the release is ${args['beta-tag']}, a published prerelease`,
     { tag: release.tag_name, prerelease: release.prerelease, publishedAt: release.published_at },
   )
