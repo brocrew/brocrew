@@ -70,7 +70,8 @@ const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
  * sentence names nothing more. `0011_the_transcript_copy_goes` drops a table and creates nothing, so
  * the sentence names nothing more.
  */
-const MIGRATIONS = 13
+// Rules provenance, seen state and saved method recovery live in the database being removed.
+const MIGRATIONS = 16
 
 const FLAGS = new Set([
   '--dry-run',
@@ -298,7 +299,7 @@ function nextLaunch({
     // keys a person saved, which live in that database too.
     `no approval default set, no external MCP servers and no grants, no hand-added models, no last ` +
     `model picked, no API keys, no conversations` +
-    `, no personal skills or skill choices`
+    `, no personal skills or skill choices, no standing rules or saved method change history`
   // ⛔ **539 · selected by what is THERE, never by what was asked for.** Both arms of this
   // condition are reachable with the flag passed, which is the whole of the repair: the run that
   // kept nothing and the run that kept something no longer share a sentence.

@@ -1,3 +1,4 @@
+import { agentCallerId } from '../src/main/runtime/agent-tools'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -274,8 +275,14 @@ describe('D-017 · the instruction-ask ledger', () => {
     const asking = await personOpens('asker')
     const asked = host.proposeAgentRules(
       asking,
-      { about: 'worker', text: 'Never force-push.', why: 'it keeps coming up', relaying: false },
-      window,
+      {
+        about: 'worker',
+        text: 'Never force-push.',
+        why: 'it keeps coming up',
+        relaying: false,
+        expectedVersion: 0,
+      },
+      { ownerId: agentCallerId(asking) },
     )
     expect(asked.ok && asked.wrote).toBe('a-request')
 
@@ -320,8 +327,14 @@ describe('D-017 · the instruction-ask ledger', () => {
     const asking = await personOpens('asker')
     host.proposeAgentRules(
       asking,
-      { about: 'worker', text: 'Never force-push.', why: 'it keeps coming up', relaying: false },
-      window,
+      {
+        about: 'worker',
+        text: 'Never force-push.',
+        why: 'it keeps coming up',
+        relaying: false,
+        expectedVersion: 0,
+      },
+      { ownerId: agentCallerId(asking) },
     )
     const before = store.instructionAsksWaiting()
     expect(before.length).toBeGreaterThan(0)

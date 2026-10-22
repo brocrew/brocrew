@@ -10,8 +10,9 @@ import {
   type SavedMethodsUse,
 } from '../shared/saved-methods'
 
-/** The index's file in a profile's saved-methods folder. */
-export const SAVED_METHODS_INDEX = 'index.md'
+import { parseSavedMethodLine, SAVED_METHODS_INDEX } from './saved-method-index'
+export { SAVED_METHODS_INDEX } from './saved-method-index'
+export { listSavedMethodLibrary, readSavedMethodBody } from './saved-method-library'
 
 /** The most `index.md` may hold to be read at all; the index sent is bounded far lower. */
 const MOST_INDEX_FILE_BYTES = 64 * 1024
@@ -19,10 +20,6 @@ const MOST_INDEX_FILE_BYTES = 64 * 1024
 /** The one form an index line may take; anything else in `index.md` is not sent. */
 export const SAVED_METHOD_LINE_FORM =
   '- Title | When it applies | verified YYYY-MM-DD | file-name.md'
-
-const LINE = /^- (.+?) \| (.+?) \| verified (\d{4}-\d{2}-\d{2}) \| ([a-z0-9][a-z0-9-]*\.md)$/
-/** Characters a title or its use may not hold: markup, links, and control or format characters. */
-const NOT_IN_A_FIELD = /[`<>[\]|\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u
 
 /** One method the index names, as its line gave it. */
 export interface SavedMethod {
@@ -70,22 +67,6 @@ function entryAt(path: string): Stats | null {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
     throw error
   }
-}
-
-/** A real date written as `YYYY-MM-DD`. */
-function aRealDate(text: string): boolean {
-  const [year, month, day] = text.split('-').map(Number) as [number, number, number]
-  const date = new Date(Date.UTC(year, month - 1, day))
-  return (
-    date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
-  )
-}
-
-/** A title or its use: short, trimmed, and free of markup, links and control characters. */
-function aField(text: string, most: number): boolean {
-  return (
-    text.length > 0 && text.length <= most && text === text.trim() && !NOT_IN_A_FIELD.test(text)
-  )
 }
 
 /**
@@ -153,20 +134,12 @@ export function readSavedMethods(
       const line = raw.trimEnd()
       // Only list items are entries; headings and prose around them are not.
       if (!/^\s*[-*] /.test(line)) continue
-      const found = LINE.exec(line)
-      const [title, when, verified, file] = found === null ? [] : found.slice(1)
-      if (
-        title === undefined ||
-        when === undefined ||
-        verified === undefined ||
-        file === undefined ||
-        !aField(title, 80) ||
-        !aField(when, 200) ||
-        !aRealDate(verified)
-      ) {
+      const parsed = parseSavedMethodLine(line)
+      if (parsed === null) {
         leftOut += 1
         continue
       }
+      const { title, when, verified, file } = parsed
       const path = join(folder, file)
       const method = entryAt(path)
       if (method?.isSymbolicLink() === true) throw new Refused({ kind: 'a-link', what: 'a-method' })

@@ -86,7 +86,7 @@ MUTATIONS = [
     # ── §1 · the fourth word, and what it says ────────────────────────────────────────────────
     (
         "M1 · 🔴 **THE WORD IS GONE** · `WHO_WROTE_IT` is back to `HO-009` §2.2's three, so `foldWhoWroteIt` no longer recognises what this app writes and every creator's version reads back as `an-agents-proposal`. ⛔ **The narrow fold is what makes this silent**: nothing throws, the sheet draws a sentence, and the sentence says a person approved something nobody ever saw",
-        [(VOCAB, "  'relayed-from-user',\n  'its-creator',\n] as const", "  'relayed-from-user',\n] as const")],
+        [(VOCAB, "  'relayed-from-user',\n  'its-creator',\n  'an-agent-direct',\n] as const", "  'relayed-from-user',\n  'an-agent-direct',\n] as const")],
     ),
     (
         "M2 · ⛔ the sentence stops saying nobody was asked · the clause `HO-094` §1.1 exists for. ⚑ A person reading the row learns WHO and WHEN and is not told the one thing the other three members each have an answer for — *you wrote it*, *you approved it*, *an agent says you said it*. ⚠️ **It is the only member whose honest answer on that axis is *nothing***, and this is the row that removes it",
@@ -152,8 +152,8 @@ MUTATIONS = [
         [
             (
                 STORE,
-                "    by: actorOf(row.by),\n    conversation: row.conversation_id,",
-                "    by: actedByFrom(row.by),\n    conversation: row.conversation_id,",
+                "      by: actorOf(row.by),\n      conversation: row.conversation_id,",
+                "      by: actedByFrom(row.by),\n      conversation: row.conversation_id,",
             )
         ],
     ),

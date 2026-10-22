@@ -126,17 +126,21 @@ export const OWN_INSTRUCTIONS_CHARS = 16_000
  * `identity_instruction_creator_is_first_ck` refuses it on any version but the first, so *the
  * creator wrote it* cannot come to mean *an agent wrote it later*.
  *
+ * Direct agent changes now have their own origin as well. The host fixes their authority;
+ * historical relay rows remain readable as the claims originally recorded.
+ *
  * ⛔ **The word that still does NOT exist is the one `HO-009` §1.2 refuses by name**: an agent
  * writing its OWN rules from experience. ⚠️ **Every version this app can produce is a person's
  * keystroke, a person's approval, an agent's claim that a person said it, or the one line a
- * creator wrote before the agent it was making had ever run** — and a reader can tell those four
- * apart, which is the whole of what this vocabulary is for.
+ * creator wrote before the agent it was making had ever run**, or a direct agent change.
+ * Each origin remains distinguishable in history.
  */
 export const WHO_WROTE_IT = [
   'a-person',
   'an-agents-proposal',
   'relayed-from-user',
   'its-creator',
+  'an-agent-direct',
 ] as const
 
 /** One of {@link WHO_WROTE_IT}. */
@@ -154,6 +158,7 @@ export type WhoWroteIt = (typeof WHO_WROTE_IT)[number]
 export const WROTE_IT_MEANS: Readonly<Record<WhoWroteIt, string>> = {
   'a-person': 'you wrote this',
   'an-agents-proposal': 'an agent proposed this and you approved it',
+  'an-agent-direct': 'An agent changed this',
   'relayed-from-user':
     'an agent wrote this, saying you had given it the rule — this app did not check that',
   // 🔴 **618 · it says WHO, WHEN and what was NOT done** (`HO-078` §4). ⛔ The last clause is the
@@ -165,6 +170,28 @@ export const WROTE_IT_MEANS: Readonly<Record<WhoWroteIt, string>> = {
     'the agent that created this one wrote this as it created it, before this agent had ever run — nobody asked you',
 }
 
+export interface RulesAuthor {
+  readonly profile: string
+  readonly name: string
+}
+
+/** Names the content author without confusing them with a proposal's approver. */
+export function rulesChangeLabel(
+  version: Pick<OwnInstructionsVersion, 'whoWroteIt' | 'author'>,
+): string {
+  if (version.whoWroteIt === 'a-person') return 'You changed this'
+  if (version.whoWroteIt === 'an-agent-direct') {
+    return `${version.author?.name.trim() || 'An agent'} changed this`
+  }
+  return WROTE_IT_MEANS[version.whoWroteIt]
+}
+
+export interface InstructionUnread {
+  readonly seenThrough: number
+  readonly newestDirectVersion: number
+  readonly unread: boolean
+}
+
 /**
  * 🔴 **One saved version of one identity's own instructions.**
  *
@@ -173,6 +200,8 @@ export const WROTE_IT_MEANS: Readonly<Record<WhoWroteIt, string>> = {
  * trail rather than a cache of the current value.
  */
 export interface OwnInstructionsVersion {
+  /** The content author at creation time, separate from an approving person's act. */
+  readonly author?: RulesAuthor
   /**
    * ⚑ **1-based and monotone per identity** — the number a person reads and a revert names.
    *
@@ -440,6 +469,10 @@ export const NOBODY_HAS_WRITTEN_ONE =
  * `SessionStore.writeOwnInstructions`.
  */
 export interface OwnInstructionsWrite {
+  readonly author?: RulesAuthor
+  /** When supplied, both comparisons are made in the version allocation transaction. */
+  readonly expectedVersion?: number
+  readonly currentText?: string
   /** The identity the rules are about. Folded by the store, as every other slug argument is. */
   readonly profileSlug: string
   /** ⛔ **Verbatim, and `''` is *take them away*.** Bounded by {@link OWN_INSTRUCTIONS_CHARS}. */

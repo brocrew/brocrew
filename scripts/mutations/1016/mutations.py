@@ -1008,12 +1008,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
             (RUNTIME_HOST, "  private runningAs(sessionId: string): GivingConversation | null {\n    const session = this.slots.get(sessionId)?.session\n", "  private runningAs(sessionId: string): GivingConversation | null {\n    const slot = this.slots.get(sessionId)\n    if (slot !== undefined && onItsWayOut(slot)) return null\n    const session = slot?.session\n"),
         ],
     ),
-    (
-        "M108 · propose_agent_rules passes the grant for a stopping caller and then refuses it at the session read, so the request is never put in front of a person — killed by `a-stop-cuts-the-drive-and-a-stalled-piece-stays-stalled.test.ts`",
-        [
-            (RUNTIME_HOST, "    const session = this.slots.get(me)?.session ?? null\n    // ⚠️ **A caller mid-tool-call has a session in this host", "    const itsSlot = this.slots.get(me)\n    const session = itsSlot !== undefined && onItsWayOut(itsSlot) ? null : (itsSlot?.session ?? null)\n    // ⚠️ **A caller mid-tool-call has a session in this host"),
-        ],
-    ),
+    ('M108 · propose_agent_rules passes the grant for a stopping caller and then refuses it at the session read, so the request is never put in front of a person — killed by `a-stop-cuts-the-drive-and-a-stalled-piece-stays-stalled.test.ts`', [(RUNTIME_HOST, "    const session = this.slots.get(me)?.session ?? null\n    if (session === null)\n      return { ok: false, rail: 'may-not-write-rules', detail: { you: author.profile } }", "    const itsSlot = this.slots.get(me)\n    const session = itsSlot !== undefined && onItsWayOut(itsSlot) ? null : (itsSlot?.session ?? null)\n    if (session === null)\n      return { ok: false, rail: 'may-not-write-rules', detail: { you: author.profile } }")]),
     (
         "M109 · a piece stalled because its turn was interrupted no longer refuses a give, so a holder whose turn a Close cut is handed more work — killed by `a-stop-cuts-the-drive-and-a-stalled-piece-stays-stalled.test.ts`",
         [

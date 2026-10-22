@@ -583,6 +583,9 @@ const HOW_EACH_VERB_IS_BUILT: Record<RuntimeCommandKind, VerbRow> = {
   // ⚠️ **The ANSWER carries two arrays, and this table does not ask about it** — `removeAgent`'s own
   // note two rows down, and `363`'s question is who builds what goes THROUGH the door.
   agentInstructions: { how: 'plain-by-construction' },
+  agentRulesUnread: { how: 'plain-by-construction' },
+  undoAgentRules: { how: 'plain-by-construction' },
+  markAgentRulesSeen: { how: 'plain-by-construction' },
   // 677. ⛔ **`plain-by-construction` on both halves**, for `setAgentProvider`'s reason: the preload
   // builds `{ kind, ...input }` itself, and the four fields it did not build — `profileId`,
   // `provider`, `model`, `effort` — are each a `string | null`. ⚠️ **Flat ON PURPOSE**: a nested
@@ -726,7 +729,7 @@ describe('§2 · every renderer→main verb is accounted for (361 §1)', () => {
     // ⚑ And `setServicesOn`, a person's services switch: 114 → 115.
     // ⚑ And `stoppedWorkForAPerson`, the pieces whose helper stopped: 115 → 116.
     // Link resolution, both typed-wait verbs and recent activity are present in the same bridge.
-    expect(Object.keys(HOW_EACH_VERB_IS_BUILT)).toHaveLength(121)
+    expect(Object.keys(HOW_EACH_VERB_IS_BUILT)).toHaveLength(124)
     // ⚑ 8 → 10 at `744`: `savedDrafts`, `saveDrafts`. 10 → 9 at D-016: `getDemoSeed` out.
     // ⚑ 9 → 10 at D-031: `localZone`.
     expect(Object.keys(THE_APP_CHANNELS)).toHaveLength(10)
@@ -936,7 +939,7 @@ describe('§2 · every renderer→main verb is accounted for (361 §1)', () => {
       // ⚑ `stoppedWorkForAPerson` moves the MIDDLE number by one: it carries no payload.
       // Link resolution and action answers build literals; incident reads carry no payload.
       // Recent activity adds one plain packet, built from two numeric window bounds.
-      86, 27, 8,
+      89, 27, 8,
     ])
   })
 

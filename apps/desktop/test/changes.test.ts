@@ -798,6 +798,15 @@ const APP_EVENTS: Record<
     why: 'it keeps coming up',
   },
   instruction_settled: { type: 'instruction_settled', askId: 'iprop_1', ending: 'refused' },
+  instruction_changed: {
+    type: 'instruction_changed',
+    conversation: 'ses-wren',
+    profile: 'lark',
+    version: 2,
+    previousVersion: 1,
+    author: { profile: 'wren', name: 'Wren' },
+    replacedPersonVersion: 1,
+  },
   mcp_server_requested: {
     type: 'mcp_server_requested',
     requestId: 'msreq_1',
