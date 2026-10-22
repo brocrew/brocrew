@@ -1,3 +1,4 @@
+import { agentCallerId } from '../src/main/runtime/agent-tools'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -16,7 +17,6 @@ import {
   type RuntimeEventSink,
 } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { THE_APP_DID_IT } from '../src/shared/who-did-it'
 import { type RuntimeEventMessage, type TranscriptEvent } from '../src/shared/runtime-ipc'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -34,9 +34,7 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
  * agent that proposes through `proposeAgentRules`, and the same `decideInstruction` a window's
  * press reaches.
  *
- * ⛔ **Every person's answer is paired with the same ask decided by the app itself.** A door that
- * hard-wrote *a person* would pass the first half and fail the second, and a door that always
- * recorded *the app* would fail the first — so the pair says the actor is read off the CALLER.
+ * A person can decide; other callers are refused without attributing a decision to them.
  */
 
 class PersonsWindow implements RuntimeEventSink {
@@ -120,8 +118,14 @@ describe('477 M9 · who decided an agent’s ask', () => {
     const asking = await personOpens('asker')
     const asked = host.proposeAgentRules(
       asking,
-      { about: 'worker', text: 'Never force-push.', why: 'it keeps coming up', relaying: false },
-      window,
+      {
+        about: 'worker',
+        text: 'Never force-push.',
+        why: 'it keeps coming up',
+        relaying: false,
+        expectedVersion: 0,
+      },
+      { ownerId: agentCallerId(asking) },
     )
     expect(asked.ok && asked.wrote).toBe('a-request')
     const askId = asked.ok && asked.wrote === 'a-request' ? asked.askId : ''
@@ -161,15 +165,14 @@ describe('477 M9 · who decided an agent’s ask', () => {
     ])
   })
 
-  it('⚑ the SAME approval by the app itself records the app, so the actor is read off the caller', async () => {
+  it('refuses approval by the app itself and keeps the request waiting', async () => {
     const { asking, askId } = await anAskIsWaiting()
-    decided(true, THE_APP_ITSELF, askId)
-    const versions = store.ownInstructionsOf('worker').versions
-    expect(versions.map((one) => one.text)).toEqual(['Never force-push.'])
-    expect(versions.map((one) => one.by)).toEqual([THE_APP_DID_IT])
-    expect(settledRowsOf(asking).map((one) => [one.ending, one.by])).toEqual([
-      ['approved', THE_APP_DID_IT],
-    ])
+    expect(host.decideInstruction(askId, true, THE_APP_ITSELF)).toMatchObject({
+      outcome: 'refused',
+    })
+    expect(store.ownInstructionsOf('worker').versions).toEqual([])
+    expect(settledRowsOf(asking)).toEqual([])
+    expect(store.instructionAsksWaiting()).toHaveLength(1)
   })
 
   it('🔴 refusing as a person records a person on the ending, and writes no version', async () => {
@@ -181,13 +184,13 @@ describe('477 M9 · who decided an agent’s ask', () => {
     ])
   })
 
-  it('⚑ the SAME refusal by the app itself records the app', async () => {
+  it('refuses a non-person decision without settling the request', async () => {
     const { asking, askId } = await anAskIsWaiting()
-    decided(false, THE_APP_ITSELF, askId)
+    expect(host.decideInstruction(askId, false, THE_APP_ITSELF)).toMatchObject({
+      outcome: 'refused',
+    })
     expect(store.ownInstructionsOf('worker').versions).toEqual([])
-    expect(settledRowsOf(asking).map((one) => [one.ending, one.by])).toEqual([
-      ['refused', THE_APP_DID_IT],
-    ])
+    expect(settledRowsOf(asking)).toEqual([])
   })
 
   it('🔴 a person’s decision on an ask whose conversation nobody has open is recorded as theirs too', async () => {

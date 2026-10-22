@@ -434,6 +434,7 @@ describe('§2 · the manifest agrees with the product it is a manifest of', () =
     const cli = CLI_SOURCE
     expect(cli).toContain(`const MIGRATIONS = ${String(migrations.length)}`)
     expect(cli).toContain('no personal skills or skill choices')
+    expect(cli).toContain('no history of standing rules or saved methods')
   })
 })
 

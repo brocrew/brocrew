@@ -1,3 +1,4 @@
+import { agentCallerId } from '../src/main/runtime/agent-tools'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -240,8 +241,8 @@ describe('a torn instruction row does not stop the ledger · §3 nothing withdra
     const asking = await personOpens('asker', hostA)
     const asked = hostA.proposeAgentRules(
       asking,
-      { about: 'worker', text: 'x', why: 'y', relaying: false },
-      window,
+      { about: 'worker', text: 'x', why: 'y', relaying: false, expectedVersion: 0 },
+      { ownerId: agentCallerId(asking) },
     )
     expect(asked.ok && asked.wrote).toBe('a-request')
     const askId = asked.ok && asked.wrote === 'a-request' ? asked.askId : ''

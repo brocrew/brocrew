@@ -399,6 +399,40 @@ describe('the rows the beta left', () => {
   })
 })
 
+describe('standing-rule history gains an unknown author during an upgrade', () => {
+  const legacy = { id: 'rules-lark-1', text: 'Keep reviews short', wrote_it: 'a-person' }
+  const keys = { identity_instruction: ['id'] }
+  const compare = (before, after) =>
+    rowsPreserved(
+      { identity_instruction: before },
+      { identity_instruction: after },
+      undefined,
+      keys,
+    )
+
+  it('accepts only the null default added to legacy rows without masking changes', () => {
+    expect(compare([legacy], [{ ...legacy, author: null }])).toEqual({ lost: [], added: {} })
+    expect(compare([legacy], [{ ...legacy, author: null, text: 'Changed' }]).lost).toEqual([
+      { table: 'identity_instruction', row: '["rules-lark-1"]', changed: ['text'] },
+    ])
+    expect(
+      compare([legacy], [{ ...legacy, author: '{"profile":"wren","name":"Wren"}' }]).lost,
+    ).toEqual([{ table: 'identity_instruction', row: '["rules-lark-1"]', changed: ['author'] }])
+  })
+
+  it('continues to compare an already recorded author and a missing author column exactly', () => {
+    const recorded = { ...legacy, author: '{"profile":"wren","name":"Wren"}' }
+    expect(compare([recorded], [{ ...recorded }]).lost).toEqual([])
+    expect(compare([recorded], [{ ...recorded, author: null }]).lost).toEqual([
+      { table: 'identity_instruction', row: '["rules-lark-1"]', changed: ['author'] },
+    ])
+    expect(compare([{ ...legacy, author: null }], [legacy]).lost).toEqual([
+      { table: 'identity_instruction', row: '["rules-lark-1"]', changed: ['author'] },
+    ])
+    expect(compare([legacy], [{ ...legacy }]).lost).toEqual([])
+  })
+})
+
 describe('the rows the beta left, after its conversations carried on', () => {
   const ref = (sessionId) =>
     JSON.stringify({ provider: 'codex', sessionId, cwd: '/w', rotation: 0 })

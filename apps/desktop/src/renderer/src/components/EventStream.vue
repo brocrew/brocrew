@@ -228,6 +228,7 @@ const EVENT_KIND: Record<TranscriptEvent['type'], EventKind> = {
   // that colour is the provider's consent cards, and an ask is this app's own row.
   instruction_proposed: 'k-lifecycle',
   instruction_settled: 'k-lifecycle',
+  instruction_changed: 'k-lifecycle',
   mcp_server_requested: 'k-lifecycle',
   mcp_server_request_settled: 'k-lifecycle',
   // ⚑ **`work_interrupted` (395) is lifecycle for the same reason `user_command` is**: it is what

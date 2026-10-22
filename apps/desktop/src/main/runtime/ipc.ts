@@ -1239,12 +1239,26 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
    */
   z.object({
     kind: z.literal('instructAgent'),
+    baseline: z
+      .object({ expectedVersion: z.number().int().min(0), currentText: ownInstructions })
+      .optional(),
     profileId: profileId.unwrap(),
     text: ownInstructions,
     broughtBack: z.number().int().min(1).optional(),
   }),
   /** 🔴 **582 · the read** — every version, and every ask waiting against this identity. */
   z.object({ kind: z.literal('agentInstructions'), profileId: profileId.unwrap() }),
+  z.object({ kind: z.literal('agentRulesUnread'), profileId: profileId.unwrap() }),
+  z.object({
+    kind: z.literal('undoAgentRules'),
+    profileId: profileId.unwrap(),
+    expectedVersion: z.number().int().min(1),
+  }),
+  z.object({
+    kind: z.literal('markAgentRulesSeen'),
+    profileId: profileId.unwrap(),
+    throughVersion: z.number().int().min(0),
+  }),
   /**
    * 🔴 **625 · the memory read** — every provider's store for this identity, taken right now.
    * ⚑ **F093 · paged** with `offset` and `limit`.
@@ -1537,6 +1551,9 @@ const DURING_A_QUIT: Record<RuntimeCommandKind, QuitRuling> = {
   // database rather than the direction, because a read that opens a statement against a store the
   // quit is tearing down is the same hazard as a write.
   agentInstructions: 'refused',
+  agentRulesUnread: 'refused',
+  undoAgentRules: 'refused',
+  markAgentRulesSeen: 'refused',
   // 625. ⛔ **Refused, with `agentInstructions` directly above as the precedent**, and one reason
   // more: this read walks two provider homes, and a quit that is tearing the app down is the worst
   // moment to start a filesystem walk whose answer nothing will draw.
@@ -1812,6 +1829,9 @@ const WHAT_A_PERSONS_VERB_DOES: Partial<Record<RuntimeCommandKind, string>> = {
   skills: 'reads and saves skills and agent choices',
   agentIdentities: 'reads every agent and what each may do',
   agentInstructions: 'reads an agent’s own instructions',
+  agentRulesUnread: 'reads unread standing-rule changes',
+  undoAgentRules: 'undoes the latest standing-rule change',
+  markAgentRulesSeen: 'marks displayed standing-rule changes as read',
   agentMemory: 'reads an agent’s own memory',
   agentModelAndEffort: 'reads the model an agent starts on',
   modelList: 'reads the models a provider offers',
@@ -2577,7 +2597,13 @@ export async function executeRuntimeCommand(
       // `propose_instruction` until `618` and no tool has ever been called that**; nothing read it,
       // which is why nothing went red.
       requireAPerson(sink, command.kind)
-      return host.instructAgent(command.profileId, command.text, command.broughtBack, sink)
+      return host.instructAgent(
+        command.profileId,
+        command.text,
+        command.broughtBack,
+        sink,
+        command.baseline,
+      )
     case 'agentInstructions':
       // ⛔ **`requireAPerson` on a READ, which is rarer in this switch than on a write.** ⚠️ The
       // reason is not secrecy — an agent already receives its own rules in its bundle at every
@@ -2585,6 +2611,15 @@ export async function executeRuntimeCommand(
       // the verb lives on the window wire for the sheet that draws them.
       requireAPerson(sink, command.kind)
       return host.agentInstructions(command.profileId)
+    case 'agentRulesUnread':
+      requireAPerson(sink, command.kind)
+      return host.agentRulesUnread(command.profileId)
+    case 'undoAgentRules':
+      requireAPerson(sink, command.kind)
+      return host.undoAgentRules(command.profileId, command.expectedVersion, sink)
+    case 'markAgentRulesSeen':
+      requireAPerson(sink, command.kind)
+      return host.markAgentRulesSeen(command.profileId, command.throughVersion, sink)
     case 'agentMemory':
       // ⚑ **F093 · C8 b — paged when a page is named**, behind the same gate; else the first
       // twenty, as before.

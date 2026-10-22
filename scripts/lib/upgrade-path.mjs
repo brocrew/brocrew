@@ -403,7 +403,14 @@ export function rowsPreserved(
       (keys[table] ?? []).length > 0
         ? JSON.stringify(keys[table].map((column) => comparable(row[column])))
         : null
-    for (const row of rows) {
+    const hasRuleAuthor =
+      table === 'identity_instruction' && now.some((one) => Object.hasOwn(one, 'author'))
+    for (const original of rows) {
+      // The author column starts null for legacy history; recorded authors still compare exactly.
+      const row =
+        hasRuleAuthor && !Object.hasOwn(original, 'author')
+          ? { ...original, author: null }
+          : original
       const key = canonicalRow(row, ignored)
       const count = left.get(key) ?? 0
       if (count > 0) {

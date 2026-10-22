@@ -1,3 +1,5 @@
+import type { RulesBaseline } from '../shared/agent-rules'
+import type { InstructionUnread } from '../shared/own-instructions'
 import { pluginsBridge } from './plugins'
 import type { SkillsRequest, SkillsReply } from '../shared/skills-window'
 import {
@@ -625,12 +627,22 @@ const runtime: RuntimeBridge = Object.freeze({
   // 582 · ⚑ `{ kind, ...input }` and the payload is three primitives — a slug, a string and an
   // optional number — so it is `plain-by-construction` on both halves of `363`'s question, exactly
   // as `setAgentDisplayName` above is.
-  instructAgent: (input: { profileId: string; text: string; broughtBack?: number }) =>
-    command({ kind: 'instructAgent', ...input }) as Promise<AgentInstructionsReading | null>,
+  instructAgent: (input: {
+    profileId: string
+    text: string
+    broughtBack?: number
+    baseline?: RulesBaseline
+  }) => command({ kind: 'instructAgent', ...input }) as Promise<AgentInstructionsReading | null>,
   // 582 · ⚑ One primitive, built here. The ANSWER carries arrays, and that is on the way back —
   // which `the-bridge-that-clones-nothing.test.ts` does not ask about, for `removeAgent`'s reason.
   agentInstructions: (input: { profileId: string }) =>
     command({ kind: 'agentInstructions', ...input }) as Promise<AgentInstructionsReading>,
+  agentRulesUnread: (input: { profileId: string }) =>
+    command({ kind: 'agentRulesUnread', ...input }) as Promise<InstructionUnread>,
+  undoAgentRules: (input: { profileId: string; expectedVersion: number }) =>
+    command({ kind: 'undoAgentRules', ...input }) as Promise<AgentInstructionsReading | null>,
+  markAgentRulesSeen: (input: { profileId: string; throughVersion: number }) =>
+    command({ kind: 'markAgentRulesSeen', ...input }) as Promise<boolean>,
   // 625 · ⚑ One primitive, built here. The ANSWER carries arrays, and that is on the way back —
   // which `the-bridge-that-clones-nothing.test.ts` does not ask about, for `removeAgent`'s reason.
   agentMemory: (input: { profileId: string; offset?: number; limit?: number }) =>

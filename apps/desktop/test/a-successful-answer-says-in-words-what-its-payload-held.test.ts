@@ -24,10 +24,7 @@ import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
-import {
-  RULES_PUT_BEFORE_A_PERSON,
-  RULES_WRITTEN,
-} from '../src/main/runtime/agent-tool-answer-words'
+import { RULES_PUT_BEFORE_A_PERSON } from '../src/main/runtime/agent-tool-answer-words'
 
 /**
  * # A successful answer says in words what its payload held
@@ -595,6 +592,7 @@ describe('a successful answer says in words what its payload held', () => {
       const pmTools = await aGrantedPm('propose')
       const asked = await ok(pmTools, 'propose_agent_rules', {
         agent: 'archivist',
+        current_version: 1,
         rules: 'A second thought.',
         why: 'A memorable reason.',
       })
@@ -606,19 +604,19 @@ describe('a successful answer says in words what its payload held', () => {
       expect(versionsOfTheArchivist()).toEqual(['Mine.'])
     })
 
-    it('propose_agent_rules relayed from a person: says it is written and when it applies', async () => {
+    it('propose_agent_rules refuses the old shortcut and leaves the saved version intact', async () => {
       const pmTools = await aGrantedPm('relay')
-      const written = await ok(pmTools, 'propose_agent_rules', {
+      const written = await call(pmTools, 'propose_agent_rules', {
         agent: 'archivist',
+        current_version: 1,
         rules: 'A rule a person gave.',
         why: 'A memorable reason.',
         already_agreed: true,
       })
-      expect(written.structured?.['wrote']).toBe('a-version')
-      expect(written.text).toBe(RULES_WRITTEN)
-      expect(written.text).not.toContain('version')
-      expect(written.text).not.toContain('relayed')
-      expect(versionsOfTheArchivist()).toEqual(['A rule a person gave.', 'Mine.'])
+      expect(written.structured).toMatchObject({ outcome: 'refused', rail: 'malformed-request' })
+      expect(written.text).not.toContain('A rule a person gave.')
+      expect(written.text).not.toContain('A memorable reason.')
+      expect(versionsOfTheArchivist()).toEqual(['Mine.'])
     })
 
     /** The PM stops, and its provider will fail to bring it back this time. */

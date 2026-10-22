@@ -239,7 +239,7 @@ MUTATIONS = [
         # is read as text only and clean-base is never run. Killed by
         # `clean-base-without-running-it.test.mjs`.
         [
-            ('scripts/clean-base.mjs', 'const MIGRATIONS = 13\n', 'const MIGRATIONS = 12\n'),
+            ('scripts/clean-base.mjs', 'const MIGRATIONS = 17\n', 'const MIGRATIONS = 16\n'),
         ],
     ),
 ]

@@ -92,6 +92,34 @@
       "when": 1792262746788,
       "tag": "0012_skills_catalogue",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1792636800000,
+      "tag": "0013_rules_history",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1792636800001,
+      "tag": "0014_saved_method_recovery",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "6",
+      "when": 1792636800002,
+      "tag": "0015_one_pending_method_change",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1792660729992,
+      "tag": "0016_method_change_observation",
+      "breakpoints": true
     }
   ]
 }

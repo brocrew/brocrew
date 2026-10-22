@@ -1,3 +1,4 @@
+import { agentCallerId } from '../src/main/runtime/agent-tools'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -127,8 +128,14 @@ describe('441 M20 · a No is written down as a No', () => {
   const asks = (asking: string, about: string): string => {
     const asked = host.proposeAgentRules(
       asking,
-      { about, text: `A rule for ${about}.`, why: 'it keeps coming up', relaying: false },
-      window,
+      {
+        about,
+        text: `A rule for ${about}.`,
+        why: 'it keeps coming up',
+        relaying: false,
+        expectedVersion: 0,
+      },
+      { ownerId: agentCallerId(asking) },
     )
     expect(asked.ok && asked.wrote).toBe('a-request')
     return asked.ok && asked.wrote === 'a-request' ? asked.askId : ''
