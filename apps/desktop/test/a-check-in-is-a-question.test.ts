@@ -104,7 +104,7 @@ describe('§1 · ⛔ the factory text says which verb a check-in is', () => {
     // on a held piece, what to ask a person, and how a question about a piece is answered.
     for (const launch of EVERY_LAUNCH) {
       expect(bundleFor(launch), `${launch} is not told what a check-in is`).toContain(
-        'Use ask_question for decisions or observations; request_action for actions the person must take.',
+        'Ask your questions with ask_question, even to agents; notes expect none. request_action tracks the person's actions. Never guarantee replies.',
       )
     }
   })
