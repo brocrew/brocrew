@@ -113,6 +113,95 @@ it('refreshes supported providers only between turns and preserves the live hand
   expect(f.opened[0]!.send).toHaveBeenCalledTimes(1)
   await a.close()
 })
+it.each(['resolve', 'reject'] as const)(
+  'refuses a timed-out refresh before it later settles by %s',
+  async (outcome) => {
+    vi.useFakeTimers()
+    const f = fixture(true)
+    const a = await f.runtime.start(initial)
+    let finish!: () => void
+    vi.mocked(f.opened[0]!.handle.refreshManagedPlugins!).mockImplementation(
+      () =>
+        new Promise<void>((resolve, reject) => {
+          finish = () =>
+            outcome === 'resolve' ? resolve() : reject(new Error('fictional refresh failure'))
+        }),
+    )
+    f.change({ revision: 'two', servers: [] })
+    const sending = a.send('fictional words')
+    let refused: unknown
+    void sending.catch((error) => {
+      refused = error
+    })
+    await vi.advanceTimersByTimeAsync(PLUGIN_ATTACHMENT_WAIT_MS + 1)
+    try {
+      expect(refused).toBeInstanceOf(Error)
+      expect((refused as Error).message).toContain("Your message wasn't sent")
+      expect(f.opened[0]!.send).not.toHaveBeenCalled()
+      expect(f.opened[0]!.close).toHaveBeenCalledOnce()
+      await expect(a.send('another turn')).rejects.toThrow("wasn't sent")
+    } finally {
+      finish()
+      await sending.catch(() => {})
+      await a.close()
+    }
+    expect(f.opened[0]!.send).not.toHaveBeenCalled()
+  },
+)
+it.each(['interrupt', 'close'] as const)(
+  'never sends after %s during a slow supported refresh',
+  async (stop) => {
+    vi.useFakeTimers()
+    const f = fixture(true)
+    const a = await f.runtime.start(initial)
+    let finish!: () => void
+    vi.mocked(f.opened[0]!.handle.refreshManagedPlugins!).mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve
+        }),
+    )
+    f.change({ revision: 'two', servers: [] })
+    const sending = a.send('fictional words')
+    let refused: unknown
+    void sending.catch((error) => {
+      refused = error
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    const stopping = a[stop]()
+    await vi.advanceTimersByTimeAsync(0)
+    try {
+      expect(refused).toBeInstanceOf(Error)
+      expect((refused as Error).message).toContain("wasn't sent")
+      expect(f.opened[0]!.send).not.toHaveBeenCalled()
+    } finally {
+      finish()
+      await sending.catch(() => {})
+      await stopping
+      await a.close()
+    }
+  },
+)
+it('a refresh that never settles refuses within the bound and retires its handle', async () => {
+  vi.useFakeTimers()
+  const f = fixture(true)
+  const a = await f.runtime.start(initial)
+  vi.mocked(f.opened[0]!.handle.refreshManagedPlugins!).mockImplementation(
+    () => new Promise(() => {}),
+  )
+  f.change({ revision: 'two', servers: [] })
+  let refused: unknown
+  void a.send('fictional words').catch((error) => {
+    refused = error
+  })
+  await vi.advanceTimersByTimeAsync(PLUGIN_ATTACHMENT_WAIT_MS + 1)
+  expect(refused).toBeInstanceOf(Error)
+  expect((refused as Error).message).toContain("Your message wasn't sent")
+  expect(f.opened[0]!.send).not.toHaveBeenCalled()
+  expect(f.opened[0]!.close).toHaveBeenCalledOnce()
+  expect(a.status()).not.toBe('working')
+  await a.close()
+})
 it('reopens an unsupported managed session at the next turn boundary and carries current settings', async () => {
   const f = fixture(),
     a = await f.runtime.start(initial)

@@ -11,9 +11,10 @@ export const WALL_QUEUE_AT_MOST = 4096
 
 const terms = PROVIDER_WALL_EVENT_TYPES.map((type) => `'${type}'`).join(', ')
 const bump = 'UPDATE provider_wall_watch SET revision = revision + 1 WHERE id = 0;'
-const newestCompleted = `INSERT OR REPLACE INTO provider_wall_turns (provider, at)
-  SELECT ps.provider,
-         max(NEW.closed_at, coalesce((SELECT at FROM provider_wall_turns WHERE provider = ps.provider),
+const newestCompleted = `INSERT OR REPLACE INTO provider_wall_turns (provider, session_id, at)
+  SELECT ps.provider, NEW.session_id,
+         max(NEW.closed_at, coalesce((SELECT at FROM provider_wall_turns
+           WHERE provider = ps.provider AND session_id = NEW.session_id),
                                      NEW.closed_at))
     FROM main.provider_session ps WHERE ps.id = NEW.session_id;`
 const rewritten = ['type', 'payload', 'session_id', 'ordinal', 'created_at', 'generation']
@@ -26,7 +27,8 @@ const watch = `CREATE TEMP TABLE IF NOT EXISTS provider_wall_watch (
   CREATE TEMP TABLE IF NOT EXISTS provider_wall_added (
     id INTEGER PRIMARY KEY AUTOINCREMENT, event_row INTEGER NOT NULL);
   CREATE TEMP TABLE IF NOT EXISTS provider_wall_turns (
-    provider TEXT PRIMARY KEY, at INTEGER NOT NULL);
+    provider TEXT NOT NULL, session_id TEXT NOT NULL, at INTEGER NOT NULL,
+    PRIMARY KEY (provider, session_id));
   CREATE TEMP TRIGGER IF NOT EXISTS provider_wall_event_added AFTER INSERT ON main.events
     WHEN NEW.type IN (${terms})
     BEGIN
@@ -82,9 +84,10 @@ export function providerWallsWatched(db: Database.Database): boolean {
   if (holds === undefined) {
     holds = db.prepare(
       `SELECT count(*) AS n FROM sqlite_temp_master
-        WHERE (type = 'table' AND name IN (${WATCH_TABLES.map((name) => `'${name}'`).join(', ')}))
+        WHERE ((type = 'table' AND name IN (${WATCH_TABLES.map((name) => `'${name}'`).join(', ')}))
            OR (type = 'trigger' AND (name, tbl_name) IN
-                (VALUES ${WATCH_TRIGGERS.map(([name, table]) => `('${name}', '${table}')`).join(', ')}))`,
+                (VALUES ${WATCH_TRIGGERS.map(([name, table]) => `('${name}', '${table}')`).join(', ')})))
+          AND EXISTS (SELECT 1 FROM pragma_table_info('provider_wall_turns') WHERE name = 'session_id')`,
     )
     holdsOn.set(db, holds)
   }
@@ -98,7 +101,7 @@ export function providerWallsWatched(db: Database.Database): boolean {
  *  - `provider_wall_watch.revision`, counting each such row removed or rewritten, each completed
  *    turn removed or reopened, and each conversation whose provider changed: what only a whole read
  *    can account for;
- *  - `provider_wall_turns`, the newest completed turn of each provider, and in
+ *  - `provider_wall_turns`, the newest completed turn of each provider and conversation, and in
  *    `provider_wall_watch` how far it is filled, and for which count.
  * Each kept read on the connection (one per connection object a store was made on) reads the queue
  * from its own place. A read that has taken all of it in empties it once it is long, and says how

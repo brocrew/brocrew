@@ -424,6 +424,24 @@ describe('CodexRuntime — the credential pre-flight (098)', () => {
       )
       expect((await started()).signInTag?.()).toBeNull()
     })
+
+    it('a saved key has a stable launch identity by revision, with no key in it', async () => {
+      writeFileSync(
+        join(home, 'auth.json'),
+        JSON.stringify({ auth_mode: 'apikey', OPENAI_API_KEY: 'fictional-key' }),
+      )
+      const stamp = (revision: number) =>
+        writeFileSync(join(home, 'brobot-api-key-login.json'), JSON.stringify({ setAt: revision }))
+      stamp(17)
+      const first = await started()
+      const tag = first.signInTag?.()
+      expect(tag).toMatch(/^[0-9a-f]{32}$/)
+      expect((await started()).signInTag?.()).toBe(tag)
+      stamp(18)
+      expect((await started()).signInTag?.()).not.toBe(tag)
+      expect(first.signInTag?.()).toBe(tag)
+      expect(tag).not.toContain('fictional-key')
+    })
   })
 
   it('refuses to start on an expired credential — before a thread exists, let alone a turn', async () => {
