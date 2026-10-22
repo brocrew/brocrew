@@ -1,4 +1,4 @@
-import type { Provider } from '@brobot2/shared'
+import { providerValue, type Provider } from '@brobot2/shared'
 import type {
   AsSentPart,
   AsSentRecord,
@@ -223,7 +223,7 @@ function instructionFilesTitle(text: string): string {
 function titleOf(provider: Provider, part: AsSentPart): string | null {
   if (part.author === 'the-message') {
     // ⚑ "The message" alone: a conversation found in a person's own provider home was typed there.
-    if (provider !== 'codex') return 'The message'
+    if (providerValue(provider, { claude: true, codex: false })) return 'The message'
     if (THIS_CONVERSATION_LINES.some((line) => part.text.startsWith(`${line}\n\n`))) {
       return 'What is true of this conversation, then the message'
     }
@@ -232,7 +232,7 @@ function titleOf(provider: Provider, part: AsSentPart): string | null {
       ? 'What changed in what is true of this conversation, then the message'
       : 'The message'
   }
-  if (provider === 'claude') {
+  if (providerValue(provider, { claude: true, codex: false })) {
     const said = opening(part.text)
     if (part.label === 'instructions') return instructionFilesTitle(part.text)
     if (part.label === 'meta') return 'Text Claude Code added in the user’s role'
@@ -758,5 +758,7 @@ export function readingATurn(
   asked: TurnAsked,
   options: TurnReadingOptions = {},
 ): TurnReading {
-  return provider === 'claude' ? readingClaude(asked, options) : readingCodex(asked)
+  return providerValue(provider, { claude: true, codex: false })
+    ? readingClaude(asked, options)
+    : readingCodex(asked)
 }

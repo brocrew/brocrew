@@ -1,7 +1,7 @@
 import { existsSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import type { Provider } from '@brobot2/shared'
+import { providerValue, type Provider } from '@brobot2/shared'
 import {
   discoverSessionsIn,
   type DiscoveredSession,
@@ -65,9 +65,11 @@ export interface UserProviderHome {
  * machine that relocates one is read where it actually lives rather than where it usually is.
  */
 export function userProviderHomePath(provider: Provider, env = process.env): string {
-  const override = provider === 'claude' ? env['CLAUDE_CONFIG_DIR'] : env['CODEX_HOME']
+  const override = providerValue(provider, { claude: true, codex: false })
+    ? env['CLAUDE_CONFIG_DIR']
+    : env['CODEX_HOME']
   if (typeof override === 'string' && override !== '') return override
-  return join(homedir(), provider === 'claude' ? '.claude' : '.codex')
+  return join(homedir(), providerValue(provider, { claude: '.claude', codex: '.codex' }))
 }
 
 /**
