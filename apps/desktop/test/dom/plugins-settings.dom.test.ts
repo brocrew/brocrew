@@ -573,3 +573,25 @@ it('keeps phone-removal guidance after uninstall removes the configuration page'
   expect(m.q('plugins-removal-notice').textContent).toContain('Linked devices')
   expect(m.all('plugin-configuration')).toHaveLength(0)
 })
+
+it('explains unavailable updates while retaining Configure and Uninstall for an installed plugin', async () => {
+  const f = fictionalPlugins()
+  f.set([
+    {
+      id: 'fictional-cedar',
+      name: 'Fictional Cedar',
+      installed: true,
+      state: 'Running',
+      updatesUnavailable: true,
+    },
+  ])
+  const m = mount(settingsWindow('plugins', 'classic', f.client), {}, { width: 1180, height: 900 })
+  await vi.waitFor(() => expect(m.all('plugin-card')).toHaveLength(1))
+  expect(m.q('plugin-updates-unavailable').textContent?.trim()).toBe(
+    'Updates aren’t available for this version of BroCrew.',
+  )
+  expect(m.all('plugin-install')).toHaveLength(0)
+  expect(m.all('plugin-update')).toHaveLength(0)
+  expect(m.all('plugin-configure')).toHaveLength(1)
+  expect(m.all('plugin-uninstall')).toHaveLength(1)
+})

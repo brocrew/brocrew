@@ -11,7 +11,7 @@ import type { PluginCard } from '../src/shared/plugin-settings'
 import { writeFile } from 'node:fs/promises'
 import { packageFixture } from './plugin-package-fixtures'
 import { repoListFor } from './plugin-repo-list-fixtures'
-import { PLUGIN_LIST_URL } from '../src/main/plugins/catalogue/download'
+import { PLUGIN_LIST_URL, PLUGIN_LIST_V2_URL } from '../src/main/plugins/catalogue/download'
 import { readPluginInstructions } from '../src/main/plugins/instructions'
 vi.mock('../src/main/plugins/ui/host', () => ({ openPluginConfigurationView: vi.fn() }))
 const seams = vi.hoisted(() => ({
@@ -962,8 +962,16 @@ it.skipIf(process.platform === 'win32')(
     expect(await f.controller.ready!()).toBe(true)
     const fetches = f.fetch.mock.calls.length
     expect(await f.controller.catalogue(true)).toEqual([
-      { id: 'whatsapp', name: 'WhatsApp', installed: true, state: 'Running' },
+      {
+        id: 'whatsapp',
+        name: 'WhatsApp',
+        installed: true,
+        state: 'Running',
+        updatesUnavailable: true,
+      },
     ])
+    const [card] = await f.controller.catalogue()
+    expect(card).not.toHaveProperty('updateVersion')
     expect(f.fetch).toHaveBeenCalledTimes(fetches)
     expect(f.controller.refreshFailed!()).toBe(false)
   },
@@ -1003,5 +1011,156 @@ it.skipIf(process.platform === 'win32')(
     expect(await f.controller.catalogue(true)).toMatchObject([
       { id: 'whatsapp', installed: true, state: 'Unavailable' },
     ])
+  },
+)
+
+// Catalogue compatibility must not revoke management of an authenticated installation.
+describe.skipIf(process.platform === 'win32')(
+  'installed plugins outside the compatible catalogue',
+  () => {
+    it.each(['0.0.0', '0.1.6', '1.0.0'])(
+      'keeps Configure and uninstall when no v2 release admits app %s',
+      async (appVersion) => {
+        const f = await setup()
+        const legacy = repoListFor(f.pkg.release)
+        const future = {
+          format: 2,
+          entries: legacy.entries.map((entry) => ({
+            ...entry,
+            authors: ['brocrew'],
+            minAppVersion: '2.0.0',
+          })),
+        }
+        f.fetch.mockImplementation(async (url) => {
+          expect([PLUGIN_LIST_URL, PLUGIN_LIST_V2_URL]).toContain(String(url))
+          return new Response(JSON.stringify(String(url) === PLUGIN_LIST_V2_URL ? future : legacy))
+        })
+        Object.assign(f.supervisor, { supports: () => true })
+        f.peer.catalogue.mockResolvedValue([
+          {
+            id: f.pkg.release.id,
+            name: 'Fictional Cedar',
+            installed: true,
+            installedVersion: f.pkg.release.version,
+            state: 'Running',
+            updateVersion: '2.0.0',
+          },
+        ])
+        f.peer.screen.mockResolvedValue({ fictional: 'configuration' })
+        const ownerUpdate = vi.fn(async () => {})
+        Object.assign(f.peer, { update: ownerUpdate })
+        f.controller.start({ ...f.options, appVersion })
+        await f.controller.ready!()
+        const cards = await f.controller.catalogue(true)
+        expect(cards).toMatchObject([
+          {
+            id: f.pkg.release.id,
+            installed: true,
+            installedVersion: f.pkg.release.version,
+            state: 'Running',
+            updatesUnavailable: true,
+          },
+        ])
+        expect(cards[0]).not.toHaveProperty('updateVersion')
+        expect(await f.controller.screen(f.pkg.release.id)).toEqual({ fictional: 'configuration' })
+        await expect(f.controller.install(f.pkg.release.id)).rejects.toThrow()
+        await expect(f.controller.update!(f.pkg.release.id)).rejects.toThrow()
+        expect(f.peer.install).not.toHaveBeenCalled()
+        await f.controller.uninstall(f.pkg.release.id)
+        expect(f.peer.uninstall).toHaveBeenCalledOnce()
+      },
+    )
+    it('does not turn a future-only catalogue into available installation cards', async () => {
+      const f = await setup()
+      const legacy = repoListFor(f.pkg.release)
+      f.fetch.mockImplementation(
+        async (url) =>
+          new Response(
+            JSON.stringify(
+              String(url) === PLUGIN_LIST_V2_URL
+                ? {
+                    format: 2,
+                    entries: legacy.entries.map((entry) => ({
+                      ...entry,
+                      authors: ['brocrew'],
+                      minAppVersion: '2.0.0',
+                    })),
+                  }
+                : legacy,
+            ),
+          ),
+      )
+      Object.assign(f.supervisor, { supports: () => true })
+      f.peer.catalogue.mockResolvedValue([])
+      f.controller.start(f.options)
+      await f.controller.ready!()
+      expect(await f.controller.catalogue(true)).toEqual([])
+      expect(f.peer.install).not.toHaveBeenCalled()
+      expect(f.peer.screen).not.toHaveBeenCalled()
+    })
+    it('refuses an unexpected uninstalled owner card instead of offering it', async () => {
+      const f = await setup()
+      f.peer.catalogue.mockResolvedValue([
+        { id: 'fictional-cedar', name: 'Fictional Cedar', installed: false, state: 'Available' },
+      ])
+      f.controller.start(f.options)
+      await f.controller.ready!()
+      const cards = await f.controller.catalogue()
+      expect(cards.some((card) => card.id === 'fictional-cedar')).toBe(false)
+      expect(cards.every((card) => card.state === 'Unavailable')).toBe(true)
+    })
+  },
+)
+
+it.skipIf(process.platform === 'win32')(
+  'an unavailable compatible card retains its catalogue display name',
+  async () => {
+    const f = await setup()
+    f.fetch.mockImplementation(
+      async () => new Response(JSON.stringify(repoListFor(f.pkg.release, 'Fictional Cedar'))),
+    )
+    f.peer.catalogue.mockResolvedValue([
+      { id: f.pkg.release.id, name: f.pkg.release.id, installed: false, state: 'Unavailable' },
+    ])
+    f.controller.start(f.options)
+    await f.controller.ready!()
+    expect(await f.controller.catalogue()).toMatchObject([
+      { id: f.pkg.release.id, name: 'Fictional Cedar', state: 'Unavailable' },
+    ])
+  },
+)
+it.skipIf(process.platform === 'win32')(
+  'an existing empty installation store does not start an owner for an empty offer list',
+  async () => {
+    const f = await setup()
+    await mkdir(f.options.root, { mode: 0o700 })
+    const state = GlobalPluginState.create({
+      root: join(f.options.root, 'state'),
+      workspaceRoots: [f.options.workspaceRoot],
+    })
+    state.close()
+    f.fetch.mockImplementation(async () => new Response(JSON.stringify({ format: 1, entries: [] })))
+    f.controller.start(f.options)
+    await f.controller.ready!()
+    expect(f.supervisor.start).not.toHaveBeenCalled()
+    expect(seams.connect).not.toHaveBeenCalled()
+    expect(readPluginInstructions(f.controller)).toEqual([])
+    await expect(f.controller.install('fictional-cedar')).rejects.toThrow()
+    expect(f.peer.install).not.toHaveBeenCalled()
+  },
+)
+
+it.skipIf(process.platform === 'win32')(
+  'an installed card with an admitted release has no unavailable-update reason',
+  async () => {
+    const f = await setup()
+    f.peer.catalogue.mockResolvedValue([
+      { id: f.pkg.release.id, name: 'Fictional Cedar', installed: true, state: 'Running' },
+    ])
+    f.controller.start(f.options)
+    await f.controller.ready!()
+    const [card] = await f.controller.catalogue()
+    expect(card).toMatchObject({ installed: true, state: 'Running' })
+    expect(card).not.toHaveProperty('updatesUnavailable')
   },
 )
