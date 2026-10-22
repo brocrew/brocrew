@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { loadPluginConfiguration } from '../lib/plugin-configuration-load'
 import type {
   PluginCard,
   PluginListState,
@@ -18,11 +19,13 @@ const cards = ref<PluginCard[]>([]),
   starting = ref<string | null>(null)
 const selected = ref<PluginCard | null>(null),
   confirmation = ref<PluginCard | null>(null),
-  stage = ref<HTMLElement | null>(null)
+  stage = ref<HTMLElement | null>(null),
+  configurationState = ref<'loading' | 'ready' | 'error'>('loading')
 const shown = computed(() =>
   cards.value.filter((card) => card.name.toLowerCase().includes(query.value.trim().toLowerCase())),
 )
 let screenId: string | null = null
+let configurationAbort: AbortController | undefined
 let alive = true,
   generation = 0,
   stop = () => {},
@@ -85,21 +88,28 @@ function bounds() {
     height: Math.max(0, Math.min(y + Math.floor(box.height), clientHeight) - top),
   }
 }
+function configurationFailed() {
+  configurationAbort?.abort()
+  screenId = null
+  busy.value = false
+  configurationState.value = 'error'
+  observer?.disconnect()
+  void request({ kind: 'close' })
+}
 async function move() {
   const turn = generation,
     box = bounds()
-  if (selected.value && box) {
+  if (selected.value && configurationState.value === 'ready' && box) {
     const answer = await request({ kind: 'bounds', bounds: box })
     if (alive && turn === generation && !answer.ok) {
-      selected.value = null
-      observer?.disconnect()
-      await request({ kind: 'close' })
-      error.value = unavailable
+      configurationFailed()
     }
   }
 }
 async function cancel() {
   generation++
+  configurationAbort?.abort()
+  error.value = ''
   screenId = null
   selected.value = null
   busy.value = false
@@ -109,24 +119,32 @@ async function cancel() {
 async function configure(card: PluginCard) {
   if (busy.value) return
   const turn = ++generation
+  configurationAbort?.abort()
+  const abort = new AbortController()
+  configurationAbort = abort
+  observer?.disconnect()
+  configurationState.value = 'loading'
   error.value = ''
   busy.value = true
   selected.value = card
   const ownScreen = crypto.randomUUID()
   screenId = ownScreen
   await nextTick()
+  if (!alive || turn !== generation) return
   const box = bounds()
   const answer = box
-    ? await request({ kind: 'configure', id: card.id, screenId: ownScreen, bounds: box })
+    ? await loadPluginConfiguration(
+        () => request({ kind: 'configure', id: card.id, screenId: ownScreen, bounds: box }),
+        abort.signal,
+      )
     : { ok: false }
   if (!alive || turn !== generation) return
   busy.value = false
   if (!answer.ok) {
-    screenId = null
-    selected.value = null
-    error.value = unavailable
+    configurationFailed()
     return
   }
+  configurationState.value = 'ready'
   observer = new ResizeObserver(() => {
     void move()
   })
@@ -162,11 +180,7 @@ onMounted(async () => {
     client?.onClosed((closedScreen) => {
       if (selected.value && closedScreen === screenId) {
         generation++
-        screenId = null
-        selected.value = null
-        busy.value = false
-        error.value = unavailable
-        observer?.disconnect()
+        configurationFailed()
       }
     }) ?? (() => {})
   window.addEventListener('resize', move)
@@ -184,6 +198,7 @@ onMounted(async () => {
 onUnmounted(() => {
   alive = false
   generation++
+  configurationAbort?.abort()
   stop()
   observer?.disconnect()
   window.removeEventListener('resize', move)
@@ -229,7 +244,29 @@ onUnmounted(() => {
         </button>
       </header>
       <p>This change applies to all workspaces.</p>
-      <div ref="stage" class="plugin-stage" data-cy="plugin-stage" />
+      <div
+        ref="stage"
+        class="plugin-stage"
+        data-cy="plugin-stage"
+        :aria-busy="configurationState === 'loading'"
+      >
+        <div v-if="configurationState !== 'ready'" class="plugin-configuration-message">
+          <p v-if="configurationState === 'loading'" role="status" data-cy="plugin-loading">
+            Loading…
+          </p>
+          <template v-else>
+            <p role="alert" data-cy="plugins-error">{{ unavailable }}</p>
+            <button
+              class="bb-button"
+              type="button"
+              data-cy="plugin-configuration-retry"
+              @click="configure(selected)"
+            >
+              Try again
+            </button>
+          </template>
+        </div>
+      </div>
     </div>
     <div v-else class="plugin-cards">
       <article
@@ -451,5 +488,20 @@ button:disabled {
   margin: 0;
   color: var(--text);
   font-weight: var(--fw-bold);
+}
+
+.plugin-configuration-message {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 150px;
+  height: 100%;
+  gap: 16px;
+  padding: 24px;
+  box-sizing: border-box;
+}
+.plugin-configuration-message p {
+  margin: 0;
 }
 </style>
