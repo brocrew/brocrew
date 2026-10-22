@@ -100,7 +100,10 @@ describe('the published release used as the old build', () => {
 
   it('also accepts a published prerelease', () => {
     expect(
-      isPublishedRelease({ ...release, tag_name: 'v7.2.3-beta.1', prerelease: true }, 'v7.2.3-beta.1'),
+      isPublishedRelease(
+        { ...release, tag_name: 'v7.2.3-beta.1', prerelease: true },
+        'v7.2.3-beta.1',
+      ),
     ).toBe(true)
   })
 
