@@ -39,6 +39,13 @@ onBeforeUnmount(() => {
   sequence++
   unsubscribe?.()
 })
+const status = computed(() =>
+  unread.value === true
+    ? 'New rule change'
+    : unread.value === null
+      ? "Couldn't check for rule changes"
+      : undefined,
+)
 const label = computed(() =>
   unread.value === true
     ? 'Open agent knowledge · new rule change'
@@ -54,7 +61,8 @@ const label = computed(() =>
     class="book-button"
     :class="{ compact: props.compact }"
     :title="label"
-    :aria-label="label"
+    :aria-label="props.compact ? 'Open agent knowledge' : label"
+    :aria-description="props.compact ? status : undefined"
     data-cy="agent-book-button"
     @click.stop="emit('open', props.profileSlug)"
   >

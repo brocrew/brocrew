@@ -88,6 +88,16 @@ describe('the agent book from the profile door', () => {
       expect(controlled).toBeTruthy()
       expect(view.host.querySelector(`[id="${controlled}"]`)?.getAttribute('role')).toBe('tabpanel')
     }
+    const headings = [...view.host.querySelectorAll('[role="tabpanel"]')].map((panel) =>
+      panel.querySelector('h3')!,
+    )
+    expect(headings.map((heading) => heading.textContent?.trim())).toEqual([
+      'Standing rules',
+      'Saved methods',
+      'Memory',
+    ])
+    expect(new Set(headings.map((heading) => getComputedStyle(heading).fontSize)).size).toBe(1)
+    expect(new Set(headings.map((heading) => getComputedStyle(heading).fontWeight)).size).toBe(1)
     await drawnReady()
     assertDrawn(view.q('own-instructions-text'), 'the reused rules editor')
     expect(view.host.textContent).toContain('Quill')

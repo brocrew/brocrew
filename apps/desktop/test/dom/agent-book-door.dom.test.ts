@@ -33,6 +33,7 @@ describe('the agent card book door', () => {
         ]),
     })
     const view = mount(wrapper, {}, { width: 400, height: 900 })
+    expect(view.q('agent-book-button').getAttribute('aria-label')).toBe('Open agent knowledge')
     view.q('agent-book-button').click()
     expect(book).toHaveBeenCalledExactlyOnceWith('quill')
     expect(inputs).not.toHaveBeenCalled()

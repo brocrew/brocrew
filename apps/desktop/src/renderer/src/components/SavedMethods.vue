@@ -663,11 +663,6 @@ function historyPage(next: number): void {
   margin: 0;
   overflow-wrap: anywhere;
 }
-.saved-methods h3 {
-  font-size: var(--type-caption);
-  color: var(--muted);
-  font-weight: var(--fw-normal);
-}
 .saved-methods h4 {
   font-size: inherit;
 }
