@@ -53,6 +53,11 @@ export function sha256(bytes) {
   return createHash('sha256').update(bytes).digest('hex')
 }
 
+/** Whether the old build is the requested published release. */
+export function isPublishedRelease(release, tag) {
+  return release.tag_name === tag && release.prerelease === true && release.draft === false
+}
+
 /**
  * The one asset of a release that is its installer for `os`, as the beta workflows name them, with
  * the SHA-256 the release itself publishes for it. An asset with no published digest is refused:

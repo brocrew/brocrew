@@ -21,6 +21,7 @@ import {
   keptTables,
   skillsKept,
   installerGuid,
+  isPublishedRelease,
   jobSummary,
   lastResortStop,
   LAUNCH_SETUP_PROVIDERS,
@@ -84,6 +85,34 @@ import {
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const copy = (value) => structuredClone(value)
+
+describe('the published release used as the old build', () => {
+  const release = {
+    tag_name: 'v7.2.3',
+    draft: false,
+    prerelease: false,
+    published_at: '2026-01-02T03:04:05Z',
+  }
+
+  it('accepts a published full release', () => {
+    expect(isPublishedRelease(release, 'v7.2.3')).toBe(true)
+  })
+
+  it('also accepts a published prerelease', () => {
+    expect(
+      isPublishedRelease({ ...release, tag_name: 'v7.2.3-beta.1', prerelease: true }, 'v7.2.3-beta.1'),
+    ).toBe(true)
+  })
+
+  it('refuses drafts, an unspecified draft status and a different tag for either release kind', () => {
+    for (const prerelease of [false, true]) {
+      const oldBuild = { ...release, prerelease }
+      expect(isPublishedRelease({ ...oldBuild, draft: true }, 'v7.2.3')).toBe(false)
+      expect(isPublishedRelease({ ...oldBuild, draft: undefined }, 'v7.2.3')).toBe(false)
+      expect(isPublishedRelease(oldBuild, 'v7.2.4')).toBe(false)
+    }
+  })
+})
 
 describe('the beta installer a release offers', () => {
   const digest = `sha256:${'a'.repeat(64)}`
