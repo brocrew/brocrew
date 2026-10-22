@@ -381,9 +381,14 @@ describe('a set-aside copy the system won’t let the app read or look beside', 
   it.each([
     [
       'its theme.json',
-      (path: string) => path.endsWith('/theme.json') && path.includes('.previous'),
+      (path: string) =>
+        path.replaceAll('\\', '/').endsWith('/theme.json') && path.includes('.previous'),
     ],
-    ['a picture in it', (path: string) => path.endsWith('/red.png') && path.includes('.previous')],
+    [
+      'a picture in it',
+      (path: string) =>
+        path.replaceAll('\\', '/').endsWith('/red.png') && path.includes('.previous'),
+    ],
   ])(
     'a complete copy whose %s stays unreadable is listed as unavailable, then put back once it reads',
     async (_, matches) => {
@@ -417,7 +422,10 @@ describe('a set-aside copy the system won’t let the app read or look beside', 
         sample: () => RED_SAMPLES,
         readFiles: refusedReads(
           'EBUSY',
-          (path) => path.endsWith('/theme.json') && path.includes('.previous') && refusals-- > 0,
+          (path) =>
+            path.replaceAll('\\', '/').endsWith('/theme.json') &&
+            path.includes('.previous') &&
+            refusals-- > 0,
         ),
       },
     })
@@ -711,7 +719,8 @@ describe('every look and listing on the way to the list waits out a hold, and an
       readFiles: {
         ...THEME_READ_FILES,
         open: async (path, flags) => {
-          if (path.endsWith('/mine/theme.json') && refusals-- > 0) throw held('EBUSY')
+          if (path.replaceAll('\\', '/').endsWith('/mine/theme.json') && refusals-- > 0)
+            throw held('EBUSY')
           return THEME_READ_FILES.open(path, flags)
         },
       },
@@ -1056,7 +1065,12 @@ describe('a saved theme the readability check now notes, read while the system r
         readFiles: {
           ...THEME_READ_FILES,
           open: async (path, flags) => {
-            if (/\/(mine|\.theme-mine\.[^/]*\.previous)\/theme\.json$/.test(path) && refusing())
+            if (
+              /\/(mine|\.theme-mine\.[^/]*\.previous)\/theme\.json$/.test(
+                path.replaceAll('\\', '/'),
+              ) &&
+              refusing()
+            )
               throw held('EPERM')
             return THEME_READ_FILES.open(path, flags)
           },

@@ -718,26 +718,30 @@ describe('🔴 W4.124 · a never-touch folder by its other spelling is the same 
 })
 
 describe('the walker reports what it could not do, and counts only what it did', () => {
-  it('⛔ a target that could not be READ between the check and the removal is left in place', () => {
-    const root = fixture()
-    const userData = join(root, 'ud')
-    const parent = join(userData, 'outer')
-    mkdirSync(join(parent, 'target'), { recursive: true })
-    writeFileSync(join(parent, 'target', 'a.txt'), 'x\n')
-    const verdict = mayRemove(anchorAt(userData), 'outer/target', { expect: 'dir' })
-    expect(verdict.kind).toBe('ok')
+  // Windows chmod cannot construct a POSIX permission denial.
+  it.skipIf(process.platform === 'win32')(
+    '⛔ a target that could not be READ between the check and the removal is left in place',
+    () => {
+      const root = fixture()
+      const userData = join(root, 'ud')
+      const parent = join(userData, 'outer')
+      mkdirSync(join(parent, 'target'), { recursive: true })
+      writeFileSync(join(parent, 'target', 'a.txt'), 'x\n')
+      const verdict = mayRemove(anchorAt(userData), 'outer/target', { expect: 'dir' })
+      expect(verdict.kind).toBe('ok')
 
-    chmodSync(parent, 0o000)
-    try {
-      const result = removeChecked(verdict.path, verdict.stat)
-      expect(result.failed).toHaveLength(1)
-      expect(result.failed[0].why).toContain('could not be read')
-      expect(result.files, 'nothing may be counted as removed').toBe(0)
-    } finally {
-      chmodSync(parent, 0o700)
-    }
-    expect(existsSync(join(parent, 'target', 'a.txt'))).toBe(true)
-  })
+      chmodSync(parent, 0o000)
+      try {
+        const result = removeChecked(verdict.path, verdict.stat)
+        expect(result.failed).toHaveLength(1)
+        expect(result.failed[0].why).toContain('could not be read')
+        expect(result.files, 'nothing may be counted as removed').toBe(0)
+      } finally {
+        chmodSync(parent, 0o700)
+      }
+      expect(existsSync(join(parent, 'target', 'a.txt'))).toBe(true)
+    },
+  )
 
   it('⚑ …and the same tree, readable, is removed and counted', () => {
     const root = fixture()
@@ -751,25 +755,29 @@ describe('the walker reports what it could not do, and counts only what it did',
     expect(result.bytes).toBe(2)
   })
 
-  it('⛔ bytes are counted only for a file that actually came off', () => {
-    const root = fixture()
-    const userData = join(root, 'ud')
-    const tree = join(userData, 'tree')
-    mkdirSync(join(tree, 'sub'), { recursive: true })
-    writeFileSync(join(tree, 'gone.txt'), '12345\n')
-    writeFileSync(join(tree, 'sub', 'stuck.txt'), '1234567890\n')
-    const verdict = mayRemove(anchorAt(userData), 'tree', { expect: 'dir' })
+  // Windows chmod cannot construct a POSIX permission denial.
+  it.skipIf(process.platform === 'win32')(
+    '⛔ bytes are counted only for a file that actually came off',
+    () => {
+      const root = fixture()
+      const userData = join(root, 'ud')
+      const tree = join(userData, 'tree')
+      mkdirSync(join(tree, 'sub'), { recursive: true })
+      writeFileSync(join(tree, 'gone.txt'), '12345\n')
+      writeFileSync(join(tree, 'sub', 'stuck.txt'), '1234567890\n')
+      const verdict = mayRemove(anchorAt(userData), 'tree', { expect: 'dir' })
 
-    chmodSync(join(tree, 'sub'), 0o500)
-    try {
-      const result = removeChecked(verdict.path, verdict.stat)
-      expect(result.failed.length).toBeGreaterThan(0)
-      expect(result.files, 'only the one that came off').toBe(1)
-      expect(result.bytes, 'the stuck file must not be inside the removed total').toBe(6)
-    } finally {
-      chmodSync(join(tree, 'sub'), 0o700)
-    }
-  })
+      chmodSync(join(tree, 'sub'), 0o500)
+      try {
+        const result = removeChecked(verdict.path, verdict.stat)
+        expect(result.failed.length).toBeGreaterThan(0)
+        expect(result.files, 'only the one that came off').toBe(1)
+        expect(result.bytes, 'the stuck file must not be inside the removed total').toBe(6)
+      } finally {
+        chmodSync(join(tree, 'sub'), 0o700)
+      }
+    },
+  )
 
   it('⛔ an anchor replaced under the walk refuses every removal proved against it', (ctx) => {
     // ⚠️ **darwin only** (T-001): its premise is that a folder made again gets a new inode, as APFS does; ext4 reuses it.

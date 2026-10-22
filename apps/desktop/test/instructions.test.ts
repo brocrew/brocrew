@@ -1751,7 +1751,10 @@ describe('a Claude profile’s topic files (322)', () => {
     // not exist and cannot. The second is the listing's, and it is the one that says WHAT was
     // wrong. Pinned as an exact list so a future change cannot quietly add a third.
     expect(read().refused).toEqual([
-      { path: claudeAutoMemoryIndex(providerHome), reason: 'unreadable' },
+      // Windows reports a child of a regular file as absent; POSIX reports ENOTDIR.
+      ...(process.platform === 'win32'
+        ? []
+        : [{ path: claudeAutoMemoryIndex(providerHome), reason: 'unreadable' }]),
       { path: memoryDir(), reason: 'not-a-regular-file' },
     ])
   })

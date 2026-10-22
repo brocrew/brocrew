@@ -262,7 +262,9 @@ describe('packaged GUI probe diagnostic steps without an app launch', () => {
       await f.start()
       const [program, args, options] = f.launches[0]
       expect(program).toBe(
-        variant === 'V2F' ? '/fictional/app/Contents/MacOS/BroCrew' : '/usr/bin/sandbox-exec',
+        variant === 'V2F'
+          ? path.join('/fictional/app', 'Contents', 'MacOS', 'BroCrew')
+          : '/usr/bin/sandbox-exec',
       )
       expect(args).toContain('--brobot-hidden')
       expect(args).toContain('--use-mock-keychain')

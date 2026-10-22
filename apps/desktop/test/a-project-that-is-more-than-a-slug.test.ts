@@ -63,51 +63,59 @@ describe('339 · the half of the cwd rule that was missing (HO-005 criterion 11)
    * without read — passes both. ⛔ **That last row is why the probe is `X_OK` and not `R_OK`**:
    * asking for readability would refuse a directory that works.
    */
-  it('🔴 a directory that exists but cannot be entered is refused, and spawn agrees', () => {
-    const cases = [
-      { name: 'locked', mode: 0o000, entered: false },
-      { name: 'x-only', mode: 0o111, entered: true },
-      { name: 'r-only', mode: 0o444, entered: false },
-    ]
-    for (const { name, mode, entered } of cases) {
-      const path = join(root, name)
-      mkdirSync(path)
-      chmodSync(path, mode)
+  // Windows chmod cannot construct a POSIX permission denial.
+  it.skipIf(process.platform === 'win32')(
+    '🔴 a directory that exists but cannot be entered is refused, and spawn agrees',
+    () => {
+      const cases = [
+        { name: 'locked', mode: 0o000, entered: false },
+        { name: 'x-only', mode: 0o111, entered: true },
+        { name: 'r-only', mode: 0o444, entered: false },
+      ]
+      for (const { name, mode, entered } of cases) {
+        const path = join(root, name)
+        mkdirSync(path)
+        chmodSync(path, mode)
 
-      // The ground truth: does a real child process start in it? This is the fact the verdict has
-      // to agree with, and it is measured rather than assumed — 303 C's whole finding is that the
-      // error a provider gives for this names the wrong thing.
-      const spawned = spawnSync(process.execPath, ['-e', 'process.exit(0)'], { cwd: path })
-      expect(spawned.error === undefined, `${name} spawn`).toBe(entered)
+        // The ground truth: does a real child process start in it? This is the fact the verdict has
+        // to agree with, and it is measured rather than assumed — 303 C's whole finding is that the
+        // error a provider gives for this names the wrong thing.
+        const spawned = spawnSync(process.execPath, ['-e', 'process.exit(0)'], { cwd: path })
+        expect(spawned.error === undefined, `${name} spawn`).toBe(entered)
 
-      const verdict = checkSessionCwd(path)
-      expect(verdict.ok, `${name} verdict`).toBe(entered)
-      if (!verdict.ok) {
-        // ⛔ **Criterion 11's actual requirement: our own error, NAMING THE DIRECTORY.** Codex's is
-        // `ENOENT` about the executable; Node's here is `spawnSync <path-to-node> EACCES`, which
-        // also names the binary about a fault in the folder.
-        expect(verdict.reason, `${name} names the folder`).toContain(path)
-        expect(verdict.reason).toContain('cannot be opened')
+        const verdict = checkSessionCwd(path)
+        expect(verdict.ok, `${name} verdict`).toBe(entered)
+        if (!verdict.ok) {
+          // ⛔ **Criterion 11's actual requirement: our own error, NAMING THE DIRECTORY.** Codex's is
+          // `ENOENT` about the executable; Node's here is `spawnSync <path-to-node> EACCES`, which
+          // also names the binary about a fault in the folder.
+          expect(verdict.reason, `${name} names the folder`).toContain(path)
+          expect(verdict.reason).toContain('cannot be opened')
+        }
       }
-    }
-  })
+    },
+  )
 
-  it('⚑ and the launch refuses it with exactly the same sentence', () => {
-    const path = join(root, 'locked')
-    mkdirSync(path)
-    chmodSync(path, 0o000)
-    const verdict = checkSessionCwd(path)
-    expect(verdict.ok).toBe(false)
-    if (verdict.ok) throw new Error('unreachable')
-    let thrown = ''
-    try {
-      resolveSessionCwd(userData, 'sess_1', path)
-    } catch (error) {
-      thrown = error instanceof Error ? error.message : String(error)
-    }
-    // One rule, one wording — 076 §3's rule, extended to the clause 339 added rather than beside it.
-    expect(thrown).toBe(verdict.reason)
-  })
+  // Windows chmod cannot construct a POSIX permission denial.
+  it.skipIf(process.platform === 'win32')(
+    '⚑ and the launch refuses it with exactly the same sentence',
+    () => {
+      const path = join(root, 'locked')
+      mkdirSync(path)
+      chmodSync(path, 0o000)
+      const verdict = checkSessionCwd(path)
+      expect(verdict.ok).toBe(false)
+      if (verdict.ok) throw new Error('unreachable')
+      let thrown = ''
+      try {
+        resolveSessionCwd(userData, 'sess_1', path)
+      } catch (error) {
+        thrown = error instanceof Error ? error.message : String(error)
+      }
+      // One rule, one wording — 076 §3's rule, extended to the clause 339 added rather than beside it.
+      expect(thrown).toBe(verdict.reason)
+    },
+  )
 
   it('⚠️ an ordinary directory still passes — the pair that stops this being a check that always says no', () => {
     const path = join(root, 'ordinary')

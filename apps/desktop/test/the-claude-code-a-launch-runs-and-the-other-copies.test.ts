@@ -8,6 +8,7 @@ import {
   rmSync,
   symlinkSync,
   unlinkSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -344,11 +345,35 @@ describe('an answer is kept only while the same file answers', () => {
     expect(timesAsked(claude)).toBe(2)
   })
 
+  it('rechecks a replaced file with the same size and modification time', async () => {
+    const before = aClaude(join(dir, 'first'), '2.1.290')
+    const after = aClaude(join(dir, 'later'), '2.1.292')
+    const sameTime = new Date(1_700_000_000_000)
+    utimesSync(before, sameTime, sameTime)
+    utimesSync(after, sameTime, sameTime)
+    const link = join(dir, 'claude')
+    linkSync(before, link)
+    const read = providerVersionsReader(noCodex, () => ({
+      path: link,
+      from: 'native-installer',
+      update: { command: 'claude update' },
+      others: [],
+    }))
+    expect((await read()).claude.version).toBe('2.1.290')
+    unlinkSync(link)
+    linkSync(after, link)
+    expect((await read()).claude.version).toBe('2.1.292')
+  })
+
   it('a link moved to a new version, as Anthropic’s installer updates, is asked again', async () => {
     const versions = join(dir, 'versions')
     mkdirSync(versions)
     const before = aClaude(join(versions, '2.1.290'), '2.1.290')
     const after = aClaude(join(versions, '2.1.292'), '2.1.292')
+    // Equal sizes and timestamps still name different files after an installer replaces a link.
+    const sameTime = new Date(1_700_000_000_000)
+    utimesSync(before, sameTime, sameTime)
+    utimesSync(after, sameTime, sameTime)
     const link = join(dir, 'claude')
     if (process.platform === 'win32') linkSync(before, link)
     else symlinkSync(before, link)

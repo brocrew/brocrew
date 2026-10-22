@@ -24,7 +24,7 @@ export const INTERPOLATION = '__interpolated'
 // `node_modules` included, and that is deliberate: `AppInfo` is `z.infer<…>`, so its fields'
 // declarations live in zod's own types, and a filter on `apps/` or `packages/` went blind to it.
 // The census's own file is excluded too: a page's own object literal is not the bridge.
-const THE_LANGUAGE = /\/node_modules\/typescript\/lib\//
+const THE_LANGUAGE = /[\\/]node_modules[\\/]typescript[\\/]lib[\\/]/
 const MENTIONS_API = /\bwindow\.api\b/
 
 /** The repo's own TypeScript — the one `pnpm run typecheck` uses — resolved from `root`. */
@@ -138,7 +138,7 @@ export function staleIpcReads(ts, root, pages) {
     offsets.push({ index, at: virtual.length + prefix.length })
     virtual += `${prefix}${page.body}\n}\n`
   })
-  const name = join(root, 'scripts/__page-ipc-census__.ts')
+  const name = join(root, 'scripts/__page-ipc-census__.ts').replaceAll('\\', '/')
   const options = {
     target: ts.ScriptTarget.ES2022,
     module: ts.ModuleKind.ESNext,
@@ -154,7 +154,7 @@ export function staleIpcReads(ts, root, pages) {
   const host = ts.createCompilerHost(options)
   const read = host.getSourceFile.bind(host)
   host.getSourceFile = (file, language, ...rest) =>
-    file === name
+    file.replaceAll('\\', '/') === name
       ? ts.createSourceFile(file, virtual, language, true, ts.ScriptKind.TS)
       : read(file, language, ...rest)
   const program = ts.createProgram([name, rendererWindow], options, host)

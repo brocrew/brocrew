@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import {
   existsSync,
   mkdirSync,
@@ -52,7 +53,7 @@ vi.mock('node:fs', async (original) => {
   }
 })
 let root: string, workspace: string, appData: string
-const migrations = new URL('../src/main/db/migrations', import.meta.url).pathname
+const migrations = fileURLToPath(new URL('../src/main/db/migrations', import.meta.url))
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'fictional-existing-workspace-'))
   workspace = join(root, 'copper')

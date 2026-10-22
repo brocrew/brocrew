@@ -939,7 +939,7 @@ describe('§5 · Codex’s own launch failures, as the app reads them', () => {
       const cwd = join(root, 'cwd')
       mkdirSync(home, { recursive: true })
       mkdirSync(cwd, { recursive: true })
-      const codex = aCodexThatRefuses(join(root, 'bin'), scenario, CODEX_PROTOCOL_VERSION)
+      const codex = aCodexThatRefuses(join(root, 'bin'), scenario, CODEX_PROTOCOL_VERSION, cwd)
       return new CodexRuntime(createSpawnTransportFactory(codex))
         .resume(
           { provider: 'codex', sessionId: A_CODEX_THREAD, cwd, rotation: 0 },

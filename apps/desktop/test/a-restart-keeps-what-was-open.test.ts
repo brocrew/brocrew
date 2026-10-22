@@ -922,6 +922,7 @@ describe('692 · a restart keeps what was open', () => {
         join(userData, `codex-706-${scenario}`, 'bin'),
         scenario,
         CODEX_PROTOCOL_VERSION,
+        cwd,
       )
       const refused = await new CodexRuntime(createSpawnTransportFactory(codex))
         .resume(
@@ -982,43 +983,47 @@ describe('692 · a restart keeps what was open', () => {
       expect(listed(children[0])).toEqual({ running: 'not-running' })
     })
 
-    it('⛔ 706 · …and a CLAUDE home its own probe could not READ — the adapter’s own error — leaves it as it was', async () => {
-      // ⚠️ **`706` review** — Claude's probe was `existsSync`, which answers *"not there"* for a file
-      // it could not read; on `main` that was *"session not found"* and the conversation was let go.
-      // ⚑ **The folder the working folder names is the one it cannot read**, and `projects/` itself
-      // is listable — so the probe's own doubt is all that stands between it and a never (the `706`
-      // review, round four: an unreadable `projects/` is ALSO refused by its listing).
-      const home = join(userData, 'claude-706-unreadable')
-      const projects = join(home, 'projects', claudeProjectDirName(root))
-      mkdirSync(projects, { recursive: true })
-      chmodSync(projects, 0o000)
-      let unreadable: unknown
-      try {
-        unreadable = await new ClaudeRuntime()
-          .resume(
-            { provider: 'claude', sessionId: 'sess_706', cwd: root, rotation: 0 },
-            { providerHome: home },
-          )
-          .then(
-            () => null,
-            (error: unknown) => error,
-          )
-      } finally {
-        chmodSync(projects, 0o755)
-      }
-      expect(unreadable).toBeInstanceOf(ResumeError)
-      const { lead, children } = await theFourOpen()
-      await quitAndRelaunch()
-      const tools = await personPresses(lead)
-      CountingRuntime.theNextResumeThrows = unreadable
-      const said = await callOn(tools, 'message_agent', {
-        agent: children[0],
-        kind: 'note',
-        text: 'are you there',
-      })
-      expect(said, JSON.stringify(said)).toMatchObject({ outcome: 'refused' })
-      expect(listed(children[0])).toEqual({ running: 'not-running' })
-    })
+    // Windows chmod cannot construct a POSIX permission denial.
+    it.skipIf(process.platform === 'win32')(
+      '⛔ 706 · …and a CLAUDE home its own probe could not READ — the adapter’s own error — leaves it as it was',
+      async () => {
+        // ⚠️ **`706` review** — Claude's probe was `existsSync`, which answers *"not there"* for a file
+        // it could not read; on `main` that was *"session not found"* and the conversation was let go.
+        // ⚑ **The folder the working folder names is the one it cannot read**, and `projects/` itself
+        // is listable — so the probe's own doubt is all that stands between it and a never (the `706`
+        // review, round four: an unreadable `projects/` is ALSO refused by its listing).
+        const home = join(userData, 'claude-706-unreadable')
+        const projects = join(home, 'projects', claudeProjectDirName(root))
+        mkdirSync(projects, { recursive: true })
+        chmodSync(projects, 0o000)
+        let unreadable: unknown
+        try {
+          unreadable = await new ClaudeRuntime()
+            .resume(
+              { provider: 'claude', sessionId: 'sess_706', cwd: root, rotation: 0 },
+              { providerHome: home },
+            )
+            .then(
+              () => null,
+              (error: unknown) => error,
+            )
+        } finally {
+          chmodSync(projects, 0o755)
+        }
+        expect(unreadable).toBeInstanceOf(ResumeError)
+        const { lead, children } = await theFourOpen()
+        await quitAndRelaunch()
+        const tools = await personPresses(lead)
+        CountingRuntime.theNextResumeThrows = unreadable
+        const said = await callOn(tools, 'message_agent', {
+          agent: children[0],
+          kind: 'note',
+          text: 'are you there',
+        })
+        expect(said, JSON.stringify(said)).toMatchObject({ outcome: 'refused' })
+        expect(listed(children[0])).toEqual({ running: 'not-running' })
+      },
+    )
 
     it('⚑ a person’s Close while it is STARTING — pressed, then closed before it arrived — leaves nothing running', async () => {
       const { lead, children } = await theFourOpen()

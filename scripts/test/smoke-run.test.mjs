@@ -193,8 +193,8 @@ describe('242 · the gate socket has to FIT, and the root is what decides', () =
 
   it('⛔ refuses a name whose socket would not fit, and names both numbers', () => {
     const evidence = join('/private/tmp/brobot2-ui-smoke', RUN)
-    expect(() => smokeUserDataDir(evidence, 'user-data')).not.toThrow()
-    expect(() => smokeUserDataDir(evidence, `user-data-${'x'.repeat(60)}`)).toThrow(
+    expect(() => smokeUserDataDir(evidence, 'user-data', 'darwin')).not.toThrow()
+    expect(() => smokeUserDataDir(evidence, `user-data-${'x'.repeat(60)}`, 'darwin')).toThrow(
       /is \d+ bytes and sun_path holds 103/,
     )
   })
@@ -328,33 +328,37 @@ describe('242 · the gate socket has to FIT, and the root is what decides', () =
     })
   })
 
-  it('🔴 a RUN whose gate could not fit does not start — before the lock, before any mkdir', () => {
-    const { evidenceRoot, scratchRoot } = makeRoots()
-    expect(() =>
-      beginSmokeRun({
+  // Windows uses named pipes and has no Unix socket path limit.
+  it.skipIf(process.platform === 'win32')(
+    '🔴 a RUN whose gate could not fit does not start — before the lock, before any mkdir',
+    () => {
+      const { evidenceRoot, scratchRoot } = makeRoots()
+      expect(() =>
+        beginSmokeRun({
+          evidenceRoot,
+          scratchRoot,
+          pid: 4242,
+          now: at('2026-08-19T10:20:30.400Z'),
+          longestUserData: `user-data-${'x'.repeat(120)}`,
+        }),
+      ).toThrow(/one-host gate would fail open/)
+      // ⛔ **Nothing was created and no lock was taken**, which is the half that makes this safe to
+      // put in front of every run: a refused start must not strand the next one.
+      expect(existsSync(join(evidenceRoot, '.lock'))).toBe(false)
+      expect(existsSync(join(evidenceRoot, RUN))).toBe(false)
+
+      // …and the paired positive: the same run with a declaration that fits starts normally.
+      const run = beginSmokeRun({
         evidenceRoot,
         scratchRoot,
         pid: 4242,
         now: at('2026-08-19T10:20:30.400Z'),
-        longestUserData: `user-data-${'x'.repeat(120)}`,
-      }),
-    ).toThrow(/one-host gate would fail open/)
-    // ⛔ **Nothing was created and no lock was taken**, which is the half that makes this safe to
-    // put in front of every run: a refused start must not strand the next one.
-    expect(existsSync(join(evidenceRoot, '.lock'))).toBe(false)
-    expect(existsSync(join(evidenceRoot, RUN))).toBe(false)
-
-    // …and the paired positive: the same run with a declaration that fits starts normally.
-    const run = beginSmokeRun({
-      evidenceRoot,
-      scratchRoot,
-      pid: 4242,
-      now: at('2026-08-19T10:20:30.400Z'),
-      longestUserData: 'user-data',
-    })
-    expect(existsSync(run.evidence)).toBe(true)
-    run.release()
-  })
+        longestUserData: 'user-data',
+      })
+      expect(existsSync(run.evidence)).toBe(true)
+      run.release()
+    },
+  )
 })
 
 describe('provenance is kept for a while, not forever', () => {

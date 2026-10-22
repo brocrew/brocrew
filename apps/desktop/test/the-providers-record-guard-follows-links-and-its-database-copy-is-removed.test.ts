@@ -118,6 +118,10 @@ describe.sequential(
       const saved = process.env['TMPDIR']
       // ⚑ `os.tmpdir()` reads TMPDIR at each call: the copy is made in the folder this test watches.
       process.env['TMPDIR'] = scratchTmp
+      const savedTemp = process.env['TEMP']
+      const savedTmp = process.env['TMP']
+      process.env['TEMP'] = scratchTmp
+      process.env['TMP'] = scratchTmp
       try {
         expect(tmpdir()).toBe(scratchTmp)
         let during: string[] = []
@@ -136,6 +140,10 @@ describe.sequential(
         expect(readProviderDatabase(join(root, 'missing.sqlite'), () => 1)).toBeNull()
         expect(readdirSync(scratchTmp)).toEqual([])
       } finally {
+        if (savedTemp === undefined) delete process.env['TEMP']
+        else process.env['TEMP'] = savedTemp
+        if (savedTmp === undefined) delete process.env['TMP']
+        else process.env['TMP'] = savedTmp
         if (saved === undefined) delete process.env['TMPDIR']
         else process.env['TMPDIR'] = saved
       }

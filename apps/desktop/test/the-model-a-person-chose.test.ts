@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { Provider } from '@brobot2/shared'
@@ -840,7 +840,7 @@ describe('677 §4 · the door — `setAgentModelAndEffort`, against the provider
       if (!outcome.ok) throw new Error(outcome.refusal.reason)
       const launch = launched
         .slice(before)
-        .find((one) => one.options.providerHome.includes(`/${profile}/`))
+        .find((one) => one.options.providerHome.includes(`${sep}${profile}${sep}`))
       if (launch === undefined) throw new Error(`the give to ${profile} started nothing`)
       return { runsOn: outcome.runsOn, options: launch.options, provider: launch.provider }
     }

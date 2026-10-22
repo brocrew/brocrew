@@ -126,7 +126,8 @@ describe('claudeKeychainTokenProvider (022)', () => {
     // with a four-week refresh token beside it. So the assertion is on the instruction, because
     // that is the part a user needs and the part a reword could quietly drop.
     expect(bad.reason).toMatch(/run `claude`/i)
-    expect(bad.reason).toMatch(/expired/)
+    // Windows can have no file login yet, rather than an expired Mac keychain login.
+    expect(bad.reason).toMatch(process.platform === 'win32' ? /not signed in/ : /expired/)
     // ⚠️ And it must NOT tell them to sign in again — there is nothing here to sign into, and
     // sending someone to a login flow to fix an expired cache is how you lose an account.
     expect(bad.reason).not.toMatch(/sign in again/i)

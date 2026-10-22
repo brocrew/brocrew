@@ -24,7 +24,8 @@ describe('resolveSessionCwd', () => {
 
     expect(cwd).toBe(brobotWorkspace(userData))
     expect(statSync(cwd).isDirectory()).toBe(true)
-    expect(statSync(cwd).mode & 0o777).toBe(0o700)
+    // Windows uses access lists; chmod does not supply POSIX permission bits.
+    if (process.platform !== 'win32') expect(statSync(cwd).mode & 0o777).toBe(0o700)
     // Same directory for the next conversation — that is the point.
     expect(resolveSessionCwd(userData, 'sess_2')).toBe(cwd)
   })
