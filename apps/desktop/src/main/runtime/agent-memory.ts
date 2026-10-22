@@ -26,12 +26,17 @@ import {
   type MethodLibraryInputs,
 } from '../saved-method-library'
 import type { Provider } from '@brobot2/shared'
+import type { SessionStore } from '../db/session-store'
+import { isPathSegment } from '../../shared/runtime-ipc'
+import type { ActedBy } from '../../shared/who-did-it'
 import type {
   AgentMemoryEntry,
   AgentMemoryStore,
   AmendmentRefused,
   MemoryEditAct,
   MemoryAmendment,
+  MemoryObservation,
+  MemoryAmendmentWrite,
   MemoryStoreState,
 } from '../../shared/agent-memory'
 import { keepToThisUser, verifyFileToThisUser, type AccessLists } from '../recovery/windows-privacy'
@@ -966,4 +971,480 @@ export function undoMemoryRestoration(
     },
     seams,
   )
+}
+
+/** An absent entry is meaningful only inside a pinned, eligible managed namespace. */
+export function observeMemoryEntry(
+  inputs: AgentMemoryInputs,
+  provider: Provider,
+  entry: string,
+): MemoryObservation {
+  try {
+    const location = memoryLocation(inputs, provider, entry)
+    if (location === null) throw new Error('The memory location is unavailable')
+    const guard = captureMethodFileGuard(location.inputs)
+    guard()
+    const image = memoryImage(location)
+    guard()
+    return { fingerprint: image?.fingerprint ?? null }
+  } catch {
+    return { fingerprint: null, unreadable: true }
+  }
+}
+
+interface MemoryCapture {
+  readonly entry: string
+  readonly text: string | null
+  readonly fingerprint: string | null
+  readonly check: () => void
+}
+function captureMemoryEntry(
+  inputs: AgentMemoryInputs,
+  provider: Provider,
+  entry: string,
+  fromHistory = false,
+): MemoryCapture | null {
+  try {
+    const selected = fromHistory ? null : selectedMemory(inputs, provider, entry)
+    const location = fromHistory ? memoryLocation(inputs, provider, entry) : selected?.location
+    if (location === null || location === undefined) return null
+    const namespace = captureMethodFileGuard(location.inputs)
+    namespace()
+    const image = fromHistory ? memoryImage(location) : selected!.image
+    if (image !== null && !validText(image)) return null
+    const check = () => {
+      namespace()
+      const current = memoryImage(location)
+      if (image === null ? current !== null : !sameMemoryImage(image, current))
+        throw new Error('The memory entry changed')
+      namespace()
+    }
+    check()
+    return {
+      entry: location.entry,
+      text: image?.bytes.toString('utf8') ?? null,
+      fingerprint: image?.fingerprint ?? null,
+      check,
+    }
+  } catch {
+    return null
+  }
+}
+
+/** Preserve the old bytes and permissions until the synchronous replacement guard passes. */
+export async function correctMemoryEntry(
+  inputs: MemoryFileSelection & { readonly text: string },
+  seams: MemoryWriteSeams = {},
+): Promise<MemoryFileResult> {
+  if (inputs.confirmed !== true) return { ok: false, reason: 'confirmation-required' }
+  const bytes = Buffer.from(inputs.text, 'utf8')
+  if (bytes.length > 65536 || bytes.toString('utf8') !== inputs.text)
+    return { ok: false, reason: 'too-large' }
+  let stage: KnowledgeFileStage | null = null
+  let installed = false
+  try {
+    const selected = selectedMemory(inputs, inputs.provider, inputs.entry)
+    if (selected === null || selected.image.fingerprint !== inputs.fingerprint)
+      return { ok: false, reason: 'changed-or-unreadable' }
+    const namespace = captureMethodFileGuard(selected.location.inputs)
+    const guard = () => {
+      namespace()
+      inputs.check()
+      if (!sameMemoryImage(selected.image, memoryImage(selected.location)))
+        throw new Error('The memory entry changed')
+      namespace()
+    }
+    guard()
+    stage = await stageKnowledgeFile(
+      selected.location.entry,
+      bytes,
+      selected.image.mode,
+      selected.location.inputs.homesRoot,
+      guard,
+      seams,
+    )
+    stage.install(true, guard)
+    installed = true
+    namespace()
+    const actual = memoryImage(selected.location)
+    if (actual === null || !actual.bytes.equals(bytes) || actual.mode !== selected.image.mode)
+      throw new Error('The correction could not be verified')
+    return {
+      ok: true,
+      entry: selected.location.entry,
+      textBefore: selected.image.bytes.toString('utf8'),
+      textAfter: inputs.text,
+    }
+  } catch {
+    return {
+      ok: false,
+      reason: installed ? 'change-incomplete' : 'changed-or-unreadable',
+      ...(installed ? { changed: true } : {}),
+    }
+  } finally {
+    stage?.discard()
+  }
+}
+
+type MemoryServiceStore = Pick<
+  SessionStore,
+  | 'agentIdentities'
+  | 'memoryAmendmentsOf'
+  | 'memoryAmendment'
+  | 'beginMemoryAmendment'
+  | 'settleMemoryAmendment'
+  | 'hasPendingMemoryAmendment'
+>
+export interface MemoryServiceInputs {
+  readonly store: MemoryServiceStore
+  readonly inputsOf: (slug: string) => AgentMemoryInputs
+  readonly now: () => number
+  /** Main binds its separate app-only observer; the service never fabricates a person. */
+  readonly reconcile: (
+    identity: string,
+    id: string,
+    actual: MemoryObservation,
+    by: ActedBy,
+  ) => boolean
+  readonly changed?: (slug: string) => void
+  readonly seams?: {
+    readonly beforeEffect?: () => Promise<void>
+    readonly writes?: MemoryWriteSeams
+  }
+}
+export interface MemoryServiceEdit {
+  readonly profile: string
+  readonly provider: Provider
+  readonly entry: string
+  readonly fingerprint: string
+  readonly act: MemoryEditAct
+  readonly text: string
+  readonly confirmed: boolean
+}
+export type MemoryServiceResult =
+  | { readonly ok: true; readonly amendment?: MemoryAmendment }
+  | { readonly ok: false; readonly reason: string; readonly amendment?: MemoryAmendment }
+export type MemoryService = Awaited<ReturnType<typeof createMemoryService>>
+interface MemoryOperation {
+  check(): void
+  canRecord(): boolean
+}
+
+/** Await this factory before constructing a host or starting any provider conversation. */
+export async function createMemoryService(deps: MemoryServiceInputs) {
+  let accepting = true
+  let databaseAvailable = true
+  let closing: Promise<void> | undefined
+  const issues = new Set<string>()
+  const tails = new Map<string, Promise<void>>()
+  const active = new Set<Promise<void>>()
+  const counts = new Map<string, number>()
+  const failed = (reason: string): MemoryServiceResult => ({ ok: false, reason })
+  const identity = (slug: string) =>
+    isPathSegment(slug) ? deps.store.agentIdentities().find((one) => one.slug === slug) : undefined
+  const announce = (slug: string) => {
+    if (!databaseAvailable) return
+    try {
+      deps.changed?.(slug)
+    } catch {
+      // A window refresh cannot change the durable result.
+    }
+  }
+  const context: MemoryOperation = {
+    check: () => {
+      if (!databaseAvailable) throw new Error('Memory changes have finished closing')
+    },
+    canRecord: () => databaseAvailable,
+  }
+  const exclusive = (
+    slug: string,
+    operation: (access: MemoryOperation) => Promise<MemoryServiceResult>,
+  ): Promise<MemoryServiceResult> => {
+    if (!accepting) return Promise.resolve(failed('closing'))
+    const previous = tails.get(slug) ?? Promise.resolve()
+    counts.set(slug, (counts.get(slug) ?? 0) + 1)
+    announce(slug)
+    const result = previous.then(() =>
+      accepting ? operation(context) : Promise.resolve(failed('closing')),
+    )
+    const finish = () => {
+      active.delete(settled)
+      if (tails.get(slug) === settled) tails.delete(slug)
+      const count = (counts.get(slug) ?? 1) - 1
+      if (count === 0) counts.delete(slug)
+      else counts.set(slug, count)
+      announce(slug)
+    }
+    const settled = result.then(finish, finish)
+    active.add(settled)
+    tails.set(slug, settled)
+    return result
+  }
+  const candidate = (slug: string, provider: Provider, entry: string) =>
+    deps.store
+      .memoryAmendmentsOf(slug)
+      .find(
+        (row) =>
+          row.provider === provider &&
+          row.entry === entry &&
+          row.outcome !== 'pending' &&
+          row.outcome !== 'unchanged',
+      )
+  const observePending = async (slug: string, app: boolean): Promise<MemoryServiceResult> => {
+    context.check()
+    const one = identity(slug)
+    if (one === undefined) return failed('no-such-agent')
+    try {
+      for (const row of deps.store.memoryAmendmentsOf(slug)) {
+        if (row.outcome !== 'pending') continue
+        context.check()
+        const actual = observeMemoryEntry(deps.inputsOf(slug), row.provider, row.entry)
+        context.check()
+        const recorded = app
+          ? deps.reconcile(one.id, row.id, actual, { who: 'the-app-itself' })
+          : deps.store.settleMemoryAmendment(slug, row.id, actual, { who: 'a-person' })
+        if (!recorded) throw new Error('The interruption could not be recorded')
+        // Observation never changes memory. Only hidden, inactive app stages are swept.
+        const location = memoryLocation(deps.inputsOf(slug), row.provider, row.entry)
+        if (location !== null) {
+          const guard = captureMethodFileGuard(location.inputs)
+          sweepKnowledgeStages(location.inputs.folder, guard)
+          const privateFolder = join(location.inputs.homesRoot, '.brobot-stage')
+          try {
+            const privateGuard = captureMethodFileGuard({
+              homesRoot: location.inputs.homesRoot,
+              folder: privateFolder,
+            })
+            sweepKnowledgeStages(privateFolder, privateGuard)
+          } catch {
+            // A Windows stage folder need not exist on this platform.
+          }
+        }
+      }
+      if (deps.store.hasPendingMemoryAmendment(slug))
+        throw new Error('An interrupted memory change is still pending')
+      issues.delete(slug)
+      return { ok: true }
+    } catch {
+      issues.add(slug)
+      return failed('interruption-needs-checking')
+    }
+  }
+  // The same lock is used at boot and for every later app writer on every platform.
+  for (const one of deps.store.agentIdentities())
+    await exclusive(one.slug, () => observePending(one.slug, true))
+
+  const change = async (
+    slug: string,
+    plan: Omit<MemoryAmendmentWrite, 'profileSlug' | 'by'>,
+    capture: MemoryCapture,
+    access: MemoryOperation,
+    source?: MemoryAmendment,
+  ): Promise<MemoryServiceResult> => {
+    access.check()
+    if (identity(slug) === undefined) return failed('no-such-agent')
+    if (issues.has(slug) || deps.store.hasPendingMemoryAmendment(slug)) return failed('pending')
+    capture.check()
+    const sourceStamp = source === undefined ? null : JSON.stringify(source)
+    const sourceCurrent = () => {
+      access.check()
+      if (
+        source !== undefined &&
+        (candidate(slug, source.provider, source.entry)?.id !== source.id ||
+          JSON.stringify(deps.store.memoryAmendment(slug, source.id)) !== sourceStamp)
+      )
+        throw new Error('The source is no longer current')
+    }
+    sourceCurrent()
+    const row = deps.store.beginMemoryAmendment(
+      { ...plan, profileSlug: slug, by: { who: 'a-person' } },
+      deps.now(),
+    )
+    if (row === null) return failed('not-recorded')
+    announce(slug)
+    const guard = () => {
+      sourceCurrent()
+      if (identity(slug) === undefined) throw new Error('The identity changed')
+      if (deps.store.memoryAmendment(slug, row.id)?.outcome !== 'pending')
+        throw new Error('The pending intent changed')
+      capture.check()
+    }
+    try {
+      await deps.seams?.beforeEffect?.()
+      guard()
+      const inputs = deps.inputsOf(slug)
+      if (plan.act === 'restored' && source !== undefined) {
+        await restoreMemoryEntry(
+          { ...inputs, source, confirmed: true, check: guard },
+          deps.seams?.writes,
+        )
+      } else if (plan.act === 'removed') {
+        if (capture.fingerprint === null) throw new Error('The entry is absent')
+        removeMemoryEntry(
+          {
+            ...inputs,
+            provider: plan.provider,
+            entry: capture.entry,
+            fingerprint: capture.fingerprint,
+            confirmed: true,
+            check: guard,
+          },
+          deps.seams?.writes,
+        )
+      } else if (plan.act === 'corrected' && plan.textAfter !== null) {
+        if (capture.fingerprint === null) throw new Error('The entry is absent')
+        await correctMemoryEntry(
+          {
+            ...inputs,
+            provider: plan.provider,
+            entry: capture.entry,
+            fingerprint: capture.fingerprint,
+            confirmed: true,
+            check: guard,
+            text: plan.textAfter,
+          },
+          deps.seams?.writes,
+        )
+      }
+    } catch {
+      // The observation below records no effect, a partial change, or the planned result.
+    }
+    if (!access.canRecord()) return failed('closing')
+    try {
+      access.check()
+      const actual = observeMemoryEntry(deps.inputsOf(slug), plan.provider, capture.entry)
+      access.check()
+      if (!deps.store.settleMemoryAmendment(slug, row.id, actual, { who: 'a-person' }))
+        throw new Error('The outcome was not recorded')
+      announce(slug)
+      const settled = deps.store.memoryAmendment(slug, row.id)
+      if (settled === null) throw new Error('The recorded outcome cannot be read')
+      if (settled.outcome === 'done') return { ok: true, amendment: settled }
+      return {
+        ok: false,
+        reason: settled.outcome === 'unchanged' ? 'nothing-changed' : 'change-incomplete',
+        amendment: settled,
+      }
+    } catch {
+      issues.add(slug)
+      return failed('not-recorded')
+    }
+  }
+  const person = (
+    slug: string,
+    by: ActedBy,
+    operation: (access: MemoryOperation) => Promise<MemoryServiceResult>,
+  ) =>
+    by.who !== 'a-person'
+      ? Promise.resolve(failed('person-required'))
+      : exclusive(slug, async (access) => {
+          try {
+            access.check()
+            if (identity(slug) === undefined) return failed('no-such-agent')
+            return await operation(access)
+          } catch {
+            return failed(databaseAvailable ? 'changed-or-unreadable' : 'closing')
+          }
+        })
+  return {
+    busy(slug: string): boolean {
+      return (counts.get(slug) ?? 0) > 0
+    },
+    held(slug: string): boolean {
+      if ((counts.get(slug) ?? 0) > 0 || issues.has(slug)) return true
+      if (!databaseAvailable) return false
+      try {
+        return deps.store.hasPendingMemoryAmendment(slug)
+      } catch {
+        return true
+      }
+    },
+    amend(said: MemoryServiceEdit, by: ActedBy): Promise<MemoryServiceResult> {
+      return person(said.profile, by, async (access) => {
+        if (said.confirmed !== true) return failed('confirmation-required')
+        const capture = captureMemoryEntry(deps.inputsOf(said.profile), said.provider, said.entry)
+        if (capture === null || capture.text === null || capture.fingerprint !== said.fingerprint)
+          return failed('changed-or-unreadable')
+        return change(
+          said.profile,
+          {
+            provider: said.provider,
+            entry: capture.entry,
+            act: said.act,
+            textBefore: capture.text,
+            textAfter: said.act === 'removed' ? null : said.text,
+          },
+          capture,
+          access,
+        )
+      })
+    },
+    undo(slug: string, sourceId: string, confirmed: boolean, by: ActedBy) {
+      return person(slug, by, async (access) => {
+        if (confirmed !== true) return failed('confirmation-required')
+        const source = deps.store.memoryAmendment(slug, sourceId)
+        if (
+          source === null ||
+          source.outcome === 'pending' ||
+          source.outcome === 'unchanged' ||
+          candidate(slug, source.provider, source.entry)?.id !== source.id
+        )
+          return failed('source-changed')
+        const capture = captureMemoryEntry(deps.inputsOf(slug), source.provider, source.entry, true)
+        if (capture === null) return failed('changed-or-unreadable')
+        const known = source.actual
+        const current = capture.fingerprint
+        const hashText = (text: string | null) =>
+          text === null ? null : createHash('sha256').update(text).digest('hex')
+        if (
+          known?.unreadable ||
+          (known === undefined
+            ? source.outcome === 'partial' || capture.text !== source.textAfter
+            : current !== known.fingerprint ||
+              (current !== hashText(source.textBefore) && current !== hashText(source.textAfter)))
+        )
+          return failed('source-changed')
+        const restored = source.textBefore
+        const act = restored === null ? 'removed' : capture.text === null ? 'restored' : 'corrected'
+        return change(
+          slug,
+          {
+            provider: source.provider,
+            entry: capture.entry,
+            act,
+            sourceId: source.id,
+            textBefore: capture.text,
+            textAfter: restored,
+          },
+          capture,
+          access,
+          source,
+        )
+      })
+    },
+    checkInterrupted(slug: string, confirmed: boolean, by: ActedBy) {
+      return person(slug, by, async () =>
+        confirmed ? observePending(slug, false) : failed('confirmation-required'),
+      )
+    },
+    close(waitMs = 5000): Promise<void> {
+      accepting = false
+      if (closing !== undefined) return closing
+      closing = (async () => {
+        let timer: ReturnType<typeof setTimeout> | undefined
+        try {
+          await Promise.race([
+            Promise.all([...active]),
+            new Promise<void>((resolve) => {
+              timer = setTimeout(resolve, Math.max(0, Math.min(30000, waitMs)))
+            }),
+          ])
+        } finally {
+          if (timer !== undefined) clearTimeout(timer)
+          databaseAvailable = false
+        }
+      })()
+      return closing
+    },
+  }
 }
