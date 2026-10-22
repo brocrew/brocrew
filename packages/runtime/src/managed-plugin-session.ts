@@ -22,6 +22,12 @@ const signature = (value: ManagedPluginAttachment) =>
   )
 export const PLUGIN_ATTACHMENT_WAIT_MS = 1500
 export const MANAGED_PLUGIN_REOPEN_WITHIN_MS = 60000
+/** A cancelled message must not be redelivered when its handle is retired. */
+export class StoppedBeforeSend extends Error {
+  constructor() {
+    super("Your message wasn't sent. Press Send to try again.")
+  }
+}
 async function bounded<T>(work: Promise<T>, signal?: AbortSignal): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined
   let stop!: () => void
@@ -99,6 +105,7 @@ export function withManagedPluginAttachments(
       pending: AbortController | undefined
     let pendingSend: Promise<void> | undefined
     let closing: Promise<void> | undefined
+    let refreshRefusal: Error | undefined
     const settings: Record<string, unknown> = {}
     let settingsRevision = 0
     let changingSettings = 0
@@ -129,9 +136,11 @@ export function withManagedPluginAttachments(
       get(_target, key) {
         if (key === 'events') return () => events
         if (key === 'awaitProcessExit') return () => ownership.awaitProcessExit()
+        if (key === 'status' && refreshRefusal) return () => 'ended'
         if (key === 'status' && pending) return () => 'working'
         if (key === 'send')
           return (...args: Parameters<SessionHandle['send']>) => {
+            if (refreshRefusal) return Promise.reject(refreshRefusal)
             if (pending) return Promise.reject(new TurnInProgress())
             if (closed || inner.status() !== 'idle') return inner.send(...args)
             const send = async () => {
@@ -148,10 +157,29 @@ export function withManagedPluginAttachments(
                   throw new Error('the turn was stopped before its message could be sent')
                 if (next && signature(next) !== signature(attachment)) {
                   if (inner.refreshManagedPlugins) {
+                    let settled = false
                     try {
-                      await bounded(inner.refreshManagedPlugins(next.servers), wait.signal)
+                      const refreshing = inner.refreshManagedPlugins(next.servers).then(
+                        () => {
+                          settled = true
+                        },
+                        (error: unknown) => {
+                          settled = true
+                          throw error
+                        },
+                      )
+                      await bounded(refreshing, wait.signal)
                       attachment = next
                     } catch {
+                      if (!settled) {
+                        refreshRefusal =
+                          wait.signal.aborted && !closed
+                            ? new StoppedBeforeSend()
+                            : new Error("Your message wasn't sent. Press Send to try again.")
+                        // The host can retry only after this handle's retirement confirms exit.
+                        void proxy.close().catch(() => undefined)
+                        throw refreshRefusal
+                      }
                       noteUnavailable()
                     }
                   } else if (

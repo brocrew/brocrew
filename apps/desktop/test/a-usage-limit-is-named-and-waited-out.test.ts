@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeProviderSessions, type FakeSessionHandle } from '@brobot2/runtime'
+import { FakeProviderSessions, type FakeSessionHandle, type StartOptions } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
@@ -449,6 +449,148 @@ describe('F074 · a usage limit is named, and what the app would start waits for
     }
     const claudeWall = (resetsAt: number): string =>
       `claude is rate-limited (five_hour) — the turn may stall until it resets; resets ${new Date(resetsAt).toISOString()}`
+
+    async function twoCodexAccounts(
+      knownA = true,
+    ): Promise<{ a: string; b: string; resetA: number }> {
+      await host.closeAll()
+      class AccountRuntime extends ProviderDouble {
+        override async start(options: StartOptions): Promise<FakeSessionHandle> {
+          const handle = await super.start(options)
+          Object.defineProperty(handle, 'signInTag', {
+            value: () => {
+              if (!knownA && !options.providerHome.includes('/willow/')) return null
+              return options.providerHome.includes('/willow/') ? 'willow-account' : 'fern-account'
+            },
+          })
+          return handle
+        }
+      }
+      host = aHost({
+        createRuntime: (provider) => new AccountRuntime(provider, handles, issued, anOpenGate()),
+      })
+      const { sessionId: a } = await host.createSession(
+        { provider: 'codex', profileId: 'fern', approvalMode: 'auto', cwd: root },
+        window,
+      )
+      const { sessionId: b } = await host.createSession(
+        { provider: 'codex', profileId: 'willow', approvalMode: 'auto', cwd: root },
+        window,
+      )
+      for (const id of [a, b]) {
+        await host.send(id, 'first fictional turn', window)
+        await waitFor(
+          () => store.events(id).some((row) => row.event.type === 'turn'),
+          'the first turn',
+        )
+      }
+      const resetA = Date.now() + 60_000
+      handles[0]!.simulateError(
+        `codex is rate-limited (weekly) — the turn may stall until it resets; resets ${new Date(resetA).toISOString()}`,
+        false,
+      )
+      await waitFor(
+        () => store.events(a).some((row) => row.event.type === 'error'),
+        'the account wall',
+      )
+      return { a, b, resetA }
+    }
+
+    it('automatic work on a different known Codex account goes while the walled account waits', async () => {
+      const { a, b } = await twoCodexAccounts()
+      expect((await host.queueMessage(a, 'held for fern', THE_APP_ITSELF)).outcome).toBe('queued')
+      expect((await host.queueMessage(b, 'news for willow', THE_APP_ITSELF)).outcome).toBe('sent')
+      await waitFor(() => turns(b).length === 2, 'work on the other account')
+      expect(turns(a)).toHaveLength(1)
+      expect(host.whyWhatIsHeldWaits(a)).toContain('Codex’s usage limit is reached')
+    })
+
+    it('an unknown-account wall still holds automatic work on a known account', async () => {
+      const { b } = await twoCodexAccounts(false)
+      expect(
+        (await host.queueMessage(b, 'held behind an unknown wall', THE_APP_ITSELF)).outcome,
+      ).toBe('queued')
+      expect(host.whyWhatIsHeldWaits(b)).toContain('Codex’s usage limit is reached')
+    })
+
+    it('an overflowing account snapshot keeps the provider-wide hold', async () => {
+      const { b } = await twoCodexAccounts()
+      const boundary = host as unknown as {
+        limitAccountLives: Map<string, Map<number, string | null>>
+        wallsForTheHold: unknown
+      }
+      for (let n = 0; n < 32_769; n++)
+        boundary.limitAccountLives.set(`fictional-overflow-${n}`, new Map([[0, 'fern-account']]))
+      boundary.wallsForTheHold = null
+      expect(
+        (await host.queueMessage(b, 'held with incomplete accounts', THE_APP_ITSELF)).outcome,
+      ).toBe('queued')
+      expect(host.whyWhatIsHeldWaits(b)).toContain('Codex’s usage limit is reached')
+    })
+
+    it('queued work behind another account’s turn is not labelled as waiting for the walled account', async () => {
+      const { b } = await twoCodexAccounts()
+      await handles[1]!.setApprovalMode('ask')
+      await host.send(b, 'fictional parked work', window)
+      await waitFor(
+        () => store.events(b).some((row) => row.event.type === 'permission_request'),
+        'the other account to wait for approval',
+      )
+      const held = await host.queueMessage(b, 'news behind its own turn', THE_APP_ITSELF)
+      expect(held.outcome).toBe('queued')
+      if (held.outcome !== 'queued') throw new Error('The fictional message was not queued')
+      const look = await host.look(b, window, false)
+      expect(look.liveness.queued?.find((row) => row.id === held.messageId)).toMatchObject({
+        holdReasonStatus: 'current',
+        holdReason: null,
+      })
+      expect(host.whyWhatIsHeldWaits(b)).not.toContain('Codex’s usage limit')
+    })
+
+    it('each account’s own wall keeps its own reset in conversation facts', async () => {
+      const { a, b, resetA } = await twoCodexAccounts()
+      handles[1]!.simulateError(
+        `codex is rate-limited (weekly) — the turn may stall until it resets; resets ${new Date(resetA + 60_000).toISOString()}`,
+        false,
+      )
+      await waitFor(
+        () => store.events(b).some((row) => row.event.type === 'error'),
+        'the second account wall',
+      )
+      host.limitsForAPerson()
+      expect((await host.look(a, window, false)).liveness.providerBlock).toEqual({
+        provider: 'codex',
+        resetsAt: resetA,
+      })
+    })
+
+    it('a completed turn on a different known Codex account leaves the first account’s wall standing', async () => {
+      const { a, b } = await twoCodexAccounts()
+      await host.send(b, 'another fictional turn', window)
+      await waitFor(
+        () => store.events(b).filter((row) => row.event.type === 'turn').length === 2,
+        'the other account to finish',
+      )
+      expect((await host.queueMessage(a, 'held for fern', THE_APP_ITSELF)).outcome).toBe('queued')
+      expect(host.whyWhatIsHeldWaits(a)).toContain('Codex’s usage limit is reached')
+    })
+
+    it('a known account’s wall survives its conversation closing and another account answering', async () => {
+      const { a, b } = await twoCodexAccounts()
+      await host.close(a, window)
+      await host.send(b, 'another fictional turn', window)
+      await waitFor(
+        () => store.events(b).filter((row) => row.event.type === 'turn').length === 2,
+        'the other account to finish',
+      )
+      expect(host.limitsForAPerson().rows).toContainEqual(
+        expect.objectContaining({
+          provider: 'codex',
+          account: 'codex:fern-account',
+          standing: 'stopped',
+        }),
+      )
+    })
 
     it('🔴 the app’s own words to an idle Claude conversation are HELD while Claude is at its limit, and go at the reset', async () => {
       const id = await anIdleConversation()

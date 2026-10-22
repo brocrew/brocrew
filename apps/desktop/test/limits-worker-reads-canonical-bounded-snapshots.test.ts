@@ -127,6 +127,110 @@ describe('limits worker reads fresh bounded canonical snapshots', () => {
     expect(actual.evaluatedAt).toBe(NOW)
   })
 
+  it('the worker keeps an account wall when another account completes and clears', () => {
+    row('alpha', 'error', { message: UNKNOWN }, NOW - 900)
+    store.append('beta', 100, { type: 'user_turn', text: 'fictional work' }, NOW - 600)
+    store.append('beta', 101, { type: 'turn', state: 'completed' }, NOW - 500)
+    row('beta', 'provider_limit_clear', { window: 'five_hour' }, NOW - 300)
+    const accountLives = [
+      { sessionId: 'alpha', since: NOW - 1000, account: 'fern-account' },
+      { sessionId: 'beta', since: NOW - 1000, account: 'willow-account' },
+    ]
+    const engine = reader()
+    expect(engine.read(input({ accountLives })).canonical.rows).toContainEqual(
+      expect.objectContaining({ account: 'fern-account', standing: 'stopped' }),
+    )
+    expect(
+      engine.read(
+        input({
+          operation: 2,
+          accountLives: accountLives.map((life) => ({ ...life, account: 'fern-account' })),
+        }),
+      ).canonical.rows,
+    ).toEqual([])
+    expect(engine.read(input({ operation: 3 })).canonical.rows).toEqual([])
+  })
+
+  it('rejects an oversized identity snapshot before starting a native read', () => {
+    const engine = reader()
+    const prepare = vi.spyOn(Database.prototype, 'prepare')
+    expect(() =>
+      engine.read(
+        input({
+          accountLives: Array.from({ length: LIMITS_READ_BOUNDS.rows + 1 }, () => ({
+            sessionId: 'alpha',
+            since: NOW,
+            account: null,
+          })),
+        }),
+      ),
+    ).toThrow()
+    expect(prepare).not.toHaveBeenCalled()
+  })
+
+  it('the worker groups once without life queries for same-account relaunches', () => {
+    row('alpha', 'error', { message: UNKNOWN }, NOW - 900)
+    store.append('beta', 100, { type: 'user_turn', text: 'fictional work' }, NOW - 600)
+    store.append('beta', 101, { type: 'turn', state: 'completed' }, NOW - 500)
+    const engine = reader()
+    const connection = (engine as unknown as { db: AppDatabase }).db
+    const prepare = connection.prepare.bind(connection)
+    const calls: string[] = []
+    vi.spyOn(connection, 'prepare').mockImplementation((sql) => {
+      const statement = prepare(sql)
+      const all = statement.all.bind(statement)
+      vi.spyOn(statement, 'all').mockImplementation((...args: unknown[]) => {
+        calls.push(sql)
+        return all(...args)
+      })
+      const iterate = statement.iterate.bind(statement)
+      vi.spyOn(statement, 'iterate').mockImplementation((...args: unknown[]) => {
+        calls.push(sql)
+        return iterate(...args)
+      })
+      return statement
+    })
+    const accountLives = [
+      { sessionId: 'alpha', since: NOW - 1000, account: 'fern-account' },
+      { sessionId: 'beta', since: NOW - 1000, account: 'willow-account' },
+      { sessionId: 'beta', since: NOW - 800, account: 'willow-account' },
+      { sessionId: 'beta', since: NOW - 700, account: 'willow-account' },
+    ]
+    expect(engine.read(input({ accountLives })).canonical.rows).toHaveLength(1)
+    expect(calls.filter((sql) => /FROM turn\s+t\b/.test(sql))).toHaveLength(1)
+    expect(calls.some((sql) => sql.includes('json_each'))).toBe(false)
+  })
+
+  it.each(['turn', 'clear'] as const)(
+    'the worker retains an earlier account’s %s across a conversation changing accounts',
+    (kind) => {
+      row('alpha', 'error', { message: UNKNOWN }, NOW - 900)
+      for (const [index, at] of [NOW - 600, NOW - 200].entries()) {
+        if (kind === 'clear') row('beta', 'provider_limit_clear', { window: 'five_hour' }, at)
+        else {
+          store.append(
+            'beta',
+            100 + index * 2,
+            { type: 'user_turn', text: 'fictional work' },
+            at - 1,
+          )
+          store.append('beta', 101 + index * 2, { type: 'turn', state: 'completed' }, at)
+        }
+      }
+      expect(
+        reader().read(
+          input({
+            accountLives: [
+              { sessionId: 'alpha', since: NOW - 1000, account: 'fern-account' },
+              { sessionId: 'beta', since: NOW - 1000, account: 'fern-account' },
+              { sessionId: 'beta', since: NOW - 400, account: 'willow-account' },
+            ],
+          }),
+        ).canonical.rows,
+      ).toEqual([])
+    },
+  )
+
   it('applies the launch/sign-in cutoff exactly through the canonical reader', () => {
     row('alpha', 'launched', {}, NOW - 900)
     row('alpha', 'error', { message: UNKNOWN }, NOW - 100)

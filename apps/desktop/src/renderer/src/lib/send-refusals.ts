@@ -27,14 +27,15 @@
  * the queue's own sentences, exactly as the Queue button would have been at that moment. Nothing
  * was sent, and the words go back in the box.
  *
- * ⚑ **D-017 · R1 — a send to a conversation that is not running STARTS it.** It goes in through
- * `RuntimeHost.deliverWhenItRuns`: `refuseBeforeAStart` asks, before anything is started, the
- * refusals the started conversation would give (so a refused send starts nothing), then the start,
- * then the chain above. ⚑ **And a conversation that stops under a send that went straight in is
- * waited out and started again**, the words delivered after the start — *still closing* and *this
- * conversation is over* are never the answer to that. ⚠️ They remain the words for a stop that lands
- * a SECOND time, under words already carried through a start: the send is delivered again once,
- * never in a loop.
+ * A send to a conversation that is not running starts it through `RuntimeHost.deliverWhenItRuns`.
+ * `refuseBeforeAStart` checks the same refusals before starting anything, then the send enters the
+ * chain above. If the process stops unexpectedly during a direct send, the host waits for exit
+ * and delivers the words after one restart. A second stop is passed back rather than retried in a loop.
+ *
+ * A person's Stop while plugins refresh cancels the handover: `StoppedBeforeSend` returns the
+ * unsent words to the composer, and neither retry catch starts them again. A refresh timeout can
+ * retry after the old process exits. These are outcomes after Send, not extra admission gates a
+ * window could predict before the press; the gate rows below are unchanged.
  *
  * ## What "knowable" decides
  *

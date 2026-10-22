@@ -115,9 +115,9 @@ MUTATIONS = [
             (
                 LIMIT,
                 "export const providerLimitKey = (seen: ProviderLimitSeen): string =>\n"
-                "  `${seen.provider} ${seen.window}`",
+                "  `${seen.provider} ${seen.window}${seen.account === undefined ? '' : ` ${seen.account}`}`",
                 "export const providerLimitKey = (seen: ProviderLimitSeen): string =>\n"
-                "  `${seen.provider} ${seen.window} ${String(seen.at)}`",
+                "  `${seen.provider} ${seen.window}${seen.account === undefined ? '' : ` ${seen.account}`} ${String(seen.at)}`",
             )
         ],
     ),
@@ -236,7 +236,7 @@ MUTATIONS = [
         [
             (
                 LIMIT,
-                "    .filter((one) => one.standing === 'stopped' || !walled.has(one.provider))\n",
+                "    .filter(\n      (one) =>\n        one.standing === 'stopped' || !walled.has(`${one.provider}\\u0000${one.account ?? ''}`),\n    )\n",
                 "",
             )
         ],
@@ -287,10 +287,8 @@ MUTATIONS = [
         [
             (
                 STORE,
-                # ⚑ **re-anchored in place, not retired**: a kept walls read decodes each row once, and
-                # the count is taken where each call selects the walls; still removes only that count.
-                "            rowsUnread += 1\n            return []\n          }\n          const wall = row.said\n",
-                "            return []\n          }\n          const wall = row.said\n",
+                "          if (row.said === 'unread') {\n            rowsUnread += 1\n            return []\n          }\n",
+                "          if (row.said === 'unread') {\n            return []\n          }\n",
             )
         ],
     ),

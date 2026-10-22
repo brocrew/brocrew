@@ -27,6 +27,18 @@ export const limitsReadInput = z
     signInEpoch: count,
     capturedAt: instant,
     signInChangedAt: z.object({ claude: instant.optional(), codex: instant.optional() }).strict(),
+    accountLives: z
+      .array(
+        z
+          .object({
+            sessionId: z.string().max(1024),
+            since: instant,
+            account: z.string().max(1024).nullable(),
+          })
+          .strict(),
+      )
+      .max(LIMITS_READ_BOUNDS.rows)
+      .optional(),
     usage: z
       .object({
         claude: z.array(usage).max(64).optional(),
@@ -44,6 +56,7 @@ const wall = z
     resetsAt: instant.nullable(),
     said: text,
     at: instant,
+    account: text.optional(),
   })
   .strict()
 
