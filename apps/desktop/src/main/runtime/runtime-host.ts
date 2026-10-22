@@ -1,4 +1,4 @@
-import { withManagedPluginAttachments } from '@brobot2/runtime'
+import { StoppedBeforeSend, withManagedPluginAttachments } from '@brobot2/runtime'
 import type { WorkspacePluginAttachments } from '../plugins/attachments'
 import {
   readPluginInstructions,
@@ -2626,6 +2626,7 @@ export interface RuntimeHostDeps {
    * provider on its machine login, and refuses to keep a key, saying so.
    */
   apiKeys?: Pick<ApiKeys, 'status' | 'remove'> & {
+    revision?(provider: Provider): number
     set(provider: Provider, key: string): string | null | Promise<string | null>
     read(provider: Provider): string | null | Promise<string | null>
   }
@@ -26248,7 +26249,11 @@ export class RuntimeHost implements LiveHost {
       })
       handed = await recheckHandedPaths(attachments, session.cwd)
     } catch (error) {
-      if (how.onAStop === 'start-it-again' && this.itStoppedUnder(session)) {
+      if (
+        how.onAStop === 'start-it-again' &&
+        !(error instanceof StoppedBeforeSend) &&
+        this.itStoppedUnder(session)
+      ) {
         return this.aDeliveryAStopCaught(sessionId, text, by, attachments, how)
       }
       // ⚑ A person's own words on a sign-in that moved are the press its reopen asks for: held, and
@@ -26351,6 +26356,7 @@ export class RuntimeHost implements LiveHost {
       if (
         how.onAStop === 'start-it-again' &&
         !(error instanceof TurnInProgress) &&
+        !(error instanceof StoppedBeforeSend) &&
         this.itStoppedUnder(session)
       ) {
         return this.aDeliveryAStopCaught(sessionId, text, by, attachments, how)
@@ -27129,6 +27135,8 @@ export class RuntimeHost implements LiveHost {
         console.warn(`runtime session ${session.id} failed to interrupt: ${errorMessage(error)}`)
       })
       await settledWithin(asked, this.interruptWaitMs)
+      // A retired handle cannot become idle; carry only the replacement words after its exit.
+      if (this.itStoppedUnder(session)) return this.send(session.id, text, by, attachments)
       // ⚠️ **704 · on Codex this is the only bound on the TURN.** Claude's `interrupt()` bounds its
       // own ack and forces the terminal (074); Codex's forces nothing while a turn is open, so a
       // Codex turn still running at the end of these five seconds refuses the send.
@@ -34294,6 +34302,7 @@ export class RuntimeHost implements LiveHost {
     Provider,
     { readonly setAt: number; readonly at: number }
   >()
+  private readonly keyChanges = new Map<Provider, number>()
 
   /** 🔒 **Where a provider's API key stands** — never the key, which the window is not told. */
   apiKeyStatus(provider: Provider): ApiKeyStatus {
@@ -34360,6 +34369,7 @@ export class RuntimeHost implements LiveHost {
     }
     const refused = await keys.set(provider, key)
     if (refused !== null) return { ...this.apiKeyStatus(provider), refused }
+    this.keyChanges.set(provider, (this.keyChanges.get(provider) ?? 0) + 1)
     this.keyRefusedForBilling.delete(provider)
     const notice = await this.bringTheKeyToItsHomes(provider)
     this.providerLoginChanged(provider)
@@ -34375,6 +34385,7 @@ export class RuntimeHost implements LiveHost {
     const keys = this.deps.apiKeys
     if (!keys) return this.apiKeyStatus(provider)
     keys.remove(provider)
+    this.keyChanges.set(provider, (this.keyChanges.get(provider) ?? 0) + 1)
     this.keyRefusedForBilling.delete(provider)
     const notice = await this.bringTheKeyToItsHomes(provider)
     this.providerLoginChanged(provider)
@@ -34395,6 +34406,9 @@ export class RuntimeHost implements LiveHost {
     if (!keys || !ask)
       return { ok: false, reason: 'This build of BroCrew cannot check an API key.' }
     const card = provider === 'claude' ? 'Claude' : 'Codex'
+    const change = this.keyChanges.get(provider)
+    const revision = keys.revision?.(provider)
+    const setAt = keys.status(provider).setAt
     let key: string | null
     try {
       key = await keys.read(provider)
@@ -34410,7 +34424,12 @@ export class RuntimeHost implements LiveHost {
     const moved = await this.bringTheKeyToItsHomes(provider)
     if (moved !== null) return { ok: false, reason: moved }
     const said = await ask(provider, key)
-    const setAt = keys.status(provider).setAt
+    if (
+      this.keyChanges.get(provider) !== change ||
+      keys.revision?.(provider) !== revision ||
+      keys.status(provider).setAt !== setAt
+    )
+      return said
     if (!said.ok && said.cannotPay === true && setAt !== null) {
       this.noteTheKeyRefusedForBilling(provider, setAt)
     }

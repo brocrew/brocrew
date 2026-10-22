@@ -75,6 +75,17 @@ describe('whyNotAKey', () => {
 })
 
 describe('ApiKeys', () => {
+  it('saved-key launch revisions stay distinct across replacement and removal in one clock tick', async () => {
+    const keys = new ApiKeys(aStore(), aCipher(), () => 1234)
+    await keys.set('codex', 'fictional-key-fern')
+    const first = keys.status('codex').setAt!
+    await keys.set('codex', 'fictional-key-willow')
+    const second = keys.status('codex').setAt!
+    keys.remove('codex')
+    await keys.set('codex', 'fictional-key-maple')
+    expect(second).toBeGreaterThan(first)
+    expect(keys.status('codex').setAt).toBeGreaterThan(second)
+  })
   it('🔴 keeps a key sealed, trims it, and says only whether one is set and openable', async () => {
     const store = aStore()
     const keys = new ApiKeys(store, aCipher(), () => 1234)
