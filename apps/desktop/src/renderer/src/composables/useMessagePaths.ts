@@ -7,6 +7,7 @@ import {
 import { answerFor, fileManagerWord, pressFailedWords, type PathCalls } from '../lib/message-paths'
 import { escaped } from '../lib/named-in-a-reply'
 import {
+  LINK_COPY_ATTRIBUTE,
   markPathsIn,
   pathClicked,
   pathsNamedIn,
@@ -135,6 +136,7 @@ const copiedResets = new WeakMap<Element, ReturnType<typeof setTimeout>>()
 /** The Copy control's brief "Copied", drawn on the pressed button itself so focus stays on it. */
 function showCopied(target: EventTarget | null): void {
   const button = (target as Partial<Element> | null)?.closest?.('.message-path-icon')
+  const was = button?.hasAttribute(LINK_COPY_ATTRIBUTE) ? 'Copy link' : 'Copy path'
   const glyph = button?.querySelector('use')
   if (!button || !glyph) return
   glyph.setAttribute('href', '#i-check')
@@ -146,8 +148,8 @@ function showCopied(target: EventTarget | null): void {
     setTimeout(() => {
       copiedResets.delete(button)
       glyph.setAttribute('href', '#i-copy')
-      button.setAttribute('title', 'Copy path')
-      button.setAttribute('aria-label', 'Copy path')
+      button.setAttribute('title', was)
+      button.setAttribute('aria-label', was)
     }, COPIED_FOR_MS),
   )
 }
@@ -196,12 +198,18 @@ export function usePathsIn(
       event.preventDefault()
       failure.value = null
       if (hit.pressed === 'copy') {
+        const what = hit.link ? 'link' : 'path'
         navigator.clipboard.writeText(hit.text).then(
           () => showCopied(event.target),
           () => {
-            failure.value = "That path didn't copy. Select its text and copy it instead."
+            failure.value = `That ${what} didn't copy. Select its text and copy it instead.`
           },
         )
+        return
+      }
+      if (hit.link) {
+        // The window-open hand-off: main sends only http and https to the browser.
+        window.open(hit.text, '_blank', 'noopener')
         return
       }
       void here.press(hit.text).then((said) => {
