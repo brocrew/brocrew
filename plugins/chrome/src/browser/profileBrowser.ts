@@ -24,7 +24,13 @@ export interface ProfileBrowser {
   exclusive<T>(profile: string, fn: () => Promise<T>): Promise<T>
   dir(profile: string): string
   operate<T>(profile: string, fn: () => Promise<T>): Promise<T>
-  captureDownloads<T>(profile: string, page: Page, fn: () => Promise<T>): Promise<T>
+  /** savedFile identifies the native staging artifact actually copied by fn. */
+  captureDownloads<T>(
+    profile: string,
+    page: Page,
+    fn: () => Promise<T>,
+    savedFile?: () => string | undefined,
+  ): Promise<T>
   touch(profile: string): void
 }
 export class BrowserNotFoundError extends Error {

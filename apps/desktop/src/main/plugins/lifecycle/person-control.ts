@@ -188,8 +188,10 @@ export async function servePersonPluginControl(options: {
           await options.controller.install(handle, request.pluginId, request.operationId)
           return true
         case 'uninstall':
-          await options.controller.uninstall(handle, request.pluginId, request.operationId)
-          return true
+          return (
+            (await options.controller.uninstall(handle, request.pluginId, request.operationId)) ??
+            true
+          )
         case 'screen': {
           const screen = options.controller.screen(handle, request.pluginId)
           return screen.installation
@@ -271,8 +273,10 @@ export async function servePersonPluginControl(options: {
   })
   return {
     path,
-    async close(): Promise<void> {
+    async close(options: { endConsumers?: boolean } = {}): Promise<void> {
       closing = true
+      // Ending the only person route also ends its consumer's authority when grace expires.
+      if (options.endConsumers) for (const channel of channels) channel.close()
       await Promise.allSettled([...sessions].map(detach))
       for (const channel of channels) channel.close()
       await Promise.all([...channels].map((channel) => channel.settled()))
