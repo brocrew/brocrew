@@ -225,13 +225,20 @@ describe('a wait names what will end it', () => {
     call(agentToolsFor(host, ada), 'update_work', { piece: 'W1.1', status: 'waiting', on })
 
   describe('a wait on each kind is kept on the line', () => {
-    it('another piece, by its label', async () => {
-      const { brobot, ada, piece } = await aHelperWithAPiece()
-      const other = await aPieceGiven(brobot, 'Write the copy', false)
+    it('another agent’s piece, by its label', async () => {
+      const { ada, piece } = await aHelperWithAPiece()
+      const other = await ok(agentToolsFor(host, ada), 'give_work', {
+        definition_of_done: 'The requested result and its checks are recorded.',
+        profile: 'writer',
+        new: true,
+        title: 'Write the copy',
+        brief: 'write the copy',
+      })
+      await settle()
       expect(await waitsOn(ada, { agent: other.label })).toMatchObject({ outcome: 'ok' })
       expect(pieceOf(ada, piece)).toMatchObject({
         state: 'waiting-on-purpose',
-        statusLine: { waiting: true, on: { kind: 'agent', piece: other.piece, label: 'W1.2' } },
+        statusLine: { waiting: true, on: { kind: 'agent', piece: other.piece, label: 'W1.1.1' } },
       })
     })
 
@@ -358,6 +365,31 @@ describe('a wait names what will end it', () => {
 
     it('the piece itself', () =>
       refusedFor({ on: { agent: 'W1.1' } }, 'a piece cannot wait on itself'))
+
+    it('another piece its holder holds too', () =>
+      refusedFor(
+        {},
+        "on.agent names W1.2, which this piece's holder holds too: an agent cannot wait on itself. Name what W1.2 waits on instead, or set the status without on",
+        async (_ada, brobot) => {
+          const other = await aPieceGiven(brobot, 'Write the copy', false)
+          return { on: { agent: other.label } }
+        },
+      ))
+
+    it('its giver marking it waiting on another piece the same holder holds', async () => {
+      const { brobot, ada, piece } = await aHelperWithAPiece()
+      const other = await aPieceGiven(brobot, 'Write the copy', false)
+      const before = statusRows(ada).length
+      const answer = await call(agentToolsFor(host, brobot), 'update_work', {
+        piece: 'W1.1',
+        status: 'waiting on the copy',
+        on: { agent: other.label },
+      })
+      expect(answer.outcome, JSON.stringify(answer)).toBe('refused')
+      expect(JSON.stringify(answer.detail)).toContain('an agent cannot wait on itself')
+      expect(statusRows(ada)).toHaveLength(before)
+      expect(pieceOf(ada, piece)?.statusLine?.on).toBeUndefined()
+    })
 
     it('a piece that has ended', () =>
       refusedFor({}, 'which has ended: say what the piece waits on now', async (_ada, brobot) => {
