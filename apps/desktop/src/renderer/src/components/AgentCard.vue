@@ -30,6 +30,7 @@ import {
   type ConversationControls,
 } from '../composables/useConversationControls'
 import ModelPicker from './ModelPicker.vue'
+import AgentBookButton from './AgentBookButton.vue'
 import CardApproval from './CardApproval.vue'
 import AgentState from './AgentState.vue'
 import BackgroundBar from './BackgroundBar.vue'
@@ -135,6 +136,7 @@ const emit = defineEmits<{
   openDocument: [resourceId: string]
   /** ⚑ **F093 · open "What this agent receives"** — the pane above raises the popup. */
   openInputs: []
+  openBook: [profileSlug: string]
   /** ⚑ **W4.183 · the person answered the confirm** — sent up as the Context popup sends it. */
   compactNow: [intent: 'now' | 'queue']
 }>()
@@ -375,8 +377,15 @@ const fileManager = fileManagerHere()
       :state="props.agentState"
       :provider-limit="props.providerLimit"
     >
-      <template v-if="approval" #head>
+      <template v-if="approval || props.profile" #head>
+        <AgentBookButton
+          compact
+          v-if="props.profile"
+          :profile-slug="props.profile"
+          @open="(profile) => emit('openBook', profile)"
+        />
         <CardApproval
+          v-if="approval"
           :approval="approval"
           @choose="(mode) => props.controls?.chooseApproval(mode)"
         />

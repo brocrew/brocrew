@@ -159,6 +159,7 @@ const emit = defineEmits<{
   openInstructions: []
   /** ⚑ **F093 · open "What this agent receives"** — raised by the pane, like the sheet above. */
   openInputs: []
+  openBook: [profileSlug: string]
   setApprovalMode: [mode: 'ask' | 'auto']
   setSessionSetting: [body: SetSessionSettingInput['body']]
   /** ⚑ **UI-002 · show this file** — passed straight up to the pane's viewer. */
@@ -507,6 +508,7 @@ function steer(event: KeyboardEvent, at: number): DrawerTab | null {
         @open-conversation="(conversation) => cast.goTo.value?.(conversation)"
         @open-document="(resourceId) => emit('openDocument', resourceId)"
         @open-inputs="emit('openInputs')"
+        @open-book="(profile) => emit('openBook', profile)"
         @set-approval-mode="(mode) => emit('setApprovalMode', mode)"
         @set-session-setting="(body) => emit('setSessionSetting', body)"
       />
