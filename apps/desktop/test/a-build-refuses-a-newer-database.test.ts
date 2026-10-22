@@ -347,7 +347,7 @@ describe('§5 · the wiring in main', () => {
   it('🔴 the start-up check runs before the database is opened at all', () => {
     const decided = index.indexOf('const verdict = await theVerdictBeforeTheData(ownership)')
     expect(decided).toBeGreaterThan(index.indexOf('.whenReady()'))
-    expect(decided).toBeLessThan(index.indexOf('host = createRuntimeHost(initDatabase())'))
+    expect(decided).toBeLessThan(index.indexOf('host = await createRuntimeHost(initDatabase())'))
   })
 
   it('⚑ a hidden start that failed brings no window forward for a second launch', () => {

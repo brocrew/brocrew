@@ -1381,6 +1381,7 @@ export const identityInstruction = sqliteTable(
      * time.
      */
     wroteIt: text('wrote_it').notNull(),
+    author: text('author', { mode: 'json' }),
     /**
      * ⚑ **`ActedBy`, stored as JSON** — who this app believes performed the act, the same value
      * every other settled act records. ⛔ Not derivable from `wrote_it` (`477`'s finding): a person
@@ -1428,7 +1429,7 @@ export const identityInstruction = sqliteTable(
     check('identity_instruction_version_ck', sql`${t.version} >= 1`),
     check(
       'identity_instruction_wrote_it_ck',
-      sql`${t.wroteIt} in ('a-person', 'an-agents-proposal', 'relayed-from-user', 'its-creator')`,
+      sql`${t.wroteIt} in ('a-person', 'an-agents-proposal', 'relayed-from-user', 'its-creator', 'an-agent-direct')`,
     ),
     /**
      * 🔴 **618 · *one write, at creation, and never again* as a DATABASE fact** (`HO-078` §4.1,
@@ -1468,6 +1469,18 @@ export const identityInstruction = sqliteTable(
       sql`${t.wroteIt} <> 'a-person' or (${t.conversationId} is null and ${t.said} is null)`,
     ),
   ],
+)
+
+/** The last rules change displayed to a person for this identity. */
+export const identityInstructionSeen = sqliteTable(
+  'identity_instruction_seen',
+  {
+    identityId: text('identity_id')
+      .primaryKey()
+      .references(() => agentIdentity.id, { onDelete: 'cascade' }),
+    seenThrough: integer('seen_through').notNull().default(0),
+  },
+  (t) => [check('identity_instruction_seen_version_ck', sql`${t.seenThrough} >= 0`)],
 )
 
 /**
@@ -1548,10 +1561,11 @@ export const identityMemoryAmendment = sqliteTable(
      * bytes are read, and an entry this app could only read part of is refused outright rather
      * than amended — see `AMENDMENT_REFUSED`'s `unreadable`.
      */
-    textBefore: text('text_before').notNull(),
+    textBefore: text('text_before'),
     /** ⛔ **What it says now, or null for a removal.** The CHECK below is what keeps the pair honest. */
     textAfter: text('text_after'),
     createdAt: integer('created_at').notNull(),
+    sourceId: text('source_id').references((): AnySQLiteColumn => identityMemoryAmendment.id),
   },
   (t) => [
     /** ⚑ **The read the popup makes** — this identity's amendments, newest first. */
@@ -1562,7 +1576,10 @@ export const identityMemoryAmendment = sqliteTable(
      */
     uniqueIndex('identity_memory_amendment_seq_uq').on(t.identityId, t.seq),
     check('identity_memory_amendment_seq_ck', sql`${t.seq} >= 1`),
-    check('identity_memory_amendment_act_ck', sql`${t.act} in ('removed', 'corrected')`),
+    check(
+      'identity_memory_amendment_act_ck',
+      sql`${t.act} in ('removed', 'corrected', 'restored')`,
+    ),
     check('identity_memory_amendment_provider_ck', sql`${t.provider} in ('claude', 'codex')`),
     /**
      * 🔴 **A removal has no *after* and a correction has one** — the two columns cannot come apart
@@ -1575,7 +1592,15 @@ export const identityMemoryAmendment = sqliteTable(
      */
     check(
       'identity_memory_amendment_after_matches_act_ck',
-      sql`(${t.act} = 'removed' and ${t.textAfter} is null) or (${t.act} = 'corrected' and ${t.textAfter} is not null)`,
+      sql`(${t.act} = 'removed' and ${t.textBefore} is not null and ${t.textAfter} is null) or (${t.act} = 'corrected' and ${t.textBefore} is not null and ${t.textAfter} is not null) or (${t.act} = 'restored' and ${t.textBefore} is null and ${t.textAfter} is not null and ${t.sourceId} is not null)`,
+    ),
+    check(
+      'identity_memory_amendment_source_ck',
+      sql`${t.sourceId} is null or (${t.sourceId} <> ${t.id} and ${t.act} in ('removed', 'restored'))`,
+    ),
+    check(
+      'identity_memory_amendment_source_person_ck',
+      sql`${t.sourceId} is null or (case when json_valid(${t.by}) then json_extract(${t.by}, '$.who') is 'a-person' else 0 end)`,
     ),
   ],
 )
@@ -1675,6 +1700,47 @@ export const skillCatalogueState = sqliteTable(
     check(
       'skill_catalogue_state_ck',
       sql`${t.id} = 1 AND typeof(${t.revision}) = 'integer' AND ${t.revision} >= 0`,
+    ),
+  ],
+)
+
+/** Exact recovery bytes stay in main; window history receives metadata only. */
+export const identityMethodChange = sqliteTable(
+  'identity_method_change',
+  {
+    id: text('id').primaryKey(),
+    identityId: text('identity_id')
+      .notNull()
+      .references(() => agentIdentity.id, { onDelete: 'cascade' }),
+    seq: integer('seq').notNull(),
+    operation: text('operation').notNull(),
+    sourceId: text('source_id').references((): AnySQLiteColumn => identityMethodChange.id),
+    target: text('target').notNull(),
+    files: text('files', { mode: 'json' }).notNull(),
+    by: text('by', { mode: 'json' }).notNull(),
+    outcome: text('outcome').notNull(),
+    actual: text('actual', { mode: 'json' }),
+    createdAt: integer('created_at').notNull(),
+    settledBy: text('settled_by', { mode: 'json' }),
+    settledAt: integer('settled_at'),
+  },
+  (t) => [
+    uniqueIndex('identity_method_change_sequence_uq').on(t.identityId, t.seq),
+    uniqueIndex('identity_method_change_pending_uq')
+      .on(t.identityId)
+      .where(sql`${t.outcome} = 'pending'`),
+    check('identity_method_change_sequence_ck', sql`${t.seq} >= 1`),
+    check(
+      'identity_method_change_operation_ck',
+      sql`(${t.operation} = 'delete' AND ${t.sourceId} IS NULL) OR (${t.operation} = 'undo' AND ${t.sourceId} IS NOT NULL)`,
+    ),
+    check(
+      'identity_method_change_outcome_ck',
+      sql`(${t.outcome} = 'pending' AND ${t.actual} IS NULL) OR (${t.outcome} IN ('done', 'partial') AND ${t.actual} IS NOT NULL)`,
+    ),
+    check(
+      'identity_method_change_settlement_ck',
+      sql`(${t.settledBy} IS NULL AND ${t.settledAt} IS NULL) OR (${t.settledBy} IS NOT NULL AND ${t.settledAt} IS NOT NULL AND ${t.outcome} IN ('done', 'partial') AND typeof(${t.settledAt}) = 'integer' AND ${t.settledAt} >= 0 AND ${t.settledAt} <= 9007199254740991 AND CASE WHEN json_valid(${t.settledBy}) THEN coalesce(json_extract(${t.settledBy}, '$.who'), '') IN ('a-person', 'the-app-itself') ELSE 0 END)`,
     ),
   ],
 )

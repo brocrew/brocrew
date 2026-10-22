@@ -28,6 +28,9 @@ import type { AgentIdentity } from './runtime-ipc'
  * about the population is not a column on a row*.
  */
 export interface IdentityUse {
+  /** An unfinished filesystem change still holds its recoverable originals. */
+  readonly hasUnfinishedMethodChange?: boolean
+
   /**
    * ⛔ **The identity this is about, FOLDED** — the same key {@link AgentIdentity.slug} carries, so
    * a reader joins the two lists on one spelling (238).
@@ -151,7 +154,12 @@ export function theProviderOfAnAgent(saved: Provider | null, startedOn: StartedO
  * 🔴 **The COUNT is asserted** — `every-identity-he-has.test.ts` §3 — because a number in prose is
  * what goes stale when a list moves (`a-number-can-survive-the-death-of-its-derivation`).
  */
-export const WHAT_HOLDS_AN_IDENTITY = ['conversations', 'this-app', 'a-launch'] as const
+export const WHAT_HOLDS_AN_IDENTITY = [
+  'conversations',
+  'this-app',
+  'a-launch',
+  'unfinished-method-change',
+] as const
 
 /** One of {@link WHAT_HOLDS_AN_IDENTITY}. */
 export type WhatHoldsAnIdentity = (typeof WHAT_HOLDS_AN_IDENTITY)[number]
@@ -167,6 +175,7 @@ export const HOLDING_SAYS: Readonly<Record<WhatHoldsAnIdentity, string>> = {
   conversations: 'conversations have run as it, and their record names it',
   'this-app': 'this app ships this name, so the next launch would bring it back',
   'a-launch': 'a conversation is starting as it right now',
+  'unfinished-method-change': "a change to its saved methods didn't finish and needs checking",
 }
 
 /**
@@ -181,6 +190,7 @@ export function whatHoldsIt(use: IdentityUse): readonly WhatHoldsAnIdentity[] {
   if (use.conversations > 0) held.push('conversations')
   if (use.thisAppMintsIt) held.push('this-app')
   if (use.isLaunching) held.push('a-launch')
+  if (use.hasUnfinishedMethodChange) held.push('unfinished-method-change')
   return held
 }
 

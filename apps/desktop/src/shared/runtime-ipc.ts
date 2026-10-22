@@ -1,3 +1,10 @@
+import type {
+  MethodLibrary,
+  MethodBody,
+  MethodDeleteSelection,
+  MethodChangeResult,
+  MethodHistoryResult,
+} from './saved-method-library'
 import type { SkillsRequest, SkillsReply } from './skills-window'
 import type { LinkResolution } from './link-resolution'
 import { pathTail } from './path-tail'
@@ -55,6 +62,9 @@ import type {
   WhatThisAgentWasGiven,
 } from './what-this-agent-was-given'
 import type { DocumentForm, DrawnAs, ResourceRole } from './documents'
+import type { AgentRulesReceipt, RulesBaseline } from './agent-rules'
+import type { InstructionUnread } from './own-instructions'
+import type { RulesAuthor } from './own-instructions'
 import type { TheWholeForest } from './the-whole-forest'
 // ⚑ **582 · the `configured` layer's shapes.** ⛔ Type-only, and that module is a LEAF — it imports
 // one type from `who-did-it.ts` and nothing at all from here — so unlike the four edges above there
@@ -6666,6 +6676,9 @@ export interface InstructionProposedEvent {
   about: string
   /** The proposing agent, by slug. ⚑ `438`'s rule: a claim carries its speaker. */
   proposedBy: string
+  /** Snapshotted when proposed; legacy rows may not have recorded a name or baseline. */
+  author?: RulesAuthor
+  basedOnVersion?: number
   /** The rules it wants in force, whole. ⛔ Bounded by {@link OWN_INSTRUCTIONS_CHARS} at the door. */
   text: string
   /** ⚠️ **The agent's reasoning — a CLAIM.** Nothing in this app checked a word of it. */
@@ -6753,6 +6766,17 @@ export interface WorkerRegisteredEvent {
   number: number
 }
 
+/** A direct change names its author and durable history version without duplicating the text. */
+export interface InstructionChangedEvent {
+  type: 'instruction_changed'
+  readonly conversation: AgentRulesReceipt['conversation']
+  readonly profile: AgentRulesReceipt['profile']
+  readonly version: AgentRulesReceipt['version']
+  readonly previousVersion: AgentRulesReceipt['previousVersion']
+  readonly author: AgentRulesReceipt['author']
+  readonly replacedPersonVersion: AgentRulesReceipt['replacedPersonVersion']
+}
+
 export type TranscriptEvent =
   | WorkReconciliationEvent
   | WorkRecoveryEvent
@@ -6780,6 +6804,7 @@ export type TranscriptEvent =
   // ⚑ **582's pair** — an agent asked for a rule against an identity's own instructions, and a
   // person decided.
   | InstructionProposedEvent
+  | InstructionChangedEvent
   | InstructionSettledEvent
   // An agent asked the person to register an MCP server, and how that ended.
   | McpServerRequestedEvent
@@ -8732,6 +8757,7 @@ export type RuntimeCommand =
   | {
       kind: 'instructAgent'
       profileId: string
+      baseline?: RulesBaseline
       text: string
       /** The version this one brings back, or absent for new text. */
       broughtBack?: number
@@ -8744,6 +8770,15 @@ export type RuntimeCommand =
    * person sees one moment.
    */
   | { kind: 'agentInstructions'; profileId: string }
+  | { kind: 'agentMethods'; profileId: string; offset?: number; limit?: number }
+  | { kind: 'agentMethodBody'; profileId: string; key: string }
+  | { kind: 'agentMethodChanges'; profileId: string; offset?: number; limit?: number }
+  | { kind: 'removeAgentMethod'; profileId: string; selection: MethodDeleteSelection }
+  | { kind: 'undoAgentMethod'; profileId: string; changeId: string }
+  | { kind: 'checkInterruptedAgentMethods'; profileId: string; confirmed: boolean }
+  | { kind: 'agentRulesUnread'; profileId: string }
+  | { kind: 'undoAgentRules'; profileId: string; expectedVersion: number }
+  | { kind: 'markAgentRulesSeen'; profileId: string; throughVersion: number }
   /**
    * 🔴 **625 · read one identity's MEMORY, with no conversation open** (`EXT-015` §1).
    *
@@ -9276,6 +9311,15 @@ export interface RuntimeCommandResults {
   instructAgent: AgentInstructionsReading | null
   /** ⚑ **Never null** — an identity with no row and one with no rules both answer an empty history. */
   agentInstructions: AgentInstructionsReading
+  agentMethods: MethodLibrary | null
+  agentMethodBody: MethodBody | null
+  agentMethodChanges: MethodHistoryResult
+  removeAgentMethod: MethodChangeResult
+  undoAgentMethod: MethodChangeResult
+  checkInterruptedAgentMethods: MethodChangeResult
+  agentRulesUnread: InstructionUnread
+  undoAgentRules: AgentInstructionsReading | null
+  markAgentRulesSeen: boolean
   /**
    * ⚑ **Never null** — `agentInstructions`' own contract one line up, for its reason: an identity
    * with no row and one that has never run both answer stores nobody has written to.
@@ -10115,11 +10159,38 @@ export interface RuntimeBridge {
    */
   instructAgent(input: {
     profileId: string
+    baseline?: RulesBaseline
     text: string
     broughtBack?: number
   }): Promise<AgentInstructionsReading | null>
   /** Every version this identity has been given, and every ask waiting against it (582). */
   agentInstructions(input: { profileId: string }): Promise<AgentInstructionsReading>
+  agentMethods(input: {
+    profileId: string
+    offset?: number
+    limit?: number
+  }): Promise<MethodLibrary | null>
+  agentMethodBody(input: { profileId: string; key: string }): Promise<MethodBody | null>
+  agentMethodChanges(input: {
+    profileId: string
+    offset?: number
+    limit?: number
+  }): Promise<MethodHistoryResult>
+  removeAgentMethod(input: {
+    profileId: string
+    selection: MethodDeleteSelection
+  }): Promise<MethodChangeResult>
+  undoAgentMethod(input: { profileId: string; changeId: string }): Promise<MethodChangeResult>
+  checkInterruptedAgentMethods(input: {
+    profileId: string
+    confirmed: boolean
+  }): Promise<MethodChangeResult>
+  agentRulesUnread(input: { profileId: string }): Promise<InstructionUnread>
+  undoAgentRules(input: {
+    profileId: string
+    expectedVersion: number
+  }): Promise<AgentInstructionsReading | null>
+  markAgentRulesSeen(input: { profileId: string; throughVersion: number }): Promise<boolean>
   /**
    * What this identity has written down, under every provider, RIGHT NOW (625, `EXT-015` §1) —
    * and every amendment a person has made to it.

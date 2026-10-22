@@ -205,7 +205,6 @@ import {
   HOW_THE_LAST_TURN_ENDED,
   ITS_RULES_ARE_SAVED,
   RULES_PUT_BEFORE_A_PERSON,
-  RULES_WRITTEN,
   THE_CONVERSATION_THAT_GAVE_YOU_THIS_WORK,
   createdAndNamed,
   tookOnForPerson,
@@ -674,6 +673,7 @@ export const TOOL_NAMES = [
   'request_action',
   ...THEME_TOOL_NAMES,
   'search_past_work',
+  'read_agent_rules',
 ] as const
 
 export type ToolName = (typeof TOOL_NAMES)[number]
@@ -986,17 +986,7 @@ export const TOOL_REFUSALS = [
    * words tell the caller to ask a person if it does not.
    */
   'its-questions-could-not-all-be-read',
-  /**
-   * ⛔ **The grant for asking anything about another agent's own instructions** (582,
-   * `HO-009` §2.2) — `may-not-create-agents`' shape, one verb over.
-   *
-   * ⚑ **Its own word because it is its own column.** `canWriteRules` is not `canCreateAgents` read
-   * twice, and a rail that shared a word would tell a caller to ask for the wrong grant.
-   *
-   * ⚠️ **Asked BEFORE any agent name is looked at** —
-   * `refuse-on-entitlement-before-refusing-on-existence`: an identity that may not write rules must
-   * not be able to learn which identities exist from the shape of the refusal it gets.
-   */
+  /** The host could not establish the fixed authority needed for a rule operation. */
   'may-not-write-rules',
   /**
    * 🔴 **The caller may ASK, and claimed it did not have to** (582).
@@ -1750,14 +1740,13 @@ const PASS_WHO_ARGUMENT = 'who_answers' satisfies keyof PassQuestionUpArguments
  * being MADE, and one spelling over two populations is how a model comes to send the wrong one.
  */
 interface ProposeRulesArguments {
+  readonly current_version: number
   /** Which identity the rules are FOR. Never the caller's own name unless it means itself. */
   readonly agent: string
   /** The rules, whole — what would be in force. An empty string takes the existing ones away. */
   readonly rules: string
   /** Why. ⚠️ A CLAIM: nothing in this app checks a word of it. */
   readonly why: string
-  /** ⛔ Whether the person already gave this rule — `HO-009` §2.2's one exception. */
-  readonly already_agreed?: boolean
 }
 
 /** Every argument `request_mcp_server` advertises, as a type its advertisement satisfies. */
@@ -1779,7 +1768,6 @@ interface RequestMcpServerArguments {
 const RULES_AGENT_ARGUMENT = 'agent' satisfies keyof ProposeRulesArguments
 const RULES_TEXT_ARGUMENT = 'rules' satisfies keyof ProposeRulesArguments
 const RULES_WHY_ARGUMENT = 'why' satisfies keyof ProposeRulesArguments
-const RULES_AGREED_ARGUMENT = 'already_agreed' satisfies keyof ProposeRulesArguments
 
 const CREATE_SLUG_ARGUMENT = 'profile_slug' satisfies keyof CreateAgentArguments
 const CREATE_PROVIDER_ARGUMENT = 'provider' satisfies keyof CreateAgentArguments
@@ -2001,10 +1989,8 @@ export const TOOL_PERMANENCE: Readonly<Record<ToolRefusal, RailPermanence>> = {
   'that-work-is-being-sent': 'while-this-holds',
   'a-conversation-with-its-questions-is-starting': 'while-this-holds',
   'its-questions-could-not-all-be-read': 'while-this-holds',
-  // ⛔ **`until-a-person-changes-it`, and it is `may-not-create-agents`' row one grant over**: the
-  // call is refused by a capability, and the only thing that moves a capability is a person at the
-  // grant sheet. ⚠️ Not `permanent` — nothing about this call is wrong.
-  'may-not-write-rules': 'until-a-person-changes-it',
+  // Direct writing follows a fixed host role; a per-profile grant cannot enable it.
+  'may-not-write-rules': 'permanent',
   // ⛔ **`until-a-person-changes-it`, and the person could change it two ways** — by widening the
   // grant, or by answering the proposal this caller may still make. ⚑ Either way the thing that
   // moves is a person, which is what this word means.
@@ -2430,12 +2416,9 @@ const TOOL_SENTENCES: Readonly<Record<ToolRefusal, string>> = {
   // Said with the piece's label at each door (`aPieceNotEndedItsQuestionsUnread`).
   'its-questions-could-not-all-be-read':
     "that piece wasn't taken back or closed: its questions couldn't all be read. Try again; if it fails again, ask a person.",
-  // ⚠️ **It says what the grant is FOR rather than what the caller did wrong** — nothing about the
-  // call was wrong. ⛔ And it does not name a tool or a slug: standing rule 8, and
-  // `refuse-on-entitlement-before-refusing-on-existence` means this sentence is read by a caller
-  // whose agent name was never looked at.
+  // Grants do not select the app's direct writer.
   'may-not-write-rules':
-    'ask a person to grant you the right to change another agent’s rules. Nothing was written and nobody was asked; repeating this call will not grant it.',
+    'Only BroBot writes other agents’ standing rules directly. You can propose a change with propose_agent_rules, and the person decides. Nothing was written.',
   // 🔴 **It tells the caller what it MAY do**, because the narrower grant it holds is a real answer
   // rather than a consolation: the proposal arm is open to it and a person will decide.
   'may-not-relay-a-rule':
@@ -4836,6 +4819,7 @@ export interface AgentToolHost {
    * ⚑ **There is deliberately no `decideInstruction` here.** A tool that could approve one would be
    * a gate an agent can open, and `HO-009` §2.2 says *approval writes it*.
    */
+  readAgentRules: RuntimeHost['readAgentRules']
   proposeAgentRules: RuntimeHost['proposeAgentRules']
 }
 
@@ -8680,28 +8664,14 @@ export function agentToolsFor(
     },
     {
       name: 'propose_agent_rules',
-      /**
-       * 🔴 **582 · the `configured` layer, from an agent's side** (`HO-009` §2.2).
-       *
-       * ⛔ **It says what each arm DOES and never which grant the caller holds**, because a
-       * description that named a capability would be a claim about this caller that goes stale the
-       * moment a person moves it — standing rule 8, and the grant answers for itself in a refusal.
-       *
-       * ⚠️ **It says the rules REPLACE rather than add**, because that is what a version is: a
-       * caller that sent one more rule and wiped four would have been told nothing.
-       *
-       * ⚑ **And it names the timing**, because `HO-009` §2.2 requires it of every surface: a rule
-       * reaches the agent's NEXT conversation, so a caller that needs something done now has to
-       * say so as well.
-       */
       description:
-        'Ask for the standing rules another agent is given — the text it receives in its instructions at the start of every conversation it runs from now on. The rules you send REPLACE that agent’s current ones, so send the whole set and not an addition; send an empty string to take them away. By default this puts the request in front of a person and writes nothing until they approve it. Rules reach that agent the next time one of its conversations starts — a new one, or one a message starts again — and never one already running, so if something must happen now, say it to that agent as well. Returns what happened, or a refusal naming the rule that stopped it.',
-      /**
-       * ⛔ **Advertised against a TYPE, so *documented* and *read* cannot drift apart** — `415`'s
-       * device, and the `satisfies` below fails to compile if this shape and
-       * {@link ProposeRulesArguments} stop naming the same set, in either direction.
-       */
+        'Propose the complete standing rules another agent should receive. Send the current version, the full replacement text and why it should change. The person decides; nothing is saved until they approve. Send empty text to propose taking the rules away. Saved changes reach the agent at its next start.',
       input: {
+        current_version: z
+          .number()
+          .describe(
+            'The current version returned by read_agent_rules. Zero means no rules have been saved.',
+          ),
         agent: z
           .string()
           .describe(
@@ -8710,95 +8680,59 @@ export function agentToolsFor(
         rules: z
           .string()
           .describe(
-            `The whole set of standing rules for that agent, at most ${String(OWN_INSTRUCTIONS_CHARS)} characters. ` +
-              'An empty string takes its current rules away.',
+            `The whole set of standing rules, at most ${String(OWN_INSTRUCTIONS_CHARS)} characters. An empty string takes them away.`,
           ),
         why: z
           .string()
-          .describe(
-            'Why these rules, in your own words. A person reads this beside the text when they decide.',
-          ),
-        already_agreed: z
-          .boolean()
-          .optional()
-          .describe(
-            'Set this only when a person told you this rule in this conversation and you are passing it on. It writes the rules immediately instead of asking, and it records that you said they came from a person — this app cannot check that, so a person will see the claim beside the text for as long as it stands. Leave it out for anything you decided yourself.',
-          ),
+          .describe('Why these rules. The person reads this beside the proposed change.'),
       } satisfies Readonly<Record<keyof ProposeRulesArguments, z.ZodType>>,
-      /**
-       * ⛔ **`nothing-its-rails-do-not-cover`, and the `relay` arm is why that needs saying.**
-       *
-       * ⚑ **A row in this app's own table, and the grant is the gate** — `create_agent`'s own
-       * argument. ⚠️ **`canWriteRules`' ruled default is `'none'`**, so an identity nobody has said
-       * anything about cannot reach this verb at all, and the wide word is one a person chooses at
-       * the sheet, reading a help string that says this app does not check the claim.
-       *
-       * 🔴 **And the layer's shape is the other half.** Every version is kept, attributed and
-       * revertable, so a relay a person did not mean is visible and undoable — which is what
-       * `HO-009` §1.2 asks for and what no rail could have bought.
-       */
       beyondItsRails: 'nothing-its-rails-do-not-cover',
       call: (args) =>
         guarded(async () => {
-          // ⛔ **Every problem at once, never the first one** (325) — and BELOW the entitlement
-          // wall, which is HO-031 §2.5: a caller that may not do this has no use for a list of the
-          // arguments it would have needed. ⚑ The wall is inside `proposeAgentRules`' rails 1 and
-          // 2, which read nothing this caller wrote — so the order is preserved by asking there
-          // rather than by hoisting a copy here.
           const problems: string[] = []
           const agent = args[RULES_AGENT_ARGUMENT]
+          const rules = args[RULES_TEXT_ARGUMENT]
+          const why = args[RULES_WHY_ARGUMENT]
+          const version = args['current_version']
+          if (typeof version !== 'number' || !Number.isSafeInteger(version) || version < 0)
+            problems.push('current_version must be the version returned by read_agent_rules')
           if (typeof agent !== 'string' || !isPathSegment(agent)) {
             problems.push(`${RULES_AGENT_ARGUMENT} is required and must be ${PATH_SEGMENT_RULE}`)
           }
-          const rules = args[RULES_TEXT_ARGUMENT]
-          // ⚠️ **No `.length === 0` check**: an empty string is a real request meaning *take them
-          // away*, and refusing it would make that unreachable through the only verb that can say
-          // it — `instructAgent`'s own wire bound, one door over.
           if (typeof rules !== 'string' || rules.length > OWN_INSTRUCTIONS_CHARS) {
             problems.push(
               `${RULES_TEXT_ARGUMENT} is required and must be at most ${String(OWN_INSTRUCTIONS_CHARS)} characters`,
             )
           }
-          const why = args[RULES_WHY_ARGUMENT]
-          if (typeof why !== 'string' || why.trim().length === 0) {
-            problems.push(`${RULES_WHY_ARGUMENT} is required and must say why`)
-          }
-          const agreed = args[RULES_AGREED_ARGUMENT]
-          if (agreed !== undefined && typeof agreed !== 'boolean') {
-            problems.push(`${RULES_AGREED_ARGUMENT} must be true or false, or left out`)
-          }
-          if (problems.length > 0) {
+          if (typeof why !== 'string' || why.trim() === '' || why.length > OWN_INSTRUCTIONS_CHARS)
+            problems.push(
+              `${RULES_WHY_ARGUMENT} is required and must say why within ${String(OWN_INSTRUCTIONS_CHARS)} characters`,
+            )
+          if (args['already_agreed'] !== undefined)
+            problems.push('already_agreed is not supported; leave it out')
+          if (problems.length > 0)
             return refusalAnswer(refuseTool('malformed-request', { problems }))
-          }
           const outcome = host.proposeAgentRules(
             me,
             {
               about: agent as string,
               text: rules as string,
               why: (why as string).trim(),
-              relaying: agreed === true,
+              relaying: false,
+              expectedVersion: version as number,
             },
             by,
           )
           if (!outcome.ok) return refusalAnswer(refuseTool(outcome.rail, outcome.detail))
-          // 🔴 **The payload's `reason`, computed once from the outcome** (489, HO-031 §2.6). The words
-          // below are chosen from the same `outcome.wrote`, so the two cannot disagree.
-          const said =
-            outcome.wrote === 'a-version'
-              ? `written as version ${String(outcome.version)} of ${String(agent)}’s rules, recorded as relayed from a person — it reaches that agent’s next conversation, not one already running`
-              : `put in front of a person; nothing is written for ${String(agent)} unless they approve it, and they may not be looking at it now`
           return answer(
             {
               outcome: 'ok',
               agent,
               wrote: outcome.wrote,
-              ...(outcome.wrote === 'a-version'
-                ? { version: outcome.version }
-                : { request: outcome.askId }),
-              reason: said,
+              request: outcome.askId,
+              reason: `put in front of a person; nothing is written for ${String(agent)} unless they approve it, and they may not be looking at it now`,
             },
-            // What happened and when it applies, echoing nothing the call sent.
-            outcome.wrote === 'a-version' ? RULES_WRITTEN : RULES_PUT_BEFORE_A_PERSON,
+            RULES_PUT_BEFORE_A_PERSON,
           )
         }),
     },
@@ -10026,6 +9960,28 @@ export function agentToolsFor(
               return answer(refused, `refused (${refused.rail}): ${refused.reason}`)
             }
             return answer({ outcome: 'ok', hits: found.hits }, pastWorkSearchInWords(found.hits))
+          }),
+      },
+      {
+        name: 'read_agent_rules' as const,
+        description:
+          "Read one agent's current standing rules and version, with the recorded author and reason. Use its profile name. Empty rules are returned as empty text. This reads the current saved rules; a running conversation may still hold an earlier version.",
+        input: {
+          agent: z.string().describe('The profile name of the agent whose current rules to read.'),
+        },
+        beyondItsRails: 'nothing-its-rails-do-not-cover' as const,
+        call: (args: Record<string, unknown>) =>
+          guarded(async () => {
+            const agent = args['agent']
+            if (typeof agent !== 'string' || !isPathSegment(agent))
+              return refusalAnswer(
+                refuseTool('malformed-request', {
+                  problems: [`agent is required and must be ${PATH_SEGMENT_RULE}`],
+                }),
+              )
+            const outcome = host.readAgentRules(me, agent, by)
+            if (!outcome.ok) return refusalAnswer(refuseTool(outcome.rail, outcome.detail))
+            return answer({ outcome: 'ok', ...outcome.result }, JSON.stringify(outcome.result))
           }),
       },
     ].map(recordsWhatItRefused),

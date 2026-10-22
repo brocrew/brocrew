@@ -109,7 +109,7 @@ async function startup(fake: PinnableApp, beforeThemes?: () => void) {
     stores: ThemeStore[] = []
   let databaseStarts = 0
   const begin = index.indexOf('      const verdict = await theVerdictBeforeTheData(ownership)')
-  const endLine = '      host = createRuntimeHost(initDatabase())'
+  const endLine = '      host = await createRuntimeHost(initDatabase())'
   const end = index.indexOf(endLine, begin) + endLine.length
   expect(begin).toBeGreaterThan(0)
   const context = {
