@@ -2,6 +2,7 @@ import { pluginSha256 } from '../src/main/plugins/package-digests'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdir, writeFile, readFile, symlink } from 'node:fs/promises'
 import { join } from 'node:path'
+import { tmpdir } from 'node:os'
 import { createConnection } from 'node:net'
 import { once } from 'node:events'
 import { downloadPluginArchive } from '../src/main/plugins/lifecycle/download'
@@ -683,7 +684,7 @@ describe.skipIf(process.platform === 'win32')(
       const empty = signed({ format: 1, entries: [] })
       await expect(
         connectPluginSettings({
-          path: '/tmp/fictional-never-used.sock',
+          path: join(process.platform === 'win32' ? tmpdir() : '/tmp', 'fictional-never-used.sock'),
           personKey: 'a'.repeat(64),
           root: f.root,
           pinnedPublicKey: fictionalPublicKey,

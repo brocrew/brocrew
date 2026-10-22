@@ -5,6 +5,7 @@ import { registerPluginSettings } from '../src/main/plugins/settings'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdir, mkdtemp, realpath, rm, symlink } from 'node:fs/promises'
 import { join } from 'node:path'
+import { tmpdir } from 'node:os'
 import { GlobalPluginState } from '../src/main/plugins/state/store'
 import type { PluginCard } from '../src/shared/plugin-settings'
 import { writeFile } from 'node:fs/promises'
@@ -48,7 +49,9 @@ afterEach(async () => {
   vi.unstubAllGlobals()
 })
 async function setup(pkg = packageFixture()) {
-  const parent = await realpath(await mkdtemp('/tmp/fictional-production-'))
+  const parent = await realpath(
+    await mkdtemp(join(process.platform === 'win32' ? tmpdir() : '/tmp', 'fictional-production-')),
+  )
   roots.push(parent)
   const workspaceRoot = join(parent, 'workspace')
   await mkdir(workspaceRoot, { mode: 0o700 })
