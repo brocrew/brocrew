@@ -1,15 +1,18 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { randomUUID } from 'node:crypto'
+import { mkdtemp, realpath, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { parsePluginManifest } from '../src/main/plugins/package-schema'
 import { loadRepoPluginList, parseRepoPluginList } from '../src/main/plugins/catalogue/repo-list'
 import { PLUGIN_LIST_URL, downloadPluginBytes } from '../src/main/plugins/catalogue/download'
 import { manifestFor, packageFixture, verified } from './plugin-package-fixtures'
 import { repoListFor } from './plugin-repo-list-fixtures'
-import { cleanupLifecycleFixtures, fixture } from './plugin-lifecycle-fixtures'
 
 const target = { os: 'linux', cpu: 'x64' } as const
 const frameworkModule = new URL('../src/main/plugins/contributions.ts', import.meta.url).href
 const v2Url = PLUGIN_LIST_URL.replace('catalogue.json', 'catalogue-v2.json')
+const folders: string[] = []
 const modernManifest = () => ({
   ...manifestFor(),
   format: 2,
@@ -51,7 +54,7 @@ async function framework() {
 }
 afterEach(async () => {
   vi.unstubAllGlobals()
-  await cleanupLifecycleFixtures()
+  for (const folder of folders.splice(0)) await rm(folder, { recursive: true, force: true })
 })
 
 describe('versioned contribution metadata', () => {
@@ -125,8 +128,10 @@ describe('versioned contribution metadata', () => {
     expect(entry.current()).toBe(false)
   })
   it('uses the fixed versioned URL only when explicitly selected, retaining the frozen source', async () => {
-    const f = await fixture()
-    const legacy = repoListFor(f.pkg.release)
+    const root = await realpath(await mkdtemp(join(tmpdir(), 'fictional-catalogue-')))
+    folders.push(root)
+    const pkg = packageFixture()
+    const legacy = repoListFor(pkg.release)
     const expanded = {
       format: 2,
       entries: [
@@ -139,15 +144,15 @@ describe('versioned contribution metadata', () => {
         new Response(JSON.stringify(String(url) === v2Url ? expanded : legacy)),
     )
     vi.stubGlobal('fetch', fetch)
-    const old = await loadRepoPluginList({ root: f.root, target, appVersion: '1.0.0' })
-    expect(old.entries.map((one) => one.id)).toEqual([f.pkg.release.id])
+    const old = await loadRepoPluginList({ root, target, appVersion: '1.0.0' })
+    expect(old.entries.map((one) => one.id)).toEqual([pkg.release.id])
     const modern = await loadRepoPluginList({
-      root: f.root,
+      root,
       target,
       appVersion: '1.0.0',
       sourceVersion: 2,
     } as Parameters<typeof loadRepoPluginList>[0])
-    expect(modern.entries.map((one) => one.id)).toEqual([f.pkg.release.id, 'fictional-new'])
+    expect(modern.entries.map((one) => one.id)).toEqual([pkg.release.id, 'fictional-new'])
     expect(fetch.mock.calls.map(([url]) => String(url))).toContain(v2Url)
     const wrong = vi.fn(async () => new Response(JSON.stringify(expanded)))
     await downloadPluginBytes({ url: v2Url, maximum: 1024 * 1024, fetch: wrong })
