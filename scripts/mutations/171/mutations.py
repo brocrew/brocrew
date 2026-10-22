@@ -151,8 +151,9 @@ MUTATIONS = [
         [
             (
                 HOST,
-                "    ? `⚠ approvals: Auto — nothing is asked · sandbox OFF`\n    : `⚠ approvals: Auto — nothing is asked`\n",
-                "    ? `⚠ approvals: Auto — no prompts · sandbox OFF`\n    : `⚠ approvals: Auto — no prompts`\n",
+                # ⚑ **provider selection refactor · re-anchored in place, not retired** — The two approval sentences are values in the exhaustive selection; restore the same misleading wording for both.
+                "    claude: `⚠ approvals: Auto — nothing is asked`,\n    codex: `⚠ approvals: Auto — nothing is asked · sandbox OFF`,\n",
+                "    claude: `⚠ approvals: Auto — no prompts`,\n    codex: `⚠ approvals: Auto — no prompts · sandbox OFF`,\n",
             )
         ],
     ),

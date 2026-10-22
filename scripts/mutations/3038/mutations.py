@@ -194,9 +194,9 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "M19 · the pass over older conversations goes on recording after the quit has begun · "
         f"killed by `{THE_PASS}`",
         [(HOST,
-          "      if (this.launches.closed) break\n"
-          "      if (one.provider !== 'claude' || one.adoptedAt !== null) continue\n",
-          "      if (one.provider !== 'claude' || one.adoptedAt !== null) continue\n")],
+          # ⚑ **provider selection refactor · re-anchored in place, not retired** — The provider skip is now an exhaustive selection; removing only the quit guard still lets the older-model pass write after quit begins.
+          "      if (this.launches.closed) break\n      if (providerValue(one.provider, { claude: false, codex: true }) || one.adoptedAt !== null)\n        continue\n",
+          "      if (providerValue(one.provider, { claude: false, codex: true }) || one.adoptedAt !== null)\n        continue\n")],
     ),
     (
         "M20 · the receipt says the look's interval in the plural for one minute — \"within 1 "

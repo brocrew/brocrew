@@ -324,8 +324,9 @@ MUTATIONS = [
         [
             (
                 READER,
-                "  if (inputs.provider !== 'claude') {",
-                "  if (false as boolean) {",
+                # ⚑ **provider selection refactor · re-anchored in place, not retired** — The instruction-placement branch now uses an exhaustive selector; disabling it still injects repository bytes twice for Codex.
+                "  if (providerValue(inputs.provider, { claude: false, codex: true })) {\n",
+                "  if (false as boolean) {\n",
             )
         ],
     ),

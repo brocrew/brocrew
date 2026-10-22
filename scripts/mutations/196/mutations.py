@@ -161,15 +161,17 @@ MUTATIONS = [
         "M16 · ⛔ M4 · a codex-labelled Fake publishes Claude's card again, so 55 construction "
         "sites go on certifying Claude behaviour under a Codex name",
         FAKE,
-        "  return provider === 'codex' ? CODEX_OFFER : OPAQUE_OFFER",
-        "  return OPAQUE_OFFER",
+        # ⚑ **provider selection refactor · re-anchored in place, not retired** — The card choice is now an exhaustive selection; publish the opaque offer for both providers as before.
+        "  return providerValue(provider, { claude: OPAQUE_OFFER, codex: CODEX_OFFER })\n",
+        "  return OPAQUE_OFFER\n",
     ),
     (
         "M17 · ⛔ M4 · the standing grant is Claude's for both, so the codex Fake offers "
         "`allow_for_session` and then asks again — 182 H4 with a new label",
         FAKE,
-        "  return provider === 'codex' ? 'allow_for_session' : 'allow_all_for_session'",
-        "  return 'allow_all_for_session'",
+        # ⚑ **provider selection refactor · re-anchored in place, not retired** — The standing-grant choice is now exhaustive; return the Claude outcome for both providers as before.
+        "  return providerValue(provider, { claude: 'allow_all_for_session', codex: 'allow_for_session' })\n",
+        "  return 'allow_all_for_session'\n",
     ),
     (
         "M18 · ⛔ M4 · both providers return one catalogue again, so a host that hands Codex's menu "

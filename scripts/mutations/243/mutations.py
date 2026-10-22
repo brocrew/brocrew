@@ -226,8 +226,9 @@ MUTATIONS = [
         [
             (
                 HOMES,
-                "    reprovision(provider, profileId) {\n      if (provider === 'claude') throw claudeRefusal('re-copy')",
-                "    async reprovision(provider, profileId) {\n      if (provider === 'claude') throw claudeRefusal('re-copy')",
+                # ⚑ **provider selection refactor · re-anchored in place, not retired** — The synchronous refusal uses an exhaustive selector; making the method async still turns both refusals into rejected promises.
+                "    reprovision(provider, profileId) {\n      if (providerValue(provider, { claude: true, codex: false })) throw claudeRefusal('re-copy')\n",
+                "    async reprovision(provider, profileId) {\n      if (providerValue(provider, { claude: true, codex: false })) throw claudeRefusal('re-copy')\n",
             )
         ],
     ),
