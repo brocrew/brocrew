@@ -188,8 +188,10 @@ export async function servePersonPluginControl(options: {
           await options.controller.install(handle, request.pluginId, request.operationId)
           return true
         case 'uninstall':
-          await options.controller.uninstall(handle, request.pluginId, request.operationId)
-          return true
+          return (
+            (await options.controller.uninstall(handle, request.pluginId, request.operationId)) ??
+            true
+          )
         case 'screen': {
           const screen = options.controller.screen(handle, request.pluginId)
           return screen.installation

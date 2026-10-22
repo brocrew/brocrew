@@ -10,6 +10,8 @@ import {
   PLUGIN_SETTINGS_CHANNEL,
   PLUGIN_SCREEN_CLOSED,
   PLUGIN_STATES,
+  pluginRemovalOutcome,
+  type PluginRemovalOutcome,
   type PluginCard,
   type PluginScreenBounds,
   type PluginSettingsReply,
@@ -25,7 +27,7 @@ export interface PluginSettingsController {
   /** Reattach person control only; no install or removal. */
   retry?(id: string): Promise<PluginCard[]>
   install(id: string): Promise<void>
-  uninstall(id: string): Promise<void>
+  uninstall(id: string): Promise<PluginRemovalOutcome | void>
   screen(id: string): Promise<PluginUiHostOptions>
 }
 /** A refusal's step and error code as closed words, never its message, which may name a path. */
@@ -109,6 +111,7 @@ export function registerPluginSettings(
               'installedVersion',
               'updateVersion',
               'uninstallDeletesData',
+              'hasRemoteLogout',
             ].includes(key),
           ) &&
           (card.priorityClamped === undefined ||
@@ -126,6 +129,7 @@ export function registerPluginSettings(
             (card.installed === true && card.installedVersion !== undefined)) &&
           (card.uninstallDeletesData === undefined ||
             typeof card.uninstallDeletesData === 'boolean') &&
+          (card.hasRemoteLogout === undefined || typeof card.hasRemoteLogout === 'boolean') &&
           /^[a-z][a-z0-9-]{0,63}$/.test(card.id) &&
           typeof card.name === 'string' &&
           card.name.length > 0 &&
@@ -233,7 +237,7 @@ export function registerPluginSettings(
           return cards.some((card) => card.id === id) ? { ok: true, cards } : refused
         }
         if (input.kind === 'uninstall') {
-          let removing: Promise<void>
+          let removing: Promise<PluginRemovalOutcome | void>
           try {
             removing = controller.uninstall(input.id)
           } catch {
@@ -242,7 +246,12 @@ export function registerPluginSettings(
           const closing = close(owner) // Invalidates the generation synchronously; neither failure skips the other.
           const result = await Promise.allSettled([removing, closing])
           if (result.some((one) => one.status !== 'fulfilled')) return refused
-          return { ok: true, cards: await catalogue() }
+          const removed = result[0]
+          if (!removed || removed.status !== 'fulfilled') return refused
+          const removal =
+            removed.value === undefined ? undefined : pluginRemovalOutcome(removed.value)
+          if (removal === null) return refused
+          return { ok: true, cards: await catalogue(), ...(removal ? { removal } : {}) }
         }
         const admittedGeneration = state.generation
         const card = (await catalogue()).find((card) => card.id === input.id)
