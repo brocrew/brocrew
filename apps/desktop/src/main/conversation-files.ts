@@ -2,7 +2,7 @@ import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync } from '
 import { rm } from 'node:fs/promises'
 import { basename, dirname, join, resolve, sep } from 'node:path'
 import { claudeAutoMemoryDir, claudeTranscriptPath } from '@brobot2/runtime'
-import type { Provider } from '@brobot2/shared'
+import { providerValue, type Provider } from '@brobot2/shared'
 import {
   isTheProvidersRecord,
   newestStateDatabase,
@@ -54,10 +54,12 @@ export function providerFilesOf(
     if (found !== null) files.set(path, found)
   }
   const ids = sessions.map(({ sessionId }) => sessionId).filter(isOneSegment)
-  const rollouts = provider === 'codex' ? codexRolloutsOf(home, ids) : new Map<string, string>()
+  const rollouts = providerValue(provider, { claude: false, codex: true })
+    ? codexRolloutsOf(home, ids)
+    : new Map<string, string>()
   for (const { sessionId, cwd } of sessions) {
     if (!isOneSegment(sessionId)) continue
-    if (provider === 'claude') {
+    if (providerValue(provider, { claude: true, codex: false })) {
       const transcript = claudeTranscriptPath(sessionId, cwd, home)
       if (transcript !== null && isTheProvidersRecord('claude', home, transcript)) {
         add(transcript)
@@ -106,7 +108,7 @@ export function memoryNotesOf(
   home: string,
   sessions: readonly ProviderSessionOf[],
 ): MemoryNote[] {
-  if (provider !== 'claude') return []
+  if (providerValue(provider, { claude: false, codex: true })) return []
   const ids = new Set(sessions.map(({ sessionId }) => sessionId))
   const folder = claudeAutoMemoryDir(home)
   let names: string[]

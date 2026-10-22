@@ -2,7 +2,7 @@ import { closeSync, existsSync, openSync, readSync, readdirSync, statSync } from
 import { StringDecoder } from 'node:string_decoder'
 import { basename, join } from 'node:path'
 import { claudeProjectDirName } from '@brobot2/runtime'
-import type { Provider } from '@brobot2/shared'
+import { providerValue, type Provider } from '@brobot2/shared'
 import { readProviderDatabase } from '../archive/native-file'
 
 /**
@@ -126,7 +126,7 @@ function merge(...parts: Discovery[]): Discovery {
 /** Everything discoverable in one provider home. */
 export function discoverSessionsIn(provider: Provider, home: string, profileId: string): Discovery {
   if (!existsSync(home)) return EMPTY
-  return provider === 'claude'
+  return providerValue(provider, { claude: true, codex: false })
     ? discoverClaudeSessions(home, profileId)
     : discoverCodexSessions(home, profileId)
 }

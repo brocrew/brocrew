@@ -9,7 +9,7 @@ import {
 } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import type { SessionRef } from '@brobot2/runtime'
-import type { Provider, SessionStatus } from '@brobot2/shared'
+import { providerValue, type Provider, type SessionStatus } from '@brobot2/shared'
 import { localFields } from '../../shared/local-time'
 import type { TranscriptEvent } from '../../shared/runtime-ipc'
 import { CLAUDE_JSONL, CODEX_ROLLOUT_JSONL, readLines } from './native-file'
@@ -120,7 +120,7 @@ export function nativeExportPath(
   /** The provider's own file for this conversation, in the home it ran in. */
   recordedAt: string,
 ): string {
-  if (provider === 'claude') {
+  if (providerValue(provider, { claude: true, codex: false })) {
     return join(targetHome, 'projects', basename(dirname(recordedAt)), `${ref.sessionId}.jsonl`)
   }
   const when = localFields(startedAt)
@@ -154,7 +154,7 @@ export function nativeExportSupport(provider: Provider): {
   resumable: boolean
   note: string
 } {
-  return provider === 'claude'
+  return providerValue(provider, { claude: true, codex: false })
     ? {
         format: CLAUDE_JSONL,
         resumable: true,

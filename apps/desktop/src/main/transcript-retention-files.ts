@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { setImmediate } from 'node:timers/promises'
 import { basename, dirname, join, relative, resolve, sep } from 'node:path'
 import type { BigIntStats } from 'node:fs'
-import type { Provider } from '@brobot2/shared'
+import { providerValue, type Provider } from '@brobot2/shared'
 import type { TranscriptRetention } from '../shared/transcript-retention'
 import { PROVIDER_HOMES_DIRNAME } from './runtime/provider-homes'
 
@@ -164,7 +164,7 @@ async function* scannedFiles(
             compareScanKeys(key, after) > 0 && (before === '' || compareScanKeys(key, before) <= 0)
           )
         }
-        if (provider === 'claude') {
+        if (providerValue(provider, { claude: true, codex: false })) {
           for await (const project of scanChildren(join(home, 'projects'))) {
             if (!(await plainDirectory(project))) continue
             for await (const file of scanChildren(project)) {

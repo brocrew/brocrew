@@ -16,7 +16,7 @@ import { basename, join, resolve, sep } from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
 import Database from 'better-sqlite3'
 import { claudeTranscriptPath, type SessionRef } from '@brobot2/runtime'
-import type { Provider } from '@brobot2/shared'
+import { providerValue, type Provider } from '@brobot2/shared'
 
 /**
  * Where a provider keeps its own record of a session, and how to read it a line at a time.
@@ -44,10 +44,9 @@ export function nativeTranscriptPath(
   providerHome: string,
   ref: SessionRef,
 ): string | null {
-  const path =
-    provider === 'claude'
-      ? claudeTranscriptPath(ref.sessionId, ref.cwd, providerHome)
-      : codexRolloutPath(providerHome, ref.sessionId)
+  const path = providerValue(provider, { claude: true, codex: false })
+    ? claudeTranscriptPath(ref.sessionId, ref.cwd, providerHome)
+    : codexRolloutPath(providerHome, ref.sessionId)
   return path !== null && existsSync(path) ? path : null
 }
 
@@ -69,7 +68,8 @@ export function isTheProvidersRecord(provider: Provider, home: string, path: str
   }
   const resolved = real(path)
   const under = (folder: string): boolean => resolved.startsWith(join(real(home), folder) + sep)
-  if (provider === 'claude') return under('projects') && resolved.endsWith('.jsonl')
+  if (providerValue(provider, { claude: true, codex: false }))
+    return under('projects') && resolved.endsWith('.jsonl')
   return (
     (under('sessions') || under('archived_sessions')) &&
     /^rollout-.*\.jsonl$/.test(basename(resolved))
