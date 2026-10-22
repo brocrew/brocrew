@@ -75,6 +75,7 @@ export async function servePersonPluginControl(options: {
       attaching: boolean
       lost: boolean
       failed: boolean
+      legacyIds?: readonly string[]
       detaching?: Promise<void>
     }>()
   let closing = false
@@ -115,12 +116,18 @@ export async function servePersonPluginControl(options: {
       if (request.kind === 'attach') {
         if (session.handle || session.attaching || session.lost || session.failed)
           throw new PluginSupervisorError('unavailable')
-        // Older windows may retain a previous list. Only refresh changes the owner's admitted list.
+        // Snapshot actual source provenance, never today's IDs or caller-supplied metadata.
+        session.legacyIds =
+          request.catalogueDigest === undefined
+            ? undefined
+            : options.controller.legacyCatalogueIds(request.catalogueDigest)
         clearTimeout(authentication)
         session.attaching = true
         // A closed channel was this consumer's only route to its plugins, so the consumer ended
         // with it: every notice to it holds, and a lost session detaches without its answer.
         const tell = async (command: z.infer<typeof ConsumerCommand>): Promise<unknown> => {
+          const id = command.kind === 'reconcile' ? command.change.pluginId : command.pluginId
+          if (session.legacyIds && !session.legacyIds.includes(id)) return true
           if (!channel.open) return true
           try {
             return await channel.call(command)
@@ -165,19 +172,27 @@ export async function servePersonPluginControl(options: {
       }
       if (!session.handle || session.failed) throw new PluginSupervisorError('unavailable')
       const handle = session.handle
+      if (
+        'pluginId' in request &&
+        session.legacyIds &&
+        !session.legacyIds.includes(request.pluginId)
+      )
+        throw new PluginSupervisorError('incompatible')
+      const visible = (id: string) => !session.legacyIds || session.legacyIds.includes(id)
       switch (request.kind) {
         case 'list':
-          return (await options.controller.status()).cards.map(
-            ({ id, name, state, installed, priorityClamped }) => ({
+          if (!session.legacyIds) throw new PluginSupervisorError('incompatible')
+          return (await options.controller.status()).cards
+            .filter((card) => visible(card.id))
+            .map(({ id, name, state, installed, priorityClamped }) => ({
               id,
               name,
               state,
               installed,
               ...(priorityClamped !== undefined ? { priorityClamped } : {}),
-            }),
-          )
+            }))
         case 'list-v2':
-          return (await options.controller.status()).cards
+          return (await options.controller.status()).cards.filter((card) => visible(card.id))
         case 'refresh':
           await options.controller.refreshCatalogue(request.catalogueDigest)
           return true
@@ -188,8 +203,10 @@ export async function servePersonPluginControl(options: {
           await options.controller.install(handle, request.pluginId, request.operationId)
           return true
         case 'uninstall':
-          await options.controller.uninstall(handle, request.pluginId, request.operationId)
-          return true
+          return (
+            (await options.controller.uninstall(handle, request.pluginId, request.operationId)) ??
+            true
+          )
         case 'screen': {
           const screen = options.controller.screen(handle, request.pluginId)
           return screen.installation
@@ -236,6 +253,7 @@ export async function servePersonPluginControl(options: {
       attaching: boolean
       lost: boolean
       failed: boolean
+      legacyIds?: readonly string[]
       detaching?: Promise<void>
     }
 
@@ -271,8 +289,10 @@ export async function servePersonPluginControl(options: {
   })
   return {
     path,
-    async close(): Promise<void> {
+    async close(options: { endConsumers?: boolean } = {}): Promise<void> {
       closing = true
+      // Ending the only person route also ends its consumer's authority when grace expires.
+      if (options.endConsumers) for (const channel of channels) channel.close()
       await Promise.allSettled([...sessions].map(detach))
       for (const channel of channels) channel.close()
       await Promise.all([...channels].map((channel) => channel.settled()))

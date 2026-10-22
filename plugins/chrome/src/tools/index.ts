@@ -845,7 +845,8 @@ export function buildToolDefs(): ToolDef[] {
         const { value, notes } = await onTab(deps, a.tabId as string, async ({ tab, page }) => {
           const loc = target === undefined ? locate(tab, page, a.ref as string) : null
           if (target !== undefined) tab.refs = null
-          return deps.browser.captureDownloads(tab.profile, page, async () => {
+          let savedFile: string | undefined
+          const save = async () => {
             const startedAt = Date.now()
             const [download] = await Promise.all([
               page.waitForEvent('download', { timeout: ms }),
@@ -864,8 +865,11 @@ export function buildToolDefs(): ToolDef[] {
                     }),
             ])
             dropPending(tab, download)
-            return saveDownload(deps, download, ms, startedAt)
-          })
+            return saveDownload(deps, download, ms, startedAt, (file) => {
+              savedFile = file
+            })
+          }
+          return deps.browser.captureDownloads(tab.profile, page, save, () => savedFile)
         })
         return withNotes(value, notes)
       },
@@ -874,7 +878,7 @@ export function buildToolDefs(): ToolDef[] {
       spec: {
         name: 'wait_for_download',
         description:
-          'Save the next download this tab starts WITHOUT a click on a ref (a script or a navigation started it). In headless mode, start this wait before the action (or in parallel): downloads outside an active call are denied, and a denied download cannot be recovered afterwards. For a click or navigation, use download with ref or url to arm capture and trigger the action in one call. In a visible window, an unclaimed download from the last 60 s also counts. Saved like download; returns the path. In a visible window a download that began BEFORE this call was already saved by Chrome in the private plugin downloads folder: the result then has savedBy:"chrome" and that file\'s path (call this tool first, or in parallel, to get a copy under the agent downloads folder). In a visible window only this tab\'s first download during the wait is taken (downloads in other tabs go to the private plugin downloads folder as usual); one the user starts in this same tab during the wait may be the one taken. Max 200 MB.',
+          'Wait for and save a download this tab starts independently, from a page timer or script, or from a user in a visible window. For an agent-triggered click or navigation, use download with ref or url to arm capture and trigger the action in one call. Only one tool call runs at a time: another tool cannot trigger the download while this wait is active. In headless mode, start the wait before the timer fires; downloads outside an active call are denied and cannot be recovered afterwards. In a visible window, an unclaimed download from the last 60 s also counts. Saved like download; returns the path. A visible-window download that began before this call was already saved by Chrome in the private plugin downloads folder: the result then has savedBy:"chrome" and that file\'s path. Start the wait before an independent event to get a copy under the agent downloads folder. In a visible window only this tab\'s first download during the wait is taken (downloads in other tabs go to the private plugin downloads folder as usual); one the user starts in this same tab during the wait may be the one taken. Max 200 MB.',
         props: { tabId, timeoutMs },
         required: ['tabId'],
       },
@@ -890,16 +894,20 @@ export function buildToolDefs(): ToolDef[] {
         // must not immediately consume the newly armed wait and hide its trigger.
         const waiting = headless ? undefined : tab.pendingDownloads.shift()
         if (headless) tab.pendingDownloads = []
+        let savedFile: string | undefined
+        const save = async () => {
+          const startedAt = waiting?.at ?? Date.now()
+          const download =
+            waiting?.download ?? (await tab.page.waitForEvent('download', { timeout: ms }))
+          dropPending(tab, download)
+          return deps.browser.operate(tab.profile, () =>
+            saveDownload(deps, download, ms, startedAt, (file) => {
+              savedFile = file
+            }),
+          )
+        }
         return {
-          json: await deps.browser.captureDownloads(tab.profile, tab.page, async () => {
-            const startedAt = waiting?.at ?? Date.now()
-            const download =
-              waiting?.download ?? (await tab.page.waitForEvent('download', { timeout: ms }))
-            dropPending(tab, download)
-            return deps.browser.operate(tab.profile, () =>
-              saveDownload(deps, download, ms, startedAt),
-            )
-          }),
+          json: await deps.browser.captureDownloads(tab.profile, tab.page, save, () => savedFile),
         }
       },
     },
@@ -1191,6 +1199,7 @@ async function saveDownload(
   download: Download,
   ms: number,
   startedAt: number,
+  savedFile?: (file: string) => void,
 ): Promise<Record<string, unknown>> {
   let tmp: string | null
   try {
@@ -1224,6 +1233,7 @@ async function saveDownload(
       fs.rmSync(target, { force: true })
       throw e instanceof DownloadTooLarge ? tooLarge : e
     }
+    savedFile?.(tmp)
     return { path: target, bytes }
   } finally {
     await download.delete().catch(() => undefined)

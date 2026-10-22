@@ -347,3 +347,27 @@ it('a page list refreshes the source; update uses its own door and closes config
   expect((await f.call({ kind: 'update', id: 'chrome' })).ok).toBe(false)
   expect(f.controller.update).toHaveBeenCalledOnce()
 })
+
+it('keeps only closed local and remote removal facts after uninstall', async () => {
+  const f = setup()
+  vi.mocked(f.controller.uninstall).mockResolvedValueOnce({
+    data: 'deleted',
+    logout: 'unconfirmed',
+  } as never)
+  expect(await f.call({ kind: 'uninstall', id: 'whatsapp' })).toMatchObject({
+    ok: true,
+    removal: { data: 'deleted', logout: 'unconfirmed' },
+  })
+})
+
+it('refuses malformed removal facts without forwarding private reply bytes', async () => {
+  const f = setup()
+  vi.mocked(f.controller.uninstall).mockResolvedValueOnce({
+    data: 'deleted',
+    logout: 'confirmed',
+    diagnostic: 'fictional-private-diagnostic',
+  } as never)
+  const answer = await f.call({ kind: 'uninstall', id: 'whatsapp' })
+  expect(answer).toEqual({ ok: false, error: 'Plugin unavailable. Try again.' })
+  expect(JSON.stringify(answer)).not.toContain('fictional-private-diagnostic')
+})

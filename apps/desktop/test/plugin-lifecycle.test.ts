@@ -133,7 +133,9 @@ describe.skipIf(process.platform === 'win32')(
       )
       await f.controller.uninstall(f.handle, 'whatsapp')
       expect(shown(f.events)).toEqual([
+        'log-out /status',
         'log-out /uninstall',
+        'log-out /status',
         'stop',
         'remove-code',
         'remove-data whatsapp',
@@ -613,7 +615,7 @@ describe.skipIf(process.platform === 'win32')(
         await expect(
           second.call({ kind: 'uninstall', pluginId: 'chrome', operationId: randomUUID() }),
         ).resolves.toBe(true)
-        expect(await second.call({ kind: 'list' })).toMatchObject([{ state: 'Available' }])
+        expect(await second.call({ kind: 'list-v2' })).toMatchObject([{ state: 'Available' }])
       } finally {
         second.close()
       }
