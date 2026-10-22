@@ -1,3 +1,5 @@
+> This is the legacy format-1 release procedure for Chrome 0.1.2. Do not run it for Chrome 0.1.3 or later. Author-bearing packages use the dispatch-only `plugin-archive-dry-run.yml` workflow and the canonical source pin in `scripts/build-plugin-release.mjs`. The old `scripts/chrome-release.mjs`, packaged release gate and Windows plugin gates wrap entries in a format-1 catalogue and are superseded for author-bearing archives. Verify the real archives with a format-2 catalogue before publishing their rows.
+
 # Chrome release paths
 
 The active production design is the unsigned repository list described in [plugin-production.md](contracts/plugin-production.md). `scripts/export-chrome-plugin.mjs` prepares the standalone Chrome repository and its private release workflow. Users install from Settings → Plugins; there is no signing-key or terminal step. The older builder and signing recipe below remain dormant tooling for this train.
