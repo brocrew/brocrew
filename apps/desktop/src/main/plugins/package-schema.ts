@@ -272,6 +272,11 @@ export function parsePluginCatalogue(bytes: Uint8Array): PluginRelease[] {
     .union([catalogue, versionedCatalogue])
     .safeParse(strictPluginJson(bytes, PLUGIN_LIMITS.catalogueBytes))
   if (!parsed.success) refusePlugin('invalid')
+  if (
+    parsed.data.format === 2 &&
+    parsed.data.entries.some((entry) => entry.legacy === undefined && entry.authors === undefined)
+  )
+    refusePlugin('invalid')
   const entries = parsed.data.entries
   unique(entries.map((value) => `${value.id}/${value.version}`))
   for (const entry of entries) targets(entry.platforms)
