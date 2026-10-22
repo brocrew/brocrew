@@ -37,7 +37,7 @@ import {
   type ReprovisionOutcome,
   type TransportFactory,
 } from '@brobot2/runtime'
-import type { Provider } from '@brobot2/shared'
+import { providerValue, type Provider } from '@brobot2/shared'
 import { ApiKeyUnreadableError } from './api-keys'
 import {
   DEFAULT_PROFILE_ID,
@@ -496,7 +496,7 @@ export async function prepareProviderHome(
 ): Promise<string> {
   const home = deriveProviderHome(userData, identity)
   await (seams.provisionHome ?? provisionProviderHome)(providerHomesRoot(userData), home)
-  if (identity.provider === 'codex') {
+  if (providerValue(identity.provider, { claude: false, codex: true })) {
     // ⛔ **160's migration runs HERE too, and not only on the launch path** (188 §1, from 168 L2).
     // The adapter clears a stale 157 `config.toml` on `start` and `resume`, which reaches every home
     // that is relaunched — and no home that is not. A profile the user only ever ADOPTED sessions
@@ -632,7 +632,7 @@ export function createProviderRuntime(
   provider: Provider,
   seams: ProviderRuntimeSeams,
 ): AgentRuntime {
-  return provider === 'claude'
+  return providerValue(provider, { claude: true, codex: false })
     ? // Readers of one credential, none blocking the main process: a launch's, which a machine
       // that ran short still throws from, and the turn gate's, which never throws. The blocking
       // one is only the adapter's fallback.
@@ -849,7 +849,7 @@ export function createProviderAuthOps(
       return deriveProviderHome(userData, { profileId, provider })
     },
     async check(provider, profileId, signal) {
-      if (provider === 'claude') {
+      if (providerValue(provider, { claude: true, codex: false })) {
         // Claude's credential is the machine's, so "absent" is the only not-ok this can be: there is
         // no copy here that could have gone stale. Saying `stale` would invite a re-copy button for
         // a file that does not exist. ⚑ A saved key is what runs, else the login's own facts — its
@@ -895,7 +895,7 @@ export function createProviderAuthOps(
     // would turn them into rejections a caller has to `await` to see. The provisioning that follows
     // is the only part that was ever asynchronous, so it is the only part that returns a promise.
     reprovision(provider, profileId) {
-      if (provider === 'claude') throw claudeRefusal('re-copy')
+      if (providerValue(provider, { claude: true, codex: false })) throw claudeRefusal('re-copy')
       refuseWhileAKeyIsSaved()
       const home = homePathFor(provider, profileId)
       return provisionProviderHome(providerHomesRoot(userData), home).then(() =>
@@ -903,7 +903,7 @@ export function createProviderAuthOps(
       )
     },
     async signIn(provider, profileId, signal) {
-      if (provider === 'claude') throw claudeRefusal('sign in')
+      if (providerValue(provider, { claude: true, codex: false })) throw claudeRefusal('sign in')
       refuseWhileAKeyIsSaved()
       const providerHome = await homeFor(provider, profileId)
       const { login, start } = await startCodexLogin(
@@ -919,7 +919,7 @@ export function createProviderAuthOps(
       }
     },
     async replaceARefusedCopy(provider, profileId, refused, stillWanted) {
-      if (provider !== 'codex') return 'not-tried'
+      if (providerValue(provider, { claude: true, codex: false })) return 'not-tried'
       try {
         refuseWhileAKeyIsSaved()
       } catch {
@@ -943,7 +943,8 @@ export function createProviderAuthOps(
     },
     async bringTheKeyToItsHomes(provider) {
       const codexKey = seams.codexKey
-      if (provider !== 'codex' || codexKey === undefined) return null
+      if (providerValue(provider, { claude: true, codex: false }) || codexKey === undefined)
+        return null
       // ⚑ Every Codex home this app has laid down, one at a time — never one it has not.
       const homes = listProfileIds(userData)
         .map((profileId) => deriveProviderHome(userData, { profileId, provider }))

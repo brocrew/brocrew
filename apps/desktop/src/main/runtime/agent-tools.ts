@@ -249,7 +249,7 @@ import {
 } from '../../shared/piece-called'
 // ⚑ **D-024 · R3 — when each file was made**, in the clock every agent-facing time is said in.
 import { clockTime, clockTimeFrom } from '../../shared/clock'
-import { providerSchema, type Provider } from '@brobot2/shared'
+import { providerValue, providerSchema, type Provider } from '@brobot2/shared'
 import type { ToolsToldInText } from './factory-text'
 import { EVERY_AGENT_THIS_APP_HOLDS } from '../../shared/capabilities'
 import {
@@ -379,7 +379,7 @@ export const AGENT_TOOL_INSTRUCTIONS =
  * prompt the product does not send.
  */
 export function toolsToldInTextFor(provider: Provider): ToolsToldInText | undefined {
-  return provider === 'codex'
+  return providerValue(provider, { claude: false, codex: true })
     ? { server: AGENT_TOOL_SERVER, instructions: AGENT_TOOL_INSTRUCTIONS }
     : undefined
 }
@@ -3278,9 +3278,7 @@ export function aStartItsLoginOrSettingsRefused(
         ? 'no-sign-in-to-copy'
         : what === 'settings'
           ? 'codex-settings'
-          : provider === 'claude'
-            ? 'claude-sign-in'
-            : 'codex-sign-in'
+          : providerValue(provider, { claude: 'claude-sign-in', codex: 'codex-sign-in' })
     ]
   const nothing =
     door === 'give'
@@ -4374,13 +4372,13 @@ function whereItWent(
  * turn had not ended within the wait, so what it did end is not known yet.
  */
 function theRuleOfAStopForWords(provider: Provider | undefined, called: string): string {
-  if (provider === 'claude') {
-    return `The command that turn is waiting on ends with it, and anything ${called} sent to the background keeps running.`
+  if (provider === undefined) {
+    return 'On Claude, the command that turn is waiting on ends with it, and work it sent to the background keeps running; on Codex, the command that turn ran last ends with it unless it has used another tool since, and its other commands keep running.'
   }
-  if (provider === 'codex') {
-    return `The command ${called} ran last in that turn ends with it unless it has used another tool since, and its other commands keep running.`
-  }
-  return 'On Claude, the command that turn is waiting on ends with it, and work it sent to the background keeps running; on Codex, the command that turn ran last ends with it unless it has used another tool since, and its other commands keep running.'
+  return providerValue(provider, {
+    claude: `The command that turn is waiting on ends with it, and anything ${called} sent to the background keeps running.`,
+    codex: `The command ${called} ran last in that turn ends with it unless it has used another tool since, and its other commands keep running.`,
+  })
 }
 
 /**

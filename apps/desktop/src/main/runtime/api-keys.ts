@@ -1,5 +1,5 @@
 import { claudeCredentialsFileReader, parseClaudeOAuthToken } from '@brobot2/runtime'
-import type { Provider } from '@brobot2/shared'
+import { providerValue, type Provider } from '@brobot2/shared'
 import type { ApiKeyCheck, ApiKeyStatus } from '../../shared/runtime-ipc'
 import type { SessionStore } from '../db/session-store'
 
@@ -310,7 +310,7 @@ export function aLoginRunsWithoutAKey(
   platform: NodeJS.Platform = process.platform,
   readClaudeLogin: () => string | null = () => claudeCredentialsFileReader()(),
 ): boolean {
-  if (provider === 'codex' || platform !== 'win32') return true
+  if (providerValue(provider, { claude: false, codex: true }) || platform !== 'win32') return true
   try {
     return parseClaudeOAuthToken(readClaudeLogin(), 0) !== null
   } catch {
@@ -390,10 +390,9 @@ export async function askTheProvider(
   fetchFor: typeof fetch = fetch,
 ): Promise<ApiKeyCheck> {
   const issuer = KEY_ISSUER[provider]
-  const headers: Record<string, string> =
-    provider === 'claude'
-      ? { 'x-api-key': key, 'anthropic-version': '2023-06-01' }
-      : { authorization: `Bearer ${key}` }
+  const headers: Record<string, string> = providerValue(provider, { claude: true, codex: false })
+    ? { 'x-api-key': key, 'anthropic-version': '2023-06-01' }
+    : { authorization: `Bearer ${key}` }
   const unreachable: ApiKeyCheck = {
     ok: false,
     reason: `BroCrew could not reach ${issuer} to check the key. Check this computer’s connection and try again.`,
