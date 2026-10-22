@@ -312,7 +312,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "M15 · 🔴 the sheet draws a hardcoded field list instead of the schema · HO-008 §3's whole "
         "reason for ruling P0b in — *then `can_interrupt` appears when P3 lands without a second "
         "pass* — and the dispatch that follows this one becomes a rework of it",
-        [(SHEET, '        v-for="field in fields"', '        v-for="field in CAPABILITY_FIELDS"')],
+        [(SHEET, '        v-for="field in visibleFields"', '        v-for="field in CAPABILITY_FIELDS"')],
     ),
     (
         "M15b · 🔴 the grant goes on the wire as the REACTIVE object the sheet edits · "

@@ -674,6 +674,7 @@ export const TOOL_NAMES = [
   ...THEME_TOOL_NAMES,
   'search_past_work',
   'read_agent_rules',
+  'write_agent_rules',
 ] as const
 
 export type ToolName = (typeof TOOL_NAMES)[number]
@@ -4820,8 +4821,23 @@ export interface AgentToolHost {
    * a gate an agent can open, and `HO-009` §2.2 says *approval writes it*.
    */
   readAgentRules: RuntimeHost['readAgentRules']
+  writeAgentRules: RuntimeHost['writeAgentRules']
   proposeAgentRules: RuntimeHost['proposeAgentRules']
 }
+
+const rulesWriteQuery = z
+  .object({
+    agent: z.string().refine(isPathSegment, PATH_SEGMENT_RULE),
+    current_version: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    current_rules: z.string().max(OWN_INSTRUCTIONS_CHARS),
+    rules: z.string().max(OWN_INSTRUCTIONS_CHARS),
+    why: z
+      .string()
+      .min(1)
+      .max(OWN_INSTRUCTIONS_CHARS)
+      .refine((value) => value.trim().length > 0, 'Say why the rules should change.'),
+  })
+  .strict()
 
 /**
  * ⛔ **What a line says about a conversation this app cannot attribute** (610) — a constant,
@@ -9982,6 +9998,59 @@ export function agentToolsFor(
             const outcome = host.readAgentRules(me, agent, by)
             if (!outcome.ok) return refusalAnswer(refuseTool(outcome.rail, outcome.detail))
             return answer({ outcome: 'ok', ...outcome.result }, JSON.stringify(outcome.result))
+          }),
+      },
+      {
+        name: 'write_agent_rules' as const,
+        description:
+          "Save another agent's complete standing rules. Only the person's own BroBot conversation may do this; helper conversations and self-targets are refused. First read_agent_rules, then supply its exact version and full text, the complete replacement, and why. The host refuses a stale baseline. The saved version names its author and reason, applies from that agent's next start, and the person can undo it.",
+        input: {
+          agent: rulesWriteQuery.shape.agent.describe(
+            'The profile name of the agent whose standing rules to replace.',
+          ),
+          current_version: rulesWriteQuery.shape.current_version.describe(
+            'The current version returned by read_agent_rules. Zero means no rules have been saved.',
+          ),
+          current_rules: rulesWriteQuery.shape.current_rules.describe(
+            'The complete current text returned by read_agent_rules. Use empty text when no rules have been saved.',
+          ),
+          rules: rulesWriteQuery.shape.rules.describe(
+            `The complete replacement rules, at most ${OWN_INSTRUCTIONS_CHARS} characters. Empty text saves an empty version.`,
+          ),
+          why: rulesWriteQuery.shape.why.describe(
+            'Why these rules should replace the current version. This reason is kept with the saved version.',
+          ),
+        },
+        beyondItsRails: 'nothing-its-rails-do-not-cover' as const,
+        call: (args: Record<string, unknown>) =>
+          guarded(async () => {
+            const input = rulesWriteQuery.safeParse(args)
+            if (!input.success)
+              return refusalAnswer(
+                refuseTool('malformed-request', {
+                  problems: input.error.issues.map(
+                    (issue) => `${issue.path.join('.')}: ${issue.message}`,
+                  ),
+                }),
+              )
+            const value = input.data
+            const outcome = host.writeAgentRules(
+              me,
+              {
+                about: value.agent,
+                expectedVersion: value.current_version,
+                currentText: value.current_rules,
+                text: value.rules,
+                why: value.why,
+              },
+              by,
+            )
+            if (!outcome.ok) return refusalAnswer(refuseTool(outcome.rail, outcome.detail))
+            const receipt = outcome.result
+            return answer(
+              { outcome: 'ok', ...receipt },
+              `Saved rules for ${receipt.profile} as version ${receipt.version}. ${receipt.author.name} wrote this, replacing version ${receipt.previousVersion}. A person can see and undo it under Agent knowledge.`,
+            )
           }),
       },
     ].map(recordsWhatItRefused),

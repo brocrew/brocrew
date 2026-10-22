@@ -39,6 +39,10 @@ interface Answers {
 
 let answers: Answers
 
+// The approved words are a UI contract, independent of the production constant.
+const RULE_WRITING_POLICY =
+  "You can read any agent's standing rules and propose a replacement; the person decides. A BroBot conversation the person started may also save one directly, but never its own. Each version keeps its author and reason, and the person can undo it."
+
 const identity = (over: Partial<AgentIdentity> = {}): AgentIdentity => ({
   id: 'agp:default:pm',
   slug: 'pm',
@@ -152,12 +156,40 @@ describe('355 · the capabilities sheet', () => {
     unmountAll()
   })
 
-  describe('§1 · one control per capability, drawn from the schema', () => {
-    it('⚑ draws a control for every field the schema declares, and names none of them itself', async () => {
+  it.each(['none', 'propose', 'relay', null] as const)(
+    'preserves dormant rules value %s while another visible grant is saved',
+    async (held) => {
+      const one = identity()
+      answers.list = {
+        ...answers.list,
+        identities: [
+          identity({
+            capabilities: { ...one.capabilities, canWriteRules: held ?? 'none' },
+            chosen: { ...one.chosen, canWriteRules: held === null ? 'default' : 'chosen' },
+          }),
+        ],
+      }
       const { m } = await openSheet()
-      for (const field of CAPABILITY_FIELDS) {
+      expect(m.host.querySelector('[data-cy="capability-canWriteRules"]')).toBeNull()
+      const depth = m.q('capability-maxDepth-input') as HTMLInputElement
+      depth.value = '5'
+      depth.dispatchEvent(new Event('input'))
+      await nextTick()
+      m.q('capabilities-save').click()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(lastGrant().maxDepth).toBe(5)
+      expect(lastGrant().canWriteRules).toBe(held)
+    },
+  )
+
+  describe('§1 · one control per capability, drawn from the schema', () => {
+    it('draws every active schema field and keeps the dormant rules grant out of the editor', async () => {
+      const { m } = await openSheet()
+      for (const field of CAPABILITY_FIELDS.filter((one) => one.key !== 'canWriteRules')) {
         expect(shown(m.q(`capability-${field.key}`)), `${field.key} is not on screen`).toBe(true)
       }
+      expect(m.host.querySelector('[data-cy="capability-canWriteRules"]')).toBeNull()
+      expect(m.q('rules-fixed-policy').textContent).toBe(RULE_WRITING_POLICY)
       // ⛔ **EXACTLY the schema, and a `toBeGreaterThanOrEqual` over a PREFIX selector was neither**
       // (review): every control inside a field also matches `[data-cy^="capability-"]`, so the count
       // was a lower bound over a superset and a stray field could never have failed it. The field
@@ -166,7 +198,9 @@ describe('355 · the capabilities sheet', () => {
         /^capability-[A-Za-z]+$/.test(el.getAttribute('data-cy') ?? ''),
       )
       expect(roots.map((el) => el.getAttribute('data-cy'))).toEqual(
-        CAPABILITY_FIELDS.map((field) => `capability-${field.key}`),
+        CAPABILITY_FIELDS.filter((field) => field.key !== 'canWriteRules').map(
+          (field) => `capability-${field.key}`,
+        ),
       )
     })
 

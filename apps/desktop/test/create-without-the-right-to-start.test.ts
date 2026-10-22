@@ -246,7 +246,15 @@ describe('573 · the grant prose scopes its own claim', () => {
     )
     expect(said.slice(from)).toContain('- You may create agents and give them their initial rules.')
     expect(said.slice(from)).toContain(
+      "- You can read any agent's standing rules and propose a replacement; the person decides. " +
+        'A BroBot conversation the person started may also save one directly, but never its own. ' +
+        'Each version keeps its author and reason, and the person can undo it.',
+    )
+    expect(said.slice(from)).not.toContain(
       "- You may not change or propose other agents' standing rules.",
+    )
+    expect(said.slice(from)).not.toContain(
+      "- You may propose rules for approval, or save a person's rule for another agent when they gave it in this conversation.",
     )
   })
 })

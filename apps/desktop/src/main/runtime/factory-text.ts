@@ -3,7 +3,11 @@ import {
   PLUGINS_HEADING,
   type PluginInstructionEntry,
 } from '../plugins/instructions'
-import { type ConversationAtLaunch, type ProfileCapabilities } from '../../shared/capabilities'
+import {
+  RULE_WRITING_POLICY,
+  type ConversationAtLaunch,
+  type ProfileCapabilities,
+} from '../../shared/capabilities'
 import {
   providerDescriptor,
   DEFAULT_IDENTITY_PROVIDER,
@@ -468,13 +472,7 @@ function capabilityLines(allowed: ProfileCapabilities, at: ConversationAtLaunch)
     allowed.canCreateAgents === 'any'
       ? '- You may create agents and give them their initial rules.'
       : '- You may not create agents.',
-    {
-      none: "- You may not change or propose other agents' standing rules.",
-      propose:
-        "- You may propose other agents' standing rules; the person must approve before they are saved.",
-      relay:
-        "- You may propose rules for approval, or save a person's rule for another agent when they gave it in this conversation.",
-    }[allowed.canWriteRules],
+    `- ${RULE_WRITING_POLICY}`,
   ]
   const remaining = allowed.maxDepth - at.depth
   if (allowed.canAssignWork === 'any' && remaining <= 1) {

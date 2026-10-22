@@ -2,6 +2,7 @@
 import { computed, reactive, ref, watch } from 'vue'
 import {
   CAPABILITY_FIELDS,
+  RULE_WRITING_POLICY,
   MAX_CAPABILITY_COUNT,
   SPAWN_RAIL_MEANS,
   type AnyCapabilityField,
@@ -150,6 +151,8 @@ const props = withDefaults(
     capabilities: null,
   },
 )
+const visibleFields = computed(() => props.fields.filter((field) => field.key !== 'canWriteRules'))
+
 const emit = defineEmits<{
   close: []
   /**
@@ -863,6 +866,7 @@ function onKey(event: KeyboardEvent): void {
            ⚠️ **ABOVE the rails and outside them, because it is not one.** Nothing a person writes
            here refuses anything — it is text an agent reads, not a gate — and putting it under
            `spawn-rail-means` would make the header's *"every rail below"* false. -->
+      <p class="identity-note" data-cy="rules-fixed-policy">{{ RULE_WRITING_POLICY }}</p>
       <OwnInstructions :profile-slug="profileSlug" :store="props.store" />
 
       <!-- 🔴 **What granting any of this buys, and where it stops** (368, HO-012 §2).
@@ -899,7 +903,7 @@ function onKey(event: KeyboardEvent): void {
       </p>
 
       <div
-        v-for="field in fields"
+        v-for="field in visibleFields"
         :key="field.key"
         class="field capability"
         :data-cy="`capability-${field.key}`"

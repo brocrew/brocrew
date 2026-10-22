@@ -7,7 +7,7 @@ import TranscriptView from '../../src/renderer/src/components/TranscriptView.vue
 import { createAgentStore } from '../../src/renderer/src/lib/agent-store'
 import { REOPENING_SAYS, type AConversationToReopen } from '../../src/renderer/src/lib/reopening'
 import { applyEvent, createTranscript } from '../../src/renderer/src/lib/transcript'
-import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
+import { CAPABILITY_FIELDS, DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import {
   DEFAULT_PROFILE_ID,
   type AgentIdentities,
@@ -61,13 +61,16 @@ describe('§1 · F5 · the grant sheet says what a reopen does to THIS row’s d
       chosen: {},
     }) as unknown as AgentIdentity
 
-  /**
-   * ⚠️ **D-014 · re-aimed by field, not stripped.** The reopen offer is drawn under every grant that
-   * declares {@link CapabilityField.whenItTakesEffect}, and `canSpawn` — the one this row read — was
-   * deleted. ⚑ `canWriteRules` is the grant that declares one now; the sentence under test is the
-   * same `reopeningSays` either way.
-   */
-  const LAUNCH = 'canWriteRules'
+  // Synthetic schema fixture only: the dormant rules grant stays hidden.
+  // The generic offer still draws the same per-conversation draft and work-state sentences.
+  const LAUNCH = 'canFutureLaunch'
+  const launchField = {
+    ...CAPABILITY_FIELDS.find((field) => field.key === 'canWriteRules')!,
+    key: LAUNCH,
+    column: 'can_future_launch',
+    label: 'Synthetic launch-bound grant',
+    help: 'Fixture only. This is not a live grant.',
+  }
 
   const sheet = async (openAs: readonly AConversationToReopen[]): Promise<Mounted> => {
     const roster: AgentIdentities = {
@@ -84,7 +87,15 @@ describe('§1 · F5 · the grant sheet says what a reopen does to THIS row’s d
     await store.load()
     const m = mount(
       CapabilitiesSheet,
-      { profileSlug: 'pm', runsOn: 'claude', store, openAs, onReopen: () => {}, onClose: () => {} },
+      {
+        profileSlug: 'pm',
+        runsOn: 'claude',
+        store,
+        openAs,
+        fields: [...CAPABILITY_FIELDS, launchField],
+        onReopen: () => {},
+        onClose: () => {},
+      },
       { width: 900, height: 1200 },
     )
     await nextTick()
@@ -108,13 +119,14 @@ describe('§1 · F5 · the grant sheet says what a reopen does to THIS row’s d
    * row's draft through its reopen, pinned in `a-reopen-keeps-the-draft.test.ts` — so every idle row
    * now reads the one sentence, and the planted `turn` row is the control that it is read per row.
    */
-  it('🔴 678 · every idle row keeps its draft and says so, in the one sentence', async () => {
+  it('🔴 678 · synthetic launch-field offer: every idle row keeps its draft and says so', async () => {
     const m = await sheet([
       row('sess_selected'),
       row('sess_other'),
       // ⚑ **the planted control** — a row that is still working says it is working
       row('sess_working', { heldBy: 'turn' }),
     ])
+    expect(m.all('capability-canWriteRules')).toHaveLength(0)
     for (const id of ['sess_selected', 'sess_other']) {
       const cost = said(m, `grant-${LAUNCH}-cost-${id}`)
       expect(cost, id).toContain(REOPENING_SAYS.free)

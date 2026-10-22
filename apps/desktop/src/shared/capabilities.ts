@@ -52,6 +52,10 @@
  * `parseChoice`'s return, which is the honest price rather than a claim that everything is free.
  */
 
+/** Standing-rule authority is fixed; legacy grant values remain only for stored data. */
+export const RULE_WRITING_POLICY =
+  "You can read any agent's standing rules and propose a replacement; the person decides. A BroBot conversation the person started may also save one directly, but never its own. Each version keeps its author and reason, and the person can undo it."
+
 /**
  * 🔴 **What one agent identity is allowed to do** (341 §1A, HO-005) — the capability schema,
  * RESOLVED: every field has a value, and a null column has been replaced by the ruled default.

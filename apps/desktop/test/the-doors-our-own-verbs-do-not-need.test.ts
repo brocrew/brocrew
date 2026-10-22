@@ -91,15 +91,11 @@ const THE_SPLIT: Readonly<Record<ToolName, BeyondItsRails>> = {
   list_profiles: 'nothing-its-rails-do-not-cover',
   read_document: 'nothing-its-rails-do-not-cover',
   // ⚑ **D-016** — `549`'s `list_documents` row is gone with the document registry.
-  // 🔴 **582 · `nothing-its-rails-do-not-cover`, and the `already_agreed` arm is why it needs
-  // arguing.** ⛔ That arm writes a durable rule with no person in the loop — but the GRANT is the
-  // person: `canWriteRules` ruled `'none'`, and the wide word is one somebody chooses at the sheet
-  // reading a help string that says this app does not check the claim. ⚑ A card here would be the
-  // second answer to a question a person already answered, which is `create_agent`'s own row.
-  // ⚠️ **And the layer's shape carries the rest**: every version is kept, attributed and
-  // revertable, so a relay a person did not mean is visible and undoable.
+  // Known agents can propose; direct writes are limited to a person-started BroBot conversation.
+  // The host checks caller, target and exact baseline, and keeps attribution and person-only Undo.
   propose_agent_rules: 'nothing-its-rails-do-not-cover',
   read_agent_rules: 'nothing-its-rails-do-not-cover',
+  write_agent_rules: 'nothing-its-rails-do-not-cover',
   reply_to_parent: 'nothing-its-rails-do-not-cover',
   ask_question: 'nothing-its-rails-do-not-cover',
   // 🔴 **611 · a question carried one hop further** (HO-088 §3.2). ⛔ It starts nothing outside

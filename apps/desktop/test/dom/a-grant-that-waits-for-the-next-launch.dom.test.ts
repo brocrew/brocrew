@@ -8,6 +8,7 @@ import {
   DEFAULT_CAPABILITIES,
   type AnyCapabilityField,
 } from '../../src/shared/capabilities'
+import { EXTERNAL_MCP_TAKES_EFFECT } from '../../src/shared/external-mcp'
 import type { AgentIdentities, AgentIdentity, RuntimeBridge } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll, type Mounted } from './harness'
 
@@ -35,9 +36,21 @@ interface Answers {
   saved: unknown[]
   /** ⚑ Held open by a test that needs the save to still be in flight — see §4. */
   holdSave: (() => void) | null
+  saveFails: string | null
 }
 
 let answers: Answers
+
+// Synthetic schema fixture only. No runtime grant or database column is added.
+// Copy the dormant descriptor to preserve its disclosure and editor assertions without unhiding it.
+const syntheticLaunch = {
+  ...CAPABILITY_FIELDS.find((field) => field.key === 'canWriteRules')!,
+  key: 'canFutureLaunch',
+  column: 'can_future_launch',
+  label: 'Synthetic launch-bound grant',
+  help: 'Fixture only. This is not a live grant.',
+} as unknown as AnyCapabilityField
+const SYNTHETIC_FIELDS = [...CAPABILITY_FIELDS, syntheticLaunch]
 
 const identity = (slug: string): AgentIdentity => ({
   id: `agp:default:${slug}`,
@@ -69,14 +82,20 @@ const ROSTER = (): AgentIdentities => ({
   externalMcpServers: [],
 })
 
-/** ⚑ The same roster with `pm`'s rule-writing grant already CHOSEN, so a reversal is one. */
+/** The synthetic field is already chosen, so moving back is an exact reversal. */
 const chosenPm = (): AgentIdentities => ({
   ...ROSTER(),
   identities: [
     {
       ...identity('pm'),
-      capabilities: { ...DEFAULT_CAPABILITIES, canWriteRules: 'relay' },
-      chosen: { ...identity('pm').chosen, canWriteRules: 'chosen' },
+      capabilities: {
+        ...DEFAULT_CAPABILITIES,
+        canFutureLaunch: 'relay',
+      } as unknown as AgentIdentity['capabilities'],
+      chosen: {
+        ...identity('pm').chosen,
+        canFutureLaunch: 'chosen',
+      } as unknown as AgentIdentity['chosen'],
     },
     identity('worker'),
   ],
@@ -93,7 +112,13 @@ function storeOver(): AgentStore {
           answers.holdSave = resolve
         })
       }
-      return answers.list.identities[0] ?? null
+      if (answers.saveFails !== null) throw new Error(answers.saveFails)
+      const previous = answers.list.identities[0]
+      if (previous === undefined) return null
+      const sent = input as { externalMcpServerIds: readonly string[] }
+      const saved = { ...previous, externalMcpServerIds: [...sent.externalMcpServerIds] }
+      answers.list = { ...answers.list, identities: [saved, ...answers.list.identities.slice(1)] }
+      return saved
     },
     setSpawningEnabled: async () => ({ spawningEnabled: true }),
     // ⚑ **696 · the door's answer since `682`** — the identity AND what it cleared (`AgentProviderSet`).
@@ -127,6 +152,7 @@ async function sheet(
       profileSlug: 'pm',
       runsOn: 'codex',
       store,
+      fields: SYNTHETIC_FIELDS,
       openAs,
       onReopen: (sessionId: string) => asked.push(sessionId),
       onClose: () => (closed += 1),
@@ -140,18 +166,21 @@ async function sheet(
 
 const text = (m: Mounted, cy: string): string => (m.q(cy).textContent ?? '').replace(/\s+/g, ' ')
 
-describe('470 · a grant that waits for the next launch', () => {
+describe('470 · synthetic launch-bound field and live external-MCP grant', () => {
   beforeEach(() => {
-    answers = { list: ROSTER(), saved: [], holdSave: null }
+    answers = { list: ROSTER(), saved: [], holdSave: null, saveFails: null }
   })
   afterEach(() => {
     unmountAll()
   })
 
   describe('§1 · the sentence, on the one grant that has two answers', () => {
-    it('🔴 it is drawn under the rule-writing grant and under no other control', async () => {
+    it('🔴 the synthetic descriptor draws its disclosure while the dormant rules grant stays hidden', async () => {
       const { m } = await sheet([])
-      const said = text(m, 'grant-canWriteRules-when')
+      expect(m.all('capability-canWriteRules')).toHaveLength(0)
+      expect(m.all('grant-canWriteRules-when')).toHaveLength(0)
+      expect(m.all('grant-canWriteRules-open-now')).toHaveLength(0)
+      const said = text(m, 'grant-canFutureLaunch-when')
       expect(said).toContain('one already running keeps what it was told')
       expect(said).toContain('Narrowing it stops new requests')
       // ⛔ **The paired negative, and it is the whole of *disclose it where it bites*** (HO-028 §3:
@@ -166,8 +195,7 @@ describe('470 · a grant that waits for the next launch', () => {
     })
 
     it('⛔ a capability this app does not have draws it too — the schema decides, not the name', async () => {
-      // 🔴 **HO-008 §3's promise, measured on the one property `470` added.** A sentence keyed on
-      // `canWriteRules` by name would pass every assertion above and fail this one.
+      // A renderer keyed only to canFutureLaunch fails this independent synthetic descriptor.
       const invented = {
         key: 'canBroadcast',
         column: 'can_broadcast',
@@ -190,8 +218,8 @@ describe('470 · a grant that waits for the next launch', () => {
   describe('§2 · the offer appears only where there is something to reopen', () => {
     it('⛔ nothing open: the sentence stands and no offer is drawn — the paired negative', async () => {
       const { m } = await sheet([])
-      expect(m.all('grant-canWriteRules-when')).toHaveLength(1)
-      expect(m.all('grant-canWriteRules-open-now')).toHaveLength(0)
+      expect(m.all('grant-canFutureLaunch-when')).toHaveLength(1)
+      expect(m.all('grant-canFutureLaunch-open-now')).toHaveLength(0)
       // 🔴 **An empty list claims NOTHING.** `store.open` is what this window holds and `running`
       // on the wire is per-host, so the absence of an offer must not be a sentence saying there is
       // nothing running as this identity.
@@ -205,7 +233,7 @@ describe('470 · a grant that waits for the next launch', () => {
       // exactly one control. ⚠️ Without it, an offer keyed on nothing but `openAs.length` passes
       // every assertion in this file.
       const { m } = await sheet([open()])
-      expect(m.all('grant-canWriteRules-open-now')).toHaveLength(1)
+      expect(m.all('grant-canFutureLaunch-open-now')).toHaveLength(1)
       for (const field of CAPABILITY_FIELDS.filter((one) => one.whenItTakesEffect === null)) {
         expect(m.all(`grant-${field.key}-open-now`), field.key).toHaveLength(0)
       }
@@ -213,11 +241,11 @@ describe('470 · a grant that waits for the next launch', () => {
 
     it('🔴 one open conversation: it is named, and pressing Reopen asks for that session', async () => {
       const { m, asked } = await sheet([open({ sessionId: 'sess_7', where: 'login-explorer' })])
-      expect(text(m, 'grant-canWriteRules-open-now')).toContain('login-explorer')
+      expect(text(m, 'grant-canFutureLaunch-open-now')).toContain('login-explorer')
       // ⚑ **The identity's own slug is in the line**, so a person reading it knows which sheet's
       // conversations these are.
-      expect(text(m, 'grant-canWriteRules-open-now')).toContain('pm')
-      const button = m.q('grant-canWriteRules-reopen-sess_7') as HTMLButtonElement
+      expect(text(m, 'grant-canFutureLaunch-open-now')).toContain('pm')
+      const button = m.q('grant-canFutureLaunch-reopen-sess_7') as HTMLButtonElement
       expect(button.disabled).toBe(false)
       button.click()
       expect(asked()).toEqual(['sess_7'])
@@ -225,7 +253,7 @@ describe('470 · a grant that waits for the next launch', () => {
 
     it('⚠️ …and the row falls back to the session id when this app holds no path for it', async () => {
       const { m } = await sheet([open({ sessionId: 'sess_9', where: null })])
-      expect(text(m, 'grant-canWriteRules-open-now')).toContain('sess_9')
+      expect(text(m, 'grant-canFutureLaunch-open-now')).toContain('sess_9')
     })
 
     it('⛔ two open conversations are two rows, and the second button asks for the SECOND one', async () => {
@@ -235,9 +263,9 @@ describe('470 · a grant that waits for the next launch', () => {
         open({ sessionId: 'sess_1', where: 'one' }),
         open({ sessionId: 'sess_2', where: 'two' }),
       ])
-      ;(m.q('grant-canWriteRules-reopen-sess_2') as HTMLButtonElement).click()
+      ;(m.q('grant-canFutureLaunch-reopen-sess_2') as HTMLButtonElement).click()
       expect(asked()).toEqual(['sess_2'])
-      ;(m.q('grant-canWriteRules-reopen-sess_1') as HTMLButtonElement).click()
+      ;(m.q('grant-canFutureLaunch-reopen-sess_1') as HTMLButtonElement).click()
       expect(asked()).toEqual(['sess_2', 'sess_1'])
     })
   })
@@ -248,25 +276,29 @@ describe('470 · a grant that waits for the next launch', () => {
       // never agreed to."* HO-028 §3 refused an automatic restart for the same reason, and a live
       // button over a waiting card would be that restart one press away.
       const { m, asked } = await sheet([open({ sessionId: 'sess_3', heldBy: 'question' })])
-      const button = m.q('grant-canWriteRules-reopen-sess_3') as HTMLButtonElement
+      const button = m.q('grant-canFutureLaunch-reopen-sess_3') as HTMLButtonElement
       expect(button.disabled).toBe(true)
       button.click()
       expect(asked()).toEqual([])
-      expect(text(m, 'grant-canWriteRules-cost-sess_3')).toContain(REOPENING_SAYS.question)
+      expect(text(m, 'grant-canFutureLaunch-cost-sess_3')).toContain(REOPENING_SAYS.question)
       // 🔴 **106 as this app states it** (`send-refusals.ts`): *a disabled control must say what
       // would let it, and the thing it names must be reachable.* ⛔ The card is in the
       // conversation and this sheet is `aria-modal` over it, so the sentence says how to get
       // there — and the remedy IT names is on screen.
-      expect(text(m, 'grant-canWriteRules-cost-sess_3')).toContain('Cancel this sheet to reach it')
+      expect(text(m, 'grant-canFutureLaunch-cost-sess_3')).toContain(
+        'Cancel this sheet to reach it',
+      )
       expect((m.q('capabilities-cancel') as HTMLButtonElement).disabled).toBe(false)
     })
 
     it('⛔ a conversation that is still working says the other sentence', async () => {
       const { m, asked } = await sheet([open({ sessionId: 'sess_4', heldBy: 'turn' })])
-      ;(m.q('grant-canWriteRules-reopen-sess_4') as HTMLButtonElement).click()
+      ;(m.q('grant-canFutureLaunch-reopen-sess_4') as HTMLButtonElement).click()
       expect(asked()).toEqual([])
-      expect(text(m, 'grant-canWriteRules-cost-sess_4')).toContain(REOPENING_SAYS.turn)
-      expect(text(m, 'grant-canWriteRules-cost-sess_4')).toContain('Cancel this sheet to reach it')
+      expect(text(m, 'grant-canFutureLaunch-cost-sess_4')).toContain(REOPENING_SAYS.turn)
+      expect(text(m, 'grant-canFutureLaunch-cost-sess_4')).toContain(
+        'Cancel this sheet to reach it',
+      )
     })
 
     it('⚑ …and an idle one says what reopening COSTS, which is the third arm of one table', async () => {
@@ -274,15 +306,15 @@ describe('470 · a grant that waits for the next launch', () => {
       const { m, asked } = await sheet([open({ sessionId: 'sess_5' })])
       // ⚑ **Exactly the table's sentence and nothing appended** — the paired negative that keeps
       // the locus clause conditional rather than decorative.
-      expect(text(m, 'grant-canWriteRules-cost-sess_5')).toBe(REOPENING_SAYS.free)
-      expect(text(m, 'grant-canWriteRules-cost-sess_5')).not.toContain('Cancel this sheet')
-      ;(m.q('grant-canWriteRules-reopen-sess_5') as HTMLButtonElement).click()
+      expect(text(m, 'grant-canFutureLaunch-cost-sess_5')).toBe(REOPENING_SAYS.free)
+      expect(text(m, 'grant-canFutureLaunch-cost-sess_5')).not.toContain('Cancel this sheet')
+      ;(m.q('grant-canFutureLaunch-reopen-sess_5') as HTMLButtonElement).click()
       expect(asked()).toEqual(['sess_5'])
     })
 
     it('⚠️ a command already in flight keeps the button dead — the same double-click guard', async () => {
       const { m, asked } = await sheet([open({ sessionId: 'sess_6', busy: true })])
-      const button = m.q('grant-canWriteRules-reopen-sess_6') as HTMLButtonElement
+      const button = m.q('grant-canFutureLaunch-reopen-sess_6') as HTMLButtonElement
       expect(button.disabled).toBe(true)
       button.click()
       expect(asked()).toEqual([])
@@ -290,9 +322,9 @@ describe('470 · a grant that waits for the next launch', () => {
   })
 
   describe('§4 · an unsaved edit, and the close that would have taken the offer away', () => {
-    /** ⚑ Pick a word in the rule-writing grant's own control, as a person does. */
+    /** Pick a word in the injected synthetic field's control. */
     const pick = async (m: Mounted, word: string): Promise<void> => {
-      const select = m.q('capability-canWriteRules-select') as HTMLSelectElement
+      const select = m.q('capability-canFutureLaunch-select') as HTMLSelectElement
       select.value = word
       select.dispatchEvent(new Event('change'))
       await nextTick()
@@ -303,34 +335,36 @@ describe('470 · a grant that waits for the next launch', () => {
       // STORED, so pressing it over an unsaved pick gives that conversation the opposite of what
       // is on the screen — and it is the conversation the person was trying to fix.
       const { m, asked } = await sheet([open({ sessionId: 'sess_2' })])
-      expect((m.q('grant-canWriteRules-reopen-sess_2') as HTMLButtonElement).disabled).toBe(false)
+      expect((m.q('grant-canFutureLaunch-reopen-sess_2') as HTMLButtonElement).disabled).toBe(false)
       await pick(m, 'relay')
-      const button = m.q('grant-canWriteRules-reopen-sess_2') as HTMLButtonElement
+      const button = m.q('grant-canFutureLaunch-reopen-sess_2') as HTMLButtonElement
       expect(button.disabled).toBe(true)
       button.click()
       expect(asked()).toEqual([])
-      expect(text(m, 'grant-canWriteRules-cost-sess_2')).toContain('Save first')
+      expect(text(m, 'grant-canFutureLaunch-cost-sess_2')).toContain('Save first')
       // ⚑ **And it says what a save would NOT do**, so the sentence is a reason rather than a
       // scold — `106`: a control that cannot act must say what would let it.
-      expect(text(m, 'grant-canWriteRules-cost-sess_2')).toContain('not what you have changed here')
+      expect(text(m, 'grant-canFutureLaunch-cost-sess_2')).toContain(
+        'not what you have changed here',
+      )
     })
 
     it('🔴 …and an edit to ANY grant kills it, because a reopen re-reads the whole row', async () => {
       // ⛔ **This asserted the opposite until review.** A reopen hands the conversation the stored
-      // row for all six grants — `instructionContext` → `capabilitiesOf` → every field into the
+      // row for every grant — `instructionContext` → `capabilitiesOf` → every field into the
       // bundle — so an unsaved `maxDepth` is a row that says something other than the screen.
       // ⚠️ And the flow is the one this dispatch creates: `save()` holds the sheet open so the
-      // person can press Reopen, and the next thing they touch need not be the rule-writing grant.
+      // person can press Reopen, and the next thing they touch need not be the synthetic launch-bound field.
       const { m, asked } = await sheet([open({ sessionId: 'sess_2' })])
       const depth = m.q('capability-maxDepth-input') as HTMLInputElement
       depth.value = '4'
       depth.dispatchEvent(new Event('input'))
       await nextTick()
-      const button = m.q('grant-canWriteRules-reopen-sess_2') as HTMLButtonElement
+      const button = m.q('grant-canFutureLaunch-reopen-sess_2') as HTMLButtonElement
       expect(button.disabled).toBe(true)
       button.click()
       expect(asked()).toEqual([])
-      expect(text(m, 'grant-canWriteRules-cost-sess_2')).toContain('Save first')
+      expect(text(m, 'grant-canFutureLaunch-cost-sess_2')).toContain('Save first')
     })
 
     it('⛔ …and an edit PUT BACK is not an edit — the sentence and the button both recover', async () => {
@@ -345,11 +379,11 @@ describe('470 · a grant that waits for the next launch', () => {
       answers.list = chosenPm()
       const { m, asked, closes } = await sheet([open({ sessionId: 'sess_2' })])
       await pick(m, 'propose')
-      expect((m.q('grant-canWriteRules-reopen-sess_2') as HTMLButtonElement).disabled).toBe(true)
+      expect((m.q('grant-canFutureLaunch-reopen-sess_2') as HTMLButtonElement).disabled).toBe(true)
       await pick(m, 'relay')
-      const button = m.q('grant-canWriteRules-reopen-sess_2') as HTMLButtonElement
+      const button = m.q('grant-canFutureLaunch-reopen-sess_2') as HTMLButtonElement
       expect(button.disabled).toBe(false)
-      expect(text(m, 'grant-canWriteRules-cost-sess_2')).toBe(REOPENING_SAYS.free)
+      expect(text(m, 'grant-canFutureLaunch-cost-sess_2')).toBe(REOPENING_SAYS.free)
       button.click()
       expect(asked()).toEqual(['sess_2'])
       // ⚑ …and a Save from that state is a save that moved nothing, so the sheet closes as it
@@ -363,10 +397,10 @@ describe('470 · a grant that waits for the next launch', () => {
       // ⚑ **The only pair no other case builds**, and the branch order is a person-visible
       // decision: the remedy offered has to be the one that would make the button live.
       const { m } = await sheet([open({ sessionId: 'sess_2', heldBy: 'turn' })])
-      expect(text(m, 'grant-canWriteRules-cost-sess_2')).toContain(REOPENING_SAYS.turn)
+      expect(text(m, 'grant-canFutureLaunch-cost-sess_2')).toContain(REOPENING_SAYS.turn)
       await pick(m, 'relay')
-      expect(text(m, 'grant-canWriteRules-cost-sess_2')).toContain('Save first')
-      expect(text(m, 'grant-canWriteRules-cost-sess_2')).not.toContain(REOPENING_SAYS.turn)
+      expect(text(m, 'grant-canFutureLaunch-cost-sess_2')).toContain('Save first')
+      expect(text(m, 'grant-canFutureLaunch-cost-sess_2')).not.toContain(REOPENING_SAYS.turn)
     })
 
     it('🔴 “Use the default” is a launch-boundary edit too', async () => {
@@ -374,14 +408,14 @@ describe('470 · a grant that waits for the next launch', () => {
       // Handing the grant back to its default is as much an unsaved edit as picking a word.
       answers.list = chosenPm()
       const { m, asked } = await sheet([open({ sessionId: 'sess_2' })])
-      expect((m.q('grant-canWriteRules-reopen-sess_2') as HTMLButtonElement).disabled).toBe(false)
-      m.q('capability-canWriteRules-use-default').click()
+      expect((m.q('grant-canFutureLaunch-reopen-sess_2') as HTMLButtonElement).disabled).toBe(false)
+      m.q('capability-canFutureLaunch-use-default').click()
       await nextTick()
-      const button = m.q('grant-canWriteRules-reopen-sess_2') as HTMLButtonElement
+      const button = m.q('grant-canFutureLaunch-reopen-sess_2') as HTMLButtonElement
       expect(button.disabled).toBe(true)
       button.click()
       expect(asked()).toEqual([])
-      expect(text(m, 'grant-canWriteRules-cost-sess_2')).toContain('Save first')
+      expect(text(m, 'grant-canFutureLaunch-cost-sess_2')).toContain('Save first')
     })
 
     it('🔴 saving a launch-time grant with a conversation open keeps the sheet — the offer is the remedy', async () => {
@@ -396,7 +430,7 @@ describe('470 · a grant that waits for the next launch', () => {
       expect(answers.saved).toHaveLength(1)
       expect(closes()).toBe(0)
       // ⚑ …and the offer is now live, because the edit it was guarding against has landed.
-      expect((m.q('grant-canWriteRules-reopen-sess_2') as HTMLButtonElement).disabled).toBe(false)
+      expect((m.q('grant-canFutureLaunch-reopen-sess_2') as HTMLButtonElement).disabled).toBe(false)
     })
 
     it('⛔ …and with nothing open it closes exactly as it always has', async () => {
@@ -427,8 +461,8 @@ describe('470 · a grant that waits for the next launch', () => {
       await new Promise((resolve) => setTimeout(resolve, 0))
       await nextTick()
       // ⚑ …so the sheet still says the row and the screen disagree, and the button is still dead.
-      expect((m.q('grant-canWriteRules-reopen-sess_2') as HTMLButtonElement).disabled).toBe(true)
-      expect(text(m, 'grant-canWriteRules-cost-sess_2')).toContain('Save first')
+      expect((m.q('grant-canFutureLaunch-reopen-sess_2') as HTMLButtonElement).disabled).toBe(true)
+      expect(text(m, 'grant-canFutureLaunch-cost-sess_2')).toContain('Save first')
     })
 
     it('⛔ …and so does a save that moved no launch-time grant', async () => {
@@ -493,7 +527,7 @@ describe('470 · a grant that waits for the next launch', () => {
       const box = m.q('capabilities-sheet')
       expect(escapes(box)).toEqual([])
       // ⚑ **The button is the thing that leaves first**, because it sits after the spacer.
-      const button = m.q('grant-canWriteRules-reopen-sess_8').getBoundingClientRect()
+      const button = m.q('grant-canFutureLaunch-reopen-sess_8').getBoundingClientRect()
       expect(button.right).toBeLessThanOrEqual(box.getBoundingClientRect().right + 1)
       expect(button.width).toBeGreaterThan(20)
     })
@@ -508,8 +542,141 @@ describe('470 · a grant that waits for the next launch', () => {
       const planted = document.createElement('div')
       planted.setAttribute('data-cy', 'planted')
       planted.style.cssText = 'position:absolute;left:0;width:4000px;height:4px'
-      m.q('grant-canWriteRules-open-now').append(planted)
+      m.q('grant-canFutureLaunch-open-now').append(planted)
       expect(escapes(box)).toContain('planted')
+    })
+  })
+
+  describe('live external-MCP grant beside the synthetic Reopen contract', () => {
+    const serverSheet = async (
+      openAs: readonly AConversationToReopen[],
+      syntheticOffer = false,
+    ) => {
+      answers.list = {
+        ...ROSTER(),
+        externalMcpServers: [
+          {
+            id: 'ems:reference',
+            name: 'reference',
+            url: 'http://127.0.0.1:18001/mcp',
+            registeredAt: 1_700_000_000_000,
+            reach: 'restricted',
+          },
+        ],
+      }
+      return sheet(openAs, {
+        fields: syntheticOffer ? SYNTHETIC_FIELDS : CAPABILITY_FIELDS,
+        capabilities: { codex: { externalMcpServers: { state: 'available' } } },
+      })
+    }
+    const serverCheckbox = (m: Mounted): HTMLInputElement =>
+      m.q('external-mcp-grant-reference').querySelector<HTMLInputElement>('input')!
+    const settleSave = async (): Promise<void> => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      await nextTick()
+    }
+
+    it('draws the real external-MCP launch disclosure and keeps the dormant rules grant hidden', async () => {
+      const { m } = await serverSheet([open()])
+      expect(text(m, 'external-mcp-when')).toBe(EXTERNAL_MCP_TAKES_EFFECT)
+      expect(text(m, 'external-mcp-when')).toContain('next time one is reopened')
+      expect(text(m, 'external-mcp-when')).toContain('Nothing running moves.')
+      expect(serverCheckbox(m).disabled).toBe(false)
+      expect(m.all('capability-canWriteRules')).toHaveLength(0)
+      expect(m.all('grant-canWriteRules-open-now')).toHaveLength(0)
+      expect(m.all('capability-canFutureLaunch')).toHaveLength(0)
+    })
+
+    it('saves the real server ID and keeps the sheet open when a conversation can use the next launch', async () => {
+      const { m, closes } = await serverSheet([open()])
+      serverCheckbox(m).click()
+      await nextTick()
+      m.q('capabilities-save').click()
+      await settleSave()
+      expect(answers.saved).toHaveLength(1)
+      expect(answers.saved[0]).toMatchObject({
+        profileId: 'pm',
+        externalMcpServerIds: ['ems:reference'],
+      })
+      expect((answers.saved[0] as { grant: Record<string, unknown> }).grant).not.toHaveProperty(
+        'canFutureLaunch',
+      )
+      expect(closes()).toBe(0)
+      expect(text(m, 'external-mcp-when')).toBe(EXTERNAL_MCP_TAKES_EFFECT)
+    })
+
+    it('closes after a real external-MCP save with no conversation open', async () => {
+      const { m, closes } = await serverSheet([])
+      serverCheckbox(m).click()
+      await nextTick()
+      m.q('capabilities-save').click()
+      await settleSave()
+      expect(answers.saved).toHaveLength(1)
+      expect(answers.saved[0]).toMatchObject({ externalMcpServerIds: ['ems:reference'] })
+      expect(closes()).toBe(1)
+    })
+
+    it('a real server edit blocks the synthetic offer; reverting it restores the same session press', async () => {
+      const { m, asked } = await serverSheet([open({ sessionId: 'sess_2' })], true)
+      const button = m.q('grant-canFutureLaunch-reopen-sess_2') as HTMLButtonElement
+      expect(button.disabled).toBe(false)
+      serverCheckbox(m).click()
+      await nextTick()
+      expect(button.disabled).toBe(true)
+      button.click()
+      expect(asked()).toEqual([])
+      expect(text(m, 'grant-canFutureLaunch-cost-sess_2')).toContain('Save first')
+      serverCheckbox(m).click()
+      await nextTick()
+      expect(button.disabled).toBe(false)
+      expect(text(m, 'grant-canFutureLaunch-cost-sess_2')).toBe(REOPENING_SAYS.free)
+      button.click()
+      expect(asked()).toEqual(['sess_2'])
+      expect(answers.saved).toEqual([])
+    })
+
+    it('a server edit during an in-flight save stays unsaved when that save returns', async () => {
+      answers.holdSave = () => {}
+      const { m, asked, closes } = await serverSheet([open({ sessionId: 'sess_2' })], true)
+      serverCheckbox(m).click()
+      await nextTick()
+      m.q('capabilities-save').click()
+      await nextTick()
+      expect(answers.saved).toHaveLength(1)
+      expect((m.q('capabilities-save') as HTMLButtonElement).disabled).toBe(true)
+      expect(serverCheckbox(m).disabled).toBe(false)
+      serverCheckbox(m).click()
+      await nextTick()
+      const release = answers.holdSave as unknown as () => void
+      release()
+      await settleSave()
+      expect(answers.saved[0]).toMatchObject({ externalMcpServerIds: ['ems:reference'] })
+      expect(serverCheckbox(m).checked).toBe(false)
+      const button = m.q('grant-canFutureLaunch-reopen-sess_2') as HTMLButtonElement
+      expect(button.disabled).toBe(true)
+      button.click()
+      expect(asked()).toEqual([])
+      expect(text(m, 'grant-canFutureLaunch-cost-sess_2')).toContain('Save first')
+      expect(closes()).toBe(0)
+    })
+
+    it('a refused live grant save keeps the edit, refusal and blocked synthetic offer on screen', async () => {
+      const { m, asked, closes } = await serverSheet([open({ sessionId: 'sess_2' })], true)
+      answers.saveFails = 'The fixture refused this grant.'
+      serverCheckbox(m).click()
+      await nextTick()
+      m.q('capabilities-save').click()
+      await settleSave()
+      expect(answers.saved).toHaveLength(1)
+      expect(text(m, 'capabilities-save-refusal')).toContain('The fixture refused this grant.')
+      expect(serverCheckbox(m).checked).toBe(true)
+      expect(closes()).toBe(0)
+      const button = m.q('grant-canFutureLaunch-reopen-sess_2') as HTMLButtonElement
+      expect(button.disabled).toBe(true)
+      button.click()
+      expect(asked()).toEqual([])
+      expect(text(m, 'grant-canFutureLaunch-cost-sess_2')).toContain('Save first')
+      expect((m.q('capabilities-cancel') as HTMLButtonElement).disabled).toBe(false)
     })
   })
 })

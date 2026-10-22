@@ -39150,7 +39150,10 @@ export class RuntimeHost implements LiveHost {
       version: written.version,
       previousVersion: previous?.version ?? 0,
       author,
-      replacedPersonVersion: previous?.whoWroteIt === 'a-person' ? previous.version : null,
+      replacedPersonVersion:
+        previous?.whoWroteIt === 'a-person' || previous?.whoWroteIt === 'an-agents-proposal'
+          ? previous.version
+          : null,
     }
     this.supersedeInstructionAsks(profile, whoDidIt(by))
     const session = this.slots.get(me)?.session ?? null
