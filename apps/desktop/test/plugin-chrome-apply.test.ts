@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { applyChromeProfile, ChromeProposal } from '../src/main/plugins/lifecycle/chrome-apply'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { PluginUiRpc } from '../src/main/plugins/ui/rpc'
+import { PLUGIN_UI_CHANNEL } from '../src/shared/plugin-ui'
 import type { PluginNodeReady } from '../src/main/plugins/node-host'
 afterEach(() => vi.unstubAllGlobals())
 const connection: PluginNodeReady = {
@@ -74,4 +78,54 @@ describe('fixed person-only Chrome profile action mapping', () => {
     ).rejects.toThrow('Plugin unavailable. Try again.')
     expect(fetch).toHaveBeenCalledOnce()
   })
+})
+
+it('the real package RPC schema admits a confirmed person Delete to the reviewed adapter', async () => {
+  const template = JSON.parse(
+    readFileSync(resolve(__dirname, '../../../plugins/chrome/manifest-template.json'), 'utf8'),
+  )
+  const binding = {
+    pluginId: 'chrome',
+    installId: 'fictional-install',
+    incarnation: 'fictional-incarnation',
+    releaseDigest: 'a'.repeat(64),
+    leaseId: 'fictional-lease',
+  }
+  const apply = vi.fn(async (payload: unknown) => {
+    ChromeProposal.parse(payload)
+    return { applied: true }
+  })
+  const rpc = new PluginUiRpc({
+    binding,
+    schemas: template.ui.methodSchemas,
+    current: () => true,
+    emit() {},
+    propose() {},
+    now: () => 0,
+    peer: { read: async () => ({}), subscribe: async () => () => {}, proposeConfig: apply },
+  })
+  const payload = { action: 'delete-profile', profile: 'fern', confirm: 'fern' }
+  try {
+    expect(
+      await rpc.invoke({
+        channel: PLUGIN_UI_CHANNEL,
+        requestId: '1',
+        method: 'proposeConfig',
+        configRevision: 0,
+        payload,
+      }),
+    ).toEqual({ proposed: true })
+    expect(apply).toHaveBeenCalledWith(payload, 0, binding, expect.any(AbortSignal))
+    await expect(
+      rpc.invoke({
+        channel: PLUGIN_UI_CHANNEL,
+        requestId: '2',
+        method: 'proposeConfig',
+        configRevision: 0,
+        payload: { ...payload, confirm: 'birch' },
+      }),
+    ).rejects.toThrow()
+  } finally {
+    await rpc.close()
+  }
 })
