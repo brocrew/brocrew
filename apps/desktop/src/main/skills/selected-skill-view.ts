@@ -1,4 +1,4 @@
-import type { Provider } from '@brobot2/shared'
+import { providerValue, type Provider } from '@brobot2/shared'
 import {
   SkillOrigin,
   SkillRelease,
@@ -24,7 +24,7 @@ export function selectedSkillView(
   if (verified.digest !== bundle.digest || selected.length > SKILL_LIMITS.selected)
     throw new Error('Invalid selected skill catalogue.')
   const files = new Map<string, string>()
-  if (provider === 'claude')
+  if (providerValue(provider, { claude: true, codex: false }))
     files.set(
       'claude-plugin/.claude-plugin/plugin.json',
       JSON.stringify({ name: 'brobot', version: '0.0.6', description: 'Built-in skills' }) + '\n',
@@ -114,7 +114,7 @@ export function selectedSkillView(
     const installed = { name: source.alias, description, sha256: skillDigest(projected), bytes }
     skills.push(installed)
     files.set(
-      `${provider === 'claude' ? 'claude-plugin/skills' : 'codex/skills'}/${source.alias}/SKILL.md`,
+      `${providerValue(provider, { claude: 'claude-plugin/skills', codex: 'codex/skills' })}/${source.alias}/SKILL.md`,
       projected,
     )
     versions.push({
@@ -134,7 +134,9 @@ export function selectedSkillView(
           }
         : {}),
     })
-    reminders.push(`${provider === 'claude' ? 'brobot:' : ''}${source.alias} — ${reminder}`)
+    reminders.push(
+      `${providerValue(provider, { claude: 'brobot:', codex: '' })}${source.alias} — ${reminder}`,
+    )
   }
   const digest = skillDigest(JSON.stringify({ provider, versions }))
   return {
@@ -142,7 +144,7 @@ export function selectedSkillView(
     digest,
     files,
     skills,
-    discoveryRoot: provider === 'claude' ? 'claude-plugin' : 'codex/skills',
+    discoveryRoot: providerValue(provider, { claude: 'claude-plugin', codex: 'codex/skills' }),
     versions,
     reminder: reminders.length ? reminders.join('\n') + '\n' : '',
   }

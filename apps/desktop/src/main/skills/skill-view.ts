@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import type { Provider } from '@brobot2/shared'
+import { providerValue, type Provider } from '@brobot2/shared'
 import { SKILL_LIMITS } from '../../shared/skills-catalogue'
 import {
   skillDigest,
@@ -41,15 +41,18 @@ export function builtInSkillView(
   )
     throw new Error('A selected skill does not belong to this bundle.')
   const files = new Map<string, string>()
-  const discoveryRoot = provider === 'claude' ? 'claude-plugin' : 'codex/skills'
-  if (provider === 'claude') {
+  const discoveryRoot = providerValue(provider, { claude: 'claude-plugin', codex: 'codex/skills' })
+  if (providerValue(provider, { claude: true, codex: false })) {
     files.set(
       'claude-plugin/.claude-plugin/plugin.json',
       JSON.stringify({ name: 'brobot', version: '0.0.6', description: 'Built-in skills' }) + '\n',
     )
   }
   for (const item of skills) {
-    const prefix = provider === 'claude' ? 'claude-plugin/skills' : 'codex/skills'
+    const prefix = providerValue(provider, {
+      claude: 'claude-plugin/skills',
+      codex: 'codex/skills',
+    })
     files.set(`${prefix}/${item.name}/SKILL.md`, verified.bodies.get(item.name)!)
   }
   const digest = skillDigest(
@@ -76,7 +79,10 @@ export async function installNewSkillView(
     if (!isCurrent()) throw new Error('The skill launch is no longer current.')
   }
   checkCurrent()
-  const expectedRoot = view.provider === 'claude' ? 'claude-plugin' : 'codex/skills'
+  const expectedRoot = providerValue(view.provider, {
+    claude: 'claude-plugin',
+    codex: 'codex/skills',
+  })
   if (
     view.skills.length > SKILL_LIMITS.selected ||
     [...view.files.values()].reduce((sum, text) => sum + Buffer.byteLength(text, 'utf8'), 0) >
@@ -86,7 +92,7 @@ export async function installNewSkillView(
   const expected = new Set<string>()
   const names = new Set<string>()
   if (view.discoveryRoot !== expectedRoot) throw new Error('Unexpected skill discovery root.')
-  if (view.provider === 'claude') {
+  if (providerValue(view.provider, { claude: true, codex: false })) {
     expected.add('claude-plugin/.claude-plugin/plugin.json')
     const manifest =
       JSON.stringify({ name: 'brobot', version: '0.0.6', description: 'Built-in skills' }) + '\n'
@@ -99,7 +105,7 @@ export async function installNewSkillView(
       throw new Error('Unexpected installed skill name.')
     }
     names.add(item.name)
-    const path = `${view.provider === 'claude' ? 'claude-plugin/skills' : 'codex/skills'}/${item.name}/SKILL.md`
+    const path = `${providerValue(view.provider, { claude: 'claude-plugin/skills', codex: 'codex/skills' })}/${item.name}/SKILL.md`
     expected.add(path)
     const text = view.files.get(path)
     if (

@@ -25,7 +25,7 @@ import {
   codexMemoryDir,
   isClaudeMemoryTopic,
 } from '@brobot2/runtime'
-import type { Provider } from '@brobot2/shared'
+import { providerValue, type Provider } from '@brobot2/shared'
 import { agentPreamble, type PromptIdentity } from './agent-preamble'
 import type { BundlePublish } from './profile-bundle'
 // ⚑ **583 · which part of the compiled bundle is whose** — see `InjectedInstruction.sections`.
@@ -834,7 +834,7 @@ export function readSessionInstructions(inputs: InstructionInputs): SessionLaunc
   // because that is what the sentence it returns is about — a provider that reads its own files —
   // and a third provider arriving here should have to answer the same question rather than inherit
   // Codex's answer by default.
-  if (inputs.provider !== 'claude') {
+  if (providerValue(inputs.provider, { claude: false, codex: true })) {
     // 🔴 **This used to say Codex *"has no agent-written memory of its own — so there is nothing to
     // derive, nothing to read, and nothing to show"*, citing 165 §4 and 156.** ⚑ Both were right
     // when written, and 314 made them false three dispatches later by switching Codex's memory on
@@ -1782,7 +1782,7 @@ export function memoryStoreCounts(
   provider: Provider,
   providerHome: string,
 ): { readonly total: number; readonly listed: number } {
-  const isClaude = provider === 'claude'
+  const isClaude = providerValue(provider, { claude: true, codex: false })
   const dir = isClaude ? claudeAutoMemoryDir(providerHome) : codexMemoryDir(providerHome)
   const fixed = isClaude
     ? [claudeAutoMemoryIndex(providerHome)]
@@ -1825,7 +1825,7 @@ export function readAgentMemoryPage(
   limit: number,
 ): AgentMemoryPage {
   const realHome = realPath(providerHome)
-  const isClaude = provider === 'claude'
+  const isClaude = providerValue(provider, { claude: true, codex: false })
   const dir = isClaude ? claudeAutoMemoryDir(providerHome) : codexMemoryDir(providerHome)
   const fixed: MemoryCandidate[] = isClaude
     ? [

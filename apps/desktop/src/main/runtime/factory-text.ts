@@ -4,7 +4,7 @@ import {
   type PluginInstructionEntry,
 } from '../plugins/instructions'
 import { type ConversationAtLaunch, type ProfileCapabilities } from '../../shared/capabilities'
-import { BUILD_IS_DEV, BUILD_IS_UNRECORDED } from '@brobot2/shared'
+import { providerValue, BUILD_IS_DEV, BUILD_IS_UNRECORDED } from '@brobot2/shared'
 // ⚑ **583 · the axis the instructions sheet is grouped on** — see {@link profileBundleSpans}.
 import type { InstructionSpan, WhoseText } from '../../shared/whose-text'
 // ⚑ **D-024 · R1 — a profile's other conversations, said as every other agent-facing line says a
@@ -778,7 +778,7 @@ function bundleSections(context: ProfileBundleContext, provider: Provider): Bund
       heading: null,
       blocks: [
         bundleHeader(configured !== ''),
-        ...(provider === 'codex'
+        ...(providerValue(provider, { claude: false, codex: true })
           ? [
               agentPreamble({
                 profileSlug: context.profileSlug ?? null,
