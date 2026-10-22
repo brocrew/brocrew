@@ -77,11 +77,14 @@ it('arms a fresh headless wait instead of consuming an earlier denied download',
   expect(deniedPath).not.toHaveBeenCalled()
   expect(f.active()).toBe(false)
 })
-it('describes headless capture-before-trigger and refuses an ambiguous trigger', async () => {
+it('guides agent downloads to one call and reserves waits for independent events', async () => {
   const f = await setup()
   const definition = buildToolDefs().find((d) => d.spec.name === 'wait_for_download')!
-  expect(definition.spec.description).toContain('start this wait before the action')
-  expect(definition.spec.description).not.toContain('Call it right after')
+  expect(definition.spec.description).toContain('page timer')
+  expect(definition.spec.description).toContain('user in a visible window')
+  expect(definition.spec.description).toContain('use download with ref or url')
+  expect(definition.spec.description).toContain('Only one tool call runs at a time')
+  expect(definition.spec.description).not.toMatch(/parallel|start this wait before the action/i)
   await expect(
     f.h.call('download', { tabId: f.tabId, ref: 'e1', url: 'https://fictional.invalid/' }),
   ).rejects.toThrow('give exactly one')
