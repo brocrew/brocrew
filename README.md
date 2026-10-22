@@ -11,7 +11,7 @@
 BroCrew brings AI agents together on your computer.
 Give an agent a task, and it can share the work with other agents.
 Each agent keeps its own memory and rules across conversations.
-Use it for coding, writing, research or other projects, with your own Claude or Codex account.
+Use it for coding, writing, research or other projects, with your own Anthropic or OpenAI API key.
 
 ![BroCrew's window showing agents working on a project.](docs/images/conversation.png)
 
@@ -31,7 +31,7 @@ Prefer the terminal? [Run from source](docs/run-from-source.md).
 ## First steps
 
 - For Claude in the downloaded app, install [Claude Code first](docs/first-steps.md). Codex is included.
-- Open **Settings → Providers** and connect Claude or Codex: sign in, or use an API key. See [setup help](docs/first-steps.md).
+- Open **Settings → Providers** and connect Claude or Codex with an API key. See [setup help](docs/first-steps.md).
 - Choose **New conversation**, pick a model and type what you want done.
 
 ## Learn more

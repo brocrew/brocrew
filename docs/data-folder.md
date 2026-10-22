@@ -36,7 +36,7 @@ Before an update changes your data, BroCrew saves a checked copy of its database
 - **Where:** in the data folder, under `backups/`. Each copy is checked after it's written. One that isn't complete is never offered.
 - **How many:** the two newest, plus the newest copy for each database version while it is at most seven days old. Once a newer copy exists, copies older than seven days are removed; the newest copy is kept regardless of age. Removal runs only after a version has started successfully.
 - **Private:** only your user account can read them, as long as it alone can read the data folder. In a data folder other users can read, or on a drive that can't limit who reads it (FAT, exFAT), the copies are as open as the data beside them, and Settings says so beside the workspace. Your saved API keys travel inside the copy as they are in the database: still sealed, and never opened by the copy or the restore.
-- **Not copied:** the providers' own folders (an agent's memory, the providers' own transcripts and sign-ins), your project files, and anything you exported. A restore doesn't rewind them.
+- **Not copied:** the providers' own folders (an agent's memory, the providers' own transcripts and saved authentication), your project files, and anything you exported. A restore doesn't rewind them.
 
 ### If an older BroCrew meets newer data
 

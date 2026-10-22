@@ -1,7 +1,7 @@
 # First steps
 
 1. **Using a downloaded BroCrew? Install Claude Code first** to use Claude, from Anthropic: see their [install guide](https://code.claude.com/docs/en/setup). BroCrew gives it your API key. If Claude Code is missing, or older than the versions BroCrew was tested with, BroCrew tells you and shows how to install or update it. Running from source, you can skip this step: it uses the Claude Code that comes with Anthropic's SDK. Codex comes with BroCrew either way.
-2. Open BroCrew. If a setup window opens, follow it until it asks you to sign in, then choose **Use an API key instead**, which takes you to the **Providers** tab in **Settings**. Otherwise, open **Settings** in the left rail; **Providers** is its first tab.
+2. Open BroCrew. If a setup window opens, choose **Use an API key instead** when it appears; it opens **Settings → Providers**. Otherwise, choose **Settings** in the left rail, then **Providers**.
 3. On the **Claude** card, paste your Anthropic key under **API key** ([get one here](https://platform.claude.com/settings/keys)) and save it. On the **Codex** card, do the same with an OpenAI key ([get one here](https://platform.openai.com/api-keys)). You need only one to start.
 4. Choose **New conversation** in the left rail, pick a Claude or Codex model, and type what you want done. It works in BroCrew's own workspace folder. To give an agent a folder of your own, open it on the **Team** page, choose **New conversation…**, then **Choose a folder…**.
 
