@@ -102,6 +102,26 @@
         "../../../src/main/plugins/package-verifier": "../package-verifier",
         "../../../src/main/plugins/supervisor/protocol": "../supervisor/protocol"
       }
+    },
+    {
+      "path": "apps/desktop/src/main/plugins/production.ts",
+      "file": "production.ts",
+      "sourceSha256": "6fda4270263a6de4529be6b477d49738d1efe1ff5cbbbcbc9c3dcea059972a8e",
+      "imports": {
+        "./state-store": "./state/store",
+        "../../../src/main/plugins/settings": "./settings",
+        "../../../src/main/plugins/instructions": "./instructions",
+        "../../../src/main/plugins/catalogue/repo-list": "./catalogue/repo-list",
+        "../../../src/main/plugins/catalogue/dev-source": "./catalogue/dev-source",
+        "../../../src/main/plugins/catalogue/capability": "./catalogue/capability",
+        "./lifecycle-settings-client": "./lifecycle/settings-client",
+        "../../../src/main/plugins/supervisor/launcher": "./supervisor/launcher",
+        "../../../src/main/plugins/supervisor/storage": "./supervisor/storage",
+        "../../../src/main/plugins/supervisor/client": "./supervisor/client",
+        "../../../src/main/plugins/supervisor/protocol": "./supervisor/protocol",
+        "../../../src/shared/plugin-settings": "../../shared/plugin-settings",
+        "../../../src/main/plugins/package-schema": "./package-schema"
+      }
     }
   ]
 }
