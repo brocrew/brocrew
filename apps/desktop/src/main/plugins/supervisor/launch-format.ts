@@ -40,20 +40,28 @@ const SignedLifecyclePlan = z.strictObject({
 })
 export const LifecyclePlan = z.union([
   SignedLifecyclePlan,
-  z.strictObject({
-    source: z.literal('repo-list'),
-    appVersion: z.string().min(1).max(80).optional(),
-    catalogue: path,
-    catalogueSha256: hex,
-    /** App-verified raw source; never supplied over the person or agent channel. */
-    repoList: z.strictObject({ path, sha256: hex }).optional(),
-    personKey: hex,
-    names: z.record(z.string(), z.string().min(1).max(128)),
-    /** Explicit scratch proof only; the production app never supplies this. */
-    fixtureSource: path.optional(),
-    /** Guarded unpackaged app input; never supplied by a workspace or IPC caller. */
-    devSource: path.optional(),
-  }),
+  z
+    .strictObject({
+      source: z.literal('repo-list'),
+      appVersion: z.string().min(1).max(80).optional(),
+      catalogue: path,
+      catalogueSha256: hex,
+      /** App-verified raw source; never supplied over the person or agent channel. */
+      repoList: z.strictObject({ path, sha256: hex }).optional(),
+      legacyRepoList: z.strictObject({ path, sha256: hex }).optional(),
+      sourceVersion: z.union([z.literal(1), z.literal(2)]).optional(),
+      personKey: hex,
+      names: z.record(z.string(), z.string().min(1).max(128)),
+      /** Explicit scratch proof only; the production app never supplies this. */
+      fixtureSource: path.optional(),
+      /** Guarded unpackaged app input; never supplied by a workspace or IPC caller. */
+      devSource: path.optional(),
+    })
+    .refine(
+      (value) =>
+        value.sourceVersion !== 2 ||
+        Boolean(value.appVersion && value.repoList && value.legacyRepoList),
+    ),
 ])
 export type PluginLifecyclePlan = z.infer<typeof LifecyclePlan>
 export const LaunchConfig = z

@@ -1,3 +1,5 @@
+import { createContributionRegistry, pluginContributions } from '../contributions'
+import { pluginNodePolicy } from '../node-policy'
 import { newerPluginVersion } from '../catalogue/newer-version'
 import { parseRepoPluginList } from '../catalogue/repo-list'
 import { PluginProfileLedger } from './profile-ledger'
@@ -76,6 +78,7 @@ export class PluginLifecycleController {
   private retrying: Promise<void> | undefined
   private retryAt = 0
   private retryDelay = 5_000
+  private readonly registrations = createContributionRegistry()
   private readonly profileCalls = new Map<string, AbortController>()
   private constructor(
     private readonly options: LifecycleOptions,
@@ -101,6 +104,7 @@ export class PluginLifecycleController {
         catalogue.entries.map((one) => one.id),
       )
       controller.retainRepoList(options.repoList, options.repoCatalogueSha256)
+      controller.retainLegacyRepoList(options.legacyRepoList)
       await options.state.withExclusive(() => controller.recover())
       return controller
     } catch {
@@ -151,6 +155,23 @@ export class PluginLifecycleController {
         view.releases.map((one) => one.id),
       )
   }
+  private retainLegacyRepoList(source: LifecycleOptions['legacyRepoList']): void {
+    if (!source) return
+    if (this.options.pinnedPublicKey !== null || pluginSha256(source.bytes) !== source.sha256)
+      return refuse()
+    const parsed = parseRepoPluginList(source.bytes, this.options.target, source.appVersion)
+    if (parsed.format !== 1) return refuse()
+    const fresh = parsed.legacyCatalogues.filter(
+      (view) => !this.admittedCatalogues.has(view.sha256),
+    )
+    if (this.admittedCatalogues.size + fresh.length > 512)
+      throw new PluginSupervisorError('incompatible')
+    for (const view of fresh)
+      this.retainCatalogue(
+        view.bytes,
+        view.releases.map((release) => release.id),
+      )
+  }
   /** Only sources actually verified and admitted by this owner identify a legacy client's IDs. */
   legacyCatalogueIds(digest: string): readonly string[] {
     const ids = this.admittedCatalogues.get(digest)
@@ -169,6 +190,7 @@ export class PluginLifecycleController {
       }).verifyCatalogue(next.catalogue.bytes, next.catalogue.signature)
       if (pluginSha256(next.catalogue.bytes) !== expectedDigest) return refuse()
       this.retainRepoList(next.repoList, next.repoCatalogueSha256)
+      this.retainLegacyRepoList(next.legacyRepoList)
       this.retainCatalogue(
         next.catalogue.bytes,
         verified.entries.map((one) => one.id),
@@ -176,6 +198,7 @@ export class PluginLifecycleController {
       this.options.catalogue = next.catalogue
       this.options.repoCatalogueSha256 = next.repoCatalogueSha256
       this.options.repoList = next.repoList
+      this.options.legacyRepoList = next.legacyRepoList
       this.options.names = next.names
     })
   }
@@ -196,6 +219,7 @@ export class PluginLifecycleController {
     }
   }
   private block(id: string): symbol {
+    this.registrations.revoke(id)
     this.profileCalls.get(id)?.abort()
     const token = Symbol()
     this.blocks.set(id, token)
@@ -403,6 +427,7 @@ export class PluginLifecycleController {
   async detach(handle: LifecycleWorkspace): Promise<void> {
     const workspace = this.workspace(handle)
     workspace.live = false
+    this.registrations.detach(workspace.sink.workspaceId)
     const results = await Promise.allSettled(
       [...workspace.receipts.values()].map((receipt) =>
         bounded(() => workspace.sink.revoke(receipt.pluginId, receipt.installId)),
@@ -421,6 +446,7 @@ export class PluginLifecycleController {
       if (prior.installId !== install.installId || prior.ended) return pending()
       return prior.run
     }
+    pluginNodePolicy(checked)
     this.attempted.add(install.pluginId)
     const run = await this.options.runtime.start({
       package: checked,
@@ -1171,11 +1197,39 @@ export class PluginLifecycleController {
     return [...this.runs.keys()].sort().flatMap((id) => {
       try {
         const view = this.screen(handle, id)
+        if (
+          !view.package.manifest.server ||
+          !view.package.compatibility.tools ||
+          !pluginContributions(view.package).tools
+        )
+          return []
         return [{ ...view, current: () => this.admitted(handle, id, view.installation.installId) }]
       } catch {
         return []
       }
     })
+  }
+  /** Owner-only contribution handle. Every use still proves installation, run and workspace liveness. */
+  contributions(handle: LifecycleWorkspace, id: string, switchRevision = 0) {
+    const view = this.screen(handle, id)
+    const running = this.runs.get(id)!
+    const identity = {
+      pluginId: id,
+      releaseDigest: view.installation.release.archiveSha256,
+      installId: view.installation.installId,
+      incarnation: view.installation.incarnation,
+      runId: running.run.runId,
+      workspaceId: view.workspaceId,
+      switchRevision,
+    }
+    return this.registrations.register(
+      view.package,
+      identity,
+      () =>
+        this.admitted(handle, id, identity.installId) &&
+        this.runs.get(id)?.run.runId === identity.runId &&
+        this.current(id)?.incarnation === identity.incarnation,
+    )
   }
   screen(handle: LifecycleWorkspace, id: string) {
     const workspace = this.workspace(handle),

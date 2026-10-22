@@ -1,3 +1,4 @@
+import { PLUGIN_FRAMEWORK_FEATURES } from '../hooks/definitions'
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import { z } from 'zod'
 
@@ -41,7 +42,7 @@ export const OWNER_WIRE: WireVersion = {
   major: 1,
   minMinor: 0,
   maxMinor: 0,
-  features: [RENEW_RETRY, LOST_CHANNEL_ENDS, CONFIGURATION_LEDGER_V2],
+  features: [RENEW_RETRY, LOST_CHANNEL_ENDS, CONFIGURATION_LEDGER_V2, ...PLUGIN_FRAMEWORK_FEATURES],
 }
 /** Every copy of the app sharing the plugin root reads this strictly: it never gains a field. */
 export const OwnerRecord = z.strictObject({

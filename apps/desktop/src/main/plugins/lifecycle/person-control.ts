@@ -1,3 +1,4 @@
+import { PLUGIN_FRAMEWORK_FEATURES } from '../hooks/definitions'
 import { PluginProposal } from './proposals'
 import { createServer, createConnection, type Socket } from 'node:net'
 import { chmod, lstat, unlink } from 'node:fs/promises'
@@ -21,6 +22,7 @@ const Request = z.discriminatedUnion('kind', [
   }),
   z.strictObject({ kind: z.literal('list') }),
   z.strictObject({ kind: z.literal('list-v2') }),
+  z.strictObject({ kind: z.literal('features') }),
   z.strictObject({ kind: z.literal('configure-ledger'), format: z.literal(2) }),
   z.strictObject({ kind: z.literal('refresh'), catalogueDigest: Hex }),
   z.strictObject({ kind: z.literal('update'), pluginId: id, operationId: z.uuid() }),
@@ -186,6 +188,8 @@ export async function servePersonPluginControl(options: {
         throw new PluginSupervisorError('incompatible')
       const visible = (id: string) => !session.legacyIds || session.legacyIds.includes(id)
       switch (request.kind) {
+        case 'features':
+          return { features: [...PLUGIN_FRAMEWORK_FEATURES] }
         case 'list':
           if (!session.legacyIds) throw new PluginSupervisorError('incompatible')
           return (await options.controller.status()).cards

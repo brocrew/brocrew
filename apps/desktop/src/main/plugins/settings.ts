@@ -18,6 +18,7 @@ import {
 } from '../../shared/plugin-settings'
 /** Person-owned install/uninstall controller. Tests inject explicitly fictional fakes. */
 export interface PluginSettingsController {
+  features?(): readonly string[]
   available?(): boolean
   ready?(): Promise<boolean>
   catalogue(refresh?: boolean): Promise<PluginCard[]>

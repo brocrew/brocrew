@@ -111,7 +111,25 @@ export async function connectPluginSettings(options: {
     channel.close()
     throw new PluginSupervisorError('unavailable')
   }
+  let features: readonly string[] = Object.freeze([])
   if (modern) {
+    await channel.call({ kind: 'features' }).then(
+      (reply) => {
+        try {
+          features = Object.freeze(
+            z
+              .strictObject({
+                features: z.array(z.string().regex(/^[a-z][a-z0-9-]{0,63}$/)).max(32),
+              })
+              .parse(reply).features,
+          )
+        } catch {
+          channel.close()
+          throw new PluginSupervisorError('incompatible')
+        }
+      },
+      () => undefined,
+    )
     // Older owners reject this request without losing the person channel. Keep their old format.
     await channel.call({ kind: 'configure-ledger', format: 2 }).then(
       (reply) => {
@@ -129,6 +147,7 @@ export async function connectPluginSettings(options: {
     )
   }
   return {
+    features: () => features,
     async catalogue() {
       const cards = Cards.parse(await channel.call({ kind: modern ? 'list-v2' : 'list' }))
       // Project reviewed local adapter capabilities without expanding the legacy owner wire.

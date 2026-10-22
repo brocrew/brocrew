@@ -42,6 +42,7 @@ export interface LifecycleOptions {
   repoCatalogueSha256?: string
   /** Raw list bound by trusted app launch input, used to derive older minimum-version views. */
   repoList?: { bytes: Uint8Array; sha256: string; appVersion: string }
+  legacyRepoList?: { bytes: Uint8Array; sha256: string; appVersion: string }
   target: PluginTarget
   catalogue: { bytes: Uint8Array; signature: Uint8Array }
   /** Reviewed host-owned display names, never remote unreviewed text. */
@@ -51,6 +52,7 @@ export interface LifecycleOptions {
     catalogue: { bytes: Uint8Array; signature: Uint8Array }
     repoCatalogueSha256?: string
     repoList?: { bytes: Uint8Array; sha256: string; appVersion: string }
+    legacyRepoList?: { bytes: Uint8Array; sha256: string; appVersion: string }
     names: Readonly<Record<string, string>>
   }>
   runtime: LifecycleRuntime

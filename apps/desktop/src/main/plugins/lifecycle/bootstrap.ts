@@ -49,10 +49,24 @@ export async function bootstrapPluginLifecycle(options: {
     await verifyImmutableFile(repo.repoList.path, bytes)
     if (
       pluginSha256(bytes) !== repo.repoList.sha256 ||
-      parseRepoPluginList(bytes, target, repo.appVersion).sha256 !== repo.catalogueSha256
+      parseRepoPluginList(bytes, target, repo.appVersion).sha256 !== repo.catalogueSha256 ||
+      parseRepoPluginList(bytes, target, repo.appVersion).format !== (repo.sourceVersion ?? 1) ||
+      (repo.sourceVersion === 2 && !repo.legacyRepoList)
     )
       throw new Error('unavailable')
     repoList = { bytes, sha256: repo.repoList.sha256, appVersion: repo.appVersion }
+  }
+  let legacyRepoList: typeof repoList
+  if (repo?.legacyRepoList) {
+    if (repo.sourceVersion !== 2 || !repo.appVersion) throw new Error('unavailable')
+    const bytes = await sourceBytes(repo.legacyRepoList.path, PLUGIN_LIMITS.catalogueBytes)
+    await verifyImmutableFile(repo.legacyRepoList.path, bytes)
+    if (
+      pluginSha256(bytes) !== repo.legacyRepoList.sha256 ||
+      parseRepoPluginList(bytes, target, repo.appVersion).format !== 1
+    )
+      throw new Error('unavailable')
+    legacyRepoList = { bytes, sha256: repo.legacyRepoList.sha256, appVersion: repo.appVersion }
   }
   const root = join(options.root, 'state')
   const exists = await lstat(root).then(
@@ -101,6 +115,7 @@ export async function bootstrapPluginLifecycle(options: {
         pinnedPublicKey,
         repoCatalogueSha256: repo?.catalogueSha256,
         repoList,
+        legacyRepoList,
         target,
         catalogue,
         names: repo?.names ?? { chrome: 'Chrome' },
@@ -112,8 +127,27 @@ export async function bootstrapPluginLifecycle(options: {
                 appVersion: repo.appVersion!,
                 devSource: repo.devSource,
                 fixtureSource: repo.fixtureSource,
+                sourceVersion: repo.sourceVersion,
               })
+              const frozen =
+                repo.sourceVersion === 2
+                  ? await loadRepoPluginList({
+                      root: options.root,
+                      target,
+                      appVersion: repo.appVersion!,
+                      fixtureSource: repo.fixtureSource,
+                      devSource: repo.devSource,
+                      sourceVersion: 1,
+                    })
+                  : undefined
               return {
+                legacyRepoList: frozen
+                  ? {
+                      bytes: frozen.rawBytes,
+                      sha256: frozen.repoList.sha256,
+                      appVersion: repo.appVersion!,
+                    }
+                  : undefined,
                 catalogue: { bytes: list.bytes, signature: Buffer.alloc(0) },
                 repoCatalogueSha256: list.sha256,
                 repoList: {

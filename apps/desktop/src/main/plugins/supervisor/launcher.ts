@@ -23,13 +23,17 @@ export function createPluginSupervisorLauncher(options: {
   browserExecutable?: string
   startup?: PluginStartupPlan
   lifecycle?: PluginLifecyclePlan
+  /** Resolves the app-fixed modern source only when a new owner is actually needed. */
+  lifecycleForNewOwner?(): Promise<PluginLifecyclePlan>
 }): () => Promise<void> {
-  const captured = structuredClone(options)
+  const { lifecycleForNewOwner, ...plain } = options
+  const captured = structuredClone(plain)
   let pending: Promise<void> | undefined
   async function launch(): Promise<void> {
     const storage = new SupervisorStorage(captured.root, captured.workspaceRoots, true)
     try {
       const root = storage.root
+      const lifecycle = lifecycleForNewOwner ? await lifecycleForNewOwner() : captured.lifecycle
       const runtime = await preparePluginNodeRuntime({
         resourcesRoot: captured.resourcesRoot,
         durableRoot: join(root, 'runtimes'),
@@ -59,7 +63,7 @@ export function createPluginSupervisorLauncher(options: {
         runtime: { directory: dirname(node), id: runtime.id },
         browserExecutable: captured.browserExecutable,
         startup: captured.startup,
-        lifecycle: captured.lifecycle,
+        lifecycle,
       })
       const input = Buffer.from(JSON.stringify(config)),
         configPath = join(directory, 'launch.json')

@@ -75,6 +75,11 @@ export function sharedLifecycleWorkspaces(
             await target.detach(client.actual)
           }
         }
+      if (key === 'contributions')
+        return (handle: LifecycleWorkspace, id: string, revision?: number) => {
+          const entry = target.contributions(actual(handle), id, revision)
+          return Object.freeze({ ...entry, current: () => clients.has(handle) && entry.current() })
+        }
       const value = Reflect.get(target, key, target)
       if (typeof value !== 'function') return value
       if (

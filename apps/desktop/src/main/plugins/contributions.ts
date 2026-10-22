@@ -39,20 +39,41 @@ const Identity = z.strictObject({
 export type ContributionIdentity = z.infer<typeof Identity>
 /** Owner-only registrations. A caller cannot turn structural metadata into a verified package. */
 export function createContributionRegistry() {
-  const entries = new Map<string, { revoke(): void }>()
+  const entries = new Map<
+    string,
+    {
+      identity: ContributionIdentity
+      contributions: ReturnType<typeof pluginContributions>
+      current(): boolean
+      revoke(): void
+    }
+  >()
   return Object.freeze({
     register(pkg: VerifiedPluginPackage, input: ContributionIdentity, ownerCurrent: () => boolean) {
       const identity = Object.freeze(Identity.parse(input))
+      let current: boolean
+      try {
+        current = ownerCurrent()
+      } catch {
+        return unavailable()
+      }
       if (
         identity.pluginId !== pkg.manifest.id ||
         identity.releaseDigest !== verifiedPluginDigest(pkg) ||
-        !ownerCurrent()
+        !current
       )
         return unavailable()
       const contributions = pluginContributions(pkg)
       const key = identity.workspaceId + '/' + identity.pluginId
       if (!entries.has(key) && entries.size >= 512) return unavailable()
-      entries.get(key)?.revoke()
+      const before = entries.get(key)
+      if (
+        before &&
+        JSON.stringify(before.identity) === JSON.stringify(identity) &&
+        before.current()
+      )
+        return before
+      before?.revoke()
       let live = true
       const entry = Object.freeze({
         identity,

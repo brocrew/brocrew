@@ -69,6 +69,8 @@ export function productionPluginController() {
   let refreshFailed = false
   let listFailure: PluginListError | undefined
   let catalogueEntries: Awaited<ReturnType<typeof loadRepoPluginList>>
+  let frozenCatalogue: typeof catalogueEntries | undefined
+  let sourceVersion: 1 | 2 = 1
   const fail = (): never => {
     throw new PluginSupervisorError('unavailable')
   }
@@ -312,10 +314,12 @@ export function productionPluginController() {
               devSource,
               target: options.target ?? thisMachine(),
               signal: lifetime.signal,
+              sourceVersion,
             })
           if (!catalogueEntries || !options.supervisor.holdsLease()) {
             try {
               catalogueEntries = await loadCatalogue()
+              if (sourceVersion === 1) frozenCatalogue = catalogueEntries
               listFailure = undefined
             } catch (error) {
               // List discovery does not imply a broken supervisor or plugin.
@@ -359,6 +363,32 @@ export function productionPluginController() {
                 (process.platform === 'win32'
                   ? (installedChromeOnWindows() ?? undefined)
                   : undefined),
+              lifecycleForNewOwner:
+                options.fixtureSource || devSource
+                  ? undefined
+                  : async () => {
+                      const next = await loadRepoPluginList({
+                        root: options.root,
+                        appVersion: options.appVersion,
+                        target: options.target ?? thisMachine(),
+                        signal: lifetime.signal,
+                        sourceVersion: 2,
+                      })
+                      if (!frozenCatalogue) return fail()
+                      return {
+                        source: 'repo-list',
+                        sourceVersion: 2,
+                        appVersion: options.appVersion,
+                        catalogue: next.catalogue,
+                        catalogueSha256: next.sha256,
+                        repoList: next.repoList,
+                        legacyRepoList: frozenCatalogue.repoList,
+                        personKey,
+                        names: Object.fromEntries(
+                          next.entries.map((entry) => [entry.id, entry.name]),
+                        ),
+                      }
+                    },
               lifecycle: {
                 source: 'repo-list',
                 appVersion: options.appVersion,
@@ -373,6 +403,17 @@ export function productionPluginController() {
             }),
           })
           if (!(await options.supervisor.ready()) || ended) return false
+          if (
+            !options.fixtureSource &&
+            !devSource &&
+            options.supervisor.supports?.('contributions-v1')
+          ) {
+            sourceVersion = 2
+            catalogueEntries = await loadCatalogue()
+            names = Object.fromEntries(
+              catalogueEntries.entries.map((entry) => [entry.id, entry.name]),
+            )
+          }
           // The lifecycle's person control comes up after the supervisor; slower on Windows.
           const until = performance.now() + (process.platform === 'win32' ? 60_000 : 5000)
           do {

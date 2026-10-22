@@ -354,6 +354,9 @@ export class PluginSupervisorAttachment {
         return null
       })
   }
+  supports(feature: string): boolean {
+    return this.holdsLease() && Boolean(this.lease?.features.includes(feature))
+  }
   async agentRoutes(input: {
     workspaceId: string
     incarnation: string

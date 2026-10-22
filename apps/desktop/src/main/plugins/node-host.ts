@@ -1,10 +1,13 @@
+import { z } from 'zod'
+import { pluginNodePolicy } from './node-policy'
+export { pluginNodePolicy } from './node-policy'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { fork, type ChildProcess } from 'node:child_process'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { join, dirname, isAbsolute } from 'node:path'
 import { rm } from 'node:fs/promises'
-import type { VerifiedPluginPackage } from './package-verifier'
+import { verifiedPluginDigest, type VerifiedPluginPackage } from './package-verifier'
 import {
   immutableFile,
   verifyImmutableFile,
@@ -36,6 +39,7 @@ export interface PluginNodeReady {
   /** Diagnostic snapshot of this authenticated owned server; never admission evidence. */
   readonly priorityClamped?: boolean | null
   /** These capabilities stay with the supervisor/broker; JSON contains no credential. */
+  hooks?(): { url: string; headers: { Authorization: string } }
   mcp(): { url: string; headers: { Authorization: string } }
   admin(): { url: string; headers: { Authorization: string } }
 }
@@ -141,17 +145,57 @@ async function authenticatedHealth(
   }
 }
 
+/** Dedicated hook credential and fixed route; no MCP or person-admin surface is fabricated. */
+export async function authenticatedHookHealth(options: {
+  origin: string
+  hookToken: string
+  otherTokens: readonly string[]
+  version: string
+  fetch?: typeof fetch
+}): Promise<void> {
+  if (!/^http:\/\/127\.0\.0\.1:[1-9][0-9]{0,4}$/.test(options.origin))
+    throw new PluginHostError('ready')
+  const signal = AbortSignal.timeout(1500)
+  for (const token of ['', 'invalid', ...options.otherTokens, options.hookToken]) {
+    const response = await (options.fetch ?? fetch)(options.origin + '/v1/hooks/healthz', {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      signal,
+      redirect: 'manual',
+    })
+    const success = token === options.hookToken
+    if (response.status !== (success ? 200 : 401)) {
+      await response.body?.cancel()
+      throw new PluginHostError('ready')
+    }
+    if (!success) {
+      await response.body?.cancel()
+      continue
+    }
+    const reader = response.body?.getReader()
+    if (!reader) throw new PluginHostError('ready')
+    const chunks: Uint8Array[] = []
+    let length = 0
+    try {
+      for (;;) {
+        const part = await reader.read()
+        if (part.done) break
+        length += part.value.byteLength
+        if (length > 4096) throw new PluginHostError('ready')
+        chunks.push(part.value)
+      }
+      z.strictObject({
+        ok: z.literal(true),
+        version: z.literal(options.version),
+        hookProtocol: z.literal(1),
+      }).parse(JSON.parse(Buffer.concat(chunks).toString('utf8')))
+    } finally {
+      await reader.cancel()
+    }
+  }
+}
+
 /** The longest a Windows job keeper may take to open: its first start compiles the job code. */
 const KEEPER_OPEN_MS = 130_000
-
-/**
- * The plugins this host runs: the prefix of the variables each one reads its private root and
- * credentials from, and the admin route its readiness check reads.
- */
-const HOSTED: Readonly<Record<string, { env: string; probe: string }>> = Object.freeze({
-  chrome: { env: 'CHROME', probe: '/profiles' },
-  whatsapp: { env: 'WHATSAPP', probe: '/status' },
-})
 
 /** One explicitly rooted host, called by the supervisor; it never discovers live app data. */
 export function createPluginNodeHost(options: {
@@ -174,15 +218,14 @@ export function createPluginNodeHost(options: {
 
   async function launch(spec: PluginNodeStart): Promise<PluginNodeProcess> {
     const manifest = spec.package.manifest
-    const hosted = Object.hasOwn(HOSTED, manifest.id) ? HOSTED[manifest.id] : undefined
+    const hosted = pluginNodePolicy(spec.package)
     if (
-      !hosted ||
       !spec.package.compatibility.host ||
+      verifiedPluginDigest(spec.package) !== spec.releaseDigest ||
       !/^[a-f0-9]{64}$/.test(spec.releaseDigest) ||
       !manifest.platforms.some(
         (target) => target.os === process.platform && target.cpu === process.arch,
-      ) ||
-      !manifest.server
+      )
     )
       throw new PluginHostError('package')
     const runtime = await runtimeFiles(options.runtime)
@@ -218,16 +261,19 @@ export function createPluginNodeHost(options: {
     const runId = randomUUID()
     const run = await privateChild(root, `runs/${runId}`)
     const mcpToken = randomBytes(32).toString('hex'),
-      adminToken = randomBytes(32).toString('hex')
+      adminToken = randomBytes(32).toString('hex'),
+      hookToken = randomBytes(32).toString('hex')
     await immutableFile(
       join(run, 'auth.json'),
-      Buffer.from(JSON.stringify({ mcpToken, adminToken })),
+      Buffer.from(
+        JSON.stringify(hosted.transport === 'hooks' ? { hookToken } : { mcpToken, adminToken }),
+      ),
     )
     await immutableFile(
       join(run, 'launch.json'),
       Buffer.from(
         JSON.stringify({
-          entry: join(release, manifest.server.entry),
+          entry: join(release, hosted.entry),
           home,
           runId,
           pluginId: manifest.id,
@@ -369,6 +415,13 @@ export function createPluginNodeHost(options: {
         void rm(join(run, 'auth.json'), { force: true })
           .then(() => {
             if (stopped) throw new PluginHostError('ready')
+            if (hosted.transport === 'hooks')
+              return authenticatedHookHealth({
+                origin,
+                hookToken,
+                otherTokens: [mcpToken, adminToken],
+                version: manifest.version,
+              })
             return authenticatedHealth(
               origin,
               mcpToken,
@@ -395,8 +448,20 @@ export function createPluginNodeHost(options: {
                     ? value.priorityClamped
                     : null
                   : readPriorityClamped(Number(value.serverPid)),
+                ...(hosted.transport === 'hooks'
+                  ? {
+                      hooks() {
+                        current()
+                        return {
+                          url: origin + '/v1/hooks',
+                          headers: { Authorization: `Bearer ${hookToken}` },
+                        }
+                      },
+                    }
+                  : {}),
                 mcp() {
                   current()
+                  if (!manifest.server) throw new PluginHostError('ready')
                   return {
                     url: origin + manifest.server!.mcpPath,
                     headers: { Authorization: `Bearer ${mcpToken}` },
@@ -404,6 +469,7 @@ export function createPluginNodeHost(options: {
                 },
                 admin() {
                   current()
+                  if (!manifest.server) throw new PluginHostError('ready')
                   return {
                     url: origin + manifest.server!.adminPath,
                     headers: { Authorization: `Bearer ${adminToken}` },
