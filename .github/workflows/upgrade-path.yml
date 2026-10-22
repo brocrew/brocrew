@@ -1,4 +1,4 @@
-# The testers' upgrade path, on GitHub's runners: the released beta each tester runs is downloaded
+# The testers' upgrade path, on GitHub's runners: the published old build is downloaded
 # and installed, it makes fictional data through its own window, and the candidate built from this
 # run's commit is installed over it by hand: its Windows installer over the old one, and on the Mac
 # the app replaced in Applications. The candidate's first and second starts are then checked
@@ -20,12 +20,13 @@
 # is described in `scripts/upgrade-path.mjs`; its evidence is kept with the run for a week, and a
 # missing piece of evidence fails it.
 #
-# Run it on a commit that carries the app's whole window (develop, or a branch cut from it): the
+# Run it on a commit that carries the app's whole window (main, or a branch cut from it): the
 # check expects that setup at launch, and a commit without the window's half of the app fails it.
 #
 # Opt-in, so it spends no runner minutes on ordinary pushes: by hand (Actions → Upgrade path → Run
-# workflow), or a pushed tag `upgrade-path-*`. It starts from the newest tester betas; by hand any
-# beta can be named, and a tag whose name holds `-before-the-switch-` starts from the last betas
+# workflow), or a pushed tag `upgrade-path-*`. It starts from v0.1.6; by hand any published
+# release or prerelease can be named, and a tag whose name holds `-before-the-switch-` starts from
+# the last betas
 # without the scheduling switch (windows-beta-14, mac-beta-3). It publishes nothing: the run's
 # token only reads the releases, and the model is a local scripted one.
 name: Upgrade path
@@ -36,16 +37,16 @@ on:
   workflow_dispatch:
     inputs:
       windows_beta:
-        description: The Windows beta a tester runs
-        default: windows-beta-21
+        description: The published Windows release or prerelease to upgrade from
+        default: v0.1.6
         type: string
       mac_beta:
-        description: The Mac beta a tester runs
-        default: mac-beta-10
+        description: The published Mac release or prerelease to upgrade from
+        default: v0.1.6
         type: string
       candidate_version:
         description: The version the candidate is stamped with
-        default: 0.1.0
+        default: 0.1.7
         type: string
 
 permissions:
@@ -55,9 +56,9 @@ env:
   ELECTRON_CACHE: ${{ github.workspace }}/.cache/electron
   electron_config_cache: ${{ github.workspace }}/.cache/electron
   ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.cache/electron-builder
-  WINDOWS_BETA: ${{ inputs.windows_beta || (contains(github.ref_name, '-before-the-switch-') && 'windows-beta-14' || 'windows-beta-21') }}
-  MAC_BETA: ${{ inputs.mac_beta || (contains(github.ref_name, '-before-the-switch-') && 'mac-beta-3' || 'mac-beta-10') }}
-  CANDIDATE_VERSION: ${{ inputs.candidate_version || '0.1.0' }}
+  WINDOWS_BETA: ${{ inputs.windows_beta || (contains(github.ref_name, '-before-the-switch-') && 'windows-beta-14' || 'v0.1.6') }}
+  MAC_BETA: ${{ inputs.mac_beta || (contains(github.ref_name, '-before-the-switch-') && 'mac-beta-3' || 'v0.1.6') }}
+  CANDIDATE_VERSION: ${{ inputs.candidate_version || '0.1.7' }}
   # Where the lane's scripted Claude model listens, named to Claude Code in its managed settings.
   UPGRADE_PATH_CLAUDE_PORT: '9360'
 

@@ -1,4 +1,4 @@
-// The testers' upgrade path, on a GitHub-hosted runner: a released beta installed as a person
+// The testers' upgrade path, on a GitHub-hosted runner: a published release installed as a person
 // installs it, fictional data made by that beta through its own window, the candidate installed
 // over it by hand, and the candidate's first and second starts checked against what the beta left.
 // Run by `.github/workflows/upgrade-path.yml`:
@@ -2093,7 +2093,7 @@ try {
   const release = JSON.parse(readFileSync(resolve(args['beta-release']), 'utf8'))
   must(
     isPublishedRelease(release, args['beta-tag']),
-    `the release is ${args['beta-tag']}, a published prerelease`,
+    `the release is ${args['beta-tag']}, a published release`,
     { tag: release.tag_name, prerelease: release.prerelease, publishedAt: release.published_at },
   )
   const asset = betaAsset(release.assets, os)

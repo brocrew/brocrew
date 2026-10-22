@@ -55,7 +55,7 @@ export function sha256(bytes) {
 
 /** Whether the old build is the requested published release. */
 export function isPublishedRelease(release, tag) {
-  return release.tag_name === tag && release.prerelease === true && release.draft === false
+  return release.tag_name === tag && release.draft === false
 }
 
 /**
