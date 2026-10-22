@@ -787,6 +787,9 @@ function fakeBridge() {
     // answers**, exactly as the two writers above it answer. ⚑ The READ has no refusal arm, so it
     // answers an empty history and a stamp — the honest shape for a bridge that holds nothing.
     instructAgent: async () => null,
+    agentRulesUnread: async () => ({ newestDirectVersion: 0, seenThrough: 0, unread: false }),
+    undoAgentRules: async () => null,
+    markAgentRulesSeen: async () => false,
     agentInstructions: async () => ({
       own: { identity: 'nobody', versions: [] },
       waiting: [],

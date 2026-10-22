@@ -764,8 +764,7 @@ const ACT: Readonly<Record<string, string>> = {
     'ask the person with ask_question (a-person) to grant it to your profile',
   'TOOL_REFUSALS|server-already-asked-for': 'wait for the person to decide',
   'TOOL_REFUSALS|too-many-server-requests': 'wait until one is decided',
-  'TOOL_REFUSALS|may-not-write-rules':
-    'ask a person to grant you the right to change another agent’s rules',
+  'TOOL_REFUSALS|may-not-write-rules': 'You can propose a change with propose_agent_rules',
   'TOOL_REFUSALS|may-not-relay-a-rule':
     'Ask again without claiming it was already agreed, and a person will decide',
   'TOOL_REFUSALS|that-is-work-you-hold':

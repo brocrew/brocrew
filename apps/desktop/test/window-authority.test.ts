@@ -274,6 +274,9 @@ const CLASSIFIED: Record<
    */
   instructAgent: 'no session',
   agentInstructions: 'no session',
+  agentRulesUnread: 'no session',
+  undoAgentRules: 'no session',
+  markAgentRulesSeen: 'no session',
   decideInstruction: 'no session',
   // Decided on the request, by its id, which is in no conversation the window names.
   decideMcpServerRequest: 'no session',

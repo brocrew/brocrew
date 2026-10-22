@@ -888,6 +888,11 @@ describe('484 · state a supervisor can trust', () => {
           '484 · `turn_interrupted` says the turn was stopped, and the asker is on the neighbouring row of the same ledger',
       },
       // ⚑ **D-016** — `list_projects` (*the same act on the project read*) is gone with projects.
+      read_agent_rules: {
+        describes: false,
+        actor: 'n/a',
+        because: 'Reads current standing rules and their provenance; it describes no stopping act.',
+      },
       propose_agent_rules: {
         describes: false,
         actor: 'n/a',

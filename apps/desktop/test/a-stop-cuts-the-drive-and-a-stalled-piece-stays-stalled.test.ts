@@ -851,6 +851,7 @@ describe('§3 · the host — a stop changes nothing about a piece or about the 
       created: await callOn(pmLaunch.toolset, 'create_agent', { profile_slug: slug }),
       proposed: await callOn(pmLaunch.toolset, 'propose_agent_rules', {
         agent: 'worker',
+        current_version: 0,
         rules: 'Keep the changelog current.',
         why: 'The work needs it.',
       }),

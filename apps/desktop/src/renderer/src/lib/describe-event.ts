@@ -1,3 +1,4 @@
+import { rulesChangeLabel } from '../../../shared/own-instructions'
 import {
   theMessagesOf,
   type TranscriptEvent,
@@ -232,6 +233,8 @@ export function describeEvent(event: TranscriptEvent): string {
     // ⚑ **582 · how it ended**: the word does not name its own author — `withdrawn` is reached from
     // four upstream actors — so the actor is on the row and is printed beside the ending rather than
     // inferred from it.
+    case 'instruction_changed':
+      return `${rulesChangeLabel({ whoWroteIt: 'an-agent-direct', author: event.author })} · ${event.profile} · v${event.version}`
     case 'instruction_settled':
       return `${event.askId} · ${event.ending} · ${didIt(event.by)} (ours)`
     // An agent asked the person to register an MCP server: the server, who would get it, and who asked.

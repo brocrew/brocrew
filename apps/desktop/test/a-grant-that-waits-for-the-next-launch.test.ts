@@ -247,6 +247,7 @@ describe('470 · a grant that waits for the next launch', () => {
     const answered = (
       await tool.call({
         agent: 'worker',
+        current_version: 0,
         rules: 'Keep the changelog current.',
         why: 'A person asked for it in this conversation.',
         already_agreed: true,
@@ -361,7 +362,7 @@ describe('470 · a grant that waits for the next launch', () => {
   // ─────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§2 · a live change: the rail moves, the launch object does not', () => {
-    it('🔴 the grant is widened, the rail ADMITS, and the running conversation keeps what it was told', async () => {
+    it('a legacy grant change cannot reactivate the relay or relaunch a conversation', async () => {
       await bringIdentityIntoBeing('lead')
       await bringIdentityIntoBeing('worker')
 
@@ -372,8 +373,8 @@ describe('470 · a grant that waits for the next launch', () => {
       expect(launchesFor('lead').at(-1)?.hint).toContain(RELAY_IF_YOU_CAN)
       const atLaunch = launchesFor('lead').length
 
-      // 2 · …and the governed rail refuses the relay, which is the state a person is about to fix.
-      expect(await askToRelayARule(lead)).toBe('may-not-write-rules')
+      // The retired shortcut is refused regardless of this legacy value.
+      expect(await askToRelayARule(lead)).toBe('malformed-request')
 
       // 3 · the person widens the grant. ⛔ **Nothing is launched by the write** — `setCapabilities`
       //     touches no slot and no handle.
@@ -383,9 +384,9 @@ describe('470 · a grant that waits for the next launch', () => {
       grant('lead', 'relay')
       expect(launches.length, 'the write launched something').toBe(everyLaunch)
 
-      // 4 · 🔴 **The rail admits, from the SAME live conversation, with no restart.**
-      expect(await askToRelayARule(lead)).toBe('ok')
-      expect(store.ownInstructionsOf('worker').versions).toHaveLength(1)
+      // Changing the stored legacy value does not authorize a relay.
+      expect(await askToRelayARule(lead)).toBe('malformed-request')
+      expect(store.ownInstructionsOf('worker').versions).toHaveLength(0)
 
       // 5 · 🔴 **…and `lead`'s own provider handle was never re-launched**, so the words it was
       //     started with are still the ones it has — the first clause of the sentence, measured.
@@ -405,23 +406,21 @@ describe('470 · a grant that waits for the next launch', () => {
       expect(launchesFor('lead').at(-1)?.hint).not.toContain(RELAY_IF_YOU_CAN)
     })
 
-    it('⚠️ narrowing bites the other way — the rail refuses at once, and a saved rule stays saved', async () => {
-      // 🔴 **The asymmetry the ruling's wording hides.** A widened conversation is told less than
-      // it may do; ⛔ a narrowed one goes on believing it may write a rule the rail now refuses.
-      // ⚑ One sentence covers both, and this is why its clause is *keeps what it was told*.
+    it('changing a legacy grant leaves person rules saved and keeps the relay refused', async () => {
       await bringIdentityIntoBeing('lead')
       await bringIdentityIntoBeing('worker')
+      host.instructAgent('worker', 'A person rule.', undefined, window)
       grant('lead', 'relay')
 
       const lead = await personOpens('lead')
       expect(launchesFor('lead').at(-1)?.hint).toContain(RELAY_AND_RECORD)
       const atLaunch = launchesFor('lead').length
-      expect(await askToRelayARule(lead)).toBe('ok')
+      expect(await askToRelayARule(lead)).toBe('malformed-request')
       expect(store.ownInstructionsOf('worker').versions).toHaveLength(1)
 
       grant('lead', 'none')
-      // the rail: immediately narrow.
-      expect(await askToRelayARule(lead)).toBe('may-not-write-rules')
+      // The fixed host rule does not change with the old grant.
+      expect(await askToRelayARule(lead)).toBe('malformed-request')
       expect(capabilityField('canWriteRules').whenItTakesEffect).toContain(
         'Narrowing it stops new requests',
       )
