@@ -84,7 +84,8 @@ it('shows the approved failure and tears down a revoked configuration', async ()
   for (const stop of f.closed) stop(opened.screenId)
   await nextTick()
   expect(m.q('plugins-error').textContent).toBe('Plugin unavailable. Try again.')
-  expect(m.all('plugin-stage')).toHaveLength(0)
+  expect(m.all('plugin-stage')).toHaveLength(1)
+  expect(m.q('plugin-configuration-retry').textContent?.trim()).toBe('Try again')
 })
 it.each(READABILITY_THEMES.flatMap((theme) => [1180, 760].map((width) => ({ theme, width }))))(
   'reads Plugins in $theme at $width',
@@ -174,7 +175,8 @@ it('keeps B visible when A finishes closing after Cancel and Configure again', a
   // Actual B revocation must still clear B.
   for (const stop of f.closed) stop(b.screenId)
   await nextTick()
-  expect(m.all('plugin-stage')).toHaveLength(0)
+  expect(m.all('plugin-stage')).toHaveLength(1)
+  expect(m.q('plugin-configuration-retry').textContent?.trim()).toBe('Try again')
   expect(m.q('plugins-error').textContent).toBe('Plugin unavailable. Try again.')
 })
 
