@@ -1,0 +1,73 @@
+name: Plugin archive dry run
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_commit:
+        description: Reviewed public monorepo commit (full SHA)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build-only:
+    if: github.repository == 'brocrew/brocrew' && github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: true
+      matrix:
+        plugin: [chrome, whatsapp]
+    env:
+      PLUGIN_ID: ${{ matrix.plugin }}
+      BROCREW_PLUGIN_SOURCE_COMMIT: ${{ inputs.source_commit }}
+      BROCREW_MONOREPO_ROOT: ${{ github.workspace }}
+      CGO_ENABLED: '0'
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22.23.3'
+      - name: Require an explicit source revision
+        run: node -e 'if (!/^[a-f0-9]{40}$/.test(process.env.BROCREW_PLUGIN_SOURCE_COMMIT || "")) throw new Error("A full reviewed source pin is required")'
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source_commit }}
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.27.2'
+          cache: false
+      - name: Install only locked plugin build dependencies
+        run: npm ci --prefix "plugins/$PLUGIN_ID" --ignore-scripts --no-audit --no-fund
+      - name: Check plugin types
+        run: '"plugins/$PLUGIN_ID/node_modules/.bin/tsc" --noEmit -p "plugins/$PLUGIN_ID/tsconfig.json"'
+      - name: Build both targets twice from the checked source
+        run: |
+          set -eu
+          export BROCREW_GO="$(command -v go)"
+          node scripts/build-plugin-release.mjs "$PLUGIN_ID" artifact
+          node scripts/build-plugin-release.mjs "$PLUGIN_ID" artifact-repeat
+          diff -r artifact artifact-repeat
+      - name: Record public source and toolchain receipts
+        run: |
+          set -eu
+          test "$(git rev-parse HEAD)" = "$BROCREW_PLUGIN_SOURCE_COMMIT"
+          git rev-parse HEAD > artifact/source-commit.txt
+          node --version > artifact/node-version.txt
+          npm --version > artifact/npm-version.txt
+          go version > artifact/go-version.txt
+          node -p "require('./plugins/' + process.env.PLUGIN_ID + '/node_modules/esbuild/package.json').version" > artifact/esbuild-version.txt
+          sha256sum "plugins/$PLUGIN_ID/package-lock.json" scripts/build-plugin-release.mjs scripts/plugin-source.mjs "plugins/$PLUGIN_ID/build.mjs" .github/workflows/plugin-archive-dry-run.yml > artifact/build-inputs.sha256
+          sha256sum artifact/*.tar.gz artifact/plugin-list-entry.json > artifact/downloads.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plugin-archive-dry-run-${{ matrix.plugin }}-${{ inputs.source_commit }}
+          path: artifact/
+          if-no-files-found: error
+          retention-days: 14
