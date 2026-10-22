@@ -405,10 +405,10 @@ const providerDetail = computed(() => {
 const yoloTitle = computed(() => {
   const session = props.session
   if (session?.approvalMode === 'ask')
-    return 'Asks when an action needs permission. Change it in the drawer’s Open tab.'
+    return 'Asks when an action needs permission. Change it in the drawer’s Agent tab.'
   const status = session ? props.capabilities?.[session.provider]?.approvals : undefined
   const declared = status?.state === 'available' ? status.note : undefined
-  return `Auto. This session runs commands and edits files without asking, except what the provider’s own plan mode asks while it plans, and nothing this app configures confines them. ${declared ?? ''} Change it in the drawer’s Open tab.`.replace(
+  return `Auto. This session runs commands and edits files without asking, except what the provider’s own plan mode asks while it plans, and nothing this app configures confines them. ${declared ?? ''} Change it in the drawer’s Agent tab.`.replace(
     /\s+/g,
     ' ',
   )
@@ -429,11 +429,6 @@ const pendingMarker = computed(() => {
       : settings.pendingPlanMode
         ? 'plan mode'
         : 'plan mode off',
-    session.pendingApprovalMode === null
-      ? null
-      : session.pendingApprovalMode === 'auto'
-        ? 'approvals off'
-        : 'approvals on',
   ].filter((part): part is string => part !== null)
 
   return parts.length === 0 ? null : `${parts.join(' · ')} requested`

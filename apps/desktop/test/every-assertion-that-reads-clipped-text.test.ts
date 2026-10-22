@@ -485,6 +485,11 @@ const CLAMPED: Readonly<Record<string, { readonly clamp: string; readonly recove
     clamp: '4',
     recovery: '⚑ `title` on all three elements — `531`’s pairing.',
   },
+  'SideRail.vue · .rail-safety .rail-copy strong': {
+    clamp: '2',
+    recovery:
+      'The full heading is its own title. The approved two-line wrap is measured at both shipped widths in spawning-switch.dom.test.ts, including recovery when narrowed.',
+  },
   'WorkingTogether.vue · .chip-word': {
     clamp: '2',
     recovery:
@@ -698,6 +703,7 @@ describe('§1 · the category, and nothing outside the ledger', () => {
       'PersonsQueue.vue · .pq-stall-what',
       // ⚑ a conversation's title in the rail, two lines, the whole title on its own title
       'SideRail.vue · .rail-copy small.says',
+      'SideRail.vue · .rail-safety .rail-copy strong',
       'TaskList.vue · .tsaid',
       // ⚑ **F097 · another**: a piece waiting on a reply, two lines, the whole line on its own title
       'WaitingOnWhoWrote.vue · .reply-what',

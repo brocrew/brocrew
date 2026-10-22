@@ -669,7 +669,7 @@ describe('the rail says where the Sessions list comes from, in words (153 §4)',
     unmountAll()
   })
 
-  it('names the two programs and calls the thing a folder', async () => {
+  it('names the two programs and the computer holding their chats', async () => {
     const m = mount(
       SideRail,
       { open: [], activeId: null, place: null },
@@ -677,11 +677,9 @@ describe('the rail says where the Sessions list comes from, in words (153 §4)',
     )
     await nextTick()
     const said = m.q('rail-sessions').textContent ?? ''
-    // ⚠️ **154 changed the LABEL and kept this subtitle**, which is the ticket's own instruction:
-    // *"If 153 has landed, keep its subtitle and change only the label."* The two do not disagree —
-    // the label names what the page holds and the subtitle says where it came from.
+    // The approved plain subtitle names the programs and computer instead of their folders.
     expect(said).toContain('All conversations')
-    expect(said).toContain("Claude's and Codex's own folders")
+    expect(said).toContain('Includes chats from Claude and Codex on this computer.')
     // ⛔ The jargon itself, gone from the one line this ticket is about.
     expect(said).not.toContain('provider home')
     // …and the item is still the wired link it was, not a label this rewrite turned into prose.

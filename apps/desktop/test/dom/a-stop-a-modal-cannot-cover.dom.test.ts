@@ -1,3 +1,4 @@
+// The approved plain words replace the former labels; the state and gesture checks remain.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { defineComponent, h, nextTick, type PropType, type VNode } from 'vue'
@@ -376,7 +377,7 @@ const PATHS = [
         conversation: null,
       }),
   },
-  // F093 · the pane's eighth host: "What this agent receives", opened from the Open tab's door.
+  // F093 · the pane's eighth host: "Instructions, memory and tools", opened from the Open tab's door.
   {
     host: 'ConversationPane',
     panel: 'AgentInputPopup',
@@ -598,7 +599,7 @@ describe('§2 · every OverlayHost path carries a reachable stop (390 §3)', () 
 
       const lane = m.q('overlay-spawning')
       expect(reachable(lane), `${path.panel} covers the stop`).toBe(true)
-      expect(lane.textContent).toContain('Spawning is on')
+      expect(lane.textContent).toContain('Agents can start new conversations')
 
       // ⛔ **Inside the host**, which is what puts it inside the trap and inside the light scope.
       expect(m.q('overlay-host').contains(lane)).toBe(true)
@@ -858,20 +859,20 @@ describe('§5 · the rail and the lane are two views of ONE state (390 §2)', ()
     const railLine = (): string => m.q('rail-spawning-line').textContent!.trim()
     const laneLine = (): string => m.q('overlay-spawning-line').textContent!.trim()
 
-    expect(rail()).toBe('Spawning is on')
+    expect(rail()).toBe('Agents can start new conversations')
     expect(lane()).toBe(rail())
     expect(laneLine()).toBe(railLine())
 
     safety.supply(identities({ spawningEnabled: false }), (enabled) => pressed.push(enabled))
     await nextTick()
-    expect(rail()).toBe('Spawning is off')
+    expect(rail()).toBe('Agents cannot start new conversations')
     expect(lane()).toBe(rail())
     expect(laneLine()).toBe(railLine())
 
     // ⛔ The armed confirm, pressed on the LANE and read on the RAIL.
     m.q('overlay-spawning').click()
     await nextTick()
-    expect(lane()).toBe('Turn spawning back on?')
+    expect(lane()).toBe('Allow agents to start new conversations?')
     expect(rail()).toBe(lane())
     expect(railLine()).toBe(laneLine())
     expect(pressed, 'a single press widened what agents may do').toEqual([])
@@ -897,7 +898,7 @@ describe('§5 · the rail and the lane are two views of ONE state (390 §2)', ()
   it('⚠️ the lane says that nothing running was stopped', async () => {
     safety.supply(identities({ spawningEnabled: false }), (enabled) => pressed.push(enabled))
     const m = await both()
-    expect(m.q('overlay-spawning-line').textContent).toContain('Nothing running was stopped')
+    expect(m.q('overlay-spawning-line').textContent).toContain('Current work can continue')
   })
 
   /**
@@ -933,7 +934,7 @@ describe('§5 · the rail and the lane are two views of ONE state (390 §2)', ()
 
     /**
      * ⛔ **A census that reads prose reads code wrong**, and this file proved it on itself: the
-     * lane's own docblock quotes *"Nothing running was stopped"* to say why the line wraps, and the
+     * lane's own docblock quotes *"Current work can continue"* to say why the line wraps, and the
      * first version of this assertion called that a second author of the sentence.
      */
     const withoutProse = (text: string): string =>
@@ -947,15 +948,15 @@ describe('§5 · the rail and the lane are two views of ONE state (390 §2)', ()
     // talks about them — a stripper failing either way makes every assertion below vacuous.
     const lane = Object.entries(sources).find(([file]) => named(file) === 'SpawnStopLane.vue')![1]
     const module_ = Object.entries(sources).find(([file]) => named(file) === 'spawn-safety.ts')![1]
-    expect(lane, 'the lane no longer explains itself').toContain('Nothing running was stopped')
-    expect(withoutProse(lane)).not.toContain('Nothing running was stopped')
-    expect(withoutProse(module_)).toContain('Nothing running was stopped')
+    expect(lane, 'the lane no longer explains itself').toContain('Current work can continue')
+    expect(withoutProse(lane)).not.toContain('Current work can continue')
+    expect(withoutProse(module_)).toContain('Current work can continue')
 
     for (const sentence of [
-      'Spawning is on',
-      'Spawning is off',
-      'Turn spawning back on?',
-      'Nothing running was stopped',
+      'Agents can start new conversations',
+      'Agents cannot start new conversations',
+      'Allow agents to start new conversations?',
+      'Current work can continue',
     ]) {
       const carriers = Object.entries(sources)
         .filter(([, text]) => withoutProse(text).includes(sentence))

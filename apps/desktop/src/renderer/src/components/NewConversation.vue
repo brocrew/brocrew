@@ -1012,6 +1012,7 @@ watch(
               <p class="b-body" data-cy="command-error">{{ props.error }}</p>
             </div>
             <SignInPanel
+              :provider="props.defaultProvider"
               :state="authState"
               :sign-in="signInCapability"
               :reprovision="reprovisionCapability"
@@ -1030,7 +1031,7 @@ watch(
             ref="composer"
             :state="props.busy ? 'starting' : 'idle'"
             who="BroBot"
-            placeholder="Tell BroBot what this conversation is about…"
+            placeholder="What would you like BroBot to do?"
             :draft="props.draft"
             :handing="props.handing"
             :can-attach="true"

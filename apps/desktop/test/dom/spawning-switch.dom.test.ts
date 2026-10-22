@@ -1,3 +1,4 @@
+// The approved plain words replace the former labels; the state and gesture checks remain.
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
@@ -6,6 +7,7 @@ import { useSpawnSafety } from '../../src/renderer/src/lib/spawn-safety'
 import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import type { AgentIdentities, AgentIdentity } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll, type Mounted } from './harness'
+import { assertDrawn, drawnReady, lineCount, cutsOf, titleRecovers } from './drawn'
 
 /**
  * 🔴 **355 · the kill switch, where §1 asked for it: reachable fast.**
@@ -137,7 +139,7 @@ afterEach(() => {
 describe('355 · the spawning switch in the rail', () => {
   it('🔴 one press switches it off', async () => {
     const { m, spawning } = await rail()
-    expect(m.q('rail-spawning-state').textContent).toContain('Spawning is on')
+    expect(m.q('rail-spawning-state').textContent).toContain('Agents can start new conversations')
     m.q('rail-spawning').click()
     await nextTick()
     expect(spawning).toEqual([false])
@@ -149,12 +151,16 @@ describe('355 · the spawning switch in the rail', () => {
    */
   it('🔴 the first press to switch it back ON emits nothing, and the second one does', async () => {
     const { m, spawning } = await rail({ agents: agents({ spawningEnabled: false }) })
-    expect(m.q('rail-spawning-state').textContent).toContain('Spawning is off')
+    expect(m.q('rail-spawning-state').textContent).toContain(
+      'Agents cannot start new conversations',
+    )
 
     m.q('rail-spawning').click()
     await nextTick()
     expect(spawning, 'a single press widened what agents may do').toEqual([])
-    expect(m.q('rail-spawning-state').textContent).toContain('Turn spawning back on?')
+    expect(m.q('rail-spawning-state').textContent).toContain(
+      'Allow agents to start new conversations?',
+    )
 
     m.q('rail-spawning').click()
     await nextTick()
@@ -172,14 +178,16 @@ describe('355 · the spawning switch in the rail', () => {
 
     m.q('rail-spawning').click()
     await nextTick()
-    expect(m.q('rail-spawning-state').textContent).toContain('Turn spawning back on?')
+    expect(m.q('rail-spawning-state').textContent).toContain(
+      'Allow agents to start new conversations?',
+    )
 
     // Somebody else threw the switch — another window, or a save this rail did not make. ⚠️ **The
     // supply is how it arrives**, which is `RuntimeScreen`'s `watchEffect` on the store: a fixture
     // that reached into the module's state instead would be measuring a path nothing walks.
     safety.supply(agents({ spawningEnabled: true }), (enabled) => spawning.push(enabled))
     await nextTick()
-    expect(m.q('rail-spawning-state').textContent).toContain('Spawning is on')
+    expect(m.q('rail-spawning-state').textContent).toContain('Agents can start new conversations')
 
     // ⛔ …and the press that lands on the armed state must now be the OFF one, not a confirmed ON.
     m.q('rail-spawning').click()
@@ -198,13 +206,17 @@ describe('355 · the spawning switch in the rail', () => {
 
     m.q('rail-spawning').click()
     await nextTick()
-    expect(m.q('rail-spawning-state').textContent).toContain('Turn spawning back on?')
+    expect(m.q('rail-spawning-state').textContent).toContain(
+      'Allow agents to start new conversations?',
+    )
 
     safety.supply(agents({ spawningEnabled: false, foldersWithoutARow: ['half-typed'] }), (e) =>
       spawning.push(e),
     )
     await nextTick()
-    expect(m.q('rail-spawning-state').textContent).toContain('Turn spawning back on?')
+    expect(m.q('rail-spawning-state').textContent).toContain(
+      'Allow agents to start new conversations?',
+    )
 
     // ⛔ …so the press that follows is the confirmed ON, not a first press thrown away.
     m.q('rail-spawning').click()
@@ -216,7 +228,7 @@ describe('355 · the spawning switch in the rail', () => {
   it('⚠️ says what stopped, and that nothing running was stopped', async () => {
     const { m } = await rail({ agents: agents({ spawningEnabled: false }) })
     expect(m.q('rail-spawning-line').textContent).toContain(
-      'No agent may start a new conversation. Nothing running was stopped.',
+      'Current work can continue. Click to allow new conversations.',
     )
   })
 
@@ -302,4 +314,43 @@ describe('355 · the spawning switch in the rail', () => {
     expect(empty.q('team-count').textContent).toBe('0')
     expect(empty.q('team-none').textContent).toContain('No agent identities yet')
   })
+})
+
+it.each([251.68, 266.2])(
+  'keeps the wrapped heading and workspace visible at %spx',
+  async (width) => {
+    const { m } = await rail({ agents: agents({ spawningEnabled: false }) })
+    m.host.style.width = `${width}px`
+    await nextTick()
+    await drawnReady()
+    for (const confirming of [false, true]) {
+      if (confirming) {
+        m.q('rail-spawning').click()
+        await nextTick()
+      }
+      const heading = m.q('rail-spawning-state')
+      assertDrawn(heading, 'new conversation heading', m.host)
+      expect(lineCount(heading)).toBeLessThanOrEqual(2)
+      expect(heading.title).toBe(heading.textContent?.trim())
+      expect(titleRecovers(heading, m.host)).toBe(true)
+      const control = m.q('rail-spawning').getBoundingClientRect()
+      const workspace = m.q('rail-workspace')
+      assertDrawn(workspace, 'workspace below the control', m.host)
+      const footer = workspace.getBoundingClientRect()
+      expect(footer.top).toBeGreaterThanOrEqual(control.bottom)
+      expect(footer.bottom).toBeLessThanOrEqual(m.host.getBoundingClientRect().bottom)
+    }
+  },
+)
+
+it('recovers the full heading when a narrower clamp hides part of it', async () => {
+  const { m } = await rail({ agents: agents({ spawningEnabled: false }) })
+  m.host.style.width = '251.68px'
+  const heading = m.q('rail-spawning-state')
+  heading.style.webkitLineClamp = '1'
+  await drawnReady()
+  expect(cutsOf(heading, m.host).length).toBeGreaterThan(0)
+  expect(titleRecovers(heading, m.host)).toBe(true)
+  heading.removeAttribute('title')
+  expect(titleRecovers(heading, m.host)).toBe(false)
 })

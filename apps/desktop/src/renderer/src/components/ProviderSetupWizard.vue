@@ -457,6 +457,7 @@ onBeforeUnmount(() => {
         </div>
 
         <SignInPanel
+          :provider="props.provider"
           v-if="shown.step === 'sign-in' && signsInHere && props.auth !== null"
           :state="props.auth"
           :sign-in="props.signIn"

@@ -1,4 +1,5 @@
 import { defineComponent, h, nextTick, type Component } from 'vue'
+import type { AppInfo } from '@brobot2/shared'
 import type { LookStage } from '../capture'
 import type { Mounted } from '../../test/dom/harness'
 import AppTitleBar from '../../src/renderer/src/components/AppTitleBar.vue'
@@ -60,6 +61,7 @@ export interface WindowStageOptions {
   readonly pane?: Record<string, unknown>
   /** The window's title bar above it all, with its usage line. */
   readonly titleBar?: boolean
+  readonly titleInfo?: AppInfo | null
   /** The left menu collapsed to its icons, as the app draws it below its narrow width. */
   readonly railCollapsed?: boolean
   /** Events after the conversation's own, with their times. */
@@ -168,7 +170,7 @@ export function windowStage(options: WindowStageOptions = {}): Component {
       )
       return options.titleBar
         ? h('div', { style: 'display:flex;flex-direction:column;width:100%;height:100%' }, [
-            h(AppTitleBar as never, { info: null, error: null }),
+            h(AppTitleBar as never, { info: options.titleInfo ?? null, error: null }),
             body,
           ])
         : h('div', { style: 'display:flex;width:100%;height:100%' }, [body])

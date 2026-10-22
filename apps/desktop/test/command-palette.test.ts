@@ -207,6 +207,8 @@ describe('249 §2 · the rows the palette can honestly offer', () => {
     // `154`: one noun. The rail says "All conversations" and so does this.
     const [sessions] = buildCommands(EMPTY).filter((c) => c.id === 'go-sessions')
     expect(sessions?.title).toBe('All conversations')
+    // The rail and palette share the approved plain description.
+    expect(sessions?.detail).toBe('Includes chats from Claude and Codex on this computer.')
   })
 })
 

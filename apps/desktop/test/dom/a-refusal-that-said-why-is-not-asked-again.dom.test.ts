@@ -1,3 +1,4 @@
+// The approved service-specific headings replace the former profile words; refusal behavior stays.
 import { afterEach, describe, expect, it } from 'vitest'
 import { defineComponent, h, nextTick, ref, type Component } from 'vue'
 // ⚠️ The MODULE, not the barrel — `@brobot2/runtime`'s index reaches `node:fs` and fails to import
@@ -202,7 +203,7 @@ describe('§1 · `716` F-1 — after a refusal that said why, the launcher does 
     await refusedWith('sign-in', SAID['sign-in'])
     expect(checks).toEqual([{ provider: 'codex', profileId: DEFAULT_PROFILE_ID }])
     expect(visible(m.q('sign-in-panel'))).toBe(true)
-    expect(headingOf(m)).toBe('This profile’s sign-in has expired')
+    expect(headingOf(m)).toBe('Sign in again to use Codex with this agent')
     expect(m.q('command-error').textContent?.trim()).toBe(SAID['sign-in'])
   })
 
@@ -218,7 +219,7 @@ describe('§1 · `716` F-1 — after a refusal that said why, the launcher does 
       const name = String(word)
       expect(checks, name).toHaveLength(1)
       expect(visible(m.q('sign-in-panel')), name).toBe(true)
-      expect(headingOf(m), name).toBe('Could not check this profile’s sign-in')
+      expect(headingOf(m), name).toBe("Couldn't check this agent's Codex sign-in")
       expect(m.q('command-error').textContent?.trim(), name).toBe(UNWORDED)
       unmountAll()
     }
@@ -238,7 +239,7 @@ describe('§2 · what an EARLIER check left on the screen, when a later refusal 
     await refusedWith(null, UNWORDED)
     // ⚑ The premise: the first failure's check ran and its box is up.
     expect(checks).toHaveLength(1)
-    expect(headingOf(m)).toBe('Could not check this profile’s sign-in')
+    expect(headingOf(m)).toBe("Couldn't check this agent's Codex sign-in")
 
     await refusedWith('machine', SAID.machine)
     expect(checks).toHaveLength(1)
@@ -255,8 +256,8 @@ describe('§2 · what an EARLIER check left on the screen, when a later refusal 
    */
   it('⚑ an earlier *not signed in* or *expired* is asked again after a `machine` refusal, and kept as the provider answers it', async () => {
     for (const [answer, heading] of [
-      [NOT_SIGNED_IN, 'This profile is not signed in'],
-      [EXPIRED, 'This profile’s sign-in has expired'],
+      [NOT_SIGNED_IN, 'Sign in to use Codex with this agent'],
+      [EXPIRED, 'Sign in again to use Codex with this agent'],
     ] as const) {
       const { m, checks, refusedWith } = theLauncher([answer])
       await refusedWith(null, UNWORDED)
@@ -278,7 +279,7 @@ describe('§2 · what an EARLIER check left on the screen, when a later refusal 
   it('🔴 an earlier *expired*, asked again and answered *could not check*, is not drawn as a second box', async () => {
     const { m, checks, refusedWith } = theLauncher([EXPIRED, COULD_NOT_CHECK])
     await refusedWith(null, UNWORDED)
-    expect(headingOf(m)).toBe('This profile’s sign-in has expired')
+    expect(headingOf(m)).toBe('Sign in again to use Codex with this agent')
 
     await refusedWith('machine', SAID.machine)
     expect(checks).toHaveLength(2)
@@ -312,7 +313,7 @@ describe('§2 · what an EARLIER check left on the screen, when a later refusal 
   it('⚑ a *Check again* still running keeps its panel through a later `machine` refusal', async () => {
     const { m, checks, refusedWith, release } = theLauncher([COULD_NOT_CHECK, null])
     await refusedWith(null, UNWORDED)
-    expect(headingOf(m)).toBe('Could not check this profile’s sign-in')
+    expect(headingOf(m)).toBe("Couldn't check this agent's Codex sign-in")
     m.q('sign-in-check').click()
     await settled()
     // ⚑ The premise: the person's check is in flight, and the panel says so.
@@ -321,11 +322,11 @@ describe('§2 · what an EARLIER check left on the screen, when a later refusal 
 
     await refusedWith('machine', SAID.machine)
     expect(visible(m.q('sign-in-panel'))).toBe(true)
-    expect(headingOf(m)).toBe('Could not check this profile’s sign-in')
+    expect(headingOf(m)).toBe("Couldn't check this agent's Codex sign-in")
     expect(checks).toHaveLength(2)
     // ⚑ …and when it answers, the answer is drawn where the person asked for it.
     await release(NOT_SIGNED_IN)
-    expect(headingOf(m)).toBe('This profile is not signed in')
+    expect(headingOf(m)).toBe('Sign in to use Codex with this agent')
   })
 
   /**
@@ -338,11 +339,11 @@ describe('§2 · what an EARLIER check left on the screen, when a later refusal 
     await refusedWith('machine', SAID.machine)
     // ⚑ The premise: the earlier panel was asked again and kept.
     expect(checks).toHaveLength(2)
-    expect(headingOf(m)).toBe('This profile is not signed in')
+    expect(headingOf(m)).toBe('Sign in to use Codex with this agent')
     m.q('sign-in-check').click()
     await settled()
     expect(checks).toHaveLength(3)
-    expect(headingOf(m)).toBe('Could not check this profile’s sign-in')
+    expect(headingOf(m)).toBe("Couldn't check this agent's Codex sign-in")
   })
 
   /**
@@ -372,7 +373,7 @@ describe('§2 · what an EARLIER check left on the screen, when a later refusal 
   it('🔴 …and the box an earlier check left up goes with it', async () => {
     const { m, checks, refusedWith, release } = theLauncher([COULD_NOT_CHECK, null])
     await refusedWith(null, UNWORDED)
-    expect(headingOf(m)).toBe('Could not check this profile’s sign-in')
+    expect(headingOf(m)).toBe("Couldn't check this agent's Codex sign-in")
     await refusedWith(null, UNWORDED)
     // ⚑ The premise: a second automatic check is in flight, under the first one's box.
     expect(checks).toHaveLength(2)
@@ -392,7 +393,7 @@ describe('§2 · what an EARLIER check left on the screen, when a later refusal 
     await refusedWith('machine', SAID.machine)
     await release(EXPIRED)
     expect(visible(m.q('sign-in-panel'))).toBe(true)
-    expect(headingOf(m)).toBe('This profile’s sign-in has expired')
+    expect(headingOf(m)).toBe('Sign in again to use Codex with this agent')
   })
 
   /**
@@ -409,7 +410,7 @@ describe('§2 · what an EARLIER check left on the screen, when a later refusal 
       await release(COULD_NOT_CHECK)
       const name = String(latest)
       expect(visible(m.q('sign-in-panel')), name).toBe(true)
-      expect(headingOf(m), name).toBe('Could not check this profile’s sign-in')
+      expect(headingOf(m), name).toBe("Couldn't check this agent's Codex sign-in")
       unmountAll()
     }
   })
@@ -426,7 +427,7 @@ describe('§2 · what an EARLIER check left on the screen, when a later refusal 
     await refusedWith(null, UNWORDED)
     await release(COULD_NOT_CHECK)
     expect(visible(m.q('sign-in-panel'))).toBe(true)
-    expect(headingOf(m)).toBe('Could not check this profile’s sign-in')
+    expect(headingOf(m)).toBe("Couldn't check this agent's Codex sign-in")
   })
 })
 

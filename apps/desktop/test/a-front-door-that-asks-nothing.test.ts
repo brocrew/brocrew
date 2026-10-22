@@ -163,7 +163,7 @@ describe('§1 · "the provider you cannot" — the clause, against the absence t
   })
 })
 
-describe('§2 · "model and approvals you can change later, in the Open tab" — the two live controls', () => {
+describe('§2 · "model and approvals you can change later, in the Agent tab" — the two live controls', () => {
   it('⚑ both exist, on the agent card, as controls a person can press', () => {
     // 🔴 **Not a bare `toContain` on the hook.** `CardApproval.vue` draws its face for every
     // conversation, a fixed one (D-017b's `settingsFixed`) included — and that is exactly the state
@@ -217,9 +217,9 @@ describe('§2 · "model and approvals you can change later, in the Open tab" —
     const tab = DRAWER_TABS.find((each) => each.id === TAB_OF_THE_SETTINGS)
     expect(tab, 'the settings tab is gone, so the sentence points at nothing').toBeDefined()
     expect(CHANGEABLE_LIVE_IN).toBe(`the ${tab?.label} tab`)
-    // …and the tab really is the home of both settings it names.
-    expect(tab?.hint).toMatch(/model/i)
-    expect(tab?.hint).toMatch(/approvals/i)
+    // The approved hint groups model and approval controls as agent settings.
+    // The preceding test still proves both controls exist and can change the live session.
+    expect(tab?.hint).toBe('Agent settings, current work and anything waiting for you.')
   })
 })
 

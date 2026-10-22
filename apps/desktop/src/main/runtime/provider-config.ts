@@ -242,7 +242,7 @@ const LAYOUT: Record<Provider, ProviderLayout> = {
       // no matter who wrote it.
       {
         name: 'auth.json',
-        note: 'the credential this profile runs on, at 0600 — copied from ~/.codex, or minted here by "Sign in to this profile"',
+        note: 'the credential this profile runs on, at 0600 — copied from ~/.codex, or minted here by "Sign in for this agent"',
       },
       // ⚠️ **Not "absent means built-in defaults", which is what this said until 314.** The app now
       // creates this file when a Codex home has none, so for any profile that has been opened the

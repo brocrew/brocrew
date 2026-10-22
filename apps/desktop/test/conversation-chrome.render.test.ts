@@ -348,14 +348,23 @@ describe('the top bar states and does not act (079 §1)', () => {
     expect(html).toContain('data-cy="provider-chip"')
   })
 
-  it('a queued approval change is marked too, though 079 only named model and effort', async () => {
-    // The most safety-relevant of the four pending things. Leaving it as the one with nowhere to
-    // show would be 074's defect: the UI stating less than it knows.
-    const html = await pane({
-      record: record([], { ...META, pendingApprovalMode: 'auto' }),
-    })
-    expect(html).toContain('approvals off requested')
-  })
+  it.each(['ask', 'auto'] as const)(
+    'shows a queued %s choice once in the existing next-message indicator',
+    async (mode) => {
+      const html = await pane({
+        record: record([], {
+          ...META,
+          approvalMode: mode === 'auto' ? 'ask' : 'auto',
+          pendingApprovalMode: mode,
+        }),
+      })
+      expect(html).toContain('data-cy="session-approval-next"')
+      expect(html).toContain(`${mode === 'auto' ? 'Auto' : 'Ask'} next message`)
+      expect(html).not.toContain('data-cy="live-settings-pending"')
+      expect(html).not.toContain('approvals off requested')
+      expect(html).not.toContain('approvals on requested')
+    },
+  )
 
   it('nothing is marked pending when nothing is', async () => {
     // Non-vacuity for the two above: a marker that always rendered would satisfy both.
@@ -422,7 +431,7 @@ describe('one drawer, every tab live (079 §2 → 096 → 508)', () => {
     // label is visible, so width does not need to choose which labels to hide.
     for (const fit of ['comfortable', 'narrow'] as const) {
       const open = await drawer({ fit, tab: 'open' })
-      expect(open, `${fit}: the active tab lost its label`).toContain('>Open</span>')
+      expect(open, `${fit}: the active tab lost its label`).toContain('>Agent</span>')
       for (const quiet of ['Events', 'Info', 'Changes']) {
         expect(open, `${fit}: ${quiet} is labelled while inactive`).not.toContain(
           `>${quiet}</span>`,
@@ -432,7 +441,7 @@ describe('one drawer, every tab live (079 §2 → 096 → 508)', () => {
       // …and the label MOVES with the active tab rather than Open being special.
       const info = await drawer({ fit, tab: 'info' })
       expect(info, `${fit}: the label did not move`).toContain('>Info</span>')
-      expect(info).not.toContain('>Open</span>')
+      expect(info).not.toContain('>Agent</span>')
 
       // ⚠️ The assertion that matters, unchanged from 079: every tab is STILL THERE as an icon. A
       // strip that dropped a tab — or hid one behind a "more" menu — would be hiding an attention
@@ -601,7 +610,7 @@ describe('the attention model, built (079 §5)', () => {
     expect(html).toContain('1 waiting on you')
     // One click to it — and it is an offer, never a jump made for you.
     expect(html).toContain('data-cy="drawer-show-open"')
-    expect(html).toContain('Show in Open')
+    expect(html).toContain('Show in Agent')
     // The tab you are on is still Info: nothing moved you.
     expect(tag(html, 'drawer-tab-info')).toContain('data-active="true"')
     expect(tag(html, 'drawer-tab-open')).toContain('data-active="false"')

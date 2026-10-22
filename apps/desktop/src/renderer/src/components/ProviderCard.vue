@@ -1073,6 +1073,7 @@ watch(
         <p v-else-if="auth === null" class="line quiet">Asking {{ name }}…</p>
         <template v-else>
           <SignInPanel
+            :provider="props.provider"
             :state="auth"
             :sign-in="signIn"
             :reprovision="reprovision"
@@ -1178,7 +1179,8 @@ watch(
         </template>
         <template v-else>
           <p v-if="!keyEditing" class="line quiet" data-cy="provider-key-none">
-            No key saved. A saved key outranks the sign-in.
+            No API key saved. You can sign in instead. If you save a key, new conversations will use
+            it instead of your signed-in account.
           </p>
           <form class="key-form" @submit.prevent="saveKey">
             <input

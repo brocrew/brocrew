@@ -222,8 +222,7 @@ function limitOf(provider: Provider) {
         ></span>
         <h1 v-if="!embedded">Providers</h1>
         <p>
-          Whether each one is ready to run your agents, and on which login. New conversations run on
-          what you see here.
+          Connect an AI service to start a conversation. Check your account and connection below.
         </p>
         <!-- ⚑ A3 · a fact of every workspace (A2): saved API keys live in its own database. Sign-ins
              are expected to be per workspace too, but not yet confirmed, so not said. -->

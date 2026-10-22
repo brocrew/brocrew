@@ -287,10 +287,8 @@ MUTATIONS = [
                 # (1 failed / 6 passed), and the file restored from bytes with a SHA-256
                 # re-check. The killer is unchanged — the replacement still says *your provider
                 # homes*, which is the phrase that file exists to refuse.
-                "<small\n"
-                '              class="says"\n'
-                "              title=\"Conversations from here, and from Claude's and Codex's own folders\"\n"
-                "              >Conversations from here, and from Claude's and Codex's own folders</small\n",
+                # The approved plain subtitle replaces the former words; the plant still reintroduces provider-home jargon.
+                "<small class=\"says\" title=\"Includes chats from Claude and Codex on this computer.\"\n              >Includes chats from Claude and Codex on this computer.</small\n",
                 "<small\n"
                 '              class="says"\n'
                 '              title="Everything here, and everything in your provider homes"\n'

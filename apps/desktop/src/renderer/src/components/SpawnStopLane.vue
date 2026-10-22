@@ -115,10 +115,7 @@ const safety = useSpawnSafety()
   line-height: 1.25;
 }
 
-/* ⚠️ **It wraps, where the rail's row ellipsizes.** The rail is a 208px column with a list above it
-   and cannot spare three lines; this sits on a backdrop with nothing else in the corner, and the
-   sentence it carries — *"Nothing running was stopped"* — is the half a person most needs to read
-   before pressing. An ellipsis there would hide exactly the honesty. */
+/* The explanation wraps so a person can read "Current work can continue" before pressing. */
 .lane-copy small {
   display: block;
   margin-top: var(--space-1);

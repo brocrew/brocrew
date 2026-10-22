@@ -79,14 +79,18 @@ export function spawnSafetyView(
   return {
     on,
     confirming,
-    heading: confirming ? 'Turn spawning back on?' : on ? 'Spawning is on' : 'Spawning is off',
+    heading: confirming
+      ? 'Allow agents to start new conversations?'
+      : on
+        ? 'Agents can start new conversations'
+        : 'Agents cannot start new conversations',
     // ⚑ **D-016 · ruling 12** — the switch refuses only a give that would START a conversation; work
     // still goes to a conversation an agent already has, so the words name the start and nothing else.
     line: confirming
-      ? 'Press again to allow agents to start new conversations.'
+      ? 'Click again to allow.'
       : on
-        ? 'Agents may start new conversations. Press to stop that.'
-        : 'No agent may start a new conversation. Nothing running was stopped.',
+        ? 'Click to prevent new conversations. Current work will continue.'
+        : 'Current work can continue. Click to allow new conversations.',
   }
 }
 

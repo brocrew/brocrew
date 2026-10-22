@@ -142,7 +142,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         [
             (
                 CFG,
-                "        note: 'the credential this profile runs on, at 0600 — copied from ~/.codex, or minted here by \"Sign in to this profile\"',",
+                # The referenced sign-in button was renamed; this existing expected-survivor row keeps its credential-provenance defect.
+                "        note: 'the credential this profile runs on, at 0600 — copied from ~/.codex, or minted here by \"Sign in for this agent\"',",
                 "        note: 'the machine credential, copied in once at 0600',",
             )
         ],

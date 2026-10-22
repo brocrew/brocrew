@@ -54,6 +54,8 @@ const props = defineProps<{
   error: string | null
 }>()
 
+const showBuildDetails = computed(() => import.meta.env.DEV)
+
 /**
  * ⚑ **What build is this** (331), as one string, because the element it lands in is read by
  * `innerText` in two smokes and by a person in one second.
@@ -205,15 +207,9 @@ watch(
     <div class="sync-state" data-cy="app-info">
       <span class="sync-dot" />
       <span class="sync-word">Saved locally</span>
-      <!-- Show build identity here because `info.version` comes from `package.json` and identifies a release rather than the current build. Keep the release version in the title. Keep `schema` visible for its separate purpose and for `packaged-smoke` to confirm database startup.
-
-           ⚠️ **One interpolation, not four spans.** Vue's `condense` drops whitespace-only text
-           between elements, so a chip assembled from sibling spans renders `e76e7c6· uncommitted`
-           — and every reader of this element (`packaged-smoke`, `ui-live-smoke`) takes its
-           `innerText`. {@link buildLine} builds the exact string; nothing here depends on how a
-           compiler treats a newline. -->
+      <!-- Development diagnostics stay out of release title bars. -->
       <span
-        v-if="props.info"
+        v-if="props.info && showBuildDetails"
         class="sync-detail mono"
         :class="{ 'build-dirty': props.info.build.dirty || branchWords !== '' }"
         data-cy="build-line"

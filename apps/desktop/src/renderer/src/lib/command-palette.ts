@@ -335,7 +335,7 @@ export function buildCommands(input: PaletteInput): PaletteCommand[] {
     // ⛔ The rail's noun, not a second one (`154`): the page holds both kinds and is named for
     // neither. A palette that called it "Sessions" would reopen the vocabulary split `154` closed.
     title: 'All conversations',
-    detail: "Conversations from here, and from Claude's and Codex's own folders",
+    detail: 'Includes chats from Claude and Codex on this computer.',
     group: 'go',
     keywords: ['sessions', 'library', 'search', 'history', 'archive', 'find', 'export', 'import'],
     action: { kind: 'go', place: 'sessions' },

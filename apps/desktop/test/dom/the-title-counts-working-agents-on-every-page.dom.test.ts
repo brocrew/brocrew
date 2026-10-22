@@ -289,7 +289,7 @@ describe('working counts in the title bar', () => {
   it('an initial list still in flight says unknown, then updates when it answers', async () => {
     const pending = deferred<ResumableSessionInfo[]>()
     const { m } = await windowWith([], [], () => pending.promise)
-    expect(text(m)).toContain('— agents')
+    expect(text(m)).toContain('? agents')
     expect(text(m)).not.toContain(' working')
     pending.resolve(mixed())
     await settle()
@@ -300,7 +300,7 @@ describe('working counts in the title bar', () => {
     const { m } = await windowWith([], [], () =>
       Promise.reject(new Error('Fictional first read failed')),
     )
-    expect(text(m)).toContain('— agents')
+    expect(text(m)).toContain('? agents')
     expect(text(m)).not.toContain(' working')
   })
 
@@ -401,8 +401,10 @@ describe('working counts in the title bar', () => {
       const line = m.q('app-usage')
       const whole = `Claude 5h 28% · week 61% · Codex week 35% · 8 agents · ${working ? '3 working' : '0 working'} · 800 MB`
       expect(text(m)).toBe(whole)
-      expect(line.title).toBe(whole)
-      expect(line.getAttribute('aria-label')).toBe('Usage and agents: ' + whole)
+      // The short line keeps the approved full usage sentences in its tooltip and name.
+      const description = `Claude 5-hour usage: 28% used. Claude weekly usage: 61% used. Codex weekly usage: 35% used. Agents running: Claude 5 (${working ? '2 working' : 'none working'})\nCodex 3 (${working ? '1 working' : 'none working'}). Their memory: 800 MB`
+      expect(line.title).toBe(description)
+      expect(line.getAttribute('aria-label')).toBe(description)
       await drawnReady()
       const rect = line.getBoundingClientRect()
       const title = m.q('window-title').getBoundingClientRect()

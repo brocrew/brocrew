@@ -298,7 +298,7 @@ function chipWord(card: CastCard): string | undefined {
         :count="allAgents.length"
         data-cy="cast-sub-agents"
       >
-        <template #title>Sub agents</template>
+        <template #title><span title="Started here">Started here</span></template>
         <!-- ⚑ **W4.183 · how many are at work** — v3's totals on the heading. -->
         <template v-if="telemetry && allAgents.length && totals.known" #action>
           <span class="team-totals" data-cy="cast-sub-agents-totals">
@@ -470,7 +470,7 @@ function chipWord(card: CastCard): string | undefined {
           v-if="view.childrenEmpty && !allAgents.length"
           icon="#i-users"
           :says="view.childrenEmpty"
-          hint="A conversation appears here when this one spawns it."
+          hint="Conversations this agent starts appear here."
           data-cy="cast-children-empty"
         />
       </CardSection>

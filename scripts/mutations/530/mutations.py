@@ -206,7 +206,8 @@ MUTATIONS = [
         "158-character sentence painted with `drawn.ts`. ⚠️ **There is no `-webkit-line-clamp` on "
         "this pair anywhere in the tree**, so this row has nothing to make inert — it is not a "
         "moved anchor and correcting it would invent a clamp to have an opinion about.",
-        [(RAIL, "  -webkit-line-clamp: 2;\n", "")],
+        # Keep this retired row bound to the deleted grant selector, not another two-line heading.
+        [(RAIL, ".rail-copy small.grant {\n  -webkit-line-clamp: 2;\n}", ".rail-copy small.grant {\n}")],
     ),
     (
         "M10 · ⚠️ the clamp tightens to one line · the value falls off the bottom instead of the "
@@ -216,7 +217,8 @@ MUTATIONS = [
         "exists cannot be tightened. ⚑ The bound it measured was arithmetic about a **131 px** "
         "column; the page has room and the sentence is drawn whole there, measured rather than "
         "assumed.",
-        [(RAIL, "  -webkit-line-clamp: 2;\n", "  -webkit-line-clamp: 1;\n")],
+        # The grant selector and the pair it bounded remain deleted.
+        [(RAIL, ".rail-copy small.grant {\n  -webkit-line-clamp: 2;\n}", ".rail-copy small.grant {\n  -webkit-line-clamp: 1;\n}")],
     ),
     (
         # ⛔ **RETIRED BY RULING (landing D-014, 010f9426):** The `:title` hatch belonged to the

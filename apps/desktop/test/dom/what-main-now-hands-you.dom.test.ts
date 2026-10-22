@@ -301,7 +301,10 @@ describe('§3 · the sheet names the control, never *the rail*', () => {
     const off = await sheet('pm', false)
     const said = words(off.q('capabilities-spawning-off'))
     // ⚠️ **and the second press** — switching spawning back ON asks once (`355`)
-    expect(said).toContain('Press “Spawning is off”, then confirm, to switch it back on.')
+    // The switch heading changed; the instruction must still name that exact control.
+    expect(said).toContain(
+      'Press “Agents cannot start new conversations”, then confirm, to switch it back on.',
+    )
     expect(said).not.toMatch(/\brail\b/)
     unmountAll()
     const on = await sheet('pm', true)

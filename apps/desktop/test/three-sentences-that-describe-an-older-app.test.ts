@@ -42,7 +42,10 @@ describe('634 · three sentences that described an older app', () => {
       }
       // ⚑ **THE CONTROL**: the census can see a sentence this rail really does draw, so the
       // negative above is not an empty read.
-      expect(codeOf('components/SideRail.vue')).toContain('Conversations from here')
+      // Keep the nonempty-read control on the approved subtitle; the dashboard ban stays.
+      expect(codeOf('components/SideRail.vue')).toContain(
+        'Includes chats from Claude and Codex on this computer.',
+      )
     })
   })
 

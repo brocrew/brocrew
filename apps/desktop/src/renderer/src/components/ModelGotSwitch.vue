@@ -32,7 +32,7 @@ const open = ref(false)
       data-cy="model-got-switch"
       @click="open = !open"
     >
-      {{ open ? 'Hide what the model got' : 'Show what the model got' }}
+      {{ open ? 'Hide what was sent to the AI' : 'Show what was sent to the AI' }}
     </button>
     <WhatTheModelGot
       v-if="open"

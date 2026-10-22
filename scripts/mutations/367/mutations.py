@@ -275,8 +275,9 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
                 HEADER,
                 # ⚑ **728 · re-anchored in place, not retired** — 728 (R93) says the planning exception in the same sentence; the row's subject is unchanged
                 # ⚑ **W4.275 · re-anchored in place, not retired** — W4.275 · d21b3125 changed the tooltip's last sentence from the Controls tab to the Open tab; the plant still drops the provider's declared sentence from the yolo pill's tooltip.
-                "nothing this app configures confines them. ${declared ?? ''} Change it in the drawer’s Open tab.`",
-                "nothing this app configures confines them. Change it in the drawer’s Open tab.`",
+                # Source-only anchor repair; NOT VERIFIED.
+                "nothing this app configures confines them. ${declared ?? ''} Change it in the drawer’s Agent tab.`",
+                "nothing this app configures confines them. Change it in the drawer’s Agent tab.`",
             )
         ],
     ),

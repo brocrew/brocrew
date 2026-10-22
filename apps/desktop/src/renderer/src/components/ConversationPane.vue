@@ -1968,6 +1968,7 @@ onUnmounted(() => {
         </p>
         <div v-if="profileSignIn && signInNeeded" class="pane-sign-in" data-cy="pane-sign-in">
           <SignInPanel
+            :provider="props.record.meta!.provider"
             :state="profileSignIn.auth"
             :sign-in="
               props.capabilities?.[props.record.meta!.provider]?.signIn ?? PENDING_CAPABILITY
@@ -2227,7 +2228,7 @@ onUnmounted(() => {
     </OverlayHost>
 
     <!-- 🔴 **F093 · everything this agent is given**, through the same host as the sheet above. -->
-    <OverlayHost v-if="inputsOpen" label="What this agent receives" @close="inputsFor = null">
+    <OverlayHost v-if="inputsOpen" label="Instructions, memory and tools" @close="inputsFor = null">
       <AgentInputPopup
         :session-id="props.record.sessionId"
         :provider="inputsOpen.provider"

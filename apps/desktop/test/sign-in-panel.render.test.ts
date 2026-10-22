@@ -1,3 +1,4 @@
+// The approved plain words replace the former labels; the state and gesture checks remain.
 import { describe, expect, it } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
@@ -25,7 +26,13 @@ const CLAUDE_SIGN_IN: CapabilityStatus = capabilitiesFor('claude').signIn
 const CODEX_COPY: CapabilityStatus = capabilitiesFor('codex').reprovisionAuth
 const CLAUDE_COPY: CapabilityStatus = capabilitiesFor('claude').reprovisionAuth
 
-const base = { signIn: CODEX_SIGN_IN, reprovision: CODEX_COPY, busy: 'idle', notice: null }
+const base = {
+  provider: 'codex',
+  signIn: CODEX_SIGN_IN,
+  reprovision: CODEX_COPY,
+  busy: 'idle',
+  notice: null,
+}
 const STALE: AuthState = { state: 'stale', reason: 'This profile’s Codex sign-in has expired.' }
 const ABSENT: AuthState = { state: 'absent', reason: 'This profile has no Codex sign-in yet.' }
 const UNKNOWN: AuthState = { state: 'unknown', reason: 'could not ask' }
@@ -56,14 +63,18 @@ describe('SignInPanel — when it appears at all (098)', () => {
   it('⚠️ shows `unknown` rather than treating "could not ask" as "you are fine"', async () => {
     const html = await render({ ...base, state: UNKNOWN })
     expect(html).toContain('data-cy="sign-in-panel"')
-    expect(html).toContain('Could not check')
+    expect(html).toContain('Couldn&#39;t check this agent&#39;s Codex sign-in')
     // And it offers the way to try again rather than only reporting the failure.
     expect(html).toContain('data-cy="sign-in-check"')
   })
 
   it('distinguishes expired from never-signed-in — they need different sentences', async () => {
-    expect(await render({ ...base, state: STALE })).toContain('sign-in has expired')
-    expect(await render({ ...base, state: ABSENT })).toContain('not signed in')
+    expect(await render({ ...base, state: STALE })).toContain(
+      'Sign in again to use Codex with this agent',
+    )
+    expect(await render({ ...base, state: ABSENT })).toContain(
+      'Sign in to use Codex with this agent',
+    )
   })
 })
 
@@ -81,8 +92,8 @@ describe('SignInPanel — the two ways out, and the difference between them (098
   it('⚠️ says out loud that copying does not end the sharing — the sentence 098 exists for', async () => {
     const html = await render({ ...base, state: STALE })
     expect(html).toContain('data-cy="sign-in-caveat"')
-    expect(html).toMatch(/shares one sign-in with the CLI/)
-    expect(html).toMatch(/expire the other/)
+    expect(html).toMatch(/Sign in here to keep this agent.*login separate/)
+    expect(html).toMatch(/either login may stop working when the other refreshes/)
   })
 
   it('asks the capability rather than the provider — Codex offers it, Claude explains why not', async () => {
@@ -95,6 +106,7 @@ describe('SignInPanel — the two ways out, and the difference between them (098
     const claude = await render({
       ...base,
       state: ABSENT,
+      provider: 'claude',
       signIn: CLAUDE_SIGN_IN,
       reprovision: CLAUDE_COPY,
     })
@@ -110,6 +122,7 @@ describe('SignInPanel — the two ways out, and the difference between them (098
     const claude = await render({
       ...base,
       state: ABSENT,
+      provider: 'claude',
       signIn: CLAUDE_SIGN_IN,
       reprovision: CLAUDE_COPY,
     })
@@ -134,7 +147,7 @@ describe('SignInPanel — the two ways out, and the difference between them (098
     // Paired: idle has no Cancel, so the presence above is about the state and not about the markup.
     const idle = await render({ ...base, state: STALE, busy: 'idle' })
     expect(idle).not.toContain('data-cy="sign-in-cancel"')
-    expect(idle).toContain('Sign in to this profile')
+    expect(idle).toContain('Sign in for this agent')
   })
 
   it('disables EVERY button while one gesture is in flight, and enables them when idle', async () => {

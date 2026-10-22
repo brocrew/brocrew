@@ -1148,10 +1148,8 @@ const platform = platformHere()
                  a directory layout, on a line whose job is to say what is behind the link. Same
                  register as 151's three rewritten refusals — name the two programs, and call the
                  thing a folder. -->
-            <small
-              class="says"
-              title="Conversations from here, and from Claude's and Codex's own folders"
-              >Conversations from here, and from Claude's and Codex's own folders</small
+            <small class="says" title="Includes chats from Claude and Codex on this computer."
+              >Includes chats from Claude and Codex on this computer.</small
             >
           </span>
         </button>
@@ -1447,7 +1445,9 @@ const platform = platformHere()
       >
         <span class="switch-dot" :class="{ on: safety.view.value.on }"></span>
         <span class="rail-copy">
-          <strong data-cy="rail-spawning-state">{{ safety.view.value.heading }}</strong>
+          <strong :title="safety.view.value.heading" data-cy="rail-spawning-state">{{
+            safety.view.value.heading
+          }}</strong>
           <!-- 🔴 **`531` · the sentence that says what this switch just did, and 2/3 of it was
                never on screen.** ⛔ *Agents may create conversations. Press to stop that.* wanted
                236 px of ink in a 131 px column and ellipsized after *Agents may create conv…*, so
@@ -1937,6 +1937,12 @@ const platform = platformHere()
   background: linear-gradient(0deg, var(--rail-bg-color, var(--rail)), transparent);
 }
 
+.rail-safety .rail-copy strong {
+  display: -webkit-box;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
 .rail-safety {
   border-color: var(--line-strong);
   margin-bottom: var(--space-3);

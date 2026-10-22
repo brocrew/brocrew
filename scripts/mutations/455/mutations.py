@@ -364,8 +364,9 @@ MUTATIONS = [
         [
             (
                 SAFETY,
-                "    heading: confirming ? 'Turn spawning back on?' : on ? 'Spawning is on' : 'Spawning is off',",
-                "    heading: confirming ? 'Turn spawning back on?' : on ? 'Stop new spawns' : 'Spawning is off',",
+                # The approved heading replaces spawning jargon; the plant still substitutes the drawing wording for the product wording.
+                "    heading: confirming\n      ? 'Allow agents to start new conversations?'\n      : on\n        ? 'Agents can start new conversations'\n        : 'Agents cannot start new conversations',",
+                "    heading: confirming\n      ? 'Allow agents to start new conversations?'\n      : on\n        ? 'Stop new spawns'\n        : 'Agents cannot start new conversations',",
             )
         ],
     ),

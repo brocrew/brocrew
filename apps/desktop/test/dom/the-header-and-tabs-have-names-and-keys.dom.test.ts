@@ -115,7 +115,8 @@ describe('the drawer tab strip follows the tabs pattern', () => {
       { width: 380, height: 700 },
     )
     const name = (id: string): string | null => m.q(`drawer-tab-${id}`).getAttribute('aria-label')
-    expect(name('open')).toBe('Open, waiting on you')
+    // The Agent label replaces Open; waiting state and hidden count semantics stay.
+    expect(name('open')).toBe('Agent, waiting on you')
     expect(name('info')).toBe('Info')
     expect(name('changes')).toBe('Changes, 2 files')
     expect(name('work')).toBe('Work, 1 open')
@@ -124,7 +125,7 @@ describe('the drawer tab strip follows the tabs pattern', () => {
     }
     // Control: with nothing drawn on them the names are the bare words.
     const quiet = mount(Harness, { start: 'info' }, { width: 380, height: 700 })
-    expect(quiet.q('drawer-tab-open').getAttribute('aria-label')).toBe('Open')
+    expect(quiet.q('drawer-tab-open').getAttribute('aria-label')).toBe('Agent')
     expect(quiet.q('drawer-tab-changes').getAttribute('aria-label')).toBe('Changes')
     expect(quiet.q('drawer-tab-work').getAttribute('aria-label')).toBe('Work')
   })

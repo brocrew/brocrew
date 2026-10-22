@@ -211,9 +211,18 @@ describe('the agent card says the work a person gave it', () => {
     assertDrawn(rootCondition, 'the root done condition', root.host)
     unmountAll()
 
+    for (const definitionOfDone of [null, '']) {
+      const noCondition = show(answer(), {
+        named: { label: 'W2', title: 'Plan the week', definitionOfDone },
+      })
+      await drawnReady()
+      expect(noCondition.host.textContent).not.toContain('Done when:')
+      unmountAll()
+    }
+
     const legacy = show(taking(piece(1, { definitionOfDone: null })))
     await drawnReady()
-    expect(said(legacy.q('cast-work-done'))).toBe('Done when: Not recorded')
+    expect(legacy.all('cast-work-done')).toHaveLength(0)
     unmountAll()
 
     const unread = show(taking(piece(1)), { named: { label: 'W2', title: 'Plan the week' } })

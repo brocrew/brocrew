@@ -84,9 +84,9 @@ MUTATIONS = [
         [
             (
                 RAIL,
-                '              class="says"\n'
-                '              title="Conversations from here, and from Claude\'s and Codex\'s own folders"\n',
-                '              title="Conversations from here, and from Claude\'s and Codex\'s own folders"\n',
+                # The approved subtitle changed and formatting compacted the tag; the plant still removes wrapping from its explanation.
+                "            <small class=\"says\" title=\"Includes chats from Claude and Codex on this computer.\"\n",
+                "            <small title=\"Includes chats from Claude and Codex on this computer.\"\n",
             )
         ],
     ),
