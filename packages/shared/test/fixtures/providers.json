@@ -1,0 +1,336 @@
+[
+  {
+    "id": "claude",
+    "displayName": "Claude",
+    "debugOnly": false,
+    "nativeSkills": true,
+    "nativePlugins": true,
+    "nativeMemory": true,
+    "nativeArchive": true,
+    "credential": "machine-or-key",
+    "instructionPlacement": "sdk-context",
+    "connectionKind": "standard",
+    "capabilities": {
+      "mark": {
+        "state": "available",
+        "kind": "letter"
+      },
+      "loginRenewalMessage": {
+        "state": "available"
+      },
+      "planMode": {
+        "state": "available",
+        "note": "It proposes a plan, waits for your approval, and then carries it out in this conversation. While it is planning, Claude’s own plan mode governs what it does: it asks you before it changes your files, runs a command it cannot tell is harmless, or uses a server’s tool, even in a conversation that does not otherwise ask you first."
+      },
+      "thinking": {
+        "state": "available",
+        "note": "How much it thought — the provider redacts the reasoning itself, so the words are never sent."
+      },
+      "subAgents": {
+        "state": "available"
+      },
+      "requestCompaction": {
+        "state": "available",
+        "note": "by /compact, which BroCrew sends to Claude exactly as you type it, instructions and all"
+      },
+      "rewind": {
+        "state": "unwired",
+        "reason": "Claude can do this — `enableFileCheckpointing` plus `rewindFiles()`, both declared in the pinned SDK. It is not wired because rewind writes to your files: it needs a confirm step, a defined scope (one file, the turn, the conversation), and an answer for edits you made by hand since. Compaction only forgets and was deferred for less."
+      },
+      "signIn": {
+        "state": "absent",
+        "reason": "Claude sessions run on the API key saved under “API key” on the Claude card in Providers, or, with none saved, on your machine login directly — there is no separate sign-in here to renew. Without a saved key, switching profiles on your machine is picked up the next time you start a conversation.",
+        "checkedAgainst": "Claude Agent SDK 0.3.281 (exact-pinned): `Query` declares `accountInfo()` (sdk.d.ts:2971) and no login/authenticate verb anywhere in the declaration file; `forceLoginMethod`/`forceLoginOrgUUID` are settings the CLI reads, not methods we can call. And `internal/auth.ts` copies no Claude credential into the profile home (015), so there is none to renew."
+      },
+      "reprovisionAuth": {
+        "state": "absent",
+        "reason": "There is nothing to copy — with no API key saved, Claude sessions read your machine login directly. If it has expired, starting a Claude conversation renews it.",
+        "checkedAgainst": "`internal/auth.ts` (015): `provisionCodexAuth` copies ONLY the Codex `auth.json`; the Claude bridge is `claudeKeychainTokenProvider`, which re-reads the macOS Keychain on every launch and persists nothing. Verified on this machine with `security find-generic-password`: exactly one `Claude Code-credentials` item, machine-wide, and no Claude credential file in any profile folder we provision."
+      },
+      "homeCredential": {
+        "state": "absent",
+        "reason": "Claude writes nothing of your sign-in into this profile. Claude sessions read the saved API key, or with none your machine login, at the moment they start and pass it to the agent for that run only, so there is no Claude copy here to go stale.",
+        "checkedAgainst": "`provider-homes.ts`: `prepareProviderHome`’s Claude branch calls `claudeAuthHealth` and writes no file — `provisionCodexAuth` is the only writer of a credential into a folder we provision, and it is reached only when `identity.provider === \"codex\"`. The token comes from `claudeKeychainTokenProvider` (re-read per call, deliberately: the macOS Keychain item, or on Windows Claude Code’s own `.credentials.json`) and reaches the child through `internal/child-env.ts` alone. `credential-disclosure.test.ts` runs both branches against a temp home and asserts this one leaves nothing behind."
+      },
+      "childInput": {
+        "state": "absent",
+        "reason": "A Claude sub-agent is a record, not a conversation you can join. The SDK writes its transcript to `subagents/agent-<id>.jsonl` as it works — BroCrew follows that file live — and offers a reader keyed by agent id, `getSubagentMessages(sessionId, agentId)`. There is nothing in the other direction: the parent model dispatches the child and reads its report, and no one else gets a word in.",
+        "checkedAgainst": "@anthropic-ai/claude-agent-sdk 0.3.281 `sdk.d.ts` — all 70 distinct `subtype` literals on the client↔CLI control channel (`api_retry` through `worker_shutting_down`), every method on `Query`, and every exported function taking an agent id. Exactly one takes one: `getSubagentMessages`, and it reads."
+      },
+      "agentCommands": {
+        "state": "available",
+        "note": "Claude's own — its built-in commands and its skills in one list, typed with a leading slash. Claude pushes a fresh list whenever it changes."
+      },
+      "ultracode": {
+        "state": "available",
+        "note": "Asks Claude to organise multi-agent work on its own, at whatever effort the conversation runs. Fixed when the conversation starts, for that run only — Claude never reports back whether it took — and it needs Workflows enabled on your account and a model that supports it."
+      },
+      "commandOutput": {
+        "state": "absent",
+        "reason": "Claude does not report a command’s output until the command finishes — the whole of it arrives at once, in the result.",
+        "checkedAgainst": "@anthropic-ai/claude-agent-sdk 0.3.281 `sdk.d.ts` — every method on `Query` (`stopTask` and `backgroundTasks` are the two that name a task; neither reads one) and every `system` subtype on the control channel. Then a live turn: `probe:command-output` row C, a 12-second command printing a per-process nonce, 45 frames captured with `includePartialMessages`, none carrying the output before the `tool_result`. 0.3.287 adds the `get_task_output` control request: the last 8 KiB of a background shell or Monitor task, on request — nothing for a foreground command, which is what this entry is about."
+      },
+      "backgroundCommandOutput": {
+        "state": "unwired",
+        "reason": "Claude can hand over the last part of a background command’s output while it runs, but BroCrew does not ask for it yet."
+      },
+      "approvals": {
+        "state": "available",
+        "note": "On Claude nothing is sandboxed in either mode. What this mode removes is the card, except while Claude is planning: its own plan mode still asks, as the CLI’s does."
+      },
+      "externalMcpServers": {
+        "state": "available",
+        "note": "A server this identity may use is passed to the session as a known MCP server. In a conversation that asks you first, each of its tool calls asks you before it runs, whatever the server says about the tool — unless you allowed that tool for the conversation or kept a rule that allows it — and a form the server sends reaches you to answer."
+      },
+      "backgroundWake": {
+        "state": "available",
+        "note": "A command or a sub-agent left running in the background, or a scheduled wake-up, runs Claude again when it ends or fires, with nobody sending a message. So work whose turn ended with one pending reads as working in the background, not as stalled."
+      },
+      "turnProvenance": {
+        "state": "available",
+        "note": "What you type in the composer is marked as typed by a person, which Claude needs before a keyword such as `ultracode` in it takes effect. A message another agent sends is marked with that agent, a mark this Claude version does not keep. The app’s own messages carry no mark, including the ones that pass on an answer or a reply."
+      }
+    },
+    "programName": "Claude Code",
+    "signIn": {
+      "portScope": "profile",
+      "profileScoped": false,
+      "accountIsSignIn": false,
+      "changeWords": "this computer has moved on to a different one since — a renewal counts"
+    },
+    "usageWindows": ["5-hour", "weekly"],
+    "commandPrefix": "/",
+    "defaults": {
+      "conversation": false,
+      "identity": true
+    },
+    "approval": {
+      "autoNote": "⚠ approvals: Auto — nothing is asked",
+      "grantReach": "reads",
+      "protections": {
+        "ask": ["the-card-before-an-act"],
+        "auto": []
+      }
+    },
+    "launch": {
+      "freshTimeoutMs": 15000,
+      "resumeTimeoutMs": 15000
+    },
+    "limitClearsOnSignInChange": true,
+    "toolInstructionsInText": false,
+    "identityPreamble": false,
+    "contextPlacement": "system-prompt",
+    "config": {
+      "homeEnv": "CLAUDE_CONFIG_DIR",
+      "model": "programmatic — tools, the prompt, this session's own tools and any external servers granted to it, as MCP servers and the permission rules kept in this home's settings.json and in the project's .claude/settings.local.json are passed as SDK query() options; the adapter pins settingSources: [] and strictMcpConfig: true, so other file settings here are ignored by design.",
+      "authNote": "auth: Claude Code’s own login (the Keychain on a Mac, its own file on Windows) — the token is injected per launch, never written here",
+      "files": [
+        {
+          "name": ".claude.json",
+          "note": "the SDK's own state — not a file you edit to add tools"
+        },
+        {
+          "name": "settings.json",
+          "note": "this identity's own settings — its permission rules are read at every launch, and nothing else in it is loaded; a rule chosen to outlive one conversation is kept in the project's .claude/settings.local.json, where the CLI keeps it"
+        }
+      ]
+    },
+    "apiKey": {
+      "issuer": "Anthropic",
+      "checkUrl": "https://api.anthropic.com/v1/models?limit=100",
+      "spendsToken": true,
+      "header": "x-api-key",
+      "prefix": "",
+      "extraHeaders": {
+        "anthropic-version": "2023-06-01"
+      },
+      "windowsLoginNeedsFile": true
+    },
+    "words": {
+      "refusedSignIn": "claude-sign-in",
+      "stopForWords": {
+        "beforeName": "The command that turn is waiting on ends with it, and anything ",
+        "afterName": " sent to the background keeps running."
+      },
+      "loginRefusal": {
+        "key": "its turn failed because Claude refused the Anthropic API key its conversation was started with, so a person needs to check or replace that key under “API key” on the Claude card in Providers",
+        "signIn": "its turn failed because Claude refused the login its conversation was started with, as it does when another Claude on this computer renews or switches the login",
+        "signInAfterReopen": "its turn failed because Claude refused the login its conversation was started with, as it does when another Claude on this computer renews or switches the login",
+        "saysNotReopened": true
+      },
+      "providerChoice": "'claude' runs the conversation through Claude.",
+      "interruptSummary": "the command that turn is waiting on ends with it, and work it sent to the background keeps running"
+    },
+    "skillReminderPrefix": "brobot:"
+  },
+  {
+    "id": "codex",
+    "displayName": "Codex",
+    "debugOnly": false,
+    "nativeSkills": true,
+    "nativePlugins": true,
+    "nativeMemory": true,
+    "nativeArchive": true,
+    "credential": "profile-or-key",
+    "instructionPlacement": "native-file",
+    "connectionKind": "standard",
+    "capabilities": {
+      "mark": {
+        "state": "available",
+        "kind": "blossom"
+      },
+      "loginRenewalMessage": {
+        "state": "absent",
+        "reason": "Starting a conversation does not send a message to renew its login.",
+        "checkedAgainst": "`codex/codex-runtime.ts`: `CodexRuntime.start` opens a thread without a separate login-renewal message."
+      },
+      "planMode": {
+        "state": "available",
+        "note": "The agent researches and proposes first. You give the go-ahead, and it gets to work in the same conversation."
+      },
+      "thinking": {
+        "state": "available",
+        "note": "A summary the model writes of its own reasoning — not the reasoning itself."
+      },
+      "subAgents": {
+        "state": "available"
+      },
+      "requestCompaction": {
+        "state": "available",
+        "note": "by /compact, which BroCrew turns into Codex’s own compaction request — Codex takes no instructions for one"
+      },
+      "rewind": {
+        "state": "unwired",
+        "reason": "Codex can rewind a conversation’s history, but not the files its agent changed — it says itself that those are left as they are. It is not wired because rewind writes to your files where compaction only forgets: it needs a confirm step and a defined scope, and on Codex BroCrew would have to undo the file changes itself."
+      },
+      "signIn": {
+        "state": "available",
+        "note": "Signs this profile into its own Codex account. Unlike copying your machine sign-in, it does not share a token with the codex CLI, so neither one can expire the other."
+      },
+      "reprovisionAuth": {
+        "state": "available",
+        "note": "Copies the sign-in from your machine`s codex CLI again. Quick, but the two keep sharing one token, so the next renewal by either will expire the other."
+      },
+      "homeCredential": {
+        "state": "available",
+        "note": "This profile keeps a sign-in of its own — or, while an OpenAI API key is saved under “API key” on the Codex card in Providers, that key instead. Where your machine’s Codex CLI has one, it starts as a copy of that; where it has none, as a copy of BroBot’s own. The copy is made once, is readable only by you, and is never replaced on its own."
+      },
+      "ultracode": {
+        "state": "absent",
+        "reason": "Codex has no separate switch for this — it folded proactive multi-agent work into the reasoning levels. Pick `ultra` under reasoning instead.",
+        "checkedAgainst": "The vendored Codex protocol at the pinned 0.160.0: `ReasoningEffort` is an open string with `ultra` supplied per model by `model/list` (`Model.supportedReasoningEfforts`), and the ONE field that was a separate mode — `multiAgentMode`, on both `TurnStartParams` and `ThreadSettingsUpdateParams` — is deprecated in the protocol itself with \"Ignored. Use `effort: 'ultra'` for proactive multi-agent behavior.\" No settings/orchestration field remains: `workflow`, `orchestrat` and `ultracode` appear nowhere in `src/codex/protocol/`."
+      },
+      "childInput": {
+        "state": "available",
+        "note": "A Codex sub-agent is a real thread with its own id, its own status and its own turns, and the app-server accepts direct input for it — measured live at 0.146.0. ⛔ Only while it is IDLE. A message sent to a child that is still working does not open a new turn: it joins the one in progress, ends it early, and the command that turn was running keeps going past its own reported completion. So BroCrew waits for the child to finish rather than talking over it, and says which of the two it is looking at."
+      },
+      "agentCommands": {
+        "state": "available",
+        "note": "Codex's own skills, typed with a leading $. Codex publishes no slash commands over its app-server, so this list is skills and nothing else. /compact still works here: BroCrew turns it into Codex's own compaction request."
+      },
+      "commandOutput": {
+        "state": "available",
+        "note": "Codex streams a command’s output as it runs, and keeps streaming after the turn ends — so a long command can be watched from the card that started it, while the conversation is open."
+      },
+      "backgroundCommandOutput": {
+        "state": "available",
+        "note": "Codex streams a background command’s output the same way, so it can be watched from its card while the conversation is open."
+      },
+      "approvals": {
+        "state": "available",
+        "note": "On Codex this mode takes the sandbox off: with approvals on it writes in your folder and the temporary folders without asking, and cannot write anywhere else or reach the network unless you approve it or the config.toml of this identity opens it; with them off it runs danger-full-access, which applies no sandbox at all. Neither mode limits what it can read."
+      },
+      "externalMcpServers": {
+        "state": "available",
+        "note": "A server this identity may use is declared to the conversation, and its tools reach the agent through Codex's own code mode. In a conversation that asks you first, Codex asks before one of them runs, naming the server, the tool and what it is given — except a tool the server itself marks as only reading, or as destroying nothing and reaching nothing outside, or one you chose to always allow, which Codex runs without asking, as it runs every tool in a conversation that does not ask. A request the server makes of its own names the server and not the call."
+      },
+      "backgroundWake": {
+        "state": "absent",
+        "reason": "A command Codex leaves running in the background never reaches the model again when it ends, so it drives nothing: work whose turn ended over one is stalled, as any other.",
+        "checkedAgainst": "`smoke/codex-background-probe.smoke.ts` against the bundled codex-cli 0.146.0 (`275`): no `item/completed` ever arrives for a background terminal, the stream names none, and `turn/completed` does not wait for it."
+      },
+      "turnProvenance": {
+        "state": "absent",
+        "reason": "Codex has no field for who wrote a message, so every message reaches it the same way, whoever sent it.",
+        "checkedAgainst": "The vendored Codex protocol at the pinned 0.160.0: `TurnStartParams` and every `UserInput` variant (`text`, `image`, `localImage`, `audio`, `localAudio`, `skill`, `mention`) carry no sender, author or origin. `responsesapiClientMetadata` is request metadata for the Responses API, `additionalContext` is content keyed by an opaque source, and `turnTrigger` is an opaque \"source classification for the caller that starts this turn\" that names no author, and none of them says who wrote the turn. `origin` appears in `src/codex/protocol/` only as a git remote (`GitInfo.originUrl`), as where a config layer came from (`ConfigReadResponse.origins`), and as which client created a whole thread (`Thread.source`, `Thread.originator`), none of them per turn."
+      }
+    },
+    "programName": "Codex",
+    "signIn": {
+      "portScope": "machine",
+      "profileScoped": true,
+      "accountIsSignIn": true,
+      "changeWords": "its profile has been signed in to another account since"
+    },
+    "usageWindows": ["weekly"],
+    "commandPrefix": "$",
+    "defaults": {
+      "conversation": true,
+      "identity": false
+    },
+    "approval": {
+      "autoNote": "⚠ approvals: Auto — nothing is asked · sandbox OFF",
+      "grantReach": "writes",
+      "protections": {
+        "ask": ["the-card-before-an-act", "the-sandbox-around-an-act"],
+        "auto": []
+      }
+    },
+    "launch": {
+      "freshTimeoutMs": 15000,
+      "resumeTimeoutMs": 60000
+    },
+    "limitClearsOnSignInChange": false,
+    "toolInstructionsInText": true,
+    "identityPreamble": true,
+    "contextPlacement": "first-message",
+    "config": {
+      "homeEnv": "CODEX_HOME",
+      "model": "file-based — config.toml in this home is where Codex reads its own MCP servers and preferences, and where BroCrew switches this profile's memory on: features.memories, memories.dedicated_tools, memories.use_memories and memories.generate_memories are merged into the tables already there on every launch, and nothing else in the file is touched — and this session's own tools and the external MCP servers this identity was granted, and Codex's planning tool switched on are not in that file at all: they are declared on the wire when the conversation starts. The tools the app-server remembers, so a resumed conversation comes back with the same ones; the servers and the planning switch it does not, so BroCrew sends them again every time it reopens the conversation",
+      "authNote": null,
+      "files": [
+        {
+          "name": "auth.json",
+          "note": "the credential this profile runs on, at 0600 — copied from ~/.codex, or minted here by \"Sign in for this agent\""
+        },
+        {
+          "name": "config.toml",
+          "note": "MCP servers + preferences, and the memory keys above — Codex writes here too, so BroCrew merges and never rewrites it"
+        },
+        {
+          "name": "brobot-kept-tool-approvals.json",
+          "note": "MCP tools always allowed here — declared with their server at every launch, so Codex does not ask about them"
+        },
+        {
+          "name": "rules/default.rules",
+          "note": "Codex's own \"don't ask again for commands that start with …\" rules — Codex writes and reads them itself"
+        }
+      ]
+    },
+    "apiKey": {
+      "issuer": "OpenAI",
+      "checkUrl": "https://api.openai.com/v1/models",
+      "spendsToken": false,
+      "header": "authorization",
+      "prefix": "Bearer ",
+      "extraHeaders": {},
+      "windowsLoginNeedsFile": false
+    },
+    "words": {
+      "refusedSignIn": "codex-sign-in",
+      "stopForWords": {
+        "beforeName": "The command ",
+        "afterName": " ran last in that turn ends with it unless it has used another tool since, and its other commands keep running."
+      },
+      "loginRefusal": {
+        "key": "its turn failed because the API key its Codex conversation was started with was refused, so a person needs to check or replace that key under “API key” on the Codex card in Providers",
+        "signIn": "its turn failed because Codex refused the sign-in its conversation was started with, so a person needs to sign its Codex profile in again",
+        "signInAfterReopen": "its turn failed because Codex refused the sign-in its conversation was started with, its profile having been signed in to another account since",
+        "saysNotReopened": false
+      },
+      "providerChoice": "'codex' runs the conversation through Codex.",
+      "interruptSummary": "the command that turn ran last ends with it unless it has used another tool since, and its other commands keep running"
+    },
+    "skillReminderPrefix": ""
+  }
+]

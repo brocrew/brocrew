@@ -111,7 +111,7 @@ describe('the shipped instruction-only catalogue', () => {
   })
   it('refuses another format, and a version label of another shape', () => {
     expect(() =>
-      verifyBuiltInSkills({ ...(manifest as object), formatVersion: 2 }, bodies),
+      verifyBuiltInSkills({ ...(manifest as object), formatVersion: 3 }, bodies),
     ).toThrow()
     for (const version of ['6', 'v', 'v6.', 'V6', 'v6-beta', 6])
       expect(() => verifyBuiltInSkills({ ...(manifest as object), version }, bodies)).toThrow()

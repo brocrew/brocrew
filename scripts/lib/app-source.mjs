@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import ts from 'typescript'
 
 /**
  * Read instrument constants from the app's source instead of restating their values.
@@ -15,19 +16,15 @@ const DESKTOP = join(dirname(fileURLToPath(import.meta.url)), '../../apps/deskto
 /**
  * Where each derivable constant is declared, so a move is a stop rather than a wrong answer.
  *
- * ⚠️ **`DEFAULT_PROVIDER` is the odd one and it is here on purpose.** It is not exported and it
- * lives in a `.vue` — `const DEFAULT_PROVIDER: Provider = 'codex'` in `<script setup>` — so
- * nothing can import it and a script that wanted it was writing `'codex'` down by hand. 🔴 Since
- * `417` that constant is **every person-started conversation's permanent provider** (`417` §11.3,
- * `420` §3), which makes it exactly the value standing rule 1 is about: the day it moves, an
- * instrument that restated it reports the wrong provider and stays green.
+ * The launch default is read from the shared provider registry. The component and the
+ * instruments therefore follow the same declaration when a default changes.
  */
 const DECLARED_IN = {
   WORKSPACE_CANARY: 'src/main/runtime/workspace.ts',
   WORKSPACE_DIRNAME: 'src/main/runtime/workspace.ts',
   CLAUDE_INSTRUCTIONS_FILE: 'src/main/runtime/workspace.ts',
   CODEX_INSTRUCTIONS_FILE: 'src/main/runtime/workspace.ts',
-  DEFAULT_PROVIDER: 'src/renderer/src/components/RuntimeScreen.vue',
+  DEFAULT_PROVIDER: '../../packages/shared/src/providers.ts',
   ASKED_TO_STOP: 'src/shared/how-work-stopped.ts',
   DEFAULT_PROFILE_ID: 'src/shared/runtime-ipc.ts',
   PROVIDER_HOMES_DIRNAME: 'src/main/runtime/provider-homes.ts',
@@ -67,6 +64,7 @@ export function constantFrom(name) {
   }
   const source = join(DESKTOP, where)
   const text = readFileSync(source, 'utf8')
+  if (name === 'DEFAULT_PROVIDER') return providerDefaultFrom(text)
   let found
   for (const spelling of SPELLINGS) {
     found = text.match(spelling(name))?.[1]
@@ -80,6 +78,53 @@ export function constantFrom(name) {
     )
   }
   return found
+}
+
+/** Read the registry's default without evaluating app code or matching comments. */
+export function providerDefaultFrom(source, kind = 'conversation') {
+  const tree = ts.createSourceFile('providers.ts', source, ts.ScriptTarget.Latest, true)
+  const declaration = tree.statements
+    .filter(ts.isVariableStatement)
+    .flatMap((statement) => statement.declarationList.declarations)
+    .find((entry) => ts.isIdentifier(entry.name) && entry.name.text === 'PROVIDER_DESCRIPTORS')
+  let array = declaration?.initializer
+  while (
+    array &&
+    (ts.isAsExpression(array) ||
+      ts.isSatisfiesExpression(array) ||
+      ts.isParenthesizedExpression(array))
+  ) {
+    array = array.expression
+  }
+  if (!array || !ts.isArrayLiteralExpression(array)) {
+    throw new Error('The provider registry is not a readable array declaration.')
+  }
+  const property = (object, key) => {
+    if (!ts.isObjectLiteralExpression(object)) return undefined
+    return object.properties.find(
+      (entry) =>
+        ts.isPropertyAssignment(entry) &&
+        (ts.isIdentifier(entry.name) || ts.isStringLiteral(entry.name)) &&
+        entry.name.text === key,
+    )?.initializer
+  }
+  const defaults = []
+  for (const row of array.elements) {
+    const id = property(row, 'id')
+    const flags = property(row, 'defaults')
+    const flag = flags && property(flags, kind)
+    if (
+      !id ||
+      !ts.isStringLiteral(id) ||
+      !flag ||
+      ![ts.SyntaxKind.TrueKeyword, ts.SyntaxKind.FalseKeyword].includes(flag.kind)
+    ) {
+      throw new Error('The provider registry has an unreadable id or default flag.')
+    }
+    if (flag.kind === ts.SyntaxKind.TrueKeyword) defaults.push(id.text)
+  }
+  if (defaults.length !== 1) throw new Error(`Expected one default provider for ${kind}.`)
+  return defaults[0]
 }
 
 /**

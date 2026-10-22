@@ -382,7 +382,7 @@ export class SqliteSkillCatalogue implements SkillCatalogue {
             {
               name: item.name,
               description: item.description,
-              reminder: item.reminder.codex.slice(`${item.name} — `.length),
+              reminder: item.reminder.slice(`${item.name} — `.length),
               path: `${item.name}/SKILL.md`,
               body: verified.bodies.get(item.name)!,
               bytes: item.bytes,

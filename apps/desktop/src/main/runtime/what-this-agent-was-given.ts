@@ -12,7 +12,7 @@ import {
   MAX_COMMAND_TEXT,
   type ProviderCommand,
 } from '@brobot2/runtime'
-import { providerValue, type Provider } from '@brobot2/shared'
+import { providerDescriptor, providerValue, type Provider } from '@brobot2/shared'
 import type { AgentMemoryStore } from '../../shared/agent-memory'
 import type { SnapshotAnswer } from '../../shared/provider-snapshots'
 import type { TurnAsSent } from '../../shared/turn-as-sent'
@@ -261,7 +261,7 @@ export function whatThisLaunchGave(handed: WhatALaunchWasHanded): WhatALaunchGav
   const toolsParagraph = handed.toolset.instructions
   return {
     build: handed.build === null ? null : { id: handed.build.id, commit: handed.build.commit },
-    placement: providerValue(handed.provider, { claude: 'system-prompt', codex: 'first-message' }),
+    placement: providerDescriptor(handed.provider).contextPlacement,
     profileFile:
       profileFile === null
         ? null

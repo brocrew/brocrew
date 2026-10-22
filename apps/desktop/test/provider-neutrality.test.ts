@@ -17,9 +17,10 @@ import { describe, expect, it } from 'vitest'
  * reasonable version of it, and by then the architecture would be gone with no single commit to
  * blame.
  *
- * So this is a census, not a taste test: **every** provider literal in the renderer must be one of
- * three that are here on purpose, and none of them may be a comparison. The right way to add a
- * fourth is almost never to edit the allowlist — it is to add an entry to `ProviderCapabilities` and
+ * So this is a census, not a taste test: **every** provider literal in the renderer must have
+ * an explicit permit, and none may be a comparison. The registry now supplies the default,
+ * display names and usage windows, so no permits remain. The right way to add one is almost
+ * never to edit the allowlist — it is to add an entry to `ProviderCapabilities` and
  * ask the backend.
  *
  * ⚠️ **What it does NOT cover, said out loud so a green run is not read as more than it is.**
@@ -208,47 +209,8 @@ function scanRenderer(): { sites: ProviderLiteralSite[]; scanned: number } {
  * table. ⚠️ **So the two permits `417` removed are still gone and should stay gone** — the shape
  * they allowed is the shape `435` did not need.
  */
-const ALLOWED = [
-  {
-    file: 'renderer/src/components/RuntimeScreen.vue',
-    code: "const DEFAULT_PROVIDER: Provider = 'codex'",
-    why: 'a new conversation starts on something (005)',
-  },
-  {
-    file: 'shared/runtime-ipc.ts',
-    code: "export const PROVIDER_NAME: Record<Provider, string> = { claude: 'Claude', codex: 'Codex' }",
-    why:
-      '169 · a proper NOUN, not a capability. 151 ruled that a user-facing sentence names the two ' +
-      'programs and calls the thing a folder, which the renderer could not do — it had no way to ' +
-      'say "Claude" about a row it was handed. This is a lookup KEYED by the provider the row ' +
-      'already carries: nothing here branches, and no surface learns what a provider can DO. It is ' +
-      'the same shape as `profileLabel`, and it is deliberately not in ProviderCapabilities — a ' +
-      'capability is per-session and a library row has no session to ask.',
-  },
-  {
-    file: 'shared/runtime-ipc.ts',
-    code: "provider: 'claude',",
-    why:
-      "433 · a SEED, and it is the entry above's argument one table down. It is the value ONE " +
-      'identity row is created holding — `SEEDED_PROVIDERS`, the one thing this app still ' +
-      'writes down at creation (D-014 took the seeded grants and roles). ⛔ ' +
-      'Nothing branches on it and no surface learns what a provider can DO: the renderer reads the ' +
-      "identity's own column and draws it through `PROVIDER_NAME`. ⚠️ HO-025 §4 is explicit that it " +
-      'is not an opinion about which model suits which work — that is chosen per conversation, and ' +
-      '`setAgentProvider` is the one control that changes it for good.',
-  },
-  // The title bar's table of the usage windows each provider's cells wait for before a reading
-  // arrives. These two lines of this one file, and no other line of it.
-  ...["claude: ['5-hour', 'weekly'],", "codex: ['weekly'],"].map((code) => ({
-    file: 'renderer/src/composables/useUsageCells.ts',
-    code,
-    why:
-      'A lookup keyed by the provider a cell is drawn for: which windows show “Not read yet” ' +
-      'before any reading. Nothing branches on a provider, and a reading that does arrive is drawn ' +
-      'whatever this says. ⚠️ Temporary: the app does not yet tell the window which usage windows ' +
-      'a provider reports. When main reports that, this table and these two permits go.',
-  })),
-]
+const ALLOWED: readonly { readonly file: string; readonly code: string; readonly why: string }[] =
+  []
 
 const isAllowed = (site: ProviderLiteralSite): boolean =>
   ALLOWED.some((ok) => ok.file === site.file && ok.code === site.code)
@@ -356,13 +318,8 @@ describe('the renderer never decides a capability by recognising a provider (039
         'add an entry to ProviderCapabilities (packages/runtime/src/capabilities.ts) rather than ' +
         'widening this list',
     ).toEqual([])
-    // The other direction: the default and the name table must still be FOUND. A scanner that
-    // quietly stopped matching would pass the assertion above by seeing nothing at all.
-    // (⚑ It was "the picker, the default and the name table" until 417 took the picker.)
-    //
-    // ⚠️ **Compared as a SET of sites, not a count of literals** (169). One line can hold several —
-    // `PROVIDER_NAME` holds four — and counting literals made this assertion a statement about how
-    // the allowed lines happened to be written rather than about which lines are allowed.
+    // Every permit must still name a live site. The registry removed the last permits;
+    // synthetic scanner checks above continue to prove that provider literals are seen.
     expect(
       ALLOWED.filter((ok) => !sites.some((s) => s.file === ok.file && s.code === ok.code)).map(
         (ok) => ok.file,

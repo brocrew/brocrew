@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { providerSchema } from '@brobot2/shared'
 import { SkillName, SkillDigest, SkillRelease, SKILL_LIMITS } from '../../shared/skills-catalogue'
 import { PLUGIN_LIMITS } from './package-digests'
 import { pluginPackagePath, PluginPackagePaths } from './package-path'
@@ -164,7 +165,7 @@ const manifest = z.strictObject({
       z.strictObject({
         id: SkillName,
         rules: path,
-        provider: z.enum(['claude', 'codex']),
+        provider: providerSchema,
         model: text(128),
         effort: text(32).nullable(),
         requiredTools: z.array(text(128)).max(64),

@@ -344,7 +344,7 @@ describe('a later version label', () => {
       expect(
         readBuiltInSkills(shippedWith((one) => ({ ...one, version: label }))).catalogue.version,
       ).toBe(label)
-    expect(() => readBuiltInSkills(shippedWith((one) => ({ ...one, formatVersion: 2 })))).toThrow()
+    expect(() => readBuiltInSkills(shippedWith((one) => ({ ...one, formatVersion: 3 })))).toThrow()
   })
   it('names the pack a launch reads, with every pack edit seen at the next launch', () => {
     const folder = aPack()

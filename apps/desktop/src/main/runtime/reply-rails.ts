@@ -1,4 +1,4 @@
-import { providerValue } from '@brobot2/shared'
+import { providerDescriptor } from '@brobot2/shared'
 import { refusalReason } from '../../shared/refusals'
 import {
   aPieceNotEndedItsQuestionsUnread,
@@ -902,20 +902,15 @@ const undrivenNotice = (
  * Codex conversation stays open after the refusal, and a reopen since is still said.
  */
 function theLoginSentence(login: StoppedOnALogin): string {
-  const onCodex = providerValue(login.provider ?? 'claude', { claude: false, codex: true })
-  const refused = onCodex
-    ? login.onAKey === true
-      ? 'its turn failed because the API key its Codex conversation was started with was refused, so a person needs to check or replace that key under “API key” on the Codex card in Providers'
-      : login.reopened
-        ? 'its turn failed because Codex refused the sign-in its conversation was started with, its profile having been signed in to another account since'
-        : 'its turn failed because Codex refused the sign-in its conversation was started with, so a person needs to sign its Codex profile in again'
-    : login.onAKey === true
-      ? 'its turn failed because Claude refused the Anthropic API key its conversation was started with, so a person needs to check or replace that key under “API key” on the Claude card in Providers'
-      : 'its turn failed because Claude refused the login its conversation was started with, as it does when another Claude on this computer renews or switches the login'
+  const words = providerDescriptor(login.provider ?? 'claude').words.loginRefusal
+  const refused =
+    login.onAKey === true ? words.key : login.reopened ? words.signInAfterReopen : words.signIn
   if (login.reopened) {
     return `${refused}; its conversation has been reopened since, and nothing from that turn was sent again`
   }
-  return onCodex ? refused : `${refused}, and its conversation has not been reopened since`
+  return words.saysNotReopened
+    ? `${refused}, and its conversation has not been reopened since`
+    : refused
 }
 
 /** ⚑ **F074** — a limit as {@link theLimitSentence} says it: the provider's name, the reset, and when. */

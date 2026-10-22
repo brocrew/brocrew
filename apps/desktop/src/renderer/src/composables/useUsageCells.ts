@@ -1,4 +1,5 @@
 import { computed, type ComputedRef } from 'vue'
+import { providerDescriptor, providerRecord } from '@brobot2/shared'
 import {
   PROVIDER_NAME,
   type Provider,
@@ -37,10 +38,9 @@ const PROVIDERS = Object.keys(PROVIDER_NAME) as Provider[]
  * one that provider no longer reports: it gets no "Not read yet" cell, and is drawn only if a
  * reading for it does arrive.
  */
-const AWAITED: Readonly<Record<Provider, readonly string[]>> = {
-  claude: ['5-hour', 'weekly'],
-  codex: ['weekly'],
-}
+const AWAITED = providerRecord<readonly string[]>(
+  (provider) => providerDescriptor(provider).usageWindows,
+)
 
 export interface UsageCell {
   readonly key: string

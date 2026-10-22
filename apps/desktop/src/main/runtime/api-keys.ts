@@ -1,5 +1,10 @@
 import { claudeCredentialsFileReader, parseClaudeOAuthToken } from '@brobot2/runtime'
-import { providerValue, type Provider } from '@brobot2/shared'
+import {
+  providerDescriptor,
+  providerRecord,
+  type Provider,
+  type ProviderDescriptor,
+} from '@brobot2/shared'
 import type { ApiKeyCheck, ApiKeyStatus } from '../../shared/runtime-ipc'
 import type { SessionStore } from '../db/session-store'
 
@@ -52,25 +57,9 @@ export type WhyUnreadable = 'storage-not-answering' | 'sealed-with-another-key' 
 export const API_KEY_MAX_LENGTH = 512
 
 /** What each provider's card on the Providers screen is headed — the words the window uses. */
-export const PROVIDER_CARD: Readonly<Record<Provider, string>> = {
-  claude: 'Claude',
-  codex: 'Codex',
-}
-
-/**
- * Whether a key check sends one one-token request after the free model list, to learn whether the
- * key's account can pay. Anthropic's list is answered for a key with no credit, so Claude's does.
- */
-const A_KEY_CHECK_SPENDS_A_TOKEN: Readonly<Record<Provider, boolean>> = {
-  claude: true,
-  codex: false,
-}
-
-/** Who answers for each provider's keys — named in a check's words. */
-const KEY_ISSUER: Readonly<Record<Provider, string>> = {
-  claude: 'Anthropic',
-  codex: 'OpenAI',
-}
+export const PROVIDER_CARD: Readonly<Record<Provider, string>> = providerRecord(
+  (provider) => providerDescriptor(provider).displayName,
+)
 
 /**
  * A saved key that cannot be opened now — the Keychain is asking or was refused, or the entry that
@@ -155,7 +144,9 @@ export class ApiKeys {
   /** Status never opens a key or initializes the system's encryption service. */
   status(provider: Provider): ApiKeyStatus {
     const kept = this.store.keptApiKey(provider)
-    const spends = A_KEY_CHECK_SPENDS_A_TOKEN[provider] ? { aCheckSpendsAToken: true as const } : {}
+    const spends = providerDescriptor(provider).apiKey.spendsToken
+      ? { aCheckSpendsAToken: true as const }
+      : {}
     if (kept === null) return { provider, set: false, setAt: null, inUse: false, ...spends }
     const read = this.readability.get(provider)
     const known = read?.sealed === kept.sealed && read.setAt === kept.setAt ? read : undefined
@@ -310,7 +301,8 @@ export function aLoginRunsWithoutAKey(
   platform: NodeJS.Platform = process.platform,
   readClaudeLogin: () => string | null = () => claudeCredentialsFileReader()(),
 ): boolean {
-  if (providerValue(provider, { claude: false, codex: true }) || platform !== 'win32') return true
+  if (!providerDescriptor(provider).apiKey.windowsLoginNeedsFile || platform !== 'win32')
+    return true
   try {
     return parseClaudeOAuthToken(readClaudeLogin(), 0) !== null
   } catch {
@@ -320,12 +312,6 @@ export function aLoginRunsWithoutAKey(
 
 /** How long a check waits for the provider before it says it could not reach it. */
 export const KEY_CHECK_TIMEOUT_MS = 15_000
-
-/** Where a check asks first — each provider's free, authenticated list of models. */
-const KEY_CHECK_URL: Readonly<Record<Provider, string>> = {
-  claude: 'https://api.anthropic.com/v1/models?limit=100',
-  codex: 'https://api.openai.com/v1/models',
-}
 
 /** Where a Claude check sends its one-token request, to learn whether the key's account can pay. */
 const CLAUDE_MESSAGES_URL = 'https://api.anthropic.com/v1/messages'
@@ -389,17 +375,19 @@ export async function askTheProvider(
   key: string,
   fetchFor: typeof fetch = fetch,
 ): Promise<ApiKeyCheck> {
-  const issuer = KEY_ISSUER[provider]
-  const headers: Record<string, string> = providerValue(provider, { claude: true, codex: false })
-    ? { 'x-api-key': key, 'anthropic-version': '2023-06-01' }
-    : { authorization: `Bearer ${key}` }
+  const issuer = providerDescriptor(provider).apiKey.issuer
+  const keyFacts: ProviderDescriptor['apiKey'] = providerDescriptor(provider).apiKey
+  const headers: Record<string, string> = {
+    [keyFacts.header]: `${keyFacts.prefix}${key}`,
+    ...keyFacts.extraHeaders,
+  }
   const unreachable: ApiKeyCheck = {
     ok: false,
     reason: `BroCrew could not reach ${issuer} to check the key. Check this computer’s connection and try again.`,
   }
   let listed: Response
   try {
-    listed = await fetchFor(KEY_CHECK_URL[provider], {
+    listed = await fetchFor(providerDescriptor(provider).apiKey.checkUrl, {
       method: 'GET',
       headers,
       signal: AbortSignal.timeout(KEY_CHECK_TIMEOUT_MS),
@@ -408,7 +396,7 @@ export async function askTheProvider(
     return unreachable
   }
   if (!succeeded(listed.status)) return refusedAt(issuer, listed.status)
-  if (!A_KEY_CHECK_SPENDS_A_TOKEN[provider]) return { ok: true }
+  if (!providerDescriptor(provider).apiKey.spendsToken) return { ok: true }
   const model = theCheapestModel(modelIdsIn(await bodyOf(listed)))
   if (model === null) return { ok: true }
   let asked: Response

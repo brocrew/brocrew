@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { MAX_USAGE_WINDOWS, SUPPORTED_PROVIDERS } from '@brobot2/runtime'
-import type { Provider } from '@brobot2/shared'
+import { providerRecord, type Provider } from '@brobot2/shared'
 import { MAX_INSTANT } from '../shared/clock'
 import type { ProviderUsageReading, UsageWindowSeen } from '../shared/runtime-ipc'
 import { AN_ACCOUNT_ID } from './provider-accounts-file'
@@ -53,8 +53,8 @@ export function providerUsageFile(userData: string): string {
 
 /** No readings at all. */
 export const NO_USAGE_KEPT: KeptUsage = {
-  readings: { claude: [], codex: [] },
-  seen: { claude: [], codex: [] },
+  readings: providerRecord(() => []),
+  seen: providerRecord(() => []),
 }
 
 /**
@@ -89,7 +89,7 @@ function perProvider<T extends { readonly window: string }>(
   checked: (row: unknown) => T | null,
 ): Record<Provider, T[]> {
   const providers = aRecord(said)
-  const kept = { claude: [], codex: [] } as Record<Provider, T[]>
+  const kept = providerRecord((): T[] => [])
   for (const provider of SUPPORTED_PROVIDERS) {
     const rows = providers[provider]
     if (!Array.isArray(rows)) continue

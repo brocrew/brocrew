@@ -169,7 +169,14 @@ import {
   type LaunchSetting,
   type ProviderCommand,
 } from '@brobot2/runtime'
-import { providerSchema, providerValue, type Provider, type SessionStatus } from '@brobot2/shared'
+import {
+  providerDescriptor,
+  providerRecord,
+  providerSchema,
+  providerValue,
+  type Provider,
+  type SessionStatus,
+} from '@brobot2/shared'
 import { assetUrl } from '../../shared/asset-url'
 import { goAheadNotSent } from '../../shared/the-go-ahead'
 import { archivedInMemory, type ArchivedConversations } from '../archived-file'
@@ -527,7 +534,7 @@ function pendingSignIn(withdraw: () => void): CodexSignIn {
  * can see it. `256` measured the within-app case; this guards the within-app case.
  */
 function signInKey(provider: Provider, profileId: string): string {
-  return providerValue(provider, { claude: false, codex: true })
+  return providerDescriptor(provider).signIn.portScope === 'machine'
     ? provider
     : `${provider}:${profileId}`
 }
@@ -2488,31 +2495,6 @@ const ASKS_SAID_CHARS = 80
 /** ⚑ The first sentence of every {@link A_REOPEN_WAITS_FOR}. */
 const theSignInChanged = (provider: Provider): string =>
   `Its ${PROVIDER_NAME[provider]} sign-in changed after it started.`
-
-/**
- * How a provider's sign-in moves under a running conversation: any change of the machine's Claude
- * login (its child holds a copy of the token), and for Codex a sign-in to another account in its
- * profile (Codex reloads its own tokens for the same account).
- */
-const HOW_A_SIGN_IN_MOVES: Readonly<Record<Provider, string>> = {
-  claude: 'this computer has moved on to a different one since — a renewal counts',
-  codex: 'its profile has been signed in to another account since',
-}
-
-/** Whether a provider's sign-in belongs to one profile (Codex's home) or to the whole computer. */
-const A_SIGN_IN_IS_ITS_PROFILES: Readonly<Record<Provider, boolean>> = {
-  claude: false,
-  codex: true,
-}
-
-/**
- * Whether a provider's sign-in tag already names its account (Codex's is of its account id, and a
- * renewal keeps it), or only its login (Claude's, whose account its CLI is asked for).
- */
-const AN_ACCOUNT_IS_ITS_SIGN_IN: Readonly<Record<Provider, boolean>> = {
-  claude: false,
-  codex: true,
-}
 
 /**
  * ⚑ **How often the agents' processes may be measured, at most** — the Providers screen asks while
@@ -6104,11 +6086,6 @@ const TOOL_CALLS_REMEMBERED = 256
 const DEFAULT_INTERRUPT_WAIT_MS = 2_000
 const DEFAULT_CLOSE_DRAIN_TIMEOUT_MS = 5_000
 
-/** A fresh start or Claude reopen must answer within fifteen seconds. */
-const DEFAULT_LAUNCH_TIMEOUT_MS = 15_000
-// Large Codex rollouts take seconds to reload even without returning past turns.
-const DEFAULT_CODEX_RESUME_TIMEOUT_MS = 60_000
-
 /**
  * How long a reopen waits, once its provider has answered, for the read of what its Codex thread
  * already holds. The read runs alongside the resume and only decides how much of this
@@ -6406,9 +6383,6 @@ const ACCOUNT_WAIT_MS = 15_000
 /** How often a woken life is asked whether its account is known yet, while it is waited for. */
 const ACCOUNT_LOOK_EVERY_MS = 50
 
-/** The provider's own program, as a conversation's words name it. */
-const ITS_PROGRAM: Readonly<Record<Provider, string>> = { claude: 'Claude Code', codex: 'Codex' }
-
 /**
  * 🔴 **What a conversation is told when this app continues a turn that was cut** — on this Mac's
  * clock, with its day when that is not today. ⚑ A crash leaves no moment of its own, so its words
@@ -6428,7 +6402,7 @@ export function aTurnTheAppCutText(
     case 'crash':
       return `The app stopped unexpectedly during your turn (last seen at ${at}). ${then}`
     case 'program':
-      return `${ITS_PROGRAM[provider]} stopped unexpectedly at ${at} during your turn. ${then}`
+      return `${providerDescriptor(provider).programName} stopped unexpectedly at ${at} during your turn. ${then}`
     case 'limit':
       return `Your turn stopped at ${at} when the usage limit was reached. The limit has reset. ${then}`
   }
@@ -7086,10 +7060,7 @@ function describeApprovalMode(provider: Provider, mode: 'ask' | 'auto'): string 
   // was invisible, so there was nothing to contradict the box. A blank that means "ask" is not a
   // disclosure.
   if (mode !== 'auto') return 'approvals: Ask'
-  return providerValue(provider, {
-    claude: `⚠ approvals: Auto — nothing is asked`,
-    codex: `⚠ approvals: Auto — nothing is asked · sandbox OFF`,
-  })
+  return providerDescriptor(provider).approval.autoNote
 }
 
 /**
@@ -7605,8 +7576,9 @@ export class RuntimeHost implements LiveHost {
   private readonly archives = createArchiveCoordinator()
   private readonly closeDrainTimeoutMs: number
   private readonly interruptWaitMs: number
-  private readonly launchTimeoutMs: number
-  private readonly codexResumeTimeoutMs: number
+  private readonly launchTimeouts: Readonly<
+    Record<Provider, { readonly fresh: number; readonly resume: number }>
+  >
   private readonly reopenLeadsGraceMs: number
   private readonly recordStartAttempt: ((line: StartAttemptLine) => void) | undefined
   private readonly monotonicNow: () => number
@@ -8338,9 +8310,16 @@ export class RuntimeHost implements LiveHost {
     this.archived = deps.archived ?? archivedInMemory()
     this.closeDrainTimeoutMs = deps.closeDrainTimeoutMs ?? DEFAULT_CLOSE_DRAIN_TIMEOUT_MS
     this.interruptWaitMs = deps.interruptWaitMs ?? DEFAULT_INTERRUPT_WAIT_MS
-    this.launchTimeoutMs = deps.launchTimeoutMs ?? DEFAULT_LAUNCH_TIMEOUT_MS
-    this.codexResumeTimeoutMs =
-      deps.codexResumeTimeoutMs ?? deps.launchTimeoutMs ?? DEFAULT_CODEX_RESUME_TIMEOUT_MS
+    const resumeOverrides: Partial<Record<Provider, number | undefined>> = {
+      codex: deps.codexResumeTimeoutMs,
+    }
+    this.launchTimeouts = providerRecord((provider) => {
+      const defaults = providerDescriptor(provider).launch
+      return {
+        fresh: deps.launchTimeoutMs ?? defaults.freshTimeoutMs,
+        resume: resumeOverrides[provider] ?? deps.launchTimeoutMs ?? defaults.resumeTimeoutMs,
+      }
+    })
     this.reopenLeadsGraceMs = deps.reopenLeadsGraceMs ?? DEFAULT_REOPEN_LEADS_GRACE_MS
     this.recordStartAttempt = deps.recordStartAttempt
     this.monotonicNow = deps.monotonicNow ?? (() => performance.now())
@@ -13619,10 +13598,7 @@ export class RuntimeHost implements LiveHost {
           'The launch was cancelled while cleanup finished.',
         )
     }
-    const timeoutMs =
-      providerValue(opening.provider, { claude: false, codex: true }) && opening.kind === 'resume'
-        ? this.codexResumeTimeoutMs
-        : this.launchTimeoutMs
+    const timeoutMs = this.launchTimeouts[opening.provider][opening.kind]
     const timing = this.timeTheLaunch(slot.id, opening, timeoutMs)
     const started = (async () =>
       this.startedAfterARefusedCopy(
@@ -27823,9 +27799,7 @@ export class RuntimeHost implements LiveHost {
   private whatAGrantReaches(conversation: string): 'writes' | 'reads' | 'already' {
     const row = this.deps.store.find(conversation)
     if (row?.approvalMode === 'auto') return 'already'
-    return row === null
-      ? 'reads'
-      : providerValue(row.provider, { claude: 'reads', codex: 'writes' })
+    return row === null ? 'reads' : providerDescriptor(row.provider).approval.grantReach
   }
 
   /**
@@ -31592,7 +31566,7 @@ export class RuntimeHost implements LiveHost {
     this.publishStateIfChanged(session)
     throw new ItsSignInMovedOn(
       `cannot ${verb}: this conversation is holding the ${PROVIDER_NAME[session.provider]} ` +
-        `sign-in it started with, and ${HOW_A_SIGN_IN_MOVES[session.provider]}. Nothing has been sent.`,
+        `sign-in it started with, and ${providerDescriptor(session.provider).signIn.changeWords}. Nothing has been sent.`,
     )
   }
 
@@ -32146,7 +32120,7 @@ export class RuntimeHost implements LiveHost {
     this.deps.limitsReader?.signInChanged()
     // ⚑ A sign-in that belongs to one profile (Codex's) moves that profile's conversations only, and
     // no moment for the whole provider: the other profiles' accounts, limits and usage are as they were.
-    const itsProfile = A_SIGN_IN_IS_ITS_PROFILES[provider] ? profileId : undefined
+    const itsProfile = providerDescriptor(provider).signIn.profileScoped ? profileId : undefined
     // ⚑ **F096 — a life that began no later than the one that saw the change holds the login from
     // before it**, so its usage is the account before's ({@link readsAnOlderLogin}). ⛔ Decided per
     // life, never by the moment this app noticed: a life started between the change and the notice
@@ -32184,7 +32158,7 @@ export class RuntimeHost implements LiveHost {
     this.providerLimitEpoch++
     this.providerLimitFacts.signInChanged(changed)
     this.publishProviderLimitFactsSoon()
-    if (A_SIGN_IN_IS_ITS_PROFILES[provider]) return false
+    if (providerDescriptor(provider).signIn.profileScoped) return false
     const noted = this.signInChangedAt.get(provider)
     if (noted !== undefined && lifeSince < noted) return false
     this.signInChangedAt.set(provider, this.now())
@@ -32308,7 +32282,7 @@ export class RuntimeHost implements LiveHost {
     if (afterAReopen) {
       return `After the reopen, what is held for it waits for ${name}’s usage limit too: until the limit resets, at ${at}, or sooner — at once when ${name} says that limit has cleared, and ${turn}.`
     }
-    const sooner = providerValue(provider, { claude: true, codex: false })
+    const sooner = providerDescriptor(provider).limitClearsOnSignInChange
       ? `It goes sooner if ${name} takes work again first: at once when ${name} says that limit has cleared, or when this app finds this computer’s ${name} sign-in changed under a ${name} conversation running here that started on the sign-in before — which it asks at least every ${String(minutes)} ${minutes === 1 ? 'minute' : 'minutes'} while something waits; and ${turn}. If the change was only a renewal of the same sign-in, which reads the same, or the new sign-in has reached a limit too, it may be sent while that limit holds, and that turn is refused.`
       : `It goes sooner if ${name} takes work again first: ${turn}.`
     return `${name}’s usage limit is reached, so it waits until the limit resets, at ${at}. ${sooner}`
@@ -34799,7 +34773,7 @@ export class RuntimeHost implements LiveHost {
       onAnotherSignIn &&
       by.signIn !== null &&
       heldOn !== undefined &&
-      !A_SIGN_IN_IS_ITS_PROFILES[provider]
+      !providerDescriptor(provider).signIn.profileScoped
     ) {
       // Two sign-ins in one run, for a provider whose sign-in is the Mac's. A life that began
       // earlier than the one whose readings are held runs on the sign-in before: its reading is
@@ -34856,7 +34830,8 @@ export class RuntimeHost implements LiveHost {
     // the file is written as often as the provider's figures change, not as often as it speaks.
     // Claude's sign-in moving is kept too, so the file never names an older one; Codex's moves
     // between its profiles' sign-ins, and is kept with the next number or at the quit.
-    if (moved || (tagMoved && !A_SIGN_IN_IS_ITS_PROFILES[provider])) this.keepTheUsage()
+    if (moved || (tagMoved && !providerDescriptor(provider).signIn.profileScoped))
+      this.keepTheUsage()
     if (moved) this.providersMoved({ what: 'usage', provider })
   }
 
@@ -34905,7 +34880,7 @@ export class RuntimeHost implements LiveHost {
    * before, with an id minted for it, to keep if its reading is taken.
    */
   private accountOf(session: HostedSession): { id: string; learned?: KnownAccount } | null {
-    if (AN_ACCOUNT_IS_ITS_SIGN_IN[session.provider]) {
+    if (providerDescriptor(session.provider).signIn.accountIsSignIn) {
       const tag = session.handle.signInTag?.() ?? null
       return tag === null ? null : { id: tag }
     }
@@ -41119,7 +41094,7 @@ export class RuntimeHost implements LiveHost {
       launch,
       record: record ?? {
         build: null,
-        placement: providerValue(provider, { claude: 'system-prompt', codex: 'first-message' }),
+        placement: providerDescriptor(provider).contextPlacement,
         profileFile: null,
         ownInstructionsVersion: null,
         thisConversation: null,

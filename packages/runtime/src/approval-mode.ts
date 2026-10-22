@@ -1,4 +1,4 @@
-import type { Provider } from '@brobot2/shared'
+import { providerDescriptor, providerRecord, type Provider } from '@brobot2/shared'
 import { NextTurnSetting } from './next-turn'
 import type { ApprovalMode } from './runtime'
 
@@ -180,10 +180,7 @@ export interface ApprovalPosture {
  */
 export const WHAT_STANDS_PAST_ITS_FOLDER: Readonly<
   Record<Provider, Readonly<Record<ApprovalMode, readonly Protection[]>>>
-> = {
-  claude: { ask: ['the-card-before-an-act'], auto: [] },
-  codex: { ask: ['the-card-before-an-act', 'the-sandbox-around-an-act'], auto: [] },
-}
+> = providerRecord((provider) => providerDescriptor(provider).approval.protections)
 
 /**
  * 🔴 **What the giver keeps past its folder that the child would not** — the empty array is *no

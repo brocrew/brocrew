@@ -72,13 +72,13 @@ export function selectedSkillView(
           source.sha256 !== item.sha256 ||
           source.bytes !== item.bytes ||
           source.description !== item.description ||
-          source.reminder !== item.reminder.codex.slice(`${item.name} — `.length))
+          source.reminder !== item.reminder.slice(`${item.name} — `.length))
       )
         throw new Error('Changed shipped skill source.')
       if (textPack) {
         body = verified.bodies.get(item.name)!
         description = item.description
-        reminder = item.reminder.codex.slice(`${item.name} — `.length)
+        reminder = item.reminder.slice(`${item.name} — `.length)
         version = verified.catalogue.version
       }
     }

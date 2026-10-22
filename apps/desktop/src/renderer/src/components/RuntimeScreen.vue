@@ -135,7 +135,7 @@ import {
   watch,
   watchEffect,
 } from 'vue'
-import type { AppInfo } from '@brobot2/shared'
+import { DEFAULT_CONVERSATION_PROVIDER, type AppInfo } from '@brobot2/shared'
 import type {
   ChildWorkInput,
   ChildSendResult,
@@ -1148,12 +1148,10 @@ async function olderLinkedHistory(): Promise<void> {
  * parent, so the third term here is this constant. {@link frontDoorProvider} is that
  * resolution and it is the only reader of this name.
  *
- * ⚑ **The declaration's BYTES are deliberately unchanged.** `provider-neutrality.test.ts`'s
- * allowlist matches this line by exact string equality, and `scripts/lib/app-source.mjs` reads the
- * value out of this file by regex for three live instruments — so the demotion is expressed by what
- * reads it, not by rewriting it.
+ * The default comes from the shared provider registry. Live instruments derive the same
+ * value from that declaration.
  */
-const DEFAULT_PROVIDER: Provider = 'codex'
+const DEFAULT_PROVIDER: Provider = DEFAULT_CONVERSATION_PROVIDER
 
 /**
  * 🔴 **What a new conversation will run on — resolved, not assumed** (423, HO-023 §3).
