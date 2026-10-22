@@ -290,7 +290,9 @@ describe('stampReachedTheBundle — the guard on the silent failure', () => {
     expect(main).toMatch(
       /appInfoSchema\.parse\(\{[\s\S]*?\n {4}build: \{ \.\.\.buildIdentity\(\), branches: buildBranches\(\) \},/,
     )
-    expect(main).toMatch(/import \{ buildBranches, buildIdentity \} from '\.\/build-identity'/)
+    expect(main).toMatch(
+      /import \{ buildBranches, buildIdentity, shownVersion \} from '\.\/build-identity'/,
+    )
   })
 
   it('is the guard the real build actually runs', () => {
@@ -328,7 +330,9 @@ describe('the titlebar chip', () => {
     // gone from the template. It survives in `buildTitle`, which the line below proves, so this is
     // "moved", not "deleted".
     expect(screen).not.toMatch(/v\{\{ info\.version \}\}/)
-    expect(screen).toMatch(/const name = `\$\{read\.name\} v\$\{read\.version\}`/)
+    expect(screen).toMatch(
+      /const name = `\$\{read\.name\} \$\{\/\^\\d\/\.test\(read\.version\) \? 'v' : ''\}\$\{read\.version\}`/,
+    )
   })
 
   it('composes the line from the fields, and reads `dirty` rather than re-deriving it', () => {
