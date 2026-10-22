@@ -1,5 +1,9 @@
 # Developing BroBot
 
+## Contributing
+
+BroCrew has only just been released as open source. Issues and pull requests are welcome. Since it's so new, please open an issue before a large pull request, so the approach can be discussed first. Working on BroCrew itself? See [docs/development.md](#requirements).
+
 How BroBot is built, tested and run while working on it, and where the agents it runs can reach.
 
 An Electron + Vue 3 desktop app over better-sqlite3 + Drizzle. It runs Claude Code and Codex

@@ -1,5 +1,9 @@
 # Where BroCrew keeps its data
 
+## Early releases
+
+> **Alpha.** BroCrew is early, so expect rough edges. Your agents, conversations and settings live in one folder on your machine: `~/Library/Application Support/@brobot2/desktop/` on a Mac, and `%APPDATA%\@brobot2\desktop` on Windows. The downloaded app and a copy run from source use this same folder, so run only one of them at a time ([details](#recovery-copies)). Before an update changes how your conversations are stored, BroCrew saves a checked copy of them. If you then go back to an older version, it won't open the newer data. It says so, and offers to restore that copy to read your history, with agents stopped. Your newer data is kept, so you can return to it.
+
 BroCrew keeps every conversation, setting and saved API key in one data folder:
 
 - **macOS:** `~/Library/Application Support/@brobot2/desktop`

@@ -47,3 +47,33 @@ Choose **New conversation** in the left rail, pick a Claude or Codex model, and 
 - **If you have BroBot or BroBot2 installed** (the beta's earlier names), the BroCrew installer replaces it. Your conversations, settings and saved keys stay, and the Start menu entry and desktop shortcut are now called BroCrew. The app keeps the folder the old one was installed in, and BroCrew goes in a folder inside it, such as `…\Programs\BroBot\BroCrew`: that is expected. If you pinned the old app to the taskbar, unpin it and pin BroCrew instead. If you installed it for all users rather than only for yourself, choose the same again, or uninstall it first: otherwise you get both.
 - **If you also run BroCrew from source** on the same PC, both use the same data folder, so they share your conversations, settings and keys, and only one can run at a time. See [Where BroCrew keeps its data](data-folder.md). A BroCrew run from source never checks for updates; update it with `git pull`.
 - **To remove BroCrew**, go to **Settings → Apps**, find BroCrew, and choose **Uninstall**. Your conversations and settings stay in `%APPDATA%\@brobot2\desktop`. Delete that folder too if you want nothing left behind.
+
+## More download details
+
+You can download a ready-made build, or run BroCrew from source. Both give you the same app.
+
+### Download
+
+Get the latest build from the [Releases page](https://github.com/brocrew/brocrew/releases/latest):
+
+| Your computer                        | File                              |
+| ------------------------------------ | --------------------------------- |
+| Mac with Apple Silicon (M1 or later) | `BroCrew-<version>-arm64.dmg`     |
+| Windows 10 or 11, 64-bit (beta)      | `BroCrew-Setup-<version>-x64.exe` |
+
+There's no Linux or Intel Mac build yet.
+
+**The builds aren't signed yet,** because signing needs a paid Apple or Microsoft certificate. So the first time you open BroCrew, your computer warns you; the steps below get you past that once. Download BroCrew only from this repo's Releases page. Each file's SHA-256 checksum is shown next to it there, if you want to check your download. If you'd rather not run an unsigned app at all, run BroCrew from source instead (below).
+
+**On Windows** (beta):
+
+1. If your browser says the file isn't commonly downloaded, choose **Keep**.
+2. Open the installer. Windows shows **"Windows protected your PC"**: click **More info**, then **Run anyway**.
+3. Choose **Only for me**, so no administrator is needed, and finish the install.
+4. Open **BroCrew** from the Start menu. The first start takes a little longer.
+
+We recommend installing [Git for Windows](https://git-scm.com/download/win) first, with its default options: Claude runs its commands best in Git Bash.
+
+More detail, including uninstalling: [Mac](install-macos.md) · [Windows](install-windows.md).
+
+[Run from source](run-from-source.md).

@@ -1,0 +1,3 @@
+# Updates
+
+**Updates.** The downloadable BroCrew checks GitHub for a newer version when it starts and once a day. GitHub sees your IP address and whether it is a Windows or a Mac BroCrew, and nothing else. Turn it off with **Check automatically**, in the menu that opens when you press the workspace name at the bottom of the left rail. On Windows BroCrew installs an update when you choose to restart, once nothing is running. On the Mac, when you choose **Download**, it fetches the new version, checks it, and opens it for you to drag into Applications after you quit BroCrew. BroCrew run from source never checks; update it with `git pull`.

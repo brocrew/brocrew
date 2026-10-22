@@ -76,3 +76,35 @@ You can also run BroCrew from its source code, with no download to approve. See 
 - **"BroCrew found no Claude Code where its installers put it"**: install Claude Code as above, then start the conversation again.
 - **A key was refused**: press **Check it works** under **API key** on that card, and replace the key if the provider refuses it. See [API keys](api-keys.md#if-a-key-stops-working).
 - **Anything else**: note what you did and what BroCrew said, and send it to whoever gave you the link.
+
+## More download details
+
+You can download a ready-made build, or run BroCrew from source. Both give you the same app.
+
+### Download
+
+Get the latest build from the [Releases page](https://github.com/brocrew/brocrew/releases/latest):
+
+| Your computer                        | File                              |
+| ------------------------------------ | --------------------------------- |
+| Mac with Apple Silicon (M1 or later) | `BroCrew-<version>-arm64.dmg`     |
+| Windows 10 or 11, 64-bit (beta)      | `BroCrew-Setup-<version>-x64.exe` |
+
+There's no Linux or Intel Mac build yet.
+
+**The builds aren't signed yet,** because signing needs a paid Apple or Microsoft certificate. So the first time you open BroCrew, your computer warns you; the steps below get you past that once. Download BroCrew only from this repo's Releases page. Each file's SHA-256 checksum is shown next to it there, if you want to check your download. If you'd rather not run an unsigned app at all, run BroCrew from source instead (below).
+
+**On a Mac** (these steps are for macOS 15 Sequoia or later):
+
+1. Open the `.dmg` and drag **BroCrew** into **Applications**.
+2. Open BroCrew from Applications. macOS says it can't verify the app: click **Done**, not Move to Trash.
+3. Open **System Settings → Privacy & Security**, scroll down to **Security**, and click **Open Anyway** next to the line about BroCrew. Enter your password, then click **Open Anyway** once more. From then on, BroCrew opens normally.
+4. If macOS says instead that BroCrew "is damaged and can't be opened", it couldn't check the app's signature. If you downloaded it from this repo's Releases page, clear the download flag in Terminal, then open it again:
+
+   ```bash
+   xattr -dr com.apple.quarantine /Applications/BroCrew.app
+   ```
+
+On macOS 14 or earlier, you can also right-click the app, choose **Open**, then **Open** again.
+
+[Run from source](run-from-source.md).
