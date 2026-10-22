@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import type { Provider } from '@brobot2/shared'
-import type { RuntimeBridge } from '../../../shared/runtime-ipc'
+import { providerName, type RuntimeBridge } from '../../../shared/runtime-ipc'
 import {
   AMENDMENT_MEANS,
   MEMORY_STORE_IS,
@@ -252,8 +252,13 @@ function outcome(one: MemoryAmendment) {
         :data-cy="`memory-store-${store.provider}`"
         class="store"
       >
-        <h4>{{ store.provider }}</h4>
-        <p class="note">{{ MEMORY_STORE_IS[store.state] }}</p>
+        <h4>{{ providerName(store.provider) }}</h4>
+        <p class="note">
+          {{
+            MEMORY_STORE_IS[store.state].charAt(0).toUpperCase() +
+            MEMORY_STORE_IS[store.state].slice(1)
+          }}
+        </p>
         <p v-if="storeReadAt[store.provider] !== undefined" class="note">
           Read {{ fullTime(storeReadAt[store.provider]!) }}
         </p>

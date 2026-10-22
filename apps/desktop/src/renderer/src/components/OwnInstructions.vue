@@ -103,6 +103,14 @@ const editorBaseline = ref<RulesBaseline>({ expectedVersion: 0, currentText: '' 
 
 const inForce = computed(() => (reading.value === null ? null : whatIsInForce(reading.value.own)))
 const history = computed(() => reading.value?.own.versions ?? [])
+function historyAttribution(version: OwnInstructionsVersion): string {
+  if (version.whoWroteIt === 'a-person') return 'You'
+  const author = version.author?.name.trim() || version.author?.profile
+  if (version.whoWroteIt === 'an-agent-direct') return author || 'An agent'
+  const origin = WROTE_IT_MEANS[version.whoWroteIt]
+  return author ? `${author}: ${origin}` : origin
+}
+
 const waiting = computed(() => reading.value?.waiting ?? [])
 /**
  * ⛔ **The draft differs from what is in force** — which is what makes Save mean something.
@@ -534,7 +542,7 @@ async function reviewChanges(): Promise<void> {
           :disabled="busy || olderDraft || (inForce?.text ?? '') === ''"
           @click="previewClear"
         >
-          Take them away
+          Remove rules
         </button>
       </div>
 
@@ -583,14 +591,13 @@ async function reviewChanges(): Promise<void> {
         >
           <p class="version-head">
             <strong>Version {{ one.version }}</strong>
-            <em v-if="one.version === inForce?.version" data-cy="own-instructions-in-force">
-              in force
-            </em>
-            · {{ fullTime(one.writtenAt) }} · {{ WROTE_IT_MEANS[one.whoWroteIt] }}
-            <span class="version-author">
-              · {{ rulesChangeLabel(one)
-              }}<template v-if="one.author"> · {{ one.author.profile }}</template></span
-            >
+            <template v-if="one.version === inForce?.version">
+              · <em data-cy="own-instructions-in-force">in force</em>
+            </template>
+            · {{ fullTime(one.writtenAt) }} ·
+            <span class="version-author" :title="one.author?.profile">{{
+              historyAttribution(one)
+            }}</span>
             <span
               v-if="one.broughtBack !== null"
               :data-cy="`own-instructions-brought-back-${one.version}`"
@@ -610,7 +617,7 @@ async function reviewChanges(): Promise<void> {
             :data-cy="`own-instructions-restore-${one.version}`"
             @click="previewRestore(one)"
           >
-            Restore this text
+            Restore this version
           </button>
         </li>
       </ol>
@@ -647,9 +654,6 @@ async function reviewChanges(): Promise<void> {
   display: block;
   min-height: 1px;
   width: 1px;
-}
-.version-author {
-  display: block;
 }
 
 .own-instructions {

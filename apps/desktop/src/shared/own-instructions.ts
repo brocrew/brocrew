@@ -452,7 +452,7 @@ export function waitingOnAPerson(
  * Both, or the person will believe a rule is in force that is not."*
  */
 export const TAKES_EFFECT_AT_THE_NEXT_LAUNCH =
-  'Saved rules are composed into an agent’s instructions when a conversation starts, so they reach ' +
+  'Saved rules are added to an agent’s instructions when a conversation starts, so they reach ' +
   'the next conversation this agent runs and not one that is already running. To change what a ' +
   'running agent is doing now, send it a message as well.'
 

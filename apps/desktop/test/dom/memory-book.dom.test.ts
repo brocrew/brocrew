@@ -128,6 +128,11 @@ async function open(value = initial()) {
 describe('memory in the agent book', () => {
   it('confirms a deletion with the hash of the exact displayed text', async () => {
     const { view, edits } = await open()
+    expect(view.q('memory-store-claude').querySelector('h4')?.textContent).toBe('Claude')
+    expect(view.q('memory-store-codex').querySelector('h4')?.textContent).toBe('Codex')
+    expect(view.q('memory-store-claude').querySelector('.note')?.textContent?.trim()).toBe(
+      'What this agent has written down',
+    )
     view.q('memory-remove').click()
     expect(edits).toEqual([])
     await vi.waitFor(() =>

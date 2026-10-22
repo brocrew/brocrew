@@ -145,6 +145,47 @@ async function edit(view: Awaited<ReturnType<typeof open>>['view'], text: string
 }
 
 describe('standing rule changes in the book', () => {
+  it('shows one attribution in each history header without losing the stored profile', async () => {
+    const { view, writes } = await open(parts(true))
+    const current = view.q('own-instructions-version-2').querySelector('.version-head')!
+    const text = current.textContent!.replace(/\s+/g, ' ').trim()
+    expect(text).toContain('Version 2')
+    expect(text).toContain('in force')
+    expect(text.match(/Planner/g)).toHaveLength(1)
+    expect(text).not.toContain('changed this')
+    expect(current.querySelector('.version-author')?.getAttribute('title')).toBe('planner')
+    const earlier = view
+      .q('own-instructions-version-1')
+      .querySelector('.version-head')!.textContent!
+    expect(earlier.match(/You/g)).toHaveLength(1)
+    expect(earlier).not.toContain('you wrote this')
+    expect(view.q('own-instructions-restore-1').textContent?.trim()).toBe('Restore this version')
+    expect(view.q('own-instructions-clear').textContent?.trim()).toBe('Remove rules')
+    expect(writes).toEqual([])
+  })
+
+  it('keeps a proposal author separate from the person who approved its history row', async () => {
+    const fixture = parts()
+    fixture.refuseWrite({
+      own: {
+        identity: 'quill',
+        versions: [
+          version(1, 'Approved proposal', {
+            whoWroteIt: 'an-agents-proposal',
+            author: { profile: 'planner', name: 'Planner' },
+            by: { who: 'a-person' },
+          }),
+        ],
+      },
+      waiting: [],
+      readAt: 1700000000002,
+    })
+    const { view } = await open(fixture)
+    const text = view.q('own-instructions-version-1').querySelector('.version-head')!.textContent!
+    expect(text.match(/Planner/g)).toHaveLength(1)
+    expect(text.match(/you approved it/g)).toHaveLength(1)
+  })
+
   it('saves against the exact version and text displayed', async () => {
     const { view, writes } = await open()
     await page.screenshot({

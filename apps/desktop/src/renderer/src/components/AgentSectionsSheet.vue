@@ -91,7 +91,7 @@ function move(event: KeyboardEvent) {
           :profile-slug="props.profileSlug"
           :store="props.store"
           :bridge="props.bridge"
-          :heading="null"
+          heading="Standing rules"
         />
       </section>
       <section
@@ -196,6 +196,14 @@ nav button[aria-selected='true'] {
   min-height: 0;
   overflow-y: auto;
   padding: var(--space-7);
+}
+.agent-book .book-body :deep(h3) {
+  margin: 0;
+  color: inherit;
+  font-size: var(--type-heading);
+  font-weight: var(--fw-bold);
+  letter-spacing: normal;
+  text-transform: none;
 }
 .book-body > section {
   min-width: 0;
