@@ -251,6 +251,7 @@ import type {
   ModelList,
   ReportedModel,
   InstructionProposedEvent,
+  InstructionChangedEvent,
   InstructionSettledEvent,
   McpServerRequestedEvent,
   McpServerRequestForAPerson,
@@ -989,11 +990,20 @@ import type {
   InstructionAskWaiting,
   InstructionEnding,
   OwnInstructionsVersion,
+  RulesAuthor,
 } from '../../shared/own-instructions'
 // ⚑ **F009 · how an agent's rules begin**, as its record quotes them.
-import { howTheRulesBegin } from '../../shared/own-instructions'
+import { howTheRulesBegin, OWN_INSTRUCTIONS_CHARS } from '../../shared/own-instructions'
 // ⚑ **625 · the memory door's shapes**, type-only for `own-instructions`' reason exactly: the
 // vocabularies live in `shared/` so the wire, the store and the popup read one copy.
+import type { SavedMethodService } from '../saved-method-service'
+import type {
+  MethodBody,
+  MethodLibrary,
+  MethodDeleteSelection,
+  MethodChangeResult,
+  MethodHistoryResult,
+} from '../../shared/saved-method-library'
 import type {
   AgentMemoryAmended,
   AgentMemoryReading,
@@ -1025,7 +1035,12 @@ import type {
   WhatThisAgentWasGiven,
 } from '../../shared/what-this-agent-was-given'
 import { takesAContextMessage, type SnapshotAnswer } from '../../shared/provider-snapshots'
-import { mayProposeRules, mayRelayRules } from '../../shared/capabilities'
+import type {
+  AgentRulesReading,
+  AgentRulesReceipt,
+  AgentRulesWrite,
+  RulesBaseline,
+} from '../../shared/agent-rules'
 // ⚑ **543 · the relationship shapes** — types only; the one function in that module builds a work
 // edge from a task row and is the STORE's to call, beside the walk that found it.
 import type { LastReported, SpawnEdge, WhoCalledWhom, WorkEdge } from '../../shared/who-called-whom'
@@ -2527,6 +2542,7 @@ export interface RuntimeHostDeps {
   sharedSkillsRoot?: () => Promise<string>
   closeSharedSkills?: () => void
   skillsForAPerson?: SkillsWindow
+  savedMethods?: SavedMethodService
   transcriptsCleared?: (from: number, to: number) => Promise<readonly TranscriptsCleared[]>
   skillImports?: (from: number, to: number) => Promise<readonly SkillImportNotice[]>
 
@@ -7399,20 +7415,15 @@ export type MayCreateAgents =
  * compile.
  */
 export type ProposeRulesOutcome =
+  | { readonly ok: true; readonly wrote: 'a-request'; readonly askId: string }
   | {
-      readonly ok: true
-      /** ⚑ **A relay: the rules are IN FORCE from the next launch.** */
-      readonly wrote: 'a-version'
-      /** Which version it became — the number a person reads on the sheet. */
-      readonly version: number
+      readonly ok: false
+      readonly rail: ToolRefusal
+      readonly detail: Readonly<Record<string, unknown>>
     }
-  | {
-      readonly ok: true
-      /** ⛔ **A proposal: nothing is in force, and a person decides.** */
-      readonly wrote: 'a-request'
-      /** The handle the row carries and a person's door names. */
-      readonly askId: string
-    }
+
+export type AgentRulesOutcome<T> =
+  | { readonly ok: true; readonly result: T }
   | {
       readonly ok: false
       readonly rail: ToolRefusal
@@ -26650,6 +26661,7 @@ export class RuntimeHost implements LiveHost {
       // from an identity's sheet while nobody has the asking conversation open at all, and only a
       // live session has a sink to publish into. See `RuntimeHost.endInstructionAsk`, which chooses.
       | InstructionProposedEvent
+      | InstructionChangedEvent
       | InstructionSettledEvent
       // An agent's request to register an MCP server, in its own ledger. Its ending is written in
       // the transaction that decides it (`RuntimeHost.appendTheSettledRow`).
@@ -26905,6 +26917,7 @@ export class RuntimeHost implements LiveHost {
       | QuestionAskedEvent
       // ⚑ **582's pair** — see {@link RuntimeHost.publishOurs}, whose union this one mirrors.
       | InstructionProposedEvent
+      | InstructionChangedEvent
       | InstructionSettledEvent
       // An agent's request to register an MCP server — see {@link RuntimeHost.publishOurs}.
       | McpServerRequestedEvent
@@ -38790,6 +38803,7 @@ export class RuntimeHost implements LiveHost {
     // ⛔ **`null` from the store is unreachable while rail 3 holds** — the identity would have to be
     // removed between two statements of one synchronous stretch — and it is written down rather
     // than left looking like a guard (`471`'s note, and `proposeAgentRules`' own line below).
+    const rulesAuthor = this.rulesAuthor(me, by)
     const rules =
       itsOwnRules === null
         ? null
@@ -38802,6 +38816,7 @@ export class RuntimeHost implements LiveHost {
               // anything, and an ending of `approved` would be a claim about an act that never
               // happened. ⛔ Not `relayed-from-user`: the creator claims nothing about a person.
               whoWroteIt: 'its-creator',
+              ...(rulesAuthor === null ? {} : { author: rulesAuthor }),
               // ⚑ **`whoDidIt(by)` and NOT `may.creator`**, even though the creator and the writer
               // are the same act. ⛔ They are two different values: `IdentityCreator.agent` is the
               // creating IDENTITY's folded slug — what `agent_identity.created_by` is about — and
@@ -38936,35 +38951,23 @@ export class RuntimeHost implements LiveHost {
     )
   }
 
-  /**
-   * 🔴 **An agent asks for rules against another identity's own instructions** (582, `HO-009`
-   * §2.2) — the second and third of the authorities that section names.
-   *
-   * ⚠️ **618 · this read *"of the layer's three authorities"* and the layer has four**
-   * (`HO-078` §4): {@link RuntimeHost.createAgentFor} writes `its-creator`, which is neither of
-   * these arms and reaches neither of these rails. ⛔ **Nothing about this door moved** — the
-   * sentence is corrected because a count survives the death of its derivation.
-   *
-   * ## ⛔ Two arms, and the grant decides which the caller may take
-   *
-   * ⚑ **`propose`** writes {@link InstructionProposedEvent} into this conversation's ledger and
-   * nothing else: *"A proposal is a card; approval writes it."*
-   * 🔴 **`relay`** writes the VERSION immediately: *"BroBot relaying a rule the person gave it needs
-   * no second approval — provenance* relayed from user *IS the authorization."*
-   *
-   * ## ⚠️ It refuses a relay rather than downgrading one, and that is a ruling
-   *
-   * ⛔ **A caller granted `propose` that claims a relay is REFUSED**, not silently turned into a
-   * proposal. ⚑ Quietly taking an argument and doing something else with it is `371`'s disclosure
-   * defect, and on this argument the claim IS the authorization — so a model told its relay was
-   * accepted would have been told this app trusted something it did not.
-   *
-   * ## ⛔ Entitlement before existence, in the order `341` ruled
-   *
-   * ⚠️ **Rails 1 and 2 read nothing the caller wrote about ANOTHER identity**, so a caller with no
-   * grant cannot learn which identities exist from the shape of its refusal
-   * (`refuse-on-entitlement-before-refusing-on-existence`). ⛔ The agent's name is asked third.
-   */
+  /** Bind attribution to the actual running conversation, never a supplied profile or label. */
+  private rulesAuthor(me: string, by: Caller): RulesAuthor | null {
+    if (sessionSpeakingAs(by) !== me) return null
+    const caller = this.runningAs(me)
+    const identity = this.deps.store.identityOf(me)
+    if (
+      caller === null ||
+      identity === null ||
+      foldProfileName(caller.profileId) !== identity.profileSlug
+    )
+      return null
+    const named = this.deps.store.agentIdentityNameById(agentIdentityRowId(identity.profileSlug))
+    if (named === null) return null
+    return { profile: named.slug, name: agentName(named.slug, [named]) }
+  }
+
+  /** Known agents may propose changes. Historical relay grants no longer authorize a write. */
   proposeAgentRules(
     me: string,
     said: {
@@ -38972,108 +38975,190 @@ export class RuntimeHost implements LiveHost {
       readonly text: string
       readonly why: string
       readonly relaying: boolean
+      readonly expectedVersion?: number
     },
     by: Caller,
   ): ProposeRulesOutcome {
-    const no = (
-      rail: ToolRefusal,
-      detail: Readonly<Record<string, unknown>>,
-    ): ProposeRulesOutcome => ({ ok: false, rail, detail })
-    // 1 · ⚑ **The grant, asked of nothing this caller wrote** — `mayCreateAgents`' shape exactly.
-    const caller = this.runningAs(me)
-    const allowed = caller === null ? null : this.deps.store.capabilitiesOf(caller.profileId)
-    // ⚠️ **`caller === null` is in the SAME condition**, so a conversation this app cannot place
-    // meets the grant rail rather than a different one — and TypeScript's narrowing below is the
-    // compiler's, not a second guard.
-    if (caller === null || allowed === null || !mayProposeRules(allowed.canWriteRules)) {
-      return no('may-not-write-rules', { you: caller?.profileId ?? null })
-    }
-    // 2 · ⛔ **The narrower half of the same ladder, asked by NAME** — see `mayRelayRules`, and the
-    // note above for why this refuses rather than narrowing the act.
-    if (said.relaying && !mayRelayRules(allowed.canWriteRules)) {
-      return no('may-not-relay-a-rule', { you: caller.profileId })
-    }
-    // 3 · ⛔ **The subject exists**, and this is the first rail that reads what the caller named.
-    // ⚠️ **`capabilitiesOf` is the EXISTENCE question this app already asks of a slug** — it
-    // answers `null` for a row that is not there, which is `give_work`'s `no-such-profile` rail
-    // reading the same column. ⚑ Without it a relay would write into `writeOwnInstructions`' own
-    // `null` and come back as a generic failure with nothing to tell the caller.
-    const about = foldProfileName(said.about)
-    if (this.deps.store.capabilitiesOf(about) === null) {
-      return no('no-such-agent', { agent: about })
-    }
-    if (said.relaying) {
-      const written = this.deps.store.writeOwnInstructions(
-        {
-          profileSlug: about,
-          text: said.text,
-          // 🔴 **The claim, recorded AS a claim** — `WROTE_IT_MEANS` renders *this app did not check
-          // that* beside it, so nothing downstream can read a relay as a person's own keystroke.
-          whoWroteIt: 'relayed-from-user',
-          // ⛔ **`whoDidIt(by)` and not a person**, even though the row says the rule came from one:
-          // the ACTOR is the agent that called this, and `477`'s finding is that the two are
-          // different facts. ⚑ The person's involvement is the CLAIM; the actor is the caller.
-          by: whoDidIt(by),
-          conversation: me,
-          said: said.why,
-          broughtBack: null,
-        },
-        this.now(),
-      )
-      // ⚠️ **Unreachable while rail 3 holds**, and written down rather than left to look like a
-      // guard — the identity would have to be removed between the two reads, inside one
-      // synchronous stretch. ⛔ A clause no input can reach is a clause that is not carrying the
-      // rule it resembles (`471`'s own note).
-      if (written === null) return no('no-such-agent', { agent: about })
-      const askId = newInstructionAskId()
-      // ⚑ **The ledger row is written for a relay TOO, and settled in the same stretch.** ⛔ The
-      // alternative was to write nothing — and then the conversation a person is watching would
-      // show a rule appearing on another agent with no record of who did it or why. ⚠️ It is
-      // `approved` rather than a fifth ending: a relay IS an approval, performed by the authority
-      // `HO-009` §2.2 hands the relaying agent.
-      const session = this.slots.get(me)?.session ?? null
-      if (session !== null) {
-        this.publishOurs(session, {
-          type: 'instruction_proposed',
-          askId,
-          ask: 'relay',
-          about,
-          proposedBy: caller.profileId,
-          text: said.text,
-          why: said.why,
-        })
-        this.publishOurs(session, {
-          type: 'instruction_settled',
-          askId,
-          ending: 'approved',
-          by: whoDidIt(by),
-        })
+    const author = this.rulesAuthor(me, by)
+    if (author === null) return { ok: false, rail: 'may-not-write-rules', detail: { you: null } }
+    if (said.relaying)
+      return {
+        ok: false,
+        rail: 'malformed-request',
+        detail: { problems: ['already_agreed is not supported; leave it out'] },
       }
-      this.theWorldMoved('agents')
-      return { ok: true, wrote: 'a-version', version: written.version }
-    }
+    if (
+      typeof said.text !== 'string' ||
+      said.text.length > OWN_INSTRUCTIONS_CHARS ||
+      typeof said.why !== 'string' ||
+      said.why.trim() === '' ||
+      said.why.length > OWN_INSTRUCTIONS_CHARS
+    )
+      return {
+        ok: false,
+        rail: 'malformed-request',
+        detail: { problems: ['rules and why must fit the size limit, and why must say why'] },
+      }
+    const about = foldProfileName(said.about)
+    if (this.deps.store.capabilitiesOf(about) === null)
+      return {
+        ok: false,
+        rail: 'no-such-agent',
+        detail: { agent: about },
+      }
     const session = this.slots.get(me)?.session ?? null
-    // ⚠️ **A caller mid-tool-call has a session in this host, whether or not its process is
-    // stopping** (D-016c, ruling b: a stop changes nothing for the caller either) — rail 1 read it
-    // ({@link runningAs}), so this is a bug guard for a caller inside this process.
-    if (session === null) return no('may-not-write-rules', { you: caller.profileId })
+    if (session === null)
+      return { ok: false, rail: 'may-not-write-rules', detail: { you: author.profile } }
+    const basedOnVersion = this.deps.store.ownInstructionsOf(about).versions[0]?.version ?? 0
+    if (!Number.isSafeInteger(said.expectedVersion) || said.expectedVersion !== basedOnVersion)
+      return {
+        ok: false,
+        rail: 'malformed-request',
+        detail: {
+          problems: ['the current rule version is required; read the rules again before proposing'],
+        },
+      }
     const askId = newInstructionAskId()
     this.publishOurs(session, {
       type: 'instruction_proposed',
       askId,
       ask: 'propose',
       about,
-      proposedBy: caller.profileId,
+      proposedBy: author.profile,
+      author,
+      basedOnVersion,
       text: said.text,
-      why: said.why,
+      why: said.why.trim(),
     })
-    // ⛔ **No `theWorldMoved` and no park.** Nothing durable moved — the version is written on
-    // approval and not before — and the caller is not held: a tool that waited would park an agent
-    // on a sheet nobody may be looking at, which is `441`'s bound arriving where there is no card
-    // in front of the person by default. ⚠️ **What that costs is named in this dispatch's response
-    // as a finding** (standing rule 14): an ask reaches the identity's sheet and the asking
-    // conversation's transcript, and no attention queue.
     return { ok: true, wrote: 'a-request', askId }
+  }
+
+  /** Internal preparation for the agent tool; public exposure follows the history and Undo UI. */
+  readAgentRules(me: string, about: string, by: Caller): AgentRulesOutcome<AgentRulesReading> {
+    if (this.rulesAuthor(me, by) === null)
+      return {
+        ok: false,
+        rail: 'may-not-write-rules',
+        detail: { you: null },
+      }
+    const profile = foldProfileName(about)
+    if (this.deps.store.capabilitiesOf(profile) === null)
+      return {
+        ok: false,
+        rail: 'no-such-agent',
+        detail: { agent: profile },
+      }
+    const newest = this.deps.store.ownInstructionsOf(profile).versions[0]
+    return {
+      ok: true,
+      result: {
+        profile,
+        version: newest?.version ?? 0,
+        text: newest?.text ?? '',
+        whoWroteIt: newest?.whoWroteIt ?? null,
+        ...(newest?.author === undefined ? {} : { author: newest.author }),
+        reason: newest?.said ?? null,
+      },
+    }
+  }
+
+  /** The host's fixed role policy ignores dormant per-profile grants. */
+  writeAgentRules(
+    me: string,
+    said: AgentRulesWrite,
+    by: Caller,
+  ): AgentRulesOutcome<AgentRulesReceipt> {
+    const author = this.rulesAuthor(me, by)
+    if (author === null || author.profile !== DEFAULT_PROFILE_ID)
+      return {
+        ok: false,
+        rail: 'may-not-write-rules',
+        detail: { you: author?.profile ?? null },
+      }
+    const slot = this.slots.get(me)
+    // Both the live reservation and recorded parent survive a person's claim of a helper.
+    if (slot === undefined || slot.spawnedBy !== null || this.deps.store.parentOf(me) !== null)
+      return {
+        ok: false,
+        rail: 'may-not-write-rules',
+        detail: { you: author.profile, helper: true },
+      }
+    const profile = foldProfileName(said.about)
+    if (profile === DEFAULT_PROFILE_ID)
+      return {
+        ok: false,
+        rail: 'may-not-write-rules',
+        detail: { you: author.profile, self: true },
+      }
+    if (this.deps.store.capabilitiesOf(profile) === null)
+      return {
+        ok: false,
+        rail: 'no-such-agent',
+        detail: { agent: profile },
+      }
+    if (
+      !Number.isSafeInteger(said.expectedVersion) ||
+      said.expectedVersion < 0 ||
+      typeof said.currentText !== 'string' ||
+      typeof said.text !== 'string' ||
+      said.text.length > OWN_INSTRUCTIONS_CHARS ||
+      typeof said.why !== 'string' ||
+      said.why.trim() === '' ||
+      said.why.length > OWN_INSTRUCTIONS_CHARS
+    )
+      return {
+        ok: false,
+        rail: 'malformed-request',
+        detail: {
+          problems: [
+            'read the current rules, provide their version and full text, and say why within the size limit',
+          ],
+        },
+      }
+    const previous = this.deps.store.ownInstructionsOf(profile).versions[0]
+    if (
+      (previous?.version ?? 0) !== said.expectedVersion ||
+      (previous?.text ?? '') !== said.currentText
+    )
+      return {
+        ok: false,
+        rail: 'malformed-request',
+        detail: { problems: ['the rules changed; read them again before replacing them'] },
+      }
+    const written = this.deps.store.writeOwnInstructions(
+      {
+        profileSlug: profile,
+        text: said.text,
+        whoWroteIt: 'an-agent-direct',
+        author,
+        by: whoDidIt(by),
+        conversation: me,
+        said: said.why.trim(),
+        broughtBack: null,
+        expectedVersion: said.expectedVersion,
+        currentText: said.currentText,
+      },
+      this.now(),
+    )
+    if (written === null)
+      return {
+        ok: false,
+        rail: 'malformed-request',
+        detail: { problems: ['the rules changed; read them again before replacing them'] },
+      }
+    const receipt: AgentRulesReceipt = {
+      profile,
+      conversation: me,
+      version: written.version,
+      previousVersion: previous?.version ?? 0,
+      author,
+      replacedPersonVersion: previous?.whoWroteIt === 'a-person' ? previous.version : null,
+    }
+    this.supersedeInstructionAsks(profile, whoDidIt(by))
+    const session = this.slots.get(me)?.session ?? null
+    if (session !== null) this.publishOurs(session, { type: 'instruction_changed', ...receipt })
+    this.theWorldMoved('agents')
+    return { ok: true, result: receipt }
   }
 
   /**
@@ -39240,7 +39325,17 @@ export class RuntimeHost implements LiveHost {
       // 🔴 **724 · `714` F-4 — the launches still starting**, so the Team page can tell a start from
       // a running conversation ({@link IdentityUse.isStarting}).
       this.launchesByIdentity(stillStarting),
-    )
+    ).map((use) => ({
+      ...use,
+      ...(this.deps.store.hasPendingMethodChange(use.slug)
+        ? { hasUnfinishedMethodChange: true }
+        : {}),
+    }))
+  }
+
+  /** A durable method change moved the roster's removal predicate. */
+  savedMethodsChanged(): void {
+    this.theWorldMoved('agents')
   }
 
   async skillsForAPerson(request: SkillsRequest): Promise<SkillsReply> {
@@ -41389,11 +41484,20 @@ export class RuntimeHost implements LiveHost {
     text: string,
     broughtBack: number | undefined,
     by: Caller,
+    baseline?: RulesBaseline,
   ): AgentInstructionsReading | null {
+    if (whoDidIt(by).who !== 'a-person') return null
+    const current = this.deps.store.ownInstructionsOf(profileSlug).versions[0]
+    const expected = baseline ?? {
+      expectedVersion: current?.version ?? 0,
+      currentText: current?.text ?? '',
+    }
     const written = this.deps.store.writeOwnInstructions(
       {
         profileSlug,
         text,
+        expectedVersion: expected.expectedVersion,
+        currentText: expected.currentText,
         // ⛔ **`a-person` because the DOOR proved it** — `requireAPerson` stands in front of this
         // verb on the wire, so no other value is reachable here. ⚑ The relay and the approval have
         // their own entry points and write their own words.
@@ -41406,10 +41510,7 @@ export class RuntimeHost implements LiveHost {
       this.now(),
     )
     if (written === null) return null
-    for (const waiting of this.deps.store.instructionAsksWaiting()) {
-      if (waiting.asked.about !== foldProfileName(profileSlug)) continue
-      this.endInstructionAsk(waiting.asked.askId, 'superseded', whoDidIt(by))
-    }
+    this.supersedeInstructionAsks(profileSlug, whoDidIt(by))
     // ⚑ **`agents`, for `setAgentDisplayName`'s reason one method up**: what an identity has been
     // told is a fact about the identity, and a surface listing identities may be drawing it.
     this.theWorldMoved('agents')
@@ -41431,6 +41532,12 @@ export class RuntimeHost implements LiveHost {
    * could not write is a card a person may press again.
    */
   decideInstruction(askId: string, approve: boolean, by: Caller): AnswerAck {
+    if (whoDidIt(by).who !== 'a-person')
+      return {
+        outcome: 'refused',
+        reason: 'only a person can decide this request',
+        stillOpen: true,
+      }
     const waiting = this.deps.store
       .instructionAsksWaiting()
       .find((one) => one.asked.askId === askId)
@@ -41443,11 +41550,26 @@ export class RuntimeHost implements LiveHost {
     }
     const actor = whoDidIt(by)
     if (approve) {
+      if (
+        waiting.asked.basedOnVersion === undefined ||
+        (this.deps.store.ownInstructionsOf(waiting.asked.about).versions[0]?.version ?? 0) !==
+          waiting.asked.basedOnVersion
+      ) {
+        this.endInstructionAsk(askId, 'superseded', THE_APP_DID_IT)
+        return {
+          outcome: 'refused',
+          reason:
+            'the rules changed or this request has no recorded baseline; ask for a new proposal',
+          stillOpen: false,
+        }
+      }
       const written = this.deps.store.writeOwnInstructions(
         {
           profileSlug: waiting.asked.about,
           text: waiting.asked.text,
           whoWroteIt: 'an-agents-proposal',
+          expectedVersion: waiting.asked.basedOnVersion,
+          ...(waiting.asked.author === undefined ? {} : { author: waiting.asked.author }),
           // ⛔ **The PERSON, because the person is who acted** — `477`'s finding: the ending's word
           // does not name its own author, and the agent that proposed it is a different actor from
           // the person who approved it. ⚑ The proposer is on the row too, as the conversation.
@@ -41467,10 +41589,11 @@ export class RuntimeHost implements LiveHost {
         return {
           outcome: 'refused',
           reason:
-            'that agent no longer exists, so nothing was written and the request has been taken down',
+            'the agent or its rules changed, so nothing was written and the request has been taken down',
           stillOpen: false,
         }
       }
+      this.supersedeInstructionAsks(waiting.asked.about, actor, askId)
       this.theWorldMoved('agents')
     }
     if (!this.endInstructionAsk(askId, approve ? 'approved' : 'refused', actor)) {
@@ -41484,6 +41607,110 @@ export class RuntimeHost implements LiveHost {
       }
     }
     return { outcome: 'taken' }
+  }
+
+  private supersedeInstructionAsks(profile: string, by: ActedBy, except?: string): void {
+    for (const waiting of this.deps.store.instructionAsksWaiting()) {
+      if (waiting.asked.about === foldProfileName(profile) && waiting.asked.askId !== except) {
+        this.endInstructionAsk(waiting.asked.askId, 'superseded', by)
+      }
+    }
+  }
+
+  agentMethods(profile: string, offset: number, limit: number, by: Caller): MethodLibrary | null {
+    if (whoDidIt(by).who !== 'a-person') return null
+    return this.deps.savedMethods?.list(foldProfileName(profile), offset, limit) ?? null
+  }
+
+  agentMethodBody(profile: string, key: string, by: Caller): MethodBody | null {
+    if (whoDidIt(by).who !== 'a-person') return null
+    return this.deps.savedMethods?.body(foldProfileName(profile), key) ?? null
+  }
+
+  agentMethodChanges(
+    profile: string,
+    offset: number,
+    limit: number,
+    by: Caller,
+  ): MethodHistoryResult {
+    if (whoDidIt(by).who !== 'a-person') return { ok: false, reason: 'person-required' }
+    return (
+      this.deps.savedMethods?.history(foldProfileName(profile), offset, limit) ?? {
+        ok: false,
+        reason: 'source-unavailable',
+      }
+    )
+  }
+
+  async removeAgentMethod(
+    profile: string,
+    selection: MethodDeleteSelection,
+    by: Caller,
+  ): Promise<MethodChangeResult> {
+    const actor = whoDidIt(by)
+    if (actor.who !== 'a-person') return { ok: false, reason: 'person-required' }
+    return (
+      this.deps.savedMethods?.remove(foldProfileName(profile), selection, actor) ?? {
+        ok: false,
+        reason: 'source-unavailable',
+      }
+    )
+  }
+
+  async undoAgentMethod(
+    profile: string,
+    changeId: string,
+    by: Caller,
+  ): Promise<MethodChangeResult> {
+    const actor = whoDidIt(by)
+    if (actor.who !== 'a-person') return { ok: false, reason: 'person-required' }
+    return (
+      this.deps.savedMethods?.undo(foldProfileName(profile), changeId, actor) ?? {
+        ok: false,
+        reason: 'source-unavailable',
+      }
+    )
+  }
+
+  async checkInterruptedAgentMethods(
+    profile: string,
+    confirmed: boolean,
+    by: Caller,
+  ): Promise<MethodChangeResult> {
+    const actor = whoDidIt(by)
+    if (actor.who !== 'a-person') return { ok: false, reason: 'person-required' }
+    return (
+      this.deps.savedMethods?.checkInterrupted(foldProfileName(profile), confirmed, actor) ?? {
+        ok: false,
+        reason: 'source-unavailable',
+      }
+    )
+  }
+
+  agentRulesUnread(profile: string) {
+    return this.deps.store.instructionUnread(profile)
+  }
+
+  undoAgentRules(
+    profile: string,
+    expectedVersion: number,
+    by: Caller,
+  ): AgentInstructionsReading | null {
+    const actor = whoDidIt(by)
+    if (actor.who !== 'a-person') return null
+    const written = this.deps.store.undoOwnInstructions(profile, expectedVersion, actor, this.now())
+    if (written === null) return null
+    this.supersedeInstructionAsks(profile, actor)
+    this.theWorldMoved('agents')
+    return this.agentInstructions(profile)
+  }
+
+  markAgentRulesSeen(profile: string, throughVersion: number, by: Caller): boolean {
+    const actor = whoDidIt(by)
+    if (actor.who !== 'a-person') return false
+    const marked = this.deps.store.markInstructionsSeen(profile, throughVersion, actor)
+    if (marked) this.theWorldMoved('agents')
+    return marked
   }
 
   /**
@@ -41567,7 +41794,11 @@ export class RuntimeHost implements LiveHost {
     try {
       // ⚠️ **`false` here would mean the row went between the read and the write.** It is reported
       // as the same refusal a missing name gets, because that is what it now is.
-      if (!this.deps.store.removeAgentIdentity(folded)) return { ok: false, rail: 'no-such-agent' }
+      if (!this.deps.store.removeAgentIdentity(folded)) {
+        if (this.deps.store.hasPendingMethodChange(folded))
+          return { ok: false, rail: 'it-is-still-held', held: ['unfinished-method-change'] }
+        return { ok: false, rail: 'no-such-agent' }
+      }
     } finally {
       if (identity !== undefined && was !== null) this.settleTheRetiredEntryOf(identity, was)
     }

@@ -79,7 +79,8 @@ AMENDABLE_REAL = (
     "  return within(root.real, realPath(link ?? path))"
 )
 WRITE_CHECK = (
-    "  if (!found.amendable) return { done: false, refused: 'somewhere-else', entry: found.path }"
+    "  if (!amendable(found.path, found.link, rootsOf(inputs)))\n"
+    "    return { done: false, refused: 'somewhere-else', entry: found.path }"
 )
 TRUNCATED = (
     "  if (found.truncated) return { done: false, refused: 'unreadable', entry: found.path }"
@@ -139,7 +140,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "second would leave the first deleting a file outside BroBot's folders. ⚑ It is the row "
         "that makes the two assertions in `a-person-may-correct-a-memory.test.ts` §2 a pair rather "
         "than a duplicate",
-        [(MEM, WRITE_CHECK, "  if (!found.amendable && inputs.act === 'corrected') return { done: false, refused: 'somewhere-else', entry: found.path }")],
+        [(MEM, WRITE_CHECK, "  if (!amendable(found.path, found.link, rootsOf(inputs)) && inputs.act === 'corrected') return { done: false, refused: 'somewhere-else', entry: found.path }")],
     ),
     (
         "M4 · 🔴 **a file this app could only read PART of is destroyed anyway** · the `truncated` "

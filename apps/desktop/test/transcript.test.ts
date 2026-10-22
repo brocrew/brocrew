@@ -946,6 +946,18 @@ describe('transcript fold', () => {
       // card that is already here; this one has nothing to annotate, because the ask above is a
       // notice and a notice carries no state a later row can change.
       { event: { type: 'instruction_settled', askId: 'iprop_1', ending: 'approved' }, adds: 1 },
+      {
+        event: {
+          type: 'instruction_changed',
+          conversation: 'ses-wren',
+          profile: 'lark',
+          version: 2,
+          previousVersion: 1,
+          author: { profile: 'wren', name: 'Wren' },
+          replacedPersonVersion: 1,
+        },
+        adds: 1,
+      },
       // An agent's request to register an MCP server is a notice too: its card is under Waiting on
       // you. Its ending rewrites that line when it is on the page, and adds one when it is not.
       {
@@ -976,6 +988,7 @@ describe('transcript fold', () => {
     const roster: Record<Exclude<TranscriptEvent, RuntimeEvent>['type'], true> = {
       worker_registered: true,
       instruction_proposed: true,
+      instruction_changed: true,
       instruction_settled: true,
       mcp_server_requested: true,
       mcp_server_request_settled: true,

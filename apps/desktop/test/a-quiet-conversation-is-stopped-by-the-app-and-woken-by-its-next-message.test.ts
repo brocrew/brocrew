@@ -1,3 +1,4 @@
+import { agentCallerId } from '../src/main/runtime/agent-tools'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -708,8 +709,9 @@ describe('D-018 · a quiet conversation is stopped by the app, and woken by its 
         text: 'A rule for worker-b.',
         why: 'it keeps coming up',
         relaying: false,
+        expectedVersion: 0,
       },
-      window,
+      { ownerId: agentCallerId(a) },
     )
     expect(asked.ok && asked.wrote).toBe('a-request')
     const askId = asked.ok && asked.wrote === 'a-request' ? asked.askId : ''

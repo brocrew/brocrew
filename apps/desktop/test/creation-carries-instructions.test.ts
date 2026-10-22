@@ -584,7 +584,7 @@ describe('618 · creation carries instructions', () => {
      * the ruled `canWriteRules: 'none'` like every agent — and the same caller that just wrote an
      * identity's first rules cannot ask to change them.
      */
-    it('🔴 the same caller cannot touch those rules again: `propose_agent_rules` is refused', async () => {
+    it('proposes a later change without rewriting the creator rules', async () => {
       const { tools } = await brobot()
       expect(store.capabilitiesOf(DEFAULT_PROFILE_ID)?.canWriteRules).toBe('none')
       expect(
@@ -595,15 +595,16 @@ describe('618 · creation carries instructions', () => {
 
       const asked = await callOn(tools, 'propose_agent_rules', {
         agent: 'archivist',
+        current_version: 1,
         rules: 'Something I thought better of.',
         why: 'I changed my mind.',
       })
-      expect(asked['outcome']).toBe('refused')
-      expect(asked['rail']).toBe('may-not-write-rules')
+      expect(asked['outcome']).toBe('ok')
+      expect(asked['wrote']).toBe('a-request')
       expect(store.ownInstructionsOf('archivist').versions.map((v) => v.text)).toEqual(['Mine.'])
     })
 
-    it('⚑ …and with the grant a person gave it, the same call ASKS rather than writing', async () => {
+    it('keeps the grant dormant when proposing later changes', async () => {
       const { tools } = await brobot()
       await callOn(tools, 'create_agent', { profile_slug: 'archivist', rules: 'Mine.' })
       // ⚠️ **A person at the sheet, which is the only thing that moves this column** (rule 32: a
@@ -612,6 +613,7 @@ describe('618 · creation carries instructions', () => {
       const second = await personOpens(DEFAULT_PROFILE_ID)
       const asked = await callOn(toolsOfLastLaunch(), 'propose_agent_rules', {
         agent: 'archivist',
+        current_version: 1,
         rules: 'A second thought.',
         why: 'because',
       })

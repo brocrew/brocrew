@@ -39,6 +39,9 @@ import { LIBRARY_QUERY_MAX, MAX_PATH_CHARS } from '../src/shared/runtime-ipc'
  * | `agentSlug` | 🔴 **the new-agent sheet's name field, since 423** | ⚑ `isPathSegment`, not a length |
  * | `agentDisplayName` | 🔴 **the new-agent sheet's display name, since 423** | ⛔ `AGENT_DISPLAY_NAME_CHARS` |
  * | `resolveLink.target` | copied from an app-authored navigation link or recorded work label | `LINK_TARGET_LIMIT`; no control types it |
+ * | `agentMethodBody.key` and `removeAgentMethod.selection.key` | copied from a saved-method row | 1–1,024 characters; main resolves the key afresh |
+ * | `removeAgentMethod.selection.fingerprint` and `.indexFingerprint` | copied from main's file reading | 64 lowercase hex characters or null; no control types them |
+ * | `undoAgentMethod.changeId` | copied from a saved-method history row | 1–1,024 characters; main checks the latest effective change |
  *
  * ⛔ **Three rows changed hands at `417` (HO-022 §2) and none of them lost a bound.** The launcher
  * used to be the person-facing end of all three: it had a folder row (`cwd-input` / `cwd-choose`),
@@ -359,6 +362,17 @@ describe('221 §3 · the count is pinned, so a new field must be classified', ()
       // The file is bounded at 4096, as a path is; the rule at the settings file's own size cap.
       'file',
       'kept',
+      // Saved-method keys come from main's listing; no person types them. Each command
+      // carries its own bounded key, and main resolves it against a fresh listing.
+      'key', // agentMethodBody
+      'key', // removeAgentMethod.selection
+      // These nullable hashes come from main's guarded reading, never a text control.
+      // The wire requires 64 lowercase hex characters; main rechecks both images.
+      'fingerprint',
+      'indexFingerprint',
+      // A person chooses a history row. Main checks its id still names the latest
+      // effective change; no person types this 1–1,024-character ledger identifier.
+      'changeId',
       // ⚑ **D-050** — `setAgentModelLimit.highestEffort` was classified here; it went with the
       // agents' limit, and the limit's `models[]` with it (a third field `aModelsName` bounded).
       // 🔴 **`entry`** (625) — classified: **no person types it, and it is not a PATH either.** ⛔
