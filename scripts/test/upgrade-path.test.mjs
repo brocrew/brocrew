@@ -502,6 +502,34 @@ describe('memory history gains an unknown restoration source during an upgrade',
     ])
     expect(compare([legacy], []).lost).not.toEqual([])
   })
+  it('accepts only the legacy recovery defaults and reports invented or changed observations', () => {
+    const defaults = {
+      source_id: null,
+      outcome: 'done',
+      actual: null,
+      settled_by: null,
+      settled_at: null,
+    }
+    expect(compare([legacy], [{ ...legacy, ...defaults }]).lost).toEqual([])
+    for (const field of ['outcome', 'actual', 'settled_by', 'settled_at']) {
+      expect(compare([legacy], [{ ...legacy, ...defaults, [field]: 'fabricated' }]).lost).toEqual([
+        { table: 'identity_memory_amendment', row: '["memory-lark-1"]', changed: [field] },
+      ])
+      const recorded = { ...legacy, ...defaults, [field]: 'recorded' }
+      expect(compare([recorded], [{ ...legacy, ...defaults }]).lost).toEqual([
+        { table: 'identity_memory_amendment', row: '["memory-lark-1"]', changed: [field] },
+      ])
+      const missing = { ...recorded }
+      delete missing[field]
+      expect(compare([recorded], [missing]).lost).toEqual([
+        { table: 'identity_memory_amendment', row: '["memory-lark-1"]', changed: [field] },
+      ])
+    }
+    expect(compare([legacy], []).lost).not.toEqual([])
+    expect(
+      rowsPreserved({ other: [legacy] }, { other: [{ ...legacy, ...defaults }] }).lost,
+    ).not.toEqual([])
+  })
 })
 
 describe('the rows the beta left, after its conversations carried on', () => {

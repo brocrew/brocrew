@@ -1,4 +1,11 @@
 import {
+  createMemoryRecoveryStore,
+  validMemoryIntent,
+  knownMemorySource,
+  memoryObservation,
+} from './memory-recovery'
+export { createMemoryAmendmentObserver } from './memory-recovery'
+import {
   createMethodChangeStore,
   type MethodChangeIntent,
   type MethodChangeRecord,
@@ -262,6 +269,8 @@ import {
   type MemoryAmendment,
   type MemoryAmendmentAct,
   type MemoryAmendmentWrite,
+  type MemoryObservation,
+  type MemoryOutcome,
 } from '../../shared/agent-memory'
 import {
   WHO_WROTE_IT,
@@ -1855,6 +1864,15 @@ export interface SessionStore {
    * rather than quietly overwrite.
    */
   writeMemoryAmendment(said: MemoryAmendmentWrite, at: number): MemoryAmendment | null
+  beginMemoryAmendment(said: MemoryAmendmentWrite, at: number): MemoryAmendment | null
+  settleMemoryAmendment(
+    profileSlug: string,
+    id: string,
+    actual: MemoryObservation,
+    by: ActedBy,
+  ): boolean
+  hasPendingMemoryAmendment(profileSlug: string): boolean
+  memoryAmendment(profileSlug: string, id: string): MemoryAmendment | null
   /**
    * 🔴 **Every ask an agent has made against anybody's instructions that nobody has answered**
    * (582) — oldest first, across every conversation.
@@ -4011,6 +4029,10 @@ export const NULL_SESSION_STORE: SessionStore = {
   // ⛔ **Null, and it is criterion 12's answer rather than a shrug**, exactly as
   // `writeOwnInstructions` above: a store with no database has no identity by that name.
   writeMemoryAmendment: () => null,
+  beginMemoryAmendment: () => null,
+  settleMemoryAmendment: () => false,
+  hasPendingMemoryAmendment: () => false,
+  memoryAmendment: () => null,
   // ⛔ **No ledger, so nothing has been asked** — and `false` says that nothing was settled.
   instructionAsksWaiting: () => [],
   turnBlockCandidates: () => null,
@@ -5620,6 +5642,7 @@ export function createSessionStore(
 ): SessionStore {
   const connection = db
   const methodChangeStore = createMethodChangeStore(connection, now)
+  const memoryRecoveryStore = createMemoryRecoveryStore(connection, now)
   let reconciliationNames: AppStatement | undefined
   const ledgerWrites = ledgerWritesFor(connection)
   db = withOptionalIndexes(db)
@@ -6314,6 +6337,7 @@ export function createSessionStore(
     amendmentsOf: AppStatement
     newestOf: AppStatement
     newestForEntry: AppStatement
+    amendmentById: AppStatement
     insertAmendment: AppStatement
   } | null = null
   const memoryAmendmentSql = (): NonNullable<typeof memoryAmendmentStatements> =>
@@ -6324,7 +6348,7 @@ export function createSessionStore(
        * SQLite reads that index backwards for a `DESC` on its second column.
        */
       amendmentsOf: db.prepare(
-        `SELECT id, seq, provider, entry, act, by, text_before, text_after, created_at, source_id
+        `SELECT id, seq, provider, entry, act, by, text_before, text_after, created_at, source_id, outcome, actual, settled_by, settled_at
            FROM identity_memory_amendment WHERE identity_id = ? ORDER BY seq DESC`,
       ),
       /** 🔴 **The ONE row the allocator needs** — its own statement, so a write never pays for a history. */
@@ -6332,8 +6356,8 @@ export function createSessionStore(
         `SELECT seq FROM identity_memory_amendment WHERE identity_id = ? ORDER BY seq DESC LIMIT 1`,
       ),
       newestForEntry: db.prepare(
-        `SELECT id, seq, provider, entry, act, by, text_before, text_after, created_at, source_id
-           FROM identity_memory_amendment WHERE identity_id = ? AND provider = ? AND entry = ? ORDER BY seq DESC LIMIT 1`,
+        `SELECT id, seq, provider, entry, act, by, text_before, text_after, created_at, source_id, outcome, actual, settled_by, settled_at
+           FROM identity_memory_amendment WHERE identity_id = ? AND provider = ? AND entry = ? AND outcome NOT IN ('pending', 'unchanged') ORDER BY seq DESC LIMIT 1`,
       ),
       /**
        * ⛔ **A plain `INSERT`, never `OR IGNORE`** — `insertVersion`'s own note and for its reason:
@@ -6341,10 +6365,13 @@ export function createSessionStore(
        * here rather than one of them silently doing nothing. ⚠️ `OR IGNORE` would report a lost
        * race as a recorded amendment, and the record is the only thing that survives the file.
        */
+      amendmentById: db.prepare(
+        'SELECT * FROM identity_memory_amendment WHERE identity_id = ? AND id = ?',
+      ),
       insertAmendment: db.prepare(
         `INSERT INTO identity_memory_amendment
-           (id, identity_id, seq, provider, entry, act, by, text_before, text_after, created_at, source_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, identity_id, seq, provider, entry, act, by, text_before, text_after, created_at, source_id, outcome)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ),
     })
 
@@ -6361,6 +6388,10 @@ export function createSessionStore(
     text_after: string | null
     created_at: number
     source_id: string | null
+    outcome: MemoryOutcome
+    actual: string | null
+    settled_by: string | null
+    settled_at: number | null
   }
 
   /**
@@ -6377,6 +6408,42 @@ export function createSessionStore(
     typeof stored === 'string' && (MEMORY_AMENDMENT as readonly string[]).includes(stored)
       ? (stored as MemoryAmendmentAct)
       : 'corrected'
+
+  const memoryRecoveryFrom = (
+    row: MemoryAmendmentRow,
+  ): Pick<MemoryAmendment, 'outcome' | 'actual' | 'settlement'> => {
+    if (
+      row.outcome === 'done' &&
+      row.actual === null &&
+      row.settled_by === null &&
+      row.settled_at === null
+    )
+      return {}
+    if (
+      row.outcome === 'pending' &&
+      row.actual === null &&
+      row.settled_by === null &&
+      row.settled_at === null
+    )
+      return { outcome: 'pending' }
+    const actual = row.actual === null ? null : memoryObservation(JSON.parse(row.actual))
+    const observer = row.settled_by === null ? null : JSON.parse(row.settled_by)
+    if (
+      !['done', 'partial', 'unchanged'].includes(row.outcome) ||
+      actual === null ||
+      observer === null ||
+      !['a-person', 'the-app-itself'].includes(observer.who) ||
+      !Number.isSafeInteger(row.settled_at) ||
+      row.settled_at === null ||
+      row.settled_at < 0
+    )
+      throw new Error('Memory recovery observation is unreadable')
+    return {
+      outcome: row.outcome,
+      actual,
+      settlement: { by: { who: observer.who }, at: row.settled_at },
+    }
+  }
 
   const memoryAmendmentFrom = (row: MemoryAmendmentRow): MemoryAmendment => ({
     id: row.id,
@@ -6395,8 +6462,97 @@ export function createSessionStore(
     textBefore: row.text_before,
     textAfter: row.text_after,
     at: row.created_at,
+    ...memoryRecoveryFrom(row),
     ...(row.source_id === null ? {} : { sourceId: row.source_id }),
   })
+
+  const appendMemoryAmendment = (
+    said: MemoryAmendmentWrite,
+    at: number,
+    outcome: 'pending' | 'done',
+  ): MemoryAmendment | null => {
+    if (outcome === 'pending' && !validMemoryIntent(said, at)) return null
+    const rowId = agentIdentityRowId(said.profileSlug)
+    return db.transaction((): MemoryAmendment | null => {
+      // ⛔ **EXISTENCE first, and it is criterion 12 at this door** — `writeOwnInstructions`'
+      // own line and for its reason: the INSERT would succeed on the foreign key only to leave a
+      // record about nobody.
+      if (spawnSql().identityBySlug.get(foldProfileName(said.profileSlug)) === undefined) {
+        return null
+      }
+      if (memoryRecoveryStore.hasPending(rowId)) return null
+      const linked = said.act === 'restored' || said.sourceId !== undefined
+      if (linked) {
+        if (
+          said.by.who !== 'a-person' ||
+          typeof said.sourceId !== 'string' ||
+          !Number.isSafeInteger(at) ||
+          at < 0
+        )
+          return null
+        const raw = memoryAmendmentSql().newestForEntry.get(rowId, said.provider, said.entry) as
+          MemoryAmendmentRow | undefined
+        if (raw === undefined || raw.id !== said.sourceId) return null
+        const source = memoryAmendmentFrom(raw)
+        if (said.act === 'restored') {
+          if (
+            source.act !== 'removed' ||
+            typeof source.textBefore !== 'string' ||
+            said.textBefore !== null ||
+            said.textAfter !== source.textBefore
+          )
+            return null
+        } else if (said.act === 'removed') {
+          if (
+            source.act !== 'restored' ||
+            typeof source.textAfter !== 'string' ||
+            said.textBefore !== source.textAfter ||
+            said.textAfter !== null
+          )
+            return null
+        } else if (said.act === 'corrected' && outcome === 'pending') {
+          if (
+            source.act !== 'corrected' ||
+            said.textBefore !== source.textAfter ||
+            said.textAfter !== source.textBefore
+          )
+            return null
+        } else return null
+        if (!knownMemorySource(source, said.textBefore)) return null
+      }
+      const by: ActedBy = linked || outcome === 'pending' ? { who: 'a-person' } : said.by
+      const newest = memoryAmendmentSql().newestOf.get(rowId) as { seq: number } | undefined
+      const seq = (newest?.seq ?? 0) + 1
+      const id = memoryAmendmentRowId(said.profileSlug, seq)
+      memoryAmendmentSql().insertAmendment.run(
+        id,
+        rowId,
+        seq,
+        said.provider,
+        said.entry,
+        said.act,
+        JSON.stringify(by),
+        said.textBefore,
+        said.textAfter,
+        at,
+        said.sourceId ?? null,
+        outcome,
+      )
+      return {
+        id,
+        seq,
+        provider: said.provider,
+        entry: said.entry,
+        act: said.act,
+        by,
+        textBefore: said.textBefore,
+        textAfter: said.textAfter,
+        at,
+        ...(outcome === 'pending' ? { outcome } : {}),
+        ...(said.sourceId === undefined ? {} : { sourceId: said.sourceId }),
+      }
+    })()
+  }
 
   /** One `external_mcp_server` row as `better-sqlite3` hands it back. */
   type ExternalMcpRow = {
@@ -12682,75 +12838,28 @@ export function createSessionStore(
     },
 
     writeMemoryAmendment(said, at) {
-      const rowId = agentIdentityRowId(said.profileSlug)
-      return db.transaction((): MemoryAmendment | null => {
-        // ⛔ **EXISTENCE first, and it is criterion 12 at this door** — `writeOwnInstructions`'
-        // own line and for its reason: the INSERT would succeed on the foreign key only to leave a
-        // record about nobody.
-        if (spawnSql().identityBySlug.get(foldProfileName(said.profileSlug)) === undefined) {
-          return null
-        }
-        const linked = said.act === 'restored' || said.sourceId !== undefined
-        if (linked) {
-          if (
-            said.by.who !== 'a-person' ||
-            typeof said.sourceId !== 'string' ||
-            !Number.isSafeInteger(at) ||
-            at < 0
-          )
-            return null
-          const raw = memoryAmendmentSql().newestForEntry.get(rowId, said.provider, said.entry) as
-            MemoryAmendmentRow | undefined
-          if (raw === undefined || raw.id !== said.sourceId) return null
-          const source = memoryAmendmentFrom(raw)
-          if (said.act === 'restored') {
-            if (
-              source.act !== 'removed' ||
-              typeof source.textBefore !== 'string' ||
-              said.textBefore !== null ||
-              said.textAfter !== source.textBefore
-            )
-              return null
-          } else if (said.act === 'removed') {
-            if (
-              source.act !== 'restored' ||
-              typeof source.textAfter !== 'string' ||
-              said.textBefore !== source.textAfter ||
-              said.textAfter !== null
-            )
-              return null
-          } else return null
-        }
-        const by: ActedBy = linked ? { who: 'a-person' } : said.by
-        const newest = memoryAmendmentSql().newestOf.get(rowId) as { seq: number } | undefined
-        const seq = (newest?.seq ?? 0) + 1
-        const id = memoryAmendmentRowId(said.profileSlug, seq)
-        memoryAmendmentSql().insertAmendment.run(
-          id,
-          rowId,
-          seq,
-          said.provider,
-          said.entry,
-          said.act,
-          JSON.stringify(by),
-          said.textBefore,
-          said.textAfter,
-          at,
-          said.sourceId ?? null,
-        )
-        return {
-          id,
-          seq,
-          provider: said.provider,
-          entry: said.entry,
-          act: said.act,
-          by,
-          textBefore: said.textBefore,
-          textAfter: said.textAfter,
-          at,
-          ...(said.sourceId === undefined ? {} : { sourceId: said.sourceId }),
-        }
-      })()
+      return appendMemoryAmendment(said, at, 'done')
+    },
+    beginMemoryAmendment(said, at) {
+      return appendMemoryAmendment(said, at, 'pending')
+    },
+    settleMemoryAmendment(profileSlug, id, actual, by) {
+      return memoryRecoveryStore.settle(
+        agentIdentityRowId(foldProfileName(profileSlug)),
+        id,
+        actual,
+        by,
+      )
+    },
+    hasPendingMemoryAmendment(profileSlug) {
+      return memoryRecoveryStore.hasPending(agentIdentityRowId(foldProfileName(profileSlug)))
+    },
+    memoryAmendment(profileSlug, id) {
+      const row = memoryAmendmentSql().amendmentById.get(
+        agentIdentityRowId(foldProfileName(profileSlug)),
+        id,
+      ) as MemoryAmendmentRow | undefined
+      return row === undefined ? null : memoryAmendmentFrom(row)
     },
 
     instructionAsksWaiting() {
@@ -12946,7 +13055,8 @@ export function createSessionStore(
       // defect in the door above, and swallowing it here is how it would stay invisible.
       return db.transaction(() => {
         const rowId = agentIdentityRowId(profileSlug)
-        if (methodChangeStore.hasPending(rowId)) return false
+        if (methodChangeStore.hasPending(rowId) || memoryRecoveryStore.hasPending(rowId))
+          return false
         return spawnSql().deleteIdentity.run(rowId).changes > 0
       })()
     },

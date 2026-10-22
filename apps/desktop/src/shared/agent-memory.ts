@@ -267,6 +267,17 @@ export interface AgentMemoryStore {
  * record that carried only a path and a time would be able to say something was taken out and
  * never what.
  */
+/** Recovery metadata is absent on legacy completed records; absence is never an observation. */
+export interface MemoryObservation {
+  readonly fingerprint: string | null
+  readonly unreadable?: true
+}
+export type MemoryOutcome = 'pending' | 'done' | 'partial' | 'unchanged'
+export interface MemorySettlement {
+  readonly by: { readonly who: 'a-person' } | { readonly who: 'the-app-itself' }
+  readonly at: number
+}
+
 export interface MemoryAmendment {
   /** `mem:<folded slug>:<seq>` — derived, so a reissued sequence is a primary-key violation. */
   readonly id: string
@@ -294,6 +305,10 @@ export interface MemoryAmendment {
   readonly textAfter: string | null
   /** The deletion restored, or the restoration reversed; absent for ordinary old edits. */
   readonly sourceId?: string
+  /** Pending records describe planned text; only an observation establishes the actual outcome. */
+  readonly outcome?: MemoryOutcome
+  readonly actual?: MemoryObservation
+  readonly settlement?: MemorySettlement
   /** When the act was performed — epoch milliseconds, this machine's wall clock. */
   readonly at: number
 }
