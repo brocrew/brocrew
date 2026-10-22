@@ -137,7 +137,14 @@ import type {
   WorkflowAgent,
   WorkflowPhase,
 } from '@brobot2/runtime'
-import type { Provider, SessionStatus, TurnEnding } from '@brobot2/shared'
+import {
+  DEFAULT_IDENTITY_PROVIDER,
+  providerDescriptor,
+  providerRecord,
+  type Provider,
+  type SessionStatus,
+  type TurnEnding,
+} from '@brobot2/shared'
 import type { AgentState } from './agent-state'
 // ⚑ **The capability schema, which is a `src/shared` module and holds no zod** (355) — the same
 // rule this file is written under, so the renderer may name a capability without paying for a
@@ -822,7 +829,7 @@ export const SEEDED_PROVIDERS: readonly {
 }[] = [
   {
     slug: DEFAULT_PROFILE_ID,
-    provider: 'claude',
+    provider: DEFAULT_IDENTITY_PROVIDER,
     why:
       'A first-run convenience so this identity opens on something rather than on the app-wide ' +
       'fallback, which every other identity already follows. It says nothing about which program ' +
@@ -884,7 +891,9 @@ export function seededProviderFor(profileSlug: string): Provider | null {
  * from Claude's and Codex's own folders"* — and that sentence is what the rest of the sweep was
  * matched to. A second literal beside it is how one of them comes to say `Codex CLI` one day.
  */
-export const PROVIDER_NAME: Record<Provider, string> = { claude: 'Claude', codex: 'Codex' }
+export const PROVIDER_NAME: Record<Provider, string> = providerRecord(
+  (provider) => providerDescriptor(provider).displayName,
+)
 
 /** How to say one provider's name in a sentence a person reads. */
 export function providerName(provider: Provider): string {

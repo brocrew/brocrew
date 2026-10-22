@@ -37,7 +37,7 @@ import {
   type ReprovisionOutcome,
   type TransportFactory,
 } from '@brobot2/runtime'
-import { providerValue, type Provider } from '@brobot2/shared'
+import { providerSchema, providerValue, type Provider } from '@brobot2/shared'
 import { ApiKeyUnreadableError } from './api-keys'
 import {
   DEFAULT_PROFILE_ID,
@@ -150,8 +150,9 @@ export function listProviderHomes(userData: string): ExistingProviderHome[] {
   for (const profileId of subdirectories(root)) {
     if (!isPathSegment(profileId)) continue
     for (const provider of subdirectories(join(root, profileId))) {
-      if (provider !== 'claude' && provider !== 'codex') continue
-      homes.push({ profileId, provider, path: join(root, profileId, provider) })
+      const parsed = providerSchema.safeParse(provider)
+      if (!parsed.success) continue
+      homes.push({ profileId, provider: parsed.data, path: join(root, profileId, provider) })
     }
   }
   return homes

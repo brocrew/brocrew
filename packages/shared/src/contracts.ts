@@ -8,17 +8,8 @@ import { z } from 'zod'
  * this with the full RuntimeEvent taxonomy from HO-001 §6.
  */
 
-/** Which coding-agent backend a session talks to. */
-export const providerSchema = z.enum(['claude', 'codex'])
-export type Provider = z.infer<typeof providerSchema>
-
-/** Select a value only after every provider has supplied an answer. */
-export function providerValue<const T>(
-  provider: Provider,
-  values: Readonly<Record<Provider, T>>,
-): T {
-  return values[provider]
-}
+export { providerSchema, providerValue } from './providers'
+export type { Provider } from './providers'
 
 /**
  * Orthogonal provider-session status machine.

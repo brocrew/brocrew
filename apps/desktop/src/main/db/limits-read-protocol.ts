@@ -1,4 +1,4 @@
-import { providerSchema } from '@brobot2/shared'
+import { providerRecord, providerSchema } from '@brobot2/shared'
 import { z } from 'zod'
 
 export const LIMITS_READ_BOUNDS = Object.freeze({
@@ -26,7 +26,7 @@ export const limitsReadInput = z
     databaseEpoch: count,
     signInEpoch: count,
     capturedAt: instant,
-    signInChangedAt: z.object({ claude: instant.optional(), codex: instant.optional() }).strict(),
+    signInChangedAt: z.object(providerRecord(() => instant.optional())).strict(),
     accountLives: z
       .array(
         z
@@ -39,12 +39,7 @@ export const limitsReadInput = z
       )
       .max(LIMITS_READ_BOUNDS.rows)
       .optional(),
-    usage: z
-      .object({
-        claude: z.array(usage).max(64).optional(),
-        codex: z.array(usage).max(64).optional(),
-      })
-      .strict(),
+    usage: z.object(providerRecord(() => z.array(usage).max(64).optional())).strict(),
   })
   .strict()
 

@@ -1,5 +1,5 @@
 import { ipcMain } from './app-ipc'
-import type { Provider } from '@brobot2/shared'
+import { providerSchema, type Provider } from '@brobot2/shared'
 import {
   PROVIDER_SNAPSHOTS_CHANNELS,
   sizeOf,
@@ -155,10 +155,15 @@ export function startProviderSnapshots(): void {
   ipcMain.handle(
     PROVIDER_SNAPSHOTS_CHANNELS.forModel,
     (_event, provider: unknown, model: unknown): SnapshotAnswer => {
-      if (provider !== 'claude' && provider !== 'codex') {
-        return { found: false, why: 'A provider is claude or codex.', models: [] }
+      const parsed = providerSchema.safeParse(provider)
+      if (!parsed.success) {
+        return {
+          found: false,
+          why: `A provider is ${providerSchema.options.join(' or ')}.`,
+          models: [],
+        }
       }
-      return snapshotFor(provider, typeof model === 'string' && model !== '' ? model : null)
+      return snapshotFor(parsed.data, typeof model === 'string' && model !== '' ? model : null)
     },
   )
 }

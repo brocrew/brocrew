@@ -180,8 +180,7 @@ describe('app-source: constants read from the app, not written down twice', () =
     expect(constantFrom('WORKSPACE_DIRNAME')).toBe('brobot-workspace')
     expect(constantFrom('WORKSPACE_CANARY')).toBe('BROBOT-WORKSPACE-CANARY-4F2A')
     expect(constantFrom('CODEX_INSTRUCTIONS_FILE')).toBe('AGENTS.md')
-    // ⚑ The `<script setup>` spelling — unexported, type-annotated, inside a `.vue`. It is the
-    // one a regex is most likely to miss and the one `417` made permanent for every person.
+    // The registry supplies the same default to the component and the instruments.
     expect(constantFrom('DEFAULT_PROVIDER')).toBe('codex')
   })
 

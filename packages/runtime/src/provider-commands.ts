@@ -1,4 +1,4 @@
-import type { Provider } from '@brobot2/shared'
+import { providerDescriptor, providerRecord, type Provider } from '@brobot2/shared'
 
 /**
  * **The commands the agent already has** (279) — the provider-neutral vocabulary for them.
@@ -185,10 +185,10 @@ export const MAX_COMMAND_ALIASES = 20
 /**
  * ⛔ **Codex's own prefix**, from the provider's sentence about its own skills — see the module note.
  */
-export const CODEX_COMMAND_PREFIX = '$'
+export const CODEX_COMMAND_PREFIX = providerDescriptor('codex').commandPrefix
 
 /** ⛔ **Claude's**, from 44 rows that are `/`-invoked in the CLI this app embeds. */
-export const CLAUDE_COMMAND_PREFIX = '/'
+export const CLAUDE_COMMAND_PREFIX = providerDescriptor('claude').commandPrefix
 
 /**
  * 🔴 **708 · each provider's prefix, known before any list is** — the half of `R42` that must hold
@@ -203,10 +203,9 @@ export const CLAUDE_COMMAND_PREFIX = '/'
  * ⚠️ **`satisfies Record<Provider, …>`**, so a third provider fails to compile here rather than
  * falling through to a prefix nobody measured.
  */
-export const PROVIDER_COMMAND_PREFIX = {
-  claude: CLAUDE_COMMAND_PREFIX,
-  codex: CODEX_COMMAND_PREFIX,
-} as const satisfies Record<Provider, string>
+export const PROVIDER_COMMAND_PREFIX = providerRecord(
+  (provider) => providerDescriptor(provider).commandPrefix,
+)
 
 /**
  * ⛔ **The ONE bounding rule, for both providers and all THREE producers.**

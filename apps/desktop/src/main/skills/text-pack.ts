@@ -1,3 +1,4 @@
+import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
 import { closeSync, constants, fstatSync, lstatSync, readSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
 import { openNotThroughALink } from '@brobot2/runtime/provider-home'
@@ -155,16 +156,21 @@ function packSkills(folder: string, version: string): VerifiedBuiltInSkills {
     return {
       name,
       description: frontmatterField(body, 'description') ?? '',
-      reminder: {
-        codex: lineFor(`${name} — `, name),
-        claude: lineFor(`brobot:${name} — `, name),
-      },
+      reminder: (() => {
+        const neutral = lineFor(`${name} — `, name)
+        for (const descriptor of PROVIDER_DESCRIPTORS) {
+          const prefix = descriptor.skillReminderPrefix
+          if (lineFor(`${prefix}${name} — `, name) !== prefix + neutral)
+            throw new Refused({ kind: 'skill-rules' })
+        }
+        return neutral
+      })(),
       sha256: skillDigest(body),
       bytes: Buffer.byteLength(body, 'utf8'),
     }
   })
   try {
-    return verifyBuiltInSkills({ formatVersion: 1, version, skills }, bodies)
+    return verifyBuiltInSkills({ formatVersion: 2, version, skills }, bodies)
   } catch {
     throw new Refused({ kind: 'skill-rules' })
   }

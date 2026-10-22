@@ -1,5 +1,3 @@
-import { providerSchema, type Provider } from '@brobot2/shared'
-
 /**
  * `@brobot2/runtime` exports the provider-neutral `AgentRuntime` contract and the
  * Zod-validated `RuntimeEvent` vocabulary. Claude and Codex adapters implement the contract;
@@ -7,7 +5,7 @@ import { providerSchema, type Provider } from '@brobot2/shared'
  */
 
 /** Providers this runtime layer targets. */
-export const SUPPORTED_PROVIDERS: readonly Provider[] = providerSchema.options
+export { SUPPORTED_PROVIDERS } from '@brobot2/shared'
 
 export { isTheSamePath } from './built-in-skills'
 

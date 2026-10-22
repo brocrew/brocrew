@@ -1,16 +1,16 @@
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
-import type { Provider } from '@brobot2/shared'
+import { providerDescriptor, type Provider } from '@brobot2/shared'
 import { BUILT_IN_SKILL_NAMES } from '../../shared/built-in-skills'
 
 /**
  * A version label the shipped texts may carry, `v6` or `v9.1`. Any such label is taken: a running
  * build reads the folder a newer commit wrote, so a label it cannot know must not stop a launch.
- * The format is `formatVersion`, which stays the one this build reads.
+ * The format is `formatVersion`; this build reads the neutral format and normalizes legacy pairs.
  */
 export const SKILLS_VERSION_LABEL = /^v\d+(?:\.\d+)?$/
 
-const skill = z.strictObject({
+const legacySkill = z.strictObject({
   name: z.enum(BUILT_IN_SKILL_NAMES),
   description: z.string().min(1).max(500),
   reminder: z.strictObject({
@@ -21,11 +21,11 @@ const skill = z.strictObject({
   bytes: z.number().int().min(1).max(65_536),
 })
 
-export const BuiltInSkillCatalogueSchema = z
+const legacyCatalogue = z
   .strictObject({
     formatVersion: z.literal(1),
     version: z.string().regex(SKILLS_VERSION_LABEL),
-    skills: z.array(skill).length(BUILT_IN_SKILL_NAMES.length),
+    skills: z.array(legacySkill).length(BUILT_IN_SKILL_NAMES.length),
   })
   .superRefine((catalogue, context) => {
     for (const [index, item] of catalogue.skills.entries()) {
@@ -40,11 +40,50 @@ export const BuiltInSkillCatalogueSchema = z
     }
   })
 
+const neutralSkill = z.strictObject({
+  name: z.enum(BUILT_IN_SKILL_NAMES),
+  description: z.string().min(1).max(500),
+  reminder: z.string().min(1).max(240),
+  sha256: z.string().regex(/^[a-f0-9]{64}$/),
+  bytes: z.number().int().min(1).max(65_536),
+})
+
+const neutralCatalogue = z
+  .strictObject({
+    formatVersion: z.literal(2),
+    version: z.string().regex(SKILLS_VERSION_LABEL),
+    skills: z.array(neutralSkill).length(BUILT_IN_SKILL_NAMES.length),
+  })
+  .superRefine((catalogue, context) => {
+    for (const [index, item] of catalogue.skills.entries()) {
+      if (
+        item.name !== BUILT_IN_SKILL_NAMES[index] ||
+        !item.reminder.startsWith(`${item.name} — `) ||
+        /[\r\n]/.test(item.description + item.reminder)
+      ) {
+        context.addIssue({ code: 'custom', message: 'The built-in skill catalogue must agree.' })
+      }
+    }
+  })
+
+/** Old pairs are checked before normalization; both formats have the same canonical digest. */
+export const BuiltInSkillCatalogueSchema = z
+  .union([
+    neutralCatalogue,
+    legacyCatalogue.transform((catalogue) => ({
+      ...catalogue,
+      formatVersion: 2 as const,
+      skills: catalogue.skills.map((item) => ({ ...item, reminder: item.reminder.codex })),
+    })),
+  ])
+  .pipe(neutralCatalogue)
+
 export type BuiltInSkillCatalogue = z.infer<typeof BuiltInSkillCatalogueSchema>
 export type BuiltInSkill = BuiltInSkillCatalogue['skills'][number]
 
 export function builtInSkillReminders(provider: Provider, skills: readonly BuiltInSkill[]): string {
-  return skills.length === 0 ? '' : skills.map((item) => item.reminder[provider]).join('\n') + '\n'
+  const prefix = providerDescriptor(provider).skillReminderPrefix
+  return skills.length === 0 ? '' : skills.map((item) => prefix + item.reminder).join('\n') + '\n'
 }
 
 export const skillDigest = (value: string | Uint8Array): string =>
