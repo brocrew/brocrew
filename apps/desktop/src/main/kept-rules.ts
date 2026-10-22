@@ -24,7 +24,7 @@ import {
   persistedRulesFile,
   type KeptToolApproval,
 } from '@brobot2/runtime'
-import type { Provider } from '@brobot2/shared'
+import { providerValue, type Provider } from '@brobot2/shared'
 import type { KeptRule, KeptRuleRemoved, KeptRules, KeptRulesFile } from '../shared/runtime-ipc'
 
 /**
@@ -113,9 +113,12 @@ export function removeKeptRule(
   }
   if (listed.notEditedHere !== undefined) return { removed: false, why: listed.notEditedHere }
   try {
-    if (input.provider === 'codex' && input.file === keptToolApprovalsFile(dirname(input.file))) {
+    if (
+      providerValue(input.provider, { claude: false, codex: true }) &&
+      input.file === keptToolApprovalsFile(dirname(input.file))
+    ) {
       forgetToolApproval(dirname(input.file), JSON.parse(input.kept) as KeptToolApproval)
-    } else if (input.provider === 'codex') {
+    } else if (providerValue(input.provider, { claude: false, codex: true })) {
       rewrite(
         input.file,
         (text) => {

@@ -1,4 +1,4 @@
-import type { Provider } from '@brobot2/shared'
+import { providerValue, type Provider } from '@brobot2/shared'
 import type { SessionStore } from '../db/session-store'
 import { FileEdits } from '@brobot2/runtime'
 import { importClaudeTranscript, isConversation } from './import-claude'
@@ -184,10 +184,9 @@ export async function deriveLedger(
       if (lines.length > 0) {
         // The timestamp each importer carries forward is threaded between calls — that is why a
         // batched parse equals a whole-file one.
-        const parsed =
-          provider === 'claude'
-            ? importClaudeTranscript(lines, carriedAt, carriedEdits)
-            : importCodexRollout(lines, carriedAt, { resolveImage: options.resolveImage })
+        const parsed = providerValue(provider, { claude: true, codex: false })
+          ? importClaudeTranscript(lines, carriedAt, carriedEdits)
+          : importCodexRollout(lines, carriedAt, { resolveImage: options.resolveImage })
         carriedAt = parsed.lastAt
         carriedEdits = parsed.edits
         tally.unreadableLines += parsed.unreadable
