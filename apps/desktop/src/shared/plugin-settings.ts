@@ -1,3 +1,5 @@
+// Person-control may wait 180 seconds for a cold plugin start; leave room for its page load.
+export const PLUGIN_CONFIGURATION_TIMEOUT = 200_000
 export const PLUGIN_SETTINGS_CHANNEL = 'plugins:settings'
 export const PLUGIN_SCREEN_CLOSED = 'plugins:screen-closed'
 export const PLUGIN_STATES = [
