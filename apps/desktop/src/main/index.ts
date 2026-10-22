@@ -45,7 +45,7 @@ import {
   shell,
 } from 'electron'
 import type { NativeImage, OpenDialogOptions } from 'electron'
-import { appInfoSchema, type AppInfo } from '@brobot2/shared'
+import { providerValue, appInfoSchema, type AppInfo } from '@brobot2/shared'
 import {
   changeCodexKeyInHome,
   claudeLoginRenewer,
@@ -677,7 +677,7 @@ function createRuntimeHost(database: AppDatabase): RuntimeHost {
     ...new Set(
       store
         .recorded()
-        .filter((one) => one.provider === 'claude')
+        .filter((one) => providerValue(one.provider, { claude: true, codex: false }))
         .map((one) => one.cwd),
     ),
   ]

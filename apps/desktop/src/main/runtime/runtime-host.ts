@@ -169,7 +169,7 @@ import {
   type LaunchSetting,
   type ProviderCommand,
 } from '@brobot2/runtime'
-import type { Provider, SessionStatus } from '@brobot2/shared'
+import { providerValue, type Provider, type SessionStatus } from '@brobot2/shared'
 import { assetUrl } from '../../shared/asset-url'
 import { goAheadNotSent } from '../../shared/the-go-ahead'
 import { archivedInMemory, type ArchivedConversations } from '../archived-file'
@@ -527,7 +527,9 @@ function pendingSignIn(withdraw: () => void): CodexSignIn {
  * can see it. `256` measured the within-app case; this guards the within-app case.
  */
 function signInKey(provider: Provider, profileId: string): string {
-  return provider === 'codex' ? provider : `${provider}:${profileId}`
+  return providerValue(provider, { claude: false, codex: true })
+    ? provider
+    : `${provider}:${profileId}`
 }
 
 /**
@@ -7084,9 +7086,10 @@ function describeApprovalMode(provider: Provider, mode: 'ask' | 'auto'): string 
   // was invisible, so there was nothing to contradict the box. A blank that means "ask" is not a
   // disclosure.
   if (mode !== 'auto') return 'approvals: Ask'
-  return provider === 'codex'
-    ? `⚠ approvals: Auto — nothing is asked · sandbox OFF`
-    : `⚠ approvals: Auto — nothing is asked`
+  return providerValue(provider, {
+    claude: `⚠ approvals: Auto — nothing is asked`,
+    codex: `⚠ approvals: Auto — nothing is asked · sandbox OFF`,
+  })
 }
 
 /**
@@ -10023,7 +10026,7 @@ export class RuntimeHost implements LiveHost {
   private async learnItsIdentity(session: HostedSession): Promise<string | null> {
     let identity: string | null = null
     try {
-      if (session.provider === 'claude') {
+      if (providerValue(session.provider, { claude: true, codex: false })) {
         const ask = (): SessionAccount | null | undefined =>
           session.handle.account === undefined ? null : session.handle.account()
         const until = performance.now() + this.accountWaitMs
@@ -13617,7 +13620,7 @@ export class RuntimeHost implements LiveHost {
         )
     }
     const timeoutMs =
-      opening.provider === 'codex' && opening.kind === 'resume'
+      providerValue(opening.provider, { claude: false, codex: true }) && opening.kind === 'resume'
         ? this.codexResumeTimeoutMs
         : this.launchTimeoutMs
     const timing = this.timeTheLaunch(slot.id, opening, timeoutMs)
@@ -21101,7 +21104,8 @@ export class RuntimeHost implements LiveHost {
     await handBackTheMainProcess()
     for (const one of this.deps.store.recorded()) {
       if (this.launches.closed) break
-      if (one.provider !== 'claude' || one.adoptedAt !== null) continue
+      if (providerValue(one.provider, { claude: false, codex: true }) || one.adoptedAt !== null)
+        continue
       const runsOn = this.deps.store.whatItRunsOn(one.sessionId)
       if (runsOn === null || runsOn.reportedModel !== null || runsOn.model !== null) continue
       const row = this.deps.store.find(one.sessionId)
@@ -24069,7 +24073,11 @@ export class RuntimeHost implements LiveHost {
     const prepare = (): string | Promise<string> =>
       this.deps.prepareProviderHome(provider, profileId)
     const renew = this.deps.renewClaudeLogin
-    if (provider !== 'claude' || renew === undefined || this.aKeyIsSaved(provider)) {
+    if (
+      providerValue(provider, { claude: false, codex: true }) ||
+      renew === undefined ||
+      this.aKeyIsSaved(provider)
+    ) {
       return { home: await prepare(), loginRenewed: renewedForIt }
     }
     const prepared = await prepareOnTheLogin(
@@ -25440,7 +25448,8 @@ export class RuntimeHost implements LiveHost {
     ordinal: number,
   ): Promise<ReturnType<typeof whatTheThreadHolds>['carried'] | null> {
     const rows = this.deps.store.threadLeadRows
-    if (provider !== 'codex' || !recorded || rows === undefined) return null
+    if (providerValue(provider, { claude: true, codex: false }) || !recorded || rows === undefined)
+      return null
     try {
       const read = await this.readThreadLeads(sessionId, ordinal + 1)
       return read === null ? null : whatTheThreadHolds(leadRowsFrom(read), ordinal + 1).carried
@@ -25468,7 +25477,12 @@ export class RuntimeHost implements LiveHost {
   ): { leadOwed?: { readonly text: string; readonly is: LeadInFront['is'] } | null } {
     const composed = launchGave?.thisConversation ?? null
     const rows = this.deps.store.threadLeadRows
-    if (provider !== 'codex' || composed === null || rows === undefined) return {}
+    if (
+      providerValue(provider, { claude: true, codex: false }) ||
+      composed === null ||
+      rows === undefined
+    )
+      return {}
     try {
       if (reopenedThreadLeads === null) return {}
       const held = whatTheThreadHolds(leadRowsFrom(reopenedThreadLeads), Infinity)
@@ -25580,7 +25594,8 @@ export class RuntimeHost implements LiveHost {
       : added
     if (
       !session.builtInSkills ||
-      (session.provider === 'claude' && session.handle.builtInSkillsConfirmed?.() === true)
+      (providerValue(session.provider, { claude: true, codex: false }) &&
+        session.handle.builtInSkillsConfirmed?.() === true)
     )
       return context
     const grants =
@@ -27808,7 +27823,9 @@ export class RuntimeHost implements LiveHost {
   private whatAGrantReaches(conversation: string): 'writes' | 'reads' | 'already' {
     const row = this.deps.store.find(conversation)
     if (row?.approvalMode === 'auto') return 'already'
-    return row?.provider === 'codex' ? 'writes' : 'reads'
+    return row === null
+      ? 'reads'
+      : providerValue(row.provider, { claude: 'reads', codex: 'writes' })
   }
 
   /**
@@ -31923,7 +31940,7 @@ export class RuntimeHost implements LiveHost {
     try {
       const known = this.identityKnown.get(session)
       if (known != null) identity = known
-      else if (session.provider === 'codex') {
+      else if (providerValue(session.provider, { claude: false, codex: true })) {
         const tag = session.handle.signInTag?.() ?? null
         identity = tag === null ? null : `codex:${tag}`
       } else {
@@ -32291,10 +32308,9 @@ export class RuntimeHost implements LiveHost {
     if (afterAReopen) {
       return `After the reopen, what is held for it waits for ${name}’s usage limit too: until the limit resets, at ${at}, or sooner — at once when ${name} says that limit has cleared, and ${turn}.`
     }
-    const sooner =
-      provider === 'claude'
-        ? `It goes sooner if ${name} takes work again first: at once when ${name} says that limit has cleared, or when this app finds this computer’s ${name} sign-in changed under a ${name} conversation running here that started on the sign-in before — which it asks at least every ${String(minutes)} ${minutes === 1 ? 'minute' : 'minutes'} while something waits; and ${turn}. If the change was only a renewal of the same sign-in, which reads the same, or the new sign-in has reached a limit too, it may be sent while that limit holds, and that turn is refused.`
-        : `It goes sooner if ${name} takes work again first: ${turn}.`
+    const sooner = providerValue(provider, { claude: true, codex: false })
+      ? `It goes sooner if ${name} takes work again first: at once when ${name} says that limit has cleared, or when this app finds this computer’s ${name} sign-in changed under a ${name} conversation running here that started on the sign-in before — which it asks at least every ${String(minutes)} ${minutes === 1 ? 'minute' : 'minutes'} while something waits; and ${turn}. If the change was only a renewal of the same sign-in, which reads the same, or the new sign-in has reached a limit too, it may be sent while that limit holds, and that turn is refused.`
+      : `It goes sooner if ${name} takes work again first: ${turn}.`
     return `${name}’s usage limit is reached, so it waits until the limit resets, at ${at}. ${sooner}`
   }
 
@@ -34538,7 +34554,7 @@ export class RuntimeHost implements LiveHost {
     const ask = this.deps.askTheProvider
     if (!keys || !ask)
       return { ok: false, reason: 'This build of BroCrew cannot check an API key.' }
-    const card = provider === 'claude' ? 'Claude' : 'Codex'
+    const card = providerValue(provider, { claude: 'Claude', codex: 'Codex' })
     const change = this.keyChanges.get(provider)
     const revision = keys.revision?.(provider)
     const setAt = keys.status(provider).setAt
@@ -35302,7 +35318,7 @@ export class RuntimeHost implements LiveHost {
   /** A Codex conversation's copy of its sign-in as it stands now, by what tells it from another. */
   private theCopyHeldNow(session: HostedSession): CodexCopyIdentity | null {
     const ops = this.deps.providerAuth
-    if (session.provider !== 'codex' || !ops) return null
+    if (providerValue(session.provider, { claude: true, codex: false }) || !ops) return null
     try {
       return codexCopyIdentityIn(ops.credentialHome('codex', session.profileId))
     } catch {
@@ -37688,7 +37704,7 @@ export class RuntimeHost implements LiveHost {
     threadId: string,
     profileId: string | null,
   ): ResolveImagePath | undefined {
-    if (provider !== 'codex') return undefined
+    if (providerValue(provider, { claude: true, codex: false })) return undefined
     return ({ imageId, savedPath }) => {
       const home = profileId === null ? null : this.deps.providerHomePath('codex', profileId)
       // The provider's own claim first, then the naming convention both measured files follow —
@@ -38053,7 +38069,8 @@ export class RuntimeHost implements LiveHost {
       return {
         found: false,
         why:
-          row.provider === 'codex' && target.words.trim() === '/compact'
+          providerValue(row.provider, { claude: false, codex: true }) &&
+          target.words.trim() === '/compact'
             ? 'This was a command for Codex’s own compaction. No words reached the model.'
             : 'This app kept no copy of the text it handed over for this message — it was sent before this app kept one, or keeping it failed — so it cannot be matched exactly in the provider’s own record.',
       }
@@ -38441,10 +38458,14 @@ export class RuntimeHost implements LiveHost {
     // Codex session cannot produce the request. It is kept, and tested, because it is the rule this
     // door actually holds, and a resolver that answered `unknown-agent` for a run whose agents the
     // ledger just confirmed would be saying something false.
-    if (session.provider === 'codex' && input.part !== 'transcript') {
+    if (
+      providerValue(session.provider, { claude: false, codex: true }) &&
+      input.part !== 'transcript'
+    ) {
       return { ok: false, reason: 'unsupported' }
     }
-    if (session.provider === 'codex') return this.readCodexChild(session, found.agents[0]!)
+    if (providerValue(session.provider, { claude: false, codex: true }))
+      return this.readCodexChild(session, found.agents[0]!)
     const root = childWorkRoot(this.providerHomeFor(session), session.ref)
     // Whichever of the run's agents actually has a file is what locates the directory. When none of
     // them does, the first is used anyway so the read below answers `gone` — the honest "there is no
@@ -40723,7 +40744,9 @@ export class RuntimeHost implements LiveHost {
     session.lastReported = key
     this.record(session, () => {
       const onRecord =
-        effort === null && firstOfThisLife && session.provider === 'claude'
+        effort === null &&
+        firstOfThisLife &&
+        providerValue(session.provider, { claude: true, codex: false })
           ? this.deps.store.whatItRunsOn(session.id)
           : null
       const kept = onRecord?.reportedModel === model ? onRecord.reportedEffort : null
@@ -40896,7 +40919,7 @@ export class RuntimeHost implements LiveHost {
                 listed: builtInSkills.context.skills.map((skill) => ({
                   ...skill,
                   descriptionMayBeCut: false,
-                  scope: provider === 'claude' ? 'plugin' : null,
+                  scope: providerValue(provider, { claude: 'plugin', codex: null }),
                 })),
               },
             }
@@ -41038,7 +41061,7 @@ export class RuntimeHost implements LiveHost {
         provider,
         sessionId,
         agentToolsFor(this, sessionId, this.theListsAsLastRead()),
-        provider === 'codex' ? filesCodexWouldRead(row.cwd) : [],
+        providerValue(provider, { claude: false, codex: true }) ? filesCodexWouldRead(row.cwd) : [],
         read,
         () => context,
       )
@@ -41068,7 +41091,7 @@ export class RuntimeHost implements LiveHost {
     const publishedAt = published === null ? null : (toolInventory?.at ?? null)
     // ⚑ The sentence Codex's thread was started with: a resume's list states this build's sentence,
     // never the thread's, so it is passed over for the start before it.
-    let started = provider === 'codex' ? toolInventory : null
+    let started = providerValue(provider, { claude: null, codex: toolInventory })
     while (started?.event.type === 'tool_inventory' && started.event.source === 'thread/resume') {
       started = this.deps.store.newestOfType?.(sessionId, 'tool_inventory', started.ordinal) ?? null
     }
@@ -41095,7 +41118,7 @@ export class RuntimeHost implements LiveHost {
       launch,
       record: record ?? {
         build: null,
-        placement: provider === 'claude' ? 'system-prompt' : 'first-message',
+        placement: providerValue(provider, { claude: 'system-prompt', codex: 'first-message' }),
         profileFile: null,
         ownInstructionsVersion: null,
         thisConversation: null,
@@ -43000,7 +43023,10 @@ export class RuntimeHost implements LiveHost {
       async (startPhases) => {
         if (slot.launch.signal.aborted || this.whyNotOurs(slot) !== null)
           throw new SessionUnavailable('lost-its-place', `session ${sessionId} lost its place`)
-        if (row.provider === 'codex' && instructions?.firstTurnLead !== undefined) {
+        if (
+          providerValue(row.provider, { claude: false, codex: true }) &&
+          instructions?.firstTurnLead !== undefined
+        ) {
           leadsRead = this.readThreadLeads(
             sessionId,
             Number.MAX_SAFE_INTEGER,
@@ -44221,7 +44247,8 @@ export class RuntimeHost implements LiveHost {
       pluginsAsLastSaid: (() => {
         // Claude receives the current section in its freshly rendered system prompt.
         // Codex must replace any live metadata updates retained in its thread.
-        if (options.continuesARecording && provider !== 'claude') return null
+        if (options.continuesARecording && providerValue(provider, { claude: false, codex: true }))
+          return null
         const composed = options.instructions?.thisConversation
         const span = composed?.spans.find((span) => span.heading === PLUGINS_HEADING)
         return composed && span ? composed.text.slice(span.start, span.end).trimEnd() : null
@@ -45607,7 +45634,7 @@ export class RuntimeHost implements LiveHost {
       // A login that ended under it is renewed first, when it runs on the login and not a key.
       const renew = this.deps.renewClaudeLogin
       const renewed =
-        session.provider === 'claude' &&
+        providerValue(session.provider, { claude: true, codex: false }) &&
         !this.aKeyIsSaved('claude') &&
         renew !== undefined &&
         (await this.withProviderLaunch('Claude sign-in renewal', renew)) === 'renewed'
@@ -45641,7 +45668,8 @@ export class RuntimeHost implements LiveHost {
         session.itCarriedOnAfterARepair !== true &&
         wasFor?.words === true &&
         (session.itsCopyWasReplaced === true ||
-          (session.provider === 'codex' && session.itsSignInMovedOn === true))
+          (providerValue(session.provider, { claude: false, codex: true }) &&
+            session.itsSignInMovedOn === true))
           ? this.whatACarryOnWouldAnswer(session, session.itsCopyWasReplaced !== true)
           : null
       const watching = session.sink.alive && session.sink.aPersonIsBehindIt ? session.sink : null
