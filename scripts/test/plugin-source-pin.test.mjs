@@ -74,7 +74,7 @@ it.each(['changed', 'missing', 'extra ignored'])(
         path.join(options.root, 'plugins/chrome/ui/.DS_Store'),
         'fictional ignored bytes',
       )
-    expect(() => verifyPluginSource(options)).toThrow(/differs from the canonical tree/)
+    expect(() => verifyPluginSource(options)).toThrow(/differs? from the canonical tree/)
   },
 )
 it('retains the canonical source pin and records the export revision separately', () => {
