@@ -234,7 +234,7 @@ import { ThemeStore } from './themes/store'
 import { themeProblem } from './themes/words'
 import { THEMES_CHANNELS } from '../shared/theme-library'
 import { installCspHeaders, rendererCsp } from '../shared/content-security-policy'
-import { RuntimeHost } from './runtime/runtime-host'
+import { RuntimeHost, type RuntimeHostDeps } from './runtime/runtime-host'
 import { appMenuTemplate } from './app-menu'
 import { registerWindowControls } from './window-controls'
 import { checkSessionCwd, resolveSessionCwd } from './runtime/scratch-cwd'
@@ -779,12 +779,16 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
     sweep: sweepKnowledgeStages,
     changed: (slug) => knowledgeChanged(slug),
   })
+  const providerHomePaths: Pick<RuntimeHostDeps, 'providerHomePath'> = {
+    providerHomePath: (provider, profileId) =>
+      deriveProviderHome(userData, { profileId, provider }),
+  }
   const memoryKnowledge = await createMemoryService({
     store,
     inputsOf: (slug) => ({
       profileId: slug,
       homesRoot: providerHomesRoot(userData),
-      homeOf: (provider) => deriveProviderHome(userData, { profileId: slug, provider }),
+      homeOf: (provider) => providerHomePaths.providerHomePath(provider, slug),
     }),
     now: Date.now,
     reconcile: createMemoryAmendmentObserver(database, Date.now).reconcile,
@@ -879,10 +883,8 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
     // Each launch's timing, by name and number only, written later and kept to two files of at
     // most 2 MB.
     recordStartAttempt: aStartAttemptsLog(userData).write,
-    // Return only the home path; see `RuntimeHostDeps.providerHomePath` for why this must not
-    // prepare the home through the function above.
-    providerHomePath: (provider, profileId) =>
-      deriveProviderHome(userData, { profileId, provider }),
+    // Share the same non-provisioning path derivation with memory recovery.
+    ...providerHomePaths,
     // List profiles from directories under the managed root, without a separate registry.
     // `listProfileIds` includes `DEFAULT_PROFILE_ID` even before its directory exists.
     listProfiles: () => listProfileIds(userData),
