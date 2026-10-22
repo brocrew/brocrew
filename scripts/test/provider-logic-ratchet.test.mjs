@@ -69,10 +69,11 @@ describe('provider logic ratchet', () => {
     ])
   })
 
+  // Coverage instrumentation slows the synchronous AST census over the whole source tree.
   it('does not grow provider logic in the real main and neutral runtime trees', () => {
     const baseline = JSON.parse(readFileSync(join(root, 'scripts/provider-logic-baseline.json')))
     const current = scanProviderBranches(root)
     expect(findRatchetIncreases(baseline, current)).toEqual([])
     expect(current, 'remove unused permits when provider logic falls').toEqual(baseline)
-  })
+  }, 30_000)
 })
