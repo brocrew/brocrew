@@ -536,3 +536,34 @@ it('keeps Running and Configure beside a quiet failed-refresh notice', async () 
   await vi.waitFor(() => expect(m.all('plugin-stage')).toHaveLength(1))
   expect(f.calls.some((call) => call.kind === 'configure')).toBe(true)
 })
+
+it('keeps phone-removal guidance after uninstall removes the configuration page', async () => {
+  const f = fictionalPlugins()
+  f.set([
+    {
+      id: 'whatsapp',
+      name: 'WhatsApp',
+      installed: true,
+      state: 'Running',
+      uninstallDeletesData: true,
+    },
+  ])
+  const request = f.client.request.bind(f.client)
+  f.client.request = async (input) => {
+    const answer = await request(input)
+    return input.kind === 'uninstall' && answer.ok
+      ? { ...answer, removal: { data: 'deleted' as const, logout: 'unconfirmed' as const } }
+      : answer
+  }
+  const m = mount(settingsWindow('plugins', 'classic', f.client), {}, { width: 1180, height: 900 })
+  await vi.waitFor(() => expect(m.all('plugin-uninstall')).toHaveLength(1))
+  m.q('plugin-uninstall').click()
+  await nextTick()
+  expect(m.q('plugin-confirmation').textContent).not.toContain('This logs it out')
+  m.q('plugin-uninstall-confirm').click()
+  await vi.waitFor(() => expect(m.all('plugin-uninstall')).toHaveLength(0))
+  expect(m.q('plugins-removal-notice').textContent).toContain('local data was deleted')
+  expect(m.q('plugins-removal-notice').textContent).toContain('WhatsApp')
+  expect(m.q('plugins-removal-notice').textContent).toContain('Linked devices')
+  expect(m.all('plugin-configuration')).toHaveLength(0)
+})
