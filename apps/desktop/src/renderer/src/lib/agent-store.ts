@@ -1,5 +1,6 @@
 import { ref, type Ref } from 'vue'
 import type { AgentInstructionsReading } from '../../../shared/own-instructions'
+import type { RulesBaseline } from '../../../shared/agent-rules'
 import type {
   AgentIdentities,
   AgentIdentity,
@@ -156,7 +157,12 @@ export interface AgentStore {
    * ⚠️ **`broughtBack` is what makes a revert a first-class act** and it is a claim about TEXT
    * alone: standing rule 11 — a revert restores rules and never re-grants anything.
    */
-  instruct(profileId: string, text: string, broughtBack?: number): Promise<string | null>
+  instruct(
+    profileId: string,
+    text: string,
+    broughtBack?: number,
+    baseline?: RulesBaseline,
+  ): Promise<string | null>
   /**
    * 🔴 **Approve or refuse one ask an agent made against an identity's instructions** (582).
    * Answers the refusal SENTENCE, or null when it was taken.
@@ -478,9 +484,21 @@ export function createAgentStore(bridge: RuntimeBridge): AgentStore {
       }
     },
 
-    async instruct(profileId, text, broughtBack) {
+    async instruct(profileId, text, broughtBack, baseline) {
       try {
-        const saved = await bridge.instructAgent({ profileId, text, broughtBack })
+        const saved = await bridge.instructAgent({
+          profileId,
+          text,
+          broughtBack,
+          ...(baseline === undefined
+            ? {}
+            : {
+                baseline: {
+                  expectedVersion: baseline.expectedVersion,
+                  currentText: baseline.currentText,
+                },
+              }),
+        })
         // ⚠️ **Null is criterion 12**, and it is `renameTo`'s sentence one method down: the store
         // refuses to CREATE a row, so a null means the identity this is about has stopped existing.
         if (saved === null) {

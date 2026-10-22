@@ -190,6 +190,9 @@ describe('582 · the rules box a person writes in', () => {
     const sheet = await opened(HELD)
     sheet.q('own-instructions-restore-1').click()
     await nextTick()
+    expect(sheet.wrote).toEqual([])
+    sheet.q('own-instructions-restore-confirm').click()
+    await nextTick()
     // ⛔ **A revert APPENDS**, and the surface says which version came back — so the reverting is
     // itself revertable, which is what `HO-009` §1.2 asks for.
     expect(sheet.wrote).toEqual([{ text: 'Read the README first.', broughtBack: 1 }])

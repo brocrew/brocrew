@@ -1,14 +1,18 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   NOBODY_HAS_WRITTEN_ONE,
   OWN_INSTRUCTIONS_CHARS,
   TAKES_EFFECT_AT_THE_NEXT_LAUNCH,
   WROTE_IT_MEANS,
+  rulesChangeLabel,
+  type InstructionUnread,
+  type OwnInstructionsVersion,
   whatIsInForce,
   type AgentInstructionsReading,
 } from '../../../shared/own-instructions'
-import { agentName } from '../../../shared/runtime-ipc'
+import { agentName, type RuntimeBridge } from '../../../shared/runtime-ipc'
+import type { RulesBaseline } from '../../../shared/agent-rules'
 import type { AgentStore } from '../lib/agent-store'
 import { fullTime } from '../lib/clock'
 import { useAgentStore } from '../composables/useAgentStore'
@@ -39,6 +43,12 @@ import { useAgentStore } from '../composables/useAgentStore'
  * WHEN a fact is read is itself a fact about the system, and `574` measured what an agent does when
  * ours is wrong.
  */
+type RulesBridge = Pick<
+  RuntimeBridge,
+  'undoAgentRules' | 'agentRulesUnread' | 'markAgentRulesSeen'
+> &
+  Partial<Pick<RuntimeBridge, 'onChanged'>>
+
 const props = withDefaults(
   defineProps<{
     /** The identity these rules belong to — folded, as every other slug on this sheet is. */
@@ -48,6 +58,7 @@ const props = withDefaults(
      * arrangement, and `538`'s rule: a component that reaches for a singleton cannot be driven.
      */
     store?: AgentStore
+    bridge?: RulesBridge
     /**
      * ⛔ **The heading, or `null` where the PARENT has already written one** (626).
      *
@@ -59,10 +70,13 @@ const props = withDefaults(
      */
     heading?: string | null
   }>(),
-  { store: undefined, heading: 'Its own instructions' },
+  { store: undefined, bridge: undefined, heading: 'Its own instructions' },
 )
 
 const store = computed(() => props.store ?? useAgentStore())
+const bridge = computed(
+  () => props.bridge ?? (typeof window === 'undefined' ? undefined : window.api?.runtime),
+)
 
 /**
  * 🔴 **712 · R41 (`707` GAP-5) — the agent that asked, NAMED** (`agentName`, over the roster this
@@ -85,6 +99,7 @@ const asked = ref(false)
 const draft = ref('')
 const refusal = ref<string | null>(null)
 const busy = ref(false)
+const editorBaseline = ref<RulesBaseline>({ expectedVersion: 0, currentText: '' })
 
 const inForce = computed(() => (reading.value === null ? null : whatIsInForce(reading.value.own)))
 const history = computed(() => reading.value?.own.versions ?? [])
@@ -99,34 +114,247 @@ const waiting = computed(() => reading.value?.waiting ?? [])
  */
 const changed = computed(() => draft.value !== (inForce.value?.text ?? ''))
 const tooLong = computed(() => draft.value.length > OWN_INSTRUCTIONS_CHARS)
+const olderDraft = computed(
+  () =>
+    reading.value !== null &&
+    (editorBaseline.value.expectedVersion !== (inForce.value?.version ?? 0) ||
+      editorBaseline.value.currentText !== (inForce.value?.text ?? '')),
+)
 
-async function read(): Promise<void> {
-  const answer = await store.value.instructionsFor(props.profileSlug)
-  asked.value = true
-  reading.value = answer
-  // ⛔ **The draft is re-seeded only from a reading that ARRIVED.** A refused read must not blank
-  // what a person has typed, which is the one way this surface could destroy the thing it exists
-  // to keep.
-  if (answer !== null) draft.value = whatIsInForce(answer.own)?.text ?? ''
+const unread = ref<InstructionUnread | null>(null)
+const reviewElement = ref<HTMLElement | null>(null)
+const reviewCards = ref<
+  readonly { version: OwnInstructionsVersion; before: string; personVersion: number | null }[]
+>([])
+const restoring = ref<{ version: OwnInstructionsVersion; baseline: RulesBaseline } | null>(null)
+const clearing = ref<RulesBaseline | null>(null)
+let profileEpoch = 0
+let readSequence = 0
+let unreadSequence = 0
+let reviewSequence = 0
+let observer: IntersectionObserver | null = null
+let stopChanges: (() => void) | undefined
+
+const unseen = computed(() =>
+  history.value.filter(
+    (one) =>
+      one.whoWroteIt === 'an-agent-direct' &&
+      one.version > (unread.value?.seenThrough ?? Number.MAX_SAFE_INTEGER),
+  ),
+)
+
+function baseline(): RulesBaseline {
+  return { expectedVersion: inForce.value?.version ?? 0, currentText: inForce.value?.text ?? '' }
 }
 
-watch(() => props.profileSlug, read, { immediate: true })
+async function readUnread(epoch = profileEpoch): Promise<void> {
+  const api = bridge.value
+  if (!api) return
+  const sequence = ++unreadSequence
+  try {
+    const value = await api.agentRulesUnread({ profileId: props.profileSlug })
+    if (epoch === profileEpoch && sequence === unreadSequence) unread.value = value
+  } catch {
+    // A failed reading cannot acknowledge a change.
+  }
+}
 
-async function save(text: string, broughtBack?: number): Promise<void> {
+async function read(resetDraft = true): Promise<void> {
+  const epoch = profileEpoch
+  const sequence = ++readSequence
+  const answer = await store.value.instructionsFor(props.profileSlug)
+  if (epoch !== profileEpoch || sequence !== readSequence) return
+  asked.value = true
+  reading.value = answer
+  if (answer !== null && resetDraft) {
+    draft.value = whatIsInForce(answer.own)?.text ?? ''
+    editorBaseline.value = baseline()
+  }
+  await readUnread(epoch)
+}
+
+watch(
+  () => props.profileSlug,
+  () => {
+    profileEpoch++
+    unreadSequence++
+    reviewSequence++
+    observer?.disconnect()
+    reading.value = null
+    asked.value = false
+    unread.value = null
+    reviewCards.value = []
+    restoring.value = null
+    clearing.value = null
+    busy.value = false
+    refusal.value = null
+    draft.value = ''
+    editorBaseline.value = { expectedVersion: 0, currentText: '' }
+    void read()
+  },
+  { immediate: true },
+)
+
+onMounted(() => {
+  stopChanges = bridge.value?.onChanged?.((change) => {
+    if (change.what === 'agents') void readUnread()
+  })
+})
+
+onBeforeUnmount(() => {
+  profileEpoch++
+  readSequence++
+  unreadSequence++
+  reviewSequence++
+  observer?.disconnect()
+  stopChanges?.()
+})
+
+async function save(
+  text: string,
+  broughtBack?: number,
+  against = editorBaseline.value,
+): Promise<void> {
+  if (reading.value === null || busy.value) return
+  const epoch = profileEpoch
   busy.value = true
-  refusal.value = await store.value.instruct(props.profileSlug, text, broughtBack)
+  const result = await store.value.instruct(props.profileSlug, text, broughtBack, against)
+  if (epoch !== profileEpoch) return
+  refusal.value = result
+  restoring.value = null
+  clearing.value = null
   busy.value = false
-  // ⛔ **Re-read whether it wrote or not** — HO-029 §3: a surface may not report an act as done
-  // until the act is recorded, and what this draws afterwards is the database's answer rather than
-  // the one this component assumed.
-  await read()
+  await read(result === null)
 }
 
 async function decide(askId: string, approve: boolean): Promise<void> {
+  if (busy.value) return
+  const epoch = profileEpoch
+  const keepDraft = changed.value
   busy.value = true
-  refusal.value = await store.value.decideInstruction(askId, approve)
+  const result = await store.value.decideInstruction(askId, approve)
+  if (epoch !== profileEpoch) return
+  refusal.value = result
   busy.value = false
+  await read(result === null && !keepDraft)
+}
+
+async function replaceDraft(): Promise<void> {
+  if (busy.value) return
+  const epoch = profileEpoch
+  busy.value = true
   await read()
+  if (epoch !== profileEpoch) return
+  busy.value = false
+  if (reading.value !== null) {
+    restoring.value = null
+    clearing.value = null
+    refusal.value = null
+  }
+}
+
+function previewRestore(version: OwnInstructionsVersion): void {
+  clearing.value = null
+  restoring.value = { version, baseline: baseline() }
+}
+
+function previewClear(): void {
+  restoring.value = null
+  clearing.value = baseline()
+}
+
+async function restore(): Promise<void> {
+  const selected = restoring.value
+  if (selected) await save(selected.version.text, selected.version.version, selected.baseline)
+}
+
+async function undo(): Promise<void> {
+  const api = bridge.value
+  if (!api || inForce.value === null || busy.value) return
+  const epoch = profileEpoch
+  const profileId = props.profileSlug
+  const expectedVersion = inForce.value.version
+  busy.value = true
+  try {
+    const result = await api.undoAgentRules({ profileId, expectedVersion })
+    if (epoch !== profileEpoch) return
+    if (result === null) {
+      refusal.value = "This change couldn't be undone. Read the latest rules before trying again."
+      await read(false)
+    } else {
+      reading.value = result
+      draft.value = whatIsInForce(result.own)?.text ?? ''
+      editorBaseline.value = baseline()
+      refusal.value = null
+      restoring.value = null
+      clearing.value = null
+      await readUnread(epoch)
+    }
+  } catch {
+    if (epoch === profileEpoch)
+      refusal.value = "This change couldn't be undone. Read the latest rules before trying again."
+  } finally {
+    if (epoch === profileEpoch) busy.value = false
+  }
+}
+
+async function reviewChanges(): Promise<void> {
+  if (busy.value) return
+  const epoch = profileEpoch
+  const sequence = ++reviewSequence
+  const profileId = props.profileSlug
+  await read(false)
+  if (epoch !== profileEpoch || sequence !== reviewSequence) return
+  const versions = history.value
+  reviewCards.value = unseen.value.map((one) => {
+    const previous = versions.find((candidate) => candidate.version < one.version)
+    return {
+      version: one,
+      before: previous?.text ?? '',
+      personVersion:
+        previous &&
+        (previous.whoWroteIt === 'a-person' || previous.whoWroteIt === 'an-agents-proposal')
+          ? previous.version
+          : null,
+    }
+  })
+  observer?.disconnect()
+  if (reviewCards.value.length === 0) return
+  const throughVersion = reviewCards.value.reduce(
+    (latest, card) => Math.max(latest, card.version.version),
+    0,
+  )
+  await nextTick()
+  const target = reviewElement.value
+  const api = bridge.value
+  if (
+    !target ||
+    !api ||
+    epoch !== profileEpoch ||
+    sequence !== reviewSequence ||
+    typeof IntersectionObserver === 'undefined'
+  )
+    return
+  observer = new IntersectionObserver((entries) => {
+    if (
+      epoch !== profileEpoch ||
+      sequence !== reviewSequence ||
+      !entries.some((entry) => entry.isIntersecting) ||
+      document.visibilityState !== 'visible'
+    )
+      return
+    observer?.disconnect()
+    void api
+      .markAgentRulesSeen({ profileId, throughVersion })
+      .then((marked) => {
+        if (epoch !== profileEpoch || !marked) return
+        return readUnread(epoch)
+      })
+      .catch(() => {
+        /* Keep the notice when acknowledgement could not be recorded. */
+      })
+  })
+  observer.observe(target)
 }
 </script>
 
@@ -163,6 +391,43 @@ async function decide(askId: string, approve: boolean): Promise<void> {
     </p>
 
     <template v-else>
+      <div v-if="unread?.unread" class="change-notice" data-cy="own-instructions-unread">
+        <strong>New rule change</strong>
+        <button
+          type="button"
+          :disabled="busy"
+          data-cy="own-instructions-change-review"
+          @click="reviewChanges"
+        >
+          See what changed
+        </button>
+      </div>
+      <section
+        v-if="reviewCards.length > 0"
+        class="change-preview"
+        data-cy="own-instructions-change-summary"
+      >
+        <article v-for="card in reviewCards" :key="card.version.version">
+          <h4>{{ rulesChangeLabel(card.version) }} · version {{ card.version.version }}</h4>
+          <p v-if="card.version.author" class="identity-note">
+            {{ card.version.author.profile }} · {{ fullTime(card.version.writtenAt) }}
+          </p>
+          <p v-if="card.personVersion !== null" class="identity-note">
+            This replaced your rules from version {{ card.personVersion }}.
+          </p>
+          <p class="identity-note">Reason: {{ card.version.said || 'No reason was recorded.' }}</p>
+          <strong>Before</strong>
+          <pre class="version-text">{{ card.before || 'No rules' }}</pre>
+          <strong>After</strong>
+          <pre class="version-text">{{ card.version.text || 'No rules' }}</pre>
+        </article>
+        <span
+          ref="reviewElement"
+          class="review-end"
+          data-cy="own-instructions-change-end"
+          aria-hidden="true"
+        ></span>
+      </section>
       <!-- ⛔ **Every ask waiting on this identity, oldest first** — and `HO-009` §2.2's gate is
            this control: nothing an agent proposed is written until a person presses Approve.
            ⚠️ **A relay never appears here**, because a relay was written when it was made; the
@@ -221,6 +486,22 @@ async function decide(askId: string, approve: boolean): Promise<void> {
         {{ draft.length }} of {{ OWN_INSTRUCTIONS_CHARS }} characters
       </p>
 
+      <section v-if="olderDraft" class="change-preview" data-cy="own-instructions-newer-rules">
+        <p class="identity-note">
+          The saved rules changed while you were editing. Your draft is still here.
+        </p>
+        <strong>Latest saved rules · version {{ inForce?.version ?? 0 }}</strong>
+        <pre class="version-text">{{ inForce?.text || 'No rules' }}</pre>
+        <button
+          type="button"
+          :disabled="busy"
+          data-cy="own-instructions-reload"
+          @click="replaceDraft"
+        >
+          Replace my draft with the latest rules
+        </button>
+      </section>
+
       <p v-if="refusal" class="sheet-state err" data-cy="own-instructions-refusal" role="alert">
         <svg class="icon"><use href="#i-alert" /></svg>
         <span>{{ refusal }}</span>
@@ -228,9 +509,18 @@ async function decide(askId: string, approve: boolean): Promise<void> {
 
       <div class="own-instructions-controls">
         <button
+          v-if="bridge && inForce !== null"
+          type="button"
+          data-cy="own-instructions-undo"
+          :disabled="busy || changed || olderDraft"
+          @click="undo"
+        >
+          Undo latest change
+        </button>
+        <button
           type="button"
           data-cy="own-instructions-save"
-          :disabled="busy || !changed || tooLong"
+          :disabled="busy || !changed || tooLong || olderDraft"
           @click="save(draft)"
         >
           Save as version {{ (inForce?.version ?? 0) + 1 }}
@@ -241,8 +531,8 @@ async function decide(askId: string, approve: boolean): Promise<void> {
         <button
           type="button"
           data-cy="own-instructions-clear"
-          :disabled="busy || (inForce?.text ?? '') === ''"
-          @click="save('')"
+          :disabled="busy || olderDraft || (inForce?.text ?? '') === ''"
+          @click="previewClear"
         >
           Take them away
         </button>
@@ -251,6 +541,39 @@ async function decide(askId: string, approve: boolean): Promise<void> {
       <!-- 🔴 **The history — `HO-009` §1.2's whole reason for this layer's shape.**
            ⛔ Every row says WHO, WHEN and what it brought back; the provenance sentence comes from
            {@link WROTE_IT_MEANS} rather than being written beside the word (standing rule 8). -->
+      <section v-if="clearing" class="change-preview" data-cy="own-instructions-clear-preview">
+        <h4>Remove these rules?</h4>
+        <pre class="version-text">{{ clearing.currentText }}</pre>
+        <p class="identity-note">
+          This saves an empty version. You can restore any earlier version from the history.
+        </p>
+        <button
+          type="button"
+          :disabled="busy"
+          data-cy="own-instructions-clear-confirm"
+          @click="save('', undefined, clearing)"
+        >
+          Remove rules
+        </button>
+        <button type="button" :disabled="busy" @click="clearing = null">Cancel</button>
+      </section>
+      <section v-if="restoring" class="change-preview" data-cy="own-instructions-restore-preview">
+        <h4>Restore version {{ restoring.version.version }}?</h4>
+        <strong>Before</strong>
+        <pre class="version-text">{{ restoring.baseline.currentText || 'No rules' }}</pre>
+        <strong>After</strong>
+        <pre class="version-text">{{ restoring.version.text || 'No rules' }}</pre>
+        <p class="identity-note">This saves another version and keeps the history.</p>
+        <button
+          type="button"
+          :disabled="busy"
+          data-cy="own-instructions-restore-confirm"
+          @click="restore"
+        >
+          Restore this version
+        </button>
+        <button type="button" :disabled="busy" @click="restoring = null">Cancel</button>
+      </section>
       <ol v-if="history.length > 0" class="versions" data-cy="own-instructions-versions">
         <li
           v-for="one in history"
@@ -264,6 +587,10 @@ async function decide(askId: string, approve: boolean): Promise<void> {
               in force
             </em>
             · {{ fullTime(one.writtenAt) }} · {{ WROTE_IT_MEANS[one.whoWroteIt] }}
+            <span class="version-author">
+              · {{ rulesChangeLabel(one)
+              }}<template v-if="one.author"> · {{ one.author.profile }}</template></span
+            >
             <span
               v-if="one.broughtBack !== null"
               :data-cy="`own-instructions-brought-back-${one.version}`"
@@ -281,7 +608,7 @@ async function decide(askId: string, approve: boolean): Promise<void> {
             type="button"
             :disabled="busy"
             :data-cy="`own-instructions-restore-${one.version}`"
-            @click="save(one.text, one.version)"
+            @click="previewRestore(one)"
           >
             Restore this text
           </button>
@@ -292,6 +619,39 @@ async function decide(askId: string, approve: boolean): Promise<void> {
 </template>
 
 <style scoped>
+.change-notice {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--radius-md);
+}
+.change-preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  border: var(--border-width) solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel-2);
+}
+.change-preview h4 {
+  margin: 0;
+}
+.change-preview article {
+  min-width: 0;
+}
+.review-end {
+  display: block;
+  min-height: 1px;
+  width: 1px;
+}
+.version-author {
+  display: block;
+}
+
 .own-instructions {
   display: flex;
   flex-direction: column;
