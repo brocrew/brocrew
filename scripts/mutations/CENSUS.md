@@ -5056,7 +5056,7 @@ A row that cannot apply is RETIRED IN PLACE: its definition stays in its table a
 | 496 | `apps/desktop/src/main/runtime/end-rails.ts` | `(file no longer in the tree)` |
 | 496 | `apps/desktop/src/main/runtime/runtime-host.ts` | `74e9db5dde857eeb` |
 | 497 | `apps/desktop/src/main/runtime/factory-text.ts` | `9395298da5fb5546` |
-| 497 | `docs/development.md` | `ecef1c7974675e17` |
+| 497 | `docs/development.md` | `e3c3c5448a306103` |
 | 498 | `apps/desktop/src/main/runtime/factory-text.ts` | `9395298da5fb5546` |
 | 498 | `apps/desktop/src/main/runtime/workspace.ts` | `95dc657f5878be68` |
 | 499 | `apps/desktop/src/main/runtime/runtime-host.ts` | `74e9db5dde857eeb` |
@@ -5779,7 +5779,7 @@ A row that cannot apply is RETIRED IN PLACE: its definition stays in its table a
 | 697 | `apps/desktop/src/renderer/src/components/PermissionCard.vue` | `f12c327f9bd89239` |
 | 697 | `apps/desktop/src/renderer/src/lib/attention.ts` | `b849eb445400490d` |
 | 697 | `apps/desktop/src/shared/stalled-work.ts` | `9be011485536e48e` |
-| 697 | `docs/development.md` | `ecef1c7974675e17` |
+| 697 | `docs/development.md` | `e3c3c5448a306103` |
 | 697 | `packages/runtime/smoke/claude-tool-answer-probe.smoke.ts` | `fecf128ee48e7b44` |
 | 697 | `packages/runtime/smoke/reopen-grant-evidence.ts` | `849d7acb0be9aca2` |
 | 697 | `packages/runtime/src/agent-tools.ts` | `1e640c5050aacf18` |
@@ -5837,7 +5837,7 @@ A row that cannot apply is RETIRED IN PLACE: its definition stays in its table a
 | 703 | `apps/desktop/src/main/runtime/queued-message.ts` | `023f48d0f8caf5ea` |
 | 703 | `apps/desktop/src/main/runtime/reply-rails.ts` | `1b3dd86ebfb3ed6b` |
 | 703 | `apps/desktop/src/main/runtime/runtime-host.ts` | `74e9db5dde857eeb` |
-| 704 | `docs/development.md` | `ecef1c7974675e17` |
+| 704 | `docs/development.md` | `e3c3c5448a306103` |
 | 704 | `packages/runtime/smoke/early-interrupt-evidence.ts` | `0317ba29dd7863d2` |
 | 704 | `packages/runtime/smoke/reopen-grant-evidence.ts` | `849d7acb0be9aca2` |
 | 704 | `packages/runtime/src/codex/codex-runtime.ts` | `59538c0c8ecf9dc1` |

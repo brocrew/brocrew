@@ -56,6 +56,7 @@ interface Running {
   run: LifecycleRun
   package: VerifiedPluginPackage
   ended: boolean
+  revocation?: Promise<void>
   priorityClamped?: boolean | null
 }
 
@@ -385,12 +386,19 @@ export class PluginLifecycleController {
     const ended = (proven: boolean) => {
       if (this.runs.get(install.pluginId) !== running || running.ended) return
       running.ended = true
-      // Only a positive witness for this exact run is expected during an intentional owner drain.
-      // Rejection remains unknown cleanup; a prior unexpected exit is never cleared by draining.
+      // Intentional exits belong to the drain; unexpected exits must also revoke consumers.
       if (this.draining && proven) return
-      this.block(install.pluginId)
+      const token = this.block(install.pluginId)
       this.cleanup.add(install.pluginId)
-      void this.revoke(install).catch(() => undefined)
+      running.revocation = this.revoke(install).then(() => {
+        if (
+          proven &&
+          this.runs.get(install.pluginId) === running &&
+          this.blocks.get(install.pluginId) === token
+        )
+          this.cleanup.delete(install.pluginId)
+      })
+      void running.revocation.catch(() => undefined)
     }
     void run.exited
       .then(
@@ -1021,12 +1029,13 @@ export class PluginLifecycleController {
     this.draining = true
     this.drainWork ??= bounded(async () => {
       const results = await Promise.allSettled(
-        [...this.runs.values()].map(async ({ run }) => {
+        [...this.runs.values()].map(async (running) => {
           const [, exit] = await Promise.allSettled([
-            Promise.resolve().then(() => run.stop()),
-            run.exited,
+            Promise.resolve().then(() => running.run.stop()),
+            running.run.exited,
           ])
           if (exit.status !== 'fulfilled') return pending()
+          await running.revocation
         }),
       )
       if (results.some((one) => one.status !== 'fulfilled')) return pending()
