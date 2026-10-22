@@ -25,8 +25,10 @@ describe('provider logic ratchet', () => {
         const prefix = name.startsWith('claude');
         const suffix = name.endsWith('codex');
         const position = providers.indexOf('codex');
+        const seen = providers.has('claude');
+        const collected = new Set(['codex']).has(provider);
       `),
-    ).toBe(7)
+    ).toBe(9)
   })
 
   it('scans main and neutral runtime, and rejects a new main comparison', () => {
