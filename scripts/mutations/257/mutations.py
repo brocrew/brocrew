@@ -159,8 +159,9 @@ MUTATIONS = [
         [
             (
                 HOST,
-                "  return provider === 'codex' ? provider : `${provider}:${profileId}`",
-                "  return `${provider}:${profileId}`",
+                # ⚑ **provider selection refactor · re-anchored in place, not retired** — The sign-in scope now uses an exhaustive selector; putting every provider under its profile still wrongly splits the machine-wide sign-in.
+                "  return providerValue(provider, { claude: false, codex: true })\n    ? provider\n    : `${provider}:${profileId}`\n",
+                "  return `${provider}:${profileId}`\n",
             )
         ],
     ),
@@ -171,8 +172,9 @@ MUTATIONS = [
         [
             (
                 HOST,
-                "  return provider === 'codex' ? provider : `${provider}:${profileId}`",
-                "  return provider",
+                # ⚑ **provider selection refactor · re-anchored in place, not retired** — The sign-in scope now uses an exhaustive selector; using only the provider still wrongly combines profile-scoped sign-ins.
+                "  return providerValue(provider, { claude: false, codex: true })\n    ? provider\n    : `${provider}:${profileId}`\n",
+                "  return provider\n",
             )
         ],
     ),

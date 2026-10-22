@@ -155,7 +155,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "M10 · a person's `/compact` on Codex is said to be a text this app kept no copy of, not "
         f"Codex's own compaction that sent no words · killed by `{TURN}`",
         [(HOST,
-          "          row.provider === 'codex' && target.words.trim() === '/compact'\n",
+          # ⚑ **provider selection refactor · re-anchored in place, not retired** — The compaction predicate now spans two lines with an exhaustive selector; forcing it false still mislabels the native compaction command.
+          "          providerValue(row.provider, { claude: false, codex: true }) &&\n          target.words.trim() === '/compact'\n",
           "          false\n")],
     ),
     # it('⛔ a text it never got: said so'), and the `sess_imported_words` answer

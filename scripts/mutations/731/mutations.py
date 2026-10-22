@@ -77,8 +77,9 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         [
             (
                 NATIVE,
-                "      ? claudeTranscriptPath(ref.sessionId, ref.cwd, providerHome)\n",
-                "      ? join(providerHome, 'projects', ref.cwd.replace(/[^a-zA-Z0-9]/g, '-'), `${ref.sessionId}.jsonl`)\n",
+                # ⚑ **provider selection refactor · re-anchored in place, not retired** — The same archive-path arm moved two spaces when its condition became an exhaustive selector; derive the folder from cwd again.
+                "    ? claudeTranscriptPath(ref.sessionId, ref.cwd, providerHome)\n",
+                "    ? join(providerHome, 'projects', ref.cwd.replace(/[^a-zA-Z0-9]/g, '-'), `${ref.sessionId}.jsonl`)\n",
             )
         ],
     ),

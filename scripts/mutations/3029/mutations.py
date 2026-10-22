@@ -92,8 +92,9 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "M5 · 🔴 **any `.jsonl` in the home is Claude's record** · a file the provider's lookup "
         f"names outside `projects/` is read as the transcript · killed by `{TURN}`",
         [(NATIVE,
-          "  if (provider === 'claude') return under('projects') && resolved.endsWith('.jsonl')\n",
-          "  if (provider === 'claude') return resolved.endsWith('.jsonl')\n")],
+          # ⚑ **provider selection refactor · re-anchored in place, not retired** — The archive validator now uses an exhaustive selector; dropping the projects boundary still accepts unrelated JSONL files.
+          "  if (providerValue(provider, { claude: true, codex: false }))\n    return under('projects') && resolved.endsWith('.jsonl')\n",
+          "  if (providerValue(provider, { claude: true, codex: false }))\n    return resolved.endsWith('.jsonl')\n")],
     ),
     # it('leaves no -shm or -wal beside a WAL-mode state database')
     (

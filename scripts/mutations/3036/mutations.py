@@ -107,8 +107,9 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "asking, and Codex asking first to still ask before changing anything · killed by "
         f"`{GRANT}`",
         [(HOST,
-          "    return row?.provider === 'codex' ? 'writes' : 'reads'\n",
-          "    return row?.provider === 'claude' ? 'writes' : 'reads'\n")],
+          # ⚑ **provider selection refactor · re-anchored in place, not retired** — The null case is explicit and the provider choice is exhaustive; reversing its values preserves the original wrong-reach fault.
+          "      : providerValue(row.provider, { claude: 'reads', codex: 'writes' })\n",
+          "      : providerValue(row.provider, { claude: 'writes', codex: 'reads' })\n")],
     ),
     (
         "M7 · `~/x` is joined under the giver's folder instead of the home folder, so the grant names "
@@ -192,8 +193,9 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "M18 · every report with no effort keeps the effort on record, not only a life's first — a "
         f"moved ask goes on showing the old level · killed by `{FIRST_REPORT}`",
         [(HOST,
-          "        effort === null && firstOfThisLife && session.provider === 'claude'\n",
-          "        effort === null && session.provider === 'claude'\n")],
+          # ⚑ **provider selection refactor · re-anchored in place, not retired** — The first-report predicate now spans three lines; removing only the life guard preserves the original stale-effort fault.
+          "        effort === null &&\n        firstOfThisLife &&\n        providerValue(session.provider, { claude: true, codex: false })\n",
+          "        effort === null &&\n        providerValue(session.provider, { claude: true, codex: false })\n")],
     ),
     (
         "M19 · a sub-agent's newer reply (`isSidechain`) names the conversation's model · killed by "
