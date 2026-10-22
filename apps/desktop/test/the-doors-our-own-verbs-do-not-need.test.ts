@@ -99,6 +99,7 @@ const THE_SPLIT: Readonly<Record<ToolName, BeyondItsRails>> = {
   // ⚠️ **And the layer's shape carries the rest**: every version is kept, attributed and
   // revertable, so a relay a person did not mean is visible and undoable.
   propose_agent_rules: 'nothing-its-rails-do-not-cover',
+  read_agent_rules: 'nothing-its-rails-do-not-cover',
   reply_to_parent: 'nothing-its-rails-do-not-cover',
   ask_question: 'nothing-its-rails-do-not-cover',
   // 🔴 **611 · a question carried one hop further** (HO-088 §3.2). ⛔ It starts nothing outside

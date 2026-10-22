@@ -1,22 +1,47 @@
+import { createHash } from 'node:crypto'
 import {
   closeSync,
+  constants,
   existsSync,
   fchmodSync,
+  fstatSync,
+  fsyncSync,
+  linkSync,
   lstatSync,
   mkdirSync,
+  openSync,
   readdirSync,
   renameSync,
   unlinkSync,
   writeFileSync,
+  type BigIntStats,
 } from 'node:fs'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
-import { aStagingName, createFreshFile, isStillTheFileOpened } from '@brobot2/runtime'
+import {
+  aStagingName,
+  createFreshFile,
+  isStillTheFileOpened,
+  claudeAutoMemoryDir,
+  claudeAutoMemoryIndex,
+  codexMemoryDir,
+  codexAdHocNotesDir,
+  CODEX_MEMORY_STORE_FILES,
+  isClaudeMemoryTopic,
+} from '@brobot2/runtime'
+import {
+  captureMethodFileGuard,
+  readKnowledgeFileCapture,
+  safeMethodFileName,
+  type MethodFileCapture,
+  type MethodLibraryInputs,
+} from '../saved-method-library'
 import type { Provider } from '@brobot2/shared'
 import type {
   AgentMemoryEntry,
   AgentMemoryStore,
   AmendmentRefused,
-  MemoryAmendmentAct,
+  MemoryEditAct,
+  MemoryAmendment,
   MemoryStoreState,
 } from '../../shared/agent-memory'
 import { keepToThisUser, verifyFileToThisUser, type AccessLists } from '../recovery/windows-privacy'
@@ -24,6 +49,7 @@ import {
   AGENT_MEMORY_NOTES_SHOWN,
   memoryStoreCounts,
   readAgentMemoryPage,
+  readAgentMemorySelection,
   readClaudeAgentMemory,
   readCodexAgentMemory,
   realPath,
@@ -180,14 +206,10 @@ export function readAgentMemoryPaged(
       }
     }
     const paged = readAgentMemoryPage(provider, home, page.offset, page.limit)
-    // ⚠️ **Amendable only where {@link amendAgentMemory} can find it**: that door re-derives the
-    // store with the launch readers, which list its first {@link AGENT_MEMORY_NOTES_SHOWN} topic files
-    // or notes — so one further down is shown, and not offered for a change the door would refuse.
-    const entries: AgentMemoryEntry[] = paged.memory.map((item) => {
-      const reachable =
-        item.kind === 'agent-memory' || paged.firstListed.includes(basename(item.path))
-      return { ...item, amendable: reachable && amendable(item.path, item.link, root) }
-    })
+    const entries: AgentMemoryEntry[] = paged.memory.map((item) => ({
+      ...item,
+      amendable: amendable(item.path, item.link, root),
+    }))
     const state = stateOf(entries, paged)
     // ⚑ A page asked past the last topic file or note of a store that holds some is not a store
     // nothing was written in. ⛔ Page one never is: an empty index there is nothing written.
@@ -341,8 +363,8 @@ export interface AmendmentInputs extends AgentMemoryInputs {
    * opened, never joined and never resolved.
    */
   readonly entry: string
-  /** One of `MEMORY_AMENDMENT`. */
-  readonly act: MemoryAmendmentAct
+  /** One of `MEMORY_EDIT`. */
+  readonly act: MemoryEditAct
   /** ⛔ **The replacement text for `corrected`**, and ignored for `removed`. */
   readonly text: string
 }
@@ -375,12 +397,16 @@ export async function amendAgentMemory(
   inputs: AmendmentInputs,
   seams: MemoryWriteSeams = {},
 ): Promise<AmendmentOutcome> {
-  const store = storeFor(inputs.provider, inputs, rootsOf(inputs))
-  const found = store.entries.find((item) => item.path === inputs.entry)
+  const found = readAgentMemorySelection(
+    inputs.provider,
+    inputs.homeOf(inputs.provider),
+    inputs.entry,
+  )
   if (found === undefined) return { done: false, refused: 'no-such-entry', entry: inputs.entry }
   // ⛔ **Re-derived, not carried.** See the docblock: the reading a surface holds was taken when
   // the popup opened, and a link can be planted between then and the press.
-  if (!found.amendable) return { done: false, refused: 'somewhere-else', entry: found.path }
+  if (!amendable(found.path, found.link, rootsOf(inputs)))
+    return { done: false, refused: 'somewhere-else', entry: found.path }
   // ⚠️ **The bytes as the guarded reader got them**, which is also what makes `truncated` matter:
   // a file this app could only read part of is one it must not rewrite from that part.
   if (found.truncated) return { done: false, refused: 'unreadable', entry: found.path }
@@ -395,10 +421,14 @@ export async function amendAgentMemory(
 
 /** What a correction's write asks of the system; Windows' own by default. */
 export interface MemoryWriteSeams {
+  /** Test-only interleaving immediately before a confirmed memory unlink. */
+  readonly beforeMemoryUnlink?: () => void
   readonly platform?: NodeJS.Platform
   readonly lists?: AccessLists
   /** A filesystem interleaving immediately before the final creation checks. */
   readonly beforeStageCreate?: (folder: string) => void
+  /** An interleaving after a prepared knowledge stage was checked, before its publish-time open. */
+  readonly beforeStagePublishOpen?: (stage: string) => void
 }
 
 /**
@@ -409,6 +439,168 @@ const STAGED = /^\..+\.brobot-(?:[0-9a-f]{24}|\d+-\d+)$/
 
 /** The staged corrections this process is writing now. */
 const writing = new Set<string>()
+
+/** A private byte image, prepared before a knowledge operation starts publishing its files. */
+export interface KnowledgeFileStage {
+  /** The caller rechecks its stored intent and fresh baseline immediately before publication. */
+  install(replace: boolean, check: () => void): void
+  /** Idempotent; a replaced or redirected staging name is never removed. */
+  discard(): void
+}
+
+/**
+ * Prepare bounded exact bytes using the memory writer's private staging hierarchy. This internal
+ * helper grants no path authority: main derives the destination and supplies its intent guard.
+ * An absent destination is installed exclusively; replacing a file replaces only its named entry.
+ */
+export async function stageKnowledgeFile(
+  path: string,
+  bytes: Buffer,
+  mode: number,
+  homesRoot: string,
+  check: () => void,
+  seams: MemoryWriteSeams = {},
+): Promise<KnowledgeFileStage> {
+  if (!Number.isInteger(mode) || mode < 0 || mode > 0o777 || bytes.length > 64 * 1024)
+    throw new Error('The knowledge file image is invalid')
+  const contents = Buffer.from(bytes)
+  const root = resolve(homesRoot)
+  const destination = resolve(path)
+  const part = relative(root, dirname(destination))
+  if (part === '..' || part.startsWith(`..${sep}`) || isAbsolute(part))
+    throw new Error('The knowledge destination is outside the managed root')
+  const hierarchy = [directoryIdentity(root)]
+  let cursor = root
+  for (const segment of part.split(sep).filter(Boolean)) {
+    cursor = join(cursor, segment)
+    hierarchy.push(directoryIdentity(cursor))
+  }
+  const validate = () => {
+    for (const directory of hierarchy) checkDirectory(directory)
+    check()
+  }
+  validate()
+  const platform = seams.platform ?? process.platform
+  const privateStage = platform === 'win32' ? await privateStageFolder(root, seams) : null
+  validate()
+  const stageFolder = privateStage?.path ?? dirname(destination)
+  const stageDirectories = privateStage?.hierarchy ?? hierarchy
+  const validateStageFolder = () => {
+    for (const directory of stageDirectories) checkDirectory(directory)
+  }
+  seams.beforeStageCreate?.(stageFolder)
+  validateStageFolder()
+  validate()
+  if (privateStage !== null && hierarchy[hierarchy.length - 1]?.dev !== privateStage.dev)
+    throw new Error('The knowledge staging folder is not on the destination volume')
+  const staged = aStagingName(join(stageFolder, `.${basename(destination)}`))
+  const fd = createFreshFile(staged)
+  let born: BigIntStats
+  try {
+    born = fstatSync(fd, { bigint: true })
+  } catch (error) {
+    closeSync(fd)
+    throw error
+  }
+  writing.add(staged)
+  let prepared: BigIntStats
+  const namedStage = (expected: BigIntStats): void => {
+    validateStageFolder()
+    const actual = lstatSync(staged, { bigint: true })
+    if (
+      !actual.isFile() ||
+      actual.isSymbolicLink() ||
+      actual.dev !== expected.dev ||
+      actual.ino !== expected.ino ||
+      actual.size !== expected.size ||
+      actual.mtimeNs !== expected.mtimeNs ||
+      actual.ctimeNs !== expected.ctimeNs
+    )
+      throw new Error('The prepared knowledge file was replaced or changed')
+  }
+  const removeOwnStage = () => {
+    try {
+      validateStageFolder()
+      const actual = lstatSync(staged, { bigint: true })
+      if (
+        actual.isFile() &&
+        !actual.isSymbolicLink() &&
+        actual.dev === born.dev &&
+        actual.ino === born.ino
+      )
+        unlinkSync(staged)
+    } catch {
+      // A redirected or unavailable stage remains for recovery; never remove an unrelated entry.
+    }
+  }
+  try {
+    try {
+      await verifyFileToThisUser(staged, seams.lists, platform)
+      validate()
+      namedStage(born)
+      if (platform === 'win32' && !isStillTheFileOpened(staged, fd))
+        throw new Error('The knowledge staging file changed while its privacy was checked')
+      writeFileSync(fd, contents)
+      fsyncSync(fd)
+      prepared = fstatSync(fd, { bigint: true })
+    } finally {
+      closeSync(fd)
+    }
+    namedStage(prepared)
+  } catch (error) {
+    removeOwnStage()
+    writing.delete(staged)
+    throw error
+  }
+  let active = true
+  return {
+    install(replace, guard) {
+      if (!active) throw new Error('The prepared knowledge file has already been consumed')
+      validate()
+      guard()
+      namedStage(prepared)
+      seams.beforeStagePublishOpen?.(staged)
+      const publishing = openSync(
+        staged,
+        constants.O_RDWR | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0),
+      )
+      try {
+        const opened = fstatSync(publishing, { bigint: true })
+        if (
+          opened.dev !== prepared.dev ||
+          opened.ino !== prepared.ino ||
+          !opened.isFile() ||
+          opened.size !== prepared.size ||
+          opened.mtimeNs !== prepared.mtimeNs ||
+          opened.ctimeNs !== prepared.ctimeNs ||
+          (platform === 'win32' && !isStillTheFileOpened(staged, publishing))
+        )
+          throw new Error('The prepared knowledge file was replaced before publication')
+        fchmodSync(publishing, mode)
+        fsyncSync(publishing)
+        prepared = fstatSync(publishing, { bigint: true })
+      } finally {
+        closeSync(publishing)
+      }
+      namedStage(prepared)
+      if (replace) {
+        renameSync(staged, destination)
+      } else {
+        // Hard-link creation fails if the name exists, including a file recreated after Delete.
+        linkSync(staged, destination)
+        removeOwnStage()
+      }
+      active = false
+      writing.delete(staged)
+    },
+    discard() {
+      if (!active) return
+      active = false
+      removeOwnStage()
+      writing.delete(staged)
+    },
+  }
+}
 
 /**
  * Replace a file's bytes without opening it: write a fresh file exclusively and rename it over
@@ -543,7 +735,7 @@ function privateStageFolder(
 }
 
 /** Removes the staged corrections in `folder` that no write here is using: a crash left them. */
-function sweepStaged(folder: string): void {
+function sweepStaged(folder: string, check?: () => void): void {
   let names: string[]
   try {
     names = readdirSync(folder)
@@ -554,9 +746,237 @@ function sweepStaged(folder: string): void {
     const path = join(folder, name)
     if (!STAGED.test(name) || writing.has(path)) continue
     try {
+      check?.()
       if (lstatSync(path).isFile()) unlinkSync(path)
     } catch {
       // best effort: one left behind is hidden from every reading and is tried again next time
     }
   }
+}
+
+/** Sweep only inactive app stages inside a freshly guarded managed namespace. */
+export function sweepKnowledgeStages(folder: string, check: () => void): void {
+  check()
+  sweepStaged(folder, check)
+}
+
+export interface MemoryFileSelection extends AgentMemoryInputs {
+  readonly provider: Provider
+  readonly entry: string
+  readonly fingerprint: string
+  readonly confirmed: boolean
+  /** Main rechecks identity and any source record; no window supplies a function. */
+  readonly check: () => void
+}
+export interface MemoryFileRestoration extends AgentMemoryInputs {
+  /** Main loads this from the selected identity's immutable history. */
+  readonly source: MemoryAmendment
+  readonly confirmed: boolean
+  readonly check: () => void
+}
+export type MemoryFileResult =
+  | {
+      readonly ok: true
+      readonly entry: string
+      readonly textBefore: string | null
+      readonly textAfter: string | null
+    }
+  | { readonly ok: false; readonly reason: string; readonly changed?: boolean }
+interface MemoryLocation {
+  readonly inputs: MethodLibraryInputs
+  readonly name: string
+  readonly entry: string
+}
+
+/** The original eligible location in the current provider home, including an absent note. */
+function memoryLocation(
+  inputs: AgentMemoryInputs,
+  provider: Provider,
+  entry: string,
+): MemoryLocation | null {
+  if (inputs.homesRoot === null || !PROVIDERS.includes(provider)) return null
+  const home = inputs.homeOf(provider)
+  const fixed =
+    provider === 'claude'
+      ? [claudeAutoMemoryIndex(home)]
+      : CODEX_MEMORY_STORE_FILES.map((file) => join(codexMemoryDir(home), ...file.at))
+  const name = basename(entry)
+  if (!safeMethodFileName(name)) return null
+  const notes = provider === 'claude' ? claudeAutoMemoryDir(home) : codexAdHocNotesDir(home)
+  const known =
+    fixed.includes(entry) ||
+    (dirname(entry) === notes && (provider === 'codex' || isClaudeMemoryTopic(name)))
+  if (!known) return null
+  const folder = fixed.includes(entry) ? dirname(fixed.find((path) => path === entry)!) : notes
+  const derived = join(folder, name)
+  if (derived !== entry) return null
+  return { inputs: { homesRoot: inputs.homesRoot, folder }, name, entry: derived }
+}
+function memoryImage(location: MemoryLocation): MethodFileCapture | null {
+  return readKnowledgeFileCapture(location.inputs, location.name)
+}
+function validText(image: MethodFileCapture): boolean {
+  return image.bytes.equals(Buffer.from(image.bytes.toString('utf8'), 'utf8'))
+}
+function selectedMemory(inputs: AgentMemoryInputs, provider: Provider, entry: string) {
+  if (inputs.homesRoot === null || !PROVIDERS.includes(provider)) return null
+  // The caller's identifier is matched against fresh accepted names before any capture.
+  const found = readAgentMemorySelection(provider, inputs.homeOf(provider), entry)
+  if (found === undefined || found.truncated) return null
+  const location = memoryLocation(inputs, provider, found.path)
+  if (location === null) return null
+  const image = memoryImage(location)
+  if (image === null || !validText(image) || image.bytes.toString('utf8') !== found.text)
+    return null
+  return { location, image }
+}
+function sameMemoryImage(a: MethodFileCapture, b: MethodFileCapture | null): boolean {
+  return (
+    b !== null &&
+    a.fingerprint === b.fingerprint &&
+    a.mode === b.mode &&
+    a.identity.dev === b.identity.dev &&
+    a.identity.ino === b.identity.ino &&
+    a.identity.mtimeNs === b.identity.mtimeNs &&
+    a.identity.ctimeNs === b.identity.ctimeNs
+  )
+}
+
+/** Raw displayed fingerprint, or no destructive control when the whole entry cannot be captured. */
+export function memoryEntryFingerprint(
+  inputs: AgentMemoryInputs,
+  provider: Provider,
+  entry: string,
+): string | null {
+  try {
+    return selectedMemory(inputs, provider, entry)?.image.fingerprint ?? null
+  } catch {
+    return null
+  }
+}
+
+/** One confirmed removal. Main records the returned before-text before acknowledging success. */
+export function removeMemoryEntry(
+  inputs: MemoryFileSelection,
+  seams: MemoryWriteSeams = {},
+): MemoryFileResult {
+  if (inputs.confirmed !== true) return { ok: false, reason: 'confirmation-required' }
+  try {
+    const selected = selectedMemory(inputs, inputs.provider, inputs.entry)
+    if (selected === null || selected.image.fingerprint !== inputs.fingerprint)
+      return { ok: false, reason: 'changed-or-unreadable' }
+    const namespace = captureMethodFileGuard(selected.location.inputs)
+    const guard = () => {
+      namespace()
+      inputs.check()
+      if (!sameMemoryImage(selected.image, memoryImage(selected.location)))
+        throw new Error('The memory entry changed')
+      namespace()
+    }
+    guard()
+    seams.beforeMemoryUnlink?.()
+    guard()
+    unlinkSync(selected.location.entry)
+    return {
+      ok: true,
+      entry: selected.location.entry,
+      textBefore: selected.image.bytes.toString('utf8'),
+      textAfter: null,
+    }
+  } catch {
+    return { ok: false, reason: 'changed-or-unreadable' }
+  }
+}
+
+/** Restore saved text exclusively; an existing file or redirected namespace is never replaced. */
+export async function restoreMemoryEntry(
+  inputs: MemoryFileRestoration,
+  seams: MemoryWriteSeams = {},
+): Promise<MemoryFileResult> {
+  if (inputs.confirmed !== true) return { ok: false, reason: 'confirmation-required' }
+  if (
+    inputs.source?.act !== 'removed' ||
+    typeof inputs.source.textBefore !== 'string' ||
+    inputs.source.textAfter !== null
+  )
+    return { ok: false, reason: 'not-restorable' }
+  const savedText = inputs.source.textBefore
+  const sourceStamp = JSON.stringify(inputs.source)
+  const provider = inputs.source.provider
+  const entry = inputs.source.entry
+  const bytes = Buffer.from(savedText, 'utf8')
+  if (bytes.length > 64 * 1024) return { ok: false, reason: 'too-large' }
+  let stage: KnowledgeFileStage | null = null
+  let installed = false
+  try {
+    const location = memoryLocation(inputs, provider, entry)
+    if (location === null) return { ok: false, reason: 'not-restorable' }
+    const namespace = captureMethodFileGuard(location.inputs)
+    const guard = () => {
+      namespace()
+      inputs.check()
+      if (JSON.stringify(inputs.source) !== sourceStamp)
+        throw new Error('The source record changed')
+      if (memoryImage(location) !== null) throw new Error('The memory entry was recreated')
+      namespace()
+    }
+    guard()
+    sweepKnowledgeStages(location.inputs.folder, namespace)
+    guard()
+    stage = await stageKnowledgeFile(
+      location.entry,
+      bytes,
+      0o600,
+      location.inputs.homesRoot,
+      guard,
+      seams,
+    )
+    guard()
+    stage.install(false, guard)
+    installed = true
+    namespace()
+    const written = memoryImage(location)
+    if (written === null || !written.bytes.equals(bytes))
+      throw new Error('The restoration could not be verified')
+    return {
+      ok: true,
+      entry: location.entry,
+      textBefore: null,
+      textAfter: savedText,
+    }
+  } catch {
+    return {
+      ok: false,
+      reason: installed ? 'change-incomplete' : 'changed-or-unreadable',
+      ...(installed ? { changed: true } : {}),
+    }
+  } finally {
+    stage?.discard()
+  }
+}
+
+/** The inverse still requires confirmation and refuses any changed current text. */
+export function undoMemoryRestoration(
+  inputs: MemoryFileRestoration,
+  seams: MemoryWriteSeams = {},
+): MemoryFileResult {
+  if (inputs.source?.act !== 'restored' || typeof inputs.source.textAfter !== 'string')
+    return { ok: false, reason: 'not-restorable' }
+  const sourceStamp = JSON.stringify(inputs.source)
+  return removeMemoryEntry(
+    {
+      ...inputs,
+      check: () => {
+        inputs.check()
+        if (JSON.stringify(inputs.source) !== sourceStamp)
+          throw new Error('The source record changed')
+      },
+      provider: inputs.source.provider,
+      entry: inputs.source.entry,
+      fingerprint: createHash('sha256')
+        .update(Buffer.from(inputs.source.textAfter, 'utf8'))
+        .digest('hex'),
+    },
+    seams,
+  )
 }

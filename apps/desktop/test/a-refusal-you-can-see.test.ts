@@ -262,6 +262,7 @@ describe('405 · a refusal you can see', () => {
     judgeTheDefaultItNames: (...args) => host.judgeTheDefaultItNames(...args),
     // ⚑ **582 · straight through to the real host**, like its neighbour.
     proposeAgentRules: (...args) => host.proposeAgentRules(...args),
+    readAgentRules: (...args) => host.readAgentRules(...args),
     requestMcpServer: (...args) => host.requestMcpServer(...args),
     noteRefusal: (...args) => {
       host.noteRefusal(...args)

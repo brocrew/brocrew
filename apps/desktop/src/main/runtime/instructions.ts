@@ -1813,7 +1813,7 @@ export interface AgentMemoryPage extends AgentMemoryStoreRead {
   listed: number
   /**
    * ⚑ **The names the launch readers list** — the first {@link AGENT_MEMORY_NOTES_SHOWN} topic files
-   * or notes, the ones `amendAgentMemory` can find again.
+   * or notes, independently of the window's selected entry.
    */
   firstListed: readonly string[]
 }
@@ -1885,6 +1885,30 @@ export function readAgentMemoryPage(
     listed: listing.names.length,
     firstListed: listing.names.slice(0, AGENT_MEMORY_NOTES_SHOWN),
   }
+}
+
+/** Resolve a selected entry against fresh names, then let the bounded page reader read it. */
+export function readAgentMemorySelection(
+  provider: Provider,
+  providerHome: string,
+  entry: string,
+): InjectedInstruction | undefined {
+  const isClaude = provider === 'claude'
+  const fixed = isClaude
+    ? [claudeAutoMemoryIndex(providerHome)]
+    : CODEX_MEMORY_STORE_FILES.map((file) => join(codexMemoryDir(providerHome), ...file.at))
+  if (fixed.includes(entry))
+    return readAgentMemoryPage(provider, providerHome, 0, 1).memory.find(
+      (item) => item.path === entry,
+    )
+  const folder = isClaude ? claudeAutoMemoryDir(providerHome) : codexAdHocNotesDir(providerHome)
+  const names = isClaude ? claudeMemoryTopics(folder).names : adHocNotes(folder).names
+  const offset = names.findIndex((name) => join(folder, name) === entry)
+  if (offset < 0) return undefined
+  // A changed ordering can refuse the selection; it cannot redirect it to another file.
+  return readAgentMemoryPage(provider, providerHome, offset, 1).memory.find(
+    (item) => item.path === entry,
+  )
 }
 
 /** ⚑ A file's size, as a page's budget counts it: at most the per-file cap, and 0 when it is not there. */

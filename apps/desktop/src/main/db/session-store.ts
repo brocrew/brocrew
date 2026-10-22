@@ -1,3 +1,9 @@
+import {
+  createMethodChangeStore,
+  type MethodChangeIntent,
+  type MethodChangeRecord,
+  type MethodFileState,
+} from './method-changes'
 import { withOptionalIndexes } from './optional-indexes'
 import { searchPastWork, closePastWorkSearch, pastWorkSource } from './past-work-search'
 import type { PastWorkSearchResult, PastWorkSource } from '../../shared/past-work-search'
@@ -102,6 +108,7 @@ import type {
 } from '../../shared/runtime-ipc'
 import {
   DEFAULT_PROFILE_ID,
+  agentName,
   PROVIDER_NAME,
   seededProviderFor,
   theMessagesOf,
@@ -258,10 +265,13 @@ import {
 } from '../../shared/agent-memory'
 import {
   WHO_WROTE_IT,
+  OWN_INSTRUCTIONS_CHARS,
   configuredLayerOf,
   waitingOnAPerson,
   type InstructionAskWaiting,
   type InstructionEnding,
+  type InstructionUnread,
+  type RulesAuthor,
   type OwnInstructions,
   type OwnInstructionsVersion,
   type OwnInstructionsWrite,
@@ -1789,6 +1799,30 @@ export interface SessionStore {
    * quietly overwriting: two writers that compute the same number collide on the primary key.
    */
   writeOwnInstructions(said: OwnInstructionsWrite, at: number): OwnInstructionsVersion | null
+  undoOwnInstructions(
+    profileSlug: string,
+    expectedVersion: number,
+    by: ActedBy,
+    at: number,
+  ): OwnInstructionsVersion | null
+  instructionUnread(profileSlug: string): InstructionUnread
+  beginMethodChange(
+    profileSlug: string,
+    said: MethodChangeIntent,
+    by: ActedBy,
+    at: number,
+  ): MethodChangeRecord | null
+  settleMethodChange(
+    profileSlug: string,
+    id: string,
+    outcome: 'done' | 'partial',
+    actual: readonly MethodFileState[],
+    by: ActedBy,
+  ): boolean
+  hasPendingMethodChange(profileSlug: string): boolean
+  methodChange(profileSlug: string, id: string): MethodChangeRecord | null
+  methodChanges(profileSlug: string, offset?: number, limit?: number): readonly MethodChangeRecord[]
+  markInstructionsSeen(profileSlug: string, version: number, by: ActedBy): boolean
   /**
    * 🔴 **Every amendment a PERSON has made to one identity's memory, newest first** (625,
    * `EXT-015` §3.3).
@@ -3963,6 +3997,14 @@ export const NULL_SESSION_STORE: SessionStore = {
   // ⛔ **Nothing was written, so nothing may be claimed to have been** — `setCapabilities`'s `false`
   // one method up, in the shape this door answers with.
   writeOwnInstructions: () => null,
+  undoOwnInstructions: () => null,
+  instructionUnread: () => ({ seenThrough: 0, newestDirectVersion: 0, unread: false }),
+  beginMethodChange: () => null,
+  settleMethodChange: () => false,
+  hasPendingMethodChange: () => false,
+  methodChange: () => null,
+  methodChanges: () => [],
+  markInstructionsSeen: () => false,
   // ⚑ **Empty, exactly as `ownInstructionsOf` is** — a store with no database holds no record of
   // anybody amending anything, which is true of it.
   memoryAmendmentsOf: () => [],
@@ -5577,6 +5619,7 @@ export function createSessionStore(
   random: () => number = Math.random,
 ): SessionStore {
   const connection = db
+  const methodChangeStore = createMethodChangeStore(connection, now)
   let reconciliationNames: AppStatement | undefined
   const ledgerWrites = ledgerWritesFor(connection)
   db = withOptionalIndexes(db)
@@ -6124,6 +6167,10 @@ export function createSessionStore(
     versionsOf: AppStatement
     newestOf: AppStatement
     insertVersion: AppStatement
+    versionOf: AppStatement
+    seenOf: AppStatement
+    markSeen: AppStatement
+    newestDirect: AppStatement
   } | null = null
   const ownInstructionSql = (): NonNullable<typeof ownInstructionStatements> =>
     (ownInstructionStatements ??= {
@@ -6134,7 +6181,7 @@ export function createSessionStore(
        * that index backwards for a `DESC` on its second column.
        */
       versionsOf: db.prepare(
-        `SELECT version, text, wrote_it, by, conversation_id, said, brought_back, created_at
+        `SELECT version, text, wrote_it, author, by, conversation_id, said, brought_back, created_at
            FROM identity_instruction WHERE identity_id = ? ORDER BY version DESC`,
       ),
       /**
@@ -6146,7 +6193,7 @@ export function createSessionStore(
        * defined by — see `whatIsInForce`, which is the shared fold this agrees with.
        */
       newestOf: db.prepare(
-        `SELECT version, text, wrote_it, by, conversation_id, said, brought_back, created_at
+        `SELECT version, text, wrote_it, author, by, conversation_id, said, brought_back, created_at
            FROM identity_instruction WHERE identity_id = ? ORDER BY version DESC LIMIT 1`,
       ),
       /**
@@ -6157,9 +6204,20 @@ export function createSessionStore(
        */
       insertVersion: db.prepare(
         `INSERT INTO identity_instruction
-           (id, identity_id, version, text, wrote_it, by, conversation_id, said, brought_back, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, identity_id, version, text, wrote_it, author, by, conversation_id, said, brought_back, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ),
+      versionOf: db.prepare(
+        'SELECT text FROM identity_instruction WHERE identity_id = ? AND version = ?',
+      ),
+      seenOf: db.prepare(
+        'SELECT seen_through FROM identity_instruction_seen WHERE identity_id = ?',
+      ),
+      markSeen:
+        db.prepare(`INSERT INTO identity_instruction_seen (identity_id, seen_through) VALUES (?, ?)
+        ON CONFLICT(identity_id) DO UPDATE SET seen_through = max(seen_through, excluded.seen_through)`),
+      newestDirect: db.prepare(`SELECT max(version) AS version FROM identity_instruction
+        WHERE identity_id = ? AND wrote_it = 'an-agent-direct'`),
     })
 
   /** One `identity_instruction` row as `better-sqlite3` hands it back. */
@@ -6168,6 +6226,7 @@ export function createSessionStore(
     text: string
     /** ⛔ **`unknown`, even though the column CHECKs it** — see {@link foldWhoWroteIt}. */
     wrote_it: unknown
+    author: string | null
     by: unknown
     conversation_id: string | null
     said: string | null
@@ -6216,18 +6275,36 @@ export function createSessionStore(
     }
   }
 
-  const ownInstructionFrom = (row: OwnInstructionRow): OwnInstructionsVersion => ({
-    version: row.version,
-    text: row.text,
-    whoWroteIt: foldWhoWroteIt(row.wrote_it),
-    // ⚑ **`actedByFrom` is the same fold every other stored `ActedBy` passes through**, so a row
-    // this build cannot read answers *this app does not know who* rather than naming somebody.
-    by: actorOf(row.by),
-    conversation: row.conversation_id,
-    said: row.said,
-    broughtBack: row.brought_back,
-    writtenAt: row.created_at,
-  })
+  const authorFrom = (stored: string | null): RulesAuthor | undefined => {
+    if (stored === null) return undefined
+    try {
+      const value: unknown = JSON.parse(stored)
+      if (value === null || typeof value !== 'object') return undefined
+      const fields = value as Record<string, unknown>
+      return typeof fields['profile'] === 'string' && typeof fields['name'] === 'string'
+        ? { profile: fields['profile'], name: fields['name'] }
+        : undefined
+    } catch {
+      return undefined
+    }
+  }
+
+  const ownInstructionFrom = (row: OwnInstructionRow): OwnInstructionsVersion => {
+    const author = authorFrom(row.author)
+    return {
+      version: row.version,
+      text: row.text,
+      whoWroteIt: foldWhoWroteIt(row.wrote_it),
+      // ⚑ **`actedByFrom` is the same fold every other stored `ActedBy` passes through**, so a row
+      // this build cannot read answers *this app does not know who* rather than naming somebody.
+      by: actorOf(row.by),
+      conversation: row.conversation_id,
+      said: row.said,
+      broughtBack: row.brought_back,
+      writtenAt: row.created_at,
+      ...(author === undefined ? {} : { author }),
+    }
+  }
 
   /**
    * 🔴 **`identity_memory_amendment`'s statements — its own lazy bag** (625) — see {@link spawnSql}
@@ -6236,6 +6313,7 @@ export function createSessionStore(
   let memoryAmendmentStatements: {
     amendmentsOf: AppStatement
     newestOf: AppStatement
+    newestForEntry: AppStatement
     insertAmendment: AppStatement
   } | null = null
   const memoryAmendmentSql = (): NonNullable<typeof memoryAmendmentStatements> =>
@@ -6246,12 +6324,16 @@ export function createSessionStore(
        * SQLite reads that index backwards for a `DESC` on its second column.
        */
       amendmentsOf: db.prepare(
-        `SELECT id, seq, provider, entry, act, by, text_before, text_after, created_at
+        `SELECT id, seq, provider, entry, act, by, text_before, text_after, created_at, source_id
            FROM identity_memory_amendment WHERE identity_id = ? ORDER BY seq DESC`,
       ),
       /** 🔴 **The ONE row the allocator needs** — its own statement, so a write never pays for a history. */
       newestOf: db.prepare(
         `SELECT seq FROM identity_memory_amendment WHERE identity_id = ? ORDER BY seq DESC LIMIT 1`,
+      ),
+      newestForEntry: db.prepare(
+        `SELECT id, seq, provider, entry, act, by, text_before, text_after, created_at, source_id
+           FROM identity_memory_amendment WHERE identity_id = ? AND provider = ? AND entry = ? ORDER BY seq DESC LIMIT 1`,
       ),
       /**
        * ⛔ **A plain `INSERT`, never `OR IGNORE`** — `insertVersion`'s own note and for its reason:
@@ -6261,8 +6343,8 @@ export function createSessionStore(
        */
       insertAmendment: db.prepare(
         `INSERT INTO identity_memory_amendment
-           (id, identity_id, seq, provider, entry, act, by, text_before, text_after, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, identity_id, seq, provider, entry, act, by, text_before, text_after, created_at, source_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ),
     })
 
@@ -6275,9 +6357,10 @@ export function createSessionStore(
     entry: string
     act: unknown
     by: unknown
-    text_before: string
+    text_before: string | null
     text_after: string | null
     created_at: number
+    source_id: string | null
   }
 
   /**
@@ -6312,6 +6395,7 @@ export function createSessionStore(
     textBefore: row.text_before,
     textAfter: row.text_after,
     at: row.created_at,
+    ...(row.source_id === null ? {} : { sourceId: row.source_id }),
   })
 
   /** One `external_mcp_server` row as `better-sqlite3` hands it back. */
@@ -12456,13 +12540,53 @@ export function createSessionStore(
           return null
         }
         const newest = ownInstructionSql().newestOf.get(rowId) as OwnInstructionRow | undefined
+        if (said.whoWroteIt === 'a-person' && said.by.who !== 'a-person') return null
+        if (said.expectedVersion !== undefined && said.expectedVersion !== (newest?.version ?? 0))
+          return null
+        if (said.currentText !== undefined && said.currentText !== (newest?.text ?? '')) return null
+        let text = said.text
+        if (said.broughtBack !== null) {
+          if (said.by.who !== 'a-person' || said.whoWroteIt !== 'a-person') return null
+          if (said.broughtBack < 1 || said.broughtBack >= (newest?.version ?? 0) + 1) return null
+          const historical = ownInstructionSql().versionOf.get(rowId, said.broughtBack) as
+            { text: string } | undefined
+          if (historical === undefined) return null
+          if (said.text !== '' && said.text !== historical.text) return null
+          text = historical.text
+        }
+        if (
+          said.whoWroteIt === 'an-agent-direct' &&
+          (said.by.who !== 'an-agent' ||
+            said.author === undefined ||
+            said.said === null ||
+            said.said.trim() === '' ||
+            said.text.length > OWN_INSTRUCTIONS_CHARS ||
+            said.said.length > OWN_INSTRUCTIONS_CHARS ||
+            said.expectedVersion === undefined ||
+            said.currentText === undefined)
+        )
+          return null
+        if (said.whoWroteIt === 'an-agent-direct' && said.by.who === 'an-agent') {
+          const identity = this.identityOf(said.by.agent)
+          if (identity === null || said.conversation !== said.by.agent) return null
+          const named = spawnSql().identityNameById.get(
+            agentIdentityRowId(identity.profileSlug),
+          ) as AgentIdentityName | undefined
+          if (
+            named === undefined ||
+            said.author?.profile !== named.slug ||
+            said.author.name !== agentName(named.slug, [named])
+          )
+            return null
+        }
         const version = (newest?.version ?? 0) + 1
         ownInstructionSql().insertVersion.run(
           ownInstructionsRowId(said.profileSlug, version),
           rowId,
           version,
-          said.text,
+          text,
           said.whoWroteIt,
+          said.author === undefined ? null : JSON.stringify(said.author),
           JSON.stringify(said.by),
           said.conversation,
           said.said,
@@ -12471,15 +12595,83 @@ export function createSessionStore(
         )
         return {
           version,
-          text: said.text,
+          text,
           whoWroteIt: said.whoWroteIt,
           by: said.by,
           conversation: said.conversation,
           said: said.said,
           broughtBack: said.broughtBack,
           writtenAt: at,
+          ...(said.author === undefined ? {} : { author: said.author }),
         }
       })()
+    },
+
+    undoOwnInstructions(profileSlug, expectedVersion, by, at) {
+      return db.transaction(() => {
+        if (by.who !== 'a-person' || !Number.isSafeInteger(expectedVersion) || expectedVersion < 1)
+          return null
+        const newest = ownInstructionSql().newestOf.get(agentIdentityRowId(profileSlug)) as
+          OwnInstructionRow | undefined
+        if (newest?.version !== expectedVersion) return null
+        return this.writeOwnInstructions(
+          {
+            profileSlug,
+            text: '',
+            expectedVersion,
+            currentText: newest.text,
+            whoWroteIt: 'a-person',
+            by,
+            conversation: null,
+            said: null,
+            broughtBack: expectedVersion === 1 ? null : expectedVersion - 1,
+          },
+          at,
+        )
+      })()
+    },
+
+    instructionUnread(profileSlug) {
+      const rowId = agentIdentityRowId(profileSlug)
+      const seen = ownInstructionSql().seenOf.get(rowId) as { seen_through: number } | undefined
+      const direct = ownInstructionSql().newestDirect.get(rowId) as { version: number | null }
+      const seenThrough = seen?.seen_through ?? 0
+      const newestDirectVersion = direct.version ?? 0
+      return { seenThrough, newestDirectVersion, unread: newestDirectVersion > seenThrough }
+    },
+
+    markInstructionsSeen(profileSlug, version, by) {
+      return db.transaction(() => {
+        if (by.who !== 'a-person' || !Number.isSafeInteger(version) || version < 0) return false
+        const rowId = agentIdentityRowId(profileSlug)
+        if (spawnSql().identityBySlug.get(foldProfileName(profileSlug)) === undefined) return false
+        const newest = ownInstructionSql().newestOf.get(rowId) as OwnInstructionRow | undefined
+        if (version > (newest?.version ?? 0)) return false
+        ownInstructionSql().markSeen.run(rowId, version)
+        return true
+      })()
+    },
+
+    beginMethodChange(profileSlug, said, by, at) {
+      return methodChangeStore.begin(agentIdentityRowId(foldProfileName(profileSlug)), said, by, at)
+    },
+    settleMethodChange(profileSlug, id, outcome, actual, by) {
+      return methodChangeStore.settle(
+        agentIdentityRowId(foldProfileName(profileSlug)),
+        id,
+        outcome,
+        actual,
+        by,
+      )
+    },
+    hasPendingMethodChange(profileSlug) {
+      return methodChangeStore.hasPending(agentIdentityRowId(foldProfileName(profileSlug)))
+    },
+    methodChange(profileSlug, id) {
+      return methodChangeStore.read(agentIdentityRowId(foldProfileName(profileSlug)), id)
+    },
+    methodChanges(profileSlug, offset = 0, limit = 50) {
+      return methodChangeStore.list(agentIdentityRowId(foldProfileName(profileSlug)), offset, limit)
     },
 
     memoryAmendmentsOf(profileSlug) {
@@ -12498,6 +12690,38 @@ export function createSessionStore(
         if (spawnSql().identityBySlug.get(foldProfileName(said.profileSlug)) === undefined) {
           return null
         }
+        const linked = said.act === 'restored' || said.sourceId !== undefined
+        if (linked) {
+          if (
+            said.by.who !== 'a-person' ||
+            typeof said.sourceId !== 'string' ||
+            !Number.isSafeInteger(at) ||
+            at < 0
+          )
+            return null
+          const raw = memoryAmendmentSql().newestForEntry.get(rowId, said.provider, said.entry) as
+            MemoryAmendmentRow | undefined
+          if (raw === undefined || raw.id !== said.sourceId) return null
+          const source = memoryAmendmentFrom(raw)
+          if (said.act === 'restored') {
+            if (
+              source.act !== 'removed' ||
+              typeof source.textBefore !== 'string' ||
+              said.textBefore !== null ||
+              said.textAfter !== source.textBefore
+            )
+              return null
+          } else if (said.act === 'removed') {
+            if (
+              source.act !== 'restored' ||
+              typeof source.textAfter !== 'string' ||
+              said.textBefore !== source.textAfter ||
+              said.textAfter !== null
+            )
+              return null
+          } else return null
+        }
+        const by: ActedBy = linked ? { who: 'a-person' } : said.by
         const newest = memoryAmendmentSql().newestOf.get(rowId) as { seq: number } | undefined
         const seq = (newest?.seq ?? 0) + 1
         const id = memoryAmendmentRowId(said.profileSlug, seq)
@@ -12508,10 +12732,11 @@ export function createSessionStore(
           said.provider,
           said.entry,
           said.act,
-          JSON.stringify(said.by),
+          JSON.stringify(by),
           said.textBefore,
           said.textAfter,
           at,
+          said.sourceId ?? null,
         )
         return {
           id,
@@ -12519,10 +12744,11 @@ export function createSessionStore(
           provider: said.provider,
           entry: said.entry,
           act: said.act,
-          by: said.by,
+          by,
           textBefore: said.textBefore,
           textAfter: said.textAfter,
           at,
+          ...(said.sourceId === undefined ? {} : { sourceId: said.sourceId }),
         }
       })()
     },
@@ -12718,7 +12944,11 @@ export function createSessionStore(
       // constraint failed*. ⛔ The `NO ACTION` key that points here is still the last line of
       // defence and its raise is deliberately not caught: a raise that reached a person would be a
       // defect in the door above, and swallowing it here is how it would stay invisible.
-      return spawnSql().deleteIdentity.run(agentIdentityRowId(profileSlug)).changes > 0
+      return db.transaction(() => {
+        const rowId = agentIdentityRowId(profileSlug)
+        if (methodChangeStore.hasPending(rowId)) return false
+        return spawnSql().deleteIdentity.run(rowId).changes > 0
+      })()
     },
 
     externalMcpServers() {
