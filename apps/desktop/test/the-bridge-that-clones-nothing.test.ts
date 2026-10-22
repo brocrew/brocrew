@@ -638,6 +638,8 @@ const HOW_EACH_VERB_IS_BUILT: Record<RuntimeCommandKind, VerbRow> = {
   // primitive the call site did not author; it is still a primitive, and what stops it being an
   // authority is that main looks it up rather than opening it.
   amendAgentMemory: { how: 'plain-by-construction' },
+  undoAgentMemory: { how: 'plain-by-construction' },
+  checkInterruptedMemory: { how: 'plain-by-construction' },
   // 582. ⛔ **`plain-by-construction`** — a string and a boolean, written as an object literal at
   // the call site (the shape `decideProposal` had until D-016 took it).
   decideInstruction: { how: 'plain-by-construction' },
@@ -735,7 +737,7 @@ describe('§2 · every renderer→main verb is accounted for (361 §1)', () => {
     // ⚑ And `setServicesOn`, a person's services switch: 114 → 115.
     // ⚑ And `stoppedWorkForAPerson`, the pieces whose helper stopped: 115 → 116.
     // Link resolution, both typed-wait verbs and recent activity are present in the same bridge.
-    expect(Object.keys(HOW_EACH_VERB_IS_BUILT)).toHaveLength(130)
+    expect(Object.keys(HOW_EACH_VERB_IS_BUILT)).toHaveLength(132)
     // ⚑ 8 → 10 at `744`: `savedDrafts`, `saveDrafts`. 10 → 9 at D-016: `getDemoSeed` out.
     // ⚑ 9 → 10 at D-031: `localZone`.
     expect(Object.keys(THE_APP_CHANNELS)).toHaveLength(10)
@@ -945,7 +947,7 @@ describe('§2 · every renderer→main verb is accounted for (361 §1)', () => {
       // ⚑ `stoppedWorkForAPerson` moves the MIDDLE number by one: it carries no payload.
       // Link resolution and action answers build literals; incident reads carry no payload.
       // Recent activity adds one plain packet, built from two numeric window bounds.
-      95, 27, 8,
+      97, 27, 8,
     ])
   })
 

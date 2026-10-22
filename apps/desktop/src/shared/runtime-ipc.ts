@@ -78,7 +78,14 @@ import type {
 // ⚑ **625 · the memory door's shapes.** ⛔ Type-only, and that module has a type-only edge back to
 // this one — `own-instructions.ts`' arrangement exactly, and erased at build time in both
 // directions.
-import type { AgentMemoryAmended, AgentMemoryReading, MemoryAmendmentAsked } from './agent-memory'
+import type {
+  AgentMemoryAmended,
+  AgentMemoryReading,
+  MemoryAmendmentAsked,
+  MemoryUndoAsked,
+  MemoryCheckAsked,
+  MemoryChecked,
+} from './agent-memory'
 import type { InstructionSpan } from './whose-text'
 // ⚑ **624 · the app's own report, as a subject a turn can carry.** ⛔ Type-only, and that module
 // is a LEAF — it imports nothing at all, not even a type — so there is no cycle to erase in either
@@ -8812,6 +8819,8 @@ export type RuntimeCommand =
    * is where that is spelled, and `AMENDMENT_MEANS` is where the two words are argued.
    */
   | ({ kind: 'amendAgentMemory' } & MemoryAmendmentAsked)
+  | ({ kind: 'undoAgentMemory' } & MemoryUndoAsked)
+  | ({ kind: 'checkInterruptedMemory' } & MemoryCheckAsked)
   /**
    * 🔴 **A person approves or refuses what an agent asked against an identity's instructions**
    * (582, `HO-009` §2.2: *"A proposal is a card; approval writes it."*).
@@ -9336,11 +9345,13 @@ export interface RuntimeCommandResults {
    * carries its remedy, and `REFUSAL_MEANS` is where each remedy is written once.
    */
   amendAgentMemory: AgentMemoryAmended | null
+  undoAgentMemory: AgentMemoryAmended | null
+  checkInterruptedMemory: MemoryChecked | null
   /** ⛔ **`AnswerAck`**, as the answer verbs answer. */
   decideInstruction: AnswerAck
   decideMcpServerRequest: AnswerAck
   /**
-   * 🔴 **What the removal did, or which of five things stopped it** (558).
+   * 🔴 **What the removal did, or what still holds it** (558).
    *
    * ⛔ **A payload rather than a `boolean`, and `removeExternalMcpServer` is the precedent it
    * departs from deliberately.** That verb has one way to fail — *already gone* — which `false`
@@ -10218,12 +10229,14 @@ export interface RuntimeBridge {
    * the same promise `instructAgent` above makes.
    */
   amendAgentMemory(input: MemoryAmendmentAsked): Promise<AgentMemoryAmended | null>
+  undoAgentMemory(input: MemoryUndoAsked): Promise<AgentMemoryAmended | null>
+  checkInterruptedMemory(input: MemoryCheckAsked): Promise<MemoryChecked | null>
   /** Approve or refuse one ask an agent made against an identity's instructions (582). */
   decideInstruction(input: { askId: string; approve: boolean }): Promise<AnswerAck>
   /** Approve or refuse one agent's request to register an MCP server. */
   decideMcpServerRequest(input: { requestId: string; approve: boolean }): Promise<AnswerAck>
   /**
-   * Remove an identity nothing runs (558) — and say which of five things refused it.
+   * Remove an identity nothing runs (558) — and say what still holds it.
    *
    * ⛔ **Its folder under `provider-homes/` is not touched.** See `AGENT_REMOVAL_MEANS`, which is
    * the sentence a surface draws BEFORE the press.

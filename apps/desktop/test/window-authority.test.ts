@@ -305,6 +305,8 @@ const CLASSIFIED: Record<
   // F093 · C9 d · ⚑ **`reads`, for the same reason** — keyed to a session, and it changes nothing.
   whatTheModelGot: 'reads',
   amendAgentMemory: 'no session',
+  undoAgentMemory: 'no session',
+  checkInterruptedMemory: 'no session',
   /**
    * ⛔ **`no session` — literally true, and 355 owes the sentence saying why it is not a fifth word.**
    *

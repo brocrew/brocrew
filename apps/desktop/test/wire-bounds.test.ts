@@ -385,6 +385,9 @@ describe('221 §3 · the count is pinned, so a new field must be classified', ()
       // `a-positive-assertion-must-differ-from-the-default` at a validator. 🔴 The `.max(4096)` is
       // the ordinary size bound every string on this wire carries, and nothing turns on it.
       'entry',
+      // Hash of the text displayed to the person, and a main-issued source record id.
+      'fingerprint',
+      'sourceId',
       // ⛔ **`askId`** (582) — classified: **no person types it.** It is the name this app minted
       // for an ask an agent made (`iprop_<uuid>`), drawn on the identity's sheet and sent straight
       // back by `decideInstruction`. ⚑ A bound with nothing to violate, exactly like `messageId`

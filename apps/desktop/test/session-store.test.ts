@@ -838,6 +838,8 @@ function fakeBridge() {
     // ⚑ **Null, exactly as `instructAgent` above answers** — this double holds no identity, so
     // criterion 12's *there is nothing here to configure* is its honest answer.
     amendAgentMemory: async () => null,
+    undoAgentMemory: async () => null,
+    checkInterruptedMemory: async () => null,
     // ⚠️ **Refused rather than taken**, because this double settles nothing: a `taken` would let a
     // test believe a decision landed in a ledger that does not exist.
     decideInstruction: async () => ({

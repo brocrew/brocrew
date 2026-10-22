@@ -596,7 +596,7 @@ describe('558 · every identity he has', () => {
     })
 
     it('refreshes the roster when a saved-method change begins or settles', () => {
-      const announce = Reflect.get(host, 'savedMethodsChanged') as () => void
+      const announce = Reflect.get(host, 'agentKnowledgeChanged') as () => void
       expect(announce).toBeTypeOf('function')
       const before = said.length
       announce.call(host)
@@ -956,7 +956,7 @@ describe('558 · every identity he has', () => {
       expect(
         WHAT_HOLDS_AN_IDENTITY.length,
         'the vocabulary moved — correct every sentence that says how many there are',
-      ).toBe(4)
+      ).toBe(6)
       expect(Object.keys(HOLDING_SAYS).sort()).toEqual([...WHAT_HOLDS_AN_IDENTITY].sort())
       const says = Object.values(HOLDING_SAYS)
       expect(new Set(says).size).toBe(says.length)

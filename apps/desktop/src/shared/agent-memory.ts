@@ -330,13 +330,9 @@ export interface MemoryAmendment {
  *    than regretted at the reader).
  *  - ⛔ **`write-failed`** — the filesystem said no. ⚑ The store is unchanged and nothing was
  *    recorded.
- *  - ⛔ **`not-recorded`** — 🔴 **the file DID change and the record did not land.** ⚠️ **It is a
- *    different fact from `write-failed` and it needs its own word**, found reviewing this
- *    dispatch's own diff: that one's sentence promises *nothing changed*, which would be false
- *    here and false in the direction that reassures. ⚑ The host's existence check makes it
- *    unreachable through the window door; what can still produce it is an identity row that goes
- *    away between the check and the write, and `two-questions-about-one-address` is why one word
- *    could not carry both.
+ *  - **`not-recorded`** — the intent or its observation could not be recorded. An intent that
+ *    was saved remains pending until checked. This refusal makes no promise that the file is
+ *    unchanged, because failure may happen before or after the filesystem effect.
  */
 export const AMENDMENT_REFUSED = [
   'no-such-entry',
@@ -344,6 +340,14 @@ export const AMENDMENT_REFUSED = [
   'unreadable',
   'write-failed',
   'not-recorded',
+  'confirmation-required',
+  'changed-or-unreadable',
+  'source-changed',
+  'pending',
+  'closing',
+  'interruption-needs-checking',
+  'nothing-changed',
+  'change-incomplete',
 ] as const
 
 /** One of {@link AMENDMENT_REFUSED}. */
@@ -360,9 +364,17 @@ export const REFUSAL_MEANS: Readonly<Record<AmendmentRefused, string>> = {
   unreadable:
     'BroCrew could not read this entry, so it will not change it. The reason is listed beside it.',
   'write-failed': 'the file could not be written. Nothing changed and nothing was recorded.',
-  'not-recorded':
-    'the entry changed and BroCrew could not write the record of it. Look at the entry before ' +
-    'pressing again — this change is not in the history below.',
+  'not-recorded': "BroCrew couldn't record this change. Look at the entry before trying again.",
+  'confirmation-required': 'Confirm the change first.',
+  'changed-or-unreadable': "This entry changed or couldn't be read. Look again before changing it.",
+  'source-changed': "This change can't be undone any more. Look at the entry and its history.",
+  pending: 'An earlier change needs checking first.',
+  closing: 'BroCrew is closing. Try again after it reopens.',
+  'interruption-needs-checking':
+    "BroCrew couldn't finish checking an interrupted change. Look at the entry before trying again.",
+  'nothing-changed': "The entry wasn't changed. Look again before trying.",
+  'change-incomplete':
+    "BroCrew couldn't confirm the change finished. Look at the entry and its history.",
 }
 
 /**
@@ -394,6 +406,9 @@ export type AgentMemoryAmended =
  * name: the census question *who BUILT this* has one answer when the type has one declaration.
  */
 export interface MemoryAmendmentAsked {
+  /** A hash of the full text the person saw, checked again before changing the entry. */
+  readonly fingerprint: string
+  readonly confirmed: boolean
   readonly profileId: string
   readonly provider: Provider
   /**
@@ -409,6 +424,31 @@ export interface MemoryAmendmentAsked {
   readonly act: MemoryEditAct
   /** ⛔ **The replacement for `corrected`**, and ignored for `removed`. */
   readonly text: string
+}
+
+/** A person reverses a recorded change, using only the saved text in its history. */
+export interface MemoryUndoAsked {
+  readonly profileId: string
+  readonly sourceId: string
+  readonly confirmed: boolean
+}
+export interface MemoryCheckAsked {
+  readonly profileId: string
+  readonly confirmed: boolean
+}
+export type MemoryChecked =
+  | { readonly done: true; readonly reading: AgentMemoryReading }
+  | {
+      readonly done: false
+      readonly refused: AmendmentRefused
+      readonly reading: AgentMemoryReading
+    }
+
+/** Unknown internal failures never promise that the entry was unchanged. */
+export function memoryChangeRefusal(reason: string | undefined): AmendmentRefused {
+  return (AMENDMENT_REFUSED as readonly string[]).includes(reason ?? '')
+    ? (reason as AmendmentRefused)
+    : 'change-incomplete'
 }
 
 /**
@@ -455,6 +495,8 @@ export interface MemoryAmendmentWrite {
  * moment* arriving on the one popup whose job is to let a person act on what they see.
  */
 export interface AgentMemoryReading {
+  readonly changing?: true
+  readonly needsChecking?: true
   /** The identity this is about, folded. */
   readonly profileId: string
   /** ⚑ **One per member of `Provider`**, in a fixed order, whatever the identity is configured for. */

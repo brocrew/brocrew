@@ -186,6 +186,9 @@ import type {
   AgentMemoryAmended,
   AgentMemoryReading,
   MemoryAmendmentAsked,
+  MemoryUndoAsked,
+  MemoryCheckAsked,
+  MemoryChecked,
 } from '../shared/agent-memory'
 import type { WhatTheModelGot, WhatThisAgentWasGiven } from '../shared/what-this-agent-was-given'
 
@@ -712,7 +715,29 @@ const runtime: RuntimeBridge = Object.freeze({
   // looks it up in a store it re-derives, so nothing reactive and nothing of the renderer's reaches
   // a filesystem call.
   amendAgentMemory: (input: MemoryAmendmentAsked) =>
-    command({ kind: 'amendAgentMemory', ...input }) as Promise<AgentMemoryAmended | null>,
+    command({
+      kind: 'amendAgentMemory',
+      profileId: input.profileId,
+      provider: input.provider,
+      entry: input.entry,
+      act: input.act,
+      text: input.text,
+      fingerprint: input.fingerprint,
+      confirmed: input.confirmed,
+    }) as Promise<AgentMemoryAmended | null>,
+  undoAgentMemory: (input: MemoryUndoAsked) =>
+    command({
+      kind: 'undoAgentMemory',
+      profileId: input.profileId,
+      sourceId: input.sourceId,
+      confirmed: input.confirmed,
+    }) as Promise<AgentMemoryAmended | null>,
+  checkInterruptedMemory: (input: MemoryCheckAsked) =>
+    command({
+      kind: 'checkInterruptedMemory',
+      profileId: input.profileId,
+      confirmed: input.confirmed,
+    }) as Promise<MemoryChecked | null>,
   // 582 · ⚑ Two primitives, built here.
   decideInstruction: (input: { askId: string; approve: boolean }) =>
     command({ kind: 'decideInstruction', ...input }) as Promise<AnswerAck>,
