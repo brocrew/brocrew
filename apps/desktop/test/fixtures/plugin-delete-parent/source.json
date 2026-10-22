@@ -1,0 +1,67 @@
+{
+  "commit": "82054a3e7c1954398a7c5fc4765c95fafd2db22e",
+  "files": [
+    {
+      "path": "apps/desktop/src/main/plugins/lifecycle/profile-ledger.ts",
+      "file": "profile-ledger.ts",
+      "sourceSha256": "68191bc653303c342d6792880d22f360d0c5306b9b964f44c336165c12c79818",
+      "imports": {
+        "./proposals": "./proposals",
+        "../../../src/main/plugins/node-host-files": "../node-host-files",
+        "../../../src/main/plugins/private-files": "../private-files",
+        "../../../src/main/plugins/supervisor/protocol": "../supervisor/protocol"
+      }
+    },
+    {
+      "path": "apps/desktop/src/main/plugins/lifecycle/proposals.ts",
+      "file": "proposals.ts",
+      "sourceSha256": "8c90a0417a755d6f61418bfe0f18f88ce7615c742628116e10e9862bc489f52c",
+      "imports": {
+        "./chrome-apply": "./chrome-apply",
+        "./whatsapp-apply": "./whatsapp-apply"
+      }
+    },
+    {
+      "path": "apps/desktop/src/main/plugins/lifecycle/chrome-apply.ts",
+      "file": "chrome-apply.ts",
+      "sourceSha256": "bdb9dec89e0e8607e6d2fc22272132ad6072f21bf976cb2aab47519ea643d6aa",
+      "imports": {
+        "../../../src/main/plugins/node-host": "../node-host",
+        "../../../src/main/plugins/supervisor/protocol": "../supervisor/protocol"
+      }
+    },
+    {
+      "path": "apps/desktop/src/main/plugins/lifecycle/whatsapp-apply.ts",
+      "file": "whatsapp-apply.ts",
+      "sourceSha256": "4df64e4532e090200e7ab59ebedf66bd5c72ae48a4ec36d3f5354e0ba8ae5cf6",
+      "imports": {
+        "../../../src/shared/plugin-settings": "../../../shared/plugin-settings",
+        "../../../src/main/plugins/lifecycle/admin-read": "./admin-read",
+        "../../../src/main/plugins/node-host": "../node-host",
+        "../../../src/main/plugins/supervisor/protocol": "../supervisor/protocol"
+      }
+    },
+    {
+      "path": "apps/desktop/src/main/plugins/lifecycle/controller.ts",
+      "file": "controller.ts",
+      "sourceSha256": "d4210b53c7fd9e3afe25817511e3417d0503e773678e479bc4e4598159462715",
+      "imports": {
+        "../../../src/main/plugins/lifecycle/../contributions": "../contributions",
+        "../../../src/main/plugins/lifecycle/../node-policy": "../node-policy",
+        "../../../src/main/plugins/lifecycle/../catalogue/newer-version": "../catalogue/newer-version",
+        "../../../src/main/plugins/lifecycle/../catalogue/repo-list": "../catalogue/repo-list",
+        "./profile-ledger": "./profile-ledger",
+        "../../../src/main/plugins/lifecycle/./adapters": "./adapters",
+        "./proposals": "./proposals",
+        "../../../src/main/plugins/lifecycle/../package-digests": "../package-digests",
+        "../../../src/main/plugins/lifecycle/../package-verifier": "../package-verifier",
+        "../../../src/main/plugins/lifecycle/../supervisor/protocol": "../supervisor/protocol",
+        "../../../src/main/plugins/lifecycle/./download": "./download",
+        "../../../src/main/plugins/lifecycle/./files": "./files",
+        "../../../src/main/plugins/lifecycle/./vault": "./vault",
+        "../../../src/main/plugins/lifecycle/./types": "./types",
+        "../../../src/main/plugins/lifecycle/../../../shared/plugin-settings": "../../../shared/plugin-settings"
+      }
+    }
+  ]
+}
