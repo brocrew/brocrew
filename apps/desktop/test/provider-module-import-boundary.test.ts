@@ -104,9 +104,9 @@ describe('provider modules stay behind the main-process registry', () => {
       seen.add(file)
       return valueImports(file).some((next) => reaches(next, seen))
     }
-    expect(files.filter((file) => file.endsWith('.worker.ts') && reaches(file)).map(nameOf)).toEqual(
-      [],
-    )
+    expect(
+      files.filter((file) => file.endsWith('.worker.ts') && reaches(file)).map(nameOf),
+    ).toEqual([])
     // A missing registry is the base before extraction, not a reason to skip the worker scan.
     if (existsSync(registry)) expect(valueImports(registry)).not.toContain(composition)
   })
