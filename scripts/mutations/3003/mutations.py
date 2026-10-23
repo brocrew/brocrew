@@ -162,42 +162,36 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M10 · the stamp is trusted over a home whose auth.json is gone — the home runs on nothing "
         f"and is never logged in again · killed by `{SEALED}`",
-        [(HOMES,
-          "    if (stamp === current.setAt && existsSync(join(home, 'auth.json'))) return 'the-key'\n",
-          "    if (stamp === current.setAt) return 'the-key'\n")],
+        [
+            ("apps/desktop/src/main/providers/codex/index.ts", "    if (stamp === current.setAt && existsSync(join(home, 'auth.json'))) return 'the-key'\n", "    if (stamp === current.setAt) return 'the-key'\n"),
+        ],
     ),
     # 'bringTheCodexKeyTo' › '⛔ a login that fails refuses in BroBot’s words and stamps nothing —
     # never a quiet fallback' — the `chatgpt` arm resolves instead of throwing 'did not take the API key'.
     (
         "M11 · any login Codex reports counts as the key — a home left on a ChatGPT sign-in is "
         f"stamped as running on the key · killed by `{SEALED}`",
-        [(HOMES,
-          "    if (done.authMethod !== 'apikey') {\n",
-          "    if (done.authMethod === null) {\n")],
+        [
+            ("apps/desktop/src/main/providers/codex/index.ts", "    if (done.authMethod !== 'apikey') {\n", "    if (done.authMethod === null) {\n"),
+        ],
     ),
     # 'bringTheCodexKeyTo' › '🔴 changes to ONE home run one at a time, in the order they were asked
     # — and a failure does not block the next': order toEqual(['start sk-1']) sees the second start.
     (
         "M12 · changes to one Codex home no longer wait for each other — an older login can land "
         f"after a newer one's stamp · killed by `{SEALED}`",
-        [(HOMES,
-          "  const mine = before.catch(() => undefined).then(() => bringTheCodexKeyToNow(home, codexKey))\n",
-          "  const mine = bringTheCodexKeyToNow(home, codexKey)\n")],
+        [
+            ("apps/desktop/src/main/providers/codex/index.ts", "  const mine = before.catch(() => undefined).then(() => bringTheCodexKeyToNow(home, codexKey))\n", "  const mine = bringTheCodexKeyToNow(home, codexKey)\n"),
+        ],
     ),
     # 'prepareProviderHome with a key' › '🔴 a Codex home logged in with the key copies no login, and
     # returns at once' — `copied` not.toHaveBeenCalled.
     (
         "M13 · a Codex home logged in with the key still has the machine's login copied over it — "
         f"the key is put aside the moment it is set · killed by `{SEALED}`",
-        [(HOMES,
-          "      (await bringTheCodexKeyTo(home, seams.codexKey)) === 'the-key'\n"
-          "    ) {\n"
-          "      return home\n"
-          "    }\n",
-          "      (await bringTheCodexKeyTo(home, seams.codexKey)) === 'the-key'\n"
-          "    ) {\n"
-          "      // the key is in; the copied login is laid down beside it\n"
-          "    }\n")],
+        [
+            ("apps/desktop/src/main/providers/codex/index.ts", "  if (seams.key !== undefined && (await bringTheCodexKeyTo(home, seams.key)) === 'the-key') {\n    return home\n  }\n", "  if (seams.key !== undefined && (await bringTheCodexKeyTo(home, seams.key)) === 'the-key') {\n    // the key is in; the copied login is laid down beside it\n  }\n"),
+        ],
     ),
     # 'changeCodexKeyInHome' › '⛔ a login Codex refuses is answered in BroBot’s words — never the
     # provider’s, never the key — and nothing is asked after it': toEqual the bare sentence, and
