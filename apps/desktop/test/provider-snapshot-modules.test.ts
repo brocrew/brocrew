@@ -17,8 +17,7 @@ describe('provider snapshot modules preserve the shipped captures', () => {
     ['codex', 'darwin', codexMac],
   ] as const)('keeps every capture field for %s on %s', (provider, platform, expected) => {
     const snapshot = Reflect.get(providerKnowledge[provider], 'snapshot') as
-      | { fileFor(platform: NodeJS.Platform): unknown }
-      | undefined
+      { fileFor(platform: NodeJS.Platform): unknown } | undefined
     expect(snapshot).toBeDefined()
     if (snapshot === undefined) throw new Error('Provider snapshot policy is absent')
     expect(snapshot.fileFor(platform)).toEqual(expected)
@@ -52,31 +51,39 @@ describe('provider snapshot modules preserve the shipped captures', () => {
   it.each([
     ['claude', claudeLinux, claudeMac],
     ['codex', codexLinux, codexMac],
-  ] as const)('bundles both platform captures for %s with the desktop compiler', async (provider, linux, mac) => {
-    const result = await build({
-      configFile: false,
-      root: fileURLToPath(new URL('../../../', import.meta.url)),
-      logLevel: 'silent',
-      build: {
-        lib: {
-          entry: fileURLToPath(new URL(`../src/main/providers/${provider}/snapshot.ts`, import.meta.url)),
-          formats: ['cjs'],
+  ] as const)(
+    'bundles both platform captures for %s with the desktop compiler',
+    async (provider, linux, mac) => {
+      const result = await build({
+        configFile: false,
+        root: fileURLToPath(new URL('../../../', import.meta.url)),
+        logLevel: 'silent',
+        build: {
+          lib: {
+            entry: fileURLToPath(
+              new URL(`../src/main/providers/${provider}/snapshot.ts`, import.meta.url),
+            ),
+            formats: ['cjs'],
+          },
+          write: false,
+          minify: false,
+          reportCompressedSize: false,
         },
-        write: false,
-        minify: false,
-        reportCompressedSize: false,
-      },
-    })
-    const builds = Array.isArray(result) ? result : [result]
-    const chunks = builds.flatMap(one => 'output' in one ? one.output.filter(item => item.type === 'chunk') : [])
-    expect(chunks).toHaveLength(1)
-    const module = { exports: {} as { snapshot?: SnapshotPolicy } }
-    runInNewContext(chunks[0]!.code, { module, exports: module.exports })
-    const policy = module.exports.snapshot
-    expect(policy).toBeDefined()
-    if (policy === undefined) throw new Error('Bundled snapshot policy is absent')
-    expect(policy.fileFor('linux')).toEqual(linux)
-    expect(policy.fileFor('darwin')).toEqual(mac)
-    expect(policy.fileFor('win32')).toBe(policy.fileFor('darwin'))
-  }, 20_000)
+      })
+      const builds = Array.isArray(result) ? result : [result]
+      const chunks = builds.flatMap((one) =>
+        'output' in one ? one.output.filter((item) => item.type === 'chunk') : [],
+      )
+      expect(chunks).toHaveLength(1)
+      const module = { exports: {} as { snapshot?: SnapshotPolicy } }
+      runInNewContext(chunks[0]!.code, { module, exports: module.exports })
+      const policy = module.exports.snapshot
+      expect(policy).toBeDefined()
+      if (policy === undefined) throw new Error('Bundled snapshot policy is absent')
+      expect(policy.fileFor('linux')).toEqual(linux)
+      expect(policy.fileFor('darwin')).toEqual(mac)
+      expect(policy.fileFor('win32')).toBe(policy.fileFor('darwin'))
+    },
+    20_000,
+  )
 })
