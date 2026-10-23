@@ -384,8 +384,9 @@ const CORE_TEXT = [
     'supported model and offered effort at each handoff; use economical capability for routine ' +
     'work and stronger reasoning when the stakes or complexity warrant it. Respect locked ' +
     'choices.',
-  'Use ask_question for decisions or observations; request_action for actions the person must ' +
-    'take. Offer a safe default for a decision, never invent an observation. Do not repeat the ' +
+  'Ask your questions with ask_question, even to agents; notes expect none. request_action ' +
+    "tracks the person's actions. Never guarantee replies. " +
+    'Offer a safe default for a decision, never invent an observation. Do not repeat the ' +
     "tracked request in chat. Relay a child's question about work you gave unchanged when only " +
     'the person can answer; reply on its original id. Answer named questions yourself, asking ' +
     'separately if needed.',

@@ -104,7 +104,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         # ⚑ **re-anchored in place, not retired** — NOT VERIFIED; source-only. The v9 core moved the anchor; original defect, ID and killer retained.
         # ⚑ **W4.643 · re-anchored in place, not retired** — NOT VERIFIED; source-only. v21 rewrote the sentence this row's defect lives in; the same defect, applied to the v21 sentence that carries it
         # ⚑ **W4.669 · re-anchored in place, not retired** — verified RED alone (verify_row; 377 M4 by a plant against `a-check-in-is-a-question.test.ts` §1, whose §2 waits on request_action). v22 rewords the core sentence this row's defect lives in; the same defect, applied to the v22 sentence that carries it
-        [(TEXT, "  'Use ask_question for decisions or observations; request_action for actions the person must ' +\n    'take. ", "  '")],
+        [(TEXT, "  'Ask your questions with ask_question, even to agents; notes expect none. request_action ' +\n    \"tracks the person's actions. Never guarantee replies. \" +\n    '", "  '")],
     ),
     (
         # ⛔ **RETIRED BY RULING (T-002): PE-003 (one situational instruction set for every agent; the role column is no longer read) removed the worker tier: the check-in sentence is one line in the one set now, and `M1` takes it.**
