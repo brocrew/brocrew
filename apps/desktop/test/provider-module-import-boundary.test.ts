@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 
 const root = fileURLToPath(new URL('../src/main', import.meta.url))
 const registry = join(root, 'providers/index.ts')
+const compatibility = join(root, 'providers/compat.ts')
 const composition = join(root, 'index.ts')
 const nameOf = (file: string): string => relative(root, file).split(sep).join('/')
 const filesIn = (folder: string): string[] =>
@@ -77,7 +78,7 @@ describe('provider modules stay behind the main-process registry', () => {
       join(root, 'runtime/runtime-host.ts'),
     ])
     const violations = files
-      .filter((file) => nameOf(file).startsWith('providers/') && file !== registry)
+      .filter((file) => nameOf(file).startsWith('providers/'))
       .flatMap((file) =>
         valueImports(file)
           .filter((target) => forbidden.has(target))
@@ -87,11 +88,17 @@ describe('provider modules stay behind the main-process registry', () => {
   })
 
   it('routes neutral value imports of provider implementations through the registry', () => {
+    const mayCompose = new Set([registry, compatibility, composition])
+    const implementationOf = (file: string): string | undefined =>
+      /^providers\/(claude|codex)\//.exec(nameOf(file))?.[1]
     const violations = files
-      .filter((file) => !nameOf(file).startsWith('providers/') && file !== composition)
+      .filter((file) => !mayCompose.has(file))
       .flatMap((file) =>
         valueImports(file)
-          .filter((target) => /^providers\/(claude|codex)\//.test(nameOf(target)))
+          .filter((target) => {
+            const provider = implementationOf(target)
+            return provider !== undefined && provider !== implementationOf(file)
+          })
           .map((target) => `${nameOf(file)} -> ${nameOf(target)}`),
       )
     expect(violations).toEqual([])
