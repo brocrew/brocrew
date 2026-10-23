@@ -20,7 +20,7 @@ import {
 } from '../src/main/runtime/factory-text'
 import { publishProfileBundle } from '../src/main/runtime/profile-bundle'
 import { readSessionInstructions } from '../src/main/runtime/instructions'
-import { capabilityField } from '../src/shared/capabilities'
+import { RULE_WRITING_POLICY, capabilityField } from '../src/shared/capabilities'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -546,7 +546,8 @@ describe('544 · what a chain is told about its own depth', () => {
         .split('\n')
         .filter((line) => line.startsWith('- '))
       expect(block).toHaveLength(4)
-      expect(block.every((line) => line.startsWith('- You may'))).toBe(true)
+      expect(block.slice(0, 3).every((line) => line.startsWith('- You may'))).toBe(true)
+      expect(block[3]).toBe(`- ${RULE_WRITING_POLICY}`)
       expect(/[0-9]/.test(capabilityField('maxDepth').says(6, null))).toBe(true)
       expect(block.filter((line) => /[0-9]/.test(line))).toEqual([])
     })

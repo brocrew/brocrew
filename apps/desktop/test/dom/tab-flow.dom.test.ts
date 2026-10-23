@@ -10,6 +10,7 @@ import {
   TAB_OF_HOOK_PREFIX,
 } from '../../../../scripts/lib/tab-flow.mjs'
 import AgentInstructionsSheet from '../../src/renderer/src/components/AgentInstructionsSheet.vue'
+import AgentBookButton from '../../src/renderer/src/components/AgentBookButton.vue'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
 import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { DRAWER_TABS, type DrawerTab } from '../../src/renderer/src/lib/drawer'
@@ -310,6 +311,30 @@ function claimed(hook: string): string | null {
 }
 
 describe('the tab-flow table describes the drawer this app actually renders', () => {
+  it('the Book control and unread badge are shared hooks, with a real Open-tab entry', async () => {
+    const drawer = mount(Harness, {}, { width: 380, height: 700 })
+    const byTab = await mountedByTab(drawer.host)
+    expect(byTab.get('open')?.has('agent-book-button')).toBe(true)
+    for (const [tab, hooks] of byTab) {
+      if (tab !== 'open') expect(hooks.has('agent-book-button'), tab).toBe(false)
+    }
+    const opened: string[] = []
+    const button = mount(AgentBookButton, {
+      profileSlug: 'quill',
+      bridge: { agentRulesUnread: async () => ({ seenThrough: 0, newestDirectVersion: 1, unread: true }) },
+      onOpen: (slug: string) => opened.push(slug),
+    }, { width: 320, height: 120 })
+    await nextTick()
+    await nextTick()
+    for (const hook of ['agent-book-button', 'agent-book-unread']) {
+      expect(button.all(hook)).toHaveLength(1)
+      expect(APP_WIDE_HOOKS.has(hook), hook).toBe(true)
+      expect(claimed(hook), `${hook} must not require a drawer tab`).toBeNull()
+    }
+    button.q('agent-book-button').click()
+    expect(opened).toEqual(['quill'])
+  })
+
   it('every hook the drawer mounts is claimed by the tab that mounted it', async () => {
     const m = mount(Harness, {}, { width: 380, height: 700 })
     const byTab = await mountedByTab(m.host)

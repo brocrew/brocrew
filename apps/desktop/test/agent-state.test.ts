@@ -533,7 +533,10 @@ describe('the sprite has every glyph the badges name', () => {
     // `#i-shield` went with the Waiting on you footer, and `#i-hourglass` came as the plate's
     // corner mark for an agent waiting on another agent (`#i-clock` is that corner's wake-up).
     // 47 with `#i-open`, the Open icon after a path in a message.
-    expect(ids.length).toBe(47)
+    // The agent knowledge button adds the Book glyph.
+    expect(ids.length).toBe(48)
+    expect(ids).toContain('i-book')
+    expect(source('components/AgentBookButton.vue')).toContain('href="#i-book"')
   })
 
   /**

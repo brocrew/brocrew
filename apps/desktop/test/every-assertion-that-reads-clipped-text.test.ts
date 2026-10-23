@@ -913,6 +913,8 @@ const HAND_ROLLED: Readonly<Record<string, Question>> = {
   'rail-identity.dom.test.ts': 'does-this-box-fit',
   'rail-rhythm.dom.test.ts': 'does-this-box-fit',
   'recent-activity-and-since-you-were-last-here.dom.test.ts': 'does-this-box-fit',
+  // Saved method bodies scroll inside a bounded box; the panel must also fit its column.
+  'saved-methods-book.dom.test.ts': 'does-this-box-fit',
   'the-answer-a-person-can-read.dom.test.ts': 'does-this-box-fit',
   // ⚑ **578 · and this one is on the roster for the OPPOSITE reason to every other entry.** ⛔ It
   // does not ask whether a box fits: it plants a wide unshrinkable element in the header's state

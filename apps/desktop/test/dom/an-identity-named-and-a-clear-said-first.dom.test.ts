@@ -19,7 +19,7 @@ import {
   type NoticeItem,
   type TranscriptItem,
 } from '../../src/renderer/src/lib/transcript'
-import { CAPABILITY_FIELDS, DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
+import { CAPABILITY_FIELDS, DEFAULT_CAPABILITIES, type AnyCapabilityField } from '../../src/shared/capabilities'
 import {
   judgeAgainstTheList,
   theDefaultEffortOf,
@@ -246,7 +246,11 @@ interface Sheet extends Mounted {
  */
 async function theSheet(
   slug: string,
-  extra: { openAs?: readonly AConversationToReopen[] } = {},
+  extra: {
+    openAs?: readonly AConversationToReopen[]
+    fields?: readonly AnyCapabilityField[]
+    onReopen?: (sessionId: string) => void
+  } = {},
 ): Promise<Sheet> {
   await page.viewport(720, 900)
   const { store, lists } = storeOver()
@@ -707,7 +711,12 @@ const serversSay = (name: string): string =>
 const reopenSays = (name: string): string =>
   `Open as ${name} in this window. Reopening one gives it what this row says now.`
 
-const LAUNCH_TIME = CAPABILITY_FIELDS.filter((field) => field.whenItTakesEffect !== null)
+// The real editable message rail gets fixture-only launch metadata to exercise the generic offer.
+// This does not claim that the shipped message control has a Reopen offer.
+const R41_FIELDS = CAPABILITY_FIELDS.map((field) => field.key === 'canMessage'
+  ? { ...field, whenItTakesEffect: 'Fixture-only launch disclosure for the naming contract.' }
+  : field)
+const LAUNCH_TIME = R41_FIELDS.filter((field) => field.key === 'canMessage')
 const OPEN: readonly AConversationToReopen[] = [
   { sessionId: 'sess_1', where: '/work', heldBy: null, busy: false },
 ]
@@ -737,15 +746,29 @@ function sentencesFor(name: string): Record<string, string> {
 }
 
 describe('712 §2d · R41 — the capabilities sheet names the identity it is about; the KEY stays a slug', () => {
+  it('the shipped message rail stays editable without offering a launch-only Reopen', async () => {
+    reset({ roster: NAMED() })
+    const m = await theSheet('project-manager', { openAs: OPEN })
+    expect(CAPABILITY_FIELDS.find((field) => field.key === 'canMessage')?.whenItTakesEffect).toBeNull()
+    expect(visible(m.q('capability-canMessage-select'))).toBe(true)
+    expect(m.all('grant-canMessage-open-now')).toHaveLength(0)
+    expect(m.all('capability-canWriteRules')).toHaveLength(0)
+    await pick(m, 'capability-canMessage-select', 'none')
+    expect((m.q('capability-canMessage-select') as HTMLSelectElement).value).toBe('none')
+    expect(m.all('grant-canMessage-open-now')).toHaveLength(0)
+  })
+
   it('🔴 project-manager named Ada: title, owner, servers and the reopen offer say Ada — the glyph and the Slug row keep the key', async () => {
     // ⚑ The builders agree with the words pinned by name.
     expect(ownerSays('Ada')).toBe(OWNER_ADA)
     expect(serversSay('Ada')).toBe(SERVERS_ADA)
     expect(reopenSays('Ada')).toBe(REOPEN_ADA)
     expect(LAUNCH_TIME.length).toBeGreaterThan(0)
+    expect(LAUNCH_TIME.map((field) => field.key)).toEqual(['canMessage'])
 
     reset({ roster: NAMED() })
-    const m = await theSheet('project-manager', { openAs: OPEN })
+    const reopened: string[] = []
+    const m = await theSheet('project-manager', { openAs: OPEN, fields: R41_FIELDS, onReopen: (id) => reopened.push(id) })
     expect(visible(m.q('capabilities-title'))).toBe(true)
     expect(said(m.q('capabilities-owner')).startsWith('This is Ada’s own row:')).toBe(true)
     expect(said(m.q('capabilities-owner'))).toContain('running as Ada.')
@@ -760,11 +783,23 @@ describe('712 §2d · R41 — the capabilities sheet names the identity it is ab
     expect(said(glyph)).toBe('P')
     expect('Ada'.slice(0, 1)).not.toBe('P')
     expect(said(m.q('capabilities-slug'))).toBe('project-manager')
+    expect(m.all('capability-canWriteRules')).toHaveLength(0)
+    const reopen = m.q('grant-canMessage-reopen-sess_1') as HTMLButtonElement
+    expect(reopen.disabled).toBe(false)
+    await pick(m, 'capability-canMessage-select', 'none')
+    expect(reopen.disabled).toBe(true)
+    reopen.click()
+    expect(reopened).toEqual([])
+    expect(said(m.q('grant-canMessage-cost-sess_1'))).toContain('Save first')
+    await press(m, 'capability-canMessage-use-default')
+    expect(reopen.disabled).toBe(false)
+    reopen.click()
+    expect(reopened).toEqual(['sess_1'])
   })
 
   it('⚑ THE CONTROL, same mount one fact over — the display name taken away: every one of those sentences carries the slug', async () => {
     reset({ roster: NAMED() })
-    const m = await theSheet('project-manager', { openAs: OPEN })
+    const m = await theSheet('project-manager', { openAs: OPEN, fields: R41_FIELDS })
     expect(namedSentences(m)).toEqual(sentencesFor('Ada'))
     world.roster = UNNAMED()
     await m.store.load()
@@ -775,7 +810,7 @@ describe('712 §2d · R41 — the capabilities sheet names the identity it is ab
 
   it('⚑ THE CONTROL — re-pointed at `worker`, nobody named it: “worker”; at BroBot’s own row, unnamed: agentName’s label, “BroBot”', async () => {
     reset({ roster: NAMED() })
-    const m = await theSheet('project-manager', { openAs: OPEN })
+    const m = await theSheet('project-manager', { openAs: OPEN, fields: R41_FIELDS })
     expect(said(m.q('capabilities-title'))).toBe('Ada')
 
     await m.point('worker')

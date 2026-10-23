@@ -127,8 +127,8 @@ export function projectBuild(config, entry, appData, browser) {
   }
   entry = replace(
     entry,
-    "import { RuntimeHost } from './runtime/runtime-host'",
-    `/* ${GATE_BUILD_MARKER} */ import { PackagedGateRuntime, preparePackagedGateHome } from ${JSON.stringify(path.join(path.dirname(appData), 'repo/scripts/gates/plugin-packaged/provider-fixture.mjs'))}\nimport { RuntimeHost } from './runtime/runtime-host'`,
+    "import { RuntimeHost, type RuntimeHostDeps } from './runtime/runtime-host'",
+    `/* ${GATE_BUILD_MARKER} */ import { PackagedGateRuntime, preparePackagedGateHome } from ${JSON.stringify(path.join(path.dirname(appData), 'repo/scripts/gates/plugin-packaged/provider-fixture.mjs'))}\nimport { RuntimeHost, type RuntimeHostDeps } from './runtime/runtime-host'`,
   )
   entry = replace(
     entry,

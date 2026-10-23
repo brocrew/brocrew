@@ -782,15 +782,15 @@ describe('374 · the rails a message passes', () => {
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§8 · a capability reaches the surface with no surface change', () => {
-    it('⛔ the sheet names no capability at all, so it could not have needed one', () => {
+    it('⛔ the sheet names a capability only in the exact dormant-field filter', () => {
       // 🔴 **HO-008 §3, and this is the collection.** *"Build it to enumerate the capability schema
       // rather than hardcode a field list. Then `can_interrupt` appears when P3 lands **without a
       // second pass** — and P0b can run in parallel with P1–P3 instead of queueing behind them."*
       //
       // ⚠️ **A green DOM test proves it DRAWS; it cannot prove nothing was edited to make it draw.**
       // `capabilities-sheet.dom.test.ts` does the first half against the real schema; this is the
-      // second, and it is the durable one: the component cannot be edited to name a field, so the
-      // next capability is free for the same reason this one was.
+      // second: rendering still cannot name a field. Only the explicit dormant-field filter
+      // below is allowed to do so.
       // ⛔ **Prose-stripped, and the file is a `.vue`, so BOTH comment grammars go** — `/* */` and
       // `//` in the script block, `<!-- -->` in the template. ⚠️ The sheet's docblocks discuss
       // `can_spawn` and `maxConcurrent` at length, and a census that counted those would report a
@@ -802,8 +802,11 @@ describe('374 · the rails a message passes', () => {
         .replace(/<!--[\s\S]*?-->/g, ' ')
         .replace(/\/\*[\s\S]*?\*\//g, ' ')
         .replace(/^\s*\/\/.*$/gm, ' ')
+      const hiddenRulesFilter = "props.fields.filter((field) => field.key !== 'canWriteRules')"
+      expect(sheet.split(hiddenRulesFilter)).toHaveLength(2)
+      const genericSheet = sheet.replace(hiddenRulesFilter, 'props.fields')
       for (const field of CAPABILITY_FIELDS) {
-        expect(sheet, `${field.key} is spelled in the sheet`).not.toContain(field.key)
+        expect(genericSheet, `${field.key} is spelled outside the dormant filter`).not.toContain(field.key)
         expect(sheet, `${field.column} is spelled in the sheet`).not.toContain(field.column)
       }
       // ⛔ **Non-vacuity, twice.** The file was really read, and the loop really swept five fields —

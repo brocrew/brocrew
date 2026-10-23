@@ -318,6 +318,9 @@ export const TAB_OF_HOOK_PREFIX = {
  * rendered outside the drawer — an exemption that has to keep earning itself.
  */
 export const APP_WIDE_HOOKS = new Set([
+  // AgentCard and TeamWorkspace both open the agent knowledge book.
+  'agent-book-button',
+  'agent-book-unread',
   'agent-state',
   'agent-plate',
   'agent-avatar',
