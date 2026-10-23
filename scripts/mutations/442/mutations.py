@@ -396,30 +396,15 @@ MUTATIONS = [
         "at all, so the panel is back to showing the per-file rows and none of the framing this "
         "app wraps around them — the preamble telling the model these instructions OVERRIDE its "
         "defaults, and one `Contents of …` header per block",
-        # ⚑ Landing D-024, D-020 and D-021 · re-anchored in place, not retired — The rule survives:
-        # the panel's `instructions.composed` must carry the whole composed string (preamble plus
-        # one 'Contents of' header per block). D-024 hoisted the Claude branch's composition into a
-        # local `const composed = composeSystemHint(injected, inputs.thisConversation) ?? null`, so
-        # the field is now the shorthand `composed,` in the returned `instructions` object, and the
-        # same local still feeds `systemHint: composed`. The plant nulls only the panel's field, so
-        # the adapter's prompt is untouched and the row fails for its own reason. Killed by
-        # `what-an-agent-was-told.test.ts`.
         [
-            (READER, '      composed,\n    },\n', '      composed: null,\n    },\n'),
+            ("apps/desktop/src/main/providers/claude/instructions.ts", "      composed,\n    },\n", "      composed: null,\n    },\n"),
         ],
     ),
     (
         "M26 · ⛔ the provider that appends nothing is told it was sent something — `null` is a "
         "MEASUREMENT on that branch and this makes it a fabrication",
-        # ⚑ Landing D-024, D-020 and D-021 · re-anchored in place, not retired — The rule survives
-        # and the test still pins it: a Codex reading with no conversation block has `composed`
-        # null, which is a measurement ('BroBot appended nothing'), and the §4 test asserts it.
-        # D-024 renamed the value to `codexComposed` (non-null when a conversation block is
-        # composed), so a blanket fabricated string would also overwrite the real value on real
-        # launches. The re-aimed plant fabricates a string only where codexComposed is null, via
-        # `??`, which is exactly the label's defect. Killed by `what-an-agent-was-told.test.ts`.
         [
-            (READER, '        composed: codexComposed,\n', "        composed: codexComposed ?? 'Codebase and user instructions are shown below.',\n"),
+            ("apps/desktop/src/main/providers/codex/instructions.ts", "      composed: codexComposed,\n", "      composed: codexComposed ?? 'Codebase and user instructions are shown below.',\n"),
         ],
     ),
     (

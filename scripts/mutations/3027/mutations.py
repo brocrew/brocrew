@@ -111,9 +111,9 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M8 · a Codex external server is drawn as in every request, not found by search · killed "
         f"by `{READ}`",
-        [(GIVEN,
-          "      kind: 'found-by-search',",
-          "      kind: 'in-every-request',")],
+        [
+            ("apps/desktop/src/main/providers/codex/given.ts", "    kind: 'found-by-search',", "    kind: 'in-every-request',"),
+        ],
     ),
     (
         "M9 · tool search is counted as full definitions in the total, not as names · killed by "

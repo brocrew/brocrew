@@ -118,44 +118,28 @@ MUTATIONS = [
     (
         "M6 · …and the other way round: the `fstat` check goes, leaving only the `lstat` one",
         [
-            (
-                INSTRUCTIONS,
-                "    if (!held.isFile()) return { ok: false, reason: 'not-a-regular-file' }\n",
-                "",
-            )
+            ("apps/desktop/src/main/providers/instruction-io.ts", "    if (!held.isFile()) return { ok: false, reason: 'not-a-regular-file' }\n", ""),
         ],
     ),
     (
         "M7 · ⛔ the byte cap is not applied at all, so a 40 MB file named CLAUDE.md rides every "
         "request of the conversation",
         [
-            (
-                INSTRUCTIONS,
-                "      const room = cap - total",
-                "      const room = Number.POSITIVE_INFINITY",
-            )
+            ("apps/desktop/src/main/providers/instruction-io.ts", "      const room = cap - total", "      const room = Number.POSITIVE_INFINITY"),
         ],
     ),
     (
         "M8 · …and the cap still applies but TRUNCATION is never reported, so a file that was cut "
         "reads as a file that was short",
         [
-            (
-                INSTRUCTIONS,
-                "        truncated = read > room || readSync(fd, buffer, 0, 1, null) > 0",
-                "        truncated = false",
-            )
+            ("apps/desktop/src/main/providers/instruction-io.ts", "        truncated = read > room || readSync(fd, buffer, 0, 1, null) > 0", "        truncated = false"),
         ],
     ),
     (
         "M9 · strict UTF-8 becomes lenient, so invalid bytes reach the model as replacement "
         "characters instead of being refused",
         [
-            (
-                INSTRUCTIONS,
-                "      text = new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks))",
-                "      text = new TextDecoder('utf-8').decode(Buffer.concat(chunks))",
-            )
+            ("apps/desktop/src/main/providers/instruction-io.ts", "      text = new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks))", "      text = new TextDecoder('utf-8').decode(Buffer.concat(chunks))"),
         ],
     ),
     # ---- §2 · what loads, and from where --------------------------------------------------------
@@ -174,56 +158,28 @@ MUTATIONS = [
         "M11 · only the cwd is read and no ancestors, so a repo whose CLAUDE.md sits at its root "
         "loads nothing (the CLI loads it)",
         [
-            (
-                INSTRUCTIONS,
-                "    chain.unshift(dir)\n"
-                "    const parent = dirname(dir)\n"
-                "    if (parent === dir) break // the filesystem root, for a cwd that is not under home at all\n"
-                "    dir = parent",
-                "    chain.unshift(dir)\n    break",
-            )
+            ("apps/desktop/src/main/providers/claude/instructions.ts", "    chain.unshift(dir)\n    const parent = dirname(dir)\n    if (parent === dir) break // the filesystem root, for a cwd that is not under home at all\n    dir = parent", "    chain.unshift(dir)\n    break"),
         ],
     ),
     (
         "M12 · the `.claude/CLAUDE.md` spelling is dropped — 156's control measured BOTH at every "
         "level",
         [
-            (
-                INSTRUCTIONS,
-                # ⚑ Corrected in place at `733` (rule 27): the block became one line when a linked
-                # `.claude` stopped being refused. The rule — both spellings, at every level — holds.
-                "    if (dotUsable) take(nested, kindFor(nested, inputs.workspaceFile))\n",
-                "    if (false && dotUsable) take(nested, kindFor(nested, inputs.workspaceFile))\n",
-            )
+            ("apps/desktop/src/main/providers/claude/instructions.ts", "    if (dotUsable) take(nested, kindFor(nested, inputs.workspaceFile))\n", "    if (false && dotUsable) take(nested, kindFor(nested, inputs.workspaceFile))\n"),
         ],
     ),
     (
-        # ⚠️ **Anchor corrected by `377`, and the ROW is untouched.** That dispatch added a second
-        # walk to this file — `codexConventionChain`, the repository bridge — which also unshifts, so
-        # the bare line now matches twice. ⛔ The subject is still `projectInstructionChain`'s order;
-        # the home-boundary `break` above it is what pins which of the two walks this row is about.
         "M13 · the chain is innermost-first, so the deepest file loses the prompt position the CLI "
         "gives it",
         [
-            (
-                INSTRUCTIONS,
-                "    if (isHomeOrAbove(dir, homeResolved) || isHomeOrAbove(realPath(dir), homeReal)) break\n    chain.unshift(dir)",
-                "    if (isHomeOrAbove(dir, homeResolved) || isHomeOrAbove(realPath(dir), homeReal)) break\n    chain.push(dir)",
-            )
+            ("apps/desktop/src/main/providers/claude/instructions.ts", "    if (isHomeOrAbove(dir, homeResolved) || isHomeOrAbove(realPath(dir), homeReal)) break\n    chain.unshift(dir)", "    if (isHomeOrAbove(dir, homeResolved) || isHomeOrAbove(realPath(dir), homeReal)) break\n    chain.push(dir)"),
         ],
     ),
     (
         "M14 · ⛔ profile memory is read from `<home>/.claude/CLAUDE.md` — the path 156 §1 measured "
         "as the WRONG one",
         [
-            (
-                INSTRUCTIONS,
-                "  take(join(inputs.providerHome, INSTRUCTION_FILENAME), 'profile-memory')",
-                "  take(\n"
-                "    join(inputs.providerHome, INSTRUCTION_DOTDIR, INSTRUCTION_FILENAME),\n"
-                "    'profile-memory',\n"
-                "  )",
-            )
+            ("apps/desktop/src/main/providers/claude/instructions.ts", "  take(join(inputs.providerHome, INSTRUCTION_FILENAME), 'profile-memory')", "  take(\n    join(inputs.providerHome, INSTRUCTION_DOTDIR, INSTRUCTION_FILENAME),\n    'profile-memory',\n  )"),
         ],
     ),
     (
@@ -334,18 +290,10 @@ MUTATIONS = [
         ],
     ),
     (
-        # ⚑ Label corrected at `733`: it named *"the planted symlink M1 is about"*, and since `733` a
-        # working link is followed — the file the reader could not read is a loop, a FIFO, bad bytes.
         "M23 · a refused file is skipped in silence, so a file the reader could not read — a loop of "
         "links, a FIFO, bad bytes — leaves no trace on screen",
         [
-            (
-                INSTRUCTIONS,
-                # ⚑ Corrected in place at `733` (rule 27): a refusal is pushed as `said` now, because a link to
-                # nothing is disclosed from the `absent` arm too. The rule — a refused file is a row — holds.
-                "      if (said !== null) refused.push(said)\n",
-                "",
-            )
+            ("apps/desktop/src/main/providers/claude/instructions.ts", "      if (said !== null) refused.push(said)\n", ""),
         ],
     ),
 ]

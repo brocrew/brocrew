@@ -133,41 +133,29 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "M10 · 🔴 **a `.claude` directory that is a link is not walked into** — killed by "
         f"`{WALK}` (733)",
         [
-            (
-                READER,
-                "    const dotUsable = safeStat(dot)?.isDirectory() === true\n",
-                "    const dotUsable = lstatSync(dot, { throwIfNoEntry: false })?.isDirectory() === true\n",
-            )
+            ("apps/desktop/src/main/providers/claude/instructions.ts", "    const dotUsable = safeStat(dot)?.isDirectory() === true\n", "    const dotUsable = lstatSync(dot, { throwIfNoEntry: false })?.isDirectory() === true\n"),
         ],
     ),
     (
         "M11 · ⚑ **a LOOP of links is `unreadable`, not refused as a link** — the kept rule's word — "
         f"killed by `{WALK}` (733, the loop control) and `{ROW}`",
         [
-            (
-                READER,
-                "    if (isAbsent(error)) return { ok: false, reason: 'absent' }\n"
-                "    return { ok: false, reason: isSymlinkError(error) ? 'symlink' : 'unreadable' }\n",
-                "    if (isAbsent(error)) return { ok: false, reason: 'absent' }\n"
-                "    return { ok: false, reason: 'unreadable' }\n",
-            )
+            ("apps/desktop/src/main/providers/instruction-io.ts", "    if (isAbsent(error)) return { ok: false, reason: 'absent' }\n    return { ok: false, reason: isSymlinkError(error) ? 'symlink' : 'unreadable' }\n", "    if (isAbsent(error)) return { ok: false, reason: 'absent' }\n    return { ok: false, reason: 'unreadable' }\n"),
         ],
     ),
     (
         "M12 · 🔴 **a `CLAUDE.md` that is a link to nothing goes SILENT on the walk** — it had a row while "
         f"the walk refused every link — killed by `{WALK}` (733)",
         [
-            (
-                READER,
-                "      const said = read.reason === 'absent' ? brokenMemoryLink(path) : { path, reason: read.reason }\n",
-                "      const said = read.reason === 'absent' ? null : { path, reason: read.reason }\n",
-            )
+            ("apps/desktop/src/main/providers/claude/instructions.ts", "      const said = read.reason === 'absent' ? brokenMemoryLink(path) : { path, reason: read.reason }\n", "      const said = read.reason === 'absent' ? null : { path, reason: read.reason }\n"),
         ],
     ),
     (
         "M13 · 🔴 **…and so does a `.claude` directory that is a link to nothing** — killed by "
         f"`{WALK}` (733)",
-        [(READER, "      if (broken !== null) refused.push(broken)\n    }\n", "    }\n")],
+        [
+            ("apps/desktop/src/main/providers/claude/instructions.ts", "      if (broken !== null) refused.push(broken)\n    }\n", "    }\n"),
+        ],
     ),
     (
         "M14 · 🔴 **a memory note that is a link to nothing reads as a note that vanished** — killed by "
@@ -224,12 +212,16 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M20 · 🔴 **one file reached by two names is sent twice** — `CLAUDE.md -> AGENTS.md`, a common "
         f"convention, appends the same conventions twice (HO-075 §1) — killed by `{WALK}` (733)",
-        [(READER, "    if (taken.has(real)) {\n", "    if (false) {\n")],
+        [
+            ("apps/desktop/src/main/providers/claude/instructions.ts", "    if (taken.has(real)) {\n", "    if (false) {\n"),
+        ],
     ),
     (
         "M21 · ⚠️ **a followed link does not say where it led** — another file's text under this path, "
         f"and nothing on the row — killed by `{WALK}` (733)",
-        [(READER, "  return real === derived ? undefined : real\n", "  return undefined\n")],
+        [
+            ("apps/desktop/src/main/providers/claude/instructions.ts", "  return real === derived ? undefined : real\n", "  return undefined\n"),
+        ],
     ),
     (
         "M22 · 🔴 **an ENDED conversation's config file does not open** — the panel draws the row and "

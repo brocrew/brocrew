@@ -67,11 +67,7 @@ MUTATIONS = [
         "nor purportedly-real arm recognizes home and the project walk reads the personal "
         "`CLAUDE.md` files above the repository",
         [
-            (
-                INSTRUCTIONS,
-                "return join(realpathSync.native(at), ...tail)",
-                "return join(realpathSync(at), ...tail)",
-            )
+            ("apps/desktop/src/main/providers/instruction-io.ts", "return join(realpathSync.native(at), ...tail)", "return join(realpathSync(at), ...tail)"),
         ],
     ),
     (

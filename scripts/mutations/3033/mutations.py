@@ -194,19 +194,17 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M15 · 🔴 **BroBot's own tools counted twice** · `mcp__brobot__*` names are taken as another "
         f"server's, and counted again beside `toolsInEveryRequest` · killed by `{ONE_READ}` and `{WHAT}`",
-        [(GIVEN,
-          "  const names = published.filter((one) => one.startsWith('mcp__') && !one.startsWith(ours))\n",
-          "  const names = published.filter((one) => one.startsWith('mcp__'))\n")],
+        [
+            ("apps/desktop/src/main/providers/claude/given.ts", "  const names = published.filter((one) => one.startsWith('mcp__') && !one.startsWith(ours))\n", "  const names = published.filter((one) => one.startsWith('mcp__'))\n"),
+        ],
     ),
     # it('⚑ Claude: unknown until a tool list comes, …') — the in-full case: `toBeNull()` and the why
     (
         "M16 · other servers' tools handed over in full are counted by their names alone, as if "
         f"Claude deferred them, and the total says less than every request carries · killed by `{ONE_READ}`",
-        [(GIVEN,
-          "  return deferral.kind === 'names-until-loaded'\n"
-          "    ? { size: sizeOf(names.join('\\n')), why: null }\n",
-          "  return true\n"
-          "    ? { size: sizeOf(names.join('\\n')), why: null }\n")],
+        [
+            ("apps/desktop/src/main/providers/claude/given.ts", "  return how.kind === 'names-until-loaded'\n    ? { size: sizeOf(names.join('\\n')), why: null }\n", "  return true\n    ? { size: sizeOf(names.join('\\n')), why: null }\n"),
+        ],
     ),
     # it('⚑ what every request carries adds up to the total: …') — `toolsInEveryRequest` toEqual the names
     # and less than `tools`; and the one-read test's `expect(s.toolsInEveryRequest).toEqual(names)`
@@ -223,8 +221,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "M18 · 🔴 **BroBot's rules shed first again** · granted last (first in prompt order, and the "
         "grant walk is the reverse), so a repository that fills Claude's 256 KiB budget pushes out the "
         f"safety rules and the person's instructions for the agent · killed by `{WHAT}`",
-        [(INSTR,
-          "    ...candidates.filter((item) => item.kind === 'profile-instructions'),\n",
-          "    // BroBot's own rules: no place of their own in the grant order\n")],
+        [
+            ("apps/desktop/src/main/providers/instruction-composition.ts", "    ...candidates.filter((item) => item.kind === 'profile-instructions'),\n", "    // BroBot's own rules: no place of their own in the grant order\n"),
+        ],
     ),
 ]

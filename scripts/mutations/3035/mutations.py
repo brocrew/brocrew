@@ -164,26 +164,24 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "M15 · Codex's other servers are taken as Claude's: with a server granted, the total says it "
         "can't count them because Claude has not reported its tool list, where Codex finds them by "
         f"search and none is in every request · killed by `{TOTALS}`",
-        [(GIVEN,
-          "  if (deferral.kind === 'found-by-search') {\n",
-          "  if (false) {\n")],
+        [
+            ("apps/desktop/src/main/runtime/what-this-agent-was-given.ts", "  return providerKnowledge[provider].instructions.given.otherServers(\n", "  return providerKnowledge['claude'].instructions.given.otherServers(\n"),
+        ],
     ),
     (
         "M16 · Claude before its tool list, with a server granted, counts nothing for other servers' "
         f"tools instead of saying it can't tell · killed by `{TOTALS}`",
-        [(GIVEN,
-          "    return granted.length === 0\n",
-          "    return true\n")],
+        [
+            ("apps/desktop/src/main/providers/claude/given.ts", "    return granted.length === 0\n", "    return true\n"),
+        ],
     ),
     (
         "M17 · 🔴 **the profile's memory granted before BroBot's rules** · with room for one of the "
         "two, the rules are the row and the memory is sent · killed by "
         f"`{BUDGET}`",
-        [(INSTR,
-          "    ...candidates.filter((item) => item.kind === 'profile-instructions'),\n"
-          "    ...candidates.filter((item) => item.kind === 'profile-memory'),\n",
-          "    ...candidates.filter((item) => item.kind === 'profile-memory'),\n"
-          "    ...candidates.filter((item) => item.kind === 'profile-instructions'),\n")],
+        [
+            ("apps/desktop/src/main/providers/instruction-composition.ts", "    ...candidates.filter((item) => item.kind === 'profile-instructions'),\n    ...candidates.filter((item) => item.kind === 'profile-memory'),\n", "    ...candidates.filter((item) => item.kind === 'profile-memory'),\n    ...candidates.filter((item) => item.kind === 'profile-instructions'),\n"),
+        ],
     ),
     (
         "M18 · a frame whose only change is the reset is taken as saying the same again: nothing is "

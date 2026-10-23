@@ -97,16 +97,7 @@ MUTATIONS = [
         "M2 · ⛔ the reader never finds a launch fact · the same silence one layer down, where a "
         "host test alone would not see it",
         [
-            (
-                INSTR,
-                "  return {\n"
-                "    type: 'memory_loaded',\n"
-                "    index: index.path,\n"
-                "    beside: read.topicsFound,\n"
-                "    lookedAt: read.lookedAt,\n"
-                "  }",
-                "  return null",
-            )
+            ("apps/desktop/src/main/providers/claude/instructions.ts", "  return {\n    type: 'memory_loaded',\n    index: index.path,\n    beside: read.topicsFound,\n    lookedAt: read.lookedAt,\n  }", "  return null"),
         ],
     ),
     (
@@ -126,47 +117,30 @@ MUTATIONS = [
         "M4 · ⛔ the gate stops being 'is it in the PROMPT' · the first file in the store wins, so a "
         "profile with topic files and no index claims an index nobody was given (317 M25's lesson)",
         [
-            (
-                INSTR,
-                "  const index = read.memory.find((item) => item.reach === 'prompt')",
-                "  const index = read.memory[0]",
-            )
+            ("apps/desktop/src/main/providers/claude/instructions.ts", "  const index = read.memory.find((item) => item.reach === 'prompt')", "  const index = read.memory[0]"),
         ],
     ),
     (
         "M5 · ⛔ the count becomes the PANEL's list · a store of forty is reported as twenty with "
         "nothing on screen to say so — 092 §4's silent cap, in the row that exists to say memory is "
         "in play",
-        [(INSTR, "beside: read.topicsFound,", "beside: read.topicsListed,")],
+        [
+            ("apps/desktop/src/main/providers/claude/instructions.ts", "beside: read.topicsFound,", "beside: read.topicsListed,"),
+        ],
     ),
     (
         "M6 · ⛔ Codex gets the row too · 310's defect rebuilt — one sentence stretched over two "
         "providers whose injected file is a different KIND of thing, and 332 §2.5 ruled it out",
         [
-            (
-                INSTR,
-                "      memoryLoaded: null,",
-                "      memoryLoaded: {\n"
-                "        type: 'memory_loaded',\n"
-                "        index: join(inputs.providerHome, 'memories', 'memory_summary.md'),\n"
-                "        beside: 0,\n"
-                "      },",
-            )
+            ("apps/desktop/src/main/providers/codex/instructions.ts", "import { CODEX_MEMORY_SUMMARY } from '@brobot2/runtime'", "import { join } from 'node:path'\nimport { CODEX_MEMORY_SUMMARY } from '@brobot2/runtime'"),
+            ("apps/desktop/src/main/providers/codex/instructions.ts", "    memoryLoaded: null,", "    memoryLoaded: { type: 'memory_loaded', index: join(inputs.providerHome, 'memories', 'memory_summary.md'), beside: 0 },"),
         ],
     ),
     (
         "M7 · ⛔ an EMPTY index still claims the prompt · the reader drops a blank file, so this "
         "would say a file is in front of the model while the provider's own prompt says it is empty",
         [
-            (
-                INSTR,
-                "  const index = read.memory.find((item) => item.reach === 'prompt')\n"
-                "  if (index === undefined) return null",
-                "  const index = read.memory.find((item) => item.reach === 'prompt')\n"
-                "  if (index === undefined) {\n"
-                "    return { type: 'memory_loaded', index: read.dir ?? '', beside: read.topicsFound }\n"
-                "  }",
-            )
+            ("apps/desktop/src/main/providers/claude/instructions.ts", "  const index = read.memory.find((item) => item.reach === 'prompt')\n  if (index === undefined) return null", "  const index = read.memory.find((item) => item.reach === 'prompt')\n  if (index === undefined) {\n    return { type: 'memory_loaded', index: read.dir ?? '', beside: read.topicsFound }\n  }"),
         ],
     ),
     (
