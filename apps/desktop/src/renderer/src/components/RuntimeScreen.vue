@@ -3919,7 +3919,11 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <MessageLinks :resolve="resolveMessageLink" :open="openMessageDestination">
+  <MessageLinks
+    :resolve="resolveMessageLink"
+    :open="openMessageDestination"
+    :scope="`${place ?? ''}|${activeId ?? ''}`"
+  >
     <div ref="appElement" class="app">
       <!-- Every icon the product draws, mounted once so any surface can reach it. -->
       <IconSprite />

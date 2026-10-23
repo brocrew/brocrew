@@ -181,7 +181,7 @@ describe('the history window', () => {
     view.all('message-link')[0]!.click()
     await expect
       .poll(() => view.all('message-link-failure')[0]?.textContent)
-      .toBe("Couldn't open this link.")
+      .toContain("Couldn't open this link.")
     expect(bridge.calls.slice(calls)).toEqual([])
     expect(view.q('recovery-transcript').querySelector('a[href^="brocrew:"]')).toBeNull()
     expect(view.all('message-link')[0]!.querySelector('svg')?.getAttribute('aria-label')).toBe(

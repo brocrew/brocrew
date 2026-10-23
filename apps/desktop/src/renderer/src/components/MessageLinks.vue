@@ -1,16 +1,20 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, useId } from 'vue'
+import { onBeforeUnmount, onMounted, ref, useId, watch } from 'vue'
 import {
   LINK_FAILED,
   LINK_UNAVAILABLE,
+  linkFailureReason,
   MESSAGE_LINK_ATTRIBUTE,
   type ResolveMessageLink,
   type ResolvedMessageLink,
 } from '../lib/message-links'
+import { TOAST_MS } from '../lib/overlay-store'
 
 const props = defineProps<{
   resolve: ResolveMessageLink
   open: (answer: ResolvedMessageLink) => Promise<boolean>
+  /** Changes when the person moves to another conversation or place; a failure shown for the old one goes. */
+  scope?: string
 }>()
 const root = ref<HTMLElement | null>(null)
 const failure = ref<string | null>(null)
@@ -32,7 +36,22 @@ let alive = true
 let pressing = false
 let running = 0
 let hoverTimer: ReturnType<typeof setTimeout> | null = null
+let failureTimer: ReturnType<typeof setTimeout> | null = null
 const queue: Array<() => void> = []
+
+function clearFailure(): void {
+  if (failureTimer !== null) clearTimeout(failureTimer)
+  failureTimer = null
+  failure.value = null
+}
+
+function fail(reason: string): void {
+  clearFailure()
+  failure.value = reason
+  failureTimer = setTimeout(clearFailure, TOAST_MS)
+}
+
+watch(() => props.scope, clearFailure)
 
 function read(target: string, fresh = false): Promise<ResolvedMessageLink> {
   const pending = inFlight.get(target)
@@ -249,21 +268,21 @@ async function click(event: MouseEvent): Promise<void> {
   event.stopPropagation()
   if (pressing) return
   pressing = true
-  failure.value = null
+  clearFailure()
   button.setAttribute('aria-busy', 'true')
   try {
     const answer = await read(button.getAttribute(MESSAGE_LINK_ATTRIBUTE)!, true)
     if (!alive || !button.isConnected) return
     if (answer.state === 'unavailable' || answer.opens === null) {
-      failure.value = LINK_FAILED
+      fail(linkFailureReason(answer))
       return
     }
     const opened = await props.open(answer)
     if (!alive) return
     if (opened) hide()
-    else if (button.isConnected) failure.value = LINK_FAILED
+    else if (button.isConnected) fail(LINK_FAILED)
   } catch {
-    if (alive && button.isConnected) failure.value = LINK_FAILED
+    if (alive && button.isConnected) fail(LINK_FAILED)
   } finally {
     button.removeAttribute('aria-busy')
     pressing = false
@@ -307,6 +326,7 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   alive = false
+  clearFailure()
   hide()
   root.value?.removeEventListener('click', click, true)
   root.value?.removeEventListener('auxclick', guardGesture, true)
@@ -344,6 +364,14 @@ onBeforeUnmount(() => {
     </div>
     <p v-if="failure" role="status" class="message-link-failure" data-cy="message-link-failure">
       {{ failure }}
+      <button
+        type="button"
+        class="message-link-failure-close"
+        aria-label="Close"
+        @click="clearFailure"
+      >
+        <svg class="icon"><use href="#i-x" /></svg>
+      </button>
     </p>
   </div>
 </template>
@@ -411,5 +439,21 @@ onBeforeUnmount(() => {
   bottom: var(--space-8);
   left: 50%;
   transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+.message-link-failure-close {
+  display: inline-flex;
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.message-link-failure-close:hover,
+.message-link-failure-close:focus-visible {
+  color: var(--text);
 }
 </style>

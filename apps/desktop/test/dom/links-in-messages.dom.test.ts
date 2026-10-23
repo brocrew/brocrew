@@ -703,7 +703,7 @@ it('resolves and opens archived links once in nested scopes before and after tel
     const at = source.indexOf('<LinkedHistory\n', source.indexOf('<template>'))
     expect(at).toBeGreaterThan(-1)
     const scope = source.indexOf(
-      '<MessageLinks :resolve="resolveMessageLink" :open="openMessageDestination">',
+      '<MessageLinks\n    :resolve="resolveMessageLink"\n    :open="openMessageDestination"',
     )
     expect(scope).toBeGreaterThan(-1)
     expect(scope).toBeLessThan(at)
