@@ -574,8 +574,8 @@ describe('simultaneous unselected and opted-in owners', () => {
             ready: async () => ({
               serverPid: 404941,
               origin: 'http://127.0.0.1:1',
-              mcp: () => ({ url: '', headers: {} }),
-              admin: () => ({ url: '', headers: {} }),
+              mcp: () => ({ url: '', headers: { Authorization: '' } }),
+              admin: () => ({ url: '', headers: { Authorization: '' } }),
             }),
             stop: async () => {
               events.push('stop')
