@@ -1,3 +1,4 @@
+import { snapshot } from './snapshot'
 import { instructions } from './instructions'
 import { memory } from './memory'
 import { transcripts } from './transcripts'
@@ -383,6 +384,7 @@ export function createCodexModule(
     transcripts,
     instructions,
     memory,
+    snapshot,
     discovery,
     createRuntime: codexModuleFactory.runtime(seams.runtime),
     home: codexModuleFactory.home(paths, seams.home),

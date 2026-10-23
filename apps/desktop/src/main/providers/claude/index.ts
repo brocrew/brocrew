@@ -1,3 +1,4 @@
+import { snapshot } from './snapshot'
 import { instructions } from './instructions'
 import { memory } from './memory'
 import { transcripts } from './transcripts'
@@ -218,6 +219,7 @@ export function createClaudeModule(
     transcripts,
     instructions,
     memory,
+    snapshot,
     discovery,
     createRuntime: claudeModuleFactory.runtime(seams.runtime),
     home: claudeModuleFactory.home(paths, seams.home),

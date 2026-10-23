@@ -141,6 +141,11 @@ describe('provider modules stay behind the main-process registry', () => {
       join(root, 'runtime/instructions.ts'),
       join(root, 'runtime/agent-memory.ts'),
       join(root, 'skills/prepare-built-in-skills.ts'),
+      ...files.filter((file) =>
+        /^providers\/(claude|codex)\/(instructions|memory|skills|given|kept-rules|snapshot)(\.ts|\/)/.test(
+          nameOf(file),
+        ),
+      ),
     ])
     const seen = new Set<string>()
     const reached: string[] = []
