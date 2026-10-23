@@ -3,7 +3,14 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { FakeRuntime, type AgentToolset, type StartOptions } from '@brobot2/runtime'
+import {
+  FakeRuntime,
+  FakeProviderSessions,
+  type AgentToolset,
+  type StartOptions,
+  type ResumeOptions,
+  type SessionRef,
+} from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
@@ -76,11 +83,20 @@ class ToolRuntime extends FakeRuntime {
   constructor(
     provider: Provider,
     private readonly handed: AgentToolset[],
+    sessions: FakeProviderSessions,
   ) {
-    super(provider)
+    super(provider, { sessions })
   }
   override async start(options: StartOptions): ReturnType<FakeRuntime['start']> {
     const handle = await super.start(options)
+    if (options.agentTools !== undefined) this.handed.push(options.agentTools)
+    return handle
+  }
+  override async resume(
+    ref: SessionRef,
+    options: ResumeOptions,
+  ): ReturnType<FakeRuntime['resume']> {
+    const handle = await super.resume(ref, options)
     if (options.agentTools !== undefined) this.handed.push(options.agentTools)
     return handle
   }
@@ -94,6 +110,7 @@ describe('standing-rule authority belongs to the host and changes remain attribu
   let host: RuntimeHost
   let window: Window
   let handed: AgentToolset[]
+  let providerSessions: FakeProviderSessions
   let tools: Map<string, AgentToolset>
   let clock: number
   let sequence: number
@@ -115,6 +132,7 @@ describe('standing-rule authority belongs to the host and changes remain attribu
     clock = 1000
     sequence = 0
     handed = []
+    providerSessions = new FakeProviderSessions()
     tools = new Map()
     store = createSessionStore(db, tick)
     const home = (provider: Provider, profile?: string | null) =>
@@ -124,7 +142,7 @@ describe('standing-rule authority belongs to the host and changes remain attribu
       discoverSessions: NO_DISCOVERY,
       nativeTranscriptPath: () => null,
       exportDirectory: () => join(root, 'exports'),
-      createRuntime: (provider) => new ToolRuntime(provider, handed),
+      createRuntime: (provider) => new ToolRuntime(provider, handed, providerSessions),
       prepareProviderHome: (provider, profile) => {
         const path = home(provider, profile)
         mkdirSync(path, { recursive: true })
@@ -152,9 +170,9 @@ describe('standing-rule authority belongs to the host and changes remain attribu
     rmSync(work, { recursive: true, force: true })
   })
 
-  const start = async (profile: string): Promise<string> => {
+  const start = async (profile: string, provider: Provider = 'codex'): Promise<string> => {
     const created = await host.createSession(
-      { provider: 'codex', profileId: profile, cwd: work, approvalMode: 'ask' },
+      { provider, profileId: profile, cwd: work, approvalMode: 'ask' },
       window,
     )
     const toolset = handed.at(-1)
@@ -187,6 +205,45 @@ describe('standing-rule authority belongs to the host and changes remain attribu
     if (tool === undefined) throw new Error('unreachable missing tool')
     return (await tool.call(args)).structured as Record<string, unknown>
   }
+
+  it.each(['claude', 'codex'] as const)(
+    'offers the direct rules tool only to a person-started primary conversation on %s',
+    async (provider) => {
+      await start('lark', provider)
+      const primary = await start(DEFAULT_PROFILE_ID, provider)
+      const primaryNames = tools.get(primary)!.tools.map((one) => one.name)
+      expect(primaryNames).toContain('write_agent_rules')
+      expect(primaryNames).toContain('read_agent_rules')
+      expect(primaryNames).toContain('propose_agent_rules')
+      const ordinary = await start('wren', provider)
+      const ordinaryNames = tools.get(ordinary)!.tools.map((one) => one.name)
+      expect(ordinaryNames).not.toContain('write_agent_rules')
+      expect(ordinaryNames).toEqual(primaryNames.filter((name) => name !== 'write_agent_rules'))
+      expect(replace(ordinary)).toMatchObject({ ok: false, rail: 'may-not-write-rules' })
+      expect(replace(primary, { about: DEFAULT_PROFILE_ID })).toMatchObject({
+        ok: false,
+        rail: 'may-not-write-rules',
+      })
+      expect(store.ownInstructionsOf('lark').versions).toEqual([])
+    },
+  )
+
+  it.each(['claude', 'codex'] as const)(
+    'keeps the same eligible tool list when a person reopens a conversation on %s',
+    async (provider) => {
+      for (const profile of [DEFAULT_PROFILE_ID, 'wren']) {
+        const me = await start(profile, provider)
+        const before = tools.get(me)!.tools.map((one) => one.name)
+        expect(before.includes('write_agent_rules')).toBe(profile === DEFAULT_PROFILE_ID)
+        await host.close(me, window)
+        const count = handed.length
+        await host.resumeSession(me, window)
+        expect(handed).toHaveLength(count + 1)
+        const after = handed.at(-1)!.tools.map((one) => one.name)
+        expect(after).toEqual(before)
+      }
+    },
+  )
 
   it.each(['none', 'propose', 'relay'] as const)(
     'lets a known agent propose under dormant grant %s without allowing direct writes',
@@ -248,8 +305,18 @@ describe('standing-rule authority belongs to the host and changes remain attribu
       expect(policy().readAgentRules(helper, 'lark', caller(helper)).ok).toBe(true),
     )
     expect(store.parentOf(helper)).toBe(giver)
+    const helperNames = handed.at(-1)!.tools.map((one) => one.name)
+    expect(helperNames).not.toContain('write_agent_rules')
+    expect(helperNames).toContain('read_agent_rules')
+    expect(helperNames).toContain('propose_agent_rules')
     expect(replace(helper).ok).toBe(false)
     host.claimSession(helper, window)
+    expect(replace(helper).ok).toBe(false)
+    await host.close(helper, window)
+    const count = handed.length
+    await host.resumeSession(helper, window)
+    expect(handed).toHaveLength(count + 1)
+    expect(handed.at(-1)!.tools.map((one) => one.name)).toEqual(helperNames)
     expect(replace(helper).ok).toBe(false)
     expect(propose(helper).ok).toBe(true)
     expect(store.ownInstructionsOf('lark').versions).toEqual([])
@@ -418,10 +485,8 @@ describe('standing-rule authority belongs to the host and changes remain attribu
     }
     for (const held of ['none', 'propose', 'relay'] as const) {
       store.setCapabilities('wren', { canWriteRules: held })
-      expect(await call(ordinary, 'write_agent_rules', input)).toMatchObject({
-        outcome: 'refused',
-        rail: 'may-not-write-rules',
-      })
+      expect(tools.get(ordinary)!.tools.some((one) => one.name === 'write_agent_rules')).toBe(false)
+      expect(replace(ordinary)).toMatchObject({ ok: false, rail: 'may-not-write-rules' })
     }
     expect(
       await call(primary, 'write_agent_rules', { ...input, agent: DEFAULT_PROFILE_ID }),
