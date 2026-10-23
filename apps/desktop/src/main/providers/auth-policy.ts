@@ -16,6 +16,10 @@ export interface ProtocolNotice {
   readonly label?: string
   readonly degradedFrom?: unknown
   readonly passing?: boolean
+  readonly source?: unknown
+  readonly running?: unknown
+  readonly ended?: unknown
+  readonly dropped?: unknown
 }
 
 /** Native facts and comparisons are separate from bound credential and launch services. */

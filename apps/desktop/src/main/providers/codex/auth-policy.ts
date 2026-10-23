@@ -70,6 +70,14 @@ export const authPolicy: ProviderAuthPolicy = {
         event.label === 'userMessage' &&
         event.degradedFrom === undefined &&
         event.passing !== true),
-    reopenedGive: (event) => lifecycle(event, reopenedLabels),
+    reopenedGive: (event) =>
+      lifecycle(event, reopenedLabels) ||
+      (event.type === 'background_work' &&
+        event.source === 'thread/backgroundTerminals/list' &&
+        Array.isArray(event.running) &&
+        event.running.length === 0 &&
+        event.ended === undefined &&
+        (event.dropped === undefined || event.dropped === 0) &&
+        Object.keys(event).every((key) => ['type', 'source', 'running', 'dropped'].includes(key))),
   },
 }
