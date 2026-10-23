@@ -1,3 +1,6 @@
+import { PluginVerificationError } from '../verification-error'
+import { PluginDownloadError, downloadPluginBytes } from '../catalogue/download'
+import { PluginListError } from '../catalogue/list-error'
 import { createContributionRegistry, pluginContributions } from '../contributions'
 import { pluginNodePolicy } from '../node-policy'
 import { newerPluginVersion } from '../catalogue/newer-version'
@@ -6,7 +9,7 @@ import { PluginProfileLedger } from './profile-ledger'
 import { chromeProfileIntent, ChromeProposal } from './chrome-apply'
 import { pluginAdapter } from './adapters'
 import { PluginProposal, proposalFor } from './proposals'
-import { pluginSha256 } from '../package-digests'
+import { PLUGIN_LIMITS, pluginSha256 } from '../package-digests'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { createRepoAwarePluginVerifier, type VerifiedPluginPackage } from '../package-verifier'
@@ -64,6 +67,16 @@ interface Running {
   priorityClamped?: boolean | null
 }
 
+export interface PreparedPluginMutation {
+  action: 'install' | 'update'
+  pluginId: string
+  releaseDigest: string
+  catalogueDigest: string
+  sequence: number
+  catalogueRevision: number
+  installId: string | null
+}
+
 /** One instance per exclusively owned supervisor. Settings/person authority is never an agent API. */
 export class PluginLifecycleController {
   private readonly workspaces = new Map<LifecycleWorkspace, Workspace>()
@@ -73,6 +86,7 @@ export class PluginLifecycleController {
   private readonly localOperations = new Set<string>()
   private readonly admittedCatalogues = new Map<string, readonly string[]>()
   private readonly cleanup = new Set<string>()
+  private catalogueRevision = 0
   private draining = false
   private drained = false
   private drainWork: Promise<void> | undefined
@@ -181,7 +195,7 @@ export class PluginLifecycleController {
   }
   async refreshCatalogue(expectedDigest: string): Promise<void> {
     if (!/^[a-f0-9]{64}$/.test(expectedDigest) || !this.options.refreshCatalogue) return refuse()
-    await this.options.state.withExclusive(async () => {
+    await this.mutationFence(async () => {
       const next = await this.options.refreshCatalogue!()
       const verified = createRepoAwarePluginVerifier({
         pinnedPublicKey: this.options.pinnedPublicKey,
@@ -189,13 +203,17 @@ export class PluginLifecycleController {
         target: this.options.target,
         knownReleases: this.pins(),
       }).verifyCatalogue(next.catalogue.bytes, next.catalogue.signature)
-      if (pluginSha256(next.catalogue.bytes) !== expectedDigest) return refuse()
+      if (pluginSha256(next.catalogue.bytes) !== expectedDigest) {
+        if (this.requiresPreparedMutations()) throw new PluginSupervisorError('source-mismatch')
+        return refuse()
+      }
       this.retainRepoList(next.repoList, next.repoCatalogueSha256)
       this.retainLegacyRepoList(next.legacyRepoList)
       this.retainCatalogue(
         next.catalogue.bytes,
         verified.entries.map((one) => one.id),
       )
+      this.catalogueRevision++
       this.options.catalogue = next.catalogue
       this.options.repoCatalogueSha256 = next.repoCatalogueSha256
       this.options.repoList = next.repoList
@@ -210,6 +228,152 @@ export class PluginLifecycleController {
       target: this.options.target,
       knownReleases: this.pins(),
     }).verifyCatalogue(this.options.catalogue.bytes, this.options.catalogue.signature)
+  }
+  /** Verify author identity before revoking or changing any installation authority. */
+  private async mutationPackage(id: string) {
+    const proof = this.options.catalogue,
+      catalogue = this.catalogue()
+    const release = catalogue.entries.find((entry) => entry.id === id)
+    if (!release?.authors) throw new PluginSupervisorError('policy-refused')
+    let bytes: Uint8Array | undefined
+    const checked = await this.vault
+      .load(release, this.pins(), catalogue)
+      .catch(async () => {
+        bytes = await (
+          this.options.download ??
+          ((entry, signal) =>
+            downloadPluginBytes({
+              url: entry.archive.url,
+              maximum: PLUGIN_LIMITS.archiveBytes,
+              size: entry.archive.size,
+              sha256: entry.archive.sha256,
+              signal,
+            }))
+        )(release, AbortSignal.timeout(30000))
+        return catalogue.verifyPackage(id, release.version, bytes)
+      })
+      .catch((error) => {
+        if (error instanceof PluginVerificationError || error instanceof PluginDownloadError)
+          throw new PluginSupervisorError(
+            error instanceof PluginDownloadError && error.kind === 'transport'
+              ? 'network'
+              : 'policy-refused',
+          )
+        throw error
+      })
+    if (
+      this.options.catalogue !== proof ||
+      checked.manifest.format !== 2 ||
+      JSON.stringify(checked.manifest.authors) !== JSON.stringify(release.authors)
+    )
+      throw new PluginSupervisorError('policy-refused')
+    return { proof, release, checked, bytes }
+  }
+  /** Policy is a normal refusal, never a storage exception. Leave real disk errors to the fence. */
+  private async mutationFence<T>(work: () => Promise<T>): Promise<T> {
+    const outcome = await this.options.state.withExclusive(async () => {
+      // Preserve the existing storage-error path for the dormant v1 policy.
+      if (!this.requiresPreparedMutations()) return { ok: true, value: await work() } as const
+      const before = this.options.state.inspect()
+      try {
+        return { ok: true, value: await work() } as const
+      } catch (error) {
+        const after = this.options.state.inspect()
+        if (after.sequence !== before.sequence || after.pending !== null) throw error
+        if (
+          error instanceof PluginSupervisorError &&
+          ['policy-refused', 'source-mismatch', 'network', 'incompatible'].includes(error.code)
+        )
+          return { ok: false, error } as const
+        if (
+          error instanceof PluginVerificationError ||
+          error instanceof PluginDownloadError ||
+          error instanceof PluginListError
+        )
+          return {
+            ok: false,
+            error: new PluginSupervisorError(
+              (error instanceof PluginDownloadError && error.kind === 'transport') ||
+                (error instanceof PluginListError && error.state === 'fetch-error')
+                ? 'network'
+                : 'policy-refused',
+            ),
+          } as const
+        throw error
+      }
+    })
+    if (!outcome.ok) throw outcome.error
+    return outcome.value
+  }
+  requiresPreparedMutations(): boolean {
+    const catalogue = this.catalogue()
+    return catalogue.format === 2 || catalogue.entries.some((entry) => entry.authors !== undefined)
+  }
+  mutationCatalogueDigest(): string {
+    return pluginSha256(this.options.catalogue.bytes)
+  }
+  requireMutationSource(digest: string): void {
+    if (!this.requiresPreparedMutations()) throw new PluginSupervisorError('incompatible')
+    if (digest !== this.mutationCatalogueDigest())
+      throw new PluginSupervisorError('source-mismatch')
+  }
+  private requirePreparation(
+    id: string,
+    action: 'install' | 'update',
+    prepared: PreparedPluginMutation | undefined,
+  ): void {
+    if (!this.requiresPreparedMutations()) {
+      if (prepared) throw new PluginSupervisorError('incompatible')
+      return
+    }
+    if (!prepared || typeof prepared !== 'object') throw new PluginSupervisorError('policy-refused')
+    this.requireMutationSource(prepared.catalogueDigest)
+    const state = this.options.state.inspect()
+    if (
+      prepared.action !== action ||
+      prepared.pluginId !== id ||
+      prepared.sequence !== state.sequence ||
+      prepared.catalogueRevision !== this.catalogueRevision ||
+      prepared.installId !== (this.current(id)?.installId ?? null) ||
+      prepared.releaseDigest !== this.catalogue().entries.find((e) => e.id === id)?.archive.sha256
+    )
+      throw new PluginSupervisorError('policy-refused')
+  }
+  async prepareMutation(
+    handle: LifecycleWorkspace,
+    action: 'install' | 'update',
+    id: string,
+    releaseDigest: string,
+    catalogueDigest: string,
+  ): Promise<PreparedPluginMutation> {
+    this.workspace(handle)
+    this.requireMutationSource(catalogueDigest)
+    if (this.catalogue().entries.find((e) => e.id === id)?.archive.sha256 !== releaseDigest)
+      throw new PluginSupervisorError('policy-refused')
+    const checked = await this.mutationPackage(id)
+    if (checked.release.archive.sha256 !== releaseDigest || !checked.release.authors)
+      throw new PluginSupervisorError('policy-refused')
+    return this.mutationFence(async () => {
+      this.requireMutationSource(catalogueDigest)
+      if (this.options.catalogue !== checked.proof)
+        throw new PluginSupervisorError('policy-refused')
+      const current = this.current(id)
+      if (
+        (action === 'install' && current) ||
+        (action === 'update' &&
+          (!current || !newerPluginVersion(checked.release.version, current.release.version)))
+      )
+        throw new PluginSupervisorError('policy-refused')
+      return Object.freeze({
+        action,
+        pluginId: id,
+        releaseDigest,
+        catalogueDigest,
+        sequence: this.options.state.inspect().sequence,
+        catalogueRevision: this.catalogueRevision,
+        installId: current?.installId ?? null,
+      })
+    })
   }
   private descriptor(install: Installation) {
     return {
@@ -494,11 +658,42 @@ export class PluginLifecycleController {
     id: string,
     operationId: string = randomUUID(),
   ): Promise<void> {
+    return this.installMutation(handle, id, undefined, operationId)
+  }
+  async installPrepared(
+    handle: LifecycleWorkspace,
+    id: string,
+    prepared: PreparedPluginMutation,
+    operationId: string = randomUUID(),
+  ): Promise<void> {
+    if (!prepared || !this.requiresPreparedMutations())
+      throw new PluginSupervisorError('policy-refused')
+    return this.installMutation(handle, id, prepared, operationId)
+  }
+  private async installMutation(
+    handle: LifecycleWorkspace,
+    id: string,
+    prepared: PreparedPluginMutation | undefined,
+    operationId: string,
+  ): Promise<void> {
     const workspace = this.workspace(handle)
+    this.requirePreparation(id, 'install', prepared)
+    const expectedReleaseDigest = prepared?.releaseDigest
+    const offered = this.catalogue().entries.find((release) => release.id === id)
+    if (
+      this.requiresPreparedMutations() &&
+      (!offered?.authors ||
+        (expectedReleaseDigest !== undefined && offered.archive.sha256 !== expectedReleaseDigest))
+    )
+      return refuse()
     if (!idSchema.safeParse(id).success || !z.uuid().safeParse(operationId).success) return refuse()
-    const token = this.block(id)
+    const preflight = this.requiresPreparedMutations() ? await this.mutationPackage(id) : undefined
+    let token: symbol | undefined = this.requiresPreparedMutations() ? undefined : this.block(id)
     try {
-      await this.options.state.withExclusive(async () => {
+      await this.mutationFence(async () => {
+        this.requirePreparation(id, 'install', prepared)
+        if (preflight && this.options.catalogue !== preflight.proof) return refuse()
+        if (this.requiresPreparedMutations()) token = this.block(id)
         const prior = this.options.state
           .inspect()
           .operations.find((one) => one.operation.request.operationId === operationId)
@@ -510,6 +705,11 @@ export class PluginLifecycleController {
           )
             return refuse()
           const installed = this.current(id)
+          if (
+            expectedReleaseDigest !== undefined &&
+            installed?.release.archiveSha256 !== expectedReleaseDigest
+          )
+            return refuse()
           if (!installed || installed.installId !== prior.operation.next?.installId) return refuse()
           const checked = await this.vault.load(this.descriptor(installed), this.pins())
           await this.ensureRunning(installed, checked)
@@ -529,11 +729,20 @@ export class PluginLifecycleController {
           )
         )
           return refuse()
-        const bytes = await (this.options.download ?? downloadPluginArchive)(
-          release,
-          AbortSignal.timeout(30000),
+        if (
+          this.requiresPreparedMutations() &&
+          (!release.authors ||
+            (expectedReleaseDigest !== undefined &&
+              release.archive.sha256 !== expectedReleaseDigest))
         )
-        const checked = catalogue.verifyPackage(id, release.version, bytes)
+          return refuse()
+        const bytes = preflight
+          ? preflight.bytes
+          : await (this.options.download ?? downloadPluginArchive)(
+              release,
+              AbortSignal.timeout(30000),
+            )
+        const checked = preflight?.checked ?? catalogue.verifyPackage(id, release.version, bytes!)
         if (checked.manifest.skills.length !== 0) return refuse()
         const state = this.options.state.inspect(),
           before = state.guards.find((one) => one.pluginId === id)
@@ -578,7 +787,9 @@ export class PluginLifecycleController {
         try {
           await this.effects.write(effect)
           this.options.fault?.('prepared')
-          const staged = await this.vault.stage(release, bytes, this.options.catalogue, this.pins())
+          const staged = bytes
+            ? await this.vault.stage(release, bytes, this.options.catalogue, this.pins())
+            : checked
           this.options.fault?.('staged')
           await this.ensureRunning(install, staged)
           this.options.fault?.('ready')
@@ -632,7 +843,12 @@ export class PluginLifecycleController {
         }
       })
       if (this.blocks.get(id) === token) this.blocks.delete(id)
-    } catch {
+    } catch (error) {
+      if (
+        error instanceof PluginSupervisorError &&
+        ['policy-refused', 'source-mismatch'].includes(error.code)
+      )
+        throw error
       if (!this.cleanup.has(id) && !this.options.state.inspect().pending) {
         if (this.blocks.get(id) === token) this.blocks.delete(id)
       }
@@ -644,11 +860,39 @@ export class PluginLifecycleController {
     id: string,
     operationId: string = randomUUID(),
   ): Promise<void> {
+    return this.updateMutation(handle, id, undefined, operationId)
+  }
+  async updatePrepared(
+    handle: LifecycleWorkspace,
+    id: string,
+    prepared: PreparedPluginMutation,
+    operationId: string = randomUUID(),
+  ): Promise<void> {
+    if (!prepared || !this.requiresPreparedMutations())
+      throw new PluginSupervisorError('policy-refused')
+    return this.updateMutation(handle, id, prepared, operationId)
+  }
+  private async updateMutation(
+    handle: LifecycleWorkspace,
+    id: string,
+    prepared: PreparedPluginMutation | undefined,
+    operationId: string,
+  ): Promise<void> {
     const workspace = this.workspace(handle)
+    this.requirePreparation(id, 'update', prepared)
+    if (
+      this.requiresPreparedMutations() &&
+      !this.catalogue().entries.find((release) => release.id === id)?.authors
+    )
+      return refuse()
     if (!idSchema.safeParse(id).success || !z.uuid().safeParse(operationId).success) return refuse()
-    const token = this.block(id)
+    const preflight = this.requiresPreparedMutations() ? await this.mutationPackage(id) : undefined
+    let token: symbol | undefined = this.requiresPreparedMutations() ? undefined : this.block(id)
     try {
-      await this.options.state.withExclusive(async () => {
+      await this.mutationFence(async () => {
+        this.requirePreparation(id, 'update', prepared)
+        if (preflight && this.options.catalogue !== preflight.proof) return refuse()
+        if (this.requiresPreparedMutations()) token = this.block(id)
         const state = this.options.state.inspect()
         const prior = state.operations.find(
           (one) => one.operation.request.operationId === operationId,
@@ -683,11 +927,14 @@ export class PluginLifecycleController {
           )
         )
           return refuse()
-        const bytes = await (this.options.download ?? downloadPluginArchive)(
-          release,
-          AbortSignal.timeout(30000),
-        )
-        const checked = catalogue.verifyPackage(id, release.version, bytes)
+        if (this.requiresPreparedMutations() && !release.authors) return refuse()
+        const bytes = preflight
+          ? preflight.bytes
+          : await (this.options.download ?? downloadPluginArchive)(
+              release,
+              AbortSignal.timeout(30000),
+            )
+        const checked = preflight?.checked ?? catalogue.verifyPackage(id, release.version, bytes!)
         if (
           checked.manifest.skills.length ||
           checked.manifest.dataSchema !== before.release.dataSchema ||
@@ -696,7 +943,7 @@ export class PluginLifecycleController {
         )
           return refuse()
         // Cache the verified replacement durably before reserving an update. Recovery needs no download.
-        await this.vault.stage(release, bytes, this.options.catalogue, this.pins())
+        if (bytes) await this.vault.stage(release, bytes, this.options.catalogue, this.pins())
         this.options.fault?.('staged')
         if (!workspace.live) return refuse()
         this.options.state.requireUpdateReader()
@@ -739,7 +986,12 @@ export class PluginLifecycleController {
         await this.finishUpdate(effect, operation.next!)
       })
       if (this.blocks.get(id) === token) this.blocks.delete(id)
-    } catch {
+    } catch (error) {
+      if (
+        error instanceof PluginSupervisorError &&
+        ['policy-refused', 'source-mismatch'].includes(error.code)
+      )
+        throw error
       if (!this.options.state.inspect().pending && this.blocks.get(id) === token)
         this.blocks.delete(id)
       return refuse()
