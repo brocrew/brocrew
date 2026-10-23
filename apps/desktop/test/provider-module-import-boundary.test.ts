@@ -1,0 +1,113 @@
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { dirname, join, relative, resolve, sep } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import ts from 'typescript'
+import { describe, expect, it } from 'vitest'
+
+const root = fileURLToPath(new URL('../src/main', import.meta.url))
+const registry = join(root, 'providers/index.ts')
+const composition = join(root, 'index.ts')
+const nameOf = (file: string): string => relative(root, file).split(sep).join('/')
+const filesIn = (folder: string): string[] =>
+  readdirSync(folder, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(folder, entry.name)
+    return entry.isDirectory() ? filesIn(path) : entry.name.endsWith('.ts') ? [path] : []
+  })
+const files = filesIn(root)
+const imports = new Map<string, readonly string[]>()
+
+/** Follow local value imports, re-exports and literal dynamic imports; never load their code. */
+function valueImports(file: string): readonly string[] {
+  const known = imports.get(file)
+  if (known !== undefined) return known
+  const source = ts.createSourceFile(file, readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true)
+  const specifiers = new Set<string>()
+  const visit = (node: ts.Node): void => {
+    if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
+      const clause = node.importClause
+      const bindings = clause?.namedBindings
+      if (
+        !clause?.isTypeOnly &&
+        (clause === undefined ||
+          clause.name !== undefined ||
+          bindings === undefined ||
+          !ts.isNamedImports(bindings) ||
+          bindings.elements.some((one) => !one.isTypeOnly))
+      )
+        specifiers.add(node.moduleSpecifier.text)
+    }
+    if (
+      ts.isExportDeclaration(node) &&
+      !node.isTypeOnly &&
+      node.moduleSpecifier !== undefined &&
+      ts.isStringLiteral(node.moduleSpecifier) &&
+      (node.exportClause === undefined ||
+        !ts.isNamedExports(node.exportClause) ||
+        node.exportClause.elements.some((one) => !one.isTypeOnly))
+    )
+      specifiers.add(node.moduleSpecifier.text)
+    if (
+      ts.isCallExpression(node) &&
+      (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
+        node.expression.getText(source) === 'require') &&
+      node.arguments[0] !== undefined &&
+      ts.isStringLiteral(node.arguments[0])
+    )
+      specifiers.add(node.arguments[0].text)
+    ts.forEachChild(node, visit)
+  }
+  visit(source)
+  const resolved = [...specifiers].flatMap((specifier) => {
+    if (!specifier.startsWith('.')) return []
+    const path = resolve(dirname(file), specifier)
+    const found = [path, `${path}.ts`, path.replace(/\.js$/, '.ts'), join(path, 'index.ts')].find(
+      (candidate) => candidate.startsWith(`${root}${sep}`) && files.includes(candidate),
+    )
+    return found === undefined ? [] : [found]
+  })
+  imports.set(file, resolved)
+  return resolved
+}
+
+describe('provider modules stay behind the main-process registry', () => {
+  it('does not import the facade, host or registry back into provider modules', () => {
+    const forbidden = new Set([
+      registry,
+      join(root, 'runtime/provider-homes.ts'),
+      join(root, 'runtime/runtime-host.ts'),
+    ])
+    const violations = files
+      .filter((file) => nameOf(file).startsWith('providers/') && file !== registry)
+      .flatMap((file) =>
+        valueImports(file)
+          .filter((target) => forbidden.has(target))
+          .map((target) => `${nameOf(file)} -> ${nameOf(target)}`),
+      )
+    expect(violations).toEqual([])
+  })
+
+  it('routes neutral value imports of provider implementations through the registry', () => {
+    const violations = files
+      .filter((file) => !nameOf(file).startsWith('providers/') && file !== composition)
+      .flatMap((file) =>
+        valueImports(file)
+          .filter((target) => /^providers\/(claude|codex)\//.test(nameOf(target)))
+          .map((target) => `${nameOf(file)} -> ${nameOf(target)}`),
+      )
+    expect(violations).toEqual([])
+  })
+
+  it('keeps the registry out of every worker value-import closure', () => {
+    const reaches = (file: string, seen = new Set<string>()): boolean => {
+      if (file === registry) return true
+      if (seen.has(file)) return false
+      seen.add(file)
+      return valueImports(file).some((next) => reaches(next, seen))
+    }
+    expect(files.filter((file) => file.endsWith('.worker.ts') && reaches(file)).map(nameOf)).toEqual(
+      [],
+    )
+    // A missing registry is the base before extraction, not a reason to skip the worker scan.
+    if (existsSync(registry)) expect(valueImports(registry)).not.toContain(composition)
+  })
+})
