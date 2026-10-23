@@ -1,3 +1,4 @@
+import { recordedScheduleReceiptProvider } from '../providers/definitions'
 import { createHash } from 'node:crypto'
 import type { ScheduleReceipt } from '@brobot2/runtime'
 import type { ScheduleEvidenceRow } from '../db/session-store'
@@ -35,7 +36,7 @@ import {
  */
 
 /** The provider every receipt here comes from: only Claude's adapter keeps them. */
-const PROVIDER = 'claude'
+const PROVIDER = recordedScheduleReceiptProvider
 
 /** What made the observations, for the planner's records. */
 const ADAPTER_VERSION = 'brobot-schedule-evidence-1'

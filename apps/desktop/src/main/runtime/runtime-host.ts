@@ -1,3 +1,4 @@
+import { providerDefinitions } from '../providers/definitions'
 import { StoppedBeforeSend, withManagedPluginAttachments } from '@brobot2/runtime'
 import type { WorkspacePluginAttachments } from '../plugins/attachments'
 import {
@@ -110,7 +111,7 @@ import type {
   StartPhase,
   StartPhaseSink,
 } from '@brobot2/runtime'
-import { basename, isAbsolute, join, relative, resolve as resolvePath } from 'node:path'
+import { isAbsolute, join, relative, resolve as resolvePath } from 'node:path'
 import {
   allProviderCapabilities,
   CLAUDE_LOGIN_RENEWED,
@@ -130,8 +131,6 @@ import {
   ExternalMcpDiscoveryError,
   type ExternalMcpReach,
   resolveReasoningEffort,
-  GENERATED_IMAGES_DIRNAME,
-  IMAGE_MEDIA_TYPES,
   SUPPORTED_PROVIDERS,
   // ⚑ **657 · the one half of a refused turn that clears on its own** — `queueMessage` holds it.
   TurnInProgress,
@@ -194,22 +193,10 @@ import type {
   DeleteVerdict,
 } from '../../shared/conversation-archive'
 import { resolveAssetRequest } from '../asset-protocol'
-import {
-  childWorkRoot,
-  countThinkingBlocks,
-  locateChildWork,
-  readChildWork,
-  readChildFile,
-  claudeSidecarPath,
-  parseClaudeSidecar,
-  MAX_CHILD_WORK_BYTES,
-  MAX_SIDECAR_BYTES,
-  type ChildWorkLocation,
-} from '../child-work'
+
 import { realPathOf } from '../read-text-file'
 import { userProviderHomePath } from '../adopt/user-homes'
-import { importClaudeTranscript } from '../archive/import-claude'
-import { importCodexRollout } from '../archive/import-codex'
+
 import { readBundleFile } from '../archive/read-bundle'
 import { messageWithHandedPaths, recheckHandedPaths } from './handed-path'
 import { whyALaunchWasRefused } from './launch-refusal'
@@ -615,7 +602,7 @@ import {
   writeNativeExport,
   type SessionBundle,
 } from '../archive/export-session'
-import { isTheProvidersRecord, newestReplyModel, readLines } from '../archive/native-file'
+import { isTheProvidersRecord, readLines } from '../archive/native-file'
 import { readingATurn, type TurnAsked } from '../archive/turn-as-sent'
 import type { TurnAsSent } from '../../shared/turn-as-sent'
 // ⚑ **633 · the writer for the one export kind the RENDERER composes** — see that module for why
@@ -2810,7 +2797,7 @@ export interface RuntimeHostDeps {
    * Optional and failure-tolerant: without it the Claude rows are listed with no caption, which is
    * the same thing the SDK returning nothing would produce.
    */
-  claudeDescriptions?: () => Promise<Map<string, ProviderDescription>>
+  indexedDescriptions?: () => Promise<Map<string, ProviderDescription>>
   /** Read what is really in a provider home — the sandboxed renderer cannot look for itself. */
   readProviderConfig(provider: Provider, providerHome: string): ProviderConfigInfo
   /**
@@ -21084,8 +21071,8 @@ export class RuntimeHost implements LiveHost {
     await handBackTheMainProcess()
     for (const one of this.deps.store.recorded()) {
       if (this.launches.closed) break
-      if (providerValue(one.provider, { claude: false, codex: true }) || one.adoptedAt !== null)
-        continue
+      const readEarlierModel = providerDefinitions[one.provider].transcripts.readEarlierModel
+      if (readEarlierModel === undefined || one.adoptedAt !== null) continue
       const runsOn = this.deps.store.whatItRunsOn(one.sessionId)
       if (runsOn === null || runsOn.reportedModel !== null || runsOn.model !== null) continue
       const row = this.deps.store.find(one.sessionId)
@@ -21093,10 +21080,8 @@ export class RuntimeHost implements LiveHost {
       const model = ((): string | null => {
         try {
           const home = this.providerHomeFor(row)
-          const found = this.deps.nativeTranscriptPath('claude', home, row.ref)
-          return found !== null && isTheProvidersRecord('claude', home, found)
-            ? newestReplyModel(found)
-            : null
+          const found = this.deps.nativeTranscriptPath(one.provider, home, row.ref)
+          return found !== null ? readEarlierModel(home, found) : null
         } catch {
           return null
         }
@@ -36532,19 +36517,7 @@ export class RuntimeHost implements LiveHost {
     }
     for (const provider of providerSchema.options) {
       if (!providers.has(provider)) continue
-      cannot.push(
-        ...providerValue(provider, {
-          claude: [
-            'Claude Code’s prompt history in an agent’s folder, which every conversation of that agent ' +
-              'shares, isn’t changed.',
-          ],
-          codex: [
-            'Codex’s own list of conversations in an agent’s folder isn’t changed; it then names a ' +
-              'transcript that’s gone.',
-            'Codex keeps no memory note BroCrew can tie to one conversation, so none is listed.',
-          ],
-        }),
-      )
+      cannot.push(...providerDefinitions[provider].transcripts.whatDeletionLeaves())
     }
     if (parts.some((part) => part.kind === 'provider-files')) {
       stays.push(
@@ -37453,7 +37426,7 @@ export class RuntimeHost implements LiveHost {
       {
         recorded: () => this.deps.store.recorded(),
         userHomeSessions: this.deps.userHomeSessions ?? (() => ({ found: [], skipped: [] })),
-        claudeDescriptions: this.deps.claudeDescriptions ?? (() => Promise.resolve(new Map())),
+        indexedDescriptions: this.deps.indexedDescriptions ?? (() => Promise.resolve(new Map())),
         // All conversations lists the archived ones too, each with when, so a person can restore it.
         archivedAt: (recordId) => this.archived.archivedAt(recordId),
       },
@@ -37688,29 +37661,14 @@ export class RuntimeHost implements LiveHost {
     threadId: string,
     profileId: string | null,
   ): ResolveImagePath | undefined {
-    if (providerValue(provider, { claude: true, codex: false })) return undefined
-    return ({ imageId, savedPath }) => {
-      const home = profileId === null ? null : this.deps.providerHomePath('codex', profileId)
-      // The provider's own claim first, then the naming convention both measured files follow —
-      // `generated_images/<threadId>/<call_id>.<ext>`. Neither is trusted; they differ only in
-      // where the string came from, and the check below is identical for both.
-      const candidates = [
-        ...(savedPath ? [savedPath] : []),
-        ...(home === null
-          ? []
-          : [...IMAGE_MEDIA_TYPES.keys()].map((ext) =>
-              join(home, GENERATED_IMAGES_DIRNAME, threadId, `${imageId}${ext}`),
-            )),
-      ]
-      for (const candidate of candidates) {
-        if (!isAbsolute(candidate)) continue
+    return providerDefinitions[provider].transcripts.imageResolver?.(
+      threadId,
+      () => (profileId === null ? null : this.deps.providerHomePath(provider, profileId)),
+      (candidate) => {
         const asset = resolveAssetRequest(assetUrl(candidate))
-        // The REAL path the door resolved, not the claim: a symlink that passes the check is served
-        // as what it points at, so that is what the ledger should name.
-        if (asset) return asset.path
-      }
-      return null
-    }
+        return asset?.path ?? null
+      },
+    )
   }
 
   /**
@@ -38053,10 +38011,8 @@ export class RuntimeHost implements LiveHost {
       return {
         found: false,
         why:
-          providerValue(row.provider, { claude: false, codex: true }) &&
-          target.words.trim() === '/compact'
-            ? 'This was a command for Codex’s own compaction. No words reached the model.'
-            : 'This app kept no copy of the text it handed over for this message — it was sent before this app kept one, or keeping it failed — so it cannot be matched exactly in the provider’s own record.',
+          providerDefinitions[row.provider].transcripts.noModelMessageReason?.(target.words) ??
+          'This app kept no copy of the text it handed over for this message — it was sent before this app kept one, or keeping it failed — so it cannot be matched exactly in the provider’s own record.',
       }
     }
     const of = target
@@ -38096,7 +38052,10 @@ export class RuntimeHost implements LiveHost {
     }
     if (path === null) return gone
     try {
-      const reading = readingATurn(row.provider, asked, this.howAModelTakesItsContext)
+      const reading = readingATurn(row.provider, asked, {
+        hasAContextMessage: (model) =>
+          takesAContextMessage(this.deps.providerSnapshot?.(row.provider, model)),
+      })
       for (let offset = 0; ;) {
         const chunk = readLines(path, offset, TURN_AS_SENT_PAGE)
         const done = chunk.lines.some((line) => reading.line(line) === 'done')
@@ -38116,10 +38075,6 @@ export class RuntimeHost implements LiveHost {
    * this build's snapshot of it (`claude-code.json`): one whose parts include the context message
    * does. `null`: no snapshot of that model, or no snapshots in this host.
    */
-  private readonly howAModelTakesItsContext = {
-    hasAContextMessage: (model: string): boolean | null =>
-      takesAContextMessage(this.deps.providerSnapshot?.('claude', model)),
-  }
 
   /**
    * Which provider home holds this session's own files (112, both providers since 115).
@@ -38177,91 +38132,6 @@ export class RuntimeHost implements LiveHost {
     }
     const agents = this.deps.store.workflowAgentIds(sessionId, input.taskId, unread)
     return agents.length === 0 ? null : { agents, taskId: input.taskId }
-  }
-
-  /**
-   * The bytes of the `.meta.json` beside a child's transcript, or `''` when there is nothing to
-   * read — which is the ordinary case for a workflow agent and for any child whose sidecar is
-   * missing or unreadable. See the call site for why it is read through `readChildFile` and
-   * resolved first.
-   */
-  private sidecarText(transcriptPath: string | undefined): string {
-    if (transcriptPath === undefined) return ''
-    const real = realPathOf(transcriptPath)
-    if (!real.ok) return ''
-    const sidecar = claudeSidecarPath(real.path)
-    if (sidecar === null) return ''
-    const read = readChildFile(sidecar, MAX_SIDECAR_BYTES)
-    return typeof read === 'string' ? '' : read.text
-  }
-
-  /**
-   * A Codex child's own rollout (115) — the larger half of *"where can I see what the sub agents
-   * did?"*, and the one `112` scoped out with a sentence.
-   *
-   * ⚠️ **A Codex sub-agent is a real THREAD**, which is what `111` put on the wire as
-   * `idKind: 'thread'`. So there is nothing to compose: `state_<n>.sqlite` records the rollout path
-   * for every thread it knows, and the thread id the ledger already holds is the key.
-   * `nativeTranscriptPath` is that lookup and this app already owns it — reused rather than
-   * rewritten, which is also how `046`'s rule comes for free: it reads the provider's database
-   * through a private copy, never in place.
-   *
-   * ⚑ **`null` here means "not in the provider's index", and that is a complete answer rather than
-   * a partial one** (036, measured; carried in `117` when the dead module that recorded it was
-   * deleted). **Every one of the 624 rows in `thread_spawn_edges` resolves to a `threads` row with
-   * a path** — so a thread we cannot resolve is genuinely absent, not merely un-globbed, and there
-   * is no directory scan to fall back to. That is why `gone` is returned instead of a sweep.
-   *
-   * ⚠️ `thread_spawn_edges.status` is the trap beside it and is not read, for the reason
-   * `archive/session-reader.ts` states at length: 614 of those 624 rows say `open`, including for
-   * threads that ended months ago. Parentage is what that table is good for.
-   *
-   * ⛔ **There is no run, so there is no journal and no script**, and `runId: null` already renders
-   * as that. Inventing a workflow shape for a thread was named out of scope by name.
-   */
-  private readCodexChild(session: ResumableSession, agentId: string): ChildWorkResult {
-    const home = this.providerHomeFor(session)
-    // The parent's ref with the CHILD's id: for Codex the lookup is by thread id alone, and the
-    // rollout's real location is whatever the provider recorded — never a path we built.
-    const path = this.deps.nativeTranscriptPath('codex', home, {
-      ...session.ref!,
-      sessionId: agentId,
-    })
-    if (path === null) return { ok: false, reason: 'gone' }
-    // ⚑ `726` · R92 — no root: the path the provider's own index names is read wherever it is
-    // (`readChildFile`). Until `726` it had to be under the home's `sessions/` or
-    // `archived_sessions/`.
-    // 🔴 **731 · and no `.jsonl` allow-list.** From the 115 review until `731` the path, and since
-    // `726`'s review where it LANDS, had to end `.jsonl` — a check that *"refuses nothing real"*
-    // (2,012 of 2,012 measured rollouts end so) and existed to refuse `auth.json`. The PM, ruling on
-    // `726` §9: *"A type allow-list whose purpose is keeping credentials out goes."* A binary is still
-    // refused by `readTextFile`: it cannot be drawn as text.
-    const read = readChildFile(path, MAX_CHILD_WORK_BYTES)
-    if (typeof read === 'string') return { ok: false, reason: read }
-    const lines = read.text.split('\n')
-    const cutMidLine = read.truncated && !read.text.endsWith('\n')
-    if (lines[lines.length - 1] === '') lines.pop()
-    if (cutMidLine) lines.pop()
-    const parsed = importCodexRollout(lines, session.updatedAt)
-    return {
-      ok: true,
-      part: 'transcript',
-      // ⛔ No run, and no task: a thread belongs to neither, and `112`'s field says so rather than
-      // borrowing the parent's id to fill the shape.
-      taskId: null,
-      runId: null,
-      name: basename(read.path),
-      text: read.text,
-      truncated: read.truncated,
-      bytes: read.bytes,
-      entries: parsed.entries.map((entry) => entry.event),
-      unreadable: parsed.unreadable,
-      // ⛔ **No `thinkingBlocks`, and that is 109's asymmetry rule rather than an omission.**
-      // `countThinkingBlocks` measures Claude's `message.content[].type === 'thinking'` records; a
-      // rollout has no such shape, so running it here would return `0` — a number we never
-      // measured, about a provider that does not report the thing at all. Absent means "not said",
-      // which is the truth, and the viewer already draws nothing for it.
-    }
   }
 
   /**
@@ -38433,93 +38303,16 @@ export class RuntimeHost implements LiveHost {
     // and it is the one the allowlist gives.
     const found = this.childCandidates(sessionId, input, unread)
     if (found === null) return { ok: false, reason: 'unknown-agent' }
-    // ⛔ A thread has no run, so it has no journal and no script — a different fact from "we cannot
-    // read this", which is what `unsupported` meant before 115.
-    //
-    // ⚠️ **Unreached in the app today, and saying so is 112's own precedent** (its flat branch, now
-    // reached by this same task). The only way to ask for a journal or a script is `WorkflowEntry`,
-    // which renders from a `workflow_run` event, which only the Claude normalizer emits — so a
-    // Codex session cannot produce the request. It is kept, and tested, because it is the rule this
-    // door actually holds, and a resolver that answered `unknown-agent` for a run whose agents the
-    // ledger just confirmed would be saying something false.
-    if (
-      providerValue(session.provider, { claude: false, codex: true }) &&
-      input.part !== 'transcript'
-    ) {
-      return { ok: false, reason: 'unsupported' }
-    }
-    if (providerValue(session.provider, { claude: false, codex: true }))
-      return this.readCodexChild(session, found.agents[0]!)
-    const root = childWorkRoot(this.providerHomeFor(session), session.ref)
-    // Whichever of the run's agents actually has a file is what locates the directory. When none of
-    // them does, the first is used anyway so the read below answers `gone` — the honest "there is no
-    // file" — rather than `unknown-agent`, which would claim the run is not ours.
-    //
-    // ⚠️ **A loop rather than `.map().find()`** (review): the mapped form resolved EVERY agent
-    // before looking at the first, so opening a 13-agent run's script did thirteen `readdirSync`
-    // pairs on the thread that paints the window instead of one.
-    let located: { id: string; at: ChildWorkLocation } | undefined
-    for (const id of found.agents) {
-      const at = locateChildWork(root, id, input.part)
-      if (at !== null) {
-        located = { id, at }
-        break
-      }
-    }
-    const agentId = located?.id ?? found.agents[0]!
-    const read = readChildWork(root, agentId, input.part)
-    if (typeof read === 'string') return { ok: false, reason: read }
-    const { taskId } = found
-    if (input.part !== 'transcript') return { ok: true, part: input.part, taskId, ...read }
-    // The child's file is an ordinary Claude transcript, so it is parsed by the importer the
-    // archive already uses — one parser for a conversation, whoever wrote it (036's rule).
-    //
-    // ⚠️ **The split matches the import's own** (`readLines`/`splitLines`), so the same file reads
-    // the same however it is opened: the empty piece a trailing newline leaves behind is dropped,
-    // and an interior blank line is NOT — the importer counts one as unreadable, and hiding it here
-    // would make the two paths disagree about whether a file is damaged.
-    //
-    // ⚠️ **The final line is dropped only when the byte ceiling actually cut one** (review, MEDIUM).
-    // `truncated` says the file was longer than the cap, not that the cut landed mid-line; when it
-    // lands exactly on a newline the last line is COMPLETE, and popping it would silently discard a
-    // whole record the reader was entitled to. A half-written object is not damage — it is our own
-    // truncation, already reported — so it is dropped rather than counted as `unreadable`.
-    const lines = read.text.split('\n')
-    const cutMidLine = read.truncated && !read.text.endsWith('\n')
-    if (lines[lines.length - 1] === '') lines.pop()
-    if (cutMidLine) lines.pop()
-    // The parent's own time dates a record that names none: `Date.now()` would date a year-old
-    // child to today (046).
-    const parsed = importClaudeTranscript(lines, session.updatedAt)
-    // ⚑ **What the sidecar knows and the workflow shape does not** (115). A plain `Task` child's
-    // `.meta.json` carries `description` and `toolUseId`; a workflow agent's carries neither. So
-    // this is read for both and yields nothing for the one that says nothing — an asymmetry
-    // reported rather than assumed away, which is what the dispatch asked for by name.
-    //
-    // ⛔ **Read through the SAME reader the transcript was** (`readChildFile`), not with a bare
-    // `readFileSync` (115 review, MEDIUM). A sidecar sits beside a file we vetted, which says
-    // nothing about the sidecar: it can be a symlink to a fifo (the main process blocks forever) or
-    // to `/dev/zero` (a multi-gigabyte allocation). (`726` · R92: a link to a JSON file elsewhere
-    // is no longer refused.)
-    //
-    // ⚠️ **And it is derived from the RESOLVED transcript, not the name we asked by** (review).
-    // A symlinked child is named by where it LANDS — `child-work.ts` says so and a test pins it —
-    // so looking for the sidecar beside the LINK would have made the header name one file and
-    // describe another, and silently dropped the description of every followed child.
-    const sidecar = parseClaudeSidecar(this.sidecarText(located?.at?.path))
-    return {
-      ok: true,
-      part: 'transcript',
-      taskId,
-      ...read,
-      ...(sidecar.title === undefined ? {} : { title: sidecar.title }),
-      ...(sidecar.parentToolCallId === undefined
-        ? {}
-        : { parentToolCallId: sidecar.parentToolCallId }),
-      entries: parsed.entries.map((entry) => entry.event),
-      unreadable: parsed.unreadable,
-      thinkingBlocks: countThinkingBlocks(lines),
-    }
+
+    return providerDefinitions[session.provider].transcripts.readChild({
+      ref: session.ref,
+      updatedAt: session.updatedAt,
+      part: input.part,
+      agents: found.agents,
+      taskId: found.taskId,
+      home: () => this.providerHomeFor(session),
+      pathForChild: (home, ref) => this.deps.nativeTranscriptPath(session.provider, home, ref),
+    })
   }
 
   /**
@@ -40839,7 +40632,7 @@ export class RuntimeHost implements LiveHost {
       const onRecord =
         effort === null &&
         firstOfThisLife &&
-        providerValue(session.provider, { claude: true, codex: false })
+        providerDefinitions[session.provider].transcripts.keepEarlierReportedEffort()
           ? this.deps.store.whatItRunsOn(session.id)
           : null
       const kept = onRecord?.reportedModel === model ? onRecord.reportedEffort : null

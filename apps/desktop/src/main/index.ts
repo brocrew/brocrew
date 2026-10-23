@@ -123,7 +123,7 @@ import { openDatabase, type AppDatabase } from './db/connection'
 import { newProviderSessionId } from './db/ids'
 import { discoverSessionsIn } from './adopt/discover-sessions'
 import {
-  claudeHomeDescriptions,
+  indexedHomeDescriptions,
   discoverUserHomeSessions,
   userProviderHomePath,
 } from './adopt/user-homes'
@@ -1090,7 +1090,7 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
     // also takes what each provider calls the conversation. Two calls would be two
     // readings of the same directory, free to disagree.
     userHomeSessions: () => discoverUserHomeSessions(),
-    claudeDescriptions: () => claudeHomeDescriptions(),
+    indexedDescriptions: () => indexedHomeDescriptions(),
     // Adoption looks in every home this app owns, so the profile a session is recorded under is
     // the one whose directory it was found in — read from the path rather than asked for.
     discoverSessions: () =>

@@ -1,3 +1,5 @@
+import { SAVED_METHODS_HEADING } from './instruction-headings'
+export { SAVED_METHODS_HEADING } from './instruction-headings'
 import {
   pluginInstructionParagraphs,
   PLUGINS_HEADING,
@@ -896,9 +898,6 @@ function thisConversationSections(
   }
   return sections
 }
-
-/** The heading the profile's saved methods are given under, on both providers. */
-export const SAVED_METHODS_HEADING = 'Saved methods'
 
 /** One section as it appears in the file: its heading, then its paragraphs. */
 function renderSection(section: BundleSection): string {

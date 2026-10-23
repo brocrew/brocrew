@@ -62,9 +62,9 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M1 · a record this build cannot read is carried whole however large, not cut at 20,000 "
         f"characters · killed by `{READER}`",
-        [(TAS,
-          "  return written.length <= RAW_MAX ? raw : { cutAt: RAW_MAX, start: written.slice(0, RAW_MAX) }\n",
-          "  return raw\n")],
+        [
+            ("apps/desktop/src/main/archive/turn-reading.ts", "  return written.length <= RAW_MAX ? raw : { cutAt: RAW_MAX, start: written.slice(0, RAW_MAX) }\n", "  return raw\n"),
+        ],
     ),
     (
         "M2 · the door takes a negative place for the message the model got · killed by "
@@ -193,10 +193,9 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M19 · the pass over older conversations goes on recording after the quit has begun · "
         f"killed by `{THE_PASS}`",
-        [(HOST,
-          # ⚑ **provider selection refactor · re-anchored in place, not retired** — The provider skip is now an exhaustive selection; removing only the quit guard still lets the older-model pass write after quit begins.
-          "      if (this.launches.closed) break\n      if (providerValue(one.provider, { claude: false, codex: true }) || one.adoptedAt !== null)\n        continue\n",
-          "      if (providerValue(one.provider, { claude: false, codex: true }) || one.adoptedAt !== null)\n        continue\n")],
+        [
+            ("apps/desktop/src/main/runtime/runtime-host.ts", "      if (this.launches.closed) break\n      const readEarlierModel = providerDefinitions[one.provider].transcripts.readEarlierModel", "      const readEarlierModel = providerDefinitions[one.provider].transcripts.readEarlierModel"),
+        ],
     ),
     (
         "M20 · the receipt says the look's interval in the plural for one minute — \"within 1 "

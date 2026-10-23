@@ -75,31 +75,22 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "M3 · 🔴 **the archive names Claude's folder from the cwd again** — `706` F-5 itself: a conversation "
         f"Claude still resumes is never archived — killed by `{FOUND}` (731)",
         [
-            (
-                NATIVE,
-                # ⚑ **provider selection refactor · re-anchored in place, not retired** — The same archive-path arm moved two spaces when its condition became an exhaustive selector; derive the folder from cwd again.
-                "    ? claudeTranscriptPath(ref.sessionId, ref.cwd, providerHome)\n",
-                "    ? join(providerHome, 'projects', ref.cwd.replace(/[^a-zA-Z0-9]/g, '-'), `${ref.sessionId}.jsonl`)\n",
-            )
+            ("apps/desktop/src/main/providers/claude/native-record.ts", "  const found = claudeTranscriptPath(ref.sessionId, ref.cwd, home)", "  const found = join(home, 'projects', ref.cwd.replace(/[^a-zA-Z0-9]/g, '-'), `${ref.sessionId}.jsonl`)"),
         ],
     ),
     (
         "M4 · 🔴 **the child-work root is named from the cwd again** — a parent recorded elsewhere shows "
         f"every child `gone` — killed by `{FOUND}` (731)",
         [
-            (
-                CHILD,
-                "  const transcript = claudeTranscriptPath(parent.sessionId, parent.cwd, providerHome)\n",
-                "  const transcript: string | null = null\n",
-            )
+            ("apps/desktop/src/main/providers/claude/child-work.ts", "  const transcript = claudeTranscriptPath(parent.sessionId, parent.cwd, providerHome)\n", "  const transcript: string | null = null\n"),
         ],
     ),
     (
         "M5 · 🔴 **the export ignores where the CLI recorded it** — a cwd past 200 characters is exported "
         f"into an uncut folder only a scan finds — killed by `{FOUND}` (731)",
         [
-            ('apps/desktop/src/main/archive/export-session.ts', "import type { SessionRef } from '@brobot2/runtime'", "import { claudeProjectDirName, type SessionRef } from '@brobot2/runtime'"),
-            ('apps/desktop/src/main/archive/export-session.ts', "    return join(targetHome, 'projects', basename(dirname(recordedAt)), `${ref.sessionId}.jsonl`)", "    return join(targetHome, 'projects', claudeProjectDirName(ref.cwd), `${ref.sessionId}.jsonl`)"),
+            ("apps/desktop/src/main/providers/claude/transcripts.ts", "import { basename, dirname, join } from 'node:path'", "import { claudeProjectDirName } from '@brobot2/runtime'\nimport { basename, dirname, join } from 'node:path'"),
+            ("apps/desktop/src/main/providers/claude/transcripts.ts", "    join(home, 'projects', basename(dirname(recordedAt)), ref.sessionId + '.jsonl'),", "    join(home, 'projects', claudeProjectDirName(ref.cwd), ref.sessionId + '.jsonl'),"),
         ],
     ),
     (
@@ -138,12 +129,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "M9 · 🔴 **a Codex child's rollout must end `.jsonl` again** — the check that *refuses nothing real* "
         "and existed to refuse `auth.json` — killed by `runtime-host.test.ts` (731)",
         [
-            (
-                HOST,
-                "    const read = readChildFile(path, MAX_CHILD_WORK_BYTES)\n",
-                "    if (!path.endsWith('.jsonl')) return { ok: false, reason: 'not-readable' }\n"
-                "    const read = readChildFile(path, MAX_CHILD_WORK_BYTES)\n",
-            )
+            ("apps/desktop/src/main/providers/codex/child-work.ts", "  const read = readChildFile(path, MAX_CHILD_WORK_BYTES)\n", "  if (!path.endsWith('.jsonl')) return { ok: false, reason: 'not-readable' }\n  const read = readChildFile(path, MAX_CHILD_WORK_BYTES)\n"),
         ],
     ),
     (
@@ -301,11 +287,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "M23 · ⛔ **the export's note says *by this exact path* again** — the first half of where Claude "
         f"looks, as if it were the whole — killed by `{FOUND}` (731)",
         [
-            (
-                EXPORT,
-                "Claude looks for a session in this folder first, then by its id — a home",
-                "Claude finds a session by this exact path — a home",
-            )
+            ("apps/desktop/src/main/providers/claude/transcripts.ts", "Claude looks for a session in this folder first, then by its id — a home", "Claude finds a session by this exact path — a home"),
         ],
     ),
 ]

@@ -159,9 +159,9 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M13 · 🔴 a transcript named like a record that links out of the profile's home is read, and "
         f"its model written as this conversation's · killed by `{OWN_RECORD}`",
-        [(HOST,
-          "          return found !== null && isTheProvidersRecord('claude', home, found)\n",
-          "          return found !== null\n")],
+        [
+            ("apps/desktop/src/main/providers/claude/transcripts.ts", "  readEarlierModel: (home, file) => (ownsRecord(home, file) ? newestReplyModel(file) : null),", "  readEarlierModel: (_home, file) => newestReplyModel(file),"),
+        ],
     ),
     (
         "M14 · a conversation with a chosen model is given its transcript's model as a report — the "
@@ -194,17 +194,16 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M18 · every report with no effort keeps the effort on record, not only a life's first — a "
         f"moved ask goes on showing the old level · killed by `{FIRST_REPORT}`",
-        [(HOST,
-          # ⚑ **provider selection refactor · re-anchored in place, not retired** — The first-report predicate now spans three lines; removing only the life guard preserves the original stale-effort fault.
-          "        effort === null &&\n        firstOfThisLife &&\n        providerValue(session.provider, { claude: true, codex: false })\n",
-          "        effort === null &&\n        providerValue(session.provider, { claude: true, codex: false })\n")],
+        [
+            ("apps/desktop/src/main/runtime/runtime-host.ts", "        effort === null &&\n        firstOfThisLife &&\n        providerDefinitions[session.provider].transcripts.keepEarlierReportedEffort()", "        effort === null &&\n        providerDefinitions[session.provider].transcripts.keepEarlierReportedEffort()"),
+        ],
     ),
     (
         "M19 · a sub-agent's newer reply (`isSidechain`) names the conversation's model · killed by "
         f"`{NEWEST_REPLY}`",
-        [(NATIVE,
-          "        if (entry.type !== 'assistant' || entry.isSidechain === true) return null\n",
-          "        if (entry.type !== 'assistant') return null\n")],
+        [
+            ("apps/desktop/src/main/providers/claude/native-record.ts", "        if (entry.type !== 'assistant' || entry.isSidechain === true) return null\n", "        if (entry.type !== 'assistant') return null\n"),
+        ],
     ),
     (
         "M20 · a set model wins over the one its provider reported, so a stopped helper is shown "

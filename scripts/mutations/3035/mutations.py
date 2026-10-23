@@ -61,59 +61,59 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "M1 · 🔴 **Codex: the count of earlier messages ignored** · a text handed over once is found "
         "again when the second message with that text is asked for, so a later turn is answered with "
         f"an earlier turn's record · killed by `{READER}`",
-        [(TAS,
-          "              if (taken < asked.before.length) taken += 1\n",
-          "              if (false) taken += 1\n")],
+        [
+            ("apps/desktop/src/main/providers/codex/turn-reading.ts", "              if (taken < asked.before.length) taken += 1\n", "              if (false) taken += 1\n"),
+        ],
     ),
     (
         "M2 · 🔴 **Codex: a turn read from the record, its count ignored** · asked for the second "
         f"message read from the record with that text, the first is returned · killed by `{READER}`",
-        [(TAS,
-          "            if (taken < asked.before.length) {\n",
-          "            if (false) {\n")],
+        [
+            ("apps/desktop/src/main/providers/codex/turn-reading.ts", "            if (taken < asked.before.length) {\n", "            if (false) {\n"),
+        ],
     ),
     (
         "M3 · 🔴 the harness speaking in the person's name (`isMeta`) is taken as the message handed "
         f"over · killed by `{READER}`",
-        [(TAS,
-          "  if (record['isMeta'] === true || record['isCompactSummary'] === true) return false\n",
-          "  if (record['isCompactSummary'] === true) return false\n")],
+        [
+            ("apps/desktop/src/main/providers/claude/turn-reading.ts", "  if (record['isMeta'] === true || record['isCompactSummary'] === true) return false\n", "  if (record['isCompactSummary'] === true) return false\n"),
+        ],
     ),
     (
         "M4 · 🔴 a sub-agent's message with the same text is taken as the message handed over · "
         f"killed by `{READER}`",
-        [(TAS,
-          "  if (record['isSidechain'] === true) return false\n",
-          "  if (false) return false\n")],
+        [
+            ("apps/desktop/src/main/providers/claude/turn-reading.ts", "  if (record['isSidechain'] === true) return false\n", "  if (false) return false\n"),
+        ],
     ),
     (
         "M5 · an array of text blocks alone — the harness's, never a person's — is taken as a message "
         f"handed over · killed by `{READER}`",
-        [(TAS,
-          "  return !kinds.includes('tool_result') && kinds.includes('image') && kinds.includes('text')\n",
-          "  return !kinds.includes('tool_result') && kinds.includes('text')\n")],
+        [
+            ("apps/desktop/src/main/providers/claude/turn-reading.ts", "  return !kinds.includes('tool_result') && kinds.includes('image') && kinds.includes('text')\n", "  return !kinds.includes('tool_result') && kinds.includes('text')\n"),
+        ],
     ),
     (
         "M6 · 🔴 **Codex: a developer block is the message** · a developer block with the same text as "
         "the message handed over is reported as the message, and the person's own block as the "
         f"provider's · killed by `{READER}`",
-        [(TAS,
-          "              role === 'user' &&\n",
-          "              true &&\n")],
+        [
+            ("apps/desktop/src/main/providers/codex/turn-reading.ts", "              role === 'user' &&\n", "              true &&\n"),
+        ],
     ),
     (
         "M7 · Codex: another thread's `session_meta` lends this conversation its base prompt · killed "
         f"by `{READER}`",
-        [(TAS,
-          "        if (said !== '' && (asked.life === null || life === asked.life)) {\n",
-          "        if (said !== '') {\n")],
+        [
+            ("apps/desktop/src/main/providers/codex/turn-reading.ts", "        if (said !== '' && (asked.life === null || life === asked.life)) {\n", "        if (said !== '') {\n"),
+        ],
     ),
     (
         "M8 · Codex: a message read from the record is reported as the words its importer split from "
         f"it, not as the record keeps it · killed by `{READER}` and `{TURN_HOST}`",
-        [(TAS,
-          "            message = messageText(payload['content'])\n",
-          "            message = asked.text\n")],
+        [
+            ("apps/desktop/src/main/providers/codex/turn-reading.ts", "            message = messageText(payload['content'])\n", "            message = asked.text\n"),
+        ],
     ),
     (
         "M9 · 🔴 **the file's answer is the last word** · a provider file that does not hold the "
@@ -127,37 +127,38 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "M10 · 🔴 **Codex: every earlier message found by this turn's rule** · a turn read from the "
         "record, counted as handed over, takes the handed-over turn's place, and the handed-over "
         f"turn after it is not found · killed by `{TURN_HOST}`",
-        [(TAS,
-          "  const next = (): TurnAsked['by'] => asked.before[taken] ?? asked.by\n",
-          "  const next = (): TurnAsked['by'] => asked.by\n")],
+        [
+            ("apps/desktop/src/main/providers/codex/turn-reading.ts", "  const next = (): TurnAsked['by'] => asked.before[taken] ?? asked.by\n", "  const next = (): TurnAsked['by'] => asked.by\n"),
+        ],
     ),
     (
         "M11 · 🔴 a folder whose name only starts like the provider's (`projects-old/`, "
         f"`sessions-old/`) passes the record guard · killed by `{GUARD}`",
-        [(NATIVE,
-          "  const under = (folder: string): boolean => resolved.startsWith(join(real(home), folder) + sep)\n",
-          "  const under = (folder: string): boolean => resolved.startsWith(join(real(home), folder))\n")],
+        [
+            ("apps/desktop/src/main/providers/codex/native-record.ts", "  const under = (folder: string): boolean => resolved.startsWith(join(real(home), folder) + sep)\n", "  const under = (folder: string): boolean => resolved.startsWith(join(real(home), folder))\n"),
+        ],
     ),
     (
         "M12 · 🔴 **links not followed** · a link named like a record under `projects/` that leads "
         f"outside the home passes the record guard · killed by `{GUARD}`",
-        [(NATIVE,
-          "      return realpathSync.native(one)\n",
-          "      return resolve(one)\n")],
+        [
+            ("apps/desktop/src/main/providers/claude/native-record.ts", "      return realpathSync.native(one)\n", "      return resolve(one)\n"),
+            ("apps/desktop/src/main/providers/codex/native-record.ts", "      return realpathSync.native(one)\n", "      return resolve(one)\n"),
+        ],
     ),
     (
         "M13 · any `.jsonl` under Codex's folders passes as its rollout, whatever its name · killed by "
         f"`{GUARD}`",
-        [(NATIVE,
-          "    /^rollout-.*\\.jsonl$/.test(basename(resolved))\n",
-          "    resolved.endsWith('.jsonl')\n")],
+        [
+            ("apps/desktop/src/main/providers/codex/native-record.ts", "    /^rollout-.*\\.jsonl$/.test(basename(resolved))\n", "    resolved.endsWith('.jsonl')\n"),
+        ],
     ),
     (
         "M14 · the private copy of a provider's database is left in the temporary folder after every "
         f"read · killed by `{GUARD}`",
-        [(NATIVE,
-          "    if (scratch !== null) rmSync(scratch, { recursive: true, force: true })\n",
-          "    void scratch\n")],
+        [
+            ("apps/desktop/src/main/archive/native-io.ts", "    if (scratch !== null) rmSync(scratch, { recursive: true, force: true })\n", "    void scratch\n"),
+        ],
     ),
     (
         "M15 · Codex's other servers are taken as Claude's: with a server granted, the total says it "

@@ -55,7 +55,7 @@ export interface LibraryDeps {
   /** What is in the user's own provider homes right now. */
   userHomeSessions(): UserHomeDiscovery
   /** What Claude's own index says about the sessions in its home, keyed by session id. */
-  claudeDescriptions(): Promise<Map<string, ProviderDescription>>
+  indexedDescriptions(): Promise<Map<string, ProviderDescription>>
   /** When a person archived one of our conversations, epoch ms, or null when it is not archived. */
   archivedAt(recordId: string): number | null
 }
@@ -77,7 +77,7 @@ export async function readLibrary(
 ): Promise<LibraryPage> {
   const recorded = deps.recorded()
   const discovery = deps.userHomeSessions()
-  const claude = await deps.claudeDescriptions()
+  const indexed = await deps.indexedDescriptions()
 
   // Our rows, by the provider id they were recorded under. A row without one cannot be matched to a
   // file — it never got an id to match on — so it is keyed out and listed on its own below.
@@ -104,7 +104,7 @@ export async function readLibrary(
     emitted.add(id)
     const row = byProviderId.get(id) ?? null
     if (row) claimed.add(id)
-    const described = found.description ?? claude.get(found.sessionId)
+    const described = found.description ?? indexed.get(found.sessionId)
     entries.push({
       // The PROVIDER's identity, not ours — see {@link stableId}. Using our row id here made the id
       // change the moment a conversation was imported, which is precisely when it must not.

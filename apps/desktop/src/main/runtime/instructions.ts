@@ -1,3 +1,5 @@
+import { THIS_CONVERSATION_HEADER } from './instruction-headings'
+export { THIS_CONVERSATION_HEADER } from './instruction-headings'
 import {
   closeSync,
   constants,
@@ -2441,12 +2443,6 @@ function blockHeader(item: Pick<InjectedInstruction, 'path' | 'kind'>): string {
  * own trailing separator and the final block's absent one cancel exactly.
  */
 const BLOCK_SEPARATOR = '\n\n'
-
-/**
- * 🔴 **D-024 · R1 — the one line above this conversation's own text** — it names who composed it,
- * for whom and when, as a file's `Contents of <path> (<scope>):` names where its text came from.
- */
-export const THIS_CONVERSATION_HEADER = 'Composed by BroCrew for this conversation at this launch:'
 
 /**
  * ⛔ **`workspace-instructions` had no wording of its own and inherited a FALSE one** (164 §3.2).

@@ -1,3 +1,5 @@
+import { transcripts } from './transcripts'
+import { discovery } from './discovery'
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
@@ -376,6 +378,8 @@ export function createCodexModule(
   seams: CodexModuleSeams,
 ): ProviderModule {
   return {
+    transcripts,
+    discovery,
     createRuntime: codexModuleFactory.runtime(seams.runtime),
     home: codexModuleFactory.home(paths, seams.home),
     auth: codexModuleFactory.auth(paths, seams.auth),
