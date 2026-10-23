@@ -20,7 +20,8 @@ import { prepareStateHome } from '../home'
 import type {
   HomeAuthOperations,
   ProviderHomePaths,
-  ProviderHomeSeams,
+  ProvisionHome,
+  ProviderHomeStrategy,
   ProviderModule,
 } from '../module'
 
@@ -31,7 +32,7 @@ export interface ClaudeRuntimeSeams {
   readonly managedRoot?: string
 }
 export interface ClaudeHomeSeams {
-  readonly provisionHome?: ProviderHomeSeams['provisionHome']
+  readonly provisionHome?: ProvisionHome
   readonly health?: () => AuthHealth | Promise<AuthHealth>
   readonly key?: () => string | null | Promise<string | null>
   readonly programFound?: () => string | null
@@ -187,13 +188,31 @@ export function claudeAuth(paths: ProviderHomePaths, seams: ClaudeAuthSeams): Ho
   }
 }
 
+export interface ClaudeModuleSeams {
+  readonly runtime: ClaudeRuntimeSeams
+  readonly home: ClaudeHomeSeams
+  readonly auth: ClaudeAuthSeams
+}
+
+/** The same factories serve bound modules and the legacy facade adapters. */
+export const claudeModuleFactory = {
+  runtime:
+    (seams: ClaudeRuntimeSeams): (() => AgentRuntime) =>
+    () =>
+      claudeRuntime(seams),
+  home: (paths: ProviderHomePaths, seams: ClaudeHomeSeams): ProviderHomeStrategy => ({
+    prepare: (profileId) => prepareClaudeHome(paths, profileId, seams),
+  }),
+  auth: claudeAuth,
+}
+
 export function createClaudeModule(
   paths: ProviderHomePaths,
-  seams: { runtime: ClaudeRuntimeSeams; home: ClaudeHomeSeams; auth: ClaudeAuthSeams },
+  seams: ClaudeModuleSeams,
 ): ProviderModule {
   return {
-    createRuntime: () => claudeRuntime(seams.runtime),
-    home: { prepare: (profileId) => prepareClaudeHome(paths, profileId, seams.home) },
-    auth: claudeAuth(paths, seams.auth),
+    createRuntime: claudeModuleFactory.runtime(seams.runtime),
+    home: claudeModuleFactory.home(paths, seams.home),
+    auth: claudeModuleFactory.auth(paths, seams.auth),
   }
 }
