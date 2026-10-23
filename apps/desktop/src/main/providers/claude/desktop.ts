@@ -54,6 +54,7 @@ export function claudeDesktopInputs(
     },
     home: { key, programFound: installed },
     auth: {
+      platform: context.platform,
       key,
       keyStatus: () => context.keys.status('claude'),
       programFound: installed,
