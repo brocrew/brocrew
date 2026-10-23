@@ -162,6 +162,9 @@ MUTATIONS = [
         ],
     ),
     (
+        # ⚑ Corrected in place at `733` (rule 27): the block became one line when a linked
+        # `.claude` stopped being refused. The rule — both spellings, at every level — holds.
+        # The native subject moved; this row retains its original fault.
         "M12 · the `.claude/CLAUDE.md` spelling is dropped — 156's control measured BOTH at every "
         "level",
         [
@@ -169,6 +172,11 @@ MUTATIONS = [
         ],
     ),
     (
+        # ⚠️ **Anchor corrected by `377`, and the ROW is untouched.** That dispatch added a second
+        # walk to this file — `codexConventionChain`, the repository bridge — which also unshifts, so
+        # the bare line now matches twice. ⛔ The subject is still `projectInstructionChain`'s order;
+        # the home-boundary `break` above it is what pins which of the two walks this row is about.
+        # The native subject moved; this row retains its original fault.
         "M13 · the chain is innermost-first, so the deepest file loses the prompt position the CLI "
         "gives it",
         [
@@ -290,6 +298,11 @@ MUTATIONS = [
         ],
     ),
     (
+        # ⚑ Label corrected at `733`: it named *"the planted symlink M1 is about"*, and since `733` a
+        # working link is followed — the file the reader could not read is a loop, a FIFO, bad bytes.
+        # ⚑ Corrected in place at `733` (rule 27): a refusal is pushed as `said` now, because a link to
+        # nothing is disclosed from the `absent` arm too. The rule — a refused file is a row — holds.
+        # The native subject moved; this row retains its original fault.
         "M23 · a refused file is skipped in silence, so a file the reader could not read — a loop of "
         "links, a FIFO, bad bytes — leaves no trace on screen",
         [
