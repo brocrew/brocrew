@@ -1,3 +1,4 @@
+import { providerKnowledge } from './providers/knowledge-definitions'
 import { workspaceLaunchMessage } from './workspace-routing'
 import { WorkspacePluginAttachments } from './plugins/attachments'
 import { pluginWorkspaceIdentity } from './plugins/supervisor/client'
@@ -45,7 +46,7 @@ import {
   shell,
 } from 'electron'
 import type { NativeImage, OpenDialogOptions } from 'electron'
-import { providerValue, appInfoSchema, type AppInfo } from '@brobot2/shared'
+import { providerRecord, SUPPORTED_PROVIDERS, appInfoSchema, type AppInfo } from '@brobot2/shared'
 import {
   changeCodexKeyInHome,
   claudeLoginRenewer,
@@ -678,24 +679,27 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
   setTimeout(readTheWallsAhead, 0).unref()
   // ⚑ Where each Claude folder's local settings are kept: found off the main thread, since finding
   // one runs git, and kept between reads (`settings-locations.ts`).
-  const claudeFolders = (): string[] => [
-    ...new Set(
-      store
-        .recorded()
-        .filter((one) => providerValue(one.provider, { claude: true, codex: false }))
-        .map((one) => one.cwd),
-    ),
-  ]
+  const ruleFolders = (): string[] => {
+    const records = store.recorded()
+    return SUPPORTED_PROVIDERS.flatMap((provider) =>
+      providerKnowledge[provider].keptRules.projectFolders(records),
+    )
+  }
   const locations = settingsLocations(locateOffTheMainThread)
-  const whereRulesAreKept = (): WhereRulesAreKept => ({
-    claudeProjectFiles: locations.known(claudeFolders()),
-    homes: listProviderHomes(userData).map((home) => ({
-      provider: home.provider,
-      path: home.path,
-    })),
-    // ⛔ The person's own provider folders: listed from, never written to.
-    personsOwn: [userProviderHomePath('claude'), userProviderHomePath('codex')],
-  })
+  const whereRulesAreKept = (): WhereRulesAreKept => {
+    const records = store.recorded()
+    return {
+      projectFiles: providerRecord((provider) =>
+        locations.known(providerKnowledge[provider].keptRules.projectFolders(records)),
+      ),
+      homes: listProviderHomes(userData).map((home) => ({
+        provider: home.provider,
+        path: home.path,
+      })),
+      // The person's own provider folders are listed from, never written to.
+      personsOwn: SUPPORTED_PROVIDERS.map((provider) => userProviderHomePath(provider)),
+    }
+  }
   // 🔒 **The API keys a person enters, sealed by `safeStorage`** — read on every launch, so a key
   // set, replaced or removed applies to the next one (`api-keys.ts`).
   const apiKeys = new ApiKeys(store, safeStorageCipher(safeStorage))
@@ -916,7 +920,7 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
     // What an *Always allow* kept — read where each provider keeps it, for the folders this app's
     // Claude conversations worked in and every agent's home — and a person's Remove.
     keptRules: async () => {
-      const folders = claudeFolders()
+      const folders = ruleFolders()
       await locations.refresh(folders)
       // ⚑ A list missing folders it never found would read as rules that are not there.
       const unfound = locations.unfound(folders).length

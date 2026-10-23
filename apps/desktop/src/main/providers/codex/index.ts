@@ -1,3 +1,4 @@
+import { keptRules } from './kept-rules'
 import { skills } from './skills'
 import { snapshot } from './snapshot'
 import { instructions } from './instructions'
@@ -387,6 +388,7 @@ export function createCodexModule(
     memory,
     snapshot,
     skills,
+    keptRules,
     discovery,
     createRuntime: codexModuleFactory.runtime(seams.runtime),
     home: codexModuleFactory.home(paths, seams.home),

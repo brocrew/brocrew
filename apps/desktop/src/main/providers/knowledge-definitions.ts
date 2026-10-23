@@ -1,3 +1,6 @@
+import type { KeptRulePolicy } from './kept-rule-policy'
+import { keptRules as claudeKeptRules } from './claude/kept-rules'
+import { keptRules as codexKeptRules } from './codex/kept-rules'
 import type { Provider } from '@brobot2/shared'
 import type { InstructionPolicy } from './knowledge-policy'
 import type { MemoryPolicy } from './memory-policy'
@@ -16,6 +19,7 @@ export interface ProviderKnowledge {
   readonly instructions: InstructionPolicy
   readonly memory: MemoryPolicy
   readonly snapshot: SnapshotPolicy
+  readonly keptRules: KeptRulePolicy
   readonly skills: SkillPolicy
 }
 /** Instruction and memory readers are separate from the transcript-only definition closure. */
@@ -25,12 +29,14 @@ export const providerKnowledge: Readonly<Record<Provider, ProviderKnowledge>> = 
     memory: claudeMemory,
     snapshot: claudeSnapshot,
     skills: claudeSkills,
+    keptRules: claudeKeptRules,
   },
   codex: {
     instructions: codexInstructions,
     memory: codexMemory,
     snapshot: codexSnapshot,
     skills: codexSkills,
+    keptRules: codexKeptRules,
   },
 }
 /** The two reminder fields and their order belong to the fixed legacy catalogue format. */
