@@ -187,9 +187,12 @@ it('opens an agent by the decoded answer, with its own accessible indicator', as
   expect(open).toHaveBeenCalledWith(agent)
 })
 
-it.each(['unavailable', 'deleted'] as const)(
+it.each([
+  ['unavailable', "Couldn't open this link."],
+  ['deleted', 'This work no longer exists.'],
+] as const)(
   'keeps %s text marked unavailable and explains a failed press without opening anything',
-  async (state) => {
+  async (state, reason) => {
     const { view, open } = fixture(
       '[Old draft](brocrew://piece/gone)',
       available({ state, title: null, status: null, opens: null }),
@@ -197,9 +200,7 @@ it.each(['unavailable', 'deleted'] as const)(
     await expect.poll(() => view.q('message-link').textContent).toContain('Unavailable')
     expect(view.q('message-link').textContent).toContain('Old draft')
     view.q('message-link').click()
-    await expect
-      .poll(() => view.all('message-link-failure')[0]?.textContent)
-      .toBe("Couldn't open this link.")
+    await expect.poll(() => view.all('message-link-failure')[0]?.textContent).toContain(reason)
     expect(open).not.toHaveBeenCalled()
     if (import.meta.env.VITE_W4649_CAPTURE && state === 'unavailable')
       await page.screenshot({
@@ -219,7 +220,81 @@ it('treats a rejected resolver and a failed navigation as visible failures', asy
   open.mockResolvedValueOnce(false)
   view.q('message-link').click()
   await expect.poll(() => open.mock.calls.length).toBe(1)
-  expect(view.q('message-link-failure').textContent).toBe("Couldn't open this link.")
+  expect(view.q('message-link-failure').textContent).toContain("Couldn't open this link.")
+})
+
+function failingFixture(target: string, answer: ResolvedMessageLink) {
+  const scope = ref('first-conversation')
+  const resolve = vi.fn<(target: string) => Promise<ResolvedMessageLink>>(async () => answer)
+  const open = vi.fn<(answer: ResolvedMessageLink) => Promise<boolean>>(async () => true)
+  const Holder = defineComponent({
+    setup: () => () =>
+      h(
+        MessageLinks,
+        { resolve, open, scope: scope.value },
+        { default: () => [h(IconSprite), h(MarkdownWords, { text: target })] },
+      ),
+  })
+  return { view: mount(Holder, {}, { width: 700, height: 500 }), scope, resolve }
+}
+
+const deletedAnswer = (kind: ResolvedMessageLink['kind']): ResolvedMessageLink => ({
+  state: 'deleted',
+  kind,
+  title: null,
+  status: null,
+  opens: null,
+})
+
+it.each([
+  ['agent', '[Fictional Ana](brocrew://agent/aid%3Aana)', 'This agent was deleted.'],
+  ['piece', '[Old work](brocrew://piece/gone)', 'This work no longer exists.'],
+] as const)('names a deleted %s in the failure', async (kind, text, reason) => {
+  const { view } = failingFixture(text, deletedAnswer(kind))
+  await expect.poll(() => view.q('message-link').dataset.linkState).toBe('unavailable')
+  view.q('message-link').click()
+  await expect.poll(() => view.all('message-link-failure')[0]?.textContent).toContain(reason)
+})
+
+it('lets the failure go after a few seconds', async () => {
+  const { view } = failingFixture('[Old draft](brocrew://piece/gone)', deletedAnswer('piece'))
+  await expect.poll(() => view.q('message-link').dataset.linkState).toBe('unavailable')
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  try {
+    view.q('message-link').click()
+    await expect.poll(() => view.all('message-link-failure').length).toBe(1)
+    vi.advanceTimersByTime(3100)
+    await nextTick()
+    expect(view.all('message-link-failure')).toHaveLength(1)
+    vi.advanceTimersByTime(200)
+    await nextTick()
+    expect(view.all('message-link-failure')).toHaveLength(0)
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+it('lets the failure go when its close press is pressed', async () => {
+  const { view } = failingFixture('[Old draft](brocrew://piece/gone)', deletedAnswer('piece'))
+  await expect.poll(() => view.q('message-link').dataset.linkState).toBe('unavailable')
+  view.q('message-link').click()
+  await expect.poll(() => view.all('message-link-failure').length).toBe(1)
+  const close = view.q('message-link-failure').querySelector('button')
+  expect(close?.getAttribute('aria-label')).toBe('Close')
+  close!.click()
+  await expect.poll(() => view.all('message-link-failure').length).toBe(0)
+})
+
+it('lets the failure go when the conversation changes', async () => {
+  const { view, scope } = failingFixture(
+    '[Old draft](brocrew://piece/gone)',
+    deletedAnswer('piece'),
+  )
+  await expect.poll(() => view.q('message-link').dataset.linkState).toBe('unavailable')
+  view.q('message-link').click()
+  await expect.poll(() => view.all('message-link-failure').length).toBe(1)
+  scope.value = 'second-conversation'
+  await expect.poll(() => view.all('message-link-failure').length).toBe(0)
 })
 
 it('keeps an agent indicator when its resolver cannot be reached', async () => {
