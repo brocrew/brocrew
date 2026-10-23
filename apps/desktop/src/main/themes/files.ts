@@ -1,4 +1,4 @@
-import { constants, type Stats } from 'node:fs'
+import { constants, type BigIntStats } from 'node:fs'
 import { lstat, open, realpath, type FileHandle } from 'node:fs/promises'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { errorCode } from '../recovery/files'
@@ -23,7 +23,7 @@ export type ThemeFileRead =
     }
 
 export interface ThemeReadFiles {
-  lstat(path: string): Promise<Stats>
+  lstat(path: string): Promise<BigIntStats>
   realpath(path: string): Promise<string>
   open(path: string, flags: number): Promise<FileHandle>
 }
@@ -44,14 +44,14 @@ export const unreadable = (error: unknown): ThemeFileRead =>
     : { ok: false, failure: 'unreadable' }
 
 export const THEME_READ_FILES: ThemeReadFiles = {
-  lstat: (path) => lstat(path),
+  lstat: (path) => lstat(path, { bigint: true }),
   realpath: (path) => realpath(path),
   open: (path, flags) => open(path, flags),
 }
 
-const sameFile = (a: Stats, b: Stats): boolean => a.dev === b.dev && a.ino === b.ino
-const unchanged = (a: Stats, b: Stats): boolean =>
-  sameFile(a, b) && a.size === b.size && a.mtimeMs === b.mtimeMs && a.ctimeMs === b.ctimeMs
+const sameFile = (a: BigIntStats, b: BigIntStats): boolean => a.dev === b.dev && a.ino === b.ino
+const unchanged = (a: BigIntStats, b: BigIntStats): boolean =>
+  sameFile(a, b) && a.size === b.size && a.mtimeNs === b.mtimeNs && a.ctimeNs === b.ctimeNs
 
 export function insideThemeFolder(root: string, path: string): boolean {
   const rest = relative(root, path)
@@ -60,7 +60,7 @@ export function insideThemeFolder(root: string, path: string): boolean {
 
 interface DirectoryPin {
   readonly path: string
-  readonly stat: Stats
+  readonly stat: BigIntStats
 }
 
 async function directories(
@@ -107,27 +107,27 @@ async function readRegular(
     if (expected.isSymbolicLink()) return { ok: false, failure: 'link' }
     if (!expected.isFile()) return { ok: false, failure: 'unreadable' }
     if (expected.size > maximum)
-      return { ok: false, failure: 'too-large', size: expected.size, maximum }
+      return { ok: false, failure: 'too-large', size: Number(expected.size), maximum }
     handle = await files.open(
       path,
       constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
     )
-    const before = await handle.stat()
+    const before = await handle.stat({ bigint: true })
     if (!before.isFile() || !unchanged(expected, before) || !(await pinsStillHold(pins, files))) {
       return { ok: false, failure: 'changed' }
     }
-    const bytes = Buffer.alloc(before.size + 1)
+    const bytes = Buffer.alloc(Number(before.size) + 1)
     let length = 0
     while (length < bytes.length) {
       const read = await handle.read(bytes, length, bytes.length - length, length)
       if (read.bytesRead === 0) break
       length += read.bytesRead
     }
-    const after = await handle.stat()
+    const after = await handle.stat({ bigint: true })
     if (length > maximum && after.size > maximum)
-      return { ok: false, failure: 'too-large', size: after.size, maximum }
+      return { ok: false, failure: 'too-large', size: Number(after.size), maximum }
     if (
-      length !== before.size ||
+      BigInt(length) !== before.size ||
       !unchanged(before, after) ||
       !(await pinsStillHold(pins, files)) ||
       !unchanged(after, await files.lstat(path))
