@@ -112,9 +112,10 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M8 · Codex's sign-in moment is not read back from the file, only Claude's · killed by "
         f"`{SIGN_IN}`",
+        # Keeping only the first registry entry preserves the original omitted-second-provider fault.
         [(SIGN_FILE,
-          "const PROVIDERS: readonly Provider[] = ['claude', 'codex']\n",
-          "const PROVIDERS: readonly Provider[] = ['claude']\n")],
+          "  for (const provider of SUPPORTED_PROVIDERS) {\n",
+          "  for (const provider of SUPPORTED_PROVIDERS.slice(0, 1)) {\n")],
     ),
     (
         "M9 · a moment of zero is taken as a real sign-in change · killed by "

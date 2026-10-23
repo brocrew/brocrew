@@ -98,7 +98,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M4 · an ask that failed for a passing reason is kept for the run — Codex's version is never "
         f"asked again · killed by `{BUNDLED}`",
-        [(VERSIONS,
+        # The same reset belongs to the provider-owned cache now.
+        [("apps/desktop/src/main/providers/codex/program-versions.ts",
           "        if (!final) codex = null\n",
           "        void final\n")],
     ),
@@ -107,7 +108,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M5 · Codex is asked its version with this app's own environment — it runs in the person's "
         f"home and lays its `tmp/` down in their `~/.codex` · killed by `{BUNDLED}`",
-        [(VERSIONS,
+        # The isolated environment moved with the provider-owned version reader.
+        [("apps/desktop/src/main/providers/codex/program-versions.ts",
           # ⚑ **the Codex program a launch runs · re-anchored in place, not retired** — Codex's version read now passes the Windows names a program needs there, as Claude's does; the plant still hands it the person's own environment.
           "          env: {\n            HOME: own,\n            CODEX_HOME: own,\n            PATH: process.platform === 'win32' ? (process.env.PATH ?? '') : '/usr/bin:/bin',\n            ...(process.platform === 'win32'\n              ? { USERPROFILE: own, SystemRoot: process.env.SystemRoot ?? 'C:\\\\Windows' }\n              : {}),\n          },\n",
           "          env: { ...process.env, PATH: '/usr/bin:/bin' },\n")],

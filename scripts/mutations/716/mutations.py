@@ -74,13 +74,15 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         f"M1 · 🔴 R67 undone · Codex's missing program is not asked, and is a broken tool — killed by `{SAID_ONCE}`",
         [
-            (TOOLS, "  if (error instanceof CodexUnavailableError || error instanceof ClaudeUnavailableError) {\n", "  if (error instanceof ClaudeUnavailableError) {\n"),
+            # The tool now asks the native policy; suppress only this provider's program fact.
+            ("apps/desktop/src/main/providers/codex/auth-policy.ts", "        : error instanceof CodexUnavailableError\n          ? 'program'\n          : null,", "        : null,"),
         ],
     ),
     (
         f"M2 · 🔴 Claude's missing program is a broken tool again · the typed error is not asked — killed by `{SAID_ONCE}`",
         [
-            (TOOLS, "  if (error instanceof CodexUnavailableError || error instanceof ClaudeUnavailableError) {\n", "  if (error instanceof CodexUnavailableError) {\n"),
+            # The other provider's classifier remains intact while this one stops supplying its fact.
+            ("apps/desktop/src/main/providers/claude/auth-policy.ts", "  launchRefusal: (error) => (error instanceof ClaudeUnavailableError ? 'program' : null),\n", "  launchRefusal: () => null,\n"),
         ],
     ),
     (
