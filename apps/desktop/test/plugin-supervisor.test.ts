@@ -961,8 +961,9 @@ describe.skipIf(process.platform === 'win32')(
       expect(await lease.close()).toBe(true)
     })
     it('hidden starts never choose the live global root by default', () => {
-      const { parent, root } = fixture()
+      const { parent, root, workspaces } = fixture()
       const appData = join(parent, 'fictional-app-data')
+      mkdirSync(appData, { mode: 0o700 })
       expect(pluginSupervisorRoot({ appData, hidden: true })).toBeNull()
       expect(pluginSupervisorRoot({ appData, hidden: true, scratchRoot: root })).toBe(root)
       expect(() =>
@@ -972,7 +973,7 @@ describe.skipIf(process.platform === 'win32')(
           scratchRoot: join(appData, '@brobot2/plugins'),
         }),
       ).toThrow()
-      expect(pluginSupervisorRoot({ appData, hidden: false })).toBe(
+      expect(pluginSupervisorRoot({ appData, hidden: false, workspaceRoot: workspaces[0]! })).toBe(
         join(appData, '@brobot2/plugins'),
       )
     })
