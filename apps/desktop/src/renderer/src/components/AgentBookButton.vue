@@ -107,7 +107,7 @@ const label = computed(() =>
   background: var(--accent);
 }
 .unknown {
-  color: var(--muted);
+  color: var(--text);
 }
 .compact {
   width: 30px;

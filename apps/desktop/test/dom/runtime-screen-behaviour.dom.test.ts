@@ -34,7 +34,10 @@ vi.mock('../../src/renderer/src/components/ProviderSetupAtLaunch.vue', () => ({
 
 let sessions: SessionStore
 let agentStore: ReturnType<typeof createAgentStore>
-let changed: Parameters<RuntimeBridge['onChanged']>[0]
+const changeListeners = new Set<Parameters<RuntimeBridge['onChanged']>[0]>()
+const changed: Parameters<RuntimeBridge['onChanged']>[0] = (change) => {
+  for (const listener of [...changeListeners]) listener(change)
+}
 vi.mock('../../src/renderer/src/composables/useSessionStore', () => ({
   useSessionStore: () => sessions,
 }))
@@ -91,8 +94,10 @@ const runtime = {
   onEvent: vi.fn(() => () => {}),
   onLiveness: vi.fn(() => () => {}),
   onChanged: vi.fn((listener: Parameters<RuntimeBridge['onChanged']>[0]) => {
-    changed = listener
-    return () => {}
+    changeListeners.add(listener)
+    return () => {
+      changeListeners.delete(listener)
+    }
   }),
   onStates: vi.fn(() => () => {}),
   onLimitsDisplayChanged: vi.fn(() => () => {}),
@@ -157,7 +162,8 @@ const runtime = {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  runtime.whoCalledWhom.mockRejectedValue(new Error('No relationship reading supplied'))
+  changeListeners.clear()
+  runtime.whoCalledWhom.mockReset().mockRejectedValue(new Error('No relationship reading supplied'))
   useWhoCalledWhom().reading.value = null
   useOverlays().close()
   localStorage.clear()
