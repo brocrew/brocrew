@@ -20,6 +20,10 @@ type Notice = {
   readonly label?: string
   readonly degradedFrom?: string
   readonly passing?: boolean
+  readonly source?: unknown
+  readonly running?: unknown
+  readonly ended?: unknown
+  readonly dropped?: unknown
 }
 interface Policy {
   readonly identity: {
@@ -187,5 +191,24 @@ describe('provider authentication policy facts', () => {
       expect(same(foreign, foreign)).toBe(false)
       expect(same(copy, foreign)).toBe(false)
     }
+  })
+
+  it('owns the complete empty terminal-list startup notice', () => {
+    const own = policies().codex.protocol
+    const empty = { type: 'background_work', source: 'thread/backgroundTerminals/list', running: [] }
+    expect(own.reopenedGive(empty)).toBe(true)
+    expect(own.reopenedGive({ ...empty, dropped: 0 })).toBe(true)
+    expect(own.refusedGive(empty)).toBe(false)
+    expect(policies().claude.protocol.reopenedGive(empty)).toBe(false)
+    for (const changed of [
+      { ...empty, type: 'unknown' },
+      { ...empty, source: 'future/notice' },
+      { ...empty, running: undefined },
+      { ...empty, running: [{}] },
+      { ...empty, ended: {} },
+      { ...empty, dropped: 1 },
+      { ...empty, provider: 'codex' as const },
+      { ...empty, label: undefined },
+    ]) expect(own.reopenedGive(changed)).toBe(false)
   })
 })
