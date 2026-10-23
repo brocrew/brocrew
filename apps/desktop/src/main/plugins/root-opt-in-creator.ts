@@ -13,12 +13,14 @@ import {
   type BigIntStats,
 } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
+import { ZodError } from 'zod'
 import {
   Marker,
   Pins,
   plannedPluginRoot,
   readRootSelectionBytes,
   workspacePluginRoot,
+  validatedRootPins,
 } from './root-selection'
 import { isPrivateEntry, isWithinOrSame, pinDirectory, type DirectoryPin } from './private-files'
 import {
@@ -28,8 +30,18 @@ import {
   type FileAccessLists,
 } from '../recovery/windows-privacy'
 
-type Options = { appData: string; workspace: string; slot: string; apply?: boolean }
-type Hooks = { beforePublish?: () => void | Promise<void>; afterPin?: () => void | Promise<void> }
+type Options = {
+  appData: string
+  workspace: string
+  slot?: string
+  mode?: 'own' | 'shared'
+  apply?: boolean
+}
+type Hooks = {
+  beforePublish?: () => void | Promise<void>
+  afterPin?: () => void | Promise<void>
+  afterMarker?: () => void | Promise<void>
+}
 const same = (a: string, b: string) =>
   process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b
 const absent = (error: unknown) => (error as NodeJS.ErrnoException)?.code === 'ENOENT'
@@ -75,12 +87,11 @@ export async function checkCreationPrivacy(
   await verifyFileToThisUser(path, lists, platform)
 }
 
-function plan(options: Options) {
+function selectionPaths(options: Options) {
   if (!options || !isAbsolute(options.appData ?? '') || !isAbsolute(options.workspace ?? ''))
     fail('supply absolute --app-data and --workspace paths')
   if (options.apply !== undefined && typeof options.apply !== 'boolean')
     fail('invalid apply option')
-  const slot = Marker.parse({ format: 1, slot: options.slot }).slot
   const appData = realpathSync.native(options.appData),
     workspace = realpathSync.native(options.workspace)
   if (!lstatSync(appData).isDirectory() || !lstatSync(workspace).isDirectory())
@@ -96,12 +107,22 @@ function plan(options: Options) {
   if (isWithinOrSame(parent, workspace)) fail('internal or default workspace is not eligible')
   const pinPath = join(parent, 'plugin-root-pins.json'),
     markerPath = join(workspace, 'plugin-root.json')
+  return { appData, workspace, parent, pinPath, markerPath, defaultRoot: join(parent, 'plugins') }
+}
+
+function plan(options: Options) {
+  const { appData, workspace, parent, pinPath, markerPath, defaultRoot } = selectionPaths(options)
+  const parsed = Marker.safeParse({ format: 1, slot: options.slot })
+  if (!parsed.success)
+    fail(
+      'slot must start with a lowercase letter and contain at most six lowercase letters or digits',
+    )
+  const slot = parsed.data.slot
   const pinsBefore = snapshot(pinPath, 64 * 1024),
     markerBefore = snapshot(markerPath, 1024)
   const pins = pinsBefore.bytes
     ? Pins.parse(JSON.parse(pinsBefore.bytes.toString('utf8')))
     : { format: 1 as const, selections: [] }
-  const defaultRoot = join(parent, 'plugins')
   const selected = workspacePluginRoot({ appData, workspaceRoot: workspace, defaultRoot })
   const root = join(parent, `plugins-${slot}`)
   if (!same(selected, defaultRoot)) {
@@ -155,6 +176,8 @@ function plan(options: Options) {
 
 /** Offline operator tool. Never called by app startup, and never migrates plugin data. */
 export async function createPluginRootSelection(options: Options, hooks: Hooks = {}) {
+  if (options.mode === 'shared') return removePluginRootSelection(options, hooks)
+  if (options.mode !== undefined && options.mode !== 'own') fail('mode must be own or shared')
   const initial = plan(options)
   await checkCreationPrivacy(initial.parent)
   await checkCreationPrivacy(initial.workspace)
@@ -259,9 +282,163 @@ export async function createPluginRootSelection(options: Options, hooks: Hooks =
     if (now?.dev === lockIdentity.dev && now?.ino === lockIdentity.ino) unlinkSync(lockPath)
   }
 }
+function removalPlan(options: Options) {
+  const paths = selectionPaths(options)
+  const beforePin = snapshot(paths.pinPath, 64 * 1024)
+  const pins = validatedRootPins(
+    beforePin.bytes ? JSON.parse(beforePin.bytes.toString('utf8')) : undefined,
+  )
+  const marker = statOrAbsent(paths.markerPath)
+  if (marker && (!marker.isFile() || marker.isSymbolicLink() || !isPrivateEntry(marker)))
+    fail('marker is not a private regular file; review it before removal')
+  const entry = pins.selections.find((entry) => same(entry.workspace, paths.workspace))
+  if (options.slot !== undefined && entry && options.slot !== entry.slot)
+    fail('workspace selects a different slot')
+  const remaining = {
+    format: 1 as const,
+    selections: pins.selections.filter((entry) => !same(entry.workspace, paths.workspace)),
+  }
+  const views = remaining.selections.map((entry) => ({
+    workspace: entry.workspace,
+    root: selectionView(paths.appData, entry.workspace, paths.defaultRoot),
+  }))
+  return {
+    ...paths,
+    beforePin,
+    marker,
+    entry,
+    remaining,
+    views,
+    status: !marker && !entry ? ('already shared' as const) : ('preview' as const),
+  }
+}
+function selectionView(appData: string, workspaceRoot: string, defaultRoot: string) {
+  try {
+    return workspacePluginRoot({ appData, workspaceRoot, defaultRoot })
+  } catch {
+    return null
+  }
+}
+function removalPreview(value: ReturnType<typeof removalPlan>) {
+  return {
+    status: value.status,
+    mode: 'shared',
+    appData: value.appData,
+    parent: value.parent,
+    workspace: value.workspace,
+    root: value.defaultRoot,
+    markerPath: value.markerPath,
+    pinPath: value.pinPath,
+    removeMarker: !!value.marker,
+    removePinEntry: value.entry ?? null,
+    pins: value.remaining,
+  }
+}
+
+/** Explicit operator rollback. Removes selection metadata only, never either setup's data. */
+async function removePluginRootSelection(options: Options, hooks: Hooks) {
+  const initial = removalPlan(options)
+  await checkCreationPrivacy(initial.parent)
+  await checkCreationPrivacy(initial.workspace)
+  if (!options.apply || initial.status === 'already shared') return removalPreview(initial)
+  const lockPath = join(initial.parent, 'plugin-root-pins.lock')
+  let lock: number
+  try {
+    lock = openSync(lockPath, 'wx', 0o600)
+  } catch {
+    return fail('creation lock is busy or left over; review before removing it')
+  }
+  const lockIdentity = lstatSync(lockPath, { bigint: true })
+  const held: Array<{ path: string; pin: DirectoryPin; identity: BigIntStats }> = []
+  try {
+    await keepFileToThisUser(lockPath)
+    writeFileSync(lock, 'Offline shared plugin setup selection in progress.\n')
+    fsyncSync(lock)
+    const current = removalPlan(options)
+    if (!same(current.parent, initial.parent) || !same(current.workspace, initial.workspace))
+      fail('input directory identity changed')
+    if (current.status === 'already shared') return removalPreview(current)
+    for (const path of [current.parent, current.workspace]) {
+      const pin = pinDirectory(path)
+      held.push({ path, pin, identity: pin.held() })
+    }
+    const verifyDirectories = () => {
+      if (
+        !same(realpathSync.native(options.appData), current.appData) ||
+        !same(realpathSync.native(options.workspace), current.workspace)
+      )
+        fail('input directory identity changed')
+      for (const entry of held) {
+        const now = lstatSync(entry.path, { bigint: true })
+        if (
+          now.isSymbolicLink() ||
+          now.dev !== entry.identity.dev ||
+          now.ino !== entry.identity.ino ||
+          !same(realpathSync.native(entry.path), entry.path)
+        )
+          fail('directory identity changed')
+      }
+    }
+    let pinTemp: string | undefined
+    if (current.entry) {
+      pinTemp = join(current.parent, `.plugin-root-pins-${randomUUID()}.tmp`)
+      const fd = openSync(pinTemp, 'wx', 0o600)
+      try {
+        if (process.platform !== 'win32') fchmodSync(fd, 0o600)
+        await keepFileToThisUser(pinTemp)
+        writeFileSync(fd, JSON.stringify(current.remaining, null, 2) + '\n')
+        fsyncSync(fd)
+      } finally {
+        closeSync(fd)
+      }
+    }
+    await hooks.beforePublish?.()
+    verifyDirectories()
+    agrees(current.pinPath, 64 * 1024, current.beforePin)
+    const marker = statOrAbsent(current.markerPath)
+    if (current.marker ? !marker || !unchanged(current.marker, marker) : marker !== undefined)
+      fail('marker changed; nothing was removed')
+    // Marker first: if interrupted, an outstanding pin still makes the reader refuse.
+    if (current.marker) {
+      unlinkSync(current.markerPath)
+      held[1]!.pin.sync()
+    }
+    await hooks.afterMarker?.()
+    verifyDirectories()
+    agrees(current.pinPath, 64 * 1024, current.beforePin)
+    if (statOrAbsent(current.markerPath)) fail('marker reappeared during removal')
+    if (pinTemp) {
+      renameSync(pinTemp, current.pinPath)
+      held[0]!.pin.sync()
+    }
+    verifyDirectories()
+    if (
+      workspacePluginRoot({
+        appData: current.appData,
+        workspaceRoot: current.workspace,
+        defaultRoot: current.defaultRoot,
+      }) !== current.defaultRoot
+    )
+      fail('reader did not confirm shared selection')
+    for (const view of current.views) {
+      if (selectionView(current.appData, view.workspace, current.defaultRoot) !== view.root)
+        fail('another selection changed')
+    }
+    return { ...removalPreview(current), status: 'shared' }
+  } finally {
+    for (const entry of held.reverse()) entry.pin.close()
+    closeSync(lock)
+    const now = statOrAbsent(lockPath)
+    if (now?.dev === lockIdentity.dev && now?.ino === lockIdentity.ino) unlinkSync(lockPath)
+  }
+}
+
 function publicPlan(value: ReturnType<typeof plan>) {
   return {
     status: value.status,
+    mode: 'own',
+    appData: value.appData,
+    parent: value.parent,
     workspace: value.workspace,
     slot: value.slot,
     root: value.root,
@@ -274,7 +451,7 @@ function publicPlan(value: ReturnType<typeof plan>) {
 
 export async function rootOptInCommand(args: string[]) {
   const values = new Map<string, string>(),
-    allowed = ['--app-data', '--workspace', '--slot']
+    allowed = ['--app-data', '--workspace', '--slot', '--mode']
   let apply = false
   for (let i = 0; i < args.length; i++) {
     const flag = args[i]!
@@ -288,13 +465,20 @@ export async function rootOptInCommand(args: string[]) {
       !args[i + 1] ||
       args[i + 1]!.startsWith('--')
     )
-      fail('use --app-data <absolute> --workspace <absolute> --slot <name> [--apply]')
+      fail(
+        'use --app-data <absolute> --workspace <absolute> [--mode own|shared] [--slot <name>] [--apply]',
+      )
     values.set(flag, args[++i]!)
   }
   return createPluginRootSelection({
     appData: values.get('--app-data') ?? '',
     workspace: values.get('--workspace') ?? '',
-    slot: values.get('--slot') ?? '',
+    slot: values.get('--slot'),
+    mode: (values.get('--mode') ?? 'own') as Options['mode'],
     apply,
+  }).catch((error: unknown) => {
+    if (error instanceof ZodError || error instanceof SyntaxError)
+      fail('marker or pin configuration is invalid; review it before changing selection')
+    throw error
   })
 }

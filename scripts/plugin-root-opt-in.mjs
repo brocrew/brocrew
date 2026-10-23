@@ -1,6 +1,7 @@
 // Explicit offline setup only. Compilation stays in memory, including preview mode.
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
+import { createHash } from 'node:crypto'
 
 try {
   const req = createRequire(new URL('../apps/desktop/package.json', import.meta.url))
@@ -21,8 +22,18 @@ try {
   const { rootOptInCommand } = await import(
     'data:text/javascript;base64,' + Buffer.from(result.outputFiles[0].contents).toString('base64')
   )
-  console.log(JSON.stringify(await rootOptInCommand(process.argv.slice(2)), null, 2))
+  console.log(
+    JSON.stringify(
+      {
+        ...(await rootOptInCommand(process.argv.slice(2))),
+        toolSourceSha256: createHash('sha256').update(result.outputFiles[0].contents).digest('hex'),
+      },
+      null,
+      2,
+    ),
+  )
 } catch (error) {
-  console.error(error instanceof Error ? error.message : 'Plugin setup creation refused')
+  const reason = error instanceof Error ? error.message : 'Plugin setup creation refused'
+  console.error(reason.replace(/\s*\r?\n\s*/g, ' '))
   process.exitCode = 1
 }
