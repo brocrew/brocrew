@@ -1,4 +1,4 @@
-import { providerDescriptor } from '@brobot2/shared'
+import { DEFAULT_IDENTITY_PROVIDER, providerDescriptor } from '@brobot2/shared'
 import { refusalReason } from '../../shared/refusals'
 import {
   aPieceNotEndedItsQuestionsUnread,
@@ -902,7 +902,8 @@ const undrivenNotice = (
  * Codex conversation stays open after the refusal, and a reopen since is still said.
  */
 function theLoginSentence(login: StoppedOnALogin): string {
-  const words = providerDescriptor(login.provider ?? 'claude').words.loginRefusal
+  // Older records without a provider retain the original login wording.
+  const words = providerDescriptor(login.provider ?? DEFAULT_IDENTITY_PROVIDER).words.loginRefusal
   const refused =
     login.onAKey === true ? words.key : login.reopened ? words.signInAfterReopen : words.signIn
   if (login.reopened) {

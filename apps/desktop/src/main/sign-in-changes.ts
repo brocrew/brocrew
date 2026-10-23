@@ -1,6 +1,6 @@
 import { readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Provider } from '@brobot2/shared'
+import { SUPPORTED_PROVIDERS, type Provider } from '@brobot2/shared'
 
 /**
  * 🔴 **W4.172 · F095 — when this app last saw each provider's sign-in change, kept across a
@@ -39,8 +39,6 @@ export function signInChangesIn(userData: string): SignInChanges {
   }
 }
 
-const PROVIDERS: readonly Provider[] = ['claude', 'codex']
-
 /** The moments in `file`: each provider's, when it is a moment; nothing for a file not there. */
 export function readSignInChanges(file: string): ReadonlyMap<Provider, number> {
   const changed = new Map<Provider, number>()
@@ -56,7 +54,7 @@ export function readSignInChanges(file: string): ReadonlyMap<Provider, number> {
   const moments =
     typeof said === 'object' && said !== null ? (said as { changed?: unknown }).changed : undefined
   if (typeof moments !== 'object' || moments === null) return changed
-  for (const provider of PROVIDERS) {
+  for (const provider of SUPPORTED_PROVIDERS) {
     const at = (moments as Record<string, unknown>)[provider]
     if (typeof at === 'number' && Number.isFinite(at) && at > 0) changed.set(provider, at)
   }

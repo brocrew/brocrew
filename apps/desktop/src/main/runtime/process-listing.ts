@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { withDeadline } from '@brobot2/runtime'
-import type { Provider } from '@brobot2/shared'
+import { providerRecord, type Provider } from '@brobot2/shared'
 import type { ProviderResources } from '../../shared/runtime-ipc'
 import { PS_MAX_BUFFER_BYTES, PS_READ_DEADLINE_MS, PS_TIMEOUT_MS } from '../process-tree'
 
@@ -226,5 +226,5 @@ export function resourcesFromTheListing(
     }
     return { running, rssBytes: rssKb * 1024, cpuPercent: Math.round(cpu * 10) / 10, at }
   }
-  return { claude: sum('claude'), codex: sum('codex') }
+  return providerRecord(sum)
 }

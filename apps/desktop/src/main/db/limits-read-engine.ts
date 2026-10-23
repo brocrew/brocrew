@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3'
 import { serialize } from 'node:v8'
-import type { Provider } from '@brobot2/shared'
+import { SUPPORTED_PROVIDERS, type Provider } from '@brobot2/shared'
 import {
   foldProviderLimits,
   PROVIDER_WALL_LOOKBACK_MS,
@@ -85,7 +85,7 @@ export class LimitsReadEngine {
       if (raw.wide || raw.rows > this.bounds.rows || raw.bytes > this.bounds.bytes)
         materialization.overflow()
       const signInChangedAt = new Map<Provider, number>()
-      for (const provider of ['claude', 'codex'] as const) {
+      for (const provider of SUPPORTED_PROVIDERS) {
         const at = wanted.signInChangedAt[provider]
         if (at !== undefined) signInChangedAt.set(provider, at)
       }
