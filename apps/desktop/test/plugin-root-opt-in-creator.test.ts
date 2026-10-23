@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { execFile } from 'node:child_process'
 import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
@@ -386,7 +386,7 @@ describe('creating an explicit plugin setup', () => {
     expect(tree(ownRoot)).toBe(ownHash)
     expect(tree(f.legacy)).toBe(legacyHash)
   })
-  it('previews shared removal with zero writes and needs no slot', async () => {
+  it('previews shared removal with zero writes and a warning about daily accounts', async () => {
     const f = await fixture(),
       api = await creator()
     await api.createPluginRootSelection({ ...f, apply: true })
@@ -396,8 +396,18 @@ describe('creating an explicit plugin setup', () => {
         appData: f.appData,
         workspace: f.workspace,
         mode: 'shared',
+        slot: f.slot,
       }),
     ).toMatchObject({ status: 'preview', mode: 'shared', state: 'own' })
+    const preview = await api.createPluginRootSelection({ ...f, mode: 'shared' })
+    expect(preview).toHaveProperty(
+      'warning',
+      expect.stringContaining('daily Chrome profiles/sign-ins'),
+    )
+    expect(preview).toHaveProperty(
+      'warning',
+      expect.stringContaining('WhatsApp account with its read/group settings'),
+    )
     expect(tree(f.base)).toBe(before)
   })
   it('shared is idempotent when both records are absent', async () => {
@@ -436,7 +446,7 @@ describe('creating an explicit plugin setup', () => {
         ).rejects.toThrow()
         if (kind === 'linked-temp') {
           const { link } = await import('node:fs/promises')
-          const temp = join(f.workspace, '.plugin-root-marker-fictional.tmp')
+          const temp = join(f.workspace, `.plugin-root-marker-${randomUUID()}.tmp`)
           await writeFile(temp, '{"format":1,"slot":"p1"}', { mode: 0o600 })
           await link(temp, f.marker)
         }
@@ -489,12 +499,104 @@ describe('creating an explicit plugin setup', () => {
     ).rejects.toThrow()
     expect(tree(f.base)).toBe(before)
   })
+  it.each([
+    'no-slot',
+    'wrong-slot',
+    'marker-disagrees',
+    'malformed-marker',
+    'extra-key',
+    'unknown-link',
+    'third-link',
+  ])('shared refuses %s without changing the selection', async (kind) => {
+    const f = await fixture(),
+      api = await creator()
+    await api.createPluginRootSelection({ ...f, apply: true })
+    if (kind === 'marker-disagrees') await writeFile(f.marker, '{"format":1,"slot":"p2"}')
+    if (kind === 'malformed-marker') await writeFile(f.marker, '{')
+    if (kind === 'extra-key')
+      await writeFile(f.marker, '{"format":1,"slot":"p1","unexpected":true}')
+    if (kind === 'unknown-link' || kind === 'third-link') {
+      const { link } = await import('node:fs/promises')
+      await link(
+        f.marker,
+        join(
+          f.workspace,
+          kind === 'unknown-link' ? 'unrelated-marker' : `.plugin-root-marker-${randomUUID()}.tmp`,
+        ),
+      )
+      if (kind === 'third-link') await link(f.marker, join(f.workspace, 'another-unrelated-marker'))
+    }
+    const before = tree(f.base)
+    const slot = kind === 'no-slot' ? undefined : kind === 'wrong-slot' ? 'p2' : 'p1'
+    await expect(
+      api.createPluginRootSelection({ ...f, mode: 'shared', slot, apply: true }),
+    ).rejects.toThrow()
+    expect(tree(f.base)).toBe(before)
+  })
+  it('shared removes only the known same-inode marker temp and preserves unrelated names', async () => {
+    const f = await fixture(),
+      api = await creator(),
+      { link } = await import('node:fs/promises')
+    await api.createPluginRootSelection({ ...f, apply: true })
+    const ownTemp = join(f.workspace, `.plugin-root-marker-${randomUUID()}.tmp`)
+    const unrelated = join(f.workspace, `.plugin-root-marker-${randomUUID()}.tmp`)
+    await link(f.marker, ownTemp)
+    await writeFile(unrelated, 'unrelated temporary data', { mode: 0o600 })
+    await api.createPluginRootSelection({ ...f, mode: 'shared', apply: true })
+    expect(existsSync(ownTemp)).toBe(false)
+    expect(readFileSync(unrelated, 'utf8')).toBe('unrelated temporary data')
+    expect(selected(f)).toBe(f.legacy)
+  })
+  it('state prints exactly shared and own, reads only, and rejects mixed states', async () => {
+    const f = await fixture(),
+      api = await creator(),
+      run = promisify(execFile)
+    const args = [
+      resolve('scripts/plugin-root-opt-in.mjs'),
+      '--app-data',
+      f.appData,
+      '--workspace',
+      f.workspace,
+      '--mode',
+      'state',
+    ]
+    let before = tree(f.base)
+    const shared = await run(process.execPath, args)
+    expect(shared.stdout).toBe('shared\n')
+    expect(shared.stderr).toBe('')
+    expect(tree(f.base)).toBe(before)
+    await api.createPluginRootSelection({ ...f, apply: true })
+    before = tree(f.base)
+    expect((await run(process.execPath, args)).stdout).toBe('own\n')
+    expect(tree(f.base)).toBe(before)
+    await rm(f.marker)
+    before = tree(f.base)
+    await expect(run(process.execPath, args)).rejects.toMatchObject({ stdout: '' })
+    expect(tree(f.base)).toBe(before)
+    await api.createPluginRootSelection({ ...f, mode: 'shared', apply: true })
+    expect((await run(process.execPath, args)).stdout).toBe('shared\n')
+    await writeFile(f.marker, '{"format":1,"slot":"p1"}', { mode: 0o600 })
+    before = tree(f.base)
+    await expect(run(process.execPath, args)).rejects.toMatchObject({ stdout: '' })
+    expect(tree(f.base)).toBe(before)
+    await expect(run(process.execPath, [...args, '--apply'])).rejects.toThrow()
+  })
   it('runs the documented CLI with explicit paths and no default writes', async () => {
     const f = await fixture(),
       before = tree(f.base),
       run = promisify(execFile)
     const command = resolve('scripts/plugin-root-opt-in.mjs')
-    const args = [command, '--app-data', f.appData, '--workspace', f.workspace, '--slot', f.slot]
+    const args = [
+      command,
+      '--app-data',
+      f.appData,
+      '--workspace',
+      f.workspace,
+      '--mode',
+      'own',
+      '--slot',
+      f.slot,
+    ]
     const preview = await run(process.execPath, args)
     expect(JSON.parse(preview.stdout)).toMatchObject({ status: 'preview', workspace: f.workspace })
     expect(tree(f.base)).toBe(before)
@@ -508,6 +610,8 @@ describe('creating an explicit plugin setup', () => {
       f.workspace,
       '--mode',
       'shared',
+      '--slot',
+      f.slot,
     ]
     const beforeShared = tree(f.base)
     expect(JSON.parse((await run(process.execPath, sharedArgs)).stdout)).toMatchObject({
