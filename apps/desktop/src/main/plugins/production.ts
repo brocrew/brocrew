@@ -35,6 +35,10 @@ export function productionPluginController() {
     lost: boolean
     closing?: Promise<boolean>
   }
+  const reviewListeners = new Set<() => void>()
+  const reviewInvalidated = () => {
+    for (const listener of reviewListeners) listener()
+  }
   let peer: Peer | undefined
   let transition: Promise<boolean> | undefined
   // A lost peer or a failed detach may leave a retained consumer in the owner. No entry point may
@@ -207,6 +211,21 @@ export function productionPluginController() {
     return connected
   }
   const facade: PluginSettingsController & PluginInstructionSource = {
+    onReviewInvalidated(listener) {
+      reviewListeners.add(listener)
+      return () => {
+        reviewListeners.delete(listener)
+      }
+    },
+    cancelPreparations() {
+      connected?.cancelPreparations?.()
+    },
+    async reviewMutation(action, id) {
+      const connection = current()
+      if (catalogueEntries?.format !== 2 || !connection.reviewMutation)
+        throw new PluginSupervisorError('incompatible')
+      return connection.reviewMutation(action, id)
+    },
     available: () => started && !ended,
     ready: async () => {
       await ready
@@ -275,19 +294,23 @@ export function productionPluginController() {
         return unavailableCards()
       }
     },
-    async update(id) {
+    async update(id, consent) {
       const connection = current()
-      if (catalogueEntries?.format === 2 || connection.mutationRequired?.()) return fail()
+      if (catalogueEntries?.format === 2 || connection.mutationRequired?.()) {
+        if (!consent?.displayedDetailsHash) throw new PluginSupervisorError('policy-refused')
+      } else if (consent) return fail()
       if (!connection.update || !catalogueEntries?.releases.some((release) => release.id === id))
         return fail()
-      await connection.update(id)
+      await (consent ? connection.update(id, consent) : connection.update(id))
       await update()
     },
-    async install(id) {
+    async install(id, consent) {
       const connection = current()
-      if (catalogueEntries?.format === 2 || connection.mutationRequired?.()) return fail()
+      if (catalogueEntries?.format === 2 || connection.mutationRequired?.()) {
+        if (!consent?.displayedDetailsHash) throw new PluginSupervisorError('policy-refused')
+      } else if (consent) return fail()
       if (!catalogueEntries?.releases.some((release) => release.id === id)) return fail()
-      await connection.install(id)
+      await (consent ? connection.install(id, consent) : connection.install(id))
       await update()
     },
     async uninstall(id) {
@@ -494,6 +517,7 @@ export function productionPluginController() {
                   watchForCleanStop()
                 },
               })
+              connection.onReviewInvalidated?.(reviewInvalidated)
               candidate.connection = connection
               if (candidate.lost || cleanupUncertain || ended) {
                 await detach(candidate)

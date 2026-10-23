@@ -14,7 +14,7 @@ import {
   type Operation,
   type ProjectionReceipt as Receipt,
 } from './format'
-import { PluginStateDisk, type PluginDiskOptions } from './disk'
+import { PluginStateDisk, readInstalledPluginDescriptor, type PluginDiskOptions } from './disk'
 import { newLifecycle, planOperation, type LifecycleState } from './machine'
 
 /** Storage only. The later person-command controller owns authentication and consent collection. */
@@ -52,6 +52,10 @@ export class GlobalPluginState {
     } finally {
       disk.close()
     }
+  }
+  /** Authenticated display snapshot only. No reclaim, mutation or execution; busy refuses. */
+  static readInstalledPackage(options: PluginDiskOptions, id: string) {
+    return readInstalledPluginDescriptor(options, id)
   }
   close(): void {
     this.disk.close()
