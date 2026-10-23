@@ -156,7 +156,7 @@ describe('a kept rule removed where an open follows links (Windows)', () => {
   }
   const remove = (file: string) =>
     removeKeptRule(
-      { claudeProjectFiles: [file], homes: [], personsOwn: [] },
+      { projectFiles: { claude: [file], codex: [] }, homes: [], personsOwn: [] },
       { provider: 'claude', file, kept: RULE },
       'win32',
     )

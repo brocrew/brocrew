@@ -68,10 +68,13 @@ beforeEach(() => {
   )
   keepToolApproval(codexHome, APPROVAL)
   where = {
-    claudeProjectFiles: [
-      PROJECT_FILE(),
-      join(root, 'a-folder-with-nothing-kept', '.claude', 'settings.local.json'),
-    ],
+    projectFiles: {
+      claude: [
+        PROJECT_FILE(),
+        join(root, 'a-folder-with-nothing-kept', '.claude', 'settings.local.json'),
+      ],
+      codex: [],
+    },
     homes: [
       { provider: 'claude', path: claudeHome },
       { provider: 'codex', path: codexHome },
@@ -210,7 +213,10 @@ describe('Remove', () => {
     const linked = join(root, 'linked')
     mkdirSync(join(linked, '.claude'), { recursive: true })
     symlinkSync(real, join(linked, '.claude', 'settings.local.json'))
-    const there = { ...where, claudeProjectFiles: [join(linked, '.claude', 'settings.local.json')] }
+    const there = {
+      ...where,
+      projectFiles: { claude: [join(linked, '.claude', 'settings.local.json')], codex: [] },
+    }
     const said = removeKeptRule(there, {
       provider: 'claude',
       file: join(linked, '.claude', 'settings.local.json'),
@@ -234,7 +240,10 @@ describe('Remove', () => {
     mkdirSync(linked)
     symlinkSync(elsewhere, join(linked, '.claude'))
     const said = removeKeptRule(
-      { ...where, claudeProjectFiles: [join(linked, '.claude', 'settings.local.json')] },
+      {
+        ...where,
+        projectFiles: { claude: [join(linked, '.claude', 'settings.local.json')], codex: [] },
+      },
       {
         provider: 'claude',
         file: join(linked, '.claude', 'settings.local.json'),
@@ -301,7 +310,7 @@ describe('as the files are written', () => {
     mkdirSync(join(home, '.claude'), { recursive: true })
     const own = join(home, '.claude', 'settings.local.json')
     writeFileSync(own, JSON.stringify({ permissions: { allow: ['Bash(make *)'] } }))
-    const there = { ...where, claudeProjectFiles: [own] }
+    const there = { ...where, projectFiles: { claude: [own], codex: [] } }
     const listed = readKeptRules(there).claude.find((one) => one.file === own)
     expect(listed?.rules.map((one) => one.kept)).toEqual(['Bash(make *)'])
     expect(listed?.notEditedHere).toContain('your own provider folder')
