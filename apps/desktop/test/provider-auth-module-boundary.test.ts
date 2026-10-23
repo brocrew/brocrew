@@ -44,6 +44,17 @@ function nativeImportsIn(source: ts.SourceFile): string[] {
 
 describe('provider authentication has one owner', () => {
   it.each([
+    'runtime/claude-program.ts',
+    'runtime/codex-binary.ts',
+    'runtime/provider-versions.ts',
+  ])('keeps only compatibility exports in %s', (file) => {
+    const implementations = sourceOf(file).statements
+      .filter((statement) => !ts.isExportDeclaration(statement) && !ts.isImportDeclaration(statement))
+      .map((statement) => ts.SyntaxKind[statement.kind])
+    expect(implementations).toEqual([])
+  })
+
+  it.each([
     'runtime/runtime-host.ts',
     'runtime/api-keys.ts',
     'runtime/provider-versions.ts',
