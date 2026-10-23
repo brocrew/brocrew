@@ -1,5 +1,6 @@
 """Only throwaway encrypted keys under this test's temporary directory are used."""
 
+import errno
 import hashlib
 import importlib.util
 import json
@@ -8,6 +9,7 @@ from pathlib import Path
 import pty
 import select
 import shutil
+import signal
 import stat
 import subprocess
 import sys
@@ -246,37 +248,64 @@ class ScratchSigner(unittest.TestCase):
             ])
         output = b""
         sent = False
-        deadline = time.monotonic() + 10
+        deadline = time.monotonic() + 30
         status = None
+        eof = False
         try:
             while time.monotonic() < deadline:
-                if select.select([terminal], [], [], 0.1)[0]:
+                remaining = max(0, deadline - time.monotonic())
+                if not eof and select.select([terminal], [], [], min(0.1, remaining))[0]:
                     try:
                         chunk = os.read(terminal, 4096)
-                    except OSError:
-                        break
-                    if not chunk:
-                        break
-                    output += chunk
-                    if b"passphrase: " in output and not sent:
-                        os.write(terminal, self.secret)
-                        sent = True
-                got, status = os.waitpid(pid, os.WNOHANG)
-                if got:
-                    pid = None
+                    except OSError as error:
+                        # Linux reports a closed PTY as EIO rather than an empty read.
+                        if error.errno != errno.EIO:
+                            raise
+                        chunk = b""
+                    if chunk:
+                        output += chunk
+                        if b"passphrase: " in output and not sent:
+                            os.write(terminal, self.secret)
+                            sent = True
+                    else:
+                        eof = True
+                if eof and status is None:
+                    # PTY EOF can arrive just before the child exits. Wait for the exit,
+                    # bounded by the same deadline, rather than treating WNOHANG=0 as failure.
+                    def expired(_signum, _frame):
+                        raise TimeoutError("signer did not finish its terminal interaction")
+                    previous = signal.signal(signal.SIGALRM, expired)
+                    signal.setitimer(signal.ITIMER_REAL, max(0.001, deadline - time.monotonic()))
+                    try:
+                        _, status = os.waitpid(pid, 0)
+                        pid = None
+                    except TimeoutError as error:
+                        self.fail(str(error))
+                    finally:
+                        signal.setitimer(signal.ITIMER_REAL, 0)
+                        signal.signal(signal.SIGALRM, previous)
+                elif status is None:
+                    got, wait_status = os.waitpid(pid, os.WNOHANG)
+                    if got:
+                        status = wait_status
+                        pid = None
+                # EOF can precede waitpid readiness; exit can precede the final output read.
+                if eof and status is not None:
                     break
-            if pid is not None:
-                got, status = os.waitpid(pid, os.WNOHANG)
-                if not got:
-                    os.kill(pid, 9)
-                    os.waitpid(pid, 0)
-                    self.fail("signer did not finish its terminal interaction")
-                pid = None
+            self.assertIsNotNone(status, "signer did not finish its terminal interaction")
+            self.assertTrue(eof, "signer did not close its terminal")
         finally:
             if pid is not None:
-                os.kill(pid, 9)
-                os.waitpid(pid, 0)
+                try:
+                    os.kill(pid, 9)
+                except ProcessLookupError:
+                    pass  # It exited between the final status check and cleanup.
+                try:
+                    os.waitpid(pid, 0)
+                except ChildProcessError:
+                    pass  # A deadline alarm may have interrupted an already completed reap.
             os.close(terminal)
+        self.assertTrue(sent)
         self.assertEqual(os.waitstatus_to_exitcode(status), 0)
         self.assertEqual(output.replace(b"\r\n", b"\n"), b"Catalogue key passphrase: \nsigned and verified\n")
         self.assertNotIn(self.secret.strip(), output)
