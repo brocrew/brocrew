@@ -411,6 +411,8 @@ MUTATIONS = [
         "· EXPECTED (NOT MEASURED): desktop 1 red, runtime GREEN, dom GREEN",
         [
             ("apps/desktop/src/main/providers/instruction-io.ts", "    if (!seen.isSymbolicLink()) continue\n", ""),
+            # The following resolves check masked the old deletion; keep resolving only real links.
+            ("apps/desktop/src/main/providers/instruction-io.ts", "    if (resolves(candidate)) continue\n", "    if (seen.isSymbolicLink() && resolves(candidate)) continue\n"),
         ],
     ),
     (
