@@ -8,7 +8,6 @@ import {
 } from './plugin-lifecycle-fixtures'
 import { packageFixture, signed } from './plugin-package-fixtures'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
-import { PluginLifecycleController as HistoricalController } from './fixtures/plugin-update-parent/lifecycle-controller'
 import { sharedLifecycleWorkspaces } from '../src/main/plugins/lifecycle/workspaces'
 import {
   servePersonPluginControl,
@@ -71,9 +70,29 @@ async function setup(installed = false, legacyEntry = false, v1Owner = false) {
     refreshCatalogue: async () => ({ catalogue: catalogue(offer), names: f.opts.names }),
   }
   if (installed) {
-    // Existing installations predate this policy; seed only through the frozen historical API.
-    const old = await HistoricalController.open({ ...options, state: f.state as never })
-    await old.install(await old.attach(projection().sink), 'chrome')
+    // Seed the prior installation through the portable API on every platform.
+    // Frozen-writer compatibility is tested separately; this suite tests owner policy.
+    const seed = await PluginLifecycleController.open({
+      ...options,
+      // Authorless historical releases are seeded from their original v1 source.
+      catalogue: { bytes: first.bytes, signature: first.signature },
+    })
+    const handle = await seed.attach(projection().sink)
+    if (first.release.authors) {
+      const prepared = await seed.prepareMutation(
+        handle,
+        'install',
+        'chrome',
+        first.release.archive.sha256,
+        pluginSha256(first.bytes),
+      )
+      await seed.installPrepared(handle, 'chrome', prepared)
+    } else await seed.install(handle, 'chrome')
+    const seeded = f.state.inspect()
+    expect(seeded.pending).toBeNull()
+    expect(seeded.guards).toHaveLength(1)
+    expect(seeded.guards[0]?.release.archiveSha256).toBe(first.release.archive.sha256)
+    expect(seeded.guards[0]?.release.version).toBe(first.release.version)
   }
   offer = next
   options.catalogue = catalogue(next)

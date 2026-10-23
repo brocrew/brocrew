@@ -9,7 +9,7 @@ import {
   cleanupLifecycleFixtures,
   reopenLifecycleFixture,
 } from './plugin-lifecycle-fixtures'
-import { packageFixture } from './plugin-package-fixtures'
+import { packageFixture, signed } from './plugin-package-fixtures'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
 import { servePersonPluginControl } from '../src/main/plugins/lifecycle/person-control'
 import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
@@ -111,6 +111,49 @@ async function diskBytes(root: string, prefix = ''): Promise<Record<string, stri
 describe.skipIf(process.platform === 'win32')(
   'mixed-version plugin owners on fictional roots',
   () => {
+    it.each(['install', 'update'] as const)(
+      'keeps raw %s refused with a historical v2 legacy-row vault',
+      async (action) => {
+        const f = await fixture()
+        exitable(f)
+        const historical = await ParentController.open({
+          ...f.opts,
+          state: f.state as never,
+          catalogue: signed({ format: 2, entries: [{ ...f.pkg.release, legacy: true }] }),
+        })
+        await historical.install(await historical.attach(projection().sink), 'chrome')
+        await historical.drain()
+        const next = packageFixture({ manifest: { ...f.pkg.manifest, version: '1.0.3' } })
+        const download = vi.fn(async () => next.archive)
+        const controller = await PluginLifecycleController.open({
+          ...f.opts,
+          catalogue: signed({ format: 2, entries: [{ ...next.release, legacy: true }] }),
+          download,
+        })
+        try {
+          const handle = await controller.attach(projection().sink)
+          const before = {
+            state: structuredClone(f.state.inspect()),
+            tree: await diskBytes(f.root),
+            events: [...f.events],
+            starts: f.starts(),
+            downloads: download.mock.calls.length,
+          }
+          await expect(controller[action](handle, 'chrome')).rejects.toMatchObject({
+            code: 'policy-refused',
+          })
+          expect({
+            state: f.state.inspect(),
+            tree: await diskBytes(f.root),
+            events: [...f.events],
+            starts: f.starts(),
+            downloads: download.mock.calls.length,
+          }).toEqual(before)
+        } finally {
+          await controller.drain()
+        }
+      },
+    )
     it('the parent client keeps listing and Configure against a new owner with a newer catalogue', async () => {
       const f = await prepared()
       const bridge = await servePersonPluginControl({
