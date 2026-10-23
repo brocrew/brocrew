@@ -40,7 +40,10 @@ const KEY_WAIT_MS = 90_000
 const CLAUDE_VARIABLE = 'BROBOT_CHECK_CLAUDE'
 /** The Claude Code versions this build was tested with — the app reads the same file. */
 const TESTED = JSON.parse(
-  readFileSync(join(ROOT, 'apps/desktop/src/main/runtime/claude-code-tested.json'), 'utf8'),
+  readFileSync(
+    join(ROOT, 'apps/desktop/src/main/providers/claude/claude-code-tested.json'),
+    'utf8',
+  ),
 )
 const onCi = process.env.CI === 'true'
 

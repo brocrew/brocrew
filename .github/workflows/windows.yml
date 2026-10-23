@@ -23,7 +23,7 @@
 # inside the packaged app; the Claude API key reaches Claude Code the way BroBot hands it over on
 # Windows while a command Claude Code runs does not see it (a fake key, a local server playing the
 # model, and the newest tested Claude Code, named in
-# `apps/desktop/src/main/runtime/claude-code-tested.json` and installed with npm outside the app);
+# `apps/desktop/src/main/providers/claude/claude-code-tested.json` and installed with npm outside the app);
 # and the app, launched on the runner's empty profile, keeps its data in
 # `%APPDATA%\@brobot2\desktop`, whatever the app is called.
 name: Windows build
@@ -145,7 +145,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          version="$(node -p "require('./apps/desktop/src/main/runtime/claude-code-tested.json').newest")"
+          version="$(node -p "require('./apps/desktop/src/main/providers/claude/claude-code-tested.json').newest")"
           prefix="${RUNNER_TEMP//\\//}/claude-code"
           npm install --prefix "$prefix" --no-audit --no-fund "@anthropic-ai/claude-code@$version"
           program="$prefix/node_modules/@anthropic-ai/claude-code/bin/claude.exe"
