@@ -16,7 +16,6 @@ export const authPolicy: ProviderAuthPolicy = {
     },
   },
   copy: {
-    read: () => null,
     same: () => false,
     refused: () => null,
   },

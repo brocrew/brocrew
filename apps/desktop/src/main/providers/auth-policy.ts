@@ -28,7 +28,7 @@ export interface ProviderAuthPolicy {
     limit(handle: IdentityHandle): IdentityFact
   }
   readonly copy: {
-    read(home: string): unknown | null
+    read?(home: string): unknown | null
     same(one: unknown, other: unknown): boolean
     refused(error: unknown): unknown | null
   }
