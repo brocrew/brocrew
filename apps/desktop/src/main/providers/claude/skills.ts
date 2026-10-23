@@ -4,6 +4,15 @@ import { providerDescriptor } from '@brobot2/shared'
 import type { SkillPolicy } from '../skill-policy'
 
 export const skills: SkillPolicy = {
+  asGiven: (_listed, builtIn) => ({
+    listed: null,
+    at: null,
+    dropped: null,
+    why: builtIn ? 'not-listed-yet' : 'no-skill-files',
+  }),
+  needsReminders: (confirmed) => confirmed() !== true,
+  builtInScope: 'plugin',
+
   discoveryRoot: 'claude-plugin',
   initialFiles: () =>
     new Map([

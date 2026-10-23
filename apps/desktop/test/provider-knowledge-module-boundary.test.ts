@@ -62,7 +62,7 @@ describe('provider knowledge policies have one owner', () => {
       'keptRules',
       'whatALaunchGave',
       'whatThisAgentWasGiven',
-      'started',
+      'register',
     ])
     const inspected: string[] = []
     const found: string[] = []

@@ -15,6 +15,9 @@ import {
 import { readMemoryStore, realPath, sizeOnDisk } from './instruction-io'
 
 interface MemoryLayout {
+  entryOrigin(
+    kind: InjectedInstruction['kind'],
+  ): import('../../shared/what-this-agent-was-given').GivenOrigin
   root(home: string): string
   fixed(home: string, realHome: string): MemoryCandidate[]
   notesFolder(home: string): string
@@ -24,6 +27,9 @@ interface MemoryLayout {
   noteDirectory(home: string): string | null
 }
 export interface MemoryPolicy {
+  entryOrigin(
+    kind: InjectedInstruction['kind'],
+  ): import('../../shared/what-this-agent-was-given').GivenOrigin
   readonly readStore: (home: string) => AgentMemoryStoreRead
   readonly layout: MemoryStoreLayout
   counts(home: string): { readonly total: number; readonly listed: number }
@@ -92,6 +98,7 @@ export function createMemoryPolicy(
     layout,
     readPage,
     noteDirectory: source.noteDirectory,
+    entryOrigin: source.entryOrigin,
     counts(providerHome) {
       const fixed = layout.fixedFiles(providerHome)
       const listing = source.listNotes(source.notesFolder(providerHome))

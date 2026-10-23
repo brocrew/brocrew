@@ -1,18 +1,21 @@
+import {
+  providerKnowledge,
+  recordedNativeRead,
+  recordedProfileMemory,
+} from '../providers/knowledge-definitions'
+import { providerDefinitions } from '../providers/definitions'
 import { createHash } from 'node:crypto'
-import { existsSync } from 'node:fs'
-import { basename, join } from 'node:path'
+import { basename } from 'node:path'
 import { z } from 'zod'
 import {
-  CODEX_TOOLS_DESCRIPTION,
   type AgentToolset,
   type ContextReading,
   type LaunchSetting,
   type LaunchSettingKey,
   type LaunchSettingValue,
-  MAX_COMMAND_TEXT,
   type ProviderCommand,
 } from '@brobot2/runtime'
-import { providerDescriptor, providerValue, type Provider } from '@brobot2/shared'
+import { providerDescriptor, type Provider } from '@brobot2/shared'
 import type { AgentMemoryStore } from '../../shared/agent-memory'
 import type { SnapshotAnswer } from '../../shared/provider-snapshots'
 import type { TurnAsSent } from '../../shared/turn-as-sent'
@@ -39,7 +42,6 @@ import {
   type GivenFileKind,
   type GivenLaunch,
   type GivenLaunchSettings,
-  type GivenSkills,
   type GivenMemoryEntry,
   type GivenMemoryStore,
   type GivenOrigin,
@@ -66,7 +68,6 @@ import type { TextPackUse } from '../../shared/text-pack'
 import { realPathOf } from '../read-text-file'
 import { type TheBuildRunning } from './factory-text'
 import {
-  codexConventionChain,
   conversationBlock,
   headingAsSent,
   INSTRUCTION_FILE_CAP,
@@ -132,15 +133,7 @@ function isBroBotsWorkspaceText(text: string): boolean {
  * ⚑ For a conversation whose launch reported none (one with no launch record); a live Codex
  * conversation's are the ones it reported.
  */
-export function filesCodexWouldRead(cwd: string): string[] {
-  return codexConventionChain(cwd).flatMap((dir) => {
-    for (const name of ['AGENTS.override.md', 'AGENTS.md']) {
-      const path = join(dir, name)
-      if (existsSync(path)) return [path]
-    }
-    return []
-  })
-}
+export { filesCodexWouldRead } from '../providers/knowledge-definitions'
 
 /** ⚑ A file read now: its text and fingerprint. */
 interface ReadNow {
@@ -239,23 +232,24 @@ export function whatThisLaunchGave(handed: WhatALaunchWasHanded): WhatALaunchGav
   }))
   const conversation = instructions.thisConversation
   // ⚑ On Claude, the line the model read above each file BroBot sent, as this launch sent it.
-  const headings = providerValue(handed.provider, { claude: true, codex: false })
-    ? headingsAsSentFor(
-        [
-          ...(profileFile === null
-            ? []
-            : [
-                {
-                  path: profileFile.path,
-                  kind: 'profile-instructions' as const,
-                  refused: profileFile.refused,
-                },
-              ]),
-          ...files.map((file) => ({ path: file.path, kind: file.kind, refused: null })),
-        ],
-        instructions.composed?.split('\n\n', 1)[0],
-      )
-    : []
+  const headings =
+    providerDescriptor(handed.provider).contextPlacement === 'system-prompt'
+      ? headingsAsSentFor(
+          [
+            ...(profileFile === null
+              ? []
+              : [
+                  {
+                    path: profileFile.path,
+                    kind: 'profile-instructions' as const,
+                    refused: profileFile.refused,
+                  },
+                ]),
+            ...files.map((file) => ({ path: file.path, kind: file.kind, refused: null })),
+          ],
+          instructions.composed?.split('\n\n', 1)[0],
+        )
+      : []
   const [profileHeading, ...fileHeadings] =
     profileFile === null ? [undefined, ...headings] : headings
   const toolsParagraph = handed.toolset.instructions
@@ -652,18 +646,13 @@ function originOf(
       return {
         origin: 'a-repository',
         madeAutomatically: false,
-        says: providerValue(provider, {
-          claude:
-            'This folder’s own file, written by whoever works in it — a person or an agent; this app can’t tell which. BroCrew reads it and sends it as it is.',
-          codex:
-            'This folder’s own file, written by whoever works in it — a person or an agent; this app can’t tell which. Codex reads it itself.',
-        }),
+        says: providerKnowledge[provider].instructions.given.repositoryOrigin,
       }
     case 'profile-memory':
       return {
         origin: 'unknown',
         madeAutomatically: false,
-        says: 'This profile’s own CLAUDE.md, written by a person or by the agent; this app can’t tell which. BroCrew sends it as it is.',
+        says: recordedProfileMemory.says,
       }
     case 'agent-memory':
     case 'agent-memory-topic':
@@ -718,83 +707,25 @@ function sectionsOf(
 
 /** ⚑ How a provider hands a set of server tools to its model. */
 function deferralOf(provider: Provider, published: readonly string[] | null): GivenDeferral {
-  if (providerValue(provider, { claude: false, codex: true })) {
-    return {
-      kind: 'in-every-request',
-      says: 'Codex hands the model every one of these, in full, in every request.',
-    }
-  }
-  if (published === null) {
-    return {
-      kind: 'unknown',
-      says: 'Claude has not reported its tool list for this conversation yet, so this app can’t tell how it hands these over.',
-    }
-  }
-  return published.includes('ToolSearch')
-    ? {
-        kind: 'names-until-loaded',
-        says: 'Claude puts only their names in front of the model, and the whole description when the agent loads one with its tool search.',
-      }
-    : {
-        kind: 'in-every-request',
-        says: 'Claude hands the model every one of these, in full, in every request.',
-      }
+  return providerKnowledge[provider].instructions.given.deferral(published)
 }
-
-/** ⚑ An external server's tools, as the provider hands them. */
 function externalDeferralOf(
   provider: Provider,
   published: readonly string[] | null,
 ): GivenDeferral {
-  if (providerValue(provider, { claude: false, codex: true })) {
-    return {
-      kind: 'found-by-search',
-      says: 'Codex finds these with its tool search: until then the model sees neither their names nor their descriptions.',
-    }
-  }
-  return deferralOf(provider, published)
+  return providerKnowledge[provider].instructions.given.externalDeferral(published)
 }
-
-/**
- * ⚑ **Other servers' tools, as the total counts them** ({@link GivenTotals.otherServersToolsInEveryRequest}):
- * the names the provider published that are neither BroBot's nor its own, as they stand in every
- * request — or nothing, or `null` with why. ⚠️ An estimate, like every size here: the list they
- * stand in is Claude's, and this counts the names alone.
- */
 function otherServersToolsOf(
   provider: Provider,
   published: readonly string[] | null,
   brobotsServer: string,
   granted: readonly string[],
-): { readonly size: PartSize | null; readonly why: string | null } {
-  const nothing = sizesAdded([])
-  const deferral = externalDeferralOf(provider, published)
-  if (deferral.kind === 'found-by-search') {
-    return {
-      size: nothing,
-      why:
-        granted.length === 0
-          ? null
-          : 'Codex finds other servers’ tools with its tool search, so none of them is in every request.',
-    }
-  }
-  if (published === null) {
-    return granted.length === 0
-      ? { size: nothing, why: null }
-      : {
-          size: null,
-          why: 'Claude has not reported its tool list for this conversation yet, so this app can’t tell which other servers’ tools it sends.',
-        }
-  }
-  const ours = `mcp__${brobotsServer}__`
-  const names = published.filter((one) => one.startsWith('mcp__') && !one.startsWith(ours))
-  if (names.length === 0) return { size: nothing, why: null }
-  return deferral.kind === 'names-until-loaded'
-    ? { size: sizeOf(names.join('\n')), why: null }
-    : {
-        size: null,
-        why: 'Claude hands other servers’ tools over in full, and this app keeps none of their descriptions, so it can’t count them.',
-      }
+) {
+  return providerKnowledge[provider].instructions.given.otherServers(
+    published,
+    brobotsServer,
+    granted,
+  )
 }
 
 /** What {@link whatItWasGiven} is handed. */
@@ -950,10 +881,7 @@ function aMemoryEntry(
 ): GivenMemoryEntry {
   const name = basename(item.path)
   const kept = atLaunch.find((one) => one.kind === item.kind && basename(one.path) === name)
-  const origin: GivenOrigin =
-    providerValue(provider, { claude: false, codex: true }) && item.kind === 'agent-memory'
-      ? 'the-provider'
-      : 'an-agent'
+  const origin = providerKnowledge[provider].memory.entryOrigin(item.kind)
   return {
     path: item.path,
     kind: item.kind,
@@ -983,7 +911,7 @@ function providerPartsOf(
   looked: WhatTheReadIsHanded['snapshot'],
   launch: GivenLaunch,
 ): GivenProviderParts {
-  const name = providerValue(provider, { claude: 'Claude Code', codex: 'Codex' })
+  const name = providerDescriptor(provider).programName
   if (looked === null) {
     return {
       version,
@@ -1088,17 +1016,18 @@ export function whatItWasGiven(handed: WhatTheReadIsHanded): WhatThisAgentWasGiv
 
   // ⚑ W4.177 — on Claude, the line the model read above each file BroBot sent. ⛔ Only a record a
   // launch kept says what the launch sent: one composed for this read is this build's.
-  const headed = providerValue(provider, { claude: true, codex: false })
-    ? withTheirHeadings(
-        files,
-        recorded
-          ? [
-              ...(record.profileFile === null ? [] : [record.profileFile.heading]),
-              ...record.files.map((file) => file.heading),
-            ]
-          : [],
-      )
-    : files
+  const headed =
+    providerDescriptor(provider).contextPlacement === 'system-prompt'
+      ? withTheirHeadings(
+          files,
+          recorded
+            ? [
+                ...(record.profileFile === null ? [] : [record.profileFile.heading]),
+                ...record.files.map((file) => file.heading),
+              ]
+            : [],
+        )
+      : files
 
   // ── this conversation's own text ──
   const conversation = record.thisConversation
@@ -1130,10 +1059,10 @@ export function whatItWasGiven(handed: WhatTheReadIsHanded): WhatThisAgentWasGiv
   const instructionsKept = recorded ? record.tools.instructions : undefined
   const instructionsText = instructionsKept ?? handed.toolset.instructions ?? ''
   // ⚑ Codex declares the tools under a namespace with a sentence of its own; Claude has none.
-  const namespaceText =
-    providerValue(provider, { claude: true, codex: false }) || list.length === 0
-      ? null
-      : (handed.declaredWith ?? CODEX_TOOLS_DESCRIPTION)
+  const namespaceText = providerKnowledge[provider].instructions.given.namespaceText(
+    handed.declaredWith,
+    list.length,
+  )
   const tools = {
     server: handed.toolset.server,
     instructions: {
@@ -1211,7 +1140,9 @@ export function whatItWasGiven(handed: WhatTheReadIsHanded): WhatThisAgentWasGiv
     ...(thisConversation === null ? [] : [thisConversation.size]),
     ...(record.builtInSkills ? [sizeOf(record.builtInSkills.reminder)] : []),
     // ⚑ On Codex the paragraph is already in this conversation's text ("The brobot tools").
-    ...(providerValue(provider, { claude: true, codex: false }) ? [tools.instructions.size] : []),
+    ...(providerDescriptor(provider).contextPlacement === 'system-prompt'
+      ? [tools.instructions.size]
+      : []),
   ])
   const otherFiles = sizesAdded(
     reaching.filter((one) => one.origin !== 'brobot').map((one) => one.size),
@@ -1253,10 +1184,7 @@ export function whatItWasGiven(handed: WhatTheReadIsHanded): WhatThisAgentWasGiv
   const window = handed.context?.kind === 'proportional' ? handed.context.window : null
 
   // ── the launch's settings, beside where the conversation stands now ──
-  const planKey: LaunchSettingKey = providerValue(provider, {
-    claude: 'mode',
-    codex: 'collaboration-mode',
-  })
+  const planKey = providerKnowledge[provider].instructions.given.planningKey
   const { approval, planning } = handed.standsNow
   const nowOf = (key: LaunchSettingKey): { now: LaunchSettingValue } | object =>
     key === 'approval'
@@ -1285,30 +1213,10 @@ export function whatItWasGiven(handed: WhatTheReadIsHanded): WhatThisAgentWasGiv
         }
 
   // ── skills: Codex's list is its skills, each with its file; Claude loads none from disk ──
-  const skills: GivenSkills = providerValue(provider, { claude: true, codex: false })
-    ? {
-        listed: null,
-        at: null,
-        dropped: null,
-        why: record.builtInSkills ? 'not-listed-yet' : 'no-skill-files',
-      }
-    : handed.listedCommands === null
-      ? { listed: null, at: null, dropped: null, why: 'not-listed-yet' }
-      : {
-          listed: handed.listedCommands.commands.map((one) => {
-            const description = one.skill?.description ?? null
-            return {
-              name: one.name,
-              description,
-              descriptionMayBeCut: description !== null && description.length >= MAX_COMMAND_TEXT,
-              path: one.skill?.path ?? null,
-              scope: one.skill?.scope ?? null,
-            }
-          }),
-          at: handed.listedCommands.at,
-          dropped: handed.listedCommands.dropped,
-          why: null,
-        }
+  const skills = providerKnowledge[provider].skills.asGiven(
+    handed.listedCommands,
+    Boolean(record.builtInSkills),
+  )
 
   return {
     sessionId: handed.sessionId,
@@ -1360,7 +1268,7 @@ export function whatItWasGiven(handed: WhatTheReadIsHanded): WhatThisAgentWasGiv
             ? 'No context reading has come in for this conversation yet.'
             : handed.context.kind === 'unknown'
               ? NO_SIZE_SINCE_A_COMPACTION
-              : `${providerValue(provider, { claude: 'Claude', codex: 'Codex' })} does not report its window size.`,
+              : `${providerDescriptor(provider).displayName} does not report its window size.`,
     },
   }
 }
@@ -1426,12 +1334,6 @@ const UNREADABLE_SINCE_ITS_LAUNCH =
  * `project_doc_max_bytes`, one budget for the whole chain, root first; a file past it is cut or left
  * out of what Codex sends.
  */
-const CODEX_PROJECT_DOC_BUDGET = 32 * 1024
-
-/** ⚑ W4.177 — why, for a Codex file the model may have got only part of, or none of. */
-const PAST_CODEX_BUDGET =
-  'This app keeps this file by its fingerprint only, since BroCrew did not write it, and Codex reads at most 32 KiB of a folder’s AGENTS files in all, so the model may have got only part of this one, or none of it. The agent’s popup shows the file as it is now.'
-
 /**
  * ⚑ **W4.177 — a file the launch kept by its fingerprint, as the model got it when it can tell**: read
  * now with the launch's own reader and cap ({@link readNow}), and its text given only when its
@@ -1465,7 +1367,7 @@ function whyItWasNotSent(reason: string): string {
 function titleOfFile(kind: GivenFileKind, path: string, brobots: boolean): string {
   if (kind === 'profile-instructions') return 'BroCrew’s instructions for this agent'
   if (kind === 'workspace-instructions' || brobots) return 'BroCrew’s workspace file'
-  if (kind === 'profile-memory') return 'This profile’s own CLAUDE.md'
+  if (kind === 'profile-memory') return recordedProfileMemory.title
   return `${basename(path)}, this folder’s own file`
 }
 
@@ -1504,10 +1406,10 @@ function whoseWords(event: UserTurnEvent): GivenOrigin {
 export function oneMessageAsTheModelGotIt(handed: WhatTheMessageReadIsHanded): WhatTheModelGot {
   const { provider, message, launch } = handed
   const record = launch?.kept === 'recorded' ? launch.record : null
-  const claude = providerValue(provider, { claude: true, codex: false })
+  const inSystem = providerDescriptor(provider).contextPlacement === 'system-prompt'
   /** Where BroBot's instructions sit: Claude's system prompt, or the first message Codex reads its
    * files into. */
-  const instructionsSit: ModelGotWhere = claude ? 'system-prompt' : 'first-message'
+  const instructionsSit: ModelGotWhere = providerDescriptor(provider).contextPlacement
   const parts: ModelGotPart[] = []
   const add = (
     where: ModelGotWhere,
@@ -1533,7 +1435,7 @@ export function oneMessageAsTheModelGotIt(handed: WhatTheMessageReadIsHanded): W
   }
   // Historical framing is known only when this launch kept it.
   const headingOf = (path: string): string | undefined => {
-    if (!claude) return undefined
+    if (!inSystem) return undefined
     return record?.profileFile?.path === path
       ? record.profileFile.heading
       : record?.files.find((file) => file.path === path)?.heading
@@ -1579,11 +1481,11 @@ export function oneMessageAsTheModelGotIt(handed: WhatTheMessageReadIsHanded): W
       const brobots = file.text !== undefined
       if (file.kind === 'read-by-codex') codexRead += file.bytes
       const pastTheBudget =
-        file.kind === 'read-by-codex' && (codexRead > CODEX_PROJECT_DOC_BUDGET || file.truncated)
+        file.kind === 'read-by-codex' && recordedNativeRead.mayBeCut(codexRead, file.truncated)
       const sent = brobots
         ? null
         : pastTheBudget
-          ? { text: null, why: PAST_CODEX_BUDGET }
+          ? { text: null, why: recordedNativeRead.why }
           : theTextItWasSent(file)
       add(
         instructionsSit,
@@ -1611,12 +1513,12 @@ export function oneMessageAsTheModelGotIt(handed: WhatTheMessageReadIsHanded): W
   // the text handed over starts with this launch's whole block.
   const leadsHeld = handed.leadsInThisThread ?? null
   const carriedHere = leadsHeld?.find((one) => one.ordinal === message.ordinal)
-  const lead = claude ? null : (carriedHere?.text ?? (carries(sent) ? block : null))
+  const lead = inSystem ? null : (carriedHere?.text ?? (carries(sent) ? block : null))
   const aboutIt = 'What is true of this conversation'
   if (record === null) {
     add(instructionsSit, 'this-conversation', aboutIt, 'brobot', null, null, unrecorded)
   } else if (block !== null) {
-    if (claude) add('system-prompt', 'this-conversation', aboutIt, 'brobot', null, block)
+    if (inSystem) add('system-prompt', 'this-conversation', aboutIt, 'brobot', null, block)
     else if (leadsHeld !== null && leadsHeld.length > 0) {
       // ⚑ **W4.179 — what the thread holds**: the newest whole lead it was handed, and each change
       // sent after it, each where it rode — this message, this launch, or an earlier launch.
@@ -1695,6 +1597,10 @@ export function oneMessageAsTheModelGotIt(handed: WhatTheMessageReadIsHanded): W
 
   // ── the message ──
   const event = message.event
+  const noModelMessage =
+    words.length === 1
+      ? providerDefinitions[provider].transcripts.noModelMessageReason?.(words[0] ?? '')
+      : null
   add(
     'this-message',
     'the-message',
@@ -1707,8 +1613,8 @@ export function oneMessageAsTheModelGotIt(handed: WhatTheMessageReadIsHanded): W
     sent === null || lead === null ? sent : sent.slice(lead.length + 2),
     theMessagesOf(event)[0]?.attribution === 'provider_transcript'
       ? 'This message was read from the provider’s own record: this app did not hand it over.'
-      : !claude && words.length === 1 && words[0]?.trim() === '/compact'
-        ? 'This was a command for Codex’s own compaction. No words reached the model.'
+      : noModelMessage != null
+        ? noModelMessage
         : `This app kept no copy of the text it handed over for this ${words.length > 1 ? 'turn' : 'message'}.`,
   )
 
