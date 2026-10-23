@@ -3,6 +3,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { AuthState } from '@brobot2/runtime'
 import * as claude from '../src/main/providers/claude'
 import * as codex from '../src/main/providers/codex'
 import { createProviderModules } from '../src/main/providers'
@@ -11,7 +12,7 @@ const native = vi.hoisted(() => ({
   read: vi.fn((): never => {
     throw new Error('No credential contents may be read')
   }),
-  codex: vi.fn(async () => ({
+  codex: vi.fn<() => Promise<AuthState>>(async () => ({
     state: 'usable' as const,
     login: 'api-key' as const,
     expiresAt: null,
@@ -63,7 +64,7 @@ afterEach(() => {
   vi.useRealTimers()
   rmSync(root, { recursive: true, force: true })
 })
-function modules(presence: () => Promise<boolean | undefined>, machine: string) {
+function modules(presence: () => Promise<boolean | undefined>, machine: string | (() => string)) {
   const auth = { keyStatus: () => ({ set: true }), key: native.read }
   Reflect.set(auth, 'platform', 'darwin')
   Reflect.set(auth, 'loginPresence', presence)
@@ -80,7 +81,10 @@ function modules(presence: () => Promise<boolean | undefined>, machine: string) 
       codex: {
         runtime: { command: native.read },
         home: {},
-        auth: { command: () => '/fictional/codex', machineAuthPath: () => machine },
+        auth: {
+          command: () => '/fictional/codex',
+          machineAuthPath: typeof machine === 'string' ? () => machine : machine,
+        },
       },
     },
   )
@@ -206,6 +210,36 @@ describe('metadata-only Codex machine source', () => {
         throw Object.assign(new Error('fictional denied'), { code: 'EACCES' })
       }),
     ).toBeUndefined()
+    expect(native.read).not.toHaveBeenCalled()
+  })
+})
+
+describe('Codex presence is read only for a live key check', () => {
+  it.each([
+    { state: 'usable', login: 'account', expiresAt: null },
+    { state: 'absent', reason: 'fictional missing login' },
+    { state: 'unknown', reason: 'fictional failed probe' },
+  ] as AuthState[])('skips the machine path for $state / $login', async (state) => {
+    const path = vi.fn((): string => {
+      throw new Error('No source lookup for this auth result')
+    })
+    native.codex.mockResolvedValueOnce(state)
+    const bound = modules(async () => undefined, path)
+    expect(await bound.codex.auth.check('fern')).toBe(state)
+    expect(path).not.toHaveBeenCalled()
+    expect(native.read).not.toHaveBeenCalled()
+  })
+
+  it('skips the source lookup when a usable key probe answers after abort', async () => {
+    const path = vi.fn((): string => {
+      throw new Error('No source lookup after abort')
+    })
+    const cancelled = new AbortController()
+    cancelled.abort()
+    const bound = modules(async () => undefined, path)
+    const state = await bound.codex.auth.check('fern', cancelled.signal)
+    expect(state).toMatchObject({ state: 'usable', login: 'api-key' })
+    expect(path).not.toHaveBeenCalled()
     expect(native.read).not.toHaveBeenCalled()
   })
 })
