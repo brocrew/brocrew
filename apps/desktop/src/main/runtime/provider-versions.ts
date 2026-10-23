@@ -112,7 +112,8 @@ export function providerVersionsReader(
         throw error
       },
     )
-    return { claude: await asked, codex: await codex }
+    const askedCodex = codex
+    return { claude: await asked, codex: await askedCodex }
   }
 }
 
