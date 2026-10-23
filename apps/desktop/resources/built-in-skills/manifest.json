@@ -27,8 +27,8 @@
       "name": "ask-and-wait",
       "description": "When the person must answer or act, track the question or task, name what ends the wait, and manage the follow-up.",
       "reminder": "ask-and-wait — When the person must answer or act: track it and name the wait.",
-      "sha256": "54e4c2ac52786c8cea2e6e1c88d1119ec9b6828a15530024b52132cc7f7e3632",
-      "bytes": 4077
+      "sha256": "75f8dcd302e95031dee1f811b96a25789c087ad423657f009f18a42ea626d93b",
+      "bytes": 4120
     },
     {
       "name": "remember",
