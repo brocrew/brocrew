@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ProviderLimitDisplay } from '../lib/provider-limit-status'
+import type { OwnWait } from '../lib/conversation-list'
 import { computed, nextTick, onScopeDispose, ref, watch } from 'vue'
 import {
   type CreatedSession,
@@ -117,6 +118,8 @@ const props = withDefaults(
      * place of the wait's own word (`says`), and with the status line whole on its title.
      */
     waitsOnPurpose?: { readonly says: string; readonly whole: string } | null
+    /** While this conversation holds a piece with a typed wait: that wait, said in place of "Idle". */
+    ownWait?: OwnWait | null
     /**
      * Whether the conversation this bar is titling is being OPENED right now (101 §9, 103).
      *
@@ -448,12 +451,19 @@ const standing = computed(() => standingOf(props.facets))
 const onPurpose = computed(() =>
   standing.value === 'elsewhere' ? (props.waitsOnPurpose ?? null) : null,
 )
+const holderWait = computed(() => (standing.value === 'idle' ? (props.ownWait ?? null) : null))
 const statusLabel = computed(() =>
   props.facets.being === 'starting'
     ? 'Starting'
-    : (props.providerLimit?.word ?? onPurpose.value?.says ?? STANDING_LABEL[standing.value]),
+    : (props.providerLimit?.word ??
+      onPurpose.value?.says ??
+      (holderWait.value === null
+        ? STANDING_LABEL[standing.value]
+        : holderWait.value.word.charAt(0).toUpperCase() + holderWait.value.word.slice(1))),
 )
-const statusDetail = computed(() => props.providerLimit?.detail ?? onPurpose.value?.whole)
+const statusDetail = computed(
+  () => props.providerLimit?.detail ?? onPurpose.value?.whole ?? holderWait.value?.detail,
+)
 const statusTone = computed(() => STANDING_TONE[standing.value])
 
 /**

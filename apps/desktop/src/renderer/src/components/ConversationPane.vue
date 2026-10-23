@@ -33,7 +33,7 @@ import { PROVIDER_NAME } from '../../../shared/runtime-ipc'
 import { stopJoinsThatAsk } from '../lib/stop-unanswered'
 import type { PickedModel } from '../lib/model-lists'
 import { useWhoCalledWhom } from '../composables/useWhoCalledWhom'
-import { aGiverWaitsOnPurposeSays } from '../lib/conversation-list'
+import { aGiverWaitsOnPurposeSays, ownWaitSaid } from '../lib/conversation-list'
 import { useProfileSignIn, type ProfileSignIn } from '../composables/useProfileSignIn'
 import {
   activityLine,
@@ -649,6 +649,13 @@ const gaveOut = computed(() => {
 /** Whom this conversation waits on while a piece it gave waits on purpose, and why. */
 const waitsOnPurpose = computed(() =>
   aGiverWaitsOnPurposeSays(gaveOut.value ?? [], cast.listedConversations.value),
+)
+
+/** What this conversation says of its own typed wait, in the words its giver's page uses. */
+const ownWait = computed(() =>
+  ownWaitSaid(
+    cast.listedConversations.value?.find((row) => row.sessionId === props.record.sessionId),
+  ),
 )
 
 /** ⚑ **UI-002 · the work this conversation was given**, by {@link gaveOut}'s guard — see `RelayedEntry`. */
@@ -1849,6 +1856,7 @@ onUnmounted(() => {
       :facets="agentFacets"
       :provider-limit="providerLimit"
       :waits-on-purpose="waitsOnPurpose"
+      :own-wait="ownWait"
       :capabilities="props.capabilities"
       :tools="control.tools"
       :named="props.named ?? null"
@@ -2151,6 +2159,7 @@ onUnmounted(() => {
         :named="props.named ?? null"
         :work="props.work ?? null"
         :identities="props.identities ?? null"
+        :own-wait="ownWait"
         :compaction="compaction"
         :tab="props.drawerTab"
         :hidden-tabs="props.hiddenDrawerTabs"

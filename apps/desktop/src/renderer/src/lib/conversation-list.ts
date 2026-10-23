@@ -212,6 +212,29 @@ export function onPurposeSaid(
   return { word, detail: `${word}: ${mark.status}` }
 }
 
+/** What a holder's own page says of the piece it holds waiting on purpose. */
+export interface OwnWait {
+  /** The piece's label, which its Current task line carries. */
+  readonly label: string
+  /** The wait in words: "waiting until 02:00", "waiting on Noor", "waiting on you". */
+  readonly word: string
+  /** The word and the piece's status line, whole. */
+  readonly detail: string
+}
+
+/**
+ * What a conversation says of its own typed wait, off its row in the one list: the words a giver's
+ * page uses for it. `null` when the row is not idle or holds no piece with a typed wait.
+ */
+export function ownWaitSaid(
+  listed: Pick<ListedConversation, 'state' | 'waitingOnPurpose'> | undefined,
+): OwnWait | null {
+  const said = onPurposeSaid(listed?.state.is === 'idle', listed?.waitingOnPurpose)
+  return said === null || listed?.waitingOnPurpose?.on === undefined
+    ? null
+    : { label: listed.waitingOnPurpose.label, ...said }
+}
+
 /** A status line's first sentence: up to its first full stop, question or exclamation mark, or "…". */
 function firstSentence(line: string): string {
   return line.trim().split(/(?<=[.!?…])\s/)[0] ?? line

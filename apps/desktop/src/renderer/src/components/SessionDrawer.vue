@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ProviderLimitDisplay } from '../lib/provider-limit-status'
+import type { OwnWait } from '../lib/conversation-list'
 import { profileItRunsAs, whoIsIn } from '../lib/session-record'
 import { computed, ref, useId } from 'vue'
 import type {
@@ -98,6 +99,8 @@ const props = defineProps<{
   providerLimit?: ProviderLimitDisplay | null
   /** ⚑ **D-017 · R11 — its ONE state** (`stateHere`), derived once by the pane beside the facets. */
   agentState?: AgentState
+  /** While this conversation holds a piece with a typed wait: that wait, in place of its state. */
+  ownWait?: OwnWait | null
   /**
    * ⚑ **UI-008 · the work that names this conversation** (the pane's `named`), handed through to
    * the card, whose *Current task* draws the root a person gave it. Absent or `null` draws none.
@@ -474,6 +477,7 @@ function steer(event: KeyboardEvent, at: number): DrawerTab | null {
         :mode="props.mode"
         :facets="props.facets"
         :agent-state="props.agentState"
+        :own-wait="props.ownWait"
         :provider-limit="props.providerLimit"
         :named="props.named ?? null"
         :who="who"
