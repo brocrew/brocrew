@@ -75,6 +75,10 @@ describe('provider authentication has one owner', () => {
     'runtime/api-keys.ts',
     'runtime/provider-versions.ts',
     'provider-accounts-file.ts',
+    'runtime/process-listing.ts',
+    'runtime/reply-rails.ts',
+    'sign-in-changes.ts',
+    'db/limits-read-engine.ts',
   ])('keeps provider selection out of %s', (file) => {
     expect(selectionsIn(sourceOf(file))).toEqual([])
   })
