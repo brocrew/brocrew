@@ -163,6 +163,7 @@ export function packageFixture(
   const compression = options.compression ?? 'tar'
   const archive = compression === 'tar.gz' ? gzipSync(plain) : plain
   const release: PluginRelease = {
+    ...(manifest.format === 2 ? { authors: manifest.authors } : {}),
     id: manifest.id,
     version: manifest.version,
     sourceCommit: manifest.sourceCommit,
@@ -175,7 +176,7 @@ export function packageFixture(
     },
     manifestSha256: pluginSha256(manifestBytes),
   }
-  const catalogue = { format: 1 as const, entries: [release] }
+  const catalogue = { format: manifest.format, entries: [release] }
   const signature = signed(catalogue)
   return { files, manifest, manifestBytes, archive, release, catalogue, ...signature }
 }
