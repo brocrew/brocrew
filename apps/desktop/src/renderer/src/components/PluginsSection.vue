@@ -280,6 +280,9 @@ onUnmounted(() => {
           <h2>{{ card.name }}</h2>
           <span class="plugin-state" data-cy="plugin-state">{{ card.state }}</span>
           <p v-if="card.installed">Installed for all workspaces.</p>
+          <p v-if="card.updatesUnavailable" role="status" data-cy="plugin-updates-unavailable">
+            Updates aren’t available for this version of BroCrew.
+          </p>
           <p v-if="starting === card.id" role="status" data-cy="plugin-starting">
             Installing and starting {{ card.name }}. The first start can take a minute.
           </p>
