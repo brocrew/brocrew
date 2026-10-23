@@ -1,6 +1,5 @@
 import { lstatSync, statSync } from 'node:fs'
 import { join } from 'node:path'
-import { codexAdHocNotesDir } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import {
   MEMORY_NOTES_PER_EVENT,
@@ -8,7 +7,8 @@ import {
   type MemoryNoteEvent,
   type MemoryNoteSeen,
 } from '../../shared/runtime-ipc'
-import { adHocNotes, readInstructionFile } from './instructions'
+import { newestMemoryNotes as adHocNotes, readInstructionFile } from '../providers/instruction-io'
+import { providerKnowledge } from '../providers/knowledge-definitions'
 
 /**
  * 🔴 **A memory the agent was asked to keep, observed where it happened** (318 §2.1, friction F5).
@@ -71,23 +71,6 @@ import { adHocNotes, readInstructionFile } from './instructions'
  */
 
 /** Where a provider's asked-for notes land, or `null` when this app must not publish rows for it. */
-interface NoteSource {
-  /** From the provider's own path module, never spelled here — 032's rule about second copies. */
-  readonly dir: (providerHome: string) => string
-}
-
-/**
- * ⛔ **Exhaustive over `Provider`, so a third provider is a compile error rather than a silence.**
- *
- * ⚠️ **`null` carries TWO independent facts and both are load-bearing**: that provider has no
- * asked-for-note directory to watch, *and* its memory writes are already reported as tool calls, so
- * a row here would duplicate one. Either alone would justify the `null`; a provider that gained a
- * notes directory while still reporting its writes would still belong here.
- */
-const NOTE_SOURCES: Record<Provider, NoteSource | null> = {
-  claude: null,
-  codex: { dir: codexAdHocNotesDir },
-}
 
 /**
  * The directory to watch for this session, or `null` when there is nothing to watch.
@@ -96,8 +79,7 @@ const NOTE_SOURCES: Record<Provider, NoteSource | null> = {
  * fixed at launch and the layout is a constant of the provider.
  */
 export function memoryNoteDir(provider: Provider, providerHome: string): string | null {
-  const source = NOTE_SOURCES[provider]
-  return source === null ? null : source.dir(providerHome)
+  return providerKnowledge[provider].memory.noteDirectory(providerHome)
 }
 
 /**

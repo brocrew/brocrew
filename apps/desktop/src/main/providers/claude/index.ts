@@ -1,3 +1,5 @@
+import { instructions } from './instructions'
+import { memory } from './memory'
 import { transcripts } from './transcripts'
 import { discovery } from './discovery'
 import {
@@ -214,6 +216,8 @@ export function createClaudeModule(
 ): ProviderModule {
   return {
     transcripts,
+    instructions,
+    memory,
     discovery,
     createRuntime: claudeModuleFactory.runtime(seams.runtime),
     home: claudeModuleFactory.home(paths, seams.home),

@@ -25,7 +25,8 @@ import {
   type MethodFileCapture,
   type MethodLibraryInputs,
 } from '../saved-method-library'
-import type { Provider } from '@brobot2/shared'
+import { SUPPORTED_PROVIDERS, type Provider } from '@brobot2/shared'
+import { providerKnowledge } from '../providers/knowledge-definitions'
 import type { SessionStore } from '../db/session-store'
 import { isPathSegment } from '../../shared/runtime-ipc'
 import type { ActedBy } from '../../shared/who-did-it'
@@ -46,8 +47,6 @@ import {
   memoryStoreCounts,
   readAgentMemoryPage,
   readAgentMemorySelection,
-  readClaudeAgentMemory,
-  readCodexAgentMemory,
   realPath,
   type AgentMemoryStoreRead,
 } from './instructions'
@@ -108,10 +107,9 @@ import {
  * ⚠️ **The values are `instructions.ts`' own functions**, not wrappers: a wrapper is a second place
  * for the store's shape to be decided.
  */
-const STORE_READER: Readonly<Record<Provider, (providerHome: string) => AgentMemoryStoreRead>> = {
-  claude: readClaudeAgentMemory,
-  codex: readCodexAgentMemory,
-}
+const STORE_READER = Object.fromEntries(
+  SUPPORTED_PROVIDERS.map((provider) => [provider, providerKnowledge[provider].memory.readStore]),
+) as Readonly<Record<Provider, (providerHome: string) => AgentMemoryStoreRead>>
 
 /**
  * ⛔ **The order the stores are reported in** — derived from the reader table's own keys, never a

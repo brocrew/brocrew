@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest'
 const root = fileURLToPath(new URL('../src/main', import.meta.url))
 const registry = join(root, 'providers/index.ts')
 const definitions = join(root, 'providers/definitions.ts')
+const knowledge = join(root, 'providers/knowledge-definitions.ts')
 const compatibility = join(root, 'providers/compat.ts')
 const composition = join(root, 'index.ts')
 const nameOf = (file: string): string => relative(root, file).split(sep).join('/')
@@ -76,6 +77,7 @@ describe('provider modules stay behind the main-process registry', () => {
     const forbidden = new Set([
       registry,
       definitions,
+      knowledge,
       join(root, 'runtime/provider-homes.ts'),
       join(root, 'runtime/runtime-host.ts'),
     ])
@@ -84,7 +86,9 @@ describe('provider modules stay behind the main-process registry', () => {
       .flatMap((file) =>
         valueImports(file)
           .filter(
-            (target) => forbidden.has(target) && !(file === registry && target === definitions),
+            (target) =>
+              forbidden.has(target) &&
+              !(file === registry && (target === definitions || target === knowledge)),
           )
           .map((target) => `${nameOf(file)} -> ${nameOf(target)}`),
       )
@@ -92,7 +96,7 @@ describe('provider modules stay behind the main-process registry', () => {
   })
 
   it('routes neutral value imports of provider implementations through the registry', () => {
-    const mayCompose = new Set([registry, definitions, compatibility, composition])
+    const mayCompose = new Set([registry, definitions, knowledge, compatibility, composition])
     const implementationOf = (file: string): string | undefined =>
       /^providers\/(claude|codex)\//.exec(nameOf(file))?.[1]
     const violations = files
@@ -110,7 +114,7 @@ describe('provider modules stay behind the main-process registry', () => {
 
   it('keeps the registry out of every worker value-import closure', () => {
     const reaches = (file: string, seen = new Set<string>()): boolean => {
-      if (file === registry || file === definitions) return true
+      if (file === registry || file === definitions || file === knowledge) return true
       if (seen.has(file)) return false
       seen.add(file)
       return valueImports(file).some((next) => reaches(next, seen))
@@ -130,6 +134,13 @@ describe('provider modules stay behind the main-process registry', () => {
       join(root, 'runtime/provider-homes.ts'),
       join(root, 'providers/claude/index.ts'),
       join(root, 'providers/codex/index.ts'),
+      join(root, 'providers/instruction-io.ts'),
+      join(root, 'providers/instruction-composition.ts'),
+      join(root, 'providers/memory-policy.ts'),
+      join(root, 'providers/knowledge-definitions.ts'),
+      join(root, 'runtime/instructions.ts'),
+      join(root, 'runtime/agent-memory.ts'),
+      join(root, 'skills/prepare-built-in-skills.ts'),
     ])
     const seen = new Set<string>()
     const reached: string[] = []

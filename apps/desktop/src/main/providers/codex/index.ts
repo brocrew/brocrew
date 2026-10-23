@@ -1,3 +1,5 @@
+import { instructions } from './instructions'
+import { memory } from './memory'
 import { transcripts } from './transcripts'
 import { discovery } from './discovery'
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -379,6 +381,8 @@ export function createCodexModule(
 ): ProviderModule {
   return {
     transcripts,
+    instructions,
+    memory,
     discovery,
     createRuntime: codexModuleFactory.runtime(seams.runtime),
     home: codexModuleFactory.home(paths, seams.home),
