@@ -1,4 +1,5 @@
-import { providerValue, type Provider } from '@brobot2/shared'
+import { providerKnowledge } from '../providers/knowledge-definitions'
+import { providerDescriptor, type Provider } from '@brobot2/shared'
 import {
   SkillOrigin,
   SkillRelease,
@@ -23,12 +24,8 @@ export function selectedSkillView(
   const verified = verifyBuiltInSkills(bundle.catalogue, bundle.bodies)
   if (verified.digest !== bundle.digest || selected.length > SKILL_LIMITS.selected)
     throw new Error('Invalid selected skill catalogue.')
-  const files = new Map<string, string>()
-  if (providerValue(provider, { claude: true, codex: false }))
-    files.set(
-      'claude-plugin/.claude-plugin/plugin.json',
-      JSON.stringify({ name: 'brobot', version: '0.0.6', description: 'Built-in skills' }) + '\n',
-    )
+  const files = providerKnowledge[provider].skills.initialFiles()
+
   const skills: BuiltInSkillView['skills'][number][] = []
   const versions: InstalledSkillVersion[] = []
   const reminders: string[] = []
@@ -113,10 +110,7 @@ export function selectedSkillView(
       throw new Error('Selected skills exceed the view bound.')
     const installed = { name: source.alias, description, sha256: skillDigest(projected), bytes }
     skills.push(installed)
-    files.set(
-      `${providerValue(provider, { claude: 'claude-plugin/skills', codex: 'codex/skills' })}/${source.alias}/SKILL.md`,
-      projected,
-    )
+    files.set(providerKnowledge[provider].skills.fileFor(source.alias), projected)
     versions.push({
       id: source.id,
       versionId: source.versionId,
@@ -135,7 +129,7 @@ export function selectedSkillView(
         : {}),
     })
     reminders.push(
-      `${providerValue(provider, { claude: 'brobot:', codex: '' })}${source.alias} — ${reminder}`,
+      `${providerDescriptor(provider).skillReminderPrefix}${source.alias} — ${reminder}`,
     )
   }
   const digest = skillDigest(JSON.stringify({ provider, versions }))
@@ -144,7 +138,7 @@ export function selectedSkillView(
     digest,
     files,
     skills,
-    discoveryRoot: providerValue(provider, { claude: 'claude-plugin', codex: 'codex/skills' }),
+    discoveryRoot: providerKnowledge[provider].skills.discoveryRoot,
     versions,
     reminder: reminders.length ? reminders.join('\n') + '\n' : '',
   }

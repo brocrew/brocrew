@@ -50,6 +50,7 @@ export interface ProviderModule {
   readonly instructions: import('./knowledge-policy').InstructionPolicy
   readonly memory: import('./memory-policy').MemoryPolicy
   readonly snapshot: import('./snapshot-policy').SnapshotPolicy
+  readonly skills: import('./skill-policy').SkillPolicy
   /** A fresh runtime for this launch; the program is resolved only when called. */
   createRuntime(): AgentRuntime
   readonly home: ProviderHomeStrategy
