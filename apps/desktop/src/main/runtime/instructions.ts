@@ -28,6 +28,10 @@ export {
   adHocNotes,
 } from '../providers/knowledge-definitions'
 
+/**
+ * Called on every start AND every resume, deliberately: a launch reads the live profile again.
+ * A file changed during a conversation takes effect at the next launch.
+ */
 export function readSessionInstructions(inputs: InstructionInputs): SessionLaunchRead {
   return providerKnowledge[inputs.provider].instructions.read(inputs)
 }
