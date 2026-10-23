@@ -9,7 +9,7 @@ export function assertNormalPluginBuild(config, entry, devSource) {
         text.includes(GATE_BUILD_MARKER) ||
         text.includes('preparePackagedGateHome') ||
         text.includes('plugin-packaged/provider-fixture.mjs') ||
-        /renewClaudeLogin\s*:\s*undefined/.test(text),
+        /(?:renewClaudeLogin|loginRenewal)\s*:\s*undefined/.test(text),
     ) ||
     !/PLUGIN_LOCAL_RELEASE_ENABLED:\s*boolean\s*=\s*false/.test(config) ||
     (devSource !== undefined &&
