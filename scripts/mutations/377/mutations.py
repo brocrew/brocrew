@@ -309,6 +309,8 @@ MUTATIONS = [
     ),
     # ── §5 · the bridge, and the order of the list ────────────────────────────────────────────
     (
+        # ⚑ **provider selection refactor · re-anchored in place, not retired** — The instruction-placement branch now uses an exhaustive selector; disabling it still injects repository bytes twice for Codex.
+        # The native subject moved; this row retains its original fault.
         "M17 · 🔴 Codex is injected the repository's bytes as well · `364` §2.3's double supply — "
         "the provider gets its own native read AND a copy, on every request",
         [

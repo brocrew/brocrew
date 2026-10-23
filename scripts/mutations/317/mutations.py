@@ -103,6 +103,13 @@ REACH_SAYS_LINE = (
 MUTATIONS = [
     # ── §1 · the sentence, and the store it denied ────────────────────────────
     (
+        # ⚠️ **Narrowed in place, not retired** (332, per 142). The anchor reached through
+        # `return {` and the two lines under it, and 332 wrapped that object in a
+        # `{ memoryLoaded, instructions: { … } }` and re-indented it — so the row went red
+        # about a shape change rather than about its own defect. ⛔ **The mutation is
+        # unchanged**: `agentMemory` is emptied, which is the Codex branch reporting no
+        # agent memory again, which is F4 shipped. The line below is unique in the file.
+        # The native subject moved; this row retains its original fault.
         "M1 · 🔴 THE DEFECT, verbatim · the Codex branch reports no agent memory again, so a "
         "profile whose agent wrote a note when a person asked it to shows nothing anywhere in the "
         "app — friction log F4, shipped "
@@ -145,6 +152,11 @@ MUTATIONS = [
     ),
     # ── §2 · injected versus merely on disk ───────────────────────────────────
     (
+        # ⚠️ **Anchor corrected in place at 322** (142), not retired: `322` gave Claude's store the
+        # same shape, so this one line now exists twice and the row is spelled as BOTH of them —
+        # which is what keeps the label's *"every memory row"* literally true rather than narrowing
+        # the row to the store it was written against.
+        # The native subject moved; this row retains its original fault.
         "M5 · 🔴 009 · every memory row claims to be IN THE PROMPT, so a note the model has never "
         "opened is presented as something it knows — 305's defect with a friendlier face "
         "· EXPECTED (NOT MEASURED): desktop red (instructions), dom red",
@@ -166,6 +178,8 @@ MUTATIONS = [
         ],
     ),
     (
+        # ⚑ **source-restoration · re-anchored in place, not retired** — NOT VERIFIED; source targeting only. 8a3eb8d25 reworded the comment without changing memory-index injection; still misclassify the index as on-request.
+        # The native subject moved; this row retains its original fault.
         "M7 · CLAUDE's index stops saying it is in the prompt, so the provider that has injected it "
         "since 165 is the one the panel is vague about "
         "· EXPECTED (NOT MEASURED): desktop red (instructions), dom GREEN",
@@ -257,6 +271,18 @@ MUTATIONS = [
         ],
     ),
     (
+        # ⚠️ **Anchor corrected by `377`**, which gave this note a second argument so it can
+        # name the leaf the app published for Codex to read. ⛔ The row is unchanged: it
+        # still replaces the whole store sentence with the bare provider one.
+        # ⚑ Landing D-024, D-020 and D-021 · re-anchored in place, not retired — The rule survives:
+        # a Codex launch's note must say where the memory store is and what is missing (the store
+        # sentence built by codexMemoryNote). D-024 only gave codexMemoryNote a third argument
+        # (`inputs.thisConversation !== undefined`) so the anchor line changed; the label's defect
+        # is unchanged. The corrected plant replaces the whole call with the two bare
+        # provider-reads-its-own leads, still choosing NOTE_SENDS_ONLY_THIS_CONVERSATION when a
+        # conversation block exists so D-024's lead is untouched and only the store sentence goes.
+        # Killed by `instructions.test.ts`.
+        # The native subject moved; this row retains its original fault.
         "M15 · the whole store sentence goes, so the panel shows three files out of five and says "
         "nothing about where they are or what is missing "
         "· EXPECTED (NOT MEASURED): desktop red (instructions), dom GREEN",
@@ -290,6 +316,11 @@ MUTATIONS = [
         ],
     ),
     (
+        # ⚑ Corrected in place at `733` (rule 27): the reader lost its `follow` argument (every read follows).
+        # ⚠️ **Measured at `733`, and it SURVIVES** — against `instructions.test.ts` here and at
+        # `main` @ `980ec721` with its old anchor alike. Table 317 is `unrun`; this is a gap
+        # 733 found, not one it made.
+        # The native subject moved; this row retains its original fault.
         "M19 · 🔴 187 §2's own defect, re-introduced into the new reader · each file is read at "
         "what is LEFT of the budget instead of at the per-file cap, so \"there is no room left\" and "
         "\"there is no file there\" become the same answer again "
@@ -300,6 +331,14 @@ MUTATIONS = [
     ),
     # ── §6 · links, enumeration and the shape ─────────────────────────────────
     (
+        # ⚠️ `lstat` → `stat` rather than deleting the refusal: deleting it falls through to the
+        # regular-file test, which refuses a symlink for a DIFFERENT reason and would have made this
+        # row red about something it is not about. This one really follows the link.
+        # ⚠️ **Anchor corrected in place at 322** (142): the enumeration moved into the shared
+        # `memoryDirNames`, so the parameter is `dir`. ⛔ The DEFECT is unchanged — following the
+        # link here is exactly what this row is about, and it is still Codex's notes directory that
+        # ends up enumerated through one.
+        # The native subject moved; this row retains its original fault.
         "M20 · 🔒 the ad-hoc notes DIRECTORY is followed, so `notes -> ~/Documents` has this app "
         "enumerating and reading a directory no provider ever looked at, and the store's whole "
         "shape comes from the link "
@@ -332,6 +371,10 @@ MUTATIONS = [
         ],
     ),
     (
+        # ⚠️ **Anchor corrected in place at 322** (142): `322` extracted the guards into
+        # `memoryDirNames` and left the ORDER with each caller, so 317's `.reverse()` now lives in
+        # `adHocNotes` itself. ⛔ Same edit, same defect, one function up.
+        # The native subject moved; this row retains its original fault.
         "M23 · the notes sort OLDEST first, so the twenty rows shown are the twenty a person has "
         "forgotten and the note they just asked for is the one dropped "
         "· EXPECTED (NOT MEASURED): desktop red (instructions), dom GREEN",
@@ -341,6 +384,10 @@ MUTATIONS = [
     ),
     # ── §7 · found reviewing this diff ────────────────────────────────────────
     (
+        # ⚠️ **Anchor corrected in place at 322** (142): the parameter is `dir` since the guards
+        # became shared. ⛔ The row still deletes the branch, and a dangling notes directory is
+        # still reported as a decision the app never made.
+        # The native subject moved; this row retains its original fault.
         "M24 · ⚑ FOUND REVIEWING THIS DIFF · a notes directory whose link leads NOWHERE is reported "
         "as `symlink`, so \"not read: symlink\" sends somebody looking for a decision the app never "
         "made — 314 §3's rule, missed on the one path 317 added "
@@ -350,6 +397,10 @@ MUTATIONS = [
         ],
     ),
     (
+        # ⚠️ **Anchor corrected in place at 322** (142): Claude's reader now computes the same
+        # field, so the line alone matched twice. Spelled with the `pipeline` line beneath it, which
+        # only this store has — ⛔ the row is about CODEX's sentence and must stay pointed at it.
+        # The native subject moved; this row retains its original fault.
         "M25 · ⚑ FOUND REVIEWING THIS DIFF · the sentence names `memory_summary.md` as the file in "
         "front of the model whether or not this profile has one, sending a reader whose agent has "
         "only written notes to look for a file that does not exist — 317's own defect class, inside "

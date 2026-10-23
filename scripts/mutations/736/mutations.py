@@ -329,6 +329,9 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     ),
     # ── G · `733` F-1, F-4, F-5, and the words ───────────────────────────────────────────────────
     (
+        # ⚑ Through `realPath`, as `733`'s predicate was: a home under `/var` is really
+        # `/private/var`, and a bare `resolve` never matches (measured: the row SURVIVED).
+        # The native subject moved; this row retains its original fault.
         "M23 · 🔴 **a project link into the person's own home is refused again** — `733`'s "
         f"`personal-home`, which the CLI does not do (measured) — killed by `{WALK}` (736)",
         [

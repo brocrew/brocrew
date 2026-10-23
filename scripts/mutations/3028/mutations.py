@@ -117,6 +117,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
           "        if (typeof one.sent !== 'string') unknown = false\n")],
     ),
     (
+        # ⚑ **W4.179 · re-anchored in place, not retired** — the lead in front of a Codex message is read from the thread's record first now; the mutation still splits a Claude message as if Codex's lead rode it
+        # The native subject moved; this row retains its original fault.
         "M10 · a Claude message is split as if Codex's lead rode it · killed by "
         f"`{SAYS}`",
         [
