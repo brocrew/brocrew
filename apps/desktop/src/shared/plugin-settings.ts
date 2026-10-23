@@ -42,7 +42,7 @@ export function pluginMutationAllowed(card: PluginCard, action: 'install' | 'upd
 export function pluginMutationNotice(cause: PluginMutationBlocked): string {
   return cause === 'source-mismatch'
     ? 'Install and update are unavailable because another BroCrew window on this computer uses a different plugin list. You can still configure or uninstall installed plugins.'
-    : 'Install and update are unavailable until every BroCrew window on this computer is updated. You can still configure or uninstall installed plugins.'
+    : 'Install and update are unavailable until every BroCrew app on this computer is updated and restarted. You can still configure or uninstall installed plugins.'
 }
 /** Closed uninstall facts; remote removal is never inferred from deleting local data. */
 export interface PluginRemovalOutcome {
