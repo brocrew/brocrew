@@ -1,3 +1,4 @@
+import { keyPolicy } from './api-key'
 import {
   CodexRefusedItsSignInError,
   codexCopyIdentityIn,
@@ -55,6 +56,7 @@ function isCopy(value: unknown): value is CodexCopyIdentity {
 }
 
 export const authPolicy: ProviderAuthPolicy = {
+  key: keyPolicy,
   identity: { waitsForAccount: false, launch: tagOf, limit: tagOf },
   copy: {
     read: codexCopyIdentityIn,

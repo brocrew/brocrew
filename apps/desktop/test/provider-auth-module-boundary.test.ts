@@ -49,7 +49,7 @@ describe('provider authentication has one owner', () => {
     const visit = (node: ts.Node): void => {
       if (
         ts.isStringLiteralLike(node) &&
-        (/api\.anthropic\.com|haiku|credit balance|billing_error/.test(node.text))
+        /api\.anthropic\.com|haiku|credit balance|billing_error/.test(node.text)
       )
         nativeRules.push(node.text)
       ts.forEachChild(node, visit)

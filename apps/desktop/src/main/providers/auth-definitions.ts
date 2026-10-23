@@ -18,3 +18,5 @@ export {
   type KnownAccount,
   type KeptAccounts,
 } from './claude/account-record'
+
+export { theCheapestModel } from './claude/api-key'

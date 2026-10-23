@@ -1,6 +1,8 @@
+import { keyPolicy } from './api-key'
 import type { ProviderAuthPolicy } from '../auth-policy'
 
 export const authPolicy: ProviderAuthPolicy = {
+  key: keyPolicy,
   identity: {
     waitsForAccount: true,
     launch(handle) {

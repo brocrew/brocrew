@@ -1,3 +1,4 @@
+import type { ApiKeyCheck } from '../../shared/runtime-ipc'
 import type { SessionAccount, SessionHandle } from '@brobot2/runtime'
 
 export type IdentityHandle = Pick<SessionHandle, 'account' | 'signInTag'>
@@ -24,6 +25,10 @@ export interface ProtocolNotice {
 
 /** Native facts and comparisons are separate from bound credential and launch services. */
 export interface ProviderAuthPolicy {
+  readonly key: {
+    check(key: string, fetchFor?: typeof fetch): Promise<ApiKeyCheck>
+    loginRunsWithoutAKey(platform?: NodeJS.Platform, readLogin?: () => string | null): boolean
+  }
   readonly identity: {
     readonly waitsForAccount: boolean
     /** Undefined means that this life has not answered yet. */

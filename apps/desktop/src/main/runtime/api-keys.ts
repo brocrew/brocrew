@@ -1,10 +1,5 @@
-import { claudeCredentialsFileReader, parseClaudeOAuthToken } from '@brobot2/runtime'
-import {
-  providerDescriptor,
-  providerRecord,
-  type Provider,
-  type ProviderDescriptor,
-} from '@brobot2/shared'
+import { providerAuthPolicies } from '../providers/auth-definitions'
+import { providerDescriptor, providerRecord, type Provider } from '@brobot2/shared'
 import type { ApiKeyCheck, ApiKeyStatus } from '../../shared/runtime-ipc'
 import type { SessionStore } from '../db/session-store'
 
@@ -290,74 +285,17 @@ export class ApiKeys {
   }
 }
 
-/**
- * Whether removing a provider's key leaves a login it runs on here, for the words a refused key is
- * said with. Codex has its own sign-in on either platform. Claude runs on the person's own Claude
- * Code login: on a Mac it is not read for this; on Windows its file is, and an expired one counts,
- * since a start renews it. Linux, where the tests run, answers as a Mac does.
- */
+/** Whether a key's removal leaves the provider's existing sign-in capability. */
 export function aLoginRunsWithoutAKey(
   provider: Provider,
   platform: NodeJS.Platform = process.platform,
-  readClaudeLogin: () => string | null = () => claudeCredentialsFileReader()(),
+  readClaudeLogin?: () => string | null,
 ): boolean {
-  if (!providerDescriptor(provider).apiKey.windowsLoginNeedsFile || platform !== 'win32')
-    return true
-  try {
-    return parseClaudeOAuthToken(readClaudeLogin(), 0) !== null
-  } catch {
-    return false
-  }
+  return providerAuthPolicies[provider].key.loginRunsWithoutAKey(platform, readClaudeLogin)
 }
 
-/** How long a check waits for the provider before it says it could not reach it. */
-export const KEY_CHECK_TIMEOUT_MS = 15_000
-
-/** Where a Claude check sends its one-token request, to learn whether the key's account can pay. */
-const CLAUDE_MESSAGES_URL = 'https://api.anthropic.com/v1/messages'
-
-/**
- * The model a Claude check spends its one token on: the newest Haiku in the provider's own list,
- * the cheapest family, or else the newest model listed. Read from the list rather than named here,
- * so a retired model is never asked for. `null` when the list names none.
- */
-export function theCheapestModel(ids: readonly string[]): string | null {
-  return ids.find((id) => id.includes('haiku')) ?? ids[0] ?? null
-}
-
-/** The `id`s of an Anthropic model list, newest first as the provider sends them. */
-function modelIdsIn(body: unknown): string[] {
-  const data = (body as { data?: unknown } | null)?.data
-  if (!Array.isArray(data)) return []
-  return data.flatMap((row) => {
-    const id = (row as { id?: unknown } | null)?.id
-    return typeof id === 'string' ? [id] : []
-  })
-}
-
-/**
- * Whether an Anthropic refusal says the key's account can't pay. Its `billing_error` type, or a 402,
- * says so; a request refused for a balance with no credit comes back as a 400
- * `invalid_request_error` whose only sign is its message, so that is read too. Only classified,
- * never shown.
- */
-function cannotPay(status: number, body: unknown): boolean {
-  const error = (body as { error?: { type?: unknown; message?: unknown } } | null)?.error
-  if (status === 402 || error?.type === 'billing_error') return true
-  return (
-    status === 400 &&
-    typeof error?.message === 'string' &&
-    error.message.toLowerCase().includes('credit balance')
-  )
-}
-
-async function bodyOf(answer: Response): Promise<unknown> {
-  try {
-    return await answer.json()
-  } catch {
-    return null
-  }
-}
+export { KEY_CHECK_TIMEOUT_MS } from '../providers/key-check'
+export { theCheapestModel } from '../providers/auth-definitions'
 
 /**
  * 🔒 Asks the provider whether it accepts a key. Only ever run when a person presses the check.
@@ -375,88 +313,7 @@ export async function askTheProvider(
   key: string,
   fetchFor: typeof fetch = fetch,
 ): Promise<ApiKeyCheck> {
-  const issuer = providerDescriptor(provider).apiKey.issuer
-  const keyFacts: ProviderDescriptor['apiKey'] = providerDescriptor(provider).apiKey
-  const headers: Record<string, string> = {
-    [keyFacts.header]: `${keyFacts.prefix}${key}`,
-    ...keyFacts.extraHeaders,
-  }
-  const unreachable: ApiKeyCheck = {
-    ok: false,
-    reason: `BroCrew could not reach ${issuer} to check the key. Check this computer’s connection and try again.`,
-  }
-  let listed: Response
-  try {
-    listed = await fetchFor(providerDescriptor(provider).apiKey.checkUrl, {
-      method: 'GET',
-      headers,
-      signal: AbortSignal.timeout(KEY_CHECK_TIMEOUT_MS),
-    })
-  } catch {
-    return unreachable
-  }
-  if (!succeeded(listed.status)) return refusedAt(issuer, listed.status)
-  if (!providerDescriptor(provider).apiKey.spendsToken) return { ok: true }
-  const model = theCheapestModel(modelIdsIn(await bodyOf(listed)))
-  if (model === null) return { ok: true }
-  let asked: Response
-  try {
-    asked = await fetchFor(CLAUDE_MESSAGES_URL, {
-      method: 'POST',
-      headers: { ...headers, 'content-type': 'application/json' },
-      body: JSON.stringify({ model, max_tokens: 1, messages: [{ role: 'user', content: 'Hi' }] }),
-      signal: AbortSignal.timeout(KEY_CHECK_TIMEOUT_MS),
-    })
-  } catch {
-    return unreachable
-  }
-  if (succeeded(asked.status)) return { ok: true, answeredARequest: true }
-  if (cannotPay(asked.status, await bodyOf(asked))) {
-    return {
-      ok: false,
-      cannotPay: true,
-      reason: `${issuer} knows this key, but the account it belongs to can’t pay for a request. Add credit to that account in the ${issuer} console, or save another key.`,
-    }
-  }
-  if (asked.status === 429) {
-    return {
-      ok: false,
-      reason: `${issuer} accepted the key but is limiting requests on it right now, so the check could not tell whether its account can pay. Try again in a moment.`,
-    }
-  }
-  if (asked.status === 403) {
-    return {
-      ok: false,
-      reason: `${issuer} knows this key but refused the check’s one-token request, so agents may not run on it either. Check its permissions in your ${issuer} account.`,
-    }
-  }
-  return refusedAt(issuer, asked.status)
-}
-
-function succeeded(status: number): boolean {
-  return status >= 200 && status < 300
-}
-
-/** The words for a status that refused the check. */
-function refusedAt(issuer: string, status: number): ApiKeyCheck {
-  if (status === 401) {
-    return {
-      ok: false,
-      reason: `${issuer} did not accept this key. Check it, or save it again from your ${issuer} account.`,
-    }
-  }
-  if (status === 403) {
-    // Known, and refused this one request: a key restricted to fewer permissions answers so, and
-    // agents may still run on it. The check cannot tell, and says only that.
-    return {
-      ok: false,
-      reason: `${issuer} knows this key but refused the check’s request, which needs permission to list models. Agents may still run on it; if they do not, check its permissions in your ${issuer} account.`,
-    }
-  }
-  return {
-    ok: false,
-    reason: `${issuer} answered ${String(status)} when the key was checked. Try again in a moment.`,
-  }
+  return await providerAuthPolicies[provider].key.check(key, fetchFor)
 }
 
 /**
