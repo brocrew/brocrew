@@ -1,0 +1,924 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`claude knowledge bytes on the landed base > keeps the exact launch, receipt and memory page for blocked-bundle 1`] = `
+{
+  "counts": {
+    "listed": 1,
+    "total": 2,
+  },
+  "page": {
+    "dir": "<root>/homes/fern/claude/memory",
+    "firstListed": [
+      "preferences.md",
+    ],
+    "listed": 1,
+    "memory": [
+      {
+        "bytes": 14,
+        "kind": "agent-memory",
+        "path": "<root>/homes/fern/claude/memory/MEMORY.md",
+        "reach": "prompt",
+        "text": "Memory index.
+",
+        "truncated": false,
+      },
+      {
+        "bytes": 20,
+        "kind": "agent-memory-topic",
+        "path": "<root>/homes/fern/claude/memory/preferences.md",
+        "reach": "on-request",
+        "text": "Use short examples.
+",
+        "truncated": false,
+      },
+    ],
+    "nextOffset": null,
+    "refused": [],
+    "total": 2,
+  },
+  "read": {
+    "firstTurnLead": null,
+    "instructions": {
+      "agentMemory": [
+        {
+          "bytes": 14,
+          "kind": "agent-memory",
+          "path": "<root>/homes/fern/claude/memory/MEMORY.md",
+          "reach": "prompt",
+          "text": "Memory index.
+",
+          "truncated": false,
+        },
+        {
+          "bytes": 20,
+          "kind": "agent-memory-topic",
+          "path": "<root>/homes/fern/claude/memory/preferences.md",
+          "reach": "on-request",
+          "text": "Use short examples.
+",
+          "truncated": false,
+        },
+      ],
+      "composed": "You are Fern (fern), an agent in BroCrew, the app you run inside. Below are your instructions, your workspace notes and this conversation's details. Follow them; they take precedence over earlier general guidance.
+
+Contents of <root>/homes/fern/claude/CLAUDE.md (this profile's private instructions for all projects):
+
+Private instructions.
+
+
+Contents of <root>/work/CLAUDE.md (project instructions, checked into the codebase):
+
+Repository instructions.
+
+
+Contents of <root>/work/child/AGENTS.md (this repository's shared agent conventions, read by BroCrew so both engines get them):
+
+Shared conventions.
+
+
+Composed by BroCrew for this conversation at this launch:
+
+Work on the sample project.",
+      "injected": [
+        {
+          "bytes": 22,
+          "kind": "profile-memory",
+          "path": "<root>/homes/fern/claude/CLAUDE.md",
+          "readAt": 1234,
+          "text": "Private instructions.
+",
+          "truncated": false,
+        },
+        {
+          "bytes": 25,
+          "kind": "project-memory",
+          "path": "<root>/work/CLAUDE.md",
+          "readAt": 1234,
+          "text": "Repository instructions.
+",
+          "truncated": false,
+        },
+        {
+          "bytes": 20,
+          "kind": "repository-conventions",
+          "path": "<root>/work/child/AGENTS.md",
+          "readAt": 1234,
+          "text": "Shared conventions.
+",
+          "truncated": false,
+        },
+      ],
+      "note": "Read at launch and appended as text; searched 2 directories, from <root>/work down to the working directory — the walk stops below <root>, because a profile's identity comes from its own folder rather than from your personal one (a file on the way that links into it is followed, as the CLI does, and its row says so). Editing one of these files takes effect the next time this conversation is opened, not now. MEMORY.md in <root>/homes/fern/claude/memory is an index the provider puts in front of the model; the memories it points at are separate files beside it, which the agent reads only if it chooses to.",
+      "provider": [],
+      "recallsReported": false,
+      "refused": [
+        {
+          "path": "<root>/homes/fern/claude/brobot-instructions.md",
+          "reason": "unmanaged-override",
+        },
+      ],
+      "thisConversation": {
+        "spans": [],
+        "text": "Work on the sample project.",
+      },
+      "writesReported": true,
+    },
+    "memoryLoaded": {
+      "beside": 1,
+      "index": "<root>/homes/fern/claude/memory/MEMORY.md",
+      "lookedAt": 1234,
+      "type": "memory_loaded",
+    },
+    "profileFile": {
+      "path": "<root>/homes/fern/claude/brobot-instructions.md",
+      "refused": "unmanaged-override",
+      "spans": [],
+      "text": "Profile rules: keep examples small.
+",
+    },
+    "systemHint": "You are Fern (fern), an agent in BroCrew, the app you run inside. Below are your instructions, your workspace notes and this conversation's details. Follow them; they take precedence over earlier general guidance.
+
+Contents of <root>/homes/fern/claude/CLAUDE.md (this profile's private instructions for all projects):
+
+Private instructions.
+
+
+Contents of <root>/work/CLAUDE.md (project instructions, checked into the codebase):
+
+Repository instructions.
+
+
+Contents of <root>/work/child/AGENTS.md (this repository's shared agent conventions, read by BroCrew so both engines get them):
+
+Shared conventions.
+
+
+Composed by BroCrew for this conversation at this launch:
+
+Work on the sample project.",
+  },
+  "receipt": {
+    "build": null,
+    "files": [
+      {
+        "bytes": 22,
+        "heading": "You are Fern (fern), an agent in BroCrew, the app you run inside. Below are your instructions, your workspace notes and this conversation's details. Follow them; they take precedence over earlier general guidance.
+
+Contents of <root>/homes/fern/claude/CLAUDE.md (this profile's private instructions for all projects):",
+        "kind": "profile-memory",
+        "path": "<root>/homes/fern/claude/CLAUDE.md",
+        "sha256": "8538f06a24fe7a6ba94742577698ad44dcda743287fc13c1e3a11ad0ee890a7a",
+        "truncated": false,
+      },
+      {
+        "bytes": 25,
+        "heading": "Contents of <root>/work/CLAUDE.md (project instructions, checked into the codebase):",
+        "kind": "project-memory",
+        "path": "<root>/work/CLAUDE.md",
+        "sha256": "b84a87bd21c002cd7636f8f91aa16c2c6354954f11ffbfae6c16231614253dcd",
+        "truncated": false,
+      },
+      {
+        "bytes": 20,
+        "heading": "Contents of <root>/work/child/AGENTS.md (this repository's shared agent conventions, read by BroCrew so both engines get them):",
+        "kind": "repository-conventions",
+        "path": "<root>/work/child/AGENTS.md",
+        "sha256": "5311c17ad1ef26c59c04b6c1e7479cd87bf087a791d661fa68e671e86172473f",
+        "truncated": false,
+      },
+    ],
+    "memory": [
+      {
+        "bytes": 14,
+        "kind": "agent-memory",
+        "path": "<root>/homes/fern/claude/memory/MEMORY.md",
+        "sha256": "f327f6bceb1b56a57f57a43f664e01f82325ada02ef3c9ffc26a5a4340850aa2",
+      },
+      {
+        "bytes": 20,
+        "kind": "agent-memory-topic",
+        "path": "<root>/homes/fern/claude/memory/preferences.md",
+        "sha256": "f4a078bc231331b19028f7429e0053c3c602b79b6269d6f878eabb401b7246cf",
+      },
+    ],
+    "ownInstructionsVersion": 3,
+    "placement": "system-prompt",
+    "profileFile": {
+      "path": "<root>/homes/fern/claude/brobot-instructions.md",
+      "refused": "unmanaged-override",
+      "sections": [],
+      "text": "Profile rules: keep examples small.
+",
+    },
+    "settings": [],
+    "thisConversation": {
+      "heading": "Composed by BroCrew for this conversation at this launch:",
+      "sections": [],
+      "text": "Work on the sample project.",
+    },
+    "tools": {
+      "count": 0,
+      "instructions": "Use the sample tools.",
+      "server": "sample-tools",
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    },
+  },
+}
+`;
+
+exports[`claude knowledge bytes on the landed base > keeps the exact launch, receipt and memory page for empty 1`] = `
+{
+  "counts": {
+    "listed": 0,
+    "total": 0,
+  },
+  "page": {
+    "dir": null,
+    "firstListed": [],
+    "listed": 0,
+    "memory": [],
+    "nextOffset": null,
+    "refused": [],
+    "total": 0,
+  },
+  "read": {
+    "firstTurnLead": null,
+    "instructions": {
+      "agentMemory": [],
+      "composed": "You are Fern (fern), an agent in BroCrew, the app you run inside. Below are your instructions, your workspace notes and this conversation's details. Follow them; they take precedence over earlier general guidance.
+
+Composed by BroCrew for this conversation at this launch:
+
+Work on the sample project.",
+      "injected": [],
+      "note": "Read at launch and appended as text; searched 2 directories, from <root>/work down to the working directory — the walk stops below <root>, because a profile's identity comes from its own folder rather than from your personal one (a file on the way that links into it is followed, as the CLI does, and its row says so). Editing one of these files takes effect the next time this conversation is opened, not now.",
+      "provider": [],
+      "recallsReported": false,
+      "refused": [],
+      "thisConversation": {
+        "spans": [],
+        "text": "Work on the sample project.",
+      },
+      "writesReported": true,
+    },
+    "memoryLoaded": null,
+    "profileFile": null,
+    "systemHint": "You are Fern (fern), an agent in BroCrew, the app you run inside. Below are your instructions, your workspace notes and this conversation's details. Follow them; they take precedence over earlier general guidance.
+
+Composed by BroCrew for this conversation at this launch:
+
+Work on the sample project.",
+  },
+  "receipt": {
+    "build": null,
+    "files": [],
+    "memory": [],
+    "ownInstructionsVersion": 3,
+    "placement": "system-prompt",
+    "profileFile": null,
+    "settings": [],
+    "thisConversation": {
+      "heading": "Composed by BroCrew for this conversation at this launch:",
+      "sections": [],
+      "text": "Work on the sample project.",
+    },
+    "tools": {
+      "count": 0,
+      "instructions": "Use the sample tools.",
+      "server": "sample-tools",
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    },
+  },
+}
+`;
+
+exports[`claude knowledge bytes on the landed base > keeps the exact launch, receipt and memory page for profile-and-memory 1`] = `
+{
+  "counts": {
+    "listed": 1,
+    "total": 2,
+  },
+  "page": {
+    "dir": "<root>/homes/fern/claude/memory",
+    "firstListed": [
+      "preferences.md",
+    ],
+    "listed": 1,
+    "memory": [
+      {
+        "bytes": 14,
+        "kind": "agent-memory",
+        "path": "<root>/homes/fern/claude/memory/MEMORY.md",
+        "reach": "prompt",
+        "text": "Memory index.
+",
+        "truncated": false,
+      },
+      {
+        "bytes": 20,
+        "kind": "agent-memory-topic",
+        "path": "<root>/homes/fern/claude/memory/preferences.md",
+        "reach": "on-request",
+        "text": "Use short examples.
+",
+        "truncated": false,
+      },
+    ],
+    "nextOffset": null,
+    "refused": [],
+    "total": 2,
+  },
+  "read": {
+    "firstTurnLead": null,
+    "instructions": {
+      "agentMemory": [
+        {
+          "bytes": 14,
+          "kind": "agent-memory",
+          "path": "<root>/homes/fern/claude/memory/MEMORY.md",
+          "reach": "prompt",
+          "text": "Memory index.
+",
+          "truncated": false,
+        },
+        {
+          "bytes": 20,
+          "kind": "agent-memory-topic",
+          "path": "<root>/homes/fern/claude/memory/preferences.md",
+          "reach": "on-request",
+          "text": "Use short examples.
+",
+          "truncated": false,
+        },
+      ],
+      "composed": "You are Fern (fern), an agent in BroCrew, the app you run inside. Below are your instructions, your workspace notes and this conversation's details. Follow them; they take precedence over earlier general guidance.
+
+Contents of <root>/homes/fern/claude/brobot-instructions.md (generated by BroCrew for this profile at this launch):
+
+Profile rules: keep examples small.
+
+
+Contents of <root>/homes/fern/claude/CLAUDE.md (this profile's private instructions for all projects):
+
+Private instructions.
+
+
+Contents of <root>/work/CLAUDE.md (project instructions, checked into the codebase):
+
+Repository instructions.
+
+
+Contents of <root>/work/child/AGENTS.md (this repository's shared agent conventions, read by BroCrew so both engines get them):
+
+Shared conventions.
+
+
+Composed by BroCrew for this conversation at this launch:
+
+Work on the sample project.",
+      "injected": [
+        {
+          "bytes": 36,
+          "kind": "profile-instructions",
+          "path": "<root>/homes/fern/claude/brobot-instructions.md",
+          "readAt": 1234,
+          "sections": [],
+          "text": "Profile rules: keep examples small.
+",
+          "truncated": false,
+        },
+        {
+          "bytes": 22,
+          "kind": "profile-memory",
+          "path": "<root>/homes/fern/claude/CLAUDE.md",
+          "readAt": 1234,
+          "text": "Private instructions.
+",
+          "truncated": false,
+        },
+        {
+          "bytes": 25,
+          "kind": "project-memory",
+          "path": "<root>/work/CLAUDE.md",
+          "readAt": 1234,
+          "text": "Repository instructions.
+",
+          "truncated": false,
+        },
+        {
+          "bytes": 20,
+          "kind": "repository-conventions",
+          "path": "<root>/work/child/AGENTS.md",
+          "readAt": 1234,
+          "text": "Shared conventions.
+",
+          "truncated": false,
+        },
+      ],
+      "note": "Read at launch and appended as text; searched 2 directories, from <root>/work down to the working directory — the walk stops below <root>, because a profile's identity comes from its own folder rather than from your personal one (a file on the way that links into it is followed, as the CLI does, and its row says so). Editing one of these files takes effect the next time this conversation is opened, not now. MEMORY.md in <root>/homes/fern/claude/memory is an index the provider puts in front of the model; the memories it points at are separate files beside it, which the agent reads only if it chooses to.",
+      "provider": [],
+      "recallsReported": false,
+      "refused": [],
+      "thisConversation": {
+        "spans": [],
+        "text": "Work on the sample project.",
+      },
+      "writesReported": true,
+    },
+    "memoryLoaded": {
+      "beside": 1,
+      "index": "<root>/homes/fern/claude/memory/MEMORY.md",
+      "lookedAt": 1234,
+      "type": "memory_loaded",
+    },
+    "profileFile": {
+      "path": "<root>/homes/fern/claude/brobot-instructions.md",
+      "refused": null,
+      "spans": [],
+      "text": "Profile rules: keep examples small.
+",
+    },
+    "systemHint": "You are Fern (fern), an agent in BroCrew, the app you run inside. Below are your instructions, your workspace notes and this conversation's details. Follow them; they take precedence over earlier general guidance.
+
+Contents of <root>/homes/fern/claude/brobot-instructions.md (generated by BroCrew for this profile at this launch):
+
+Profile rules: keep examples small.
+
+
+Contents of <root>/homes/fern/claude/CLAUDE.md (this profile's private instructions for all projects):
+
+Private instructions.
+
+
+Contents of <root>/work/CLAUDE.md (project instructions, checked into the codebase):
+
+Repository instructions.
+
+
+Contents of <root>/work/child/AGENTS.md (this repository's shared agent conventions, read by BroCrew so both engines get them):
+
+Shared conventions.
+
+
+Composed by BroCrew for this conversation at this launch:
+
+Work on the sample project.",
+  },
+  "receipt": {
+    "build": null,
+    "files": [
+      {
+        "bytes": 22,
+        "heading": "Contents of <root>/homes/fern/claude/CLAUDE.md (this profile's private instructions for all projects):",
+        "kind": "profile-memory",
+        "path": "<root>/homes/fern/claude/CLAUDE.md",
+        "sha256": "8538f06a24fe7a6ba94742577698ad44dcda743287fc13c1e3a11ad0ee890a7a",
+        "truncated": false,
+      },
+      {
+        "bytes": 25,
+        "heading": "Contents of <root>/work/CLAUDE.md (project instructions, checked into the codebase):",
+        "kind": "project-memory",
+        "path": "<root>/work/CLAUDE.md",
+        "sha256": "b84a87bd21c002cd7636f8f91aa16c2c6354954f11ffbfae6c16231614253dcd",
+        "truncated": false,
+      },
+      {
+        "bytes": 20,
+        "heading": "Contents of <root>/work/child/AGENTS.md (this repository's shared agent conventions, read by BroCrew so both engines get them):",
+        "kind": "repository-conventions",
+        "path": "<root>/work/child/AGENTS.md",
+        "sha256": "5311c17ad1ef26c59c04b6c1e7479cd87bf087a791d661fa68e671e86172473f",
+        "truncated": false,
+      },
+    ],
+    "memory": [
+      {
+        "bytes": 14,
+        "kind": "agent-memory",
+        "path": "<root>/homes/fern/claude/memory/MEMORY.md",
+        "sha256": "f327f6bceb1b56a57f57a43f664e01f82325ada02ef3c9ffc26a5a4340850aa2",
+      },
+      {
+        "bytes": 20,
+        "kind": "agent-memory-topic",
+        "path": "<root>/homes/fern/claude/memory/preferences.md",
+        "sha256": "f4a078bc231331b19028f7429e0053c3c602b79b6269d6f878eabb401b7246cf",
+      },
+    ],
+    "ownInstructionsVersion": 3,
+    "placement": "system-prompt",
+    "profileFile": {
+      "heading": "You are Fern (fern), an agent in BroCrew, the app you run inside. Below are your instructions, your workspace notes and this conversation's details. Follow them; they take precedence over earlier general guidance.
+
+Contents of <root>/homes/fern/claude/brobot-instructions.md (generated by BroCrew for this profile at this launch):",
+      "path": "<root>/homes/fern/claude/brobot-instructions.md",
+      "refused": null,
+      "sections": [],
+      "text": "Profile rules: keep examples small.
+",
+    },
+    "settings": [],
+    "thisConversation": {
+      "heading": "Composed by BroCrew for this conversation at this launch:",
+      "sections": [],
+      "text": "Work on the sample project.",
+    },
+    "tools": {
+      "count": 0,
+      "instructions": "Use the sample tools.",
+      "server": "sample-tools",
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    },
+  },
+}
+`;
+
+exports[`codex knowledge bytes on the landed base > keeps the exact launch, receipt and memory page for blocked-bundle 1`] = `
+{
+  "counts": {
+    "listed": 1,
+    "total": 3,
+  },
+  "page": {
+    "dir": "<root>/homes/fern/codex/memories",
+    "firstListed": [
+      "2026-01-02-one.md",
+    ],
+    "listed": 1,
+    "memory": [
+      {
+        "bytes": 18,
+        "kind": "agent-memory",
+        "path": "<root>/homes/fern/codex/memories/memory_summary.md",
+        "reach": "prompt",
+        "text": "A memory summary.
+",
+        "truncated": false,
+      },
+      {
+        "bytes": 16,
+        "kind": "agent-memory",
+        "path": "<root>/homes/fern/codex/memories/MEMORY.md",
+        "reach": "on-request",
+        "text": "A memory index.
+",
+        "truncated": false,
+      },
+      {
+        "bytes": 20,
+        "kind": "agent-memory-note",
+        "path": "<root>/homes/fern/codex/memories/extensions/ad_hoc/notes/2026-01-02-one.md",
+        "reach": "on-request",
+        "text": "A requested memory.
+",
+        "truncated": false,
+      },
+    ],
+    "nextOffset": null,
+    "refused": [],
+    "total": 3,
+  },
+  "read": {
+    "firstTurnLead": "You are Fern (fern), an agent in BroCrew, the app you run inside. Below are your instructions, your workspace notes and this conversation's details. Follow them; they take precedence over earlier general guidance.
+
+Composed by BroCrew for this conversation at this launch:
+
+Work on the sample project.",
+    "instructions": {
+      "agentMemory": [
+        {
+          "bytes": 18,
+          "kind": "agent-memory",
+          "path": "<root>/homes/fern/codex/memories/memory_summary.md",
+          "reach": "prompt",
+          "text": "A memory summary.
+",
+          "truncated": false,
+        },
+        {
+          "bytes": 16,
+          "kind": "agent-memory",
+          "path": "<root>/homes/fern/codex/memories/MEMORY.md",
+          "reach": "on-request",
+          "text": "A memory index.
+",
+          "truncated": false,
+        },
+        {
+          "bytes": 20,
+          "kind": "agent-memory-note",
+          "path": "<root>/homes/fern/codex/memories/extensions/ad_hoc/notes/2026-01-02-one.md",
+          "reach": "on-request",
+          "text": "A requested memory.
+",
+          "truncated": false,
+        },
+      ],
+      "composed": "You are Fern (fern), an agent in BroCrew, the app you run inside. Below are your instructions, your workspace notes and this conversation's details. Follow them; they take precedence over earlier general guidance.
+
+Composed by BroCrew for this conversation at this launch:
+
+Work on the sample project.",
+      "injected": [],
+      "note": "BroCrew sends this provider how to use its tools and what is true of this conversation in front of a message: the whole of it the first time, and again after the conversation is compacted; otherwise only what changed — it reads its own instruction files, and the list below is the one it reported. What this profile remembers is in <root>/homes/fern/codex/memories, written by the agent: only memory_summary.md is put in front of the model, and the agent reads the rest only if it chooses to.",
+      "provider": [],
+      "recallsReported": true,
+      "refused": [
+        {
+          "path": "<root>/homes/fern/codex/AGENTS.override.md",
+          "reason": "unmanaged-override",
+        },
+      ],
+      "thisConversation": {
+        "spans": [],
+        "text": "Work on the sample project.",
+      },
+      "writesReported": false,
+    },
+    "memoryLoaded": null,
+    "profileFile": {
+      "path": "<root>/homes/fern/codex/AGENTS.override.md",
+      "refused": "unmanaged-override",
+      "spans": [],
+      "text": "Profile rules: keep examples small.
+",
+    },
+    "systemHint": null,
+  },
+  "receipt": {
+    "build": null,
+    "files": [
+      {
+        "bytes": 20,
+        "kind": "read-by-codex",
+        "path": "<root>/work/child/AGENTS.md",
+        "sha256": "5311c17ad1ef26c59c04b6c1e7479cd87bf087a791d661fa68e671e86172473f",
+        "truncated": false,
+      },
+    ],
+    "memory": [
+      {
+        "bytes": 18,
+        "kind": "agent-memory",
+        "path": "<root>/homes/fern/codex/memories/memory_summary.md",
+        "sha256": "a9c72f045a05821a5b8172b39a52e826090ee231569263826dbb17b25f71d7b1",
+      },
+      {
+        "bytes": 16,
+        "kind": "agent-memory",
+        "path": "<root>/homes/fern/codex/memories/MEMORY.md",
+        "sha256": "bba6041601cb16020cf41c2d91b7b899d41283d162854c8e1eee7a6eebf5ff0e",
+      },
+      {
+        "bytes": 20,
+        "kind": "agent-memory-note",
+        "path": "<root>/homes/fern/codex/memories/extensions/ad_hoc/notes/2026-01-02-one.md",
+        "sha256": "936f2cb798f478ce94455c2493e83999b19162bfcbe00b5d2daf8acf7b96e2c6",
+      },
+    ],
+    "ownInstructionsVersion": 3,
+    "placement": "first-message",
+    "profileFile": {
+      "path": "<root>/homes/fern/codex/AGENTS.override.md",
+      "refused": "unmanaged-override",
+      "sections": [],
+      "text": "Profile rules: keep examples small.
+",
+    },
+    "settings": [],
+    "thisConversation": {
+      "heading": "Composed by BroCrew for this conversation at this launch:",
+      "sections": [],
+      "text": "Work on the sample project.",
+    },
+    "tools": {
+      "count": 0,
+      "instructions": "Use the sample tools.",
+      "server": "sample-tools",
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    },
+  },
+}
+`;
+
+exports[`codex knowledge bytes on the landed base > keeps the exact launch, receipt and memory page for empty 1`] = `
+{
+  "counts": {
+    "listed": 0,
+    "total": 0,
+  },
+  "page": {
+    "dir": null,
+    "firstListed": [],
+    "listed": 0,
+    "memory": [],
+    "nextOffset": null,
+    "refused": [],
+    "total": 0,
+  },
+  "read": {
+    "firstTurnLead": "Composed by BroCrew for this conversation at this launch:
+
+Work on the sample project.",
+    "instructions": {
+      "agentMemory": [],
+      "composed": "Composed by BroCrew for this conversation at this launch:
+
+Work on the sample project.",
+      "injected": [],
+      "note": "BroCrew sends this provider how to use its tools and what is true of this conversation in front of a message: the whole of it the first time, and again after the conversation is compacted; otherwise only what changed — it reads its own instruction files, and the list below is the one it reported.",
+      "provider": [],
+      "recallsReported": true,
+      "refused": [],
+      "thisConversation": {
+        "spans": [],
+        "text": "Work on the sample project.",
+      },
+      "writesReported": false,
+    },
+    "memoryLoaded": null,
+    "profileFile": null,
+    "systemHint": null,
+  },
+  "receipt": {
+    "build": null,
+    "files": [],
+    "memory": [],
+    "ownInstructionsVersion": 3,
+    "placement": "first-message",
+    "profileFile": null,
+    "settings": [],
+    "thisConversation": {
+      "heading": "Composed by BroCrew for this conversation at this launch:",
+      "sections": [],
+      "text": "Work on the sample project.",
+    },
+    "tools": {
+      "count": 0,
+      "instructions": "Use the sample tools.",
+      "server": "sample-tools",
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    },
+  },
+}
+`;
+
+exports[`codex knowledge bytes on the landed base > keeps the exact launch, receipt and memory page for profile-and-memory 1`] = `
+{
+  "counts": {
+    "listed": 1,
+    "total": 3,
+  },
+  "page": {
+    "dir": "<root>/homes/fern/codex/memories",
+    "firstListed": [
+      "2026-01-02-one.md",
+    ],
+    "listed": 1,
+    "memory": [
+      {
+        "bytes": 18,
+        "kind": "agent-memory",
+        "path": "<root>/homes/fern/codex/memories/memory_summary.md",
+        "reach": "prompt",
+        "text": "A memory summary.
+",
+        "truncated": false,
+      },
+      {
+        "bytes": 16,
+        "kind": "agent-memory",
+        "path": "<root>/homes/fern/codex/memories/MEMORY.md",
+        "reach": "on-request",
+        "text": "A memory index.
+",
+        "truncated": false,
+      },
+      {
+        "bytes": 20,
+        "kind": "agent-memory-note",
+        "path": "<root>/homes/fern/codex/memories/extensions/ad_hoc/notes/2026-01-02-one.md",
+        "reach": "on-request",
+        "text": "A requested memory.
+",
+        "truncated": false,
+      },
+    ],
+    "nextOffset": null,
+    "refused": [],
+    "total": 3,
+  },
+  "read": {
+    "firstTurnLead": "Composed by BroCrew for this conversation at this launch:
+
+Work on the sample project.",
+    "instructions": {
+      "agentMemory": [
+        {
+          "bytes": 18,
+          "kind": "agent-memory",
+          "path": "<root>/homes/fern/codex/memories/memory_summary.md",
+          "reach": "prompt",
+          "text": "A memory summary.
+",
+          "truncated": false,
+        },
+        {
+          "bytes": 16,
+          "kind": "agent-memory",
+          "path": "<root>/homes/fern/codex/memories/MEMORY.md",
+          "reach": "on-request",
+          "text": "A memory index.
+",
+          "truncated": false,
+        },
+        {
+          "bytes": 20,
+          "kind": "agent-memory-note",
+          "path": "<root>/homes/fern/codex/memories/extensions/ad_hoc/notes/2026-01-02-one.md",
+          "reach": "on-request",
+          "text": "A requested memory.
+",
+          "truncated": false,
+        },
+      ],
+      "composed": "Composed by BroCrew for this conversation at this launch:
+
+Work on the sample project.",
+      "injected": [],
+      "note": "BroCrew sends this provider how to use its tools and what is true of this conversation in front of a message: the whole of it the first time, and again after the conversation is compacted; otherwise only what changed — it reads its own instruction files, and the list below is the one it reported. BroCrew published this profile's own instructions at <root>/homes/fern/codex/AGENTS.override.md for the provider to read. What this profile remembers is in <root>/homes/fern/codex/memories, written by the agent: only memory_summary.md is put in front of the model, and the agent reads the rest only if it chooses to.",
+      "provider": [],
+      "recallsReported": true,
+      "refused": [],
+      "thisConversation": {
+        "spans": [],
+        "text": "Work on the sample project.",
+      },
+      "writesReported": false,
+    },
+    "memoryLoaded": null,
+    "profileFile": {
+      "path": "<root>/homes/fern/codex/AGENTS.override.md",
+      "refused": null,
+      "spans": [],
+      "text": "Profile rules: keep examples small.
+",
+    },
+    "systemHint": null,
+  },
+  "receipt": {
+    "build": null,
+    "files": [
+      {
+        "bytes": 20,
+        "kind": "read-by-codex",
+        "path": "<root>/work/child/AGENTS.md",
+        "sha256": "5311c17ad1ef26c59c04b6c1e7479cd87bf087a791d661fa68e671e86172473f",
+        "truncated": false,
+      },
+    ],
+    "memory": [
+      {
+        "bytes": 18,
+        "kind": "agent-memory",
+        "path": "<root>/homes/fern/codex/memories/memory_summary.md",
+        "sha256": "a9c72f045a05821a5b8172b39a52e826090ee231569263826dbb17b25f71d7b1",
+      },
+      {
+        "bytes": 16,
+        "kind": "agent-memory",
+        "path": "<root>/homes/fern/codex/memories/MEMORY.md",
+        "sha256": "bba6041601cb16020cf41c2d91b7b899d41283d162854c8e1eee7a6eebf5ff0e",
+      },
+      {
+        "bytes": 20,
+        "kind": "agent-memory-note",
+        "path": "<root>/homes/fern/codex/memories/extensions/ad_hoc/notes/2026-01-02-one.md",
+        "sha256": "936f2cb798f478ce94455c2493e83999b19162bfcbe00b5d2daf8acf7b96e2c6",
+      },
+    ],
+    "ownInstructionsVersion": 3,
+    "placement": "first-message",
+    "profileFile": {
+      "path": "<root>/homes/fern/codex/AGENTS.override.md",
+      "refused": null,
+      "sections": [],
+      "text": "Profile rules: keep examples small.
+",
+    },
+    "settings": [],
+    "thisConversation": {
+      "heading": "Composed by BroCrew for this conversation at this launch:",
+      "sections": [],
+      "text": "Work on the sample project.",
+    },
+    "tools": {
+      "count": 0,
+      "instructions": "Use the sample tools.",
+      "server": "sample-tools",
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    },
+  },
+}
+`;
