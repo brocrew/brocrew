@@ -190,6 +190,8 @@ it.each(['0.0.0', '0.1.6', '1.0.0'])(
   'an empty catalogue adds no startup or refresh effect versus an admitted restart at %s',
   async (appVersion) => {
     const admitted = await restarted(appVersion, false)
+    // Windows derives the pipe from the fictional key, so end this owner before reusing it.
+    for (const close of closers.splice(0).reverse()) await close()
     const empty = await restarted(appVersion, true)
     expect(empty.startup).toEqual(admitted.startup)
     expect(empty.guards).toEqual(admitted.guards)
