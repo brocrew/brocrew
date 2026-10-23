@@ -1,8 +1,10 @@
+import { refusalWords } from './refusal-words'
 import { keyPolicy } from './api-key'
 import { CodexUnavailableError } from './program'
 import {
   CodexRefusedItsSignInError,
   CodexSettingsUnusableError,
+  NoCodexSignInOnThisComputerError,
   codexCopyIdentityIn,
   isTheSameCodexCopy,
   type CodexCopyIdentity,
@@ -58,12 +60,15 @@ function isCopy(value: unknown): value is CodexCopyIdentity {
 }
 
 export const authPolicy: ProviderAuthPolicy = {
+  refusalWords,
   launchRefusal: (error) =>
-    error instanceof CodexSettingsUnusableError
-      ? 'profile'
-      : error instanceof CodexUnavailableError
-        ? 'program'
-        : null,
+    error instanceof NoCodexSignInOnThisComputerError
+      ? 'no-copy'
+      : error instanceof CodexSettingsUnusableError
+        ? 'profile'
+        : error instanceof CodexUnavailableError
+          ? 'program'
+          : null,
   setup: () => null,
   renewedNotice: null,
   key: keyPolicy,
