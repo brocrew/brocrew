@@ -104,7 +104,7 @@ describe('a launch says where it waited', () => {
   let leadRead: (() => Promise<WindowReadResult>) | undefined
   let buildHost: (bounds?: {
     launchTimeoutMs?: number
-    codexResumeTimeoutMs?: number
+    resumeTimeouts?: Partial<Record<import('@brobot2/shared').Provider, number>>
   }) => RuntimeHost
 
   beforeEach(() => {

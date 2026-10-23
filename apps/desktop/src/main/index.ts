@@ -47,13 +47,7 @@ import {
 } from 'electron'
 import type { NativeImage, OpenDialogOptions } from 'electron'
 import { providerRecord, SUPPORTED_PROVIDERS, appInfoSchema, type AppInfo } from '@brobot2/shared'
-import {
-  changeCodexKeyInHome,
-  claudeLoginRenewer,
-  createSpawnTransportFactory,
-  defaultKeychainReaderAsync,
-  withDeadline,
-} from '@brobot2/runtime'
+import { withDeadline } from '@brobot2/runtime'
 import type {
   ChosenAttachment,
   ChosenCwd,
@@ -172,22 +166,19 @@ import { sinkOwnerId } from './runtime/window-caller'
 import { DEFAULT_SILENCE_WINDOW_MS } from './runtime/liveness'
 import { readProviderConfig } from './runtime/provider-config'
 import {
-  CLAUDE_CODE_SWITCH,
-  LOOK_FOR_THE_INSTALLED_ONE,
-  findClaudeProgramHere,
-  type ClaudeProgram,
-} from './runtime/claude-program'
-import { resolveCodexProgram, type CodexProgram } from './runtime/codex-binary'
-import {
   listProfileIds,
   listProviderHomes,
   deriveProviderHome,
   homePathsForProvider,
   providerHomesRoot,
   savedMethodsFolder,
-  type CodexKeySeam,
 } from './runtime/provider-homes'
-import { createProviderModules, providerAuthFromModules } from './providers'
+import {
+  createProviderModules,
+  desktopProviderInputs,
+  providerAuthFromModules,
+  providerVersionsFromModules,
+} from './providers'
 import {
   readSavedMethods,
   savedMethodsLinesOf,
@@ -212,12 +203,10 @@ import {
 } from './profile-execution-file'
 import { readKeptCuts, turnsTheAppCutFile, writeKeptCuts } from './turns-the-app-cut-file'
 import { providerAccountsFile, readKeptAccounts, writeKeptAccounts } from './provider-accounts-file'
-import { providerVersionsReader } from './runtime/provider-versions'
 import { readKeptRules, removeKeptRule, type WhereRulesAreKept } from './kept-rules'
 import startTheLocator from './local-settings-locator.worker?nodeWorker'
 import { settingsLocations } from './settings-locations'
 import { snapshotFor } from './provider-snapshots'
-import type { Provider } from '@brobot2/shared'
 import { ASSET_SCHEME_PRIVILEGES, installAssetProtocol } from './asset-protocol'
 import { THEME_SCHEME_PRIVILEGES, installThemeProtocol } from './themes/asset-protocol'
 import {
@@ -698,63 +687,12 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
   // 🔒 **The API keys a person enters, sealed by `safeStorage`** — read on every launch, so a key
   // set, replaced or removed applies to the next one (`api-keys.ts`).
   const apiKeys = new ApiKeys(store, safeStorageCipher(safeStorage))
-  const apiKey = (provider: Provider): Promise<string | null> => apiKeys.read(provider)
-  // The Codex program a launch runs — the copy this app carries — looked up at every launch, key
-  // change, sign-in and version read. One lookup, as Claude's below, so the Providers screen and a
-  // conversation always mean the same program.
-  const codexProgram = (): CodexProgram =>
-    resolveCodexProgram({
-      isPackaged: app.isPackaged,
-      resourcesPath: process.resourcesPath,
-      platform: process.platform,
-      arch: process.arch,
-    })
-  // 🔒 **The Codex key, and Codex's own login with it** — on the app's own bundled binary, the one
-  // every Codex conversation runs on, resolved at the moment a home is logged in or out.
-  const codexKey: CodexKeySeam = {
-    current: () => apiKeys.current('codex'),
-    isSaved: () => apiKeys.status('codex').set,
-    change: (home, change) =>
-      changeCodexKeyInHome(createSpawnTransportFactory(codexProgram().path), home, change),
-  }
-  // One renewal of the person's Claude Code login at a time, for every start and reopen that needs
-  // it, run with their own Claude Code and never a bundled copy.
-  // A quit stops a run under way rather than leave it behind.
-  const stopRenewing = new AbortController()
-  app.once('will-quit', () => stopRenewing.abort())
-  // The person's own Claude Code, never a copy this checkout carries: what renews their login, and
-  // what a sentence tells them to run. A launch given a Claude Code by its path names that one.
-  const claudeProgramFound = (): string | null => {
-    const given = app.commandLine.getSwitchValue(CLAUDE_CODE_SWITCH)
-    try {
-      return findClaudeProgramHere({
-        isPackaged: true,
-        given: given === '' ? LOOK_FOR_THE_INSTALLED_ONE : given,
-      }).path
-    } catch {
-      return null
-    }
-  }
-  const renewClaudeLogin = claudeLoginRenewer({
-    readLogin: defaultKeychainReaderAsync,
-    signal: stopRenewing.signal,
-    findProgram: claudeProgramFound,
-  })
+  // Quit cancels native provider service work without leaving a renewal child behind.
+  const stopProviderServices = new AbortController()
+  app.once('will-quit', () => stopProviderServices.abort())
   // ⚠️ After the database is closed (a window reloading during a quit) nothing is dropped for want
   // of an answer — the same rule as having no store yet.
   recordedConversation = (sessionId) => db === null || store.recordedOne(sessionId) !== null
-  // The person's own Claude Code, looked up at every launch and every version read. One lookup, so
-  // the Providers screen and a conversation always mean the same program.
-  // ⚑ A launch stops at the first copy it finds; the Providers page reads every copy, so a person
-  // sees why updating another changed nothing.
-  const claudeProgram = (everyCopy = false): ClaudeProgram =>
-    findClaudeProgramHere({
-      isPackaged: app.isPackaged,
-      given: app.commandLine.hasSwitch(CLAUDE_CODE_SWITCH)
-        ? app.commandLine.getSwitchValue(CLAUDE_CODE_SWITCH)
-        : undefined,
-      everyCopy,
-    })
   const retention = (transcriptRetention ??= new TranscriptRetentionHost(
     userData,
     providerProcessesAreInFlight,
@@ -791,28 +729,22 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
   })
   const providerModules = createProviderModules(
     (provider) => homePathsForProvider(userData, provider),
-    {
-      claude: {
-        runtime: {
-          program: () => claudeProgram().path,
-          programFound: claudeProgramFound,
-          managedRoot: providerHomesRoot(userData),
-          key: () => apiKey('claude'),
-        },
-        home: { key: () => apiKey('claude'), programFound: claudeProgramFound },
-        auth: {
-          key: () => apiKey('claude'),
-          keyStatus: () => apiKeys.status('claude'),
-          programFound: claudeProgramFound,
-        },
+    desktopProviderInputs({
+      isPackaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+      platform: process.platform,
+      arch: process.arch,
+      managedRoot: providerHomesRoot(userData),
+      signal: stopProviderServices.signal,
+      commandLine: app.commandLine,
+      keys: {
+        read: (provider) => apiKeys.read(provider),
+        current: (provider) => apiKeys.current(provider),
+        status: (provider) => apiKeys.status(provider),
       },
-      codex: {
-        runtime: { command: () => codexProgram().path },
-        home: { key: codexKey },
-        auth: { key: codexKey, command: () => codexProgram().path },
-      },
-    },
+    }),
   )
+  const providerAuth = providerAuthFromModules(providerModules)
   const runtimeHost = new RuntimeHost({
     plugins: pluginController,
     pluginAttachments: {
@@ -902,16 +834,16 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
     listProfiles: () => listProfileIds(userData),
     // Run credential operations on the bundled binary used by sessions, so a probe measures
     // the app's Codex rather than an unrelated executable on PATH.
-    providerAuth: providerAuthFromModules(providerModules),
+    providerAuth,
     apiKeys,
-    renewClaudeLogin,
-    claudeProgramFound,
+    loginRenewal: providerAuth.loginRenewal,
+    programFound: providerRecord((provider) => providerModules[provider].program?.installedPath),
     // 🔒 A key check asks the provider itself — only when a person presses it.
     askTheProvider: (provider, key) => askTheProvider(provider, key),
     // What the Providers screen reads: each program's version (Codex's once per run, Claude Code's
     // whenever the program changed), one process listing when it asks what the agents use, and the
     // windows told when a provider fact moved.
-    providerVersions: providerVersionsReader(codexProgram, () => claudeProgram(true)),
+    providerVersions: providerVersionsFromModules(providerModules),
     // What an *Always allow* kept — read where each provider keeps it, for the folders this app's
     // Claude conversations worked in and every agent's home — and a person's Remove.
     keptRules: async () => {
