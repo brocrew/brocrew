@@ -504,9 +504,10 @@ describe('what RuntimeScreen hands the pane, read as text', () => {
     const screen = await screenSource()
     const scopes = [...screen.matchAll(/<MessageLinks\b[^>]*>/g)].map(([tag]) => tag)
     // The archived history is a page inside the window's own scope, so there is one.
-    expect(scopes).toEqual([
-      '<MessageLinks :resolve="resolveMessageLink" :open="openMessageDestination">',
-    ])
+    expect(scopes).toHaveLength(1)
+    expect(scopes[0]).toContain(':resolve="resolveMessageLink"')
+    expect(scopes[0]).toContain(':open="openMessageDestination"')
+    expect(scopes[0]).toContain(':scope=')
     const archives = [...screen.matchAll(/<LinkedHistory\b[\s\S]*?\/>/g)]
     expect(archives).toHaveLength(1)
     // The page is retained data; only paging leaves it, and Back is the window's own.
