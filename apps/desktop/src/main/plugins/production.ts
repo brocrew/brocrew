@@ -1,5 +1,6 @@
 import { pluginAdapter } from './lifecycle/adapters'
 import { join } from 'node:path'
+import { lstat } from 'node:fs/promises'
 import { PluginListError } from './catalogue/list-error'
 import { GlobalPluginState } from './state/store'
 import type { PluginSettingsController } from './settings'
@@ -145,23 +146,41 @@ export function productionPluginController() {
     try {
       const admittedCards = await connection.catalogue()
       if (ended || connected !== connection) return fail()
-      if (
-        !catalogueEntries ||
-        (connection.refreshCatalogue &&
-          !refreshFailed &&
-          (admittedCards.length !== catalogueEntries.releases.length ||
-            admittedCards.some(
-              (card) => !catalogueEntries!.releases.some((one) => one.id === card.id),
-            )))
-      )
-        return fail()
-      // An unadmitted peer cannot prove absence: its false bit also covers pending cleanup.
+      if (!catalogueEntries) return fail()
+      const releases = catalogueEntries.releases
+      if (connection.refreshCatalogue && !refreshFailed) {
+        if (
+          releases.some((release) => !admittedCards.some((card) => card.id === release.id)) ||
+          admittedCards.some(
+            (card) => !card.installed && !releases.some((release) => release.id === card.id),
+          )
+        )
+          return fail()
+      }
+      // Installed cards come from the authenticated owner, independently of today's offers.
       let hints: PluginCard[] | undefined
       const offered =
-        !connection.refreshCatalogue || refreshFailed ? admittedCards : catalogueEntries.entries
+        !connection.refreshCatalogue || refreshFailed
+          ? admittedCards
+          : [
+              ...catalogueEntries.entries.filter((entry) =>
+                releases.some((release) => release.id === entry.id),
+              ),
+              ...admittedCards.filter(
+                (card) => card.installed && !releases.some((release) => release.id === card.id),
+              ),
+            ]
       const cards: PluginCard[] = offered.map((entry) => {
         const card = admittedCards.find((one) => one.id === entry.id)
-        if (card && (card.state !== 'Unavailable' || card.installed === true)) return card
+        if (card && (card.state !== 'Unavailable' || card.installed === true)) {
+          const { updateVersion, ...installed } = card
+          const release = releases.find((one) => one.id === card.id)
+          return {
+            ...installed,
+            ...(card.installed === true && !release ? { updatesUnavailable: true as const } : {}),
+            ...(updateVersion && release?.version === updateVersion ? { updateVersion } : {}),
+          }
+        }
         hints ??= unavailableCards(offered)
         return hints.find((one) => one.id === entry.id)!
       })
@@ -253,11 +272,13 @@ export function productionPluginController() {
     },
     async update(id) {
       const connection = current()
-      if (!connection.update) return fail()
+      if (!connection.update || !catalogueEntries?.releases.some((release) => release.id === id))
+        return fail()
       await connection.update(id)
       await update()
     },
     async install(id) {
+      if (!catalogueEntries?.releases.some((release) => release.id === id)) return fail()
       await current().install(id)
       await update()
     },
@@ -330,15 +351,28 @@ export function productionPluginController() {
           }
           if (ended) return false
           names = Object.fromEntries(catalogueEntries.entries.map((one) => [one.id, one.name]))
-          entries = catalogueEntries.entries.map((one) => ({
-            id: one.id,
-            name: one.name,
-            description: one.description,
-            state: 'Unavailable',
-            tools: 'none',
-            service: null,
-          }))
-          if (!catalogueEntries.releases.length) return false
+          entries = catalogueEntries.entries
+            .filter((entry) => catalogueEntries.releases.some((release) => release.id === entry.id))
+            .map((one) => ({
+              id: one.id,
+              name: one.name,
+              description: one.description,
+              state: 'Unavailable',
+              tools: 'none',
+              service: null,
+            }))
+          if (!catalogueEntries.releases.length) {
+            const existing = await lstat(join(options.root, 'state')).then(
+              (stat) => stat.isDirectory(),
+              (error: NodeJS.ErrnoException) => {
+                if (error.code === 'ENOENT') return false
+                throw error
+              },
+            )
+            if (!existing) return false
+            const saved = observeInstallations()
+            if (saved && saved.installed.length === 0 && saved.pending === null) return false
+          }
           const personKey = await pluginPersonCapability(options.root)
           storage.check()
           options.supervisor.start({

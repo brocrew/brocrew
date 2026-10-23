@@ -34,14 +34,12 @@ export async function bootstrapPluginLifecycle(options: {
     bytes: await sourceBytes(plan.catalogue, PLUGIN_LIMITS.catalogueBytes),
     signature: legacy ? await sourceBytes(legacy.signature, 64) : Buffer.alloc(0),
   }
-  if (
-    !createRepoAwarePluginVerifier({
-      pinnedPublicKey,
-      repoCatalogueSha256: repo?.catalogueSha256,
-      target,
-    }).verifyCatalogue(catalogue.bytes, catalogue.signature).entries.length
-  )
-    throw new Error('unavailable')
+  // Empty authenticated catalogues still leave installed packages under their saved pins.
+  createRepoAwarePluginVerifier({
+    pinnedPublicKey,
+    repoCatalogueSha256: repo?.catalogueSha256,
+    target,
+  }).verifyCatalogue(catalogue.bytes, catalogue.signature)
   let repoList: { bytes: Uint8Array; sha256: string; appVersion: string } | undefined
   if (repo?.repoList) {
     if (!repo.appVersion) throw new Error('unavailable')
