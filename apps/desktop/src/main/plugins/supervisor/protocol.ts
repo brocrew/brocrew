@@ -96,7 +96,15 @@ export type Command = z.infer<typeof Command>
 export const Request = z.strictObject({ epoch: Uuid, nonce: Hex, challenge: Hex, command: Command })
 export type Request = z.infer<typeof Request>
 export const Envelope = z.strictObject({ data: z.string().max(OWNER_LIMITS.packet), mac: Hex })
-export type Refusal = 'unavailable' | 'busy' | 'incompatible' | 'cleanup-pending' | 'unsupported'
+export type Refusal =
+  | 'unavailable'
+  | 'busy'
+  | 'incompatible'
+  | 'cleanup-pending'
+  | 'unsupported'
+  | 'policy-refused'
+  | 'source-mismatch'
+  | 'network'
 export class PluginSupervisorError extends Error {
   constructor(readonly code: Refusal) {
     super(

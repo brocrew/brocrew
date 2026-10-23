@@ -2,14 +2,14 @@ import { PLUGIN_FRAMEWORK_FEATURES } from '../hooks/definitions'
 import { PluginProposal } from './proposals'
 import { createServer, createConnection, type Socket } from 'node:net'
 import { chmod, lstat, unlink } from 'node:fs/promises'
-import { randomBytes } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { isSocketFile, localEndpoint } from '../local-endpoint'
 import { z } from 'zod'
 import { privateChild } from '../node-host-files'
 import { PluginSupervisorError, Hex } from '../supervisor/protocol'
 import { PersonChannel } from './transport'
-import type { PluginLifecycleController } from './controller'
+import type { PluginLifecycleController, PreparedPluginMutation } from './controller'
 import type { LifecycleWorkspace } from './types'
 import { ProjectionReceipt } from '../state/format'
 
@@ -23,10 +23,32 @@ const Request = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('list') }),
   z.strictObject({ kind: z.literal('list-v2') }),
   z.strictObject({ kind: z.literal('features') }),
+  z.strictObject({ kind: z.literal('mutation-policy'), catalogueDigest: Hex }),
+  z.strictObject({ kind: z.literal('mutation-status'), catalogueDigest: Hex }),
+  z.strictObject({
+    kind: z.literal('prepare-mutation'),
+    action: z.enum(['install', 'update']),
+    pluginId: id,
+    releaseDigest: Hex,
+  }),
+  z.strictObject({
+    kind: z.literal('update-prepared'),
+    pluginId: id,
+    operationId: z.uuid(),
+    releaseDigest: Hex,
+    preparation: z.uuid(),
+  }),
   z.strictObject({ kind: z.literal('configure-ledger'), format: z.literal(2) }),
   z.strictObject({ kind: z.literal('refresh'), catalogueDigest: Hex }),
   z.strictObject({ kind: z.literal('update'), pluginId: id, operationId: z.uuid() }),
   z.strictObject({ kind: z.literal('install'), pluginId: id, operationId: z.uuid() }),
+  z.strictObject({
+    kind: z.literal('install-prepared'),
+    preparation: z.uuid(),
+    pluginId: id,
+    operationId: z.uuid(),
+    releaseDigest: Hex,
+  }),
   z.strictObject({ kind: z.literal('uninstall'), pluginId: id, operationId: z.uuid() }),
   z.strictObject({ kind: z.literal('screen'), pluginId: id }),
   z.strictObject({ kind: z.literal('read'), pluginId: id, installId: z.uuid() }),
@@ -83,6 +105,8 @@ export async function servePersonPluginControl(options: {
       lost: boolean
       failed: boolean
       ledgerV2?: boolean
+      mutationSource?: string
+      preparations: Map<string, PreparedPluginMutation & { expiresAt: number }>
       legacyIds?: readonly string[]
       detaching?: Promise<void>
     }>()
@@ -118,154 +142,232 @@ export async function servePersonPluginControl(options: {
     const challenge = randomBytes(32).toString('hex')
     // Fresh challenge binds every MAC/counter stream; even a captured attach cannot be replayed.
     socket.write(challenge + '\n')
-    const channel = new PersonChannel(socket, options.key, challenge, 'server', async (input) => {
-      const request = Request.parse(input)
-      if (closing) throw new PluginSupervisorError('unavailable')
-      if (request.kind === 'attach') {
-        if (session.handle || session.attaching || session.lost || session.failed)
-          throw new PluginSupervisorError('unavailable')
-        // Snapshot actual source provenance, never today's IDs or caller-supplied metadata.
-        session.legacyIds =
-          request.catalogueDigest === undefined
-            ? undefined
-            : options.controller.legacyCatalogueIds(request.catalogueDigest)
-        clearTimeout(authentication)
-        session.attaching = true
-        // A closed channel was this consumer's only route to its plugins, so the consumer ended
-        // with it: every notice to it holds, and a lost session detaches without its answer.
-        const tell = async (command: z.infer<typeof ConsumerCommand>): Promise<unknown> => {
-          const id = command.kind === 'reconcile' ? command.change.pluginId : command.pluginId
-          if (session.legacyIds && !session.legacyIds.includes(id)) return true
-          if (!channel.open) return true
-          try {
-            return await channel.call(command)
-          } catch (error) {
+    let negotiatedRefusals = false
+    const channel = new PersonChannel(
+      socket,
+      options.key,
+      challenge,
+      'server',
+      async (input) => {
+        const request = Request.parse(input)
+        if (closing) throw new PluginSupervisorError('unavailable')
+        if (request.kind === 'attach') {
+          if (session.handle || session.attaching || session.lost || session.failed)
+            throw new PluginSupervisorError('unavailable')
+          // Snapshot actual source provenance, never today's IDs or caller-supplied metadata.
+          session.legacyIds =
+            request.catalogueDigest === undefined
+              ? undefined
+              : options.controller.legacyCatalogueIds(request.catalogueDigest)
+          clearTimeout(authentication)
+          session.attaching = true
+          // A closed channel was this consumer's only route to its plugins, so the consumer ended
+          // with it: every notice to it holds, and a lost session detaches without its answer.
+          const tell = async (command: z.infer<typeof ConsumerCommand>): Promise<unknown> => {
+            const id = command.kind === 'reconcile' ? command.change.pluginId : command.pluginId
+            if (session.legacyIds && !session.legacyIds.includes(id)) return true
             if (!channel.open) return true
+            try {
+              return await channel.call(command)
+            } catch (error) {
+              if (!channel.open) return true
+              throw error
+            }
+          }
+          try {
+            session.handle = await options.controller.attach({
+              workspaceId: request.workspaceId,
+              revoke: async (pluginId, installId) =>
+                (await tell({ kind: 'revoke', pluginId, installId })) === true,
+              applied: async (pluginId, receipt) => {
+                await tell({ kind: 'applied', pluginId, receipt })
+              },
+              reconcile: async (change) => {
+                await tell({
+                  kind: 'reconcile',
+                  change: {
+                    pluginId: change.pluginId,
+                    before: change.before,
+                    receipt: change.receipt,
+                  },
+                })
+              },
+            })
+          } catch (error) {
+            session.attaching = false
+            session.failed =
+              error instanceof PluginSupervisorError && error.code === 'cleanup-pending'
+            if (session.lost && !session.failed) sessions.delete(session)
             throw error
           }
-        }
-        try {
-          session.handle = await options.controller.attach({
-            workspaceId: request.workspaceId,
-            revoke: async (pluginId, installId) =>
-              (await tell({ kind: 'revoke', pluginId, installId })) === true,
-            applied: async (pluginId, receipt) => {
-              await tell({ kind: 'applied', pluginId, receipt })
-            },
-            reconcile: async (change) => {
-              await tell({
-                kind: 'reconcile',
-                change: {
-                  pluginId: change.pluginId,
-                  before: change.before,
-                  receipt: change.receipt,
-                },
-              })
-            },
-          })
-        } catch (error) {
           session.attaching = false
-          session.failed =
-            error instanceof PluginSupervisorError && error.code === 'cleanup-pending'
-          if (session.lost && !session.failed) sessions.delete(session)
-          throw error
-        }
-        session.attaching = false
-        clearTimeout(authentication)
-        if (session.lost || closing) {
-          await detach(session)
-          throw new PluginSupervisorError('unavailable')
-        }
-        return { personProtocol: 2 }
-      }
-      if (!session.handle || session.failed) throw new PluginSupervisorError('unavailable')
-      const handle = session.handle
-      if (
-        'pluginId' in request &&
-        session.legacyIds &&
-        !session.legacyIds.includes(request.pluginId)
-      )
-        throw new PluginSupervisorError('incompatible')
-      const visible = (id: string) => !session.legacyIds || session.legacyIds.includes(id)
-      switch (request.kind) {
-        case 'features':
-          return { features: [...PLUGIN_FRAMEWORK_FEATURES] }
-        case 'list':
-          if (!session.legacyIds) throw new PluginSupervisorError('incompatible')
-          return (await options.controller.status()).cards
-            .filter((card) => visible(card.id))
-            .map(({ id, name, state, installed, priorityClamped }) => ({
-              id,
-              name,
-              state,
-              installed,
-              ...(priorityClamped !== undefined ? { priorityClamped } : {}),
-            }))
-        case 'list-v2':
-          return (await options.controller.status()).cards.filter((card) => visible(card.id))
-        case 'refresh':
-          await options.controller.refreshCatalogue(request.catalogueDigest)
-          return true
-        case 'update':
-          await options.controller.update(handle, request.pluginId, request.operationId)
-          return true
-        case 'install':
-          await options.controller.install(handle, request.pluginId, request.operationId)
-          return true
-        case 'uninstall':
-          return (
-            (await options.controller.uninstall(handle, request.pluginId, request.operationId)) ??
-            true
-          )
-        case 'screen': {
-          const screen = options.controller.screen(handle, request.pluginId)
-          return screen.installation
-        }
-        case 'configure-ledger':
-          session.ledgerV2 = true
-          return { format: 2, maxRevision: Number.MAX_SAFE_INTEGER }
-        case 'apply':
-          if (!session.ledgerV2 && request.revision > 4095)
-            throw new PluginSupervisorError('incompatible')
-          await options.controller.applyProfile(handle, {
-            ...request,
-            ledgerFormat: session.ledgerV2 ? 2 : 1,
-          })
-          return true
-        case 'read': {
-          const screen = options.controller.screen(handle, request.pluginId)
-          if (screen.installation.installId !== request.installId)
+          clearTimeout(authentication)
+          if (session.lost || closing) {
+            await detach(session)
             throw new PluginSupervisorError('unavailable')
-          const revision = await options.controller.profileRevision(
-            handle,
-            request.pluginId,
-            request.installId,
-            session.ledgerV2 === true,
-          )
-          const snapshot = await options.read(request.pluginId, await screen.connection)
-          // Recheck after the asynchronous read so uninstall never publishes a stale snapshot.
-          if (!options.controller.admitted(handle, request.pluginId, request.installId))
-            throw new PluginSupervisorError('unavailable')
-          if (
-            revision !==
-              (await options.controller.profileRevision(
+          }
+          return { personProtocol: 2 }
+        }
+        if (!session.handle || session.failed) throw new PluginSupervisorError('unavailable')
+        const handle = session.handle
+        if (
+          'pluginId' in request &&
+          session.legacyIds &&
+          !session.legacyIds.includes(request.pluginId)
+        )
+          throw new PluginSupervisorError('incompatible')
+        const visible = (id: string) => !session.legacyIds || session.legacyIds.includes(id)
+        switch (request.kind) {
+          case 'mutation-status':
+            options.controller.requireMutationSource(request.catalogueDigest)
+            if (!session.mutationSource) throw new PluginSupervisorError('incompatible')
+            return { format: 1, catalogueDigest: request.catalogueDigest }
+          case 'mutation-policy':
+            negotiatedRefusals = true
+            session.preparations.clear()
+            session.mutationSource = undefined
+            options.controller.requireMutationSource(request.catalogueDigest)
+            session.mutationSource = request.catalogueDigest
+            return { format: 1, catalogueDigest: request.catalogueDigest }
+          case 'prepare-mutation': {
+            if (!session.mutationSource) throw new PluginSupervisorError('incompatible')
+            options.controller.requireMutationSource(session.mutationSource)
+            const value = await options.controller.prepareMutation(
+              handle,
+              request.action,
+              request.pluginId,
+              request.releaseDigest,
+              session.mutationSource,
+            )
+            // Bounded, one outstanding consent per plugin and session; replacement revokes the old consent.
+            for (const [key, old] of session.preparations)
+              if (old.pluginId === request.pluginId) session.preparations.delete(key)
+            if (session.preparations.size >= 200) throw new PluginSupervisorError('policy-refused')
+            const preparation = randomUUID()
+            session.preparations.set(preparation, { ...value, expiresAt: Date.now() + 5 * 60_000 })
+            return { preparation }
+          }
+          case 'features':
+            return {
+              features: [
+                ...PLUGIN_FRAMEWORK_FEATURES,
+                ...(options.controller.requiresPreparedMutations()
+                  ? ['authors-v1', 'prepared-mutations-v1']
+                  : []),
+              ],
+            }
+          case 'list':
+            if (!session.legacyIds) throw new PluginSupervisorError('incompatible')
+            return (await options.controller.status()).cards
+              .filter((card) => visible(card.id))
+              .map(({ id, name, state, installed, priorityClamped }) => ({
+                id,
+                name,
+                state,
+                installed,
+                ...(priorityClamped !== undefined ? { priorityClamped } : {}),
+              }))
+          case 'list-v2':
+            return (await options.controller.status()).cards.filter((card) => visible(card.id))
+          case 'refresh':
+            for (const one of sessions) one.preparations.clear()
+            await options.controller.refreshCatalogue(request.catalogueDigest)
+            return true
+          case 'update':
+          case 'install':
+            if (options.controller.requiresPreparedMutations())
+              throw new PluginSupervisorError('incompatible')
+            if (request.kind === 'install')
+              await options.controller.install(handle, request.pluginId, request.operationId)
+            else await options.controller.update(handle, request.pluginId, request.operationId)
+            return true
+          case 'install-prepared':
+          case 'update-prepared': {
+            if (!session.mutationSource) throw new PluginSupervisorError('incompatible')
+            const prepared = session.preparations.get(request.preparation)
+            session.preparations.delete(request.preparation) // Consume even a failed attempt; no replay.
+            options.controller.requireMutationSource(session.mutationSource)
+            const action = request.kind === 'install-prepared' ? 'install' : 'update'
+            if (
+              !prepared ||
+              prepared.expiresAt < Date.now() ||
+              prepared.action !== action ||
+              prepared.pluginId !== request.pluginId ||
+              prepared.releaseDigest !== request.releaseDigest
+            )
+              throw new PluginSupervisorError('policy-refused')
+            if (action === 'install')
+              await options.controller.installPrepared(
                 handle,
                 request.pluginId,
-                request.installId,
-                session.ledgerV2 === true,
-              )) ||
-            !snapshot ||
-            typeof snapshot !== 'object' ||
-            Array.isArray(snapshot)
-          )
-            throw new PluginSupervisorError('unavailable')
-          return { ...snapshot, configRevision: revision }
+                prepared,
+                request.operationId,
+              )
+            else
+              await options.controller.updatePrepared(
+                handle,
+                request.pluginId,
+                prepared,
+                request.operationId,
+              )
+            return true
+          }
+          case 'uninstall':
+            return (
+              (await options.controller.uninstall(handle, request.pluginId, request.operationId)) ??
+              true
+            )
+          case 'screen': {
+            const screen = options.controller.screen(handle, request.pluginId)
+            return screen.installation
+          }
+          case 'configure-ledger':
+            session.ledgerV2 = true
+            return { format: 2, maxRevision: Number.MAX_SAFE_INTEGER }
+          case 'apply':
+            if (!session.ledgerV2 && request.revision > 4095)
+              throw new PluginSupervisorError('incompatible')
+            await options.controller.applyProfile(handle, {
+              ...request,
+              ledgerFormat: session.ledgerV2 ? 2 : 1,
+            })
+            return true
+          case 'read': {
+            const screen = options.controller.screen(handle, request.pluginId)
+            if (screen.installation.installId !== request.installId)
+              throw new PluginSupervisorError('unavailable')
+            const revision = await options.controller.profileRevision(
+              handle,
+              request.pluginId,
+              request.installId,
+              session.ledgerV2 === true,
+            )
+            const snapshot = await options.read(request.pluginId, await screen.connection)
+            // Recheck after the asynchronous read so uninstall never publishes a stale snapshot.
+            if (!options.controller.admitted(handle, request.pluginId, request.installId))
+              throw new PluginSupervisorError('unavailable')
+            if (
+              revision !==
+                (await options.controller.profileRevision(
+                  handle,
+                  request.pluginId,
+                  request.installId,
+                  session.ledgerV2 === true,
+                )) ||
+              !snapshot ||
+              typeof snapshot !== 'object' ||
+              Array.isArray(snapshot)
+            )
+              throw new PluginSupervisorError('unavailable')
+            return { ...snapshot, configRevision: revision }
+          }
+          case 'detach':
+            await detach(session)
+            return true
         }
-        case 'detach':
-          await detach(session)
-          return true
-      }
-    })
+      },
+      () => negotiatedRefusals,
+    )
     const authentication = setTimeout(() => channel.close(), 2000)
     type PersonSession = {
       channel: PersonChannel
@@ -274,11 +376,19 @@ export async function servePersonPluginControl(options: {
       lost: boolean
       failed: boolean
       ledgerV2?: boolean
+      mutationSource?: string
+      preparations: Map<string, PreparedPluginMutation & { expiresAt: number }>
       legacyIds?: readonly string[]
       detaching?: Promise<void>
     }
 
-    const session: PersonSession = { channel, attaching: false, lost: false, failed: false }
+    const session: PersonSession = {
+      channel,
+      preparations: new Map(),
+      attaching: false,
+      lost: false,
+      failed: false,
+    }
     sessions.add(session)
     channels.add(channel)
     channel.onClose(() => {

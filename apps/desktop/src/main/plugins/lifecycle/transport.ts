@@ -48,6 +48,7 @@ export class PersonChannel {
     private readonly challenge: string,
     private readonly side: 'server' | 'client',
     private readonly handle: (input: unknown) => Promise<unknown>,
+    private readonly reportRefusals: () => boolean = () => false,
   ) {
     socket.setEncoding('utf8')
     socket.on('data', (bytes) => this.read(String(bytes)))
@@ -94,7 +95,21 @@ export class PersonChannel {
           this.pending.delete(packet.id)
           clearTimeout(waiter.timer)
           if (packet.ok) waiter.resolve(packet.value)
-          else waiter.reject(new PluginSupervisorError('unavailable'))
+          else {
+            const cause = z
+              .strictObject({
+                pluginRefusal: z.enum([
+                  'policy-refused',
+                  'source-mismatch',
+                  'incompatible',
+                  'network',
+                ]),
+              })
+              .safeParse(packet.value)
+            waiter.reject(
+              new PluginSupervisorError(cause.success ? cause.data.pluginRefusal : 'unavailable'),
+            )
+          }
         } else {
           if (++this.incoming > 8) throw new Error('unavailable')
           const work = Promise.resolve()
@@ -102,7 +117,20 @@ export class PersonChannel {
             .then(
               (value) =>
                 this.send({ kind: 'reply', id: packet.id, ok: true, value: value ?? null }),
-              () => this.send({ kind: 'reply', id: packet.id, ok: false, value: null }),
+              (error) =>
+                this.send({
+                  kind: 'reply',
+                  id: packet.id,
+                  ok: false,
+                  value:
+                    this.reportRefusals() &&
+                    error instanceof PluginSupervisorError &&
+                    ['policy-refused', 'source-mismatch', 'incompatible', 'network'].includes(
+                      error.code,
+                    )
+                      ? { pluginRefusal: error.code }
+                      : null,
+                }),
             )
             .catch(() => this.close())
             .finally(() => {
