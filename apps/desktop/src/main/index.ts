@@ -2341,10 +2341,12 @@ function start(ownership: HostGateVerdict): void {
       installThemeProtocol(session.defaultSession.protocol, themes)
       theDataOpened = true
       // The workspace is open; plugin startup must not block the rest of the app.
+      // Only matching explicit workspace selection records change the ordinary shared setup.
       // Hidden starts require an explicit scratch root and never fall back to the live one.
       try {
         const root = pluginSupervisorRoot({
           appData: app.getPath('appData'),
+          workspaceRoot: app.getPath('userData'),
           hidden: presentation.hidden,
           scratchRoot: app.commandLine.getSwitchValue('plugin-global-root'),
         })
