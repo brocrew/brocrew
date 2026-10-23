@@ -45,7 +45,7 @@ import {
   type NotStartedBecause,
 } from '@brobot2/runtime'
 import type { Provider, SessionStatus, TurnEnding } from '@brobot2/shared'
-import { providerSchema, turnEndingSchema } from '@brobot2/shared'
+import { DEFAULT_IDENTITY_PROVIDER, providerSchema, turnEndingSchema } from '@brobot2/shared'
 // The wire shapes live in the one module main, preload and the renderer all import — the same rule
 // `session-library.ts` states. `LedgerStatus` crosses the boundary because the library and the
 // reading pane are the two surfaces that have to be able to say "this is behind".
@@ -6453,7 +6453,7 @@ export function createSessionStore(
     // is what keeps it so — and it is a display fallback rather than a claim: {@link MemoryAmendment.entry}
     // is an absolute path THROUGH the provider home, so which store this row is about is legible
     // beside it whatever this word folds to.
-    provider: parseProvider(row.provider) ?? 'claude',
+    provider: parseProvider(row.provider) ?? DEFAULT_IDENTITY_PROVIDER,
     entry: row.entry,
     act: foldAmendmentAct(row.act),
     // ⚑ **`actorOf`, which is the JSON-aware fold `618` added** — the column is `mode: 'json'` in
