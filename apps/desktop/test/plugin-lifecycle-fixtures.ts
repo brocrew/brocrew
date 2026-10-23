@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, realpath, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -10,6 +10,8 @@ import type {
   ProjectionReceipt,
 } from '../src/main/plugins/lifecycle/types'
 import { packageFixture, manifestFor, fictionalPublicKey } from './plugin-package-fixtures'
+import { keepPluginRootPrivate, realPath } from '../src/main/plugins/private-files'
+import { keepToThisUser } from '../src/main/recovery/windows-privacy'
 const homes: string[] = [],
   stores: GlobalPluginState[] = []
 
@@ -61,12 +63,14 @@ export async function fixture(
 ) {
   // POSIX needs short Unix socket paths; Windows uses named pipes and its own temp directory.
   const temp = process.platform === 'win32' ? tmpdir() : '/tmp'
-  const parent = await realpath(await mkdtemp(join(temp, 'fictional-lifecycle-')))
+  const parent = realPath(await mkdtemp(join(temp, 'fictional-lifecycle-')))
   homes.push(parent)
+  await keepToThisUser(parent)
   const root = join(parent, 'global'),
     workspace = join(parent, 'workspace')
   await mkdir(root, { mode: 0o700 })
   await mkdir(workspace, { mode: 0o700 })
+  await keepPluginRootPrivate(root)
   const state = GlobalPluginState.create({ root: join(root, 'state'), workspaceRoots: [workspace] })
   stores.push(state)
   const manifest = manifestFor()
