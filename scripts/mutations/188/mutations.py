@@ -177,7 +177,7 @@ MUTATIONS = [
     (
         "M16 · ⚠️ 182 L2 · `realPath` climbs ONE level again — the contract its own comment states "
         "is false, and no current call site is deep enough to notice",
-        INSTR,
+        "apps/desktop/src/main/providers/instruction-io.ts",
         "      return join(realpathSync.native(at), ...tail)",
         "      return tail.length > 1 ? absolute : join(realpathSync(at), ...tail)",
     ),

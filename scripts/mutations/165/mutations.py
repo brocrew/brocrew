@@ -229,14 +229,8 @@ MUTATIONS = [
     (
         "M13 · Codex is read for too, a provider with no agent-written memory at this pin",
         [
-            (
-                INSTRUCTIONS,
-                "    const codex = readCodexAgentMemory(inputs.providerHome)\n",
-                "    const codex = {\n"
-                "      ...readCodexAgentMemory(inputs.providerHome),\n"
-                "      memory: readAgentMemory(inputs.providerHome).memory,\n"
-                "    }\n",
-            )
+            ("apps/desktop/src/main/providers/codex/instructions.ts", "import { CODEX_MEMORY_SUMMARY } from '@brobot2/runtime'", "import { CODEX_MEMORY_SUMMARY, claudeAutoMemoryIndex } from '@brobot2/runtime'\nimport { readMemoryStore } from '../instruction-io'"),
+            ("apps/desktop/src/main/providers/codex/instructions.ts", "  const codex = readCodexAgentMemory(inputs.providerHome)\n", "  const codex = {\n    ...readCodexAgentMemory(inputs.providerHome),\n    memory: readMemoryStore([{ path: claudeAutoMemoryIndex(inputs.providerHome), derived: claudeAutoMemoryIndex(inputs.providerHome), kind: 'agent-memory', reach: 'prompt' }]).memory,\n  }\n"),
         ],
     ),
     # ---- §2 · the surface -------------------------------------------------------------------------

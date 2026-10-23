@@ -76,9 +76,9 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M3 · a file whose cost is exactly what is left of the budget is refused, not sent · "
         f"killed by `{BUDGET}`",
-        [(INSTR,
-          "    if (cost > budget) continue\n",
-          "    if (cost >= budget) continue\n")],
+        [
+            ("apps/desktop/src/main/providers/instruction-composition.ts", "    if (cost > budget) continue\n", "    if (cost >= budget) continue\n"),
+        ],
     ),
     (
         "M4 · the host keeps readings for any number of windows, not at most sixteen · killed by "

@@ -109,13 +109,7 @@ MUTATIONS = [
         "already loaded is refused here — no visibility and no protection, which is the state the "
         "ruling exists to end",
         [
-            (
-                INSTRUCTIONS,
-                # ⚑ Corrected in place at `733` (rule 27): the reader has no `follow` option since `733` — every read
-                # follows — so this one line is the index's AND the walk's. The rule it measures holds.
-                "    seen = statSync(path)\n",
-                "    seen = lstatSync(path)\n",
-            )
+            ("apps/desktop/src/main/providers/instruction-io.ts", "    seen = statSync(path)\n", "    seen = lstatSync(path)\n"),
         ],
     ),
     (
@@ -123,13 +117,7 @@ MUTATIONS = [
         "so the kernel refuses at `open` instead of the `lstat` refusing at step 1 (the pair 158 "
         "built deliberately, so both halves are measured)",
         [
-            (
-                INSTRUCTIONS,
-                # ⚑ Corrected in place at `733` (rule 27): `O_NOFOLLOW` went with the `follow` option (`733`); the
-                # mutation puts it back at `open`, the half of the pair this row always measured.
-                "    fd = openSync(path, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0))\n",
-                "    fd = openSync(path, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0) | constants.O_NOFOLLOW)\n",
-            )
+            ("apps/desktop/src/main/providers/instruction-io.ts", "    fd = openSync(path, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0))\n", "    fd = openSync(path, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0) | constants.O_NOFOLLOW)\n"),
         ],
     ),
     # ⚑ **BOTH ANCHORS CORRECTED IN PLACE BY 314** (142), and M7's SUBJECT moved with it. 170 wrote
@@ -147,11 +135,7 @@ MUTATIONS = [
         "M6 · ⛔ THE SILENCE · every read failure collapses to `null` again, so a `MEMORY.md` the "
         "provider loaded and BroBot could not read looks exactly like a session with no memory",
         [
-            (
-                INSTRUCTIONS,
-                "      declare({ path: candidate.path, reason: read.reason })\n      continue\n",
-                "      continue\n",
-            )
+            ("apps/desktop/src/main/providers/instruction-io.ts", "      declare({ path: candidate.path, reason: read.reason })\n      continue\n", "      continue\n"),
         ],
     ),
     # ⛔ **M7's premise was OVERTURNED by 314 §3, and the row is corrected rather than retired.**
@@ -174,12 +158,7 @@ MUTATIONS = [
         "(⚑ premise corrected by 314 §3: a broken LINK is now disclosed on purpose; an absence is "
         "not a link, and this is the half that stayed)",
         [
-            (
-                INSTRUCTIONS,
-                "        const broken = brokenMemoryLink(candidate.path)\n"
-                "        if (broken !== null) declare(broken)\n        continue\n",
-                "        declare({ path: candidate.path, reason: read.reason })\n        continue\n",
-            )
+            ("apps/desktop/src/main/providers/instruction-io.ts", "        const broken = brokenMemoryLink(candidate.path)\n        if (broken !== null) declare(broken)\n        continue\n", "        declare({ path: candidate.path, reason: read.reason })\n        continue\n"),
         ],
     ),
     (
@@ -187,23 +166,14 @@ MUTATIONS = [
         "session reports a link that is not there — the `/var` → `/private/var` trap, in the "
         "false-positive direction",
         [
-            (
-                INSTRUCTIONS,
-                "      derived: claudeAutoMemoryIndex(realPath(providerHome)),\n",
-                "      derived: claudeAutoMemoryIndex(providerHome),\n",
-            )
+            ("apps/desktop/src/main/providers/claude/memory.ts", "      derived: claudeAutoMemoryIndex(realPath(providerHome)),\n", "      derived: claudeAutoMemoryIndex(providerHome),\n"),
         ],
     ),
     (
         "M9 · the READER stops reporting where it really read from, so nothing downstream can "
         "disclose the redirection — the text is shown under a path it did not come from",
         [
-            (
-                INSTRUCTIONS,
-                # ⚑ Corrected in place at `733` (rule 27): `real` is returned on every read since `733`.
-                "    return { ok: true, text, bytes: total, truncated, real: realPath(path) }\n",
-                "    return { ok: true, text, bytes: total, truncated }\n",
-            )
+            ("apps/desktop/src/main/providers/instruction-io.ts", "    return { ok: true, text, bytes: total, truncated, real: realPath(path) }\n", "    return { ok: true, text, bytes: total, truncated }\n"),
         ],
     ),
     (
@@ -234,22 +204,14 @@ MUTATIONS = [
         "`/tmp/home-alias -> $HOME` walks to the alias and BroBot appends the personal "
         "`~/.claude/CLAUDE.md` under a path that names nothing personal",
         [
-            (
-                INSTRUCTIONS,
-                "    if (isHomeOrAbove(dir, homeResolved) || isHomeOrAbove(realPath(dir), homeReal)) break\n",
-                "    if (isHomeOrAbove(dir, homeResolved)) break\n",
-            )
+            ("apps/desktop/src/main/providers/claude/instructions.ts", "    if (isHomeOrAbove(dir, homeResolved) || isHomeOrAbove(realPath(dir), homeReal)) break\n", "    if (isHomeOrAbove(dir, homeResolved)) break\n"),
         ],
     ),
     (
         "M12 · §4 · the workspace label goes back to a lexical compare, so BroBot's OWN generated "
         "file reached through an aliased cwd is presented as project memory the user wrote",
         [
-            (
-                INSTRUCTIONS,
-                "  return workspaceFile !== undefined && realPath(path) === realPath(workspaceFile)\n",
-                "  return workspaceFile !== undefined && resolve(path) === resolve(workspaceFile)\n",
-            )
+            ("apps/desktop/src/main/providers/claude/instructions.ts", "  return workspaceFile !== undefined && realPath(path) === realPath(workspaceFile)\n", "  return workspaceFile !== undefined && resolve(path) === resolve(workspaceFile)\n"),
         ],
     ),
 ]

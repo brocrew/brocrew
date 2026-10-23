@@ -154,27 +154,9 @@ MUTATIONS = [
         "HO-062 \u00a72's withdrawn framing, on the app's own instruction layer, with BOTH citations that "
         "would excuse it gone along with the repair",
         [
-            (
-                INSTRUCTIONS,
-                " * **The Codex branch of this reader still injects nothing, and that is a DECISION rather than an\n"
-                " * omission**",
-                " * **The Codex branch of this reader still injects nothing, and that is a safety property rather\n"
-                " * than an omission**",
-            ),
-            (
-                INSTRUCTIONS,
-                " *    rail** \u2014 it is this branch, in code \u2014 and it is what HO-062 \u00a72 means by *safety lives in the\n"
-                " *    rails*.\n",
-                " *    rail** \u2014 it is this branch, in code.\n",
-            ),
-            (
-                INSTRUCTIONS,
-                " * \u2691 **`HO-023` \u00a77 called an arrangement like this one *\"a safety property, not a convenience\"* and\n"
-                " * HO-062 \u00a72 withdrew that framing.** The word is spent here on the half that is enforced by a\n"
-                " * branch, and not on the half that is a judgement about cost.\n"
-                " *\n",
-                "",
-            ),
+            ("apps/desktop/src/main/providers/repository-instructions.ts", " * **The Codex branch of this reader still injects nothing, and that is a DECISION rather than an\n * omission**", " * **The Codex branch of this reader still injects nothing, and that is a safety property rather\n * than an omission**"),
+            ("apps/desktop/src/main/providers/repository-instructions.ts", " *    rail** — it is this branch, in code — and it is what HO-062 §2 means by *safety lives in the\n *    rails*.\n", " *    rail** — it is this branch, in code.\n"),
+            ("apps/desktop/src/main/providers/repository-instructions.ts", " * ⚑ **`HO-023` §7 called an arrangement like this one *\"a safety property, not a convenience\"* and\n * HO-062 §2 withdrew that framing.** The word is spent here on the half that is enforced by a\n * branch, and not on the half that is a judgement about cost.\n *\n", ""),
         ],
     ),
     (

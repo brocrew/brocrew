@@ -180,9 +180,9 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M16 · 🔴 a Claude home redirected by `CLAUDE_CONFIG_DIR` is not among the places, so a "
         f"grant on the sign-in folder is said as nothing · killed by `{ENVIRONMENT}`",
-        [(PLACES,
-          "    claudeConfigHomes: [...new Set([join(home, '.claude'), userProviderHomePath('claude', env)])],\n",
-          "    claudeConfigHomes: [...new Set([join(home, '.claude'), userProviderHomePath('claude')])],\n")],
+        [
+            ("apps/desktop/src/main/providers/claude/discovery.ts", "    ...new Set([join(home, '.claude'), userHome(env, homedir)]),", "    ...new Set([join(home, '.claude'), userHome(process.env, homedir)]),"),
+        ],
     ),
     (
         "M17 · a new effort asked of Claude is shown as the old turn's reported level at the next "

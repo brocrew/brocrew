@@ -108,17 +108,7 @@ MUTATIONS = [
         "app — friction log F4, shipped "
         "· EXPECTED (NOT MEASURED): desktop red (instructions), dom GREEN",
         [
-            (
-                INSTRUCTIONS,
-                # ⚠️ **Narrowed in place, not retired** (332, per 142). The anchor reached through
-                # `return {` and the two lines under it, and 332 wrapped that object in a
-                # `{ memoryLoaded, instructions: { … } }` and re-indented it — so the row went red
-                # about a shape change rather than about its own defect. ⛔ **The mutation is
-                # unchanged**: `agentMemory` is emptied, which is the Codex branch reporting no
-                # agent memory again, which is F4 shipped. The line below is unique in the file.
-                "        agentMemory: codex.memory,",
-                "        agentMemory: [],",
-            )
+            ("apps/desktop/src/main/providers/codex/instructions.ts", "      agentMemory: codex.memory,", "      agentMemory: [],"),
         ],
     ),
     (
@@ -126,11 +116,7 @@ MUTATIONS = [
         "asked the agent to write is the one the panel does not show "
         "· EXPECTED (NOT MEASURED): desktop red (instructions), dom GREEN",
         [
-            (
-                INSTRUCTIONS,
-                "    ...notes.names.slice(0, AGENT_MEMORY_NOTES_SHOWN).map((name) => ({\n",
-                "    ...notes.names.slice(0, 0).map((name) => ({\n",
-            )
+            ("apps/desktop/src/main/providers/codex/memory.ts", "    ...notes.names.slice(0, AGENT_MEMORY_NOTES_SHOWN).map((name) => ({\n", "    ...notes.names.slice(0, 0).map((name) => ({\n"),
         ],
     ),
     (
@@ -162,30 +148,9 @@ MUTATIONS = [
         "M5 · 🔴 009 · every memory row claims to be IN THE PROMPT, so a note the model has never "
         "opened is presented as something it knows — 305's defect with a friendlier face "
         "· EXPECTED (NOT MEASURED): desktop red (instructions), dom red",
-        # ⚠️ **Anchor corrected in place at 322** (142), not retired: `322` gave Claude's store the
-        # same shape, so this one line now exists twice and the row is spelled as BOTH of them —
-        # which is what keeps the label's *"every memory row"* literally true rather than narrowing
-        # the row to the store it was written against.
         [
-            (
-                INSTRUCTIONS,
-                "      kind: 'agent-memory-note' as const,\n"
-                "      // ⚠️ Availability, never comprehension: the note is in the store and the agent can search it.\n"
-                "      // Saying the model \"has\" it would be 305's defect with a friendlier face.\n"
-                "      reach: 'on-request' as const,\n",
-                "      kind: 'agent-memory-note' as const,\n"
-                "      reach: 'prompt' as const,\n",
-            ),
-            (
-                INSTRUCTIONS,
-                "      kind: 'agent-memory-topic' as const,\n"
-                "      // ⚠️ Availability, never comprehension — the same word Codex's notes get, for the same\n"
-                "      // reason: the file is in the store and the agent can open it. Saying the model \"has\" it\n"
-                "      // would be 305's defect with a friendlier face.\n"
-                "      reach: 'on-request' as const,\n",
-                "      kind: 'agent-memory-topic' as const,\n"
-                "      reach: 'prompt' as const,\n",
-            ),
+            ("apps/desktop/src/main/providers/codex/memory.ts", "      kind: 'agent-memory-note' as const,\n      // ⚠️ Availability, never comprehension: the note is in the store and the agent can search it.\n      // Saying the model \"has\" it would be 305's defect with a friendlier face.\n      reach: 'on-request' as const,\n", "      kind: 'agent-memory-note' as const,\n      reach: 'prompt' as const,\n"),
+            ("apps/desktop/src/main/providers/claude/memory.ts", "      kind: 'agent-memory-topic' as const,\n      // ⚠️ Availability, never comprehension — the same word Codex's notes get, for the same\n      // reason: the file is in the store and the agent can open it. Saying the model \"has\" it\n      // would be 305's defect with a friendlier face.\n      reach: 'on-request' as const,\n", "      kind: 'agent-memory-topic' as const,\n      reach: 'prompt' as const,\n"),
         ],
     ),
     (
@@ -205,12 +170,7 @@ MUTATIONS = [
         "since 165 is the one the panel is vague about "
         "· EXPECTED (NOT MEASURED): desktop red (instructions), dom GREEN",
         [
-            (
-                INSTRUCTIONS,
-                # ⚑ **source-restoration · re-anchored in place, not retired** — NOT VERIFIED; source targeting only. 8a3eb8d25 reworded the comment without changing memory-index injection; still misclassify the index as on-request.
-                "      // anything: a real child answered from it with no tool call.\n      reach: 'prompt',\n",
-                "      // anything: a real child answered from it with no tool call.\n      reach: 'on-request',\n",
-            )
+            ("apps/desktop/src/main/providers/claude/memory.ts", "      // anything: a real child answered from it with no tool call.\n      reach: 'prompt',\n", "      // anything: a real child answered from it with no tool call.\n      reach: 'on-request',\n"),
         ],
     ),
     (
@@ -218,11 +178,7 @@ MUTATIONS = [
         "nowhere a user can see it "
         "· EXPECTED (NOT MEASURED): desktop red (instructions), dom red",
         [
-            (
-                INSTRUCTIONS,
-                "      truncated: read.truncated,\n      reach: candidate.reach,\n",
-                "      truncated: read.truncated,\n",
-            )
+            ("apps/desktop/src/main/providers/instruction-io.ts", "      truncated: read.truncated,\n      reach: candidate.reach,\n", "      truncated: read.truncated,\n"),
         ],
     ),
     (
@@ -297,30 +253,15 @@ MUTATIONS = [
         "files it does not have — the sentence stops being a measurement "
         "· EXPECTED (NOT MEASURED): desktop red (instructions), dom GREEN",
         [
-            (
-                INSTRUCTIONS,
-                "    pipeline: CODEX_MEMORY_PIPELINE_FILES.filter((name) => existsSync(join(dir, name))),\n",
-                "    pipeline: [...CODEX_MEMORY_PIPELINE_FILES],\n",
-            )
+            ("apps/desktop/src/main/providers/codex/memory.ts", "    pipeline: CODEX_MEMORY_PIPELINE_FILES.filter((name) => existsSync(join(dir, name))),\n", "    pipeline: [...CODEX_MEMORY_PIPELINE_FILES],\n"),
         ],
     ),
     (
         "M15 · the whole store sentence goes, so the panel shows three files out of five and says "
         "nothing about where they are or what is missing "
         "· EXPECTED (NOT MEASURED): desktop red (instructions), dom GREEN",
-                # ⚠️ **Anchor corrected by `377`**, which gave this note a second argument so it can
-                # name the leaf the app published for Codex to read. ⛔ The row is unchanged: it
-                # still replaces the whole store sentence with the bare provider one.
-        # ⚑ Landing D-024, D-020 and D-021 · re-anchored in place, not retired — The rule survives:
-        # a Codex launch's note must say where the memory store is and what is missing (the store
-        # sentence built by codexMemoryNote). D-024 only gave codexMemoryNote a third argument
-        # (`inputs.thisConversation !== undefined`) so the anchor line changed; the label's defect
-        # is unchanged. The corrected plant replaces the whole call with the two bare
-        # provider-reads-its-own leads, still choosing NOTE_SENDS_ONLY_THIS_CONVERSATION when a
-        # conversation block exists so D-024's lead is untouched and only the store sentence goes.
-        # Killed by `instructions.test.ts`.
         [
-            (INSTRUCTIONS, '        note: codexMemoryNote(codex, inputs.bundle, inputs.thisConversation !== undefined),\n', '        note: inputs.thisConversation !== undefined ? NOTE_SENDS_ONLY_THIS_CONVERSATION : NOTE_PROVIDER_READS_ITS_OWN,\n'),
+            ("apps/desktop/src/main/providers/codex/instructions.ts", "      note: codexMemoryNote(codex, inputs.bundle, inputs.thisConversation !== undefined),\n", "      note: inputs.thisConversation !== undefined ? NOTE_SENDS_THIS_CONVERSATIONS_TEXT : NOTE_PROVIDER_READS_ITS_OWN,\n"),
         ],
     ),
     # ── §5 · the cost ─────────────────────────────────────────────────────────
@@ -329,11 +270,7 @@ MUTATIONS = [
         "rows on a drawer whose whole design is \"the paths are the disclosure\" "
         "· EXPECTED (NOT MEASURED): desktop red (instructions), dom GREEN",
         [
-            (
-                INSTRUCTIONS,
-                "    ...notes.names.slice(0, AGENT_MEMORY_NOTES_SHOWN).map((name) => ({\n",
-                "    ...notes.names.map((name) => ({\n",
-            )
+            ("apps/desktop/src/main/providers/codex/memory.ts", "    ...notes.names.slice(0, AGENT_MEMORY_NOTES_SHOWN).map((name) => ({\n", "    ...notes.names.map((name) => ({\n"),
         ],
     ),
     (
@@ -341,20 +278,15 @@ MUTATIONS = [
         "over IPC and holds them for the life of the session "
         "· EXPECTED (NOT MEASURED): desktop red (instructions), dom GREEN",
         [
-            (INSTRUCTIONS, "    if (read.bytes > budget) continue\n", "")],
+            ("apps/desktop/src/main/providers/instruction-io.ts", "    if (read.bytes > budget) continue\n", ""),
+        ],
     ),
     (
         "M18 · what was left out stops being COUNTED, so a store bigger than the bound looks "
         "exactly like one that fits — 187 §2's silence, in the field that replaced its rows "
         "· EXPECTED (NOT MEASURED): desktop red (instructions), dom GREEN",
         [
-            (
-                INSTRUCTIONS,
-                "  if (read.notesFound > read.notesListed) {\n"
-                "    parts.push(`${read.notesListed} of ${read.notesFound} notes are listed here, newest first.`)\n"
-                "  }\n",
-                "",
-            )
+            ("apps/desktop/src/main/providers/codex/instructions.ts", "  if (read.notesFound > read.notesListed) {\n    parts.push(`${read.notesListed} of ${read.notesFound} notes are listed here, newest first.`)\n  }\n", ""),
         ],
     ),
     (
@@ -363,15 +295,7 @@ MUTATIONS = [
         "\"there is no file there\" become the same answer again "
         "· EXPECTED (NOT MEASURED): desktop red (instructions), dom GREEN",
         [
-            (
-                INSTRUCTIONS,
-                # ⚑ Corrected in place at `733` (rule 27): the reader lost its `follow` argument (every read follows).
-                # ⚠️ **Measured at `733`, and it SURVIVES** — against `instructions.test.ts` here and at
-                # `main` @ `980ec721` with its old anchor alike. Table 317 is `unrun`; this is a gap
-                # 733 found, not one it made.
-                "    const read = readInstructionFile(candidate.path, INSTRUCTION_FILE_CAP)\n",
-                "    const read = readInstructionFile(candidate.path, Math.min(INSTRUCTION_FILE_CAP, budget))\n",
-            )
+            ("apps/desktop/src/main/providers/instruction-io.ts", "    const read = readInstructionFile(candidate.path, INSTRUCTION_FILE_CAP)\n", "    const read = readInstructionFile(candidate.path, Math.min(INSTRUCTION_FILE_CAP, budget))\n"),
         ],
     ),
     # ── §6 · links, enumeration and the shape ─────────────────────────────────
@@ -380,19 +304,8 @@ MUTATIONS = [
         "enumerating and reading a directory no provider ever looked at, and the store's whole "
         "shape comes from the link "
         "· EXPECTED (NOT MEASURED): desktop red (instructions), dom GREEN",
-        # ⚠️ `lstat` → `stat` rather than deleting the refusal: deleting it falls through to the
-        # regular-file test, which refuses a symlink for a DIFFERENT reason and would have made this
-        # row red about something it is not about. This one really follows the link.
-        # ⚠️ **Anchor corrected in place at 322** (142): the enumeration moved into the shared
-        # `memoryDirNames`, so the parameter is `dir`. ⛔ The DEFECT is unchanged — following the
-        # link here is exactly what this row is about, and it is still Codex's notes directory that
-        # ends up enumerated through one.
         [
-            (
-                INSTRUCTIONS,
-                "    seen = lstatSync(dir)\n",
-                "    seen = statSync(dir)\n",
-            )
+            ("apps/desktop/src/main/providers/instruction-io.ts", "    seen = lstatSync(dir)\n", "    seen = statSync(dir)\n"),
         ],
     ),
     # Every reader follows links; there is no follow argument for this row to remove. The current
@@ -415,26 +328,15 @@ MUTATIONS = [
         "file the reader looked for underneath it — the same finding, three times "
         "· EXPECTED (NOT MEASURED): desktop red (instructions), dom GREEN",
         [
-            (
-                INSTRUCTIONS,
-                "    if (reported.has(row.path)) return\n    reported.add(row.path)\n",
-                "",
-            )
+            ("apps/desktop/src/main/providers/instruction-io.ts", "    if (reported.has(row.path)) return\n    reported.add(row.path)\n", ""),
         ],
     ),
     (
         "M23 · the notes sort OLDEST first, so the twenty rows shown are the twenty a person has "
         "forgotten and the note they just asked for is the one dropped "
         "· EXPECTED (NOT MEASURED): desktop red (instructions), dom GREEN",
-        # ⚠️ **Anchor corrected in place at 322** (142): `322` extracted the guards into
-        # `memoryDirNames` and left the ORDER with each caller, so 317's `.reverse()` now lives in
-        # `adHocNotes` itself. ⛔ Same edit, same defect, one function up.
         [
-            (
-                INSTRUCTIONS,
-                "  return { names: [...listed.names].reverse(), refused: listed.refused }",
-                "  return { names: listed.names, refused: listed.refused }",
-            )
+            ("apps/desktop/src/main/providers/instruction-io.ts", "  return { names: [...listed.names].reverse(), refused: listed.refused }", "  return { names: listed.names, refused: listed.refused }"),
         ],
     ),
     # ── §7 · found reviewing this diff ────────────────────────────────────────
@@ -443,16 +345,8 @@ MUTATIONS = [
         "as `symlink`, so \"not read: symlink\" sends somebody looking for a decision the app never "
         "made — 314 §3's rule, missed on the one path 317 added "
         "· EXPECTED (NOT MEASURED): desktop red (instructions), dom GREEN",
-        # ⚠️ **Anchor corrected in place at 322** (142): the parameter is `dir` since the guards
-        # became shared. ⛔ The row still deletes the branch, and a dangling notes directory is
-        # still reported as a decision the app never made.
         [
-            (
-                INSTRUCTIONS,
-                "    const broken = brokenMemoryLink(dir)\n"
-                "    if (broken !== null) return { names: [], refused: broken }\n",
-                "",
-            )
+            ("apps/desktop/src/main/providers/instruction-io.ts", "    const broken = brokenMemoryLink(dir)\n    if (broken !== null) return { names: [], refused: broken }\n", ""),
         ],
     ),
     (
@@ -461,17 +355,8 @@ MUTATIONS = [
         "only written notes to look for a file that does not exist — 317's own defect class, inside "
         "317's own addition "
         "· EXPECTED (NOT MEASURED): desktop red (instructions), dom GREEN",
-        # ⚠️ **Anchor corrected in place at 322** (142): Claude's reader now computes the same
-        # field, so the line alone matched twice. Spelled with the `pipeline` line beneath it, which
-        # only this store has — ⛔ the row is about CODEX's sentence and must stay pointed at it.
         [
-            (
-                INSTRUCTIONS,
-                "    injects: read.memory.some((item) => item.reach === 'prompt'),\n"
-                "    pipeline: CODEX_MEMORY_PIPELINE_FILES.filter((name) => existsSync(join(dir, name))),\n",
-                "    injects: true,\n"
-                "    pipeline: CODEX_MEMORY_PIPELINE_FILES.filter((name) => existsSync(join(dir, name))),\n",
-            )
+            ("apps/desktop/src/main/providers/codex/memory.ts", "    injects: read.memory.some((item) => item.reach === 'prompt'),\n    pipeline: CODEX_MEMORY_PIPELINE_FILES.filter((name) => existsSync(join(dir, name))),\n", "    injects: true,\n    pipeline: CODEX_MEMORY_PIPELINE_FILES.filter((name) => existsSync(join(dir, name))),\n"),
         ],
     ),
 ]
