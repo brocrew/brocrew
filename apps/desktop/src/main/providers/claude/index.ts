@@ -25,6 +25,7 @@ import {
 } from '@brobot2/runtime'
 import { ApiKeyUnreadableError } from '../../runtime/api-keys'
 import { prepareStateHome } from '../home'
+import type { LoginRenewalOperations, LoginRenewalOutcome } from '../auth-types'
 import type {
   HomeAuthOperations,
   ProviderHomePaths,
@@ -49,6 +50,7 @@ export interface ClaudeAuthSeams {
   readonly key?: () => string | null | Promise<string | null>
   readonly keyStatus?: () => { set: boolean; unreadableReason?: string }
   readonly programFound?: () => string | null
+  readonly renewLogin?: () => Promise<LoginRenewalOutcome>
 }
 
 /**
@@ -140,11 +142,20 @@ export async function prepareClaudeHome(
 }
 
 export function claudeAuth(paths: ProviderHomePaths, seams: ClaudeAuthSeams): HomeAuthOperations {
+  const renewal: LoginRenewalOperations | undefined =
+    seams.renewLogin === undefined
+      ? undefined
+      : {
+          launchLabel: 'Claude sign-in renewal',
+          renew: seams.renewLogin,
+          prepare: (prepare, renew) => prepareOnTheLogin(prepare, renew, claudeCommandFor(seams)),
+        }
   const claudeRefusal = (verb: string): Error =>
     new Error(
       `Claude sessions run on the API key saved in Providers or on your machine login directly — there is no profile credential to ${verb}.`,
     )
   return {
+    ...(renewal === undefined ? {} : { renewal }),
     credentialHome: (profileId) => paths.homeOf(profileId),
     async check() {
       // Claude's credential is the machine's, so "absent" is the only not-ok this can be: there is

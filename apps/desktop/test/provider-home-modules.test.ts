@@ -66,8 +66,7 @@ describe('bound provider home modules', () => {
     expect(own.launchLabel).toBe('Claude sign-in renewal')
     expect(Reflect.get(state.modules.codex.auth, 'renewal')).toBeUndefined()
     const forwarded = Reflect.get(providerAuthFromModules(state.modules), 'loginRenewal') as
-      | ((provider: 'claude' | 'codex') => Renewal | undefined)
-      | undefined
+      ((provider: 'claude' | 'codex') => Renewal | undefined) | undefined
     expect(forwarded?.('claude')).toBe(own)
     expect(forwarded?.('codex')).toBeUndefined()
     expect(renew).not.toHaveBeenCalled()

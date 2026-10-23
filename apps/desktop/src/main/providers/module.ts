@@ -1,7 +1,7 @@
 import type { TranscriptPolicy, DiscoveryPolicy } from './transcript-policy'
 import type { AgentRuntime, AuthState, ReprovisionOutcome } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import type { ProviderSignIn, SignInCopySource } from './auth-types'
+import type { LoginRenewalOperations, ProviderSignIn, SignInCopySource } from './auth-types'
 import type { ProviderAuthPolicy } from './auth-policy'
 
 /** Directory preparation is independent of a provider's credential services. */
@@ -18,6 +18,7 @@ export interface ProviderHomePaths {
 
 /** Operations on one provider's bound paths, with no provider selection at the call site. */
 export interface HomeAuthOperations {
+  readonly renewal?: LoginRenewalOperations
   credentialHome(profileId: string): string
   check(profileId: string, signal?: AbortSignal): Promise<AuthState>
   reprovision(profileId: string): ReprovisionOutcome | Promise<ReprovisionOutcome>
