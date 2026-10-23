@@ -319,11 +319,17 @@ describe('the tab-flow table describes the drawer this app actually renders', ()
       if (tab !== 'open') expect(hooks.has('agent-book-button'), tab).toBe(false)
     }
     const opened: string[] = []
-    const button = mount(AgentBookButton, {
-      profileSlug: 'quill',
-      bridge: { agentRulesUnread: async () => ({ seenThrough: 0, newestDirectVersion: 1, unread: true }) },
-      onOpen: (slug: string) => opened.push(slug),
-    }, { width: 320, height: 120 })
+    const button = mount(
+      AgentBookButton,
+      {
+        profileSlug: 'quill',
+        bridge: {
+          agentRulesUnread: async () => ({ seenThrough: 0, newestDirectVersion: 1, unread: true }),
+        },
+        onOpen: (slug: string) => opened.push(slug),
+      },
+      { width: 320, height: 120 },
+    )
     await nextTick()
     await nextTick()
     for (const hook of ['agent-book-button', 'agent-book-unread']) {

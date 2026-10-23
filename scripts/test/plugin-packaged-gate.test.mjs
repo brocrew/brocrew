@@ -93,11 +93,15 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
       '/private/tmp/fictional/browser',
     )
     expect(projected.config).toBe(config)
-    expect(projected.entry).toContain("import { RuntimeHost, type RuntimeHostDeps } from './runtime/runtime-host'")
+    expect(projected.entry).toContain(
+      "import { RuntimeHost, type RuntimeHostDeps } from './runtime/runtime-host'",
+    )
     const homeDerivation = 'deriveProviderHome(userData, { profileId, provider })'
     expect(entry.split(homeDerivation)).toHaveLength(2)
     expect(projected.entry.split(homeDerivation)).toHaveLength(2)
-    expect(projected.entry).toContain('homeOf: (provider) => providerHomePaths.providerHomePath(provider, slug)')
+    expect(projected.entry).toContain(
+      'homeOf: (provider) => providerHomePaths.providerHomePath(provider, slug)',
+    )
     expect(projected.entry).toContain('...providerHomePaths,')
     expect(projected.entry).toContain('new PackagedGateRuntime(provider, "/private/tmp/fictional")')
     expect(projected.entry).not.toContain('createProviderRuntime(provider, {')
@@ -119,12 +123,15 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
     expect(() =>
       projectBuild(config, entry, 'relative', '/private/tmp/fictional/browser'),
     ).toThrow()
-    const runtimeImport = "import { RuntimeHost, type RuntimeHostDeps } from './runtime/runtime-host'"
+    const runtimeImport =
+      "import { RuntimeHost, type RuntimeHostDeps } from './runtime/runtime-host'"
     for (const changed of [
       entry.replace(runtimeImport, "import { RuntimeHost } from './runtime/runtime-host'"),
       entry + '\n' + runtimeImport,
     ])
-      expect(() => projectBuild(config, changed, '/private/tmp/fictional/a', '/private/tmp/fictional/browser')).toThrow('Build anchor changed')
+      expect(() =>
+        projectBuild(config, changed, '/private/tmp/fictional/a', '/private/tmp/fictional/browser'),
+      ).toThrow('Build anchor changed')
     const prepare = read('scripts/gates/plugin-packaged/prepare.mjs')
     expect(prepare).toMatch(
       /finally\s*\{\s*fs.writeFileSync\(configPath, original.config\)\s*fs.writeFileSync\(entryPath, original.entry\)/,

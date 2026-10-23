@@ -19,7 +19,11 @@ import {
   type NoticeItem,
   type TranscriptItem,
 } from '../../src/renderer/src/lib/transcript'
-import { CAPABILITY_FIELDS, DEFAULT_CAPABILITIES, type AnyCapabilityField } from '../../src/shared/capabilities'
+import {
+  CAPABILITY_FIELDS,
+  DEFAULT_CAPABILITIES,
+  type AnyCapabilityField,
+} from '../../src/shared/capabilities'
 import {
   judgeAgainstTheList,
   theDefaultEffortOf,
@@ -713,9 +717,11 @@ const reopenSays = (name: string): string =>
 
 // The real editable message rail gets fixture-only launch metadata to exercise the generic offer.
 // This does not claim that the shipped message control has a Reopen offer.
-const R41_FIELDS = CAPABILITY_FIELDS.map((field) => field.key === 'canMessage'
-  ? { ...field, whenItTakesEffect: 'Fixture-only launch disclosure for the naming contract.' }
-  : field)
+const R41_FIELDS = CAPABILITY_FIELDS.map((field) =>
+  field.key === 'canMessage'
+    ? { ...field, whenItTakesEffect: 'Fixture-only launch disclosure for the naming contract.' }
+    : field,
+)
 const LAUNCH_TIME = R41_FIELDS.filter((field) => field.key === 'canMessage')
 const OPEN: readonly AConversationToReopen[] = [
   { sessionId: 'sess_1', where: '/work', heldBy: null, busy: false },
@@ -749,7 +755,9 @@ describe('712 §2d · R41 — the capabilities sheet names the identity it is ab
   it('the shipped message rail stays editable without offering a launch-only Reopen', async () => {
     reset({ roster: NAMED() })
     const m = await theSheet('project-manager', { openAs: OPEN })
-    expect(CAPABILITY_FIELDS.find((field) => field.key === 'canMessage')?.whenItTakesEffect).toBeNull()
+    expect(
+      CAPABILITY_FIELDS.find((field) => field.key === 'canMessage')?.whenItTakesEffect,
+    ).toBeNull()
     expect(visible(m.q('capability-canMessage-select'))).toBe(true)
     expect(m.all('grant-canMessage-open-now')).toHaveLength(0)
     expect(m.all('capability-canWriteRules')).toHaveLength(0)
@@ -768,7 +776,11 @@ describe('712 §2d · R41 — the capabilities sheet names the identity it is ab
 
     reset({ roster: NAMED() })
     const reopened: string[] = []
-    const m = await theSheet('project-manager', { openAs: OPEN, fields: R41_FIELDS, onReopen: (id) => reopened.push(id) })
+    const m = await theSheet('project-manager', {
+      openAs: OPEN,
+      fields: R41_FIELDS,
+      onReopen: (id) => reopened.push(id),
+    })
     expect(visible(m.q('capabilities-title'))).toBe(true)
     expect(said(m.q('capabilities-owner')).startsWith('This is Ada’s own row:')).toBe(true)
     expect(said(m.q('capabilities-owner'))).toContain('running as Ada.')

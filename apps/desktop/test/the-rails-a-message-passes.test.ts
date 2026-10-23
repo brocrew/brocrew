@@ -806,7 +806,9 @@ describe('374 · the rails a message passes', () => {
       expect(sheet.split(hiddenRulesFilter)).toHaveLength(2)
       const genericSheet = sheet.replace(hiddenRulesFilter, 'props.fields')
       for (const field of CAPABILITY_FIELDS) {
-        expect(genericSheet, `${field.key} is spelled outside the dormant filter`).not.toContain(field.key)
+        expect(genericSheet, `${field.key} is spelled outside the dormant filter`).not.toContain(
+          field.key,
+        )
         expect(sheet, `${field.column} is spelled in the sheet`).not.toContain(field.column)
       }
       // ⛔ **Non-vacuity, twice.** The file was really read, and the loop really swept five fields —
