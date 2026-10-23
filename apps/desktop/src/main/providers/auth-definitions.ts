@@ -8,3 +8,13 @@ export const providerAuthPolicies: Readonly<Record<Provider, ProviderAuthPolicy>
   claude,
   codex,
 }
+
+export {
+  legacyAccountRecordFormat,
+  AN_ACCOUNT_ID,
+  providerAccountsFile,
+  readKeptAccounts,
+  writeKeptAccounts,
+  type KnownAccount,
+  type KeptAccounts,
+} from './claude/account-record'

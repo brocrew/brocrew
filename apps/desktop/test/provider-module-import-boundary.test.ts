@@ -80,6 +80,7 @@ describe('provider modules stay behind the main-process registry', () => {
       definitions,
       knowledge,
       auth,
+      join(root, 'provider-accounts-file.ts'),
       join(root, 'runtime/provider-homes.ts'),
       join(root, 'runtime/runtime-host.ts'),
     ])
