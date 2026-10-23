@@ -1,6 +1,6 @@
 import type { AuthState, ReprovisionOutcome } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import type { ProviderSignIn, SignInCopySource } from './auth-types'
+import type { LoginRenewalOperations, ProviderSignIn, SignInCopySource } from './auth-types'
 
 /**
  * The three credential gestures a person can make about a profile home (098), composed here for the
@@ -12,6 +12,7 @@ import type { ProviderSignIn, SignInCopySource } from './auth-types'
  * `codex-login.ts` for the measurement of why re-copying breaks again.
  */
 export interface ProviderAuthOps {
+  loginRenewal?(provider: Provider): LoginRenewalOperations | undefined
   /**
    * 🔴 **The home whose authentication state a gesture would change — the identity, not a
    * provisioning** (265 §2, from 259 lens B finding 2).
