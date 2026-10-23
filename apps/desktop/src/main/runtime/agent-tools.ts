@@ -395,7 +395,7 @@ export function toolsToldInTextFor(provider: Provider): ToolsToldInText | undefi
  * ⚑ **A claim that this app publishes no dispatch tool is worth exactly as much as the enumeration
  * behind it**, and a `grep` for the word `dispatch` is not one: it could not have found a tool
  * called `assign_work`, `delegate`, `hand_off` or `enqueue_task`. This constant is the shape the
- * negative is measured against — the complete set of names offered to any model — so the assertion
+ * negative is measured against — the complete vocabulary, including role-restricted tools — so the assertion
  * is *"the inventory is exactly this list"* rather than *"we did not find a bad one"*. ⚠️ **Not
  * *"these five"*, which it said until `380` published a sixth**: a sentence that names a count is a
  * sentence that goes stale the next time the list moves, and the census reads the list.
@@ -5318,6 +5318,8 @@ export function agentToolsFor(
   sessionId: string,
   /** Each provider's list as the app last read it, named in give_work's and create_agent's fields. */
   lists: ListsAsLastRead = {},
+  /** The host supplies this launch-role snapshot; call-time authority remains at the host. */
+  offersDirectRulesWrite = false,
 ): AgentToolset {
   const by: Caller = { ownerId: agentCallerId(sessionId) }
   const me = sessionId
@@ -10053,7 +10055,9 @@ export function agentToolsFor(
             )
           }),
       },
-    ].map(recordsWhatItRefused),
+    ]
+      .filter((one) => one.name !== 'write_agent_rules' || offersDirectRulesWrite)
+      .map(recordsWhatItRefused),
   }
 }
 

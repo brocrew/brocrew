@@ -18,7 +18,7 @@ import { CAPABILITY_FIELDS, capabilityField } from '../src/shared/capabilities'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { agentToolsFor } from '../src/main/runtime/agent-tools'
+import { agentCallerId, agentToolsFor } from '../src/main/runtime/agent-tools'
 import { composeProfileBundle, thisConversationSpans } from '../src/main/runtime/factory-text'
 import { publishProfileBundle } from '../src/main/runtime/profile-bundle'
 import { readSessionInstructions } from '../src/main/runtime/instructions'
@@ -447,20 +447,44 @@ describe('470 · a grant that waits for the next launch', () => {
           rules: 'A fictional direct write.',
           why: 'A fixture checks the fixed caller boundary.',
         }
-        expect(await callOn(lead, 'write_agent_rules', direct)).toMatchObject({
-          outcome: 'refused',
-          rail: 'may-not-write-rules',
-        })
+        expect(agentToolsFor(host, lead).tools.map((one) => one.name)).not.toContain(
+          'write_agent_rules',
+        )
+        expect(
+          host.writeAgentRules(
+            lead,
+            {
+              about: direct.agent,
+              expectedVersion: direct.current_version,
+              currentText: direct.current_rules,
+              text: direct.rules,
+              why: direct.why,
+            },
+            { ownerId: agentCallerId(lead) },
+          ),
+        ).toMatchObject({ ok: false, rail: 'may-not-write-rules' })
         expect(store.ownInstructionsOf('worker').versions).toHaveLength(0)
         await closeAndReopen(lead)
         expect(launchesFor('lead')).toHaveLength(atLaunch + 1)
         expect(launchesFor('lead').at(-1)?.kind).toBe('resume')
         expectFixedRules(launchesFor('lead').at(-1)?.hint ?? '')
         expect(await askToRelayARule(lead)).toBe('malformed-request')
-        expect(await callOn(lead, 'write_agent_rules', direct)).toMatchObject({
-          outcome: 'refused',
-          rail: 'may-not-write-rules',
-        })
+        expect(agentToolsFor(host, lead).tools.map((one) => one.name)).not.toContain(
+          'write_agent_rules',
+        )
+        expect(
+          host.writeAgentRules(
+            lead,
+            {
+              about: direct.agent,
+              expectedVersion: direct.current_version,
+              currentText: direct.current_rules,
+              text: direct.rules,
+              why: direct.why,
+            },
+            { ownerId: agentCallerId(lead) },
+          ),
+        ).toMatchObject({ ok: false, rail: 'may-not-write-rules' })
         expect(
           await callOn(lead, 'propose_agent_rules', {
             agent: 'worker',

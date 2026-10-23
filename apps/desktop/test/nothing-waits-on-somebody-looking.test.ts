@@ -1140,7 +1140,10 @@ describe('396 · nothing waits on somebody looking', () => {
       // ⚑ **D-017 commit 3 · 10 → 9 (the tenth now)**: `end_agent`, published before it, is gone
       // (nothing ends a conversation); `list_questions` still follows `interrupt_agent`.
       expect(TOOL_NAMES.indexOf('list_questions')).toBe(9)
-      expect(agentToolsFor(host, 'sess_x').tools.map((one) => one.name)).toEqual([...TOOL_NAMES])
+      // Enumerate the full vocabulary explicitly; runtime role lists are checked separately.
+      expect(agentToolsFor(host, 'sess_x', {}, true).tools.map((one) => one.name)).toEqual([
+        ...TOOL_NAMES,
+      ])
     })
 
     it('⛔ every request state is reachable or accounted for, and only `open` is answerable', () => {

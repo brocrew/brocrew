@@ -171,32 +171,15 @@ export interface InventoryReading {
 }
 
 /**
- * ⛔ **Why every conversation has these, said in the app's own words rather than the brief's.**
- *
- * ⚠️ **The dispatch asked each row to say *"which profile, which capability"* put it there, and that
- * link does not exist in this code.** Traced for `358`: `agentToolsFor(host, sessionId)` takes a
- * host and a session id, always returns `TOOL_NAMES`, and is attached to `start()` and `resume()`
- * with no condition on either line — the source says so itself: *"There is no condition on this
- * line, and its absence is the design."* A profile's capabilities gate the CALL — `maxDepth` at
- * `admitGive`, `canMessage` at `RuntimeHost.assertMayReach`, which `374` put in front of the verbs
- * a commander may drive a conversation with, and `canAssignWork` where work is given. ⚠️ **The
- * count that stood here (*"four of the five"*) is gone for the reason two blocks up**: it was a
- * number nothing derived, and two dispatches moved it without anything noticing.
- *
- * ⚠️ **Two sentences that used to stand here are gone because they stopped being true.** *"They
- * cross no wire at all"* and *"`setCapabilities` has no IPC command, deliberately"* were `341`'s,
- * and `355` built exactly that door: `{kind: 'setCapabilities'}` is a runtime command and the
- * capabilities sheet sends it. ⛔ What is still true is the part that matters here — **a TOOL cannot
- * read or write one**, and `the-five-tools.test.ts` §6 enforces it by name over every field in the
- * schema.
- *
- * ⛔ **Rather than invent the sentence the brief asked for, this says the true one** — including the
- * part a person needs, which is that having a tool is not the same as being allowed to use it.
+ * Tool declarations share one vocabulary, with a role-bound exception for the direct rules
+ * writer. The host builds the offered set for start, resume and inventory reads from the
+ * conversation's origin. All calls still pass the host's authority and capability rails.
+ * Having a declaration is not permission to use it.
  */
 export const WHY_EVERY_CONVERSATION =
-  'BroCrew gives every conversation the same tools, with no condition — a profile’s ' +
-  'capabilities decide whether a CALL is admitted, not whether the tool is offered. Those rules ' +
-  'are checked when the agent calls, and they are not readable from this window.'
+  'Every conversation gets the same tools, except write_agent_rules. ' +
+  'Only a BroBot conversation a person started gets it, to change another agent’s rules. ' +
+  'BroCrew still checks every call against its rules.'
 
 /**
  * 🔴 **A count that does not say WHEN it was true** (444 relay 1).
