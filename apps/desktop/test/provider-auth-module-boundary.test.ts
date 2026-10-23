@@ -79,12 +79,14 @@ describe('provider authentication has one owner', () => {
     expect(selectionsIn(sourceOf(file))).toEqual([])
   })
 
-  it.each(['runtime/runtime-host.ts', 'runtime/api-keys.ts', 'runtime/launch-refusal.ts', 'providers/module.ts'])(
-    'keeps native authentication and program types out of %s',
-    (file) => {
-      expect(nativeImportsIn(sourceOf(file))).toEqual([])
-    },
-  )
+  it.each([
+    'runtime/runtime-host.ts',
+    'runtime/api-keys.ts',
+    'runtime/launch-refusal.ts',
+    'providers/module.ts',
+  ])('keeps native authentication and program types out of %s', (file) => {
+    expect(nativeImportsIn(sourceOf(file))).toEqual([])
+  })
 
   it('keeps the runtime handle independent of a native copy format', () => {
     const runtime = new URL('../../../packages/runtime/src/', import.meta.url)

@@ -1,11 +1,18 @@
 import { describe, expect, it } from 'vitest'
-import { AuthUnavailableError, ClaudeUnavailableError, CodexSettingsUnusableError } from '@brobot2/runtime'
+import {
+  AuthUnavailableError,
+  ClaudeUnavailableError,
+  CodexSettingsUnusableError,
+} from '@brobot2/runtime'
 import { providerAuthPolicies } from '../src/main/providers/auth-definitions'
 import { CodexUnavailableError } from '../src/main/runtime/codex-binary'
 import { whyALaunchWasRefused } from '../src/main/runtime/launch-refusal'
 
-function classifier(provider: keyof typeof providerAuthPolicies): (error: unknown) => 'profile' | 'program' | null {
-  const read = Reflect.get(providerAuthPolicies[provider], 'launchRefusal') as ((error: unknown) => 'profile' | 'program' | null) | undefined
+function classifier(
+  provider: keyof typeof providerAuthPolicies,
+): (error: unknown) => 'profile' | 'program' | null {
+  const read = Reflect.get(providerAuthPolicies[provider], 'launchRefusal') as
+    ((error: unknown) => 'profile' | 'program' | null) | undefined
   expect(read).toBeTypeOf('function')
   if (read === undefined) throw new Error('The provider launch classifier is absent')
   return read

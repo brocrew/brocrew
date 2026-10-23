@@ -1,13 +1,12 @@
 import {
   AuthUnavailableError,
-  ClaudeUnavailableError,
-  CodexSettingsUnusableError,
   folderAPersonMustFixOf,
   spawnNoWaitClearsOf,
   transientSetupFailureOf,
 } from '@brobot2/runtime'
 import type { LaunchRefusal } from '../../shared/runtime-ipc'
-import { CodexUnavailableError } from './codex-binary'
+import { SUPPORTED_PROVIDERS } from '@brobot2/shared'
+import { providerAuthPolicies } from '../providers/auth-definitions'
 import { unavailableOf } from './session-unavailable'
 
 /**
@@ -24,12 +23,13 @@ import { unavailableOf } from './session-unavailable'
  * throws — then an errno no translation took: a spawn's (R51), a shortage (R52), a folder (R66).
  */
 export function whyALaunchWasRefused(error: unknown): LaunchRefusal | null {
-  // ⚑ Codex settings its profile holds are a launch's to say; no sign-in fixes them.
-  if (error instanceof CodexSettingsUnusableError) return 'launch'
+  // Settings held by a profile are a launch's to say; no sign-in fixes them.
+  const native = SUPPORTED_PROVIDERS.map((provider) =>
+    providerAuthPolicies[provider].launchRefusal(error),
+  )
+  if (native.includes('profile')) return 'launch'
   if (error instanceof AuthUnavailableError) return 'sign-in'
-  if (error instanceof CodexUnavailableError || error instanceof ClaudeUnavailableError) {
-    return 'program'
-  }
+  if (native.includes('program')) return 'program'
   const reason =
     unavailableOf(error) ??
     (error instanceof Error ? unavailableOf((error as { cause?: unknown }).cause) : null)
