@@ -33,6 +33,7 @@ const ELECTRON = join(DESKTOP, 'node_modules/.bin/electron')
 const ENTRY = join(DESKTOP, 'out/main/index.js')
 /** The app's own workspace module, read as TEXT — see {@link constantFrom}. */
 const WORKSPACE_SOURCE = join(DESKTOP, 'src/main/runtime/workspace.ts')
+const CODEX_LAYOUT_SOURCE = join(DESKTOP, 'src/main/providers/codex/layout.mjs')
 
 const SUN_PATH_MAX = 104
 const GATE_SOCKET = 'one-host.sock'
@@ -60,12 +61,13 @@ const LAYOUT_MS = 400
  * to tear down.
  */
 function constantFrom(name) {
-  const found = readFileSync(WORKSPACE_SOURCE, 'utf8').match(
+  const source = name === 'CODEX_INSTRUCTIONS_FILE' ? CODEX_LAYOUT_SOURCE : WORKSPACE_SOURCE
+  const found = readFileSync(source, 'utf8').match(
     new RegExp(`export const ${name} = '([^']+)'`),
   )?.[1]
   if (!found) {
     throw new Error(
-      `⛔ ${name} is not readable from ${WORKSPACE_SOURCE} as a single-quoted string literal. ` +
+      `⛔ ${name} is not readable from ${source} as a single-quoted string literal. ` +
         `This probe derives it from the code instead of restating it, so a declaration it cannot ` +
         `read is a stop rather than a default.`,
     )

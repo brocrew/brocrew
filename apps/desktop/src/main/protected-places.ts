@@ -1,7 +1,7 @@
 import { realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
-import { userProviderHomePath } from './adopt/user-homes'
+import { SUPPORTED_PROVIDERS, providerRecord, type Provider } from '@brobot2/shared'
+import { providerDefinitions } from './providers/definitions'
 import { sameFolder } from './same-folder'
 import { readWorkspaceList } from './workspaces'
 import { whereItStands } from '../../../../scripts/lib/safe-remove.mjs'
@@ -30,8 +30,7 @@ export interface ThePlaces {
   /** The person's home folder. */
   readonly home: string
   /** Claude Code's and Codex's own folders: the conventional ones and any redirected one. */
-  readonly claudeConfigHomes: readonly string[]
-  readonly codexConfigHomes: readonly string[]
+  readonly providerConfigHomes: Readonly<Record<Provider, readonly string[]>>
   /** The folder holding every profile's provider homes. */
   readonly providerHomesRoot: string
   /** This app's data folder, and the workspace folder inside it that is not named. */
@@ -64,8 +63,9 @@ export function thePlacesOnThisComputer(args: {
   const home = args.home ?? homedir()
   return {
     home,
-    claudeConfigHomes: [...new Set([join(home, '.claude'), userProviderHomePath('claude', env)])],
-    codexConfigHomes: [...new Set([join(home, '.codex'), userProviderHomePath('codex', env)])],
+    providerConfigHomes: providerRecord((provider) =>
+      providerDefinitions[provider].discovery.configHomes(home, env),
+    ),
     providerHomesRoot: args.providerHomesRoot,
     appData: { folder: args.userData, workspace: args.workspaceOf(args.userData) },
     otherWorkspaces: readWorkspaceList(args.workspaceList)
@@ -142,8 +142,12 @@ export function aProtectedPlace(folder: string, places: ThePlaces): ProtectedPla
     return meets(kind, data.folder, all)
   }
   const checks: (() => ProtectedPlaceNotice | null)[] = [
-    ...places.claudeConfigHomes.map((place) => () => meets('claude-config-home', place, all)),
-    ...places.codexConfigHomes.map((place) => () => meets('codex-config-home', place, all)),
+    ...SUPPORTED_PROVIDERS.flatMap((provider) =>
+      places.providerConfigHomes[provider].map(
+        (place) => () =>
+          meets(providerDefinitions[provider].discovery.protectedPlaceKind, place, all),
+      ),
+    ),
     () => meets('profile-homes', places.providerHomesRoot, all),
     () => dataFolder('app-data-folder', places.appData),
     ...places.otherWorkspaces.map(

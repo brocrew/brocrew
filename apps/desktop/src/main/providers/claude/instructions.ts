@@ -1,3 +1,4 @@
+import { workspaceInstructionFile as INSTRUCTION_FILENAME } from './layout.mjs'
 import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { AUTO_MEMORY_INDEX } from '@brobot2/runtime'
@@ -41,7 +42,7 @@ export function linkOf(path: string, real: string): string | undefined {
   return real === derived ? undefined : real
 }
 
-export const INSTRUCTION_FILENAME = 'CLAUDE.md'
+export { workspaceInstructionFile as INSTRUCTION_FILENAME } from './layout.mjs'
 
 export const INSTRUCTION_DOTDIR = '.claude'
 
@@ -293,4 +294,8 @@ export function readSessionInstructions(inputs: InstructionInputs): SessionLaunc
   }
 }
 
-export const instructions = { read: readSessionInstructions, bundleLeaf: 'brobot-instructions.md' }
+export const instructions = {
+  read: readSessionInstructions,
+  bundleLeaf: 'brobot-instructions.md',
+  workspaceFile: (root: string) => join(root, INSTRUCTION_FILENAME),
+}

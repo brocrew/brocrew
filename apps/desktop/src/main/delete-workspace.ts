@@ -14,11 +14,8 @@ import {
 import { isAncestor, trustedAnchor, whereItStands } from '../../../../scripts/lib/safe-remove.mjs'
 import { isPastedImageName } from '../shared/runtime-ipc'
 import { PASTED_PART, pastedImagesRoot } from './runtime/pasted-image'
-import {
-  CLAUDE_INSTRUCTIONS_FILE,
-  CODEX_INSTRUCTIONS_FILE,
-  WORKSPACE_DIRNAME,
-} from './runtime/workspace'
+import { WORKSPACE_DIRNAME } from './runtime/workspace'
+import { workspaceInstructionNames } from './providers/definitions'
 import { insideBySpelling, sameFolder, samePath } from './same-folder'
 import { asStartedOn, BROBOT_FOLDER_SIGNS, forgetWorkspace, isBroBotsFolder } from './workspaces'
 
@@ -51,7 +48,7 @@ import { asStartedOn, BROBOT_FOLDER_SIGNS, forgetWorkspace, isBroBotsFolder } fr
  * whole (`scripts/test/clean-base-without-running-it.test.mjs` §1). */
 const BROBOTS_OWN = new Set(MANIFEST.map((entry) => entry.name))
 /** The instructions BroBot writes into a workspace's working folder: not the person's. */
-const INSTRUCTIONS = new Set([CLAUDE_INSTRUCTIONS_FILE, CODEX_INSTRUCTIONS_FILE])
+const INSTRUCTIONS = new Set(workspaceInstructionNames)
 const BROBOTS_OWN_PARTS = [DRAFTS_PART, UPDATE_SETTINGS_PART, WORKSPACES_PART, GATE_PRIVATE]
 
 /**

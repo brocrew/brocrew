@@ -51,6 +51,11 @@ const WORKSPACE = readFileSync(
   'utf8',
 )
 
+const CODEX_LAYOUT = readFileSync(
+  join(SCRIPTS, '..', 'apps/desktop/src/main/providers/codex/layout.mjs'),
+  'utf8',
+)
+
 /** Every line that is not a comment line — see the docblock's last paragraph. */
 const CODE_LINES = SOURCE.split('\n').filter((line) => !/^\s*(\/\/|\/\*|\*)/.test(line))
 const CODE = CODE_LINES.join('\n')
@@ -215,7 +220,13 @@ describe('⛔ the instruction marker, and the refusal that makes the screenshot 
     expect(CODE).not.toContain("constantFrom('WORKSPACE_CANARY')")
     expect(SOURCE).not.toContain('BROBOT-WORKSPACE-CANARY')
     expect(WORKSPACE).toMatch(/export const WORKSPACE_DIRNAME = '[^']+'/)
-    expect(WORKSPACE).toMatch(/export const CODEX_INSTRUCTIONS_FILE = '[^']+'/)
+    expect(CODEX_LAYOUT).toMatch(/export const CODEX_INSTRUCTIONS_FILE = '[^']+'/)
+    expect(CODE).toContain(
+      "name === 'CODEX_INSTRUCTIONS_FILE' ? CODEX_LAYOUT_SOURCE : WORKSPACE_SOURCE",
+    )
+    expect(CODE).toContain(
+      "const CODEX_LAYOUT_SOURCE = join(DESKTOP, 'src/main/providers/codex/layout.mjs')",
+    )
     const reader = between('function constantFrom(name) {', 'const CANARY =')
     expect(reader).toContain('if (!found) {')
     expect(reader).toContain('throw new Error(')

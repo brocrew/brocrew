@@ -260,12 +260,7 @@ import { readSessionInstructions } from './runtime/instructions'
 import { profileBundleSpans, thisConversationSpans } from './runtime/factory-text'
 import { toolsToldInTextFor } from './runtime/agent-tools'
 import { publishProfileBundle } from './runtime/profile-bundle'
-import {
-  brobotWorkspace,
-  CLAUDE_INSTRUCTIONS_FILE,
-  ensureWorkspace,
-  workspaceOwnFilesIn,
-} from './runtime/workspace'
+import { brobotWorkspace, ensureWorkspace, workspaceOwnFilesIn } from './runtime/workspace'
 import {
   installNavigationGuard,
   installSessionRelease,
@@ -1042,7 +1037,9 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
         // (`HostedSession.firstTurnLead`). Claude receives these with its tool catalogue through
         // the in-process server's `instructions`.
         thisConversation: thisConversationSpans(launchContext, toolsToldInTextFor(provider)),
-        workspaceFile: join(brobotWorkspace(userData), CLAUDE_INSTRUCTIONS_FILE),
+        workspaceFile: providerKnowledge[provider].instructions.workspaceFile?.(
+          brobotWorkspace(userData),
+        ),
         // Pass the workspace file paths and canonical content from the function that writes both
         // `CLAUDE.md` and `AGENTS.md`. The Claude reader recognises that body, appends it once and
         // labels it as BroBot's. A path alone cannot prove authorship: the agent can edit its cwd.

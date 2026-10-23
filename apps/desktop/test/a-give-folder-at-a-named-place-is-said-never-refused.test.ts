@@ -38,8 +38,10 @@ describe('W4.189 · D — the places a folder is said to meet', () => {
     }
     places = {
       home,
-      claudeConfigHomes: [join(home, '.claude')],
-      codexConfigHomes: [join(home, '.codex'), join(root, 'redirected-codex')],
+      providerConfigHomes: {
+        claude: [join(home, '.claude')],
+        codex: [join(home, '.codex'), join(root, 'redirected-codex')],
+      },
       providerHomesRoot: join(userData, 'provider-homes'),
       appData: { folder: userData, workspace: join(userData, 'brobot-workspace') },
       otherWorkspaces: [{ folder: other, workspace: join(other, 'brobot-workspace') }],
@@ -103,7 +105,7 @@ describe('W4.189 · D — the places a folder is said to meet', () => {
       stands: 'is',
     })
     // ⚑ With no provider folders inside it, home is named as home.
-    const bare = { ...places, claudeConfigHomes: [], codexConfigHomes: [] }
+    const bare = { ...places, providerConfigHomes: { claude: [], codex: [] } }
     const elsewhere = { ...bare, providerHomesRoot: join(root, 'nowhere'), otherWorkspaces: [] }
     const away = {
       ...elsewhere,
@@ -149,7 +151,10 @@ describe('W4.189 · D — the places a folder is said to meet', () => {
     // ⚑ …and a place that is itself a link is held by what holds where it really is.
     const dotfiles = join(root, 'dotfiles')
     mkdirSync(join(dotfiles, 'claude'), { recursive: true })
-    const linked = { ...places, claudeConfigHomes: [join(root, 'claude-link')] }
+    const linked = {
+      ...places,
+      providerConfigHomes: { ...places.providerConfigHomes, claude: [join(root, 'claude-link')] },
+    }
     symlinkSync(join(dotfiles, 'claude'), join(root, 'claude-link'))
     expect(aProtectedPlace(dotfiles, linked)).toMatchObject({
       kind: 'claude-config-home',

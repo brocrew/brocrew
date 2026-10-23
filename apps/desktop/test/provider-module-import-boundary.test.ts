@@ -14,7 +14,7 @@ const nameOf = (file: string): string => relative(root, file).split(sep).join('/
 const filesIn = (folder: string): string[] =>
   readdirSync(folder, { withFileTypes: true }).flatMap((entry) => {
     const path = join(folder, entry.name)
-    return entry.isDirectory() ? filesIn(path) : entry.name.endsWith('.ts') ? [path] : []
+    return entry.isDirectory() ? filesIn(path) : /\.(ts|mjs)$/.test(entry.name) ? [path] : []
   })
 const files = filesIn(root)
 const imports = new Map<string, readonly string[]>()
@@ -96,7 +96,14 @@ describe('provider modules stay behind the main-process registry', () => {
   })
 
   it('routes neutral value imports of provider implementations through the registry', () => {
-    const mayCompose = new Set([registry, definitions, knowledge, compatibility, composition])
+    const mayCompose = new Set([
+      registry,
+      definitions,
+      knowledge,
+      compatibility,
+      composition,
+      join(root, 'providers/workspace-layout.mjs'),
+    ])
     const implementationOf = (file: string): string | undefined =>
       /^providers\/(claude|codex)\//.exec(nameOf(file))?.[1]
     const violations = files

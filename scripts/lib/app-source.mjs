@@ -22,8 +22,8 @@ const DESKTOP = join(dirname(fileURLToPath(import.meta.url)), '../../apps/deskto
 const DECLARED_IN = {
   WORKSPACE_CANARY: 'src/main/runtime/workspace.ts',
   WORKSPACE_DIRNAME: 'src/main/runtime/workspace.ts',
-  CLAUDE_INSTRUCTIONS_FILE: 'src/main/runtime/workspace.ts',
-  CODEX_INSTRUCTIONS_FILE: 'src/main/runtime/workspace.ts',
+  CLAUDE_INSTRUCTIONS_FILE: 'src/main/providers/claude/layout.mjs',
+  CODEX_INSTRUCTIONS_FILE: 'src/main/providers/codex/layout.mjs',
   DEFAULT_PROVIDER: '../../packages/shared/src/providers.ts',
   ASKED_TO_STOP: 'src/shared/how-work-stopped.ts',
   DEFAULT_PROFILE_ID: 'src/shared/runtime-ipc.ts',

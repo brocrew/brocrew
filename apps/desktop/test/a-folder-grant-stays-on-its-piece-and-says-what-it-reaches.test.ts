@@ -126,8 +126,10 @@ describe('a give’s folder as a grant: its holder, its end, its spelling and it
     }
     places = {
       home: join(scratch, 'home'),
-      claudeConfigHomes: [join(scratch, 'home', '.claude')],
-      codexConfigHomes: [join(scratch, 'home', '.codex')],
+      providerConfigHomes: {
+        claude: [join(scratch, 'home', '.claude')],
+        codex: [join(scratch, 'home', '.codex')],
+      },
       providerHomesRoot: join(userData, 'provider-homes'),
       appData: { folder: userData, workspace: join(userData, 'brobot-workspace') },
       otherWorkspaces: [],

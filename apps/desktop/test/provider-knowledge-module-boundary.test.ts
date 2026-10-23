@@ -35,6 +35,7 @@ function selectionsIn(source: ts.SourceFile, node: ts.Node = source): string[] {
 describe('provider knowledge policies have one owner', () => {
   it.each([
     'runtime/instructions.ts',
+    'runtime/workspace.ts',
     'runtime/what-this-agent-was-given.ts',
     'runtime/agent-memory.ts',
     'runtime/memory-notes.ts',

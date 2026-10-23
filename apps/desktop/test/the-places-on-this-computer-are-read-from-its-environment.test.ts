@@ -121,8 +121,8 @@ describe.sequential(
 
       expect(places.home).toBe(home)
       // 🔴 The usual folder and the redirected one, each provider.
-      expect(places.claudeConfigHomes).toEqual([join(home, '.claude'), redirectedClaude])
-      expect(places.codexConfigHomes).toEqual([join(home, '.codex'), redirectedCodex])
+      expect(places.providerConfigHomes.claude).toEqual([join(home, '.claude'), redirectedClaude])
+      expect(places.providerConfigHomes.codex).toEqual([join(home, '.codex'), redirectedCodex])
       expect(places.providerHomesRoot).toBe(join(userData, 'provider-homes'))
       expect(places.appData).toEqual({ folder: userData, workspace: workspaceOf(userData) })
       // ⛔ This data folder, by its path or through a link, is not another workspace; ⚑ Other is.
@@ -162,8 +162,8 @@ describe.sequential(
         env: {},
       })
       expect(places.home).toBe(theirs)
-      expect(places.claudeConfigHomes).toEqual([join(theirs, '.claude')])
-      expect(places.codexConfigHomes).toEqual([join(theirs, '.codex')])
+      expect(places.providerConfigHomes.claude).toEqual([join(theirs, '.claude')])
+      expect(places.providerConfigHomes.codex).toEqual([join(theirs, '.codex')])
       // ⛔ A list that is not there names no other workspace.
       expect(places.otherWorkspaces).toEqual([])
     })
