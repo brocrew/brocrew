@@ -178,17 +178,16 @@ import {
 } from './runtime/claude-program'
 import { resolveCodexProgram, type CodexProgram } from './runtime/codex-binary'
 import {
-  createProviderRuntime,
   listProfileIds,
   listProviderHomes,
-  createProviderAuthOps,
   deriveProviderHome,
-  prepareProviderHome,
+  homePathsForProvider,
   providerHomesRoot,
   savedMethodsFolder,
   type CodexKeySeam,
   type ProviderHomeSeams,
 } from './runtime/provider-homes'
+import { createProviderModules, providerAuthFromModules } from './providers'
 import {
   readSavedMethods,
   savedMethodsLinesOf,
@@ -794,6 +793,26 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
     reconcile: createMemoryAmendmentObserver(database, Date.now).reconcile,
     changed: (slug) => knowledgeChanged(slug),
   })
+  const providerModules = createProviderModules(
+    (provider) => homePathsForProvider(userData, provider),
+    {
+      runtime: {
+        apiKey,
+        codexCommand: () => codexProgram().path,
+        claudeProgram: () => claudeProgram().path,
+        claudeProgramFound,
+        managedProviderHomesRoot: providerHomesRoot(userData),
+      },
+      home: homeSeams,
+      auth: {
+        apiKey,
+        keyStatus: (provider) => apiKeys.status(provider),
+        codexKey,
+        codexCommand: () => codexProgram().path,
+        claudeProgramFound,
+      },
+    },
+  )
   const runtimeHost = new RuntimeHost({
     plugins: pluginController,
     pluginAttachments: {
@@ -854,21 +873,14 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
     },
     // Resolve the bundled Codex by absolute path, independent of PATH and the user's installed
     // version. Resolve per launch so a missing binary is reported on the command that needs it.
-    createRuntime: (provider) =>
-      createProviderRuntime(provider, {
-        apiKey,
-        codexCommand: () => codexProgram().path,
-        claudeProgram: () => claudeProgram().path,
-        claudeProgramFound,
-        managedProviderHomesRoot: providerHomesRoot(userData),
-      }),
+    createRuntime: (provider) => providerModules[provider].createRuntime(),
     // Derive the profile from the session; keep its provider home under `HOME_FOLDER`.
     beforeProviderLaunch: async () => {
       await transcriptRetention?.beforeLaunch()
     },
     prepareProviderHome: async (provider, profileId) => {
       await transcriptRetention?.beforeLaunch()
-      return prepareProviderHome(userData, { profileId, provider }, homeSeams)
+      return providerModules[provider].home.prepare(profileId)
     },
     prepareBuiltInSkills: ({ pack, ...input }) =>
       prepareBuiltInSkills({
@@ -890,13 +902,7 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
     listProfiles: () => listProfileIds(userData),
     // Run credential operations on the bundled binary used by sessions, so a probe measures
     // the app's Codex rather than an unrelated executable on PATH.
-    providerAuth: createProviderAuthOps(userData, {
-      apiKey,
-      keyStatus: (provider) => apiKeys.status(provider),
-      codexKey,
-      codexCommand: () => codexProgram().path,
-      claudeProgramFound,
-    }),
+    providerAuth: providerAuthFromModules(providerModules),
     apiKeys,
     renewClaudeLogin,
     claudeProgramFound,
