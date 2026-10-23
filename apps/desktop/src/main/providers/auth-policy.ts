@@ -1,5 +1,4 @@
 import type { SessionAccount, SessionHandle } from '@brobot2/runtime'
-import type { Provider } from '@brobot2/shared'
 
 export type IdentityHandle = Pick<SessionHandle, 'account' | 'signInTag'>
 
@@ -12,7 +11,7 @@ export type IdentityFact =
 /** A classified protocol notice, with no native payload interpreted by the host. */
 export interface ProtocolNotice {
   readonly type: string
-  readonly provider?: Provider
+  readonly provider?: string
   readonly category?: string
   readonly label?: string
   readonly degradedFrom?: unknown
@@ -22,6 +21,7 @@ export interface ProtocolNotice {
 /** Native facts and comparisons are separate from bound credential and launch services. */
 export interface ProviderAuthPolicy {
   readonly identity: {
+    readonly waitsForAccount: boolean
     /** Undefined means that this life has not answered yet. */
     launch(handle: IdentityHandle): IdentityFact | undefined
     /** Never waits or supplies a launch-only fallback. */
