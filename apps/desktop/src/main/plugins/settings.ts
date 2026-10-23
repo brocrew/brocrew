@@ -10,6 +10,9 @@ import {
   PLUGIN_SETTINGS_CHANNEL,
   PLUGIN_SCREEN_CLOSED,
   PLUGIN_STATES,
+  pluginMutationAllowed,
+  type PluginMutationConsent,
+  type PluginMutationBlocked,
   pluginRemovalOutcome,
   type PluginRemovalOutcome,
   type PluginCard,
@@ -19,15 +22,21 @@ import {
 /** Person-owned install/uninstall controller. Tests inject explicitly fictional fakes. */
 export interface PluginSettingsController {
   features?(): readonly string[]
+  mutationStatus?(): PluginMutationBlocked | null
+  mutationRequired?(): boolean
+  prepareMutation?(action: 'install' | 'update', id: string): Promise<PluginMutationConsent>
   available?(): boolean
   ready?(): Promise<boolean>
   catalogue(refresh?: boolean): Promise<PluginCard[]>
   refreshFailed?(): boolean
-  refreshCatalogue?(digest: string): Promise<void>
-  update?(id: string): Promise<void>
+  refreshCatalogue?(
+    digest: string,
+    source?: { bytes: Uint8Array; signature: Uint8Array },
+  ): Promise<void>
+  update?(id: string, consent?: PluginMutationConsent): Promise<void>
   /** Reattach person control only; no install or removal. */
   retry?(id: string): Promise<PluginCard[]>
-  install(id: string): Promise<void>
+  install(id: string, consent?: PluginMutationConsent): Promise<void>
   uninstall(id: string): Promise<PluginRemovalOutcome | void>
   screen(id: string): Promise<PluginUiHostOptions>
 }
@@ -114,6 +123,8 @@ export function registerPluginSettings(
               'updatesUnavailable',
               'uninstallDeletesData',
               'hasRemoteLogout',
+              'preparationRequired',
+              'mutationBlocked',
             ].includes(key),
           ) &&
           (card.priorityClamped === undefined ||
@@ -136,6 +147,9 @@ export function registerPluginSettings(
           (card.uninstallDeletesData === undefined ||
             typeof card.uninstallDeletesData === 'boolean') &&
           (card.hasRemoteLogout === undefined || typeof card.hasRemoteLogout === 'boolean') &&
+          (card.preparationRequired === undefined || card.preparationRequired === true) &&
+          (card.mutationBlocked === undefined ||
+            ['source-mismatch', 'owner-incompatible'].includes(card.mutationBlocked)) &&
           /^[a-z][a-z0-9-]{0,63}$/.test(card.id) &&
           typeof card.name === 'string' &&
           card.name.length > 0 &&
@@ -268,16 +282,10 @@ export function registerPluginSettings(
         )
           return refused
         if (input.kind === 'install') {
-          if (card.installed || card.state !== 'Available') return refused
+          if (!pluginMutationAllowed(card, 'install')) return refused
           await controller.install(card.id)
         } else if (input.kind === 'update') {
-          if (
-            !card.installed ||
-            !card.updateVersion ||
-            card.state === 'Unavailable' ||
-            !controller.update
-          )
-            return refused
+          if (!pluginMutationAllowed(card, 'update') || !controller.update) return refused
           await close(owner)
           await controller.update(card.id)
         } else {

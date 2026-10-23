@@ -12,6 +12,9 @@ import type { WorkspaceProjection } from './types'
 import { Installation } from '../state/format'
 import { PLUGIN_STATES, pluginRemovalOutcome } from '../../../shared/plugin-settings'
 import { createRepoAwarePluginVerifier } from '../package-verifier'
+import { pluginSha256, PLUGIN_LIMITS } from '../package-digests'
+import { strictPluginJson } from '../strict-json'
+import type { PluginMutationBlocked, PluginMutationConsent } from '../../../shared/plugin-settings'
 import { PluginSupervisorError } from '../supervisor/protocol'
 
 const Cards = z
@@ -42,11 +45,28 @@ export async function connectPluginSettings(options: {
   lost?(): void
   signal?: AbortSignal
 }): Promise<PluginSettingsController & { close(): Promise<void> }> {
-  createRepoAwarePluginVerifier({
+  let catalogueProof = {
+    bytes: Buffer.from(options.catalogue.bytes),
+    signature: Buffer.from(options.catalogue.signature),
+  }
+  let admitted = createRepoAwarePluginVerifier({
     pinnedPublicKey: options.pinnedPublicKey,
     repoCatalogueSha256: options.repoCatalogueSha256,
     target: options.target,
-  }).verifyCatalogue(options.catalogue.bytes, options.catalogue.signature)
+  }).verifyCatalogue(catalogueProof.bytes, catalogueProof.signature)
+  let sourceFormat = (
+    strictPluginJson(catalogueProof.bytes, PLUGIN_LIMITS.catalogueBytes) as { format: 1 | 2 }
+  ).format
+  let generation = 0,
+    switching = false,
+    badSource = false
+  let blocked: PluginMutationBlocked | null = null,
+    policyDigest: string | undefined
+  const consents = new Map<string, PluginMutationConsent & { action: 'install' | 'update' }>()
+  const Consent = z.strictObject({
+    releaseDigest: z.string().regex(/^[a-f0-9]{64}$/),
+    preparation: z.uuid(),
+  })
   const vault = new PluginPackageVault(
     options.root,
     options.pinnedPublicKey,
@@ -96,6 +116,8 @@ export async function connectPluginSettings(options: {
   channel.onClose(() => {
     options.signal?.removeEventListener('abort', abort)
     alive = false
+    generation++
+    consents.clear()
     options.lost?.()
     for (const id of screens.keys()) void invalidate(id).catch(() => undefined)
   })
@@ -111,6 +133,7 @@ export async function connectPluginSettings(options: {
     throw new PluginSupervisorError('unavailable')
   }
   let features: readonly string[] = Object.freeze([])
+  let featureReadable = false
   if (modern) {
     await channel.call({ kind: 'features' }).then(
       (reply) => {
@@ -122,6 +145,7 @@ export async function connectPluginSettings(options: {
               })
               .parse(reply).features,
           )
+          featureReadable = true
         } catch {
           channel.close()
           throw new PluginSupervisorError('incompatible')
@@ -145,30 +169,264 @@ export async function connectPluginSettings(options: {
       () => undefined,
     )
   }
+  const failPolicy = (): never => {
+    throw new PluginSupervisorError('policy-refused')
+  }
+  const refuseBlocked = (): never => {
+    throw new PluginSupervisorError(
+      blocked === 'source-mismatch' ? 'source-mismatch' : 'incompatible',
+    )
+  }
+  function invalidateConsent() {
+    consents.clear()
+  }
+  function supportsPrepared() {
+    return features.includes('prepared-mutations-v1') && features.includes('authors-v1')
+  }
+  function legacyBlocked(): PluginMutationBlocked | null {
+    return features.includes('prepared-mutations-v1')
+      ? 'source-mismatch'
+      : features.includes('authors-v1')
+        ? 'owner-incompatible'
+        : null
+  }
+  async function readFeatures(ticket: number) {
+    if (!modern || !featureReadable) return
+    const reply = await channel.call({ kind: 'features' })
+    if (!alive || generation !== ticket) return failPolicy()
+    const next = z
+      .strictObject({ features: z.array(z.string().regex(/^[a-z][a-z0-9-]{0,63}$/)).max(32) })
+      .parse(reply).features
+    if (JSON.stringify([...features].sort()) !== JSON.stringify([...next].sort()))
+      invalidateConsent()
+    features = Object.freeze(next)
+  }
+  async function negotiate(probe = false) {
+    const ticket = generation
+    invalidateConsent()
+    policyDigest = undefined
+    if (probe) await readFeatures(ticket)
+    if (badSource) {
+      blocked = 'source-mismatch'
+      return
+    }
+    if (sourceFormat === 1) {
+      blocked = legacyBlocked()
+      return
+    }
+    blocked = 'owner-incompatible'
+    if (!supportsPrepared()) return
+    const digest = pluginSha256(catalogueProof.bytes)
+    try {
+      const reply = await channel.call({ kind: 'mutation-policy', catalogueDigest: digest })
+      if (!alive || generation !== ticket) return failPolicy()
+      z.strictObject({ format: z.literal(1), catalogueDigest: z.literal(digest) }).parse(reply)
+      blocked = null
+      policyDigest = digest
+    } catch (error) {
+      if (generation !== ticket) return failPolicy()
+      blocked =
+        error instanceof PluginSupervisorError && error.code === 'source-mismatch'
+          ? 'source-mismatch'
+          : 'owner-incompatible'
+    }
+  }
+  async function checkOwner() {
+    if (!alive) throw new PluginSupervisorError('unavailable')
+    if (switching) return failPolicy()
+    const ticket = generation
+    await readFeatures(ticket)
+    if (badSource) {
+      blocked = 'source-mismatch'
+      return
+    }
+    if (sourceFormat === 1) {
+      blocked = legacyBlocked()
+      return
+    }
+    if (!supportsPrepared()) {
+      blocked = 'owner-incompatible'
+      invalidateConsent()
+      return
+    }
+    if (!policyDigest) {
+      blocked ??= 'owner-incompatible'
+      invalidateConsent()
+      return
+    }
+    try {
+      const digest = pluginSha256(catalogueProof.bytes)
+      const reply = await channel.call({ kind: 'mutation-status', catalogueDigest: digest })
+      if (!alive || generation !== ticket) return failPolicy()
+      z.strictObject({ format: z.literal(1), catalogueDigest: z.literal(digest) }).parse(reply)
+      blocked = null
+    } catch (error) {
+      if (generation !== ticket) return failPolicy()
+      invalidateConsent()
+      if (error instanceof PluginSupervisorError && error.code === 'source-mismatch')
+        blocked = 'source-mismatch'
+      else if (
+        error instanceof z.ZodError ||
+        (error instanceof PluginSupervisorError && error.code === 'incompatible')
+      )
+        blocked = 'owner-incompatible'
+      else throw error
+    }
+  }
+  async function mutate(action: 'install' | 'update', id: string, consent?: PluginMutationConsent) {
+    const ticket = generation
+    try {
+      await checkOwner()
+      if (!alive || switching || ticket !== generation) return failPolicy()
+      if (blocked) return refuseBlocked()
+      if (sourceFormat === 1) {
+        if (action === 'update') await invalidate(id)
+        if (!alive || switching || ticket !== generation) return failPolicy()
+        await channel.call({ kind: action, pluginId: id, operationId: randomUUID() })
+        return
+      }
+      const value = consents.get(id),
+        parsed = Consent.safeParse(consent)
+      consents.delete(id)
+      if (
+        !parsed.success ||
+        !value ||
+        value.action !== action ||
+        value.preparation !== parsed.data.preparation ||
+        value.releaseDigest !== parsed.data.releaseDigest ||
+        admitted.entries.find((entry) => entry.id === id)?.archive.sha256 !== value.releaseDigest
+      )
+        return failPolicy()
+      if (action === 'update') await invalidate(id)
+      if (!alive || switching || ticket !== generation) return failPolicy()
+      await channel.call({
+        kind: action + '-prepared',
+        pluginId: id,
+        operationId: randomUUID(),
+        ...parsed.data,
+      })
+      invalidateConsent()
+    } catch (error) {
+      invalidateConsent()
+      if (error instanceof PluginSupervisorError && error.code === 'source-mismatch')
+        blocked = 'source-mismatch'
+      throw error
+    }
+  }
+  await negotiate()
   return {
     features: () => features,
+    mutationStatus: () => blocked,
+    mutationRequired: () => sourceFormat === 2 || blocked !== null,
+    async prepareMutation(action, id) {
+      consents.delete(id)
+      try {
+        if (!policyDigest && blocked !== 'source-mismatch') await negotiate(true)
+        await checkOwner()
+        if (blocked) return refuseBlocked()
+        if (sourceFormat !== 2) throw new PluginSupervisorError('incompatible')
+        const ticket = generation,
+          entry = admitted.entries.find((one) => one.id === id)
+        if (!entry?.authors) return failPolicy()
+        const proof = z.strictObject({ preparation: z.uuid() }).parse(
+          await channel.call({
+            kind: 'prepare-mutation',
+            action,
+            pluginId: id,
+            releaseDigest: entry.archive.sha256,
+          }),
+        )
+        if (!alive || switching || ticket !== generation) return failPolicy()
+        const consent = { preparation: proof.preparation, releaseDigest: entry.archive.sha256 }
+        consents.set(id, { ...consent, action })
+        return consent
+      } catch (error) {
+        invalidateConsent()
+        if (error instanceof PluginSupervisorError && error.code === 'source-mismatch')
+          blocked = 'source-mismatch'
+        throw error
+      }
+    },
     async catalogue() {
+      await checkOwner()
       const cards = Cards.parse(await channel.call({ kind: modern ? 'list-v2' : 'list' }))
       // Project reviewed local adapter capabilities without expanding the legacy owner wire.
       return cards.map((card) => ({
         ...card,
         ...(!modern ? { uninstallDeletesData: Boolean(pluginAdapter(card.id)?.uninstall) } : {}),
         hasRemoteLogout: Boolean(pluginAdapter(card.id)?.uninstall),
+        ...(sourceFormat === 2 || blocked ? { preparationRequired: true as const } : {}),
+        ...(blocked ? { mutationBlocked: blocked } : {}),
       }))
     },
     ...(modern
       ? {
-          async refreshCatalogue(catalogueDigest: string) {
-            await channel.call({ kind: 'refresh', catalogueDigest })
+          async refreshCatalogue(
+            catalogueDigest: string,
+            source?: { bytes: Uint8Array; signature: Uint8Array },
+          ) {
+            const ticket = ++generation
+            invalidateConsent()
+            switching = true
+            try {
+              if (source) {
+                try {
+                  if (pluginSha256(source.bytes) !== catalogueDigest) return failPolicy()
+                  const verified = createRepoAwarePluginVerifier({
+                    pinnedPublicKey: options.pinnedPublicKey,
+                    repoCatalogueSha256:
+                      options.pinnedPublicKey === null ? catalogueDigest : undefined,
+                    target: options.target,
+                    knownReleases: admitted.pins,
+                  }).verifyCatalogue(source.bytes, source.signature)
+                  const format = (
+                    strictPluginJson(source.bytes, PLUGIN_LIMITS.catalogueBytes) as {
+                      format: 1 | 2
+                    }
+                  ).format
+                  if (sourceFormat === 2 && format !== 2) return failPolicy()
+                  catalogueProof = {
+                    bytes: Buffer.from(source.bytes),
+                    signature: Buffer.from(source.signature),
+                  }
+                  admitted = verified
+                  sourceFormat = format
+                  badSource = false
+                } catch (error) {
+                  badSource = true
+                  blocked = 'source-mismatch'
+                  throw error
+                }
+              } else if (
+                sourceFormat === 2 &&
+                pluginSha256(catalogueProof.bytes) !== catalogueDigest
+              ) {
+                badSource = true
+                blocked = 'source-mismatch'
+                return refuseBlocked()
+              }
+              await channel.call({ kind: 'refresh', catalogueDigest })
+              if (ticket !== generation || !alive) return failPolicy()
+              if (sourceFormat === 2) await negotiate(true)
+              if (blocked) return refuseBlocked()
+            } catch (error) {
+              if (sourceFormat === 2)
+                blocked =
+                  error instanceof PluginSupervisorError && error.code === 'source-mismatch'
+                    ? 'source-mismatch'
+                    : 'owner-incompatible'
+              throw error
+            } finally {
+              if (ticket === generation) switching = false
+            }
           },
-          async update(pluginId: string) {
-            await invalidate(pluginId)
-            await channel.call({ kind: 'update', pluginId, operationId: randomUUID() })
+          async update(pluginId: string, consent?: PluginMutationConsent) {
+            await mutate('update', pluginId, consent)
           },
         }
       : {}),
-    async install(pluginId) {
-      await channel.call({ kind: 'install', pluginId, operationId: randomUUID() })
+    async install(pluginId, consent) {
+      await mutate('install', pluginId, consent)
     },
     async uninstall(pluginId) {
       // The caller's UI is denied immediately too; other workspace consumers get a reverse revoke.
@@ -306,6 +564,8 @@ export async function connectPluginSettings(options: {
       }
     },
     async close() {
+      invalidateConsent()
+      generation++
       try {
         // Quit waits for this answer, and detaching starts or stops nothing.
         await channel.call({ kind: 'detach' }, 30_000)

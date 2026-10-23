@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { loadPluginConfiguration } from '../lib/plugin-configuration-load'
+import { pluginMutationAllowed, pluginMutationNotice } from '../../../shared/plugin-settings'
 import type {
   PluginCard,
   PluginListState,
@@ -151,7 +152,13 @@ async function configure(card: PluginCard) {
   if (stage.value) observer.observe(stage.value)
 }
 async function change(kind: 'install' | 'update' | 'uninstall', card: PluginCard) {
-  if (busy.value) return
+  if (
+    busy.value ||
+    (kind !== 'uninstall' &&
+      (card.preparationRequired || card.mutationBlocked) &&
+      !pluginMutationAllowed(card, kind))
+  )
+    return
   busy.value = true
   error.value = ''
   confirmation.value = null
@@ -311,7 +318,12 @@ onUnmounted(() => {
           </button>
           <button
             v-else-if="card.installed === false"
-            :disabled="busy || card.state === 'Unavailable'"
+            :disabled="
+              busy ||
+              card.state === 'Unavailable' ||
+              !!card.preparationRequired ||
+              !!card.mutationBlocked
+            "
             type="button"
             class="bb-button bb-button--primary"
             data-cy="plugin-install"
@@ -331,7 +343,12 @@ onUnmounted(() => {
             ><button
               v-if="card.updateVersion"
               class="bb-button"
-              :disabled="busy || card.state === 'Unavailable'"
+              :disabled="
+                busy ||
+                card.state === 'Unavailable' ||
+                !!card.preparationRequired ||
+                !!card.mutationBlocked
+              "
               type="button"
               data-cy="plugin-update"
               @click="change('update', card)"
@@ -348,6 +365,9 @@ onUnmounted(() => {
             </button></template
           >
         </div>
+        <p v-if="card.mutationBlocked" class="plugin-trust" role="status">
+          {{ pluginMutationNotice(card.mutationBlocked) }}
+        </p>
         <div
           v-if="confirmation?.id === card.id"
           class="plugin-confirmation"

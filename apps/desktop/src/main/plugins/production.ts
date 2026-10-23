@@ -241,7 +241,12 @@ export function productionPluginController() {
           if (loadCatalogue && connection.refreshCatalogue) {
             try {
               const next = await loadCatalogue()
-              await connection.refreshCatalogue(next.sha256)
+              if (next.format === 2)
+                await connection.refreshCatalogue(next.sha256, {
+                  bytes: next.bytes,
+                  signature: new Uint8Array(),
+                })
+              else await connection.refreshCatalogue(next.sha256)
               if (ended || connected !== connection) return fail()
               catalogueEntries = next
               names = Object.fromEntries(next.entries.map((one) => [one.id, one.name]))
@@ -272,14 +277,17 @@ export function productionPluginController() {
     },
     async update(id) {
       const connection = current()
+      if (catalogueEntries?.format === 2 || connection.mutationRequired?.()) return fail()
       if (!connection.update || !catalogueEntries?.releases.some((release) => release.id === id))
         return fail()
       await connection.update(id)
       await update()
     },
     async install(id) {
+      const connection = current()
+      if (catalogueEntries?.format === 2 || connection.mutationRequired?.()) return fail()
       if (!catalogueEntries?.releases.some((release) => release.id === id)) return fail()
-      await current().install(id)
+      await connection.install(id)
       await update()
     },
     async uninstall(id) {

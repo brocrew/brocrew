@@ -40,3 +40,6 @@ apps/desktop/test/fixtures/plugin-update-parent/**/*.ts
 
 # Frozen pre-delete compatibility reader retains source bytes apart from import paths.
 apps/desktop/test/fixtures/plugin-delete-parent/**/*.ts
+
+# Frozen mixed-version disclosure fixtures retain source bytes apart from import paths.
+apps/desktop/test/fixtures/plugin-disclosure-mixed/**/*.ts

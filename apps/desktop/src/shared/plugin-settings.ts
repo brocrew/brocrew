@@ -10,6 +10,11 @@ export const PLUGIN_STATES = [
   'Unavailable',
 ] as const
 export type PluginState = (typeof PLUGIN_STATES)[number]
+export type PluginMutationBlocked = 'owner-incompatible' | 'source-mismatch'
+export interface PluginMutationConsent {
+  releaseDigest: string
+  preparation: string
+}
 export interface PluginCard {
   id: string
   name: string
@@ -24,6 +29,20 @@ export interface PluginCard {
   updatesUnavailable?: true
   uninstallDeletesData?: boolean
   hasRemoteLogout?: boolean
+  preparationRequired?: true
+  mutationBlocked?: PluginMutationBlocked
+}
+/** Versioned actions remain denied until verified disclosure can supply consent. */
+export function pluginMutationAllowed(card: PluginCard, action: 'install' | 'update'): boolean {
+  if (card.preparationRequired || card.mutationBlocked) return false
+  return action === 'install'
+    ? card.installed === false && card.state === 'Available'
+    : card.installed === true && !!card.updateVersion && card.state !== 'Unavailable'
+}
+export function pluginMutationNotice(cause: PluginMutationBlocked): string {
+  return cause === 'source-mismatch'
+    ? 'Install and update are unavailable because another BroCrew window on this computer uses a different plugin list. You can still configure or uninstall installed plugins.'
+    : 'Install and update are unavailable until every BroCrew window on this computer is updated. You can still configure or uninstall installed plugins.'
 }
 /** Closed uninstall facts; remote removal is never inferred from deleting local data. */
 export interface PluginRemovalOutcome {
