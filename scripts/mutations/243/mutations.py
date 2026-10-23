@@ -201,35 +201,21 @@ MUTATIONS = [
         "it, the promise is dropped, and `prepareProviderHome` hands back a home whose directory has "
         "not been made — the whole tree still compiles",
         [
-            (
-                HOMES,
-                "  await (seams.provisionHome ?? provisionProviderHome)(providerHomesRoot(userData), home)",
-                "  void (seams.provisionHome ?? provisionProviderHome)(providerHomesRoot(userData), home)",
-            )
+            ("apps/desktop/src/main/providers/home.ts", "  await (provision ?? provisionProviderHome)(paths.managedRoot, home)", "  void (provision ?? provisionProviderHome)(paths.managedRoot, home)"),
         ],
     ),
     (
         "M8 · 🔴 …and the CREDENTIAL seam the same way · the launch is told the home is ready while "
         "the copy of auth.json is still in flight. ⚑ ANCHOR CORRECTED IN PLACE BY 293 (142: correct, never delete) — the defect and the kill are unchanged; only the surrounding text moved",
         [
-            (
-                HOMES,
-                # ⚑ **The fallback sign-in · re-anchored in place, not retired** — the copy's options moved into `theCodexCopy` (BroBot's own sign-in as the fallback); the plant still drops both awaits.
-                "    if (seams.provisionCodexAuth) await seams.provisionCodexAuth(home)\n    else await provisionCodexAuth(home, theCodexCopy(userData, home, seams))",
-                "    if (seams.provisionCodexAuth) void seams.provisionCodexAuth(home)\n    else void provisionCodexAuth(home, theCodexCopy(userData, home, seams))",
-            )
+            ("apps/desktop/src/main/providers/codex/index.ts", "  if (seams.provisionCodexAuth) await seams.provisionCodexAuth(home)\n  else await provisionCodexAuth(home, theCodexCopy(paths, home, seams))", "  if (seams.provisionCodexAuth) void seams.provisionCodexAuth(home)\n  else void provisionCodexAuth(home, theCodexCopy(paths, home, seams))"),
         ],
     ),
     (
         "M9 · ⚑ `reprovision` becomes `async`, so two refusals decided BEFORE any I/O — the Claude "
         "arm and the unknown-profile rule — turn into rejections a caller must await to see",
         [
-            (
-                HOMES,
-                # ⚑ **provider selection refactor · re-anchored in place, not retired** — The synchronous refusal uses an exhaustive selector; making the method async still turns both refusals into rejected promises.
-                "    reprovision(provider, profileId) {\n      if (providerValue(provider, { claude: true, codex: false })) throw claudeRefusal('re-copy')\n",
-                "    async reprovision(provider, profileId) {\n      if (providerValue(provider, { claude: true, codex: false })) throw claudeRefusal('re-copy')\n",
-            )
+            ("apps/desktop/src/main/providers/index.ts", "    reprovision: (provider, profileId) => auth[provider].reprovision(profileId),", "    reprovision: async (provider, profileId) => auth[provider].reprovision(profileId),"),
         ],
     ),
 ]

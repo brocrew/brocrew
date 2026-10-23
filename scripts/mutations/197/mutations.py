@@ -142,8 +142,8 @@ MUTATIONS = [
     (
         "M15 · ⛔ H2 · the credential door stops asking the rule — 190 H2 exactly: a read-looking "
         "question provisions a second spelling of an existing profile",
-        HOMES,
-        "    assertProfileMayBeOpened(profileId, listProfileIds(userData))\n",
+        "apps/desktop/src/main/providers/codex/index.ts",
+        "    paths.assertMayOpen(profileId)\n",
         "",
     ),
     (
@@ -165,30 +165,9 @@ MUTATIONS = [
     (
         "M18 · ⛔ H2 · the rule runs AFTER the directory is made, so a refused gesture still "
         "leaves the spelling behind and the next attempt is an exact match",
-        HOMES,
-        # ⚑ Re-anchored by 243, which split this door into a synchronous `homePathFor` (the
-        # rule + the derivation) and an async `homeFor` (the provisioning). The rule this row
-        # protects is unchanged: the refusal happens BEFORE anything is written.
-        # ⚑ Landing D-016a commit 2 (a5d66e92) · re-anchored in place, not retired — a5d66e92
-        # dropped the projectId argument, so deriveProviderHome is now a one-line call and the old
-        # multi-line anchor is gone; the rule itself (assertProfileMayBeOpened must run before the
-        # mkdir, the H2 door) is untouched and homePathFor/homeFor still split it from the
-        # provisioning. Same plant as before: the assert leaves homePathFor and lands after the
-        # await provisionProviderHome in homeFor. Note that reprovision() also calls homePathFor, so
-        # it loses the assert entirely under this plant, which only widens the red. Killed by
-        # `profile-uniqueness.test.ts`.
-        "    assertProfileMayBeOpened(profileId, listProfileIds(userData))\n"
-        "    return deriveProviderHome(userData, { profileId, provider })\n"
-        "  }\n"
-        "  const homeFor = async (provider: Provider, profileId: string): Promise<string> => {\n"
-        "    const home = homePathFor(provider, profileId)\n"
-        "    await provisionProviderHome(providerHomesRoot(userData), home)",
-        "    return deriveProviderHome(userData, { profileId, provider })\n"
-        "  }\n"
-        "  const homeFor = async (provider: Provider, profileId: string): Promise<string> => {\n"
-        "    const home = homePathFor(provider, profileId)\n"
-        "    await provisionProviderHome(providerHomesRoot(userData), home)\n"
-        "    assertProfileMayBeOpened(profileId, listProfileIds(userData))",
+        "apps/desktop/src/main/providers/codex/index.ts",
+        "    paths.assertMayOpen(profileId)\n    return paths.homeOf(profileId)\n  }\n  const homeFor = async (profileId: string): Promise<string> => {\n    const home = homePathFor(profileId)\n    await provisionProviderHome(paths.managedRoot, home)",
+        "    return paths.homeOf(profileId)\n  }\n  const homeFor = async (profileId: string): Promise<string> => {\n    const home = homePathFor(profileId)\n    await provisionProviderHome(paths.managedRoot, home)\n    paths.assertMayOpen(profileId)",
     ),
     (
         "M19 · ⚠️ H2 · the host folds the refusal into 'could not ask', so the app's own decision "
@@ -200,15 +179,9 @@ MUTATIONS = [
     (
         "M20 · ⛔ H2 · the rule moves onto `prepareProviderHome`, which is the RESUME path — "
         "187's measured trap, and it strands every pre-187 row",
-        HOMES,
-        # ⚑ Re-anchored by 243: the seam call is `await`ed now (the provisioners became
-        # promise-returning with the lock). The rule is untouched — this must NOT be the door
-        # the uniqueness check lives on, because it is the resume path too.
-        "  const home = deriveProviderHome(userData, identity)\n"
-        "  await (seams.provisionHome ?? provisionProviderHome)(providerHomesRoot(userData), home)",
-        "  assertProfileMayBeOpened(identity.profileId, listProfileIds(userData))\n"
-        "  const home = deriveProviderHome(userData, identity)\n"
-        "  await (seams.provisionHome ?? provisionProviderHome)(providerHomesRoot(userData), home)",
+        "apps/desktop/src/main/providers/home.ts",
+        "  const home = paths.homeOf(profileId)\n  await (provision ?? provisionProviderHome)(paths.managedRoot, home)",
+        "  paths.assertMayOpen(profileId)\n  const home = paths.homeOf(profileId)\n  await (provision ?? provisionProviderHome)(paths.managedRoot, home)",
     ),
     # ---- the five rows this dispatch retired, carried forward into the code that replaced them ---
     (
