@@ -20,8 +20,8 @@ import { isSocketFile } from './local-endpoint'
 import { refuse } from './supervisor/protocol'
 
 const Slot = z.string().regex(/^[a-z][a-z0-9]{0,5}$/)
-const Marker = z.strictObject({ format: z.literal(1), slot: Slot })
-const Pins = z.strictObject({
+export const Marker = z.strictObject({ format: z.literal(1), slot: Slot })
+export const Pins = z.strictObject({
   format: z.literal(1),
   selections: z
     .array(z.strictObject({ workspace: z.string().min(1).max(4096), slot: Slot }))
@@ -32,7 +32,7 @@ const missing = (error: unknown) =>
 const identity = (path: string) => (process.platform === 'win32' ? path.toLowerCase() : path)
 
 /** Read only a bounded, unchanged regular file. Selection never creates or repairs configuration. */
-function record(path: string, limit: number): unknown | undefined {
+export function readRootSelectionBytes(path: string, limit: number): Buffer | undefined {
   let before
   try {
     before = lstatSync(path, { bigint: true })
@@ -75,10 +75,15 @@ function record(path: string, limit: number): unknown | undefined {
       after.ctimeNs !== final.ctimeNs
     )
       refuse()
-    return JSON.parse(bytes.subarray(0, size).toString('utf8'))
+    return bytes.subarray(0, size)
   } finally {
     closeSync(fd)
   }
+}
+
+function record(path: string, limit: number): unknown | undefined {
+  const bytes = readRootSelectionBytes(path, limit)
+  return bytes === undefined ? undefined : JSON.parse(bytes.toString('utf8'))
 }
 
 /** The effective workspace selects a root only with two matching, independently kept records. */
@@ -113,32 +118,39 @@ export function workspacePluginRoot(options: {
     if (markerValue === undefined && !pin) return options.defaultRoot
     const marker = Marker.parse(markerValue)
     if (!pin || pin.slot !== marker.slot) refuse()
-    if (
-      identity(realPath(parent)) !== identity(parent) ||
-      !isPrivateEntry(lstatSync(parent), 0o022)
-    )
-      refuse()
-    const root = join(parent, `plugins-${marker.slot}`)
-    if (
-      isWithinOrSame(workspace, root) ||
-      pins.selections.some((entry) => isWithinOrSame(entry.workspace, root))
-    )
-      refuse()
-    if (
-      isSocketFile() &&
-      [join(root, 'supervisor', 'owner.sock'), join(root, 'person-control', 'person.sock')].some(
-        (path) => Buffer.byteLength(path) > 100,
-      )
-    )
-      refuse()
-    try {
-      const stat = lstatSync(root)
-      if (stat.isSymbolicLink() || !stat.isDirectory() || !isOwnerOnlyDirectory(stat)) refuse()
-    } catch (error) {
-      if (!missing(error)) throw error
-    }
-    return root
+    return plannedPluginRoot(parent, workspace, pins.selections, marker.slot)
   } catch {
     refuse()
   }
+}
+
+/** Validate the exact root the reader would select, including a proposed offline enrollment. */
+export function plannedPluginRoot(
+  parent: string,
+  workspace: string,
+  selections: Array<{ workspace: string; slot: string }>,
+  slot: string,
+): string {
+  if (identity(realPath(parent)) !== identity(parent) || !isPrivateEntry(lstatSync(parent), 0o022))
+    refuse()
+  const root = join(parent, `plugins-${slot}`)
+  if (
+    isWithinOrSame(workspace, root) ||
+    selections.some((entry) => isWithinOrSame(entry.workspace, root))
+  )
+    refuse()
+  if (
+    isSocketFile() &&
+    [join(root, 'supervisor', 'owner.sock'), join(root, 'person-control', 'person.sock')].some(
+      (path) => Buffer.byteLength(path) > 100,
+    )
+  )
+    refuse()
+  try {
+    const stat = lstatSync(root)
+    if (stat.isSymbolicLink() || !stat.isDirectory() || !isOwnerOnlyDirectory(stat)) refuse()
+  } catch (error) {
+    if (!missing(error)) throw error
+  }
+  return root
 }
