@@ -111,6 +111,7 @@ export function registerPluginSettings(
               'priorityClamped',
               'installedVersion',
               'updateVersion',
+              'updatesUnavailable',
               'uninstallDeletesData',
               'hasRemoteLogout',
             ].includes(key),
@@ -126,6 +127,10 @@ export function registerPluginSettings(
                 version.length <= 80 &&
                 !/[\r\n\0]/.test(version)),
           ) &&
+          (card.updatesUnavailable === undefined ||
+            (card.updatesUnavailable === true &&
+              card.installed === true &&
+              card.updateVersion === undefined)) &&
           (card.updateVersion === undefined ||
             (card.installed === true && card.installedVersion !== undefined)) &&
           (card.uninstallDeletesData === undefined ||

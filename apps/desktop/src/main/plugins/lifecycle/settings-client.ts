@@ -42,12 +42,11 @@ export async function connectPluginSettings(options: {
   lost?(): void
   signal?: AbortSignal
 }): Promise<PluginSettingsController & { close(): Promise<void> }> {
-  const admittedCatalogue = createRepoAwarePluginVerifier({
+  createRepoAwarePluginVerifier({
     pinnedPublicKey: options.pinnedPublicKey,
     repoCatalogueSha256: options.repoCatalogueSha256,
     target: options.target,
   }).verifyCatalogue(options.catalogue.bytes, options.catalogue.signature)
-  if (!admittedCatalogue.entries.length) throw new PluginSupervisorError('unavailable')
   const vault = new PluginPackageVault(
     options.root,
     options.pinnedPublicKey,
