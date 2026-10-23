@@ -5,7 +5,7 @@ import type { ProviderHomePaths, ProvisionHome } from './module'
 export async function prepareStateHome(
   paths: ProviderHomePaths,
   profileId: string,
-  provision: ProvisionHome,
+  provision?: ProvisionHome,
 ): Promise<string> {
   const home = paths.homeOf(profileId)
   await (provision ?? provisionProviderHome)(paths.managedRoot, home)
