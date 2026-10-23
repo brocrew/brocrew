@@ -152,10 +152,11 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M9 · a check that cannot reach the provider quotes the failure — and whatever it carried, "
         f"the key included · killed by `{SEALED}`",
-        [(API_KEYS,
+        [("apps/desktop/src/main/providers/key-check.ts",
           # ⚑ **a check that spends a token · re-anchored in place, not retired** — the check's could-not-reach answer is one value now, returned from the catch; the row still puts the failure's own words in it
-          "  } catch {\n    return unreachable\n  }\n  if (!succeeded(listed.status))",
-          "  } catch (error) {\n    return { ...unreachable, reason: `${unreachable.reason} (${String(error)})` }\n  }\n  if (!succeeded(listed.status))")],
+          # The shared request now wraps the same answer; the unsafe diagnostic still reaches it.
+          "  } catch {\n    return { answer: unreachable }\n  }\n  if (!succeeded(listed.status))",
+          "  } catch (error) {\n    return { answer: { ...unreachable, reason: `${unreachable.reason} (${String(error)})` } }\n  }\n  if (!succeeded(listed.status))")],
     ),
     # 'bringTheCodexKeyTo' › '⛔ the stamp stands only while the home still holds a login: a stamp
     # over no auth.json logs in again' — changes toHaveBeenCalledTimes(2) gets 1.
