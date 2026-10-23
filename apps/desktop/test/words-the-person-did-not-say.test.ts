@@ -172,8 +172,21 @@ const PACKET_SEND_EXEMPTION = {
       count: 1,
     },
     {
-      expression: "this.send({ kind: 'reply', id: packet.id, ok: false, value: null })",
-      censusText: "() => this.send({ kind: 'reply', id: packet.id, ok: false, value: null }),",
+      expression: `this.send({
+                  kind: 'reply',
+                  id: packet.id,
+                  ok: false,
+                  value:
+                    this.reportRefusals() &&
+                    error instanceof PluginSupervisorError &&
+                    ['policy-refused', 'source-mismatch', 'incompatible', 'network'].includes(
+                      error.code,
+                    )
+                      ? { pluginRefusal: error.code }
+                      : null,
+                })`,
+      censusText:
+        "this.send({ kind: 'reply', id: packet.id, ok: false, value: this.reportRefusals() && error instanceof PluginSupervisorError && ['policy-refused', 'source-mismatch', 'incompatible', 'network'].includes( error.code, ) ? { pluginRefusal: error.code } : null, }),",
       count: 1,
     },
     {

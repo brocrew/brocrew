@@ -62,7 +62,14 @@ async function generic(kind = 'turn.context.titles') {
 describe.skipIf(process.platform === 'win32')('independent owned contributions', () => {
   it('runs a generic Node contribution without granting an MCP or configuration route', async () => {
     const f = await generic()
-    await f.controller.install(f.handle, f.pkg.manifest.id)
+    const prepared = await f.controller.prepareMutation(
+      f.handle,
+      'install',
+      f.pkg.manifest.id,
+      f.pkg.release.archive.sha256,
+      pluginSha256(f.pkg.bytes),
+    )
+    await f.controller.installPrepared(f.handle, f.pkg.manifest.id, prepared)
     expect(f.controller.agentAttachments(f.receiver.sink.workspaceId)).toEqual([])
     const get = Reflect.get(f.controller, 'contributions') as (
       handle: unknown,
@@ -79,7 +86,14 @@ describe.skipIf(process.platform === 'win32')('independent owned contributions',
   })
   it('revokes a contribution on update and never revives it when its workspace reattaches', async () => {
     const f = await generic()
-    await f.controller.install(f.handle, f.pkg.manifest.id)
+    const prepared = await f.controller.prepareMutation(
+      f.handle,
+      'install',
+      f.pkg.manifest.id,
+      f.pkg.release.archive.sha256,
+      pluginSha256(f.pkg.bytes),
+    )
+    await f.controller.installPrepared(f.handle, f.pkg.manifest.id, prepared)
     const get = Reflect.get(f.controller, 'contributions') as (
       handle: unknown,
       id: string,
@@ -93,7 +107,14 @@ describe.skipIf(process.platform === 'win32')('independent owned contributions',
     })
     f.options.download = async () => next.archive
     await f.controller.refreshCatalogue(pluginSha256(next.bytes))
-    await f.controller.update(f.handle, f.pkg.manifest.id)
+    const update = await f.controller.prepareMutation(
+      f.handle,
+      'update',
+      f.pkg.manifest.id,
+      next.release.archive.sha256,
+      pluginSha256(next.bytes),
+    )
+    await f.controller.updatePrepared(f.handle, f.pkg.manifest.id, update)
     expect(before.current()).toBe(false)
     const updated = get.call(f.controller, f.handle, f.pkg.manifest.id)
     expect(updated.current()).toBe(true)

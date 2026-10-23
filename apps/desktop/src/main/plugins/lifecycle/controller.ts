@@ -86,7 +86,10 @@ export class PluginLifecycleController {
   private readonly localOperations = new Set<string>()
   private readonly admittedCatalogues = new Map<string, readonly string[]>()
   private readonly cleanup = new Set<string>()
-  private catalogueRevision = 0
+  private preparedMutationPolicy?: Readonly<{ revision: number; required: boolean }>
+  private get catalogueRevision(): number {
+    return this.preparedMutationPolicy?.revision ?? 0
+  }
   private draining = false
   private drained = false
   private drainWork: Promise<void> | undefined
@@ -114,6 +117,11 @@ export class PluginLifecycleController {
         ),
       )
       const catalogue = controller.catalogue() // Complete verification before retaining provenance.
+      controller.preparedMutationPolicy = Object.freeze({
+        revision: 0,
+        required:
+          catalogue.format === 2 || catalogue.entries.some((entry) => entry.authors !== undefined),
+      })
       controller.retainCatalogue(
         options.catalogue.bytes,
         catalogue.entries.map((one) => one.id),
@@ -213,7 +221,11 @@ export class PluginLifecycleController {
         next.catalogue.bytes,
         verified.entries.map((one) => one.id),
       )
-      this.catalogueRevision++
+      this.preparedMutationPolicy = Object.freeze({
+        revision: this.catalogueRevision + 1,
+        required:
+          verified.format === 2 || verified.entries.some((entry) => entry.authors !== undefined),
+      })
       this.options.catalogue = next.catalogue
       this.options.repoCatalogueSha256 = next.repoCatalogueSha256
       this.options.repoList = next.repoList
@@ -305,9 +317,18 @@ export class PluginLifecycleController {
     if (!outcome.ok) throw outcome.error
     return outcome.value
   }
+  /** Read-only capability advertisement: never joins or reads the state fence. */
+  preparedMutationFeature(): boolean {
+    if (!this.preparedMutationPolicy) throw new PluginSupervisorError('incompatible')
+    return this.preparedMutationPolicy.required
+  }
   requiresPreparedMutations(): boolean {
     const catalogue = this.catalogue()
-    return catalogue.format === 2 || catalogue.entries.some((entry) => entry.authors !== undefined)
+    const required =
+      catalogue.format === 2 || catalogue.entries.some((entry) => entry.authors !== undefined)
+    if (!this.preparedMutationPolicy || this.preparedMutationPolicy.required !== required)
+      throw new PluginSupervisorError('source-mismatch')
+    return required
   }
   mutationCatalogueDigest(): string {
     return pluginSha256(this.options.catalogue.bytes)
