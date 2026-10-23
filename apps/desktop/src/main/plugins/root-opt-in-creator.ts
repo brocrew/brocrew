@@ -6,6 +6,7 @@ import {
   lstatSync,
   openSync,
   realpathSync,
+  readdirSync,
   renameSync,
   linkSync,
   unlinkSync,
@@ -87,7 +88,7 @@ export async function checkCreationPrivacy(
   await verifyFileToThisUser(path, lists, platform)
 }
 
-function selectionPaths(options: Options) {
+function selectionPaths(options: Options, readOnly = false) {
   if (!options || !isAbsolute(options.appData ?? '') || !isAbsolute(options.workspace ?? ''))
     fail('supply absolute --app-data and --workspace paths')
   if (options.apply !== undefined && typeof options.apply !== 'boolean')
@@ -104,7 +105,8 @@ function selectionPaths(options: Options) {
   )
     fail('unsafe configuration parent')
   // The daily default folder and all internal app data are deliberately ineligible.
-  if (isWithinOrSame(parent, workspace)) fail('internal or default workspace is not eligible')
+  if (!readOnly && isWithinOrSame(parent, workspace))
+    fail('internal or default workspace is not eligible')
   const pinPath = join(parent, 'plugin-root-pins.json'),
     markerPath = join(workspace, 'plugin-root.json')
   return { appData, workspace, parent, pinPath, markerPath, defaultRoot: join(parent, 'plugins') }
@@ -292,8 +294,13 @@ function removalPlan(options: Options) {
   if (marker && (!marker.isFile() || marker.isSymbolicLink() || !isPrivateEntry(marker)))
     fail('marker is not a private regular file; review it before removal')
   const entry = pins.selections.find((entry) => same(entry.workspace, paths.workspace))
-  if (options.slot !== undefined && entry && options.slot !== entry.slot)
-    fail('workspace selects a different slot')
+  let markerRecord: ReturnType<typeof checkedRemovalMarker> | undefined
+  if (marker || entry) {
+    const expected = Marker.safeParse({ format: 1, slot: options.slot })
+    if (!expected.success) return fail('shared requires --slot matching this workspace selection')
+    if (entry && expected.data.slot !== entry.slot) fail('workspace selects a different slot')
+    if (marker) markerRecord = checkedRemovalMarker(paths.workspace, expected.data.slot)
+  }
   const remaining = {
     format: 1 as const,
     selections: pins.selections.filter((entry) => !same(entry.workspace, paths.workspace)),
@@ -305,12 +312,55 @@ function removalPlan(options: Options) {
   return {
     ...paths,
     beforePin,
-    marker,
+    marker: markerRecord?.stat,
+    markerRecord,
     entry,
     remaining,
     views,
     status: !marker && !entry ? ('already shared' as const) : ('preview' as const),
   }
+}
+
+/** The reader stays single-link-only; rollback permits two only for a proven tool temp. */
+function checkedRemovalMarker(workspace: string, slot: string) {
+  const path = join(workspace, 'plugin-root.json'),
+    stat = lstatSync(path, { bigint: true })
+  if (
+    !stat.isFile() ||
+    stat.isSymbolicLink() ||
+    !isPrivateEntry(stat) ||
+    (stat.nlink !== 1n && stat.nlink !== 2n)
+  )
+    return fail('marker is not a private regular file with expected links')
+  let temporary: string | undefined
+  if (stat.nlink === 2n) {
+    const candidates = readdirSync(workspace)
+      .filter((name) =>
+        /^\.plugin-root-marker-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.tmp$/.test(
+          name,
+        ),
+      )
+      .map((name) => join(workspace, name))
+      .filter((candidate) => {
+        const other = statOrAbsent(candidate)
+        return (
+          other?.isFile() &&
+          !other.isSymbolicLink() &&
+          isPrivateEntry(other) &&
+          other.dev === stat.dev &&
+          other.ino === stat.ino &&
+          other.nlink === 2n
+        )
+      })
+    if (candidates.length !== 1) return fail('marker has an unknown extra link')
+    temporary = candidates[0]!
+  }
+  const bytes = readRootSelectionBytes(path, 1024, stat.nlink === 2n ? 2 : 1)
+  if (!bytes || !unchanged(stat, lstatSync(path, { bigint: true })))
+    return fail('marker changed while reading')
+  const parsed = Marker.parse(JSON.parse(bytes.toString('utf8')))
+  if (parsed.slot !== slot) fail('marker selects a different slot')
+  return { stat, bytes, temporary }
 }
 function selectionView(appData: string, workspaceRoot: string, defaultRoot: string) {
   try {
@@ -332,7 +382,10 @@ function removalPreview(value: ReturnType<typeof removalPlan>) {
     markerPath: value.markerPath,
     pinPath: value.pinPath,
     removeMarker: !!value.marker,
+    removeMarkerTemp: value.markerRecord?.temporary ?? null,
     removePinEntry: value.entry ?? null,
+    warning:
+      "After restart this workspace's agents use the shared plugins, including the daily Chrome profiles/sign-ins and the WhatsApp account with its read/group settings.",
     pins: value.remaining,
   }
 }
@@ -398,8 +451,35 @@ async function removePluginRootSelection(options: Options, hooks: Hooks) {
     verifyDirectories()
     agrees(current.pinPath, 64 * 1024, current.beforePin)
     const marker = statOrAbsent(current.markerPath)
-    if (current.marker ? !marker || !unchanged(current.marker, marker) : marker !== undefined)
-      fail('marker changed; nothing was removed')
+    if (current.markerRecord) {
+      const checked = checkedRemovalMarker(current.workspace, options.slot!)
+      if (
+        !unchanged(current.markerRecord.stat, checked.stat) ||
+        !current.markerRecord.bytes.equals(checked.bytes) ||
+        current.markerRecord.temporary !== checked.temporary
+      )
+        fail('marker changed; nothing was removed')
+      if (checked.temporary) {
+        const temp = lstatSync(checked.temporary, { bigint: true })
+        if (
+          !temp.isFile() ||
+          temp.isSymbolicLink() ||
+          temp.dev !== checked.stat.dev ||
+          temp.ino !== checked.stat.ino ||
+          temp.nlink !== 2n
+        )
+          fail('marker temp changed; nothing was removed')
+        unlinkSync(checked.temporary)
+        const bytes = readRootSelectionBytes(current.markerPath, 1024)
+        const after = lstatSync(current.markerPath, { bigint: true })
+        if (
+          !bytes?.equals(checked.bytes) ||
+          after.dev !== checked.stat.dev ||
+          after.ino !== checked.stat.ino
+        )
+          fail('marker changed after temp cleanup')
+      }
+    } else if (marker !== undefined) fail('marker appeared; nothing was removed')
     // Marker first: if interrupted, an outstanding pin still makes the reader refuse.
     if (current.marker) {
       unlinkSync(current.markerPath)
@@ -469,19 +549,35 @@ export async function rootOptInCommand(args: string[]) {
       args[i + 1]!.startsWith('--')
     )
       fail(
-        'use --app-data <absolute> --workspace <absolute> [--mode own|shared] [--slot <name>] [--apply]',
+        'use --app-data <absolute> --workspace <absolute> [--mode own|shared|state] [--slot <name>] [--apply]',
       )
     values.set(flag, args[++i]!)
   }
-  return createPluginRootSelection({
+  const mode = values.get('--mode') ?? 'own'
+  const options = {
     appData: values.get('--app-data') ?? '',
     workspace: values.get('--workspace') ?? '',
     slot: values.get('--slot'),
-    mode: (values.get('--mode') ?? 'own') as Options['mode'],
+    mode: mode as Options['mode'],
     apply,
-  }).catch((error: unknown) => {
+  }
+  const result = mode === 'state' ? pluginRootState(options) : createPluginRootSelection(options)
+  return result.catch((error: unknown) => {
     if (error instanceof ZodError || error instanceof SyntaxError)
       fail('marker or pin configuration is invalid; review it before changing selection')
     throw error
   })
+}
+
+async function pluginRootState(options: Options): Promise<'own' | 'shared'> {
+  if (options.apply) return fail('state is read-only; omit --apply')
+  const paths = selectionPaths(options, true)
+  await checkCreationPrivacy(paths.parent)
+  await checkCreationPrivacy(paths.workspace)
+  const root = workspacePluginRoot({
+    appData: paths.appData,
+    workspaceRoot: paths.workspace,
+    defaultRoot: paths.defaultRoot,
+  })
+  return same(root, paths.defaultRoot) ? 'shared' : 'own'
 }

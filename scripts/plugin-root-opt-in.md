@@ -35,34 +35,69 @@ The command publishes `<appData>/@brobot2/plugin-root-pins.json` first, then exc
 `<workspace>/plugin-root.json`. It preserves every other pin entry's order and values. Incomplete
 own selections refuse in the reader and in `own`; they never fall back to shared data.
 
-## Shared: explicitly remove the selection, including partial states
-
-The swap's rollback and the way-back script use this mode. No slot is required:
+## State: a literal read-only query
 
 ```sh
-node scripts/plugin-root-opt-in.mjs --app-data /absolute/app-data --workspace /absolute/workspace --mode shared
-node scripts/plugin-root-opt-in.mjs --app-data /absolute/app-data --workspace /absolute/workspace --mode shared --apply
+node scripts/plugin-root-opt-in.mjs --app-data /absolute/app-data --workspace /absolute/workspace --mode state
 ```
 
-The first command previews exactly which marker and pin entry will be removed. Its JSON `state` is `own`, `shared`, or `partial`, so the swap adapter can classify the existing selection without supplying a slot; an unsafe global map instead exits nonzero. Apply removes only
-that workspace's marker, then its pin entry. An empty, valid pin map may remain. It never deletes
-other entries or either plugin data directory. Both absent is an idempotent success, `already
-shared`. Marker-only, pin-only and interrupted-own states are cleared; a marker with an unfinished
-temp hard link is also removed safely. If shared stops after removing the marker, the remaining pin
-keeps the reader refused; rerun shared to finish. Every other selection retains its previous view.
-A malformed global pin map or an unsafe marker kind refuses for review instead of guessing which
-other records to preserve. A regular partial marker may be removed without parsing its content.
+This prints exactly `shared` or `own`, followed by a newline, on stdout. `shared` means neither a
+marker nor a matching pin entry exists; `own` means the app's reader accepts both matching records.
+A mixed, mismatched or unsafe state exits nonzero, with one line on stderr and nothing on stdout.
+It changes nothing and does not accept `--apply`. The swap must check all selected workspaces are
+shared before starting and check state again after each step. No JSON or source hash accompanies
+this literal output.
 
-After shared completes, the app's reader must confirm the unchanged shared root before the command
-exits successfully. Kept data from a former separate setup is never moved, merged or reused. A later
-own enrollment needs a fresh unused slot if that data root exists. No workspace-policy.json,
-packaged-workspaces.json or packaged-workspace-owners/ path is read or changed by either mode.
+## Shared: explicitly remove the selection, including partial states
+
+The swap's rollback and the way-back script use this mode. Whenever either record exists, pass the
+expected slot assigned to this exact workspace:
+
+```sh
+node scripts/plugin-root-opt-in.mjs --app-data /absolute/app-data --workspace /absolute/workspace --mode shared --slot p1
+node scripts/plugin-root-opt-in.mjs --app-data /absolute/app-data --workspace /absolute/workspace --mode shared --slot p1 --apply
+```
+
+Preview writes nothing and states exactly which marker, matching tool temp and pin entry will be
+removed. Apply only after the workspace's owner approves this specific return to shared and its
+windows are closed. After restart this workspace's agents use the shared plugins, including the
+daily Chrome profiles/sign-ins and the WhatsApp account with its read/group settings. The preview
+prints this warning too. This is an intentional change of account access, not just configuration
+cleanup.
+
+The expected slot must match every existing marker and target pin. Missing or wrong slot,
+unparseable marker, unexpected keys or disagreement refuses without changing either record.
+Already shared needs no slot and succeeds idempotently. A marker with two links is accepted only
+when its exact extra name is a UUID-named tool marker temp with the same device and inode; only
+that proven temp is removed before the marker. Other temporary files are never removed. The
+reader continues to refuse all multiply linked markers during ordinary startup.
+
+Apply removes the marker first and then the pin ENTRY. Other entries keep their order and values;
+an empty valid pin map is retained. Neither the separate data root nor the shared data root is
+read, deleted, moved or merged. Kept separate data permits a future reviewed recovery and blocks
+slot reuse: own refuses that slot while its root exists. Deleting any data root is a separate
+reviewed step.
+
+Marker-only, pin-only and interrupted-own selections with the matching expected slot are cleared.
+If shared stops after removing the marker, the remaining pin makes the reader refuse; rerun shared
+with the same expected slot to finish. Other selections retain their previous view. A malformed
+global map or unsafe marker refuses for review rather than guessing which records to preserve.
+Afterwards the app reader must confirm shared before the command exits successfully. Neither mode
+reads or changes workspace-policy.json, packaged-workspaces.json or packaged-workspace-owners/.
 
 ## Privacy, interruption and reviewed recovery
 
 Both modes use one exclusive appData lock. A busy or leftover `plugin-root-pins.lock` is never
-stolen. After a hard process kill, verify no creator is running and review publication state before
-removing that lock; then shared can clear the partial pair. Normal errors release this command's
+stolen. After a hard process kill, the operator must:
+
+1. Use the process list to verify no creator command is running, and keep all app windows closed.
+2. Preview own and shared for the approved explicit workspace and expected slot; an incomplete own
+   preview may refuse, which is expected. Review the shared plan and existing records.
+3. Verify the leftover lock is a regular file at exactly `@brobot2/plugin-root-pins.lock`. Remove
+   only that verified lock, never a directory, link, configuration record or data root.
+4. Rerun shared preview and apply with the same approved expected slot, then state must print shared.
+
+The command never steals a lock automatically. Normal errors release this command's
 own lock. The tool exits nonzero with a one-line reason on failure and zero only after verification.
 
 On Windows the existing configuration parent and workspace must already have private ACLs. The
