@@ -1,3 +1,5 @@
+import type { GivenSkills } from '../../shared/what-this-agent-was-given'
+import type { ListedSkills } from './given-policy'
 import type { ZodType } from 'zod'
 
 export interface LegacySkillReminder {
@@ -6,6 +8,9 @@ export interface LegacySkillReminder {
   canonical(name: string, text: string): string | null
 }
 export interface SkillPolicy {
+  asGiven(listed: ListedSkills | null, builtIn: boolean): GivenSkills
+  needsReminders(confirmed: () => boolean | undefined): boolean
+  readonly builtInScope: string | null
   readonly discoveryRoot: 'claude-plugin' | 'codex/skills'
   initialFiles(): Map<string, string>
   fileFor(name: string): string

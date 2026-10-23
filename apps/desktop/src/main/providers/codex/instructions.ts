@@ -1,3 +1,4 @@
+import { given } from './given'
 import { CODEX_MEMORY_SUMMARY } from '@brobot2/runtime'
 import { readCodexAgentMemory, type CodexMemoryRead } from './memory'
 import { agentPreamble } from '../../runtime/agent-preamble'
@@ -128,4 +129,8 @@ export function readSessionInstructions(inputs: InstructionInputs): SessionLaunc
   }
 }
 
-export const instructions = { read: readSessionInstructions, bundleLeaf: 'AGENTS.override.md' }
+export const instructions = {
+  read: readSessionInstructions,
+  given,
+  bundleLeaf: 'AGENTS.override.md',
+}
