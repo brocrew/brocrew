@@ -113,7 +113,8 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
     expect(projected.entry).toContain(
       'return preparePackagedGateHome("/private/tmp/fictional", userData, provider, profileId)',
     )
-    expect(projected.entry).toContain('renewClaudeLogin: undefined')
+    expect(projected.entry).toContain('loginRenewal: undefined')
+    expect(projected.entry).not.toContain('loginRenewal: providerAuth.loginRenewal')
     expect(() =>
       projectBuild(
         config,
@@ -135,6 +136,7 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
         projectBuild(config, changed, '/private/tmp/fictional/a', '/private/tmp/fictional/browser'),
       ).toThrow('Build anchor changed')
     for (const anchor of [
+      '    loginRenewal: providerAuth.loginRenewal,\n',
       'providerModules[provider].createRuntime()',
       'return providerModules[provider].home.prepare(profileId)',
     ]) {
