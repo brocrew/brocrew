@@ -7,7 +7,7 @@ import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, describe, expect, it } from 'vitest'
 import { workspacePluginRoot } from '../src/main/plugins/root-selection'
-import { keepToThisUser } from '../src/main/recovery/windows-privacy'
+import { keepFileToThisUser, keepToThisUser } from '../src/main/recovery/windows-privacy'
 
 const folders: string[] = []
 afterEach(async () => {
@@ -34,8 +34,18 @@ async function fixture() {
   await writeFile(join(legacy, 'fictional-state'), 'preserve me', { mode: 0o600 })
   return { base, appData, workspace, other, parent, marker, pins, legacy, slot: 'p1' }
 }
-type Options = { appData: string; workspace: string; slot: string; apply?: boolean }
-type Hook = { beforePublish?: () => void | Promise<void>; afterPin?: () => void | Promise<void> }
+type Options = {
+  appData: string
+  workspace: string
+  slot?: string
+  mode?: 'own' | 'shared'
+  apply?: boolean
+}
+type Hook = {
+  beforePublish?: () => void | Promise<void>
+  afterPin?: () => void | Promise<void>
+  afterMarker?: () => void | Promise<void>
+}
 async function creator() {
   // Load inside each test so an absent command produces individual RED cases, not a collection error.
   const modulePath = '../src/main/plugins/root-opt-in-creator.ts'
@@ -225,6 +235,15 @@ describe('creating an explicit plugin setup', () => {
       api.createPluginRootSelection({ ...f, workspace: f.other, slot: 'p2', apply: true }),
     ).rejects.toThrow()
     expect(tree(f.base)).toBe(before)
+    const pinBytes = readFileSync(f.pins)
+    const recoveredMarker = join(f.other, 'plugin-root.json')
+    await writeFile(recoveredMarker, '{"format":1,"slot":"p2"}', { mode: 0o600, flag: 'wx' })
+    await keepFileToThisUser(recoveredMarker)
+    expect(
+      (await api.createPluginRootSelection({ ...f, workspace: f.other, slot: 'p2' })).status,
+    ).toBe('already selected')
+    expect(selected(f, f.other)).toBe(join(f.parent, 'plugins-p2'))
+    expect(readFileSync(f.pins)).toEqual(pinBytes)
   })
   it('does not replace a pin changed during creation', async () => {
     const f = await fixture(),
@@ -344,6 +363,129 @@ describe('creating an explicit plugin setup', () => {
     await expect(api.checkCreationPrivacy('fictional', lists, 'win32')).rejects.toThrow()
     expect(calls).toEqual([])
   })
+  it('returns to shared without removing data or another workspace selection', async () => {
+    const f = await fixture(),
+      api = await creator()
+    await api.createPluginRootSelection({ ...f, apply: true })
+    await api.createPluginRootSelection({ ...f, workspace: f.other, slot: 'p2', apply: true })
+    const ownRoot = join(f.parent, 'plugins-p1')
+    await mkdir(ownRoot, { mode: 0o700 })
+    await writeFile(join(ownRoot, 'fictional-data'), 'retain me', { mode: 0o600 })
+    const ownHash = tree(ownRoot),
+      legacyHash = tree(f.legacy)
+    const otherMarker = readFileSync(join(f.other, 'plugin-root.json'))
+    const result = await api.createPluginRootSelection({ ...f, mode: 'shared', apply: true })
+    expect(result.status).toBe('shared')
+    expect(selected(f)).toBe(f.legacy)
+    expect(existsSync(f.marker)).toBe(false)
+    expect(JSON.parse(readFileSync(f.pins, 'utf8')).selections).toEqual([
+      { workspace: f.other, slot: 'p2' },
+    ])
+    expect(selected(f, f.other)).toBe(join(f.parent, 'plugins-p2'))
+    expect(readFileSync(join(f.other, 'plugin-root.json'))).toEqual(otherMarker)
+    expect(tree(ownRoot)).toBe(ownHash)
+    expect(tree(f.legacy)).toBe(legacyHash)
+  })
+  it('previews shared removal with zero writes and needs no slot', async () => {
+    const f = await fixture(),
+      api = await creator()
+    await api.createPluginRootSelection({ ...f, apply: true })
+    const before = tree(f.base)
+    expect(
+      await api.createPluginRootSelection({
+        appData: f.appData,
+        workspace: f.workspace,
+        mode: 'shared',
+      }),
+    ).toMatchObject({ status: 'preview', mode: 'shared' })
+    expect(tree(f.base)).toBe(before)
+  })
+  it('shared is idempotent when both records are absent', async () => {
+    const f = await fixture(),
+      api = await creator(),
+      before = tree(f.base)
+    for (let i = 0; i < 2; i++)
+      expect(
+        (await api.createPluginRootSelection({ ...f, mode: 'shared', apply: true })).status,
+      ).toBe('already shared')
+    expect(tree(f.base)).toBe(before)
+  })
+  it.each(['marker-only', 'pin-only', 'interrupted-own', 'linked-temp'])(
+    'shared clears a partial selection (%s)',
+    async (kind) => {
+      const f = await fixture(),
+        api = await creator()
+      if (kind === 'marker-only')
+        await writeFile(f.marker, '{"format":1,"slot":"p1"}', { mode: 0o600 })
+      if (kind === 'pin-only')
+        await writeFile(
+          f.pins,
+          JSON.stringify({ format: 1, selections: [{ workspace: f.workspace, slot: 'p1' }] }),
+          { mode: 0o600 },
+        )
+      if (kind === 'interrupted-own' || kind === 'linked-temp') {
+        await expect(
+          api.createPluginRootSelection(
+            { ...f, apply: true },
+            {
+              afterPin: () => {
+                throw new Error('fictional interruption')
+              },
+            },
+          ),
+        ).rejects.toThrow()
+        if (kind === 'linked-temp') {
+          const { link } = await import('node:fs/promises')
+          const temp = join(f.workspace, '.plugin-root-marker-fictional.tmp')
+          await writeFile(temp, '{"format":1,"slot":"p1"}', { mode: 0o600 })
+          await link(temp, f.marker)
+        }
+      }
+      expect(() => selected(f)).toThrow()
+      expect(
+        (await api.createPluginRootSelection({ ...f, mode: 'shared', apply: true })).status,
+      ).toBe('shared')
+      expect(selected(f)).toBe(f.legacy)
+      expect(existsSync(f.marker)).toBe(false)
+      const before = tree(f.base)
+      expect(
+        (await api.createPluginRootSelection({ ...f, mode: 'shared', apply: true })).status,
+      ).toBe('already shared')
+      expect(tree(f.base)).toBe(before)
+    },
+  )
+  it('shared finishes its own interrupted removal', async () => {
+    const f = await fixture(),
+      api = await creator()
+    await api.createPluginRootSelection({ ...f, apply: true })
+    await expect(
+      api.createPluginRootSelection(
+        { ...f, mode: 'shared', apply: true },
+        {
+          afterMarker: () => {
+            throw new Error('fictional shared interruption')
+          },
+        },
+      ),
+    ).rejects.toThrow('fictional shared interruption')
+    expect(existsSync(f.marker)).toBe(false)
+    expect(() => selected(f)).toThrow()
+    await api.createPluginRootSelection({ ...f, mode: 'shared', apply: true })
+    expect(selected(f)).toBe(f.legacy)
+  })
+  it('shared never guesses at a malformed global pin or edits routing files', async () => {
+    const f = await fixture(),
+      api = await creator()
+    await writeFile(f.pins, '{', { mode: 0o600 })
+    await writeFile(join(f.parent, 'workspace-policy.json'), 'fictional policy')
+    await writeFile(join(f.parent, 'packaged-workspaces.json'), 'fictional routing')
+    await mkdir(join(f.parent, 'packaged-workspace-owners'))
+    const before = tree(f.base)
+    await expect(
+      api.createPluginRootSelection({ ...f, mode: 'shared', apply: true }),
+    ).rejects.toThrow()
+    expect(tree(f.base)).toBe(before)
+  })
   it('runs the documented CLI with explicit paths and no default writes', async () => {
     const f = await fixture(),
       before = tree(f.base),
@@ -355,6 +497,24 @@ describe('creating an explicit plugin setup', () => {
     expect(tree(f.base)).toBe(before)
     await run(process.execPath, [...args, '--apply'])
     expect(selected(f)).toBe(join(f.parent, 'plugins-p1'))
+    const sharedArgs = [
+      command,
+      '--app-data',
+      f.appData,
+      '--workspace',
+      f.workspace,
+      '--mode',
+      'shared',
+    ]
+    const beforeShared = tree(f.base)
+    expect(JSON.parse((await run(process.execPath, sharedArgs)).stdout)).toMatchObject({
+      status: 'preview',
+      mode: 'shared',
+    })
+    expect(tree(f.base)).toBe(beforeShared)
+    await run(process.execPath, [...sharedArgs, '--apply'])
+    await run(process.execPath, [...sharedArgs, '--apply'])
+    expect(selected(f)).toBe(f.legacy)
     await expect(run(process.execPath, [command, '--workspace', f.workspace])).rejects.toThrow()
     await expect(run(process.execPath, [...args, '--unknown'])).rejects.toThrow()
   })
