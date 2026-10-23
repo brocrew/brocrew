@@ -67,11 +67,9 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M1 · 🔴 **Codex: words inside a block** · a handed-over Codex block is matched when it merely "
         f"contains the text, so a person's words inside a longer block find it · killed by `{TURN}`",
-        [(TAS,
-          # ⚑ **W4.205 · re-anchored in place, not retired** — W4.205 · 094f095e (W4.204) rewrote readingCodex's handed-over match as an if-condition ending the line with no `&&`; the exact block compare is still the subject, planted as `includes`.
-          # ⚑ **W4.645 · re-anchored in place, not retired** — the block is compared as the ledger keeps it (`codexTextAsKept`, the saved methods' lines in the app's lead in their kept form); the exact compare is still the subject, planted as `includes`.
-          "              codexTextAsKept(block.text) === asked.text\n",
-          "              codexTextAsKept(block.text).includes(asked.text)\n")],
+        [
+            ("apps/desktop/src/main/providers/codex/turn-reading.ts", "              codexTextAsKept(block.text) === asked.text\n", "              codexTextAsKept(block.text).includes(asked.text)\n"),
+        ],
     ),
     # it('⛔ its state database is read through a copy: no -shm, no -wal, nothing new or changed')
     # — `expect(turn.found && turn.message).toBe(said)` (§5, throwaway HOME/CODEX_HOME)
@@ -79,29 +77,26 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "M2 · 🔴 **Codex: any message is the imported one** · an imported turn is matched without the "
         "importer's split, so the rollout's first message (Codex's own developer block) is read as it "
         f"· killed by `{TURN}`",
-        [(TAS,
-          # ⚑ **W4.205 · re-anchored in place, not retired** — W4.205 · 094f095e (W4.204) made Codex's imported-record match the last term of an if-condition (no trailing `&&`); the importer's split compare is replaced by `true` as before.
-          # ⚑ **W4.645 · re-anchored in place, not retired** — the split is taken of the message as the importer keeps it (`codexMessageAsKept`), which wraps the compare over two lines; it is replaced by `true` as before.
-          "            splitCodexMessage(role, messageText(codexMessageAsKept(payload)['content'])).said ===\n"
-          "              asked.text\n",
-          "            true\n")],
+        [
+            ("apps/desktop/src/main/providers/codex/turn-reading.ts", "            splitCodexMessage(role, messageText(codexMessageAsKept(payload)['content'])).said ===\n              asked.text\n", "            true\n"),
+        ],
     ),
     # it('🔴 a turn read from the provider’s own record: found by the text its importer took from it')
     # — `sess_imported_words` (FIRST alone) must answer 'has the text this app read from it'
     (
         "M3 · 🔴 **Claude: an imported turn found by words inside a message** · its importer's text "
         f"is matched as a substring of the record's content · killed by `{TURN}`",
-        [(TAS,
-          "            : typeof content === 'string' && content === asked.text\n",
-          "            : typeof content === 'string' && content.includes(asked.text)\n")],
+        [
+            ("apps/desktop/src/main/providers/claude/turn-reading.ts", "            : typeof content === 'string' && content === asked.text\n", "            : typeof content === 'string' && content.includes(asked.text)\n"),
+        ],
     ),
     # it('🔴 a message with an image: found by its text, and the image named beside it')
     (
         "M4 · an image beside a Claude message is counted into the text it is matched by, so a "
         f"message sent with a picture is never found · killed by `{TURN}`",
-        [(TAS,
-          "    .filter((block) => block.isText)\n",
-          "    .filter(() => true)\n")],
+        [
+            ("apps/desktop/src/main/archive/turn-reading.ts", "    .filter((block) => block.isText)\n", "    .filter(() => true)\n"),
+        ],
     ),
     # it('🔴 the provider’s own file, found as the archive finds it'), and
     # it('🔴 each turn in the provider conversation Claude names after it: a /clear starts the count again')
@@ -154,18 +149,17 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M10 · a person's `/compact` on Codex is said to be a text this app kept no copy of, not "
         f"Codex's own compaction that sent no words · killed by `{TURN}`",
-        [(HOST,
-          # ⚑ **provider selection refactor · re-anchored in place, not retired** — The compaction predicate now spans two lines with an exhaustive selector; forcing it false still mislabels the native compaction command.
-          "          providerValue(row.provider, { claude: false, codex: true }) &&\n          target.words.trim() === '/compact'\n",
-          "          false\n")],
+        [
+            ("apps/desktop/src/main/providers/codex/transcripts.ts", "    words.trim() === '/compact'", "    false"),
+        ],
     ),
     # it('⛔ a text it never got: said so'), and the `sess_imported_words` answer
     (
         "M11 · the not-found sentence names the wrong way of looking: a handed-over turn is said not "
         f"to match “the text this app read from it”, and the reverse · killed by `{TURN}`",
-        [(TAS,
-          "  return asked.by === 'handed-over'\n",
-          "  return asked.by !== 'handed-over'\n")],
+        [
+            ("apps/desktop/src/main/archive/turn-reading.ts", "  return asked.by === 'handed-over'\n", "  return asked.by !== 'handed-over'\n"),
+        ],
     ),
     # it('⛔ C9 d · both reads are a person’s doors: refused on a channel with no person behind it, answered on a window'),
     # and it('⛔ read only, and reached by a window only inside the person’s own read')

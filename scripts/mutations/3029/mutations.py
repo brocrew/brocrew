@@ -56,53 +56,49 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M1 · 🔴 **words found inside a sentence** · a person's “no” is matched inside "
         f"“There is no default.” — the exact-text rule becomes a substring · killed by `{TURN}`",
-        [(TAS,
-          # ⚑ **W4.181 · re-anchored in place, not retired** — W4.181 · R1 now finds a turn by the exact text handed over (f5980ebc); `holdsTheWords` is gone, the subject is not — the plant makes Claude's exact rule a substring again (reviewed: re-anchor, not retire)
-          "            ? textOf(content) === asked.text\n",
-          "            ? textOf(content).includes(asked.text)\n")],
+        [
+            ("apps/desktop/src/main/providers/claude/turn-reading.ts", "            ? textOf(content) === asked.text\n", "            ? textOf(content).includes(asked.text)\n"),
+        ],
     ),
     # it('⛔ words it never got: said so') — FIRST at nth 1 is found
     (
         "M2 · 🔴 **the nth ignored** · Claude's reader takes the first message holding the words, "
         f"whichever was asked · killed by `{TURN}`",
-        [(TAS,
-          # ⚑ **W4.204 · re-anchored in place, not retired** — W4.204: the count became the earlier same-text messages, each taking its own record; the row still makes the reader take the first match
-          "        if (taken++ < asked.before.length) return 'more'\n",
-          "        if (taken++ < 0) return 'more'\n")],
+        [
+            ("apps/desktop/src/main/providers/claude/turn-reading.ts", "        if (taken++ < asked.before.length) return 'more'\n", "        if (taken++ < 0) return 'more'\n"),
+        ],
     ),
     # it('⚑ only in the provider conversation it was in') — Claude, life 'another'
     (
         "M3 · 🔴 **another conversation's message** · Claude's reader matches a record whose "
         f"`sessionId` names another provider conversation · killed by `{TURN}`",
-        [(TAS,
-          "        if (asked.life !== null && typeof its === 'string' && its !== asked.life) return 'more'\n",
-          "        if (false) return 'more'\n")],
+        [
+            ("apps/desktop/src/main/providers/claude/turn-reading.ts", "        if (asked.life !== null && typeof its === 'string' && its !== asked.life) return 'more'\n", "        if (false) return 'more'\n"),
+        ],
     ),
     # it('⚑ only in the provider conversation it was in') — Codex, life 'another'
     (
         "M4 · 🔴 **another thread's message** · Codex's reader matches a message under any "
         f"`session_meta` id · killed by `{TURN}`",
-        [(TAS,
-          # ⚑ **W4.181 · re-anchored in place, not retired** — W4.181 · R1's exact matching (W4.185) folded Codex's conversation guard into `candidate`; the plant still matches a message under any session_meta id
-          "          const candidate = state === 'looking' && (asked.life === null || life === asked.life)\n",
-          "          const candidate = state === 'looking' && true\n")],
+        [
+            ("apps/desktop/src/main/providers/codex/turn-reading.ts", "          const candidate = state === 'looking' && (asked.life === null || life === asked.life)\n", "          const candidate = state === 'looking' && true\n"),
+        ],
     ),
     # it('⛔ a file that is not the provider’s record of a conversation is never read')
     (
         "M5 · 🔴 **any `.jsonl` in the home is Claude's record** · a file the provider's lookup "
         f"names outside `projects/` is read as the transcript · killed by `{TURN}`",
-        [(NATIVE,
-          # ⚑ **provider selection refactor · re-anchored in place, not retired** — The archive validator now uses an exhaustive selector; dropping the projects boundary still accepts unrelated JSONL files.
-          "  if (providerValue(provider, { claude: true, codex: false }))\n    return under('projects') && resolved.endsWith('.jsonl')\n",
-          "  if (providerValue(provider, { claude: true, codex: false }))\n    return resolved.endsWith('.jsonl')\n")],
+        [
+            ("apps/desktop/src/main/providers/claude/native-record.ts", "  return resolved.startsWith(join(real(home), 'projects') + sep) && resolved.endsWith('.jsonl')", "  return resolved.endsWith('.jsonl')"),
+        ],
     ),
     # it('leaves no -shm or -wal beside a WAL-mode state database')
     (
         "M6 · 🔴 **a write in the provider's home** · Codex's state database is opened in place, "
         f"not through the private copy, and SQLite creates its `-shm` beside it · killed by `{HOMES}`",
-        [(NATIVE,
-          "    const db = new Database(copy, { readonly: true, fileMustExist: true })\n",
-          "    const db = new Database(path, { readonly: true, fileMustExist: true })\n")],
+        [
+            ("apps/desktop/src/main/archive/native-io.ts", "    const db = new Database(copy, { readonly: true, fileMustExist: true })\n", "    const db = new Database(path, { readonly: true, fileMustExist: true })\n"),
+        ],
     ),
     # it('⛔ a file that is not the provider’s record of a conversation is never read'), and
     # it('⛔ read only: the host opens the one file the archive names, and writes nothing')

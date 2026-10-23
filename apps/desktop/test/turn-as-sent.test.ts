@@ -1,3 +1,4 @@
+import ts from 'typescript'
 import { createHash } from 'node:crypto'
 import {
   lstatSync,
@@ -1071,13 +1072,28 @@ describe('§4 · the host: a ledger message, read from the provider’s file', (
   })
 
   it('⛔ read only, and reached by a window only inside the person’s own read', () => {
-    const source = readFileSync(join(here, '../src/main/archive/turn-as-sent.ts'), 'utf8')
-    expect(source).not.toMatch(/from 'node:fs'/)
+    for (const file of [
+      'archive/turn-as-sent.ts',
+      'archive/turn-reading.ts',
+      'providers/claude/turn-reading.ts',
+      'providers/codex/turn-reading.ts',
+    ]) {
+      const source = readFileSync(join(here, '../src/main', file), 'utf8')
+      expect(source).not.toMatch(/from 'node:fs'/)
+    }
     const host = readFileSync(join(here, '../src/main/runtime/runtime-host.ts'), 'utf8')
-    const method = host.slice(
-      host.indexOf('  private async readTurnAsSent(sessionId: string, ordinal: number)'),
-      host.indexOf('  private readonly howAModelTakesItsContext'),
+    const source = ts.createSourceFile('runtime-host.ts', host, ts.ScriptTarget.Latest, true)
+    const owner = source.statements.find(
+      (node): node is ts.ClassDeclaration =>
+        ts.isClassDeclaration(node) && node.name?.text === 'RuntimeHost',
     )
+    const selected = owner?.members.find(
+      (node): node is ts.MethodDeclaration =>
+        ts.isMethodDeclaration(node) && node.name.getText(source) === 'readTurnAsSent',
+    )
+    expect(selected).toBeDefined()
+    if (selected === undefined) throw new Error('The turn reader method is missing')
+    const method = selected.getText(source)
     expect(method).toContain('this.deps.nativeTranscriptPath(row.provider, home, ref)')
     expect(method).toContain('isTheProvidersRecord(row.provider, home, found)')
     expect(method).not.toMatch(/writeFile|appendFile|rmSync|unlink|readdir/)

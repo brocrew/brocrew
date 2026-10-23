@@ -193,11 +193,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "— the served-root check, one door over — killed by `legacy-profile-images.test.ts` "
         "(726 R92)",
         [
-            (
-                HOST,
-                "        if (asset) return asset.path\n",
-                "        if (asset && asset.path.includes('/generated_images/')) return asset.path\n",
-            )
+            ("apps/desktop/src/main/providers/codex/images.ts", "      if (asset) return asset\n", "      if (asset && asset.includes('/generated_images/')) return asset\n"),
         ],
     ),
     (
@@ -219,17 +215,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "M11 · ⛔ **a child's file must land inside the directory it was found in** — "
         "`readWithin`'s root, one level up — killed by `child-work.test.ts` (726 R92)",
         [
-            (
-                CHILD,
-                "  const resolved = realPathOf(path)\n"
-                "  if (!resolved.ok) return resolved.reason\n"
-                "  const read = readTextFile(resolved.path, max)\n",
-                "  const resolved = realPathOf(path)\n"
-                "  if (!resolved.ok) return resolved.reason\n"
-                "  const within = realPathOf(join(path, '..'))\n"
-                "  if (!within.ok || !resolved.path.startsWith(`${within.path}/`)) return 'not-readable'\n"
-                "  const read = readTextFile(resolved.path, max)\n",
-            )
+            ("apps/desktop/src/main/child-work-file.ts", "  const resolved = realPathOf(path)\n  if (!resolved.ok) return resolved.reason\n  const read = readTextFile(resolved.path, max)\n", "  const resolved = realPathOf(path)\n  if (!resolved.ok) return resolved.reason\n  const within = realPathOf(join(path, '..'))\n  if (!within.ok || !resolved.path.startsWith(`${within.path}/`)) return 'not-readable'\n  const read = readTextFile(resolved.path, max)\n"),
         ],
     ),
     # ── D · what an agent is told ───────────────────────────────────────────────────────────────

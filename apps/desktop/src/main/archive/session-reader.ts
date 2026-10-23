@@ -1,12 +1,8 @@
 import { closeSync, openSync, readSync, statSync, watch, type FSWatcher } from 'node:fs'
-import { providerValue, type Provider } from '@brobot2/shared'
+import { type Provider } from '@brobot2/shared'
 import { FileEdits } from '@brobot2/runtime'
-import {
-  importClaudeTranscript,
-  type ImportedEntry,
-  type ImportedTranscript,
-} from './import-claude'
-import { importCodexRollout } from './import-codex'
+import type { ImportedEntry, ImportedTranscript } from './transcript-types'
+import { providerDefinitions } from '../providers/definitions'
 import { readLines } from './native-file'
 
 /**
@@ -82,9 +78,7 @@ export interface TranscriptTail {
 
 /** Parse a batch of lines the way this provider's own files are written. */
 function parseFor(provider: Provider, frames: string[], fallbackAt: number): ImportedTranscript {
-  return providerValue(provider, { claude: true, codex: false })
-    ? importClaudeTranscript(frames, fallbackAt)
-    : importCodexRollout(frames, fallbackAt)
+  return providerDefinitions[provider].transcripts.parse(frames, fallbackAt)
 }
 
 /**

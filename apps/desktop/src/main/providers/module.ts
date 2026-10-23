@@ -1,3 +1,4 @@
+import type { TranscriptPolicy, DiscoveryPolicy } from './transcript-policy'
 import type {
   AgentRuntime,
   AuthState,
@@ -44,6 +45,8 @@ export interface ProviderHomeStrategy {
 }
 
 export interface ProviderModule {
+  readonly transcripts: TranscriptPolicy
+  readonly discovery: DiscoveryPolicy
   /** A fresh runtime for this launch; the program is resolved only when called. */
   createRuntime(): AgentRuntime
   readonly home: ProviderHomeStrategy

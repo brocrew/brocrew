@@ -1,3 +1,5 @@
+import { transcripts } from './transcripts'
+import { discovery } from './discovery'
 import {
   AuthUnavailableError,
   ClaudeRuntime,
@@ -211,6 +213,8 @@ export function createClaudeModule(
   seams: ClaudeModuleSeams,
 ): ProviderModule {
   return {
+    transcripts,
+    discovery,
     createRuntime: claudeModuleFactory.runtime(seams.runtime),
     home: claudeModuleFactory.home(paths, seams.home),
     auth: claudeModuleFactory.auth(paths, seams.auth),

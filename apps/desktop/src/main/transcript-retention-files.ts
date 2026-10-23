@@ -1,37 +1,27 @@
 import { link, lstat, mkdir, readdir, realpath, rename, rmdir, unlink } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { setImmediate } from 'node:timers/promises'
-import { basename, dirname, join, relative, resolve, sep } from 'node:path'
+import { dirname, join, relative, resolve, sep } from 'node:path'
 import type { BigIntStats } from 'node:fs'
-import { providerValue, type Provider } from '@brobot2/shared'
+import type {
+  Entry,
+  TranscriptToClear,
+  TranscriptClearList,
+  TranscriptClearBatch,
+  ProviderHomeInUse,
+} from './transcript-retention-types'
+export type {
+  TranscriptToClear,
+  TranscriptClearList,
+  TranscriptClearBatch,
+  ProviderHomeInUse,
+} from './transcript-retention-types'
+import { providerDefinitions } from './providers/definitions'
+import { SUPPORTED_PROVIDERS } from '@brobot2/shared'
 import type { TranscriptRetention } from '../shared/transcript-retention'
 import { PROVIDER_HOMES_DIRNAME } from './runtime/provider-homes'
 
 const DAY = 86_400_000
-interface Entry {
-  readonly path: string
-  readonly stat: BigIntStats
-  readonly directory: boolean
-}
-export interface TranscriptToClear {
-  readonly home: string
-  readonly provider: Provider
-  readonly session: string
-  readonly file: string
-  readonly directory: string | null
-  readonly cutoff: number
-  readonly entries: readonly Entry[]
-}
-export interface TranscriptClearList {
-  readonly root: string
-  readonly rootIdentity: BigIntStats | null
-  readonly entries: readonly TranscriptToClear[]
-}
-export interface TranscriptClearBatch extends TranscriptClearList {
-  /** The last examined name; a later start can resume after a completed batch. */
-  readonly through: string
-}
-export type ProviderHomeInUse = (home: string, provider: Provider) => boolean
 const SCAN_BATCH_SIZE = 4
 const scanKey = (root: string, path: string) => relative(root, path).split(sep).join('/')
 const compareScanKeys = (one: string, two: string): number => {
@@ -124,7 +114,7 @@ async function* scannedFiles(
   const scanChildren = (path: string) => children(path, overlaps)
   for await (const workspace of scanChildren(root))
     for await (const profile of scanChildren(workspace)) {
-      for (const provider of ['claude', 'codex'] as const) {
+      for (const provider of SUPPORTED_PROVIDERS) {
         const home = join(profile, provider)
         if (!overlaps(home) || inUse(home, provider) || !(await plainDirectory(home))) continue
         const add = async (
@@ -164,36 +154,13 @@ async function* scannedFiles(
             compareScanKeys(key, after) > 0 && (before === '' || compareScanKeys(key, before) <= 0)
           )
         }
-        if (providerValue(provider, { claude: true, codex: false })) {
-          for await (const project of scanChildren(join(home, 'projects'))) {
-            if (!(await plainDirectory(project))) continue
-            for await (const file of scanChildren(project)) {
-              if (!considered(file)) continue
-              const match = /^([a-zA-Z0-9_-]{1,200})\.jsonl$/.exec(basename(file))
-              yield {
-                path: file,
-                candidate: match ? await add(file, match[1]!, join(project, match[1]!)) : null,
-              }
-            }
-          }
-        } else {
-          const walk = async function* (
-            path: string,
-            depth = 0,
-          ): AsyncGenerator<{ path: string; candidate: TranscriptToClear | null }> {
-            if (depth > 8) return
-            for await (const file of scanChildren(path)) {
-              const match =
-                /^rollout-.+-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/i.exec(
-                  basename(file),
-                )
-              if (considered(file))
-                yield { path: file, candidate: match ? await add(file, match[1]!, null) : null }
-              if (!match && (await plainDirectory(file))) yield* walk(file, depth + 1)
-            }
-          }
-          yield* walk(join(home, 'sessions'))
-        }
+        yield* providerDefinitions[provider].transcripts.scanRetention({
+          home,
+          scanChildren,
+          plainDirectory,
+          considered,
+          add,
+        })
       }
     }
 }
