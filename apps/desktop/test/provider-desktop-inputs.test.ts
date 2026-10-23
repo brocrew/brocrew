@@ -188,19 +188,35 @@ describe('provider-owned desktop inputs', () => {
   })
 })
 
-
 it('reads the bound version services without constructing a second cache', async () => {
   const f = fixture()
-  const unread = (): never => { throw new Error('No home lookup for versions') }
-  const modules = registry.createProviderModules(() => ({ managedRoot: '/fictional/homes', defaultProfile: 'fern', homeOf: unread, profiles: unread, assertMayOpen: unread }), f.inputs)
-  const factory = Reflect.get(registry, 'providerVersionsFromModules') as ((bound: typeof modules) => () => Promise<unknown>) | undefined
+  const unread = (): never => {
+    throw new Error('No home lookup for versions')
+  }
+  const modules = registry.createProviderModules(
+    () => ({
+      managedRoot: '/fictional/homes',
+      defaultProfile: 'fern',
+      homeOf: unread,
+      profiles: unread,
+      assertMayOpen: unread,
+    }),
+    f.inputs,
+  )
+  const factory = Reflect.get(registry, 'providerVersionsFromModules') as
+    ((bound: typeof modules) => () => Promise<unknown>) | undefined
   expect(factory).toBeTypeOf('function')
   if (factory === undefined) throw new Error('Bound version services are absent')
   const read = factory(modules)
   expect(f.claudeVersion).not.toHaveBeenCalled()
   expect(f.codexVersion).not.toHaveBeenCalled()
-  await expect(read()).resolves.toEqual({ claude: { version: '2.1.0' }, codex: { version: '0.160.0' } })
-  expect(f.claudeVersion.mock.invocationCallOrder[0]).toBeLessThan(f.codexVersion.mock.invocationCallOrder[0] ?? 0)
+  await expect(read()).resolves.toEqual({
+    claude: { version: '2.1.0' },
+    codex: { version: '0.160.0' },
+  })
+  expect(f.claudeVersion.mock.invocationCallOrder[0]).toBeLessThan(
+    f.codexVersion.mock.invocationCallOrder[0] ?? 0,
+  )
   expect(f.claudeVersions).toHaveBeenCalledTimes(1)
   expect(f.codexVersions).toHaveBeenCalledTimes(1)
 })

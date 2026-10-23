@@ -82,15 +82,22 @@ describe('the setup steps name the Claude Code BroBot found', () => {
         authNote: null,
         files: [],
       }),
-      ...(claudeProgramFound === undefined ? {} : { programFound: () => claudeProgramFound() }),
-      ...(login === undefined ? {} : {
-        loginRenewal: (provider: Provider) => provider === 'claude' ? {
-          launchLabel: 'Claude sign-in renewal',
-          renew: login.renew,
-          prepare: (prepare: () => string | Promise<string>, renew: typeof login.renew) =>
-            prepareOnTheLogin(prepare, renew, () => claudeCommandIn(claudeProgramFound?.() ?? null, process.platform)),
-        } : undefined,
-      }),
+      ...(claudeProgramFound === undefined ? {} : { programFound: { claude: claudeProgramFound } }),
+      ...(login === undefined
+        ? {}
+        : {
+            loginRenewal: (provider: Provider) =>
+              provider === 'claude'
+                ? {
+                    launchLabel: 'Claude sign-in renewal',
+                    renew: login.renew,
+                    prepare: (prepare: () => string | Promise<string>, renew: typeof login.renew) =>
+                      prepareOnTheLogin(prepare, renew, () =>
+                        claudeCommandIn(claudeProgramFound?.() ?? null, process.platform),
+                      ),
+                  }
+                : undefined,
+          }),
     })
   }
 

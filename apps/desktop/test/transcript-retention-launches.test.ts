@@ -121,11 +121,17 @@ beforeEach(() => {
       }
     },
     beforeProviderLaunch: () => barrier(),
-    loginRenewal: (provider) => provider === 'claude' ? {
-      launchLabel: 'Claude sign-in renewal',
-      renew: async () => { calls.renew(); return 'not-needed' },
-      prepare: prepareOnTheLogin,
-    } : undefined,
+    loginRenewal: (provider) =>
+      provider === 'claude'
+        ? {
+            launchLabel: 'Claude sign-in renewal',
+            renew: async () => {
+              calls.renew()
+              return 'not-needed'
+            },
+            prepare: prepareOnTheLogin,
+          }
+        : undefined,
     prepareProviderHome: () => prepareHome(),
     providerHomePath: () => join(dir, 'fictional-home'),
     resolveCwd: () => dir,

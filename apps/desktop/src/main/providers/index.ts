@@ -6,6 +6,7 @@ import { createCodexModule, type CodexModuleSeams } from './codex'
 import { claudeDesktopInputs, type ClaudeDesktopSeams } from './claude/desktop'
 import { codexDesktopInputs, type CodexDesktopSeams } from './codex/desktop'
 import type { DesktopProviderContext } from './desktop-context'
+import { orderedProgramVersions } from './program-policy'
 import type { ProviderAuthOps } from './compat'
 import type { HomeAuthOperations, ProviderHomePaths, ProviderModules } from './module'
 
@@ -65,3 +66,16 @@ export function providerAuthFromModules(modules: ProviderModules): ProviderAuthO
 }
 
 export { providerKnowledge } from './knowledge-definitions'
+
+/** Use the caches already bound by each provider; legacy runtime-only modules have no versions. */
+export function providerVersionsFromModules(
+  modules: ProviderModules,
+): ReturnType<typeof orderedProgramVersions> {
+  return orderedProgramVersions(
+    providerRecord((provider) => {
+      const service = modules[provider].program
+      if (service === undefined) throw new Error('Provider program services were not bound')
+      return service.version
+    }),
+  )
+}

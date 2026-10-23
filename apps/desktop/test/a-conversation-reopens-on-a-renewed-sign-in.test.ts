@@ -172,6 +172,7 @@ describe('D-004 · R101 — a login renewed elsewhere reopens the conversation i
   let launchBarrier: (() => Promise<void>) | undefined
 
   function buildHost(): RuntimeHost {
+    const renewForThisHost = renewal
     const built = new RuntimeHost({
       store: ledger,
       discoverSessions: NO_DISCOVERY,
@@ -200,11 +201,18 @@ describe('D-004 · R101 — a login renewed elsewhere reopens the conversation i
       providerHomePath: (which) => join(dir, 'homes', which),
       resolveCwd: () => join(dir, 'cwd'),
       newSessionId: () => 'sess_d004',
-      ...(renewal === undefined ? {} : {
-        loginRenewal: (provider: import('@brobot2/shared').Provider) => provider === 'claude' ? {
-          launchLabel: 'Claude sign-in renewal', renew: renewal, prepare: prepareOnTheLogin,
-        } : undefined,
-      }),
+      ...(renewForThisHost === undefined
+        ? {}
+        : {
+            loginRenewal: (provider: import('@brobot2/shared').Provider) =>
+              provider === 'claude'
+                ? {
+                    launchLabel: 'Claude sign-in renewal',
+                    renew: renewForThisHost,
+                    prepare: prepareOnTheLogin,
+                  }
+                : undefined,
+          }),
       ...(launchBarrier === undefined ? {} : { beforeProviderLaunch: launchBarrier }),
       ...(keySaved
         ? {
