@@ -39,9 +39,12 @@ export interface DiscoveryPolicy {
   discover(home: string, profileId: string): Discovery
   /** Resolve the default home only when this provider has no explicit override. */
   userHome(env: NodeJS.ProcessEnv, defaultHome: () => string): string
+  configHomes(home: string, env: NodeJS.ProcessEnv): readonly string[]
+  readonly protectedPlaceKind: import('../../shared/work-folders').ProtectedPlaceKind
   descriptions?(): Promise<Map<string, ProviderDescription>>
 }
 export interface ProviderDefinition {
+  readonly workspaceInstructionFile: string
   readonly transcripts: TranscriptPolicy
   readonly discovery: DiscoveryPolicy
 }

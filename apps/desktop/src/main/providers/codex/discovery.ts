@@ -1,3 +1,5 @@
+import { homedir } from 'node:os'
+import type { ProtectedPlaceKind } from '../../../shared/work-folders'
 import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { readProviderDatabase } from '../../archive/native-io'
@@ -259,8 +261,14 @@ function newestStateDatabase(home: string): string | null {
 
 export const discovery = {
   discover: discoverCodexSessions,
-  userHome: (env: NodeJS.ProcessEnv, userHome: () => string): string => {
-    const override = env['CODEX_HOME']
-    return typeof override === 'string' && override !== '' ? override : join(userHome(), '.codex')
-  },
+  userHome,
+  configHomes: (home: string, env: NodeJS.ProcessEnv): readonly string[] => [
+    ...new Set([join(home, '.codex'), userHome(env, homedir)]),
+  ],
+  protectedPlaceKind: 'codex-config-home' as ProtectedPlaceKind,
+}
+
+function userHome(env: NodeJS.ProcessEnv, defaultHome: () => string): string {
+  const override = env['CODEX_HOME']
+  return typeof override === 'string' && override !== '' ? override : join(defaultHome(), '.codex')
 }

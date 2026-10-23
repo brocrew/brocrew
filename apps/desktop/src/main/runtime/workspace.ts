@@ -1,3 +1,8 @@
+import { workspaceInstructionNames } from '../providers/workspace-layout.mjs'
+export {
+  CLAUDE_INSTRUCTIONS_FILE,
+  CODEX_INSTRUCTIONS_FILE,
+} from '../providers/workspace-layout.mjs'
 import {
   type Stats,
   closeSync,
@@ -14,9 +19,6 @@ import { join } from 'node:path'
 import { aStagingName, createFreshFile, openNotThroughALink } from '@brobot2/runtime/provider-home'
 
 export const WORKSPACE_DIRNAME = 'brobot-workspace'
-
-export const CLAUDE_INSTRUCTIONS_FILE = 'CLAUDE.md'
-export const CODEX_INSTRUCTIONS_FILE = 'AGENTS.md'
 
 export const WORKSPACE_CANARY = 'BROBOT-WORKSPACE-CANARY-4F2A'
 
@@ -195,7 +197,7 @@ export function ensureWorkspace(userData: string): string {
         `Move or remove it and BroCrew will recreate the workspace.`,
     )
   }
-  for (const name of [CLAUDE_INSTRUCTIONS_FILE, CODEX_INSTRUCTIONS_FILE]) {
+  for (const name of workspaceInstructionNames) {
     retireWorkspaceInstructions(workspace, name)
   }
   return workspace
