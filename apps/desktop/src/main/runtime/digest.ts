@@ -1,9 +1,6 @@
-import {
-  CHANNEL_REFUSAL_SENTENCES,
-  CLAUDE_TOOL_NAMING,
-  CODEX_TOOL_NAMING,
-  splitQualified,
-} from '@brobot2/runtime'
+import { SUPPORTED_PROVIDERS } from '@brobot2/shared'
+import { providerDefinitions } from '../providers/definitions'
+import { CHANNEL_REFUSAL_SENTENCES } from '@brobot2/runtime'
 import {
   DIGEST_LINE_KINDS,
   LINE_REGISTERS,
@@ -404,8 +401,8 @@ function countWord(counts: Map<string, number>, word: string): void {
  * forbids in user-visible text and has a source scan for.
  */
 function ourTool(name: string): string | null {
-  for (const naming of [CLAUDE_TOOL_NAMING, CODEX_TOOL_NAMING]) {
-    const split = splitQualified(naming, name)
+  for (const provider of SUPPORTED_PROVIDERS) {
+    const split = providerDefinitions[provider].transcripts.splitToolName?.(name) ?? null
     if (split !== null && split.server === AGENT_TOOL_SERVER) return split.tool
   }
   return null
