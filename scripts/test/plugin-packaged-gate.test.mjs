@@ -103,8 +103,10 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
       'homeOf: (provider) => providerHomePaths.providerHomePath(provider, slug)',
     )
     expect(projected.entry).toContain('...providerHomePaths,')
+    expect(projected.entry).toContain('const providerModules = createProviderModules(')
     expect(projected.entry).toContain('new PackagedGateRuntime(provider, "/private/tmp/fictional")')
-    expect(projected.entry).not.toContain('createProviderRuntime(provider, {')
+    expect(projected.entry).not.toContain('providerModules[provider].createRuntime()')
+    expect(projected.entry).not.toContain('providerModules[provider].home.prepare(profileId)')
     expect(projected.entry).toContain('fixtureSource: "/private/tmp/fictional/a/repo-fixture"')
     expect(projected.entry).toContain('browserExecutable: "/private/tmp/fictional/browser"')
     expect(projected.entry).toContain('app.setPath(\'appData\', "/private/tmp/fictional/a")')
@@ -132,6 +134,21 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
       expect(() =>
         projectBuild(config, changed, '/private/tmp/fictional/a', '/private/tmp/fictional/browser'),
       ).toThrow('Build anchor changed')
+    for (const anchor of [
+      'providerModules[provider].createRuntime()',
+      'return providerModules[provider].home.prepare(profileId)',
+    ]) {
+      expect(entry.split(anchor)).toHaveLength(2)
+      for (const changed of [entry.replace(anchor, ''), entry + '\n' + anchor])
+        expect(() =>
+          projectBuild(
+            config,
+            changed,
+            '/private/tmp/fictional/a',
+            '/private/tmp/fictional/browser',
+          ),
+        ).toThrow('Build anchor changed')
+    }
     const prepare = read('scripts/gates/plugin-packaged/prepare.mjs')
     expect(prepare).toMatch(
       /finally\s*\{\s*fs.writeFileSync\(configPath, original.config\)\s*fs.writeFileSync\(entryPath, original.entry\)/,
