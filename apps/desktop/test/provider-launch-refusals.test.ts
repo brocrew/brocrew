@@ -1,3 +1,4 @@
+import { aLaunchThatDidNotStart } from '../src/main/runtime/agent-tools'
 import { describe, expect, it } from 'vitest'
 import {
   AuthUnavailableError,
@@ -47,5 +48,16 @@ describe('provider-owned native launch facts', () => {
     [new Error('CodexSettingsUnusableError: fictional prose only'), null],
   ])('keeps the existing shared refusal answer %#', (error, expected) => {
     expect(whyALaunchWasRefused(error)).toBe(expected)
+  })
+})
+
+it('keeps a typed auth refusal generic when its provider is not registered', () => {
+  const error = new AuthUnavailableError('claude', 'fictional unavailable login')
+  Reflect.set(error, 'provider', 'fictional-provider')
+  expect(aLaunchThatDidNotStart(error)).toEqual({
+    rail: 'agent-did-not-start',
+    because: 'its-sign-in-is-unusable',
+    what: 'sign-in',
+    provider: 'fictional-provider',
   })
 })
