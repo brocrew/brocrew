@@ -36,7 +36,7 @@ import { runEvidence, runScratch } from './run-paths'
  * Runs BroBot's own Claude runtime against an installed Claude Code, with a scripted local model,
  * so a version can be called tested. The app hands every launch the program it found
  * (`pathToClaudeCodeExecutable`, set by `ClaudeRuntime`); CI runs this on macOS and Windows at the
- * oldest and the newest tested version (`apps/desktop/src/main/runtime/claude-code-tested.json`,
+ * oldest and the newest tested version (`apps/desktop/src/main/providers/claude/claude-code-tested.json`,
  * `.github/workflows/claude-code.yml`).
  *
  * ## The program
