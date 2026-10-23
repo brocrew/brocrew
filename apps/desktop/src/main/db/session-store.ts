@@ -6453,6 +6453,7 @@ export function createSessionStore(
     // is what keeps it so — and it is a display fallback rather than a claim: {@link MemoryAmendment.entry}
     // is an absolute path THROUGH the provider home, so which store this row is about is legible
     // beside it whatever this word folds to.
+    // The stored legacy display fallback stays fixed when new providers are added.
     provider: parseProvider(row.provider) ?? DEFAULT_IDENTITY_PROVIDER,
     entry: row.entry,
     act: foldAmendmentAct(row.act),
