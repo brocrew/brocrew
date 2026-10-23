@@ -251,7 +251,7 @@ export async function servePersonPluginControl(options: {
             return {
               features: [
                 ...PLUGIN_FRAMEWORK_FEATURES,
-                ...(options.controller.requiresPreparedMutations()
+                ...(options.controller.preparedMutationFeature()
                   ? ['authors-v1', 'prepared-mutations-v1']
                   : []),
               ],
