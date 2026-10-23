@@ -294,7 +294,9 @@ MUTATIONS = [
         "profile that is only ever adopted into — no start, no resume — is reached by nothing, while "
         "the config block goes on telling its owner that BroBot declares memory in that file "
         "· EXPECTED (NOT MEASURED): desktop red (provider-homes), runtime GREEN, dom GREEN",
-        [(HOMES, "    ensureCodexMemoryConfig(home)\n", "")],
+        [
+            ("apps/desktop/src/main/providers/codex/index.ts", "  ensureCodexMemoryConfig(home)\n", ""),
+        ],
     ),
     (
         "M17 · 🔴 the write moves ABOVE the stale sweep, so on a home carrying 157's block we merge "
