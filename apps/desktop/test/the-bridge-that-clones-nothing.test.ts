@@ -1063,9 +1063,12 @@ function preloadSurface(): Map<string, string> {
   const plugins = membersOf(
     withoutProse(source('src/preload/plugins.ts')).replace(/^ {4}(?=\w)/gm, '  '),
   )
-  expect([...plugins.keys()].sort()).toEqual(['onClosed', 'request'])
+  expect([...plugins.keys()].sort()).toEqual(['onClosed', 'onReviewInvalidated', 'request'])
   expect(plugins.get('onClosed')).toContain('ipc.on(PLUGIN_SCREEN_CLOSED, notify)')
   expect(plugins.get('onClosed')).toContain('ipc.off(PLUGIN_SCREEN_CLOSED, notify)')
+  expect(plugins.get('onReviewInvalidated')).toContain('ipc.on(PLUGIN_REVIEW_INVALIDATED, notify)')
+  expect(plugins.get('onReviewInvalidated')).toContain('ipc.off(PLUGIN_REVIEW_INVALIDATED, notify)')
+  expect(plugins.get('onReviewInvalidated')).not.toContain('ipc.invoke')
   for (const [name, body] of plugins)
     surface.set(name, body.replace('ipc.invoke', 'ipcRenderer.invoke'))
   return surface
@@ -1098,6 +1101,21 @@ describe('§3 · what is exempt is derived from the preload, not written down (3
     expect(members.get('onChanged')).toContain('ipc.off(THEMES_CHANNELS.changed, forward)')
     expect(invokesTheme('ipc.invoke(THEMES_CHANNELS.read)')).toBe(true)
     expect(invokesTheme('ipc.on(THEMES_CHANNELS.changed, forward)')).toBe(false)
+  })
+
+  it('the review subscription alone is exempt; planting any invoke makes it a wire member', () => {
+    const body = surface.get('onReviewInvalidated')!
+    expect(NOT_THE_WIRE.has('onReviewInvalidated')).toBe(true)
+    expect(invokes(body)).toBe(false)
+    const planted = body + "\nif (false) ipcRenderer.invoke('planted-review-command')"
+    expect(invokes(planted)).toBe(true)
+    expect(
+      [...surface]
+        .filter(([name, member]) => !invokes(name === 'onReviewInvalidated' ? planted : member))
+        .map(([name]) => name)
+        .sort(),
+    ).not.toEqual([...NOT_THE_WIRE].sort())
+    expect(NOT_THE_WIRE.has('request')).toBe(false)
   })
 
   it('⛔ the census really read the preload — the surface is the size the app has', () => {

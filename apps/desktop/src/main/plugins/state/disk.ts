@@ -70,19 +70,17 @@ const stageName = /^\.stage-[0-9a-f-]{36}$/
 const recordName = /^\d{8}\.json$/
 const sealName = /^\d{8}-[a-f0-9]{64}\.seal$/
 
-/** Kept-current journal + immutable activation objects, never a workspace DB. */
-export class PluginStateDisk {
-  private readonly pins: Pin[] = []
+/** Shared pinned journal reader. The display entry point never opens the writer disk or fence. */
+class PluginJournalReader {
+  protected readonly pins: Pin[] = []
   readonly root: string
   readonly guard: string
   readonly activations: string
   readonly reservations: string
-  private closed = false
-  private fence: PluginFence | undefined
+  protected closed = false
   constructor(
-    private readonly options: PluginDiskOptions,
+    protected readonly options: PluginDiskOptions,
     create = false,
-    existingOnly = false,
   ) {
     this.root = resolve(options.root)
     this.guard = join(this.root, 'lifecycle-guard')
@@ -115,39 +113,23 @@ export class PluginStateDisk {
         ancestor = above
       }
       this.pin(parent)
-      if (create) mkdirSync(this.root, { mode: 0o700 })
-      this.pin(this.root)
-      if (create) {
-        mkdirSync(this.guard, { mode: 0o700 })
-        mkdirSync(this.activations, { mode: 0o700 })
-        syncDirectory(this.pins[1]!.fd)
-      }
-      this.pin(this.guard)
-      this.pin(this.activations)
-      try {
-        lstatSync(this.reservations)
-      } catch (error) {
-        if (existingOnly || !(error instanceof Error && 'code' in error && error.code === 'ENOENT'))
-          throw error
-        this.check()
-        mkdirSync(this.reservations, { mode: 0o700 })
-        syncDirectory(this.pins[1]!.fd)
-      }
-      this.pin(this.reservations)
-      const fencePath = join(this.root, 'writer-lock.sqlite')
-      this.fence = PluginFence.acquire(fencePath, existingOnly)
-      this.check()
-      if (create) syncDirectory(this.pins[0]!.fd)
     } catch (error) {
       this.close()
       throw error instanceof PluginStateError ? error : new PluginStateError('unsafe-path')
     }
   }
-  private privateDirectory(stat: BigIntStats): void {
+  protected pinExistingDirectories(): void {
+    this.pin(this.root)
+    this.pin(this.guard)
+    this.pin(this.activations)
+    this.check()
+  }
+
+  protected privateDirectory(stat: BigIntStats): void {
     if (!stat.isDirectory() || stat.isSymbolicLink() || !isPrivateEntry(stat))
       refuseState('unsafe-path')
   }
-  private pin(path: string): void {
+  protected pin(path: string): void {
     const stat = lstatSync(path, { bigint: true })
     this.privateDirectory(stat)
     const fd = openDirectoryNotThroughALink(path)
@@ -161,7 +143,7 @@ export class PluginStateDisk {
       throw error
     }
   }
-  private check(): void {
+  protected check(): void {
     if (this.closed) refuseState('unsafe-path')
     for (const pin of this.pins) {
       const now = lstatSync(pin.path, { bigint: true })
@@ -169,40 +151,17 @@ export class PluginStateDisk {
       if (!same(now, pin.stat) || !same(fstatSync(pin.fd, { bigint: true }), pin.stat))
         refuseState('unsafe-path')
     }
-    this.fence?.check(join(this.root, 'writer-lock.sqlite'))
   }
-  private exclusive<T>(run: () => T): T {
-    this.check()
-    try {
-      return this.fence!.sync(this, () => {
-        this.check()
-        return run()
-      })
-    } catch (error) {
-      throw error instanceof PluginStateError ? error : new PluginStateError('corrupt')
-    }
-  }
-  async withExclusive<T>(run: () => Promise<T>): Promise<T> {
-    this.check()
-    try {
-      return await this.fence!.async(this, async () => {
-        this.check()
-        return run()
-      })
-    } catch (error) {
-      throw error instanceof PluginStateError ? error : new PluginStateError('corrupt')
-    }
-  }
-  private file(stat: BigIntStats): void {
+  protected file(stat: BigIntStats): void {
     if (
       !stat.isFile() ||
       !isPrivateEntry(stat) ||
-      (stat.nlink !== 1n && stat.nlink !== 2n) ||
+      stat.nlink !== 1n ||
       stat.size > BigInt(STATE_LIMITS.recordBytes)
     )
       refuseState('unsafe-path')
   }
-  private links(
+  protected links(
     folder: string,
     name: string,
     held: BigIntStats,
@@ -232,7 +191,7 @@ export class PluginStateDisk {
     )
       refuseState('unsafe-path')
   }
-  private read(folder: string, name: string, counterparts: readonly Counterpart[] = []): Buffer {
+  protected read(folder: string, name: string, counterparts: readonly Counterpart[] = []): Buffer {
     this.check()
     const path = join(folder, name)
     const fd = openNotThroughALink(path, constants.O_RDONLY | constants.O_NONBLOCK)
@@ -262,7 +221,191 @@ export class PluginStateDisk {
       closeSync(fd)
     }
   }
-  private withReservation<T>(id: string, create: boolean, run: (folder: string) => T): T {
+  protected readPublished(
+    folder: string,
+    name: string,
+    _reservation: string,
+    _source: string,
+  ): Buffer {
+    void _reservation
+    void _source
+    return this.read(folder, name)
+  }
+  protected readJournal(name: string, _prior: ResolutionReservation | null): Buffer {
+    void _prior
+    return this.read(this.guard, name)
+  }
+  protected loadLocked(keptActivations?: Set<string>, repair = false): LifecycleState {
+    try {
+      this.check()
+      const names = readdirSync(this.guard)
+      if (
+        names.length > STATE_LIMITS.records * 2 ||
+        names.some(
+          (name) => !recordName.test(name) && !stageName.test(name) && !sealName.test(name),
+        )
+      )
+        refuseState('corrupt')
+      const records = names.filter((name) => recordName.test(name)).sort()
+      if (records.length === 0) refuseState('missing-guard')
+      if (records.length > STATE_LIMITS.records) refuseState('limit')
+      const recordNames = new Set(records)
+      const seals = new Map<string, string>()
+      // Even a missing final record must not rewind the last denying lifecycle floor.
+      for (const name of names.filter((name) => sealName.test(name))) {
+        const sequence = name.slice(0, 8)
+        if (seals.has(sequence) || !recordNames.has(`${sequence}.json`)) refuseState('corrupt')
+        seals.set(sequence, name)
+      }
+      const state = newLifecycle()
+      let total = 0
+      records.forEach((name, index) => {
+        if (name !== `${String(index).padStart(8, '0')}.json`) refuseState('corrupt')
+        const priorReservation = state.reservation
+        const bytes = this.readJournal(name, priorReservation)
+        total += bytes.length
+        if (total > STATE_LIMITS.journalBytes) refuseState('limit')
+        const checksum = pluginSha256(bytes)
+        const record = decodeState(bytes, JournalRecord)
+        foldRecord(state, record, checksum)
+        if (record.event.kind === 'completed' || record.event.kind === 'aborted')
+          keptActivations?.add(record.event.activation.name)
+        const expectedSeal = `${name.slice(0, 8)}-${checksum}.seal`
+        const existingSeal = seals.get(name.slice(0, 8))
+        if (existingSeal !== undefined && existingSeal !== expectedSeal) refuseState('corrupt')
+        if (existingSeal === undefined && !repair) refuseState('corrupt')
+        const reservation =
+          record.event.kind === 'prepared' ? record.event.reservation : priorReservation
+        const reservedName =
+          record.event.kind === 'prepared'
+            ? 'prepare.seal'
+            : record.event.kind === 'completed'
+              ? 'complete.seal'
+              : 'abort.seal'
+        if (existingSeal === undefined) this.repairSeal(expectedSeal, reservation?.id, reservedName)
+        else if (
+          (reservation
+            ? this.readPublished(this.guard, expectedSeal, reservation.id, reservedName)
+            : this.read(this.guard, expectedSeal)
+          ).length !== 0
+        )
+          refuseState('corrupt')
+      })
+      this.check()
+      return state
+    } catch (error) {
+      throw error instanceof PluginStateError ? error : new PluginStateError('corrupt')
+    }
+  }
+  readActivation(ref: ActivationRef): Buffer {
+    try {
+      const bytes = this.read(this.activations, ref.name)
+      if (pluginSha256(bytes) !== ref.sha256) refuseState('corrupt')
+      return bytes
+    } catch (error) {
+      throw error instanceof PluginStateError ? error : new PluginStateError('corrupt')
+    }
+  }
+  close(): void {
+    if (this.closed) return
+    for (const pin of this.pins.splice(0)) closeSync(pin.fd)
+    this.closed = true
+  }
+  protected repairSeal(_name: string, _reservation: string | undefined, _source: string): void {
+    void _name
+    void _reservation
+    void _source
+    refuseState('corrupt')
+  }
+  openForDisplay(): void {
+    this.pinExistingDirectories()
+  }
+  descriptor(id: string) {
+    const stamp = () => {
+      this.check()
+      const names = readdirSync(this.guard).sort()
+      if (names.length > STATE_LIMITS.records * 2) refuseState('limit')
+      return names
+        .map((name) => {
+          const s = lstatSync(join(this.guard, name), { bigint: true })
+          return [name, s.dev, s.ino, s.size, s.mtimeNs, s.ctimeNs].join(':')
+        })
+        .join('\n')
+    }
+    const before = stamp(),
+      state = this.loadLocked(undefined, false)
+    if (state.pending !== null || before !== stamp()) refuseState('busy')
+    const installed = state.admitted.get(id)
+    if (!installed) return null
+    return Object.freeze({
+      version: installed.release.version,
+      archiveSha256: installed.release.archiveSha256,
+      manifestSha256: installed.release.manifestSha256,
+    })
+  }
+}
+/** Display evidence only. No mkdir, SQLite, fence, repair, reclaim or admission. */
+export function readInstalledPluginDescriptor(options: PluginDiskOptions, id: string) {
+  let reader: PluginJournalReader | undefined
+  try {
+    reader = new PluginJournalReader(options)
+    reader.openForDisplay()
+    return reader.descriptor(id)
+  } catch {
+    // Missing, partial, busy or unsafe data is an unknown installed side, never an action state.
+    return null
+  } finally {
+    reader?.close()
+  }
+}
+
+/** Kept-current journal + immutable activation objects, never a workspace DB. */
+export class PluginStateDisk extends PluginJournalReader {
+  private fence: PluginFence | undefined
+  constructor(options: PluginDiskOptions, create = false, existingOnly = false) {
+    super(options, create)
+    try {
+      if (create) mkdirSync(this.root, { mode: 0o700 })
+      this.pin(this.root)
+      if (create) {
+        mkdirSync(this.guard, { mode: 0o700 })
+        mkdirSync(this.activations, { mode: 0o700 })
+        syncDirectory(this.pins[1]!.fd)
+      }
+      this.pin(this.guard)
+      this.pin(this.activations)
+      try {
+        lstatSync(this.reservations)
+      } catch (error) {
+        if (existingOnly || !(error instanceof Error && 'code' in error && error.code === 'ENOENT'))
+          throw error
+        this.check()
+        mkdirSync(this.reservations, { mode: 0o700 })
+        syncDirectory(this.pins[1]!.fd)
+      }
+      this.pin(this.reservations)
+      this.fence = PluginFence.acquire(join(this.root, 'writer-lock.sqlite'), existingOnly)
+      this.check()
+      if (create) syncDirectory(this.pins[0]!.fd)
+    } catch (error) {
+      this.close()
+      throw error instanceof PluginStateError ? error : new PluginStateError('unsafe-path')
+    }
+  }
+  protected override check(): void {
+    super.check()
+    this.fence?.check(join(this.root, 'writer-lock.sqlite'))
+  }
+  protected override file(stat: BigIntStats): void {
+    if (
+      !stat.isFile() ||
+      !isPrivateEntry(stat) ||
+      (stat.nlink !== 1n && stat.nlink !== 2n) ||
+      stat.size > BigInt(STATE_LIMITS.recordBytes)
+    )
+      refuseState('unsafe-path')
+  }
+  protected withReservation<T>(id: string, create: boolean, run: (folder: string) => T): T {
     if (!/^[a-f0-9-]{36}$/.test(id)) refuseState('corrupt')
     this.check()
     const folder = join(this.reservations, id)
@@ -276,6 +419,77 @@ export class PluginStateDisk {
       return run(folder)
     } finally {
       closeSync(this.pins.pop()!.fd)
+    }
+  }
+  protected override repairSeal(
+    name: string,
+    reservation: string | undefined,
+    source: string,
+  ): void {
+    if (reservation)
+      this.withReservation(reservation, false, (folder) => {
+        this.publishReserved(this.guard, name, folder, source, Buffer.alloc(0))
+      })
+    else this.put(this.guard, name, Buffer.alloc(0))
+  }
+  protected override readPublished(
+    folder: string,
+    name: string,
+    reservation: string,
+    source: string,
+  ): Buffer {
+    if (lstatSync(join(folder, name), { bigint: true }).nlink === 1n) return this.read(folder, name)
+    return this.withReservation(reservation, false, (reserved) =>
+      this.read(folder, name, [{ folder: reserved, name: source }]),
+    )
+  }
+  protected override readJournal(name: string, prior: ResolutionReservation | null): Buffer {
+    if (lstatSync(join(this.guard, name), { bigint: true }).nlink === 1n)
+      return this.read(this.guard, name)
+    if (prior)
+      return this.withReservation(prior.id, false, (folder) =>
+        this.read(this.guard, name, [
+          { folder, name: 'complete.record' },
+          { folder, name: 'abort.record' },
+        ]),
+      )
+    const target = lstatSync(join(this.guard, name), { bigint: true })
+    for (const id of readdirSync(this.reservations)) {
+      const found = this.withReservation(id, false, (folder) => {
+        try {
+          if (!same(lstatSync(join(folder, 'prepare.record'), { bigint: true }), target))
+            return null
+        } catch (error) {
+          if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return null
+          throw error
+        }
+        return this.read(this.guard, name, [{ folder, name: 'prepare.record' }])
+      })
+      if (found !== null) return found
+    }
+    // Completed legacy publications may still have their verified guard-local crash stage.
+    return this.read(this.guard, name)
+  }
+  private exclusive<T>(run: () => T): T {
+    this.check()
+    try {
+      return this.fence!.sync(this, () => {
+        this.check()
+        return run()
+      })
+    } catch (error) {
+      throw error instanceof PluginStateError ? error : new PluginStateError('corrupt')
+    }
+  }
+  async withExclusive<T>(run: () => Promise<T>): Promise<T> {
+    this.check()
+    try {
+      return await this.fence!.async(this, async () => {
+        this.check()
+        return run()
+      })
+    } catch (error) {
+      throw error instanceof PluginStateError ? error : new PluginStateError('corrupt')
     }
   }
   private publishReserved(
@@ -341,113 +555,12 @@ export class PluginStateDisk {
       closeSync(fd)
     }
   }
-  private readPublished(folder: string, name: string, reservation: string, source: string): Buffer {
-    if (lstatSync(join(folder, name), { bigint: true }).nlink === 1n) return this.read(folder, name)
-    return this.withReservation(reservation, false, (reserved) =>
-      this.read(folder, name, [{ folder: reserved, name: source }]),
-    )
-  }
-  private readJournal(name: string, prior: ResolutionReservation | null): Buffer {
-    if (lstatSync(join(this.guard, name), { bigint: true }).nlink === 1n)
-      return this.read(this.guard, name)
-    if (prior)
-      return this.withReservation(prior.id, false, (folder) =>
-        this.read(this.guard, name, [
-          { folder, name: 'complete.record' },
-          { folder, name: 'abort.record' },
-        ]),
-      )
-    const target = lstatSync(join(this.guard, name), { bigint: true })
-    for (const id of readdirSync(this.reservations)) {
-      const found = this.withReservation(id, false, (folder) => {
-        try {
-          if (!same(lstatSync(join(folder, 'prepare.record'), { bigint: true }), target))
-            return null
-        } catch (error) {
-          if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return null
-          throw error
-        }
-        return this.read(this.guard, name, [{ folder, name: 'prepare.record' }])
-      })
-      if (found !== null) return found
-    }
-    // Completed legacy publications may still have their verified guard-local crash stage.
-    return this.read(this.guard, name)
-  }
   load(keptActivations?: Set<string>): LifecycleState {
-    return this.exclusive(() => this.loadLocked(keptActivations))
+    return this.exclusive(() => this.loadLocked(keptActivations, true))
   }
   /** Display readers must not finish an interrupted owner publication. */
   loadForObservation(): LifecycleState {
     return this.exclusive(() => this.loadLocked(undefined, false))
-  }
-  private loadLocked(keptActivations?: Set<string>, repair = true): LifecycleState {
-    try {
-      this.check()
-      const names = readdirSync(this.guard)
-      if (
-        names.length > STATE_LIMITS.records * 2 ||
-        names.some(
-          (name) => !recordName.test(name) && !stageName.test(name) && !sealName.test(name),
-        )
-      )
-        refuseState('corrupt')
-      const records = names.filter((name) => recordName.test(name)).sort()
-      if (records.length === 0) refuseState('missing-guard')
-      if (records.length > STATE_LIMITS.records) refuseState('limit')
-      const recordNames = new Set(records)
-      const seals = new Map<string, string>()
-      // Even a missing final record must not rewind the last denying lifecycle floor.
-      for (const name of names.filter((name) => sealName.test(name))) {
-        const sequence = name.slice(0, 8)
-        if (seals.has(sequence) || !recordNames.has(`${sequence}.json`)) refuseState('corrupt')
-        seals.set(sequence, name)
-      }
-      const state = newLifecycle()
-      let total = 0
-      records.forEach((name, index) => {
-        if (name !== `${String(index).padStart(8, '0')}.json`) refuseState('corrupt')
-        const priorReservation = state.reservation
-        const bytes = this.readJournal(name, priorReservation)
-        total += bytes.length
-        if (total > STATE_LIMITS.journalBytes) refuseState('limit')
-        const checksum = pluginSha256(bytes)
-        const record = decodeState(bytes, JournalRecord)
-        foldRecord(state, record, checksum)
-        if (record.event.kind === 'completed' || record.event.kind === 'aborted')
-          keptActivations?.add(record.event.activation.name)
-        const expectedSeal = `${name.slice(0, 8)}-${checksum}.seal`
-        const existingSeal = seals.get(name.slice(0, 8))
-        if (existingSeal !== undefined && existingSeal !== expectedSeal) refuseState('corrupt')
-        if (existingSeal === undefined && !repair) refuseState('corrupt')
-        const reservation =
-          record.event.kind === 'prepared' ? record.event.reservation : priorReservation
-        if (reservation) {
-          const reservedName =
-            record.event.kind === 'prepared'
-              ? 'prepare.seal'
-              : record.event.kind === 'completed'
-                ? 'complete.seal'
-                : 'abort.seal'
-          if (existingSeal === undefined)
-            this.withReservation(reservation.id, false, (folder) => {
-              this.publishReserved(this.guard, expectedSeal, folder, reservedName, Buffer.alloc(0))
-            })
-          else if (
-            this.readPublished(this.guard, expectedSeal, reservation.id, reservedName).length !== 0
-          )
-            refuseState('corrupt')
-        } else if (existingSeal === undefined) {
-          // Complete an interrupted publication, using only a validated chained record.
-          // Directory fsync makes the record and this tail-loss marker durable together.
-          this.put(this.guard, expectedSeal, Buffer.alloc(0))
-        } else if (this.read(this.guard, expectedSeal).length !== 0) refuseState('corrupt')
-      })
-      this.check()
-      return state
-    } catch (error) {
-      throw error instanceof PluginStateError ? error : new PluginStateError('corrupt')
-    }
   }
   private encodedRecord(
     sequence: number,
@@ -723,20 +836,9 @@ export class PluginStateDisk {
       throw error instanceof PluginStateError ? error : new PluginStateError('corrupt')
     }
   }
-  readActivation(ref: ActivationRef): Buffer {
-    try {
-      const bytes = this.read(this.activations, ref.name)
-      if (pluginSha256(bytes) !== ref.sha256) refuseState('corrupt')
-      return bytes
-    } catch (error) {
-      throw error instanceof PluginStateError ? error : new PluginStateError('corrupt')
-    }
-  }
-  close(): void {
-    if (this.closed) return
+  override close(): void {
     this.fence?.release()
     this.fence = undefined
-    for (const pin of this.pins.splice(0)) closeSync(pin.fd)
-    this.closed = true
+    super.close()
   }
 }

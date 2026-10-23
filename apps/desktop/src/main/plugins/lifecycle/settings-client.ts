@@ -1,3 +1,16 @@
+import {
+  PluginMutationReviewSchema,
+  type PluginMutationReview,
+} from '../../../shared/plugin-settings'
+import { downloadPluginBytes, PluginDownloadError } from '../catalogue/download'
+import {
+  releaseDisclosure,
+  installedDisclosure,
+  installedDisclosureIdentity,
+  disclosureChanges,
+  displayedDetailsHash,
+} from '../mutation-disclosure'
+import type { PluginRelease } from '../package-schema'
 import { proposalFor } from './proposals'
 import { pluginAdapter } from './adapters'
 import { randomUUID, type KeyObject } from 'node:crypto'
@@ -12,7 +25,7 @@ import type { WorkspaceProjection } from './types'
 import { Installation } from '../state/format'
 import { PLUGIN_STATES, pluginRemovalOutcome } from '../../../shared/plugin-settings'
 import { createRepoAwarePluginVerifier } from '../package-verifier'
-import { pluginSha256, PLUGIN_LIMITS } from '../package-digests'
+import { pluginSha256, verifyPluginDigest, PLUGIN_LIMITS } from '../package-digests'
 import { strictPluginJson } from '../strict-json'
 import type { PluginMutationBlocked, PluginMutationConsent } from '../../../shared/plugin-settings'
 import { PluginSupervisorError } from '../supervisor/protocol'
@@ -44,6 +57,8 @@ export async function connectPluginSettings(options: {
   propose(publicProposal: unknown, revision: number): void
   lost?(): void
   signal?: AbortSignal
+  /** Inert unit-test transport; production uses the bounded admitted archive transport. */
+  download?(release: Readonly<PluginRelease>, signal: AbortSignal): Promise<Uint8Array>
 }): Promise<PluginSettingsController & { close(): Promise<void> }> {
   let catalogueProof = {
     bytes: Buffer.from(options.catalogue.bytes),
@@ -63,9 +78,17 @@ export async function connectPluginSettings(options: {
   let blocked: PluginMutationBlocked | null = null,
     policyDigest: string | undefined
   const consents = new Map<string, PluginMutationConsent & { action: 'install' | 'update' }>()
+  const reviews = new Map<string, PluginMutationReview>()
+  const reviewListeners = new Set<() => void>()
+  let reviewEpoch = 0
+  let reviewing: AbortController | undefined
   const Consent = z.strictObject({
     releaseDigest: z.string().regex(/^[a-f0-9]{64}$/),
     preparation: z.uuid(),
+    displayedDetailsHash: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/)
+      .optional(),
   })
   const vault = new PluginPackageVault(
     options.root,
@@ -117,7 +140,7 @@ export async function connectPluginSettings(options: {
     options.signal?.removeEventListener('abort', abort)
     alive = false
     generation++
-    consents.clear()
+    invalidateConsent()
     options.lost?.()
     for (const id of screens.keys()) void invalidate(id).catch(() => undefined)
   })
@@ -178,7 +201,12 @@ export async function connectPluginSettings(options: {
     )
   }
   function invalidateConsent() {
+    const hadReview = reviews.size > 0 || consents.size > 0
     consents.clear()
+    reviewEpoch++
+    reviewing?.abort()
+    reviews.clear()
+    if (hadReview) for (const listener of reviewListeners) listener()
   }
   function supportsPrepared() {
     return features.includes('prepared-mutations-v1') && features.includes('authors-v1')
@@ -288,12 +316,15 @@ export async function connectPluginSettings(options: {
       const value = consents.get(id),
         parsed = Consent.safeParse(consent)
       consents.delete(id)
+      reviews.delete(id)
       if (
         !parsed.success ||
         !value ||
         value.action !== action ||
         value.preparation !== parsed.data.preparation ||
         value.releaseDigest !== parsed.data.releaseDigest ||
+        (value.displayedDetailsHash !== undefined &&
+          value.displayedDetailsHash !== parsed.data.displayedDetailsHash) ||
         admitted.entries.find((entry) => entry.id === id)?.archive.sha256 !== value.releaseDigest
       )
         return failPolicy()
@@ -303,9 +334,39 @@ export async function connectPluginSettings(options: {
         kind: action + '-prepared',
         pluginId: id,
         operationId: randomUUID(),
-        ...parsed.data,
+        releaseDigest: parsed.data.releaseDigest,
+        preparation: parsed.data.preparation,
       })
       invalidateConsent()
+    } catch (error) {
+      invalidateConsent()
+      if (error instanceof PluginSupervisorError && error.code === 'source-mismatch')
+        blocked = 'source-mismatch'
+      throw error
+    }
+  }
+  async function prepareOwnerMutation(action: 'install' | 'update', id: string) {
+    consents.delete(id)
+    try {
+      if (!policyDigest && blocked !== 'source-mismatch') await negotiate(true)
+      await checkOwner()
+      if (blocked) return refuseBlocked()
+      if (sourceFormat !== 2) throw new PluginSupervisorError('incompatible')
+      const ticket = generation,
+        entry = admitted.entries.find((one) => one.id === id)
+      if (!entry?.authors) return failPolicy()
+      const proof = z.strictObject({ preparation: z.uuid() }).parse(
+        await channel.call({
+          kind: 'prepare-mutation',
+          action,
+          pluginId: id,
+          releaseDigest: entry.archive.sha256,
+        }),
+      )
+      if (!alive || switching || ticket !== generation) return failPolicy()
+      const consent = { preparation: proof.preparation, releaseDigest: entry.archive.sha256 }
+      consents.set(id, { ...consent, action })
+      return consent
     } catch (error) {
       invalidateConsent()
       if (error instanceof PluginSupervisorError && error.code === 'source-mismatch')
@@ -318,33 +379,100 @@ export async function connectPluginSettings(options: {
     features: () => features,
     mutationStatus: () => blocked,
     mutationRequired: () => sourceFormat === 2 || blocked !== null,
-    async prepareMutation(action, id) {
-      consents.delete(id)
+    prepareMutation(action, id) {
+      if (reviews.has(id)) invalidateConsent()
+      return prepareOwnerMutation(action, id)
+    },
+    cancelPreparations: invalidateConsent,
+    onReviewInvalidated(listener) {
+      reviewListeners.add(listener)
+      return () => {
+        reviewListeners.delete(listener)
+      }
+    },
+    async reviewMutation(action, id) {
+      invalidateConsent()
+      await checkOwner()
+      if (blocked) return refuseBlocked()
+      if (sourceFormat !== 2) throw new PluginSupervisorError('incompatible')
+      const ticket = generation,
+        epoch = reviewEpoch,
+        catalogue = admitted,
+        entry = catalogue.entries.find((one) => one.id === id),
+        abort = new AbortController()
+      if (!entry?.authors) return failPolicy()
+      reviewing = abort
+      const signal = AbortSignal.any([
+        abort.signal,
+        AbortSignal.timeout(30000),
+        ...(options.signal ? [options.signal] : []),
+      ])
+      const current = () =>
+        alive &&
+        !switching &&
+        generation === ticket &&
+        reviewEpoch === epoch &&
+        !signal.aborted &&
+        admitted === catalogue
       try {
-        if (!policyDigest && blocked !== 'source-mismatch') await negotiate(true)
-        await checkOwner()
-        if (blocked) return refuseBlocked()
-        if (sourceFormat !== 2) throw new PluginSupervisorError('incompatible')
-        const ticket = generation,
-          entry = admitted.entries.find((one) => one.id === id)
-        if (!entry?.authors) return failPolicy()
-        const proof = z.strictObject({ preparation: z.uuid() }).parse(
-          await channel.call({
-            kind: 'prepare-mutation',
-            action,
-            pluginId: id,
-            releaseDigest: entry.archive.sha256,
-          }),
+        const archive = await (
+          options.download ??
+          ((release, signal) =>
+            downloadPluginBytes({
+              url: release.archive.url,
+              maximum: PLUGIN_LIMITS.archiveBytes,
+              size: release.archive.size,
+              sha256: release.archive.sha256,
+              signal,
+            }))
+        )(entry, signal)
+        if (!current()) return failPolicy()
+        verifyPluginDigest(archive, entry.archive, PLUGIN_LIMITS.archiveBytes)
+        const details = releaseDisclosure(catalogue.verifyPackage(id, entry.version, archive))
+        if (!details.authors) return failPolicy()
+        const previous =
+          action === 'update'
+            ? await installedDisclosure(options.root, id, vault)
+            : { identity: null, details: null }
+        if (!current()) return failPolicy()
+        const proof = await prepareOwnerMutation(action, id)
+        if (!current()) return failPolicy()
+        if (
+          action === 'update' &&
+          JSON.stringify(installedDisclosureIdentity(options.root, id)) !==
+            JSON.stringify(previous.identity)
         )
-        if (!alive || switching || ticket !== generation) return failPolicy()
-        const consent = { preparation: proof.preparation, releaseDigest: entry.archive.sha256 }
+          return failPolicy()
+        const display = {
+          id,
+          action,
+          catalogueDigest: pluginSha256(catalogueProof.bytes),
+          details,
+          installed: previous.details,
+          changes: disclosureChanges(details, previous.details),
+        }
+        if (
+          policyDigest !== pluginSha256(catalogueProof.bytes) ||
+          proof.releaseDigest !== details.digest
+        )
+          return failPolicy()
+        const consent = { ...proof, displayedDetailsHash: displayedDetailsHash(display) }
+        const shown = PluginMutationReviewSchema.parse({ ...display, consent })
+        reviews.set(id, shown)
         consents.set(id, { ...consent, action })
-        return consent
+        return structuredClone(shown)
       } catch (error) {
-        invalidateConsent()
-        if (error instanceof PluginSupervisorError && error.code === 'source-mismatch')
-          blocked = 'source-mismatch'
-        throw error
+        consents.delete(id)
+        reviews.delete(id)
+        if (!current()) return failPolicy()
+        if (error instanceof PluginSupervisorError) throw error
+        throw new PluginSupervisorError(
+          error instanceof PluginDownloadError && error.kind === 'transport'
+            ? 'network'
+            : 'policy-refused',
+        )
+      } finally {
+        if (reviewing === abort) reviewing = undefined
       }
     },
     async catalogue() {

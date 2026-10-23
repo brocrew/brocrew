@@ -58,6 +58,7 @@ import { isProxy, isRef, toRaw } from 'vue'
  */
 export const NOT_THE_WIRE: ReadonlySet<string> = new Set([
   'onClosed', // Plugin-screen lifecycle push; the listener remains in preload.
+  'onReviewInvalidated', // Passive review invalidation push; no payload or invoke.
   'onEvent',
   'onLiveness',
   'onClosing',
