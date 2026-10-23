@@ -1,6 +1,12 @@
 import { providerRecord, SUPPORTED_PROVIDERS, type Provider } from '@brobot2/shared'
 import type { ProviderVersion } from '../../shared/runtime-ipc'
 
+/** Bound program services are independent of runtime and credential construction. */
+export interface ProviderProgramOperations {
+  version(): Promise<ProviderVersion>
+  installedPath?(): string | null
+}
+
 /**
  * How long a program gets to say its version; SIGKILL after it, as `--version` has nothing to clean
  * up. A large program read for the first time (on Windows, scanned first) can take seconds before it

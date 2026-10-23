@@ -367,6 +367,7 @@ export function codexAuth(paths: ProviderHomePaths, seams: CodexAuthSeams): Home
 }
 
 export interface CodexModuleSeams {
+  readonly program?: import('../program-policy').ProviderProgramOperations
   readonly runtime: CodexRuntimeSeams
   readonly home: CodexHomeSeams
   readonly auth: CodexAuthSeams
@@ -389,6 +390,7 @@ export function createCodexModule(
   seams: CodexModuleSeams,
 ): ProviderModule {
   return {
+    ...(seams.program === undefined ? {} : { program: seams.program }),
     authPolicy,
     transcripts,
     instructions,

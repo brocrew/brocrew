@@ -3,6 +3,9 @@ export { providerAuthPolicies } from './auth-definitions'
 import { providerRecord, type Provider } from '@brobot2/shared'
 import { createClaudeModule, type ClaudeModuleSeams } from './claude'
 import { createCodexModule, type CodexModuleSeams } from './codex'
+import { claudeDesktopInputs, type ClaudeDesktopSeams } from './claude/desktop'
+import { codexDesktopInputs, type CodexDesktopSeams } from './codex/desktop'
+import type { DesktopProviderContext } from './desktop-context'
 import type { ProviderAuthOps } from './compat'
 import type { HomeAuthOperations, ProviderHomePaths, ProviderModules } from './module'
 
@@ -14,6 +17,17 @@ export type { ProviderModule, ProviderModules } from './module'
 export interface ProviderModuleInputs {
   readonly claude: ClaudeModuleSeams
   readonly codex: CodexModuleSeams
+}
+
+/** Register native bindings once; providers keep all program/key/renewal decisions. */
+export function desktopProviderInputs(
+  context: DesktopProviderContext,
+  seams: { readonly claude?: ClaudeDesktopSeams; readonly codex?: CodexDesktopSeams } = {},
+): ProviderModuleInputs {
+  return {
+    claude: claudeDesktopInputs(context, seams.claude),
+    codex: codexDesktopInputs(context, seams.codex),
+  }
 }
 
 /** Bind once; no runtime construction, program lookup, home or credential work happens here. */
