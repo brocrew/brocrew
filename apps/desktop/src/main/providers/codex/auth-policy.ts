@@ -42,15 +42,23 @@ function tagOf(handle: IdentityHandle): IdentityFact {
   return tag === null ? null : { kind: 'tag', tag }
 }
 
+/** Only this provider interprets its opaque file identity. */
+function isCopy(value: unknown): value is CodexCopyIdentity {
+  if (typeof value !== 'object' || value === null) return false
+  const copy = value as Partial<CodexCopyIdentity>
+  return (
+    typeof copy.dev === 'bigint' &&
+    typeof copy.ino === 'bigint' &&
+    typeof copy.size === 'bigint' &&
+    typeof copy.mtimeNs === 'bigint'
+  )
+}
+
 export const authPolicy: ProviderAuthPolicy = {
   identity: { waitsForAccount: false, launch: tagOf, limit: tagOf },
   copy: {
     read: codexCopyIdentityIn,
-    same: (one, other) =>
-      isTheSameCodexCopy(
-        one as CodexCopyIdentity | null | undefined,
-        other as CodexCopyIdentity | null | undefined,
-      ),
+    same: (one, other) => isCopy(one) && isCopy(other) && isTheSameCodexCopy(one, other),
     refused: (error) => (error instanceof CodexRefusedItsSignInError ? error.refusedCopy : null),
   },
   protocol: {
