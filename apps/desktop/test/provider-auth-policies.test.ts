@@ -1,0 +1,175 @@
+import { describe, expect, it, vi } from 'vitest'
+import { CodexRefusedItsSignInError } from '@brobot2/runtime'
+import { SUPPORTED_PROVIDERS, type Provider } from '@brobot2/shared'
+import * as registry from '../src/main/providers'
+
+type Account = { readonly email: string; readonly organization?: string }
+type HandleFacts = {
+  account?: () => Account | null | undefined
+  signInTag?: () => string | null
+}
+type Identity =
+  | { readonly kind: 'account'; readonly account: Account }
+  | { readonly kind: 'tag'; readonly tag: string; readonly launchOnly?: true }
+  | null
+  | undefined
+type Notice = {
+  readonly type: string
+  readonly provider?: Provider
+  readonly category?: string
+  readonly label?: string
+  readonly degradedFrom?: string
+  readonly passing?: boolean
+}
+interface Policy {
+  readonly identity: {
+    launch(handle: HandleFacts): Identity
+    limit(handle: HandleFacts): Identity
+  }
+  readonly copy: {
+    same(one: unknown, other: unknown): boolean
+    refused(error: unknown): unknown | null
+  }
+  readonly protocol: {
+    refusedGive(event: Notice): boolean
+    reopenedGive(event: Notice): boolean
+  }
+}
+function policies(): Readonly<Record<Provider, Policy>> {
+  const found = Reflect.get(registry, 'providerAuthPolicies') as
+    Readonly<Record<Provider, Policy>> | undefined
+  expect(found, 'the provider authentication policy projection').toBeDefined()
+  if (found === undefined) throw new Error('Provider authentication policies are absent')
+  return found
+}
+
+describe('provider authentication policy facts', () => {
+  it('shares the exact policies with bound modules without reading a program, home or key', () => {
+    const unread = vi.fn((): never => {
+      throw new Error('No launch work during binding')
+    })
+    const modules = registry.createProviderModules(
+      () => ({
+        managedRoot: '/fictional/homes',
+        defaultProfile: 'fern',
+        homeOf: unread,
+        profiles: unread,
+        assertMayOpen: unread,
+      }),
+      {
+        claude: { runtime: { program: unread }, home: {}, auth: { key: unread } },
+        codex: { runtime: { command: unread }, home: {}, auth: { command: unread } },
+      },
+    )
+    const definitions = policies()
+    for (const provider of SUPPORTED_PROVIDERS)
+      expect(Reflect.get(modules[provider], 'authPolicy')).toBe(definitions[provider])
+    expect(unread).not.toHaveBeenCalled()
+  })
+
+  it('keeps a pending account distinct from a missing account and returns unsalted facts', () => {
+    const own = policies().claude.identity
+    const account = { email: 'fern@example.invalid', organization: 'fictional-org' }
+    const tag = vi.fn(() => 'fictional-launch')
+    expect(own.launch({ account: () => undefined, signInTag: tag })).toBeUndefined()
+    expect(own.limit({ account: () => undefined, signInTag: tag })).toBeNull()
+    expect(tag).not.toHaveBeenCalled()
+    expect(own.launch({ account: () => account, signInTag: tag })).toEqual({
+      kind: 'account',
+      account,
+    })
+    expect(own.limit({ account: () => account, signInTag: tag })).toEqual({
+      kind: 'account',
+      account,
+    })
+    expect(tag).not.toHaveBeenCalled()
+    expect(own.launch({ account: () => null, signInTag: tag })).toEqual({
+      kind: 'tag',
+      tag: 'fictional-launch',
+      launchOnly: true,
+    })
+    expect(own.launch({ signInTag: tag })).toEqual({
+      kind: 'tag',
+      tag: 'fictional-launch',
+      launchOnly: true,
+    })
+    expect(own.limit({ account: () => null, signInTag: tag })).toBeNull()
+    expect(own.launch({})).toBeNull()
+  })
+
+  it('reads only the launched tag for Codex, including on the nonwaiting limit path', () => {
+    const account = vi.fn((): never => {
+      throw new Error('The tag policy must not ask for account facts')
+    })
+    for (const read of [policies().codex.identity.launch, policies().codex.identity.limit]) {
+      expect(read({ account, signInTag: () => 'fictional-tag' })).toEqual({
+        kind: 'tag',
+        tag: 'fictional-tag',
+      })
+      expect(read({ account })).toBeNull()
+    }
+    expect(account).not.toHaveBeenCalled()
+  })
+
+  it('compares opaque copies without treating a missing copy as equal', () => {
+    const copy = { dev: 1n, ino: 2n, size: 3n, mtimeNs: 4n }
+    const own = policies().codex.copy
+    expect(own.same(copy, { ...copy })).toBe(true)
+    for (const field of ['dev', 'ino', 'size', 'mtimeNs'] as const)
+      expect(own.same(copy, { ...copy, [field]: copy[field] + 1n }), field).toBe(false)
+    expect(own.same(null, null)).toBe(false)
+    expect(own.same(copy, null)).toBe(false)
+    expect(own.same(undefined, copy)).toBe(false)
+    expect(own.refused(new Error('fictional failure'))).toBeNull()
+    expect(own.refused(new CodexRefusedItsSignInError('fictional refusal', copy))).toBe(copy)
+    expect(policies().claude.copy.same(copy, copy)).toBe(false)
+    expect(
+      policies().claude.copy.refused(new CodexRefusedItsSignInError('fictional', copy)),
+    ).toBeNull()
+  })
+
+  it('recognizes only the existing native housekeeping notices', () => {
+    const refused = [
+      'thread/status/changed',
+      'mcpServer/startupStatus/updated',
+      'account/rateLimits/read',
+    ]
+    const reopened = [
+      ...refused,
+      'remoteControl/status/changed',
+      'account/updated',
+      'skills/changed',
+      'thread/goal/cleared',
+    ]
+    const own = policies().codex.protocol
+    for (const label of reopened) {
+      const event = { type: 'unknown', provider: 'codex' as const, category: 'lifecycle', label }
+      expect(own.refusedGive(event), label).toBe(refused.includes(label))
+      expect(own.reopenedGive(event), label).toBe(true)
+      expect(policies().claude.protocol.refusedGive(event)).toBe(false)
+      expect(policies().claude.protocol.reopenedGive(event)).toBe(false)
+      for (const changed of [
+        { ...event, label: 'future/notice' },
+        { ...event, provider: 'claude' as const },
+        { ...event, type: 'error' },
+        { ...event, category: 'other' },
+        { ...event, passing: true },
+        { ...event, degradedFrom: 'fictional' },
+      ]) {
+        expect(own.refusedGive(changed)).toBe(false)
+        expect(own.reopenedGive(changed)).toBe(false)
+      }
+    }
+    const echo = {
+      type: 'unknown',
+      provider: 'codex' as const,
+      category: 'echo',
+      label: 'userMessage',
+    }
+    expect(own.refusedGive(echo)).toBe(true)
+    expect(own.reopenedGive(echo)).toBe(false)
+    expect(own.refusedGive({ ...echo, passing: true })).toBe(false)
+    expect(own.refusedGive({ ...echo, degradedFrom: 'fictional' })).toBe(false)
+    expect(own.refusedGive({ ...echo, label: 'futureMessage' })).toBe(false)
+  })
+})
