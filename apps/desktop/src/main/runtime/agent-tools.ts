@@ -1,3 +1,7 @@
+import {
+  providerAuthPolicies,
+  legacyStartRefusalWords as A_START_ITS_SIGN_IN_REFUSED,
+} from '../providers/auth-definitions'
 import { withNavigationLinks, NAVIGATION_TOOL_NAMES } from './tool-navigation-links'
 import { NAVIGATION_LINKS_DESCRIPTION } from '../../shared/links'
 import { workerLine } from '../worker-readings'
@@ -65,9 +69,6 @@ import {
 } from '../../shared/documents'
 import {
   AuthUnavailableError,
-  CodexSettingsUnusableError,
-  NoCodexSignInOnThisComputerError,
-  ClaudeUnavailableError,
   ResumeError,
   agentToolStringEnum,
   agentToolHandlerInput,
@@ -116,7 +117,6 @@ import {
   SessionStillStarting,
   unavailableOf,
 } from './session-unavailable'
-import { CodexUnavailableError } from './codex-binary'
 import {
   type RailPermanence,
   type SpawnRefusal,
@@ -250,6 +250,7 @@ import {
 import { clockTime, clockTimeFrom } from '../../shared/clock'
 import {
   PROVIDER_DESCRIPTORS,
+  SUPPORTED_PROVIDERS,
   providerDescriptor,
   providerRecord,
   providerSchema,
@@ -2940,8 +2941,9 @@ export function aLaunchThatDidNotStart(error: unknown): {
   // ⚑ By class: the settings a Codex profile's `config.toml` holds, which its home's check refused
   // (`assertCodexSqliteHomeContained`), else a sign-in missing, expired or refused.
   if (error instanceof AuthUnavailableError) {
+    const native = providerAuthPolicies[error.provider].launchRefusal(error)
     // A computer with no Codex sign-in for a profile to copy is said apart: there is none to renew.
-    if (error instanceof NoCodexSignInOnThisComputerError) {
+    if (native === 'no-copy') {
       return {
         rail: 'agent-did-not-start',
         because: 'this-computer-has-no-sign-in-to-copy',
@@ -2949,7 +2951,7 @@ export function aLaunchThatDidNotStart(error: unknown): {
         provider: error.provider,
       }
     }
-    const settings = error instanceof CodexSettingsUnusableError
+    const settings = native === 'profile'
     return {
       rail: 'agent-did-not-start',
       because: settings ? 'its-provider-settings-are-unusable' : 'its-sign-in-is-unusable',
@@ -2982,7 +2984,11 @@ export function aLaunchThatDidNotStart(error: unknown): {
   // is a binary that is missing, not executable, or not bundled for this platform (review of
   // `657`); a `ClaudeUnavailableError` is the program the SDK looks for, not where it looks (R66).
   // ⚑ By TYPE: the Claude adapter asks where the SDK looks, never what the SDK said.
-  if (error instanceof CodexUnavailableError || error instanceof ClaudeUnavailableError) {
+  if (
+    SUPPORTED_PROVIDERS.some(
+      (provider) => providerAuthPolicies[provider].launchRefusal(error) === 'program',
+    )
+  ) {
     return {
       rail: 'agent-could-not-be-started',
       because: 'provider-binary-unavailable',
@@ -3232,26 +3238,7 @@ export const A_REFUSED_ROW_SHOWS = 169
  * why: it opens the sentence and is read whole in what a row shows ({@link A_REFUSED_ROW_SHOWS}).
  * `more` follows it, for whoever opens the whole answer.
  */
-export const A_START_ITS_SIGN_IN_REFUSED = {
-  'claude-sign-in': {
-    lead: 'Ask a person to sign in to Claude Code on this computer again, or to save an API key on the Claude card in Providers: its Claude sign-in could not be used.',
-    more: '',
-  },
-  'codex-sign-in': {
-    lead: 'Ask a person to save an API key on the Codex card in Providers, or to sign that agent in from one of its conversations: its Codex sign-in could not be used.',
-    more: 'Each agent has its own Codex sign-in, and the Codex card signs in only BroBot\u2019s own; in one of that agent\u2019s conversations, a refused message shows its sign-in buttons. BroCrew does not need restarting.',
-  },
-  // No Codex sign-in for a new agent to copy at its first start: neither this computer's nor
-  // BroBot's own.
-  'no-sign-in-to-copy': {
-    lead: 'Ask a person to sign in on the Codex card in Providers, or to save an API key there: there is no Codex sign-in for that agent to start on.',
-    more: 'A new agent starts on a copy of the Codex sign-in this computer keeps or, where it keeps none, of BroBot\u2019s own. BroCrew does not need restarting.',
-  },
-  'codex-settings': {
-    lead: 'Ask a person to correct that agent\u2019s Codex settings (config.toml): they could not be used.',
-    more: '',
-  },
-} as const
+export { legacyStartRefusalWords as A_START_ITS_SIGN_IN_REFUSED } from '../providers/auth-definitions'
 
 /**
  * A start refused because the agent's sign-in, or its Codex settings, could not be used. What a

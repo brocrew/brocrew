@@ -26,7 +26,13 @@ export interface ProtocolNotice {
 /** Native facts and comparisons are separate from bound credential and launch services. */
 export interface ProviderAuthPolicy {
   /** Profile faults take priority over generic sign-in faults; wording stays at the shared door. */
-  launchRefusal(error: unknown): 'profile' | 'program' | null
+  launchRefusal(error: unknown): 'profile' | 'program' | 'no-copy' | null
+  readonly refusalWords: Readonly<
+    Record<
+      'sign-in' | 'settings' | 'no-sign-in-to-copy',
+      { readonly lead: string; readonly more: string } | null
+    >
+  >
   /** A provider asks for its installed program only if its own setup steps need one. */
   setup(platform: NodeJS.Platform, installedPath: () => string | null): ProviderSetup | null
   readonly renewedNotice: string | null
