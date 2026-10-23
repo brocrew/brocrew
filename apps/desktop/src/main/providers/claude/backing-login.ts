@@ -48,6 +48,7 @@ export function machineLoginPresence(
       failed = true
     })
     child.once('close', (code) => {
+      // Release ownership on close so the child never outlives its check.
       closed = true
       clearTimeout(timer)
       signal?.removeEventListener('abort', stop)
