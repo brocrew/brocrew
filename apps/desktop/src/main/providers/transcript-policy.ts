@@ -37,7 +37,8 @@ export interface TranscriptPolicy {
 }
 export interface DiscoveryPolicy {
   discover(home: string, profileId: string): Discovery
-  userHome(env: NodeJS.ProcessEnv, userHome: string): string
+  /** Resolve the default home only when this provider has no explicit override. */
+  userHome(env: NodeJS.ProcessEnv, defaultHome: () => string): string
   descriptions?(): Promise<Map<string, ProviderDescription>>
 }
 export interface ProviderDefinition {

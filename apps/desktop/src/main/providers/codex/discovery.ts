@@ -259,8 +259,8 @@ function newestStateDatabase(home: string): string | null {
 
 export const discovery = {
   discover: discoverCodexSessions,
-  userHome: (env: NodeJS.ProcessEnv, userHome: string): string => {
+  userHome: (env: NodeJS.ProcessEnv, userHome: () => string): string => {
     const override = env['CODEX_HOME']
-    return typeof override === 'string' && override !== '' ? override : join(userHome, '.codex')
+    return typeof override === 'string' && override !== '' ? override : join(userHome(), '.codex')
   },
 }

@@ -224,9 +224,9 @@ export async function claudeHomeDescriptions(
 
 export const discovery = {
   discover: discoverClaudeSessions,
-  userHome: (env: NodeJS.ProcessEnv, userHome: string): string => {
+  userHome: (env: NodeJS.ProcessEnv, userHome: () => string): string => {
     const override = env['CLAUDE_CONFIG_DIR']
-    return typeof override === 'string' && override !== '' ? override : join(userHome, '.claude')
+    return typeof override === 'string' && override !== '' ? override : join(userHome(), '.claude')
   },
   descriptions: claudeHomeDescriptions,
 }
