@@ -11,11 +11,13 @@ import type {
   ProviderAuthPolicy,
 } from '../auth-policy'
 
+/** Protocol housekeeping observed while an accepted give was being refused. */
 const refusedLabels: ReadonlySet<string> = new Set([
   'thread/status/changed',
   'mcpServer/startupStatus/updated',
   'account/rateLimits/read',
 ])
+/** Startup notifications a renewed conversation can publish before its retained give continues. */
 const reopenedLabels: ReadonlySet<string> = new Set([
   ...refusedLabels,
   'remoteControl/status/changed',
@@ -23,6 +25,7 @@ const reopenedLabels: ReadonlySet<string> = new Set([
   'skills/changed',
   'thread/goal/cleared',
 ])
+/** A classified notification, never an erased event or an arbitrary provider payload. */
 function lifecycle(event: ProtocolNotice, labels: ReadonlySet<string>): boolean {
   return (
     event.type === 'unknown' &&
@@ -40,7 +43,7 @@ function tagOf(handle: IdentityHandle): IdentityFact {
 }
 
 export const authPolicy: ProviderAuthPolicy = {
-  identity: { launch: tagOf, limit: tagOf },
+  identity: { waitsForAccount: false, launch: tagOf, limit: tagOf },
   copy: {
     read: codexCopyIdentityIn,
     same: (one, other) =>

@@ -2,6 +2,7 @@ import type { ProviderAuthPolicy } from '../auth-policy'
 
 export const authPolicy: ProviderAuthPolicy = {
   identity: {
+    waitsForAccount: true,
     launch(handle) {
       const account = handle.account === undefined ? null : handle.account()
       if (account === undefined) return undefined
