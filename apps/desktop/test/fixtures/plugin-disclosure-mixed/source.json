@@ -1,0 +1,62 @@
+[
+  {
+    "commit": "394772c43265041dbcaea3902d21438ff0162f5b",
+    "source": "apps/desktop/src/main/plugins/lifecycle/person-control.ts",
+    "file": "authors-person-control.ts",
+    "sourceSha256": "6c97113019237dcb4265dba223cbba25e63cd8fdd8e7aa273dc6573de09df6a7",
+    "imports": {
+      "./authors-features": "../hooks/definitions",
+      "../../../src/main/plugins/lifecycle/proposals": "./proposals",
+      "../../../src/main/plugins/local-endpoint": "../local-endpoint",
+      "../../../src/main/plugins/node-host-files": "../node-host-files",
+      "../../../src/main/plugins/supervisor/protocol": "../supervisor/protocol",
+      "../../../src/main/plugins/lifecycle/transport": "./transport",
+      "./authors-controller": "./controller",
+      "../../../src/main/plugins/lifecycle/types": "./types",
+      "../../../src/main/plugins/state/format": "../state/format"
+    }
+  },
+  {
+    "commit": "394772c43265041dbcaea3902d21438ff0162f5b",
+    "source": "apps/desktop/src/main/plugins/lifecycle/controller.ts",
+    "file": "authors-controller.ts",
+    "sourceSha256": "8269935624fcc6b17751272071d4f43c399eadea89a37be5d5b7a98ec3df8c98",
+    "imports": {
+      "../../../src/main/plugins/contributions": "../contributions",
+      "../../../src/main/plugins/node-policy": "../node-policy",
+      "../../../src/main/plugins/catalogue/newer-version": "../catalogue/newer-version",
+      "../../../src/main/plugins/catalogue/repo-list": "../catalogue/repo-list",
+      "../../../src/main/plugins/lifecycle/profile-ledger": "./profile-ledger",
+      "../../../src/main/plugins/lifecycle/adapters": "./adapters",
+      "../../../src/main/plugins/lifecycle/proposals": "./proposals",
+      "../../../src/main/plugins/package-digests": "../package-digests",
+      "../../../src/main/plugins/package-verifier": "../package-verifier",
+      "../../../src/main/plugins/supervisor/protocol": "../supervisor/protocol",
+      "../../../src/main/plugins/lifecycle/download": "./download",
+      "../../../src/main/plugins/lifecycle/files": "./files",
+      "../../../src/main/plugins/lifecycle/types": "./types",
+      "../../../src/shared/plugin-settings": "../../../shared/plugin-settings",
+      "./authors-vault": "./vault"
+    }
+  },
+  {
+    "commit": "394772c43265041dbcaea3902d21438ff0162f5b",
+    "source": "apps/desktop/src/main/plugins/hooks/definitions.ts",
+    "file": "authors-features.ts",
+    "sourceSha256": "d27d089bf14a20f8d0f22e32174c8f950b541deb047d47848a5e1ff20edcea05",
+    "imports": {}
+  },
+  {
+    "commit": "394772c43265041dbcaea3902d21438ff0162f5b",
+    "source": "apps/desktop/src/main/plugins/lifecycle/vault.ts",
+    "file": "authors-vault.ts",
+    "sourceSha256": "f60a94496b1e38eda79e2b8a2c8dbf33913cf25764a385794a1b68cb26b9fde9",
+    "imports": {
+      "../../../src/main/plugins/package-verifier": "../package-verifier",
+      "../../../src/main/plugins/package-schema": "../package-schema",
+      "../../../src/main/plugins/package-digests": "../package-digests",
+      "../../../src/main/plugins/node-host-files": "../node-host-files",
+      "../../../src/main/plugins/supervisor/protocol": "../supervisor/protocol"
+    }
+  }
+]
