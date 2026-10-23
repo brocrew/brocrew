@@ -849,11 +849,31 @@ describe('373 · a parent that survives a restart', () => {
       // read of a launch that kept none (`whatALaunchGave`) and the agent-input popup's read
       // (`whatThisAgentWasGiven`). A launch's own record is handed the toolset its launch built.
       expect(built).toEqual([
-        'const agentTools = agentToolsFor(this, id, this.theListsAsLastRead())',
-        'agentToolsFor(this, sessionId, this.theListsAsLastRead()),',
-        'toolset: agentToolsFor(this, sessionId, this.theListsAsLastRead()),',
-        'const agentTools = agentToolsFor(this, sessionId, this.theListsAsLastRead())',
+        'return agentToolsFor(this, sessionId, this.theListsAsLastRead(), offersDirectRulesWrite)',
       ])
+      const roleBound = strip(host.text)
+        .split('\n')
+        .filter((line) => line.includes('this.agentToolsForSession('))
+        .map((line) => line.trim())
+      expect(roleBound).toEqual([
+        'const agentTools = this.agentToolsForSession(id)',
+        'this.agentToolsForSession(sessionId),',
+        'toolset: this.agentToolsForSession(sessionId),',
+        'const agentTools = this.agentToolsForSession(sessionId)',
+      ])
+      expect(
+        sources
+          .filter(({ text }) =>
+            strip(text)
+              .split('\n')
+              .some(
+                (line) =>
+                  line.includes('agentToolsFor(') &&
+                  !line.includes('export function agentToolsFor('),
+              ),
+          )
+          .map(({ path }) => path),
+      ).toEqual(['runtime/runtime-host.ts'])
     })
 
     it('⚠️ the entitlement names an identity, not a live session — and that is the honest reading', async () => {

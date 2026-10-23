@@ -249,8 +249,8 @@ describe('486 · the doors our own verbs do not need', () => {
   describe('§1 · the split, read off the declarations', () => {
     it('🔴 every verb says what it does beyond its rails, and the verbs that keep a card are named', () => {
       // ⛔ **The real toolset, not a fixture.** `agentToolsFor` is what both adapters are handed, so
-      // a verb added to the app arrives here; a fixture would assert what this file remembered.
-      const declared = agentToolsFor(host, 'sess_nobody').tools
+      // a verb added to the app arrives here; the explicit eligible role enumerates its full vocabulary.
+      const declared = agentToolsFor(host, 'sess_nobody', {}, true).tools
       const said = Object.fromEntries(declared.map((one) => [one.name, one.beyondItsRails]))
       expect(said).toEqual(THE_SPLIT)
       // ⚑ **Named, so a verb cannot change rows in silence** — and the negative is the same list
@@ -273,7 +273,7 @@ describe('486 · the doors our own verbs do not need', () => {
       // ⛔ **A closed vocabulary guards what a member SAYS** — a word no verb uses is a word nothing
       // measures. All three are reached, which is what makes the split a partition rather than a
       // list with a dead entry.
-      const declared = agentToolsFor(host, 'sess_nobody').tools
+      const declared = agentToolsFor(host, 'sess_nobody', {}, true).tools
       const reached = new Set(declared.map((one) => one.beyondItsRails))
       expect([...reached].sort()).toEqual([...BEYOND_ITS_RAILS].sort())
       // ⚠️ **And every word describes the VERB, never what an app should ask.** The policy lives in

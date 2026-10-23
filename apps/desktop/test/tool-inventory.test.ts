@@ -465,13 +465,11 @@ describe('what tools this conversation has (358)', () => {
   })
 
   it('⛔ the “why” sentence says what the code decides, not what the brief asked for', () => {
-    // 358 §1 asked each row to name *"which profile, which capability"*. That link does not exist:
-    // `agentToolsFor` takes a host and a session id, always returns the same five, and is attached
-    // with no condition at start or resume. The sentence must therefore say the true thing AND the
-    // part a person needs — that a call can still be refused.
-    expect(WHY_EVERY_CONVERSATION).toContain('every conversation')
-    expect(WHY_EVERY_CONVERSATION).toContain('capabilities decide whether a CALL is admitted')
-    expect(WHY_EVERY_CONVERSATION).toContain('not readable from this window')
+    expect(WHY_EVERY_CONVERSATION).toBe(
+      'Every conversation gets the same tools, except write_agent_rules. ' +
+        'Only a BroBot conversation a person started gets it, to change another agent’s rules. ' +
+        'BroCrew still checks every call against its rules.',
+    )
   })
 
   describe('the fold, and what survives a window release', () => {

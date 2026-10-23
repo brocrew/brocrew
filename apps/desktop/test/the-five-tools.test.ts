@@ -1075,20 +1075,26 @@ describe('347 · the five tools', () => {
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§4 · a resumed agent does not silently lose its tools', () => {
-    it('🔴 the toolset is handed to the adapter on start and again on resume (307)', async () => {
-      const id = await personOpens('pm')
-      const started = starts.at(-1)
-      expect(started?.agentTools?.server).toBe('brobot')
-      expect(started?.agentTools?.tools.map((one) => one.name)).toEqual([...TOOL_NAMES])
+    it.each(['pm', DEFAULT_PROFILE_ID])(
+      'the eligible toolset reaches start and resume for %s',
+      async (profile) => {
+        const id = await personOpens(profile)
+        const expected = TOOL_NAMES.filter(
+          (name) => name !== 'write_agent_rules' || profile === DEFAULT_PROFILE_ID,
+        )
+        const started = starts.at(-1)
+        expect(started?.agentTools?.server).toBe('brobot')
+        expect(started?.agentTools?.tools.map((one) => one.name)).toEqual(expected)
 
-      await host.close(id, window)
-      resumes.length = 0
-      await host.resumeSession(id, new RecordingSink('webContents:2'))
-      // ⛔ **This is the assertion §3 of the brief exists for.** Codex re-reads a file; Claude must
-      // be handed the option again. A resume that dropped it would be invisible in every transcript.
-      const resumed = resumes.at(-1)
-      expect(resumed?.agentTools?.tools.map((one) => one.name)).toEqual([...TOOL_NAMES])
-    })
+        await host.close(id, window)
+        resumes.length = 0
+        await host.resumeSession(id, new RecordingSink('webContents:2'))
+        // ⛔ **This is the assertion §3 of the brief exists for.** Codex re-reads a file; Claude must
+        // be handed the option again. A resume that dropped it would be invisible in every transcript.
+        const resumed = resumes.at(-1)
+        expect(resumed?.agentTools?.tools.map((one) => one.name)).toEqual(expected)
+      },
+    )
   })
 
   // ───────────────────────────────────────────────────────────────────────────────────────────
@@ -1096,9 +1102,9 @@ describe('347 · the five tools', () => {
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§5 · what is published, and what is not', () => {
-    it('⛔ the inventory is exactly the published list, and criterion 6 is measured against it', () => {
-      const parent = 'sess_x'
-      const offered = agentToolsFor(host, parent).tools.map((one) => one.name)
+    it('⛔ the inventory is exactly the published list, and criterion 6 is measured against it', async () => {
+      await personOpens(DEFAULT_PROFILE_ID)
+      const offered = starts.at(-1)!.agentTools!.tools.map((one) => one.name)
       // ⚑ **The search SHAPE**: the claim is not "we found no dispatch tool" but "the published
       // inventory is exactly this list", which a tool called `assign_work`, `delegate`, `hand_off`
       // or `enqueue_task` would break just as loudly as one called `dispatch`.
@@ -1143,7 +1149,7 @@ describe('347 · the five tools', () => {
       expect(offered).toHaveLength(31)
     })
 
-    it('⚠️ no published tool queues work for an agent to pick up later', () => {
+    it('⚠️ no published tool queues work for an agent to pick up later', async () => {
       // ⛔ **A dispatch tool is one that hands work to somebody who is not named yet, or that takes
       // work without naming a recipient.** ⚑ `393` is the first dispatch where *"name an agent"*
       // stopped being the whole test, so the rule is written out as WHAT EACH TOOL NAMES rather than
@@ -1295,7 +1301,8 @@ describe('347 · the five tools', () => {
         // nobody work: only the person's answer reaches the caller.
         request_action: 'a piece it was given',
       }
-      const offered = agentToolsFor(host, 'sess_x')
+      await personOpens(DEFAULT_PROFILE_ID)
+      const offered = starts.at(-1)!.agentTools!
       for (const tool of offered.tools) {
         const shape = Object.keys(tool.input)
         const names = SUBJECT[tool.name as ToolName]

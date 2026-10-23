@@ -16,7 +16,7 @@ import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
-import { agentCallerId } from '../src/main/runtime/agent-tools'
+import { agentCallerId, TOOL_NAMES } from '../src/main/runtime/agent-tools'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { RuntimeHost, type Caller, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
@@ -83,12 +83,14 @@ class ToolRuntime extends FakeRuntime {
   constructor(
     provider: Provider,
     private readonly handed: AgentToolset[],
+    private readonly launches: (StartOptions | ResumeOptions)[],
     sessions: FakeProviderSessions,
   ) {
     super(provider, { sessions })
   }
   override async start(options: StartOptions): ReturnType<FakeRuntime['start']> {
     const handle = await super.start(options)
+    this.launches.push(options)
     if (options.agentTools !== undefined) this.handed.push(options.agentTools)
     return handle
   }
@@ -97,6 +99,7 @@ class ToolRuntime extends FakeRuntime {
     options: ResumeOptions,
   ): ReturnType<FakeRuntime['resume']> {
     const handle = await super.resume(ref, options)
+    this.launches.push(options)
     if (options.agentTools !== undefined) this.handed.push(options.agentTools)
     return handle
   }
@@ -110,6 +113,7 @@ describe('standing-rule authority belongs to the host and changes remain attribu
   let host: RuntimeHost
   let window: Window
   let handed: AgentToolset[]
+  let launches: (StartOptions | ResumeOptions)[]
   let providerSessions: FakeProviderSessions
   let tools: Map<string, AgentToolset>
   let clock: number
@@ -132,6 +136,7 @@ describe('standing-rule authority belongs to the host and changes remain attribu
     clock = 1000
     sequence = 0
     handed = []
+    launches = []
     providerSessions = new FakeProviderSessions()
     tools = new Map()
     store = createSessionStore(db, tick)
@@ -142,7 +147,7 @@ describe('standing-rule authority belongs to the host and changes remain attribu
       discoverSessions: NO_DISCOVERY,
       nativeTranscriptPath: () => null,
       exportDirectory: () => join(root, 'exports'),
-      createRuntime: (provider) => new ToolRuntime(provider, handed, providerSessions),
+      createRuntime: (provider) => new ToolRuntime(provider, handed, launches, providerSessions),
       prepareProviderHome: (provider, profile) => {
         const path = home(provider, profile)
         mkdirSync(path, { recursive: true })
@@ -284,44 +289,63 @@ describe('standing-rule authority belongs to the host and changes remain attribu
     expect(store.ownInstructionsOf('lark').versions).toEqual([])
   })
 
-  it('refuses direct writing by a helper on the primary profile while preserving its read and proposal path', async () => {
-    await start('lark')
-    const giver = await start('wren')
-    const primary = await start(DEFAULT_PROFILE_ID)
-    const given = await host.giveWork(
-      {
-        profile: DEFAULT_PROFILE_ID,
-        title: 'Review a change',
-        brief: 'Propose a standing-rule change.',
-        definition_of_done: 'A proposed change is recorded.',
-        folder: work,
-      },
-      caller(giver),
-    )
-    if (!given.ok) throw new Error(`give refused: ${given.refusal.rail}`)
-    const helper = given.owner
-    expect(helper).not.toBe(primary)
-    await vi.waitFor(() =>
-      expect(policy().readAgentRules(helper, 'lark', caller(helper)).ok).toBe(true),
-    )
-    expect(store.parentOf(helper)).toBe(giver)
-    const helperNames = handed.at(-1)!.tools.map((one) => one.name)
-    expect(helperNames).not.toContain('write_agent_rules')
-    expect(helperNames).toContain('read_agent_rules')
-    expect(helperNames).toContain('propose_agent_rules')
-    expect(replace(helper).ok).toBe(false)
-    host.claimSession(helper, window)
-    expect(replace(helper).ok).toBe(false)
-    await host.close(helper, window)
-    const count = handed.length
-    await host.resumeSession(helper, window)
-    expect(handed).toHaveLength(count + 1)
-    expect(handed.at(-1)!.tools.map((one) => one.name)).toEqual(helperNames)
-    expect(replace(helper).ok).toBe(false)
-    expect(propose(helper).ok).toBe(true)
-    expect(store.ownInstructionsOf('lark').versions).toEqual([])
-    expect(replace(primary)).toMatchObject({ ok: true, result: { conversation: primary } })
-  })
+  it.each(['claude', 'codex'] as const)(
+    'refuses direct writing by a helper on the primary profile on %s while preserving read and proposal',
+    async (provider) => {
+      store.registerExternalMcpServer({
+        name: 'notes',
+        url: 'http://127.0.0.1:8765/mcp',
+        reach: 'everyone',
+      })
+      await start('lark', provider)
+      const giver = await start('wren', provider)
+      expect(launches.at(-1)?.externalMcp?.reservedToolNames).toEqual(TOOL_NAMES)
+      expect(TOOL_NAMES).toHaveLength(31)
+      expect(TOOL_NAMES).toContain('write_agent_rules')
+      const primary = await start(DEFAULT_PROFILE_ID, provider)
+      expect(store.setAgentProvider(DEFAULT_PROFILE_ID, provider)).toBe(true)
+      const given = await host.giveWork(
+        {
+          profile: DEFAULT_PROFILE_ID,
+          title: 'Review a change',
+          brief: 'Propose a standing-rule change.',
+          definition_of_done: 'A proposed change is recorded.',
+          folder: work,
+        },
+        caller(giver),
+      )
+      if (!given.ok) throw new Error(`give refused: ${given.refusal.rail}`)
+      const helper = given.owner
+      expect(helper).not.toBe(primary)
+      await vi.waitFor(() =>
+        expect(policy().readAgentRules(helper, 'lark', caller(helper)).ok).toBe(true),
+      )
+      expect(store.parentOf(helper)).toBe(giver)
+      expect(store.recordedOne(helper)?.provider).toBe(provider)
+      const helperNames = handed.at(-1)!.tools.map((one) => one.name)
+      expect(launches.at(-1)?.externalMcp?.reservedToolNames).toEqual(TOOL_NAMES)
+      expect(helperNames).toHaveLength(30)
+      expect(helperNames).not.toContain('write_agent_rules')
+      expect(helperNames).toContain('read_agent_rules')
+      expect(helperNames).toContain('propose_agent_rules')
+      expect(replace(helper).ok).toBe(false)
+      host.claimSession(helper, window)
+      expect(replace(helper).ok).toBe(false)
+      await host.close(helper, window)
+      const stopped = await host.whatThisAgentWasGiven(helper)
+      expect(stopped.tools.list.map((one) => one.name)).toEqual(helperNames)
+      expect(stopped.launch).toMatchObject({ running: false })
+      const count = handed.length
+      await host.resumeSession(helper, window)
+      expect(handed).toHaveLength(count + 1)
+      expect(handed.at(-1)!.tools.map((one) => one.name)).toEqual(helperNames)
+      expect(launches.at(-1)?.externalMcp?.reservedToolNames).toEqual(TOOL_NAMES)
+      expect(replace(helper).ok).toBe(false)
+      expect(propose(helper).ok).toBe(true)
+      expect(store.ownInstructionsOf('lark').versions).toEqual([])
+      expect(replace(primary)).toMatchObject({ ok: true, result: { conversation: primary } })
+    },
+  )
 
   it('refuses the old shortcut and exposes the bound direct-write door with the book', async () => {
     await start('lark')
