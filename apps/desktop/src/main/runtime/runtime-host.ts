@@ -1,3 +1,4 @@
+import { providerKnowledge } from '../providers/knowledge-definitions'
 import { providerDefinitions } from '../providers/definitions'
 import { StoppedBeforeSend, withManagedPluginAttachments } from '@brobot2/runtime'
 import type { WorkspacePluginAttachments } from '../plugins/attachments'
@@ -1021,7 +1022,6 @@ import {
 } from './agent-memory'
 import {
   aLaunchRecordIn,
-  filesCodexWouldRead,
   oneMessageAsTheModelGotIt,
   whatItWasGiven,
   whatThisLaunchGave,
@@ -25399,7 +25399,11 @@ export class RuntimeHost implements LiveHost {
     ordinal: number,
   ): Promise<ReturnType<typeof whatTheThreadHolds>['carried'] | null> {
     const rows = this.deps.store.threadLeadRows
-    if (providerValue(provider, { claude: true, codex: false }) || !recorded || rows === undefined)
+    if (
+      providerDescriptor(provider).contextPlacement === 'system-prompt' ||
+      !recorded ||
+      rows === undefined
+    )
       return null
     try {
       const read = await this.readThreadLeads(sessionId, ordinal + 1)
@@ -25429,7 +25433,7 @@ export class RuntimeHost implements LiveHost {
     const composed = launchGave?.thisConversation ?? null
     const rows = this.deps.store.threadLeadRows
     if (
-      providerValue(provider, { claude: true, codex: false }) ||
+      providerDescriptor(provider).contextPlacement === 'system-prompt' ||
       composed === null ||
       rows === undefined
     )
@@ -25545,8 +25549,9 @@ export class RuntimeHost implements LiveHost {
       : added
     if (
       !session.builtInSkills ||
-      (providerValue(session.provider, { claude: true, codex: false }) &&
-        session.handle.builtInSkillsConfirmed?.() === true)
+      !providerKnowledge[session.provider].skills.needsReminders(() =>
+        session.handle.builtInSkillsConfirmed?.(),
+      )
     )
       return context
     const grants =
@@ -34590,7 +34595,7 @@ export class RuntimeHost implements LiveHost {
 
   /** ⚑ **Every rule an *Always allow* kept beyond its conversation** ({@link RuntimeHostDeps.keptRules}). */
   async keptRules(): Promise<KeptRules> {
-    return (await this.deps.keptRules?.()) ?? { claude: [], codex: [] }
+    return (await this.deps.keptRules?.()) ?? providerRecord(() => [])
   }
 
   /**
@@ -40813,7 +40818,7 @@ export class RuntimeHost implements LiveHost {
                 listed: builtInSkills.context.skills.map((skill) => ({
                   ...skill,
                   descriptionMayBeCut: false,
-                  scope: providerValue(provider, { claude: 'plugin', codex: null }),
+                  scope: providerKnowledge[provider].skills.builtInScope,
                 })),
               },
             }
@@ -40955,7 +40960,7 @@ export class RuntimeHost implements LiveHost {
         provider,
         sessionId,
         this.agentToolsForSession(sessionId),
-        providerValue(provider, { claude: false, codex: true }) ? filesCodexWouldRead(row.cwd) : [],
+        providerKnowledge[provider].instructions.given.nativeFiles(row.cwd),
         read,
         () => context,
       )
@@ -40985,7 +40990,8 @@ export class RuntimeHost implements LiveHost {
     const publishedAt = published === null ? null : (toolInventory?.at ?? null)
     // ⚑ The sentence Codex's thread was started with: a resume's list states this build's sentence,
     // never the thread's, so it is passed over for the start before it.
-    let started = providerValue(provider, { claude: null, codex: toolInventory })
+    let started =
+      providerDescriptor(provider).contextPlacement === 'first-message' ? toolInventory : null
     while (started?.event.type === 'tool_inventory' && started.event.source === 'thread/resume') {
       started = this.deps.store.newestOfType?.(sessionId, 'tool_inventory', started.ordinal) ?? null
     }
@@ -43029,7 +43035,7 @@ export class RuntimeHost implements LiveHost {
         if (slot.launch.signal.aborted || this.whyNotOurs(slot) !== null)
           throw new SessionUnavailable('lost-its-place', `session ${sessionId} lost its place`)
         if (
-          providerValue(row.provider, { claude: false, codex: true }) &&
+          providerDescriptor(row.provider).contextPlacement === 'first-message' &&
           instructions?.firstTurnLead !== undefined
         ) {
           leadsRead = this.readThreadLeads(
@@ -44252,7 +44258,10 @@ export class RuntimeHost implements LiveHost {
       pluginsAsLastSaid: (() => {
         // Claude receives the current section in its freshly rendered system prompt.
         // Codex must replace any live metadata updates retained in its thread.
-        if (options.continuesARecording && providerValue(provider, { claude: false, codex: true }))
+        if (
+          options.continuesARecording &&
+          providerDescriptor(provider).contextPlacement === 'first-message'
+        )
           return null
         const composed = options.instructions?.thisConversation
         const span = composed?.spans.find((span) => span.heading === PLUGINS_HEADING)

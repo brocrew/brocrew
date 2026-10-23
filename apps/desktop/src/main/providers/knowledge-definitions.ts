@@ -52,3 +52,6 @@ export {
 } from './claude/instructions'
 export { readClaudeAgentMemory } from './claude/memory'
 export { readCodexAgentMemory, adHocNotes } from './codex/memory'
+
+export { filesCodexWouldRead, recordedNativeRead } from './codex/given'
+export { recordedProfileMemory } from './claude/given'

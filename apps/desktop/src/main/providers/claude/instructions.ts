@@ -1,3 +1,4 @@
+import { given } from './given'
 import { workspaceInstructionFile as INSTRUCTION_FILENAME } from './layout.mjs'
 import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
@@ -296,6 +297,7 @@ export function readSessionInstructions(inputs: InstructionInputs): SessionLaunc
 
 export const instructions = {
   read: readSessionInstructions,
+  given,
   bundleLeaf: 'brobot-instructions.md',
   workspaceFile: (root: string) => join(root, INSTRUCTION_FILENAME),
 }

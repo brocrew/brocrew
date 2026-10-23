@@ -96,6 +96,7 @@ export function claudeMemoryTopics(dir: string): {
 }
 
 export const memory = createMemoryPolicy(readClaudeAgentMemory, {
+  entryOrigin: () => 'an-agent',
   root: claudeAutoMemoryDir,
   fixed: (home, realHome) => [
     {

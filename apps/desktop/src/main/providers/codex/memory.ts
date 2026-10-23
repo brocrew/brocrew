@@ -72,6 +72,7 @@ export function readCodexAgentMemory(providerHome: string): CodexMemoryRead {
 export { newestMemoryNotes as adHocNotes } from '../instruction-io'
 
 export const memory = createMemoryPolicy(readCodexAgentMemory, {
+  entryOrigin: (kind) => (kind === 'agent-memory' ? 'the-provider' : 'an-agent'),
   root: codexMemoryDir,
   fixed: (home, realHome) =>
     CODEX_MEMORY_STORE_FILES.map((file) => ({
