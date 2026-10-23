@@ -120,6 +120,7 @@ interface Stops {
   signInGate?: Gate
   /** The account its provider names: a fictional one, none, or no answer at all. */
   account?: 'ada' | 'bea' | 'none' | 'never'
+  organization?: string
   /** The tag its runtime makes of the credential it launched on, as a saved key's would be. */
   tag?: string
   /** Its provider names the account only this long after the life starts, ms; at once if unset. */
@@ -181,7 +182,10 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
         ? undefined
         : account === 'none'
           ? null
-          : { email: EMAIL[account] }
+          : {
+              email: EMAIL[account],
+              ...(stops.organization === undefined ? {} : { organization: stops.organization }),
+            }
     const gate = stops.signInGate
     if (gate !== undefined) {
       ;(handle as unknown as { checkSignIn: () => Promise<boolean> }).checkSignIn = async () => {
@@ -430,6 +434,15 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
   }
 
   describe('a quit that cut a running turn', () => {
+    it('keeps the account digest bytes for a known salt, email and organization', async () => {
+      const salt = 'a7'.repeat(32)
+      writeKeptCuts(turnsTheAppCutFile(userData), { salt, lives: {}, cuts: {} })
+      const id = await aTurnRunsIn({ account: 'ada', organization: 'Fictional Organisation' })
+      const kept = readKeptCuts(turnsTheAppCutFile(userData))
+      expect(kept.salt).toBe(salt)
+      expect(kept.lives[id]?.identity).toBe('claude:264583baffc72b21a1e42c8a0005e4a3')
+    })
+
     it.each([
       ['account', { provider: 'claude', account: 'ada' }, /^claude:[0-9a-f]{32}$/],
       [
