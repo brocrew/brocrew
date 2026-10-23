@@ -172,4 +172,20 @@ describe('provider authentication policy facts', () => {
     expect(own.refusedGive({ ...echo, degradedFrom: 'fictional' })).toBe(false)
     expect(own.refusedGive({ ...echo, label: 'futureMessage' })).toBe(false)
   })
+
+  it('rejects opaque evidence that is not a native copy', () => {
+    const copy = { dev: 1n, ino: 2n, size: 3n, mtimeNs: 4n }
+    const same = policies().codex.copy.same
+    for (const foreign of [
+      42,
+      'fictional',
+      {},
+      { dev: 1n, ino: 2n },
+      { ...copy, size: 3 },
+      { ...copy, mtimeNs: '4' },
+    ]) {
+      expect(same(foreign, foreign)).toBe(false)
+      expect(same(copy, foreign)).toBe(false)
+    }
+  })
 })
