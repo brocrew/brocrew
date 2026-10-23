@@ -142,11 +142,6 @@ import {
   PROVIDER_COMMAND_PREFIX,
   // ⚑ **710 · R52 — a machine that ran short**, by the errno's code, at a person's own launch.
   transientSetupFailureOf,
-  // Codex's own refusal of a profile's copy of its sign-in, and what tells that copy from another.
-  CodexRefusedItsSignInError,
-  codexCopyIdentityIn,
-  isTheSameCodexCopy,
-  type CodexCopyIdentity,
   // A wait that ran out, told apart from work that failed.
   didNotAnswerInTime,
   // What an unanswered sign-in check says.
@@ -222,7 +217,8 @@ import {
   revealMessagePath,
   type MessagePathPlace,
 } from '../message-paths'
-import type { CodexSignIn, ProviderAuthOps } from './provider-homes'
+import type { ProviderSignIn } from '../providers/auth-types'
+import type { ProviderAuthOps } from '../providers/auth-operations'
 import { aLoginRunsWithoutAKey, type ApiKeys } from './api-keys'
 import type { GivenFolder, ProtectedPlaceNotice, WorkFolderGrant } from '../../shared/work-folders'
 import type { SignInChanges } from '../sign-in-changes'
@@ -471,7 +467,7 @@ const SIGN_IN_CANCEL_TIMEOUT_MS = 3_000
 
 /**
  * The reservation held in {@link RuntimeHost.signIns} between claiming a profile's key and the real
- * {@link CodexSignIn} existing (098, review finding 5).
+ * {@link ProviderSignIn} existing (098, review finding 5).
  *
  * A value rather than a nullable, so the map's presence check means one thing — "this profile is
  * busy" — whether or not a process has been spawned yet.
@@ -493,7 +489,7 @@ const SIGN_IN_CANCEL_TIMEOUT_MS = 3_000
  * `withdraw` is now `LaunchRegistry.cancel(launch)`, so Cancel and quit abort the same object by the
  * same route, and the route is the one door the module already owns.
  */
-function pendingSignIn(withdraw: () => void): CodexSignIn {
+function pendingSignIn(withdraw: () => void): ProviderSignIn {
   return {
     authUrl: '',
     completed: new Promise<never>(() => {}),
@@ -7477,7 +7473,7 @@ export class RuntimeHost implements LiveHost {
    * the rule is written down rather than assumed: the claim's span is a SUPERSET of this entry's,
    * and nothing decides whether a gesture may start by reading this map.**
    */
-  private readonly signIns = new Map<string, { profileId: string; signIn: CodexSignIn }>()
+  private readonly signIns = new Map<string, { profileId: string; signIn: ProviderSignIn }>()
   /**
    * 🟠 **The profile spellings this host is bringing into existence right now** (265 §4, from 259
    * lens B finding 4).
@@ -13561,6 +13557,7 @@ export class RuntimeHost implements LiveHost {
     const timing = this.timeTheLaunch(slot.id, opening, timeoutMs)
     const started = (async () =>
       this.startedAfterARefusedCopy(
+        opening.provider,
         slot.profileId,
         () => launch(timing.phase),
         () => !this.launches.closed && this.slots.get(slot.id) === slot && !onItsWayOut(slot),
@@ -35202,6 +35199,7 @@ export class RuntimeHost implements LiveHost {
    * again before the second start.
    */
   private async startedAfterARefusedCopy(
+    provider: Provider,
     profileId: string | null,
     launch: () => Promise<SessionHandle>,
     stillWanted: () => boolean,
@@ -35209,9 +35207,9 @@ export class RuntimeHost implements LiveHost {
     try {
       return await launch()
     } catch (refused) {
-      const copy = this.theCopyCodexRefused(refused)
+      const copy = this.theCopyRefused(provider, refused)
       if (profileId === null || copy === null || !stillWanted()) throw refused
-      if (!(await this.replaceARefusedCopy(profileId, 'at a start', copy, stillWanted))) {
+      if (!(await this.replaceARefusedCopy(provider, profileId, 'at a start', copy, stillWanted))) {
         throw refused
       }
       if (!stillWanted()) throw refused
@@ -35233,8 +35231,11 @@ export class RuntimeHost implements LiveHost {
       event.cause === 'auth' &&
       event.onAKey !== true &&
       this.deps.providerAuth !== undefined &&
-      !this.aKeyIsSaved('codex') &&
-      isTheSameCodexCopy(session.handle.signInCopyAtLaunch?.(), this.theCopyHeldNow(session))
+      !this.aKeyIsSaved(session.provider) &&
+      providerAuthPolicies[session.provider].copy.same(
+        session.handle.signInCopyAtLaunch?.(),
+        this.theCopyHeldNow(session),
+      )
       ? { ...event, replacesRefusedSignIn: true }
       : event
   }
@@ -35243,20 +35244,20 @@ export class RuntimeHost implements LiveHost {
    * The copy of a Codex sign-in a start was refused for, when Codex itself refused it and this app
    * replaces such a copy; null for every other failure, and while an API key is saved.
    */
-  private theCopyCodexRefused(error: unknown): CodexCopyIdentity | null {
-    return error instanceof CodexRefusedItsSignInError &&
-      this.deps.providerAuth !== undefined &&
-      !this.aKeyIsSaved('codex')
-      ? error.refusedCopy
+  private theCopyRefused(provider: Provider, error: unknown): unknown | null {
+    const copy = providerAuthPolicies[provider].copy.refused(error)
+    return copy !== null && this.deps.providerAuth !== undefined && !this.aKeyIsSaved(provider)
+      ? copy
       : null
   }
 
   /** A Codex conversation's copy of its sign-in as it stands now, by what tells it from another. */
-  private theCopyHeldNow(session: HostedSession): CodexCopyIdentity | null {
+  private theCopyHeldNow(session: HostedSession): unknown | null {
     const ops = this.deps.providerAuth
-    if (providerValue(session.provider, { claude: true, codex: false }) || !ops) return null
+    const copy = providerAuthPolicies[session.provider].copy
+    if (copy.read === undefined || !ops) return null
     try {
-      return codexCopyIdentityIn(ops.credentialHome('codex', session.profileId))
+      return copy.read(ops.credentialHome(session.provider, session.profileId))
     } catch {
       return null
     }
@@ -35269,34 +35270,40 @@ export class RuntimeHost implements LiveHost {
    * it holds the home's lock, which it may have waited for. Says whether a fresh copy is in place. The record names the profile and where the copy came from, and nothing of a sign-in.
    */
   private async replaceARefusedCopy(
+    provider: Provider,
     profileId: string,
     refused: 'at a start' | 'in a turn',
-    copy: CodexCopyIdentity,
+    copy: unknown,
     stillWanted: () => boolean,
   ): Promise<boolean> {
     const ops = this.deps.providerAuth
-    if (!ops || this.aKeyIsSaved('codex')) return false
+    if (!ops || this.aKeyIsSaved(provider)) return false
     let credential: ResourceClaim
     try {
-      credential = this.claimCredentialHome(ops, 'codex', profileId, 'a refused copy’s replacement')
+      credential = this.claimCredentialHome(
+        ops,
+        provider,
+        profileId,
+        'a refused copy’s replacement',
+      )
     } catch {
       return false
     }
     try {
-      const from = await ops.replaceARefusedCopy('codex', profileId, copy, stillWanted)
+      const from = await ops.replaceARefusedCopy(provider, profileId, copy, stillWanted)
       if (from === 'not-tried') return false
       console.warn(
-        `runtime host replaced profile ${profileId}'s Codex sign-in, which Codex refused ${refused}, with ${from === 'the-computers' ? "this computer's" : "BroBot's own"}, refreshed later`,
+        `runtime host replaced profile ${profileId}'s ${providerDescriptor(provider).displayName} sign-in, which ${providerDescriptor(provider).displayName} refused ${refused}, with ${from === 'the-computers' ? "this computer's" : "BroBot's own"}, refreshed later`,
       )
       return true
     } catch (error) {
       console.warn(
-        `runtime host did not replace profile ${profileId}'s refused Codex sign-in: ${errorMessage(error)}`,
+        `runtime host did not replace profile ${profileId}'s refused ${providerDescriptor(provider).displayName} sign-in: ${errorMessage(error)}`,
       )
       return false
     } finally {
       credential.release()
-      this.forgetModels('codex', profileId)
+      this.forgetModels(provider, profileId)
     }
   }
 
@@ -35467,7 +35474,7 @@ export class RuntimeHost implements LiveHost {
       signIn: pendingSignIn(() => this.launches.cancel(launch)),
     })
 
-    let signIn: CodexSignIn
+    let signIn: ProviderSignIn
     try {
       if (this.deps.beforeProviderLaunch) {
         await this.deps.beforeProviderLaunch()
@@ -35581,7 +35588,7 @@ export class RuntimeHost implements LiveHost {
    * `LaunchRegistry.finish` exists for — *"a bounded caller may stop waiting while ownership does
    * not"* — and it makes `closeAll`'s drain wait on the process instead of on a number.
    */
-  private async boundedCancel(signIn: CodexSignIn, launch?: Launch): Promise<void> {
+  private async boundedCancel(signIn: ProviderSignIn, launch?: Launch): Promise<void> {
     await this.startCancel(signIn, launch).bounded
   }
 
@@ -35596,7 +35603,7 @@ export class RuntimeHost implements LiveHost {
    * app-server had five seconds left to live.
    */
   private startCancel(
-    signIn: CodexSignIn,
+    signIn: ProviderSignIn,
     launch?: Launch,
   ): { teardown: Promise<unknown>; bounded: Promise<void> } {
     const teardown = signIn.cancel()
@@ -45263,7 +45270,7 @@ export class RuntimeHost implements LiveHost {
   private async endOnAMovedSignIn(
     session: HostedSession,
     wasFor: WhatAFailedTurnWasFor,
-    refusedCopy: CodexCopyIdentity | null,
+    refusedCopy: unknown | null,
   ): Promise<void> {
     let moved: boolean
     try {
@@ -45289,7 +45296,13 @@ export class RuntimeHost implements LiveHost {
       !moved &&
       refusedCopy !== null &&
       stillItsLife() &&
-      (await this.replaceARefusedCopy(session.profileId, 'in a turn', refusedCopy, stillItsLife))
+      (await this.replaceARefusedCopy(
+        session.provider,
+        session.profileId,
+        'in a turn',
+        refusedCopy,
+        stillItsLife,
+      ))
     const slot = this.slots.get(session.id)
     if (
       (!moved && !replaced) ||
@@ -46416,7 +46429,9 @@ export class RuntimeHost implements LiveHost {
       void this.endOnAMovedSignIn(
         session,
         this.whatItsTurnWasFor(session),
-        isTheSameCodexCopy(session.handle.signInCopyAtLaunch?.(), now) ? now : null,
+        providerAuthPolicies[session.provider].copy.same(session.handle.signInCopyAtLaunch?.(), now)
+          ? now
+          : null,
       )
     }
     // 🔴 **D-004 · R101 — a child killed by a revoked sign-in**, for the teardown to act on.

@@ -1,5 +1,4 @@
 import type { ManagedPluginMcpServer } from './managed-plugin-mcp'
-import type { CodexCopyIdentity } from './internal/auth'
 import type { Provider, SessionStatus } from '@brobot2/shared'
 import type { ApprovalModeState } from './approval-mode'
 import type { ChildInputOutcome, ChildThreadState } from './child-conversation'
@@ -959,7 +958,7 @@ export interface SessionHandle {
    * from another: the one a refusal from this session can be said to be about. Only where a
    * provider keeps a copy of a sign-in per profile; null where the home held none.
    */
-  signInCopyAtLaunch?(): CodexCopyIdentity | null
+  signInCopyAtLaunch?(): unknown
 
   /**
    * A tag for the sign-in this session launched on, or `null` when it has none to name: it runs on
