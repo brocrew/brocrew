@@ -22,7 +22,7 @@
 # on the app and the disk image: the app's name and id; that it carries no Claude Code; that the ad
 # hoc signature holds (`codesign --verify --deep --strict`) on the app, on the bundled Codex and on
 # the app in the disk image; that Codex runs, and so does the newest tested Claude Code
-# (`apps/desktop/src/main/runtime/claude-code-tested.json`) installed with npm outside the app; that
+# (`apps/desktop/src/main/providers/claude/claude-code-tested.json`) installed with npm outside the app; that
 # the database module loads inside the packaged app; that the app starts on a data folder of its
 # own; and that, launched on the runner's empty profile, it keeps its data in
 # `~/Library/Application Support/@brobot2/desktop`. It cannot prove what a person's Mac does with a
@@ -157,7 +157,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          version="$(node -p "require('./apps/desktop/src/main/runtime/claude-code-tested.json').newest")"
+          version="$(node -p "require('./apps/desktop/src/main/providers/claude/claude-code-tested.json').newest")"
           prefix="$RUNNER_TEMP/claude-code"
           npm install --prefix "$prefix" --no-audit --no-fund "@anthropic-ai/claude-code@$version"
           program="$prefix/node_modules/@anthropic-ai/claude-code/bin/claude.exe"

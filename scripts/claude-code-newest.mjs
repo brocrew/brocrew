@@ -4,7 +4,7 @@
 // Claude Code's installer updates itself almost daily, so the newest version tested falls behind
 // unless something moves it. Each day CI runs BroBot's runtime against the newest published Claude
 // Code (`.github/workflows/claude-code.yml`, its `published` arm); this script says what that run
-// means for `apps/desktop/src/main/runtime/claude-code-tested.json`:
+// means for `apps/desktop/src/main/providers/claude/claude-code-tested.json`:
 //   - the run passed on a version newer than `newest`: raise `newest` to it;
 //   - `newest` already names it, or a newer one: nothing to do;
 //   - the run failed: say so, loudly — a version people are updating to does not work here.
@@ -29,7 +29,8 @@ export const TESTED_FILE = join(
   'desktop',
   'src',
   'main',
-  'runtime',
+  'providers',
+  'claude',
   'claude-code-tested.json',
 )
 
