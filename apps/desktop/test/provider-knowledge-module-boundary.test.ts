@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import ts from 'typescript'
 import { describe, expect, it, vi } from 'vitest'
-import { SUPPORTED_PROVIDERS } from '@brobot2/shared'
+import { SUPPORTED_PROVIDERS, type Provider } from '@brobot2/shared'
 import * as registry from '../src/main/providers'
 
 const root = new URL('../src/main/', import.meta.url)
@@ -94,9 +94,13 @@ describe('provider knowledge policies have one owner', () => {
         codex: { runtime: { command: unread }, home: {}, auth: { command: unread } },
       },
     )
+    const knowledge = Reflect.get(registry, 'providerKnowledge') as
+      Record<Provider, object> | undefined
+    expect(knowledge).toBeDefined()
+    if (knowledge === undefined) throw new Error('Provider knowledge policies are absent')
     for (const provider of SUPPORTED_PROVIDERS) {
       for (const member of ['instructions', 'memory', 'skills', 'keptRules', 'snapshot']) {
-        const policy: unknown = Reflect.get(registry.providerDefinitions[provider], member)
+        const policy: unknown = Reflect.get(knowledge[provider], member)
         expect(policy, `${provider}.${member}`).toBeTypeOf('object')
         expect(Reflect.get(modules[provider], member)).toBe(policy)
       }
