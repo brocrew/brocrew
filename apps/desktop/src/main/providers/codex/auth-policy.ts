@@ -59,6 +59,7 @@ export const authPolicy: ProviderAuthPolicy = {
   key: keyPolicy,
   identity: { waitsForAccount: false, launch: tagOf, limit: tagOf },
   copy: {
+    carriesAcceptedAfterAccountChange: true,
     read: codexCopyIdentityIn,
     same: (one, other) => isCopy(one) && isCopy(other) && isTheSameCodexCopy(one, other),
     refused: (error) => (error instanceof CodexRefusedItsSignInError ? error.refusedCopy : null),

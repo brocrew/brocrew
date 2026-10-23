@@ -45645,7 +45645,7 @@ export class RuntimeHost implements LiveHost {
         session.itCarriedOnAfterARepair !== true &&
         wasFor?.words === true &&
         (session.itsCopyWasReplaced === true ||
-          (providerValue(session.provider, { claude: false, codex: true }) &&
+          (providerAuthPolicies[session.provider].copy.carriesAcceptedAfterAccountChange &&
             session.itsSignInMovedOn === true))
           ? this.whatACarryOnWouldAnswer(session, session.itsCopyWasReplaced !== true)
           : null

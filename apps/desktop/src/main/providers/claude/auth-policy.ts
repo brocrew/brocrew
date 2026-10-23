@@ -18,6 +18,7 @@ export const authPolicy: ProviderAuthPolicy = {
     },
   },
   copy: {
+    carriesAcceptedAfterAccountChange: false,
     same: () => false,
     refused: () => null,
   },

@@ -29,6 +29,7 @@ export function createProviderModules(
 
 function forwardAuth(auth: Readonly<Record<Provider, HomeAuthOperations>>): ProviderAuthOps {
   return {
+    loginRenewal: (provider) => auth[provider].renewal,
     credentialHome: (provider, profileId) => auth[provider].credentialHome(profileId),
     check: (provider, profileId, signal) => auth[provider].check(profileId, signal),
     reprovision: (provider, profileId) => auth[provider].reprovision(profileId),
