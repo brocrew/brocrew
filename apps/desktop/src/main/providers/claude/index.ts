@@ -1,5 +1,7 @@
 import { keptRules } from './kept-rules'
 import { authPolicy } from './auth-policy'
+import { machineLoginPresence } from './backing-login'
+export { machineLoginPresence } from './backing-login'
 import { skills } from './skills'
 import { snapshot } from './snapshot'
 import { instructions } from './instructions'
@@ -47,6 +49,8 @@ export interface ClaudeHomeSeams {
   readonly programFound?: () => string | null
 }
 export interface ClaudeAuthSeams {
+  readonly platform?: NodeJS.Platform
+  readonly loginPresence?: (signal?: AbortSignal) => Promise<boolean | undefined>
   readonly key?: () => string | null | Promise<string | null>
   readonly keyStatus?: () => { set: boolean; unreadableReason?: string }
   readonly programFound?: () => string | null
@@ -142,6 +146,13 @@ export async function prepareClaudeHome(
 }
 
 export function claudeAuth(paths: ProviderHomePaths, seams: ClaudeAuthSeams): HomeAuthOperations {
+  const stateOnTheKey = async (signal?: AbortSignal) => {
+    const platform = seams.platform ?? process.platform
+    const state = claudeLoginStateWithAKey(undefined, undefined, platform)
+    if (platform !== 'darwin') return state
+    const behind = await (seams.loginPresence ?? machineLoginPresence)(signal)
+    return behind === undefined ? state : { ...state, loginBehindTheKey: behind }
+  }
   const renewal: LoginRenewalOperations | undefined =
     seams.renewLogin === undefined
       ? undefined
@@ -157,7 +168,7 @@ export function claudeAuth(paths: ProviderHomePaths, seams: ClaudeAuthSeams): Ho
   return {
     ...(renewal === undefined ? {} : { renewal }),
     credentialHome: (profileId) => paths.homeOf(profileId),
-    async check() {
+    async check(_profileId, signal) {
       // Claude's credential is the machine's, so "absent" is the only not-ok this can be: there is
       // no copy here that could have gone stale. Saying `stale` would invite a re-copy button for
       // a file that does not exist. ⚑ A saved key is what runs, else the login's own facts — its
@@ -170,10 +181,10 @@ export function claudeAuth(paths: ProviderHomePaths, seams: ClaudeAuthSeams): Ho
         if (status?.set) {
           if (status.unreadableReason !== undefined)
             return { state: 'absent', reason: status.unreadableReason }
-          return claudeLoginStateWithAKey()
+          return await stateOnTheKey(signal)
         }
         const keyed = status === undefined ? await apiKey?.() : null
-        if (keyed) return claudeLoginStateWithAKey()
+        if (keyed) return await stateOnTheKey(signal)
         const login = await defaultKeychainReaderForALaunch()
         // ⚑ Its sentence names Claude Code as the person runs it, by the path BroBot found.
         return claudeLoginState(

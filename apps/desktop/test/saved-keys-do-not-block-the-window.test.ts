@@ -8,6 +8,10 @@ import {
 import { createProviderAuthOps } from '../src/main/runtime/provider-homes'
 import { STALL_FLOOR_MS } from '../src/main/stall-watch'
 
+vi.mock('../src/main/providers/claude/backing-login', () => ({
+  machineLoginPresence: vi.fn(async () => undefined),
+}))
+
 const FAKE_KEY = 'fictional-key-for-tests'
 const SEALED = Buffer.from('fictional-ciphertext').toString('base64')
 

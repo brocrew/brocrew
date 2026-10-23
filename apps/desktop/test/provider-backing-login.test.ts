@@ -8,23 +8,33 @@ import * as codex from '../src/main/providers/codex'
 import { createProviderModules } from '../src/main/providers'
 
 const native = vi.hoisted(() => ({
-  read: vi.fn((): never => { throw new Error('No credential contents may be read') }),
-  codex: vi.fn(async () => ({ state: 'usable' as const, login: 'api-key' as const, expiresAt: null })),
+  read: vi.fn((): never => {
+    throw new Error('No credential contents may be read')
+  }),
+  codex: vi.fn(async () => ({
+    state: 'usable' as const,
+    login: 'api-key' as const,
+    expiresAt: null,
+  })),
 }))
 vi.mock('node:fs', async (original) => ({
-  ...await original<typeof import('node:fs')>(),
+  ...(await original<typeof import('node:fs')>()),
   readFileSync: native.read,
 }))
 vi.mock('@brobot2/runtime', async (original) => ({
-  ...await original<typeof import('@brobot2/runtime')>(),
+  ...(await original<typeof import('@brobot2/runtime')>()),
   defaultKeychainReaderForALaunch: native.read,
   probeCodexAuthInHome: native.codex,
 }))
 
 class Child extends EventEmitter {
-  kill = vi.fn((_signal: NodeJS.Signals) => true)
+  kill = vi.fn<(signal: NodeJS.Signals) => boolean>(() => true)
 }
-type Spawn = (file: string, args: readonly string[], options: { stdio: 'ignore'; windowsHide: true }) => Child
+type Spawn = (
+  file: string,
+  args: readonly string[],
+  options: { stdio: 'ignore'; windowsHide: true },
+) => Child
 type MacProbe = (signal?: AbortSignal, spawn?: Spawn) => Promise<boolean | undefined>
 function macProbe(): MacProbe {
   const probe = Reflect.get(claude, 'machineLoginPresence') as MacProbe | undefined
@@ -32,7 +42,10 @@ function macProbe(): MacProbe {
   if (probe === undefined) throw new Error('The metadata-only Mac probe is absent')
   return probe
 }
-type FileProbe = (path: string, inspect?: () => { isFile(): boolean; isSymbolicLink(): boolean }) => boolean | undefined
+type FileProbe = (
+  path: string,
+  inspect?: () => { isFile(): boolean; isSymbolicLink(): boolean },
+) => boolean | undefined
 function fileProbe(): FileProbe {
   const probe = Reflect.get(codex, 'machineLoginPresence') as FileProbe | undefined
   expect(probe, 'the no-follow machine-file probe').toBeDefined()
@@ -64,45 +77,64 @@ function modules(presence: () => Promise<boolean | undefined>, machine: string) 
     }),
     {
       claude: { runtime: { program: native.read }, home: {}, auth },
-      codex: { runtime: { command: native.read }, home: {}, auth: { command: () => '/fictional/codex', machineAuthPath: () => machine } },
+      codex: {
+        runtime: { command: native.read },
+        home: {},
+        auth: { command: () => '/fictional/codex', machineAuthPath: () => machine },
+      },
     },
   )
 }
 
 describe('the login behind a saved key', () => {
-  it.each([true, false, undefined])('reports Mac presence %s without opening the key or login', async (present) => {
-    const presence = vi.fn(async () => present)
-    const bound = modules(presence, join(root, 'missing'))
-    expect(presence).not.toHaveBeenCalled()
-    const signal = new AbortController().signal
-    const state = await bound.claude.auth.check('fern', signal)
-    expect(state).toMatchObject({ state: 'usable', login: 'api-key' })
-    expect((state as { loginBehindTheKey?: boolean }).loginBehindTheKey).toBe(present)
-    expect(presence).toHaveBeenCalledWith(signal)
-    expect(native.read).not.toHaveBeenCalled()
-  })
+  it.each([true, false, undefined])(
+    'reports Mac presence %s without opening the key or login',
+    async (present) => {
+      const presence = vi.fn(async () => present)
+      const bound = modules(presence, join(root, 'missing'))
+      expect(presence).not.toHaveBeenCalled()
+      const signal = new AbortController().signal
+      const state = await bound.claude.auth.check('fern', signal)
+      expect(state).toMatchObject({ state: 'usable', login: 'api-key' })
+      expect((state as { loginBehindTheKey?: boolean }).loginBehindTheKey).toBe(present)
+      expect(presence).toHaveBeenCalledWith(signal)
+      expect(native.read).not.toHaveBeenCalled()
+    },
+  )
 
-  it.each([true, false])('counts only the Codex machine source, present=%s, never a key-written profile', async (present) => {
-    const machine = join(root, 'machine', 'auth.json')
-    mkdirSync(join(root, 'machine'))
-    if (present) writeFileSync(machine, 'fictional content that must not be opened')
-    const profile = join(root, 'managed', 'default', 'fern', 'codex')
-    mkdirSync(profile, { recursive: true })
-    writeFileSync(join(profile, 'auth.json'), 'fictional key-written profile')
-    const bound = modules(async () => undefined, machine)
-    const state = await bound.codex.auth.check('fern')
-    expect(state).toMatchObject({ state: 'usable', login: 'api-key', loginBehindTheKey: present })
-    expect(native.read).not.toHaveBeenCalled()
-  })
+  it.each([true, false])(
+    'counts only the Codex machine source, present=%s, never a key-written profile',
+    async (present) => {
+      const machine = join(root, 'machine', 'auth.json')
+      mkdirSync(join(root, 'machine'))
+      if (present) writeFileSync(machine, 'fictional content that must not be opened')
+      const profile = join(root, 'managed', 'default', 'fern', 'codex')
+      mkdirSync(profile, { recursive: true })
+      writeFileSync(join(profile, 'auth.json'), 'fictional key-written profile')
+      const bound = modules(async () => undefined, machine)
+      const state = await bound.codex.auth.check('fern')
+      expect(state).toMatchObject({ state: 'usable', login: 'api-key', loginBehindTheKey: present })
+      expect(native.read).not.toHaveBeenCalled()
+    },
+  )
 })
 
 describe('metadata-only Mac lookup', () => {
-  it.each([[0, true], [44, false], [1, undefined], [null, undefined]] as const)('classifies exit %s without reading either stream', async (code, expected) => {
+  it.each([
+    [0, true],
+    [44, false],
+    [1, undefined],
+    [null, undefined],
+  ] as const)('classifies exit %s without reading either stream', async (code, expected) => {
     const probe = macProbe()
     const child = new Child()
     const spawn = vi.fn(() => child)
     const result = probe(undefined, spawn)
-    expect(spawn).toHaveBeenCalledExactlyOnceWith('/usr/bin/security', ['find-generic-password', '-s', 'Claude Code-credentials'], { stdio: 'ignore', windowsHide: true })
+    expect(spawn).toHaveBeenCalledExactlyOnceWith(
+      '/usr/bin/security',
+      ['find-generic-password', '-s', 'Claude Code-credentials'],
+      { stdio: 'ignore', windowsHide: true },
+    )
     child.emit('close', code)
     expect(await result).toBe(expected)
     expect(child.kill).not.toHaveBeenCalled()
@@ -114,7 +146,10 @@ describe('metadata-only Mac lookup', () => {
     const probe = macProbe()
     const child = new Child()
     const settled = vi.fn()
-    const result = probe(undefined, () => child).then((value) => { settled(value); return value })
+    const result = probe(undefined, () => child).then((value) => {
+      settled(value)
+      return value
+    })
     await vi.advanceTimersByTimeAsync(20_000)
     expect(child.kill).toHaveBeenCalledExactlyOnceWith('SIGKILL')
     expect(settled).not.toHaveBeenCalled()
@@ -144,7 +179,11 @@ describe('metadata-only Mac lookup', () => {
     child.emit('error', new Error('fictional spawn failure'))
     child.emit('close', 0)
     expect(await result).toBeUndefined()
-    expect(await probe(undefined, () => { throw new Error('fictional synchronous failure') })).toBeUndefined()
+    expect(
+      await probe(undefined, () => {
+        throw new Error('fictional synchronous failure')
+      }),
+    ).toBeUndefined()
   })
 })
 
@@ -162,7 +201,11 @@ describe('metadata-only Codex machine source', () => {
   it('distinguishes definite absence from an unreadable location', () => {
     const probe = fileProbe()
     expect(probe(join(root, 'missing'))).toBe(false)
-    expect(probe('/fictional/blocked', () => { throw Object.assign(new Error('fictional denied'), { code: 'EACCES' }) })).toBeUndefined()
+    expect(
+      probe('/fictional/blocked', () => {
+        throw Object.assign(new Error('fictional denied'), { code: 'EACCES' })
+      }),
+    ).toBeUndefined()
     expect(native.read).not.toHaveBeenCalled()
   })
 })
