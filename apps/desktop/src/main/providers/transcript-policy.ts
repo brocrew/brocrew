@@ -8,6 +8,7 @@ import type { FileEdits, SessionRef } from '@brobot2/runtime'
 import type { Discovery, ProviderDescription } from '../adopt/discovery-types'
 import type { ImportedTranscript, ResolveImagePath } from '../archive/transcript-types'
 export interface TranscriptPolicy {
+  splitToolName?(name: string): { server: string; tool: string } | null
   readEarlierModel?(home: string, file: string): string | null
   keepEarlierReportedEffort(): boolean
   whatDeletionLeaves(): string[]

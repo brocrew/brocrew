@@ -39,6 +39,7 @@ describe('provider transcript and discovery policies have one owner', () => {
     'conversation-files.ts',
     'transcript-retention-files.ts',
     'runtime/schedule-evidence.ts',
+    'runtime/digest.ts',
   ])('keeps provider selection and native implementation imports out of %s', (file) => {
     expect(selectionsIn(sourceOf(file))).toEqual([])
   })

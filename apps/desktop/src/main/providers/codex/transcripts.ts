@@ -1,3 +1,4 @@
+import { splitQualified, CODEX_TOOL_NAMING } from '@brobot2/runtime'
 import { imageResolver } from './images'
 import { scanRetention } from './retention'
 import { filesOf, memoryNotesOf } from './conversation-files'
@@ -10,6 +11,7 @@ import { nativePath, ownsRecord } from './native-record'
 import type { TranscriptPolicy } from '../transcript-policy'
 export const CODEX_ROLLOUT_JSONL = 'codex-rollout-jsonl'
 export const transcripts: TranscriptPolicy = {
+  splitToolName: (name) => splitQualified(CODEX_TOOL_NAMING, name),
   imageResolver,
   keepEarlierReportedEffort: () => false,
   whatDeletionLeaves: () => [
