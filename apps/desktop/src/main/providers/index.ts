@@ -1,4 +1,5 @@
 export { providerDefinitions } from './definitions'
+export { providerAuthPolicies } from './auth-definitions'
 import { providerRecord, type Provider } from '@brobot2/shared'
 import { createClaudeModule, type ClaudeModuleSeams } from './claude'
 import { createCodexModule, type CodexModuleSeams } from './codex'

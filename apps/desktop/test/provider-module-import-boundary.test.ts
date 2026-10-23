@@ -8,6 +8,7 @@ const root = fileURLToPath(new URL('../src/main', import.meta.url))
 const registry = join(root, 'providers/index.ts')
 const definitions = join(root, 'providers/definitions.ts')
 const knowledge = join(root, 'providers/knowledge-definitions.ts')
+const auth = join(root, 'providers/auth-definitions.ts')
 const compatibility = join(root, 'providers/compat.ts')
 const composition = join(root, 'index.ts')
 const nameOf = (file: string): string => relative(root, file).split(sep).join('/')
@@ -78,6 +79,7 @@ describe('provider modules stay behind the main-process registry', () => {
       registry,
       definitions,
       knowledge,
+      auth,
       join(root, 'runtime/provider-homes.ts'),
       join(root, 'runtime/runtime-host.ts'),
     ])
@@ -88,7 +90,10 @@ describe('provider modules stay behind the main-process registry', () => {
           .filter(
             (target) =>
               forbidden.has(target) &&
-              !(file === registry && (target === definitions || target === knowledge)),
+              !(
+                file === registry &&
+                (target === definitions || target === knowledge || target === auth)
+              ),
           )
           .map((target) => `${nameOf(file)} -> ${nameOf(target)}`),
       )
@@ -100,6 +105,7 @@ describe('provider modules stay behind the main-process registry', () => {
       registry,
       definitions,
       knowledge,
+      auth,
       compatibility,
       composition,
       join(root, 'providers/workspace-layout.mjs'),
@@ -121,7 +127,8 @@ describe('provider modules stay behind the main-process registry', () => {
 
   it('keeps the registry out of every worker value-import closure', () => {
     const reaches = (file: string, seen = new Set<string>()): boolean => {
-      if (file === registry || file === definitions || file === knowledge) return true
+      if (file === registry || file === definitions || file === knowledge || file === auth)
+        return true
       if (seen.has(file)) return false
       seen.add(file)
       return valueImports(file).some((next) => reaches(next, seen))
@@ -138,6 +145,7 @@ describe('provider modules stay behind the main-process registry', () => {
     const heavy = new Set([
       registry,
       compatibility,
+      auth,
       join(root, 'runtime/provider-homes.ts'),
       join(root, 'providers/claude/index.ts'),
       join(root, 'providers/codex/index.ts'),
@@ -149,7 +157,7 @@ describe('provider modules stay behind the main-process registry', () => {
       join(root, 'runtime/agent-memory.ts'),
       join(root, 'skills/prepare-built-in-skills.ts'),
       ...files.filter((file) =>
-        /^providers\/(claude|codex)\/(instructions|memory|skills|given|kept-rules|snapshot)(\.ts|\/)/.test(
+        /^providers\/(claude|codex)\/(instructions|memory|skills|given|kept-rules|snapshot|auth-policy|auth|program|api-key)(\.ts|\/)/.test(
           nameOf(file),
         ),
       ),
@@ -163,6 +171,31 @@ describe('provider modules stay behind the main-process registry', () => {
       for (const next of valueImports(file)) visit(next)
     }
     if (existsSync(definitions)) visit(definitions)
+    expect(reached).toEqual([])
+  })
+
+  it('keeps authentication construction outside the knowledge closure', () => {
+    const forbidden = new Set([
+      auth,
+      registry,
+      compatibility,
+      join(root, 'runtime/api-keys.ts'),
+      join(root, 'runtime/provider-homes.ts'),
+      ...files.filter((file) =>
+        /^providers\/(claude|codex)\/(index|auth-policy|auth|program|api-key)(\.ts|\/)/.test(
+          nameOf(file),
+        ),
+      ),
+    ])
+    const seen = new Set<string>()
+    const reached: string[] = []
+    const visit = (file: string): void => {
+      if (seen.has(file)) return
+      seen.add(file)
+      if (forbidden.has(file)) reached.push(nameOf(file))
+      for (const next of valueImports(file)) visit(next)
+    }
+    visit(knowledge)
     expect(reached).toEqual([])
   })
 

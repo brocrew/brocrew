@@ -1,3 +1,4 @@
+import { authPolicy } from './auth-policy'
 import { keptRules } from './kept-rules'
 import { skills } from './skills'
 import { snapshot } from './snapshot'
@@ -312,7 +313,7 @@ export function codexAuth(paths: ProviderHomePaths, seams: CodexAuthSeams): Home
       const managedRoot = paths.managedRoot
       return await replaceARefusedCodexCopy(home, {
         managedRoot,
-        refused,
+        refused: refused as import('@brobot2/runtime').CodexCopyIdentity,
         stillWanted,
         candidates: [
           {
@@ -383,6 +384,7 @@ export function createCodexModule(
   seams: CodexModuleSeams,
 ): ProviderModule {
   return {
+    authPolicy,
     transcripts,
     instructions,
     memory,
