@@ -1,4 +1,6 @@
 import { providerKnowledge } from '../providers/knowledge-definitions'
+import { providerAuthPolicies } from '../providers/auth-definitions'
+import type { IdentityFact, ProviderAuthPolicy } from '../providers/auth-policy'
 import { providerDefinitions } from '../providers/definitions'
 import { StoppedBeforeSend, withManagedPluginAttachments } from '@brobot2/runtime'
 import type { WorkspacePluginAttachments } from '../plugins/attachments'
@@ -103,7 +105,6 @@ import type {
   ProviderUsageEvent,
   ReprovisionOutcome,
   RuntimeEvent,
-  SessionAccount,
   SessionHandle,
   SessionRef,
   TurnLimit,
@@ -4501,52 +4502,22 @@ const WHAT_A_REOPEN_ADDS: ReadonlySet<TranscriptEvent['type']> = new Set([
   'work_recovery',
 ])
 
-/** Protocol housekeeping observed while an accepted give was being refused. */
-const REFUSED_GIVE_LIFECYCLE: ReadonlySet<string> = new Set([
-  'thread/status/changed',
-  'mcpServer/startupStatus/updated',
-  'account/rateLimits/read',
-])
-
-/** Startup notifications a renewed conversation can publish before its retained give continues. */
-const REOPENED_GIVE_LIFECYCLE: ReadonlySet<string> = new Set([
-  ...REFUSED_GIVE_LIFECYCLE,
-  'remoteControl/status/changed',
-  'account/updated',
-  'skills/changed',
-  'thread/goal/cleared',
-])
-
-/** A classified notification, never an erased event or an arbitrary provider payload. */
-function giveLifecycleSaid(event: TranscriptEvent, labels: ReadonlySet<string>): boolean {
-  return (
-    event.type === 'unknown' &&
-    event.provider === 'codex' &&
-    event.category === 'lifecycle' &&
-    event.degradedFrom === undefined &&
-    event.passing !== true &&
-    event.label !== undefined &&
-    labels.has(event.label)
-  )
+/** Unrecognized protocol origins never supply housekeeping evidence. */
+function authPolicyForNotice(event: TranscriptEvent): ProviderAuthPolicy | undefined {
+  if (event.type !== 'unknown') return undefined
+  const provider = SUPPORTED_PROVIDERS.find((one) => one === event.provider)
+  return provider === undefined ? undefined : providerAuthPolicies[provider]
 }
 
 /** The provider may echo the input, but no output, tool progress or other echo proves no effects. */
 function aRefusedGiveOnlyHeardHousekeeping(event: TranscriptEvent): boolean {
-  return (
-    giveLifecycleSaid(event, REFUSED_GIVE_LIFECYCLE) ||
-    (event.type === 'unknown' &&
-      event.provider === 'codex' &&
-      event.category === 'echo' &&
-      event.label === 'userMessage' &&
-      event.degradedFrom === undefined &&
-      event.passing !== true)
-  )
+  return authPolicyForNotice(event)?.protocol.refusedGive(event) ?? false
 }
 
 /** An explicit, complete empty terminal level is startup state, not a job that ran or ended. */
 function aGiveReopenOnlyHeardHousekeeping(event: TranscriptEvent): boolean {
   return (
-    giveLifecycleSaid(event, REOPENED_GIVE_LIFECYCLE) ||
+    (authPolicyForNotice(event)?.protocol.reopenedGive(event) ?? false) ||
     (event.type === 'background_work' &&
       event.source === 'thread/backgroundTerminals/list' &&
       Array.isArray(event.running) &&
@@ -9994,30 +9965,19 @@ export class RuntimeHost implements LiveHost {
    * {@link accountWaitMs}. ⛔ It never rejects.
    */
   private async learnItsIdentity(session: HostedSession): Promise<string | null> {
-    let identity: string | null = null
+    let identity: string | null
     try {
-      if (providerValue(session.provider, { claude: true, codex: false })) {
-        const ask = (): SessionAccount | null | undefined =>
-          session.handle.account === undefined ? null : session.handle.account()
-        const until = performance.now() + this.accountWaitMs
-        let said = ask()
-        while (said === undefined && performance.now() < until) {
-          await new Promise<void>((resolve) => {
-            const timer = setTimeout(resolve, ACCOUNT_LOOK_EVERY_MS)
-            timer.unref?.()
-          })
-          said = ask()
-        }
-        if (said !== undefined && said !== null) {
-          identity = `claude:${this.digestOfAnAccount(said.email, said.organization)}`
-        } else if (said === null) {
-          const tag = session.handle.signInTag?.() ?? null
-          identity = tag === null ? null : `claude-launch:${tag}`
-        }
-      } else {
-        const tag = session.handle.signInTag?.() ?? null
-        identity = tag === null ? null : `${session.provider}:${tag}`
+      const policy = providerAuthPolicies[session.provider].identity
+      const until = policy.waitsForAccount ? performance.now() + this.accountWaitMs : 0
+      let fact = policy.launch(session.handle)
+      while (fact === undefined && performance.now() < until) {
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, ACCOUNT_LOOK_EVERY_MS)
+          timer.unref?.()
+        })
+        fact = policy.launch(session.handle)
       }
+      identity = this.identityFromFacts(session.provider, fact)
     } catch (error) {
       console.warn(`runtime host could not tell ${session.id}'s account: ${errorMessage(error)}`)
       identity = null
@@ -10026,6 +9986,14 @@ export class RuntimeHost implements LiveHost {
     this.recordLimitAccount(session)
     if (identity !== null) this.keepItsLife(session, identity)
     return identity
+  }
+
+  /** Identity encodings already kept on disk remain the host's responsibility. */
+  private identityFromFacts(provider: Provider, fact: IdentityFact | undefined): string | null {
+    if (fact == null) return null
+    return fact.kind === 'account'
+      ? `${provider}:${this.digestOfAnAccount(fact.account.email, fact.account.organization)}`
+      : `${provider}${fact.launchOnly === true ? '-launch' : ''}:${fact.tag}`
   }
 
   /** ⚑ A Claude account's id: a digest keyed with this app's own salt. No email is kept. */
@@ -31912,16 +31880,11 @@ export class RuntimeHost implements LiveHost {
     try {
       const known = this.identityKnown.get(session)
       if (known != null) identity = known
-      else if (providerValue(session.provider, { claude: false, codex: true })) {
-        const tag = session.handle.signInTag?.() ?? null
-        identity = tag === null ? null : `codex:${tag}`
-      } else {
-        const account = session.handle.account?.()
-        identity =
-          account == null
-            ? null
-            : `claude:${this.digestOfAnAccount(account.email, account.organization)}`
-      }
+      else
+        identity = this.identityFromFacts(
+          session.provider,
+          providerAuthPolicies[session.provider].identity.limit(session.handle),
+        )
     } catch {
       identity = null
     }
