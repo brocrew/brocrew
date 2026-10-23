@@ -291,11 +291,12 @@ function times(haystack: string, needle: string): number {
   return haystack.split(needle).length - 1
 }
 
-// ⚑ The third argument is what a home is prepared with (`homeSeams`: the person's API keys and the
-// Claude login renewal), never where it is — the home is still derived from the profile given and
-// nothing else.
+// The provider's bound home strategy prepares the profile it is given. The binding gets its paths
+// from the same pure facade as the read seam; neither call invents another layout.
 const PREPARE_SEAM =
-  'prepareProviderHome: async (provider, profileId) => { await transcriptRetention?.beforeLaunch() return prepareProviderHome(userData, { profileId, provider }, homeSeams) },'
+  'prepareProviderHome: async (provider, profileId) => { await transcriptRetention?.beforeLaunch() return providerModules[provider].home.prepare(profileId) },'
+const MODULE_PATHS =
+  'const providerModules = createProviderModules((provider) => homePathsForProvider(userData, provider),'
 const PATH_SEAM =
   'providerHomePath: (provider, profileId) => deriveProviderHome(userData, { profileId, provider }),'
 const PROFILES_SEAM = 'listProfiles: () => listProfileIds(userData),'
@@ -310,12 +311,14 @@ describe('main wires the home seams to the one folder (D-016a)', () => {
     // satisfy all of them.
     expect(main.length, 'main/index.ts moved — re-point this').toBeGreaterThan(1000)
     expect(times(main, PREPARE_SEAM), 'the prepareProviderHome seam').toBe(1)
+    expect(times(main, MODULE_PATHS), 'the bound provider paths').toBe(1)
     expect(times(main, PATH_SEAM), 'the providerHomePath seam').toBe(1)
     expect(times(main, PROFILES_SEAM), 'the listProfiles seam').toBe(1)
     expect(times(main, DISCOVERY_SEAM), 'the discoverSessions map').toBe(1)
 
-    // The folder has ONE author, provider-homes.ts: main derives and prepares through it, once each.
-    expect(times(main, 'prepareProviderHome(userData')).toBe(1)
+    // The folder has one author, provider-homes.ts: preparation receives its bound paths, while
+    // reads use the pure derivation directly.
+    expect(times(main, 'providerModules[provider].home.prepare(profileId)')).toBe(1)
     expect(times(main, 'deriveProviderHome(userData')).toBe(1)
     // …and main never spells the layout itself.
     expect(main).not.toMatch(/HOME_FOLDER|['"]provider-homes['"]/)
