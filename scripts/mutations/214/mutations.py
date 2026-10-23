@@ -153,32 +153,44 @@ MUTATIONS = [
     (
         "M9  · ⛔ THE DEFECT, verbatim · every non-assistant role speaks in the user's name again — "
         "822 `developer` lines rendered as \"You (per the transcript)\" (213 finding 2)",
-        [(INJECTED, "  if (role !== 'user') return { injected: true, said: null }", "  if (false) return { injected: true, said: null }")],
+        [
+            ("apps/desktop/src/main/providers/codex/codex-injected.ts", "  if (role !== 'user') return { injected: true, said: null }", "  if (false) return { injected: true, said: null }"),
+        ],
     ),
     (
         "M10 · ⛔ §2 · the CLI's own separator is ignored, so the ambient block and the person's "
         "request come back as one bubble and the prompt is buried under it again",
-        [(INJECTED, "  if (marker !== -1) {", "  if (false) {")],
+        [
+            ("apps/desktop/src/main/providers/codex/codex-injected.ts", "  if (marker !== -1) {", "  if (false) {"),
+        ],
     ),
     (
         "M11 · ⛔ §2 · a preamble the CLI closed with <environment_context> is the user speaking — "
         "484 of them in the measured corpus",
-        [(INJECTED, "  if (text.trimEnd().endsWith(ENVIRONMENT_CLOSE)) return { injected: true, said: null }\n", "")],
+        [
+            ("apps/desktop/src/main/providers/codex/codex-injected.ts", "  if (text.trimEnd().endsWith(ENVIRONMENT_CLOSE)) return { injected: true, said: null }\n", ""),
+        ],
     ),
     (
         "M12 · ⛔ §2 · the split's answer is thrown away and the whole line becomes a user turn — "
         "the importer ignoring the classifier it calls",
-        [(CODEX, "      if (parts.said !== null) {", "      if (true) {")],
+        [
+            ("apps/desktop/src/main/providers/codex/import-transcript.ts", "      if (parts.said !== null) {", "      if (true) {"),
+        ],
     ),
     (
         "M13 · ⚠️ §2's OTHER failure · the injected half is DROPPED instead of kept as chatter, so "
         "an injection stops being visible at all — 086 in the direction that is easy to miss",
-        [(CODEX, "      if (parts.injected) {", "      if (false) {")],
+        [
+            ("apps/desktop/src/main/providers/codex/import-transcript.ts", "      if (parts.injected) {", "      if (false) {"),
+        ],
     ),
     (
         "M14 · §2 · a split message hands back the whole text as what the person said, so the "
         "prompt is shown once and still buried",
-        [(INJECTED, "    const said = text.slice(marker + REQUEST_MARKER.length).trim()", "    const said = text.trim()")],
+        [
+            ("apps/desktop/src/main/providers/codex/codex-injected.ts", "    const said = text.slice(marker + REQUEST_MARKER.length).trim()", "    const said = text.trim()"),
+        ],
     ),
     # ------------------------------------------------------ §1 · the way back in
     (
@@ -266,16 +278,22 @@ MUTATIONS = [
     (
         "M32 · 🔴 §2 · a message that IS one wrapped element speaks in the user's name again — the "
         "22 KB `<skill>` block 213 met, still on screen as \"You\"",
-        [(INJECTED, "  const wrapper = WHOLLY_WRAPPED.exec(text)", "  const wrapper = null")],
+        [
+            ("apps/desktop/src/main/providers/codex/codex-injected.ts", "  const wrapper = WHOLLY_WRAPPED.exec(text)", "  const wrapper = null"),
+        ],
     ),
     (
         "M33 · ⛔ §2's WORSE failure · the `<image>` exemption goes, so a person's only message — a "
         "picture they attached — is not misattributed but DELETED from the transcript",
-        [(INJECTED, "  if (wrapper !== null && !PERSON_AUTHORED_TAGS.has(wrapper[1]!.toLowerCase())) {", "  if (wrapper !== null) {")],
+        [
+            ("apps/desktop/src/main/providers/codex/codex-injected.ts", "  if (wrapper !== null && !PERSON_AUTHORED_TAGS.has(wrapper[1]!.toLowerCase())) {", "  if (wrapper !== null) {"),
+        ],
     ),
     (
         "M34 · §2 · the AGENTS.md preamble with no environment block behind it is the user again",
-        [(INJECTED, "  if (text.trimStart().startsWith(AGENTS_HEADING)) return { injected: true, said: null }\n", "")],
+        [
+            ("apps/desktop/src/main/providers/codex/codex-injected.ts", "  if (text.trimStart().startsWith(AGENTS_HEADING)) return { injected: true, said: null }\n", ""),
+        ],
     ),
     (
         "M35 · ⛔ §1 · a bundle's profileId stops being a path segment, so a file somebody SENT you "

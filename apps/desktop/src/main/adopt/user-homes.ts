@@ -1,7 +1,8 @@
 import { existsSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
-import { providerValue, type Provider } from '@brobot2/shared'
+import { SUPPORTED_PROVIDERS, type Provider } from '@brobot2/shared'
+import { providerDefinitions } from '../providers/definitions'
+export { claudeHomeDescriptions, type ListClaudeSessions } from '../providers/definitions'
 import {
   discoverSessionsIn,
   type DiscoveredSession,
@@ -59,17 +60,8 @@ export interface UserProviderHome {
   path: string
 }
 
-/**
- * Where a provider keeps its own home when nobody has told it otherwise, honouring the same
- * environment variables the adapters set on their children (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`) so a
- * machine that relocates one is read where it actually lives rather than where it usually is.
- */
 export function userProviderHomePath(provider: Provider, env = process.env): string {
-  const override = providerValue(provider, { claude: true, codex: false })
-    ? env['CLAUDE_CONFIG_DIR']
-    : env['CODEX_HOME']
-  if (typeof override === 'string' && override !== '') return override
-  return join(homedir(), providerValue(provider, { claude: '.claude', codex: '.codex' }))
+  return providerDefinitions[provider].discovery.userHome(env, homedir())
 }
 
 /**
@@ -94,9 +86,10 @@ export function userProviderHomePath(provider: Provider, env = process.env): str
 
 /** The homes that actually exist. A machine with only one provider installed reports only that one. */
 export function userProviderHomes(env = process.env): UserProviderHome[] {
-  return (['claude', 'codex'] as const)
-    .map((provider) => ({ provider, path: userProviderHomePath(provider, env) }))
-    .filter((home) => existsSync(home.path))
+  return SUPPORTED_PROVIDERS.map((provider) => ({
+    provider,
+    path: userProviderHomePath(provider, env),
+  })).filter((home) => existsSync(home.path))
 }
 
 /**
@@ -165,63 +158,11 @@ function sizeOf(path: string): number | null {
   }
 }
 
-/** The shape of the SDK call we use, named here so a test can stand in for it without the SDK. */
-export type ListClaudeSessions = () => Promise<
-  { sessionId: string; summary?: string; customTitle?: string; firstPrompt?: string }[]
->
-
-/**
- * What Claude's own index says about the sessions in the user's home, keyed by session id (047).
- *
- * ## Why the SDK here, and the state database for Codex
- *
- * The two providers are read by different means, and the asymmetry is deliberate rather than
- * historical:
- *
- *  - **Claude** — `listSessions()` is the SDK's own indexed read and it is genuinely READ-ONLY.
- *    Measured against a synthetic home before this was written: it returned the planted session and
- *    changed not one byte in the directory it read. It is also the only cheap way to get a Claude
- *    title, because the transcripts themselves reach a gigabyte.
- *  - **Codex** — the equivalent call, `thread/list`, requires a running `codex app-server`, and a
- *    server can only be pointed at a home by running it THERE. Measured the same way: starting one
- *    against a home wrote **71 files** into it — four SQLite databases with their WALs, an
- *    `installation_id`, and the whole `skills/.system` tree — before any request was sent, and 77
- *    once `thread/list` was issued. `useStateDbOnly: true` does not prevent this; it only skips the
- *    rollout rescan, so the writes it avoids are not the ones that matter. Running that against
- *    `~/.codex` would break this app's one hard rule, so Codex is read from the same `threads` table
- *    `thread/list` itself reads, through a copy — see `discoverCodexSessions`.
- *
- * ## The home it reads
- *
- * `listSessions()` takes no home option and resolves `CLAUDE_CONFIG_DIR`, falling back to
- * `~/.claude` — which is exactly what {@link userProviderHomePath} computes. They therefore agree by
- * construction rather than by coincidence, and `user-homes.test.ts` pins that agreement by planting
- * a session in a temp home and pointing the variable at it. The consequence is the one 043 named: a
- * session of OURS, in an isolated per-profile home, can never appear here — and must not, because
- * ours are already in our database with lifecycle their provider file never held.
- *
- * Failure is empty, not fatal: a machine with no Claude home, or an SDK that cannot read one, costs
- * the captions on those rows and nothing else. The sessions themselves come from the filesystem
- * scan, which does not need this.
- */
-export async function claudeHomeDescriptions(
-  listSessions?: ListClaudeSessions,
-): Promise<Map<string, ProviderDescription>> {
+export async function indexedHomeDescriptions(): Promise<Map<string, ProviderDescription>> {
   const described = new Map<string, ProviderDescription>()
-  try {
-    // Imported HERE rather than at module load: the SDK is a megabyte of bundle, and the sweep —
-    // which imports this module for the homes alone — has no use for it.
-    const list = listSessions ?? (await import('@anthropic-ai/claude-agent-sdk')).listSessions
-    for (const session of await list()) {
-      described.set(session.sessionId, {
-        // `customTitle` is what the user typed; `summary` is what the SDK derived. Preferring the
-        // user's own words is the one ordering decision here, and neither is invented.
-        title: session.customTitle ?? session.summary ?? '',
-        preview: session.firstPrompt ?? '',
-      })
-    }
-  } catch {
-    return described
+  for (const provider of SUPPORTED_PROVIDERS) {
+    const next = await providerDefinitions[provider].discovery.descriptions?.()
+    if (next) for (const [id, value] of next) described.set(id, value)
   }
   return described
 }

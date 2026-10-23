@@ -171,22 +171,14 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "M17 · 🔴 **an adopted conversation draws the refusal as the assistant's** · the importer "
         "diverts nothing — killed by `raw-archive-import.test.ts`",
         [
-            (
-                IMPORT,
-                "    if (theClisNotice) {\n",
-                "    if (false) {\n",
-            )
+            ("apps/desktop/src/main/providers/claude/import-transcript.ts", "    if (theClisNotice) {\n", "    if (false) {\n"),
         ],
     ),
     (
         "M18 · ⛔ **the importer diverts a real reply** · every archived message with an error word "
         "loses its text — killed by `raw-archive-import.test.ts`",
         [
-            (
-                IMPORT,
-                "  const theClis = isRecord(message) && message['model'] === THE_CLIS_OWN_MODEL\n",
-                "  const theClis = isRecord(message)\n",
-            )
+            ("apps/desktop/src/main/providers/claude/import-transcript.ts", "  const theClis = isRecord(message) && message['model'] === THE_CLIS_OWN_MODEL\n", "  const theClis = isRecord(message)\n"),
         ],
     ),
     # ── D · the bump ──────────────────────────────────────────────────────────────────────────
@@ -299,11 +291,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "M28 · ⚠️ **the importer's word-less notice is the assistant's** · an archived "
         "`isApiErrorMessage` record keeps its bubble — killed by `raw-archive-import.test.ts`",
         [
-            (
-                IMPORT,
-                "    theClis && (typeof error === 'string' || record['isApiErrorMessage'] === true)\n",
-                "    theClis && typeof error === 'string'\n",
-            )
+            ("apps/desktop/src/main/providers/claude/import-transcript.ts", "    theClis && (typeof error === 'string' || record['isApiErrorMessage'] === true)\n", "    theClis && typeof error === 'string'\n"),
         ],
     ),
     (

@@ -85,7 +85,7 @@ describe('the session library', () => {
     return {
       recorded: () => store.recorded(),
       userHomeSessions: () => discovery,
-      claudeDescriptions: () => Promise.resolve(new Map(Object.entries(claude))),
+      indexedDescriptions: () => Promise.resolve(new Map(Object.entries(claude))),
       archivedAt: (recordId) => archived[recordId] ?? null,
     }
   }
@@ -625,7 +625,7 @@ describe('the library carries completeness beside readability (065)', () => {
     readLibrary({
       recorded: () => store.recorded(),
       userHomeSessions: () => ({ found: [], skipped: [] }),
-      claudeDescriptions: () => Promise.resolve(new Map()),
+      indexedDescriptions: () => Promise.resolve(new Map()),
       archivedAt: () => null,
     })
 
@@ -715,7 +715,7 @@ describe('a swept child keeps its parentage (111)', () => {
     // ⚠️ **EMPTY on purpose — this is the whole scenario.** The provider's file is gone, so there is
     // no state database left to ask whose child it was. Whatever the row does not carry is lost.
     userHomeSessions: () => ({ found: [], skipped: [] }),
-    claudeDescriptions: () => Promise.resolve(new Map()),
+    indexedDescriptions: () => Promise.resolve(new Map()),
     archivedAt: () => null,
   })
 
@@ -894,7 +894,7 @@ describe('214 §1 · a restored bundle is counted as itself', () => {
   const deps = (rows: RecordedSession[]): LibraryDeps => ({
     recorded: () => rows,
     userHomeSessions: () => ({ found: [], skipped: [] }),
-    claudeDescriptions: () => Promise.resolve(new Map()),
+    indexedDescriptions: () => Promise.resolve(new Map()),
     archivedAt: () => null,
   })
 
@@ -966,7 +966,7 @@ describe('narrowing the library (121)', () => {
   ): LibraryDeps => ({
     recorded: () => rows,
     userHomeSessions: () => ({ found: [], skipped: [] }),
-    claudeDescriptions: () => Promise.resolve(new Map()),
+    indexedDescriptions: () => Promise.resolve(new Map()),
     archivedAt: (recordId) => archived.get(recordId) ?? null,
   })
 
@@ -1210,7 +1210,7 @@ describe('narrowing the library (121)', () => {
     const zoo: LibraryDeps = {
       recorded: () => ROWS,
       userHomeSessions: () => ({ found: FOUND, skipped: [] }),
-      claudeDescriptions: () => Promise.resolve(new Map()),
+      indexedDescriptions: () => Promise.resolve(new Map()),
       archivedAt: () => null,
     }
 

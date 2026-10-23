@@ -1,3 +1,4 @@
+export { providerDefinitions } from './definitions'
 import { providerRecord, type Provider } from '@brobot2/shared'
 import { createClaudeModule, type ClaudeModuleSeams } from './claude'
 import { createCodexModule, type CodexModuleSeams } from './codex'

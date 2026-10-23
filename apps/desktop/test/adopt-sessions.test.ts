@@ -1335,7 +1335,7 @@ describe('the descent back-fill (119)', () => {
         // these rows. Before back-fill, all three surfaces read the same stale column and are
         // wrong together; correcting the column corrects all three.
         userHomeSessions: () => ({ found: [], skipped: [] }),
-        claudeDescriptions: () => Promise.resolve(new Map()),
+        indexedDescriptions: () => Promise.resolve(new Map()),
         archivedAt: () => null,
       })
       const entry = library.entries.find((row) => row.recordId === sessionId)

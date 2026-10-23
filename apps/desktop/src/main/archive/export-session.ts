@@ -7,12 +7,12 @@ import {
   writeFileSync,
   writeSync,
 } from 'node:fs'
-import { basename, dirname, join } from 'node:path'
+import { dirname } from 'node:path'
 import type { SessionRef } from '@brobot2/runtime'
-import { providerValue, type Provider, type SessionStatus } from '@brobot2/shared'
-import { localFields } from '../../shared/local-time'
+import { type Provider, type SessionStatus } from '@brobot2/shared'
 import type { TranscriptEvent } from '../../shared/runtime-ipc'
-import { CLAUDE_JSONL, CODEX_ROLLOUT_JSONL, readLines } from './native-file'
+import { readLines } from './native-io'
+import { providerDefinitions } from '../providers/definitions'
 
 /**
  * Put a session back out: as the provider's own file, or as one self-contained document (089).
@@ -94,80 +94,6 @@ export function buildBundle(
   ledger: { ordinal: number; at: number; event: TranscriptEvent }[],
 ): SessionBundle {
   return { bundleVersion: BUNDLE_VERSION, meta, raw, ledger }
-}
-
-/**
- * Where the provider itself would keep this session's file, under a home of your choosing.
- *
- * **Claude**: in the folder the CLI RECORDED the conversation in, in its own home (`recordedAt`,
- * `native-file.ts`'s `nativeTranscriptPath`) — 🔴 **731 · `706` F-5**: for a very long working
- * folder the CLI's own folder name may differ from the flattened cwd, so only its own spelling is one
- * its resume tries first.
- *
- * **Codex** keeps rollouts under a date-partitioned `sessions/<y>/<m>/<d>/` with a LOCAL-time
- * stamp in the filename, which is why the date parts below are read on the Mac's clock too — the
- * zone Codex names the file in (D-031, `shared/local-time.ts`). Even so the name can differ from
- * the original — the row holds an instant, not the offset that was in force when the provider
- * named the file. Measured: that does not matter. Codex locates a thread by its ID — a real rollout
- * dropped into a home under `sessions/2020/01/01/rollout-2020-01-01T00-00-00-<id>.jsonl`, with no
- * state database in that home at all, resumed. The date path is convention, not a lookup key.
- */
-export function nativeExportPath(
-  provider: Provider,
-  targetHome: string,
-  ref: SessionRef,
-  startedAt: number,
-  /** The provider's own file for this conversation, in the home it ran in. */
-  recordedAt: string,
-): string {
-  if (providerValue(provider, { claude: true, codex: false })) {
-    return join(targetHome, 'projects', basename(dirname(recordedAt)), `${ref.sessionId}.jsonl`)
-  }
-  const when = localFields(startedAt)
-  const [year, month, day] = [
-    String(when.year),
-    String(when.month + 1).padStart(2, '0'),
-    String(when.date).padStart(2, '0'),
-  ]
-  const stamp = `${year}-${month}-${day}T${String(when.hours).padStart(2, '0')}-${String(
-    when.minutes,
-  ).padStart(2, '0')}-${String(when.seconds).padStart(2, '0')}`
-  return join(targetHome, 'sessions', year, month, day, `rollout-${stamp}-${ref.sessionId}.jsonl`)
-}
-
-/**
- * What an exported native file is actually good for, per provider — stated rather than implied,
- * because "exported" reads like "restored" and that is a claim, not a description.
- *
- * BOTH are resumable, and for Codex that was measured rather than assumed: the expectation going
- * in was that it needed a `threads` row in its own state database, and that turned out to be
- * wrong. A real rollout copied into an otherwise empty home — auth and config only, no state
- * database — resumed by thread id. Writing "not resumable" on the strength of the assumption
- * would have been a false claim in the one place this feature exists to be honest about.
- *
- * The one thing an export cannot carry is the CWD: both providers resume a conversation into the
- * directory it ran in, and our own adapters refuse a ref whose cwd does not match (011). That is
- * a property of the session, not of the file, so it is said here rather than discovered later.
- */
-export function nativeExportSupport(provider: Provider): {
-  format: string
-  resumable: boolean
-  note: string
-} {
-  return providerValue(provider, { claude: true, codex: false })
-    ? {
-        format: CLAUDE_JSONL,
-        resumable: true,
-        // ⚑ 731 · Claude looks in this folder FIRST and then by id in every project folder (`706`),
-        // and the file is written where the CLI recorded the original — *"by this exact path"*
-        // said the first half as if it were the whole.
-        note: 'Claude looks for a session in this folder first, then by its id — a home with this file in it can resume the conversation, from the same working directory.',
-      }
-    : {
-        format: CODEX_ROLLOUT_JSONL,
-        resumable: true,
-        note: 'Codex finds a thread by its id anywhere under sessions/ — a home with this file in it can resume the conversation, from the same working directory.',
-      }
 }
 
 /** Write a file and the directories above it, and hand back where it went. */
@@ -448,4 +374,26 @@ async function* eachRow<T extends { ordinal: number }>(
     // Once per window, so a multi-gigabyte export does not hold the thread that paints the window.
     await betweenBatches()
   }
+}
+
+export function nativeExportPath(
+  provider: Provider,
+  targetHome: string,
+  ref: SessionRef,
+  startedAt: number,
+  recordedAt: string,
+): string {
+  return providerDefinitions[provider].transcripts.exportPath(
+    targetHome,
+    ref,
+    startedAt,
+    recordedAt,
+  )
+}
+export function nativeExportSupport(provider: Provider): {
+  format: string
+  resumable: boolean
+  note: string
+} {
+  return providerDefinitions[provider].transcripts.exportSupport()
 }
