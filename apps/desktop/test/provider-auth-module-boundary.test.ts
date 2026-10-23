@@ -87,6 +87,7 @@ describe('provider authentication has one owner', () => {
     'runtime/runtime-host.ts',
     'runtime/api-keys.ts',
     'runtime/launch-refusal.ts',
+    'runtime/agent-tools.ts',
     'providers/module.ts',
   ])('keeps native authentication and program types out of %s', (file) => {
     expect(nativeImportsIn(sourceOf(file))).toEqual([])

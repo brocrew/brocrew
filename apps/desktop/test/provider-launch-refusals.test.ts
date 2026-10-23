@@ -3,6 +3,7 @@ import {
   AuthUnavailableError,
   ClaudeUnavailableError,
   CodexSettingsUnusableError,
+  NoCodexSignInOnThisComputerError,
 } from '@brobot2/runtime'
 import { providerAuthPolicies } from '../src/main/providers/auth-definitions'
 import { CodexUnavailableError } from '../src/main/runtime/codex-binary'
@@ -10,9 +11,9 @@ import { whyALaunchWasRefused } from '../src/main/runtime/launch-refusal'
 
 function classifier(
   provider: keyof typeof providerAuthPolicies,
-): (error: unknown) => 'profile' | 'program' | null {
+): (error: unknown) => 'profile' | 'program' | 'no-copy' | null {
   const read = Reflect.get(providerAuthPolicies[provider], 'launchRefusal') as
-    ((error: unknown) => 'profile' | 'program' | null) | undefined
+    ((error: unknown) => 'profile' | 'program' | 'no-copy' | null) | undefined
   expect(read).toBeTypeOf('function')
   if (read === undefined) throw new Error('The provider launch classifier is absent')
   return read
@@ -30,6 +31,7 @@ describe('provider-owned native launch facts', () => {
   it('keeps an unusable Codex profile distinct from its unavailable program', () => {
     const read = classifier('codex')
     expect(read(new CodexSettingsUnusableError('fictional unusable profile'))).toBe('profile')
+    expect(read(new NoCodexSignInOnThisComputerError('fictional missing copy'))).toBe('no-copy')
     expect(read(new CodexUnavailableError('fictional unavailable program'))).toBe('program')
     expect(read(new ClaudeUnavailableError('fictional other program'))).toBeNull()
     expect(read(new AuthUnavailableError('codex', 'fictional unavailable login'))).toBeNull()
