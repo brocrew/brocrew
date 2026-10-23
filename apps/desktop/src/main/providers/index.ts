@@ -47,3 +47,5 @@ export function providerAuthFromHomes(
 export function providerAuthFromModules(modules: ProviderModules): ProviderAuthOps {
   return forwardAuth(providerRecord((provider) => modules[provider].auth))
 }
+
+export { providerKnowledge } from './knowledge-definitions'

@@ -1,0 +1,9 @@
+export const INSTRUCTION_FILE_CAP = 64 * 1024
+
+export const INSTRUCTION_TOTAL_CAP = 256 * 1024
+
+export const AGENT_MEMORY_TOTAL_CAP = 256 * 1024
+
+export const AGENT_MEMORY_NOTES_SHOWN = 20
+
+export const MEMORY_PAGE_MOST = 100

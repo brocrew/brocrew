@@ -1,6 +1,7 @@
 import { lstatSync, openSync, readSync, closeSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Provider } from '@brobot2/shared'
+import { SUPPORTED_PROVIDERS, type Provider } from '@brobot2/shared'
+import { providerKnowledge } from '../providers/knowledge-definitions'
 import { BUNDLE_MARKER } from './factory-text'
 import { publishOwnFile } from './workspace'
 
@@ -38,10 +39,12 @@ import { publishOwnFile } from './workspace'
  * through the same guarded reader and appends it through the preset, which is the route `362` §1.2
  * measured a live child quoting.
  */
-export const BUNDLE_LEAF: Readonly<Record<Provider, string>> = {
-  codex: 'AGENTS.override.md',
-  claude: 'brobot-instructions.md',
-}
+export const BUNDLE_LEAF = Object.fromEntries(
+  SUPPORTED_PROVIDERS.map((provider) => [
+    provider,
+    providerKnowledge[provider].instructions.bundleLeaf,
+  ]),
+) as Readonly<Record<Provider, string>>
 
 /**
  * ⛔ **Enough of the file to answer *is this ours*, and not one byte more.**
