@@ -1,3 +1,5 @@
+import { workspaceInstructionFile as claudeWorkspaceFile } from './claude/layout.mjs'
+import { workspaceInstructionFile as codexWorkspaceFile } from './codex/layout.mjs'
 import type { Provider } from '@brobot2/shared'
 import type { ProviderDefinition } from './transcript-policy'
 import { transcripts as claudeTranscripts } from './claude/transcripts'
@@ -5,8 +7,16 @@ import { transcripts as codexTranscripts } from './codex/transcripts'
 import { discovery as claudeDiscovery } from './claude/discovery'
 import { discovery as codexDiscovery } from './codex/discovery'
 export const providerDefinitions: Readonly<Record<Provider, ProviderDefinition>> = {
-  claude: { transcripts: claudeTranscripts, discovery: claudeDiscovery },
-  codex: { transcripts: codexTranscripts, discovery: codexDiscovery },
+  claude: {
+    transcripts: claudeTranscripts,
+    discovery: claudeDiscovery,
+    workspaceInstructionFile: claudeWorkspaceFile,
+  },
+  codex: {
+    transcripts: codexTranscripts,
+    discovery: codexDiscovery,
+    workspaceInstructionFile: codexWorkspaceFile,
+  },
 }
 export { importClaudeTranscript } from './claude/import-transcript'
 export {
@@ -52,3 +62,9 @@ export {
 } from './claude/child-work'
 
 export { recordedScheduleReceiptProvider } from './claude/transcripts'
+
+export {
+  workspaceInstructionNames,
+  CLAUDE_INSTRUCTIONS_FILE,
+  CODEX_INSTRUCTIONS_FILE,
+} from './workspace-layout.mjs'

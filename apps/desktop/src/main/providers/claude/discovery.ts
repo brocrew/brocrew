@@ -1,3 +1,5 @@
+import { homedir } from 'node:os'
+import type { ProtectedPlaceKind } from '../../../shared/work-folders'
 import { closeSync, existsSync, openSync, readSync, readdirSync, statSync } from 'node:fs'
 import { StringDecoder } from 'node:string_decoder'
 import { basename, join } from 'node:path'
@@ -224,9 +226,15 @@ export async function claudeHomeDescriptions(
 
 export const discovery = {
   discover: discoverClaudeSessions,
-  userHome: (env: NodeJS.ProcessEnv, userHome: () => string): string => {
-    const override = env['CLAUDE_CONFIG_DIR']
-    return typeof override === 'string' && override !== '' ? override : join(userHome(), '.claude')
-  },
+  userHome,
+  configHomes: (home: string, env: NodeJS.ProcessEnv): readonly string[] => [
+    ...new Set([join(home, '.claude'), userHome(env, homedir)]),
+  ],
+  protectedPlaceKind: 'claude-config-home' as ProtectedPlaceKind,
   descriptions: claudeHomeDescriptions,
+}
+
+function userHome(env: NodeJS.ProcessEnv, defaultHome: () => string): string {
+  const override = env['CLAUDE_CONFIG_DIR']
+  return typeof override === 'string' && override !== '' ? override : join(defaultHome(), '.claude')
 }
