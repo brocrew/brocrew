@@ -1,3 +1,4 @@
+import { keptRules } from './kept-rules'
 import { skills } from './skills'
 import { snapshot } from './snapshot'
 import { instructions } from './instructions'
@@ -222,6 +223,7 @@ export function createClaudeModule(
     memory,
     snapshot,
     skills,
+    keptRules,
     discovery,
     createRuntime: claudeModuleFactory.runtime(seams.runtime),
     home: claudeModuleFactory.home(paths, seams.home),

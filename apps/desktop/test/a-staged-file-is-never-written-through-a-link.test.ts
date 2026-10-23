@@ -85,7 +85,7 @@ describe('a kept rule removed', () => {
   }
   const remove = (file: string) =>
     removeKeptRule(
-      { claudeProjectFiles: [file], homes: [], personsOwn: [] },
+      { projectFiles: { claude: [file], codex: [] }, homes: [], personsOwn: [] },
       { provider: 'claude', file, kept: RULE },
     )
 
