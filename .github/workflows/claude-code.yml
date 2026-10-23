@@ -1,5 +1,5 @@
 # Runs BroBot's Claude runtime against the oldest and the newest Claude Code version named in
-# `apps/desktop/src/main/runtime/claude-code-tested.json`, on macOS and Windows.
+# `apps/desktop/src/main/providers/claude/claude-code-tested.json`, on macOS and Windows.
 #
 # Each day it runs instead against the newest Claude Code published on npm. Claude Code's installer
 # updates itself almost daily, so the newest version tested would otherwise fall behind what people
@@ -101,7 +101,7 @@ jobs:
             version="$PUBLISHED"
             where="the newest published"
           else
-            version=$(node -p "require('./apps/desktop/src/main/runtime/claude-code-tested.json')[process.argv[1]]" "$WHICH")
+            version=$(node -p "require('./apps/desktop/src/main/providers/claude/claude-code-tested.json')[process.argv[1]]" "$WHICH")
             where="the $WHICH tested"
           fi
           if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -215,7 +215,7 @@ jobs:
             said="The branch \`$branch\` raising the newest version tested to $VERSION is already pushed; merge it into \`dev\`."
           else
             git switch -c "$branch"
-            git add apps/desktop/src/main/runtime/claude-code-tested.json
+            git add apps/desktop/src/main/providers/claude/claude-code-tested.json
             git -c user.name="github-actions[bot]" \
               -c user.email="41898099+github-actions[bot]@users.noreply.github.com" \
               commit -m "The newest Claude Code tested is $VERSION" \

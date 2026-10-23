@@ -135,7 +135,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          version="$(node -p "require('./apps/desktop/src/main/runtime/claude-code-tested.json').newest")"
+          version="$(node -p "require('./apps/desktop/src/main/providers/claude/claude-code-tested.json').newest")"
           prefix="${RUNNER_TEMP//\\//}/claude-code"
           npm install --prefix "$prefix" --no-audit --no-fund "@anthropic-ai/claude-code@$version"
           program="$prefix/node_modules/@anthropic-ai/claude-code/bin/claude.exe"
@@ -198,7 +198,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          version="$(node -p "require('./apps/desktop/src/main/runtime/claude-code-tested.json').newest")"
+          version="$(node -p "require('./apps/desktop/src/main/providers/claude/claude-code-tested.json').newest")"
           prefix="$RUNNER_TEMP/claude-code"
           npm install --prefix "$prefix" --no-audit --no-fund "@anthropic-ai/claude-code@$version"
           program="$prefix/node_modules/@anthropic-ai/claude-code/bin/claude.exe"
