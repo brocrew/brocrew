@@ -353,6 +353,8 @@ MUTATIONS = [
     (
         "M28 · ⛔ the provider that publishes no item for a write is told its writes are shown · 316's "
         "fifteen arms said otherwise, and a disk observation is not the conversation showing the write",
-        [(INSTR, "      writesReported: false,", "      writesReported: true,")],
+        [
+            ("apps/desktop/src/main/providers/codex/instructions.ts", "      writesReported: false,", "      writesReported: true,"),
+        ],
     ),
 ]

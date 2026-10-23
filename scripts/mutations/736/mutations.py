@@ -332,17 +332,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "M23 · 🔴 **a project link into the person's own home is refused again** — `733`'s "
         f"`personal-home`, which the CLI does not do (measured) — killed by `{WALK}` (736)",
         [
-            (
-                READER,
-                "    const real = read.real ?? realPath(path)\n",
-                "    const real = read.real ?? realPath(path)\n"
-                # ⚑ Through `realPath`, as `733`'s predicate was: a home under `/var` is really
-                # `/private/var`, and a bare `resolve` never matches (measured: the row SURVIVED).
-                "    if (dirname(real) === realPath(home) || dirname(real) === join(realPath(home), '.claude')) {\n"
-                "      refused.push({ path, reason: 'personal-home', link: real })\n"
-                "      return\n"
-                "    }\n",
-            )
+            ("apps/desktop/src/main/providers/claude/instructions.ts", "    const real = read.real ?? realPath(path)\n", "    const real = read.real ?? realPath(path)\n    if (dirname(real) === realPath(home) || dirname(real) === join(realPath(home), '.claude')) {\n      refused.push({ path, reason: 'personal-home', link: real })\n      return\n    }\n"),
         ],
     ),
     (

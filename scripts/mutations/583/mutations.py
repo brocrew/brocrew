@@ -100,11 +100,7 @@ MUTATIONS = [
         "what it read back IS what the launch composed, so a leaf edited between the publish and "
         "the read files a person's own rules under this app's name — offsets slid by one line",
         [
-            (
-                READER,
-                "  return composed.text === text ? { sections: composed.spans } : {}",
-                "  return { sections: composed.spans }",
-            )
+            ("apps/desktop/src/main/providers/instruction-composition.ts", "  return composed.text === text ? { sections: composed.spans } : {}", "  return { sections: composed.spans }"),
         ],
     ),
     (

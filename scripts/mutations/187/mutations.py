@@ -133,27 +133,26 @@ MUTATIONS = [
     # ── §2 · M2, the instruction cap ───────────────────────────────────────────────────────────
     (
         "M5  · ⛔ a file dropped for budget produces NO row again (168 M2, half 1)",
-        INSTR,
+        "apps/desktop/src/main/providers/instruction-composition.ts",
         "    if (!granted.has(item)) refused.push({ path: item.path, reason: 'over-budget' })",
         "    if (!granted.has(item)) continue",
     ),
     (
         "M6  · ⛔ the budget counts FILE BYTES ONLY — the cap and the emitted text disagree again",
-        INSTR,
+        "apps/desktop/src/main/providers/instruction-composition.ts",
         "    const cost = item.bytes + byteLength(blockHeader(item)) + byteLength(BLOCK_SEPARATOR)",
         "    const cost = item.bytes",
     ),
     (
         "M7  · ⛔ the budget is spent in PROMPT order — the nearest rules vanish first",
-        INSTR,
+        "apps/desktop/src/main/providers/instruction-composition.ts",
         "    ...candidates.filter((item) => item.kind !== 'profile-memory').reverse(),",
         "    ...candidates.filter((item) => item.kind !== 'profile-memory'),",
     ),
     (
         "M8  · ⛔ the profile's own memory loses its priority — identity gives way first",
-        INSTR,
-        "    ...candidates.filter((item) => item.kind === 'profile-memory'),\n"
-        "    ...candidates.filter((item) => item.kind !== 'profile-memory').reverse(),",
+        "apps/desktop/src/main/providers/instruction-composition.ts",
+        "    ...candidates.filter((item) => item.kind === 'profile-memory'),\n    ...candidates.filter((item) => item.kind !== 'profile-memory').reverse(),",
         "    ...[...candidates].reverse(),",
     ),
     (

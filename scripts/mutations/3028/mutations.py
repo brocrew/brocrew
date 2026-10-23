@@ -119,10 +119,9 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M10 · a Claude message is split as if Codex's lead rode it · killed by "
         f"`{SAYS}`",
-        [(GIVEN,
-          # ⚑ **W4.179 · re-anchored in place, not retired** — the lead in front of a Codex message is read from the thread's record first now; the mutation still splits a Claude message as if Codex's lead rode it
-          "  const lead = claude ? null : (carriedHere?.text ?? (carries(sent) ? block : null))\n",
-          "  const lead = carriedHere?.text ?? (carries(sent) ? block : null)\n")],
+        [
+            ("apps/desktop/src/main/runtime/what-this-agent-was-given.ts", "  const lead = inSystem ? null : (carriedHere?.text ?? (carries(sent) ? block : null))\n", "  const lead = carriedHere?.text ?? (carries(sent) ? block : null)\n"),
+        ],
     ),
     (
         "M11 · a held turn of several senders reads as its first sender's words, not as unknown · "

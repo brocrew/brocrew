@@ -187,11 +187,7 @@ MUTATIONS = [
         "misattribution arriving from the opposite side — the gate is measured in "
         "`claude/normalize.ts`, not assumed",
         [
-            (
-                NOTES,
-                "  claude: null,\n  codex: { dir: codexAdHocNotesDir },",
-                "  claude: { dir: codexAdHocNotesDir },\n  codex: { dir: codexAdHocNotesDir },",
-            )
+            ("apps/desktop/src/main/providers/claude/memory.ts", "  noteDirectory: () => null,", "  noteDirectory: home => join(home, 'memories', 'extensions', 'ad_hoc', 'notes'),"),
         ],
     ),
     (

@@ -77,29 +77,23 @@ MUTATIONS = [
         "M2 · ⛔ the drop is skipped and only the LABEL lands · both copies are appended and BOTH "
         "now wear this app's own word, so the sheet reports two kilobytes of factory text where "
         "there is one — ⚠️ and the panel says nothing, because the note is drawn on a drop",
-        [(READER, "  if (generated.length < 2) return null\n", "  if (generated.length < 3) return null\n")],
+        [
+            ("apps/desktop/src/main/providers/instruction-composition.ts", "  if (generated.length < 2) return null\n", "  if (generated.length < 3) return null\n"),
+        ],
     ),
     (
         "M3 · ⚠️ the FIRST of the two survives · the body arrives at the shallower position, which "
         "is not where the CLI puts it and not where the label has sat since `158` — ⛔ and the "
         "surviving row names `AGENTS.md`, the file this app publishes for the OTHER engine",
         [
-            (
-                READER,
-                "  const keep = generated[generated.length - 1]\n",
-                "  const keep = generated[0]\n",
-            )
+            ("apps/desktop/src/main/providers/instruction-composition.ts", "  const keep = generated[generated.length - 1]\n", "  const keep = generated[0]\n"),
         ],
     ),
     (
         "M4 · 🔴 the SURVIVOR is spliced out instead of the twin · the app drops the copy it kept "
         "and keeps the copy it meant to drop, so the prompt is one block short in the wrong place",
         [
-            (
-                READER,
-                "    candidates.splice(candidates.indexOf(item), 1)\n",
-                "    candidates.splice(candidates.indexOf(keep), 1)\n",
-            )
+            ("apps/desktop/src/main/providers/instruction-composition.ts", "    candidates.splice(candidates.indexOf(item), 1)\n", "    candidates.splice(candidates.indexOf(keep), 1)\n"),
         ],
     ),
     (
@@ -108,11 +102,7 @@ MUTATIONS = [
         "both engines get them* — ⛔ the workspace is not a repository and nobody shared anything "
         "(`164` §3.2, in the sibling of the file `164` §3.2 was written about)",
         [
-            (
-                READER,
-                "  for (const item of generated) item.kind = 'workspace-instructions'\n",
-                "  for (const item of generated) item.kind = 'repository-conventions'\n",
-            )
+            ("apps/desktop/src/main/providers/instruction-composition.ts", "  for (const item of generated) item.kind = 'workspace-instructions'\n", "  for (const item of generated) item.kind = 'repository-conventions'\n"),
         ],
     ),
     (
@@ -121,11 +111,7 @@ MUTATIONS = [
         "ours but no longer one text — both reach the model under the PLACE's word, which is the "
         "case a person is least able to check",
         [
-            (
-                READER,
-                "  for (const item of generated) item.kind = 'workspace-instructions'\n\n  // One copy",
-                "\n  // One copy",
-            )
+            ("apps/desktop/src/main/providers/instruction-composition.ts", "  for (const item of generated) item.kind = 'workspace-instructions'\n\n  // One copy", "\n  // One copy"),
         ],
     ),
     (
@@ -134,28 +120,15 @@ MUTATIONS = [
         "*each provider's conventional filename and voice* can differ — the day the Codex arm gets "
         "one, two different texts arrive under two names and ONE OF THEM IS DELETED, silently",
         [
-            (
-                READER,
-                "    if (item === keep || item.text !== keep.text) continue\n",
-                "    if (item === keep) continue\n",
-            )
+            ("apps/desktop/src/main/providers/instruction-composition.ts", "    if (item === keep || item.text !== keep.text) continue\n", "    if (item === keep) continue\n"),
         ],
     ),
     (
         "M8 · ⛔ the drop runs AFTER the budget · `allocate` has already copied the granted rows "
         "into `injected`, so the splice is invisible to the prompt while the relabel still lands "
         "through the shared object — two blocks reach the model and both wear this app's word",
-        # ⚑ Landing D-024, D-020 and D-021 · re-anchored in place, not retired — The rule survives:
-        # sendOurWorkspaceBodyOnce must run before the budget so the freed kilobyte is spendable and
-        # the splice reaches `injected`. D-024 only gave allocate a fourth argument
-        # (`conversationBlockCost(inputs.thisConversation)`), so the two-line anchor moved
-        # textually. The plant moves the call after allocate with the new signature; allocate has
-        # already copied the granted rows into `injected`, so both workspace blocks reach the prompt
-        # and the 'one block where there were two' test goes red. Killed by
-        # `the-same-kilobyte-once.test.ts`.
         [
-            # ⚑ **source-restoration · re-anchored in place, not retired** — NOT VERIFIED; source targeting only. bf266c0f1 added the agent preamble budget; preserve that argument and move only workspace-body deduplication after allocation.
-            (READER, "  const sentOnce = sendOurWorkspaceBodyOnce(candidates, inputs.workspaceOwnFiles)\n\n  allocate(\n    candidates,\n    injected,\n    refused,\n    conversationBlockCost(inputs.thisConversation),\n    agentPreamble(inputs.identity),\n  )\n", "  allocate(\n    candidates,\n    injected,\n    refused,\n    conversationBlockCost(inputs.thisConversation),\n    agentPreamble(inputs.identity),\n  )\n\n  const sentOnce = sendOurWorkspaceBodyOnce(candidates, inputs.workspaceOwnFiles)\n"),
+            ("apps/desktop/src/main/providers/claude/instructions.ts", "  const sentOnce = sendOurWorkspaceBodyOnce(candidates, inputs.workspaceOwnFiles)\n  allocate(\n    candidates,\n    injected,\n    refused,\n    conversationBlockCost(inputs.thisConversation),\n    agentPreamble(inputs.identity),\n  )\n", "  allocate(\n    candidates,\n    injected,\n    refused,\n    conversationBlockCost(inputs.thisConversation),\n    agentPreamble(inputs.identity),\n  )\n  const sentOnce = sendOurWorkspaceBodyOnce(candidates, inputs.workspaceOwnFiles)\n"),
         ],
     ),
     # ── §2 · BY BYTES, NEVER BY NAME ───────────────────────────────────────────────────────
@@ -166,11 +139,7 @@ MUTATIONS = [
         "agent's own words are dropped-and-kept as ours, labelled *generated by BroBot for this "
         "workspace*, and filed on the sheet under *nobody here can edit it*",
         [
-            (
-                READER,
-                "    return wrote !== undefined && item.text === wrote\n",
-                "    return wrote !== undefined\n",
-            )
+            ("apps/desktop/src/main/providers/instruction-composition.ts", "    return wrote !== undefined && item.text === wrote\n", "    return wrote !== undefined\n"),
         ],
     ),
     (
@@ -180,11 +149,7 @@ MUTATIONS = [
         "to say so and the survivor relabelled as BroBot's — 🔴 the blanket dedupe `576` ruled out, "
         "reached from the mirror direction of M9",
         [
-            (
-                READER,
-                "    const wrote = published.get(realPath(item.path))\n",
-                "    const wrote = ours.find((one) => one.content === item.text)?.content\n",
-            )
+            ("apps/desktop/src/main/providers/instruction-composition.ts", "    const wrote = published.get(realPath(item.path))\n", "    const wrote = ours.find((one) => one.content === item.text)?.content\n"),
         ],
     ),
     (
@@ -193,11 +158,7 @@ MUTATIONS = [
         "trailing digits — hands the model its own words under this app's name. ⛔ M9's harm for the "
         "price of one character",
         [
-            (
-                READER,
-                "    return wrote !== undefined && item.text === wrote\n",
-                "    return wrote !== undefined && item.bytes === Buffer.byteLength(wrote, 'utf8')\n",
-            )
+            ("apps/desktop/src/main/providers/instruction-composition.ts", "    return wrote !== undefined && item.text === wrote\n", "    return wrote !== undefined && item.bytes === Buffer.byteLength(wrote, 'utf8')\n"),
         ],
     ),
     (
@@ -206,11 +167,7 @@ MUTATIONS = [
         "written for and then removed, because the WHOLE-text compare already refuses it and a line "
         "no mutation can kill is not carrying its rule",
         [
-            (
-                READER,
-                "    return wrote !== undefined && item.text === wrote\n",
-                "    return wrote !== undefined && item.text.startsWith(wrote)\n",
-            )
+            ("apps/desktop/src/main/providers/instruction-composition.ts", "    return wrote !== undefined && item.text === wrote\n", "    return wrote !== undefined && item.text.startsWith(wrote)\n"),
         ],
     ),
     (
@@ -219,11 +176,7 @@ MUTATIONS = [
         "and the body goes twice again — ⚠️ `170` §4's property, silently absent on exactly the "
         "installs where somebody moved their workspace behind a link",
         [
-            (
-                READER,
-                "    const wrote = published.get(realPath(item.path))\n",
-                "    const wrote = published.get(resolve(item.path))\n",
-            )
+            ("apps/desktop/src/main/providers/instruction-composition.ts", "    const wrote = published.get(realPath(item.path))\n", "    const wrote = published.get(resolve(item.path))\n"),
         ],
     ),
     (
@@ -233,11 +186,7 @@ MUTATIONS = [
         "the sheet under *Ships with the app. Nobody here can edit it.* — ⛔ 086's provenance claim "
         "made about somebody else's bytes",
         [
-            (
-                READER,
-                "  for (const item of candidates) {\n    if (item.kind !== 'workspace-instructions' || generated.includes(item)) continue\n    item.kind = 'project-memory'\n  }\n",
-                "",
-            )
+            ("apps/desktop/src/main/providers/instruction-composition.ts", "  for (const item of candidates) {\n    if (item.kind !== 'workspace-instructions' || generated.includes(item)) continue\n    item.kind = 'project-memory'\n  }\n", ""),
         ],
     ),
     # ── §3 · the panel, and the wiring ─────────────────────────────────────────────────────
@@ -247,17 +196,15 @@ MUTATIONS = [
         "leaves the note saying the body *was appended once* over a prompt that got it zero times — "
         "⚠️ beside an `over-budget` row for the very file it names",
         [
-            (
-                READER,
-                "        sentOnce !== null && injected.includes(sentOnce.kept) ? sentOnce.dropped : null,\n",
-                "        sentOnce !== null ? sentOnce.dropped : null,\n",
-            )
+            ("apps/desktop/src/main/providers/claude/instructions.ts", "        sentOnce !== null && injected.includes(sentOnce.kept) ? sentOnce.dropped : null,\n", "        sentOnce !== null ? sentOnce.dropped : null,\n"),
         ],
     ),
     (
         "M16 · ⚠️ the note names the file that STAYED · a person checking the sentence opens the "
         "block that is in front of them and finds it named as the one that was not sent",
-        [(READER, "    dropped = item.path\n", "    dropped = keep.path\n")],
+        [
+            ("apps/desktop/src/main/providers/instruction-composition.ts", "    dropped = item.path\n", "    dropped = keep.path\n"),
+        ],
     ),
     # Retired: the edited operation or wording was deleted, rather than moved.
     # RETIREMENT APPROVED — 594 M17: anchor-absent; removed by 58398c57a. Generated workspace instruction

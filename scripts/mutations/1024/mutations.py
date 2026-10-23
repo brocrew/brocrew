@@ -152,15 +152,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     ),
     (
         "M15 · Codex's drawer note says nothing is appended while a conversation's text is sent · the note's lead sentence ignores whether this conversation's own text was composed — killed by `a-launch-lists-what-its-profiles-other-conversations-are-doing.test.ts` — killed by `a-launch-lists-what-its-profiles-other-conversations-are-doing.test.ts`",
-        # ⚑ Landing D-029, D-036, D-031 and D-039 through 7d54be3b · re-anchored in place, not retired —
-        # D-039 (17a9220d) renamed NOTE_SENDS_ONLY_THIS_CONVERSATION to NOTE_SENDS_THIS_CONVERSATIONS_TEXT
-        # ('sends this provider how to use its tools and what is true of this conversation') because the
-        # lead now also carries the tools. The rule is unchanged: the Codex drawer note must say what is
-        # sent whenever this conversation's own text was composed. The plant ignores sendsThisConversation
-        # and always uses the 'provider reads its own' lead. Killed by
-        # `a-launch-lists-what-its-profiles-other-conversations-are-doing.test.ts`.
         [
-            (INSTRUCTIONS, "  const lead = sendsThisConversation\n    ? NOTE_SENDS_THIS_CONVERSATIONS_TEXT\n    : NOTE_PROVIDER_READS_ITS_OWN\n", "  const lead = NOTE_PROVIDER_READS_ITS_OWN\n"),
+            ("apps/desktop/src/main/providers/codex/instructions.ts", "  const lead = sendsThisConversation\n    ? NOTE_SENDS_THIS_CONVERSATIONS_TEXT\n    : NOTE_PROVIDER_READS_ITS_OWN\n", "  const lead = NOTE_PROVIDER_READS_ITS_OWN\n"),
         ],
     ),
     (

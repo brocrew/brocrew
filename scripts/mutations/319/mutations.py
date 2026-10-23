@@ -409,18 +409,7 @@ MUTATIONS = [
         "than a gap, and a row that flips it is a panel telling a user to watch for something that "
         "will never come",
         [
-            (
-                INSTR,
-                # ⚑ **Anchor corrected in place at 330, not retired** (142, and
-                # `correct-a-stale-mutation-anchor-dont-retire-it`). It reached through to the
-                # function's closing braces to be unique; 330 added a SECOND flag to this same
-                # return — `writesReported` — so those braces stopped being adjacent and the row went
-                # red on a change that has nothing to do with what it protects. ⛔ The mutation is
-                # unchanged: still the Claude branch's `recallsReported` flipped to a promise this
-                # wire cannot keep. The line alone is unique here (the other site says `true`).
-                "    recallsReported: false,",
-                "    recallsReported: true,",
-            )
+            ("apps/desktop/src/main/providers/claude/instructions.ts", "    recallsReported: false,", "    recallsReported: true,"),
         ],
     ),
     (

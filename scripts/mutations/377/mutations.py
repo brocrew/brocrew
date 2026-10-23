@@ -294,27 +294,17 @@ MUTATIONS = [
         "M15 · 🔴 the refusal is not surfaced · the conflict is a value nobody renders, which is "
         "exactly *only logged* — the half HO-016 says must reach a person",
         [
-            (
-                READER,
-                "  if (inputs.bundle?.ok === false)\n    refused.push({ path: inputs.bundle.path, reason: inputs.bundle.reason })",
-                "",
-            )
+            ("apps/desktop/src/main/providers/claude/instructions.ts", "  if (inputs.bundle?.ok === false)\n    refused.push({ path: inputs.bundle.path, reason: inputs.bundle.reason })", ""),
+            ("apps/desktop/src/main/providers/codex/instructions.ts", "  if (inputs.bundle?.ok === false)\n    refused.push({ path: inputs.bundle.path, reason: inputs.bundle.reason })", ""),
         ],
     ),
     (
         "M16 · ⛔ the refusal is surfaced on ONE provider · moved below the Codex early return, so "
         "a Codex conflict — the only provider whose leaf the provider itself reads — is silent",
         [
-            (
-                READER,
-                "  if (inputs.bundle?.ok === false)\n    refused.push({ path: inputs.bundle.path, reason: inputs.bundle.reason })",
-                "",
-            ),
-            (
-                READER,
-                "  const agent = readClaudeAgentMemory(inputs.providerHome)\n  refused.push(...agent.refused)",
-                "  const agent = readClaudeAgentMemory(inputs.providerHome)\n  refused.push(...agent.refused)\n  if (inputs.bundle?.ok === false)\n    refused.push({ path: inputs.bundle.path, reason: inputs.bundle.reason })",
-            ),
+            ("apps/desktop/src/main/providers/claude/instructions.ts", "  if (inputs.bundle?.ok === false)\n    refused.push({ path: inputs.bundle.path, reason: inputs.bundle.reason })", ""),
+            ("apps/desktop/src/main/providers/codex/instructions.ts", "  if (inputs.bundle?.ok === false)\n    refused.push({ path: inputs.bundle.path, reason: inputs.bundle.reason })", ""),
+            ("apps/desktop/src/main/providers/claude/instructions.ts", "  const agent = readClaudeAgentMemory(inputs.providerHome)\n  refused.push(...agent.refused)", "  const agent = readClaudeAgentMemory(inputs.providerHome)\n  refused.push(...agent.refused)\n  if (inputs.bundle?.ok === false)\n    refused.push({ path: inputs.bundle.path, reason: inputs.bundle.reason })"),
         ],
     ),
     # ── §5 · the bridge, and the order of the list ────────────────────────────────────────────
@@ -322,56 +312,35 @@ MUTATIONS = [
         "M17 · 🔴 Codex is injected the repository's bytes as well · `364` §2.3's double supply — "
         "the provider gets its own native read AND a copy, on every request",
         [
-            (
-                READER,
-                # ⚑ **provider selection refactor · re-anchored in place, not retired** — The instruction-placement branch now uses an exhaustive selector; disabling it still injects repository bytes twice for Codex.
-                "  if (providerValue(inputs.provider, { claude: false, codex: true })) {\n",
-                "  if (false as boolean) {\n",
-            )
+            ("apps/desktop/src/main/runtime/instructions.ts", "  return providerKnowledge[inputs.provider].instructions.read(inputs)", "  return providerKnowledge['claude'].instructions.read(inputs)"),
         ],
     ),
     (
         "M18 · ⛔ an EMPTY project override stops shadowing · `362` §2's live matrix inverted, so "
         "Claude is given the `AGENTS.md` Codex is not reading",
         [
-            (
-                READER,
-                "  const override = join(dir, AGENTS_OVERRIDE_FILENAME)\n  if (safeStat(override) !== null) return override",
-                "  const override = join(dir, AGENTS_OVERRIDE_FILENAME)\n  const read = safeStat(override)\n  if (read !== null && read.size > 0) return override",
-            )
+            ("apps/desktop/src/main/providers/repository-instructions.ts", "  const override = join(dir, AGENTS_OVERRIDE_FILENAME)\n  if (safeStat(override) !== null) return override", "  const override = join(dir, AGENTS_OVERRIDE_FILENAME)\n  const read = safeStat(override)\n  if (read !== null && read.size > 0) return override"),
         ],
     ),
     (
         "M19 · 🔒 the bridge ignores the home boundary · a `.git` at or above `$HOME` puts a "
         "person's own `~/AGENTS.md` in a prompt — `170` §4's defect, arriving through the new walk",
         [
-            (
-                READER,
-                "  return chain.filter(\n    (dir) => !isHomeOrAbove(dir, homeResolved) && !isHomeOrAbove(realPath(dir), homeReal),\n  )",
-                "  return chain",
-            )
+            ("apps/desktop/src/main/providers/repository-instructions.ts", "  return chain.filter(\n    (dir) => !isHomeOrAbove(dir, homeResolved) && !isHomeOrAbove(realPath(dir), homeReal),\n  )", "  return chain"),
         ],
     ),
     (
         "M20 · ⛔ the shared file lands after the Claude-only one · the same-depth overlay is "
         "inverted, so a repository's shared conventions read as an override of its Claude prose",
         [
-            (
-                READER,
-                "    const convention = conventions.get(dir)\n    if (convention !== undefined) take(convention, 'repository-conventions')",
-                "",
-            )
+            ("apps/desktop/src/main/providers/claude/instructions.ts", "    const convention = conventions.get(dir)\n    if (convention !== undefined) take(convention, 'repository-conventions')", ""),
         ],
     ),
     (
         "M21 · ⛔ the app's own bundle lands after the agent's memory file · what the app says this "
         "agent IS arrives below what the agent wrote about itself, and loses the budget first",
         [
-            (
-                READER,
-                "  if (inputs.bundle?.ok === true) take(inputs.bundle.path, 'profile-instructions')",
-                "",
-            )
+            ("apps/desktop/src/main/providers/claude/instructions.ts", "  if (inputs.bundle?.ok === true) take(inputs.bundle.path, 'profile-instructions')", ""),
         ],
     ),
     # ── §6 · the role seed ────────────────────────────────────────────────────────────────────

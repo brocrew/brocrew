@@ -60,17 +60,7 @@ MUTATIONS = [
         "reports its index and nothing else — the state `main` was in before this dispatch, and the "
         "reason friction log F8 says the panel under-reports the provider the person is NOT testing",
         [
-            (
-                INSTR,
-                "    ...topics.names.slice(0, AGENT_MEMORY_NOTES_SHOWN).map((name) => ({\n"
-                "      path: join(dir, name),\n"
-                "      derived: join(realDir, name),\n"
-                "      kind: 'agent-memory-topic' as const,\n",
-                "    ...[].slice(0, AGENT_MEMORY_NOTES_SHOWN).map((name: string) => ({\n"
-                "      path: join(dir, name),\n"
-                "      derived: join(realDir, name),\n"
-                "      kind: 'agent-memory-topic' as const,\n",
-            )
+            ("apps/desktop/src/main/providers/claude/memory.ts", "    ...topics.names.slice(0, AGENT_MEMORY_NOTES_SHOWN).map((name) => ({\n      path: join(dir, name),\n      derived: join(realDir, name),\n      kind: 'agent-memory-topic' as const,\n", "    ...[].slice(0, AGENT_MEMORY_NOTES_SHOWN).map((name: string) => ({\n      path: join(dir, name),\n      derived: join(realDir, name),\n      kind: 'agent-memory-topic' as const,\n"),
         ],
     ),
     (
@@ -78,11 +68,7 @@ MUTATIONS = [
         "reports two and `MEMORY.md` is drawn twice — once as the file the provider injects and "
         "once as a memory it does not",
         [
-            (
-                INSTR,
-                "  return { names: listed.names.filter(isClaudeMemoryTopic), refused: listed.refused }",
-                "  return { names: listed.names, refused: listed.refused }",
-            )
+            ("apps/desktop/src/main/providers/claude/memory.ts", "  return { names: listed.names.filter(isClaudeMemoryTopic), refused: listed.refused }", "  return { names: listed.names, refused: listed.refused }"),
         ],
     ),
     (
@@ -91,16 +77,7 @@ MUTATIONS = [
         "is worse than one that shows nothing — and the probe measured this child answering *'the "
         "actual codename value isn't shown in the memory index provided to me'*",
         [
-            (
-                INSTR,
-                "      kind: 'agent-memory-topic' as const,\n"
-                "      // ⚠️ Availability, never comprehension — the same word Codex's notes get, for the same\n"
-                "      // reason: the file is in the store and the agent can open it. Saying the model \"has\" it\n"
-                "      // would be 305's defect with a friendlier face.\n"
-                "      reach: 'on-request' as const,",
-                "      kind: 'agent-memory-topic' as const,\n"
-                "      reach: 'prompt' as const,",
-            )
+            ("apps/desktop/src/main/providers/claude/memory.ts", "      kind: 'agent-memory-topic' as const,\n      // ⚠️ Availability, never comprehension — the same word Codex's notes get, for the same\n      // reason: the file is in the store and the agent can open it. Saying the model \"has\" it\n      // would be 305's defect with a friendlier face.\n      reach: 'on-request' as const,", "      kind: 'agent-memory-topic' as const,\n      reach: 'prompt' as const,"),
         ],
     ),
     (
@@ -108,11 +85,7 @@ MUTATIONS = [
         "twenty memories shows the index and one memory. ⛔ It is `M1` wearing a number instead of "
         "an absence, and the note sentence's count is what would have to catch it",
         [
-            (
-                INSTR,
-                "    ...topics.names.slice(0, AGENT_MEMORY_NOTES_SHOWN).map((name) => ({",
-                "    ...topics.names.slice(0, 1).map((name) => ({",
-            )
+            ("apps/desktop/src/main/providers/claude/memory.ts", "    ...topics.names.slice(0, AGENT_MEMORY_NOTES_SHOWN).map((name) => ({", "    ...topics.names.slice(0, 1).map((name) => ({"),
         ],
     ),
     # ── the enumeration guards ────────────────────────────────────────────────────────────────
@@ -121,12 +94,7 @@ MUTATIONS = [
         "read: symlink'* sends somebody looking for a decision the app never made — `314` §3's "
         "rule, on the shared block `322` extracted it into",
         [
-            (
-                INSTR,
-                "    const broken = brokenMemoryLink(dir)\n"
-                "    if (broken !== null) return { names: [], refused: broken }\n",
-                "",
-            )
+            ("apps/desktop/src/main/providers/instruction-io.ts", "    const broken = brokenMemoryLink(dir)\n    if (broken !== null) return { names: [], refused: broken }\n", ""),
         ],
     ),
     (
@@ -134,11 +102,7 @@ MUTATIONS = [
         "another disk on purpose gets `314` §3's row back — the one that told somebody their memory "
         "was gone — on a store this app has already read the index out of",
         [
-            (
-                INSTR,
-                "    if (!followLink) return { names: [], refused: { path: dir, reason: 'symlink' } }",
-                "    return { names: [], refused: { path: dir, reason: 'symlink' } }",
-            )
+            ("apps/desktop/src/main/providers/instruction-io.ts", "    if (!followLink) return { names: [], refused: { path: dir, reason: 'symlink' } }", "    return { names: [], refused: { path: dir, reason: 'symlink' } }"),
         ],
     ),
     (
@@ -147,11 +111,7 @@ MUTATIONS = [
         "walked and the whole store's shape comes from the link — `317`'s ruling, which `§4` says "
         "may not be re-decided here",
         [
-            (
-                INSTR,
-                "  const listed = memoryDirNames(notesDir, false)",
-                "  const listed = memoryDirNames(notesDir, true)",
-            )
+            ("apps/desktop/src/main/providers/instruction-io.ts", "  const listed = memoryDirNames(notesDir, false)", "  const listed = memoryDirNames(notesDir, true)"),
         ],
     ),
     (
@@ -159,11 +119,7 @@ MUTATIONS = [
         "folder — or anything a person put in the store — is read as a file the agent filed and "
         "opened as a document",
         [
-            (
-                INSTR,
-                "      .filter((entry) => !entry.isDirectory() && entry.name.endsWith('.md'))",
-                "      .filter((entry) => entry.name.endsWith('.md'))",
-            )
+            ("apps/desktop/src/main/providers/instruction-io.ts", "      .filter((entry) => !entry.isDirectory() && entry.name.endsWith('.md'))", "      .filter((entry) => entry.name.endsWith('.md'))"),
         ],
     ),
     # ── order, cap and budget ─────────────────────────────────────────────────────────────────
@@ -172,16 +128,7 @@ MUTATIONS = [
         "an order this store has: these names are subjects, not timestamps, and the provider's own "
         "instruction is *'organize memory semantically by topic, not chronologically'*",
         [
-            (
-                INSTR,
-                "  const listed = memoryDirNames(dir, true)\n"
-                "  return { names: listed.names.filter(isClaudeMemoryTopic), refused: listed.refused }",
-                "  const listed = memoryDirNames(dir, true)\n"
-                "  return {\n"
-                "    names: [...listed.names].reverse().filter(isClaudeMemoryTopic),\n"
-                "    refused: listed.refused,\n"
-                "  }",
-            )
+            ("apps/desktop/src/main/providers/claude/memory.ts", "  const listed = memoryDirNames(dir, true)\n  return { names: listed.names.filter(isClaudeMemoryTopic), refused: listed.refused }", "  const listed = memoryDirNames(dir, true)\n  return {\n    names: [...listed.names].reverse().filter(isClaudeMemoryTopic),\n    refused: listed.refused,\n  }"),
         ],
     ),
     (
@@ -189,11 +136,7 @@ MUTATIONS = [
         "drawer whose whole design is *'the paths are the disclosure'* — `317` §3's judgement, "
         "which `322` inherited rather than re-made",
         [
-            (
-                INSTR,
-                "    ...topics.names.slice(0, AGENT_MEMORY_NOTES_SHOWN).map((name) => ({",
-                "    ...topics.names.map((name) => ({",
-            )
+            ("apps/desktop/src/main/providers/claude/memory.ts", "    ...topics.names.slice(0, AGENT_MEMORY_NOTES_SHOWN).map((name) => ({", "    ...topics.names.map((name) => ({"),
         ],
     ),
     (
@@ -201,13 +144,7 @@ MUTATIONS = [
         "`187` §2's own defect in the field whose documented job is to let the list above be read as "
         "complete",
         [
-            (
-                INSTR,
-                "  if (read.topicsFound > read.topicsListed) {\n"
-                "    parts.push(`${read.topicsListed} of ${read.topicsFound} memories are listed here, by name.`)\n"
-                "  }\n",
-                "",
-            )
+            ("apps/desktop/src/main/providers/claude/instructions.ts", "  if (read.topicsFound > read.topicsListed) {\n    parts.push(`${read.topicsListed} of ${read.topicsFound} memories are listed here, by name.`)\n  }\n", ""),
         ],
     ),
     (
@@ -215,25 +152,7 @@ MUTATIONS = [
         "topic files evicts the one file the model was actually given and the panel shows twenty "
         "things the agent might read and not the thing it was told",
         [
-            (
-                INSTR,
-                "  const read = readMemoryStore([\n"
-                "    {\n"
-                "      path: claudeAutoMemoryIndex(providerHome),\n"
-                "      derived: claudeAutoMemoryIndex(realPath(providerHome)),\n"
-                "      kind: 'agent-memory',",
-                "  const read = readMemoryStore([\n"
-                "    ...topics.names.slice(0, AGENT_MEMORY_NOTES_SHOWN).map((name) => ({\n"
-                "      path: join(dir, name),\n"
-                "      derived: join(realDir, name),\n"
-                "      kind: 'agent-memory-topic' as const,\n"
-                "      reach: 'on-request' as const,\n"
-                "    })),\n"
-                "    {\n"
-                "      path: claudeAutoMemoryIndex(providerHome),\n"
-                "      derived: claudeAutoMemoryIndex(realPath(providerHome)),\n"
-                "      kind: 'agent-memory',",
-            )
+            ("apps/desktop/src/main/providers/claude/memory.ts", "  const read = readMemoryStore([\n    {\n      path: claudeAutoMemoryIndex(providerHome),\n      derived: claudeAutoMemoryIndex(realPath(providerHome)),\n      kind: 'agent-memory',", "  const read = readMemoryStore([\n    ...topics.names.slice(0, AGENT_MEMORY_NOTES_SHOWN).map((name) => ({\n      path: join(dir, name),\n      derived: join(realDir, name),\n      kind: 'agent-memory-topic' as const,\n      reach: 'on-request' as const,\n    })),\n    {\n      path: claudeAutoMemoryIndex(providerHome),\n      derived: claudeAutoMemoryIndex(realPath(providerHome)),\n      kind: 'agent-memory',"),
         ],
     ),
     # ── the sentence ──────────────────────────────────────────────────────────────────────────
@@ -242,11 +161,7 @@ MUTATIONS = [
         "about an index pointing at files it does not have — `086` in the other direction, `§4`'s "
         "*'must render exactly as it does today'*, and `317` M25's own defect class",
         [
-            (
-                INSTR,
-                "  if (read.dir === null || read.topicsFound === 0) return ''",
-                "  if (read.dir === null) return ''",
-            )
+            ("apps/desktop/src/main/providers/claude/instructions.ts", "  if (read.dir === null || read.topicsFound === 0) return ''", "  if (read.dir === null) return ''"),
         ],
     ),
     (
@@ -254,15 +169,7 @@ MUTATIONS = [
         "somebody looking for a file they are standing on. ⛔ The reader skips an empty file, and "
         "the provider's own prompt in that state says *'Your MEMORY.md is currently empty'*",
         [
-            (
-                INSTR,
-                "        `Nothing in ${read.dir} reaches the model on its own yet: ${AUTO_MEMORY_INDEX} is the ` +\n"
-                "        'only file the provider puts in front of it, and there is nothing in this profile’s. The ' +\n"
-                "        'agent reads what is here only if it chooses to.',",
-                "        `Nothing in ${read.dir} is in front of the model yet — ${AUTO_MEMORY_INDEX} is the ` +\n"
-                "        'only file the provider puts there and this profile has none, so the agent reads what ' +\n"
-                "        'is here only if it chooses to.',",
-            )
+            ("apps/desktop/src/main/providers/claude/instructions.ts", "        `Nothing in ${read.dir} reaches the model on its own yet: ${AUTO_MEMORY_INDEX} is the ` +\n        'only file the provider puts in front of it, and there is nothing in this profile’s. The ' +\n        'agent reads what is here only if it chooses to.',", "        `Nothing in ${read.dir} is in front of the model yet — ${AUTO_MEMORY_INDEX} is the ` +\n        'only file the provider puts there and this profile has none, so the agent reads what ' +\n        'is here only if it chooses to.',"),
         ],
     ),
     (
@@ -270,13 +177,7 @@ MUTATIONS = [
         "pile of files beside it with nothing saying how the two are related — `§3.2`'s question, "
         "answered by silence",
         [
-            (
-                INSTR,
-                "      ? `${AUTO_MEMORY_INDEX} in ${read.dir} is an index the provider puts in front of the ` +\n"
-                "        'model; the memories it points at are separate files beside it, which the agent reads ' +\n"
-                "        'only if it chooses to.'",
-                "      ? `${read.dir} holds this profile's memory.`",
-            )
+            ("apps/desktop/src/main/providers/claude/instructions.ts", "      ? `${AUTO_MEMORY_INDEX} in ${read.dir} is an index the provider puts in front of the ` +\n        'model; the memories it points at are separate files beside it, which the agent reads ' +\n        'only if it chooses to.'", "      ? `${read.dir} holds this profile's memory.`"),
         ],
     ),
     # ── the panel ─────────────────────────────────────────────────────────────────────────────
@@ -298,11 +199,7 @@ MUTATIONS = [
         "every file in the store is labelled *'loaded by the provider'* — which is true of exactly "
         "one of them, and is the claim `M3` makes in the reader",
         [
-            (
-                INSTR,
-                "      kind: 'agent-memory-topic' as const,",
-                "      kind: 'agent-memory' as const,",
-            )
+            ("apps/desktop/src/main/providers/claude/memory.ts", "      kind: 'agent-memory-topic' as const,", "      kind: 'agent-memory' as const,"),
         ],
     ),
     (
@@ -355,11 +252,7 @@ MUTATIONS = [
         "the leaf read walking up to the directory and once by the listing that met the same broken "
         "link — so the one panel whose job is to be readable carries the same fact on two rows",
         [
-            (
-                INSTR,
-                "  if (topics.refused !== null && !read.refused.some((row) => row.path === topics.refused?.path)) {",
-                "  if (topics.refused !== null) {",
-            )
+            ("apps/desktop/src/main/providers/claude/memory.ts", "  if (topics.refused !== null && !read.refused.some((row) => row.path === topics.refused?.path)) {", "  if (topics.refused !== null) {"),
         ],
     ),
     (
@@ -367,11 +260,7 @@ MUTATIONS = [
         "it points at, so every working redirect is refused as `not-a-regular-file` — `M6`'s row "
         "under a different word, and this one is silent about being a link at all",
         [
-            (
-                INSTR,
-                "  const target = seen.isSymbolicLink() ? safeStat(dir) : seen",
-                "  const target = seen",
-            )
+            ("apps/desktop/src/main/providers/instruction-io.ts", "  const target = seen.isSymbolicLink() ? safeStat(dir) : seen", "  const target = seen"),
         ],
     ),
     # ── the Codex control ─────────────────────────────────────────────────────────────────────
@@ -382,11 +271,7 @@ MUTATIONS = [
         "`322` did not quietly re-decide the other provider's half while refactoring under it, and "
         "the only one whose defect lands on both",
         [
-            (
-                INSTR,
-                "      .map((entry) => entry.name)\n      .sort()\n",
-                "      .map((entry) => entry.name)\n      .sort()\n      .reverse()\n",
-            )
+            ("apps/desktop/src/main/providers/instruction-io.ts", "      .map((entry) => entry.name)\n      .sort()\n", "      .map((entry) => entry.name)\n      .sort()\n      .reverse()\n"),
         ],
     ),
 ]

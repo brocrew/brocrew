@@ -382,7 +382,9 @@ MUTATIONS = [
         "nothing at all — the state one real profile is in, left over from 293 "
         "· EXPECTED (NOT MEASURED): desktop 2 red (instructions), dom GREEN — ⚠️ the DOM row is fed a "
         "constructed payload and cannot reach the main-process decision",
-        [(INSTRUCTIONS, "    if (!seen.isSymbolicLink()) continue\n", "    continue\n")],
+        [
+            ("apps/desktop/src/main/providers/instruction-io.ts", "    if (!seen.isSymbolicLink()) continue\n", "    continue\n"),
+        ],
     ),
     (
         "M23 · ⛔ only the leaf is checked, so a broken link at the `memory/` DIRECTORY is silent — "
@@ -390,11 +392,7 @@ MUTATIONS = [
         "to it. 170's `link` field covered both; this would cover one "
         "· EXPECTED (NOT MEASURED): desktop 1 red, runtime GREEN, dom GREEN",
         [
-            (
-                INSTRUCTIONS,
-                "  for (const candidate of [path, dirname(path)]) {\n",
-                "  for (const candidate of [path]) {\n",
-            )
+            ("apps/desktop/src/main/providers/instruction-io.ts", "  for (const candidate of [path, dirname(path)]) {\n", "  for (const candidate of [path]) {\n"),
         ],
     ),
     (
@@ -403,11 +401,7 @@ MUTATIONS = [
         "links this row exists for. `realpath` cannot answer for a link that leads nowhere "
         "· EXPECTED (NOT MEASURED): desktop 2 red, runtime GREEN, dom GREEN",
         [
-            (
-                INSTRUCTIONS,
-                "      target = resolve(dirname(candidate), readlinkSync(candidate))\n",
-                "      target = resolve(dirname(candidate), realpathSync(candidate))\n",
-            )
+            ("apps/desktop/src/main/providers/instruction-io.ts", "      target = resolve(dirname(candidate), readlinkSync(candidate))\n", "      target = resolve(dirname(candidate), realpathSync(candidate))\n"),
         ],
     ),
     (
@@ -415,7 +409,9 @@ MUTATIONS = [
         "no index written yet is reported as a broken link — a warning on every profile that has just "
         "started remembering, which is 086 in the direction 170 ruled against "
         "· EXPECTED (NOT MEASURED): desktop 1 red, runtime GREEN, dom GREEN",
-        [(INSTRUCTIONS, "    if (!seen.isSymbolicLink()) continue\n", "")],
+        [
+            ("apps/desktop/src/main/providers/instruction-io.ts", "    if (!seen.isSymbolicLink()) continue\n", ""),
+        ],
     ),
     (
         "M26 · ⛔ the panel stops drawing the target, so the row says a link is broken and never says "
@@ -443,7 +439,9 @@ MUTATIONS = [
         "index written into it yet — is announced as a memory that is gone. ⚑ Found reviewing 314's "
         "own diff: the first draft asked only *is this a symlink* "
         "· EXPECTED (NOT MEASURED): desktop 1 red, runtime GREEN, dom GREEN",
-        [(INSTRUCTIONS, "    if (resolves(candidate)) continue\n", "")],
+        [
+            ("apps/desktop/src/main/providers/instruction-io.ts", "    if (resolves(candidate)) continue\n", ""),
+        ],
     ),
     (
         "M29 · ⚠️ a zero-byte `config.toml` is treated as an existing document, so the four keys are "
