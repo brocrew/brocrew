@@ -53,6 +53,7 @@ export interface VerifiedPluginPackage {
   readFile(path: string): Uint8Array | undefined
 }
 export interface VerifiedPluginCatalogue {
+  readonly format: 1 | 2
   readonly entries: readonly Readonly<PluginRelease>[]
   readonly pins: readonly PluginReleasePin[]
   verifyPackage(id: string, version: string, downloaded: Uint8Array): VerifiedPluginPackage
@@ -174,6 +175,8 @@ function catalogueVerifier(
       const bytes = Buffer.from(input)
       authenticate(bytes, signature)
       const entries = freeze(parsePluginCatalogue(bytes))
+      const format = (strictPluginJson(bytes, PLUGIN_LIMITS.catalogueBytes) as { format: 1 | 2 })
+        .format
       const nextPins = new Map(pins)
       for (const entry of entries)
         remember(
@@ -187,6 +190,7 @@ function catalogueVerifier(
         )
       for (const [key, pin] of nextPins) pins.set(key, pin)
       return Object.freeze({
+        format,
         entries,
         pins: Object.freeze([...pins.values()]),
         verifyPackage(id: string, version: string, input: Uint8Array): VerifiedPluginPackage {

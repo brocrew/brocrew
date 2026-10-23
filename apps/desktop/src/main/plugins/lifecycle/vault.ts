@@ -1,7 +1,11 @@
 import type { KeyObject } from 'node:crypto'
 import { join } from 'node:path'
 import { readdir } from 'node:fs/promises'
-import { createRepoAwarePluginVerifier, type PluginReleasePin } from '../package-verifier'
+import {
+  createRepoAwarePluginVerifier,
+  type PluginReleasePin,
+  type VerifiedPluginCatalogue,
+} from '../package-verifier'
 import type { PluginRelease, PluginTarget } from '../package-schema'
 import { PLUGIN_LIMITS, pluginSha256 } from '../package-digests'
 import {
@@ -29,6 +33,7 @@ export class PluginPackageVault {
     directory: string,
     release: Readonly<VaultRelease>,
     pins: readonly PluginReleasePin[],
+    admitted?: VerifiedPluginCatalogue,
   ) {
     const proofName = this.repoCatalogueSha256 ? 'catalogue.sha256' : 'catalogue.sig'
     const names = (await readdir(directory)).sort()
@@ -74,7 +79,7 @@ export class PluginPackageVault {
       entry.manifestSha256 !== release.manifestSha256
     )
       throw new PluginSupervisorError('unavailable')
-    return verified.verifyPackage(release.id, release.version, archive)
+    return (admitted ?? verified).verifyPackage(release.id, release.version, archive)
   }
   async stage(
     release: Readonly<PluginRelease>,
@@ -102,10 +107,14 @@ export class PluginPackageVault {
     )
     return this.checked(kept, release, pins)
   }
-  async load(release: Readonly<VaultRelease>, pins: readonly PluginReleasePin[]) {
+  async load(
+    release: Readonly<VaultRelease>,
+    pins: readonly PluginReleasePin[],
+    admitted?: VerifiedPluginCatalogue,
+  ) {
     const folder = await privateChild(this.root, 'package-vault', false)
     const directory = await privateChild(folder, release.archive.sha256, false)
-    return this.checked(directory, release, pins)
+    return this.checked(directory, release, pins, admitted)
   }
   async remove(
     release: Readonly<VaultRelease>,
