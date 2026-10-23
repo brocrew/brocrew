@@ -1,3 +1,4 @@
+import { splitQualified, CLAUDE_TOOL_NAMING } from '@brobot2/runtime'
 import { scanRetention } from './retention'
 import { filesOf, memoryNotesOf } from './conversation-files'
 import { readChild } from './child-work'
@@ -8,6 +9,7 @@ import { nativePath, ownsRecord, newestReplyModel } from './native-record'
 import type { TranscriptPolicy } from '../transcript-policy'
 export const CLAUDE_JSONL = 'claude-jsonl'
 export const transcripts: TranscriptPolicy = {
+  splitToolName: (name) => splitQualified(CLAUDE_TOOL_NAMING, name),
   readEarlierModel: (home, file) => (ownsRecord(home, file) ? newestReplyModel(file) : null),
   keepEarlierReportedEffort: () => true,
   whatDeletionLeaves: () => [
@@ -31,5 +33,5 @@ export const transcripts: TranscriptPolicy = {
   }),
 }
 
-/** The provider of the receipt rows written before the ledger carried a provider field. */
+/** The provider of the scheduling receipt format read by this build. */
 export const recordedScheduleReceiptProvider = 'claude'

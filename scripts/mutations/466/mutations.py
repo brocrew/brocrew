@@ -265,11 +265,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "conversations go silent — *a join that compared BARE names would match nothing on Claude "
         "and would look exactly like a conversation whose tools did not arrive*",
         [
-            (
-                FOLD,
-                "  for (const naming of [CLAUDE_TOOL_NAMING, CODEX_TOOL_NAMING]) {",
-                "  for (const naming of [CODEX_TOOL_NAMING]) {",
-            )
+            ("apps/desktop/src/main/providers/claude/transcripts.ts", "  splitToolName: (name) => splitQualified(CLAUDE_TOOL_NAMING, name),", "  splitToolName: () => null,"),
         ],
     ),
     (
@@ -278,14 +274,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "exists to replace the transcript, and a summary of the WORK rather than of an act in the "
         "workspace",
         [
-            (
-                FOLD,
-                OUR_TOOL,
-                "  for (const naming of [CLAUDE_TOOL_NAMING, CODEX_TOOL_NAMING]) {\n"
-                "    const split = splitQualified(naming, name)\n"
-                "    if (split !== null) return split.tool\n"
-                "  }\n",
-            )
+            ("apps/desktop/src/main/runtime/digest.ts", "  for (const provider of SUPPORTED_PROVIDERS) {\n    const split = providerDefinitions[provider].transcripts.splitToolName?.(name) ?? null\n    if (split !== null && split.server === AGENT_TOOL_SERVER) return split.tool\n  }\n", "  for (const provider of SUPPORTED_PROVIDERS) {\n    const split = providerDefinitions[provider].transcripts.splitToolName?.(name) ?? null\n    if (split !== null) return split.tool\n  }\n"),
         ],
     ),
     (
