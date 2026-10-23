@@ -461,7 +461,7 @@ describe('§3 · no text main or a package composes writes a task number of its 
         'apps/desktop/src/main/runtime/factory-text.ts · heading: `## ${YOUR_OWN_INSTRUCTIONS_HEADING}`,',
         'apps/desktop/src/main/runtime/factory-text.ts · heading: `## ${SAVED_METHODS_HEADING}`,',
         // ⚑ the same saved-methods heading, found in a Codex lead to scrub its index lines
-        'apps/desktop/src/main/archive/codex-injected.ts · const SAVED_METHODS_SECTION = `\\n\\n## ${SAVED_METHODS_HEADING}\\n\\n`',
+        'apps/desktop/src/main/providers/codex/codex-injected.ts · const SAVED_METHODS_SECTION = `\\n\\n## ${SAVED_METHODS_HEADING}\\n\\n`',
         // ⚑ a TOML comment in a provider's config file
         'packages/runtime/src/codex/memory-config.ts · return `# ${setting.key}: ${setting.why}`',
         // ⚑ a CSS hex colour the theme module writes
