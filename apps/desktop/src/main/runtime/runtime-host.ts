@@ -4512,15 +4512,8 @@ function aRefusedGiveOnlyHeardHousekeeping(event: TranscriptEvent): boolean {
 
 /** An explicit, complete empty terminal level is startup state, not a job that ran or ended. */
 function aGiveReopenOnlyHeardHousekeeping(event: TranscriptEvent): boolean {
-  return (
-    (authPolicyForNotice(event)?.protocol.reopenedGive(event) ?? false) ||
-    (event.type === 'background_work' &&
-      event.source === 'thread/backgroundTerminals/list' &&
-      Array.isArray(event.running) &&
-      event.running.length === 0 &&
-      event.ended === undefined &&
-      (event.dropped === undefined || event.dropped === 0) &&
-      Object.keys(event).every((key) => ['type', 'source', 'running', 'dropped'].includes(key)))
+  return SUPPORTED_PROVIDERS.some((provider) =>
+    providerAuthPolicies[provider].protocol.reopenedGive(event),
   )
 }
 

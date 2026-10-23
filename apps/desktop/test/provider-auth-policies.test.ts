@@ -195,7 +195,11 @@ describe('provider authentication policy facts', () => {
 
   it('owns the complete empty terminal-list startup notice', () => {
     const own = policies().codex.protocol
-    const empty = { type: 'background_work', source: 'thread/backgroundTerminals/list', running: [] }
+    const empty = {
+      type: 'background_work',
+      source: 'thread/backgroundTerminals/list',
+      running: [],
+    }
     expect(own.reopenedGive(empty)).toBe(true)
     expect(own.reopenedGive({ ...empty, dropped: 0 })).toBe(true)
     expect(own.refusedGive(empty)).toBe(false)
@@ -209,6 +213,7 @@ describe('provider authentication policy facts', () => {
       { ...empty, dropped: 1 },
       { ...empty, provider: 'codex' as const },
       { ...empty, label: undefined },
-    ]) expect(own.reopenedGive(changed)).toBe(false)
+    ])
+      expect(own.reopenedGive(changed)).toBe(false)
   })
 })
