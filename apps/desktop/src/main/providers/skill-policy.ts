@@ -11,7 +11,7 @@ export interface SkillPolicy {
   asGiven(listed: ListedSkills | null, builtIn: boolean): GivenSkills
   needsReminders(confirmed: () => boolean | undefined): boolean
   readonly builtInScope: string | null
-  readonly discoveryRoot: 'claude-plugin' | 'codex/skills'
+  readonly discoveryRoot: string
   initialFiles(): Map<string, string>
   fileFor(name: string): string
   launchedEntry(

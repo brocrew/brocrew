@@ -19,7 +19,7 @@ export interface BuiltInSkillView {
     readonly sha256: string
     readonly bytes: number
   }[]
-  readonly discoveryRoot: 'claude-plugin' | 'codex/skills'
+  readonly discoveryRoot: string
 }
 
 /** A launch view contains instructions only: no hooks, commands, servers or executable resources. */
