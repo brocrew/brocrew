@@ -61,7 +61,7 @@ export interface UserProviderHome {
 }
 
 export function userProviderHomePath(provider: Provider, env = process.env): string {
-  return providerDefinitions[provider].discovery.userHome(env, homedir())
+  return providerDefinitions[provider].discovery.userHome(env, homedir)
 }
 
 /**
