@@ -537,6 +537,10 @@ describe('413 · words the person did not say', () => {
     ] as const
 
     it('🔴 every `user_turn` this app publishes says who wrote it, in code and not in prose', () => {
+      const transcriptImporters = new Set([
+        'providers/claude/import-transcript.ts',
+        'providers/codex/import-transcript.ts',
+      ])
       // ⛔ **The whole file set, walked** — `413` §3: *"derived from the call sites, not from a
       // list in this brief."* ⚠️ A census that named `runtime-host.ts` would be blind to the next
       // file that learns to publish one, which is the shape of the defect being closed.
@@ -544,11 +548,9 @@ describe('413 · words the person did not say', () => {
         .map((file) => ({ path: file.path, literals: userTurnLiterals(file.text) }))
         .filter((file) => file.literals.length > 0)
       // ⚑ **The two families, and the count is stated so a NEW one has to be classified here.**
-      expect(publishing.map((file) => file.path).sort()).toEqual([
-        'archive/import-claude.ts',
-        'archive/import-codex.ts',
-        'runtime/runtime-host.ts',
-      ])
+      expect(publishing.map((file) => file.path).sort()).toEqual(
+        [...transcriptImporters, 'runtime/runtime-host.ts'].sort(),
+      )
       const total = publishing.reduce((sum, file) => sum + file.literals.length, 0)
       // 🔴 **D-027 · seven, where it was six** — the flush publishes ONE `user_turn` for a turn of
       // several held messages, with each message as a part, beside the one it publishes for one.
@@ -558,7 +560,7 @@ describe('413 · words the person did not say', () => {
       const used = new Map(MARKINGS.map((marking) => [marking, 0]))
       for (const file of publishing) {
         for (const literal of file.literals) {
-          if (file.path.startsWith('archive/')) {
+          if (transcriptImporters.has(file.path)) {
             // ⛔ **An importer is not delivering a turn to a provider** — it is reading a file that
             // CLAIMS the person said something, which is `074`'s finding and its own value.
             expect(literal, `${file.path}: ${literal}`).toContain(
