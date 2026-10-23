@@ -124,6 +124,16 @@ MUTATIONS = [
         ],
     ),
     (
+        # ⚑ Landing D-024, D-020 and D-021 · re-anchored in place, not retired — The rule survives:
+        # sendOurWorkspaceBodyOnce must run before the budget so the freed kilobyte is spendable and
+        # the splice reaches `injected`. D-024 only gave allocate a fourth argument
+        # (`conversationBlockCost(inputs.thisConversation)`), so the two-line anchor moved
+        # textually. The plant moves the call after allocate with the new signature; allocate has
+        # already copied the granted rows into `injected`, so both workspace blocks reach the prompt
+        # and the 'one block where there were two' test goes red. Killed by
+        # `the-same-kilobyte-once.test.ts`.
+        # ⚑ **source-restoration · re-anchored in place, not retired** — NOT VERIFIED; source targeting only. bf266c0f1 added the agent preamble budget; preserve that argument and move only workspace-body deduplication after allocation.
+        # The native subject moved; this row retains its original fault.
         "M8 · ⛔ the drop runs AFTER the budget · `allocate` has already copied the granted rows "
         "into `injected`, so the splice is invisible to the prompt while the relabel still lands "
         "through the shared object — two blocks reach the model and both wear this app's word",

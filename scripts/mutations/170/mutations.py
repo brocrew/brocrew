@@ -105,6 +105,9 @@ MUTATIONS = [
     ),
     # ---- §2 · a source the user cannot see -------------------------------------------------------
     (
+        # ⚑ Corrected in place at `733` (rule 27): the reader has no `follow` option since `733` — every read
+        # follows — so this one line is the index's AND the walk's. The rule it measures holds.
+        # The native subject moved; this row retains its original fault.
         "M4 · ⛔ 168 H3 · the agent-memory read stops following, so the symlinked index the PROVIDER "
         "already loaded is refused here — no visibility and no protection, which is the state the "
         "ruling exists to end",
@@ -113,6 +116,9 @@ MUTATIONS = [
         ],
     ),
     (
+        # ⚑ Corrected in place at `733` (rule 27): `O_NOFOLLOW` went with the `follow` option (`733`); the
+        # mutation puts it back at `open`, the half of the pair this row always measured.
+        # The native subject moved; this row retains its original fault.
         "M5 · the same refusal from the OTHER guard — `stat` still follows but `O_NOFOLLOW` is kept, "
         "so the kernel refuses at `open` instead of the `lstat` refusing at step 1 (the pair 158 "
         "built deliberately, so both halves are measured)",
@@ -170,6 +176,8 @@ MUTATIONS = [
         ],
     ),
     (
+        # ⚑ Corrected in place at `733` (rule 27): `real` is returned on every read since `733`.
+        # The native subject moved; this row retains its original fault.
         "M9 · the READER stops reporting where it really read from, so nothing downstream can "
         "disclose the redirection — the text is shown under a path it did not come from",
         [
