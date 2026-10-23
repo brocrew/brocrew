@@ -1,8 +1,9 @@
 import { keyPolicy } from './api-key'
-import { CLAUDE_LOGIN_RENEWED, claudeSetup } from '@brobot2/runtime'
+import { CLAUDE_LOGIN_RENEWED, ClaudeUnavailableError, claudeSetup } from '@brobot2/runtime'
 import type { ProviderAuthPolicy } from '../auth-policy'
 
 export const authPolicy: ProviderAuthPolicy = {
+  launchRefusal: (error) => (error instanceof ClaudeUnavailableError ? 'program' : null),
   setup: (platform, installedPath) => claudeSetup(platform, installedPath()),
   renewedNotice: CLAUDE_LOGIN_RENEWED,
   key: keyPolicy,
