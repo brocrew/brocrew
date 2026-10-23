@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 
 const root = fileURLToPath(new URL('../src/main', import.meta.url))
 const registry = join(root, 'providers/index.ts')
+const definitions = join(root, 'providers/definitions.ts')
 const compatibility = join(root, 'providers/compat.ts')
 const composition = join(root, 'index.ts')
 const nameOf = (file: string): string => relative(root, file).split(sep).join('/')
@@ -74,6 +75,7 @@ describe('provider modules stay behind the main-process registry', () => {
   it('does not import the facade, host or registry back into provider modules', () => {
     const forbidden = new Set([
       registry,
+      definitions,
       join(root, 'runtime/provider-homes.ts'),
       join(root, 'runtime/runtime-host.ts'),
     ])
@@ -81,14 +83,16 @@ describe('provider modules stay behind the main-process registry', () => {
       .filter((file) => nameOf(file).startsWith('providers/'))
       .flatMap((file) =>
         valueImports(file)
-          .filter((target) => forbidden.has(target))
+          .filter(
+            (target) => forbidden.has(target) && !(file === registry && target === definitions),
+          )
           .map((target) => `${nameOf(file)} -> ${nameOf(target)}`),
       )
     expect(violations).toEqual([])
   })
 
   it('routes neutral value imports of provider implementations through the registry', () => {
-    const mayCompose = new Set([registry, compatibility, composition])
+    const mayCompose = new Set([registry, definitions, compatibility, composition])
     const implementationOf = (file: string): string | undefined =>
       /^providers\/(claude|codex)\//.exec(nameOf(file))?.[1]
     const violations = files
@@ -106,7 +110,7 @@ describe('provider modules stay behind the main-process registry', () => {
 
   it('keeps the registry out of every worker value-import closure', () => {
     const reaches = (file: string, seen = new Set<string>()): boolean => {
-      if (file === registry) return true
+      if (file === registry || file === definitions) return true
       if (seen.has(file)) return false
       seen.add(file)
       return valueImports(file).some((next) => reaches(next, seen))
@@ -116,5 +120,38 @@ describe('provider modules stay behind the main-process registry', () => {
     ).toEqual([])
     // A missing registry is the base before extraction, not a reason to skip the worker scan.
     if (existsSync(registry)) expect(valueImports(registry)).not.toContain(composition)
+  })
+
+  it('keeps stateless definitions independent of runtime construction and home compatibility', () => {
+    expect(existsSync(definitions)).toBe(true)
+    const heavy = new Set([
+      registry,
+      compatibility,
+      join(root, 'runtime/provider-homes.ts'),
+      join(root, 'providers/claude/index.ts'),
+      join(root, 'providers/codex/index.ts'),
+    ])
+    const seen = new Set<string>()
+    const reached: string[] = []
+    const visit = (file: string): void => {
+      if (seen.has(file)) return
+      seen.add(file)
+      if (heavy.has(file)) reached.push(nameOf(file))
+      for (const next of valueImports(file)) visit(next)
+    }
+    if (existsSync(definitions)) visit(definitions)
+    expect(reached).toEqual([])
+  })
+
+  it('keeps the home facade as the only legacy compatibility consumer', () => {
+    expect(
+      files
+        .filter(
+          (file) =>
+            file !== join(root, 'runtime/provider-homes.ts') &&
+            valueImports(file).includes(compatibility),
+        )
+        .map(nameOf),
+    ).toEqual([])
   })
 })
