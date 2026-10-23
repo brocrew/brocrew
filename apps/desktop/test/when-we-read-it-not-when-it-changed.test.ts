@@ -226,7 +226,7 @@ describe('599 §2 · when we read it, not when it changed', () => {
     }
 
     const here = dirname(fileURLToPath(import.meta.url))
-    const reader = readFileSync(join(here, '../src/main/runtime/instructions.ts'), 'utf8')
+    const reader = readFileSync(join(here, '../src/main/providers/claude/instructions.ts'), 'utf8')
     expect(stampedAbove(reader), 'the stamp is not taken above the read').toBe(true)
 
     // ⚠️ **The control, through the SAME derivation** — a planted `take` whose clock sits below the
