@@ -80,10 +80,9 @@ export type AuthState =
        */
       readonly expiresAt: number | null
       /**
-       * ⚑ **Claude, on a saved key: whether the person's own Claude Code login is here too** — the
-       * one a launch runs on if the key is removed (the Mac's Keychain item, Windows' Claude Code
-       * file). `false`: removing the key leaves Claude nothing to run on. Absent for a login, for
-       * Codex, and when it could not be read.
+       * On a saved key, whether the provider's own login is here too. Mac and Codex report only
+       * item or file presence, never validity; Windows keeps its existing login-fact check.
+       * `false` means no eligible backing login was found. Absent when unknown or running on a login.
        */
       readonly loginBehindTheKey?: boolean
     }

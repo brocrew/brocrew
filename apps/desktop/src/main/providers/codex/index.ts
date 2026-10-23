@@ -1,4 +1,6 @@
 import { authPolicy } from './auth-policy'
+import { machineLoginPresence } from './backing-login'
+export { machineLoginPresence } from './backing-login'
 import { keptRules } from './kept-rules'
 import { skills } from './skills'
 import { snapshot } from './snapshot'
@@ -280,7 +282,10 @@ export function codexAuth(paths: ProviderHomePaths, seams: CodexAuthSeams): Home
       // `cwd` is the home itself — nothing here reads the project, and pointing an app-server at a
       // user directory it has no reason to see would be a wider spawn than the question (the same
       // rule `CodexRuntime.listModels` follows).
-      return await probeCodexAuthInHome(transports(), providerHome, providerHome, signal)
+      const state = await probeCodexAuthInHome(transports(), providerHome, providerHome, signal)
+      if (state.state !== 'usable' || state.login !== 'api-key' || signal?.aborted) return state
+      const behind = machineLoginPresence(seams.machineAuthPath?.() ?? personalCodexAuthPath())
+      return behind === undefined ? state : { ...state, loginBehindTheKey: behind }
     },
     reprovision(profileId) {
       refuseWhileAKeyIsSaved()
