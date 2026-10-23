@@ -32,7 +32,11 @@ const missing = (error: unknown) =>
 const identity = (path: string) => (process.platform === 'win32' ? path.toLowerCase() : path)
 
 /** Read only a bounded, unchanged regular file. Selection never creates or repairs configuration. */
-export function readRootSelectionBytes(path: string, limit: number): Buffer | undefined {
+export function readRootSelectionBytes(
+  path: string,
+  limit: number,
+  expectedLinks: 1 | 2 = 1,
+): Buffer | undefined {
   let before
   try {
     before = lstatSync(path, { bigint: true })
@@ -43,7 +47,7 @@ export function readRootSelectionBytes(path: string, limit: number): Buffer | un
   if (
     !before.isFile() ||
     before.isSymbolicLink() ||
-    before.nlink !== 1n ||
+    before.nlink !== BigInt(expectedLinks) ||
     !isPrivateEntry(before) ||
     before.size > BigInt(limit)
   )
@@ -65,6 +69,8 @@ export function readRootSelectionBytes(path: string, limit: number): Buffer | un
     if (
       size > limit ||
       after.isSymbolicLink() ||
+      after.nlink !== BigInt(expectedLinks) ||
+      final.nlink !== BigInt(expectedLinks) ||
       after.dev !== opened.dev ||
       after.ino !== opened.ino ||
       final.size !== before.size ||

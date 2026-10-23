@@ -22,16 +22,21 @@ try {
   const { rootOptInCommand } = await import(
     'data:text/javascript;base64,' + Buffer.from(result.outputFiles[0].contents).toString('base64')
   )
-  console.log(
-    JSON.stringify(
-      {
-        ...(await rootOptInCommand(process.argv.slice(2))),
-        toolSourceSha256: createHash('sha256').update(result.outputFiles[0].contents).digest('hex'),
-      },
-      null,
-      2,
-    ),
-  )
+  const output = await rootOptInCommand(process.argv.slice(2))
+  if (typeof output === 'string') console.log(output)
+  else
+    console.log(
+      JSON.stringify(
+        {
+          ...output,
+          toolSourceSha256: createHash('sha256')
+            .update(result.outputFiles[0].contents)
+            .digest('hex'),
+        },
+        null,
+        2,
+      ),
+    )
 } catch (error) {
   const reason = error instanceof Error ? error.message : 'Plugin setup creation refused'
   console.error(reason.replace(/\s*\r?\n\s*/g, ' '))
