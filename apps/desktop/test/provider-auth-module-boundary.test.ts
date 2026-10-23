@@ -43,6 +43,21 @@ function nativeImportsIn(source: ts.SourceFile): string[] {
 }
 
 describe('provider authentication has one owner', () => {
+  it('keeps native model and billing check rules out of the key vault', () => {
+    const source = sourceOf('runtime/api-keys.ts')
+    const nativeRules: string[] = []
+    const visit = (node: ts.Node): void => {
+      if (
+        ts.isStringLiteralLike(node) &&
+        (/api\.anthropic\.com|haiku|credit balance|billing_error/.test(node.text))
+      )
+        nativeRules.push(node.text)
+      ts.forEachChild(node, visit)
+    }
+    visit(source)
+    expect(nativeRules).toEqual([])
+  })
+
   it.each(['runtime/claude-program.ts', 'runtime/codex-binary.ts', 'runtime/provider-versions.ts'])(
     'keeps only compatibility exports in %s',
     (file) => {
@@ -64,7 +79,7 @@ describe('provider authentication has one owner', () => {
     expect(selectionsIn(sourceOf(file))).toEqual([])
   })
 
-  it.each(['runtime/runtime-host.ts', 'providers/module.ts'])(
+  it.each(['runtime/runtime-host.ts', 'runtime/api-keys.ts', 'providers/module.ts'])(
     'keeps native authentication and program types out of %s',
     (file) => {
       expect(nativeImportsIn(sourceOf(file))).toEqual([])
