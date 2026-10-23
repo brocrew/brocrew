@@ -5,10 +5,16 @@ Run it from the matching landed checkout with a clean tree. Preview prints the c
 workspace, root, exact configuration changes and a hash of the bundled tool source. It opens no
 Electron window, makes no network request, and never runs during ordinary app startup.
 
-Before applying either mode, close every BroCrew window using that appData and verify they have
-quit. The command cannot prove that all app processes have quit; it does not inspect private
-supervisor state or stop processes. A running app keeps its root until it restarts. Existing builds
-without selection support ignore these records and continue sharing until upgraded.
+Before applying either mode, close every BroCrew window using the target workspace's data folder
+and verify those windows have quit. Other workspaces may stay open, including an unselected daily
+dev window using the default shared plugin root. That default owner may keep its leases, person
+connection and catalogue refresh running: selection changes do not stop or rebind it. The command's
+configuration lock is separate from the default owner's supervisor and state locks.
+
+The command cannot prove that the target workspace's windows have quit; the operator must check.
+It does not inspect private supervisor state or stop processes. A running app keeps its root until
+it restarts, so changing its selection while it runs is unsupported. Existing builds without
+selection support ignore these records and continue sharing until upgraded.
 
 ## Own: select a fresh separate setup
 
@@ -90,7 +96,8 @@ reads or changes workspace-policy.json, packaged-workspaces.json or packaged-wor
 Both modes use one exclusive appData lock. A busy or leftover `plugin-root-pins.lock` is never
 stolen. After a hard process kill, the operator must:
 
-1. Use the process list to verify no creator command is running, and keep all app windows closed.
+1. Use the process list to verify no creator command is running, and keep the target workspace's
+   windows closed. Other workspaces, including the daily dev window, may remain open.
 2. Preview own and shared for the approved explicit workspace and expected slot; an incomplete own
    preview may refuse, which is expected. Review the shared plan and existing records.
 3. Verify the leftover lock is a regular file at exactly `@brobot2/plugin-root-pins.lock`. Remove
@@ -108,8 +115,8 @@ Temporary names `.plugin-root-pins-<uuid>.tmp` and `.plugin-root-marker-<uuid>.t
 failure; the reader ignores them. Do not automatically delete unrelated temporary files.
 
 Shared is the normal automated way to undo a failed own selection. If an approved review instead
-chooses to FINISH the original own selection, use only these minimal steps with all apps and
-creators quit:
+chooses to FINISH the original own selection, use only these minimal steps with the target
+workspace's windows and all creator commands quit. Other workspaces may remain open:
 
 1. Verify the existing pin entry exactly names the native canonical workspace and approved slot,
    the global map is otherwise valid, and the missing-marker state is the only discrepancy.
