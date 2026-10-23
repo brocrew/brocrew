@@ -41,6 +41,7 @@ export interface ProviderHomeStrategy {
 }
 
 export interface ProviderModule {
+  readonly program?: import('./program-policy').ProviderProgramOperations
   readonly authPolicy: ProviderAuthPolicy
   readonly transcripts: TranscriptPolicy
   readonly discovery: DiscoveryPolicy
