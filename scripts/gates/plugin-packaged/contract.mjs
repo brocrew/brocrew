@@ -132,7 +132,7 @@ export function projectBuild(config, entry, appData, browser) {
   )
   entry = replace(
     entry,
-    'return prepareProviderHome(userData, { profileId, provider }, homeSeams)',
+    'return providerModules[provider].home.prepare(profileId)',
     `/* ${GATE_BUILD_MARKER} */ return preparePackagedGateHome(${JSON.stringify(path.dirname(appData))}, userData, provider, profileId)`,
   )
   entry = replace(
@@ -142,13 +142,7 @@ export function projectBuild(config, entry, appData, browser) {
   )
   entry = replace(
     entry,
-    `createProviderRuntime(provider, {
-        apiKey,
-        codexCommand: () => codexProgram().path,
-        claudeProgram: () => claudeProgram().path,
-        claudeProgramFound,
-        managedProviderHomesRoot: providerHomesRoot(userData),
-      })`,
+    'providerModules[provider].createRuntime()',
     `/* ${GATE_BUILD_MARKER} */ new PackagedGateRuntime(provider, ${JSON.stringify(path.dirname(appData))})`,
   )
   entry = replace(
