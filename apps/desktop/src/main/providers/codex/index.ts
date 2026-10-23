@@ -22,7 +22,8 @@ import { prepareStateHome } from '../home'
 import type {
   HomeAuthOperations,
   ProviderHomePaths,
-  ProviderHomeSeams,
+  ProvisionHome,
+  ProviderHomeStrategy,
   ProviderModule,
 } from '../module'
 import type { CodexKeySeam } from './types'
@@ -31,8 +32,8 @@ export interface CodexRuntimeSeams {
   readonly command: () => string
 }
 export interface CodexHomeSeams {
-  readonly provisionHome?: ProviderHomeSeams['provisionHome']
-  readonly provisionCodexAuth?: ProviderHomeSeams['provisionCodexAuth']
+  readonly provisionHome?: ProvisionHome
+  readonly provisionCodexAuth?: (home: string) => void | Promise<void>
   readonly machineAuthPath?: () => string
   readonly key?: CodexKeySeam
 }
@@ -352,13 +353,31 @@ export function codexAuth(paths: ProviderHomePaths, seams: CodexAuthSeams): Home
   }
 }
 
+export interface CodexModuleSeams {
+  readonly runtime: CodexRuntimeSeams
+  readonly home: CodexHomeSeams
+  readonly auth: CodexAuthSeams
+}
+
+/** The same factories serve bound modules and the legacy facade adapters. */
+export const codexModuleFactory = {
+  runtime:
+    (seams: CodexRuntimeSeams): (() => AgentRuntime) =>
+    () =>
+      codexRuntime(seams),
+  home: (paths: ProviderHomePaths, seams: CodexHomeSeams): ProviderHomeStrategy => ({
+    prepare: (profileId) => prepareCodexHome(paths, profileId, seams),
+  }),
+  auth: codexAuth,
+}
+
 export function createCodexModule(
   paths: ProviderHomePaths,
-  seams: { runtime: CodexRuntimeSeams; home: CodexHomeSeams; auth: CodexAuthSeams },
+  seams: CodexModuleSeams,
 ): ProviderModule {
   return {
-    createRuntime: () => codexRuntime(seams.runtime),
-    home: { prepare: (profileId) => prepareCodexHome(paths, profileId, seams.home) },
-    auth: codexAuth(paths, seams.auth),
+    createRuntime: codexModuleFactory.runtime(seams.runtime),
+    home: codexModuleFactory.home(paths, seams.home),
+    auth: codexModuleFactory.auth(paths, seams.auth),
   }
 }

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { providerRecord } from '@brobot2/shared'
 import { createProviderModules, providerAuthFromModules } from '../src/main/providers'
 import type { ProviderHomePaths } from '../src/main/providers/module'
 
@@ -8,21 +9,25 @@ function fixture() {
   const key = vi.fn(() => null)
   const status = vi.fn(() => ({ set: false }))
   const provision = vi.fn()
-  const homeOf = vi.fn((profileId: string) => `/fictional/homes/${profileId}`)
-  const profiles = vi.fn(() => ['fern'])
-  const assertMayOpen = vi.fn()
-  const paths: ProviderHomePaths = {
+  const paths = providerRecord((provider) => ({
     managedRoot: '/fictional/homes',
     defaultProfile: 'fern',
-    homeOf,
-    profiles,
-    assertMayOpen,
-  }
-  const pathsFor = vi.fn(() => paths)
+    homeOf: vi.fn((profileId: string) => `/fictional/homes/default/${profileId}/${provider}`),
+    profiles: vi.fn(() => ['fern']),
+    assertMayOpen: vi.fn(),
+  }))
+  const pathsFor = vi.fn((provider: keyof typeof paths): ProviderHomePaths => paths[provider])
   const modules = createProviderModules(pathsFor, {
-    runtime: { codexCommand: command, claudeProgram: program, apiKey: key },
-    home: { provisionHome: provision, apiKey: key },
-    auth: { codexCommand: command, apiKey: key, keyStatus: status },
+    claude: {
+      runtime: { program, key },
+      home: { provisionHome: provision, key },
+      auth: { key, keyStatus: status },
+    },
+    codex: {
+      runtime: { command },
+      home: { provisionHome: provision },
+      auth: { command },
+    },
   })
   return {
     modules,
@@ -32,9 +37,7 @@ function fixture() {
     key,
     status,
     provision,
-    homeOf,
-    profiles,
-    assertMayOpen,
+    paths,
   }
 }
 
@@ -48,9 +51,11 @@ describe('bound provider home modules', () => {
       state.key,
       state.status,
       state.provision,
-      state.homeOf,
-      state.profiles,
-      state.assertMayOpen,
+      ...Object.values(state.paths).flatMap((paths) => [
+        paths.homeOf,
+        paths.profiles,
+        paths.assertMayOpen,
+      ]),
     ])
       expect(operation).not.toHaveBeenCalled()
   })
@@ -67,15 +72,16 @@ describe('bound provider home modules', () => {
     expect(other.provider).toBe('codex')
     expect(state.command).toHaveBeenCalledTimes(1)
     expect(state.key).not.toHaveBeenCalled()
-    expect(state.homeOf).not.toHaveBeenCalled()
+    for (const paths of Object.values(state.paths)) expect(paths.homeOf).not.toHaveBeenCalled()
   })
 
   it('keeps the pure reservation key apart from profile admission and credential work', () => {
     const state = fixture()
     const auth = providerAuthFromModules(state.modules)
-    expect(auth.credentialHome('claude', 'willow')).toBe('/fictional/homes/willow')
-    expect(auth.credentialHome('codex', 'willow')).toBe('/fictional/homes/willow')
-    expect(state.assertMayOpen).not.toHaveBeenCalled()
+    expect(auth.credentialHome('claude', 'willow')).toBe('/fictional/homes/default/willow/claude')
+    expect(auth.credentialHome('codex', 'willow')).toBe('/fictional/homes/default/willow/codex')
+    for (const paths of Object.values(state.paths))
+      expect(paths.assertMayOpen).not.toHaveBeenCalled()
     expect(state.provision).not.toHaveBeenCalled()
     expect(state.key).not.toHaveBeenCalled()
   })

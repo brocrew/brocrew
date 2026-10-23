@@ -2,13 +2,10 @@ import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import type { AgentRuntime } from '@brobot2/runtime'
 import { providerSchema, type Provider } from '@brobot2/shared'
-import { homeStrategyFor, legacyAuthOperations, runtimeFactoryFor } from '../providers'
-import type {
-  ProviderAuthOps,
-  ProviderHomePaths,
-  ProviderHomeSeams,
-  ProviderRuntimeSeams,
-} from '../providers/module'
+import { providerAuthFromHomes } from '../providers'
+import { homeStrategyFor, legacyAuthOperations, runtimeFactoryFor } from '../providers/compat'
+import type { ProviderAuthOps, ProviderHomeSeams, ProviderRuntimeSeams } from '../providers/compat'
+import type { ProviderHomePaths } from '../providers/module'
 import {
   DEFAULT_PROFILE_ID,
   PATH_SEGMENT_RULE,
@@ -18,7 +15,7 @@ import {
 
 export { bringTheCodexKeyTo, prepareOnTheLogin } from '../providers'
 export type { CodexKeySeam, CodexSignIn } from '../providers/codex/types'
-export type { ProviderAuthOps, ProviderHomeSeams, ProviderRuntimeSeams } from '../providers/module'
+export type { ProviderAuthOps, ProviderHomeSeams, ProviderRuntimeSeams } from '../providers/compat'
 
 /**
  * The app-layer half of provider-home isolation: the runtime owns the *mechanism*
@@ -319,5 +316,7 @@ export function createProviderAuthOps(
   userData: string,
   seams: Omit<ProviderRuntimeSeams, 'claudeProgram'>,
 ): ProviderAuthOps {
-  return legacyAuthOperations((provider) => homePathsForProvider(userData, provider), seams)
+  return providerAuthFromHomes(
+    legacyAuthOperations((provider) => homePathsForProvider(userData, provider), seams),
+  )
 }
