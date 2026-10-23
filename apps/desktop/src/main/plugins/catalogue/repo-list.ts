@@ -61,7 +61,9 @@ const RepoListV2 = RepoList.extend({
     .array(
       RepoList.shape.entries.element
         .extend({ authors: PluginAuthors.optional(), legacy: z.literal(true).optional() })
-        .refine((entry) => !(entry.authors && entry.legacy)),
+        .refine((entry) =>
+          entry.legacy ? entry.authors === undefined : entry.authors !== undefined,
+        ),
     )
     .max(PLUGIN_LIMITS.catalogueEntries),
 })

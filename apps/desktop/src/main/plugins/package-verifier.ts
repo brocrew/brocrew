@@ -212,6 +212,10 @@ function catalogueVerifier(
           const manifest = parsePluginManifest(manifestBytes)
           if (
             manifest.id !== release.id ||
+            (manifest.format === 2
+              ? !release.authors ||
+                JSON.stringify(manifest.authors) !== JSON.stringify(release.authors)
+              : release.authors !== undefined) ||
             manifest.version !== release.version ||
             manifest.sourceCommit !== release.sourceCommit ||
             JSON.stringify(manifest.platforms) !== JSON.stringify(release.platforms)

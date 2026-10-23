@@ -82,7 +82,7 @@ export const PluginAuthors = z
   )
 const versionedRelease = release
   .extend({ authors: PluginAuthors.optional(), legacy: z.literal(true).optional() })
-  .refine((entry) => !(entry.legacy && entry.authors))
+  .refine((entry) => (entry.legacy ? entry.authors === undefined : entry.authors !== undefined))
 const versionedCatalogue = z.strictObject({
   format: z.literal(2),
   entries: z.array(versionedRelease).max(PLUGIN_LIMITS.catalogueEntries),
@@ -202,7 +202,7 @@ const executor = z.discriminatedUnion('kind', [
 ])
 const versionedManifest = manifest.extend({
   format: z.literal(2),
-  authors: PluginAuthors.optional(),
+  authors: PluginAuthors,
   executor,
   hooks: z.array(HookDeclaration).max(32),
 })
