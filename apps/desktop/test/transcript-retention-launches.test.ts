@@ -9,6 +9,7 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { prepareOnTheLogin } from '../src/main/providers/claude'
 import type { ProviderAuthOps } from '../src/main/runtime/provider-homes'
 import {
   TranscriptRetentionHost,
@@ -120,10 +121,11 @@ beforeEach(() => {
       }
     },
     beforeProviderLaunch: () => barrier(),
-    renewClaudeLogin: async () => {
-      calls.renew()
-      return 'not-needed'
-    },
+    loginRenewal: (provider) => provider === 'claude' ? {
+      launchLabel: 'Claude sign-in renewal',
+      renew: async () => { calls.renew(); return 'not-needed' },
+      prepare: prepareOnTheLogin,
+    } : undefined,
     prepareProviderHome: () => prepareHome(),
     providerHomePath: () => join(dir, 'fictional-home'),
     resolveCwd: () => dir,

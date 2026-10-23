@@ -16,6 +16,7 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { prepareOnTheLogin } from '../src/main/providers/claude'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { createSessionStore as createRendererStore } from '../src/renderer/src/lib/session-store'
 import type { SessionRecord } from '../src/renderer/src/lib/session-record'
@@ -199,7 +200,11 @@ describe('D-004 · R101 — a login renewed elsewhere reopens the conversation i
       providerHomePath: (which) => join(dir, 'homes', which),
       resolveCwd: () => join(dir, 'cwd'),
       newSessionId: () => 'sess_d004',
-      ...(renewal === undefined ? {} : { renewClaudeLogin: renewal }),
+      ...(renewal === undefined ? {} : {
+        loginRenewal: (provider: import('@brobot2/shared').Provider) => provider === 'claude' ? {
+          launchLabel: 'Claude sign-in renewal', renew: renewal, prepare: prepareOnTheLogin,
+        } : undefined,
+      }),
       ...(launchBarrier === undefined ? {} : { beforeProviderLaunch: launchBarrier }),
       ...(keySaved
         ? {
