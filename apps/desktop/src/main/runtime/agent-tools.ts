@@ -9086,7 +9086,7 @@ export function agentToolsFor(
               .string()
               .optional()
               .describe(
-                'A date and time within 30 days, such as 2026-10-15T09:00:00Z, until which the piece waits, and the app wakes its holder then.',
+                "A real deadline or backstop within 30 days, such as 2026-10-15T09:00:00Z; the app wakes the holder then. For another piece's result, use on.agent.",
               ),
             event: z
               .string()
