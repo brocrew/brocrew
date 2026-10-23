@@ -64,6 +64,37 @@ function parts(initialUnread = false) {
   }
 }
 describe('the shared agent book', () => {
+  it('keeps the conversation-rules pointer below Standing rules without adding an action', async () => {
+    await page.viewport(1200, 1100)
+    const fixture = parts()
+    const view = mount(AgentBookSheet, {
+      profileSlug: 'quill',
+      agentName: 'Quill',
+      bridge: fixture.bridge,
+      store: fixture.store,
+    })
+    await vi.waitFor(() =>
+      expect(view.host.querySelector('[data-cy="own-instructions-text"]')).not.toBeNull(),
+    )
+    const editor = view.q('own-instructions')
+    const rules = editor.closest<HTMLElement>('[role="tabpanel"]')!
+    const pointer = Array.from(rules.querySelectorAll('p')).find(
+      (paragraph) =>
+        paragraph.textContent?.trim() ===
+        'Read the rules for a conversation inside that conversation.',
+    )
+    expect(pointer, 'the profile book lost its conversation-rules pointer').toBeDefined()
+    if (pointer === undefined) return
+    expect(pointer.getBoundingClientRect().height).toBeGreaterThan(0)
+    expect(editor.contains(pointer)).toBe(false)
+    expect(editor.compareDocumentPosition(pointer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(pointer.querySelector('a, button, [role="button"], [tabindex]')).toBeNull()
+    expect(pointer.hasAttribute('tabindex')).toBe(false)
+    view.q('agent-book-tab-memory').click()
+    await vi.waitFor(() => expect(pointer.getClientRects()).toHaveLength(0))
+    view.q('agent-book-tab-rules').click()
+    await vi.waitFor(() => expect(pointer.getBoundingClientRect().height).toBeGreaterThan(0))
+  })
   it('keeps an unsaved rules draft while moving between independently loaded sections', async () => {
     await page.viewport(1200, 1100)
     const fixture = parts()
