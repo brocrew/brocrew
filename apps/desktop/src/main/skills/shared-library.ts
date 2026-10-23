@@ -1,3 +1,4 @@
+import { legacySharedSkillProvider } from '../providers/knowledge-definitions'
 import { assertSkillPathsAreReal } from './skill-paths'
 import { flushSkillTree } from './flush-skill-tree'
 import { createHash, randomUUID } from 'node:crypto'
@@ -145,7 +146,10 @@ export class SharedSkillLibrary {
       )
         throw failure()
       // Derive the home from a managed profile id, never from a receipt-supplied path.
-      const home = deriveProviderHome(this.userData, { profileId: parts[1]!, provider: 'codex' })
+      const home = deriveProviderHome(this.userData, {
+        profileId: parts[1]!,
+        provider: legacySharedSkillProvider,
+      })
       const original = join(home, 'skills', parts[2]!)
       if (!receipt.quarantine && !(await exists(join(this.off, receipt.target!), this.fs))) continue
       const parent = join(home, 'skills-retained')
@@ -346,7 +350,7 @@ export class SharedSkillLibrary {
         const profileStats = await this.fs.lstat(join(homes, profile))
         if (profileStats.isSymbolicLink()) throw failure()
         if (!profileStats.isDirectory()) continue
-        const sourceRoot = join(homes, profile, 'codex', 'skills')
+        const sourceRoot = join(homes, profile, legacySharedSkillProvider, 'skills')
         await assertSkillPathsAreReal(this.userData, [sourceRoot], this.fs)
         if (!(await exists(sourceRoot, this.fs))) continue
         for (const name of (await this.fs.readdir(sourceRoot)).sort()) {

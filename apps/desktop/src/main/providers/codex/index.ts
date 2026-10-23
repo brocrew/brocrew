@@ -1,3 +1,4 @@
+import { skills } from './skills'
 import { snapshot } from './snapshot'
 import { instructions } from './instructions'
 import { memory } from './memory'
@@ -385,6 +386,7 @@ export function createCodexModule(
     instructions,
     memory,
     snapshot,
+    skills,
     discovery,
     createRuntime: codexModuleFactory.runtime(seams.runtime),
     home: codexModuleFactory.home(paths, seams.home),

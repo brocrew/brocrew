@@ -1,3 +1,4 @@
+import { legacySkillReminderFormats } from '../providers/knowledge-definitions'
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import { providerDescriptor, type Provider } from '@brobot2/shared'
@@ -13,10 +14,9 @@ export const SKILLS_VERSION_LABEL = /^v\d+(?:\.\d+)?$/
 const legacySkill = z.strictObject({
   name: z.enum(BUILT_IN_SKILL_NAMES),
   description: z.string().min(1).max(500),
-  reminder: z.strictObject({
-    codex: z.string().min(1).max(240),
-    claude: z.string().min(1).max(247),
-  }),
+  reminder: z.strictObject(
+    Object.fromEntries(legacySkillReminderFormats.map((format) => [format.field, format.schema])),
+  ),
   sha256: z.string().regex(/^[a-f0-9]{64}$/),
   bytes: z.number().int().min(1).max(65_536),
 })
@@ -29,11 +29,14 @@ const legacyCatalogue = z
   })
   .superRefine((catalogue, context) => {
     for (const [index, item] of catalogue.skills.entries()) {
+      const reminders = legacySkillReminderFormats.map((format) =>
+        format.canonical(item.name, item.reminder[format.field]!),
+      )
       if (
         item.name !== BUILT_IN_SKILL_NAMES[index] ||
-        !item.reminder.codex.startsWith(`${item.name} — `) ||
-        item.reminder.claude !== `brobot:${item.reminder.codex}` ||
-        /[\r\n]/.test(item.description + item.reminder.codex + item.reminder.claude)
+        reminders.some((one) => one === null) ||
+        reminders.some((one) => one !== reminders[0]) ||
+        /[\r\n]/.test(item.description)
       ) {
         context.addIssue({ code: 'custom', message: 'The built-in skill catalogue must agree.' })
       }
@@ -73,7 +76,13 @@ export const BuiltInSkillCatalogueSchema = z
     legacyCatalogue.transform((catalogue) => ({
       ...catalogue,
       formatVersion: 2 as const,
-      skills: catalogue.skills.map((item) => ({ ...item, reminder: item.reminder.codex })),
+      skills: catalogue.skills.map((item) => ({
+        ...item,
+        reminder: legacySkillReminderFormats[0].canonical(
+          item.name,
+          item.reminder[legacySkillReminderFormats[0].field]!,
+        )!,
+      })),
     })),
   ])
   .pipe(neutralCatalogue)
