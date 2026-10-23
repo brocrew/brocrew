@@ -1,5 +1,5 @@
 import { ipcMain } from './app-ipc'
-import { providerSchema, type Provider } from '@brobot2/shared'
+import { providerSchema, SUPPORTED_PROVIDERS, type Provider } from '@brobot2/shared'
 import {
   PROVIDER_SNAPSHOTS_CHANNELS,
   sizeOf,
@@ -10,10 +10,7 @@ import {
   type SnapshotCatalogue,
   type SnapshotPart,
 } from '../shared/provider-snapshots'
-import claudeCode from './provider-snapshots/claude-code.json'
-import codex from './provider-snapshots/codex.json'
-import claudeCodeOnLinux from './provider-snapshots/linux/claude-code.json'
-import codexOnLinux from './provider-snapshots/linux/codex.json'
+import { providerKnowledge } from './providers/knowledge-definitions'
 
 /**
  * 🔴 **W4.164 · F093 R3 — the bundled providers' own parts, as shipped with this build**: what
@@ -23,17 +20,19 @@ import codexOnLinux from './provider-snapshots/linux/codex.json'
  */
 
 /** The snapshot files this build carries, by the platform they were captured on. */
-export const SNAPSHOT_FILES_BY_PLATFORM: Readonly<
-  Record<'linux' | 'macos', Readonly<Record<Provider, ProviderSnapshotFile>>>
-> = {
-  linux: {
-    claude: claudeCodeOnLinux as unknown as ProviderSnapshotFile,
-    codex: codexOnLinux as unknown as ProviderSnapshotFile,
-  },
-  macos: {
-    claude: claudeCode as unknown as ProviderSnapshotFile,
-    codex: codex as unknown as ProviderSnapshotFile,
-  },
+function lazyFilesFor(platform: NodeJS.Platform): Readonly<Record<Provider, ProviderSnapshotFile>> {
+  const files = {} as Record<Provider, ProviderSnapshotFile>
+  for (const provider of SUPPORTED_PROVIDERS) {
+    Object.defineProperty(files, provider, {
+      enumerable: true,
+      get: () => providerKnowledge[provider].snapshot.fileFor(platform),
+    })
+  }
+  return files
+}
+export const SNAPSHOT_FILES_BY_PLATFORM = {
+  linux: lazyFilesFor('linux'),
+  macos: lazyFilesFor('darwin'),
 }
 
 /**
@@ -132,7 +131,7 @@ export function snapshotFor(
 export function snapshotCatalogue(
   files: Readonly<Record<Provider, ProviderSnapshotFile>> = SNAPSHOT_FILES,
 ): SnapshotCatalogue[] {
-  return (['claude', 'codex'] as const).map((provider) => {
+  return SUPPORTED_PROVIDERS.map((provider) => {
     const file = files[provider]
     return {
       provider,
