@@ -1,4 +1,5 @@
 import { keptRules } from './kept-rules'
+import { authPolicy } from './auth-policy'
 import { skills } from './skills'
 import { snapshot } from './snapshot'
 import { instructions } from './instructions'
@@ -218,6 +219,7 @@ export function createClaudeModule(
   seams: ClaudeModuleSeams,
 ): ProviderModule {
   return {
+    authPolicy,
     transcripts,
     instructions,
     memory,

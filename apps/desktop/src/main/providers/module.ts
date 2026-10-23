@@ -1,13 +1,8 @@
 import type { TranscriptPolicy, DiscoveryPolicy } from './transcript-policy'
-import type {
-  AgentRuntime,
-  AuthState,
-  CodexCopyIdentity,
-  CodexCopySource,
-  ReprovisionOutcome,
-} from '@brobot2/runtime'
+import type { AgentRuntime, AuthState, ReprovisionOutcome } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import type { CodexSignIn } from './codex/types'
+import type { ProviderSignIn, SignInCopySource } from './auth-types'
+import type { ProviderAuthPolicy } from './auth-policy'
 
 /** Directory preparation is independent of a provider's credential services. */
 export type ProvisionHome = (managedRoot: string, home: string) => void | Promise<void>
@@ -26,13 +21,13 @@ export interface HomeAuthOperations {
   credentialHome(profileId: string): string
   check(profileId: string, signal?: AbortSignal): Promise<AuthState>
   reprovision(profileId: string): ReprovisionOutcome | Promise<ReprovisionOutcome>
-  signIn(profileId: string, signal?: AbortSignal): Promise<CodexSignIn>
+  signIn(profileId: string, signal?: AbortSignal): Promise<ProviderSignIn>
   bringTheKeyToItsHomes(): Promise<string | null>
   replaceARefusedCopy(
     profileId: string,
-    refused: CodexCopyIdentity,
+    refused: unknown,
     stillWanted: () => boolean,
-  ): Promise<CodexCopySource | 'not-tried'>
+  ): Promise<SignInCopySource | 'not-tried'>
 }
 
 /**
@@ -45,6 +40,7 @@ export interface ProviderHomeStrategy {
 }
 
 export interface ProviderModule {
+  readonly authPolicy: ProviderAuthPolicy
   readonly transcripts: TranscriptPolicy
   readonly discovery: DiscoveryPolicy
   readonly instructions: import('./knowledge-policy').InstructionPolicy
