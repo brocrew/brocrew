@@ -1,5 +1,5 @@
 import { providerKnowledge } from '../providers/knowledge-definitions'
-import { providerAuthPolicies } from '../providers/auth-definitions'
+import { legacyAccountRecordFormat, providerAuthPolicies } from '../providers/auth-definitions'
 import type { IdentityFact, ProviderAuthPolicy } from '../providers/auth-policy'
 import { providerDefinitions } from '../providers/definitions'
 import { StoppedBeforeSend, withManagedPluginAttachments } from '@brobot2/runtime'
@@ -19875,7 +19875,7 @@ export class RuntimeHost implements LiveHost {
       capturedAt: this.now(),
       signInChangedAt: Object.fromEntries(this.signInChangedAt),
       accountLives: this.limitAccountSnapshot(),
-      usage: { claude: capturedUsage('claude'), codex: capturedUsage('codex') },
+      usage: providerRecord(capturedUsage),
     })
   }
 
@@ -34526,10 +34526,8 @@ export class RuntimeHost implements LiveHost {
    */
   async providerVersions(): Promise<Readonly<Record<Provider, ProviderVersion>>> {
     const ask = this.deps.providerVersions
-    const unsaid = (reason: string): Readonly<Record<Provider, ProviderVersion>> => ({
-      claude: { version: null, reason },
-      codex: { version: null, reason },
-    })
+    const unsaid = (reason: string): Readonly<Record<Provider, ProviderVersion>> =>
+      providerRecord(() => ({ version: null, reason }))
     if (ask === undefined)
       return unsaid('This build of BroCrew cannot say which versions its providers run.')
     let launch: Launch | null = null
@@ -34611,24 +34609,18 @@ export class RuntimeHost implements LiveHost {
         at,
         ...(this.usageUnconfirmed.has(provider) ? { unconfirmed: true as const } : {}),
       }))
-    return { claude: shown('claude'), codex: shown('codex') }
+    return providerRecord(shown)
   }
 
   /** Each provider's readings as they are held and kept, each with the account it was read on. */
   private usageAsHeld(): Record<Provider, readonly KeptReading[]> {
-    return {
-      claude: [...(this.usage.get('claude')?.values() ?? [])],
-      codex: [...(this.usage.get('codex')?.values() ?? [])],
-    }
+    return providerRecord((provider) => [...(this.usage.get(provider)?.values() ?? [])])
   }
 
   /** The readings that may warn: every provider's but those not yet shown to be this sign-in's. */
   private usageThatCounts(): Record<Provider, readonly ProviderUsageReading[]> {
     const held = this.usageAsHeld()
-    return {
-      claude: this.usageUnconfirmed.has('claude') ? [] : held.claude,
-      codex: this.usageUnconfirmed.has('codex') ? [] : held.codex,
-    }
+    return providerRecord((provider) => (this.usageUnconfirmed.has(provider) ? [] : held[provider]))
   }
 
   /**
@@ -34665,7 +34657,7 @@ export class RuntimeHost implements LiveHost {
    * a listing that fails is said, and so is one this system cannot make.
    */
   private async measureTheResources(): Promise<Readonly<Record<Provider, ProviderResources>>> {
-    const roots: Record<Provider, number[]> = { claude: [], codex: [] }
+    const roots: Record<Provider, number[]> = providerRecord(() => [])
     for (const { session } of this.slots.values()) {
       const pid = session?.handle.providerPid
       if (session !== null && session !== undefined && pid !== undefined) {
@@ -34674,10 +34666,13 @@ export class RuntimeHost implements LiveHost {
     }
     const unmeasured = (reason: string): Readonly<Record<Provider, ProviderResources>> => {
       const at = this.now()
-      return {
-        claude: { running: roots.claude.length, at, rssBytes: null, cpuPercent: null, reason },
-        codex: { running: roots.codex.length, at, rssBytes: null, cpuPercent: null, reason },
-      }
+      return providerRecord((provider) => ({
+        running: roots[provider].length,
+        at,
+        rssBytes: null,
+        cpuPercent: null,
+        reason,
+      }))
     }
     const list = this.deps.listProcesses
     if (list === undefined) return unmeasured('This build of BroCrew cannot measure its processes.')
@@ -34838,12 +34833,10 @@ export class RuntimeHost implements LiveHost {
    * before, with an id minted for it, to keep if its reading is taken.
    */
   private accountOf(session: HostedSession): { id: string; learned?: KnownAccount } | null {
-    if (providerDescriptor(session.provider).signIn.accountIsSignIn) {
-      const tag = session.handle.signInTag?.() ?? null
-      return tag === null ? null : { id: tag }
-    }
-    const said = session.handle.account?.()
-    if (said === undefined || said === null) return null
+    const fact = providerAuthPolicies[session.provider].identity.limit(session.handle)
+    if (fact === null) return null
+    if (fact.kind === 'tag') return { id: fact.tag }
+    const said = fact.account
     const known = this.knownAccount
     if (known !== null && known.email === said.email && known.organization === said.organization) {
       return { id: known.id }
@@ -34868,7 +34861,7 @@ export class RuntimeHost implements LiveHost {
     const kept = this.deps.accountsKept
     if (kept === undefined) return
     try {
-      this.knownAccount = kept.read().claude ?? null
+      this.knownAccount = legacyAccountRecordFormat.accountIn(kept.read())
     } catch (error) {
       console.warn(
         `runtime host could not read the account usage was read on: ${errorMessage(error)}`,
@@ -34883,7 +34876,7 @@ export class RuntimeHost implements LiveHost {
   private keepTheAccount(account: KnownAccount): void {
     this.knownAccount = account
     try {
-      this.deps.accountsKept?.write({ claude: account })
+      this.deps.accountsKept?.write(legacyAccountRecordFormat.forAccount(account))
     } catch (error) {
       console.warn(
         `runtime host could not keep the account usage was read on: ${errorMessage(error)}`,
@@ -34897,10 +34890,7 @@ export class RuntimeHost implements LiveHost {
    * Claude's frames carry `seven_day` at all), not the account's figures.
    */
   usageWindowsSeen(): Readonly<Record<Provider, readonly UsageWindowSeen[]>> {
-    return {
-      claude: [...(this.windowsSeen.get('claude')?.values() ?? [])],
-      codex: [...(this.windowsSeen.get('codex')?.values() ?? [])],
-    }
+    return providerRecord((provider) => [...(this.windowsSeen.get(provider)?.values() ?? [])])
   }
 
   /**
