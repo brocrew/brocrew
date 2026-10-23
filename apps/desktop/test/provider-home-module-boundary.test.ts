@@ -7,6 +7,27 @@ const path = fileURLToPath(new URL('../src/main/runtime/provider-homes.ts', impo
 const source = ts.createSourceFile(path, readFileSync(path, 'utf8'), ts.ScriptTarget.Latest, true)
 
 describe('the shared home facade has no provider implementation', () => {
+  it('keeps provider-specific construction fields out of the neutral module contract', () => {
+    const path = fileURLToPath(new URL('../src/main/providers/module.ts', import.meta.url))
+    const contract = ts.createSourceFile(
+      path,
+      readFileSync(path, 'utf8'),
+      ts.ScriptTarget.Latest,
+      true,
+    )
+    const fields: string[] = []
+    const visit = (node: ts.Node): void => {
+      if (
+        (ts.isPropertySignature(node) || ts.isMethodSignature(node)) &&
+        /^(claude|codex)/i.test(node.name.getText(contract))
+      )
+        fields.push(node.name.getText(contract))
+      ts.forEachChild(node, visit)
+    }
+    visit(contract)
+    expect(fields).toEqual([])
+  })
+
   it('does not select or spell a provider', () => {
     const names: string[] = []
     const selectors: string[] = []

@@ -185,7 +185,6 @@ import {
   providerHomesRoot,
   savedMethodsFolder,
   type CodexKeySeam,
-  type ProviderHomeSeams,
 } from './runtime/provider-homes'
 import { createProviderModules, providerAuthFromModules } from './providers'
 import {
@@ -742,8 +741,6 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
     signal: stopRenewing.signal,
     findProgram: claudeProgramFound,
   })
-  // What every home is prepared with: the person's keys, and the Claude Code its words name.
-  const homeSeams: ProviderHomeSeams = { apiKey, codexKey, claudeProgramFound }
   // ⚠️ After the database is closed (a window reloading during a quit) nothing is dropped for want
   // of an answer — the same rule as having no store yet.
   recordedConversation = (sessionId) => db === null || store.recordedOne(sessionId) !== null
@@ -796,20 +793,24 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
   const providerModules = createProviderModules(
     (provider) => homePathsForProvider(userData, provider),
     {
-      runtime: {
-        apiKey,
-        codexCommand: () => codexProgram().path,
-        claudeProgram: () => claudeProgram().path,
-        claudeProgramFound,
-        managedProviderHomesRoot: providerHomesRoot(userData),
+      claude: {
+        runtime: {
+          program: () => claudeProgram().path,
+          programFound: claudeProgramFound,
+          managedRoot: providerHomesRoot(userData),
+          key: () => apiKey('claude'),
+        },
+        home: { key: () => apiKey('claude'), programFound: claudeProgramFound },
+        auth: {
+          key: () => apiKey('claude'),
+          keyStatus: () => apiKeys.status('claude'),
+          programFound: claudeProgramFound,
+        },
       },
-      home: homeSeams,
-      auth: {
-        apiKey,
-        keyStatus: (provider) => apiKeys.status(provider),
-        codexKey,
-        codexCommand: () => codexProgram().path,
-        claudeProgramFound,
+      codex: {
+        runtime: { command: () => codexProgram().path },
+        home: { key: codexKey },
+        auth: { key: codexKey, command: () => codexProgram().path },
       },
     },
   )
