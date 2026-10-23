@@ -16,6 +16,12 @@ It does not inspect private supervisor state or stop processes. A running app ke
 it restarts, so changing its selection while it runs is unsupported. Existing builds without
 selection support ignore these records and continue sharing until upgraded.
 
+Do not restart any window left open, including the daily window, until the selection checks are
+clean. After every apply, run `--mode state` for every changed workspace (expect its intended
+`own` or `shared`) and for the default data folder (expect `shared`); only then reopen or restart.
+A damaged global pin map makes every workspace refuse plugins at its next start, so these checks
+also protect the daily window's next restart.
+
 ## Own: select a fresh separate setup
 
 Preview writes nothing, including no lock, temporary file or directory:
