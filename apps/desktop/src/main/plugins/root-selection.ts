@@ -99,21 +99,7 @@ export function workspacePluginRoot(options: {
     const parent = join(realPath(options.appData), '@brobot2')
     const markerValue = record(join(workspace, 'plugin-root.json'), 1024)
     const pinValue = record(join(parent, 'plugin-root-pins.json'), 64 * 1024)
-    const pins = pinValue === undefined ? { selections: [] } : Pins.parse(pinValue)
-    const folders = new Set<string>(),
-      slots = new Set<string>()
-    for (const entry of pins.selections) {
-      if (
-        !isAbsolute(entry.workspace) ||
-        !isLocalDrivePath(entry.workspace) ||
-        resolve(entry.workspace) !== entry.workspace ||
-        folders.has(identity(entry.workspace)) ||
-        slots.has(entry.slot)
-      )
-        refuse()
-      folders.add(identity(entry.workspace))
-      slots.add(entry.slot)
-    }
+    const pins = validatedRootPins(pinValue)
     const pin = pins.selections.find((entry) => identity(entry.workspace) === identity(workspace))
     if (markerValue === undefined && !pin) return options.defaultRoot
     const marker = Marker.parse(markerValue)
@@ -153,4 +139,24 @@ export function plannedPluginRoot(
     if (!missing(error)) throw error
   }
   return root
+}
+
+/** Validate the complete pin map even when a partial target selection cannot be read. */
+export function validatedRootPins(value: unknown) {
+  const pins = value === undefined ? { format: 1 as const, selections: [] } : Pins.parse(value)
+  const folders = new Set<string>(),
+    slots = new Set<string>()
+  for (const entry of pins.selections) {
+    if (
+      !isAbsolute(entry.workspace) ||
+      !isLocalDrivePath(entry.workspace) ||
+      resolve(entry.workspace) !== entry.workspace ||
+      folders.has(identity(entry.workspace)) ||
+      slots.has(entry.slot)
+    )
+      refuse()
+    folders.add(identity(entry.workspace))
+    slots.add(entry.slot)
+  }
+  return pins
 }
