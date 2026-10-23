@@ -70,7 +70,7 @@ STAGE = "apps/desktop/smoke/lifecycle-stage.smoke.ts"
 
 # ⛔ **Anchored on the code lines alone and never on the comment above them**
 # (`a-source-census-that-pins-a-line-kills-every-row-on-it`).
-WRAPPED = "    ].map(recordsWhatItRefused),\n"
+WRAPPED = "      .map(recordsWhatItRefused),\n"
 
 RECORD = (
     "      const refused = refusalIn(one.name, answered.structured)\n"
@@ -129,8 +129,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "refusal any door answers is ever recorded — `402` F2 exactly: a refused `spawn_agent` and "
         "an admitted one are the same two rows, `ok: true` on both, and the only party who can say "
         "why a child stopped trying is the child",
-        # ⚑ **theme host · re-anchored in place, not retired** — NOT VERIFIED. The expanded tool array is retained; the replacement removes refusal recording from every tool.
-        [(TOOLS, WRAPPED, "    ],\n")],
+        # The role filter stays; removing only the final map restores the same missing-refusal defect.
+        [(TOOLS, WRAPPED, "      ,\n")],
     ),
     (
         "M2 · ⛔ only the tool the FINDING named is recorded · `spawn_agent` leaves a row and the "

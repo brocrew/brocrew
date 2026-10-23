@@ -1410,7 +1410,10 @@ describe('395 · the interruption that looks like a provider fault', () => {
       // name BEFORE it went**: `end_agent` stood fifth and was withdrawn, so the tenth published is
       // ninth in the list now, at position 8.
       expect(TOOL_NAMES.indexOf('interrupt_agent')).toBe(8)
-      expect(agentToolsFor(host, 'sess_x').tools.map((one) => one.name)).toEqual([...TOOL_NAMES])
+      // Enumerate the full vocabulary explicitly; runtime role lists are checked separately.
+      expect(agentToolsFor(host, 'sess_x', {}, true).tools.map((one) => one.name)).toEqual([
+        ...TOOL_NAMES,
+      ])
     })
 
     it('🔴 exactly ONE place records the ask, so no door can write it a second way', () => {

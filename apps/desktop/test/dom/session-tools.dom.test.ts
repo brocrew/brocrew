@@ -1014,8 +1014,11 @@ describe('§5 · what the workbench SAYS when there is little or nothing to say'
     // ⚑ **In the body, not at the head of the 274px column** — `392` photographed it taking six
     // lines out of the catalogue, and it is a fact about the whole inventory rather than a note on
     // one group.
-    expect(m.q('tools-why').innerText).toContain('every conversation')
-    expect(m.q('tools-why').innerText).toContain('not readable from this window')
+    expect(m.q('tools-why').innerText).toBe(
+      'Every conversation gets the same tools, except write_agent_rules. ' +
+        'Only a BroBot conversation a person started gets it, to change another agent’s rules. ' +
+        'BroCrew still checks every call against its rules.',
+    )
     expect(
       m.q('tools-list').contains(m.q('tools-why')),
       'the sentence is inside the scrolling catalogue again',

@@ -24270,7 +24270,7 @@ export class RuntimeHost implements LiveHost {
     // path below could not pass it even if someone tried.
     const ultracode = input.ultracode
     // One toolset for the launch and its record, so the record names what was handed.
-    const agentTools = agentToolsFor(this, id, this.theListsAsLastRead())
+    const agentTools = this.agentToolsForSession(id)
     // Bounded since 102 — see {@link awaitLaunch}. The wait starts HERE and not at the reservation:
     // provisioning the home and resolving the cwd happen above and can legitimately be slow on a
     // first run, and a bound that covered them would be a bound on the wrong thing.
@@ -24303,30 +24303,16 @@ export class RuntimeHost implements LiveHost {
           ...(planMode ? { planMode } : {}),
           ...(systemHint ? { systemHint } : {}),
           ...(ultracode ? { ultracode } : {}),
-          // 🔴 **The five agent-management tools, offered to EVERY session** (347).
-          //
-          // ⛔ **There is no condition on this line, and its absence is the design.** The tempting
-          // shape is *"offer them only to a session whose profile may spawn"* — and that is a
-          // capability check, in a second place, deciding the same question the spawn rails already
-          // decide at the chokepoint. `169` §1: one rule in two places drifts, and the copy that
-          // drifts is the one further from what it protects. ⚑ **A refusal is the rail doing its job
-          // and being SEEN doing it**, rather than a tool quietly not existing.
-          //
-          // ⚠️ **What it costs, said out loud:** the whole toolset appears in the catalogue of every
-          // session, including a person's own conversation, which is prompt the model reads on turn
-          // one. That is the honest price of the criterion-7 reading — *"nothing unwired implies a
-          // working state"* — and the alternative prices worse: a tool that exists for some agents
-          // and silently not for others is the state that cannot be diagnosed from a transcript.
+          // Shared agent tools, with one role-bound exception: the direct rules writer is
+          // offered only to a person-started BroBot root. The common wrapper builds this list
+          // for start, resume and inventory reads; every call still goes through the host rails.
           agentTools,
           // 🔴 **516 · the external MCP servers this identity may use** (HO-040 §4.2), **which since
           // 524 is *everyone's, plus what it was granted*** (`HO-048` §1).
           //
-          // ⛔ **There IS still a condition on this line, unlike the one above it.** The toolset is
-          // offered to every session because the spawn rails already refuse at the chokepoint; an
-          // external server has no chokepoint of ours at all — HO-040 §4.1: *"An external tool that
-          // reads Jira or drives a browser is not orchestration. It is capability, exactly like `Bash`
-          // and `Write`"* — so a session is handed what the REGISTRY says it may have, and a
-          // registry with no rows hands it nothing.
+          // External servers follow the registry's reach and grants. Unlike BroCrew's own
+          // tools, their calls have no orchestration chokepoint here. A registry with no
+          // rows hands the session no external servers.
           //
           // ⚠️ **The sentence that used to be here said *the grant IS the gate* and `HO-048` §1
           // withdrew it.** The gate is now the server's own `reach`, with the grant table kept as the
@@ -38957,6 +38943,19 @@ export class RuntimeHost implements LiveHost {
     )
   }
 
+  /** Tool visibility uses the conversation's origin, including before its provider has started. */
+  private agentToolsForSession(sessionId: string): AgentToolset {
+    const slot = this.slots.get(sessionId)
+    const recorded = slot === undefined ? this.deps.store.recordedOne(sessionId) : null
+    const profileId = slot?.profileId ?? recorded?.profileId ?? null
+    const offersDirectRulesWrite =
+      profileId !== null &&
+      foldProfileName(profileId) === DEFAULT_PROFILE_ID &&
+      (slot === undefined || slot.spawnedBy === null) &&
+      this.deps.store.parentOf(sessionId) === null
+    return agentToolsFor(this, sessionId, this.theListsAsLastRead(), offersDirectRulesWrite)
+  }
+
   /** Bind attribution to the actual running conversation, never a supplied profile or label. */
   private rulesAuthor(me: string, by: Caller): RulesAuthor | null {
     if (sessionSpeakingAs(by) !== me) return null
@@ -41162,7 +41161,7 @@ export class RuntimeHost implements LiveHost {
       record = this.whatALaunchGave(
         provider,
         sessionId,
-        agentToolsFor(this, sessionId, this.theListsAsLastRead()),
+        this.agentToolsForSession(sessionId),
         providerValue(provider, { claude: false, codex: true }) ? filesCodexWouldRead(row.cwd) : [],
         read,
         () => context,
@@ -41229,7 +41228,7 @@ export class RuntimeHost implements LiveHost {
         tools: { server: '', count: 0, sha256: '' },
       },
       own: profileSlug === null ? null : this.deps.store.ownInstructionsOf(profileSlug),
-      toolset: agentToolsFor(this, sessionId, this.theListsAsLastRead()),
+      toolset: this.agentToolsForSession(sessionId),
       published,
       publishedAt,
       declaredWith,
@@ -43221,7 +43220,7 @@ export class RuntimeHost implements LiveHost {
       pack,
     )
     // One toolset for the launch and its record, as at a start.
-    const agentTools = agentToolsFor(this, sessionId, this.theListsAsLastRead())
+    const agentTools = this.agentToolsForSession(sessionId)
     // …and bounded as in `startSession` (102). Same bound for both: a reopen that never settles is
     // the same wedged slot as a launch that never settles, reached through the other button.
     // What a reopened Codex thread already holds is read alongside the resume, never before it: on

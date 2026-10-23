@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   boundInventory,
   CODEX_TOOL_NAMING,
@@ -11,6 +11,7 @@ import {
   FakeRuntime,
   MAX_TOOL_TEXT,
   type FakeSessionHandle,
+  type AgentToolset,
   type StartOptions,
 } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
@@ -22,7 +23,11 @@ import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { agentToolsFor, toolsToldInTextFor } from '../src/main/runtime/agent-tools'
 import { conversationBlock, readSessionInstructions } from '../src/main/runtime/instructions'
-import { oneMessageAsTheModelGotIt } from '../src/main/runtime/what-this-agent-was-given'
+import {
+  fingerprintOf,
+  toolsetFingerprint,
+  oneMessageAsTheModelGotIt,
+} from '../src/main/runtime/what-this-agent-was-given'
 import { readCodexSkill } from '../../../packages/runtime/src/codex/normalize'
 import {
   boundCommands,
@@ -48,6 +53,7 @@ import {
 } from '../src/main/runtime/workspace'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { SNAPSHOT_FILES, snapshotFor } from '../src/main/provider-snapshots'
+import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import type {
   LaunchedEvent,
   RuntimeEventMessage,
@@ -73,9 +79,11 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
 /** A `FakeRuntime` that keeps the handles it issues, so a test can reach the provider end. */
 class CapturingRuntime extends FakeRuntime {
   readonly issued: FakeSessionHandle[] = []
+  readonly handed: (AgentToolset | undefined)[] = []
   override async start(opts: StartOptions): Promise<FakeSessionHandle> {
     const handle = await super.start(opts)
     this.issued.push(handle)
+    this.handed.push(opts.agentTools)
     return handle
   }
 }
@@ -249,6 +257,102 @@ describe('F093 · what an agent was given', () => {
     )
     return sessionId
   }
+
+  it.each(['claude', 'codex'] as const)(
+    'keeps role-specific tool counts and fingerprints on %s, including stopped reads',
+    async (provider) => {
+      const host = buildHost()
+      const primary = await open(host, provider, DEFAULT_PROFILE_ID)
+      const primaryTools = runtimes.at(-1)?.handed.at(-1)
+      const ordinary = await open(host, provider, 'wren')
+      const ordinaryTools = runtimes.at(-1)?.handed.at(-1)
+      for (const [id, expected, count] of [
+        [primary, primaryTools, 31],
+        [ordinary, ordinaryTools, 30],
+      ] as const) {
+        if (expected === undefined) throw new Error('no runtime toolset captured')
+        expect(expected.tools).toHaveLength(count)
+        const given = launchesOf(id)[0]?.given
+        expect(given?.tools).toMatchObject({ count, sha256: toolsetFingerprint(expected) })
+        const live = await host.whatThisAgentWasGiven(id)
+        expect(live.tools.list.map((tool) => tool.name)).toEqual(
+          expected.tools.map((tool) => tool.name),
+        )
+        // Provider model lists can arrive after the first launch; compare actual definitions,
+        // rather than pretending the factory's empty-list default was handed to the model.
+        const now = fingerprintOf(
+          JSON.stringify(
+            live.tools.list.map(({ name, description, parameters }) => ({
+              name,
+              description,
+              parameters,
+            })),
+          ),
+        )
+        expect(live.tools.changedSinceLaunch).toBe(now !== given?.tools.sha256)
+        await host.close(id, window)
+        const stopped = await host.whatThisAgentWasGiven(id)
+        expect(stopped.tools.list).toEqual(live.tools.list)
+        expect(stopped.tools.changedSinceLaunch).toBe(live.tools.changedSinceLaunch)
+      }
+    },
+  )
+
+  it('preserves a full pre-filter launch record while showing the current ordinary toolset', async () => {
+    const host = buildHost()
+    const ordinary = await open(host, 'claude', 'wren')
+    await host.close(ordinary, window)
+    const given = launchesOf(ordinary)[0]?.given
+    if (given === undefined) throw new Error('the launch kept no record')
+    const full = agentToolsFor(host, ordinary, {}, true)
+    const historical = {
+      ...given,
+      tools: { ...given.tools, count: 31, sha256: toolsetFingerprint(full) },
+    }
+    store.append(
+      ordinary,
+      store.nextOrdinal(ordinary),
+      { type: 'launched', given: historical },
+      Date.now(),
+    )
+    const read = await host.whatThisAgentWasGiven(ordinary)
+    expect(read.tools.list).toHaveLength(30)
+    expect(read.tools.list.map((tool) => tool.name)).not.toContain('write_agent_rules')
+    expect(read.tools.changedSinceLaunch).toBe(true)
+    expect(launchesOf(ordinary).at(-1)?.given).toEqual(historical)
+  })
+
+  it('omits the direct writer for stopped adopted or unknown profiles and an unrecorded id', async () => {
+    const host = buildHost()
+    const id = await open(host, 'claude', 'wren')
+    await host.close(id, window)
+    const row = store.recordedOne(id)
+    if (row === null) throw new Error('missing recorded conversation')
+    for (const profileId of [null, 'unrecognised-profile']) {
+      const recorded = vi
+        .spyOn(store, 'recordedOne')
+        .mockImplementation((asked) => (asked === id ? { ...row, profileId } : null))
+      try {
+        const read = await host.whatThisAgentWasGiven(id)
+        expect(read.tools.list).toHaveLength(30)
+        expect(read.tools.list.map((tool) => tool.name)).not.toContain('write_agent_rules')
+        expect(read.tools.list.map((tool) => tool.name)).toEqual(
+          expect.arrayContaining(['read_agent_rules', 'propose_agent_rules']),
+        )
+      } finally {
+        recorded.mockRestore()
+      }
+    }
+    // The read API refuses unknown ids. Pin the private construction boundary as well: no
+    // slot and no recorded owner must never become a privileged declaration.
+    const boundary = host as unknown as {
+      agentToolsForSession(id: string): ReturnType<typeof agentToolsFor>
+    }
+    expect(boundary.agentToolsForSession('missing').tools.map((tool) => tool.name)).not.toContain(
+      'write_agent_rules',
+    )
+    await expect(host.whatThisAgentWasGiven('missing')).rejects.toThrow()
+  })
 
   it('⚑ a Claude launch keeps BroBot’s own words in full and the rest by fingerprint, and a turn keeps the whole text it was handed', async () => {
     seedClaudeMemory('lead', 2)

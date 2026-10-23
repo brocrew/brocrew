@@ -1195,7 +1195,8 @@ describe('394 · a question finds a person, and a permission never travels', () 
       // ⚑ **D-017 commit 3 · 8 → 7**: `end_agent`, published before it, is gone (nothing ends a
       // conversation); `answer_question` itself did not move relative to its neighbours.
       expect(TOOL_NAMES.indexOf('answer_question')).toBe(7)
-      const offered = agentToolsFor(host, 'sess_x').tools.map((tool) => tool.name)
+      // Enumerate the full vocabulary explicitly; runtime role lists are checked separately.
+      const offered = agentToolsFor(host, 'sess_x', {}, true).tools.map((tool) => tool.name)
       expect(offered).toEqual([...TOOL_NAMES])
     })
 
