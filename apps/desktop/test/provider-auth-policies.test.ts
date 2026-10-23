@@ -31,6 +31,7 @@ interface Policy {
     limit(handle: HandleFacts): Identity
   }
   readonly copy: {
+    readonly carriesAcceptedAfterAccountChange: boolean
     same(one: unknown, other: unknown): boolean
     refused(error: unknown): unknown | null
   }
@@ -118,6 +119,8 @@ describe('provider authentication policy facts', () => {
   it('compares opaque copies without treating a missing copy as equal', () => {
     const copy = { dev: 1n, ino: 2n, size: 3n, mtimeNs: 4n }
     const own = policies().codex.copy
+    expect(own.carriesAcceptedAfterAccountChange).toBe(true)
+    expect(policies().claude.copy.carriesAcceptedAfterAccountChange).toBe(false)
     expect(own.same(copy, { ...copy })).toBe(true)
     for (const field of ['dev', 'ino', 'size', 'mtimeNs'] as const)
       expect(own.same(copy, { ...copy, [field]: copy[field] + 1n }), field).toBe(false)

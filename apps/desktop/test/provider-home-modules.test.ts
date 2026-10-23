@@ -3,7 +3,7 @@ import { providerRecord } from '@brobot2/shared'
 import { createProviderModules, providerAuthFromModules } from '../src/main/providers'
 import type { ProviderHomePaths } from '../src/main/providers/module'
 
-function fixture() {
+function fixture(renewLogin?: () => Promise<'renewed'>) {
   const command = vi.fn(() => '/fictional/codex')
   const program = vi.fn(() => '/fictional/claude')
   const key = vi.fn(() => null)
@@ -17,11 +17,13 @@ function fixture() {
     assertMayOpen: vi.fn(),
   }))
   const pathsFor = vi.fn((provider: keyof typeof paths): ProviderHomePaths => paths[provider])
+  const authInputs = { key, keyStatus: status }
+  if (renewLogin !== undefined) Reflect.set(authInputs, 'renewLogin', renewLogin)
   const modules = createProviderModules(pathsFor, {
     claude: {
       runtime: { program, key },
       home: { provisionHome: provision, key },
-      auth: { key, keyStatus: status },
+      auth: authInputs,
     },
     codex: {
       runtime: { command },
@@ -42,6 +44,49 @@ function fixture() {
 }
 
 describe('bound provider home modules', () => {
+  it('binds optional login renewal without running it and keeps the launch wrapper outside', async () => {
+    const order: string[] = []
+    const renew = vi.fn(async () => {
+      order.push('renew')
+      return 'renewed' as const
+    })
+    const state = fixture(renew)
+    type Renewal = {
+      readonly launchLabel: string
+      renew(): Promise<'renewed'>
+      prepare(
+        prepare: () => string,
+        renew: () => Promise<'renewed'>,
+      ): Promise<{ readonly home: string; readonly loginRenewed: boolean }>
+    }
+    const own = Reflect.get(state.modules.claude.auth, 'renewal') as Renewal | undefined
+    expect(own).toBeDefined()
+    if (own === undefined) throw new Error('The bound renewal is absent')
+    expect(own.renew).toBe(renew)
+    expect(own.launchLabel).toBe('Claude sign-in renewal')
+    expect(Reflect.get(state.modules.codex.auth, 'renewal')).toBeUndefined()
+    const forwarded = Reflect.get(providerAuthFromModules(state.modules), 'loginRenewal') as
+      | ((provider: 'claude' | 'codex') => Renewal | undefined)
+      | undefined
+    expect(forwarded?.('claude')).toBe(own)
+    expect(forwarded?.('codex')).toBeUndefined()
+    expect(renew).not.toHaveBeenCalled()
+    expect(state.key).not.toHaveBeenCalled()
+    await expect(
+      own.prepare(
+        () => {
+          order.push('prepare')
+          return '/fictional/home'
+        },
+        () => {
+          order.push('launch-wrapper')
+          return own.renew()
+        },
+      ),
+    ).resolves.toEqual({ home: '/fictional/home', loginRenewed: true })
+    expect(order).toEqual(['launch-wrapper', 'renew', 'prepare'])
+  })
+
   it('registers without resolving a program, reading credentials or touching a home', () => {
     const state = fixture()
     expect(state.pathsFor).toHaveBeenCalledTimes(2)
