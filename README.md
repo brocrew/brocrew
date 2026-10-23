@@ -13,7 +13,29 @@ Give an agent a task, and it can share the work with other agents.
 Each agent keeps its own memory and rules across conversations.
 Use it for coding, writing, research or other projects, with your own Anthropic or OpenAI API key.
 
-![BroCrew's window showing agents working on a project.](docs/images/conversation.png)
+![BroCrew's Graph: one request turns into a tree of agents, each holding its own piece of work.](docs/images/graph-demo.gif)
+
+## See it work
+
+**One request becomes a tree of work.** You ask BroBot, the first agent, for two projects. It starts a project manager for each, and they bring in developers and reviewers. Every box is an agent and every line is work handed down. Claude and Codex agents sit in the same tree.
+
+![The Graph tab showing BroBot, two project managers and their developers and reviewers.](docs/images/graph.png)
+
+**You decide how far they go.** In the default "ask" mode, an agent stops and asks before it runs a command or changes a file. Everything that needs you waits in one list, **Waiting on you**.
+
+![An approval card: the agent wants to run a build and waits for Approve or Deny.](docs/images/conversation.png)
+
+**Work comes back with a result.** When a piece of work is finished, its owner reports what was fixed, what wasn't checked, and where the files are.
+
+![A project manager's report: what was fixed, what wasn't checked, and where the report is.](docs/images/hand-back-summary.png)
+
+## Why BroCrew
+
+- **You can see who is doing what.** Every request is a piece of work with an owner. Agents can hand pieces on to other agents, and the Graph draws the tree as it grows. An agent can run on Claude or on Codex, in the same tree.
+- **You stay in charge.** Approvals, questions and stalled work all land in one place, so you don't hunt through tabs to find the agent that is waiting for you.
+- **Agents that last.** Each agent keeps its own memory and standing rules, so it doesn't start from nothing every time you talk to it.
+
+> In one real run, BroBot reported: "Chen (Claude) and Felix (Codex) each wrote their own audit, then checked the other's findings against the code, and Chen combined both into one report."
 
 ## Install
 
