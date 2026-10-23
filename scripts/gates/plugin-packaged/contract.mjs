@@ -137,8 +137,8 @@ export function projectBuild(config, entry, appData, browser) {
   )
   entry = replace(
     entry,
-    '    renewClaudeLogin,\n',
-    `    /* ${GATE_BUILD_MARKER} */ renewClaudeLogin: undefined,\n`,
+    '    loginRenewal: providerAuth.loginRenewal,\n',
+    `    /* ${GATE_BUILD_MARKER} */ loginRenewal: undefined,\n`,
   )
   entry = replace(
     entry,
