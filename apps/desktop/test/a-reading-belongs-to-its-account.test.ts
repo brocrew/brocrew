@@ -366,6 +366,14 @@ describe('a usage reading belongs to the account it was read on', () => {
           : [{ path: relative(userData, path), bytes: readFileSync(path) }]
       })
 
+    it('keeps the legacy account record bytes unchanged', () => {
+      const file = providerAccountsFile(userData)
+      writeKeptAccounts(file, { claude: { id: ONE, email: EMAIL, organization: ORGANIZATION } })
+      expect(readFileSync(file, 'utf8')).toBe(
+        `{\n  "claude": {\n    "id": "${ONE}",\n    "email": "${EMAIL}",\n    "organization": "${ORGANIZATION}"\n  }\n}\n`,
+      )
+    })
+
     it('🔴 no log line, tool answer or window message carries it, and the data folder holds it in one file', async () => {
       const said: unknown[] = []
       const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((level) =>
