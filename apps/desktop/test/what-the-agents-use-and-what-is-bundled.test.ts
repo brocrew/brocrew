@@ -184,6 +184,43 @@ describe('providerVersionsReader', () => {
   /** That program, as the copy BroCrew carries — what a launch runs. */
   const carried = (path: string): CodexProgram => ({ path, from: 'carried' })
 
+  it('keeps the Codex failure answer when Claude answers later', async () => {
+    const claudePath = join(dir, 'held-claude')
+    const codexPath = join(dir, 'failing-codex')
+    let codexAsks = 0
+    let finishClaude: ((error: Error | null, output: string) => void) | undefined
+    versionPrograms.run = (file, _options, callback) => {
+      if (file === claudePath) {
+        finishClaude = callback
+        return true
+      }
+      if (file === codexPath) {
+        codexAsks += 1
+        callback(new Error('fictional transient failure'), '')
+        return true
+      }
+      return false
+    }
+    const read = providerVersionsReader(
+      () => carried(codexPath),
+      () => ({ path: claudePath, from: 'given', update: null, others: [] }),
+    )
+    const answering = read()
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    expect(finishClaude).toBeDefined()
+    finishClaude!(null, 'Claude Code 2.1.0')
+    const answer = await answering
+    expect(answer.codex).toMatchObject({
+      version: null,
+      program: { standing: 'unreadable', path: codexPath },
+    })
+    expect((await read()).codex).toMatchObject({
+      version: null,
+      program: { standing: 'unreadable', path: codexPath },
+    })
+    expect(codexAsks).toBe(2)
+  })
+
   it('🔴 Codex’s version is what the bundled binary prints, read in a home of its own that is removed after', async () => {
     const binary = aProgram(
       `echo "codex-cli 0.160.0"\necho "$HOME" > "${join(dir, 'home')}"\necho "$CODEX_HOME" > "${join(dir, 'codexhome')}"`,
