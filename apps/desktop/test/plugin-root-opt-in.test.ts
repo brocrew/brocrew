@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import { existsSync } from 'node:fs'
 import {
   copyFile,
@@ -15,7 +17,7 @@ import {
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { createConnection } from 'node:net'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   PluginWorkspaceLease,
@@ -32,7 +34,9 @@ import {
   connectPersonPluginControl,
   servePersonPluginControl,
 } from '../src/main/plugins/lifecycle/person-control'
-import type { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
+import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
+import { manifestFor, packageFixture, fictionalPublicKey } from './plugin-package-fixtures'
+import { projection, deferred } from './plugin-lifecycle-fixtures'
 import { PersonChannel } from '../src/main/plugins/lifecycle/transport'
 import { PluginSupervisorError } from '../src/main/plugins/supervisor/protocol'
 
@@ -483,6 +487,220 @@ it('person capabilities and sockets refuse the other root key in both directions
 })
 
 describe('simultaneous unselected and opted-in owners', () => {
+  it('changes only closed workspaces while a default owner refresh remains in flight', async () => {
+    const f = await fixture(),
+      devWorkspace = join(f.appData, '@brobot2', 'desktop')
+    const third = join(f.parent, 'oak')
+    for (const folder of [devWorkspace, third]) await mkdir(folder, { mode: 0o700 })
+    const dev = root(f, devWorkspace)
+    await mkdir(dev, { mode: 0o700 })
+    await keepPluginRootPrivate(dev)
+    const state = GlobalPluginState.create({
+      root: join(dev, 'state'),
+      workspaceRoots: [devWorkspace],
+    })
+    stores.push(state)
+    const live = await owner(dev, devWorkspace),
+      lease = await attach(dev, devWorkspace)
+    live.adopt()
+    const manifest = manifestFor()
+    manifest.id = 'chrome'
+    manifest.skills = []
+    manifest.platforms = [
+      {
+        os: process.platform as 'darwin' | 'linux' | 'win32',
+        cpu: process.arch as 'arm64' | 'x64',
+      },
+    ]
+    const pkg = packageFixture({ manifest }),
+      events: string[] = []
+    const entered = deferred<void>(),
+      release = deferred<void>(),
+      exited = deferred<void>()
+    const checkpoints = Array.from({ length: 6 }, () => ({
+      request: deferred<void>(),
+      done: deferred<void>(),
+    }))
+    const snapshots: unknown[] = []
+    const source = join(dev, 'fictional-catalogue.json'),
+      reads: string[] = []
+    await writeFile(source, pkg.bytes, { mode: 0o600 })
+    const controller = await PluginLifecycleController.open({
+      root: dev,
+      state,
+      pinnedPublicKey: fictionalPublicKey,
+      target: manifest.platforms[0]!,
+      catalogue: { bytes: pkg.bytes, signature: pkg.signature },
+      names: { chrome: 'Fictional Fern' },
+      deny: () => {
+        events.push('deny')
+      },
+      download: async () => {
+        events.push('download')
+        return pkg.archive
+      },
+      refreshCatalogue: async () => {
+        reads.push(source)
+        const bytes = await readFile(source)
+        entered.resolve()
+        for (const point of checkpoints) {
+          await point.request.promise
+          try {
+            snapshots.push(state.inspect())
+          } catch (error) {
+            snapshots.push(error)
+          }
+          point.done.resolve()
+        }
+        await release.promise
+        return {
+          catalogue: { bytes, signature: pkg.signature },
+          names: { chrome: 'Fictional Fern' },
+        }
+      },
+      runtime: {
+        previousOwnerClean: async () => true,
+        removeCode: async () => {
+          throw new Error('No package removal in this proof')
+        },
+        removeData: async () => {
+          throw new Error('No data removal in this proof')
+        },
+        start: async () => {
+          events.push('start')
+          return {
+            runId: randomUUID(),
+            exited: exited.promise,
+            ready: async () => ({
+              serverPid: 404941,
+              origin: 'http://127.0.0.1:1',
+              mcp: () => ({ url: '', headers: {} }),
+              admin: () => ({ url: '', headers: {} }),
+            }),
+            stop: async () => {
+              events.push('stop')
+              exited.resolve()
+            },
+          }
+        },
+      },
+    })
+    closers.push(() => controller.drain())
+    const handle = await controller.attach(projection(events).sink)
+    await controller.install(handle, 'chrome')
+    await mkdir(join(dev, 'data'), { recursive: true, mode: 0o700 })
+    await writeFile(join(dev, 'data', 'fictional-retained'), 'retained default setup', {
+      mode: 0o600,
+    })
+    const key = await pluginPersonCapability(dev)
+    const bridge = await servePersonPluginControl({
+      root: dev,
+      key,
+      controller,
+      read: async () => {
+        throw new Error('No private plugin read in this proof')
+      },
+    })
+    closers.push(() => bridge.close({ endConsumers: true }))
+    const client = await connectPersonPluginControl({
+      path: bridge.path,
+      key,
+      handle: async () => true,
+    })
+    closers.push(async () => {
+      client.close()
+      await client.settled()
+    })
+    await client.call({ kind: 'attach', workspaceId: randomUUID() })
+    const cards = await client.call({ kind: 'list-v2' })
+    expect(cards).toMatchObject([{ id: 'chrome', installed: true, state: 'Running' }])
+    const original = state.inspect(),
+      identity = controller.catalogueIdentity(),
+      beforeEvents = [...events]
+    expect(original.pending).toBeNull()
+    expect(original.guards).toHaveLength(1)
+    const refreshing = controller.refreshCatalogue(identity)
+    closers.push(async () => {
+      for (const point of checkpoints) point.request.resolve()
+      release.resolve()
+      await refreshing
+    })
+    await entered.promise
+    let refreshFinished = false
+    void refreshing.then(
+      () => {
+        refreshFinished = true
+      },
+      () => {},
+    )
+    const beforeTree = await treeHash(dev),
+      run = promisify(execFile)
+    const creatorLock = join(f.appData, '@brobot2', 'plugin-root-pins.lock')
+    expect(isWithinOrSame(dev, creatorLock)).toBe(false)
+    for (const path of [
+      live.disk.lock,
+      live.disk.record,
+      live.disk.socket,
+      join(dev, 'state', 'writer-lock.sqlite'),
+    ])
+      expect(path).not.toBe(creatorLock)
+    const command = resolve('scripts/plugin-root-opt-in.mjs')
+    const targets = [
+      [f.workspace, 'p1'],
+      [f.otherWorkspace, 'p2'],
+      [third, 'p3'],
+    ] as const
+    let checkpoint = 0
+    try {
+      for (const mode of ['own', 'shared'] as const) {
+        for (const [workspace, slot] of targets) {
+          const args = [
+            command,
+            '--app-data',
+            f.appData,
+            '--workspace',
+            workspace,
+            '--mode',
+            mode,
+            '--slot',
+            slot,
+            '--apply',
+          ]
+          expect(JSON.parse((await run(process.execPath, args)).stdout).status).toBe(
+            mode === 'own' ? 'created' : 'shared',
+          )
+          expect(root(f, workspace)).toBe(
+            mode === 'own' ? join(f.appData, '@brobot2', `plugins-${slot}`) : dev,
+          )
+          expect(root(f, devWorkspace)).toBe(dev)
+          expect(refreshFinished).toBe(false)
+          expect(controller.catalogueIdentity()).toBe(identity)
+          expect(live.disk.read()).toEqual(live.record)
+          expect(live.childStopped).not.toHaveBeenCalled()
+          expect(live.revoked).not.toHaveBeenCalled()
+          await expect(lease.renew()).resolves.toBeUndefined()
+          await expect(client.call({ kind: 'features' })).resolves.toHaveProperty('features')
+          const point = checkpoints[checkpoint]!
+          point.request.resolve()
+          await point.done.promise
+          expect(snapshots[checkpoint++]).toEqual(original)
+          expect(events).toEqual(beforeEvents)
+          expect(await treeHash(dev)).toBe(beforeTree)
+          expect(existsSync(creatorLock)).toBe(false)
+        }
+      }
+    } finally {
+      for (const point of checkpoints) point.request.resolve()
+      release.resolve()
+      await refreshing
+    }
+    expect(reads).toEqual([source])
+    expect(state.inspect()).toEqual(original)
+    expect(controller.catalogueIdentity()).toBe(identity)
+    expect(await client.call({ kind: 'list-v2' })).toEqual(cards)
+    expect(events).toEqual(beforeEvents)
+    await expect(lease.renew()).resolves.toBeUndefined()
+  })
   it.each([
     [false, false],
     [true, false],
