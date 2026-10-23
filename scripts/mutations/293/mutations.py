@@ -107,12 +107,7 @@ MUTATIONS = [
         "`provisionProviderHome` returning honestly and `auth.json` being written — the same escape "
         "one function later, and the one that actually moves a credential",
         [
-            (
-                HOMES,
-                # ⚑ **The fallback sign-in · re-anchored in place, not retired** — the writer's options moved into `theCodexCopy`; the plant still stops telling it the managed root.
-                "  return {\n    managedRoot: providerHomesRoot(userData),\n",
-                "  return {\n",
-            )
+            ("apps/desktop/src/main/providers/codex/index.ts", "  return {\n    managedRoot: paths.managedRoot,\n", "  return {\n"),
         ],
     ),
     # ── §2 · claims that did not outlive the thing they name ────────────────────────────────────

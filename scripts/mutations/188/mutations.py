@@ -73,8 +73,8 @@ MUTATIONS = [
     (
         "M3  · ⛔ 168 L2 · a home that is only PREPARED keeps its stale policy — adoption-only and "
         "never-relaunched homes go back to being unreachable",
-        HOMES,
-        "    removeStaleCodexPermissionConfig(home)\n",
+        "apps/desktop/src/main/providers/codex/index.ts",
+        "  removeStaleCodexPermissionConfig(home)\n",
         "",
     ),
     # ---- §2 · 168 L3 — what may grant the cardless write ---------------------------------------

@@ -514,7 +514,9 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M47 · credentialHome keeps its profileId validation but returns a path without the `default` folder, so a credential gesture is admitted under a key that is not the home it writes — killed by `a-conversation-of-any-profile-lives-in-the-one-home-folder.test.ts`",
         [
-            (PROVIDER_HOMES, "    credentialHome(provider, profileId) {\n      return deriveProviderHome(userData, { profileId, provider })\n    },", "    credentialHome(provider, profileId) {\n      deriveProviderHome(userData, { profileId, provider })\n      return join(providerHomesRoot(userData), profileId, provider)\n    },"),
+            ("apps/desktop/src/main/providers/claude/index.ts", "import {\n  AuthUnavailableError,", "import { join } from 'node:path'\nimport {\n  AuthUnavailableError,"),
+            ("apps/desktop/src/main/providers/claude/index.ts", "    credentialHome: (profileId) => paths.homeOf(profileId),", "    credentialHome: (profileId) => {\n      paths.homeOf(profileId)\n      return join(paths.managedRoot, profileId, 'claude')\n    },"),
+            ("apps/desktop/src/main/providers/codex/index.ts", "    credentialHome(profileId) {\n      return paths.homeOf(profileId)\n    },", "    credentialHome(profileId) {\n      paths.homeOf(profileId)\n      return join(paths.managedRoot, profileId, 'codex')\n    },"),
         ],
     ),
     (
@@ -526,8 +528,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M49 · main's prepareProviderHome seam ignores the profile it is given and always provisions the default profile's home — killed by `a-conversation-of-any-profile-lives-in-the-one-home-folder.test.ts`",
         [
-            # ⚑ **W4.78 · re-anchored in place, not retired** — the API-keys work (5fecec18) added a third argument `{ apiKey, codexKey }` to the call; the plant keeps it and hard-codes the default profile. Killer's PREPARE_SEAM census already spells the new call.
-            (INDEX, "    prepareProviderHome: async (provider, profileId) => {\n      await transcriptRetention?.beforeLaunch()\n      return prepareProviderHome(userData, { profileId, provider }, homeSeams)\n    },", "    prepareProviderHome: async (provider, _profileId) => {\n      await transcriptRetention?.beforeLaunch()\n      return prepareProviderHome(userData, { profileId: 'brobot', provider }, homeSeams)\n    },"),
+            ("apps/desktop/src/main/index.ts", "    prepareProviderHome: async (provider, profileId) => {\n      await transcriptRetention?.beforeLaunch()\n      return providerModules[provider].home.prepare(profileId)\n    },", "    prepareProviderHome: async (provider, _profileId) => {\n      await transcriptRetention?.beforeLaunch()\n      return providerModules[provider].home.prepare('brobot')\n    },"),
         ],
     ),
     (
