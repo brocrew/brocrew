@@ -94,6 +94,7 @@ describe('provider-owned desktop inputs', () => {
       expect(Reflect.get(modules[provider], 'program')).toBe(
         Reflect.get(f.inputs[provider], 'program'),
       )
+    expect(f.inputs.claude.auth.platform).toBe(f.env.platform)
     expect(f.claudeVersions).toHaveBeenCalledTimes(1)
     expect(f.codexVersions).toHaveBeenCalledTimes(1)
     expect(f.renewal).toHaveBeenCalledExactlyOnceWith({

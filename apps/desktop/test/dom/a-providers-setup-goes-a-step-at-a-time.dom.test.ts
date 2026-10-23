@@ -30,6 +30,20 @@ import { mount, unmountAll, type Mounted } from './harness'
  * provider isn't ready; the card's Set up opens it any time.
  */
 
+const readiness = vi.hoisted(() => ({
+  seen: vi.fn<(facts: { keyUnreadable?: string | null }) => void>(),
+}))
+vi.mock('../../src/renderer/src/lib/provider-setup-steps', async (original) => {
+  const actual = await original<typeof import('../../src/renderer/src/lib/provider-setup-steps')>()
+  return {
+    ...actual,
+    isReady: (facts: Parameters<typeof actual.isReady>[0]) => {
+      readiness.seen(facts)
+      return actual.isReady(facts)
+    },
+  }
+})
+
 const ORIGINAL = { width: window.innerWidth, height: window.innerHeight }
 
 const settled = async (): Promise<void> => {
@@ -59,6 +73,7 @@ let copied: string[] = []
 let storage: Storage
 
 beforeEach(async () => {
+  readiness.seen.mockClear()
   copied = []
   storage = memoryStorage()
   vi.stubGlobal('localStorage', storage)
@@ -845,3 +860,22 @@ describe('§8 · the Providers card’s Set up opens it', () => {
     expect(m.q('setup-ready').textContent).toContain('Claude is ready.')
   })
 })
+
+it.each([true, false, undefined])(
+  'launch readiness says a sign-in can replace an unreadable key only when presence is %s',
+  async (behind) => {
+    theBridge({
+      claude: version('tested'),
+      claudeAuth: SIGNED_IN,
+      codexAuth: { ...ON_A_KEY, loginBehindTheKey: behind } as AuthState,
+      codexKey: { set: true, setAt: 1, inUse: false, readState: 'unreadable' },
+    })
+    mount(ProviderSetupAtLaunch, { capabilities: CAPS })
+    await settled()
+    const said = readiness.seen.mock.calls
+      .map(([facts]) => facts.keyUnreadable)
+      .find((line) => line?.includes('Codex'))
+    expect(said).toBeDefined()
+    expect(said?.includes('remove it to use the sign-in')).toBe(behind === true)
+  },
+)
