@@ -221,18 +221,26 @@ describe('provider authentication policy facts', () => {
   })
 })
 
-
 describe('provider-owned setup and renewal facts', () => {
   it('keeps the current setup and renewed-login sentence in its provider', () => {
     const claude = registry.providerAuthPolicies.claude
     const codex = registry.providerAuthPolicies.codex
-    const setup = Reflect.get(claude, 'setup') as ((platform: NodeJS.Platform, program: () => string | null) => unknown) | undefined
+    const setup = Reflect.get(claude, 'setup') as
+      ((platform: NodeJS.Platform, program: () => string | null) => unknown) | undefined
     expect(setup).toBeTypeOf('function')
     expect(setup?.('win32', () => 'C:\\Fictional\\claude.exe')).toMatchObject({
-      tool: 'Claude Code', shell: 'PowerShell', signInCommand: "& 'C:\\Fictional\\claude.exe'",
+      tool: 'Claude Code',
+      shell: 'PowerShell',
+      signInCommand: "& 'C:\\Fictional\\claude.exe'",
     })
-    expect(Reflect.get(codex, 'setup')?.('darwin', () => { throw new Error('Codex has no installed setup program') })).toBeNull()
-    expect(Reflect.get(claude, 'renewedNotice')).toBe('BroCrew renewed your Claude Code login by running `claude` once.')
+    expect(
+      Reflect.get(codex, 'setup')?.('darwin', () => {
+        throw new Error('Codex has no installed setup program')
+      }),
+    ).toBeNull()
+    expect(Reflect.get(claude, 'renewedNotice')).toBe(
+      'BroCrew renewed your Claude Code login by running `claude` once.',
+    )
     expect(Reflect.get(codex, 'renewedNotice')).toBeNull()
   })
 })

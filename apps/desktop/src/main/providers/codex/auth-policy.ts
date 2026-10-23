@@ -56,6 +56,8 @@ function isCopy(value: unknown): value is CodexCopyIdentity {
 }
 
 export const authPolicy: ProviderAuthPolicy = {
+  setup: () => null,
+  renewedNotice: null,
   key: keyPolicy,
   identity: { waitsForAccount: false, launch: tagOf, limit: tagOf },
   copy: {

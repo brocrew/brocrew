@@ -1,5 +1,5 @@
 import type { ApiKeyCheck } from '../../shared/runtime-ipc'
-import type { SessionAccount, SessionHandle } from '@brobot2/runtime'
+import type { ProviderSetup, SessionAccount, SessionHandle } from '@brobot2/runtime'
 
 export type IdentityHandle = Pick<SessionHandle, 'account' | 'signInTag'>
 
@@ -25,6 +25,9 @@ export interface ProtocolNotice {
 
 /** Native facts and comparisons are separate from bound credential and launch services. */
 export interface ProviderAuthPolicy {
+  /** A provider asks for its installed program only if its own setup steps need one. */
+  setup(platform: NodeJS.Platform, installedPath: () => string | null): ProviderSetup | null
+  readonly renewedNotice: string | null
   readonly key: {
     check(key: string, fetchFor?: typeof fetch): Promise<ApiKeyCheck>
     loginRunsWithoutAKey(platform?: NodeJS.Platform, readLogin?: () => string | null): boolean

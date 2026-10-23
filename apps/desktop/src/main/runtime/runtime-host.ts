@@ -96,8 +96,6 @@ import type { TextPackRead } from '../skills/text-pack'
 import type {
   AgentRuntime,
   AuthState,
-  ClaudeLoginRenewal,
-  CodexLoginOutcome,
   ContextReading,
   NotStartedBecause,
   PermissionDecision,
@@ -116,9 +114,6 @@ import type {
 import { isAbsolute, join, relative, resolve as resolvePath } from 'node:path'
 import {
   allProviderCapabilities,
-  CLAUDE_LOGIN_RENEWED,
-  claudeSetup,
-  claudeCommandIn,
   answerRefusalOf,
   askedOfTheChannel,
   // ⚑ **676 · F4 — the adapter's own test for an OFFERED label**, so a chosen option is never cut.
@@ -169,7 +164,6 @@ import {
   providerDescriptor,
   providerRecord,
   providerSchema,
-  providerValue,
   type Provider,
   type SessionStatus,
 } from '@brobot2/shared'
@@ -1136,12 +1130,7 @@ import {
   type McpServerRequestWho,
 } from '../../shared/mcp-server-requests'
 import type { QueuedMessage } from './queued-message'
-import {
-  DEFAULT_PROFILE_ID,
-  ProfileUnopenable,
-  assertProfileMayBeCreated,
-  prepareOnTheLogin,
-} from './provider-homes'
+import { DEFAULT_PROFILE_ID, ProfileUnopenable, assertProfileMayBeCreated } from './provider-homes'
 import { LivenessTracker, type LivenessOptions } from './liveness'
 // ⚑ **575 · the sibling of the line above** — see {@link BeingDoneTracker}, which is fed from the
 // same line of {@link RuntimeHost.deliver} and for the same reason.
@@ -2564,12 +2553,14 @@ export interface RuntimeHostDeps {
    * Has the person's own Claude Code renew their login when it needs renewing, so a conversation that
    * stopped on an expired login can reopen on the renewed one. Absent: nothing is renewed here.
    */
-  renewClaudeLogin?: () => Promise<ClaudeLoginRenewal>
+  loginRenewal?: (
+    provider: Provider,
+  ) => import('../providers/auth-types').LoginRenewalOperations | undefined
   /**
    * The person's own Claude Code by its full path, or `null` when none is installed: what the setup
    * steps and a refused start tell them to run. Asked when it is said. Absent: `null`.
    */
-  claudeProgramFound?: () => string | null
+  programFound?: Readonly<Partial<Record<Provider, () => string | null>>>
   /**
    * Where a profile's provider home WOULD be — the path, and nothing else (112, review HIGH).
    *
@@ -2908,8 +2899,8 @@ export interface RuntimeHostDeps {
   interruptWaitMs?: number
   /** How long a launch may go unanswered; also overrides the resume limit unless given separately. */
   launchTimeoutMs?: number
-  /** How long reopening a Codex conversation may go unanswered. */
-  codexResumeTimeoutMs?: number
+  /** Per-provider resume limits, before the shared launch limit or provider default. */
+  resumeTimeouts?: Partial<Record<Provider, number>>
   /**
    * How long a reopened Codex thread's leads read may still take once its provider has answered;
    * past it the whole text is owed. {@link DEFAULT_REOPEN_LEADS_GRACE_MS} when not given.
@@ -8261,14 +8252,11 @@ export class RuntimeHost implements LiveHost {
     this.archived = deps.archived ?? archivedInMemory()
     this.closeDrainTimeoutMs = deps.closeDrainTimeoutMs ?? DEFAULT_CLOSE_DRAIN_TIMEOUT_MS
     this.interruptWaitMs = deps.interruptWaitMs ?? DEFAULT_INTERRUPT_WAIT_MS
-    const resumeOverrides: Partial<Record<Provider, number | undefined>> = {
-      codex: deps.codexResumeTimeoutMs,
-    }
     this.launchTimeouts = providerRecord((provider) => {
       const defaults = providerDescriptor(provider).launch
       return {
         fresh: deps.launchTimeoutMs ?? defaults.freshTimeoutMs,
-        resume: resumeOverrides[provider] ?? deps.launchTimeoutMs ?? defaults.resumeTimeoutMs,
+        resume: deps.resumeTimeouts?.[provider] ?? deps.launchTimeoutMs ?? defaults.resumeTimeoutMs,
       }
     })
     this.reopenLeadsGraceMs = deps.reopenLeadsGraceMs ?? DEFAULT_REOPEN_LEADS_GRACE_MS
@@ -23995,18 +23983,12 @@ export class RuntimeHost implements LiveHost {
     const renewedForIt = sessionId !== undefined && this.renewedForItsReopen.delete(sessionId)
     const prepare = (): string | Promise<string> =>
       this.deps.prepareProviderHome(provider, profileId)
-    const renew = this.deps.renewClaudeLogin
-    if (
-      providerValue(provider, { claude: false, codex: true }) ||
-      renew === undefined ||
-      this.aKeyIsSaved(provider)
-    ) {
+    const renewal = this.deps.loginRenewal?.(provider)
+    if (renewal === undefined || this.aKeyIsSaved(provider)) {
       return { home: await prepare(), loginRenewed: renewedForIt }
     }
-    const prepared = await prepareOnTheLogin(
-      prepare,
-      () => this.withProviderLaunch('Claude sign-in renewal', renew),
-      () => this.claudeCommand(),
+    const prepared = await renewal.prepare(prepare, () =>
+      this.withProviderLaunch(renewal.launchLabel, renewal.renew),
     )
     return { home: prepared.home, loginRenewed: renewedForIt || prepared.loginRenewed }
   }
@@ -24399,7 +24381,7 @@ export class RuntimeHost implements LiveHost {
         // ⚑ **D-017 · R4** — this life's questions outlive a stop ({@link LaunchedEvent}).
         this.publishOurs(registered, {
           type: 'launched',
-          ...(loginRenewed ? { loginRenewed: CLAUDE_LOGIN_RENEWED } : {}),
+          ...this.renewalNotice(registered.provider, loginRenewed),
         })
         // ⚑ A recorded service's first launch: the brief held for it goes first, as at a reopen.
         if (recorded) this.putBackWhatWaitedForThisStart(registered)
@@ -34479,7 +34461,7 @@ export class RuntimeHost implements LiveHost {
     const ask = this.deps.askTheProvider
     if (!keys || !ask)
       return { ok: false, reason: 'This build of BroCrew cannot check an API key.' }
-    const card = providerValue(provider, { claude: 'Claude', codex: 'Codex' })
+    const card = providerDescriptor(provider).displayName
     const change = this.keyChanges.get(provider)
     const revision = keys.revision?.(provider)
     const setAt = keys.status(provider).setAt
@@ -34570,15 +34552,18 @@ export class RuntimeHost implements LiveHost {
    * have, by its full path. Codex signs in inside this app, so it has none.
    */
   providerSetup(): Readonly<Record<Provider, ProviderSetup | null>> {
-    return {
-      claude: claudeSetup(process.platform, this.deps.claudeProgramFound?.() ?? null),
-      codex: null,
-    }
+    return providerRecord((provider) =>
+      providerAuthPolicies[provider].setup(
+        process.platform,
+        () => this.deps.programFound?.[provider]?.() ?? null,
+      ),
+    )
   }
 
-  /** Claude Code as the person runs it in their shell ({@link claudeCommandIn}). */
-  private claudeCommand(): string {
-    return claudeCommandIn(this.deps.claudeProgramFound?.() ?? null, process.platform)
+  /** Publish the provider's existing sentence only when this launch renewed its login. */
+  private renewalNotice(provider: Provider, renewed: boolean): { readonly loginRenewed?: string } {
+    const text = providerAuthPolicies[provider].renewedNotice
+    return renewed && text !== null ? { loginRenewed: text } : {}
   }
 
   /**
@@ -35623,7 +35608,7 @@ export class RuntimeHost implements LiveHost {
   }
 
   /** Resolve as a failed outcome after `ms` — the bound on a sign-in nobody finished. */
-  private signInDeadline(ms: number): Promise<CodexLoginOutcome> {
+  private signInDeadline(ms: number): Promise<Awaited<ProviderSignIn['completed']>> {
     return new Promise((resolve) => {
       const timer = setTimeout(
         () =>
@@ -43146,7 +43131,7 @@ export class RuntimeHost implements LiveHost {
     // ⚑ **D-017 · R4** — this life's questions outlive a stop ({@link LaunchedEvent}).
     this.publishOurs(session, {
       type: 'launched',
-      ...(loginRenewed ? { loginRenewed: CLAUDE_LOGIN_RENEWED } : {}),
+      ...this.renewalNotice(session.provider, loginRenewed),
     })
     // ⚑ **D-017 · R3** — what waited for this start goes first.
     this.putBackWhatWaitedForThisStart(session)
@@ -45609,12 +45594,11 @@ export class RuntimeHost implements LiveHost {
       // ⚠️ The id is refused as *not confirmed stopped* until the old launch is released.
       if (this.launches.closed) return
       // A login that ended under it is renewed first, when it runs on the login and not a key.
-      const renew = this.deps.renewClaudeLogin
+      const renewal = this.deps.loginRenewal?.(session.provider)
       const renewed =
-        providerValue(session.provider, { claude: true, codex: false }) &&
-        !this.aKeyIsSaved('claude') &&
-        renew !== undefined &&
-        (await this.withProviderLaunch('Claude sign-in renewal', renew)) === 'renewed'
+        renewal !== undefined &&
+        !this.aKeyIsSaved(session.provider) &&
+        (await this.withProviderLaunch(renewal.launchLabel, renewal.renew)) === 'renewed'
       // ⚑ A copy replaced by a fresh one of the same account: the account's limits still apply.
       if (session.itsCopyWasReplaced !== true) {
         if ((await session.handle.checkSignIn?.()) !== true) return
