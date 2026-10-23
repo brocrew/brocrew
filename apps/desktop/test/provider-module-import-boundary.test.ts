@@ -10,6 +10,7 @@ const definitions = join(root, 'providers/definitions.ts')
 const knowledge = join(root, 'providers/knowledge-definitions.ts')
 const auth = join(root, 'providers/auth-definitions.ts')
 const compatibility = join(root, 'providers/compat.ts')
+const programCompatibility = join(root, 'providers/program-compat.ts')
 const composition = join(root, 'index.ts')
 const nameOf = (file: string): string => relative(root, file).split(sep).join('/')
 const filesIn = (folder: string): string[] =>
@@ -76,6 +77,10 @@ function valueImports(file: string): readonly string[] {
 describe('provider modules stay behind the main-process registry', () => {
   it('does not import the facade, host or registry back into provider modules', () => {
     const forbidden = new Set([
+      programCompatibility,
+      join(root, 'runtime/claude-program.ts'),
+      join(root, 'runtime/codex-binary.ts'),
+      join(root, 'runtime/provider-versions.ts'),
       registry,
       definitions,
       knowledge,
@@ -103,6 +108,7 @@ describe('provider modules stay behind the main-process registry', () => {
 
   it('routes neutral value imports of provider implementations through the registry', () => {
     const mayCompose = new Set([
+      programCompatibility,
       registry,
       definitions,
       knowledge,
@@ -128,7 +134,13 @@ describe('provider modules stay behind the main-process registry', () => {
 
   it('keeps the registry out of every worker value-import closure', () => {
     const reaches = (file: string, seen = new Set<string>()): boolean => {
-      if (file === registry || file === definitions || file === knowledge || file === auth)
+      if (
+        file === registry ||
+        file === definitions ||
+        file === knowledge ||
+        file === auth ||
+        file === programCompatibility
+      )
         return true
       if (seen.has(file)) return false
       seen.add(file)
@@ -144,6 +156,7 @@ describe('provider modules stay behind the main-process registry', () => {
   it('keeps stateless definitions independent of runtime construction and home compatibility', () => {
     expect(existsSync(definitions)).toBe(true)
     const heavy = new Set([
+      programCompatibility,
       registry,
       compatibility,
       auth,
@@ -177,6 +190,7 @@ describe('provider modules stay behind the main-process registry', () => {
 
   it('keeps authentication construction outside the knowledge closure', () => {
     const forbidden = new Set([
+      programCompatibility,
       auth,
       registry,
       compatibility,
