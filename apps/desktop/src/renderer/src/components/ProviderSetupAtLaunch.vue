@@ -72,7 +72,7 @@ function factsOf(provider: Provider): SetupFacts {
             key,
             PROVIDER_NAME[provider],
             (signIns[provider].auth as { loginBehindTheKey?: boolean } | null)
-              ?.loginBehindTheKey !== false,
+              ?.loginBehindTheKey === true,
           )
         : null,
   }
