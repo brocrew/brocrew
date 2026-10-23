@@ -219,6 +219,7 @@ export function claudeAuth(paths: ProviderHomePaths, seams: ClaudeAuthSeams): Ho
 }
 
 export interface ClaudeModuleSeams {
+  readonly program?: import('../program-policy').ProviderProgramOperations
   readonly runtime: ClaudeRuntimeSeams
   readonly home: ClaudeHomeSeams
   readonly auth: ClaudeAuthSeams
@@ -241,6 +242,7 @@ export function createClaudeModule(
   seams: ClaudeModuleSeams,
 ): ProviderModule {
   return {
+    ...(seams.program === undefined ? {} : { program: seams.program }),
     authPolicy,
     transcripts,
     instructions,
