@@ -97,14 +97,17 @@ describe('a start refused for its sign-in is told by kind', () => {
   })
 })
 
-
 it('keeps every byte of the existing refusal-word catalogue', () => {
-  expect(createHash('sha256').update(JSON.stringify(A_START_ITS_SIGN_IN_REFUSED)).digest('hex')).toBe('ea4893cb5a3c414d1e15ab309c9b1846b0929b975bcdf3044e4670a92ee7eedc')
+  expect(
+    createHash('sha256').update(JSON.stringify(A_START_ITS_SIGN_IN_REFUSED)).digest('hex'),
+  ).toBe('ea4893cb5a3c414d1e15ab309c9b1846b0929b975bcdf3044e4670a92ee7eedc')
 })
 
 it('shares each native refusal-word object with its provider policy', () => {
-  const one = Reflect.get(providerAuthPolicies.claude, 'refusalWords') as { 'sign-in'?: unknown } | undefined
-  const other = Reflect.get(providerAuthPolicies.codex, 'refusalWords') as { 'sign-in'?: unknown; settings?: unknown; 'no-sign-in-to-copy'?: unknown } | undefined
+  const one = Reflect.get(providerAuthPolicies.claude, 'refusalWords') as
+    { 'sign-in'?: unknown } | undefined
+  const other = Reflect.get(providerAuthPolicies.codex, 'refusalWords') as
+    { 'sign-in'?: unknown; settings?: unknown; 'no-sign-in-to-copy'?: unknown } | undefined
   expect(one).toBeDefined()
   expect(other).toBeDefined()
   expect(A_START_ITS_SIGN_IN_REFUSED['claude-sign-in']).toBe(one?.['sign-in'])
