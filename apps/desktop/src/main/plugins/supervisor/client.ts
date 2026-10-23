@@ -5,6 +5,7 @@ import { isAbsolute, join } from 'node:path'
 import { z } from 'zod'
 import { SupervisorStorage } from './storage'
 import { isWithinOrSame } from '../private-files'
+import { workspacePluginRoot } from '../root-selection'
 import {
   Hex,
   OWNER_LAUNCH_MS,
@@ -427,13 +428,23 @@ export class PluginSupervisorAttachment {
   }
 }
 
-/** Hidden fixtures opt in to a separate explicit root; there is no live-root fallback. */
+/** Hidden fixtures stay explicit; normal startup may select a paired workspace opt-in. */
 export function pluginSupervisorRoot(options: {
   appData: string
   hidden: boolean
   scratchRoot?: string
+  /** Effective userData after routing; required at runtime for every non-hidden start. */
+  workspaceRoot?: string
 }): string | null {
-  if (!options.hidden) return join(options.appData, '@brobot2', 'plugins')
+  if (!options.hidden) {
+    if (typeof options.workspaceRoot !== 'string') refuse()
+    const defaultRoot = join(options.appData, '@brobot2', 'plugins')
+    return workspacePluginRoot({
+      appData: options.appData,
+      workspaceRoot: options.workspaceRoot,
+      defaultRoot,
+    })
+  }
   const root = options.scratchRoot
   if (!root) return null
   if (!isAbsolute(root) || isWithinOrSame(options.appData, root)) refuse()
