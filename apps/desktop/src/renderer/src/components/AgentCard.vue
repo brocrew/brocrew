@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ProviderLimitDisplay } from '../lib/provider-limit-status'
+import type { OwnWait } from '../lib/conversation-list'
 import { fileManagerHere } from '../lib/this-computer'
 import { showName } from '../lib/message-paths'
 import { computed, ref, watch } from 'vue'
@@ -87,6 +88,8 @@ const props = defineProps<{
    * rail row's own, and `list_agents'`. Absent, the plate says the arm's plain word.
    */
   agentState?: OneState
+  /** While this conversation holds a piece with a typed wait: that wait, in place of its state. */
+  ownWait?: OwnWait | null
   shown?: TranscriptState
   mode: TranscriptMode
   conversation?: string
@@ -184,6 +187,22 @@ const scheduleShown = computed(
 /** ⚑ The bar's own answer where nothing can stop: *it did not go out* (`BackgroundBar`'s contract). */
 const refuseStop = (): Promise<boolean> => Promise.resolve(false)
 const root = computed(() => props.root ?? null)
+/** The work given to it, its piece with a typed wait saying that wait where it read "waiting on purpose". */
+const tasks = computed(() =>
+  props.tasks?.map((one) => {
+    const own = props.ownWait
+    if (
+      own == null ||
+      one.piece.state !== 'waiting-on-purpose' ||
+      one.piece.reading.heading !== own.label
+    ) {
+      return one
+    }
+    const reading = { ...one.piece.reading, word: own.word }
+    delete (reading as { why?: string }).why
+    return { ...one, piece: { ...one.piece, reading } }
+  }),
+)
 // ⚑ **UI-008 · a root is open for as long as its conversation is** — it never ends (R1).
 const hasTasks = computed(
   () => props.tasks !== undefined && (props.tasks.length > 0 || root.value !== null),
@@ -375,6 +394,7 @@ const fileManager = fileManagerHere()
       :who="props.who"
       :profile="props.profile ?? null"
       :state="props.agentState"
+      :wait="props.ownWait?.word"
       :provider-limit="props.providerLimit"
     >
       <template v-if="approval || props.profile" #head>
@@ -655,7 +675,7 @@ const fileManager = fileManagerHere()
         <TaskList
           v-if="hasTasks"
           data-cy="cast-taken"
-          :tasks="props.tasks!"
+          :tasks="tasks!"
           mode="current"
           :root="root"
           :can-open="props.canOpen"

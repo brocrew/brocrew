@@ -2,7 +2,7 @@
 import type { ProviderLimitDisplay } from '../lib/provider-limit-status'
 import { computed } from 'vue'
 import type { AgentState as OneState } from '../../../shared/agent-state'
-import { plateWord, priorityDotToken, type AgentFacets } from '../lib/agent-state'
+import { plateWord, priorityDotToken, standingOf, type AgentFacets } from '../lib/agent-state'
 import AgentState from './AgentState.vue'
 
 /**
@@ -52,6 +52,8 @@ const props = defineProps<{
    * Absent, the plate says the arm's plain word.
    */
   state?: OneState
+  /** A typed wait its holder is in, said in place of an idle word. */
+  wait?: string
 }>()
 
 /**
@@ -82,7 +84,12 @@ const name = computed(() => props.who ?? 'agent')
  * scoping is unchanged and is `250`'s: only the standings that carry a SECOND fact override the
  * DOING word — see {@link plateWord} for why the others must not.
  */
-const subtitle = computed(() => props.providerLimit?.word ?? plateWord(props.facets, props.state))
+const subtitle = computed(() => {
+  const word = plateWord(props.facets, props.state)
+  return (
+    props.providerLimit?.word ?? (standingOf(props.facets) === 'idle' ? (props.wait ?? word) : word)
+  )
+})
 
 /**
  * Use `priorityDotToken` for the state dot, matching the plate's own priority color so the two cannot disagree.

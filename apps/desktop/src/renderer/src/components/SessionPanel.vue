@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ProviderLimitDisplay } from '../lib/provider-limit-status'
+import type { OwnWait } from '../lib/conversation-list'
 import { computed, watch } from 'vue'
 import type { AgentState as OneState } from '../../../shared/agent-state'
 import type { WorkThatNamesIt } from '../../../shared/piece-called'
@@ -107,6 +108,8 @@ const props = defineProps<{
   providerLimit?: ProviderLimitDisplay | null
   /** ⚑ **D-017 · R11 — its ONE state** (`stateHere`), forwarded whole with {@link facets}. */
   agentState?: OneState
+  /** While this conversation holds a piece with a typed wait: that wait, in place of its state. */
+  ownWait?: OwnWait | null
   /** ⚑ **UI-008 · the work that names it** — the root a person gave it, for its *Current task*. */
   named?: WorkThatNamesIt | null
   /**
@@ -313,6 +316,7 @@ const panel = computed(() => sessionPanel(props.state))
       scrolls
       :facets="props.facets"
       :agent-state="props.agentState"
+      :own-wait="props.ownWait"
       :provider-limit="props.providerLimit"
       :who="props.who"
       :profile="props.profile ?? null"
