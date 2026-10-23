@@ -16,6 +16,20 @@ beforeEach(() => {
 afterEach(() => rmSync(home, { recursive: true, force: true }))
 
 describe('the memory list keeps complete notes within its byte allowance', () => {
+  it('ignores a folder named like a note without counting or refusing it as a document', () => {
+    const index = claudeAutoMemoryIndex(home)
+    const folder = dirname(index)
+    mkdirSync(join(folder, 'archive.md'), { recursive: true })
+    writeFileSync(index, 'Fern remembers one note.')
+    writeFileSync(join(folder, 'role.md'), 'Fern reviews changes.')
+
+    const result = readClaudeAgentMemory(home)
+    expect(result.memory.map((entry) => basename(entry.path))).toEqual(['MEMORY.md', 'role.md'])
+    expect(result.refused).toEqual([])
+    expect(result.topicsFound).toBe(1)
+    expect(result.topicsListed).toBe(1)
+  })
+
   it('skips a note larger than the room left and still shows a later note that fits', () => {
     const index = claudeAutoMemoryIndex(home)
     const folder = dirname(index)
