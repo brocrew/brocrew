@@ -430,6 +430,23 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
   }
 
   describe('a quit that cut a running turn', () => {
+    it.each([
+      ['account', { provider: 'claude', account: 'ada' }, /^claude:[0-9a-f]{32}$/],
+      [
+        'launch tag',
+        { provider: 'claude', account: 'none', tag: 'fictional-key' },
+        'claude-launch:fictional-key',
+      ],
+      ['provider tag', { provider: 'codex', tag: 'fictional-login' }, 'codex:fictional-login'],
+    ] as const)('keeps the persisted identity format for an %s', async (_kind, stops, expected) => {
+      const id = await aTurnRunsIn(stops)
+      const kept = readKeptCuts(turnsTheAppCutFile(userData))
+      const identity = kept.lives[id]?.identity
+      if (typeof expected === 'string') expect(identity).toBe(expected)
+      else expect(identity).toMatch(expected)
+      expect(identity).not.toContain(EMAIL.ada)
+    })
+
     it('the next launch continues it once, on the same account, saying when the app restarted', async () => {
       const a = await aTurnRunsIn()
       await now.host.closeAll()
