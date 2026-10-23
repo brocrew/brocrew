@@ -166,6 +166,7 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
       "app.setPath('appData', '/private/tmp/fictional')",
       'return preparePackagedGateHome(root, userData, provider, profileId)',
       'renewClaudeLogin: undefined',
+      'loginRenewal: undefined',
     ])
       expect(() =>
         assertNormalPluginBuild(config + `\n/* ${GATE_BUILD_MARKER} */ ` + pin, entry),
@@ -180,6 +181,7 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
     for (const pin of [
       'preparePackagedGateHome(root, userData, provider, profileId)',
       'renewClaudeLogin: undefined',
+      'loginRenewal: undefined',
     ])
       expect(() => assertNormalPluginBuild(config, entry + '\n' + pin)).toThrow(
         'Refusing to package',
