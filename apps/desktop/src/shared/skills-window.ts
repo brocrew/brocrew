@@ -32,6 +32,11 @@ export const SkillsRequest = z.discriminatedUnion('operation', [
   z.strictObject({ operation: z.literal('import') }),
   z.strictObject({ operation: z.literal('shared-list') }),
   z.strictObject({
+    operation: z.literal('profile-list'),
+    profileId: id,
+    offset: z.number().int().min(0).max(100_000).optional(),
+  }),
+  z.strictObject({
     operation: z.literal('shared-toggle'),
     folder: z.string().min(1).max(256),
     enabled: z.boolean(),
@@ -51,8 +56,23 @@ export interface SharedSkill {
   readonly builtIn: boolean
   readonly enabled: boolean
 }
+export interface ProfileSkillMetadata {
+  readonly folder: string
+  readonly name: string
+  readonly description: string
+  readonly builtIn: boolean
+  readonly enabled: boolean
+  readonly given: boolean
+}
 export type SkillsReply =
   | { operation: 'shared-list'; skills: readonly SharedSkill[] }
+  | {
+      operation: 'profile-list'
+      profileId: string
+      skills: readonly ProfileSkillMetadata[]
+      nextOffset: number | null
+      readAt: number
+    }
   | { operation: 'shared-toggle' }
   | { operation: 'list'; page: SkillPage }
   | { operation: 'detail'; skill: SkillDetail | null }

@@ -8,7 +8,7 @@ import { PluginSupervisorAttachment, pluginSupervisorRoot } from './plugins/supe
 import { PLUGIN_SCHEME } from './plugins/ui/assets'
 import { installPluginUiRpc } from './plugins/ui/host'
 import { ipcMain } from './app-ipc'
-import { SharedSkillDiscovery } from './skills/shared-discovery'
+import { profileSkillAccess, SharedSkillDiscovery } from './skills/shared-discovery'
 import { convertSharedSkills } from './skills/shared-conversion'
 import { SharedSkillLibrary } from './skills/shared-library'
 import { providerProcessesAreInFlight } from './runtime/live-hosts'
@@ -619,7 +619,6 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
   const sharedSkills = new SharedSkillLibrary(userData)
   const skillsReady = firstWindowLoad.then(() => convertSharedSkills(userData, database))
   void skillsReady.catch(() => console.warn('Skills could not be read.'))
-  const sharedDiscovery = new SharedSkillDiscovery(userData, skillsReady, shippedSkills)
   // Refresh generated workspace instructions on launch and recreate a deleted workspace.
   // Unchanged files are left alone. A symlink or file at `brobot-workspace` is refused without
   // blocking the app's window; `resolveSessionCwd` retries for sessions using the default cwd
@@ -641,6 +640,13 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
     createSessionStore(database, Date.now, mainThreadWork),
     'store',
     mainThreadWork,
+  )
+  const sharedDiscovery = new SharedSkillDiscovery(
+    userData,
+    skillsReady,
+    shippedSkills,
+    undefined,
+    (profileId) => profileSkillAccess(store, profileId),
   )
   // The provider walls are read ahead in short steps, after launch and again after a change only
   // a whole read can follow, so the first hold after either does not read a month of them at once.
@@ -817,7 +823,6 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
     prepareBuiltInSkills: ({ pack, ...input }) =>
       prepareBuiltInSkills({
         ...input,
-        allShipped: true,
         managedRoot: providerHomesRoot(userData),
         shipped: shippedSkills,
         ...(pack?.kind === 'read' ? { skills: pack.pack.skills } : {}),
