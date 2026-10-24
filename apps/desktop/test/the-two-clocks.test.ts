@@ -901,7 +901,7 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
       expect(host_).toContain('const defaults = providerDescriptor(provider).launch')
       expect(host_).toContain('fresh: deps.launchTimeoutMs ?? defaults.freshTimeoutMs')
       expect(host_).toContain(
-        'resume: resumeOverrides[provider] ?? deps.launchTimeoutMs ?? defaults.resumeTimeoutMs',
+        'resume: deps.resumeTimeouts?.[provider] ?? deps.launchTimeoutMs ?? defaults.resumeTimeoutMs',
       )
     })
 

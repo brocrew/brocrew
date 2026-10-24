@@ -211,7 +211,7 @@ import {
   revealMessagePath,
   type MessagePathPlace,
 } from '../message-paths'
-import type { ProviderSignIn } from '../providers/auth-types'
+import type { LoginRenewalOperations, ProviderSignIn } from '../providers/auth-types'
 import type { ProviderAuthOps } from '../providers/auth-operations'
 import { aLoginRunsWithoutAKey, type ApiKeys } from './api-keys'
 import type { GivenFolder, ProtectedPlaceNotice, WorkFolderGrant } from '../../shared/work-folders'
@@ -2553,9 +2553,7 @@ export interface RuntimeHostDeps {
    * Has the person's own Claude Code renew their login when it needs renewing, so a conversation that
    * stopped on an expired login can reopen on the renewed one. Absent: nothing is renewed here.
    */
-  loginRenewal?: (
-    provider: Provider,
-  ) => import('../providers/auth-types').LoginRenewalOperations | undefined
+  loginRenewal?: (provider: Provider) => LoginRenewalOperations | undefined
   /**
    * The person's own Claude Code by its full path, or `null` when none is installed: what the setup
    * steps and a refused start tell them to run. Asked when it is said. Absent: `null`.
