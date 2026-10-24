@@ -162,6 +162,8 @@ const runtime = {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  runtime.resolveLink.mockReset()
+  runtime.latestHistory.mockReset()
   changeListeners.clear()
   runtime.whoCalledWhom.mockReset().mockRejectedValue(new Error('No relationship reading supplied'))
   useWhoCalledWhom().reading.value = null
@@ -272,6 +274,78 @@ it('opens archived history read-only, with a way back, and never calls look or a
   await expect.poll(() => screen.all('linked-history').length).toBe(0)
   expect(screen.q('message-link').textContent).toBe('Older draft')
 })
+
+it.each(['source conversation', 'previous archive'])(
+  'clears an archived conversation link failure when Back returns to the %s',
+  async (returnsTo) => {
+    const archive = (sessionId: string, title: string): ResolvedMessageLink => ({
+      state: 'archived',
+      kind: 'conversation',
+      title,
+      status: 'Archived',
+      opens: { sessionId },
+    })
+    const first = archive('fictional-archive-a', 'Older draft')
+    const second = archive('fictional-archive-b', 'Archived notes')
+    const deleted: ResolvedMessageLink = {
+      state: 'deleted',
+      kind: 'piece',
+      title: null,
+      status: null,
+      opens: null,
+    }
+    runtime.resolveLink.mockResolvedValueOnce(first).mockResolvedValueOnce(first)
+    if (returnsTo === 'previous archive')
+      runtime.resolveLink.mockResolvedValueOnce(second).mockResolvedValueOnce(second)
+    runtime.resolveLink.mockResolvedValueOnce(deleted).mockResolvedValueOnce(deleted)
+    if (returnsTo === 'previous archive')
+      runtime.resolveLink.mockResolvedValueOnce(first).mockResolvedValueOnce(second)
+    const history = (text: string) => ({
+      entries: [
+        {
+          ordinal: 0,
+          at: 1,
+          event: {
+            type: 'assistant_message',
+            text,
+          } as never,
+        },
+      ],
+      from: 0,
+      hasOlder: false,
+      turnAligned: true,
+    })
+    runtime.latestHistory.mockResolvedValueOnce(
+      history(returnsTo === 'previous archive' ? 'W8.2' : 'W8.3'),
+    )
+    if (returnsTo === 'previous archive')
+      runtime.latestHistory.mockResolvedValueOnce(history('W8.3'))
+    const screen = await screenWithLink('W8.1')
+    screen.q('message-link').click()
+    await expect.poll(() => screen.q('linked-history').textContent).toContain('Older draft')
+    const archiveLink = () =>
+      screen.q('linked-history').querySelector<HTMLButtonElement>('[data-cy="message-link"]')!
+    if (returnsTo === 'previous archive') {
+      archiveLink().click()
+      await expect.poll(() => screen.q('linked-history').textContent).toContain('Archived notes')
+    }
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    archiveLink().click()
+    await expect.poll(() => screen.all('message-link-failure').length).toBe(1)
+    expect(screen.q('message-link-failure').textContent).toContain('This work no longer exists.')
+    backOf(screen).click()
+    if (returnsTo === 'previous archive') {
+      await expect.poll(() => screen.q('linked-history').textContent).toContain('Older draft')
+    } else {
+      await expect.poll(() => screen.all('linked-history').length).toBe(0)
+      expect(screen.q('message-link').textContent).toBe('W8.1')
+    }
+    await nextTick()
+    expect(screen.all('message-link-failure')).toHaveLength(0)
+    expect(runtime.send).not.toHaveBeenCalled()
+    expect(runtime.startAndSend).not.toHaveBeenCalled()
+  },
+)
 
 it('opens an exact identity profile and its conversation shelf and can go back', async () => {
   const answer: ResolvedMessageLink = {
