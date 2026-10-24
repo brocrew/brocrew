@@ -33,7 +33,11 @@ type Notes = {
     at: number,
   ): Version | null
   undoOwnNotes(profile: string, baseline: Baseline, by: ActedBy, at: number): Version | null
-  ownNotesUnread(profile: string): { unread: boolean; seenThrough: number; newestAgentVersion: number }
+  ownNotesUnread(profile: string): {
+    unread: boolean
+    seenThrough: number
+    newestAgentVersion: number
+  }
   markOwnNotesSeen(profile: string, throughVersion: number, by: ActedBy): boolean
 }
 
@@ -79,7 +83,9 @@ describe('own notes belong to an identity and retain exact attributable history'
     expect(notes().ownNotesOf('missing')).toBeNull()
     expect(write('No', lark, 'missing')).toBeNull()
     expect(write('No', person, 'missing')).toBeNull()
-    expect(notes().undoOwnNotes('missing', { expectedVersion: 0, currentText: '' }, person, clock++)).toBeNull()
+    expect(
+      notes().undoOwnNotes('missing', { expectedVersion: 0, currentText: '' }, person, clock++),
+    ).toBeNull()
     expect(store.capabilitiesOf('missing')).toBeNull()
   })
 
@@ -114,7 +120,14 @@ describe('own notes belong to an identity and retain exact attributable history'
     try {
       const other = createSessionStore(otherDb, () => clock++) as unknown as Notes
       const first = write('First')!
-      expect(other.writeOwnNotes('lark', { expectedVersion: 0, currentText: '', text: 'Lost', why: 'Race' }, lark, clock++)).toBeNull()
+      expect(
+        other.writeOwnNotes(
+          'lark',
+          { expectedVersion: 0, currentText: '', text: 'Lost', why: 'Race' },
+          lark,
+          clock++,
+        ),
+      ).toBeNull()
       expect(write('Lost', lark, 'lark', { expectedVersion: 1, currentText: ' First' })).toBeNull()
       expect(write('Lost', lark, 'lark', { expectedVersion: 0, currentText: 'First' })).toBeNull()
       const second = write('Second', lark, 'lark', { expectedVersion: 1, currentText: 'First' })!
@@ -130,13 +143,17 @@ describe('own notes belong to an identity and retain exact attributable history'
     expect(write(text)!.text).toBe(text)
     const baseline = { expectedVersion: 1, currentText: text }
     expect(write(text + 'é', lark, 'lark', baseline)).toBeNull()
-    expect(write('Fine', person, 'wren', { expectedVersion: 0, currentText: '' }, 'x'.repeat(4001))).toBeNull()
+    expect(
+      write('Fine', person, 'wren', { expectedVersion: 0, currentText: '' }, 'x'.repeat(4001)),
+    ).toBeNull()
     expect(write('Fine', lark, 'wren', { expectedVersion: 0, currentText: '' })).toBeNull()
     expect(write('Fine', person, 'wren', { expectedVersion: 0, currentText: '' })).not.toBeNull()
   })
 
   it('rejects blank reasons and malformed baseline versions, and saves clearing as a new version', () => {
-    expect(write('No reason', lark, 'lark', { expectedVersion: 0, currentText: '' }, ' \n ')).toBeNull()
+    expect(
+      write('No reason', lark, 'lark', { expectedVersion: 0, currentText: '' }, ' \n '),
+    ).toBeNull()
     for (const expectedVersion of [-1, 0.5, Number.NaN, Number.MAX_SAFE_INTEGER + 1])
       expect(write('Bad version', lark, 'lark', { expectedVersion, currentText: '' })).toBeNull()
     const first = write('First')!
@@ -147,13 +164,25 @@ describe('own notes belong to an identity and retain exact attributable history'
 
   it('records a person edit honestly, and Undo appends only against the exact latest baseline', () => {
     const first = write('Agent text')!
-    const second = write('Person text', person, 'lark', { expectedVersion: 1, currentText: first.text })!
+    const second = write('Person text', person, 'lark', {
+      expectedVersion: 1,
+      currentText: first.text,
+    })!
     expect(second).toMatchObject({ by: person, author: null, version: 2 })
     const baseline = { expectedVersion: 2, currentText: 'Person text' }
     expect(notes().undoOwnNotes('lark', baseline, lark, clock++)).toBeNull()
-    expect(notes().undoOwnNotes('lark', { ...baseline, currentText: 'Wrong' }, person, clock++)).toBeNull()
+    expect(
+      notes().undoOwnNotes('lark', { ...baseline, currentText: 'Wrong' }, person, clock++),
+    ).toBeNull()
     const undone = notes().undoOwnNotes('lark', baseline, person, clock++)!
-    expect(undone).toMatchObject({ version: 3, text: first.text, by: person, author: null, restoredFromVersion: 1, reason: 'Undo latest change' })
+    expect(undone).toMatchObject({
+      version: 3,
+      text: first.text,
+      by: person,
+      author: null,
+      restoredFromVersion: 1,
+      reason: 'Undo latest change',
+    })
     expect(notes().undoOwnNotes('lark', baseline, person, clock++)).toBeNull()
     expect(notes().ownNotesOf('lark')!.versions).toEqual([undone, second, first])
   })
@@ -161,12 +190,13 @@ describe('own notes belong to an identity and retain exact attributable history'
   it('refuses an in-transaction version collision without reporting a save or leaving history', () => {
     notes()
     db.exec(`CREATE TRIGGER notes_version_collision BEFORE INSERT ON identity_own_notes
+      WHEN NEW.reason <> 'Injected version collision'
       BEGIN
         INSERT INTO identity_own_notes
           (id, identity_id, version, text, author, actor, reason, restored_from_version, created_at)
         VALUES
           (NEW.id, NEW.identity_id, NEW.version, NEW.text, NEW.author, NEW.actor,
-           NEW.reason, NEW.restored_from_version, NEW.created_at);
+           'Injected version collision', NEW.restored_from_version, NEW.created_at);
       END`)
     try {
       expect(write()).toBeNull()
@@ -178,45 +208,117 @@ describe('own notes belong to an identity and retain exact attributable history'
   })
 
   it('refuses text that cannot round-trip through SQLite or has a malformed exact baseline', () => {
-    for (const text of ['nul\0text', 'high\ud800', 'low\udc00'])
-      expect(write(text)).toBeNull()
-    expect(write('Fine', person, 'lark', { expectedVersion: 0, currentText: '' }, ' \n ')).toBeNull()
+    for (const text of ['nul\0text', 'high\ud800', 'low\udc00']) expect(write(text)).toBeNull()
+    expect(
+      write('Fine', person, 'lark', { expectedVersion: 0, currentText: '' }, ' \n '),
+    ).toBeNull()
     expect(notes().ownNotesOf('lark')!.versions).toEqual([])
     expect(write('é 🪶')).not.toBeNull()
   })
 
   it('undoes an agent latest change and undo-of-undo, but never invents an earlier version', () => {
-    expect(notes().undoOwnNotes('lark', { expectedVersion: 0, currentText: '' }, person, clock++)).toBeNull()
+    expect(
+      notes().undoOwnNotes('lark', { expectedVersion: 0, currentText: '' }, person, clock++),
+    ).toBeNull()
     write('Agent first')
     write('Agent second', lark, 'lark', { expectedVersion: 1, currentText: 'Agent first' })
-    const undone = notes().undoOwnNotes('lark', { expectedVersion: 2, currentText: 'Agent second' }, person, clock++)!
-    expect(undone).toMatchObject({ version: 3, text: 'Agent first', restoredFromVersion: 1, by: person })
-    const redone = notes().undoOwnNotes('lark', { expectedVersion: 3, currentText: 'Agent first' }, person, clock++)!
-    expect(redone).toMatchObject({ version: 4, text: 'Agent second', restoredFromVersion: 2, by: person })
-    expect(notes().ownNotesOf('lark')!.versions.map((v) => v.version)).toEqual([4, 3, 2, 1])
+    const undone = notes().undoOwnNotes(
+      'lark',
+      { expectedVersion: 2, currentText: 'Agent second' },
+      person,
+      clock++,
+    )!
+    expect(undone).toMatchObject({
+      version: 3,
+      text: 'Agent first',
+      restoredFromVersion: 1,
+      by: person,
+    })
+    const redone = notes().undoOwnNotes(
+      'lark',
+      { expectedVersion: 3, currentText: 'Agent first' },
+      person,
+      clock++,
+    )!
+    expect(redone).toMatchObject({
+      version: 4,
+      text: 'Agent second',
+      restoredFromVersion: 2,
+      by: person,
+    })
+    expect(
+      notes()
+        .ownNotesOf('lark')!
+        .versions.map((v) => v.version),
+    ).toEqual([4, 3, 2, 1])
   })
 
   it('keeps rules and notes histories and acknowledgements separate, while person changes are seen', () => {
     write('Notes')
-    const rules = store.writeOwnInstructions({ profileSlug: 'lark', text: 'Standing rule', whoWroteIt: 'an-agent-direct', author: { profile: 'wren', name: agentName('wren', store.agentIdentities()) }, by: wren, conversation: 'ses-wren', said: 'Clarify', broughtBack: null, expectedVersion: 0, currentText: '' }, clock++)!
+    const rules = store.writeOwnInstructions(
+      {
+        profileSlug: 'lark',
+        text: 'Standing rule',
+        whoWroteIt: 'an-agent-direct',
+        author: { profile: 'wren', name: agentName('wren', store.agentIdentities()) },
+        by: wren,
+        conversation: 'ses-wren',
+        said: 'Clarify',
+        broughtBack: null,
+        expectedVersion: 0,
+        currentText: '',
+      },
+      clock++,
+    )!
     expect(rules).not.toBeNull()
-    expect(notes().ownNotesOf('lark')!.versions.map((v) => v.text)).toEqual(['Notes'])
+    expect(
+      notes()
+        .ownNotesOf('lark')!
+        .versions.map((v) => v.text),
+    ).toEqual(['Notes'])
     expect(store.markInstructionsSeen('lark', 1, person)).toBe(true)
     expect(notes().ownNotesUnread('lark').unread).toBe(true)
-    const edited = write('Person notes', person, 'lark', { expectedVersion: 1, currentText: 'Notes' })!
+    const edited = write('Person notes', person, 'lark', {
+      expectedVersion: 1,
+      currentText: 'Notes',
+    })!
     expect(notes().ownNotesUnread('lark').unread).toBe(false)
     // A later rules change stays unread when notes are acknowledged or undone.
-    store.writeOwnInstructions({ profileSlug: 'lark', text: 'New standing rule', whoWroteIt: 'an-agent-direct', author: { profile: 'wren', name: agentName('wren', store.agentIdentities()) }, by: wren, conversation: 'ses-wren', said: 'Clarify again', broughtBack: null, expectedVersion: 1, currentText: 'Standing rule' }, clock++)
+    store.writeOwnInstructions(
+      {
+        profileSlug: 'lark',
+        text: 'New standing rule',
+        whoWroteIt: 'an-agent-direct',
+        author: { profile: 'wren', name: agentName('wren', store.agentIdentities()) },
+        by: wren,
+        conversation: 'ses-wren',
+        said: 'Clarify again',
+        broughtBack: null,
+        expectedVersion: 1,
+        currentText: 'Standing rule',
+      },
+      clock++,
+    )
     expect(notes().markOwnNotesSeen('lark', edited.version, person)).toBe(true)
     expect(store.instructionUnread('lark').unread).toBe(true)
-    notes().undoOwnNotes('lark', { expectedVersion: 2, currentText: 'Person notes' }, person, clock++)
+    notes().undoOwnNotes(
+      'lark',
+      { expectedVersion: 2, currentText: 'Person notes' },
+      person,
+      clock++,
+    )
     expect(notes().ownNotesUnread('lark').unread).toBe(false)
     expect(store.instructionUnread('lark').unread).toBe(true)
   })
 
   it('Undo of the first version appends empty notes and survives restart', () => {
     write('First')
-    const undone = notes().undoOwnNotes('lark', { expectedVersion: 1, currentText: 'First' }, person, clock++)!
+    const undone = notes().undoOwnNotes(
+      'lark',
+      { expectedVersion: 1, currentText: 'First' },
+      person,
+      clock++,
+    )!
     expect(undone).toMatchObject({ version: 2, text: '', restoredFromVersion: 0 })
     db.close()
     db = openDatabase(join(folder, 'app.sqlite'))
@@ -228,27 +330,60 @@ describe('own notes belong to an identity and retain exact attributable history'
   it('keeps a newer agent write unread after a person save and after a person Undo', () => {
     write('Agent one')
     write('Person two', person, 'lark', { expectedVersion: 1, currentText: 'Agent one' })
-    expect(notes().ownNotesUnread('lark')).toEqual({ unread: false, newestAgentVersion: 1, seenThrough: 2 })
+    expect(notes().ownNotesUnread('lark')).toEqual({
+      unread: false,
+      newestAgentVersion: 1,
+      seenThrough: 2,
+    })
     write('Agent three', lark, 'lark', { expectedVersion: 2, currentText: 'Person two' })
-    expect(notes().ownNotesUnread('lark')).toEqual({ unread: true, newestAgentVersion: 3, seenThrough: 2 })
-    notes().undoOwnNotes('lark', { expectedVersion: 3, currentText: 'Agent three' }, person, clock++)
-    expect(notes().ownNotesUnread('lark')).toEqual({ unread: false, newestAgentVersion: 3, seenThrough: 4 })
+    expect(notes().ownNotesUnread('lark')).toEqual({
+      unread: true,
+      newestAgentVersion: 3,
+      seenThrough: 2,
+    })
+    notes().undoOwnNotes(
+      'lark',
+      { expectedVersion: 3, currentText: 'Agent three' },
+      person,
+      clock++,
+    )
+    expect(notes().ownNotesUnread('lark')).toEqual({
+      unread: false,
+      newestAgentVersion: 3,
+      seenThrough: 4,
+    })
     write('Agent five', lark, 'lark', { expectedVersion: 4, currentText: 'Person two' })
     expect(notes().markOwnNotesSeen('lark', 2, person)).toBe(true)
-    expect(notes().ownNotesUnread('lark')).toEqual({ unread: true, newestAgentVersion: 5, seenThrough: 4 })
+    expect(notes().ownNotesUnread('lark')).toEqual({
+      unread: true,
+      newestAgentVersion: 5,
+      seenThrough: 4,
+    })
   })
 
   it('acknowledges only the version a person saw and retains a later agent change as unread', () => {
     write('One')
-    expect(notes().ownNotesUnread('lark')).toEqual({ unread: true, newestAgentVersion: 1, seenThrough: 0 })
+    expect(notes().ownNotesUnread('lark')).toEqual({
+      unread: true,
+      newestAgentVersion: 1,
+      seenThrough: 0,
+    })
     expect(notes().markOwnNotesSeen('lark', 1, lark)).toBe(false)
     expect(notes().markOwnNotesSeen('lark', 2, person)).toBe(false)
     write('Two', lark, 'lark', { expectedVersion: 1, currentText: 'One' })
     expect(notes().markOwnNotesSeen('lark', 1, person)).toBe(true)
-    expect(notes().ownNotesUnread('lark')).toEqual({ unread: true, newestAgentVersion: 2, seenThrough: 1 })
+    expect(notes().ownNotesUnread('lark')).toEqual({
+      unread: true,
+      newestAgentVersion: 2,
+      seenThrough: 1,
+    })
     expect(notes().markOwnNotesSeen('lark', 2, person)).toBe(true)
     expect(notes().markOwnNotesSeen('lark', 1, person)).toBe(true)
-    expect(notes().ownNotesUnread('lark')).toEqual({ unread: false, newestAgentVersion: 2, seenThrough: 2 })
+    expect(notes().ownNotesUnread('lark')).toEqual({
+      unread: false,
+      newestAgentVersion: 2,
+      seenThrough: 2,
+    })
     expect(notes().markOwnNotesSeen('missing', 0, person)).toBe(false)
     expect(notes().ownNotesUnread('wren').unread).toBe(false)
   })
