@@ -69,6 +69,9 @@ export interface AServiceWorld {
   readonly startedAs: string[]
   /** The provider home of each start in {@link startedAs}, in the same order. */
   readonly startedIn: string[]
+  /** Every home preparation, including model-list probes. */
+  readonly preparedIn: string[]
+  readonly listedOn: Provider[]
   /**
    * Every turn handed to a provider this world started or resumed, in order: the profile it ran as,
    * its words, and the model and effort in force for that turn.
@@ -159,6 +162,7 @@ export interface AServiceWorld {
     endingWaitMs?: number
     windowWriterStamp?: ConstructorParameters<typeof RuntimeHost>[0]['windowWriterStamp']
     limitsWriterStamp?: ConstructorParameters<typeof RuntimeHost>[0]['limitsWriterStamp']
+    listProfiles?: (provider?: Provider) => string[]
   }): RuntimeHost
   /** An agent made now, on Claude unless `provider` says otherwise, kept as a service unless `kind` does. */
   anAgent(
@@ -197,6 +201,8 @@ export function aServiceWorld(fixture: { holderReminders?: 'declined' } = {}): A
     window: new RecordingSink('webContents:1'),
     startedAs: [],
     startedIn: [],
+    preparedIn: [],
+    listedOn: [],
     sent: [],
     writesFail: 'none',
     startsFail: false,
@@ -322,6 +328,7 @@ export function aServiceWorld(fixture: { holderReminders?: 'declined' } = {}): A
           context: ProviderRuntimeContext,
         ): ReturnType<FakeRuntime['listModels']> {
           world.listedFor.push(profileOf(context.providerHome))
+          world.listedOn.push(this.provider)
           if (world.listsWait !== null) await world.listsWait
           if (world.listsFail) throw new Error('the provider could not list its models')
           return super.listModels(context)
@@ -346,10 +353,12 @@ export function aServiceWorld(fixture: { holderReminders?: 'declined' } = {}): A
           new ProviderOfThisWorld(provider, { sessions: issued }),
         prepareProviderHome: (provider: Provider, profileId?: string) => {
           const home = join(folder, 'provider-homes', profileId ?? 'default', provider)
+          world.preparedIn.push(home)
           mkdirSync(home, { recursive: true })
           return home
         },
         providerHomePath: (provider: Provider) => join(folder, 'provider-homes', provider),
+        ...(opts.listProfiles === undefined ? {} : { listProfiles: opts.listProfiles }),
         resolveCwd: (sessionId, requested) => resolveSessionCwd(folder, sessionId, requested),
         makeWorkerPieceFolder: (piece) => makeWorkerPieceFolder(folder, piece),
         newSessionId: () => `sess_${String(tick())}`,
