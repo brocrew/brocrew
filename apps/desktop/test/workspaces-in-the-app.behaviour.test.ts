@@ -17,6 +17,10 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { WORKSPACES_CHANNELS, type WorkspaceRow } from '../src/shared/workspaces'
 import { startWorkspaces } from '../src/main/workspaces-in-the-app'
 import { claimPackagedWorkspace } from '../src/main/workspace-routing-store'
+import * as themeDefaults from '../src/main/themes/defaults'
+import { BUILT_IN_THEME_IDS, HIDDEN_BASE_THEME_IDS } from '../src/main/themes/defaults'
+import { themeRoots } from '../src/main/themes/state'
+import { ThemeStore, type ThemeStoreOptions } from '../src/main/themes/store'
 
 type Handler = (event: unknown, ...args: unknown[]) => unknown
 const fake = vi.hoisted(() => ({
@@ -479,3 +483,78 @@ it.each(['open', 'closed'] as const)(
     vi.mocked(whoIsOn).mockImplementation(async () => 'open')
   },
 )
+
+/** The look `folder` starts in, read by the theme store as the app starts it there. */
+async function theLookItStartsIn(folder: string): Promise<string> {
+  const pick = (themeDefaults as unknown as { defaultThemeFor?: (folder: string) => string })
+    .defaultThemeFor
+  mkdirSync(join(appData, '@brobot2'), { recursive: true })
+  const store = new ThemeStore({
+    ...themeRoots({
+      appData,
+      userData: folder,
+      resources: join(__dirname, '../resources'),
+      hidden: false,
+    }),
+    defaultTheme: pick?.(folder) ?? themeDefaults.DEFAULT_THEME_ID,
+    writesItsDefault: true,
+    builtInIds: BUILT_IN_THEME_IDS,
+    hiddenBases: HIDDEN_BASE_THEME_IDS,
+    loader: { sample: () => null },
+    problem: () => 'fictional',
+    trash: async () => undefined,
+    openFolder: async () => undefined,
+    watch: () => () => {},
+  } as unknown as ThemeStoreOptions)
+  try {
+    return (await store.start()).active
+  } finally {
+    await store.close()
+  }
+}
+
+it('a workspace made here starts in Crew Night', async () => {
+  const path = join(root, 'Notes')
+  expect(await ask(WORKSPACES_CHANNELS.create, { name: 'Notes', path })).toMatchObject({
+    opened: true,
+  })
+  expect(await theLookItStartsIn(path)).toBe('crew-night')
+})
+
+it('a workspace made here starts in Crew Night, though its first database is made before it opens', async () => {
+  const config = join(appData, '@brobot2'),
+    appPath = join(root, 'packaged'),
+    target = join(root, 'birch')
+  mkdirSync(config, { recursive: true })
+  mkdirSync(appPath)
+  writeFileSync(join(appPath, 'package.json'), JSON.stringify({ requireWorkspacePolicy: true }))
+  writeFileSync(
+    join(config, 'workspace-policy.json'),
+    JSON.stringify({
+      version: 1,
+      firstWorkspace: userData,
+      packagedForbidden: [],
+      developmentForbidden: [],
+    }),
+  )
+  writeFileSync(
+    join(config, 'packaged-workspaces.json'),
+    JSON.stringify({ version: 1, workspaces: [{ path: userData, lastOpenedAt: 1 }] }),
+  )
+  fake.handlers.clear()
+  startWorkspaces({
+    app: {
+      isPackaged: true,
+      getPath: (name: string) =>
+        ({ userData, appData, home: root })[name as 'userData' | 'appData' | 'home'],
+      getAppPath: () => appPath,
+    } as unknown as App,
+    hidden: true,
+    pickFolder: async () => null,
+  })
+  expect(await ask(WORKSPACES_CHANNELS.create, { name: 'Birch', path: target })).toMatchObject({
+    opened: true,
+  })
+  expect(existsSync(join(target, 'brobot2.sqlite'))).toBe(true)
+  expect(await theLookItStartsIn(target)).toBe('crew-night')
+})
