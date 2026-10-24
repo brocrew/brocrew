@@ -28058,6 +28058,10 @@ export class RuntimeHost implements LiveHost {
         }
       }
       const { start } = goes
+      const startedOnDefault =
+        asked.provider === undefined &&
+        asked.model === undefined &&
+        this.itsProvider(asked.profile).provider === start.provider
       // ⚑ **D-042 · R1 — what it starts on, and where its MODEL came from**: the give's choice (its
       // model the give's own only when the give named one — a give naming only an effort runs it on
       // R1's model), else R1's order — asked here, in the stretch, and NAMED to the launch below, so
@@ -28118,6 +28122,7 @@ export class RuntimeHost implements LiveHost {
         delivery: delivered.outcome === 'sent' ? 'sent' : 'held',
         runsOn: this.whatItRunsOnNow(owner, start.provider, 'started', from, named),
         startedIn: start.cwd,
+        ...(startedOnDefault ? { startedOnDefault: true as const } : {}),
         givenFolder: giving.givenFolder,
         folderNotGranted: null,
         grantReach: null,

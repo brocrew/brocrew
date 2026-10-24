@@ -6099,7 +6099,7 @@ export function agentToolsFor(
               ? runsOn === ''
                 ? ''
                 : ` ${runsOn}`
-              : ` It started a new conversation for it, in ${given.startedIn}.${runsOn === '' ? '' : ` ${runsOn}`}`
+              : ` It started a new conversation on ${PROVIDER_NAME[given.runsOn.provider]}${given.startedOnDefault === true ? ", this agent's default," : ''} in ${given.startedIn}.${runsOn === '' ? '' : ` ${runsOn}`}`
           // Report how the supplied folder is used and any protected place it meets; naming such a place does not refuse the folder.
           const usedFolder = given.givenFolder
           // ⚑ Only what is true for THAT conversation (`grantReach`): a grant widens what asks first,

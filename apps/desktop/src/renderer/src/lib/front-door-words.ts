@@ -105,12 +105,8 @@ export function providerIsFixed(provider: Provider): string {
  * conversation started as this identity will run on Codex"* (the screen's fallback) sat above
  * *"another agent that starts this one … runs it on Claude"* — and the second was true.
  * ⚑ Scoped to what it derives from; the model control below says the agent-started half, rendered
- * from the choice. ⚠️ **And *unless you choose another provider where you start it* — for the
- * identity a door offers that choice for, and no other** (review, both rounds): the front door's
- * own provider menu is the FIRST term of what BroBot's next conversation starts on, and this sheet
- * is handed the resolution without it; ⛔ the door that starts any OTHER identity
- * (`StartAsAgent`) offers no provider at all, so the clause there would promise a menu that does
- * not exist.
+ * from the choice. A new-conversation door may override this default locally; this sheet reports
+ * the identity's default rather than a choice made in that door.
  *
  * @param provider what a launch as this identity WOULD run on today, resolved by
  *   `providerForALaunch` — never the raw column, because *nobody has said* is not a thing to print.
@@ -122,7 +118,8 @@ export function providerTakesEffectNextTime(provider: Provider, aDoorAsks = fals
     `The default for a new conversation as this identity is ${providerName(provider)}` +
     (aDoorAsks ? ', unless you choose another provider where you start it. ' : '. ') +
     `Changing this starts nothing and moves nothing: a conversation keeps the provider it began ` +
-    `on, so a change takes effect the next time one begins.`
+    `on. New gives without a provider or model use this default’s conversation, starting one if needed. ` +
+    `Existing pieces and follow-ups stay with their holders.`
   )
 }
 
