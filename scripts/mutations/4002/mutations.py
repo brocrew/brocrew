@@ -140,4 +140,13 @@ MUTATIONS = [('M1 · the give schema refuses its advertised provider argument �
   '`one-agent-on-both-providers.test.ts`',
   [('apps/desktop/src/main/runtime/runtime-host.ts',
     '      configured: profileSlug === null ? null : this.deps.store.configuredLayerFor(profileSlug),\n',
-    '      configured: null,\n')])]
+    '      configured: null,\n')]),
+ ('M28 · a full provider pool hides its remedy past the person-visible cut — killed by '
+  '`the-act-inside-the-cut.test.ts`',
+  [('apps/desktop/src/main/runtime/spawn-rails.ts',
+    "        'Give work on a provider already in that pool, or choose another agent. ' +\n"
+    "        `Your worker pool for “${detail.profileId ?? '?'}” is full and has no conversation on "
+    "${detail.provider === undefined ? 'the chosen provider' : PROVIDER_NAME[detail.provider]}. ` +\n",
+    "        `Your worker pool for “${detail.profileId ?? '?'}” is full and has no conversation on "
+    "${detail.provider === undefined ? 'the chosen provider' : PROVIDER_NAME[detail.provider]}. ` +\n"
+    "        'Give work on a provider already in that pool, or choose another agent. ' +\n")])]

@@ -463,8 +463,9 @@ export function describeRail(rail: SpawnRail, detail: SpawnRefusalDetail = {}): 
       )
     case 'no-room-for-provider-conversation':
       return (
+        'Give work on a provider already in that pool, or choose another agent. ' +
         `Your worker pool for “${detail.profileId ?? '?'}” is full and has no conversation on ${detail.provider === undefined ? 'the chosen provider' : PROVIDER_NAME[detail.provider]}. ` +
-        'Give work on a provider already in that pool, or choose another agent. A person can remove a worker to make room; waiting for these workers to finish will not free a place for another provider.'
+        'A person can remove a worker to make room; waiting for these workers to finish will not free a place for another provider.'
       )
     case 'service-provider-is-fixed':
       return (
