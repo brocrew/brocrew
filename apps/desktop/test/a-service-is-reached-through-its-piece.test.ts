@@ -155,6 +155,32 @@ describe('a service is reached through the piece it is on', () => {
   }
 
   describe('who may reach it', () => {
+    it('a profile name reaches only the service on the message caller’s piece', async () => {
+      const { host, caller, stranger, service, one } = await aServiceOnTheFirstPiece()
+      const sent = await call(host, caller, 'message_agent', {
+        agent: 'browser-driver',
+        kind: 'follow-up',
+        piece: one.label,
+        text: 'the room on the third floor',
+      })
+      expect(sent.structured).toMatchObject({ outcome: 'ok', agent: service })
+      const denied = await call(host, stranger, 'message_agent', {
+        agent: 'browser-driver',
+        kind: 'note',
+        text: 'the room on the third floor',
+      })
+      expect(denied.structured).toMatchObject({ outcome: 'refused', rail: 'no-such-agent' })
+      const asked = await call(host, caller, 'ask_question', {
+        who_answers: 'an-agent',
+        agent: 'browser-driver',
+        question: 'which floor?',
+      })
+      expect(asked.structured).toMatchObject({
+        outcome: 'refused',
+        rail: 'no-agent-you-can-ask-by-that-name',
+      })
+    })
+
     it('lets the caller whose piece it is on stop its turn, follow it up and give it a new brief', async () => {
       const { host, caller, service, one } = await aServiceOnTheFirstPiece()
       const stopped = await call(host, caller, 'interrupt_agent', {
