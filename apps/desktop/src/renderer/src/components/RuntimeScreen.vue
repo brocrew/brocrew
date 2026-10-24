@@ -3922,7 +3922,7 @@ onUnmounted(() => {
   <MessageLinks
     :resolve="resolveMessageLink"
     :open="openMessageDestination"
-    :scope="`${place ?? ''}|${activeId ?? ''}`"
+    :scope="`${place ?? ''}|${activeId ?? ''}|${linkedHistory?.sessionId ?? ''}`"
   >
     <div ref="appElement" class="app">
       <!-- Every icon the product draws, mounted once so any surface can reach it. -->
