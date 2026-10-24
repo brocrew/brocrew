@@ -23699,7 +23699,7 @@ export class RuntimeHost implements LiveHost {
       // provider home — so the naming is asked POSITIVELY, on the slot's own claim, and this line
       // is the only place that answer is computed.
       whose: whoseConversationIs(slot.profileId ?? session?.profileId ?? null, reads.roster),
-      provider: session?.provider ?? null,
+      provider: slot.provider ?? session?.provider ?? null,
       // ⚑ **D-017 · R11 — the one derivation**, fed from the slot and the ledger: see {@link stateOf}.
       state: this.stateOf(slot.id, reads, unread, ledger(slot.id), workOut),
       stoppedOnAPerson: this.whatItIsStoppedOn(slot.id, ledger(slot.id)),
