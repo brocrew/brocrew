@@ -115,10 +115,10 @@ export function providerIsFixed(provider: Provider): string {
  */
 export function providerTakesEffectNextTime(provider: Provider, aDoorAsks = false): string {
   return (
-    `The default for a new conversation as this identity is ${providerName(provider)}` +
+    `The default for a new conversation you start as this identity is ${providerName(provider)}` +
     (aDoorAsks ? ', unless you choose another provider where you start it. ' : '. ') +
     `Changing this starts nothing and moves nothing: a conversation keeps the provider it began ` +
-    `on. New gives without a provider or model use this default’s conversation, starting one if needed. ` +
+    `on. Once you choose a default here, new gives without a provider or model use that provider’s conversation, starting one if needed. ` +
     `Existing pieces and follow-ups stay with their holders.`
   )
 }
