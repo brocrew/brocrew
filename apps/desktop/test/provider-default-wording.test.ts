@@ -7,7 +7,7 @@ it.each(['claude', 'codex'] as const)(
     const said = providerTakesEffectNextTime(provider)
     expect(said).toContain('Changing this starts nothing and moves nothing')
     expect(said).toContain(
-      'New gives without a provider or model use this default’s conversation, starting one if needed',
+      'Once you choose a default here, new gives without a provider or model use that provider’s conversation, starting one if needed',
     )
     expect(said).toContain('Existing pieces and follow-ups stay with their holders')
   },

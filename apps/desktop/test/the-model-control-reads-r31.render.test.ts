@@ -370,8 +370,10 @@ describe('696 §1–§5 · what a person reads about a model choice under R31', 
       /^Its new conversations start on this, on Claude/,
     )
     // The sheet names a default, not a guarantee about a conversation with an explicit choice.
+    expect(providerTakesEffectNextTime(runsOn)).not.toContain('use this default’s conversation')
+    expect(providerTakesEffectNextTime(runsOn)).toContain('Once you choose a default here')
     expect(providerTakesEffectNextTime(runsOn)).toMatch(
-      /^The default for a new conversation as this identity is Codex\. /,
+      /^The default for a new conversation you start as this identity is Codex\. /,
     )
     // A door can also say where the person chooses another provider without changing the default.
     expect(providerTakesEffectNextTime(runsOn)).not.toContain('unless you choose')
