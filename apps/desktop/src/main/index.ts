@@ -831,7 +831,7 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
     ...providerHomePaths,
     // List profiles from directories under the managed root, without a separate registry.
     // `listProfileIds` includes `DEFAULT_PROFILE_ID` even before its directory exists.
-    listProfiles: () => listProfileIds(userData),
+    listProfiles: (provider) => listProfileIds(userData, provider),
     // Run credential operations on the bundled binary used by sessions, so a probe measures
     // the app's Codex rather than an unrelated executable on PATH.
     providerAuth,
