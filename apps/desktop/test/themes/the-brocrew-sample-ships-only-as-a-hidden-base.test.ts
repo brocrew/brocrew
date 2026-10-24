@@ -158,7 +158,8 @@ describe('the BroCrew sample ships only as a hidden base', () => {
       expect.objectContaining({ id: 'defined', source: 'built-in', status: 'refused' }),
     )
     expect(snapshot.themes.map((row) => row.id)).not.toContain('brocrew')
-    expect(snapshot.active).toBe(DEFAULT_THEME_ID)
+    // With no built-in readable, the default look is the one drawn without a file: classic.
+    expect(snapshot.active).toBe('classic')
     expect(snapshot.reason).toBe(
       "This theme is missing or can't be used, so the default look is shown.",
     )

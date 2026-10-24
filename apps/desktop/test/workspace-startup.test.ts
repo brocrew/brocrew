@@ -23,8 +23,8 @@ import { themeRoots } from '../src/main/themes/state'
 import { ThemeStore } from '../src/main/themes/store'
 import {
   BUILT_IN_THEME_IDS,
-  DEFAULT_THEME_ID,
   HIDDEN_BASE_THEME_IDS,
+  defaultThemeFor,
 } from '../src/main/themes/defaults'
 
 const hooks = vi.hoisted(() => ({
@@ -168,7 +168,7 @@ async function startup(fake: PinnableApp, beforeThemes?: () => void) {
       }
     },
     themeRoots,
-    DEFAULT_THEME_ID,
+    defaultThemeFor,
     BUILT_IN_THEME_IDS,
     HIDDEN_BASE_THEME_IDS,
     process: { resourcesPath: join(root, 'resources') },

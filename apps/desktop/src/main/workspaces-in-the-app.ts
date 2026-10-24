@@ -38,6 +38,8 @@ import {
   workspaceRows,
 } from './workspaces'
 import { sameFolder, samePath } from './same-folder'
+import { DEFAULT_THEME_ID } from './themes/defaults'
+import { writeActiveTheme } from './themes/state'
 
 /**
  * 🔴 **W4.131 · A2 — workspaces, wired to Electron**: the list is kept up to date by every person's
@@ -271,6 +273,13 @@ export function startWorkspaces(options: {
       }
       try {
         const unlimited = await makeWorkspaceFolder(verdict.path, name)
+        // A new workspace starts in the new look. Kept before any first database is made, which
+        // would otherwise read as data from an earlier version.
+        await writeActiveTheme(verdict.path, DEFAULT_THEME_ID).catch((error: unknown) => {
+          console.warn(
+            `BroCrew made ${verdict.path}, but could not keep its starting look: ${(error as Error).message}`,
+          )
+        })
         if (
           app.isPackaged &&
           workspaceRouting(app.getPath('appData'), true, requiredPolicy, {

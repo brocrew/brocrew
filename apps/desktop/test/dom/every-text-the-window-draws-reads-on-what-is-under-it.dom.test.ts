@@ -91,14 +91,14 @@ const ACCEPTED = new Map<string, Theme>(
   }),
 )
 
-const SHIPPED = ['classic', 'defined', 'brocrew', 'synthwave'] as const
+const SHIPPED = ['classic', 'defined', 'brocrew', 'synthwave', 'crew-night'] as const
 type ThemeName = (typeof SHIPPED)[number] | string
 
 function wear(theme: ThemeName): void {
   const own = ACCEPTED.get(theme)
   if (own) applyTheme(own)
   else if (theme === 'classic') applyTheme(null)
-  else wearTheme(theme as 'defined' | 'brocrew' | 'synthwave')
+  else wearTheme(theme as 'defined' | 'brocrew' | 'synthwave' | 'crew-night')
 }
 
 const pause = (ms = 120): Promise<void> => new Promise((done) => setTimeout(done, ms))

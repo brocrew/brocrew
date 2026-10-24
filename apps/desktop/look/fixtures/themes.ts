@@ -8,6 +8,8 @@ import { resolveTheme, type Theme } from '../../src/shared/themes/theme'
 import brocrew from '../../resources/themes/brocrew/theme.json'
 import defined from '../../resources/themes/defined/theme.json'
 import synthwave from '../../resources/themes/synthwave/theme.json'
+import crewNight from '../../resources/themes/crew-night/theme.json'
+import crewNightLogo from '../../resources/themes/crew-night/assets/logo.png?url'
 import brocrewCrew from '../../resources/themes/brocrew/assets/crew.png?url'
 import brocrewNetwork from '../../resources/themes/brocrew/assets/network.png?url'
 import brocrewNetworkLight from '../../resources/themes/brocrew/assets/network-light.png?url'
@@ -24,6 +26,7 @@ const BUILT_IN: Record<string, Theme> = {
   defined: DEFINED,
   brocrew: resolveTheme(brocrew as unknown as Theme, DEFINED),
   synthwave: resolveTheme(synthwave as unknown as Theme, DEFINED),
+  'crew-night': resolveTheme(crewNight as unknown as Theme, DEFINED),
 }
 const MINE: Theme = resolveTheme(
   {
@@ -42,6 +45,7 @@ const ROWS: ThemeRow[] = [
   { id: 'classic', name: 'Classic', source: 'built-in', status: 'ok' },
   { id: 'defined', name: 'Defined', source: 'built-in', status: 'ok' },
   { id: 'synthwave', name: 'Synthwave', source: 'built-in', status: 'ok' },
+  { id: 'crew-night', name: 'Crew Night', source: 'built-in', status: 'ok' },
   { id: 'sea-glass', name: 'Sea glass', source: 'mine', status: 'ok' },
   {
     id: 'half-done',
@@ -86,13 +90,15 @@ const PICTURES: Record<string, string> = {
   'assets/network.png': brocrewNetwork,
   'assets/network-light.png': brocrewNetworkLight,
   'assets/crew.png': brocrewCrew,
+  '@crew-night/assets/logo.png': crewNightLogo,
+  'assets/logo.png': crewNightLogo,
 }
 
 /**
  * Puts one of the shipped themes on the page, its pictures served by the scene's own server
  * instead of the host's theme scheme.
  */
-export function wearTheme(id: 'defined' | 'brocrew' | 'synthwave'): void {
+export function wearTheme(id: 'defined' | 'brocrew' | 'synthwave' | 'crew-night'): void {
   const result = applyTheme(BUILT_IN[id]!, { assetUrl: (path) => PICTURES[path] ?? '' })
   if (!result.ok) throw new Error(result.error)
 }

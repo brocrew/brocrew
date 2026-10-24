@@ -210,10 +210,10 @@ import { snapshotFor } from './provider-snapshots'
 import { ASSET_SCHEME_PRIVILEGES, installAssetProtocol } from './asset-protocol'
 import { THEME_SCHEME_PRIVILEGES, installThemeProtocol } from './themes/asset-protocol'
 import {
-  DEFAULT_THEME_ID,
   DEFAULT_THEME_BACKGROUND,
   BUILT_IN_THEME_IDS,
   HIDDEN_BASE_THEME_IDS,
+  defaultThemeFor,
 } from './themes/defaults'
 import { registerThemeIpc } from './themes/ipc'
 import { themePictureSampler } from './themes/picture-samples'
@@ -2221,7 +2221,10 @@ function start(ownership: HostGateVerdict): void {
           resources: app.isPackaged ? process.resourcesPath : join(__dirname, '../../resources'),
           hidden: presentation.hidden,
         }),
-        defaultTheme: DEFAULT_THEME_ID,
+        // Read before the database is opened: a workspace that already has one keeps classic.
+        defaultTheme: defaultThemeFor(app.getPath('userData')),
+        writesItsDefault: true,
+        warn: (line) => console.warn(line),
         builtInIds: BUILT_IN_THEME_IDS,
         hiddenBases: HIDDEN_BASE_THEME_IDS,
         forceDefault: app.commandLine.hasSwitch('default-theme'),

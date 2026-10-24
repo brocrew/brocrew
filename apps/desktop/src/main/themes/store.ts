@@ -67,6 +67,13 @@ export interface ThemeStoreOptions {
   /** Built-ins loaded only as a base: not listed, and not chosen. */
   readonly hiddenBases?: readonly string[]
   readonly forceDefault?: boolean
+  /**
+   * A workspace with no choice file is given {@link defaultTheme} as its choice, written once, so the
+   * look it starts in never depends on judging the workspace again.
+   */
+  readonly writesItsDefault?: boolean
+  /** Where a write the store could do without is reported: the app's log. */
+  readonly warn?: (line: string) => void
   readonly loader: Omit<ThemeLoader, 'problem'>
   readonly problem: (kind: ThemeStoreProblem) => string
   readonly trash: (path: string) => Promise<void>
@@ -118,6 +125,7 @@ export class ThemeStore implements ThemeAssetRegistry {
   private libraryRoot: string | null = null
   private forceDefault: boolean
   private closed = false
+  private wroteTheDefault = false
   private startJob: Promise<ThemeSnapshot> | undefined
   private timer: ReturnType<typeof setTimeout> | undefined
   private tail: Promise<void> = Promise.resolve()
@@ -567,6 +575,24 @@ export class ThemeStore implements ThemeAssetRegistry {
       this.files.lstat,
     )
     if (choice.kind === 'chosen') this.requested = choice.id
+    if (
+      this.options.writesItsDefault === true &&
+      !this.wroteTheDefault &&
+      choice.kind === 'chosen' &&
+      choice.id === null &&
+      (await this.noChoiceFile())
+    ) {
+      this.wroteTheDefault = true
+      try {
+        await writeActiveTheme(this.options.userData, this.options.defaultTheme, this.files)
+        this.requested = this.options.defaultTheme
+      } catch (error) {
+        // The default still shows this launch; a later start that can write gives it then.
+        this.options.warn?.(
+          `BroCrew could not keep this workspace's starting look: ${(error as Error).message}`,
+        )
+      }
+    }
     const choiceUnknown = choice.kind === 'unresolved' && this.requested === null
     if (unlisted.size > 0) {
       const unavailable = (id: string, source: ThemeSource): void => {
@@ -601,6 +627,16 @@ export class ThemeStore implements ThemeAssetRegistry {
     if (!this.available(this.active)) this.active = 'classic'
     this.reason =
       !this.available(desired) || choiceUnknown ? this.options.problem('fallback') : undefined
+  }
+
+  /** Whether the workspace has no choice file at all: not one that can't be read or makes no sense. */
+  private async noChoiceFile(): Promise<boolean> {
+    try {
+      await (this.files.lstat ?? lstat)(join(this.options.userData, ACTIVE_THEME_FILE))
+      return false
+    } catch (error) {
+      return saysAbsent(error)
+    }
   }
 
   private problem(rail: ThemeRefused['rail'], at: string, kind: ThemeStoreProblem): ThemeRefused {

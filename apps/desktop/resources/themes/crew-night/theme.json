@@ -1,0 +1,139 @@
+{
+  "format": 1,
+  "id": "crew-night",
+  "name": "Crew Night",
+  "author": "BroBot",
+  "description": "Deep navy with a soft glow, cyan and a touch of amber.",
+  "extends": "defined",
+  "frame": {
+    "ink": "#eef6fb",
+    "paper": "#0b1a2e",
+    "accent": "#2cc4f0"
+  },
+  "content": {
+    "ink": "#f2f7fb",
+    "paper": "#11233b",
+    "accent": "#2cc4f0",
+    "accent2": "#f5a623",
+    "scheme": "dark"
+  },
+  "status": {
+    "waiting": "#ffd27a",
+    "success": "#5ee0a8",
+    "danger": "#ff8a96",
+    "auto": "#ffb36b"
+  },
+  "shared": {
+    "page": 6,
+    "line": 16,
+    "tint": 12,
+    "radius": 12,
+    "shadow": {
+      "strength": 14,
+      "color": "#2cc4f0",
+      "style": "glow"
+    },
+    "fonts": {
+      "body": ["Inter", "SF Pro Text"]
+    }
+  },
+  "type": {
+    "display": {
+      "font": ["Inter", "SF Pro Display"],
+      "weight": 800,
+      "letterSpacing": -0.01
+    }
+  },
+  "window": {
+    "background": {
+      "color": "#0b1a2e"
+    }
+  },
+  "titlebar": {
+    "background": {
+      "color": "#091524"
+    },
+    "ink": "#e6eef5"
+  },
+  "rail": {
+    "background": {
+      "layers": [
+        {
+          "gradient": {
+            "type": "linear",
+            "angle": 180,
+            "stops": [
+              {
+                "color": "#0d2038",
+                "at": 0
+              },
+              {
+                "color": "#0b1a2e",
+                "at": 55
+              },
+              {
+                "color": "#09152a",
+                "at": 100
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "item": {
+      "active": {
+        "fill": "#15405e",
+        "ink": "#ffffff"
+      },
+      "hover": {
+        "fill": "#10304c",
+        "ink": "#ffffff"
+      }
+    }
+  },
+  "brand": {
+    "mark": {
+      "color": "#0b1a2e",
+      "layers": [
+        {
+          "image": "assets/logo.png",
+          "size": "contain",
+          "repeat": false
+        }
+      ]
+    },
+    "markInk": "#00000000",
+    "markEdge": "#00000000"
+  },
+  "conversation": {
+    "background": {
+      "color": "#0b1a2e",
+      "layers": [
+        {
+          "gradient": {
+            "type": "radial",
+            "stops": [
+              {
+                "color": "#14345a",
+                "at": 0
+              },
+              {
+                "color": "#0f2742",
+                "at": 40
+              },
+              {
+                "color": "#0b1a2e",
+                "at": 100
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "drawer": {
+    "background": {
+      "color": "#0d1f36"
+    }
+  }
+}

@@ -21,6 +21,7 @@ import * as themeDefaults from '../src/main/themes/defaults'
 import { BUILT_IN_THEME_IDS, HIDDEN_BASE_THEME_IDS } from '../src/main/themes/defaults'
 import { themeRoots } from '../src/main/themes/state'
 import { ThemeStore, type ThemeStoreOptions } from '../src/main/themes/store'
+import { pngSamples } from './themes/png-samples'
 
 type Handler = (event: unknown, ...args: unknown[]) => unknown
 const fake = vi.hoisted(() => ({
@@ -500,7 +501,10 @@ async function theLookItStartsIn(folder: string): Promise<string> {
     writesItsDefault: true,
     builtInIds: BUILT_IN_THEME_IDS,
     hiddenBases: HIDDEN_BASE_THEME_IDS,
-    loader: { sample: () => null },
+    loader: {
+      sample: (bytes: Buffer, facts: { type: string }) =>
+        facts.type === 'png' ? pngSamples(bytes) : null,
+    },
     problem: () => 'fictional',
     trash: async () => undefined,
     openFolder: async () => undefined,

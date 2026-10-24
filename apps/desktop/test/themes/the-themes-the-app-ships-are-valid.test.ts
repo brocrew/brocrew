@@ -81,7 +81,7 @@ function validateAll(): Map<string, Theme> {
 
 describe('the themes the app ships', () => {
   it('are the samples chosen for now', () => {
-    expect(IDS.sort()).toEqual(['brocrew', 'defined', 'synthwave'])
+    expect(IDS.sort()).toEqual(['brocrew', 'crew-night', 'defined', 'synthwave'])
   })
 
   it('all validate, readability included, bases first', () => {

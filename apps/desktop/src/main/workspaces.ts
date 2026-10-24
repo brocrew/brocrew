@@ -209,7 +209,8 @@ export function isBroBotsFolder(folder: string): boolean {
 
 /**
  * What a folder may hold and still be empty: what an OS leaves in a folder nobody used — and the
- * name a new workspace was given before it first started, so one whose start failed can be opened.
+ * name and starting look a new workspace was given before it first started, so one whose start
+ * failed can be opened.
  */
 function isNothingOfAnyones(entry: string): boolean {
   return (
@@ -217,7 +218,9 @@ function isNothingOfAnyones(entry: string): boolean {
     entry === 'Thumbs.db' ||
     entry === 'desktop.ini' ||
     entry === WORKSPACE_FILE ||
-    /^workspace\.json\.\d+\.tmp$/.test(entry)
+    /^workspace\.json\.\d+\.tmp$/.test(entry) ||
+    entry === 'active-theme.json' ||
+    /^active-theme\.json\.\d+\.[0-9a-f-]+\.tmp$/.test(entry)
   )
 }
 
