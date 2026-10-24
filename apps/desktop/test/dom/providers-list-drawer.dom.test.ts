@@ -129,6 +129,33 @@ describe('the Providers list opens the existing controls in one drawer', () => {
     expect(m.q('kept-rules-provider').querySelector('h3')?.textContent).toBe('Fable')
     expect(m.q('kept-rules-none').textContent).toContain('None kept.')
   })
+  it('puts a debug-only descriptor last only while Debug mode is on', async () => {
+    const check = window.api.runtime.checkProviderAuth
+    window.api.runtime.checkProviderAuth = async (asked) =>
+      (asked.provider as string) === 'lumen'
+        ? { state: 'absent', reason: 'No fictional sign-in.', why: 'no-login' }
+        : check(asked)
+    const experiment = {
+      ...PROVIDER_DESCRIPTORS[0],
+      id: 'lumen',
+      displayName: 'Lumen',
+      debugOnly: true,
+    }
+    const m = screen({ descriptors: [experiment, ...PROVIDER_DESCRIPTORS] })
+    await settle()
+    const ids = () => m.all('provider-row').map((item) => item.getAttribute('data-provider'))
+    expect(ids()).toEqual(['claude', 'codex'])
+    useDebugMode().value = true
+    await settle()
+    expect(ids()).toEqual(['claude', 'codex', 'lumen'])
+    row(m, 'lumen').click()
+    await settle()
+    expect(m.q('provider-card').getAttribute('data-provider')).toBe('lumen')
+    useDebugMode().value = false
+    await settle()
+    expect(ids()).toEqual(['claude', 'codex'])
+    expect(m.host.querySelector('[data-cy="provider-drawer"]')).toBeNull()
+  })
   it('opens the reused card and only that provider’s kept rules, then restores focus on Escape', async () => {
     const check = vi.spyOn(window.api.runtime, 'checkProviderAuth')
     const key = vi.spyOn(window.api.runtime, 'apiKeyStatus')

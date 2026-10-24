@@ -104,6 +104,9 @@ describe('the Providers rows fit and the selected drawer reuses every part', () 
       expect(m.q('provider-drawer').getBoundingClientRect().right).toBeLessThanOrEqual(
         m.host.getBoundingClientRect().right,
       )
+      expect(m.q('provider-drawer').getBoundingClientRect().top).toBeGreaterThanOrEqual(
+        m.q('settings-tab-providers').getBoundingClientRect().bottom,
+      )
     }
   })
   it.each(['claude', 'codex'])(
