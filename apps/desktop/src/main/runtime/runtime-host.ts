@@ -5346,6 +5346,8 @@ export interface PieceOnARecord {
 
 interface SessionSlot {
   readonly id: string
+  /** Fixed before the launch awaits, so provider-specific gives share only their own reservation. */
+  readonly provider: Provider | null
   /**
    * The surface that asked for this session, carried on the RESERVATION rather than read from the
    * registered sink — because for the whole starting interval there is no registered sink to read
@@ -10162,6 +10164,7 @@ export class RuntimeHost implements LiveHost {
       readonly ownerIsAPerson: boolean
       readonly commandedBy: string | null
       readonly spawnedBy: string | null
+      readonly provider?: Provider
       /**
        * 🔴 **Which identity this slot is going to BE, known before the provider arrives** (347).
        *
@@ -10288,6 +10291,7 @@ export class RuntimeHost implements LiveHost {
     })
     const slot: SessionSlot = {
       id,
+      provider: held.provider ?? this.deps.store.recordedOne(id)?.provider ?? null,
       ownerId,
       // ⛔ **Beside the id it qualifies, and taken from the same argument** (349). Both halves of
       // *"who is watching this"* are written here and move together from here on — see
@@ -11082,7 +11086,7 @@ export class RuntimeHost implements LiveHost {
           ? (this.itsProvider(profile).provider ??
             this.deps.store.modelChoiceOf(profile)?.provider ??
             null)
-          : null,
+          : this.theProviderOfConversation(conversation),
     }
   }
 
@@ -13863,6 +13867,7 @@ export class RuntimeHost implements LiveHost {
           // ⚠️ The two must not drift — `startSession` reads the same `input.profileId` and applies
           // the same default, and a census pins that they are spelled the same way.
           profileId: input.profileId ?? DEFAULT_PROFILE_ID,
+          provider: input.provider,
         },
         input.launchKey ?? null,
       ),
@@ -27803,7 +27808,7 @@ export class RuntimeHost implements LiveHost {
     let admission = admitGive(
       input,
       by,
-      this.giveFacts(by, giver, choosing?.theNamedModels ?? null),
+      this.giveFacts(by, giver, choosing?.theNamedModels ?? null, choosing?.list.rows ?? []),
     )
     if (!admission.ok) return admission
     let { asked, under, goes } = admission
@@ -27829,7 +27834,7 @@ export class RuntimeHost implements LiveHost {
       admission = admitGive(
         { ...asked, folder: outputFolder },
         by,
-        this.giveFacts(by, giver, choosing?.theNamedModels ?? null),
+        this.giveFacts(by, giver, choosing?.theNamedModels ?? null, choosing?.list.rows ?? []),
       )
       if (!admission.ok) return admission
       ;({ asked, under, goes } = admission)
@@ -28084,14 +28089,9 @@ export class RuntimeHost implements LiveHost {
   }
 
   /**
-   * 🔴 **D-042 · R4 — the list a give that names a model or an effort chooses from**, read BEFORE
-   * the give's synchronous stretch — `null` when it names neither, or cannot be read as a give, or
-   * its agent has no provider anybody can name (the rails then say why). ⚑ **The provider it would
-   * run on**: the conversation the giver has with that agent, else the one a start would —
-   * {@link theProviderAStartRunsOn}, the rule {@link admitGive} asks, given the provider whose list
-   * alone holds the model it names when nothing names the agent's own — and the list is asked as
-   * the window asks it ({@link theListFor}): an agent with no folder, or a new one, is answered in
-   * {@link STAND_IN_PROFILE}'s home.
+   * Resolve a model's provider before selecting its conversation. A service keeps its one provider
+   * and reads that provider's list for a conflicting-choice refusal. Ordinary gives naming neither
+   * a model nor an effort still reserve synchronously without a catalogue lookup.
    */
   private theListAGiveChoosesFrom(
     input: unknown,
@@ -28105,56 +28105,31 @@ export class RuntimeHost implements LiveHost {
     const parsed = giveRequestSchema.safeParse(input)
     if (giving === null || !parsed.success) return null
     const asked = parsed.data
-    if (asked.model === undefined && asked.effort === undefined) return null
-    const candidate = this.normalWorkerAt(
-      speaking,
-      asked.profile,
-      asked.parallel === true && asked.new !== true,
-    )
-    const found =
-      candidate.is === 'known'
-        ? candidate.selection.kind === 'existing'
-          ? this.deps.store.workerInItsPlace(candidate.selection.worker.conversation)
-          : null
-        : candidate.is === 'legacy'
-          ? this.legacyHelperAs(speaking, asked.profile)
-          : null
+    const service = asked.new === true ? null : this.theServiceAtAGive(speaking, asked.profile)
+    const fixed = service?.is === 'service' ? service.provider : null
+    const serviceConflict =
+      asked.provider !== undefined && fixed !== null && asked.provider !== fixed
+    if (asked.model === undefined && asked.effort === undefined && !serviceConflict) return null
     const known = this.deps.store.capabilitiesOf(asked.profile) !== null
-    const home =
-      found === null
-        ? known
-          ? asked.profile
-          : STAND_IN_PROFILE
-        : (this.profileOf(found) ?? STAND_IN_PROFILE)
-    const own = found === null ? null : this.theProviderOfConversation(found)
-    if (own !== null) {
-      return this.theListFor(own, home).then((list) => ({
-        provider: own,
-        list,
-        theNamedModels: null,
-      }))
-    }
-    const nothingNamesIt =
-      !known ||
-      (this.itsProvider(asked.profile).from === 'nothing-yet' &&
-        this.deps.store.modelChoiceOf(asked.profile) === null)
     const named =
-      asked.model !== undefined && nothingNamesIt
+      asked.provider === undefined && asked.model !== undefined
         ? this.theProviderWhoseListAloneHolds(asked.model)
         : Promise.resolve(null)
     return named.then(async (theNamedModels) => {
-      // ⚑ A conversation found that has no provider yet — a start still reserving — is judged on
-      // the giver's list when the agent names none; the choice's own check refuses it if that
-      // conversation turns out to run on the other (`the-provider-moved-meanwhile`).
       const provider =
-        theProviderAStartRunsOn(
-          asked,
-          known,
-          giving,
-          this.whatAStartsProviderReads,
-          theNamedModels,
-        ) ?? (found === null ? null : giving.provider)
+        fixed ??
+        theProviderAStartRunsOn(asked, known, giving, this.whatAStartsProviderReads, theNamedModels)
       if (provider === null) return null
+      const found =
+        fixed !== null && service?.is === 'service'
+          ? service.conversation
+          : this.helperAs(speaking, asked.profile, provider)
+      const home =
+        found === null
+          ? known
+            ? asked.profile
+            : STAND_IN_PROFILE
+          : (this.profileOf(found) ?? STAND_IN_PROFILE)
       return { provider, list: await this.theListFor(provider, home), theNamedModels }
     })
   }
@@ -28162,7 +28137,7 @@ export class RuntimeHost implements LiveHost {
   /**
    * The provider whose list alone holds this model — its own rows, an alias's target, or one a person
    * added — else `null`: neither list holds it, or both do. ⚑ Asked only where nothing names an
-   * agent's provider yet, so an ordinary give reads one provider's list and never both. ⛔ In
+   * agent's provider yet or a give names a model without a provider. ⛔ In
    * {@link STAND_IN_PROFILE}'s home, as a new agent's default is judged: an agent's own home is
    * prepared only for the provider it runs on.
    */
@@ -28215,6 +28190,7 @@ export class RuntimeHost implements LiveHost {
   private theProviderOfConversation(conversation: string): Provider | null {
     return (
       this.slots.get(conversation)?.session?.provider ??
+      this.slots.get(conversation)?.provider ??
       this.deps.store.recordedOne(conversation)?.provider ??
       null
     )
@@ -28636,6 +28612,7 @@ export class RuntimeHost implements LiveHost {
     giving: GivingConversation,
     /** The provider whose list alone holds the model the give names ({@link theListAGiveChoosesFrom}). */
     theNamedModels: Provider | null,
+    models: readonly { readonly id: string }[],
   ): GiveFacts {
     return {
       giver: () => giving,
@@ -28652,9 +28629,9 @@ export class RuntimeHost implements LiveHost {
       mayGiveWork: () => this.mayReachAtAll('assign', by),
       depthOf: (piece) => this.deps.store.depthOf(piece),
       capabilitiesOf: (profileSlug) => this.deps.store.capabilitiesOf(profileSlug),
-      helperAs: (giver, profileSlug) => this.helperAs(giver, profileSlug),
-      workerAt: (giver, profileSlug, parallel) => {
-        const selected = this.normalWorkerAt(giver, profileSlug, parallel)
+      helperAs: (giver, profileSlug, provider) => this.helperAs(giver, profileSlug, provider),
+      workerAt: (giver, profileSlug, parallel, provider) => {
+        const selected = this.normalWorkerAt(giver, profileSlug, parallel, provider)
         if (selected.is === 'legacy') return { is: 'legacy' }
         if (selected.is === 'full') return { is: 'full' }
         if (selected.is !== 'known') return { is: 'unknown' }
@@ -28677,6 +28654,7 @@ export class RuntimeHost implements LiveHost {
       // answers *as what*.
       itsProvider: (profileSlug) => this.itsProvider(profileSlug),
       theNamedModelsProvider: () => theNamedModels,
+      serviceModels: () => models.map(({ id }) => id),
       // ⚑ **The TARGET's default model and effort** — whose provider it holds (`R31a`).
       modelChoiceOf: (profileSlug) => this.deps.store.modelChoiceOf(profileSlug),
       // ⚑ **339's rule, CALLED rather than copied** — {@link RuntimeHost.checkCwd} asks the very
@@ -28711,7 +28689,16 @@ export class RuntimeHost implements LiveHost {
     fact: WorkerBorn | null
     release: () => void
   } | null {
-    const selected = this.normalWorkerAt(giving.giver, asked.profile, asked.parallel === true)
+    const provider =
+      goes.to === 'a-new-conversation'
+        ? goes.start.provider
+        : (this.theProviderOfConversation(goes.conversation) ?? undefined)
+    const selected = this.normalWorkerAt(
+      giving.giver,
+      asked.profile,
+      asked.parallel === true,
+      provider,
+    )
     if (selected.is !== 'known') {
       if (asked.parallel !== true) return null
       throw new Error('No work was given because the worker could not be recorded.')
@@ -28873,6 +28860,7 @@ export class RuntimeHost implements LiveHost {
     giver: string,
     profile: string,
     parallel: boolean,
+    provider?: Provider,
   ):
     | { readonly is: 'legacy' | 'unknown' | 'full' }
     | {
@@ -28938,7 +28926,21 @@ export class RuntimeHost implements LiveHost {
         }
       }
       // Resolve every binding completely before selecting; a partial cache cannot pick an old worker.
-      for (const worker of pool?.workers ?? []) this.currentNormalWorker(worker)
+      const providers = new Map<string, Provider | null>()
+      for (const worker of pool?.workers ?? []) {
+        providers.set(
+          worker.conversation,
+          this.theProviderOfConversation(this.currentNormalWorker(worker)),
+        )
+      }
+      if (!parallel && provider !== undefined && pool !== null) {
+        // A provider's older ordinary conversation remains its primary when another provider adds a pool.
+        const bound = pool.workers.flatMap((worker) => [
+          worker.conversation,
+          ...this.deps.store.workerLineage(worker.conversation),
+        ])
+        if (this.legacyHelperAs(giver, profile, provider, bound) !== null) return { is: 'legacy' }
+      }
       const budget = { rowsLeft: 8192, bytesLeft: 8 * 1024 * 1024 }
       const snapshots = new Map<string, ReturnType<SessionStore['workerLedger']>>()
       const snapshot = (id: string): ReturnType<SessionStore['workerLedger']> => {
@@ -28952,6 +28954,7 @@ export class RuntimeHost implements LiveHost {
         parallel,
         (conversation) => this.freeForNormalWork(conversation, roster, snapshot),
         (conversation) => this.normalWorkerLeases.has(conversation),
+        (conversation) => provider === undefined || providers.get(conversation) === provider,
       )
       if (selection.kind === 'unknown') return { is: 'unknown' }
       if (selection.kind === 'full') return { is: 'full' }
@@ -28961,9 +28964,27 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
-  private helperAs(giver: string, profile: string): string | null {
-    const selected = this.normalWorkerAt(giver, profile, false)
-    if (selected.is === 'legacy') return this.legacyHelperAs(giver, profile)
+  private helperAs(giver: string, profile: string, provider?: Provider): string | null {
+    const selected = this.normalWorkerAt(giver, profile, false, provider)
+    if (selected.is === 'legacy') {
+      const identity = this.deps.store
+        .agentIdentities()
+        .find((one) => one.slug === foldProfileName(profile))
+      const read = this.profileExecution
+      const pools =
+        identity === undefined || !read.readable
+          ? []
+          : (read.kept.profiles[identity.id]?.workerPools ?? [])
+      const bound = pools
+        .filter((pool) => this.deps.store.workerGiverContains(pool.giver, giver))
+        .flatMap((pool) =>
+          pool.workers.flatMap((worker) => [
+            worker.conversation,
+            ...this.deps.store.workerLineage(worker.conversation),
+          ]),
+        )
+      return this.legacyHelperAs(giver, profile, provider, bound)
+    }
     if (selected.is !== 'known' || selected.selection.kind !== 'existing') return null
     return this.currentNormalWorker(selected.selection.worker)
   }
@@ -29129,16 +29150,25 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
-  private legacyHelperAs(giver: string, profileSlug: string): string | null {
+  private legacyHelperAs(
+    giver: string,
+    profileSlug: string,
+    provider?: Provider,
+    except: readonly string[] = [],
+  ): string | null {
     const wanted = foldProfileName(profileSlug)
     const parents = this.theIdsItStandsFor(giver)
     const theirs = new Set(parents)
+    const excluded = new Set(except)
     const reserved = [...this.slots.values()].find((slot) => {
+      if (excluded.has(slot.id)) return false
       if (slot.spawnedBy === null || !theirs.has(slot.spawnedBy)) return false
+      if (provider !== undefined && slot.provider !== provider) return false
       const identity = slot.profileId ?? slot.session?.profileId ?? null
       return identity !== null && foldProfileName(identity) === wanted
     })
-    const found = reserved?.id ?? this.deps.store.newestChildAs(parents, profileSlug)
+    const found =
+      reserved?.id ?? this.deps.store.newestChildAs(parents, profileSlug, provider, except)
     return found === null ? null : this.theOneInItsPlace(found)
   }
 

@@ -33,24 +33,31 @@ export function selectNormalWorker(
   parallel: boolean,
   free: (conversation: string) => boolean,
   leased: (conversation: string) => boolean,
+  onProvider: (conversation: string) => boolean = () => true,
 ): WorkerSelection {
   if (pool === null || (pool.workers.length === 0 && pool.nextNumber === 1))
     return { kind: 'start', number: 1 }
   const primary = pool.workers.find((worker) => worker.number === 1)
   if (primary === undefined && pool.primaryNeverBorn !== true) return { kind: 'unknown' }
-  if (!parallel)
-    return primary === undefined
-      ? { kind: 'start', number: 1 }
-      : { kind: 'existing', worker: primary }
-  const worker = [...pool.workers]
-    .sort((left, right) => left.number - right.number)
-    .find(
-      (one) =>
-        one.phase === 'bound' &&
-        one.assignment === undefined &&
-        !leased(one.conversation) &&
-        free(one.conversation),
-    )
+  if (!parallel) {
+    if (primary === undefined) return { kind: 'start', number: 1 }
+    const first = [...pool.workers]
+      .sort((left, right) => left.number - right.number)
+      .find((worker) => onProvider(worker.conversation))
+    if (first !== undefined) return { kind: 'existing', worker: first }
+  }
+  const worker = parallel
+    ? [...pool.workers]
+        .sort((left, right) => left.number - right.number)
+        .find(
+          (one) =>
+            onProvider(one.conversation) &&
+            one.phase === 'bound' &&
+            one.assignment === undefined &&
+            !leased(one.conversation) &&
+            free(one.conversation),
+        )
+    : undefined
   if (worker !== undefined) return { kind: 'existing', worker }
   if (pool.primaryNeverBorn === true) return { kind: 'start', number: 1 }
   if (pool.workers.length >= MAX_NORMAL_WORKERS_PER_POOL) return { kind: 'full' }

@@ -3197,7 +3197,12 @@ export interface SessionStore {
    * — give's lookup, over the rows (`provider_session_parent_identity_idx`). ⚠️ Rows only: a start
    * still in flight has no row yet, and is the host's to see.
    */
-  newestChildAs(parents: readonly string[], profileSlug: string): string | null
+  newestChildAs(
+    parents: readonly string[],
+    profileSlug: string,
+    provider?: Provider,
+    except?: readonly string[],
+  ): string | null
   /**
    * 🔴 **D-024 · R1 — the conversations the identity `profileSlug` runs, newest activity first**,
    * each with the conversation that started it (`null`: a person) — through
@@ -11933,6 +11938,8 @@ export function createSessionStore(
       childAs: db.prepare(
         `SELECT id, created_at FROM provider_session
           WHERE parent_session_id = ? AND agent_identity_id = ?
+            AND (? IS NULL OR provider = ?)
+            AND id NOT IN (SELECT value FROM json_each(?))
           ORDER BY created_at DESC, id DESC
           LIMIT 1`,
       ),
@@ -14747,12 +14754,17 @@ export function createSessionStore(
       return piecesOfSession(owner, unread?.in(owner)).filter((piece) => TASK_IS_OPEN[piece.state])
     },
 
-    newestChildAs(parents, profileSlug) {
+    newestChildAs(parents, profileSlug, provider, except = []) {
       const identityId = agentIdentityRowId(profileSlug)
       let newest: { readonly id: string; readonly created_at: number } | undefined
       for (const parent of parents) {
-        const found = workSql().childAs.get(parent, identityId) as
-          { id: string; created_at: number } | undefined
+        const found = workSql().childAs.get(
+          parent,
+          identityId,
+          provider ?? null,
+          provider ?? null,
+          JSON.stringify(except),
+        ) as { id: string; created_at: number } | undefined
         if (found === undefined) continue
         if (
           newest === undefined ||

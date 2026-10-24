@@ -4,7 +4,7 @@ import { refusalReason } from '../../shared/refusals'
 import { isAbsolute, join } from 'node:path'
 import type { GivenFolder } from '../../shared/work-folders'
 import { z } from 'zod'
-import type { Provider } from '@brobot2/shared'
+import { providerSchema, type Provider } from '@brobot2/shared'
 // 🔴 **D-038 · the one derivation `wider-than-its-parent` is** — see
 // {@link WHAT_STANDS_PAST_ITS_FOLDER}. ⚑ A VALUE import, and the only one this module takes from
 // `@brobot2/runtime`; the comparison has to read the table the disclosure's sentence is censused
@@ -120,6 +120,7 @@ export const SPAWN_RAILS = [
   'its-kind-is-unknown',
   'worker-binding-is-unknown',
   'parallel-not-for-a-service',
+  'service-provider-is-fixed',
   'no-free-worker-at-capacity',
   /** The agent is a service, and the giver is that service's one conversation. */
   'that-is-this-conversation',
@@ -219,6 +220,7 @@ const PERMANENCE: Readonly<Record<SpawnRail, RailPermanence>> = {
   'its-kind-is-unknown': 'until-a-person-changes-it',
   'worker-binding-is-unknown': 'until-a-person-changes-it',
   'parallel-not-for-a-service': 'permanent',
+  'service-provider-is-fixed': 'permanent',
   'no-free-worker-at-capacity': 'while-this-holds',
   'that-is-this-conversation': 'permanent',
   'it-would-wait-on-itself': 'while-this-holds',
@@ -267,6 +269,7 @@ const REMEDY: Readonly<Record<SpawnRail, RefusalRemedy | null>> = {
   'its-kind-is-unknown': null,
   'worker-binding-is-unknown': null,
   'parallel-not-for-a-service': null,
+  'service-provider-is-fixed': null,
   'no-free-worker-at-capacity': 'make-the-same-call-when-this-settles',
   'that-is-this-conversation': null,
   'it-would-wait-on-itself': 'make-the-same-call-when-this-settles',
@@ -316,6 +319,9 @@ export interface SpawnRefusalDetail {
   asked?: ApprovalMode
   spawnerRunsAs?: ApprovalMode
   wouldLack?: readonly Protection[]
+  /** The service's fixed provider and its current model list, for a different-provider refusal. */
+  provider?: Provider
+  choices?: readonly string[]
   /** `its-provider-is-not-chosen` — how many of its conversations started on each provider. */
   startedOn?: StartedOn
   /** `folder-unusable`'s reason, which is `checkSessionCwd`'s own sentence and names the directory. */
@@ -451,6 +457,12 @@ export function describeRail(rail: SpawnRail, detail: SpawnRefusalDetail = {}): 
         'There is no agent by that name, so nothing was given: check the spelling — list_profiles ' +
         'names every agent. To bring a new agent into existence under this name, give it again with ' +
         `new: true. It asked for “${detail.profileId ?? '?'}”.`
+      )
+    case 'service-provider-is-fixed':
+      return (
+        `“${detail.profileId ?? '?'}” is a service with one conversation on ${detail.provider === undefined ? 'its provider' : PROVIDER_NAME[detail.provider]}. ` +
+        `Give it work on that provider; its models are ${(detail.choices ?? []).join(', ') || 'not available right now'}. ` +
+        'A service cannot take a second provider.'
       )
     case 'its-provider-is-not-chosen': {
       const on = Object.entries(detail.startedOn ?? {})
@@ -629,6 +641,8 @@ export const giveRequestSchema = z
     piece: z.string().min(1).max(200).optional(),
     /** 🔴 **D-016 · R3** — bring a new agent into existence under `profile`. */
     new: z.boolean().optional(),
+    /** Choose this provider's conversation; never change an existing conversation's provider. */
+    provider: providerSchema.optional(),
     /** Choose a free worker of the same normal profile rather than queueing on its primary. */
     parallel: z.boolean().optional(),
     /**
@@ -806,17 +820,18 @@ export interface GiveFacts {
   readonly depthOf: (piece: string) => number
   readonly capabilitiesOf: (profileSlug: string) => ProfileCapabilities | null
   /**
-   * 🔴 **The one conversation this giver has with that agent, or `null`** (R2 step 5) — over the
+   * 🔴 **The conversation this giver has with that agent on the chosen provider, or `null`** (R2 step 5) — over the
    * reservations in flight and the rows, the giver's predecessors included, followed through
    * `theOneInItsPlace`. ⛔ **A lookup and not a rail**: whatever state it is in, a give that finds
    * it goes there.
    */
-  readonly helperAs: (giver: string, profileSlug: string) => string | null
+  readonly helperAs: (giver: string, profileSlug: string, provider?: Provider) => string | null
   /** Stable normal-worker lookup; no binding is invented from an incomplete reading. */
   readonly workerAt?: (
     giver: string,
     profileSlug: string,
     parallel: boolean,
+    provider?: Provider,
   ) =>
     | { readonly is: 'legacy' | 'unknown' | 'full' }
     | { readonly is: 'known'; readonly conversation: string | null }
@@ -835,6 +850,8 @@ export interface GiveFacts {
    * `null` when it names none, or more or fewer than one list holds it.
    */
   readonly theNamedModelsProvider: () => Provider | null
+  /** The service's own list, read before admission only when a different provider is named. */
+  readonly serviceModels?: () => readonly string[]
   /** 🔴 **The TARGET identity's default model and effort, or null** (677; D-042 · R2). */
   readonly modelChoiceOf: (profileSlug: string) => AgentModelChoice | null
   readonly checkFolder: (path: string) => { ok: true; path: string } | { ok: false; reason: string }
@@ -1010,18 +1027,13 @@ export function admitAReplacement(replaced: ReplacedConversation): AdmittedSpawn
 }
 
 /**
- * 🔴 **The PROVIDER a conversation a give starts runs on: the agent's own**, and a give never
- * changes it ({@link ItsProvider}). An agent nothing names one for yet takes its default model's
- * provider, else that of the model the give names when only one provider's list holds it, else the
- * giver's; a new agent the same, as it has no default yet. ⛔ `null` when its conversations ran on
- * both and nobody saved one: only a person can say.
- *
- * ⚑ **D-042 · lifted out of {@link admitGive}** so the give can read that provider's model list
- * before its synchronous stretch begins — one rule, asked twice, and compared
- * (`the-provider-moved-meanwhile`).
+ * Resolve the provider before both conversation lookup and a new start. An explicit provider wins,
+ * then a model held by exactly one provider's list, then the identity's default and the giver's.
+ * A legacy identity whose conversations differ and has no default still needs a choice.
+ * The host uses this same rule before reading a model list and again after that await.
  */
 export function theProviderAStartRunsOn(
-  asked: Pick<GiveRequest, 'profile'>,
+  asked: Pick<GiveRequest, 'profile' | 'provider'>,
   /** Whether that agent exists — `capabilitiesOf` answered for it. */
   known: boolean,
   giving: Pick<GivingConversation, 'provider'>,
@@ -1029,13 +1041,15 @@ export function theProviderAStartRunsOn(
   /** {@link GiveFacts.theNamedModelsProvider}'s answer. */
   theNamedModels: Provider | null,
 ): Provider | null {
+  if (asked.provider !== undefined) return asked.provider
+  if (theNamedModels !== null) return theNamedModels
   const its: ItsProvider = known
     ? facts.itsProvider(asked.profile)
     : { provider: null, from: 'nothing-yet' }
   if (its.provider !== null) return its.provider
   if (its.from === 'its-conversations-differ') return null
   const chosen = known ? facts.modelChoiceOf(asked.profile) : null
-  return chosen?.provider ?? theNamedModels ?? giving.provider
+  return chosen?.provider ?? giving.provider
 }
 
 /**
@@ -1137,6 +1151,18 @@ export function admitGive(
   if (service?.is === 'off') return no('services-are-off', { profileId: asked.profile })
   if (service?.is === 'unknown') return no('its-kind-is-unknown', { profileId: asked.profile })
   if (service?.is === 'service') {
+    const requestedProvider = asked.provider ?? facts.theNamedModelsProvider()
+    if (
+      requestedProvider != null &&
+      service.provider !== null &&
+      requestedProvider !== service.provider
+    ) {
+      return no('service-provider-is-fixed', {
+        profileId: asked.profile,
+        provider: service.provider,
+        choices: facts.serviceModels?.() ?? [],
+      })
+    }
     if (asked.parallel === true)
       return no('parallel-not-for-a-service', { profileId: asked.profile })
     if (service.isTheGiver) return no('that-is-this-conversation', { profileId: asked.profile })
@@ -1182,15 +1208,26 @@ export function admitGive(
     }
   }
 
+  const known = facts.capabilitiesOf(asked.profile) !== null
+  const provider = theProviderAStartRunsOn(
+    asked,
+    known,
+    giving,
+    facts,
+    facts.theNamedModelsProvider(),
+  )
   const worker = facts.workerAt?.(
     giving.sessionId,
     asked.profile,
     asked.parallel === true && asked.new !== true,
+    provider ?? undefined,
   )
   if (worker?.is === 'full') return no('no-free-worker-at-capacity', { profileId: asked.profile })
   if (worker?.is === 'unknown') return no('worker-binding-is-unknown', { profileId: asked.profile })
   const found =
-    worker?.is === 'known' ? worker.conversation : facts.helperAs(giving.sessionId, asked.profile)
+    worker?.is === 'known'
+      ? worker.conversation
+      : facts.helperAs(giving.sessionId, asked.profile, provider ?? undefined)
   if (found !== null) {
     // 5b · ⚑ a found conversation proves the agent exists, and reusing it would give "a new agent" a
     // memory — R3's own reason (D-016 spec D1).
@@ -1216,20 +1253,11 @@ export function admitGive(
   if (!facts.spawningEnabled()) return no('spawning-disabled', { profileId: asked.profile })
   // ⚑ **Whether the agent exists is a read of its row** — `list_profiles` names every one, so the
   // answer is no secret — and it decides which of the two rails below the name meets.
-  const known = facts.capabilitiesOf(asked.profile) !== null
   const creator = asked.new === true && !known ? facts.mayCreateAgents() : null
   if (asked.new === true && !known && creator === null) {
     return no('may-not-create-agents', { profileId: asked.profile })
   }
 
-  // 🔴 **The new conversation's PROVIDER** — see {@link theProviderAStartRunsOn}.
-  const provider = theProviderAStartRunsOn(
-    asked,
-    known,
-    giving,
-    facts,
-    facts.theNamedModelsProvider(),
-  )
   // ⛔ **INHERITED** (499, HO-036): a conversation a give starts runs in its giver's mode.
   const approvalMode = giving.approvalMode
 
