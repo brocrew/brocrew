@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, ref } from 'vue'
+import { visibleProviderDescriptors } from '@brobot2/shared'
 import SettingsScreen, {
   type SettingsTab,
 } from '../../src/renderer/src/components/SettingsScreen.vue'
@@ -63,14 +64,29 @@ async function settings(
 it('opens Providers by default and moves the existing Settings content between tabs', async () => {
   const { m, tab } = await settings()
   expect(m.q('settings-screen').querySelector('h1')?.textContent).toBe('Settings')
-  expect(m.all('provider-card')).toHaveLength(2)
+  const providers = visibleProviderDescriptors(false)
+  expect(m.all('provider-row').map((row) => row.dataset['provider'])).toEqual(
+    providers.map((provider) => provider.id),
+  )
+  expect(m.all('provider-card')).toHaveLength(0)
+  expect(m.all('kept-rules')).toHaveLength(0)
+  m.q('provider-row').click()
+  await vi.waitFor(() => expect(m.all('provider-card')).toHaveLength(1))
+  expect(m.q('provider-card').dataset['provider']).toBe(providers[0]!.id)
   expect(m.all('kept-rules')).toHaveLength(1)
+  expect(m.q('kept-rules-provider').dataset['provider']).toBe(providers[0]!.id)
+  m.q('provider-drawer').querySelector<HTMLButtonElement>('.drawer-close')!.click()
+  await nextTick()
+  expect(m.all('provider-card')).toHaveLength(0)
+  expect(m.all('kept-rules')).toHaveLength(0)
   expect(m.all('tools-register')).toHaveLength(0)
   m.q('settings-tab-tools').click()
   await nextTick()
   expect(tab.value).toBe('tools')
   expect(m.all('tools-register')).toHaveLength(1)
+  expect(m.all('provider-row')).toHaveLength(0)
   expect(m.all('provider-card')).toHaveLength(0)
+  expect(m.all('provider-drawer')).toHaveLength(0)
   m.q('settings-tab-skills').click()
   await nextTick()
   expect(m.all('skills-section')).toHaveLength(1)

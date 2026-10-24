@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import type { PluginSettingsReply } from '../../src/shared/plugin-settings'
 import { nextTick } from 'vue'
+import { visibleProviderDescriptors } from '@brobot2/shared'
 import { page } from 'vitest/browser'
 import { mount, unmountAll } from './harness'
 import { settingsWindow } from '../../look/fixtures/settings-window'
@@ -71,7 +72,11 @@ it('hides Plugins without an injected or available real controller', async () =>
   await nextTick()
   expect(m.all('settings-tab-plugins')).toHaveLength(0)
   expect(m.all('plugins-section')).toHaveLength(0)
-  expect(m.all('provider-card').length).toBeGreaterThan(0)
+  expect(m.all('provider-row').map((row) => row.dataset['provider'])).toEqual(
+    visibleProviderDescriptors(false).map((provider) => provider.id),
+  )
+  expect(m.all('provider-card')).toHaveLength(0)
+  expect(m.all('provider-drawer')).toHaveLength(0)
 })
 it('shows the approved failure and tears down a revoked configuration', async () => {
   const f = fictionalPlugins(),
