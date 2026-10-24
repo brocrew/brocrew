@@ -126,6 +126,45 @@ async function open(value = initial()) {
 }
 
 describe('memory in the agent book', () => {
+  it('keeps same-named notes in separate labelled stores and names the selected provider on an amendment', async () => {
+    const reading = initial()
+    const codex = reading.stores.find((store) => store.provider === 'codex')!
+    const { view, edits } = await open({
+      ...reading,
+      stores: reading.stores.map((store) =>
+        store === codex
+          ? {
+              ...store,
+              state: 'read',
+              entries: [
+                { ...entry, path: '/managed/quill-codex/note.md', text: 'Codex note', bytes: 10 },
+              ],
+              total: 1,
+            }
+          : store,
+      ),
+    })
+    expect(view.q('memory-store-claude').textContent).toContain('Claude')
+    expect(view.q('memory-store-claude').textContent).toContain('Original note')
+    expect(view.q('memory-store-codex').textContent).toContain('Codex')
+    expect(view.q('memory-store-codex').textContent).toContain('Codex note')
+    view
+      .q('memory-store-codex')
+      .querySelector<HTMLButtonElement>('[data-cy="memory-remove"]')!
+      .click()
+    await vi.waitFor(() => expect(view.q('memory-confirm-before').textContent).toBe('Codex note'))
+    view.q('memory-confirm').click()
+    await vi.waitFor(() => expect(edits).toHaveLength(1))
+    expect(edits[0]).toMatchObject({
+      profileId: 'quill',
+      provider: 'codex',
+      entry: '/managed/quill-codex/note.md',
+      act: 'removed',
+      confirmed: true,
+    })
+    expect(view.q('memory-store-claude').textContent).toContain('Original note')
+  })
+
   it('confirms a deletion with the hash of the exact displayed text', async () => {
     const { view, edits } = await open()
     expect(view.q('memory-store-claude').querySelector('h4')?.textContent).toBe('Claude')
