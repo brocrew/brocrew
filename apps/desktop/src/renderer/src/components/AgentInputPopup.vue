@@ -331,6 +331,14 @@ const versionLine = computed(() => {
                   : 'Its next start would use no own instructions: none are saved.'
               }}</span>
             </div>
+            <div
+              v-if="given.ownNotesVersion != null"
+              class="setting"
+              data-cy="input-own-notes-version"
+            >
+              <strong>Own notes version</strong>
+              <span>{{ given.ownNotesVersion }}</span>
+            </div>
             <div class="setting" data-cy="input-memory-at-launch">
               <strong>Memory</strong>
               <span v-if="given.memory.atLaunch.length === 0">{{

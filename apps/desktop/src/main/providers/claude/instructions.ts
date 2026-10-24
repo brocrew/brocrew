@@ -28,7 +28,7 @@ import {
   brokenMemoryLink,
   isHomeOrAbove,
 } from '../instruction-io'
-import { INSTRUCTION_FILE_CAP } from '../instruction-limits'
+import { INSTRUCTION_FILE_CAP, INSTRUCTION_TOTAL_CAP } from '../instruction-limits'
 import {
   repositoryConventionChain as codexConventionChain,
   conventionFileIn,
@@ -163,7 +163,16 @@ export function readSessionInstructions(inputs: InstructionInputs): SessionLaunc
     // the clock is not part of that sequence, and the caller is the one that knows whether this
     // read is an append or a display.
     const readAt = Date.now()
-    const read = readInstructionFile(path, INSTRUCTION_FILE_CAP)
+    // The generated bundle holds two bounded pages plus shipped text. Other files retain their
+    // original per-file cap; this allowance still fits inside the existing total budget.
+    const cap =
+      kind === 'profile-instructions' && inputs.bundleComposed !== undefined
+        ? Math.max(
+            INSTRUCTION_FILE_CAP,
+            Math.min(INSTRUCTION_TOTAL_CAP, Buffer.byteLength(inputs.bundleComposed.text, 'utf8')),
+          )
+        : INSTRUCTION_FILE_CAP
+    const read = readInstructionFile(path, cap)
     if (!read.ok) {
       // 🔴 **733 · a link whose far end is gone is DISCLOSED, in 314 §3's word.** Following, the
       // reader makes it `absent`, as the provider's own `stat` does — and until `733` the walk
