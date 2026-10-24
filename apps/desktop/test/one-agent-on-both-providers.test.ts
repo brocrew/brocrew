@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeRuntime } from '@brobot2/runtime'
+import { MAX_NORMAL_WORKERS_PER_POOL } from '../src/main/profile-execution-file'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 
@@ -193,6 +194,30 @@ describe('one normal agent, one conversation per giver and provider', () => {
       ok: true,
       owner: claude.owner,
     })
+  })
+
+  it('distinguishes a full pool with no worker on the other provider from matching busy workers', async () => {
+    const host = world.aHost()
+    const giver = await caller(host)
+    for (let i = 0; i < MAX_NORMAL_WORKERS_PER_POOL; i += 1) {
+      expect(
+        (await world.gives(host, giver, 'draft-reader', { provider: 'claude', parallel: true })).ok,
+      ).toBe(true)
+    }
+    expect(world.store.workersBorn()).toHaveLength(MAX_NORMAL_WORKERS_PER_POOL)
+    expect(
+      await world.gives(host, giver, 'draft-reader', { provider: 'codex', parallel: true }),
+    ).toMatchObject({
+      ok: false,
+      refusal: { rail: 'no-room-for-provider-conversation', retryable: false },
+    })
+    expect(
+      await world.gives(host, giver, 'draft-reader', { provider: 'claude', parallel: true }),
+    ).toMatchObject({
+      ok: false,
+      refusal: { rail: 'no-free-worker-at-capacity', retryable: true },
+    })
+    expect(world.startedIn.filter((path) => path.endsWith('/draft-reader/codex'))).toEqual([])
   })
 
   it('keeps a service on its single provider and permanently refuses a conflicting choice with its model list', async () => {

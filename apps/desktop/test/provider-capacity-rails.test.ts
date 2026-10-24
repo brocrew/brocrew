@@ -26,7 +26,7 @@ const facts: GiveFacts = {
   modelChoiceOf: () => null,
   checkFolder: () => ({ ok: true, path: '/fictional' }),
 }
-const give = (parallel: boolean) =>
+const give = (parallel: boolean, when: GiveFacts = facts) =>
   admitGive(
     {
       profile: 'draft-reader',
@@ -37,7 +37,7 @@ const give = (parallel: boolean) =>
       definition_of_done: 'The draft is checked.',
     },
     { ownerId: 'agent:giver' },
-    facts,
+    when,
   )
 
 describe('the shared normal-worker capacity and a new provider', () => {
@@ -60,6 +60,20 @@ describe('the shared normal-worker capacity and a new provider', () => {
         rail: 'no-free-worker-at-capacity',
         permanence: 'while-this-holds',
         retryable: true,
+      },
+    })
+  })
+
+  it('does not promise a retry for parallel work when no bound worker has the chosen provider', () => {
+    expect(
+      give(true, { ...facts, workerAt: () => ({ is: 'full', noProvider: true }) }),
+    ).toMatchObject({
+      ok: false,
+      refusal: {
+        rail: 'no-room-for-provider-conversation',
+        permanence: 'until-a-person-changes-it',
+        retryable: false,
+        remedy: null,
       },
     })
   })
