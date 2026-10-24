@@ -138,16 +138,25 @@ const OPUS_HIGH: AgentModelChoice = { provider: 'claude', model: 'opus', effort:
 const TERRA_HIGH: AgentModelChoice = { provider: 'codex', model: 'gpt-5.6-terra', effort: 'high' }
 
 describe('677 §1 · the launch a give starts — D-042: the give may name its pair, and a default holds the provider', () => {
-  it('🔴 D-042 · R4 — a giver NAMING a model and an effort is admitted, both carried as asked; a provider is still refused by name', () => {
+  it('🔴 D-042 · R4 — a giver NAMING a model and an effort is admitted, both carried as asked; a known provider is admitted and an unknown one is refused by name', () => {
     // ⛔ **Reversed by D-042 · R4** (`677` ruled the door took no model): an agent chooses what its
     // helper's one conversation with it runs on, judged in the host at `model-rails.ts`' one seam
     // (§3) — the door's part is the shape. ⚑ `.strict()` still refuses a key it does not take BY
-    // NAME rather than dropping it in silence: a give names no provider (plan ruling 3).
+    // NAME rather than dropping it in silence. A provider now selects a separate conversation.
     const named = admitGive(ask({ model: 'haiku', effort: 'low' }), BY_THE_GIVER, facts(OPUS_HIGH))
     if (!named.ok) throw new Error(named.refusal.reason)
     expect(named.asked).toMatchObject({ model: 'haiku', effort: 'low' })
-    const out = admitGive(ask({ provider: 'codex' }), BY_THE_GIVER, facts(OPUS_HIGH))
-    if (out.ok) throw new Error('admitted a give that named a provider')
+    const chosen = admitGive(ask({ provider: 'codex' }), BY_THE_GIVER, facts(OPUS_HIGH))
+    expect(chosen).toMatchObject({
+      ok: true,
+      goes: { to: 'a-new-conversation', start: { provider: 'codex' } },
+    })
+    const out = admitGive(
+      ask({ provider: 'unregistered-fictional' }),
+      BY_THE_GIVER,
+      facts(OPUS_HIGH),
+    )
+    if (out.ok) throw new Error('admitted an unknown provider')
     expect(out.refusal.rail).toBe('malformed-request')
     expect(JSON.stringify(out.refusal.detail)).toContain('provider')
     // ⚑ …and a model is bounded shape: an empty name names no model.

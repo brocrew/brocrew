@@ -369,15 +369,14 @@ describe('696 §1–§5 · what a person reads about a model choice under R31', 
     expect(heldReachesSays(saved.held, null)).toMatch(
       /^Its new conversations start on this, on Claude/,
     )
-    // ⚑ …while the sheet's own note is scoped to the launch it derives from — the one YOU start.
+    // The sheet names a default, not a guarantee about a conversation with an explicit choice.
     expect(providerTakesEffectNextTime(runsOn)).toMatch(
-      /^The next conversation you start as this identity will run on Codex\. /,
+      /^The default for a new conversation as this identity is Codex\. /,
     )
-    // ⚑ The clause about a door that asks is for BroBot's own identity alone — the front door asks;
-    // `StartAsAgent`, which starts every other identity, does not (round two).
+    // A door can also say where the person chooses another provider without changing the default.
     expect(providerTakesEffectNextTime(runsOn)).not.toContain('unless you choose')
     expect(providerTakesEffectNextTime(runsOn, true)).toContain(
-      'will run on Codex, unless you choose another provider where you start it.',
+      'is Codex, unless you choose another provider where you start it.',
     )
 
     // ⚑ THE CONTROL, where the readings diverge — the same held choice beside a provider of its own
