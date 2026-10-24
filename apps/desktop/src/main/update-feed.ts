@@ -44,7 +44,7 @@ function unavailable(error: unknown): boolean {
   )
 }
 
-const REFUSED = 'the update feed named an unexpected release file; nothing was downloaded'
+const REFUSED = 'the update information is invalid; nothing was downloaded'
 class WebsiteDisabled extends Error {}
 
 /** The public release only ships these named files; a proxy cannot choose another app or path. */
@@ -204,7 +204,9 @@ export function publicUpdateFeed(options: {
       } catch (error) {
         if (observed.code !== undefined && observed.code >= 400) {
           throw Object.assign(
-            new Error(`Update feed returned HTTP ${observed.code}`, { cause: error }),
+            new Error(`the update service returned an error (HTTP ${observed.code})`, {
+              cause: error,
+            }),
             {
               statusCode: observed.code,
             },
