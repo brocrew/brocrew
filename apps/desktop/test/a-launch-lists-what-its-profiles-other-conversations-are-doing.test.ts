@@ -1055,7 +1055,7 @@ function handsTheReaderThisConversationAndPublishesOnlyTheProfiles(source: strin
   const publishCalls = argumentsOfEach(stripped, 'publishProfileBundle')
   return (
     readerCalls.length === 1 &&
-    /thisConversation:\s*thisConversationSpans\(launchContext, toolsToldInTextFor\(provider\)\)/.test(
+    /thisConversation:\s*thisConversationSpans\(\s*launchContext,\s*toolsToldInTextFor\(provider\),\s*provider,?\s*\)/.test(
       readerCalls[0] ?? '',
     ) &&
     stripped.split('thisConversationSpans(').length - 1 === 1 &&
@@ -1073,8 +1073,8 @@ describe('§6 · the composition root hands the reader this conversation’s tex
     const stripped = code(source)
     expect(argumentsOfEach(stripped, 'readSessionInstructions')).toHaveLength(1)
     expect(argumentsOfEach(stripped, 'publishProfileBundle')).toHaveLength(1)
-    expect(stripped).toContain(
-      'thisConversation: thisConversationSpans(launchContext, toolsToldInTextFor(provider))',
+    expect(stripped).toMatch(
+      /thisConversation:\s*thisConversationSpans\(\s*launchContext,\s*toolsToldInTextFor\(provider\),\s*provider,?\s*\)/,
     )
     expect(stripped.split('thisConversationSpans(').length - 1).toBe(1)
     expect(squashed(argumentsOfEach(stripped, 'publishProfileBundle')[0] ?? '')).toBe(
@@ -1092,7 +1092,7 @@ describe('§6 · the composition root hands the reader this conversation’s tex
     expect(handsTheReaderThisConversationAndPublishesOnlyTheProfiles(publishesBoth)).toBe(false)
 
     const hasNone = source.replace(
-      '        thisConversation: thisConversationSpans(launchContext, toolsToldInTextFor(provider)),\n',
+      '        thisConversation: thisConversationSpans(\n          launchContext,\n          toolsToldInTextFor(provider),\n          provider,\n        ),\n',
       '',
     )
     expect(hasNone).not.toBe(source)
