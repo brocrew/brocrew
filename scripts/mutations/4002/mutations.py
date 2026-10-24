@@ -123,16 +123,21 @@ MUTATIONS = [('M1 · the give schema refuses its advertised provider argument �
     '')]),
  ('M24 · settings omit how the new default routes new gives — killed by `provider-default-wording.test.ts`',
   [('apps/desktop/src/renderer/src/lib/front-door-words.ts',
-    '      : `Once you choose a default here, new gives without a provider or model use that provider’s '
-    'conversation, starting one if needed. `) +\n',
-    '      : ``) +\n')]),
+    '    `on. Once you choose a default here, new gives without a provider or model use that provider’s '
+    'conversation, starting one if needed. ` +\n',
+    '    `on. ` +\n')]),
  ('M25 · the rules panel no longer states that a grant stays on its provider — killed by '
   '`kept-rules-on-the-providers-page.dom.test.ts`',
   [('apps/desktop/src/renderer/src/components/KeptRules.vue',
     '        A rule does not carry to another provider. A rule you remove is asked about again from the\n',
     '        A rule you remove is asked about again from the\n')]),
- ('M26 · settings promise a service a second conversation for new gives — killed by '
+ ('M26 · settings promise a person-started conversation for a service — killed by '
   '`the-model-control-reads-r31.dom.test.ts`',
   [('apps/desktop/src/renderer/src/components/CapabilitiesSheet.vue',
     'providerTakesEffectNextTime(props.runsOn, true, isService)',
-    'providerTakesEffectNextTime(props.runsOn, true, false)')])]
+    'providerTakesEffectNextTime(props.runsOn, true, false)')]),
+ ('M27 · identity-shared standing rules are omitted from both provider conversations — killed by '
+  '`one-agent-on-both-providers.test.ts`',
+  [('apps/desktop/src/main/runtime/runtime-host.ts',
+    '      configured: profileSlug === null ? null : this.deps.store.configuredLayerFor(profileSlug),\n',
+    '      configured: null,\n')])]

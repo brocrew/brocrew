@@ -458,8 +458,9 @@ MUTATIONS = [
         ],
     ),
     (
-        # RETIRED: every identity's person-start door now has a provider/model picker, so this
-        # formerly false promise is true. Keep the old anchor absent to record the withdrawn subject.
+        # RETIRED: normal-agent person-start doors now have the provider/model picker (26b0ced).
+        # Services have a separate first-give note, so forcing the picker flag true adds no promise.
+        # Keep the old anchor absent to record the withdrawn subject.
         "M41 · 🔴 **every sheet promises a provider menu where it starts** · `StartAsAgent` has none "
         f"(`696`'s review, round two) — killed by `{DOM}`",
         [
