@@ -28665,7 +28665,7 @@ export class RuntimeHost implements LiveHost {
       workerAt: (giver, profileSlug, parallel, provider) => {
         const selected = this.normalWorkerAt(giver, profileSlug, parallel, provider)
         if (selected.is === 'legacy') return { is: 'legacy' }
-        if (selected.is === 'full') return { is: 'full' }
+        if (selected.is === 'full') return selected
         if (selected.is !== 'known') return { is: 'unknown' }
         return {
           is: 'known',
@@ -28894,7 +28894,8 @@ export class RuntimeHost implements LiveHost {
     parallel: boolean,
     provider?: Provider,
   ):
-    | { readonly is: 'legacy' | 'unknown' | 'full' }
+    | { readonly is: 'legacy' | 'unknown' }
+    | { readonly is: 'full'; readonly noProvider?: true }
     | {
         readonly is: 'known'
         readonly identity: AgentIdentity
@@ -28989,7 +28990,12 @@ export class RuntimeHost implements LiveHost {
         (conversation) => provider === undefined || providers.get(conversation) === provider,
       )
       if (selection.kind === 'unknown') return { is: 'unknown' }
-      if (selection.kind === 'full') return { is: 'full' }
+      if (selection.kind === 'full') {
+        const noProvider =
+          provider !== undefined &&
+          !pool?.workers.some((one) => providers.get(one.conversation) === provider)
+        return { is: 'full', ...(noProvider ? { noProvider: true as const } : {}) }
+      }
       return { is: 'known', identity, entry, pool, selection, poolGiver }
     } catch {
       return { is: 'unknown' }

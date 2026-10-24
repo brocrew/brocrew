@@ -841,7 +841,8 @@ export interface GiveFacts {
     parallel: boolean,
     provider?: Provider,
   ) =>
-    | { readonly is: 'legacy' | 'unknown' | 'full' }
+    | { readonly is: 'legacy' | 'unknown' }
+    | { readonly is: 'full'; readonly noProvider?: true }
     | { readonly is: 'known'; readonly conversation: string | null }
   /** Whether a give to `profileSlug` reaches a service, and how ({@link ServiceAtAGive}). */
   readonly serviceAt: (giver: string, profileSlug: string) => ServiceAtAGive
@@ -1233,7 +1234,7 @@ export function admitGive(
     provider ?? undefined,
   )
   if (worker?.is === 'full') {
-    return asked.parallel === true
+    return asked.parallel === true && worker.noProvider !== true
       ? no('no-free-worker-at-capacity', { profileId: asked.profile })
       : no('no-room-for-provider-conversation', {
           profileId: asked.profile,
