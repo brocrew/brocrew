@@ -576,7 +576,9 @@ export class ThemeStore implements ThemeAssetRegistry {
       this.loader.readFiles,
       this.files.lstat,
     )
-    if (choice.kind === 'chosen') this.requested = choice.id
+    // A starting look this store gave but could not write stands until a choice is written.
+    if (choice.kind === 'chosen' && (choice.id !== null || !this.wroteTheDefault))
+      this.requested = choice.id
     if (
       this.options.writesItsDefault === true &&
       !this.wroteTheDefault &&
