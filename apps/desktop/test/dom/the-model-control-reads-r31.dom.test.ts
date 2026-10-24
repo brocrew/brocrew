@@ -431,7 +431,7 @@ describe('696 §4 · the provider press says what the same act cleared', () => {
     })
     const m = await theSheet()
     expect(words(m.q('capabilities-provider-note'))).toMatch(
-      /^The next conversation you start as this identity will run on Claude\. /,
+      /^The default for a new conversation as this identity is Claude\. /,
     )
     // ⛔ No door that starts `worker` asks for a provider, so the note promises no such choice.
     expect(words(m.q('capabilities-provider-note'))).not.toContain('unless you choose')
@@ -446,7 +446,7 @@ describe('696 §4b · BroBot’s own sheet names the front door’s provider men
     reset({ slug: 'brobot', itsProvider: 'codex' })
     const m = await theSheet()
     expect(words(m.q('capabilities-provider-note'))).toMatch(
-      /^The next conversation you start as this identity will run on Codex, unless you choose another provider where you start it\. /,
+      /^The default for a new conversation as this identity is Codex, unless you choose another provider where you start it\. /,
     )
   })
 })

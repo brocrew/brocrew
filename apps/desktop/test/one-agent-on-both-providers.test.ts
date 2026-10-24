@@ -93,6 +93,24 @@ describe('one normal agent, one conversation per giver and provider', () => {
     expect(explicit).toMatchObject({ ok: true, runsOn: { provider: 'codex' } })
   })
 
+  it('checks a named model against an existing conversation when a legacy identity has two providers and no saved default', async () => {
+    const host = world.aHost()
+    const giver = await caller(host)
+    expect((await world.gives(host, giver, 'draft-reader')).ok).toBe(true)
+    const codex = await world.gives(host, giver, 'draft-reader', { provider: 'codex' })
+    if (!codex.ok) throw new Error('give refused')
+    expect(host.setAgentProvider('draft-reader', null)).toMatchObject({ provider: null })
+    await host.closeAll()
+    vi.spyOn(FakeRuntime.prototype, 'listModels').mockResolvedValue([
+      { id: 'shared-fictional', label: 'Shared fictional', isDefault: true },
+    ])
+    const next = world.aHost()
+    await next.reopenForAPerson(giver, world.window, null)
+    expect(
+      await world.gives(next, giver, 'draft-reader', { model: 'shared-fictional' }),
+    ).toMatchObject({ ok: true, owner: codex.owner, runsOn: { model: 'shared-fictional' } })
+  })
+
   it('a person can start the other provider with a model while old conversations and the identity default stay put', async () => {
     const host = world.aHost()
     const giver = await caller(host)
@@ -247,4 +265,16 @@ describe('one normal agent, one conversation per giver and provider', () => {
       expect(world.startedAs).toEqual(['review-lead'])
     },
   )
+
+  it('does not choose a service’s first provider from an explicit give when no default exists', async () => {
+    world.anAgent('room-booker', 'service', 'claude')
+    expect(world.store.setAgentProvider('room-booker', null)).toBe(true)
+    const host = world.aHost()
+    const giver = await caller(host)
+    expect(await world.gives(host, giver, 'room-booker', { provider: 'codex' })).toMatchObject({
+      ok: false,
+      refusal: { rail: 'its-provider-is-not-chosen' },
+    })
+    expect(world.startedAs).toEqual(['review-lead'])
+  })
 })
