@@ -381,7 +381,7 @@ describe('D-047 · the giver keeps the whole brief it gave, in its own ledger', 
       const label = given.structured.label as string
       // ⚑ The path: a conversation this give started.
       expect(before).not.toContain(owner)
-      expect(given.text).toContain('It started a new conversation for it')
+      expect(given.text).toContain('It started a new conversation on Claude')
       // ⚑ Down before the call answered.
       expect(given.sentWhenItAnswered).toBe(1)
 
@@ -428,7 +428,7 @@ describe('D-047 · the giver keeps the whole brief it gave, in its own ledger', 
       expect(second.structured.outcome, JSON.stringify(second.structured)).toBe('ok')
       // ⚑ The path: the conversation the giver has with that agent, which a give does not start.
       expect(second.structured.agent).toBe(first.worker)
-      expect(second.text).not.toContain('It started a new conversation for it')
+      expect(second.text).not.toContain('It started a new conversation')
       expect(second.sentWhenItAnswered).toBe(2)
 
       const rows = sentBy(pm)

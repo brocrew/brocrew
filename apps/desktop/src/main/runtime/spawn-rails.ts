@@ -961,6 +961,8 @@ export type GiveOutcome =
       readonly runsOn: WhatItRunsOn
       /** The folder the new conversation works in, when this give started one. */
       readonly startedIn: string | null
+      /** This start used the agent's default provider, rather than a provider or model named in the give. */
+      readonly startedOnDefault?: true
       /**
        * 🔴 **W4.189 · the folder the give named, as this app used it** — the new conversation's
        * working folder, or a grant on the one it has — with D's notice when it meets one of the
