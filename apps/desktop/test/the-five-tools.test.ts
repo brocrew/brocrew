@@ -1146,7 +1146,7 @@ describe('347 · the five tools', () => {
       // or everywhere.
       // ⚑ `request_mcp_server` asks the person to register an outside MCP server.
       // ⚑ `request_action` asks the person to do something, as a to-do.
-      expect(offered).toHaveLength(31)
+      expect(offered).toHaveLength(33)
     })
 
     it('⚠️ no published tool queues work for an agent to pick up later', async () => {
@@ -1272,6 +1272,8 @@ describe('347 · the five tools', () => {
         // parks a decision on a PERSON, and the relay arm writes a row.
         propose_agent_rules: 'the agent',
         read_agent_rules: 'the agent',
+        read_own_notes: 'the agent',
+        write_own_notes: 'nothing at all',
         write_agent_rules: 'the agent',
         // ⚑ **D-017** — `end_agent` and `663`'s `resume_agent` (both *the agent*) are gone.
         // ⚑ **D-009 · it names a question the caller asked**, and queues nothing at all.

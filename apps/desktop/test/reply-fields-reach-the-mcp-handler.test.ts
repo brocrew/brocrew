@@ -61,6 +61,8 @@ describe('reply field failures travel through the real MCP server', () => {
       'update_work',
       'take_on_work',
       'find_files',
+      'read_own_notes',
+      'write_own_notes',
     ])
     updateTool = tools.find((one) => one.name === 'update_work')!
     closes = []
