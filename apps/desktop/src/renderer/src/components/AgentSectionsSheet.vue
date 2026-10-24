@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, useId, watch } from 'vue'
 import OwnInstructions from './OwnInstructions.vue'
+import OwnNotes from './OwnNotes.vue'
 import SavedMethods from './SavedMethods.vue'
 import MemoryBook from './MemoryBook.vue'
 import type { AgentStore } from '../lib/agent-store'
@@ -16,6 +17,7 @@ const tabs = [
   { key: 'rules', name: 'Standing rules' },
   { key: 'methods', name: 'Saved methods' },
   { key: 'memory', name: 'Memory' },
+  { key: 'notes', name: 'Own notes' },
 ] as const
 const selected = ref<(typeof tabs)[number]['key']>('rules')
 const nav = ref<HTMLElement | null>(null)
@@ -112,6 +114,19 @@ function move(event: KeyboardEvent) {
         tabindex="0"
       >
         <MemoryBook :profile-slug="props.profileSlug" :bridge="props.bridge" />
+      </section>
+      <section
+        v-show="selected === 'notes'"
+        :id="`${id}-panel-notes`"
+        role="tabpanel"
+        :aria-labelledby="`${id}-tab-notes`"
+        tabindex="0"
+      >
+        <OwnNotes
+          :profile-slug="props.profileSlug"
+          :active="selected === 'notes'"
+          :bridge="props.bridge"
+        />
       </section>
     </div>
   </section>

@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { RuntimeBridge } from '../../../shared/runtime-ipc'
 type BookBridge = Pick<RuntimeBridge, 'agentRulesUnread'> &
-  Partial<Pick<RuntimeBridge, 'onChanged'>>
+  Partial<Pick<RuntimeBridge, 'onChanged' | 'agentOwnNotesUnread'>>
 const props = defineProps<{ profileSlug: string; bridge?: BookBridge; compact?: boolean }>()
 const emit = defineEmits<{ open: [profileSlug: string] }>()
 const bridge = computed(() => props.bridge ?? window.api?.runtime)
@@ -10,15 +10,38 @@ const unread = ref<boolean | null>(null)
 let sequence = 0
 let stopped = false
 let unsubscribe: (() => void) | undefined
-async function read() {
+function read() {
   const current = ++sequence
   const profileId = props.profileSlug
-  try {
-    const result = await bridge.value?.agentRulesUnread({ profileId })
-    if (!stopped && current === sequence) unread.value = result?.unread ?? null
-  } catch {
-    // Keep an existing unread notice until the app confirms it has been seen.
-    if (!stopped && current === sequence && unread.value !== true) unread.value = null
+  const values: (boolean | undefined)[] = [undefined, undefined]
+  const update = () => {
+    if (stopped || current !== sequence) return
+    unread.value = values.some((value) => value === true)
+      ? true
+      : values.every((value) => value === false)
+        ? false
+        : unread.value === true
+          ? true
+          : null
+  }
+  const sources = [
+    () => bridge.value?.agentRulesUnread({ profileId }),
+    () =>
+      bridge.value?.agentOwnNotesUnread
+        ? bridge.value.agentOwnNotesUnread({ profileId })
+        : Promise.resolve({ unread: false }),
+  ]
+  for (const [index, source] of sources.entries()) {
+    try {
+      void Promise.resolve(source())
+        .then((result) => {
+          values[index] = result?.unread
+          update()
+        })
+        .catch(update)
+    } catch {
+      update()
+    }
   }
 }
 watch(
@@ -41,16 +64,16 @@ onBeforeUnmount(() => {
 })
 const status = computed(() =>
   unread.value === true
-    ? 'New rule change'
+    ? 'Unread changes'
     : unread.value === null
-      ? "Couldn't check for rule changes"
+      ? "Couldn't check for changes"
       : undefined,
 )
 const label = computed(() =>
   unread.value === true
-    ? 'Open agent knowledge · new rule change'
+    ? 'Open agent knowledge · unread changes'
     : unread.value === null
-      ? "Open agent knowledge \u00b7 couldn't check for rule changes"
+      ? "Open agent knowledge \u00b7 couldn't check for changes"
       : 'Open agent knowledge',
 )
 </script>
