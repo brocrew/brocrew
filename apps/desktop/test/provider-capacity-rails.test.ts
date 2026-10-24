@@ -46,7 +46,7 @@ describe('the shared normal-worker capacity and a new provider', () => {
       ok: false,
       refusal: {
         rail: 'no-room-for-provider-conversation',
-        permanence: 'permanent',
+        permanence: 'until-a-person-changes-it',
         retryable: false,
         remedy: null,
         detail: { provider: 'codex', profileId: 'draft-reader' },
