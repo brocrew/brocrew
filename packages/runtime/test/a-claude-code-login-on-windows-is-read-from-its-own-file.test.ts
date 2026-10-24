@@ -325,6 +325,8 @@ describe('how a person puts Claude Code’s login on this computer', () => {
         docs: 'https://code.claude.com/docs/en/setup',
       },
       signInCommand: 'claude',
+      signInInstructions:
+        'If Claude Code opens at its interactive prompt, type /login there, not in PowerShell. Finish signing in in your browser, then return to BroCrew and check the sign-in again.',
       platform: 'Windows',
       shell: 'PowerShell',
     })
@@ -338,6 +340,8 @@ describe('how a person puts Claude Code’s login on this computer', () => {
         docs: 'https://code.claude.com/docs/en/setup',
       },
       signInCommand: 'claude',
+      signInInstructions:
+        'If Claude Code opens at its interactive prompt, type /login there, not in Terminal. Finish signing in in your browser, then return to BroCrew and check the sign-in again.',
       platform: 'macOS',
       shell: 'Terminal',
     })

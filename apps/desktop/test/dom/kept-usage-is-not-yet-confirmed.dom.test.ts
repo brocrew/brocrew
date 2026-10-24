@@ -257,7 +257,7 @@ describe('a kept usage reading is not yet confirmed', () => {
   it('keeps the Providers empty state for readings dropped on another sign-in', async () => {
     const m = await provider(Date.now(), { claude: [], codex: [] })
     expect(text(m.q('provider-usage-none'))).toBe(
-      'No reading yet. Claude sends one with its next turn.',
+      'Usage is unknown. No reading yet from Claude.',
     )
     expect(m.all('provider-usage-unconfirmed')).toHaveLength(0)
     expect(m.all('provider-usage-ahead')).toHaveLength(0)
