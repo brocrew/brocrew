@@ -89,4 +89,4 @@ MUTATIONS = [('M1 · debug-only descriptors escape the visibility filter — kil
   '`providers-list-drawer.dom.test.ts`',
   [('apps/desktop/src/renderer/src/components/OverlayHost.vue',
     '<Teleport :to="layerElement" :disabled="layerElement === null">',
-    '<Teleport :to="layerElement" :disabled="true">')])]
+    '<Teleport :to="layerElement" :disabled="layerElement === null || props.label.endsWith(\' provider\')">')])]
