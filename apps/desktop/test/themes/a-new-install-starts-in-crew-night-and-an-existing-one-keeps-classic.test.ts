@@ -33,11 +33,18 @@ import { pngSamples } from './png-samples'
 /** The database file whose presence says a workspace already holds data. */
 const DATABASE = 'brobot2.sqlite'
 
-/** Which look a workspace starts in when it has no choice yet, as the app decides it. */
-const defaultThemeFor = (userData: string): string =>
-  (
-    themeDefaults as unknown as { defaultThemeFor?: (userData: string) => string }
-  ).defaultThemeFor?.(userData) ?? themeDefaults.DEFAULT_THEME_ID
+/** The store's defaults for a workspace, as the app gives them when it starts there. */
+const themeDefaultsFor = (userData: string): Record<string, string> => {
+  const app = themeDefaults as unknown as {
+    themeDefaultsFor?: (userData: string) => Record<string, string>
+    defaultThemeFor?: (userData: string) => string
+  }
+  return (
+    app.themeDefaultsFor?.(userData) ?? {
+      defaultTheme: app.defaultThemeFor?.(userData) ?? themeDefaults.DEFAULT_THEME_ID,
+    }
+  )
+}
 
 let root: string
 let appData: string
@@ -78,7 +85,7 @@ function startedStore(userData: string): ThemeStore {
       readdir: (path: string) => readdir(path),
       lstat: (path: string) => lstat(path),
     },
-    defaultTheme: defaultThemeFor(userData),
+    ...themeDefaultsFor(userData),
     writesItsDefault: true,
     builtInIds: BUILT_IN_THEME_IDS,
     hiddenBases: HIDDEN_BASE_THEME_IDS,
@@ -87,7 +94,7 @@ function startedStore(userData: string): ThemeStore {
         facts.type === 'png' ? pngSamples(bytes) : null,
     },
     problem: themeProblem,
-    trash: async () => undefined,
+    trash: (path: string) => rm(path, { recursive: true, force: true }),
     openFolder: async () => undefined,
     watch: () => () => {},
   } as unknown as ThemeStoreOptions)
@@ -118,6 +125,37 @@ describe('a new install starts in Crew Night, and an existing one keeps classic'
     // Its second start, now with data of its own, is still in Crew Night.
     await writeFile(join(userData, DATABASE), 'its own data')
     expect((await startedStore(userData).start()).active).toBe('crew-night')
+  })
+
+  it('a new install’s default look stays Crew Night on its later starts', async () => {
+    const userData = await workspace('fresh', false)
+    await startedStore(userData).start()
+    // Its later starts, now with data of its own.
+    await writeFile(join(userData, DATABASE), 'its own data')
+    const later = startedStore(userData)
+    expect((await later.start()).active).toBe('crew-night')
+    // Asked for the default look, it is Crew Night, and that is written down.
+    expect((await later.showDefault()).active).toBe('crew-night')
+    expect(await choiceOn(userData)).toBe('{"theme":"crew-night"}')
+  })
+
+  it('a theme of their own that they chose and delete gives way to Crew Night on a later start', async () => {
+    const userData = await workspace('fresh', false)
+    await startedStore(userData).start()
+    await writeFile(join(userData, DATABASE), 'its own data')
+    const library = themeRoots({ appData, userData, resources: '', hidden: false }).library
+    await mkdir(library, { recursive: true })
+    await putTheme(library, 'harbour', {
+      format: 1,
+      id: 'harbour',
+      name: 'Harbour',
+      extends: 'defined',
+    })
+    await writeActiveTheme(userData, 'harbour')
+    const later = startedStore(userData)
+    expect((await later.start()).active).toBe('harbour')
+    expect(await later.delete('harbour')).toMatchObject({ outcome: 'ok', active: 'crew-night' })
+    expect(await choiceOn(userData)).toBe('{"theme":"crew-night"}')
   })
 
   it('a folder with an earlier version’s data and no choice keeps classic, written once', async () => {
