@@ -150,6 +150,7 @@ describe('the read-only Skills page in the agent book', () => {
     expect(view.q('agent-skills-settings').textContent).toBe('Change in Settings → Skills')
     view.q('agent-skills-settings').click()
     expect(openSettings).toHaveBeenCalledWith('skills')
+    expect(openSettings.mock.calls).toEqual([['skills']])
     expect(f.skills.mock.calls).toEqual([[{ operation: 'profile-list', profileId: 'quill' }]])
     expect(view.q('agent-skills').querySelectorAll('button')).toHaveLength(1)
   })
