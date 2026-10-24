@@ -645,6 +645,8 @@
 
   /* Document paper is paper in both zones, so it is worked out from the content's settings. */
   --paper-bg: color-mix(in oklab, var(--content-ink) var(--page-depth), var(--content-paper));
+  --paper-bar: color-mix(in oklab, var(--content-ink) 3%, var(--content-paper));
+  --paper-seg-bg: var(--content-paper);
   --paper-ink: var(--content-ink);
   --paper-ink2: color-mix(in oklab, var(--content-ink) 85%, var(--content-paper));
   --paper-muted: color-mix(in oklab, var(--content-ink) 76%, var(--content-paper));
