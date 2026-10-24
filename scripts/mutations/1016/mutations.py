@@ -776,7 +776,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M74 · A follow-up naming the sender's own root is refused with the wrong word: not-a-piece-you-gave instead of that-is-your-own-work — killed by `a-take-back-tells-its-owner-and-a-note-names-what-it-is-about.test.ts`",
         [
-            (AGENT_TOOLS, "                  : it.is === 'its-root'\n                    ? refuseTool('that-is-your-own-work', { piece: it.piece, label: it.label })\n                    : refuseTool('not-a-piece-you-gave', { agent, piece: named }),\n", "                  : refuseTool('not-a-piece-you-gave', { agent, piece: named }),\n"),
+            # The fallback now supplies note guidance; removing the own-root branch still gives it the wrong refusal.
+            (AGENT_TOOLS, "                  : it.is === 'its-root'\n                    ? refuseTool('that-is-your-own-work', { piece: it.piece, label: it.label })\n", ''),
         ],
     ),
     (

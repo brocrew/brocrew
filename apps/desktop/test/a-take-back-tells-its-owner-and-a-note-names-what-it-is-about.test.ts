@@ -54,7 +54,7 @@ import { permanenceInWords } from '../src/main/runtime/agent-tool-answer-words'
  *    holds once it has ended, as one it gave**; a follow-up still names only one it gave, and a
  *    piece neither held nor given — ended or not, a predecessor's included — is still refused.
  *    🔴 **F087 · a follow-up naming a piece its sender holds that has ended, or gave another agent,
- *    is refused saying so**, with the call that goes; only a name that is neither keeps the guess.
+ *    is refused saying so**, with the call that goes; a name that is neither points to a note.
  *    🔴 **F088 · and the receiver is told which piece**: the line that says who sent it says what the
  *    message is about, by label and title, and how that piece ended — when the words go, a restart
  *    between included.
@@ -796,7 +796,7 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
     expect(note).toMatchObject({ outcome: 'ok', kind: 'note', piece, label })
   })
 
-  it('🔴 a follow-up naming a piece its sender gave another agent says so, and the call it points to goes; a name it cannot place keeps the guess', async () => {
+  it('🔴 a follow-up naming a piece its sender gave another agent says so, and the call it points to goes; a name it cannot place points to a note without the piece', async () => {
     const { pm, worker, pmTools, workerTools } = await aPmAndItsWorker('the piece')
     await bringIdentityIntoBeing('helper')
     const other = await aGive(pmTools, 'helper', 'the other piece')
@@ -830,8 +830,7 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
       piece: other.piece,
       label: other.label,
     })
-    // ⛔ A name its sender can place nowhere keeps the word's own sentence, guess and all: a label
-    // nobody was given, and — from the worker — a piece it neither holds nor gave.
+    // A piece the sender cannot name points to a note with the piece left out.
     for (const [tools, to, spelled] of [
       [pmTools, worker, 'W99.99'],
       [workerTools, pm, other.label],
@@ -845,7 +844,7 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
       expect(unplaced, spelled).toMatchObject({
         outcome: 'refused',
         rail: 'not-a-piece-you-gave',
-        reason: refuseTool('not-a-piece-you-gave').reason,
+        reason: `send it as kind note to ${to}, leaving out piece: that is not a piece you gave that agent, so nothing was sent.`,
         detail: { agent: to, piece: spelled },
       })
     }
