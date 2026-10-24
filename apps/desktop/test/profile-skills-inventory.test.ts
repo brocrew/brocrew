@@ -151,6 +151,9 @@ describe('the profile Skills inventory uses the real delivery policy', () => {
       await rm(target)
       await symlink(join(root, 'outside/private.md'), target)
       await expect(inventory()).rejects.toThrow()
+      await rm(target)
+      await symlink(join(root, 'outside/missing.md'), target)
+      await expect(inventory()).rejects.toThrow()
     } finally {
       open.mockRestore()
     }

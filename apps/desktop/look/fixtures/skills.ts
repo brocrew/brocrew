@@ -118,6 +118,9 @@ export function fictionalSkills() {
           skills.set(id, { ...skill, active: request.enabled })
       return { operation: 'shared-toggle' }
     }
+    // This editor preview has no main-owned profile grant resolver.
+    if (request.operation === 'profile-list')
+      return { operation: 'refused', reason: 'source-unavailable' }
     if (request.operation === 'list') {
       if (state.pendingList) await state.pendingList
       if (state.failRead) throw new Error('fictional read failure')

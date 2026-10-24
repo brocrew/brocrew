@@ -60,6 +60,8 @@ export function skillsWindowService(input: {
     const parsed = SkillsRequest.safeParse(request)
     if (!parsed.success) return { operation: 'refused', reason: 'invalid' }
     const command = parsed.data
+    if (command.operation === 'profile-list')
+      return { operation: 'refused', reason: 'source-unavailable' }
     try {
       if (command.operation === 'import') {
         const path = await input.choose()
