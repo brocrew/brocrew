@@ -147,8 +147,9 @@ describe('own notes reach starts and cold resumes from one recorded launch snaps
     db.close()
     rmSync(root, { recursive: true, force: true })
   })
+  // Finish the fake turn without a permission card; these cases test loading and lead retention.
   const start = async (provider: Provider, profileId = 'lark') =>
-    (await host.createSession({ provider, profileId, cwd, approvalMode: 'ask' }, window)).sessionId
+    (await host.createSession({ provider, profileId, cwd, approvalMode: 'auto' }, window)).sessionId
   const save = (profile: string, text: string, expectedVersion = 0, currentText = '') => {
     const result = host.saveOwnNotes(
       profile,
