@@ -1,3 +1,4 @@
+import { createOwnNotesStore, type OwnNotesStore } from './own-notes'
 import {
   createMemoryRecoveryStore,
   validMemoryIntent,
@@ -1601,7 +1602,7 @@ export interface ScheduleEvidenceRow {
   readonly payload: unknown
 }
 
-export interface SessionStore {
+export interface SessionStore extends OwnNotesStore {
   piecesWithTheirWaits(owner: string, unread: RowsUnread): readonly PieceRow[]
   /** Indexed candidate pages; the caller folds owners within its turn-block budget. */
   turnBlockCandidates(
@@ -4009,6 +4010,11 @@ export const NULL_SESSION_STORE: SessionStore = {
   // ⚑ **582 · a store with no database holds no versions**, which is the honest empty answer the
   // read's own contract already names — and the identity is echoed back so a surface can say which
   // agent it found nothing for.
+  ownNotesOf: () => null,
+  writeOwnNotes: () => null,
+  undoOwnNotes: () => null,
+  ownNotesUnread: () => ({ seenThrough: 0, newestAgentVersion: 0, unread: false }),
+  markOwnNotesSeen: () => false,
   ownInstructionsOf: (profileSlug) => ({ identity: foldProfileName(profileSlug), versions: [] }),
   // ⛔ **No configured layer, so the seam renders nothing** — never an empty heading (086).
   configuredLayerFor: () => null,
@@ -5641,6 +5647,7 @@ export function createSessionStore(
   random: () => number = Math.random,
 ): SessionStore {
   const connection = db
+  const ownNotesStore = createOwnNotesStore(connection)
   const methodChangeStore = createMethodChangeStore(connection, now)
   const memoryRecoveryStore = createMemoryRecoveryStore(connection, now)
   let reconciliationNames: AppStatement | undefined
@@ -12634,6 +12641,7 @@ export function createSessionStore(
   })
 
   return {
+    ...ownNotesStore,
     canReadFreshSnapshot() {
       return (
         selectWorkflowOutput.busy === false &&

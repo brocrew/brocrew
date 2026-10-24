@@ -1785,3 +1785,56 @@ export const identityMethodChange = sqliteTable(
     ),
   ],
 )
+
+/** Separate from standing rules: every version records an agent's own page or a person's edit. */
+export const identityOwnNotes = sqliteTable(
+  'identity_own_notes',
+  {
+    id: text('id').primaryKey(),
+    identityId: text('identity_id')
+      .notNull()
+      .references(() => agentIdentity.id, { onDelete: 'cascade' }),
+    version: integer('version').notNull(),
+    text: text('text').notNull(),
+    author: text('author'),
+    actor: text('actor').notNull(),
+    reason: text('reason').notNull(),
+    restoredFromVersion: integer('restored_from_version'),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => [
+    uniqueIndex('identity_own_notes_version_uq').on(t.identityId, t.version),
+    check('identity_own_notes_version_ck', sql`${t.version} >= 1`),
+    check(
+      'identity_own_notes_text_ck',
+      sql`length(${t.text}) <= 4000 AND instr(${t.text}, char(0)) = 0`,
+    ),
+    check(
+      'identity_own_notes_reason_ck',
+      sql`length(trim(${t.reason})) > 0 AND length(${t.reason}) <= 4000`,
+    ),
+    check(
+      'identity_own_notes_restore_ck',
+      sql`${t.restoredFromVersion} IS NULL OR (${t.restoredFromVersion} >= 0 AND ${t.restoredFromVersion} < ${t.version})`,
+    ),
+    check(
+      'identity_own_notes_actor_ck',
+      sql`json_valid(${t.actor}) AND coalesce(json_extract(${t.actor}, '$.who') IN ('a-person', 'an-agent'), 0)`,
+    ),
+    check(
+      'identity_own_notes_author_ck',
+      sql`(json_extract(${t.actor}, '$.who') = 'a-person' AND ${t.author} IS NULL) OR (json_extract(${t.actor}, '$.who') = 'an-agent' AND ${t.author} IS NOT NULL AND json_valid(${t.author}))`,
+    ),
+  ],
+)
+
+export const identityOwnNotesSeen = sqliteTable(
+  'identity_own_notes_seen',
+  {
+    identityId: text('identity_id')
+      .primaryKey()
+      .references(() => agentIdentity.id, { onDelete: 'cascade' }),
+    seenThrough: integer('seen_through').notNull().default(0),
+  },
+  (t) => [check('identity_own_notes_seen_ck', sql`${t.seenThrough} >= 0`)],
+)
