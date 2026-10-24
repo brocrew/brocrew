@@ -193,7 +193,7 @@ const LONG_PATH = `/Users/somebody/${'deep/'.repeat(50)}folder`
  * ⚑ **D-016 · commit 3** — the detail fields that are LISTS of labels, each label rendered verbatim.
  * ⚠️ `677`'s provider, model and session fields went with the `spawn_agent` rails that said them.
  */
-const LABEL_LISTS = new Set(['held', 'stalled'])
+const LABEL_LISTS = new Set(['held', 'stalled', 'choices'])
 /**
  * ⚑ **D-038** — what a giver keeps past its folder that the child would not (`wouldLack`): both, from
  * a Codex `ask` giver. It was `BOTH_REMOVALS`, what the child's mode also took off.
@@ -227,6 +227,10 @@ const SPAWN_DETAILS: Partial<Record<(typeof SPAWN_RAILS)[number], readonly Spawn
     // SHORTEST a piece at depth 6 can have — seven parts, each one digit.
     'too-deep': [{ depth: 7, maxDepth: 6, label: 'W1.1.1.1.1.1.1' }],
     'no-free-worker-at-capacity': [{ profileId: LONG_SLUG }],
+    'no-room-for-provider-conversation': [{ profileId: LONG_SLUG, provider: 'codex' }],
+    'service-provider-is-fixed': [
+      { profileId: LONG_SLUG, provider: 'codex', choices: [LONG_MODEL] },
+    ],
     'worker-binding-is-unknown': [{ profileId: LONG_SLUG }],
     'that-profile-exists': [{ profileId: LONG_SLUG }],
     // ⚑ **D-038** — the sentence names both modes now, the giver's and the one the child would run
@@ -821,6 +825,9 @@ const ACT: Readonly<Record<string, string>> = {
   'SPAWN_RAILS|too-deep': 'Do it yourself, or ask whoever gave you your piece',
   'SPAWN_RAILS|parallel-not-for-a-service': 'Leave parallel out to queue the work',
   'SPAWN_RAILS|no-free-worker-at-capacity': 'Give it again when one is free',
+  'SPAWN_RAILS|no-room-for-provider-conversation':
+    'Give work on a provider already in that pool, or choose another agent',
+  'SPAWN_RAILS|service-provider-is-fixed': 'Give it work on that provider',
   'SPAWN_RAILS|worker-binding-is-unknown': 'Tell a person, and give it again once that is fixed',
   'SPAWN_RAILS|that-profile-exists': 'Give without new to use it',
   'SPAWN_RAILS|services-are-off': 'Do the work yourself, or give it to another agent',
@@ -1086,9 +1093,12 @@ describe('675 · the act inside the cut', () => {
         const said = refuse(rail as never, detail).reason
         for (const [field, value] of Object.entries(detail)) {
           // ⚑ A list of labels sits BEFORE an act in the give's sentences, so each one is looked for.
-          const shown: readonly unknown[] = LABEL_LISTS.has(field)
-            ? (value as readonly unknown[])
-            : [value]
+          const shown: readonly unknown[] =
+            field === 'provider'
+              ? [PROVIDER_NAME[value as keyof typeof PROVIDER_NAME]]
+              : LABEL_LISTS.has(field)
+                ? (value as readonly unknown[])
+                : [value]
           for (const one of shown) {
             if (typeof one !== 'string') continue
             expect(said, `${rail}/${index + 1} · ${field}`).toContain(one)

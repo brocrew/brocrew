@@ -784,7 +784,16 @@ describe('425 · a refusal carries its remedy', () => {
       // ⚑ **+2**, the move offer's two that carry no act.
       // ⚑ **+1**, `until-a-person-changes-it` and so `null`: `services-are-off-so-none-is-made`, a
       // service asked for while services are off — its sentence names the person who turns them on.
-      expect(quiet).toHaveLength(85)
+      // Two provider choices cannot be cleared by retrying: a fixed service and a full pool.
+      expect(quiet).toHaveLength(87)
+      for (const [rail, permanence] of [
+        ['service-provider-is-fixed', 'permanent'],
+        ['no-room-for-provider-conversation', 'until-a-person-changes-it'],
+      ]) {
+        expect(quiet).toContainEqual(
+          expect.objectContaining({ vocabulary: 'SPAWN_RAILS', rail, permanence, remedy: null }),
+        )
+      }
       for (const rail of ['move-offer-not-available', 'move-offer-needs-a-person']) {
         expect(quiet).toContainEqual(
           expect.objectContaining({ vocabulary: 'QUESTION_RAILS', rail, remedy: null }),
@@ -1016,7 +1025,8 @@ describe('425 · a refusal carries its remedy', () => {
       // The walk includes worker selection and the current-work read failure.
       // ⚑ And one more: a service asked for while services are off.
       // ⚑ Four more: a piece that cannot end with the copies of its questions, at two vocabularies.
-      expect(walked).toHaveLength(116)
+      // The walk also includes the fixed service provider and a pool with no matching provider.
+      expect(walked).toHaveLength(118)
       expect(walked).toEqual(everyRail().map((one) => `${one.vocabulary} · ${one.rail}`))
     })
   })
