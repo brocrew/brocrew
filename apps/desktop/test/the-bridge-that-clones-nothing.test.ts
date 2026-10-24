@@ -216,7 +216,7 @@ const THE_SHEETS_GRANT = '[field.key, set[field.key] === true ? value[field.key]
 const HOW_EACH_VERB_IS_BUILT: Record<RuntimeCommandKind, VerbRow> = {
   skills: {
     how: 'handed-over',
-    note: 'The Skills page builds a list request and a toggle request from primitive folder/enabled fields; neither hands over a reactive skill object. The DOM controls exercise structured clone before each fake reply.',
+    note: 'Settings builds list and toggle requests from primitive fields; the agent book builds a profile metadata request from a primitive profile and offset. None hands over a reactive skill object. The DOM controls exercise structured clone before each fake reply.',
     producers: [
       {
         at: 'src/renderer/src/components/SkillsSection.vue',
@@ -226,6 +226,10 @@ const HOW_EACH_VERB_IS_BUILT: Record<RuntimeCommandKind, VerbRow> = {
         at: 'src/renderer/src/components/SkillsSection.vue',
         builds:
           "operation: 'shared-toggle',\n      folder: skill.folder,\n      enabled: !skill.enabled,",
+      },
+      {
+        at: 'src/renderer/src/components/ProfileSkills.vue',
+        builds: "operation: 'profile-list',\n      profileId: profile,",
       },
     ],
   },
@@ -1867,7 +1871,7 @@ describe('§9 · every handed-over verb names its producers, and they exist (473
     // producer, and a missing one is invisible to every assertion that walks the list it is not in.
     // ⚑ UI-012 · `setSessionSetting`'s one producer became two: the picker's model, then its effort.
     // ⚑ …and three: plan mode is built where the agent card asks for it, not relayed from a tab.
-    expect(handed.reduce((so, [, entry]) => so + entry.producers.length, 0)).toBe(17)
+    expect(handed.reduce((so, [, entry]) => so + entry.producers.length, 0)).toBe(18)
   })
 
   it('🔴 and each producer really builds it, in the file the row names', () => {

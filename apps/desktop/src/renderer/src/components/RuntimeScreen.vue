@@ -4269,6 +4269,12 @@ onUnmounted(() => {
           :agent-name="agentHeadingFor(overlays.overlay.value.profileSlug)"
           :store="agentStore"
           @close="overlays.close()"
+          @settings="
+            () => {
+              overlays.close()
+              openSettings('skills')
+            }
+          "
         />
         <CapabilitiesSheet
           v-else-if="overlays.overlay.value.kind === 'agentCapabilities'"
