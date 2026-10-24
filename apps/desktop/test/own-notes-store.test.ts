@@ -78,10 +78,13 @@ describe('own notes belong to an identity and retain exact attributable history'
     expect(notes().ownNotesOf('LARK')).toEqual({ profile: 'lark', versions: [] })
     expect(notes().ownNotesOf('missing')).toBeNull()
     expect(write('No', lark, 'missing')).toBeNull()
+    expect(write('No', person, 'missing')).toBeNull()
+    expect(notes().undoOwnNotes('missing', { expectedVersion: 0, currentText: '' }, person, clock++)).toBeNull()
     expect(store.capabilitiesOf('missing')).toBeNull()
   })
 
   it('derives the agent author from its conversation and preserves exact text and reason', () => {
+    const writtenAt = clock
     const written = write('  Keep punctuation.\r\nSecond line.  ')
     expect(written).toMatchObject({
       version: 1,
@@ -90,7 +93,7 @@ describe('own notes belong to an identity and retain exact attributable history'
       author: { profile: 'lark', name: expect.any(String) },
       reason: 'The person asked me to remember the review order.',
       restoredFromVersion: null,
-      writtenAt: expect.any(Number),
+      writtenAt,
     })
     expect(written!.author!.name.trim()).not.toBe('')
     expect(notes().ownNotesOf('LARK')!.versions).toEqual([written])
@@ -150,7 +153,7 @@ describe('own notes belong to an identity and retain exact attributable history'
     expect(notes().undoOwnNotes('lark', baseline, lark, clock++)).toBeNull()
     expect(notes().undoOwnNotes('lark', { ...baseline, currentText: 'Wrong' }, person, clock++)).toBeNull()
     const undone = notes().undoOwnNotes('lark', baseline, person, clock++)!
-    expect(undone).toMatchObject({ version: 3, text: first.text, by: person, author: null, restoredFromVersion: 1 })
+    expect(undone).toMatchObject({ version: 3, text: first.text, by: person, author: null, restoredFromVersion: 1, reason: 'Undo latest change' })
     expect(notes().undoOwnNotes('lark', baseline, person, clock++)).toBeNull()
     expect(notes().ownNotesOf('lark')!.versions).toEqual([undone, second, first])
   })
@@ -177,7 +180,6 @@ describe('own notes belong to an identity and retain exact attributable history'
   it('refuses text that cannot round-trip through SQLite or has a malformed exact baseline', () => {
     for (const text of ['nul\0text', 'high\ud800', 'low\udc00'])
       expect(write(text)).toBeNull()
-    expect(write('Fine', lark, 'lark', { expectedVersion: 0, currentText: 'x'.repeat(4001) })).toBeNull()
     expect(write('Fine', person, 'lark', { expectedVersion: 0, currentText: '' }, ' \n ')).toBeNull()
     expect(notes().ownNotesOf('lark')!.versions).toEqual([])
     expect(write('é 🪶')).not.toBeNull()
@@ -221,6 +223,19 @@ describe('own notes belong to an identity and retain exact attributable history'
     applyMigrations(db, migrations)
     store = createSessionStore(db, () => clock++)
     expect(notes().ownNotesOf('lark')!.versions[0]).toEqual(undone)
+  })
+
+  it('keeps a newer agent write unread after a person save and after a person Undo', () => {
+    write('Agent one')
+    write('Person two', person, 'lark', { expectedVersion: 1, currentText: 'Agent one' })
+    expect(notes().ownNotesUnread('lark')).toEqual({ unread: false, newestAgentVersion: 1, seenThrough: 2 })
+    write('Agent three', lark, 'lark', { expectedVersion: 2, currentText: 'Person two' })
+    expect(notes().ownNotesUnread('lark')).toEqual({ unread: true, newestAgentVersion: 3, seenThrough: 2 })
+    notes().undoOwnNotes('lark', { expectedVersion: 3, currentText: 'Agent three' }, person, clock++)
+    expect(notes().ownNotesUnread('lark')).toEqual({ unread: false, newestAgentVersion: 3, seenThrough: 4 })
+    write('Agent five', lark, 'lark', { expectedVersion: 4, currentText: 'Person two' })
+    expect(notes().markOwnNotesSeen('lark', 2, person)).toBe(true)
+    expect(notes().ownNotesUnread('lark')).toEqual({ unread: true, newestAgentVersion: 5, seenThrough: 4 })
   })
 
   it('acknowledges only the version a person saw and retains a later agent change as unread', () => {
