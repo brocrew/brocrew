@@ -260,7 +260,7 @@ MUTATIONS = [
         [
             (
                 WORDS,
-                "    `The next conversation you start as this identity will run on ${providerName(provider)}` +\n",
+                "    `The default for a new conversation as this identity is ${providerName(provider)}` +\n",
                 "    `The next conversation started as this identity will run on ${providerName(provider)}` +\n",
             )
         ],

@@ -323,7 +323,7 @@ MUTATIONS = [
         # `anyone-may-ask-work-needs-a-relationship.test.ts`.
         [
             # ⚑ **parallel workers · re-anchored in place, not retired** — Parallel-worker tool wording changes this anchor. Same labelled defect and killer retained; source-only, NOT VERIFIED and held for execution.
-            (TOOLS, "By default, it goes to the one conversation you have with that agent, which is woken", "By default, it goes to any conversation in the project you are working in, which is woken"),
+            (TOOLS, "By default, it goes to the one conversation you have with that agent on its default provider.", "By default, it goes to any conversation in the project you are working in on its default provider."),
         ],
     ),
     (
