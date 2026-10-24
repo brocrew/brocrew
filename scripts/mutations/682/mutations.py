@@ -155,13 +155,15 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M16 · 🔴 R31d's menu gone · the `models` read answers a never-run agent `no-profile` again, and "
         "the control has nothing to draw · killed by `a-persons-choice-holds-the-whole-launch.test.ts`",
-        [(HOST, "    const standIn = this.hasNeverRun(profileId) ? STAND_IN_PROFILE : null\n", "    const standIn = null\n")],
+        # The first-use check is now per provider; removing its stand-in keeps the same fault.
+        [(HOST, "    const standIn = this.hasNeverRun(profileId, provider) ? STAND_IN_PROFILE : null\n", "    const standIn = null\n")],
     ),
     (
         "M17 · ⛔ a name somebody is typing is an agent · the identity-row check goes, so a launcher's "
         "half-typed name is answered BroBot's list as though an agent by that name existed · killed by "
         "`a-persons-choice-holds-the-whole-launch.test.ts`",
-        [(HOST, "    if (this.deps.store.capabilitiesOf(profileSlug) === null) return false\n    const folded = foldProfileName(profileSlug)\n    return !this.profiles()", "    const folded = foldProfileName(profileSlug)\n    return !this.profiles()")],
+        # Keep the provider filter while dropping only the identity-existence guard.
+        [(HOST, "    if (this.deps.store.capabilitiesOf(profileSlug) === null) return false\n    const folded = foldProfileName(profileSlug)\n    return !this.profiles(provider)", "    const folded = foldProfileName(profileSlug)\n    return !this.profiles(provider)")],
     ),
     (
         "M18 · ⚠️ a stand-in's list is not marked · the menu for a never-run agent reads as its own "
