@@ -163,6 +163,7 @@ export interface AServiceWorld {
     windowWriterStamp?: ConstructorParameters<typeof RuntimeHost>[0]['windowWriterStamp']
     limitsWriterStamp?: ConstructorParameters<typeof RuntimeHost>[0]['limitsWriterStamp']
     listProfiles?: (provider?: Provider) => string[]
+    readInstructions?: ConstructorParameters<typeof RuntimeHost>[0]['readInstructions']
   }): RuntimeHost
   /** An agent made now, on Claude unless `provider` says otherwise, kept as a service unless `kind` does. */
   anAgent(
@@ -359,6 +360,7 @@ export function aServiceWorld(fixture: { holderReminders?: 'declined' } = {}): A
         },
         providerHomePath: (provider: Provider) => join(folder, 'provider-homes', provider),
         ...(opts.listProfiles === undefined ? {} : { listProfiles: opts.listProfiles }),
+        ...(opts.readInstructions === undefined ? {} : { readInstructions: opts.readInstructions }),
         resolveCwd: (sessionId, requested) => resolveSessionCwd(folder, sessionId, requested),
         makeWorkerPieceFolder: (piece) => makeWorkerPieceFolder(folder, piece),
         newSessionId: () => `sess_${String(tick())}`,

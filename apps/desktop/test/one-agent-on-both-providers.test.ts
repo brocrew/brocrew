@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeRuntime } from '@brobot2/runtime'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { MAX_NORMAL_WORKERS_PER_POOL } from '../src/main/profile-execution-file'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
+import { profileBundleSpans, thisConversationSpans } from '../src/main/runtime/factory-text'
+import { readSessionInstructions } from '../src/main/runtime/instructions'
+import { publishProfileBundle } from '../src/main/runtime/profile-bundle'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 
 describe('one normal agent, one conversation per giver and provider', () => {
@@ -77,6 +82,72 @@ describe('one normal agent, one conversation per giver and provider', () => {
     expect(world.store.providerOf('draft-reader')).toBe('claude')
     const again = await world.gives(host, giver, 'draft-reader', { model: 'fake-codex-a' })
     expect(again).toMatchObject({ ok: true, owner: named.owner })
+  })
+
+  it('shares one identity’s standing rules with its Claude and Codex conversations', async () => {
+    const rules = 'Keep fictional review findings concise.\nName the evidence for each finding.'
+    const written = world.store.writeOwnInstructions(
+      {
+        profileSlug: 'draft-reader',
+        text: rules,
+        whoWroteIt: 'a-person',
+        by: { who: 'a-person' },
+        conversation: null,
+        said: null,
+        broughtBack: null,
+      },
+      world.clock++,
+    )
+    expect(written?.version).toBe(1)
+    const seen: { provider: string; configured: string | null; path: string; text: string }[] = []
+    const host = world.aHost({
+      readInstructions: (provider, cwd, providerHome, context) => {
+        const composed = profileBundleSpans(context, provider)
+        const bundle = publishProfileBundle(provider, providerHome, composed.text)
+        const read = readSessionInstructions({
+          provider,
+          cwd,
+          providerHome,
+          home: join(world.folder, 'fictional-home'),
+          bundle,
+          bundleComposed: composed,
+          thisConversation: thisConversationSpans(context),
+        })
+        if (context.profileSlug === 'draft-reader') {
+          if (read.profileFile === null || read.profileFile.refused !== null) {
+            throw new Error('the fictional profile bundle was refused')
+          }
+          seen.push({
+            provider,
+            configured: context.configured ?? null,
+            path: read.profileFile.path,
+            text: readFileSync(read.profileFile.path, 'utf8'),
+          })
+        }
+        return {
+          instructions: read.instructions,
+          systemHint: read.systemHint ?? undefined,
+          ...(read.firstTurnLead === null ? {} : { firstTurnLead: read.firstTurnLead }),
+          memoryLoaded: null,
+        }
+      },
+    })
+    const giver = await caller(host)
+    const claude = await world.gives(host, giver, 'draft-reader', { provider: 'claude' })
+    const codex = await world.gives(host, giver, 'draft-reader', { provider: 'codex' })
+    expect(claude.ok && codex.ok).toBe(true)
+    if (!claude.ok || !codex.ok) throw new Error('give refused')
+    expect(claude.owner).not.toBe(codex.owner)
+    expect(seen.map(({ provider, configured }) => ({ provider, configured }))).toEqual([
+      { provider: 'claude', configured: rules },
+      { provider: 'codex', configured: rules },
+    ])
+    for (const read of seen) {
+      expect(read.path).toContain(join('provider-homes', 'draft-reader', read.provider))
+      expect(read.text).toContain(rules)
+    }
+    expect(world.store.ownInstructionsOf('draft-reader').versions).toHaveLength(1)
+    expect(world.store.providerOf('draft-reader')).toBe('claude')
   })
 
   it('uses the default when both providers list a model, and lets an explicit provider disambiguate', async () => {
