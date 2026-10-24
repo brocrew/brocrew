@@ -263,6 +263,8 @@ describe('405 · a refusal you can see', () => {
     // ⚑ **582 · straight through to the real host**, like its neighbour.
     proposeAgentRules: (...args) => host.proposeAgentRules(...args),
     readAgentRules: (...args) => host.readAgentRules(...args),
+    readOwnNotes: (...args) => host.readOwnNotes(...args),
+    writeOwnNotes: (...args) => host.writeOwnNotes(...args),
     writeAgentRules: (...args) => host.writeAgentRules(...args),
     requestMcpServer: (...args) => host.requestMcpServer(...args),
     noteRefusal: (...args) => {

@@ -50,6 +50,11 @@ import {
 } from '../../shared/capabilities'
 import { MEMORY_EDIT } from '../../shared/agent-memory'
 import { OWN_INSTRUCTIONS_CHARS } from '../../shared/own-instructions'
+import {
+  ownNotesTextFits,
+  OWN_NOTES_TEXT_PROBLEM,
+  OWN_NOTES_REASON_PROBLEM,
+} from '../../shared/own-notes'
 // ⚑ **625 · a CONSTANT, and this file still imports nothing from `node:fs`** — which is what
 // `no-byte-authority.test.ts` measures. ⛔ The cap the wire bound is derived from is the one the
 // guarded reader enforces, and importing it is how the two cannot drift.
@@ -199,6 +204,8 @@ const agentDisplayName = z.string().max(AGENT_DISPLAY_NAME_CHARS)
  * derived in that constant's own note against the bundle it joins rather than guessed here.
  */
 const ownInstructions = z.string().max(OWN_INSTRUCTIONS_CHARS)
+const ownNotesText = z.string().refine(ownNotesTextFits, OWN_NOTES_TEXT_PROBLEM)
+const ownNotesVersion = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER)
 /**
  * 🔴 **625 · the replacement text a person types over one memory entry**, bounded where it enters.
  *
@@ -1306,6 +1313,33 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
       confirmed: z.boolean(),
     })
     .strict(),
+  z.object({ kind: z.literal('agentOwnNotes'), profileId: profileId.unwrap() }).strict(),
+  z.object({ kind: z.literal('agentOwnNotesUnread'), profileId: profileId.unwrap() }).strict(),
+  z
+    .object({
+      kind: z.literal('saveOwnNotes'),
+      profileId: profileId.unwrap(),
+      expectedVersion: ownNotesVersion,
+      currentText: ownNotesText,
+      text: ownNotesText,
+      why: ownNotesText.refine((value) => value.trim() !== '', OWN_NOTES_REASON_PROBLEM),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('undoOwnNotes'),
+      profileId: profileId.unwrap(),
+      // Zero is the empty-page baseline; the host returns no change for it.
+      expectedVersion: ownNotesVersion,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('markOwnNotesSeen'),
+      profileId: profileId.unwrap(),
+      throughVersion: ownNotesVersion,
+    })
+    .strict(),
   z.object({ kind: z.literal('agentRulesUnread'), profileId: profileId.unwrap() }),
   z.object({
     kind: z.literal('undoAgentRules'),
@@ -1634,6 +1668,11 @@ const DURING_A_QUIT: Record<RuntimeCommandKind, QuitRuling> = {
   removeAgentMethod: 'refused',
   undoAgentMethod: 'refused',
   checkInterruptedAgentMethods: 'refused',
+  agentOwnNotes: 'refused',
+  agentOwnNotesUnread: 'refused',
+  saveOwnNotes: 'refused',
+  undoOwnNotes: 'refused',
+  markOwnNotesSeen: 'refused',
   agentRulesUnread: 'refused',
   undoAgentRules: 'refused',
   markAgentRulesSeen: 'refused',
@@ -1916,6 +1955,11 @@ const WHAT_A_PERSONS_VERB_DOES: Partial<Record<RuntimeCommandKind, string>> = {
   removeAgentMethod: 'removes a saved method',
   undoAgentMethod: 'undoes a saved-method change',
   checkInterruptedAgentMethods: 'checks an interrupted saved-method change',
+  agentOwnNotes: 'reads an agent’s own notes',
+  agentOwnNotesUnread: 'reads unread own-notes changes',
+  saveOwnNotes: 'saves an agent’s own notes',
+  undoOwnNotes: 'undoes the latest own-notes change',
+  markOwnNotesSeen: 'marks displayed own-notes changes as read',
   agentRulesUnread: 'reads unread standing-rule changes',
   undoAgentRules: 'undoes the latest standing-rule change',
   markAgentRulesSeen: 'marks displayed standing-rule changes as read',
@@ -2723,6 +2767,21 @@ export async function executeRuntimeCommand(
     case 'checkInterruptedAgentMethods':
       requireAPerson(sink, command.kind)
       return host.checkInterruptedAgentMethods(command.profileId, command.confirmed, sink)
+    case 'agentOwnNotes':
+      requireAPerson(sink, command.kind)
+      return host.agentOwnNotes(command.profileId)
+    case 'agentOwnNotesUnread':
+      requireAPerson(sink, command.kind)
+      return host.agentOwnNotesUnread(command.profileId)
+    case 'saveOwnNotes':
+      requireAPerson(sink, command.kind)
+      return host.saveOwnNotes(command.profileId, command, sink)
+    case 'undoOwnNotes':
+      requireAPerson(sink, command.kind)
+      return host.undoOwnNotes(command.profileId, command.expectedVersion, sink)
+    case 'markOwnNotesSeen':
+      requireAPerson(sink, command.kind)
+      return host.markOwnNotesSeen(command.profileId, command.throughVersion, sink)
     case 'agentRulesUnread':
       requireAPerson(sink, command.kind)
       return host.agentRulesUnread(command.profileId)
