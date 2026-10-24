@@ -35,7 +35,7 @@ describe('PE-001 · the memory guidance an agent receives', () => {
 
       // The core says when memory may be saved; the remember skill carries the rest.
       expect(delivered).toContain(
-        'Save tested lessons and person-set conventions when permitted; separate task facts.',
+        "Keep the person's standing wishes in your own notes and, when permitted, tested lessons in saved methods; keep task facts separate.",
       )
       expect(delivered).not.toContain('Not this piece of work’s details')
     })
