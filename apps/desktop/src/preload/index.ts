@@ -6,6 +6,7 @@ import type {
 } from '../shared/saved-method-library'
 import type { RulesBaseline } from '../shared/agent-rules'
 import type { InstructionUnread } from '../shared/own-instructions'
+import type { OwnNotesReading, OwnNotesWrite, OwnNotesUnread } from '../shared/own-notes'
 import { pluginsBridge } from './plugins'
 import type { SkillsRequest, SkillsReply } from '../shared/skills-window'
 import {
@@ -692,6 +693,16 @@ const runtime: RuntimeBridge = Object.freeze({
       profileId: input.profileId,
       confirmed: input.confirmed,
     }) as Promise<MethodChangeResult>,
+  agentOwnNotes: (input: { profileId: string }) =>
+    command({ kind: 'agentOwnNotes', ...input }) as Promise<OwnNotesReading | null>,
+  agentOwnNotesUnread: (input: { profileId: string }) =>
+    command({ kind: 'agentOwnNotesUnread', ...input }) as Promise<OwnNotesUnread>,
+  saveOwnNotes: (input: { profileId: string } & OwnNotesWrite) =>
+    command({ kind: 'saveOwnNotes', ...input }) as Promise<OwnNotesReading | null>,
+  undoOwnNotes: (input: { profileId: string; expectedVersion: number }) =>
+    command({ kind: 'undoOwnNotes', ...input }) as Promise<OwnNotesReading | null>,
+  markOwnNotesSeen: (input: { profileId: string; throughVersion: number }) =>
+    command({ kind: 'markOwnNotesSeen', ...input }) as Promise<boolean>,
   agentRulesUnread: (input: { profileId: string }) =>
     command({ kind: 'agentRulesUnread', ...input }) as Promise<InstructionUnread>,
   undoAgentRules: (input: { profileId: string; expectedVersion: number }) =>

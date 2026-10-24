@@ -1569,6 +1569,8 @@ describe('379 · a task you can see', () => {
         // 🔴 **582 · it reaches no conversation and mints no piece** (`HO-009` §2.2).
         proposeAgentRules: true,
         readAgentRules: true,
+        readOwnNotes: true,
+        writeOwnNotes: true,
         // Writes a durable, attributed rules version for another identity; it creates no piece.
         writeAgentRules: true,
         // ⚑ Readers that turn an id into the link a tool result carries; they mint nothing.
@@ -1608,6 +1610,7 @@ describe('379 · a task you can see', () => {
         'queueMessage',
         'raiseAQuestion',
         'readAgentRules',
+        'readOwnNotes',
         'readResource',
         'readTranscript',
         'replyToParent',
@@ -1632,6 +1635,7 @@ describe('379 · a task you can see', () => {
         'whyWhatIsHeldWaits',
         'withdrawQuestion',
         'writeAgentRules',
+        'writeOwnNotes',
       ])
       const tools = sourceOf(join(mainRoot, 'runtime'), 'agent-tools.ts')
       const flat = tools.replace(/\s+/g, ' ')
