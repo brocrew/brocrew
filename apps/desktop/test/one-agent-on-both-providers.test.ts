@@ -341,6 +341,45 @@ describe('one normal agent, one conversation per giver and provider', () => {
     })
   })
 
+  it('keeps an older provider’s ordinary conversation while another provider has an unrecorded worker birth', async () => {
+    const host = world.aHost()
+    const giver = await caller(host)
+    const claude = await world.gives(host, giver, 'draft-reader')
+    const codex = await world.gives(host, giver, 'draft-reader', { provider: 'codex' })
+    expect(claude.ok && codex.ok).toBe(true)
+    if (!claude.ok || !codex.ok) throw new Error('setup refused')
+    let release = () => {}
+    world.startsWait = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const pending = world.gives(host, giver, 'draft-reader', { provider: 'claude', parallel: true })
+    void pending.catch(() => {})
+    let ordinary: PromiseSettledResult<Awaited<ReturnType<typeof world.gives>>> | undefined
+    const delivery = world.gives(host, giver, 'draft-reader', { provider: 'codex' }).then(
+      (value) => {
+        ordinary = { status: 'fulfilled', value }
+      },
+      (reason) => {
+        ordinary = { status: 'rejected', reason }
+      },
+    )
+    try {
+      await vi.waitFor(() => expect(ordinary).toBeDefined())
+      expect(ordinary).toMatchObject({
+        status: 'fulfilled',
+        value: { ok: true, owner: codex.owner },
+      })
+      expect(world.store.recordedOne(claude.owner)?.provider).toBe('claude')
+      expect(world.store.recordedOne(codex.owner)?.provider).toBe('codex')
+      expect(world.store.providerOf('draft-reader')).toBe('claude')
+    } finally {
+      release()
+      world.startsWait = null
+      await Promise.allSettled([pending, delivery])
+    }
+    expect(await pending).toMatchObject({ ok: true })
+  })
+
   it.each([{ provider: 'codex' }, { model: 'fake-codex-a' }])(
     'refuses another service provider before its first birth: %j',
     async (choice) => {

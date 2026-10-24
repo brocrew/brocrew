@@ -149,4 +149,14 @@ MUTATIONS = [('M1 · the give schema refuses its advertised provider argument �
     "${detail.provider === undefined ? 'the chosen provider' : PROVIDER_NAME[detail.provider]}. ` +\n",
     "        `Your worker pool for “${detail.profileId ?? '?'}” is full and has no conversation on "
     "${detail.provider === undefined ? 'the chosen provider' : PROVIDER_NAME[detail.provider]}. ` +\n"
-    "        'Give work on a provider already in that pool, or choose another agent. ' +\n")])]
+    "        'Give work on a provider already in that pool, or choose another agent. ' +\n")]),
+ ('M29 · an owned in-flight reservation is treated as an unreadable database binding — killed by '
+  '`worker-birth-delivery.test.ts`',
+  [('apps/desktop/src/main/runtime/runtime-host.ts',
+    '      ? [current]\n',
+    '      ? this.deps.store.workerLineage(current)\n')]),
+ ('M30 · an older ordinary conversation is lost while another provider has an unrecorded worker birth — '
+  'killed by `one-agent-on-both-providers.test.ts`',
+  [('apps/desktop/src/main/runtime/runtime-host.ts',
+    '            ...this.normalWorkerLineage(worker),\n',
+    '            ...this.deps.store.workerLineage(worker.conversation),\n')])]

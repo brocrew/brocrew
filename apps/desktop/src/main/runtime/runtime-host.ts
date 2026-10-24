@@ -28255,8 +28255,8 @@ export class RuntimeHost implements LiveHost {
   }
 
   /**
-   * ⚑ **D-042 · the provider a conversation runs on** — its running session's, else its row's;
-   * `null` for a start still reserving, which has no row yet.
+   * ⚑ **D-042 · the provider a conversation runs on** — its running session's, reservation's,
+   * else its row's; `null` when none is known.
    */
   private theProviderOfConversation(conversation: string): Provider | null {
     return (
@@ -28927,6 +28927,14 @@ export class RuntimeHost implements LiveHost {
     return this.completeWorkerTerminal(worker.conversation)
   }
 
+  /** An owned in-flight reservation excludes its id before a database lineage exists. */
+  private normalWorkerLineage(worker: NormalWorkerBinding): readonly string[] {
+    const current = this.currentNormalWorker(worker)
+    return this.deps.store.recordedOne(worker.conversation) === null
+      ? [current]
+      : this.deps.store.workerLineage(worker.conversation)
+  }
+
   private normalWorkerAt(
     giver: string,
     profile: string,
@@ -29009,7 +29017,7 @@ export class RuntimeHost implements LiveHost {
         // A provider's older ordinary conversation remains its primary when another provider adds a pool.
         const bound = pool.workers.flatMap((worker) => [
           worker.conversation,
-          ...this.deps.store.workerLineage(worker.conversation),
+          ...this.normalWorkerLineage(worker),
         ])
         if (this.legacyHelperAs(giver, profile, provider, bound) !== null) return { is: 'legacy' }
       }
@@ -29057,7 +29065,7 @@ export class RuntimeHost implements LiveHost {
         .flatMap((pool) =>
           pool.workers.flatMap((worker) => [
             worker.conversation,
-            ...this.deps.store.workerLineage(worker.conversation),
+            ...this.normalWorkerLineage(worker),
           ]),
         )
       return this.legacyHelperAs(giver, profile, provider, bound)
