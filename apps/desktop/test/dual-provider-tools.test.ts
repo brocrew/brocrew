@@ -1,6 +1,6 @@
 import { z } from 'zod'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { agentToolsFor } from '../src/main/runtime/agent-tools'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { agentCallerId, agentToolsFor } from '../src/main/runtime/agent-tools'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 
 describe('provider choices in the public tools', () => {
@@ -77,5 +77,28 @@ describe('provider choices in the public tools', () => {
     expect(world.store.recordedOne(claude.owner)?.provider).toBe('claude')
     expect(world.store.recordedOne(codex.owner)?.provider).toBe('codex')
     expect(world.conversationsRecorded()).toBe(before)
+  })
+
+  it('names the chosen provider while its first conversation is still starting', async () => {
+    const { host, giver, tool } = await setup()
+    let release!: () => void
+    world.startsWait = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const pending = world.gives(host, giver, 'draft-reader', { provider: 'codex' })
+    try {
+      await vi.waitFor(() => expect(world.startedAs).toContain('draft-reader'))
+      const card = host
+        .agentsVisibleTo({ ownerId: agentCallerId(giver) }, giver)
+        .agents.find((agent) => agent.agent !== giver)
+      expect(card?.state.is).toBe('active')
+      expect(world.store.recordedOne(card!.agent)).toBeNull()
+      expect(card?.provider).toBe('codex')
+      const status = await tool('get_agent_status').call({ agent: card!.agent })
+      expect(status.text).toContain(' · Codex · ')
+    } finally {
+      release()
+      await pending
+    }
   })
 })
