@@ -453,13 +453,15 @@ describe('696 §4b · BroBot’s own sheet names the front door’s provider men
     )
   })
 
-  it('a service offers the person’s start picker without promising a second conversation for gives', async () => {
+  it('a service describes its first give without promising a person start', async () => {
     reset({ kind: 'service', itsProvider: 'codex' })
     const m = await theSheet()
     const note = words(m.q('capabilities-provider-note'))
+    expect(note).not.toContain('a new conversation you start as this identity')
+    expect(note).not.toContain('unless you choose another provider where you start it')
     expect(note).toContain('A service keeps one conversation for new gives.')
+    expect(note).toContain('It starts when the first give is accepted.')
     expect(note).toContain('Changing its default does not switch that conversation’s provider.')
-    expect(note).toContain('unless you choose another provider where you start it')
     expect(note).not.toContain(
       'new gives without a provider or model use that provider’s conversation',
     )
