@@ -74,6 +74,8 @@ describe('kept rules on the Providers page', () => {
   it('lists each provider’s rules, file by file, in the words a card says them', async () => {
     const { m } = aPage([KEPT], { removed: true })
     await settle()
+    expect(m.host.textContent).toContain('per provider')
+    expect(m.host.textContent).toContain('does not carry to another provider')
     expect(m.all('kept-rules-file').map((one) => one.textContent?.trim())).toEqual([PROJECT, RULES])
     expect(
       m.all('kept-rule').map((one) => one.querySelector('.rule')?.textContent?.trim()),
