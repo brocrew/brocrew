@@ -64,6 +64,7 @@ import type {
 import type { DocumentForm, DrawnAs, ResourceRole } from './documents'
 import type { AgentRulesReceipt, RulesBaseline } from './agent-rules'
 import type { InstructionUnread } from './own-instructions'
+import type { OwnNotesReading, OwnNotesWrite, OwnNotesUnread } from './own-notes'
 import type { RulesAuthor } from './own-instructions'
 import type { TheWholeForest } from './the-whole-forest'
 // ⚑ **582 · the `configured` layer's shapes.** ⛔ Type-only, and that module is a LEAF — it imports
@@ -8783,6 +8784,11 @@ export type RuntimeCommand =
   | { kind: 'removeAgentMethod'; profileId: string; selection: MethodDeleteSelection }
   | { kind: 'undoAgentMethod'; profileId: string; changeId: string }
   | { kind: 'checkInterruptedAgentMethods'; profileId: string; confirmed: boolean }
+  | { kind: 'agentOwnNotes'; profileId: string }
+  | { kind: 'agentOwnNotesUnread'; profileId: string }
+  | ({ kind: 'saveOwnNotes'; profileId: string } & OwnNotesWrite)
+  | { kind: 'undoOwnNotes'; profileId: string; expectedVersion: number }
+  | { kind: 'markOwnNotesSeen'; profileId: string; throughVersion: number }
   | { kind: 'agentRulesUnread'; profileId: string }
   | { kind: 'undoAgentRules'; profileId: string; expectedVersion: number }
   | { kind: 'markAgentRulesSeen'; profileId: string; throughVersion: number }
@@ -9326,6 +9332,11 @@ export interface RuntimeCommandResults {
   removeAgentMethod: MethodChangeResult
   undoAgentMethod: MethodChangeResult
   checkInterruptedAgentMethods: MethodChangeResult
+  agentOwnNotes: OwnNotesReading | null
+  agentOwnNotesUnread: OwnNotesUnread
+  saveOwnNotes: OwnNotesReading | null
+  undoOwnNotes: OwnNotesReading | null
+  markOwnNotesSeen: boolean
   agentRulesUnread: InstructionUnread
   undoAgentRules: AgentInstructionsReading | null
   markAgentRulesSeen: boolean
@@ -10196,6 +10207,14 @@ export interface RuntimeBridge {
     profileId: string
     confirmed: boolean
   }): Promise<MethodChangeResult>
+  agentOwnNotes(input: { profileId: string }): Promise<OwnNotesReading | null>
+  agentOwnNotesUnread(input: { profileId: string }): Promise<OwnNotesUnread>
+  saveOwnNotes(input: { profileId: string } & OwnNotesWrite): Promise<OwnNotesReading | null>
+  undoOwnNotes(input: {
+    profileId: string
+    expectedVersion: number
+  }): Promise<OwnNotesReading | null>
+  markOwnNotesSeen(input: { profileId: string; throughVersion: number }): Promise<boolean>
   agentRulesUnread(input: { profileId: string }): Promise<InstructionUnread>
   undoAgentRules(input: {
     profileId: string

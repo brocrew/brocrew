@@ -95,6 +95,8 @@ const THE_SPLIT: Readonly<Record<ToolName, BeyondItsRails>> = {
   // The host checks caller, target and exact baseline, and keeps attribution and person-only Undo.
   propose_agent_rules: 'nothing-its-rails-do-not-cover',
   read_agent_rules: 'nothing-its-rails-do-not-cover',
+  read_own_notes: 'nothing-its-rails-do-not-cover',
+  write_own_notes: 'nothing-its-rails-do-not-cover',
   write_agent_rules: 'nothing-its-rails-do-not-cover',
   reply_to_parent: 'nothing-its-rails-do-not-cover',
   ask_question: 'nothing-its-rails-do-not-cover',
