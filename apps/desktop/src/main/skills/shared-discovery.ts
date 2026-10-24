@@ -1,13 +1,42 @@
 import { assertSkillPathsAreReal } from './skill-paths'
 import { watch, type FSWatcher } from 'node:fs'
-import { mkdir, open, readdir } from 'node:fs/promises'
+import { lstat, mkdir, open, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { constants } from 'node:fs'
-import type { SharedSkill, SkillsWindow } from '../../shared/skills-window'
+import type { ProfileSkillMetadata, SharedSkill, SkillsWindow } from '../../shared/skills-window'
 import { SkillsRequest } from '../../shared/skills-window'
 import { SharedSkillLibrary } from './shared-library'
 import type { VerifiedBuiltInSkills } from './built-in-catalogue'
 import { nodeFs, writeAtomically } from '../recovery/files'
+import { creationAllowedSkills } from './built-in-catalogue'
+import { foldProfileName } from '../db/identity'
+import type { SessionStore } from '../db/session-store'
+import { DEFAULT_PROFILE_ID } from '../runtime/provider-homes'
+
+export interface ProfileSkillAccess {
+  readonly profileId: string
+  readonly canCreateAgents: boolean
+  readonly isCoordinator: boolean
+}
+
+/** Read existing grants without creating an identity or accepting grants from a window. */
+export function profileSkillAccess(
+  store: Pick<SessionStore, 'capabilitiesOf'>,
+  profileId: string,
+): ProfileSkillAccess | null {
+  const profile = foldProfileName(profileId)
+  const grants = store.capabilitiesOf(profile)
+  return grants === null
+    ? null
+    : {
+        profileId: profile,
+        canCreateAgents: grants.canCreateAgents === 'any',
+        isCoordinator: profile === DEFAULT_PROFILE_ID,
+      }
+}
+
+const oneLine = (text: string, limit: number): string =>
+  text.replace(/\s+/gu, ' ').trim().slice(0, limit)
 
 function metadata(body: string, key: string): string {
   const header = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(body)?.[1] ?? ''
@@ -50,6 +79,7 @@ export class SharedSkillDiscovery {
     private readonly ready: Promise<void>,
     private readonly shipped: () => VerifiedBuiltInSkills,
     library?: SharedSkillLibrary,
+    private readonly access?: (profileId: string) => ProfileSkillAccess | null,
   ) {
     this.library = library ?? new SharedSkillLibrary(userData)
   }
@@ -196,9 +226,104 @@ export class SharedSkillDiscovery {
       this.cached = { generation: stamp, skills }
     return skills
   }
+  /** A read-only page uses bounded headers, never the full-body or conversion paths. */
+  private async profileMetadata(
+    access: ProfileSkillAccess,
+  ): Promise<readonly ProfileSkillMetadata[]> {
+    await this.ready
+    if (this.closed) throw new Error('Skills could not be read.')
+    const bundle = this.shipped()
+    const selected = new Set(
+      creationAllowedSkills(bundle.catalogue, access.canCreateAgents, access.isCoordinator).map(
+        (one) => one.name,
+      ),
+    )
+    const skills: ProfileSkillMetadata[] = bundle.catalogue.skills.map((one) => ({
+      folder: one.name,
+      name: one.name,
+      description: one.description,
+      builtIn: true,
+      enabled: true,
+      given: selected.has(one.name),
+    }))
+    for (const [root, enabled] of [
+      [this.library.active, true],
+      [this.library.off, false],
+    ] as const) {
+      await assertSkillPathsAreReal(this.userData, [root], nodeFs)
+      for (const folder of (await readdir(root, { withFileTypes: true })).sort((a, b) =>
+        a.name.localeCompare(b.name),
+      )) {
+        if (folder.name.startsWith('.')) continue
+        if (folder.isSymbolicLink()) throw new Error('Skills could not be read.')
+        if (!folder.isDirectory()) continue
+        const path = join(root, folder.name, 'SKILL.md')
+        await assertSkillPathsAreReal(this.userData, [path], nodeFs)
+        let file
+        try {
+          file = await open(
+            path,
+            constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0),
+          )
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue
+          throw error
+        }
+        try {
+          const stat = await file.stat()
+          if (!stat.isFile()) throw new Error('Skills could not be read.')
+          const bytes = Buffer.alloc(Math.min(stat.size, 16 * 1024))
+          let count = 0
+          while (count < bytes.length) {
+            const next = await file.read(bytes, count, bytes.length - count, count)
+            if (next.bytesRead === 0) break
+            count += next.bytesRead
+          }
+          await assertSkillPathsAreReal(this.userData, [path], nodeFs)
+          const atPath = await lstat(path)
+          const after = await file.stat()
+          if (
+            !atPath.isFile() ||
+            atPath.isSymbolicLink() ||
+            atPath.dev !== stat.dev ||
+            atPath.ino !== stat.ino ||
+            after.size !== stat.size ||
+            after.mtimeMs !== stat.mtimeMs
+          )
+            throw new Error('Skills could not be read.')
+          const header = bytes.subarray(0, count).toString('utf8')
+          skills.push({
+            folder: folder.name,
+            name: oneLine(metadata(header, 'name'), 256) || folder.name,
+            description: oneLine(metadata(header, 'description'), 500),
+            builtIn: false,
+            enabled,
+            given: enabled,
+          })
+        } finally {
+          await file.close()
+        }
+      }
+    }
+    return skills
+  }
   readonly window: SkillsWindow = async (request) => {
     const parsed = SkillsRequest.safeParse(request)
     if (!parsed.success) return { operation: 'refused', reason: 'invalid' }
+    if (parsed.data.operation === 'profile-list') {
+      if (!this.access) return { operation: 'refused', reason: 'source-unavailable' }
+      const access = this.access(parsed.data.profileId)
+      if (!access) return { operation: 'refused', reason: 'identity' }
+      const skills = await this.profileMetadata(access)
+      const offset = parsed.data.offset ?? 0
+      return {
+        operation: 'profile-list',
+        profileId: access.profileId,
+        skills: skills.slice(offset, offset + 50),
+        nextOffset: offset + 50 < skills.length ? offset + 50 : null,
+        readAt: Date.now(),
+      }
+    }
     if (parsed.data.operation === 'shared-list')
       return { operation: 'shared-list', skills: await this.list() }
     if (parsed.data.operation === 'shared-toggle') {
