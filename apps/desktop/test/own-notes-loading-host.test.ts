@@ -1,6 +1,6 @@
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -15,7 +15,11 @@ import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import {
+  RuntimeHost,
+  type RuntimeHostDeps,
+  type RuntimeEventSink,
+} from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
   profileBundleSpans,
@@ -26,6 +30,7 @@ import {
 import { toolsToldInTextFor } from '../src/main/runtime/agent-tools'
 import { publishProfileBundle } from '../src/main/runtime/profile-bundle'
 import { readSessionInstructions } from '../src/main/runtime/instructions'
+import { prepareBuiltInSkills, readBuiltInSkills } from '../src/main/skills/prepare-built-in-skills'
 
 // The explicit provider argument is the new composition seam; keep the RED compilable.
 const leadFor = thisConversationSpans as (
@@ -50,10 +55,12 @@ describe('own notes reach starts and cold resumes from one recorded launch snaps
   let db: AppDatabase
   let store: SessionStore
   let host: RuntimeHost
+  let buildHost: () => RuntimeHost
   let window: Window
   let counter: number
   let sequence: number
   let sessions: FakeProviderSessions
+  let skillPreparation: RuntimeHostDeps['prepareBuiltInSkills']
   let atLaunch: (() => void) | undefined
   let options: (StartOptions | ResumeOptions)[]
   let reads: {
@@ -77,6 +84,7 @@ describe('own notes reach starts and cold resumes from one recorded launch snaps
     options = []
     reads = []
     atLaunch = undefined
+    skillPreparation = undefined
     class Runtime extends FakeRuntime {
       override async start(opts: StartOptions): ReturnType<FakeRuntime['start']> {
         options.push(opts)
@@ -94,52 +102,55 @@ describe('own notes reach starts and cold resumes from one recorded launch snaps
     }
     const home = (provider: Provider, profile?: string | null) =>
       join(root, 'homes', profile ?? 'brobot', provider)
-    host = new RuntimeHost({
-      store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(root, 'exports'),
-      createRuntime: (provider) => new Runtime(provider, { sessions }),
-      prepareProviderHome: (provider, profile) => {
-        const value = home(provider, profile)
-        mkdirSync(value, { recursive: true })
-        return value
-      },
-      providerHomePath: home,
-      resolveCwd: (id, requested) => resolveSessionCwd(root, id, requested),
-      newSessionId: () => `launch-${++sequence}`,
-      now: () => counter++,
-      readProviderConfig: (_provider, path) => ({
-        home: path,
-        homeEnv: 'CODEX_HOME',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
-      readInstructions: (provider, cwd, providerHome, context) => {
-        const bundle = profileBundleSpans(context, provider)
-        const lead = leadFor(context, toolsToldInTextFor(provider), provider)
-        const published = publishProfileBundle(provider, providerHome, bundle.text)
-        const read = readSessionInstructions({
-          provider,
-          cwd,
-          providerHome,
-          home: root,
-          bundle: published,
-          bundleComposed: bundle,
-          thisConversation: lead,
-        })
-        reads.push({ provider, context, bundle, lead, read })
-        return {
-          instructions: read.instructions,
-          systemHint: read.systemHint ?? undefined,
-          ...(read.firstTurnLead === null ? {} : { firstTurnLead: read.firstTurnLead }),
-          memoryLoaded: read.memoryLoaded,
-          profileFile: read.profileFile,
-          context,
-        }
-      },
-    })
+    buildHost = () =>
+      new RuntimeHost({
+        store,
+        prepareBuiltInSkills: skillPreparation,
+        discoverSessions: NO_DISCOVERY,
+        nativeTranscriptPath: () => null,
+        exportDirectory: () => join(root, 'exports'),
+        createRuntime: (provider) => new Runtime(provider, { sessions }),
+        prepareProviderHome: (provider, profile) => {
+          const value = home(provider, profile)
+          mkdirSync(value, { recursive: true })
+          return value
+        },
+        providerHomePath: home,
+        resolveCwd: (id, requested) => resolveSessionCwd(root, id, requested),
+        newSessionId: () => `launch-${++sequence}`,
+        now: () => counter++,
+        readProviderConfig: (_provider, path) => ({
+          home: path,
+          homeEnv: 'CODEX_HOME',
+          model: 'm',
+          authNote: null,
+          files: [],
+        }),
+        readInstructions: (provider, cwd, providerHome, context) => {
+          const bundle = profileBundleSpans(context, provider)
+          const lead = leadFor(context, toolsToldInTextFor(provider), provider)
+          const published = publishProfileBundle(provider, providerHome, bundle.text)
+          const read = readSessionInstructions({
+            provider,
+            cwd,
+            providerHome,
+            home: root,
+            bundle: published,
+            bundleComposed: bundle,
+            thisConversation: lead,
+          })
+          reads.push({ provider, context, bundle, lead, read })
+          return {
+            instructions: read.instructions,
+            systemHint: read.systemHint ?? undefined,
+            ...(read.firstTurnLead === null ? {} : { firstTurnLead: read.firstTurnLead }),
+            memoryLoaded: read.memoryLoaded,
+            profileFile: read.profileFile,
+            context,
+          }
+        },
+      })
+    host = buildHost()
     window = new Window()
   })
   afterEach(async () => {
@@ -163,6 +174,62 @@ describe('own notes reach starts and cold resumes from one recorded launch snaps
     store.events(id).flatMap(({ event }) => (event.type === 'launched' ? [event] : []))
   const turns = (id: string) =>
     store.events(id).flatMap(({ event }) => (event.type === 'user_turn' ? [event] : []))
+
+  it.each(['claude', 'codex'] as const)(
+    'the production Skills launch callback obeys the stored grant at %s start and resume',
+    async (provider) => {
+      // Execute the exact main callback, without importing Electron's app entry point.
+      const source = readFileSync(resolve(import.meta.dirname, '../src/main/index.ts'), 'utf8')
+      const callback = /prepareBuiltInSkills:\s*([\s\S]*?),\n\s*\/\/ A text pack,/.exec(source)?.[1]
+      expect(callback, 'the production preparation callback must remain explicit').toBeDefined()
+      const production = new Function(
+        'prepareBuiltInSkills',
+        'providerHomesRoot',
+        'userData',
+        'shippedSkills',
+        `return (${callback})`,
+      )(
+        prepareBuiltInSkills,
+        () => join(root, 'homes'),
+        root,
+        () => readBuiltInSkills(resolve(import.meta.dirname, '../resources/built-in-skills')),
+      ) as NonNullable<RuntimeHostDeps['prepareBuiltInSkills']>
+      const seed = await start(provider)
+      await host.close(seed, window)
+      const names: string[][] = []
+      skillPreparation = async (input) => {
+        const prepared = await production(input)
+        names.push(prepared.context.skills.map((one) => one.name.replace(/^brobot:/, '')))
+        return prepared
+      }
+      await host.closeAll()
+      host = buildHost()
+      expect(store.setCapabilities('lark', { canCreateAgents: 'none' })).toBe(true)
+      const me = await start(provider)
+      expect(names).toHaveLength(1)
+      expect(names.at(-1)).not.toContain('build-a-team')
+      expect(names.at(-1)).not.toContain('add-a-capability')
+      await host.close(me, window)
+      expect(store.setCapabilities('lark', { canCreateAgents: 'any' })).toBe(true)
+      await host.resumeSession(me, window)
+      expect(names.at(-1)).toContain('build-a-team')
+      expect(names.at(-1)).toContain('add-a-capability')
+    },
+  )
+
+  it('reads a legacy launch without a notes version and keeps an explicit version zero', async () => {
+    const me = await start('claude')
+    await host.close(me, window)
+    const given = launches(me).at(-1)?.given
+    expect(given).toBeDefined()
+    if (given === undefined) throw new Error('Missing fixture launch')
+    expect(given.ownNotesVersion).toBe(0)
+    expect((await host.whatThisAgentWasGiven(me)).ownNotesVersion).toBe(0)
+    const legacy = { ...given }
+    delete legacy.ownNotesVersion
+    store.append(me, store.nextOrdinal(me), { type: 'launched', given: legacy }, counter++)
+    expect(await host.whatThisAgentWasGiven(me)).not.toHaveProperty('ownNotesVersion')
+  })
 
   it.each(['claude', 'codex'] as const)(
     'reads current notes once at start and reloads edits and clears at resume on %s',

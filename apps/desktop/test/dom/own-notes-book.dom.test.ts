@@ -9,7 +9,11 @@ import type { RuntimeBridge } from '../../src/shared/runtime-ipc'
 import type { OwnNotesVersion } from '../../src/shared/own-notes'
 import { mount, unmountAll } from './harness'
 
-afterEach(unmountAll)
+const originalViewport = { width: window.innerWidth, height: window.innerHeight }
+afterEach(async () => {
+  unmountAll()
+  await page.viewport(originalViewport.width, originalViewport.height)
+})
 
 function agentVersion(version = 2, text = 'Keep the agreed scope.'): OwnNotesVersion {
   return {
@@ -220,6 +224,7 @@ describe('Own notes in the agent book', () => {
   })
 
   it('shows a successful person edit as You and keeps the earlier agent attribution and reasons', async () => {
+    await page.viewport(1200, 1100)
     const f = fixture()
     const edited: OwnNotesVersion = {
       ...agentVersion(3, 'The corrected standing wish.'),
@@ -267,7 +272,7 @@ describe('Own notes in the agent book', () => {
     expect(f.markAgentRulesSeen).not.toHaveBeenCalled()
     await document.fonts.ready
     await page.screenshot({
-      element: view.host,
+      element: view.q('agent-sections-sheet'),
       path: '__screenshots__/agent-own-notes-preview.png',
     })
   })
