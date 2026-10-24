@@ -22,7 +22,8 @@ import {
 import type { LinkResolution } from '../shared/link-resolution'
 import type { DecideMoveRequestInput, MoveRequestAck } from '../shared/move-request'
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron'
-import { themeBeforePaint, themesBridge } from './themes'
+import { themesBridge } from './themes'
+import { themeBeforePaint } from './theme-before-paint'
 import {
   WINDOW_CONTROL_CHANNEL,
   type WindowControl,
