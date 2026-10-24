@@ -71,7 +71,8 @@ async function workspace(name: string, hasData: boolean): Promise<string> {
 }
 
 /** The store as the app makes it for `userData`, over the built-ins as they ship. */
-function startedStore(userData: string): ThemeStore {
+/** With `refusesWrites`, the system refuses every rename into the workspace: a full disk, say. */
+function startedStore(userData: string, refusesWrites = false): ThemeStore {
   const roots = themeRoots({
     appData,
     userData,
@@ -81,7 +82,11 @@ function startedStore(userData: string): ThemeStore {
   const store = new ThemeStore({
     ...roots,
     files: {
-      rename,
+      rename: refusesWrites
+        ? async () => {
+            throw Object.assign(new Error('no space left'), { code: 'ENOSPC' })
+          }
+        : rename,
       readdir: (path: string) => readdir(path),
       lstat: (path: string) => lstat(path),
     },
@@ -164,6 +169,15 @@ describe('a new install starts in Crew Night, and an existing one keeps classic'
     expect(snapshot.active).toBe('classic')
     expect(snapshot.reason).toBeUndefined()
     expect(await choiceOn(userData)).toBe('{"theme":"classic"}')
+  })
+
+  it('a folder with an earlier version’s data keeps classic when its choice can’t be written', async () => {
+    const userData = await workspace('earlier', true)
+    const store = startedStore(userData, true)
+    expect((await store.start()).active).toBe('classic')
+    expect(await choiceOn(userData)).toBeNull()
+    // A later look at the same workspace, as the folder's watcher brings one, keeps it.
+    expect((await store.refresh()).active).toBe('classic')
   })
 
   it('a choice a person made is untouched, in a new folder or an earlier one', async () => {
