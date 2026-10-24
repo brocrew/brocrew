@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { z } from 'zod'
 import {
   FakeRuntime,
   FakeProviderSessions,
@@ -222,7 +223,10 @@ describe('own notes tools bind to their caller and person controls stay in the w
     )
     expect(
       Object.fromEntries(
-        Object.entries(write.input).map(([name, field]) => [name, field.description]),
+        Object.entries(write.input).map(([name, field]) => [
+          name,
+          z.globalRegistry.get(field)?.description,
+        ]),
       ),
     ).toEqual({
       current_version:
