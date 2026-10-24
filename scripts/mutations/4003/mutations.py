@@ -89,4 +89,15 @@ MUTATIONS = [('M1 · debug-only descriptors escape the visibility filter — kil
   '`providers-list-drawer.dom.test.ts`',
   [('apps/desktop/src/renderer/src/components/OverlayHost.vue',
     '<Teleport :to="layerElement" :disabled="layerElement === null">',
-    '<Teleport :to="layerElement" :disabled="layerElement === null || props.label.endsWith(\' provider\')">')])]
+    '<Teleport :to="layerElement" :disabled="layerElement === null || props.label.endsWith(\' provider\')">')]),
+ ('M21 · the provider drawer loses its accessible name — killed by '
+  '`a-dialog-is-named-and-only-the-top-one-hears-the-keys.dom.test.ts`',
+  [('apps/desktop/src/renderer/src/components/ProvidersScreen.vue',
+    '      :label="`${selectedDescriptor.displayName} provider`"\n',
+    '')]),
+ ('M22 · the key explanation omits that a saved key overrides the signed-in account — killed by '
+  '`plain-words-chrome.dom.test.ts`',
+  [('apps/desktop/src/renderer/src/components/ProviderCard.vue',
+    '            No API key saved. You can sign in instead. If you save a key, new conversations will use\n'
+    '            it instead of your signed-in account.\n',
+    '            No API key saved. You can sign in instead.\n')])]
