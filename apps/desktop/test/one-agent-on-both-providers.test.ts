@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { FakeRuntime } from '@brobot2/runtime'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 
@@ -8,7 +9,10 @@ describe('one normal agent, one conversation per giver and provider', () => {
     world = aServiceWorld({ holderReminders: 'declined' })
     world.anAgent('draft-reader', 'normal', 'claude')
   })
-  afterEach(async () => world.cleanUp())
+  afterEach(async () => {
+    await world.cleanUp()
+    vi.restoreAllMocks()
+  })
 
   const caller = async (host: RuntimeHost) =>
     (
@@ -72,6 +76,42 @@ describe('one normal agent, one conversation per giver and provider', () => {
     expect(world.store.providerOf('draft-reader')).toBe('claude')
     const again = await world.gives(host, giver, 'draft-reader', { model: 'fake-codex-a' })
     expect(again).toMatchObject({ ok: true, owner: named.owner })
+  })
+
+  it('uses the default when both providers list a model, and lets an explicit provider disambiguate', async () => {
+    vi.spyOn(FakeRuntime.prototype, 'listModels').mockResolvedValue([
+      { id: 'shared-fictional', label: 'Shared fictional', isDefault: true },
+    ])
+    const host = world.aHost()
+    const giver = await caller(host)
+    const implicit = await world.gives(host, giver, 'draft-reader', { model: 'shared-fictional' })
+    const explicit = await world.gives(host, giver, 'draft-reader', {
+      model: 'shared-fictional',
+      provider: 'codex',
+    })
+    expect(implicit).toMatchObject({ ok: true, runsOn: { provider: 'claude' } })
+    expect(explicit).toMatchObject({ ok: true, runsOn: { provider: 'codex' } })
+  })
+
+  it('a person can start the other provider with a model while old conversations and the identity default stay put', async () => {
+    const host = world.aHost()
+    const giver = await caller(host)
+    const original = await world.gives(host, giver, 'draft-reader')
+    if (!original.ok) throw new Error('give refused')
+    const other = await host.createSession(
+      {
+        provider: 'codex',
+        profileId: 'draft-reader',
+        model: 'fake-codex-a',
+        cwd: world.folder,
+        approvalMode: 'ask',
+      },
+      world.window,
+    )
+    expect(world.store.recordedOne(other.sessionId)?.provider).toBe('codex')
+    expect(world.store.recordedOne(original.owner)?.provider).toBe('claude')
+    expect(world.store.providerOf('draft-reader')).toBe('claude')
+    expect(world.store.modelChoiceOf('draft-reader')?.provider).not.toBe('codex')
   })
 
   it('refuses an explicit provider/model mismatch before creating a conversation or native home', async () => {
@@ -186,4 +226,25 @@ describe('one normal agent, one conversation per giver and provider', () => {
       owner: claude.owner,
     })
   })
+
+  it.each([{ provider: 'codex' }, { model: 'fake-codex-a' }])(
+    'refuses another service provider before its first birth: %j',
+    async (choice) => {
+      world.anAgent('room-booker', 'service', 'claude')
+      const host = world.aHost()
+      const giver = await caller(host)
+      const before = world.conversationsRecorded()
+      const refused = await world.gives(host, giver, 'room-booker', choice)
+      expect(refused).toMatchObject({
+        ok: false,
+        refusal: {
+          rail: 'service-provider-is-fixed',
+          permanence: 'permanent',
+          detail: { provider: 'claude', choices: ['fake-claude-a', 'fake-claude-b'] },
+        },
+      })
+      expect(world.conversationsRecorded()).toBe(before)
+      expect(world.startedAs).toEqual(['review-lead'])
+    },
+  )
 })
