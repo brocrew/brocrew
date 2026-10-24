@@ -271,6 +271,69 @@ describe('a profile name reaches its one conversation', () => {
     }
   })
 
+  it('refuses a profile name after gives on both providers, while each label reaches its own provider', async () => {
+    const giver = await personOpens(DEFAULT_PROFILE_ID)
+    const tools = agentToolsFor(host, giver)
+    const claude = await giveAWorker(tools, 'Plan the fictional catalogue', 'W1.1')
+    const given = await callOn(tools, 'give_work', {
+      profile: 'worker',
+      provider: 'codex',
+      title: 'Review the fictional catalogue',
+      brief: 'Review the fictional catalogue.',
+      definition_of_done: 'The fictional catalogue review is recorded.',
+    })
+    expect(given, JSON.stringify(given)).toMatchObject({
+      outcome: 'ok',
+      label: 'W1.2',
+      started: true,
+    })
+    const codex = given.agent as string
+    expect(codex).not.toBe(claude)
+    await waitFor(() => ledger(codex).some((event) => event.type === 'turn'), 'the Codex turn')
+    expect(store.recordedOne(claude)?.provider).toBe('claude')
+    expect(store.recordedOne(codex)?.provider).toBe('codex')
+
+    const queued = vi.spyOn(host, 'queueMessage')
+    const before = ledger(giver).length
+    const ambiguous = await fullCall(tools, 'message_agent', aNote('worker'))
+    expect(ambiguous.structured, ambiguous.text).toMatchObject({
+      outcome: 'refused',
+      rail: 'that-agent-has-several-conversations',
+      detail: { agent: 'worker', conversations: expect.arrayContaining(['W1.1', 'W1.2']) },
+    })
+    expect((ambiguous.structured.detail as { conversations: string[] }).conversations).toHaveLength(
+      2,
+    )
+    expect(ambiguous.text).toContain('W1.1')
+    expect(ambiguous.text).toContain('W1.2')
+    expect(queued).not.toHaveBeenCalled()
+    expect(
+      ledger(giver)
+        .slice(before)
+        .filter((event) => event.type === 'message_sent'),
+    ).toEqual([])
+
+    for (const [label, id, provider] of [
+      ['W1.1', claude, 'claude'],
+      ['W1.2', codex, 'codex'],
+    ] as const) {
+      const firstCall = queued.mock.calls.length
+      expect(await callOn(tools, 'message_agent', aNote(label))).toMatchObject({
+        outcome: 'ok',
+        agent: id,
+      })
+      expect(queued.mock.calls[firstCall]?.[0]).toBe(id)
+      expect(store.recordedOne(id)?.provider).toBe(provider)
+      expect(
+        ledger(giver)
+          .filter((event) => event.type === 'message_sent')
+          .at(-1),
+      ).toMatchObject({
+        to: id,
+      })
+    }
+  })
+
   it('a profile name keeps the reach every address has: out of reach is no agent, and only what is in reach is counted', async () => {
     const { giver, giverTools, worker } = await aWorld()
     // A person's own conversation with the same agent, which the giver did not start.
