@@ -1,4 +1,9 @@
 import { z } from 'zod'
+export {
+  PLUGIN_SETTINGS_CHANNEL,
+  PLUGIN_SCREEN_CLOSED,
+  PLUGIN_REVIEW_INVALIDATED,
+} from './plugin-settings-channels'
 const disclosureText = (maximum: number) =>
   z
     .string()
@@ -111,11 +116,8 @@ export const PLUGIN_DISCLOSURE_WORDS = Object.freeze({
 })
 export type PluginMutationFailure =
   PluginMutationBlocked | 'policy-refused' | 'network' | 'unavailable'
-export const PLUGIN_REVIEW_INVALIDATED = 'plugins:review-invalidated'
 // Person-control may wait 180 seconds for a cold plugin start; leave room for its page load.
 export const PLUGIN_CONFIGURATION_TIMEOUT = 200_000
-export const PLUGIN_SETTINGS_CHANNEL = 'plugins:settings'
-export const PLUGIN_SCREEN_CLOSED = 'plugins:screen-closed'
 export const PLUGIN_STATES = [
   'Available',
   'Installed',

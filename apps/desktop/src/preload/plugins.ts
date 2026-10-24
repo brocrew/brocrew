@@ -3,9 +3,8 @@ import {
   PLUGIN_SETTINGS_CHANNEL,
   PLUGIN_SCREEN_CLOSED,
   PLUGIN_REVIEW_INVALIDATED,
-  type PluginsClient,
-  type PluginSettingsRequest,
-} from '../shared/plugin-settings'
+} from '../shared/plugin-settings-channels'
+import type { PluginsClient, PluginSettingsRequest } from '../shared/plugin-settings'
 export function pluginsBridge(ipc: Pick<IpcRenderer, 'invoke' | 'on' | 'off'>): PluginsClient {
   return Object.freeze({
     request: (input: PluginSettingsRequest) => ipc.invoke(PLUGIN_SETTINGS_CHANNEL, input),

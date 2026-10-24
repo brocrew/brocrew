@@ -221,9 +221,6 @@ export function registerPluginSettings(
         owner.webContents.on('did-navigate', () => {
           void close(owner).catch(() => {})
         })
-        owner.webContents.on('did-start-navigation', () => {
-          void close(owner).catch(() => {})
-        })
       }
       const state = windows.get(owner)!
       let created: PluginConfigurationView | undefined
