@@ -26,7 +26,7 @@ import type { OwnNotesReading, OwnNotesWrite, OwnNotesUnread } from '../src/shar
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
 // Local contracts keep this RED fixture compilable before the host exposes the feature.
-type Result = { ok: boolean; result?: Record<string, unknown> }
+type Result = { ok: boolean; rail?: string; result?: Record<string, unknown> }
 type NotesHost = {
   readOwnNotes(me: string, about: string | undefined, by: Caller): Result
   writeOwnNotes(me: string, said: OwnNotesWrite, by: Caller): Result
@@ -207,6 +207,73 @@ describe('own notes tools bind to their caller and person controls stay in the w
     },
   )
 
+  it('offers the exact approved tool and write-argument descriptions', async () => {
+    const me = await start('lark')
+    const read = tools.get(me)!.tools.find((one) => one.name === 'read_own_notes')
+    const write = tools.get(me)!.tools.find((one) => one.name === 'write_own_notes')
+    expect(read, 'registered own-notes reader').toBeDefined()
+    expect(write, 'registered own-notes writer').toBeDefined()
+    if (read === undefined || write === undefined) throw new Error('unreachable missing tool')
+    expect(read.description).toBe(
+      "Read an agent's current own notes and version, with the recorded author and reason. Omit agent to read your own, or name another agent's profile to read theirs. Empty notes are returned as empty text. These are the current saved notes; a running conversation may hold an earlier version.",
+    )
+    expect(write.description).toBe(
+      "Replace your own complete notes. First read_own_notes, then supply its exact version and full text, the complete replacement, and why. You can write only your own profile's notes. The host refuses a stale baseline. Notes are limited to 4000 characters, load after the standing rules at each start, and the person can edit or undo them in Agent knowledge. All conversations of your profile share this page.",
+    )
+    expect(
+      Object.fromEntries(
+        Object.entries(write.input).map(([name, field]) => [name, field.description]),
+      ),
+    ).toEqual({
+      current_version:
+        'The current version returned by read_own_notes. Zero means no notes have been saved.',
+      current_text:
+        'The complete current text returned by read_own_notes. Use empty text when no notes have been saved.',
+      notes:
+        'The complete replacement, at most 4000 characters. Empty text saves an empty version.',
+      why: 'Why these notes should replace the current version. The reason is kept with the saved version.',
+    })
+  })
+
+  const malformedBaselines: readonly [string, Record<string, unknown>][] = [
+    ['neither baseline field', { notes: 'No default.', why: 'Test exactness.' }],
+    ['missing version', { current_text: '', notes: 'No default.', why: 'Test exactness.' }],
+    ['missing text', { current_version: 0, notes: 'No default.', why: 'Test exactness.' }],
+    ['negative version', { ...input(), current_version: -1 }],
+    ['unsafe version', { ...input(), current_version: Number.MAX_SAFE_INTEGER + 1 }],
+    ['fractional version', { ...input(), current_version: 0.5 }],
+    ['NaN version', { ...input(), current_version: Number.NaN }],
+    ['infinite version', { ...input(), current_version: Number.POSITIVE_INFINITY }],
+    ['text version', { ...input(), current_version: '0' }],
+    ['null baseline text', { ...input(), current_text: null }],
+  ]
+  it.each(malformedBaselines)(
+    'refuses %s without supplying a default baseline',
+    async (_title, args) => {
+      const me = await start('lark')
+      expect(await call(me, 'write_own_notes', args)).toMatchObject({
+        outcome: 'refused',
+        rail: 'malformed-request',
+      })
+      const direct = {
+        expectedVersion: args['current_version'],
+        currentText: args['current_text'],
+        text: args['notes'],
+        why: args['why'],
+      } as unknown as OwnNotesWrite
+      expect(notes().writeOwnNotes(me, direct, caller(me))).toMatchObject({
+        ok: false,
+        rail: 'malformed-request',
+        detail: {
+          problems: [
+            'Read the current notes, provide their exact version and full text, and say why within the size limit.',
+          ],
+        },
+      })
+      expect(store.ownNotesOf('lark')!.versions).toEqual([])
+    },
+  )
+
   it('reads self by default, returns another known page as data, and never creates an unknown profile', async () => {
     const me = await start('lark')
     const other = await start('wren')
@@ -228,6 +295,7 @@ describe('own notes tools bind to their caller and person controls stay in the w
     })
     expect(await call(me, 'read_own_notes', { agent: 'absent' })).toMatchObject({
       outcome: 'refused',
+      rail: 'no-such-agent',
     })
     expect(store.capabilitiesOf('absent')).toBeNull()
     expect(store.ownNotesOf('lark')!.versions).toEqual([])
@@ -278,6 +346,7 @@ describe('own notes tools bind to their caller and person controls stay in the w
       await start('wren')
       expect(await call(me, 'write_own_notes', { ...input(), [field]: 'wren' })).toMatchObject({
         outcome: 'refused',
+        rail: 'malformed-request',
       })
       expect(store.ownNotesOf('lark')!.versions).toEqual([])
       expect(store.ownNotesOf('wren')!.versions).toEqual([])
@@ -287,7 +356,11 @@ describe('own notes tools bind to their caller and person controls stay in the w
   it('requires the live caller even when the store has a bound or adopted session row', async () => {
     const me = await start('lark')
     const other = await start('wren')
-    expect(notes().writeOwnNotes(me, said(), caller(other)).ok).toBe(false)
+    expect(notes().writeOwnNotes(me, said(), caller(other))).toMatchObject({
+      ok: false,
+      rail: 'malformed-request',
+      detail: { problems: ["Only an agent's own running conversation can write its notes."] },
+    })
     expect(notes().writeOwnNotes(me, said(), window).ok).toBe(false)
     expect(notes().readOwnNotes(me, undefined, caller(other)).ok).toBe(false)
     store.adopt({
@@ -362,6 +435,7 @@ describe('own notes tools bind to their caller and person controls stay in the w
     expect(await call(one, 'write_own_notes', input())).toMatchObject({ outcome: 'ok', version: 1 })
     expect(await call(two, 'write_own_notes', input('Stale.'))).toMatchObject({
       outcome: 'refused',
+      rail: 'malformed-request',
     })
     expect(
       await call(two, 'write_own_notes', {
@@ -369,7 +443,12 @@ describe('own notes tools bind to their caller and person controls stay in the w
         current_version: 1,
         current_text: input().notes + ' ',
       }),
-    ).toMatchObject({ outcome: 'refused' })
+    ).toMatchObject({ outcome: 'refused', rail: 'malformed-request' })
+    expect(notes().writeOwnNotes(two, said('Stale.'), caller(two))).toMatchObject({
+      ok: false,
+      rail: 'malformed-request',
+      detail: { problems: ['The notes changed; read them again before replacing them.'] },
+    })
     expect(store.ownNotesOf('lark')!.versions).toHaveLength(1)
     expect(store.ownNotesOf('lark')!.versions[0]!.by).toEqual({ who: 'an-agent', agent: one })
   })
@@ -377,16 +456,27 @@ describe('own notes tools bind to their caller and person controls stay in the w
   it('checks Unicode limits and exact-baseline bounds in both the wire schema and host', async () => {
     const me = await start('lark')
     for (const bad of ['x'.repeat(4001), '😀'.repeat(4001), '\u0000', '\ud800']) {
-      expect(await call(me, 'write_own_notes', input(bad))).toMatchObject({ outcome: 'refused' })
+      expect(await call(me, 'write_own_notes', input(bad))).toMatchObject({
+        outcome: 'refused',
+        rail: 'malformed-request',
+      })
       expect(notes().writeOwnNotes(me, said(bad), caller(me)).ok).toBe(false)
       expect(await call(me, 'write_own_notes', { ...input(), current_text: bad })).toMatchObject({
         outcome: 'refused',
+        rail: 'malformed-request',
       })
       expect(notes().writeOwnNotes(me, { ...said(), currentText: bad }, caller(me)).ok).toBe(false)
     }
     expect(await call(me, 'write_own_notes', { ...input(), why: ' ' })).toMatchObject({
       outcome: 'refused',
+      rail: 'malformed-request',
     })
+    expect(JSON.stringify(await call(me, 'write_own_notes', input('x'.repeat(4001))))).toContain(
+      'Use at most 4000 characters of plain text.',
+    )
+    expect(JSON.stringify(await call(me, 'write_own_notes', { ...input(), why: ' ' }))).toContain(
+      'Say why the notes should change.',
+    )
     expect(await call(me, 'write_own_notes', input('😀'.repeat(4000)))).toMatchObject({
       outcome: 'ok',
       version: 1,
@@ -489,7 +579,7 @@ describe('own notes tools bind to their caller and person controls stay in the w
     }
     for (const commandWithExtra of [
       { kind: 'saveOwnNotes', profileId: 'lark', ...said(), author: 'wren' },
-      { kind: 'undoOwnNotes', profileId: 'lark', expectedVersion: 0, text: 'Forged restore.' },
+      { kind: 'undoOwnNotes', profileId: 'lark', expectedVersion: 1, text: 'Forged restore.' },
       { kind: 'markOwnNotesSeen', profileId: 'lark', throughVersion: 0, agent: 'wren' },
       { kind: 'agentOwnNotes', profileId: 'lark', agent: 'wren' },
       { kind: 'agentOwnNotesUnread', profileId: 'lark', agent: 'wren' },
