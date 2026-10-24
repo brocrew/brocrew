@@ -134,6 +134,13 @@
       "when": 1792676968570,
       "tag": "0018_memory_recovery",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1792803381598,
+      "tag": "0019_own_notes",
+      "breakpoints": true
     }
   ]
 }

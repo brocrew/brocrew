@@ -110,6 +110,11 @@ export function ownInstructionsRowId(profileSlug: string, version: number): stri
   return `ins${SEP}${foldProfileName(profileSlug)}${SEP}${String(version)}`
 }
 
+/** One immutable version of the profile's own notes, named by its natural key. */
+export function ownNotesRowId(profileSlug: string, version: number): string {
+  return `notes${SEP}${foldProfileName(profileSlug)}${SEP}${String(version)}`
+}
+
 export { foldProfileName }
 
 /**
