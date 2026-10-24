@@ -21,7 +21,7 @@ import { agentCallerId, TOOL_NAMES } from '../src/main/runtime/agent-tools'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { RuntimeHost, type Caller, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage, RuntimeChangeMessage } from '../src/shared/runtime-ipc'
 import type { OwnNotesReading, OwnNotesWrite, OwnNotesUnread } from '../src/shared/own-notes'
 
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
@@ -94,6 +94,7 @@ describe('own notes tools bind to their caller and person controls stay in the w
   let tools: Map<string, AgentToolset>
   let clock: number
   let sequence: number
+  let announce: ReturnType<typeof vi.fn<(message: RuntimeChangeMessage) => void>>
   const tick = (): number => clock++
   const caller = (id: string) => ({ ownerId: agentCallerId(id) })
   const notes = (): NotesHost => {
@@ -114,6 +115,7 @@ describe('own notes tools bind to their caller and person controls stay in the w
     applyMigrations(db, migrations)
     clock = 1000
     sequence = 0
+    announce = vi.fn<(message: RuntimeChangeMessage) => void>()
     handed = []
     launches = []
     providerSessions = new FakeProviderSessions()
@@ -123,6 +125,7 @@ describe('own notes tools bind to their caller and person controls stay in the w
       join(root, 'homes', profile ?? 'default', provider)
     host = new RuntimeHost({
       store,
+      announce,
       discoverSessions: NO_DISCOVERY,
       nativeTranscriptPath: () => null,
       exportDirectory: () => join(root, 'exports'),
@@ -590,6 +593,24 @@ describe('own notes tools bind to their caller and person controls stay in the w
       await command(window, { kind: 'markOwnNotesSeen', profileId: 'lark', throughVersion: 1 }),
     ).toBe(true)
     expect(store.ownNotesUnread('lark').seenThrough).toBe(3)
+  })
+
+  it('announces a seen marker only when it actually advances, keeping valid repeat calls successful', async () => {
+    const me = await start('lark')
+    await call(me, 'write_own_notes', input('A note to read.'))
+    announce.mockClear()
+    expect(notes().markOwnNotesSeen('lark', 1, window)).toBe(true)
+    expect(store.ownNotesUnread('lark')).toMatchObject({ seenThrough: 1, unread: false })
+    expect(announce.mock.calls.filter(([message]) => message.what === 'agents')).toHaveLength(1)
+    expect(notes().markOwnNotesSeen('lark', 1, window)).toBe(true)
+    expect(notes().markOwnNotesSeen('lark', 0, window)).toBe(true)
+    expect(announce.mock.calls.filter(([message]) => message.what === 'agents')).toHaveLength(1)
+    expect(notes().markOwnNotesSeen('lark', 2, window)).toBe(false)
+    expect(notes().markOwnNotesSeen('lark', 1, caller(me))).toBe(false)
+    expect(notes().markOwnNotesSeen('absent', 0, window)).toBe(false)
+    expect(announce.mock.calls.filter(([message]) => message.what === 'agents')).toHaveLength(1)
+    expect(store.ownNotesUnread('lark').seenThrough).toBe(1)
+    expect(store.instructionUnread('lark').seenThrough).toBe(0)
   })
 
   it('refuses malformed person commands and unknown profiles without writing', async () => {
