@@ -120,8 +120,13 @@ describe('choosing a provider for a new conversation as an existing agent', () =
   })
 
   it('shows the selected provider’s approval reach before any launch', async () => {
+    const claude = CAPABILITY_FIXTURE.claude.approvals
+    const codex = CAPABILITY_FIXTURE.codex.approvals
+    if (claude.state !== 'available' || codex.state !== 'available') {
+      throw new Error('the fictional approval notes are not available')
+    }
     const { m, started } = opened({ approvalMode: 'auto', capabilities: CAPABILITY_FIXTURE })
-    expect(m.q('yolo-reach').textContent?.trim()).toBe(CAPABILITY_FIXTURE.claude.approvals.note)
+    expect(m.q('yolo-reach').textContent?.trim()).toBe(claude.note)
     m.q('model-picker-face').click()
     await settle()
     m.q('model-picker-choose-codex').click()
@@ -136,7 +141,7 @@ describe('choosing a provider for a new conversation as an existing agent', () =
     await settle()
     m.q('model-picker-take').click()
     await settle()
-    expect(m.q('yolo-reach').textContent?.trim()).toBe(CAPABILITY_FIXTURE.codex.approvals.note)
+    expect(m.q('yolo-reach').textContent?.trim()).toBe(codex.note)
     expect(started).toEqual([])
   })
 })
