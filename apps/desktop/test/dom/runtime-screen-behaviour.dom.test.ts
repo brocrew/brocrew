@@ -1222,3 +1222,73 @@ it('a focused same-count replacement cannot hide the next unfocused arrival', as
   await nextAttentionPoll()
   await expect.poll(native.summons, { timeout: 750 }).toBe(1)
 })
+
+it('opens Settings Skills from the agent book and closes the book without changing a skill', async () => {
+  const skills = vi.fn(async (raw: unknown) => {
+    const request = raw as { operation: string; profileId: string }
+    return request.operation === 'profile-list'
+      ? {
+          operation: 'profile-list',
+          profileId: request.profileId,
+          skills: [],
+          nextOffset: null,
+          readAt: 1700000000000,
+        }
+      : { operation: 'shared-list', skills: [] }
+  })
+  const book: Partial<RuntimeBridge> = {
+    skills: skills as unknown as RuntimeBridge['skills'],
+    agentInstructions: async () => ({
+      own: { identity: 'editor', versions: [] },
+      waiting: [],
+      readAt: 1700000000000,
+    }),
+    agentRulesUnread: async () => ({ unread: false, seenThrough: 0, newestDirectVersion: 0 }),
+    agentMethods: async () => ({
+      state: 'missing',
+      items: [],
+      total: 0,
+      offset: 0,
+      nextOffset: null,
+      indexState: 'absent',
+      indexFingerprint: null,
+      malformedLines: 0,
+      truncated: false,
+      readAt: 1700000000000,
+    }),
+    agentMethodChanges: async () => ({ ok: true, changes: [] }),
+    agentMemory: async ({ profileId }) => ({
+      profileId,
+      stores: [],
+      amendments: [],
+      readAt: 1700000000000,
+    }),
+  }
+  const previous = Object.getOwnPropertyDescriptors(runtime)
+  Object.assign(runtime, book)
+  const screen = mount(RuntimeScreen, {})
+  try {
+    useOverlays().open({ kind: 'agentSections', profileSlug: 'editor' })
+    await expect.poll(() => screen.all('agent-sections-sheet').length).toBe(1)
+    expect(screen.host.querySelector('[data-cy="agent-book-tab-skills"]')).not.toBeNull()
+    screen.q('agent-book-tab-skills').click()
+    await expect.poll(() => screen.all('agent-skills-settings').length).toBe(1)
+    screen.q('agent-skills-settings').click()
+    await expect.poll(() => useOverlays().overlay.value).toBeNull()
+    await expect
+      .poll(() => screen.q('settings-tab-skills').getAttribute('aria-selected'))
+      .toBe('true')
+    await expect.poll(() => screen.all('skills-section').length).toBe(1)
+    expect(
+      skills.mock.calls.map(([request]) => (request as { operation: string }).operation),
+    ).toEqual(['profile-list', 'shared-list'])
+    expect(runtime.startAndSend).not.toHaveBeenCalled()
+    expect(runtime.send).not.toHaveBeenCalled()
+  } finally {
+    screen.unmount()
+    for (const key of Object.keys(book)) {
+      if (previous[key]) Object.defineProperty(runtime, key, previous[key]!)
+      else Reflect.deleteProperty(runtime, key)
+    }
+  }
+})
