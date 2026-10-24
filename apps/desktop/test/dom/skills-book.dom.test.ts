@@ -7,7 +7,11 @@ import type { AgentStore } from '../../src/renderer/src/lib/agent-store'
 import type { RuntimeBridge } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll } from './harness'
 
-afterEach(unmountAll)
+const originalViewport = { width: window.innerWidth, height: window.innerHeight }
+afterEach(async () => {
+  unmountAll()
+  await page.viewport(originalViewport.width, originalViewport.height)
+})
 
 const inventory = [
   {
@@ -75,6 +79,7 @@ function fixture() {
 
 describe('the read-only Skills page in the agent book', () => {
   it('asks only for the visible profile metadata, and distinguishes global off from a profile gate', async () => {
+    await page.viewport(1200, 1100)
     const f = fixture()
     const view = mount(
       defineComponent({
@@ -119,7 +124,10 @@ describe('the read-only Skills page in the agent book', () => {
       view.q('agent-skills').querySelector('textarea, input, select, [role="switch"]'),
     ).toBeNull()
     await document.fonts.ready
-    await page.screenshot({ element: view.host, path: '__screenshots__/agent-skills-preview.png' })
+    await page.screenshot({
+      element: view.q('agent-sections-sheet'),
+      path: '__screenshots__/agent-skills-preview.png',
+    })
     view.q('agent-book-tab-memory').click()
     await nextTick()
     expect(f.skills).toHaveBeenCalledTimes(1)
