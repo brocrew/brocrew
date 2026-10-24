@@ -119,14 +119,18 @@ export function providerTakesEffectNextTime(
   aDoorAsks = false,
   isService = false,
 ): string {
+  if (isService) {
+    return (
+      `A service keeps one conversation for new gives. It starts when the first give is accepted. ` +
+      `Changing its default does not switch that conversation’s provider. ` +
+      `Existing pieces and follow-ups stay with their holders.`
+    )
+  }
   return (
     `The default for a new conversation you start as this identity is ${providerName(provider)}` +
     (aDoorAsks ? ', unless you choose another provider where you start it. ' : '. ') +
     `Changing this starts nothing and moves nothing: a conversation keeps the provider it began ` +
-    `on. ` +
-    (isService
-      ? `A service keeps one conversation for new gives. Changing its default does not switch that conversation’s provider. `
-      : `Once you choose a default here, new gives without a provider or model use that provider’s conversation, starting one if needed. `) +
+    `on. Once you choose a default here, new gives without a provider or model use that provider’s conversation, starting one if needed. ` +
     `Existing pieces and follow-ups stay with their holders.`
   )
 }
