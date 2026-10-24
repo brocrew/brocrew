@@ -121,12 +121,21 @@ describe('the Providers list opens the existing controls in one drawer', () => {
     expect(row(m, 'fable').querySelector('[data-provider-mark="fable"]')?.textContent).toContain(
       'F',
     )
+    row(m, 'fable').click()
+    await settle()
+    expect(m.q('provider-drawer').textContent).toContain('Fable')
+    expect(m.q('provider-card').getAttribute('data-provider')).toBe('fable')
+    expect(m.q('kept-rules-provider').getAttribute('data-provider')).toBe('fable')
+    expect(m.q('kept-rules-provider').querySelector('h3')?.textContent).toBe('Fable')
+    expect(m.q('kept-rules-none').textContent).toContain('None kept.')
   })
   it('opens the reused card and only that provider’s kept rules, then restores focus on Escape', async () => {
     const check = vi.spyOn(window.api.runtime, 'checkProviderAuth')
+    const key = vi.spyOn(window.api.runtime, 'apiKeyStatus')
     const m = screen()
     await settle()
     const before = check.mock.calls.length
+    const keysBefore = key.mock.calls.length
     row(m, 'claude').focus()
     row(m, 'claude').click()
     await settle()
@@ -145,6 +154,10 @@ describe('the Providers list opens the existing controls in one drawer', () => {
     await settle()
     expect(m.host.querySelector('[data-cy="provider-drawer"]')).toBeNull()
     expect(document.activeElement).toBe(row(m, 'claude'))
+    row(m, 'claude').click()
+    await settle()
+    expect(check).toHaveBeenCalledTimes(before)
+    expect(key).toHaveBeenCalledTimes(keysBefore)
   })
   it('puts setup first when signed out, without a tested-version badge or repeated instruction', async () => {
     providersBridge(true)
@@ -172,6 +185,82 @@ describe('the Providers list opens the existing controls in one drawer', () => {
     await settle()
     expect(dialog.querySelector('[data-cy="provider-inline-setup"]')).not.toBeNull()
     expect(m.q('provider-inline-setup').contains(document.activeElement)).toBe(true)
+  })
+  it('a login notice updates the row without restarting setup inside an open drawer', async () => {
+    let changed: Parameters<typeof window.api.runtime.onProvidersChanged>[0] = () => {}
+    window.api.runtime.onProvidersChanged = (listener) => {
+      changed = listener
+      return () => {}
+    }
+    const original = window.api.runtime.checkProviderAuth
+    let signedOut = false
+    window.api.runtime.checkProviderAuth = (asked) =>
+      signedOut
+        ? Promise.resolve({ state: 'absent', reason: 'No fictional login.', why: 'no-login' })
+        : original(asked)
+    const check = vi.spyOn(window.api.runtime, 'checkProviderAuth')
+    const key = vi.spyOn(window.api.runtime, 'apiKeyStatus')
+    const m = screen()
+    await settle()
+    row(m, 'claude').click()
+    await settle()
+    expect(m.host.querySelector('[data-cy="provider-inline-setup"]')).toBeNull()
+    signedOut = true
+    changed({ what: 'login', provider: 'claude' })
+    await settle()
+    expect(row(m, 'claude').textContent).toContain('Needs setup')
+    expect(check).toHaveBeenCalledTimes(3)
+    expect(key).toHaveBeenCalledTimes(3)
+    expect(m.host.querySelector('[data-cy="provider-inline-setup"]')).toBeNull()
+    await userEvent.keyboard('{Escape}')
+    await settle()
+    row(m, 'claude').click()
+    await settle()
+    expect(m.q('provider-inline-setup')).toBeDefined()
+  })
+  it('discards an unsaved fictional key draft when the drawer closes', async () => {
+    providersBridge(true)
+    const save = vi.spyOn(window.api.runtime, 'setApiKey')
+    const m = screen()
+    await settle()
+    row(m, 'claude').click()
+    await settle()
+    m.q('setup-use-key').click()
+    await settle()
+    await userEvent.fill(m.q('setup-key-input'), 'fictional-draft-only')
+    await userEvent.keyboard('{Escape}')
+    await settle()
+    row(m, 'claude').click()
+    await settle()
+    m.q('setup-use-key').click()
+    await settle()
+    expect((m.q('setup-key-input') as HTMLInputElement).value).toBe('')
+    expect(save).not.toHaveBeenCalled()
+  })
+  it('reads kept rules once per opening and refreshes after removal', async () => {
+    const read = vi.spyOn(window.api.runtime, 'keptRules')
+    const remove = vi.spyOn(window.api.runtime, 'removeKeptRule')
+    const m = screen()
+    await settle()
+    expect(read).not.toHaveBeenCalled()
+    row(m, 'claude').click()
+    await settle()
+    expect(read).toHaveBeenCalledTimes(1)
+    m.q('kept-rule-remove').click()
+    await settle()
+    expect(remove).toHaveBeenCalledWith({
+      provider: 'claude',
+      file: '/Users/someone/work/site/.claude/settings.local.json',
+      kept: 'Bash(npm run test:*)',
+    })
+    expect(read).toHaveBeenCalledTimes(2)
+    await userEvent.keyboard('{Escape}')
+    await settle()
+    row(m, 'codex').click()
+    await settle()
+    expect(read).toHaveBeenCalledTimes(3)
+    expect(m.all('kept-rules-provider')).toHaveLength(1)
+    expect(m.q('kept-rules-provider').getAttribute('data-provider')).toBe('codex')
   })
   it('uses At its limit for a stopped signed-in provider and Couldn’t check for unknown auth', async () => {
     const runtime = window.api.runtime

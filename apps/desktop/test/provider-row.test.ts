@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import type { AuthState, ProviderProgramStanding, ProviderVersion } from '../src/shared/runtime-ipc'
+import { isReady } from '../src/renderer/src/lib/provider-setup-steps'
 import {
   providerRowDetail,
   providerStanding,
@@ -13,6 +15,76 @@ const facts: ProviderRowFacts = {
   atItsLimit: null,
 }
 describe('one status vocabulary and one tightest limit line', () => {
+  it.each<ProviderProgramStanding>([
+    'missing',
+    'older-than-tested',
+    'unreadable',
+    'tested',
+    'newer-than-tested',
+  ])('keeps %s consistent with setup across auth, saved keys and limits', (standing) => {
+    const warns = ['missing', 'older-than-tested', 'unreadable'].includes(standing)
+    const version: ProviderVersion = {
+      version: '1.2.3',
+      program: {
+        standing,
+        from: 'native-installer',
+        path: '/fictional/bin/atlas',
+        version: '1.2.3',
+        tested: { oldest: '1.2.0', newest: '1.2.5' },
+        said: 'Fictional program needs checking.',
+        help: null,
+        update: null,
+        others: [],
+        updatedFrom: null,
+      },
+    }
+    const states: readonly [AuthState, boolean, boolean, ProviderRowFacts['atItsLimit'], string][] =
+      [
+        [{ state: 'usable', login: 'account', expiresAt: null }, false, false, null, 'Ready'],
+        [
+          { state: 'absent', reason: 'No fictional login.', why: 'no-login' },
+          false,
+          false,
+          null,
+          'Needs setup',
+        ],
+        [{ state: 'unknown', reason: 'No answer.' }, false, false, null, "Couldn't check"],
+        [{ state: 'usable', login: 'api-key', expiresAt: null }, true, false, null, 'Needs setup'],
+        [{ state: 'usable', login: 'account', expiresAt: null }, false, true, null, 'Needs setup'],
+        [
+          { state: 'usable', login: 'account', expiresAt: null },
+          false,
+          false,
+          'At its limit.',
+          'At its limit',
+        ],
+      ]
+    for (const [auth, keyRefused, keyUnreadable, atItsLimit, words] of states) {
+      const result = providerStanding({
+        version,
+        auth,
+        atItsLimit,
+        key: {
+          provider: 'claude',
+          set: keyRefused || keyUnreadable,
+          setAt: null,
+          inUse: keyRefused,
+          ...(keyRefused ? { refusedForBilling: { at: NOW, aLoginRunsWithoutIt: false } } : {}),
+          ...(keyUnreadable ? { readState: 'unreadable' as const } : {}),
+        },
+      })
+      expect(result?.words).toBe(warns ? 'Needs setup' : words)
+      expect(['ready', 'at-limit'].includes(result?.tone ?? '')).toBe(
+        isReady({
+          version,
+          auth,
+          setup: undefined,
+          keyRefused,
+          keyUnreadable: keyUnreadable ? 'Cannot read.' : null,
+        }) === true,
+      )
+    }
+  })
   it('keeps a pending check distinct from a failed check', () => {
     expect(providerStanding({ ...facts, auth: null })).toBeNull()
     expect(providerRowDetail({ ...facts, auth: null }, null, NOW)).toBe('Checking…')
