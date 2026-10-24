@@ -416,7 +416,7 @@ describe('§2 · 25cca325 · the provider’s own change notices redraw the scre
       readingSays(FIVE_HOURS, Math.max(NOW, Date.now())),
     )
     expect(text(await inCard(m, 'codex', 'provider-usage-none'))).toBe(
-      'No reading yet. Codex sends one with its next turn.',
+      'Usage is unknown. No reading yet from Codex.',
     )
     tell({ what: 'usage', provider: 'claude' })
     await settled()
