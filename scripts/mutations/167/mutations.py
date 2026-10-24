@@ -169,7 +169,8 @@ MUTATIONS = [
         [
             (
                 HOST,
-                "    return this.deps.listProfiles?.() ?? [DEFAULT_PROFILE_ID]\n",
+                # The provider filter moves the seam call; dropping the seam is the same fault.
+                "    return this.deps.listProfiles?.(provider) ?? [DEFAULT_PROFILE_ID]\n",
                 "    return [DEFAULT_PROFILE_ID]\n",
             )
         ],
