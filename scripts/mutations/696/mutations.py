@@ -458,6 +458,8 @@ MUTATIONS = [
         ],
     ),
     (
+        # RETIRED: every identity's person-start door now has a provider/model picker, so this
+        # formerly false promise is true. Keep the old anchor absent to record the withdrawn subject.
         "M41 · 🔴 **every sheet promises a provider menu where it starts** · `StartAsAgent` has none "
         f"(`696`'s review, round two) — killed by `{DOM}`",
         [
@@ -469,13 +471,14 @@ MUTATIONS = [
         ],
     ),
     (
+        # The picker is now shared by every identity; BroBot must still be told it can choose.
         "M42 · ⚑ **BroBot's sheet forgets the front door's provider menu** · the note names a provider "
         f"the next conversation from the front door may not start on (`696`'s review) — killed by `{DOM}`",
         [
             (
                 SHEET,
-                "providerTakesEffectNextTime(props.runsOn, identity.slug === DEFAULT_PROFILE_ID)",
-                "providerTakesEffectNextTime(props.runsOn, false)",
+                "providerTakesEffectNextTime(props.runsOn, true, isService)",
+                "providerTakesEffectNextTime(props.runsOn, false, isService)",
             )
         ],
     ),
