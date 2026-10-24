@@ -299,7 +299,7 @@ const MODULE_PATHS =
   'const providerModules = createProviderModules((provider) => homePathsForProvider(userData, provider),'
 const PATH_SEAM =
   'providerHomePath: (provider, profileId) => deriveProviderHome(userData, { profileId, provider }),'
-const PROFILES_SEAM = 'listProfiles: () => listProfileIds(userData),'
+const PROFILES_SEAM = 'listProfiles: (provider) => listProfileIds(userData, provider),'
 const DISCOVERY_SEAM =
   'listProviderHomes(userData) .map((home) => discoverSessionsIn(home.provider, home.path, home.profileId))'
 
