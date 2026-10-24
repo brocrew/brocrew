@@ -334,4 +334,137 @@ describe('Own notes in the agent book', () => {
       { profileId: 'quill', throughVersion: 2 },
     ])
   })
+
+  it('keeps a draft typed while a clean refresh was already waiting', async () => {
+    const f = fixture()
+    const view = mount(AgentBook, { profileSlug: 'quill', bridge: f.bridge, store: f.store })
+    view.q('agent-book-tab-notes').click()
+    await vi.waitFor(() => expect(f.markOwnNotesSeen).toHaveBeenCalled())
+    let finish!: (value: { profile: string; versions: OwnNotesVersion[] }) => void
+    f.agentOwnNotes.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        }),
+    )
+    f.markOwnNotesSeen.mockClear()
+    f.publish([agentVersion(3, 'An update read before this draft.')])
+    await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
+    await input(view.q('own-notes-text'), 'My newly typed draft.')
+    await input(view.q('own-notes-why'), 'Still composing this edit.')
+    finish({ profile: 'quill', versions: [agentVersion(3, 'An update read before this draft.')] })
+    await new Promise((done) => setTimeout(done, 30))
+    expect((view.q('own-notes-text') as HTMLTextAreaElement).value).toBe('My newly typed draft.')
+    expect((view.q('own-notes-why') as HTMLTextAreaElement).value).toBe(
+      'Still composing this edit.',
+    )
+    expect(f.markOwnNotesSeen.mock.calls).not.toContainEqual([
+      { profileId: 'quill', throughVersion: 3 },
+    ])
+  })
+
+  it('does not let an older pending refresh rewind a successful person save', async () => {
+    const f = fixture()
+    const view = mount(AgentBook, { profileSlug: 'quill', bridge: f.bridge, store: f.store })
+    view.q('agent-book-tab-notes').click()
+    await vi.waitFor(() => expect(f.markOwnNotesSeen).toHaveBeenCalled())
+    let finish!: (value: { profile: string; versions: OwnNotesVersion[] }) => void
+    f.agentOwnNotes.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        }),
+    )
+    f.publish([agentVersion()])
+    await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
+    const person: OwnNotesVersion = {
+      ...agentVersion(3, 'Saved by the person.'),
+      by: { who: 'a-person' },
+      author: null,
+      reason: 'Keep this correction.',
+    }
+    f.saveOwnNotes.mockResolvedValue({ profile: 'quill', versions: [person, agentVersion()] })
+    await input(view.q('own-notes-text'), person.text)
+    await input(view.q('own-notes-why'), person.reason)
+    view.q('own-notes-save').click()
+    await vi.waitFor(() =>
+      expect(view.host.querySelector('[data-cy="own-notes-version-3"]')).not.toBeNull(),
+    )
+    finish({ profile: 'quill', versions: [agentVersion()] })
+    await new Promise((done) => setTimeout(done, 30))
+    expect((view.q('own-notes-text') as HTMLTextAreaElement).value).toBe(person.text)
+    expect(view.host.querySelector('[data-cy="own-notes-version-3"]')).not.toBeNull()
+  })
+
+  it('shows a known unread notes change even while the rules reading has not answered', async () => {
+    const f = fixture()
+    f.bridge.agentRulesUnread = () => new Promise(() => {})
+    const view = mount(AgentBookButton, { profileSlug: 'quill', bridge: f.bridge })
+    await vi.waitFor(
+      () => expect(view.host.querySelector('[data-cy="agent-book-unread"]')).not.toBeNull(),
+      { timeout: 1000 },
+    )
+  })
+
+  it('keeps a known unread notice when a later notes reading fails', async () => {
+    const f = fixture()
+    const view = mount(AgentBookButton, { profileSlug: 'quill', bridge: f.bridge })
+    await vi.waitFor(() =>
+      expect(view.host.querySelector('[data-cy="agent-book-unread"]')).not.toBeNull(),
+    )
+    f.bridge.agentOwnNotesUnread = async () => {
+      throw new Error('Fictional interrupted status read')
+    }
+    f.publish([agentVersion(3)])
+    await new Promise((done) => setTimeout(done, 30))
+    expect(view.host.querySelector('[data-cy="agent-book-unread"]')).not.toBeNull()
+  })
+
+  it('waits to acknowledge a new version until its editor is actually in view', async () => {
+    await page.viewport(1200, 400)
+    const f = fixture()
+    const history = Array.from({ length: 20 }, (_, n) =>
+      agentVersion(20 - n, `Saved role wish ${20 - n}.`),
+    )
+    f.publish(history)
+    const view = mount(AgentBook, { profileSlug: 'quill', bridge: f.bridge, store: f.store })
+    view.q('agent-book-tab-notes').click()
+    await vi.waitFor(() =>
+      expect(f.markOwnNotesSeen).toHaveBeenCalledWith({ profileId: 'quill', throughVersion: 20 }),
+    )
+    const scroll = view.q('agent-sections-sheet').querySelector<HTMLElement>('.book-body')!
+    scroll.scrollTop = scroll.scrollHeight
+    await nextTick()
+    expect(view.q('own-notes-text').getBoundingClientRect().bottom).toBeLessThan(
+      scroll.getBoundingClientRect().top,
+    )
+    f.markOwnNotesSeen.mockClear()
+    f.publish([agentVersion(21, 'This new wish is above the current scroll position.'), ...history])
+    await new Promise((done) => setTimeout(done, 30))
+    expect(f.markOwnNotesSeen.mock.calls).not.toContainEqual([
+      { profileId: 'quill', throughVersion: 21 },
+    ])
+    scroll.scrollTop = 0
+    scroll.dispatchEvent(new Event('scroll'))
+    await vi.waitFor(() =>
+      expect(f.markOwnNotesSeen).toHaveBeenCalledWith({ profileId: 'quill', throughVersion: 21 }),
+    )
+  })
+
+  it('does not reread and acknowledge the same version in a change-notification loop', async () => {
+    const f = fixture()
+    let broadcasts = 0
+    f.markOwnNotesSeen.mockImplementation(async () => {
+      // The real host announces successful mark-seen calls, including an unchanged marker.
+      // Bound this fixture so a broken feedback loop still lets the assertion run.
+      if (++broadcasts <= 3) f.publish([agentVersion()])
+      return true
+    })
+    const view = mount(AgentBook, { profileSlug: 'quill', bridge: f.bridge, store: f.store })
+    view.q('agent-book-tab-notes').click()
+    await vi.waitFor(() => expect(f.markOwnNotesSeen).toHaveBeenCalled())
+    await new Promise((done) => setTimeout(done, 80))
+    expect(f.markOwnNotesSeen).toHaveBeenCalledTimes(1)
+    expect((view.q('own-notes-text') as HTMLTextAreaElement).value).toBe(agentVersion().text)
+  })
 })
