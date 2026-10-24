@@ -2,40 +2,45 @@
 
 # BroCrew
 
-**An open-source desktop app where AI agents hand work to each other — and you decide how much they do on their own.**
+**Give one agent a project. Follow the team's work in one tree, answer requests in one queue, and get a report back.**
 
 [![Latest release](https://img.shields.io/github/v/release/brocrew/brocrew)](https://github.com/brocrew/brocrew/releases/latest) [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE) ![Platforms: macOS Apple Silicon and Windows beta](https://img.shields.io/badge/platform-macOS%20Apple%20Silicon%20%C2%B7%20Windows%20beta-lightgrey)
 
-## What it is
+![BroCrew: describe a project, watch agents hand work to each other, answer requests, read the result.](docs/images/hero.gif)
 
-BroCrew brings AI agents together on your computer.
-Give an agent a task, and it can share the work with other agents.
-Each agent keeps its own memory and rules across conversations.
-Use it for coding, writing, research or other projects, with your own Anthropic or OpenAI API key.
+**[Download](https://github.com/brocrew/brocrew/releases/latest)** · [Install guide](#install) · [Run from source](docs/run-from-source.md)
 
-![BroCrew's Graph: one request turns into a tree of agents, each holding its own piece of work.](docs/images/graph-demo.gif)
+BroCrew is an open-source desktop app that brings AI agents together on your computer. Give an agent a task and it can share the work with other agents, Claude and Codex in the same tree. Each agent keeps its own memory and rules across conversations. Use your own Anthropic or OpenAI API key, and the provider bills your usage ([requirements and cost](docs/requirements-and-cost.md)).
 
 ## See it work
 
-**One request becomes a tree of work.** You ask BroBot, the first agent, for two projects. It starts a project manager for each, and they bring in developers and reviewers. Every box is an agent and every line is work handed down. Claude and Codex agents sit in the same tree.
+**1. Describe the project and the team.** Type what you want, and how you'd like the team set up.
 
-![The Graph tab showing BroBot, two project managers and their developers and reviewers.](docs/images/graph.png)
+![The New conversation page with a short request typed in.](docs/images/new-conversation.png)
 
-**You decide how far they go.** In the default "ask" mode, an agent stops and asks before it runs a command or changes a file. Everything that needs you waits in one list, **Waiting on you**.
+**2. Follow agents as they hand work to each other.** Every request is a piece of work with an owner. The Graph draws the tree as it grows, and the panel on the right shows each agent's model, files and the agents it started.
 
-![An approval card: the agent wants to run a build and waits for Approve or Deny.](docs/images/conversation.png)
+![The Graph tab with BroBot, a project manager, a developer and a reviewer, and the agent panel on the right.](docs/images/graph-panel.png)
 
-**Work comes back with a result.** When a piece of work is finished, its owner reports what was fixed, what wasn't checked, and where the files are.
+**3. Answer questions and review approval requests in one place.** Questions from agents appear in the conversation, and everything that needs you waits under **Waiting on you**.
 
-![A project manager's report: what was fixed, what wasn't checked, and where the report is.](docs/images/hand-back-summary.png)
+![An agent's question about the confirmation wording, waiting for an answer.](docs/images/question.png)
 
-## Why BroCrew
+![The Waiting on you list with a pending request.](docs/images/waiting-on-you.png)
 
-- **You can see who is doing what.** Every request is a piece of work with an owner. Agents can hand pieces on to other agents, and the Graph draws the tree as it grows. An agent can run on Claude or on Codex, in the same tree.
-- **You stay in charge.** Approvals, questions and stalled work all land in one place, so you don't hunt through tabs to find the agent that is waiting for you.
-- **Agents that last.** Each agent keeps its own memory and standing rules, so it doesn't start from nothing every time you talk to it.
+Approval behaviour depends on the provider. In Ask mode, Claude asks when its permission system requires approval, and Codex can run commands inside its own sandbox without asking. When approval is needed, you see the request and its exact action before it runs. See [Safety](docs/safety.md).
 
-> In one real run, BroBot reported: "Chen (Claude) and Felix (Codex) each wrote their own audit, then checked the other's findings against the code, and Chen combined both into one report."
+![An approval request: the action is shown in full, with Approve, Deny and Cancel turn.](docs/images/approval.png)
+
+**4. Read the result.** A finished piece of work comes back with its outcome, what was checked, what wasn't, and where the files are.
+
+![A project manager's report: result, checks, what wasn't checked, and files.](docs/images/result.png)
+
+## Not just code
+
+Ask for any kind of project in the same conversation. You can ask for a manager and a crew for each new project, and the Graph grows as they are recruited, with Claude and Codex agents side by side.
+
+![The Graph growing as a second project is recruited.](docs/images/growing-graph.gif)
 
 ## Install
 
@@ -46,7 +51,7 @@ Get the latest build from the [Releases page](https://github.com/brocrew/brocrew
 | Mac with Apple Silicon (M1 or later) | `BroCrew-<version>-arm64.dmg`     |
 | Windows 10 or 11, 64-bit (beta)      | `BroCrew-Setup-<version>-x64.exe` |
 
-The downloads aren't signed yet, so your computer will warn you the first time. Follow the [Mac install guide](docs/install-macos.md) or [Windows install guide](docs/install-windows.md) to open the app.
+The Mac download isn't notarized, and the Windows download isn't signed, so your computer will warn you the first time. Follow the [Mac install guide](docs/install-macos.md) or [Windows install guide](docs/install-windows.md) to open the app.
 
 Prefer the terminal? [Run from source](docs/run-from-source.md).
 
