@@ -3977,6 +3977,12 @@ export type OutOfReach =
  */
 export type TheDoorsReach = 'messaging' | 'interrupting' | 'reading' | 'answering'
 
+/** What an agent's profile name names: see {@link RuntimeHost.theConversationAProfileNames}. */
+export type AProfileNames =
+  | { readonly is: 'one'; readonly conversation: string }
+  | { readonly is: 'several'; readonly profile: string; readonly labels: readonly string[] }
+  | null
+
 /**
  * 🔴 **D-022 · R3 — what became of words about a piece, told to the conversation holding it** —
  * `reply_to_parent`'s three words, for a take-back, a close, a new brief and new inputs.
@@ -14486,6 +14492,39 @@ export class RuntimeHost implements LiveHost {
       (reach === 'interrupting' && this.mayInterrupt(this.theOneInItsPlace(owner), by)) ||
       (reach === 'reading' && me !== null && this.mayReadTheTranscriptOf(owner, me))
     return admitted ? owner : address
+  }
+
+  /**
+   * The conversation an agent's profile name names at `message_agent` and `ask_question`: its one
+   * reachable conversation, or the label of each when there are several. Archived conversations
+   * and the caller's own conversation count when they are reachable. A message also reaches the
+   * service working on the caller's piece, as a message to its id does.
+   *
+   * `null` when the address is a conversation's id, or names no agent with a conversation in this
+   * caller's reach: the door then reads it as the id it was spelled as, so a name out of reach is
+   * refused as an unknown one is.
+   */
+  theConversationAProfileNames(
+    address: string,
+    by: Caller,
+    me: string | null,
+    forAMessage = false,
+  ): AProfileNames {
+    if (this.slots.has(address) || this.deps.store.recordedOne(address) !== null) return null
+    const named = [
+      ...new Set(
+        this.deps.store
+          .conversationsOf(address)
+          .map((one) => this.theOneInItsPlace(one.conversation)),
+      ),
+    ].filter((one) => this.whyItIsOutOfReach(one, by, me, forAMessage) === null)
+    if (named.length === 0) return null
+    if (named.length === 1) return { is: 'one', conversation: named[0]! }
+    return {
+      is: 'several',
+      profile: foldProfileName(address),
+      labels: named.map((one) => this.addressOf(one)),
+    }
   }
 
   /** The recorded profile of an already named conversation, without opening it. */
