@@ -22,7 +22,7 @@ import {
 import type { LinkResolution } from '../shared/link-resolution'
 import type { DecideMoveRequestInput, MoveRequestAck } from '../shared/move-request'
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron'
-import { themesBridge } from './themes'
+import { themeBeforePaint, themesBridge } from './themes'
 import {
   WINDOW_CONTROL_CHANNEL,
   type WindowControl,
@@ -203,6 +203,8 @@ import type { WhatTheModelGot, WhatThisAgentWasGiven } from '../shared/what-this
  * is both the trust boundary and the only side that may hold the runtime's zod
  * schemas: this preload is sandboxed and cannot `require` a bare dependency.
  */
+
+if (process.isMainFrame) themeBeforePaint(ipcRenderer)
 
 function command(payload: RuntimeCommand): Promise<unknown> {
   return ipcRenderer.invoke(RUNTIME_COMMAND_CHANNEL, payload)

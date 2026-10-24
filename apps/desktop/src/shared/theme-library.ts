@@ -1,5 +1,14 @@
 import type { Theme, ThemeProblem } from './themes/theme'
 
+export const THEME_FIRST_PAINT_CHANNEL = 'themes:first-paint'
+
+/** The loaded theme's CSS, ready to put on a new document without another read. */
+export interface ThemePaint {
+  readonly id: string | null
+  readonly css: string
+  readonly attributes: Readonly<Record<string, string>>
+}
+
 export const THEMES_CHANNELS = {
   list: 'themes:list',
   read: 'themes:read',
