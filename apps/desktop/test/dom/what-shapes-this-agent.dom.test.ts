@@ -83,6 +83,7 @@ describe('the agent book from the profile door', () => {
       'Saved methods',
       'Memory',
       'Own notes',
+      'Skills',
     ])
     for (const tab of tabs) {
       const controlled = tab.getAttribute('aria-controls')
@@ -97,6 +98,7 @@ describe('the agent book from the profile door', () => {
       'Saved methods',
       'Memory',
       'Own notes',
+      'Skills',
     ])
     expect(new Set(headings.map((heading) => getComputedStyle(heading).fontSize)).size).toBe(1)
     expect(new Set(headings.map((heading) => getComputedStyle(heading).fontWeight)).size).toBe(1)
