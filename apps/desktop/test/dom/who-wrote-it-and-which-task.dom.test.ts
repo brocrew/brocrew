@@ -571,7 +571,7 @@ describe('688 §7 · O1 — the agent’s own instructions draw in the sheet’s
     const own = m.q('own-instructions')
     const heading = own.querySelector('h3') as HTMLElement
     const runsOn = m.q('capabilities-provider').querySelector('label > span') as HTMLElement
-    expect(words(runsOn)).toBe('Runs on')
+    expect(words(runsOn)).toBe('Default provider')
     expect(style(heading)).toEqual(style(runsOn))
     const note = m.q('own-instructions-when')
     const sheetNote = m.q('capabilities-provider-note')

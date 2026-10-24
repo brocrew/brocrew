@@ -25,7 +25,7 @@ import { NONE_STARTED, theProviderOfAnAgent } from '../src/shared/agent-roster'
 import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
- * An agent keeps its own provider: a give never changes it, and the giver need not name it. One
+ * An agent keeps its default: a give can select another conversation's provider. One
  * nobody saved a provider for takes it from its own conversations that started; one whose
  * conversations ran on both is a person's to choose; and one nothing has run takes it at its first
  * start, and keeps it.
@@ -321,24 +321,24 @@ describe('through the host: a give never changes an agent’s provider', () => {
     })
   })
 
-  describe('a give naming a model never moves the provider', () => {
-    it('a model of another provider is refused, listing the agent’s own provider’s models, and nothing is given', async () => {
+  describe('a give naming a model preserves the default and existing conversations', () => {
+    it('a model of another provider starts its conversation while the old provider and default stay put', async () => {
       await anAgentThatRanOn('ana', ['claude'])
       const giver = await aGiverOn('codex')
       const before = { conversations: conversationsOf('ana'), pieces: piecesGiven() }
 
-      const refused = await give(giver, 'ana', { model: 'fake-codex-a' })
+      const old = store.conversationsOf('ana').map((one) => one.conversation)
+      const given = await give(giver, 'ana', { model: 'fake-codex-a' })
 
-      expect(refused['outcome']).toBe('refused')
-      expect(refused['rail']).toBe('model-not-in-the-list')
-      expect(refused['detail']).toMatchObject({
-        provider: 'claude',
-        model: 'fake-codex-a',
-        choices: ['fake-claude-a', 'fake-claude-b'],
+      expect(given['outcome'], JSON.stringify(given)).toBe('ok')
+      expect(providerOfSession(String(given['agent']))).toBe('codex')
+      expect(given['runs_on']).toMatchObject({ model: 'fake-codex-a' })
+      for (const conversation of old) expect(providerOfSession(conversation)).toBe('claude')
+      expect({ conversations: conversationsOf('ana'), pieces: piecesGiven() }).toEqual({
+        conversations: before.conversations + 1,
+        pieces: before.pieces + 1,
       })
-      expect(String(refused['reason'])).toContain('Pick a model from Claude’s list')
-      expect({ conversations: conversationsOf('ana'), pieces: piecesGiven() }).toEqual(before)
-      expect(store.providerOf('ana')).toBeNull()
+      expect(store.providerOf('ana')).toBe('claude')
     })
 
     it('a model of its own provider is taken, from a giver on the other one', async () => {
@@ -405,7 +405,7 @@ describe('through the host: a give never changes an agent’s provider', () => {
       expect(refused['rail']).toBe('malformed-request')
       expect(refused['detail']).toMatchObject({
         problems: [
-          '(request): unknown fields "priority" — it takes only profile, title, brief, definition_of_done, folder, piece, new, parallel, inputs, model, effort',
+          '(request): unknown fields "priority" — it takes only profile, title, brief, definition_of_done, folder, piece, new, provider, parallel, inputs, model, effort',
         ],
       })
     })

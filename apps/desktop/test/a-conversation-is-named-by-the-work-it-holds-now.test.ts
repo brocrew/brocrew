@@ -383,7 +383,7 @@ describe('F033 · a conversation is named by the work it holds now', () => {
       const status = await fullCall(tools, 'get_agent_status', { agent: 'W1.1' })
       expect(status.structured, status.text).toMatchObject({ outcome: 'ok' })
       expect(status.text).toContain(
-        'the owner of W1.1 · Receipt check: a long step (answered) · Ada (worker) · idle',
+        'the owner of W1.1 · Receipt check: a long step (answered) · Ada (worker) · Claude · idle',
       )
     })
 
@@ -402,7 +402,7 @@ describe('F033 · a conversation is named by the work it holds now', () => {
       )
       const status = await fullCall(tools, 'get_agent_status', { agent: 'W1.1' })
       expect(status.text).toContain(
-        'the owner of W1.1 · Receipt check: a long step (taken back) · Ada (worker) · idle',
+        'the owner of W1.1 · Receipt check: a long step (taken back) · Ada (worker) · Claude · idle',
       )
     })
   })

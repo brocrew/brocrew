@@ -299,7 +299,7 @@ describe('610 · the roster that names nobody', () => {
       expect(store.rootOf(ada)?.label).toBe('W1')
       expectRosterText(
         listed.text,
-        `${ownerOf('W1')} · Ada (ada) · idle${runsOn} · holds W1`,
+        `${ownerOf('W1')} · Ada (ada) · Claude · idle${runsOn} · holds W1`,
         ada,
         'Ada',
         'ada',
@@ -328,7 +328,7 @@ describe('610 · the roster that names nobody', () => {
       expect(store.setAgentDisplayName('worker', null)).toBe(true)
       expectRosterText(
         (await ask(worker, 'list_agents')).text,
-        `${ownerOf('W1')} · worker · idle${runsOn} · holds W1`,
+        `${ownerOf('W1')} · worker · Claude · idle${runsOn} · holds W1`,
         worker,
         'worker',
         'worker',
@@ -339,7 +339,7 @@ describe('610 · the roster that names nobody', () => {
       expect(store.setAgentDisplayName('worker', 'Ada')).toBe(true)
       expectRosterText(
         (await ask(worker, 'list_agents')).text,
-        `${ownerOf('W1')} · Ada (worker) · idle${runsOn} · holds W1`,
+        `${ownerOf('W1')} · Ada (worker) · Claude · idle${runsOn} · holds W1`,
         worker,
         'Ada',
         'worker',
@@ -355,7 +355,7 @@ describe('610 · the roster that names nobody', () => {
       expect(store.agentIdentities().map((one) => one.slug)).toContain('dev')
       expectRosterText(
         (await ask(dev, 'list_agents')).text,
-        `${ownerOf('W1')} · Ada (Dev) · idle${runsOn} · holds W1`,
+        `${ownerOf('W1')} · Ada (Dev) · Claude · idle${runsOn} · holds W1`,
         dev,
         'Ada',
         'dev',
@@ -366,7 +366,7 @@ describe('610 · the roster that names nobody', () => {
       const brobot = await personOpens(DEFAULT_PROFILE_ID)
       expectRosterText(
         (await ask(brobot, 'list_agents')).text,
-        `${ownerOf('W1')} · ${DEFAULT_PROFILE_LABEL} (${DEFAULT_PROFILE_ID}) · idle${runsOn} · holds W1`,
+        `${ownerOf('W1')} · ${DEFAULT_PROFILE_LABEL} (${DEFAULT_PROFILE_ID}) · Claude · idle${runsOn} · holds W1`,
         brobot,
         'BroBot',
         'brobot',
@@ -404,7 +404,7 @@ describe('610 · the roster that names nobody', () => {
       expect(store.rootOf(ours)?.label).toBe('W1')
       // ⚑ D-042 · a held resume runs on its row's pair, replayed — what the line says it runs on.
       expect(listed.split('\n')).toContain(
-        `${ownerOf('W1')} · ${THIS_APP_CANNOT_NAME_IT} · active${runsOn} · holds W1`,
+        `${ownerOf('W1')} · ${THIS_APP_CANNOT_NAME_IT} · Claude · active${runsOn} · holds W1`,
       )
       expect(THIS_APP_CANNOT_NAME_IT).toBe('an agent this app cannot name')
       // 🔴 **And the word it did NOT print**, which is the whole of the forbidden input: the
@@ -491,7 +491,7 @@ describe('610 · the roster that names nobody', () => {
       const asked = await ask(ada, 'get_agent_status', { agent: ada })
       expectRosterText(
         asked.text,
-        `${ownerOf('W1')} · Ada (ada) · idle${runsOn} · holds W1`,
+        `${ownerOf('W1')} · Ada (ada) · Claude · idle${runsOn} · holds W1`,
         ada,
         'Ada',
         'ada',
