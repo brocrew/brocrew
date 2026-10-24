@@ -9,6 +9,7 @@
     "nativeArchive": true,
     "credential": "machine-or-key",
     "instructionPlacement": "sdk-context",
+    "ownNotesPlacement": "profile-bundle",
     "connectionKind": "standard",
     "capabilities": {
       "mark": {
@@ -173,6 +174,7 @@
     "nativeArchive": true,
     "credential": "profile-or-key",
     "instructionPlacement": "native-file",
+    "ownNotesPlacement": "first-lead",
     "connectionKind": "standard",
     "capabilities": {
       "mark": {
