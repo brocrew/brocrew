@@ -14,7 +14,7 @@ afterEach(() => {
 it.each(READABILITY_THEMES)('reads the Providers helper in the whole %s window', async (theme) => {
   await page.viewport(1180, 900)
   const m = mount(settingsWindow('providers', theme), {}, { width: 1180, height: 900 })
-  await vi.waitFor(() => expect(m.all('provider-card')).toHaveLength(2))
+  await vi.waitFor(() => expect(m.all('provider-row')).toHaveLength(2))
   const helper = m.q('providers-per-workspace')
   expect(helper.textContent?.trim()).not.toBe('')
   const reading = await readsAt(helper)

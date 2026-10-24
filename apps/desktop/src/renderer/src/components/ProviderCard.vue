@@ -162,6 +162,7 @@ const access =
   createProviderAccess(
     () => props.provider,
     () => emit('authChanged', DEFAULT_PROFILE_ID),
+    () => window.api.runtime,
   )
 const { auth, authBusy, asked, withGesture, check } = access
 const authNotice = ref<string | null>(null)
@@ -610,6 +611,7 @@ const resourcesTitle = computed(() =>
 /* ------------------------------------------------------------------ setup */
 
 const settingUp = ref(false)
+const cardRoot = ref<HTMLElement | null>(null)
 const setupKey = ref(false)
 const setupExternal = ref(false)
 const setupCopySays = ref<string | null>(null)
@@ -628,19 +630,15 @@ function beginSetup(): void {
   setupExternal.value = false
   setupCopySays.value = null
   settingUp.value = true
+  void nextTick(() =>
+    cardRoot.value?.querySelector<HTMLElement>('[data-cy="provider-inline-setup"] button')?.focus(),
+  )
 }
 watch(
   () => props.setupRequested,
   (requested) => {
     if (!requested) return
     beginSetup()
-    void nextTick(() =>
-      document
-        .querySelector<HTMLElement>(
-          `[data-cy="provider-card"][data-provider="${props.provider}"] [data-cy="provider-inline-setup"] button`,
-        )
-        ?.focus(),
-    )
   },
   { immediate: true },
 )
@@ -815,6 +813,7 @@ defineExpose({ beginSetup })
 
 <template>
   <article
+    ref="cardRoot"
     class="card"
     :class="{ frameless: props.frameless }"
     data-cy="provider-card"

@@ -204,19 +204,29 @@ function theScreen(
   return { m, runtime, unsubscribe, usageMoved, tell }
 }
 
-const card = (m: Mounted, provider: Provider): HTMLElement => {
+const card = async (m: Mounted, provider: Provider): Promise<HTMLElement> => {
+  const row = m.host.querySelector<HTMLButtonElement>(
+    `[data-cy="provider-row"][data-provider="${provider}"]`,
+  )
+  expect(row).not.toBeNull()
+  row!.click()
+  await flush()
   const el = m.host.querySelector<HTMLElement>(
     `[data-cy="provider-card"][data-provider="${provider}"]`,
   )
   expect(el, `no card for ${provider}`).not.toBeNull()
   return el!
 }
-const inCard = (m: Mounted, provider: Provider, cy: string): HTMLElement => {
-  const el = card(m, provider).querySelector<HTMLElement>(`[data-cy="${cy}"]`)
+const inCard = async (m: Mounted, provider: Provider, cy: string): Promise<HTMLElement> => {
+  await card(m, provider)
+  if (cy === 'provider-standing')
+    return m.q('provider-drawer').querySelector<HTMLElement>('[data-cy="provider-standing"]')!
+  const el = (await card(m, provider)).querySelector<HTMLElement>(`[data-cy="${cy}"]`)
   expect(el, `no ${cy} on the ${provider} card`).not.toBeNull()
   return el!
 }
-const running = (m: Mounted): string => text(inCard(m, 'claude', 'provider-resources-says'))
+const running = async (m: Mounted): Promise<string> =>
+  text(await inCard(m, 'claude', 'provider-resources-says'))
 
 const leaveTheFront = async (): Promise<void> => {
   focused = false
@@ -246,8 +256,8 @@ describe('§1 · 25cca325 · what is running is sampled only while a person can 
     const { m, runtime } = theScreen()
     await flush()
     expect(runtime.providerResources).toHaveBeenCalledTimes(1)
-    expect(running(m)).toBe('2 agents running · 1.3 GB memory · 34% CPU')
-    expect(text(inCard(m, 'codex', 'provider-resources-says'))).toBe('No agents running.')
+    expect(await running(m)).toBe('2 agents running · 1.3 GB memory · 34% CPU')
+    expect(text(await inCard(m, 'codex', 'provider-resources-says'))).toBe('No agents running.')
 
     await vi.advanceTimersByTimeAsync(4_999)
     await flush()
@@ -300,14 +310,14 @@ describe('§1 · 25cca325 · what is running is sampled only while a person can 
     await vi.advanceTimersByTimeAsync(60_000)
     await flush()
     expect(runtime.providerResources).toHaveBeenCalledTimes(1)
-    expect(running(m)).toBe(
+    expect(await running(m)).toBe(
       '2 agents running · 1.3 GB memory · 34% CPU · paused while BroCrew isn’t in front',
     )
 
     await comeBack()
     // ⚑ At once — no timer advanced.
     expect(runtime.providerResources).toHaveBeenCalledTimes(2)
-    expect(running(m)).not.toContain('paused')
+    expect(await running(m)).not.toContain('paused')
     await vi.advanceTimersByTimeAsync(5_000)
     await flush()
     expect(runtime.providerResources).toHaveBeenCalledTimes(3)
@@ -367,7 +377,7 @@ describe('§1 · 25cca325 · what is running is sampled only while a person can 
     const { m, runtime } = theScreen()
     await flush()
     expect(runtime.providerResources).not.toHaveBeenCalled()
-    expect(running(m)).toBe('Shown while BroCrew is in front.')
+    expect(await running(m)).toBe('Shown while BroCrew is in front.')
     await comeBack()
     expect(runtime.providerResources).toHaveBeenCalledTimes(1)
   })
@@ -380,11 +390,16 @@ describe('§1 · 25cca325 · what is running is sampled only while a person can 
       throw new Error('ps did not answer within 2 s')
     })
     await flush()
-    expect(running(m)).toBe('2 agents running · 1.3 GB memory · 34% CPU')
+    expect(await running(m)).toBe('2 agents running · 1.3 GB memory · 34% CPU')
     await vi.advanceTimersByTimeAsync(5_000)
     await flush()
-    expect(running(m)).toContain('Couldn’t measure just now:')
-    expect(running(m)).toContain('ps did not answer within 2 s')
+    expect(await running(m)).toContain('Couldn’t measure just now:')
+    expect(await running(m)).toContain('ps did not answer within 2 s')
+    const row = m.host.querySelector<HTMLElement>(
+      '[data-cy="provider-row"][data-provider="claude"]',
+    )!
+    expect(row.textContent).not.toContain('2 agents running')
+    expect(row.textContent).toContain("Couldn't measure running agents")
   })
 })
 
@@ -397,10 +412,10 @@ describe('§2 · 25cca325 · the provider’s own change notices redraw the scre
     expect(runtime.providerUsage).toHaveBeenCalledTimes(1)
     // ⚑ The reset is said relative to now: the window's clock, or the screen's own minute clock when
     // that is later — this fixture's clock is days behind the machine's.
-    expect(text(inCard(m, 'claude', 'provider-usage-reading'))).toBe(
+    expect(text(await inCard(m, 'claude', 'provider-usage-reading'))).toBe(
       readingSays(FIVE_HOURS, Math.max(NOW, Date.now())),
     )
-    expect(text(inCard(m, 'codex', 'provider-usage-none'))).toBe(
+    expect(text(await inCard(m, 'codex', 'provider-usage-none'))).toBe(
       'No reading yet. Codex sends one with its next turn.',
     )
     tell({ what: 'usage', provider: 'claude' })
@@ -434,10 +449,10 @@ describe('§2 · 25cca325 · the provider’s own change notices redraw the scre
     tell({ what: 'login', provider: 'claude' })
     await settled()
     expect(runtime.providerVersions).toHaveBeenCalledTimes(1)
-    expect(text(inCard(m, 'claude', 'provider-version-said'))).toBe(
+    expect(text(await inCard(m, 'claude', 'provider-version-said'))).toBe(
       'Claude Code 2.1.287, installed with Anthropic’s installer, at /Users/someone/.local/bin/claude.',
     )
-    expect(text(inCard(m, 'codex', 'provider-version-said'))).toBe(
+    expect(text(await inCard(m, 'codex', 'provider-version-said'))).toBe(
       'Codex could not be asked for its version just now.',
     )
   })
@@ -463,12 +478,14 @@ describe('§2 · 25cca325 · the provider’s own change notices redraw the scre
       },
     })
     await settled()
-    const said = inCard(m, 'codex', 'provider-version-said')
+    const said = await inCard(m, 'codex', 'provider-version-said')
     expect(text(said)).toBe(`Codex 0.160.0, the copy BroCrew carries, at ${path}.`)
     expect(said.classList.contains('warn')).toBe(false)
-    expect(card(m, 'codex').querySelector('[data-cy="provider-version-help"]')).toBeNull()
+    expect((await card(m, 'codex')).querySelector('[data-cy="provider-version-help"]')).toBeNull()
     // ⚑ …and Claude's, a program a person installed, keeps its link.
-    expect(card(m, 'claude').querySelector('[data-cy="provider-version-help"]')).not.toBeNull()
+    expect(
+      (await card(m, 'claude')).querySelector('[data-cy="provider-version-help"]'),
+    ).not.toBeNull()
   })
 
   /** A Claude Code program at this version and standing, with these other copies beside it. */
@@ -503,8 +520,10 @@ describe('§2 · 25cca325 · the provider’s own change notices redraw the scre
       claude: claudeAt('2.1.292', 'newer-than-tested'),
     })
     await settled()
-    expect(inCard(m, 'claude', 'provider-version-said').classList.contains('warn')).toBe(false)
-    expect(text(inCard(m, 'claude', 'provider-standing'))).toBe('Ready')
+    expect((await inCard(m, 'claude', 'provider-version-said')).classList.contains('warn')).toBe(
+      false,
+    )
+    expect(text(await inCard(m, 'claude', 'provider-standing'))).toBe('Ready')
   })
 
   it('⚑ the control: older than tested is a warning', async () => {
@@ -513,7 +532,9 @@ describe('§2 · 25cca325 · the provider’s own change notices redraw the scre
       claude: claudeAt('2.1.200', 'older-than-tested'),
     })
     await settled()
-    expect(inCard(m, 'claude', 'provider-version-said').classList.contains('warn')).toBe(true)
+    expect((await inCard(m, 'claude', 'provider-version-said')).classList.contains('warn')).toBe(
+      true,
+    )
   })
 
   it('⚑ the other copies on this computer are listed, each with its version, one click away', async () => {
@@ -524,13 +545,13 @@ describe('§2 · 25cca325 · the provider’s own change notices redraw the scre
       ]),
     })
     await settled()
-    const others = inCard(m, 'claude', 'provider-version-others')
+    const others = await inCard(m, 'claude', 'provider-version-others')
     expect(text(others.querySelector('summary') as Element)).toBe('1 other copy found')
     expect([...others.querySelectorAll('[data-cy="provider-version-other"]')].map(text)).toEqual([
       '2.1.245, installed with Homebrew, at /opt/homebrew/bin/claude',
     ])
     // ⚑ …and none is drawn where there is none.
-    expect(card(m, 'codex').querySelector('[data-cy="provider-version-others"]')).toBeNull()
+    expect((await card(m, 'codex')).querySelector('[data-cy="provider-version-others"]')).toBeNull()
   })
 
   it('⚑ an update that landed is said: Updated to its version, from the one before', async () => {
@@ -540,11 +561,13 @@ describe('§2 · 25cca325 · the provider’s own change notices redraw the scre
       claude: { ...updated, program: { ...updated.program!, updatedFrom: '2.1.245' } },
     })
     await settled()
-    expect(text(inCard(m, 'claude', 'provider-version-updated'))).toBe(
+    expect(text(await inCard(m, 'claude', 'provider-version-updated'))).toBe(
       'Updated to 2.1.292, from 2.1.245.',
     )
     // ⚑ …and nothing is said where nothing changed.
-    expect(card(m, 'codex').querySelector('[data-cy="provider-version-updated"]')).toBeNull()
+    expect(
+      (await card(m, 'codex')).querySelector('[data-cy="provider-version-updated"]'),
+    ).toBeNull()
   })
 
   it('🔴 Check again reads the program and its version again, so an update shows', async () => {
@@ -554,21 +577,21 @@ describe('§2 · 25cca325 · the provider’s own change notices redraw the scre
     await settled()
     const asked = runtime.providerVersions.mock.calls.length
     installed = claudeAt('2.1.292', 'newer-than-tested')
-    const checkAgain = [...card(m, 'claude').querySelectorAll('button')].find(
+    const checkAgain = [...(await card(m, 'claude')).querySelectorAll('button')].find(
       (button) => text(button) === 'Check again',
     )
     if (checkAgain === undefined) throw new Error('no Check again on the Claude card')
     checkAgain.click()
     await settled()
     expect(runtime.providerVersions.mock.calls.length).toBe(asked + 1)
-    expect(text(inCard(m, 'claude', 'provider-version-said'))).toContain('2.1.292')
+    expect(text(await inCard(m, 'claude', 'provider-version-said'))).toContain('2.1.292')
   })
 
   it('🔴 the setup facts are read again with the versions, so a program installed since is named by its path', async () => {
     const { m, runtime } = theScreen()
     await settled()
     expect(runtime.providerSetup).toHaveBeenCalledTimes(1)
-    const checkAgain = [...card(m, 'claude').querySelectorAll('button')].find(
+    const checkAgain = [...(await card(m, 'claude')).querySelectorAll('button')].find(
       (button) => text(button) === 'Check again',
     )
     if (checkAgain === undefined) throw new Error('no Check again on the Claude card')

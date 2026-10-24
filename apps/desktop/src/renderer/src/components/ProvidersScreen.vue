@@ -1,6 +1,15 @@
 <script setup lang="ts">
 import { readProviderSetup } from '../lib/provider-setup'
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch, type Ref } from 'vue'
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  shallowRef,
+  watch,
+  type Ref,
+} from 'vue'
 import type {
   Provider,
   ProviderCapabilityMap,
@@ -12,6 +21,7 @@ import { DEFAULT_PROFILE_ID } from '../../../shared/runtime-ipc'
 import type { ProviderDescriptor } from '@brobot2/shared'
 import { useVisibleProviders } from '../composables/useVisibleProviders'
 import { useKeyAsked } from '../composables/useKeyAsked'
+import { aDialogIsOpen } from '../lib/a-dialog-is-open'
 import { useModelLists } from '../composables/useModelLists'
 import { createProviderAccess } from '../lib/provider-access'
 import { providerStanding, providerRowDetail } from '../lib/provider-row'
@@ -81,6 +91,7 @@ function accessFor(provider: Provider) {
     access = createProviderAccess(
       () => provider,
       () => emit('authChanged', DEFAULT_PROFILE_ID),
+      () => window.api.runtime,
     )
     accesses.set(provider, access)
   }
@@ -98,13 +109,54 @@ function readVisibleAccess(): void {
   }
 }
 const selected = ref<Provider | null>(null)
+const surface = ref<HTMLElement | null>(null)
+const drawerFrame = shallowRef<{
+  top: number
+  right: number
+  width: number
+  height: number
+} | null>(null)
+let frameObserver: ResizeObserver | null = null
+function measureDrawer(): void {
+  const box = surface.value?.getBoundingClientRect()
+  if (!box || box.width <= 0 || box.height <= 0) return
+  drawerFrame.value = {
+    top: box.top,
+    right: window.innerWidth - box.right,
+    width: box.width,
+    height: box.height,
+  }
+}
+const drawerStyle = computed(() => {
+  const frame = drawerFrame.value
+  return frame === null
+    ? undefined
+    : {
+        top: `${frame.top}px`,
+        right: `${frame.right}px`,
+        height: `${frame.height}px`,
+        width: `min(${frame.width}px, clamp(var(--drawer-w-min), ${frame.width * 0.52}px, var(--drawer-w-max)))`,
+      }
+})
 const selectedDescriptor = computed(
   () => descriptors.value.find((item) => item.id === selected.value) ?? null,
 )
 const providerCard = ref<InstanceType<typeof ProviderCard> | null>(null)
 function openProvider(provider: Provider, event?: MouseEvent): void {
   if (event?.currentTarget instanceof HTMLElement) event.currentTarget.focus()
+  measureDrawer()
   selected.value = provider
+}
+function closeProvider(): void {
+  const provider = selected.value
+  selected.value = null
+  void nextTick(() => {
+    if (aDialogIsOpen()) return
+    const rows = surface.value?.querySelectorAll<HTMLButtonElement>('[data-cy="provider-row"]')
+    Array.from(rows ?? [])
+      .find((row) => row.dataset.provider === provider)
+      ?.focus()
+  })
 }
 watch(providers, () => {
   if (selected.value !== null && !providers.value.includes(selected.value)) selected.value = null
@@ -238,6 +290,12 @@ let stopListening: (() => void) | null = null
 
 onMounted(() => {
   mounted = true
+  measureDrawer()
+  if (surface.value) {
+    frameObserver = new ResizeObserver(measureDrawer)
+    frameObserver.observe(surface.value)
+  }
+  window.addEventListener('resize', measureDrawer)
   void readVersions()
   void readUsage()
   readVisibleAccess()
@@ -261,6 +319,8 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   mounted = false
+  frameObserver?.disconnect()
+  window.removeEventListener('resize', measureDrawer)
   stopListening?.()
   document.removeEventListener('visibilitychange', lookAgain)
   window.removeEventListener('focus', lookAgain)
@@ -302,6 +362,7 @@ const configured = (provider: Provider) =>
 const markOf = (descriptor: ProviderDescriptor) =>
   props.capabilities?.[descriptor.id as Provider]?.mark?.kind ?? descriptor.capabilities.mark.kind
 const runningOf = (provider: Provider) => {
+  if (resourcesError.value !== null) return "Couldn't measure running agents"
   const count = resources.value?.[provider]?.running
   return count === undefined
     ? 'Reading running agents…'
@@ -311,7 +372,12 @@ const runningOf = (provider: Provider) => {
 
 <template>
   <!-- ⚑ Light paper, like every body surface inside `<main>`. -->
-  <section class="providers-surface" data-cy="providers-screen" data-chat-theme="light">
+  <section
+    ref="surface"
+    class="providers-surface"
+    data-cy="providers-screen"
+    data-chat-theme="light"
+  >
     <div class="page">
       <header class="page-head">
         <span v-if="!embedded" class="page-icon" aria-hidden="true"
@@ -371,12 +437,11 @@ const runningOf = (provider: Provider) => {
       </div>
     </div>
     <OverlayHost
-      v-if="selectedDescriptor && selected"
-      contained
+      v-if="selectedDescriptor && selected && drawerFrame"
       :label="`${selectedDescriptor.displayName} provider`"
-      @close="selected = null"
+      @close="closeProvider"
     >
-      <section class="provider-drawer" data-cy="provider-drawer">
+      <section class="provider-drawer" :style="drawerStyle" data-cy="provider-drawer">
         <header class="drawer-head">
           <span class="provider-logo" :class="{ blossom: markOf(selectedDescriptor) === 'blossom' }"
             ><ProviderMark
@@ -385,9 +450,13 @@ const runningOf = (provider: Provider) => {
               :kind="markOf(selectedDescriptor)"
           /></span>
           <h2>{{ selectedDescriptor.displayName }}</h2>
-          <span v-if="standingOf(selected)" class="standing" :class="standingOf(selected)!.tone">{{
-            standingOf(selected)!.words
-          }}</span>
+          <span
+            v-if="standingOf(selected)"
+            class="standing"
+            data-cy="provider-standing"
+            :class="standingOf(selected)!.tone"
+            >{{ standingOf(selected)!.words }}</span
+          >
           <ProviderOptions
             v-if="configured(selected)"
             :name="selectedDescriptor.displayName"
@@ -397,7 +466,7 @@ const runningOf = (provider: Provider) => {
             type="button"
             class="drawer-close"
             :aria-label="`Close ${selectedDescriptor.displayName}`"
-            @click="selected = null"
+            @click="closeProvider"
           >
             <svg class="icon" aria-hidden="true"><use href="#i-x" /></svg>
           </button>
@@ -546,6 +615,10 @@ const runningOf = (provider: Provider) => {
   border-color: var(--line);
   background: var(--paper-bg);
 }
+.provider-logo :deep(.provider-mark__claude) {
+  background: var(--accent-text);
+  color: var(--accent-fill);
+}
 .provider-copy {
   display: flex;
   min-width: 0;
@@ -606,6 +679,7 @@ const runningOf = (provider: Provider) => {
   background: var(--waiting-bg);
 }
 .provider-drawer {
+  position: absolute;
   width: min(100%, clamp(var(--drawer-w-min), 52%, var(--drawer-w-max)));
   height: 100%;
   margin-left: auto;
@@ -649,9 +723,7 @@ const runningOf = (provider: Provider) => {
   min-height: 0;
   flex: 1;
 }
-:global(:root[data-content-scheme='dark']) .providers-surface :deep(.overlay-host--contained) {
-  background: color-mix(in srgb, var(--overlay-backdrop) 80%, #000 20%);
-}
+
 .debug {
   position: relative;
   display: flex;

@@ -18,6 +18,7 @@ import ImageViewer from '../../src/renderer/src/components/ImageViewer.vue'
 import NewAgent from '../../src/renderer/src/components/NewAgent.vue'
 import StartAsAgent from '../../src/renderer/src/components/StartAsAgent.vue'
 import OverlayHost from '../../src/renderer/src/components/OverlayHost.vue'
+import ProvidersScreen from '../../src/renderer/src/components/ProvidersScreen.vue'
 import WorkSearchDialog from '../../src/renderer/src/components/WorkSearchDialog.vue'
 import ScheduledJobDialog from '../../src/renderer/src/components/ScheduledJobDialog.vue'
 import SessionTools from '../../src/renderer/src/components/SessionTools.vue'
@@ -139,6 +140,30 @@ const TOOLS: ToolRegistry = { set: null, dropped: 0, at: null }
  */
 ;(window as unknown as { api?: unknown }).api = {
   runtime: {
+    checkProviderAuth: async () => ({ state: 'usable', login: 'account', expiresAt: null }),
+    apiKeyStatus: async ({ provider }: { provider: string }) => ({
+      provider,
+      set: false,
+      setAt: null,
+      inUse: false,
+    }),
+    providerVersions: async () => ({}),
+    providerSetup: async () => ({}),
+    providerUsage: async () => ({}),
+    providerResources: async () => ({
+      claude: { running: 0, at: NOW, rssBytes: 0, cpuPercent: 0 },
+      codex: { running: 0, at: NOW, rssBytes: 0, cpuPercent: 0 },
+    }),
+    onProvidersChanged: () => () => {},
+    modelList: async ({ provider }: { provider: string }) => ({
+      provider,
+      notAsked: null,
+      standIn: null,
+      models: [],
+      lastPicked: null,
+      startsOn: null,
+    }),
+    keptRules: async () => ({ claude: [], codex: [] }),
     agentIdentities: async () => identities(),
     setCapabilities: async () => identities().identities[0],
     setSpawningEnabled: async () => ({ spawningEnabled: true }),
@@ -204,6 +229,20 @@ let pressed: boolean[] = []
  * `a-number-can-survive-the-death-of-its-derivation`.
  */
 const PATHS = [
+  {
+    host: 'ProvidersScreen',
+    panel: 'ProviderCard',
+    cy: 'provider-drawer',
+    selfHosted: true,
+    open: () =>
+      h(ProvidersScreen, {
+        setupProvider: 'codex',
+        capabilities: null,
+        warnings: null,
+        clock: NOW,
+        style: 'position:fixed;inset:100px 0 0 52px',
+      }),
+  },
   {
     host: 'WorkSearchDialog',
     panel: 'WorkSearchDialog',
@@ -675,6 +714,7 @@ describe('§3 · the mount sites are counted from the source (390 §3)', () => {
     expect([...found.keys()].sort()).toEqual([
       'CanonicalDocumentOverlay',
       'ConversationPane',
+      'ProvidersScreen',
       'ReadingPane',
       'RuntimeScreen',
       'ScheduleBar',
@@ -687,7 +727,7 @@ describe('§3 · the mount sites are counted from the source (390 §3)', () => {
     const censused = new Set(PATHS.map((path) => path.host))
     expect([...censused].sort()).toEqual([...found.keys()].sort())
     const sites = [...found.values()].reduce((all, one) => all + one, 0)
-    expect(sites, 'a mount site appeared that this file has never opened').toBe(16)
+    expect(sites, 'a mount site appeared that this file has never opened').toBe(17)
   })
 
   /**
@@ -1177,7 +1217,10 @@ describe('§7 · at a window under 840 (444, 411 §6 item 2)', () => {
       'no panel even reaches the lane’s band at 460px, so this width measures nothing',
     ).toBeGreaterThan(0)
     // Both panels reach behind the stop at this width. The hit-tests above must still pick the stop.
-    expect(onThePoint, 'another panel now covers the stop’s own centre').toEqual(['SessionTools'])
+    expect(onThePoint, 'another panel now covers the stop’s own centre').toEqual([
+      'ProviderCard',
+      'SessionTools',
+    ])
   })
 
   /**

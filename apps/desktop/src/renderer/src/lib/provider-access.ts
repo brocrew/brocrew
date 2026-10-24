@@ -1,12 +1,16 @@
 import { ref, shallowRef } from 'vue'
-import type { ApiKeyStatus, AuthState, Provider } from '../../../shared/runtime-ipc'
+import type { ApiKeyStatus, AuthState, Provider, RuntimeBridge } from '../../../shared/runtime-ipc'
 import { DEFAULT_PROFILE_ID } from '../../../shared/runtime-ipc'
 import { readableError } from './session-record'
 
 export type AuthPhase = 'idle' | 'checking' | 'copying' | 'signing-in'
 
 /** One set of login/key readings for a provider row and its controls. Gestures stay serialized. */
-export function createProviderAccess(provider: () => Provider, changed: () => void) {
+export function createProviderAccess(
+  provider: () => Provider,
+  changed: () => void,
+  bridge: () => Pick<RuntimeBridge, 'checkProviderAuth' | 'apiKeyStatus'>,
+) {
   const auth = shallowRef<AuthState | null>(null)
   const authBusy = ref<AuthPhase>('idle')
   const keyStatus = shallowRef<ApiKeyStatus | null>(null)
@@ -40,7 +44,7 @@ export function createProviderAccess(provider: () => Provider, changed: () => vo
     }
     await withGesture('checking', async () => {
       try {
-        auth.value = await window.api.runtime.checkProviderAuth(asked())
+        auth.value = await bridge().checkProviderAuth(asked())
       } catch (error) {
         auth.value = { state: 'unknown', reason: readableError(error) }
       }
@@ -49,7 +53,7 @@ export function createProviderAccess(provider: () => Provider, changed: () => vo
 
   async function readKey(): Promise<void> {
     try {
-      keyStatus.value = await window.api.runtime.apiKeyStatus({ provider: provider() })
+      keyStatus.value = await bridge().apiKeyStatus({ provider: provider() })
       keyError.value = null
     } catch (error) {
       keyError.value = readableError(error)

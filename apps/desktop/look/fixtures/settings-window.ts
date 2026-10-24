@@ -1,4 +1,5 @@
 import type { PluginsClient } from '../../src/shared/plugin-settings'
+import type { ProviderCapabilityMap } from '../../src/shared/runtime-ipc'
 import { defineComponent, h, ref } from 'vue'
 import AppTitleBar from '../../src/renderer/src/components/AppTitleBar.vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
@@ -16,6 +17,7 @@ export function settingsWindow(
   start: SettingsTab = 'skills',
   theme = 'classic',
   plugins?: PluginsClient,
+  providerCapabilities: ProviderCapabilityMap | null = null,
 ) {
   providersBridge()
   themesBridge(theme)
@@ -60,7 +62,7 @@ export function settingsWindow(
               ),
               h(SettingsScreen, {
                 tab: tab.value,
-                capabilities: null,
+                capabilities: providerCapabilities,
                 warnings: null,
                 clock: Date.now(),
                 store: fixture.store,

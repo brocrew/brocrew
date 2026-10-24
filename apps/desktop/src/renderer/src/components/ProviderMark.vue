@@ -18,7 +18,7 @@ defineProps<{
     :data-provider-mark="provider"
     aria-hidden="true"
   >
-    <span v-if="kind !== 'blossom'" class="provider-mark__claude">{{
+    <span v-if="kind === 'letter'" class="provider-mark__claude">{{
       (name ?? provider).slice(0, 1).toUpperCase()
     }}</span>
     <template v-else-if="kind === 'blossom'">

@@ -203,7 +203,7 @@ it('opens only the requested provider setup inside Settings', async () => {
     'targeted setup',
     m.host,
   )
-  expect(claude.querySelector('[data-cy="provider-inline-setup"]')).toBeNull()
+  expect(claude).toBeNull()
 })
 it('blocks both the button and keyboard if the only selected provider needs setup', async () => {
   const start = vi.fn()

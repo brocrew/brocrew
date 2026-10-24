@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { nextTick } from 'vue'
+import { defineComponent, h, nextTick, ref } from 'vue'
 import { userEvent } from 'vitest/browser'
 import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
 import ProvidersScreen from '../../src/renderer/src/components/ProvidersScreen.vue'
+import OverlayHost, { provideOverlayLayer } from '../../src/renderer/src/components/OverlayHost.vue'
+import type { Provider } from '../../src/shared/runtime-ipc'
 import { providersBridge } from '../../look/fixtures/providers'
 import { useDebugMode } from '../../src/renderer/src/composables/useDebugMode'
 import { mount, unmountAll, type Mounted } from './harness'
@@ -40,6 +42,56 @@ const row = (m: Mounted, provider: string) => {
 }
 
 describe('the Providers list opens the existing controls in one drawer', () => {
+  it('one Escape closes only the top dialog when a setup route arrives over another modal', async () => {
+    const fixture = defineComponent({
+      setup(_props, { expose }) {
+        const layer = ref<HTMLElement | null>(null)
+        const setup = ref<Provider | null>(null)
+        const other = ref(true)
+        provideOverlayLayer(layer)
+        expose({
+          route: () => {
+            setup.value = 'codex'
+          },
+        })
+        return () =>
+          h('div', { style: 'display:flex;width:100%;height:100%' }, [
+            h(ProvidersScreen, {
+              setupProvider: setup.value,
+              capabilities: null,
+              warnings: null,
+              clock: NOW,
+            }),
+            h('div', { ref: layer }),
+            other.value
+              ? h(
+                  OverlayHost,
+                  {
+                    label: 'Other dialog',
+                    onClose: () => {
+                      other.value = false
+                    },
+                  },
+                  () => h('button', 'Close other'),
+                )
+              : null,
+          ])
+      },
+    })
+    const m = mount(fixture, {}, { width: 1180, height: 900 })
+    await settle()
+    ;(m.vm['route'] as () => void)()
+    await settle()
+    expect(m.host.querySelectorAll('[role="dialog"]')).toHaveLength(2)
+    await userEvent.keyboard('{Escape}')
+    await settle()
+    const remaining = m.host.querySelectorAll('[role="dialog"]')
+    expect(remaining).toHaveLength(1)
+    expect(remaining[0]?.contains(document.activeElement)).toBe(true)
+    await userEvent.keyboard('{Escape}')
+    await settle()
+    expect(m.host.querySelectorAll('[role="dialog"]')).toHaveLength(0)
+  })
   it('draws descriptor rows with counts and the tightest usage reading, without cards on the page', async () => {
     const m = screen()
     await settle()
@@ -53,21 +105,21 @@ describe('the Providers list opens the existing controls in one drawer', () => {
   it('adds a made-up descriptor row and letter mark without another UI branch', async () => {
     const check = window.api.runtime.checkProviderAuth
     window.api.runtime.checkProviderAuth = async (asked) =>
-      (asked.provider as string) === 'cedar'
+      (asked.provider as string) === 'fable'
         ? { state: 'absent', reason: 'No fictional sign-in.', why: 'no-login' }
         : check(asked)
     const cedar = {
       ...PROVIDER_DESCRIPTORS[0],
-      id: 'cedar',
-      displayName: 'Cedar',
+      id: 'fable',
+      displayName: 'Fable',
       debugOnly: false,
     }
     const m = screen({ descriptors: [...PROVIDER_DESCRIPTORS, cedar] })
     await settle()
     expect(m.all('provider-row')).toHaveLength(3)
-    expect(row(m, 'cedar').textContent).toContain('Cedar')
-    expect(row(m, 'cedar').querySelector('[data-provider-mark="cedar"]')?.textContent).toContain(
-      'C',
+    expect(row(m, 'fable').textContent).toContain('Fable')
+    expect(row(m, 'fable').querySelector('[data-provider-mark="fable"]')?.textContent).toContain(
+      'F',
     )
   })
   it('opens the reused card and only that provider’s kept rules, then restores focus on Escape', async () => {
@@ -84,6 +136,10 @@ describe('the Providers list opens the existing controls in one drawer', () => {
     expect(dialog.querySelector('[data-cy="provider-card"][data-provider="claude"]')).not.toBeNull()
     expect(dialog.querySelector('[data-cy="provider-card"][data-provider="codex"]')).toBeNull()
     expect(dialog.textContent).toContain('Kept rules')
+    expect(dialog.querySelectorAll('[data-cy="kept-rules-provider"]')).toHaveLength(1)
+    expect(
+      dialog.querySelector('[data-cy="kept-rules-provider"]')?.getAttribute('data-provider'),
+    ).toBe('claude')
     expect(check.mock.calls).toHaveLength(before)
     await userEvent.keyboard('{Escape}')
     await settle()
@@ -111,9 +167,11 @@ describe('the Providers list opens the existing controls in one drawer', () => {
     expect(dialog.querySelector('[data-cy="provider-set-up"]')).toBeNull()
     m.q('provider-options').click()
     await settle()
-    m.q('provider-set-up').click()
+    m.q('provider-set-up').focus()
+    await userEvent.keyboard('{Enter}')
     await settle()
     expect(dialog.querySelector('[data-cy="provider-inline-setup"]')).not.toBeNull()
+    expect(m.q('provider-inline-setup').contains(document.activeElement)).toBe(true)
   })
   it('uses At its limit for a stopped signed-in provider and Couldn’t check for unknown auth', async () => {
     const runtime = window.api.runtime
@@ -138,5 +196,8 @@ describe('the Providers list opens the existing controls in one drawer', () => {
     await settle()
     expect(m.q('provider-drawer').textContent).toContain('Codex')
     expect(m.q('provider-inline-setup')).toBeDefined()
+    await userEvent.keyboard('{Escape}')
+    await settle()
+    expect(document.activeElement).toBe(row(m, 'codex'))
   })
 })

@@ -760,6 +760,10 @@ describe('§8 · the Providers card’s Set up opens it', () => {
   it('keeps setup inside its card, and Cancel restores the normal sections', async () => {
     const { m } = theCard(SIGNED_OUT)
     await settled()
+    if (m.all('provider-options').length > 0) {
+      m.q('provider-options').click()
+      await nextTick()
+    }
     m.q('provider-set-up').click()
     await settled()
     expect(m.all('provider-inline-setup')).toHaveLength(1)
@@ -781,6 +785,10 @@ describe('§8 · the Providers card’s Set up opens it', () => {
   it('Check re-reads readiness and Done closes the flow without another provider prompt', async () => {
     const { m, runtime, readVersions } = theCard(SIGNED_IN)
     await settled()
+    if (m.all('provider-options').length > 0) {
+      m.q('provider-options').click()
+      await nextTick()
+    }
     m.q('provider-set-up').click()
     await settled()
     m.q('setup-check').click()
@@ -796,6 +804,10 @@ describe('§8 · the Providers card’s Set up opens it', () => {
   it('a failed readiness check never claims Done', async () => {
     const { m, runtime } = theCard(SIGNED_IN)
     await settled()
+    if (m.all('provider-options').length > 0) {
+      m.q('provider-options').click()
+      await nextTick()
+    }
     m.q('provider-set-up').click()
     await settled()
     runtime.checkProviderAuth.mockRejectedValueOnce(new Error('Cannot reach provider'))
@@ -807,6 +819,10 @@ describe('§8 · the Providers card’s Set up opens it', () => {
   it('does not check or claim Done after an API-key save is refused', async () => {
     const { m, runtime } = theCard(SIGNED_OUT)
     await settled()
+    if (m.all('provider-options').length > 0) {
+      m.q('provider-options').click()
+      await nextTick()
+    }
     m.q('provider-set-up').click()
     await settled()
     m.q('setup-use-key').click()
@@ -831,6 +847,10 @@ describe('§8 · the Providers card’s Set up opens it', () => {
     async (options) => {
       const { m, runtime } = theCard(SIGNED_OUT, version('tested'), options)
       await settled()
+      if (m.all('provider-options').length > 0) {
+        m.q('provider-options').click()
+        await nextTick()
+      }
       m.q('provider-set-up').click()
       await settled()
       const signIn = m.q('setup-sign-in') as HTMLButtonElement
@@ -844,6 +864,10 @@ describe('§8 · the Providers card’s Set up opens it', () => {
   it('uses the existing machine sign-in command when the provider has no in-app sign-in', async () => {
     const { m, runtime } = theCard(SIGNED_OUT)
     await settled()
+    if (m.all('provider-options').length > 0) {
+      m.q('provider-options').click()
+      await nextTick()
+    }
     m.q('provider-set-up').click()
     await settled()
     m.q('setup-sign-in').click()

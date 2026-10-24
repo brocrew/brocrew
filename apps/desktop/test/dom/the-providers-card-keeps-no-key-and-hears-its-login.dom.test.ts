@@ -379,7 +379,7 @@ describe('§3 · 25cca325 · a login notice that lands while a copy is out is no
     })
     await settled()
     expect(runtime.checkProviderAuth).toHaveBeenCalledTimes(1)
-    expect(text(m.q('provider-standing'))).toBe('Not ready')
+    expect(text(m.q('provider-standing'))).toBe('Needs setup')
 
     m.q('sign-in-reprovision').click()
     await settled()
@@ -419,7 +419,7 @@ describe('§3 · 25cca325 · a login notice that lands while a copy is out is no
     await settled()
     expect(runtime.reprovisionProviderAuth).toHaveBeenCalledTimes(1)
     expect(runtime.checkProviderAuth).toHaveBeenCalledTimes(1)
-    expect(text(m.q('provider-standing'))).toBe('Not ready')
+    expect(text(m.q('provider-standing'))).toBe('Needs setup')
     expect(authChanged).toEqual([DEFAULT_PROFILE_ID])
   })
 
@@ -448,7 +448,7 @@ const stopped = (
 })
 
 describe('§4 · b975fa15 · a stopped provider says so at the top of its card', () => {
-  it('🔴 a stopped wall: "At its limit until …" under the name, announced, and the badge says Signed in', async () => {
+  it('🔴 a stopped wall: "At its limit until …" under the name, announced, and the badge says At its limit', async () => {
     const reset = NOW + 2 * 60 * 60 * 1000
     const { m } = theCard({}, { limit: stopped('stopped', reset) })
     await settled()
@@ -456,7 +456,7 @@ describe('§4 · b975fa15 · a stopped provider says so at the top of its card',
     expect(text(heading)).toBe(`At its limit until ${clockTimeFrom(reset, NOW)}`)
     expect(heading.getAttribute('role')).toBe('status')
     expect(heading.getAttribute('title')).toContain('claude is rate-limited (five_hour)')
-    expect(text(m.q('provider-standing'))).toBe('Signed in')
+    expect(text(m.q('provider-standing'))).toBe('At its limit')
   })
 
   it('⚑ the control: a wall about to stop, or none — no heading, and Ready', async () => {
@@ -531,7 +531,7 @@ describe('a saved key this computer can’t read: the card says one true thing',
         { provider },
       )
       await settled()
-      expect(text(m.q('provider-standing'))).toBe('Not ready')
+      expect(text(m.q('provider-standing'))).toBe('Needs setup')
       expect(m.all('provider-account')).toHaveLength(0)
       expect(text(m.host)).not.toContain('Runs on the saved API key')
       expect(text(m.q('provider-key-in-use'))).toBe(REASON)
@@ -629,7 +629,7 @@ describe('§5 · a saved key whose account can’t pay is not ready', () => {
       apiKeyStatus: async () => refused(true),
     })
     await settled()
-    expect(text(m.q('provider-standing'))).toBe('Not ready')
+    expect(text(m.q('provider-standing'))).toBe('Needs setup')
     const line = text(m.q('provider-key-refused'))
     expect(line).toContain('the account the key belongs to can’t pay for it')
     expect(line).toContain(

@@ -65,7 +65,7 @@ const emit = defineEmits<{ close: [] }>()
  * What a screen reader calls this dialog: the words of the panel's own title. Required, so a new
  * mount site without a name is a type error.
  */
-const props = defineProps<{ label: string; contained?: boolean }>()
+const props = defineProps<{ label: string }>()
 
 /**
  * 🔴 **The summons's announcement channel INSIDE the layer that declares everything else inert**
@@ -224,11 +224,10 @@ onUnmounted(() => {
        site `358` added and nobody came back for.) Re-declaring the same values on a nested carrier changes
        nothing (custom properties resolve to the nearest declaration, and both declarations are this
        one), and it makes the host self-sufficient wherever it is mounted next. -->
-  <Teleport :to="layerElement" :disabled="props.contained || layerElement === null">
+  <Teleport :to="layerElement" :disabled="layerElement === null">
     <div
       ref="panel"
       class="overlay-host"
-      :class="{ 'overlay-host--contained': props.contained }"
       data-cy="overlay-host"
       data-chat-theme="light"
       role="dialog"
@@ -361,8 +360,5 @@ onUnmounted(() => {
   color: var(--text);
   inset: 0;
   outline: none;
-}
-.overlay-host--contained {
-  position: absolute;
 }
 </style>
