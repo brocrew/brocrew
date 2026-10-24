@@ -657,6 +657,7 @@ describe('341 · the rails, before anything can reach them', () => {
           named: { model: false, effort: false },
         },
         startedIn: work,
+        startedOnDefault: true,
         // ⚑ W4.189 · a give that names no folder records none.
         givenFolder: null,
         folderNotGranted: null,
