@@ -1,13 +1,13 @@
 {
   "schema": 1,
   "summary": {
-    "definedRows": 10916,
+    "definedRows": 10918,
     "tables": 498,
     "retiredRows": 2392,
     "rowsByRunState": {
       "complete": 1173,
       "partial-or-invalid": 708,
-      "unrun": 9035
+      "unrun": 9037
     },
     "tablesByRunState": {
       "complete": 60,
@@ -39592,7 +39592,7 @@
     },
     {
       "table": "4002",
-      "definedRows": 28,
+      "definedRows": 30,
       "canonicalRows": [
         "M1",
         "M2",
@@ -39621,7 +39621,9 @@
         "M25",
         "M26",
         "M27",
-        "M28"
+        "M28",
+        "M29",
+        "M30"
       ],
       "rows": [
         {
@@ -39735,9 +39737,17 @@
         {
           "id": "4002:M28",
           "fingerprint": "652650a24aa1c19a5d46585bb90f251c8e0befd775593b767c8d4e7b712604ec"
+        },
+        {
+          "id": "4002:M29",
+          "fingerprint": "988e600ea4ceb864a602a56c83fae4c3da1f6d379d587e0ae12d7d6e48e0b7d6"
+        },
+        {
+          "id": "4002:M30",
+          "fingerprint": "1fdc824de7e119e6cba8b3fb50e8989a2aefe761e33a0656040ad8c8cc13d3db"
         }
       ],
-      "definitionFingerprint": "553a17f560b5b04155bc77bf362382aaef2c25175ec90f94e2826c4c1db910fc",
+      "definitionFingerprint": "868c6be3bdd3c882f0d4f404381d4a2d24676a51d1538ffc7fb8e98fa9acaf55",
       "retiredRows": [],
       "retirements": {},
       "state": "unrun",
