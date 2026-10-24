@@ -149,7 +149,8 @@ const reset = (over: Partial<World> = {}): void => {
 function storeOver(): { store: AgentStore; lists: ModelLists } {
   const roster = (): AgentIdentities =>
     ({
-      identities: [ident(world.slug, { provider: world.itsProvider, kind: world.kind })],
+      identities: [ident(world.slug, { provider: world.itsProvider })],
+      ...(world.kind === 'service' ? { services: [world.slug] } : {}),
       foldersWithoutARow: [],
       spawningEnabled: true,
       defaultApprovalMode: 'ask',
