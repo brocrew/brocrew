@@ -16,6 +16,10 @@ scene('providers-list-window', async (stage) => {
   }
   const m = stage.mount(preview, {})
   await settle()
+  // The real sampler reads only while this window has focus.
+  m.host.querySelector<HTMLButtonElement>('[data-cy="settings-tab-providers"]')?.focus()
+  window.dispatchEvent(new Event('focus'))
+  await settle()
   const open = import.meta.env['LOOK_PROVIDER_OPEN']
   if (typeof open === 'string' && open !== '') {
     m.host

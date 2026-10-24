@@ -4,6 +4,7 @@ import type {
   ProviderUsageReading,
   ProviderVersion,
 } from '../../../shared/runtime-ipc'
+import { A_STANDING_WARNS } from '../../../shared/runtime-ipc'
 import { keyCantBeRead } from './saved-key'
 import { readingSays, readingStatus } from './usage-limit'
 
@@ -20,7 +21,8 @@ export interface ProviderRowFacts {
 
 /** The same four readings head the list and the provider's existing controls. */
 export function providerStanding(facts: ProviderRowFacts): ProviderStanding | null {
-  if (facts.version?.program?.standing === 'missing' || keyCantBeRead(facts.key))
+  const program = facts.version?.program
+  if ((program && A_STANDING_WARNS[program.standing]) || keyCantBeRead(facts.key))
     return { words: 'Needs setup', tone: 'not-ready' }
   const auth = facts.auth
   if (auth === null) return null
@@ -45,7 +47,12 @@ export function providerRowDetail(
 ): string {
   const standing = providerStanding(facts)
   if (standing === null) return 'Checking…'
-  if (standing.tone === 'not-ready') return 'Sign in or use an API key.'
+  if (standing.tone === 'not-ready') {
+    const program = facts.version?.program
+    return program && A_STANDING_WARNS[program.standing]
+      ? program.said
+      : 'Sign in or use an API key.'
+  }
   if (standing.tone === 'unknown')
     return facts.auth?.state === 'unknown' ? facts.auth.reason : "Couldn't check this provider."
   if (facts.atItsLimit !== null) return facts.atItsLimit

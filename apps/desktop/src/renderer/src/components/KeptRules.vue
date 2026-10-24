@@ -11,7 +11,10 @@ import { usePersistentToggle } from '../composables/usePersistentToggle'
  * a Remove. ⚑ Read when the page opens and again after each removal; a removal edits only the file
  * the rule is kept in, and main checks the rule is still there first.
  */
-const props = defineProps<{ providers: readonly Provider[] }>()
+const props = defineProps<{
+  providers: readonly Provider[]
+  names?: Readonly<Partial<Record<Provider, string>>>
+}>()
 
 const kept = shallowRef<KeptRules | null>(null)
 const unread = ref<string | null>(null)
@@ -96,9 +99,9 @@ watch(failures, () => (open.value = true))
         data-cy="kept-rules-provider"
         :data-provider="provider"
       >
-        <h3>{{ PROVIDER_NAME[provider] }}</h3>
+        <h3>{{ props.names?.[provider] ?? PROVIDER_NAME[provider] ?? provider }}</h3>
         <p
-          v-if="kept !== null && kept[provider].length === 0"
+          v-if="kept !== null && (kept[provider]?.length ?? 0) === 0"
           class="none"
           data-cy="kept-rules-none"
         >

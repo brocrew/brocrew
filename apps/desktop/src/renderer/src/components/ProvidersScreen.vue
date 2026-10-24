@@ -109,6 +109,7 @@ function readVisibleAccess(): void {
   }
 }
 const selected = ref<Provider | null>(null)
+const setupOnEntry = ref(false)
 const surface = ref<HTMLElement | null>(null)
 const drawerFrame = shallowRef<{
   top: number
@@ -145,6 +146,7 @@ const providerCard = ref<InstanceType<typeof ProviderCard> | null>(null)
 function openProvider(provider: Provider, event?: MouseEvent): void {
   if (event?.currentTarget instanceof HTMLElement) event.currentTarget.focus()
   measureDrawer()
+  setupOnEntry.value = standingOf(provider)?.tone === 'not-ready'
   selected.value = provider
 }
 function closeProvider(): void {
@@ -165,7 +167,10 @@ watch(providers, () => {
 watch(
   () => props.setupProvider,
   (provider) => {
-    if (provider && providers.value.includes(provider)) selected.value = provider
+    if (provider && providers.value.includes(provider)) {
+      setupOnEntry.value = true
+      selected.value = provider
+    }
   },
   { immediate: true },
 )
@@ -173,7 +178,10 @@ const keyAsked = useKeyAsked()
 watch(
   keyAsked,
   (provider) => {
-    if (provider && providers.value.includes(provider)) selected.value = provider
+    if (provider && providers.value.includes(provider)) {
+      setupOnEntry.value = false
+      selected.value = provider
+    }
   },
   { immediate: true },
 )
@@ -479,9 +487,7 @@ const runningOf = (provider: Provider) => {
             frameless
             :display-name="selectedDescriptor.displayName"
             :access="accessFor(selected!)"
-            :setup-requested="
-              props.setupProvider === selected || standingOf(selected!)?.tone === 'not-ready'
-            "
+            :setup-requested="setupOnEntry"
             :capabilities="props.capabilities"
             :limit="limitOf(selected!)"
             :limits-read="limitsRead"
@@ -503,7 +509,10 @@ const runningOf = (provider: Provider) => {
             @checked-again="readVersions"
             @start-conversation="emit('startConversation')"
           />
-          <KeptRules :providers="[selected]" />
+          <KeptRules
+            :providers="[selected]"
+            :names="{ [selected]: selectedDescriptor.displayName }"
+          />
         </div>
       </section>
     </OverlayHost>
@@ -587,10 +596,10 @@ const runningOf = (provider: Provider) => {
 .provider-row {
   display: flex;
   align-items: center;
-  gap: var(--space-10);
+  gap: var(--space-8);
   min-width: 0;
   width: 100%;
-  padding: var(--space-8) var(--space-10);
+  padding: var(--space-5) var(--space-8);
   text-align: left;
   border: var(--border-width) solid var(--line);
   border-radius: var(--radius-lg);
@@ -604,8 +613,8 @@ const runningOf = (provider: Provider) => {
 .provider-logo {
   display: grid;
   place-items: center;
-  width: var(--space-28);
-  height: var(--space-28);
+  width: var(--row-icon);
+  height: var(--row-icon);
   flex: none;
   border: var(--border-width) solid var(--accent-border);
   border-radius: var(--radius-card);
@@ -614,6 +623,10 @@ const runningOf = (provider: Provider) => {
 .provider-logo.blossom {
   border-color: var(--line);
   background: var(--paper-bg);
+}
+.provider-logo :deep(.provider-mark) {
+  width: var(--icon-lg);
+  height: var(--icon-lg);
 }
 .provider-logo :deep(.provider-mark__claude) {
   background: var(--accent-text);
@@ -624,23 +637,25 @@ const runningOf = (provider: Provider) => {
   min-width: 0;
   flex: 1;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--space-1);
 }
 .provider-row-heading {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: var(--space-3) var(--space-8);
+  gap: var(--space-1) var(--space-6);
 }
 .provider-row-heading strong {
-  font-size: var(--type-body);
+  font-size: var(--type-reading);
+  font-weight: var(--fw-semibold);
 }
 .running {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  font-size: var(--type-caption);
+  font-size: var(--type-small);
   color: var(--text-soft);
+  white-space: nowrap;
 }
 .running .icon {
   width: var(--icon-sm);
