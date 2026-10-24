@@ -130,24 +130,41 @@ it('v2 retry refreshes without preparing or committing', async () => {
   ).toHaveLength(0)
   expect(await f.snapshot()).toEqual(before)
 })
-it.each([
-  'closed',
-  'destroyed',
-  'render-process-gone',
-  'did-navigate',
-  'did-start-navigation',
-] as const)('%s discards the window review before any later commit', async (event) => {
-  const f = await setup(),
-    shown = await prepare(f.a, 'install'),
-    before = await f.snapshot()
-  if (event === 'closed') f.a.owner.emit(event)
-  else f.a.owner.webContents.emit(event)
-  expect(await f.a.call({ kind: 'install', id: 'chrome', consent: shown.consent })).toMatchObject({
-    ok: false,
-    mutationFailure: 'policy-refused',
-  })
-  expect(await f.snapshot()).toEqual(before)
-})
+it.each(['closed', 'destroyed', 'render-process-gone', 'did-navigate'] as const)(
+  '%s discards the window review before any later commit',
+  async (event) => {
+    const f = await setup(),
+      shown = await prepare(f.a, 'install'),
+      before = await f.snapshot()
+    if (event === 'closed') f.a.owner.emit(event)
+    else f.a.owner.webContents.emit(event)
+    expect(await f.a.call({ kind: 'install', id: 'chrome', consent: shown.consent })).toMatchObject(
+      {
+        ok: false,
+        mutationFailure: 'policy-refused',
+      },
+    )
+    expect(await f.snapshot()).toEqual(before)
+  },
+)
+it.each(['did-start-loading', 'did-start-navigation'] as const)(
+  'an attempted %s leaves the displayed review usable when navigation is refused',
+  async (event) => {
+    const f = await setup(),
+      shown = await prepare(f.a, 'install'),
+      before = await f.snapshot(),
+      notifications = f.a.owner.webContents.send.mock.calls.length
+    f.a.owner.webContents.emit(event)
+    expect(await f.snapshot()).toEqual(before)
+    expect(f.a.owner.webContents.send.mock.calls).toHaveLength(notifications)
+    expect(await f.a.call({ kind: 'install', id: 'chrome', consent: shown.consent })).toMatchObject(
+      {
+        ok: true,
+        cards: [{ installed: true, installedVersion: '1.0.2' }],
+      },
+    )
+  },
+)
 it.each([
   [
     'policy-refused',
