@@ -1,0 +1,92 @@
+"""Provider rows, shared readings and the existing modal drawer.
+
+Fictional bridge controls only; no native sign-in, credential reads or homes.
+Each row retains its assertion killer; proofs restore source bytes.
+"""
+
+MUTATIONS = [('M1 · debug-only descriptors escape the visibility filter — killed by `visible-providers.test.ts`',
+  [('packages/shared/src/providers.ts',
+    '  const ordinary = descriptors.filter((descriptor) => !descriptor.debugOnly)\n',
+    '  const ordinary = [...descriptors]\n')]),
+ ('M2 · debug descriptors precede ordinary providers instead of following them — killed by '
+  '`visible-providers.test.ts`',
+  [('packages/shared/src/providers.ts',
+    '    ? [...ordinary, ...descriptors.filter((descriptor) => descriptor.debugOnly)]\n',
+    '    ? [...descriptors.filter((descriptor) => descriptor.debugOnly), ...ordinary]\n')]),
+ ('M3 · the real window ignores Debug mode when choosing visible providers — killed by '
+  '`providers-list-drawer.dom.test.ts`',
+  [('apps/desktop/src/renderer/src/composables/useVisibleProviders.ts',
+    'visibleProviderDescriptors(debug.value, descriptors?.())',
+    'visibleProviderDescriptors(false, descriptors?.())')]),
+ ('M4 · only the first two descriptors get rows — killed by `providers-list-drawer.dom.test.ts`',
+  [('apps/desktop/src/renderer/src/components/ProvidersScreen.vue',
+    'v-for="descriptor in descriptors"',
+    'v-for="descriptor in descriptors.slice(0, 2)"')]),
+ ('M5 · a future provider receives the hard-coded Claude letter — killed by '
+  '`providers-list-drawer.dom.test.ts`',
+  [('apps/desktop/src/renderer/src/components/ProviderMark.vue',
+    '(name ?? provider).slice(0, 1).toUpperCase()',
+    "'C'")]),
+ ('M6 · a warning program version is labelled Ready — killed by `provider-row.test.ts`',
+  [('apps/desktop/src/renderer/src/lib/provider-row.ts',
+    'if ((program && A_STANDING_WARNS[program.standing]) || keyCantBeRead(facts.key))',
+    "if ((program && program.standing === 'missing') || keyCantBeRead(facts.key))")]),
+ ('M7 · an unreadable saved key no longer outranks a usable account — killed by `provider-row.test.ts`',
+  [('apps/desktop/src/renderer/src/lib/provider-row.ts', ' || keyCantBeRead(facts.key))', ' || false)')]),
+ ('M8 · an unknown auth check is labelled Ready — killed by `provider-row.test.ts`',
+  [('apps/desktop/src/renderer/src/lib/provider-row.ts',
+    'if (auth.state === \'unknown\') return { words: "Couldn\'t check", tone: \'unknown\' }',
+    "if (auth.state === 'unknown') return { words: 'Ready', tone: 'ready' }")]),
+ ('M9 · a billing-refused saved key is labelled Ready — killed by `provider-row.test.ts`',
+  [('apps/desktop/src/renderer/src/lib/provider-row.ts',
+    '    facts.key.refusedForBilling !== undefined\n',
+    '    false\n')]),
+ ('M10 · a stopped provider loses its At its limit pill — killed by `provider-row.test.ts`',
+  [('apps/desktop/src/renderer/src/lib/provider-row.ts', 'return facts.atItsLimit === null', 'return true')]),
+ ('M11 · the lowest usage percentage is said as the tightest limit — killed by `provider-row.test.ts`',
+  [('apps/desktop/src/renderer/src/lib/provider-row.ts',
+    'reading.usedPercent > (held.usedPercent ?? -1)',
+    'reading.usedPercent < (held.usedPercent ?? -1)')]),
+ ('M12 · opening the drawer starts another login and key reader — killed by '
+  '`providers-list-drawer.dom.test.ts`',
+  [('apps/desktop/src/renderer/src/components/ProvidersScreen.vue',
+    '            :access="accessFor(selected!)"\n',
+    '')]),
+ ('M13 · a second auth gesture can start while the first is outstanding — killed by '
+  '`provider-access.test.ts`',
+  [('apps/desktop/src/renderer/src/lib/provider-access.ts',
+    "    if (authBusy.value !== 'idle') return\n",
+    '    if (false) return\n')]),
+ ('M14 · a live login notice restarts setup while the drawer is in use — killed by '
+  '`providers-list-drawer.dom.test.ts`',
+  [('apps/desktop/src/renderer/src/components/ProvidersScreen.vue',
+    ':setup-requested="setupOnEntry"',
+    ':setup-requested="standingOf(selected!)?.tone === \'not-ready\'"')]),
+ ('M15 · closing a routed drawer loses the return to its provider row — killed by '
+  '`providers-list-drawer.dom.test.ts`',
+  [('apps/desktop/src/renderer/src/components/ProvidersScreen.vue',
+    '      .find((row) => row.dataset.provider === provider)\n      ?.focus()\n',
+    '      .find((row) => row.dataset.provider === provider)\n')]),
+ ('M16 · the drawer shows kept rules for all providers — killed by `providers-list-drawer.dom.test.ts`',
+  [('apps/desktop/src/renderer/src/components/ProvidersScreen.vue',
+    ':providers="[selected]"',
+    ':providers="providers"')]),
+ ('M17 · a provider without setup still gets a Tested version badge — killed by '
+  '`providers-list-drawer.dom.test.ts`',
+  [('apps/desktop/src/renderer/src/components/ProviderCard.vue',
+    "props.version?.program && (props.version.program.standing !== 'tested' || configured)",
+    'props.version?.program')]),
+ ('M18 · a failed resource sample presents a stale running count as current — killed by '
+  '`the-providers-screen-samples-only-while-looked-at.dom.test.ts`',
+  [('apps/desktop/src/renderer/src/components/ProvidersScreen.vue',
+    '  if (resourcesError.value !== null) return "Couldn\'t measure running agents"\n',
+    '')]),
+ ('M19 · the provider panel covers the Settings tabs — killed by `the-providers-cards-line-up.dom.test.ts`',
+  [('apps/desktop/src/renderer/src/components/ProvidersScreen.vue',
+    '        top: `${frame.top}px`,\n',
+    "        top: '0px',\n")]),
+ ('M20 · bypassing the global teleport lets one Escape close two actual dialogs — killed by '
+  '`providers-list-drawer.dom.test.ts`',
+  [('apps/desktop/src/renderer/src/components/OverlayHost.vue',
+    '<Teleport :to="layerElement" :disabled="layerElement === null">',
+    '<Teleport :to="layerElement" :disabled="true">')])]
