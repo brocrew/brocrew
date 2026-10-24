@@ -31,6 +31,7 @@ export function shareWords(share: number): string {
 export const MADE_WORDS: Readonly<Record<GivenMade, string>> = {
   shipped: 'Shipped with BroCrew',
   'own-instructions': 'The agent’s own instructions',
+  'own-notes': 'Notes this agent keeps for itself.',
   'composed-at-launch': 'Composed by BroCrew at launch, for this conversation',
 }
 

@@ -18,6 +18,7 @@ export interface ProviderDescriptor {
   readonly nativeArchive: boolean
   readonly credential: 'machine-or-key' | 'profile-or-key'
   readonly instructionPlacement: 'sdk-context' | 'native-file'
+  readonly ownNotesPlacement: 'profile-bundle' | 'first-lead'
   readonly connectionKind: 'standard'
   readonly capabilities: ProviderCapabilities
   /** The provider's own program, as a conversation's words name it. */
@@ -115,6 +116,7 @@ export const PROVIDER_DESCRIPTORS = [
     nativeArchive: true,
     credential: 'machine-or-key',
     instructionPlacement: 'sdk-context',
+    ownNotesPlacement: 'profile-bundle',
     connectionKind: 'standard',
     capabilities: Object.freeze(CLAUDE_CAPABILITIES),
     programName: 'Claude Code',
@@ -178,6 +180,7 @@ export const PROVIDER_DESCRIPTORS = [
     nativeArchive: true,
     credential: 'profile-or-key',
     instructionPlacement: 'native-file',
+    ownNotesPlacement: 'first-lead',
     connectionKind: 'standard',
     capabilities: Object.freeze(CODEX_CAPABILITIES),
     programName: 'Codex',

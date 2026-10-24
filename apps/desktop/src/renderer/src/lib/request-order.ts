@@ -226,7 +226,9 @@ function bodyOf(
         : MADE_WORDS[one.made],
     author: one.version
       ? `Version ${String(one.version.version)}: ${one.version.whoWroteItMeans}, ${when(one.version.writtenAt)}`
-      : null,
+      : one.made === 'own-notes' && one.ownNotesVersion != null
+        ? `Own notes version ${String(one.ownNotesVersion)}`
+        : null,
     text: text.slice(one.start, one.end),
   }))
 }

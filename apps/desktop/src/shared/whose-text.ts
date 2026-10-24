@@ -53,6 +53,7 @@ import type { ToldLayerKind } from './told'
 export const WHOSE_TEXT = [
   'factory',
   'configured',
+  'own-notes',
   'dynamic',
   'the-place',
   'learned',
@@ -118,10 +119,15 @@ export const WHOSE_WORDS: Readonly<Record<WhoseText, WhoseWords>> = {
   },
   configured: {
     heading: 'yours',
-    short: 'Yours. Survives an update. The only part you can change.',
+    short: 'Standing rules set for this agent. Survives an update.',
+    says: 'Standing rules saved for this agent. They survive an update, and you can edit or undo them.',
+  },
+  'own-notes': {
+    heading: 'Own notes',
+    short: 'Notes this agent keeps for itself. You can edit or undo them.',
     says:
-      'What you wrote for this agent. It survives an update, and it is the only part of these ' +
-      'instructions you can change.',
+      'Notes this agent keeps for itself. It reads them at every start, after its standing rules. ' +
+      'You can edit or undo them.',
   },
   dynamic: {
     heading: 'this conversation’s',

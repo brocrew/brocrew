@@ -514,6 +514,8 @@ export interface InstructionContext {
    */
   readonly profileSlug: string | null
   readonly displayName?: string | null
+  /** One profile-shared page as this launch read it; absent on older composition callers. */
+  readonly ownNotes?: { readonly version: number; readonly text: string } | null
   /** The profile's saved methods as this launch read them; no section when not given. */
   readonly savedMethods?: SavedMethodsReading
   /** The real controller's current catalogue; null/absent means no Plugins section. */
@@ -764,7 +766,10 @@ export interface FactoryTextGiven {
 }
 
 /** Profile identity, shared rules and the person's configured instructions. */
-export type ProfileBundleContext = Pick<InstructionContext, 'configured' | 'isAService'> &
+export type ProfileBundleContext = Pick<
+  InstructionContext,
+  'configured' | 'isAService' | 'ownNotes'
+> &
   Partial<PromptIdentity> & { readonly factoryText?: FactoryTextGiven }
 
 /**
@@ -821,7 +826,26 @@ function bundleSections(context: ProfileBundleContext, provider: Provider): Bund
       blocks: [configured],
     })
   }
+  if (providerDescriptor(provider).ownNotesPlacement === 'profile-bundle') {
+    const notes = ownNotesSection(context)
+    if (notes !== null && context.ownNotes?.text !== '') sections.push(notes)
+  }
   return sections
+}
+
+/** Agent-kept text has its own owner and cannot introduce another Markdown section. */
+function ownNotesSection(context: ProfileBundleContext): BundleSection | null {
+  if (context.profileSlug == null || context.ownNotes == null) return null
+  const text = context.ownNotes.text
+  const quoted = '> ' + text.replace(/\r\n|[\r\n\u2028\u2029\u0085\v\f]/g, '$&> ')
+  return {
+    whose: 'own-notes',
+    heading: '## Your own notes',
+    blocks: [
+      'These are notes you keep for your role; your standing rules come first.',
+      text === '' ? 'Your own notes are empty.' : quoted,
+    ],
+  }
 }
 
 /**
@@ -852,8 +876,13 @@ export interface ToolsToldInText {
 function thisConversationSections(
   context: InstructionContext,
   tools?: ToolsToldInText,
+  provider: Provider = DEFAULT_IDENTITY_PROVIDER,
 ): BundleSection[] {
   const sections: BundleSection[] = []
+  if (providerDescriptor(provider).ownNotesPlacement === 'first-lead') {
+    const notes = ownNotesSection(context)
+    if (notes !== null) sections.push(notes)
+  }
   if (tools !== undefined) {
     sections.push({
       whose: 'factory',
@@ -963,11 +992,12 @@ export function profileBundleSpans(
 export function thisConversationSpans(
   context: InstructionContext,
   tools?: ToolsToldInText,
+  provider: Provider = DEFAULT_IDENTITY_PROVIDER,
 ): {
   readonly text: string
   readonly spans: readonly InstructionSpan[]
 } {
-  return spansOf(thisConversationSections(context, tools))
+  return spansOf(thisConversationSections(context, tools, provider))
 }
 
 /**

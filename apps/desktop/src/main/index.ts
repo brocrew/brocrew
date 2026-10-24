@@ -968,7 +968,11 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
         // by the app-server. Re-send the lead after compaction or a turn the provider never began
         // (`HostedSession.firstTurnLead`). Claude receives these with its tool catalogue through
         // the in-process server's `instructions`.
-        thisConversation: thisConversationSpans(launchContext, toolsToldInTextFor(provider)),
+        thisConversation: thisConversationSpans(
+          launchContext,
+          toolsToldInTextFor(provider),
+          provider,
+        ),
         workspaceFile: providerKnowledge[provider].instructions.workspaceFile?.(
           brobotWorkspace(userData),
         ),
