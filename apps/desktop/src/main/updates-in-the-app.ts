@@ -21,6 +21,7 @@ import { otherBroBotsRunning } from './other-brobots'
 import { startTheInstaller, theWayBack } from './reopen-after-update'
 import type { RuntimeHost } from './runtime/runtime-host'
 import { readUpdateSettings, updateSettingsOf, writeUpdateSettings } from './update-settings'
+import type { UpdateFeedRoute } from './update-feed'
 import {
   createUpdates,
   parseSettingsChange,
@@ -41,9 +42,8 @@ import {
  */
 
 /**
- * ⚑ electron-updater sends every request a per-install id it keeps in the data folder
- * (`x-user-staging-id`, for staged rollouts, which BroBot's releases do not use). Replaced by this
- * one, the same on every computer, so a check says nothing about who asked.
+ * Other feeds replace the updater's per-install rollout ID with the same value on every computer.
+ * The public website provider removes that header altogether.
  */
 const NOBODY_IN_PARTICULAR = { 'x-user-staging-id': '00000000-0000-0000-0000-000000000000' }
 
@@ -67,16 +67,29 @@ export function startUpdates(options: {
   })
 
   let loaded: Promise<AppUpdater> | null = null
+  let publicFeed: UpdateFeedRoute | null = null
   /** The updater once loaded: an installer is started from a `quit` listener, which cannot wait. */
   let updater: AppUpdater | null = null
   const theUpdater = (): Promise<AppUpdater> => {
-    loaded ??= import('electron-updater').then((exported) => {
+    loaded ??= import('electron-updater').then(async (exported) => {
       const autoUpdater = theAutoUpdaterOf(exported)
       // ⛔ Nothing downloads or installs unless the person chooses (`updates.ts`).
       autoUpdater.autoDownload = false
       autoUpdater.autoInstallOnAppQuit = false
       autoUpdater.allowDowngrade = false
       autoUpdater.requestHeaders = NOBODY_IN_PARTICULAR
+      const { publicUpdateFeed, websiteUpdatesEnabled, UPDATE_REQUEST_HEADERS } =
+        await import('./update-feed')
+      publicFeed = publicUpdateFeed({
+        feed,
+        version: app.getVersion(),
+        mayUseWebsite: () =>
+          websiteUpdatesEnabled(readUpdateSettings(settings.file, settings.defaults)),
+      })
+      if (publicFeed !== null) {
+        autoUpdater.setFeedURL(publicFeed.provider)
+        autoUpdater.requestHeaders = UPDATE_REQUEST_HEADERS
+      }
       autoUpdater.logger = {
         info: (message?: unknown) => console.info(`updater: ${String(message)}`),
         warn: (message?: unknown) => console.warn(`updater: ${String(message)}`),
@@ -185,9 +198,11 @@ export function startUpdates(options: {
       mkdirSync(stagingFolder, { recursive: true, mode: 0o700 })
       const token = privateFeedToken(feed, process.env)
       const url =
-        token === null || feed.provider !== 'github'
-          ? downloadUrlOf(feed, found.version, image.url)
-          : await privateDownloadUrlOf({ feed, version: found.version, file: image.url, token })
+        publicFeed !== null
+          ? publicFeed.downloadUrl(found.version, image.url)
+          : token === null || feed.provider !== 'github'
+            ? downloadUrlOf(feed, found.version, image.url)
+            : await privateDownloadUrlOf({ feed, version: found.version, file: image.url, token })
       guidedDownloads.signal.throwIfAborted()
       const pending = downloadChecked({
         url,
@@ -199,7 +214,11 @@ export function startUpdates(options: {
         // ⚑ Its own user agent: Electron's carries this BroCrew's version, and a download says no
         // more than a check does (electron-updater's say `electron-builder`).
         fetch: ((input: string, init?: RequestInit) =>
-          net.fetch(input, { ...init, headers: { 'user-agent': 'BroCrew' } })) as typeof fetch,
+          net.fetch(publicFeed?.downloadUrl(found.version, image.url) ?? input, {
+            ...init,
+            ...(publicFeed === null ? {} : { credentials: 'omit' as const }),
+            headers: { 'user-agent': 'BroCrew' },
+          })) as typeof fetch,
       })
       pendingGuides.add(pending)
       let path: string

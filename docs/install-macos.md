@@ -64,7 +64,7 @@ You can also run BroCrew from its source code, with no download to approve. See 
 
 ## Updating and removing
 
-- **Updates.** BroCrew checks GitHub for a newer version when it starts and once a day. GitHub sees your IP address and whether it is a Windows or a Mac BroCrew, and nothing else. Turn it off with **Check automatically**, in the menu that opens when you press the workspace name at the bottom of the left rail.
+- **Updates.** Stable automatic checks use brocrew.app, with GitHub as a fallback if the service cannot be reached. The request includes the installed app version; the requested file identifies Mac or Windows. Turn off **Check automatically** to send no update requests to brocrew.app. Manual checks and downloads then use GitHub. See [Updates](updates.md) for the request details and installation steps.
   - When there is a new version, BroCrew downloads it, checks it against the SHA-512 checksum the release publishes (fetched over HTTPS), and opens it for you. Quit every BroCrew, then drag the new one into Applications, replacing the old one.
   - **An update BroCrew downloads opens without the Gatekeeper prompt.** macOS asks about apps a browser downloaded; BroCrew downloads its own update, and trusts it because the checksum matches. A `.dmg` you download yourself from the Releases page needs **Open Anyway** once more, as above.
 - **If you had BroBot or BroBot2** (the beta's earlier names) in Applications, move it to the Trash once BroCrew works, and take it out of the Dock if you kept it there. They use the same data, and an old copy opened by mistake would run old code on it.
