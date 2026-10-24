@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { providerRoster } from '../lib/app-source.mjs'
+import * as upgradeRules from '../lib/upgrade-path.mjs'
 import {
   A_STANDING_STOPS_SETUP,
   appExeIn,
@@ -905,6 +906,138 @@ describe('the computer’s list of workspaces', () => {
     expect(registryKept(null, before)).toEqual(['the beta left no list of workspaces'])
     const twice = { ...before, workspaces: [...before.workspaces, before.workspaces[1]] }
     expect(registryKept(before, twice)).toEqual(['/other: listed more than once'])
+  })
+})
+
+describe('the workspace registry selected for an upgrade', () => {
+  const root = join('/fictional', 'app-data')
+  const workspace = join(root, 'desktop')
+  const packaged = join(root, 'packaged-workspaces.json')
+  const legacy = join(root, 'workspaces.json')
+  const book = () => ({
+    version: 1,
+    workspaces: [
+      { path: workspace, lastOpenedAt: 10 },
+      { path: join(root, 'orchard'), lastOpenedAt: 5, note: 'kept' },
+    ],
+  })
+  const readFrom = (files, seen) => (path) => {
+    seen.push(path)
+    return copy(files.get(path) ?? null)
+  }
+
+  it.each([
+    ['packaged', 'packaged-workspaces.json'],
+    ['legacy', 'workspaces.json'],
+  ])('uses the declared %s launch contract', (contract, basename) => {
+    expect(upgradeRules.workspaceRegistrySnapshot(root, contract, () => book()).basename).toBe(
+      basename,
+    )
+  })
+
+  it('refuses an unknown build contract instead of guessing from files', () => {
+    expect(() => upgradeRules.workspaceRegistrySnapshot(root, 'guess', () => book())).toThrow(
+      /contract/,
+    )
+  })
+
+  it('reads only the packaged path and retains its name, path and nonempty baseline', () => {
+    const seen = []
+    const expected = book()
+    const files = new Map([
+      [packaged, expected],
+      [legacy, { version: 1, workspaces: [{ path: '/wrong', lastOpenedAt: 99 }] }],
+    ])
+    const read = upgradeRules.workspaceRegistrySnapshot(root, 'packaged', readFrom(files, seen))
+    expect(seen).toEqual([packaged])
+    expect(read).toEqual({
+      contract: 'packaged',
+      basename: 'packaged-workspaces.json',
+      path: packaged,
+      value: expected,
+    })
+    expect(upgradeRules.workspaceRegistryBaseline(read, workspace)).toEqual([])
+  })
+
+  it('reads the legacy path only when that build contract explicitly selects it', () => {
+    const seen = []
+    const files = new Map([
+      [packaged, { version: 1, workspaces: [] }],
+      [legacy, book()],
+    ])
+    const read = upgradeRules.workspaceRegistrySnapshot(root, 'legacy', readFrom(files, seen))
+    expect(seen).toEqual([legacy])
+    expect(read.basename).toBe('workspaces.json')
+    expect(upgradeRules.workspaceRegistryBaseline(read, workspace)).toEqual([])
+  })
+
+  it('does not let a healthy legacy file hide a missing packaged registry', () => {
+    const seen = []
+    const read = upgradeRules.workspaceRegistrySnapshot(
+      root,
+      'packaged',
+      readFrom(new Map([[legacy, book()]]), seen),
+    )
+    expect(seen).toEqual([packaged])
+    expect(read.value).toBeNull()
+    expect(upgradeRules.workspaceRegistryBaseline(read, workspace)).not.toEqual([])
+  })
+
+  it('retains an unreadable selected path as failure evidence without trying another name', () => {
+    const seen = []
+    const read = upgradeRules.workspaceRegistrySnapshot(root, 'packaged', (path) => {
+      seen.push(path)
+      throw new Error('fixture read refused')
+    })
+    expect(seen).toEqual([packaged])
+    expect(read.value).toEqual({ unreadable: true })
+    expect(upgradeRules.workspaceRegistryBaseline(read, workspace)).not.toEqual([])
+  })
+
+  it.each([
+    ['missing', null],
+    ['unreadable', { unreadable: true }],
+    ['invalid format', { version: 2, workspaces: [] }],
+    ['empty', { version: 1, workspaces: [] }],
+    ['no current workspace', { version: 1, workspaces: [{ path: '/other', lastOpenedAt: 1 }] }],
+    ['invalid opening time', { version: 1, workspaces: [{ path: workspace, lastOpenedAt: null }] }],
+  ])('refuses a %s baseline, so preservation cannot pass without measuring it', (_, value) => {
+    const read = upgradeRules.workspaceRegistrySnapshot(root, 'packaged', () => value)
+    expect(upgradeRules.workspaceRegistryBaseline(read, workspace)).not.toEqual([])
+  })
+
+  it('keeps both candidate readings on the selected path and still detects each planted loss', () => {
+    const seen = []
+    const files = new Map([[packaged, book()]])
+    const read = () =>
+      upgradeRules.workspaceRegistrySnapshot(root, 'packaged', readFrom(files, seen))
+    const before = read()
+    expect(upgradeRules.workspaceRegistryBaseline(before, workspace)).toEqual([])
+    for (const stage of ['first start', 'second start']) {
+      const after = read()
+      expect(after.path, stage).toBe(before.path)
+      expect(registryKept(before.value, after.value), stage).toEqual([])
+    }
+    expect(seen).toEqual([packaged, packaged, packaged])
+    const dropped = book()
+    dropped.workspaces.pop()
+    const changed = book()
+    changed.workspaces[1].note = 'changed'
+    const backwards = book()
+    backwards.workspaces[0].lastOpenedAt = 9
+    for (const value of [null, { unreadable: true }, dropped, changed, backwards]) {
+      files.set(packaged, value)
+      expect(registryKept(before.value, read().value)).not.toEqual([])
+    }
+  })
+
+  it('connects the runner to the explicit baseline contract and packaged candidate readings', () => {
+    const source = readFileSync(join(ROOT, 'scripts/upgrade-path.mjs'), 'utf8')
+    expect(source).toContain("'beta-registry': { type: 'string', default: 'packaged' }")
+    expect(source).toContain("besideTheFolder(args['beta-registry'])")
+    expect(source).toContain("besideTheFolder('packaged')")
+    expect(source).toMatch(/workspaceRegistrySnapshot\(appRoot, contract,/)
+    expect(source).toMatch(/workspaceRegistryBaseline\(besideBefore\.registry,/)
   })
 })
 
