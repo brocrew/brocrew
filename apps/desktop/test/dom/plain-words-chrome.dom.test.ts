@@ -78,12 +78,28 @@ it('explains the provider connection and the empty API key in plain words', asyn
   expect(m.host.textContent).toContain(
     'Connect an AI service to start a conversation. Check your account and connection below.',
   )
-  const empty = m.all('provider-key-none')
-  expect(empty).toHaveLength(2)
-  for (const line of empty)
-    expect(line.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+  // Each provider's existing explanation is now read inside its selected drawer.
+  for (const provider of ['claude', 'codex']) {
+    const row = m.host.querySelector<HTMLButtonElement>(
+      `[data-cy="provider-row"][data-provider="${provider}"]`,
+    )
+    expect(row).not.toBeNull()
+    row!.click()
+    await settle()
+    expect(m.q('provider-card').getAttribute('data-provider')).toBe(provider)
+    const fold = m.q('provider-key').querySelector<HTMLButtonElement>('button.fold')!
+    if (fold.getAttribute('aria-expanded') === 'false') fold.click()
+    await settle()
+    const empty = m.all('provider-key-none')
+    expect(empty).toHaveLength(1)
+    assertDrawn(empty[0]!, `${provider} empty API key explanation`, m.host)
+    expect(empty[0]!.textContent?.replace(/\s+/g, ' ').trim()).toBe(
       'No API key saved. You can sign in instead. If you save a key, new conversations will use it instead of your signed-in account.',
     )
+    m.q('provider-drawer').querySelector<HTMLButtonElement>('.drawer-close')!.click()
+    await settle()
+    expect(m.all('provider-card')).toHaveLength(0)
+  }
 })
 
 it.each(['claude', 'codex'] as const)('names %s in each sign-in state', async (provider) => {

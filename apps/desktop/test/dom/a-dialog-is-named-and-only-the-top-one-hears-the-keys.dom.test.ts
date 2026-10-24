@@ -76,7 +76,8 @@ describe('every dialog host has a name', () => {
       .filter(([file]) => !file.endsWith('/OverlayHost.vue'))
       .flatMap(([file, text]) => mountTags(text).map((tag) => ({ file, tag })))
     // The name and stop censuses cover the same overlay mounts.
-    expect(tags).toHaveLength(16)
+    expect(tags).toHaveLength(17)
+    expect(tags.filter(({ file }) => file.endsWith('/ProvidersScreen.vue'))).toHaveLength(1)
     for (const { file, tag } of tags) expect(named(tag), `${file}: ${tag}`).toBe(true)
   })
 
