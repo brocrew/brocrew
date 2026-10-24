@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, ref } from 'vue'
+import { page } from 'vitest/browser'
+import IconSprite from '../../src/renderer/src/components/IconSprite.vue'
 import AgentBook from '../../src/renderer/src/components/AgentSectionsSheet.vue'
 import type { AgentStore } from '../../src/renderer/src/lib/agent-store'
 import type { RuntimeBridge } from '../../src/shared/runtime-ipc'
@@ -74,7 +76,21 @@ function fixture() {
 describe('the read-only Skills page in the agent book', () => {
   it('asks only for the visible profile metadata, and distinguishes global off from a profile gate', async () => {
     const f = fixture()
-    const view = mount(AgentBook, { profileSlug: 'quill', bridge: f.bridge, store: f.store })
+    const view = mount(
+      defineComponent({
+        setup: () => () => [
+          h(IconSprite),
+          h(AgentBook, {
+            profileSlug: 'quill',
+            agentName: 'Quill',
+            bridge: f.bridge,
+            store: f.store,
+          }),
+        ],
+      }),
+      {},
+      { width: 1000, height: 1100 },
+    )
     expect(
       view.host.querySelector('[data-cy="agent-book-tab-skills"]'),
       'the book needs a Skills tab',
@@ -94,10 +110,16 @@ describe('the read-only Skills page in the agent book', () => {
     expect(rows[1]?.textContent).toContain('Not given to this agent')
     expect(rows[2]?.textContent).toContain('Shared')
     expect(rows[2]?.textContent).toContain('Off')
+    expect(rows[1]?.textContent).not.toMatch(/\bOn\b/)
+    expect(rows[1]?.textContent).not.toContain('Off')
+    expect(rows[2]?.textContent).not.toMatch(/\bOn\b/)
+    expect(rows[2]?.textContent).not.toContain('Not given to this agent')
     expect(view.q('agent-skills').textContent).toContain('The skills this agent receives.')
     expect(
       view.q('agent-skills').querySelector('textarea, input, select, [role="switch"]'),
     ).toBeNull()
+    await document.fonts.ready
+    await page.screenshot({ element: view.host, path: '__screenshots__/agent-skills-preview.png' })
     view.q('agent-book-tab-memory').click()
     await nextTick()
     expect(f.skills).toHaveBeenCalledTimes(1)
@@ -132,6 +154,9 @@ describe('the read-only Skills page in the agent book', () => {
     view.q('agent-book-tab-skills').click()
     await vi.waitFor(() =>
       expect(view.host.querySelector('[data-cy="agent-skills-error"]')).not.toBeNull(),
+    )
+    expect(view.q('agent-skills-error').textContent).toContain(
+      'This app could not read the skills.',
     )
     expect(view.host.querySelector('[data-cy="agent-skills-empty"]')).toBeNull()
     expect(view.all('agent-skill')).toHaveLength(0)
