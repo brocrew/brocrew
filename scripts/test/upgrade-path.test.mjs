@@ -941,6 +941,15 @@ describe('the workspace registry selected for an upgrade', () => {
     )
   })
 
+  it('keeps the packaged filename in step with the application launch contract', () => {
+    const source = readFileSync(join(ROOT, 'apps/desktop/src/main/workspace-routing.ts'), 'utf8')
+    const declared = /export const PACKAGED_WORKSPACE_LIST = '([^']+)'/.exec(source)?.[1]
+    expect(declared).toBeTruthy()
+    expect(upgradeRules.workspaceRegistrySnapshot(root, 'packaged', () => book()).basename).toBe(
+      declared,
+    )
+  })
+
   it('reads only the packaged path and retains its name, path and nonempty baseline', () => {
     const seen = []
     const expected = book()
@@ -1037,7 +1046,7 @@ describe('the workspace registry selected for an upgrade', () => {
     expect(source).toContain("besideTheFolder(args['beta-registry'])")
     expect(source).toContain("besideTheFolder('packaged')")
     expect(source).toMatch(/workspaceRegistrySnapshot\(appRoot, contract,/)
-    expect(source).toMatch(/workspaceRegistryBaseline\(besideBefore\.registry,/)
+    expect(source).toMatch(/workspaceRegistryBaseline\(\s*besideBefore\.registry,/)
   })
 })
 

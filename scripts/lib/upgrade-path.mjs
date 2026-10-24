@@ -1,9 +1,10 @@
 // The pure half of the upgrade-path check (`scripts/upgrade-path.mjs`): the lines a start prints,
 // which release asset is a beta's installer, the names each build goes by, the migrations and
 // state files a build carries, and the comparisons of a data folder before and after the candidate
-// opens it. No file is read and no process started here, so every rule can be tried on planted
-// inputs.
+// opens it. A registry reader is supplied by the caller, so every rule can be tried on planted
+// inputs without a real data folder or process.
 import { createHash } from 'node:crypto'
+import { join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import { SKILL_CATALOGUE_TABLES } from '../../apps/desktop/src/main/db/skill-catalogue-tables.ts'
 import { SKILL_TREE_NAMES, skillTreeStateDigest } from './skill-tree-state.mjs'
@@ -682,6 +683,51 @@ export function sessionsKept(history, tables) {
       ? []
       : [`${conversation}: its row no longer names the Codex session the beta recorded`]
   })
+}
+
+/** Read the declared registry only, keeping its selected path even when it cannot be read. */
+export function workspaceRegistrySnapshot(root, contract, read) {
+  requireEvidence(
+    contract === 'packaged' || contract === 'legacy',
+    'The workspace registry contract must be packaged or legacy.',
+  )
+  const basename = contract === 'packaged' ? 'packaged-workspaces.json' : 'workspaces.json'
+  const path = join(root, basename)
+  let value
+  try {
+    value = read(path) ?? null
+  } catch {
+    value = { unreadable: true }
+  }
+  return { contract, basename, path, value }
+}
+
+/** A preserved list must start with real rows, including the workspace this run opened. */
+export function workspaceRegistryBaseline(snapshot, workspace) {
+  const book = snapshot?.value
+  if (book === null || typeof book !== 'object' || book?.unreadable) {
+    return ['the selected workspace registry is missing or unreadable']
+  }
+  if (book.version !== 1 || !Array.isArray(book.workspaces)) {
+    return ['the selected workspace registry has an unsupported format']
+  }
+  if (book.workspaces.length === 0) return ['the selected workspace registry lists no workspaces']
+  if (
+    book.workspaces.some(
+      (row) =>
+        row === null ||
+        typeof row !== 'object' ||
+        typeof row.path !== 'string' ||
+        row.path === '' ||
+        !Number.isFinite(row.lastOpenedAt),
+    )
+  ) {
+    return ['the selected workspace registry has an invalid row']
+  }
+  if (!book.workspaces.some((row) => row.path === workspace)) {
+    return ['the selected workspace registry does not list this workspace']
+  }
+  return registryKept(book, book)
 }
 
 /**

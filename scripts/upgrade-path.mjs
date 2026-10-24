@@ -5,7 +5,8 @@
 //
 //   node scripts/upgrade-path.mjs --os windows|mac --beta-tag <tag> --beta-release <release.json>
 //     --beta-dir <folder it was downloaded to> --candidate <installer> --candidate-version <version>
-//     --source-sha <sha> --evidence <dir>
+//     --source-sha <sha> --evidence <dir> [--beta-registry packaged|legacy]
+// Public builds use the packaged registry. An older build with the legacy contract must name it.
 //
 // 695-visible: both apps start as a person starts them, window and all, because that start is what
 // this checks; it runs only on a GitHub-hosted runner, never on anyone's machine.
@@ -77,6 +78,8 @@ import {
   recordedLineage,
   recordedWith,
   registryKept,
+  workspaceRegistrySnapshot,
+  workspaceRegistryBaseline,
   requireEvidence,
   resultLine,
   rowsPreserved,
@@ -123,6 +126,7 @@ const { values: args } = parseArgs({
   options: {
     os: { type: 'string' },
     'beta-tag': { type: 'string' },
+    'beta-registry': { type: 'string', default: 'packaged' },
     'beta-release': { type: 'string' },
     'beta-dir': { type: 'string' },
     'candidate-dir': { type: 'string' },
@@ -145,6 +149,10 @@ for (const name of [
     console.error(`upgrade-path: --${name} is required`)
     process.exit(2)
   }
+}
+if (!['packaged', 'legacy'].includes(args['beta-registry'])) {
+  console.error('upgrade-path: --beta-registry must be packaged or legacy')
+  process.exit(2)
 }
 const os = args.os
 const evidence = resolve(args.evidence)
@@ -1600,28 +1608,30 @@ const copySaid = ({ folder, manifest }) => ({
   createdAt: manifest?.createdAt ?? null,
   madeBy: manifest?.madeBy ?? null,
 })
-/** The files beside the data folder that a person's launch keeps for the whole computer. */
-const besideTheFolder = () =>
-  Object.fromEntries(
-    ['settings.json', 'workspaces.json'].map((name) => {
-      const path = join(appRoot, name)
-      if (!existsSync(path)) return [name, null]
-      try {
-        return [name, JSON.parse(readFileSync(path, 'utf8'))]
-      } catch {
-        return [name, { unreadable: true }]
-      }
-    }),
-  )
+const readBeside = (path) => {
+  if (!existsSync(path)) return null
+  try {
+    return JSON.parse(readFileSync(path, 'utf8'))
+  } catch {
+    return { unreadable: true }
+  }
+}
+/** The computer-wide settings and the registry selected by this build's launch contract. */
+const besideTheFolder = (contract) => ({
+  'settings.json': readBeside(join(appRoot, 'settings.json')),
+  registry: workspaceRegistrySnapshot(appRoot, contract, readBeside),
+})
 /** Whether the computer's settings and list of workspaces still say what the beta left. */
 function besideKept(stage, before) {
-  const now = besideTheFolder()
+  const now = besideTheFolder('packaged')
+  ;(summary.registryReadings ??= []).push({ stage, ...now.registry })
+  keep(`${stage.replaceAll(' ', '-')}-registry.json`, now.registry)
   check(
     before['settings.json'] !== null && contains(now['settings.json'], before['settings.json']),
     `${stage}: the computer's settings still say what the beta set`,
     { before: before['settings.json'], now: now['settings.json'] },
   )
-  const registry = registryKept(before['workspaces.json'], now['workspaces.json'])
+  const registry = registryKept(before.registry.value, now.registry.value)
   check(registry.length === 0, `${stage}: the list of workspaces still holds the beta's`, registry)
 }
 
@@ -2461,7 +2471,7 @@ try {
     ]),
   )
   const stateBefore = readState()
-  const besideBefore = besideTheFolder()
+  const besideBefore = besideTheFolder(args['beta-registry'])
   summary.baseline = {
     history,
     transcripts: transcriptsBefore,
@@ -2479,10 +2489,14 @@ try {
   )
   must(stateBefore['drafts.json'] !== undefined, 'the beta left its drafts file')
   check(stateBefore['workspace.json'] !== undefined, 'the beta left its workspace’s name file')
+  const registryProblems = workspaceRegistryBaseline(
+    besideBefore.registry,
+    summary.betaApp.workspace.path,
+  )
   check(
-    besideBefore['settings.json'] !== null && besideBefore['workspaces.json'] !== null,
+    besideBefore['settings.json'] !== null && registryProblems.length === 0,
     'the beta left the computer’s settings and its list of workspaces',
-    besideBefore,
+    { ...besideBefore, registryProblems },
   )
   // A beta that makes recovery copies leaves its own, from its second start on.
   const copiesTheBetaLeft = copies()
