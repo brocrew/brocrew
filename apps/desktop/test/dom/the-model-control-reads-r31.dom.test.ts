@@ -128,6 +128,7 @@ interface World {
   clears: boolean
   /** The one identity the roster holds — `worker`, or BroBot's own for the front door's clause. */
   slug: string
+  kind: 'normal' | 'service'
 }
 let world: World
 const reset = (over: Partial<World> = {}): void => {
@@ -140,6 +141,7 @@ const reset = (over: Partial<World> = {}): void => {
     itsProvider: null,
     clears: true,
     slug: 'worker',
+    kind: 'normal',
     ...over,
   }
 }
@@ -147,7 +149,7 @@ const reset = (over: Partial<World> = {}): void => {
 function storeOver(): { store: AgentStore; lists: ModelLists } {
   const roster = (): AgentIdentities =>
     ({
-      identities: [ident(world.slug, { provider: world.itsProvider })],
+      identities: [ident(world.slug, { provider: world.itsProvider, kind: world.kind })],
       foldersWithoutARow: [],
       spawningEnabled: true,
       defaultApprovalMode: 'ask',
@@ -431,10 +433,10 @@ describe('696 §4 · the provider press says what the same act cleared', () => {
     })
     const m = await theSheet()
     expect(words(m.q('capabilities-provider-note'))).toMatch(
-      /^The default for a new conversation you start as this identity is Claude\. /,
+      /^The default for a new conversation you start as this identity is Claude, unless you choose another provider where you start it\. /,
     )
-    // ⛔ No door that starts `worker` asks for a provider, so the note promises no such choice.
-    expect(words(m.q('capabilities-provider-note'))).not.toContain('unless you choose')
+    // The new-conversation picker also offers a provider when starting as this identity.
+    expect(words(m.q('capabilities-provider-note'))).toContain('unless you choose')
     await pick(m, 'capabilities-provider-select', '')
     expect(m.all('capabilities-provider-cleared')).toHaveLength(0)
     expect(words(m.q('model-picker-face'))).toBe('opus · high')
@@ -448,6 +450,17 @@ describe('696 §4b · BroBot’s own sheet names the front door’s provider men
     expect(words(m.q('capabilities-provider-note'))).toMatch(
       /^The default for a new conversation you start as this identity is Codex, unless you choose another provider where you start it\. /,
     )
+  })
+
+  it('a service offers the person’s start picker without promising a second conversation for gives', async () => {
+    reset({ kind: 'service', itsProvider: 'codex' })
+    const m = await theSheet()
+    const note = words(m.q('capabilities-provider-note'))
+    expect(note).toContain('A service keeps one conversation for new gives.')
+    expect(note).toContain('Changing its default does not switch that conversation’s provider.')
+    expect(note).toContain('unless you choose another provider where you start it')
+    expect(note).not.toContain('new gives without a provider or model use that provider’s conversation')
+    expect(note).toContain('Existing pieces and follow-ups stay with their holders.')
   })
 })
 
