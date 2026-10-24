@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, symlink, mkdir, writeFile } from 'node:fs/promises'
+import * as fsPromises from 'node:fs/promises'
 import { readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -11,6 +12,12 @@ import { creationAllowedSkills } from '../src/main/skills/built-in-catalogue'
 import { executeRuntimeCommand, runtimeCommandSchema } from '../src/main/runtime/ipc'
 import type { RuntimeHost, RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { SkillsRequest } from '../src/shared/skills-window'
+
+// Pass through the real filesystem while making its open boundary observable in this suite.
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>()
+  return { ...actual, open: vi.fn(actual.open) }
+})
 
 interface Access {
   profileId: string
@@ -110,6 +117,43 @@ describe('the profile Skills inventory uses the real delivery policy', () => {
     })
     expect(readAccess!({ capabilitiesOf }, 'missing-agent')).toBeNull()
     expect(capabilitiesOf.mock.calls).toEqual([['quill'], ['brobot'], ['missing-agent']])
+  })
+
+  it('reads both real creation reach values from the main store', () => {
+    const readAccess = Reflect.get(discoveryModule, 'profileSkillAccess') as
+      | undefined
+      | ((
+          store: { capabilitiesOf(profile: string): { canCreateAgents: string } | null },
+          profile: string,
+        ) => Access | null)
+    expect(readAccess).toBeTypeOf('function')
+    for (const reach of ['none', 'any'] as const) {
+      const capabilitiesOf = vi.fn(() => ({ canCreateAgents: reach }))
+      expect(readAccess!({ capabilitiesOf }, 'QuIll')).toEqual({
+        profileId: 'quill',
+        canCreateAgents: reach === 'any',
+        isCoordinator: false,
+      })
+      expect(capabilitiesOf).toHaveBeenCalledExactlyOnceWith('quill')
+    }
+  })
+
+  it('opens a shared header once and refuses a symlink outside the library', async () => {
+    await service.library.save('recipe-check/SKILL.md', body())
+    const target = join(root, 'skills/recipe-check/SKILL.md')
+    const open = vi.spyOn(fsPromises, 'open')
+    try {
+      const answer = await inventory()
+      expect(answer.skills.some((one) => one.folder === 'recipe-check')).toBe(true)
+      expect(open.mock.calls.filter(([path]) => String(path) === target)).toHaveLength(1)
+      await mkdir(join(root, 'outside'))
+      await writeFile(join(root, 'outside/private.md'), body('outside-private', 'PRIVATE OUTSIDE'))
+      await rm(target)
+      await symlink(join(root, 'outside/private.md'), target)
+      await expect(inventory()).rejects.toThrow()
+    } finally {
+      open.mockRestore()
+    }
   })
 
   it.each(['quill', 'wren', 'brobot'])(
