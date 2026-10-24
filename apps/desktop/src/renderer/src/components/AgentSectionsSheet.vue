@@ -4,6 +4,7 @@ import OwnInstructions from './OwnInstructions.vue'
 import OwnNotes from './OwnNotes.vue'
 import SavedMethods from './SavedMethods.vue'
 import MemoryBook from './MemoryBook.vue'
+import ProfileSkills from './ProfileSkills.vue'
 import type { AgentStore } from '../lib/agent-store'
 import type { RuntimeBridge } from '../../../shared/runtime-ipc'
 const props = defineProps<{
@@ -12,12 +13,13 @@ const props = defineProps<{
   store?: AgentStore
   bridge?: RuntimeBridge
 }>()
-const emit = defineEmits<{ close: [] }>()
+const emit = defineEmits<{ close: []; settings: ['skills'] }>()
 const tabs = [
   { key: 'rules', name: 'Standing rules' },
   { key: 'methods', name: 'Saved methods' },
   { key: 'memory', name: 'Memory' },
   { key: 'notes', name: 'Own notes' },
+  { key: 'skills', name: 'Skills' },
 ] as const
 const selected = ref<(typeof tabs)[number]['key']>('rules')
 const nav = ref<HTMLElement | null>(null)
@@ -126,6 +128,20 @@ function move(event: KeyboardEvent) {
           :profile-slug="props.profileSlug"
           :active="selected === 'notes'"
           :bridge="props.bridge"
+        />
+      </section>
+      <section
+        v-show="selected === 'skills'"
+        :id="`${id}-panel-skills`"
+        role="tabpanel"
+        :aria-labelledby="`${id}-tab-skills`"
+        tabindex="0"
+      >
+        <ProfileSkills
+          :profile-slug="props.profileSlug"
+          :active="selected === 'skills'"
+          :bridge="props.bridge"
+          @settings="emit('settings', 'skills')"
         />
       </section>
     </div>
