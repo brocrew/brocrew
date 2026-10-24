@@ -38975,8 +38975,10 @@ export class RuntimeHost implements LiveHost {
   markOwnNotesSeen(profile: string, throughVersion: number, by: Caller): boolean {
     const actor = whoDidIt(by)
     if (actor.who !== 'a-person') return false
+    const before = this.deps.store.ownNotesUnread(profile).seenThrough
     const marked = this.deps.store.markOwnNotesSeen(profile, throughVersion, actor)
-    if (marked) this.theWorldMoved('agents')
+    if (marked && this.deps.store.ownNotesUnread(profile).seenThrough > before)
+      this.theWorldMoved('agents')
     return marked
   }
 
