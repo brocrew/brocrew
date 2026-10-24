@@ -68,10 +68,12 @@ export interface ThemeStoreOptions {
   readonly hiddenBases?: readonly string[]
   readonly forceDefault?: boolean
   /**
-   * A workspace with no choice file is given {@link defaultTheme} as its choice, written once, so the
+   * A workspace with no choice file is given {@link startingTheme} as its choice, written once, so the
    * look it starts in never depends on judging the workspace again.
    */
   readonly writesItsDefault?: boolean
+  /** The look a workspace with no choice file starts in; {@link defaultTheme} unless given. */
+  readonly startingTheme?: string
   /** Where a write the store could do without is reported: the app's log. */
   readonly warn?: (line: string) => void
   readonly loader: Omit<ThemeLoader, 'problem'>
@@ -583,11 +585,13 @@ export class ThemeStore implements ThemeAssetRegistry {
       (await this.noChoiceFile())
     ) {
       this.wroteTheDefault = true
+      const starting = this.options.startingTheme ?? this.options.defaultTheme
+      this.requested = starting
       try {
-        await writeActiveTheme(this.options.userData, this.options.defaultTheme, this.files)
-        this.requested = this.options.defaultTheme
+        await writeActiveTheme(this.options.userData, starting, this.files)
       } catch (error) {
-        // The default still shows this launch; a later start that can write gives it then.
+        // It still shows this launch. A later start judges the workspace again, and by then a new
+        // workspace may hold data and be given classic.
         this.options.warn?.(
           `BroCrew could not keep this workspace's starting look: ${(error as Error).message}`,
         )

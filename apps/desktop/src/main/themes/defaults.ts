@@ -1,9 +1,10 @@
-import { existsSync } from 'node:fs'
+import { lstatSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Theme } from '../../shared/themes/theme'
 import { DATABASE_FILE } from '../recovery/layout'
+import { saysAbsent } from './state'
 
-/** The look a new workspace starts in. */
+/** The default look: what a new workspace starts in, and what "Default look" gives. */
 export const DEFAULT_THEME_ID = 'crew-night'
 /**
  * The look a workspace keeps when it already held data before Crew Night became the default and
@@ -36,13 +37,26 @@ export const HIDDEN_BASE_THEME_IDS: readonly string[] = ['brocrew']
 
 /**
  * The look a workspace with no saved choice starts in. A workspace whose database is already there
- * when the themes are first read held data before this version, so it keeps classic; one with no
- * database yet is new, and starts in Crew Night. The store writes the answer down once, so a later
- * start never has to judge it again.
+ * when the themes are first read held data before this version, so it keeps classic; one the
+ * system says has no database yet is new, and starts in Crew Night. A database that can't be looked
+ * at is taken to be there. The store writes the answer down once as the workspace's choice.
  */
-export function defaultThemeFor(
+export function startingThemeFor(
   userData: string,
-  exists: (path: string) => boolean = existsSync,
+  look: (path: string) => unknown = lstatSync,
 ): string {
-  return exists(join(userData, DATABASE_FILE)) ? EXISTING_INSTALL_THEME_ID : DEFAULT_THEME_ID
+  try {
+    look(join(userData, DATABASE_FILE))
+    return EXISTING_INSTALL_THEME_ID
+  } catch (error) {
+    return saysAbsent(error) ? DEFAULT_THEME_ID : EXISTING_INSTALL_THEME_ID
+  }
+}
+
+/** The theme store's defaults for a workspace: the default look, and the look it starts in. */
+export function themeDefaultsFor(userData: string): {
+  readonly defaultTheme: string
+  readonly startingTheme: string
+} {
+  return { defaultTheme: DEFAULT_THEME_ID, startingTheme: startingThemeFor(userData) }
 }

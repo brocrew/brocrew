@@ -213,7 +213,7 @@ import {
   DEFAULT_THEME_BACKGROUND,
   BUILT_IN_THEME_IDS,
   HIDDEN_BASE_THEME_IDS,
-  defaultThemeFor,
+  themeDefaultsFor,
 } from './themes/defaults'
 import { registerThemeIpc } from './themes/ipc'
 import { themePictureSampler } from './themes/picture-samples'
@@ -2222,7 +2222,7 @@ function start(ownership: HostGateVerdict): void {
           hidden: presentation.hidden,
         }),
         // Read before the database is opened: a workspace that already has one keeps classic.
-        defaultTheme: defaultThemeFor(app.getPath('userData')),
+        ...themeDefaultsFor(app.getPath('userData')),
         writesItsDefault: true,
         warn: (line) => console.warn(line),
         builtInIds: BUILT_IN_THEME_IDS,

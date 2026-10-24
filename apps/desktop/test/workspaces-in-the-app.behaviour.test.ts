@@ -487,8 +487,10 @@ it.each(['open', 'closed'] as const)(
 
 /** The look `folder` starts in, read by the theme store as the app starts it there. */
 async function theLookItStartsIn(folder: string): Promise<string> {
-  const pick = (themeDefaults as unknown as { defaultThemeFor?: (folder: string) => string })
-    .defaultThemeFor
+  const app = themeDefaults as unknown as {
+    themeDefaultsFor?: (folder: string) => Record<string, string>
+    defaultThemeFor?: (folder: string) => string
+  }
   mkdirSync(join(appData, '@brobot2'), { recursive: true })
   const store = new ThemeStore({
     ...themeRoots({
@@ -497,7 +499,9 @@ async function theLookItStartsIn(folder: string): Promise<string> {
       resources: join(__dirname, '../resources'),
       hidden: false,
     }),
-    defaultTheme: pick?.(folder) ?? themeDefaults.DEFAULT_THEME_ID,
+    ...(app.themeDefaultsFor?.(folder) ?? {
+      defaultTheme: app.defaultThemeFor?.(folder) ?? themeDefaults.DEFAULT_THEME_ID,
+    }),
     writesItsDefault: true,
     builtInIds: BUILT_IN_THEME_IDS,
     hiddenBases: HIDDEN_BASE_THEME_IDS,
