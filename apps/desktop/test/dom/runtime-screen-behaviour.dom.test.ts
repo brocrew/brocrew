@@ -1265,7 +1265,12 @@ it('opens Settings Skills from the agent book and closes the book without changi
     }),
   }
   const previous = Object.getOwnPropertyDescriptors(runtime)
+  const previousApi = window.api
+  const previousAgentStore = agentStore
   Object.assign(runtime, book)
+  // The DOM wire snapshots methods when window.api is assigned.
+  window.api = { ...previousApi, runtime: runtime as unknown as RuntimeBridge }
+  agentStore = createAgentStore(window.api.runtime)
   const screen = mount(RuntimeScreen, {})
   try {
     useOverlays().open({ kind: 'agentSections', profileSlug: 'editor' })
@@ -1282,6 +1287,15 @@ it('opens Settings Skills from the agent book and closes the book without changi
     expect(
       skills.mock.calls.map(([request]) => (request as { operation: string }).operation),
     ).toEqual(['profile-list', 'shared-list'])
+    expect(skills.mock.calls[0]?.[0]).toEqual({ operation: 'profile-list', profileId: 'editor' })
+    useOverlays().open({ kind: 'agentSections', profileSlug: 'editor' })
+    await expect.poll(() => screen.all('agent-sections-sheet').length).toBe(1)
+    screen.q('agent-book-tab-skills').click()
+    await expect.poll(() => skills.mock.calls.length).toBe(3)
+    screen.q('agent-skills-settings').click()
+    await expect.poll(() => useOverlays().overlay.value).toBeNull()
+    expect(screen.q('settings-tab-skills').getAttribute('aria-selected')).toBe('true')
+    expect(skills.mock.calls[2]?.[0]).toEqual({ operation: 'profile-list', profileId: 'editor' })
     expect(runtime.startAndSend).not.toHaveBeenCalled()
     expect(runtime.send).not.toHaveBeenCalled()
   } finally {
@@ -1290,5 +1304,7 @@ it('opens Settings Skills from the agent book and closes the book without changi
       if (previous[key]) Object.defineProperty(runtime, key, previous[key]!)
       else Reflect.deleteProperty(runtime, key)
     }
+    window.api = previousApi
+    agentStore = previousAgentStore
   }
 })
