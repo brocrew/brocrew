@@ -1391,6 +1391,7 @@ export const TOOL_INPUT_ENUMS = {
   'message_agent:kind': MESSAGE_KIND_INPUT,
   'reply_to_parent:outcome': TASK_OUTCOME_INPUT,
   'create_agent:provider': PROVIDER_INPUT,
+  'give_work:provider': PROVIDER_INPUT,
   'create_agent:kind': AGENT_KIND_INPUT,
   // ⚑ **611 · ONE vocabulary, advertised on BOTH question verbs** (HO-088 §2.1, §3.2). ⛔ Two
   // entries and not one shared name, because `TOOL_INPUT_ENUMS` is keyed by `verb:argument` and a
@@ -1785,8 +1786,8 @@ const CREATE_KIND_ARGUMENT = 'kind' satisfies keyof CreateAgentArguments
  * ⛔ **They are the door's own names, and the tool hands them over untouched**: `giveRequestSchema`
  * is `.strict()`, so an argument neither knows reaches it under its own spelling and is refused BY
  * NAME — `303` B's lesson, with no rename map between the two for a key to fall through.
- * ⚑ **There are no provider or approval arguments** (plan ruling 3): a conversation a give starts
- * runs on the agent's own provider (`theProviderAStartRunsOn`), in the giver's mode. 🔴 **D-042 · R4 — a model and an effort are**: what that one conversation runs on.
+ * A provider chooses the conversation, while model and effort choose what it runs on.
+ * Approval mode still comes from the giver; this door never switches an existing provider.
  */
 interface GiveWorkArguments {
   readonly definition_of_done: string
@@ -1802,6 +1803,8 @@ interface GiveWorkArguments {
   readonly piece?: string
   /** 🔴 **D-016 · R3** — bring a new agent into existence under that profile. */
   readonly new?: boolean
+  /** Select this provider's conversation without changing the identity's default. */
+  readonly provider?: Provider
   /** Select a free worker or start another worker of the same normal profile. */
   readonly parallel?: boolean
   /** 🔴 **D-016 · R2** — files handed over with the work, kept as the piece's inputs. */
@@ -4890,7 +4893,7 @@ const cardText = (card: AgentCard): string =>
   // holds no piece — the one address it then has. The payload carries the ids.
   // ⚑ **D-017 · R11 — the state in the one derivation's words** (`agentStateWords`), the words the
   // window draws: never whether a process runs.
-  `${card.named === null ? card.agent : theOwnerOf(card.named)} · ${whoseText(card.whose)} · ${agentStateWords(card.state)}` +
+  `${card.named === null ? card.agent : theOwnerOf(card.named)} · ${whoseText(card.whose)} · ${card.provider === null ? 'provider not recorded' : PROVIDER_NAME[card.provider]} · ${agentStateWords(card.state)}` +
   theStopOnAPerson(card.stoppedOnAPerson) +
   // ⚑ **D-042 · R6 — what it runs on**, so a giver can check what its helper runs.
   runsOnText(card) +
@@ -5719,7 +5722,7 @@ export function agentToolsFor(
       // names the work it holds — its root and its open pieces, by label (spec D17).
       // 🔴 **D-016 · commit 7 · R1 · R3 — each is NAMED by the piece it owns**, and that label is
       // what every door that takes an agent takes; the id stays in the payload.
-      description: `List the agents you can reach: every conversation this app will let you message, including your own, whatever it is doing. Up to ${String(CONVERSATIONS_LISTED)}, the most recently active first; the answer says how many more there are, and message_agent and get_agent_status take any of them by the label of a piece it owns (W1.2) or by its id. Each one's state says what it is doing: active, needs you (a person's answer or approval is waiting in it, or it answered a person who wrote to it and waits for their next words), waiting on another conversation's answer, owes another conversation an answer (and whom), running in the background (and what), scheduled (and when it next wakes), waiting on the agents holding work it gave out (and who), or idle. The agents themselves outlive their conversations — list_profiles names every agent this app holds. Being listed is not a promise that every message to it is admitted — message_agent answers that separately. Each says the model and effort its conversation runs on, and what its provider last reported when that differs. An archived conversation is put away and left out: archived: true lists those instead, each with when it was archived and by whom. Its label still reaches it; restore_agent brings it back without sending it anything, and whatever is sent to it brings it and the helpers archived with it back too. Each is named by the piece of work it owns (the owner of W1.2 · its title), or by its id when it holds none, then who it is — the name a person gave that agent, and the profile slug give_work takes — its state, the conversation that started it, named the same way, and the work it holds: its own root, when a person gave it one, and its open pieces, by label. A conversation this app cannot attribute is still listed, and says so rather than being given a name.`,
+      description: `List the agents you can reach: every conversation this app will let you message, including your own, whatever it is doing. Up to ${String(CONVERSATIONS_LISTED)}, the most recently active first; the answer says how many more there are, and message_agent and get_agent_status take any of them by the label of a piece it owns (W1.2) or by its id. Each one's state says what it is doing: active, needs you (a person's answer or approval is waiting in it, or it answered a person who wrote to it and waits for their next words), waiting on another conversation's answer, owes another conversation an answer (and whom), running in the background (and what), scheduled (and when it next wakes), waiting on the agents holding work it gave out (and who), or idle. The agents themselves outlive their conversations — list_profiles names every agent this app holds. Being listed is not a promise that every message to it is admitted — message_agent answers that separately. Each says the provider, model and effort its conversation runs on, and what its provider last reported when that differs. An archived conversation is put away and left out: archived: true lists those instead, each with when it was archived and by whom. Its label still reaches it; restore_agent brings it back without sending it anything, and whatever is sent to it brings it and the helpers archived with it back too. Each is named by the piece of work it owns (the owner of W1.2 · its title), or by its id when it holds none, then who it is — the name a person gave that agent, and the profile slug give_work takes — its state, the conversation that started it, named the same way, and the work it holds: its own root, when a person gave it one, and its open pieces, by label. A conversation this app cannot attribute is still listed, and says so rather than being given a name.`,
       /**
        * 🔴 **486 · the rails are the whole gate** (HO-031 §2.4).
        *
@@ -5798,7 +5801,7 @@ export function agentToolsFor(
       // `list_agents`' it was not describing a payload that had stopped matching it. ⚠️ The first
       // clause gains the fact the card gained; nothing else here moved.
       description:
-        "Who one agent is, what it is doing right now — active, needs you, waiting on another conversation's answer, owing another conversation an answer, running in the background, scheduled, waiting on the agents holding work it gave out, or idle — the work it holds, by label, and where it came from. It answers for any conversation you may reach — every one list_agents names, and any other by the piece it owns (W1.2) or by its id. It says the model and effort its conversation runs on, and what its provider last reported when that differs.",
+        "Who one agent is, what it is doing right now — active, needs you, waiting on another conversation's answer, owing another conversation an answer, running in the background, scheduled, waiting on the agents holding work it gave out, or idle — the work it holds, by label, and where it came from. It answers for any conversation you may reach — every one list_agents names, and any other by the piece it owns (W1.2) or by its id. It says the provider, model and effort its conversation runs on, and what its provider last reported when that differs.",
       /**
        * 🔴 **486 · the rails are the whole gate** (HO-031 §2.4).
        *
@@ -5878,7 +5881,7 @@ export function agentToolsFor(
        * name this app does not hold (check it, or ask for a new agent with `new`).
        */
       description:
-        'Give a piece of work with a short brief and definition_of_done. Put the detail in inputs. Give a piece of work to an agent, by its profile. By default, it goes to the one conversation you have with that agent, which is woken if it has stopped, and started for you the first time you give that agent work. Name what you give it with a title and a brief; the brief is sent to it as a message of its own, with the piece\u2019s label (W1.2) so it can reply to you. Hand it files with inputs: each is kept as an input of the piece, and the brief names each by its id so the agent can read it with read_document. The piece is hung under the piece you name — or, naming none, under the one piece you were given or took on; holding several, the one the words that began this turn were about, when they were about one; holding none, your own conversation\u2019s work. A piece whose brief has not reached you yet is never chosen for you. Without parallel, an agent that is busy, or still holds a piece from you that stalled, still takes it; the answer names a stalled piece, to follow up or take back. new: true brings a new agent into existence under that name; without it, a name this app does not hold is refused. Returns the piece\u2019s label and whether it went straight out or is held. Name model and effort to choose what that conversation runs on; a choice outside the list is refused with the choices. Without them a conversation you have keeps what it runs on, and a new one starts on that agent\u2019s default, else on the model a person last picked for that provider, else on that provider\u2019s default. An agent keeps its own provider: name a model from its provider\u2019s list. A conversation whose model or effort a person set keeps both. A switch holds from that piece on, even if you take the piece back. The answer says what it runs on.',
+        'Give a piece of work with a short brief and definition_of_done. Put the detail in inputs. Give a piece of work to an agent, by its profile. By default, it goes to the one conversation you have with that agent on its default provider. A normal agent has one conversation per provider with you; choose provider, or name a model only that provider lists, to reach or start the other one. An existing conversation keeps its provider. Services keep one conversation and refuse another provider. A stopped conversation is woken, and the first give starts it. Name what you give it with a title and a brief; the brief is sent to it as a message of its own, with the piece\u2019s label (W1.2) so it can reply to you. Hand it files with inputs: each is kept as an input of the piece, and the brief names each by its id so the agent can read it with read_document. The piece is hung under the piece you name — or, naming none, under the one piece you were given or took on; holding several, the one the words that began this turn were about, when they were about one; holding none, your own conversation\u2019s work. A piece whose brief has not reached you yet is never chosen for you. Without parallel, an agent that is busy, or still holds a piece from you that stalled, still takes it; the answer names a stalled piece, to follow up or take back. new: true brings a new agent into existence under that name; without it, a name this app does not hold is refused. Returns the piece\u2019s label and whether it went straight out or is held. Name model and effort to choose what that conversation runs on; a choice outside the list is refused with the choices. Without them a conversation you have keeps what it runs on, and a new one starts on that agent\u2019s default, else on the model a person last picked for that provider, else on that provider\u2019s default. A model from another provider chooses that provider\u2019s conversation; it does not change the agent\u2019s default. Standing rules and Own notes are shared. Native memory and Always allow rules stay per provider. A conversation whose model or effort a person set keeps both. A switch holds from that piece on, even if you take the piece back. The answer says what it runs on.',
       /**
        * 🔴 **486 · a person is asked as well** (HO-031 §2.4) — as `spawn_agent` was.
        *
@@ -5920,6 +5923,11 @@ export function agentToolsFor(
             .describe(
               'Set it to bring a new agent into existence under that profile name, with no standing rules, to take this work. A name that is already an agent is refused with it: give without it to use that agent, who keeps its memory.',
             ),
+          provider: documentedToolEnum(
+            TOOL_INPUT_ENUMS['give_work:provider'],
+            'Which provider this piece runs on. It selects that provider’s conversation with this normal agent, or starts one; never switches an existing conversation or changes the agent’s default. Services refuse a different provider.',
+            'Leave it out to use the named model’s unique provider, else the agent’s default.',
+          ).optional(),
           parallel: z
             .boolean()
             .optional()
@@ -7870,7 +7878,7 @@ export function agentToolsFor(
          */
         provider: documentedToolEnum(
           TOOL_INPUT_ENUMS['create_agent:provider'],
-          'Which provider its conversations run on. It is kept: no give changes it.',
+          'The default provider for its conversations. A give can choose another provider without changing this default.',
           'Omit it to take the provider of the model you name, else yours.',
         ).optional(),
         /**

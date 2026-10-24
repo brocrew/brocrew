@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import {
   agentName,
   providerName,
+  PROVIDER_NAME,
   type CreateSessionInput,
   type HandedPath,
   type Provider,
@@ -13,6 +14,8 @@ import type { AgentStore } from '../lib/agent-store'
 import { YOLO_MEANS } from '../lib/approval-mode'
 import { shouldRestoreDraft } from './NewConversation.vue'
 import PromptComposer from './PromptComposer.vue'
+import ModelPicker from './ModelPicker.vue'
+import type { ModelLists, PickedModel } from '../lib/model-lists'
 
 /**
  * 🔴 **The other door HO-023 §2 promised existed** (423 relay 1) — *"a new conversation is with
@@ -40,7 +43,7 @@ import PromptComposer from './PromptComposer.vue'
  *
  * ⛔ **Not the front door.** That one still asks nothing and still opens BroBot. The two doors
  * differ in exactly the two fields above and in nothing else: both send the approval mode the
- * PERSON set, both take their provider from the identity they open, and both make the first message
+ * PERSON set, both use the identity’s default unless a person chooses another provider for this conversation, and both make the first message
  * the conversation.
  *
  * ⚠️ **That clause said *"both send `approvalMode: 'ask'`"* until `500`**, and `HO-036` §3.1 made it
@@ -74,14 +77,12 @@ const props = defineProps<{
    */
   agents?: AgentStore
   /**
-   * 🔴 **What it will run on, RESOLVED by the screen** (423 §3) — *this identity's provider, or the
-   * app frame's fallback when it has not said*.
-   *
-   * ⛔ **Passed in rather than computed here**, so the sentence this sheet shows and the value the
-   * launch sends are one value and cannot come apart — the same rule the front door's
-   * `defaultProvider` follows, for the same reason.
+   * The identity's default, resolved by the screen. A local model pick overrides it for this
+   * conversation only; neither the picker nor this sheet writes the identity default.
    */
   provider: Provider
+  /** The shared catalogue holder; read only when the model picker opens. */
+  lists?: ModelLists
   /**
    * 🔴 **The mode this conversation will begin in, because a person set it once** (500,
    * HO-036 §3.1) — *"every conversation they start begins there"*, and this is the second door a
@@ -165,6 +166,19 @@ const who = computed(() =>
  * chosen: this sheet's silence means what the other door's does.
  */
 const folder = ref<string | null>(null)
+const picked = ref<PickedModel | null>(null)
+const provider = computed(() => picked.value?.provider ?? props.provider)
+const providers = computed(() => Object.keys(PROVIDER_NAME) as Provider[])
+watch(
+  () => props.profileSlug,
+  () => {
+    picked.value = null
+  },
+)
+function startOn(pick: PickedModel): Promise<string | null> {
+  picked.value = pick
+  return Promise.resolve(null)
+}
 
 /**
  * ⛔ **Why the folder last chosen cannot be used** — `checkSessionCwd`'s own sentence, which names
@@ -186,7 +200,7 @@ async function chooseFolder(): Promise<void> {
  * recognised — because it is the same disclosure at a third moment of choice.
  */
 const yoloReach = computed(() => {
-  const status = props.capabilities?.[props.provider]?.approvals
+  const status = props.capabilities?.[provider.value]?.approvals
   return status?.state === 'available' ? (status.note ?? '') : ''
 })
 
@@ -241,8 +255,10 @@ function startWith(text: string, _intent?: unknown, attachments: HandedPath[] = 
   emit(
     'start',
     {
-      provider: props.provider,
+      provider: provider.value,
       profileId: props.profileSlug,
+      ...(picked.value === null ? {} : { model: picked.value.model }),
+      ...(picked.value?.effort == null ? {} : { reasoningEffort: picked.value.effort }),
       // ⚑ **D-016 · omitted for the workspace**, which is what the host resolves an absent `cwd` to.
       ...(folder.value === null ? {} : { cwd: folder.value }),
       // 🔴 **The mode the PERSON set, like the other door** (500, HO-036 §3.1). ⛔ **This line used
@@ -265,7 +281,7 @@ function startWith(text: string, _intent?: unknown, attachments: HandedPath[] = 
       <div class="sheet-glyph">{{ props.profileSlug.slice(0, 1).toUpperCase() }}</div>
       <div class="sheet-header-copy">
         <strong data-cy="start-as-agent-title">New conversation as {{ who }}</strong>
-        <small>It will run on {{ providerName(props.provider) }}, in the folder below.</small>
+        <small>It will run on {{ providerName(provider) }}, in the folder below.</small>
       </div>
       <span class="spacer"></span>
       <button
@@ -280,6 +296,21 @@ function startWith(text: string, _intent?: unknown, attachments: HandedPath[] = 
     </div>
 
     <div class="sheet-body">
+      <div class="field">
+        <span class="lbl">Model</span>
+        <ModelPicker
+          :providers="providers"
+          :profile-id="props.profileSlug"
+          :shown="picked"
+          :empty="`Default: ${providerName(provider)}`"
+          :fixed="props.busy ?? false"
+          take-words="Start on this"
+          :take="startOn"
+          :reaches="() => 'This conversation starts on it. The agent’s default stays the same.'"
+          :capabilities="props.capabilities"
+          :lists="props.lists"
+        />
+      </div>
       <div class="field">
         <span class="lbl">Folder</span>
         <!-- ⚑ **D-016 · the app's own workspace unless a person chooses a folder** — the front

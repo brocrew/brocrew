@@ -783,7 +783,7 @@ function onKey(event: KeyboardEvent): void {
            ⚠️ **Its own gesture rather than a field on Save** — see {@link onProviderChange}. -->
       <div class="provider-choice" data-cy="capabilities-provider">
         <label class="provider-row">
-          <span>Runs on</span>
+          <span>Default provider</span>
           <select
             data-cy="capabilities-provider-select"
             :value="shownProvider"
