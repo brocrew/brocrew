@@ -233,6 +233,21 @@ describe('own notes tools bind to their caller and person controls stay in the w
     expect(store.ownNotesOf('lark')!.versions).toEqual([])
   })
 
+  it('states the shared page and next-start effect in the write description and receipt', async () => {
+    const me = await start('lark')
+    const writer = tools.get(me)!.tools.find((one) => one.name === 'write_own_notes')
+    expect(writer, 'registered own-notes writer').toBeDefined()
+    if (writer === undefined) throw new Error('unreachable missing tool')
+    const shared = 'All conversations of your profile share this page.'
+    expect(writer.description).toContain(shared)
+    const written = await writer.call(input())
+    expect(written.structured).toMatchObject({ outcome: 'ok', version: 1 })
+    expect(written.text).toContain(
+      'Saved your own notes as version 1, replacing version 0. They load after the standing rules at your next start. A person can see and undo this change under Agent knowledge.',
+    )
+    expect(written.text).toContain(shared)
+  })
+
   it('derives authorship from the bound session and snapshots the name, actor and reason', async () => {
     const me = await start('lark')
     store.setAgentDisplayName('lark', 'Lark')
@@ -471,6 +486,15 @@ describe('own notes tools bind to their caller and person controls stay in the w
       await expect(
         command(window, { kind: 'saveOwnNotes', profileId: 'lark', ...bad }),
       ).rejects.toThrow()
+    }
+    for (const commandWithExtra of [
+      { kind: 'saveOwnNotes', profileId: 'lark', ...said(), author: 'wren' },
+      { kind: 'undoOwnNotes', profileId: 'lark', expectedVersion: 0, text: 'Forged restore.' },
+      { kind: 'markOwnNotesSeen', profileId: 'lark', throughVersion: 0, agent: 'wren' },
+      { kind: 'agentOwnNotes', profileId: 'lark', agent: 'wren' },
+      { kind: 'agentOwnNotesUnread', profileId: 'lark', agent: 'wren' },
+    ]) {
+      await expect(executeRuntimeCommand(host, window, commandWithExtra)).rejects.toThrow()
     }
     expect(store.ownNotesOf('lark')!.versions).toEqual([])
     expect(store.capabilitiesOf('absent')).toBeNull()
