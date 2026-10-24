@@ -92,7 +92,11 @@ describe('the first surface has the cached chosen theme before an async read can
         synchronous.set(channel, listener),
       removeListener: (channel: string) => synchronous.delete(channel),
     }
-    const dispose = registerThemeIpc(ipc as Parameters<typeof registerThemeIpc>[0], store, vi.fn())
+    const dispose = registerThemeIpc(
+      ipc as unknown as Parameters<typeof registerThemeIpc>[0],
+      store,
+      vi.fn(),
+    )
     try {
       const handler = synchronous.get(firstPaintChannel)
       expect(
@@ -100,9 +104,16 @@ describe('the first surface has the cached chosen theme before an async read can
         'the loaded theme must be available without waiting for async IPC',
       ).toBeTypeOf('function')
       const sendSync = vi.fn((channel: string) => {
-        const event: { returnValue?: unknown } = {}
+        const replies: unknown[] = []
+        const event = Object.defineProperty({}, 'returnValue', {
+          set: (value: unknown) => replies.push(structuredClone(value)),
+        })
         synchronous.get(channel)!(event)
-        return structuredClone(event.returnValue)
+        expect(
+          replies,
+          'the first assignment sends the reply, so there must be exactly one',
+        ).toHaveLength(1)
+        return replies[0]
       })
       const bootstrap = (preload as unknown as { themeBeforePaint?: BeforePaint }).themeBeforePaint
       expect(bootstrap).toBeTypeOf('function')

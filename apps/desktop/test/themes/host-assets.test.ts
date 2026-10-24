@@ -490,7 +490,9 @@ function fictionalIpc() {
   const listeners = new Set<(event: IpcRendererEvent, snapshot: ThemeChanged) => void>()
   const invocations: { channel: string; args: unknown[] }[] = []
   const removed: string[] = []
-  const main: Pick<IpcMain, 'handle' | 'removeHandler'> = {
+  const main: Pick<IpcMain, 'handle' | 'removeHandler' | 'on' | 'removeListener'> = {
+    on: () => main as IpcMain,
+    removeListener: () => main as IpcMain,
     handle: (channel, handler) => {
       handlers.set(channel, handler)
     },

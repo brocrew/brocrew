@@ -349,7 +349,7 @@ describe('the actual isolated host wiring', () => {
   })
   it('the central app registrar also refuses unregistered contents in a plugin session', async () => {
     const f = await host(),
-      backend = { handle: vi.fn(), removeHandler: vi.fn() },
+      backend = { handle: vi.fn(), removeHandler: vi.fn(), on: vi.fn(), removeListener: vi.fn() },
       appHandler = vi.fn()
     guardedAppIpc(backend).handle('app:future-fictional-handler', appHandler)
     const call = backend.handle.mock.calls[0]![1]
@@ -358,6 +358,54 @@ describe('the actual isolated host wiring', () => {
     expect(appHandler).not.toHaveBeenCalled()
     expect(() => call({ sender: { session: {}, getURL: () => 'about:blank' } })).not.toThrow()
     expect(appHandler).toHaveBeenCalledOnce()
+  })
+  it('refuses synchronous app reads from plugin contents and removes the wrapped listener', async () => {
+    const f = await host()
+    const backend = {
+      handle: vi.fn(),
+      removeHandler: vi.fn(),
+      on: vi.fn(),
+      removeListener: vi.fn(),
+    }
+    const app = guardedAppIpc(backend)
+    const listener = vi.fn((event: { returnValue?: unknown }) => {
+      event.returnValue = { css: 'cached theme' }
+    })
+    app.on('themes:first-paint', listener)
+    const forward = backend.on.mock.calls[0]![1]
+    for (const sender of [f.contents, { session: f.session, getURL: () => 'about:blank' }]) {
+      const event = { sender, returnValue: undefined }
+      forward(event)
+      expect(event.returnValue).toBeNull()
+    }
+    expect(listener).not.toHaveBeenCalled()
+    const event = { sender: { session: {}, getURL: () => 'file:///fictional/index.html' } }
+    forward(event)
+    expect(event).toHaveProperty('returnValue', { css: 'cached theme' })
+    expect(listener).toHaveBeenCalledOnce()
+    app.removeListener('themes:first-paint', listener)
+    expect(backend.removeListener).toHaveBeenCalledExactlyOnceWith('themes:first-paint', forward)
+    await f.view.close()
+  })
+  it('removes repeated synchronous listeners one at a time, in registration order from last', () => {
+    const backend = {
+      handle: vi.fn(),
+      removeHandler: vi.fn(),
+      on: vi.fn(),
+      removeListener: vi.fn(),
+    }
+    const app = guardedAppIpc(backend)
+    const listener = vi.fn()
+    app.on('app:fictional-cache', listener)
+    app.on('app:fictional-cache', listener)
+    const [first, last] = backend.on.mock.calls.map((call) => call[1])
+    app.removeListener('app:fictional-cache', listener)
+    app.removeListener('app:fictional-cache', listener)
+    app.removeListener('app:fictional-cache', listener)
+    expect(backend.removeListener.mock.calls).toEqual([
+      ['app:fictional-cache', last],
+      ['app:fictional-cache', first],
+    ])
   })
   it('keeps every main-process Electron IPC import on the central registration path', () => {
     const root = resolve(__dirname, '../src/main'),
@@ -430,7 +478,7 @@ describe('the actual isolated host wiring', () => {
   })
   it('every existing app invocation refuses plugin senders before reaching its handler', async () => {
     const f = await host(),
-      backend = { handle: vi.fn(), removeHandler: vi.fn() },
+      backend = { handle: vi.fn(), removeHandler: vi.fn(), on: vi.fn(), removeListener: vi.fn() },
       appHandler = vi.fn(() => 'private app data')
     guardedAppIpc(backend).handle('app:fictional', appHandler)
     const call = backend.handle.mock.calls[0]![1]
