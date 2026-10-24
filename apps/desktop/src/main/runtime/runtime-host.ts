@@ -2581,9 +2581,10 @@ export interface RuntimeHostDeps {
    *
    * Optional, and its absence is an honest answer rather than a broken host: a host wired without
    * it reports the default profile alone, which is exactly what an app with no homes on disk has.
-   * Every test host in the repo is such a host.
+   * A provider filter counts only homes on that provider, so reading a model menu cannot create
+   * the identity's first home on another provider.
    */
-  listProfiles?(): string[]
+  listProfiles?(provider?: Provider): string[]
   /**
    * The app-managed root every provider home lives under — `<userData>/provider-homes` (065).
    *
@@ -28150,15 +28151,11 @@ export class RuntimeHost implements LiveHost {
       asked.provider !== undefined && fixed !== null && asked.provider !== fixed
     if (asked.model === undefined && asked.effort === undefined && !serviceConflict) return null
     const known = this.deps.store.capabilitiesOf(asked.profile) !== null
-    const named =
-      asked.provider === undefined && asked.model !== undefined
-        ? this.theProviderWhoseListAloneHolds(asked.model)
-        : Promise.resolve(null)
-    return named.then(async (theNamedModels) => {
-      const provider =
-        fixed ??
-        theProviderAStartRunsOn(asked, known, giving, this.whatAStartsProviderReads, theNamedModels)
-      if (provider === null) return null
+    const resolved =
+      fixed ?? theProviderAStartRunsOn(asked, known, giving, this.whatAStartsProviderReads, null)
+    const legacy = resolved === null ? this.helperAs(speaking, asked.profile) : null
+    const preferred = resolved ?? (legacy === null ? null : this.theProviderOfConversation(legacy))
+    const listFor = (provider: Provider) => {
       const found =
         fixed !== null && service?.is === 'service'
           ? service.conversation
@@ -28169,8 +28166,38 @@ export class RuntimeHost implements LiveHost {
             ? asked.profile
             : STAND_IN_PROFILE
           : (this.profileOf(found) ?? STAND_IN_PROFILE)
-      return { provider, list: await this.theListFor(provider, home), theNamedModels }
-    })
+      return this.theListFor(provider, home)
+    }
+    return (async () => {
+      const first = preferred === null ? null : await listFor(preferred)
+      // An own-provider model needs no probe on another provider. Explicit choices never infer.
+      if (
+        asked.provider !== undefined ||
+        asked.model === undefined ||
+        (first !== null && theListedRow(first.rows, asked.model) !== undefined)
+      ) {
+        return preferred === null || first === null
+          ? null
+          : { provider: preferred, list: first, theNamedModels: null }
+      }
+      const theNamedModels = await this.theProviderWhoseListAloneHolds(asked.model)
+      const provider =
+        fixed ??
+        theProviderAStartRunsOn(
+          asked,
+          known,
+          giving,
+          this.whatAStartsProviderReads,
+          theNamedModels,
+        ) ??
+        preferred
+      if (provider === null) return null
+      return {
+        provider,
+        list: provider === preferred && first !== null ? first : await listFor(provider),
+        theNamedModels,
+      }
+    })()
   }
 
   /**
@@ -38400,8 +38427,8 @@ export class RuntimeHost implements LiveHost {
    * typed into the launcher is what brings that profile into existence. A cache here would mean a
    * profile you just created not appearing in the menu until you restarted the app.
    */
-  profiles(): string[] {
-    return this.deps.listProfiles?.() ?? [DEFAULT_PROFILE_ID]
+  profiles(provider?: Provider): string[] {
+    return this.deps.listProfiles?.(provider) ?? [DEFAULT_PROFILE_ID]
   }
 
   /**
@@ -40350,12 +40377,13 @@ export class RuntimeHost implements LiveHost {
   /**
    * 🔴 **682 · an AGENT that has never run — an identity row, and no folder under any spelling** —
    * whose list is asked in {@link STAND_IN_PROFILE}'s home. ⚑ Folded both ways, the model door's own
-   * comparison, so an identity whose folder was made in another case has run.
+   * comparison, so an identity whose folder was made in another case has run. With a provider,
+   * only that provider's homes count.
    */
-  private hasNeverRun(profileSlug: string): boolean {
+  private hasNeverRun(profileSlug: string, provider?: Provider): boolean {
     if (this.deps.store.capabilitiesOf(profileSlug) === null) return false
     const folded = foldProfileName(profileSlug)
-    return !this.profiles().some((named) => foldProfileName(named) === folded)
+    return !this.profiles(provider).some((named) => foldProfileName(named) === folded)
   }
 
   /**
@@ -41754,7 +41782,7 @@ export class RuntimeHost implements LiveHost {
     // guard below exists to prevent; the stand-in's is the product's own, which this read already
     // asks in for BroBot's launcher. ⛔ **A name with no identity row still answers `no-profile`** —
     // somebody typing a new profile's name is not an agent that exists.
-    const standIn = this.hasNeverRun(profileId) ? STAND_IN_PROFILE : null
+    const standIn = this.hasNeverRun(profileId, provider) ? STAND_IN_PROFILE : null
     const askIn = standIn ?? profileId
     // 🔴 **A profile that does not exist yet is not probed, and this guard is what makes taking a
     // `profileId` safe at all** (257 §2, holding 190 H2 / 197 §2's rule). `prepareProviderHome` —

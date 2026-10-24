@@ -163,9 +163,10 @@ function subdirectories(dir: string): string[] {
  * the id, and `prepareProviderHome` recreates the directory — and typing the same name into the
  * launcher reaches the same home. The menu is what exists, not what has ever existed.
  */
-export function listProfileIds(userData: string): string[] {
+export function listProfileIds(userData: string, provider?: Provider): string[] {
   const found = new Set<string>()
   for (const home of listProviderHomes(userData)) {
+    if (provider !== undefined && home.provider !== provider) continue
     if (home.profileId !== DEFAULT_PROFILE_ID) found.add(home.profileId)
   }
   // Plain code-unit order, not `localeCompare`: this is a short list of ASCII path segments (the
