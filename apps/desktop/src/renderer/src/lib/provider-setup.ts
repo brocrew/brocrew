@@ -12,6 +12,8 @@ export interface ProviderSetupSays {
   readonly install: { readonly command: string; readonly docs: string } | null
   /** The command that signs in, and renews an expired login, as typed in {@link shell}. */
   readonly signInCommand: string
+  /** Guidance for completing the interactive sign-in after the command opens. */
+  readonly signInInstructions?: string
   /** The computer the steps are for: `macOS` or `Windows`. */
   readonly platform: 'macOS' | 'Windows'
   /** The shell `signInCommand` is typed for. */

@@ -817,6 +817,8 @@ export interface ProviderSetup {
   readonly install: { readonly command: string; readonly docs: string }
   /** The command that signs in, and that renews an expired login, as typed in {@link shell}. */
   readonly signInCommand: string
+  /** Guidance for completing the interactive sign-in after the command opens. */
+  readonly signInInstructions?: string
   /** The computer the steps are for, as a person names it. */
   readonly platform: SetupPlatform
   /** The app a person opens to run the commands, which they are written for. */
@@ -843,6 +845,7 @@ export function claudeSetup(
       ? { command: 'irm https://claude.ai/install.ps1 | iex', docs }
       : { command: 'curl -fsSL https://claude.ai/install.sh | bash', docs },
     signInCommand: claudeCommandIn(program, platform),
+    signInInstructions: `If Claude Code opens at its interactive prompt, type /login there, not in ${windows ? 'PowerShell' : 'Terminal'}. Finish signing in in your browser, then return to BroCrew and check the sign-in again.`,
     platform: windows ? 'Windows' : 'macOS',
     shell: windows ? 'PowerShell' : 'Terminal',
   }

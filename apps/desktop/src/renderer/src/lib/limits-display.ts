@@ -33,7 +33,10 @@ export const limitsDisplayWords = {
     `Last known: stopped at ${providerName(block.provider)}’s limit · as of ${dateTime(block.asOf)}`,
 }
 
-export function limitsDisplayLabel(state: LimitsDisplayState): string {
+export function limitsDisplayLabel(
+  state: LimitsDisplayState,
+  emptyAsOf: (at: number) => string = limitsDisplayWords.emptyAsOf,
+): string {
   if (state.status === 'updating') return limitsDisplayWords.updating
   if (state.status === 'unavailable') return limitsDisplayWords.unavailable
   const reading = state.reading
@@ -45,7 +48,7 @@ export function limitsDisplayLabel(state: LimitsDisplayState): string {
   )
     return limitsDisplayWords.unavailable
   return reading.walked.rows.length === 0
-    ? limitsDisplayWords.emptyAsOf(reading.evaluatedAt)
+    ? emptyAsOf(reading.evaluatedAt)
     : limitsDisplayWords.asOf(reading.evaluatedAt)
 }
 

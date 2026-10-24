@@ -257,7 +257,12 @@ const view = computed<StepView | null>(() => {
             ? {
                 ...plain,
                 title,
-                says: `Run this command in ${terminal.value}. Follow its sign-in, then come back here.`,
+                says: [
+                  `Run this command in ${terminal.value}. Follow its sign-in, then come back here.`,
+                  props.setup.signInInstructions,
+                ]
+                  .filter(Boolean)
+                  .join(' '),
                 command: props.setup.signInCommand,
                 hint: openTerminal.value,
               }

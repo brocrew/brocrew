@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, reactive, ref } from 'vue'
 import ProviderCard from '../../src/renderer/src/components/ProviderCard.vue'
+import ProviderSetupWizard from '../../src/renderer/src/components/ProviderSetupWizard.vue'
 import { createModelLists } from '../../src/renderer/src/lib/model-lists'
 import type { LimitsDisplayState } from '../../src/renderer/src/lib/limits-display'
 import type {
@@ -15,7 +16,11 @@ const NOW = Date.UTC(2026, 9, 24, 12)
 const USABLE: AuthState = { state: 'usable', login: 'account', expiresAt: null }
 const ABSENT: AuthState = { state: 'absent', why: 'no-login', reason: 'No fictional login.' }
 const UNKNOWN: AuthState = { state: 'unknown', reason: 'The fictional login could not be read.' }
-const EXPIRED: AuthState = { state: 'absent', why: 'expired', reason: 'The fictional login expired.' }
+const EXPIRED: AuthState = {
+  state: 'absent',
+  why: 'expired',
+  reason: 'The fictional login expired.',
+}
 const PROGRAM: ProviderVersion = {
   version: '2.1.290',
   program: {
@@ -100,7 +105,7 @@ function card(provider: Provider = 'claude') {
     limitsRead: true,
     limitsDisplay: limits(),
     clock: NOW,
-    version: PROGRAM,
+    version: PROGRAM as ProviderVersion,
     readings: [],
     resources: null,
     resourcesPaused: false,
@@ -211,6 +216,38 @@ describe('setup feedback follows the latest facts', () => {
     )
   })
 
+  it('clears the inline failure when a login-change check becomes usable', async () => {
+    const out = card()
+    await failCheck(out)
+    out.auth.value = USABLE
+    out.props.loginMoved++
+    await settled()
+    expect(words(out.m.q('provider-inline-setup'))).not.toContain('Not connected yet')
+    expect(out.m.all('setup-done')).toHaveLength(0)
+    out.m.q('setup-check').click()
+    await settled()
+    expect(out.m.all('setup-done')).toHaveLength(1)
+  })
+
+  it('keeps a genuine program failure after the local sign-in becomes usable', async () => {
+    const out = card()
+    await failCheck(out)
+    out.auth.value = USABLE
+    out.props.version = {
+      ...PROGRAM,
+      program: {
+        ...PROGRAM.program!,
+        standing: 'missing',
+        said: 'The fictional program is missing.',
+      },
+    }
+    out.m.q('setup-check').click()
+    await settled()
+    expect(out.m.all('setup-done')).toHaveLength(0)
+    expect(words(out.m.q('provider-inline-setup'))).toContain('The provider program is not ready.')
+    expect(words(out.m.q('provider-inline-setup'))).toContain('The fictional program is missing.')
+  })
+
   it('explains the interactive login step without changing the quoted PowerShell command', async () => {
     const out = card()
     await settled()
@@ -224,13 +261,43 @@ describe('setup feedback follows the latest facts', () => {
     expect(words(out.m.q('provider-inline-setup'))).toContain(INSTRUCTIONS)
     expect(out.runtime.signInProvider).not.toHaveBeenCalled()
   })
+
+  it('also shows the interactive instructions in the step-by-step guide', async () => {
+    const out = card()
+    unmountAll()
+    const external = {
+      state: 'absent' as const,
+      reason: 'Use the tool.',
+      checkedAgainst: 'fictional',
+    }
+    const m = mount(ProviderSetupWizard, {
+      provider: 'claude',
+      version: PROGRAM,
+      setup: out.props.setup,
+      auth: ABSENT,
+      keyRefused: false,
+      signIn: external,
+      reprovision: external,
+      busy: 'idle',
+      notice: null,
+      recheck: async () => undefined,
+    })
+    await settled()
+    expect(words(m.q('setup-says'))).toContain(INSTRUCTIONS)
+    expect(words(m.q('setup-command'))).toBe(COMMAND)
+    m.q('setup-copy').click()
+    await settled()
+    expect(out.copied).toEqual([COMMAND])
+  })
 })
 
 describe('usage readings and recorded warnings are separate evidence', () => {
   it('calls unread usage unknown and labels empty warning history without claiming allowance', async () => {
     const out = card()
     await settled()
-    expect(words(out.m.q('provider-usage-none'))).toBe('Usage is unknown. No reading yet from Claude.')
+    expect(words(out.m.q('provider-usage-none'))).toBe(
+      'Usage is unknown. No reading yet from Claude.',
+    )
     for (const cy of ['provider-limits-reading', 'provider-usage-says']) {
       expect(words(out.m.q(cy))).toMatch(/^No limit warnings recorded as of /)
       expect(words(out.m.q(cy))).not.toContain('No limits reported')

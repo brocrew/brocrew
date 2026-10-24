@@ -512,6 +512,10 @@ function readModelsAgain(): void {
 
 /* ------------------------------------------------------------------ usage */
 
+function warningHistoryLabel(display: LimitsDisplayState): string {
+  return limitsDisplayLabel(display, (at) => `No limit warnings recorded as of ${fullTime(at)}`)
+}
+
 const usage = computed<{ text: string; title: string | null; tone: 'note' | 'warn' }>(() => {
   if (props.limitsDisplay !== undefined) {
     const display = props.limitsDisplay
@@ -523,7 +527,7 @@ const usage = computed<{ text: string; title: string | null; tone: 'note' | 'war
               usageSays(props.limit, reading.evaluatedAt),
               reading.evaluatedAt,
             )
-          : limitsDisplayLabel(display),
+          : warningHistoryLabel(display),
       title: reading === null ? null : limitsDisplayWords.lastReading(reading.evaluatedAt),
       tone: props.limit === null ? 'note' : 'warn',
     }
@@ -615,8 +619,22 @@ const cardRoot = ref<HTMLElement | null>(null)
 const setupKey = ref(false)
 const setupExternal = ref(false)
 const setupCopySays = ref<string | null>(null)
+const setupCheckFailure = ref<string | null>(null)
 const setupStep = ref<1 | 2 | 3>(1)
 const setupChecking = ref(false)
+const setupReady = computed(
+  () =>
+    isReady({
+      version: props.version,
+      setup: props.setup,
+      auth: auth.value,
+      keyRefused: keyRefusedSays.value !== null,
+      keyUnreadable: keyCantBeRead.value ? keyInUseSays.value : null,
+    }) === true,
+)
+watch(setupReady, (ready) => {
+  if (ready) setupCheckFailure.value = null
+})
 const setupBusy = computed(() => setupChecking.value || keyBusy.value || authBusy.value !== 'idle')
 const canSetUpSignIn = computed(
   () =>
@@ -629,6 +647,7 @@ function beginSetup(): void {
   setupKey.value = false
   setupExternal.value = false
   setupCopySays.value = null
+  setupCheckFailure.value = null
   settingUp.value = true
   void nextTick(() =>
     cardRoot.value?.querySelector<HTMLElement>('[data-cy="provider-inline-setup"] button')?.focus(),
@@ -668,6 +687,7 @@ function closeSetup(): void {
 }
 async function checkSetup(): Promise<void> {
   if (setupBusy.value) return
+  setupCheckFailure.value = null
   setupChecking.value = true
   setupStep.value = 2
   try {
@@ -681,23 +701,12 @@ async function checkSetup(): Promise<void> {
     }
     await aPersonChecksAgain()
     await readKey()
-    if (
-      isReady({
-        version: props.version,
-        setup: props.setup,
-        auth: auth.value,
-        keyRefused: keyRefusedSays.value !== null,
-        keyUnreadable: keyCantBeRead.value ? keyInUseSays.value : null,
-      }) === true
-    )
-      setupStep.value = 3
+    if (setupReady.value) setupStep.value = 3
     else
-      noticeSays(
+      setupCheckFailure.value =
         auth.value?.state === 'usable'
           ? 'The provider program is not ready. Check its version below.'
-          : 'Not connected yet. Sign in or check your API key, then try again.',
-        true,
-      )
+          : 'Not connected yet. Sign in or check your API key, then try again.'
   } finally {
     setupChecking.value = false
   }
@@ -874,7 +883,7 @@ defineExpose({ beginSetup })
       </div>
 
       <p v-if="limitsDisplay" data-cy="provider-limits-reading">
-        {{ limitsDisplayLabel(limitsDisplay) }}
+        {{ warningHistoryLabel(limitsDisplay) }}
         <span v-if="limitsDisplay.reading && limitsDisplay.status !== 'ready'">
           · {{ limitsDisplayWords.lastReading(limitsDisplay.reading.evaluatedAt) }}
         </span>
@@ -932,6 +941,9 @@ defineExpose({ beginSetup })
         <div v-if="setupExternal && props.setup" class="setup-command">
           <p class="line">
             Run this command in {{ props.setup.shell }}. Follow its sign-in, then come back here.
+          </p>
+          <p v-if="props.setup.signInInstructions" class="line">
+            {{ props.setup.signInInstructions }}
           </p>
           <code data-cy="setup-command">{{ props.setup.signInCommand }}</code>
           <button type="button" class="bb-button" data-cy="setup-copy" @click="copySetupCommand">
@@ -991,6 +1003,9 @@ defineExpose({ beginSetup })
       >
       <p v-if="authNotice" class="line" :class="{ warn: authNoticeWarns }" role="status">
         {{ authNotice }}
+      </p>
+      <p v-if="setupCheckFailure" class="line warn" role="status">
+        {{ setupCheckFailure }}
       </p>
       <p v-if="keySaid" class="line" :class="{ warn: keySaid.tone === 'warn' }" role="status">
         {{ keySaid.text }}
@@ -1346,7 +1361,7 @@ defineExpose({ beginSetup })
           class="line quiet usage-empty"
           data-cy="provider-usage-none"
         >
-          No reading yet. {{ name }} sends one with its next turn.
+          Usage is unknown. No reading yet from {{ name }}.
         </p>
         <div v-else class="usage-windows">
           <div v-for="(line, index) in readingLines" :key="line.key" class="usage-window">
