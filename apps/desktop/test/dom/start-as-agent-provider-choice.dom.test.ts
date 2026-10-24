@@ -4,7 +4,12 @@ import StartAsAgent from '../../src/renderer/src/components/StartAsAgent.vue'
 import type { AgentStore } from '../../src/renderer/src/lib/agent-store'
 import { createModelLists } from '../../src/renderer/src/lib/model-lists'
 import { theList } from '../../src/shared/model-choice'
-import type { CreateSessionInput, Provider } from '../../src/shared/runtime-ipc'
+import type {
+  CreateSessionInput,
+  Provider,
+  ProviderCapabilityMap,
+} from '../../src/shared/runtime-ipc'
+import { CAPABILITY_FIXTURE } from '../provider-capability-fixture'
 import { mount, unmountAll } from './harness'
 
 afterEach(unmountAll)
@@ -15,7 +20,9 @@ async function settle() {
   }
 }
 
-function opened() {
+function opened(
+  options: { approvalMode?: 'ask' | 'auto'; capabilities?: ProviderCapabilityMap } = {},
+) {
   const started: CreateSessionInput[] = []
   const reads: { provider: Provider; profileId?: string }[] = []
   const lists = createModelLists(() => ({
@@ -50,8 +57,8 @@ function opened() {
     {
       profileSlug: 'draft-reader',
       provider: 'claude',
-      defaultApprovalMode: 'ask',
-      capabilities: null,
+      defaultApprovalMode: options.approvalMode ?? 'ask',
+      capabilities: options.capabilities ?? null,
       agents,
       lists,
       onStart: (input: CreateSessionInput) => started.push(input),
@@ -110,5 +117,26 @@ describe('choosing a provider for a new conversation as an existing agent', () =
       },
     ])
     expect(reads.every((read) => read.profileId === 'draft-reader')).toBe(true)
+  })
+
+  it('shows the selected provider’s approval reach before any launch', async () => {
+    const { m, started } = opened({ approvalMode: 'auto', capabilities: CAPABILITY_FIXTURE })
+    expect(m.q('yolo-reach').textContent?.trim()).toBe(CAPABILITY_FIXTURE.claude.approvals.note)
+    m.q('model-picker-face').click()
+    await settle()
+    m.q('model-picker-choose-codex').click()
+    await settle()
+    const row = m
+      .q('model-picker-panel')
+      .querySelector<HTMLInputElement>(
+        '[data-cy="model-picker-provider"][data-provider="codex"] input[type="radio"]',
+      )
+    expect(row).not.toBeNull()
+    row!.click()
+    await settle()
+    m.q('model-picker-take').click()
+    await settle()
+    expect(m.q('yolo-reach').textContent?.trim()).toBe(CAPABILITY_FIXTURE.codex.approvals.note)
+    expect(started).toEqual([])
   })
 })

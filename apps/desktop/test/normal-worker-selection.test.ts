@@ -26,6 +26,21 @@ const pool: NormalWorkerPool = {
 const entry: ProfileExecution = { kind: 'normal', identityCreatedAt: 12, workerPools: [pool] }
 
 describe('normal worker selection', () => {
+  it.each([false, true])(
+    'keeps provider filtering when parallel is %s and another provider has a free worker',
+    (parallel) => {
+      expect(
+        selectNormalWorker(
+          pool,
+          parallel,
+          () => true,
+          () => false,
+          (id) => id === 'worker-two',
+        ),
+      ).toMatchObject({ kind: 'existing', worker: { conversation: 'worker-two', number: 2 } })
+    },
+  )
+
   it('keeps the primary for ordinary work, even if busy and an extra is free', () => {
     expect(
       selectNormalWorker(
