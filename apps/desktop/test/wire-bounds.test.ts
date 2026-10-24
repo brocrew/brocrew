@@ -172,6 +172,9 @@ describe('221 §3 · the count is pinned, so a new field must be classified', ()
       // an empty string is a person taking their rules away, and a bound that refused it would make
       // that unreachable through the only door that can express it.
       'ownInstructions',
+      // A person types notes, baseline text and reasons. The refinement bounds each to 4000
+      // Unicode code points and refuses text that SQLite cannot preserve exactly. Empty is valid.
+      'ownNotesText',
       // 🔴 **`readingBody`** (633) — classified: **a person does not type it, and no person ever
       // will.** ⛔ It is the MARKDOWN the renderer composed from `TranscriptItem[]` — the fold the
       // screen is made of — sent back for the host to write into `exports/`. ⚑ A person chooses a

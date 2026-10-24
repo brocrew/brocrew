@@ -983,6 +983,18 @@ import type {
 } from '../../shared/own-instructions'
 // ⚑ **F009 · how an agent's rules begin**, as its record quotes them.
 import { howTheRulesBegin, OWN_INSTRUCTIONS_CHARS } from '../../shared/own-instructions'
+import {
+  ownNotesWriteFits,
+  OWN_NOTES_BASELINE_PROBLEM,
+  OWN_NOTES_STALE_PROBLEM,
+  OWN_NOTES_SAVE_PROBLEM,
+  OWN_NOTES_WRITE_CALLER_PROBLEM,
+  OWN_NOTES_READ_CALLER_PROBLEM,
+  type OwnNotesWrite,
+  type OwnNotesReading,
+  type OwnNotesReceipt,
+  type AgentOwnNotesReading,
+} from '../../shared/own-notes'
 // ⚑ **625 · the memory door's shapes**, type-only for `own-instructions`' reason exactly: the
 // vocabularies live in `shared/` so the wire, the store and the popup read one copy.
 import type { SavedMethodService } from '../saved-method-service'
@@ -7330,6 +7342,14 @@ export type MayCreateAgents =
  */
 export type ProposeRulesOutcome =
   | { readonly ok: true; readonly wrote: 'a-request'; readonly askId: string }
+  | {
+      readonly ok: false
+      readonly rail: ToolRefusal
+      readonly detail: Readonly<Record<string, unknown>>
+    }
+
+export type AgentOwnNotesOutcome<T> =
+  | { readonly ok: true; readonly result: T }
   | {
       readonly ok: false
       readonly rail: ToolRefusal
@@ -38819,6 +38839,140 @@ export class RuntimeHost implements LiveHost {
     const named = this.deps.store.agentIdentityNameById(agentIdentityRowId(identity.profileSlug))
     if (named === null) return null
     return { profile: named.slug, name: agentName(named.slug, [named]) }
+  }
+
+  /** Reading another profile returns data; only the caller's own live identity authenticates it. */
+  readOwnNotes(
+    me: string,
+    about: string | undefined,
+    by: Caller,
+  ): AgentOwnNotesOutcome<AgentOwnNotesReading> {
+    const author = this.rulesAuthor(me, by)
+    if (author === null || (about !== undefined && typeof about !== 'string'))
+      return {
+        ok: false,
+        rail: 'malformed-request',
+        detail: { problems: [OWN_NOTES_READ_CALLER_PROBLEM] },
+      }
+    const profile = about === undefined ? author.profile : foldProfileName(about)
+    const page = this.deps.store.currentOwnNotesOf(profile)
+    if (page === null) return { ok: false, rail: 'no-such-agent', detail: { agent: profile } }
+    const current = page.current
+    return {
+      ok: true,
+      result: {
+        profile: page.profile,
+        version: current?.version ?? 0,
+        text: current?.text ?? '',
+        author: current?.author ?? null,
+        reason: current?.reason ?? null,
+      },
+    }
+  }
+
+  /** All bound conversations of one profile share this page, including its helpers. */
+  writeOwnNotes(
+    me: string,
+    said: OwnNotesWrite,
+    by: Caller,
+  ): AgentOwnNotesOutcome<OwnNotesReceipt> {
+    const author = this.rulesAuthor(me, by)
+    if (author === null)
+      return {
+        ok: false,
+        rail: 'malformed-request',
+        detail: { problems: [OWN_NOTES_WRITE_CALLER_PROBLEM] },
+      }
+    if (!ownNotesWriteFits(said))
+      return {
+        ok: false,
+        rail: 'malformed-request',
+        detail: { problems: [OWN_NOTES_BASELINE_PROBLEM] },
+      }
+    const page = this.deps.store.currentOwnNotesOf(author.profile)
+    if (
+      page === null ||
+      (page.current?.version ?? 0) !== said.expectedVersion ||
+      (page.current?.text ?? '') !== said.currentText
+    )
+      return {
+        ok: false,
+        rail: 'malformed-request',
+        detail: { problems: [OWN_NOTES_STALE_PROBLEM] },
+      }
+    // The tool caller id is agent:<id>; the repository derives the author from the bare session id.
+    const written = this.deps.store.writeOwnNotes(
+      author.profile,
+      said,
+      { who: 'an-agent', agent: me },
+      this.now(),
+    )
+    if (written === null)
+      return {
+        ok: false,
+        rail: 'malformed-request',
+        detail: { problems: [OWN_NOTES_SAVE_PROBLEM] },
+      }
+    this.theWorldMoved('agents')
+    return {
+      ok: true,
+      result: {
+        profile: author.profile,
+        conversation: me,
+        version: written.version,
+        previousVersion: said.expectedVersion,
+        author: written.author,
+      },
+    }
+  }
+
+  agentOwnNotes(profile: string): OwnNotesReading | null {
+    return this.deps.store.ownNotesOf(foldProfileName(profile))
+  }
+
+  agentOwnNotesUnread(profile: string) {
+    return this.deps.store.ownNotesUnread(foldProfileName(profile))
+  }
+
+  saveOwnNotes(profile: string, said: OwnNotesWrite, by: Caller): OwnNotesReading | null {
+    const actor = whoDidIt(by)
+    if (actor.who !== 'a-person' || !ownNotesWriteFits(said)) return null
+    const page = this.deps.store.currentOwnNotesOf(profile)
+    if (
+      page === null ||
+      (page.current?.version ?? 0) !== said.expectedVersion ||
+      (page.current?.text ?? '') !== said.currentText
+    )
+      return null
+    const written = this.deps.store.writeOwnNotes(profile, said, actor, this.now())
+    if (written === null) return null
+    this.theWorldMoved('agents')
+    return this.agentOwnNotes(profile)
+  }
+
+  undoOwnNotes(profile: string, expectedVersion: number, by: Caller): OwnNotesReading | null {
+    const actor = whoDidIt(by)
+    if (actor.who !== 'a-person' || !Number.isSafeInteger(expectedVersion) || expectedVersion < 1)
+      return null
+    const current = this.deps.store.currentOwnNotesOf(profile)?.current
+    if (current == null || current.version !== expectedVersion) return null
+    const written = this.deps.store.undoOwnNotes(
+      profile,
+      { expectedVersion, currentText: current.text },
+      actor,
+      this.now(),
+    )
+    if (written === null) return null
+    this.theWorldMoved('agents')
+    return this.agentOwnNotes(profile)
+  }
+
+  markOwnNotesSeen(profile: string, throughVersion: number, by: Caller): boolean {
+    const actor = whoDidIt(by)
+    if (actor.who !== 'a-person') return false
+    const marked = this.deps.store.markOwnNotesSeen(profile, throughVersion, actor)
+    if (marked) this.theWorldMoved('agents')
+    return marked
   }
 
   /** Known agents may propose changes. Historical relay grants no longer authorize a write. */

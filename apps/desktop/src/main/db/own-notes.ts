@@ -5,6 +5,7 @@ import type { RulesAuthor } from '../../shared/own-instructions'
 import {
   ownNotesTextFits,
   type OwnNotesBaseline,
+  type OwnNotesPage,
   type OwnNotesReading,
   type OwnNotesUnread,
   type OwnNotesVersion,
@@ -13,6 +14,7 @@ import {
 import type { ActedBy } from '../../shared/who-did-it'
 
 export interface OwnNotesStore {
+  currentOwnNotesOf(profile: string): OwnNotesPage | null
   ownNotesOf(profile: string): OwnNotesReading | null
   writeOwnNotes(
     profile: string,
@@ -161,6 +163,12 @@ export function createOwnNotesStore(db: AppDatabase): OwnNotesStore {
     }
   }
   return {
+    currentOwnNotesOf(profile) {
+      const known = identity(profile)
+      if (!known) return null
+      const row = newest(known.id)
+      return { profile: known.slug, current: row === undefined ? null : fromRow(row) }
+    },
     ownNotesOf(profile) {
       const known = identity(profile)
       return known

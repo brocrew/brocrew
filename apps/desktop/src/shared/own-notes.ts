@@ -46,3 +46,51 @@ export function ownNotesTextFits(text: string): boolean {
   }
   return true
 }
+
+/** A bounded current-page read; history is read only when the book asks for it. */
+export interface OwnNotesPage {
+  readonly profile: string
+  readonly current: OwnNotesVersion | null
+}
+
+export interface AgentOwnNotesReading {
+  readonly profile: string
+  readonly version: number
+  readonly text: string
+  readonly author: RulesAuthor | null
+  readonly reason: string | null
+}
+
+export interface OwnNotesReceipt {
+  readonly profile: string
+  readonly conversation: string
+  readonly version: number
+  readonly previousVersion: number
+  readonly author: RulesAuthor | null
+}
+
+export const OWN_NOTES_TEXT_PROBLEM = 'Use at most 4000 characters of plain text.'
+export const OWN_NOTES_REASON_PROBLEM = 'Say why the notes should change.'
+export const OWN_NOTES_BASELINE_PROBLEM =
+  'Read the current notes, provide their exact version and full text, and say why within the size limit.'
+export const OWN_NOTES_STALE_PROBLEM = 'The notes changed; read them again before replacing them.'
+export const OWN_NOTES_SAVE_PROBLEM =
+  'The notes could not be saved. Read them again before retrying.'
+export const OWN_NOTES_WRITE_CALLER_PROBLEM =
+  "Only an agent's own running conversation can write its notes."
+export const OWN_NOTES_READ_CALLER_PROBLEM = 'Use your own running conversation to read notes.'
+
+/** The host checks the full request before the store repeats the baseline check in its transaction. */
+export function ownNotesWriteFits(said: OwnNotesWrite): boolean {
+  return (
+    Number.isSafeInteger(said.expectedVersion) &&
+    said.expectedVersion >= 0 &&
+    typeof said.currentText === 'string' &&
+    ownNotesTextFits(said.currentText) &&
+    typeof said.text === 'string' &&
+    ownNotesTextFits(said.text) &&
+    typeof said.why === 'string' &&
+    said.why.trim() !== '' &&
+    ownNotesTextFits(said.why)
+  )
+}

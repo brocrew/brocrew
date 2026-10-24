@@ -4016,6 +4016,7 @@ export const NULL_SESSION_STORE: SessionStore = {
   // read's own contract already names — and the identity is echoed back so a surface can say which
   // agent it found nothing for.
   ownNotesOf: () => null,
+  currentOwnNotesOf: () => null,
   writeOwnNotes: () => null,
   undoOwnNotes: () => null,
   ownNotesUnread: () => ({ seenThrough: 0, newestAgentVersion: 0, unread: false }),
