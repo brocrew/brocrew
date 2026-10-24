@@ -223,7 +223,7 @@ const PERMANENCE: Readonly<Record<SpawnRail, RailPermanence>> = {
   'parallel-not-for-a-service': 'permanent',
   'service-provider-is-fixed': 'permanent',
   'no-free-worker-at-capacity': 'while-this-holds',
-  'no-room-for-provider-conversation': 'permanent',
+  'no-room-for-provider-conversation': 'until-a-person-changes-it',
   'that-is-this-conversation': 'permanent',
   'it-would-wait-on-itself': 'while-this-holds',
   'its-waits-cannot-all-be-checked': 'while-this-holds',
@@ -464,7 +464,7 @@ export function describeRail(rail: SpawnRail, detail: SpawnRefusalDetail = {}): 
     case 'no-room-for-provider-conversation':
       return (
         `Your worker pool for “${detail.profileId ?? '?'}” is full and has no conversation on ${detail.provider === undefined ? 'the chosen provider' : PROVIDER_NAME[detail.provider]}. ` +
-        'Give work on a provider already in that pool, or choose another agent. Waiting for these workers to finish will not free a place for another provider.'
+        'Give work on a provider already in that pool, or choose another agent. A person can remove a worker to make room; waiting for these workers to finish will not free a place for another provider.'
       )
     case 'service-provider-is-fixed':
       return (
