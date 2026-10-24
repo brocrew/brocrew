@@ -1493,6 +1493,8 @@ describe('379 · a task you can see', () => {
         // ⚑ **D-016 · commit 7 · R1 — a READER**: the conversation an agent address names, a label
         // or an id; it writes nothing and mints nothing.
         theConversationAddressed: true,
+        // ⚑ **A READER**: the conversation an agent's profile name names; it mints nothing.
+        theConversationAProfileNames: true,
         // ⚑ **D-017 · R10 — a READER**: the conversation that took an id's place, or none.
         tookItsPlace: true,
         // ⚑ **A READER**: why what is held for a conversation waits for its reopen on the current
@@ -1617,6 +1619,7 @@ describe('379 · a task you can see', () => {
         'takeBackPiece',
         'takeBackWhatItsQuestionMadeFalse',
         'takeOnWork',
+        'theConversationAProfileNames',
         'theConversationAddressed',
         'themes',
         'tookItsPlace',
