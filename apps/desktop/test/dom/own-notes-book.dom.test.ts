@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, ref } from 'vue'
+import { page } from 'vitest/browser'
+import IconSprite from '../../src/renderer/src/components/IconSprite.vue'
 import AgentBook from '../../src/renderer/src/components/AgentSectionsSheet.vue'
 import AgentBookButton from '../../src/renderer/src/components/AgentBookButton.vue'
 import type { AgentStore } from '../../src/renderer/src/lib/agent-store'
@@ -229,7 +231,21 @@ describe('Own notes in the agent book', () => {
       f.publish([edited, agentVersion()])
       return { profile: 'quill', versions: [edited, agentVersion()] }
     })
-    const view = mount(AgentBook, { profileSlug: 'quill', bridge: f.bridge, store: f.store })
+    const view = mount(
+      defineComponent({
+        setup: () => () => [
+          h(IconSprite),
+          h(AgentBook, {
+            profileSlug: 'quill',
+            agentName: 'Quill',
+            bridge: f.bridge,
+            store: f.store,
+          }),
+        ],
+      }),
+      {},
+      { width: 1000, height: 1100 },
+    )
     expect(view.host.querySelector('[data-cy="agent-book-tab-notes"]')).not.toBeNull()
     view.q('agent-book-tab-notes').click()
     await vi.waitFor(() =>
@@ -249,6 +265,11 @@ describe('Own notes in the agent book', () => {
     expect(view.q('own-notes-version-2').textContent).toContain('Quill')
     expect(view.q('own-notes-version-2').textContent).toContain(agentVersion().reason)
     expect(f.markAgentRulesSeen).not.toHaveBeenCalled()
+    await document.fonts.ready
+    await page.screenshot({
+      element: view.host,
+      path: '__screenshots__/agent-own-notes-preview.png',
+    })
   })
 
   it('leaves notes unread when reading fails and does not present that failure as an empty page', async () => {
