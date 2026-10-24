@@ -122,6 +122,7 @@ export const SPAWN_RAILS = [
   'parallel-not-for-a-service',
   'service-provider-is-fixed',
   'no-free-worker-at-capacity',
+  'no-room-for-provider-conversation',
   /** The agent is a service, and the giver is that service's one conversation. */
   'that-is-this-conversation',
   /** The service already waits, through work it gave, on the giver: the piece would never be reached. */
@@ -222,6 +223,7 @@ const PERMANENCE: Readonly<Record<SpawnRail, RailPermanence>> = {
   'parallel-not-for-a-service': 'permanent',
   'service-provider-is-fixed': 'permanent',
   'no-free-worker-at-capacity': 'while-this-holds',
+  'no-room-for-provider-conversation': 'permanent',
   'that-is-this-conversation': 'permanent',
   'it-would-wait-on-itself': 'while-this-holds',
   'its-waits-cannot-all-be-checked': 'while-this-holds',
@@ -271,6 +273,7 @@ const REMEDY: Readonly<Record<SpawnRail, RefusalRemedy | null>> = {
   'parallel-not-for-a-service': null,
   'service-provider-is-fixed': null,
   'no-free-worker-at-capacity': 'make-the-same-call-when-this-settles',
+  'no-room-for-provider-conversation': null,
   'that-is-this-conversation': null,
   'it-would-wait-on-itself': 'make-the-same-call-when-this-settles',
   'its-waits-cannot-all-be-checked': 'make-the-same-call-when-this-settles',
@@ -457,6 +460,11 @@ export function describeRail(rail: SpawnRail, detail: SpawnRefusalDetail = {}): 
         'There is no agent by that name, so nothing was given: check the spelling — list_profiles ' +
         'names every agent. To bring a new agent into existence under this name, give it again with ' +
         `new: true. It asked for “${detail.profileId ?? '?'}”.`
+      )
+    case 'no-room-for-provider-conversation':
+      return (
+        `Your worker pool for “${detail.profileId ?? '?'}” is full and has no conversation on ${detail.provider === undefined ? 'the chosen provider' : PROVIDER_NAME[detail.provider]}. ` +
+        'Give work on a provider already in that pool, or choose another agent. Waiting for these workers to finish will not free a place for another provider.'
       )
     case 'service-provider-is-fixed':
       return (
@@ -1222,7 +1230,14 @@ export function admitGive(
     asked.parallel === true && asked.new !== true,
     provider ?? undefined,
   )
-  if (worker?.is === 'full') return no('no-free-worker-at-capacity', { profileId: asked.profile })
+  if (worker?.is === 'full') {
+    return asked.parallel === true
+      ? no('no-free-worker-at-capacity', { profileId: asked.profile })
+      : no('no-room-for-provider-conversation', {
+          profileId: asked.profile,
+          ...(provider === null ? {} : { provider }),
+        })
+  }
   if (worker?.is === 'unknown') return no('worker-binding-is-unknown', { profileId: asked.profile })
   const found =
     worker?.is === 'known'
