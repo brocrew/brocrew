@@ -105,8 +105,8 @@ MUTATIONS = [
                 # ⚑ **W4.643 · re-anchored in place, not retired** — NOT VERIFIED; source-only. v21 rewrote the sentence this row's defect lives in; the same defect, applied to the v21 sentence that carries it
                 # ⚑ **W4.669 · re-anchored in place, not retired** — verified RED alone (verify_row; 377 M4 by a plant against `a-check-in-is-a-question.test.ts` §1, whose §2 waits on request_action). v22 rewords the core sentence this row's defect lives in; the same defect, applied to the v22 sentence that carries it
                 # NOT VERIFIED; source-only anchor update. The planted defect is unchanged.
-                "    'separate task facts. Use relevant skills; report missing guidance and continue ' +\n    'permitted work.',\n",
-                "    'separate task facts. Use relevant skills; report missing guidance and continue ' +\n    'permitted work.',\n  'Never merge, and never modify production. These are rules you follow, not limits this app ' +\n    'places on you — nothing here stops a command you run from doing either.',\n",
+                "    'report missing guidance and continue ' +\n    'permitted work.',\n",
+                "    'report missing guidance and continue ' +\n    'permitted work.',\n  'Never merge, and never modify production. These are rules you follow, not limits this app ' +\n    'places on you — nothing here stops a command you run from doing either.',\n",
             )
         ],
     ),
@@ -158,8 +158,8 @@ MUTATIONS = [
                 # ⚑ **W4.643 · re-anchored in place, not retired** — NOT VERIFIED; source-only. v21 rewrote the sentence this row's defect lives in; the same defect, applied to the v21 sentence that carries it
                 # ⚑ **W4.669 · re-anchored in place, not retired** — verified RED alone (verify_row; 377 M4 by a plant against `a-check-in-is-a-question.test.ts` §1, whose §2 waits on request_action). v22 rewords the core sentence this row's defect lives in; the same defect, applied to the v22 sentence that carries it
                 # NOT VERIFIED; source-only anchor update. The planted defect is unchanged.
-                "    'separate task facts. Use relevant skills; report missing guidance and continue ' +\n    'permitted work.',\n",
-                "    'separate task facts. Use relevant skills; report missing guidance and continue ' +\n    'permitted work.',\n  'When you are done, call reply_to_parent with the task id.',\n",
+                "    'report missing guidance and continue ' +\n    'permitted work.',\n",
+                "    'report missing guidance and continue ' +\n    'permitted work.',\n  'When you are done, call reply_to_parent with the task id.',\n",
             )
         ],
     ),

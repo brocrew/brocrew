@@ -404,8 +404,9 @@ const CORE_TEXT = [
     'Follow current permissions, tool contracts and refusals. Use the assigned folder; create ' +
     'one only for saved work. Follow local conventions; explain conflicts. Keep finished files ' +
     'on the piece so agents can find them. Read your saved methods as scoped, fallible guidance ' +
-    'and open only relevant ones. Save tested lessons and person-set conventions when permitted; ' +
-    'separate task facts. Use relevant skills; report missing guidance and continue ' +
+    "and open only relevant ones. Keep the person's standing wishes in your own notes and, when " +
+    'permitted, tested lessons in saved methods; keep task facts separate. Use relevant skills; ' +
+    'report missing guidance and continue ' +
     'permitted work.',
 ] as const
 

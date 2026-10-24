@@ -893,6 +893,16 @@ describe('484 · state a supervisor can trust', () => {
         actor: 'the caller',
         because: 'It reports this caller’s own attributed rules write, with a metadata receipt.',
       },
+      read_own_notes: {
+        describes: false,
+        actor: 'n/a',
+        because: 'Reads a profile page and its stored author; it describes no stopping act.',
+      },
+      write_own_notes: {
+        describes: false,
+        actor: 'the caller',
+        because: 'Reports this caller’s own attributed note version; it describes no stopping act.',
+      },
       read_agent_rules: {
         describes: false,
         actor: 'n/a',
