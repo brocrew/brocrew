@@ -460,7 +460,9 @@ describe('696 §4b · BroBot’s own sheet names the front door’s provider men
     expect(note).toContain('A service keeps one conversation for new gives.')
     expect(note).toContain('Changing its default does not switch that conversation’s provider.')
     expect(note).toContain('unless you choose another provider where you start it')
-    expect(note).not.toContain('new gives without a provider or model use that provider’s conversation')
+    expect(note).not.toContain(
+      'new gives without a provider or model use that provider’s conversation',
+    )
     expect(note).toContain('Existing pieces and follow-ups stay with their holders.')
   })
 })

@@ -20,12 +20,7 @@ import type {
   Provider,
   ProviderCapabilityMap,
 } from '../../../shared/runtime-ipc'
-import {
-  DEFAULT_PROFILE_ID,
-  PROVIDER_NAME,
-  agentName,
-  providerName,
-} from '../../../shared/runtime-ipc'
+import { PROVIDER_NAME, agentName, providerName } from '../../../shared/runtime-ipc'
 import { identityIn, runsOnIn, type AgentStore } from '../lib/agent-store'
 import { calendarDay } from '../lib/clock'
 import {
@@ -210,6 +205,9 @@ const runsOnNow = computed(() => runsOnIn(store.identities.value, props.profileS
 
 const identity = computed<AgentIdentity | null>(() =>
   identityIn(store.identities.value, props.profileSlug),
+)
+const isService = computed(
+  () => store.identities.value?.services?.includes(props.profileSlug) === true,
 )
 
 /**
@@ -813,7 +811,7 @@ function onKey(event: KeyboardEvent): void {
           {{ aProviderNotChosenSays(null, runsOnNow.startedOn) }}
         </p>
         <p v-else class="identity-note" data-cy="capabilities-provider-note">
-          {{ providerTakesEffectNextTime(props.runsOn, identity.slug === DEFAULT_PROFILE_ID) }}
+          {{ providerTakesEffectNextTime(props.runsOn, true, isService) }}
         </p>
         <!-- 🔴 **712 · R56 — what the press WOULD take, before it** — see `providerWillClear`.
              ⚑ Beside the select it is about, and gone while a press is in flight. -->

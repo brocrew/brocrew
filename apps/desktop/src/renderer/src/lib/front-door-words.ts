@@ -110,15 +110,23 @@ export function providerIsFixed(provider: Provider): string {
  *
  * @param provider what a launch as this identity WOULD run on today, resolved by
  *   `providerForALaunch` — never the raw column, because *nobody has said* is not a thing to print.
- * @param aDoorAsks whether a door that starts this identity asks which provider — the front door,
- *   for BroBot's own identity. ⚑ Opt-in: absent, the sentence promises no such choice.
+ * @param aDoorAsks whether the start door offers a provider choice. Without this flag, the helper
+ *   does not promise one.
+ * @param isService whether gives keep the service's single conversation.
  */
-export function providerTakesEffectNextTime(provider: Provider, aDoorAsks = false): string {
+export function providerTakesEffectNextTime(
+  provider: Provider,
+  aDoorAsks = false,
+  isService = false,
+): string {
   return (
     `The default for a new conversation you start as this identity is ${providerName(provider)}` +
     (aDoorAsks ? ', unless you choose another provider where you start it. ' : '. ') +
     `Changing this starts nothing and moves nothing: a conversation keeps the provider it began ` +
-    `on. Once you choose a default here, new gives without a provider or model use that provider’s conversation, starting one if needed. ` +
+    `on. ` +
+    (isService
+      ? `A service keeps one conversation for new gives. Changing its default does not switch that conversation’s provider. `
+      : `Once you choose a default here, new gives without a provider or model use that provider’s conversation, starting one if needed. `) +
     `Existing pieces and follow-ups stay with their holders.`
   )
 }
