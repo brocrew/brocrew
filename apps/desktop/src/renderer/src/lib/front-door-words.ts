@@ -119,7 +119,7 @@ export function providerIsFixed(provider: Provider): string {
  */
 export function providerTakesEffectNextTime(provider: Provider, aDoorAsks = false): string {
   return (
-    `The next conversation you start as this identity will run on ${providerName(provider)}` +
+    `The default for a new conversation as this identity is ${providerName(provider)}` +
     (aDoorAsks ? ', unless you choose another provider where you start it. ' : '. ') +
     `Changing this starts nothing and moves nothing: a conversation keeps the provider it began ` +
     `on, so a change takes effect the next time one begins.`

@@ -320,28 +320,22 @@ describe('§2 · the provider the front door runs on, resolved', () => {
     ).toBe('codex')
   })
 
-  it('⛔ it is `admitGive`’s order with the giver term removed — asserted, not shared', () => {
+  it('⛔ explicit choices precede give defaults, while a person’s launch keeps its own fallback order', () => {
     // 🔴 **Two doors, one order, and they agree because somebody argued it.** `spawn-rails.ts`'s
     // expression is the anchor of `419 M17` and `419 M18`; folding it into `providerForALaunch`
     // would retire both rows to buy a deduplication neither door asked for. So the agreement is
     // what is checked here.
     //
-    // ⚑ **D-016 · `admitSpawn` became `admitGive`, and a give names NO provider** (plan ruling 3),
-    // so the asked term is the front door's alone. ⚑ An agent keeps its own provider: the give reads
-    // it first, and only where nothing names one its default's, the named model's, then the
-    // giver's — `identity ?? giver`, the front door's `identity ?? fallback` one term over.
+    // A give can choose a provider or a model held by only one provider. Both select a different
+    // conversation before the identity default is used; a person's launch keeps its own fallback.
     const rails = withoutProse(readFileSync(join(SRC, 'main/runtime/spawn-rails.ts'), 'utf8'))
-    // 🔴 **499 · the expression MOVED and did not change.** It was written inline in the
-    // admitted token as `provider: asked.provider ?? …`; `wider-than-its-parent` has to compare on
-    // the child's provider, so it is computed into a `const` above that rail and the token reads it
-    // back. ⛔ **Computing it twice is what this row exists to stop**, and one binding is the
-    // stronger form of that — so the assertion follows the expression rather than the keyword.
-    // 🔴 **682 · `R31a` put a FIRST term on the agent's side, and only there**: a person's choice in
-    // force holds an agent-started launch, and a person's own launch never reads it (`R25` §1.4) — so
-    // the front door below must NOT gain it. ⚑ Below that term the order is `identity ?? giver`, the
-    // identity's term read once into `itsProvider`.
-    expect(rails).toContain('if (its.provider !== null) return its.provider')
-    expect(rails).toContain('return chosen?.provider ?? theNamedModels ?? giving.provider')
+    const explicit = 'if (asked.provider !== undefined) return asked.provider'
+    const named = 'if (theNamedModels !== null) return theNamedModels'
+    const saved = 'if (its.provider !== null) return its.provider'
+    for (const term of [explicit, named, saved]) expect(rails).toContain(term)
+    expect(rails.indexOf(explicit)).toBeLessThan(rails.indexOf(named))
+    expect(rails.indexOf(named)).toBeLessThan(rails.indexOf(saved))
+    expect(rails).toContain('return chosen?.provider ?? giving.provider')
     const store = withoutProse(readFileSync(join(SRC, 'renderer/src/lib/agent-store.ts'), 'utf8'))
     // 🔴 **THREE terms since `435`, and the asked one is first** (HO-025 §4). `417` removed the
     // front door's provider control and HO-025 §5 reversed that half of the ruling, so a person
@@ -397,7 +391,7 @@ describe('§2 · the provider the front door runs on, resolved', () => {
 // §3 · 🔴 what can ever put a value in the slot the fallback defers to
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
-describe('§3 · the identity’s provider — every writer, measured', () => {
+describe('§3 · the identity’s default provider — every writer, measured', () => {
   let dir: string
   let db: AppDatabase
   let store: SessionStore
@@ -419,7 +413,7 @@ describe('§3 · the identity’s provider — every writer, measured', () => {
         { provider: unknown } | undefined
     )?.provider ?? null
 
-  it('⛔ NO statement anywhere can move that column on a row that exists — both kinds, enumerated', () => {
+  it('⛔ only the default-provider door updates identity defaults; no writer changes a conversation provider', () => {
     // ⚠️ **Search shape** (standing rule 4): a value reaches that column through an
     // `INSERT … INTO agent_identity` or an `UPDATE agent_identity SET`, and through nothing else —
     // there is no other DML against this table. ⛔ **Both kinds are enumerated, in `.ts` AND in
