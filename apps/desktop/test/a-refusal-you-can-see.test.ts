@@ -216,6 +216,7 @@ describe('405 · a refusal you can see', () => {
     // ⚑ **D-016 · commit 7 · R1 — the one reading of an agent address**, delegated like every other
     // member — see this helper's own note.
     theConversationAddressed: (...args) => host.theConversationAddressed(...args),
+    theConversationAProfileNames: (...args) => host.theConversationAProfileNames(...args),
     tookItsPlace: (...args) => host.tookItsPlace(...args),
     // ⚑ Added because the interface gained it, which is what this seam is for.
     whyWhatIsHeldWaits: (...args) => host.whyWhatIsHeldWaits(...args),
