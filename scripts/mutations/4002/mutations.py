@@ -123,8 +123,8 @@ MUTATIONS = [('M1 · the give schema refuses its advertised provider argument �
     '')]),
  ('M24 · settings omit how the new default routes new gives — killed by `provider-default-wording.test.ts`',
   [('apps/desktop/src/renderer/src/lib/front-door-words.ts',
-    '    `on. New gives without a provider or model use this default’s conversation, starting one if needed. '
-    '` +\n',
+    '    `on. Once you choose a default here, new gives without a provider or model use that provider’s '
+    'conversation, starting one if needed. ` +\n',
     '    `on. ` +\n')]),
  ('M25 · the rules panel no longer states that a grant stays on its provider — killed by '
   '`kept-rules-on-the-providers-page.dom.test.ts`',
