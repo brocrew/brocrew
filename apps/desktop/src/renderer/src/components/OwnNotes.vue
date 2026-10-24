@@ -356,7 +356,7 @@ time {
 }
 p {
   margin: 0;
-  line-height: var(--body-leading);
+  line-height: var(--leading-relaxed);
 }
 .field {
   display: grid;

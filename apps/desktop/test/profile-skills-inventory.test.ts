@@ -9,6 +9,7 @@ import { SharedSkillDiscovery } from '../src/main/skills/shared-discovery'
 import { SharedSkillLibrary } from '../src/main/skills/shared-library'
 import { readBuiltInSkills } from '../src/main/skills/prepare-built-in-skills'
 import { creationAllowedSkills } from '../src/main/skills/built-in-catalogue'
+import { writeAtomically } from '../src/main/recovery/files'
 import { executeRuntimeCommand, runtimeCommandSchema } from '../src/main/runtime/ipc'
 import type { RuntimeHost, RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { SkillsRequest } from '../src/shared/skills-window'
@@ -139,10 +140,13 @@ describe('the profile Skills inventory uses the real delivery policy', () => {
   })
 
   it('opens a shared header once and refuses a symlink outside the library', async () => {
-    await service.library.save('recipe-check/SKILL.md', body())
+    // Exercise the real Windows final-file flush on every OS, then measure inventory only.
     const target = join(root, 'skills/recipe-check/SKILL.md')
+    await mkdir(join(root, 'skills/recipe-check'))
+    await writeAtomically(target, body(), undefined, 'win32')
     const open = vi.spyOn(fsPromises, 'open')
     try {
+      open.mockClear()
       const answer = await inventory()
       expect(answer.skills.some((one) => one.folder === 'recipe-check')).toBe(true)
       expect(open.mock.calls.filter(([path]) => String(path) === target)).toHaveLength(1)

@@ -214,7 +214,8 @@ describe('words in the second accent, on their fills', () => {
     const clear = m.host.querySelector<HTMLElement>('[data-cy="library-clear-all"]')
     expectOn('Clear all', clear, library, 'var(--conversation-bg-color, var(--chat-bg))')
     await userEvent.hover(clear!)
-    await settle(300)
+    // Sample paint after the browser reports the native pointer state.
+    await expect.poll(() => clear!.matches(':hover')).toBe(true)
     expectOn('Clear all, pointed at', clear, clear!, 'var(--info-bg)')
   })
 

@@ -117,7 +117,7 @@ onBeforeUnmount(() => {
 }
 p {
   margin: 0;
-  line-height: var(--body-leading);
+  line-height: var(--leading-relaxed);
   overflow-wrap: anywhere;
 }
 .muted {
