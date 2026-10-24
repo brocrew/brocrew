@@ -180,6 +180,7 @@ export interface WhatALaunchWasHanded {
   readonly profileFile: LaunchProfileFile | null
   /** The own-instructions version the profile file was rendered from, or `null`. */
   readonly ownInstructionsVersion: number | null
+  readonly ownNotesVersion?: number | null
   /** The files the provider reported it read (Codex), else `[]`. */
   readonly reportedByTheProvider: readonly string[]
   readonly toolset: AgentToolset
@@ -267,6 +268,9 @@ export function whatThisLaunchGave(handed: WhatALaunchWasHanded): WhatALaunchGav
             ...(profileHeading === undefined ? {} : { heading: profileHeading }),
           },
     ownInstructionsVersion: handed.ownInstructionsVersion,
+    ...(typeof handed.ownNotesVersion === 'number'
+      ? { ownNotesVersion: handed.ownNotesVersion }
+      : {}),
     thisConversation:
       conversation === undefined
         ? null
@@ -594,6 +598,12 @@ export function aLaunchRecordIn(stored: unknown): WhatALaunchGave | null {
       typeof stored['ownInstructionsVersion'] === 'number'
         ? stored['ownInstructionsVersion']
         : null,
+    ownNotesVersion:
+      typeof stored['ownNotesVersion'] === 'number' &&
+      Number.isSafeInteger(stored['ownNotesVersion']) &&
+      stored['ownNotesVersion'] >= 0
+        ? stored['ownNotesVersion']
+        : null,
     thisConversation,
     files,
     memory,
@@ -685,19 +695,23 @@ function sectionsOf(
   text: string,
   spans: readonly InstructionSpan[],
   version: GivenVersion | null,
+  ownNotesVersion: number | null = null,
 ): GivenSection[] {
   return spans.map((span) => {
     const made: GivenSection['made'] =
       span.whose === 'configured'
         ? 'own-instructions'
-        : span.whose === 'dynamic'
-          ? 'composed-at-launch'
-          : 'shipped'
+        : span.whose === 'own-notes'
+          ? 'own-notes'
+          : span.whose === 'dynamic'
+            ? 'composed-at-launch'
+            : 'shipped'
     return {
       heading: span.heading,
       whose: span.whose,
       made,
       version: made === 'own-instructions' ? version : null,
+      ...(made === 'own-notes' ? { ownNotesVersion } : {}),
       start: span.start,
       end: span.end,
       size: sizeOf(text.slice(span.start, span.end)),
@@ -991,7 +1005,7 @@ export function whatItWasGiven(handed: WhatTheReadIsHanded): WhatThisAgentWasGiv
         'profile-instructions',
         profile.text,
         textIs,
-        sectionsOf(profile.text, profile.sections, usedVersion),
+        sectionsOf(profile.text, profile.sections, usedVersion, record.ownNotesVersion ?? null),
         false,
         profile.refused,
       ),
@@ -1038,7 +1052,12 @@ export function whatItWasGiven(handed: WhatTheReadIsHanded): WhatThisAgentWasGiv
       : {
           text: conversation.text,
           textIs,
-          sections: sectionsOf(conversation.text, conversation.sections, null),
+          sections: sectionsOf(
+            conversation.text,
+            conversation.sections,
+            null,
+            record.ownNotesVersion ?? null,
+          ),
           size: sizeOf(conversation.text),
           heading: keptHeading ?? THIS_CONVERSATION_HEADER,
           headingIs: keptHeading === undefined ? 'composed-now' : 'as-launched',
@@ -1233,6 +1252,9 @@ export function whatItWasGiven(handed: WhatTheReadIsHanded): WhatThisAgentWasGiv
       changedSinceLaunch:
         recorded && (newestVersion?.version ?? null) !== (usedVersion?.version ?? null),
     },
+    ...(typeof record.ownNotesVersion === 'number'
+      ? { ownNotesVersion: record.ownNotesVersion }
+      : {}),
     tools,
     externalServers,
     memory: { readAt: handed.memory.readAt, stores, atLaunch: recorded ? record.memory : [] },

@@ -50,7 +50,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         # removed. Killed by `a-launch-lists-what-its-profiles-other-conversations-are-doing.test.ts`.
         [
             # ⚑ **re-anchored in place, not retired** — NOT VERIFIED; source-only. The saved-methods reading rides a context of its own at this call; original defect, ID and killer retained.
-            (INDEX, "        thisConversation: thisConversationSpans(launchContext, toolsToldInTextFor(provider)),\n", ""),
+            (INDEX, "        thisConversation: thisConversationSpans(\n          launchContext,\n          toolsToldInTextFor(provider),\n          provider,\n        ),\n", ""),
         ],
     ),
     (

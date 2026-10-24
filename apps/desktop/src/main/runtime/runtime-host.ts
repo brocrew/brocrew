@@ -23905,6 +23905,7 @@ export class RuntimeHost implements LiveHost {
     // directory spelling a launch used, and telling an agent it is `Developer` while every surface
     // that grants it anything says `developer` is two names for one thing.
     const profileSlug = profileId === null ? null : foldProfileName(profileId)
+    const notes = profileSlug === null ? null : this.deps.store.currentOwnNotesOf(profileSlug)
     return {
       // ⛔ **`null` is passed on rather than folded to the default**, found reviewing this diff.
       // `reopenSession` DOES fold it that way one line up — for the DIRECTORY, because an adopted
@@ -23990,6 +23991,10 @@ export class RuntimeHost implements LiveHost {
        * so *no row* and *no rules* are the same answer.
        */
       configured: profileSlug === null ? null : this.deps.store.configuredLayerFor(profileSlug),
+      ownNotes:
+        profileSlug === null
+          ? null
+          : { version: notes?.current?.version ?? 0, text: notes?.current?.text ?? '' },
       plugins: readPluginInstructions(this.deps.plugins),
       // ⚑ **F006 — which build is running**, as the window's title bar says it.
       build: this.theBuildRunning(),
@@ -41007,6 +41012,7 @@ export class RuntimeHost implements LiveHost {
         instructions: read.instructions,
         profileFile: read.profileFile ?? null,
         ownInstructionsVersion: this.theVersionRenderedIn(context),
+        ownNotesVersion: context.ownNotes?.version ?? null,
         reportedByTheProvider,
         toolset,
         ...(launchSettings === undefined ? {} : { launchSettings }),

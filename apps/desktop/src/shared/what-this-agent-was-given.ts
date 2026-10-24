@@ -66,7 +66,7 @@ export type GivenReach = 'in-every-request' | 'when-the-agent-opens-it'
 export type GivenTextIs = 'as-launched' | 'read-now' | 'composed-now' | 'unreadable'
 
 /** How a section was made. */
-export type GivenMade = 'shipped' | 'own-instructions' | 'composed-at-launch'
+export type GivenMade = 'shipped' | 'own-instructions' | 'own-notes' | 'composed-at-launch'
 
 // ── what a launch keeps (R2), on its `launched` row ───────────────────────────────────────────────
 
@@ -120,6 +120,8 @@ export interface WhatALaunchGave {
   } | null
   /** The own-instructions version the launch used, or `null` when there was none. */
   readonly ownInstructionsVersion: number | null
+  /** Profile-shared notes snapshot used by this launch; absent/null on legacy records. */
+  readonly ownNotesVersion?: number | null
   /** BroBot's per-conversation text, in full, with its sections. */
   readonly thisConversation: {
     readonly text: string
@@ -181,6 +183,7 @@ export interface GivenSection {
   readonly made: GivenMade
   /** Only for `own-instructions`. */
   readonly version: GivenVersion | null
+  readonly ownNotesVersion?: number | null
   /** Inclusive index into the text it is a section of. */
   readonly start: number
   /** Exclusive index into the text it is a section of. */
@@ -530,6 +533,7 @@ export interface WhatThisAgentWasGiven {
   readonly files: readonly GivenFile[]
   readonly thisConversation: GivenText | null
   readonly ownInstructions: GivenOwnInstructions
+  readonly ownNotesVersion?: number | null
   readonly tools: GivenTools
   readonly externalServers: readonly GivenExternalServer[]
   readonly memory: GivenMemory
