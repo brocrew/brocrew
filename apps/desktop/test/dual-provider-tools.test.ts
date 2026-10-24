@@ -101,4 +101,31 @@ describe('provider choices in the public tools', () => {
       await pending
     }
   })
+
+  it('explains a new conversation after a default change and still reaches the old one by provider', async () => {
+    const { host, giver, tool } = await setup()
+    const original = await world.gives(host, giver, 'draft-reader')
+    if (!original.ok) throw new Error('give refused')
+    const before = world.conversationsRecorded()
+    expect(host.setAgentProvider('draft-reader', 'codex')).toMatchObject({ provider: 'codex' })
+    expect(world.conversationsRecorded()).toBe(before)
+    const give = (provider?: 'claude' | 'codex') =>
+      tool('give_work').call({
+        profile: 'draft-reader',
+        title: 'Read the fictional appendix',
+        brief: 'Read it and report.',
+        definition_of_done: 'The appendix is checked.',
+        ...(provider === undefined ? {} : { provider }),
+      })
+    const fresh = await give()
+    expect(fresh.structured).toMatchObject({ outcome: 'ok', started: true })
+    expect(fresh.structured?.agent).not.toBe(original.owner)
+    expect(fresh.text).toContain("started a new conversation on Codex, this agent's default")
+    expect(world.store.workById(original.piece)?.owner).toBe(original.owner)
+    const old = await give('claude')
+    expect(old.structured).toMatchObject({ outcome: 'ok', agent: original.owner, started: false })
+    expect(old.text).not.toContain('started a new conversation')
+    expect(world.store.recordedOne(original.owner)?.provider).toBe('claude')
+    expect(world.store.providerOf('draft-reader')).toBe('codex')
+  })
 })
