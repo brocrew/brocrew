@@ -709,6 +709,8 @@ export const TOOL_REFUSALS = [
    * any other; this is about the rest of the time.
    */
   'that-conversation-takes-no-messages',
+  /** An agent's profile name that names more than one conversation in reach: the call names one. */
+  'that-agent-has-several-conversations',
   'malformed-request',
   'agent-cannot-take-a-message',
   /**
@@ -1914,6 +1916,7 @@ export const TOOL_PERMANENCE: Readonly<Record<ToolRefusal, RailPermanence>> = {
   'no-such-agent': 'permanent',
   // ⚑ **D-017 · R12** — nothing the caller does starts it, and waiting does not either.
   'that-conversation-takes-no-messages': 'permanent',
+  'that-agent-has-several-conversations': 'permanent',
   // ⛔ Permanent for THIS request: the same arguments will be malformed forever.
   'malformed-request': 'permanent',
   // 🔴 **`until-a-person-changes-it` since `424`, once the arm that made it false was SPLIT off**
@@ -2082,6 +2085,7 @@ const TOOL_REMEDY: Readonly<Record<ToolRefusal, RefusalRemedy | null>> = {
   'theme-is-built-in': null,
   'no-such-agent': null,
   'that-conversation-takes-no-messages': null,
+  'that-agent-has-several-conversations': null,
   'malformed-request': null,
   'agent-cannot-take-a-message': null,
   // ⚑ **650 · the arm split out of the fold above carries the word that fold never could.**
@@ -2330,6 +2334,9 @@ const TOOL_SENTENCES: Readonly<Record<ToolRefusal, string>> = {
   'no-such-agent':
     'no conversation you can reach goes by that id or piece label, so nothing was done. list_agents names the ones you can reach; list_profiles names every agent this app holds.',
   // ⚑ **D-017 · R12** — the act first, inside the cut; then which kinds of conversation this is.
+  // The detail carries every label; the refusal sentence names up to five.
+  'that-agent-has-several-conversations':
+    'make the same call with agent set to one of that agent\u2019s conversations, by a label the detail lists. It has more than one you can reach, so nothing was done.',
   'that-conversation-takes-no-messages':
     'that conversation cannot be started by a message, so nothing was sent to it; list_agents names the ones you can reach. It is a read-only copy, a provider\u2019s own sub-agent, or a conversation this app did not start.',
   'malformed-request':
@@ -2622,6 +2629,38 @@ export function aFollowUpOnAPieceYouGaveAnother(label: string): string {
     `make the same call with agent ${label}, which names the agent you gave it to: ${label} is a ` +
     `piece you gave, but not to that agent, so nothing was sent. A follow-up goes to the agent ` +
     `holding its piece; a note to that agent may still name it.`
+  )
+}
+
+/**
+ * A follow-up naming a piece the caller neither gave nor holds, to an agent it may message: the same
+ * words reach that agent as a note, which leaves the piece out because a note names only a piece
+ * the caller holds or gave. It never says whether the piece exists.
+ */
+export function aFollowUpOnAPieceYouDidNotGive(agent: string): string {
+  return (
+    `send it as kind note to ${agent}, leaving out piece: that is not a piece you gave that agent, ` +
+    `so nothing was sent.`
+  )
+}
+
+/** How many labels a sentence names; the detail carries them all. */
+const LABELS_NAMED = 5
+
+/** An agent's profile name that names several conversations in reach, with their labels. */
+export function anAgentWithSeveralConversations(
+  profile: string,
+  labels: readonly string[],
+): string {
+  const named = labels.slice(0, LABELS_NAMED)
+  const more = labels.length - named.length
+  const which =
+    more > 0
+      ? `${named.join(', ')} and ${more} more, all in the detail`
+      : `${named.slice(0, -1).join(', ')} or ${named.at(-1)}`
+  return (
+    `make the same call with agent set to one of ${profile}’s conversations: ${which}. ` +
+    `It has more than one you can reach, so nothing was done.`
   )
 }
 
@@ -4638,6 +4677,8 @@ export interface AgentToolHost {
    * is handed back as spelled.
    */
   theConversationAddressed: RuntimeHost['theConversationAddressed']
+  /** An agent's profile name at `message_agent` and `ask_question`: its one conversation in reach. */
+  theConversationAProfileNames: RuntimeHost['theConversationAProfileNames']
   /** ⚑ **D-017 · R10** — where a message to a conversation that could never be reopened went. */
   tookItsPlace: RuntimeHost['tookItsPlace']
   /**
@@ -5402,6 +5443,31 @@ export function agentToolsFor(
     }
     const aSelfAddressSaid = lines.join(' ')
     return refusalAnswer({ ...payload, reason: aSelfAddressSaid })
+  }
+
+  /**
+   * The conversation `message_agent` and `ask_question` address: a label or an id as every door
+   * reads it, else an agent's profile name when one conversation of it is in reach. Several are
+   * refused with their labels, so the next call names one.
+   */
+  const theConversationToReach = (
+    spelled: string,
+    forAMessage = false,
+  ): { readonly agent: string } | { readonly refused: AgentToolAnswer } => {
+    const addressed = host.theConversationAddressed(spelled, by, me, 'messaging')
+    if (addressed !== spelled) return { agent: addressed }
+    const named = host.theConversationAProfileNames(spelled, by, me, forAMessage)
+    if (named === null) return { agent: spelled }
+    if (named.is === 'one') return { agent: named.conversation }
+    return {
+      refused: refusalAnswer({
+        ...refuseTool('that-agent-has-several-conversations', {
+          agent: spelled,
+          conversations: named.labels,
+        }),
+        reason: anAgentWithSeveralConversations(named.profile, named.labels),
+      }),
+    }
   }
 
   /**
@@ -6256,7 +6322,10 @@ export function agentToolsFor(
           // 🔴 **D-016 · commit 7 · R1 — a label names its piece's owner**, after the call's own shape
           // and before the first rail that reads the target: one that names nothing this caller may
           // reach is handed back as spelled, and meets `no-such-agent` below as an unknown id does.
-          const agent = host.theConversationAddressed(spelled, by, me, 'messaging')
+          // An agent's profile name names its one conversation in reach.
+          const reached = theConversationToReach(spelled, true)
+          if ('refused' in reached) return reached.refused
+          const agent = reached.agent
           // ⚑ A piece the caller gave that waits, queued, at a service has reached nobody: nothing is
           // sent about it, whether the message names it or is addressed by its label. Asked before
           // reach, which a caller whose piece is only queued does not have.
@@ -6355,9 +6424,8 @@ export function agentToolsFor(
               // the whole chain came from: a manager naming the piece its parent gave IT, addressed
               // to that parent. ⚑ The sentence names the two verbs that are right for work it holds.
               // 🔴 **F087 · a piece the caller holds that has ended, or gave another agent, is said
-              // as what it is** — `not-a-piece-you-gave`, with the act left — and the word's own
-              // sentence, whose guess is that the name may belong to nothing, is kept for a name
-              // that is neither.
+              // as what it is** — `not-a-piece-you-gave`, with the act left. A name that is
+              // neither points at a note to the same agent, which it may message.
               if (it.is === 'held-and-ended') {
                 return refusalAnswer({
                   ...refuseTool('not-a-piece-you-gave', {
@@ -6383,7 +6451,10 @@ export function agentToolsFor(
                   ? refuseTool('that-is-work-you-hold', { piece: it.piece, label: it.label })
                   : it.is === 'its-root'
                     ? refuseTool('that-is-your-own-work', { piece: it.piece, label: it.label })
-                    : refuseTool('not-a-piece-you-gave', { agent, piece: named }),
+                    : {
+                        ...refuseTool('not-a-piece-you-gave', { agent, piece: named }),
+                        reason: aFollowUpOnAPieceYouDidNotGive(spelled),
+                      },
               )
             }
             if (it.is === 'none') {
@@ -8476,11 +8547,12 @@ export function agentToolsFor(
           }
           // 🔴 **D-016 · commit 7 · R1 — a label names its piece's owner** when this caller may reach
           // it; one that names nothing it may reach is handed back as spelled, and meets this door's
-          // own word for an agent it cannot ask, as an unknown id does.
-          const addressed =
-            who === 'an-agent' && typeof agent === 'string'
-              ? host.theConversationAddressed(agent, by, me, 'messaging')
-              : null
+          // own word for an agent it cannot ask, as an unknown id does. An agent's profile name names
+          // its one conversation in reach.
+          const reached =
+            who === 'an-agent' && typeof agent === 'string' ? theConversationToReach(agent) : null
+          if (reached !== null && 'refused' in reached) return reached.refused
+          const addressed = reached === null ? null : reached.agent
           // Unknown addresses keep the host’s refusal; reachable self-addresses are named here.
           if (addressed !== null && addressed !== me) {
             const out = host.whyItIsOutOfReach(addressed, by, me)
