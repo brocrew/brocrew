@@ -2,8 +2,6 @@
 import { computed, nextTick, onMounted, ref, useId, watch } from 'vue'
 import { PROVIDER_PARTS, type ProviderPart } from '../lib/provider-parts'
 import type {
-  ApiKeyStatus,
-  AuthState,
   CapabilityStatus,
   Provider,
   ProviderCapabilityMap,
@@ -45,6 +43,9 @@ import { useKeyAsked } from '../composables/useKeyAsked'
 import { isReady } from '../lib/provider-setup-steps'
 import ProviderMark from './ProviderMark.vue'
 import SignInPanel from './SignInPanel.vue'
+import ProviderOptions from './ProviderOptions.vue'
+import { createProviderAccess, type ProviderAccess } from '../lib/provider-access'
+import { providerStanding } from '../lib/provider-row'
 
 /**
  * # W4.10 · one provider on the Providers screen
@@ -62,6 +63,10 @@ import SignInPanel from './SignInPanel.vue'
 const props = withDefaults(
   defineProps<{
     setupRequested?: boolean
+    /** The list owns these readings; standalone cards keep their own controller. */
+    access?: ProviderAccess
+    frameless?: boolean
+    displayName?: string
     provider: Provider
     capabilities: ProviderCapabilityMap | null
     /** This provider's usage warning, or `null` when it has sent none. */
@@ -116,7 +121,7 @@ const emit = defineEmits<{
   startConversation: []
 }>()
 
-const name = computed(() => PROVIDER_NAME[props.provider])
+const name = computed(() => props.displayName ?? PROVIDER_NAME[props.provider])
 
 const partIds = useId()
 const isOpen = (part: ProviderPart): boolean => props.open?.[part] ?? true
@@ -152,8 +157,13 @@ const reprovision = computed(() =>
 
 /* ------------------------------------------------------------------ status */
 
-const auth = ref<AuthState | null>(null)
-const authBusy = ref<'idle' | 'checking' | 'copying' | 'signing-in'>('idle')
+const access =
+  props.access ??
+  createProviderAccess(
+    () => props.provider,
+    () => emit('authChanged', DEFAULT_PROFILE_ID),
+  )
+const { auth, authBusy, asked, withGesture, check } = access
 const authNotice = ref<string | null>(null)
 /** Whether the notice above warns or refuses, rather than saying how a gesture is going. */
 const authNoticeWarns = ref(false)
@@ -163,34 +173,6 @@ function noticeSays(text: string | null, warns: boolean): void {
   authNotice.value = text
   authNoticeWarns.value = warns
 }
-/** ⚑ A check asked while a gesture was out — run once it settles, so no notice is lost. */
-let checkAgain = false
-
-/** ⛔ A plain literal each time — a reactive proxy cannot cross the bridge (361). */
-const asked = (): { provider: Provider; profileId: string } => ({
-  provider: props.provider,
-  profileId: DEFAULT_PROFILE_ID,
-})
-
-async function withGesture(
-  phase: 'checking' | 'copying' | 'signing-in',
-  run: () => Promise<void>,
-): Promise<void> {
-  if (authBusy.value !== 'idle') return
-  authBusy.value = phase
-  try {
-    await run()
-  } finally {
-    authBusy.value = 'idle'
-    if (phase !== 'checking') emit('authChanged', DEFAULT_PROFILE_ID)
-    // ⚑ A login notice that landed during the gesture — the host says it before its answer arrives.
-    if (checkAgain) {
-      checkAgain = false
-      void check()
-    }
-  }
-}
-
 /** A person's Check again: the login, and the program and its version with it. */
 async function aPersonChecksAgain(): Promise<void> {
   if (props.readVersions === undefined) {
@@ -199,20 +181,6 @@ async function aPersonChecksAgain(): Promise<void> {
   } else {
     await Promise.all([props.readVersions(), check()])
   }
-}
-
-async function check(): Promise<void> {
-  if (authBusy.value !== 'idle') {
-    checkAgain = true
-    return
-  }
-  await withGesture('checking', async () => {
-    try {
-      auth.value = await window.api.runtime.checkProviderAuth(asked())
-    } catch (error) {
-      auth.value = { state: 'unknown', reason: readableError(error) }
-    }
-  })
 }
 
 async function copyMachineSignIn(): Promise<void> {
@@ -284,31 +252,21 @@ const loginSays = computed<string | null>(() => {
   return `Runs on your ${props.setup?.tool ?? name.value} login${of}${until}.`
 })
 
-const standing = computed<{ words: string; tone: 'ready' | 'not-ready' | 'unknown' }>(() => {
-  // No program on this computer: a login beside it starts nothing.
-  if (props.version?.program?.standing === 'missing')
-    return { words: 'Not ready', tone: 'not-ready' }
-  const state = auth.value
-  if (state === null) return { words: 'Checking…', tone: 'unknown' }
-  // A saved key outranks the sign-in, and one this computer can't read starts nothing.
-  if (keyCantBeRead.value) return { words: 'Not ready', tone: 'not-ready' }
-  // ⚑ W4.63 · signed in, but at its usage limit: "Ready" beside "At its limit" would contradict it.
-  if (state.state === 'usable') {
-    // Running on a key whose account can't pay: every turn on it fails.
-    if (state.login === 'api-key' && keyRefusedSays.value !== null) {
-      return { words: 'Not ready', tone: 'not-ready' }
-    }
-    return atItsLimit.value === null
-      ? { words: 'Ready', tone: 'ready' }
-      : { words: 'Signed in', tone: 'ready' }
-  }
-  if (state.state === 'unknown') return { words: 'Couldn’t check', tone: 'unknown' }
-  return { words: 'Not ready', tone: 'not-ready' }
-})
+const standing = computed(() =>
+  providerStanding({
+    auth: auth.value,
+    key: keyStatus.value,
+    version: props.version,
+    atItsLimit: atItsLimit.value,
+  }),
+)
+const configured = computed(
+  () => standing.value?.tone === 'ready' || standing.value?.tone === 'at-limit',
+)
 
 /* ------------------------------------------------------------------ API key */
 
-const keyStatus = ref<ApiKeyStatus | null>(null)
+const keyStatus = access.keyStatus
 /** A key is saved and this computer can't read it; one not yet read is not that. */
 const keyCantBeRead = computed(() => theKeyCantBeRead(keyStatus.value))
 const keyDraft = ref('')
@@ -316,12 +274,16 @@ const keyBusy = ref(false)
 const keySaid = ref<{ text: string; tone: 'note' | 'warn' } | null>(null)
 const keyEditing = ref(false)
 
+watch(
+  access.keyError,
+  (error) => {
+    if (error !== null) keySaid.value = { text: error, tone: 'warn' }
+  },
+  { immediate: true },
+)
 async function readKey(): Promise<void> {
-  try {
-    keyStatus.value = await window.api.runtime.apiKeyStatus({ provider: props.provider })
-  } catch (error) {
-    keySaid.value = { text: readableError(error), tone: 'warn' }
-  }
+  await access.readKey()
+  if (access.keyError.value !== null) keySaid.value = { text: access.keyError.value, tone: 'warn' }
 }
 
 /**
@@ -772,14 +734,17 @@ watch(
 watch(
   () => props.loginMoved,
   () => {
+    if (props.access !== undefined) return
     void check()
     void readKey()
   },
 )
 
 onMounted(() => {
-  void check()
-  void readKey()
+  if (props.access === undefined) {
+    void check()
+    void readKey()
+  }
   void lists.value.read(props.provider, undefined, { once: true })
 })
 
@@ -845,18 +810,20 @@ watch(
   },
   { immediate: true },
 )
+defineExpose({ beginSetup })
 </script>
 
 <template>
   <article
     class="card"
+    :class="{ frameless: props.frameless }"
     data-cy="provider-card"
     :data-provider="props.provider"
     :style="{ '--card-rows': PROVIDER_PARTS.length + 1 }"
   >
     <!-- The card's first row: everything above its sections, however much of it there is. -->
     <div class="card-top">
-      <header class="card-head">
+      <header v-if="!props.frameless" class="card-head">
         <span
           v-if="markKind"
           class="provider-logo"
@@ -866,7 +833,7 @@ watch(
           <ProviderMark :provider="props.provider" :kind="markKind" />
         </span>
         <h2>{{ name }}</h2>
-        <span class="standing" :class="standing.tone" data-cy="provider-standing">
+        <span v-if="standing" class="standing" :class="standing.tone" data-cy="provider-standing">
           <svg v-if="standing.tone === 'ready'" class="icon" aria-hidden="true">
             <use href="#i-check" />
           </svg>
@@ -875,17 +842,9 @@ watch(
           </svg>
           {{ standing.words }}
         </span>
-        <button
-          type="button"
-          class="provider-menu"
-          disabled
-          :aria-label="`${name} options unavailable`"
-          title="Provider options are not available yet"
-        >
-          <svg class="icon" aria-hidden="true"><use href="#i-more" /></svg>
-        </button>
+        <ProviderOptions v-if="configured" :name="name" @setup="beginSetup" />
       </header>
-      <p v-if="standing.tone !== 'ready'" class="line">
+      <p v-if="!configured && !settingUp" class="line">
         {{
           props.version?.program?.from === 'carried'
             ? `${name} is included.`
@@ -903,11 +862,11 @@ watch(
         <svg class="icon" aria-hidden="true"><use href="#i-clock" /></svg>
         {{ atItsLimit }}
       </p>
-      <div class="setup-entry">
+      <div v-if="!configured && !settingUp" class="setup-entry">
         <button
           type="button"
           class="bb-button"
-          :class="{ 'bb-button--primary': standing.tone !== 'ready' }"
+          :class="{ 'bb-button--primary': !configured }"
           data-cy="provider-set-up"
           @click="beginSetup"
         >
@@ -1237,7 +1196,9 @@ watch(
           </button>
         </h3>
         <span
-          v-if="props.version?.program"
+          v-if="
+            props.version?.program && (props.version.program.standing !== 'tested' || configured)
+          "
           class="bb-chip bb-chip--pill"
           :class="
             A_STANDING_WARNS[props.version.program.standing]
@@ -1622,6 +1583,14 @@ watch(
   background: var(--panel);
   box-shadow: var(--shadow-card);
 }
+.card.frameless {
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
 .card-head {
   display: flex;
   align-items: center;
@@ -1665,7 +1634,8 @@ watch(
   border-color: var(--success-border);
   color: var(--success-text);
 }
-.standing.not-ready {
+.standing.not-ready,
+.standing.at-limit {
   background: var(--waiting-bg);
   border-color: var(--waiting-card-border);
   color: var(--waiting);

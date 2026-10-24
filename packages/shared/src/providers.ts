@@ -209,6 +209,18 @@ export const PROVIDER_DESCRIPTORS = [
 ] as const satisfies readonly ProviderDescriptor[]
 
 export type Provider = (typeof PROVIDER_DESCRIPTORS)[number]['id']
+
+/** Keep declaration order within each group, with experimental providers last when visible. */
+export function visibleProviderDescriptors(
+  debugMode: boolean,
+  descriptors: readonly ProviderDescriptor[] = PROVIDER_DESCRIPTORS,
+): readonly ProviderDescriptor[] {
+  const ordinary = descriptors.filter((descriptor) => !descriptor.debugOnly)
+  return debugMode
+    ? [...ordinary, ...descriptors.filter((descriptor) => descriptor.debugOnly)]
+    : ordinary
+}
+
 export const SUPPORTED_PROVIDERS: readonly Provider[] = PROVIDER_DESCRIPTORS.map(
   (descriptor) => descriptor.id,
 )

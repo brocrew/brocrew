@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { readProviderSetup } from '../lib/provider-setup'
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef, type Ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch, type Ref } from 'vue'
 import type {
   Provider,
   ProviderCapabilityMap,
@@ -8,7 +8,15 @@ import type {
   ProviderUsageReading,
   ProviderVersion,
 } from '../../../shared/runtime-ipc'
-import { PROVIDER_NAME } from '../../../shared/runtime-ipc'
+import { DEFAULT_PROFILE_ID } from '../../../shared/runtime-ipc'
+import type { ProviderDescriptor } from '@brobot2/shared'
+import { useVisibleProviders } from '../composables/useVisibleProviders'
+import { useKeyAsked } from '../composables/useKeyAsked'
+import { useModelLists } from '../composables/useModelLists'
+import { createProviderAccess } from '../lib/provider-access'
+import { providerStanding, providerRowDetail } from '../lib/provider-row'
+import { atItsLimitSays } from '../lib/usage-limit'
+import { limitsDisplayWords } from '../lib/limits-display'
 import type { ProviderLimitsView } from '../lib/persons-queue'
 import type { ModelLists } from '../lib/model-lists'
 import { readableError } from '../lib/session-record'
@@ -17,6 +25,9 @@ import { usePersistentToggle } from '../composables/usePersistentToggle'
 import { OPEN_AT_FIRST, PROVIDER_PARTS, partKey, type ProviderPart } from '../lib/provider-parts'
 import ProviderCard from './ProviderCard.vue'
 import KeptRules from './KeptRules.vue'
+import ProviderMark from './ProviderMark.vue'
+import ProviderOptions from './ProviderOptions.vue'
+import OverlayHost from './OverlayHost.vue'
 
 /**
  * # W4.10 · the Providers screen — one card per provider
@@ -39,6 +50,8 @@ import KeptRules from './KeptRules.vue'
  */
 const props = withDefaults(
   defineProps<{
+    /** Registry injection for preview and provider-extension controls. */
+    descriptors?: readonly ProviderDescriptor[]
     capabilities: ProviderCapabilityMap | null
     /** The usage warnings — the queue's own view of the walls; `null` before the first look. */
     warnings: ProviderLimitsView | null
@@ -58,7 +71,60 @@ const emit = defineEmits<{
   startConversation: []
 }>()
 
-const providers = Object.keys(PROVIDER_NAME) as Provider[]
+const descriptors = useVisibleProviders(() => props.descriptors)
+const providers = computed(() => descriptors.value.map((descriptor) => descriptor.id as Provider))
+const accesses = new Map<Provider, ReturnType<typeof createProviderAccess>>()
+const modelLists = computed(() => props.lists ?? useModelLists())
+function accessFor(provider: Provider) {
+  let access = accesses.get(provider)
+  if (!access) {
+    access = createProviderAccess(
+      () => provider,
+      () => emit('authChanged', DEFAULT_PROFILE_ID),
+    )
+    accesses.set(provider, access)
+  }
+  return access
+}
+function readAccess(provider: Provider): void {
+  const access = accessFor(provider)
+  void access.check()
+  void access.readKey()
+}
+function readVisibleAccess(): void {
+  for (const provider of providers.value) {
+    readAccess(provider)
+    void modelLists.value.read(provider, undefined, { once: true })
+  }
+}
+const selected = ref<Provider | null>(null)
+const selectedDescriptor = computed(
+  () => descriptors.value.find((item) => item.id === selected.value) ?? null,
+)
+const providerCard = ref<InstanceType<typeof ProviderCard> | null>(null)
+function openProvider(provider: Provider, event?: MouseEvent): void {
+  if (event?.currentTarget instanceof HTMLElement) event.currentTarget.focus()
+  selected.value = provider
+}
+watch(providers, () => {
+  if (selected.value !== null && !providers.value.includes(selected.value)) selected.value = null
+  if (mounted) readVisibleAccess()
+})
+watch(
+  () => props.setupProvider,
+  (provider) => {
+    if (provider && providers.value.includes(provider)) selected.value = provider
+  },
+  { immediate: true },
+)
+const keyAsked = useKeyAsked()
+watch(
+  keyAsked,
+  (provider) => {
+    if (provider && providers.value.includes(provider)) selected.value = provider
+  },
+  { immediate: true },
+)
 
 /**
  * Which parts of the cards are open, one state per part for every card, so a fold keeps them level.
@@ -103,7 +169,7 @@ async function readVersions(): Promise<void> {
   } catch (error) {
     const reason = readableError(error)
     read = Object.fromEntries(
-      providers.map((provider) => [provider, { version: null, reason }]),
+      providers.value.map((provider) => [provider, { version: null, reason }]),
     ) as Record<Provider, ProviderVersion>
   }
   if (mine === versionsAsked) versions.value = read
@@ -174,15 +240,18 @@ onMounted(() => {
   mounted = true
   void readVersions()
   void readUsage()
+  readVisibleAccess()
   stopListening = window.api.runtime.onProvidersChanged((message) => {
     if (message.what === 'usage') {
       void readUsage()
       emit('usageMoved')
-    } else
+    } else {
+      if (providers.value.includes(message.provider)) readAccess(message.provider)
       loginMoved.value = {
         ...loginMoved.value,
         [message.provider]: (loginMoved.value[message.provider] ?? 0) + 1,
       }
+    }
   })
   document.addEventListener('visibilitychange', lookAgain)
   window.addEventListener('focus', lookAgain)
@@ -210,6 +279,34 @@ const limitsRead = computed(() => (props.warnings === null ? null : !props.warni
 function limitOf(provider: Provider) {
   return props.warnings?.walls.find((wall) => wall.provider === provider) ?? null
 }
+function rowFacts(provider: Provider) {
+  const condition = limitOf(provider)
+  const reading = props.warnings?.display?.reading
+  const atLimit =
+    condition === null ? null : atItsLimitSays(condition, reading?.evaluatedAt ?? now.value)
+  return {
+    auth: accessFor(provider).auth.value,
+    key: accessFor(provider).keyStatus.value,
+    version: versions.value?.[provider] ?? null,
+    atItsLimit:
+      atLimit === null || !reading
+        ? atLimit
+        : limitsDisplayWords.condition(atLimit, reading.evaluatedAt),
+  }
+}
+const standingOf = (provider: Provider) => providerStanding(rowFacts(provider))
+const detailOf = (provider: Provider) =>
+  providerRowDetail(rowFacts(provider), usage.value?.[provider] ?? null, now.value)
+const configured = (provider: Provider) =>
+  ['ready', 'at-limit'].includes(standingOf(provider)?.tone ?? '')
+const markOf = (descriptor: ProviderDescriptor) =>
+  props.capabilities?.[descriptor.id as Provider]?.mark?.kind ?? descriptor.capabilities.mark.kind
+const runningOf = (provider: Provider) => {
+  const count = resources.value?.[provider]?.running
+  return count === undefined
+    ? 'Reading running agents…'
+    : `${count} ${count === 1 ? 'agent' : 'agents'} running`
+}
 </script>
 
 <template>
@@ -232,42 +329,121 @@ function limitOf(provider: Provider) {
         </p>
       </header>
 
-      <div class="cards">
-        <ProviderCard
-          v-for="provider in providers"
-          :key="provider"
-          :provider="provider"
-          :setup-requested="props.setupProvider === provider"
-          :capabilities="props.capabilities"
-          :limit="limitOf(provider)"
-          :limits-read="limitsRead"
-          :limits-display="props.warnings?.display"
-          :clock="now"
-          :version="versions?.[provider] ?? null"
-          :setup="setup === null ? undefined : setup[provider]"
-          :readings="usage === null ? null : (usage[provider] ?? [])"
-          :resources="resources?.[provider] ?? null"
-          :resources-paused="!looking"
-          :resources-error="resourcesError"
-          :login-moved="loginMoved[provider] ?? 0"
-          :lists="props.lists"
-          :open="open"
-          @toggle="(part) => (openParts[part].value = !openParts[part].value)"
-          @reveal="(part) => (openParts[part].value = true)"
-          @auth-changed="(profileId) => emit('authChanged', profileId)"
-          :read-versions="readVersions"
-          @checked-again="readVersions"
-          @start-conversation="emit('startConversation')"
-        />
+      <div class="provider-list">
+        <button
+          v-for="descriptor in descriptors"
+          :key="descriptor.id"
+          type="button"
+          class="provider-row"
+          data-cy="provider-row"
+          :data-provider="descriptor.id"
+          :aria-label="`${descriptor.displayName} provider`"
+          :aria-expanded="selected === descriptor.id"
+          aria-haspopup="dialog"
+          @click="openProvider(descriptor.id as Provider, $event)"
+        >
+          <span class="provider-logo" :class="{ blossom: markOf(descriptor) === 'blossom' }">
+            <ProviderMark
+              :provider="descriptor.id"
+              :name="descriptor.displayName"
+              :kind="markOf(descriptor)"
+            />
+          </span>
+          <span class="provider-copy">
+            <span class="provider-row-heading"
+              ><strong>{{ descriptor.displayName }}</strong
+              ><span class="running"
+                ><svg class="icon" aria-hidden="true"><use href="#i-bot" /></svg
+                >{{ runningOf(descriptor.id as Provider) }}</span
+              ></span
+            >
+            <span class="provider-detail">{{ detailOf(descriptor.id as Provider) }}</span>
+          </span>
+          <span
+            v-if="standingOf(descriptor.id as Provider)"
+            class="standing"
+            :class="standingOf(descriptor.id as Provider)!.tone"
+            data-cy="provider-standing"
+            >{{ standingOf(descriptor.id as Provider)!.words }}</span
+          >
+          <svg class="icon row-chevron" aria-hidden="true"><use href="#i-chevron" /></svg>
+        </button>
       </div>
-
-      <KeptRules :providers="providers" />
     </div>
+    <OverlayHost
+      v-if="selectedDescriptor && selected"
+      contained
+      :label="`${selectedDescriptor.displayName} provider`"
+      @close="selected = null"
+    >
+      <section class="provider-drawer" data-cy="provider-drawer">
+        <header class="drawer-head">
+          <span class="provider-logo" :class="{ blossom: markOf(selectedDescriptor) === 'blossom' }"
+            ><ProviderMark
+              :provider="selected"
+              :name="selectedDescriptor.displayName"
+              :kind="markOf(selectedDescriptor)"
+          /></span>
+          <h2>{{ selectedDescriptor.displayName }}</h2>
+          <span v-if="standingOf(selected)" class="standing" :class="standingOf(selected)!.tone">{{
+            standingOf(selected)!.words
+          }}</span>
+          <ProviderOptions
+            v-if="configured(selected)"
+            :name="selectedDescriptor.displayName"
+            @setup="providerCard?.beginSetup()"
+          />
+          <button
+            type="button"
+            class="drawer-close"
+            :aria-label="`Close ${selectedDescriptor.displayName}`"
+            @click="selected = null"
+          >
+            <svg class="icon" aria-hidden="true"><use href="#i-x" /></svg>
+          </button>
+        </header>
+        <div class="drawer-body">
+          <ProviderCard
+            :key="selected"
+            :provider="selected!"
+            ref="providerCard"
+            frameless
+            :display-name="selectedDescriptor.displayName"
+            :access="accessFor(selected!)"
+            :setup-requested="
+              props.setupProvider === selected || standingOf(selected!)?.tone === 'not-ready'
+            "
+            :capabilities="props.capabilities"
+            :limit="limitOf(selected!)"
+            :limits-read="limitsRead"
+            :limits-display="props.warnings?.display"
+            :clock="now"
+            :version="versions?.[selected!] ?? null"
+            :setup="setup === null ? undefined : setup[selected!]"
+            :readings="usage === null ? null : (usage[selected!] ?? [])"
+            :resources="resources?.[selected!] ?? null"
+            :resources-paused="!looking"
+            :resources-error="resourcesError"
+            :login-moved="loginMoved[selected!] ?? 0"
+            :lists="props.lists"
+            :open="open"
+            @toggle="(part) => (openParts[part].value = !openParts[part].value)"
+            @reveal="(part) => (openParts[part].value = true)"
+            @auth-changed="(profileId) => emit('authChanged', profileId)"
+            :read-versions="readVersions"
+            @checked-again="readVersions"
+            @start-conversation="emit('startConversation')"
+          />
+          <KeptRules :providers="[selected]" />
+        </div>
+      </section>
+    </OverlayHost>
   </section>
 </template>
 
 <style scoped>
 .providers-surface {
+  position: relative;
   display: flex;
   min-width: 0;
   min-height: 0;
@@ -334,23 +510,147 @@ function limitOf(provider: Provider) {
 .page-head .per-workspace {
   color: var(--text-soft);
 }
-/* Each card spans the rows of this grid as its own (a subgrid), one row per part, so a part starts
-   at the same height in both cards whatever the other parts hold. */
-.cards {
+.provider-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+.provider-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+  min-width: 0;
+  width: 100%;
+  padding: var(--space-8) var(--space-10);
+  text-align: left;
+  border: var(--border-width) solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: var(--shadow-card);
+}
+.provider-row[aria-expanded='true'] {
+  border-color: var(--accent-border);
+}
+.provider-logo {
   display: grid;
+  place-items: center;
+  width: var(--space-28);
+  height: var(--space-28);
   flex: none;
-  align-items: stretch;
-  column-gap: var(--space-10);
-  row-gap: 0;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border: var(--border-width) solid var(--accent-border);
+  border-radius: var(--radius-card);
+  background: var(--accent-fill);
 }
-/* Setup has different rows; keep the other card's folded sections compact. */
-.cards:has(.inline-setup) :deep(.card) {
-  grid-row: auto;
-  grid-template-rows: none;
+.provider-logo.blossom {
+  border-color: var(--line);
+  background: var(--paper-bg);
 }
-.cards:has(.inline-setup) :deep(.inline-setup) {
-  grid-row: auto;
+.provider-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.provider-row-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-3) var(--space-8);
+}
+.provider-row-heading strong {
+  font-size: var(--type-body);
+}
+.running {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--type-caption);
+  color: var(--text-soft);
+}
+.running .icon {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+.provider-detail {
+  color: var(--text-soft);
+  font-size: var(--type-small);
+  line-height: var(--leading-relaxed);
+  overflow-wrap: anywhere;
+}
+.row-chevron {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  color: var(--muted);
+  flex: none;
+}
+.standing {
+  flex: none;
+  padding: var(--space-2) var(--space-5);
+  border: var(--border-width) solid var(--line);
+  border-radius: var(--radius-pill);
+  color: var(--muted);
+  font-size: var(--type-small);
+  white-space: nowrap;
+}
+.standing.ready {
+  color: var(--success-text);
+  border-color: var(--success-border);
+  background: var(--success-bg);
+}
+.standing.not-ready,
+.standing.at-limit {
+  color: var(--waiting);
+  border-color: var(--waiting-card-border);
+  background: var(--waiting-bg);
+}
+.provider-drawer {
+  width: min(100%, clamp(var(--drawer-w-min), 52%, var(--drawer-w-max)));
+  height: 100%;
+  margin-left: auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: var(--border-width) solid var(--line-strong);
+  background: var(--drawer-solid, var(--panel));
+  box-shadow: var(--shadow);
+}
+.drawer-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding: var(--space-10);
+  border-bottom: var(--border-width) solid var(--line);
+  flex: none;
+}
+.drawer-head h2 {
+  margin: 0;
+  font-size: var(--type-title);
+}
+.drawer-close {
+  display: grid;
+  place-items: center;
+  width: var(--control-icon);
+  height: var(--control-icon);
+  padding: 0;
+  flex: none;
+  margin-left: auto;
+}
+.drawer-head .provider-options + .drawer-close {
+  margin-left: 0;
+}
+.drawer-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-10);
+  padding: var(--space-10);
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1;
+}
+:global(:root[data-content-scheme='dark']) .providers-surface :deep(.overlay-host--contained) {
+  background: color-mix(in srgb, var(--overlay-backdrop) 80%, #000 20%);
 }
 .debug {
   position: relative;

@@ -51,6 +51,11 @@ describe('the Providers list opens the existing controls in one drawer', () => {
     expect(m.all('provider-card')).toHaveLength(0)
   })
   it('adds a made-up descriptor row and letter mark without another UI branch', async () => {
+    const check = window.api.runtime.checkProviderAuth
+    window.api.runtime.checkProviderAuth = async (asked) =>
+      (asked.provider as string) === 'cedar'
+        ? { state: 'absent', reason: 'No fictional sign-in.', why: 'no-login' }
+        : check(asked)
     const cedar = {
       ...PROVIDER_DESCRIPTORS[0],
       id: 'cedar',

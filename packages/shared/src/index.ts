@@ -11,6 +11,7 @@ export {
 export type { Provider, SessionStatus, TurnEnding, AppInfo } from './contracts'
 export {
   PROVIDER_DESCRIPTORS,
+  visibleProviderDescriptors,
   DEFAULT_CONVERSATION_PROVIDER,
   DEFAULT_IDENTITY_PROVIDER,
   SUPPORTED_PROVIDERS,

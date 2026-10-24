@@ -4,7 +4,8 @@ import blossomBlack from '../assets/OAI_OpenAI-Blossom_Black.svg'
 import blossomWhite from '../assets/OAI_OpenAI-Blossom_White.svg'
 
 defineProps<{
-  provider: Provider
+  provider: Provider | string
+  name?: string
   kind?: ProviderCapabilities['mark']['kind'] | null
   size?: 'card' | 'setup'
 }>()
@@ -17,7 +18,9 @@ defineProps<{
     :data-provider-mark="provider"
     aria-hidden="true"
   >
-    <span v-if="kind === 'letter'" class="provider-mark__claude">C</span>
+    <span v-if="kind !== 'blossom'" class="provider-mark__claude">{{
+      (name ?? provider).slice(0, 1).toUpperCase()
+    }}</span>
     <template v-else-if="kind === 'blossom'">
       <img class="provider-mark__black" :src="blossomBlack" alt="" />
       <img class="provider-mark__white" :src="blossomWhite" alt="" />
