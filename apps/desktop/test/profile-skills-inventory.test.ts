@@ -266,6 +266,25 @@ describe('the profile Skills inventory uses the real delivery policy', () => {
     ).rejects.toThrow()
   })
 
+  it('ignores an empty folder beside a readable shared skill', async () => {
+    await service.library.save('recipe-check/SKILL.md', body())
+    await mkdir(join(root, 'skills/unfinished'))
+    const answer = await service
+      .window({ operation: 'profile-list', profileId: 'quill' } as unknown as SkillsRequest)
+      .then(
+        (reply) => ({ reply, error: null }),
+        (error: unknown) => ({ reply: null, error }),
+      )
+    expect(answer.error, 'a folder without SKILL.md is not a broken skill').toBeNull()
+    expect(answer.reply).toMatchObject({
+      operation: 'profile-list',
+      skills: expect.arrayContaining([expect.objectContaining({ folder: 'recipe-check' })]),
+    })
+    expect(
+      (answer.reply as unknown as Reading).skills.some((one) => one.folder === 'unfinished'),
+    ).toBe(false)
+  })
+
   it('accepts only profile and bounded paging fields, and keeps the operation person-only', async () => {
     const valid = { operation: 'profile-list', profileId: 'quill' }
     expect(SkillsRequest.safeParse(valid).success).toBe(true)
