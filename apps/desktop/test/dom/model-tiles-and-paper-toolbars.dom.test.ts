@@ -105,11 +105,11 @@ async function card(theme: Look, provider: Provider) {
   wear(theme)
   let finishDelete: (() => void) | undefined
   const remove = vi.fn(
-    () => new Promise<{ ok: true }>((resolve) => (finishDelete = () => resolve({ ok: true }))),
+    () => new Promise<readonly string[]>((resolve) => (finishDelete = () => resolve([]))),
   )
   const lists = createModelLists(() => ({
     modelList: async () => catalogue(provider),
-    addHandAddedModel: async () => ({ ok: true }),
+    addHandAddedModel: async ({ model }) => ['own-model', model],
     deleteHandAddedModel: remove,
   }))
   await lists.read(provider)
