@@ -149,9 +149,10 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M14 · a login notice that lands while a copy is out is lost — the card never turns Ready "
         f"· killed by `{CARD_DOM}`",
-        [(CARD,
-          "    if (checkAgain) {\n",
-          "    if (false) {\n")],
+        # Login coalescing moved into the shared reader; the fault and original killer remain.
+        [("apps/desktop/src/renderer/src/lib/provider-access.ts",
+          "      if (checkAgain) {\n",
+          "      if (false) {\n")],
     ),
     (
         "M15 · the form sends a last pick the host would start on anyway, when the two spell one "
