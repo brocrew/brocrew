@@ -1066,7 +1066,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         # or stopped, so no second one opens. The plant makes the lookup see only a live or closing
         # slot. Killed by `two-sessions-of-one-agent.demo.test.ts`.
         [
-            (RUNTIME_HOST, "    const found = reserved?.id ?? this.deps.store.newestChildAs(parents, profileSlug)", "    const found = reserved?.id ?? null"),
+            (RUNTIME_HOST, "    const found =\n      reserved?.id ?? this.deps.store.newestChildAs(parents, profileSlug, provider, except)\n", "    const found = reserved?.id ?? null\n"),
         ],
     ),
     (

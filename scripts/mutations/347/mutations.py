@@ -347,7 +347,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         # recording its identity, so a launch in flight is invisible to the lookup. Killed by
         # `the-five-tools.test.ts`.
         [
-            (HOST, '      if (slot.spawnedBy === null || !theirs.has(slot.spawnedBy)) return false\n      const identity = slot.profileId ?? slot.session?.profileId ?? null\n', '      if (slot.spawnedBy === null || !theirs.has(slot.spawnedBy)) return false\n      const identity = slot.session?.profileId ?? null\n'),
+            (HOST, "      if (slot.spawnedBy === null || !theirs.has(slot.spawnedBy)) return false\n      if (provider !== undefined && slot.provider !== provider) return false\n      const identity = slot.profileId ?? slot.session?.profileId ?? null\n", "      if (slot.spawnedBy === null || !theirs.has(slot.spawnedBy)) return false\n      if (provider !== undefined && slot.provider !== provider) return false\n      const identity = slot.session?.profileId ?? null\n"),
         ],
     ),
     (

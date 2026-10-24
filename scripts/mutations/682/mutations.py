@@ -64,7 +64,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         # `a-persons-choice-holds-the-whole-launch.test.ts`.
         [
             # ⚑ **an agent keeps its provider · re-anchored in place, not retired** — the start's provider is the agent's own first (theProviderAStartRunsOn), then its default's, the named model's and the giver's. The plant drops the default's provider.
-            (RAILS, "  return chosen?.provider ?? theNamedModels ?? giving.provider\n", "  return theNamedModels ?? giving.provider\n"),
+            (RAILS, "  return chosen?.provider ?? giving.provider\n", "  return giving.provider\n"),
         ],
     ),
     (

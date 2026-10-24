@@ -434,7 +434,7 @@ MUTATIONS = [
         # lookup find nothing, so a profile that already has a live conversation gets another.
         # Killed by `the-rails-before-anything-can-reach-them.test.ts`.
         [
-            (HOST, '      helperAs: (giver, profileSlug) => this.helperAs(giver, profileSlug),', '      helperAs: () => null,'),
+            (HOST, "      helperAs: (giver, profileSlug, provider) => this.helperAs(giver, profileSlug, provider),", '      helperAs: () => null,'),
         ],
     ),
     (
@@ -482,7 +482,7 @@ MUTATIONS = [
         # So the plant compares the raw spelling on BOTH arms of `helperAs`. Killed by
         # `the-rails-before-anything-can-reach-them.test.ts`.
         [
-            (HOST, '      return identity !== null && foldProfileName(identity) === wanted\n    })\n    const found = reserved?.id ?? this.deps.store.newestChildAs(parents, profileSlug)\n    return found === null ? null : this.theOneInItsPlace(found)', '      return identity !== null && identity === profileSlug\n    })\n    const inRows = this.deps.store.newestChildAs(parents, profileSlug)\n    const found =\n      reserved?.id ??\n      (inRows !== null && this.deps.store.find(inRows)?.profileId === profileSlug ? inRows : null)\n    return found === null ? null : this.theOneInItsPlace(found)'),
+            (HOST, "      return identity !== null && foldProfileName(identity) === wanted\n    })\n    const found =\n      reserved?.id ?? this.deps.store.newestChildAs(parents, profileSlug, provider, except)\n    return found === null ? null : this.theOneInItsPlace(found)", "      return identity !== null && identity === profileSlug\n    })\n    const inRows = this.deps.store.newestChildAs(parents, profileSlug, provider, except)\n    const found =\n      reserved?.id ??\n      (inRows !== null && this.deps.store.find(inRows)?.profileId === profileSlug ? inRows : null)\n    return found === null ? null : this.theOneInItsPlace(found)"),
         ],
     ),
     # ── §7 · criterion 11 · the folder ────────────────────────────────────────────────────────

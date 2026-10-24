@@ -223,7 +223,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         # give miss the stopped child and start or refuse a new one, so `giveTo`'s `given.agent ===
         # child` check fails. Killed by `a-restart-keeps-what-was-open.test.ts`.
         [
-            (HOST, '    const found = reserved?.id ?? this.deps.store.newestChildAs(parents, profileSlug)\n', '    const found = reserved?.id ?? null\n'),
+            (HOST, "    const found =\n      reserved?.id ?? this.deps.store.newestChildAs(parents, profileSlug, provider, except)\n", '    const found = reserved?.id ?? null\n'),
         ],
     ),
     (
