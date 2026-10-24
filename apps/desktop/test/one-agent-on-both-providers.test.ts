@@ -4,7 +4,12 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { MAX_NORMAL_WORKERS_PER_POOL } from '../src/main/profile-execution-file'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
-import { profileBundleSpans, thisConversationSpans } from '../src/main/runtime/factory-text'
+import {
+  profileBundleSpans,
+  thisConversationSpans,
+  type InstructionContext,
+} from '../src/main/runtime/factory-text'
+import { agentCallerId, toolsToldInTextFor } from '../src/main/runtime/agent-tools'
 import { readSessionInstructions } from '../src/main/runtime/instructions'
 import { publishProfileBundle } from '../src/main/runtime/profile-bundle'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
@@ -149,6 +154,271 @@ describe('one normal agent, one conversation per giver and provider', () => {
     expect(world.store.ownInstructionsOf('draft-reader').versions).toHaveLength(1)
     expect(world.store.providerOf('draft-reader')).toBe('claude')
   })
+
+  it.each(['claude', 'codex', 'person'] as const)(
+    'shares one notes page and sealed launch versions across providers with a %s writer',
+    async (writerProvider) => {
+      const textOne = 'Keep observations about the fictional catalogue in one place.'
+      const textTwo = 'Name the fictional catalogue revision beside each observation.'
+      const rules = 'Keep fictional review findings concise.'
+      world.store.writeOwnInstructions(
+        {
+          profileSlug: 'draft-reader',
+          text: rules,
+          whoWroteIt: 'a-person',
+          by: { who: 'a-person' },
+          conversation: null,
+          said: null,
+          broughtBack: null,
+        },
+        world.clock++,
+      )
+      const captures: {
+        provider: 'claude' | 'codex'
+        context: InstructionContext
+        bundle: ReturnType<typeof profileBundleSpans>
+        lead: ReturnType<typeof thisConversationSpans>
+        read: ReturnType<typeof readSessionInstructions>
+        profileText: string
+      }[] = []
+      const starts = vi.spyOn(FakeRuntime.prototype, 'start')
+      const resumes = vi.spyOn(FakeRuntime.prototype, 'resume')
+      const host = world.aHost({
+        readInstructions: (provider, cwd, providerHome, context) => {
+          const bundle = profileBundleSpans(context, provider)
+          const lead = thisConversationSpans(context, toolsToldInTextFor(provider), provider)
+          const published = publishProfileBundle(provider, providerHome, bundle.text)
+          const read = readSessionInstructions({
+            provider,
+            cwd,
+            providerHome,
+            home: join(world.folder, 'fictional-home'),
+            bundle: published,
+            bundleComposed: bundle,
+            thisConversation: lead,
+          })
+          if (context.profileSlug === 'draft-reader') {
+            if (read.profileFile === null || read.profileFile.refused !== null)
+              throw new Error('the fictional profile bundle was refused')
+            captures.push({
+              provider,
+              context,
+              bundle,
+              lead,
+              read,
+              profileText: readFileSync(read.profileFile.path, 'utf8'),
+            })
+          }
+          return {
+            instructions: read.instructions,
+            systemHint: read.systemHint ?? undefined,
+            ...(read.firstTurnLead === null ? {} : { firstTurnLead: read.firstTurnLead }),
+            memoryLoaded: read.memoryLoaded,
+            profileFile: read.profileFile,
+            context,
+          }
+        },
+      })
+      // This assertion gives the landed pre-notes base a behavioural RED, not a missing-call crash.
+      expect(host, 'both providers need the identity-owned notes API').toHaveProperty(
+        'saveOwnNotes',
+      )
+      const saved = host.saveOwnNotes(
+        'draft-reader',
+        {
+          expectedVersion: 0,
+          currentText: '',
+          text: textOne,
+          why: 'Keep the fictional catalogue revision.',
+        },
+        world.window,
+      )
+      expect(saved).not.toBeNull()
+      const v1 = saved!.versions.at(-1)!.version
+      const defaults = {
+        provider: world.store.providerOf('draft-reader'),
+        model: world.store.modelChoiceOf('draft-reader'),
+      }
+      const giver = await caller(host)
+      const claude = await world.gives(host, giver, 'draft-reader', { provider: 'claude' })
+      const codex = await world.gives(host, giver, 'draft-reader', { provider: 'codex' })
+      expect(claude.ok && codex.ok).toBe(true)
+      if (!claude.ok || !codex.ok) throw new Error('give refused')
+      const owners = { claude: claude.owner, codex: codex.owner }
+      expect(owners.claude).not.toBe(owners.codex)
+      const bindings = world.db
+        .prepare(
+          'SELECT id, agent_identity_id AS identity FROM provider_session WHERE id IN (?, ?)',
+        )
+        .all(owners.claude, owners.codex) as { id: string; identity: string | null }[]
+      expect(bindings).toHaveLength(2)
+      expect(bindings[0]!.identity).not.toBeNull()
+      expect(new Set(bindings.map(({ identity }) => identity)).size).toBe(1)
+      const launches = (owner: string) =>
+        world.ledger(owner).flatMap((event) => (event.type === 'launched' ? [event] : []))
+      const settle = async (owner: string, through: number) => {
+        const answered = new Set<string>()
+        await vi.waitFor(async () => {
+          const events = world.ledger(owner)
+          const from = events.map((event) => event.type === 'user_turn').lastIndexOf(true)
+          for (const event of events.slice(from + 1)) {
+            if (event.type === 'permission_request' && !answered.has(event.id)) {
+              answered.add(event.id)
+              await host.respondPermission(owner, event.id, { outcome: 'allow' }, world.window)
+            }
+          }
+          expect(world.ledger(owner).filter((event) => event.type === 'turn')).toHaveLength(through)
+        })
+      }
+      for (const owner of Object.values(owners)) await settle(owner, 1)
+      const originals = [...captures]
+      expect(originals.map(({ provider }) => provider)).toEqual(['claude', 'codex'])
+      const checkLaunch = async (provider: 'claude' | 'codex', version: number, text: string) => {
+        const owner = owners[provider]
+        const capture = captures.filter((read) => read.provider === provider).at(-1)!
+        expect(capture.context.ownNotes).toEqual({ version, text })
+        expect(launches(owner).at(-1)!.given).toMatchObject({ ownNotesVersion: version })
+        expect(await host.whatThisAgentWasGiven(owner)).toMatchObject({ ownNotesVersion: version })
+        expect(world.store.recordedOne(owner)?.provider).toBe(provider)
+        const sent = provider === 'claude' ? capture.read.systemHint : capture.read.firstTurnLead
+        if (text !== '') expect(sent).toContain('> ' + text)
+        if (provider === 'claude') {
+          expect(capture.lead.spans.some((span) => span.heading === 'Your own notes')).toBe(false)
+          if (text !== '') {
+            expect(sent!.indexOf(rules)).toBeLessThan(sent!.indexOf('## Your own notes'))
+            expect(sent!.match(/^## Your own notes$/gm)).toHaveLength(1)
+          } else expect(sent).not.toContain('## Your own notes')
+        } else {
+          expect(capture.lead.spans[0]?.heading).toBe('Your own notes')
+          expect(capture.profileText).not.toContain('## Your own notes')
+          expect(capture.profileText).not.toContain(textOne)
+          expect(capture.profileText).not.toContain(textTwo)
+          expect(sent!.match(/^## Your own notes$/gm)).toHaveLength(1)
+          if (text === '') expect(sent).toContain('Your own notes are empty.')
+        }
+      }
+      for (const provider of ['claude', 'codex'] as const) await checkLaunch(provider, v1, textOne)
+      const claudeStart = starts.mock.calls
+        .map(([options]) => options)
+        .find((options) => options.providerHome.endsWith(join('draft-reader', 'claude')))
+      expect(claudeStart?.systemHint).toContain('> ' + textOne)
+      for (const provider of ['claude', 'codex'] as const) {
+        const sent = world.ledger(owners[provider]).find((event) => event.type === 'user_turn')
+        if (provider === 'codex') {
+          expect(sent?.type === 'user_turn' ? sent.sent : '').toContain('> ' + textOne)
+        }
+      }
+      const writer = owners[writerProvider === 'person' ? 'claude' : writerProvider]
+      const update = {
+        expectedVersion: v1,
+        currentText: textOne,
+        text: textTwo,
+        why: 'Record the next fictional revision.',
+      }
+      let v2: number
+      if (writerProvider === 'person') {
+        const written = host.saveOwnNotes('draft-reader', update, world.window)
+        expect(written).not.toBeNull()
+        v2 = written!.versions[0]!.version
+      } else {
+        const written = host.writeOwnNotes(writer, update, { ownerId: agentCallerId(writer) })
+        expect(written.ok).toBe(true)
+        if (!written.ok) throw new Error('notes write refused')
+        v2 = written.result.version
+        expect(written.result.previousVersion).toBe(v1)
+      }
+      expect(v2).toBeGreaterThan(v1)
+      for (const owner of Object.values(owners))
+        expect(
+          host.readOwnNotes(owner, undefined, { ownerId: agentCallerId(owner) }),
+        ).toMatchObject({
+          ok: true,
+          result: { profile: 'draft-reader', version: v2, text: textTwo },
+        })
+      for (const capture of originals)
+        expect(capture.context.ownNotes).toEqual({ version: v1, text: textOne })
+      expect(claudeStart?.systemHint).toContain('> ' + textOne)
+      expect(claudeStart?.systemHint).not.toContain(textTwo)
+      for (const provider of ['claude', 'codex'] as const) {
+        const owner = owners[provider]
+        // A give starts unwatched; use the real person takeover before a window closes it.
+        host.claimSession(owner, world.window)
+        await host.close(owner, world.window)
+        await host.resumeSession(owner, world.window)
+        await checkLaunch(provider, v2, textTwo)
+        const resumed = resumes.mock.calls
+          .map(([, options]) => options)
+          .filter((options) => options.providerHome.endsWith(join('draft-reader', provider)))
+          .at(-1)
+        if (provider === 'claude') expect(resumed?.systemHint).toContain('> ' + textTwo)
+        else expect(resumed?.systemHint).toBeUndefined()
+        await host.send(owner, 'Continue with the current catalogue revision.', world.window)
+        await settle(owner, 2)
+        if (provider === 'codex') {
+          const sent = world
+            .ledger(owner)
+            .filter((event) => event.type === 'user_turn')
+            .at(-1)
+          expect(sent?.type === 'user_turn' ? sent.sent : '').toContain('> ' + textTwo)
+        }
+      }
+      const clear = {
+        expectedVersion: v2,
+        currentText: textTwo,
+        text: '',
+        why: 'Clear the fictional notes.',
+      }
+      let v3: number
+      if (writerProvider === 'person') {
+        const cleared = host.saveOwnNotes('draft-reader', clear, world.window)
+        expect(cleared).not.toBeNull()
+        v3 = cleared!.versions[0]!.version
+      } else {
+        // Claiming the window does not revoke this live owner's own-notes write authority.
+        const cleared = host.writeOwnNotes(writer, clear, { ownerId: agentCallerId(writer) })
+        expect(cleared.ok).toBe(true)
+        if (!cleared.ok) throw new Error('notes clear refused')
+        v3 = cleared.result.version
+      }
+      expect(v3).toBeGreaterThan(v2)
+      for (const provider of ['claude', 'codex'] as const) {
+        await host.close(owners[provider], world.window)
+        await host.resumeSession(owners[provider], world.window)
+        await checkLaunch(provider, v3, '')
+        await host.send(owners[provider], 'Continue with the empty notes page.', world.window)
+        await settle(owners[provider], 3)
+        const clearedOptions = resumes.mock.calls
+          .map(([, options]) => options)
+          .filter((options) => options.providerHome.endsWith(join('draft-reader', provider)))
+          .at(-1)
+        if (provider === 'claude')
+          expect(clearedOptions?.systemHint).not.toContain('## Your own notes')
+        else {
+          const turn = world
+            .ledger(owners[provider])
+            .filter((event) => event.type === 'user_turn')
+            .at(-1)
+          expect(turn?.type === 'user_turn' ? turn.sent : '').toContain('Your own notes are empty.')
+        }
+        expect(launches(owners[provider]).map((launch) => launch.given?.ownNotesVersion)).toEqual([
+          v1,
+          v2,
+          v3,
+        ])
+      }
+      for (const capture of originals)
+        expect(capture.context.ownNotes).toEqual({ version: v1, text: textOne })
+      expect(host.agentOwnNotes('draft-reader')?.versions.map(({ version }) => version)).toEqual([
+        v3,
+        v2,
+        v1,
+      ])
+      expect({
+        provider: world.store.providerOf('draft-reader'),
+        model: world.store.modelChoiceOf('draft-reader'),
+      }).toEqual(defaults)
+    },
+  )
 
   it('uses the default when both providers list a model, and lets an explicit provider disambiguate', async () => {
     vi.spyOn(FakeRuntime.prototype, 'listModels').mockResolvedValue([
