@@ -159,4 +159,31 @@ describe('one normal agent, one conversation per giver and provider', () => {
     })
     expect(world.conversationsRecorded()).toBe(before)
   })
+
+  it('keeps both legacy conversations when parallel workers are added later and the host restarts', async () => {
+    const host = world.aHost()
+    const giver = await caller(host)
+    const claude = await world.gives(host, giver, 'draft-reader')
+    const codex = await world.gives(host, giver, 'draft-reader', { provider: 'codex' })
+    expect(claude.ok && codex.ok).toBe(true)
+    if (!claude.ok || !codex.ok) throw new Error('give refused')
+    expect(
+      await world.gives(host, giver, 'draft-reader', { provider: 'codex', parallel: true }),
+    ).toMatchObject({ ok: true })
+    expect(await world.gives(host, giver, 'draft-reader')).toMatchObject({
+      ok: true,
+      owner: claude.owner,
+    })
+    await host.closeAll()
+    const next = world.aHost()
+    await next.reopenForAPerson(giver, world.window, null)
+    expect(await world.gives(next, giver, 'draft-reader', { provider: 'codex' })).toMatchObject({
+      ok: true,
+      owner: codex.owner,
+    })
+    expect(await world.gives(next, giver, 'draft-reader')).toMatchObject({
+      ok: true,
+      owner: claude.owner,
+    })
+  })
 })
