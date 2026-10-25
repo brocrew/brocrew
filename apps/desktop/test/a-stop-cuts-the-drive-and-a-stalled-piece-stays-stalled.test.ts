@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeProviderSessions, FakeRuntime, SessionMachine } from '@brobot2/runtime'
 import type {
   AgentToolset,
@@ -443,6 +443,9 @@ interface Launch {
   readonly handle: SessionHandle
   readonly failTheStream: () => void
   readonly letCloseFinish: () => void
+  readonly closeReleased: boolean
+  readonly closeStarted: boolean
+  readonly closeFinished: boolean
 }
 
 /** ⚑ A reopen the test can hold at the provider's door, and count. */
@@ -458,12 +461,18 @@ interface ResumeHold {
 function withLevers(handle: SessionHandle, toolset: AgentToolset | undefined): Launch {
   let failTheStream!: () => void
   let letCloseFinish!: () => void
+  let closeReleased = false
+  let closeStarted = false
+  let closeFinished = false
   const failed = new Promise<IteratorResult<RuntimeEvent>>((_resolve, reject) => {
     failTheStream = () => reject(new Error('the stream failed under the host'))
   })
   failed.catch(() => undefined)
   const closeMayFinish = new Promise<void>((resolve) => {
-    letCloseFinish = resolve
+    letCloseFinish = () => {
+      closeReleased = true
+      resolve()
+    }
   })
   const proxied = new Proxy(handle, {
     get(target, property) {
@@ -483,15 +492,31 @@ function withLevers(handle: SessionHandle, toolset: AgentToolset | undefined): L
       }
       if (property === 'close') {
         return async (): Promise<void> => {
+          closeStarted = true
           await closeMayFinish
           await target.close()
+          closeFinished = true
         }
       }
       const value = Reflect.get(target, property, target) as unknown
       return typeof value === 'function' ? (value as () => unknown).bind(target) : value
     },
   })
-  return { toolset, handle: proxied, failTheStream, letCloseFinish }
+  return {
+    toolset,
+    handle: proxied,
+    failTheStream,
+    letCloseFinish,
+    get closeReleased() {
+      return closeReleased
+    },
+    get closeStarted() {
+      return closeStarted
+    },
+    get closeFinished() {
+      return closeFinished
+    },
+  }
 }
 
 /**
@@ -654,6 +679,59 @@ describe('§3 · the host — a stop changes nothing about a piece or about the 
     await host.close(first.sessionId, window)
     return anotherPm()
   }
+
+  it('the identity seed closes and drains while only the subject worker stays held', async () => {
+    const warnings = vi.spyOn(console, 'warn')
+    const preparing = aPmAndItsWorker('ask')
+    let closing: Promise<unknown> | undefined
+    try {
+      await waitFor(() => launches[0]?.closeStarted === true, 'the identity seed close to start')
+      const seed = launches[0]!
+      expect(seed.closeReleased).toBe(true)
+      const { pm, pmLaunch, worker, workerLaunch } = await preparing
+      expect(seed.closeFinished).toBe(true)
+      expect(host.sessionIds).not.toContain('sess_1')
+      expect(launches).toHaveLength(3)
+      expect(pm).not.toBe('sess_1')
+      expect(worker).not.toBe('sess_1')
+      expect(worker).not.toBe(pm)
+      expect(seed).not.toBe(pmLaunch)
+      expect(seed).not.toBe(workerLaunch)
+      expect(
+        warnings.mock.calls
+          .flat()
+          .map(String)
+          .filter((line) => line.includes('sess_1') && /did not (?:confirm stop|drain)/.test(line)),
+      ).toEqual([])
+
+      host.claimSession(worker, window)
+      let settled = false
+      closing = host.close(worker, window)
+      void closing.then(
+        () => {
+          settled = true
+        },
+        () => {
+          settled = true
+        },
+      )
+      await waitFor(() => workerLaunch.closeStarted, 'the subject worker close to start')
+      expect(workerLaunch.closeReleased).toBe(false)
+      expect(workerLaunch.closeFinished).toBe(false)
+      expect(settled).toBe(false)
+      expect(listSaysClosing(worker)).toBe(true)
+      workerLaunch.letCloseFinish()
+      await closing
+      expect(workerLaunch.closeFinished).toBe(true)
+      expect(settled).toBe(true)
+    } finally {
+      for (const launch of launches) launch.letCloseFinish()
+      await preparing
+      for (const launch of launches) launch.letCloseFinish()
+      await closing
+      warnings.mockRestore()
+    }
+  })
   const anotherPm = async (): Promise<{ pm: string; pmLaunch: Launch }> => {
     const { sessionId: pm } = await host.createSession(
       { provider: 'claude', profileId: 'pm', approvalMode: 'auto', cwd: root },
