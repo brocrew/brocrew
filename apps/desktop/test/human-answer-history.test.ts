@@ -6,7 +6,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { HUMAN_FINAL_TERM, HUMAN_PROMPT_TERM } from '../src/main/db/human-answer-index'
+import { HUMAN_FINAL_TERM, HUMAN_CONTEXT_TERM } from '../src/main/db/human-answer-index'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
+import { FakeRuntime } from '@brobot2/runtime'
+import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import type { TranscriptEvent } from '../src/shared/runtime-ipc'
 import { acceptEvent, createSessionRecord, openWindow } from '../src/renderer/src/lib/session-record'
 import { panelWords } from '../src/renderer/src/lib/latest-words'
@@ -17,6 +20,7 @@ describe('indexed human answer history', () => {
   let db: AppDatabase
   let store: SessionStore
   let ordinal: number
+  let host: RuntimeHost
   beforeEach(() => {
     directory = mkdtempSync(join(tmpdir(), 'fictional-human-answer-'))
     db = openDatabase(join(directory, 'fictional.sqlite'))
@@ -24,8 +28,15 @@ describe('indexed human answer history', () => {
     store = createSessionStore(db)
     store.create({ id: 's', provider: 'codex', cwd: directory, approvalMode: 'ask', profileId: 'fictional' })
     ordinal = 0
+    host = new RuntimeHost({
+      store, createRuntime: () => new FakeRuntime('codex'), discoverSessions: NO_DISCOVERY,
+      resolveCwd: () => directory, prepareProviderHome: () => directory,
+      providerHomePath: () => directory, nativeTranscriptPath: () => null,
+      exportDirectory: () => directory, newSessionId: () => 'fictional-new',
+      readProviderConfig: () => ({ home: directory, homeEnv: 'CODEX_HOME', model: 'fictional', authNote: null, files: [] }),
+    })
   })
-  afterEach(() => { db.close(); rmSync(directory, { recursive: true, force: true }) })
+  afterEach(async () => { await host.closeAll(); db.close(); rmSync(directory, { recursive: true, force: true }) })
   function feed(...events: TranscriptEvent[]) {
     for (const event of events) { store.append('s', ordinal, event, 1000 + ordinal); ordinal++ }
   }
@@ -37,7 +48,7 @@ describe('indexed human answer history', () => {
     for (let n = 0; n < 20; n++) {
       feed({ type: 'user_turn', text: `App ${n}`, attribution: 'app_authored' }); final(`App answer ${n}`)
     }
-    const page = { ...store.turnWindow('s', { turns: 12, maxEvents: 2500 }), humanAnswers: store.latestHumanAnswers('s') }
+    const page = host.latestHistory('s')
     expect(page.entries.some((row) => row.ordinal === 0)).toBe(false)
     expect(page.humanAnswers.latest).toMatchObject({ prompt: 'My **question**', final: { text: '## My answer' } })
     const record = createSessionRecord('s')
@@ -67,9 +78,57 @@ describe('indexed human answer history', () => {
     expect(store.latestHumanAnswers('s').latest).toBeNull()
   })
 
+  it('live and cold history select the same nonblank final across repeated finals', () => {
+    human('Question')
+    feed({ type: 'assistant_message', text: 'First final', phase: 'final' })
+    feed({ type: 'assistant_message', text: 'Selected final', phase: 'final' })
+    feed({ type: 'assistant_message', text: '\n\t\u00a0\uFEFF', phase: 'final' })
+    const page = host.latestHistory('s')
+    expect(page.humanAnswers?.latest?.final?.text).toBe('Selected final')
+    const record = createSessionRecord('s'); openWindow(record, page)
+    page.entries.forEach((row) => acceptEvent(record, { ...row, sessionId: 's' }))
+    expect(record.control.items.filter((item) => item.kind === 'assistant' && item.humanFinal).map((item) => item.text)).toEqual(['Selected final'])
+    expect(panelWords(record.control)?.text).toBe('Selected final')
+  })
+
+  it.each(['ended', 'reopened'] as const)('does not adopt a late final after %s on cold reload', (boundary) => {
+    human('Question')
+    feed({ type: 'assistant_message', text: 'Original final', phase: 'final' })
+    feed(boundary === 'ended' ? { type: 'status', state: 'ended' } : { type: 'reopened' })
+    feed({ type: 'assistant_message', text: 'Late final', phase: 'final' })
+    const page = host.latestHistory('s')
+    expect(page.humanAnswers?.latest?.final?.text).toBe('Original final')
+    expect(page.humanAnswers?.active).toBeNull()
+    const record = createSessionRecord('s'); openWindow(record, page)
+    page.entries.forEach((row) => acceptEvent(record, { ...row, sessionId: 's' }))
+    expect(record.control.items.filter((item) => item.kind === 'assistant' && item.humanFinal).map((item) => item.text)).toEqual(['Original final'])
+    expect(panelWords(record.control)?.text).toBe('Original final')
+  })
+
+  it('keeps each visible human final across a real event-cap cut and an older page cut', () => {
+    human('Q1 outside page')
+    for (let n = 0; n < 2600; n++) feed({ type: 'activity', phase: 'thinking' })
+    final('A1 inside cut page')
+    human('Q2 inside page'); final('A2 inside page')
+    const page = host.latestHistory('s')
+    expect(page.turnAligned).toBe(false)
+    expect(page.entries.some((entry) => entry.ordinal === 0)).toBe(false)
+    expect(page.humanAnswers?.latest?.prompt).toBe('Q2 inside page')
+    const record = createSessionRecord('s'); openWindow(record, page)
+    page.entries.forEach((row) => acceptEvent(record, { ...row, sessionId: 's' }))
+    expect(record.control.items.filter((item) => item.kind === 'assistant' && item.humanFinal).map((item) => item.text)).toEqual(['A1 inside cut page', 'A2 inside page'])
+    expect(panelWords(record.control)?.text).toBe('A2 inside page')
+    // An older-page request can begin partway through Q1 and contain A1 without Q1's prompt.
+    const older = host.earlierHistory('s', 2603, 1)
+    expect(older.turnAligned).toBe(false)
+    const olderRecord = createSessionRecord('s'); openWindow(olderRecord, older)
+    older.entries.forEach((row) => acceptEvent(olderRecord, { ...row, sessionId: 's' }))
+    expect(olderRecord.control.items.filter((item) => item.kind === 'assistant' && item.humanFinal).map((item) => item.text)).toEqual(['A1 inside cut page'])
+  })
+
   it('uses index seeks without temporary sorts and tolerates malformed historical payloads', () => {
     for (const [name, term, extra, args] of [
-      ['events_human_prompt_idx', HUMAN_PROMPT_TERM, '', ['s', 0]],
+      ['events_human_prompt_idx', `(${HUMAN_CONTEXT_TERM})`, " AND type = 'user_turn'", ['s', 0]],
       ['events_human_final_idx', HUMAN_FINAL_TERM, ' AND turn_id = ? AND ordinal > ?', ['s', 0, 'fictional', 0]],
     ] as const) {
       const plan = db.prepare(`EXPLAIN QUERY PLAN SELECT ordinal, payload FROM events WHERE session_id = ? AND generation = ? AND ${term}${extra} ORDER BY ordinal DESC LIMIT 1`).all(...args)

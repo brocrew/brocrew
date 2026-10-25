@@ -104,7 +104,7 @@ import {
 // ⚑ **672 · a value import with no cycle** — `piece-called.ts` imports nothing.
 import { pieceNumbersOf } from '../../../shared/piece-called'
 import { textPackRefusedSaid } from '../../../shared/text-pack'
-import type { HumanAnswers } from '../../../shared/human-turn-answer'
+import type { HumanAnswers, HumanFinalContext } from '../../../shared/human-turn-answer'
 import { startHumanAnswer, finishHumanAnswer } from './human-answers'
 
 /**
@@ -584,6 +584,7 @@ export interface QueuedItem {
 export interface AssistantItem {
   /** A provider-marked final paired to an observed human turn. */
   humanFinal?: true
+  humanFinalPromptOrdinal?: number
   kind: 'assistant'
   id: string
   text: string
@@ -3910,11 +3911,12 @@ export function applyEvent(
   event: TranscriptEvent,
   at?: number,
   ordinal?: number,
+  humanFinal?: HumanFinalContext | null,
 ): void {
   const before = state.seq
   const from = state.items.length
   startHumanAnswer(state.humanAnswers, event, ordinal ?? state.seq)
-  foldEvent(state, event, at, ordinal)
+  foldEvent(state, event, at, ordinal, humanFinal)
   followTheTurnsErrors(state, event, from)
   if ((at === undefined && ordinal === undefined) || state.seq === before) return
   // Walk back from the end while the items are ones this fold created. Counting by LENGTH would
@@ -4776,6 +4778,7 @@ function foldEvent(
   event: TranscriptEvent,
   at?: number,
   ordinal?: number,
+  humanFinal?: HumanFinalContext | null,
 ): void {
   switch (event.type) {
     case 'user_turn': {
@@ -5118,7 +5121,7 @@ function foldEvent(
         open.text = event.text
         open.streaming = false
         if (event.questions !== undefined) open.questions = event.questions
-        finishHumanAnswer(state.humanAnswers, open, event, ordinal ?? state.seq, at)
+        finishHumanAnswer(state.humanAnswers, open, event, ordinal ?? state.seq, at, state.items, humanFinal)
         state.streamingId = null
         state.provisionalId = null
         return
@@ -5136,7 +5139,7 @@ function foldEvent(
         streaming: false,
         ...(event.questions === undefined ? {} : { questions: event.questions }),
       })
-      finishHumanAnswer(state.humanAnswers, state.items.at(-1) as AssistantItem, event, ordinal ?? state.seq, at)
+      finishHumanAnswer(state.humanAnswers, state.items.at(-1) as AssistantItem, event, ordinal ?? state.seq, at, state.items, humanFinal)
       return
     }
 

@@ -1,16 +1,19 @@
 import type { UserTurnEvent } from './runtime-ipc'
 import { theMessagesOf } from './runtime-ipc'
 
-export interface HumanTurnAnswer {
+export interface HumanFinalContext {
   promptOrdinal: number
   prompt: string
+}
+
+export interface HumanTurnAnswer extends HumanFinalContext {
   final: { ordinal: number; text: string; at: number | null } | null
 }
 
 export interface HumanAnswers {
   latest: HumanTurnAnswer | null
   /** The ledger assigns late content to its last turn until another turn opens. */
-  active: { promptOrdinal: number; prompt: string } | null
+  active: HumanFinalContext | null
 }
 
 /** Only the host's observed person stamp counts; old unmarked rows make no new claim. */

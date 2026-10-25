@@ -6866,6 +6866,8 @@ export type AgentProviderSet = AgentIdentity & {
 
 /** One recorded entry with the ordinal it was published under — the transcript, replayable. */
 export interface PersistedEventInfo {
+  /** Canonical human-final association for this history row; null means it is not selected. */
+  humanFinal?: import('./human-turn-answer').HumanFinalContext | null
   ordinal: number
   /** When it happened, epoch ms — the recorded time, not the moment it was replayed. */
   at: number
@@ -7066,6 +7068,8 @@ export interface ReleasedSession {
  * key without inventing one.
  */
 export interface RuntimeEventMessage {
+  /** History reads supply canonical per-turn context, including for pages cut mid-turn. */
+  humanFinal?: import('./human-turn-answer').HumanFinalContext | null
   sessionId: string
   ordinal: number
   /**

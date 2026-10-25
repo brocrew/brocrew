@@ -38426,11 +38426,17 @@ export class RuntimeHost implements LiveHost {
       maxEvents: HISTORY_WINDOW_MAX_EVENTS,
       ...(options.before === undefined ? {} : { before: options.before }),
     })
+    const first = window.entries[0]
+    const last = window.entries.at(-1)
+    const humanFinals = first === undefined || last === undefined ? new Map()
+      : this.deps.store.humanFinalsInWindow(sessionId, first.ordinal, last.ordinal)
     return {
       entries: window.entries.map((entry) => ({
         ordinal: entry.ordinal,
         at: entry.at,
         event: entry.event,
+        ...(entry.event.type === 'assistant_message'
+          ? { humanFinal: humanFinals.get(entry.ordinal) ?? null } : {}),
       })),
       from: window.from,
       hasOlder: window.hasOlder,

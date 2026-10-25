@@ -1,7 +1,7 @@
-import type { HumanAnswers } from '../../../shared/human-turn-answer'
+import type { HumanAnswers, HumanFinalContext } from '../../../shared/human-turn-answer'
 import { humanPromptOf } from '../../../shared/human-turn-answer'
 import type { TranscriptEvent } from '../../../shared/runtime-ipc'
-import type { AssistantItem } from './transcript'
+import type { AssistantItem, TranscriptItem } from './transcript'
 
 export function startHumanAnswer(
   answers: HumanAnswers, event: TranscriptEvent, ordinal: number,
@@ -26,15 +26,21 @@ export function startHumanAnswer(
 export function finishHumanAnswer(
   answers: HumanAnswers, item: AssistantItem,
   event: Extract<TranscriptEvent, { type: 'assistant_message' }>,
-  ordinal: number, at?: number,
+  ordinal: number, at: number | undefined, items: readonly TranscriptItem[],
+  context?: HumanFinalContext | null,
 ): void {
   if (event.phase !== 'final' || event.parentToolCallId !== undefined || event.text.trim() === '') return
-  if (answers.latest?.final?.ordinal === ordinal) item.humanFinal = true
-  if (answers.active === null) return
-  if (ordinal <= answers.active.promptOrdinal) return
+  const prompt = context === undefined ? answers.active : context
+  if (prompt === null || ordinal <= prompt.promptOrdinal) return
+  if (answers.latest?.promptOrdinal === prompt.promptOrdinal
+    && answers.latest.final !== null && answers.latest.final.ordinal > ordinal) return
+  for (const previous of items) {
+    if (previous.kind === 'assistant' && previous !== item
+      && previous.humanFinalPromptOrdinal === prompt.promptOrdinal) delete previous.humanFinal
+  }
   item.humanFinal = true
-  if (answers.latest?.promptOrdinal !== answers.active.promptOrdinal) return
-  if (answers.latest.final !== null && answers.latest.final.ordinal > ordinal) return
+  item.humanFinalPromptOrdinal = prompt.promptOrdinal
+  if (answers.latest?.promptOrdinal !== prompt.promptOrdinal) return
   answers.latest.final = { text: event.text, ordinal, at: at ?? null }
 }
 

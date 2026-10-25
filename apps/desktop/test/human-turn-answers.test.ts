@@ -79,6 +79,12 @@ describe('human turns keep their own final answers', () => {
     ])
   })
 
+  it('selects one nonblank final per human turn when the provider sends more than one', () => {
+    const state = fold([human('Question'), final('First final'), final('Selected final'), final('\n\t\u00a0\uFEFF')])
+    expect(state.items.filter((item) => item.kind === 'assistant' && item.humanFinal).map((item) => item.text)).toEqual(['Selected final'])
+    expect(panelWords(state)?.text).toBe('Selected final')
+  })
+
   it('keeps the pair when a bounded window drops its opening and through a cold history reload', () => {
     const initial = fold([human('Q outside page'), final('A outside page'), ended])
     const messages = [app('Later app'), final('App response'), ended].map((event, i) => ({ sessionId: 's', event, ordinal: i + 40, at: i + 2000 }))

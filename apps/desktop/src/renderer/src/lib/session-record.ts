@@ -797,7 +797,7 @@ export function acceptEvent(record: SessionRecord, message: RuntimeEventMessage)
     // running session after a busy turn overflowed the window.
     record.transcript = refold(record, record.window.entries, record.transcript)
   } else {
-    applyEvent(record.transcript, message.event, message.at, message.ordinal)
+    applyEvent(record.transcript, message.event, message.at, message.ordinal, message.humanFinal)
   }
   // Still the same object — the window kept the tail, so there is one projection here, and the
   // re-fold above replaced it. Assigned rather than left alone because `refold` returns a NEW state.
@@ -829,7 +829,7 @@ function foldIntoTail(record: SessionRecord, message: RuntimeEventMessage): void
   // truth this session has while the reader is away. 068's *"an open permission/user-input card can
   // leave effective state"* is this line without the carry (068 finding 4).
   if (released > 0) record.control = refold(record, record.tail.entries, record.control)
-  else applyEvent(record.control, message.event, message.at, message.ordinal)
+  else applyEvent(record.control, message.event, message.at, message.ordinal, message.humanFinal)
 }
 
 /**
