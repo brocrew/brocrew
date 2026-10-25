@@ -10,7 +10,42 @@ import DEFINED from '../../resources/themes/defined/theme.json'
 import BROCREW from '../../resources/themes/brocrew/theme.json'
 import { applyEvent, createTranscript } from '../../src/renderer/src/lib/transcript'
 import type { TranscriptEvent } from '../../src/shared/runtime-ipc'
-import { mount, unmountAll, parseColor, paintedBackground, contrast } from './harness'
+import { mount, unmountAll, contrast, type Rgba } from './harness'
+
+const canvas = document.createElement('canvas')
+canvas.width = 1
+canvas.height = 1
+const pixels = canvas.getContext('2d', { willReadFrequently: true })!
+
+function color(value: string): Rgba {
+  expect(CSS.supports('color', value), value).toBe(true)
+  pixels.clearRect(0, 0, 1, 1)
+  pixels.fillStyle = value
+  pixels.fillRect(0, 0, 1, 1)
+  const rgba = pixels.getImageData(0, 0, 1, 1).data
+  return [rgba[0]!, rgba[1]!, rgba[2]!, rgba[3]! / 255]
+}
+
+/** The new column and popup have flat opaque surfaces; canvas resolves derived oklab tokens too. */
+function readableContrast(element: Element): number {
+  const ink = color(getComputedStyle(element).color)
+  const layers: string[] = []
+  for (let node: Element | null = element; node !== null; node = node.parentElement) {
+    const style = getComputedStyle(node)
+    expect(style.backgroundImage).toBe('none')
+    layers.push(style.backgroundColor)
+    if (color(style.backgroundColor)[3] === 1) break
+  }
+  pixels.clearRect(0, 0, 1, 1)
+  pixels.fillStyle = '#fff'
+  pixels.fillRect(0, 0, 1, 1)
+  for (const layer of layers.reverse()) {
+    pixels.fillStyle = layer
+    pixels.fillRect(0, 0, 1, 1)
+  }
+  const paper = pixels.getImageData(0, 0, 1, 1).data
+  return contrast(ink, [paper[0]!, paper[1]!, paper[2]!, paper[3]! / 255])
+}
 
 afterEach(() => { unmountAll(); applyTheme(null) })
 function stateOf(events: TranscriptEvent[]) {
@@ -96,18 +131,14 @@ describe('human final answer surfaces', () => {
     for (const selector of ['.final-label', '.msg-body p', '.msg-body a', '.msg-body pre code', '.time']) {
       const element = highlighted[0]!.querySelector(selector)!
       expect(element, selector).not.toBeNull()
-      const ink = parseColor(getComputedStyle(element).color)
-      expect(ink, selector).not.toBeNull()
-      expect(contrast(ink!, paintedBackground(element)), `${theme} history ${selector}`).toBeGreaterThanOrEqual(4.5)
+      expect(readableContrast(element), `${theme} history ${selector}`).toBeGreaterThanOrEqual(4.5)
     }
     const dialog = m.q('human-answer-dialog')
     expect(getComputedStyle(dialog).borderTopWidth).toBe('1px')
     for (const selector of ['h2', 'h3', '[data-cy="human-answer-prompt"] p', '[data-cy="human-answer-final"] p', '[data-cy="human-answer-final"] a', 'pre code']) {
       const element = dialog.querySelector(selector)!
       expect(element, selector).not.toBeNull()
-      const ink = parseColor(getComputedStyle(element).color)
-      expect(ink, selector).not.toBeNull()
-      expect(contrast(ink!, paintedBackground(element)), `${theme} popup ${selector}`).toBeGreaterThanOrEqual(4.5)
+      expect(readableContrast(element), `${theme} popup ${selector}`).toBeGreaterThanOrEqual(4.5)
     }
   })
 })
