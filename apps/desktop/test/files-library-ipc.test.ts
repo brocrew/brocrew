@@ -82,10 +82,16 @@ it('takes the command through a dedicated real worker with no main-thread legacy
   const libraries = new FilesLibraryWindows(
     () => new FilesLibraryLifetime(() => new Worker(bundled, { workerData: { file: f.file } })),
   )
+  let releaseStartup!: () => void
+  // Measure the startup reconciler separately after the library requests finish.
+  const afterFirstWindowLoad = new Promise<void>((resolve) => {
+    releaseStartup = resolve
+  })
   const host = new RuntimeHost({
     store: { ...measuredStore, filesKept: forbidden, filesKeptTogether: forbidden },
     filesLibraries: libraries,
     filesLibraryRevision: () => '0',
+    afterFirstWindowLoad,
     discoverSessions: NO_DISCOVERY,
     createRuntime: () => new FakeRuntime('codex'),
     resolveCwd: () => f.directory,
@@ -156,6 +162,16 @@ it('takes the command through a dedicated real worker with no main-thread legacy
         eventStatements: eventReads.length,
         positiveEventReadStatements: 1,
         legacyFolds: forbidden.mock.calls.length,
+      }),
+    )
+    releaseStartup()
+    await vi.waitFor(() =>
+      expect(mainReads.filter((sql) => /\bevents\b/iu.test(sql)).length).toBeGreaterThan(0),
+    )
+    console.info(
+      'FILES_LIBRARY_STARTUP_CONTROL',
+      JSON.stringify({
+        eventStatements: mainReads.filter((sql) => /\bevents\b/iu.test(sql)).length,
       }),
     )
     await host.closeFilesLibraryWindow(sink.ownerId)
