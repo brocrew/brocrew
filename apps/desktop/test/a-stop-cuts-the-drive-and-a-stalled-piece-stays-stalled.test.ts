@@ -731,6 +731,7 @@ describe('§3 · the host — a stop changes nothing about a piece or about the 
       { provider: 'claude', profileId: 'worker', approvalMode: 'auto', cwd: root },
       window,
     )
+    launches.at(-1)!.letCloseFinish()
     await host.close(first.sessionId, window)
     return anotherPm()
   }
@@ -1067,6 +1068,7 @@ describe('§3 · the host — a stop changes nothing about a piece or about the 
       { provider: 'claude', profileId, approvalMode: 'auto', cwd: root },
       window,
     )
+    launches.at(-1)!.letCloseFinish()
     await host.close(sessionId, window)
   }
 
