@@ -833,6 +833,56 @@ describe('§3 · the host — a stop changes nothing about a piece or about the 
       output.mockRestore()
     }
   })
+  it.each(['grant', 'other identity'] as const)(
+    'the additional identity seed for %s closes while the subject worker remains held',
+    async (kind) => {
+      const { worker, workerLaunch } = await aPmAndItsWorker('ask')
+      host.claimSession(worker, window)
+      let settled = false
+      const closing = host.close(worker, window)
+      void closing.then(
+        () => {
+          settled = true
+        },
+        () => {
+          settled = true
+        },
+      )
+      let preparing: Promise<unknown> | undefined
+      try {
+        await waitFor(() => workerLaunch.closeStarted, 'the unrelated subject close to start')
+        const before = launches.length
+        const seedSessionId = `sess_${counter + 1}`
+        preparing = kind === 'grant' ? aPmWithAGrant() : bringIdentityIntoBeing('other')
+        await waitFor(
+          () => launches[before]?.closeStarted === true,
+          'the additional seed close to start',
+        )
+        const seed = launches[before]!
+        expect(seed).not.toBe(workerLaunch)
+        expect(seed.closeReleased).toBe(true)
+        await preparing
+        expect(seed.closeFinished).toBe(true)
+        expect(host.sessionIds).not.toContain(seedSessionId)
+        expect(host.sessionIds).toContain(worker)
+        expect(launches).toHaveLength(before + (kind === 'grant' ? 2 : 1))
+        if (kind === 'grant') expect(launches[before + 1]!.closeReleased).toBe(false)
+        expect(workerLaunch.closeReleased).toBe(false)
+        expect(workerLaunch.closeFinished).toBe(false)
+        expect(settled).toBe(false)
+        expect(listSaysClosing(worker)).toBe(true)
+        workerLaunch.letCloseFinish()
+        await closing
+        expect(workerLaunch.closeFinished).toBe(true)
+      } finally {
+        for (const launch of launches) launch.letCloseFinish()
+        await preparing
+        for (const launch of launches) launch.letCloseFinish()
+        await closing
+      }
+    },
+  )
+
   const anotherPm = async (): Promise<{ pm: string; pmLaunch: Launch }> => {
     const { sessionId: pm } = await host.createSession(
       { provider: 'claude', profileId: 'pm', approvalMode: 'auto', cwd: root },
