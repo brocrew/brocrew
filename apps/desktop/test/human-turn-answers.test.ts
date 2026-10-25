@@ -93,4 +93,16 @@ describe('human turns keep their own final answers', () => {
     expect(record.control.humanAnswers.latest?.prompt).toBe('Q outside page')
     expect(panelWords(record.control)?.text).toBe('A outside page')
   })
+
+  it('does not pair a page-leading old final with a later human prompt from the context', () => {
+    const record = createSessionRecord('s')
+    const entries = [final('Old app final'), ended, human('New pending')]
+      .map((event, n) => ({ event, ordinal: n + 20, at: 2000 + n, sessionId: 's' }))
+    openWindow(record, { entries, from: 20, hasOlder: true, turnAligned: false,
+      humanAnswers: { latest: { promptOrdinal: 22, prompt: 'New pending', final: null }, active: { promptOrdinal: 22, prompt: 'New pending' } },
+    })
+    entries.forEach((row) => acceptEvent(record, row))
+    expect(record.control.humanAnswers.latest?.final).toBeNull()
+    expect(record.control.items.some((item) => item.kind === 'assistant' && item.humanFinal)).toBe(false)
+  })
 })

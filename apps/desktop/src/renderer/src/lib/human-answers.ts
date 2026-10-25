@@ -31,6 +31,7 @@ export function finishHumanAnswer(
   if (event.phase !== 'final' || event.parentToolCallId !== undefined || event.text.trim() === '') return
   if (answers.latest?.final?.ordinal === ordinal) item.humanFinal = true
   if (answers.active === null) return
+  if (ordinal <= answers.active.promptOrdinal) return
   item.humanFinal = true
   if (answers.latest?.promptOrdinal !== answers.active.promptOrdinal) return
   if (answers.latest.final !== null && answers.latest.final.ordinal > ordinal) return

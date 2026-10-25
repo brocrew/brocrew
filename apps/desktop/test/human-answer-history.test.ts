@@ -61,6 +61,12 @@ describe('indexed human answer history', () => {
     expect(store.latestHumanAnswers('s').latest?.final).toBeNull()
   })
 
+  it('a later uncertain prompt prevents selecting an older verified human final', () => {
+    human('Known question'); final('Known answer')
+    feed({ type: 'user_turn', text: 'Later legacy prompt' }); final('Legacy response')
+    expect(store.latestHumanAnswers('s').latest).toBeNull()
+  })
+
   it('uses index seeks without temporary sorts and tolerates malformed historical payloads', () => {
     for (const [name, term, extra, args] of [
       ['events_human_prompt_idx', HUMAN_PROMPT_TERM, '', ['s', 0]],

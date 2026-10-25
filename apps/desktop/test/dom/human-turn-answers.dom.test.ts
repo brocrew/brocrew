@@ -4,7 +4,7 @@ import AgentCard from '../../src/renderer/src/components/AgentCard.vue'
 import AssistantMessage from '../../src/renderer/src/components/AssistantMessage.vue'
 import { applyEvent, createTranscript } from '../../src/renderer/src/lib/transcript'
 import type { TranscriptEvent } from '../../src/shared/runtime-ipc'
-import { mount, unmountAll } from './harness'
+import { mount, unmountAll, parseColor, paintedBackground, contrast } from './harness'
 
 afterEach(unmountAll)
 function stateOf(events: TranscriptEvent[]) {
@@ -78,5 +78,8 @@ describe('human final answer surfaces', () => {
     expect(getComputedStyle(column).borderInlineStartWidth).toBe('3px')
     expect(getComputedStyle(column).backgroundColor).not.toBe('rgba(0, 0, 0, 0)')
     expect(getComputedStyle(highlighted[0]!.querySelector('.final-label')!).color).toBe(theme === 'dark' ? 'rgb(255, 255, 255)' : 'rgb(20, 21, 42)')
+    const ink = parseColor(getComputedStyle(highlighted[0]!.querySelector('.final-label')!).color)
+    expect(ink).not.toBeNull()
+    expect(contrast(ink!, paintedBackground(column))).toBeGreaterThanOrEqual(4.5)
   })
 })
