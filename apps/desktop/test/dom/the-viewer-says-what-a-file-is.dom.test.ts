@@ -1,8 +1,14 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
-import { nextTick } from 'vue'
+import { defineComponent, h, nextTick } from 'vue'
 import CanonicalDocumentViewer from '../../src/renderer/src/components/CanonicalDocumentViewer.vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
+import FilesLibraryPreview from '../../src/renderer/src/components/FilesLibraryPreview.vue'
+import {
+  createFilesLibrary,
+  provideFilesLibrary,
+} from '../../src/renderer/src/composables/useFilesLibrary'
+import { keptFileLibraryReplies } from '../fixtures/kept-file-library-replies'
 import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { fullTime } from '../../src/renderer/src/lib/clock'
 import { clockTime } from '../../src/shared/clock'
@@ -147,15 +153,33 @@ describe('the viewer says what a file is', () => {
       answered: true,
     }
     await page.viewport(1200, 808)
-    const m = mount(ConversationPane, paneProps({ onReadResource: async () => RESULT }), {
-      width: 1180,
-      height: 780,
+    const libraryPane = defineComponent({
+      setup() {
+        const library = createFilesLibrary({
+          read: keptFileLibraryReplies(() => [ROW]),
+          workspace: () => 'fictional',
+          selected: () => ({ id: META.sessionId, name: 'Fictional conversation' }),
+        })
+        provideFilesLibrary(library)
+        return () =>
+          h('div', { style: 'display:flex;flex:1;min-height:0' }, [
+            h(ConversationPane, paneProps({ onReadResource: async () => RESULT })),
+            h(FilesLibraryPreview, { library, workspace: 'fictional', read: async () => RESULT }),
+          ])
+      },
     })
+    const m = mount(
+      libraryPane,
+      {},
+      {
+        width: 1180,
+        height: 780,
+      },
+    )
     m.q('main-tab-files').click()
-    await drawnReady()
-    m.q('tree-file').click()
-    await nextTick()
-    await nextTick()
+    await vi.waitFor(() => expect(m.all('library-file')).toHaveLength(1))
+    m.q('library-file').click()
+    await vi.waitFor(() => expect(m.all('canonical-document-viewer')).toHaveLength(1))
     expect(read(m.q('canonical-document-title'))).toBe('Open findings')
     expect(read(m.q('canonical-document-from'))).toContain('Made by Ali for W1.9')
     unmountAll()

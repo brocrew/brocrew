@@ -20,6 +20,7 @@ import StartAsAgent from '../../src/renderer/src/components/StartAsAgent.vue'
 import OverlayHost from '../../src/renderer/src/components/OverlayHost.vue'
 import ProvidersScreen from '../../src/renderer/src/components/ProvidersScreen.vue'
 import WorkSearchDialog from '../../src/renderer/src/components/WorkSearchDialog.vue'
+import FilesTaskPicker from '../../src/renderer/src/components/FilesTaskPicker.vue'
 import ScheduledJobDialog from '../../src/renderer/src/components/ScheduledJobDialog.vue'
 import SessionTools from '../../src/renderer/src/components/SessionTools.vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
@@ -229,6 +230,26 @@ let pressed: boolean[] = []
  * `a-number-can-survive-the-death-of-its-derivation`.
  */
 const PATHS = [
+  {
+    host: 'FilesTaskPicker',
+    panel: 'FilesTaskPicker',
+    cy: 'files-task-picker',
+    selfHosted: true,
+    open: () =>
+      h(FilesTaskPicker, {
+        includeSubtasks: true,
+        read: async () => ({
+          type: 'tasks' as const,
+          snapshot: 'fictional-tasks',
+          readAt: 1,
+          stale: false,
+          metrics: { rows: 0, bytes: 0, elapsedMs: 1, cacheBytes: 0 },
+          tasks: [],
+          total: 0,
+          next: null,
+        }),
+      }),
+  },
   {
     host: 'ProvidersScreen',
     panel: 'ProviderCard',
@@ -714,6 +735,7 @@ describe('§3 · the mount sites are counted from the source (390 §3)', () => {
     expect([...found.keys()].sort()).toEqual([
       'CanonicalDocumentOverlay',
       'ConversationPane',
+      'FilesTaskPicker',
       'ProvidersScreen',
       'ReadingPane',
       'RuntimeScreen',
@@ -727,7 +749,7 @@ describe('§3 · the mount sites are counted from the source (390 §3)', () => {
     const censused = new Set(PATHS.map((path) => path.host))
     expect([...censused].sort()).toEqual([...found.keys()].sort())
     const sites = [...found.values()].reduce((all, one) => all + one, 0)
-    expect(sites, 'a mount site appeared that this file has never opened').toBe(17)
+    expect(sites, 'a mount site appeared that this file has never opened').toBe(18)
   })
 
   /**

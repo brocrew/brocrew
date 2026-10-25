@@ -62,6 +62,7 @@ export const filesLibraryRequest = z.discriminatedUnion('operation', [
 export type FilesLibraryRequest = z.infer<typeof filesLibraryRequest>
 
 const display = z.string().max(512)
+const epoch = z.number().int().min(-8_640_000_000_000_000).max(8_640_000_000_000_000)
 const task = z.strictObject({
   id,
   label: display,
@@ -79,7 +80,7 @@ export const libraryKeep = z.strictObject({
   form: z.enum(DOCUMENT_FORMS).nullable(),
   bytes: z.number().int().nonnegative().safe(),
   role: z.enum(['made', 'input']),
-  keptAt: z.number().finite(),
+  keptAt: epoch,
   sha256: z.string().regex(/^[0-9a-f]{64}$/),
   addedBy: z.strictObject({ conversation: id, identity: id.nullable(), name: display }).nullable(),
   piece: id,
@@ -101,7 +102,7 @@ const metrics = z.strictObject({
 })
 const stamp = {
   snapshot: cursor,
-  readAt: z.number().finite(),
+  readAt: epoch,
   stale: z.boolean(),
   metrics,
 }

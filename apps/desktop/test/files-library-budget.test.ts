@@ -268,3 +268,66 @@ it('a long retitle ledger and an unretitled task fail coverage instead of silent
     f.close()
   }
 })
+
+it('catalogs 10000 empty tasks with complete paging and records the actual parent/title query plans', () => {
+  const f = filesLibraryFixture()
+  f.owner('fictional')
+  const root = f.store.rootOf('fictional')!.piece
+  f.db.transaction(() => {
+    for (let i = 0; i < 10_000; i++)
+      f.task(`catalog-${i}`, root, i + 1, 'fictional', 'fictional', `Catalog task ${i}`)
+  })()
+  const plans = new Map<string, string[]>()
+  const engine = new FilesLibraryEngine(f.file, Date.now, (sql, bindings) => {
+    if (!plans.has(sql))
+      plans.set(
+        sql,
+        (f.db.prepare('EXPLAIN QUERY PLAN ' + sql).all(...bindings) as { detail: string }[]).map(
+          (row) => row.detail,
+        ),
+      )
+  })
+  try {
+    const roots = engine.read({ operation: 'tasks', query: '', parent: null }, libraryContext)
+    expect(roots).toMatchObject({ type: 'tasks', total: 1 })
+    if (roots.type === 'tasks') expect(roots.tasks[0]!.children).toBe(10_000)
+    const first = engine.read(
+      { operation: 'tasks', query: 'Catalog', parent: null, size: 100 },
+      libraryContext,
+    )
+    if (first.type !== 'tasks') throw new Error(JSON.stringify(first))
+    expect(first.total).toBe(10_000)
+    const ids = first.tasks.map((task) => task.id)
+    let next = first.next
+    while (next !== null) {
+      const page = engine.read(
+        { operation: 'tasks', query: 'Catalog', parent: null, size: 100, cursor: next },
+        libraryContext,
+      )
+      if (page.type !== 'tasks') throw new Error(JSON.stringify(page))
+      ids.push(...page.tasks.map((task) => task.id))
+      next = page.next
+    }
+    expect(ids).toEqual(Array.from({ length: 10_000 }, (_, i) => `catalog-${i}`))
+    const children = engine.read(
+      { operation: 'tasks', query: '', parent: root, size: 100 },
+      libraryContext,
+    )
+    expect(children).toMatchObject({ type: 'tasks', total: 10_000 })
+    expect(first.metrics.elapsedMs).toBeLessThan(FILES_LIBRARY_BOUNDS.deadlineMs)
+    expect(
+      [...plans].find(([sql]) => sql === 'SELECT id FROM work WHERE parent_id = ?')![1].join(' '),
+    ).toContain('work_parent_number_uq')
+    console.log(
+      'FILES_LIBRARY_CATALOG_10000',
+      JSON.stringify({
+        search: first.metrics,
+        children: children.type === 'tasks' ? children.metrics : null,
+        plans: [...plans],
+      }),
+    )
+  } finally {
+    engine.close()
+    f.close()
+  }
+})

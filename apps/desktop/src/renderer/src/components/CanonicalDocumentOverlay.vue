@@ -65,7 +65,10 @@ const props = defineProps<{
    * the whole of the guard.
    */
   scope?: string
+  descriptiveTitle?: boolean
+  returnFocus?: () => HTMLElement | null
 }>()
+const emit = defineEmits<{ close: [] }>()
 
 /**
  * ⛔ **The app's one `readingDocument`.** ⚑ The id travels in the value as well as the result,
@@ -91,6 +94,7 @@ const showing = computed(() =>
 watch(
   () => props.scope,
   () => {
+    opens++
     reading.value = null
   },
 )
@@ -115,20 +119,35 @@ async function open(resourceId: string, file: KeptFile | null = null): Promise<v
   reading.value = { scope, resourceId, result, file, drawing }
 }
 
-defineExpose({ open })
+function close(): void {
+  opens++
+  reading.value = null
+  emit('close')
+}
+defineExpose({ open, close })
 </script>
 
 <template>
   <!-- ⛔ `OverlayHost` owns Esc, the backdrop, the focus trap and giving focus back; nothing here
        re-implements any of it. -->
-  <OverlayHost v-if="showing" label="Document" @close="reading = null">
+  <OverlayHost
+    v-if="showing"
+    :label="
+      props.descriptiveTitle
+        ? `File: ${showing.file?.title ?? (showing.result.ok ? showing.result.name : 'Kept file')}`
+        : 'Document'
+    "
+    :return-focus="props.returnFocus"
+    @close="close"
+  >
     <CanonicalDocumentViewer
       :resource-id="showing.resourceId"
       :result="showing.result"
       :file="showing.file"
       :drawing="showing.drawing"
       :reveal="props.reveal"
-      @close="reading = null"
-    />
+      @close="close"
+      ><template #provenance><slot name="provenance" /></template
+    ></CanonicalDocumentViewer>
   </OverlayHost>
 </template>

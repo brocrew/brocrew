@@ -246,6 +246,7 @@ async function showInFinder(): Promise<void> {
     </header>
 
     <p v-if="revealSaid" class="revealed" data-cy="canonical-document-revealed">{{ revealSaid }}</p>
+    <slot name="provenance" />
     <!-- 🔴 **635 · the stage branches on the FORM** (`HO-097` §1.3: *"show each type the way a
          person expects"*). ⛔ **And viewing never executes**: text is rendered by `DocumentBody`
          alone, whose renderer is `html: false` — *"the whole security story"* — so a page arrives

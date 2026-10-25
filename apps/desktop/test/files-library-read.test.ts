@@ -544,6 +544,20 @@ it('clips only display fields, searches full stored aliases and honestly rejects
   expect(failed).not.toHaveProperty('totalFiles')
 })
 
+it('rejects a malformed kept date anywhere in the complete population before publishing exact totals', () => {
+  const f = fixture()
+  f.owner('a')
+  const root = f.store.rootOf('a')!.piece
+  f.keep('good', root, sha('good'))
+  f.keep('bad', root, sha('bad'))
+  f.db
+    .prepare('UPDATE work_resource SET created_at = ? WHERE id = ?')
+    .run(9_000_000_000_000_000, 'bad')
+  expect(
+    f.engine.read({ operation: 'query', query: workspaceQuery, size: 1 }, libraryContext),
+  ).toMatchObject({ type: 'unavailable', cause: 'metadata', complete: false, unread: 1 })
+})
+
 it('strictly rejects conflicting scopes, unbounded paging and path/SQL/giver inputs', () => {
   const valid = { operation: 'query', query: workspaceQuery }
   expect(filesLibraryRequest.safeParse(valid).success).toBe(true)

@@ -484,7 +484,10 @@ export class FilesLibraryEngine {
         !['made', 'input'].includes(row.role) ||
         !Number.isSafeInteger(row.bytes) ||
         row.bytes < 0 ||
-        !Number.isFinite(row.created_at)
+        !Number.isSafeInteger(row.created_at) ||
+        Math.abs(row.created_at) > 8_640_000_000_000_000 ||
+        row.id.length === 0 ||
+        row.id.length > 200
       )
         throw new Failed('metadata', 1)
       const on = task(row.work_id)
