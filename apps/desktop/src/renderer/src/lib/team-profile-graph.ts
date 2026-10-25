@@ -71,78 +71,91 @@ export function graphView(reading: GraphReading, controls: GraphControls): Graph
                 ? reading.header.todaySince
                 : reading.header.recentSince))),
   )
+  const refused = (unsafe = false): GraphView => ({
+    nodes,
+    radii: [],
+    edges: [],
+    links: [],
+    tooLarge: true,
+    unsafe,
+  })
+  if (nodes.length > B.layoutNodes) return refused()
   const index = new Map(nodes.map((n, i) => [n.id, i]))
+  const pairs = new Map<
+    string,
+    { source: number; target: number; selected: number; messages: number }
+  >()
+  let arrows = 0
+  for (const edge of reading.edges) {
+    const source = index.get(edge.source),
+      target = index.get(edge.target)
+    if (source === undefined || target === undefined) continue
+    const count = lineCount(edge, controls.line)
+    if (count <= 0 && (controls.proximity !== 'messages' || edge.messages <= 0)) continue
+    const key = source < target ? `${source}:${target}` : `${target}:${source}`
+    let pair = pairs.get(key)
+    if (!pair) {
+      if (pairs.size >= B.layoutPairs) return refused()
+      pair = {
+        source: Math.min(source, target),
+        target: Math.max(source, target),
+        selected: 0,
+        messages: 0,
+      }
+      pairs.set(key, pair)
+    }
+    pair.selected += count
+    pair.messages += edge.messages
+    if (!Number.isSafeInteger(pair.selected) || !Number.isSafeInteger(pair.messages))
+      return refused(true)
+    if (count > 0 && ++arrows > B.arrows) return refused()
+  }
+  // Draw and layout records are allocated only after the entire union is admitted.
   const max =
     controls.size === 'equal'
       ? 0
-      : Math.max(0, ...reading.nodes.map((n) => n[controls.size as Exclude<SizeMetric, 'equal'>]))
+      : reading.nodes.reduce(
+          (m, n) => Math.max(m, n[controls.size as Exclude<SizeMetric, 'equal'>]),
+          0,
+        )
   const radii = nodes.map((n) =>
     controls.size === 'equal' ? 7 : 4 + 17 * normalized(n[controls.size], max, controls.scaling),
   )
-  const edges: DrawnEdge[] = [],
-    pairs = new Map<
-      string,
-      { source: number; target: number; selected: number; messages: number }
-    >()
-  const merged = new Map<string, DrawnEdge>()
-  let unsafe = false
-  for (const e of reading.edges) {
-    const s = index.get(e.source),
-      t = index.get(e.target)
-    if (s === undefined || t === undefined) continue
-    const key = s < t ? `${s}:${t}` : `${t}:${s}`
-    const pair = pairs.get(key) ?? {
-      source: Math.min(s, t),
-      target: Math.max(s, t),
-      selected: 0,
-      messages: 0,
+  const edges: DrawnEdge[] = []
+  if (controls.directions) {
+    for (const edge of reading.edges) {
+      if (!index.has(edge.source) || !index.has(edge.target)) continue
+      const count = lineCount(edge, controls.line)
+      if (count > 0) edges.push({ source: edge.source, target: edge.target, count, width: 0 })
     }
-    const count = lineCount(e, controls.line)
-    pair.selected += count
-    pair.messages += e.messages
-    if (!Number.isSafeInteger(pair.selected) || !Number.isSafeInteger(pair.messages)) unsafe = true
-    pairs.set(key, pair)
-    if (count <= 0) continue
-    if (controls.directions) edges.push({ source: e.source, target: e.target, count, width: 0 })
-    else {
-      const one = merged.get(key) ?? {
-        source: nodes[pair.source]!.id,
-        target: nodes[pair.target]!.id,
-        count: 0,
-        width: 0,
-      }
-      one.count += count
-      if (!Number.isSafeInteger(one.count)) unsafe = true
-      merged.set(key, one)
-    }
+  } else {
+    for (const pair of pairs.values())
+      if (pair.selected > 0)
+        edges.push({
+          source: nodes[pair.source]!.id,
+          target: nodes[pair.target]!.id,
+          count: pair.selected,
+          width: 0,
+        })
   }
-  if (!controls.directions) edges.push(...merged.values())
   const lineMax = edges.reduce((m, e) => Math.max(m, e.count), 0)
-  for (const e of edges) e.width = 0.35 + 2.6 * normalized(e.count, lineMax, controls.scaling)
-  const physical = [...pairs.values()].filter(
-    (p) => p.selected > 0 || (controls.proximity === 'messages' && p.messages > 0),
-  )
+  for (const edge of edges)
+    edge.width = 0.35 + 2.6 * normalized(edge.count, lineMax, controls.scaling)
+  const physical = [...pairs.values()]
   const proximityMax = physical.reduce(
     (m, p) => Math.max(m, controls.proximity === 'messages' ? p.messages : p.selected),
     0,
   )
-  const tooLarge =
-    nodes.length > B.layoutNodes ||
-    physical.length > B.layoutPairs ||
-    edges.length > B.arrows ||
-    unsafe
-  const links = tooLarge
-    ? []
-    : physical.map((p) => ({
-        source: p.source,
-        target: p.target,
-        weight: normalized(
-          controls.proximity === 'messages' ? p.messages : p.selected,
-          proximityMax,
-          controls.scaling,
-        ),
-      }))
-  return { nodes, radii, edges, links, tooLarge, unsafe }
+  const links = physical.map((p) => ({
+    source: p.source,
+    target: p.target,
+    weight: normalized(
+      controls.proximity === 'messages' ? p.messages : p.selected,
+      proximityMax,
+      controls.scaling,
+    ),
+  }))
+  return { nodes, radii, edges, links, tooLarge: false, unsafe: false }
 }
 export function graphPartners(
   reading: GraphReading,

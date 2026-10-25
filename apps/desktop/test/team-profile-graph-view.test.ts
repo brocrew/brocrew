@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest'
 import type { GraphEdge } from '../src/shared/team-profile-graph'
+import { parseLayoutReply } from '../src/renderer/src/lib/team-profile-layout-replies'
 import { fictionalGraph } from './fixtures/team-profile-graph-view'
 import {
   graphDefaults,
@@ -67,8 +68,25 @@ it('refuses the union of disjoint selected and message pairs before allocating l
     }
   f.edges = edges
   const view = graphView(f, graphDefaults())
-  expect(view.edges).toHaveLength(4000)
+  expect(view.edges).toHaveLength(0)
   expect(view.tooLarge).toBe(true)
   expect(view.links).toHaveLength(0)
+  expect(view.radii).toHaveLength(0)
   expect(view.nodes).toHaveLength(1000)
+})
+it('validates layout replies before generation access and rejects nonnumeric or extra data', () => {
+  for (const value of [
+    null,
+    undefined,
+    { type: 'other', generation: 1 },
+    { type: 'paused', generation: -1 },
+    { type: 'positions', generation: 1, positions: [1, 2] },
+    { type: 'positions', generation: 1, positions: new Float64Array([NaN, 0]) },
+    { type: 'positions', generation: 1, positions: new Float64Array(2002) },
+    { type: 'paused', generation: 1, profile: 'forbidden' },
+  ])
+    expect(parseLayoutReply(value)).toBeNull()
+  expect(
+    parseLayoutReply({ type: 'positions', generation: 0, positions: new Float64Array([1, 2]) }),
+  ).toMatchObject({ type: 'positions', generation: 0 })
 })

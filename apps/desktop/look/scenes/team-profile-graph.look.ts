@@ -1,6 +1,7 @@
 import { defineComponent, h, nextTick } from 'vue'
 import { scene } from '../capture'
 import { windowStage } from '../fixtures/window'
+import { RAIL_NARROW_BELOW } from '../../src/renderer/src/lib/rail-fold'
 import TeamWorkspace from '../../src/renderer/src/components/TeamWorkspace.vue'
 import AppTitleBar from '../../src/renderer/src/components/AppTitleBar.vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
@@ -38,7 +39,20 @@ scene('team-profile-graph', async (stage) => {
     document.head.append(style)
     document.documentElement.dataset.theme = selected.id
   } else document.documentElement.dataset.theme = 'classic'
-  if (import.meta.env['LOOK_GRAPH_TEXT'] === '200') document.documentElement.style.fontSize = '200%'
+  if (import.meta.env['LOOK_GRAPH_TEXT'] === '200') {
+    const root = document.documentElement
+    const probe = document.createElement('span')
+    probe.hidden = true
+    document.body.append(probe)
+    for (const token of ['caption', 'small', 'body', 'reading', 'heading', 'title', 'display']) {
+      probe.style.fontSize = `var(--type-${token})`
+      const size = Number.parseFloat(getComputedStyle(probe).fontSize)
+      if (!Number.isFinite(size)) throw Error('Text enlargement needs resolved type sizes')
+      root.style.setProperty(`--type-${token}`, `${size * 2}px`)
+    }
+    probe.remove()
+    root.style.fontSize = '200%'
+  }
   const population = fictionalGraph(
     Number(import.meta.env['LOOK_GRAPH_COUNT'] ?? 100),
     import.meta.env['LOOK_GRAPH_DENSE'] === '1',
@@ -67,11 +81,11 @@ scene('team-profile-graph', async (stage) => {
               h(
                 'div',
                 {
-                  style: `width:${stage.width < 900 ? 'var(--rail-w-collapsed)' : 'var(--rail-w)'};flex:none`,
+                  style: `width:${stage.width < RAIL_NARROW_BELOW ? 'var(--rail-w-collapsed)' : 'var(--rail-w)'};flex:none`,
                 },
                 [
                   h(SideRail, {
-                    collapsed: stage.width < 900,
+                    collapsed: stage.width < RAIL_NARROW_BELOW,
                     open: [],
                     activeId: null,
                     place: 'team',

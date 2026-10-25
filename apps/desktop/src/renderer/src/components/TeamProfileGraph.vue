@@ -108,6 +108,21 @@ function date(value: number | null): string {
 function value(node: GraphNode): number {
   return controls.size === 'equal' ? 1 : node[controls.size]
 }
+const settingSources: Record<GraphNode['configured']['source'], string> = {
+  'conversation-setting': 'Saved conversation setting',
+  'identity-model-choice': 'Saved profile model choice',
+  'identity-provider': 'Saved profile provider',
+  unknown: 'Unknown',
+}
+const kindSources: Record<GraphNode['kindQuality'], string> = {
+  'stable-record': 'Saved kind record',
+  'legacy-normal': 'No service or worker birth recorded',
+  'unknown-file': 'Kind record unavailable',
+  'unknown-incarnation': 'Profile incarnation could not be confirmed',
+  'unknown-conflict': 'Kind records disagree',
+  'unknown-lineage': 'History does not establish a kind',
+  'unknown-changing': 'Kind record changed while reading',
+}
 const counts = [
   ['conversations', 'Conversations'],
   ['piecesHeld', 'Pieces held'],
@@ -306,7 +321,9 @@ onScopeDispose(() => controller?.setActive(false))
             placeholder="Name or profile"
             aria-controls="profile-graph-agents"
         /></label>
-        <h4>Agents · {{ listed.length }} of {{ view?.nodes.length ?? 0 }} shown</h4>
+        <h4 aria-live="polite" aria-atomic="true">
+          Agents · {{ listed.length }} of {{ view?.nodes.length ?? 0 }} shown
+        </h4>
         <p v-if="reading.nodes.length === 0">No saved agents.</p>
         <p v-else-if="view?.nodes.length === 0">No agents match this activity filter.</p>
         <p v-else-if="listed.length === 0" role="status">No agents match your search.</p>
@@ -344,7 +361,7 @@ onScopeDispose(() => controller?.setActive(false))
           Use the Agents list in forced colors mode.
         </p>
         <p v-else-if="drawing.failed.value" role="alert">
-          The layout worker could not start. The Agents list and cards are available.
+          Graph layout unavailable. The Agents list and cards are available.
         </p>
         <canvas
           ref="canvas"
@@ -392,7 +409,7 @@ onScopeDispose(() => controller?.setActive(false))
           </p>
           <dl>
             <dt>Kind</dt>
-            <dd>{{ selected.kind }} · {{ selected.kindQuality }}</dd>
+            <dd>{{ selected.kind }} · {{ kindSources[selected.kindQuality] }}</dd>
             <dt>Kind read</dt>
             <dd>{{ date(selected.kindReadAt) }}</dd>
             <dt>Configured provider</dt>
@@ -400,7 +417,7 @@ onScopeDispose(() => controller?.setActive(false))
             <dt>Configured model</dt>
             <dd>{{ selected.configured.model ?? 'Unknown' }}</dd>
             <dt>Setting source</dt>
-            <dd>{{ selected.configured.source }}</dd>
+            <dd>{{ settingSources[selected.configured.source] }}</dd>
             <template v-for="[key, label] in counts" :key="key"
               ><dt>{{ label }}</dt>
               <dd>{{ selected[key] }}</dd></template
@@ -458,22 +475,22 @@ onScopeDispose(() => controller?.setActive(false))
   width: 100%;
   color: var(--text);
   min-width: 0;
-  font-size: 0.875rem;
+  font-size: var(--type-body);
 }
 .reading-header {
   display: flex;
   align-items: start;
   justify-content: space-between;
-  gap: 1rem;
+  gap: var(--space-8);
 }
 h3,
 h4,
 p {
-  margin: 0 0 0.65rem;
+  margin: 0 0 var(--space-5);
 }
 p {
   color: var(--text-soft);
-  line-height: 1.55;
+  line-height: var(--leading-relaxed);
   overflow-wrap: anywhere;
 }
 button,
@@ -482,21 +499,34 @@ select {
   font: inherit;
   color: var(--text);
   background: var(--panel);
-  border: 1px solid var(--control-border);
-  border-radius: 0.4rem;
-  padding: 0.4rem 0.55rem;
+  border: var(--border-width) solid var(--control-border);
+  border-radius: var(--radius-xs);
+  padding: var(--space-3) var(--space-5);
   max-width: 100%;
-  min-height: 2.75rem;
+  min-height: max(44px, var(--control-h));
 }
 button {
   cursor: pointer;
+}
+input[type='checkbox'],
+input[type='range'] {
+  min-height: 0;
+}
+label {
+  min-height: max(44px, var(--control-h));
+}
+h3 {
+  font-size: var(--type-heading);
+}
+h4 {
+  font-size: var(--type-body);
 }
 button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 canvas:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 3px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 button[aria-pressed='true'] {
   border-color: var(--accent);
@@ -504,21 +534,21 @@ button[aria-pressed='true'] {
 }
 button:disabled,
 button[aria-disabled='true'] {
-  opacity: 0.55;
+  opacity: var(--disabled-opacity);
   cursor: default;
 }
 .graph-controls {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.65rem 1rem;
-  margin: 0.75rem 0;
+  gap: var(--space-5) var(--space-8);
+  margin: var(--space-6) 0;
 }
 label {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.4rem;
+  gap: var(--space-3);
   min-width: 0;
 }
 input[type='range'] {
@@ -533,14 +563,14 @@ input[type='checkbox'] {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(14rem, 19rem);
   grid-template-areas: 'stage inspector' 'list inspector';
-  gap: 1rem;
+  gap: var(--space-8);
 }
 .agents-list {
   grid-area: list;
   min-width: 0;
 }
 .agents-list > label {
-  margin-bottom: 0.75rem;
+  margin-bottom: var(--space-6);
 }
 .agent-rows {
   list-style: none;
@@ -552,16 +582,16 @@ input[type='checkbox'] {
 .agent-rows button {
   width: 100%;
   text-align: left;
-  margin-bottom: 0.4rem;
+  margin-bottom: var(--space-3);
   display: flex;
   flex-wrap: wrap;
-  gap: 0.2rem 0.8rem;
+  gap: var(--space-2) var(--space-6);
 }
 .agent-rows strong {
   width: 100%;
 }
 .agent-rows span {
-  font-size: max(0.8125rem, 13px);
+  font-size: max(13px, var(--type-small));
   overflow-wrap: anywhere;
 }
 .graph-stage {
@@ -573,17 +603,17 @@ canvas {
   width: 100%;
   height: clamp(320px, 48vh, 520px);
   min-height: 320px;
-  border: 1px solid var(--line-strong);
-  border-radius: 0.6rem;
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--radius-md);
   touch-action: none;
   font-family: inherit;
-  font-size: 0.8125rem;
+  font-size: max(13px, var(--type-small));
 }
 .agent-inspector {
   grid-area: inspector;
-  padding: 1rem;
-  border: 1px solid var(--line-strong);
-  border-radius: 0.6rem;
+  padding: var(--space-8);
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--radius-md);
   min-width: 0;
   align-self: start;
   overflow-wrap: anywhere;
@@ -591,7 +621,7 @@ canvas {
 dl {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 0.35rem 0.6rem;
+  gap: var(--space-3) var(--space-5);
 }
 dt {
   color: var(--muted);
@@ -602,13 +632,13 @@ dd {
 .list-pages {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: var(--space-5);
   flex-wrap: wrap;
-  margin-top: 0.5rem;
+  margin-top: var(--space-4);
 }
 summary {
   cursor: pointer;
-  margin: 0.8rem 0;
+  margin: var(--space-6) 0;
 }
 @container (max-width: 900px) {
   .graph-content {

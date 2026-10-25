@@ -173,6 +173,82 @@ it('keeps refresh focus during staging and shows the earlier reading after an un
   expect(s.mounted.host.textContent).toContain('earlier reading is still shown')
   expect(s.mounted.host.querySelectorAll('[data-graph-agent]')).toHaveLength(50)
 })
+it.each(['null', 'discriminator', 'array', 'nan', 'length'] as const)(
+  'terminates a %s layout reply and keeps the entire list/card fallback',
+  async (fault) => {
+    let terminated = 0
+    class ControlledWorker {
+      onmessage: ((event: MessageEvent<unknown>) => void) | null = null
+      onerror: ((event: Event) => void) | null = null
+      postMessage(raw: unknown) {
+        const command = layoutCommand.parse(raw)
+        if (command.type !== 'init') return
+        const generation = command.generation
+        const value =
+          fault === 'null'
+            ? null
+            : fault === 'discriminator'
+              ? { type: 'wrong', generation }
+              : fault === 'array'
+                ? { type: 'positions', generation, positions: [1, 2] }
+                : {
+                    type: 'positions',
+                    generation,
+                    positions: fault === 'nan' ? new Float64Array([NaN, 0]) : new Float64Array(2),
+                  }
+        queueMicrotask(() => this.onmessage?.(new MessageEvent('message', { data: value })))
+      }
+      terminate() {
+        terminated++
+      }
+    }
+    vi.stubGlobal('Worker', ControlledWorker)
+    const s = setup(100)
+    await vi.waitFor(() => expect(s.mounted.host.textContent).toContain('Graph layout unavailable'))
+    expect(terminated).toBe(1)
+    expect(s.mounted.host.querySelectorAll('[data-graph-agent]')).toHaveLength(50)
+    s.mounted.host.querySelector<HTMLButtonElement>('[data-graph-agent]')!.click()
+    await nextTick()
+    expect(s.mounted.host.querySelector('aside')?.textContent).toContain('Agent 00001')
+  },
+)
+it('ignores a well-formed stale frame and announces nonzero count changes politely', async () => {
+  let terminated = 0
+  class ControlledWorker {
+    onmessage: ((event: MessageEvent<unknown>) => void) | null = null
+    onerror: ((event: Event) => void) | null = null
+    postMessage(raw: unknown) {
+      const command = layoutCommand.parse(raw)
+      if (command.type === 'init')
+        queueMicrotask(() =>
+          this.onmessage?.(
+            new MessageEvent('message', {
+              data: {
+                type: 'positions',
+                generation: command.generation - 1,
+                positions: new Float64Array(6),
+              },
+            }),
+          ),
+        )
+    }
+    terminate() {
+      terminated++
+    }
+  }
+  vi.stubGlobal('Worker', ControlledWorker)
+  const s = setup(100)
+  await vi.waitFor(() => expect(s.controller.reading.value?.nodes).toHaveLength(100))
+  expect(terminated).toBe(0)
+  expect(s.mounted.host.textContent).not.toContain('Graph layout unavailable')
+  const count = s.mounted.host.querySelector<HTMLElement>('h4[aria-live="polite"]')!
+  expect(count.getAttribute('aria-atomic')).toBe('true')
+  const search = s.mounted.host.querySelector<HTMLInputElement>('input[type="search"]')!
+  search.value = 'Agent 00001'
+  search.dispatchEvent(new Event('input', { bubbles: true }))
+  await nextTick()
+  expect(count.textContent).toContain('1 of 100 shown')
+})
 
 it('latches reduced motion across all controls and preference changes until explicit Resume', async () => {
   const native = window.matchMedia.bind(window),

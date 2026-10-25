@@ -1,7 +1,8 @@
 import { onMounted, onScopeDispose, ref, watch, type Ref } from 'vue'
 import type { GraphView, GraphControls, Point } from '../lib/team-profile-graph'
 import { GraphBins, labelBudget, matchesAgent, graphWords } from '../lib/team-profile-graph'
-import type { LayoutCommand, LayoutReply } from '../lib/team-profile-layout'
+import type { LayoutCommand } from '../lib/team-profile-layout'
+import { parseLayoutReply } from '../lib/team-profile-layout-replies'
 import { DEFAULT_PROFILE_ID } from '../../../shared/runtime-ipc'
 
 export function useTeamProfileCanvas(options: {
@@ -405,8 +406,14 @@ export function useTeamProfileCanvas(options: {
         stop()
         terminate()
       }
-      worker.onmessage = (event: MessageEvent<LayoutReply>) => {
-        const value = event.data
+      worker.onmessage = (event: MessageEvent<unknown>) => {
+        const value = parseLayoutReply(event.data)
+        if (value === null) {
+          failed.value = true
+          stop()
+          terminate()
+          return
+        }
         if (value.generation !== generation) return
         if (value.type === 'positions') {
           if (
