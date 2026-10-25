@@ -1,0 +1,65 @@
+// Fictional records and hand-counted answers, frozen before the production reader.
+export const graphCutoff = Date.UTC(2026, 9, 25, 12)
+const day = 86_400_000
+export const graphOracle = {
+  identities: [
+    { id: 'aid:alpha', slug: 'alpha', created: graphCutoff - 20 * day, creator: 'a-person' },
+    { id: 'aid:beta', slug: 'beta', created: graphCutoff - 15 * day, creator: 'aid:alpha' },
+    { id: 'aid:gamma', slug: 'gamma', created: graphCutoff - 12 * day, creator: 'aid:reborn' },
+    { id: 'aid:reborn', slug: 'reborn', created: graphCutoff - 5 * day, creator: 'aid:alpha' },
+    { id: 'aid:isolate', slug: 'isolate', created: graphCutoff - day, creator: 'aid:isolate' },
+  ],
+  sessions: [
+    { id: 'a1', identity: 'aid:alpha', age: 9, status: 'ended', generation: 2, provider: 'codex', model: 'alpha-old' },
+    { id: 'a2', identity: 'aid:alpha', age: 2, status: 'working', generation: 0, provider: 'claude', model: 'alpha-current' },
+    { id: 'b1', identity: 'aid:beta', age: 3, status: 'ended', generation: 0, provider: 'codex', model: 'beta-old' },
+    { id: 'b2', identity: 'aid:beta', age: 1, status: 'idle', generation: 0, provider: 'codex', model: null },
+    { id: 'c1', identity: 'aid:gamma', age: 10, status: 'ended', generation: 0, provider: 'codex', model: 'gamma' },
+    { id: 'rOld', identity: 'aid:reborn', age: 10, status: 'ended', generation: 0, provider: 'claude', model: 'earlier-incarnation' },
+    { id: 'unbound', identity: null, age: 1, status: 'idle', generation: 0, provider: 'codex', model: null },
+    { id: 'missing', identity: 'aid:removed', age: 1, status: 'idle', generation: 0, provider: 'codex', model: null },
+  ],
+  assignments: [
+    ['w1', 'a1', 'b1'], ['w2', 'a2', 'b2'], ['w3', 'b1', 'a1'],
+    ['w4', null, 'c1'], ['w5', 'b1', 'b2'],
+  ],
+  messages: [
+    ['a1', 2, 'b1'], ['a1', 2, 'b1'], ['a1', 2, 'a2'], ['a1', 2, 'removed'],
+    ['a2', 0, 'c1'], ['b1', 0, 'a1'], ['a1', 0, 'c1'],
+  ],
+  routes: [
+    ['a1', 2, 'q1', 'an-agent', 'b1'], ['a1', 2, 'q1', 'an-agent', 'b1'],
+    ['a1', 2, 'q1', 'an-agent', 'b2'], ['a1', 2, 'q1', 'an-agent', 'c1'],
+    ['a1', 2, 'q2', 'the-parent', 'b1'], ['a1', 2, 'q3', 'a-person', null],
+    ['a1', 0, 'superseded', 'an-agent', 'c1'],
+  ],
+  turns: [
+    ['a1', 2, graphCutoff - 8 * day, graphCutoff - day],
+    ['a1', 0, graphCutoff - day, null],
+    ['a2', 0, graphCutoff - 7 * day, null],
+    ['b1', 0, graphCutoff + 1, null],
+    ['c1', 0, graphCutoff - day, null],
+    ['rOld', 0, graphCutoff - day, null],
+  ],
+  expected: {
+    // conversations, held pieces, sent acts, recent turns, direct children, all descendants, recorded working
+    alpha: [2, 1, 5, 1, 2, 2, 1],
+    beta: [2, 3, 1, 0, 0, 0, 0],
+    gamma: [1, 1, 0, 1, 0, 0, 0],
+    reborn: [1, 0, 0, 1, 0, 0, 0],
+    isolate: [0, 0, 0, 0, 0, 0, 0],
+    // source, target, work, messages, questions; self acts stay in node totals only.
+    edges: [
+      ['aid:alpha', 'aid:beta', 2, 2, 2],
+      ['aid:alpha', 'aid:gamma', 0, 1, 1],
+      ['aid:beta', 'aid:alpha', 1, 1, 0],
+    ],
+    coverage: {
+      unboundConversations: 1, missingIdentityConversations: 1,
+      earlierIncarnationConversations: 1, unresolvedWork: 0, unresolvedMessages: 1,
+      unresolvedQuestions: 0, selfWork: 1, selfMessages: 1, selfQuestions: 0,
+      excludedParentRoutes: 1, excludedPersonRoutes: 1, missingCreators: 0,
+      creatorIncarnationLinksOmitted: 1, cyclicCreatorComponents: 1,
+    },
+  },
+} as const
