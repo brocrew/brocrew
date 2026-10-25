@@ -35,6 +35,8 @@ let generation = 0,
   timer: ReturnType<typeof setTimeout> | undefined
 async function readTasks(more = false): Promise<void> {
   if (!props.canRetry) {
+    generation++
+    busy.value = false
     failure.value = libraryFailureSays(libraryUnavailable('busy'))
     return
   }
@@ -82,6 +84,7 @@ function roots(): void {
 }
 watch([query, parent], () => {
   generation++
+  busy.value = false
   result.value = null
   selected.value = null
   clearTimeout(timer)

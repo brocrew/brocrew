@@ -8,17 +8,34 @@ import {
 import { provideMainTab } from '../../src/renderer/src/composables/useMainTab'
 import { filesLibraryReplies } from '../../test/fixtures/files-library-replies'
 import FilesLibraryPreview from '../../src/renderer/src/components/FilesLibraryPreview.vue'
+import type { ResourceReading } from '../../src/shared/runtime-ipc'
 
 // The accepted fictional 80/86 population, drawn by the real pane, toolbar and library components.
 scene('workspace-files', async (stage) => {
+  const fixture = filesLibraryReplies(true)
+  const read = async (resourceId: string): Promise<ResourceReading> => {
+    const file = fixture.keeps.find((one) => one.resourceId === resourceId)!
+    const content = fixture.source.files.find((one) => one.sha256 === file.sha256)
+    const body =
+      content && 'body' in content && typeof content.body === 'string'
+        ? content.body
+        : '# Fictional document'
+    return {
+      ok: true,
+      resourceId,
+      name: file.name,
+      form: file.form ?? 'markdown',
+      bytes: file.bytes,
+      text: file.form === 'image' || file.form === 'pdf' ? null : body,
+    }
+  }
   const window = windowStage({
-    pane: { drawerOpen: false },
+    pane: { drawerOpen: false, onReadResource: read },
     railCollapsed: stage.width < 900,
     titleBar: true,
   })
   const component = defineComponent({
     setup() {
-      const fixture = filesLibraryReplies(true)
       const library = createFilesLibrary({
         read: fixture.read,
         workspace: () => 'fictional',
@@ -32,22 +49,7 @@ scene('workspace-files', async (stage) => {
           h(FilesLibraryPreview, {
             library,
             workspace: 'fictional',
-            read: async (resourceId: string) => {
-              const file = fixture.keeps.find((one) => one.resourceId === resourceId)!
-              const content = fixture.source.files.find((one) => one.sha256 === file.sha256)
-              const body =
-                content && 'body' in content && typeof content.body === 'string'
-                  ? content.body
-                  : '# Fictional document'
-              return {
-                ok: true as const,
-                resourceId,
-                name: file.name,
-                form: file.form ?? 'markdown',
-                bytes: file.bytes,
-                text: file.form === 'image' || file.form === 'pdf' ? null : body,
-              }
-            },
+            read,
           }),
         ])
     },

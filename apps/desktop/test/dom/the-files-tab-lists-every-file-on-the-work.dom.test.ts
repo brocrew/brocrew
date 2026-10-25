@@ -22,8 +22,9 @@ afterEach(() => {
   useWhoCalledWhom().cardFiles.value = null
 })
 
-async function pane(read?: LibraryApi) {
-  await page.viewport(1180, 880)
+async function pane(read?: LibraryApi, narrow = false) {
+  const width = narrow ? 390 : 1180
+  await page.viewport(width, 880)
   const fixture = filesLibraryReplies()
   const selected = shallowRef({ id: 'brobot', name: 'CODEX interim' })
   const shown = shallowRef(record([], 'brobot'))
@@ -38,6 +39,7 @@ async function pane(read?: LibraryApi) {
       provideFilesLibrary(library)
       return () =>
         h('div', { style: 'display:flex;flex:1;min-width:0;min-height:0' }, [
+          ...(narrow ? [h('aside', { style: 'width:64px;flex:none' })] : []),
           h(
             ConversationPane,
             paneProps({
@@ -67,7 +69,7 @@ async function pane(read?: LibraryApi) {
         ])
     },
   })
-  const m = mount(component, {}, { width: 1180, height: 880 })
+  const m = mount(component, {}, { width, height: 880 })
   m.q('main-tab-files').click()
   await nextTick()
   return {
@@ -89,6 +91,17 @@ it('counts the complete workspace independently of the selected conversation tre
   await nextTick()
   expect(m.q('main-tab-files-count').textContent).toContain('16')
   expect(m.all('library-file')).toHaveLength(16)
+})
+
+it('fits two icon columns and readable wrapping filters beside the collapsed rail at 390px', async () => {
+  const { m } = await pane(undefined, true)
+  await vi.waitFor(() => expect(m.all('library-file')).toHaveLength(16))
+  const [first, second] = m.all('library-file').map((one) => one.getBoundingClientRect())
+  expect(second.top).toBe(first.top)
+  expect(second.left).toBeGreaterThan(first.left)
+  for (const select of m.q('files-library').querySelectorAll('select'))
+    expect(select.getBoundingClientRect().width).toBeGreaterThanOrEqual(140)
+  expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(390)
 })
 
 it('draws no zero count before the first complete worker reading', async () => {

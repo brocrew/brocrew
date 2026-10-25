@@ -701,7 +701,8 @@ button:hover:not(:disabled) {
     min-width: 0;
   }
   .filter-row select {
-    flex: 1;
+    flex: 1 1 140px;
+    min-width: min(100%, 140px);
     max-width: none;
   }
   .filter-row .count {

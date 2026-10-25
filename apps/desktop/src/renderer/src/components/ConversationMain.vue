@@ -199,4 +199,10 @@ const fileCount = computed(() => library?.count.value ?? null)
   flex: 1;
   flex-direction: column;
 }
+
+@media (max-width: 650px) {
+  .main-files {
+    padding: 0;
+  }
+}
 </style>

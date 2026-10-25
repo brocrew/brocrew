@@ -394,6 +394,36 @@ it('makes a picker interrupted by a pending library query recoverable', async ()
   expect(m.all('files-task-error')).toHaveLength(0)
 })
 
+it('releases the picker busy state when an edited pending read is declined during cooldown', async () => {
+  const fixture = filesLibraryReplies()
+  let finish!: (result: Awaited<ReturnType<LibraryApi>>) => void
+  let pending = true
+  const read: LibraryApi = async (request) => {
+    if (request.operation === 'tasks' && pending)
+      return new Promise((resolve) => {
+        finish = resolve
+      })
+    return fixture.read(request)
+  }
+  const { s, m } = await ready(false, 1180, 880, read)
+  m.q('files-scope-task').click()
+  await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
+  const search = m.q('files-task-search') as HTMLInputElement
+  search.value = 'W'
+  search.dispatchEvent(new Event('input', { bubbles: true }))
+  s.library.cooldown(libraryUnavailable('busy', undefined, undefined, 350))
+  await vi.waitFor(() => expect(m.all('files-task-error')).toHaveLength(1))
+  expect((m.q('files-task-retry') as HTMLButtonElement).disabled).toBe(true)
+  finish(libraryUnavailable('cancelled'))
+  pending = false
+  await vi.waitFor(() =>
+    expect((m.q('files-task-retry') as HTMLButtonElement).disabled).toBe(false),
+  )
+  m.q('files-task-retry').click()
+  await vi.waitFor(() => expect(m.all('files-task-option').length).toBeGreaterThan(0))
+  expect(m.all('files-task-error')).toHaveLength(0)
+})
+
 it('makes provenance interrupted by a background refresh recoverable without silently mixing snapshots', async () => {
   const fixture = filesLibraryReplies()
   let cancelLocations: ((result: Awaited<ReturnType<LibraryApi>>) => void) | undefined
