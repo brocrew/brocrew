@@ -445,6 +445,7 @@ it.each([299, 300])(
     const clear = CanvasRenderingContext2D.prototype.clearRect
     const paint = CanvasRenderingContext2D.prototype.fillText
     vi.spyOn(CanvasRenderingContext2D.prototype, 'clearRect').mockImplementation(function (
+      this: CanvasRenderingContext2D,
       ...args
     ) {
       badges = 0
