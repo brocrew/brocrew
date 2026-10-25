@@ -8,7 +8,12 @@ import { FakeRuntime } from '@brobot2/runtime'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { bundleAWorker } from './helpers/bundle-a-worker'
 import { filesLibraryFixture, workspaceQuery } from './helpers/files-library-fixture'
-import { libraryUnavailable, type FilesLibraryReader } from '../src/shared/files-library'
+import {
+  filesLibraryResult,
+  libraryUnavailable,
+  type FilesLibraryReader,
+} from '../src/shared/files-library'
+import { createSessionStore } from '../src/main/db/session-store'
 
 const sink = {
   ownerId: 'fictional-window',
@@ -46,11 +51,39 @@ it('takes the command through a dedicated real worker with no main-thread legacy
   const forbidden = vi.fn(() => {
     throw new Error('main-thread file fold')
   })
+  const mainReads: string[] = []
+  const counted = new Proxy(f.db, {
+    get(target, key) {
+      if (key === 'prepare')
+        return (sql: string) => {
+          const statement = target.prepare(sql)
+          const traced: typeof statement = new Proxy(statement, {
+            get(native, method) {
+              const operation: unknown = Reflect.get(native, method, native)
+              if (typeof operation !== 'function') return operation
+              return (...args: unknown[]) => {
+                if (method === 'all' || method === 'get' || method === 'iterate')
+                  mainReads.push(sql)
+                const answer: unknown = Reflect.apply(operation, native, args)
+                return answer === native ? traced : answer
+              }
+            },
+          })
+          return traced
+        }
+      const value: unknown = Reflect.get(target, key, target)
+      return typeof value === 'function' ? value.bind(target) : value
+    },
+  })
+  const measuredStore = createSessionStore(counted)
+  mainReads.length = 0
+  counted.prepare('SELECT COUNT(*) FROM events').get()
+  expect(mainReads).toEqual(['SELECT COUNT(*) FROM events'])
   const libraries = new FilesLibraryWindows(
     () => new FilesLibraryLifetime(() => new Worker(bundled, { workerData: { file: f.file } })),
   )
   const host = new RuntimeHost({
-    store: { ...f.store, filesKept: forbidden, filesKeptTogether: forbidden },
+    store: { ...measuredStore, filesKept: forbidden, filesKeptTogether: forbidden },
     filesLibraries: libraries,
     filesLibraryRevision: () => '0',
     discoverSessions: NO_DISCOVERY,
@@ -69,12 +102,38 @@ it('takes the command through a dedicated real worker with no main-thread legacy
       files: [],
     }),
   })
+  mainReads.length = 0
   try {
-    const result = await executeRuntimeCommand(host, sink, {
-      kind: 'filesLibrary',
-      request: { operation: 'query', query: workspaceQuery },
-    })
+    const result = filesLibraryResult.parse(
+      await executeRuntimeCommand(host, sink, {
+        kind: 'filesLibrary',
+        request: { operation: 'query', query: workspaceQuery, size: 1 },
+      }),
+    )
     expect(result).toMatchObject({ type: 'files', totalFiles: 16, totalKeeps: 22 })
+    if (result.type !== 'files' || result.next === null) throw new Error('Missing first page')
+    expect(
+      await executeRuntimeCommand(host, sink, {
+        kind: 'filesLibrary',
+        request: { operation: 'page', cursor: result.next },
+      }),
+    ).toMatchObject({ type: 'files', totalFiles: 16 })
+    expect(
+      await executeRuntimeCommand(host, sink, {
+        kind: 'filesLibrary',
+        request: {
+          operation: 'provenance',
+          snapshot: result.snapshot,
+          sha256: result.files[0]!.file.sha256,
+        },
+      }),
+    ).toMatchObject({ type: 'provenance' })
+    expect(
+      await executeRuntimeCommand(host, sink, {
+        kind: 'filesLibrary',
+        request: { operation: 'tasks', query: '', parent: null },
+      }),
+    ).toMatchObject({ type: 'tasks', total: 4 })
     const on = await executeRuntimeCommand(host, sink, {
       kind: 'filesLibrary',
       request: {
@@ -87,6 +146,18 @@ it('takes the command through a dedicated real worker with no main-thread legacy
     })
     expect(on).toMatchObject({ type: 'files', totalFiles: 11, totalKeeps: 15 })
     expect(forbidden).not.toHaveBeenCalled()
+    const eventReads = mainReads.filter((sql) => /\bevents\b/iu.test(sql))
+    expect(eventReads).toEqual([])
+    console.info(
+      'FILES_LIBRARY_MAIN_READS',
+      JSON.stringify({
+        operations: ['workspace', 'page', 'provenance', 'tasks', 'conversationWork'],
+        mainStatements: mainReads.length,
+        eventStatements: eventReads.length,
+        positiveEventReadStatements: 1,
+        legacyFolds: forbidden.mock.calls.length,
+      }),
+    )
     await host.closeFilesLibraryWindow(sink.ownerId)
   } finally {
     await host.closeAll()
