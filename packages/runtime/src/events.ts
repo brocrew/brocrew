@@ -272,6 +272,8 @@ const assistantMessageSchema = z.object({
   text: z.string(),
   /** The provider explicitly marked this message's role. Absent on older recordings. */
   phase: z.enum(['commentary', 'final']).optional(),
+  /** Correlates confirmations of the same provider message without matching its text. */
+  messageId: z.string().optional(),
   /**
    * WHOSE words these are (128) — the same attribution {@link toolCallSchema} has carried since 029,
    * on the other half of the very same message.

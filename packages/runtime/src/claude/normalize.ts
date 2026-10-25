@@ -19,6 +19,7 @@ import { SubAgentTasks } from './sub-agent-tasks'
 import { ToolAnswers } from '../tool-answer'
 import type { ClaudeMessageReceipts } from './message-receipts'
 import { WorkflowTasks } from './workflow-tasks'
+import type { ClaudeFinalAnswers } from './final-answers'
 import {
   MAX_WORKFLOW_AGENTS,
   MAX_WORKFLOW_DESCRIPTION,
@@ -100,7 +101,9 @@ export function normalizeMessage(
    */
   announced: AnnouncedCli = new AnnouncedCli(),
   receipts?: ClaudeMessageReceipts,
+  finalAnswers?: ClaudeFinalAnswers,
 ): RuntimeEvent[] {
+  const finalAnswer = finalAnswers?.observe(message)
   // ⛔ **Before the switch, because the fact is on a message this switch does not otherwise read for
   // it** (330). `system/init` carries `memory_paths.auto` and arrives once per turn; the tool calls
   // that land in that directory arrive many frames later. A session omitting the registry labels
@@ -122,10 +125,11 @@ export function normalizeMessage(
       // into the parent stream BY DEFAULT — `forwardSubagentText` only adds its prose on top — and
       // nothing read `parent_tool_use_id` before, so the child's `Bash` rendered as the parent's.
       const parent = subAgentParent(message)
-      const final = message.message.stop_reason === 'end_turn' && message.error === undefined
+      const final = message.message.stop_reason === 'end_turn' && message.error === undefined && message.aborted !== true
         && (typeof content === 'string' || !content.some((block) => block.type === 'tool_use'))
       const credential = typeof message.error === 'string' && isCredentialFailure(message.error)
       let run = ''
+      const messageId = finalAnswers?.messageId(message)
       const flushText = (): void => {
         // …and WHOSE words they are (128). `parent` is computed above for this very message and was
         // spread onto its `tool_call`s and onto nothing else, so a child that talked arrived with the
@@ -135,6 +139,7 @@ export function normalizeMessage(
             type: 'assistant_message',
             text: run,
             ...(final ? { phase: 'final' as const } : {}),
+            ...(messageId === undefined ? {} : { messageId }),
             ...(parent ? { parentToolCallId: parent } : {}),
           })
         run = ''
@@ -224,7 +229,7 @@ export function normalizeMessage(
           })
         }
       }
-      return events
+      return finalAnswer == null ? events : [...events, finalAnswer]
     }
 
     case 'stream_event': {
@@ -263,6 +268,7 @@ export function normalizeMessage(
         // ledger keeps of it; `model` and `stop_reason` arrive whole on the `assistant` message.
         return [
           ...contextReading(message, eventType, event),
+          ...(finalAnswer == null ? [] : [finalAnswer]),
           aPassingFragment(message, streamEventCategory(eventType), eventType),
         ]
       }

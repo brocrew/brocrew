@@ -585,6 +585,7 @@ export interface AssistantItem {
   /** A provider-marked final paired to an observed human turn. */
   humanFinal?: true
   humanFinalPromptOrdinal?: number
+  providerMessageId?: string
   kind: 'assistant'
   id: string
   text: string
@@ -5115,11 +5116,30 @@ function foldEvent(
         })
         return
       }
+      // A streamed Claude message is confirmed as final by its later end_turn receipt.
+      if (event.phase === 'final' && event.messageId !== undefined && humanFinal !== null) {
+        const matching = state.items.filter((one) => one.kind === 'assistant'
+          && one.parentToolCallId === undefined && one.providerMessageId === event.messageId)
+        const kept = matching.at(-1)
+        if (kept?.kind === 'assistant') {
+          const superseded = new Set(matching.map((one) => one.id))
+          state.items = state.items.filter((one) => !superseded.has(one.id) || one === kept)
+          kept.text = event.text
+          kept.streaming = false
+          if (at !== undefined) kept.at = at
+          if (ordinal !== undefined) kept.ordinal = ordinal
+          if (matching.some((one) => one.id === state.streamingId)) state.streamingId = null
+          if (matching.some((one) => one.id === state.provisionalId)) state.provisionalId = null
+          finishHumanAnswer(state.humanAnswers, kept, event, ordinal ?? state.seq, at, state.items, humanFinal)
+          return
+        }
+      }
       const open = itemById(state, state.streamingId ?? undefined)
       if (open?.kind === 'assistant') {
         // Authoritative: the deltas were progressive rendering, not the source of truth.
         open.text = event.text
         open.streaming = false
+        if (event.messageId !== undefined) open.providerMessageId = event.messageId
         if (event.questions !== undefined) open.questions = event.questions
         finishHumanAnswer(state.humanAnswers, open, event, ordinal ?? state.seq, at, state.items, humanFinal)
         state.streamingId = null
@@ -5138,6 +5158,7 @@ function foldEvent(
         text: event.text,
         streaming: false,
         ...(event.questions === undefined ? {} : { questions: event.questions }),
+        ...(event.messageId === undefined ? {} : { providerMessageId: event.messageId }),
       })
       finishHumanAnswer(state.humanAnswers, state.items.at(-1) as AssistantItem, event, ordinal ?? state.seq, at, state.items, humanFinal)
       return

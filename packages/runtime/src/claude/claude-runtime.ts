@@ -130,6 +130,7 @@ import { keptRulesForALaunch } from './persisted-rules'
 import { FileEdits } from './file-edits'
 import { ClaudeMemoryStore } from './memory-store'
 import { AnnouncedCli } from './provider-refusal'
+import { ClaudeFinalAnswers } from './final-answers'
 import {
   claudeConversationReset,
   refAfterReset,
@@ -2734,6 +2735,7 @@ export class ClaudeSessionHandle implements SessionHandle {
    * refusal that needs it, and a model changed mid-conversation is named by the next turn's init.
    */
   private readonly announced = new AnnouncedCli()
+  private readonly finalAnswers = new ClaudeFinalAnswers()
 
   /**
    * ⛔ **What this session has promised to do LATER** (253) — see `session-crons.ts`.
@@ -2924,6 +2926,7 @@ export class ClaudeSessionHandle implements SessionHandle {
           this.toolAnswers,
           this.announced,
           this.messageReceipts,
+          this.finalAnswers,
         )) {
           // ⚑ **A refused credential says WHICH one** — normalizing cannot know what this child was
           // launched on, and the handle does ({@link noteLaunchedOnAKey}).

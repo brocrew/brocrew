@@ -85,6 +85,18 @@ describe('human turns keep their own final answers', () => {
     expect(panelWords(state)?.text).toBe('Selected final')
   })
 
+  it('reconciles an explicit provider-message final confirmation without duplicating its text blocks', () => {
+    const state = fold([human('Question'),
+      { type: 'assistant_message', text: 'First ', messageId: 'confirmed-message' },
+      { type: 'assistant_message', text: '**answer**', messageId: 'confirmed-message' },
+      { type: 'assistant_message', text: 'First **answer**', messageId: 'confirmed-message', phase: 'final' },
+    ])
+    expect(state.items.filter((item) => item.kind === 'assistant')).toEqual([
+      expect.objectContaining({ text: 'First **answer**', humanFinal: true }),
+    ])
+    expect(state.humanAnswers.latest?.final).toMatchObject({ text: 'First **answer**', ordinal: 3 })
+  })
+
   it('keeps the pair when a bounded window drops its opening and through a cold history reload', () => {
     const initial = fold([human('Q outside page'), final('A outside page'), ended])
     const messages = [app('Later app'), final('App response'), ended].map((event, i) => ({ sessionId: 's', event, ordinal: i + 40, at: i + 2000 }))
