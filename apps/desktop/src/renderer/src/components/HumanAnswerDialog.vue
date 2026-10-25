@@ -27,7 +27,7 @@ const final = computed(() => renderChatMarkdown(props.answer.final?.text ?? ''))
 </template>
 
 <style scoped>
-.answer-dialog { width: min(760px, 90vw); max-height: 85vh; display: flex; flex-direction: column; padding: 20px; color: var(--text); background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.answer-dialog { width: min(760px, calc(100% - 2 * var(--lane-clear))); max-height: 85vh; display: flex; flex-direction: column; padding: 20px; color: var(--text); background: var(--panel); border: var(--border-width) solid var(--line-strong); border-radius: var(--radius-sm); }
 header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 h2 { font-size: var(--type-heading); margin: 0; }
 h3 { font-size: var(--type-small); margin: 24px 0 12px; color: var(--text); }

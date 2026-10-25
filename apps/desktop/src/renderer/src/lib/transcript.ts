@@ -5117,7 +5117,7 @@ function foldEvent(
         return
       }
       // A streamed Claude message is confirmed as final by its later end_turn receipt.
-      if (event.phase === 'final' && event.messageId !== undefined && humanFinal !== null) {
+      if (event.phase === 'final' && event.messageId !== undefined) {
         const matching = state.items.filter((one) => one.kind === 'assistant'
           && one.parentToolCallId === undefined && one.providerMessageId === event.messageId)
         const kept = matching.at(-1)

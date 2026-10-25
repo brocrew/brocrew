@@ -7,6 +7,7 @@ import AgentInputPopup from '../../src/renderer/src/components/AgentInputPopup.v
 import AllFilesDialog from '../../src/renderer/src/components/AllFilesDialog.vue'
 import AllTasksDialog from '../../src/renderer/src/components/AllTasksDialog.vue'
 import ContextDialog from '../../src/renderer/src/components/ContextDialog.vue'
+import HumanAnswerDialog from '../../src/renderer/src/components/HumanAnswerDialog.vue'
 import DeleteConversation from '../../src/renderer/src/components/DeleteConversation.vue'
 import { createTranscript } from '../../src/renderer/src/lib/transcript'
 import AgentSectionsSheet from '../../src/renderer/src/components/AgentSectionsSheet.vue'
@@ -229,6 +230,17 @@ let pressed: boolean[] = []
  * `a-number-can-survive-the-death-of-its-derivation`.
  */
 const PATHS = [
+  {
+    host: 'HumanAnswerDialog',
+    panel: 'HumanAnswerDialog',
+    cy: 'human-answer-dialog',
+    selfHosted: true,
+    open: () => h(HumanAnswerDialog, { answer: {
+      promptOrdinal: 1,
+      prompt: '# Fictional question\n\n' + 'Please compare the bakery recipes.\n\n'.repeat(80),
+      final: { ordinal: 2, at: NOW, text: '| Recipe | Notes |\n| --- | --- |\n| Bread | ' + 'long-note'.repeat(80) + ' |\n\n```text\n' + 'long-code'.repeat(100) + '\n```\n\nLast answer paragraph.' },
+    } }),
+  },
   {
     host: 'ProvidersScreen',
     panel: 'ProviderCard',
@@ -629,6 +641,29 @@ describe('§1 · what the overlay layer does to the rail (388 §3)', () => {
 /* ------------------------------------------------------------------- §2 · the census of the paths */
 
 describe('§2 · every OverlayHost path carries a reachable stop (390 §3)', () => {
+  it('keeps the long human answer scrollable, its close button reachable, and Tab inside the dialog', async () => {
+    const path = PATHS.find((one) => one.host === 'HumanAnswerDialog')!
+    const m = await overlay(path.open, 1180, 808, true)
+    const dialog = m.q('human-answer-dialog')
+    const close = dialog.querySelector<HTMLButtonElement>('button')!
+    expect(document.activeElement).toBe(close)
+    tab(true); await nextTick()
+    expect(m.q('overlay-spawning').contains(document.activeElement)).toBe(true)
+    tab(); await nextTick()
+    expect(document.activeElement).toBe(close)
+    const scroll = dialog.querySelector<HTMLElement>('.answer-scroll')!
+    expect(scroll.scrollHeight).toBeGreaterThan(scroll.clientHeight)
+    scroll.scrollTop = scroll.scrollHeight
+    await nextTick()
+    const last = m.q('human-answer-final').lastElementChild!
+    expect(last.textContent).toContain('Last answer paragraph')
+    expect(last.getBoundingClientRect().bottom).toBeLessThanOrEqual(scroll.getBoundingClientRect().bottom + 1)
+    expect(m.q('human-answer-final').querySelector('table')).not.toBeNull()
+    expect(m.q('human-answer-final').querySelector('pre code')).not.toBeNull()
+    expect(reachable(close)).toBe(true)
+    expect(reachable(m.q('overlay-spawning'))).toBe(true)
+  })
+
   for (const path of PATHS) {
     it(`⛔ ${path.host} → ${path.panel}`, async () => {
       const m = await overlay(path.open, 1180, 808, 'selfHosted' in path)
@@ -714,6 +749,7 @@ describe('§3 · the mount sites are counted from the source (390 §3)', () => {
     expect([...found.keys()].sort()).toEqual([
       'CanonicalDocumentOverlay',
       'ConversationPane',
+      'HumanAnswerDialog',
       'ProvidersScreen',
       'ReadingPane',
       'RuntimeScreen',
@@ -727,7 +763,7 @@ describe('§3 · the mount sites are counted from the source (390 §3)', () => {
     const censused = new Set(PATHS.map((path) => path.host))
     expect([...censused].sort()).toEqual([...found.keys()].sort())
     const sites = [...found.values()].reduce((all, one) => all + one, 0)
-    expect(sites, 'a mount site appeared that this file has never opened').toBe(17)
+    expect(sites, 'a mount site appeared that this file has never opened').toBe(18)
   })
 
   /**

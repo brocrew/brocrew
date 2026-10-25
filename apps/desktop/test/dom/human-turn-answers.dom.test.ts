@@ -2,11 +2,17 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { defineComponent, h, nextTick, reactive, type Component } from 'vue'
 import AgentCard from '../../src/renderer/src/components/AgentCard.vue'
 import AssistantMessage from '../../src/renderer/src/components/AssistantMessage.vue'
+import HumanAnswerDialog from '../../src/renderer/src/components/HumanAnswerDialog.vue'
+import { applyTheme } from '../../src/renderer/src/lib/apply-theme'
+import { resolveTheme, type Theme } from '../../src/shared/themes/theme'
+import { validateTheme } from '../../src/shared/themes/validate'
+import DEFINED from '../../resources/themes/defined/theme.json'
+import BROCREW from '../../resources/themes/brocrew/theme.json'
 import { applyEvent, createTranscript } from '../../src/renderer/src/lib/transcript'
 import type { TranscriptEvent } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll, parseColor, paintedBackground, contrast } from './harness'
 
-afterEach(unmountAll)
+afterEach(() => { unmountAll(); applyTheme(null) })
 function stateOf(events: TranscriptEvent[]) {
   const state = reactive(createTranscript())
   events.forEach((event, ordinal) => applyEvent(state, event, 1000 + ordinal, ordinal))
@@ -15,7 +21,7 @@ function stateOf(events: TranscriptEvent[]) {
 const first: TranscriptEvent[] = [
   { type: 'user_turn', text: 'My **human prompt**\n\n`detail`', humanInitiated: true },
   { type: 'assistant_message', text: 'Working', phase: 'commentary' },
-  { type: 'assistant_message', text: '## Human answer\n\n- Item\n\n```js\nconst ok = true\n```\n\n<script>bad()</script>', phase: 'final' },
+  { type: 'assistant_message', text: '## Human answer\n\n- Item\n\n[Recipe notes](https://example.org/recipes)\n\n```js\nconst ok = true\n```\n\n<script>bad()</script>', phase: 'final' },
   { type: 'turn', state: 'completed' },
   { type: 'user_turn', text: 'Agent update', attribution: 'app_authored', relayedFrom: 'sess_other' },
   { type: 'assistant_message', text: 'Later app answer', phase: 'final' },
@@ -32,7 +38,9 @@ describe('human final answer surfaces', () => {
     }) })
     const m = mount(host, {}, { width: 360, height: 900 })
     expect(m.q('card-latest-words').textContent).toContain('Human answer')
-    m.q('card-latest').click(); await nextTick()
+    m.q('card-latest').focus()
+    m.q('card-latest').click(); await nextTick(); await nextTick()
+    expect(m.q('human-answer-dialog').contains(document.activeElement)).toBe(true)
     expect(m.q('human-answer-prompt').querySelector('strong')?.textContent).toBe('human prompt')
     expect(m.q('human-answer-final').querySelector('h2')?.textContent).toBe('Human answer')
     expect(m.q('human-answer-final').querySelector('pre code')?.textContent).toContain('const ok = true')
@@ -47,6 +55,7 @@ describe('human final answer surfaces', () => {
     document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
     await nextTick()
     expect(m.all('human-answer-dialog')).toHaveLength(0)
+    expect(document.activeElement).toBe(m.q('card-latest'))
   })
 
   it.each(['no human', 'pending', 'interrupted'] as const)('preserves the existing click for %s', async (which) => {
@@ -62,13 +71,20 @@ describe('human final answer surfaces', () => {
     expect(m.all('human-answer-dialog')).toHaveLength(0)
   })
 
-  it.each(['dark', 'light'] as const)('highlights only human finals using readable %s theme tokens', async (theme) => {
+  it.each(['Classic dark', 'Classic light', 'Defined', 'BroCrew'] as const)('reads history and the paired popup using the actual %s theme cascade', async (theme) => {
+    const base = validateTheme(DEFINED, { assets: new Map(), builtIns: new Map(), builtIn: true })
+    if (!base.ok) throw new Error(JSON.stringify(base.problems))
+    if (theme === 'Defined') applyTheme(base.theme)
+    else if (theme === 'BroCrew') applyTheme(resolveTheme(BROCREW as Theme, base.theme))
+    else applyTheme(null)
     const state = stateOf(first)
     const assistants = state.items.filter((item) => item.kind === 'assistant')
-    const host = defineComponent({ setup: () => () => h('div', { style: {
-      '--panel': theme === 'dark' ? '#202344' : '#ffffff', '--text': theme === 'dark' ? '#ffffff' : '#14152a',
-      '--text-soft': theme === 'dark' ? '#e7e8f1' : '#323348', '--accent': theme === 'dark' ? '#a5b4fc' : '#4338ca',
-    } }, assistants.map((item) => h(AssistantMessage as Component, { item }))) })
+    const host = defineComponent({ setup: () => () => h('div', {
+      'data-chat-theme': theme === 'Classic dark' ? undefined : 'light',
+    }, [
+      ...assistants.map((item) => h(AssistantMessage as Component, { item })),
+      h(HumanAnswerDialog, { answer: state.humanAnswers.latest! }),
+    ]) })
     const m = mount(host, {}, { width: 900, height: 900 })
     await nextTick()
     const highlighted = m.host.querySelectorAll('[data-human-final="true"]')
@@ -77,9 +93,21 @@ describe('human final answer surfaces', () => {
     const column = highlighted[0]!.querySelector('.msg-column')!
     expect(getComputedStyle(column).borderInlineStartWidth).toBe('3px')
     expect(getComputedStyle(column).backgroundColor).not.toBe('rgba(0, 0, 0, 0)')
-    expect(getComputedStyle(highlighted[0]!.querySelector('.final-label')!).color).toBe(theme === 'dark' ? 'rgb(255, 255, 255)' : 'rgb(20, 21, 42)')
-    const ink = parseColor(getComputedStyle(highlighted[0]!.querySelector('.final-label')!).color)
-    expect(ink).not.toBeNull()
-    expect(contrast(ink!, paintedBackground(column))).toBeGreaterThanOrEqual(4.5)
+    for (const selector of ['.final-label', '.msg-body p', '.msg-body a', '.msg-body pre code', '.time']) {
+      const element = highlighted[0]!.querySelector(selector)!
+      expect(element, selector).not.toBeNull()
+      const ink = parseColor(getComputedStyle(element).color)
+      expect(ink, selector).not.toBeNull()
+      expect(contrast(ink!, paintedBackground(element)), `${theme} history ${selector}`).toBeGreaterThanOrEqual(4.5)
+    }
+    const dialog = m.q('human-answer-dialog')
+    expect(getComputedStyle(dialog).borderTopWidth).toBe('1px')
+    for (const selector of ['h2', 'h3', '[data-cy="human-answer-prompt"] p', '[data-cy="human-answer-final"] p', '[data-cy="human-answer-final"] a', 'pre code']) {
+      const element = dialog.querySelector(selector)!
+      expect(element, selector).not.toBeNull()
+      const ink = parseColor(getComputedStyle(element).color)
+      expect(ink, selector).not.toBeNull()
+      expect(contrast(ink!, paintedBackground(element)), `${theme} popup ${selector}`).toBeGreaterThanOrEqual(4.5)
+    }
   })
 })

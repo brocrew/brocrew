@@ -110,10 +110,13 @@ describe('indexed human answer history', () => {
     for (let n = 0; n < 2600; n++) feed({ type: 'activity', phase: 'thinking' })
     final('A1 inside cut page')
     human('Q2 inside page'); final('A2 inside page')
+    feed({ type: 'user_turn', text: 'Trailing app turn', attribution: 'app_authored' })
+    final('Trailing app answer')
     const page = host.latestHistory('s')
     expect(page.turnAligned).toBe(false)
     expect(page.entries.some((entry) => entry.ordinal === 0)).toBe(false)
     expect(page.humanAnswers?.latest?.prompt).toBe('Q2 inside page')
+    expect(page.humanAnswers?.active).toBeNull()
     const record = createSessionRecord('s'); openWindow(record, page)
     page.entries.forEach((row) => acceptEvent(record, { ...row, sessionId: 's' }))
     expect(record.control.items.filter((item) => item.kind === 'assistant' && item.humanFinal).map((item) => item.text)).toEqual(['A1 inside cut page', 'A2 inside page'])
@@ -124,6 +127,31 @@ describe('indexed human answer history', () => {
     const olderRecord = createSessionRecord('s'); openWindow(olderRecord, older)
     older.entries.forEach((row) => acceptEvent(olderRecord, { ...row, sessionId: 's' }))
     expect(olderRecord.control.items.filter((item) => item.kind === 'assistant' && item.humanFinal).map((item) => item.text)).toEqual(['A1 inside cut page'])
+  })
+
+  it.each(['app', 'superseded human'] as const)('reconciles provider confirmations during live and host history replay for %s answers', (kind) => {
+    const live = createSessionRecord('s')
+    const events: TranscriptEvent[] = [
+      { type: 'user_turn', text: 'Question', ...(kind === 'app' ? { attribution: 'app_authored' as const } : { humanInitiated: true }) },
+      { type: 'assistant_message', text: 'Confirmed prose', messageId: 'provider-message-one' },
+      { type: 'assistant_message', text: 'Confirmed prose', messageId: 'provider-message-one', phase: 'final' },
+    ]
+    if (kind === 'superseded human') events.push({ type: 'assistant_message', text: 'Selected answer', phase: 'final', messageId: 'provider-message-two' })
+    events.push({ type: 'turn', state: 'completed' })
+    for (const event of events) {
+      acceptEvent(live, { sessionId: 's', event, ordinal, at: 1000 + ordinal })
+      feed(event)
+    }
+    const page = host.latestHistory('s')
+    expect(page.entries.filter((row) => row.event.type === 'assistant_message' && row.event.messageId === 'provider-message-one').map((row) => row.humanFinal)).toEqual([null, null])
+    const cold = createSessionRecord('s'); openWindow(cold, page)
+    page.entries.forEach((row) => acceptEvent(cold, { ...row, sessionId: 's' }))
+    for (const record of [live, cold]) {
+      const prose = record.control.items.filter((item) => item.kind === 'assistant')
+      expect(prose.map((item) => item.text)).toEqual(kind === 'app' ? ['Confirmed prose'] : ['Confirmed prose', 'Selected answer'])
+      expect(prose.filter((item) => item.humanFinal).map((item) => item.text)).toEqual(kind === 'app' ? [] : ['Selected answer'])
+    }
+    expect(panelWords(cold.control)).toEqual(panelWords(live.control))
   })
 
   it('uses index seeks without temporary sorts and tolerates malformed historical payloads', () => {
@@ -139,5 +167,35 @@ describe('indexed human answer history', () => {
     }
     db.prepare('INSERT INTO events (id, session_id, ordinal, type, payload, created_at) VALUES (?, ?, ?, ?, ?, ?)').run('bad', 's', 0, 'user_turn', '{', 1)
     expect(store.latestHumanAnswers('s').latest).toBeNull()
+  })
+
+  it('seeks a missing lifecycle boundary past many later human prompts using the type key', () => {
+    const prompts = 20_000
+    db.transaction(() => {
+      for (let n = 0; n < prompts; n++) {
+        human(`Fictional question ${n}`)
+        if (n < 20) final(`Fictional selected answer ${n}`)
+      }
+    })()
+    expect(db.pragma('index_info(events_human_prompt_idx)').map((row) => (row as { name: string }).name))
+      .toEqual(['session_id', 'generation', 'type', 'ordinal'])
+    const query = `SELECT ordinal FROM events INDEXED BY events_human_prompt_idx
+      WHERE session_id = ? AND generation = ? AND (${HUMAN_CONTEXT_TERM}) AND type = ?
+        AND ordinal > ? ORDER BY ordinal LIMIT 1`
+    const seek = db.prepare(query)
+    const began = performance.now()
+    for (const type of ['status', 'reopened']) {
+      const plan = JSON.stringify(db.prepare(`EXPLAIN QUERY PLAN ${query}`).all('s', 0, type, 0))
+      expect(plan).toContain('USING INDEX events_human_prompt_idx (session_id=? AND generation=? AND type=? AND ordinal>?)')
+      expect(plan).not.toContain('SCAN events')
+      expect(plan).not.toContain('TEMP B-TREE')
+      for (let n = 0; n < 100; n++) expect(seek.get('s', 0, type, 0)).toBeUndefined()
+    }
+    const missingBoundaryMs = performance.now() - began
+    const windowAt = performance.now()
+    expect(store.humanFinalsInWindow('s', 0, 59).size).toBe(20)
+    const firstWindowContextMs = performance.now() - windowAt
+    // Timings supplement the full equality-prefix/range plan; they are not VM-step counts.
+    console.info('fictional-human-boundary-seeks', JSON.stringify({ prompts, seeks: 200, missingBoundaryMs, firstWindowContextMs }))
   })
 })
