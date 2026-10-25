@@ -398,20 +398,35 @@ it('a launch requested during scanning waits until the whole clearing pass ends'
 function heldOperation() {
   let entered!: () => void
   let release!: () => void
-  const arrived = new Promise<void>((resolve) => { entered = resolve })
-  const held = new Promise<void>((resolve) => { release = resolve })
-  return { arrived, release, hold: async () => { entered(); await held } }
+  const arrived = new Promise<void>((resolve) => {
+    entered = resolve
+  })
+  const held = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  return {
+    arrived,
+    release,
+    hold: async () => {
+      entered()
+      await held
+    },
+  }
 }
 
 type RetentionSave = {
-  save: (progress: {
-    version: number
-    at: number
-    days: number
-    conversations: number
-    bytes: number
-    cursor: string
-  }, complete: boolean, stoppedEarly: boolean) => Promise<void>
+  save: (
+    progress: {
+      version: number
+      at: number
+      days: number
+      conversations: number
+      bytes: number
+      cursor: string
+    },
+    complete: boolean,
+    stoppedEarly: boolean,
+  ) => Promise<void>
 }
 
 function watchRetentionSaves(host: TranscriptRetentionHost) {
@@ -449,14 +464,27 @@ it('a scan that never settles releases the first launch at the deadline and reco
   try {
     await scan.arrived
     let launched = false
-    const launch = host.beforeLaunch().then(() => { launched = true })
-    await wait(60)
+    const launch = host.beforeLaunch().then(() => {
+      launched = true
+    })
+    await launch
     expect(launched).toBe(true)
+    await persistence.arrived
+    expect(existsSync(target)).toBe(true)
+    expect(writes).toHaveLength(1)
+    expect(await host.recent(0, NOW)).toEqual([])
+    expect(existsSync(join(data, 'transcript-retention.json'))).toBe(false)
+    persistence.release()
+    await writes[0]
+    await expectDeadlineReceipt(host)
+    expect(
+      JSON.parse(readFileSync(join(data, 'transcript-retention.json'), 'utf8')).cleared,
+    ).toEqual(await host.recent(0, NOW))
+    expect(existsSync(target)).toBe(true)
+    scan.release()
+    await pass
     expect(existsSync(target)).toBe(true)
     await expectDeadlineReceipt(host)
-    scan.release()
-    await Promise.all([pass, launch])
-    expect(existsSync(target)).toBe(true)
   } finally {
     persistence.release()
     scan.release()
@@ -465,6 +493,69 @@ it('a scan that never settles releases the first launch at the deadline and reco
     await host.stop()
   }
 })
+
+it.each(['suppressed', 'wrong', 'rejected'] as const)(
+  'deadline receipt verification refuses a %s save',
+  async (fault) => {
+    const target = claude(OLD, 365)
+    const scan = heldOperation()
+    const persistence = heldOperation()
+    filesystemGate.beforeScan = scan.hold
+    filesystemGate.beforeRename = async (_from, to) => {
+      if (to !== join(data, 'transcript-retention.json')) return
+      await persistence.hold()
+      if (fault === 'rejected') throw new Error('fictional persistence refusal')
+    }
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const host = new TranscriptRetentionHost(data, unused, () => NOW, false, 20)
+    const { writes, save, realSave } = watchRetentionSaves(host)
+    save.mockImplementationOnce((progress, complete, stoppedEarly) => {
+      const writing =
+        fault === 'suppressed'
+          ? Promise.resolve()
+          : realSave(
+              fault === 'wrong' ? { ...progress, conversations: 1, bytes: 1 } : progress,
+              complete,
+              stoppedEarly,
+            )
+      writes.push(writing)
+      return writing
+    })
+    const pass = host.run()
+    try {
+      await scan.arrived
+      await host.beforeLaunch()
+      expect(save).toHaveBeenCalledTimes(1)
+      expect(existsSync(target)).toBe(true)
+      if (fault !== 'suppressed') await persistence.arrived
+      persistence.release()
+      if (fault === 'rejected') {
+        await expect(writes[0]).rejects.toThrow('fictional persistence refusal')
+        expect(warn).toHaveBeenCalledWith(
+          'Transcript cleanup could not record its deadline.',
+          expect.objectContaining({ message: 'fictional persistence refusal' }),
+        )
+      } else {
+        await writes[0]
+      }
+      if (fault === 'wrong') {
+        expect((await host.recent(0, NOW))[0]).toMatchObject({ conversations: 1, bytes: 1 })
+      } else {
+        expect(await host.recent(0, NOW)).toEqual([])
+        expect(existsSync(join(data, 'transcript-retention.json'))).toBe(false)
+      }
+      await expect(expectDeadlineReceipt(host)).rejects.toThrow()
+      expect(existsSync(target)).toBe(true)
+    } finally {
+      filesystemGate.beforeRename = null
+      persistence.release()
+      scan.release()
+      await pass
+      await Promise.allSettled(writes)
+      await host.stop()
+    }
+  },
+)
 
 it('a normal startup pass still deletes and records its completed check', async () => {
   const target = claude(OLD, 365)
