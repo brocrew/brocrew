@@ -83,6 +83,24 @@ const viewer = (props: Record<string, unknown>, width = 900): Mounted =>
   mount(CanonicalDocumentViewer, props, { width, height: 600 })
 
 describe('the viewer says what a file is', () => {
+  it('wraps the complete unbroken filename and resource id inside a narrow preview', async () => {
+    await page.viewport(390, 844)
+    const name = `${'x'.repeat(509)}.md`,
+      resourceId = `res_${'a'.repeat(124)}`
+    const m = viewer({ result: { ...RESULT, name, resourceId } }, 350)
+    await drawnReady()
+    expect(read(m.q('canonical-document-name'))).toBe(name)
+    expect(read(m.q('canonical-document-id'))).toBe(resourceId)
+    const frame = m.q('canonical-document-viewer').getBoundingClientRect()
+    for (const key of ['canonical-document-name', 'canonical-document-id']) {
+      const field = m.q(key)
+      expect(field.scrollWidth).toBeLessThanOrEqual(field.clientWidth + 1)
+      expect(field.getBoundingClientRect().right).toBeLessThanOrEqual(frame.right)
+      expect(field.getBoundingClientRect().height).toBeGreaterThan(16)
+    }
+    expect(m.q('document-body').getBoundingClientRect().height).toBeGreaterThan(0)
+  })
+
   it('🔴 the title first, then its name, kind and size, then who made it, for which piece, and when', async () => {
     const m = viewer({ result: RESULT, file: ROW })
     await drawnReady()

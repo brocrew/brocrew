@@ -330,6 +330,9 @@ async function showInFinder(): Promise<void> {
 }
 
 .name {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
   color: var(--text-soft);
   font-size: var(--type-caption);
   /* ⚠️ D-032 · an agent's file name may hold direction overrides: kept to itself, never spilling. */
@@ -337,6 +340,7 @@ async function showInFinder(): Promise<void> {
 }
 
 .id {
+  overflow-wrap: anywhere;
   color: var(--faint);
   font: var(--type-caption) / 1.4 var(--font-mono);
 }
