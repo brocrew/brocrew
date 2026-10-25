@@ -1,5 +1,5 @@
 import { afterEach, expect, it } from 'vitest'
-import { writeFileSync } from 'node:fs'
+import { writeFileSync, rmSync, existsSync } from 'node:fs'
 import { TeamProfileGraphEngine } from '../src/main/db/team-profile-graph-engine'
 import { graphContext, graphFixture } from './helpers/team-profile-graph-fixture'
 import { graphCutoff, graphOracle } from './fixtures/team-profile-graph-oracle'
@@ -372,4 +372,17 @@ it('returns one coherent pinned reading stale after an intervening external writ
   expect(page).toMatchObject({ type: 'nodes', stale: true })
   const next = snapshot(engine.read({ operation: 'snapshot' }, graphContext))
   expect(next.nodeCount).toBe(6)
+})
+
+it('keeps a missing kind file unknown and distinguishes a readable empty file without repairing either', () => {
+  const f = setup()
+  f.identity('aid:a')
+  f.session('a', 'aid:a')
+  f.root('a')
+  expect(complete(f).nodes[0]).toMatchObject({ kind: 'normal', kindQuality: 'legacy-normal' })
+  rmSync(f.executionFile)
+  expect(complete(f).nodes[0]).toMatchObject({ kind: 'unknown', kindQuality: 'unknown-file' })
+  expect(existsSync(f.executionFile)).toBe(false)
+  writeFileSync(f.executionFile, JSON.stringify({ version: 2, profiles: {} }))
+  expect(complete(f).nodes[0]).toMatchObject({ kind: 'normal', kindQuality: 'legacy-normal' })
 })

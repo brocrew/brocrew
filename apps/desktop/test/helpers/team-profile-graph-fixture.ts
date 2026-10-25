@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -17,6 +17,7 @@ export function graphFixture() {
   const directory = mkdtempSync(join(tmpdir(), 'fictional-team-graph-'))
   const file = join(directory, 'fictional.sqlite')
   const executionFile = join(directory, 'profile-execution.json')
+  writeFileSync(executionFile, JSON.stringify({ version: 2, profiles: {} }))
   const db = openDatabase(file)
   applyMigrations(db, join(dirname(fileURLToPath(import.meta.url)), '../../src/main/db/migrations'))
   const identity = (

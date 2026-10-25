@@ -51,7 +51,7 @@ export function graphKindOf(
     kindReadAt: file.readAt,
   })
   if (file.changing) return unknown('unknown-changing')
-  if (!file.reading.readable) return unknown('unknown-file')
+  if (!file.reading.readable || file.reading.absent === true) return unknown('unknown-file')
   const entry = file.reading.kept.profiles[identity.id]
   if ((entry && entry.identityCreatedAt !== identity.createdAt) || evidence.earlierBirths)
     return unknown('unknown-incarnation')
