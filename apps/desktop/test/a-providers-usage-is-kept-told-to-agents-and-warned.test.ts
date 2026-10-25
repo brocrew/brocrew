@@ -88,16 +88,15 @@ const traceFixturePhase = <T>(phase: string, operation: () => T): T => {
   try {
     const value = operation()
     if (value instanceof Promise) {
-      return value.then(
-        (answer) => {
+      void value.then(
+        () => {
           emit('end', 'fulfilled')
-          return answer
         },
-        (error: unknown) => {
+        () => {
           emit('end', 'rejected')
-          throw error
         },
-      ) as T
+      )
+      return value
     }
     emit('end', 'returned')
     return value

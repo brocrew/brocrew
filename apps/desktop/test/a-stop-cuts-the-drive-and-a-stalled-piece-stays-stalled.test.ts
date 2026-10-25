@@ -456,16 +456,15 @@ const traceFixturePhase = <T>(phase: string, operation: () => T): T => {
   try {
     const value = operation()
     if (value instanceof Promise) {
-      return value.then(
-        (answer) => {
+      void value.then(
+        () => {
           emit('end', 'fulfilled')
-          return answer
         },
-        (error: unknown) => {
+        () => {
           emit('end', 'rejected')
-          throw error
         },
-      ) as T
+      )
+      return value
     }
     emit('end', 'returned')
     return value
@@ -536,14 +535,13 @@ function withLevers(
         })
       }
       if (property === 'close') {
-        return async (): Promise<void> => {
-          await traceFixturePhase(`fake-close-${traceId}`, async () => {
+        return (): Promise<void> =>
+          traceFixturePhase(`fake-close-${traceId}`, async () => {
             closeStarted = true
             await closeMayFinish
             await target.close()
             closeFinished = true
           })
-        }
       }
       const value = Reflect.get(target, property, target) as unknown
       return typeof value === 'function' ? (value as () => unknown).bind(target) : value
@@ -805,13 +803,15 @@ describe('§3 · the host — a stop changes nothing about a piece or about the 
     })
     const pending = traceFixturePhase('pending-control', () => held)
     try {
+      expect(pending).toBe(held)
       expect(rows.filter((row) => row.phase === 'pending-control').map((row) => row.event)).toEqual(
         ['begin'],
       )
       const failure = new Error('fictional close rejected')
-      await expect(
-        traceFixturePhase('rejection-control', () => Promise.reject(failure)),
-      ).rejects.toBe(failure)
+      const rejected = Promise.reject(failure)
+      const observed = traceFixturePhase('rejection-control', () => rejected)
+      expect(observed).toBe(rejected)
+      await expect(observed).rejects.toBe(failure)
       expect(
         rows.filter((row) => row.phase === 'rejection-control').map((row) => row.outcome),
       ).toEqual([undefined, 'rejected'])
