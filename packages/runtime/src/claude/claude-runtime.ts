@@ -115,7 +115,13 @@ import {
   signInTagOf,
 } from '../internal/auth'
 import { buildChildEnv } from '../internal/child-env'
-import { assertNotCancelled, cancelWith, withDeadline, withTimeout } from '../internal/bounded'
+import {
+  assertNotCancelled,
+  cancelWith,
+  didNotAnswerInTime,
+  withDeadline,
+  withTimeout,
+} from '../internal/bounded'
 import { isWithin, type SessionConfinement } from '../internal/confinement'
 import { realResolve } from '../internal/real-path'
 import { DeltaCoalescer } from '../internal/delta-coalescer'
@@ -3351,6 +3357,10 @@ export class ClaudeSessionHandle implements SessionHandle {
     return this.currentStatus
   }
 
+  isRetiring(): boolean {
+    return this.machine.state === 'closing'
+  }
+
   /**
    * **What this tool answered, as much of it as we are holding** (462) — see
    * {@link SessionHandle.toolAnswer}.
@@ -3547,10 +3557,17 @@ export class ClaudeSessionHandle implements SessionHandle {
 
   private async applyPendingSettings(): Promise<void> {
     const turnId = this.machine.activeTurnId
+    let reloadTimedOut = false
     try {
       if (this.sharedSkillsRoot) {
         if (!this.query?.reloadPlugins) throw new Error(BUILT_IN_SKILLS_FAILURE)
-        await withDeadline(this.query.reloadPlugins(), 10_000, 'reloadPlugins')
+        const reload = this.query.reloadPlugins()
+        try {
+          await withDeadline(reload, 10_000, 'reloadPlugins')
+        } catch (error) {
+          reloadTimedOut = didNotAnswerInTime(error)
+          throw error
+        }
       }
 
       if (this.models.pending) {
@@ -3634,6 +3651,13 @@ export class ClaudeSessionHandle implements SessionHandle {
         this.machine.failTurn(`could not apply the queued settings: ${errorMessage(error)}`, {
           neverSent: true,
         })
+      if (reloadTimedOut) {
+        // The deadline released this send, not the SDK's control request. Seal this query before
+        // another turn can begin: a late reload answer must never race a second reload or a push.
+        // close() enters `closing` synchronously; its bounded child-exit receipt runs in the
+        // background so the unsent message gets its failure promptly.
+        void this.close().catch(() => {})
+      }
       throw error
     }
   }

@@ -5997,7 +5997,12 @@ function whyNoSettingForItsNextStart(
 function onItsWayOut(slot: SessionSlot): boolean {
   if (slot.phase === 'closing') return true
   const session = slot.session
-  return session !== null && (session.closing !== null || session.finalizing !== null)
+  return (
+    session !== null &&
+    (session.closing !== null ||
+      session.finalizing !== null ||
+      session.handle.isRetiring?.() === true)
+  )
 }
 
 /**
@@ -26482,7 +26487,12 @@ export class RuntimeHost implements LiveHost {
    * out, its provider ended, or its slot is no longer this session's.
    */
   private itStoppedUnder(session: HostedSession): boolean {
-    if (session.closing !== null || session.finalizing !== null) return true
+    if (
+      session.closing !== null ||
+      session.finalizing !== null ||
+      session.handle.isRetiring?.() === true
+    )
+      return true
     const status = session.handle.status()
     return (
       status === 'ended' || status === 'errored' || this.slots.get(session.id)?.session !== session
@@ -31378,7 +31388,11 @@ export class RuntimeHost implements LiveHost {
    * closing session as one somebody typed.
    */
   private assertAcceptsMessages(session: HostedSession, verb: 'send' | 'queue'): void {
-    if (session.closing !== null || session.finalizing !== null) {
+    if (
+      session.closing !== null ||
+      session.finalizing !== null ||
+      session.handle.isRetiring?.() === true
+    ) {
       throw new Error(`cannot ${verb}: session ${session.id} is still closing`)
     }
     const status = session.handle.status()

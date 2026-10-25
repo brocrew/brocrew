@@ -796,6 +796,12 @@ export type TurnProvenance =
  *    is eventually answered — by the app, or safe-rejected on teardown.
  */
 export interface SessionHandle {
+  /**
+   * True after this adapter has begun retiring its provider, before its final status arrives.
+   * The host must carry deliveries past that interval instead of sending into an idle-looking
+   * handle whose next turn is already refused. Optional for adapters that never retire themselves.
+   */
+  isRetiring?(): boolean
   /** Whether this launch's SDK init confirmed the installed skill catalogue. */
   builtInSkillsConfirmed?(): boolean
   /** Refresh only at a turn boundary; absent means this provider needs a managed reopen. */

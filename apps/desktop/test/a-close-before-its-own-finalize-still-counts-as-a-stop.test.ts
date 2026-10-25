@@ -95,7 +95,10 @@ describe('M55 · a Close counts as a stop before its own finalize', () => {
    *  drain finally gives up and the reopen runs, `resume`. Only launch 1's stream hangs. */
   let launches: number
 
-  const buildHost = (closeDrainTimeoutMs: number): RuntimeHost =>
+  const buildHost = (
+    closeDrainTimeoutMs: number,
+    retiring?: { pending: boolean; wait: Promise<void> },
+  ): RuntimeHost =>
     new RuntimeHost({
       store,
       discoverSessions: NO_DISCOVERY,
@@ -113,8 +116,18 @@ describe('M55 · a Close counts as a stop before its own finalize', () => {
             ? handle
             : new Proxy(handle, {
                 get(h, p) {
-                  if (p === 'events')
+                  if (p === 'events' && retiring === undefined)
                     return holdTheStreamOpenPastItsEnd(h as unknown as SessionHandle)
+                  if (p === 'isRetiring' && retiring !== undefined)
+                    return () => retiring.pending
+                  if (p === 'send' && retiring !== undefined)
+                    return (...args: Parameters<SessionHandle['send']>) => {
+                      if (retiring.pending)
+                        return Promise.reject(new Error('fictional retiring handle cannot send'))
+                      retiring.pending = true
+                      void retiring.wait.then(() => (h as SessionHandle).close()).catch(() => {})
+                      return Promise.reject(new Error('fictional reloadPlugins timeout'))
+                    }
                   return bind(h, p)
                 },
               })
@@ -257,5 +270,38 @@ describe('M55 · a Close counts as a stop before its own finalize', () => {
     expect(eventsOf(sessionId).some((event) => event.type === 'reopened')).toBe(false)
     // ⚑ One launch only: nothing stopped under this delivery, so nothing had to be started again.
     expect(launches).toBe(1)
+  })
+
+  it('a self-retiring provider keeps two arriving messages behind its held exit and delivers each once on a fresh launch', async () => {
+    let release!: () => void
+    const retiring = {
+      pending: false,
+      wait: new Promise<void>((resolve) => {
+        release = resolve
+      }),
+    }
+    host = buildHost(1_000, retiring)
+    const { sessionId } = await host.createSession(
+      { provider: 'claude', profileId: DEFAULT_PROFILE_ID, approvalMode: 'auto', cwd: work },
+      window,
+    )
+    const first = host.send(sessionId, 'first message', window)
+    first.catch(() => {})
+    try {
+      await until(() => retiring.pending, 'the first send to retire its provider')
+      const second = host.send(sessionId, 'second message', window)
+      second.catch(() => {})
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      expect(launches).toBe(1)
+      expect(turnTexts(sessionId)).toEqual([])
+
+      release()
+      await expect(first).resolves.toBeUndefined()
+      await expect(second).resolves.toBeUndefined()
+      expect(launches).toBe(2)
+      expect(turnTexts(sessionId)).toEqual(['first message', 'second message'])
+    } finally {
+      release()
+    }
   })
 })

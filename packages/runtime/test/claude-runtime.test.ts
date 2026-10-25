@@ -10034,4 +10034,113 @@ describe('shared skills at a Claude turn boundary', () => {
       await refused
     },
   )
+
+  it('retires a query whose reload timed out, without sending or retrying on that query', async () => {
+    const fq = new FakeQuery()
+    let finishReload!: () => void
+    let finishExit!: () => void
+    const reload = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishReload = resolve
+        }),
+    )
+    Object.assign(fq, { reloadPlugins: reload })
+    fq.holdReturn = new Promise<void>((resolve) => {
+      finishExit = resolve
+    })
+    let sent = 0
+    let nextQuery = fq
+    const runtime = new ClaudeRuntime(
+      (params) => {
+        const query = nextQuery
+        query.cli.listen(
+          (async function* () {
+            for await (const message of params.prompt) {
+              sent++
+              yield message
+            }
+          })(),
+        )
+        return query
+      },
+      async () => true,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      process.platform,
+      undefined,
+      '/fictional/claude',
+    )
+    const context = {
+      providerHome: home,
+      builtInSkills: { root: join(home, 'built-in-skills'), skills: [] },
+      sharedSkillsRoot: join(home, 'skills'),
+    }
+    const handle = await runtime.start({ ...context, cwd: home })
+    const events: RuntimeEvent[] = []
+    const consumer = collect(handle, events)
+    fq.emit({
+      ...init('sess_reload_timeout', home),
+      plugins: [{ name: 'brobot', path: join(home, 'built-in-skills') }],
+      skills: [],
+    })
+    await vi.waitFor(() => expect(handle.ref).not.toBeNull())
+
+    vi.useFakeTimers()
+    try {
+      const sending = handle.send('A message awaiting plugin refresh.')
+      sending.catch(() => {})
+      await vi.advanceTimersByTimeAsync(10_000)
+      await expect(sending).rejects.toThrow('reloadPlugins did not answer within 10000ms')
+      expect(events.filter((event) => event.type === 'turn')).toHaveLength(1)
+      expect(events.filter((event) => event.type === 'turn').at(-1)).toMatchObject({
+        state: 'failed',
+      })
+      expect(sent).toBe(0)
+      expect(fq.closeCount).toBe(1)
+      expect(fq.returnCount).toBe(1)
+      expect(handle.status()).toBe('idle')
+      expect(handle.isRetiring?.()).toBe(true)
+
+      await expect(handle.send('Retry while old query exits.')).rejects.toThrow()
+      expect(reload).toHaveBeenCalledTimes(1)
+      finishReload()
+      await vi.advanceTimersByTimeAsync(0)
+      await expect(handle.send('Retry after late reload answer.')).rejects.toThrow()
+      expect(reload).toHaveBeenCalledTimes(1)
+      expect(sent).toBe(0)
+    } finally {
+      finishExit()
+      await handle.close()
+      expect(handle.isRetiring?.()).toBe(false)
+      expect(handle.status()).toBe('ended')
+      vi.useRealTimers()
+      await consumer
+    }
+
+    const fresh = new FakeQuery()
+    const freshReload = vi.fn(async () => ({}))
+    Object.assign(fresh, { reloadPlugins: freshReload })
+    nextQuery = fresh
+    const retry = await runtime.resume(
+      { provider: 'claude', sessionId: 'sess_reload_timeout', cwd: home, rotation: 0 },
+      context,
+    )
+    try {
+      fresh.emit({
+        ...init('sess_reload_timeout', home),
+        plugins: [{ name: 'brobot', path: context.builtInSkills.root }],
+        skills: [],
+      })
+      await vi.waitFor(() => expect(retry.ref).not.toBeNull())
+      await retry.send('Retry on a fresh query.')
+      await vi.waitFor(() => expect(sent).toBe(1))
+      expect(freshReload).toHaveBeenCalledTimes(1)
+      expect(reload).toHaveBeenCalledTimes(1)
+    } finally {
+      await retry.close()
+    }
+  })
 })

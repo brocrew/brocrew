@@ -211,6 +211,7 @@ interface ContractLedger {
  * heuristic anywhere in that chain — an optional member is a key like any other.
  */
 const CONTRACT_MEMBERS: Record<keyof SessionHandle, string> = {
+  isRetiring: 'adapter-initiated teardown before its terminal status arrives',
   builtInSkillsConfirmed:
     'whether SDK init confirmed the installed skill catalogue for this launch',
   refreshManagedPlugins: 'refresh managed tool attachments at a turn boundary where supported',
@@ -904,6 +905,8 @@ const codexDriver: Driver = {
       'the approval profile rides on `turn/start`, so the SERVER does the not-asking and there is ' +
       'no card for this adapter to suppress (034, measured on the live app-server)',
     gaps: {
+      isRetiring:
+        'Codex has no adapter-initiated closing interval before a terminal status; host-initiated closes carry the host closing state',
       refreshManagedPlugins:
         'Codex has no per-thread MCP configuration update; the managed wrapper reopens between turns',
       builtInSkillsConfirmed: 'Codex does not use the Claude SDK skill catalogue confirmation',
@@ -1045,6 +1048,8 @@ const fakeDriver: Driver = {
     wholesaleGrant: 'standing',
     unattended: 'no-card',
     gaps: {
+      isRetiring:
+        'the base Fake has no adapter-initiated retirement; host close and terminal status cover its lifecycle',
       refreshManagedPlugins:
         'The base Fake has no external plugin connection; wrapper controls supply a refresh fake',
       builtInSkillsConfirmed:
