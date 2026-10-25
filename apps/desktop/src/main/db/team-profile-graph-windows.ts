@@ -112,7 +112,7 @@ export class TeamProfileGraphWindows {
       () => {
         if (this.windows.get(owner) === owned && owned.serial === serial) {
           timedOut = true
-          void this.closeWindow(owner)
+          void this.closeWorker(owner, true)
         }
       },
       Math.max(1, B.parentDeadlineMs - (this.now() - admittedAt)),
@@ -127,7 +127,7 @@ export class TeamProfileGraphWindows {
       })
     } catch {
       this.failure()
-      await this.closeWindow(owner)
+      await this.closeWorker(owner, true)
       return graphUnavailable('worker')
     } finally {
       clearTimeout(watchdog)
@@ -140,7 +140,7 @@ export class TeamProfileGraphWindows {
       return graphUnavailable('cancelled')
     if (serial !== window.serial) return graphUnavailable('cancelled')
     if (result.type === 'unavailable' && request.operation === 'snapshot') {
-      await this.closeWindow(owner)
+      await this.closeWorker(owner, true)
       return result
     }
     if (result.type === 'snapshot') {
@@ -152,7 +152,13 @@ export class TeamProfileGraphWindows {
     return result
   }
   async closeWindow(owner: string): Promise<void> {
-    this.admit(owner)
+    await this.closeWorker(owner, false)
+  }
+  private async closeWorker(owner: string, keepAdmission: boolean): Promise<void> {
+    const admission = keepAdmission ? this.admissions.get(owner) : this.admit(owner)
+    const forget = (): void => {
+      if (!keepAdmission && this.admissions.get(owner) === admission) this.admissions.delete(owner)
+    }
     for (const queued of this.queue.filter((p) => p.owner === owner)) {
       clearTimeout(queued.timer)
       this.queue.splice(this.queue.indexOf(queued), 1)
@@ -160,16 +166,17 @@ export class TeamProfileGraphWindows {
     }
     const window = this.windows.get(owner)
     if (!window) {
-      this.admissions.delete(owner)
+      forget()
       return
     }
     if (window.expiry) clearTimeout(window.expiry)
     window.closing ??= window.reader.close().finally(() => {
       if (this.windows.get(owner) === window) this.windows.delete(owner)
-      this.admissions.delete(owner)
+      forget()
       this.drain()
     })
     await window.closing
+    forget()
   }
   private drain(): void {
     if (this.closed) return
@@ -186,5 +193,6 @@ export class TeamProfileGraphWindows {
       queued.resolve(graphUnavailable('closed'))
     }
     await Promise.all([...this.windows.keys()].map((owner) => this.closeWindow(owner)))
+    this.admissions.clear()
   }
 }

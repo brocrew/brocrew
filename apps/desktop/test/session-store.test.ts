@@ -932,6 +932,8 @@ function fakeBridge() {
     onStates: () => () => {},
     // ⚑ **D-026 · nor any kept files**: this store draws no files; the surfaces that do are UI-002's.
     filesKept: async () => ({ ok: true, files: [] }),
+    filesLibrary: async () => ({ type: 'released' }),
+    teamProfileGraph: async () => ({ type: 'released' }),
     // ⚑ **D-032 · nor a kept picture, nor Finder**: the viewer that asks for them is not this store.
     drawResource: async () => ({ ok: false, reason: 'no-store' }),
     revealResource: async () => ({ ok: false, reason: 'no-store' }),

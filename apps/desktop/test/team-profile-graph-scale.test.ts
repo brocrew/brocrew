@@ -125,3 +125,95 @@ for (const [identities, conversations, events] of [
       f.close()
     }
   }, 20000)
+
+it('admits or honestly refuses the 10k-identity/50k-pair boundary without partial counts', async () => {
+  const f = graphFixture()
+  try {
+    const at = Date.now() - 86400000
+    f.db.transaction(() => {
+      for (let i = 0; i < 10000; i++) {
+        f.identity(`aid:bound${i}`)
+        f.session(`b${i}`, `aid:bound${i}`, at)
+        f.root(`b${i}`)
+      }
+      for (let i = 0; i < 10000; i++)
+        for (let step = 1; step <= 5; step++)
+          f.event(
+            `b${i}`,
+            'message_sent',
+            JSON.stringify({ to: `b${(i + step) % 10000}` }),
+            0,
+            at,
+            i * 5 + step,
+          )
+    })()
+    f.db.prepare('UPDATE work SET created_at=?').run(at)
+    const bundle = await bundleAWorker(
+      'src/main/team-profile-graph.worker.ts',
+      f.directory,
+      'graph-boundary.cjs',
+    )
+    const reader = new TeamProfileGraphLifetime(
+      () =>
+        new Worker(bundle, {
+          workerData: { file: f.file, executionFile: f.executionFile },
+          resourceLimits: { maxOldGenerationSizeMb: 128, maxYoungGenerationSizeMb: 16 },
+        }),
+    )
+    try {
+      const result = await reader.read({ operation: 'snapshot' }, graphContext)
+      if (result.type === 'snapshot')
+        expect([result.nodeCount, result.edgeCount]).toEqual([10000, 50000])
+      else {
+        expect(result).toMatchObject({ type: 'unavailable', cause: 'budget', complete: false })
+        expect(result).not.toHaveProperty('nodes')
+        expect(result).not.toHaveProperty('metrics')
+      }
+      process.stdout.write('GRAPH_BOUNDARY ' + JSON.stringify(result) + '\n')
+    } finally {
+      await reader.close()
+    }
+  } finally {
+    f.close()
+  }
+}, 20000)
+
+it('leaves 80MiB of unrelated fictional prose outside event parsing and row counts', async () => {
+  const f = graphFixture()
+  try {
+    f.identity('aid:prose')
+    f.session('prose', 'aid:prose')
+    f.root('prose')
+    f.db.prepare('UPDATE work SET created_at=?').run(Date.now() - 86400000)
+    const prose = 'Fictional unrelated prose. '.repeat(330)
+    f.db.transaction(() => {
+      for (let i = 0; i < 10000; i++) f.event('prose', 'text', prose, 0, Date.now() - 86400000, i)
+    })()
+    const bundle = await bundleAWorker(
+      'src/main/team-profile-graph.worker.ts',
+      f.directory,
+      'graph-prose.cjs',
+    )
+    const reader = new TeamProfileGraphLifetime(
+      () => new Worker(bundle, { workerData: { file: f.file, executionFile: f.executionFile } }),
+    )
+    try {
+      const result = await reader.read({ operation: 'snapshot' }, graphContext)
+      expect(result).toMatchObject({ type: 'snapshot', nodeCount: 1, edgeCount: 0 })
+      if (result.type !== 'snapshot') throw Error('No complete prose control')
+      expect(result.metrics.rows).toBeLessThan(20)
+      process.stdout.write(
+        'GRAPH_UNRELATED_PROSE ' +
+          JSON.stringify({
+            fixtureBytes: Buffer.byteLength(prose) * 10000,
+            metrics: result.metrics,
+          }) +
+          '\n',
+      )
+    } finally {
+      await reader.close()
+    }
+  } finally {
+    f.close()
+  }
+}, 20000)

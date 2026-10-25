@@ -10,6 +10,12 @@ import {
   type FilesLibraryResult,
 } from '../../shared/files-library'
 import type { FilesLibraryWindows } from '../db/files-library-windows'
+import type { TeamProfileGraphWindows } from '../db/team-profile-graph-windows'
+import {
+  graphUnavailable,
+  type TeamProfileGraphRequest,
+  type TeamProfileGraphResult,
+} from '../../shared/team-profile-graph'
 import {
   readPluginInstructions,
   pluginInstructionSection,
@@ -2819,6 +2825,8 @@ export interface RuntimeHostDeps {
   windowReader?: WindowStoreReader
   filesLibraries?: FilesLibraryWindows
   filesLibraryRevision?: () => string | null
+  teamProfileGraphs?: TeamProfileGraphWindows
+  teamProfileGraphRevision?: () => string | null
   windowWriterStamp?: (query: WindowReadQuery) => WindowWriterStamp | null
   workSearchReader?: WorkSearchReader
   pastWorkSearchReader?: Pick<PastWorkSearchReader, 'read' | 'close'>
@@ -23246,6 +23254,34 @@ export class RuntimeHost implements LiveHost {
       }
     }
     return libraryUnavailable('changed')
+  }
+
+  async teamProfileGraphForWindow(
+    request: TeamProfileGraphRequest,
+    sink: RuntimeEventSink,
+  ): Promise<TeamProfileGraphResult> {
+    const graphs = this.deps.teamProfileGraphs
+    if (!graphs || this.launches.closed || !sink.alive || !sink.aPersonIsBehindIt)
+      return graphUnavailable('closed')
+    if (request.operation === 'release') {
+      await graphs.closeWindow(sink.ownerId)
+      return { type: 'released' }
+    }
+    const admission = graphs.admit(sink.ownerId)
+    const before = this.deps.teamProfileGraphRevision?.()
+    if (before === null || before === undefined) return graphUnavailable('changed')
+    const result = await graphs.read(sink.ownerId, request, before)
+    if (this.launches.closed || !sink.alive) return graphUnavailable('closed')
+    if (!graphs.isCurrent(sink.ownerId, admission)) return graphUnavailable('cancelled')
+    const after = this.deps.teamProfileGraphRevision?.()
+    return before !== after &&
+      (result.type === 'snapshot' || result.type === 'nodes' || result.type === 'edges')
+      ? { ...result, stale: true }
+      : result
+  }
+
+  async closeTeamProfileGraphWindow(owner: string): Promise<void> {
+    await this.deps.teamProfileGraphs?.closeWindow(owner)
   }
 
   async closeFilesLibraryWindow(owner: string): Promise<void> {
@@ -44854,6 +44890,7 @@ export class RuntimeHost implements LiveHost {
     const pastWorkSearchClosed = this.deps.pastWorkSearchReader?.close() ?? Promise.resolve()
     const windowReadsClosed = this.deps.windowReader?.close() ?? Promise.resolve()
     const filesLibrariesClosed = this.deps.filesLibraries?.close() ?? Promise.resolve()
+    const teamProfileGraphsClosed = this.deps.teamProfileGraphs?.close() ?? Promise.resolve()
     if (this.providerLimitExpiry !== null) clearTimeout(this.providerLimitExpiry)
     this.providerLimitExpiry = null
     this.providerLimitFacts.invalidate()
@@ -44896,11 +44933,12 @@ export class RuntimeHost implements LiveHost {
         pastWorkSearchClosed,
         windowReadsClosed,
         filesLibrariesClosed,
+        teamProfileGraphsClosed,
         memoryClosed,
       ])
     } finally {
       // A failed session close must still leave memory quiescent before SQLite closes.
-      await Promise.allSettled([memoryClosed])
+      await Promise.allSettled([memoryClosed, teamProfileGraphsClosed])
       // 🔴 **692 · …and recorded once the teardown is over** (R34c). ⛔ A crash, a kill or a forced
       // exit that lands before this line records NOTHING, so what the quit was closing comes back
       // closed — which is what R34c rules and what the rail's hover tells a person. ⚠️ **In a

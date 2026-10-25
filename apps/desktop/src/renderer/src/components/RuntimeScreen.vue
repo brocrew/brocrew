@@ -258,6 +258,7 @@ import { type WorkGivenOutReading } from '../lib/work-given-out'
 import { theWorkAPersonGave } from '../lib/working-together'
 import { filesReadFor } from '../lib/files-kept'
 import { createFilesLibrary, provideFilesLibrary } from '../composables/useFilesLibrary'
+import { createTeamProfileGraph, provideTeamProfileGraph } from '../composables/useTeamProfileGraph'
 import FilesLibraryPreview from './FilesLibraryPreview.vue'
 import { useWhoCalledWhom } from '../composables/useWhoCalledWhom'
 import { MAX_DIGEST_SPAN_MS } from '../../../shared/digest'
@@ -1397,6 +1398,11 @@ const filesLibrary = createFilesLibrary({
     activeId.value === null ? null : { id: activeId.value, name: conversationName(activeId.value) },
 })
 provideFilesLibrary(filesLibrary)
+const teamProfileGraph = createTeamProfileGraph({
+  read: (request) => window.api.runtime.teamProfileGraph(request),
+  workspace: () => info.value?.workspace.path ?? null,
+})
+provideTeamProfileGraph(teamProfileGraph)
 
 /**
  * What each provider can do, as its adapter declares it (039).
@@ -3326,9 +3332,15 @@ let stopListening: (() => void) | null = null
  * the states, and a message that kept a file reads the files again ({@link readTheFiles}, UI-002).
  */
 let stopHearingStates: (() => void) | null = null
+const hearGraphChanges = (listener: Parameters<typeof window.api.runtime.onChanged>[0]) =>
+  window.api.runtime.onChanged((message) => {
+    teamProfileGraph.markStale()
+    listener(message)
+  })
 
 onMounted(() => {
   stopHearingStates = listenProviderStates(window.api.runtime, store, (message) => {
+    teamProfileGraph.markStale()
     rail.value?.hearStates(message)
     // ⚑ **UI-002 · a file kept anywhere is read again at once** — see {@link readTheFiles}.
     if (message.kept.length > 0) {
@@ -3339,7 +3351,7 @@ onMounted(() => {
   // ⚑ **UI-002 · the files' first read** — they have no tick, so a screen that remounts on a
   // conversation already open reads them itself ({@link readTheFiles}); on the launcher it asks nothing.
   void readTheFiles()
-  stopListening = whenTheWorldMoves((listener) => window.api.runtime.onChanged(listener), {
+  stopListening = whenTheWorldMoves(hearGraphChanges, {
     conversations: () => {
       filesLibrary.markStale()
       void rail.value?.refreshResumable().then(lookAgainIfItMoved)

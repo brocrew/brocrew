@@ -72,6 +72,8 @@ import { startLimitsReader } from './db/start-limits-reader'
 import { startWindowReader } from './db/start-window-reader'
 import { startFilesLibrary } from './db/start-files-library'
 import { FilesLibraryWindows } from './db/files-library-windows'
+import { TeamProfileGraphWindows } from './db/team-profile-graph-windows'
+import { startTeamProfileGraph } from './db/start-team-profile-graph'
 import { startWorkSearch } from './db/start-work-search'
 import { startPastWorkSearch } from './db/start-past-work-search'
 import { createAppLifetime } from './app-lifetime'
@@ -785,6 +787,21 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
         .get()
       return JSON.stringify(stamp)
     },
+    teamProfileGraphs: new TeamProfileGraphWindows(
+      (admission, failure) =>
+        startTeamProfileGraph(database.name, profileExecutionFile(userData), admission, failure),
+      Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+    ),
+    teamProfileGraphRevision: () => {
+      if (store.canReadFreshSnapshot?.() !== true) return null
+      return JSON.stringify(
+        database
+          .prepare(
+            'SELECT total_changes() AS writes, data_version AS version FROM pragma_data_version',
+          )
+          .get(),
+      )
+    },
     themes: themes ?? undefined,
     mainThreadWork,
     // Sessions and their events are recorded here, so they outlive this process.
@@ -1486,6 +1503,7 @@ function registerIpc(runtimeHost: RuntimeHost, localZone: () => LocalZone | null
         libraryWindows.add(event.sender)
         const closeLibrary = () => {
           void runtimeHost.closeFilesLibraryWindow(sink.ownerId)
+          void runtimeHost.closeTeamProfileGraphWindow(sink.ownerId)
         }
         event.sender.on('render-process-gone', closeLibrary)
         event.sender.once('destroyed', closeLibrary)

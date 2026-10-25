@@ -529,6 +529,8 @@ const HOW_EACH_VERB_IS_BUILT: Record<RuntimeCommandKind, VerbRow> = {
   // ⚑ **D-026 · `plain-by-construction`**, `whoCalledWhom`'s reading: the preload writes the outer
   // literal `{ kind: 'filesKept', ...input }` itself, and every field of every scope is a string.
   filesKept: { how: 'plain-by-construction' },
+  filesLibrary: { how: 'plain-by-construction' },
+  teamProfileGraph: { how: 'plain-by-construction' },
   readChildWork: { how: 'plain-by-construction' },
   readChildState: { how: 'plain-by-construction' },
   sendToChild: { how: 'plain-by-construction' },
@@ -746,7 +748,7 @@ describe('§2 · every renderer→main verb is accounted for (361 §1)', () => {
     // ⚑ And `setServicesOn`, a person's services switch: 114 → 115.
     // ⚑ And `stoppedWorkForAPerson`, the pieces whose helper stopped: 115 → 116.
     // Link resolution, both typed-wait verbs and recent activity are present in the same bridge.
-    expect(Object.keys(HOW_EACH_VERB_IS_BUILT)).toHaveLength(137)
+    expect(Object.keys(HOW_EACH_VERB_IS_BUILT)).toHaveLength(139)
     // ⚑ 8 → 10 at `744`: `savedDrafts`, `saveDrafts`. 10 → 9 at D-016: `getDemoSeed` out.
     // ⚑ 9 → 10 at D-031: `localZone`.
     expect(Object.keys(THE_APP_CHANNELS)).toHaveLength(10)
@@ -956,7 +958,7 @@ describe('§2 · every renderer→main verb is accounted for (361 §1)', () => {
       // ⚑ `stoppedWorkForAPerson` moves the MIDDLE number by one: it carries no payload.
       // Link resolution and action answers build literals; incident reads carry no payload.
       // Recent activity adds one plain packet, built from two numeric window bounds.
-      102, 27, 8,
+      104, 27, 8,
     ])
   })
 

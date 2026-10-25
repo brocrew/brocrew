@@ -8479,6 +8479,7 @@ export type RuntimeCommand =
    */
   | ({ kind: 'filesKept' } & FilesKeptScope)
   | { kind: 'filesLibrary'; request: import('./files-library').FilesLibraryRequest }
+  | { kind: 'teamProfileGraph'; request: import('./team-profile-graph').TeamProfileGraphRequest }
   | { kind: 'searchWork'; conversation: string; query: import('./work-search').WorkSearchQuery }
   // 112. Keyed on the AGENT even for the journal and the script, because the run id those two are
   // filed under is the one thing the provider does not put on the wire — see `main/child-work.ts`.
@@ -9159,6 +9160,7 @@ export interface RuntimeCommandResults {
   /** 🔴 **D-026 · the files kept in one scope**, or the word for a scope that names nothing. */
   filesKept: FilesKept
   filesLibrary: import('./files-library').FilesLibraryResult
+  teamProfileGraph: import('./team-profile-graph').TeamProfileGraphResult
   searchWork: import('./work-search').WorkSearchResult
   /** Where one of this session's paths is, shown in the file manager (356 §1). */
   revealPath: RevealResult
@@ -9923,6 +9925,9 @@ export interface RuntimeBridge {
   filesLibrary(
     request: import('./files-library').FilesLibraryRequest,
   ): Promise<import('./files-library').FilesLibraryResult>
+  teamProfileGraph(
+    request: import('./team-profile-graph').TeamProfileGraphRequest,
+  ): Promise<import('./team-profile-graph').TeamProfileGraphResult>
   searchWork(input: {
     conversation: string
     query: import('./work-search').WorkSearchQuery

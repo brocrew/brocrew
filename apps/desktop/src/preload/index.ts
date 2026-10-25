@@ -519,6 +519,10 @@ const runtime: RuntimeBridge = Object.freeze({
     command({ kind: 'filesLibrary', request }) as Promise<
       import('../shared/files-library').FilesLibraryResult
     >,
+  teamProfileGraph: (request: import('../shared/team-profile-graph').TeamProfileGraphRequest) =>
+    command({ kind: 'teamProfileGraph', request }) as Promise<
+      import('../shared/team-profile-graph').TeamProfileGraphResult
+    >,
   searchWork: (input: {
     conversation: string
     query: import('../shared/work-search').WorkSearchQuery

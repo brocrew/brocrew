@@ -29,7 +29,7 @@ export default defineConfig({
    * loud: *"this may cause tests to fail, lead to flaky behaviour or duplicated test runs"*. A
    * flaky new harness would be worse than no harness, so the discovery is done here instead.
    */
-  optimizeDeps: { include: ['vue', 'markdown-it'] },
+  optimizeDeps: { include: ['vue', 'markdown-it', 'd3-force'] },
   test: {
     name: 'dom',
     /**

@@ -27,6 +27,7 @@ import { useAgentStore } from '../composables/useAgentStore'
 import { useMinuteClock } from '../composables/useMinuteClock'
 import AgentState from './AgentState.vue'
 import TeamForest from './TeamForest.vue'
+import TeamProfileGraph from './TeamProfileGraph.vue'
 import type { ForestRow, ForestView } from '../lib/the-forest'
 import { NEW_AGENT } from '../lib/where-agents-are-created'
 import { noProviderSavedSays } from '../lib/front-door-words'
@@ -116,6 +117,7 @@ const store = props.store ?? useAgentStore()
 const TEAM_VIEWS = [
   { key: 'roster' as const, label: 'Directory' },
   { key: 'forest' as const, label: 'Who called whom' },
+  { key: 'profile-graph' as const, label: 'Profile graph' },
 ]
 type TeamView = (typeof TEAM_VIEWS)[number]['key']
 const showing = ref<TeamView>('roster')
@@ -143,8 +145,7 @@ function steer(event: KeyboardEvent, at: number): void {
   const key = keys[to]
   if (key === undefined) return
   showing.value = key
-  // ⚑ **Focus follows selection** — both panels are already in the document, so nothing is fetched
-  // and there is no reason to make a person press twice.
+  // Focus follows the selected tab. The profile graph reads on its first entry.
   strip.value?.querySelector<HTMLButtonElement>(`[data-cy="team-tab-${key}"]`)?.focus()
 }
 /**
@@ -309,6 +310,16 @@ function pressForest(row: ForestRow): void {
       data-cy="team-panel-forest"
     >
       <TeamForest :view="props.forest" @press="pressForest" />
+    </div>
+
+    <div
+      v-show="showing === 'profile-graph'"
+      id="team-panel-profile-graph"
+      role="tabpanel"
+      aria-labelledby="team-tab-profile-graph"
+      data-cy="team-panel-profile-graph"
+    >
+      <TeamProfileGraph :active="showing === 'profile-graph'" @open="emit('open', $event)" />
     </div>
 
     <div
@@ -962,8 +973,12 @@ function pressForest(row: ForestRow): void {
 }
 .team-tabs {
   display: flex;
+  flex-wrap: wrap;
   border-bottom: var(--border-width) solid var(--line);
   gap: var(--space-4);
+}
+.team-header {
+  flex-wrap: wrap;
 }
 
 .team-tab {
