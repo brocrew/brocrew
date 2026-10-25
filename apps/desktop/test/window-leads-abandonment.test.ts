@@ -136,6 +136,7 @@ it('a long-ledger reopen abandons its native scan at the grace and the next wind
   let pagesAtGrace: number | null = null
   let pagesAfterGrace: number | null = null
   let bodySucceeded = false
+  let evidenceFailure: unknown
   const markPhase = (name: string): void => {
     phase = name
     console.log(
@@ -210,8 +211,9 @@ it('a long-ledger reopen abandons its native scan at the grace and the next wind
             errorClass: error instanceof Error ? error.name : typeof error,
           }),
         )
-        if (bodySucceeded) throw error
+        evidenceFailure = error
       }
     }
   }
+  if (evidenceFailure !== undefined) throw evidenceFailure
 }, 30_000)
