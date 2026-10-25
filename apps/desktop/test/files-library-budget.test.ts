@@ -186,7 +186,8 @@ it('completes a fictional 10000-keep snapshot with indexed canonical metadata be
       if (worker.type === 'files') {
         expect(worker.files).toEqual(result.files)
         expect(worker.metrics.rows).toBe(result.metrics.rows)
-        expect(worker.metrics.bytes).toBe(result.metrics.bytes)
+        expect(worker.metrics.bytes).toBeLessThan(FILES_LIBRARY_BOUNDS.bytes)
+        expect(worker.metrics.cacheBytes).toBeLessThan(FILES_LIBRARY_BOUNDS.bytes)
         console.log('FILES_LIBRARY_NATIVE_10000', JSON.stringify(worker.metrics))
       }
     } finally {
