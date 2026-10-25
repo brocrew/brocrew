@@ -96,7 +96,9 @@ it('counts the complete workspace independently of the selected conversation tre
 it('fits two icon columns and readable wrapping filters beside the collapsed rail at 390px', async () => {
   const { m } = await pane(undefined, true)
   await vi.waitFor(() => expect(m.all('library-file')).toHaveLength(16))
-  const [first, second] = m.all('library-file').map((one) => one.getBoundingClientRect())
+  const files = m.all('library-file'),
+    first = files[0]!.getBoundingClientRect(),
+    second = files[1]!.getBoundingClientRect()
   expect(second.top).toBe(first.top)
   expect(second.left).toBeGreaterThan(first.left)
   for (const select of m.q('files-library').querySelectorAll('select'))

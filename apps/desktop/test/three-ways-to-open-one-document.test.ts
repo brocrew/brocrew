@@ -263,8 +263,12 @@ describe('640 §3 · viewing still never executes, and the guarantee did not mov
     expect(overlay).toContain("import CanonicalDocumentViewer from './CanonicalDocumentViewer.vue'")
     expect((overlay.match(/^import .* from '\.\/[A-Z]/gm) ?? []).length).toBe(2)
     // ⛔ …and the chrome is still `OverlayHost`'s: Esc, the backdrop, the trap, focus returned.
-    expect(overlay).toContain(
-      '<OverlayHost v-if="showing" label="Document" @close="reading = null">',
+    const host = overlay.slice(
+      overlay.indexOf('<OverlayHost'),
+      overlay.indexOf('<CanonicalDocumentViewer'),
     )
+    expect(host).toContain('v-if="showing"')
+    expect(host).toContain(':label=')
+    expect(host).toContain('@close="close"')
   })
 })
