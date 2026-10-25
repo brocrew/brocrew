@@ -1,3 +1,4 @@
+import { performance } from 'node:perf_hooks'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -437,6 +438,45 @@ class RecordingSink implements RuntimeEventSink {
   sendLiveness(): void {}
 }
 
+const traceFixturePhase = <T>(phase: string, operation: () => T): T => {
+  const began = performance.now()
+  const emit = (event: string, outcome?: string): void => {
+    console.log(
+      JSON.stringify({
+        fixture: 'stop-fixture',
+        phase,
+        event,
+        outcome,
+        atMs: performance.now(),
+        elapsedMs: performance.now() - began,
+      }),
+    )
+  }
+  emit('begin')
+  try {
+    const value = operation()
+    if (value instanceof Promise) {
+      return value.then(
+        (answer) => {
+          emit('end', 'fulfilled')
+          return answer
+        },
+        (error: unknown) => {
+          emit('end', 'rejected')
+          throw error
+        },
+      ) as T
+    }
+    emit('end', 'returned')
+    return value
+  } catch (error) {
+    emit('end', 'threw')
+    throw error
+  }
+}
+
+let launchTraceId = 0
+
 /** ⛔ One launch: its toolset, and the two levers on its handle. */
 interface Launch {
   readonly toolset: AgentToolset | undefined
@@ -458,7 +498,11 @@ interface ResumeHold {
  * ⚑ **`656`'s levers** — the stream FAILS (the host's `for await` throws, so the adapter is never
  * told and keeps its status), and `close()` is held, so the window a stop is under way stays open.
  */
-function withLevers(handle: SessionHandle, toolset: AgentToolset | undefined): Launch {
+function withLevers(
+  handle: SessionHandle,
+  toolset: AgentToolset | undefined,
+  traceId: number,
+): Launch {
   let failTheStream!: () => void
   let letCloseFinish!: () => void
   let closeReleased = false
@@ -469,10 +513,11 @@ function withLevers(handle: SessionHandle, toolset: AgentToolset | undefined): L
   })
   failed.catch(() => undefined)
   const closeMayFinish = new Promise<void>((resolve) => {
-    letCloseFinish = () => {
-      closeReleased = true
-      resolve()
-    }
+    letCloseFinish = () =>
+      traceFixturePhase(`fake-release-${traceId}`, () => {
+        closeReleased = true
+        resolve()
+      })
   })
   const proxied = new Proxy(handle, {
     get(target, property) {
@@ -492,10 +537,12 @@ function withLevers(handle: SessionHandle, toolset: AgentToolset | undefined): L
       }
       if (property === 'close') {
         return async (): Promise<void> => {
-          closeStarted = true
-          await closeMayFinish
-          await target.close()
-          closeFinished = true
+          await traceFixturePhase(`fake-close-${traceId}`, async () => {
+            closeStarted = true
+            await closeMayFinish
+            await target.close()
+            closeFinished = true
+          })
         }
       }
       const value = Reflect.get(target, property, target) as unknown
@@ -533,7 +580,9 @@ class LeveredRuntime extends FakeRuntime {
     super(provider, { sessions })
   }
   override async start(options: Parameters<FakeRuntime['start']>[0]) {
-    const launch = withLevers(await super.start(options), options.agentTools)
+    const traceId = ++launchTraceId
+    const handle = await traceFixturePhase(`fake-start-${traceId}`, () => super.start(options))
+    const launch = withLevers(handle, options.agentTools, traceId)
     this.launches.push(launch)
     return launch.handle as Awaited<ReturnType<FakeRuntime['start']>>
   }
@@ -566,6 +615,7 @@ describe('§3 · the host — a stop changes nothing about a piece or about the 
     store = createSessionStore(db, tick)
     counter = 0
     launches = []
+    launchTraceId = 0
     resumeHold = { held: null, entered: 0 }
     const sessions = new FakeProviderSessions()
     host = new RuntimeHost({
@@ -596,10 +646,14 @@ describe('§3 · the host — a stop changes nothing about a piece or about the 
   })
 
   afterEach(async () => {
-    for (const launch of launches) launch.letCloseFinish()
-    await host.closeAll()
-    db.close()
-    for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
+    traceFixturePhase('release-owned-fakes', () => {
+      for (const launch of launches) launch.letCloseFinish()
+    })
+    await traceFixturePhase('host-close', () => host.closeAll())
+    traceFixturePhase('database-close', () => db.close())
+    traceFixturePhase('remove-fixture-directories', () => {
+      for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
+    })
   })
 
   const waitFor = async (predicate: () => boolean, what: string): Promise<void> => {
@@ -649,6 +703,7 @@ describe('§3 · the host — a stop changes nothing about a piece or about the 
       { provider: 'claude', profileId: 'worker', approvalMode: 'auto', cwd: root },
       window,
     )
+    launches.at(-1)!.letCloseFinish()
     await host.close(first.sessionId, window)
     const { sessionId: pm } = await host.createSession(
       { provider: 'claude', profileId: 'pm', approvalMode, cwd: root },
@@ -725,11 +780,57 @@ describe('§3 · the host — a stop changes nothing about a piece or about the 
       expect(workerLaunch.closeFinished).toBe(true)
       expect(settled).toBe(true)
     } finally {
-      for (const launch of launches) launch.letCloseFinish()
-      await preparing
-      for (const launch of launches) launch.letCloseFinish()
-      await closing
-      warnings.mockRestore()
+      try {
+        for (const launch of launches) launch.letCloseFinish()
+        await preparing
+        for (const launch of launches) launch.letCloseFinish()
+        await closing
+      } finally {
+        warnings.mockRestore()
+      }
+    }
+  })
+
+  it('phase evidence does not call a held or rejected operation completed', async () => {
+    const rows: { phase: string; event: string; outcome?: string }[] = []
+    const output = vi.spyOn(console, 'log').mockImplementation((message: unknown) => {
+      if (typeof message === 'string' && message.startsWith('{"fixture":"stop-fixture"')) {
+        rows.push(JSON.parse(message))
+      }
+    })
+    let release!: () => void
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const pending = traceFixturePhase('pending-control', () => held)
+    try {
+      expect(rows.filter((row) => row.phase === 'pending-control').map((row) => row.event)).toEqual(
+        ['begin'],
+      )
+      const failure = new Error('fictional close rejected')
+      await expect(
+        traceFixturePhase('rejection-control', () => Promise.reject(failure)),
+      ).rejects.toBe(failure)
+      expect(
+        rows.filter((row) => row.phase === 'rejection-control').map((row) => row.outcome),
+      ).toEqual([undefined, 'rejected'])
+      expect(() =>
+        traceFixturePhase('throw-control', () => {
+          throw failure
+        }),
+      ).toThrow(failure)
+      expect(rows.filter((row) => row.phase === 'throw-control').map((row) => row.outcome)).toEqual(
+        [undefined, 'threw'],
+      )
+      release()
+      await pending
+      expect(
+        rows.filter((row) => row.phase === 'pending-control').map((row) => row.outcome),
+      ).toEqual([undefined, 'fulfilled'])
+    } finally {
+      release()
+      await pending
+      output.mockRestore()
     }
   })
   const anotherPm = async (): Promise<{ pm: string; pmLaunch: Launch }> => {

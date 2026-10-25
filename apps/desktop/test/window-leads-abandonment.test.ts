@@ -124,29 +124,64 @@ afterAll(async () => {
 })
 
 it('a long-ledger reopen abandons its native scan at the grace and the next window read proceeds', async () => {
-  let last = performance.now()
+  const measuredFrom = performance.now()
+  let last = measuredFrom
   let mainGapMs = 0
+  let phase = 'resume'
+  let largestGapPhase: string | null = null
+  let largestGapBeganAtMs: number | null = null
+  let largestGapEndedAtMs: number | null = null
+  let reopenMs: number | null = null
+  let queuedMs: number | null = null
+  let pagesAtGrace: number | null = null
+  let pagesAfterGrace: number | null = null
+  let bodySucceeded = false
+  const markPhase = (name: string): void => {
+    phase = name
+    console.log(
+      JSON.stringify({
+        fixture: 'long-leads',
+        phase,
+        event: 'begin',
+        atMs: performance.now() - measuredFrom,
+      }),
+    )
+  }
   const heartbeat = setInterval(() => {
     const at = performance.now()
-    mainGapMs = Math.max(mainGapMs, at - last)
+    const gap = at - last
+    if (gap > mainGapMs) {
+      mainGapMs = gap
+      largestGapPhase = phase
+      largestGapBeganAtMs = last - measuredFrom
+      largestGapEndedAtMs = at - measuredFrom
+    }
     last = at
   }, 10)
   try {
+    markPhase('resume')
     const began = performance.now()
     await host.resumeSession('fictional-reopen', sink)
-    const reopenMs = performance.now() - began
+    reopenMs = performance.now() - began
+    markPhase('after-grace')
     expect(leadSignal?.aborted).toBe(true)
-    const pagesAtGrace = Atomics.load(pages, 0)
+    pagesAtGrace = Atomics.load(pages, 0)
     expect(pagesAtGrace).toBeGreaterThan(0)
+    markPhase('routes-read')
     const queuedAt = performance.now()
     const answer = await reader.read({ kind: 'routes' })
-    const queuedMs = performance.now() - queuedAt
-    const pagesAfterGrace = Atomics.load(pages, 0) - pagesAtGrace
+    queuedMs = performance.now() - queuedAt
+    pagesAfterGrace = Atomics.load(pages, 0) - pagesAtGrace
     expect(answer.kind).toBe('routes')
+    markPhase('native-lead-settlement')
     expect(await nativeLead).toBeInstanceOf(WindowReadUnavailable)
+    markPhase('assertions')
     expect(pagesAfterGrace).toBeLessThanOrEqual(1)
     expect(reopenMs).toBeGreaterThanOrEqual(950)
     expect(mainGapMs).toBeLessThan(250)
+    bodySucceeded = true
+  } finally {
+    clearInterval(heartbeat)
     const result = {
       ledgerRows,
       pageRows: WINDOW_READ_BOUNDS.leadPageRows,
@@ -155,11 +190,28 @@ it('a long-ledger reopen abandons its native scan at the grace and the next wind
       mainGapMs,
       pagesAtGrace,
       pagesAfterGrace,
+      largestGapPhase,
+      largestGapBeganAtMs,
+      largestGapEndedAtMs,
+      phaseAtEnd: phase,
+      elapsedMs: performance.now() - measuredFrom,
+      bodySucceeded,
     }
     console.log(JSON.stringify(result))
     const evidence = process.env['BROBOT_LONG_LEADS_MEASUREMENTS']
-    if (evidence !== undefined) writeFileSync(evidence, JSON.stringify(result, null, 2) + '\n')
-  } finally {
-    clearInterval(heartbeat)
+    if (evidence !== undefined) {
+      try {
+        writeFileSync(evidence, JSON.stringify(result, null, 2) + '\n')
+      } catch (error) {
+        console.error(
+          JSON.stringify({
+            fixture: 'long-leads',
+            phase: 'measurements-write',
+            errorClass: error instanceof Error ? error.name : typeof error,
+          }),
+        )
+        if (bodySucceeded) throw error
+      }
+    }
   }
 }, 30_000)

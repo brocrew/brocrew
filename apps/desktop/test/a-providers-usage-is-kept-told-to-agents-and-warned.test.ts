@@ -1,3 +1,4 @@
+import { performance } from 'node:perf_hooks'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -68,6 +69,43 @@ const WEEK = 7 * 24 * 60 * 60 * 1000
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // §1 · the file
 // ─────────────────────────────────────────────────────────────────────────────────────────────
+
+const traceFixturePhase = <T>(phase: string, operation: () => T): T => {
+  const began = performance.now()
+  const emit = (event: string, outcome?: string): void => {
+    console.log(
+      JSON.stringify({
+        fixture: 'usage-cleanup',
+        phase,
+        event,
+        outcome,
+        atMs: performance.now(),
+        elapsedMs: performance.now() - began,
+      }),
+    )
+  }
+  emit('begin')
+  try {
+    const value = operation()
+    if (value instanceof Promise) {
+      return value.then(
+        (answer) => {
+          emit('end', 'fulfilled')
+          return answer
+        },
+        (error: unknown) => {
+          emit('end', 'rejected')
+          throw error
+        },
+      ) as T
+    }
+    emit('end', 'returned')
+    return value
+  } catch (error) {
+    emit('end', 'threw')
+    throw error
+  }
+}
 
 describe('§1 · the readings file', () => {
   let dir: string
@@ -222,9 +260,9 @@ describe('§2–§4 · on a host', () => {
   })
 
   afterEach(async () => {
-    await host.closeAll()
-    db.close()
-    rmSync(userData, { recursive: true, force: true })
+    await traceFixturePhase('host-close', () => host.closeAll())
+    traceFixturePhase('database-close', () => db.close())
+    traceFixturePhase('remove-user-data', () => rmSync(userData, { recursive: true, force: true }))
   })
 
   const open = async (provider: Provider = 'claude'): Promise<FakeSessionHandle> => {

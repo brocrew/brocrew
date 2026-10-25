@@ -1,3 +1,4 @@
+import { performance } from 'node:perf_hooks'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
@@ -102,6 +103,43 @@ class Sink implements RuntimeEventSink {
   sendLiveness(): void {}
 }
 
+const traceFixturePhase = <T>(phase: string, operation: () => T): T => {
+  const began = performance.now()
+  const emit = (event: string, outcome?: string): void => {
+    console.log(
+      JSON.stringify({
+        fixture: 'name-setup',
+        phase,
+        event,
+        outcome,
+        atMs: performance.now(),
+        elapsedMs: performance.now() - began,
+      }),
+    )
+  }
+  emit('begin')
+  try {
+    const value = operation()
+    if (value instanceof Promise) {
+      return value.then(
+        (answer) => {
+          emit('end', 'fulfilled')
+          return answer
+        },
+        (error: unknown) => {
+          emit('end', 'rejected')
+          throw error
+        },
+      ) as T
+    }
+    emit('end', 'returned')
+    return value
+  } catch (error) {
+    emit('end', 'threw')
+    throw error
+  }
+}
+
 describe('538 · a name the app mints for itself', () => {
   let userData: string
   let work: string
@@ -115,42 +153,54 @@ describe('538 · a name the app mints for itself', () => {
   const tick = (): number => clock++
 
   beforeEach(() => {
-    userData = mkdtempSync(join(tmpdir(), 'brobot2-538-'))
-    work = mkdtempSync(join(tmpdir(), 'brobot2-538-work-'))
-    db = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
+    userData = traceFixturePhase('user-data-temp', () =>
+      mkdtempSync(join(tmpdir(), 'brobot2-538-')),
+    )
+    work = traceFixturePhase('work-temp', () => mkdtempSync(join(tmpdir(), 'brobot2-538-work-')))
+    db = traceFixturePhase('database-open', () => openDatabase(join(userData, 'brobot2.sqlite')))
+    traceFixturePhase('migrations', () => applyMigrations(db, migrationsFolder))
     clock = 5_000_000
-    store = createSessionStore(db, tick)
+    store = traceFixturePhase('store-create', () => createSessionStore(db, tick))
     counter = 0
     sessions = new FakeProviderSessions()
-    host = new RuntimeHost({
-      store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
-      createRuntime: (provider: Provider) => new FakeRuntime(provider, { sessions }),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', 'default', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
-      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
-      newSessionId: () => `sess_${++counter}`,
-      now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
-      readInstructions: () => ({
-        instructions: NOTHING_INJECTED,
-        systemHint: undefined,
-        memoryLoaded: null,
-      }),
-    })
+    host = traceFixturePhase(
+      'host-create',
+      () =>
+        new RuntimeHost({
+          store,
+          discoverSessions: NO_DISCOVERY,
+          nativeTranscriptPath: () => null,
+          exportDirectory: () => join(userData, 'exports'),
+          createRuntime: (provider: Provider) => new FakeRuntime(provider, { sessions }),
+          prepareProviderHome: (provider: Provider, profileId?: string) => {
+            const home = join(
+              userData,
+              'provider-homes',
+              'default',
+              profileId ?? 'default',
+              provider,
+            )
+            mkdirSync(home, { recursive: true })
+            return home
+          },
+          providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
+          resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
+          newSessionId: () => `sess_${++counter}`,
+          now: tick,
+          readProviderConfig: (provider, home) => ({
+            home,
+            homeEnv: 'CLAUDE_CONFIG_DIR',
+            model: 'm',
+            authNote: null,
+            files: [],
+          }),
+          readInstructions: () => ({
+            instructions: NOTHING_INJECTED,
+            systemHint: undefined,
+            memoryLoaded: null,
+          }),
+        }),
+    )
     window = new Sink('webContents:1')
   })
 
