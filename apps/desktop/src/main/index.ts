@@ -70,6 +70,8 @@ import { limitsWriterSampler } from './db/fresh-limits-snapshot'
 import { windowWriterSampler } from './db/window-writer-stamp'
 import { startLimitsReader } from './db/start-limits-reader'
 import { startWindowReader } from './db/start-window-reader'
+import { startFilesLibrary } from './db/start-files-library'
+import { FilesLibraryWindows } from './db/files-library-windows'
 import { startWorkSearch } from './db/start-work-search'
 import { startPastWorkSearch } from './db/start-past-work-search'
 import { createAppLifetime } from './app-lifetime'
@@ -773,6 +775,16 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
     workSearchReader: startWorkSearch(database.name),
     pastWorkSearchReader: startPastWorkSearch(),
     windowReader: startWindowReader(database.name),
+    filesLibraries: new FilesLibraryWindows(() => startFilesLibrary(database.name)),
+    filesLibraryRevision: () => {
+      if (store.canReadFreshSnapshot?.() !== true) return null
+      const stamp = database
+        .prepare(
+          'SELECT total_changes() AS writes, data_version AS version FROM pragma_data_version',
+        )
+        .get()
+      return JSON.stringify(stamp)
+    },
     themes: themes ?? undefined,
     mainThreadWork,
     // Sessions and their events are recorded here, so they outlive this process.
@@ -1457,6 +1469,7 @@ function registerIpc(runtimeHost: RuntimeHost, localZone: () => LocalZone | null
       lookAtTheWindow()
     },
   })
+  const libraryWindows = new WeakSet<Electron.WebContents>()
   registerRuntimeIpc({
     // Each command's synchronous part is timed under its kind, for the stall watch.
     ipc: {
@@ -1467,7 +1480,18 @@ function registerIpc(runtimeHost: RuntimeHost, localZone: () => LocalZone | null
     },
     host: runtimeHost,
     // Events go back to the renderer that asked for the session, and only there.
-    sinkFor: (event) => webContentsSink(event.sender, mainThreadWork),
+    sinkFor: (event) => {
+      const sink = webContentsSink(event.sender, mainThreadWork)
+      if (!libraryWindows.has(event.sender)) {
+        libraryWindows.add(event.sender)
+        const closeLibrary = () => {
+          void runtimeHost.closeFilesLibraryWindow(sink.ownerId)
+        }
+        event.sender.on('render-process-gone', closeLibrary)
+        event.sender.once('destroyed', closeLibrary)
+      }
+      return sink
+    },
     pageReceipt: thePageReceipt,
   })
 }

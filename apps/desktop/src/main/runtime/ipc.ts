@@ -5,6 +5,7 @@ import type { IpcMainInvokeEvent, WebContents } from 'electron'
 import { isAbsolute } from 'node:path'
 import { z } from 'zod'
 import { workSearchQuery } from '../../shared/work-search'
+import { filesLibraryRequest } from '../../shared/files-library'
 import {
   MAX_BACKGROUND_ID,
   MAX_SETTINGS_BYTES,
@@ -877,6 +878,7 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
     conversation: sessionId,
     query: workSearchQuery,
   }),
+  z.strictObject({ kind: z.literal('filesLibrary'), request: filesLibraryRequest }),
   z.discriminatedUnion('scope', [
     z.strictObject({
       kind: z.literal('filesKept'),
@@ -1885,6 +1887,7 @@ const DURING_A_QUIT: Record<RuntimeCommandKind, QuitRuling> = {
   // it reads `deps.store`, the one thing this door exists to keep out of a quit, and every file it
   // lists is durable and read the same at the next launch.
   filesKept: 'refused',
+  filesLibrary: 'refused',
   searchWork: 'refused',
   readChildWork: 'refused',
   // 296. Both refused, and the send is the easier of the two to rule on: a quit is the moment this
@@ -2525,6 +2528,8 @@ export async function executeRuntimeCommand(
       // act, and no agent reaches this door — it is on no toolset. ⚑ Synchronous, like every read
       // on this wire.
       return host.filesKept(command)
+    case 'filesLibrary':
+      return await host.filesLibraryForWindow(command.request, sink)
     case 'searchWork':
       return await host.searchWork(command.conversation, command.query)
     case 'readChildState':
