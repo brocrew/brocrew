@@ -314,13 +314,36 @@ export function useTeamProfileCanvas(options: {
       top = Math.min(top, p.y - r)
       bottom = Math.max(bottom, p.y + r)
     })
+    const canvas = options.canvas.value!,
+      css = getComputedStyle(canvas),
+      textSize = parseFloat(css.fontSize) || 13,
+      context = canvas.getContext('2d')
+    if (context) context.font = `${textSize}px ${css.fontFamily}`
+    const badgeWidth = options
+      .view()!
+      .nodes.reduce(
+        (maximum, node) =>
+          Math.max(maximum, context?.measureText(String(node.descendants)).width ?? 0),
+        0,
+      )
+    // Keep CSS-pixel text space even when badges are toggled after fitting.
+    const padLeft = 12,
+      padRight = 17 + badgeWidth,
+      padTop = 12 + 2 * (textSize + 3),
+      padBottom = 12,
+      availableWidth = Math.max(1, width - padLeft - padRight),
+      availableHeight = Math.max(1, height - padTop - padBottom)
     const k = Math.max(
       0.15,
-      Math.min(5, width / Math.max(1, right - left), height / Math.max(1, bottom - top)),
+      Math.min(
+        5,
+        availableWidth / Math.max(1, right - left),
+        availableHeight / Math.max(1, bottom - top),
+      ),
     )
     transform = {
-      x: width / 2 - ((left + right) / 2) * k,
-      y: height / 2 - ((top + bottom) / 2) * k,
+      x: padLeft + availableWidth / 2 - ((left + right) / 2) * k,
+      y: padTop + availableHeight / 2 - ((top + bottom) / 2) * k,
       k,
     }
     requestDraw()

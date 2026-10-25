@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, ref } from 'vue'
+import { page as browserPage } from 'vitest/browser'
 import TeamWorkspace from '../../src/renderer/src/components/TeamWorkspace.vue'
 import TeamProfileGraph from '../../src/renderer/src/components/TeamProfileGraph.vue'
 import {
@@ -82,7 +83,12 @@ it('pages every agent, focuses item 51, retains card context during search and r
   await nextTick()
   expect(s.mounted.host.querySelector('aside')?.textContent).toContain('Agent 00051')
   s.button('Close card').click()
+  await new Promise(requestAnimationFrame)
+  expect(document.activeElement).toBe(item)
+  item.click()
   await nextTick()
+  item.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+  await new Promise(requestAnimationFrame)
   expect(document.activeElement).toBe(item)
   item.click()
   const search = s.mounted.host.querySelector<HTMLInputElement>('input[type="search"]')!
@@ -373,3 +379,105 @@ it('moves only the dragged node while paused and preserves the viewport after re
     0,
   )
 })
+
+it.each([false, true])(
+  'selects the first real list and search click with forced colors %s',
+  async (forced) => {
+    const native = window.matchMedia.bind(window)
+    vi.spyOn(window, 'matchMedia').mockImplementation((query) =>
+      query.includes('prefers-reduced-motion')
+        ? ({
+            matches: true,
+            addEventListener() {},
+            removeEventListener() {},
+          } as unknown as MediaQueryList)
+        : query.includes('forced-colors')
+          ? ({
+              matches: forced,
+              addEventListener() {},
+              removeEventListener() {},
+            } as unknown as MediaQueryList)
+          : native(query),
+    )
+    const s = setup(100, false, true)
+    s.button('Profile graph').click()
+    await vi.waitFor(() =>
+      expect(s.mounted.host.querySelectorAll('[data-graph-agent]')).toHaveLength(50),
+    )
+    await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))
+    await browserPage.getByRole('button', { name: /^Agent 00001/ }).click()
+    await new Promise(requestAnimationFrame)
+    expect(
+      s.mounted.host
+        .querySelector('[data-graph-agent="fictional-00001"]')
+        ?.getAttribute('aria-pressed'),
+    ).toBe('true')
+    const search = s.mounted.host.querySelector<HTMLInputElement>('input[type="search"]')!
+    search.focus()
+    search.value = 'Agent 00051 fictional-51'
+    search.dispatchEvent(new Event('input', { bubbles: true }))
+    await nextTick()
+    await browserPage.getByRole('button', { name: /^Agent 00051/ }).click()
+    await new Promise(requestAnimationFrame)
+    expect(
+      s.mounted.host
+        .querySelector('[data-graph-agent="fictional-00051"]')
+        ?.getAttribute('aria-pressed'),
+    ).toBe('true')
+  },
+)
+it.each([299, 300])(
+  'paints every fitted badge at %s nodes including enlarged text',
+  async (count) => {
+    const native = window.matchMedia.bind(window)
+    vi.spyOn(window, 'matchMedia').mockImplementation((query) =>
+      query.includes('prefers-reduced-motion')
+        ? ({
+            matches: true,
+            addEventListener() {},
+            removeEventListener() {},
+          } as unknown as MediaQueryList)
+        : native(query),
+    )
+    let badges = 0,
+      draws = 0,
+      zero = false
+    const clear = CanvasRenderingContext2D.prototype.clearRect
+    const paint = CanvasRenderingContext2D.prototype.fillText
+    vi.spyOn(CanvasRenderingContext2D.prototype, 'clearRect').mockImplementation(function (
+      ...args
+    ) {
+      badges = 0
+      draws = 0
+      zero = false
+      clear.apply(this, args)
+    })
+    vi.spyOn(CanvasRenderingContext2D.prototype, 'fillText').mockImplementation(function (
+      this: CanvasRenderingContext2D,
+      ...args
+    ) {
+      draws++
+      if (/^\d+$/.test(args[0])) {
+        badges++
+        if (args[0] === '0') zero = true
+      }
+      paint.apply(this, args)
+    })
+    const s = setup(count)
+    await vi.waitFor(() => expect(s.controller.reading.value?.nodes).toHaveLength(count))
+    const checkbox = [
+      ...s.mounted.host.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'),
+    ].find((input) => input.parentElement?.textContent?.includes('Descendant badges'))!
+    checkbox.click()
+    await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))
+    expect(badges).toBe(count)
+    for (const size of ['13px', '26px']) {
+      s.mounted.host.querySelector('canvas')!.style.fontSize = size
+      s.button('Fit').click()
+      await new Promise(requestAnimationFrame)
+      expect(badges).toBe(count)
+      expect(zero).toBe(true)
+      expect(draws).toBeLessThanOrEqual(300)
+    }
+  },
+)

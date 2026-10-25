@@ -164,7 +164,7 @@ watch(
 watch(
   () => selected.value,
   (now, before) => {
-    if (!now && before) {
+    if (!now && before && selection.value !== null) {
       selection.value = null
       void nextTick(() => search.value?.focus())
     }
@@ -378,14 +378,16 @@ onScopeDispose(() => controller?.setActive(false))
           @wheel="drawing.wheel"
           @keydown="drawing.key"
         />
-        <p v-if="preview">
-          {{ preview.name }} · {{ preview.profile }} · {{ preview.kind }} ·
-          {{ preview.configured.provider ?? 'Unknown provider' }} /
-          {{ preview.configured.model ?? 'Unknown model'
-          }}<span v-for="[key, label] in counts" :key="key">
-            · {{ label }}: {{ preview[key] }}</span
-          >
-        </p>
+        <div class="agent-preview" :tabindex="preview ? 0 : -1" aria-label="Agent preview">
+          <p v-if="preview">
+            {{ preview.name }} · {{ preview.profile }} · {{ preview.kind }} ·
+            {{ preview.configured.provider ?? 'Unknown provider' }} /
+            {{ preview.configured.model ?? 'Unknown model'
+            }}<span v-for="[key, label] in counts" :key="key">
+              · {{ label }}: {{ preview[key] }}</span
+            >
+          </p>
+        </div>
         <p v-if="drawing.hiddenLabels.value">
           {{ drawing.hiddenLabels.value }} names or badges are hidden to keep the drawing readable.
           The Agents list contains every count.
@@ -608,6 +610,15 @@ canvas {
   touch-action: none;
   font-family: inherit;
   font-size: max(13px, var(--type-small));
+}
+.agent-preview {
+  height: calc(8em * var(--leading-relaxed));
+  overflow: auto;
+  margin: var(--space-5) 0;
+}
+.agent-preview:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 .agent-inspector {
   grid-area: inspector;
