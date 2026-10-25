@@ -395,41 +395,73 @@ it('a launch requested during scanning waits until the whole clearing pass ends'
   }
 })
 
+function heldOperation() {
+  let entered!: () => void
+  let release!: () => void
+  const arrived = new Promise<void>((resolve) => { entered = resolve })
+  const held = new Promise<void>((resolve) => { release = resolve })
+  return { arrived, release, hold: async () => { entered(); await held } }
+}
+
+type RetentionSave = {
+  save: (progress: {
+    version: number
+    at: number
+    days: number
+    conversations: number
+    bytes: number
+    cursor: string
+  }, complete: boolean, stoppedEarly: boolean) => Promise<void>
+}
+
+function watchRetentionSaves(host: TranscriptRetentionHost) {
+  const saving = host as unknown as RetentionSave
+  const realSave = saving.save.bind(host)
+  const writes: Promise<void>[] = []
+  const save = vi.spyOn(saving, 'save').mockImplementation((...args) => {
+    const writing = realSave(...args)
+    writes.push(writing)
+    return writing
+  })
+  return { writes, save, realSave }
+}
+
+async function expectDeadlineReceipt(host: TranscriptRetentionHost) {
+  const receipts = await host.recent(0, NOW)
+  expect(receipts).toHaveLength(1)
+  expect(receipts[0]).toMatchObject({ conversations: 0, bytes: 0, stoppedEarly: true })
+  expect(transcriptsClearedWords(receipts[0]!)).toBe(
+    'Transcript clearing stopped after 15 seconds so agents could start. No transcripts were cleared. The rest will be checked next time BroCrew starts.',
+  )
+}
+
 it('a scan that never settles releases the first launch at the deadline and records no deletion', async () => {
   const target = claude(OLD, 365)
-  let release!: () => void
-  let entered!: () => void
-  const arrived = new Promise<void>((resolve) => {
-    entered = resolve
-  })
-  const held = new Promise<void>((resolve) => {
-    release = resolve
-  })
-  filesystemGate.beforeScan = async () => {
-    entered()
-    await held
+  const scan = heldOperation()
+  const persistence = heldOperation()
+  filesystemGate.beforeScan = scan.hold
+  filesystemGate.beforeRename = async (_from, to) => {
+    if (to === join(data, 'transcript-retention.json')) await persistence.hold()
   }
   const host = new TranscriptRetentionHost(data, unused, () => NOW, false, 20)
+  const { writes } = watchRetentionSaves(host)
   const pass = host.run()
   try {
-    await arrived
+    await scan.arrived
     let launched = false
-    const launch = host.beforeLaunch().then(() => {
-      launched = true
-    })
+    const launch = host.beforeLaunch().then(() => { launched = true })
     await wait(60)
     expect(launched).toBe(true)
     expect(existsSync(target)).toBe(true)
-    expect((await host.recent(0, NOW))[0]).toMatchObject({ conversations: 0, stoppedEarly: true })
-    expect(transcriptsClearedWords((await host.recent(0, NOW))[0]!)).toBe(
-      'Transcript clearing stopped after 15 seconds so agents could start. No transcripts were cleared. The rest will be checked next time BroCrew starts.',
-    )
-    release()
+    await expectDeadlineReceipt(host)
+    scan.release()
     await Promise.all([pass, launch])
     expect(existsSync(target)).toBe(true)
   } finally {
-    release()
+    persistence.release()
+    scan.release()
     await pass
+    await Promise.allSettled(writes)
     await host.stop()
   }
 })
