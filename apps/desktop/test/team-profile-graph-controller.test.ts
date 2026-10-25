@@ -4,6 +4,9 @@ import { createTeamProfileGraph } from '../src/renderer/src/composables/useTeamP
 import { fictionalGraph, fictionalGraphWire } from './fixtures/team-profile-graph-view'
 import type { TeamProfileGraphRequest } from '../src/shared/team-profile-graph'
 import { asTheWireWouldCarry } from './lib/the-wire'
+import { TeamProfileGraphEngine } from '../src/main/db/team-profile-graph-engine'
+import { graphFixture, graphContext } from './helpers/team-profile-graph-fixture'
+import { graphCutoff } from './fixtures/team-profile-graph-oracle'
 const scopes: ReturnType<typeof effectScope>[] = []
 afterEach(() => {
   scopes.splice(0).forEach((s) => s.stop())
@@ -17,6 +20,40 @@ function setup(read: (request: TeamProfileGraphRequest) => Promise<unknown>) {
   )!
   return { controller, workspace }
 }
+it('accepts real completion-based expiry after a nonzero build interval', async () => {
+  const f = graphFixture()
+  f.seed()
+  let wall = graphCutoff,
+    advanced = false
+  const engine = new TeamProfileGraphEngine(
+    f.file,
+    f.executionFile,
+    () => wall,
+    () => performance.now(),
+    () => {
+      if (!advanced) {
+        advanced = true
+        wall += 25
+      }
+    },
+  )
+  const { controller: c } = setup(async (request) => engine.read(request, graphContext))
+  try {
+    c.setActive(true)
+    await vi.waitFor(() => expect(c.busy.value).toBe(false))
+    expect(advanced).toBe(true)
+    expect(c.error.value).toBeNull()
+    expect(c.reading.value?.nodes).toHaveLength(5)
+    expect(c.reading.value?.header.expiresAt).toBe(graphCutoff + 60025)
+    expect(c.reading.value?.header.readAt).toBe(graphCutoff)
+    expect(engine.expiresIn()).toBeLessThanOrEqual(60000)
+  } finally {
+    c.dispose()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    engine.close()
+    f.close()
+  }
+})
 it('reads once on first entry, atomically pages every node and edge, and keeps controls off the wire', async () => {
   const f = fictionalGraph(151),
     wire = fictionalGraphWire(f)

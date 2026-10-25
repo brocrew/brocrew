@@ -89,10 +89,10 @@ export function createTeamProfileGraph(options: {
         return parsed.data
       }
       const header = await read({ operation: 'snapshot' })
+      // The cutoff precedes the build; the worker's expiry starts at completion.
       if (
         header.type !== 'snapshot' ||
         header.expiresAt < header.readAt ||
-        header.expiresAt - header.readAt > B.ttlMs ||
         header.todaySince > header.readAt ||
         header.recentSince > header.readAt
       )
