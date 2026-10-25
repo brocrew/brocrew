@@ -38,6 +38,10 @@ function navigate(file: NonNullable<typeof props.library.opened.value>['file']):
 function preferredFocus(): HTMLElement | null {
   return opener.value?.isConnected ? opener.value : props.library.searchElement.value
 }
+function refreshLibrary(): void {
+  props.library.closePreview()
+  void props.library.refresh()
+}
 </script>
 
 <template>
@@ -66,8 +70,23 @@ function preferredFocus(): HTMLElement | null {
           <p v-if="props.library.provenanceError.value" data-cy="files-provenance-error">
             {{ libraryFailureSays(props.library.provenanceError.value) }}
             <button
+              v-if="
+                ['cursor-expired', 'invalid-cursor'].includes(
+                  props.library.provenanceError.value.cause,
+                )
+              "
               type="button"
-              :disabled="props.library.provenanceBusy.value"
+              data-cy="files-provenance-refresh"
+              :disabled="!props.library.canRetry.value"
+              @click="refreshLibrary"
+            >
+              Close and refresh files
+            </button>
+            <button
+              v-else
+              type="button"
+              :disabled="props.library.provenanceBusy.value || !props.library.canRetry.value"
+              data-cy="files-provenance-retry"
               @click="props.library.readProvenance()"
             >
               Retry locations
@@ -77,6 +96,13 @@ function preferredFocus(): HTMLElement | null {
             <p v-if="props.library.provenance.value.stale">
               These locations belong to an earlier reading. Close and refresh the library for a new
               reading.
+              <button
+                type="button"
+                :disabled="!props.library.canRetry.value"
+                @click="refreshLibrary"
+              >
+                Close and refresh files
+              </button>
             </p>
             <ul>
               <li
@@ -111,7 +137,7 @@ function preferredFocus(): HTMLElement | null {
             <button
               v-if="props.library.provenance.value.next"
               type="button"
-              :disabled="props.library.provenanceBusy.value"
+              :disabled="props.library.provenanceBusy.value || !props.library.canRetry.value"
               data-cy="files-provenance-more"
               @click="props.library.readProvenance(true)"
             >

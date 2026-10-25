@@ -1,11 +1,28 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
-import type { LibraryTask, FilesLibraryResult } from '../../../shared/files-library'
+import {
+  libraryUnavailable,
+  type LibraryTask,
+  type FilesLibraryResult,
+  type LibraryUnavailable,
+} from '../../../shared/files-library'
 import { libraryFailureSays, type LibraryApi } from '../composables/useFilesLibrary'
 import OverlayHost from './OverlayHost.vue'
 
-const props = defineProps<{ read: LibraryApi; includeSubtasks: boolean }>()
-const emit = defineEmits<{ close: []; choose: [task: LibraryTask, includeSubtasks: boolean] }>()
+const props = withDefaults(
+  defineProps<{
+    read: LibraryApi
+    includeSubtasks: boolean
+    canRetry?: boolean
+    mutationVersion?: number
+  }>(),
+  { canRetry: true, mutationVersion: 0 },
+)
+const emit = defineEmits<{
+  close: []
+  choose: [task: LibraryTask, includeSubtasks: boolean]
+  unavailable: [failure: LibraryUnavailable]
+}>()
 const query = ref(''),
   parent = ref<string | null>(null),
   parentName = ref('All root tasks')
@@ -17,8 +34,13 @@ const failure = ref<string | null>(null),
 let generation = 0,
   timer: ReturnType<typeof setTimeout> | undefined
 async function readTasks(more = false): Promise<void> {
+  if (!props.canRetry) {
+    failure.value = libraryFailureSays(libraryUnavailable('busy'))
+    return
+  }
   const current = ++generation,
-    before = result.value
+    before = result.value,
+    mutation = props.mutationVersion
   busy.value = true
   failure.value = null
   const answer = await props.read({
@@ -29,11 +51,24 @@ async function readTasks(more = false): Promise<void> {
   })
   if (current !== generation) return
   busy.value = false
-  if (answer.type === 'tasks')
-    result.value =
-      more && before !== null ? { ...answer, tasks: [...before.tasks, ...answer.tasks] } : answer
-  else if (answer.type === 'unavailable' && answer.cause !== 'cancelled')
+  if (answer.type === 'tasks' && more && before !== null && answer.snapshot !== before.snapshot) {
+    failure.value = libraryFailureSays(libraryUnavailable('invalid-cursor'))
+    result.value = { ...before, stale: true }
+  } else if (answer.type === 'tasks')
+    result.value = {
+      ...answer,
+      stale:
+        answer.stale ||
+        (more && (before?.stale === true || result.value?.stale === true)) ||
+        mutation !== props.mutationVersion,
+      tasks: more && before !== null ? [...before.tasks, ...answer.tasks] : answer.tasks,
+    }
+  else if (answer.type === 'unavailable') {
     failure.value = libraryFailureSays(answer)
+    emit('unavailable', answer)
+  } else {
+    failure.value = 'These tasks could not be read. Retry to read them again.'
+  }
 }
 function browse(task: LibraryTask): void {
   parent.value = task.id
@@ -52,6 +87,12 @@ watch([query, parent], () => {
   clearTimeout(timer)
   timer = setTimeout(() => void readTasks(), 140)
 })
+watch(
+  () => props.mutationVersion,
+  () => {
+    if (result.value !== null) result.value = { ...result.value, stale: true }
+  },
+)
 onMounted(() => void readTasks())
 onUnmounted(() => {
   generation++
@@ -81,8 +122,16 @@ onUnmounted(() => {
           <button type="button" @click="roots">All roots</button><span>{{ parentName }}</span>
         </div>
         <p v-if="busy && result === null" role="status">Reading tasks…</p>
-        <p v-if="failure" role="status">
-          {{ failure }} <button type="button" :disabled="busy" @click="readTasks()">Retry</button>
+        <p v-if="failure" role="status" data-cy="files-task-error">
+          {{ failure }}
+          <button
+            type="button"
+            :disabled="busy || !props.canRetry"
+            data-cy="files-task-retry"
+            @click="readTasks()"
+          >
+            Retry
+          </button>
         </p>
         <template v-if="result">
           <p class="count">
@@ -90,7 +139,14 @@ onUnmounted(() => {
               · Earlier reading — refresh before choosing</span
             >
           </p>
-          <button v-if="result.stale" type="button" @click="readTasks()">Refresh tasks</button>
+          <button
+            v-if="result.stale"
+            type="button"
+            :disabled="busy || !props.canRetry"
+            @click="readTasks()"
+          >
+            Refresh tasks
+          </button>
           <ul>
             <li v-for="task in result.tasks" :key="task.id">
               <button
@@ -120,7 +176,7 @@ onUnmounted(() => {
           <button
             v-if="result.next"
             type="button"
-            :disabled="busy"
+            :disabled="busy || !props.canRetry"
             data-cy="files-task-more"
             @click="readTasks(true)"
           >

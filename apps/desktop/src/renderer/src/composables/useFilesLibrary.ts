@@ -60,19 +60,20 @@ export function createFilesLibrary(options: {
   const provenanceBusy = shallowRef(false)
   const searchElement = shallowRef<HTMLInputElement | null>(null)
   const workspaceVersion = shallowRef(0)
+  const mutationVersion = shallowRef(0)
   let generation = 0,
     previewGeneration = 0,
-    previewSerial = 0,
-    dirty = 0
+    previewSerial = 0
   let answeredSignature: string | null = null
   let timer: ReturnType<typeof setTimeout> | undefined
   let retryTimer: ReturnType<typeof setTimeout> | undefined
   let disposed = false
   let enabled = false
+  let retryPending = false
   const query = computed<FilesLibraryQuery>(() => ({
     scope:
       state.scope.type === 'workspace'
-        ? state.scope
+        ? { type: 'workspace' }
         : { ...state.scope, includeSubtasks: state.includeSubtasks },
     query: state.query,
     kind: state.kind,
@@ -93,25 +94,32 @@ export function createFilesLibrary(options: {
       return libraryUnavailable('worker')
     }
   }
-  function setError(failure: LibraryUnavailable): void {
-    if (failure.cause === 'cancelled') return
-    error.value = failure
+  function cooldown(failure: LibraryUnavailable): void {
     if (failure.retryAfterMs !== undefined) {
       retryAt.value = Date.now() + failure.retryAfterMs
       clearTimeout(retryTimer)
       retryTimer = setTimeout(() => {
         retryAt.value = 0
+        if (retryPending && enabled && !disposed) {
+          retryPending = false
+          void refresh()
+        }
       }, failure.retryAfterMs)
     }
+  }
+  function setError(failure: LibraryUnavailable): void {
+    error.value = failure
+    cooldown(failure)
   }
   async function refresh(): Promise<void> {
     clearTimeout(timer)
     if (disposed || options.workspace() === null || !canRetry.value) return
     enabled = true
+    retryPending = false
     const current = ++generation,
       key = signature.value,
       workspace = options.workspace(),
-      before = dirty
+      before = mutationVersion.value
     if (answeredSignature !== key) page.value = null
     error.value = null
     busy.value = true
@@ -126,7 +134,7 @@ export function createFilesLibrary(options: {
       return
     busy.value = false
     if (answer.type === 'files') {
-      page.value = { ...answer, stale: answer.stale || before !== dirty }
+      page.value = { ...answer, stale: answer.stale || before !== mutationVersion.value }
       answeredSignature = key
     } else if (answer.type === 'unavailable') {
       if (page.value !== null) page.value = { ...page.value, stale: true }
@@ -135,18 +143,31 @@ export function createFilesLibrary(options: {
   }
   function ensure(): void {
     enabled = true
+    if (!canRetry.value && page.value === null) {
+      error.value = libraryUnavailable('busy')
+      retryPending = true
+      return
+    }
     if (page.value === null && !busy.value && error.value === null) void refresh()
   }
   function markStale(): void {
-    dirty++
+    mutationVersion.value++
     if (page.value !== null) page.value = { ...page.value, stale: true }
     if (provenance.value !== null) provenance.value = { ...provenance.value, stale: true }
   }
   async function more(): Promise<void> {
     const original = page.value
-    if (original?.next === null || original === null || paging.value || busy.value) return
+    if (
+      original?.next === null ||
+      original === null ||
+      paging.value ||
+      busy.value ||
+      !canRetry.value
+    )
+      return
     const current = generation,
-      key = signature.value
+      key = signature.value,
+      before = mutationVersion.value
     paging.value = true
     error.value = null
     const answer = await read({ operation: 'page', cursor: original.next })
@@ -171,11 +192,15 @@ export function createFilesLibrary(options: {
       }
       page.value = {
         ...answer,
-        stale: original.stale || answer.stale,
+        stale:
+          original.stale || page.value.stale || answer.stale || before !== mutationVersion.value,
         files: [...original.files, ...answer.files],
       }
     } else if (answer.type === 'unavailable') {
       setError(answer)
+      markStale()
+    } else {
+      setError(libraryUnavailable('invalid-cursor'))
       markStale()
     }
   }
@@ -235,7 +260,12 @@ export function createFilesLibrary(options: {
   async function readProvenance(more = false): Promise<void> {
     const preview = opened.value
     if (preview === null || provenanceBusy.value || (more && provenance.value?.next == null)) return
-    const current = ++previewGeneration
+    if (!canRetry.value) {
+      provenanceError.value = libraryUnavailable('busy')
+      return
+    }
+    const current = ++previewGeneration,
+      before = mutationVersion.value
     provenanceBusy.value = true
     provenanceError.value = null
     const original = provenance.value
@@ -252,12 +282,22 @@ export function createFilesLibrary(options: {
       answer.snapshot === preview.snapshot &&
       answer.sha256 === preview.file.sha256
     ) {
-      provenance.value =
-        more && original !== null
-          ? { ...answer, keeps: [...original.keeps, ...answer.keeps] }
-          : answer
-    } else if (answer.type === 'unavailable' && answer.cause !== 'cancelled')
+      const stale =
+        answer.stale ||
+        original?.stale === true ||
+        provenance.value?.stale === true ||
+        before !== mutationVersion.value
+      provenance.value = {
+        ...answer,
+        stale,
+        keeps: more && original !== null ? [...original.keeps, ...answer.keeps] : answer.keeps,
+      }
+    } else if (answer.type === 'unavailable') {
       provenanceError.value = answer
+      cooldown(answer)
+    } else {
+      provenanceError.value = libraryUnavailable('invalid-cursor')
+    }
   }
   function navigatePreviewTask(file: LibraryKeep): void {
     closePreview()
@@ -270,12 +310,16 @@ export function createFilesLibrary(options: {
       generation++
       busy.value = false
       paging.value = false
-      error.value = null
+      if (canRetry.value) error.value = null
+      else {
+        error.value = libraryUnavailable('busy')
+        retryPending = enabled
+      }
       if (answeredSignature !== signature.value) page.value = null
       state.scrollTop = 0
       state.scrollVersion++
       clearTimeout(timer)
-      if (enabled) timer = setTimeout(() => void refresh(), 140)
+      if (enabled && canRetry.value) timer = setTimeout(() => void refresh(), 140)
     },
     { flush: 'sync' },
   )
@@ -288,7 +332,7 @@ export function createFilesLibrary(options: {
     answeredSignature = null
     busy.value = false
     paging.value = false
-    error.value = null
+    error.value = canRetry.value ? null : libraryUnavailable('busy')
     enabled = false
     reset()
     state.scrollTop = 0
@@ -296,7 +340,8 @@ export function createFilesLibrary(options: {
     void read({ operation: 'release' })
     if (wasEnabled) {
       enabled = true
-      timer = setTimeout(() => void refresh(), 0)
+      if (canRetry.value) timer = setTimeout(() => void refresh(), 0)
+      else retryPending = true
     }
   })
   onScopeDispose(() => {
@@ -317,12 +362,14 @@ export function createFilesLibrary(options: {
     selected,
     count,
     canRetry,
+    cooldown,
     opened,
     provenance,
     provenanceError,
     provenanceBusy,
     searchElement,
     workspaceVersion,
+    mutationVersion,
     ensure,
     refresh,
     more,
@@ -360,7 +407,9 @@ export function libraryFailureSays(failure: LibraryUnavailable): string {
     case 'invalid-cursor':
       return 'This page no longer belongs to the current reading. Refresh the files.'
     case 'busy':
-      return 'The file reader is busy. Retry will be available shortly.'
+      return 'The file reader needs a short pause. Try Retry when it is available.'
+    case 'cancelled':
+      return 'This reading was interrupted. Retry to finish it.'
     case 'changed':
       return 'The workspace changed during this reading. Refresh to try again.'
     case 'ancestry':

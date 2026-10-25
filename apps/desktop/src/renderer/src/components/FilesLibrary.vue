@@ -141,6 +141,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
               :title="currentScope === 'task' ? library.state.scopeName : 'Choose any task'"
               :aria-pressed="currentScope === 'task'"
               data-cy="files-scope-task"
+              :disabled="!library.canRetry.value"
               @click="picker = true"
             >
               {{ currentScope === 'task' ? library.state.scopeName : 'Choose task…' }}
@@ -338,7 +339,12 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
           ><button
             type="button"
             data-cy="files-more"
-            :disabled="library.paging.value || library.busy.value || library.page.value.stale"
+            :disabled="
+              library.paging.value ||
+              library.busy.value ||
+              library.page.value.stale ||
+              !library.canRetry.value
+            "
             @click="library.more()"
           >
             {{ library.paging.value ? 'Reading…' : 'Load more' }}
@@ -352,6 +358,9 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
         v-if="picker"
         :read="library.read"
         :include-subtasks="library.state.includeSubtasks"
+        :can-retry="library.canRetry.value"
+        :mutation-version="library.mutationVersion.value"
+        @unavailable="library.cooldown"
         @close="picker = false"
         @choose="
           (task, depth) => {

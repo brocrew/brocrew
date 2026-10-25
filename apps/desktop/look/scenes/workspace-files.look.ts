@@ -34,9 +34,11 @@ scene('workspace-files', async (stage) => {
             workspace: 'fictional',
             read: async (resourceId: string) => {
               const file = fixture.keeps.find((one) => one.resourceId === resourceId)!
+              const content = fixture.source.files.find((one) => one.sha256 === file.sha256)
               const body =
-                fixture.source.files.find((one) => one.sha256 === file.sha256)?.body ??
-                '# Fictional document'
+                content && 'body' in content && typeof content.body === 'string'
+                  ? content.body
+                  : '# Fictional document'
               return {
                 ok: true as const,
                 resourceId,

@@ -106,6 +106,27 @@ it('defaults to the whole workspace and preserves filters/view/sort/depth and a 
   expect(selected.value.id).toBe('b')
 })
 
+it('sends cloneable plain request values over the preload wire in every scope', async () => {
+  const read = vi.fn<LibraryApi>(async (request) => {
+    structuredClone(request)
+    return page()
+  })
+  const { library } = controller(read)
+  await library.refresh()
+  expect(library.error.value).toBeNull()
+  expect(library.page.value?.totalFiles).toBe(1)
+  library.pinSelected()
+  await library.refresh()
+  expect(library.error.value).toBeNull()
+  library.task({ id: 'task', label: 'W1', title: 'Work' })
+  await library.refresh()
+  expect(library.error.value).toBeNull()
+  library.all()
+  await library.refresh()
+  expect(library.error.value).toBeNull()
+  expect(read).toHaveBeenCalledTimes(4)
+})
+
 it('Graph entry is exact task/subtasks off, clears the three filters and preserves view/sort', () => {
   const { library } = controller(async () => page())
   library.state.view = 'list'
@@ -294,4 +315,125 @@ it('ignores late provenance from an earlier opened content hash', async () => {
   pending.get(keep.sha256)!(response(keep))
   await nextTick()
   expect(library.provenance.value?.sha256).toBe(second.sha256)
+})
+
+it('preserves a known mutation across a deferred non-stale page reply', async () => {
+  let finish!: (result: FilesLibraryResult) => void
+  const read = vi
+    .fn<LibraryApi>()
+    .mockResolvedValueOnce(page({ totalFiles: 2, totalKeeps: 2, next: 'next' }))
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        }),
+    )
+  const { library } = controller(read)
+  await library.refresh()
+  const pending = library.more()
+  library.markStale()
+  finish(
+    page({
+      totalFiles: 2,
+      totalKeeps: 2,
+      stale: false,
+      files: [{ file: { ...keep, resourceId: 'two', sha256: 'b'.repeat(64) }, matchingKeeps: 1 }],
+    }),
+  )
+  await pending
+  expect(library.page.value).toMatchObject({ stale: true, totalFiles: 2 })
+  expect(library.page.value?.files).toHaveLength(2)
+})
+
+it.each([false, true])(
+  'preserves a known mutation across deferred provenance (more=%s)',
+  async (more) => {
+    let finish!: (result: FilesLibraryResult) => void
+    const response = (over = {}): FilesLibraryResult => ({
+      type: 'provenance',
+      snapshot: 'snapshot',
+      readAt: 1,
+      stale: false,
+      metrics: { rows: 1, bytes: 1, elapsedMs: 1, cacheBytes: 1 },
+      sha256: keep.sha256,
+      keeps: [{ file: keep, matching: true }],
+      total: 2,
+      matching: 2,
+      next: 'next',
+      ...over,
+    })
+    let calls = 0
+    const read: LibraryApi = async (request) => {
+      if (request.operation !== 'provenance') return page()
+      if (more && calls++ === 0) return response()
+      return new Promise((resolve) => {
+        finish = resolve
+      })
+    }
+    const { library } = controller(read)
+    await library.refresh()
+    library.open(keep)
+    if (more) await vi.waitFor(() => expect(library.provenance.value?.keeps).toHaveLength(1))
+    const pending = more ? library.readProvenance(true) : Promise.resolve()
+    library.markStale()
+    finish(
+      response({
+        next: null,
+        keeps: [{ file: { ...keep, resourceId: 'another-alias' }, matching: true }],
+      }),
+    )
+    await pending
+    await vi.waitFor(() => expect(library.provenance.value?.stale).toBe(true))
+    expect(library.provenance.value?.keeps.length).toBe(more ? 2 : 1)
+  },
+)
+
+it('retains visible recovery during cooldown edits and runs only the latest query at expiry', async () => {
+  vi.useFakeTimers()
+  const read = vi
+    .fn<LibraryApi>()
+    .mockResolvedValueOnce(libraryUnavailable('busy', 0, 0, 1000))
+    .mockResolvedValue(page())
+  const { library } = controller(read)
+  await library.refresh()
+  library.state.query = 'first edit'
+  library.state.query = 'latest edit'
+  expect(library.error.value?.cause).toBe('busy')
+  await vi.advanceTimersByTimeAsync(999)
+  expect(read).toHaveBeenCalledTimes(1)
+  await vi.advanceTimersByTimeAsync(2)
+  expect(read).toHaveBeenCalledTimes(2)
+  expect(read.mock.calls[1]![0]).toMatchObject({
+    operation: 'query',
+    query: { query: 'latest edit' },
+  })
+  expect(library.page.value?.totalFiles).toBe(1)
+  expect(library.error.value).toBeNull()
+})
+
+it('exposes recoverable cancellation for current provenance instead of a blank locations panel', async () => {
+  let provenanceCalls = 0
+  const read: LibraryApi = async (request) => {
+    if (request.operation !== 'provenance') return page()
+    if (provenanceCalls++ === 0) return libraryUnavailable('cancelled')
+    return {
+      type: 'provenance',
+      snapshot: 'snapshot',
+      readAt: 1,
+      stale: false,
+      metrics: { rows: 1, bytes: 1, elapsedMs: 1, cacheBytes: 1 },
+      sha256: keep.sha256,
+      keeps: [{ file: keep, matching: true }],
+      total: 1,
+      matching: 1,
+      next: null,
+    }
+  }
+  const { library } = controller(read)
+  await library.refresh()
+  library.open(keep)
+  await vi.waitFor(() => expect(library.provenanceError.value?.cause).toBe('cancelled'))
+  await library.readProvenance()
+  expect(library.provenance.value?.total).toBe(1)
+  expect(library.provenanceError.value).toBeNull()
 })

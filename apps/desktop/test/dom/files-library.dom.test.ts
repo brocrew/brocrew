@@ -365,3 +365,90 @@ it('gives different content with the same title distinct accessible names and dr
   expect(m.q('library-file').querySelector('.glyph')?.getAttribute('data-kind')).toBe('unknown')
   expect(text(m.q('library-file').querySelector('.glyph')!)).toBe('?')
 })
+
+it('makes a picker interrupted by a pending library query recoverable', async () => {
+  const fixture = filesLibraryReplies()
+  let cancelTasks: ((result: Awaited<ReturnType<LibraryApi>>) => void) | undefined
+  let blocked = true
+  const read: LibraryApi = async (request) => {
+    if (request.operation === 'tasks' && blocked)
+      return new Promise((resolve) => {
+        cancelTasks = resolve
+      })
+    if (request.operation === 'query' && cancelTasks) {
+      cancelTasks(libraryUnavailable('cancelled'))
+      cancelTasks = undefined
+      blocked = false
+    }
+    return fixture.read(request)
+  }
+  const { m } = await ready(false, 1180, 880, read)
+  const input = m.q('files-search') as HTMLInputElement
+  input.value = 'file'
+  input.dispatchEvent(new Event('input', { bubbles: true }))
+  m.q('files-scope-task').click()
+  await vi.waitFor(() => expect(m.all('files-task-error')).toHaveLength(1))
+  expect(text(m.q('files-task-error'))).toContain('interrupted')
+  m.q('files-task-retry').click()
+  await vi.waitFor(() => expect(m.all('files-task-option')).toHaveLength(4))
+  expect(m.all('files-task-error')).toHaveLength(0)
+})
+
+it('makes provenance interrupted by a background refresh recoverable without silently mixing snapshots', async () => {
+  const fixture = filesLibraryReplies()
+  let cancelLocations: ((result: Awaited<ReturnType<LibraryApi>>) => void) | undefined
+  let blocked = true,
+    expired = false
+  const read: LibraryApi = async (request) => {
+    if (request.operation === 'provenance') {
+      if (blocked)
+        return new Promise((resolve) => {
+          cancelLocations = resolve
+        })
+      if (expired) return libraryUnavailable('invalid-cursor')
+    }
+    if (request.operation === 'query' && cancelLocations) {
+      cancelLocations(libraryUnavailable('cancelled'))
+      cancelLocations = undefined
+      blocked = false
+      expired = true
+    }
+    return fixture.read(request)
+  }
+  const { s, m } = await ready(false, 1180, 880, read)
+  m.all('library-file')
+    .find(
+      (element) =>
+        fixture.keeps.find((keep) => keep.resourceId === element.dataset.document)?.form ===
+        'markdown',
+    )!
+    .click()
+  await vi.waitFor(() => expect(m.all('canonical-document-viewer')).toHaveLength(1))
+  m.q('files-provenance').querySelector('summary')!.click()
+  await s.library.refresh()
+  await vi.waitFor(() => expect(m.all('files-provenance-error')).toHaveLength(1))
+  expect(text(m.q('files-provenance-error'))).toContain('interrupted')
+  m.q('files-provenance-retry').click()
+  await vi.waitFor(() => expect(m.all('files-provenance-refresh')).toHaveLength(1))
+  m.q('files-provenance-refresh').click()
+  await vi.waitFor(() => expect(m.all('canonical-document-viewer')).toHaveLength(0))
+  expect(s.library.page.value?.totalFiles).toBe(16)
+})
+
+it('marks an open task catalog stale on a known mutation and refreshes it before use', async () => {
+  const { s, m } = await ready()
+  m.q('files-scope-task').click()
+  await vi.waitFor(() => expect(m.all('files-task-option')).toHaveLength(4))
+  m.q('files-task-option').click()
+  await nextTick()
+  s.library.markStale()
+  await nextTick()
+  expect(text(m.q('files-task-picker'))).toContain('Earlier reading')
+  expect((m.q('files-task-use') as HTMLButtonElement).disabled).toBe(true)
+  const refresh = [...m.q('files-task-picker').querySelectorAll('button')].find(
+    (button) => button.textContent?.trim() === 'Refresh tasks',
+  )!
+  refresh.click()
+  await vi.waitFor(() => expect(text(m.q('files-task-picker'))).not.toContain('Earlier reading'))
+  expect((m.q('files-task-use') as HTMLButtonElement).disabled).toBe(false)
+})
