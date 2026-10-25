@@ -19,6 +19,7 @@ import {
   type SubAgentCard,
   type TranscriptState,
 } from './transcript'
+import { copyHumanAnswers } from './human-answers'
 
 /**
  * Which slice of a conversation is in memory, and what moving that slice costs (054).
@@ -208,6 +209,7 @@ export function tailWindow(entries: RuntimeEventMessage[]): WindowState {
  * not.
  */
 export interface FoldCarry {
+  humanAnswers: TranscriptState['humanAnswers']
   status: SessionStatus
   ref: SessionRef | null
   ended: boolean
@@ -523,6 +525,7 @@ export function carryForward(
     })
   }
   return {
+    humanAnswers: copyHumanAnswers(state.humanAnswers),
     status: state.status,
     ref: state.ref,
     ended: state.ended,
@@ -703,6 +706,7 @@ export function foldWindow(
   // side of it — and `null` from the start is a session that was never reopened.
   let epoch = liveFrom
   if (carry !== null) {
+    state.humanAnswers = copyHumanAnswers(carry.humanAnswers)
     state.status = carry.status
     state.ref = carry.ref
     state.ended = carry.ended

@@ -10,7 +10,7 @@ import {
 } from '../../shared/move-request'
 import { conversationLink } from '../../shared/links'
 import {
-  TURN_AUTHORSHIP_KEYS,
+  TURN_ATTRIBUTION_KEYS,
   type HandedPath,
   type RuntimeEventMessage,
   type UserTurnEvent,
@@ -51,7 +51,7 @@ export function originalMoveRequest(
   const event = row.event
   if (
     event.parts !== undefined ||
-    TURN_AUTHORSHIP_KEYS.some((key) => key !== 'movedFrom' && event[key] !== undefined)
+    TURN_ATTRIBUTION_KEYS.some((key) => key !== 'movedFrom' && event[key] !== undefined)
   )
     return null
   return row as PersistedEvent & { event: UserTurnEvent }

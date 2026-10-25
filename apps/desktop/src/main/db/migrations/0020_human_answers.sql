@@ -1,0 +1,3 @@
+CREATE INDEX `events_human_prompt_idx` ON `events` (`session_id`,`generation`,`ordinal`) WHERE type = 'user_turn' AND CASE WHEN json_valid(payload) THEN json_extract(payload, '$.humanInitiated') = 1 OR (json_type(payload, '$.humanInitiated') IS NULL AND COALESCE(json_extract(payload, '$.attribution'), '') != 'app_authored') ELSE 0 END;
+--> statement-breakpoint
+CREATE INDEX `events_human_final_idx` ON `events` (`session_id`,`generation`,`turn_id`,`ordinal`) WHERE type = 'assistant_message' AND CASE WHEN json_valid(payload) THEN json_extract(payload, '$.phase') = 'final' AND json_type(payload, '$.parentToolCallId') IS NULL ELSE 0 END;

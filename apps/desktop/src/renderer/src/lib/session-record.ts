@@ -15,6 +15,7 @@ import {
 import { openingLine } from './opening-line'
 import { basenameOf } from './paths'
 import { applyEvent, createTranscript, type TranscriptState } from './transcript'
+import { copyHumanAnswers } from './human-answers'
 import {
   WINDOW_MAX_EVENTS,
   appendLive,
@@ -861,6 +862,7 @@ export function openWindow(record: SessionRecord, page: HistoryWindow): void {
   // handed, read as each call is folded, and a provider states those once per start — so a page
   // that begins after that row drew every one of them as a plain tool line.
   const inForce = page.toolsInForce
+  if (page.humanAnswers !== undefined) transcript.humanAnswers = copyHumanAnswers(page.humanAnswers)
   if (inForce !== undefined) applyEvent(transcript, inForce.event, inForce.at, inForce.ordinal)
   record.transcript = transcript
   record.control = transcript
@@ -964,6 +966,7 @@ export function reopenAtLatest(record: SessionRecord, page: HistoryWindow): void
   openAt(record.window, page, record.sessionId)
   // ⚑ **D-035** — the window now begins where this page does, so its tools there go in first.
   record.transcript = refold(record, record.window.entries, carry, page.toolsInForce ?? null)
+  if (page.humanAnswers !== undefined) record.transcript.humanAnswers = copyHumanAnswers(page.humanAnswers)
   // Back on the tail, so the two projections are ONE object again and the separate tail goes.
   record.control = record.transcript
   record.tail = null

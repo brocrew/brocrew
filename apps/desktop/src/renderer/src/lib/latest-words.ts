@@ -31,6 +31,14 @@ export function latestWords(state: TranscriptState): LatestWords | null {
   return null
 }
 
+/** The latest human final takes precedence; pending human turns retain the existing response. */
+export function panelWords(state: TranscriptState): LatestWords | null {
+  const final = state.humanAnswers.latest?.final
+  if (final == null) return latestWords(state)
+  const item = state.items.find((one) => one.kind === 'assistant' && one.ordinal === final.ordinal)
+  return { itemId: item?.id ?? `human-final-${final.ordinal}`, text: plainParagraph(final.text), at: final.at }
+}
+
 /**
  * ⚑ **A message as one paragraph a person reads at a glance** — a heading, quote or bullet lead,
  * bold, italics, inline code, a link's brackets and a code fence taken off, every line kept.

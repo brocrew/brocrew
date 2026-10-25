@@ -137,13 +137,14 @@ function openANamedDocument(event: MouseEvent): void {
 </script>
 
 <template>
-  <article class="msg assistant">
+  <article class="msg assistant" :class="{ 'human-final': item.humanFinal }" :data-human-final="item.humanFinal ? 'true' : undefined">
     <div class="msg-avatar">
       <svg class="icon"><use href="#i-bot" /></svg>
     </div>
     <div class="msg-column">
       <div class="msg-meta">
         <strong data-cy="assistant-author">{{ who || 'Assistant' }}</strong>
+        <span v-if="item.humanFinal" class="final-label">Answer to you</span>
         <span v-if="item.streaming" class="live-tag" data-cy="streaming-tag">
           <span class="dot"></span>streaming
         </span>
@@ -356,6 +357,18 @@ function openANamedDocument(event: MouseEvent): void {
   font-size: var(--type-reading);
   line-height: var(--leading-reading);
   overflow-wrap: anywhere;
+}
+
+.human-final .msg-column {
+  border-inline-start: 3px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 9%, var(--panel));
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+}
+
+.final-label {
+  color: var(--text);
+  font-size: var(--type-small);
 }
 
 /* Preserve streamed newlines without adding whitespace to rendered Markdown. */

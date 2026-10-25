@@ -260,7 +260,7 @@ const assistantDeltaSchema = z.object({
 })
 
 /**
- * The authoritative final assistant message for a turn — the source of truth
+ * An authoritative assistant message block — the source of truth
  * the UI should render (replacing any delta-accumulated text). Preceding
  * `assistant_delta`s are best-effort progressive rendering and are NOT
  * guaranteed to concatenate exactly to this text.
@@ -270,6 +270,8 @@ const assistantDeltaSchema = z.object({
 const assistantMessageSchema = z.object({
   type: z.literal('assistant_message'),
   text: z.string(),
+  /** The provider explicitly marked this message's role. Absent on older recordings. */
+  phase: z.enum(['commentary', 'final']).optional(),
   /**
    * WHOSE words these are (128) — the same attribution {@link toolCallSchema} has carried since 029,
    * on the other half of the very same message.

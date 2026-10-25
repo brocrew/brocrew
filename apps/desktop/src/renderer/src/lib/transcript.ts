@@ -104,6 +104,8 @@ import {
 // ⚑ **672 · a value import with no cycle** — `piece-called.ts` imports nothing.
 import { pieceNumbersOf } from '../../../shared/piece-called'
 import { textPackRefusedSaid } from '../../../shared/text-pack'
+import type { HumanAnswers } from '../../../shared/human-turn-answer'
+import { startHumanAnswer, finishHumanAnswer } from './human-answers'
 
 /**
  * The event stream, folded into what the screen shows.
@@ -580,6 +582,8 @@ export interface QueuedItem {
 }
 
 export interface AssistantItem {
+  /** A provider-marked final paired to an observed human turn. */
+  humanFinal?: true
   kind: 'assistant'
   id: string
   text: string
@@ -1918,6 +1922,7 @@ export const MAX_CARRIED_CHANGE_REPORTS = 400
 export const MAX_HELD_DIFF_REPORTS = 20
 
 export interface TranscriptState {
+  humanAnswers: HumanAnswers
   items: TranscriptItem[]
   status: SessionStatus
   /** The provider ref once announced — null for Claude until its first turn's init. */
@@ -2221,6 +2226,7 @@ export interface TranscriptState {
 
 export function createTranscript(): TranscriptState {
   return {
+    humanAnswers: { latest: null, active: null },
     items: [],
     status: 'idle',
     ref: null,
@@ -3230,6 +3236,7 @@ export function toldClause(told: string | undefined, inPart = false): string {
  * if it never said anything at all.
  */
 export function markReopened(state: TranscriptState): void {
+  state.humanAnswers.active = null
   state.ended = false
   state.status = 'idle'
   // ⚠️ **The cards belong to the session we resumed FROM** (085 review, and the same call
@@ -3345,6 +3352,7 @@ export const NOTHING_WAITS_FOR_THIS_ANSWER = 'nothing waits for this answer any 
  * with `status:'ended'` alone. Whichever arrives first wins; the other is a no-op.
  */
 function markTerminal(state: TranscriptState, reason: string): void {
+  state.humanAnswers.active = null
   if (state.ended) return
   state.ended = true
   closeStreaming(state)
@@ -3905,6 +3913,7 @@ export function applyEvent(
 ): void {
   const before = state.seq
   const from = state.items.length
+  startHumanAnswer(state.humanAnswers, event, ordinal ?? state.seq)
   foldEvent(state, event, at, ordinal)
   followTheTurnsErrors(state, event, from)
   if ((at === undefined && ordinal === undefined) || state.seq === before) return
@@ -5109,6 +5118,7 @@ function foldEvent(
         open.text = event.text
         open.streaming = false
         if (event.questions !== undefined) open.questions = event.questions
+        finishHumanAnswer(state.humanAnswers, open, event, ordinal ?? state.seq, at)
         state.streamingId = null
         state.provisionalId = null
         return
@@ -5126,6 +5136,7 @@ function foldEvent(
         streaming: false,
         ...(event.questions === undefined ? {} : { questions: event.questions }),
       })
+      finishHumanAnswer(state.humanAnswers, state.items.at(-1) as AssistantItem, event, ordinal ?? state.seq, at)
       return
     }
 

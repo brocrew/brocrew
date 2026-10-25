@@ -4042,6 +4042,8 @@ export interface QueuedMessageDisclosure {
  * It is deliberately NOT a `RuntimeEvent`: nothing said it, we did.
  */
 export interface UserTurnEvent {
+  /** Positive observation at the window-caller boundary. Missing on legacy/imported rows. */
+  humanInitiated?: boolean
   /** The original person message forwarded by a Move press. */
   movedFrom?: MoveOrigin
   type: 'user_turn'
@@ -4417,6 +4419,7 @@ export interface LeadInFront {
  */
 export type TurnAuthorship = Pick<
   UserTurnEvent,
+  | 'humanInitiated'
   | 'attribution'
   | 'work'
   | 'relayedFrom'
@@ -4448,6 +4451,7 @@ export interface AnsweredQuestion {
  * that is not in `RuntimeHost`.
  */
 export const TURN_AUTHORSHIP_KEYS = [
+  'humanInitiated',
   'attribution',
   'work',
   'relayedFrom',
@@ -4457,6 +4461,9 @@ export const TURN_AUTHORSHIP_KEYS = [
   'answeredQuestion',
   'movedFrom',
 ] as const satisfies readonly (keyof TurnAuthorship)[]
+
+/** The observation stamp must not change existing attribution or Move admission tests. */
+export const TURN_ATTRIBUTION_KEYS = TURN_AUTHORSHIP_KEYS.filter((key) => key !== 'humanInitiated')
 
 /** ⛔ Compiles only while {@link TURN_AUTHORSHIP_KEYS} names every key of {@link TurnAuthorship}. */
 export const TURN_AUTHORSHIP_KEYS_ARE_EXHAUSTIVE: [
@@ -6892,6 +6899,8 @@ export const HISTORY_WINDOW_MAX_EVENTS = 2_500
  * row while the app runs; a migration that removes rows may renumber them before any window opens.
  */
 export interface HistoryWindow {
+  /** Latest observed human turn, even when it precedes this bounded page. */
+  humanAnswers?: import('./human-turn-answer').HumanAnswers
   /** The ledger slice, in order. Empty is a state the UI renders, not an error. */
   entries: PersistedEventInfo[]
   /** The ordinal this page begins at — the next request's `before`. */

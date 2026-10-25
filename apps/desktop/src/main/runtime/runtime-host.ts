@@ -58,7 +58,7 @@ import type {
   NormalWorkerPool,
   WorkerBorn,
 } from '../profile-execution-file'
-import { TURN_AUTHORSHIP_KEYS } from '../../shared/runtime-ipc'
+import { TURN_ATTRIBUTION_KEYS } from '../../shared/runtime-ipc'
 import { moveRequestDigest, originalMoveRequest, recordMovedRequest } from './move-request'
 import {
   DO_IT_HERE,
@@ -2066,7 +2066,7 @@ export function whoseWordsTheseAre(
     appNotice === undefined &&
     aPersonTypedIt(by)
   )
-    return {}
+    return { humanInitiated: true }
   // ⚑ **545 · asked only when there IS a relayer**, so a person's turn and a go-ahead cost no
   // ledger read at all — {@link RuntimeHost.originOf}'s own rule one method over. ⛔ **`?? undefined`
   // and never `?? ''`**: an identity this app cannot name is the ABSENCE of the key, which is what
@@ -26357,12 +26357,12 @@ export class RuntimeHost implements LiveHost {
     if (
       aPersonIsAsking(by) &&
       sessionSpeakingAs(by) === null &&
-      TURN_AUTHORSHIP_KEYS.every((key) => turn[key] === undefined)
+      TURN_ATTRIBUTION_KEYS.every((key) => turn[key] === undefined)
     )
       this.declineMoveOffersFromText(session.id, by)
     const moveHandoff = this.beginMoveHandoff(
       session,
-      TURN_AUTHORSHIP_KEYS.every((key) => key === 'movedFrom' || turn[key] === undefined),
+      TURN_ATTRIBUTION_KEYS.every((key) => key === 'movedFrom' || turn[key] === undefined),
     )
     const personalWorkTurnBefore = session.personalWorkTurn
     const personalHandover = session.personalHandover + 1
@@ -26753,7 +26753,7 @@ export class RuntimeHost implements LiveHost {
       const parts = theMessagesOf(committedTurn)
       if (
         parts.some((part) =>
-          TURN_AUTHORSHIP_KEYS.every((key) => key === 'movedFrom' || part[key] === undefined),
+          TURN_ATTRIBUTION_KEYS.every((key) => key === 'movedFrom' || part[key] === undefined),
         )
       ) {
         session.personalWorkTurn = this.deps.store.theOpenTurn(session.id)?.id ?? null
@@ -26768,7 +26768,7 @@ export class RuntimeHost implements LiveHost {
         session.recordingFailure === null &&
         generation !== undefined &&
         committedTurn.parts === undefined &&
-        TURN_AUTHORSHIP_KEYS.every((key) => key === 'movedFrom' || committedTurn[key] === undefined)
+        TURN_ATTRIBUTION_KEYS.every((key) => key === 'movedFrom' || committedTurn[key] === undefined)
       ) {
         session.moveRequestTurn = {
           ordinal: written.ordinal,
@@ -27278,12 +27278,12 @@ export class RuntimeHost implements LiveHost {
     if (
       aPersonIsAsking(by) &&
       sessionSpeakingAs(by) === null &&
-      TURN_AUTHORSHIP_KEYS.every((key) => turn[key] === undefined)
+      TURN_ATTRIBUTION_KEYS.every((key) => turn[key] === undefined)
     )
       this.declineMoveOffersFromText(session.id, by)
     const moveHandoff = this.beginMoveHandoff(
       session,
-      TURN_AUTHORSHIP_KEYS.every((key) => key === 'movedFrom' || turn[key] === undefined),
+      TURN_ATTRIBUTION_KEYS.every((key) => key === 'movedFrom' || turn[key] === undefined),
     )
     const personalWorkTurnBefore = session.personalWorkTurn
     const personalHandover = session.personalHandover + 1
@@ -28510,7 +28510,7 @@ export class RuntimeHost implements LiveHost {
       if (
         opening === null ||
         !theMessagesOf(opening).some((part) =>
-          TURN_AUTHORSHIP_KEYS.every((key) => key === 'movedFrom' || part[key] === undefined),
+          TURN_ATTRIBUTION_KEYS.every((key) => key === 'movedFrom' || part[key] === undefined),
         )
       )
         return { ok: false, rail: 'no-work-of-your-own', detail: {} }
@@ -28534,7 +28534,7 @@ export class RuntimeHost implements LiveHost {
         // A helper's request from a person hangs under the work it was given, while it holds some;
         // its own root takes only what it is asked while it holds none.
         const personParts = theMessagesOf(opening).filter((part) =>
-          TURN_AUTHORSHIP_KEYS.every((key) => key === 'movedFrom' || part[key] === undefined),
+          TURN_ATTRIBUTION_KEYS.every((key) => key === 'movedFrom' || part[key] === undefined),
         )
         const driven = new Set(personParts.flatMap((part) => part.drives ?? part.piece ?? []))
         const explicit =
@@ -30842,7 +30842,7 @@ export class RuntimeHost implements LiveHost {
       ...(about === null ? {} : { about }),
     }
     session.mailbox.push(held)
-    if (TURN_AUTHORSHIP_KEYS.every((key) => held.authorship[key] === undefined))
+    if (TURN_ATTRIBUTION_KEYS.every((key) => held.authorship[key] === undefined))
       this.declineMoveOffersFromText(session.id, by)
     // Recorded BEFORE anything can go wrong with it (077 §3): from here the transcript holds the
     // text, so no later failure can lose a message the user wrote. It is deliberately NOT a
@@ -32698,7 +32698,7 @@ export class RuntimeHost implements LiveHost {
           session,
           sending.length === 1 &&
             one !== undefined &&
-            TURN_AUTHORSHIP_KEYS.every(
+            TURN_ATTRIBUTION_KEYS.every(
               (key) => key === 'movedFrom' || one.queued.authorship[key] === undefined,
             ),
         )
@@ -32819,6 +32819,7 @@ export class RuntimeHost implements LiveHost {
         session,
         {
           type: 'user_turn',
+          humanInitiated: went.some((one) => one.queued.authorship.humanInitiated === true),
           // ⛔ **The words SENT, each message's, oldest first** — `045`'s turn row, the search and a
           // page's opening line read this; ⚑ who wrote each is on its part and never here.
           text: went.map(({ words }) => words).join('\n\n'),
@@ -38434,6 +38435,8 @@ export class RuntimeHost implements LiveHost {
       from: window.from,
       hasOlder: window.hasOlder,
       turnAligned: window.turnAligned,
+      ...(options.before === undefined
+        ? { humanAnswers: this.deps.store.latestHumanAnswers(sessionId) } : {}),
       // ⚑ **D-035** — on every page, so a hand-over, a page back and a jump to the latest all begin
       // with the tools the conversation had there.
       ...(window.toolsInForce === undefined

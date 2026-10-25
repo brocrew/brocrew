@@ -1526,6 +1526,11 @@ function itemToEvents(item: unknown, phase: 'started' | 'completed'): RuntimeEve
     const message: RuntimeEvent = {
       type: 'assistant_message',
       text,
+      ...(item['phase'] === 'final_answer'
+        ? { phase: 'final' as const }
+        : item['phase'] === 'commentary'
+          ? { phase: 'commentary' as const }
+          : {}),
       ...(questions.length > 0 ? { questions } : {}),
     }
     return recall ? [message, recall] : [message]

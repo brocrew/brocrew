@@ -123,6 +123,8 @@ import {
 } from '../../shared/runtime-ipc'
 import { aNameForANewAgent } from '../../shared/human-names'
 import { NORMALIZER_VERSION, PRE_CONTRACT_NORMALIZER_VERSION } from '../archive/normalizer'
+import { HUMAN_PROMPT_TERM, HUMAN_FINAL_TERM } from './human-answer-index'
+import { humanPromptOf, type HumanAnswers } from '../../shared/human-turn-answer'
 // ⚑ **F071 · what the ledger folds read, and the term that reads it through its index.**
 import {
   conversationTree,
@@ -2516,6 +2518,8 @@ export interface SessionStore extends OwnNotesStore {
    * through a long session into a quadratic scan.
    */
   turnWindow(sessionId: string, options: LedgerWindowQuery): LedgerWindow
+  /** Bounded indexed context, independent of how many app turns follow the human turn. */
+  latestHumanAnswers(sessionId: string): HumanAnswers
   /**
    * What this session's ledger claims about itself (065) — **the replacement for `hasEvents`**.
    *
@@ -13607,6 +13611,35 @@ export function createSessionStore(
         // Reaching the start of the ledger is as aligned as a page gets: nothing was cut off, so
         // there is no partial turn at the top to warn anyone about.
         turnAligned: cutAtTurn || !hasOlder,
+      }
+    },
+
+    latestHumanAnswers(sessionId) {
+      const generation = activeGeneration(sessionId)
+      const prompt = db.prepare(
+        `SELECT ordinal, payload, created_at, turn_id FROM events INDEXED BY events_human_prompt_idx
+         WHERE session_id = ? AND generation = ? AND ${HUMAN_PROMPT_TERM}
+         ORDER BY ordinal DESC LIMIT 1`,
+      ).get(sessionId, generation) as (EventRow & { turn_id: string | null }) | undefined
+      if (prompt === undefined) return { latest: null, active: null }
+      const opening = toPersistedEvents([prompt])[0]
+      const text = opening?.event.type === 'user_turn' ? humanPromptOf(opening.event) : null
+      if (text === null) return { latest: null, active: null }
+      const final = prompt.turn_id === null ? undefined : db.prepare(
+        `SELECT ordinal, payload, created_at FROM events INDEXED BY events_human_final_idx
+         WHERE session_id = ? AND generation = ? AND turn_id = ? AND ${HUMAN_FINAL_TERM}
+           AND ordinal > ? ORDER BY ordinal DESC LIMIT 1`,
+      ).get(sessionId, generation, prompt.turn_id, prompt.ordinal) as EventRow | undefined
+      const said = final === undefined ? undefined : toPersistedEvents([final])[0]
+      const active = selectLastTurn.get(sessionId, generation) as { id: string } | undefined
+      const human = { promptOrdinal: prompt.ordinal, prompt: text }
+      return {
+        latest: {
+          ...human,
+          final: said?.event.type === 'assistant_message' && said.event.text.trim() !== ''
+            ? { text: said.event.text, ordinal: said.ordinal, at: said.at } : null,
+        },
+        active: active !== undefined && active.id === prompt.turn_id ? human : null,
       }
     },
 
