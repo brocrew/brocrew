@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -11,7 +11,12 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { deriveProviderHome, prepareProviderHome } from '../src/main/runtime/provider-homes'
 import { readSessionInstructions } from '../src/main/runtime/instructions'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { executeRuntimeCommand } from '../src/main/runtime/ipc'
+import {
+  RuntimeHost,
+  type RuntimeEventSink,
+  type RuntimeHostDeps,
+} from '../src/main/runtime/runtime-host'
 
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 class Sink implements RuntimeEventSink {
@@ -53,7 +58,12 @@ function locationOf(id: string): string | null | undefined {
   ).providerLocationOf?.(id)
 }
 
-function build(root = join(dir, 'provider-homes'), drift = false, discoverSessions = NO_DISCOVERY) {
+function build(
+  root = join(dir, 'provider-homes'),
+  drift = false,
+  discoverSessions = NO_DISCOVERY,
+  overrides: Partial<RuntimeHostDeps> = {},
+) {
   const preparations: Array<{ provider: Provider; profile: string; location?: string }> = []
   const reads: string[] = []
   const instructions: string[] = []
@@ -105,6 +115,7 @@ function build(root = join(dir, 'provider-homes'), drift = false, discoverSessio
         files: [{ name: 'config.toml', path: join(home, 'config.toml'), exists: true, note: '' }],
       }
     },
+    ...overrides,
   })
   hosts.push(host)
   return { host, preparations, reads, instructions, resumedIn, transcripts }
@@ -183,6 +194,34 @@ describe('a conversation records storage separately from identity', () => {
     expect(preparations).toEqual([])
   })
 
+  it('keeps a malformed discovered folder legacy-null and still records the next discovery', async () => {
+    const root = join(dir, 'provider-homes')
+    mkdirSync(join(root, 'default'), { recursive: true })
+    const outside = join(dir, 'outside')
+    mkdirSync(outside)
+    symlinkSync(
+      outside,
+      join(root, 'default', 'Fern'),
+      process.platform === 'win32' ? 'junction' : 'dir',
+    )
+    const { host, preparations } = build(root, false, () => ({
+      found: ['Fern', 'birch'].map((profileId) => ({
+        provider: 'codex' as const,
+        sessionId: `found_${profileId}`,
+        profileId,
+        cwd: join(dir, 'work'),
+        path: join(root, 'default', profileId, 'codex', 'record.jsonl'),
+        createdAt: 100,
+        updatedAt: 200,
+      })),
+      skipped: [],
+    }))
+    await expect(host.adoptSessions()).resolves.toMatchObject({ adopted: 2 })
+    expect(locationOf(store.findByProviderRef('codex', 'found_Fern')!)).toBeNull()
+    expect(locationOf(store.findByProviderRef('codex', 'found_birch')!)).toBe('default/birch/codex')
+    expect(preparations).toEqual([])
+  })
+
   it.each(['claude', 'codex'] as const)(
     'reads and cold-resumes %s from the recorded location when the default changes',
     async (provider) => {
@@ -229,6 +268,25 @@ describe('a conversation records storage separately from identity', () => {
     const resumed = await next.host.resumeSession(created.sessionId, new Sink())
     expect(resumed.providerHome).toBe(movedHome)
   })
+
+  it.each(['claude', 'codex'] as const)(
+    'cold-resumes %s through the real saved-address query after a default change',
+    async (provider) => {
+      const first = build()
+      const made = await first.host.createSession({ provider, profileId: 'Fern' }, new Sink())
+      await first.host.close(made.sessionId, new Sink())
+      const original = join(dir, 'provider-homes', 'default', 'Fern', provider)
+      plant(original)
+      const next = build(join(dir, 'provider-homes'), true)
+      expect(next.host.readConfigFile(made.sessionId, 'config.toml')).toMatchObject({ ok: true })
+      expect(next.reads).toEqual([original])
+      expect((await next.host.resumeSession(made.sessionId, new Sink())).providerHome).toBe(
+        original,
+      )
+      expect(next.instructions).toEqual([original])
+      expect(next.resumedIn).toEqual([original])
+    },
+  )
 
   it.each(['claude', 'codex'] as const)(
     'prepares the recorded %s location through the real provider home module',
@@ -320,14 +378,71 @@ it('rejects a malformed persisted location before preparing or reading a provide
   await first.host.close(created.sessionId, new Sink())
   Object.assign(store, { providerLocationOf: () => '../fern/codex' })
   const next = build()
-  expect(() => next.host.readConfigFile(created.sessionId, 'config.toml')).toThrow(
-    'Invalid recorded provider location',
-  )
+  await expect(
+    executeRuntimeCommand(next.host, new Sink(), {
+      kind: 'readConfigFile',
+      sessionId: created.sessionId,
+      name: 'config.toml',
+    }),
+  ).resolves.toEqual({ ok: false, reason: 'unreadable' })
+  await expect(
+    executeRuntimeCommand(next.host, new Sink(), {
+      kind: 'revealPath',
+      sessionId: created.sessionId,
+      target: { of: 'home' },
+    }),
+  ).resolves.toEqual({ ok: false, reason: 'no-path' })
   await expect(next.host.resumeSession(created.sessionId, new Sink())).rejects.toThrow(
     'Invalid recorded provider location',
   )
   expect(next.preparations).toEqual([])
   expect(next.reads).toEqual([])
+})
+
+it('refuses a cold launch whose preparer returns another folder before instructions or runtime', async () => {
+  const first = build()
+  const made = await first.host.createSession({ provider: 'claude', profileId: 'Fern' }, new Sink())
+  await first.host.close(made.sessionId, new Sink())
+  const root = join(dir, 'provider-homes')
+  const next = build(root, true, NO_DISCOVERY, {
+    prepareProviderHome: () => join(root, 'default', 'other', 'claude'),
+  })
+  await expect(next.host.resumeSession(made.sessionId, new Sink())).rejects.toThrow(
+    'Prepared provider folder differs from the recorded location',
+  )
+  expect(next.instructions).toEqual([])
+  expect(next.resumedIn).toEqual([])
+})
+
+it('rejects a malformed cold address before asking for login renewal or provisioning', async () => {
+  const first = build()
+  const made = await first.host.createSession({ provider: 'claude', profileId: 'Fern' }, new Sink())
+  await first.host.close(made.sessionId, new Sink())
+  db.prepare('UPDATE provider_session SET provider_home = ? WHERE id = ?').run(
+    '../Fern/claude',
+    made.sessionId,
+  )
+  let renewals = 0
+  const next = build(join(dir, 'provider-homes'), false, NO_DISCOVERY, {
+    loginRenewal: () => ({
+      launchLabel: 'Fictional login renewal',
+      renew: async () => {
+        renewals++
+        return 'renewed'
+      },
+      prepare: async (prepare, renew) => {
+        await renew()
+        return { home: await prepare(), loginRenewed: true }
+      },
+    }),
+  })
+  await expect(next.host.resumeSession(made.sessionId, new Sink())).rejects.toThrow(
+    'Invalid recorded provider location',
+  )
+  expect(renewals).toBe(0)
+  expect(next.preparations).toEqual([])
+  expect(next.instructions).toEqual([])
+  expect(next.resumedIn).toEqual([])
 })
 
 it('the production host binds its managed root and forwards a recorded location into the provider module', () => {

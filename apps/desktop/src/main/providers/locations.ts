@@ -4,6 +4,9 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'nod
 import type { Provider } from '@brobot2/shared'
 import { isPathSegment } from '../../shared/runtime-ipc'
 
+/** A saved address could not be checked; typed readers keep their existing refusal shapes. */
+export class ProviderLocationError extends Error {}
+
 /** A persisted managed address, portable across workspace moves; never a native-user path. */
 function segments(location: string, provider: Provider): string[] {
   const parts = location.split('/')
@@ -76,8 +79,6 @@ export function resolveProviderLocation(
 /** Record the actual prepared home, retaining spelling but excluding the movable workspace root. */
 export function recordProviderLocation(root: string, home: string, provider: Provider): string {
   const location = relative(resolve(root), resolve(home)).split(sep).join('/')
-  if (resolveProviderLocation(root, location, provider) !== resolve(home)) {
-    throw new Error('Prepared provider folder does not match its recorded location')
-  }
+  resolveProviderLocation(root, location, provider)
   return location
 }

@@ -1,5 +1,9 @@
 import { providerKnowledge } from '../providers/knowledge-definitions'
-import { recordProviderLocation, resolveProviderLocation } from '../providers/locations'
+import {
+  ProviderLocationError,
+  recordProviderLocation,
+  resolveProviderLocation,
+} from '../providers/locations'
 import { legacyAccountRecordFormat, providerAuthPolicies } from '../providers/auth-definitions'
 import type { IdentityFact, ProviderAuthPolicy } from '../providers/auth-policy'
 import { providerDefinitions } from '../providers/definitions'
@@ -37223,10 +37227,7 @@ export class RuntimeHost implements LiveHost {
         ...(this.deps.providerHomesRoot === undefined
           ? {}
           : {
-              providerLocation: this.locationOfPreparedHome(
-                this.deps.providerHomePath(session.provider, session.profileId),
-                session.provider,
-              ),
+              providerLocation: this.locationOfDiscoveredHome(session.provider, session.profileId),
             }),
         updatedAt: session.updatedAt,
         createdAt: session.createdAt,
@@ -37928,7 +37929,12 @@ export class RuntimeHost implements LiveHost {
   ): { provider: Provider; cwd: string; providerHome: string; handle?: undefined } | null {
     const row = this.deps.store.find(sessionId)
     if (row === null) return null
-    return { provider: row.provider, cwd: row.cwd, providerHome: this.providerHomeFor(row) }
+    try {
+      return { provider: row.provider, cwd: row.cwd, providerHome: this.providerHomeFor(row) }
+    } catch (error) {
+      if (error instanceof ProviderLocationError) return null
+      throw error
+    }
   }
 
   /**
@@ -37954,8 +37960,13 @@ export class RuntimeHost implements LiveHost {
     }
     const row = this.deps.store.find(sessionId)
     if (row === null) return { ok: false, reason: 'no-path' }
-    const home = this.providerHomeFor(row)
-    return readConfigFile(this.deps.readProviderConfig(row.provider, home).files, name)
+    try {
+      const home = this.providerHomeFor(row)
+      return readConfigFile(this.deps.readProviderConfig(row.provider, home).files, name)
+    } catch (error) {
+      if (error instanceof ProviderLocationError) return { ok: false, reason: 'unreadable' }
+      throw error
+    }
   }
 
   /**
@@ -38200,6 +38211,15 @@ export class RuntimeHost implements LiveHost {
     return recordProviderLocation(root, home, provider)
   }
 
+  private locationOfDiscoveredHome(provider: Provider, profileId: string): string | undefined {
+    try {
+      return this.locationOfPreparedHome(this.deps.providerHomePath(provider, profileId), provider)
+    } catch {
+      // Discovery predates this address field; an odd home retains its original legacy route.
+      return undefined
+    }
+  }
+
   private recordedProviderAddress(session: {
     sessionId: string
     provider: Provider
@@ -38207,8 +38227,16 @@ export class RuntimeHost implements LiveHost {
     const location = this.deps.store.providerLocationOf(session.sessionId)
     if (location === null) return null
     const root = this.deps.providerHomesRoot?.()
-    if (root === undefined) throw new Error('Recorded provider location needs its managed root')
-    return { location, home: resolveProviderLocation(root, location, session.provider) }
+    if (root === undefined)
+      throw new ProviderLocationError('Recorded provider location needs its managed root')
+    try {
+      return { location, home: resolveProviderLocation(root, location, session.provider) }
+    } catch (error) {
+      throw new ProviderLocationError(
+        error instanceof Error ? error.message : 'Recorded provider folder could not be checked',
+        { cause: error },
+      )
+    }
   }
 
   private recordedProviderHome(session: { sessionId: string; provider: Provider }): string | null {

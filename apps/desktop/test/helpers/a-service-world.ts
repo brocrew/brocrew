@@ -30,6 +30,7 @@ import {
   RuntimeHost,
   type GiveOutcome,
   type RuntimeEventSink,
+  type RuntimeHostDeps,
 } from '../../src/main/runtime/runtime-host'
 import { resourcesRoot } from '../../src/main/resources/resources'
 import { resolveSessionCwd } from '../../src/main/runtime/scratch-cwd'
@@ -164,6 +165,10 @@ export interface AServiceWorld {
     limitsWriterStamp?: ConstructorParameters<typeof RuntimeHost>[0]['limitsWriterStamp']
     listProfiles?: (provider?: Provider) => string[]
     readInstructions?: ConstructorParameters<typeof RuntimeHost>[0]['readInstructions']
+    homePaths?: Pick<
+      RuntimeHostDeps,
+      'providerHomesRoot' | 'providerHomePath' | 'prepareProviderHome'
+    >
   }): RuntimeHost
   /** An agent made now, on Claude unless `provider` says otherwise, kept as a service unless `kind` does. */
   anAgent(
@@ -359,6 +364,7 @@ export function aServiceWorld(fixture: { holderReminders?: 'declined' } = {}): A
           return home
         },
         providerHomePath: (provider: Provider) => join(folder, 'provider-homes', provider),
+        ...opts.homePaths,
         ...(opts.listProfiles === undefined ? {} : { listProfiles: opts.listProfiles }),
         ...(opts.readInstructions === undefined ? {} : { readInstructions: opts.readInstructions }),
         resolveCwd: (sessionId, requested) => resolveSessionCwd(folder, sessionId, requested),

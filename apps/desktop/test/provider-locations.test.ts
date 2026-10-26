@@ -1,14 +1,34 @@
 import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, expect, it } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { recordProviderLocation, resolveProviderLocation } from '../src/main/providers/locations'
 import { prepareProviderHome } from '../src/main/runtime/provider-homes'
+const race = vi.hoisted(() => ({ afterRelease: null as null | (() => void) }))
+vi.mock('@brobot2/runtime', async (original) => {
+  const real = await original<typeof import('@brobot2/runtime')>()
+  return {
+    ...real,
+    trustProviderHomeAncestry: (...args: Parameters<typeof real.trustProviderHomeAncestry>) => {
+      const ancestry = real.trustProviderHomeAncestry(...args)
+      return {
+        verify: ancestry.verify,
+        release: () => {
+          ancestry.release()
+          const writer = race.afterRelease
+          race.afterRelease = null
+          writer?.()
+        },
+      }
+    },
+  }
+})
 let dir: string
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'brocrew-location-'))
 })
 afterEach(() => {
+  race.afterRelease = null
   rmSync(dir, { recursive: true, force: true })
 })
 it.each(['brobot', 'default', 'fern', 'Fern', 'field-2', 'A.b_C'])(
@@ -89,4 +109,20 @@ it('refuses an inside-root symlink too, retaining the provisioning ancestry rule
     process.platform === 'win32' ? 'junction' : 'dir',
   )
   expect(() => resolveProviderLocation(root, 'default/fern/claude', 'claude')).toThrow('symlink')
+})
+
+it('rechecks containment when another writer replaces an ancestor after its guard is released', () => {
+  const root = join(dir, 'provider-homes')
+  const profile = join(root, 'default', 'fern')
+  const outside = join(dir, 'outside')
+  mkdirSync(join(profile, 'codex'), { recursive: true })
+  mkdirSync(join(outside, 'codex'), { recursive: true })
+  race.afterRelease = () => {
+    rmSync(profile, { recursive: true })
+    symlinkSync(outside, profile, process.platform === 'win32' ? 'junction' : 'dir')
+  }
+  expect(() => resolveProviderLocation(root, 'default/fern/codex', 'codex')).toThrow(
+    'Recorded provider location is outside its managed root',
+  )
+  expect(race.afterRelease).toBeNull()
 })
