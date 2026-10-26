@@ -177,8 +177,9 @@ MUTATIONS = [
         [
             (
                 HOST,
-                "    const { home: providerHome, loginRenewed } = await this.prepareAHome(input.provider, profileId)",
-                "    const { home: providerHome, loginRenewed } = this.prepareAHome(input.provider, profileId) as unknown as { home: string; loginRenewed: boolean }",
+                # ⚑ **4004 · re-anchored in place, not retired** — Recorded storage adds an optional address; preserve the same legacy defect and killer.
+                "        ? await this.prepareAHome(input.provider, profileId)\n",
+                "        ? (this.prepareAHome(input.provider, profileId) as unknown as { home: string; loginRenewed: boolean })\n",
             )
         ],
     ),
@@ -193,7 +194,8 @@ MUTATIONS = [
         # await, casting to string so it typechecks like the original plant. Killed by
         # `session-profile.test.ts`, `profile-collision.test.ts`.
         [
-            (HOST, '= await this.prepareAHome(\n      row.provider,\n      profileId,\n      sessionId,\n    )\n', '= this.prepareAHome(\n      row.provider,\n      profileId,\n      sessionId,\n    ) as unknown as { home: string; loginRenewed: boolean }\n'),
+            # ⚑ **4004 · re-anchored in place, not retired** — Recorded storage adds an optional address; preserve the same legacy defect and killer.
+            (HOST, "= await this.prepareAHome(\n      row.provider,\n      profileId,\n      sessionId,\n      recordedLocation,\n    )\n", "= this.prepareAHome(\n      row.provider,\n      profileId,\n      sessionId,\n      recordedLocation,\n    ) as unknown as { home: string; loginRenewed: boolean }\n"),
         ],
     ),
     (

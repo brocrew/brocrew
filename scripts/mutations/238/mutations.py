@@ -270,7 +270,8 @@ MUTATIONS = [
         # arrive from the writer, `createTx`'s insertSession, so the plant moves there. Killed by
         # `profile-collision.test.ts`.
         [
-            (STORE, '      record.approvalMode,\n      record.profileId,\n      // Null, not a default: "nobody chose" and "chose medium" are different facts, and only\n', '      record.approvalMode,\n      record.profileId.toLowerCase(),\n      // Null, not a default: "nobody chose" and "chose medium" are different facts, and only\n'),
+            # ⚑ **4004 · re-anchored in place, not retired** — Recorded storage adds an optional address; preserve the same legacy defect and killer.
+            (STORE, "      record.approvalMode,\n      record.profileId,\n      record.providerLocation ?? null,\n      // Null, not a default: \"nobody chose\" and \"chose medium\" are different facts, and only\n", "      record.approvalMode,\n      record.profileId.toLowerCase(),\n      record.providerLocation ?? null,\n      // Null, not a default: \"nobody chose\" and \"chose medium\" are different facts, and only\n"),
         ],
     ),
     (

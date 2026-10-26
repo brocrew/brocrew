@@ -239,7 +239,8 @@ MUTATIONS = [
         # is read as text only and clean-base is never run. Killed by
         # `clean-base-without-running-it.test.mjs`.
         [
-            ('scripts/clean-base.mjs', 'const MIGRATIONS = 20\n', 'const MIGRATIONS = 19\n'),
+            # ⚑ **4004 · re-anchored in place, not retired** — Recorded storage adds an optional address; preserve the same legacy defect and killer.
+            ('scripts/clean-base.mjs', "const MIGRATIONS = 21\n", "const MIGRATIONS = 20\n"),
         ],
     ),
 ]

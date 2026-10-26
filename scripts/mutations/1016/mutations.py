@@ -502,7 +502,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M45 · resume of a row with no recorded profile uses the folder's own name 'default' as the profile, so it reopens in default/default instead of the default profile's home — killed by `session-profile.test.ts`",
         [
-            (RUNTIME_HOST, "const profileId = row.profileId ?? DEFAULT_PROFILE_ID\n    const { home: providerHome, loginRenewed } = await this.prepareAHome(", "const profileId = row.profileId ?? 'default'\n    const { home: providerHome, loginRenewed } = await this.prepareAHome("),
+            # ⚑ **4004 · re-anchored in place, not retired** — Recorded storage adds an optional address; preserve the same legacy defect and killer.
+            (RUNTIME_HOST, "const profileId = row.profileId ?? DEFAULT_PROFILE_ID\n    // Validate the saved address before any renewal or provisioning is admitted.\n    const recordedAddress = this.recordedProviderAddress(row)\n    const recordedHome = recordedAddress?.home ?? null\n    const recordedLocation = recordedAddress?.location\n    const { home: providerHome, loginRenewed } = await this.prepareAHome(", "const profileId = row.profileId ?? 'default'\n    // Validate the saved address before any renewal or provisioning is admitted.\n    const recordedAddress = this.recordedProviderAddress(row)\n    const recordedHome = recordedAddress?.home ?? null\n    const recordedLocation = recordedAddress?.location\n    const { home: providerHome, loginRenewed } = await this.prepareAHome("),
         ],
     ),
     (
@@ -528,7 +529,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M49 · main's prepareProviderHome seam ignores the profile it is given and always provisions the default profile's home — killed by `a-conversation-of-any-profile-lives-in-the-one-home-folder.test.ts`",
         [
-            ("apps/desktop/src/main/index.ts", "    prepareProviderHome: async (provider, profileId) => {\n      await transcriptRetention?.beforeLaunch()\n      return providerModules[provider].home.prepare(profileId)\n    },", "    prepareProviderHome: async (provider, _profileId) => {\n      await transcriptRetention?.beforeLaunch()\n      return providerModules[provider].home.prepare('brobot')\n    },"),
+            # ⚑ **4004 · re-anchored in place, not retired** — Recorded storage adds an optional address; preserve the same legacy defect and killer.
+            ("apps/desktop/src/main/index.ts", "    prepareProviderHome: async (provider, profileId, recordedLocation) => {\n      await transcriptRetention?.beforeLaunch()\n      return providerModules[provider].home.prepare(profileId, recordedLocation)\n    },", "    prepareProviderHome: async (provider, _profileId, recordedLocation) => {\n      await transcriptRetention?.beforeLaunch()\n      return providerModules[provider].home.prepare('brobot', recordedLocation)\n    },"),
         ],
     ),
     (

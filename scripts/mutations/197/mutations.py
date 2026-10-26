@@ -180,8 +180,9 @@ MUTATIONS = [
         "M20 · ⛔ H2 · the rule moves onto `prepareProviderHome`, which is the RESUME path — "
         "187's measured trap, and it strands every pre-187 row",
         "apps/desktop/src/main/providers/home.ts",
-        "  const home = paths.homeOf(profileId)\n  await (provision ?? provisionProviderHome)(paths.managedRoot, home)",
-        "  paths.assertMayOpen(profileId)\n  const home = paths.homeOf(profileId)\n  await (provision ?? provisionProviderHome)(paths.managedRoot, home)",
+        # ⚑ **4004 · re-anchored in place, not retired** — Recorded storage adds an optional address; preserve the same legacy defect and killer.
+        "  const home = recordedHome ?? paths.homeOf(profileId)\n  await (provision ?? provisionProviderHome)(paths.managedRoot, home)",
+        "  paths.assertMayOpen(profileId)\n  const home = recordedHome ?? paths.homeOf(profileId)\n  await (provision ?? provisionProviderHome)(paths.managedRoot, home)",
     ),
     # ---- the five rows this dispatch retired, carried forward into the code that replaced them ---
     (
