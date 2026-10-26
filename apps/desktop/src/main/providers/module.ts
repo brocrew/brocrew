@@ -37,7 +37,7 @@ export interface HomeAuthOperations {
  * those folders, or first provide a profile registry. Existing conversations keep their paths.
  */
 export interface ProviderHomeStrategy {
-  prepare(profileId: string): Promise<string>
+  prepare(profileId: string, recordedLocation?: string): Promise<string>
 }
 
 export interface ProviderModule {

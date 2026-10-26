@@ -27,6 +27,7 @@ import {
 } from '@brobot2/runtime'
 import { ApiKeyUnreadableError } from '../../runtime/api-keys'
 import { prepareStateHome } from '../home'
+import { resolveProviderLocation } from '../locations'
 import type { LoginRenewalOperations, LoginRenewalOutcome } from '../auth-types'
 import type {
   HomeAuthOperations,
@@ -135,8 +136,13 @@ export async function prepareClaudeHome(
   paths: ProviderHomePaths,
   profileId: string,
   seams: ClaudeHomeSeams,
+  recordedLocation?: string,
 ): Promise<string> {
-  const home = await prepareStateHome(paths, profileId, seams.provisionHome)
+  const recordedHome =
+    recordedLocation === undefined
+      ? undefined
+      : resolveProviderLocation(paths.managedRoot, recordedLocation, 'claude')
+  const home = await prepareStateHome(paths, profileId, seams.provisionHome, recordedHome)
 
   const health = await (seams.health ?? (() => claudeHealth(seams.key, claudeCommandFor(seams))))()
   if (!health.ok) {
@@ -232,7 +238,8 @@ export const claudeModuleFactory = {
     () =>
       claudeRuntime(seams),
   home: (paths: ProviderHomePaths, seams: ClaudeHomeSeams): ProviderHomeStrategy => ({
-    prepare: (profileId) => prepareClaudeHome(paths, profileId, seams),
+    prepare: (profileId, recordedLocation) =>
+      prepareClaudeHome(paths, profileId, seams, recordedLocation),
   }),
   auth: claudeAuth,
 }

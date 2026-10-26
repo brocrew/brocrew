@@ -29,6 +29,7 @@ import {
 } from '@brobot2/runtime'
 import { ApiKeyUnreadableError } from '../../runtime/api-keys'
 import { prepareStateHome } from '../home'
+import { resolveProviderLocation } from '../locations'
 import type {
   HomeAuthOperations,
   ProviderHomePaths,
@@ -167,8 +168,13 @@ export async function prepareCodexHome(
   paths: ProviderHomePaths,
   profileId: string,
   seams: CodexHomeSeams,
+  recordedLocation?: string,
 ): Promise<string> {
-  const home = await prepareStateHome(paths, profileId, seams.provisionHome)
+  const recordedHome =
+    recordedLocation === undefined
+      ? undefined
+      : resolveProviderLocation(paths.managedRoot, recordedLocation, 'codex')
+  const home = await prepareStateHome(paths, profileId, seams.provisionHome, recordedHome)
 
   // ⛔ **160's migration runs HERE too, and not only on the launch path** (188 §1, from 168 L2).
   // The adapter clears a stale 157 `config.toml` on `start` and `resume`, which reaches every home
@@ -380,7 +386,8 @@ export const codexModuleFactory = {
     () =>
       codexRuntime(seams),
   home: (paths: ProviderHomePaths, seams: CodexHomeSeams): ProviderHomeStrategy => ({
-    prepare: (profileId) => prepareCodexHome(paths, profileId, seams),
+    prepare: (profileId, recordedLocation) =>
+      prepareCodexHome(paths, profileId, seams, recordedLocation),
   }),
   auth: codexAuth,
 }

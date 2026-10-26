@@ -292,9 +292,9 @@ function times(haystack: string, needle: string): number {
 }
 
 // The provider's bound home strategy prepares the profile it is given. The binding gets its paths
-// from the same pure facade as the read seam; neither call invents another layout.
+// from the same pure facade as the read seam; a recorded address preserves storage separately.
 const PREPARE_SEAM =
-  'prepareProviderHome: async (provider, profileId) => { await transcriptRetention?.beforeLaunch() return providerModules[provider].home.prepare(profileId) },'
+  'prepareProviderHome: async (provider, profileId, recordedLocation) => { await transcriptRetention?.beforeLaunch() return providerModules[provider].home.prepare(profileId, recordedLocation) },'
 const MODULE_PATHS =
   'const providerModules = createProviderModules((provider) => homePathsForProvider(userData, provider),'
 const PATH_SEAM =
@@ -318,12 +318,15 @@ describe('main wires the home seams to the one folder (D-016a)', () => {
 
     // The folder has one author, provider-homes.ts: preparation receives its bound paths, while
     // reads use the pure derivation directly.
-    expect(times(main, 'providerModules[provider].home.prepare(profileId)')).toBe(1)
+    expect(times(main, 'providerModules[provider].home.prepare(profileId, recordedLocation)')).toBe(
+      1,
+    )
     expect(times(main, 'deriveProviderHome(userData')).toBe(1)
     // …and main never spells the layout itself.
     expect(main).not.toMatch(/HOME_FOLDER|['"]provider-homes['"]/)
-    // …and neither seam takes a third parameter, which is where a segment used to arrive.
-    expect(main).not.toMatch(/\(provider, profileId, \w+\) =>/)
+    // Only preparation takes a saved address; pure derivation keeps its two-argument shape.
+    expect(main.match(/\(provider, profileId, \w+\) =>/g)).toHaveLength(1)
+    expect(main).not.toMatch(/providerHomePath: \(provider, profileId, \w+\) =>/)
   })
 
   it('the census has teeth: a seam that ignores the profile it is given is not the seam', () => {

@@ -1,0 +1,1 @@
+ALTER TABLE `provider_session` ADD `provider_home` text;

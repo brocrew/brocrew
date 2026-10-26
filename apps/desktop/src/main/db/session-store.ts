@@ -583,6 +583,8 @@ export interface NewSessionRecord {
   approvalMode: 'ask' | 'auto'
   /** The profile whose provider home it ran in — resume has to land in the same one. */
   profileId: string
+  /** Actual prepared managed-root-relative home; omitted before any provider launch. */
+  providerLocation?: string
   /**
    * The effort it was selected to run at (024; D-042 · R1); absent only for a model that offers
    * none. Replayed at every later start.
@@ -836,6 +838,8 @@ export interface AdoptedSessionRecord {
    * fails at reopen time. See `whyNotResumable`.
    */
   profileId: string | null
+  /** The discovered managed home; native-user and restored rows do not carry one. */
+  providerLocation?: string
   /** When the provider last touched it — the row's updated time, not now. */
   updatedAt: number
   /** When the conversation began, as the provider records it. */
@@ -1624,13 +1628,18 @@ export interface SessionStore extends OwnNotesStore {
    * numbered among the roots, untitled until its owner names it.
    */
   create(record: NewSessionRecord): void
+  /** Private storage address: never included in public conversation lists. */
+  providerLocationOf(sessionId: string): string | null
   /**
    * A service's one conversation, recorded with nothing launched, launched for the first time under
    * its own id: what that launch runs on, as {@link create} records it for a new one. ⛔ Only a row
    * its provider never named: `false` for any other, and nothing is written.
    */
   firstLaunchOf(
-    record: Pick<NewSessionRecord, 'id' | 'model' | 'reasoningEffort' | 'planMode' | 'launchedAs'>,
+    record: Pick<
+      NewSessionRecord,
+      'id' | 'model' | 'reasoningEffort' | 'planMode' | 'launchedAs' | 'providerLocation'
+    >,
   ): boolean
   /**
    * Whether a launch of `sessionId` asked its provider for an id (`launched_as`) that its provider
@@ -3979,6 +3988,7 @@ export interface SessionStore extends OwnNotesStore {
  */
 export const NULL_SESSION_STORE: SessionStore = {
   create: () => {},
+  providerLocationOf: () => null,
   firstLaunchOf: () => false,
   aLaunchWentUnnamed: () => false,
   adopt: () => {},
@@ -5663,8 +5673,8 @@ export function createSessionStore(
     readPhases === undefined ? read() : readPhases.timed(`store.providerLimitsSeen.${name}`, read)
 
   const insertSession = db.prepare(
-    `INSERT INTO provider_session (id, provider, cwd, status, approval_mode, profile_id, reasoning_effort, model, plan_mode, created_at, updated_at)
-     VALUES (?, ?, ?, 'idle', ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO provider_session (id, provider, cwd, status, approval_mode, profile_id, provider_home, reasoning_effort, model, plan_mode, created_at, updated_at)
+     VALUES (?, ?, ?, 'idle', ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
   /**
    * **A field a person cleared is null, and a field they never touched is also null** (339).
@@ -6945,8 +6955,8 @@ export function createSessionStore(
    * nullable for exactly this kind of honest gap.
    */
   const insertAdopted = db.prepare(
-    `INSERT INTO provider_session (id, provider, external_ref, cwd, status, approval_mode, profile_id, created_at, updated_at, adopted_at, child_descent)
-     VALUES (?, ?, ?, ?, 'ended', NULL, ?, ?, ?, ?, ?)`,
+    `INSERT INTO provider_session (id, provider, external_ref, cwd, status, approval_mode, profile_id, provider_home, created_at, updated_at, adopted_at, child_descent)
+     VALUES (?, ?, ?, ?, 'ended', NULL, ?, ?, ?, ?, ?, ?)`,
   )
   const touchAdopted = db.prepare(
     `UPDATE provider_session SET updated_at = ?
@@ -12449,6 +12459,7 @@ export function createSessionStore(
       ref,
       record.cwd,
       record.profileId,
+      record.profileId === null ? null : (record.providerLocation ?? null),
       // The provider's own times, not ours: this conversation existed before we saw it, and
       // `adopted_at` is where "when we recorded it" belongs.
       record.createdAt,
@@ -12545,8 +12556,11 @@ export function createSessionStore(
    * root would leave a person's conversation with no work of its own to hang a give under, and no
    * later write puts one there.
    */
+  const selectProviderLocation = db.prepare(
+    'SELECT provider_home FROM provider_session WHERE id = ?',
+  )
   const writeAFirstLaunch = db.prepare(
-    `UPDATE provider_session SET reasoning_effort = ?, model = ?, plan_mode = ?, updated_at = ?
+    `UPDATE provider_session SET reasoning_effort = ?, model = ?, plan_mode = ?, provider_home = COALESCE(provider_home, ?), updated_at = ?
       WHERE id = ? AND external_ref IS NULL`,
   )
   const selectALaunchUnnamed = db.prepare(
@@ -12557,7 +12571,7 @@ export function createSessionStore(
     (
       record: Pick<
         NewSessionRecord,
-        'id' | 'model' | 'reasoningEffort' | 'planMode' | 'launchedAs'
+        'id' | 'model' | 'reasoningEffort' | 'planMode' | 'launchedAs' | 'providerLocation'
       >,
       at: number,
     ): boolean => {
@@ -12565,6 +12579,7 @@ export function createSessionStore(
         record.reasoningEffort ?? null,
         record.model ?? null,
         record.planMode === undefined ? null : record.planMode ? 1 : 0,
+        record.providerLocation ?? null,
         at,
         record.id,
       )
@@ -12607,6 +12622,7 @@ export function createSessionStore(
       record.cwd,
       record.approvalMode,
       record.profileId,
+      record.providerLocation ?? null,
       // Null, not a default: "nobody chose" and "chose medium" are different facts, and only
       // the second may come back as this conversation's setting.
       record.reasoningEffort ?? null,
@@ -12661,6 +12677,11 @@ export function createSessionStore(
     },
     create(record) {
       createTx(record, now())
+    },
+    providerLocationOf(sessionId) {
+      const row = selectProviderLocation.get(sessionId) as
+        { provider_home: string | null } | undefined
+      return row?.provider_home ?? null
     },
     firstLaunchOf(record) {
       return firstLaunchTx(record, now())

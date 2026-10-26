@@ -117,7 +117,7 @@ describe('F093 · what an agent was given', () => {
   let nativeFile: string | null
 
   const homeOf = (provider: Provider, profileId: string): string =>
-    join(userData, 'provider-homes', profileId, provider)
+    join(userData, 'provider-homes', 'default', profileId, provider)
 
   const buildHost = (withInstructions = true): RuntimeHost => {
     // ⚑ One fake per provider, so a conversation closed here can be resumed by the runtime that

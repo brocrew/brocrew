@@ -816,9 +816,9 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
     beforeProviderLaunch: async () => {
       await transcriptRetention?.beforeLaunch()
     },
-    prepareProviderHome: async (provider, profileId) => {
+    prepareProviderHome: async (provider, profileId, recordedLocation) => {
       await transcriptRetention?.beforeLaunch()
-      return providerModules[provider].home.prepare(profileId)
+      return providerModules[provider].home.prepare(profileId, recordedLocation)
     },
     prepareBuiltInSkills: ({ pack, ...input }) =>
       prepareBuiltInSkills({

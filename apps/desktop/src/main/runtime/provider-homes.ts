@@ -298,12 +298,13 @@ export async function prepareProviderHome(
   userData: string,
   identity: ProviderHomeIdentity,
   seams: ProviderHomeSeams = {},
+  recordedLocation?: string,
 ): Promise<string> {
   return await homeStrategyFor(
     identity.provider,
     homePathsForProvider(userData, identity.provider),
     seams,
-  ).prepare(identity.profileId)
+  ).prepare(identity.profileId, recordedLocation)
 }
 
 export function createProviderRuntime(

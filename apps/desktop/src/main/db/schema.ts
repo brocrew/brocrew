@@ -579,6 +579,8 @@ export const providerSession = sqliteTable(
      * renamed it**; ⚠️ where those bytes ARE has not moved and what this app ANSWERS has.
      */
     profileId: text('profile_id'),
+    /** Original managed-root-relative storage address; null retains the legacy path rules. */
+    providerHome: text('provider_home'),
     /**
      * The reasoning effort this session was created with (024). Persisted for exactly the reason
      * {@link approvalMode} and {@link profileId} are: resume cannot re-derive it, and a

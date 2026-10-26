@@ -6,8 +6,9 @@ export async function prepareStateHome(
   paths: ProviderHomePaths,
   profileId: string,
   provision?: ProvisionHome,
+  recordedHome?: string,
 ): Promise<string> {
-  const home = paths.homeOf(profileId)
+  const home = recordedHome ?? paths.homeOf(profileId)
   await (provision ?? provisionProviderHome)(paths.managedRoot, home)
   return home
 }

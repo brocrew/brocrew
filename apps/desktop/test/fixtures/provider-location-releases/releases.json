@@ -1,0 +1,1319 @@
+[
+  {
+    "release": "v0.1.0",
+    "commit": "9e2e1e2f11677d97448f6a3403bbbe412a14d55f",
+    "journal": {
+      "version": "7",
+      "dialect": "sqlite",
+      "entries": [
+        {
+          "idx": 0,
+          "version": "6",
+          "when": 1790676652301,
+          "tag": "0000_the_tree",
+          "breakpoints": true
+        },
+        {
+          "idx": 1,
+          "version": "6",
+          "when": 1790830976669,
+          "tag": "0001_the_model_list",
+          "breakpoints": true
+        },
+        {
+          "idx": 2,
+          "version": "6",
+          "when": 1790868253982,
+          "tag": "0002_no_agent_limit",
+          "breakpoints": true
+        },
+        {
+          "idx": 3,
+          "version": "6",
+          "when": 1790903801348,
+          "tag": "0003_the_api_keys",
+          "breakpoints": true
+        },
+        {
+          "idx": 4,
+          "version": "6",
+          "when": 1790916874356,
+          "tag": "0004_no_stream_fragments",
+          "breakpoints": true
+        },
+        {
+          "idx": 5,
+          "version": "6",
+          "when": 1790949058579,
+          "tag": "0005_the_fold_index",
+          "breakpoints": true
+        },
+        {
+          "idx": 6,
+          "version": "6",
+          "when": 1790960695483,
+          "tag": "0006_the_inventory_index",
+          "breakpoints": true
+        },
+        {
+          "idx": 7,
+          "version": "6",
+          "when": 1791855756209,
+          "tag": "0007_the_mcp_request_index",
+          "breakpoints": true
+        },
+        {
+          "idx": 8,
+          "version": "6",
+          "when": 1792036800000,
+          "tag": "0008_work_receipt_reads",
+          "breakpoints": true
+        },
+        {
+          "idx": 9,
+          "version": "6",
+          "when": 1792051367003,
+          "tag": "0009_the_fold_index_ends_passed_up_questions",
+          "breakpoints": true
+        },
+        {
+          "idx": 10,
+          "version": "6",
+          "when": 1792108800000,
+          "tag": "0010_the_legacy_stall_cut",
+          "breakpoints": true
+        },
+        {
+          "idx": 11,
+          "version": "6",
+          "when": 1792174407156,
+          "tag": "0011_the_transcript_copy_goes",
+          "breakpoints": true
+        },
+        {
+          "idx": 12,
+          "version": "6",
+          "when": 1792262746788,
+          "tag": "0012_skills_catalogue",
+          "breakpoints": true
+        }
+      ]
+    },
+    "files": [
+      {
+        "tag": "0000_the_tree",
+        "sha256": "f9172f1f478bce3188fa778e5e431a1ecb03fce151e12dc19bcd79c809987f9b"
+      },
+      {
+        "tag": "0001_the_model_list",
+        "sha256": "17995e2e715c5dbe1b5ab89cd4c64fdaeb09a9e32f36b26ba6bbd747218db1b9"
+      },
+      {
+        "tag": "0002_no_agent_limit",
+        "sha256": "6b28dd15a8ef426c45a04668775b0828eba7213058d6454c60ca23768559b1af"
+      },
+      {
+        "tag": "0003_the_api_keys",
+        "sha256": "a364688db9a81105b18cd968d1cb7103a584466cfc7d5caf343f9724026646b3"
+      },
+      {
+        "tag": "0004_no_stream_fragments",
+        "sha256": "1654fdf603b6e40cd0849f22ab0d4f56e0fa12ede7a473dd2976d6791505104c"
+      },
+      {
+        "tag": "0005_the_fold_index",
+        "sha256": "f72356182ed101c8c33547c5d42fb6914a183a023ac339da6140a19886be07d2"
+      },
+      {
+        "tag": "0006_the_inventory_index",
+        "sha256": "28e287b5678c5f2d90cd658d45e1bef431e4dc41ee5a2ba21e9ba54a2982eaf0"
+      },
+      {
+        "tag": "0007_the_mcp_request_index",
+        "sha256": "3f1376bcf4b8d41fc0528e8919a72e4ee64d12c783adb88ae9fd042108e4eeaa"
+      },
+      {
+        "tag": "0008_work_receipt_reads",
+        "sha256": "2c1356c3faf8ade0bba53f31a8ae5e78cd24780df5798d7117a6cc693e8503d1"
+      },
+      {
+        "tag": "0009_the_fold_index_ends_passed_up_questions",
+        "sha256": "f5d025c17739bc703fea7e1c58916843429c902bb11ee76cd4514ce6e7ef5f53"
+      },
+      {
+        "tag": "0010_the_legacy_stall_cut",
+        "sha256": "df7efeb1ddc1e1c416f65d362c879c7a60699b2681af09f6ca6661112c0bccd9"
+      },
+      {
+        "tag": "0011_the_transcript_copy_goes",
+        "sha256": "f37472aea503957ac0ca0fb59a8ea0dab346a86edaeab8845b938a241426a3af"
+      },
+      {
+        "tag": "0012_skills_catalogue",
+        "sha256": "d69e84f6c3c5a4e2419211c7664a6ff88876acb2dc1c78e02cfcad62cc4e76a7"
+      }
+    ]
+  },
+  {
+    "release": "v0.1.1",
+    "commit": "3d0992a4496376c842321a2318864f6f4be782f5",
+    "journal": {
+      "version": "7",
+      "dialect": "sqlite",
+      "entries": [
+        {
+          "idx": 0,
+          "version": "6",
+          "when": 1790676652301,
+          "tag": "0000_the_tree",
+          "breakpoints": true
+        },
+        {
+          "idx": 1,
+          "version": "6",
+          "when": 1790830976669,
+          "tag": "0001_the_model_list",
+          "breakpoints": true
+        },
+        {
+          "idx": 2,
+          "version": "6",
+          "when": 1790868253982,
+          "tag": "0002_no_agent_limit",
+          "breakpoints": true
+        },
+        {
+          "idx": 3,
+          "version": "6",
+          "when": 1790903801348,
+          "tag": "0003_the_api_keys",
+          "breakpoints": true
+        },
+        {
+          "idx": 4,
+          "version": "6",
+          "when": 1790916874356,
+          "tag": "0004_no_stream_fragments",
+          "breakpoints": true
+        },
+        {
+          "idx": 5,
+          "version": "6",
+          "when": 1790949058579,
+          "tag": "0005_the_fold_index",
+          "breakpoints": true
+        },
+        {
+          "idx": 6,
+          "version": "6",
+          "when": 1790960695483,
+          "tag": "0006_the_inventory_index",
+          "breakpoints": true
+        },
+        {
+          "idx": 7,
+          "version": "6",
+          "when": 1791855756209,
+          "tag": "0007_the_mcp_request_index",
+          "breakpoints": true
+        },
+        {
+          "idx": 8,
+          "version": "6",
+          "when": 1792036800000,
+          "tag": "0008_work_receipt_reads",
+          "breakpoints": true
+        },
+        {
+          "idx": 9,
+          "version": "6",
+          "when": 1792051367003,
+          "tag": "0009_the_fold_index_ends_passed_up_questions",
+          "breakpoints": true
+        },
+        {
+          "idx": 10,
+          "version": "6",
+          "when": 1792108800000,
+          "tag": "0010_the_legacy_stall_cut",
+          "breakpoints": true
+        },
+        {
+          "idx": 11,
+          "version": "6",
+          "when": 1792174407156,
+          "tag": "0011_the_transcript_copy_goes",
+          "breakpoints": true
+        },
+        {
+          "idx": 12,
+          "version": "6",
+          "when": 1792262746788,
+          "tag": "0012_skills_catalogue",
+          "breakpoints": true
+        }
+      ]
+    },
+    "files": [
+      {
+        "tag": "0000_the_tree",
+        "sha256": "f9172f1f478bce3188fa778e5e431a1ecb03fce151e12dc19bcd79c809987f9b"
+      },
+      {
+        "tag": "0001_the_model_list",
+        "sha256": "17995e2e715c5dbe1b5ab89cd4c64fdaeb09a9e32f36b26ba6bbd747218db1b9"
+      },
+      {
+        "tag": "0002_no_agent_limit",
+        "sha256": "6b28dd15a8ef426c45a04668775b0828eba7213058d6454c60ca23768559b1af"
+      },
+      {
+        "tag": "0003_the_api_keys",
+        "sha256": "a364688db9a81105b18cd968d1cb7103a584466cfc7d5caf343f9724026646b3"
+      },
+      {
+        "tag": "0004_no_stream_fragments",
+        "sha256": "1654fdf603b6e40cd0849f22ab0d4f56e0fa12ede7a473dd2976d6791505104c"
+      },
+      {
+        "tag": "0005_the_fold_index",
+        "sha256": "f72356182ed101c8c33547c5d42fb6914a183a023ac339da6140a19886be07d2"
+      },
+      {
+        "tag": "0006_the_inventory_index",
+        "sha256": "28e287b5678c5f2d90cd658d45e1bef431e4dc41ee5a2ba21e9ba54a2982eaf0"
+      },
+      {
+        "tag": "0007_the_mcp_request_index",
+        "sha256": "3f1376bcf4b8d41fc0528e8919a72e4ee64d12c783adb88ae9fd042108e4eeaa"
+      },
+      {
+        "tag": "0008_work_receipt_reads",
+        "sha256": "2c1356c3faf8ade0bba53f31a8ae5e78cd24780df5798d7117a6cc693e8503d1"
+      },
+      {
+        "tag": "0009_the_fold_index_ends_passed_up_questions",
+        "sha256": "f5d025c17739bc703fea7e1c58916843429c902bb11ee76cd4514ce6e7ef5f53"
+      },
+      {
+        "tag": "0010_the_legacy_stall_cut",
+        "sha256": "df7efeb1ddc1e1c416f65d362c879c7a60699b2681af09f6ca6661112c0bccd9"
+      },
+      {
+        "tag": "0011_the_transcript_copy_goes",
+        "sha256": "f37472aea503957ac0ca0fb59a8ea0dab346a86edaeab8845b938a241426a3af"
+      },
+      {
+        "tag": "0012_skills_catalogue",
+        "sha256": "d69e84f6c3c5a4e2419211c7664a6ff88876acb2dc1c78e02cfcad62cc4e76a7"
+      }
+    ]
+  },
+  {
+    "release": "v0.1.2",
+    "commit": "e7f34c717a9b8055e7b3ae8411a84621a0efd918",
+    "journal": {
+      "version": "7",
+      "dialect": "sqlite",
+      "entries": [
+        {
+          "idx": 0,
+          "version": "6",
+          "when": 1790676652301,
+          "tag": "0000_the_tree",
+          "breakpoints": true
+        },
+        {
+          "idx": 1,
+          "version": "6",
+          "when": 1790830976669,
+          "tag": "0001_the_model_list",
+          "breakpoints": true
+        },
+        {
+          "idx": 2,
+          "version": "6",
+          "when": 1790868253982,
+          "tag": "0002_no_agent_limit",
+          "breakpoints": true
+        },
+        {
+          "idx": 3,
+          "version": "6",
+          "when": 1790903801348,
+          "tag": "0003_the_api_keys",
+          "breakpoints": true
+        },
+        {
+          "idx": 4,
+          "version": "6",
+          "when": 1790916874356,
+          "tag": "0004_no_stream_fragments",
+          "breakpoints": true
+        },
+        {
+          "idx": 5,
+          "version": "6",
+          "when": 1790949058579,
+          "tag": "0005_the_fold_index",
+          "breakpoints": true
+        },
+        {
+          "idx": 6,
+          "version": "6",
+          "when": 1790960695483,
+          "tag": "0006_the_inventory_index",
+          "breakpoints": true
+        },
+        {
+          "idx": 7,
+          "version": "6",
+          "when": 1791855756209,
+          "tag": "0007_the_mcp_request_index",
+          "breakpoints": true
+        },
+        {
+          "idx": 8,
+          "version": "6",
+          "when": 1792036800000,
+          "tag": "0008_work_receipt_reads",
+          "breakpoints": true
+        },
+        {
+          "idx": 9,
+          "version": "6",
+          "when": 1792051367003,
+          "tag": "0009_the_fold_index_ends_passed_up_questions",
+          "breakpoints": true
+        },
+        {
+          "idx": 10,
+          "version": "6",
+          "when": 1792108800000,
+          "tag": "0010_the_legacy_stall_cut",
+          "breakpoints": true
+        },
+        {
+          "idx": 11,
+          "version": "6",
+          "when": 1792174407156,
+          "tag": "0011_the_transcript_copy_goes",
+          "breakpoints": true
+        },
+        {
+          "idx": 12,
+          "version": "6",
+          "when": 1792262746788,
+          "tag": "0012_skills_catalogue",
+          "breakpoints": true
+        }
+      ]
+    },
+    "files": [
+      {
+        "tag": "0000_the_tree",
+        "sha256": "f9172f1f478bce3188fa778e5e431a1ecb03fce151e12dc19bcd79c809987f9b"
+      },
+      {
+        "tag": "0001_the_model_list",
+        "sha256": "17995e2e715c5dbe1b5ab89cd4c64fdaeb09a9e32f36b26ba6bbd747218db1b9"
+      },
+      {
+        "tag": "0002_no_agent_limit",
+        "sha256": "6b28dd15a8ef426c45a04668775b0828eba7213058d6454c60ca23768559b1af"
+      },
+      {
+        "tag": "0003_the_api_keys",
+        "sha256": "a364688db9a81105b18cd968d1cb7103a584466cfc7d5caf343f9724026646b3"
+      },
+      {
+        "tag": "0004_no_stream_fragments",
+        "sha256": "1654fdf603b6e40cd0849f22ab0d4f56e0fa12ede7a473dd2976d6791505104c"
+      },
+      {
+        "tag": "0005_the_fold_index",
+        "sha256": "f72356182ed101c8c33547c5d42fb6914a183a023ac339da6140a19886be07d2"
+      },
+      {
+        "tag": "0006_the_inventory_index",
+        "sha256": "28e287b5678c5f2d90cd658d45e1bef431e4dc41ee5a2ba21e9ba54a2982eaf0"
+      },
+      {
+        "tag": "0007_the_mcp_request_index",
+        "sha256": "3f1376bcf4b8d41fc0528e8919a72e4ee64d12c783adb88ae9fd042108e4eeaa"
+      },
+      {
+        "tag": "0008_work_receipt_reads",
+        "sha256": "2c1356c3faf8ade0bba53f31a8ae5e78cd24780df5798d7117a6cc693e8503d1"
+      },
+      {
+        "tag": "0009_the_fold_index_ends_passed_up_questions",
+        "sha256": "f5d025c17739bc703fea7e1c58916843429c902bb11ee76cd4514ce6e7ef5f53"
+      },
+      {
+        "tag": "0010_the_legacy_stall_cut",
+        "sha256": "df7efeb1ddc1e1c416f65d362c879c7a60699b2681af09f6ca6661112c0bccd9"
+      },
+      {
+        "tag": "0011_the_transcript_copy_goes",
+        "sha256": "f37472aea503957ac0ca0fb59a8ea0dab346a86edaeab8845b938a241426a3af"
+      },
+      {
+        "tag": "0012_skills_catalogue",
+        "sha256": "d69e84f6c3c5a4e2419211c7664a6ff88876acb2dc1c78e02cfcad62cc4e76a7"
+      }
+    ]
+  },
+  {
+    "release": "v0.1.3",
+    "commit": "5c6fc88f6a1c9b6a36ab540417a590ae9eb6da79",
+    "journal": {
+      "version": "7",
+      "dialect": "sqlite",
+      "entries": [
+        {
+          "idx": 0,
+          "version": "6",
+          "when": 1790676652301,
+          "tag": "0000_the_tree",
+          "breakpoints": true
+        },
+        {
+          "idx": 1,
+          "version": "6",
+          "when": 1790830976669,
+          "tag": "0001_the_model_list",
+          "breakpoints": true
+        },
+        {
+          "idx": 2,
+          "version": "6",
+          "when": 1790868253982,
+          "tag": "0002_no_agent_limit",
+          "breakpoints": true
+        },
+        {
+          "idx": 3,
+          "version": "6",
+          "when": 1790903801348,
+          "tag": "0003_the_api_keys",
+          "breakpoints": true
+        },
+        {
+          "idx": 4,
+          "version": "6",
+          "when": 1790916874356,
+          "tag": "0004_no_stream_fragments",
+          "breakpoints": true
+        },
+        {
+          "idx": 5,
+          "version": "6",
+          "when": 1790949058579,
+          "tag": "0005_the_fold_index",
+          "breakpoints": true
+        },
+        {
+          "idx": 6,
+          "version": "6",
+          "when": 1790960695483,
+          "tag": "0006_the_inventory_index",
+          "breakpoints": true
+        },
+        {
+          "idx": 7,
+          "version": "6",
+          "when": 1791855756209,
+          "tag": "0007_the_mcp_request_index",
+          "breakpoints": true
+        },
+        {
+          "idx": 8,
+          "version": "6",
+          "when": 1792036800000,
+          "tag": "0008_work_receipt_reads",
+          "breakpoints": true
+        },
+        {
+          "idx": 9,
+          "version": "6",
+          "when": 1792051367003,
+          "tag": "0009_the_fold_index_ends_passed_up_questions",
+          "breakpoints": true
+        },
+        {
+          "idx": 10,
+          "version": "6",
+          "when": 1792108800000,
+          "tag": "0010_the_legacy_stall_cut",
+          "breakpoints": true
+        },
+        {
+          "idx": 11,
+          "version": "6",
+          "when": 1792174407156,
+          "tag": "0011_the_transcript_copy_goes",
+          "breakpoints": true
+        },
+        {
+          "idx": 12,
+          "version": "6",
+          "when": 1792262746788,
+          "tag": "0012_skills_catalogue",
+          "breakpoints": true
+        }
+      ]
+    },
+    "files": [
+      {
+        "tag": "0000_the_tree",
+        "sha256": "f9172f1f478bce3188fa778e5e431a1ecb03fce151e12dc19bcd79c809987f9b"
+      },
+      {
+        "tag": "0001_the_model_list",
+        "sha256": "17995e2e715c5dbe1b5ab89cd4c64fdaeb09a9e32f36b26ba6bbd747218db1b9"
+      },
+      {
+        "tag": "0002_no_agent_limit",
+        "sha256": "6b28dd15a8ef426c45a04668775b0828eba7213058d6454c60ca23768559b1af"
+      },
+      {
+        "tag": "0003_the_api_keys",
+        "sha256": "a364688db9a81105b18cd968d1cb7103a584466cfc7d5caf343f9724026646b3"
+      },
+      {
+        "tag": "0004_no_stream_fragments",
+        "sha256": "1654fdf603b6e40cd0849f22ab0d4f56e0fa12ede7a473dd2976d6791505104c"
+      },
+      {
+        "tag": "0005_the_fold_index",
+        "sha256": "f72356182ed101c8c33547c5d42fb6914a183a023ac339da6140a19886be07d2"
+      },
+      {
+        "tag": "0006_the_inventory_index",
+        "sha256": "28e287b5678c5f2d90cd658d45e1bef431e4dc41ee5a2ba21e9ba54a2982eaf0"
+      },
+      {
+        "tag": "0007_the_mcp_request_index",
+        "sha256": "3f1376bcf4b8d41fc0528e8919a72e4ee64d12c783adb88ae9fd042108e4eeaa"
+      },
+      {
+        "tag": "0008_work_receipt_reads",
+        "sha256": "2c1356c3faf8ade0bba53f31a8ae5e78cd24780df5798d7117a6cc693e8503d1"
+      },
+      {
+        "tag": "0009_the_fold_index_ends_passed_up_questions",
+        "sha256": "f5d025c17739bc703fea7e1c58916843429c902bb11ee76cd4514ce6e7ef5f53"
+      },
+      {
+        "tag": "0010_the_legacy_stall_cut",
+        "sha256": "df7efeb1ddc1e1c416f65d362c879c7a60699b2681af09f6ca6661112c0bccd9"
+      },
+      {
+        "tag": "0011_the_transcript_copy_goes",
+        "sha256": "f37472aea503957ac0ca0fb59a8ea0dab346a86edaeab8845b938a241426a3af"
+      },
+      {
+        "tag": "0012_skills_catalogue",
+        "sha256": "d69e84f6c3c5a4e2419211c7664a6ff88876acb2dc1c78e02cfcad62cc4e76a7"
+      }
+    ]
+  },
+  {
+    "release": "v0.1.4",
+    "commit": "aaaf82032146d4666bbf1b1467b775d2522c86c5",
+    "journal": {
+      "version": "7",
+      "dialect": "sqlite",
+      "entries": [
+        {
+          "idx": 0,
+          "version": "6",
+          "when": 1790676652301,
+          "tag": "0000_the_tree",
+          "breakpoints": true
+        },
+        {
+          "idx": 1,
+          "version": "6",
+          "when": 1790830976669,
+          "tag": "0001_the_model_list",
+          "breakpoints": true
+        },
+        {
+          "idx": 2,
+          "version": "6",
+          "when": 1790868253982,
+          "tag": "0002_no_agent_limit",
+          "breakpoints": true
+        },
+        {
+          "idx": 3,
+          "version": "6",
+          "when": 1790903801348,
+          "tag": "0003_the_api_keys",
+          "breakpoints": true
+        },
+        {
+          "idx": 4,
+          "version": "6",
+          "when": 1790916874356,
+          "tag": "0004_no_stream_fragments",
+          "breakpoints": true
+        },
+        {
+          "idx": 5,
+          "version": "6",
+          "when": 1790949058579,
+          "tag": "0005_the_fold_index",
+          "breakpoints": true
+        },
+        {
+          "idx": 6,
+          "version": "6",
+          "when": 1790960695483,
+          "tag": "0006_the_inventory_index",
+          "breakpoints": true
+        },
+        {
+          "idx": 7,
+          "version": "6",
+          "when": 1791855756209,
+          "tag": "0007_the_mcp_request_index",
+          "breakpoints": true
+        },
+        {
+          "idx": 8,
+          "version": "6",
+          "when": 1792036800000,
+          "tag": "0008_work_receipt_reads",
+          "breakpoints": true
+        },
+        {
+          "idx": 9,
+          "version": "6",
+          "when": 1792051367003,
+          "tag": "0009_the_fold_index_ends_passed_up_questions",
+          "breakpoints": true
+        },
+        {
+          "idx": 10,
+          "version": "6",
+          "when": 1792108800000,
+          "tag": "0010_the_legacy_stall_cut",
+          "breakpoints": true
+        },
+        {
+          "idx": 11,
+          "version": "6",
+          "when": 1792174407156,
+          "tag": "0011_the_transcript_copy_goes",
+          "breakpoints": true
+        },
+        {
+          "idx": 12,
+          "version": "6",
+          "when": 1792262746788,
+          "tag": "0012_skills_catalogue",
+          "breakpoints": true
+        }
+      ]
+    },
+    "files": [
+      {
+        "tag": "0000_the_tree",
+        "sha256": "f9172f1f478bce3188fa778e5e431a1ecb03fce151e12dc19bcd79c809987f9b"
+      },
+      {
+        "tag": "0001_the_model_list",
+        "sha256": "17995e2e715c5dbe1b5ab89cd4c64fdaeb09a9e32f36b26ba6bbd747218db1b9"
+      },
+      {
+        "tag": "0002_no_agent_limit",
+        "sha256": "6b28dd15a8ef426c45a04668775b0828eba7213058d6454c60ca23768559b1af"
+      },
+      {
+        "tag": "0003_the_api_keys",
+        "sha256": "a364688db9a81105b18cd968d1cb7103a584466cfc7d5caf343f9724026646b3"
+      },
+      {
+        "tag": "0004_no_stream_fragments",
+        "sha256": "1654fdf603b6e40cd0849f22ab0d4f56e0fa12ede7a473dd2976d6791505104c"
+      },
+      {
+        "tag": "0005_the_fold_index",
+        "sha256": "f72356182ed101c8c33547c5d42fb6914a183a023ac339da6140a19886be07d2"
+      },
+      {
+        "tag": "0006_the_inventory_index",
+        "sha256": "28e287b5678c5f2d90cd658d45e1bef431e4dc41ee5a2ba21e9ba54a2982eaf0"
+      },
+      {
+        "tag": "0007_the_mcp_request_index",
+        "sha256": "3f1376bcf4b8d41fc0528e8919a72e4ee64d12c783adb88ae9fd042108e4eeaa"
+      },
+      {
+        "tag": "0008_work_receipt_reads",
+        "sha256": "2c1356c3faf8ade0bba53f31a8ae5e78cd24780df5798d7117a6cc693e8503d1"
+      },
+      {
+        "tag": "0009_the_fold_index_ends_passed_up_questions",
+        "sha256": "f5d025c17739bc703fea7e1c58916843429c902bb11ee76cd4514ce6e7ef5f53"
+      },
+      {
+        "tag": "0010_the_legacy_stall_cut",
+        "sha256": "df7efeb1ddc1e1c416f65d362c879c7a60699b2681af09f6ca6661112c0bccd9"
+      },
+      {
+        "tag": "0011_the_transcript_copy_goes",
+        "sha256": "f37472aea503957ac0ca0fb59a8ea0dab346a86edaeab8845b938a241426a3af"
+      },
+      {
+        "tag": "0012_skills_catalogue",
+        "sha256": "d69e84f6c3c5a4e2419211c7664a6ff88876acb2dc1c78e02cfcad62cc4e76a7"
+      }
+    ]
+  },
+  {
+    "release": "v0.1.5",
+    "commit": "c1e7761afd300824e0eb15b5ce7bba0a4f265d7b",
+    "journal": {
+      "version": "7",
+      "dialect": "sqlite",
+      "entries": [
+        {
+          "idx": 0,
+          "version": "6",
+          "when": 1790676652301,
+          "tag": "0000_the_tree",
+          "breakpoints": true
+        },
+        {
+          "idx": 1,
+          "version": "6",
+          "when": 1790830976669,
+          "tag": "0001_the_model_list",
+          "breakpoints": true
+        },
+        {
+          "idx": 2,
+          "version": "6",
+          "when": 1790868253982,
+          "tag": "0002_no_agent_limit",
+          "breakpoints": true
+        },
+        {
+          "idx": 3,
+          "version": "6",
+          "when": 1790903801348,
+          "tag": "0003_the_api_keys",
+          "breakpoints": true
+        },
+        {
+          "idx": 4,
+          "version": "6",
+          "when": 1790916874356,
+          "tag": "0004_no_stream_fragments",
+          "breakpoints": true
+        },
+        {
+          "idx": 5,
+          "version": "6",
+          "when": 1790949058579,
+          "tag": "0005_the_fold_index",
+          "breakpoints": true
+        },
+        {
+          "idx": 6,
+          "version": "6",
+          "when": 1790960695483,
+          "tag": "0006_the_inventory_index",
+          "breakpoints": true
+        },
+        {
+          "idx": 7,
+          "version": "6",
+          "when": 1791855756209,
+          "tag": "0007_the_mcp_request_index",
+          "breakpoints": true
+        },
+        {
+          "idx": 8,
+          "version": "6",
+          "when": 1792036800000,
+          "tag": "0008_work_receipt_reads",
+          "breakpoints": true
+        },
+        {
+          "idx": 9,
+          "version": "6",
+          "when": 1792051367003,
+          "tag": "0009_the_fold_index_ends_passed_up_questions",
+          "breakpoints": true
+        },
+        {
+          "idx": 10,
+          "version": "6",
+          "when": 1792108800000,
+          "tag": "0010_the_legacy_stall_cut",
+          "breakpoints": true
+        },
+        {
+          "idx": 11,
+          "version": "6",
+          "when": 1792174407156,
+          "tag": "0011_the_transcript_copy_goes",
+          "breakpoints": true
+        },
+        {
+          "idx": 12,
+          "version": "6",
+          "when": 1792262746788,
+          "tag": "0012_skills_catalogue",
+          "breakpoints": true
+        }
+      ]
+    },
+    "files": [
+      {
+        "tag": "0000_the_tree",
+        "sha256": "f9172f1f478bce3188fa778e5e431a1ecb03fce151e12dc19bcd79c809987f9b"
+      },
+      {
+        "tag": "0001_the_model_list",
+        "sha256": "17995e2e715c5dbe1b5ab89cd4c64fdaeb09a9e32f36b26ba6bbd747218db1b9"
+      },
+      {
+        "tag": "0002_no_agent_limit",
+        "sha256": "6b28dd15a8ef426c45a04668775b0828eba7213058d6454c60ca23768559b1af"
+      },
+      {
+        "tag": "0003_the_api_keys",
+        "sha256": "a364688db9a81105b18cd968d1cb7103a584466cfc7d5caf343f9724026646b3"
+      },
+      {
+        "tag": "0004_no_stream_fragments",
+        "sha256": "1654fdf603b6e40cd0849f22ab0d4f56e0fa12ede7a473dd2976d6791505104c"
+      },
+      {
+        "tag": "0005_the_fold_index",
+        "sha256": "f72356182ed101c8c33547c5d42fb6914a183a023ac339da6140a19886be07d2"
+      },
+      {
+        "tag": "0006_the_inventory_index",
+        "sha256": "28e287b5678c5f2d90cd658d45e1bef431e4dc41ee5a2ba21e9ba54a2982eaf0"
+      },
+      {
+        "tag": "0007_the_mcp_request_index",
+        "sha256": "3f1376bcf4b8d41fc0528e8919a72e4ee64d12c783adb88ae9fd042108e4eeaa"
+      },
+      {
+        "tag": "0008_work_receipt_reads",
+        "sha256": "2c1356c3faf8ade0bba53f31a8ae5e78cd24780df5798d7117a6cc693e8503d1"
+      },
+      {
+        "tag": "0009_the_fold_index_ends_passed_up_questions",
+        "sha256": "f5d025c17739bc703fea7e1c58916843429c902bb11ee76cd4514ce6e7ef5f53"
+      },
+      {
+        "tag": "0010_the_legacy_stall_cut",
+        "sha256": "df7efeb1ddc1e1c416f65d362c879c7a60699b2681af09f6ca6661112c0bccd9"
+      },
+      {
+        "tag": "0011_the_transcript_copy_goes",
+        "sha256": "f37472aea503957ac0ca0fb59a8ea0dab346a86edaeab8845b938a241426a3af"
+      },
+      {
+        "tag": "0012_skills_catalogue",
+        "sha256": "d69e84f6c3c5a4e2419211c7664a6ff88876acb2dc1c78e02cfcad62cc4e76a7"
+      }
+    ]
+  },
+  {
+    "release": "v0.1.6",
+    "commit": "c6df67d2cb6797b5c86f4ef900423adbd67251f0",
+    "journal": {
+      "version": "7",
+      "dialect": "sqlite",
+      "entries": [
+        {
+          "idx": 0,
+          "version": "6",
+          "when": 1790676652301,
+          "tag": "0000_the_tree",
+          "breakpoints": true
+        },
+        {
+          "idx": 1,
+          "version": "6",
+          "when": 1790830976669,
+          "tag": "0001_the_model_list",
+          "breakpoints": true
+        },
+        {
+          "idx": 2,
+          "version": "6",
+          "when": 1790868253982,
+          "tag": "0002_no_agent_limit",
+          "breakpoints": true
+        },
+        {
+          "idx": 3,
+          "version": "6",
+          "when": 1790903801348,
+          "tag": "0003_the_api_keys",
+          "breakpoints": true
+        },
+        {
+          "idx": 4,
+          "version": "6",
+          "when": 1790916874356,
+          "tag": "0004_no_stream_fragments",
+          "breakpoints": true
+        },
+        {
+          "idx": 5,
+          "version": "6",
+          "when": 1790949058579,
+          "tag": "0005_the_fold_index",
+          "breakpoints": true
+        },
+        {
+          "idx": 6,
+          "version": "6",
+          "when": 1790960695483,
+          "tag": "0006_the_inventory_index",
+          "breakpoints": true
+        },
+        {
+          "idx": 7,
+          "version": "6",
+          "when": 1791855756209,
+          "tag": "0007_the_mcp_request_index",
+          "breakpoints": true
+        },
+        {
+          "idx": 8,
+          "version": "6",
+          "when": 1792036800000,
+          "tag": "0008_work_receipt_reads",
+          "breakpoints": true
+        },
+        {
+          "idx": 9,
+          "version": "6",
+          "when": 1792051367003,
+          "tag": "0009_the_fold_index_ends_passed_up_questions",
+          "breakpoints": true
+        },
+        {
+          "idx": 10,
+          "version": "6",
+          "when": 1792108800000,
+          "tag": "0010_the_legacy_stall_cut",
+          "breakpoints": true
+        },
+        {
+          "idx": 11,
+          "version": "6",
+          "when": 1792174407156,
+          "tag": "0011_the_transcript_copy_goes",
+          "breakpoints": true
+        },
+        {
+          "idx": 12,
+          "version": "6",
+          "when": 1792262746788,
+          "tag": "0012_skills_catalogue",
+          "breakpoints": true
+        }
+      ]
+    },
+    "files": [
+      {
+        "tag": "0000_the_tree",
+        "sha256": "f9172f1f478bce3188fa778e5e431a1ecb03fce151e12dc19bcd79c809987f9b"
+      },
+      {
+        "tag": "0001_the_model_list",
+        "sha256": "17995e2e715c5dbe1b5ab89cd4c64fdaeb09a9e32f36b26ba6bbd747218db1b9"
+      },
+      {
+        "tag": "0002_no_agent_limit",
+        "sha256": "6b28dd15a8ef426c45a04668775b0828eba7213058d6454c60ca23768559b1af"
+      },
+      {
+        "tag": "0003_the_api_keys",
+        "sha256": "a364688db9a81105b18cd968d1cb7103a584466cfc7d5caf343f9724026646b3"
+      },
+      {
+        "tag": "0004_no_stream_fragments",
+        "sha256": "1654fdf603b6e40cd0849f22ab0d4f56e0fa12ede7a473dd2976d6791505104c"
+      },
+      {
+        "tag": "0005_the_fold_index",
+        "sha256": "f72356182ed101c8c33547c5d42fb6914a183a023ac339da6140a19886be07d2"
+      },
+      {
+        "tag": "0006_the_inventory_index",
+        "sha256": "28e287b5678c5f2d90cd658d45e1bef431e4dc41ee5a2ba21e9ba54a2982eaf0"
+      },
+      {
+        "tag": "0007_the_mcp_request_index",
+        "sha256": "3f1376bcf4b8d41fc0528e8919a72e4ee64d12c783adb88ae9fd042108e4eeaa"
+      },
+      {
+        "tag": "0008_work_receipt_reads",
+        "sha256": "2c1356c3faf8ade0bba53f31a8ae5e78cd24780df5798d7117a6cc693e8503d1"
+      },
+      {
+        "tag": "0009_the_fold_index_ends_passed_up_questions",
+        "sha256": "f5d025c17739bc703fea7e1c58916843429c902bb11ee76cd4514ce6e7ef5f53"
+      },
+      {
+        "tag": "0010_the_legacy_stall_cut",
+        "sha256": "df7efeb1ddc1e1c416f65d362c879c7a60699b2681af09f6ca6661112c0bccd9"
+      },
+      {
+        "tag": "0011_the_transcript_copy_goes",
+        "sha256": "f37472aea503957ac0ca0fb59a8ea0dab346a86edaeab8845b938a241426a3af"
+      },
+      {
+        "tag": "0012_skills_catalogue",
+        "sha256": "d69e84f6c3c5a4e2419211c7664a6ff88876acb2dc1c78e02cfcad62cc4e76a7"
+      }
+    ]
+  },
+  {
+    "release": "v0.1.7",
+    "commit": "a4dfcf611c244f8365d485022dc674309c2e7ae1",
+    "journal": {
+      "version": "7",
+      "dialect": "sqlite",
+      "entries": [
+        {
+          "idx": 0,
+          "version": "6",
+          "when": 1790676652301,
+          "tag": "0000_the_tree",
+          "breakpoints": true
+        },
+        {
+          "idx": 1,
+          "version": "6",
+          "when": 1790830976669,
+          "tag": "0001_the_model_list",
+          "breakpoints": true
+        },
+        {
+          "idx": 2,
+          "version": "6",
+          "when": 1790868253982,
+          "tag": "0002_no_agent_limit",
+          "breakpoints": true
+        },
+        {
+          "idx": 3,
+          "version": "6",
+          "when": 1790903801348,
+          "tag": "0003_the_api_keys",
+          "breakpoints": true
+        },
+        {
+          "idx": 4,
+          "version": "6",
+          "when": 1790916874356,
+          "tag": "0004_no_stream_fragments",
+          "breakpoints": true
+        },
+        {
+          "idx": 5,
+          "version": "6",
+          "when": 1790949058579,
+          "tag": "0005_the_fold_index",
+          "breakpoints": true
+        },
+        {
+          "idx": 6,
+          "version": "6",
+          "when": 1790960695483,
+          "tag": "0006_the_inventory_index",
+          "breakpoints": true
+        },
+        {
+          "idx": 7,
+          "version": "6",
+          "when": 1791855756209,
+          "tag": "0007_the_mcp_request_index",
+          "breakpoints": true
+        },
+        {
+          "idx": 8,
+          "version": "6",
+          "when": 1792036800000,
+          "tag": "0008_work_receipt_reads",
+          "breakpoints": true
+        },
+        {
+          "idx": 9,
+          "version": "6",
+          "when": 1792051367003,
+          "tag": "0009_the_fold_index_ends_passed_up_questions",
+          "breakpoints": true
+        },
+        {
+          "idx": 10,
+          "version": "6",
+          "when": 1792108800000,
+          "tag": "0010_the_legacy_stall_cut",
+          "breakpoints": true
+        },
+        {
+          "idx": 11,
+          "version": "6",
+          "when": 1792174407156,
+          "tag": "0011_the_transcript_copy_goes",
+          "breakpoints": true
+        },
+        {
+          "idx": 12,
+          "version": "6",
+          "when": 1792262746788,
+          "tag": "0012_skills_catalogue",
+          "breakpoints": true
+        },
+        {
+          "idx": 13,
+          "version": "6",
+          "when": 1792636800000,
+          "tag": "0013_rules_history",
+          "breakpoints": true
+        },
+        {
+          "idx": 14,
+          "version": "6",
+          "when": 1792636800001,
+          "tag": "0014_saved_method_recovery",
+          "breakpoints": true
+        },
+        {
+          "idx": 15,
+          "version": "6",
+          "when": 1792636800002,
+          "tag": "0015_one_pending_method_change",
+          "breakpoints": true
+        },
+        {
+          "idx": 16,
+          "version": "6",
+          "when": 1792660729992,
+          "tag": "0016_method_change_observation",
+          "breakpoints": true
+        },
+        {
+          "idx": 17,
+          "version": "6",
+          "when": 1792670684206,
+          "tag": "0017_memory_restoration",
+          "breakpoints": true
+        },
+        {
+          "idx": 18,
+          "version": "6",
+          "when": 1792676968570,
+          "tag": "0018_memory_recovery",
+          "breakpoints": true
+        },
+        {
+          "idx": 19,
+          "version": "6",
+          "when": 1792803381598,
+          "tag": "0019_own_notes",
+          "breakpoints": true
+        }
+      ]
+    },
+    "files": [
+      {
+        "tag": "0000_the_tree",
+        "sha256": "f9172f1f478bce3188fa778e5e431a1ecb03fce151e12dc19bcd79c809987f9b"
+      },
+      {
+        "tag": "0001_the_model_list",
+        "sha256": "17995e2e715c5dbe1b5ab89cd4c64fdaeb09a9e32f36b26ba6bbd747218db1b9"
+      },
+      {
+        "tag": "0002_no_agent_limit",
+        "sha256": "6b28dd15a8ef426c45a04668775b0828eba7213058d6454c60ca23768559b1af"
+      },
+      {
+        "tag": "0003_the_api_keys",
+        "sha256": "a364688db9a81105b18cd968d1cb7103a584466cfc7d5caf343f9724026646b3"
+      },
+      {
+        "tag": "0004_no_stream_fragments",
+        "sha256": "1654fdf603b6e40cd0849f22ab0d4f56e0fa12ede7a473dd2976d6791505104c"
+      },
+      {
+        "tag": "0005_the_fold_index",
+        "sha256": "f72356182ed101c8c33547c5d42fb6914a183a023ac339da6140a19886be07d2"
+      },
+      {
+        "tag": "0006_the_inventory_index",
+        "sha256": "28e287b5678c5f2d90cd658d45e1bef431e4dc41ee5a2ba21e9ba54a2982eaf0"
+      },
+      {
+        "tag": "0007_the_mcp_request_index",
+        "sha256": "3f1376bcf4b8d41fc0528e8919a72e4ee64d12c783adb88ae9fd042108e4eeaa"
+      },
+      {
+        "tag": "0008_work_receipt_reads",
+        "sha256": "2c1356c3faf8ade0bba53f31a8ae5e78cd24780df5798d7117a6cc693e8503d1"
+      },
+      {
+        "tag": "0009_the_fold_index_ends_passed_up_questions",
+        "sha256": "f5d025c17739bc703fea7e1c58916843429c902bb11ee76cd4514ce6e7ef5f53"
+      },
+      {
+        "tag": "0010_the_legacy_stall_cut",
+        "sha256": "df7efeb1ddc1e1c416f65d362c879c7a60699b2681af09f6ca6661112c0bccd9"
+      },
+      {
+        "tag": "0011_the_transcript_copy_goes",
+        "sha256": "f37472aea503957ac0ca0fb59a8ea0dab346a86edaeab8845b938a241426a3af"
+      },
+      {
+        "tag": "0012_skills_catalogue",
+        "sha256": "d69e84f6c3c5a4e2419211c7664a6ff88876acb2dc1c78e02cfcad62cc4e76a7"
+      },
+      {
+        "tag": "0013_rules_history",
+        "sha256": "d5bfbff0d5629abadd1fe2fb4f080630e643e905ac18c130b0677361ab7c4bfd"
+      },
+      {
+        "tag": "0014_saved_method_recovery",
+        "sha256": "48865b3a7c71c367e97a703e2366f479c8f779b2d5c7a469c0128f4c82967490"
+      },
+      {
+        "tag": "0015_one_pending_method_change",
+        "sha256": "bb59585981b34afdac6a35766911280b3d6795b128e5731c2f96d574e8e476dd"
+      },
+      {
+        "tag": "0016_method_change_observation",
+        "sha256": "83049ee0f2450d76bfabe8de7fb1775bc017d33c9fe63183372002840cde3f91"
+      },
+      {
+        "tag": "0017_memory_restoration",
+        "sha256": "42dd98e16a9c341c473ce1fdca311bc47ee2bd9cb028c7153243b8115d8e67d3"
+      },
+      {
+        "tag": "0018_memory_recovery",
+        "sha256": "d7fbcfe785b5a77d8efb1787e2c8e566d87dc75672b18d61f016839226ad7a19"
+      },
+      {
+        "tag": "0019_own_notes",
+        "sha256": "5e266eafb1bbfd0f325c42776cb3d75d3d0c6159139ba01367f4147bb131fe1a"
+      }
+    ]
+  }
+]

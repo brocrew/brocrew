@@ -1,15 +1,16 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeRuntime } from '@brobot2/runtime'
+import { FakeRuntime, FakeProviderSessions } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { deriveProviderHome, prepareProviderHome } from '../src/main/runtime/provider-homes'
+import { readSessionInstructions } from '../src/main/runtime/instructions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
@@ -26,6 +27,7 @@ let db: AppDatabase
 let store: SessionStore
 let hosts: RuntimeHost[]
 let counter: number
+let providerState: Map<Provider, FakeProviderSessions>
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'brocrew-recorded-home-'))
   db = openDatabase(join(dir, 'workspace.sqlite'))
@@ -33,6 +35,10 @@ beforeEach(() => {
   store = createSessionStore(db)
   hosts = []
   counter = 0
+  providerState = new Map([
+    ['claude', new FakeProviderSessions()],
+    ['codex', new FakeProviderSessions()],
+  ])
 })
 afterEach(async () => {
   for (const host of hosts) await host.closeAll()
@@ -47,17 +53,40 @@ function locationOf(id: string): string | null | undefined {
   ).providerLocationOf?.(id)
 }
 
-function build(root = join(dir, 'provider-homes'), drift = false) {
+function build(root = join(dir, 'provider-homes'), drift = false, discoverSessions = NO_DISCOVERY) {
   const preparations: Array<{ provider: Provider; profile: string; location?: string }> = []
   const reads: string[] = []
+  const instructions: string[] = []
+  const resumedIn: string[] = []
+  const transcripts: string[] = []
   const derive = (provider: Provider, profile: string) =>
     join(root, 'default', drift ? 'next-default' : profile, provider)
   const host = new RuntimeHost({
     store,
-    discoverSessions: NO_DISCOVERY,
-    nativeTranscriptPath: () => null,
+    discoverSessions,
+    nativeTranscriptPath: (_provider, home) => {
+      transcripts.push(home)
+      return null
+    },
     exportDirectory: () => join(dir, 'exports'),
-    createRuntime: (provider) => new FakeRuntime(provider),
+    createRuntime: (provider) => {
+      const runtime = new FakeRuntime(provider, { sessions: providerState.get(provider)! })
+      const resume = runtime.resume.bind(runtime)
+      runtime.resume = (ref, options) => {
+        resumedIn.push(options.providerHome)
+        return resume(ref, options)
+      }
+      return runtime
+    },
+    readInstructions: (provider, cwd, home) => {
+      instructions.push(home)
+      const read = readSessionInstructions({ provider, cwd, providerHome: home })
+      return {
+        ...read,
+        systemHint: read.systemHint ?? undefined,
+        firstTurnLead: read.firstTurnLead ?? undefined,
+      }
+    },
     providerHomesRoot: () => root,
     providerHomePath: derive,
     prepareProviderHome: (provider, profile, location?: string) => {
@@ -78,7 +107,7 @@ function build(root = join(dir, 'provider-homes'), drift = false) {
     },
   })
   hosts.push(host)
-  return { host, preparations, reads }
+  return { host, preparations, reads, instructions, resumedIn, transcripts }
 }
 function plant(home: string) {
   mkdirSync(home, { recursive: true })
@@ -112,6 +141,48 @@ describe('a conversation records storage separately from identity', () => {
     },
   )
 
+  it('records a reserved service location on first launch and never replaces it on a retry', () => {
+    store.create({
+      id: 'fern-service',
+      provider: 'codex',
+      cwd: join(dir, 'work'),
+      approvalMode: 'ask',
+      profileId: 'fern',
+      service: true,
+    })
+    expect(locationOf('fern-service')).toBeNull()
+    expect(
+      store.firstLaunchOf({ id: 'fern-service', providerLocation: 'default/fern/codex' }),
+    ).toBe(true)
+    expect(locationOf('fern-service')).toBe('default/fern/codex')
+    expect(
+      store.firstLaunchOf({ id: 'fern-service', providerLocation: 'default/other/codex' }),
+    ).toBe(true)
+    expect(locationOf('fern-service')).toBe('default/fern/codex')
+  })
+
+  it('records a managed discovery at its existing folder without provisioning a login', async () => {
+    const { host, preparations } = build(join(dir, 'provider-homes'), false, () => ({
+      found: [
+        {
+          provider: 'codex',
+          sessionId: 'found_fern',
+          profileId: 'Fern',
+          cwd: join(dir, 'work'),
+          createdAt: 100,
+          updatedAt: 200,
+          path: join(dir, 'provider-homes', 'default', 'Fern', 'codex', 'record.jsonl'),
+        },
+      ],
+      skipped: [],
+    }))
+    const report = await host.adoptSessions()
+    expect(report.adopted).toBe(1)
+    const id = store.findByProviderRef('codex', 'found_fern')!
+    expect(locationOf(id)).toBe('default/Fern/codex')
+    expect(preparations).toEqual([])
+  })
+
   it.each(['claude', 'codex'] as const)(
     'reads and cold-resumes %s from the recorded location when the default changes',
     async (provider) => {
@@ -131,6 +202,8 @@ describe('a conversation records storage separately from identity', () => {
         { provider, profile: 'fern', location: `default/fern/${provider}` },
       ])
       expect(resumed.providerHome).toBe(original)
+      expect(next.instructions).toEqual([original])
+      expect(next.resumedIn).toEqual([original])
     },
   )
 
@@ -145,6 +218,11 @@ describe('a conversation records storage separately from identity', () => {
     const movedRoot = join(dir, 'moved-workspace', 'provider-homes')
     const movedHome = join(movedRoot, 'default', 'fern', 'codex')
     plant(movedHome)
+    // Moving the fictional provider files also relocates its persisted fake thread record.
+    const ref = created.ref!
+    providerState
+      .get('codex')!
+      .record(ref.sessionId, { cwd: ref.cwd, rotation: ref.rotation, providerHome: movedHome })
     const next = build(movedRoot, true)
     expect(next.host.readConfigFile(created.sessionId, 'config.toml')).toMatchObject({ ok: true })
     expect(next.reads).toEqual([movedHome])
@@ -209,4 +287,54 @@ describe('a conversation records storage separately from identity', () => {
       }
     },
   )
+})
+
+it.each(['claude', 'codex'] as const)(
+  'cold %s preparation and instruction/runtime inputs share the saved address',
+  async (provider) => {
+    const first = build()
+    const created = await first.host.createSession({ provider, profileId: 'Fern' }, new Sink())
+    await first.host.close(created.sessionId, new Sink())
+    Object.assign(store, { providerLocationOf: () => `default/Fern/${provider}` })
+    const next = build(join(dir, 'provider-homes'), true)
+    const attempt = await next.host.resumeSession(created.sessionId, new Sink()).then(
+      (value) => ({ value, error: null }),
+      (error) => ({ value: null, error }),
+    )
+    const original = join(dir, 'provider-homes', 'default', 'Fern', provider)
+    expect(next.preparations).toEqual([
+      { provider, profile: 'Fern', location: `default/Fern/${provider}` },
+    ])
+    expect(attempt.error).toBeNull()
+    expect(next.instructions).toEqual([original])
+    expect(next.resumedIn).toEqual([original])
+  },
+)
+
+it('rejects a malformed persisted location before preparing or reading a provider folder', async () => {
+  const first = build()
+  const created = await first.host.createSession(
+    { provider: 'codex', profileId: 'fern' },
+    new Sink(),
+  )
+  await first.host.close(created.sessionId, new Sink())
+  Object.assign(store, { providerLocationOf: () => '../fern/codex' })
+  const next = build()
+  expect(() => next.host.readConfigFile(created.sessionId, 'config.toml')).toThrow(
+    'Invalid recorded provider location',
+  )
+  await expect(next.host.resumeSession(created.sessionId, new Sink())).rejects.toThrow(
+    'Invalid recorded provider location',
+  )
+  expect(next.preparations).toEqual([])
+  expect(next.reads).toEqual([])
+})
+
+it('the production host binds its managed root and forwards a recorded location into the provider module', () => {
+  const main = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), '../src/main/index.ts'),
+    'utf8',
+  )
+  expect(main.match(/providerHomesRoot: \(\) => providerHomesRoot\(userData\)/g)).toHaveLength(1)
+  expect(main).toContain('providerModules[provider].home.prepare(profileId, recordedLocation)')
 })

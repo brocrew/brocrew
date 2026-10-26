@@ -1,4 +1,5 @@
 import { providerKnowledge } from '../providers/knowledge-definitions'
+import { recordProviderLocation, resolveProviderLocation } from '../providers/locations'
 import { legacyAccountRecordFormat, providerAuthPolicies } from '../providers/auth-definitions'
 import type { IdentityFact, ProviderAuthPolicy } from '../providers/auth-policy'
 import { providerDefinitions } from '../providers/definitions'
@@ -2529,10 +2530,9 @@ export interface RuntimeHostDeps {
    * The profile is passed rather than pinned because it decides what the provider remembers:
    * two sessions in one profile share a home, two in different profiles share nothing.
    *
-   * ⛔ **The profile is the caller's own exact spelling, verbatim** — a launch's, or the one a
-   * resumed conversation recorded — for `schema.ts`'s stated reason: a locator that could override
-   * it is 149's failure shape. ⚑ Every home lives under the one folder `provider-homes.ts` names
-   * (`HOME_FOLDER`, D-016), so the profile and the provider are the whole address.
+   * The profile retains its exact identity and credential selection. A recorded managed-relative
+   * address selects the conversation's original storage without changing that identity. Omitted
+   * addresses retain the existing profile/provider derivation.
    *
    * ⚠️ **A UNION since 243, and widened rather than narrowed on purpose.** The real implementation
    * became promise-returning when the provisioning lock's wait stopped blocking the thread. Every
@@ -2540,7 +2540,11 @@ export interface RuntimeHostDeps {
    * outright is still telling the truth about where the home is, so declaring `Promise<string>`
    * would have turned dozens of honest stubs into compile errors for nothing.
    */
-  prepareProviderHome(provider: Provider, profileId: string): string | Promise<string>
+  prepareProviderHome(
+    provider: Provider,
+    profileId: string,
+    recordedLocation?: string,
+  ): string | Promise<string>
   /** Wait for transcript clearing before a provider process can start. */
   beforeProviderLaunch?: () => Promise<void>
   readSelectedSkills?: (profileId: string | null, grants: SkillGrants) => SkillLaunchSelection
@@ -24047,10 +24051,13 @@ export class RuntimeHost implements LiveHost {
     provider: Provider,
     profileId: string,
     sessionId?: string,
+    recordedLocation?: string,
   ): Promise<{ readonly home: string; readonly loginRenewed: boolean }> {
     const renewedForIt = sessionId !== undefined && this.renewedForItsReopen.delete(sessionId)
     const prepare = (): string | Promise<string> =>
-      this.deps.prepareProviderHome(provider, profileId)
+      recordedLocation === undefined
+        ? this.deps.prepareProviderHome(provider, profileId)
+        : this.deps.prepareProviderHome(provider, profileId, recordedLocation)
     const renewal = this.deps.loginRenewal?.(provider)
     if (renewal === undefined || this.aKeyIsSaved(provider)) {
       return { home: await prepare(), loginRenewed: renewedForIt }
@@ -24166,7 +24173,17 @@ export class RuntimeHost implements LiveHost {
     // ⚑ **A folder a person or the spawn rails named, else the durable workspace** — `resolveCwd`'s
     // blank branch, which is where every conversation that asked for none runs.
     const cwd = this.deps.resolveCwd(id, input.cwd)
-    const { home: providerHome, loginRenewed } = await this.prepareAHome(input.provider, profileId)
+    const recordedAddress = recorded
+      ? this.recordedProviderAddress({ sessionId: id, provider: input.provider })
+      : null
+    const { home: providerHome, loginRenewed } =
+      recordedAddress === null
+        ? await this.prepareAHome(input.provider, profileId)
+        : await this.prepareAHome(input.provider, profileId, undefined, recordedAddress.location)
+    if (recordedAddress !== null && providerHome !== recordedAddress.home) {
+      throw new Error('Prepared provider folder differs from the recorded location')
+    }
+    const providerLocation = this.locationOfPreparedHome(providerHome, input.provider)
     // ⛔ **Asked again now the home exists, because the first answer was about a different disk**
     // (265 §4). The claim above covers every creation in THIS host; a variant laid down while we
     // waited — another BroBot tree over the same `userData`, or a person making the directory — is
@@ -24388,6 +24405,7 @@ export class RuntimeHost implements LiveHost {
               ...(reasoningEffort ? { reasoningEffort } : {}),
               ...(planMode !== undefined ? { planMode } : {}),
               ...(handle.launchedAs ? { launchedAs: handle.launchedAs } : {}),
+              ...(providerLocation === undefined ? {} : { providerLocation }),
             })
             if (!launched) throw new Error(`${id} was launched before, or is not recorded`)
             return
@@ -24398,6 +24416,7 @@ export class RuntimeHost implements LiveHost {
             cwd,
             approvalMode,
             profileId,
+            ...(providerLocation === undefined ? {} : { providerLocation }),
             // Recorded like the mode and the profile, and for the same reason: a resumed session
             // carries on with what it was selected to run, never with today's default.
             ...(reasoningEffort ? { reasoningEffort } : {}),
@@ -36568,7 +36587,9 @@ export class RuntimeHost implements LiveHost {
         )
         continue
       }
-      const home = this.deps.providerHomePath(row.provider, row.profileId ?? DEFAULT_PROFILE_ID)
+      const home =
+        this.recordedProviderHome(row) ??
+        this.deps.providerHomePath(row.provider, row.profileId ?? DEFAULT_PROFILE_ID)
       const sessions = this.deps.store.providerSessionsOf(conversation)
       const files = providerFilesOf(row.provider, home, sessions)
       if (files.length > 0) {
@@ -36731,7 +36752,9 @@ export class RuntimeHost implements LiveHost {
         if (part === undefined || part.kind === 'records') continue
         const row = this.deps.store.recordedOne(part.conversation)
         if (row === null) continue
-        const home = this.deps.providerHomePath(row.provider, row.profileId ?? DEFAULT_PROFILE_ID)
+        const home =
+          this.recordedProviderHome(row) ??
+          this.deps.providerHomePath(row.provider, row.profileId ?? DEFAULT_PROFILE_ID)
         const leftHere = await removeFromHome(home, part.paths)
         left.push(...leftHere)
         if (leftHere.length === 0) removed.push(id)
@@ -37197,6 +37220,14 @@ export class RuntimeHost implements LiveHost {
         sessionId: session.sessionId,
         cwd: session.cwd,
         profileId: session.profileId,
+        ...(this.deps.providerHomesRoot === undefined
+          ? {}
+          : {
+              providerLocation: this.locationOfPreparedHome(
+                this.deps.providerHomePath(session.provider, session.profileId),
+                session.provider,
+              ),
+            }),
         updatedAt: session.updatedAt,
         createdAt: session.createdAt,
         // 111 — recorded HERE or nowhere. Discovery can read the descent only while the provider
@@ -37322,10 +37353,9 @@ export class RuntimeHost implements LiveHost {
     // ⛔ **The PATH, never the launch call** ({@link RuntimeHostDeps.providerHomePath}). Reading a
     // transcript file this app already holds needs no credential: `prepareProviderHome` probes
     // Claude's login or key and throws without one. A home that was never made holds no transcript.
-    const providerHome = this.deps.providerHomePath(
-      session.provider,
-      session.profileId ?? DEFAULT_PROFILE_ID,
-    )
+    const providerHome =
+      this.recordedProviderHome(session) ??
+      this.deps.providerHomePath(session.provider, session.profileId ?? DEFAULT_PROFILE_ID)
     const path = this.deps.nativeTranscriptPath(session.provider, providerHome, session.ref)
     if (path === null) return 'skipped'
     return await this.importTranscript(session.sessionId, session.provider, path, cancelled)
@@ -37744,7 +37774,14 @@ export class RuntimeHost implements LiveHost {
   ): ResolveImagePath | undefined {
     return providerDefinitions[provider].transcripts.imageResolver?.(
       threadId,
-      () => (profileId === null ? null : this.deps.providerHomePath(provider, profileId)),
+      () => {
+        const known = this.deps.store.findByProviderRef(provider, threadId)
+        const recorded =
+          known === null ? null : this.recordedProviderHome({ sessionId: known, provider })
+        return (
+          recorded ?? (profileId === null ? null : this.deps.providerHomePath(provider, profileId))
+        )
+      },
       (candidate) => {
         const asset = resolveAssetRequest(assetUrl(candidate))
         return asset?.path ?? null
@@ -38157,6 +38194,27 @@ export class RuntimeHost implements LiveHost {
    * does. `null`: no snapshot of that model, or no snapshots in this host.
    */
 
+  private locationOfPreparedHome(home: string, provider: Provider): string | undefined {
+    const root = this.deps.providerHomesRoot?.()
+    if (root === undefined || !this.composesInItsOwnHome(home)) return undefined
+    return recordProviderLocation(root, home, provider)
+  }
+
+  private recordedProviderAddress(session: {
+    sessionId: string
+    provider: Provider
+  }): { location: string; home: string } | null {
+    const location = this.deps.store.providerLocationOf(session.sessionId)
+    if (location === null) return null
+    const root = this.deps.providerHomesRoot?.()
+    if (root === undefined) throw new Error('Recorded provider location needs its managed root')
+    return { location, home: resolveProviderLocation(root, location, session.provider) }
+  }
+
+  private recordedProviderHome(session: { sessionId: string; provider: Provider }): string | null {
+    return this.recordedProviderAddress(session)?.home ?? null
+  }
+
   /**
    * Which provider home holds this session's own files (112, both providers since 115).
    *
@@ -38173,8 +38231,10 @@ export class RuntimeHost implements LiveHost {
    * `adoptedAt` subtlety above to be got wrong.
    */
   private providerHomeFor(
-    session: Pick<ResumableSession, 'adoptedAt' | 'profileId' | 'provider'>,
+    session: Pick<ResumableSession, 'sessionId' | 'adoptedAt' | 'profileId' | 'provider'>,
   ): string {
+    const recorded = this.recordedProviderHome(session)
+    if (recorded !== null) return recorded
     if (session.adoptedAt !== null && session.profileId === null) {
       return userProviderHomePath(session.provider)
     }
@@ -43123,11 +43183,19 @@ export class RuntimeHost implements LiveHost {
     // ⚑ `592` recorded that move deliberately: see `test/session-profile.test.ts`'s *"the path for
     // an omitted profile moved, and only because the SLUG did"*.
     const profileId = row.profileId ?? DEFAULT_PROFILE_ID
+    // Validate the saved address before any renewal or provisioning is admitted.
+    const recordedAddress = this.recordedProviderAddress(row)
+    const recordedHome = recordedAddress?.home ?? null
+    const recordedLocation = recordedAddress?.location
     const { home: providerHome, loginRenewed } = await this.prepareAHome(
       row.provider,
       profileId,
       sessionId,
+      recordedLocation,
     )
+    if (recordedHome !== null && providerHome !== recordedHome) {
+      throw new Error('Prepared provider folder differs from the recorded location')
+    }
     // Null only for rows written before the mode was recorded, and for adopted ones we never
     // ran; those resume PROMPTING, which is the safe direction — never the other way round.
     const approvalMode = row.approvalMode ?? 'ask'

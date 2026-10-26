@@ -101,7 +101,7 @@ describe('F093 · R3 · the popup’s provider slot', () => {
   let asked: [Provider, string | null][]
 
   const homeOf = (provider: Provider, profileId: string): string =>
-    join(userData, 'provider-homes', profileId, provider)
+    join(userData, 'provider-homes', 'default', profileId, provider)
 
   const watched: Seam = (provider, model) => {
     asked.push([provider, model])

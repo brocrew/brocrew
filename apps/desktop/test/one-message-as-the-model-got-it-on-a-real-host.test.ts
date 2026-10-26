@@ -103,12 +103,12 @@ describe('F093 · C9 d · one message as the model got it, on a real host', () =
       createRuntime: (provider: Provider) =>
         new ProviderDouble(provider, handles, issued, anOpenGate()),
       prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
+        const home = join(userData, 'provider-homes', 'default', profileId ?? 'default', provider)
         mkdirSync(home, { recursive: true })
         return home
       },
       providerHomePath: (provider: Provider, profileId: string) =>
-        join(userData, 'provider-homes', profileId, provider),
+        join(userData, 'provider-homes', 'default', profileId, provider),
       providerHomesRoot: () => join(userData, 'provider-homes'),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${String(++counter)}`,
