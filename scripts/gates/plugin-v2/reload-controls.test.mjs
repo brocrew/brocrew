@@ -49,6 +49,7 @@ test('real reload projection uses actual host/factory/preload and restores ordin
       fs.mkdirSync(path.dirname(to), { recursive: true })
       fs.writeFileSync(to, fs.readFileSync(path.join(repo, name)), { flag: 'wx', mode: 0o600 })
     }
+    fs.mkdirSync(path.join(target, 'scripts/gates'), { recursive: true, mode: 0o700 })
     const modules = input.modules.map((m) => ({
       ...m,
       source: fileURLToPath(new URL('./reload-source/' + m.name, import.meta.url)),

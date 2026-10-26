@@ -560,7 +560,7 @@ test('Windows paths use forward import slashes and valid literal PowerShell quot
   assert.ok(!script.includes('\\"'))
   assert.ok(script.includes('$_.ProcessId -ne 777'))
   const source = fs.readFileSync(new URL('./projection.mjs', import.meta.url), 'utf8')
-  assert.ok(source.includes("provider.replaceAll('\\\\','/')"))
+  assert.ok(source.includes("provider.replaceAll('\\\\', '/')"))
 })
 test('false Read/Write flags and extra labels cannot be accepted', () => {
   const rows = [

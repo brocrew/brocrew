@@ -732,8 +732,8 @@
     },
     {
       "path": "scripts/gates/plugin-v2/controls.test.mjs",
-      "sha256": "3bd921bbf707949033e65b6eb080ea27fd146105fbf3f44eb14f08031cf5d520",
-      "bytes": 29056
+      "sha256": "998b961104810bae8b192c0f19eaf10eceb4bfbb5c0d45a7faaeb9268f399a66",
+      "bytes": 29057
     },
     {
       "path": "scripts/gates/plugin-v2/external-broker-evidence.template.json",
@@ -802,8 +802,8 @@
     },
     {
       "path": "scripts/gates/plugin-v2/reload-controls.test.mjs",
-      "sha256": "bf3bab9abc49fb7c50fa1395e6426d25f2423b4af6e866c7a6f6316cbd7abf99",
-      "bytes": 4057
+      "sha256": "30483592ba7952d94e1587c4e98e41dfe4242aa5a033670db4e9df174cca99a9",
+      "bytes": 4144
     },
     {
       "path": "scripts/gates/plugin-v2/reload-inputs.json",
