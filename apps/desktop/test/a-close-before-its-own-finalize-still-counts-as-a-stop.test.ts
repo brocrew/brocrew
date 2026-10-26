@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -98,6 +98,7 @@ describe('M55 · a Close counts as a stop before its own finalize', () => {
   const buildHost = (
     closeDrainTimeoutMs: number,
     retiring?: { pending: boolean; wait: Promise<void> },
+    replacement?: { pending: boolean; wait: Promise<void> },
   ): RuntimeHost =>
     new RuntimeHost({
       store,
@@ -107,25 +108,26 @@ describe('M55 · a Close counts as a stop before its own finalize', () => {
       createRuntime: (provider: Provider) => {
         const inner = new FakeRuntime(provider, { sessions })
         const thisLaunch = ++launches
+        const retirement = thisLaunch === 1 ? retiring : thisLaunch === 2 ? replacement : undefined
         const bind = <T extends object>(target: T, prop: string | symbol): unknown => {
           const value = Reflect.get(target, prop) as unknown
           return typeof value === 'function' ? value.bind(target) : value
         }
         const wrap = <H extends object>(handle: H): H =>
-          thisLaunch !== 1
+          thisLaunch !== 1 && retirement === undefined
             ? handle
             : new Proxy(handle, {
                 get(h, p) {
-                  if (p === 'events' && retiring === undefined)
+                  if (p === 'events' && retirement === undefined)
                     return holdTheStreamOpenPastItsEnd(h as unknown as SessionHandle)
-                  if (p === 'isRetiring' && retiring !== undefined)
-                    return () => retiring.pending
-                  if (p === 'send' && retiring !== undefined)
+                  if (p === 'isRetiring' && retirement !== undefined)
+                    return () => retirement.pending
+                  if (p === 'send' && retirement !== undefined)
                     return (...args: Parameters<SessionHandle['send']>) => {
-                      if (retiring.pending)
+                      if (retirement.pending)
                         return Promise.reject(new Error('fictional retiring handle cannot send'))
-                      retiring.pending = true
-                      void retiring.wait.then(() => (h as SessionHandle).close()).catch(() => {})
+                      retirement.pending = true
+                      void retirement.wait.then(() => (h as SessionHandle).close()).catch(() => {})
                       return Promise.reject(new Error('fictional reloadPlugins timeout'))
                     }
                   return bind(h, p)
@@ -302,6 +304,79 @@ describe('M55 · a Close counts as a stop before its own finalize', () => {
       expect(turnTexts(sessionId)).toEqual(['first message', 'second message'])
     } finally {
       release()
+    }
+  })
+  it('refuses a twice-retired original without replaying it, then preserves queued and explicitly resent words and attachments', async () => {
+    const heldRetirement = () => {
+      let release!: () => void
+      const state = {
+        pending: false,
+        wait: new Promise<void>((resolve) => {
+          release = resolve
+        }),
+      }
+      return { state, release }
+    }
+    const original = heldRetirement()
+    const replacement = heldRetirement()
+    host = buildHost(1_000, original.state, replacement.state)
+    const { sessionId } = await host.createSession(
+      { provider: 'claude', profileId: DEFAULT_PROFILE_ID, approvalMode: 'auto', cwd: work },
+      window,
+    )
+    const originalFile = join(work, 'original.txt')
+    const queuedFile = join(work, 'queued.txt')
+    writeFileSync(originalFile, 'fictional original attachment')
+    writeFileSync(queuedFile, 'fictional queued attachment')
+    const originalAttachments = [
+      { path: realpathSync.native(originalFile), kind: 'file' as const, outsideCwd: false },
+    ]
+    const queuedAttachments = [
+      { path: realpathSync.native(queuedFile), kind: 'file' as const, outsideCwd: false },
+    ]
+    const first = host.send(sessionId, 'original words', window, originalAttachments)
+    const firstResult = first.then(
+      () => ({ sent: true as const }),
+      (error: unknown) => ({ sent: false as const, error }),
+    )
+    try {
+      await until(() => original.state.pending, 'the original reload to retire')
+      const queued = host.send(sessionId, 'queued words', window, queuedAttachments)
+      const queuedResult = queued.then(
+        () => ({ sent: true as const }),
+        (error: unknown) => ({ sent: false as const, error }),
+      )
+      expect(launches).toBe(1)
+      expect(turnTexts(sessionId)).toEqual([])
+      original.release()
+      await until(() => replacement.state.pending, 'the replacement reload to retire')
+      const refused = await firstResult
+      expect(refused.sent).toBe(false)
+      if (!refused.sent) expect(String(refused.error)).toContain('fictional reloadPlugins timeout')
+      expect(launches).toBe(2)
+      expect(turnTexts(sessionId)).toEqual([])
+      replacement.release()
+      expect(await queuedResult).toEqual({ sent: true })
+      expect(launches).toBe(3)
+      expect(turnTexts(sessionId)).toEqual(['queued words'])
+      await expect(
+        host.send(sessionId, 'original words', window, originalAttachments),
+      ).resolves.toBeUndefined()
+      const turns = eventsOf(sessionId).filter((event) => event.type === 'user_turn')
+      expect(turns.map((event) => [event.text, event.attachments])).toEqual([
+        ['queued words', queuedAttachments],
+        ['original words', originalAttachments],
+      ])
+      expect(launches).toBe(3)
+      expect(originalAttachments).toEqual([
+        { path: realpathSync.native(originalFile), kind: 'file', outsideCwd: false },
+      ])
+      expect(queuedAttachments).toEqual([
+        { path: realpathSync.native(queuedFile), kind: 'file', outsideCwd: false },
+      ])
+    } finally {
+      original.release()
+      replacement.release()
     }
   })
 })

@@ -1,0 +1,106 @@
+{
+  "source_commit": null,
+  "workflows": {
+    "public-checks.yml": {
+      "workflow_sha256": ["6813795db54854ad9eb02b161c426701887e394ccaef6c5ddbda3a0a6e09f175"],
+      "jobs": {
+        "commit messages and identities": {
+          "required_steps": [
+            "Run actions/checkout@v7",
+            "Setup Node",
+            "Which commits this run checks",
+            "Plain words, and the public identity",
+            "No name the repo must not carry, in a file or a file's name"
+          ]
+        },
+        "secret scan": {
+          "required_steps": [
+            "Run actions/checkout@v7",
+            "Setup Node",
+            "Install gitleaks",
+            "Redaction holds on a fake secret",
+            "Scan the history"
+          ]
+        }
+      }
+    },
+    "macos.yml": {
+      "workflow_sha256": [null],
+      "jobs": {
+        "Does this push ask for a Mac build?": {
+          "required_steps": [],
+          "optional_skip": true
+        },
+        "Build the Mac app (dmg, Apple silicon, signed ad hoc)": {
+          "required_steps": [],
+          "optional_skip": true
+        },
+        "Opt-in guided update rehearsal": {
+          "required_steps": [],
+          "optional_skip": true
+        },
+        "Recovery real-entry check (macOS)": {
+          "required_steps": [],
+          "optional_skip": true
+        },
+        "Plugin v2 Review (0.1.7)": {
+          "required_steps": [
+            "Plugin qualification source controls",
+            "Stage the observed ref-selected source plan",
+            "Install the frozen app source dependencies in scratch",
+            "Product HTTPS then projected package Review journey",
+            "Keep the closed required evidence"
+          ]
+        },
+        "Plugin v2 Review (0.1.8)": {
+          "required_steps": [
+            "Plugin qualification source controls",
+            "Stage the observed ref-selected source plan",
+            "Install the frozen app source dependencies in scratch",
+            "Product HTTPS then projected package Review journey",
+            "Keep the closed required evidence"
+          ]
+        }
+      }
+    },
+    "windows.yml": {
+      "workflow_sha256": [null],
+      "jobs": {
+        "Does this push ask for a Windows build?": {
+          "required_steps": [],
+          "optional_skip": true
+        },
+        "Build the Windows installer (NSIS, x64, unsigned)": {
+          "required_steps": [],
+          "optional_skip": true
+        },
+        "Recovery real-entry check (Windows)": {
+          "required_steps": [],
+          "optional_skip": true
+        },
+        "Plugin v2 Review (0.1.7)": {
+          "required_steps": [
+            "Plugin qualification source controls",
+            "Stage the observed ref-selected source plan",
+            "Install the frozen app source dependencies in scratch",
+            "Product HTTPS then projected package Review journey",
+            "Keep the closed required evidence"
+          ]
+        },
+        "Plugin v2 Review (0.1.8)": {
+          "required_steps": [
+            "Plugin qualification source controls",
+            "Stage the observed ref-selected source plan",
+            "Install the frozen app source dependencies in scratch",
+            "Product HTTPS then projected package Review journey",
+            "Keep the closed required evidence",
+            "Stage dedicated main-app reload source (0.1.8)",
+            "Install dedicated reload dependencies in owned scratch",
+            "Controlled main-app reload queue (0.1.8)",
+            "Keep controlled main-app reload evidence"
+          ]
+        }
+      }
+    }
+  }
+}

@@ -47,6 +47,8 @@ env:
 
 jobs:
   flags:
+    if: >-
+      !startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-') && !startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-')
     name: Does this push ask for a Windows build?
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -73,10 +75,13 @@ jobs:
     name: Build the Windows installer (NSIS, x64, unsigned)
     needs: flags
     if: >-
-      github.event_name == 'workflow_dispatch' ||
-      startsWith(github.ref, 'refs/tags/windows-beta-') ||
-      startsWith(github.ref, 'refs/tags/beta-') ||
-      needs.flags.outputs.win == 'true'
+      !startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-') && !startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-') &&
+      (
+        github.event_name == 'workflow_dispatch' ||
+        startsWith(github.ref, 'refs/tags/windows-beta-') ||
+        startsWith(github.ref, 'refs/tags/beta-') ||
+        needs.flags.outputs.win == 'true'
+      )
     # ⚑ `windows-2022`, not `windows-latest`: installing runs node-gyp for better-sqlite3 (it builds
     # nothing — the package ships its Windows prebuild — but node-gyp must first find a Visual Studio
     # it knows), and pnpm's node-gyp 11 does not know the Visual Studio 2026 the Windows Server 2025
@@ -135,7 +140,7 @@ jobs:
         run: node scripts/third-party-notices.mjs --check
 
       - name: Build and package (NSIS, x64, unsigned)
-        run: pnpm --filter @brobot2/desktop package:win
+        run: pnpm --filter @brobot2/desktop package:win -c.extraMetadata.version=0.1.8
 
       # The app carries no Claude Code, so the check runs the newest tested version, installed with
       # npm outside the app as a person would. npm puts the native program at `bin/claude.exe` in
@@ -232,11 +237,147 @@ jobs:
     name: Recovery real-entry check (Windows)
     needs: flags
     if: >-
-      github.event_name == 'workflow_dispatch' ||
-      startsWith(github.ref, 'refs/tags/windows-beta-') ||
-      startsWith(github.ref, 'refs/tags/beta-') ||
-      needs.flags.outputs.win == 'true'
+      !startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-') && !startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-') &&
+      (
+        github.event_name == 'workflow_dispatch' ||
+        startsWith(github.ref, 'refs/tags/windows-beta-') ||
+        startsWith(github.ref, 'refs/tags/beta-') ||
+        needs.flags.outputs.win == 'true'
+      )
     uses: ./.github/workflows/recovery-real-entry.yml
     with:
       runner: windows-2022
       evidence: recovery-evidence-windows
+
+  plugin-v2-review:
+    name: Plugin v2 Review (${{ matrix.app_version || 'off' }})
+    if: github.repository == 'brocrew/brocrew' && github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-')
+    runs-on: windows-2022
+    timeout-minutes: ${{ (startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-sdk-') || startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-sdk-')) && 50 || 60 }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        app_version: ['0.1.7', '0.1.8']
+    concurrency:
+      group: plugin-v2-${{ github.ref }}-${{ matrix.app_version }}
+      cancel-in-progress: false
+    steps:
+      - name: Preserve committed line endings
+        shell: bash
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+        id: gate-pnpm
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Plugin qualification source controls
+        timeout-minutes: 2
+        run: node --test --test-reporter=tap --test-concurrency=1 scripts/gates/plugin-v2/controls.test.mjs scripts/gates/plugin-v2/native-dependency.test.mjs scripts/gates/plugin-v2/reload-controls.test.mjs scripts/gates/plugin-v2/source-binding.test.mjs
+      - name: Stage the observed ref-selected source plan
+        if: ${{ !startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-sdk-') && !startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-sdk-') }}
+        id: stage
+        shell: bash
+        run: |
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          control=$(node scripts/gates/plugin-v2/owner.mjs stage "${{ matrix.app_version }}")
+          echo "control=$control" >> "$GITHUB_OUTPUT"
+      - name: Install the frozen app source dependencies in scratch
+        if: ${{ !startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-sdk-') && !startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-sdk-') }}
+        shell: bash
+        env:
+          REVIEW_CONTROL: ${{ steps.stage.outputs.control }}
+          PLUGIN_GATE_PNPM_ENTRY: ${{ steps.gate-pnpm.outputs.dest }}/node_modules/pnpm/bin/pnpm.cjs
+        run: node scripts/gates/plugin-v2/owner.mjs install "$REVIEW_CONTROL"
+      - name: Product HTTPS then projected package Review journey
+        if: ${{ !startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-sdk-') && !startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-sdk-') }}
+        shell: bash
+        env:
+          REVIEW_CONTROL: ${{ steps.stage.outputs.control }}
+        run: node scripts/gates/plugin-v2/owner.mjs run "$REVIEW_CONTROL"
+      - name: Stage dedicated main-app reload source (0.1.8)
+        if: ${{ (matrix.app_version == '0.1.8') && !startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-sdk-') && !startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-sdk-') }}
+        id: reload-stage
+        shell: bash
+        run: |
+          control=$(node scripts/gates/plugin-v2/reload-owner.mjs stage)
+          echo "control=$control" >> "$GITHUB_OUTPUT"
+      - name: Install dedicated reload dependencies in owned scratch
+        if: ${{ (matrix.app_version == '0.1.8') && !startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-sdk-') && !startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-sdk-') }}
+        shell: bash
+        env:
+          REVIEW_CONTROL: ${{ steps.reload-stage.outputs.control }}
+          PLUGIN_GATE_PNPM_ENTRY: ${{ steps.gate-pnpm.outputs.dest }}/node_modules/pnpm/bin/pnpm.cjs
+        run: node scripts/gates/plugin-v2/owner.mjs install "$REVIEW_CONTROL"
+      - name: Controlled main-app reload queue (0.1.8)
+        if: ${{ (matrix.app_version == '0.1.8') && !startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-sdk-') && !startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-sdk-') }}
+        shell: bash
+        env:
+          REVIEW_CONTROL: ${{ steps.reload-stage.outputs.control }}
+        run: node scripts/gates/plugin-v2/reload-owner.mjs run "$REVIEW_CONTROL"
+      - name: Keep controlled main-app reload evidence
+        if: ${{ (always() && steps.reload-stage.outputs.control != '') && !startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-sdk-') && !startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-sdk-') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin-reload-windows-0.1.8
+          path: ${{ steps.reload-stage.outputs.control }}/reload-summary.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Keep the closed required evidence
+        if: ${{ (always() && steps.stage.outputs.control != '') && !startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-sdk-') && !startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-sdk-') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin-v2-windows-${{ matrix.app_version }}
+          path: ${{ steps.stage.outputs.control }}/summary.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Assert installed SDK role scope
+        id: sdk-scope
+        if: ${{ (startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-sdk-') || startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-sdk-')) }}
+        timeout-minutes: 1
+        shell: bash
+        run: node scripts/gates/plugin-v2/owner.mjs sdk-scope "${{ matrix.app_version }}"
+      - name: Stage owned installed SDK reload source
+        id: sdk-stage
+        if: ${{ matrix.app_version == '0.1.8' && (startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-sdk-') || startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-sdk-')) }}
+        timeout-minutes: 4
+        shell: bash
+        env:
+          PLUGIN_SDK_APP_VERSION: ${{ matrix.app_version }}
+        run: |
+          control=$(node scripts/gates/plugin-v2/owner.mjs sdk-stage)
+          echo "control=$control" >> "$GITHUB_OUTPUT"
+      - name: Install pinned installed SDK probe dependencies
+        id: sdk-install
+        if: ${{ matrix.app_version == '0.1.8' && (startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-sdk-') || startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-sdk-')) }}
+        timeout-minutes: 21
+        shell: bash
+        env:
+          PLUGIN_SDK_APP_VERSION: ${{ matrix.app_version }}
+          SDK_CONTROL: ${{ steps.sdk-stage.outputs.control }}
+          PLUGIN_GATE_PNPM_ENTRY: ${{ steps.gate-pnpm.outputs.dest }}/node_modules/pnpm/bin/pnpm.cjs
+        run: node scripts/gates/plugin-v2/owner.mjs sdk-install "$SDK_CONTROL"
+      - name: Installed SDK start and reload probe
+        id: sdk-probe
+        if: ${{ matrix.app_version == '0.1.8' && (startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-sdk-') || startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-sdk-')) }}
+        timeout-minutes: 16
+        shell: bash
+        env:
+          PLUGIN_SDK_APP_VERSION: ${{ matrix.app_version }}
+          SDK_CONTROL: ${{ steps.sdk-stage.outputs.control }}
+        run: node scripts/gates/plugin-v2/owner.mjs sdk-run "$SDK_CONTROL"
+      - name: Keep closed installed SDK reload evidence
+        id: sdk-evidence
+        if: ${{ always() && matrix.app_version == '0.1.8' && (startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-sdk-') || startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-sdk-')) && steps.sdk-stage.outputs.control != '' }}
+        timeout-minutes: 2
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-reload-windows-0.1.8
+          path: ${{ steps.sdk-stage.outputs.control }}/sdk-summary.json
+          if-no-files-found: error
+          retention-days: 7

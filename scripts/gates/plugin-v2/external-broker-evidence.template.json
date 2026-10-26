@@ -1,0 +1,37 @@
+{
+  "schema": 2,
+  "source": "operator-broker-api-readback",
+  "repository": "brocrew/brocrew",
+  "workflow": null,
+  "headSha": null,
+  "ref": null,
+  "event": "workflow_dispatch",
+  "runId": null,
+  "attempt": null,
+  "jobKey": "plugin-v2-review",
+  "jobName": null,
+  "jobId": null,
+  "appVersion": null,
+  "conclusion": null,
+  "workflowConclusion": null,
+  "reviewSha256": null,
+  "steps": [],
+  "ordinaryJobs": [],
+  "artifact": null,
+  "summarySha256": null,
+  "brokerReceipt": {
+    "policy_sha256": null
+  },
+  "matrixJobs": [],
+  "publicChecks": {
+    "workflow": ".github/workflows/public-checks.yml",
+    "workflowSha256": null,
+    "event": "push",
+    "ref": null,
+    "headSha": null,
+    "runId": null,
+    "attempt": null,
+    "conclusion": null,
+    "jobs": []
+  }
+}

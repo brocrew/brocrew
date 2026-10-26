@@ -1,0 +1,106 @@
+{
+  "schema": 1,
+  "baseline": "04faa94c05f007f536b8499b984471bdf7a9080b",
+  "files": [
+    {
+      "path": "packages/runtime/src/claude/claude-runtime.ts",
+      "bytes": 357135,
+      "sha256": "5c94aab933915780343952b970012e670f784b886b0f5af7e765b156be44b868"
+    },
+    {
+      "path": "packages/runtime/src/claude/claude-child.ts",
+      "bytes": 18229,
+      "sha256": "3ef3a72cdcdaf4cc2c815aa5c71284c797ed7c650bad2578e0dfdac46a3faf36"
+    },
+    {
+      "path": "packages/runtime/src/claude/agent-tools.ts",
+      "bytes": 16032,
+      "sha256": "ff7c0d71262a4bf0281977bf49f2ed36a094fbaec671a04e6dc34fbf21e64088"
+    },
+    {
+      "path": "packages/runtime/src/internal/async-queue.ts",
+      "bytes": 6405,
+      "sha256": "d0dbee1e1fe2b08136d3738677003c633978d15c9339a4a280dc143f7a1bfc56"
+    },
+    {
+      "path": "packages/runtime/src/internal/session-machine.ts",
+      "bytes": 58159,
+      "sha256": "037a8bc2959e3e28b9b0c582a798de928081f81bf4663ed23082e52bb8ee1d31"
+    },
+    {
+      "path": "packages/runtime/src/built-in-skills.ts",
+      "bytes": 7825,
+      "sha256": "8212ed4948fe5a120bc65f099bb28eae872821b32105b7b03110442639490645"
+    },
+    {
+      "path": "packages/runtime/package.json",
+      "bytes": 740,
+      "sha256": "9724100f261f06aaf6e3ce605139f5561d462d7ad21208f776ccc81c5a88c8c8"
+    },
+    {
+      "path": "packages/runtime/test/claude-runtime.test.ts",
+      "bytes": 458457,
+      "sha256": "7b0a867df6afd9a78c9936fd9d47b55feccc316e17cb4cf8fa252feae99f2258"
+    },
+    {
+      "path": "packages/runtime/test/the-cli-answers-in-order.ts",
+      "bytes": 2311,
+      "sha256": "25daecde6b323cf920c663fe55e20229b3f224bbfb823f4e9821cf0b8c875621"
+    },
+    {
+      "path": "apps/desktop/src/main/runtime/runtime-host.ts",
+      "bytes": 2423944,
+      "sha256": "f2c609f2c7c1ff60efd4bf411d19f5523e997d656f04198b8f26fe2249fd5ee0"
+    },
+    {
+      "path": "apps/desktop/src/main/db/connection.ts",
+      "bytes": 908,
+      "sha256": "0dfe9cb8677f786b3ccca9351ed8d1c0dcc0183a758fdaa9ebceb9548ab6d62c"
+    },
+    {
+      "path": "apps/desktop/src/main/db/migrate.ts",
+      "bytes": 637,
+      "sha256": "74887f4d7246b8bd083efde500d4b22dd9b845ee043d4bdc9c459952ce89ad99"
+    },
+    {
+      "path": "apps/desktop/src/main/db/session-store.ts",
+      "bytes": 819697,
+      "sha256": "e0e58f26912b91514ab30e2f187f4348cc2b37729ddb42705146a57a098a659e"
+    },
+    {
+      "path": "apps/desktop/test/a-close-before-its-own-finalize-still-counts-as-a-stop.test.ts",
+      "bytes": 17973,
+      "sha256": "a4159c5cee7771915deb9dc3d005a2b5451e69289a11e5b0829f46c9dbab85f7"
+    },
+    {
+      "path": "scripts/check-no-plugin-gate-inputs.mjs",
+      "bytes": 2807,
+      "sha256": "5e55a54a93b24c023e4aff606d39bcf2143f77d814674ccc2bc03e4f92154781"
+    },
+    {
+      "path": "scripts/gates/plugin-packaged/contract.mjs",
+      "bytes": 6394,
+      "sha256": "95255ffee9f3326a364b5b465e649782448bc588b4e16c064998ab6e9706e559"
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "bytes": 208999,
+      "sha256": "afda739e7d951d4acd8c6fd7963020a5deb43df3b67799c87293e86396314305"
+    },
+    {
+      "path": "apps/desktop/src/main/index.ts",
+      "bytes": 115873,
+      "sha256": "21a3899b56b3bd9410bf6a91a8a3bbc393857d3bbbbdb703da68cdf3d6c4a4fd"
+    },
+    {
+      "path": "apps/desktop/src/preload/index.ts",
+      "bytes": 60400,
+      "sha256": "a3095ff980c2afbc029a747d90f0e3d87ed8525293ae38d3cf53b9cac08d2355"
+    },
+    {
+      "path": "apps/desktop/src/main/runtime/ipc.ts",
+      "bytes": 172537,
+      "sha256": "f38d8288dbc657baf9b06d454dc9d4943e689bd13aa57d9336a1f3a79516dc25"
+    }
+  ]
+}

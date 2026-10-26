@@ -21,6 +21,32 @@ export function assertNormalPluginBuild(config, entry, devSource) {
     throw new Error('Refusing to package private plugin gate inputs in a normal build')
 }
 export function checkNormalPluginBuild(root) {
+  // A restored index cannot make a previously projected owner/main output ordinary.
+  for (const name of [
+    'apps/desktop/src/main/plugins/catalogue/v2-gate-fetch.ts',
+    'apps/desktop/src/main/plugins/catalogue/download.ts',
+    'apps/desktop/src/main/index.ts',
+    'apps/desktop/src/preload/index.ts',
+    'apps/desktop/electron.vite.config.ts',
+    'scripts/gates/plugin-reload/main-app-controller.mjs',
+    'scripts/gates/plugin-reload/controlled-sdk.mjs',
+    'apps/desktop/out/preload/index.js',
+    'apps/desktop/out/main/index.js',
+    'apps/desktop/resources/plugin-supervisor/entry.cjs',
+  ]) {
+    const file = path.join(root, name)
+    if (
+      fs.existsSync(file) &&
+      (name.endsWith('v2-gate-fetch.ts') ||
+        [
+          'plugin-v2-review-gate-only',
+          'plugin-reload-main-app-gate-only',
+          '__pluginReloadGate',
+          'packaged-plugin-gate-only:reload-v1',
+        ].some((marker) => fs.readFileSync(file, 'utf8').includes(marker)))
+    )
+      throw new Error('Refusing synthetic v2 plugin source or output in a normal build')
+  }
   assertNormalPluginBuild(
     fs.readFileSync(
       path.join(root, 'apps/desktop/src/main/plugins/catalogue/build-config.ts'),

@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import {
   existsSync,
   mkdirSync,
@@ -7,7 +8,8 @@ import {
   readFileSync,
   writeFileSync,
 } from 'node:fs'
-import { isAbsolute, join } from 'node:path'
+import { dirname, isAbsolute, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type { Options } from '@anthropic-ai/claude-agent-sdk'
 import { expect, it } from 'vitest'
 import { claudeProgramWhereTheSdkLooks } from '../src/claude/claude-binary'
@@ -28,6 +30,7 @@ import {
   type ScriptedReply,
   type SeenRequest,
   type SpawnSeen,
+  type ReloadSeen,
 } from './loopback-claude'
 import { probeRunDeadline, runBudgetMs } from './probe-run-deadline'
 import { runEvidence, runScratch } from './run-paths'
@@ -64,6 +67,10 @@ import { runEvidence, runScratch } from './run-paths'
  *    carrying the same fake under another name is seen.
  * 6. key, the Windows way: on macOS and Linux, the same with the product told it runs on Windows,
  *    so the environment route is measured on this system too.
+ * 7. reload (explicit focused SDK scope only): an owned, inert shared-skills plugin makes the product call the actual imported
+ *    SDK's reloadPlugins before sending a turn. Its unchanged promise must resolve to a valid
+ *    response naming that owned plugin, and that same CLI must complete the loopback turn.
+ *    This qualifies the SDK/CLI acknowledgement, not the controlled main-app timeout fixture.
  *
  * After every launch: the options carry the program (when one was named) and the child the SDK
  * started is that program, read off the product's own spawn.
@@ -131,7 +138,7 @@ const PRESENCE_COMMAND =
 const PRESENCE_LINE =
   /presence key=(\w+) descriptor=(\w+) login=(\w+) managed=(\w+) canary=(\w+) home=(\w+) values=(\d+) fd3=(\w+)/
 
-type Arm = 'start' | 'hooks' | 'resume' | 'models' | 'key' | 'key-windows-route'
+type Arm = 'start' | 'hooks' | 'resume' | 'models' | 'key' | 'key-windows-route' | 'reload'
 
 /** The words each arm's prompt carries, so the scripted model knows which conversation is asking. */
 const WORDS: Readonly<Record<Arm, string>> = {
@@ -141,6 +148,7 @@ const WORDS: Readonly<Record<Arm, string>> = {
   models: 'installed-probe models: no turn is sent',
   key: 'installed-probe key: run the presence check',
   'key-windows-route': 'installed-probe key, the Windows way: run the presence check',
+  reload: 'installed-probe reload: acknowledge the turn without running tools',
 }
 
 /** The resumed conversation's second prompt. */
@@ -153,7 +161,11 @@ const CALLS: Readonly<Record<Arm, { readonly id: string; readonly command: strin
   resume: null,
   models: null,
   key: { id: 'toolu_installed_key', command: PRESENCE_COMMAND },
-  'key-windows-route': { id: 'toolu_installed_key_windows', command: PRESENCE_COMMAND },
+  'key-windows-route': {
+    id: 'toolu_installed_key_windows',
+    command: PRESENCE_COMMAND,
+  },
+  reload: null,
 }
 
 /** Each wait is bounded; one that runs out is NOT PERFORMED, never a pass. */
@@ -186,7 +198,12 @@ const WAITS = [
   ...TURN_LAUNCH,
 ]
 
-const deadline = probeRunDeadline('installed Claude Code probe', runBudgetMs(WAITS), TEARDOWN_MS)
+const focusedReload = process.env['BROBOT_PROBE_INSTALLED_SCOPE'] === 'reload'
+const deadline = probeRunDeadline(
+  'installed Claude Code probe',
+  runBudgetMs(focusedReload ? [VERSION_MS, ...TURN_LAUNCH, VERSION_MS, ...TURN_LAUNCH] : WAITS),
+  TEARDOWN_MS,
+)
 
 /** The program under test, by absolute path — or NOT PERFORMED, saying why there is none. */
 function programUnderTest(): string {
@@ -432,6 +449,40 @@ async function goneWithin(
   })
 }
 
+/** Focused SDK role: signal only the exact held ChildProcess, never a later PID lookup. */
+function killOwned(rig: LoopbackRuntime): void {
+  for (const child of rig.recorded.processes) {
+    try {
+      if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL')
+    } catch {
+      /* The outer owned-root census still has to prove drain. */
+    }
+  }
+}
+
+async function ownedGoneWithin(
+  rig: LoopbackRuntime | null,
+  ms: number,
+): Promise<Drive['children']> {
+  if (rig === null) return []
+  const end = Date.now() + ms
+  while (Date.now() < end && rig.recorded.spawns.some((spawn) => spawn.exit === null)) {
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  return rig.recorded.spawns.flatMap((spawn, index) => {
+    if (spawn.pid === null) return []
+    const child = rig.recorded.processes[index]!
+    const exited = spawn.exit !== null
+    const killed = !exited && child.exitCode === null && child.signalCode === null
+    try {
+      if (killed) child.kill('SIGKILL')
+    } catch {
+      /* Retain the failed drain receipt. */
+    }
+    return [{ pid: spawn.pid, exited, killed }]
+  })
+}
+
 /** Whether `work` settled within `ms`. */
 async function settledWithin(work: Promise<unknown>, ms: number): Promise<boolean> {
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -496,11 +547,66 @@ interface Drive {
   readonly children: { pid: number; exited: boolean; killed: boolean }[]
   readonly failure: string | null
   readonly stderr: string
+  readonly loopbackClosed: boolean
+  readonly reloadCalls: ReloadSeen[]
+  readonly reload: {
+    readonly calls: ReloadSeen[]
+    readonly beforeModelRequest: boolean
+    readonly sharedRootOwned: boolean
+    readonly loopbackClosed: boolean
+    readonly configuredPortMatches: boolean
+    readonly identity: ReturnType<typeof reloadIdentity> | null
+  } | null
+}
+
+/** Public SDK metadata and byte identities only; no CLI parsing, profile or credential reads. */
+function reloadIdentity(program: string) {
+  const entry = fileURLToPath(import.meta.resolve('@anthropic-ai/claude-agent-sdk'))
+  const metadata = JSON.parse(readFileSync(join(dirname(entry), 'package.json'), 'utf8')) as {
+    name?: string
+    version?: string
+  }
+  const root = fileURLToPath(new URL('../../../', import.meta.url))
+  const digest = (path: string): string =>
+    createHash('sha256').update(readFileSync(path)).digest('hex')
+  const sources = Object.fromEntries(
+    [
+      'packages/runtime/smoke/claude-installed-probe.smoke.ts',
+      'packages/runtime/smoke/loopback-claude.ts',
+      'packages/runtime/src/claude/claude-runtime.ts',
+      'packages/runtime/src/built-in-skills.ts',
+      'packages/runtime/package.json',
+      'pnpm-lock.yaml',
+      'vitest.smoke.config.ts',
+      '.github/workflows/macos.yml',
+      '.github/workflows/windows.yml',
+      'apps/desktop/src/main/providers/claude/claude-code-tested.json',
+    ].map((path) => [path, digest(join(root, path))]),
+  )
+  return {
+    sdk: {
+      name: metadata.name,
+      version: metadata.version,
+      entry,
+      sha256: digest(entry),
+    },
+    program: { path: program, sha256: digest(program) },
+    expectedCliVersion: process.env['BROBOT_PROBE_EXPECTED_CLAUDE'] ?? null,
+    // An operator must compare this runner claim and these bytes to the external final-SHA contract.
+    sourceClaim: process.env['GITHUB_SHA'] ?? null,
+    sources,
+  }
 }
 
 async function measure(arm: Arm): Promise<Drive> {
   deadline.refuse(`arm ${arm}`)
-  const loopback = await startLoopback(script(arm))
+  let modelRequestBeforeReloadAck = false
+  const loopback = await startLoopback((request) => {
+    if (arm === 'reload' && rig?.recorded.reloads.at(-1)?.state !== 'fulfilled') {
+      modelRequestBeforeReloadAck = true
+    }
+    return script(arm)(request)
+  })
   const handles: SessionHandle[] = []
   let rig: LoopbackRuntime | null = null
   let over = false
@@ -508,7 +614,10 @@ async function measure(arm: Arm): Promise<Drive> {
     over = true
     for (const one of handles) await closeBounded(one, TEARDOWN_MS)
     await loopback.close()
-    if (rig !== null) killLeft(rig.recorded.spawns)
+    if (rig !== null) {
+      if (focusedReload) killOwned(rig)
+      else killLeft(rig.recorded.spawns)
+    }
   })
   const events: RuntimeEvent[] = []
   const hooks: HookSeen[] = []
@@ -521,7 +630,10 @@ async function measure(arm: Arm): Promise<Drive> {
   let configDirAfter: string[] | null = null
   let children: { pid: number; exited: boolean; killed: boolean }[]
   let failure: string | null = null
-  const onAKey = arm === 'key' || arm === 'key-windows-route'
+  let identity: ReturnType<typeof reloadIdentity> | null = null
+  let sharedRoot: string | null = null
+  let builtInRoot: string | null = null
+  const onAKey = arm === 'key' || arm === 'key-windows-route' || arm === 'reload'
 
   /** A launch that answers after its bound is still closed, so no CLI is left running. */
   const open = async (what: string, opening: Promise<SessionHandle>): Promise<SessionHandle> => {
@@ -558,13 +670,47 @@ async function measure(arm: Arm): Promise<Drive> {
 
   try {
     program = programUnderTest()
-    if (arm === 'start') version = await versionOf(program)
+    if (arm === 'reload') {
+      if (GIVEN === undefined) {
+        throw new Error('NOT PERFORMED — reload arm requires the explicitly named installed CLI')
+      }
+      identity = reloadIdentity(program)
+      if (
+        identity.sdk.name !== '@anthropic-ai/claude-agent-sdk' ||
+        identity.sdk.version !== '0.3.287'
+      ) {
+        throw new Error('NOT PERFORMED — reload arm requires the source-pinned real SDK 0.3.287')
+      }
+      if (!/^\d+\.\d+\.\d+$/.test(identity.expectedCliVersion ?? '')) {
+        throw new Error('NOT PERFORMED — reload arm needs exact BROBOT_PROBE_EXPECTED_CLAUDE')
+      }
+    }
+    if (arm === 'start' || arm === 'reload') version = await versionOf(program)
+    if (
+      arm === 'reload' &&
+      (version?.exit !== 0 || version.version !== identity?.expectedCliVersion)
+    ) {
+      throw new Error(
+        'NOT PERFORMED — the installed program does not match the exact expected CLI version',
+      )
+    }
     rig = await loopbackRuntime({
       scratch: runScratch('claude-installed'),
       label: arm,
       port: loopback.port,
       maxRetries: 0,
       contain: true,
+      ...(arm === 'reload' || arm === 'start'
+        ? {
+            // Paths are assigned below, before runtime.start invokes the query factory.
+            observeReload: {
+              name: 'brobot-installed-reload',
+              get path() {
+                return sharedRoot ?? ''
+              },
+            },
+          }
+        : {}),
       ...(onAKey ? { apiKey: FAKE_KEY } : {}),
       ...(arm === 'key-windows-route' ? { platform: 'win32' as const } : {}),
       rewrite: (options) => {
@@ -574,10 +720,30 @@ async function measure(arm: Arm): Promise<Drive> {
       },
     })
     const live = rig
+    if (arm === 'reload') {
+      sharedRoot = join(live.root, 'shared-skills')
+      builtInRoot = join(live.root, 'built-in-skills')
+      for (const [path, name] of [
+        [sharedRoot, 'brobot-installed-reload'],
+        [builtInRoot, 'brobot'],
+      ] as const) {
+        mkdirSync(join(path, '.claude-plugin'), { recursive: true })
+        writeFileSync(
+          join(path, '.claude-plugin', 'plugin.json'),
+          JSON.stringify({ name, version: '1.0.0' }),
+        )
+      }
+    }
     configDirBefore = readdirSync(live.providerHome).sort()
     const context = {
       providerHome: live.providerHome,
       approvalMode: 'auto' as const,
+      ...(arm === 'reload'
+        ? {
+            sharedSkillsRoot: sharedRoot!,
+            builtInSkills: { root: builtInRoot!, skills: [] },
+          }
+        : {}),
       ...(arm === 'hooks' ? { model: EFFORT_MODEL, reasoningEffort: EFFORT } : { model: MODEL }),
     }
     if (arm === 'models') {
@@ -610,7 +776,9 @@ async function measure(arm: Arm): Promise<Drive> {
     over = true
     for (const one of handles) await closeBounded(one, TEARDOWN_MS)
     await loopback.close()
-    children = await goneWithin(rig?.recorded.spawns ?? [], EXIT_MS)
+    children = focusedReload
+      ? await ownedGoneWithin(rig, EXIT_MS)
+      : await goneWithin(rig?.recorded.spawns ?? [], EXIT_MS)
     release()
   }
 
@@ -678,6 +846,20 @@ async function measure(arm: Arm): Promise<Drive> {
     children,
     failure,
     stderr: rig?.recorded.stderr ?? '',
+    loopbackClosed: loopback.closed,
+    reloadCalls: rig?.recorded.reloads ?? [],
+    reload:
+      arm !== 'reload'
+        ? null
+        : {
+            calls: rig?.recorded.reloads ?? [],
+            beforeModelRequest: !modelRequestBeforeReloadAck,
+            sharedRootOwned:
+              sharedRoot !== null && rig !== null && sharedRoot === join(rig.root, 'shared-skills'),
+            loopbackClosed: loopback.closed,
+            configuredPortMatches: rig?.recorded.configuredPort === loopback.port,
+            identity,
+          },
   }
   const evidence = runEvidence('claude-installed')
   mkdirSync(evidence, { recursive: true })
@@ -767,6 +949,8 @@ it(
       expect(drive.toolAnswer ?? '', 'the Bash call’s answer').toContain(ECHO)
       expect(drive.version?.exit, `--version said: ${drive.version?.said ?? ''}`).toBe(0)
       expect(drive.version?.version).not.toBeNull()
+      // Negative control: this unchanged arm supplies no sharedSkillsRoot and calls no reload.
+      expect(drive.reloadCalls).toEqual([])
       // Every `system/init` the launch announced names the version `--version` read.
       expect(drive.initVersions.length, 'no system/init').toBeGreaterThan(0)
       expect([...new Set(drive.initVersions)], 'system/init’s claude_code_version').toEqual([
@@ -863,3 +1047,42 @@ if (process.platform !== 'win32') {
     deadline.testTimeoutMs,
   )
 }
+
+if (focusedReload)
+  it(
+    'installed Claude Code · reload: the real SDK acknowledges the owned shared-skills plugin before the turn',
+    () =>
+      deadline.within('arm reload', async () => {
+        const drive = await measure('reload')
+        launchesHold(drive, 1)
+        turnsHold(drive, 1)
+        const reload = drive.reload!
+        expect(reload.sharedRootOwned).toBe(true)
+        expect(reload.loopbackClosed).toBe(true)
+        expect(reload.configuredPortMatches).toBe(true)
+        expect(reload.calls).toHaveLength(1)
+        const call = reload.calls[0]!
+        expect(call.state).toBe('fulfilled')
+        expect(call.settledAt).not.toBeNull()
+        expect(call.settledAt! - call.calledAt).toBeLessThan(10_000)
+        expect(call.answer).toEqual({
+          arrays: true,
+          errorCount: 0,
+          ownedPlugin: true,
+        })
+        expect(reload.beforeModelRequest).toBe(true)
+        expect(drive.wire.everyRequestOnTheKey).toBe(true)
+        expect(drive.wire.bearerSeen).toBe(false)
+        expect(drive.launchEnv?.loginToken).toBe(false)
+        expect(drive.toolCalls).toEqual([])
+        expect(drive.initVersions).not.toHaveLength(0)
+        expect([...new Set(drive.initVersions)]).toEqual([reload.identity!.expectedCliVersion])
+        expect(drive.version?.version).toBe(reload.identity!.expectedCliVersion)
+        expect(reload.identity!.sdk.version).toBe('0.3.287')
+        expect(reload.identity!.program.path).toBe(drive.program)
+        expect(drive.spawns[0]!.pid).not.toBeNull()
+        expect(drive.spawns[0]!.exit).not.toBeNull()
+        expect(drive.children).toEqual([{ pid: drive.spawns[0]!.pid, exited: true, killed: false }])
+      }),
+    deadline.testTimeoutMs,
+  )

@@ -1,0 +1,67 @@
+{
+  "format": 2,
+  "entries": [
+    {
+      "id": "chrome",
+      "name": "Chrome",
+      "description": "Lets agents use Google Chrome with its own separate profiles: read pages, use sites and save downloads.",
+      "version": "0.1.3",
+      "authors": [
+        "brocrew"
+      ],
+      "minAppVersion": "0.1.7",
+      "sourceCommit": "768121657b84d003e76d73b963390134d7d1124b",
+      "targets": [
+        {
+          "os": "darwin",
+          "cpu": "arm64",
+          "url": "https://github.com/brocrew/brocrew-plugin-chrome/releases/download/v0.1.3/chrome-darwin-arm64.tar.gz",
+          "sha256": "69a516f9eb420858330f51b639e2543c4dee06d4b95c6c7100d125ee8b63d05c",
+          "bytes": 3576464,
+          "compression": "tar.gz",
+          "manifestSha256": "434b0031f1b2730084d96db507e625e4eb4ec74aec9b13bb545a56b72f94758c"
+        },
+        {
+          "os": "win32",
+          "cpu": "x64",
+          "url": "https://github.com/brocrew/brocrew-plugin-chrome/releases/download/v0.1.3/chrome-win32-x64.tar.gz",
+          "sha256": "419d8e8f71d0fe904f5660476e28a6c5fdcd9ab6341db58c5f8827de65c54bdc",
+          "bytes": 3576461,
+          "compression": "tar.gz",
+          "manifestSha256": "82caa54e9b0eec84f28baee25d24716aa0d61440e4703e9bdc96a37a35b40c20"
+        }
+      ]
+    },
+    {
+      "id": "whatsapp",
+      "name": "WhatsApp",
+      "description": "Lets agents read your WhatsApp chats when you allow it, and send to the groups you choose.",
+      "version": "0.1.4",
+      "authors": [
+        "brocrew"
+      ],
+      "minAppVersion": "0.1.7",
+      "sourceCommit": "768121657b84d003e76d73b963390134d7d1124b",
+      "targets": [
+        {
+          "os": "darwin",
+          "cpu": "arm64",
+          "url": "https://github.com/brocrew/brocrew-plugin-whatsapp/releases/download/v0.1.4/whatsapp-darwin-arm64.tar.gz",
+          "sha256": "3d9b57834508666f5e45b19aaabb547750896826ce978b4b9f305ec606f5c0f6",
+          "bytes": 7840723,
+          "compression": "tar.gz",
+          "manifestSha256": "0e8f4e01322a95e5be25dae286806dcec24ba89c337a8e2ce4ae65c99b99ca59"
+        },
+        {
+          "os": "win32",
+          "cpu": "x64",
+          "url": "https://github.com/brocrew/brocrew-plugin-whatsapp/releases/download/v0.1.4/whatsapp-win32-x64.tar.gz",
+          "sha256": "49497b4c15adffefdbc63f8490da542ebae78016975a72c6b55e4476aa3dc769",
+          "bytes": 8228798,
+          "compression": "tar.gz",
+          "manifestSha256": "fe6f04050ac0ec9cc0b577de9d57dc249987d7d3a43cc7e16a9350e68ca83c8d"
+        }
+      ]
+    }
+  ]
+}

@@ -3,6 +3,7 @@ import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { delimiter, join } from 'node:path'
 import { query, type Options, type SDKMessage } from '@anthropic-ai/claude-agent-sdk'
+import { isTheSamePath } from '../src/built-in-skills'
 import { ClaudeRuntime, type QueryFactory } from '../src/claude/claude-runtime'
 import { provisionProviderHome } from '../src/internal/provider-home'
 
@@ -82,6 +83,7 @@ export type ScriptedReply =
 export interface Loopback {
   readonly port: number
   readonly requests: SeenRequest[]
+  readonly closed: boolean
   close(): Promise<void>
 }
 
@@ -222,6 +224,9 @@ export async function startLoopback(
   return {
     port: address.port,
     requests,
+    get closed() {
+      return !server.listening
+    },
     async close() {
       for (const one of held) one.destroy()
       server.closeAllConnections()
@@ -260,6 +265,21 @@ export interface SpawnSeen {
   /** The names in the child's environment, sorted, never a value. */
   readonly envNames: readonly string[]
   readonly pid: number | null
+  /** Off this exact ChildProcess, rather than inferred from a later PID lookup. */
+  exit: { code: number | null; signal: string | null } | null
+}
+
+/** Observation of the real SDK method: its promise and answer are returned unchanged. */
+export interface ReloadSeen {
+  readonly calledAt: number
+  settledAt: number | null
+  state: 'pending' | 'fulfilled' | 'rejected'
+  /** Only schema/count/owned-fixture comparisons are retained; never response paths or text. */
+  answer: {
+    arrays: boolean
+    errorCount: unknown
+    ownedPlugin: boolean
+  } | null
 }
 
 /** What one launch recorded on its way through the factory. */
@@ -273,6 +293,9 @@ export interface Recorded {
   readonly frames: SDKMessage[]
   /** Every child the launches started, in order. */
   readonly spawns: SpawnSeen[]
+  /** Held handles for focused SDK teardown; never serialized into evidence. */
+  readonly processes: ChildProcess[]
+  readonly reloads: ReloadSeen[]
   /** The children's stderr, the last 8 000 characters — the product's spawn keeps it from the SDK. */
   stderr: string
 }
@@ -356,6 +379,8 @@ export async function loopbackRuntime(args: {
   readonly program?: string
   /** {@link containLaunch} on every launch — by default exactly when a program was named. */
   readonly contain?: boolean
+  /** Observe the real reload method; never replace it or supply a response. */
+  readonly observeReload?: { readonly name: string; readonly path: string }
 }): Promise<LoopbackRuntime> {
   const program = args.program ?? (process.env['BROBOT_PROBE_CLAUDE'] || undefined)
   const contain = args.contain ?? program !== undefined
@@ -373,6 +398,8 @@ export async function loopbackRuntime(args: {
     asks: [],
     frames: [],
     spawns: [],
+    processes: [],
+    reloads: [],
     stderr: '',
   }
   const factory: QueryFactory = (params) => {
@@ -406,12 +433,18 @@ export async function loopbackRuntime(args: {
       options.spawnClaudeCodeProcess = (spawnOptions) => {
         const spawned = productSpawn(spawnOptions)
         const child = spawned as unknown as ChildProcess
-        recorded.spawns.push({
+        recorded.processes.push(child)
+        const seen: SpawnSeen = {
           asked: options.pathToClaudeCodeExecutable ?? null,
           command: spawnOptions.command,
           args: [...spawnOptions.args],
           envNames: Object.keys(spawnOptions.env).sort(),
           pid: child.pid ?? null,
+          exit: null,
+        }
+        recorded.spawns.push(seen)
+        child.once('exit', (code, signal) => {
+          seen.exit = { code, signal }
         })
         child.stderr?.on('data', (chunk: Buffer | string) => {
           recorded.stderr = (recorded.stderr + String(chunk)).slice(-8_000)
@@ -442,6 +475,9 @@ export async function loopbackRuntime(args: {
     )
     recorded.configuredPort = configured === null ? null : Number(configured[1])
     recorded.options = options
+    if (args.observeReload && args.sdkQuery !== undefined) {
+      throw new Error('NOT PERFORMED — reload observation requires the imported real SDK query')
+    }
     const live = (args.sdkQuery ?? query)({ prompt: params.prompt, options })
     return new Proxy(live, {
       get(target, prop) {
@@ -468,6 +504,52 @@ export async function loopbackRuntime(args: {
           }
         }
         const value = Reflect.get(target, prop, target) as unknown
+        if (prop === 'reloadPlugins' && args.observeReload && typeof value === 'function') {
+          return (...a: unknown[]) => {
+            const seen: ReloadSeen = {
+              calledAt: performance.now(),
+              settledAt: null,
+              state: 'pending',
+              answer: null,
+            }
+            recorded.reloads.push(seen)
+            // Invoke on the actual Query receiver; do not manufacture or transform its promise.
+            const pending = (value as (...args: unknown[]) => Promise<unknown>).apply(target, a)
+            void pending.then(
+              (answer) => {
+                const r = answer as Record<string, unknown> | null
+                seen.answer = {
+                  arrays:
+                    r !== null &&
+                    typeof r === 'object' &&
+                    ['commands', 'agents', 'plugins', 'mcpServers'].every((key) =>
+                      Array.isArray(r[key]),
+                    ),
+                  errorCount: typeof r?.['error_count'] === 'number' ? r['error_count'] : null,
+                  ownedPlugin:
+                    Array.isArray(r?.['plugins']) &&
+                    r['plugins'].some((plugin: unknown) => {
+                      const p = plugin as {
+                        name?: unknown
+                        path?: unknown
+                      } | null
+                      return (
+                        p?.name === args.observeReload!.name &&
+                        isTheSamePath(p.path, args.observeReload!.path)
+                      )
+                    }),
+                }
+                seen.state = 'fulfilled'
+                seen.settledAt = performance.now()
+              },
+              () => {
+                seen.state = 'rejected'
+                seen.settledAt = performance.now()
+              },
+            )
+            return pending
+          }
+        }
         return typeof value === 'function'
           ? (value as (...a: unknown[]) => unknown).bind(target)
           : value

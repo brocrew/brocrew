@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "sourceCommit": "cbdf3e75fd786b5c19cfc519c25007b37a026b34",
+  "sourceTree": "bde7adb6f45361b539894cc3f5dff7227ace515d",
+  "manifestSha256": "2e3df1e097b1178d3963a1ba9809a557081da363cd50701e2b8440cd693331b4",
+  "modules": [
+    {
+      "path": "contract.mjs",
+      "bytes": 5896,
+      "sha256": "e2fcfe525d4f4cabd93e2fd499e158889c4cc205958ab2299703c25bb289d146",
+      "name": "contract.mjs"
+    },
+    {
+      "path": "controlled-sdk.mjs",
+      "bytes": 843,
+      "sha256": "94bf87951a61abaeb5f37fb8176a473f054301d3416ee7704ae051d035ab7649",
+      "name": "controlled-sdk.mjs"
+    },
+    {
+      "path": "fixture.mjs",
+      "bytes": 24121,
+      "sha256": "66a9c1ff36cc9fb9bf98ae0bb79c5ff30bce4835efb17ebfe733e5f44bcc4823",
+      "name": "fixture.mjs"
+    },
+    {
+      "path": "main-app-controller.mjs",
+      "bytes": 11445,
+      "sha256": "a48a886d490061e1519db0e24ee93c616d37f18d945bfe83e17996835918a480",
+      "name": "main-app-controller.mjs"
+    }
+  ],
+  "actualSDK": null,
+  "executionAdmitted": false,
+  "modulePinsSha256": "5c9f8e357db4f762a90ccbc741824c0a87e71466a032866ff737305a8479f275"
+}

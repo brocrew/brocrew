@@ -1,0 +1,93 @@
+{
+  "schema": 2,
+  "status": "proposal-only-no-execution-admission",
+  "operator": "Jae31.4",
+  "admitter": "Sara",
+  "checker": "Priya",
+  "event": "workflow_dispatch",
+  "repository": "brocrew/brocrew",
+  "workflows": [".github/workflows/macos.yml", ".github/workflows/windows.yml"],
+  "dispatchInputs": [],
+  "refRoles": ["refs/heads/gate/plugin-v2-mac-*", "refs/heads/gate/plugin-v2-windows-*"],
+  "roleJob": "plugin-v2-review",
+  "requiredSteps": [
+    "Plugin qualification source controls",
+    "Stage the observed ref-selected source plan",
+    "Install the frozen app source dependencies in scratch",
+    "Product HTTPS then projected package Review journey",
+    "Keep the closed required evidence"
+  ],
+  "ordinaryJobExclusions": {
+    "macos.yml": ["flags", "macos", "guided-update-rehearsal", "recovery-real-entry"],
+    "windows.yml": ["flags", "windows", "recovery-real-entry"]
+  },
+  "artifacts": [
+    "plugin-v2-macos-0.1.7",
+    "plugin-v2-macos-0.1.8",
+    "plugin-v2-windows-0.1.7",
+    "plugin-v2-windows-0.1.8"
+  ],
+  "committedSourcePlan": "scripts/gates/plugin-v2/source-plan.json",
+  "externalOperatorContract": "copy operator-operation.template.json outside the tracked tree; exact values require Sara/Jae admission",
+  "runtimeIdentityAuthority": "observed only; compare externally via verify-operation.mjs and the existing broker API readback",
+  "requiredRecord": "scripts/gates/plugin-v2/contract.mjs::receipt",
+  "sourceBases": ["a4dfcf611c244f8365d485022dc674309c2e7ae1", "observed-route-head"],
+  "requiredRuns": [
+    "darwin/arm64 app0.1.7",
+    "darwin/arm64 app0.1.8",
+    "win32/x64 app0.1.7",
+    "win32/x64 app0.1.8"
+  ],
+  "coverage": "synthetic fixed-v2 list; real product HTTPS before projection; real package/plugin/UI; no browser tool, provider account or phone link",
+  "unknownHolds": [
+    "controlled released017/new/dev owner coexistence in both directions including older owner",
+    "zero-compatible management plus author/consent enforcement across controlled owners",
+    "actual plugin-only 0.1.8 package",
+    "normal unprojected postpublication journey"
+  ],
+  "personalWindowReceiptRequired": false,
+  "personalCutoverClaim": false,
+  "personalLegacyMigration": "separate support; never inferred from this gate",
+  "publicMutation": false,
+  "normalBuildMustRefuse": true,
+  "drainRequired": true,
+  "descendantSignalling": false,
+  "scratchDeletion": false,
+  "policyKind": "descriptive-route-policy; not broker execution policy",
+  "brokerExecutionPolicy": "separately frozen by Jae31.4: source_commit/workflows/workflow_sha256/jobs, both matrix display jobs, skipped ordinary jobs, required steps and automatic public checks",
+  "policyHashBindings": {
+    "routePolicySha256": "observed descriptive policy; pinned by committed source plan",
+    "brokerPolicySha256": "independent external broker sidecar; compare actual receipt policy_sha256"
+  },
+  "reloadCompanion": {
+    "source": "cbdf3e75fd786b5c19cfc519c25007b37a026b34",
+    "matrix": "windows018 only",
+    "artifact": "plugin-reload-windows-0.1.8",
+    "externalAcceptance": "separate reload artifact/API/summary acceptance required; catalogue verifier alone is insufficient",
+    "realSDK": null
+  },
+  "diffBaseline": "04faa94c05f007f536b8499b984471bdf7a9080b",
+  "sdkOnlyRole": {
+    "scope": "real-sdk-start-reload",
+    "refRoles": ["refs/heads/gate/plugin-v2-mac-sdk-*", "refs/heads/gate/plugin-v2-windows-sdk-*"],
+    "job": "plugin-v2-review",
+    "matrixJobs": ["Plugin v2 Review (0.1.7)", "Plugin v2 Review (0.1.8)"],
+    "017ScopeOnly": true,
+    "018RequiredSteps": [
+      "Assert installed SDK role scope",
+      "Stage owned installed SDK reload source",
+      "Install pinned installed SDK probe dependencies",
+      "Installed SDK start and reload probe",
+      "Keep closed installed SDK reload evidence"
+    ],
+    "catalogueStepsSkipOnSdkRoles": true,
+    "sdkVersion": "0.3.287",
+    "cliVersion": "2.1.290",
+    "artifacts": ["sdk-reload-macos-0.1.8", "sdk-reload-windows-0.1.8"],
+    "receipt": "sdk-summary.json",
+    "externalAcceptance": "verify-reload.mjs sdk; independently frozen SDK-only operation and broker sidecar",
+    "publication": false,
+    "personalCutover": false,
+    "final018Qualification": null
+  }
+}

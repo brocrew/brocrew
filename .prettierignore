@@ -43,3 +43,14 @@ apps/desktop/test/fixtures/plugin-delete-parent/**/*.ts
 
 # Frozen mixed-version disclosure fixtures retain source bytes apart from import paths.
 apps/desktop/test/fixtures/plugin-disclosure-mixed/**/*.ts
+
+# Source-pinned reload fixture payloads are copied verbatim as qualification data.
+scripts/gates/plugin-v2/reload-source/contract.mjs
+scripts/gates/plugin-v2/reload-source/controlled-sdk.mjs
+scripts/gates/plugin-v2/reload-source/fixture.mjs
+scripts/gates/plugin-v2/reload-source/main-app-controller.mjs
+# Immutable catalogue test payload retains its reviewed transport-byte digest.
+scripts/gates/plugin-v2/candidate.json
+
+# Keep the reviewed publication catalogue byte-exact.
+plugins/catalogue-v2.json

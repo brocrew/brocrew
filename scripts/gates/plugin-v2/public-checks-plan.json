@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "workflow": ".github/workflows/public-checks.yml",
+  "workflowSha256": "6813795db54854ad9eb02b161c426701887e394ccaef6c5ddbda3a0a6e09f175",
+  "event": "push",
+  "jobs": {
+    "commit messages and identities": {
+      "required_steps": [
+        "Run actions/checkout@v7",
+        "Setup Node",
+        "Which commits this run checks",
+        "Plain words, and the public identity",
+        "No name the repo must not carry, in a file or a file's name"
+      ]
+    },
+    "secret scan": {
+      "required_steps": [
+        "Run actions/checkout@v7",
+        "Setup Node",
+        "Install gitleaks",
+        "Redaction holds on a fake secret",
+        "Scan the history"
+      ]
+    }
+  }
+}
