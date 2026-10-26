@@ -13,6 +13,8 @@ import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import type { TranscriptEvent } from '../src/shared/runtime-ipc'
 import { acceptEvent, createSessionRecord, openWindow } from '../src/renderer/src/lib/session-record'
 import { panelWords } from '../src/renderer/src/lib/latest-words'
+import { visibleItems } from '../src/renderer/src/lib/transcript-mode'
+import { normalizeNotification } from '../../../packages/runtime/src/codex/normalize'
 
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 describe('indexed human answer history', () => {
@@ -42,6 +44,32 @@ describe('indexed human answer history', () => {
   }
   function human(text: string) { feed({ type: 'user_turn', text, humanInitiated: true }) }
   function final(text: string) { feed({ type: 'assistant_message', text, phase: 'final' }, { type: 'turn', state: 'completed' }) }
+
+  it('keeps new empty messages and old plain-empty diagnostics consistent through host history', () => {
+    human('Fictional question')
+    final('Actual answer')
+    const raw = { type: 'agentMessage', id: 'fictional-empty', text: '', phase: 'final_answer', memoryCitation: null, delivery: null, questions: null }
+    feed(...normalizeNotification('item/completed', { item: raw }))
+    feed({ type: 'unknown', provider: 'codex', category: 'unrecognized', label: 'agentMessage', raw })
+    feed(...normalizeNotification('item/completed', { item: { type: 'agentMessage', id: 'fictional-malformed', text: null } }))
+    feed({ type: 'turn', state: 'completed' })
+    const stored = store.events('s')
+    const oldPayload = stored.find((row) => row.event.type === 'unknown' && row.event.raw !== null && typeof row.event.raw === 'object' && 'id' in row.event.raw && row.event.raw.id === 'fictional-empty')
+    expect(oldPayload?.event).toMatchObject({ category: 'unrecognized', raw })
+    const live = createSessionRecord('s')
+    stored.forEach((row) => acceptEvent(live, { ...row, sessionId: 's' }))
+    const page = host.latestHistory('s')
+    const cold = createSessionRecord('s'); openWindow(cold, page)
+    page.entries.forEach((row) => acceptEvent(cold, { ...row, sessionId: 's' }))
+    for (const record of [live, cold]) {
+      const shown = visibleItems('normal', record.control.items)
+      expect(shown.filter((item) => item.kind === 'assistant').map((item) => item.text)).toEqual(['Actual answer'])
+      expect(shown.filter((item) => item.kind === 'unknown')).toHaveLength(1)
+      expect(panelWords(record.control)?.text).toBe('Actual answer')
+      expect(record.control.items.filter((item) => item.kind === 'assistant' && item.humanFinal)).toHaveLength(1)
+    }
+    expect(store.events('s').find((row) => row.ordinal === oldPayload?.ordinal)?.event).toEqual(oldPayload?.event)
+  })
 
   it('reloads a human final outside a page of later app turns without including their answers', () => {
     human('My **question**'); final('## My answer')
