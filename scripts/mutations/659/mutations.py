@@ -64,7 +64,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "because every reader now asks this one function, the SAME blind spot at every reader at "
         "once. ⛔ That is the price of one question in one place, stated: a defect here is a defect "
         "everywhere, which is why this row has four killers",
-        [(HOST, THE_SESSION_HALF, "  return session !== null && session.closing !== null\n")],
+        [(HOST, '  return (\n    session !== null &&\n    (session.closing !== null ||\n      session.finalizing !== null ||\n      session.handle.isRetiring?.() === true)\n  )', '  return (\n    session !== null &&\n    (session.closing !== null ||\n      session.handle.isRetiring?.() === true)\n  )')],
     ),
     (
         "M2 · ⚠️ **the predicate forgets the phase** · it answers only once a session exists, so a "

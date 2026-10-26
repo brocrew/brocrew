@@ -61,6 +61,7 @@ interface Launch {
   readonly handle: SessionHandle
   readonly failTheStream: () => void
   readonly letCloseFinish: () => void
+  readonly closeEntries: () => number
 }
 
 /**
@@ -71,6 +72,7 @@ interface Launch {
 function withLevers(handle: SessionHandle, toolset: AgentToolset | undefined): Launch {
   let failTheStream!: () => void
   let letCloseFinish!: () => void
+  let closeEntries = 0
   const failed = new Promise<IteratorResult<RuntimeEvent>>((_resolve, reject) => {
     failTheStream = () => reject(new Error('the stream failed under the host'))
   })
@@ -96,6 +98,7 @@ function withLevers(handle: SessionHandle, toolset: AgentToolset | undefined): L
       }
       if (property === 'close') {
         return async (): Promise<void> => {
+          closeEntries++
           await closeMayFinish
           await target.close()
         }
@@ -104,7 +107,7 @@ function withLevers(handle: SessionHandle, toolset: AgentToolset | undefined): L
       return typeof value === 'function' ? (value as () => unknown).bind(target) : value
     },
   })
-  return { toolset, handle: proxied, failTheStream, letCloseFinish }
+  return { toolset, handle: proxied, failTheStream, letCloseFinish, closeEntries: () => closeEntries }
 }
 
 class LeveredRuntime extends FakeRuntime {
@@ -235,8 +238,44 @@ describe('659 · the question every teardown asks', () => {
     host.sessionIds.includes(id) &&
     host.resumableSessions().find((one) => one.sessionId === id)?.running === 'not-running'
   const failAndHold = async (id: string, launch: Launch): Promise<void> => {
+    const slots = (
+      host as unknown as {
+        readonly slots: ReadonlyMap<
+          string,
+          {
+            readonly phase: string
+            readonly session: {
+              readonly handle: SessionHandle
+              readonly closing: Promise<void> | null
+              readonly finalizing: Promise<void> | null
+            } | null
+          }
+        >
+      }
+    ).slots
+    const slot = slots.get(id)
+    const session = slot?.session
+    expect(slot).toBeDefined()
+    expect(session).toBeDefined()
+    expect(session).not.toBeNull()
+    expect(session?.handle).toBe(launch.handle)
+    expect(slot?.phase).not.toBe('closing')
+    expect(session?.closing).toBeNull()
+    expect(session?.finalizing).toBeNull()
+    expect(launch.handle.isRetiring?.()).not.toBe(true)
+    expect(launch.closeEntries()).toBe(0)
+
     launch.failTheStream()
-    await waitFor(() => listSaysClosing(id), 'the pump to reach finalize()')
+    await waitFor(() => launch.closeEntries() > 0, 'the provider close to be entered')
+
+    expect(launch.closeEntries()).toBe(1)
+    expect(slots.get(id)).toBe(slot)
+    expect(slot?.session).toBe(session)
+    expect(session?.handle).toBe(launch.handle)
+    expect(slot?.phase).not.toBe('closing')
+    expect(session?.closing).toBeNull()
+    expect(session?.finalizing).not.toBeNull()
+    expect(launch.handle.isRetiring?.()).not.toBe(true)
   }
 
   const turnsIn = (sessionId: string): number =>

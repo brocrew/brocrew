@@ -27,6 +27,7 @@
     ".github/workflows/windows.yml",
     ".prettierignore",
     "apps/desktop/test/a-close-before-its-own-finalize-still-counts-as-a-stop.test.ts",
+    "apps/desktop/test/the-question-every-teardown-asks.test.ts",
     "packages/runtime/smoke/claude-installed-probe.smoke.ts",
     "packages/runtime/smoke/loopback-claude.ts",
     "plugins/catalogue-v2.json",
@@ -66,7 +67,8 @@
     "scripts/gates/plugin-v2/staging.mjs",
     "scripts/gates/plugin-v2/tool-entry.mjs",
     "scripts/gates/plugin-v2/verify-operation.mjs",
-    "scripts/gates/plugin-v2/verify-reload.mjs"
+    "scripts/gates/plugin-v2/verify-reload.mjs",
+    "scripts/mutations/659/mutations.py"
   ],
   "files": [
     {
@@ -550,6 +552,11 @@
       "bytes": 17973
     },
     {
+      "path": "apps/desktop/test/the-question-every-teardown-asks.test.ts",
+      "sha256": "472c82dbc0e27486ec57bd89353e8b5e75fab3dd16d234dcd81c8b4320886d80",
+      "bytes": 29213
+    },
+    {
       "path": "package.json",
       "sha256": "9ce506be385138a6d991a1ed60085b44508adaade74daf03dd448a6c5310831f",
       "bytes": 15352
@@ -903,6 +910,11 @@
       "path": "scripts/lib/update-rehearsal.mjs",
       "sha256": "05265d1c213075087c0ca5e3e9f6ae25888f628c66411dd8667c68bc97ae9109",
       "bytes": 8025
+    },
+    {
+      "path": "scripts/mutations/659/mutations.py",
+      "sha256": "501bf61dc78359b1a6dac1982808f0135d0e2c58fab35017c92cd62cebff0cf2",
+      "bytes": 9470
     },
     {
       "path": "scripts/prepare-plugin-node.mjs",
