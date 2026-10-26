@@ -237,7 +237,12 @@ const humanAnswer = computed(() => {
   return answer?.final == null ? null : answer
 })
 const answerPopup = ref<HumanTurnAnswer | null>(null)
-watch(() => props.conversation, () => { answerPopup.value = null })
+watch(
+  () => props.conversation,
+  () => {
+    answerPopup.value = null
+  },
+)
 const minute = useMinuteClock()
 const latestAgo = computed(() =>
   latest.value?.at == null ? null : agoWords(latest.value.at, minute.value),

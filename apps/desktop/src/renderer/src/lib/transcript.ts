@@ -5118,8 +5118,12 @@ function foldEvent(
       }
       // A streamed Claude message is confirmed as final by its later end_turn receipt.
       if (event.phase === 'final' && event.messageId !== undefined) {
-        const matching = state.items.filter((one) => one.kind === 'assistant'
-          && one.parentToolCallId === undefined && one.providerMessageId === event.messageId)
+        const matching = state.items.filter(
+          (one) =>
+            one.kind === 'assistant' &&
+            one.parentToolCallId === undefined &&
+            one.providerMessageId === event.messageId,
+        )
         const kept = matching.at(-1)
         if (kept?.kind === 'assistant') {
           const superseded = new Set(matching.map((one) => one.id))
@@ -5130,7 +5134,15 @@ function foldEvent(
           if (ordinal !== undefined) kept.ordinal = ordinal
           if (matching.some((one) => one.id === state.streamingId)) state.streamingId = null
           if (matching.some((one) => one.id === state.provisionalId)) state.provisionalId = null
-          finishHumanAnswer(state.humanAnswers, kept, event, ordinal ?? state.seq, at, state.items, humanFinal)
+          finishHumanAnswer(
+            state.humanAnswers,
+            kept,
+            event,
+            ordinal ?? state.seq,
+            at,
+            state.items,
+            humanFinal,
+          )
           return
         }
       }
@@ -5141,7 +5153,15 @@ function foldEvent(
         open.streaming = false
         if (event.messageId !== undefined) open.providerMessageId = event.messageId
         if (event.questions !== undefined) open.questions = event.questions
-        finishHumanAnswer(state.humanAnswers, open, event, ordinal ?? state.seq, at, state.items, humanFinal)
+        finishHumanAnswer(
+          state.humanAnswers,
+          open,
+          event,
+          ordinal ?? state.seq,
+          at,
+          state.items,
+          humanFinal,
+        )
         state.streamingId = null
         state.provisionalId = null
         return
@@ -5160,7 +5180,15 @@ function foldEvent(
         ...(event.questions === undefined ? {} : { questions: event.questions }),
         ...(event.messageId === undefined ? {} : { providerMessageId: event.messageId }),
       })
-      finishHumanAnswer(state.humanAnswers, state.items.at(-1) as AssistantItem, event, ordinal ?? state.seq, at, state.items, humanFinal)
+      finishHumanAnswer(
+        state.humanAnswers,
+        state.items.at(-1) as AssistantItem,
+        event,
+        ordinal ?? state.seq,
+        at,
+        state.items,
+        humanFinal,
+      )
       return
     }
 
@@ -7129,19 +7157,27 @@ function foldEvent(
       const raw = event.raw
       // Older Codex adapters labeled valid no-content messages as unrecognized. Keep their raw
       // payload inspectable without presenting that known empty shape as an unmodeled event.
-      const knownEmpty = event.provider === 'codex' && event.label === 'agentMessage'
-        && event.category === 'unrecognized' && typeof raw === 'object' && raw !== null
-        && !Array.isArray(raw) && 'type' in raw && raw.type === 'agentMessage'
-        && 'text' in raw && raw.text === ''
-        && (!('memoryCitation' in raw) || raw.memoryCitation == null)
-        && (!('delivery' in raw) || raw.delivery == null)
-        && (!('questions' in raw) || raw.questions == null)
+      const knownEmpty =
+        event.provider === 'codex' &&
+        event.label === 'agentMessage' &&
+        event.category === 'unrecognized' &&
+        typeof raw === 'object' &&
+        raw !== null &&
+        !Array.isArray(raw) &&
+        'type' in raw &&
+        raw.type === 'agentMessage' &&
+        'text' in raw &&
+        raw.text === '' &&
+        (!('memoryCitation' in raw) || raw.memoryCitation == null) &&
+        (!('delivery' in raw) || raw.delivery == null) &&
+        (!('questions' in raw) || raw.questions == null)
       state.items.push({
         kind: 'unknown',
         id: nextId(state, 'unknown'),
         provider: event.provider,
-        category:
-          knownEmpty ? 'activity' : event.label !== undefined && QUIET_BY_ITS_LABEL.has(event.label)
+        category: knownEmpty
+          ? 'activity'
+          : event.label !== undefined && QUIET_BY_ITS_LABEL.has(event.label)
             ? 'lifecycle'
             : event.category,
         ...(event.label ? { label: event.label } : {}),

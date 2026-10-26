@@ -235,11 +235,23 @@ const PATHS = [
     panel: 'HumanAnswerDialog',
     cy: 'human-answer-dialog',
     selfHosted: true,
-    open: () => h(HumanAnswerDialog, { answer: {
-      promptOrdinal: 1,
-      prompt: '# Fictional question\n\n' + 'Please compare the bakery recipes.\n\n'.repeat(80),
-      final: { ordinal: 2, at: NOW, text: '| Recipe | Notes |\n| --- | --- |\n| Bread | ' + 'long-note'.repeat(80) + ' |\n\n```text\n' + 'long-code'.repeat(100) + '\n```\n\nLast answer paragraph.' },
-    } }),
+    open: () =>
+      h(HumanAnswerDialog, {
+        answer: {
+          promptOrdinal: 1,
+          prompt: '# Fictional question\n\n' + 'Please compare the bakery recipes.\n\n'.repeat(80),
+          final: {
+            ordinal: 2,
+            at: NOW,
+            text:
+              '| Recipe | Notes |\n| --- | --- |\n| Bread | ' +
+              'long-note'.repeat(80) +
+              ' |\n\n```text\n' +
+              'long-code'.repeat(100) +
+              '\n```\n\nLast answer paragraph.',
+          },
+        },
+      }),
   },
   {
     host: 'ProvidersScreen',
@@ -647,9 +659,11 @@ describe('§2 · every OverlayHost path carries a reachable stop (390 §3)', () 
     const dialog = m.q('human-answer-dialog')
     const close = dialog.querySelector<HTMLButtonElement>('button')!
     expect(document.activeElement).toBe(close)
-    tab(true); await nextTick()
+    tab(true)
+    await nextTick()
     expect(m.q('overlay-spawning').contains(document.activeElement)).toBe(true)
-    tab(); await nextTick()
+    tab()
+    await nextTick()
     expect(document.activeElement).toBe(close)
     const scroll = dialog.querySelector<HTMLElement>('.answer-scroll')!
     expect(scroll.scrollHeight).toBeGreaterThan(scroll.clientHeight)
@@ -657,7 +671,9 @@ describe('§2 · every OverlayHost path carries a reachable stop (390 §3)', () 
     await nextTick()
     const last = m.q('human-answer-final').lastElementChild!
     expect(last.textContent).toContain('Last answer paragraph')
-    expect(last.getBoundingClientRect().bottom).toBeLessThanOrEqual(scroll.getBoundingClientRect().bottom + 1)
+    expect(last.getBoundingClientRect().bottom).toBeLessThanOrEqual(
+      scroll.getBoundingClientRect().bottom + 1,
+    )
     expect(m.q('human-answer-final').querySelector('table')).not.toBeNull()
     expect(m.q('human-answer-final').querySelector('pre code')).not.toBeNull()
     expect(reachable(close)).toBe(true)

@@ -26768,7 +26768,9 @@ export class RuntimeHost implements LiveHost {
         session.recordingFailure === null &&
         generation !== undefined &&
         committedTurn.parts === undefined &&
-        TURN_ATTRIBUTION_KEYS.every((key) => key === 'movedFrom' || committedTurn[key] === undefined)
+        TURN_ATTRIBUTION_KEYS.every(
+          (key) => key === 'movedFrom' || committedTurn[key] === undefined,
+        )
       ) {
         session.moveRequestTurn = {
           ordinal: written.ordinal,
@@ -38428,21 +38430,25 @@ export class RuntimeHost implements LiveHost {
     })
     const first = window.entries[0]
     const last = window.entries.at(-1)
-    const humanFinals = first === undefined || last === undefined ? new Map()
-      : this.deps.store.humanFinalsInWindow(sessionId, first.ordinal, last.ordinal)
+    const humanFinals =
+      first === undefined || last === undefined
+        ? new Map()
+        : this.deps.store.humanFinalsInWindow(sessionId, first.ordinal, last.ordinal)
     return {
       entries: window.entries.map((entry) => ({
         ordinal: entry.ordinal,
         at: entry.at,
         event: entry.event,
         ...(entry.event.type === 'assistant_message'
-          ? { humanFinal: humanFinals.get(entry.ordinal) ?? null } : {}),
+          ? { humanFinal: humanFinals.get(entry.ordinal) ?? null }
+          : {}),
       })),
       from: window.from,
       hasOlder: window.hasOlder,
       turnAligned: window.turnAligned,
       ...(options.before === undefined
-        ? { humanAnswers: this.deps.store.latestHumanAnswers(sessionId) } : {}),
+        ? { humanAnswers: this.deps.store.latestHumanAnswers(sessionId) }
+        : {}),
       // ⚑ **D-035** — on every page, so a hand-over, a page back and a jump to the latest all begin
       // with the tools the conversation had there.
       ...(window.toolsInForce === undefined

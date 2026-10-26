@@ -125,8 +125,11 @@ export function normalizeMessage(
       // into the parent stream BY DEFAULT — `forwardSubagentText` only adds its prose on top — and
       // nothing read `parent_tool_use_id` before, so the child's `Bash` rendered as the parent's.
       const parent = subAgentParent(message)
-      const final = message.message.stop_reason === 'end_turn' && message.error === undefined && message.aborted !== true
-        && (typeof content === 'string' || !content.some((block) => block.type === 'tool_use'))
+      const final =
+        message.message.stop_reason === 'end_turn' &&
+        message.error === undefined &&
+        message.aborted !== true &&
+        (typeof content === 'string' || !content.some((block) => block.type === 'tool_use'))
       const credential = typeof message.error === 'string' && isCredentialFailure(message.error)
       let run = ''
       const messageId = finalAnswers?.messageId(message)

@@ -140,7 +140,11 @@ function openANamedDocument(event: MouseEvent): void {
 </script>
 
 <template>
-  <article class="msg assistant" :class="{ 'human-final': item.humanFinal }" :data-human-final="item.humanFinal ? 'true' : undefined">
+  <article
+    class="msg assistant"
+    :class="{ 'human-final': item.humanFinal }"
+    :data-human-final="item.humanFinal ? 'true' : undefined"
+  >
     <div class="msg-avatar">
       <svg class="icon"><use href="#i-bot" /></svg>
     </div>
@@ -175,7 +179,11 @@ function openANamedDocument(event: MouseEvent): void {
           @click="openANamedDocument"
         ></div>
       </div>
-      <div v-if="questionsWithoutProse.length > 0" class="msg-body" data-cy="structured-question-text">
+      <div
+        v-if="questionsWithoutProse.length > 0"
+        class="msg-body"
+        data-cy="structured-question-text"
+      >
         <p v-for="(question, index) in questionsWithoutProse" :key="index">{{ question.title }}</p>
       </div>
       <p
@@ -202,7 +210,11 @@ function openANamedDocument(event: MouseEvent): void {
           :aria-label="question.title"
           :aria-describedby="noteId"
         >
-          <span v-if="choices.length > 1 && questionsWithoutProse.length === 0" class="asked-title">{{ question.title }}</span>
+          <span
+            v-if="choices.length > 1 && questionsWithoutProse.length === 0"
+            class="asked-title"
+            >{{ question.title }}</span
+          >
           <button
             v-for="(option, index) in question.options"
             :key="index"

@@ -966,7 +966,8 @@ export function reopenAtLatest(record: SessionRecord, page: HistoryWindow): void
   openAt(record.window, page, record.sessionId)
   // ⚑ **D-035** — the window now begins where this page does, so its tools there go in first.
   record.transcript = refold(record, record.window.entries, carry, page.toolsInForce ?? null)
-  if (page.humanAnswers !== undefined) record.transcript.humanAnswers = copyHumanAnswers(page.humanAnswers)
+  if (page.humanAnswers !== undefined)
+    record.transcript.humanAnswers = copyHumanAnswers(page.humanAnswers)
   // Back on the tail, so the two projections are ONE object again and the separate tail goes.
   record.control = record.transcript
   record.tail = null

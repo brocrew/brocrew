@@ -36,7 +36,11 @@ export function panelWords(state: TranscriptState): LatestWords | null {
   const final = state.humanAnswers.latest?.final
   if (final == null) return latestWords(state)
   const item = state.items.find((one) => one.kind === 'assistant' && one.ordinal === final.ordinal)
-  return { itemId: item?.id ?? `human-final-${final.ordinal}`, text: plainParagraph(final.text), at: final.at }
+  return {
+    itemId: item?.id ?? `human-final-${final.ordinal}`,
+    text: plainParagraph(final.text),
+    at: final.at,
+  }
 }
 
 /**

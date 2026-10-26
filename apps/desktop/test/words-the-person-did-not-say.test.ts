@@ -1003,7 +1003,9 @@ describe('413 · words the person did not say', () => {
       expect(carried.relayedFrom).toBe('sess_asked')
       expect(carried).not.toHaveProperty('says')
       // ⚑ A window and a caller this app does not have yet declare nothing either.
-      expect(whoseWordsTheseAre(aWindow, identityOf, {}, 'follow-up')).toEqual({ humanInitiated: true })
+      expect(whoseWordsTheseAre(aWindow, identityOf, {}, 'follow-up')).toEqual({
+        humanInitiated: true,
+      })
       expect(whoseWordsTheseAre({ ownerId: 'mcp:acme-7' }, identityOf, {}, 'follow-up')).toEqual({
         attribution: 'app_authored',
       })
