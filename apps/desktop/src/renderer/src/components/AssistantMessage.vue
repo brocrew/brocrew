@@ -85,6 +85,9 @@ const emit = defineEmits<{
 const choices = computed(() =>
   props.item.streaming ? [] : questionsWithChoices(props.item.questions),
 )
+const questionsWithoutProse = computed(() =>
+  !props.item.streaming && props.item.text.trim() === '' ? (props.item.questions ?? []) : [],
+)
 /**
  * ⚠️ **Only the moment between a press and the message showing up below.** Whether the choices are
  * spent is the transcript's to say (`TranscriptView`'s `repliedAfter` turns `canAnswer` off once a
@@ -172,6 +175,9 @@ function openANamedDocument(event: MouseEvent): void {
           @click="openANamedDocument"
         ></div>
       </div>
+      <div v-if="questionsWithoutProse.length > 0" class="msg-body" data-cy="structured-question-text">
+        <p v-for="(question, index) in questionsWithoutProse" :key="index">{{ question.title }}</p>
+      </div>
       <p
         v-if="paths.failure.value"
         class="message-path-failure"
@@ -196,7 +202,7 @@ function openANamedDocument(event: MouseEvent): void {
           :aria-label="question.title"
           :aria-describedby="noteId"
         >
-          <span v-if="choices.length > 1 || item.text.trim() === ''" class="asked-title">{{ question.title }}</span>
+          <span v-if="choices.length > 1 && questionsWithoutProse.length === 0" class="asked-title">{{ question.title }}</span>
           <button
             v-for="(option, index) in question.options"
             :key="index"

@@ -14,7 +14,7 @@ function stateOf(events: TranscriptEvent[]) {
 }
 
 describe('empty Codex messages in the conversation', () => {
-  it.each(['normal', 'debug'] as const)('shows actual final prose once and keeps malformed diagnostics in %s', (mode) => {
+  it.each(['normal', 'debug'] as const)('shows actual final prose once and keeps malformed diagnostics in %s', async (mode) => {
     const state = stateOf([
       { type: 'user_turn', text: 'Fictional question', humanInitiated: true },
       { type: 'assistant_message', text: 'Actual **answer**', phase: 'final' },
@@ -29,26 +29,33 @@ describe('empty Codex messages in the conversation', () => {
     expect(m.q('assistant-message').querySelector('strong')?.textContent).toBe('answer')
     expect(m.host.querySelectorAll('[data-human-final="true"]')).toHaveLength(1)
     expect(m.all('unknown-entry')).toHaveLength(1)
-    m.q('unknown-entry').querySelector<HTMLButtonElement>('button')!.click()
+    const raw = m.q('unknown-entry').querySelector<HTMLElement>('.unknown-body')!
+    expect(getComputedStyle(raw).display).toBe('none')
+    m.q('unknown-entry').querySelector<HTMLButtonElement>('button')!.click(); await nextTick()
+    expect(getComputedStyle(raw).display).not.toBe('none')
+    expect(raw.getBoundingClientRect().height).toBeGreaterThan(0)
     expect(m.q('unknown-entry').textContent).toContain('Unmodeled event')
     expect(m.q('unknown-entry').textContent).toContain('"text": null')
   })
 
-  it('keeps a structured-only question actionable and renders its citation without a human final', async () => {
+  it.each([[true, true], [true, false], [false, true], [false, false]] as const)('shows structured-only question text with action eligibility %s and choices %s', async (canSendAnswers, withChoices) => {
     const state = stateOf([
       { type: 'user_turn', text: 'Fictional question', humanInitiated: true },
-      { type: 'assistant_message', text: '', phase: 'final', questions: [{ title: 'Which recipe?', options: ['Bread', 'Cake'] }] },
+      { type: 'assistant_message', text: '', phase: 'final', questions: [{ title: 'Which recipe?', ...(withChoices ? { options: ['Bread', 'Cake'] } : {}) }] },
       { type: 'memory_recall', source: 'memoryCitation', entries: [{ path: 'fictional.md', note: 'Fictional recipe context' }] },
     ])
     const answered: string[] = []
-    const m = mount(TranscriptView, { items: state.items, mode: 'normal', canAnswerQuestions: true, onSendAnswer: (text: string) => answered.push(text) }, { width: 900, height: 700 })
-    expect(m.all('asked-choice').map((one) => one.textContent?.trim())).toEqual(['Bread', 'Cake'])
-    expect(m.q('assistant-message').parentElement?.textContent).toContain('Which recipe?')
+    const m = mount(TranscriptView, { items: state.items, mode: 'normal', canSendAnswers, onSendAnswer: (text: string) => answered.push(text) }, { width: 900, height: 700 })
+    expect(m.all('asked-choice').map((one) => one.textContent?.trim())).toEqual(canSendAnswers && withChoices ? ['Bread', 'Cake'] : [])
+    expect(m.q('structured-question-text').textContent?.trim()).toBe('Which recipe?')
+    expect(m.q('structured-question-text').getBoundingClientRect().height).toBeGreaterThan(0)
+    expect(m.host.querySelectorAll('.asked-title')).toHaveLength(0)
     expect(m.q('memory-recall').textContent).toContain('fictional.md')
     expect(m.host.querySelectorAll('[data-human-final="true"]')).toHaveLength(0)
-    m.q('asked-choice').click(); await nextTick()
-    expect(answered).toHaveLength(1)
-    expect(answered[0]).toContain('Bread')
+    if (canSendAnswers && withChoices) {
+      m.q('asked-choice').click(); await nextTick()
+      expect(answered).toEqual(['Bread'])
+    } else expect(answered).toEqual([])
   })
 
   it('uses the original panel navigation after a new human turn has an empty final', async () => {
@@ -66,5 +73,14 @@ describe('empty Codex messages in the conversation', () => {
     m.q('card-latest').click(); await nextTick()
     expect(navigated).toEqual([state.items.find((item) => item.kind === 'assistant' && item.text === 'Earlier answer')!.id])
     expect(m.all('human-answer-dialog')).toHaveLength(0)
+  })
+
+  it('does not repeat a structured title when nonempty prose already supplies it', () => {
+    const state = stateOf([{ type: 'assistant_message', text: 'Which recipe?', questions: [{ title: 'Which recipe?', options: ['Bread', 'Cake'] }] }])
+    const m = mount(TranscriptView, { items: state.items, mode: 'normal', canSendAnswers: true }, { width: 900, height: 700 })
+    expect(m.q('assistant-message').textContent?.trim()).toBe('Which recipe?')
+    expect(m.all('structured-question-text')).toHaveLength(0)
+    expect(m.host.querySelectorAll('.asked-title')).toHaveLength(0)
+    expect(m.all('asked-choice')).toHaveLength(2)
   })
 })
