@@ -226,8 +226,9 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M22 · 🔴 **an ENDED conversation's config file does not open** — the panel draws the row and "
         f"the door answers `no-path` under it — killed by `{GUARDS}` (733)",
-        [(HOST, "    if (row === null) return { ok: false, reason: 'no-path' }\n    const home = this.providerHomeFor(row)\n",
-          "    if (row === null || row !== null) return { ok: false, reason: 'no-path' }\n    const home = this.providerHomeFor(row)\n")],
+        # ⚑ **4004 · re-anchored in place, not retired** — Saved-address failures now retain the config reader result shape; the original ended-read no-path plant is unchanged.
+        [(HOST, "    if (row === null) return { ok: false, reason: 'no-path' }\n    try {\n      const home = this.providerHomeFor(row)\n",
+          "    if (row === null || row !== null) return { ok: false, reason: 'no-path' }\n    try {\n      const home = this.providerHomeFor(row)\n")],
     ),
     (
         "M23 · 🔴 **a read in flight at a conversation switch lands in the next conversation's row** "

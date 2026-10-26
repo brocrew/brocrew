@@ -126,6 +126,10 @@ HOST = "apps/desktop/src/main/runtime/runtime-host.ts"
 HOMES = "apps/desktop/src/main/runtime/provider-homes.ts"
 
 # (name, [(file, old, new), ...])
+# Current focused audit: on public a4dfcf6 and the recorded-location candidate,
+# profile-collision.test.ts survives M5/M6 (7 passes each). session-profile.test.ts
+# is the effective killer of both. The historical broader evidence above is retained.
+
 MUTATIONS = [
     # ---- the lock itself --------------------------------------------------------------------------
     (
@@ -178,6 +182,7 @@ MUTATIONS = [
             (
                 HOST,
                 # ⚑ **4004 · re-anchored in place, not retired** — Recorded storage adds an optional address; preserve the same legacy defect and killer.
+                # Fresh null-address branch only; the reserved-address branch keeps its await.
                 "        ? await this.prepareAHome(input.provider, profileId)\n",
                 "        ? (this.prepareAHome(input.provider, profileId) as unknown as { home: string; loginRenewed: boolean })\n",
             )

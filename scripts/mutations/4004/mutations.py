@@ -126,11 +126,9 @@ MUTATIONS = [('M1 · a fresh conversation loses its prepared storage address —
  ('M20 · managed discovery does not record the discovered home — killed by '
   '`a-conversation-keeps-its-recorded-provider-home.test.ts`',
   [('apps/desktop/src/main/runtime/runtime-host.ts',
-    '              providerLocation: this.locationOfPreparedHome(\n'
-    '                this.deps.providerHomePath(session.provider, session.profileId),\n'
-    '                session.provider,\n'
-    '              ),',
-    '              providerLocation: undefined,')]),
+    # ⚑ **4004 · re-anchored in place, not retired** — Discovery now preserves a legacy-null row when address validation fails; the managed-discovery omission plant is unchanged.
+    "              providerLocation: this.locationOfDiscoveredHome(session.provider, session.profileId),",
+    "              providerLocation: undefined,")]),
  ('M21 · production omits the managed-root binding and silently records nothing — killed by '
   '`a-conversation-keeps-its-recorded-provider-home.test.ts`',
   [('apps/desktop/src/main/index.ts',
@@ -140,4 +138,64 @@ MUTATIONS = [('M1 · a fresh conversation loses its prepared storage address —
   '`a-conversation-keeps-its-recorded-provider-home.test.ts`',
   [('apps/desktop/src/main/index.ts',
     '      return providerModules[provider].home.prepare(profileId, recordedLocation)\n',
-    '      return providerModules[provider].home.prepare(profileId)\n')])]
+    '      return providerModules[provider].home.prepare(profileId)\n')]),
+ ('M23 · cold resume admits a different prepared folder — killed by '
+  '`a-conversation-keeps-its-recorded-provider-home.test.ts`',
+  [('apps/desktop/src/main/runtime/runtime-host.ts',
+    '    if (recordedHome !== null && providerHome !== recordedHome) {\n'
+    "      throw new Error('Prepared provider folder differs from the recorded location')\n"
+    '    }\n',
+    '')]),
+ ('M24 · a reserved service admits a different prepared folder — killed by '
+  '`a-service-keeps-its-recorded-provider-folder.test.ts`',
+  [('apps/desktop/src/main/runtime/runtime-host.ts',
+    '    if (recordedAddress !== null && providerHome !== recordedAddress.home) {\n'
+    "      throw new Error('Prepared provider folder differs from the recorded location')\n"
+    '    }\n',
+    '')]),
+ ('M25 · saved-address validation happens after login renewal and preparation — killed by '
+  '`a-conversation-keeps-its-recorded-provider-home.test.ts`',
+  [('apps/desktop/src/main/runtime/runtime-host.ts',
+    '    const recordedAddress = this.recordedProviderAddress(row)\n'
+    '    const recordedHome = recordedAddress?.home ?? null\n'
+    '    const recordedLocation = recordedAddress?.location\n'
+    '    const { home: providerHome, loginRenewed } = await this.prepareAHome(\n'
+    '      row.provider,\n'
+    '      profileId,\n'
+    '      sessionId,\n'
+    '      recordedLocation,\n'
+    '    )\n',
+    '    const recordedLocation = this.deps.store.providerLocationOf(sessionId) ?? undefined\n'
+    '    const { home: providerHome, loginRenewed } = await this.prepareAHome(\n'
+    '      row.provider,\n'
+    '      profileId,\n'
+    '      sessionId,\n'
+    '      recordedLocation,\n'
+    '    )\n'
+    '    const recordedAddress = this.recordedProviderAddress(row)\n'
+    '    const recordedHome = recordedAddress?.home ?? null\n')]),
+ ('M26 · the final containment check trusts ancestors swapped after release — killed by '
+  '`provider-locations.test.ts`',
+  [('apps/desktop/src/main/providers/locations.ts',
+    '  if (!inside(canonical(root), canonical(path))) {',
+    '  if (false) {')]),
+ ('M27 · one invalid discovered folder aborts every later adoption — killed by '
+  '`a-conversation-keeps-its-recorded-provider-home.test.ts`',
+  [('apps/desktop/src/main/runtime/runtime-host.ts',
+    '    } catch {\n'
+    '      // Discovery predates this address field; an odd home retains its original legacy '
+    'route.\n'
+    '      return undefined\n'
+    '    }\n',
+    '    } catch (error) {\n      throw error\n    }\n')]),
+ ('M28 · a saved-address config refusal escapes its typed IPC result — killed by '
+  '`a-conversation-keeps-its-recorded-provider-home.test.ts`',
+  [('apps/desktop/src/main/runtime/runtime-host.ts',
+    "      if (error instanceof ProviderLocationError) return { ok: false, reason: 'unreadable' "
+    '}\n',
+    '')]),
+ ('M29 · a saved-address Finder refusal escapes its typed IPC result — killed by '
+  '`a-conversation-keeps-its-recorded-provider-home.test.ts`',
+  [('apps/desktop/src/main/runtime/runtime-host.ts',
+    '      if (error instanceof ProviderLocationError) return null\n',
+    '')])]
