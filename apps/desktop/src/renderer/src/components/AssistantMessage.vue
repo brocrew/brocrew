@@ -196,7 +196,7 @@ function openANamedDocument(event: MouseEvent): void {
           :aria-label="question.title"
           :aria-describedby="noteId"
         >
-          <span v-if="choices.length > 1" class="asked-title">{{ question.title }}</span>
+          <span v-if="choices.length > 1 || item.text.trim() === ''" class="asked-title">{{ question.title }}</span>
           <button
             v-for="(option, index) in question.options"
             :key="index"

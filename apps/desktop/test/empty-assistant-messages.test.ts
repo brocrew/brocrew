@@ -40,6 +40,32 @@ describe('empty authoritative assistant messages', () => {
     expect(panelWords(state)?.text).toBe('Actual answer')
   })
 
+  it('drops provisional delta prose after a tool boundary when the authoritative message is empty', () => {
+    const state = fold([
+      { type: 'user_turn', text: 'Question', humanInitiated: true },
+      { type: 'assistant_delta', text: 'Unconfirmed progress' },
+      { type: 'tool_call', id: 'fictional-tool', name: 'fictional', summary: 'Fictional work' },
+      empty, { type: 'turn', state: 'completed' },
+    ])
+    expect(visibleItems('normal', state.items).filter((item) => item.kind === 'assistant')).toEqual([])
+    expect(state.items.some((item) => item.kind === 'tool')).toBe(true)
+    expect(state.provisionalId).toBeNull()
+    expect(state.humanAnswers.latest?.final).toBeNull()
+  })
+
+  it('keeps latestWords fallback after a newer human empty final without selecting the older pair', () => {
+    const state = fold([
+      { type: 'user_turn', text: 'Earlier question', humanInitiated: true },
+      { type: 'assistant_message', text: 'Earlier answer', phase: 'final' },
+      { type: 'turn', state: 'completed' },
+      { type: 'user_turn', text: 'New question', humanInitiated: true }, empty,
+      { type: 'turn', state: 'completed' },
+    ])
+    expect(state.humanAnswers.latest).toMatchObject({ prompt: 'New question', final: null })
+    expect(panelWords(state)?.text).toBe('Earlier answer')
+    expect(visibleItems('normal', state.items).filter((item) => item.kind === 'assistant')).toHaveLength(1)
+  })
+
   it('retains structured-only questions and memory recall without creating a human final', () => {
     const state = fold([
       { type: 'user_turn', text: 'Question', humanInitiated: true },

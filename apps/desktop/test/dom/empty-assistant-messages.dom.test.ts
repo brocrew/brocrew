@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import TranscriptView from '../../src/renderer/src/components/TranscriptView.vue'
+import AgentCard from '../../src/renderer/src/components/AgentCard.vue'
 import { applyEvent, createTranscript } from '../../src/renderer/src/lib/transcript'
 import type { TranscriptEvent } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll } from './harness'
@@ -42,10 +43,28 @@ describe('empty Codex messages in the conversation', () => {
     const answered: string[] = []
     const m = mount(TranscriptView, { items: state.items, mode: 'normal', canAnswerQuestions: true, onSendAnswer: (text: string) => answered.push(text) }, { width: 900, height: 700 })
     expect(m.all('asked-choice').map((one) => one.textContent?.trim())).toEqual(['Bread', 'Cake'])
+    expect(m.q('assistant-message').parentElement?.textContent).toContain('Which recipe?')
     expect(m.q('memory-recall').textContent).toContain('fictional.md')
     expect(m.host.querySelectorAll('[data-human-final="true"]')).toHaveLength(0)
     m.q('asked-choice').click(); await nextTick()
     expect(answered).toHaveLength(1)
     expect(answered[0]).toContain('Bread')
+  })
+
+  it('uses the original panel navigation after a new human turn has an empty final', async () => {
+    const state = stateOf([
+      { type: 'user_turn', text: 'Earlier question', humanInitiated: true },
+      { type: 'assistant_message', text: 'Earlier answer', phase: 'final' },
+      { type: 'turn', state: 'completed' },
+      { type: 'user_turn', text: 'New question', humanInitiated: true },
+      { type: 'assistant_message', text: '', phase: 'final' },
+      { type: 'turn', state: 'completed' },
+    ])
+    const navigated: string[] = []
+    const m = mount(AgentCard, { state, shown: state, mode: 'normal', conversation: 'fictional', onNavigate: (id: string) => navigated.push(id) }, { width: 360, height: 800 })
+    expect(m.q('card-latest-words').textContent).toBe('Earlier answer')
+    m.q('card-latest').click(); await nextTick()
+    expect(navigated).toEqual([state.items.find((item) => item.kind === 'assistant' && item.text === 'Earlier answer')!.id])
+    expect(m.all('human-answer-dialog')).toHaveLength(0)
   })
 })
