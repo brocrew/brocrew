@@ -15,7 +15,11 @@ import {
   DEFAULT_PROFILE_ID,
   PROVIDER_NAME,
 } from '../../../shared/runtime-ipc'
-import type { ProviderCondition } from '../../../shared/provider-limit'
+import {
+  providerConditions,
+  wallsFromUsage,
+  type ProviderCondition,
+} from '../../../shared/provider-limit'
 import {
   limitsDisplayLabel,
   limitsDisplayWords,
@@ -520,6 +524,23 @@ const usage = computed<{ text: string; title: string | null; tone: 'note' | 'war
   if (props.limitsDisplay !== undefined) {
     const display = props.limitsDisplay
     const reading = display.reading
+    // A retained warning can outlive its usage reading or account. The card's current
+    // readings supply near-limit figures; reported stops retain their separate evidence.
+    if (props.limit?.standing === 'about-to-stop') {
+      const near = wallsFromUsage(
+        { [props.provider]: (props.readings ?? []).filter((one) => one.unconfirmed !== true) },
+        [],
+        props.clock,
+      ).flatMap((wall) => providerConditions([wall], props.clock))
+      return {
+        text:
+          near.length === 0
+            ? warningHistoryLabel(display)
+            : near.map((one) => usageSays(one, props.clock)).join(' '),
+        title: near.length === 0 ? null : near.map(usageTitle).join('\n'),
+        tone: near.length === 0 ? 'note' : 'warn',
+      }
+    }
     return {
       text:
         props.limit !== null && reading !== null
