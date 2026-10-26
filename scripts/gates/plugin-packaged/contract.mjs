@@ -132,7 +132,7 @@ export function projectBuild(config, entry, appData, browser) {
   )
   entry = replace(
     entry,
-    'return providerModules[provider].home.prepare(profileId)',
+    'return providerModules[provider].home.prepare(profileId, recordedLocation)',
     `/* ${GATE_BUILD_MARKER} */ return preparePackagedGateHome(${JSON.stringify(path.dirname(appData))}, userData, provider, profileId)`,
   )
   entry = replace(
