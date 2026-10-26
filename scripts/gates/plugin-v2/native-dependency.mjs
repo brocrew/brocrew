@@ -1,7 +1,7 @@
 // Exact esbuild dependency inputs only. The gate/token reader remains strictly single-link.
 import fs from 'node:fs'
 import path from 'node:path'
-import { demand, hash, below, readFile } from './contract.mjs'
+import { demand, hash, below } from './contract.mjs'
 import { readOwnedFile, rootWitness } from './owned-files.mjs'
 import { esbuildInvocation, nativeEsbuildTarget } from './tool-entry.mjs'
 

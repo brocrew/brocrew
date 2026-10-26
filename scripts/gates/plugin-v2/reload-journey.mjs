@@ -1,4 +1,3 @@
-import fs from 'node:fs'
 import path from 'node:path'
 import { demand, readFile } from './contract.mjs'
 import { startApp, quit, bounded } from './processes.mjs'

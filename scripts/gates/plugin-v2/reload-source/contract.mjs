@@ -21,6 +21,10 @@ export function assertMainAppBehavior(value) {
   assert.equal(value.nativeDatabaseClosure, 'external-native-app-receipt-required')
   assert.equal(value.nativeIpcJourney, 'EXTERNAL-DRIVER-EVIDENCE-REQUIRED')
   const { fixtureMarker, hostBinding, nativeDatabaseClosure, nativeIpcJourney, ...core } = value
+  void fixtureMarker
+  void hostBinding
+  void nativeDatabaseClosure
+  void nativeIpcJourney
   checkBehavior({ ...core, schema: 'brocrew.reload-behavior.v1' }, true)
   return value
 }

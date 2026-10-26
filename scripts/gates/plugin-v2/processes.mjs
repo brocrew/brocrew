@@ -290,7 +290,9 @@ export async function startApp({ root, app, workspace, global, records }) {
 export async function quit(r) {
   try {
     await bounded(r.cdp.send('Browser.close'), 5000)
-  } catch {}
+  } catch {
+    // CDP may already be disconnected; continue closing the process.
+  }
   r.cdp?.close()
   try {
     await bounded(r.close, 20000)

@@ -123,7 +123,7 @@ describe('M55 · a Close counts as a stop before its own finalize', () => {
                   if (p === 'isRetiring' && retirement !== undefined)
                     return () => retirement.pending
                   if (p === 'send' && retirement !== undefined)
-                    return (...args: Parameters<SessionHandle['send']>) => {
+                    return () => {
                       if (retirement.pending)
                         return Promise.reject(new Error('fictional retiring handle cannot send'))
                       retirement.pending = true

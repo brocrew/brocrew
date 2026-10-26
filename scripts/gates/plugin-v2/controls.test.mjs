@@ -238,9 +238,9 @@ test('every ordinary job is excluded on both test-role prefixes; no new workflow
   ]) {
     const text = fs.readFileSync(path.join(repo, '.github/workflows', name), 'utf8')
     for (const id of jobs) {
-      const block = text.split(`\n  ${id}:\n`)[1]?.split(/\n  [a-z][a-z0-9-]+:\n/)[0]
+      const block = text.split(`\n  ${id}:\n`)[1]?.split(/\n {2}[a-z][a-z0-9-]+:\n/)[0]
       assert.ok(block)
-      const expression = block.match(/^    if:.*(?:\n {6,}.*)*/m)?.[0]
+      const expression = block.match(/^ {4}if:.*(?:\n {6,}.*)*/m)?.[0]
       assert.ok(expression?.includes("!startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-')"))
       assert.ok(
         expression?.includes("!startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-')"),
@@ -337,7 +337,7 @@ test('external admission nulls or identity mismatch cannot be replaced by runtim
     workflowConclusion: 'success',
     reviewSha256: e.reviewSha256,
     brokerReceipt: { policy_sha256: e.brokerPolicySha256 },
-    matrixJobs: ['0.1.7', '0.1.8'].map((v, i) => ({
+    matrixJobs: ['0.1.7', '0.1.8'].map((v) => ({
       id: v === e.appVersion ? 456 : 455,
       name: `Plugin v2 Review (${v})`,
       conclusion: 'success',
@@ -500,7 +500,7 @@ test('the actual staging body reaches017 from0.0.0 and refuses wrong source/vers
       privateRoot: async () => {
         protection++
       },
-      observe: async (version) => ({ ...observed, appSource: observedSource }),
+      observe: async () => ({ ...observed, appSource: observedSource }),
       command: async (program, args, root, records, options) => {
         assert.equal(program, 'git')
         if (args[0] === 'clone') {
