@@ -1,5 +1,5 @@
 import { afterEach, expect, it } from 'vitest'
-import { defineComponent, h, nextTick, reactive } from 'vue'
+import { defineComponent, h, nextTick, reactive, type Component } from 'vue'
 import ProviderCard from '../../src/renderer/src/components/ProviderCard.vue'
 import { createModelLists } from '../../src/renderer/src/lib/model-lists'
 import { providerConditions, readProviderLimit } from '../../src/shared/provider-limit'
@@ -70,7 +70,7 @@ function card(usedPercent: number, resetsAt: number) {
       apiKeyStatus: async () => ({ provider: 'claude', set: false, setAt: null, inUse: false }),
     },
   }
-  const host = defineComponent({ setup: () => () => h(ProviderCard, props) })
+  const host = defineComponent({ setup: () => () => h(ProviderCard as Component, props) })
   return { m: mount(host, {}, { width: 760, height: 1400 }), props }
 }
 
@@ -105,4 +105,32 @@ it('keeps a matching current near-limit warning', async () => {
   await settled()
   expect(words(m.q('provider-usage-says'))).toContain('90% used')
   expect(words(m.q('provider-usage-says'))).toContain('2 days')
+})
+
+it('pairs each near-limit window with its own percentage and reset', async () => {
+  const { m, props } = card(91, NOW + 72 * HOUR)
+  props.readings.unshift({ window: 'five_hour', usedPercent: 88, resetsAt: NOW + HOUR, at: NOW })
+  await settled()
+  const warning = words(m.q('provider-usage-says'))
+  expect(warning).toContain('its 5-hour limit (88% used); it resets in 1 h.')
+  expect(warning).toContain('its weekly limit (91% used); it resets in 3 days.')
+})
+
+it('does not confirm a retained warning from unconfirmed or absent readings', async () => {
+  const { m, props } = card(90, NOW + 48 * HOUR)
+  props.readings = [{ ...props.readings[0]!, unconfirmed: true }]
+  await settled()
+  expect(words(m.q('provider-usage-says'))).not.toContain('is near')
+  props.readings = []
+  await settled()
+  expect(words(m.q('provider-usage-says'))).not.toContain('90% used')
+})
+
+it('keeps the separately reported stop without changing it into a measured percentage', async () => {
+  const { m, props } = card(29, NOW + 7.75 * HOUR)
+  const stopped = readProviderLimit('claude is rate-limited (seven_day)', NOW)!
+  props.limit = providerConditions([stopped], NOW)[0]!
+  await settled()
+  expect(words(m.q('provider-usage-says'))).toContain('has reached its weekly limit')
+  expect(words(m.q('provider-usage-says'))).not.toContain('29% used')
 })
