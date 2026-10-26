@@ -99,6 +99,8 @@ export const LIFECYCLE_TOGGLE_TITLE =
  */
 export function isVisibleIn(mode: TranscriptMode, item: TranscriptItem): boolean {
   switch (item.kind) {
+    case 'assistant':
+      return item.streaming || item.text.trim() !== '' || (item.questions?.length ?? 0) > 0
     case 'notice':
       // ⚑ F035 · the scheduled job that woke a turn is content, not chrome: shown in both modes.
       return mode === 'debug' || item.level !== 'info' || item.wokenByAJob === true
@@ -220,7 +222,6 @@ export function isVisibleIn(mode: TranscriptMode, item: TranscriptItem): boolean
     case 'reset':
     case 'user':
     case 'queued':
-    case 'assistant':
     case 'permission':
     case 'userInput':
     case 'thinking':

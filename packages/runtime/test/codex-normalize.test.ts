@@ -519,8 +519,7 @@ describe('normalizeNotification — full ThreadItem coverage + error shape (007 
     })
 
     it('a citation on a message with NO text stays surfaced as malformed', () => {
-      // ⚠️ The order of the two guards, asserted: an empty `text` is a malformed item and stays
-      // loud, and a citation must not be able to smuggle it past that.
+      // Missing text is malformed even when a citation is present; an explicit empty string is valid.
       const events = normalizeNotification('item/completed', {
         item: { type: 'agentMessage', id: 'm', memoryCitation: CITED.memoryCitation },
       })
