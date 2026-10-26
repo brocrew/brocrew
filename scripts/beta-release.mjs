@@ -69,6 +69,8 @@ const CLAUDE_CODE = `To use Claude agents, install Claude Code from ${CLAUDE_COD
 // A release's notes are public: the install line the README gives, and keys only.
 const CLAUDE_CODE_FIRST = `To use Claude, install Claude Code first, from Anthropic: ${CLAUDE_CODE_SETUP}. Codex comes with BroCrew.`
 
+const UPDATE_CHECK_018 = 'Stable automatic update checks continue through brocrew.app and include your installed app version, without a user or installation ID. Network errors, a 60-second timeout or server errors fall back to GitHub; beta checks use GitHub. Turn off Check automatically to stop new automatic requests to brocrew.app; manual checks and downloads then use GitHub. See https://brocrew.app/privacy/ and the Updates guide for details.'
+
 const SIGN_IN = {
   windows: `open Settings → Providers, and save an API key on the Claude card (from ${ANTHROPIC_KEYS}) and on the Codex card (from ${OPENAI_KEYS}). With no Claude key saved, BroCrew runs Claude on your Claude Code login on this PC: sign in to it once by running \`claude\` in PowerShell.`,
   mac: `open Settings → Providers, and save an API key on the Claude card (from ${ANTHROPIC_KEYS}) and on the Codex card (from ${OPENAI_KEYS}). With no key saved, BroCrew uses the Claude and Codex logins already on the Mac.`,
@@ -125,6 +127,7 @@ export function notesOf(tag, commit, repository = null) {
         ]
       : []),
     ...signIn,
+    ...(tag === 'v0.1.8' ? [UPDATE_CHECK_018] : []),
     release !== null
       ? 'What the agents do is billed to the account the key belongs to.'
       : 'What the agents do is billed to the account the key or login belongs to.',

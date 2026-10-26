@@ -12,6 +12,12 @@
 
 BroCrew is an open-source desktop app that brings AI agents together on your computer. Give an agent a task and it can share the work with other agents, Claude and Codex in the same tree. Each agent keeps its own memory and rules across conversations. Use your own Anthropic or OpenAI API key, and the provider bills your usage ([requirements and cost](docs/requirements-and-cost.md)).
 
+Additional providers are planned.
+
+## 0.1.8 release candidate
+
+This candidate focuses on plugin loading and session reload handling. Fix claims depend on qualification of the downloadable Mac and Windows builds before publication.
+
 ## See it work
 
 **1. Describe the project and the team.** Type what you want, and how you'd like the team set up.

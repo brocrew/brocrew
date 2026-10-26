@@ -26,11 +26,14 @@
     ".github/workflows/macos.yml",
     ".github/workflows/windows.yml",
     ".prettierignore",
+    "README.md",
     "apps/desktop/test/a-close-before-its-own-finalize-still-counts-as-a-stop.test.ts",
     "apps/desktop/test/the-question-every-teardown-asks.test.ts",
+    "docs/providers.md",
     "packages/runtime/smoke/claude-installed-probe.smoke.ts",
     "packages/runtime/smoke/loopback-claude.ts",
     "plugins/catalogue-v2.json",
+    "scripts/beta-release.mjs",
     "scripts/check-no-plugin-gate-inputs.mjs",
     "scripts/gates/plugin-v2/README.md",
     "scripts/gates/plugin-v2/RELOAD-PREVIEW.md",
@@ -68,7 +71,8 @@
     "scripts/gates/plugin-v2/tool-entry.mjs",
     "scripts/gates/plugin-v2/verify-operation.mjs",
     "scripts/gates/plugin-v2/verify-reload.mjs",
-    "scripts/mutations/659/mutations.py"
+    "scripts/mutations/659/mutations.py",
+    "scripts/test/beta-release.test.mjs"
   ],
   "files": [
     {

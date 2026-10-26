@@ -3,7 +3,7 @@
 - **Claude**, through Anthropic's Claude Agent SDK and Claude Code, with your Anthropic API key. A downloaded BroCrew uses the Claude Code you install; run from source, it uses the one that comes with the SDK.
 - **Codex**, through the bundled Codex app server, with your OpenAI API key.
 
-Either way, you bring your own key and pay the provider directly. BroCrew has no servers of its own. It contacts GitHub to check for updates, read the plugin list and download plugins, and Anthropic or OpenAI when you press **Check it works** on a key. The Claude Code and Codex programs it runs talk to their own providers, and the WhatsApp plugin talks to WhatsApp.
+Either way, you bring your own key and pay the provider directly. Stable automatic update checks and their offered downloads start at brocrew.app; GitHub hosts the release files. See [Updates](updates.md) for fallback, beta and manual-check behavior. BroCrew also contacts GitHub for the plugin list and plugin downloads, and Anthropic or OpenAI when you press **Check it works** on a key. The Claude Code and Codex programs it runs talk to their own providers, and the WhatsApp plugin talks to WhatsApp.
 
 ## Included software
 

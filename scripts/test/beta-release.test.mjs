@@ -35,6 +35,13 @@ describe('§1 · a tag names its platforms', () => {
 })
 
 describe('§2 · the words', () => {
+  it('discloses existing update checks only in the 0.1.8 release notes', () => {
+    const disclosure = 'Stable automatic update checks continue through brocrew.app and include your installed app version, without a user or installation ID. Network errors, a 60-second timeout or server errors fall back to GitHub; beta checks use GitHub. Turn off Check automatically to stop new automatic requests to brocrew.app; manual checks and downloads then use GitHub. See https://brocrew.app/privacy/ and the Updates guide for details.'
+    expect(notesOf('v0.1.8', '1a2b3c4')).toContain(disclosure)
+    expect(notesOf('v0.1.7', '1a2b3c4')).not.toContain(disclosure)
+    expect(notesOf('v0.1.8-beta.1', '1a2b3c4')).not.toContain(disclosure)
+  })
+
   it('🔴 the Mac: Open Anyway in Privacy & Security, the quarantine fallback, and the shared data folder', () => {
     const mac = notesOf('mac-beta-1', '1a2b3c4')
     expect(mac).toContain('from commit 1a2b3c4 (tag mac-beta-1)')
