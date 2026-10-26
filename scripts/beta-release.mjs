@@ -66,7 +66,7 @@ const KEYS = `open Settings → Providers, save an Anthropic API key on the Clau
 
 const CLAUDE_CODE = `To use Claude agents, install Claude Code from ${CLAUDE_CODE_SETUP}. BroCrew does not include it: it runs the Claude Code installed on your computer. Codex comes with BroCrew.`
 
-// A release's notes are public: the install line the README gives, and keys only.
+// Release notes give installation and key steps, plus the existing update route for 0.1.8.
 const CLAUDE_CODE_FIRST = `To use Claude, install Claude Code first, from Anthropic: ${CLAUDE_CODE_SETUP}. Codex comes with BroCrew.`
 
 const UPDATE_CHECK_018 = 'Stable automatic update checks continue through brocrew.app and include your installed app version, without a user or installation ID. Network errors, a 60-second timeout or server errors fall back to GitHub; beta checks use GitHub. Turn off Check automatically to stop new automatic requests to brocrew.app; manual checks and downloads then use GitHub. See https://brocrew.app/privacy/ and the Updates guide for details.'
