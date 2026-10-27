@@ -378,8 +378,8 @@ function openANamedDocument(event: MouseEvent): void {
 }
 
 .human-final .msg-column {
-  border-inline-start: 3px solid var(--accent);
-  background: color-mix(in srgb, var(--accent) 9%, var(--panel));
+  border-inline-start: var(--border-edge-width) solid var(--accent);
+  background: var(--accent-mix-9);
   border-radius: var(--radius-sm);
   padding: 12px 14px;
 }
