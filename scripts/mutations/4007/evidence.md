@@ -1,5 +1,9 @@
 # Recovery retention mutation evidence
 
+## Historical W4.1316 measurement
+
+The measurements below describe tip `bae39bfa37f9e75bbe3a122634d9051da4be6cfb`, before the W4.1318 partial-deletion correction. The correction changes checkpoint/UI target bytes and updates M11's literal error-message anchor to the newly approved wording. These historical receipts are preserved; they do not claim a fresh complete-table run on the corrected tree. Current RED/GREEN recovery and DOM receipts are indexed in the W4.1318 handback.
+
 All 13 rows in table 4007 were measured RED with `scripts/mutations/verify_row.py` on fictional workspaces. Each named killer was GREEN before mutation; the verifier restored and hashed each target after its row. Both verifier invocations exited 0.
 
 These are individual row proofs. The full `mutate.sh` whole-repository controls were not run; the census correctly lists the table as unrun because there is no published `mutations.txt`.
