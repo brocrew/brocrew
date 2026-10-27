@@ -10,13 +10,17 @@ import {
   reopenAtLatest,
 } from '../src/renderer/src/lib/session-record'
 
-const human = (text: string): TranscriptEvent => ({ type: 'user_turn', text, humanInitiated: true })
-const app = (text: string): TranscriptEvent => ({
+const human = (text: string): Extract<TranscriptEvent, { type: 'user_turn' }> => ({
+  type: 'user_turn',
+  text,
+  humanInitiated: true,
+})
+const app = (text: string): Extract<TranscriptEvent, { type: 'user_turn' }> => ({
   type: 'user_turn',
   text,
   attribution: 'app_authored',
 })
-const final = (text: string): TranscriptEvent => ({
+const final = (text: string): Extract<TranscriptEvent, { type: 'assistant_message' }> => ({
   type: 'assistant_message',
   text,
   phase: 'final',
@@ -54,7 +58,8 @@ describe('human turns keep their own final answers', () => {
     expect(state.humanAnswers.latest?.prompt).toBe('First question')
     expect(
       state.items
-        .filter((item) => item.kind === 'assistant' && item.humanFinal)
+        .filter((item) => item.kind === 'assistant')
+        .filter((item) => item.humanFinal)
         .map((item) => item.text),
     ).toEqual(['**First answer**'])
     expect(state.items.filter((item) => item.kind === 'assistant')).toHaveLength(5)
@@ -80,7 +85,8 @@ describe('human turns keep their own final answers', () => {
     expect(state.humanAnswers.latest?.prompt).toBe('Q3')
     expect(
       state.items
-        .filter((item) => item.kind === 'assistant' && item.humanFinal)
+        .filter((item) => item.kind === 'assistant')
+        .filter((item) => item.humanFinal)
         .map((item) => item.text),
     ).toEqual(['A1', 'A3'])
   })
@@ -156,7 +162,8 @@ describe('human turns keep their own final answers', () => {
     ])
     expect(
       state.items
-        .filter((item) => item.kind === 'assistant' && item.humanFinal)
+        .filter((item) => item.kind === 'assistant')
+        .filter((item) => item.humanFinal)
         .map((item) => item.text),
     ).toEqual(['Selected final'])
     expect(panelWords(state)?.text).toBe('Selected final')

@@ -144,7 +144,7 @@ describe('indexed human answer history', () => {
     }
     const page = host.latestHistory('s')
     expect(page.entries.some((row) => row.ordinal === 0)).toBe(false)
-    expect(page.humanAnswers.latest).toMatchObject({
+    expect(page.humanAnswers?.latest).toMatchObject({
       prompt: 'My **question**',
       final: { text: '## My answer' },
     })
@@ -201,7 +201,8 @@ describe('indexed human answer history', () => {
     page.entries.forEach((row) => acceptEvent(record, { ...row, sessionId: 's' }))
     expect(
       record.control.items
-        .filter((item) => item.kind === 'assistant' && item.humanFinal)
+        .filter((item) => item.kind === 'assistant')
+        .filter((item) => item.humanFinal)
         .map((item) => item.text),
     ).toEqual(['Selected final'])
     expect(panelWords(record.control)?.text).toBe('Selected final')
@@ -222,7 +223,8 @@ describe('indexed human answer history', () => {
       page.entries.forEach((row) => acceptEvent(record, { ...row, sessionId: 's' }))
       expect(
         record.control.items
-          .filter((item) => item.kind === 'assistant' && item.humanFinal)
+          .filter((item) => item.kind === 'assistant')
+          .filter((item) => item.humanFinal)
           .map((item) => item.text),
       ).toEqual(['Original final'])
       expect(panelWords(record.control)?.text).toBe('Original final')
@@ -247,7 +249,8 @@ describe('indexed human answer history', () => {
     page.entries.forEach((row) => acceptEvent(record, { ...row, sessionId: 's' }))
     expect(
       record.control.items
-        .filter((item) => item.kind === 'assistant' && item.humanFinal)
+        .filter((item) => item.kind === 'assistant')
+        .filter((item) => item.humanFinal)
         .map((item) => item.text),
     ).toEqual(['A1 inside cut page', 'A2 inside page'])
     expect(panelWords(record.control)?.text).toBe('A2 inside page')
@@ -259,7 +262,8 @@ describe('indexed human answer history', () => {
     older.entries.forEach((row) => acceptEvent(olderRecord, { ...row, sessionId: 's' }))
     expect(
       olderRecord.control.items
-        .filter((item) => item.kind === 'assistant' && item.humanFinal)
+        .filter((item) => item.kind === 'assistant')
+        .filter((item) => item.humanFinal)
         .map((item) => item.text),
     ).toEqual(['A1 inside cut page'])
   })
@@ -355,7 +359,10 @@ describe('indexed human answer history', () => {
       }
     })()
     expect(
-      db.pragma('index_info(events_human_prompt_idx)').map((row) => (row as { name: string }).name),
+      db
+        .prepare<[], { name: string }>('PRAGMA index_info(events_human_prompt_idx)')
+        .all()
+        .map((row) => row.name),
     ).toEqual(['session_id', 'generation', 'type', 'ordinal'])
     const query = `SELECT ordinal FROM events INDEXED BY events_human_prompt_idx
       WHERE session_id = ? AND generation = ? AND (${HUMAN_CONTEXT_TERM}) AND type = ?
