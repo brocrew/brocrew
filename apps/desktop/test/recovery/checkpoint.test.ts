@@ -32,6 +32,9 @@ import {
   needsACheckpoint,
   offeredFrom,
   prune,
+  recordSuccessfulStart,
+  retainedCopyInfo,
+  deleteRetainedCopy,
   theNewestIntact,
   whenTheDatabaseLastChanged,
   type Checkpoint,
@@ -1188,7 +1191,7 @@ function anHourAndMoreAgo(userData: string, name: string, now = Date.now()): voi
 }
 
 describe('prune', () => {
-  it('keeps the two newest it can offer and the recent newest of each migration count, and removes only other whole copies', async () => {
+  it('keeps one newest intact offerable copy across migration counts', async () => {
     const userData = aDataFolder()
     aLiveDatabase(userData, theFirstMigrations(THE_BUILDS.length - 1))
     const six = [
@@ -1218,20 +1221,18 @@ describe('prune', () => {
 
     const [s1, s2, s3] = ids(six)
     const [v4, v5, v6, v7, v8] = ids(seven)
-    expect(removed.sort()).toEqual([s1, v4, v5, v6].sort())
+    expect(removed.sort()).toEqual([s1, s2, v4, v5, v6, v7].sort())
     expect(ids(await listCheckpoints(userData)), 'not whole, or made by a newer build').toEqual([
       eightNewer,
       eightOlder,
       v8,
-      v7,
       s3,
-      s2,
     ])
-    expect(ids(await listOfferable(userData, LINEAGE))).toEqual([v8, v7, s2])
+    expect(ids(await listOfferable(userData, LINEAGE))).toEqual([v8])
     expect(await prune(userData, LINEAGE, recent), 'a second pass finds nothing more').toEqual([])
   })
 
-  it('prunes the oldest of three recent copies with the same migration count', async () => {
+  it('keeps only the newest of three recent copies with the same migration count', async () => {
     const userData = aDataFolder()
     aLiveDatabase(userData)
     const now = minute(12)
@@ -1240,9 +1241,10 @@ describe('prune', () => {
     const newest = await make(userData, { now: () => now - 60_000 })
 
     expect(await prune(userData, LINEAGE, { ...SOLE, now: () => now })).toEqual([
+      middle.manifest.id,
       oldest.manifest.id,
     ])
-    expect(ids(await listOfferable(userData, LINEAGE))).toEqual(ids([newest, middle]))
+    expect(ids(await listOfferable(userData, LINEAGE))).toEqual(ids([newest]))
   })
 
   async function copiesAcrossMigration(daysOld: number): Promise<{
@@ -1267,25 +1269,31 @@ describe('prune', () => {
   it('prunes an eight-day-old migration-count copy when a newer copy exists', async () => {
     const { userData, older, middle, newer, now } = await copiesAcrossMigration(8)
 
-    expect(await prune(userData, LINEAGE, { ...SOLE, now: () => now })).toEqual([older.manifest.id])
-    expect(ids(await listOfferable(userData, LINEAGE))).toEqual(ids([newer, middle]))
+    expect(await prune(userData, LINEAGE, { ...SOLE, now: () => now })).toEqual([
+      middle.manifest.id,
+      older.manifest.id,
+    ])
+    expect(ids(await listOfferable(userData, LINEAGE))).toEqual(ids([newer]))
   })
 
-  it('keeps a single thirty-day-old copy because it is the newest', async () => {
+  it('expires even the last copy at three days', async () => {
     const userData = aDataFolder()
     aLiveDatabase(userData)
     const now = START + 40 * DAY_MS
     const only = await make(userData, { now: () => now - 30 * DAY_MS })
 
-    expect(await prune(userData, LINEAGE, { ...SOLE, now: () => now })).toEqual([])
-    expect(ids(await listOfferable(userData, LINEAGE))).toEqual(ids([only]))
+    expect(await prune(userData, LINEAGE, { ...SOLE, now: () => now })).toEqual([only.manifest.id])
+    expect(await listOfferable(userData, LINEAGE)).toEqual([])
   })
 
-  it('keeps a six-day-old migration-count copy beside a newer copy', async () => {
+  it('drops older migration-count anchors', async () => {
     const { userData, older, middle, newer, now } = await copiesAcrossMigration(6)
 
-    expect(await prune(userData, LINEAGE, { ...SOLE, now: () => now })).toEqual([])
-    expect(ids(await listOfferable(userData, LINEAGE))).toEqual(ids([newer, middle, older]))
+    expect(await prune(userData, LINEAGE, { ...SOLE, now: () => now })).toEqual([
+      middle.manifest.id,
+      older.manifest.id,
+    ])
+    expect(ids(await listOfferable(userData, LINEAGE))).toEqual(ids([newer]))
   })
 
   it.each(['taken', 'unknown'] as const)(
@@ -1302,7 +1310,7 @@ describe('prune', () => {
 
       expect(await prune(userData, LINEAGE, { ownership })).toEqual([])
       expect(readdirSync(join(userData, 'backups')).sort()).toEqual(before)
-      expect(await prune(userData, LINEAGE, SOLE)).toHaveLength(4)
+      expect(await prune(userData, LINEAGE, SOLE)).toHaveLength(5)
     },
   )
 
@@ -1333,11 +1341,17 @@ describe('prune', () => {
 
     const removed = await prune(userData, LINEAGE, { ...SOLE, now: () => minute(12) })
 
-    expect(removed.sort()).toEqual([c3.manifest.id, c4.manifest.id, stale].sort())
+    expect(removed.sort()).toEqual([c3.manifest.id, c4.manifest.id, c5.manifest.id, stale].sort())
     expect(readdirSync(join(userData, 'backups')).sort()).toEqual(
-      before.filter((name) => name !== c3.manifest.id && name !== c4.manifest.id && name !== stale),
+      before.filter(
+        (name) =>
+          name !== c3.manifest.id &&
+          name !== c4.manifest.id &&
+          name !== c5.manifest.id &&
+          name !== stale,
+      ),
     )
-    expect(ids(await listOfferable(userData, LINEAGE))).toEqual(ids([c6, c5]))
+    expect(ids(await listOfferable(userData, LINEAGE))).toEqual(ids([c6]))
   })
 
   it('removes an unfinished copy only when its name is an id, it is marked, and it holds only what the writer makes', async () => {
@@ -1481,7 +1495,7 @@ describe('prune', () => {
         warn: (line) => warnings.push(line),
       }),
     ).toEqual([])
-    expect(warnings).toHaveLength(2)
+    expect(warnings).toHaveLength(3)
     expect(warnings.join('\n')).toContain(made[0]?.manifest.id)
     expect(warnings.join('\n')).toContain(made[1]?.manifest.id)
     expect(await listCheckpoints(userData)).toHaveLength(4)
@@ -1490,4 +1504,219 @@ describe('prune', () => {
   it('does nothing when there are no backups', async () => {
     expect(await prune(aDataFolder(), LINEAGE, SOLE)).toEqual([])
   })
+})
+
+describe('recovery copy expiry and Settings', () => {
+  it('keeps the last copy until exactly three days, then removes it', async () => {
+    const userData = aDataFolder()
+    aLiveDatabase(userData)
+    const copy = await make(userData, { now: () => START })
+    expect(await prune(userData, LINEAGE, { ...SOLE, now: () => START + 3 * DAY_MS - 1 })).toEqual(
+      [],
+    )
+    expect(await prune(userData, LINEAGE, { ...SOLE, now: () => START + 3 * DAY_MS })).toEqual([
+      copy.manifest.id,
+    ])
+  })
+
+  it('expires after three successful starts of its new version and does not recreate it on the fourth', async () => {
+    const userData = aDataFolder()
+    aLiveDatabase(userData)
+    const copy = await make(userData)
+    const version = copy.manifest.madeBy.appVersion
+    const options = { ...SOLE, currentAppVersion: version }
+    for (let starts = 1; starts <= 3; starts++) {
+      await recordSuccessfulStart(userData, LINEAGE, options)
+      await prune(userData, LINEAGE, options)
+      expect(await listOfferable(userData, LINEAGE)).toHaveLength(starts < 3 ? 1 : 0)
+    }
+    expect(
+      await checkpointNeeded({
+        userData,
+        database: await migrationsOf(liveFile(userData)),
+        lineage: LINEAGE,
+        release: version,
+      }),
+    ).toBeNull()
+    expect(
+      await checkpointNeeded({
+        userData,
+        database: await migrationsOf(liveFile(userData)),
+        lineage: LINEAGE,
+        release: '9.0.0',
+      }),
+    ).toBe('first-start-of-release')
+  })
+
+  it('shows total copied bytes, expiry and starts left; Delete now removes the selected copy', async () => {
+    const userData = aDataFolder()
+    aLiveDatabase(userData)
+    writeFileSync(join(userData, 'drafts.json'), '{"draft":"fictional"}')
+    const copy = await make(userData)
+    const options = { ...SOLE, currentAppVersion: copy.manifest.madeBy.appVersion }
+    await recordSuccessfulStart(userData, LINEAGE, options)
+    const info = await retainedCopyInfo(userData, LINEAGE, options)
+    expect(info).toMatchObject({
+      id: copy.manifest.id,
+      bytes: copy.manifest.database.bytes + Buffer.byteLength('{"draft":"fictional"}'),
+      expiresAt: new Date(Date.parse(copy.manifest.createdAt) + 3 * DAY_MS).toISOString(),
+      startsLeft: 2,
+    })
+    expect(await deleteRetainedCopy(userData, LINEAGE, copy.manifest.id, options)).toBe(true)
+    expect(await retainedCopyInfo(userData, LINEAGE, options)).toBeNull()
+    expect(
+      await checkpointNeeded({
+        userData,
+        database: await migrationsOf(liveFile(userData)),
+        lineage: LINEAGE,
+        release: copy.manifest.madeBy.appVersion,
+      }),
+    ).toBeNull()
+  })
+
+  it.each(['taken', 'unknown'] as const)(
+    'Settings delete refuses %s ownership',
+    async (ownership) => {
+      const userData = aDataFolder()
+      aLiveDatabase(userData)
+      const copy = await make(userData)
+      expect(await deleteRetainedCopy(userData, LINEAGE, copy.manifest.id, { ownership })).toBe(
+        false,
+      )
+      expect(await listCheckpoints(userData)).toHaveLength(1)
+    },
+  )
+
+  it('Settings delete refuses stale ids, damage, extra personal files and unreadable manifests', async () => {
+    const userData = aDataFolder()
+    aLiveDatabase(userData)
+    const copy = await make(userData)
+    const options = { ...SOLE, currentAppVersion: copy.manifest.madeBy.appVersion }
+    await recordSuccessfulStart(userData, LINEAGE, options)
+    expect(await deleteRetainedCopy(userData, LINEAGE, randomUUID(), options)).toBe(false)
+    writeFileSync(join(copy.folder, 'my-notes.txt'), 'keep mine')
+    expect(await deleteRetainedCopy(userData, LINEAGE, copy.manifest.id, options)).toBe(false)
+    rmSync(join(copy.folder, 'my-notes.txt'))
+    const held = manifestPath(userData, copy.manifest.id)
+    const denied = {
+      ...nodeFs,
+      readFile: (path: string) =>
+        path === held ? Promise.reject(coded('EIO')) : nodeFs.readFile(path),
+    }
+    expect(
+      await deleteRetainedCopy(userData, LINEAGE, copy.manifest.id, { ...options, fs: denied }),
+    ).toBe(false)
+    writeFileSync(join(copy.folder, 'database.sqlite'), 'damage')
+    expect(await deleteRetainedCopy(userData, LINEAGE, copy.manifest.id, options)).toBe(false)
+    expect(await listCheckpoints(userData)).toHaveLength(1)
+  })
+
+  it('only cleans timestamp folders with a checked current-workspace manifest, never names alone', async () => {
+    const userData = aDataFolder()
+    aLiveDatabase(userData)
+    const old = await make(userData, { now: () => START })
+    const legacy = join(userData, 'backups', '20260101-010101')
+    renameSync(old.folder, legacy)
+    const personal = join(userData, 'backups', '20260101-020202')
+    mkdirSync(personal)
+    writeFileSync(join(personal, 'database.sqlite'), 'my own copy')
+    await make(userData, { now: () => START + DAY_MS })
+    expect(await prune(userData, LINEAGE, { ...SOLE, now: () => START + DAY_MS })).toEqual([
+      '20260101-010101',
+    ])
+    expect(readdirSync(personal)).toEqual(['database.sqlite'])
+  })
+})
+
+describe('retention safety boundaries', () => {
+  it('protects the newest expired copy during pre-migration low-space cleanup', async () => {
+    const userData = aDataFolder()
+    aLiveDatabase(userData)
+    const copy = await make(userData, { now: () => START })
+    expect(
+      await prune(userData, LINEAGE, { ...SOLE, now: () => START + 30 * DAY_MS, expire: false }),
+    ).toEqual([])
+    expect(await isIntact(copy)).toBe(true)
+  })
+
+  it('does not count checks, failed opens, other versions, or earlier copies toward a new copy', async () => {
+    const userData = aDataFolder()
+    aLiveDatabase(userData)
+    const copy = await make(userData)
+    const options = { ...SOLE, currentAppVersion: copy.manifest.madeBy.appVersion }
+    expect(await retainedCopyInfo(userData, LINEAGE, options)).toMatchObject({ startsLeft: 3 })
+    await recordSuccessfulStart(userData, LINEAGE, { ...options, ownership: 'unknown' })
+    expect(await retainedCopyInfo(userData, LINEAGE, options)).toMatchObject({ startsLeft: 3 })
+    await recordSuccessfulStart(userData, LINEAGE, { ...options, currentAppVersion: '0.0.9' })
+    expect(await retainedCopyInfo(userData, LINEAGE, options)).toMatchObject({ startsLeft: 3 })
+    await recordSuccessfulStart(userData, LINEAGE, options)
+    await recordSuccessfulStart(userData, LINEAGE, options)
+    const next = await make(userData, { now: () => Date.now() + 1000 })
+    await recordSuccessfulStart(userData, LINEAGE, options)
+    expect(await retainedCopyInfo(userData, LINEAGE, options)).toMatchObject({
+      id: next.manifest.id,
+      startsLeft: 2,
+    })
+  })
+
+  it('refuses all cleanup if its start receipt is unreadable or malformed', async () => {
+    const userData = aDataFolder()
+    aLiveDatabase(userData)
+    const copy = await make(userData, { now: () => START })
+    const options = { ...SOLE, currentAppVersion: copy.manifest.madeBy.appVersion }
+    await recordSuccessfulStart(userData, LINEAGE, options)
+    writeFileSync(join(userData, 'backups', 'retention.json'), '{broken')
+    expect(await prune(userData, LINEAGE, { ...options, warn: () => undefined })).toEqual([])
+    expect(await deleteRetainedCopy(userData, LINEAGE, copy.manifest.id, options)).toBe(false)
+  })
+
+  it.each(['history-only.json', 'restore-journal.json'])(
+    'never counts or deletes during %s',
+    async (name) => {
+      const userData = aDataFolder()
+      aLiveDatabase(userData)
+      const copy = await make(userData, { now: () => START })
+      const options = { ...SOLE, currentAppVersion: copy.manifest.madeBy.appVersion }
+      mkdirSync(join(userData, 'recovery'))
+      writeFileSync(join(userData, 'recovery', name), 'restore in progress')
+      await recordSuccessfulStart(userData, LINEAGE, options)
+      expect(await prune(userData, LINEAGE, options)).toEqual([])
+      expect(await deleteRetainedCopy(userData, LINEAGE, copy.manifest.id, options)).toBe(false)
+      expect(readdirSync(join(userData, 'backups'))).not.toContain('retention.json')
+    },
+  )
+
+  it.each(['foreign', 'newer', 'damaged', 'personal-file'] as const)(
+    'preserves timestamp copy with %s evidence',
+    async (fault) => {
+      const userData = aDataFolder()
+      aLiveDatabase(userData)
+      const copy = await make(userData, { now: () => START })
+      if (fault === 'foreign')
+        rewrite(userData, copy.manifest.id, { ...copy.manifest, workspaceId: randomUUID() })
+      if (fault === 'newer')
+        rewrite(userData, copy.manifest.id, {
+          ...copy.manifest,
+          madeBy: { ...copy.manifest.madeBy, appVersion: '9.0.0' },
+        })
+      if (fault === 'damaged') writeFileSync(join(copy.folder, 'database.sqlite'), 'damaged')
+      if (fault === 'personal-file') writeFileSync(join(copy.folder, 'notes.txt'), 'mine')
+      const legacy = join(userData, 'backups', '20260101-030303')
+      renameSync(copy.folder, legacy)
+      expect(await prune(userData, LINEAGE, { ...SOLE, currentAppVersion: '0.1.0' })).toEqual([])
+      expect(readdirSync(legacy)).toContain('manifest.json')
+    },
+  )
+})
+
+it('a newer timestamp leftover cannot evict the UUID copy that the restore flow can offer', async () => {
+  const userData = aDataFolder()
+  aLiveDatabase(userData)
+  const now = Date.now()
+  const usable = await make(userData, { now: () => now - 1000 })
+  const legacy = await make(userData, { now: () => now })
+  renameSync(legacy.folder, join(userData, 'backups', '20260101-040404'))
+  await prune(userData, LINEAGE, { ...SOLE, now: () => now })
+  expect(ids(await listOfferable(userData, LINEAGE))).toEqual([usable.manifest.id])
+  expect(await isIntact(usable)).toBe(true)
 })

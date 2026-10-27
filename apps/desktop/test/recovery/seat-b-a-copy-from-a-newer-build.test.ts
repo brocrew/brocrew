@@ -319,7 +319,7 @@ describe('a copy this build must not restore', () => {
     expect(filesIn(userData)).toEqual(before)
   })
 
-  it('of a later manifest version is never pruned, while whole copies past the two newest are', async () => {
+  it('of a later manifest version is never pruned, while whole copies past the newest are', async () => {
     const template = await aTemplate(scratch, {
       migrations: THIS_BUILD,
       checkpoints: [
@@ -341,13 +341,13 @@ describe('a copy this build must not restore', () => {
       () => undefined,
     )
     const gone = removed.map((id) => ids.indexOf(id))
-    // The two newest whole copies stay, and a copy of a later manifest version is never touched.
-    for (const kept of [3, 6, 7]) expect(gone, `copy ${String(kept)}`).not.toContain(kept)
+    // The newest whole copy stays, and a copy of a later manifest version is never touched.
+    for (const kept of [3, 7]) expect(gone, `copy ${String(kept)}`).not.toContain(kept)
     expect(Object.keys(filesIn(template.fixture.checkpoints[3]?.dir ?? ''))).toContain(
       'manifest.json',
     )
-    // Whole copies past the two newest go.
-    expect(gone).toEqual(expect.arrayContaining([0, 4, 5]))
+    // Whole copies past the newest go.
+    expect(gone).toEqual(expect.arrayContaining([0, 4, 5, 6]))
   })
 
   /** Five copies on this build's schema, oldest first; the second newest damaged after its manifest when asked. */
@@ -373,15 +373,15 @@ describe('a copy this build must not restore', () => {
     const damaged = ids[3] ?? ''
     const before = filesIn(checkpointDir(userData, damaged))
     const removed = await pruneTheCopies(userData, MIGRATIONS_FOLDER, 'sole', () => undefined)
-    // The two newest intact copies stay, so the two oldest go.
-    expect([...removed].sort()).toEqual([ids[0], ids[1]].sort())
+    // The newest intact copy stays; damaged copies remain protected.
+    expect([...removed].sort()).toEqual([ids[0], ids[1], ids[2]].sort())
     expect(filesIn(checkpointDir(userData, damaged))).toEqual(before)
   })
 
-  it('control: with no damage, the second newest is kept and the three oldest go', async () => {
+  it('control: with no damage, only the newest is kept and the four oldest go', async () => {
     const { userData, ids } = await fiveCopies(false)
     const removed = await pruneTheCopies(userData, MIGRATIONS_FOLDER, 'sole', () => undefined)
-    expect([...removed].sort()).toEqual([ids[0], ids[1], ids[2]].sort())
+    expect([...removed].sort()).toEqual([ids[0], ids[1], ids[2], ids[3]].sort())
   })
 })
 
