@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3'
 import { randomUUID } from 'node:crypto'
-import { join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import type { OfferedCheckpoint, ProgressListener } from '../../shared/recovery'
 import type { RetainedRecoveryCopy } from '../../shared/recovery-retention'
 import { freeBytesOn } from '../archive/native-file'
@@ -57,6 +57,8 @@ import {
   deletionRemnant,
   finishCheckpointDeletion,
   readCheckpointDeletion,
+  removeCheckpointCopy,
+  removeCheckpointEntry,
   type CheckpointDeletion,
 } from './checkpoint-deletion'
 import { APP_STATE_FILES } from './state-files'
@@ -432,7 +434,7 @@ export async function makeCheckpoint(options: MakeCheckpointOptions): Promise<Ch
   // After the manifest, so no moment leaves a copy with neither. A marker that stays beside a
   // manifest changes nothing: a folder with a manifest is read by its manifest alone.
   await assertOwnedPathsAreReal(userData, [marker], fs)
-    .then(() => retrying(() => fs.rm(marker, { force: true })))
+    .then(() => removeCheckpointEntry(userData, folder, UNFINISHED_FILE, fs))
     .catch(() => undefined)
   log(CHECKPOINT_LINE)
   return { folder, manifest }
@@ -553,7 +555,8 @@ export async function prune(
       workspace.kind === 'id' ? workspace.id : null,
       fs,
     )
-    if (deletion) await deletionRemnant(userData, deletion, fs)
+    if (deletion && (await deletionRemnant(userData, deletion, fs)) && options.expire === false)
+      return []
   } catch (error) {
     return notThisTime(messageOf(error))
   }
@@ -638,11 +641,26 @@ export async function prune(
       return notThisTime(messageOf(error))
     }
   }
-  for (const name of [...goes, ...unfinished]) {
+  for (const name of goes) {
     const folder = checkpointDir(userData, name)
     try {
-      await assertOwnedPathsAreReal(userData, [folder], fs)
-      await retrying(() => fs.rm(folder, { recursive: true, force: true }))
+      const copy = candidates.find(({ manifest }) => manifest.id === name)!
+      await finishCheckpointDeletion(
+        userData,
+        await beginCheckpointDeletion(userData, copy, fs),
+        fs,
+      )
+      removed.push(name)
+    } catch (error) {
+      warn(`BroCrew could not remove the old recovery copy in ${folder}: ${messageOf(error)}`)
+      // Keep the one in-progress marker until this fragment is finished; never overwrite it.
+      return removed
+    }
+  }
+  for (const name of unfinished) {
+    const folder = checkpointDir(userData, name)
+    try {
+      await removeCheckpointCopy(userData, folder, fs)
       removed.push(name)
     } catch (error) {
       warn(`BroCrew could not remove the old recovery copy in ${folder}: ${messageOf(error)}`)
@@ -811,7 +829,7 @@ async function leaveOneFile(userData: string, copy: string, fs: RecoveryFs): Pro
   }
   for (const suffix of ['-wal', '-shm']) {
     await assertOwnedPathsAreReal(userData, [`${copy}${suffix}`], fs)
-    await retrying(() => fs.rm(`${copy}${suffix}`, { force: true }))
+    await removeCheckpointEntry(userData, dirname(copy), `${basename(copy)}${suffix}`, fs)
   }
 }
 
@@ -866,7 +884,7 @@ async function copyStateFilesOnce(
       await assertOwnedPathsAreReal(userData, [copy], fs)
       await retrying(async () => {
         // A try a briefly held file stopped may have left part of a copy.
-        await fs.rm(copy, { recursive: file.kind === 'tree', force: true })
+        await removeCheckpointEntry(userData, folder, file.name, fs)
         if (file.kind === 'tree') await copySkillTree(source, copy, fs)
         else await copyDurably(source, copy, fs)
       })
@@ -889,8 +907,7 @@ async function copyStateFilesOnce(
 /** Best effort: what is left has no manifest, and a later prune removes it. */
 async function removeUnfinished(userData: string, folder: string, fs: RecoveryFs): Promise<void> {
   try {
-    await assertOwnedPathsAreReal(userData, [folder], fs)
-    await retrying(() => fs.rm(folder, { recursive: true, force: true }))
+    await removeCheckpointCopy(userData, folder, fs)
   } catch {
     // Left for a later prune.
   }
@@ -1181,7 +1198,7 @@ export async function retainedCopyInfo(
     workspace.kind === 'id' ? workspace.id : null,
     fs,
   )
-  const remnant = deletion ? await deletionRemnant(userData, deletion, fs, 'display') : null
+  const remnant = deletion ? await deletionRemnant(userData, deletion, fs) : null
   // A confirmed deletion is no longer a restore offer, but its remaining bytes stay visible.
   if (deletion && remnant) {
     return {
