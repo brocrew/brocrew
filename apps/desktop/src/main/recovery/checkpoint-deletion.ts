@@ -74,6 +74,47 @@ async function copyRoot(userData: string, folder: string, fs: RecoveryFs): Promi
   if (stats && (stats.isSymbolicLink() || !stats.isDirectory())) throw failed()
 }
 
+interface DirectoryBinding {
+  readonly path: string
+  readonly dev: number
+  readonly ino: number
+}
+function bindDirectory(path: string, stats: RecoveryStats): DirectoryBinding {
+  return { path, ...rootIdentity(stats) }
+}
+async function bindCopyParents(
+  userData: string,
+  folder: string,
+  fs: RecoveryFs,
+): Promise<readonly DirectoryBinding[]> {
+  const parents: DirectoryBinding[] = []
+  for (const path of [userData, backupsDir(userData), folder])
+    parents.push(bindDirectory(path, await fs.lstat(path)))
+  return parents
+}
+async function verifyParents(parents: readonly DirectoryBinding[], fs: RecoveryFs): Promise<void> {
+  for (const parent of parents) {
+    const actual = rootIdentity(await fs.lstat(parent.path))
+    if (actual.dev !== parent.dev || actual.ino !== parent.ino) throw failed()
+  }
+}
+async function removeBound(
+  path: string,
+  userData: string,
+  fs: RecoveryFs,
+  parents: readonly DirectoryBinding[],
+  directory = false,
+): Promise<void> {
+  await retrying(async () => {
+    await assertOwnedPathsAreReal(userData, [directory ? path : dirname(path)], fs)
+    // Recheck the original chain on EVERY attempt, immediately before the pathname syscall.
+    // Node has no unlinkat/rmdirat: a deliberate same-user race after this check remains possible.
+    await verifyParents(parents, fs)
+    if (directory) await fs.rmdir(path)
+    else await fs.unlink(path)
+  })
+}
+
 /** A bounded walk is allowed only below the two literal copied skill roots. Never read payloads. */
 async function tree(
   path: string,
@@ -81,6 +122,7 @@ async function tree(
   fs: RecoveryFs,
   remove: boolean,
   depth = 0,
+  parents: readonly DirectoryBinding[] = [],
 ): Promise<number> {
   if (depth > MAX_TREE_DEPTH) {
     if (remove) throw failed()
@@ -89,27 +131,41 @@ async function tree(
   const stats = await statOrNull(path, fs)
   if (!stats) return 0
   if (stats.isSymbolicLink() || stats.isFile()) {
-    if (remove) {
-      await assertOwnedPathsAreReal(userData, [dirname(path)], fs)
-      await retrying(() => fs.unlink(path))
-    }
+    if (remove) await removeBound(path, userData, fs, parents)
     return stats.isSymbolicLink() ? 0 : stats.size
   }
   if (!stats.isDirectory()) {
     if (remove) throw failed()
     return 0
   }
+  // Capture once when descending; never adopt a replacement directory on a later check.
+  const chain = remove ? [...parents, bindDirectory(path, stats)] : parents
   await assertOwnedPathsAreReal(userData, [path], fs)
   let bytes = 0
   for (const name of await fs.readdir(path)) {
     if (!safeChild(name)) throw failed()
-    bytes += await tree(join(path, name), userData, fs, remove, depth + 1)
+    bytes += await tree(join(path, name), userData, fs, remove, depth + 1, chain)
   }
-  if (remove) {
-    await assertOwnedPathsAreReal(userData, [path], fs)
-    await retrying(() => fs.rmdir(path))
-  }
+  if (remove) await removeBound(path, userData, fs, chain, true)
   return bytes
+}
+
+async function removeEntry(
+  userData: string,
+  folder: string,
+  name: string,
+  fs: RecoveryFs,
+  parents: readonly DirectoryBinding[],
+): Promise<void> {
+  const path = join(folder, name)
+  if (COPIED_TREES.includes(name)) {
+    await tree(path, userData, fs, true, 0, parents)
+    return
+  }
+  const stats = await statOrNull(path, fs)
+  if (!stats) return
+  if (stats.isSymbolicLink() || !stats.isFile()) throw failed()
+  await removeBound(path, userData, fs, parents)
 }
 
 /** Also used while retrying a failed state-file copy. No caller-supplied file allowlist. */
@@ -121,16 +177,8 @@ export async function removeCheckpointEntry(
 ): Promise<void> {
   if (!ALLOWED.has(name)) throw failed()
   await copyRoot(userData, folder, fs)
-  const path = join(folder, name)
-  if (COPIED_TREES.includes(name)) {
-    await tree(path, userData, fs, true)
-    return
-  }
-  const stats = await statOrNull(path, fs)
-  if (!stats) return
-  if (stats.isSymbolicLink() || !stats.isFile()) throw failed()
-  await assertOwnedPathsAreReal(userData, [folder], fs)
-  await retrying(() => fs.unlink(path))
+  if (!(await statOrNull(folder, fs))) return
+  await removeEntry(userData, folder, name, fs, await bindCopyParents(userData, folder, fs))
 }
 
 /** Unknown top-level entries are untouched; final rmdir also catches additions after enumeration. */
@@ -141,16 +189,16 @@ export async function removeCheckpointCopy(
 ): Promise<void> {
   await copyRoot(userData, folder, fs)
   if (!(await statOrNull(folder, fs))) return
+  const parents = await bindCopyParents(userData, folder, fs)
   if ((await fs.readdir(folder)).some((name) => !ALLOWED.has(name))) throw failed()
   for (const name of FIXED_FILES.filter(
     (name) => ![MANIFEST_FILE, COPY_FILE, UNFINISHED_FILE].includes(name),
   ))
-    await removeCheckpointEntry(userData, folder, name, fs)
-  for (const name of COPIED_TREES) await removeCheckpointEntry(userData, folder, name, fs)
+    await removeEntry(userData, folder, name, fs, parents)
+  for (const name of COPIED_TREES) await removeEntry(userData, folder, name, fs, parents)
   for (const name of [MANIFEST_FILE, COPY_FILE, UNFINISHED_FILE])
-    await removeCheckpointEntry(userData, folder, name, fs)
-  await copyRoot(userData, folder, fs)
-  await retrying(() => fs.rmdir(folder))
+    await removeEntry(userData, folder, name, fs, parents)
+  await removeBound(folder, userData, fs, parents, true)
   await syncFolder(backupsDir(userData), fs)
 }
 

@@ -34,7 +34,7 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
 })
 
-async function fixture() {
+async function fixture(withTrees = false) {
   const root = mkdtempSync(join(tmpdir(), 'fictional-retention-re-review-'))
   roots.push(root)
   const userData = join(root, 'fictional-workspace')
@@ -44,6 +44,11 @@ async function fixture() {
   applyMigrations(db, migrations)
   db.close()
   writeFileSync(join(userData, 'drafts.json'), '{"draft":"fictional only"}')
+  if (withTrees)
+    for (const name of ['skills', 'skills-off']) {
+      mkdirSync(join(userData, name))
+      writeFileSync(join(userData, name, 'my-notes.txt'), 'fictional app-copied skill content')
+    }
   const lineage = await buildLineage(migrations)
   const copy = await makeCheckpoint({
     userData,
@@ -261,8 +266,8 @@ it.each([
   },
 )
 
-async function realPendingDeletion() {
-  const f = await fixture()
+async function realPendingDeletion(withTrees = false) {
+  const f = await fixture(withTrees)
   let fragment = ''
   const fs = {
     ...nodeFs,
@@ -537,4 +542,187 @@ it('ordinary expiry pruning also preserves a note arriving at final rmdir and ke
   rmSync(join(fragment, 'my-notes.txt'))
   expect(await deleteRetainedCopy(userData, lineage, copy.manifest.id, options)).toBe(true)
   expect(existsSync(fragment)).toBe(false)
+})
+
+it.each([
+  ['retry', 'skills'],
+  ['prune', 'skills'],
+  ['retry', 'skills-off'],
+  ['prune', 'skills-off'],
+])(
+  'parent binding stops a directory-to-symlink swap during %s in %s',
+  async (operation, treeName) => {
+    const { root, userData, lineage, copy, options, fragment } = await realPendingDeletion(true)
+    const skills = join(fragment, treeName)
+    const saved = join(root, 'saved-genuine-' + treeName)
+    const outside = join(root, 'fictional-outside-personal-folder')
+    mkdirSync(outside)
+    const outsideNote = join(outside, 'my-notes.txt')
+    writeFileSync(outsideNote, 'fictional personal note outside the backups folder')
+    let rootLists = 0
+    let removalStarted = false
+    let childNamesListed = false
+    let swapped = false
+    const fs = {
+      ...nodeFs,
+      readdir: async (path: string) => {
+        const names = await nodeFs.readdir(path)
+        if (path === fragment && ++rootLists === 2) removalStarted = true
+        if (path === skills && removalStarted) childNamesListed = true
+        return names
+      },
+      lstat: async (path: string) => {
+        const stats = await nodeFs.lstat(path)
+        if (path === skills && childNamesListed && !swapped) {
+          // Actual interleaving after the final parent lstat, before its child unlink.
+          renameSync(skills, saved)
+          symlinkSync(outside, skills)
+          swapped = true
+        }
+        return stats // The real pre-swap stat result, not forged identity data.
+      },
+    }
+    if (operation === 'retry')
+      expect(
+        await deleteRetainedCopy(userData, lineage, copy.manifest.id, { ...options, fs }),
+      ).toBe(false)
+    else expect(await prune(userData, lineage, { ...options, fs })).toEqual([])
+    expect(swapped).toBe(true)
+    // The next removal must refuse before touching the outside directory.
+    expect(existsSync(outsideNote)).toBe(true)
+    expect(readFileSync(outsideNote, 'utf8')).toBe(
+      'fictional personal note outside the backups folder',
+    )
+    expect(await retainedCopyInfo(userData, lineage, options)).toMatchObject({
+      id: copy.manifest.id,
+    })
+    expect(existsSync(join(fragment, 'database.sqlite'))).toBe(true)
+    expect(readFileSync(join(saved, 'my-notes.txt'), 'utf8')).toBe(
+      'fictional app-copied skill content',
+    )
+  },
+)
+
+it.each(['skills', 'skills/nested'])(
+  'parent binding rejects replacement of the real directory %s with a different inode',
+  async (relative) => {
+    const { root, userData, lineage, copy, options, fragment } = await realPendingDeletion()
+    const nested = join(fragment, 'skills', 'nested')
+    mkdirSync(nested, { recursive: true })
+    writeFileSync(join(nested, 'my-notes.txt'), 'fictional original copied note')
+    const target = join(fragment, relative)
+    const saved = join(root, 'saved-real-directory')
+    let rootLists = 0
+    let removalStarted = false
+    let listed = false
+    let swapped = false
+    const fs = {
+      ...nodeFs,
+      readdir: async (path: string) => {
+        const names = await nodeFs.readdir(path)
+        if (path === fragment && ++rootLists === 2) removalStarted = true
+        if (path === nested && removalStarted) listed = true
+        return names
+      },
+      lstat: async (path: string) => {
+        const stats = await nodeFs.lstat(path)
+        if (path === target && listed && !swapped) {
+          renameSync(target, saved)
+          mkdirSync(nested, { recursive: true })
+          writeFileSync(join(nested, 'my-notes.txt'), 'fictional replacement note')
+          swapped = true
+        }
+        return stats
+      },
+    }
+    expect(await deleteRetainedCopy(userData, lineage, copy.manifest.id, { ...options, fs })).toBe(
+      false,
+    )
+    expect(swapped).toBe(true)
+    expect(readFileSync(join(nested, 'my-notes.txt'), 'utf8')).toBe('fictional replacement note')
+    expect(
+      readFileSync(join(saved, relative === 'skills' ? 'nested' : '', 'my-notes.txt'), 'utf8'),
+    ).toBe('fictional original copied note')
+    expect(existsSync(join(fragment, 'database.sqlite'))).toBe(true)
+    expect(await retainedCopyInfo(userData, lineage, options)).toMatchObject({
+      id: copy.manifest.id,
+    })
+  },
+)
+
+it.each(['skills/nested', ''])(
+  'parent binding includes the directory being removed by rmdir (%s)',
+  async (relative) => {
+    const { root, userData, lineage, copy, options, fragment } = await realPendingDeletion()
+    const target = join(fragment, relative)
+    if (relative) mkdirSync(target, { recursive: true })
+    let rootLists = 0
+    let removalStarted = false
+    let swapped = false
+    let removedReplacement = false
+    const fs = {
+      ...nodeFs,
+      readdir: async (path: string) => {
+        const names = await nodeFs.readdir(path)
+        if (path === fragment && ++rootLists === 2) removalStarted = true
+        return names
+      },
+      lstat: async (path: string) => {
+        const stats = await nodeFs.lstat(path)
+        if (path === target && removalStarted && readdirSync(target).length === 0 && !swapped) {
+          renameSync(target, join(root, 'saved-empty-directory'))
+          mkdirSync(target)
+          swapped = true
+        }
+        return stats
+      },
+      rmdir: async (path: string) => {
+        if (swapped && path === target) removedReplacement = true
+        return nodeFs.rmdir(path)
+      },
+    }
+    expect(await deleteRetainedCopy(userData, lineage, copy.manifest.id, { ...options, fs })).toBe(
+      false,
+    )
+    expect(swapped).toBe(true)
+    expect(removedReplacement).toBe(false)
+    expect(existsSync(target)).toBe(true)
+    if (relative) {
+      expect(existsSync(join(fragment, 'database.sqlite'))).toBe(true)
+      expect(await retainedCopyInfo(userData, lineage, options)).toMatchObject({
+        id: copy.manifest.id,
+      })
+    }
+  },
+)
+
+it('parent binding is checked again on a briefly-held unlink retry', async () => {
+  const { root, userData, lineage, copy, options, fragment } = await realPendingDeletion(true)
+  const skills = join(fragment, 'skills')
+  const note = join(skills, 'my-notes.txt')
+  const outside = join(root, 'fictional-outside')
+  mkdirSync(outside)
+  writeFileSync(join(outside, 'my-notes.txt'), 'fictional outside note')
+  let unlinkAttempts = 0
+  const fs = {
+    ...nodeFs,
+    unlink: async (path: string) => {
+      if (path === note) {
+        unlinkAttempts++
+        if (unlinkAttempts === 1) {
+          renameSync(skills, join(root, 'saved-real-skills'))
+          symlinkSync(outside, skills)
+          throw Object.assign(new Error('fictional briefly held entry'), { code: 'EBUSY' })
+        }
+      }
+      return nodeFs.unlink(path)
+    },
+  }
+  expect(await deleteRetainedCopy(userData, lineage, copy.manifest.id, { ...options, fs })).toBe(
+    false,
+  )
+  expect(unlinkAttempts).toBe(1)
+  expect(readFileSync(join(outside, 'my-notes.txt'), 'utf8')).toBe('fictional outside note')
+  expect(existsSync(join(fragment, 'database.sqlite'))).toBe(true)
+  expect(await retainedCopyInfo(userData, lineage, options)).toMatchObject({ id: copy.manifest.id })
 })
