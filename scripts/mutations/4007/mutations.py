@@ -46,4 +46,8 @@ MUTATIONS = [('M1 · retains two recovery copies — killed by `checkpoint.test.
  ('M12 · prunes before new migrations without the expiry guard — killed by `coordinator.test.ts`',
   [('apps/desktop/src/main/recovery/coordinator.ts',
     '        expire: false,',
-    '        expire: true,')])]
+    '        expire: true,')]),
+ ('M13 · retries a protected expired copy every minute — killed by `retention-timer.test.ts`',
+  [('apps/desktop/src/main/recovery/retention-timer.ts',
+    'const delay = Date.parse(expiresAt) - Date.now()',
+    'const delay = Math.max(60_000, Date.parse(expiresAt) - Date.now())')])]
