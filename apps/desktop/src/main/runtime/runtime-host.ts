@@ -4506,6 +4506,21 @@ const WHAT_A_REOPEN_ADDS: ReadonlySet<TranscriptEvent['type']> = new Set([
   'work_recovery',
 ])
 
+/** Older provider events receive display metadata without changing their stored form. */
+function transcriptEventForDisplay(event: TranscriptEvent): TranscriptEvent {
+  if (event.type !== 'unknown') return event
+  const provider = SUPPORTED_PROVIDERS.find((one) => one === event.provider)
+  return provider === undefined
+    ? event
+    : (providerDefinitions[provider].transcripts.eventForDisplay?.(event) ?? event)
+}
+
+/** Display metadata travels with a row without changing its saved form or ordinal. */
+function transcriptMessageForDisplay(message: RuntimeEventMessage): RuntimeEventMessage {
+  const event = transcriptEventForDisplay(message.event)
+  return event === message.event ? message : { ...message, event }
+}
+
 /** Unrecognized protocol origins never supply housekeeping evidence. */
 function authPolicyForNotice(event: TranscriptEvent): ProviderAuthPolicy | undefined {
   if (event.type !== 'unknown') return undefined
@@ -17036,7 +17051,7 @@ export class RuntimeHost implements LiveHost {
         continue
       }
       try {
-        sink.send(message)
+        sink.send(transcriptMessageForDisplay(message))
       } catch (error) {
         console.warn(
           `runtime host could not show ${sessionId}'s new row to a window: ${errorMessage(error)}`,
@@ -27005,7 +27020,7 @@ export class RuntimeHost implements LiveHost {
       )
     }
     session.sentOrdinal = Math.max(session.sentOrdinal ?? message.ordinal, message.ordinal)
-    session.sink.send(message)
+    session.sink.send(transcriptMessageForDisplay(message))
   }
 
   /**
@@ -38438,7 +38453,7 @@ export class RuntimeHost implements LiveHost {
       entries: window.entries.map((entry) => ({
         ordinal: entry.ordinal,
         at: entry.at,
-        event: entry.event,
+        event: transcriptEventForDisplay(entry.event),
         ...(entry.event.type === 'assistant_message'
           ? { humanFinal: humanFinals.get(entry.ordinal) ?? null }
           : {}),

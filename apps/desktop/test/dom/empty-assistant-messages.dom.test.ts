@@ -27,7 +27,7 @@ describe('empty Codex messages in the conversation', () => {
         {
           type: 'unknown',
           provider: 'codex',
-          category: 'unrecognized',
+          category: 'activity',
           label: 'agentMessage',
           raw: {
             type: 'agentMessage',

@@ -7154,30 +7154,12 @@ function foldEvent(
       return
 
     case 'unknown': {
-      const raw = event.raw
-      // Older Codex adapters labeled valid no-content messages as unrecognized. Keep their raw
-      // payload inspectable without presenting that known empty shape as an unmodeled event.
-      const knownEmpty =
-        event.provider === 'codex' &&
-        event.label === 'agentMessage' &&
-        event.category === 'unrecognized' &&
-        typeof raw === 'object' &&
-        raw !== null &&
-        !Array.isArray(raw) &&
-        'type' in raw &&
-        raw.type === 'agentMessage' &&
-        'text' in raw &&
-        raw.text === '' &&
-        (!('memoryCitation' in raw) || raw.memoryCitation == null) &&
-        (!('delivery' in raw) || raw.delivery == null) &&
-        (!('questions' in raw) || raw.questions == null)
       state.items.push({
         kind: 'unknown',
         id: nextId(state, 'unknown'),
         provider: event.provider,
-        category: knownEmpty
-          ? 'activity'
-          : event.label !== undefined && QUIET_BY_ITS_LABEL.has(event.label)
+        category:
+          event.label !== undefined && QUIET_BY_ITS_LABEL.has(event.label)
             ? 'lifecycle'
             : event.category,
         ...(event.label ? { label: event.label } : {}),

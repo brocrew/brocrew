@@ -2,12 +2,14 @@ import type { TranscriptToClear } from '../transcript-retention-types'
 import type { ProviderSessionOf } from '../db/conversation-tree'
 import type { ProviderFile, MemoryNote } from '../conversation-file-io'
 import type { ChildWorkPart } from '../child-work-file'
-import type { ChildWorkResult } from '../../shared/runtime-ipc'
+import type { TranscriptEvent, ChildWorkResult } from '../../shared/runtime-ipc'
 import type { TurnAsked, TurnReadingOptions, TurnReading } from '../archive/turn-reading'
 import type { FileEdits, SessionRef } from '@brobot2/runtime'
 import type { Discovery, ProviderDescription } from '../adopt/discovery-types'
 import type { ImportedTranscript, ResolveImagePath } from '../archive/transcript-types'
 export interface TranscriptPolicy {
+  /** Read-only display classification for older stored provider events. */
+  eventForDisplay?(event: TranscriptEvent): TranscriptEvent
   splitToolName?(name: string): { server: string; tool: string } | null
   readEarlierModel?(home: string, file: string): string | null
   keepEarlierReportedEffort(): boolean

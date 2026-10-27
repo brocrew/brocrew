@@ -89,7 +89,6 @@ describe('indexed human answer history', () => {
       delivery: null,
       questions: null,
     }
-    feed(...normalizeNotification('item/completed', { item: raw }))
     feed({
       type: 'unknown',
       provider: 'codex',
@@ -97,6 +96,19 @@ describe('indexed human answer history', () => {
       label: 'agentMessage',
       raw,
     })
+    const live = createSessionRecord('s')
+    const initial = host.latestHistory('s')
+    expect(initial.entries.map((row) => row.event)).toContainEqual({
+      type: 'unknown',
+      provider: 'codex',
+      category: 'activity',
+      label: 'agentMessage',
+      raw,
+    })
+    openWindow(live, initial)
+    initial.entries.forEach((row) => acceptEvent(live, { ...row, sessionId: 's' }))
+    const liveFrom = ordinal
+    feed(...normalizeNotification('item/completed', { item: raw }))
     feed(
       ...normalizeNotification('item/completed', {
         item: { type: 'agentMessage', id: 'fictional-malformed', text: null },
@@ -113,9 +125,17 @@ describe('indexed human answer history', () => {
         row.event.raw.id === 'fictional-empty',
     )
     expect(oldPayload?.event).toMatchObject({ category: 'unrecognized', raw })
-    const live = createSessionRecord('s')
-    stored.forEach((row) => acceptEvent(live, { ...row, sessionId: 's' }))
+    stored
+      .filter((row) => row.ordinal >= liveFrom)
+      .forEach((row) => acceptEvent(live, { ...row, sessionId: 's' }))
     const page = host.latestHistory('s')
+    expect(page.entries.map((row) => row.event)).toContainEqual(
+      expect.objectContaining({
+        type: 'unknown',
+        category: 'unrecognized',
+        raw: expect.objectContaining({ id: 'fictional-malformed', text: null }),
+      }),
+    )
     const cold = createSessionRecord('s')
     openWindow(cold, page)
     page.entries.forEach((row) => acceptEvent(cold, { ...row, sessionId: 's' }))
@@ -133,6 +153,7 @@ describe('indexed human answer history', () => {
     expect(store.events('s').find((row) => row.ordinal === oldPayload?.ordinal)?.event).toEqual(
       oldPayload?.event,
     )
+    expect(store.events('s')).toEqual(stored)
   })
 
   it('reloads a human final outside a page of later app turns without including their answers', () => {
