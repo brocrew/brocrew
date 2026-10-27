@@ -106,6 +106,18 @@ describe('the open path', () => {
     )
   })
 
+  it('counts successful starts only after the database opened and migrations completed', () => {
+    const init = functionIn(CODE, 'function initDatabase(')
+    const count = init.indexOf('recordSuccessfulStart(')
+    expect(count).toBeGreaterThan(init.indexOf('applyMigrations(database, migrationsFolder)'))
+    expect(count).toBeGreaterThan(init.indexOf('db = database'))
+    expect(init.match(/recordSuccessfulStart\(/g)).toHaveLength(1)
+    expect(CODE.match(/recordSuccessfulStart\(/g)).toHaveLength(1)
+    expect(init).toContain("theOneAppAnswer?.held() ?? 'unknown'")
+    expect(CODE).toContain('withRecoveryCopies(async () => {')
+    expect(functionIn(CODE, 'async function scheduleRecoveryExpiry(')).toContain('setTimeout(')
+  })
+
   it('lets old copies go only for the sole app, as the one-app check last answered', () => {
     expect(functionIn(CODE, 'async function letGoOfOldCopies(')).toContain(
       "theOneAppAnswer?.held() ?? 'unknown',",

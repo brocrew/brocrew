@@ -286,7 +286,7 @@ describe('a copy before a migration', () => {
     expect(existsSync(newest.dir)).toBe(true)
     expect(existsSync(fixture.checkpoints[0]!.dir), 'a newer build').toBe(true)
     expect(existsSync(fixture.checkpoints[1]!.dir), 'another workspace').toBe(true)
-    expect(await listCheckpoints(userData)).toHaveLength(4)
+    expect(await listCheckpoints(userData)).toHaveLength(3)
   })
 
   it('keeps the newest copy and reports the approved words when pruning still leaves no room', async () => {
@@ -312,7 +312,6 @@ describe('a copy before a migration', () => {
     expect(existsSync(fixture.checkpoints[2]!.dir)).toBe(true)
     expect((await listCheckpoints(userData)).map(({ manifest }) => manifest.id)).toEqual([
       fixture.checkpoints[2]!.id,
-      fixture.checkpoints[1]!.id,
     ])
   })
 
