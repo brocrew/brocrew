@@ -8,6 +8,8 @@ import { resolveTheme, type Theme } from '../../src/shared/themes/theme'
 import { validateTheme } from '../../src/shared/themes/validate'
 import DEFINED from '../../resources/themes/defined/theme.json'
 import BROCREW from '../../resources/themes/brocrew/theme.json'
+import { facetsOfState } from '../../src/renderer/src/lib/agent-state'
+import { sessionPanel } from '../../src/renderer/src/lib/session-panel'
 import { applyEvent, createTranscript } from '../../src/renderer/src/lib/transcript'
 import type { TranscriptEvent } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll, contrast, type Rgba } from './harness'
@@ -84,6 +86,9 @@ describe('human final answer surfaces', () => {
         h(AgentCard as Component, {
           state,
           shown: state,
+          panel: sessionPanel(state),
+          canOpen: true,
+          facets: facetsOfState({ is: 'idle' }),
           mode: 'normal',
           conversation: 's',
           who: 'Fictional agent',
@@ -132,6 +137,9 @@ describe('human final answer surfaces', () => {
         {
           state,
           shown: state,
+          panel: sessionPanel(state),
+          canOpen: true,
+          facets: facetsOfState({ is: 'idle' }),
           mode: 'normal',
           conversation: 's',
           onNavigate: (id: string) => navigated.push(id),

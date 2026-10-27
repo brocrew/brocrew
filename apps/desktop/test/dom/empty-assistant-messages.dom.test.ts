@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import TranscriptView from '../../src/renderer/src/components/TranscriptView.vue'
 import AgentCard from '../../src/renderer/src/components/AgentCard.vue'
+import { facetsOfState } from '../../src/renderer/src/lib/agent-state'
+import { sessionPanel } from '../../src/renderer/src/lib/session-panel'
 import { applyEvent, createTranscript } from '../../src/renderer/src/lib/transcript'
 import type { TranscriptEvent } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll } from './harness'
@@ -127,6 +129,9 @@ describe('empty Codex messages in the conversation', () => {
       {
         state,
         shown: state,
+        panel: sessionPanel(state),
+        canOpen: true,
+        facets: facetsOfState({ is: 'idle' }),
         mode: 'normal',
         conversation: 'fictional',
         onNavigate: (id: string) => navigated.push(id),
