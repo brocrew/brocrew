@@ -1344,7 +1344,11 @@ describe('prune', () => {
     const removed = await prune(userData, LINEAGE, { ...SOLE, now: () => minute(12) })
 
     expect(removed.sort()).toEqual([c3.manifest.id, c4.manifest.id, c5.manifest.id, stale].sort())
-    expect(readdirSync(join(userData, 'backups')).sort()).toEqual(
+    expect(
+      readdirSync(join(userData, 'backups'))
+        .filter((name) => name !== 'deletion.json')
+        .sort(),
+    ).toEqual(
       before.filter(
         (name) =>
           name !== c3.manifest.id &&
@@ -1374,7 +1378,6 @@ describe('prune', () => {
       'database.sqlite': 'part of a copy',
       'database.sqlite-journal': 'a write that did not finish',
       'drafts.json': '{}',
-      'manifest.json.0123456789ab.tmp': '{"format"',
     })
     const withTheirOwn = unfinished(randomUUID(), {
       ...marked,
@@ -1486,7 +1489,7 @@ describe('prune', () => {
     aLiveDatabase(userData)
     const made: Checkpoint[] = []
     for (let n = 1; n <= 4; n += 1) made.push(await make(userData, { now: () => minute(n) }))
-    const held: RecoveryFs = { ...nodeFs, rm: () => Promise.reject(coded('ENOTEMPTY')) }
+    const held: RecoveryFs = { ...nodeFs, unlink: () => Promise.reject(coded('ENOTEMPTY')) }
     const warnings: string[] = []
 
     expect(
@@ -1497,10 +1500,12 @@ describe('prune', () => {
         warn: (line) => warnings.push(line),
       }),
     ).toEqual([])
-    expect(warnings).toHaveLength(3)
-    expect(warnings.join('\n')).toContain(made[0]?.manifest.id)
-    expect(warnings.join('\n')).toContain(made[1]?.manifest.id)
-    expect(await listCheckpoints(userData)).toHaveLength(4)
+    expect(warnings).toHaveLength(1)
+    expect(warnings.join('\n')).toContain(made[2]?.manifest.id)
+    expect(await listCheckpoints(userData)).toHaveLength(3)
+    expect(await retainedCopyInfo(userData, LINEAGE, SOLE)).toMatchObject({
+      id: made[2]?.manifest.id,
+    })
   })
 
   it('does nothing when there are no backups', async () => {
@@ -1705,6 +1710,13 @@ describe('resuming an authorized recovery copy deletion', () => {
     let attempts = 0
     const fs: RecoveryFs = {
       ...nodeFs,
+      unlink: async (path) => {
+        if (!path.endsWith(`/${file}`)) return nodeFs.unlink(path)
+        fragment = path.slice(0, -file.length - 1)
+        attempts++
+        await nodeFs.unlink(path)
+        throw coded('EIO')
+      },
       rm: async (path, settings) => {
         if (!settings?.recursive || !existsSync(join(path, file))) return nodeFs.rm(path, settings)
         fragment = path
@@ -1803,99 +1815,39 @@ describe('resuming an authorized recovery copy deletion', () => {
     expect(existsSync(join(aside, 'database.sqlite'))).toBe(true)
   })
 
-  it('refuses a new personal file even when its name belonged to a deleted child', async () => {
+  it('documents the accepted fixed-name risk for a newly added drafts.json', async () => {
     const { userData, copy, options, fragment } = await interrupted()
     writeFileSync(join(fragment, 'drafts.json'), '{"draft":"new fictional personal file"}')
-    expect(await deleteRetainedCopy(userData, LINEAGE, copy.manifest.id, options)).toBe(false)
-    expect(await prune(userData, LINEAGE, { ...options, warn: () => undefined })).toEqual([])
-    expect(readFileSync(join(fragment, 'drafts.json'), 'utf8')).toContain(
-      'new fictional personal file',
-    )
+    expect(await deleteRetainedCopy(userData, LINEAGE, copy.manifest.id, options)).toBe(true)
+    expect(existsSync(fragment)).toBe(false)
   })
 
-  it.each([
-    'missing binding',
-    'changed manifest',
-    'unknown entry',
-    'omitted database',
-    'foreign state',
-  ])(
-    'refuses a deletion record with %s even when recorded filesystem identities match',
-    async (change) => {
-      const { userData, copy, options, fragment } = await interrupted()
-      const path = join(userData, 'backups', 'deletion.json')
-      const original = readFileSync(path, 'utf8')
-      const record: CheckpointDeletion = JSON.parse(original)
-      let forged: unknown = record
-      if (change === 'missing binding') forged = { ...record, verifiedCopy: undefined }
-      if (change === 'changed manifest') {
-        forged = { ...record, manifest: { ...record.manifest, reason: 'before-migration' } }
-      }
-      if (change === 'omitted database') {
-        forged = {
-          ...record,
-          entries: record.entries.filter((one) => one.path !== 'database.sqlite'),
-        }
-      }
-      if (change === 'unknown entry') {
-        const note = join(fragment, 'my-notes.txt')
-        writeFileSync(note, 'fictional personal addition')
-        const stats = statSync(note)
-        forged = {
-          ...record,
-          entries: [
-            ...record.entries,
-            {
-              path: 'my-notes.txt',
-              directory: false,
-              dev: stats.dev,
-              ino: stats.ino,
-              size: stats.size,
-              mtimeMs: stats.mtimeMs,
-            },
-          ],
-        }
-      }
-      if (change === 'foreign state') {
-        const manifest = {
-          ...record.manifest,
-          files: [...record.manifest.files, { name: 'my-notes.txt', present: false }],
-        }
-        const manifestText = JSON.stringify(manifest)
-        forged = {
-          ...record,
-          manifest,
-          verifiedCopy: {
-            ...record.verifiedCopy,
-            manifestText,
-            manifestSha256: createHash('sha256').update(manifestText).digest('hex'),
-          },
-        }
-      }
-      writeFileSync(path, JSON.stringify(forged))
-      const before = readFileSync(join(fragment, 'database.sqlite'))
-      expect(await deleteRetainedCopy(userData, LINEAGE, copy.manifest.id, options)).toBe(false)
-      expect(await prune(userData, LINEAGE, { ...options, warn: () => undefined })).toEqual([])
-      expect(readFileSync(join(fragment, 'database.sqlite'))).toEqual(before)
-      expect(existsSync(fragment)).toBe(true)
-    },
-  )
+  it('never lets intent fields add a top-level personal name to the fixed deletion list', async () => {
+    const { userData, copy, options, fragment } = await interrupted()
+    const path = join(userData, 'backups', 'deletion.json')
+    const record: CheckpointDeletion = JSON.parse(readFileSync(path, 'utf8'))
+    writeFileSync(join(fragment, 'my-notes.txt'), 'fictional personal file')
+    writeFileSync(
+      path,
+      JSON.stringify({
+        ...record,
+        entries: [{ path: 'my-notes.txt' }],
+        verifiedCopy: { invented: 'these claims grant no paths' },
+      }),
+    )
+    expect(await deleteRetainedCopy(userData, LINEAGE, copy.manifest.id, options)).toBe(false)
+    expect(await prune(userData, LINEAGE, { ...options, warn: () => undefined })).toEqual([])
+    expect(readFileSync(join(fragment, 'my-notes.txt'), 'utf8')).toBe('fictional personal file')
+    expect(await retainedCopyInfo(userData, LINEAGE, options)).toMatchObject({
+      id: copy.manifest.id,
+    })
+  })
 
-  it('binds tree children to the verified tree hash while allowing a genuine partial tree removal', async () => {
+  it('resumes a genuine partial copied-tree unlink without hashes or a stored inventory', async () => {
     const { userData, copy, options, fragment } = await interrupted(
       'skills/fictional/SKILL.md',
       true,
     )
-    const path = join(userData, 'backups', 'deletion.json')
-    const original = readFileSync(path, 'utf8')
-    const record: CheckpointDeletion = JSON.parse(original)
-    expect(record.verifiedCopy.trees.skills?.map((one) => one.path)).toContain('fictional/SKILL.md')
-    const forged = { ...record, verifiedCopy: { ...record.verifiedCopy, trees: { skills: [] } } }
-    writeFileSync(path, JSON.stringify(forged))
-    expect(await deleteRetainedCopy(userData, LINEAGE, copy.manifest.id, options)).toBe(false)
-    expect(await prune(userData, LINEAGE, { ...options, warn: () => undefined })).toEqual([])
-    expect(existsSync(join(fragment, 'database.sqlite'))).toBe(true)
-    writeFileSync(path, original)
     expect(await retainedCopyInfo(userData, LINEAGE, options)).toMatchObject({
       id: copy.manifest.id,
     })

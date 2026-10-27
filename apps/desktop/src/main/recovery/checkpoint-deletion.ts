@@ -1,165 +1,160 @@
-import { join } from 'node:path'
-import { createHash } from 'node:crypto'
-import { parseManifest, serializeManifest, type CheckpointManifest } from './contract'
+import { basename, dirname, join } from 'node:path'
+import { parseManifest, type CheckpointManifest } from './contract'
 import {
   assertOwnedPathsAreReal,
   errorCode,
   readTextOrNull,
   retrying,
   syncFolder,
-  sha256Of,
   writeAtomically,
   type RecoveryFs,
   type RecoveryStats,
 } from './files'
-import { backupsDir, checkpointDir, COPY_FILE, MANIFEST_FILE, UNFINISHED_FILE } from './layout'
+import {
+  backupsDir,
+  checkpointDir,
+  COPY_FILE,
+  MANIFEST_FILE,
+  UNFINISHED_FILE,
+  familyOf,
+  isUuid,
+} from './layout'
 import { APP_STATE_FILES } from './state-files'
-import { readSkillTree, type TreeReading } from './trees'
 
-// Outside the removable folder: a failed recursive removal cannot erase its own authorization.
 const DELETION_FILE = 'deletion.json'
-interface Entry {
-  readonly path: string
-  readonly directory: boolean
-  readonly dev: number
-  readonly ino: number
-  readonly size: number
-  readonly mtimeMs: number
-}
+const MAX_TREE_DEPTH = 32
+const COPIED_TREES: readonly string[] = ['skills', 'skills-off']
+// Disk records never contribute names to this list. Leave the large database until last.
+const FIXED_FILES = [
+  ...APP_STATE_FILES.filter((file) => file.kind !== 'tree').map((file) => file.name),
+  MANIFEST_FILE,
+  DELETION_FILE,
+  ...familyOf(COPY_FILE).slice(1),
+  COPY_FILE,
+  UNFINISHED_FILE,
+]
+const ALLOWED = new Set([...FIXED_FILES, ...COPIED_TREES])
+
+/** Progress/visibility metadata, not permission to delete anything beyond the fixed names. */
 export interface CheckpointDeletion {
   readonly format: 'brocrew-recovery-delete'
-  readonly version: 2
+  readonly version: 3
   readonly manifest: CheckpointManifest
-  readonly entries: readonly Entry[]
-  readonly verifiedCopy: {
-    readonly manifestText: string
-    readonly manifestSha256: string
-    readonly trees: Readonly<Record<string, TreeReading['entries']>>
+  readonly root: { readonly dev: number; readonly ino: number }
+}
+const failed = (): Error => new Error('The recovery copy deletion could not be finished.')
+const safeChild = (name: string): boolean =>
+  name !== '' && name !== '.' && name !== '..' && !/[\\/\0]/.test(name)
+async function statOrNull(path: string, fs: RecoveryFs): Promise<RecoveryStats | null> {
+  try {
+    return await fs.lstat(path)
+  } catch (error) {
+    if (errorCode(error) === 'ENOENT') return null
+    throw error
   }
 }
-
-const failed = (): Error => new Error('The recovery copy deletion record could not be checked.')
-const safePath = (path: string): boolean =>
-  path === '' ||
-  path
-    .split('/')
-    .every((part) => part !== '' && part !== '.' && part !== '..' && !/[\\\0]/.test(part))
-
-const digest = (text: string): string => createHash('sha256').update(text).digest('hex')
-
-/** A record is a subset-removal plan for one complete checked copy, never a new file allowlist. */
-function checkVerifiedCopy(deletion: CheckpointDeletion): void {
-  const binding = deletion.verifiedCopy
-  if (
-    !binding ||
-    typeof binding.manifestText !== 'string' ||
-    digest(binding.manifestText) !== binding.manifestSha256 ||
-    !binding.trees ||
-    typeof binding.trees !== 'object' ||
-    Array.isArray(binding.trees)
-  )
-    throw failed()
-  const bound = parseManifest(binding.manifestText)
-  if (!bound.ok || serializeManifest(bound.value) !== serializeManifest(deletion.manifest))
-    throw failed()
-  const expected = new Map<string, { directory: boolean; bytes?: number }>([
-    ['', { directory: true }],
-    [MANIFEST_FILE, { directory: false, bytes: Buffer.byteLength(binding.manifestText) }],
-    [COPY_FILE, { directory: false, bytes: deletion.manifest.database.bytes }],
-  ])
-  const trees = new Set<string>()
-  for (const file of deletion.manifest.files) {
-    const registered = APP_STATE_FILES.find(({ name }) => name === file.name)
-    if (!registered) throw failed()
-    if (!file.present) continue
-    if (registered.kind !== 'tree') {
-      expected.set(file.name, { directory: false, bytes: file.bytes })
-      continue
-    }
-    trees.add(file.name)
-    expected.set(file.name, { directory: true })
-    const entries = binding.trees[file.name]
-    if (!Array.isArray(entries)) throw failed()
-    let bytes = 0
-    for (const one of entries) {
-      if (
-        !one ||
-        typeof one.path !== 'string' ||
-        !one.path ||
-        !safePath(one.path) ||
-        typeof one.directory !== 'boolean' ||
-        !Number.isSafeInteger(one.bytes) ||
-        one.bytes < 0 ||
-        typeof one.executable !== 'boolean' ||
-        (one.directory
-          ? one.bytes !== 0 || one.executable || one.sha256 !== ''
-          : !/^[a-f0-9]{64}$/.test(one.sha256))
-      )
-        throw failed()
-      const path = `${file.name}/${one.path}`
-      const parent = path.slice(0, path.lastIndexOf('/'))
-      if (expected.has(path) || expected.get(parent)?.directory !== true) throw failed()
-      expected.set(path, { directory: one.directory, bytes: one.directory ? undefined : one.bytes })
-      bytes += one.bytes
-    }
-    // Same persisted tree protocol as readSkillTree: paths, order and executable bits are bound.
-    const hash = digest('brocrew-skill-tree-v1\0' + JSON.stringify(entries))
-    if (hash !== file.sha256 || bytes !== file.bytes) throw failed()
-  }
-  if (Object.keys(binding.trees).some((name) => !trees.has(name))) throw failed()
-  for (const one of deletion.entries) {
-    if (one.path === UNFINISHED_FILE && !one.directory && one.size === 0) continue
-    const written = expected.get(one.path)
-    if (
-      !written ||
-      written.directory !== one.directory ||
-      (written.bytes !== undefined && written.bytes !== one.size)
-    )
-      throw failed()
-    expected.delete(one.path)
-  }
-  if (expected.size !== 0) throw failed()
-}
-
-function entry(path: string, stats: RecoveryStats): Entry {
+function rootIdentity(stats: RecoveryStats): CheckpointDeletion['root'] {
   if (
     stats.isSymbolicLink() ||
-    !(stats.isFile() || stats.isDirectory()) ||
+    !stats.isDirectory() ||
     !Number.isSafeInteger(stats.dev) ||
     !Number.isSafeInteger(stats.ino) ||
     (stats.dev ?? -1) < 0 ||
     (stats.ino ?? 0) <= 0
   )
     throw failed()
-  return {
-    path,
-    directory: stats.isDirectory(),
-    dev: stats.dev!,
-    ino: stats.ino!,
-    size: stats.size,
-    mtimeMs: stats.mtimeMs,
-  }
+  return { dev: stats.dev!, ino: stats.ino! }
+}
+async function copyRoot(userData: string, folder: string, fs: RecoveryFs): Promise<void> {
+  const name = basename(folder)
+  if (dirname(folder) !== backupsDir(userData) || !isUuid(name.replace(/^deleting-/, '')))
+    throw failed()
+  await assertOwnedPathsAreReal(userData, [folder], fs)
+  const stats = await statOrNull(folder, fs)
+  if (stats && (stats.isSymbolicLink() || !stats.isDirectory())) throw failed()
 }
 
-/** Snapshot actual identities, including every tree child; unknown/personal additions are refused. */
-async function contents(folder: string, fs: RecoveryFs): Promise<Entry[]> {
-  const entries: Entry[] = []
-  const walk = async (path: string, relative: string, depth: number): Promise<void> => {
-    if (!safePath(relative) || depth > 64 || entries.length >= 100_000) throw failed()
-    const one = entry(relative, await fs.lstat(path))
-    entries.push(one)
-    if (one.directory) {
-      for (const name of (await fs.readdir(path)).sort()) {
-        if (name.includes('/') || !safePath(name)) throw failed()
-        await walk(join(path, name), relative ? `${relative}/${name}` : name, depth + 1)
-      }
+/** A bounded walk is allowed only below the two literal copied skill roots. Never read payloads. */
+async function tree(
+  path: string,
+  userData: string,
+  fs: RecoveryFs,
+  remove: boolean,
+  depth = 0,
+): Promise<number> {
+  if (depth > MAX_TREE_DEPTH) {
+    if (remove) throw failed()
+    return 0
+  }
+  const stats = await statOrNull(path, fs)
+  if (!stats) return 0
+  if (stats.isSymbolicLink() || stats.isFile()) {
+    if (remove) {
+      await assertOwnedPathsAreReal(userData, [dirname(path)], fs)
+      await retrying(() => fs.unlink(path))
     }
+    return stats.isSymbolicLink() ? 0 : stats.size
   }
-  await walk(folder, '', 0)
-  return entries
+  if (!stats.isDirectory()) {
+    if (remove) throw failed()
+    return 0
+  }
+  await assertOwnedPathsAreReal(userData, [path], fs)
+  let bytes = 0
+  for (const name of await fs.readdir(path)) {
+    if (!safeChild(name)) throw failed()
+    bytes += await tree(join(path, name), userData, fs, remove, depth + 1)
+  }
+  if (remove) {
+    await assertOwnedPathsAreReal(userData, [path], fs)
+    await retrying(() => fs.rmdir(path))
+  }
+  return bytes
 }
 
-/** Only absence is empty. A damaged, linked or foreign record blocks all removal. */
+/** Also used while retrying a failed state-file copy. No caller-supplied file allowlist. */
+export async function removeCheckpointEntry(
+  userData: string,
+  folder: string,
+  name: string,
+  fs: RecoveryFs,
+): Promise<void> {
+  if (!ALLOWED.has(name)) throw failed()
+  await copyRoot(userData, folder, fs)
+  const path = join(folder, name)
+  if (COPIED_TREES.includes(name)) {
+    await tree(path, userData, fs, true)
+    return
+  }
+  const stats = await statOrNull(path, fs)
+  if (!stats) return
+  if (stats.isSymbolicLink() || !stats.isFile()) throw failed()
+  await assertOwnedPathsAreReal(userData, [folder], fs)
+  await retrying(() => fs.unlink(path))
+}
+
+/** Unknown top-level entries are untouched; final rmdir also catches additions after enumeration. */
+export async function removeCheckpointCopy(
+  userData: string,
+  folder: string,
+  fs: RecoveryFs,
+): Promise<void> {
+  await copyRoot(userData, folder, fs)
+  if (!(await statOrNull(folder, fs))) return
+  if ((await fs.readdir(folder)).some((name) => !ALLOWED.has(name))) throw failed()
+  for (const name of FIXED_FILES.filter(
+    (name) => ![MANIFEST_FILE, COPY_FILE, UNFINISHED_FILE].includes(name),
+  ))
+    await removeCheckpointEntry(userData, folder, name, fs)
+  for (const name of COPIED_TREES) await removeCheckpointEntry(userData, folder, name, fs)
+  for (const name of [MANIFEST_FILE, COPY_FILE, UNFINISHED_FILE])
+    await removeCheckpointEntry(userData, folder, name, fs)
+  await copyRoot(userData, folder, fs)
+  await retrying(() => fs.rmdir(folder))
+  await syncFolder(backupsDir(userData), fs)
+}
+
+/** Old inventories are ignored: they can mark progress, but cannot grant paths or traversal. */
 export async function readCheckpointDeletion(
   userData: string,
   workspaceId: string | null,
@@ -167,139 +162,86 @@ export async function readCheckpointDeletion(
 ): Promise<CheckpointDeletion | null> {
   const path = join(backupsDir(userData), DELETION_FILE)
   await assertOwnedPathsAreReal(userData, [path], fs)
-  if (await present(path, fs)) {
-    const stats = await fs.lstat(path)
-    if (!stats.isFile() || stats.size > 64 * 1024 * 1024) throw failed()
-  }
+  const stats = await statOrNull(path, fs)
+  if (!stats) return null
+  if (!stats.isFile() || stats.size > 64 * 1024 * 1024) throw failed()
   const text = await readTextOrNull(path, fs)
   if (text === null) return null
-  const raw = JSON.parse(text) as Partial<CheckpointDeletion> | null
+  const raw = JSON.parse(text)
   const manifest = parseManifest(JSON.stringify(raw?.manifest ?? null))
+  const root = raw?.version === 3 ? raw.root : raw?.entries?.[0]
   if (
     raw?.format !== 'brocrew-recovery-delete' ||
-    raw.version !== 2 ||
+    ![1, 2, 3].includes(raw.version) ||
     !manifest.ok ||
     manifest.value.workspaceId !== workspaceId ||
-    !Array.isArray(raw.entries) ||
-    raw.entries.length === 0 ||
-    raw.entries.length > 100_000
+    !root ||
+    !Number.isSafeInteger(root.dev) ||
+    root.dev < 0 ||
+    !Number.isSafeInteger(root.ino) ||
+    root.ino <= 0
   )
     throw failed()
-  const seen = new Set<string>()
-  for (const one of raw.entries) {
-    if (
-      !one ||
-      typeof one.path !== 'string' ||
-      !safePath(one.path) ||
-      seen.has(one.path) ||
-      typeof one.directory !== 'boolean' ||
-      !Number.isSafeInteger(one.dev) ||
-      one.dev < 0 ||
-      !Number.isSafeInteger(one.ino) ||
-      one.ino <= 0 ||
-      !Number.isSafeInteger(one.size) ||
-      one.size < 0 ||
-      !Number.isFinite(one.mtimeMs)
-    )
-      throw failed()
-    seen.add(one.path)
-  }
-  if (raw.entries[0]?.path !== '' || !raw.entries[0].directory) throw failed()
-  const deletion = {
+  return {
     format: 'brocrew-recovery-delete',
-    version: 2,
+    version: 3,
     manifest: manifest.value,
-    entries: raw.entries,
-    verifiedCopy: raw.verifiedCopy,
-  } as CheckpointDeletion
-  checkVerifiedCopy(deletion)
-  return deletion
-}
-
-async function present(path: string, fs: RecoveryFs): Promise<boolean> {
-  try {
-    await fs.lstat(path)
-    return true
-  } catch (error) {
-    if (errorCode(error) === 'ENOENT') return false
-    throw error
+    root: { dev: root.dev, ino: root.ino },
   }
 }
 
-/** A completed record remains as an idempotence receipt; it never authorizes a replacement. */
 export async function deletionRemnant(
   userData: string,
   deletion: CheckpointDeletion,
   fs: RecoveryFs,
-  purpose: 'delete' | 'display' = 'delete',
 ): Promise<{ folder: string; bytes: number } | null> {
-  checkVerifiedCopy(deletion)
   const original = checkpointDir(userData, deletion.manifest.id)
   const removing = join(backupsDir(userData), `deleting-${deletion.manifest.id}`)
-  await assertOwnedPathsAreReal(userData, [original, removing], fs)
-  const atOriginal = await present(original, fs)
-  const atRemoving = await present(removing, fs)
-  if (atOriginal && atRemoving) throw failed()
-  if (!atOriginal && !atRemoving) return null
-  const folder = atRemoving ? removing : original
-  const known = new Map(deletion.entries.map((one) => [one.path, one]))
+  await copyRoot(userData, original, fs)
+  await copyRoot(userData, removing, fs)
+  const before = await statOrNull(original, fs)
+  const after = await statOrNull(removing, fs)
+  if (before && after) throw failed()
+  const stats = after ?? before
+  if (!stats) return null
+  const actual = rootIdentity(stats)
+  if (actual.dev !== deletion.root.dev || actual.ino !== deletion.root.ino) throw failed()
+  const folder = after ? removing : original
   let bytes = 0
-  for (const one of await contents(folder, fs)) {
-    const before = known.get(one.path)
-    if (
-      !before ||
-      before.dev !== one.dev ||
-      before.ino !== one.ino ||
-      before.directory !== one.directory ||
-      (!one.directory && (before.size !== one.size || before.mtimeMs !== one.mtimeMs))
-    ) {
-      if (purpose === 'display' && one.path !== '') continue
-      throw failed()
-    }
-    if (
-      purpose === 'delete' &&
-      one.path === MANIFEST_FILE &&
-      (await sha256Of(join(folder, MANIFEST_FILE), fs)) !== deletion.verifiedCopy.manifestSha256
-    )
-      throw failed()
-    if (!one.directory && ![MANIFEST_FILE, UNFINISHED_FILE].includes(one.path)) bytes += one.size
+  for (const name of FIXED_FILES.filter(
+    (name) => ![MANIFEST_FILE, UNFINISHED_FILE, DELETION_FILE].includes(name),
+  )) {
+    const one = await statOrNull(join(folder, name), fs)
+    if (one?.isFile() && !one.isSymbolicLink()) bytes += one.size
   }
+  for (const name of COPIED_TREES) bytes += await tree(join(folder, name), userData, fs, false)
   return { folder, bytes }
 }
 
-/** Called only after sole ownership, workspace/restore gates and intact-copy validation. */
+/** Called after the existing initial ownership, intact-copy and personal-file checks. */
 export async function beginCheckpointDeletion(
   userData: string,
   copy: { folder: string; manifest: CheckpointManifest },
   fs: RecoveryFs,
 ): Promise<CheckpointDeletion> {
   const removing = join(backupsDir(userData), `deleting-${copy.manifest.id}`)
-  await assertOwnedPathsAreReal(userData, [copy.folder, removing], fs)
-  if (await present(removing, fs)) throw failed()
-  const manifestText = await fs.readFile(join(copy.folder, MANIFEST_FILE))
-  const trees: Record<string, TreeReading['entries']> = {}
-  for (const file of copy.manifest.files) {
-    if (file.present && APP_STATE_FILES.find(({ name }) => name === file.name)?.kind === 'tree') {
-      const reading = await readSkillTree(join(copy.folder, file.name), fs)
-      if (reading.sha256 !== file.sha256 || reading.bytes !== file.bytes) throw failed()
-      trees[file.name] = reading.entries
-    }
-  }
+  await copyRoot(userData, copy.folder, fs)
+  await copyRoot(userData, removing, fs)
+  if (await statOrNull(removing, fs)) throw failed()
   const deletion: CheckpointDeletion = {
     format: 'brocrew-recovery-delete',
-    version: 2,
+    version: 3,
     manifest: copy.manifest,
-    entries: await contents(copy.folder, fs),
-    verifiedCopy: { manifestText, manifestSha256: digest(manifestText), trees },
+    root: rootIdentity(await fs.lstat(copy.folder)),
   }
-  checkVerifiedCopy(deletion)
-  const path = join(backupsDir(userData), DELETION_FILE)
-  await assertOwnedPathsAreReal(userData, [path], fs)
-  await writeAtomically(path, JSON.stringify(deletion) + '\n', fs)
+  await writeAtomically(
+    join(backupsDir(userData), DELETION_FILE),
+    JSON.stringify(deletion) + '\n',
+    fs,
+  )
   return deletion
 }
 
-/** The move stops restore offers; the separate durable record survives any partial rm/EIO. */
 export async function finishCheckpointDeletion(
   userData: string,
   deletion: CheckpointDeletion,
@@ -307,15 +249,13 @@ export async function finishCheckpointDeletion(
 ): Promise<boolean> {
   const remnant = await deletionRemnant(userData, deletion, fs)
   if (!remnant) return false
+  // Refuse a pre-existing personal addition before even renaming its folder.
+  if ((await fs.readdir(remnant.folder)).some((name) => !ALLOWED.has(name))) throw failed()
   const removing = join(backupsDir(userData), `deleting-${deletion.manifest.id}`)
   if (remnant.folder !== removing) {
     await retrying(() => fs.rename(remnant.folder, removing))
     await syncFolder(backupsDir(userData), fs)
   }
-  await retrying(async () => {
-    if (await deletionRemnant(userData, deletion, fs))
-      await fs.rm(removing, { recursive: true, force: true })
-  })
-  await syncFolder(backupsDir(userData), fs)
+  await removeCheckpointCopy(userData, removing, fs)
   return true
 }
