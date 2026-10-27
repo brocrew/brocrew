@@ -1,6 +1,7 @@
 // The approved plain words replace the former labels; the state and gesture checks remain.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
+import { assertDrawn, drawnReady } from './drawn'
 import { defineComponent, h, nextTick, type PropType, type VNode } from 'vue'
 import AgentInstructionsSheet from '../../src/renderer/src/components/AgentInstructionsSheet.vue'
 import AgentInputPopup from '../../src/renderer/src/components/AgentInputPopup.vue'
@@ -666,18 +667,32 @@ describe('§2 · every OverlayHost path carries a reachable stop (390 §3)', () 
     await nextTick()
     expect(document.activeElement).toBe(close)
     const scroll = dialog.querySelector<HTMLElement>('.answer-scroll')!
-    expect(scroll.scrollHeight).toBeGreaterThan(scroll.clientHeight)
+    expect(getComputedStyle(scroll).overflowY).toBe('auto')
+    scroll.scrollTop = 0
+    expect(scroll.scrollTop).toBe(0)
     scroll.scrollTop = scroll.scrollHeight
     await nextTick()
-    const last = m.q('human-answer-final').lastElementChild!
+    expect(scroll.scrollTop).toBeGreaterThan(0)
+    const last = m.q('human-answer-final').querySelector<HTMLElement>(':scope > :last-child')!
     expect(last.textContent).toContain('Last answer paragraph')
-    expect(last.getBoundingClientRect().bottom).toBeLessThanOrEqual(
-      scroll.getBoundingClientRect().bottom + 1,
-    )
+    await drawnReady()
+    assertDrawn(last, 'last answer paragraph after scrolling', scroll)
     expect(m.q('human-answer-final').querySelector('table')).not.toBeNull()
     expect(m.q('human-answer-final').querySelector('pre code')).not.toBeNull()
     expect(reachable(close)).toBe(true)
     expect(reachable(m.q('overlay-spawning'))).toBe(true)
+    const originalStyle = last.getAttribute('style')
+    try {
+      last.style.height = '0px'
+      last.style.overflow = 'hidden'
+      expect(() => assertDrawn(last, 'planted clipped answer paragraph', scroll)).toThrow()
+    } finally {
+      if (originalStyle === null) last.removeAttribute('style')
+      else last.setAttribute('style', originalStyle)
+    }
+    scroll.scrollTop = scroll.scrollHeight
+    await nextTick()
+    assertDrawn(last, 'restored last answer paragraph', scroll)
   })
 
   for (const path of PATHS) {
