@@ -807,7 +807,7 @@
     },
     {
       "path": "scripts/gates/plugin-v2/reload-inputs.json",
-      "sha256": "68627dd34d6525a90089f2e7410d405728b97f78373a68ff368b415dd3a7f298",
+      "sha256": "78757f5bc5521e7ebc9ffcb378fc616f3737567018b46d893f3a093ac4b61c25",
       "bytes": 1129
     },
     {
@@ -852,7 +852,7 @@
     },
     {
       "path": "scripts/gates/plugin-v2/runtime-source-pins.json",
-      "sha256": "a45b57c7985722854ce536090113157cc3035cc72b430933a4840f20aff3a584",
+      "sha256": "5196383c54dfe513ec4f2986e75720f6120065530113c4835f49306c630d6619",
       "bytes": 3626
     },
     {

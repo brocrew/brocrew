@@ -69,8 +69,8 @@
     },
     {
       "path": "apps/desktop/test/a-close-before-its-own-finalize-still-counts-as-a-stop.test.ts",
-      "bytes": 17973,
-      "sha256": "a4159c5cee7771915deb9dc3d005a2b5451e69289a11e5b0829f46c9dbab85f7"
+      "bytes": 17931,
+      "sha256": "c05490b70a4c106b2dac4758419dcccffe74f8e06ddfff03c224f73a7a77e1f8"
     },
     {
       "path": "scripts/check-no-plugin-gate-inputs.mjs",

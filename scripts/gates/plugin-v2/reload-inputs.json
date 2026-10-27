@@ -6,8 +6,8 @@
   "modules": [
     {
       "path": "contract.mjs",
-      "bytes": 5896,
-      "sha256": "e2fcfe525d4f4cabd93e2fd499e158889c4cc205958ab2299703c25bb289d146",
+      "bytes": 5989,
+      "sha256": "1e5525a19c54ce1ddb28b6044a0c6cce1767453314b1c53632d5991940e20102",
       "name": "contract.mjs"
     },
     {
