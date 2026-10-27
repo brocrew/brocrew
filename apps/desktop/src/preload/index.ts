@@ -7,6 +7,10 @@ import type {
 import type { RulesBaseline } from '../shared/agent-rules'
 import type { InstructionUnread } from '../shared/own-instructions'
 import type { OwnNotesReading, OwnNotesWrite, OwnNotesUnread } from '../shared/own-notes'
+import {
+  RECOVERY_RETENTION_CHANNELS,
+  type RetainedRecoveryCopy,
+} from '../shared/recovery-retention'
 import { pluginsBridge } from './plugins'
 import type { SkillsRequest, SkillsReply } from '../shared/skills-window'
 import {
@@ -1066,6 +1070,12 @@ const api = Object.freeze({
     ipcRenderer.invoke(WINDOW_CONTROL_CHANNEL, control) as Promise<WindowControlEffect>,
   attentionSignals: (signal: AttentionSignal): Promise<void> =>
     ipcRenderer.invoke(ATTENTION_SIGNALS_CHANNEL, signal),
+  recoveryRetention: Object.freeze({
+    read: (): Promise<RetainedRecoveryCopy | null> =>
+      ipcRenderer.invoke(RECOVERY_RETENTION_CHANNELS.read) as Promise<RetainedRecoveryCopy | null>,
+    deleteNow: (id: string): Promise<void> =>
+      ipcRenderer.invoke(RECOVERY_RETENTION_CHANNELS.delete, id),
+  }),
   transcriptRetention: Object.freeze({
     read: (): Promise<TranscriptRetention> =>
       ipcRenderer.invoke(TRANSCRIPT_RETENTION_CHANNELS.read) as Promise<TranscriptRetention>,

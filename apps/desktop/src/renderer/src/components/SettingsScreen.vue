@@ -23,6 +23,7 @@ import ToolsRegister from './ToolsRegister.vue'
 import ThemesSection from './ThemesSection.vue'
 import SkillsSection from './SkillsSection.vue'
 import PluginsSection from './PluginsSection.vue'
+import RecoveryCopiesSection from './RecoveryCopiesSection.vue'
 import type { PluginsClient } from '../../../shared/plugin-settings'
 
 export type SettingsTab = 'providers' | 'tools' | 'skills' | 'plugins' | 'themes' | 'general'
@@ -276,6 +277,7 @@ async function tabKey(event: KeyboardEvent, current: SettingsTab): Promise<void>
           @change="saveApprovalDefault"
         /><span>Auto</span>
       </section>
+      <RecoveryCopiesSection />
       <section class="setting-card" data-cy="transcript-retention">
         <span class="setting-icon" aria-hidden="true"
           ><svg class="icon"><use href="#i-clock" /></svg

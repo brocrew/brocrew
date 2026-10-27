@@ -373,9 +373,12 @@ export async function pruneTheCopies(
   buildMigrationsFolder: string,
   ownership: Ownership,
   warn: (line: string) => void,
+  appVersion?: string,
 ): Promise<string[]> {
   if (ownership !== 'sole') return []
-  return prune(userData, await buildLineage(buildMigrationsFolder), { ownership, warn })
+  const lineage = await buildLineage(buildMigrationsFolder)
+  const options = { ownership, warn, currentAppVersion: appVersion }
+  return prune(userData, lineage, options)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -544,6 +547,7 @@ async function decide(
         fs,
         ...(deps.now === undefined ? {} : { now: deps.now }),
         includeUnfinished: false,
+        expire: false,
         currentAppVersion: deps.appVersion,
       })
       try {
