@@ -61313,7 +61313,7 @@
       "rows": [
         {
           "id": "659:M1",
-          "fingerprint": "50a24962ed86aff28a1265a74862eb03193e540f3eea84169af23771cbfadf02"
+          "fingerprint": "9fea2d7a752b24e11f116e21a1f619a0df2c7e331923e5fed2619f0700da2ccf"
         },
         {
           "id": "659:M2",
@@ -61336,7 +61336,7 @@
           "fingerprint": "63e033fe1e887e34571478f2cf4325a7bf444bfb5c558f68b789a73e02d18930"
         }
       ],
-      "definitionFingerprint": "86f785f1b431aa4e53b3c2ed123fa3830ce662dc9161a4502b9e018182864f7b",
+      "definitionFingerprint": "e80ac290048496fd06f4a17a812b09fb0e0f14ffc29c563328a9c955ce44b2fb",
       "retiredRows": [
         "M3",
         "M4",

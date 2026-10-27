@@ -107,7 +107,13 @@ function withLevers(handle: SessionHandle, toolset: AgentToolset | undefined): L
       return typeof value === 'function' ? (value as () => unknown).bind(target) : value
     },
   })
-  return { toolset, handle: proxied, failTheStream, letCloseFinish, closeEntries: () => closeEntries }
+  return {
+    toolset,
+    handle: proxied,
+    failTheStream,
+    letCloseFinish,
+    closeEntries: () => closeEntries,
+  }
 }
 
 class LeveredRuntime extends FakeRuntime {

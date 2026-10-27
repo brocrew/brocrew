@@ -72,7 +72,9 @@
     "scripts/gates/plugin-v2/verify-operation.mjs",
     "scripts/gates/plugin-v2/verify-reload.mjs",
     "scripts/mutations/659/mutations.py",
-    "scripts/test/beta-release.test.mjs"
+    "scripts/test/beta-release.test.mjs",
+    "scripts/mutations/ATTESTATION.json",
+    "scripts/mutations/CENSUS.md"
   ],
   "files": [
     {
@@ -557,8 +559,8 @@
     },
     {
       "path": "apps/desktop/test/the-question-every-teardown-asks.test.ts",
-      "sha256": "472c82dbc0e27486ec57bd89353e8b5e75fab3dd16d234dcd81c8b4320886d80",
-      "bytes": 29213
+      "sha256": "39f7c6606eb6727e48d4030e8a74d81719585516fc15cadc8742f4932f42a778",
+      "bytes": 29236
     },
     {
       "path": "package.json",
