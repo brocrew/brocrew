@@ -61,7 +61,9 @@ it('shows copy size and expiry; Delete now waits, reports failures, and refreshe
   await nextTick()
   m.q('recovery-delete-confirm').click()
   await vi.waitFor(() =>
-    expect(m.q('recovery-retention').textContent).toContain("That didn't work. Try again."),
+    expect(m.q('recovery-retention').textContent).toContain(
+      "Couldn't delete the recovery copy. Try again.",
+    ),
   )
   expect(m.q('recovery-retention').textContent).toContain('2.5 GB')
   fail = false

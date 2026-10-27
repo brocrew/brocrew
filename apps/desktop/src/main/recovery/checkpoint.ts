@@ -52,6 +52,13 @@ import {
   workspaceIdFile,
 } from './layout'
 import { CHECKPOINT_LINE } from './log-lines'
+import {
+  beginCheckpointDeletion,
+  deletionRemnant,
+  finishCheckpointDeletion,
+  readCheckpointDeletion,
+  type CheckpointDeletion,
+} from './checkpoint-deletion'
 import { APP_STATE_FILES } from './state-files'
 import { copySkillTree, readSkillTree, stateContentAt as contentAt } from './trees'
 import { SKILL_TREES, SKILLS_CONVERSION_FILE } from '../skills/shared-paths'
@@ -456,7 +463,19 @@ export async function listOfferable(
   fs: RecoveryFs = nodeFs,
 ): Promise<Checkpoint[]> {
   const offerable: Checkpoint[] = []
+  const workspace = await readWorkspaceId(userData, fs)
+  let deletion: CheckpointDeletion | null
+  try {
+    deletion = await readCheckpointDeletion(
+      userData,
+      workspace.kind === 'id' ? workspace.id : null,
+      fs,
+    )
+  } catch {
+    return []
+  }
   for (const checkpoint of await listCheckpoints(userData, fs)) {
+    if (checkpoint.manifest.id === deletion?.manifest.id) continue
     if (!couldBeOffered(checkpoint, lineage)) continue
     if ((await wholeness(checkpoint, fs)) === 'whole') offerable.push(checkpoint)
   }
@@ -526,13 +545,21 @@ export async function prune(
   }
 
   let receipt: RetentionReceipt | null
+  let deletion: CheckpointDeletion | null
   try {
     receipt = await readRetentionReceipt(userData, fs)
+    deletion = await readCheckpointDeletion(
+      userData,
+      workspace.kind === 'id' ? workspace.id : null,
+      fs,
+    )
+    if (deletion) await deletionRemnant(userData, deletion, fs)
   } catch (error) {
     return notThisTime(messageOf(error))
   }
   const whole: Checkpoint[] = []
   for (const checkpoint of workspace.kind === 'id' ? ofThisWorkspace(workspace.id, folders) : []) {
+    if (checkpoint.manifest.id === deletion?.manifest.id) continue
     if (
       options.currentAppVersion !== undefined &&
       newerAppVersion(checkpoint.manifest.madeBy.appVersion, options.currentAppVersion)
@@ -585,6 +612,7 @@ export async function prune(
   const unfinished = (options.includeUnfinished === false ? [] : folders).flatMap(
     ({ name, found }) =>
       isUuid(name) &&
+      name !== deletion?.manifest.id &&
       found.kind === 'unfinished' &&
       found.marked &&
       found.onlyTheWritersFiles &&
@@ -593,6 +621,23 @@ export async function prune(
         : [],
   )
   const removed: string[] = []
+  if (deletion && options.expire !== false) {
+    const selected = {
+      folder: checkpointDir(userData, deletion.manifest.id),
+      manifest: deletion.manifest,
+    }
+    if (
+      !couldBeOffered(selected, lineage) ||
+      (options.currentAppVersion !== undefined &&
+        newerAppVersion(deletion.manifest.madeBy.appVersion, options.currentAppVersion))
+    )
+      return notThisTime('An unfinished deletion belongs to a newer recovery copy.')
+    try {
+      if (await finishCheckpointDeletion(userData, deletion, fs)) removed.push(deletion.manifest.id)
+    } catch (error) {
+      return notThisTime(messageOf(error))
+    }
+  }
   for (const name of [...goes, ...unfinished]) {
     const folder = checkpointDir(userData, name)
     try {
@@ -1130,6 +1175,23 @@ export async function retainedCopyInfo(
   const fs = options.fs ?? nodeFs
   await assertOwnedPathsAreReal(userData, [], fs)
   const receipt = await readRetentionReceipt(userData, fs)
+  const workspace = await readWorkspaceId(userData, fs)
+  const deletion = await readCheckpointDeletion(
+    userData,
+    workspace.kind === 'id' ? workspace.id : null,
+    fs,
+  )
+  const remnant = deletion ? await deletionRemnant(userData, deletion, fs) : null
+  // A confirmed deletion is no longer a restore offer, but its remaining bytes stay visible.
+  if (deletion && remnant) {
+    return {
+      id: deletion.manifest.id,
+      appVersion: deletion.manifest.madeBy.appVersion,
+      bytes: remnant.bytes,
+      expiresAt: new Date(Date.parse(deletion.manifest.createdAt) + KEEP_WITHIN_MS).toISOString(),
+      startsLeft: 0,
+    }
+  }
   const copy = (await listOfferable(userData, lineage, fs)).find(
     ({ manifest }) =>
       options.currentAppVersion === undefined ||
@@ -1175,6 +1237,24 @@ export async function deleteRetainedCopy(
     const receipt = await readRetentionReceipt(userData, fs)
     const workspace = await readWorkspaceId(userData, fs)
     if (workspace.kind !== 'id') return false
+    const deletion = await readCheckpointDeletion(userData, workspace.id, fs)
+    if (deletion) {
+      const remnant = await deletionRemnant(userData, deletion, fs)
+      if (deletion.manifest.id === id) {
+        if (
+          !couldBeOffered(
+            { folder: checkpointDir(userData, id), manifest: deletion.manifest },
+            lineage,
+          ) ||
+          (options.currentAppVersion !== undefined &&
+            newerAppVersion(deletion.manifest.madeBy.appVersion, options.currentAppVersion))
+        )
+          return false
+        await finishCheckpointDeletion(userData, deletion, fs)
+        return true
+      }
+      if (remnant) return false
+    }
     const candidates = ofThisWorkspace(workspace.id, folders)
     // If a newer or unreadable copy is present, a stale Settings view must not delete around it.
     const copy = candidates[0]
@@ -1190,7 +1270,7 @@ export async function deleteRetainedCopy(
       return false
     if (!receipt || receipt.appVersion !== copy.manifest.madeBy.appVersion) return false
     await assertOwnedPathsAreReal(userData, [copy.folder], fs)
-    await retrying(() => fs.rm(copy.folder, { recursive: true, force: true }))
+    await finishCheckpointDeletion(userData, await beginCheckpointDeletion(userData, copy, fs), fs)
     return true
   } catch {
     return false
