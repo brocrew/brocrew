@@ -1,16 +1,20 @@
 import { join } from 'node:path'
-import { parseManifest, type CheckpointManifest } from './contract'
+import { createHash } from 'node:crypto'
+import { parseManifest, serializeManifest, type CheckpointManifest } from './contract'
 import {
   assertOwnedPathsAreReal,
   errorCode,
   readTextOrNull,
   retrying,
   syncFolder,
+  sha256Of,
   writeAtomically,
   type RecoveryFs,
   type RecoveryStats,
 } from './files'
-import { backupsDir, checkpointDir, MANIFEST_FILE, UNFINISHED_FILE } from './layout'
+import { backupsDir, checkpointDir, COPY_FILE, MANIFEST_FILE, UNFINISHED_FILE } from './layout'
+import { APP_STATE_FILES } from './state-files'
+import { readSkillTree, type TreeReading } from './trees'
 
 // Outside the removable folder: a failed recursive removal cannot erase its own authorization.
 const DELETION_FILE = 'deletion.json'
@@ -24,9 +28,14 @@ interface Entry {
 }
 export interface CheckpointDeletion {
   readonly format: 'brocrew-recovery-delete'
-  readonly version: 1
+  readonly version: 2
   readonly manifest: CheckpointManifest
   readonly entries: readonly Entry[]
+  readonly verifiedCopy: {
+    readonly manifestText: string
+    readonly manifestSha256: string
+    readonly trees: Readonly<Record<string, TreeReading['entries']>>
+  }
 }
 
 const failed = (): Error => new Error('The recovery copy deletion record could not be checked.')
@@ -35,6 +44,82 @@ const safePath = (path: string): boolean =>
   path
     .split('/')
     .every((part) => part !== '' && part !== '.' && part !== '..' && !/[\\\0]/.test(part))
+
+const digest = (text: string): string => createHash('sha256').update(text).digest('hex')
+
+/** A record is a subset-removal plan for one complete checked copy, never a new file allowlist. */
+function checkVerifiedCopy(deletion: CheckpointDeletion): void {
+  const binding = deletion.verifiedCopy
+  if (
+    !binding ||
+    typeof binding.manifestText !== 'string' ||
+    digest(binding.manifestText) !== binding.manifestSha256 ||
+    !binding.trees ||
+    typeof binding.trees !== 'object' ||
+    Array.isArray(binding.trees)
+  )
+    throw failed()
+  const bound = parseManifest(binding.manifestText)
+  if (!bound.ok || serializeManifest(bound.value) !== serializeManifest(deletion.manifest))
+    throw failed()
+  const expected = new Map<string, { directory: boolean; bytes?: number }>([
+    ['', { directory: true }],
+    [MANIFEST_FILE, { directory: false, bytes: Buffer.byteLength(binding.manifestText) }],
+    [COPY_FILE, { directory: false, bytes: deletion.manifest.database.bytes }],
+  ])
+  const trees = new Set<string>()
+  for (const file of deletion.manifest.files) {
+    const registered = APP_STATE_FILES.find(({ name }) => name === file.name)
+    if (!registered) throw failed()
+    if (!file.present) continue
+    if (registered.kind !== 'tree') {
+      expected.set(file.name, { directory: false, bytes: file.bytes })
+      continue
+    }
+    trees.add(file.name)
+    expected.set(file.name, { directory: true })
+    const entries = binding.trees[file.name]
+    if (!Array.isArray(entries)) throw failed()
+    let bytes = 0
+    for (const one of entries) {
+      if (
+        !one ||
+        typeof one.path !== 'string' ||
+        !one.path ||
+        !safePath(one.path) ||
+        typeof one.directory !== 'boolean' ||
+        !Number.isSafeInteger(one.bytes) ||
+        one.bytes < 0 ||
+        typeof one.executable !== 'boolean' ||
+        (one.directory
+          ? one.bytes !== 0 || one.executable || one.sha256 !== ''
+          : !/^[a-f0-9]{64}$/.test(one.sha256))
+      )
+        throw failed()
+      const path = `${file.name}/${one.path}`
+      const parent = path.slice(0, path.lastIndexOf('/'))
+      if (expected.has(path) || expected.get(parent)?.directory !== true) throw failed()
+      expected.set(path, { directory: one.directory, bytes: one.directory ? undefined : one.bytes })
+      bytes += one.bytes
+    }
+    // Same persisted tree protocol as readSkillTree: paths, order and executable bits are bound.
+    const hash = digest('brocrew-skill-tree-v1\0' + JSON.stringify(entries))
+    if (hash !== file.sha256 || bytes !== file.bytes) throw failed()
+  }
+  if (Object.keys(binding.trees).some((name) => !trees.has(name))) throw failed()
+  for (const one of deletion.entries) {
+    if (one.path === UNFINISHED_FILE && !one.directory && one.size === 0) continue
+    const written = expected.get(one.path)
+    if (
+      !written ||
+      written.directory !== one.directory ||
+      (written.bytes !== undefined && written.bytes !== one.size)
+    )
+      throw failed()
+    expected.delete(one.path)
+  }
+  if (expected.size !== 0) throw failed()
+}
 
 function entry(path: string, stats: RecoveryStats): Entry {
   if (
@@ -92,7 +177,7 @@ export async function readCheckpointDeletion(
   const manifest = parseManifest(JSON.stringify(raw?.manifest ?? null))
   if (
     raw?.format !== 'brocrew-recovery-delete' ||
-    raw.version !== 1 ||
+    raw.version !== 2 ||
     !manifest.ok ||
     manifest.value.workspaceId !== workspaceId ||
     !Array.isArray(raw.entries) ||
@@ -120,12 +205,15 @@ export async function readCheckpointDeletion(
     seen.add(one.path)
   }
   if (raw.entries[0]?.path !== '' || !raw.entries[0].directory) throw failed()
-  return {
+  const deletion = {
     format: 'brocrew-recovery-delete',
-    version: 1,
+    version: 2,
     manifest: manifest.value,
     entries: raw.entries,
-  }
+    verifiedCopy: raw.verifiedCopy,
+  } as CheckpointDeletion
+  checkVerifiedCopy(deletion)
+  return deletion
 }
 
 async function present(path: string, fs: RecoveryFs): Promise<boolean> {
@@ -143,7 +231,9 @@ export async function deletionRemnant(
   userData: string,
   deletion: CheckpointDeletion,
   fs: RecoveryFs,
+  purpose: 'delete' | 'display' = 'delete',
 ): Promise<{ folder: string; bytes: number } | null> {
+  checkVerifiedCopy(deletion)
   const original = checkpointDir(userData, deletion.manifest.id)
   const removing = join(backupsDir(userData), `deleting-${deletion.manifest.id}`)
   await assertOwnedPathsAreReal(userData, [original, removing], fs)
@@ -162,6 +252,14 @@ export async function deletionRemnant(
       before.ino !== one.ino ||
       before.directory !== one.directory ||
       (!one.directory && (before.size !== one.size || before.mtimeMs !== one.mtimeMs))
+    ) {
+      if (purpose === 'display' && one.path !== '') continue
+      throw failed()
+    }
+    if (
+      purpose === 'delete' &&
+      one.path === MANIFEST_FILE &&
+      (await sha256Of(join(folder, MANIFEST_FILE), fs)) !== deletion.verifiedCopy.manifestSha256
     )
       throw failed()
     if (!one.directory && ![MANIFEST_FILE, UNFINISHED_FILE].includes(one.path)) bytes += one.size
@@ -178,12 +276,23 @@ export async function beginCheckpointDeletion(
   const removing = join(backupsDir(userData), `deleting-${copy.manifest.id}`)
   await assertOwnedPathsAreReal(userData, [copy.folder, removing], fs)
   if (await present(removing, fs)) throw failed()
+  const manifestText = await fs.readFile(join(copy.folder, MANIFEST_FILE))
+  const trees: Record<string, TreeReading['entries']> = {}
+  for (const file of copy.manifest.files) {
+    if (file.present && APP_STATE_FILES.find(({ name }) => name === file.name)?.kind === 'tree') {
+      const reading = await readSkillTree(join(copy.folder, file.name), fs)
+      if (reading.sha256 !== file.sha256 || reading.bytes !== file.bytes) throw failed()
+      trees[file.name] = reading.entries
+    }
+  }
   const deletion: CheckpointDeletion = {
     format: 'brocrew-recovery-delete',
-    version: 1,
+    version: 2,
     manifest: copy.manifest,
     entries: await contents(copy.folder, fs),
+    verifiedCopy: { manifestText, manifestSha256: digest(manifestText), trees },
   }
+  checkVerifiedCopy(deletion)
   const path = join(backupsDir(userData), DELETION_FILE)
   await assertOwnedPathsAreReal(userData, [path], fs)
   await writeAtomically(path, JSON.stringify(deletion) + '\n', fs)
