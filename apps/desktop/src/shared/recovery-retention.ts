@@ -5,6 +5,7 @@ export const RECOVERY_RETENTION_CHANNELS = {
 
 export interface RetainedRecoveryCopy {
   readonly id: string
+  readonly appVersion: string
   readonly bytes: number
   readonly expiresAt: string
   readonly startsLeft: number

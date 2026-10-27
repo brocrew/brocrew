@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3'
 import { randomUUID } from 'node:crypto'
-import { basename, join } from 'node:path'
+import { join } from 'node:path'
 import type { OfferedCheckpoint, ProgressListener } from '../../shared/recovery'
 import type { RetainedRecoveryCopy } from '../../shared/recovery-retention'
 import { freeBytesOn } from '../archive/native-file'
@@ -484,7 +484,7 @@ export interface PruneOptions {
  * Keeps one newest intact copy, until three days or three successful starts of its version.
  * Before migrations the newest copy is protected regardless of expiry. Foreign, damaged,
  * unreadable and newer-build copies remain protected. Unfinished writer-marked UUID folders
- * are removed after an hour; timestamp folders require a valid current-workspace manifest.
+ * are removed after an hour. Non-UUID folders, including manual timestamp copies, are untouched.
  *
  * It removes nothing unless this process is the only app on the data folder, and nothing in a run
  * where anything in `backups/` could not be read, since what to keep is then not known.
@@ -512,7 +512,7 @@ export async function prune(
       (await pathExists(join(userData, 'recovery', 'restore-journal.json'), fs))
     )
       return []
-    folders = await foldersInBackups(userData, fs, true)
+    folders = await foldersInBackups(userData, fs)
     workspace = await readWorkspaceId(userData, fs)
   } catch (error) {
     return notThisTime(messageOf(error))
@@ -549,10 +549,7 @@ export async function prune(
   // match; then each copy that would go, just before it goes.
   let candidates = whole
   const keepingOf = (copies: readonly Checkpoint[]): Set<string> => {
-    // Timestamp leftovers cannot be restored through the UUID-only restore contract. They must
-    // never displace the newest usable copy. Keep a newer leftover until its own age expires.
-    const usable = copies.filter((copy) => basename(copy.folder) === copy.manifest.id)
-    const newest = usable[0]
+    const newest = copies[0]
     const expired =
       newest !== undefined &&
       options.expire !== false &&
@@ -560,19 +557,7 @@ export async function prune(
         (receipt?.checkpointId === newest.manifest.id &&
           receipt.appVersion === newest.manifest.madeBy.appVersion &&
           receipt.successfulStarts >= 3))
-    const kept = new Set(
-      expired ? [] : usable.slice(0, KEEP_NEWEST).map(({ manifest }) => manifest.id),
-    )
-    for (const copy of copies.filter((one) => basename(one.folder) !== one.manifest.id)) {
-      if (
-        options.expire === false ||
-        (now() - Date.parse(copy.manifest.createdAt) < KEEP_WITHIN_MS &&
-          (!newest || Date.parse(copy.manifest.createdAt) > Date.parse(newest.manifest.createdAt)))
-      ) {
-        kept.add(copy.manifest.id)
-      }
-    }
-    return kept
+    return new Set(expired ? [] : copies.slice(0, KEEP_NEWEST).map(({ manifest }) => manifest.id))
   }
   const intact = new Set<string>()
   for (;;) {
@@ -590,7 +575,7 @@ export async function prune(
   for (const checkpoint of candidates) {
     if (!kept.has(checkpoint.manifest.id) && (await isIntact(checkpoint, fs))) {
       try {
-        if (await onlyCheckpointFiles(checkpoint, fs)) goes.push(basename(checkpoint.folder))
+        if (await onlyCheckpointFiles(checkpoint, fs)) goes.push(checkpoint.manifest.id)
       } catch (error) {
         return notThisTime(messageOf(error))
       }
@@ -609,7 +594,7 @@ export async function prune(
   )
   const removed: string[] = []
   for (const name of [...goes, ...unfinished]) {
-    const folder = join(backupsDir(userData), name)
+    const folder = checkpointDir(userData, name)
     try {
       await assertOwnedPathsAreReal(userData, [folder], fs)
       await retrying(() => fs.rm(folder, { recursive: true, force: true }))
@@ -891,11 +876,7 @@ const OTHER: FoundInBackups = { kind: 'other' }
 const UNKNOWN: FoundInBackups = { kind: 'unknown' }
 
 /** Every folder in `backups/` named by an id this app makes. Throws when `backups/` is unreadable. */
-async function foldersInBackups(
-  userData: string,
-  fs: RecoveryFs,
-  includeLegacy = false,
-): Promise<InBackups[]> {
+async function foldersInBackups(userData: string, fs: RecoveryFs): Promise<InBackups[]> {
   let names: string[]
   try {
     names = await fs.readdir(backupsDir(userData))
@@ -904,9 +885,7 @@ async function foldersInBackups(
     throw error
   }
   const folders: InBackups[] = []
-  for (const name of names
-    .filter((name) => isUuid(name) || (includeLegacy && /^\d{8}-\d{6}$/.test(name)))
-    .sort()) {
+  for (const name of names.filter(isUuid).sort()) {
     folders.push({ name, found: await readFolder(userData, name, fs) })
   }
   return folders
@@ -943,8 +922,8 @@ async function lstatOrNull(path: string, fs: RecoveryFs): Promise<RecoveryStats 
 }
 
 async function readFolder(userData: string, name: string, fs: RecoveryFs): Promise<FoundInBackups> {
-  const folder = join(backupsDir(userData), name)
-  const manifestPath = join(folder, MANIFEST_FILE)
+  const folder = checkpointDir(userData, name)
+  const manifestPath = manifestFile(userData, name)
   try {
     const stats = await lstatOrNull(folder, fs)
     if (stats === null || stats.isSymbolicLink() || !stats.isDirectory()) return OTHER
@@ -954,7 +933,7 @@ async function readFolder(userData: string, name: string, fs: RecoveryFs): Promi
     const text = await readTextOrNull(manifestPath, fs)
     if (text === null) return UNKNOWN
     const parsed = parseManifest(text)
-    if (!parsed.ok || (isUuid(name) && parsed.value.id !== name)) return OTHER
+    if (!parsed.ok || parsed.value.id !== name) return OTHER
     return { kind: 'checkpoint', checkpoint: { folder, manifest: parsed.value } }
   } catch {
     return UNKNOWN
@@ -1159,6 +1138,7 @@ export async function retainedCopyInfo(
   if (!copy) return null
   return {
     id: copy.manifest.id,
+    appVersion: copy.manifest.madeBy.appVersion,
     bytes:
       copy.manifest.database.bytes +
       copy.manifest.files.reduce((total, file) => total + (file.present ? file.bytes : 0), 0),
@@ -1190,7 +1170,7 @@ export async function deleteRetainedCopy(
       (await pathExists(join(userData, 'recovery', 'restore-journal.json'), fs))
     )
       return false
-    const folders = await foldersInBackups(userData, fs, true)
+    const folders = await foldersInBackups(userData, fs)
     if (folders.some(({ found }) => found.kind === 'unknown')) return false
     const receipt = await readRetentionReceipt(userData, fs)
     const workspace = await readWorkspaceId(userData, fs)

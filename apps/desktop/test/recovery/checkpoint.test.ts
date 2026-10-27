@@ -1611,20 +1611,20 @@ describe('recovery copy expiry and Settings', () => {
     expect(await listCheckpoints(userData)).toHaveLength(1)
   })
 
-  it('only cleans timestamp folders with a checked current-workspace manifest, never names alone', async () => {
+  it('leaves manual timestamp-named sqlite copies untouched, regardless of age', async () => {
     const userData = aDataFolder()
     aLiveDatabase(userData)
-    const old = await make(userData, { now: () => START })
-    const legacy = join(userData, 'backups', '20260101-010101')
-    renameSync(old.folder, legacy)
     const personal = join(userData, 'backups', '20260101-020202')
-    mkdirSync(personal)
-    writeFileSync(join(personal, 'database.sqlite'), 'my own copy')
-    await make(userData, { now: () => START + DAY_MS })
-    expect(await prune(userData, LINEAGE, { ...SOLE, now: () => START + DAY_MS })).toEqual([
-      '20260101-010101',
+    mkdirSync(personal, { recursive: true, mode: 0o755 })
+    writeFileSync(join(personal, 'brobot2.sqlite'), 'a fictional manual operations copy')
+    anHourAndMoreAgo(userData, '20260101-020202')
+    const before = readFileSync(join(personal, 'brobot2.sqlite'))
+    const copy = await make(userData, { now: () => START })
+    expect(await prune(userData, LINEAGE, { ...SOLE, now: () => START + 4 * DAY_MS })).toEqual([
+      copy.manifest.id,
     ])
-    expect(readdirSync(personal)).toEqual(['database.sqlite'])
+    expect(readdirSync(personal)).toEqual(['brobot2.sqlite'])
+    expect(readFileSync(join(personal, 'brobot2.sqlite'))).toEqual(before)
   })
 })
 
@@ -1685,38 +1685,4 @@ describe('retention safety boundaries', () => {
       expect(readdirSync(join(userData, 'backups'))).not.toContain('retention.json')
     },
   )
-
-  it.each(['foreign', 'newer', 'damaged', 'personal-file'] as const)(
-    'preserves timestamp copy with %s evidence',
-    async (fault) => {
-      const userData = aDataFolder()
-      aLiveDatabase(userData)
-      const copy = await make(userData, { now: () => START })
-      if (fault === 'foreign')
-        rewrite(userData, copy.manifest.id, { ...copy.manifest, workspaceId: randomUUID() })
-      if (fault === 'newer')
-        rewrite(userData, copy.manifest.id, {
-          ...copy.manifest,
-          madeBy: { ...copy.manifest.madeBy, appVersion: '9.0.0' },
-        })
-      if (fault === 'damaged') writeFileSync(join(copy.folder, 'database.sqlite'), 'damaged')
-      if (fault === 'personal-file') writeFileSync(join(copy.folder, 'notes.txt'), 'mine')
-      const legacy = join(userData, 'backups', '20260101-030303')
-      renameSync(copy.folder, legacy)
-      expect(await prune(userData, LINEAGE, { ...SOLE, currentAppVersion: '0.1.0' })).toEqual([])
-      expect(readdirSync(legacy)).toContain('manifest.json')
-    },
-  )
-})
-
-it('a newer timestamp leftover cannot evict the UUID copy that the restore flow can offer', async () => {
-  const userData = aDataFolder()
-  aLiveDatabase(userData)
-  const now = Date.now()
-  const usable = await make(userData, { now: () => now - 1000 })
-  const legacy = await make(userData, { now: () => now })
-  renameSync(legacy.folder, join(userData, 'backups', '20260101-040404'))
-  await prune(userData, LINEAGE, { ...SOLE, now: () => now })
-  expect(ids(await listOfferable(userData, LINEAGE))).toEqual([usable.manifest.id])
-  expect(await isIntact(usable)).toBe(true)
 })
