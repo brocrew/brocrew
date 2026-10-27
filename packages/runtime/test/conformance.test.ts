@@ -1659,6 +1659,7 @@ describe('conformance · the gap ledger (186)', () => {
       [
         'fake',
         [
+          'isRetiring',
           'refreshManagedPlugins',
           'builtInSkillsConfirmed',
           // 722 · R79: a pre-init window only a Claude launch has — the Fake's ref is set at birth.
@@ -1753,6 +1754,7 @@ describe('conformance · the gap ledger (186)', () => {
       [
         'codex',
         [
+          'isRetiring',
           'refreshManagedPlugins',
           'builtInSkillsConfirmed',
           'launchedAs',
