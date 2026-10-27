@@ -5672,9 +5672,41 @@ export function createSessionStore(
   const phase = <T>(name: string, read: () => T): T =>
     readPhases === undefined ? read() : readPhases.timed(`store.providerLimitsSeen.${name}`, read)
 
+  let recordedLocationStatements: {
+    insertSession: AppStatement
+    insertAdopted: AppStatement
+    selectProviderLocation: AppStatement
+    writeAFirstLaunch: AppStatement
+  } | null = null
+  // Old databases can be seeded before migration. Recheck an absent column so the same store
+  // observes a later migration, and refuse an explicit location before any writer is called.
+  const providerLocationSql = (location?: string): typeof recordedLocationStatements => {
+    if (recordedLocationStatements !== null) return recordedLocationStatements
+    const columns = db.pragma('table_info(provider_session)') as { name: string }[]
+    if (!columns.some((column) => column.name === 'provider_home')) {
+      if (location !== undefined)
+        throw new Error('Provider locations require the database migration')
+      return null
+    }
+    return (recordedLocationStatements = {
+      insertSession: db.prepare(
+        `INSERT INTO provider_session (id, provider, cwd, status, approval_mode, profile_id, provider_home, reasoning_effort, model, plan_mode, created_at, updated_at)
+         VALUES (?, ?, ?, 'idle', ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ),
+      insertAdopted: db.prepare(
+        `INSERT INTO provider_session (id, provider, external_ref, cwd, status, approval_mode, profile_id, provider_home, created_at, updated_at, adopted_at, child_descent)
+         VALUES (?, ?, ?, ?, 'ended', NULL, ?, ?, ?, ?, ?, ?)`,
+      ),
+      selectProviderLocation: db.prepare('SELECT provider_home FROM provider_session WHERE id = ?'),
+      writeAFirstLaunch: db.prepare(
+        `UPDATE provider_session SET reasoning_effort = ?, model = ?, plan_mode = ?, provider_home = COALESCE(provider_home, ?), updated_at = ?
+          WHERE id = ? AND external_ref IS NULL`,
+      ),
+    })
+  }
   const insertSession = db.prepare(
-    `INSERT INTO provider_session (id, provider, cwd, status, approval_mode, profile_id, provider_home, reasoning_effort, model, plan_mode, created_at, updated_at)
-     VALUES (?, ?, ?, 'idle', ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO provider_session (id, provider, cwd, status, approval_mode, profile_id, reasoning_effort, model, plan_mode, created_at, updated_at)
+     VALUES (?, ?, ?, 'idle', ?, ?, ?, ?, ?, ?, ?)`,
   )
   /**
    * **A field a person cleared is null, and a field they never touched is also null** (339).
@@ -6955,8 +6987,8 @@ export function createSessionStore(
    * nullable for exactly this kind of honest gap.
    */
   const insertAdopted = db.prepare(
-    `INSERT INTO provider_session (id, provider, external_ref, cwd, status, approval_mode, profile_id, provider_home, created_at, updated_at, adopted_at, child_descent)
-     VALUES (?, ?, ?, ?, 'ended', NULL, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO provider_session (id, provider, external_ref, cwd, status, approval_mode, profile_id, created_at, updated_at, adopted_at, child_descent)
+     VALUES (?, ?, ?, ?, 'ended', NULL, ?, ?, ?, ?, ?)`,
   )
   const touchAdopted = db.prepare(
     `UPDATE provider_session SET updated_at = ?
@@ -12435,6 +12467,8 @@ export function createSessionStore(
    * and each gets its ROOT (D-016): an adopted or imported conversation never has a parent here.
    */
   const insertAdoptedRow = (record: AdoptedSessionRecord, at: number): void => {
+    const location = record.profileId === null ? undefined : record.providerLocation
+    const locationStatements = providerLocationSql(location)
     const ref = serializeSessionRef({
       provider: record.provider,
       sessionId: record.sessionId,
@@ -12453,13 +12487,13 @@ export function createSessionStore(
     // from a `~/.claude` row imports with no profile too — which is the case that would otherwise
     // have re-claimed it on the way back in.
     const identityId = record.profileId === null ? null : identityRowFor(record.profileId, at)
-    insertAdopted.run(
+    ;(locationStatements?.insertAdopted ?? insertAdopted).run(
       record.id,
       record.provider,
       ref,
       record.cwd,
       record.profileId,
-      record.profileId === null ? null : (record.providerLocation ?? null),
+      ...(locationStatements === null ? [] : [location ?? null]),
       // The provider's own times, not ours: this conversation existed before we saw it, and
       // `adopted_at` is where "when we recorded it" belongs.
       record.createdAt,
@@ -12556,11 +12590,8 @@ export function createSessionStore(
    * root would leave a person's conversation with no work of its own to hang a give under, and no
    * later write puts one there.
    */
-  const selectProviderLocation = db.prepare(
-    'SELECT provider_home FROM provider_session WHERE id = ?',
-  )
   const writeAFirstLaunch = db.prepare(
-    `UPDATE provider_session SET reasoning_effort = ?, model = ?, plan_mode = ?, provider_home = COALESCE(provider_home, ?), updated_at = ?
+    `UPDATE provider_session SET reasoning_effort = ?, model = ?, plan_mode = ?, updated_at = ?
       WHERE id = ? AND external_ref IS NULL`,
   )
   const selectALaunchUnnamed = db.prepare(
@@ -12575,11 +12606,12 @@ export function createSessionStore(
       >,
       at: number,
     ): boolean => {
-      const wrote = writeAFirstLaunch.run(
+      const locationStatements = providerLocationSql(record.providerLocation)
+      const wrote = (locationStatements?.writeAFirstLaunch ?? writeAFirstLaunch).run(
         record.reasoningEffort ?? null,
         record.model ?? null,
         record.planMode === undefined ? null : record.planMode ? 1 : 0,
-        record.providerLocation ?? null,
+        ...(locationStatements === null ? [] : [record.providerLocation ?? null]),
         at,
         record.id,
       )
@@ -12590,6 +12622,7 @@ export function createSessionStore(
   )
 
   const createTx = db.transaction((record: NewSessionRecord, at: number) => {
+    const locationStatements = providerLocationSql(record.providerLocation)
     const identityId = identityRowFor(record.profileId, at)
     if (record.worker !== undefined) {
       const fact = workerRegistrationOf({ type: 'worker_registered', ...record.worker })
@@ -12616,13 +12649,13 @@ export function createSessionStore(
         throw new Error('worker number is already registered')
       }
     }
-    insertSession.run(
+    ;(locationStatements?.insertSession ?? insertSession).run(
       record.id,
       record.provider,
       record.cwd,
       record.approvalMode,
       record.profileId,
-      record.providerLocation ?? null,
+      ...(locationStatements === null ? [] : [record.providerLocation ?? null]),
       // Null, not a default: "nobody chose" and "chose medium" are different facts, and only
       // the second may come back as this conversation's setting.
       record.reasoningEffort ?? null,
@@ -12679,7 +12712,7 @@ export function createSessionStore(
       createTx(record, now())
     },
     providerLocationOf(sessionId) {
-      const row = selectProviderLocation.get(sessionId) as
+      const row = providerLocationSql()?.selectProviderLocation.get(sessionId) as
         { provider_home: string | null } | undefined
       return row?.provider_home ?? null
     },

@@ -152,14 +152,16 @@ it.each([12, 15, 16, 17, 19])(
     expect(
       Object.fromEntries(Object.entries(migrated).filter(([key]) => key !== 'provider_home')),
     ).toEqual(original)
-    store.create({
-      id: 'new-fern',
-      profileId: 'fern',
-      provider: 'codex',
-      cwd: folder,
-      approvalMode: 'ask',
-      providerLocation: 'default/fern/codex',
-    })
+    expect(() =>
+      store.create({
+        id: 'new-fern',
+        profileId: 'fern',
+        provider: 'codex',
+        cwd: folder,
+        approvalMode: 'ask',
+        providerLocation: 'default/fern/codex',
+      }),
+    ).not.toThrow()
     expect(store.providerLocationOf('new-fern')).toBe('default/fern/codex')
     expect(store.firstLaunchOf({ id: 'old-fern', providerLocation: 'default/fern/codex' })).toBe(
       true,

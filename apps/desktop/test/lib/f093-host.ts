@@ -167,7 +167,7 @@ export class F093World {
   }
 
   homeOf(provider: Provider, profileId: string): string {
-    return join(this.root(), profileId, provider)
+    return join(this.root(), 'default', profileId, provider)
   }
 
   buildHost(withInstructions = true, extra: Partial<RuntimeHostDeps> = {}): RuntimeHost {
