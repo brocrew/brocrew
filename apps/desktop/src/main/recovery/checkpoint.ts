@@ -1181,7 +1181,7 @@ export async function retainedCopyInfo(
     workspace.kind === 'id' ? workspace.id : null,
     fs,
   )
-  const remnant = deletion ? await deletionRemnant(userData, deletion, fs) : null
+  const remnant = deletion ? await deletionRemnant(userData, deletion, fs, 'display') : null
   // A confirmed deletion is no longer a restore offer, but its remaining bytes stay visible.
   if (deletion && remnant) {
     return {
