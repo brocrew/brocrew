@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, expect, it } from 'vitest'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
-import { createSessionStore } from '../src/main/db/session-store'
+import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { deriveProviderHome } from '../src/main/runtime/provider-homes'
 import { F093World } from './lib/f093-host'
 
@@ -75,35 +75,75 @@ it.each([12, 15, 16, 17, 19])(
   'keeps unlocated store operations on schema %i and sees the column after migration',
   (lastIndex) => {
     const { db, folder } = olderDatabase(lastIndex)
-    const store = createSessionStore(db, () => 100)
+    let store!: SessionStore
+    expect(() => {
+      store = createSessionStore(db, () => 100)
+    }).not.toThrow()
     store.createAgentIdentity(
       { slug: 'fern', displayName: null, provider: 'codex' },
       { by: 'a-person' },
     )
     expect(store.providerLocationOf('missing')).toBeNull()
-    store.create({
-      id: 'old-fern',
-      profileId: 'fern',
-      provider: 'codex',
-      cwd: folder,
-      approvalMode: 'ask',
-    })
-    expect(store.providerLocationOf('old-fern')).toBeNull()
-    expect(store.firstLaunchOf({ id: 'old-fern', model: 'fictional-model' })).toBe(true)
-    const original = db.prepare('SELECT * FROM provider_session WHERE id = ?').get('old-fern')
     expect(() =>
       store.create({
-        id: 'premature-location',
+        id: 'old-fern',
         profileId: 'fern',
         provider: 'codex',
         cwd: folder,
         approvalMode: 'ask',
-        providerLocation: 'default/fern/codex',
       }),
-    ).toThrow()
-    expect(
-      db.prepare('SELECT 1 FROM provider_session WHERE id = ?').get('premature-location'),
-    ).toBeUndefined()
+    ).not.toThrow()
+    expect(store.providerLocationOf('old-fern')).toBeNull()
+    expect(store.firstLaunchOf({ id: 'old-fern', model: 'fictional-model' })).toBe(true)
+    expect(() =>
+      store.adopt({
+        id: 'old-adopted',
+        profileId: 'fern',
+        provider: 'codex',
+        sessionId: 'fictional-native-ref',
+        cwd: folder,
+        createdAt: 20,
+        updatedAt: 30,
+      }),
+    ).not.toThrow()
+    expect(store.providerLocationOf('old-adopted')).toBeNull()
+    const original = db.prepare('SELECT * FROM provider_session WHERE id = ?').get('old-fern')
+    const changes = () => db.prepare('SELECT total_changes() AS count').get()
+    const beforeRefusals = changes()
+    for (const attempt of [
+      () =>
+        store.create({
+          id: 'premature-location',
+          profileId: 'wren',
+          provider: 'codex',
+          cwd: folder,
+          approvalMode: 'ask',
+          providerLocation: 'default/wren/codex',
+        }),
+      () =>
+        store.adopt({
+          id: 'premature-adoption',
+          profileId: 'wren',
+          provider: 'codex',
+          sessionId: 'fictional-adopted-ref',
+          cwd: folder,
+          providerLocation: 'default/wren/codex',
+          createdAt: 20,
+          updatedAt: 30,
+        }),
+      () =>
+        store.firstLaunchOf({
+          id: 'old-fern',
+          model: 'another-fictional-model',
+          providerLocation: 'default/fern/codex',
+        }),
+    ]) {
+      expect(attempt).toThrow()
+      expect(changes()).toEqual(beforeRefusals)
+    }
+    expect(db.prepare('SELECT * FROM provider_session WHERE id = ?').get('old-fern')).toEqual(
+      original,
+    )
     applyMigrations(db, migrations)
     expect(store.providerLocationOf('old-fern')).toBeNull()
     const migrated = db
@@ -121,5 +161,20 @@ it.each([12, 15, 16, 17, 19])(
       providerLocation: 'default/fern/codex',
     })
     expect(store.providerLocationOf('new-fern')).toBe('default/fern/codex')
+    expect(store.firstLaunchOf({ id: 'old-fern', providerLocation: 'default/fern/codex' })).toBe(
+      true,
+    )
+    expect(store.providerLocationOf('old-fern')).toBe('default/fern/codex')
+    store.adopt({
+      id: 'new-adopted',
+      profileId: 'fern',
+      provider: 'codex',
+      sessionId: 'fictional-new-ref',
+      cwd: folder,
+      providerLocation: 'default/fern/codex',
+      createdAt: 40,
+      updatedAt: 50,
+    })
+    expect(store.providerLocationOf('new-adopted')).toBe('default/fern/codex')
   },
 )
