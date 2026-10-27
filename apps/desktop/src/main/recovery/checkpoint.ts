@@ -1,7 +1,8 @@
 import Database from 'better-sqlite3'
 import { randomUUID } from 'node:crypto'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import type { OfferedCheckpoint, ProgressListener } from '../../shared/recovery'
+import type { RetainedRecoveryCopy } from '../../shared/recovery-retention'
 import { freeBytesOn } from '../archive/native-file'
 import { keepNoMoreOpenThanTheData } from '../data-folder-privacy'
 import type { HostGateVerdict } from '../one-host-gate'
@@ -118,10 +119,10 @@ const RESTORED_WITH_THE_DATABASE: ReadonlySet<string> = new Set(
   APP_STATE_FILES.filter((file) => file.restore === 'with-the-database').map((file) => file.name),
 )
 
-/** How many of the newest offerable checkpoints {@link prune} keeps. */
-const KEEP_NEWEST = 2
-/** A migration-count copy is kept only while it is this recent, unless it is newest overall. */
-const KEEP_WITHIN_MS = 7 * 24 * 60 * 60 * 1000
+/** The one copy made before the latest upgrade. */
+const KEEP_NEWEST = 1
+/** Age at which even the last copy expires after a successful database open. */
+const KEEP_WITHIN_MS = 3 * 24 * 60 * 60 * 1000
 /** A checkpoint folder with no manifest this old is a copy that never finished. */
 const UNFINISHED_AFTER_MS = 60 * 60 * 1000
 /** The room a copy needs beyond the database's own size, for the copy's journal and the rest. */
@@ -216,7 +217,16 @@ export async function checkpointNeeded(
       break
     }
   }
-  return needsACheckpoint({ ...facts, intact })
+  const needed = needsACheckpoint({ ...facts, intact })
+  if (needed === 'first-start-of-release') {
+    try {
+      const receipt = await readRetentionReceipt(userData, fs)
+      if (receipt?.appVersion === release) return null
+    } catch {
+      // An unreadable receipt cannot establish that this release has already opened.
+    }
+  }
+  return needed
 }
 
 /**
@@ -464,20 +474,17 @@ export interface PruneOptions {
   readonly includeUnfinished?: boolean
   /** Also keep copies from a later app version when pruning before this version starts. */
   readonly currentAppVersion?: string
+  /** Before migrations, even an expired newest intact copy must survive until a new one exists. */
+  readonly expire?: boolean
 }
 
 /**
  * Lets go of the checkpoints no longer kept, and returns the folder names it removed.
  *
- * Of this workspace's checkpoints this build could offer and finds intact by their hashes, it
- * keeps the newest {@link KEEP_NEWEST} and the newest of each migration count while they are at
- * most seven days old. The newest copy overall survives regardless of age. A copy from before a
- * schema change therefore survives later copies for up to seven days. Any other checkpoint is
- * never removed and holds no place among those kept: one whose files are not all there or no
- * longer match its manifest, one a newer build made, one of another workspace. A folder with no
- * manifest is a copy that never finished, removed only when its name is an id this app makes, it
- * holds the writer's `unfinished` file, it has not changed for an hour, and it holds nothing but
- * files the writer makes. Without that file it is left: it may be data a person moved there.
+ * Keeps one newest intact copy, until three days or three successful starts of its version.
+ * Before migrations the newest copy is protected regardless of expiry. Foreign, damaged,
+ * unreadable and newer-build copies remain protected. Unfinished writer-marked UUID folders
+ * are removed after an hour; timestamp folders require a valid current-workspace manifest.
  *
  * It removes nothing unless this process is the only app on the data folder, and nothing in a run
  * where anything in `backups/` could not be read, since what to keep is then not known.
@@ -500,7 +507,12 @@ export async function prune(
   let workspace: WorkspaceIdOnDisk
   try {
     await assertOwnedPathsAreReal(userData, [], fs)
-    folders = await foldersInBackups(userData, fs)
+    if (
+      (await pathExists(join(userData, 'recovery', 'history-only.json'), fs)) ||
+      (await pathExists(join(userData, 'recovery', 'restore-journal.json'), fs))
+    )
+      return []
+    folders = await foldersInBackups(userData, fs, true)
     workspace = await readWorkspaceId(userData, fs)
   } catch (error) {
     return notThisTime(messageOf(error))
@@ -513,6 +525,12 @@ export async function prune(
     return notThisTime(`${workspaceIdFile(userData)} could not be read.`)
   }
 
+  let receipt: RetentionReceipt | null
+  try {
+    receipt = await readRetentionReceipt(userData, fs)
+  } catch (error) {
+    return notThisTime(messageOf(error))
+  }
   const whole: Checkpoint[] = []
   for (const checkpoint of workspace.kind === 'id' ? ofThisWorkspace(workspace.id, folders) : []) {
     if (
@@ -530,10 +548,35 @@ export async function prune(
   // kept while another would go, newest first, giving its place to the next when it does not
   // match; then each copy that would go, just before it goes.
   let candidates = whole
-  const keepFrom = now() - KEEP_WITHIN_MS
+  const keepingOf = (copies: readonly Checkpoint[]): Set<string> => {
+    // Timestamp leftovers cannot be restored through the UUID-only restore contract. They must
+    // never displace the newest usable copy. Keep a newer leftover until its own age expires.
+    const usable = copies.filter((copy) => basename(copy.folder) === copy.manifest.id)
+    const newest = usable[0]
+    const expired =
+      newest !== undefined &&
+      options.expire !== false &&
+      (now() - Date.parse(newest.manifest.createdAt) >= KEEP_WITHIN_MS ||
+        (receipt?.checkpointId === newest.manifest.id &&
+          receipt.appVersion === newest.manifest.madeBy.appVersion &&
+          receipt.successfulStarts >= 3))
+    const kept = new Set(
+      expired ? [] : usable.slice(0, KEEP_NEWEST).map(({ manifest }) => manifest.id),
+    )
+    for (const copy of copies.filter((one) => basename(one.folder) !== one.manifest.id)) {
+      if (
+        options.expire === false ||
+        (now() - Date.parse(copy.manifest.createdAt) < KEEP_WITHIN_MS &&
+          (!newest || Date.parse(copy.manifest.createdAt) > Date.parse(newest.manifest.createdAt)))
+      ) {
+        kept.add(copy.manifest.id)
+      }
+    }
+    return kept
+  }
   const intact = new Set<string>()
   for (;;) {
-    const keeping = keptOf(candidates, keepFrom)
+    const keeping = keepingOf(candidates)
     if (candidates.every(({ manifest }) => keeping.has(manifest.id))) break
     const unchecked = candidates.find(
       ({ manifest }) => keeping.has(manifest.id) && !intact.has(manifest.id),
@@ -542,16 +585,21 @@ export async function prune(
     if (await isIntact(unchecked, fs)) intact.add(unchecked.manifest.id)
     else candidates = candidates.filter((checkpoint) => checkpoint !== unchecked)
   }
-  const kept = keptOf(candidates, keepFrom)
+  const kept = keepingOf(candidates)
   const goes: string[] = []
   for (const checkpoint of candidates) {
     if (!kept.has(checkpoint.manifest.id) && (await isIntact(checkpoint, fs))) {
-      goes.push(checkpoint.manifest.id)
+      try {
+        if (await onlyCheckpointFiles(checkpoint, fs)) goes.push(basename(checkpoint.folder))
+      } catch (error) {
+        return notThisTime(messageOf(error))
+      }
     }
   }
 
   const unfinished = (options.includeUnfinished === false ? [] : folders).flatMap(
     ({ name, found }) =>
+      isUuid(name) &&
       found.kind === 'unfinished' &&
       found.marked &&
       found.onlyTheWritersFiles &&
@@ -561,7 +609,7 @@ export async function prune(
   )
   const removed: string[] = []
   for (const name of [...goes, ...unfinished]) {
-    const folder = checkpointDir(userData, name)
+    const folder = join(backupsDir(userData), name)
     try {
       await assertOwnedPathsAreReal(userData, [folder], fs)
       await retrying(() => fs.rm(folder, { recursive: true, force: true }))
@@ -603,22 +651,6 @@ function newerAppVersion(candidate: string, current: string): boolean {
     return left > right
   }
   return false
-}
-
-/** The newest copy, plus recent copies within the count and migration-count limits. */
-function keptOf(newestFirst: readonly Checkpoint[], keepFrom: number): Set<string> {
-  const eligible = newestFirst.filter(
-    ({ manifest }, index) => index === 0 || Date.parse(manifest.createdAt) >= keepFrom,
-  )
-  const kept = new Set(eligible.slice(0, KEEP_NEWEST).map(({ manifest }) => manifest.id))
-  const anchored = new Set<number>()
-  for (const { manifest } of eligible) {
-    const count = manifest.database.migrations.length
-    if (anchored.has(count)) continue
-    anchored.add(count)
-    kept.add(manifest.id)
-  }
-  return kept
 }
 
 function sameMigrations(a: readonly Migration[], b: readonly Migration[]): boolean {
@@ -859,7 +891,11 @@ const OTHER: FoundInBackups = { kind: 'other' }
 const UNKNOWN: FoundInBackups = { kind: 'unknown' }
 
 /** Every folder in `backups/` named by an id this app makes. Throws when `backups/` is unreadable. */
-async function foldersInBackups(userData: string, fs: RecoveryFs): Promise<InBackups[]> {
+async function foldersInBackups(
+  userData: string,
+  fs: RecoveryFs,
+  includeLegacy = false,
+): Promise<InBackups[]> {
   let names: string[]
   try {
     names = await fs.readdir(backupsDir(userData))
@@ -868,7 +904,9 @@ async function foldersInBackups(userData: string, fs: RecoveryFs): Promise<InBac
     throw error
   }
   const folders: InBackups[] = []
-  for (const name of names.filter(isUuid).sort()) {
+  for (const name of names
+    .filter((name) => isUuid(name) || (includeLegacy && /^\d{8}-\d{6}$/.test(name)))
+    .sort()) {
     folders.push({ name, found: await readFolder(userData, name, fs) })
   }
   return folders
@@ -905,8 +943,8 @@ async function lstatOrNull(path: string, fs: RecoveryFs): Promise<RecoveryStats 
 }
 
 async function readFolder(userData: string, name: string, fs: RecoveryFs): Promise<FoundInBackups> {
-  const folder = checkpointDir(userData, name)
-  const manifestPath = manifestFile(userData, name)
+  const folder = join(backupsDir(userData), name)
+  const manifestPath = join(folder, MANIFEST_FILE)
   try {
     const stats = await lstatOrNull(folder, fs)
     if (stats === null || stats.isSymbolicLink() || !stats.isDirectory()) return OTHER
@@ -916,7 +954,7 @@ async function readFolder(userData: string, name: string, fs: RecoveryFs): Promi
     const text = await readTextOrNull(manifestPath, fs)
     if (text === null) return UNKNOWN
     const parsed = parseManifest(text)
-    if (!parsed.ok || parsed.value.id !== name) return OTHER
+    if (!parsed.ok || (isUuid(name) && parsed.value.id !== name)) return OTHER
     return { kind: 'checkpoint', checkpoint: { folder, manifest: parsed.value } }
   } catch {
     return UNKNOWN
@@ -1009,4 +1047,172 @@ function newestFirst(a: Checkpoint, b: Checkpoint): number {
   const byTime = Date.parse(b.manifest.createdAt) - Date.parse(a.manifest.createdAt)
   if (byTime !== 0) return byTime
   return a.manifest.id < b.manifest.id ? 1 : a.manifest.id > b.manifest.id ? -1 : 0
+}
+
+const RETENTION_FILE = 'retention.json'
+interface RetentionReceipt {
+  readonly format: 'brocrew-recovery-retention'
+  readonly version: 1
+  readonly workspaceId: string
+  readonly appVersion: string
+  readonly checkpointId: string | null
+  readonly successfulStarts: number
+}
+
+async function readRetentionReceipt(
+  userData: string,
+  fs: RecoveryFs,
+): Promise<RetentionReceipt | null> {
+  const path = join(backupsDir(userData), RETENTION_FILE)
+  await assertOwnedPathsAreReal(userData, [path, workspaceIdFile(userData)], fs)
+  const text = await readTextOrNull(path, fs)
+  if (text === null) return null
+  const value = JSON.parse(text) as Partial<RetentionReceipt> | null
+  const workspace = await readWorkspaceId(userData, fs)
+  if (
+    value?.format !== 'brocrew-recovery-retention' ||
+    value.version !== 1 ||
+    workspace.kind !== 'id' ||
+    value.workspaceId !== workspace.id ||
+    typeof value.appVersion !== 'string' ||
+    value.appVersion.length === 0 ||
+    !(
+      value.checkpointId === null ||
+      (typeof value.checkpointId === 'string' && isUuid(value.checkpointId))
+    ) ||
+    !Number.isSafeInteger(value.successfulStarts) ||
+    (value.successfulStarts ?? -1) < 0
+  ) {
+    throw new Error('The recovery copy start record could not be read.')
+  }
+  return value as RetentionReceipt
+}
+
+/** Called once per process only after the database opened and migrations completed. */
+export async function recordSuccessfulStart(
+  userData: string,
+  lineage: readonly BuildMigration[],
+  options: PruneOptions,
+): Promise<void> {
+  if (options.ownership !== 'sole' || options.currentAppVersion === undefined) return
+  const fs = options.fs ?? nodeFs
+  await assertOwnedPathsAreReal(userData, [], fs)
+  // A history-only restore must keep its copy and must never count as a successful new start.
+  if (
+    (await pathExists(join(userData, 'recovery', 'history-only.json'), fs)) ||
+    (await pathExists(join(userData, 'recovery', 'restore-journal.json'), fs))
+  )
+    return
+  const workspace = await readWorkspaceId(userData, fs)
+  if (workspace.kind !== 'id') return
+  const previous = await readRetentionReceipt(userData, fs)
+  const newest = (await listOfferable(userData, lineage, fs))[0]
+  const checkpointId = newest?.manifest.id ?? previous?.checkpointId ?? null
+  const same =
+    previous?.appVersion === options.currentAppVersion && previous.checkpointId === checkpointId
+  const receipt: RetentionReceipt = {
+    format: 'brocrew-recovery-retention',
+    version: 1,
+    workspaceId: workspace.id,
+    appVersion: options.currentAppVersion,
+    checkpointId,
+    successfulStarts: Math.min(3, same ? previous.successfulStarts + 1 : 1),
+  }
+  const path = join(backupsDir(userData), RETENTION_FILE)
+  await assertOwnedPathsAreReal(userData, [path], fs)
+  await writeAtomically(path, JSON.stringify(receipt) + '\n', fs)
+}
+
+/** Refuse extra files, links and unexpected directories before removing an entire folder. */
+async function onlyCheckpointFiles(checkpoint: Checkpoint, fs: RecoveryFs): Promise<boolean> {
+  const allowed = new Set([
+    MANIFEST_FILE,
+    UNFINISHED_FILE,
+    COPY_FILE,
+    ...checkpoint.manifest.files.filter((file) => file.present).map((file) => file.name),
+  ])
+  for (const name of await fs.readdir(checkpoint.folder)) {
+    if (!allowed.has(name)) return false
+    const stat = await fs.lstat(join(checkpoint.folder, name))
+    if (
+      stat.isSymbolicLink() ||
+      !(stat.isFile() || (SKILL_TREES.includes(name) && stat.isDirectory()))
+    )
+      return false
+  }
+  return true
+}
+
+export async function retainedCopyInfo(
+  userData: string,
+  lineage: readonly BuildMigration[],
+  options: PruneOptions,
+): Promise<RetainedRecoveryCopy | null> {
+  const fs = options.fs ?? nodeFs
+  await assertOwnedPathsAreReal(userData, [], fs)
+  const receipt = await readRetentionReceipt(userData, fs)
+  const copy = (await listOfferable(userData, lineage, fs)).find(
+    ({ manifest }) =>
+      options.currentAppVersion === undefined ||
+      !newerAppVersion(manifest.madeBy.appVersion, options.currentAppVersion),
+  )
+  if (!copy) return null
+  return {
+    id: copy.manifest.id,
+    bytes:
+      copy.manifest.database.bytes +
+      copy.manifest.files.reduce((total, file) => total + (file.present ? file.bytes : 0), 0),
+    expiresAt: new Date(Date.parse(copy.manifest.createdAt) + KEEP_WITHIN_MS).toISOString(),
+    startsLeft: Math.max(
+      0,
+      3 -
+        (receipt?.checkpointId === copy.manifest.id &&
+        receipt.appVersion === copy.manifest.madeBy.appVersion
+          ? receipt.successfulStarts
+          : 0),
+    ),
+  }
+}
+
+/** Delete only the still-current selected copy, under the same safety checks as pruning. */
+export async function deleteRetainedCopy(
+  userData: string,
+  lineage: readonly BuildMigration[],
+  id: string,
+  options: PruneOptions,
+): Promise<boolean> {
+  if (options.ownership !== 'sole' || !isUuid(id)) return false
+  const fs = options.fs ?? nodeFs
+  try {
+    await assertOwnedPathsAreReal(userData, [], fs)
+    if (
+      (await pathExists(join(userData, 'recovery', 'history-only.json'), fs)) ||
+      (await pathExists(join(userData, 'recovery', 'restore-journal.json'), fs))
+    )
+      return false
+    const folders = await foldersInBackups(userData, fs, true)
+    if (folders.some(({ found }) => found.kind === 'unknown')) return false
+    const receipt = await readRetentionReceipt(userData, fs)
+    const workspace = await readWorkspaceId(userData, fs)
+    if (workspace.kind !== 'id') return false
+    const candidates = ofThisWorkspace(workspace.id, folders)
+    // If a newer or unreadable copy is present, a stale Settings view must not delete around it.
+    const copy = candidates[0]
+    if (
+      !copy ||
+      copy.manifest.id !== id ||
+      !couldBeOffered(copy, lineage) ||
+      (options.currentAppVersion !== undefined &&
+        newerAppVersion(copy.manifest.madeBy.appVersion, options.currentAppVersion)) ||
+      !(await isIntact(copy, fs)) ||
+      !(await onlyCheckpointFiles(copy, fs))
+    )
+      return false
+    if (!receipt || receipt.appVersion !== copy.manifest.madeBy.appVersion) return false
+    await assertOwnedPathsAreReal(userData, [copy.folder], fs)
+    await retrying(() => fs.rm(copy.folder, { recursive: true, force: true }))
+    return true
+  } catch {
+    return false
+  }
 }
