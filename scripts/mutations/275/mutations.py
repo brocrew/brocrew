@@ -476,8 +476,8 @@ MUTATIONS = [
             (
                 LEDGER,
                 # Source-only re-anchor; the mutation verdict has not been re-verified.
-                "      [\n        'codex',\n        [\n          'refreshManagedPlugins',\n          'builtInSkillsConfirmed',\n          'launchedAs',\n          'providerCommands',\n          'backgroundWork',\n          'account',\n        ],\n      ],\n",
-                "      [\n        'codex',\n        [\n          'refreshManagedPlugins',\n          'builtInSkillsConfirmed',\n          'launchedAs',\n          'providerCommands',\n          'backgroundWork',\n          'stopBackgroundWork',\n          'account',\n        ],\n      ],\n",
+                "      [\n        'codex',\n        [\n          'isRetiring',\n          'refreshManagedPlugins',\n          'builtInSkillsConfirmed',\n          'launchedAs',\n          'providerCommands',\n          'backgroundWork',\n          'account',\n        ],\n      ],\n",
+                "      [\n        'codex',\n        [\n          'isRetiring',\n          'refreshManagedPlugins',\n          'builtInSkillsConfirmed',\n          'launchedAs',\n          'providerCommands',\n          'backgroundWork',\n          'stopBackgroundWork',\n          'account',\n        ],\n      ],\n",
             )
         ],
     ),

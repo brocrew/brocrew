@@ -76,7 +76,8 @@
     "scripts/mutations/ATTESTATION.json",
     "scripts/mutations/CENSUS.md",
     "packages/runtime/test/conformance.test.ts",
-    "scripts/test/public-repo-checks.test.mjs"
+    "scripts/test/public-repo-checks.test.mjs",
+    "scripts/mutations/275/mutations.py"
   ],
   "files": [
     {
