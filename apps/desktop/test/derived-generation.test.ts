@@ -117,6 +117,39 @@ describe('the derived-generation contract (065)', () => {
       expect(status.derivedThrough).toBe(6)
     })
 
+    it('leaves every stored row and version untouched when an older projection is opened again', async () => {
+      planted(6)
+      await derive()
+      db.prepare('UPDATE derived_generation SET normalizer_version = ? WHERE session_id = ?').run(
+        NORMALIZER_VERSION - 1,
+        SESSION,
+      )
+      const before = store.events(SESSION)
+      const generation = db
+        .prepare('SELECT * FROM derived_generation WHERE session_id = ?')
+        .get(SESSION)
+      let reads = 0
+      expect(
+        await deriveLedger(
+          store,
+          SESSION,
+          'claude',
+          () => {
+            reads++
+            throw new Error('an existing projection must not read the provider file')
+          },
+          { fallbackAt: 1_700_000_000_000, rebuild: false },
+        ),
+      ).toBe('skipped')
+      expect(reads).toBe(0)
+      expect(store.events(SESSION)).toEqual(before)
+      expect(
+        db.prepare('SELECT * FROM derived_generation WHERE session_id = ?').get(SESSION),
+      ).toEqual(generation)
+      expect(store.ledgerStatus(SESSION).derived).toBe('stale')
+      expect(store.ledgerStatus(SESSION).normalizerVersion).toBe(NORMALIZER_VERSION - 1)
+    })
+
     it('says nothing about a ledger that was RECORDED rather than projected', () => {
       // A session this app ran. Its ledger is the recording — and `current` would be a claim about a
       // reading nobody made.

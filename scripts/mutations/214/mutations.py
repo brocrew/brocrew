@@ -273,7 +273,7 @@ MUTATIONS = [
         "the misattribution, never reads stale, and is never offered a Rebuild",
         # ⚑ 680 corrected this anchor in place (not retired): 680 bumped the version to 4 for the Claude
         # importer, so the row takes BOTH bumps away — back to 2, the state 214's §2 guards against.
-        [(NORM, "export const NORMALIZER_VERSION = 4", "export const NORMALIZER_VERSION = 2")],
+        [(NORM, "export const NORMALIZER_VERSION = 5", "export const NORMALIZER_VERSION = 2")],
     ),
     (
         "M32 · 🔴 §2 · a message that IS one wrapped element speaks in the user's name again — the "

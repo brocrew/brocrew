@@ -27,8 +27,9 @@
  * | `2` | Both importers mark imported `user_turn` events with `attribution: 'provider_transcript'`, since the app did not observe the person typing them. |
  * | `3` | `import-codex.ts` separates harness-injected developer/user context from the person's request instead of attributing it to the person. Older ledgers need Rebuild to correct their bubbles. |
  * | `4` | `import-claude.ts` diverts synthetic API notices to errors for every error word and for wordless `isApiErrorMessage` notices. Older ledgers need Rebuild to stop showing provider notices as assistant words. |
+ * | `5` | Claude's explicit `end_turn` survives archive import as final phase; older projections remain readable and rebuild only on request. |
  */
-export const NORMALIZER_VERSION = 4
+export const NORMALIZER_VERSION = 5
 
 /**
  * The version a ledger with no recorded one is treated as having.

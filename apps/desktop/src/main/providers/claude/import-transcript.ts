@@ -122,12 +122,26 @@ function recordToEvents(record: Record_, edits: FileEdits): TranscriptEvent[] {
 function assistantEvents(record: Record_, edits: FileEdits): TranscriptEvent[] {
   const events: TranscriptEvent[] = []
   const content = messageContent(record)
+  const message = record['message']
+  const final =
+    isRecord(message) &&
+    message['stop_reason'] === 'end_turn' &&
+    record['error'] === undefined &&
+    record['aborted'] !== true &&
+    (typeof content === 'string' ||
+      (Array.isArray(content) &&
+        !content.some((block) => isRecord(block) && block['type'] === 'tool_use')))
   // ⛔ **No sub-agent attribution is made here** — see the block above {@link summarizeToolInput},
   // where `subAgentParent` used to be. The key it read exists in none of the 13,862 native
   // transcripts on this machine (131, ruling 130's §3).
   let run = ''
   const flush = (): void => {
-    if (run) events.push({ type: 'assistant_message', text: run })
+    if (run)
+      events.push({
+        type: 'assistant_message',
+        text: run,
+        ...(final ? { phase: 'final' as const } : {}),
+      })
     run = ''
   }
 
@@ -153,7 +167,6 @@ function assistantEvents(record: Record_, edits: FileEdits): TranscriptEvent[] {
   }
   flush()
 
-  const message = record['message']
   const error = isRecord(message) ? record['error'] : undefined
   // ⚑ The CLI's own message, marked as an error by a word or — on a record with none — by the
   // `isApiErrorMessage` the archive carries (680's review: a notice can arrive with no word).
