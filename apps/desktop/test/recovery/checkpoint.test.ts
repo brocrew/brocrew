@@ -5,6 +5,7 @@ import {
   appendFileSync,
   copyFileSync,
   cpSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -1685,4 +1686,232 @@ describe('retention safety boundaries', () => {
       expect(readdirSync(join(userData, 'backups'))).not.toContain('retention.json')
     },
   )
+})
+
+describe('resuming an authorized recovery copy deletion', () => {
+  async function interrupted(file = 'drafts.json') {
+    const userData = aDataFolder()
+    aLiveDatabase(userData)
+    writeFileSync(join(userData, 'drafts.json'), '{"draft":"fictional only"}')
+    const copy = await make(userData, { now: () => START })
+    const options = { ...SOLE, currentAppVersion: copy.manifest.madeBy.appVersion }
+    await recordSuccessfulStart(userData, LINEAGE, options)
+    let fragment = copy.folder
+    let attempts = 0
+    const fs: RecoveryFs = {
+      ...nodeFs,
+      rm: async (path, settings) => {
+        if (!settings?.recursive || !existsSync(join(path, file))) return nodeFs.rm(path, settings)
+        fragment = path
+        attempts++
+        await nodeFs.rm(join(path, file), { force: true })
+        throw coded('EIO')
+      },
+    }
+    expect(await deleteRetainedCopy(userData, LINEAGE, copy.manifest.id, { ...options, fs })).toBe(
+      false,
+    )
+    expect(attempts).toBe(1)
+    expect(existsSync(join(fragment, 'database.sqlite'))).toBe(true)
+    return { userData, copy, options, fragment }
+  }
+
+  it.each(['drafts.json', 'manifest.json'])(
+    'keeps a fragment visible after losing %s; a healthy retry finishes and is idempotent',
+    async (file) => {
+      const { userData, copy, options, fragment } = await interrupted(file)
+      const personal = join(userData, 'backups', '20260101-020202')
+      mkdirSync(personal)
+      writeFileSync(join(personal, 'my-notes.txt'), 'fictional personal copy')
+      expect(await retainedCopyInfo(userData, LINEAGE, options)).toMatchObject({
+        id: copy.manifest.id,
+      })
+      expect(await listOfferable(userData, LINEAGE)).toEqual([])
+      expect(await deleteRetainedCopy(userData, LINEAGE, copy.manifest.id, options)).toBe(true)
+      expect(existsSync(fragment)).toBe(false)
+      expect(await deleteRetainedCopy(userData, LINEAGE, copy.manifest.id, options)).toBe(true)
+      expect(await retainedCopyInfo(userData, LINEAGE, options)).toBeNull()
+      expect(readFileSync(join(personal, 'my-notes.txt'), 'utf8')).toBe('fictional personal copy')
+    },
+  )
+
+  it('pruning finishes a confirmed partial deletion instead of keeping its remaining database forever', async () => {
+    const { userData, copy, options, fragment } = await interrupted()
+    expect(await prune(userData, LINEAGE, { ...options, now: () => START + 4 * DAY_MS })).toEqual([
+      copy.manifest.id,
+    ])
+    expect(existsSync(fragment)).toBe(false)
+    expect(await prune(userData, LINEAGE, options)).toEqual([])
+  })
+
+  it('a healthy retry removes the database left by an EIO midway through confirmed Delete now', async () => {
+    const { userData, copy, options, fragment } = await interrupted()
+    expect(await deleteRetainedCopy(userData, LINEAGE, copy.manifest.id, options)).toBe(true)
+    expect(existsSync(fragment)).toBe(false)
+  })
+
+  it('still refuses shared ownership, unfinished restores and unreadable sibling folders on retry', async () => {
+    const { userData, copy, options, fragment } = await interrupted()
+    for (const ownership of ['taken', 'unknown'] as const) {
+      expect(
+        await deleteRetainedCopy(userData, LINEAGE, copy.manifest.id, { ...options, ownership }),
+      ).toBe(false)
+      expect(await prune(userData, LINEAGE, { ...options, ownership })).toEqual([])
+    }
+    mkdirSync(join(userData, 'recovery'))
+    const gate = join(userData, 'recovery', 'restore-journal.json')
+    writeFileSync(gate, 'fictional unfinished restore')
+    expect(await deleteRetainedCopy(userData, LINEAGE, copy.manifest.id, options)).toBe(false)
+    expect(await prune(userData, LINEAGE, options)).toEqual([])
+    rmSync(gate)
+    const sibling = await make(userData)
+    const fs = {
+      ...nodeFs,
+      lstat: (path: string) =>
+        path === sibling.folder ? Promise.reject(coded('EIO')) : nodeFs.lstat(path),
+    }
+    expect(await deleteRetainedCopy(userData, LINEAGE, copy.manifest.id, { ...options, fs })).toBe(
+      false,
+    )
+    expect(await prune(userData, LINEAGE, { ...options, fs, warn: () => undefined })).toEqual([])
+    expect(existsSync(join(fragment, 'database.sqlite'))).toBe(true)
+  })
+
+  it('never treats replacement or extra personal files as authorized remnants', async () => {
+    const { userData, copy, options, fragment } = await interrupted()
+    writeFileSync(join(fragment, 'my-notes.txt'), 'fictional private notes')
+    expect(await deleteRetainedCopy(userData, LINEAGE, copy.manifest.id, options)).toBe(false)
+    expect(await prune(userData, LINEAGE, { ...options, warn: () => undefined })).toEqual([])
+    rmSync(join(fragment, 'my-notes.txt'))
+    const aside = `${fragment}-saved-by-person`
+    renameSync(fragment, aside)
+    mkdirSync(fragment)
+    writeFileSync(join(fragment, 'database.sqlite'), 'fictional personal replacement')
+    expect(await deleteRetainedCopy(userData, LINEAGE, copy.manifest.id, options)).toBe(false)
+    expect(await prune(userData, LINEAGE, { ...options, warn: () => undefined })).toEqual([])
+    expect(readFileSync(join(fragment, 'database.sqlite'), 'utf8')).toBe(
+      'fictional personal replacement',
+    )
+    expect(existsSync(join(aside, 'database.sqlite'))).toBe(true)
+  })
+
+  it('refuses a new personal file even when its name belonged to a deleted child', async () => {
+    const { userData, copy, options, fragment } = await interrupted()
+    writeFileSync(join(fragment, 'drafts.json'), '{"draft":"new fictional personal file"}')
+    expect(await deleteRetainedCopy(userData, LINEAGE, copy.manifest.id, options)).toBe(false)
+    expect(await prune(userData, LINEAGE, { ...options, warn: () => undefined })).toEqual([])
+    expect(readFileSync(join(fragment, 'drafts.json'), 'utf8')).toContain(
+      'new fictional personal file',
+    )
+  })
+
+  it('does not begin removal if the durable deletion record cannot be written', async () => {
+    const userData = aDataFolder()
+    aLiveDatabase(userData)
+    const copy = await make(userData)
+    const options = { ...SOLE, currentAppVersion: copy.manifest.madeBy.appVersion }
+    await recordSuccessfulStart(userData, LINEAGE, options)
+    const fs: RecoveryFs = {
+      ...nodeFs,
+      open: (path, flags, mode, noFollow) =>
+        flags === 'wx' ? Promise.reject(coded('EIO')) : nodeFs.open(path, flags, mode, noFollow),
+    }
+    expect(await deleteRetainedCopy(userData, LINEAGE, copy.manifest.id, { ...options, fs })).toBe(
+      false,
+    )
+    expect(await isIntact(copy)).toBe(true)
+  })
+
+  it('resumes after the move succeeds but its acknowledgement is lost', async () => {
+    const userData = aDataFolder()
+    aLiveDatabase(userData)
+    const copy = await make(userData)
+    const options = { ...SOLE, currentAppVersion: copy.manifest.madeBy.appVersion }
+    await recordSuccessfulStart(userData, LINEAGE, options)
+    let moved = ''
+    const fs: RecoveryFs = {
+      ...nodeFs,
+      rename: async (from, to) => {
+        await nodeFs.rename(from, to)
+        if (from === copy.folder) {
+          moved = to
+          throw coded('EIO')
+        }
+      },
+    }
+    expect(await deleteRetainedCopy(userData, LINEAGE, copy.manifest.id, { ...options, fs })).toBe(
+      false,
+    )
+    expect(existsSync(join(moved, 'database.sqlite'))).toBe(true)
+    expect(await listOfferable(userData, LINEAGE)).toEqual([])
+    expect(await retainedCopyInfo(userData, LINEAGE, options)).toMatchObject({
+      id: copy.manifest.id,
+    })
+    expect(await deleteRetainedCopy(userData, LINEAGE, copy.manifest.id, options)).toBe(true)
+    expect(existsSync(moved)).toBe(false)
+  })
+
+  it('refuses an unreadable deletion record on retry and in pruning', async () => {
+    const { userData, copy, options, fragment } = await interrupted()
+    const fs = {
+      ...nodeFs,
+      readFile: (path: string) =>
+        path === join(userData, 'backups', 'deletion.json')
+          ? Promise.reject(coded('EIO'))
+          : nodeFs.readFile(path),
+    }
+    expect(await deleteRetainedCopy(userData, LINEAGE, copy.manifest.id, { ...options, fs })).toBe(
+      false,
+    )
+    expect(await prune(userData, LINEAGE, { ...options, fs, warn: () => undefined })).toEqual([])
+    expect(existsSync(join(fragment, 'database.sqlite'))).toBe(true)
+  })
+
+  it('a completed deletion receipt does not block the next valid copy or authorize its deletion by a stale id', async () => {
+    const { userData, copy, options } = await interrupted()
+    expect(await deleteRetainedCopy(userData, LINEAGE, copy.manifest.id, options)).toBe(true)
+    const next = await make(userData, { now: () => START + 1000 })
+    await recordSuccessfulStart(userData, LINEAGE, options)
+    expect(await deleteRetainedCopy(userData, LINEAGE, copy.manifest.id, options)).toBe(true)
+    expect(await isIntact(next)).toBe(true)
+    expect(await retainedCopyInfo(userData, LINEAGE, options)).toMatchObject({
+      id: next.manifest.id,
+    })
+    expect(await deleteRetainedCopy(userData, LINEAGE, next.manifest.id, options)).toBe(true)
+    expect(await retainedCopyInfo(userData, LINEAGE, options)).toBeNull()
+  })
+
+  it('protects an in-progress deletion from an older or incompatible build', async () => {
+    const { userData, copy, options, fragment } = await interrupted()
+    const older = { ...options, currentAppVersion: '0.0.1', warn: () => undefined }
+    expect(await deleteRetainedCopy(userData, LINEAGE, copy.manifest.id, older)).toBe(false)
+    expect(await prune(userData, LINEAGE, older)).toEqual([])
+    expect(await deleteRetainedCopy(userData, [], copy.manifest.id, options)).toBe(false)
+    expect(await prune(userData, [], { ...options, warn: () => undefined })).toEqual([])
+    expect(existsSync(join(fragment, 'database.sqlite'))).toBe(true)
+  })
+
+  it('never replaces a personal folder at the proposed deletion destination', async () => {
+    const userData = aDataFolder()
+    aLiveDatabase(userData)
+    const copy = await make(userData)
+    const options = { ...SOLE, currentAppVersion: copy.manifest.madeBy.appVersion }
+    await recordSuccessfulStart(userData, LINEAGE, options)
+    const personal = join(userData, 'backups', `deleting-${copy.manifest.id}`)
+    mkdirSync(personal)
+    writeFileSync(join(personal, 'my-notes.txt'), 'fictional personal folder')
+    expect(await deleteRetainedCopy(userData, LINEAGE, copy.manifest.id, options)).toBe(false)
+    expect(await isIntact(copy)).toBe(true)
+    expect(readFileSync(join(personal, 'my-notes.txt'), 'utf8')).toBe('fictional personal folder')
+  })
+
+  it.skipIf(!POSIX)('never follows a link added inside a partially deleted copy', async () => {
+    const { userData, copy, options, fragment } = await interrupted()
+    const personal = join(userData, 'fictional-personal.txt')
+    writeFileSync(personal, 'fictional personal target')
+    symlinkSync(personal, join(fragment, 'drafts.json'))
+    expect(await deleteRetainedCopy(userData, LINEAGE, copy.manifest.id, options)).toBe(false)
+    expect(await prune(userData, LINEAGE, { ...options, warn: () => undefined })).toEqual([])
+    expect(readFileSync(personal, 'utf8')).toBe('fictional personal target')
+  })
 })

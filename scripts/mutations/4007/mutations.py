@@ -41,8 +41,8 @@ MUTATIONS = [('M1 · retains two recovery copies — killed by `checkpoint.test.
  ('M11 · Settings clears its view after a failed delete — killed by '
   '`recovery-retention-settings.dom.test.ts`',
   [('apps/desktop/src/renderer/src/components/RecoveryCopiesSection.vue',
-    'status.value = "That didn\'t work. Try again."\n  } finally',
-    'copy.value = null\n    status.value = "That didn\'t work. Try again."\n  } finally')]),
+    'status.value = "Couldn\'t delete the recovery copy. Try again."\n  } finally',
+    'copy.value = null\n    status.value = "Couldn\'t delete the recovery copy. Try again."\n  } finally')]),
  ('M12 · prunes before new migrations without the expiry guard — killed by `coordinator.test.ts`',
   [('apps/desktop/src/main/recovery/coordinator.ts',
     '        expire: false,',

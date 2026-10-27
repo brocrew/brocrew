@@ -32,7 +32,7 @@ async function deleteNow(): Promise<void> {
     await bridge.deleteNow(copy.value.id)
     copy.value = await bridge.read()
   } catch {
-    status.value = "That didn't work. Try again."
+    status.value = "Couldn't delete the recovery copy. Try again."
   } finally {
     busy.value = false
     confirming.value = false
