@@ -493,7 +493,13 @@ describe('runtime IPC boundary', () => {
     // claiming there was more would put a "load earlier" control on a pane that has nothing to load.
     await expect(
       executeRuntimeCommand(host, sink, { kind: 'latestHistory', sessionId: 'sess_missing' }),
-    ).resolves.toEqual({ entries: [], from: 0, hasOlder: false, turnAligned: true })
+    ).resolves.toEqual({
+      entries: [],
+      from: 0,
+      hasOlder: false,
+      turnAligned: true,
+      humanAnswers: { latest: null, active: null },
+    })
     expect(host.sessionIds).toEqual([])
   })
 
