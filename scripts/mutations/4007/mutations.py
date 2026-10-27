@@ -16,10 +16,14 @@ MUTATIONS = [('M1 · retains two recovery copies — killed by `checkpoint.test.
     'if (receipt?.appVersion === release) return needed')]),
  ('M5 · ignores start-count reset for a new copy — killed by `checkpoint.test.ts`',
   [('apps/desktop/src/main/recovery/checkpoint.ts', 'previous.checkpointId === checkpointId', 'true')]),
- ('M6 · timestamp folders stay invisible — killed by `checkpoint.test.ts`',
+ ('M6 · prunes a copy during history-only recovery — killed by `checkpoint.test.ts`',
   [('apps/desktop/src/main/recovery/checkpoint.ts',
-    '(includeLegacy && /^\\d{8}-\\d{6}$/.test(name))',
-    '(false && includeLegacy && /^\\d{8}-\\d{6}$/.test(name))')]),
+    '    if (\n'
+    "      (await pathExists(join(userData, 'recovery', 'history-only.json'), fs)) ||\n"
+    "      (await pathExists(join(userData, 'recovery', 'restore-journal.json'), fs))\n"
+    '    )\n'
+    '      return []',
+    '    // planted: recovery gate ignored')]),
  ('M7 · removes a personal file beside the copy — killed by `checkpoint.test.ts`',
   [('apps/desktop/src/main/recovery/checkpoint.ts',
     'if (!allowed.has(name)) return false',
@@ -28,8 +32,8 @@ MUTATIONS = [('M1 · retains two recovery copies — killed by `checkpoint.test.
   [('apps/desktop/src/main/recovery/checkpoint.ts', 'copy.manifest.id !== id', 'false')]),
  ('M9 · Settings calls deletion twice while busy — killed by `recovery-retention-settings.dom.test.ts`',
   [('apps/desktop/src/renderer/src/components/RecoveryCopiesSection.vue',
-    'if (!bridge || busy.value || !copy.value) return',
-    'if (!bridge || !copy.value) return')]),
+    'if (!bridge || busy.value || !copy.value || !confirming.value) return',
+    'if (!bridge || !copy.value || !confirming.value) return')]),
  ('M10 · Settings ignores the delete action — killed by `recovery-retention-settings.dom.test.ts`',
   [('apps/desktop/src/renderer/src/components/RecoveryCopiesSection.vue',
     'await bridge.deleteNow(copy.value.id)',
