@@ -6,6 +6,21 @@ import { runtimeEventSchema } from '../src/events'
 import { ClaudeFinalAnswers } from '../src/claude/final-answers'
 import { readFileSync } from 'node:fs'
 
+function normalizedWith(finalAnswers: ClaudeFinalAnswers, message: object) {
+  return normalizeMessage(
+    message as SDKMessage,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    finalAnswers,
+  )
+}
+
 describe('provider-marked final messages', () => {
   it('preserves Codex final_answer and commentary through wire parsing, without guessing missing phase', () => {
     for (const [phase, expected] of [
@@ -46,19 +61,7 @@ describe('provider-marked final messages', () => {
 
   it('correlates Claude streamed end_turn to authoritative wrappers even when their stop_reason is null', () => {
     const finalAnswers = new ClaudeFinalAnswers()
-    const normalized = (message: object) =>
-      normalizeMessage(
-        message as SDKMessage,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        finalAnswers,
-      )
+    const normalized = (message: object) => normalizedWith(finalAnswers, message)
     normalized({
       type: 'stream_event',
       parent_tool_use_id: null,
@@ -92,6 +95,40 @@ describe('provider-marked final messages', () => {
       phase: 'final',
       messageId: first?.type === 'assistant_message' ? first.messageId : 'missing',
     })
+  })
+
+  it('leaves ordinary wrappers uncorrelated before a stream start and after a result', () => {
+    const registry = new ClaudeFinalAnswers()
+    const wrapper = {
+      type: 'assistant',
+      parent_tool_use_id: null,
+      message: { content: [{ type: 'text', text: 'Ordinary answer' }], stop_reason: null },
+    }
+    const ordinary = { type: 'assistant_message', text: 'Ordinary answer' }
+    expect(normalizedWith(registry, wrapper)).toEqual([ordinary])
+    normalizedWith(registry, {
+      type: 'stream_event',
+      parent_tool_use_id: null,
+      event: { type: 'message_start', message: { id: 'fictional-message' } },
+    })
+    expect(
+      normalizedWith(registry, { ...wrapper, message: { ...wrapper.message, id: 'other' } }),
+    ).toEqual([ordinary])
+    expect(
+      normalizedWith(registry, {
+        ...wrapper,
+        parent_tool_use_id: 'child',
+        message: { ...wrapper.message, id: 'fictional-message' },
+      }),
+    ).toEqual([{ ...ordinary, parentToolCallId: 'child' }])
+    normalizedWith(registry, { type: 'result' })
+    expect(normalizedWith(registry, wrapper)).toEqual([ordinary])
+    normalizedWith(registry, {
+      type: 'stream_event',
+      parent_tool_use_id: null,
+      event: { type: 'message_start', message: {} },
+    })
+    expect(normalizedWith(registry, wrapper)).toEqual([ordinary])
   })
 
   it('recognizes the existing captured person-turn stream shape through the production mapper', () => {

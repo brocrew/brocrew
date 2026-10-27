@@ -16,7 +16,9 @@ export class ClaudeFinalAnswers {
   } | null = null
 
   messageId(message: Extract<SDKMessage, { type: 'assistant' }>): string | undefined {
-    return message.parent_tool_use_id == null && this.current?.providerId === message.message.id
+    return this.current !== null &&
+      message.parent_tool_use_id == null &&
+      this.current.providerId === message.message.id
       ? this.current.correlation
       : undefined
   }
