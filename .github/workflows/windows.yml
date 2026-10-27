@@ -140,6 +140,7 @@ jobs:
         run: node scripts/third-party-notices.mjs --check
 
       - name: Build and package (NSIS, x64, unsigned)
+        shell: bash
         run: pnpm --filter @brobot2/desktop package:win -c.extraMetadata.version=0.1.8
 
       # The app carries no Claude Code, so the check runs the newest tested version, installed with
