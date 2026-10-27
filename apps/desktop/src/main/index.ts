@@ -12,6 +12,7 @@ import { profileSkillAccess, SharedSkillDiscovery } from './skills/shared-discov
 import { convertSharedSkills } from './skills/shared-conversion'
 import { SharedSkillLibrary } from './skills/shared-library'
 import { providerProcessesAreInFlight } from './runtime/live-hosts'
+import { armRecoveryExpiry } from './recovery/retention-timer'
 import { RECOVERY_RETENTION_CHANNELS } from '../shared/recovery-retention'
 import {
   prune,
@@ -421,19 +422,15 @@ async function scheduleRecoveryExpiry(): Promise<void> {
     currentAppVersion: app.getVersion(),
   })
   if (!copy) return
-  recoveryExpiryTimer = setTimeout(
-    () => {
-      void withRecoveryCopies(async () => {
-        await prune(app.getPath('userData'), theBuildsMigrations(), {
-          ownership: theOneAppAnswer?.held() ?? 'unknown',
-          currentAppVersion: app.getVersion(),
-        })
-        await scheduleRecoveryExpiry()
-      }).catch((error) => console.warn('BroCrew kept its recovery copy:', error))
-    },
-    Math.max(60_000, Date.parse(copy.expiresAt) - Date.now()),
-  )
-  recoveryExpiryTimer.unref()
+  recoveryExpiryTimer = armRecoveryExpiry(copy.expiresAt, () => {
+    void withRecoveryCopies(async () => {
+      await prune(app.getPath('userData'), theBuildsMigrations(), {
+        ownership: theOneAppAnswer?.held() ?? 'unknown',
+        currentAppVersion: app.getVersion(),
+      })
+      await scheduleRecoveryExpiry()
+    }).catch((error) => console.warn('BroCrew kept its recovery copy:', error))
+  })
 }
 let signalFirstWindowLoad!: () => void
 const firstWindowLoad = new Promise<void>((resolve) => {
