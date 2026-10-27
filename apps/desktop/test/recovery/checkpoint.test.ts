@@ -58,6 +58,7 @@ import {
 import { nodeFs, type RecoveryFs } from '../../src/main/recovery/files'
 import { CHECKPOINT_LINE } from '../../src/main/recovery/log-lines'
 import { APP_STATE_FILES } from '../../src/main/recovery/state-files'
+import type { CheckpointDeletion } from '../../src/main/recovery/checkpoint-deletion'
 import { accessEntries, windowsAccessLists } from '../../src/main/recovery/windows-privacy'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -1689,10 +1690,14 @@ describe('retention safety boundaries', () => {
 })
 
 describe('resuming an authorized recovery copy deletion', () => {
-  async function interrupted(file = 'drafts.json') {
+  async function interrupted(file = 'drafts.json', withTree = false) {
     const userData = aDataFolder()
     aLiveDatabase(userData)
     writeFileSync(join(userData, 'drafts.json'), '{"draft":"fictional only"}')
+    if (withTree) {
+      mkdirSync(join(userData, 'skills', 'fictional'), { recursive: true })
+      writeFileSync(join(userData, 'skills', 'fictional', 'SKILL.md'), 'fictional skill')
+    }
     const copy = await make(userData, { now: () => START })
     const options = { ...SOLE, currentAppVersion: copy.manifest.madeBy.appVersion }
     await recordSuccessfulStart(userData, LINEAGE, options)
@@ -1782,6 +1787,9 @@ describe('resuming an authorized recovery copy deletion', () => {
     writeFileSync(join(fragment, 'my-notes.txt'), 'fictional private notes')
     expect(await deleteRetainedCopy(userData, LINEAGE, copy.manifest.id, options)).toBe(false)
     expect(await prune(userData, LINEAGE, { ...options, warn: () => undefined })).toEqual([])
+    expect(await retainedCopyInfo(userData, LINEAGE, options)).toMatchObject({
+      id: copy.manifest.id,
+    })
     rmSync(join(fragment, 'my-notes.txt'))
     const aside = `${fragment}-saved-by-person`
     renameSync(fragment, aside)
@@ -1803,6 +1811,96 @@ describe('resuming an authorized recovery copy deletion', () => {
     expect(readFileSync(join(fragment, 'drafts.json'), 'utf8')).toContain(
       'new fictional personal file',
     )
+  })
+
+  it.each([
+    'missing binding',
+    'changed manifest',
+    'unknown entry',
+    'omitted database',
+    'foreign state',
+  ])(
+    'refuses a deletion record with %s even when recorded filesystem identities match',
+    async (change) => {
+      const { userData, copy, options, fragment } = await interrupted()
+      const path = join(userData, 'backups', 'deletion.json')
+      const original = readFileSync(path, 'utf8')
+      const record: CheckpointDeletion = JSON.parse(original)
+      let forged: unknown = record
+      if (change === 'missing binding') forged = { ...record, verifiedCopy: undefined }
+      if (change === 'changed manifest') {
+        forged = { ...record, manifest: { ...record.manifest, reason: 'before-migration' } }
+      }
+      if (change === 'omitted database') {
+        forged = {
+          ...record,
+          entries: record.entries.filter((one) => one.path !== 'database.sqlite'),
+        }
+      }
+      if (change === 'unknown entry') {
+        const note = join(fragment, 'my-notes.txt')
+        writeFileSync(note, 'fictional personal addition')
+        const stats = statSync(note)
+        forged = {
+          ...record,
+          entries: [
+            ...record.entries,
+            {
+              path: 'my-notes.txt',
+              directory: false,
+              dev: stats.dev,
+              ino: stats.ino,
+              size: stats.size,
+              mtimeMs: stats.mtimeMs,
+            },
+          ],
+        }
+      }
+      if (change === 'foreign state') {
+        const manifest = {
+          ...record.manifest,
+          files: [...record.manifest.files, { name: 'my-notes.txt', present: false }],
+        }
+        const manifestText = JSON.stringify(manifest)
+        forged = {
+          ...record,
+          manifest,
+          verifiedCopy: {
+            ...record.verifiedCopy,
+            manifestText,
+            manifestSha256: createHash('sha256').update(manifestText).digest('hex'),
+          },
+        }
+      }
+      writeFileSync(path, JSON.stringify(forged))
+      const before = readFileSync(join(fragment, 'database.sqlite'))
+      expect(await deleteRetainedCopy(userData, LINEAGE, copy.manifest.id, options)).toBe(false)
+      expect(await prune(userData, LINEAGE, { ...options, warn: () => undefined })).toEqual([])
+      expect(readFileSync(join(fragment, 'database.sqlite'))).toEqual(before)
+      expect(existsSync(fragment)).toBe(true)
+    },
+  )
+
+  it('binds tree children to the verified tree hash while allowing a genuine partial tree removal', async () => {
+    const { userData, copy, options, fragment } = await interrupted(
+      'skills/fictional/SKILL.md',
+      true,
+    )
+    const path = join(userData, 'backups', 'deletion.json')
+    const original = readFileSync(path, 'utf8')
+    const record: CheckpointDeletion = JSON.parse(original)
+    expect(record.verifiedCopy.trees.skills?.map((one) => one.path)).toContain('fictional/SKILL.md')
+    const forged = { ...record, verifiedCopy: { ...record.verifiedCopy, trees: { skills: [] } } }
+    writeFileSync(path, JSON.stringify(forged))
+    expect(await deleteRetainedCopy(userData, LINEAGE, copy.manifest.id, options)).toBe(false)
+    expect(await prune(userData, LINEAGE, { ...options, warn: () => undefined })).toEqual([])
+    expect(existsSync(join(fragment, 'database.sqlite'))).toBe(true)
+    writeFileSync(path, original)
+    expect(await retainedCopyInfo(userData, LINEAGE, options)).toMatchObject({
+      id: copy.manifest.id,
+    })
+    expect(await deleteRetainedCopy(userData, LINEAGE, copy.manifest.id, options)).toBe(true)
+    expect(existsSync(fragment)).toBe(false)
   })
 
   it('does not begin removal if the durable deletion record cannot be written', async () => {
@@ -1914,4 +2012,53 @@ describe('resuming an authorized recovery copy deletion', () => {
     expect(await prune(userData, LINEAGE, { ...options, warn: () => undefined })).toEqual([])
     expect(readFileSync(personal, 'utf8')).toBe('fictional personal target')
   })
+})
+
+describe('a deletion intent never grants ownership of personal files', () => {
+  it.each(['retry', 'prune'])(
+    'refuses a forged intent over a personal UUID folder through %s',
+    async (operation) => {
+      const userData = aDataFolder()
+      aLiveDatabase(userData)
+      const copy = await make(userData)
+      const options = {
+        ...SOLE,
+        currentAppVersion: copy.manifest.madeBy.appVersion,
+        warn: () => undefined,
+      }
+      await recordSuccessfulStart(userData, LINEAGE, options)
+      const id = randomUUID()
+      const personal = join(userData, 'backups', id)
+      mkdirSync(personal)
+      const note = join(personal, 'my-notes.txt')
+      writeFileSync(note, 'fictional personal file that BroCrew never copied')
+      expect(await prune(userData, LINEAGE, options)).toEqual([])
+      const identity = (path: string, relative: string) => {
+        const s = statSync(path)
+        return {
+          path: relative,
+          directory: s.isDirectory(),
+          dev: s.dev,
+          ino: s.ino,
+          size: s.size,
+          mtimeMs: s.mtimeMs,
+        }
+      }
+      writeFileSync(
+        join(userData, 'backups', 'deletion.json'),
+        JSON.stringify({
+          format: 'brocrew-recovery-delete',
+          version: 1,
+          manifest: { ...copy.manifest, id },
+          entries: [identity(personal, ''), identity(note, 'my-notes.txt')],
+        }),
+      )
+      if (operation === 'retry')
+        expect(await deleteRetainedCopy(userData, LINEAGE, id, options)).toBe(false)
+      else expect(await prune(userData, LINEAGE, options)).toEqual([])
+      expect(readFileSync(note, 'utf8')).toContain('fictional personal file')
+      expect(existsSync(personal)).toBe(true)
+      expect(await isIntact(copy)).toBe(true)
+    },
+  )
 })
