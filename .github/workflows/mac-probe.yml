@@ -1,0 +1,14 @@
+name: Mac runner probe
+on:
+  push:
+    branches: [gate/mac-rerun-watch]
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-14, macos-15-intel, macos-13, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    steps:
+      - run: uname -a; sw_vers
