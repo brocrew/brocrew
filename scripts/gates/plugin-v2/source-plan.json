@@ -78,7 +78,8 @@
     "packages/runtime/test/conformance.test.ts",
     "scripts/test/public-repo-checks.test.mjs",
     "scripts/mutations/275/mutations.py",
-    ".github/workflows/release.yml"
+    ".github/workflows/release.yml",
+    ".github/workflows/upgrade-path.yml"
   ],
   "files": [
     {

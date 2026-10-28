@@ -303,7 +303,11 @@ jobs:
         id: stage
         shell: bash
         run: |
-          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_ENVIRONMENT" = github-hosted || {
+            test "$RUNNER_ENVIRONMENT" = self-hosted &&
+            test "$RUNNER_OS" = macOS &&
+            test "$RUNNER_ARCH" = ARM64
+          }
           control=$(node scripts/gates/plugin-v2/owner.mjs stage "${{ matrix.app_version }}")
           echo "control=$control" >> "$GITHUB_OUTPUT"
       - name: Install the frozen app source dependencies in scratch
