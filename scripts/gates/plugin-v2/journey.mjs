@@ -31,52 +31,52 @@ export function assertAccessLabels(shown, resources) {
   demand(isDeepStrictEqual([...shown].sort(), labels.sort()))
 }
 async function visibleReview(run, id, expected) {
-  try {
-    await press(run.cdp, selector(id, 'plugin-review-install'))
-    let shown
-    await waitFor(async () => {
-      shown = await run.cdp.evaluate(`
-     const box=document.querySelector(${JSON.stringify(selector(id, 'plugin-review-details'))});
-     return box?{bdi:[...box.querySelectorAll('bdi')].map(e=>e.textContent.trim()),
-       resources:[...box.querySelectorAll('li')].map(e=>e.textContent.trim()),
-       confirm:!!box.querySelector('[data-cy="plugin-review-confirm"]:not(:disabled)')}:null;`)
-      return shown?.confirm === true
-    }, 60000)
-    demand(shown.bdi[0] === expected.version && shown.bdi[1] === expected.authors.join(', '))
-    demand(shown.bdi[2] === expected.permissions.description)
-    assertAccessLabels(shown.resources, expected.permissions.resources)
-  } catch (error) {
-    const observed = await run.cdp
-      .evaluate(
-        `
-      const section=document.querySelector('[data-cy="plugins-section"]');
-      const visible=e=>!!e&&!!e.getClientRects().length&&getComputedStyle(e).visibility!=='hidden';
-      const text=e=>e?.innerText??null;
-      return {sectionText:text(section),
-        cards:[...(section?.querySelectorAll('[data-plugin]')??[])].map(e=>({
-          dataPlugin:e.getAttribute('data-plugin'),
-          state:text(e.querySelector('[data-cy="plugin-state"]')),
-          installed:e.innerText.includes('Installed for all workspaces.'),
-          visible:visible(e),text:text(e)})),
-        messages:[...(section?.querySelectorAll('[data-cy="plugins-error"], [data-cy="plugins-list-status"], [data-cy*="empty"]')??[])]
-          .filter(visible).map(e=>({kind:e.getAttribute('data-cy'),text:text(e)}))};
-    `,
-      )
-      .catch(() => ({ unavailable: true }))
-    console.error('Plugins section witness:', JSON.stringify(observed))
-    const listed = await run.cdp
-      .evaluate(
-        `
-      const answer=await window.api.plugins.request({kind:'list'});
-      return {ok:answer?.ok,listState:answer?.listState,refreshFailed:answer?.refreshFailed,
-        cards:answer?.cards?.map(c=>({id:c.id,state:c.state,installed:c.installed,
-          preparationRequired:c.preparationRequired,mutationBlocked:c.mutationBlocked}))};
-    `,
-      )
-      .catch(() => ({ unavailable: true }))
-    console.error('Plugins list witness:', JSON.stringify(listed))
-    throw error
-  }
+  await press(run.cdp, selector(id, 'plugin-review-install'))
+  let shown
+  await waitFor(async () => {
+    shown = await run.cdp.evaluate(`
+   const box=document.querySelector(${JSON.stringify(selector(id, 'plugin-review-details'))});
+   return box?{bdi:[...box.querySelectorAll('bdi')].map(e=>e.textContent.trim()),
+     resources:[...box.querySelectorAll('li')].map(e=>e.textContent.trim()),
+     confirm:!!box.querySelector('[data-cy="plugin-review-confirm"]:not(:disabled)')}:null;`)
+    return shown?.confirm === true
+  }, 60000)
+  demand(shown.bdi[0] === expected.version && shown.bdi[1] === expected.authors.join(', '))
+  demand(shown.bdi[2] === expected.permissions.description)
+  assertAccessLabels(shown.resources, expected.permissions.resources)
+}
+async function pluginWitness(run) {
+  const observed = await run.cdp
+    .evaluate(
+      `
+    const section=document.querySelector('[data-cy="plugins-section"]');
+    const visible=e=>!!e&&!!e.getClientRects().length&&getComputedStyle(e).visibility!=='hidden';
+    const text=e=>e?.innerText??null;
+    return {sectionText:text(section),
+      settingsPresent:!!document.querySelector('[data-cy="settings-screen"]'),
+      selectedSettingsTab:document.querySelector('[data-cy="settings-screen"] [role="tab"][aria-selected="true"]')?.getAttribute('data-cy')??null,
+      cards:[...(section?.querySelectorAll('[data-plugin]')??[])].map(e=>({
+        dataPlugin:e.getAttribute('data-plugin'),
+        state:text(e.querySelector('[data-cy="plugin-state"]')),
+        installed:e.innerText.includes('Installed for all workspaces.'),
+        visible:visible(e),text:text(e)})),
+      messages:[...(section?.querySelectorAll('[data-cy="plugins-error"], [data-cy="plugins-list-status"], [data-cy*="empty"]')??[])]
+        .filter(visible).map(e=>({kind:e.getAttribute('data-cy'),text:text(e)}))};
+  `,
+    )
+    .catch(() => ({ unavailable: true }))
+  console.error('Plugins section witness:', JSON.stringify(observed))
+  const listed = await run.cdp
+    .evaluate(
+      `
+    const answer=await window.api.plugins.request({kind:'list'});
+    return {ok:answer?.ok,listState:answer?.listState,refreshFailed:answer?.refreshFailed,
+      cards:answer?.cards?.map(c=>({id:c.id,state:c.state,installed:c.installed,
+        preparationRequired:c.preparationRequired,mutationBlocked:c.mutationBlocked}))};
+  `,
+    )
+    .catch(() => ({ unavailable: true }))
+  console.error('Plugins list witness:', JSON.stringify(listed))
 }
 async function configure(run, id) {
   await press(run.cdp, selector(id, 'plugin-configure'))
@@ -203,6 +203,9 @@ export async function journey(options, summary) {
       await waitFor(async () => !(await cards(run)).find((c) => c.id === id)?.installed, 90000)
       summary.plugins[id].removed = true
     }
+  } catch (error) {
+    await pluginWitness(run)
+    throw error
   } finally {
     await quit(run)
   }

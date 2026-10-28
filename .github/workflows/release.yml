@@ -161,7 +161,7 @@ jobs:
   macos:
     name: Build for the Mac (dmg and zip, Apple silicon, signed ad hoc)
     needs: [plan, leak]
-    runs-on: [self-hosted, macOS, ARM64, brocrew-mac]
+    runs-on: macos-15
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
@@ -238,7 +238,7 @@ jobs:
     name: Recovery real-entry check (macOS)
     uses: ./.github/workflows/recovery-real-entry.yml
     with:
-      runner: brocrew-mac
+      runner: macos-15
       evidence: recovery-evidence-macos
 
   publish:

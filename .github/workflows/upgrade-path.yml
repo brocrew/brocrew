@@ -174,7 +174,7 @@ jobs:
   mac:
     name: Mac, from the tester's beta to the candidate
     if: github.repository == 'brocrew/brocrew'
-    runs-on: [self-hosted, macOS, ARM64, brocrew-mac]
+    runs-on: macos-15
     timeout-minutes: 75
     steps:
       - uses: actions/checkout@v7

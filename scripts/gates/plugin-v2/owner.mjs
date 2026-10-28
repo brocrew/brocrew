@@ -11,7 +11,6 @@ export { projectedVersionArguments } from './staging.mjs'
 import {
   demand,
   hosted,
-  hostedRunner,
   hash,
   readFile,
   below,
@@ -105,7 +104,9 @@ export function owned(root) {
 }
 export async function stage(version) {
   // Refuse local calls before making or reading task roots.
-  demand(hostedRunner())
+  demand(
+    process.env.GITHUB_ACTIONS === 'true' && process.env.RUNNER_ENVIRONMENT === 'github-hosted',
+  )
   const temp = fs.realpathSync.native(process.env.RUNNER_TEMP)
   return stageSource(version, {
     temp,
@@ -119,7 +120,9 @@ export async function stage(version) {
   })
 }
 export async function install(root, diagnostic = {}) {
-  demand(hostedRunner())
+  demand(
+    process.env.GITHUB_ACTIONS === 'true' && process.env.RUNNER_ENVIRONMENT === 'github-hosted',
+  )
   owned(root)
   const records = [],
     cancel = cancellation(records)
@@ -207,7 +210,9 @@ async function packageProof(repo, app, expected, appVersion) {
   return inventory(app)
 }
 export async function run(root) {
-  demand(hostedRunner())
+  demand(
+    process.env.GITHUB_ACTIONS === 'true' && process.env.RUNNER_ENVIRONMENT === 'github-hosted',
+  )
   owned(root)
   const records = [],
     repo = path.join(root, 'repo'),
@@ -433,7 +438,9 @@ const SDK_VERSION = '0.3.287',
   CLI_VERSION = '2.1.290'
 const SDK_FILTER = 'installed Claude Code · (start:|reload:)'
 function sdkRole(require018 = true) {
-  demand(hostedRunner())
+  demand(
+    process.env.GITHUB_ACTIONS === 'true' && process.env.RUNNER_ENVIRONMENT === 'github-hosted',
+  )
   demand(
     process.env.GITHUB_REPOSITORY === 'brocrew/brocrew' &&
       process.env.GITHUB_EVENT_NAME === 'workflow_dispatch' &&

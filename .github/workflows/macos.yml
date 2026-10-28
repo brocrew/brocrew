@@ -90,7 +90,7 @@ jobs:
       )
     # ⚑ Apple silicon: the app is arm64 only (its bundled Codex is the darwin-arm64 build), and the
     # check runs Codex, Claude Code and the app itself, so the runner must be able to run them.
-    runs-on: [self-hosted, macOS, ARM64, brocrew-mac]
+    runs-on: macos-15
     timeout-minutes: 45
     permissions:
       contents: write
@@ -266,13 +266,13 @@ jobs:
       )
     uses: ./.github/workflows/recovery-real-entry.yml
     with:
-      runner: brocrew-mac
+      runner: macos-15
       evidence: recovery-evidence-macos
 
   plugin-v2-review:
     name: Plugin v2 Review (${{ matrix.app_version || 'off' }})
     if: github.repository == 'brocrew/brocrew' && github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-')
-    runs-on: [self-hosted, macOS, ARM64, brocrew-mac]
+    runs-on: macos-15
     timeout-minutes: ${{ (startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-sdk-') || startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-sdk-')) && 50 || 45 }}
     permissions:
       contents: read
@@ -303,11 +303,7 @@ jobs:
         id: stage
         shell: bash
         run: |
-          test "$RUNNER_ENVIRONMENT" = github-hosted || {
-            test "$RUNNER_ENVIRONMENT" = self-hosted &&
-            test "$RUNNER_OS" = macOS &&
-            test "$RUNNER_ARCH" = ARM64
-          }
+          test "$RUNNER_ENVIRONMENT" = github-hosted
           control=$(node scripts/gates/plugin-v2/owner.mjs stage "${{ matrix.app_version }}")
           echo "control=$control" >> "$GITHUB_OUTPUT"
       - name: Install the frozen app source dependencies in scratch

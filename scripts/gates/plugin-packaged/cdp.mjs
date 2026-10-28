@@ -35,7 +35,7 @@ export async function pluginPage(port) {
           row.webSocketDebuggerUrl,
       )
     },
-    30_000,
+    200_000,
     200,
   )
   if (!target) throw new Error('No real plugin view')

@@ -79,7 +79,7 @@
     "scripts/test/public-repo-checks.test.mjs",
     "scripts/mutations/275/mutations.py",
     ".github/workflows/release.yml",
-    ".github/workflows/upgrade-path.yml"
+    "scripts/gates/plugin-packaged/cdp.mjs"
   ],
   "files": [
     {
@@ -669,8 +669,8 @@
     },
     {
       "path": "scripts/gates/plugin-packaged/cdp.mjs",
-      "sha256": "6bc74b17b11e5016afedf703844fdc83c56ade4c11ae20b35cc9ead920134ab1",
-      "bytes": 4562
+      "sha256": "fcee2d3bdb150638ea719b16e4f14874b9a85e8ad40e9e6ca4787713072ff308",
+      "bytes": 4563
     },
     {
       "path": "scripts/gates/plugin-packaged/contract.mjs",
@@ -734,13 +734,13 @@
     },
     {
       "path": "scripts/gates/plugin-v2/contract.mjs",
-      "sha256": "50cbb50517ed0496e587a71dab9aacd93d5fff1ae11b2717ed5e3137bab25c08",
-      "bytes": 6678
+      "sha256": "54878dcfd44cd05e573ab3476ae797e51d67b2b55d2d8939625587c3a5166622",
+      "bytes": 6420
     },
     {
       "path": "scripts/gates/plugin-v2/controls.test.mjs",
-      "sha256": "d742ced551f2301f8a434bd105b33a63f55c3d14676253558e895236457b1e57",
-      "bytes": 29467
+      "sha256": "0b8623ee17c05386800549b997348547071dbbffe862c7c76c574760f5382285",
+      "bytes": 29049
     },
     {
       "path": "scripts/gates/plugin-v2/external-broker-evidence.template.json",
@@ -749,8 +749,8 @@
     },
     {
       "path": "scripts/gates/plugin-v2/journey.mjs",
-      "sha256": "b278d262be845893d36883b643e9a890a9d4041e798aaaad8af0d4786253e744",
-      "bytes": 9115
+      "sha256": "9ae3474467f637ec772a7bc0687e306d3fe819c2e63bca08dfb45fd0062972e2",
+      "bytes": 9312
     },
     {
       "path": "scripts/gates/plugin-v2/native-dependency.mjs",
@@ -779,8 +779,8 @@
     },
     {
       "path": "scripts/gates/plugin-v2/owner.mjs",
-      "sha256": "e73e4b9dd6ed152f974f71e46339db1a3016f549def7ab131a8ced85204b9f72",
-      "bytes": 33548
+      "sha256": "792193ffee32c35fce08b9c4cdd399869eeb7f6cfe4abf12234d9304ed98e615",
+      "bytes": 33876
     },
     {
       "path": "scripts/gates/plugin-v2/policy.proposed.json",
