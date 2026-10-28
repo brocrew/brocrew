@@ -1,18 +1,18 @@
 {
   "schema": 1,
   "summary": {
-    "definedRows": 10976,
-    "tables": 500,
+    "definedRows": 10994,
+    "tables": 501,
     "retiredRows": 2392,
     "rowsByRunState": {
       "complete": 1173,
       "partial-or-invalid": 708,
-      "unrun": 9095
+      "unrun": 9113
     },
     "tablesByRunState": {
       "complete": 60,
       "partial-or-invalid": 31,
-      "unrun": 409
+      "unrun": 410
     }
   },
   "tables": [
@@ -6120,7 +6120,7 @@
         },
         {
           "id": "158:M14",
-          "fingerprint": "6d83e61dc5f0bfad08cfbba0daf5b30d9b4939fae622d65c36bbe076200aa751"
+          "fingerprint": "44c0a26a28880163465861dfd0766264767e006a16ea20d15e4bd60d58dff53d"
         },
         {
           "id": "158:M15",
@@ -6159,7 +6159,7 @@
           "fingerprint": "518e1b10a000ce112d92a4b147eda712297a0811c49b7619f746a47b001ccec8"
         }
       ],
-      "definitionFingerprint": "2d8130ab243023a38ee225f7ca124af3ae4b9728d1e603364ade2301ea2c8486",
+      "definitionFingerprint": "63c6b409c69b41aac88eafdee1e12d98a7283f9becccd011628b987e40d61b57",
       "retiredRows": [
         "M1",
         "M2",
@@ -7020,11 +7020,11 @@
       "rows": [
         {
           "id": "166:M1",
-          "fingerprint": "7edec4e89b8286b49abc3019bcf352c2035fdfd326ba877222c5b42f5b735c66"
+          "fingerprint": "03602bb04b2850cb868db1b13cd086887ec6688ab57bf81132c0145cd74bf1b3"
         },
         {
           "id": "166:M2",
-          "fingerprint": "a8e52f0d16b0044842b12b404d43c56b0ffd645d6537890cf306e10dd8f8019f"
+          "fingerprint": "e330703f7a29d9cba3648435012ebb13f8d170451277f5207e964b4e7bf11170"
         },
         {
           "id": "166:M3",
@@ -7032,7 +7032,7 @@
         },
         {
           "id": "166:M4",
-          "fingerprint": "91f911958ff920fb48f42f282d8963a6f3e7ebb0935a6b5f05e939d6fb9c680c"
+          "fingerprint": "7b1b583a8b07f81bc19690874dc6fd5b5977215cd20a688583ec8612f24bbeb8"
         },
         {
           "id": "166:M5",
@@ -7063,7 +7063,7 @@
           "fingerprint": "0d32e96f08281bc90e27f6198bb6e1214c5941a62deeeae3846ac8025d957d92"
         }
       ],
-      "definitionFingerprint": "a9fac5ff58f4f00e748607029584c74251b7ac6d59f5dc05f0b143fdc048a649",
+      "definitionFingerprint": "fdf416682da5bbf6716c5b295cced67fac286ec437171dfa6a203c06ad12a678",
       "retiredRows": [
         "M5",
         "M6",
@@ -37442,7 +37442,7 @@
         },
         {
           "id": "377:M16",
-          "fingerprint": "eb13583e8dd6116760104d7d21c790c99bef89c9d453779c69a892e2e94f6227"
+          "fingerprint": "b836a79480ada9687ec4ba682f0fb777bb0ed8485554b8293ebab9ce76a0c6d2"
         },
         {
           "id": "377:M17",
@@ -37501,7 +37501,7 @@
           "fingerprint": "1a4bba737f710c879ab72b89e2c30c43ff34c2938e3769692fb19c01a863d905"
         }
       ],
-      "definitionFingerprint": "022e71d43e95b0e34d0125fc190c171603869e8ab1bb11a48bc14fa05be5979f",
+      "definitionFingerprint": "11159b21b7e3eb98cff4ae5bea7f1cf2fa87583177a2e4dd704b34c28a4156ce",
       "retiredRows": [
         "M2",
         "M3",
@@ -40078,6 +40078,116 @@
         }
       ],
       "definitionFingerprint": "bcb7c2ddd0eed1cc00650608bc8d463ec975fbc18bc6c842528d41a64487e2fe",
+      "retiredRows": [],
+      "retirements": {},
+      "state": "unrun",
+      "artifact": null,
+      "artifactRows": 0,
+      "artifactSha256": null,
+      "invalidRows": [],
+      "rowVerdicts": [],
+      "reasons": [
+        "mutations.txt is absent"
+      ]
+    },
+    {
+      "table": "4007",
+      "definedRows": 18,
+      "canonicalRows": [
+        "M1",
+        "M2",
+        "M3",
+        "M4",
+        "M5",
+        "M6",
+        "M7",
+        "M8",
+        "M9",
+        "M10",
+        "M11",
+        "M12",
+        "M13",
+        "M14",
+        "M15",
+        "M16",
+        "M17",
+        "M18"
+      ],
+      "rows": [
+        {
+          "id": "4007:M1",
+          "fingerprint": "e093ca44b2ccf1311ec67596a13bd1bc170e125f352e8e38491da55a17e93188"
+        },
+        {
+          "id": "4007:M2",
+          "fingerprint": "da602b645831b9a3b1d2babe60a10b238144e3d4fc0b88600f5c81ba4edd4397"
+        },
+        {
+          "id": "4007:M3",
+          "fingerprint": "d64d00d9b18f4028715aee9b7f02299d7cbcc2784e6b07adbb7f1759d93e81c6"
+        },
+        {
+          "id": "4007:M4",
+          "fingerprint": "f8c3496b6fcec62a40fb837ab68205c587fce7309b1ddb840bae8191e9aa61b5"
+        },
+        {
+          "id": "4007:M5",
+          "fingerprint": "6c30a0654f4806d383c9fa1bdc9febb8ba97342af50e7e6ceb4a223f77d96399"
+        },
+        {
+          "id": "4007:M6",
+          "fingerprint": "579b0820c34b56c9d1bc8a965162cda6e91615679cfc321a405f8881310fe7ab"
+        },
+        {
+          "id": "4007:M7",
+          "fingerprint": "7f5c11657872969ff704c5c55b0496c5e8d5a4d62c6193b8fba74a0e00af15bf"
+        },
+        {
+          "id": "4007:M8",
+          "fingerprint": "5da9580a825098be08277bb30d4257c516fbb9ce6aac0d53b701c7080aee4125"
+        },
+        {
+          "id": "4007:M9",
+          "fingerprint": "dab702185e62c64fa042b8288b0cd06ab3d6a7e3f63eaa73a9d4f96c1784a00a"
+        },
+        {
+          "id": "4007:M10",
+          "fingerprint": "4203abc82f9fb954dd088ed1872b7d10d1b11da3c34f8dba7c3d77b6e07073d5"
+        },
+        {
+          "id": "4007:M11",
+          "fingerprint": "f646ee1290ea96cc247878989c205c8946de289ea91f4e5637621389cbd09391"
+        },
+        {
+          "id": "4007:M12",
+          "fingerprint": "9a81bde4ce82499ae29b470c8ba8cad415552cc410c146acd4064010156a2af0"
+        },
+        {
+          "id": "4007:M13",
+          "fingerprint": "579a63ad49fe136dc80252b9a9541fb72ea52e11445463f9718d67413c7c309a"
+        },
+        {
+          "id": "4007:M14",
+          "fingerprint": "db33e376bd41ba481c7484cd1af2f982a511535482448285f5b2b33b531ca749"
+        },
+        {
+          "id": "4007:M15",
+          "fingerprint": "bf545b3a49479dad9ffcab2587dc09202a9a669c05e9ae56b8dd81648278f211"
+        },
+        {
+          "id": "4007:M16",
+          "fingerprint": "d59edce143d632e116cc248a66d5f191ebdf7b87b79bf21fca4bf0d787f91b73"
+        },
+        {
+          "id": "4007:M17",
+          "fingerprint": "83d8c613359825f1e750b3847e64448bc1f3dca66c0295e52ab01b9397afd692"
+        },
+        {
+          "id": "4007:M18",
+          "fingerprint": "e53eb240b98db917e90e3895e46bc05746aa8443a7392600abac3e2dd546c410"
+        }
+      ],
+      "definitionFingerprint": "dce56f3287808929cd44144701272b5d9516e4f1ed44dbc33bdef61ad70d1268",
       "retiredRows": [],
       "retirements": {},
       "state": "unrun",
