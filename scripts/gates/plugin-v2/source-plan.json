@@ -829,13 +829,13 @@
     },
     {
       "path": "scripts/gates/plugin-v2/reload-owner.mjs",
-      "sha256": "34476b544184ffd5e701626bd6484782e93dffa981212e36175fba6496e6cde5",
-      "bytes": 9789
+      "sha256": "d86e1a162149fafb00fc9200527968bc87540989b425f65261d017a97c869c64",
+      "bytes": 10471
     },
     {
       "path": "scripts/gates/plugin-v2/reload-projection.mjs",
-      "sha256": "8cec3a3d1114541f814b57c5cbca9b8345dc5d95811901b36c194157950c1172",
-      "bytes": 6702
+      "sha256": "74fb52064637479ec9aec64863ed8361fae3de590355eab627495154212abf25",
+      "bytes": 6785
     },
     {
       "path": "scripts/gates/plugin-v2/reload-source/contract.mjs",

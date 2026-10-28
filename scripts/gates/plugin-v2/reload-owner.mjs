@@ -58,6 +58,27 @@ export async function stageReload() {
 function reloadBundle(repo) {
   const main = readFile(path.join(repo, 'apps/desktop/out/main/index.js'))
   const preload = readFile(path.join(repo, 'apps/desktop/out/preload/index.js'))
+  console.error(
+    'Reload bundle witnesses:',
+    JSON.stringify({
+      seen: {
+        mainMarker: main.includes(Buffer.from(RELOAD_MARKER)),
+        mainChannel: main.includes(Buffer.from(RELOAD_CHANNEL)),
+        controlledSdkRefusal: main.includes(
+          Buffer.from('Reload fixture refuses the default SDK query'),
+        ),
+        preloadBridge: preload.includes(Buffer.from('__pluginReloadGate')),
+        preloadChannel: preload.includes(Buffer.from(RELOAD_CHANNEL)),
+      },
+      expected: {
+        mainMarker: true,
+        mainChannel: true,
+        controlledSdkRefusal: true,
+        preloadBridge: true,
+        preloadChannel: true,
+      },
+    }),
+  )
   demand(main.includes(Buffer.from(RELOAD_MARKER)) && main.includes(Buffer.from(RELOAD_CHANNEL)))
   demand(main.includes(Buffer.from('Reload fixture refuses the default SDK query')))
   demand(
