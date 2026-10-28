@@ -548,6 +548,7 @@ export type { CodexTransport, CodexIncoming } from './codex/codex-transport'
 
 // Where each provider keeps what an *Always allow* kept, for the list a person removes rules from.
 export { MAX_SETTINGS_BYTES, persistedRulesFile } from './claude/persisted-rules'
+export { claudeAgentPaths, type ClaudeAgentPaths } from './claude/agent-paths'
 export { projectLocalSettingsFile } from './claude/local-settings-location'
 export { CODEX_EXEC_POLICY_RULES } from './codex/codex-runtime'
 export {

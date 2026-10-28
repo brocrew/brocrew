@@ -187,7 +187,7 @@ MUTATIONS = [
         "M14 · ⛔ profile memory is read from `<home>/.claude/CLAUDE.md` — the path 156 §1 measured "
         "as the WRONG one",
         [
-            ("apps/desktop/src/main/providers/claude/instructions.ts", "  take(join(inputs.providerHome, INSTRUCTION_FILENAME), 'profile-memory')", "  take(\n    join(inputs.providerHome, INSTRUCTION_DOTDIR, INSTRUCTION_FILENAME),\n    'profile-memory',\n  )"),
+            ("apps/desktop/src/main/providers/claude/instructions.ts", "  take(agentPaths.instructionsFile, 'profile-memory')", "  take(\n    join(agentPaths.home, INSTRUCTION_DOTDIR, INSTRUCTION_FILENAME),\n    'profile-memory',\n  )"),
         ],
     ),
     (

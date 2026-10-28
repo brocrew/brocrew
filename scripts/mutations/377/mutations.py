@@ -304,7 +304,7 @@ MUTATIONS = [
         [
             ("apps/desktop/src/main/providers/claude/instructions.ts", "  if (inputs.bundle?.ok === false)\n    refused.push({ path: inputs.bundle.path, reason: inputs.bundle.reason })", ""),
             ("apps/desktop/src/main/providers/codex/instructions.ts", "  if (inputs.bundle?.ok === false)\n    refused.push({ path: inputs.bundle.path, reason: inputs.bundle.reason })", ""),
-            ("apps/desktop/src/main/providers/claude/instructions.ts", "  const agent = readClaudeAgentMemory(inputs.providerHome)\n  refused.push(...agent.refused)", "  const agent = readClaudeAgentMemory(inputs.providerHome)\n  refused.push(...agent.refused)\n  if (inputs.bundle?.ok === false)\n    refused.push({ path: inputs.bundle.path, reason: inputs.bundle.reason })"),
+            ("apps/desktop/src/main/providers/claude/instructions.ts", '  const agent = readClaudeAgentMemory(agentPaths.home)\n  refused.push(...agent.refused)', '  const agent = readClaudeAgentMemory(agentPaths.home)\n  refused.push(...agent.refused)\n  if (inputs.bundle?.ok === false)\n    refused.push({ path: inputs.bundle.path, reason: inputs.bundle.reason })'),
         ],
     ),
     # ── §5 · the bridge, and the order of the list ────────────────────────────────────────────

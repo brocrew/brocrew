@@ -10,6 +10,7 @@ import {
 } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
+import { claudeAgentPaths } from './agent-paths'
 
 /**
  * 🔴 **736 · R95 / 740 · R99 — the rules a person chose to keep beyond one conversation, read back as
@@ -58,7 +59,7 @@ export const MAX_SETTINGS_BYTES = 256 * 1024
 
 /** The provider home's own `settings.json` — the CLI's `userSettings` for this identity. */
 export function persistedRulesFile(providerHome: string): string {
-  return join(providerHome, 'settings.json')
+  return claudeAgentPaths(providerHome).permissionsFile
 }
 
 function realOrResolved(path: string): string {

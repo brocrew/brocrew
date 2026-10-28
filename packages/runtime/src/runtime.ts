@@ -51,6 +51,12 @@ export type StartPhaseSink = (phase: StartPhase, detail?: { readonly bytes?: num
 export interface ProviderRuntimeContext {
   /** Absolute, app-owned per-profile state directory for this provider. */
   providerHome: string
+  /**
+   * Optional agent-owned state, independently of sign-in and transcripts. Claude uses it for
+   * memory and saved user permissions. Only the trusted host selects and provisions it; omission
+   * keeps the original provider-home paths. It never selects a different login.
+   */
+  agentStateHome?: string
   /** Told each phase of this launch as it is reached, so a slow launch can say where it waited. */
   startPhases?: StartPhaseSink
   /** Completed immutable view for this launch, prepared only inside its managed home. */

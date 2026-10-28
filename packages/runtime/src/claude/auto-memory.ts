@@ -1,4 +1,4 @@
-import { join } from 'node:path'
+import { claudeAgentPaths } from './agent-paths'
 
 /**
  * **Where the agent's own memory lives** — 165 derived the provider's default, 166 replaced it.
@@ -51,7 +51,7 @@ import { join } from 'node:path'
  * silently dropped back to the default.
  */
 export function claudeAutoMemoryDir(providerHome: string): string {
-  return join(providerHome, 'memory')
+  return claudeAgentPaths(providerHome).memoryDirectory
 }
 
 /** The index file the provider loads into the prompt, and the agent maintains. */
@@ -59,7 +59,7 @@ export const AUTO_MEMORY_INDEX = 'MEMORY.md'
 
 /** The full path of that index — what the drawer shows, and what 166 asserts against. */
 export function claudeAutoMemoryIndex(providerHome: string): string {
-  return join(claudeAutoMemoryDir(providerHome), AUTO_MEMORY_INDEX)
+  return claudeAgentPaths(providerHome).memoryIndex
 }
 
 /**

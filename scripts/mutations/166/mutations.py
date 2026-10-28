@@ -47,7 +47,7 @@ INSTRUCTIONS = "apps/desktop/src/main/runtime/instructions.ts"
 # the kept rules it read for the work folders; the setting is the same.
 # ⚑ **the independent location module · re-anchored in place, not retired** — a launch reads its kept rules before it builds its options, so the setting takes what was read; the mutation still removes the launch option
 # Cleanup now has its own spread. Remove only the memory/kept-rules setting under test.
-SETTINGS_LINE = "        ...handle.launchFlagSettings(providerHome, kept),\n"
+SETTINGS_LINE = '        ...handle.launchFlagSettings(agentHome ?? providerHome, kept),\n'
 
 # §2's carve-out, verbatim. The three `MOVE_*` mutations delete this and re-insert it higher up, so
 # the block is a constant: an anchor written twice is an anchor that drifts once.
@@ -83,7 +83,7 @@ MUTATIONS = [
         [
             (
                 AUTOMEM,
-                "  return join(providerHome, 'memory')\n",
+                '  return claudeAgentPaths(providerHome).memoryDirectory\n',
                 "  return providerHome\n",
             )
         ],
@@ -104,7 +104,7 @@ MUTATIONS = [
         "M4 · the model probe stops sending it, so ONE profile has two answers to where it remembers",
         # ⚑ W4.189 · re-anchored in place: the probe passes the kept rules it read.
         # ⚑ **the independent location module · re-anchored in place, not retired** — the model list reads its kept rules before it builds its options; the mutation still removes the probe's setting
-        [(RUNTIME, "        ...flagSettingsFor(providerHome, kept),\n", "")],
+        [(RUNTIME, '        ...flagSettingsFor(agentHome, kept),\n', "")],
     ),
     # ---- §2 · the card, and the boundary ---------------------------------------------------------
     (

@@ -2,7 +2,7 @@ import { given } from './given'
 import { workspaceInstructionFile as INSTRUCTION_FILENAME } from './layout.mjs'
 import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
-import { AUTO_MEMORY_INDEX } from '@brobot2/runtime'
+import { AUTO_MEMORY_INDEX, claudeAgentPaths } from '@brobot2/runtime'
 import { readClaudeAgentMemory, type ClaudeMemoryRead } from './memory'
 import { agentPreamble } from '../../runtime/agent-preamble'
 import type { InstructionInputs, SessionLaunchRead } from '../instruction-types'
@@ -142,6 +142,7 @@ export function noteFor(
 }
 
 export function readSessionInstructions(inputs: InstructionInputs): SessionLaunchRead {
+  const agentPaths = claudeAgentPaths(inputs.providerHome, inputs.agentStateHome)
   const injected: InjectedInstruction[] = []
   const refused: RefusedInstruction[] = []
   if (inputs.bundle?.ok === false)
@@ -209,10 +210,10 @@ export function readSessionInstructions(inputs: InstructionInputs): SessionLaunc
       ...sectionsOf(kind, read.text, inputs.bundleComposed),
     })
   }
-  const agent = readClaudeAgentMemory(inputs.providerHome)
+  const agent = readClaudeAgentMemory(agentPaths.home)
   refused.push(...agent.refused)
   if (inputs.bundle?.ok === true) take(inputs.bundle.path, 'profile-instructions')
-  take(join(inputs.providerHome, INSTRUCTION_FILENAME), 'profile-memory')
+  take(agentPaths.instructionsFile, 'profile-memory')
   const conventionDirs = codexConventionChain(inputs.cwd, home)
   const conventions = new Map<string, string>()
   for (const dir of conventionDirs) {

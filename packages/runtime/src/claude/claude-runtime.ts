@@ -125,6 +125,8 @@ import { RequestBroker } from '../internal/request-broker'
 import { SessionMachine } from '../internal/session-machine'
 import { isReasoning, StallWatchdog, stallNotice } from '../internal/stall-watchdog'
 import { claudeAutoMemoryDir } from './auto-memory'
+import { claudeAgentPaths } from './agent-paths'
+import { provisionProviderHome } from '../internal/provider-home'
 import { localSettingsFilesOf } from './local-settings-location'
 import { keptRulesForALaunch } from './persisted-rules'
 import { FileEdits } from './file-edits'
@@ -5258,11 +5260,24 @@ export class ClaudeRuntime implements AgentRuntime {
     return watchClaudeChild(this.spawnChild, this.launchKeys.get(options))
   }
 
+  private async agentHome(context: ProviderRuntimeContext): Promise<string> {
+    const paths = claudeAgentPaths(context.providerHome, context.agentStateHome)
+    if (context.agentStateHome !== undefined) {
+      if (this.managedProviderHomesRoot === undefined) {
+        throw new Error('Claude agent state needs its managed root')
+      }
+      await provisionProviderHome(this.managedProviderHomesRoot, paths.home)
+    }
+    return paths.home
+  }
+
   async start(opts: StartOptions): Promise<SessionHandle> {
     // A cancel that landed BEFORE the launch: the host aborts every launch in flight when the app
     // quits, and a start admitted after that would spawn a CLI into a host that has already swept
     // its map (070). Nothing is created above this line. ⚠️ **707 · and there is one interval now**
     // — the spawn check below, after the query exists — which is asked again after it.
+    assertNotCancelled(opts.signal, 'claude start')
+    const agentHome = await this.agentHome(opts)
     assertNotCancelled(opts.signal, 'claude start')
     const input = new AsyncQueue<SDKUserMessage>()
     // ⚠️ **Narrowed ONCE, here, and fed to both the handle and the Options** (076, corrected in
@@ -5296,11 +5311,7 @@ export class ClaudeRuntime implements AgentRuntime {
     const auth = await this.authForALaunch()
     assertNotCancelled(opts.signal, 'claude start')
     // ⚑ Read without holding the thread: the repository gate asks git.
-    const kept = await keptRulesForALaunch(
-      opts.providerHome,
-      handle.launchLocalFiles(),
-      opts.signal,
-    )
+    const kept = await keptRulesForALaunch(agentHome, handle.launchLocalFiles(), opts.signal)
     assertNotCancelled(opts.signal, 'claude start')
     const options = this.optionsFor(
       handle,
@@ -5319,6 +5330,7 @@ export class ClaudeRuntime implements AgentRuntime {
       opts.builtInSkills,
       opts.sharedSkillsRoot,
       opts.managedPluginMcp,
+      agentHome,
     )
     handle.noteBuiltInSkills(opts.builtInSkills)
     handle.noteSharedSkills(opts.sharedSkillsRoot)
@@ -5460,11 +5472,13 @@ export class ClaudeRuntime implements AgentRuntime {
    */
   async listModels(context: ProviderRuntimeContext): Promise<ModelChoice[]> {
     assertNotCancelled(context.signal, 'claude model list') // a probe is a launch (070)
+    const agentHome = await this.agentHome(context)
+    assertNotCancelled(context.signal, 'claude model list')
     const auth = await this.authForALaunch()
     assertNotCancelled(context.signal, 'claude model list')
     // ⚑ `740` · `null`: a model list runs in no project, so no project's kept rules are read.
-    const kept = await keptRulesForALaunch(context.providerHome, null, context.signal)
-    const options = this.listOptionsFor(context.providerHome, kept, auth)
+    const kept = await keptRulesForALaunch(agentHome, null, context.signal)
+    const options = this.listOptionsFor(context.providerHome, kept, auth, agentHome)
     // 🔴 **The probe spawns its own CLI, and until 261 it was the one launch that did NOT go
     // through this app's spawn** (261 §1, from 259 lens D finding 1). The SDK resolves the same
     // `app.asar/…/claude` spelling here as it does for `start` and `resume`, so in the packaged app
@@ -5612,6 +5626,7 @@ export class ClaudeRuntime implements AgentRuntime {
     providerHome: string,
     kept: KeptRuleLists,
     auth?: { key: string | null; login?: string | null },
+    agentHome: string = providerHome,
   ): Options {
     const { additions, piped } = this.childEnvAdditions(providerHome, auth)
     const options: Options = {
@@ -5626,7 +5641,7 @@ export class ClaudeRuntime implements AgentRuntime {
       // a turn follows. It cannot write there — no turn is ever started — so this is about there
       // being ONE derivation, not about the probe needing a memory.
       settings: {
-        ...flagSettingsFor(providerHome, kept),
+        ...flagSettingsFor(agentHome, kept),
         ...managedTranscriptSettings(providerHome, this.managedProviderHomesRoot),
       },
     }
@@ -5654,6 +5669,8 @@ export class ClaudeRuntime implements AgentRuntime {
     let child: ClaudeChildWitness | null = null
     try {
       assertNotCancelled(options.signal, 'claude resume') // nothing built yet (070)
+      const agentHome = await this.agentHome(options)
+      assertNotCancelled(options.signal, 'claude resume')
       // Honest resume: validate the session exists in the SAME profile home BEFORE
       // building a query, so a missing session (or one under a different home) throws
       // rather than silently starting fresh (001 decision 5; home-scoped per 021).
@@ -5709,11 +5726,7 @@ export class ClaudeRuntime implements AgentRuntime {
       )
       handle.noteAlwaysRulesFile()
       // ⚑ Read without holding the thread: the repository gate asks git.
-      const kept = await keptRulesForALaunch(
-        options.providerHome,
-        handle.launchLocalFiles(),
-        options.signal,
-      )
+      const kept = await keptRulesForALaunch(agentHome, handle.launchLocalFiles(), options.signal)
       assertNotCancelled(options.signal, 'claude resume')
       // ⛔ **The `systemHint` IS re-applied on resume now** (158), and the comment that stood here
       // described the absence as honest scope: *"the neutral `ResumeOptions` doesn't carry one and
@@ -5763,6 +5776,7 @@ export class ClaudeRuntime implements AgentRuntime {
         options.builtInSkills,
         options.sharedSkillsRoot,
         options.managedPluginMcp,
+        agentHome,
       )
       handle.noteBuiltInSkills(options.builtInSkills)
       handle.noteSharedSkills(options.sharedSkillsRoot)
@@ -5844,6 +5858,7 @@ export class ClaudeRuntime implements AgentRuntime {
     builtInSkills?: BuiltInSkillsContext,
     sharedSkillsRoot?: string,
     managedPluginMcp?: readonly ManagedPluginMcpServer[],
+    agentHome?: string,
     // ⚑ `settings` is always the OBJECT form here, said in the type so `start` can merge onto it.
   ): Omit<Options, 'settings'> & { settings: Settings } {
     handle.noteSharedSkills(sharedSkillsRoot)
@@ -5997,7 +6012,7 @@ export class ClaudeRuntime implements AgentRuntime {
       // 🔴 **W4.189 · the kept rules are read HERE, once, and the handle keeps that read** — every
       // work-folder change re-sends it beside the new list ({@link ClaudeSessionHandle.keptRules}).
       settings: {
-        ...handle.launchFlagSettings(providerHome, kept),
+        ...handle.launchFlagSettings(agentHome ?? providerHome, kept),
         ...managedTranscriptSettings(providerHome, this.managedProviderHomesRoot),
       },
       // ⚑ The provider's own permission flow: a card in `ask`, allow in `auto` (handleCanUseTool).

@@ -39,6 +39,8 @@ export interface InstructionInputs {
   identity?: PromptIdentity
   cwd: string
   providerHome: string
+  /** Trusted agent state selected by the host; absent for the original provider-home layout. */
+  agentStateHome?: string
   /**
    * The app's own generated workspace instruction file (006), when there is one — so a file BroBot
    * WROTE is labelled as such instead of arriving as if the user had put it there.
