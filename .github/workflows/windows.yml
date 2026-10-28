@@ -272,8 +272,10 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@v4
         id: gate-pnpm
+        with:
+          version: 10.11.0
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc

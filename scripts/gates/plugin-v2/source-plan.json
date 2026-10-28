@@ -747,8 +747,8 @@
     },
     {
       "path": "scripts/gates/plugin-v2/journey.mjs",
-      "sha256": "ea5e8d14914806d6764b6fb94c342576e6a0943b8782fecd3585793729c4de5b",
-      "bytes": 6904
+      "sha256": "ee792f5d88a7b4b49ef49c801cfe8008401b349bbf5dd3733f737413bd584846",
+      "bytes": 7501
     },
     {
       "path": "scripts/gates/plugin-v2/native-dependency.mjs",
@@ -777,8 +777,8 @@
     },
     {
       "path": "scripts/gates/plugin-v2/owner.mjs",
-      "sha256": "d1991506b57cd7eebee88f0b6de3e6dfb02295e10948b17769b70d9608e3da2e",
-      "bytes": 32428
+      "sha256": "400053b2d98669d792723e522a32441451136cab0be349b460b405ec53e8aab5",
+      "bytes": 33896
     },
     {
       "path": "scripts/gates/plugin-v2/policy.proposed.json",
@@ -787,8 +787,8 @@
     },
     {
       "path": "scripts/gates/plugin-v2/processes.mjs",
-      "sha256": "17b1b6d5cedc72edab2229234577cc1268cd0fe3b64b823334872d87f2186dbe",
-      "bytes": 9615
+      "sha256": "dcfb07eb27ed9d70e0de1814b3875fe5d360975d6eb2a9f960ed5b7e1bc9e114",
+      "bytes": 10150
     },
     {
       "path": "scripts/gates/plugin-v2/projection.mjs",

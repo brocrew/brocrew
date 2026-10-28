@@ -92,13 +92,19 @@ export function launch(program, args, options, records) {
     windowsHide: true,
     stdio: ['ignore', 'pipe', 'pipe'],
   })
+  const tails = { stdout: Buffer.alloc(0), stderr: Buffer.alloc(0) }
+  const retain = (stream, chunk) => {
+    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+    tails[stream] = Buffer.concat([tails[stream], bytes]).subarray(-64 * 1024)
+  }
   let stdout = '',
     overflow = false
   child.stdout.on('data', (b) => {
+    retain('stdout', b)
     if (stdout.length + b.length > 8 * 1024 * 1024) overflow = true
     else stdout += b
   })
-  child.stderr.on('data', () => {}) // Drain, never persist arbitrary output.
+  child.stderr.on('data', (b) => retain('stderr', b))
   const record = { child, closed: false, code: null, signal: null, overflow: false }
   record.close = new Promise((resolve) =>
     child.once('close', (code, signal) => {
@@ -112,6 +118,7 @@ export function launch(program, args, options, records) {
     child.once('spawn', resolve)
     child.once('error', reject)
   })
+  record.tails = () => ({ stdout: tails.stdout.toString('utf8'), stderr: tails.stderr.toString('utf8') })
   record.output = () => {
     demand(!overflow)
     return stdout
@@ -189,7 +196,7 @@ export async function privateRoot(root, records, { commandMs = 420000 } = {}) {
   const sddl = (
     await command(
       powershell(),
-      ['-NoProfile', '-NonInteractive', '-Command', `(Get-Acl -LiteralPath ${quote(root)}).Sddl`],
+      ['-NoProfile', '-NonInteractive', '-Command', `$ErrorActionPreference='Stop'; $sections=[System.Security.AccessControl.AccessControlSections]::Access; [System.IO.Directory]::GetAccessControl(${quote(root)}, $sections).GetSecurityDescriptorSddlForm($sections)`],
       root,
       records,
       { ms: commandMs },
@@ -210,7 +217,7 @@ export async function samples(root, records, envRoot = root) {
         ['-NoProfile', '-NonInteractive', '-Command', script],
         envRoot,
         records,
-        { ms: 15000 },
+        { ms: 60000 },
       )
     ).trim()
     const parsed = s ? JSON.parse(s) : []

@@ -66,6 +66,16 @@ async function configure(run, id) {
           ),
         60000,
       )
+  } catch (error) {
+    const observed = await page.evaluate(`
+      const shown=id=>{const e=document.getElementById(id);return !!e&&!e.hidden};
+      return {surface:${JSON.stringify(id)},status:document.getElementById('status')?.textContent,
+        linkPhone:shown('link-phone'),pairing:shown('pairing'),account:shown('account'),
+        readDisabled:document.getElementById('read')?.disabled,
+        chromeProfile:!!document.getElementById('profiles')};
+    `).catch(() => ({ unavailable: true }))
+    console.error('Plugin configuration witness:', JSON.stringify(observed))
+    throw error
   } finally {
     page.close()
     await press(run.cdp, '[data-cy="plugin-close"]')

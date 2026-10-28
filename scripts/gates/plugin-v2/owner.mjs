@@ -35,6 +35,20 @@ import { project, bundleProof } from './projection.mjs'
 import { journey } from './journey.mjs'
 import { checkNormalPluginBuild } from '../../check-no-plugin-gate-inputs.mjs'
 
+function printFailure(error, diagnostic) {
+  console.error(error?.message ?? String(error))
+  console.error(error?.stack ?? String(error))
+  for (const record of diagnostic.records ?? []) {
+    if (record.closed && record.code === 0 && record.signal === null) continue
+    console.error(`Child exit code: ${record.code}; signal: ${record.signal}; closed: ${record.closed}`)
+    const tails = record.tails()
+    console.error('Child stdout tail:')
+    console.error(tails.stdout)
+    console.error('Child stderr tail:')
+    console.error(tails.stderr)
+  }
+}
+
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..')
 const routeDirectory = path.join(repository, 'scripts/gates/plugin-v2')
 const readJSON = (file) => JSON.parse(readFile(file, 128 * 1024))
@@ -103,13 +117,14 @@ export async function stage(version) {
     cleanup,
   })
 }
-export async function install(root) {
+export async function install(root, diagnostic = {}) {
   demand(
     process.env.GITHUB_ACTIONS === 'true' && process.env.RUNNER_ENVIRONMENT === 'github-hosted',
   )
   owned(root)
   const records = [],
     cancel = cancellation(records)
+  diagnostic.records = records
   let failure
   try {
     const held = readJSON(path.join(root, 'observed-source.json'))
@@ -120,18 +135,23 @@ export async function install(root) {
     demand(typeof input === 'string' && path.isAbsolute(input) && input.endsWith('pnpm.cjs'))
     const entry = fs.realpathSync.native(input)
     // Node invokes the setup action's pinned PNPM entry directly, with no shell/cmd wrapper.
-    readFile(entry, 8 * 1024 * 1024)
+    readDependency(entry, path.dirname(path.dirname(entry)), 8 * 1024 * 1024)
+    await verifyPnpm(entry, root, records)
     await command(process.execPath, [entry, 'install', '--frozen-lockfile'], root, records, {
       cwd: path.join(root, 'repo'),
       ms: 900000,
     })
   } catch (error) {
+    printFailure(error, diagnostic)
     failure = error
   } finally {
-    const closed = await cleanup(root, records).catch(() => ({
-      directClosed: false,
-      twoEmptySamples: false,
-    }))
+    const closed = await cleanup(root, records).catch((error) => {
+      printFailure(error, diagnostic)
+      return {
+        directClosed: false,
+        twoEmptySamples: false,
+      }
+    })
     if (cancel.cancelled || !closed.directClosed || !closed.twoEmptySamples)
       failure = new Error('Dependency drain refused')
     cancel.close()
@@ -181,7 +201,7 @@ async function packageProof(repo, app, expected, appVersion) {
   demand(
     JSON.parse(extract(path.join(resources, 'app.asar'), 'package.json')).version === appVersion,
   )
-  const main = extract(path.join(resources, 'app.asar'), 'out/main/index.js')
+  const main = extract(path.join(resources, 'app.asar'), path.join('out', 'main', 'index.js'))
   const owner = readFile(path.join(resources, 'plugin-supervisor/entry.cjs'))
   demand(hash(main) === expected.mainSha256 && hash(owner) === expected.ownerSha256)
   demand(main.includes(Buffer.from(MARKER)) && owner.includes(Buffer.from(MARKER)))
@@ -379,7 +399,8 @@ export async function run(root) {
     summary.runtimePaths = modes
     summary.platformMeasured = true
     summary.phase = 'cleanup'
-  } catch {
+  } catch (error) {
+    printFailure(error, { records })
     summary.failure = 'required-witness-missing'
   } finally {
     try {
@@ -513,11 +534,18 @@ async function sdkCommand(program, args, root, records, cwd, ms, extra = {}) {
     throw error
   }
 }
+async function verifyPnpm(entry, root, records) {
+  const version = (await command(process.execPath, [entry, '--version'], root, records, {
+    ms: 60000,
+  })).trim()
+  if (version !== '10.11.0') throw new Error(`PNPM version refused: ${version}`)
+  console.error(`Gate PNPM version: ${version}`)
+}
 function sdkPnpm() {
   const input = process.env.PLUGIN_GATE_PNPM_ENTRY
   demand(typeof input === 'string' && path.isAbsolute(input) && input.endsWith('pnpm.cjs'))
   const entry = fs.realpathSync.native(input)
-  readFile(entry, 8 * 1024 * 1024)
+  readDependency(entry, path.dirname(path.dirname(entry)), 8 * 1024 * 1024)
   return entry
 }
 async function sdkIdentity(root, records) {
@@ -564,7 +592,7 @@ export async function stageSdk() {
     cancel = cancellation(records)
   let failure
   try {
-    await privateRoot(root, records, { commandMs: 5000 })
+    await privateRoot(root, records, { commandMs: 60000 })
     const observed = await observe('0.1.8', records, root, { gitMs: 5000 })
     fs.writeFileSync(path.join(root, 'gate-token'), randomBytes(32).toString('hex'), {
       flag: 'wx',
@@ -609,6 +637,7 @@ export async function stageSdk() {
     })
     checkNormalPluginBuild(repo)
   } catch (error) {
+    printFailure(error, { records })
     failure = error
   } finally {
     const closed = await sdkCleanup(root, records).catch(() => ({
@@ -647,15 +676,18 @@ export async function installSdk(root, cli = false) {
       )
       args = ['install', '--registry=https://registry.npmjs.org']
     }
+    const pnpm = sdkPnpm()
+    await verifyPnpm(pnpm, root, records)
     await sdkCommand(
       process.execPath,
-      [sdkPnpm(), ...args],
+      [pnpm, ...args],
       root,
       records,
       cwd,
       cli ? 300000 : 600000,
     )
   } catch (error) {
+    printFailure(error, { records })
     failure = error
   } finally {
     const closed = await sdkCleanup(root, records).catch(() => ({
@@ -858,7 +890,8 @@ export async function runSdk(root) {
       hash(readDependency(program, path.dirname(program), 512 * 1024 * 1024).bytes) ===
         result.cli.programSha256,
     )
-  } catch {
+  } catch (error) {
+    printFailure(error, { records })
     result.failure = 'required-real-sdk-witness-missing'
   } finally {
     try {
@@ -903,11 +936,14 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
         process.exitCode = 1
       },
     )
-  else if (mode === 'install')
-    install(arg).catch(() => {
+  else if (mode === 'install') {
+    const diagnostic = {}
+    install(arg, diagnostic).catch((error) => {
       console.error('Plugin v2 install refused')
+      printFailure(error, diagnostic)
       process.exitCode = 1
     })
+  }
   else if (mode === 'run')
     run(arg).then(
       (s) => {
