@@ -528,6 +528,7 @@ function sdkInstallReport(error, diagnostic) {
   const steps = ['launch', 'start', 'wait', 'exit', 'output', 'stop']
   return {
     schema: 1,
+    ...(diagnostic.phase === 'cli' ? { pnpmCategory: ['lockfile-policy', 'lifecycle', 'fetch'].includes(diagnostic.pnpmCategory) ? diagnostic.pnpmCategory : 'unreported' } : {}),
     diagnostic: diagnostic.phase === 'scope' ? 'sdk-scope-refusal' : diagnostic.phase === 'stage' ? 'sdk-stage-refusal' : 'sdk-install-refusal',
     phase: ['scope', 'stage', 'repo', 'cli'].includes(diagnostic.phase) ? diagnostic.phase : 'repo',
     failureStage: stages.includes(diagnostic.failureStage) ? diagnostic.failureStage : stages.includes(diagnostic.stage) ? diagnostic.stage : 'unreported',
@@ -539,6 +540,136 @@ function sdkInstallReport(error, diagnostic) {
     cleanupError: diagnostic.cleanupError ?? null,
     cleanup: diagnostic.cleanup ?? null,
     drainRefused: diagnostic.drainRefused === true,
+  }
+}
+// CLI PNPM diagnostic only: bounded numeric UTF-8/DFA state, never an input text/tail buffer.
+function pnpmErrorClassifier() {
+  const codes = [
+    ['ERR_PNPM_OUTDATED_LOCKFILE', 'lockfile-policy'],
+    ['ERR_PNPM_NO_LOCKFILE', 'lockfile-policy'],
+    ['ELIFECYCLE', 'lifecycle'],
+    ['ERR_PNPM_FETCH_401', 'fetch'],
+    ['ERR_PNPM_FETCH_403', 'fetch'],
+    ['ERR_PNPM_FETCH_404', 'fetch'],
+    ['ERR_PNPM_FETCH_500', 'fetch'],
+    ['ERR_PNPM_FETCH_503', 'fetch'],
+  ]
+  const trie = [{ next: new Map(), token: -1 }]
+  for (let id = 0; id < codes.length; id++) {
+    let node = 0
+    for (const char of codes[id][0]) {
+      const point = char.charCodeAt(0)
+      if (!trie[node].next.has(point)) {
+        trie[node].next.set(point, trie.length)
+        trie.push({ next: new Map(), token: -1 })
+      }
+      node = trie[node].next.get(point)
+    }
+    trie[node].token = id
+  }
+  const streams = [0, 1].map(() => ({ bytes: 0, ended: false, need: 0, scalar: 0, minimum: 0, active: false, node: 0, foldNode: 0, position: 0, firstE: false, upper: true, prefix: true, errorFamily: false }))
+  let bad = false, seen = -1
+  const boundary = (p) => p === 9 || p === 10 || p === 11 || p === 12 || p === 13 || p === 32 || p === 160 || (p >= 8192 && p <= 8202) || p === 8232 || p === 8233 || p === 8239 || p === 8287 || p === 12288 || p === 40 || p === 41 || p === 58 || p === 91 || p === 93
+  function point(s, p) {
+    if (boundary(p)) {
+      if (s.active) {
+        const token = s.node < 0 ? -1 : trie[s.node].token
+        if (token >= 0) {
+          if (seen !== -1 && seen !== token) bad = true
+          seen = token
+        } else if (s.errorFamily || (s.firstE && s.upper)) bad = true
+      }
+      s.active = false; s.node = 0; s.foldNode = 0; s.position = 0; s.firstE = false; s.upper = true; s.prefix = true; s.errorFamily = false
+      return
+    }
+    if (p < 32 || p === 127) { bad = true; return }
+    if (!s.active) { s.active = true; s.firstE = p === 69 }
+    s.upper = s.upper && ((p >= 65 && p <= 90) || (p >= 48 && p <= 57) || p === 95)
+    if (s.position < 4) s.prefix = s.prefix && (p >= 97 && p <= 122 ? p - 32 : p) === [69, 82, 82, 95][s.position]
+    s.position = Math.min(5, s.position + 1)
+    if (s.position === 4 && s.prefix) s.errorFamily = true
+    s.node = s.node < 0 ? -1 : (trie[s.node].next.get(p) ?? -1)
+    s.foldNode = s.foldNode < 0 ? -1 : (trie[s.foldNode].next.get(p >= 97 && p <= 122 ? p - 32 : p) ?? -1)
+    if (s.foldNode >= 0 && trie[s.foldNode].token >= 0) s.errorFamily = true
+  }
+  return {
+    write(id, chunk) {
+      if (bad) return
+      try {
+        const s = streams[id]
+        if (!s || s.ended || !Buffer.isBuffer(chunk)) { bad = true; return }
+        s.bytes = Math.min(32769, s.bytes + chunk.length)
+        if (s.bytes >= 32768 || streams[0].bytes + streams[1].bytes >= 65536) { bad = true; return }
+        if (bad) return
+        for (const byte of chunk) {
+          if (s.need) {
+            if (byte < 128 || byte > 191) { bad = true; return }
+            s.scalar = s.scalar * 64 + (byte & 63)
+            s.need--
+            if (!s.need) {
+              if (s.scalar < s.minimum || s.scalar > 1114111 || (s.scalar >= 55296 && s.scalar <= 57343)) { bad = true; return }
+              point(s, s.scalar)
+              s.scalar = 0; s.minimum = 0
+            }
+          } else if (byte < 128) point(s, byte)
+          else if (byte >= 194 && byte <= 223) { s.need = 1; s.scalar = byte & 31; s.minimum = 128 }
+          else if (byte >= 224 && byte <= 239) { s.need = 2; s.scalar = byte & 15; s.minimum = 2048 }
+          else if (byte >= 240 && byte <= 244) { s.need = 3; s.scalar = byte & 7; s.minimum = 65536 }
+          else { bad = true; return }
+          if (bad) return
+        }
+      } catch { bad = true }
+    },
+    end(id) {
+      const s = streams[id]
+      if (!s || s.ended) { bad = true; return }
+      s.ended = true
+      // An unterminated lexical unit or UTF-8 scalar may be a truncated error token.
+      if (s.need || s.active) bad = true
+    },
+    finish() {
+      return !bad && streams.every((s) => s.ended) && seen >= 0 ? codes[seen][1] : 'unreported'
+    },
+  }
+}
+function observeCliPnpm(record) {
+  const bindings = []
+  let parser, usable = true, finished = false, closed = false, category = 'unreported'
+  try {
+    parser = pnpmErrorClassifier()
+    for (const [id, stream] of [[0, record.child.stdout], [1, record.child.stderr]]) {
+      const data = (chunk) => {
+        if (closed || finished) { usable = false; return }
+        try { parser.write(id, chunk) } catch { usable = false }
+      }
+      const end = () => {
+        if (closed || finished) { usable = false; return }
+        try { parser.end(id) } catch { usable = false }
+      }
+      bindings.push([stream, 'data', data], [stream, 'end', end])
+      stream.on('data', data)
+      stream.on('end', end)
+    }
+    const close = () => {
+      if (closed || finished) { usable = false; return }
+      closed = true
+      try {
+        const value = parser.finish()
+        category = ['lockfile-policy', 'lifecycle', 'fetch'].includes(value) ? value : 'unreported'
+      } catch { usable = false }
+    }
+    bindings.push([record.child, 'close', close])
+    record.child.on('close', close)
+  } catch { usable = false }
+  return {
+    finish(eligible) {
+      if (finished) return 'unreported'
+      finished = true
+      for (const [stream, event, handler] of bindings) {
+        try { stream.removeListener(event, handler) } catch { usable = false }
+      }
+      return usable && eligible && closed ? category : 'unreported'
+    },
   }
 }
 async function sdkCommand(program, args, root, records, cwd, ms, extra = {}, diagnostic) {
@@ -556,6 +687,10 @@ async function sdkCommand(program, args, root, records, cwd, ms, extra = {}, dia
     },
     records,
   )
+  let pnpmObserver
+  if (diagnostic?.phase === 'cli') {
+    try { pnpmObserver = observeCliPnpm(record) } catch {}
+  }
   try {
     if (diagnostic) diagnostic.commandStep = 'start'
     await record.start
@@ -578,6 +713,15 @@ async function sdkCommand(program, args, root, records, cwd, ms, extra = {}, dia
       throw stopError
     }
     throw error
+  } finally {
+    if (pnpmObserver) {
+      try {
+        diagnostic.pnpmCategory = pnpmObserver.finish(
+          diagnostic.commandFailureStep === 'exit' && !diagnostic.commandStop &&
+          record.closed === true && Number.isInteger(record.code) && record.code !== 0 && record.signal === null,
+        )
+      } catch { diagnostic.pnpmCategory = 'unreported' }
+    }
   }
 }
 function sdkPnpm() {
@@ -716,7 +860,7 @@ export async function installSdk(root, cli = false, diagnostic = {}) {
   Object.assign(diagnostic, {
     phase: cli ? 'cli' : 'repo', stage: 'role', failureStage: null,
     commandStep: null, commandFailureStep: null, primary: null,
-    commandStop: null, cleanupError: null, cleanup: null, drainRefused: false,
+    commandStop: null, cleanupError: null, cleanup: null, drainRefused: false, pnpmCategory: 'unreported',
   })
   sdkRole()
   diagnostic.stage = 'owned-root'
