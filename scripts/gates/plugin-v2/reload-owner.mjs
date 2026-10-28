@@ -96,8 +96,8 @@ async function packageBinding(repo, app, bundle) {
   demand(typeof extract === 'function')
   const archive = path.join(app, 'resources/app.asar')
   demand(JSON.parse(extract(archive, 'package.json')).version === '0.1.8')
-  demand(hash(extract(archive, 'out/main/index.js')) === bundle.mainSha256)
-  demand(hash(extract(archive, 'out/preload/index.js')) === bundle.preloadSha256)
+  demand(hash(extract(archive, path.join('out', 'main', 'index.js'))) === bundle.mainSha256)
+  demand(hash(extract(archive, path.join('out', 'preload', 'index.js'))) === bundle.preloadSha256)
   return inventory(app)
 }
 export async function runReload(root) {
