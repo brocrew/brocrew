@@ -5,12 +5,14 @@ Each row names its focused assertion killer; canonical proofs restore source byt
 """
 
 MUTATIONS = [('M1 · a fresh conversation loses its prepared storage address — killed by '
-  '`a-conversation-keeps-its-recorded-provider-home.test.ts`',
-  [('apps/desktop/src/main/db/session-store.ts',
-    '      record.profileId,\n'
-    '      record.providerLocation ?? null,\n'
-    '      // Null, not a default:',
-    '      record.profileId,\n      null,\n      // Null, not a default:')]),
+ '`a-conversation-keeps-its-recorded-provider-home.test.ts`',
+ [('apps/desktop/src/main/db/session-store.ts',
+   '      record.profileId,\n'
+   '      ...(locationStatements === null ? [] : [record.providerLocation ?? null]),\n'
+   '      // Null, not a default:',
+   '      record.profileId,\n'
+   '      ...(locationStatements === null ? [] : [null]),\n'
+   '      // Null, not a default:')]),
  ('M2 · the private address query always answers legacy-null — killed by '
   '`a-conversation-keeps-its-recorded-provider-home.test.ts`',
   [('apps/desktop/src/main/db/session-store.ts',
@@ -114,15 +116,17 @@ MUTATIONS = [('M1 · a fresh conversation loses its prepared storage address —
     'provider_home = COALESCE(provider_home, ?), updated_at',
     'provider_home = ?, updated_at')]),
  ('M18 · a reserved service never records its first prepared address — killed by '
-  '`a-conversation-keeps-its-recorded-provider-home.test.ts`',
-  [('apps/desktop/src/main/db/session-store.ts',
-    '        record.providerLocation ?? null,\n        at,\n        record.id,',
-    '        null,\n        at,\n        record.id,')]),
+ '`a-conversation-keeps-its-recorded-provider-home.test.ts`',
+ [('apps/desktop/src/main/db/session-store.ts',
+   '        ...(locationStatements === null ? [] : [record.providerLocation ?? null]),\n'
+   '        at,\n'
+   '        record.id,',
+   '        ...(locationStatements === null ? [] : [null]),\n        at,\n        record.id,')]),
  ('M19 · native-user adoption stores a managed address supplied by the caller — killed by '
-  '`recorded-provider-home-readers.test.ts`',
-  [('apps/desktop/src/main/db/session-store.ts',
-    '      record.profileId === null ? null : (record.providerLocation ?? null),',
-    '      record.providerLocation ?? null,')]),
+ '`recorded-provider-home-readers.test.ts`',
+ [('apps/desktop/src/main/db/session-store.ts',
+   '    const location = record.profileId === null ? undefined : record.providerLocation\n',
+   '    const location = record.providerLocation\n')]),
  ('M20 · managed discovery does not record the discovered home — killed by '
   '`a-conversation-keeps-its-recorded-provider-home.test.ts`',
   [('apps/desktop/src/main/runtime/runtime-host.ts',
@@ -198,4 +202,54 @@ MUTATIONS = [('M1 · a fresh conversation loses its prepared storage address —
   '`a-conversation-keeps-its-recorded-provider-home.test.ts`',
   [('apps/desktop/src/main/runtime/runtime-host.ts',
     '      if (error instanceof ProviderLocationError) return null\n',
-    '')])]
+    '')]),
+('M30 · store construction eagerly prepares the new column on old schemas — killed by '
+ '`provider-location-legacy-compatibility.test.ts`',
+ [('apps/desktop/src/main/db/session-store.ts',
+   '  let recordedLocationStatements: {',
+   "  db.prepare('SELECT provider_home FROM provider_session WHERE id = ?')\n"
+   '  let recordedLocationStatements: {')]),
+('M31 · an explicit location is silently discarded before migration — killed by '
+ '`provider-location-legacy-compatibility.test.ts`',
+ [('apps/desktop/src/main/db/session-store.ts',
+   '      if (location !== undefined)\n'
+   "        throw new Error('Provider locations require the database migration')\n",
+   '')]),
+('M32 · the column probe caches absence across an in-place migration — killed by '
+ '`provider-location-legacy-compatibility.test.ts`',
+ [('apps/desktop/src/main/db/session-store.ts',
+   '  let recordedLocationStatements: {',
+   "  const columnsAtCreation = db.pragma('table_info(provider_session)') as { name: string }[]\n"
+   '  let recordedLocationStatements: {'),
+  ('apps/desktop/src/main/db/session-store.ts',
+   "    const columns = db.pragma('table_info(provider_session)') as { name: string }[]\n",
+   '    const columns = columnsAtCreation\n')]),
+('M33 · creation writes an identity before refusing an unsupported location — killed by '
+ '`provider-location-legacy-compatibility.test.ts`',
+ [('apps/desktop/src/main/db/session-store.ts',
+   '    const locationStatements = providerLocationSql(record.providerLocation)\n'
+   '    const identityId = identityRowFor(record.profileId, at)\n',
+   '    const identityId = identityRowFor(record.profileId, at)\n'
+   '    const locationStatements = providerLocationSql(record.providerLocation)\n')]),
+('M34 · adoption writes an identity before refusing an unsupported location — killed by '
+ '`provider-location-legacy-compatibility.test.ts`',
+ [('apps/desktop/src/main/db/session-store.ts',
+   '    const locationStatements = providerLocationSql(location)\n',
+   ''),
+  ('apps/desktop/src/main/db/session-store.ts',
+   '    const identityId = record.profileId === null ? null : identityRowFor(record.profileId, '
+   'at)\n',
+   '    const identityId = record.profileId === null ? null : identityRowFor(record.profileId, '
+   'at)\n'
+   '    const locationStatements = providerLocationSql(location)\n')]),
+('M35 · the shared host fixture omits the managed namespace — killed by '
+ '`provider-location-legacy-compatibility.test.ts`',
+ [('apps/desktop/test/lib/f093-host.ts',
+   "    return join(this.root(), 'default', profileId, provider)\n",
+   '    return join(this.root(), profileId, provider)\n')]),
+('M36 · first launch discards a location before the migration guard — killed by '
+ '`provider-location-legacy-compatibility.test.ts`',
+ [('apps/desktop/src/main/db/session-store.ts',
+   '    ): boolean => {\n'
+   '      const locationStatements = providerLocationSql(record.providerLocation)\n',
+   '    ): boolean => {\n      const locationStatements = providerLocationSql()\n')])]

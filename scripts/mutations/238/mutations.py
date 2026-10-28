@@ -271,7 +271,7 @@ MUTATIONS = [
         # `profile-collision.test.ts`.
         [
             # ⚑ **4004 · re-anchored in place, not retired** — Recorded storage adds an optional address; preserve the same legacy defect and killer.
-            (STORE, "      record.approvalMode,\n      record.profileId,\n      record.providerLocation ?? null,\n      // Null, not a default: \"nobody chose\" and \"chose medium\" are different facts, and only\n", "      record.approvalMode,\n      record.profileId.toLowerCase(),\n      record.providerLocation ?? null,\n      // Null, not a default: \"nobody chose\" and \"chose medium\" are different facts, and only\n"),
+            (STORE, "      record.approvalMode,\n      record.profileId,\n      ...(locationStatements === null ? [] : [record.providerLocation ?? null]),\n      // Null, not a default: \"nobody chose\" and \"chose medium\" are different facts, and only\n", "      record.approvalMode,\n      record.profileId.toLowerCase(),\n      ...(locationStatements === null ? [] : [record.providerLocation ?? null]),\n      // Null, not a default: \"nobody chose\" and \"chose medium\" are different facts, and only\n"),
         ],
     ),
     (
