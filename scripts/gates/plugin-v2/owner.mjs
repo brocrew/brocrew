@@ -201,7 +201,7 @@ async function packageProof(repo, app, expected, appVersion) {
   demand(
     JSON.parse(extract(path.join(resources, 'app.asar'), 'package.json')).version === appVersion,
   )
-  const main = extract(path.join(resources, 'app.asar'), 'out/main/index.js')
+  const main = extract(path.join(resources, 'app.asar'), path.join('out', 'main', 'index.js'))
   const owner = readFile(path.join(resources, 'plugin-supervisor/entry.cjs'))
   demand(hash(main) === expected.mainSha256 && hash(owner) === expected.ownerSha256)
   demand(main.includes(Buffer.from(MARKER)) && owner.includes(Buffer.from(MARKER)))
@@ -1215,7 +1215,8 @@ export async function runSdk(root) {
       hash(readDependency(program, path.dirname(program), 512 * 1024 * 1024).bytes) ===
         result.cli.programSha256,
     )
-  } catch {
+  } catch (error) {
+    printFailure(error, { records })
     result.failure = 'required-real-sdk-witness-missing'
   } finally {
     try {
