@@ -113,6 +113,21 @@ export async function reloadJourney({ root, app, records }) {
       } catch (statusError) {
         console.error('Reload status readback failed:', statusError?.stack ?? String(statusError))
       }
+      try {
+        const delivery = await bounded(
+          run.cdp.evaluate(`
+          const view=await window.api.runtime.look({sessionId:window.__reloadDriverState.sessionId});
+          const kinds=new Set(['user_turn','turn','message_queued','message_unqueued']);
+          return {hasOlder:view.history.hasOlder,entries:view.history.entries.filter(row=>kinds.has(row.event.type))};`),
+          5000,
+        )
+        console.error('Reload delivery history after receipt failure:', JSON.stringify(delivery))
+      } catch (historyError) {
+        console.error(
+          'Reload history readback failed:',
+          historyError?.stack ?? String(historyError),
+        )
+      }
       throw error
     }
     await quit(run)

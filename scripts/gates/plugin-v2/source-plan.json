@@ -824,8 +824,8 @@
     },
     {
       "path": "scripts/gates/plugin-v2/reload-journey.mjs",
-      "sha256": "d6a93dc0fb55c17377df079523eeb82831c6fb90e15f1120e85cb31a62cdc76c",
-      "bytes": 5038
+      "sha256": "1e7ccf361994dca531a6b65c404ee5261bdc7d0bed4abd809eace56f92c56390",
+      "bytes": 5728
     },
     {
       "path": "scripts/gates/plugin-v2/reload-owner.mjs",
