@@ -81,7 +81,8 @@
     ".github/workflows/release.yml",
     "scripts/gates/plugin-packaged/cdp.mjs",
     "scripts/lib/update-rehearsal-app.mjs",
-    "scripts/test/plugin-packaged-probe.test.mjs"
+    "scripts/test/plugin-packaged-probe.test.mjs",
+    "scripts/gates/plugin-v2/diagnostics.mjs"
   ],
   "files": [
     {
@@ -741,8 +742,8 @@
     },
     {
       "path": "scripts/gates/plugin-v2/controls.test.mjs",
-      "sha256": "a4c20384f380edbf928781bccc8dc6b5681b4243c43bbfaa390c5c74de509e7c",
-      "bytes": 31639
+      "sha256": "7764d25899b796094cddbe286e29da121707649e39c38275f3ea29386a1aa0f8",
+      "bytes": 35053
     },
     {
       "path": "scripts/gates/plugin-v2/external-broker-evidence.template.json",
@@ -751,8 +752,8 @@
     },
     {
       "path": "scripts/gates/plugin-v2/journey.mjs",
-      "sha256": "0d4c8c875725e9c853875b9a0f976b42a8e199489c175780eb0036c9d202bfa8",
-      "bytes": 9447
+      "sha256": "710add1d919bc40346688fa3950f5e34aaeb2407e3ccf4af99d016a271e4c3bc",
+      "bytes": 9548
     },
     {
       "path": "scripts/gates/plugin-v2/native-dependency.mjs",
@@ -781,8 +782,8 @@
     },
     {
       "path": "scripts/gates/plugin-v2/owner.mjs",
-      "sha256": "792193ffee32c35fce08b9c4cdd399869eeb7f6cfe4abf12234d9304ed98e615",
-      "bytes": 33876
+      "sha256": "b5eeaffbeb579b9a0a11e64a7335f610535dd8b18e23f97ffe402ae666e7754d",
+      "bytes": 35173
     },
     {
       "path": "scripts/gates/plugin-v2/policy.proposed.json",
@@ -791,13 +792,13 @@
     },
     {
       "path": "scripts/gates/plugin-v2/processes.mjs",
-      "sha256": "86433201927bd9c9694b9c879206ce752074b2a86a4dee7a9ccffaf074e9bbc9",
-      "bytes": 10202
+      "sha256": "2baf764401d2e6570ec76639d01e26593125785ede25af2e3854ee7cd98c2475",
+      "bytes": 10513
     },
     {
       "path": "scripts/gates/plugin-v2/projection.mjs",
-      "sha256": "8db72acee69e0049a7acb84e31637ed3767625ed2de0c9d1e8672d9a19bccde4",
-      "bytes": 4823
+      "sha256": "c09d312f1bc7b04525ca8ee39e80370e3af1d40cb6a11b2110aeccbc8045e076",
+      "bytes": 4997
     },
     {
       "path": "scripts/gates/plugin-v2/public-checks-plan.json",
@@ -943,6 +944,11 @@
       "path": "scripts/test/plugin-packaged-probe.test.mjs",
       "sha256": "ab32b0701d0a88a7adea0f0917dd3f34842bba0c1ae4f8ee90ef45a85b00540c",
       "bytes": 15912
+    },
+    {
+      "path": "scripts/gates/plugin-v2/diagnostics.mjs",
+      "sha256": "b52741dbcc4c691ea7f85db8bfdd7afa996b15223348946677d6988126788ffb",
+      "bytes": 3854
     }
   ],
   "routePolicySha256": "5d0fa754eabf1c171316ec1cb007a60fadef12f5e44449783af582cc320882a7",

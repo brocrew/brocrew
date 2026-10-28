@@ -10,6 +10,7 @@ import {
 } from '../plugin-packaged/cdp.mjs'
 import { demand, readFile } from './contract.mjs'
 import { startApp, quit, samples } from './processes.mjs'
+import { printPluginDiagnostics } from './diagnostics.mjs'
 
 const selector = (id, cy) => `[data-plugin="${id}"] [data-cy="${cy}"]`
 async function cards(run) {
@@ -212,6 +213,7 @@ export async function journey(options, summary) {
     }
   } catch (error) {
     await pluginWitness(run)
+    printPluginDiagnostics(root, records)
     throw error
   } finally {
     await quit(run)

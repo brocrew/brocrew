@@ -19,6 +19,95 @@ import { hash, hosted, receipt, LIST, BASE, BASE017, appSourceFor, MARKER } from
 import { fetchSource, project, bundleProof } from './projection.mjs'
 import { verifyOperation } from './verify-operation.mjs'
 import { checkNormalPluginBuild } from '../../check-no-plugin-gate-inputs.mjs'
+import { projectDiagnostics } from './diagnostics.mjs'
+
+test('projected child diagnostics capture raw stderr, spawn errors and exits and restore sources', () => {
+  scratch((root) => {
+    const paths = [
+      'apps/desktop/src/main/plugins/supervisor/launcher.ts',
+      'apps/desktop/src/main/plugins/node-host.ts',
+      'apps/desktop/resources/plugin-host/guardian.mjs',
+      'apps/desktop/src/main/plugins/supervisor/entry.ts',
+    ]
+    for (const name of paths) {
+      fs.mkdirSync(path.dirname(path.join(root, name)), { recursive: true })
+      fs.copyFileSync(path.join(repo, name), path.join(root, name))
+    }
+    const projected = projectDiagnostics(root, root)
+    const source = fs.readFileSync(path.join(root, paths[2]), 'utf8')
+    assert.ok(source.includes("stdio: ['ignore', 'ignore', 'pipe', 'ipc']"))
+    const logs = [],
+      handlers = {},
+      stderrHandlers = {}
+    const helper = source
+      .slice(0, source.indexOf('// This process survives'))
+      .replace(/import .*? from 'node:fs';/, '')
+    vm.runInNewContext(helper + '\ngateChild(child,"whatsapp")', {
+      gateAppend: (_file, line) => logs.push(JSON.parse(line)),
+      gateStat: () => ({ size: 0 }),
+      process: { pid: 41, on: () => {} },
+      child: {
+        pid: 42,
+        stderr: { on: (event, fn) => (stderrHandlers[event] = fn) },
+        on: (event, fn) => (handlers[event] = fn),
+      },
+    })
+    stderrHandlers.data(Buffer.from('fictional missing native module'))
+    handlers.error(new Error('fictional spawn error'))
+    handlers.exit(7, null)
+    assert.deepEqual(
+      logs.map((row) => row.event),
+      ['spawn', 'stderr', 'error', 'exit'],
+    )
+    assert.equal(logs[1].text, 'fictional missing native module')
+    assert.match(logs[2].error, /fictional spawn error/)
+    assert.equal(logs[3].code, 7)
+    projected.restore()
+    for (const name of paths)
+      assert.equal(
+        fs.readFileSync(path.join(root, name), 'utf8'),
+        fs.readFileSync(path.join(repo, name), 'utf8'),
+      )
+  })
+})
+
+test('SDK stage drain retries transient descendants and refuses persistent or failed censuses', async () => {
+  const source = fs.readFileSync(new URL('./processes.mjs', import.meta.url), 'utf8')
+  const body = source
+    .slice(
+      source.indexOf('export async function cleanup('),
+      source.indexOf('async function port()'),
+    )
+    .replace('export ', '')
+  const exercise = async (answers, stop = true) => {
+    const diagnostic = {}
+    let calls = 0
+    const context = {
+      stopAll: async () => stop,
+      samples: async () => {
+        const next = answers[Math.min(calls++, answers.length - 1)]
+        if (next instanceof Error) throw next
+        return next
+      },
+      delay: async () => {},
+    }
+    const fn = vm.runInNewContext(body + '\ncleanup', context)
+    const result = await fn('fictional-root', [], diagnostic)
+    return { result, diagnostic, calls }
+  }
+  const transient = await exercise([[{ pid: 42, name: 'fictional child' }], [], []])
+  assert.equal(transient.result.twoEmptySamples, true)
+  assert.equal(transient.calls, 3)
+  assert.equal(
+    (await exercise([[{ pid: 42, name: 'persistent child' }]])).result.twoEmptySamples,
+    false,
+  )
+  assert.equal((await exercise([[]], false)).result.directClosed, false)
+  await assert.rejects(
+    () => exercise([new Error('fictional census timeout')]),
+    /fictional census timeout/,
+  )
+})
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..')
 const candidate = fs.readFileSync(new URL('./candidate.json', import.meta.url))

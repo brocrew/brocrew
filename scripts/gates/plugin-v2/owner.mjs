@@ -321,6 +321,7 @@ export async function run(root) {
     // No browser tool is invoked in this Review slice; a missing gate path forbids system fallback.
     summary.phase = 'projection'
     restored = project(repo, {
+      diagnostics: true,
       root,
       appData,
       browser,
@@ -588,15 +589,20 @@ async function sdkIdentity(root, records) {
   checkNormalPluginBuild(repo)
   return now
 }
-export async function stageSdk() {
+export async function stageSdk(diagnostic = {}) {
+  diagnostic.step = 'hosted-sdk-role'
   sdkRole()
+  diagnostic.step = 'temporary-root'
   const temp = fs.realpathSync.native(process.env.RUNNER_TEMP)
   const root = fs.realpathSync.native(fs.mkdtempSync(path.join(temp, 'plugin-v2-'))),
     records = [],
     cancel = cancellation(records)
+  diagnostic.records = records
   let failure
   try {
+    diagnostic.step = 'private-root'
     await privateRoot(root, records, { commandMs: 60000 })
+    diagnostic.step = 'observe-source'
     const observed = await observe('0.1.8', records, root, { gitMs: 5000 })
     fs.writeFileSync(path.join(root, 'gate-token'), randomBytes(32).toString('hex'), {
       flag: 'wx',
@@ -607,6 +613,7 @@ export async function stageSdk() {
       mode: 0o600,
     })
     const repo = path.join(root, 'repo')
+    diagnostic.step = 'clone-source'
     await command(
       'git',
       ['clone', '--shared', '--no-checkout', '--template=', repository, repo],
@@ -614,6 +621,7 @@ export async function stageSdk() {
       records,
       { ms: 60000 },
     )
+    diagnostic.step = 'checkout-source'
     await command(
       'git',
       [
@@ -627,6 +635,7 @@ export async function stageSdk() {
       records,
       { cwd: repo, ms: 5000 },
     )
+    diagnostic.step = 'checkout-identity'
     demand(
       (
         await command('git', ['rev-parse', 'HEAD'], root, records, {
@@ -639,17 +648,27 @@ export async function stageSdk() {
       flag: 'wx',
       mode: 0o600,
     })
+    diagnostic.step = 'normal-build-guard'
     checkNormalPluginBuild(repo)
   } catch (error) {
     printFailure(error, { records })
+    diagnostic.primaryStep = diagnostic.step
+    diagnostic.primaryError = error?.stack ?? String(error)
     failure = error
   } finally {
-    const closed = await sdkCleanup(root, records).catch(() => ({
-      directClosed: false,
-      twoEmptySamples: false,
-    }))
-    if (cancel.cancelled || !closed.directClosed || !closed.twoEmptySamples)
-      failure = new Error('SDK stage drain refused')
+    diagnostic.cleanup = {}
+    // A transient descendant is sampled again, never killed; both closure witnesses stay required.
+    const closed = await cleanup(root, records, diagnostic.cleanup).catch((error) => {
+      diagnostic.cleanup.error = error?.stack ?? String(error)
+      printFailure(error, { records })
+      return { directClosed: false, twoEmptySamples: false }
+    })
+    diagnostic.cleanup.result = closed
+    diagnostic.cleanup.cancelled = cancel.cancelled
+    if (cancel.cancelled || !closed.directClosed || !closed.twoEmptySamples) {
+      console.error('SDK stage cleanup witness:', JSON.stringify(diagnostic.cleanup))
+      failure ??= new Error('SDK stage drain refused')
+    }
     cancel.close()
   }
   if (failure) throw failure
@@ -957,15 +976,26 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
       console.error('SDK scope refused')
       process.exitCode = 1
     }
-  } else if (mode === 'sdk-stage')
-    stageSdk().then(
+  } else if (mode === 'sdk-stage') {
+    const diagnostic = {}
+    stageSdk(diagnostic).then(
       (root) => console.log(root),
-      () => {
+      (error) => {
         console.error('SDK stage refused')
+        printFailure(error, diagnostic)
+        console.error(
+          'SDK stage witness:',
+          JSON.stringify({
+            step: diagnostic.step,
+            primaryStep: diagnostic.primaryStep,
+            primaryError: diagnostic.primaryError,
+            cleanup: diagnostic.cleanup,
+          }),
+        )
         process.exitCode = 1
       },
     )
-  else if (mode === 'sdk-install')
+  } else if (mode === 'sdk-install')
     installSdk(arg)
       .then(() => installSdk(arg, true))
       .catch(() => {

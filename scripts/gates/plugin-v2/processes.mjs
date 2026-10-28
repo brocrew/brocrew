@@ -252,16 +252,23 @@ export async function stopAll(records, stopOne = stop) {
   )
   return attempts.every((result) => result.status === 'fulfilled') && records.every((r) => r.closed)
 }
-export async function cleanup(root, records) {
+export async function cleanup(root, records, diagnostic = {}) {
+  diagnostic.step = 'stop-direct-children'
   const stopped = await stopAll(records)
   const directClosed = stopped && records.every((r) => r.closed)
+  diagnostic.directClosed = directClosed
+  diagnostic.samples = []
   // Discovered descendants are observed only. Unknown/surviving children retain all scratch.
   for (let i = 0; i < 20; i++) {
+    diagnostic.step = 'first-process-sample'
     const first = await samples(root, records)
+    diagnostic.samples.push(first)
     if (first.length === 0) {
       await delay(250)
-      if ((await samples(root, records)).length === 0)
-        return { directClosed, twoEmptySamples: true }
+      diagnostic.step = 'second-process-sample'
+      const second = await samples(root, records)
+      diagnostic.samples.push(second)
+      if (second.length === 0) return { directClosed, twoEmptySamples: true }
     }
     await delay(500)
   }

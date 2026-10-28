@@ -3,6 +3,7 @@ import { readOwnedFile, rootWitness } from './owned-files.mjs'
 import path from 'node:path'
 import { projectBuild } from '../plugin-packaged/contract.mjs'
 import { demand, once, hash, LIST, URL, MARKER } from './contract.mjs'
+import { projectDiagnostics } from './diagnostics.mjs'
 
 // No arbitrary source URL, environment setting, package, manifest or consent override.
 // Both desktop-main and supervisor bundles import this through their ORIGINAL download.ts.
@@ -71,8 +72,10 @@ export function project(repo, options) {
   fs.writeFileSync(shim, fetchSource(options), { flag: 'wx', mode: 0o600 })
   fs.writeFileSync(main, entry)
   fs.writeFileSync(download, transport)
+  const diagnostics = options.diagnostics ? projectDiagnostics(repo, options.root) : null
   return {
     restore() {
+      diagnostics?.restore()
       fs.writeFileSync(main, original.main)
       fs.writeFileSync(download, original.download)
       fs.unlinkSync(shim)
