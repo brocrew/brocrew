@@ -487,16 +487,69 @@ export function scopeSdk(version, diagnostic = {}) {
     identityAuthority: 'observed-awaiting-external-operator-contract',
   }
 }
-async function sdkCleanup(root, records) {
-  const directClosed = await stopAll(records)
-  const first = await samples(root, records)
+async function sdkCleanup(root, records, boundaries) {
+  const cleanupBoundary = boundaries?.cleanup
+  if (cleanupBoundary) { try { cleanupBoundary.boundary('STOP_ALL', 'START', null) } catch {} }
+  const directClosed = cleanupBoundary
+    ? await stopAll(records, (record) => stop(record, { observer: cleanupBoundary.boundary, operation: 'STOP_ALL' }))
+    : await stopAll(records)
+  if (cleanupBoundary && !directClosed) boundaries.cleanupFailure = cleanupBoundary.snapshot()
+  const first = cleanupBoundary
+    ? await samples(root, records, root, { observer: cleanupBoundary.boundary, operation: 'SAMPLE1' })
+    : await samples(root, records)
+  if (cleanupBoundary && first.length !== 0) boundaries.cleanupFailure = cleanupBoundary.snapshot()
   await new Promise((resolve) => setTimeout(resolve, 250))
-  const second = await samples(root, records)
+  const second = cleanupBoundary
+    ? await samples(root, records, root, { observer: cleanupBoundary.boundary, operation: 'SAMPLE2' })
+    : await samples(root, records)
+  if (cleanupBoundary && second.length !== 0) boundaries.cleanupFailure = cleanupBoundary.snapshot()
   return {
     directClosed,
     twoEmptySamples: first.length === 0 && second.length === 0,
   }
 }
+// Fixed SDK_STAGE boundaries; numeric monotonic state, no output/path/process identifiers.
+function sdkStageBoundaryObserver() {
+  const operations = ['SID', 'GRANT', 'INHERITANCE', 'SDDL', 'ACL_PREDICATE', 'STOP_ALL', 'SAMPLE1', 'SAMPLE2']
+  const phases = ['START', 'CLOSE', 'EXIT', 'STOP']
+  let current = null, failure = null, invalid = false
+  function snapshotCurrent() {
+    if (invalid || !current) return null
+    try {
+      const elapsed = process.hrtime.bigint() - current.started
+      if (elapsed < 0n) { invalid = true; return null }
+      return {
+        operation: current.operation,
+        awaitPhase: current.awaitPhase,
+        elapsedMs: Number(elapsed / 1000000n > 3600000n ? 3600000n : elapsed / 1000000n),
+        configuredTimeoutMs: current.configuredTimeoutMs,
+      }
+    } catch { invalid = true; return null }
+  }
+  return {
+    boundary(operation, awaitPhase, configuredTimeoutMs, failed = false) {
+      try {
+        if (invalid) return
+        const validTimeout = (awaitPhase === 'START' || awaitPhase === 'EXIT') ? configuredTimeoutMs === null
+          : awaitPhase === 'CLOSE' ? (['SID', 'GRANT', 'INHERITANCE', 'SDDL'].includes(operation) ? configuredTimeoutMs === 5000 : ['SAMPLE1', 'SAMPLE2'].includes(operation) && configuredTimeoutMs === 15000)
+          : operation !== 'ACL_PREDICATE' && [20000, 10000].includes(configuredTimeoutMs)
+        if (!operations.includes(operation) || !phases.includes(awaitPhase) || !validTimeout || typeof failed !== 'boolean') { invalid = true; return }
+        if (failed) {
+          if (!current || current.operation !== operation || current.awaitPhase !== awaitPhase || current.configuredTimeoutMs !== configuredTimeoutMs) { invalid = true; return }
+          failure = snapshotCurrent()
+        } else {
+          if (current && current.operation !== operation) failure = null
+          current = { operation, awaitPhase, configuredTimeoutMs, started: process.hrtime.bigint() }
+        }
+      } catch { invalid = true }
+    },
+    snapshot() {
+      if (invalid) return null
+      return failure ?? snapshotCurrent()
+    },
+  }
+}
+
 // SDK-install diagnostics expose only fixed categories and bounded held-child facts.
 function sdkInstallError(error, record) {
   try {
@@ -528,6 +581,7 @@ function sdkInstallReport(error, diagnostic) {
   const steps = ['launch', 'start', 'wait', 'exit', 'output', 'stop']
   return {
     schema: 1,
+    ...(diagnostic.phase === 'stage' && process.platform === 'win32' && diagnostic.windowsOperation ? { windowsOperation: diagnostic.windowsOperation } : {}),
     ...(diagnostic.phase === 'cli' ? { pnpmCategory: ['lockfile-policy', 'lifecycle', 'fetch'].includes(diagnostic.pnpmCategory) ? diagnostic.pnpmCategory : 'unreported' } : {}),
     diagnostic: diagnostic.phase === 'scope' ? 'sdk-scope-refusal' : diagnostic.phase === 'stage' ? 'sdk-stage-refusal' : 'sdk-install-refusal',
     phase: ['scope', 'stage', 'repo', 'cli'].includes(diagnostic.phase) ? diagnostic.phase : 'repo',
@@ -769,6 +823,11 @@ async function sdkIdentity(root, records) {
 }
 export async function stageSdk(diagnostic = {}) {
   diagnostic.phase = 'stage'
+  let boundaries
+  if (process.platform === 'win32') {
+    diagnostic.windowsOperation = { primary: null, cleanup: null }
+    try { boundaries = { primary: sdkStageBoundaryObserver(), cleanup: sdkStageBoundaryObserver(), cleanupFailure: null } } catch {}
+  }
   diagnostic.stage = 'role'
   sdkRole()
   diagnostic.stage = 'stage-temp'
@@ -780,7 +839,7 @@ export async function stageSdk(diagnostic = {}) {
   let failure
   try {
     diagnostic.stage = 'stage-private-root'
-    await privateRoot(root, records, { commandMs: 5000 })
+    await privateRoot(root, records, { commandMs: 5000, ...(boundaries ? { observer: boundaries.primary.boundary } : {}) })
     diagnostic.stage = 'stage-observe'
     const observed = await observe('0.1.8', records, root, { gitMs: 5000 })
     diagnostic.stage = 'stage-token'
@@ -836,12 +895,15 @@ export async function stageSdk(diagnostic = {}) {
     failure = error
     diagnostic.failureStage = diagnostic.stage
     diagnostic.primary = sdkInstallError(error)
+    if (boundaries && diagnostic.failureStage === 'stage-private-root') diagnostic.windowsOperation.primary = boundaries.primary.snapshot()
   } finally {
     diagnostic.stage = 'cleanup'
-    const closed = await sdkCleanup(root, records).catch((error) => {
+    const closed = await sdkCleanup(root, records, boundaries).catch((error) => {
       diagnostic.cleanupError = sdkInstallError(error)
+      if (boundaries) diagnostic.windowsOperation.cleanup = boundaries.cleanup.snapshot()
       return { directClosed: false, twoEmptySamples: false }
     })
+    if (boundaries && !diagnostic.windowsOperation.cleanup) diagnostic.windowsOperation.cleanup = boundaries.cleanupFailure
     diagnostic.cleanup = {
       directClosed: closed.directClosed === true,
       twoEmptySamples: closed.twoEmptySamples === true,

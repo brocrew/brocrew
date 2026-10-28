@@ -119,35 +119,58 @@ export function launch(program, args, options, records) {
   records.push(record)
   return record
 }
-export async function stop(record) {
-  if (record.closed) return
-  record.child.kill('SIGTERM')
-  try {
-    await bounded(record.close, 20000)
-  } catch {
-    // Only this held child handle, never a process group or discovered descendant.
-    record.child.kill('SIGKILL')
-    await bounded(record.close, 10000)
-  }
-  demand(record.closed)
+// Optional SDK-stage diagnostics only; observer faults never replace process behavior.
+function processBoundary(observer, operation, awaitPhase, configuredTimeoutMs, failed = false) {
+  if (typeof observer !== 'function') return
+  try { observer(operation, awaitPhase, configuredTimeoutMs, failed) } catch {}
 }
-export async function command(program, args, root, records, { cwd = root, ms = 420000 } = {}) {
-  const r = launch(program, args, { cwd, env: environment(root) }, records)
+export async function stop(record, { observer, operation } = {}) {
+  if (record.closed) return
+  let stopMs = 20000
   try {
-    await r.start
-    const result = await bounded(r.close, ms)
-    demand(result.code === 0)
-    return r.output()
+    processBoundary(observer, operation, 'STOP', stopMs)
+    record.child.kill('SIGTERM')
+    try {
+      await bounded(record.close, 20000)
+    } catch {
+      // Only this held child handle, never a process group or discovered descendant.
+      stopMs = 10000
+      processBoundary(observer, operation, 'STOP', stopMs)
+      record.child.kill('SIGKILL')
+      await bounded(record.close, 10000)
+    }
+    demand(record.closed)
   } catch (error) {
-    await stop(r)
+    processBoundary(observer, operation, 'STOP', stopMs, true)
     throw error
   }
 }
+export async function command(program, args, root, records, { cwd = root, ms = 420000, observer, operation } = {}) {
+  let awaitPhase = 'START', configuredTimeoutMs = null
+  processBoundary(observer, operation, awaitPhase, configuredTimeoutMs)
+  const r = launch(program, args, { cwd, env: environment(root) }, records)
+  try {
+    await r.start
+    awaitPhase = 'CLOSE'; configuredTimeoutMs = ms
+    processBoundary(observer, operation, awaitPhase, configuredTimeoutMs)
+    const result = await bounded(r.close, ms)
+    awaitPhase = 'EXIT'; configuredTimeoutMs = null
+    processBoundary(observer, operation, awaitPhase, configuredTimeoutMs)
+    demand(result.code === 0)
+    return r.output()
+  } catch (error) {
+    processBoundary(observer, operation, awaitPhase, configuredTimeoutMs, true)
+    if (observer) await stop(r, { observer, operation })
+    else await stop(r)
+    throw error
+  }
+}
+
 export function powershell() {
   return path.join(process.env.SystemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe')
 }
 export const quote = (s) => `'${s.replaceAll("'", "''")}'`
-export async function privateRoot(root, records, { commandMs = 420000 } = {}) {
+export async function privateRoot(root, records, { commandMs = 420000, observer } = {}) {
   demand(fs.realpathSync.native(root) === root)
   if (process.platform === 'darwin') {
     fs.chmodSync(root, 0o700)
@@ -171,7 +194,7 @@ export async function privateRoot(root, records, { commandMs = 420000 } = {}) {
       ],
       root,
       records,
-      { ms: commandMs },
+      { ms: commandMs, ...(observer ? { observer, operation: 'SID' } : {}) },
     )
   ).trim()
   demand(/^S-1-5-\d+(?:-\d+)+$/.test(sid))
@@ -181,10 +204,11 @@ export async function privateRoot(root, records, { commandMs = 420000 } = {}) {
     [root, '/grant:r', `*${sid}:(OI)(CI)F`, '*S-1-5-18:(OI)(CI)F', '*S-1-5-32-544:(OI)(CI)F', '/Q'],
     root,
     records,
-    { ms: commandMs },
+    { ms: commandMs, ...(observer ? { observer, operation: 'GRANT' } : {}) },
   )
   await command(icacls, [root, '/inheritance:r', '/Q'], root, records, {
     ms: commandMs,
+    ...(observer ? { observer, operation: 'INHERITANCE' } : {}),
   })
   const sddl = (
     await command(
@@ -192,16 +216,18 @@ export async function privateRoot(root, records, { commandMs = 420000 } = {}) {
       ['-NoProfile', '-NonInteractive', '-Command', `(Get-Acl -LiteralPath ${quote(root)}).Sddl`],
       root,
       records,
-      { ms: commandMs },
+      { ms: commandMs, ...(observer ? { observer, operation: 'SDDL' } : {}) },
     )
   ).trim()
+  processBoundary(observer, 'ACL_PREDICATE', 'START', null)
   const { onlyTheThree } = await import('../plugin-windows/gate.mjs')
+  processBoundary(observer, 'ACL_PREDICATE', 'EXIT', null)
   demand(onlyTheThree(sddl, sid))
 }
 export function sampleScript(root, pid = process.pid) {
   return `@(Get-CimInstance Win32_Process | Where-Object {$_.ProcessId -ne $PID -and $_.ProcessId -ne ${pid} -and ("$($_.ExecutablePath) $($_.CommandLine)").ToLower().Contains(${quote(root.toLowerCase())})} | Select-Object ProcessId,Name) | ConvertTo-Json -Compress`
 }
-export async function samples(root, records, envRoot = root) {
+export async function samples(root, records, envRoot = root, { observer, operation } = {}) {
   if (process.platform === 'win32') {
     const script = sampleScript(root)
     const s = (
@@ -210,7 +236,7 @@ export async function samples(root, records, envRoot = root) {
         ['-NoProfile', '-NonInteractive', '-Command', script],
         envRoot,
         records,
-        { ms: 15000 },
+        { ms: 15000, ...(observer ? { observer, operation } : {}) },
       )
     ).trim()
     const parsed = s ? JSON.parse(s) : []
@@ -219,7 +245,7 @@ export async function samples(root, records, envRoot = root) {
       name: r.Name,
     }))
   }
-  const s = await command('/bin/ps', ['-axo', 'pid=,command='], envRoot, records, { ms: 15000 })
+  const s = await command('/bin/ps', ['-axo', 'pid=,command='], envRoot, records, { ms: 15000, ...(observer ? { observer, operation } : {}) })
   return s.split('\n').flatMap((line) => {
     const m = /^\s*(\d+)\s+(.*)$/.exec(line)
     return m && Number(m[1]) !== process.pid && m[2].includes(root)
