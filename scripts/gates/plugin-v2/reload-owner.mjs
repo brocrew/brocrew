@@ -167,6 +167,7 @@ export async function runReload(root) {
       input.sourceCommit === 'cbdf3e75fd786b5c19cfc519c25007b37a026b34' &&
         input.manifestSha256 === '2e3df1e097b1178d3963a1ba9809a557081da363cd50701e2b8440cd693331b4',
     )
+    demand(input.modulePinsSha256 === hash(JSON.stringify(input.modules)))
     const modules = input.modules.map((m) => ({
       ...m,
       source: path.join(route, 'reload-source', m.name),

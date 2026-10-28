@@ -6,6 +6,31 @@ export const MODE = 'controlled-queryFactory-and-child-witness'
 export const MARKER = 'packaged-plugin-gate-only:reload-v1'
 export const SDK_VERSION = '0.3.287'
 export const SHA256 = /^[0-9a-f]{64}$/
+export const DELIVERY_WORDS = Object.freeze(['reload original fern', 'reload queued birch', 'reload queued cedar'])
+export function deliveryMessages(pushes) {
+  return pushes.flatMap(({ message }) => {
+    assert.equal(typeof message.content, 'string')
+    const words = message.content.split(/\r?\n/).map(line => line.trim()).filter(line => DELIVERY_WORDS.includes(line))
+    assert(words.length > 0, 'Unexpected prompt without a fixture message')
+    return words
+  })
+}
+export function deliveryEvidence(pushes, userTurns) {
+  assert(pushes.length >= 1 && pushes.length <= DELIVERY_WORDS.length)
+  const deliveredMessages = deliveryMessages(pushes)
+  const ledgerGroups = userTurns.map(event => {
+    const words = event.parts ? event.parts.map(part => part.text) : [event.text]
+    assert.equal(event.text, words.join('\n\n'), 'Ledger parts disagree with turn text')
+    return words
+  })
+  const ledgerMessages = ledgerGroups.flat()
+  assert.deepEqual(pushes.map(push => deliveryMessages([push])), ledgerGroups, 'Consumed prompts disagree with ledger message groups')
+  assert.deepEqual(deliveredMessages, DELIVERY_WORDS, 'Messages were lost, duplicated or reordered at the query')
+  assert.deepEqual(ledgerMessages, DELIVERY_WORDS, 'Messages were lost, duplicated or reordered in the ledger')
+  assert.equal(userTurns.length, pushes.length, 'Ledger turns disagree with consumed prompts')
+  return { deliveredMessages, ledgerMessages }
+}
+
 export function exactKeys(value, keys) {
   assert(value && typeof value === 'object' && !Array.isArray(value), 'closed object required')
   assert.deepEqual(Object.keys(value).sort(), [...keys].sort(), 'unexpected or missing field')
@@ -43,14 +68,17 @@ function checkBehavior(value, mainApp) {
   assert.equal(a.oldSendRefusals, 2)
   for (const key of ['failedByApp', 'retiringAtTimeout', 'lateReloadReleased', 'lateResultAttempted', 'retirementEnded', 'freshResumeMatches']) assert.equal(a[key], true, key)
   const h = value.hostQueue
-  exactKeys(h, ['timeoutMs', 'failedTerminals', 'failedByApp', 'oldPushes', 'oldReloads', 'oldCloses', 'oldReturns', 'failedAtTimeout', 'queuedBeforeExit', 'freshBeforeReturn', 'freshBeforeExit', 'starts', 'resumes', 'freshQueries', 'freshResumeMatches', 'freshReloads', 'freshPushes', 'uniqueUserUuids', 'originalOnce', 'secondOnce', 'thirdOnce', 'ledgerUserTurns', 'freshCompleted', 'lateAddedPushes', 'lateAddedTerminals'])
+  exactKeys(h, ['timeoutMs', 'failedTerminals', 'failedByApp', 'oldPushes', 'oldReloads', 'oldCloses', 'oldReturns', 'failedAtTimeout', 'queuedBeforeExit', 'freshBeforeReturn', 'freshBeforeExit', 'starts', 'resumes', 'freshQueries', 'freshResumeMatches', 'freshReloads', 'freshPushes', 'uniqueUserUuids', 'originalOnce', 'secondOnce', 'thirdOnce', 'ledgerUserTurns', 'freshCompleted', 'lateAddedPushes', 'lateAddedTerminals', 'deliveredMessages', 'ledgerMessages'])
   assert(Number.isSafeInteger(h.timeoutMs) && h.timeoutMs >= 10000 && h.timeoutMs <= 12500)
   for (const key of ['failedTerminals', 'oldReloads', 'oldCloses', 'oldReturns', 'starts', 'resumes', 'freshQueries']) assert.equal(h[key], 1, key)
   for (const key of ['oldPushes', 'freshBeforeReturn', 'freshBeforeExit', 'lateAddedPushes', 'lateAddedTerminals']) assert.equal(h[key], 0, key)
   assert.equal(h.queuedBeforeExit, 2)
   assert.equal(h.failedAtTimeout, 1)
   assert.equal(h.failedTerminals, h.failedAtTimeout)
-  for (const key of ['freshReloads', 'freshPushes', 'uniqueUserUuids', 'ledgerUserTurns', 'freshCompleted']) assert.equal(h[key], 3, key)
+  assert(Number.isSafeInteger(h.freshPushes) && h.freshPushes >= 1 && h.freshPushes <= DELIVERY_WORDS.length)
+  for (const key of ['freshReloads', 'uniqueUserUuids', 'ledgerUserTurns', 'freshCompleted']) assert.equal(h[key], h.freshPushes, key)
+  assert.deepEqual(h.deliveredMessages, DELIVERY_WORDS)
+  assert.deepEqual(h.ledgerMessages, DELIVERY_WORDS)
   for (const key of ['failedByApp', 'freshResumeMatches', 'originalOnce', 'secondOnce', 'thirdOnce']) assert.equal(h[key], true, key)
   exactKeys(value.cleanup, ['handles', 'endedHandles', 'queries', 'closedQueries', 'returnedQueries', 'settledReturns', 'drainedPromptReaders', 'exitedChildren', 'closedPipes', 'registeredHandles', 'allHandlesClosed', 'controlledChildrenExited', 'databaseClosed'])
   for (const key of ['handles', 'endedHandles', 'queries', 'closedQueries', 'returnedQueries', 'settledReturns', 'drainedPromptReaders', 'exitedChildren']) assert.equal(value.cleanup[key], 4, key)

@@ -814,12 +814,12 @@
     },
     {
       "path": "scripts/gates/plugin-v2/reload-controls.test.mjs",
-      "sha256": "30483592ba7952d94e1587c4e98e41dfe4242aa5a033670db4e9df174cca99a9",
-      "bytes": 4144
+      "sha256": "63b867b99a627d381ee2cf5344782215d902a304986d01df0c38026d7d23c343",
+      "bytes": 8330
     },
     {
       "path": "scripts/gates/plugin-v2/reload-inputs.json",
-      "sha256": "78757f5bc5521e7ebc9ffcb378fc616f3737567018b46d893f3a093ac4b61c25",
+      "sha256": "4d6cea8a7dca60c304a38ca0294428d8f3bd2caaf657bacfb8130c76be0a0a47",
       "bytes": 1129
     },
     {
@@ -829,8 +829,8 @@
     },
     {
       "path": "scripts/gates/plugin-v2/reload-owner.mjs",
-      "sha256": "7b10c244461179841e9e9a201c3e0f2dbff825b81e6625e8aef1f5070f5252a1",
-      "bytes": 11134
+      "sha256": "db38d77c282a7dbfd632f4231c3d19b20022449b12245c09953b49cf84b3f2f0",
+      "bytes": 11209
     },
     {
       "path": "scripts/gates/plugin-v2/reload-projection.mjs",
@@ -839,8 +839,8 @@
     },
     {
       "path": "scripts/gates/plugin-v2/reload-source/contract.mjs",
-      "sha256": "1e5525a19c54ce1ddb28b6044a0c6cce1767453314b1c53632d5991940e20102",
-      "bytes": 5989
+      "sha256": "9c2c895adf68660c7ccb8e349185b899138e932871113b2ed317f2d655ebb47d",
+      "bytes": 7687
     },
     {
       "path": "scripts/gates/plugin-v2/reload-source/controlled-sdk.mjs",
@@ -849,13 +849,13 @@
     },
     {
       "path": "scripts/gates/plugin-v2/reload-source/fixture.mjs",
-      "sha256": "66a9c1ff36cc9fb9bf98ae0bb79c5ff30bce4835efb17ebfe733e5f44bcc4823",
-      "bytes": 24121
+      "sha256": "e82db3106bc4c098255ddd7d87905975d33038e21177f28f8430e0e629cde230",
+      "bytes": 24465
     },
     {
       "path": "scripts/gates/plugin-v2/reload-source/main-app-controller.mjs",
-      "sha256": "a48a886d490061e1519db0e24ee93c616d37f18d945bfe83e17996835918a480",
-      "bytes": 11445
+      "sha256": "3add124d8f265e9996618d7f0ee9267da9c0bd8f956d542e2b9dc3fb65fe7ccd",
+      "bytes": 11763
     },
     {
       "path": "scripts/gates/plugin-v2/runtime-source-binding.mjs",

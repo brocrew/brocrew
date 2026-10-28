@@ -7,7 +7,7 @@ import path from 'node:path'
 import { performance } from 'node:perf_hooks'
 import { RuntimeHost } from '../../../apps/desktop/src/main/runtime/runtime-host.ts'
 import { makeRuntime, adapterCase, ownedFolder, cleanupReceipt, delay, until, bounded, WORDS } from './fixture.mjs'
-import { SOURCE, TREE, MODE, SDK_VERSION, MARKER, assertMainAppBehavior, assertCommand, assertStatus } from './contract.mjs'
+import { SOURCE, TREE, MODE, SDK_VERSION, MARKER, assertMainAppBehavior, assertCommand, assertStatus, deliveryMessages, deliveryEvidence } from './contract.mjs'
 
 let actualHost = null
 let state = null
@@ -150,8 +150,8 @@ async function receipt() {
   state.receiptStarted = true
   noOtherSessions()
   const { kit } = state, old = kit.queries[0]
-  await until(() => kit.queries.length === 2 && kit.queries[1].pushes.length === 3 &&
-    completions(ledger()).length === 3 && !actualHost.arrivals.has(state.sessionId),
+  await until(() => kit.queries.length === 2 && deliveryMessages(kit.queries[1].pushes).length === WORDS.length &&
+    completions(ledger()).length === kit.queries[1].pushes.length && !actualHost.arrivals.has(state.sessionId),
   'main-app real IPC delivery and completion', 5000)
   const fresh = kit.queries[1]
   assert.equal(fresh.resume, kit.handles[0].ref.sessionId)
@@ -167,9 +167,11 @@ async function receipt() {
   assert.equal(actualHost.sessionIds.length, 0)
   const rows = ledger()
   oldTerminalUnchanged(rows)
-  assert.equal(turnRows(rows).length, 4, 'Terminal added during final cleanup')
+  assert.equal(turnRows(rows).length, beforePush + 1, 'Terminal added during final cleanup')
+  assert.equal(fresh.pushes.length, beforePush, 'Prompt added during final cleanup')
+  assert.equal(completions(rows).length, beforePush, 'Completion changed during final cleanup')
   const userRows = rows.filter(row => row.event.type === 'user_turn')
-  assert.deepEqual(userRows.map(row => row.event.text), WORDS)
+  const delivery = deliveryEvidence(fresh.pushes, userRows.map(row => row.event))
   const contents = fresh.pushes.map(message => message.message.content)
   const once = word => contents.filter(text => typeof text === 'string' &&
     text.split(/\r?\n/).some(line => line.trim() === word)).length === 1
@@ -187,7 +189,7 @@ async function receipt() {
     uniqueUserUuids: new Set(fresh.pushes.map(message => message.uuid)).size,
     originalOnce: once(WORDS[0]), secondOnce: once(WORDS[1]), thirdOnce: once(WORDS[2]),
     ledgerUserTurns: userRows.length, freshCompleted: completions(rows).length,
-    lateAddedPushes, lateAddedTerminals,
+    lateAddedPushes, lateAddedTerminals, ...delivery,
   }
   const adapterRoot = path.join(state.ownedRoot, 'reload-main-adapter-v1')
   assert(!fs.existsSync(adapterRoot), 'Supplemental adapter refuses reuse')

@@ -14,9 +14,9 @@ import { openDatabase } from '../../../apps/desktop/src/main/db/connection.ts'
 import { applyMigrations } from '../../../apps/desktop/src/main/db/migrate.ts'
 import { createSessionStore } from '../../../apps/desktop/src/main/db/session-store.ts'
 import { NO_DISCOVERY } from '../../../apps/desktop/src/main/adopt/discover-sessions.ts'
-import { SOURCE, TREE, MODE, SDK_VERSION, assertBehavior } from './contract.mjs'
+import { SOURCE, TREE, MODE, SDK_VERSION, assertBehavior, DELIVERY_WORDS, deliveryMessages, deliveryEvidence } from './contract.mjs'
 
-export const WORDS = Object.freeze(['reload original fern', 'reload queued birch', 'reload queued cedar'])
+export const WORDS = DELIVERY_WORDS
 export const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 function deferred() {
   let release
@@ -384,8 +384,9 @@ async function hostQueueCase(home, skills, migrationsPath, mainBinding = null) {
     // Only the controlled child-exit event releases the REAL host's termination registry.
     old.child.finish()
     await bounded(Promise.all(pending), 'host redelivery and queued sends', 5000)
-    await until(() => kit.queries[1]?.pushes.length === 3 && completed(events).length === 3,
-      'three fresh real adapter completions')
+    await until(() => kit.queries.length === 2 && deliveryMessages(kit.queries[1].pushes).length === WORDS.length &&
+      completed(events).length === kit.queries[1].pushes.length && !host.arrivals.has(created.sessionId),
+      'all messages delivered with fresh real adapter completions')
     const fresh = kit.queries[1]
     assert.equal(fresh.resume, expectedResume)
     const beforePushes = fresh.pushes.length, beforeTerminals = turns(events).length
@@ -410,8 +411,8 @@ async function hostQueueCase(home, skills, migrationsPath, mainBinding = null) {
       ledgerUserTurns: userTurns.length, freshCompleted: completed(events).length,
       lateAddedPushes: fresh.pushes.length - beforePushes,
       lateAddedTerminals: turns(events).length - beforeTerminals,
+      ...deliveryEvidence(fresh.pushes, userTurns),
     }
-    assert.deepEqual(userTurns.map(e => e.text), WORDS)
   } finally {
     if (kit) for (const q of kit.queries) { q.reloadGate.release(); q.returnGate.release(); q.child.finish() }
     await bounded(Promise.allSettled(pending), 'host pending sends cleanup')
@@ -429,7 +430,9 @@ async function hostQueueCase(home, skills, migrationsPath, mainBinding = null) {
   result.failedTerminals = failed(events).length
   assert.equal(result.failedTerminals, result.failedAtTimeout, 'Failure added after timeout/cleanup')
   assert.equal(JSON.stringify(failed(events)[0]), oldTerminalIdentity)
-  assert.equal(turns(events).length, 4, 'Host terminal added during cleanup')
+  assert.equal(turns(events).length, result.freshPushes + 1, 'Host terminal added during cleanup')
+  assert.equal(kit.queries[1].pushes.length, result.freshPushes, 'Prompt added during cleanup')
+  assert.equal(completed(events).length, result.freshPushes, 'Completion changed during cleanup')
   return { result, databaseClosed, cleanup: kit.cleanupFacts(), registeredHandles: host.sessionIds.length }
 }
 
