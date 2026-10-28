@@ -432,9 +432,13 @@ function sdkRole(require018 = true) {
   )
   if (require018) demand(process.env.PLUGIN_SDK_APP_VERSION === '0.1.8')
 }
-export function scopeSdk(version) {
+export function scopeSdk(version, diagnostic = {}) {
+  diagnostic.phase = 'scope'
+  diagnostic.stage = 'role'
   sdkRole(false)
+  diagnostic.stage = 'scope-version'
   demand(['0.1.7', '0.1.8'].includes(version))
+  diagnostic.stage = 'scope-temp'
   const empty = process.platform === 'win32' ? 'NUL' : '/dev/null'
   const temp = fs.realpathSync.native(process.env.RUNNER_TEMP)
   const env = {
@@ -456,6 +460,7 @@ export function scopeSdk(version) {
       encoding: 'utf8',
       windowsHide: true,
     }).trim()
+  diagnostic.stage = 'scope-source-identity'
   const commit = git('rev-parse', 'HEAD'),
     tree = git('rev-parse', 'HEAD^{tree}')
   demand(
@@ -463,8 +468,11 @@ export function scopeSdk(version) {
       /^[a-f0-9]{40}$/.test(tree) &&
       git('status', '--porcelain=v1') === '',
   )
+  diagnostic.stage = 'scope-source-plan'
   const plan = readJSON(path.join(routeDirectory, 'source-plan.json'))
+  diagnostic.stage = 'scope-hosted'
   hosted(plan, version)
+  diagnostic.stage = 'scope-source-files'
   for (const file of plan.files)
     demand(hash(readFile(path.join(repository, file.path))) === file.sha256)
   return {
@@ -489,7 +497,52 @@ async function sdkCleanup(root, records) {
     twoEmptySamples: first.length === 0 && second.length === 0,
   }
 }
-async function sdkCommand(program, args, root, records, cwd, ms, extra = {}) {
+// SDK-install diagnostics expose only fixed categories and bounded held-child facts.
+function sdkInstallError(error, record) {
+  try {
+    const messages = new Map([
+      ['Plugin v2 gate refused', 'gate-refusal'],
+      ['Gate deadline', 'deadline'],
+      ['SDK install drain refused', 'install-drain-refusal'],
+      ['SDK stage drain refused', 'stage-drain-refusal'],
+    ])
+    const names = ['Error', 'TypeError', 'SyntaxError', 'RangeError', 'AbortError']
+    const codes = ['ENOENT', 'EACCES', 'EPERM', 'ENOSPC', 'EMFILE', 'ENFILE', 'ENOMEM', 'EIO', 'E2BIG', 'ETIMEDOUT']
+    const signals = ['SIGTERM', 'SIGKILL', 'SIGINT', 'SIGHUP', 'SIGABRT', 'SIGSEGV', 'SIGBUS']
+    const name = error?.name, message = error?.message, code = error?.code
+    const exit = record?.code, signal = record?.signal, closed = record?.closed
+    return {
+      kind: names.includes(name) ? name : 'unreported',
+      messageClass: messages.get(message) ?? 'unreported',
+      code: codes.includes(code) ? code : null,
+      exit: Number.isInteger(exit) && exit >= -255 && exit <= 255 ? exit : null,
+      signal: signals.includes(signal) ? signal : null,
+      closed: typeof closed === 'boolean' ? closed : null,
+    }
+  } catch {
+    return { kind: 'unreported', messageClass: 'unreported', code: null, exit: null, signal: null, closed: null }
+  }
+}
+function sdkInstallReport(error, diagnostic) {
+  const stages = ['role', 'owned-root', 'identity', 'cli-prerequisite', 'cli-directory', 'cli-manifest', 'pnpm-entry', 'repo-install', 'cli-install', 'cancellation', 'cleanup', 'marker', 'scope-version', 'scope-temp', 'scope-source-identity', 'scope-source-plan', 'scope-hosted', 'scope-source-files', 'stage-temp', 'stage-root-and-cancellation', 'stage-private-root', 'stage-observe', 'stage-token', 'stage-observed-source', 'stage-clone', 'stage-checkout', 'stage-checkout-identity', 'stage-marker', 'stage-normal-build']
+  const steps = ['launch', 'start', 'wait', 'exit', 'output', 'stop']
+  return {
+    schema: 1,
+    diagnostic: diagnostic.phase === 'scope' ? 'sdk-scope-refusal' : diagnostic.phase === 'stage' ? 'sdk-stage-refusal' : 'sdk-install-refusal',
+    phase: ['scope', 'stage', 'repo', 'cli'].includes(diagnostic.phase) ? diagnostic.phase : 'repo',
+    failureStage: stages.includes(diagnostic.failureStage) ? diagnostic.failureStage : stages.includes(diagnostic.stage) ? diagnostic.stage : 'unreported',
+    finalStage: stages.includes(diagnostic.stage) ? diagnostic.stage : 'unreported',
+    commandFailureStep: steps.includes(diagnostic.commandFailureStep) ? diagnostic.commandFailureStep : null,
+    primary: diagnostic.primary ?? sdkInstallError(error),
+    thrown: sdkInstallError(error),
+    commandStop: diagnostic.commandStop ?? null,
+    cleanupError: diagnostic.cleanupError ?? null,
+    cleanup: diagnostic.cleanup ?? null,
+    drainRefused: diagnostic.drainRefused === true,
+  }
+}
+async function sdkCommand(program, args, root, records, cwd, ms, extra = {}, diagnostic) {
+  if (diagnostic) diagnostic.commandStep = 'launch'
   const record = launch(
     program,
     args,
@@ -504,12 +557,26 @@ async function sdkCommand(program, args, root, records, cwd, ms, extra = {}) {
     records,
   )
   try {
+    if (diagnostic) diagnostic.commandStep = 'start'
     await record.start
+    if (diagnostic) diagnostic.commandStep = 'wait'
     const result = await bounded(record.close, ms)
+    if (diagnostic) diagnostic.commandStep = 'exit'
     demand(result.code === 0)
+    if (diagnostic) diagnostic.commandStep = 'output'
     return record.output()
   } catch (error) {
-    await stop(record)
+    if (diagnostic) {
+      diagnostic.commandFailureStep = diagnostic.commandStep
+      diagnostic.primary = sdkInstallError(error, record)
+      diagnostic.commandStep = 'stop'
+    }
+    try {
+      await stop(record)
+    } catch (stopError) {
+      if (diagnostic) diagnostic.commandStop = sdkInstallError(stopError, record)
+      throw stopError
+    }
     throw error
   }
 }
@@ -556,25 +623,34 @@ async function sdkIdentity(root, records) {
   checkNormalPluginBuild(repo)
   return now
 }
-export async function stageSdk() {
+export async function stageSdk(diagnostic = {}) {
+  diagnostic.phase = 'stage'
+  diagnostic.stage = 'role'
   sdkRole()
+  diagnostic.stage = 'stage-temp'
   const temp = fs.realpathSync.native(process.env.RUNNER_TEMP)
+  diagnostic.stage = 'stage-root-and-cancellation'
   const root = fs.realpathSync.native(fs.mkdtempSync(path.join(temp, 'plugin-v2-'))),
     records = [],
     cancel = cancellation(records)
   let failure
   try {
+    diagnostic.stage = 'stage-private-root'
     await privateRoot(root, records, { commandMs: 5000 })
+    diagnostic.stage = 'stage-observe'
     const observed = await observe('0.1.8', records, root, { gitMs: 5000 })
+    diagnostic.stage = 'stage-token'
     fs.writeFileSync(path.join(root, 'gate-token'), randomBytes(32).toString('hex'), {
       flag: 'wx',
       mode: 0o600,
     })
+    diagnostic.stage = 'stage-observed-source'
     fs.writeFileSync(path.join(root, 'observed-source.json'), JSON.stringify(observed), {
       flag: 'wx',
       mode: 0o600,
     })
     const repo = path.join(root, 'repo')
+    diagnostic.stage = 'stage-clone'
     await command(
       'git',
       ['clone', '--shared', '--no-checkout', '--template=', repository, repo],
@@ -582,6 +658,7 @@ export async function stageSdk() {
       records,
       { ms: 60000 },
     )
+    diagnostic.stage = 'stage-checkout'
     await command(
       'git',
       [
@@ -595,6 +672,7 @@ export async function stageSdk() {
       records,
       { cwd: repo, ms: 5000 },
     )
+    diagnostic.stage = 'stage-checkout-identity'
     demand(
       (
         await command('git', ['rev-parse', 'HEAD'], root, records, {
@@ -603,39 +681,62 @@ export async function stageSdk() {
         })
       ).trim() === observed.routeCommit,
     )
+    diagnostic.stage = 'stage-marker'
     fs.writeFileSync(path.join(root, 'sdk-staged'), hash(JSON.stringify(observed)), {
       flag: 'wx',
       mode: 0o600,
     })
+    diagnostic.stage = 'stage-normal-build'
     checkNormalPluginBuild(repo)
   } catch (error) {
     failure = error
+    diagnostic.failureStage = diagnostic.stage
+    diagnostic.primary = sdkInstallError(error)
   } finally {
-    const closed = await sdkCleanup(root, records).catch(() => ({
-      directClosed: false,
-      twoEmptySamples: false,
-    }))
-    if (cancel.cancelled || !closed.directClosed || !closed.twoEmptySamples)
+    diagnostic.stage = 'cleanup'
+    const closed = await sdkCleanup(root, records).catch((error) => {
+      diagnostic.cleanupError = sdkInstallError(error)
+      return { directClosed: false, twoEmptySamples: false }
+    })
+    diagnostic.cleanup = {
+      directClosed: closed.directClosed === true,
+      twoEmptySamples: closed.twoEmptySamples === true,
+      cancelled: cancel.cancelled === true,
+    }
+    if (cancel.cancelled || !closed.directClosed || !closed.twoEmptySamples) {
+      diagnostic.drainRefused = true
       failure = new Error('SDK stage drain refused')
+    }
     cancel.close()
   }
   if (failure) throw failure
   return root
 }
-export async function installSdk(root, cli = false) {
+export async function installSdk(root, cli = false, diagnostic = {}) {
+  Object.assign(diagnostic, {
+    phase: cli ? 'cli' : 'repo', stage: 'role', failureStage: null,
+    commandStep: null, commandFailureStep: null, primary: null,
+    commandStop: null, cleanupError: null, cleanup: null, drainRefused: false,
+  })
   sdkRole()
+  diagnostic.stage = 'owned-root'
   owned(root)
+  diagnostic.stage = 'cancellation'
   const records = [],
     cancel = cancellation(records)
   let failure
   try {
+    diagnostic.stage = 'identity'
     await sdkIdentity(root, records)
     let cwd = path.join(root, 'repo'),
       args = ['install', '--frozen-lockfile']
     if (cli) {
+      diagnostic.stage = 'cli-prerequisite'
       demand(readFile(path.join(root, 'sdk-dependencies'), 64).toString() === 'closed')
       cwd = path.join(root, 'sdk-cli')
+      diagnostic.stage = 'cli-directory'
       fs.mkdirSync(cwd, { mode: 0o700 })
+      diagnostic.stage = 'cli-manifest'
       fs.writeFileSync(
         path.join(cwd, 'package.json'),
         JSON.stringify({
@@ -647,26 +748,43 @@ export async function installSdk(root, cli = false) {
       )
       args = ['install', '--registry=https://registry.npmjs.org']
     }
+    diagnostic.stage = 'pnpm-entry'
+    const pnpm = sdkPnpm()
+    diagnostic.stage = cli ? 'cli-install' : 'repo-install'
     await sdkCommand(
       process.execPath,
-      [sdkPnpm(), ...args],
+      [pnpm, ...args],
       root,
       records,
       cwd,
       cli ? 300000 : 600000,
+      {},
+      diagnostic,
     )
   } catch (error) {
     failure = error
+    diagnostic.failureStage = diagnostic.stage
+    diagnostic.primary ??= sdkInstallError(error)
+    if (diagnostic.commandStep === 'launch') diagnostic.commandFailureStep = 'launch'
   } finally {
-    const closed = await sdkCleanup(root, records).catch(() => ({
-      directClosed: false,
-      twoEmptySamples: false,
-    }))
-    if (cancel.cancelled || !closed.directClosed || !closed.twoEmptySamples)
+    diagnostic.stage = 'cleanup'
+    const closed = await sdkCleanup(root, records).catch((error) => {
+      diagnostic.cleanupError = sdkInstallError(error)
+      return { directClosed: false, twoEmptySamples: false }
+    })
+    diagnostic.cleanup = {
+      directClosed: closed.directClosed === true,
+      twoEmptySamples: closed.twoEmptySamples === true,
+      cancelled: cancel.cancelled === true,
+    }
+    if (cancel.cancelled || !closed.directClosed || !closed.twoEmptySamples) {
+      diagnostic.drainRefused = true
       failure = new Error('SDK install drain refused')
+    }
     cancel.close()
   }
   if (failure) throw failure
+  diagnostic.stage = 'marker'
   fs.writeFileSync(path.join(root, cli ? 'sdk-cli-installed' : 'sdk-dependencies'), 'closed', {
     flag: 'wx',
     mode: 0o600,
@@ -919,28 +1037,46 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
       },
     )
   else if (mode === 'sdk-scope') {
+    const diagnostic = {}
     try {
-      console.log(JSON.stringify(scopeSdk(arg)))
-    } catch {
+      console.log(JSON.stringify(scopeSdk(arg, diagnostic)))
+    } catch (error) {
       console.error('SDK scope refused')
       process.exitCode = 1
+      try {
+        console.error(JSON.stringify(sdkInstallReport(error, diagnostic)))
+      } catch {
+        // Retain the original refusal even when diagnostic output fails.
+      }
     }
-  } else if (mode === 'sdk-stage')
-    stageSdk().then(
+  } else if (mode === 'sdk-stage') {
+    const diagnostic = {}
+    stageSdk(diagnostic).then(
       (root) => console.log(root),
-      () => {
+      (error) => {
         console.error('SDK stage refused')
         process.exitCode = 1
+        try {
+          console.error(JSON.stringify(sdkInstallReport(error, diagnostic)))
+        } catch {
+          // Retain the original refusal even when diagnostic output fails.
+        }
       },
     )
-  else if (mode === 'sdk-install')
-    installSdk(arg)
-      .then(() => installSdk(arg, true))
-      .catch(() => {
+  } else if (mode === 'sdk-install') {
+    const diagnostic = {}
+    installSdk(arg, false, diagnostic)
+      .then(() => installSdk(arg, true, diagnostic))
+      .catch((error) => {
         console.error('SDK install refused')
         process.exitCode = 1
+        try {
+          console.error(JSON.stringify(sdkInstallReport(error, diagnostic)))
+        } catch {
+          // Diagnostics cannot replace the original refusal or exit status.
+        }
       })
-  else if (mode === 'sdk-run')
+  } else if (mode === 'sdk-run')
     runSdk(arg).then(
       (s) => {
         process.exitCode = s.passed ? 0 : 1
