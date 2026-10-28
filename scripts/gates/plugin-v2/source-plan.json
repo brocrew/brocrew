@@ -77,7 +77,8 @@
     "scripts/mutations/CENSUS.md",
     "packages/runtime/test/conformance.test.ts",
     "scripts/test/public-repo-checks.test.mjs",
-    "scripts/mutations/275/mutations.py"
+    "scripts/mutations/275/mutations.py",
+    ".github/workflows/release.yml"
   ],
   "files": [
     {
@@ -732,13 +733,13 @@
     },
     {
       "path": "scripts/gates/plugin-v2/contract.mjs",
-      "sha256": "54878dcfd44cd05e573ab3476ae797e51d67b2b55d2d8939625587c3a5166622",
-      "bytes": 6420
+      "sha256": "50cbb50517ed0496e587a71dab9aacd93d5fff1ae11b2717ed5e3137bab25c08",
+      "bytes": 6678
     },
     {
       "path": "scripts/gates/plugin-v2/controls.test.mjs",
-      "sha256": "0b8623ee17c05386800549b997348547071dbbffe862c7c76c574760f5382285",
-      "bytes": 29049
+      "sha256": "d742ced551f2301f8a434bd105b33a63f55c3d14676253558e895236457b1e57",
+      "bytes": 29467
     },
     {
       "path": "scripts/gates/plugin-v2/external-broker-evidence.template.json",
@@ -777,8 +778,8 @@
     },
     {
       "path": "scripts/gates/plugin-v2/owner.mjs",
-      "sha256": "400053b2d98669d792723e522a32441451136cab0be349b460b405ec53e8aab5",
-      "bytes": 33896
+      "sha256": "e73e4b9dd6ed152f974f71e46339db1a3016f549def7ab131a8ced85204b9f72",
+      "bytes": 33548
     },
     {
       "path": "scripts/gates/plugin-v2/policy.proposed.json",

@@ -88,9 +88,28 @@ test('no-input observed source plan refuses local, wrong role/source or self-aut
       'arm64',
     ),
   )
-  assert.throws(() =>
+  assert.doesNotThrow(() =>
     hosted(plan, '0.1.8', { ...env, RUNNER_ENVIRONMENT: 'self-hosted' }, 'darwin', 'arm64'),
   )
+  for (const [platform, arch, role] of [
+    ['darwin', 'x64', 'mac'],
+    ['win32', 'x64', 'windows'],
+    ['linux', 'arm64', 'mac'],
+  ]) {
+    assert.throws(() =>
+      hosted(
+        plan,
+        '0.1.8',
+        {
+          ...env,
+          RUNNER_ENVIRONMENT: 'self-hosted',
+          GITHUB_REF: `refs/heads/gate/plugin-v2-${role}-closed`,
+        },
+        platform,
+        arch,
+      ),
+    )
+  }
   assert.throws(() =>
     hosted(plan, '0.1.8', { ...env, GITHUB_REPOSITORY: 'foreign/repo' }, 'darwin', 'arm64'),
   )

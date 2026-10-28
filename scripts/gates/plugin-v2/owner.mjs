@@ -11,6 +11,7 @@ export { projectedVersionArguments } from './staging.mjs'
 import {
   demand,
   hosted,
+  hostedRunner,
   hash,
   readFile,
   below,
@@ -40,7 +41,9 @@ function printFailure(error, diagnostic) {
   console.error(error?.stack ?? String(error))
   for (const record of diagnostic.records ?? []) {
     if (record.closed && record.code === 0 && record.signal === null) continue
-    console.error(`Child exit code: ${record.code}; signal: ${record.signal}; closed: ${record.closed}`)
+    console.error(
+      `Child exit code: ${record.code}; signal: ${record.signal}; closed: ${record.closed}`,
+    )
     const tails = record.tails()
     console.error('Child stdout tail:')
     console.error(tails.stdout)
@@ -102,9 +105,7 @@ export function owned(root) {
 }
 export async function stage(version) {
   // Refuse local calls before making or reading task roots.
-  demand(
-    process.env.GITHUB_ACTIONS === 'true' && process.env.RUNNER_ENVIRONMENT === 'github-hosted',
-  )
+  demand(hostedRunner())
   const temp = fs.realpathSync.native(process.env.RUNNER_TEMP)
   return stageSource(version, {
     temp,
@@ -118,9 +119,7 @@ export async function stage(version) {
   })
 }
 export async function install(root, diagnostic = {}) {
-  demand(
-    process.env.GITHUB_ACTIONS === 'true' && process.env.RUNNER_ENVIRONMENT === 'github-hosted',
-  )
+  demand(hostedRunner())
   owned(root)
   const records = [],
     cancel = cancellation(records)
@@ -208,9 +207,7 @@ async function packageProof(repo, app, expected, appVersion) {
   return inventory(app)
 }
 export async function run(root) {
-  demand(
-    process.env.GITHUB_ACTIONS === 'true' && process.env.RUNNER_ENVIRONMENT === 'github-hosted',
-  )
+  demand(hostedRunner())
   owned(root)
   const records = [],
     repo = path.join(root, 'repo'),
@@ -436,9 +433,7 @@ const SDK_VERSION = '0.3.287',
   CLI_VERSION = '2.1.290'
 const SDK_FILTER = 'installed Claude Code · (start:|reload:)'
 function sdkRole(require018 = true) {
-  demand(
-    process.env.GITHUB_ACTIONS === 'true' && process.env.RUNNER_ENVIRONMENT === 'github-hosted',
-  )
+  demand(hostedRunner())
   demand(
     process.env.GITHUB_REPOSITORY === 'brocrew/brocrew' &&
       process.env.GITHUB_EVENT_NAME === 'workflow_dispatch' &&
@@ -535,9 +530,11 @@ async function sdkCommand(program, args, root, records, cwd, ms, extra = {}) {
   }
 }
 async function verifyPnpm(entry, root, records) {
-  const version = (await command(process.execPath, [entry, '--version'], root, records, {
-    ms: 60000,
-  })).trim()
+  const version = (
+    await command(process.execPath, [entry, '--version'], root, records, {
+      ms: 60000,
+    })
+  ).trim()
   if (version !== '10.11.0') throw new Error(`PNPM version refused: ${version}`)
   console.error(`Gate PNPM version: ${version}`)
 }
@@ -678,14 +675,7 @@ export async function installSdk(root, cli = false) {
     }
     const pnpm = sdkPnpm()
     await verifyPnpm(pnpm, root, records)
-    await sdkCommand(
-      process.execPath,
-      [pnpm, ...args],
-      root,
-      records,
-      cwd,
-      cli ? 300000 : 600000,
-    )
+    await sdkCommand(process.execPath, [pnpm, ...args], root, records, cwd, cli ? 300000 : 600000)
   } catch (error) {
     printFailure(error, { records })
     failure = error
@@ -943,8 +933,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
       printFailure(error, diagnostic)
       process.exitCode = 1
     })
-  }
-  else if (mode === 'run')
+  } else if (mode === 'run')
     run(arg).then(
       (s) => {
         process.exitCode = s.passed ? 0 : 1

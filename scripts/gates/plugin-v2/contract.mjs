@@ -34,6 +34,13 @@ export function appSourceFor(version, routeCommit) {
   demand(/^[a-f0-9]{40}$/.test(routeCommit) && ['0.1.7', '0.1.8'].includes(version))
   return version === '0.1.7' ? BASE017 : routeCommit
 }
+export function hostedRunner(env = process.env, platform = process.platform, arch = process.arch) {
+  return (
+    env.GITHUB_ACTIONS === 'true' &&
+    (env.RUNNER_ENVIRONMENT === 'github-hosted' ||
+      (env.RUNNER_ENVIRONMENT === 'self-hosted' && platform === 'darwin' && arch === 'arm64'))
+  )
+}
 export function hosted(
   plan,
   version,
@@ -41,7 +48,7 @@ export function hosted(
   platform = process.platform,
   arch = process.arch,
 ) {
-  demand(env.GITHUB_ACTIONS === 'true' && env.RUNNER_ENVIRONMENT === 'github-hosted')
+  demand(hostedRunner(env, platform, arch))
   demand(plan?.schema === 2 && plan.scope === 'synthetic-v2-review')
   demand(
     env.GITHUB_REPOSITORY === 'brocrew/brocrew' && env.GITHUB_EVENT_NAME === 'workflow_dispatch',

@@ -266,7 +266,7 @@ jobs:
       )
     uses: ./.github/workflows/recovery-real-entry.yml
     with:
-      runner: macos-15
+      runner: brocrew-mac
       evidence: recovery-evidence-macos
 
   plugin-v2-review:
