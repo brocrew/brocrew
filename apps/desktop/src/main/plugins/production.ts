@@ -153,12 +153,7 @@ export function productionPluginController() {
       if (!catalogueEntries) return fail()
       const releases = catalogueEntries.releases
       if (connection.refreshCatalogue && !refreshFailed) {
-        if (
-          releases.some((release) => !admittedCards.some((card) => card.id === release.id)) ||
-          admittedCards.some(
-            (card) => !card.installed && !releases.some((release) => release.id === card.id),
-          )
-        )
+        if (releases.some((release) => !admittedCards.some((card) => card.id === release.id)))
           return fail()
       }
       // Installed cards come from the authenticated owner, independently of today's offers.

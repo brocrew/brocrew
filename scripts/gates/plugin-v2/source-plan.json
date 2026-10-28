@@ -82,7 +82,9 @@
     "scripts/gates/plugin-packaged/cdp.mjs",
     "scripts/lib/update-rehearsal-app.mjs",
     "scripts/test/plugin-packaged-probe.test.mjs",
-    "scripts/gates/plugin-v2/diagnostics.mjs"
+    "scripts/gates/plugin-v2/diagnostics.mjs",
+    "apps/desktop/src/main/plugins/production.ts",
+    "apps/desktop/test/plugin-production.test.ts"
   ],
   "files": [
     {

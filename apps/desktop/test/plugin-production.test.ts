@@ -125,6 +125,74 @@ describe.skipIf(process.platform === 'win32')(
       await f.controller.catalogue()
       expect(f.fetch).toHaveBeenCalledTimes(2)
     })
+    it.each(['Available', 'Unavailable'] as const)(
+      'removing a withdrawn plugin with an %s owner card keeps the other plugin Running',
+      async (state) => {
+        const f = await setup()
+        const chrome = { ...f.pkg.release, id: 'chrome' }
+        const whatsapp = { ...f.pkg.release, id: 'whatsapp' }
+        const list = repoListFor(whatsapp, 'Fictional WhatsApp')
+        const running: PluginCard = {
+          id: 'whatsapp',
+          name: 'Fictional WhatsApp',
+          installed: true,
+          state: 'Running',
+        }
+        let removed = false
+        f.fetch.mockImplementation(
+          async () =>
+            new Response(
+              JSON.stringify({
+                ...list,
+                entries: [...repoListFor(chrome, 'Fictional Chrome').entries, ...list.entries],
+              }),
+            ),
+        )
+        f.peer.catalogue.mockImplementation(async () => [
+          {
+            id: 'chrome',
+            name: 'Fictional Chrome',
+            installed: !removed,
+            state: removed ? state : 'Running',
+          },
+          running,
+        ])
+        f.peer.uninstall.mockImplementation(async () => {
+          removed = true
+        })
+        f.controller.start(f.options)
+        expect(await f.controller.ready!()).toBe(true)
+        f.fetch.mockImplementation(async () => new Response(JSON.stringify(list)))
+        expect(await f.controller.catalogue(true)).toMatchObject([
+          running,
+          { id: 'chrome', installed: true, state: 'Running', updatesUnavailable: true },
+        ])
+        await expect(f.controller.uninstall('chrome')).resolves.toBeUndefined()
+        expect(await f.controller.catalogue()).toEqual([running])
+        expect(await f.controller.catalogue(true)).toEqual([running])
+        expect(readPluginInstructions(f.controller)).toMatchObject([
+          { id: 'whatsapp', state: 'Running', tools: 'all agents', service: 'Fictional WhatsApp' },
+        ])
+        expect(f.peer.uninstall).toHaveBeenCalledExactlyOnceWith('chrome')
+        expect(f.peer.install).not.toHaveBeenCalled()
+      },
+    )
+    it('still refuses an offered release missing from the admitted owner cards', async () => {
+      const f = await setup()
+      f.controller.start(f.options)
+      expect(await f.controller.ready!()).toBe(true)
+      f.peer.catalogue.mockResolvedValue([])
+      await expect(f.controller.uninstall(f.pkg.release.id)).rejects.toMatchObject({
+        code: 'unavailable',
+      })
+      expect(await f.controller.catalogue(true)).toMatchObject([
+        { id: f.pkg.release.id, state: 'Unavailable' },
+      ])
+      expect(readPluginInstructions(f.controller)).toMatchObject([
+        { id: f.pkg.release.id, state: 'Unavailable', tools: 'none', service: null },
+      ])
+      expect(f.peer.install).not.toHaveBeenCalled()
+    })
     it.each([
       { status: 404, body: '', state: 'not-published' },
       { status: 500, body: '', state: 'fetch-error' },
