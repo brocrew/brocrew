@@ -161,7 +161,7 @@ jobs:
   macos:
     name: Build for the Mac (dmg and zip, Apple silicon, signed ad hoc)
     needs: [plan, leak]
-    runs-on: macos-15
+    runs-on: [self-hosted, macOS, ARM64, brocrew-mac]
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
