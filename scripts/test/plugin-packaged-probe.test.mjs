@@ -119,7 +119,9 @@ describe('packaged GUI probe diagnostic steps without an app launch', () => {
             body,
           )({
             querySelector: (selector) =>
-              markers.some((key) => selector === `[data-cy="${key}"]`) ? {} : null,
+              markers.some((key) => selector === `[data-cy="${key}"]`)
+                ? { getAttribute: () => (markers.includes('plugins-section') ? 'true' : 'false') }
+                : null,
           }),
       }
       const click = async (page, selector) => {
@@ -134,7 +136,7 @@ describe('packaged GUI probe diagnostic steps without an app launch', () => {
             'setup-close',
           ]
         else if (selector.includes('settings-tab-plugins'))
-          markers = ['rail-settings', 'plugins-section']
+          markers = ['rail-settings', 'settings-tab-plugins', 'plugins-section']
       }
       let ready = false
       await openPlugins(cdp, {

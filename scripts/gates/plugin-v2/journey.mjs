@@ -1,8 +1,13 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
-import { press } from '../../lib/update-rehearsal-app.mjs'
-import { openPlugins, pluginPage, waitFor } from '../plugin-packaged/cdp.mjs'
+import { waitForLaunchProviders } from '../../lib/update-rehearsal-app.mjs'
+import {
+  openPlugins,
+  pluginPage,
+  pressInPlugins as press,
+  waitFor,
+} from '../plugin-packaged/cdp.mjs'
 import { demand, readFile } from './contract.mjs'
 import { startApp, quit, samples } from './processes.mjs'
 
@@ -123,6 +128,7 @@ export async function journey(options, summary) {
   const expected = JSON.parse(readFile(path.join(root, 'expected.json')))
   let run = await startApp({ ...options, workspace: path.join(root, 'workspace') })
   try {
+    await waitForLaunchProviders(run.cdp)
     await openPlugins(run.cdp)
     demand((await cards(run)).every((c) => c.installed === false))
     for (const id of ['chrome', 'whatsapp']) {
@@ -185,6 +191,7 @@ export async function journey(options, summary) {
     fs.writeFileSync(path.join(root, 'list-mode'), 'empty')
     await quit(run)
     run = await startApp({ ...options, workspace: path.join(root, 'workspace') })
+    await waitForLaunchProviders(run.cdp)
     await openPlugins(run.cdp)
     for (const id of ['chrome', 'whatsapp']) await state(run, id, true)
     const empty = await cards(run)

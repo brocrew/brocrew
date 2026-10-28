@@ -79,7 +79,9 @@
     "scripts/test/public-repo-checks.test.mjs",
     "scripts/mutations/275/mutations.py",
     ".github/workflows/release.yml",
-    "scripts/gates/plugin-packaged/cdp.mjs"
+    "scripts/gates/plugin-packaged/cdp.mjs",
+    "scripts/lib/update-rehearsal-app.mjs",
+    "scripts/test/plugin-packaged-probe.test.mjs"
   ],
   "files": [
     {
@@ -669,8 +671,8 @@
     },
     {
       "path": "scripts/gates/plugin-packaged/cdp.mjs",
-      "sha256": "fcee2d3bdb150638ea719b16e4f14874b9a85e8ad40e9e6ca4787713072ff308",
-      "bytes": 4563
+      "sha256": "b357f9052741d8cfb267350c8b7342ad0bb05810423c09b22411196c94aa8f03",
+      "bytes": 5571
     },
     {
       "path": "scripts/gates/plugin-packaged/contract.mjs",
@@ -739,8 +741,8 @@
     },
     {
       "path": "scripts/gates/plugin-v2/controls.test.mjs",
-      "sha256": "0b8623ee17c05386800549b997348547071dbbffe862c7c76c574760f5382285",
-      "bytes": 29049
+      "sha256": "a4c20384f380edbf928781bccc8dc6b5681b4243c43bbfaa390c5c74de509e7c",
+      "bytes": 31639
     },
     {
       "path": "scripts/gates/plugin-v2/external-broker-evidence.template.json",
@@ -749,8 +751,8 @@
     },
     {
       "path": "scripts/gates/plugin-v2/journey.mjs",
-      "sha256": "9ae3474467f637ec772a7bc0687e306d3fe819c2e63bca08dfb45fd0062972e2",
-      "bytes": 9312
+      "sha256": "0d4c8c875725e9c853875b9a0f976b42a8e199489c175780eb0036c9d202bfa8",
+      "bytes": 9447
     },
     {
       "path": "scripts/gates/plugin-v2/native-dependency.mjs",
@@ -914,8 +916,8 @@
     },
     {
       "path": "scripts/lib/update-rehearsal-app.mjs",
-      "sha256": "814732a6144f5a3de66463284aeefb85ea019cf789cbc469aeb6ee3392895dad",
-      "bytes": 16658
+      "sha256": "dbe4de8eeff7f8340bae1539d7943c6f8e2bfd4d08085464f0b5e9fa9817f3a9",
+      "bytes": 18004
     },
     {
       "path": "scripts/lib/update-rehearsal.mjs",
@@ -936,6 +938,11 @@
       "path": "vitest.smoke.config.ts",
       "sha256": "e9b9a9d1f24ebb2dbc0a10e6ed3a11df24ca3dae93f3d52ce157199d54a6078b",
       "bytes": 2246
+    },
+    {
+      "path": "scripts/test/plugin-packaged-probe.test.mjs",
+      "sha256": "ab32b0701d0a88a7adea0f0917dd3f34842bba0c1ae4f8ee90ef45a85b00540c",
+      "bytes": 15912
     }
   ],
   "routePolicySha256": "5d0fa754eabf1c171316ec1cb007a60fadef12f5e44449783af582cc320882a7",

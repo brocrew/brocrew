@@ -10,6 +10,8 @@ import { createHash } from 'node:crypto'
 import { readOwnedFile, rootWitness } from './owned-files.mjs'
 import { sampleScript, stopAll, environment } from './processes.mjs'
 import { assertAccessLabels } from './journey.mjs'
+import { waitForLaunchProviders } from '../../lib/update-rehearsal-app.mjs'
+import { pressInPlugins } from '../plugin-packaged/cdp.mjs'
 import { projectedVersionArguments, stageSource } from './staging.mjs'
 import { esbuildInvocation, nativeEsbuildTarget } from './tool-entry.mjs'
 import { fileURLToPath } from 'node:url'
@@ -760,4 +762,90 @@ test('source intent refuses historical final-app literals and altered baselines'
     assert.throws(() => hosted({ ...plan, appSources }, '0.1.8', env, 'darwin', 'arm64'))
   assert.throws(() => hosted({ ...plan, base: BASE017 }, '0.1.8', env, 'darwin', 'arm64'))
   assert.throws(() => hosted(plan, '0.1.8', { ...env, GITHUB_SHA: null }, 'darwin', 'arm64'))
+})
+
+test('launch synchronization accepts Providers and resets the quiet period after a tab change', async () => {
+  for (const providersAt of [5_000, Infinity]) {
+    let elapsed = 0
+    await waitForLaunchProviders(
+      {
+        evaluate: async () =>
+          elapsed >= providersAt
+            ? 'settings-tab-providers'
+            : elapsed >= 10_000
+              ? 'settings-tab-general'
+              : null,
+      },
+      {
+        now: () => elapsed,
+        pause: async (ms) => {
+          elapsed += ms
+        },
+      },
+    )
+    assert.equal(elapsed, Number.isFinite(providersAt) ? 5_000 : 25_000)
+  }
+})
+test('launch synchronization refuses continuous tab churn with the last tab witness', async () => {
+  let elapsed = 0
+  await assert.rejects(
+    waitForLaunchProviders(
+      { evaluate: async () => (elapsed % 500 === 0 ? 'settings-tab-general' : null) },
+      {
+        waitMs: 1_000,
+        now: () => elapsed,
+        pause: async (ms) => {
+          elapsed += ms
+        },
+      },
+    ),
+    /Launch provider decision did not settle:.*selectedSettingsTab/,
+  )
+})
+test('each plugin press recovers three tab changes and refuses the fourth with a witness', async () => {
+  let selected = false
+  let reopens = 0
+  const cdp = {
+    evaluate: async () => ({
+      selectedSettingsTab: selected ? 'settings-tab-plugins' : 'settings-tab-providers',
+      plugins: selected,
+    }),
+  }
+  await assert.rejects(
+    pressInPlugins(cdp, '[data-cy="plugin-review-install"]', {
+      open: async () => {
+        reopens++
+        selected = true
+      },
+      click: async (_cdp, _selector, { beforePress }) => {
+        for (let i = 0; i < 4; i++) {
+          selected = false
+          await beforePress()
+          assert.equal(selected, true)
+        }
+      },
+    }),
+    /Plugins tab recovery exhausted.*settings-tab-providers/,
+  )
+  assert.equal(reopens, 3)
+})
+
+test('launch synchronization rejects a late Providers read and bounds a stalled read', async () => {
+  let elapsed = 0
+  await assert.rejects(
+    waitForLaunchProviders(
+      {
+        evaluate: async () => {
+          elapsed = 61_000
+          return 'settings-tab-providers'
+        },
+      },
+      { now: () => elapsed },
+    ),
+    /Launch provider decision did not settle/,
+  )
+  await assert.rejects(
+    waitForLaunchProviders({ evaluate: async () => new Promise(() => {}) }, { waitMs: 10 }),
+    /Launch provider decision did not settle/,
+  )
 })

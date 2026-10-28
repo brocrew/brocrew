@@ -9,7 +9,8 @@ export async function openPlugins(cdp, { click = press, wait = waitFor, signal }
       return {
         setup: has('provider-setup-dialog'), close: has('setup-close'),
         workspace: has('rail-settings'), tab: has('settings-tab-plugins'),
-        plugins: has('plugins-section')
+        plugins: has('plugins-section'),
+        selected: document.querySelector('[data-cy="settings-tab-plugins"]')?.getAttribute('aria-selected') === 'true'
       }`)
     signal?.throwIfAborted()
     if (state.setup || state.close) {
@@ -17,9 +18,30 @@ export async function openPlugins(cdp, { click = press, wait = waitFor, signal }
       return false
     }
     if (!state.workspace) return false
-    if (state.plugins) return true
+    if (state.plugins && state.selected) return true
     await click(cdp, state.tab ? '[data-cy="settings-tab-plugins"]' : '[data-cy="rail-settings"]')
     return false
+  })
+}
+
+/** Reacquire Plugins before locating and pressing each control, with a bounded recovery count. */
+export async function pressInPlugins(cdp, selector, { click = press, open = openPlugins } = {}) {
+  let reopens = 0
+  await click(cdp, selector, {
+    beforePress: async () => {
+      const witness = await cdp.evaluate(`
+        return {
+          selectedSettingsTab: document.querySelector('[data-cy^="settings-tab-"][aria-selected="true"]')?.getAttribute('data-cy') ?? null,
+          plugins: Boolean(document.querySelector('[data-cy="plugins-section"]'))
+        }`)
+      if (witness.selectedSettingsTab === 'settings-tab-plugins' && witness.plugins) return
+      if (reopens === 3)
+        throw new Error(
+          `Plugins tab recovery exhausted before ${selector}: ${JSON.stringify(witness)}`,
+        )
+      reopens += 1
+      await open(cdp)
+    },
   })
 }
 

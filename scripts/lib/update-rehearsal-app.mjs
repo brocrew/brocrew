@@ -160,15 +160,17 @@ export async function attach(port, { wait = 180_000, answerWithin = 120_000 } = 
  * goes down and up there. ⚑ Real input events, so a disabled or covered button is not pressed. A
  * window draws its controls a moment after it opens: the button has 30 s to be drawn and enabled.
  */
-export async function press(cdp, selector) {
-  const where = () =>
-    cdp.evaluate(`
+export async function press(cdp, selector, { beforePress = async () => {} } = {}) {
+  const where = async () => {
+    await beforePress()
+    return cdp.evaluate(`
     const one = document.querySelector(${JSON.stringify(selector)})
     if (one === null) return null
     one.scrollIntoView({ block: 'center' })
     const box = one.getBoundingClientRect()
     return { x: box.x + box.width / 2, y: box.y + box.height / 2, disabled: one.disabled === true }`)
-  const box = await until(
+  }
+  let box = await until(
     async () => {
       const found = await where()
       return found !== null && !found.disabled ? found : null
@@ -180,6 +182,8 @@ export async function press(cdp, selector) {
     const last = await where()
     throw new Error(last === null ? `the window shows no ${selector}` : `${selector} is disabled`)
   }
+  box = await where()
+  if (box === null || box.disabled) throw new Error(`the window cannot press ${selector}`)
   const at = { x: box.x, y: box.y }
   await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...at })
   await cdp.send('Input.dispatchMouseEvent', {
@@ -194,6 +198,42 @@ export async function press(cdp, selector) {
     button: 'left',
     clickCount: 1,
   })
+}
+
+/** Let the launch provider decision finish before navigating away from its initial surface. */
+export async function waitForLaunchProviders(
+  cdp,
+  { quietMs = 15_000, waitMs = 60_000, now = Date.now, pause = sleep } = {},
+) {
+  const started = now()
+  let lastTab
+  let changedAt = started
+  const timeout = () =>
+    new Error(
+      `Launch provider decision did not settle: ${JSON.stringify({ selectedSettingsTab: lastTab ?? null })}`,
+    )
+  while (now() - started < waitMs) {
+    let timer
+    const tab = await Promise.race([
+      cdp.evaluate(`
+        return document.querySelector('[data-cy^="settings-tab-"][aria-selected="true"]')?.getAttribute('data-cy') ?? null`),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(timeout()), waitMs - (now() - started))
+      }),
+    ]).finally(() => clearTimeout(timer))
+    if (now() - started >= waitMs) {
+      lastTab = tab
+      throw timeout()
+    }
+    if (tab === 'settings-tab-providers') return
+    if (tab !== lastTab) {
+      lastTab = tab
+      changedAt = now()
+    }
+    if (now() - changedAt >= quietMs) return
+    await pause(250)
+  }
+  throw timeout()
 }
 
 /** The text an element shows, trimmed and on one line, or null when the window shows none. */
