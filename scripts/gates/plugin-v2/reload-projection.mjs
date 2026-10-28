@@ -95,7 +95,7 @@ export function projectReload(repo, { root, token, appData, browser, modules }) 
   vite = once(
     vite,
     '    main: {',
-    `    main: {\n      // ${RELOAD_MARKER}: keep the controlled SDK witness in the bound main entry.\n      build:{rollupOptions:{output:{inlineDynamicImports:true}}},\n      resolve:{alias:{'@anthropic-ai/claude-agent-sdk':resolve(__dirname,'../../scripts/gates/plugin-reload/controlled-sdk.mjs')}},`,
+    `    main: {\n      resolve:{alias:{'@anthropic-ai/claude-agent-sdk':resolve(__dirname,'../../scripts/gates/plugin-reload/controlled-sdk.mjs')}},`,
   )
   fs.mkdirSync(destination, { mode: 0o700 })
   const created = []

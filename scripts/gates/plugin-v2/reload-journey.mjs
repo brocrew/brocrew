@@ -100,7 +100,21 @@ export async function reloadJourney({ root, app, records }) {
         30000,
       ),
     )
-    const behavior = assertMainAppBehavior(await bounded(control('receipt'), 30000))
+    console.error('Reload status before receipt:', JSON.stringify(await control('status')))
+    let behavior
+    try {
+      behavior = assertMainAppBehavior(await bounded(control('receipt'), 30000))
+    } catch (error) {
+      try {
+        console.error(
+          'Reload status after receipt failure:',
+          JSON.stringify(await control('status')),
+        )
+      } catch (statusError) {
+        console.error('Reload status readback failed:', statusError?.stack ?? String(statusError))
+      }
+      throw error
+    }
     await quit(run)
     run = undefined
     const db = JSON.parse(readFile(path.join(root, 'reload-native-db-closed.json'), 4096))

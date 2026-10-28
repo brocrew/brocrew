@@ -56,7 +56,18 @@ export async function stageReload() {
   return stage('0.1.8')
 }
 function reloadBundle(repo) {
-  const main = readFile(path.join(repo, 'apps/desktop/out/main/index.js'))
+  const directory = path.join(repo, 'apps/desktop/out/main')
+  const chunks = fs
+    .readdirSync(directory)
+    .filter((name) => /^[A-Za-z0-9_.-]+\.js$/.test(name))
+    .sort()
+    .map((name) => ({ name, bytes: readFile(path.join(directory, name)) }))
+  demand(chunks.some(({ name }) => name === 'index.js'))
+  const main = chunks.find(({ name }) => name === 'index.js').bytes
+  const controlledSdkRefusal = chunks.some(({ bytes }) =>
+    bytes.includes(Buffer.from('Reload fixture refuses the default SDK query')),
+  )
+  const mainChunks = chunks.map(({ name, bytes }) => ({ name, sha256: hash(bytes) }))
   const preload = readFile(path.join(repo, 'apps/desktop/out/preload/index.js'))
   console.error(
     'Reload bundle witnesses:',
@@ -64,9 +75,8 @@ function reloadBundle(repo) {
       seen: {
         mainMarker: main.includes(Buffer.from(RELOAD_MARKER)),
         mainChannel: main.includes(Buffer.from(RELOAD_CHANNEL)),
-        controlledSdkRefusal: main.includes(
-          Buffer.from('Reload fixture refuses the default SDK query'),
-        ),
+        controlledSdkRefusal,
+        mainChunks,
         preloadBridge: preload.includes(Buffer.from('__pluginReloadGate')),
         preloadChannel: preload.includes(Buffer.from(RELOAD_CHANNEL)),
       },
@@ -80,12 +90,12 @@ function reloadBundle(repo) {
     }),
   )
   demand(main.includes(Buffer.from(RELOAD_MARKER)) && main.includes(Buffer.from(RELOAD_CHANNEL)))
-  demand(main.includes(Buffer.from('Reload fixture refuses the default SDK query')))
+  demand(controlledSdkRefusal)
   demand(
     preload.includes(Buffer.from('__pluginReloadGate')) &&
       preload.includes(Buffer.from(RELOAD_CHANNEL)),
   )
-  return { mainSha256: hash(main), preloadSha256: hash(preload), controlledSdkRefusal: true }
+  return { mainSha256: hash(main), preloadSha256: hash(preload), controlledSdkRefusal, mainChunks }
 }
 async function packageBinding(repo, app, bundle) {
   const req = createRequire(path.join(repo, 'apps/desktop/package.json'))
@@ -98,6 +108,9 @@ async function packageBinding(repo, app, bundle) {
   demand(JSON.parse(extract(archive, 'package.json')).version === '0.1.8')
   demand(hash(extract(archive, path.join('out', 'main', 'index.js'))) === bundle.mainSha256)
   demand(hash(extract(archive, path.join('out', 'preload', 'index.js'))) === bundle.preloadSha256)
+  for (const chunk of bundle.mainChunks)
+    demand(hash(extract(archive, path.join('out', 'main', chunk.name))) === chunk.sha256)
+  console.error('Reload packaged main chunks bound:', JSON.stringify(bundle.mainChunks))
   return inventory(app)
 }
 export async function runReload(root) {
