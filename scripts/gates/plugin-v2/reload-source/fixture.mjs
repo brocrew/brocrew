@@ -14,7 +14,7 @@ import { openDatabase } from '../../../apps/desktop/src/main/db/connection.ts'
 import { applyMigrations } from '../../../apps/desktop/src/main/db/migrate.ts'
 import { createSessionStore } from '../../../apps/desktop/src/main/db/session-store.ts'
 import { NO_DISCOVERY } from '../../../apps/desktop/src/main/adopt/discover-sessions.ts'
-import { SOURCE, TREE, MODE, SDK_VERSION, assertBehavior, DELIVERY_WORDS, deliveryMessages, deliveryEvidence } from './contract.mjs'
+import { SOURCE, TREE, MODE, SDK_VERSION, assertBehavior, DELIVERY_WORDS, deliveryMessages, deliveryEvidence, lifecycleEvidence } from './contract.mjs'
 
 export const WORDS = DELIVERY_WORDS
 export const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
@@ -325,13 +325,11 @@ async function hostQueueCase(home, skills, migrationsPath, mainBinding = null) {
     if (db) applyMigrations(db, migrationsPath)
     const store = mainBinding?.store ?? createSessionStore(db)
     kit = mainBinding?.kit ?? makeRuntime(home, skills, 'sess_controlled_reload_host')
-    let failureAt = 0, starts = 0, resumes = 0
+    let failureAt = 0
     const sink = { ownerId: 'controlled-reload-owner', aPersonIsBehindIt: true, alive: true,
       send(value) {
         recordInto(events, value.event)
         if (value.event.type === 'turn' && value.event.state === 'failed') failureAt ||= performance.now()
-        if (value.event.type === 'launched') starts++
-        if (value.event.type === 'reopened') resumes++
       }, sendLiveness() {} }
     host = mainBinding?.host ?? new RuntimeHost({
       store, discoverSessions: NO_DISCOVERY, nativeTranscriptPath: () => null,
@@ -404,7 +402,7 @@ async function hostQueueCase(home, skills, migrationsPath, mainBinding = null) {
       oldCloses: old.closeCalls, oldReturns: old.returnCalls,
       failedAtTimeout,
       queuedBeforeExit,
-      freshBeforeReturn, freshBeforeExit, starts, resumes, freshQueries: kit.queries.length - 1,
+      freshBeforeReturn, freshBeforeExit, ...lifecycleEvidence(ledger), freshQueries: kit.queries.length - 1,
       freshResumeMatches: fresh.resume === expectedResume, freshReloads: fresh.reloadCalls,
       freshPushes: fresh.pushes.length, uniqueUserUuids: new Set(fresh.pushes.map(m => m.uuid)).size,
       originalOnce: once(WORDS[0]), secondOnce: once(WORDS[1]), thirdOnce: once(WORDS[2]),
@@ -433,6 +431,7 @@ async function hostQueueCase(home, skills, migrationsPath, mainBinding = null) {
   assert.equal(turns(events).length, result.freshPushes + 1, 'Host terminal added during cleanup')
   assert.equal(kit.queries[1].pushes.length, result.freshPushes, 'Prompt added during cleanup')
   assert.equal(completed(events).length, result.freshPushes, 'Completion changed during cleanup')
+  assert.deepEqual(lifecycleEvidence(events), { starts: result.starts, resumes: result.resumes }, 'Lifecycle changed during cleanup')
   return { result, databaseClosed, cleanup: kit.cleanupFacts(), registeredHandles: host.sessionIds.length }
 }
 

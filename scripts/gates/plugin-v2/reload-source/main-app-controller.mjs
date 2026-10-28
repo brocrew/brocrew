@@ -7,7 +7,7 @@ import path from 'node:path'
 import { performance } from 'node:perf_hooks'
 import { RuntimeHost } from '../../../apps/desktop/src/main/runtime/runtime-host.ts'
 import { makeRuntime, adapterCase, ownedFolder, cleanupReceipt, delay, until, bounded, WORDS } from './fixture.mjs'
-import { SOURCE, TREE, MODE, SDK_VERSION, MARKER, assertMainAppBehavior, assertCommand, assertStatus, deliveryMessages, deliveryEvidence } from './contract.mjs'
+import { SOURCE, TREE, MODE, SDK_VERSION, MARKER, assertMainAppBehavior, assertCommand, assertStatus, deliveryMessages, deliveryEvidence, lifecycleEvidence } from './contract.mjs'
 
 let actualHost = null
 let state = null
@@ -181,8 +181,7 @@ async function receipt() {
     oldPushes: old.pushes.length, oldReloads: old.reloadCalls, oldCloses: old.closeCalls,
     oldReturns: old.returnCalls, queuedBeforeExit: state.tails.size,
     freshBeforeReturn: state.freshBeforeReturn, freshBeforeExit: state.freshBeforeExit,
-    starts: rows.filter(row => row.event.type === 'launched').length,
-    resumes: rows.filter(row => row.event.type === 'reopened').length,
+    ...lifecycleEvidence(rows.map(row => row.event)),
     freshQueries: kit.queries.length - 1,
     freshResumeMatches: fresh.resume === kit.handles[0].ref.sessionId,
     freshReloads: fresh.reloadCalls, freshPushes: fresh.pushes.length,

@@ -814,12 +814,12 @@
     },
     {
       "path": "scripts/gates/plugin-v2/reload-controls.test.mjs",
-      "sha256": "63b867b99a627d381ee2cf5344782215d902a304986d01df0c38026d7d23c343",
-      "bytes": 8330
+      "sha256": "580f826121240aa330b6ace180c0b1db70a20660c91b1b0b29cc434414e78302",
+      "bytes": 9311
     },
     {
       "path": "scripts/gates/plugin-v2/reload-inputs.json",
-      "sha256": "4d6cea8a7dca60c304a38ca0294428d8f3bd2caaf657bacfb8130c76be0a0a47",
+      "sha256": "8c648014e0588c09e2a57134ea367b2cc4f0a671ab6b13d2497dc5e0585b7a20",
       "bytes": 1129
     },
     {
@@ -839,8 +839,8 @@
     },
     {
       "path": "scripts/gates/plugin-v2/reload-source/contract.mjs",
-      "sha256": "9c2c895adf68660c7ccb8e349185b899138e932871113b2ed317f2d655ebb47d",
-      "bytes": 7687
+      "sha256": "b4e05af8b6d786e83102fe2f1e9a0691752f8d56724bbeb027dbb0aec82d9379",
+      "bytes": 8299
     },
     {
       "path": "scripts/gates/plugin-v2/reload-source/controlled-sdk.mjs",
@@ -849,13 +849,13 @@
     },
     {
       "path": "scripts/gates/plugin-v2/reload-source/fixture.mjs",
-      "sha256": "e82db3106bc4c098255ddd7d87905975d33038e21177f28f8430e0e629cde230",
-      "bytes": 24465
+      "sha256": "09d6522453b519f5d8663ceb6be423756bc41b9f159f7d438671736eb883bce3",
+      "bytes": 24497
     },
     {
       "path": "scripts/gates/plugin-v2/reload-source/main-app-controller.mjs",
-      "sha256": "3add124d8f265e9996618d7f0ee9267da9c0bd8f956d542e2b9dc3fb65fe7ccd",
-      "bytes": 11763
+      "sha256": "d3cc9e411806fa255ba955ccb788eed755af0687f67b3038f2ca3ce216e02139",
+      "bytes": 11695
     },
     {
       "path": "scripts/gates/plugin-v2/runtime-source-binding.mjs",

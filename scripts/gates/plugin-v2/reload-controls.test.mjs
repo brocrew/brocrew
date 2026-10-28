@@ -8,7 +8,32 @@ import { fileURLToPath } from 'node:url'
 import { authorizeReloadRequest } from './reload-authorize.mjs'
 import { projectReload } from './reload-projection.mjs'
 import { checkNormalPluginBuild } from '../../check-no-plugin-gate-inputs.mjs'
-import { deliveryEvidence, assertBehavior } from './reload-source/contract.mjs'
+import { deliveryEvidence, assertBehavior, lifecycleEvidence } from './reload-source/contract.mjs'
+
+test('reload lifecycle requires one initial launch and one ordered launch for every resume', () => {
+  const observe = (types) => lifecycleEvidence(types.map((type) => ({ type })))
+  assert.deepEqual(observe(['launched']), { starts: 1, resumes: 0 })
+  assert.deepEqual(observe(['launched', 'turn', 'reopened', 'launched', 'user_turn']), {
+    starts: 1,
+    resumes: 1,
+  })
+  assert.deepEqual(observe(['launched', 'reopened', 'launched', 'reopened', 'launched']), {
+    starts: 1,
+    resumes: 2,
+  })
+  for (const types of [
+    [],
+    ['reopened'],
+    ['reopened', 'launched'],
+    ['launched', 'launched'],
+    ['launched', 'reopened'],
+    ['launched', 'launched', 'reopened'],
+    ['launched', 'reopened', 'reopened'],
+    ['launched', 'reopened', 'launched', 'launched'],
+    ['launched', 'reopened', 'launched', 'reopened'],
+  ])
+    assert.throws(() => observe(types))
+})
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..')
 const input = JSON.parse(fs.readFileSync(new URL('./reload-inputs.json', import.meta.url)))
@@ -210,6 +235,10 @@ test('reload receipt binds actual prompt, UUID, reload and completed-turn counts
   }
   assert.equal(assertBehavior(value), value)
   for (const [key, bad] of [
+    ['starts', 0],
+    ['starts', 2],
+    ['resumes', 0],
+    ['resumes', 2],
     ['freshCompleted', 1],
     ['freshCompleted', 3],
     ['uniqueUserUuids', 1],

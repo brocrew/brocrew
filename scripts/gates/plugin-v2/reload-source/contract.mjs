@@ -7,6 +7,16 @@ export const MARKER = 'packaged-plugin-gate-only:reload-v1'
 export const SDK_VERSION = '0.3.287'
 export const SHA256 = /^[0-9a-f]{64}$/
 export const DELIVERY_WORDS = Object.freeze(['reload original fern', 'reload queued birch', 'reload queued cedar'])
+export function lifecycleEvidence(events) {
+  const lifecycle = events.filter(event => event.type === 'launched' || event.type === 'reopened')
+  assert.equal(lifecycle[0]?.type, 'launched', 'Initial launch missing or out of order')
+  assert.equal(lifecycle.length % 2, 1, 'Resume launch missing')
+  for (let index = 1; index < lifecycle.length; index += 2) {
+    assert.equal(lifecycle[index].type, 'reopened', 'Unexpected launch without a resume')
+    assert.equal(lifecycle[index + 1].type, 'launched', 'Resume launch missing or out of order')
+  }
+  return { starts: 1, resumes: (lifecycle.length - 1) / 2 }
+}
 export function deliveryMessages(pushes) {
   return pushes.flatMap(({ message }) => {
     assert.equal(typeof message.content, 'string')
