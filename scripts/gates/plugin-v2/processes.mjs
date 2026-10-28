@@ -220,7 +220,7 @@ export async function privateRoot(root, records, { commandMs = 420000, observer 
   const sddl = (
     await command(
       powershell(),
-      ['-NoProfile', '-NonInteractive', '-Command', `(Get-Acl -LiteralPath ${quote(root)}).Sddl`],
+      ['-NoProfile', '-NonInteractive', '-Command', `$ErrorActionPreference='Stop'; $sections=[System.Security.AccessControl.AccessControlSections]::Access; [System.IO.Directory]::GetAccessControl(${quote(root)}, $sections).GetSecurityDescriptorSddlForm($sections)`],
       root,
       records,
       { ms: commandMs, ...(observer ? { observer, operation: 'SDDL' } : {}) },

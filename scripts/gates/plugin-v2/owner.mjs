@@ -135,7 +135,7 @@ export async function install(root, diagnostic = {}) {
     demand(typeof input === 'string' && path.isAbsolute(input) && input.endsWith('pnpm.cjs'))
     const entry = fs.realpathSync.native(input)
     // Node invokes the setup action's pinned PNPM entry directly, with no shell/cmd wrapper.
-    readFile(entry, 8 * 1024 * 1024)
+    readDependency(entry, path.dirname(path.dirname(entry)), 8 * 1024 * 1024)
     await verifyPnpm(entry, root, records)
     await command(process.execPath, [entry, 'install', '--frozen-lockfile'], root, records, {
       cwd: path.join(root, 'repo'),
@@ -812,7 +812,7 @@ function sdkPnpm() {
   const input = process.env.PLUGIN_GATE_PNPM_ENTRY
   demand(typeof input === 'string' && path.isAbsolute(input) && input.endsWith('pnpm.cjs'))
   const entry = fs.realpathSync.native(input)
-  readFile(entry, 8 * 1024 * 1024)
+  readDependency(entry, path.dirname(path.dirname(entry)), 8 * 1024 * 1024)
   return entry
 }
 async function sdkIdentity(root, records) {
