@@ -46,7 +46,9 @@ export function hosted(
   demand(
     env.GITHUB_REPOSITORY === 'brocrew/brocrew' && env.GITHUB_EVENT_NAME === 'workflow_dispatch',
   )
-  const role = /^refs\/heads\/gate\/plugin-v2-(mac|windows)-[a-z0-9-]+$/.exec(
+  const role = env.GITHUB_REF === 'refs/heads/gate/plugin-v2-raw-errors-v1'
+    ? (platform === 'darwin' ? 'mac' : 'windows')
+    : /^refs\/heads\/gate\/plugin-v2-(mac|windows)-[a-z0-9-]+$/.exec(
     env.GITHUB_REF ?? '',
   )?.[1]
   demand((platform === 'darwin' && arch === 'arm64') || (platform === 'win32' && arch === 'x64'))

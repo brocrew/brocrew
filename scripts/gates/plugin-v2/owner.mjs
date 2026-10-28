@@ -35,6 +35,20 @@ import { project, bundleProof } from './projection.mjs'
 import { journey } from './journey.mjs'
 import { checkNormalPluginBuild } from '../../check-no-plugin-gate-inputs.mjs'
 
+function printFailure(error, diagnostic) {
+  console.error(error?.message ?? String(error))
+  console.error(error?.stack ?? String(error))
+  for (const record of diagnostic.records ?? []) {
+    if (record.closed && record.code === 0 && record.signal === null) continue
+    console.error(`Child exit code: ${record.code}; signal: ${record.signal}; closed: ${record.closed}`)
+    const tails = record.tails()
+    console.error('Child stdout tail:')
+    console.error(tails.stdout)
+    console.error('Child stderr tail:')
+    console.error(tails.stderr)
+  }
+}
+
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..')
 const routeDirectory = path.join(repository, 'scripts/gates/plugin-v2')
 const readJSON = (file) => JSON.parse(readFile(file, 128 * 1024))
@@ -103,13 +117,14 @@ export async function stage(version) {
     cleanup,
   })
 }
-export async function install(root) {
+export async function install(root, diagnostic = {}) {
   demand(
     process.env.GITHUB_ACTIONS === 'true' && process.env.RUNNER_ENVIRONMENT === 'github-hosted',
   )
   owned(root)
   const records = [],
     cancel = cancellation(records)
+  diagnostic.records = records
   let failure
   try {
     const held = readJSON(path.join(root, 'observed-source.json'))
@@ -423,7 +438,9 @@ function sdkRole(require018 = true) {
       process.env.GITHUB_EVENT_NAME === 'workflow_dispatch' &&
       process.env.GITHUB_JOB === 'plugin-v2-review',
   )
-  const role = /^refs\/heads\/gate\/plugin-v2-(mac|windows)-sdk-[a-z0-9-]+$/.exec(
+  const role = process.env.GITHUB_REF === 'refs/heads/gate/plugin-v2-raw-errors-v1'
+    ? (process.platform === 'darwin' ? 'mac' : 'windows')
+    : /^refs\/heads\/gate\/plugin-v2-(mac|windows)-sdk-[a-z0-9-]+$/.exec(
     process.env.GITHUB_REF ?? '',
   )?.[1]
   demand(
@@ -836,6 +853,7 @@ export async function stageSdk(diagnostic = {}) {
   const root = fs.realpathSync.native(fs.mkdtempSync(path.join(temp, 'plugin-v2-'))),
     records = [],
     cancel = cancellation(records)
+  diagnostic.records = records
   let failure
   try {
     diagnostic.stage = 'stage-private-root'
@@ -930,6 +948,7 @@ export async function installSdk(root, cli = false, diagnostic = {}) {
   diagnostic.stage = 'cancellation'
   const records = [],
     cancel = cancellation(records)
+  diagnostic.records = records
   let failure
   try {
     diagnostic.stage = 'identity'
@@ -1227,11 +1246,14 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
         process.exitCode = 1
       },
     )
-  else if (mode === 'install')
-    install(arg).catch(() => {
+  else if (mode === 'install') {
+    const diagnostic = {}
+    install(arg, diagnostic).catch((error) => {
       console.error('Plugin v2 install refused')
+      printFailure(error, diagnostic)
       process.exitCode = 1
     })
+  }
   else if (mode === 'run')
     run(arg).then(
       (s) => {
@@ -1261,6 +1283,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
       (root) => console.log(root),
       (error) => {
         console.error('SDK stage refused')
+        printFailure(error, diagnostic)
         process.exitCode = 1
         try {
           console.error(JSON.stringify(sdkInstallReport(error, diagnostic)))
@@ -1275,6 +1298,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
       .then(() => installSdk(arg, true, diagnostic))
       .catch((error) => {
         console.error('SDK install refused')
+        printFailure(error, diagnostic)
         process.exitCode = 1
         try {
           console.error(JSON.stringify(sdkInstallReport(error, diagnostic)))
