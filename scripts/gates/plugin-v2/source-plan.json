@@ -829,8 +829,8 @@
     },
     {
       "path": "scripts/gates/plugin-v2/reload-owner.mjs",
-      "sha256": "a5bbf1d9dee9fc18dee66df9b13c151cb2e561cb33b0969d8f770cb0f6954035",
-      "bytes": 7672
+      "sha256": "34476b544184ffd5e701626bd6484782e93dffa981212e36175fba6496e6cde5",
+      "bytes": 9789
     },
     {
       "path": "scripts/gates/plugin-v2/reload-projection.mjs",

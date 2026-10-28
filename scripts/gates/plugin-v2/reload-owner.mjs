@@ -14,6 +14,43 @@ import { checkNormalPluginBuild } from '../../check-no-plugin-gate-inputs.mjs'
 
 const route = path.dirname(fileURLToPath(import.meta.url))
 const readJSON = (p) => JSON.parse(readFile(p))
+function printReloadFailure(error, records, phase, result) {
+  console.error(`Reload failure during ${phase}:`, error?.message ?? String(error))
+  console.error(error?.stack ?? String(error))
+  console.error(
+    'Reload witnesses:',
+    JSON.stringify({
+      seen: {
+        bundle: result.bundle,
+        packageSha256: result.packageSha256,
+        normalSourceRefused: result.normalSourceRefused,
+        normalOutputRefused: result.normalOutputRefused,
+        journey: result.journey,
+        cleanup: result.cleanup,
+      },
+      expected: {
+        bundle: 'main/preload hashes and controlledSdkRefusal=true',
+        packageSha256: 'inventory hash matching the unchanged packaged app',
+        normalSourceRefused: true,
+        normalOutputRefused: true,
+        journey: { nativeDatabaseClosed: true, nativeAppClosed: true },
+        cleanup: { directClosed: true, twoEmptySamples: true },
+      },
+    }),
+  )
+  for (const record of records.filter(
+    (r, i) => i >= records.length - 3 || !r.closed || r.code !== 0 || r.signal !== null,
+  )) {
+    console.error(
+      `Child exit code: ${record.code}; signal: ${record.signal}; closed: ${record.closed}`,
+    )
+    const tails = record.tails()
+    console.error('Child stdout tail:')
+    console.error(tails.stdout)
+    console.error('Child stderr tail:')
+    console.error(tails.stderr)
+  }
+}
 export async function stageReload() {
   demand(process.platform === 'win32' && process.arch === 'x64')
   return stage('0.1.8')
@@ -71,7 +108,8 @@ export async function runReload(root) {
     realSdk: null,
     final018Qualification: null,
   }
-  let projected
+  let projected,
+    phase = 'observe-source'
   try {
     const held = readJSON(path.join(root, 'observed-source.json'))
     const observed = await observe('0.1.8', records, root)
@@ -123,12 +161,15 @@ export async function runReload(root) {
     }
     demand(refused)
     result.normalSourceRefused = true
+    phase = 'prepare-plugin-node'
     await command(process.execPath, ['scripts/prepare-plugin-node.mjs'], root, records, {
       cwd: repo,
     })
+    phase = 'electron-vite-build'
     await command(process.execPath, [bin(repo, 'electron-vite'), 'build'], root, records, {
       cwd: desktop,
     })
+    phase = 'electron-builder-package'
     await command(
       process.execPath,
       [
@@ -146,9 +187,12 @@ export async function runReload(root) {
       records,
       { cwd: desktop, ms: 900000 },
     )
+    phase = 'reload-bundle-witness'
     result.bundle = reloadBundle(repo)
     const app = path.join(desktop, 'dist/win-unpacked')
+    phase = 'package-binding'
     result.packageSha256 = await packageBinding(repo, app, result.bundle)
+    phase = 'restore-normal-source'
     projected.restore()
     projected = undefined
     refused = false
@@ -159,19 +203,25 @@ export async function runReload(root) {
     }
     demand(refused)
     result.normalOutputRefused = true
+    phase = 'native-reload-journey'
     result.journey = await reloadJourney({ root, app, records })
+    phase = 'unchanged-package-inventory'
     demand(inventory(app) === result.packageSha256)
-  } catch {
+  } catch (error) {
+    result.error = { phase, message: error?.message ?? String(error), stack: error?.stack ?? null }
+    printReloadFailure(error, records, phase, result)
     result.failure = 'required-reload-witness-missing'
   } finally {
     try {
       projected?.restore()
-    } catch {
+    } catch (error) {
+      printReloadFailure(error, records, 'cleanup-source-restore', result)
       result.failure = 'reload-source-restore-failed'
     }
     try {
       result.cleanup = await cleanup(root, records)
-    } catch {
+    } catch (error) {
+      printReloadFailure(error, records, 'cleanup-processes', result)
       result.cleanup = { directClosed: false, twoEmptySamples: false }
     }
     if (cancel.cancelled) result.failure = 'cancelled'
@@ -197,8 +247,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
   if (mode === 'stage')
     stageReload().then(
       (root) => console.log(root),
-      () => {
+      (error) => {
         console.error('Reload stage refused')
+        console.error(error?.stack ?? String(error))
         process.exitCode = 1
       },
     )
@@ -207,8 +258,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
       (r) => {
         process.exitCode = r.passed ? 0 : 1
       },
-      () => {
+      (error) => {
         console.error('Reload run refused')
+        console.error(error?.stack ?? String(error))
         process.exitCode = 1
       },
     )
