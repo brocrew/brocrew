@@ -777,8 +777,8 @@
     },
     {
       "path": "scripts/gates/plugin-v2/owner.mjs",
-      "sha256": "69e01f76b0eb16ed259a58bf6ad75974c51eae5ea9a5ba640310965c3dab93e9",
-      "bytes": 50178
+      "sha256": "7365e2571e0eb54b284150fd3a3be05cee54945b4ed445a6e2c9122e1592d41b",
+      "bytes": 50755
     },
     {
       "path": "scripts/gates/plugin-v2/policy.proposed.json",
@@ -787,7 +787,7 @@
     },
     {
       "path": "scripts/gates/plugin-v2/processes.mjs",
-      "sha256": "322adaca2e3b79b50151fac514f445f2f4fc371bf9e238a62ed4bf3c3b850de2",
+      "sha256": "f8bb09f5dad301681c195109348069f57d2d5e82a7cd4ba8f1dde3eaf7ae1ad7",
       "bytes": 11630
     },
     {

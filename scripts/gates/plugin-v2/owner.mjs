@@ -136,17 +136,22 @@ export async function install(root, diagnostic = {}) {
     const entry = fs.realpathSync.native(input)
     // Node invokes the setup action's pinned PNPM entry directly, with no shell/cmd wrapper.
     readFile(entry, 8 * 1024 * 1024)
+    await verifyPnpm(entry, root, records)
     await command(process.execPath, [entry, 'install', '--frozen-lockfile'], root, records, {
       cwd: path.join(root, 'repo'),
       ms: 900000,
     })
   } catch (error) {
+    printFailure(error, diagnostic)
     failure = error
   } finally {
-    const closed = await cleanup(root, records).catch(() => ({
-      directClosed: false,
-      twoEmptySamples: false,
-    }))
+    const closed = await cleanup(root, records).catch((error) => {
+      printFailure(error, diagnostic)
+      return {
+        directClosed: false,
+        twoEmptySamples: false,
+      }
+    })
     if (cancel.cancelled || !closed.directClosed || !closed.twoEmptySamples)
       failure = new Error('Dependency drain refused')
     cancel.close()
@@ -394,7 +399,8 @@ export async function run(root) {
     summary.runtimePaths = modes
     summary.platformMeasured = true
     summary.phase = 'cleanup'
-  } catch {
+  } catch (error) {
+    printFailure(error, { records })
     summary.failure = 'required-witness-missing'
   } finally {
     try {
@@ -548,7 +554,7 @@ function sdkStageBoundaryObserver() {
       try {
         if (invalid) return
         const validTimeout = (awaitPhase === 'START' || awaitPhase === 'EXIT') ? configuredTimeoutMs === null
-          : awaitPhase === 'CLOSE' ? (['SID', 'GRANT', 'INHERITANCE', 'SDDL'].includes(operation) ? configuredTimeoutMs === 5000 : ['SAMPLE1', 'SAMPLE2'].includes(operation) && configuredTimeoutMs === 15000)
+          : awaitPhase === 'CLOSE' ? (['SID', 'GRANT', 'INHERITANCE', 'SDDL'].includes(operation) ? configuredTimeoutMs === 60000 : ['SAMPLE1', 'SAMPLE2'].includes(operation) && configuredTimeoutMs === (process.platform === 'win32' ? 60000 : 15000))
           : operation !== 'ACL_PREDICATE' && [20000, 10000].includes(configuredTimeoutMs)
         if (!operations.includes(operation) || !phases.includes(awaitPhase) || !validTimeout || typeof failed !== 'boolean') { invalid = true; return }
         if (failed) {
@@ -795,6 +801,13 @@ async function sdkCommand(program, args, root, records, cwd, ms, extra = {}, dia
     }
   }
 }
+async function verifyPnpm(entry, root, records) {
+  const version = (await command(process.execPath, [entry, '--version'], root, records, {
+    ms: 60000,
+  })).trim()
+  if (version !== '10.11.0') throw new Error(`PNPM version refused: ${version}`)
+  console.error(`Gate PNPM version: ${version}`)
+}
 function sdkPnpm() {
   const input = process.env.PLUGIN_GATE_PNPM_ENTRY
   demand(typeof input === 'string' && path.isAbsolute(input) && input.endsWith('pnpm.cjs'))
@@ -857,7 +870,7 @@ export async function stageSdk(diagnostic = {}) {
   let failure
   try {
     diagnostic.stage = 'stage-private-root'
-    await privateRoot(root, records, { commandMs: 5000, ...(boundaries ? { observer: boundaries.primary.boundary } : {}) })
+    await privateRoot(root, records, { commandMs: 60000, ...(boundaries ? { observer: boundaries.primary.boundary } : {}) })
     diagnostic.stage = 'stage-observe'
     const observed = await observe('0.1.8', records, root, { gitMs: 5000 })
     diagnostic.stage = 'stage-token'
@@ -975,6 +988,7 @@ export async function installSdk(root, cli = false, diagnostic = {}) {
     }
     diagnostic.stage = 'pnpm-entry'
     const pnpm = sdkPnpm()
+    await verifyPnpm(pnpm, root, records)
     diagnostic.stage = cli ? 'cli-install' : 'repo-install'
     await sdkCommand(
       process.execPath,

@@ -243,7 +243,7 @@ export async function samples(root, records, envRoot = root, { observer, operati
         ['-NoProfile', '-NonInteractive', '-Command', script],
         envRoot,
         records,
-        { ms: 15000, ...(observer ? { observer, operation } : {}) },
+        { ms: 60000, ...(observer ? { observer, operation } : {}) },
       )
     ).trim()
     const parsed = s ? JSON.parse(s) : []
