@@ -749,8 +749,8 @@
     },
     {
       "path": "scripts/gates/plugin-v2/journey.mjs",
-      "sha256": "ee792f5d88a7b4b49ef49c801cfe8008401b349bbf5dd3733f737413bd584846",
-      "bytes": 7501
+      "sha256": "b278d262be845893d36883b643e9a890a9d4041e798aaaad8af0d4786253e744",
+      "bytes": 9115
     },
     {
       "path": "scripts/gates/plugin-v2/native-dependency.mjs",
@@ -789,8 +789,8 @@
     },
     {
       "path": "scripts/gates/plugin-v2/processes.mjs",
-      "sha256": "dcfb07eb27ed9d70e0de1814b3875fe5d360975d6eb2a9f960ed5b7e1bc9e114",
-      "bytes": 10150
+      "sha256": "86433201927bd9c9694b9c879206ce752074b2a86a4dee7a9ccffaf074e9bbc9",
+      "bytes": 10202
     },
     {
       "path": "scripts/gates/plugin-v2/projection.mjs",

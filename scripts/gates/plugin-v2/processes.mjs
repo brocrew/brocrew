@@ -118,7 +118,10 @@ export function launch(program, args, options, records) {
     child.once('spawn', resolve)
     child.once('error', reject)
   })
-  record.tails = () => ({ stdout: tails.stdout.toString('utf8'), stderr: tails.stderr.toString('utf8') })
+  record.tails = () => ({
+    stdout: tails.stdout.toString('utf8'),
+    stderr: tails.stderr.toString('utf8'),
+  })
   record.output = () => {
     demand(!overflow)
     return stdout
@@ -196,7 +199,12 @@ export async function privateRoot(root, records, { commandMs = 420000 } = {}) {
   const sddl = (
     await command(
       powershell(),
-      ['-NoProfile', '-NonInteractive', '-Command', `$ErrorActionPreference='Stop'; $sections=[System.Security.AccessControl.AccessControlSections]::Access; [System.IO.Directory]::GetAccessControl(${quote(root)}, $sections).GetSecurityDescriptorSddlForm($sections)`],
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        `$ErrorActionPreference='Stop'; $sections=[System.Security.AccessControl.AccessControlSections]::Access; [System.IO.Directory]::GetAccessControl(${quote(root)}, $sections).GetSecurityDescriptorSddlForm($sections)`,
+      ],
       root,
       records,
       { ms: commandMs },

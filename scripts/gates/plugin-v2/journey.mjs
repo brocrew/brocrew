@@ -31,19 +31,52 @@ export function assertAccessLabels(shown, resources) {
   demand(isDeepStrictEqual([...shown].sort(), labels.sort()))
 }
 async function visibleReview(run, id, expected) {
-  await press(run.cdp, selector(id, 'plugin-review-install'))
-  let shown
-  await waitFor(async () => {
-    shown = await run.cdp.evaluate(`
-   const box=document.querySelector(${JSON.stringify(selector(id, 'plugin-review-details'))});
-   return box?{bdi:[...box.querySelectorAll('bdi')].map(e=>e.textContent.trim()),
-     resources:[...box.querySelectorAll('li')].map(e=>e.textContent.trim()),
-     confirm:!!box.querySelector('[data-cy="plugin-review-confirm"]:not(:disabled)')}:null;`)
-    return shown?.confirm === true
-  }, 60000)
-  demand(shown.bdi[0] === expected.version && shown.bdi[1] === expected.authors.join(', '))
-  demand(shown.bdi[2] === expected.permissions.description)
-  assertAccessLabels(shown.resources, expected.permissions.resources)
+  try {
+    await press(run.cdp, selector(id, 'plugin-review-install'))
+    let shown
+    await waitFor(async () => {
+      shown = await run.cdp.evaluate(`
+     const box=document.querySelector(${JSON.stringify(selector(id, 'plugin-review-details'))});
+     return box?{bdi:[...box.querySelectorAll('bdi')].map(e=>e.textContent.trim()),
+       resources:[...box.querySelectorAll('li')].map(e=>e.textContent.trim()),
+       confirm:!!box.querySelector('[data-cy="plugin-review-confirm"]:not(:disabled)')}:null;`)
+      return shown?.confirm === true
+    }, 60000)
+    demand(shown.bdi[0] === expected.version && shown.bdi[1] === expected.authors.join(', '))
+    demand(shown.bdi[2] === expected.permissions.description)
+    assertAccessLabels(shown.resources, expected.permissions.resources)
+  } catch (error) {
+    const observed = await run.cdp
+      .evaluate(
+        `
+      const section=document.querySelector('[data-cy="plugins-section"]');
+      const visible=e=>!!e&&!!e.getClientRects().length&&getComputedStyle(e).visibility!=='hidden';
+      const text=e=>e?.innerText??null;
+      return {sectionText:text(section),
+        cards:[...(section?.querySelectorAll('[data-plugin]')??[])].map(e=>({
+          dataPlugin:e.getAttribute('data-plugin'),
+          state:text(e.querySelector('[data-cy="plugin-state"]')),
+          installed:e.innerText.includes('Installed for all workspaces.'),
+          visible:visible(e),text:text(e)})),
+        messages:[...(section?.querySelectorAll('[data-cy="plugins-error"], [data-cy="plugins-list-status"], [data-cy*="empty"]')??[])]
+          .filter(visible).map(e=>({kind:e.getAttribute('data-cy'),text:text(e)}))};
+    `,
+      )
+      .catch(() => ({ unavailable: true }))
+    console.error('Plugins section witness:', JSON.stringify(observed))
+    const listed = await run.cdp
+      .evaluate(
+        `
+      const answer=await window.api.plugins.request({kind:'list'});
+      return {ok:answer?.ok,listState:answer?.listState,refreshFailed:answer?.refreshFailed,
+        cards:answer?.cards?.map(c=>({id:c.id,state:c.state,installed:c.installed,
+          preparationRequired:c.preparationRequired,mutationBlocked:c.mutationBlocked}))};
+    `,
+      )
+      .catch(() => ({ unavailable: true }))
+    console.error('Plugins list witness:', JSON.stringify(listed))
+    throw error
+  }
 }
 async function configure(run, id) {
   await press(run.cdp, selector(id, 'plugin-configure'))
@@ -67,13 +100,17 @@ async function configure(run, id) {
         60000,
       )
   } catch (error) {
-    const observed = await page.evaluate(`
+    const observed = await page
+      .evaluate(
+        `
       const shown=id=>{const e=document.getElementById(id);return !!e&&!e.hidden};
       return {surface:${JSON.stringify(id)},status:document.getElementById('status')?.textContent,
         linkPhone:shown('link-phone'),pairing:shown('pairing'),account:shown('account'),
         readDisabled:document.getElementById('read')?.disabled,
         chromeProfile:!!document.getElementById('profiles')};
-    `).catch(() => ({ unavailable: true }))
+    `,
+      )
+      .catch(() => ({ unavailable: true }))
     console.error('Plugin configuration witness:', JSON.stringify(observed))
     throw error
   } finally {
