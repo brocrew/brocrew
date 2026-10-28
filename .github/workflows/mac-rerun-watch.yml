@@ -1,0 +1,31 @@
+name: Mac runner retry
+on:
+  push:
+    branches: [gate/mac-rerun-watch]
+permissions:
+  actions: write
+  contents: read
+jobs:
+  retry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - name: Re-run the Mac plugin test until a Mac runner picks it up
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN: '40701557183'
+        run: |
+          for i in $(seq 1 20); do
+            while :; do
+              s=$(gh run view "$RUN" -R "$GITHUB_REPOSITORY" --json status -q .status)
+              [ "$s" = completed ] && break
+              sleep 60
+            done
+            steps=$(gh run view "$RUN" -R "$GITHUB_REPOSITORY" --json jobs -q '[.jobs[]|select(.name|startswith("Plugin v2 Review"))|.steps|length]|add // 0')
+            echo "$(date -u +%T) attempt done; Plugin v2 Review steps run: $steps"
+            if [ "$steps" -gt 0 ]; then echo "A Mac runner ran the test. Done."; exit 0; fi
+            echo "No Mac runner was free; re-run $i"
+            gh run rerun "$RUN" -R "$GITHUB_REPOSITORY"
+            sleep 30
+          done
+          echo "Gave up after 20 re-runs"; exit 1
