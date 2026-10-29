@@ -28,6 +28,7 @@ import {
   retainedCopyInfo,
 } from '../../src/main/recovery/checkpoint'
 import { nodeFs } from '../../src/main/recovery/files'
+import { beginCheckpointDeletion } from '../../src/main/recovery/checkpoint-deletion'
 
 const roots: string[] = []
 afterEach(() => {
@@ -63,6 +64,49 @@ async function fixture(withTrees = false) {
   await recordSuccessfulStart(userData, lineage, options)
   return { root, userData, lineage, copy, options }
 }
+
+it.each([
+  ['retry', 'before rename'],
+  ['prune', 'before rename'],
+  ['retry', 'after rename'],
+  ['prune', 'after rename'],
+])('the confirmed root stays bound through %s %s', async (operation, when) => {
+  const { root, userData, lineage, copy, options } = await fixture()
+  await beginCheckpointDeletion(userData, copy, nodeFs)
+  const removing = join(userData, 'backups', `deleting-${copy.manifest.id}`)
+  const saved = join(root, 'original-authorized-copy')
+  let swapped = false
+  function replace(folder: string) {
+    renameSync(folder, saved)
+    mkdirSync(folder)
+    writeFileSync(join(folder, 'drafts.json'), 'personal replacement, not the confirmed copy')
+    swapped = true
+  }
+  const fs = {
+    ...nodeFs,
+    readdir: async (path: string) => {
+      if (!swapped && when === 'before rename' && path === copy.folder) replace(path)
+      return nodeFs.readdir(path)
+    },
+    rename: async (from: string, to: string) => {
+      await nodeFs.rename(from, to)
+      if (!swapped && when === 'after rename' && from === copy.folder && to === removing)
+        replace(to)
+    },
+  }
+  if (operation === 'retry')
+    expect(await deleteRetainedCopy(userData, lineage, copy.manifest.id, { ...options, fs })).toBe(
+      false,
+    )
+  else expect(await prune(userData, lineage, { ...options, fs })).toEqual([])
+  expect(swapped).toBe(true)
+  const replacement = existsSync(removing) ? removing : copy.folder
+  expect(readFileSync(join(replacement, 'drafts.json'), 'utf8')).toBe(
+    'personal replacement, not the confirmed copy',
+  )
+  expect(readFileSync(join(saved, 'drafts.json'), 'utf8')).toBe('{"draft":"fictional only"}')
+  expect(existsSync(join(saved, 'database.sqlite'))).toBe(true)
+})
 
 it.each(['retry', 'prune'])(
   'original P2 EIO scenario now retains visibility and finishes via %s',

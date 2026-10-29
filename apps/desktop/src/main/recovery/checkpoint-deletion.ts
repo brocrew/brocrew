@@ -86,10 +86,19 @@ async function bindCopyParents(
   userData: string,
   folder: string,
   fs: RecoveryFs,
+  expectedRoot?: CheckpointDeletion['root'],
 ): Promise<readonly DirectoryBinding[]> {
   const parents: DirectoryBinding[] = []
-  for (const path of [userData, backupsDir(userData), folder])
-    parents.push(bindDirectory(path, await fs.lstat(path)))
+  for (const path of [userData, backupsDir(userData), folder]) {
+    const binding = bindDirectory(path, await fs.lstat(path))
+    if (
+      path === folder &&
+      expectedRoot &&
+      (binding.dev !== expectedRoot.dev || binding.ino !== expectedRoot.ino)
+    )
+      throw failed()
+    parents.push(binding)
+  }
   return parents
 }
 async function verifyParents(parents: readonly DirectoryBinding[], fs: RecoveryFs): Promise<void> {
@@ -190,6 +199,17 @@ export async function removeCheckpointCopy(
   await copyRoot(userData, folder, fs)
   if (!(await statOrNull(folder, fs))) return
   const parents = await bindCopyParents(userData, folder, fs)
+  await removeBoundCheckpointCopy(userData, folder, fs, parents)
+}
+
+async function removeBoundCheckpointCopy(
+  userData: string,
+  folder: string,
+  fs: RecoveryFs,
+  parents: readonly DirectoryBinding[],
+): Promise<void> {
+  await copyRoot(userData, folder, fs)
+  await verifyParents(parents, fs)
   if ((await fs.readdir(folder)).some((name) => !ALLOWED.has(name))) throw failed()
   for (const name of FIXED_FILES.filter(
     (name) => ![MANIFEST_FILE, COPY_FILE, UNFINISHED_FILE].includes(name),
@@ -297,13 +317,27 @@ export async function finishCheckpointDeletion(
 ): Promise<boolean> {
   const remnant = await deletionRemnant(userData, deletion, fs)
   if (!remnant) return false
+  // Carry the confirmed root and original parent identities through the move and removal.
+  // A fresh binding after rename would silently authorize a replacement at the same path.
+  const parents = await bindCopyParents(userData, remnant.folder, fs, deletion.root)
   // Refuse a pre-existing personal addition before even renaming its folder.
   if ((await fs.readdir(remnant.folder)).some((name) => !ALLOWED.has(name))) throw failed()
   const removing = join(backupsDir(userData), `deleting-${deletion.manifest.id}`)
   if (remnant.folder !== removing) {
-    await retrying(() => fs.rename(remnant.folder, removing))
+    await retrying(async () => {
+      if (await statOrNull(removing, fs)) throw failed()
+      await verifyParents(parents, fs)
+      await fs.rename(remnant.folder, removing)
+    })
     await syncFolder(backupsDir(userData), fs)
   }
-  await removeCheckpointCopy(userData, removing, fs)
+  await removeBoundCheckpointCopy(
+    userData,
+    removing,
+    fs,
+    parents.map((parent) =>
+      parent.path === remnant.folder ? { ...parent, path: removing } : parent,
+    ),
+  )
   return true
 }
