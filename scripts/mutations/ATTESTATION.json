@@ -1,18 +1,18 @@
 {
   "schema": 1,
   "summary": {
-    "definedRows": 10994,
-    "tables": 501,
+    "definedRows": 11015,
+    "tables": 502,
     "retiredRows": 2392,
     "rowsByRunState": {
       "complete": 1173,
       "partial-or-invalid": 708,
-      "unrun": 9113
+      "unrun": 9134
     },
     "tablesByRunState": {
       "complete": 60,
       "partial-or-invalid": 31,
-      "unrun": 410
+      "unrun": 411
     }
   },
   "tables": [
@@ -24188,7 +24188,7 @@
         },
         {
           "id": "275:M29",
-          "fingerprint": "fec680d8658a8c0d3b83178147031f9eb34696539ff7eda30b1b57abf9781296"
+          "fingerprint": "15ba8458c059751ff08391e4d06fe08a7dcc8a9f23d7109f39f725c748fba4e3"
         },
         {
           "id": "275:M30",
@@ -24199,7 +24199,7 @@
           "fingerprint": "6c294983a6af1b7c5a5544081678243a6b1127e8256c0bdec9dcb29af65f8bd6"
         }
       ],
-      "definitionFingerprint": "761c33183f74da7aad346925b06a371b3858c19141af823da88e1f531e773be8",
+      "definitionFingerprint": "a49e039ab266dfe2f9ad2b91dce35906915bcb23f732d6bed5313e2ebe472a36",
       "retiredRows": [],
       "retirements": {},
       "state": "unrun",
@@ -40201,6 +40201,131 @@
       ]
     },
     {
+      "table": "4008",
+      "definedRows": 21,
+      "canonicalRows": [
+        "M1",
+        "M2",
+        "M3",
+        "M4",
+        "M5",
+        "M6",
+        "M7",
+        "M8",
+        "M9",
+        "M10",
+        "M11",
+        "M12",
+        "M13",
+        "M14",
+        "M15",
+        "M16",
+        "M17",
+        "M18",
+        "M19",
+        "M20",
+        "M21"
+      ],
+      "rows": [
+        {
+          "id": "4008:M1",
+          "fingerprint": "e99be832566c6b6f7e7eef73eb83abf58e9bf476aead36cb02d6a32e88cbeb87"
+        },
+        {
+          "id": "4008:M2",
+          "fingerprint": "ec60e4617009caf29a7251583cf4e3fd4451a52f207342ae7986d92ff7686dc5"
+        },
+        {
+          "id": "4008:M3",
+          "fingerprint": "6c0017292fbe75d2c9b8e244d39f643ef7545256247df18340753fa22f82ddf7"
+        },
+        {
+          "id": "4008:M4",
+          "fingerprint": "68601be832fd36097464a59c2eeb01f2a7dbd67727066a427943304857fadf1f"
+        },
+        {
+          "id": "4008:M5",
+          "fingerprint": "3d71f6896ec1bf89b9dc5d8f2ced575ccede207f8e8e4f70da3d03137bc0e9dd"
+        },
+        {
+          "id": "4008:M6",
+          "fingerprint": "451484157819164a19ca08738a85351eb4b283d334cb17a1b7680df6f06a6a56"
+        },
+        {
+          "id": "4008:M7",
+          "fingerprint": "73948ba5156b5f2e7a30f1199b35893b78c72b471ba907ba8fb8e67823ecdc45"
+        },
+        {
+          "id": "4008:M8",
+          "fingerprint": "f576e489b3b4612eb56e57133b5f3273e4cd93c6dd8429526efaa9e08bdfaf90"
+        },
+        {
+          "id": "4008:M9",
+          "fingerprint": "6cdb5cd69cf3373aa1c236fe5a62d8eb70364d9fd1d3cfadcc8133d217914dd9"
+        },
+        {
+          "id": "4008:M10",
+          "fingerprint": "f5dcbda60340d5f1c451cb7e98d9d105bf6750b562bdea0c57699dfe3d91eb2e"
+        },
+        {
+          "id": "4008:M11",
+          "fingerprint": "cf358f6bf689387f19b40070c6ea521b8dccbba1dc6e870ae3622b454c4e6840"
+        },
+        {
+          "id": "4008:M12",
+          "fingerprint": "95fa358bf7a3a4ead26ba2c77a84f4e83fc8d015637487a10c48f5146ae645cd"
+        },
+        {
+          "id": "4008:M13",
+          "fingerprint": "690861be95926ab174e91109a7e55b86af9655fb68d88dc8b985ebe12c77b576"
+        },
+        {
+          "id": "4008:M14",
+          "fingerprint": "f3800ad210fced0d9792ed7d80603900ccfc0a9e9128af9f9d6d6ed326ab97b1"
+        },
+        {
+          "id": "4008:M15",
+          "fingerprint": "7338a371b661d68e3a6347f368033ec830b5af5022bfd4b278f350882a92e9e0"
+        },
+        {
+          "id": "4008:M16",
+          "fingerprint": "b85ff51b2aa2e3b7d65394ac650cc3e381c073d8c422dbde539644231e396d85"
+        },
+        {
+          "id": "4008:M17",
+          "fingerprint": "79d42b4d8e16c7590d901ae1aaed3139f0cf5856259996f2e8df68885a775b00"
+        },
+        {
+          "id": "4008:M18",
+          "fingerprint": "2b59d257c415f30e2c686761aa0538022e0fc6d5f8ced499d62a7f6b63ee2164"
+        },
+        {
+          "id": "4008:M19",
+          "fingerprint": "df02ce98d94adb2a2f145f243163ff7a137c718fadae06973173b5f0e313bc13"
+        },
+        {
+          "id": "4008:M20",
+          "fingerprint": "7ca464727801ef9a8895fdf0e92bda594fdd933888558300cc88a55555b71eed"
+        },
+        {
+          "id": "4008:M21",
+          "fingerprint": "845bceba5f4d2f2cb14f5eb47590aef7f91a06e323cc1eb862110cc9c9d0c4bf"
+        }
+      ],
+      "definitionFingerprint": "d7333628807d8d0e1c927acfdc628c6d80a235243bf404e40cdd571870f5a97f",
+      "retiredRows": [],
+      "retirements": {},
+      "state": "unrun",
+      "artifact": null,
+      "artifactRows": 0,
+      "artifactSha256": null,
+      "invalidRows": [],
+      "rowVerdicts": [],
+      "reasons": [
+        "mutations.txt is absent"
+      ]
+    },
+    {
       "table": "401",
       "definedRows": 28,
       "canonicalRows": [
@@ -51492,7 +51617,7 @@
         },
         {
           "id": "516:M10",
-          "fingerprint": "2966fd671f68ef11c8322d8dd37c632d7e156212e7529d089d053fe08f2b9580"
+          "fingerprint": "c7043a29c6c6d16d382b723f1a4fce03a9b65d3fbbb5d5084afb929594278491"
         },
         {
           "id": "516:M11",
@@ -51527,7 +51652,7 @@
           "fingerprint": "61d20663f59f5a61d0cd42d809da35dc6976801fa4fc5a4f21f512ce38e9e4ca"
         }
       ],
-      "definitionFingerprint": "afa253abfc95e9964f6a3117919829ed58974ac5b4bb6f3a9a4038cae51919de",
+      "definitionFingerprint": "4749295148f10113eee37142427315b19d47c439afc4a50471c5191695a936f2",
       "retiredRows": [
         "M13",
         "M15"
