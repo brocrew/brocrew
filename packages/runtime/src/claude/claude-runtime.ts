@@ -3563,7 +3563,7 @@ export class ClaudeSessionHandle implements SessionHandle {
         if (!this.query?.reloadPlugins) throw new Error(BUILT_IN_SKILLS_FAILURE)
         const reload = this.query.reloadPlugins()
         try {
-          await withDeadline(reload, 10_000, 'reloadPlugins')
+          await withDeadline(reload, 60_000, 'reloadPlugins')
         } catch (error) {
           reloadTimedOut = didNotAnswerInTime(error)
           throw error

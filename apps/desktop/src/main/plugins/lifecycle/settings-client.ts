@@ -102,6 +102,9 @@ export async function connectPluginSettings(options: {
   >()
   const generations = new Map<string, number>()
   let alive = true
+  let catalogueRefresh = Promise.resolve()
+  let pendingCatalogueRefreshes = 0
+  let closing = false
   async function invalidate(id: string, bump = true) {
     if (bump) generations.set(id, (generations.get(id) ?? 0) + 1)
     const screen = screens.get(id)
@@ -493,7 +496,14 @@ export async function connectPluginSettings(options: {
             catalogueDigest: string,
             source?: { bytes: Uint8Array; signature: Uint8Array },
           ) {
-            const ticket = ++generation
+            if (source)
+              source = { bytes: Buffer.from(source.bytes), signature: Buffer.from(source.signature) }
+            pendingCatalogueRefreshes++
+            invalidateConsent()
+            switching = true
+            const work = catalogueRefresh.then(async () => {
+              if (!alive || closing) return failPolicy()
+              const ticket = ++generation
             invalidateConsent()
             switching = true
             try {
@@ -544,9 +554,13 @@ export async function connectPluginSettings(options: {
                     ? 'source-mismatch'
                     : 'owner-incompatible'
               throw error
-            } finally {
-              if (ticket === generation) switching = false
             }
+            }).finally(() => {
+              pendingCatalogueRefreshes--
+              if (pendingCatalogueRefreshes === 0) switching = false
+            })
+            catalogueRefresh = work.catch(() => {})
+            return work
           },
           async update(pluginId: string, consent?: PluginMutationConsent) {
             await mutate('update', pluginId, consent)
@@ -692,6 +706,7 @@ export async function connectPluginSettings(options: {
       }
     },
     async close() {
+      closing = true
       invalidateConsent()
       generation++
       try {

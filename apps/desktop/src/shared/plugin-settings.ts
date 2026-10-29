@@ -214,6 +214,7 @@ export type PluginSettingsRequest =
   | { kind: 'bounds'; bounds: PluginScreenBounds }
   | { kind: 'close' }
 export type PluginListState = 'ready' | 'empty' | 'not-published' | 'fetch-error'
+export type PluginListFailureReason = 'private-folder' | 'supervisor-unavailable'
 export type PluginSettingsReply =
   | {
       ok: true
@@ -224,7 +225,7 @@ export type PluginSettingsReply =
       refreshFailed?: boolean
       removal?: PluginRemovalOutcome
     }
-  | { ok: false; listState: 'not-published' | 'fetch-error' }
+  | { ok: false; listState: 'not-published' | 'fetch-error'; reason?: PluginListFailureReason }
   | { ok: false; error: 'Plugin unavailable. Try again.'; mutationFailure?: PluginMutationFailure }
 export interface PluginsClient {
   request(input: PluginSettingsRequest): Promise<PluginSettingsReply>

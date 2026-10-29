@@ -210,9 +210,9 @@ const checkedRoots = new Map<string, { dev: bigint; ino: bigint }>()
 
 /**
  * On Windows, makes `root` (made here if missing) readable and writable by this user, SYSTEM and
- * Administrators alone, inheriting nothing from its parent, and checks that it is; its parent must
- * let nobody else in either, or another account could replace the root. Throws when either cannot
- * be had. Elsewhere does nothing: the root's mode does this, checked where it is pinned.
+ * Administrators alone, inheriting nothing from its parent, and checks that it is. The shared app
+ * parent may grant sandbox agents read access; only this plugin folder's list is changed.
+ * Elsewhere does nothing: the root's mode does this, checked where it is pinned.
  */
 export async function keepPluginRootPrivate(
   root: string,
@@ -238,10 +238,10 @@ export async function keepPluginRootPrivate(
     if (hasNoAccessList(sddl)) throw new Error('unsupported')
     return {
       protectedList: /D:[A-Z_]*P/.test(sddl),
-      others: othersLetIn(accessEntries(sddl, machine), user),
+      // Descendants must be private too, including grants that apply only to children.
+      others: othersLetIn(accessEntries(sddl, machine, { includeInheritOnly: true }), user),
     }
   }
-  if ((await looked(parent)).others.length > 0) throw new Error('unsafe-path')
   let now = await looked(root)
   if (!now.protectedList || now.others.length > 0) {
     await lists.restrict(root, user, now.others)

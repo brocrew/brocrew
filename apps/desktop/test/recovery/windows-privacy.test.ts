@@ -39,8 +39,19 @@ describe('a folder’s access list, read as SDDL', () => {
     expect(othersLetIn(accessEntries(ON_ANOTHER_DRIVE), USER)).toEqual([
       AUTHENTICATED,
       USERS,
+    ])
+  })
+
+  it('counts rights that apply here, excluding zero masks and inherit-only entries', () => {
+    const sandbox = `${MACHINE}-2011`
+    const sddl = `D:(A;OICIID;0x1200a9;;;${sandbox})(A;;0x00000000;;;WD)(A;;0;;;AU)(A;;;;;BU)(A;OICIIO;FA;;;CO)`
+    expect(othersLetIn(accessEntries(sddl), USER)).toEqual([sandbox])
+    expect(othersLetIn(accessEntries(sddl, MACHINE, { includeInheritOnly: true }), USER)).toEqual([
+      sandbox,
       CREATOR_OWNER,
     ])
+    expect(() => accessEntries('D:(A;;unreadable;;;WD)')).toThrow('unreadable entry')
+    expect(() => accessEntries('D:(A;;FA)')).toThrow('unreadable entry')
   })
 
   it('counts no entry that denies, reads only the DACL, and counts an alias it does not know', () => {
@@ -183,7 +194,7 @@ describe('keeping a recovery folder to this user on Windows', () => {
     await keepToThisUser('D:\\data\\backups', lists, 'win32')
     expect(asked).toEqual([
       'read D:\\data\\backups',
-      `restrict D:\\data\\backups ${USER} ${AUTHENTICATED},${USERS},${CREATOR_OWNER}`,
+      `restrict D:\\data\\backups ${USER} ${AUTHENTICATED},${USERS}`,
       'read D:\\data\\backups',
     ])
   })

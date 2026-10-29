@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from 'node:child_process'
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import {
   lstatSync,
@@ -210,6 +210,43 @@ describe.runIf(process.platform === 'win32')('the plugin host on Windows', () =>
       format: 1,
       exited: true,
     })
+  })
+  it.each([false, true])('secures a plugin root (existing: %s) under a parent a sandbox group can read, preserving parent and workspace ACLs', async (existing) => {
+    const parent = await privateParent()
+    roots.push(parent)
+    const sandbox = 'S-1-5-21-1111111111-2222222222-3333333333-2011'
+    execFileSync(
+      join(process.env['SystemRoot'] ?? 'C:\\Windows', 'System32', 'icacls.exe'),
+      [parent, '/grant:r', `*${sandbox}:(OI)(CI)RX`, '/Q'],
+      { windowsHide: true },
+    )
+    const workspace = join(parent, 'workspace'), root = join(parent, 'plugins')
+    mkdirSync(workspace)
+    if (existing) mkdirSync(root)
+    const parentBefore = await windowsAccessLists.read(parent)
+    const workspaceBefore = await windowsAccessLists.read(workspace)
+    const user = await windowsAccessLists.userSid()
+    const machine = await windowsAccessLists.machineSid()
+    expect(othersLetIn(accessEntries(parentBefore, machine), user)).toContain(sandbox)
+    await keepPluginRootPrivate(root)
+    mkdirSync(join(root, 'state'))
+    for (const folder of [root, join(root, 'state')])
+      expect(othersLetIn(accessEntries(await windowsAccessLists.read(folder), machine, { includeInheritOnly: true }), user)).toEqual([])
+    expect(await windowsAccessLists.read(parent)).toBe(parentBefore)
+    expect(await windowsAccessLists.read(workspace)).toBe(workspaceBefore)
+    expect(isInsideCheckedRoot(join(root, 'state'))).toBe(true)
+  })
+  it('refuses a plugin root whose permissions cannot be restricted', async () => {
+    const parent = await privateParent()
+    roots.push(parent)
+    const root = join(parent, 'plugins')
+    await expect(keepPluginRootPrivate(root, {
+      lists: {
+        ...windowsAccessLists,
+        restrict: async () => { throw new Error('fictional ACL restriction failed') },
+      },
+    })).rejects.toThrow('fictional ACL restriction failed')
+    expect(isInsideCheckedRoot(root)).toBe(false)
   })
   it("makes the plugin root this user's alone, inheriting nothing, and counts only it as checked", async () => {
     const parent = await privateParent()

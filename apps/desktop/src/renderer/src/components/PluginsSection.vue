@@ -13,6 +13,7 @@ import type {
   PluginCard,
   PluginWindowReview,
   PluginListState,
+  PluginListFailureReason,
   PluginsClient,
   PluginSettingsRequest,
   PluginSettingsReply,
@@ -42,6 +43,7 @@ let alive = true,
   stop = () => {},
   observer: ResizeObserver | undefined
 const listState = ref<PluginListState | null>(null)
+const listFailureReason = ref<PluginListFailureReason>()
 const refreshFailed = ref(false)
 const listMessage = computed(() => {
   switch (listState.value) {
@@ -50,7 +52,11 @@ const listMessage = computed(() => {
     case 'empty':
       return 'No plugins are available for this version yet.'
     case 'fetch-error':
-      return "Couldn't load plugins. Check your connection and try again."
+      if (listFailureReason.value === 'private-folder')
+        return "Couldn't make the plugin folder private. Check its Windows permissions and try again."
+      if (listFailureReason.value === 'supervisor-unavailable')
+        return "Couldn't start the plugin service. Try again."
+      return "Couldn't load the plugin catalogue. Try again."
     default:
       return ''
   }
@@ -259,6 +265,7 @@ onMounted(async () => {
     listState.value = answer.listState ?? (answer.cards.length ? 'ready' : 'empty')
   } else {
     listState.value = 'listState' in answer ? (answer.listState ?? 'fetch-error') : 'fetch-error'
+    listFailureReason.value = 'reason' in answer ? answer.reason : undefined
   }
 })
 onUnmounted(() => {

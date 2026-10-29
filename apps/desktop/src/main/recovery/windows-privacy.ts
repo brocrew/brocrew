@@ -103,7 +103,11 @@ export function hasNoAccessList(sddl: string): boolean {
  * computer's SID, which `LA` and `LG` are resolved from; without it they stay unresolved. Throws when
  * the DACL is not one this reads to its end.
  */
-export function accessEntries(sddl: string, machine: string | null = null): AccessEntry[] {
+export function accessEntries(
+  sddl: string,
+  machine: string | null = null,
+  options: { includeInheritOnly?: boolean } = {},
+): AccessEntry[] {
   const start = sddl.indexOf('D:')
   if (start < 0) throw new Error('the access list has no DACL')
   const flags = /^[A-Z_]*/.exec(sddl.slice(start + 2))?.[0] ?? ''
@@ -122,9 +126,19 @@ export function accessEntries(sddl: string, machine: string | null = null): Acce
     }
     if (depth !== 0) throw new Error('the access list ends inside an entry')
     const fields = sddl.slice(at + 1, end).split(';')
+    const rights = fields[2] ?? ''
+    if (
+      fields.length < 6 ||
+      !fields[5] ||
+      (rights !== '' &&
+        !/^(?:0[xX][0-9a-fA-F]+|[0-9]+|(?:CC|DC|LC|SW|RP|WP|DT|LO|CR|SD|RC|WD|WO|GA|GX|GW|GR|FA|FR|FW|FX|KA|KR|KW|KX)+)$/.test(rights))
+    )
+      throw new Error('the access list holds an unreadable entry')
+    const grantsRights = rights !== '' && !/^(?:0[xX])?0+$/.test(rights)
+    const appliesHere = options.includeInheritOnly || !(fields[1] ?? '').includes('IO')
     const account = fields[5] ?? ''
     entries.push({
-      allows: !/^(D|OD|XD)$/.test(fields[0] ?? ''),
+      allows: Boolean(appliesHere && grantsRights && !/^(D|OD|XD)$/.test(fields[0] ?? '')),
       sid: account.startsWith('S-') ? account : sidOf(account, machine),
     })
     at = end + 1

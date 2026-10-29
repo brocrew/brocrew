@@ -10035,6 +10035,56 @@ describe('shared skills at a Claude turn boundary', () => {
     },
   )
 
+  it('keeps a message queued through a slow plugin reload and sends it exactly once', async () => {
+    const fq = new FakeQuery()
+    let finishReload!: () => void
+    const reload = vi.fn(() => new Promise<void>((resolve) => { finishReload = resolve }))
+    Object.assign(fq, { reloadPlugins: reload })
+    const sent: SDKUserMessage[] = []
+    const runtime = new ClaudeRuntime(
+      (params) => {
+        fq.cli.listen((async function* () {
+          for await (const message of params.prompt) {
+            sent.push(message)
+            yield message
+          }
+        })())
+        return fq
+      },
+      async () => true,
+      undefined, undefined, undefined, undefined, process.platform, undefined, '/fictional/claude',
+    )
+    const handle = await runtime.start({
+      cwd: home, providerHome: home,
+      builtInSkills: { root: join(home, 'built-in-skills'), skills: [] },
+      sharedSkillsRoot: join(home, 'skills'),
+    })
+    const events: RuntimeEvent[] = []
+    const consumer = collect(handle, events)
+    fq.emit({ ...init('sess_slow_reload', home), plugins: [{ name: 'brobot', path: join(home, 'built-in-skills') }], skills: [] })
+    await vi.waitFor(() => expect(handle.ref).not.toBeNull())
+    vi.useFakeTimers()
+    try {
+      const sending = handle.send('Keep this message while the plugins reload.')
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(sent).toHaveLength(0)
+      expect(fq.closeCount).toBe(0)
+      expect(events.filter((event) => event.type === 'turn' && event.state === 'failed')).toHaveLength(0)
+      await expect(handle.send('A concurrent message.')).rejects.toThrow()
+      finishReload()
+      await sending
+      await vi.advanceTimersByTimeAsync(0)
+      expect(sent).toHaveLength(1)
+      expect(JSON.stringify(sent[0])).toContain('Keep this message while the plugins reload.')
+      expect(reload).toHaveBeenCalledOnce()
+      expect(fq.closeCount).toBe(0)
+    } finally {
+      vi.useRealTimers()
+      await handle.close()
+      await consumer
+    }
+  })
+
   it('retires a query whose reload timed out, without sending or retrying on that query', async () => {
     const fq = new FakeQuery()
     let finishReload!: () => void
@@ -10092,8 +10142,8 @@ describe('shared skills at a Claude turn boundary', () => {
     try {
       const sending = handle.send('A message awaiting plugin refresh.')
       sending.catch(() => {})
-      await vi.advanceTimersByTimeAsync(10_000)
-      await expect(sending).rejects.toThrow('reloadPlugins did not answer within 10000ms')
+      await vi.advanceTimersByTimeAsync(60_000)
+      await expect(sending).rejects.toThrow('reloadPlugins did not answer within 60000ms')
       expect(events.filter((event) => event.type === 'turn')).toHaveLength(1)
       expect(events.filter((event) => event.type === 'turn').at(-1)).toMatchObject({
         state: 'failed',

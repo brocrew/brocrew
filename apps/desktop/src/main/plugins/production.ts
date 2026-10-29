@@ -205,42 +205,8 @@ export function productionPluginController() {
     if (!connected || ended || cleanupUncertain || transition || !entries) return fail()
     return connected
   }
-  const facade: PluginSettingsController & PluginInstructionSource = {
-    onReviewInvalidated(listener) {
-      reviewListeners.add(listener)
-      return () => {
-        reviewListeners.delete(listener)
-      }
-    },
-    cancelPreparations() {
-      connected?.cancelPreparations?.()
-    },
-    async reviewMutation(action, id) {
-      const connection = current()
-      if (catalogueEntries?.format !== 2 || !connection.reviewMutation)
-        throw new PluginSupervisorError('incompatible')
-      return connection.reviewMutation(action, id)
-    },
-    available: () => started && !ended,
-    ready: async () => {
-      await ready
-      return started && !ended
-    },
-    instructionCatalogue() {
-      if (cleanupUncertain && recover()) void enter()
-      if (connected && !ended && !transition && !cleanupUncertain && !refresh)
-        refresh = update()
-          .then(
-            () => undefined,
-            () => undefined,
-          )
-          .finally(() => {
-            refresh = undefined
-          })
-      return ended ? null : entries
-    },
-    refreshFailed: () => refreshFailed,
-    async catalogue(refreshList = false): Promise<PluginCard[]> {
+  let catalogueRefresh: Promise<PluginCard[]> | undefined
+  const catalogue = async (refreshList: boolean): Promise<PluginCard[]> => {
       if (ended) return fail()
       // Lists join a detach/reconnect already in flight; they never create a competing peer.
       if (transition) await transition
@@ -276,6 +242,50 @@ export function productionPluginController() {
         if (error instanceof PluginListError) throw error
         return unavailableCards()
       }
+  }
+  const facade: PluginSettingsController & PluginInstructionSource = {
+    onReviewInvalidated(listener) {
+      reviewListeners.add(listener)
+      return () => {
+        reviewListeners.delete(listener)
+      }
+    },
+    cancelPreparations() {
+      connected?.cancelPreparations?.()
+    },
+    async reviewMutation(action, id) {
+      const connection = current()
+      if (catalogueEntries?.format !== 2 || !connection.reviewMutation)
+        throw new PluginSupervisorError('incompatible')
+      return connection.reviewMutation(action, id)
+    },
+    available: () => started && !ended,
+    ready: async () => {
+      await ready
+      return started && !ended
+    },
+    instructionCatalogue() {
+      if (cleanupUncertain && recover()) void enter()
+      if (connected && !ended && !transition && !cleanupUncertain && !refresh)
+        refresh = update()
+          .then(
+            () => undefined,
+            () => undefined,
+          )
+          .finally(() => {
+            refresh = undefined
+          })
+      return ended ? null : entries
+    },
+    refreshFailed: () => refreshFailed,
+    catalogue(refreshList = false): Promise<PluginCard[]> {
+      if (!refreshList) return catalogue(false)
+      if (catalogueRefresh) return catalogueRefresh
+      const work = catalogue(true).finally(() => {
+        if (catalogueRefresh === work) catalogueRefresh = undefined
+      })
+      catalogueRefresh = work
+      return work
     },
     async retry(id) {
       if (ended || !entries?.some((entry) => entry.id === id)) return fail()
@@ -349,8 +359,11 @@ export function productionPluginController() {
         let attempt: Peer | undefined
         let storage: SupervisorStorage | undefined
         try {
-          // Parent/root ownership, workspace exclusion and main-thread refusal before provisioning.
-          await keepPluginRootPrivate(options.root)
+          try {
+            await keepPluginRootPrivate(options.root)
+          } catch {
+            throw new PluginListError('fetch-error', 'private-folder')
+          }
           storage = new SupervisorStorage(options.root, [options.workspaceRoot], true)
           const devSource = await devPluginSource(options.devSource)
           loadCatalogue = () =>
@@ -544,8 +557,13 @@ export function productionPluginController() {
           }, 5000)
           timer.unref()
           return true
-        } catch {
+        } catch (error) {
           console.warn('[plugins] plugin-initialization-failed')
+          if (!entries)
+            listFailure =
+              error instanceof PluginListError
+                ? error
+                : new PluginListError('fetch-error', 'supervisor-unavailable')
           markUnavailable()
           if (attempt?.connection) await detach(attempt)
           return false

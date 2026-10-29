@@ -260,6 +260,7 @@ export function registerPluginSettings(
             return {
               ok: false,
               listState: error instanceof PluginListError ? error.state : 'fetch-error',
+              ...(error instanceof PluginListError && error.reason ? { reason: error.reason } : {}),
             }
           }
         }

@@ -495,7 +495,15 @@ it.each([
   },
   {
     reply: { ok: false, listState: 'fetch-error' },
-    message: "Couldn't load plugins. Check your connection and try again.",
+    message: "Couldn't load the plugin catalogue. Try again.",
+  },
+  {
+    reply: { ok: false, listState: 'fetch-error', reason: 'private-folder' },
+    message: "Couldn't make the plugin folder private. Check its Windows permissions and try again.",
+  },
+  {
+    reply: { ok: false, listState: 'fetch-error', reason: 'supervisor-unavailable' },
+    message: "Couldn't start the plugin service. Try again.",
   },
 ])('shows the approved list status: $message', async ({ reply, message }) => {
   const f = fictionalPlugins()
@@ -518,7 +526,7 @@ it('shows the list fetch error when the bridge rejects', async () => {
   const m = mount(settingsWindow('plugins', 'classic', f.client), {}, { width: 1180, height: 900 })
   await vi.waitFor(() =>
     expect(m.q('plugins-list-status').textContent).toBe(
-      "Couldn't load plugins. Check your connection and try again.",
+      "Couldn't load the plugin catalogue. Try again.",
     ),
   )
   expect(m.all('plugins-error')).toHaveLength(0)

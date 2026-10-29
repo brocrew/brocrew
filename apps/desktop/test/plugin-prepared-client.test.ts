@@ -290,6 +290,46 @@ it('clears consent on a client refresh even when the admitted bytes are unchange
   await expect(mutate(c, 'install', consent)).rejects.toThrow()
   expect(peer.calls.filter((call) => call.kind === 'install-prepared')).toHaveLength(0)
 })
+it('serializes overlapping catalogue refreshes without invalidating either admission', async () => {
+  const { c, peer, pkg } = await future()
+  const digest = pluginSha256(pkg.bytes)
+  const source = { bytes: pkg.bytes, signature: pkg.signature }
+  await expect(Promise.all([
+    c.refreshCatalogue(digest, source),
+    c.refreshCatalogue(digest, source),
+  ])).resolves.toEqual([undefined, undefined])
+  expect(peer.calls.filter((call) => call.kind === 'refresh')).toHaveLength(2)
+  expect(c.mutationStatus()).toBeNull()
+  await expect(c.prepareMutation('install', 'chrome')).resolves.toMatchObject({ releaseDigest: expect.any(String) })
+})
+it('allows a queued valid refresh after a failed source check', async () => {
+  const { c, pkg } = await future()
+  const digest = pluginSha256(pkg.bytes)
+  const source = { bytes: pkg.bytes, signature: pkg.signature }
+  const failed = c.refreshCatalogue('0'.repeat(64), source)
+  const next = c.refreshCatalogue(digest, source)
+  await expect(failed).rejects.toThrow()
+  await expect(next).resolves.toBeUndefined()
+  expect(c.mutationStatus()).toBeNull()
+})
+it('refuses a queued refresh when the client closes before it begins', async () => {
+  const { c, peer, pkg } = await future()
+  const digest = pluginSha256(pkg.bytes)
+  const source = { bytes: pkg.bytes, signature: pkg.signature }
+  const gate = peer.pauseFeatures()
+  const first = c.refreshCatalogue(digest, source)
+  const second = c.refreshCatalogue(digest, source)
+  const settled = Promise.allSettled([first, second])
+  await gate.entered.promise
+  try {
+    await c.close()
+    closers.pop()
+  } finally {
+    gate.release.resolve()
+  }
+  expect((await settled).map((one) => one.status)).toEqual(['rejected', 'rejected'])
+  expect(peer.calls.filter((call) => call.kind === 'refresh')).toHaveLength(1)
+})
 it('drops a waiting legacy command during v2 admission and never resends it as prepared', async () => {
   const f = await fixture(),
     pkg = modern(f),

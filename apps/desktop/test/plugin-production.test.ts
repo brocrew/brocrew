@@ -13,6 +13,7 @@ import { packageFixture } from './plugin-package-fixtures'
 import { repoListFor } from './plugin-repo-list-fixtures'
 import { PLUGIN_LIST_URL, PLUGIN_LIST_V2_URL } from '../src/main/plugins/catalogue/download'
 import { readPluginInstructions } from '../src/main/plugins/instructions'
+import * as privateFiles from '../src/main/plugins/private-files'
 vi.mock('../src/main/plugins/ui/host', () => ({ openPluginConfigurationView: vi.fn() }))
 const seams = vi.hoisted(() => ({
   connect: vi.fn(),
@@ -99,6 +100,41 @@ async function setup(pkg = packageFixture()) {
 describe.skipIf(process.platform === 'win32')(
   'production Plugins gate (explicit fake controller/lease peers)',
   () => {
+    it('joins overlapping Settings catalogue refreshes and returns the admitted cards to both callers', async () => {
+      const f = await setup()
+      f.controller.start(f.options)
+      await f.controller.ready!()
+      let release!: () => void
+      f.peer.refreshCatalogue.mockImplementationOnce(() => new Promise<void>((resolve) => { release = resolve }))
+      const first = f.controller.catalogue(true)
+      const second = f.controller.catalogue(true)
+      expect(second).toBe(first)
+      await vi.waitFor(() => expect(f.peer.refreshCatalogue).toHaveBeenCalledOnce())
+      release()
+      const [a, b] = await Promise.all([first, second])
+      expect(a).toEqual(b)
+      expect(a[0]).toMatchObject({ id: f.pkg.release.id, state: 'Available' })
+      expect(f.controller.refreshFailed!()).toBe(false)
+      expect(f.fetch).toHaveBeenCalledTimes(2)
+    })
+    it('reports plugin-folder privacy failure through Settings without exposing the private error', async () => {
+      const f = await setup()
+      vi.spyOn(privateFiles, 'keepPluginRootPrivate').mockRejectedValue(new Error('fictional private path and ACL detail'))
+      f.controller.start(f.options)
+      await f.controller.ready!()
+      const owner = Object.assign(new EventEmitter(), {
+        isDestroyed: () => false,
+        webContents: Object.assign(new EventEmitter(), { mainFrame: {}, send: vi.fn() }),
+      })
+      const ipc = { handle: vi.fn() }
+      registerPluginSettings(ipc, () => owner as never, f.controller)
+      await expect(ipc.handle.mock.calls[0]![1](
+        { sender: owner.webContents, senderFrame: owner.webContents.mainFrame },
+        { kind: 'list' },
+      )).resolves.toEqual({ ok: false, listState: 'fetch-error', reason: 'private-folder' })
+      expect(f.fetch).not.toHaveBeenCalled()
+      expect(f.supervisor.start).not.toHaveBeenCalled()
+    })
     it('re-reads the catalogue when Settings opens and admits its digest before offering the new version', async () => {
       const f = await setup()
       const refreshCatalogue = vi.fn(async () => {})
@@ -300,7 +336,7 @@ describe.skipIf(process.platform === 'win32')(
       await f.controller.ready!()
       expect(f.fetch).not.toHaveBeenCalled()
       expect(f.supervisor.start).not.toHaveBeenCalled()
-      await expect(f.controller.catalogue()).rejects.toThrow('Plugin unavailable. Try again.')
+      await expect(f.controller.catalogue()).rejects.toMatchObject({ state: 'fetch-error', reason: 'supervisor-unavailable' })
     })
     it('no network reports a list fetch error without launch or a half-install', async () => {
       const f = await setup()
