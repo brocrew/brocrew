@@ -118,6 +118,16 @@ interface Row {
  */
 const LEDGER: readonly Row[] = [
   {
+    component: 'StorageSection.vue',
+    standing: 'never-swept',
+    note: 'Functional DOM tests draw the page, but no clipping sweep is qualified yet. The rounded size bars clip their empty spans, and the same file keeps action labels on one line.',
+  },
+  {
+    component: 'VersionButton.vue',
+    standing: 'shortened-on-purpose',
+    note: 'Long version labels shorten in the 120px footer control; its accessible label and title retain the complete version, and the button opens the full update details.',
+  },
+  {
     component: 'ScheduleBar.vue',
     standing: 'shortened-on-purpose',
     note: 'Each job shows a one-line schedule and prompt preview. Pressing the named job button opens its complete available prompt, expression, reported time and start reason in the full-window dialog; scheduled-jobs-open-their-full-prompt.dom.test.ts covers 320/400-pixel cards at 1180/1440-pixel viewports.',
@@ -1103,6 +1113,7 @@ describe('§2 · one sensor, and what everything else was really asking', () => 
  * and each has to be re-read rather than re-numbered.
  */
 const RAIL_MOUNTED_AT: Readonly<Record<string, string[]>> = {
+  'workspace-corner-states.dom.test.ts': ['251.68'],
   'a-wait-on-purpose-is-said-where-idle-was.dom.test.ts': ['251.68'],
   'what-waits-on-you-is-drawn-once-and-answered-in-place.dom.test.ts': ['251.68'],
   'a-worker-is-named-by-its-identity.dom.test.ts': ['251.68'],

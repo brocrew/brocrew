@@ -8,6 +8,7 @@ import type { RulesBaseline } from '../shared/agent-rules'
 import type { InstructionUnread } from '../shared/own-instructions'
 import type { OwnNotesReading, OwnNotesWrite, OwnNotesUnread } from '../shared/own-notes'
 import { pluginsBridge } from './plugins'
+import { storageBridge } from './storage'
 import type { SkillsRequest, SkillsReply } from '../shared/skills-window'
 import {
   TRANSCRIPT_RETENTION_CHANNELS,
@@ -1081,6 +1082,7 @@ const api = Object.freeze({
   runtime,
   themes: themesBridge(ipcRenderer),
   plugins: pluginsBridge(ipcRenderer),
+  storage: storageBridge(ipcRenderer),
   /**
    * 🔴 **W4.109 · B1 — updates** (`main/updates.ts` decides; every call answers the new snapshot).
    * ⚑ `onChanged` is told every move: a check, a download's progress, a restart that waits.

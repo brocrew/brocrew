@@ -8,6 +8,11 @@ import { PluginSupervisorAttachment, pluginSupervisorRoot } from './plugins/supe
 import { PLUGIN_SCHEME } from './plugins/ui/assets'
 import { installPluginUiRpc } from './plugins/ui/host'
 import { ipcMain } from './app-ipc'
+import startStorageWorker from './storage.worker?nodeWorker'
+import { StorageService } from './storage/service'
+import { clearHttpCache, httpCacheFolder } from './storage/cache'
+import { registerStorageIpc } from './storage/ipc'
+import { backupsDir, databaseFile, recoveryDir, SIDECARS } from './recovery/layout'
 import { profileSkillAccess, SharedSkillDiscovery } from './skills/shared-discovery'
 import { convertSharedSkills } from './skills/shared-conversion'
 import { SharedSkillLibrary } from './skills/shared-library'
@@ -21,7 +26,7 @@ import { ATTENTION_SIGNALS_CHANNEL, isAttentionSignal } from '../shared/attentio
 import { AttentionSignals } from './attention-signals'
 import { attentionOverlay } from './attention-overlay'
 import { installAppNavigation } from './app-navigation'
-import { makeWorkerPieceFolder } from './worker-piece-folder'
+import { makeWorkerPieceFolder, WORKER_OUTPUT_DIRNAME } from './worker-piece-folder'
 import { keptShippedSkills, prepareBuiltInSkills } from './skills/prepare-built-in-skills'
 import { factoryTextOf, readTextPack } from './skills/text-pack'
 import { aStartAttemptsLog } from './start-attempts-log'
@@ -45,7 +50,7 @@ import {
   session,
   shell,
 } from 'electron'
-import type { NativeImage, OpenDialogOptions } from 'electron'
+import type { NativeImage, OpenDialogOptions, WebContents } from 'electron'
 import { providerRecord, SUPPORTED_PROVIDERS, appInfoSchema, type AppInfo } from '@brobot2/shared'
 import { withDeadline } from '@brobot2/runtime'
 import type {
@@ -401,6 +406,8 @@ const firstWindowLoad = new Promise<void>((resolve) => {
 })
 let themes: ThemeStore | null = null
 let stopThemeIpc: (() => void) | undefined
+let stopStorageIpc: (() => void) | undefined
+const storageAppWindows = new WeakSet<WebContents>()
 let dockLabel: Promise<DockLabelHost> | undefined
 
 /** Whether the one-host gate said `sole` at this launch: only then are services changed. */
@@ -1253,6 +1260,48 @@ async function pick(
 }
 
 function registerIpc(runtimeHost: RuntimeHost, localZone: () => LocalZone | null): void {
+  const storageData = app.getPath('userData')
+  let storagePlugins: string | null = null
+  try {
+    storagePlugins = pluginSupervisorRoot({
+      appData: app.getPath('appData'),
+      workspaceRoot: storageData,
+      hidden: presentation.hidden,
+      scratchRoot: app.commandLine.getSwitchValue('plugin-global-root'),
+    })
+  } catch {
+    // An unavailable plugin root remains unavailable in Storage too.
+  }
+  const storage = new StorageService(
+    {
+      data: storageData,
+      workspace: brobotWorkspace(storageData),
+      providers: providerHomesRoot(storageData),
+      output: join(storageData, WORKER_OUTPUT_DIRNAME),
+      database: [
+        databaseFile(storageData),
+        ...SIDECARS.map((suffix) => databaseFile(storageData) + suffix),
+      ],
+      backups: [backupsDir(storageData), recoveryDir(storageData)],
+      recovery: recoveryDir(storageData),
+      plugins: storagePlugins,
+      cache: httpCacheFolder(session.defaultSession.storagePath),
+      resources: resourcesRoot(storageData),
+    },
+    (roots, request) =>
+      startStorageWorker({
+        workerData: { roots, request },
+        resourceLimits: { maxOldGenerationSizeMb: 64, maxYoungGenerationSizeMb: 8 },
+      }),
+  )
+  stopStorageIpc = registerStorageIpc(ipcMain, storage, {
+    reveal: (path) => shell.showItemInFolder(path),
+    clearCache: () => clearHttpCache(storage, () => session.defaultSession.clearCache()),
+    isAppWindow: (event) =>
+      storageAppWindows.has(event.sender) &&
+      !event.sender.isDestroyed() &&
+      event.senderFrame === event.sender.mainFrame,
+  })
   installPluginUiRpc(pluginIpcMain)
   registerPluginSettings(
     ipcMain,
@@ -1500,6 +1549,7 @@ function createWindow(): void {
     },
   })
 
+  storageAppWindows.add(window.webContents)
   // Keep a hidden launch's window out of sight (`launch-presentation.ts`). Both paths use
   // the same window options; visibility is applied here.
   if (presentation.hidden) keepOutOfSight(window)
@@ -1814,6 +1864,8 @@ function stopWhatTheStartStarted(): Promise<void> {
     // A retry keeps the stopped startup attempt; clearing cannot reopen in this app session.
     stopThemeIpc?.()
     stopThemeIpc = undefined
+    stopStorageIpc?.()
+    stopStorageIpc = undefined
     void dockLabel?.then((label) => label.stop())
     await themes?.close().catch(() => undefined)
     const started = host
@@ -2465,6 +2517,8 @@ const lifetime = createAppLifetime({
     host?.stopSweeping()
     stopThemeIpc?.()
     stopThemeIpc = undefined
+    stopStorageIpc?.()
+    stopStorageIpc = undefined
     void dockLabel?.then((label) => label.stop())
     void themes?.close().catch(() => undefined)
   },

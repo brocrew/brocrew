@@ -5,6 +5,7 @@ import {
   computed,
   onBeforeUnmount,
   onMounted,
+  nextTick,
   ref,
   shallowRef,
   useId,
@@ -80,7 +81,8 @@ import { usePersistentToggle } from '../composables/usePersistentToggle'
 import AgentState from './AgentState.vue'
 import CommandPalette from './CommandPalette.vue'
 import UpdatesMenu from './UpdatesMenu.vue'
-import { useUpdates } from '../composables/useUpdates'
+import WorkspacesSection from './WorkspacesSection.vue'
+import VersionButton from './VersionButton.vue'
 import { COLLAPSE_THE_MENU, EXPAND_THE_MENU } from '../lib/rail-fold'
 
 /**
@@ -319,49 +321,53 @@ const railMinute = useMinuteClock()
 const updatesOpen = ref(false)
 const footerBox = ref<HTMLElement | null>(null)
 const footerButton = ref<HTMLButtonElement | null>(null)
-const updates = useUpdates()
-/** ⚑ An update offered, on its way or waiting to restart: the avatar carries a dot. */
-const updateOffered = computed(() => {
-  const kind = updates.snapshot.value?.state.kind
-  return (
-    kind === 'available' ||
-    kind === 'downloading' ||
-    kind === 'ready' ||
-    kind === 'waiting-to-restart'
-  )
-})
-
-/** ⚑ What a screen reader hears for the footer: the workspace, what a press opens, and any update. */
-const footerName = computed(() => {
-  const kind = updates.snapshot.value?.state.kind
-  const update =
-    kind === 'available'
-      ? ', an update is available'
-      : updateOffered.value
-        ? ', an update is in progress'
-        : ''
-  const name = workspaceName.value
-  return `${name ? `${name}, ` : ''}Local workspace — BroCrew’s version and updates${update}`
-})
+const workspacesOpen = ref(false)
+const workspaceDialog = ref<HTMLElement | null>(null)
+const versionButton = ref<InstanceType<typeof VersionButton> | null>(null)
+const footerName = computed(() => `${workspaceName.value ?? 'Local workspace'}, choose a workspace`)
 
 /** ⚑ Esc closes it from anywhere while it is open, wherever focus went after a press. */
 function escapeCloses(event: KeyboardEvent): void {
-  if (event.key === 'Escape' && updatesOpen.value) closeUpdates()
+  if (event.key !== 'Escape') return
+  if (updatesOpen.value) closeUpdates()
+  else if (workspacesOpen.value) {
+    workspacesOpen.value = false
+    footerButton.value?.focus()
+  }
+}
+
+function toggleWorkspaces(): void {
+  workspacesOpen.value = !workspacesOpen.value
+  updatesOpen.value = false
+  if (workspacesOpen.value) {
+    void nextTick(() => {
+      const target =
+        workspaceDialog.value?.querySelector<HTMLElement>('button:not(:disabled)') ??
+        workspaceDialog.value
+      target?.focus()
+    })
+  }
+}
+
+function toggleUpdates(): void {
+  updatesOpen.value = !updatesOpen.value
+  workspacesOpen.value = false
 }
 
 function closeUpdates(): void {
   updatesOpen.value = false
-  footerButton.value?.focus()
+  versionButton.value?.focus()
 }
 
 function pressElsewhere(event: PointerEvent): void {
   if (footerBox.value !== null && !footerBox.value.contains(event.target as Node)) {
     updatesOpen.value = false
+    workspacesOpen.value = false
   }
 }
 
-watch(updatesOpen, (open) => {
-  if (open) {
+watch([updatesOpen, workspacesOpen], ([update, workspace]) => {
+  if (update || workspace) {
     document.addEventListener('pointerdown', pressElsewhere)
     document.addEventListener('keydown', escapeCloses)
   } else {
@@ -1460,38 +1466,53 @@ const platform = platformHere()
         </span>
       </button>
 
-      <!-- Static chrome: who this workspace belongs to. The design reads "Local workspace · synced";
-           nothing in this app syncs anywhere, so the claim is dropped rather than printed. -->
-      <!-- 🔴 A0 · the workspace's own name and folder (`AppInfo.workspace`), never a person's.
-           ⚑ B2 · a press opens this BroBot's version and its updates; a dot on the avatar while
-           an update is offered. -->
+      <!-- Workspace actions and app updates have separate controls. -->
       <div ref="footerBox" class="rail-footer-box">
-        <button
-          ref="footerButton"
-          type="button"
-          class="rail-footer"
-          :title="props.workspaceFolder?.path"
-          :aria-label="footerName"
-          :aria-expanded="updatesOpen"
-          aria-haspopup="dialog"
-          data-cy="rail-workspace"
-          @click="updatesOpen = !updatesOpen"
+        <div class="rail-footer-controls">
+          <button
+            ref="footerButton"
+            type="button"
+            class="rail-footer"
+            :title="props.workspaceFolder?.path"
+            :aria-label="footerName"
+            :aria-expanded="workspacesOpen"
+            aria-haspopup="dialog"
+            data-cy="rail-workspace"
+            @click="toggleWorkspaces"
+          >
+            <span class="avatar" aria-hidden="true" data-cy="rail-workspace-initial">
+              {{ workspaceInitial }}
+            </span>
+            <span class="who">
+              <strong v-if="workspaceName" data-cy="rail-workspace-name">{{ workspaceName }}</strong
+              ><small class="only-for-a-reader">Local workspace</small>
+            </span>
+          </button>
+          <VersionButton
+            ref="versionButton"
+            :version="props.appVersion"
+            :open="updatesOpen"
+            :collapsed="props.collapsed"
+            @toggle="toggleUpdates"
+          />
+        </div>
+        <div
+          v-if="workspacesOpen"
+          ref="workspaceDialog"
+          class="rail-workspaces"
+          data-on-white
+          role="dialog"
+          aria-label="Workspaces"
+          tabindex="-1"
+          data-cy="workspace-menu"
         >
-          <span class="avatar" aria-hidden="true" data-cy="rail-workspace-initial">
-            {{ workspaceInitial }}
-            <span v-if="updateOffered" class="update-dot" data-cy="rail-update-dot"></span>
-          </span>
-          <span class="who">
-            <strong v-if="workspaceName" data-cy="rail-workspace-name">{{ workspaceName }}</strong
-            ><small>Local workspace</small>
-          </span>
-        </button>
+          <WorkspacesSection @renamed="(name) => (renamedTo = name)" />
+        </div>
         <UpdatesMenu
           v-if="updatesOpen"
           class="rail-updates"
           :version="props.appVersion"
           @close="closeUpdates"
-          @renamed="(name) => (renamedTo = name)"
         />
       </div>
     </div>
@@ -1949,6 +1970,50 @@ const platform = platformHere()
   background: var(--wash-2);
 }
 
+.only-for-a-reader {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.rail-footer-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  border-top: var(--border-width) solid var(--line);
+  min-height: 62px;
+}
+.rail-footer-controls .rail-footer {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  border-top: 0;
+  gap: var(--space-3);
+}
+.rail-footer-controls .avatar {
+  width: 30px;
+  height: 34px;
+}
+.rail-workspaces {
+  position: absolute;
+  z-index: 25;
+  bottom: calc(100% + var(--space-2));
+  left: 0;
+  width: var(--rail-menu-w);
+  padding: var(--space-8);
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--radius-card);
+  background: var(--panel);
+  box-shadow: var(--shadow-menu);
+  color: var(--text-soft);
+}
+.rail[data-collapsed='true'] .rail-footer-controls {
+  flex-direction: column;
+  padding-top: var(--space-3);
+}
 .rail-footer-box {
   position: relative;
   flex: 0 0 auto;
