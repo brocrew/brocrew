@@ -1,5 +1,5 @@
 import { createHmac, randomBytes } from 'node:crypto'
-import { isAbsolute } from 'node:path'
+import { isAbsolute, resolve } from 'node:path'
 
 export type AuthVerb = 'login' | 'logout' | 'status'
 
@@ -39,7 +39,7 @@ export type NativeAuthPreparationResult =
   | { readonly kind: 'status'; readonly status: SafeNativeAuthStatus }
   | {
       readonly kind: 'switched'
-      readonly status: SafeNativeAuthStatus
+      readonly status: Pick<SafeNativeAuthStatus, 'signedIn' | 'accountSignal'>
       readonly accountChange: 'same' | 'changed' | 'unknown'
       readonly requiresResumeConfirmation: true
     }
@@ -76,6 +76,10 @@ const DISABLED = Object.freeze({ kind: 'disabled' } as const)
 const BUSY = Object.freeze({ kind: 'busy' } as const)
 const COMMAND_BOUND_MS = 120_000
 const STATUS_LIMIT = 16_384
+const reservations = new Map<
+  string,
+  { readonly kind: 'status' | 'switch'; readonly result: Promise<NativeAuthPreparationResult> }
+>()
 
 /** No production transport is installed; omission retains the disabled preparation. */
 export function createClaudeNativeAuthPreparation(
@@ -90,11 +94,10 @@ export function createClaudeNativeAuthPreparation(
   }
   if (fixtures.cli.kind !== 'fake-cli') throw new Error('Invalid auth preparation fixture')
   const home = checkedHome(fixtures.configDirectory)
+  const lockKey = resolve(home)
   const run = fixtures.cli.run.bind(fixtures.cli)
   const salt = randomBytes(32)
   let previous: string | undefined
-  let busy = false
-  let switching: Promise<NativeAuthPreparationResult> | undefined
 
   interface Operation {
     readonly signal: AbortSignal
@@ -191,11 +194,11 @@ export function createClaudeNativeAuthPreparation(
   }
 
   function operate(
+    kind: 'status' | 'switch',
     action: (operation: Operation) => Promise<NativeAuthPreparationResult>,
     requested?: AbortSignal,
   ): Promise<NativeAuthPreparationResult> {
-    if (busy) return Promise.resolve(BUSY)
-    busy = true
+    if (reservations.has(lockKey)) return Promise.resolve(BUSY)
     const controller = new AbortController()
     let timedOut = false
     const cancel = () => controller.abort()
@@ -205,7 +208,7 @@ export function createClaudeNativeAuthPreparation(
       timedOut = true
       controller.abort()
     }, COMMAND_BOUND_MS)
-    return Promise.resolve()
+    const result: Promise<NativeAuthPreparationResult> = Promise.resolve()
       .then(() => action({ signal: controller.signal, timedOut: () => timedOut }))
       .catch((error: unknown): NativeAuthPreparationResult => {
         const failure =
@@ -215,47 +218,56 @@ export function createClaudeNativeAuthPreparation(
       .finally(() => {
         clearTimeout(timer)
         requested?.removeEventListener('abort', cancel)
-        busy = false
+        if (reservations.get(lockKey)?.result === result) reservations.delete(lockKey)
       })
+    reservations.set(lockKey, { kind, result })
+    return result
   }
 
   return Object.freeze({
     enabled: true,
     status: (signal?: AbortSignal) =>
-      operate(async (operation) => {
-        const observation = await readStatus(operation)
-        return Object.freeze({ kind: 'status', status: observation.status })
-      }, signal),
+      operate(
+        'status',
+        async (operation) => {
+          const observation = await readStatus(operation)
+          return Object.freeze({ kind: 'status', status: observation.status })
+        },
+        signal,
+      ),
     switchAccount(signal?: AbortSignal): Promise<NativeAuthPreparationResult> {
-      if (switching !== undefined) return switching
-      if (busy) return Promise.resolve(BUSY)
-      const result = operate(async (operation) => {
-        const before = await readStatus(operation)
-        const logout = await invoke('logout', operation)
-        if (logout.exitCode !== 0) throw new PreparationFailure('logout', 'command')
-        const unsigned = await readStatus(operation)
-        if (unsigned.status.signedIn) throw new PreparationFailure('logout', 'logout-not-confirmed')
-        const login = await invoke('login', operation)
-        if (login.exitCode !== 0) throw new PreparationFailure('login', 'command')
-        const after = await readStatus(operation)
-        if (!after.status.signedIn) throw new PreparationFailure('login', 'login-not-confirmed')
-        return Object.freeze({
-          kind: 'switched',
-          status: after.status,
-          accountChange:
-            before.identity === null
-              ? 'unknown'
-              : before.identity === after.identity
-                ? 'same'
-                : 'changed',
-          requiresResumeConfirmation: true,
-        })
-      }, signal)
-      switching = result
-      void result.finally(() => {
-        if (switching === result) switching = undefined
-      })
-      return result
+      const existing = reservations.get(lockKey)
+      if (existing?.kind === 'switch') return existing.result
+      return operate(
+        'switch',
+        async (operation) => {
+          const before = await readStatus(operation)
+          const logout = await invoke('logout', operation)
+          if (logout.exitCode !== 0) throw new PreparationFailure('logout', 'command')
+          const unsigned = await readStatus(operation)
+          if (unsigned.status.signedIn)
+            throw new PreparationFailure('logout', 'logout-not-confirmed')
+          const login = await invoke('login', operation)
+          if (login.exitCode !== 0) throw new PreparationFailure('login', 'command')
+          const after = await readStatus(operation)
+          if (!after.status.signedIn) throw new PreparationFailure('login', 'login-not-confirmed')
+          return Object.freeze({
+            kind: 'switched',
+            status: Object.freeze({
+              signedIn: after.status.signedIn,
+              accountSignal: after.status.accountSignal,
+            }),
+            accountChange:
+              before.identity === null
+                ? 'unknown'
+                : before.identity === after.identity
+                  ? 'same'
+                  : 'changed',
+            requiresResumeConfirmation: true,
+          })
+        },
+        signal,
+      )
     },
   })
 }

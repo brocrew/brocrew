@@ -67,44 +67,45 @@ MUTATIONS = [('M1 · default preparation reports enabled — killed by '
  ('M13 · switch ignores a failed sign-out — killed by '
   '`apps/desktop/test/claude-native-auth-preparation.test.ts`',
   [('apps/desktop/src/main/providers/claude/native-auth-preparation.ts',
-    "        if (logout.exitCode !== 0) throw new PreparationFailure('logout', 'command')\n",
+    "          if (logout.exitCode !== 0) throw new PreparationFailure('logout', 'command')\n",
     '')]),
  ('M14 · switch skips confirmation that sign-out succeeded — killed by '
   '`apps/desktop/test/claude-native-auth-preparation.test.ts`',
   [('apps/desktop/src/main/providers/claude/native-auth-preparation.ts',
-    "        if (unsigned.status.signedIn) throw new PreparationFailure('logout', "
-    "'logout-not-confirmed')\n",
+    '          if (unsigned.status.signedIn)\n'
+    "            throw new PreparationFailure('logout', 'logout-not-confirmed')\n",
     '')]),
  ('M15 · switch ignores a failed sign-in — killed by '
   '`apps/desktop/test/claude-native-auth-preparation.test.ts`',
   [('apps/desktop/src/main/providers/claude/native-auth-preparation.ts',
-    "        if (login.exitCode !== 0) throw new PreparationFailure('login', 'command')\n",
+    "          if (login.exitCode !== 0) throw new PreparationFailure('login', 'command')\n",
     '')]),
  ('M16 · an unsigned final status is called a completed switch — killed by '
   '`apps/desktop/test/claude-native-auth-preparation.test.ts`',
   [('apps/desktop/src/main/providers/claude/native-auth-preparation.ts',
-    "        if (!after.status.signedIn) throw new PreparationFailure('login', "
+    "          if (!after.status.signedIn) throw new PreparationFailure('login', "
     "'login-not-confirmed')\n",
     '')]),
  ('M17 · switch drops the required resume confirmation — killed by '
   '`apps/desktop/test/claude-native-auth-preparation.test.ts`',
   [('apps/desktop/src/main/providers/claude/native-auth-preparation.ts',
-    '          requiresResumeConfirmation: true,\n',
-    '          requiresResumeConfirmation: false,\n')]),
+    '            requiresResumeConfirmation: true,\n',
+    '            requiresResumeConfirmation: false,\n')]),
  ('M18 · concurrent switches do not join their operation — killed by '
   '`apps/desktop/test/claude-native-auth-preparation.test.ts`',
   [('apps/desktop/src/main/providers/claude/native-auth-preparation.ts',
-    '      if (switching !== undefined) return switching\n',
+    "      if (existing?.kind === 'switch') return existing.result\n",
     '')]),
  ('M19 · status bypasses the active operation reservation — killed by '
   '`apps/desktop/test/claude-native-auth-preparation.test.ts`',
   [('apps/desktop/src/main/providers/claude/native-auth-preparation.ts',
-    '    if (busy) return Promise.resolve(BUSY)\n    busy = true\n',
-    '    busy = true\n')]),
+    '    if (reservations.has(lockKey)) return Promise.resolve(BUSY)\n',
+    '')]),
  ('M20 · the fake CLI does not receive the operation cancellation signal — killed by '
   '`apps/desktop/test/claude-native-auth-preparation.test.ts`',
   [('apps/desktop/src/main/providers/claude/native-auth-preparation.ts',
-    '        signal,\n',
+    "        output: verb === 'status' ? 'status-only' : 'discard',\n        signal,\n",
+    "        output: verb === 'status' ? 'status-only' : 'discard',\n"
     '        signal: new AbortController().signal,\n')]),
  ('M21 · the fake command deadline is extended beyond its bound — killed by '
   '`apps/desktop/test/claude-native-auth-preparation.test.ts`',
@@ -138,5 +139,32 @@ MUTATIONS = [('M1 · default preparation reports enabled — killed by '
  ('M26 · the preparation module gains filesystem authority — killed by '
   '`apps/desktop/test/claude-native-auth-preparation.test.ts`',
   [('apps/desktop/src/main/providers/claude/native-auth-preparation.ts',
-    "import { isAbsolute } from 'node:path'\n",
-    "import { isAbsolute } from 'node:path'\nimport 'node:fs'\n")])]
+    "import { isAbsolute, resolve } from 'node:path'\n",
+    "import { isAbsolute, resolve } from 'node:path'\nimport 'node:fs'\n")]),
+ ('M27 · switch exposes the intermediate signed-out comparison as an account change — killed by '
+  '`apps/desktop/test/claude-native-auth-preparation.test.ts`',
+  [('apps/desktop/src/main/providers/claude/native-auth-preparation.ts',
+    '            status: Object.freeze({\n'
+    '              signedIn: after.status.signedIn,\n'
+    '              accountSignal: after.status.accountSignal,\n'
+    '            }),\n',
+    '            status: Object.freeze({\n'
+    '              signedIn: after.status.signedIn,\n'
+    '              accountSignal: after.status.accountSignal,\n'
+    '              change: after.status.change,\n'
+    '            }),\n')]),
+ ('M28 · an unrelated config directory is blocked by the same reservation — killed by '
+  '`apps/desktop/test/claude-native-auth-preparation.test.ts`',
+  [('apps/desktop/src/main/providers/claude/native-auth-preparation.ts',
+    '  const lockKey = resolve(home)\n',
+    "  const lockKey = 'fictional-all-directories'\n")]),
+ ('M29 · lexical aliases bypass the shared directory reservation — killed by '
+  '`apps/desktop/test/claude-native-auth-preparation.test.ts`',
+  [('apps/desktop/src/main/providers/claude/native-auth-preparation.ts',
+    '  const lockKey = resolve(home)\n',
+    '  const lockKey = home\n')]),
+ ('M30 · each controller gets a separate reservation for the same directory — killed by '
+  '`apps/desktop/test/claude-native-auth-preparation.test.ts`',
+  [('apps/desktop/src/main/providers/claude/native-auth-preparation.ts',
+    '  const lockKey = resolve(home)\n',
+    "  const lockKey = resolve(home) + randomBytes(8).toString('hex')\n")])]
