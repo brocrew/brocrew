@@ -36,10 +36,7 @@ describe('a folder’s access list, read as SDDL', () => {
   })
 
   it('names every other account an entry lets in, by SID, whatever the language', () => {
-    expect(othersLetIn(accessEntries(ON_ANOTHER_DRIVE), USER)).toEqual([
-      AUTHENTICATED,
-      USERS,
-    ])
+    expect(othersLetIn(accessEntries(ON_ANOTHER_DRIVE), USER)).toEqual([AUTHENTICATED, USERS])
   })
 
   it('counts rights that apply here, excluding zero masks and inherit-only entries', () => {

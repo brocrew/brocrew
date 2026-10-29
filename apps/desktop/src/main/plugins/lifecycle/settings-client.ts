@@ -497,68 +497,73 @@ export async function connectPluginSettings(options: {
             source?: { bytes: Uint8Array; signature: Uint8Array },
           ) {
             if (source)
-              source = { bytes: Buffer.from(source.bytes), signature: Buffer.from(source.signature) }
+              source = {
+                bytes: Buffer.from(source.bytes),
+                signature: Buffer.from(source.signature),
+              }
             pendingCatalogueRefreshes++
             invalidateConsent()
             switching = true
-            const work = catalogueRefresh.then(async () => {
-              if (!alive || closing) return failPolicy()
-              const ticket = ++generation
-            invalidateConsent()
-            switching = true
-            try {
-              if (source) {
+            const work = catalogueRefresh
+              .then(async () => {
+                if (!alive || closing) return failPolicy()
+                const ticket = ++generation
+                invalidateConsent()
+                switching = true
                 try {
-                  if (pluginSha256(source.bytes) !== catalogueDigest) return failPolicy()
-                  const verified = createRepoAwarePluginVerifier({
-                    pinnedPublicKey: options.pinnedPublicKey,
-                    repoCatalogueSha256:
-                      options.pinnedPublicKey === null ? catalogueDigest : undefined,
-                    target: options.target,
-                    knownReleases: admitted.pins,
-                  }).verifyCatalogue(source.bytes, source.signature)
-                  const format = (
-                    strictPluginJson(source.bytes, PLUGIN_LIMITS.catalogueBytes) as {
-                      format: 1 | 2
+                  if (source) {
+                    try {
+                      if (pluginSha256(source.bytes) !== catalogueDigest) return failPolicy()
+                      const verified = createRepoAwarePluginVerifier({
+                        pinnedPublicKey: options.pinnedPublicKey,
+                        repoCatalogueSha256:
+                          options.pinnedPublicKey === null ? catalogueDigest : undefined,
+                        target: options.target,
+                        knownReleases: admitted.pins,
+                      }).verifyCatalogue(source.bytes, source.signature)
+                      const format = (
+                        strictPluginJson(source.bytes, PLUGIN_LIMITS.catalogueBytes) as {
+                          format: 1 | 2
+                        }
+                      ).format
+                      if (sourceFormat === 2 && format !== 2) return failPolicy()
+                      catalogueProof = {
+                        bytes: Buffer.from(source.bytes),
+                        signature: Buffer.from(source.signature),
+                      }
+                      admitted = verified
+                      sourceFormat = format
+                      badSource = false
+                    } catch (error) {
+                      badSource = true
+                      blocked = 'source-mismatch'
+                      throw error
                     }
-                  ).format
-                  if (sourceFormat === 2 && format !== 2) return failPolicy()
-                  catalogueProof = {
-                    bytes: Buffer.from(source.bytes),
-                    signature: Buffer.from(source.signature),
+                  } else if (
+                    sourceFormat === 2 &&
+                    pluginSha256(catalogueProof.bytes) !== catalogueDigest
+                  ) {
+                    badSource = true
+                    blocked = 'source-mismatch'
+                    return refuseBlocked()
                   }
-                  admitted = verified
-                  sourceFormat = format
-                  badSource = false
+                  await channel.call({ kind: 'refresh', catalogueDigest })
+                  if (ticket !== generation || !alive) return failPolicy()
+                  if (sourceFormat === 2) await negotiate(true)
+                  if (blocked) return refuseBlocked()
                 } catch (error) {
-                  badSource = true
-                  blocked = 'source-mismatch'
+                  if (sourceFormat === 2)
+                    blocked =
+                      error instanceof PluginSupervisorError && error.code === 'source-mismatch'
+                        ? 'source-mismatch'
+                        : 'owner-incompatible'
                   throw error
                 }
-              } else if (
-                sourceFormat === 2 &&
-                pluginSha256(catalogueProof.bytes) !== catalogueDigest
-              ) {
-                badSource = true
-                blocked = 'source-mismatch'
-                return refuseBlocked()
-              }
-              await channel.call({ kind: 'refresh', catalogueDigest })
-              if (ticket !== generation || !alive) return failPolicy()
-              if (sourceFormat === 2) await negotiate(true)
-              if (blocked) return refuseBlocked()
-            } catch (error) {
-              if (sourceFormat === 2)
-                blocked =
-                  error instanceof PluginSupervisorError && error.code === 'source-mismatch'
-                    ? 'source-mismatch'
-                    : 'owner-incompatible'
-              throw error
-            }
-            }).finally(() => {
-              pendingCatalogueRefreshes--
-              if (pendingCatalogueRefreshes === 0) switching = false
-            })
+              })
+              .finally(() => {
+                pendingCatalogueRefreshes--
+                if (pendingCatalogueRefreshes === 0) switching = false
+              })
             catalogueRefresh = work.catch(() => {})
             return work
           },

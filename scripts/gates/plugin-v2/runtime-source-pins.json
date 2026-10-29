@@ -5,7 +5,7 @@
     {
       "path": "packages/runtime/src/claude/claude-runtime.ts",
       "bytes": 357135,
-      "sha256": "5c94aab933915780343952b970012e670f784b886b0f5af7e765b156be44b868"
+      "sha256": "88264e161152d35201ff4e0f92ae3221c31862610538d563544394c44c928b79"
     },
     {
       "path": "packages/runtime/src/claude/claude-child.ts",
@@ -39,8 +39,8 @@
     },
     {
       "path": "packages/runtime/test/claude-runtime.test.ts",
-      "bytes": 458457,
-      "sha256": "7b0a867df6afd9a78c9936fd9d47b55feccc316e17cb4cf8fa252feae99f2258"
+      "bytes": 460640,
+      "sha256": "81271b58a91276b99baffab1fe8353dfadbf0f93d3ffc87f3c8c5b97d05ccbff"
     },
     {
       "path": "packages/runtime/test/the-cli-answers-in-order.ts",

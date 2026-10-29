@@ -207,41 +207,41 @@ export function productionPluginController() {
   }
   let catalogueRefresh: Promise<PluginCard[]> | undefined
   const catalogue = async (refreshList: boolean): Promise<PluginCard[]> => {
-      if (ended) return fail()
-      // Lists join a detach/reconnect already in flight; they never create a competing peer.
-      if (transition) await transition
-      else if (!connected && initialize && (!cleanupUncertain || recover())) await enter()
-      if (listFailure) throw listFailure
-      if (ended || !entries) return fail()
-      if (!connected || cleanupUncertain) return unavailableCards()
-      try {
-        if (refreshList) {
-          refreshFailed = false
-          const connection = current()
-          if (loadCatalogue && connection.refreshCatalogue) {
-            try {
-              const next = await loadCatalogue()
-              if (next.format === 2)
-                await connection.refreshCatalogue(next.sha256, {
-                  bytes: next.bytes,
-                  signature: new Uint8Array(),
-                })
-              else await connection.refreshCatalogue(next.sha256)
-              if (ended || connected !== connection) return fail()
-              catalogueEntries = next
-              names = Object.fromEntries(next.entries.map((one) => [one.id, one.name]))
-            } catch {
-              if (ended || connected !== connection) return fail()
-              refreshFailed = true
-            }
+    if (ended) return fail()
+    // Lists join a detach/reconnect already in flight; they never create a competing peer.
+    if (transition) await transition
+    else if (!connected && initialize && (!cleanupUncertain || recover())) await enter()
+    if (listFailure) throw listFailure
+    if (ended || !entries) return fail()
+    if (!connected || cleanupUncertain) return unavailableCards()
+    try {
+      if (refreshList) {
+        refreshFailed = false
+        const connection = current()
+        if (loadCatalogue && connection.refreshCatalogue) {
+          try {
+            const next = await loadCatalogue()
+            if (next.format === 2)
+              await connection.refreshCatalogue(next.sha256, {
+                bytes: next.bytes,
+                signature: new Uint8Array(),
+              })
+            else await connection.refreshCatalogue(next.sha256)
+            if (ended || connected !== connection) return fail()
+            catalogueEntries = next
+            names = Object.fromEntries(next.entries.map((one) => [one.id, one.name]))
+          } catch {
+            if (ended || connected !== connection) return fail()
+            refreshFailed = true
           }
         }
-        return (await update())!
-      } catch (error) {
-        if (ended) return fail()
-        if (error instanceof PluginListError) throw error
-        return unavailableCards()
       }
+      return (await update())!
+    } catch (error) {
+      if (ended) return fail()
+      if (error instanceof PluginListError) throw error
+      return unavailableCards()
+    }
   }
   const facade: PluginSettingsController & PluginInstructionSource = {
     onReviewInvalidated(listener) {

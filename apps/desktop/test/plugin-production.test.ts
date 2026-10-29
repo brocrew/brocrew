@@ -105,7 +105,12 @@ describe.skipIf(process.platform === 'win32')(
       f.controller.start(f.options)
       await f.controller.ready!()
       let release!: () => void
-      f.peer.refreshCatalogue.mockImplementationOnce(() => new Promise<void>((resolve) => { release = resolve }))
+      f.peer.refreshCatalogue.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            release = resolve
+          }),
+      )
       const first = f.controller.catalogue(true)
       const second = f.controller.catalogue(true)
       expect(second).toBe(first)
@@ -119,7 +124,9 @@ describe.skipIf(process.platform === 'win32')(
     })
     it('reports plugin-folder privacy failure through Settings without exposing the private error', async () => {
       const f = await setup()
-      vi.spyOn(privateFiles, 'keepPluginRootPrivate').mockRejectedValue(new Error('fictional private path and ACL detail'))
+      vi.spyOn(privateFiles, 'keepPluginRootPrivate').mockRejectedValue(
+        new Error('fictional private path and ACL detail'),
+      )
       f.controller.start(f.options)
       await f.controller.ready!()
       const owner = Object.assign(new EventEmitter(), {
@@ -128,10 +135,12 @@ describe.skipIf(process.platform === 'win32')(
       })
       const ipc = { handle: vi.fn() }
       registerPluginSettings(ipc, () => owner as never, f.controller)
-      await expect(ipc.handle.mock.calls[0]![1](
-        { sender: owner.webContents, senderFrame: owner.webContents.mainFrame },
-        { kind: 'list' },
-      )).resolves.toEqual({ ok: false, listState: 'fetch-error', reason: 'private-folder' })
+      await expect(
+        ipc.handle.mock.calls[0]![1](
+          { sender: owner.webContents, senderFrame: owner.webContents.mainFrame },
+          { kind: 'list' },
+        ),
+      ).resolves.toEqual({ ok: false, listState: 'fetch-error', reason: 'private-folder' })
       expect(f.fetch).not.toHaveBeenCalled()
       expect(f.supervisor.start).not.toHaveBeenCalled()
     })
@@ -336,7 +345,10 @@ describe.skipIf(process.platform === 'win32')(
       await f.controller.ready!()
       expect(f.fetch).not.toHaveBeenCalled()
       expect(f.supervisor.start).not.toHaveBeenCalled()
-      await expect(f.controller.catalogue()).rejects.toMatchObject({ state: 'fetch-error', reason: 'supervisor-unavailable' })
+      await expect(f.controller.catalogue()).rejects.toMatchObject({
+        state: 'fetch-error',
+        reason: 'supervisor-unavailable',
+      })
     })
     it('no network reports a list fetch error without launch or a half-install', async () => {
       const f = await setup()

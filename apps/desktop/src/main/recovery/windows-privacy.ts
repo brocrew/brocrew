@@ -131,7 +131,9 @@ export function accessEntries(
       fields.length < 6 ||
       !fields[5] ||
       (rights !== '' &&
-        !/^(?:0[xX][0-9a-fA-F]+|[0-9]+|(?:CC|DC|LC|SW|RP|WP|DT|LO|CR|SD|RC|WD|WO|GA|GX|GW|GR|FA|FR|FW|FX|KA|KR|KW|KX)+)$/.test(rights))
+        !/^(?:0[xX][0-9a-fA-F]+|[0-9]+|(?:CC|DC|LC|SW|RP|WP|DT|LO|CR|SD|RC|WD|WO|GA|GX|GW|GR|FA|FR|FW|FX|KA|KR|KW|KX)+)$/.test(
+          rights,
+        ))
     )
       throw new Error('the access list holds an unreadable entry')
     const grantsRights = rights !== '' && !/^(?:0[xX])?0+$/.test(rights)

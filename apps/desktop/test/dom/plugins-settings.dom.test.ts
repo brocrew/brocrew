@@ -499,7 +499,8 @@ it.each([
   },
   {
     reply: { ok: false, listState: 'fetch-error', reason: 'private-folder' },
-    message: "Couldn't make the plugin folder private. Check its Windows permissions and try again.",
+    message:
+      "Couldn't make the plugin folder private. Check its Windows permissions and try again.",
   },
   {
     reply: { ok: false, listState: 'fetch-error', reason: 'supervisor-unavailable' },

@@ -294,13 +294,14 @@ it('serializes overlapping catalogue refreshes without invalidating either admis
   const { c, peer, pkg } = await future()
   const digest = pluginSha256(pkg.bytes)
   const source = { bytes: pkg.bytes, signature: pkg.signature }
-  await expect(Promise.all([
-    c.refreshCatalogue(digest, source),
-    c.refreshCatalogue(digest, source),
-  ])).resolves.toEqual([undefined, undefined])
+  await expect(
+    Promise.all([c.refreshCatalogue(digest, source), c.refreshCatalogue(digest, source)]),
+  ).resolves.toEqual([undefined, undefined])
   expect(peer.calls.filter((call) => call.kind === 'refresh')).toHaveLength(2)
   expect(c.mutationStatus()).toBeNull()
-  await expect(c.prepareMutation('install', 'chrome')).resolves.toMatchObject({ releaseDigest: expect.any(String) })
+  await expect(c.prepareMutation('install', 'chrome')).resolves.toMatchObject({
+    releaseDigest: expect.any(String),
+  })
 })
 it('allows a queued valid refresh after a failed source check', async () => {
   const { c, pkg } = await future()
