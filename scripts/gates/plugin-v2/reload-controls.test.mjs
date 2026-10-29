@@ -8,7 +8,14 @@ import { fileURLToPath } from 'node:url'
 import { authorizeReloadRequest } from './reload-authorize.mjs'
 import { projectReload } from './reload-projection.mjs'
 import { checkNormalPluginBuild } from '../../check-no-plugin-gate-inputs.mjs'
-import { deliveryEvidence, assertBehavior, lifecycleEvidence } from './reload-source/contract.mjs'
+import {
+  deliveryEvidence,
+  assertBehavior,
+  lifecycleEvidence,
+  RELOAD_DEADLINE_MS,
+  RELOAD_DEADLINE_TOLERANCE_MS,
+  RELOAD_RETIRING_WAIT_MS,
+} from './reload-source/contract.mjs'
 
 test('reload lifecycle requires one initial launch and one ordered launch for every resume', () => {
   const observe = (types) => lifecycleEvidence(types.map((type) => ({ type })))
@@ -37,6 +44,20 @@ test('reload lifecycle requires one initial launch and one ordered launch for ev
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..')
 const input = JSON.parse(fs.readFileSync(new URL('./reload-inputs.json', import.meta.url)))
+test('reload observation follows the product deadline without accepting the old timeout', () => {
+  const runtime = fs.readFileSync(
+    path.join(repo, 'packages/runtime/src/claude/claude-runtime.ts'),
+    'utf8',
+  )
+  const matches = [...runtime.matchAll(/withDeadline\(reload,\s*([\d_]+),\s*'reloadPlugins'\)/g)]
+  assert.equal(matches.length, 1)
+  assert.equal(RELOAD_DEADLINE_MS, Number(matches[0][1].replaceAll('_', '')))
+  assert.equal(RELOAD_DEADLINE_TOLERANCE_MS, 2500)
+  assert.equal(RELOAD_RETIRING_WAIT_MS, RELOAD_DEADLINE_MS + 20000)
+  const journey = fs.readFileSync(new URL('./reload-journey.mjs', import.meta.url), 'utf8')
+  assert.match(journey, /}, RELOAD_RETIRING_WAIT_MS\)/)
+})
+
 test('actual embedded reload authorizer rejects other sender/frame/nonce/op/payload', () => {
   const frame = {},
     contents = { mainFrame: frame },
@@ -169,7 +190,7 @@ test('reload receipt binds actual prompt, UUID, reload and completed-turn counts
     sourceTree: '17d79356fe29ec5b462185ca4828c7519bb7f1e7',
     sdkDeclaredVersion: '0.3.287',
     adapter: {
-      timeoutMs: 10001,
+      timeoutMs: RELOAD_DEADLINE_MS + 1,
       failedTerminals: 1,
       failedByApp: true,
       oldPushes: 0,
@@ -189,7 +210,7 @@ test('reload receipt binds actual prompt, UUID, reload and completed-turn counts
       freshCompleted: 1,
     },
     hostQueue: {
-      timeoutMs: 10001,
+      timeoutMs: RELOAD_DEADLINE_MS + 1,
       failedTerminals: 1,
       failedByApp: true,
       oldPushes: 0,
@@ -234,6 +255,15 @@ test('reload receipt binds actual prompt, UUID, reload and completed-turn counts
     },
   }
   assert.equal(assertBehavior(value), value)
+  for (const timeoutMs of [
+    10001,
+    RELOAD_DEADLINE_MS - 1,
+    RELOAD_DEADLINE_MS + RELOAD_DEADLINE_TOLERANCE_MS + 1,
+  ]) {
+    assert.throws(() => assertBehavior({ ...value, adapter: { ...value.adapter, timeoutMs } }))
+    assert.throws(() => assertBehavior({ ...value, hostQueue: { ...value.hostQueue, timeoutMs } }))
+  }
+
   for (const [key, bad] of [
     ['starts', 0],
     ['starts', 2],

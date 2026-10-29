@@ -5,6 +5,9 @@ export const TREE = '17d79356fe29ec5b462185ca4828c7519bb7f1e7'
 export const MODE = 'controlled-queryFactory-and-child-witness'
 export const MARKER = 'packaged-plugin-gate-only:reload-v1'
 export const SDK_VERSION = '0.3.287'
+export const RELOAD_DEADLINE_MS = 60_000
+export const RELOAD_DEADLINE_TOLERANCE_MS = 2_500
+export const RELOAD_RETIRING_WAIT_MS = RELOAD_DEADLINE_MS + 20_000
 export const SHA256 = /^[0-9a-f]{64}$/
 export const DELIVERY_WORDS = Object.freeze(['reload original fern', 'reload queued birch', 'reload queued cedar'])
 export function lifecycleEvidence(events) {
@@ -72,14 +75,14 @@ function checkBehavior(value, mainApp) {
   assert.equal(value.sdkDeclaredVersion, SDK_VERSION)
   const a = value.adapter
   exactKeys(a, ['timeoutMs', 'failedTerminals', 'failedByApp', 'oldPushes', 'oldReloads', 'oldCloses', 'oldReturns', 'retiringAtTimeout', 'oldSendRefusals', 'lateReloadReleased', 'lateResultAttempted', 'lateAddedTerminals', 'retirementEnded', 'freshQueries', 'freshResumeMatches', 'freshPushes', 'freshReloads', 'freshCompleted'])
-  assert(Number.isSafeInteger(a.timeoutMs) && a.timeoutMs >= 10000 && a.timeoutMs <= 12500, 'real reload deadline not observed')
+  assert(Number.isSafeInteger(a.timeoutMs) && a.timeoutMs >= RELOAD_DEADLINE_MS && a.timeoutMs <= RELOAD_DEADLINE_MS + RELOAD_DEADLINE_TOLERANCE_MS, 'real reload deadline not observed')
   for (const key of ['failedTerminals', 'oldReloads', 'oldCloses', 'oldReturns', 'freshQueries', 'freshPushes', 'freshReloads', 'freshCompleted']) assert.equal(a[key], 1, key)
   for (const key of ['oldPushes', 'lateAddedTerminals']) assert.equal(a[key], 0, key)
   assert.equal(a.oldSendRefusals, 2)
   for (const key of ['failedByApp', 'retiringAtTimeout', 'lateReloadReleased', 'lateResultAttempted', 'retirementEnded', 'freshResumeMatches']) assert.equal(a[key], true, key)
   const h = value.hostQueue
   exactKeys(h, ['timeoutMs', 'failedTerminals', 'failedByApp', 'oldPushes', 'oldReloads', 'oldCloses', 'oldReturns', 'failedAtTimeout', 'queuedBeforeExit', 'freshBeforeReturn', 'freshBeforeExit', 'starts', 'resumes', 'freshQueries', 'freshResumeMatches', 'freshReloads', 'freshPushes', 'uniqueUserUuids', 'originalOnce', 'secondOnce', 'thirdOnce', 'ledgerUserTurns', 'freshCompleted', 'lateAddedPushes', 'lateAddedTerminals', 'deliveredMessages', 'ledgerMessages'])
-  assert(Number.isSafeInteger(h.timeoutMs) && h.timeoutMs >= 10000 && h.timeoutMs <= 12500)
+  assert(Number.isSafeInteger(h.timeoutMs) && h.timeoutMs >= RELOAD_DEADLINE_MS && h.timeoutMs <= RELOAD_DEADLINE_MS + RELOAD_DEADLINE_TOLERANCE_MS)
   for (const key of ['failedTerminals', 'oldReloads', 'oldCloses', 'oldReturns', 'starts', 'resumes', 'freshQueries']) assert.equal(h[key], 1, key)
   for (const key of ['oldPushes', 'freshBeforeReturn', 'freshBeforeExit', 'lateAddedPushes', 'lateAddedTerminals']) assert.equal(h[key], 0, key)
   assert.equal(h.queuedBeforeExit, 2)

@@ -281,7 +281,7 @@ async function port() {
   await new Promise((resolve) => server.close(resolve))
   return value
 }
-export async function startApp({ root, app, workspace, global, records }) {
+export async function startApp({ root, app, workspace, global, records, evaluateMs = 65000 }) {
   demand([workspace, global].every((p) => below(root, p)))
   fs.mkdirSync(workspace, { recursive: true, mode: 0o700 })
   const p = await port()
@@ -306,7 +306,7 @@ export async function startApp({ root, app, workspace, global, records }) {
   r.port = p
   r.cdp = await bounded(attach(p, { wait: 90000 }), 95000)
   const evaluate = r.cdp.evaluate
-  r.cdp.evaluate = (body) => bounded(evaluate(body), 65000)
+  r.cdp.evaluate = (body) => bounded(evaluate(body), evaluateMs)
   return r
 }
 export async function quit(r) {

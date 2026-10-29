@@ -14,7 +14,7 @@ import { openDatabase } from '../../../apps/desktop/src/main/db/connection.ts'
 import { applyMigrations } from '../../../apps/desktop/src/main/db/migrate.ts'
 import { createSessionStore } from '../../../apps/desktop/src/main/db/session-store.ts'
 import { NO_DISCOVERY } from '../../../apps/desktop/src/main/adopt/discover-sessions.ts'
-import { SOURCE, TREE, MODE, SDK_VERSION, assertBehavior, DELIVERY_WORDS, deliveryMessages, deliveryEvidence, lifecycleEvidence } from './contract.mjs'
+import { SOURCE, TREE, MODE, SDK_VERSION, RELOAD_DEADLINE_MS, RELOAD_DEADLINE_TOLERANCE_MS, assertBehavior, DELIVERY_WORDS, deliveryMessages, deliveryEvidence, lifecycleEvidence } from './contract.mjs'
 
 export const WORDS = DELIVERY_WORDS
 export const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
@@ -246,7 +246,7 @@ export function makeRuntime(home, skills, sessionId, { mainApp = false } = {}) {
 }
 function timing(query, at) {
   const ms = at - query.reloadAt
-  assert(query.reloadAt > 0 && ms >= 10000 && ms <= 12500, 'Real 10000ms reload deadline missing')
+  assert(query.reloadAt > 0 && ms >= RELOAD_DEADLINE_MS && ms <= RELOAD_DEADLINE_MS + RELOAD_DEADLINE_TOLERANCE_MS, `Real ${RELOAD_DEADLINE_MS}ms reload deadline missing`)
   return Math.round(ms)
 }
 
@@ -260,8 +260,8 @@ export async function adapterCase(home, skills) {
     const old = kit.queries[0]
     const sending = handle.send(WORDS[0])
     const outcome = sending.then(() => 'unexpected-sent', error => error.message)
-    assert.equal(await bounded(outcome, 'real adapter reload timeout', 12500),
-      'reloadPlugins did not answer within 10000ms')
+    assert.equal(await bounded(outcome, 'real adapter reload timeout', RELOAD_DEADLINE_MS + RELOAD_DEADLINE_TOLERANCE_MS),
+      `reloadPlugins did not answer within ${RELOAD_DEADLINE_MS}ms`)
     const timeoutMs = timing(old, performance.now())
     await until(() => old.returnCalls === 1 && failed(kit.events).length === 1, 'adapter retirement')
     assert.equal(old.pushes.length, 0)
@@ -351,7 +351,7 @@ async function hostQueueCase(home, skills, migrationsPath, mainBinding = null) {
     const expectedResume = kit.handles[0].ref.sessionId
     const original = host.send(created.sessionId, WORDS[0], sink)
     pending.push(original); original.catch(() => {})
-    await until(() => failureAt > 0 && old.returnCalls === 1, 'host real reload deadline', 12500)
+    await until(() => failureAt > 0 && old.returnCalls === 1, 'host real reload deadline', RELOAD_DEADLINE_MS + RELOAD_DEADLINE_TOLERANCE_MS)
     const timeoutMs = timing(old, failureAt)
     const failedAtTimeout = failed(events).length
     const firstFailure = failed(events)[0]

@@ -7,7 +7,7 @@ import path from 'node:path'
 import { performance } from 'node:perf_hooks'
 import { RuntimeHost } from '../../../apps/desktop/src/main/runtime/runtime-host.ts'
 import { makeRuntime, adapterCase, ownedFolder, cleanupReceipt, delay, until, bounded, WORDS } from './fixture.mjs'
-import { SOURCE, TREE, MODE, SDK_VERSION, MARKER, assertMainAppBehavior, assertCommand, assertStatus, deliveryMessages, deliveryEvidence, lifecycleEvidence } from './contract.mjs'
+import { SOURCE, TREE, MODE, SDK_VERSION, RELOAD_DEADLINE_MS, RELOAD_DEADLINE_TOLERANCE_MS, MARKER, assertMainAppBehavior, assertCommand, assertStatus, deliveryMessages, deliveryEvidence, lifecycleEvidence } from './contract.mjs'
 
 let actualHost = null
 let state = null
@@ -69,7 +69,7 @@ function status() {
     assert.equal(failed.length, 1)
     assert.equal(failed[0].event.wordOf, 'this-app')
     const elapsed = performance.now() - old.reloadAt
-    assert(old.reloadAt > 0 && elapsed >= 10000 && elapsed <= 12500, 'Actual 10000ms timeout missing')
+    assert(old.reloadAt > 0 && elapsed >= RELOAD_DEADLINE_MS && elapsed <= RELOAD_DEADLINE_MS + RELOAD_DEADLINE_TOLERANCE_MS, `Actual ${RELOAD_DEADLINE_MS}ms timeout missing`)
     state.timeoutMs = Math.round(elapsed)
     state.failedAtTimeout = failed.length
     state.failureIdentity = JSON.stringify([failed[0].ordinal, failed[0].at, failed[0].event])

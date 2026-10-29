@@ -2,7 +2,7 @@ import path from 'node:path'
 import { demand, readFile } from './contract.mjs'
 import { startApp, quit, bounded } from './processes.mjs'
 import { waitFor } from '../plugin-packaged/cdp.mjs'
-import { assertMainAppBehavior } from './reload-source/contract.mjs'
+import { assertMainAppBehavior, RELOAD_RETIRING_WAIT_MS } from './reload-source/contract.mjs'
 
 export async function reloadJourney({ root, app, records }) {
   const token = readFile(path.join(root, 'gate-token'), 64).toString()
@@ -15,6 +15,7 @@ export async function reloadJourney({ root, app, records }) {
       records,
       workspace,
       global: path.join(root, 'reload-global'),
+      evaluateMs: RELOAD_RETIRING_WAIT_MS,
     })
     const control = (op) =>
       run.cdp.evaluate(
@@ -58,7 +59,7 @@ export async function reloadJourney({ root, app, records }) {
     await waitFor(async () => {
       status = await control('status')
       return status.phase === 'retiring-held'
-    }, 20000)
+    }, RELOAD_RETIRING_WAIT_MS)
     demand(
       status.queryCount === 1 &&
         status.oldReloads === 1 &&
@@ -103,7 +104,7 @@ export async function reloadJourney({ root, app, records }) {
     console.error('Reload status before receipt:', JSON.stringify(await control('status')))
     let behavior
     try {
-      behavior = assertMainAppBehavior(await bounded(control('receipt'), 30000))
+      behavior = assertMainAppBehavior(await bounded(control('receipt'), RELOAD_RETIRING_WAIT_MS))
     } catch (error) {
       try {
         console.error(
