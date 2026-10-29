@@ -211,8 +211,8 @@
     },
     {
       "path": "apps/desktop/src/main/plugins/private-files.ts",
-      "sha256": "398d0ba6c458e29eac56f4d12355be0c38fbb2d756a39cd6711965403bd9f49f",
-      "bytes": 11162
+      "sha256": "9679ba642e35462a96486692e4b56a5735db61afcacbdd9ebe99e6cc777263b9",
+      "bytes": 11460
     },
     {
       "path": "apps/desktop/src/main/plugins/strict-json.ts",
@@ -251,8 +251,8 @@
     },
     {
       "path": "apps/desktop/src/main/recovery/windows-privacy.ts",
-      "sha256": "766c154ca992c88fbb29c7af67fc8bfda9746bfadcf132de375d5aad1090b488",
-      "bytes": 16790
+      "sha256": "7a9c6e6bed4929d728543940e90e64d1680e060233da1c29ace2445e049c2dfa",
+      "bytes": 17618
     },
     {
       "path": "apps/desktop/src/main/runtime/ipc.ts",

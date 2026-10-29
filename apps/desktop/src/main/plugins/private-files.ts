@@ -4,10 +4,12 @@ import { lstat, open, type FileHandle } from 'node:fs/promises'
 import { dirname, isAbsolute, posix, win32 } from 'node:path'
 import {
   accessEntries,
+  ADMINISTRATORS_SID,
+  SYSTEM_SID,
   hasNoAccessList,
   othersLetIn,
   windowsAccessLists,
-  type AccessLists,
+  type OwnedAccessLists,
 } from '../recovery/windows-privacy'
 
 /**
@@ -216,7 +218,7 @@ const checkedRoots = new Map<string, { dev: bigint; ino: bigint }>()
  */
 export async function keepPluginRootPrivate(
   root: string,
-  options: { platform?: Platform; lists?: AccessLists } = {},
+  options: { platform?: Platform; lists?: OwnedAccessLists } = {},
 ): Promise<void> {
   const platform = options.platform ?? process.platform
   if (platform !== 'win32') return
@@ -243,6 +245,8 @@ export async function keepPluginRootPrivate(
   const stat = lstatSync(root, { bigint: true })
   if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('unsafe-path')
   const looked = async (folder: string) => {
+    const owner = await lists.ownerSid(folder)
+    if (![user, SYSTEM_SID, ADMINISTRATORS_SID].includes(owner)) throw new Error('unsafe-path')
     const sddl = await lists.read(folder)
     if (hasNoAccessList(sddl)) throw new Error('unsupported')
     return {
@@ -258,6 +262,8 @@ export async function keepPluginRootPrivate(
   }
   if (!now.protectedList || now.others.length > 0) throw new Error('unsafe-path')
   await checkParent()
+  now = await looked(root)
+  if (!now.protectedList || now.others.length > 0) throw new Error('unsafe-path')
   const again = lstatSync(root, { bigint: true })
   if (again.dev !== stat.dev || again.ino !== stat.ino) throw new Error('unsafe-path')
   checkedRoots.set(realPath(root, platform).toLowerCase(), { dev: stat.dev, ino: stat.ino })

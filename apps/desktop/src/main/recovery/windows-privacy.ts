@@ -224,6 +224,11 @@ export interface AccessLists {
   restrict(folder: string, user: string, others: readonly string[]): Promise<void>
 }
 
+/** A folder's access list and its owner, checked separately from its grants. */
+export interface OwnedAccessLists extends AccessLists {
+  ownerSid(folder: string): Promise<string>
+}
+
 /** What reading and limiting one file's list takes. */
 export interface FileAccessLists {
   /** This user's SID. */
@@ -285,7 +290,7 @@ export function machineSidOf(
 }
 
 /** Windows' own programs. */
-export const windowsAccessLists: AccessLists & FileAccessLists = {
+export const windowsAccessLists: OwnedAccessLists & FileAccessLists = {
   async userSid() {
     return (await whoAmI()).sid
   },
@@ -295,6 +300,21 @@ export const windowsAccessLists: AccessLists & FileAccessLists = {
     const groups = await run('whoami.exe', ['/groups', '/fo', 'csv', '/nh'])
     thisComputer = machineSidOf(sid, groups, domain, process.env['COMPUTERNAME'])
     return thisComputer
+  },
+  async ownerSid(folder) {
+    const encoded = Buffer.from(folder, 'utf8').toString('base64')
+    const script = `$ErrorActionPreference='Stop'; $path=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encoded}')); [IO.Directory]::GetAccessControl($path).GetOwner([Security.Principal.SecurityIdentifier]).Value`
+    const sid = (
+      await run('WindowsPowerShell\\v1.0\\powershell.exe', [
+        '-NoLogo',
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        script,
+      ])
+    ).trim()
+    if (!/^S-1-[0-9]+(?:-[0-9]+)+$/.test(sid)) throw new Error('unreadable folder owner')
+    return sid
   },
   async read(folder) {
     // `/save` writes the list as SDDL, in UTF-16; its second line is the descriptor.

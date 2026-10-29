@@ -15,7 +15,7 @@ import { createConnection } from 'node:net'
 import { setPriority, tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { createHash } from 'node:crypto'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import {
   immutableMode,
   isImmutableFile,
@@ -216,7 +216,7 @@ describe.runIf(process.platform === 'win32')('the plugin host on Windows', () =>
     async (existing) => {
       const parent = await privateParent()
       roots.push(parent)
-      const sandbox = 'S-1-5-21-1111111111-2222222222-3333333333-2011'
+      const sandbox = 'S-1-5-32-545'
       execFileSync(
         join(process.env['SystemRoot'] ?? 'C:\\Windows', 'System32', 'icacls.exe'),
         [parent, '/grant:r', `*${sandbox}:(OI)(CI)RX`, '/Q'],
@@ -254,7 +254,7 @@ describe.runIf(process.platform === 'win32')('the plugin host on Windows', () =>
       roots.push(parent)
       const root = join(parent, 'plugins')
       mkdirSync(root)
-      const sandbox = 'S-1-5-21-1111111111-2222222222-3333333333-2011'
+      const sandbox = 'S-1-5-32-545'
       execFileSync(
         join(process.env['SystemRoot'] ?? 'C:\\Windows', 'System32', 'icacls.exe'),
         [parent, '/grant:r', `*${sandbox}:${rights === 'W' ? rights : `(${rights})`}`, '/Q'],
@@ -268,6 +268,34 @@ describe.runIf(process.platform === 'win32')('the plugin host on Windows', () =>
       expect(isInsideCheckedRoot(root)).toBe(false)
     },
   )
+  it('refuses a foreign-owned existing root without changing its owner or either ACL', async () => {
+    const parent = await privateParent()
+    roots.push(parent)
+    const root = join(parent, 'plugins')
+    mkdirSync(root)
+    const user = await windowsAccessLists.userSid()
+    await windowsAccessLists.restrict(root, user, [])
+    const foreign = 'S-1-5-32-545'
+    execFileSync(
+      join(process.env['SystemRoot'] ?? 'C:\\Windows', 'System32', 'icacls.exe'),
+      [root, '/setowner', `*${foreign}`, '/Q'],
+      { windowsHide: true },
+    )
+    expect(await windowsAccessLists.ownerSid(root)).toBe(foreign)
+    const parentBefore = await windowsAccessLists.read(parent)
+    const rootBefore = await windowsAccessLists.read(root)
+    const restrict = vi.fn(windowsAccessLists.restrict)
+    await expect(
+      keepPluginRootPrivate(root, {
+        lists: { ...windowsAccessLists, restrict },
+      }),
+    ).rejects.toThrow('unsafe-path')
+    expect(restrict).not.toHaveBeenCalled()
+    expect(await windowsAccessLists.ownerSid(root)).toBe(foreign)
+    expect(await windowsAccessLists.read(parent)).toBe(parentBefore)
+    expect(await windowsAccessLists.read(root)).toBe(rootBefore)
+    expect(isInsideCheckedRoot(root)).toBe(false)
+  })
   it('refuses a plugin root whose permissions cannot be restricted', async () => {
     const parent = await privateParent()
     roots.push(parent)
