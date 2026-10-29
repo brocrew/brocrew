@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import type { RetainedRecoveryCopy } from '../../../shared/recovery-retention'
+import { fullTime } from '../lib/clock'
 
 const bridge = window.api?.recoveryRetention
 const copy = ref<RetainedRecoveryCopy | null>(null)
@@ -14,7 +15,7 @@ const size = computed(() => {
     ? `${(bytes / 1e9).toFixed(1)} GB`
     : `${Math.max(1, Math.round(bytes / 1e6))} MB`
 })
-const expiry = computed(() => (copy.value ? new Date(copy.value.expiresAt).toLocaleString() : ''))
+const expiry = computed(() => (copy.value ? fullTime(Date.parse(copy.value.expiresAt)) : ''))
 onMounted(async () => {
   if (!bridge) return
   try {

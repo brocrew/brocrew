@@ -40,7 +40,7 @@ export interface CheckpointDeletion {
   readonly format: 'brocrew-recovery-delete'
   readonly version: 3
   readonly manifest: CheckpointManifest
-  readonly root: { readonly dev: number; readonly ino: number }
+  readonly root: { readonly dev: number | string; readonly ino: number | string }
 }
 const failed = (): Error => new Error('The recovery copy deletion could not be finished.')
 const safeChild = (name: string): boolean =>
@@ -53,14 +53,21 @@ async function statOrNull(path: string, fs: RecoveryFs): Promise<RecoveryStats |
     throw error
   }
 }
+function validIdentity(value: unknown, positive = false): value is number | string {
+  if (typeof value === 'number') return Number.isSafeInteger(value) && value >= (positive ? 1 : 0)
+  return (
+    typeof value === 'string' &&
+    /^[1-9][0-9]{15,19}$/.test(value) &&
+    BigInt(value) > BigInt(Number.MAX_SAFE_INTEGER) &&
+    BigInt(value) <= 18_446_744_073_709_551_615n
+  )
+}
 function rootIdentity(stats: RecoveryStats): CheckpointDeletion['root'] {
   if (
     stats.isSymbolicLink() ||
     !stats.isDirectory() ||
-    !Number.isSafeInteger(stats.dev) ||
-    !Number.isSafeInteger(stats.ino) ||
-    (stats.dev ?? -1) < 0 ||
-    (stats.ino ?? 0) <= 0
+    !validIdentity(stats.dev) ||
+    !validIdentity(stats.ino, true)
   )
     throw failed()
   return { dev: stats.dev!, ino: stats.ino! }
@@ -76,8 +83,8 @@ async function copyRoot(userData: string, folder: string, fs: RecoveryFs): Promi
 
 interface DirectoryBinding {
   readonly path: string
-  readonly dev: number
-  readonly ino: number
+  readonly dev: number | string
+  readonly ino: number | string
 }
 function bindDirectory(path: string, stats: RecoveryStats): DirectoryBinding {
   return { path, ...rootIdentity(stats) }
@@ -244,10 +251,8 @@ export async function readCheckpointDeletion(
     !manifest.ok ||
     manifest.value.workspaceId !== workspaceId ||
     !root ||
-    !Number.isSafeInteger(root.dev) ||
-    root.dev < 0 ||
-    !Number.isSafeInteger(root.ino) ||
-    root.ino <= 0
+    !validIdentity(root.dev) ||
+    !validIdentity(root.ino, true)
   )
     throw failed()
   return {

@@ -46,6 +46,8 @@ import {
   checkpointDatabase,
   checkpointDir,
   databaseFile,
+  gateFile,
+  journalFile,
   isUuid,
   manifestFile,
   stateFile,
@@ -528,10 +530,7 @@ export async function prune(
   let workspace: WorkspaceIdOnDisk
   try {
     await assertOwnedPathsAreReal(userData, [], fs)
-    if (
-      (await pathExists(join(userData, 'recovery', 'history-only.json'), fs)) ||
-      (await pathExists(join(userData, 'recovery', 'restore-journal.json'), fs))
-    )
+    if ((await pathExists(gateFile(userData), fs)) || (await pathExists(journalFile(userData), fs)))
       return []
     folders = await foldersInBackups(userData, fs)
     workspace = await readWorkspaceId(userData, fs)
@@ -1139,10 +1138,7 @@ export async function recordSuccessfulStart(
   const fs = options.fs ?? nodeFs
   await assertOwnedPathsAreReal(userData, [], fs)
   // A history-only restore must keep its copy and must never count as a successful new start.
-  if (
-    (await pathExists(join(userData, 'recovery', 'history-only.json'), fs)) ||
-    (await pathExists(join(userData, 'recovery', 'restore-journal.json'), fs))
-  )
+  if ((await pathExists(gateFile(userData), fs)) || (await pathExists(journalFile(userData), fs)))
     return
   const workspace = await readWorkspaceId(userData, fs)
   if (workspace.kind !== 'id') return
@@ -1244,10 +1240,7 @@ export async function deleteRetainedCopy(
   const fs = options.fs ?? nodeFs
   try {
     await assertOwnedPathsAreReal(userData, [], fs)
-    if (
-      (await pathExists(join(userData, 'recovery', 'history-only.json'), fs)) ||
-      (await pathExists(join(userData, 'recovery', 'restore-journal.json'), fs))
-    )
+    if ((await pathExists(gateFile(userData), fs)) || (await pathExists(journalFile(userData), fs)))
       return false
     const folders = await foldersInBackups(userData, fs)
     if (folders.some(({ found }) => found.kind === 'unknown')) return false
