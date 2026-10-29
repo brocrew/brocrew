@@ -845,9 +845,8 @@ describe('373 · a parent that survives a restart', () => {
         .split('\n')
         .filter((line) => line.includes('agentToolsFor('))
         .map((line) => line.trim())
-      // ⚑ **F093 · two more, each handed the conversation's own id too**: the record composed for a
-      // read of a launch that kept none (`whatALaunchGave`) and the agent-input popup's read
-      // (`whatThisAgentWasGiven`). A launch's own record is handed the toolset its launch built.
+      // Launches and panel reads share one resolver, which builds the toolset for the session
+      // being selected. Enumerate both boundaries so another caller cannot bypass that binding.
       expect(built).toEqual([
         'return agentToolsFor(this, sessionId, this.theListsAsLastRead(), offersDirectRulesWrite)',
       ])
@@ -855,11 +854,15 @@ describe('373 · a parent that survives a restart', () => {
         .split('\n')
         .filter((line) => line.includes('this.agentToolsForSession('))
         .map((line) => line.trim())
-      expect(roleBound).toEqual([
-        'const agentTools = this.agentToolsForSession(id)',
-        'this.agentToolsForSession(sessionId),',
-        'toolset: this.agentToolsForSession(sessionId),',
-        'const agentTools = this.agentToolsForSession(sessionId)',
+      expect(roleBound).toEqual(['agentTools: this.agentToolsForSession(sessionId),'])
+      const selectionBound = strip(host.text)
+        .split('\n')
+        .filter((line) => line.includes('this.selectedToolsForSession('))
+        .map((line) => line.trim())
+      expect(selectionBound).toEqual([
+        'const selectedTools = this.selectedToolsForSession(id, input.provider, profileId)',
+        'const selectedTools = this.selectedToolsForSession(sessionId, provider, row.profileId)',
+        'const selectedTools = this.selectedToolsForSession(sessionId, row.provider, row.profileId)',
       ])
       expect(
         sources
