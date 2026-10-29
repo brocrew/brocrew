@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, it } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { constants } from 'node:fs'
 import { lstat, mkdir, mkdtemp, open, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -15,8 +15,52 @@ beforeEach(async () => {
   await writeFile(path, 'A fictional recipe.')
 })
 afterEach(async () => {
+  vi.restoreAllMocks()
   await rm(root, { recursive: true, force: true })
 })
+
+it.each([9007199254740993n, 18446744073709551615n])(
+  'normalizes the injected native write-handle stat for exact identity %s',
+  async (identity) => {
+    const originalLstat = nodeFs.lstat
+    vi.spyOn(nodeFs, 'lstat').mockImplementation(async (name) => {
+      const stats = await originalLstat(name)
+      return name === path
+        ? {
+            ...stats,
+            dev: identity.toString(),
+            ino: identity.toString(),
+            mtimeMs: 1790000000123.456,
+          }
+        : stats
+    })
+    const requested: (boolean | undefined)[] = []
+    const file = await openWritableSkillFile(root, path, nodeFs, async (name, flags, mode) => {
+      const handle = await open(name, flags, mode)
+      const originalStat = handle.stat.bind(handle)
+      vi.spyOn(handle, 'stat').mockImplementation(async (options) => {
+        requested.push(options?.bigint)
+        const stats = await originalStat(options)
+        return Object.assign(Object.create(Object.getPrototypeOf(stats)), stats, {
+          dev: options?.bigint ? identity : Number(identity),
+          ino: options?.bigint ? identity : Number(identity),
+          mtimeNs: 1790000000123456000n,
+          mtimeMs: options?.bigint ? 1790000000123n : 1790000000123.456,
+        })
+      })
+      return handle
+    })
+    try {
+      expect(requested).toEqual([true])
+      await file.writeFile('Written through the injected native handle.')
+      await file.sync()
+    } finally {
+      await file.close()
+    }
+    expect(await readFile(path, 'utf8')).toBe('Written through the injected native handle.')
+  },
+)
+
 it('passes writable no-follow numeric flags to the OS and obtains actual write/flush access', async () => {
   const seen: (number | string | undefined)[] = []
   const file = await openWritableSkillFile(root, path, nodeFs, async (name, flags, mode) => {
