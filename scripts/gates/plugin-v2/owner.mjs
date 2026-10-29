@@ -302,13 +302,25 @@ export async function run(root) {
     summary.buildTool.copyUnchangedAfterExecution = true
     const list = readFile(path.join(routeDirectory, 'candidate.json'))
     demand(hash(list) === LIST)
-    await command(
-      process.execPath,
-      [network, root, path.join(routeDirectory, 'candidate.json'), a.appVersion],
-      root,
-      records,
-      { cwd: repo },
-    )
+    try {
+      await command(
+        process.execPath,
+        [network, root, path.join(routeDirectory, 'candidate.json'), a.appVersion],
+        root,
+        records,
+        { cwd: repo },
+      )
+    } finally {
+      const child = records.at(-1)
+      if (child) {
+        const tails = child.tails()
+        console.error(
+          `Network child exit: code=${child.code}; signal=${child.signal}; closed=${child.closed}`,
+        )
+        console.error('Network child stdout tail:', tails.stdout)
+        console.error('Network child stderr tail:', tails.stderr)
+      }
+    }
     const net = readJSON(path.join(root, 'network.json'))
     summary.unmodifiedNetwork = networkReceipt(net)
     const appData = path.join(root, 'a')

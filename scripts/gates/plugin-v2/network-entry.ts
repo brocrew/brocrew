@@ -120,6 +120,9 @@ export async function networkProof(root: string, candidate: Buffer, appVersion: 
   }
 }
 if (process.argv[2])
-  networkProof(process.argv[2], fs.readFileSync(process.argv[3]!), process.argv[4]!).catch(() => {
-    process.exitCode = 1
-  })
+  networkProof(process.argv[2], fs.readFileSync(process.argv[3]!), process.argv[4]!).catch(
+    (error) => {
+      console.error('Network phase failed:', error?.stack ?? error)
+      process.exitCode = 1
+    },
+  )

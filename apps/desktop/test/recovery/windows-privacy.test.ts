@@ -51,6 +51,61 @@ describe('a folder’s access list, read as SDDL', () => {
     expect(() => accessEntries('D:(A;;FA)')).toThrow('unreadable entry')
   })
 
+  it.each(['FRFX', 'GRGX', '0x1200a9', '0', '0x00000000', ''])(
+    'allows a parent grant without mutation rights: %s',
+    (rights) => {
+      const sandbox = `${MACHINE}-2011`
+      expect(
+        othersLetIn(
+          accessEntries(`D:(A;;${rights};;;${sandbox})(A;OICIIO;FA;;;${sandbox})`, MACHINE, {
+            mutationOnly: true,
+          }),
+          USER,
+        ),
+      ).toEqual([])
+    },
+  )
+  it.each([
+    'FW',
+    'FA',
+    'GW',
+    'GA',
+    'DC',
+    'LC',
+    'RP',
+    'DT',
+    'CR',
+    'SD',
+    'WD',
+    'WO',
+    '0x2',
+    '0x4',
+    '0x40',
+    '0x40000',
+    '0x80000',
+    '262144',
+  ])('refuses effective parent mutation rights: %s', (rights) => {
+    const sandbox = `${MACHINE}-2011`
+    expect(
+      othersLetIn(
+        accessEntries(
+          `D:(A;;${rights};;;${sandbox})(A;;FA;;;${USER})(A;;FA;;;SY)(A;;FA;;;BA)`,
+          MACHINE,
+          { mutationOnly: true },
+        ),
+        USER,
+      ),
+    ).toEqual([sandbox])
+    expect(
+      othersLetIn(
+        accessEntries(`D:(D;;${rights};;;${sandbox})(A;OICIIO;${rights};;;${sandbox})`, MACHINE, {
+          mutationOnly: true,
+        }),
+        USER,
+      ),
+    ).toEqual([])
+  })
+
   it('counts no entry that denies, reads only the DACL, and counts an alias it does not know', () => {
     const sddl = `D:P(D;OICI;FA;;;WD)(A;OICI;FA;;;${USER})(A;;FR;;;ZZ)S:(AU;SAFA;FA;;;WD)`
     expect(othersLetIn(accessEntries(sddl), USER)).toEqual(['alias:ZZ'])

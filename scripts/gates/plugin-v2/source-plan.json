@@ -211,8 +211,8 @@
     },
     {
       "path": "apps/desktop/src/main/plugins/private-files.ts",
-      "sha256": "b24074be88e7fe97a8086067d6d98d729bc4ab20bb0c200ed1803813d21ff933",
-      "bytes": 10864
+      "sha256": "398d0ba6c458e29eac56f4d12355be0c38fbb2d756a39cd6711965403bd9f49f",
+      "bytes": 11162
     },
     {
       "path": "apps/desktop/src/main/plugins/strict-json.ts",
@@ -251,8 +251,8 @@
     },
     {
       "path": "apps/desktop/src/main/recovery/windows-privacy.ts",
-      "sha256": "6b1cf7cb43685b045867b1d85230daeaa5163059d82444954a688d6ffad86e7c",
-      "bytes": 15787
+      "sha256": "766c154ca992c88fbb29c7af67fc8bfda9746bfadcf132de375d5aad1090b488",
+      "bytes": 16790
     },
     {
       "path": "apps/desktop/src/main/runtime/ipc.ts",
@@ -786,8 +786,8 @@
     },
     {
       "path": "scripts/gates/plugin-v2/network-entry.ts",
-      "sha256": "22b65105ee2571f29c2af9b97f63dd55c42cc81b99a1dfaced57e6e1453e54e4",
-      "bytes": 4609
+      "sha256": "39708f131cd0631af2555d2eb5984f02711ecb82314a3cd7e554f43daf20897f",
+      "bytes": 4695
     },
     {
       "path": "scripts/gates/plugin-v2/operator-operation.template.json",
@@ -801,8 +801,8 @@
     },
     {
       "path": "scripts/gates/plugin-v2/owner.mjs",
-      "sha256": "b5eeaffbeb579b9a0a11e64a7335f610535dd8b18e23f97ffe402ae666e7754d",
-      "bytes": 35173
+      "sha256": "8aca10bc9bb5fa14f0c03fef5cc65a84430150d267ddcf8277325c4cf058eb6c",
+      "bytes": 35582
     },
     {
       "path": "scripts/gates/plugin-v2/policy.proposed.json",

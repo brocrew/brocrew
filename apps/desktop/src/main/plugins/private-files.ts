@@ -224,6 +224,17 @@ export async function keepPluginRootPrivate(
   if (!isAbsolute(root) || !isLocalDrivePath(root, platform)) throw new Error('unsafe-path')
   const parent = realPath(dirname(root), platform)
   if (parent.toLowerCase() !== dirname(root).toLowerCase()) throw new Error('unsafe-path')
+  const user = await lists.userSid()
+  const machine = await lists.machineSid().catch(() => null)
+  const checkParent = async () => {
+    const sddl = await lists.read(parent)
+    if (
+      hasNoAccessList(sddl) ||
+      othersLetIn(accessEntries(sddl, machine, { mutationOnly: true }), user).length > 0
+    )
+      throw new Error('unsafe-path')
+  }
+  await checkParent()
   try {
     mkdirSync(root)
   } catch (error) {
@@ -231,8 +242,6 @@ export async function keepPluginRootPrivate(
   }
   const stat = lstatSync(root, { bigint: true })
   if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('unsafe-path')
-  const user = await lists.userSid()
-  const machine = await lists.machineSid().catch(() => null)
   const looked = async (folder: string) => {
     const sddl = await lists.read(folder)
     if (hasNoAccessList(sddl)) throw new Error('unsupported')
@@ -248,6 +257,7 @@ export async function keepPluginRootPrivate(
     now = await looked(root)
   }
   if (!now.protectedList || now.others.length > 0) throw new Error('unsafe-path')
+  await checkParent()
   const again = lstatSync(root, { bigint: true })
   if (again.dev !== stat.dev || again.ino !== stat.ino) throw new Error('unsafe-path')
   checkedRoots.set(realPath(root, platform).toLowerCase(), { dev: stat.dev, ino: stat.ino })

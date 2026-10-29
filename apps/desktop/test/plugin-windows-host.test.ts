@@ -247,6 +247,27 @@ describe.runIf(process.platform === 'win32')('the plugin host on Windows', () =>
       expect(isInsideCheckedRoot(join(root, 'state'))).toBe(true)
     },
   )
+  it.each(['W', 'DC', 'WDAC', 'WO'])(
+    'refuses a preexisting root under a parent with an untrusted %s grant without changing ACLs',
+    async (rights) => {
+      const parent = await privateParent()
+      roots.push(parent)
+      const root = join(parent, 'plugins')
+      mkdirSync(root)
+      const sandbox = 'S-1-5-21-1111111111-2222222222-3333333333-2011'
+      execFileSync(
+        join(process.env['SystemRoot'] ?? 'C:\\Windows', 'System32', 'icacls.exe'),
+        [parent, '/grant:r', `*${sandbox}:${rights === 'W' ? rights : `(${rights})`}`, '/Q'],
+        { windowsHide: true },
+      )
+      const before = await windowsAccessLists.read(parent)
+      const rootBefore = await windowsAccessLists.read(root)
+      await expect(keepPluginRootPrivate(root)).rejects.toThrow('unsafe-path')
+      expect(await windowsAccessLists.read(parent)).toBe(before)
+      expect(await windowsAccessLists.read(root)).toBe(rootBefore)
+      expect(isInsideCheckedRoot(root)).toBe(false)
+    },
+  )
   it('refuses a plugin root whose permissions cannot be restricted', async () => {
     const parent = await privateParent()
     roots.push(parent)

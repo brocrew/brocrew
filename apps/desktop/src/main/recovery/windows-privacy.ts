@@ -98,6 +98,45 @@ export function hasNoAccessList(sddl: string): boolean {
   return /D:[A-Z_]*NO_ACCESS_CONTROL/.test(sddl)
 }
 
+/** File and directory rights that can change a parent or entries below it. */
+function changesDirectory(rights: string): boolean {
+  const bits: Readonly<Record<string, number>> = {
+    CC: 1,
+    DC: 2,
+    LC: 4,
+    SW: 8,
+    RP: 16,
+    WP: 32,
+    DT: 64,
+    LO: 128,
+    CR: 256,
+    SD: 0x10000,
+    RC: 0x20000,
+    WD: 0x40000,
+    WO: 0x80000,
+    GA: 0x10000000,
+    GX: 0x20000000,
+    GW: 0x40000000,
+    GR: 0x80000000,
+    FA: 0x1f01ff,
+    FR: 0x120089,
+    FW: 0x120116,
+    FX: 0x1200a0,
+    KA: 0xf003f,
+    KR: 0x20019,
+    KW: 0x20006,
+    KX: 0x20019,
+  }
+  let mask = 0
+  if (/^(?:0[xX][0-9a-fA-F]+|[0-9]+)$/.test(rights)) {
+    mask = Number(rights)
+    if (!Number.isSafeInteger(mask) || mask > 0xffffffff) throw new Error('unreadable rights mask')
+  } else {
+    for (const token of rights.match(/../g) ?? []) mask |= bits[token] ?? 0
+  }
+  return (mask & 0x500d0156) !== 0
+}
+
 /**
  * The entries of `sddl`'s DACL, in order, each naming its account by SID. `machine` is this
  * computer's SID, which `LA` and `LG` are resolved from; without it they stay unresolved. Throws when
@@ -106,7 +145,7 @@ export function hasNoAccessList(sddl: string): boolean {
 export function accessEntries(
   sddl: string,
   machine: string | null = null,
-  options: { includeInheritOnly?: boolean } = {},
+  options: { includeInheritOnly?: boolean; mutationOnly?: boolean } = {},
 ): AccessEntry[] {
   const start = sddl.indexOf('D:')
   if (start < 0) throw new Error('the access list has no DACL')
@@ -136,7 +175,10 @@ export function accessEntries(
         ))
     )
       throw new Error('the access list holds an unreadable entry')
-    const grantsRights = rights !== '' && !/^(?:0[xX])?0+$/.test(rights)
+    const grantsRights =
+      rights !== '' &&
+      !/^(?:0[xX])?0+$/.test(rights) &&
+      (!options.mutationOnly || changesDirectory(rights))
     const appliesHere = options.includeInheritOnly || !(fields[1] ?? '').includes('IO')
     const account = fields[5] ?? ''
     entries.push({
