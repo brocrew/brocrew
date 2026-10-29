@@ -84,10 +84,15 @@ describe.skipIf(process.platform === 'win32')('immutable supervisor launcher ref
     let owner: PluginSupervisor | undefined
     let lease: PluginWorkspaceLease | undefined
     let settled = false
+    const ownerNow = performance.now.bind(performance)
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
     const launch = vi.fn(async () => {
       await new Promise((resolve) => setTimeout(resolve, 6_000))
-      owner = await PluginSupervisor.start({ root: options.root, workspaceRoots: [] })
+      owner = await PluginSupervisor.start({
+        root: options.root,
+        workspaceRoots: [],
+        now: ownerNow,
+      })
     })
     const attaching = PluginWorkspaceLease.attach({ ...options, launch })
     const result = attaching.then(
