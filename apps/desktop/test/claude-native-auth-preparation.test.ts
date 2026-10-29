@@ -26,7 +26,7 @@ const signedOut = (): Reply => ({
   exitCode: 1,
   stdout: JSON.stringify({ loggedIn: false, authMethod: 'none', configDirectory: home }),
 })
-function fixture(steps: Step[]) {
+function fixture(steps: Step[], configDirectory = home) {
   const requests: FakeAuthCommand[] = []
   const cli: FakeClaudeAuthCli = {
     kind: 'fake-cli',
@@ -40,7 +40,7 @@ function fixture(steps: Step[]) {
   return {
     cli,
     requests,
-    preparation: createClaudeNativeAuthPreparation({ cli, configDirectory: home }),
+    preparation: createClaudeNativeAuthPreparation({ cli, configDirectory }),
   }
 }
 afterEach(() => vi.useRealTimers())
@@ -215,7 +215,7 @@ describe('dark Claude native auth preparation', () => {
       ])
       expect(await f.preparation.switchAccount()).toEqual({
         kind: 'switched',
-        status: { signedIn: true, accountSignal: 'present', change: 'changed' },
+        status: { signedIn: true, accountSignal: 'present' },
         accountChange: change,
         requiresResumeConfirmation: true,
       })
@@ -311,6 +311,88 @@ describe('dark Claude native auth preparation', () => {
     expect(await result).toEqual({ kind: 'failed', stage: 'status', reason: 'cancelled' })
     expect(f.requests[0]!.signal.aborted).toBe(true)
     expect(f.requests).toHaveLength(1)
+  })
+
+  it.each([home, `${home}/../claude`])(
+    'shares the reservation and joined switch across controllers at %s',
+    async (directory) => {
+      let release!: (reply: Reply) => void
+      const firstFixture = fixture([
+        () =>
+          new Promise<Reply>((resolve) => {
+            release = resolve
+          }),
+        { exitCode: 0 },
+        signedOut(),
+        { exitCode: 0 },
+        signedIn(),
+      ])
+      const other = fixture(
+        [
+          {
+            exitCode: 1,
+            stdout: JSON.stringify({
+              loggedIn: false,
+              authMethod: 'none',
+              configDirectory: directory,
+            }),
+          },
+        ],
+        directory,
+      )
+      const first = firstFixture.preparation.switchAccount()
+      await vi.waitFor(() => expect(firstFixture.requests).toHaveLength(1))
+      const second = other.preparation.switchAccount()
+      try {
+        expect(second).toBe(first)
+        expect(await other.preparation.status()).toEqual({ kind: 'busy' })
+        expect(other.requests).toEqual([])
+      } finally {
+        release(signedIn())
+        await first
+        await second
+      }
+      expect(await first).toMatchObject({ kind: 'switched' })
+      expect(await other.preparation.status()).toMatchObject({ kind: 'status' })
+      expect(other.requests).toHaveLength(1)
+    },
+  )
+
+  it('does not reserve a different config directory while one switch is pending', async () => {
+    const otherHome = '/fictional/homes/birch/claude'
+    let release!: (reply: Reply) => void
+    const firstFixture = fixture([
+      () =>
+        new Promise<Reply>((resolve) => {
+          release = resolve
+        }),
+      { exitCode: 0 },
+      signedOut(),
+      { exitCode: 0 },
+      signedIn(),
+    ])
+    const other = fixture(
+      [
+        {
+          exitCode: 1,
+          stdout: JSON.stringify({
+            loggedIn: false,
+            authMethod: 'none',
+            configDirectory: otherHome,
+          }),
+        },
+      ],
+      otherHome,
+    )
+    const first = firstFixture.preparation.switchAccount()
+    await vi.waitFor(() => expect(firstFixture.requests).toHaveLength(1))
+    try {
+      expect(await other.preparation.status()).toMatchObject({ kind: 'status' })
+      expect(other.requests[0]!.env).toEqual({ CLAUDE_CONFIG_DIR: otherHome })
+    } finally {
+      release(signedIn())
+      await first
+    }
   })
 
   it('does not continue a switch cancelled immediately after sign-out', async () => {
