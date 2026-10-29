@@ -10,13 +10,8 @@ export const OWNER_LIMITS = {
   request: 2_000,
   drain: 5_000,
 } as const
-/**
- * How long a first supervisor start may take before it is given up. On Windows it copies and
- * hashes the pinned node.exe, which the system scans as a new program, and checks the plugin root's
- * access list through Windows' own programs: seconds on a cold machine, where macOS takes well under
- * one.
- */
-export const OWNER_LAUNCH_MS = process.platform === 'win32' ? 60_000 : OWNER_LIMITS.request
+/** Cold runtime verification, copying and child readiness share this bounded launch wait. */
+export const OWNER_LAUNCH_MS = process.platform === 'win32' ? 60_000 : 30_000
 export const secret = () => randomBytes(32).toString('hex')
 export const Hex = z.string().regex(/^[a-f0-9]{64}$/)
 const Uuid = z.uuid()
@@ -106,13 +101,17 @@ export type Refusal =
   | 'source-mismatch'
   | 'network'
 export class PluginSupervisorError extends Error {
-  constructor(readonly code: Refusal) {
+  constructor(
+    readonly code: Refusal,
+    options?: ErrorOptions,
+  ) {
     super(
       code === 'busy'
         ? 'Plugin busy. Try again.'
         : code === 'incompatible'
           ? 'Update this copy of BroCrew to use this plugin.'
           : 'Plugin unavailable. Try again.',
+      options,
     )
     this.name = 'PluginSupervisorError'
   }

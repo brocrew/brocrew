@@ -84,7 +84,11 @@
     "scripts/test/plugin-packaged-probe.test.mjs",
     "scripts/gates/plugin-v2/diagnostics.mjs",
     "apps/desktop/src/main/plugins/production.ts",
-    "apps/desktop/test/plugin-production.test.ts"
+    "apps/desktop/test/plugin-production.test.ts",
+    "apps/desktop/src/main/plugins/supervisor/protocol.ts",
+    "apps/desktop/src/main/plugins/supervisor/client.ts",
+    "apps/desktop/src/main/plugins/supervisor/launcher.ts",
+    "apps/desktop/test/plugin-supervisor-launcher.test.ts"
   ],
   "files": [
     {
@@ -204,8 +208,8 @@
     },
     {
       "path": "apps/desktop/src/main/plugins/supervisor/protocol.ts",
-      "sha256": "f029364788f396341eb68054171fdd1e6e55d617e352b4efc070737595522006",
-      "bytes": 5856
+      "sha256": "e574510617122e1834568c9c234e08570906d08399292722ffc056c3d5150b02",
+      "bytes": 5675
     },
     {
       "path": "apps/desktop/src/main/plugins/verification-error.ts",

@@ -156,6 +156,7 @@ export class PluginWorkspaceLease {
       if (!lstatSync(workspace).isDirectory()) refuse()
       const workspaceId = createHash('sha256').update(workspace).digest('hex')
       storage = new SupervisorStorage(options.root, [workspace], !!options.launch)
+      let launchError: unknown
       let record = storage.read()
       if (!record || record.phase === 'stopped') {
         if (!options.launch) refuse()
@@ -172,7 +173,8 @@ export class PluginWorkspaceLease {
               )
             }),
           ])
-        } catch {
+        } catch (error) {
+          launchError = error
           // A simultaneous starter may have won the fence. Only its authenticated record can
           // turn this failed launch into an attachment; never launch a second time here.
         } finally {
@@ -185,7 +187,10 @@ export class PluginWorkspaceLease {
         } while (performance.now() < until)
       }
       if (!record || record.phase !== 'accepting')
-        refuse(record?.phase === 'blocked' || record?.phase === 'draining' ? 'busy' : 'unavailable')
+        throw new PluginSupervisorError(
+          record?.phase === 'blocked' || record?.phase === 'draining' ? 'busy' : 'unavailable',
+          { cause: launchError },
+        )
       const hello = Hello.parse(
         await supervisorRequest(storage, record, {
           kind: 'hello',
@@ -199,7 +204,7 @@ export class PluginWorkspaceLease {
     } catch (error) {
       storage?.close()
       if (error instanceof PluginSupervisorError) throw error
-      refuse()
+      throw new PluginSupervisorError('unavailable', { cause: error })
     }
   }
   private identity() {
@@ -337,8 +342,14 @@ export class PluginSupervisorAttachment {
   private where: { root: string; workspaceRoot: string } | undefined
   private quitting: Promise<void> | undefined
   private ended = false
+  private startError: unknown
+  /** Internal diagnostics only; raw causes are never sent through plugin IPC or logs. */
+  get lastStartError(): unknown {
+    return this.startError
+  }
   start(options: Omit<SupervisorClientOptions, 'generation'>): void {
     if (this.pending || this.ended) return
+    this.startError = undefined
     this.where = { root: options.root, workspaceRoot: options.workspaceRoot }
     this.pending = PluginWorkspaceLease.attach({ ...options, generation: randomUUID() })
       .then(async (lease) => {
@@ -349,7 +360,8 @@ export class PluginSupervisorAttachment {
         this.lease = lease
         return lease
       })
-      .catch(() => {
+      .catch((error) => {
+        this.startError = error
         console.warn('[plugins] supervisor-start-failed')
         this.pending = undefined // No local lease authority. A later person retry still faces the owner fence.
         return null

@@ -81,8 +81,10 @@ export function createPluginSupervisorLauncher(options: {
           : { HOME: root, PATH: '/usr/bin:/bin', LC_ALL: 'C' },
       })
       let failed = false
-      child.once('error', () => {
+      let spawnError: Error | undefined
+      child.once('error', (error) => {
         failed = true
+        spawnError = error
       })
       child.unref()
       const until = performance.now() + OWNER_LAUNCH_MS - 200
@@ -98,15 +100,16 @@ export function createPluginSupervisorLauncher(options: {
         }
         await new Promise((resolve) => setTimeout(resolve, 10))
       }
-      throw new PluginSupervisorError('unavailable')
+      throw new PluginSupervisorError('unavailable', { cause: spawnError })
     } finally {
       storage.close()
     }
   }
   return () => {
     pending ??= launch()
-      .catch(() => {
-        throw new PluginSupervisorError('unavailable')
+      .catch((error) => {
+        if (error instanceof PluginSupervisorError) throw error
+        throw new PluginSupervisorError('unavailable', { cause: error })
       })
       .finally(() => {
         pending = undefined
