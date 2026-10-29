@@ -105,7 +105,7 @@ export interface RecoveryFs {
 }
 
 /** Keep Windows' 64-bit file IDs exact while retaining the existing safe-number representation. */
-function recoveryStats(stats: BigIntStats): RecoveryStats {
+export function recoveryStats(stats: BigIntStats): RecoveryStats {
   const identity = (value: bigint): number | string =>
     value <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(value) : value.toString()
   return {

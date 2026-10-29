@@ -18,7 +18,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join, sep } from 'node:path'
+import { basename, dirname, join, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { openDatabase } from '../../src/main/db/connection'
@@ -1711,8 +1711,15 @@ describe('resuming an authorized recovery copy deletion', () => {
     const fs: RecoveryFs = {
       ...nodeFs,
       unlink: async (path) => {
-        if (!path.endsWith(`/${file}`)) return nodeFs.unlink(path)
-        fragment = path.slice(0, -file.length - 1)
+        const matchingRoot = [
+          copy.folder,
+          join(userData, 'backups', `deleting-${copy.manifest.id}`),
+        ].find(
+          (folder) =>
+            dirname(path) === join(folder, dirname(file)) && basename(path) === basename(file),
+        )
+        if (!matchingRoot) return nodeFs.unlink(path)
+        fragment = matchingRoot
         attempts++
         await nodeFs.unlink(path)
         throw coded('EIO')
