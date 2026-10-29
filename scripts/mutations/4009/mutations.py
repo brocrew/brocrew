@@ -123,7 +123,7 @@ MUTATIONS = [('M1 · default preparation reports enabled — killed by '
     '  return Object.freeze({ providerHome: home, authHome: home })\n',
     "  return Object.freeze({ providerHome: home, authHome: '/fictional/shared-auth/claude' "
     '})\n')]),
- ('M24 · a fake transport error is disclosed to the caller — killed by '
+ ('M24 · failure results expose internal error text beyond the typed reason — killed by '
   '`apps/desktop/test/claude-native-auth-preparation.test.ts`',
   [('apps/desktop/src/main/providers/claude/native-auth-preparation.ts',
     "        return Object.freeze({ kind: 'failed', stage: failure.stage, reason: failure.reason "
