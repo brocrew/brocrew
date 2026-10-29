@@ -1,3 +1,6 @@
+import { createHmac, randomBytes } from 'node:crypto'
+import { isAbsolute } from 'node:path'
+
 export type AuthVerb = 'login' | 'logout' | 'status'
 
 export interface FakeAuthCommand {
@@ -53,22 +56,215 @@ export interface NativeAuthPreparationFixtures {
   readonly apiKeySelected?: boolean
 }
 
+type FailureReason = Extract<NativeAuthPreparationResult, { kind: 'failed' }>['reason']
+class PreparationFailure extends Error {
+  constructor(
+    readonly stage: AuthVerb,
+    readonly reason: FailureReason,
+  ) {
+    super('Claude auth preparation could not complete')
+  }
+}
+
+function checkedHome(home: string): string {
+  if (typeof home !== 'string' || !isAbsolute(home) || home.includes('\0'))
+    throw new Error('Invalid auth preparation directory')
+  return home
+}
+
+const DISABLED = Object.freeze({ kind: 'disabled' } as const)
+const BUSY = Object.freeze({ kind: 'busy' } as const)
+const COMMAND_BOUND_MS = 120_000
+const STATUS_LIMIT = 16_384
+
 /** No production transport is installed; omission retains the disabled preparation. */
 export function createClaudeNativeAuthPreparation(
-  _fixtures?: NativeAuthPreparationFixtures,
+  fixtures?: NativeAuthPreparationFixtures,
 ): ClaudeNativeAuthPreparation {
-  return {
-    enabled: false,
-    status: async () => ({ kind: 'disabled' }),
-    switchAccount: async () => ({ kind: 'disabled' }),
+  if (fixtures === undefined || fixtures.apiKeySelected === true) {
+    return Object.freeze({
+      enabled: false,
+      status: async () => DISABLED,
+      switchAccount: async () => DISABLED,
+    })
   }
+  if (fixtures.cli.kind !== 'fake-cli') throw new Error('Invalid auth preparation fixture')
+  const home = checkedHome(fixtures.configDirectory)
+  const run = fixtures.cli.run.bind(fixtures.cli)
+  const salt = randomBytes(32)
+  let previous: string | undefined
+  let busy = false
+  let switching: Promise<NativeAuthPreparationResult> | undefined
+
+  interface Operation {
+    readonly signal: AbortSignal
+    readonly timedOut: () => boolean
+  }
+
+  function invoke(verb: AuthVerb, operation: Operation): ReturnType<FakeClaudeAuthCli['run']> {
+    const { signal } = operation
+    return new Promise((resolve, reject) => {
+      const cancelled = () => {
+        signal.removeEventListener('abort', cancelled)
+        reject(new PreparationFailure(verb, operation.timedOut() ? 'timeout' : 'cancelled'))
+      }
+      signal.addEventListener('abort', cancelled, { once: true })
+      if (signal.aborted) {
+        cancelled()
+        return
+      }
+      const command: FakeAuthCommand = Object.freeze({
+        args: Object.freeze(['auth', verb] as const),
+        env: Object.freeze({ CLAUDE_CONFIG_DIR: home }),
+        output: verb === 'status' ? 'status-only' : 'discard',
+        signal,
+      })
+      Promise.resolve()
+        .then(() => {
+          if (signal.aborted)
+            throw new PreparationFailure(verb, operation.timedOut() ? 'timeout' : 'cancelled')
+          return run(command)
+        })
+        .then(
+          (reply) => {
+            signal.removeEventListener('abort', cancelled)
+            if (signal.aborted) cancelled()
+            else resolve(reply)
+          },
+          () => {
+            signal.removeEventListener('abort', cancelled)
+            if (signal.aborted) cancelled()
+            else reject(new PreparationFailure(verb, 'command'))
+          },
+        )
+    })
+  }
+
+  async function readStatus(operation: Operation): Promise<{
+    status: SafeNativeAuthStatus
+    identity: string | null
+  }> {
+    const reply = await invoke('status', operation)
+    let body: Record<string, unknown>
+    try {
+      const stdout = reply.stdout
+      if (
+        typeof stdout !== 'string' ||
+        stdout.length > STATUS_LIMIT ||
+        Buffer.byteLength(stdout, 'utf8') > STATUS_LIMIT
+      )
+        throw new Error('Invalid status size')
+      const parsed: unknown = JSON.parse(stdout)
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed))
+        throw new Error('Invalid status shape')
+      body = parsed as Record<string, unknown>
+    } catch {
+      throw new PreparationFailure('status', 'status-schema')
+    }
+    if (body.configDirectory !== home) throw new PreparationFailure('status', 'status-schema')
+    let identity: string | null
+    if (body.loggedIn === false && body.authMethod === 'none' && reply.exitCode === 1) {
+      identity = null
+    } else if (body.loggedIn === true && body.authMethod === 'claude.ai' && reply.exitCode === 0) {
+      if (typeof body.email !== 'string' || body.email.trim() === '')
+        throw new PreparationFailure('status', 'account-signal')
+      if (body.orgId !== undefined && typeof body.orgId !== 'string')
+        throw new PreparationFailure('status', 'status-schema')
+      identity = createHmac('sha256', salt)
+        .update(JSON.stringify([body.email, body.orgId ?? null]))
+        .digest('hex')
+    } else {
+      throw new PreparationFailure('status', 'status-schema')
+    }
+    const observation = identity ?? 'signed-out'
+    const change =
+      previous === undefined ? 'initial' : previous === observation ? 'same' : 'changed'
+    previous = observation
+    return {
+      identity,
+      status: Object.freeze({
+        signedIn: identity !== null,
+        accountSignal: identity === null ? 'absent' : 'present',
+        change,
+      }),
+    }
+  }
+
+  function operate(
+    action: (operation: Operation) => Promise<NativeAuthPreparationResult>,
+    requested?: AbortSignal,
+  ): Promise<NativeAuthPreparationResult> {
+    if (busy) return Promise.resolve(BUSY)
+    busy = true
+    const controller = new AbortController()
+    let timedOut = false
+    const cancel = () => controller.abort()
+    requested?.addEventListener('abort', cancel, { once: true })
+    if (requested?.aborted) cancel()
+    const timer = setTimeout(() => {
+      timedOut = true
+      controller.abort()
+    }, COMMAND_BOUND_MS)
+    return Promise.resolve()
+      .then(() => action({ signal: controller.signal, timedOut: () => timedOut }))
+      .catch((error: unknown): NativeAuthPreparationResult => {
+        const failure =
+          error instanceof PreparationFailure ? error : new PreparationFailure('status', 'command')
+        return Object.freeze({ kind: 'failed', stage: failure.stage, reason: failure.reason })
+      })
+      .finally(() => {
+        clearTimeout(timer)
+        requested?.removeEventListener('abort', cancel)
+        busy = false
+      })
+  }
+
+  return Object.freeze({
+    enabled: true,
+    status: (signal?: AbortSignal) =>
+      operate(async (operation) => {
+        const observation = await readStatus(operation)
+        return Object.freeze({ kind: 'status', status: observation.status })
+      }, signal),
+    switchAccount(signal?: AbortSignal): Promise<NativeAuthPreparationResult> {
+      if (switching !== undefined) return switching
+      if (busy) return Promise.resolve(BUSY)
+      const result = operate(async (operation) => {
+        const before = await readStatus(operation)
+        const logout = await invoke('logout', operation)
+        if (logout.exitCode !== 0) throw new PreparationFailure('logout', 'command')
+        const unsigned = await readStatus(operation)
+        if (unsigned.status.signedIn) throw new PreparationFailure('logout', 'logout-not-confirmed')
+        const login = await invoke('login', operation)
+        if (login.exitCode !== 0) throw new PreparationFailure('login', 'command')
+        const after = await readStatus(operation)
+        if (!after.status.signedIn) throw new PreparationFailure('login', 'login-not-confirmed')
+        return Object.freeze({
+          kind: 'switched',
+          status: after.status,
+          accountChange:
+            before.identity === null
+              ? 'unknown'
+              : before.identity === after.identity
+                ? 'same'
+                : 'changed',
+          requiresResumeConfirmation: true,
+        })
+      }, signal)
+      switching = result
+      void result.finally(() => {
+        if (switching === result) switching = undefined
+      })
+      return result
+    },
+  })
 }
 
 /** The supplied legacy resolver owns adopted and default-profile compatibility. */
 export function claudeLegacyResumeRoute(
-  _recordedHome: string | null | undefined,
+  recordedHome: string | null | undefined,
   legacyHome: () => string,
 ): { readonly providerHome: string; readonly authHome: string } {
-  const home = legacyHome()
-  return { providerHome: home, authHome: home }
+  const home = checkedHome(recordedHome ?? legacyHome())
+  return Object.freeze({ providerHome: home, authHome: home })
 }

@@ -67,6 +67,32 @@ describe('dark Claude native auth preparation', () => {
     expect(references).toEqual(['main/providers/claude/native-auth-preparation.ts'])
   })
 
+  it('has only pure platform imports and installs no process, filesystem or network transport', () => {
+    const source = readFileSync(
+      join(
+        dirname(fileURLToPath(import.meta.url)),
+        '../src/main/providers/claude/native-auth-preparation.ts',
+      ),
+      'utf8',
+    )
+    expect([...source.matchAll(/\b(?:from|import)\s*['"]([^'"]+)['"]/g)].map((m) => m[1])).toEqual([
+      'node:crypto',
+      'node:path',
+    ])
+    expect(source).not.toMatch(/\b(?:process\.env|require|eval|fetch)\s*(?:\(|\[|\.)/)
+  })
+
+  it('refuses a non-fictional transport marker before any request', () => {
+    const run = vi.fn()
+    expect(() =>
+      createClaudeNativeAuthPreparation({
+        cli: { kind: 'native-cli' as 'fake-cli', run },
+        configDirectory: home,
+      }),
+    ).toThrow('Invalid')
+    expect(run).not.toHaveBeenCalled()
+  })
+
   it('never takes the native fixture route when an API key is selected', async () => {
     const f = fixture([])
     const preparation = createClaudeNativeAuthPreparation({
@@ -120,7 +146,12 @@ describe('dark Claude native auth preparation', () => {
     { ...signedIn(), exitCode: 1 },
     {
       exitCode: 0,
-      stdout: JSON.stringify({ loggedIn: true, authMethod: 'api_key', configDirectory: home }),
+      stdout: JSON.stringify({
+        loggedIn: true,
+        authMethod: 'api_key',
+        configDirectory: home,
+        email: 'fern@example.invalid',
+      }),
     },
     {
       exitCode: 0,
@@ -259,10 +290,14 @@ describe('dark Claude native auth preparation', () => {
     ])
     const first = f.preparation.switchAccount()
     const second = f.preparation.switchAccount()
-    expect(second).toBe(first)
-    expect(await f.preparation.status()).toEqual({ kind: 'busy' })
     await vi.waitFor(() => expect(f.requests).toHaveLength(1))
-    release(signedIn())
+    try {
+      expect(second).toBe(first)
+      expect(await f.preparation.status()).toEqual({ kind: 'busy' })
+    } finally {
+      release(signedIn())
+      await first
+    }
     expect(await first).toMatchObject({ kind: 'switched' })
     expect(f.requests).toHaveLength(5)
   })
@@ -278,14 +313,71 @@ describe('dark Claude native auth preparation', () => {
     expect(f.requests).toHaveLength(1)
   })
 
+  it('does not continue a switch cancelled immediately after sign-out', async () => {
+    const signal = new AbortController()
+    const f = fixture([
+      signedIn(),
+      async () => {
+        signal.abort()
+        return { exitCode: 0 }
+      },
+    ])
+    expect(await f.preparation.switchAccount(signal.signal)).toEqual({
+      kind: 'failed',
+      stage: 'logout',
+      reason: 'cancelled',
+    })
+    expect(f.requests.map((r) => r.args[1])).toEqual(['status', 'logout'])
+  })
+
+  it('requires an account signal after sign-in instead of reporting a completed switch', async () => {
+    const f = fixture([
+      signedIn(),
+      { exitCode: 0 },
+      signedOut(),
+      { exitCode: 0 },
+      {
+        exitCode: 0,
+        stdout: JSON.stringify({ loggedIn: true, authMethod: 'claude.ai', configDirectory: home }),
+      },
+    ])
+    expect(await f.preparation.switchAccount()).toEqual({
+      kind: 'failed',
+      stage: 'status',
+      reason: 'account-signal',
+    })
+  })
+
+  it('returns immutable status without exposing an internal account identity', async () => {
+    const f = fixture([signedIn()])
+    const result = await f.preparation.status()
+    expect(Object.isFrozen(f.preparation)).toBe(true)
+    expect(Object.isFrozen(result)).toBe(true)
+    expect(result.kind).toBe('status')
+    if (result.kind !== 'status') throw new Error('Expected fictional status')
+    expect(Object.isFrozen(result.status)).toBe(true)
+    expect(Object.keys(result.status).sort()).toEqual(['accountSignal', 'change', 'signedIn'])
+  })
+
   it('bounds a stalled fake command and releases the serialization slot', async () => {
     vi.useFakeTimers()
     const f = fixture([() => new Promise<Reply>(() => {}), signedOut()])
-    const result = f.preparation.switchAccount()
-    await vi.advanceTimersByTimeAsync(120001)
-    expect(await result).toEqual({ kind: 'failed', stage: 'status', reason: 'timeout' })
-    expect(f.requests[0]!.signal.aborted).toBe(true)
-    expect(await f.preparation.status()).toMatchObject({ kind: 'status' })
+    const signal = new AbortController()
+    const result = f.preparation.switchAccount(signal.signal)
+    let settled = false
+    void result.then(() => {
+      settled = true
+    })
+    try {
+      await vi.advanceTimersByTimeAsync(120001)
+      expect(settled).toBe(true)
+      expect(await result).toEqual({ kind: 'failed', stage: 'status', reason: 'timeout' })
+      expect(f.requests[0]!.signal.aborted).toBe(true)
+      expect(await f.preparation.status()).toMatchObject({ kind: 'status' })
+    } finally {
+      signal.abort()
+      await result
+    }
   })
 
   it('does not execute a pre-cancelled action and never discloses a fake transport error', async () => {
