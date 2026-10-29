@@ -59,7 +59,7 @@ export async function networkProof(root: string, candidate: Buffer, appVersion: 
       v2sha = pluginSha256(v2.rawBytes)
     if (
       v1sha !== '16d5c9f55779f85bc94f632812cf4ec7afd3585ca54ac5799c00263732aa9f93' ||
-      v2sha !== '3f354f05c786f65ddaf4cdd51638051d69471e5f2ac91f008660f25bd1435482'
+      v2sha !== '68c495035726241ddf6862567d932c0f3c8086969875cb06b07552aa573b9171'
     )
       throw new Error('Public list changed; re-review')
     const parsed = parseRepoPluginList(candidate, target, appVersion)
