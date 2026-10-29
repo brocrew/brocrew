@@ -28,6 +28,10 @@ test('projected child diagnostics capture raw stderr, spawn errors and exits and
       'apps/desktop/src/main/plugins/node-host.ts',
       'apps/desktop/resources/plugin-host/guardian.mjs',
       'apps/desktop/src/main/plugins/supervisor/entry.ts',
+      'apps/desktop/src/main/plugins/supervisor/client.ts',
+      'apps/desktop/src/main/plugins/production.ts',
+      'apps/desktop/src/main/plugins/catalogue/repo-list.ts',
+      'apps/desktop/src/main/plugins/catalogue/download.ts',
     ]
     for (const name of paths) {
       fs.mkdirSync(path.dirname(path.join(root, name)), { recursive: true })
@@ -62,6 +66,21 @@ test('projected child diagnostics capture raw stderr, spawn errors and exits and
     assert.equal(logs[1].text, 'fictional missing native module')
     assert.match(logs[2].error, /fictional spawn error/)
     assert.equal(logs[3].code, 7)
+    assert.ok(logs.every((row) => Number.isSafeInteger(row.at)))
+    const client = fs.readFileSync(path.join(root, paths[4]), 'utf8')
+    assert.ok(client.includes("gatePhase='record-after-launch'"))
+    assert.ok(client.includes("gateLog('attach-launch-timeout'"))
+    assert.ok(client.includes("gateLog('socket-error'"))
+    const sensitive = new Error('fictional timeout')
+    sensitive.key = 'fictional owner secret'
+    sensitive.code = 'ETIMEDOUT'
+    sensitive.cause = new Error('fictional transport cause')
+    const safeError = vm.runInNewContext(helper + '\ngateError(error)', {
+      gateAppend: () => {}, gateStat: () => ({size:0}), process:{on:()=>{}}, error:sensitive,
+    })
+    assert.equal(safeError.code, 'ETIMEDOUT')
+    assert.equal(safeError.cause.message, 'fictional transport cause')
+    assert.ok(!JSON.stringify(safeError).includes(sensitive.key))
     projected.restore()
     for (const name of paths)
       assert.equal(

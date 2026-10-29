@@ -744,7 +744,7 @@
     },
     {
       "path": "scripts/gates/plugin-v2/controls.test.mjs",
-      "sha256": "7764d25899b796094cddbe286e29da121707649e39c38275f3ea29386a1aa0f8",
+      "sha256": "5eb23c14cdd24542f3c0208ef8cf5d8cb406cf2dbfcff3c900d69bb3ab459f44",
       "bytes": 35053
     },
     {
@@ -949,7 +949,7 @@
     },
     {
       "path": "scripts/gates/plugin-v2/diagnostics.mjs",
-      "sha256": "b52741dbcc4c691ea7f85db8bfdd7afa996b15223348946677d6988126788ffb",
+      "sha256": "1f9bb66e588e3248868d1a03332d1105a2e937953e8e06a90b0cb8cdaec702c5",
       "bytes": 3854
     }
   ],
