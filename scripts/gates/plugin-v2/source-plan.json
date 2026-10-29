@@ -745,7 +745,7 @@
     {
       "path": "scripts/gates/plugin-v2/controls.test.mjs",
       "sha256": "5eb23c14cdd24542f3c0208ef8cf5d8cb406cf2dbfcff3c900d69bb3ab459f44",
-      "bytes": 35053
+      "bytes": 36163
     },
     {
       "path": "scripts/gates/plugin-v2/external-broker-evidence.template.json",
@@ -949,8 +949,8 @@
     },
     {
       "path": "scripts/gates/plugin-v2/diagnostics.mjs",
-      "sha256": "1f9bb66e588e3248868d1a03332d1105a2e937953e8e06a90b0cb8cdaec702c5",
-      "bytes": 3854
+      "sha256": "0ee0fafe3fa64bb4a15e6aaf55826a371bfab71bb21a0647f5a653937938a3eb",
+      "bytes": 13343
     }
   ],
   "routePolicySha256": "5d0fa754eabf1c171316ec1cb007a60fadef12f5e44449783af582cc320882a7",
