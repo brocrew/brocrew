@@ -101,7 +101,14 @@
     "apps/desktop/test/plugin-windows-host.test.ts",
     "apps/desktop/test/recovery/windows-privacy.test.ts",
     "packages/runtime/src/claude/claude-runtime.ts",
-    "packages/runtime/test/claude-runtime.test.ts"
+    "packages/runtime/test/claude-runtime.test.ts",
+    ".github/workflows/claude-code.yml",
+    ".github/workflows/mac-update-test.yml",
+    ".github/workflows/plugin-packaged-gate.yml",
+    ".github/workflows/update-rehearsal.yml",
+    ".github/workflows/upgrade-path.yml",
+    "scripts/test/recovery-real-entry-check.test.mjs",
+    "scripts/test/release-workflow.test.mjs"
   ],
   "files": [
     {

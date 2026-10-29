@@ -190,7 +190,7 @@ describe('§3 · release.yml', () => {
     expect(job('publish')).toMatch(/pattern: release-\*\n {10}path: release\n/)
     for (const [name, runner] of [
       ['recovery-windows', 'windows-2022'],
-      ['recovery-macos', 'macos-15'],
+      ['recovery-macos', 'macos-15-xlarge'],
     ]) {
       const block = job(name)
       expect(block).toContain('    uses: ./.github/workflows/recovery-real-entry.yml')
