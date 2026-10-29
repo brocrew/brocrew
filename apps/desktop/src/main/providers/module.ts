@@ -41,6 +41,7 @@ export interface ProviderHomeStrategy {
 }
 
 export interface ProviderModule {
+  readonly tools: import('@brobot2/runtime').ProviderToolSelectionPolicy
   readonly program?: import('./program-policy').ProviderProgramOperations
   readonly authPolicy: ProviderAuthPolicy
   readonly transcripts: TranscriptPolicy

@@ -53,3 +53,29 @@ it('the bound Claude tools member describes selected inputs without accepting ex
     catalog: { selected: { appTools: [], externalServers: [], pluginServers: [] } },
   })
 })
+
+it('a legacy Codex description separates selected names from unproved inherited sources', () => {
+  const { modules } = fixture()
+  const policy = Reflect.get(modules.codex, 'tools') as {
+    describe: (...args: unknown[]) => unknown
+  }
+  expect(
+    policy.describe(undefined, {
+      externalMcp: {
+        servers: [{ name: 'maple', url: 'http://127.0.0.1:8124/mcp' }],
+        reservedToolNames: [],
+      },
+    }),
+  ).toEqual({
+    status: 'supported',
+    catalog: {
+      selected: { appTools: [], externalServers: ['maple'], pluginServers: [] },
+      inheritedSources: {
+        mcp: 'not-established',
+        uncovered: ['home-mcp', 'project-mcp', 'native-plugins'],
+      },
+      knownRestrictions: { excludedServers: [], filteredTools: [] },
+      discovery: { appTools: 'declared', externalTools: 'not-established' },
+    },
+  })
+})

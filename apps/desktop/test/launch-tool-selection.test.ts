@@ -131,3 +131,15 @@ it('resume and the panel share the launch resolver and observe withdrawn grants'
   expect(panel.externalServers).toEqual([])
   expect(panel.tools).toBeDefined()
 })
+
+it('an unidentified launch selection grants no external server even if the workspace has one', () => {
+  const grants = vi.spyOn(store, 'externalMcpServersFor').mockReturnValue([server('ungranted')])
+  const select = Reflect.get(host, 'selectedToolsForSession') as (
+    id: string,
+    provider: Provider,
+    profile: string | null,
+  ) => StartOptions
+  const selected = select.call(host, 'fictional-unidentified', 'claude', null)
+  expect(selected).not.toHaveProperty('externalMcp')
+  expect(grants).not.toHaveBeenCalled()
+})

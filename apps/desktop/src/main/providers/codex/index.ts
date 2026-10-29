@@ -1,3 +1,4 @@
+import { codexToolSelection } from '@brobot2/runtime'
 import { authPolicy } from './auth-policy'
 import { machineLoginPresence } from './backing-login'
 export { machineLoginPresence } from './backing-login'
@@ -400,6 +401,7 @@ export function createCodexModule(
     ...(seams.program === undefined ? {} : { program: seams.program }),
     authPolicy,
     transcripts,
+    tools: codexToolSelection,
     instructions,
     memory,
     snapshot,

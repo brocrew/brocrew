@@ -628,3 +628,14 @@ export {
   StoppedBeforeSend,
   type ManagedPluginAttachmentSource,
 } from './managed-plugin-session'
+
+export {
+  ToolSelectionUnsupportedError,
+  type ToolSelectionRequest,
+  type SelectedToolInputs,
+  type ToolCatalogReceipt,
+  type ToolSelectionDescription,
+  type ProviderToolSelectionPolicy,
+} from './tool-selection'
+export { claudeToolSelection } from './claude/tool-selection'
+export { codexToolSelection } from './codex/tool-selection'

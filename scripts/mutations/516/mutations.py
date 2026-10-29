@@ -216,8 +216,8 @@ MUTATIONS = [
         [
             (
                 HOST,
-                "        ...externalMcpContext(this.deps.store, row.provider, row.profileId),\n",
-                "",
+                '          ...(selectedTools.externalMcp ? { externalMcp: selectedTools.externalMcp } : {}),\n          // 🔴 **W4.189 · and the folders its open pieces grant it** — a resume is a new process on\n',
+                '          // 🔴 **W4.189 · and the folders its open pieces grant it** — a resume is a new process on\n',
             )
         ],
     ),

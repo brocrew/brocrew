@@ -24130,10 +24130,21 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
-  private runtimeWithPlugins(
-    runtime: AgentRuntime,
+  /** The provider, plugin namespace guard and panel consume one authority selection. */
+  private selectedToolsForSession(
+    sessionId: string,
     provider: Provider,
     profileId: string | null,
+  ): { readonly agentTools: AgentToolset; readonly externalMcp?: ExternalMcpReach } {
+    return {
+      agentTools: this.agentToolsForSession(sessionId),
+      ...externalMcpContext(this.deps.store, provider, profileId),
+    }
+  }
+
+  private runtimeWithPlugins(
+    runtime: AgentRuntime,
+    selected: { readonly agentTools: AgentToolset; readonly externalMcp?: ExternalMcpReach },
   ): AgentRuntime {
     try {
       if (!this.deps.pluginAttachments) return runtime
@@ -24141,9 +24152,7 @@ export class RuntimeHost implements LiveHost {
         runtime,
         this.deps.pluginAttachments.agent([
           AGENT_TOOL_SERVER,
-          ...(externalMcpContext(this.deps.store, provider, profileId).externalMcp?.servers.map(
-            (one) => one.name,
-          ) ?? []),
+          ...(selected.externalMcp?.servers.map((one) => one.name) ?? []),
         ]),
       )
     } catch {
@@ -24216,7 +24225,6 @@ export class RuntimeHost implements LiveHost {
     // refused here in its own words, before a model list is asked whose failure would read as a
     // list that names no model.
     const rawRuntime = this.deps.createRuntime(input.provider)
-    const runtime = this.runtimeWithPlugins(rawRuntime, input.provider, profileId)
     // 🔴 **D-042 · R1 — every start names its model and effort** (024's effort, 038's model): what
     // the caller named, else this agent's default, else the last pair a person picked on this
     // provider, else the provider's own default BY NAME — {@link theSelectedModel}, after the home is
@@ -24284,7 +24292,9 @@ export class RuntimeHost implements LiveHost {
     // path below could not pass it even if someone tried.
     const ultracode = input.ultracode
     // One toolset for the launch and its record, so the record names what was handed.
-    const agentTools = this.agentToolsForSession(id)
+    const selectedTools = this.selectedToolsForSession(id, input.provider, profileId)
+    const agentTools = selectedTools.agentTools
+    const runtime = this.runtimeWithPlugins(rawRuntime, selectedTools)
     // Bounded since 102 — see {@link awaitLaunch}. The wait starts HERE and not at the reservation:
     // provisioning the home and resolving the cwd happen above and can legitimately be slow on a
     // first run, and a bound that covered them would be a bound on the wrong thing.
@@ -24331,7 +24341,7 @@ export class RuntimeHost implements LiveHost {
           // ⚠️ **The sentence that used to be here said *the grant IS the gate* and `HO-048` §1
           // withdrew it.** The gate is now the server's own `reach`, with the grant table kept as the
           // mechanism for the exception — *"do not elaborate it"*.
-          ...externalMcpContext(this.deps.store, input.provider, profileId),
+          ...(selectedTools.externalMcp ? { externalMcp: selectedTools.externalMcp } : {}),
           // ⚑ **W4.189** — the folders its open pieces grant it, as on a resume (none on a first start).
           ...workFoldersIn(this.theWorkFoldersALaunchCarries(id)),
         })
@@ -41224,6 +41234,7 @@ export class RuntimeHost implements LiveHost {
       )
     }
     const provider = row.provider
+    const selectedTools = this.selectedToolsForSession(sessionId, provider, row.profileId)
     const profileSlug = row.profileId === null ? null : foldProfileName(row.profileId)
     const providerHome = live?.providerHome ?? this.providerHomeFor(row)
     // ⛔ **A record is trusted only off a launch this app made**: an imported ledger (a bundle, a
@@ -41261,7 +41272,7 @@ export class RuntimeHost implements LiveHost {
       record = this.whatALaunchGave(
         provider,
         sessionId,
-        this.agentToolsForSession(sessionId),
+        selectedTools.agentTools,
         providerKnowledge[provider].instructions.given.nativeFiles(row.cwd),
         read,
         () => context,
@@ -41329,15 +41340,13 @@ export class RuntimeHost implements LiveHost {
         tools: { server: '', count: 0, sha256: '' },
       },
       own: profileSlug === null ? null : this.deps.store.ownInstructionsOf(profileSlug),
-      toolset: this.agentToolsForSession(sessionId),
+      toolset: selectedTools.agentTools,
       published,
       publishedAt,
       declaredWith,
       standsNow: this.whereItStandsNow(sessionId),
       listedCommands: this.commandsListedSinceItsLaunch(sessionId, launchedRow?.ordinal ?? 0),
-      externalServers: (
-        externalMcpContext(this.deps.store, provider, row.profileId).externalMcp?.servers ?? []
-      ).map((one) => one.name),
+      externalServers: (selectedTools.externalMcp?.servers ?? []).map((one) => one.name),
       memory:
         profileSlug === null
           ? { stores: [], readAt: this.now() }
@@ -43263,7 +43272,6 @@ export class RuntimeHost implements LiveHost {
     // The runtime first, as a start makes it: a missing program is refused in its own words, never
     // as a list that names no model.
     const rawRuntime = this.deps.createRuntime(row.provider)
-    const runtime = this.runtimeWithPlugins(rawRuntime, row.provider, row.profileId)
     const selected = await this.theSelectedModel(row.provider, row.profileId, profileId, {
       ...(recordedModel === undefined ? {} : { model: recordedModel }),
       ...(recordedEffort === undefined ? {} : { effort: recordedEffort }),
@@ -43329,7 +43337,9 @@ export class RuntimeHost implements LiveHost {
       pack,
     )
     // One toolset for the launch and its record, as at a start.
-    const agentTools = this.agentToolsForSession(sessionId)
+    const selectedTools = this.selectedToolsForSession(sessionId, row.provider, row.profileId)
+    const agentTools = selectedTools.agentTools
+    const runtime = this.runtimeWithPlugins(rawRuntime, selectedTools)
     // …and bounded as in `startSession` (102). Same bound for both: a reopen that never settles is
     // the same wedged slot as a launch that never settles, reached through the other button.
     // What a reopened Codex thread already holds is read alongside the resume, never before it: on
@@ -43390,7 +43400,7 @@ export class RuntimeHost implements LiveHost {
           // `externalMcpContext` answers `{}` for it. ⛔ **524 did not widen that**, and the reason is
           // in that function: *everyone's* means every identity, and an adopted conversation is
           // running as nobody.
-          ...externalMcpContext(this.deps.store, row.provider, row.profileId),
+          ...(selectedTools.externalMcp ? { externalMcp: selectedTools.externalMcp } : {}),
           // 🔴 **W4.189 · and the folders its open pieces grant it** — a resume is a new process on
           // both providers, so one that forgot them would lose every grant.
           ...workFoldersIn(this.theWorkFoldersALaunchCarries(sessionId)),

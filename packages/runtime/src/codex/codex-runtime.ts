@@ -1,3 +1,5 @@
+import { requireToolSelection } from '../tool-selection'
+import { codexToolSelection } from './tool-selection'
 import { withManagedPluginMcp, type ManagedPluginMcpServer } from '../managed-plugin-mcp'
 import { BUILT_IN_SKILLS_FAILURE, registerCodexBuiltInSkills } from '../built-in-skills'
 import type { BuiltInSkillsContext, StartPhaseSink } from '../runtime'
@@ -6683,6 +6685,7 @@ export class CodexRuntime implements AgentRuntime {
     // Above the preconditions, so a cancelled launch does no work at all — see
     // {@link ProviderRuntimeContext.signal}.
     assertNotCancelled(opts.signal, 'codex start')
+    requireToolSelection(codexToolSelection, opts)
     // ⛔ **ABOVE the preconditions, and 168 M4 is why it moved** (188 §1). It used to run after
     // them, and `assertCodexSqliteHomeContained` PARSES this very file: a 157 `config.toml` whose
     // TOML no longer parses threw `AuthUnavailableError` before the line that would have deleted
@@ -6903,6 +6906,7 @@ export class CodexRuntime implements AgentRuntime {
     if (ref.provider !== 'codex') {
       throw new ResumeError(ref, `wrong provider: expected codex, got ${ref.provider}`)
     }
+    if (!options.signal?.aborted) requireToolSelection(codexToolSelection, options)
     let bootSettled: () => void
     let transport: CodexTransport
     let launchAccount: string | null

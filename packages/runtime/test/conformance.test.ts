@@ -211,6 +211,8 @@ interface ContractLedger {
  * heuristic anywhere in that chain — an optional member is a key like any other.
  */
 const CONTRACT_MEMBERS: Record<keyof SessionHandle, string> = {
+  toolCatalog:
+    'the optional explicit source-selection launch receipt, separate from live inventory',
   builtInSkillsConfirmed:
     'whether SDK init confirmed the installed skill catalogue for this launch',
   refreshManagedPlugins: 'refresh managed tool attachments at a turn boundary where supported',
@@ -530,6 +532,8 @@ const claudeDriver: Driver = {
     wholesaleGrant: 'standing',
     unattended: 'no-card',
     gaps: {
+      toolCatalog:
+        'this lifecycle seam omits source-selection requests; explicit behavior is checked in tool-selection-contract.test.ts',
       instructionSources:
         'Claude has no provider-reported instruction list — this app does that reading itself, ' +
         'through `StartOptions.systemHint` (158)',
@@ -904,6 +908,8 @@ const codexDriver: Driver = {
       'the approval profile rides on `turn/start`, so the SERVER does the not-asking and there is ' +
       'no card for this adapter to suppress (034, measured on the live app-server)',
     gaps: {
+      toolCatalog:
+        'this lifecycle seam omits source-selection requests; explicit behavior is checked in tool-selection-contract.test.ts',
       refreshManagedPlugins:
         'Codex has no per-thread MCP configuration update; the managed wrapper reopens between turns',
       builtInSkillsConfirmed: 'Codex does not use the Claude SDK skill catalogue confirmation',
@@ -1045,6 +1051,8 @@ const fakeDriver: Driver = {
     wholesaleGrant: 'standing',
     unattended: 'no-card',
     gaps: {
+      toolCatalog:
+        'this lifecycle seam omits source-selection requests; explicit behavior is checked in tool-selection-contract.test.ts',
       refreshManagedPlugins:
         'The base Fake has no external plugin connection; wrapper controls supply a refresh fake',
       builtInSkillsConfirmed:
@@ -1654,6 +1662,7 @@ describe('conformance · the gap ledger (186)', () => {
       [
         'fake',
         [
+          'toolCatalog',
           'refreshManagedPlugins',
           'builtInSkillsConfirmed',
           // 722 · R79: a pre-init window only a Claude launch has — the Fake's ref is set at birth.
@@ -1717,6 +1726,7 @@ describe('conformance · the gap ledger (186)', () => {
       [
         'claude',
         [
+          'toolCatalog',
           'instructionSources',
           'signInCopyAtLaunch',
           'carryOn',
@@ -1748,6 +1758,7 @@ describe('conformance · the gap ledger (186)', () => {
       [
         'codex',
         [
+          'toolCatalog',
           'refreshManagedPlugins',
           'builtInSkillsConfirmed',
           'launchedAs',

@@ -1,3 +1,5 @@
+import { requireToolSelection, withToolCatalog } from '../tool-selection'
+import { claudeToolSelection } from './tool-selection'
 import type { ManagedPluginMcpServer } from '../managed-plugin-mcp'
 import { managedTranscriptSettings } from './app-transcript-retention'
 import { randomUUID } from 'node:crypto'
@@ -5277,6 +5279,7 @@ export class ClaudeRuntime implements AgentRuntime {
     // its map (070). Nothing is created above this line. ⚠️ **707 · and there is one interval now**
     // — the spawn check below, after the query exists — which is asked again after it.
     assertNotCancelled(opts.signal, 'claude start')
+    const toolCatalog = requireToolSelection(claudeToolSelection, opts)
     const agentHome = await this.agentHome(opts)
     assertNotCancelled(opts.signal, 'claude start')
     const input = new AsyncQueue<SDKUserMessage>()
@@ -5423,7 +5426,7 @@ export class ClaudeRuntime implements AgentRuntime {
     }
     handle.attachQuery(query, child)
     handle.begin('started')
-    return handle
+    return withToolCatalog(handle, toolCatalog)
   }
 
   /**
@@ -5669,6 +5672,7 @@ export class ClaudeRuntime implements AgentRuntime {
     let child: ClaudeChildWitness | null = null
     try {
       assertNotCancelled(options.signal, 'claude resume') // nothing built yet (070)
+      const toolCatalog = requireToolSelection(claudeToolSelection, options)
       const agentHome = await this.agentHome(options)
       assertNotCancelled(options.signal, 'claude resume')
       // Honest resume: validate the session exists in the SAME profile home BEFORE
@@ -5807,7 +5811,7 @@ export class ClaudeRuntime implements AgentRuntime {
       assertNotCancelled(options.signal, 'claude resume')
       handle.attachQuery(query, child)
       handle.begin('resumed')
-      return handle
+      return withToolCatalog(handle, toolCatalog)
     } catch (error) {
       // Close any partially-created resources so nothing leaks, then normalize.
       if (query) {

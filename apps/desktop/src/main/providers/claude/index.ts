@@ -1,3 +1,4 @@
+import { claudeToolSelection } from '@brobot2/runtime'
 import { keptRules } from './kept-rules'
 import { authPolicy } from './auth-policy'
 import { machineLoginPresence } from './backing-login'
@@ -252,6 +253,7 @@ export function createClaudeModule(
     ...(seams.program === undefined ? {} : { program: seams.program }),
     authPolicy,
     transcripts,
+    tools: claudeToolSelection,
     instructions,
     memory,
     snapshot,

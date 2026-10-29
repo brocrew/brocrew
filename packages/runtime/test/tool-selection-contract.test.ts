@@ -1,3 +1,4 @@
+import type { TransportFactory } from '../src/codex/codex-runtime'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -33,7 +34,7 @@ describe('an explicit tool selection is enforced or refused', () => {
   it.each(['start', 'resume'] as const)(
     'Codex %s refuses unknown inherited-source exclusion before any child starts',
     async (kind) => {
-      const factory = vi.fn((_context: unknown) => {
+      const factory = vi.fn<TransportFactory>(() => {
         throw new Error('The fictional transport would start')
       })
       const adapter = new CodexRuntime(factory)
@@ -106,6 +107,7 @@ describe('an explicit tool selection is enforced or refused', () => {
           knownRestrictions: { excludedServers: [], filteredTools: [] },
           discovery: { appTools: 'declared', externalTools: 'not-established' },
         })
+        expect(Object.isFrozen(Reflect.get(handle, 'toolCatalog'))).toBe(true)
         expect(JSON.stringify(Reflect.get(handle, 'toolCatalog'))).not.toContain('Bearer')
         expect(JSON.stringify(Reflect.get(handle, 'toolCatalog'))).not.toContain('a'.repeat(64))
       } finally {
@@ -114,8 +116,74 @@ describe('an explicit tool selection is enforced or refused', () => {
     },
   )
 
+  it.each(['start', 'resume'] as const)(
+    'a cancelled Codex %s keeps cancellation ahead of source selection',
+    async (kind) => {
+      const factory = vi.fn<TransportFactory>(() => {
+        throw new Error('The fictional transport would start')
+      })
+      const adapter = new CodexRuntime(factory)
+      const controller = new AbortController()
+      controller.abort()
+      const context = {
+        cwd: root,
+        providerHome: home,
+        toolSelection: request,
+        signal: controller.signal,
+      }
+      const opening =
+        kind === 'start'
+          ? adapter.start(context)
+          : adapter.resume(
+              { provider: 'codex', sessionId: 'fictional-thread', cwd: root, rotation: 0 },
+              context,
+            )
+      await expect(opening).rejects.toThrow('cancelled before it started')
+      expect(factory).not.toHaveBeenCalled()
+    },
+  )
+
+  it('an omitted Claude request preserves the old empty MCP context without a catalog claim', async () => {
+    const sent: Options[] = []
+    const adapter = new ClaudeRuntime(
+      (params) => {
+        sent.push(params.options)
+        return {
+          async *[Symbol.asyncIterator]() {},
+          async interrupt() {},
+          close() {},
+        } as ClaudeQuery
+      },
+      async () => true,
+    )
+    const handle = await adapter.start({ cwd: root, providerHome: home })
+    try {
+      expect(sent[0]?.strictMcpConfig).toBe(true)
+      expect(sent[0]?.settingSources).toEqual([])
+      expect(sent[0]?.mcpServers).toBeUndefined()
+      expect(Reflect.get(handle, 'toolCatalog')).toBeUndefined()
+    } finally {
+      await handle.close()
+    }
+  })
+
+  it('a malformed exact-source request is refused rather than downgraded to a legacy launch', async () => {
+    const factory = vi.fn<TransportFactory>(() => {
+      throw new Error('The fictional transport would start')
+    })
+    const adapter = new CodexRuntime(factory)
+    const malformed = { inheritedSources: 'include' } as unknown as typeof request
+    await expect(
+      adapter.start({ cwd: root, providerHome: home, toolSelection: malformed }),
+    ).rejects.toMatchObject({
+      name: 'ToolSelectionUnsupportedError',
+      unsupportedSources: ['invalid-request'],
+    })
+    expect(factory).not.toHaveBeenCalled()
+  })
+
   it('an omitted request keeps the Codex transport path and does not claim an exact catalog', async () => {
-    const factory = vi.fn((_context: unknown) => {
+    const factory = vi.fn<TransportFactory>(() => {
       throw new Error('The fictional transport would start')
     })
     const adapter = new CodexRuntime(factory)

@@ -1,3 +1,4 @@
+import type { ToolCatalogReceipt, ToolSelectionRequest } from './tool-selection'
 import type { ManagedPluginMcpServer } from './managed-plugin-mcp'
 import type { Provider, SessionStatus } from '@brobot2/shared'
 import type { ApprovalModeState } from './approval-mode'
@@ -49,6 +50,8 @@ export type StartPhase =
 export type StartPhaseSink = (phase: StartPhase, detail?: { readonly bytes?: number }) => void
 
 export interface ProviderRuntimeContext {
+  /** Omitted keeps legacy behavior; an explicit source boundary must be enforced or refused. */
+  toolSelection?: ToolSelectionRequest
   /** Absolute, app-owned per-profile state directory for this provider. */
   providerHome: string
   /**
@@ -802,6 +805,8 @@ export type TurnProvenance =
  *    is eventually answered — by the app, or safe-rejected on teardown.
  */
 export interface SessionHandle {
+  /** Names declared at launch, not a live native inventory or a permission grant. */
+  readonly toolCatalog?: ToolCatalogReceipt
   /** Whether this launch's SDK init confirmed the installed skill catalogue. */
   builtInSkillsConfirmed?(): boolean
   /** Refresh only at a turn boundary; absent means this provider needs a managed reopen. */
