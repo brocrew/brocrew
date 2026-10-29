@@ -18,10 +18,7 @@ MUTATIONS = [('M1 · retains two recovery copies — killed by `checkpoint.test.
   [('apps/desktop/src/main/recovery/checkpoint.ts', 'previous.checkpointId === checkpointId', 'true')]),
  ('M6 · prunes a copy during history-only recovery — killed by `checkpoint.test.ts`',
   [('apps/desktop/src/main/recovery/checkpoint.ts',
-    '    if (\n'
-    "      (await pathExists(join(userData, 'recovery', 'history-only.json'), fs)) ||\n"
-    "      (await pathExists(join(userData, 'recovery', 'restore-journal.json'), fs))\n"
-    '    )\n'
+    '    if ((await pathExists(gateFile(userData), fs)) || (await pathExists(journalFile(userData), fs)))\n'
     '      return []',
     '    // planted: recovery gate ignored')]),
  ('M7 · removes a personal file beside the copy — killed by `checkpoint.test.ts`',

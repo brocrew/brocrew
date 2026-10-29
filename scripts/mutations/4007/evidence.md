@@ -37,3 +37,11 @@ This index is kept on W4.1316. Raw evidence remains in this worktree’s `eviden
 
 - `evidence/4007-verified.json`: SHA-256 `61ba05c9cba84aa6e06c3dc2e3e5b46c45a067bbb81e99c4d03a62fb263026f5`
 - `evidence/4007-M13-verified.json`: SHA-256 `17cd5fb764876104112dc518c253d9caf61c545ff144f46e7530846a8d2c96ed`
+
+## Rebased 0.1.9 correction: M6 anchor
+
+On 2026-10-29, the equivalent history/restore checks in `prune` moved from literal paths to the existing `gateFile` and `journalFile` layout helpers. M6 now anchors that same predicate; its subject remains present. No row was retired.
+
+`python3 scripts/mutations/verify_row.py 4007 M6 --json "$EVIDENCE/round2-M6-verified.json"` (external qualification evidence directory) exited 0. The unchanged killer file passed all 87 tests before mutation. M6 was RED in both marker cases and the resumed-deletion restore guard, and target bytes were restored and re-hashed. JSON SHA-256: `668ea3a326702db8c22b75fde59ab3af1feef31f7b8b04def588c9af1b35fa7b`.
+
+This is one current row proof, not a complete table execution. The historical measurements above and full-table deferral remain unchanged.

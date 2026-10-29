@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto'
-import { constants } from 'node:fs'
+import { constants, type BigIntStats } from 'node:fs'
 import * as nodeFsPromises from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path'
 import type { Step } from './contract'
@@ -62,8 +62,8 @@ export interface RecoveryStats {
   readonly size: number
   readonly mtimeMs: number
   readonly mode?: number
-  readonly dev?: number
-  readonly ino?: number
+  readonly dev?: number | string
+  readonly ino?: number | string
   isFile(): boolean
   isDirectory(): boolean
   /** A symbolic link; on Windows a junction too. Only `lstat` can answer true. */
@@ -104,6 +104,22 @@ export interface RecoveryFs {
   chmod(path: string, mode: number): Promise<void>
 }
 
+/** Keep Windows' 64-bit file IDs exact while retaining the existing safe-number representation. */
+function recoveryStats(stats: BigIntStats): RecoveryStats {
+  const identity = (value: bigint): number | string =>
+    value <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(value) : value.toString()
+  return {
+    size: Number(stats.size),
+    mtimeMs: Number(stats.mtimeNs / 1_000_000n) + Number(stats.mtimeNs % 1_000_000n) / 1e6,
+    mode: Number(stats.mode),
+    dev: identity(stats.dev),
+    ino: identity(stats.ino),
+    isFile: () => stats.isFile(),
+    isDirectory: () => stats.isDirectory(),
+    isSymbolicLink: () => stats.isSymbolicLink(),
+  }
+}
+
 export const nodeFs: RecoveryFs = {
   rename: (from, to) => nodeFsPromises.rename(from, to),
   copyFile: (from, to, mode) => nodeFsPromises.copyFile(from, to, mode),
@@ -122,15 +138,15 @@ export const nodeFs: RecoveryFs = {
       mode,
     )
     return {
-      stat: () => handle.stat(),
+      stat: async () => recoveryStats(await handle.stat({ bigint: true })),
       read: (buffer, offset, length, position) => handle.read(buffer, offset, length, position),
       writeFile: (data) => handle.writeFile(data),
       sync: () => handle.sync(),
       close: () => handle.close(),
     }
   },
-  stat: (path) => nodeFsPromises.stat(path),
-  lstat: (path) => nodeFsPromises.lstat(path),
+  stat: async (path) => recoveryStats(await nodeFsPromises.stat(path, { bigint: true })),
+  lstat: async (path) => recoveryStats(await nodeFsPromises.lstat(path, { bigint: true })),
   readFile: (path) => nodeFsPromises.readFile(path, 'utf8'),
   writeFile: (path, data, options) => nodeFsPromises.writeFile(path, data, options),
   readdir: (path) => nodeFsPromises.readdir(path),

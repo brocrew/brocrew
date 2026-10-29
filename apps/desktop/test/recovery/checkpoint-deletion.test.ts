@@ -13,7 +13,8 @@ import {
 } from 'node:fs'
 import { createHash, randomUUID } from 'node:crypto'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { afterEach, expect, it } from 'vitest'
 import { openDatabase } from '../../src/main/db/connection'
 import { applyMigrations } from '../../src/main/db/migrate'
@@ -40,10 +41,13 @@ async function fixture(withTrees = false) {
   roots.push(root)
   const userData = join(root, 'fictional-workspace')
   mkdirSync(userData)
-  const migrations = new URL('../../src/main/db/migrations', import.meta.url).pathname
+  const migrations = fileURLToPath(new URL('../../src/main/db/migrations', import.meta.url))
   const db = openDatabase(join(userData, 'brobot2.sqlite'))
-  applyMigrations(db, migrations)
-  db.close()
+  try {
+    applyMigrations(db, migrations)
+  } finally {
+    db.close()
+  }
   writeFileSync(join(userData, 'drafts.json'), '{"draft":"fictional only"}')
   if (withTrees)
     for (const name of ['skills', 'skills-off']) {
@@ -108,6 +112,43 @@ it.each([
   expect(existsSync(join(saved, 'database.sqlite'))).toBe(true)
 })
 
+it.each(['unchanged', 'adjacent inode', 'adjacent device'])(
+  '64-bit directory identities remain exact: %s',
+  async (change) => {
+    const { userData, lineage, copy, options } = await fixture()
+    let changed = false
+    let unlinks = 0
+    const fs = {
+      ...nodeFs,
+      lstat: async (path: string) => {
+        const stats = await nodeFs.lstat(path)
+        if (!stats.isDirectory()) return stats
+        return {
+          ...stats,
+          dev: changed && change === 'adjacent device' ? '9007199254740993' : '9007199254740992',
+          ino: changed && change === 'adjacent inode' ? '9007199254740993' : '9007199254740992',
+        }
+      },
+      readdir: async (path: string) => {
+        const names = await nodeFs.readdir(path)
+        if (path === copy.folder) changed = true
+        return names
+      },
+      unlink: async (path: string) => {
+        unlinks++
+        await nodeFs.unlink(path)
+      },
+    }
+    await beginCheckpointDeletion(userData, copy, fs)
+    const result = await deleteRetainedCopy(userData, lineage, copy.manifest.id, { ...options, fs })
+    expect(result).toBe(change === 'unchanged')
+    if (change !== 'unchanged') {
+      expect(unlinks).toBe(0)
+      expect(existsSync(join(copy.folder, 'database.sqlite'))).toBe(true)
+    }
+  },
+)
+
 it.each(['retry', 'prune'])(
   'original P2 EIO scenario now retains visibility and finishes via %s',
   async (operation) => {
@@ -117,7 +158,7 @@ it.each(['retry', 'prune'])(
       ...nodeFs,
       unlink: async (path: string) => {
         await nodeFs.unlink(path)
-        if (path.endsWith('/drafts.json')) {
+        if (basename(path) === 'drafts.json') {
           fragment = dirname(path)
           throw Object.assign(new Error('fictional EIO after copied draft removal'), {
             code: 'EIO',
@@ -154,14 +195,16 @@ it.each(['retry', 'prune'])(
 )
 
 function identity(path: string, relative: string) {
-  const s = statSync(path)
+  const s = statSync(path, { bigint: true })
+  const exact = (value: bigint) =>
+    value <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(value) : value.toString()
   return {
     path: relative,
     directory: s.isDirectory(),
-    dev: s.dev,
-    ino: s.ino,
-    size: s.size,
-    mtimeMs: s.mtimeMs,
+    dev: exact(s.dev),
+    ino: exact(s.ino),
+    size: Number(s.size),
+    mtimeMs: Number(s.mtimeMs),
   }
 }
 
@@ -317,7 +360,7 @@ async function realPendingDeletion(withTrees = false) {
     ...nodeFs,
     unlink: async (path: string) => {
       await nodeFs.unlink(path)
-      if (path.endsWith('/drafts.json')) {
+      if (basename(path) === 'drafts.json') {
         fragment = dirname(path)
         throw Object.assign(new Error('fictional EIO after copied draft removal'), { code: 'EIO' })
       }
