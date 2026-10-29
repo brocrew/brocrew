@@ -114,7 +114,7 @@ const candidate = fs.readFileSync(new URL('./candidate.json', import.meta.url))
 function networkFixture() {
   return {
     v1: '16d5c9f55779f85bc94f632812cf4ec7afd3585ca54ac5799c00263732aa9f93',
-    v2: '3f354f05c786f65ddaf4cdd51638051d69471e5f2ac91f008660f25bd1435482',
+    v2: '68c495035726241ddf6862567d932c0f3c8086969875cb06b07552aa573b9171',
     archives: 2,
     synthetic: false,
     archiveMeasurements: JSON.parse(candidate).entries.map((e) => {

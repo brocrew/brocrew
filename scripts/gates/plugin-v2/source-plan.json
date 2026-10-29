@@ -736,8 +736,8 @@
     },
     {
       "path": "scripts/gates/plugin-v2/README.md",
-      "sha256": "55c57e2a2ecda8ade021b92c5eade5a41508caf4316001a344d2828b6a3b322b",
-      "bytes": 18920
+      "sha256": "80df37192785b2cec7d72ea8cc479b055786b76eab96639fcfa85832f0409d36",
+      "bytes": 18996
     },
     {
       "path": "scripts/gates/plugin-v2/RELOAD-PREVIEW.md",
@@ -756,12 +756,12 @@
     },
     {
       "path": "scripts/gates/plugin-v2/contract.mjs",
-      "sha256": "54878dcfd44cd05e573ab3476ae797e51d67b2b55d2d8939625587c3a5166622",
+      "sha256": "58d9e71ca32e5e621e5cebf6c97e45eaf2d7e8365473d265f936a8a4452497ac",
       "bytes": 6420
     },
     {
       "path": "scripts/gates/plugin-v2/controls.test.mjs",
-      "sha256": "7764d25899b796094cddbe286e29da121707649e39c38275f3ea29386a1aa0f8",
+      "sha256": "1e47cb01419b5001e28c5fdf3b2c0bb9f7bf7cb1ee5a87327ca1519baedc7da3",
       "bytes": 35053
     },
     {

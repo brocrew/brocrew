@@ -6,7 +6,7 @@ export const BASE = '04faa94c05f007f536b8499b984471bdf7a9080b'
 export const BASE017 = 'a4dfcf611c244f8365d485022dc674309c2e7ae1'
 export const LIST = '68c495035726241ddf6862567d932c0f3c8086969875cb06b07552aa573b9171'
 export const V1 = '16d5c9f55779f85bc94f632812cf4ec7afd3585ca54ac5799c00263732aa9f93'
-export const PUBLIC_V2 = '3f354f05c786f65ddaf4cdd51638051d69471e5f2ac91f008660f25bd1435482'
+export const PUBLIC_V2 = '68c495035726241ddf6862567d932c0f3c8086969875cb06b07552aa573b9171'
 export const URL =
   'https://raw.githubusercontent.com/brocrew/brocrew/main/plugins/catalogue-v2.json'
 export const MARKER = 'plugin-v2-review-gate-only'
