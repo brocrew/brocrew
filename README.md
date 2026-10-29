@@ -14,9 +14,9 @@ BroCrew is an open-source desktop app that brings AI agents together on your com
 
 Additional providers are planned.
 
-## 0.1.8 release candidate
+## What's new in 0.1.8
 
-This candidate focuses on plugin loading and session reload handling. Fix claims depend on qualification of the downloadable Mac and Windows builds before publication.
+0.1.8 focuses on plugins. Removing one plugin no longer makes the others unavailable, and the plugin service gets more time to start on a slow or just-started Mac. Plugins are new and still early, so tell us if one misbehaves. [Release notes and downloads](https://github.com/brocrew/brocrew/releases/tag/v0.1.8).
 
 ## See it work
 
