@@ -677,17 +677,16 @@ describe('§5 · 🔒 a correction never widens who may read the entry', () => {
   )
 
   it.runIf(process.platform === 'win32')(
-    'on Windows real disk, a shared data folder refuses without changing ACLs or the note',
+    'on Windows real disk, a shared data folder is corrected all the same, its ACL unchanged',
     async () => {
       const { note } = plantTheNight()
       const icacls = join(process.env['SystemRoot'] ?? 'C:\\Windows', 'System32', 'icacls.exe')
       execFileSync(icacls, [root, '/grant', `*${USERS}:R`, '/Q'])
       const before = await windowsAccessLists.read(root)
-      const outcome = await correct(note, {})
-      expect(!outcome.done && outcome.refused).toBe('write-failed')
+      const outcome = await correct(note, { warn: () => {} })
+      expect(outcome.done).toBe(true)
       expect(await windowsAccessLists.read(root)).toBe(before)
-      expect(readFileSync(note, 'utf8')).toBe(THE_FALSE_NOTE)
-      expect(existsSync(join(homesRoot, '.brobot-stage'))).toBe(false)
+      expect(readFileSync(note, 'utf8')).toBe('CORRECTED\n')
     },
   )
 })

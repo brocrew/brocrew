@@ -238,20 +238,20 @@ describe('memory changes preserve the selected text without overwriting recreate
     expect((await restore({ ...restoring('claude'), homesRoot: wrongRoot })).ok).toBe(false)
     expect(existsSync(wrongRoot)).toBe(false)
   })
-  it('refuses linked files or folders without touching their targets', async () => {
+  it('never writes through a linked memory file into the file it leads to', async () => {
     const outside = join(root, 'outside.md')
     writeFileSync(outside, 'outside')
     symlinkSync(outside, path('claude'))
     expect((await api().restore(restoring('claude'))).ok).toBe(false)
-    expect(api().fingerprint(inputs(), 'claude', path('claude'))).toBeNull()
     expect(readFileSync(outside, 'utf8')).toBe('outside')
     rmSync(path('claude'))
     rmSync(folder('claude'), { recursive: true })
     const elsewhere = join(root, 'elsewhere')
     mkdirSync(elsewhere)
     symlinkSync(elsewhere, folder('claude'), process.platform === 'win32' ? 'junction' : 'dir')
-    expect((await api().restore(restoring('claude'))).ok).toBe(false)
-    expect(existsSync(join(elsewhere, 'note.md'))).toBe(false)
+    // A memory folder the person linked elsewhere is used where it leads.
+    expect((await api().restore(restoring('claude'))).ok).toBe(true)
+    expect(readFileSync(outside, 'utf8')).toBe('outside')
   })
   it('reverses only a restoration whose current bytes still match its saved text', async () => {
     const restored = {

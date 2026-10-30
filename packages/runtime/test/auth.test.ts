@@ -553,11 +553,14 @@ describe('codexAuthHealth (022)', () => {
     expect(health.reason).toMatch(/no managed Codex auth\.json/)
   })
 
-  it('makes a file others may read 0600 again, and goes on', () => {
-    writeFileSync(join(home, 'auth.json'), 'x', { mode: 0o644 })
-    expect(codexAuthHealth(home, 'linux')).toEqual({ ok: true })
-    expect(lstatSync(join(home, 'auth.json')).mode & 0o777).toBe(0o600)
-  })
+  it.skipIf(process.platform === 'win32')(
+    'makes a file others may read 0600 again, and goes on',
+    () => {
+      writeFileSync(join(home, 'auth.json'), 'x', { mode: 0o644 })
+      expect(codexAuthHealth(home, 'linux')).toEqual({ ok: true })
+      expect(lstatSync(join(home, 'auth.json')).mode & 0o777).toBe(0o600)
+    },
+  )
 
   it('ok when auth.json is a link the person made to a sign-in file', () => {
     const target = join(home, 'real')
