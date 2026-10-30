@@ -36199,16 +36199,19 @@ export class RuntimeHost implements LiveHost {
     this.launches.finish(session.launch, session.terminated ?? undefined)
     // ⚑ **D-017 · R3 — what it held is delivered now**: it is started again once its provider has
     // gone, and those messages go first ({@link putBackWhatWaitedForThisStart}).
-    if (
-      this.heldAtAStop.has(session.id) &&
-      !this.signInStops.has(session) &&
-      session.diedOnAStaleSignIn !== true
-    ) {
-      void Promise.resolve(session.terminated).then(() => {
-        const start = (): Promise<void> => this.startForWhatItHeld(session)
-        return this.signInRestarts.has(session) ? this.signInReopens.run(start) : start()
-      })
-    }
+    void Promise.resolve(session.terminated).then(
+      () => {
+        if (
+          this.heldAtAStop.has(session.id) &&
+          !this.signInStops.has(session) &&
+          session.diedOnAStaleSignIn !== true
+        ) {
+          const start = (): Promise<void> => this.startForWhatItHeld(session)
+          return this.signInRestarts.has(session) ? this.signInReopens.run(start) : start()
+        }
+      },
+      () => undefined,
+    )
     // 🔴 **D-029 · R1 — and what it had scheduled wakes it**: the wake-up is armed in the same
     // synchronous stretch as the mark above, so the flush says *scheduled* rather than *idle*.
     this.armItsWakeUpAtItsStop(session)

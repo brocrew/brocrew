@@ -361,10 +361,12 @@ it('observes a late empty Windows tree after a missing stop reading without exte
   await closed(value)
   await value.exited
   expect(quiet).toBe(false)
-  expect(read).toHaveBeenCalledTimes(1)
+  const before = read.mock.calls.length
+  expect(before).toBeGreaterThanOrEqual(1)
   read.mockImplementation(async () => reading([], fileTimeOf(Date.now())))
   await vi.advanceTimersByTimeAsync(20_000)
   expect(quiet).toBe(true)
+  expect(read.mock.calls.length).toBeGreaterThan(before)
   expect(app.kill).not.toHaveBeenCalled()
   expect(ender.stdin.end).toHaveBeenCalledTimes(1)
   const count = read.mock.calls.length
@@ -401,4 +403,65 @@ it('keeps unknown and live identities held, then ignores a reused PID without ki
   expect(quiet).toBe(true)
   expect(ender.stdin.end).toHaveBeenCalledTimes(kills)
   expect(app.kill).not.toHaveBeenCalled()
+})
+
+it('keeps post-stop table reads single-flight while a slow reading is outstanding', async () => {
+  let finish!: (value: TableReading) => void
+  const read = vi
+    .fn<(ms: number) => Promise<TableReading | null>>()
+    .mockResolvedValueOnce(null)
+    .mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        }),
+    )
+  const value = transport(read)
+  let quiet = false
+  void value.quiesced.then(() => {
+    quiet = true
+  })
+  try {
+    await closed(value)
+    expect(read).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(read).toHaveBeenCalledTimes(2)
+    expect(quiet).toBe(false)
+    finish(reading([], fileTimeOf(Date.now())))
+    await flush()
+    expect(quiet).toBe(true)
+    expect(ender.stdin.end).toHaveBeenCalledTimes(1)
+  } finally {
+    finish?.(reading([], fileTimeOf(Date.now())))
+  }
+})
+
+it('joins a stop reading that outlasted its budget before observing again', async () => {
+  let finish!: (value: TableReading | null) => void
+  const read = vi
+    .fn<(ms: number) => Promise<TableReading | null>>()
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        }),
+    )
+    .mockImplementation(async () => reading([], fileTimeOf(Date.now())))
+  const value = transport(read)
+  let quiet = false
+  void value.quiesced.then(() => {
+    quiet = true
+  })
+  try {
+    await closed(value)
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(read).toHaveBeenCalledTimes(1)
+    expect(quiet).toBe(false)
+    finish(null)
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(quiet).toBe(true)
+    expect(read).toHaveBeenCalledTimes(2)
+  } finally {
+    finish?.(null)
+  }
 })

@@ -299,6 +299,7 @@ export class SpawnCodexTransport implements CodexTransport {
   private closing: Promise<void> | null = null
   /** Single-flight bounded process-group teardown; runs on EVERY terminal transition (031). */
   private reaping: Promise<void> | null = null
+  private windowsStopReading: Promise<void> | null = null
   /**
    * ⚑ **`readonly` and now PUBLIC** (233) — see {@link CodexTransport.exited}. Private, this was a
    * fact three lines of `doReapGroup` computed and dropped on the floor.
@@ -657,8 +658,47 @@ export class SpawnCodexTransport implements CodexTransport {
   private reapGroup(): Promise<void> {
     return (this.reaping ??= this.doReapGroup().then((quiet) => {
       if (quiet) this.markQuiesced()
-      else if (process.platform !== 'win32') void this.observeGroupExit()
+      else if (process.platform === 'win32') void this.observeWindowsTreeExit()
+      else void this.observeGroupExit()
     }))
+  }
+
+  /** Observe late cleanup without extending close or sending any more termination requests. */
+  private async observeWindowsTreeExit(): Promise<void> {
+    const pid = this.child.pid
+    if (pid === undefined) return
+    let pauseMs = 1000
+    for (;;) {
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, pauseMs)
+        timer.unref?.()
+      })
+      try {
+        // A live sampling read may still be finishing; never overlap it with another table read.
+        await this.sampling
+        await this.windowsStopReading
+        const endedAt = this.endedAt
+        if (endedAt !== null) {
+          const reading = await this.opts.processTable(SAMPLE_TIMEOUT_MS)
+          if (reading !== null && reading.at >= endedAt) {
+            const known = [...this.known.values()]
+            const identities = new Set([pid, ...known.map((row) => row.pid)])
+            const unknown = reading.rows.some(
+              (row) => row.created <= 0n && (identities.has(row.pid) || identities.has(row.ppid)),
+            )
+            const tree = treeOf(reading.rows, { pid, startedAt: this.startedAt, endedAt }, known)
+            this.remember(tree, reading.at)
+            if (!unknown && tree.length === 0) {
+              this.markQuiesced()
+              return
+            }
+          }
+        }
+      } catch {
+        // An unavailable reading is not proof that a process exited.
+      }
+      pauseMs = Math.min(pauseMs * 2, 30_000)
+    }
   }
 
   /**
@@ -746,7 +786,14 @@ export class SpawnCodexTransport implements CodexTransport {
       },
       known: () => [...this.known.values()],
       remember: (rows, at) => this.remember(rows, at),
-      read: (ms) => this.opts.processTable(ms),
+      read: (ms) => {
+        const reading = this.opts.processTable(ms)
+        this.windowsStopReading = reading.then(
+          () => undefined,
+          () => undefined,
+        )
+        return reading
+      },
       startEnder,
       isRunning,
       now: () => Date.now(),
