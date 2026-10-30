@@ -1,10 +1,19 @@
-import { pluginUnavailableNotice } from '../src/shared/plugin-settings'
+import {
+  pluginUnavailableNotice,
+  pluginStartupDiagnosticNotice,
+  PluginStartupDiagnosticSchema,
+} from '../src/shared/plugin-settings'
 import { mkdtemp, readFile, rm, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { EventEmitter } from 'node:events'
+import type { ChildProcess } from 'node:child_process'
 import { afterEach, expect, it, vi } from 'vitest'
 import {
   PluginStartupError,
+  observePluginSupervisorLaunch,
+  pluginStartupDiagnostic,
+  pluginStartupStderr,
   pluginStartupReason,
   recordPluginStartupFailure,
 } from '../src/main/plugins/startup-failure'
@@ -62,4 +71,52 @@ it('a log write failure does not replace the original startup failure or prevent
   await expect(
     recordPluginStartupFailure(join(tmpdir(), 'fictional-absent', 'no-parent'), 'storage'),
   ).resolves.toBeUndefined()
+})
+
+it('retains a split first stderr line and real child exit through wrappers into the same log text', async () => {
+  const stderr = Object.assign(new EventEmitter(), { unref: vi.fn() })
+  const child = { stderr, exitCode: null as number | null, signalCode: null }
+  const snapshot = observePluginSupervisorLaunch(child as unknown as ChildProcess, [
+    'fictional-capability',
+  ])
+  stderr.emit('data', Buffer.from('Error: fictional bridge could not bind; personKey=fictional-'))
+  stderr.emit('data', Buffer.from('capability\nsecond private stack line'))
+  child.exitCode = 17
+  const wrapped = new PluginStartupError('service-start', snapshot())
+  const diagnostic = pluginStartupDiagnostic(wrapped)!
+  expect(diagnostic).toEqual({
+    exitCode: 17,
+    signal: null,
+    stderr: 'Error: fictional bridge could not bind; personKey=[redacted]',
+  })
+  expect(PluginStartupDiagnosticSchema.safeParse(diagnostic).success).toBe(true)
+  expect(stderr.unref).toHaveBeenCalledOnce()
+  stderr.emit('data', Buffer.alloc(100_000, 'x'))
+  expect(pluginStartupDiagnostic(snapshot())).toEqual(diagnostic)
+  const root = await mkdtemp(join(tmpdir(), 'fictional-plugin-exit-'))
+  roots.push(root)
+  vi.spyOn(console, 'warn').mockImplementation(() => {})
+  await recordPluginStartupFailure(root, 'service-start', wrapped)
+  const log = await readFile(join(root, 'plugin-startup.log'), 'utf8')
+  expect(log).toContain(pluginStartupDiagnosticNotice(diagnostic))
+  expect(log).not.toContain('fictional-capability')
+  expect(log).not.toContain('second private stack line')
+})
+it('does not invent a child exit or stderr at an attachment timeout and bounds escaped text', () => {
+  const snapshot = observePluginSupervisorLaunch(
+    { exitCode: null, signalCode: null, stderr: null } as unknown as ChildProcess,
+    [],
+  )
+  expect(pluginStartupDiagnostic(snapshot())).toEqual({
+    exitCode: null,
+    signal: null,
+    stderr: null,
+  })
+  expect(pluginStartupDiagnosticNotice(pluginStartupDiagnostic(snapshot())!)).toBe(
+    'Exit code not reported. No stderr was reported.',
+  )
+  expect(
+    pluginStartupStderr('\u001b[31mError: denied token=fictional-token\u202e' + 'x'.repeat(2000)),
+  ).toBe('Error: denied token=[redacted]')
+  expect(pluginStartupStderr('x'.repeat(2000))).toHaveLength(512)
 })

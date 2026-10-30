@@ -4,6 +4,7 @@ import { loadPluginConfiguration } from '../lib/plugin-configuration-load'
 import {
   pluginMutationAllowed,
   pluginUnavailableNotice,
+  pluginStartupDiagnosticNotice,
   pluginUnavailableRetryable,
   pluginDisplayedConsent,
   pluginMutationNotice,
@@ -369,6 +370,9 @@ onUnmounted(() => {
           >
             {{ card.name }} can't start right now.
             {{ pluginUnavailableNotice(card.unavailableReason) }}
+            <span v-if="card.startupDiagnostic" data-cy="plugin-start-diagnostic">{{
+              pluginStartupDiagnosticNotice(card.startupDiagnostic)
+            }}</span>
             <span v-if="failedRetries.has(card.id)" data-cy="plugin-restart-hint"
               >Restart BroCrew if this keeps happening.</span
             >

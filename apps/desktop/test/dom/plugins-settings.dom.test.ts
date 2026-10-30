@@ -615,6 +615,11 @@ it('explains an uninstalled unavailable offer and retries without installing it'
       installed: false,
       state: 'Unavailable',
       unavailableReason: 'runtime',
+      startupDiagnostic: {
+        exitCode: 17,
+        signal: null,
+        stderr: 'Error: fictional <bridge> could not bind',
+      },
     },
   ])
   const original = f.client.request
@@ -630,6 +635,10 @@ it('explains an uninstalled unavailable offer and retries without installing it'
   expect(m.q('plugin-start-error').textContent).toContain(
     "BroCrew couldn't prepare its bundled plugin runtime.",
   )
+  expect(m.q('plugin-start-diagnostic').textContent).toContain(
+    'Exit code 17. Error: fictional <bridge> could not bind',
+  )
+  expect(m.q('plugin-start-diagnostic').querySelector('bridge')).toBeNull()
   expect(m.all('plugin-install')).toHaveLength(0)
   m.q('plugin-retry').click()
   await vi.waitFor(() => expect(m.q('plugin-state').textContent).toBe('Available'))

@@ -177,6 +177,20 @@ export function pluginUnavailableNotice(reason?: PluginUnavailableReason): strin
 export function pluginUnavailableRetryable(reason?: PluginUnavailableReason): boolean {
   return reason !== 'unsupported'
 }
+export const PluginStartupDiagnosticSchema = z.strictObject({
+  exitCode: z.number().int().min(-2147483648).max(4294967295).nullable(),
+  signal: z
+    .string()
+    .regex(/^SIG[A-Z0-9]{1,16}$/)
+    .nullable(),
+  stderr: disclosureText(512).nullable(),
+})
+export type PluginStartupDiagnostic = z.infer<typeof PluginStartupDiagnosticSchema>
+export function pluginStartupDiagnosticNotice(diagnostic: PluginStartupDiagnostic): string {
+  const exit =
+    diagnostic.exitCode === null ? 'Exit code not reported' : `Exit code ${diagnostic.exitCode}`
+  return `${exit}${diagnostic.signal ? ` (${diagnostic.signal})` : ''}. ${diagnostic.stderr ?? 'No stderr was reported.'}`
+}
 export interface PluginCard {
   id: string
   name: string
@@ -184,6 +198,7 @@ export interface PluginCard {
   installed: boolean | null
   state: PluginState
   unavailableReason?: PluginUnavailableReason
+  startupDiagnostic?: PluginStartupDiagnostic
   /** Scheduling snapshot, unknown off macOS or when the owned process cannot be read. */
   priorityClamped?: boolean | null
   installedVersion?: string

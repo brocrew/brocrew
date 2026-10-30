@@ -1,6 +1,7 @@
 import {
   PluginStartupError,
   pluginStartupReason,
+  pluginStartupDiagnostic,
   recordPluginStartupFailure,
 } from './startup-failure'
 import { pluginAdapter } from './lifecycle/adapters'
@@ -26,10 +27,12 @@ import { thisMachine, type PluginTarget } from './package-schema'
 /** Stable Settings/discovery facade. Repo fetch and plugin startup never block normal agents. */
 export function productionPluginController() {
   let failure: PluginUnavailableReason = 'service-start'
+  let startupDiagnostic: PluginStartupDiagnostic | undefined
   let diagnosticRoot: string | undefined
   let diagnosticWrite = Promise.resolve()
   const failed = (reason: PluginUnavailableReason, error?: unknown) => {
     failure = pluginStartupReason(error, reason)
+    startupDiagnostic = pluginStartupDiagnostic(error)
     const root = diagnosticRoot,
       reasonToKeep = failure
     diagnosticWrite = diagnosticWrite.then(() =>
@@ -78,6 +81,7 @@ export function productionPluginController() {
       name: entry.name ?? entry.id,
       state: 'Unavailable',
       unavailableReason: cleanupUncertain ? 'cleanup-pending' : failure,
+      ...(startupDiagnostic && !cleanupUncertain ? { startupDiagnostic } : {}),
       uninstallDeletesData: Boolean(pluginAdapter(entry.id)?.uninstall),
       installed: evidence
         ? evidence.installed.includes(entry.id)
@@ -444,6 +448,54 @@ export function productionPluginController() {
           const personKey = await pluginPersonCapability(options.root)
           storage.check()
           phase = 'service-start'
+          const launch = createPluginSupervisorLauncher({
+            root: options.root,
+            workspaceRoots: [options.workspaceRoot],
+            resourcesRoot: options.resourcesRoot,
+            // Windows names no Chrome a plugin process could find by itself (see windows-chrome.ts).
+            browserExecutable:
+              options.browserExecutable ??
+              (process.platform === 'win32'
+                ? (installedChromeOnWindows() ?? undefined)
+                : undefined),
+            lifecycleForNewOwner:
+              options.fixtureSource || devSource
+                ? undefined
+                : async () => {
+                    const next = await loadRepoPluginList({
+                      root: options.root,
+                      appVersion: options.appVersion,
+                      target: options.target ?? thisMachine(),
+                      signal: lifetime.signal,
+                      sourceVersion: 2,
+                    })
+                    if (!frozenCatalogue) return fail()
+                    return {
+                      source: 'repo-list',
+                      sourceVersion: 2,
+                      appVersion: options.appVersion,
+                      catalogue: next.catalogue,
+                      catalogueSha256: next.sha256,
+                      repoList: next.repoList,
+                      legacyRepoList: frozenCatalogue.repoList,
+                      personKey,
+                      names: Object.fromEntries(
+                        next.entries.map((entry) => [entry.id, entry.name]),
+                      ),
+                    }
+                  },
+            lifecycle: {
+              source: 'repo-list',
+              appVersion: options.appVersion,
+              catalogue: catalogueEntries.catalogue,
+              catalogueSha256: catalogueEntries.sha256,
+              repoList: catalogueEntries.repoList,
+              personKey,
+              names,
+              fixtureSource: options.fixtureSource,
+              devSource,
+            },
+          })
           options.supervisor.start({
             root: options.root,
             workspaceRoot: options.workspaceRoot,
@@ -457,57 +509,18 @@ export function productionPluginController() {
               markUnavailable()
               watchForCleanStop()
             },
-            launch: createPluginSupervisorLauncher({
-              root: options.root,
-              workspaceRoots: [options.workspaceRoot],
-              resourcesRoot: options.resourcesRoot,
-              // Windows names no Chrome a plugin process could find by itself (see windows-chrome.ts).
-              browserExecutable:
-                options.browserExecutable ??
-                (process.platform === 'win32'
-                  ? (installedChromeOnWindows() ?? undefined)
-                  : undefined),
-              lifecycleForNewOwner:
-                options.fixtureSource || devSource
-                  ? undefined
-                  : async () => {
-                      const next = await loadRepoPluginList({
-                        root: options.root,
-                        appVersion: options.appVersion,
-                        target: options.target ?? thisMachine(),
-                        signal: lifetime.signal,
-                        sourceVersion: 2,
-                      })
-                      if (!frozenCatalogue) return fail()
-                      return {
-                        source: 'repo-list',
-                        sourceVersion: 2,
-                        appVersion: options.appVersion,
-                        catalogue: next.catalogue,
-                        catalogueSha256: next.sha256,
-                        repoList: next.repoList,
-                        legacyRepoList: frozenCatalogue.repoList,
-                        personKey,
-                        names: Object.fromEntries(
-                          next.entries.map((entry) => [entry.id, entry.name]),
-                        ),
-                      }
-                    },
-              lifecycle: {
-                source: 'repo-list',
-                appVersion: options.appVersion,
-                catalogue: catalogueEntries.catalogue,
-                catalogueSha256: catalogueEntries.sha256,
-                repoList: catalogueEntries.repoList,
-                personKey,
-                names,
-                fixtureSource: options.fixtureSource,
-                devSource,
-              },
-            }),
+            launch,
           })
           if (!(await options.supervisor.ready()) || ended) {
-            if (!ended) failed('service-start', options.supervisor.lastStartError)
+            if (!ended)
+              failed(
+                'service-start',
+                new PluginStartupError(
+                  pluginStartupReason(options.supervisor.lastStartError, 'service-start'),
+                  launch.diagnostic(options.supervisor.lastStartError) ??
+                    options.supervisor.lastStartError,
+                ),
+              )
             return false
           }
           phase = 'catalogue'
@@ -579,7 +592,7 @@ export function productionPluginController() {
             }
           } while (!ended && performance.now() < until)
           if (!connected || ended) {
-            if (!ended) failed('connection', connectionError)
+            if (!ended) failed('connection', launch.diagnostic(connectionError) ?? connectionError)
             if (attempt?.connection) await detach(attempt)
             return false
           }

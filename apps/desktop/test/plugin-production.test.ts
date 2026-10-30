@@ -1,3 +1,4 @@
+import { PluginSupervisorLaunchFailure } from '../src/main/plugins/startup-failure'
 import { EventEmitter } from 'node:events'
 import { randomUUID } from 'node:crypto'
 import { fixture, cleanupLifecycleFixtures } from './plugin-lifecycle-fixtures'
@@ -1056,14 +1057,30 @@ describe.skipIf(process.platform === 'win32')(
       )
       f.supervisor.ready.mockResolvedValue(false)
       Object.assign(f.supervisor, {
-        lastStartError: { code: 'unavailable', cause: { code: 'runtime' } },
+        lastStartError: {
+          code: 'unavailable',
+          cause: {
+            code: 'runtime',
+            cause: new PluginSupervisorLaunchFailure({
+              exitCode: 17,
+              signal: null,
+              stderr: 'Error: fictional bridge could not bind',
+            }),
+          },
+        },
       })
       f.controller.start(f.options)
       await f.controller.ready!()
       const cards = await f.controller.catalogue()
       expect(cards).toHaveLength(2)
       expect(
-        cards.every((card) => card.state === 'Unavailable' && card.unavailableReason === 'runtime'),
+        cards.every(
+          (card) =>
+            card.state === 'Unavailable' &&
+            card.unavailableReason === 'runtime' &&
+            card.startupDiagnostic?.exitCode === 17 &&
+            card.startupDiagnostic.stderr === 'Error: fictional bridge could not bind',
+        ),
       ).toBe(true)
       expect(f.peer.install).not.toHaveBeenCalled()
       f.supervisor.ready.mockResolvedValue(true)

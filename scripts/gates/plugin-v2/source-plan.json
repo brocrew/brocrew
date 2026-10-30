@@ -116,7 +116,8 @@
     "scripts/mutations/1017/mutations.py",
     "apps/desktop/test/plugin-settings.test.ts",
     "apps/desktop/src/main/plugins/startup-failure.ts",
-    "apps/desktop/test/plugin-startup-failure.test.ts"
+    "apps/desktop/test/plugin-startup-failure.test.ts",
+    "apps/desktop/src/main/plugins/supervisor/entry.ts"
   ],
   "files": [
     {
