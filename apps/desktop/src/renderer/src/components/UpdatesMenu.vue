@@ -4,7 +4,6 @@ import type { UpdateState, WhatARestartWouldStopIn } from '../../../shared/updat
 import { clockTime } from '../../../shared/clock'
 import { useUpdates } from '../composables/useUpdates'
 import { readableError } from '../lib/session-record'
-import WorkspacesSection from './WorkspacesSection.vue'
 
 /**
  * 🔴 **B2 · the menu the rail's footer opens: this BroBot's version, and its updates.**
@@ -19,8 +18,6 @@ import WorkspacesSection from './WorkspacesSection.vue'
  * ⛔ **A build that never checks says so in one line and offers nothing**: a development build or
  * one with no release to read (`not-here`).
  *
- * 🔴 **A3 · the workspaces come first** ({@link WorkspacesSection}): the list, open, new, rename.
- *
  * ⚑ Esc closes it; focus goes back to the footer, which is `SideRail`'s to hold.
  */
 const props = defineProps<{
@@ -28,7 +25,7 @@ const props = defineProps<{
   version?: string | null
 }>()
 
-const emit = defineEmits<{ close: []; renamed: [name: string] }>()
+const emit = defineEmits<{ close: [] }>()
 
 const updates = useUpdates()
 const snapshot = updates.snapshot
@@ -39,6 +36,10 @@ const busy = ref(false)
 
 const version = computed(() => snapshot.value?.version ?? props.version ?? null)
 const state = computed((): UpdateState | null => snapshot.value?.state ?? null)
+const notesVersion = computed(() => {
+  const current = state.value
+  return current && 'version' in current ? current.version : null
+})
 
 // ⚑ A press is answered when its work is done — a whole download — but the app tells every move on
 // the way: a new state frees the menu at once, so the next step's button is not held back.
@@ -126,16 +127,24 @@ onMounted(async () => {
     class="updates-menu"
     data-on-white
     role="dialog"
-    aria-label="Workspaces, BroCrew and its updates"
+    aria-label="BroCrew updates"
     tabindex="-1"
     data-cy="updates-menu"
     @keydown="onKey"
   >
-    <WorkspacesSection @renamed="(name) => emit('renamed', name)" />
     <p class="version" data-cy="updates-version">
       {{ version === null ? 'BroCrew' : `BroCrew ${version}` }}
     </p>
 
+    <a
+      v-if="notesVersion"
+      :href="`https://github.com/brocrew/brocrew/releases/tag/v${encodeURIComponent(notesVersion)}`"
+      target="_blank"
+      rel="noopener noreferrer"
+      class="release-notes"
+      data-cy="updates-notes"
+      >What’s new</a
+    >
     <template v-if="state === null" />
     <p v-else-if="state.kind === 'not-here'" class="said" data-cy="updates-not-here">
       {{ NOT_HERE[state.why] }}
@@ -300,6 +309,11 @@ onMounted(async () => {
   color: var(--text-soft);
   font-size: var(--type-caption);
   gap: var(--space-6);
+}
+
+.release-notes {
+  color: var(--accent-text);
+  font-size: var(--type-caption);
 }
 
 .version {

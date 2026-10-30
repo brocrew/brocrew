@@ -21,11 +21,13 @@ import { platformHere } from '../lib/this-computer'
 import ProvidersScreen from './ProvidersScreen.vue'
 import ToolsRegister from './ToolsRegister.vue'
 import ThemesSection from './ThemesSection.vue'
+import StorageSection from './StorageSection.vue'
 import SkillsSection from './SkillsSection.vue'
 import PluginsSection from './PluginsSection.vue'
 import type { PluginsClient } from '../../../shared/plugin-settings'
 
-export type SettingsTab = 'providers' | 'tools' | 'skills' | 'plugins' | 'themes' | 'general'
+export type SettingsTab =
+  'providers' | 'tools' | 'skills' | 'plugins' | 'themes' | 'general' | 'storage'
 
 const props = withDefaults(
   defineProps<{
@@ -74,6 +76,7 @@ const allTabs: readonly { id: SettingsTab; label: string }[] = [
   { id: 'plugins', label: 'Plugins' },
   { id: 'themes', label: 'Themes' },
   { id: 'general', label: 'General' },
+  { id: 'storage', label: 'Storage' },
 ]
 const tabs = computed(() => allTabs.filter((tab) => tab.id !== 'plugins' || pluginEnabled.value))
 const attentionSignals = useAttentionSignals()
@@ -245,6 +248,15 @@ async function tabKey(event: KeyboardEvent, current: SettingsTab): Promise<void>
       aria-labelledby="settings-tab-themes"
     >
       <ThemesSection />
+    </div>
+    <div
+      v-else-if="activeTab === 'storage'"
+      id="settings-panel-storage"
+      class="settings-content settings-simple"
+      role="tabpanel"
+      aria-labelledby="settings-tab-storage"
+    >
+      <StorageSection />
     </div>
     <div
       v-else

@@ -262,7 +262,7 @@ describe('B2 · the footer opens it', () => {
 
   it('🔴 a press opens the menu, Esc closes it and gives focus back to the footer', async () => {
     const r = await rail({ kind: 'not-here', why: 'a-development-build' })
-    const footer = r.q('rail-workspace') as HTMLButtonElement
+    const footer = r.q('rail-version') as HTMLButtonElement
     expect(r.all('updates-menu')).toHaveLength(0)
     footer.click()
     await settle()
@@ -280,7 +280,7 @@ describe('B2 · the footer opens it', () => {
 
   it('⚑ Esc closes it from wherever focus went after a press', async () => {
     const r = await rail({ kind: 'available', version: '0.2.0' })
-    ;(r.q('rail-workspace') as HTMLButtonElement).click()
+    ;(r.q('rail-version') as HTMLButtonElement).click()
     await settle()
     ;(r.q('updates-download') as HTMLButtonElement).click()
     await settle()
@@ -290,7 +290,7 @@ describe('B2 · the footer opens it', () => {
     expect(r.all('updates-menu')).toHaveLength(0)
   })
 
-  it('⚑ an update offered puts a dot on the avatar; none does not', async () => {
+  it('an offered update puts a dot on the version control; none does not', async () => {
     expect(
       (await rail({ kind: 'available', version: '0.2.0' })).all('rail-update-dot'),
     ).toHaveLength(1)

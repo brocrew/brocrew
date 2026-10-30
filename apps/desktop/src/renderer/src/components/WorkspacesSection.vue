@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { binWord, platformHere } from '../lib/this-computer'
+import { binWord, fileManagerHere, platformHere } from '../lib/this-computer'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import type {
   WorkspaceDeleteVerdict,
@@ -9,22 +9,9 @@ import type {
 } from '../../../shared/workspaces'
 import { sizeWords } from '../lib/files-kept'
 import { readableError } from '../lib/session-record'
+import { storageError } from '../lib/storage-words'
 
-/**
- * 🔴 **A3 · the workspaces, in the footer's menu** (`window.api.workspaces`, A2).
- *
- * ⚑ What it offers, all from the footer and nowhere else:
- *  - **the list**, most recently opened first, each with its name, its folder on hover and where it
- *    stands (this one, open, closed, not found); a press opens one — another BroBot window starts,
- *    or the one already open comes forward;
- *  - **a missing one**: *Not found — <folder>*, and *Remove from list*;
- *  - **Open workspace…** — a folder, picked;
- *  - **New workspace…** — a name, then its folder (suggested, editable, or chosen), checked before
- *    anything is made;
- *  - **Rename this workspace**.
- *
- * Read this chooser only when the footer is pressed. It does not affect launch or restart selection. Show main's refusal and warning sentences unchanged.
- */
+/** The chooser loads on opening; selecting a row exposes its workspace actions. */
 const emit = defineEmits<{
   /** ⚑ This window's own workspace was renamed — its footer says the new name at once. */
   renamed: [name: string]
@@ -39,6 +26,45 @@ const rows = ref<WorkspaceRow[] | null>(null)
 /** ⚑ What the last act said — a refusal, or a warning on something done. */
 const said = ref<{ text: string; warn: boolean } | null>(null)
 const busy = ref(false)
+const selected = ref<string | null>(null)
+const chosen = computed(() => rows.value?.find((row) => row.path === selected.value) ?? null)
+async function choose(row: WorkspaceRow | null): Promise<void> {
+  const key = row?.path ?? 'new'
+  if (selected.value === key) {
+    closeActions()
+    return
+  }
+  selected.value = key
+  making.value = false
+  renaming.value = false
+  deleting.value = null
+  await nextTick()
+  section.value?.querySelector<HTMLElement>('.workspace-flyout button:not(:disabled)')?.focus()
+}
+function closeActions(): void {
+  const key = selected.value
+  selected.value = null
+  making.value = false
+  renaming.value = false
+  deleting.value = null
+  void nextTick(() => {
+    const target =
+      key === 'new'
+        ? section.value?.querySelector<HTMLElement>('[data-cy="workspace-more"]')
+        : [...(section.value?.querySelectorAll<HTMLElement>('[data-workspace-path]') ?? [])].find(
+            (node) => node.dataset.workspacePath === key,
+          )
+    target?.focus()
+  })
+}
+async function revealWorkspace(): Promise<void> {
+  try {
+    const result = await window.api.storage.reveal()
+    if (!result.ok) said.value = { text: storageError(result.error), warn: true }
+  } catch (error) {
+    said.value = { text: readableError(error), warn: true }
+  }
+}
 
 const STATE_WORD: Readonly<Record<WorkspaceState, string>> = {
   open: 'open',
@@ -146,7 +172,7 @@ async function confirmDelete(): Promise<void> {
     }
   })
   deleting.value = null
-  void focusOn('workspace-new')
+  void focusOn('workspace-more')
 }
 
 /** ⚑ What else goes with the folder, in words — only what there is. */
@@ -345,96 +371,36 @@ const bin = binWord(platformHere())
 
     <ul v-if="rows" class="rows" data-cy="workspaces-list">
       <li v-for="row in rows" :key="row.path" :data-state="row.state" data-cy="workspace-row">
-        <template v-if="row.state === 'missing'">
-          <p class="missing" data-cy="workspace-missing">
-            <strong>{{ row.name }}</strong> · Not found — {{ row.path }}
-          </p>
-          <button
-            type="button"
-            class="small bb-button"
-            :disabled="busy"
-            data-cy="workspace-remove"
-            @click="removeRow(row)"
-          >
-            Remove from list
-          </button>
-        </template>
         <button
-          v-else
           type="button"
           class="row"
-          :class="{ here: row.isThisOne }"
+          :class="{ here: row.isThisOne, selected: selected === row.path }"
           :title="row.path"
-          :disabled="busy || row.isThisOne"
+          :disabled="busy"
           :aria-current="row.isThisOne ? 'true' : undefined"
+          :aria-expanded="selected === row.path"
+          :data-workspace-path="row.path"
           data-cy="workspace-open"
-          @click="openRow(row)"
+          @click="choose(row)"
         >
-          <span class="name" :title="row.name">{{ row.name }}</span>
-          <span class="state" data-cy="workspace-state">{{
+          <span class="name">{{ row.name }}</span
+          ><span class="state" data-cy="workspace-state">{{
             row.isThisOne ? 'this one' : STATE_WORD[row.state]
-          }}</span>
+          }}</span
+          ><span aria-hidden="true">›</span>
         </button>
-        <button
-          v-if="mayDelete(row)"
-          type="button"
-          class="small delete bb-button"
-          :disabled="busy || deleting !== null"
-          :data-cy="`workspace-delete:${row.path}`"
-          :aria-label="`Delete workspace ${row.name}…`"
-          @click="askToDelete(row)"
-        >
-          Delete workspace…
-        </button>
-        <p v-if="row.readers" class="said warn readers" data-cy="workspace-readers">
-          {{ row.readers }}
-        </p>
       </li>
     </ul>
-
-    <div
-      v-if="deleting"
-      class="confirm"
-      role="alertdialog"
-      :aria-label="`Delete ${deleting.row.name}?`"
-      data-cy="workspace-delete-confirm"
-      @keydown.esc.stop="cancelDelete"
+    <button
+      type="button"
+      class="new-or-open"
+      :disabled="busy"
+      :aria-expanded="selected === 'new'"
+      data-cy="workspace-more"
+      @click="choose(null)"
     >
-      <p class="ask">
-        <strong>Delete {{ deleting.row.name }}?</strong>
-      </p>
-      <p class="said" data-cy="workspace-delete-what">
-        Its folder {{ deleting.verdict.path }} ({{ sizeWords(deleting.verdict.bytes) }},
-        {{ deleting.verdict.files }} {{ deleting.verdict.files === 1 ? 'file' : 'files' }}) goes to
-        the {{ bin }}. You can put it back from there.
-      </p>
-      <p v-if="goesWith(deleting.verdict)" class="said" data-cy="workspace-delete-with">
-        {{ goesWith(deleting.verdict) }}
-      </p>
-      <p v-if="deleting.verdict.warning" class="said warn" data-cy="workspace-delete-warning">
-        {{ deleting.verdict.warning }}
-      </p>
-      <span class="buttons">
-        <button
-          type="button"
-          class="small bb-button"
-          data-cy="workspace-delete-cancel"
-          @click="cancelDelete"
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          class="small bb-button"
-          :disabled="busy"
-          data-cy="workspace-delete-yes"
-          @click="confirmDelete"
-        >
-          Move to {{ bin }}
-        </button>
-      </span>
-    </div>
-
+      + New or open…
+    </button>
     <p
       v-if="said"
       class="said"
@@ -444,139 +410,243 @@ const bin = binWord(platformHere())
     >
       {{ said.text }}
     </p>
-
-    <form
-      v-if="making"
-      class="form"
-      data-cy="workspace-new-form"
-      @submit.prevent="make"
-      @keydown.esc.stop="stopMaking"
+    <div
+      v-if="selected === 'new' || chosen"
+      class="workspace-flyout"
+      data-on-white
+      data-cy="workspace-flyout"
+      role="group"
+      :aria-label="chosen ? `${chosen.name} actions` : 'New or open workspace'"
+      @keydown.esc.stop="closeActions"
     >
-      <label>
-        <span>Name</span>
-        <input class="bb-input" v-model="newName" type="text" data-cy="workspace-new-name" />
-      </label>
-      <label>
-        <span>Folder</span>
-        <span class="folder">
-          <input
-            class="bb-input"
-            v-model="newPath"
-            type="text"
-            data-cy="workspace-new-path"
-            @input="pathEdited = true"
-          />
+      <h4>{{ chosen?.name ?? 'New or open' }}</h4>
+      <p v-if="chosen?.state === 'missing'" class="missing" data-cy="workspace-missing">
+        {{ chosen.name }} · Not found — {{ chosen.path }}
+      </p>
+      <p v-if="chosen?.readers" class="said warn readers" data-cy="workspace-readers">
+        {{ chosen.readers }}
+      </p>
+
+      <div
+        v-if="deleting"
+        class="confirm"
+        role="alertdialog"
+        :aria-label="`Delete ${deleting.row.name}?`"
+        data-cy="workspace-delete-confirm"
+        @keydown.esc.stop="cancelDelete"
+      >
+        <p class="ask">
+          <strong>Delete {{ deleting.row.name }}?</strong>
+        </p>
+        <p class="said" data-cy="workspace-delete-what">
+          Its folder {{ deleting.verdict.path }} ({{ sizeWords(deleting.verdict.bytes) }},
+          {{ deleting.verdict.files }} {{ deleting.verdict.files === 1 ? 'file' : 'files' }}) goes
+          to the {{ bin }}. You can put it back from there.
+        </p>
+        <p v-if="goesWith(deleting.verdict)" class="said" data-cy="workspace-delete-with">
+          {{ goesWith(deleting.verdict) }}
+        </p>
+        <p v-if="deleting.verdict.warning" class="said warn" data-cy="workspace-delete-warning">
+          {{ deleting.verdict.warning }}
+        </p>
+        <span class="buttons">
+          <button
+            type="button"
+            class="small bb-button"
+            data-cy="workspace-delete-cancel"
+            @click="cancelDelete"
+          >
+            Cancel
+          </button>
           <button
             type="button"
             class="small bb-button"
             :disabled="busy"
-            data-cy="workspace-new-choose"
-            @click="chooseNewFolder"
+            data-cy="workspace-delete-yes"
+            @click="confirmDelete"
           >
-            Choose…
+            Move to {{ bin }}
           </button>
         </span>
-      </label>
-      <p v-if="checkFailed" class="said warn" data-cy="workspace-new-check-failed">
-        {{ checkFailed }}
-      </p>
-      <p
-        v-else-if="verdict && (verdict.refusal || verdict.warning)"
-        class="said"
-        :class="{ warn: verdict.refusal !== null }"
-        data-cy="workspace-new-verdict"
-      >
-        {{ verdict.refusal ?? verdict.warning }}
-      </p>
-      <span class="buttons">
-        <button
-          type="button"
-          class="small bb-button"
-          data-cy="workspace-new-cancel"
-          @click="stopMaking"
-        >
-          Cancel
-        </button>
-        <button
-          type="submit"
-          class="small go bb-button bb-button--primary"
-          :disabled="!mayMake"
-          data-cy="workspace-new-make"
-        >
-          Make and open
-        </button>
-      </span>
-    </form>
+      </div>
 
-    <form
-      v-else-if="renaming"
-      class="form"
-      data-cy="workspace-rename-form"
-      @submit.prevent="rename"
-      @keydown.esc.stop="stopRenaming"
-    >
-      <label>
-        <span>Name</span>
-        <input class="bb-input" v-model="newTitle" type="text" data-cy="workspace-rename-name" />
-      </label>
-      <span class="buttons">
-        <button
-          type="button"
-          class="small bb-button"
-          data-cy="workspace-rename-cancel"
-          @click="stopRenaming"
+      <form
+        v-if="making"
+        class="form"
+        data-cy="workspace-new-form"
+        @submit.prevent="make"
+        @keydown.esc.stop="stopMaking"
+      >
+        <label>
+          <span>Name</span>
+          <input class="bb-input" v-model="newName" type="text" data-cy="workspace-new-name" />
+        </label>
+        <label>
+          <span>Folder</span>
+          <span class="folder">
+            <input
+              class="bb-input"
+              v-model="newPath"
+              type="text"
+              data-cy="workspace-new-path"
+              @input="pathEdited = true"
+            />
+            <button
+              type="button"
+              class="small bb-button"
+              :disabled="busy"
+              data-cy="workspace-new-choose"
+              @click="chooseNewFolder"
+            >
+              Choose…
+            </button>
+          </span>
+        </label>
+        <p v-if="checkFailed" class="said warn" data-cy="workspace-new-check-failed">
+          {{ checkFailed }}
+        </p>
+        <p
+          v-else-if="verdict && (verdict.refusal || verdict.warning)"
+          class="said"
+          :class="{ warn: verdict.refusal !== null }"
+          data-cy="workspace-new-verdict"
         >
-          Cancel
-        </button>
-        <button
-          type="submit"
-          class="small go bb-button bb-button--primary"
-          :disabled="busy || newTitle.trim() === ''"
-          data-cy="workspace-rename-save"
-        >
-          Rename
-        </button>
-      </span>
-    </form>
+          {{ verdict.refusal ?? verdict.warning }}
+        </p>
+        <span class="buttons">
+          <button
+            type="button"
+            class="small bb-button"
+            data-cy="workspace-new-cancel"
+            @click="stopMaking"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            class="small go bb-button bb-button--primary"
+            :disabled="!mayMake"
+            data-cy="workspace-new-make"
+          >
+            Make and open
+          </button>
+        </span>
+      </form>
 
-    <div v-else class="acts">
-      <button
-        type="button"
-        class="small bb-button"
-        :disabled="busy"
-        data-cy="workspace-open-folder"
-        @click="openAFolder"
+      <form
+        v-else-if="renaming"
+        class="form"
+        data-cy="workspace-rename-form"
+        @submit.prevent="rename"
+        @keydown.esc.stop="stopRenaming"
       >
-        Open workspace…
-      </button>
-      <button
-        type="button"
-        class="small bb-button"
-        :disabled="busy"
-        data-cy="workspace-new"
-        @click="startMaking"
-      >
-        New workspace…
-      </button>
-      <button
-        v-if="thisOne"
-        type="button"
-        class="small bb-button"
-        :disabled="busy"
-        data-cy="workspace-rename"
-        @click="startRenaming"
-      >
-        Rename this workspace
-      </button>
+        <label>
+          <span>Name</span>
+          <input class="bb-input" v-model="newTitle" type="text" data-cy="workspace-rename-name" />
+        </label>
+        <span class="buttons">
+          <button
+            type="button"
+            class="small bb-button"
+            data-cy="workspace-rename-cancel"
+            @click="stopRenaming"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            class="small go bb-button bb-button--primary"
+            :disabled="busy || newTitle.trim() === ''"
+            data-cy="workspace-rename-save"
+          >
+            Rename
+          </button>
+        </span>
+      </form>
+
+      <div v-else-if="!deleting" class="acts">
+        <template v-if="selected === 'new'">
+          <button
+            type="button"
+            class="small bb-button"
+            :disabled="busy"
+            data-cy="workspace-open-folder"
+            @click="openAFolder"
+          >
+            Open workspace…
+          </button>
+          <button
+            type="button"
+            class="small bb-button"
+            :disabled="busy"
+            data-cy="workspace-new"
+            @click="startMaking"
+          >
+            New workspace…
+          </button>
+        </template>
+        <template v-else-if="chosen?.isThisOne">
+          <button
+            type="button"
+            class="small bb-button"
+            :disabled="busy"
+            data-cy="workspace-rename"
+            @click="startRenaming"
+          >
+            Rename
+          </button>
+          <button
+            type="button"
+            class="small bb-button"
+            :disabled="busy"
+            data-cy="workspace-reveal"
+            @click="revealWorkspace"
+          >
+            {{ `Show in ${fileManagerHere()}` }}
+          </button>
+        </template>
+        <template v-else-if="chosen">
+          <button
+            v-if="chosen.state === 'missing'"
+            type="button"
+            class="small bb-button"
+            :disabled="busy"
+            data-cy="workspace-remove"
+            @click="removeRow(chosen)"
+          >
+            Remove from list
+          </button>
+          <button
+            v-else
+            type="button"
+            class="small bb-button"
+            :disabled="busy"
+            data-cy="workspace-open-selected"
+            @click="openRow(chosen)"
+          >
+            Open
+          </button>
+          <button
+            v-if="mayDelete(chosen)"
+            type="button"
+            class="small bb-button delete"
+            :disabled="busy"
+            :data-cy="`workspace-delete:${chosen.path}`"
+            :aria-label="`Delete workspace ${chosen.name}…`"
+            @click="askToDelete(chosen)"
+          >
+            Delete…
+          </button>
+        </template>
+      </div>
     </div>
   </section>
 </template>
 
 <style scoped>
 .workspaces {
+  position: relative;
   display: grid;
-  padding-bottom: var(--space-4);
-  border-bottom: var(--border-width) solid var(--line);
   gap: var(--space-3);
 }
 
@@ -714,5 +784,58 @@ const bin = binWord(platformHere())
 input[type='text'] {
   flex: 1;
   font-size: var(--type-small);
+}
+.rows {
+  max-height: 45vh;
+  overflow-y: auto;
+}
+.row {
+  cursor: pointer;
+}
+.row.selected {
+  background: var(--wash-5);
+}
+.new-or-open {
+  width: 100%;
+  border: 0;
+  border-top: var(--border-width) solid var(--line);
+  background: transparent;
+  color: var(--accent-text);
+  font: inherit;
+  font-size: var(--type-caption);
+  padding: var(--space-4) var(--space-3) 0;
+  text-align: left;
+  cursor: pointer;
+}
+.workspace-flyout {
+  position: absolute;
+  z-index: 30;
+  left: calc(100% + var(--space-8));
+  bottom: 0;
+  width: 260px;
+  max-height: calc(100vh - var(--space-24));
+  overflow-y: auto;
+  padding: var(--space-8);
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--radius-card);
+  background: var(--panel);
+  box-shadow: var(--shadow-menu);
+  display: grid;
+  gap: var(--space-4);
+}
+.workspace-flyout h4 {
+  margin: 0;
+  color: var(--faint);
+  font: inherit;
+  font-weight: var(--fw-semibold);
+  overflow-wrap: anywhere;
+}
+.workspace-flyout .acts {
+  display: grid;
+  gap: var(--space-3);
+}
+.workspace-flyout .acts button {
+  width: 100%;
+  text-align: left;
 }
 </style>

@@ -8,6 +8,8 @@ import { createSessionStore } from '../src/renderer/src/lib/session-store'
 import { DEFAULT_CAPABILITIES, type CapabilityGrant } from '../src/shared/capabilities'
 import { NOT_THE_WIRE, asTheWireWouldCarry, everythingOverTheWire } from './lib/the-wire'
 import type { AgentIdentities, RuntimeBridge, RuntimeCommandKind } from '../src/shared/runtime-ipc'
+import { storageBridge } from '../src/preload/storage'
+import { STORAGE_CHANNELS } from '../src/shared/storage'
 
 /**
  * # 🔴 The bridge that clones nothing (361)
@@ -1080,6 +1082,14 @@ function preloadSurface(): Map<string, string> {
   expect(plugins.get('onReviewInvalidated')).not.toContain('ipc.invoke')
   for (const [name, body] of plugins)
     surface.set(name, body.replace('ipc.invoke', 'ipcRenderer.invoke'))
+  expect(surface.get('storage')).toMatch(/^ {2}storage: storageBridge\(ipcRenderer\),/)
+  surface.delete('storage')
+  const storage = membersOf(
+    withoutProse(source('src/preload/storage.ts')).replace(/^ {4}(?=\w)/gm, '  '),
+  )
+  expect([...storage.keys()].sort()).toEqual(['children', 'clearCache', 'measure', 'reveal'])
+  for (const [name, body] of storage)
+    surface.set(`storage.${name}`, body.replaceAll('ipc.invoke', 'ipcRenderer.invoke'))
   return surface
 }
 
@@ -1088,6 +1098,50 @@ describe('§3 · what is exempt is derived from the preload, not written down (3
   /** A member reaches the wire if its own body invokes, or goes through the `command` helper. */
   const invokes = (body: string): boolean =>
     body.includes('ipcRenderer.invoke') || /(?:^|[^\w.])command\(/.test(body)
+
+  it('every Storage factory method is an invoke member, with no namespace exemption', () => {
+    expect(surface.has('storage')).toBe(false)
+    const storage = [...surface].filter(([name]) => name.startsWith('storage.'))
+    expect(storage.map(([name]) => name).sort()).toEqual([
+      'storage.children',
+      'storage.clearCache',
+      'storage.measure',
+      'storage.reveal',
+    ])
+    for (const [name, body] of storage) {
+      expect(invokes(body), name).toBe(true)
+      expect(NOT_THE_WIRE.has(name), name).toBe(false)
+    }
+  })
+
+  it('the real Storage factory carries plain arguments and refuses reactive locations over the wire', async () => {
+    const seen: { channel: string; arguments: unknown[] }[] = []
+    const bridge = storageBridge({
+      invoke: async (channel: string, ...args: unknown[]) => {
+        seen.push({ channel, arguments: asTheWireWouldCarry(channel, args) })
+        return { ok: true }
+      },
+    })
+    const location = { part: 'workspace' as const, segments: ['one'] }
+    await bridge.measure()
+    await bridge.children(location)
+    await bridge.reveal(location)
+    await bridge.clearCache()
+    expect(seen).toEqual([
+      { channel: STORAGE_CHANNELS.measure, arguments: [] },
+      { channel: STORAGE_CHANNELS.children, arguments: [location] },
+      { channel: STORAGE_CHANNELS.reveal, arguments: [location] },
+      { channel: STORAGE_CHANNELS.clearCache, arguments: [] },
+    ])
+    expect(seen[1]!.arguments[0]).not.toBe(location)
+    await expect(bridge.children(reactive(location))).rejects.toThrow(
+      /would not survive ipcRenderer\.invoke/,
+    )
+    await expect(bridge.reveal(reactive(location))).rejects.toThrow(
+      /would not survive ipcRenderer\.invoke/,
+    )
+    expect(seen).toHaveLength(4)
+  })
 
   it('the separate theme surface classifies each verb and exempts only its subscription', () => {
     const themeSource = withoutProse(source('src/preload/themes.ts'))
