@@ -50,6 +50,7 @@ class FakeQuery {
   private resolve: ((value: IteratorResult<SDKMessage>) => void) | null = null
   private readonly buffer: SDKMessage[] = []
   private done = false
+  readonly sent: unknown[] = []
 
   emit(message: SDKMessage): void {
     if (this.resolve) {
@@ -183,7 +184,14 @@ describe('D-004 · R101 — a login renewed elsewhere reopens the conversation i
           (params) => {
             const fq = new FakeQuery()
             launches.push({ fq, options: params.options })
-            fq.cli.listen(params.prompt)
+            fq.cli.listen(
+              (async function* () {
+                for await (const message of params.prompt) {
+                  fq.sent.push(message)
+                  yield message
+                }
+              })(),
+            )
             return fq as never
           },
           async (sessionId) => announced.has(sessionId),
@@ -392,6 +400,62 @@ describe('D-004 · R101 — a login renewed elsewhere reopens the conversation i
     expect(after.some((event) => event.type === 'user_turn')).toBe(false)
   })
 
+  it.each(['idle', 'stopped'] as const)(
+    'one message to an old %s conversation resumes it on the current login',
+    async (state) => {
+      const host = buildHost()
+      const window = new Window(host)
+      const { sessionId } = await host.createSession(
+        { provider: 'claude', cwd: join(dir, 'cwd') },
+        window.sink,
+      )
+      await host.send(sessionId, 'first', window.sink)
+      announced.add('provider-A')
+      launches[0]!.fq.emit(
+        frame({ type: 'system', subtype: 'init', session_id: 'provider-A', cwd: join(dir, 'cwd') }),
+      )
+      launches[0]!.fq.emit(frame({ type: 'result', subtype: 'success', is_error: false }))
+      await waitFor(
+        () => eventsOf(sessionId).some((event) => event.type === 'turn'),
+        'the first turn',
+      )
+
+      if (state === 'stopped') await host.close(sessionId, window.sink)
+      machineLogin = 'test-current-machine-login'
+      await host.send(sessionId, 'continue on this Mac', window.sink)
+      await waitFor(() => launches.length === 2, 'the old conversation to resume')
+      launches[1]!.fq.emit(
+        frame({ type: 'system', subtype: 'init', session_id: 'provider-A', cwd: join(dir, 'cwd') }),
+      )
+      await waitFor(() => launches[1]!.fq.sent.length === 1, 'the one message to arrive')
+      expect(launches[1]!.options.resume).toBe('provider-A')
+      expect(launches[1]!.fq.sent).toEqual([
+        expect.objectContaining({
+          message: expect.objectContaining({
+            content: expect.stringContaining('continue on this Mac'),
+          }),
+        }),
+      ])
+      expect(launches[1]!.options.env?.['CLAUDE_CODE_OAUTH_TOKEN']).toBe(
+        'test-current-machine-login',
+      )
+      expect(
+        eventsOf(sessionId).filter(
+          (event) => event.type === 'user_turn' && event.text === 'continue on this Mac',
+        ),
+      ).toHaveLength(1)
+      launches[1]!.fq.emit(frame({ type: 'result', subtype: 'success', is_error: false }))
+      await waitFor(
+        () =>
+          eventsOf(sessionId).filter(
+            (event) => event.type === 'turn' && event.state === 'completed',
+          ).length === 2,
+        'the continued turn to finish',
+      )
+      expect(launches).toHaveLength(2)
+    },
+  )
+
   it('the same token: today’s stop, and no reopen', async () => {
     const { sessionId, record } = await killedMidTurn(() => {})
     await waitFor(
@@ -400,6 +464,12 @@ describe('D-004 · R101 — a login renewed elsewhere reopens the conversation i
     )
     await new Promise((resolve) => setTimeout(resolve, 100))
     expect(launches).toHaveLength(1)
+    expect(eventsOf(sessionId)).toContainEqual({
+      type: 'error',
+      message: REVOKED,
+      fatal: true,
+      cause: 'auth',
+    })
     expect(eventsOf(sessionId).some((event) => event.type === 'reopened')).toBe(false)
   })
 

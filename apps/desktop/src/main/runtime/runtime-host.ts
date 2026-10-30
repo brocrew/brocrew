@@ -46832,6 +46832,7 @@ export class RuntimeHost implements LiveHost {
       event.type === 'error' &&
       event.fatal &&
       event.cause !== 'auth_stale' &&
+      event.cause !== 'auth' &&
       event.billingRefused !== true &&
       event.endedByItsAdapter !== true &&
       !this.itsStreamBroke.has(session)

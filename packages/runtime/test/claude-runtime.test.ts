@@ -365,6 +365,7 @@ async function startFake(
     apiKey?: string
     /** A FAKE machine login token, when a test is about which credential was refused. */
     login?: string
+    currentLogin?: () => Promise<string | null>
     /** W4.189 · the launch's work folders, when a test is about them. */
     workFolders?: readonly string[]
     /** A scratch folder launched in AND used as the provider home, for kept rules on disk. */
@@ -398,7 +399,7 @@ async function startFake(
     },
     async () => true,
     opts.login === undefined ? undefined : () => opts.login ?? null,
-    undefined,
+    opts.currentLogin,
     undefined,
     opts.apiKey === undefined ? undefined : () => opts.apiKey ?? null,
   )
@@ -8011,6 +8012,85 @@ describe('ClaudeRuntime — a credential refused mid-session (110)', () => {
       },
       error: 'authentication_failed',
     })
+
+  it.each([
+    ['the same current login', async (): Promise<string | null> => 'fake-launch-login', 'auth'],
+    [
+      'a different current login',
+      async (): Promise<string | null> => 'fake-current-login',
+      'auth_stale',
+    ],
+    ['an unreadable or expired login', async (): Promise<string | null> => null, 'auth_stale'],
+    [
+      'a failed login read',
+      async () => {
+        throw new Error('fake read failure')
+      },
+      'auth_stale',
+    ],
+  ] as const)(
+    'classifies a rejected launch token against %s',
+    async (_name, currentLogin, cause) => {
+      const { fq, handle, events, consumer } = await startFake({
+        login: 'fake-launch-login',
+        currentLogin,
+      })
+      fq.emit(init('sess_1', '/tmp/x'))
+      await vi.waitFor(has(events, (event) => event.type === 'session'))
+      await handle.send('continue this conversation')
+      refuse(fq)
+      await vi.waitFor(has(events, (event) => event.type === 'status' && event.state === 'errored'))
+      expect(events.filter((event) => event.type === 'error')).toEqual([
+        { type: 'error', message: REFUSAL, fatal: true, cause },
+      ])
+      expect(events.filter((event) => event.type === 'turn')).toEqual([
+        { type: 'turn', state: 'failed', wordOf: 'this-app', loginRefused: true },
+      ])
+      await handle.close()
+      await consumer
+    },
+  )
+
+  it('drops a credential refusal if close finishes while its login read is pending', async () => {
+    let finishRead!: (value: string | null) => void
+    const currentLogin = vi.fn(
+      () =>
+        new Promise<string | null>((resolve) => {
+          finishRead = resolve
+        }),
+    )
+    const { fq, handle, events, consumer } = await startFake({
+      login: 'fake-launch-login',
+      currentLogin,
+    })
+    fq.emit(init('sess_1', '/tmp/x'))
+    await vi.waitFor(has(events, (event) => event.type === 'session'))
+    await handle.send('continue')
+    refuse(fq)
+    await vi.waitFor(() => expect(currentLogin).toHaveBeenCalledOnce())
+    await handle.close()
+    finishRead('fake-launch-login')
+    await consumer
+    expect(events.filter((event) => event.type === 'error')).toEqual([])
+    expect(handle.status()).toBe('ended')
+  })
+
+  it('does not read the machine login to classify a saved API key refusal', async () => {
+    const currentLogin = vi.fn(async () => 'fake-machine-login')
+    const { fq, handle, events, consumer } = await startFake({
+      apiKey: 'fake-api-key',
+      currentLogin,
+    })
+    fq.emit(init('sess_1', '/tmp/x'))
+    await vi.waitFor(has(events, (event) => event.type === 'session'))
+    await handle.send('continue')
+    refuse(fq)
+    await vi.waitFor(has(events, (event) => event.type === 'status' && event.state === 'errored'))
+    expect(currentLogin).not.toHaveBeenCalled()
+    expect(events.find((event) => event.type === 'error')).toMatchObject({ onAKey: true })
+    await handle.close()
+    await consumer
+  })
 
   it('ends the session, fails the turn, and refuses to take another message', async () => {
     const { fq, handle, events, consumer } = await startFake()
