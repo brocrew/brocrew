@@ -105,6 +105,7 @@ import {
 // ⚑ **672 · a value import with no cycle** — `piece-called.ts` imports nothing.
 import { pieceNumbersOf } from '../../../shared/piece-called'
 import { textPackRefusedSaid } from '../../../shared/text-pack'
+import { isClaudeLoginRefused, isClaudeSignInRetry } from './claude-sign-in'
 
 /**
  * The event stream, folded into what the screen shows.
@@ -1510,6 +1511,12 @@ export interface NoticeItem {
    * draws the same function WITH the roster, so the two differ only in which name the parent has.
    */
   text: string
+  /** Claude retries and the final refusal share one row; diagnostics stay in Details. */
+  claudeSignIn?: {
+    state: 'retrying' | 'refused' | 'recovered'
+    needsSignIn?: true
+    details: string[]
+  }
   /**
    * 🔴 **667 · a reply that reached nobody, as facts** — see `lib/lost-reply.ts`. ⛔ Facts and not
    * the sentence, because the parent is named through a roster that lands after the ledger.
@@ -2151,7 +2158,7 @@ export interface TranscriptState {
    * the cause, so it must be free to draw it. That is the direction that shows a fact rather than
    * hides one.
    */
-  lastError: { raw: string; shown: string } | null
+  lastError: { raw: string; shown: string; claudeSignInNotice?: string } | null
   /**
    * ⛔ **What is still running in the background right now** (248) — see {@link BackgroundRegistry}.
    *
@@ -2895,8 +2902,8 @@ const AUTH_KEY_NOTICE =
  *
  * ⚠️ That is a DIFFERENT sentence from {@link AUTH_ERROR_NOTICE} above, and an earlier version of
  * this comment said it was the same one (review). They are two remedies on two paths: that notice
- * needs a live event stream carrying `cause: 'auth'`, which only Codex produces, and it never fires
- * on a Claude reopen. Nothing pins the two texts together, so nothing should imply they move
+ * handles Codex's `cause: 'auth'`; Claude's rejected current login has its own sign-in notice.
+ * Nothing pins the two texts together, so nothing should imply they move
  * together.
  *
  * ⚠️ **It names the control by the word ON the control.** The first draft said "reopen it from the
@@ -2937,6 +2944,11 @@ const STALE_AUTH_NOTICE =
   'it a message to carry on: that reads your machine login again, and says so if that login has ' +
   'expired too. It carries on without its “Allow for this conversation” approvals or ' +
   'anything that was running in the background.'
+
+const CLAUDE_LOGIN_REFUSED_NOTICE =
+  'Claude rejected the current machine sign-in. Sign in again to continue this conversation. ' +
+  'Its transcript is kept. It carries on without its “Allow for this conversation” approvals ' +
+  'or anything that was running in the background.'
 
 /**
  * ⚑ **The same refusal, when the credential was the API key a person saved** (`onAKey` on the
@@ -3146,6 +3158,31 @@ function notice(
     text,
     ...(providersWords ? { providersWords: true as const } : {}),
   })
+}
+
+function claudeSignInNotice(
+  state: TranscriptState,
+  text: string,
+  detail: string,
+  retrying: boolean,
+  needsSignIn = false,
+): void {
+  const previous = state.items.find((item) => item.id === state.lastError?.claudeSignInNotice)
+  const details = previous?.kind === 'notice' ? (previous.claudeSignIn?.details ?? []) : []
+  const item: NoticeItem = {
+    kind: 'notice',
+    id: previous?.id ?? nextId(state, 'notice'),
+    level: retrying ? 'warn' : 'error',
+    text,
+    claudeSignIn: {
+      state: retrying ? 'retrying' : 'refused',
+      ...(needsSignIn ? { needsSignIn: true as const } : {}),
+      details: [...details, detail],
+    },
+  }
+  if (previous?.kind === 'notice') Object.assign(previous, item)
+  else state.items.push(item)
+  state.lastError = { raw: detail, shown: text, claudeSignInNotice: item.id }
 }
 
 /**
@@ -5766,6 +5803,26 @@ function foldEvent(
       // ⚠️ Compared strictly: a replayed payload is a cast (`session-store.ts`), never re-parsed.
       // 🔴 **F074 — and a turn its provider refused for the usage limit says so, on its ending**,
       // with the reset: the limit is recorded IN the ending, never only among the errors beside it.
+      if (state.lastError?.claudeSignInNotice !== undefined && event.state !== 'interrupted') {
+        const item = state.items.find((one) => one.id === state.lastError?.claudeSignInNotice)
+        if (item?.kind === 'notice' && item.claudeSignIn) {
+          item.claudeSignIn.details.push(
+            event.wordOf === 'this-app'
+              ? `turn ${event.state} — ${THE_APPS_OWN_WORD}`
+              : `turn ${event.state}`,
+          )
+          if (event.state === 'completed') {
+            item.text = 'Claude sign-in recovered.'
+            item.level = 'info'
+            item.claudeSignIn.state = 'recovered'
+          } else if (item.claudeSignIn.state === 'retrying') {
+            item.text = STALE_AUTH_NOTICE
+            item.level = 'error'
+            item.claudeSignIn.state = 'refused'
+          }
+          return
+        }
+      }
       notice(
         state,
         event.state === 'completed' ? 'info' : 'warn',
@@ -5782,6 +5839,29 @@ function foldEvent(
       // The runtime's notice that the model is still thinking is drawn as one live line at the
       // end, from the conversation's liveness, so it leaves no row behind once thinking ends.
       if (event.stall === true && event.thinking === true) return
+      if (
+        event.onAKey !== true &&
+        (event.cause === 'auth_stale' ||
+          isClaudeLoginRefused(state.ref?.provider, event.cause) ||
+          isClaudeSignInRetry(state.ref?.provider, event.message))
+      ) {
+        const needsSignIn = isClaudeLoginRefused(state.ref?.provider, event.cause)
+        const retrying = event.cause === undefined
+        const attempt = event.message.match(/attempt \d+\/\d+/)?.[0]
+        claudeSignInNotice(
+          state,
+          retrying
+            ? `Claude is retrying sign-in${attempt ? ` (${attempt})` : ''}.`
+            : needsSignIn
+              ? CLAUDE_LOGIN_REFUSED_NOTICE
+              : STALE_AUTH_NOTICE,
+          event.message,
+          retrying,
+          needsSignIn,
+        )
+        if (event.fatal) markTerminal(state, NOTHING_WAITS_FOR_THIS_ANSWER)
+        return
+      }
       // ⚠️ **A rejected credential is the one error whose provider text is useless to a reader**
       // (098). The measured sentence is *"Your access token could not be refreshed because your
       // refresh token was already used. Please log out and sign in again."* — every word true, every
@@ -5844,6 +5924,12 @@ function foldEvent(
         // it (`describe-event.ts`), 085's split.
         const ending = turnFailureDetail(event.message)
         if (ending !== null) {
+          if (state.lastError?.claudeSignInNotice !== undefined) {
+            const item = state.items.find((one) => one.id === state.lastError?.claudeSignInNotice)
+            if (item?.kind === 'notice') item.claudeSignIn?.details.push(event.message)
+            if (event.fatal) markTerminal(state, NOTHING_WAITS_FOR_THIS_ANSWER)
+            return
+          }
           const reason = providerErrorSentence(ending)
           const said = state.lastError
           const repeat = said !== null && (ending === said.raw || reason === said.shown)

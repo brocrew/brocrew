@@ -86,6 +86,10 @@ const props = withDefaults(
      * pane that knows its conversation's provider hands it (the conversation and reading panes).
      */
     provider?: Provider | null
+    canRecoverSignIn?: boolean
+    signInExpired?: boolean
+    signInRenewed?: boolean
+    recoveringSignIn?: boolean
     /**
      * 🔴 **The identity roster, so a RELAYED row can name the conversation that relayed it** (545)
      * — see `lib/relayed-turn.ts`.
@@ -456,7 +460,18 @@ const dimmed = (row: TranscriptRow): boolean =>
 
 const keyOf = itemKey
 
+const latestSignInNotice = computed(() => {
+  for (let index = props.items.length - 1; index >= 0; index--) {
+    const item = props.items[index]
+    if (item?.kind === 'user') return null
+    if (item?.kind === 'notice' && item.claudeSignIn?.state === 'refused') return item
+  }
+  return null
+})
+
 defineEmits<{
+  signIn: []
+  retrySignIn: []
   decide: [requestId: string, decision: PermissionDecision]
   move: [requestId: string, decision: 'move' | 'here']
   respond: [requestId: string, response: UserInputResponse]
@@ -976,6 +991,12 @@ defineExpose({ focusItem })
           :item="row.item"
           :identities="props.identities ?? null"
           :provider="props.provider"
+          :can-recover-sign-in="props.canRecoverSignIn && row.item === latestSignInNotice"
+          :sign-in-expired="row.item === latestSignInNotice && props.signInExpired"
+          :sign-in-renewed="row.item === latestSignInNotice && props.signInRenewed"
+          :recovering-sign-in="props.recoveringSignIn"
+          @sign-in="$emit('signIn')"
+          @retry-sign-in="$emit('retrySignIn')"
         />
         <!-- The one durable fact a compaction leaves (087). Above it, the conversation fades — see
            `faded`. It renders in BOTH modes: the toggle is for whispers, and this is the reason the

@@ -167,11 +167,20 @@ const noticeOf = async (cause: 'auth_stale' | 'auth', drawnWhole = false): Promi
   }
   // ⚑ and every notice carries its whole sentence on its title, so a cut one is still readable
   expect(shown[0]!.title).toBe(shown[0]!.textContent)
+  if (cause === 'auth_stale') {
+    expect(shown[0]!.innerText.trim()).toBe("Couldn't continue with the old sign-in.")
+    const details = m.q('claude-sign-in-details') as HTMLDetailsElement
+    expect(details.open).toBe(false)
+    details.querySelector('summary')!.click()
+    await nextTick()
+    expect(details.open).toBe(true)
+    return details.innerText.trim()
+  }
   return shown[0]!.innerText.trim()
 }
 
 describe('§2 · F6 · the stale sign-in notice', () => {
-  it('🔴 it says what is kept, how to carry on, and what does not come back', async () => {
+  it('Details says what is kept, how to carry on, and what does not come back', async () => {
     const text = await noticeOf('auth_stale', true)
     expect(text).toContain('Its transcript is kept')
     // ⚑ **D-017b** — no heading and no press: a message from the conversation's own view carries it on.
