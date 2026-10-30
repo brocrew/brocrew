@@ -20,7 +20,7 @@ const seams = vi.hoisted(() => ({
   connect: vi.fn(),
   launch: vi.fn((options: unknown) => {
     void options
-    return async () => {}
+    return Object.assign(async () => {}, { diagnostic: () => undefined })
   }),
 }))
 vi.mock('../src/main/plugins/lifecycle/settings-client', () => ({
