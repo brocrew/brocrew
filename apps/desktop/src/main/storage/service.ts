@@ -3,7 +3,7 @@ import type { StorageError } from '../../shared/storage'
 import type { StorageReply, StorageRequest, StorageRoots } from './engine'
 
 export interface StorageWorker {
-  once: Worker['once']
+  once(...args: Parameters<Worker['once']>): void
   terminate: Worker['terminate']
 }
 export type StorageWorkerFactory = (roots: StorageRoots, request: StorageRequest) => StorageWorker
