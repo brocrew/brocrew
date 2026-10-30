@@ -1,4 +1,5 @@
-import * as fs from 'node:fs'
+import fs from 'node:fs'
+import { syncBuiltinESMExports } from 'node:module'
 import { windowsAccessLists } from '../src/main/recovery/windows-privacy'
 import { EventEmitter } from 'node:events'
 import { randomUUID } from 'node:crypto'
@@ -48,6 +49,7 @@ afterEach(async () => {
   await cleanupLifecycleFixtures()
   for (const r of roots.splice(0)) await rm(r, { recursive: true, force: true })
   vi.restoreAllMocks()
+  syncBuiltinESMExports()
   vi.clearAllMocks()
   vi.unstubAllGlobals()
 })
@@ -1309,6 +1311,7 @@ describe('production plugin admission with folder privacy failures on every plat
         if (condition === 'foreign owner' && process.getuid)
           vi.spyOn(process, 'getuid').mockReturnValue(process.getuid() + 1)
       }
+      syncBuiltinESMExports()
       f.peer.install.mockImplementation(async () => {
         f.peer.catalogue.mockResolvedValue([
           { id: f.pkg.release.id, name: f.pkg.release.id, installed: true, state: 'Running' },
