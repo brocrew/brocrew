@@ -163,7 +163,7 @@ export function pluginUnavailableNotice(reason?: PluginUnavailableReason): strin
     case 'connection-lost':
       return 'Settings lost its connection to the plugin service. Try again.'
     case 'cleanup-pending':
-      return 'The previous plugin service has not finished stopping. Try again after it has stopped.'
+      return 'The plugin service is busy or still stopping. Wait a moment, then try again.'
     case 'catalogue-response':
       return "The plugin service couldn't return a verified plugin list. Try again."
     case 'operation-pending':

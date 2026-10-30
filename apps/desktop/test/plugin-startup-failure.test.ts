@@ -1,3 +1,4 @@
+import { pluginUnavailableNotice } from '../src/shared/plugin-settings'
 import { mkdtemp, readFile, rm, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -19,6 +20,9 @@ it('retains the failed phase through supervisor wrappers without exposing arbitr
   })
   expect(pluginStartupReason(error, 'service-start')).toBe('runtime')
   expect(pluginStartupReason({ code: 'busy' }, 'service-start')).toBe('cleanup-pending')
+  expect(pluginUnavailableNotice(pluginStartupReason({ code: 'busy' }, 'service-start'))).toContain(
+    'busy',
+  )
   expect(pluginStartupReason({ code: 'incompatible' }, 'service-start')).toBe('service-version')
   expect(pluginStartupReason(new Error('fictional secret'), 'connection')).toBe('connection')
 })
