@@ -1,3 +1,4 @@
+import { PLUGIN_UNAVAILABLE_REASONS } from '../../shared/plugin-settings'
 import { randomUUID } from 'node:crypto'
 import type { BrowserWindow, IpcMain, IpcMainInvokeEvent } from 'electron'
 import { PluginSupervisorError } from './supervisor/protocol'
@@ -154,8 +155,12 @@ export function registerPluginSettings(
               'hasRemoteLogout',
               'preparationRequired',
               'mutationBlocked',
+              'unavailableReason',
             ].includes(key),
           ) &&
+          (card.unavailableReason === undefined ||
+            (card.state === 'Unavailable' &&
+              PLUGIN_UNAVAILABLE_REASONS.includes(card.unavailableReason))) &&
           (card.priorityClamped === undefined ||
             typeof card.priorityClamped === 'boolean' ||
             card.priorityClamped === null) &&

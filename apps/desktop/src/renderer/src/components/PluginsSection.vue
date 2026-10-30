@@ -3,6 +3,8 @@ import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { loadPluginConfiguration } from '../lib/plugin-configuration-load'
 import {
   pluginMutationAllowed,
+  pluginUnavailableNotice,
+  pluginUnavailableRetryable,
   pluginDisplayedConsent,
   pluginMutationNotice,
   PluginWindowReviewSchema,
@@ -61,7 +63,7 @@ const listMessage = computed(() => {
 })
 const unavailable = 'Plugin unavailable. Try again.'
 const failedRetries = ref(new Set<string>())
-const cannotStart = (card: PluginCard) => card.state === 'Unavailable' && card.installed !== false
+const cannotStart = (card: PluginCard) => card.state === 'Unavailable'
 async function retry(card: PluginCard) {
   if (busy.value) return
   busy.value = true
@@ -366,6 +368,7 @@ onUnmounted(() => {
             data-cy="plugin-start-error"
           >
             {{ card.name }} can't start right now.
+            {{ pluginUnavailableNotice(card.unavailableReason) }}
             <span v-if="failedRetries.has(card.id)" data-cy="plugin-restart-hint"
               >Restart BroCrew if this keeps happening.</span
             >
@@ -438,7 +441,7 @@ onUnmounted(() => {
         </div>
         <div class="plugin-actions">
           <button
-            v-if="cannotStart(card)"
+            v-if="cannotStart(card) && pluginUnavailableRetryable(card.unavailableReason)"
             :disabled="busy"
             type="button"
             class="bb-button bb-button--primary"

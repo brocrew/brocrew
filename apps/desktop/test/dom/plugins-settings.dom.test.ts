@@ -295,8 +295,9 @@ it.each([1180, 760])(
     const f = fictionalPlugins()
     f.set([{ id: 'fictional-fir', name: 'Fictional Fir', installed: false, state: 'Unavailable' }])
     let m = mount(settingsWindow('plugins', 'classic', f.client), {}, { width, height: 900 })
-    await vi.waitFor(() => expect(m.all('plugin-install')).toHaveLength(1))
-    expect((m.q('plugin-install') as HTMLButtonElement).disabled).toBe(true)
+    await vi.waitFor(() => expect(m.all('plugin-retry')).toHaveLength(1))
+    expect(m.all('plugin-install')).toHaveLength(0)
+    expect(m.q('plugin-start-error').textContent).toContain('did not report why')
     if (import.meta.env.VITE_W41144_CAPTURE)
       await page.screenshot({
         element: m.q('plugin-card'),
@@ -603,4 +604,55 @@ it('explains unavailable updates while retaining Configure and Uninstall for an 
   expect(m.all('plugin-update')).toHaveLength(0)
   expect(m.all('plugin-configure')).toHaveLength(1)
   expect(m.all('plugin-uninstall')).toHaveLength(1)
+})
+
+it('explains an uninstalled unavailable offer and retries without installing it', async () => {
+  const f = fictionalPlugins(false)
+  f.set([
+    {
+      id: 'fictional-cedar',
+      name: 'Fictional Cedar',
+      installed: false,
+      state: 'Unavailable',
+      unavailableReason: 'runtime',
+    },
+  ])
+  const original = f.client.request
+  f.client.request = async (input) => {
+    if (input.kind === 'retry')
+      f.set([
+        { id: 'fictional-cedar', name: 'Fictional Cedar', installed: false, state: 'Available' },
+      ])
+    return original(input)
+  }
+  const m = mount(settingsWindow('plugins', 'classic', f.client), {}, { width: 760, height: 900 })
+  await vi.waitFor(() => expect(m.all('plugin-card')).toHaveLength(1))
+  expect(m.q('plugin-start-error').textContent).toContain(
+    "BroCrew couldn't prepare its bundled plugin runtime.",
+  )
+  expect(m.all('plugin-install')).toHaveLength(0)
+  m.q('plugin-retry').click()
+  await vi.waitFor(() => expect(m.q('plugin-state').textContent).toBe('Available'))
+  expect(m.all('plugin-start-error')).toHaveLength(0)
+  expect((m.q('plugin-install') as HTMLButtonElement).disabled).toBe(false)
+  expect(f.calls.some((call) => call.kind === 'install')).toBe(false)
+})
+it('explains an unsupported offer without a futile Retry', async () => {
+  const f = fictionalPlugins(false)
+  f.set([
+    {
+      id: 'fictional-cedar',
+      name: 'Fictional Cedar',
+      installed: false,
+      state: 'Unavailable',
+      unavailableReason: 'unsupported',
+    },
+  ])
+  const m = mount(settingsWindow('plugins', 'classic', f.client), {}, { width: 760, height: 900 })
+  await vi.waitFor(() => expect(m.all('plugin-card')).toHaveLength(1))
+  expect(m.q('plugin-start-error').textContent).toContain(
+    'No compatible release is available for this computer',
+  )
+  expect(m.all('plugin-retry')).toHaveLength(0)
+  expect(f.calls.some((call) => call.kind === 'install')).toBe(false)
 })

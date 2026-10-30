@@ -1014,11 +1014,54 @@ describe.skipIf(process.platform === 'win32')(
       })
       f.controller.start(f.options)
       await f.controller.ready!()
-      expect(warning.mock.calls).toEqual([['[plugins] plugin-initialization-failed']])
+      await vi.waitFor(() => expect(warning).toHaveBeenCalled())
+      expect(warning.mock.calls).toEqual([
+        ["[plugins] service-start: BroCrew couldn't start the plugin service. Try again."],
+      ])
+      expect(JSON.stringify(warning.mock.calls)).not.toContain('fictional-private-error-with-key')
       expect(f.supervisor.start).not.toHaveBeenCalled()
       await expect(f.controller.install(f.pkg.release.id)).rejects.toThrow(
         'Plugin unavailable. Try again.',
       )
+    })
+    it('keeps the failed runtime reason on both uninstalled offers and Retry can recover', async () => {
+      const f = await setup()
+      const second = { ...f.pkg.release, id: 'fictional-elm' }
+      f.fetch.mockImplementation(
+        async () =>
+          new Response(
+            JSON.stringify({
+              ...repoListFor(f.pkg.release),
+              entries: [...repoListFor(f.pkg.release).entries, ...repoListFor(second).entries],
+            }),
+          ),
+      )
+      f.supervisor.ready.mockResolvedValue(false)
+      Object.assign(f.supervisor, {
+        lastStartError: { code: 'unavailable', cause: { code: 'runtime' } },
+      })
+      f.controller.start(f.options)
+      await f.controller.ready!()
+      const cards = await f.controller.catalogue()
+      expect(cards).toHaveLength(2)
+      expect(
+        cards.every((card) => card.state === 'Unavailable' && card.unavailableReason === 'runtime'),
+      ).toBe(true)
+      expect(f.peer.install).not.toHaveBeenCalled()
+      f.supervisor.ready.mockResolvedValue(true)
+      f.peer.catalogue.mockResolvedValue(
+        [f.pkg.release, second].map((release) => ({
+          id: release.id,
+          name: release.id,
+          installed: false,
+          state: 'Available' as const,
+        })),
+      )
+      const recovered = await f.controller.retry!(f.pkg.release.id)
+      expect(recovered.every((card) => card.state === 'Available' && !card.unavailableReason)).toBe(
+        true,
+      )
+      expect(f.peer.install).not.toHaveBeenCalled()
     })
     it('connection failure keeps the card unavailable and refuses Install', async () => {
       const f = await setup()
@@ -1255,7 +1298,9 @@ it.skipIf(process.platform === 'win32')(
       workspaceRoots: [f.options.workspaceRoot],
     })
     state.close()
-    f.fetch.mockImplementation(async () => new Response(JSON.stringify({ format: 1, entries: [] })))
+    f.fetch.mockImplementation(
+      async () => new Response(JSON.stringify({ ...repoListFor(f.pkg.release), entries: [] })),
+    )
     f.controller.start(f.options)
     await f.controller.ready!()
     expect(f.supervisor.start).not.toHaveBeenCalled()

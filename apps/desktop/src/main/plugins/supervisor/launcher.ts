@@ -1,3 +1,5 @@
+import { PluginStartupError } from '../startup-failure'
+import type { PluginUnavailableReason } from '../../../shared/plugin-settings'
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { dirname, join } from 'node:path'
@@ -31,14 +33,18 @@ export function createPluginSupervisorLauncher(options: {
   let pending: Promise<void> | undefined
   async function launch(): Promise<void> {
     const storage = new SupervisorStorage(captured.root, captured.workspaceRoots, true)
+    let phase: PluginUnavailableReason = 'storage'
     try {
       const root = storage.root
+      phase = 'catalogue'
       const lifecycle = lifecycleForNewOwner ? await lifecycleForNewOwner() : captured.lifecycle
+      phase = 'runtime'
       const runtime = await preparePluginNodeRuntime({
         resourcesRoot: captured.resourcesRoot,
         durableRoot: join(root, 'runtimes'),
       })
       const { node } = await runtimeFiles(runtime)
+      phase = 'service-start'
       const bytes = await sourceBytes(
         join(captured.resourcesRoot, 'plugin-supervisor/entry.cjs'),
         16 * 1024 * 1024,
@@ -101,6 +107,8 @@ export function createPluginSupervisorLauncher(options: {
         await new Promise((resolve) => setTimeout(resolve, 10))
       }
       throw new PluginSupervisorError('unavailable', { cause: spawnError })
+    } catch (error) {
+      throw new PluginStartupError(phase, error)
     } finally {
       storage.close()
     }
