@@ -1198,7 +1198,7 @@ defineExpose({ beginSetup })
                 :disabled="setupBusy"
                 @click="aPersonChecksAgain()"
               >
-                Check again
+                {{ authBusy === 'checking' ? 'Checking…' : 'Check again' }}
               </button>
             </div>
             <ProviderSetupProgress

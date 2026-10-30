@@ -60,7 +60,7 @@ function fixture(initial: AuthState = READY) {
       }
     },
     install: async () => ({ ok: true }),
-    signIn: vi.fn(async () => {
+    signIn: vi.fn<ProviderSetupBridge['signIn']>(async () => {
       setup = {
         ...SETUP,
         phase: 'signing-in',
@@ -70,7 +70,7 @@ function fixture(initial: AuthState = READY) {
       for (const listener of setupListeners) listener(setup)
       return { ok: true }
     }),
-    cancel: vi.fn(async () => ({ ok: true })),
+    cancel: vi.fn<ProviderSetupBridge['cancel']>(async () => ({ ok: true })),
   }
   window.api = {
     ...window.api,
@@ -217,5 +217,34 @@ describe('Claude recovery in the real Providers drawer', () => {
     expect(api.check.mock.calls.filter(([input]) => input.probe === true)).toHaveLength(1)
     expect(m.q('provider-standing').innerText).toBe('Ready')
     expect(m.q('provider-auth-notice').innerText).toBe('Claude sign-in works.')
+  })
+
+  it('shows a pending check once and restores recovery controls when it ends', async () => {
+    const api = fixture()
+    const m = await screen()
+    api.rejected()
+    await settle()
+    let finish!: (result: AuthState) => void
+    api.check.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        }),
+    )
+    const signIn = m.q('native-sign-in') as HTMLButtonElement
+    const check = [...signIn.parentElement!.querySelectorAll('button')].find(
+      (button) => button.textContent?.trim() === 'Check again',
+    )!
+    check.click()
+    await settle()
+    expect(check.innerText).toBe('Checking…')
+    expect(check.disabled).toBe(true)
+    expect(signIn.disabled).toBe(true)
+    check.click()
+    expect(api.check.mock.calls.filter(([input]) => input.probe === true)).toHaveLength(1)
+    finish(READY)
+    await settle()
+    expect(m.q('provider-standing').innerText).toBe('Ready')
+    expect((m.q('native-sign-in-again') as HTMLButtonElement).disabled).toBe(false)
   })
 })
