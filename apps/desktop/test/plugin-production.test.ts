@@ -1186,7 +1186,12 @@ it.skipIf(process.platform === 'win32')(
       { id: 'whatsapp', name: 'WhatsApp', installed: false, state: 'Unavailable' },
     ])
     expect(await f.controller.catalogue(true)).toMatchObject([
-      { id: 'whatsapp', installed: true, state: 'Unavailable' },
+      {
+        id: 'whatsapp',
+        installed: true,
+        state: 'Unavailable',
+        unavailableReason: 'operation-pending',
+      },
     ])
   },
 )

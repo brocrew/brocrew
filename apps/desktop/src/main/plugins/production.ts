@@ -201,11 +201,13 @@ export function productionPluginController() {
           }
         }
         hints ??= unavailableCards(offered)
+        const hint = hints.find((one) => one.id === entry.id)!
         return {
-          ...hints.find((one) => one.id === entry.id)!,
-          unavailableReason: releases.some((one) => one.id === entry.id)
-            ? 'operation-pending'
-            : 'unsupported',
+          ...hint,
+          unavailableReason:
+            hint.installed !== false || releases.some((one) => one.id === entry.id)
+              ? 'operation-pending'
+              : 'unsupported',
         }
       })
       entries = cards.map((card) => ({
