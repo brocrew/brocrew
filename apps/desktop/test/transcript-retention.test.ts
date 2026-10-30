@@ -592,12 +592,25 @@ it('a deletion already in flight settles, but no later deletion starts after the
       await held
     }
   }
+  // Hold only the startup deadline behind filesystem setup; retries keep their real timers.
+  const clock = vi.spyOn(performance, 'now').mockReturnValue(0)
+  const realTimeout = globalThis.setTimeout
+  const deadlineTimer = vi
+    .spyOn(globalThis, 'setTimeout')
+    .mockImplementationOnce((callback, delay, ...args) => {
+      expect(delay).toBe(20)
+      return realTimeout(() => {
+        void arrived.then(() => {
+          clock.mockReturnValue(60)
+          if (typeof callback === 'function') callback(...args)
+        })
+      }, delay)
+    })
   const host = new TranscriptRetentionHost(data, unused, () => NOW, false, 20)
   const pass = host.run()
   try {
     await arrived
     const launch = host.beforeLaunch()
-    await wait(60)
     await launch
     release()
     await pass
@@ -611,8 +624,16 @@ it('a deletion already in flight settles, but no later deletion starts after the
     )
   } finally {
     release()
-    await pass
-    await host.stop()
+    try {
+      await pass
+    } finally {
+      try {
+        await host.stop()
+      } finally {
+        deadlineTimer.mockRestore()
+        clock.mockRestore()
+      }
+    }
   }
 })
 
