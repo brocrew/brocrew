@@ -1,5 +1,6 @@
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import type { TranscriptEvent } from '../../src/shared/runtime-ipc'
+import { markRequestFailed } from '../../src/renderer/src/lib/transcript'
 import { paneProps, record } from '../../test/dom/harness'
 import { scene } from '../capture'
 
@@ -38,5 +39,7 @@ scene('conversation-todo', (stage) => {
       ok: true,
     } as TranscriptEvent,
   ]
-  stage.mount(ConversationPane, paneProps({ record: record(events) }))
+  const session = record(events)
+  if (import.meta.env['LOOK_TODO_ENDED'] === 'true') markRequestFailed(session.transcript, 'req_report', 'This to-do was already answered.')
+  stage.mount(ConversationPane, paneProps({ record: session }))
 })

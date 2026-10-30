@@ -209,7 +209,7 @@ MUTATIONS = [
     (
         "M16 · 🔴 214's DEFECT FROM THE OTHER END, in the transcript · the attachment is rendered "
         "INSIDE the person's own message body",
-        [(BUBBLE, '      <ul v-if="item.attachments?.length" class="attached" data-cy="user-attachments">', '      <ul v-if="false" class="attached" data-cy="user-attachments">')],
+        [(BUBBLE, '      <AttachmentChips\n        v-if="item.attachments?.length"', '      <AttachmentChips\n        v-if="false"')],
     ),
     # --------------------------------------- §2 · every send path, so nothing is silently dropped
     (
@@ -695,9 +695,9 @@ MUTATIONS = [
         "every file was outside the folder — something false about what was consented to",
         [
             (
-                BUBBLE,
-                '          <em v-if="handed.outsideCwd" class="outside" data-cy="user-attached-outside"',
-                '          <em v-if="true" class="outside" data-cy="user-attached-outside"',
+                'apps/desktop/src/renderer/src/components/AttachmentChips.vue',
+                "handed.outsideCwd ? '\\nOutside this conversation’s folder' : ''",
+                "true ? '\\nOutside this conversation’s folder' : ''",
             )
         ],
     ),

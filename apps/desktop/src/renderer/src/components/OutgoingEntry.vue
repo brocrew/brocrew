@@ -163,7 +163,7 @@ const todo = computed(() => {
       asked.note !== undefined
         ? asked.note
         : asked.answered !== undefined
-          ? (shared?.said ?? 'Your answer was sent.')
+          ? (shared?.said ?? 'An answer was sent.')
           : asked.closed !== undefined
             ? 'This to-do has ended.'
             : (shared?.said ?? null),

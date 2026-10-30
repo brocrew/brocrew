@@ -140,6 +140,9 @@ describe('to-dos in the conversation', () => {
         by: { is: 'a-person' },
       },
       { type: 'question_withdrawn', requestId: 'req_report' },
+      { type: 'work_closed', piece: 'work_report', by: null },
+      { type: 'work_taken_back', piece: 'work_report', by: null },
+      { type: 'work_replied', piece: 'work_report', outcome: 'done', summary: 'Sample checked.' },
       { type: 'question_ended_with_its_piece', requestId: 'req_report', ending: 'work-closed' },
     ] as TranscriptEvent[]) {
       const m = mount(ConversationPane, paneProps({ record: record([...events, ending]) }))
@@ -161,6 +164,19 @@ describe('to-dos in the conversation', () => {
     expect(m.all('inline-todo-done-req_report')).toHaveLength(0)
     expect(m.q('inline-todo-said-req_report').textContent).not.toContain('Done.')
   })
+  it.each(['work_closed', 'work_taken_back', 'work_replied'] as const)(
+    'removes live answer controls when its piece receives %s',
+    async (type) => {
+      const r = reactive(record(events))
+      const m = mount(ConversationPane, paneProps({ record: r }))
+      expect(m.all('inline-todo-done-req_report')).toHaveLength(1)
+      applyEvent(r.transcript, { type, piece: 'work_report' } as TranscriptEvent)
+      await nextTick()
+      expect(m.all('inline-todo-done-req_report')).toHaveLength(0)
+      expect(m.all('inline-todo-cant-req_report')).toHaveLength(0)
+      expect(m.all('inline-todo-note-req_report')).toHaveLength(0)
+    },
+  )
   it('a definitive host refusal closes the inline card and shows the recorded reason', async () => {
     const r = reactive(record(events))
     const m = mount(ConversationPane, paneProps({ record: r }))
@@ -170,4 +186,9 @@ describe('to-dos in the conversation', () => {
     expect(m.all('inline-todo-done-req_report')).toHaveLength(0)
     expect(m.q('inline-todo-said-req_report').textContent).toBe('This to-do was already answered.')
   })
+  it('renaming the work leaves its to-do actionable', async () => {
+    const m = mount(ConversationPane, paneProps({ record: record([...events, { type: 'work_retitled', piece: 'work_report', title: 'Renamed sample' } as TranscriptEvent]) }))
+    expect(m.all('inline-todo-done-req_report')).toHaveLength(1)
+  })
+
 })
