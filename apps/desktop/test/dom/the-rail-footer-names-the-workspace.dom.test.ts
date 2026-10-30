@@ -7,7 +7,7 @@ import { mount, unmountAll } from './harness'
  * # 🔴 A0 · the rail's footer names the workspace, never a person
  *
  * The footer drew a person's name and initials, written into the window. It now draws
- * `AppInfo.workspace`: its name, the name's first letter as the avatar, "Local workspace" beneath,
+ * `AppInfo.workspace`: its name, the name's first letter as the avatar, an accessible chooser label,
  * and its folder on hover. ⚑ Every assertion is paired with a second, non-default workspace, so a
  * footer that drew a constant could not pass.
  */
@@ -55,7 +55,7 @@ describe('A0 · the rail’s footer names the workspace', () => {
     expect(footer.getAttribute('title')).toBe(
       '/Users/someone/Library/Application Support/@brobot2/desktop',
     )
-    expect(text(footer)).toContain('Local workspace')
+    expect(footer.getAttribute('aria-label')).toBe('Default, choose a workspace')
   })
 
   it('⚑ …and a workspace with a name of its own says that name, not a constant', async () => {
@@ -67,12 +67,16 @@ describe('A0 · the rail’s footer names the workspace', () => {
     expect(text(rail.q('rail-workspace-name'))).toBe('research')
     expect(text(rail.q('rail-workspace-initial'))).toBe('R')
     expect(rail.q('rail-workspace').getAttribute('title')).toBe('/Users/x/brobot-research')
+    expect(rail.q('rail-workspace').getAttribute('aria-label')).toBe('research, choose a workspace')
   })
 
   it('⛔ before the app has said, the footer names nobody', async () => {
     const rail = await railWith(null)
     const footer = rail.q('rail-workspace')
-    expect(text(footer)).toBe('Local workspace')
+    expect(text(footer)).toBe('')
+    expect(rail.all('rail-workspace-name')).toHaveLength(0)
+    expect(text(rail.q('rail-workspace-initial'))).toBe('')
+    expect(footer.getAttribute('aria-label')).toBe('Local workspace, choose a workspace')
     expect(footer.hasAttribute('title')).toBe(false)
   })
 })
