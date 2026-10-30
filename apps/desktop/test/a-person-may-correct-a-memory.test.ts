@@ -12,7 +12,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { claudeAutoMemoryDir } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
@@ -564,6 +564,36 @@ describe('§5 · 🔒 a correction never widens who may read the entry', () => {
       expect(readFileSync(note, 'utf8')).toBe('CORRECTED\n')
     },
   )
+
+  it('a homes folder replaced while its privacy is read still refuses, writing nothing', async () => {
+    const { note } = plantTheNight()
+    const { lists } = fakeLists(note)
+    let swapped = false
+    const outcome = await correct(note, {
+      platform: 'win32',
+      warn: () => {},
+      lists: {
+        ...lists,
+        read: (path) => {
+          if (path === homesRoot && !swapped) {
+            swapped = true
+            const copy = join(outside, relative(homesRoot, note))
+            mkdirSync(dirname(copy), { recursive: true })
+            writeFileSync(copy, THE_FALSE_NOTE)
+            renameSync(homesRoot, `${homesRoot}.held`)
+            symlinkSync(outside, homesRoot, 'junction')
+          }
+          return lists.read(path)
+        },
+      },
+    })
+    expect(swapped).toBe(true)
+    expect(!outcome.done && outcome.refused).toBe('write-failed')
+    expect(readFileSync(join(`${homesRoot}.held`, relative(homesRoot, note)), 'utf8')).toBe(
+      THE_FALSE_NOTE,
+    )
+    expect(readFileSync(join(outside, relative(homesRoot, note)), 'utf8')).toBe(THE_FALSE_NOTE)
+  })
 
   it('a staging directory replaced by a junction before creation refuses without touching the target', async () => {
     const { note } = plantTheNight()

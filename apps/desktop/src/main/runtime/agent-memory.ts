@@ -691,10 +691,13 @@ function directoryIdentity(path: string): StageDirectory {
   return { path, dev: stat.dev, ino: stat.ino }
 }
 
+/** A folder replaced while it was in use: this one still refuses. */
+class StagingReplaced extends Error {}
+
 function checkDirectory(expected: StageDirectory): void {
   const actual = directoryIdentity(expected.path)
   if (actual.dev !== expected.dev || actual.ino !== expected.ino) {
-    throw new Error('The correction staging hierarchy was replaced')
+    throw new StagingReplaced('The correction staging hierarchy was replaced')
   }
 }
 
@@ -716,6 +719,7 @@ async function stageIfPrivate(
   try {
     return await privateStageFolder(homesRoot, seams)
   } catch (error) {
+    if (error instanceof StagingReplaced) throw error
     sayShared(error, seams)
     return null
   }
