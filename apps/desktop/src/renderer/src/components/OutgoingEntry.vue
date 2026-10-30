@@ -152,18 +152,21 @@ const todo = computed(() => {
     files: asked.action.files,
   }
   const shared = queue.todoCards.value.find((one) => one.row.key === row.key)
-  const ended = asked.answered !== undefined || asked.closed !== undefined
+  const ended =
+    asked.answered !== undefined || asked.closed !== undefined || asked.note !== undefined
   return {
     row,
     listed: !ended,
     pending: shared?.pending ?? false,
     taken: ended || (shared?.taken ?? false),
     said:
-      asked.answered !== undefined
-        ? (shared?.said ?? 'Your answer was sent.')
-        : asked.closed !== undefined
-          ? 'This to-do has ended.'
-          : (shared?.said ?? null),
+      asked.note !== undefined
+        ? asked.note
+        : asked.answered !== undefined
+          ? (shared?.said ?? 'Your answer was sent.')
+          : asked.closed !== undefined
+            ? 'This to-do has ended.'
+            : (shared?.said ?? null),
   }
 })
 

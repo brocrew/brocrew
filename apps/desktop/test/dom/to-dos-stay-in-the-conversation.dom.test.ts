@@ -3,7 +3,7 @@ import { nextTick, reactive } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import WorkWaits from '../../src/renderer/src/components/WorkWaits.vue'
 import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
-import { applyEvent } from '../../src/renderer/src/lib/transcript'
+import { applyEvent, markRequestFailed } from '../../src/renderer/src/lib/transcript'
 import type { TranscriptEvent } from '../../src/shared/runtime-ipc'
 import { mount, paneProps, record, unmountAll } from './harness'
 
@@ -160,5 +160,14 @@ describe('to-dos in the conversation', () => {
     await nextTick()
     expect(m.all('inline-todo-done-req_report')).toHaveLength(0)
     expect(m.q('inline-todo-said-req_report').textContent).not.toContain('Done.')
+  })
+  it('a definitive host refusal closes the inline card and shows the recorded reason', async () => {
+    const r = reactive(record(events))
+    const m = mount(ConversationPane, paneProps({ record: r }))
+    expect(m.all('inline-todo-done-req_report')).toHaveLength(1)
+    markRequestFailed(r.transcript, 'req_report', 'This to-do was already answered.')
+    await nextTick()
+    expect(m.all('inline-todo-done-req_report')).toHaveLength(0)
+    expect(m.q('inline-todo-said-req_report').textContent).toBe('This to-do was already answered.')
   })
 })
