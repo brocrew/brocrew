@@ -1,11 +1,13 @@
 import type { Provider } from '@brobot2/shared'
 import type { ProviderSetupAction, ProviderSetupState } from '../../shared/provider-setup'
 
+export type SetupCompletion = (provider: Provider, kind?: 'install' | 'signIn') => void
+
 export interface SetupService {
   readonly busy: boolean
   state(): ProviderSetupState
   onState(listener: (state: ProviderSetupState) => void): () => void
-  onCompleted(listener: (provider: Provider) => void): () => void
+  onCompleted(listener: SetupCompletion): () => void
   install(): ProviderSetupAction
   signIn(): ProviderSetupAction
   cancel(): ProviderSetupAction

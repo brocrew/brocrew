@@ -16,6 +16,7 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import type { ProviderAuthOps } from '../src/main/providers/auth-operations'
 import { prepareOnTheLogin } from '../src/main/providers/claude'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { createSessionStore as createRendererStore } from '../src/renderer/src/lib/session-store'
@@ -171,12 +172,18 @@ describe('D-004 · R101 — a login renewed elsewhere reopens the conversation i
   let renewal: (() => Promise<ClaudeLoginRenewal>) | undefined
   /** Whether a Claude key is saved, which a launch runs on instead of the login. */
   let keySaved: boolean
+  let authOps: ProviderAuthOps | undefined
+  let authChanges: unknown[]
   let launchBarrier: (() => Promise<void>) | undefined
 
   function buildHost(): RuntimeHost {
     const renewForThisHost = renewal
     const built = new RuntimeHost({
       store: ledger,
+      ...(authOps === undefined ? {} : { providerAuth: authOps }),
+      providersMoved: (change) => {
+        authChanges.push(change)
+      },
       discoverSessions: NO_DISCOVERY,
       nativeTranscriptPath: () => null,
       exportDirectory: () => join(dir, 'exports'),
@@ -262,6 +269,8 @@ describe('D-004 · R101 — a login renewed elsewhere reopens the conversation i
     renewal = undefined
     keySaved = false
     launchBarrier = undefined
+    authOps = undefined
+    authChanges = []
   })
 
   afterEach(async () => {
@@ -473,6 +482,121 @@ describe('D-004 · R101 — a login renewed elsewhere reopens the conversation i
       cause: 'auth',
     })
     expect(eventsOf(sessionId).some((event) => event.type === 'reopened')).toBe(false)
+  })
+
+  function locallyReadyAuth() {
+    let probes = 0
+    const ready = { state: 'usable', login: 'account', expiresAt: Date.now() + 60_000 } as const
+    const ops = {
+      credentialHome: () => '/fake/home',
+      check: async () => ready,
+      probe: async () => {
+        probes++
+        return ready
+      },
+      reprovision: async () => 'replaced' as const,
+      signIn: async () => {
+        throw new Error('not used')
+      },
+      bringTheKeyToItsHomes: async () => null,
+      replaceARefusedCopy: async () => 'not-tried' as const,
+    }
+    authOps = ops
+    return { ready, probes: () => probes }
+  }
+
+  it('a rejected unexpired machine login stays nonReady on passive checks until native sign-in succeeds', async () => {
+    locallyReadyAuth()
+    const { host, sessionId, record } = await killedMidTurn(() => {})
+    await waitFor(() => record().phase === 'recorded', 'the rejected life to stop')
+    expect(await host.checkProviderAuth('claude', 'brobot')).toMatchObject({ state: 'stale' })
+    expect(authChanges).toContainEqual({ what: 'login', provider: 'claude' })
+    host.providerSetupCompleted('claude', 'install')
+    expect((await host.checkProviderAuth('claude', 'brobot')).state).toBe('stale')
+    host.providerSetupCompleted('claude', 'signIn')
+    expect(await host.checkProviderAuth('claude', 'brobot')).toMatchObject({ state: 'usable' })
+    expect(eventsOf(sessionId)).toContainEqual({
+      type: 'error',
+      message: REVOKED,
+      fatal: true,
+      cause: 'auth',
+    })
+  })
+
+  it('only an explicit manual probe runs once and clears the rejected-login fact on success', async () => {
+    const auth = locallyReadyAuth()
+    const { host, window, record } = await killedMidTurn(() => {})
+    await waitFor(() => record().phase === 'recorded', 'the rejected life to stop')
+    await host.checkProviderAuth('claude', 'brobot')
+    expect(auth.probes()).toBe(0)
+    const result = await executeRuntimeCommand(host, window.sink, {
+      kind: 'checkProviderAuth',
+      provider: 'claude',
+      profileId: 'brobot',
+      probe: true,
+    })
+    expect(auth.probes()).toBe(1)
+    expect(result).toEqual(auth.ready)
+    expect(await host.checkProviderAuth('claude', 'brobot')).toEqual(auth.ready)
+    expect(auth.probes()).toBe(1)
+  })
+
+  it('a failed manual probe stays nonReady and cannot clear a measured rejection', async () => {
+    locallyReadyAuth()
+    authOps = {
+      ...authOps!,
+      probe: async () => ({ state: 'unknown', reason: 'The fake check failed.' }),
+    }
+    const { host, record } = await killedMidTurn(() => {})
+    await waitFor(() => record().phase === 'recorded', 'the rejected life to stop')
+    expect(await host.checkProviderAuth('claude', 'brobot', true)).toEqual({
+      state: 'unknown',
+      reason: 'The fake check failed.',
+    })
+    expect((await host.checkProviderAuth('claude', 'brobot')).state).toBe('stale')
+  })
+
+  it('a probe started before a newer rejection cannot clear that newer fact', async () => {
+    const auth = locallyReadyAuth()
+    let resolveProbe!: (state: typeof auth.ready) => void
+    let started = false
+    authOps = {
+      ...authOps!,
+      probe: async () => {
+        started = true
+        return new Promise((resolve) => {
+          resolveProbe = resolve
+        })
+      },
+    }
+    const { host, window, sessionId, record } = await killedMidTurn(() => {})
+    await waitFor(() => record().phase === 'recorded', 'the first rejected life to stop')
+    const checking = host.checkProviderAuth('claude', 'brobot', true)
+    await waitFor(() => started, 'the manual probe to begin')
+    await host.send(sessionId, 'another fake turn', window.sink)
+    launches[1]!.fq.emit(
+      frame({ type: 'system', subtype: 'init', session_id: 'provider-A', cwd: join(dir, 'cwd') }),
+    )
+    launches[1]!.fq.emit(
+      frame({
+        type: 'assistant',
+        message: {
+          role: 'assistant',
+          model: '<synthetic>',
+          content: [{ type: 'text', text: REVOKED }],
+        },
+        error: 'authentication_failed',
+      }),
+    )
+    await waitFor(
+      () =>
+        eventsOf(sessionId).filter((event) => event.type === 'error' && event.cause === 'auth')
+          .length === 2,
+      'the newer refusal',
+    )
+    resolveProbe(auth.ready)
+    expect((await checking).state).toBe('stale')
+    expect((await host.checkProviderAuth('claude', 'brobot')).state).toBe('stale')
   })
 
   it('one human message after an auth stop and sign-in resumes the original conversation exactly once', async () => {

@@ -2,14 +2,19 @@ import { SUPPORTED_PROVIDERS, type Provider } from '@brobot2/shared'
 import type { IpcMain, IpcMainInvokeEvent, WebContents } from 'electron'
 import { PROVIDER_SETUP_CHANNELS, type ProviderSetupAction } from '../../shared/provider-setup'
 import { installSessionRelease } from '../window-navigation'
-import { unsupportedSetup, type SetupServices, type SetupService } from './service'
+import {
+  unsupportedSetup,
+  type SetupServices,
+  type SetupService,
+  type SetupCompletion,
+} from './service'
 
 /** Only app main frames may admit a fixed operation; its initiating document owns cancellation. */
 export function registerProviderSetup(
   ipc: Pick<IpcMain, 'handle' | 'removeHandler'>,
   services: SetupServices,
   authorized: (event: IpcMainInvokeEvent) => boolean,
-  completed: (provider: Provider) => void,
+  completed: SetupCompletion,
 ): () => Promise<void> {
   let closed = false
   const watchers = new Map<WebContents, Set<Provider>>()

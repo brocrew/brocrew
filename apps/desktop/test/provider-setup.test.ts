@@ -58,7 +58,7 @@ describe('trusted native completion notifications', () => {
       expect(f.completed).not.toHaveBeenCalled()
       f.findProgram.mockReturnValue('/fictional/tools/official-cli')
       f.child.emit('close', 0)
-      expect(f.completed).toHaveBeenCalledExactlyOnceWith('claude')
+      expect(f.completed).toHaveBeenCalledExactlyOnceWith('claude', action)
       expect(order).toEqual(['invalidate', 'terminal'])
       f.service.state()
       f.child.emit('close', 0)

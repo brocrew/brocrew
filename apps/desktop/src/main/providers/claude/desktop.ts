@@ -1,4 +1,8 @@
-import { claudeLoginRenewer, defaultKeychainReaderAsync } from '@brobot2/runtime'
+import {
+  claudeLoginRenewer,
+  defaultKeychainReaderAsync,
+  probeClaudeCodeLogin,
+} from '@brobot2/runtime'
 import {
   CLAUDE_CODE_SWITCH,
   LOOK_FOR_THE_INSTALLED_ONE,
@@ -12,6 +16,7 @@ import type { ClaudeModuleSeams } from './index'
 export interface ClaudeDesktopSeams {
   readonly findProgram?: typeof findClaudeProgramHere
   readonly renewal?: typeof claudeLoginRenewer
+  readonly probe?: typeof probeClaudeCodeLogin
   readonly readLogin?: typeof defaultKeychainReaderAsync
   readonly versionReader?: typeof claudeVersionReader
 }
@@ -59,6 +64,12 @@ export function claudeDesktopInputs(
       keyStatus: () => context.keys.status('claude'),
       programFound: installed,
       renewLogin: renew,
+      probeLogin: (signal) =>
+        (seams.probe ?? probeClaudeCodeLogin)({
+          findProgram: installed,
+          platform: context.platform,
+          signal: signal === undefined ? context.signal : AbortSignal.any([context.signal, signal]),
+        }),
     },
     program: {
       version: (seams.versionReader ?? claudeVersionReader)(() => program(true)),

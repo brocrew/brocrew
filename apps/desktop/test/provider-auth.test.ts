@@ -115,6 +115,12 @@ class FakeAuthOps implements ProviderAuthOps {
     })
   }
 
+  probeCalls = 0
+  async probe(provider: Provider, profileId: string, signal?: AbortSignal): Promise<AuthState> {
+    this.probeCalls++
+    return this.check(provider, profileId, signal)
+  }
+
   async check(provider: Provider, profileId: string, signal?: AbortSignal): Promise<AuthState> {
     this.calls.push({ verb: 'check', provider, profileId })
     if (signal) this.signals.push(signal)
@@ -289,6 +295,25 @@ describe('the credential commands, at the boundary that validates them (098)', (
       providerAuth: auth,
       openExternal: async (url) => void opened.push(url),
     })
+
+  it('quit before manual probe admission starts no provider work', async () => {
+    auth.hangCheck = true
+    const checking = host.checkProviderAuth('claude', DEFAULT_PROFILE_ID, true)
+    await host.closeAll()
+    expect((await checking).state).toBe('unknown')
+    expect(auth.probeCalls).toBe(0)
+  })
+
+  it('manual probe requests share one child and quit cancels and drains it', async () => {
+    auth.hangCheck = true
+    const first = host.checkProviderAuth('claude', DEFAULT_PROFILE_ID, true)
+    const second = host.checkProviderAuth('claude', DEFAULT_PROFILE_ID, true)
+    await vi.waitFor(() => expect(auth.probeCalls).toBe(1))
+    await host.closeAll()
+    expect((await first).state).toBe('unknown')
+    expect((await second).state).toBe('unknown')
+    expect(auth.signals[0]?.aborted).toBe(true)
+  })
 
   beforeEach(() => {
     userData = mkdtempSync(join(tmpdir(), 'brobot2-auth-'))

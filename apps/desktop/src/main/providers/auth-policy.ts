@@ -25,6 +25,7 @@ export interface ProtocolNotice {
 
 /** Native facts and comparisons are separate from bound credential and launch services. */
 export interface ProviderAuthPolicy {
+  readonly remembersRejectedMachineLogin?: boolean
   /** Profile faults take priority over generic sign-in faults; wording stays at the shared door. */
   launchRefusal(error: unknown): 'profile' | 'program' | 'no-copy' | null
   readonly refusalWords: Readonly<

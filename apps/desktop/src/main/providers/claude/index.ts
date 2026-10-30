@@ -23,6 +23,7 @@ import {
   claudeLoginStateWithAKey,
   type AgentRuntime,
   type AuthHealth,
+  type AuthState,
   type ClaudeLoginRenewal,
 } from '@brobot2/runtime'
 import { ApiKeyUnreadableError } from '../../runtime/api-keys'
@@ -49,6 +50,7 @@ export interface ClaudeHomeSeams {
   readonly programFound?: () => string | null
 }
 export interface ClaudeAuthSeams {
+  readonly probeLogin?: (signal?: AbortSignal) => Promise<AuthState>
   readonly platform?: NodeJS.Platform
   readonly loginPresence?: (signal?: AbortSignal) => Promise<boolean | undefined>
   readonly key?: () => string | null | Promise<string | null>
@@ -167,6 +169,20 @@ export function claudeAuth(paths: ProviderHomePaths, seams: ClaudeAuthSeams): Ho
     )
   return {
     ...(renewal === undefined ? {} : { renewal }),
+    async probe(_profileId, signal) {
+      if (seams.keyStatus?.().set || (await seams.key?.())) {
+        return {
+          state: 'unknown',
+          reason: 'This check is for the Claude Code sign-in. Use Check key for the saved API key.',
+        }
+      }
+      return (
+        seams.probeLogin?.(signal) ?? {
+          state: 'unknown',
+          reason: 'This app build cannot probe the Claude Code sign-in.',
+        }
+      )
+    },
     credentialHome: (profileId) => paths.homeOf(profileId),
     async check(_profileId, signal) {
       // Claude's credential is the machine's, so "absent" is the only not-ok this can be: there is

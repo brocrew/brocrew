@@ -19,6 +19,7 @@ export interface ProviderHomePaths {
 /** Operations on one provider's bound paths, with no provider selection at the call site. */
 export interface HomeAuthOperations {
   readonly renewal?: LoginRenewalOperations
+  probe?(profileId: string, signal?: AbortSignal): Promise<AuthState>
   credentialHome(profileId: string): string
   check(profileId: string, signal?: AbortSignal): Promise<AuthState>
   reprovision(profileId: string): ReprovisionOutcome | Promise<ReprovisionOutcome>

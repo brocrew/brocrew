@@ -8540,7 +8540,7 @@ export type RuntimeCommand =
   | { kind: 'profiles' }
   // 098 — the credential a profile runs on. Keyed by profile, because a credential belongs to a
   // provider home and "is Codex signed in?" therefore has one answer per profile, not one answer.
-  | ({ kind: 'checkProviderAuth' } & ProviderProfileInput)
+  | ({ kind: 'checkProviderAuth' } & CheckProviderAuthInput)
   | ({ kind: 'reprovisionProviderAuth' } & ProviderProfileInput)
   | ({ kind: 'signInProvider' } & ProviderProfileInput)
   | ({ kind: 'cancelProviderSignIn' } & ProviderProfileInput)
@@ -9438,6 +9438,11 @@ export type ProviderCapabilityMap = Record<Provider, ProviderCapabilities>
  * that it is here at all: a credential belongs to a profile home, so "is Codex signed in?" is not a
  * question with one answer.
  */
+export interface CheckProviderAuthInput extends ProviderProfileInput {
+  /** Explicit user gesture only; passive refreshes must omit this. */
+  probe?: boolean
+}
+
 export interface ProviderProfileInput {
   provider: Provider
   profileId?: string
@@ -10309,7 +10314,7 @@ export interface RuntimeBridge {
    * Whether a profile's credential can still run a turn (098) — asked of the provider, never
    * inferred from an error sentence. Free and local for Codex; a Keychain read for Claude.
    */
-  checkProviderAuth(input: ProviderProfileInput): Promise<AuthState>
+  checkProviderAuth(input: CheckProviderAuthInput): Promise<AuthState>
   /**
    * Re-copy the machine credential into this profile, replacing what is there.
    *

@@ -121,6 +121,7 @@ import {
   type RuntimeChangeMessage,
   type ProviderAnswerAck,
   type ProviderProfileInput,
+  type CheckProviderAuthInput,
   type ProviderSignInResult,
   type ReprovisionOutcome,
   type CreateSessionInput,
@@ -808,7 +809,7 @@ const runtime: RuntimeBridge = Object.freeze({
     }
   },
 
-  checkProviderAuth: (input: ProviderProfileInput): Promise<AuthState> =>
+  checkProviderAuth: (input: CheckProviderAuthInput): Promise<AuthState> =>
     command({ kind: 'checkProviderAuth', ...input }) as Promise<AuthState>,
   reprovisionProviderAuth: (input: ProviderProfileInput): Promise<ReprovisionOutcome> =>
     command({ kind: 'reprovisionProviderAuth', ...input }) as Promise<ReprovisionOutcome>,

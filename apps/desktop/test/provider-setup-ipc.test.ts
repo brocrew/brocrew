@@ -101,7 +101,7 @@ describe('provider setup sender and document ownership', () => {
     f.invoke('install')
     f.findProgram.mockReturnValue('/fictional/tools/official-cli')
     f.child.emit('close', 0)
-    expect(f.completed).toHaveBeenCalledExactlyOnceWith('claude')
+    expect(f.completed).toHaveBeenCalledExactlyOnceWith('claude', 'install')
     const terminal = f.sender.send.mock.calls.findIndex(([, state]) => state.phase === 'installed')
     expect(f.completed.mock.invocationCallOrder[0]).toBeLessThan(
       f.sender.send.mock.invocationCallOrder[terminal]!,

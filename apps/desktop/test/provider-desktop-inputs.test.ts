@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { providerRecord } from '@brobot2/shared'
 import * as registry from '../src/main/providers'
+import { claudeAuth } from '../src/main/providers/claude'
 import { LOOK_FOR_THE_INSTALLED_ONE } from '../src/main/runtime/claude-program'
 
 type Inputs = Parameters<typeof registry.createProviderModules>[1]
@@ -77,6 +78,49 @@ function fixture() {
 }
 
 describe('provider-owned desktop inputs', () => {
+  it('binds the installed native probe lazily and never probes a saved API key', async () => {
+    const env = context()
+    const probe = vi.fn(
+      async () => ({ state: 'usable', login: 'account', expiresAt: null }) as const,
+    )
+    const findProgram = vi.fn(() => ({
+      path: '/fake/claude',
+      from: 'given' as const,
+      update: null,
+      others: [],
+    }))
+    const inputs = inputsFactory()(env, {
+      claude: { probe, findProgram, renewal: () => async () => 'not-needed' },
+    })
+    expect(probe).not.toHaveBeenCalled()
+    const signal = new AbortController()
+    await inputs.claude.auth.probeLogin!(signal.signal)
+    expect(probe).toHaveBeenCalledOnce()
+    const args = probe.mock.calls[0] as unknown as [
+      { signal: AbortSignal; findProgram: () => string },
+    ]
+    expect(args[0].findProgram()).toBe('/fake/claude')
+    signal.abort()
+    expect(args[0].signal.aborted).toBe(true)
+    probe.mockClear()
+    const auth = claudeAuth(
+      {
+        managedRoot: '/fake',
+        defaultProfile: 'fern',
+        homeOf: () => '/fake/fern',
+        profiles: () => ['fern'],
+        assertMayOpen: () => {},
+      },
+      {
+        ...inputs.claude.auth,
+        keyStatus: () => ({ set: true }),
+      },
+    )
+    expect((await auth.probe!('fern')).state).toBe('unknown')
+    expect(probe).not.toHaveBeenCalled()
+    expect(env.keys.read).not.toHaveBeenCalled()
+  })
+
   it('binds version caches and renewal once, with no program, credential, key or home read', () => {
     const f = fixture()
     const unread = vi.fn((): never => {

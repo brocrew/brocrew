@@ -1,14 +1,13 @@
 import { StringDecoder } from 'node:string_decoder'
 import { stripVTControlCharacters } from 'node:util'
 import { win32 } from 'node:path'
-import type { Provider } from '@brobot2/shared'
 import type {
   ProviderSetupAction,
   ProviderSetupError,
   ProviderSetupState,
 } from '../../../shared/provider-setup'
 
-import type { SetupChild, SetupCommand } from '../../provider-setup/service'
+import type { SetupChild, SetupCommand, SetupCompletion } from '../../provider-setup/service'
 export interface ClaudeSetupDependencies {
   readonly platform: NodeJS.Platform
   readonly systemRoot?: string
@@ -123,7 +122,7 @@ export class ClaudeSetupService {
   private active: Operation | null = null
   private closed = false
   private readonly listeners = new Set<(state: ProviderSetupState) => void>()
-  private readonly completed = new Set<(provider: Provider) => void>()
+  private readonly completed = new Set<SetupCompletion>()
   constructor(
     private readonly deps: ClaudeSetupDependencies,
     private readonly bounds: Bounds = CLAUDE_SETUP_BOUNDS,
@@ -150,7 +149,7 @@ export class ClaudeSetupService {
       this.listeners.delete(listener)
     }
   }
-  onCompleted(listener: (provider: Provider) => void): () => void {
+  onCompleted(listener: SetupCompletion): () => void {
     this.completed.add(listener)
     return () => {
       this.completed.delete(listener)
@@ -380,7 +379,7 @@ export class ClaudeSetupService {
     if (failure === null)
       for (const listener of this.completed) {
         try {
-          listener(this.current.provider)
+          listener(this.current.provider, operation.kind)
         } catch {
           /* Runtime notification cannot stop child cleanup. */
         }
