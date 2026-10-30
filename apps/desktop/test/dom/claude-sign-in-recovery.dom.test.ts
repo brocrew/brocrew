@@ -69,7 +69,11 @@ async function settled() {
     await new Promise((done) => setTimeout(done, 0))
   }
 }
-function scene(extra: Record<string, unknown> = {}, refusal: TranscriptEvent = refused) {
+function scene(
+  extra: Record<string, unknown> = {},
+  refusal: TranscriptEvent = refused,
+  width = 1000,
+) {
   const r = record([])
   r.meta = {
     ...META,
@@ -83,7 +87,7 @@ function scene(extra: Record<string, unknown> = {}, refusal: TranscriptEvent = r
   return mount(
     ConversationPane,
     paneProps({ record: r, capabilities: CAPABILITY_FIXTURE, ...extra }),
-    { width: 1000, height: 650 },
+    { width, height: 650 },
   )
 }
 afterEach(() => {
@@ -211,10 +215,11 @@ describe('Claude sign-in recovery where the error is read', () => {
   it('keeps the recovery action readable and keyboard reachable in a narrow pane', async () => {
     await page.viewport(760, 800)
     const api = bridge(STALE)
-    const m = scene({ style: 'max-width: 600px' })
+    const m = scene({}, refused, 600)
     await settled()
     await drawnReady()
     const action = m.q('claude-sign-in-action')
+    expect(m.host.getBoundingClientRect().width).toBe(600)
     assertDrawn(action, 'narrow sign-in action')
     assertDrawn(m.q('what-the-notice-says'), 'narrow sign-in error')
     action.focus()
