@@ -465,3 +465,73 @@ it('joins a stop reading that outlasted its budget before observing again', asyn
     finish?.(null)
   }
 })
+
+it('releases after bounded table failures only when the exited leader and known PIDs are gone', async () => {
+  const read = vi.fn<(ms: number) => Promise<TableReading | null>>().mockResolvedValue(null)
+  const value = transport(read)
+  let quiet = false
+  void value.quiesced.then(() => {
+    quiet = true
+  })
+  await closed(value)
+  read.mockRejectedValue(new Error('fictional CIM unavailable'))
+  await vi.advanceTimersByTimeAsync(110_000)
+  expect(quiet).toBe(false)
+  await vi.advanceTimersByTimeAsync(90_000)
+  expect(quiet).toBe(true)
+  expect(console.warn).toHaveBeenCalledWith(
+    expect.stringContaining('unobserved descendants may still be running'),
+  )
+  expect(app.kill).not.toHaveBeenCalled()
+  expect(ender.stdin.end).toHaveBeenCalledTimes(1)
+})
+
+it('does not release on table failures while a known or reused PID remains alive', async () => {
+  const owned = { pid: 4813, ppid: 4811, created: born + 1000n }
+  const read = vi
+    .fn<(ms: number) => Promise<TableReading | null>>()
+    .mockResolvedValue(reading([owned]))
+  const value = transport(read)
+  item()
+  await flush()
+  running.add(owned.pid)
+  outcomes.set(`4813:${owned.created}`, 'failed')
+  read.mockResolvedValue(null)
+  let quiet = false
+  void value.quiesced.then(() => {
+    quiet = true
+  })
+  await closed(value)
+  const endings = ender.stdin.end.mock.calls.length
+  await vi.advanceTimersByTimeAsync(200_000)
+  expect(quiet).toBe(false)
+  running.delete(owned.pid)
+  running.add(4811)
+  await vi.advanceTimersByTimeAsync(60_000)
+  expect(quiet).toBe(false)
+  running.delete(4811)
+  await vi.advanceTimersByTimeAsync(60_000)
+  expect(quiet).toBe(true)
+  expect(app.kill).not.toHaveBeenCalled()
+  expect(ender.stdin.end).toHaveBeenCalledTimes(endings)
+})
+
+it('never treats a successful table with an unknown identity as a table failure deadline', async () => {
+  const read = vi
+    .fn<(ms: number) => Promise<TableReading | null>>()
+    .mockResolvedValueOnce(null)
+    .mockImplementation(async () =>
+      reading([{ pid: 4813, ppid: 4811, created: 0n }], fileTimeOf(Date.now())),
+    )
+  const value = transport(read)
+  let quiet = false
+  void value.quiesced.then(() => {
+    quiet = true
+  })
+  await closed(value)
+  await vi.advanceTimersByTimeAsync(200_000)
+  expect(quiet).toBe(false)
+  read.mockImplementation(async () => reading([], fileTimeOf(Date.now())))
+  await vi.advanceTimersByTimeAsync(60_000)
+  expect(quiet).toBe(true)
+})
