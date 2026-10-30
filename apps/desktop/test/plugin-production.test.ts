@@ -1,3 +1,5 @@
+import * as fs from 'node:fs'
+import { windowsAccessLists } from '../src/main/recovery/windows-privacy'
 import { EventEmitter } from 'node:events'
 import { randomUUID } from 'node:crypto'
 import { fixture, cleanupLifecycleFixtures } from './plugin-lifecycle-fixtures'
@@ -1280,3 +1282,52 @@ it.skipIf(process.platform === 'win32')(
     expect(card).not.toHaveProperty('updatesUnavailable')
   },
 )
+
+describe('production plugin admission with folder privacy failures on every platform', () => {
+  it.each(['shared folder', 'privacy write failure', 'foreign owner'])(
+    'lists and starts through the production facade with %s without changing parent/workspace permissions',
+    async (condition) => {
+      const f = await setup()
+      await mkdir(f.options.root, { mode: 0o777 })
+      const parent = join(f.options.root, '..')
+      const parentBefore = fs.statSync(parent).mode
+      const workspaceBefore = fs.statSync(f.options.workspaceRoot).mode
+      const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      if (process.platform === 'win32') {
+        if (condition === 'privacy write failure')
+          vi.spyOn(windowsAccessLists, 'restrict').mockRejectedValue(
+            new Error('fictional ACL failure'),
+          )
+        if (condition === 'foreign owner')
+          vi.spyOn(windowsAccessLists, 'ownerSid').mockResolvedValue('S-1-5-32-545')
+      } else {
+        fs.chmodSync(f.options.root, 0o777)
+        if (condition === 'privacy write failure')
+          vi.spyOn(fs, 'fchmodSync').mockImplementation(() => {
+            throw new Error('fictional chmod failure')
+          })
+        if (condition === 'foreign owner' && process.getuid)
+          vi.spyOn(process, 'getuid').mockReturnValue(process.getuid() + 1)
+      }
+      f.peer.install.mockImplementation(async () => {
+        f.peer.catalogue.mockResolvedValue([
+          { id: f.pkg.release.id, name: f.pkg.release.id, installed: true, state: 'Running' },
+        ])
+      })
+      f.controller.start(f.options)
+      expect(await f.controller.ready!()).toBe(true)
+      expect(await f.controller.catalogue()).toMatchObject([
+        { id: f.pkg.release.id, state: 'Available' },
+      ])
+      expect(f.supervisor.start).toHaveBeenCalledOnce()
+      await f.controller.install(f.pkg.release.id)
+      expect(f.peer.install).toHaveBeenCalledExactlyOnceWith(f.pkg.release.id)
+      expect(await f.controller.catalogue()).toMatchObject([
+        { id: f.pkg.release.id, state: 'Running' },
+      ])
+      if (condition === 'privacy write failure') expect(warning).toHaveBeenCalled()
+      expect(fs.statSync(parent).mode).toBe(parentBefore)
+      expect(fs.statSync(f.options.workspaceRoot).mode).toBe(workspaceBefore)
+    },
+  )
+})

@@ -259,13 +259,11 @@ describe('workspace opt-in keeps every other plugin setup unchanged', () => {
     ).toThrow(PluginSupervisorError)
     expect(existsSync(join(f.appData, '@brobot2', 'plugins'))).toBe(false)
   })
-  it('refuses a writable pin on POSIX while preserving the Windows ACL policy', async () => {
+  it('admits a writable plugin pin without making mode an admission gate', async () => {
     const f = await fixture()
     await optIn(f, f.workspace, 'p1')
     await chmod(pins(f), 0o666)
-    if (process.platform === 'win32')
-      expect(root(f)).toBe(join(f.appData, '@brobot2', 'plugins-p1'))
-    else expect(() => root(f)).toThrow(PluginSupervisorError)
+    expect(root(f)).toBe(join(f.appData, '@brobot2', 'plugins-p1'))
   })
   it('writes neither record on success or refusal', async () => {
     const f = await fixture()

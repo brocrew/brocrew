@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { warnPluginPermissions } from '../private-files'
 import { chmodSync, lstatSync } from 'node:fs'
 import { createServer, type Server, type Socket } from 'node:net'
 import { PluginFence } from '../state/fence'
@@ -186,7 +187,13 @@ export class PluginSupervisor {
         owner.server!.once('error', reject)
         owner.server!.listen(storage.endpoint(owner.record), resolve)
       })
-      if (isSocketFile()) chmodSync(storage.socket, 0o600)
+      if (isSocketFile()) {
+        try {
+          chmodSync(storage.socket, 0o600)
+        } catch {
+          warnPluginPermissions(lstatSync(storage.socket))
+        }
+      }
       storage.write(owner.record)
       owner.timer = setInterval(() => {
         void owner.tick().catch(() => owner.fail())

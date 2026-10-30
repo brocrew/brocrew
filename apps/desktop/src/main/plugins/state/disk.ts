@@ -21,6 +21,7 @@ import { createFreshFile, openNotThroughALink } from '@brobot2/runtime/provider-
 import {
   isInsideCheckedRoot,
   isPrivateEntry,
+  tightenPluginDirectory,
   isWithinOrSame,
   openDirectoryNotThroughALink,
   realPath,
@@ -366,12 +367,15 @@ export class PluginStateDisk extends PluginJournalReader {
     super(options, create)
     try {
       if (create) mkdirSync(this.root, { mode: 0o700 })
+      tightenPluginDirectory(this.root)
       this.pin(this.root)
       if (create) {
         mkdirSync(this.guard, { mode: 0o700 })
         mkdirSync(this.activations, { mode: 0o700 })
         syncDirectory(this.pins[1]!.fd)
       }
+      tightenPluginDirectory(this.guard)
+      tightenPluginDirectory(this.activations)
       this.pin(this.guard)
       this.pin(this.activations)
       try {
@@ -383,6 +387,7 @@ export class PluginStateDisk extends PluginJournalReader {
         mkdirSync(this.reservations, { mode: 0o700 })
         syncDirectory(this.pins[1]!.fd)
       }
+      tightenPluginDirectory(this.reservations)
       this.pin(this.reservations)
       this.fence = PluginFence.acquire(join(this.root, 'writer-lock.sqlite'), existingOnly)
       this.check()

@@ -89,7 +89,7 @@ describe.runIf(process.platform === 'win32')(
           vi.spyOn(windowsAccessLists, 'userSid').mockRejectedValue(
             new Error('fictional SID failure'),
           )
-        await keepPluginRootPrivate(root)
+        await Promise.all([keepPluginRootPrivate(root), keepPluginRootPrivate(root)])
         await keepPluginRootPrivate(root)
         expect(owner).not.toHaveBeenCalled()
         expect(acl).not.toHaveBeenCalled()
