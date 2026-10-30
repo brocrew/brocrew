@@ -56,6 +56,7 @@ export async function readLocalRelease(
         now.dev !== pin.dev ||
         now.ino !== pin.ino ||
         !isPrivateEntry(held, 0o022) ||
+        now.uid !== held.uid ||
         !isPrivateEntry(now, 0o022) ||
         (privateRoot &&
           pin.path === root &&

@@ -585,7 +585,7 @@ process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
     await expect(host.removeData('../data')).rejects.toThrow('plugin-host-cleanup')
     expect(await readdir(join(home, 'data'))).toEqual(['chrome'])
   })
-  it('refuses linked data roots without outside writes and admits a public own root', async () => {
+  it('refuses linked or public data roots, with no outside write', async () => {
     const { host, home } = await context()
     await mkdir(home, { mode: 0o700 })
     await mkdir(join(home, 'data'), { mode: 0o700 })
@@ -599,10 +599,7 @@ process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
     await chmod(path, 0o755)
     const other = createPluginNodeHost({ root: path, runtime })
     hosts.push(other)
-    const child = await other.start(fixture())
-    await child.ready()
-    expect((await stat(path)).mode & 0o777).toBe(0o700)
-    expect(await child.stop()).toEqual({ exited: true })
+    await expect(other.start(fixture())).rejects.toThrow('plugin-host-paths')
   })
   it('serializes duplicate starts and refuses new starts after quit', async () => {
     const { host } = await context(),

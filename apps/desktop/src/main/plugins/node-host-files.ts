@@ -6,7 +6,6 @@ import {
   createFileNotThroughALink,
   isInsideCheckedRoot,
   isPrivateEntry,
-  tightenPluginDirectory,
   isImmutableFile,
   immutableMode,
   openDirectoryNotThroughALink,
@@ -33,7 +32,6 @@ export async function privateRoot(path: string): Promise<string> {
     if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw new PluginHostError('paths')
   }
   await directory(path)
-  tightenPluginDirectory(path)
   if (!isInsideCheckedRoot(path)) throw new PluginHostError('paths')
   return path
 }
@@ -61,7 +59,6 @@ export async function privateChild(root: string, path: string, create = true): P
       }
     }
     await directory(current)
-    if (create) tightenPluginDirectory(current)
   }
   return current
 }

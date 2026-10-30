@@ -78,9 +78,9 @@ describe('the plugin host on Windows, by its platform seams', () => {
     // An owner is compared only where this process has one.
     if (process.getuid) {
       expect(isPrivateEntry(stat(0o40700), 0o077, 'darwin')).toBe(true)
-      expect(isPrivateEntry(stat(0o40750), 0o077, 'darwin')).toBe(true)
+      expect(isPrivateEntry(stat(0o40750), 0o077, 'darwin')).toBe(false)
       expect(isPrivateEntry(stat(0o40755), 0o022, 'darwin')).toBe(true)
-      expect(isPrivateEntry(stat(0o40700, 404941), 0o077, 'darwin')).toBe(true)
+      expect(isPrivateEntry(stat(0o40700, 404941), 0o077, 'darwin')).toBe(false)
     }
     expect(isImmutableFile(stat(0o100666), 'win32')).toBe(true)
     expect(isImmutableFile(stat(0o100400), 'darwin')).toBe(true)
@@ -157,10 +157,13 @@ describe('the plugin host on Windows, by its platform seams', () => {
       ),
     ).toBeNull()
   })
-  it('refuses a plugin root that is not a drive-letter path on Windows', async () => {
+  it('refuses a plugin root that is not a drive-letter path on Windows and changes nothing elsewhere', async () => {
     await expect(
       keepPluginRootPrivate('/fictional/plugins', { platform: 'win32' }),
     ).rejects.toThrow('unsafe-path')
+    await expect(keepPluginRootPrivate('/fictional/plugins', { platform: 'darwin' })).resolves.toBe(
+      undefined,
+    )
     expect(isInsideCheckedRoot('/fictional/plugins', 'darwin')).toBe(true)
     expect(isInsideCheckedRoot('C:\\Fictional\\plugins', 'win32')).toBe(false)
   })

@@ -161,43 +161,36 @@ describe.skipIf(process.platform === 'win32')('unpackaged local plugin source', 
       }
     },
   )
-  it.each(['tampered archive', 'wrong manifest', 'missing asset', 'linked asset'])(
-    'refuses %s without a run or network fallback',
-    async (fault) => {
-      const { f, archive, directory, list, fetch, load } = await setup()
-      if (fault === 'wrong manifest') {
-        list.entries[0]!.targets[0]!.manifestSha256 = '0'.repeat(64)
-        await writeFile(join(directory, 'catalogue.json'), JSON.stringify(list))
-      }
-      const { controller, handle } = await load()
-      if (fault === 'tampered archive') {
-        const bytes = Buffer.from(f.pkg.archive)
-        bytes[0] = bytes[0]! ^ 1
-        await writeFile(archive, bytes)
-      }
-      if (fault === 'missing asset') await unlink(archive)
-      if (fault === 'linked asset') {
-        await rename(archive, archive + '.kept')
-        await symlink(archive + '.kept', archive)
-      }
-      await expect(controller.install(handle, 'chrome')).rejects.toThrow(
-        'Plugin unavailable. Try again.',
-      )
-      expect(f.starts()).toBe(0)
-      expect(f.state.exportActivation().entries).toHaveLength(0)
-      expect(f.state.inspect().pending).toBeNull()
-      expect(fetch).not.toHaveBeenCalled()
-    },
-  )
-  it('admits a shared dev folder and a later permission change without bypassing verification', async () => {
-    const { f, directory, appData, fetch, load } = await setup()
-    await chmod(directory, 0o755)
-    expect(await devPluginSource({ isPackaged: false, appData })).toBe(directory)
+  it.each([
+    'tampered archive',
+    'wrong manifest',
+    'missing asset',
+    'root permission change',
+    'linked asset',
+  ])('refuses %s without a run or network fallback', async (fault) => {
+    const { f, archive, directory, list, fetch, load } = await setup()
+    if (fault === 'wrong manifest') {
+      list.entries[0]!.targets[0]!.manifestSha256 = '0'.repeat(64)
+      await writeFile(join(directory, 'catalogue.json'), JSON.stringify(list))
+    }
     const { controller, handle } = await load()
-    await chmod(directory, 0o777)
-    await controller.install(handle, 'chrome')
-    expect(f.starts()).toBe(1)
-    expect(f.state.exportActivation().entries).toHaveLength(1)
+    if (fault === 'tampered archive') {
+      const bytes = Buffer.from(f.pkg.archive)
+      bytes[0] = bytes[0]! ^ 1
+      await writeFile(archive, bytes)
+    }
+    if (fault === 'missing asset') await unlink(archive)
+    if (fault === 'root permission change') await chmod(directory, 0o755)
+    if (fault === 'linked asset') {
+      await rename(archive, archive + '.kept')
+      await symlink(archive + '.kept', archive)
+    }
+    await expect(controller.install(handle, 'chrome')).rejects.toThrow(
+      'Plugin unavailable. Try again.',
+    )
+    expect(f.starts()).toBe(0)
+    expect(f.state.exportActivation().entries).toHaveLength(0)
+    expect(f.state.inspect().pending).toBeNull()
     expect(fetch).not.toHaveBeenCalled()
   })
   it('ignores even unsafe local input in packaged builds and reads only the fixed network list', async () => {
@@ -226,7 +219,7 @@ describe.skipIf(process.platform === 'win32')('unpackaged local plugin source', 
     await rename(directory, directory + '-absent')
     expect(await devPluginSource({ isPackaged: false, appData })).toBeUndefined()
   })
-  it.each(['symlink', 'canonical alias'])(
+  it.each(['symlink', 'shared mode', 'canonical alias'])(
     'refuses an existing %s source before any fetch',
     async (fault) => {
       const { directory, appData, fetch } = await setup()
@@ -234,7 +227,8 @@ describe.skipIf(process.platform === 'win32')('unpackaged local plugin source', 
       if (fault === 'symlink') {
         await rename(directory, directory + '-kept')
         await symlink(directory + '-kept', directory)
-      } else {
+      } else if (fault === 'shared mode') await chmod(directory, 0o755)
+      else {
         path = appData + '-alias'
         await symlink(appData, path)
       }

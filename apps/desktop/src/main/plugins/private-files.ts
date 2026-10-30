@@ -1,13 +1,4 @@
-import {
-  closeSync,
-  constants,
-  fstatSync,
-  fchmodSync,
-  fsyncSync,
-  lstatSync,
-  mkdirSync,
-  openSync,
-} from 'node:fs'
+import { closeSync, constants, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync } from 'node:fs'
 import { realpathSync, type BigIntStats, type Stats } from 'node:fs'
 import { lstat, open, type FileHandle } from 'node:fs/promises'
 import { dirname, isAbsolute, posix, win32 } from 'node:path'
@@ -16,9 +7,8 @@ import { windowsAccessLists, type OwnedAccessLists } from '../recovery/windows-p
 /**
  * The plugin host's private folders and files, on each platform.
  *
- * Ownership and mode are advisory on macOS and Linux. Own plugin folders are tightened best
- * effort to 0700; privacy failures warn once per entry and do not block plugins. Opens still
- * refuse a link with `O_NOFOLLOW`.
+ * On macOS and Linux an entry is private when this user owns it and its mode gives the group and
+ * others nothing, and opens refuse a link with `O_NOFOLLOW`.
  *
  * A stat on Windows carries no owner and no real mode. There the plugin root's access list is
  * tightened best effort once per folder identity in a process ({@link keepPluginRootPrivate}).
@@ -30,43 +20,14 @@ import { windowsAccessLists, type OwnedAccessLists } from '../recovery/windows-p
 type Platform = NodeJS.Platform
 type AnyStats = Stats | BigIntStats
 
-/** Permission diagnostics are bounded by physical identity, never used for admission. */
-const warnedPermissions = new Set<string>()
-export function warnPluginPermissions(stat: AnyStats): void {
-  const identity = `${stat.dev}:${stat.ino}`
-  if (warnedPermissions.has(identity)) return
-  warnedPermissions.add(identity)
-  console.warn('Could not tighten plugin folder permissions; continuing.')
-}
-
-/** Observes privacy without refusing a plugin because of its owner or mode. */
+/** Whether `stat` is this user's and gives nobody else anything under `mask`. */
 export function isPrivateEntry(
   stat: AnyStats,
   mask = 0o077,
   platform: Platform = process.platform,
 ): boolean {
-  if (
-    platform !== 'win32' &&
-    (Number(stat.uid) !== process.getuid?.() || (Number(stat.mode) & mask) !== 0)
-  )
-    warnPluginPermissions(stat)
-  return true
-}
-
-/** Tightens only a caller-identified own plugin folder, through its pinned descriptor. */
-export function tightenPluginDirectory(path: string, platform: Platform = process.platform): void {
-  if (platform === 'win32') return
-  const fd = openDirectoryNotThroughALink(path, platform)
-  try {
-    try {
-      fchmodSync(fd, 0o700)
-    } catch {
-      warnPluginPermissions(fstatSync(fd))
-    }
-    isPrivateEntry(fstatSync(fd), 0o077, platform)
-  } finally {
-    closeSync(fd)
-  }
+  if (platform === 'win32') return true
+  return Number(stat.uid) === process.getuid?.() && (Number(stat.mode) & mask) === 0
 }
 
 /**
@@ -84,17 +45,13 @@ export function isImmutableFile(stat: AnyStats, platform: Platform = process.pla
   return platform === 'win32' || (Number(stat.mode) & 0o277) === 0
 }
 
-/** Observes the directory's privacy without making it an admission requirement. */
+/** Whether `stat` is this user's directory with mode exactly 0700; on Windows, see above. */
 export function isOwnerOnlyDirectory(
   stat: AnyStats,
   platform: Platform = process.platform,
 ): boolean {
-  if (
-    platform !== 'win32' &&
-    (Number(stat.uid) !== process.getuid?.() || (Number(stat.mode) & 0o7777) !== 0o700)
-  )
-    warnPluginPermissions(stat)
-  return true
+  if (platform === 'win32') return true
+  return Number(stat.uid) === process.getuid?.() && (Number(stat.mode) & 0o7777) === 0o700
 }
 
 /** Makes a directory durable where the platform allows it; Windows refuses a directory fsync. */
@@ -243,37 +200,23 @@ export function isLocalDrivePath(path: string, platform: Platform = process.plat
 
 /** Structurally admitted plugin roots, by canonical path, with their folder identity. */
 const checkedRoots = new Map<string, { dev: bigint; ino: bigint }>()
-const rootTightenings = new Map<string, Promise<void>>()
 
 /**
  * On Windows, admits a plain local plugin folder and attempts once per identity to grant this
  * user, SYSTEM and Administrators access without inheritance. ACL and owner observations never
  * gate plugins. Only this folder is tightened; parent and workspace permissions are untouched.
- * On POSIX, the own root is tightened best effort to 0700 with the same admission policy.
+ * Elsewhere does nothing: the root's mode is checked where it is pinned.
  */
 export async function keepPluginRootPrivate(
   root: string,
   options: { platform?: Platform; lists?: OwnedAccessLists } = {},
 ): Promise<void> {
   const platform = options.platform ?? process.platform
+  if (platform !== 'win32') return
+  const lists = options.lists ?? windowsAccessLists
   if (!isAbsolute(root) || !isLocalDrivePath(root, platform)) throw new Error('unsafe-path')
   const parent = realPath(dirname(root), platform)
-  if (
-    platform === 'win32'
-      ? parent.toLowerCase() !== dirname(root).toLowerCase()
-      : parent !== dirname(root)
-  )
-    throw new Error('unsafe-path')
-  if (platform !== 'win32') {
-    try {
-      mkdirSync(root, { mode: 0o700 })
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
-    }
-    tightenPluginDirectory(root, platform)
-    return
-  }
-  const lists = options.lists ?? windowsAccessLists
+  if (parent.toLowerCase() !== dirname(root).toLowerCase()) throw new Error('unsafe-path')
   try {
     mkdirSync(root)
   } catch (error) {
@@ -284,20 +227,12 @@ export async function keepPluginRootPrivate(
   const canonical = realPath(root, platform).toLowerCase()
   const checked = checkedRoots.get(canonical)
   if (checked?.dev === stat.dev && checked.ino === stat.ino) return
-  const identity = `${canonical}:${stat.dev}:${stat.ino}`
-  let tightening = rootTightenings.get(identity)
-  if (!tightening) {
-    tightening = Promise.resolve().then(async () => {
-      try {
-        const user = await lists.userSid()
-        await lists.restrict(root, user, [])
-      } catch {
-        warnPluginPermissions(stat)
-      }
-    })
-    rootTightenings.set(identity, tightening)
+  try {
+    const user = await lists.userSid()
+    await lists.restrict(root, user, [])
+  } catch {
+    console.warn('Could not tighten plugin folder permissions; continuing.')
   }
-  await tightening
   const again = lstatSync(root, { bigint: true })
   if (
     !again.isDirectory() ||

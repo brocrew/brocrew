@@ -20,7 +20,6 @@ import { isSocketFile, localEndpoint } from '../local-endpoint'
 import {
   isInsideCheckedRoot,
   isPrivateEntry,
-  tightenPluginDirectory,
   isWithinOrSame,
   openDirectoryNotThroughALink,
   realPath,
@@ -87,7 +86,7 @@ export class SupervisorStorage {
           path = parent
         }
       }
-      // Observe the appData parent without changing its permissions.
+      // The ordinary appData parent may be 0755: only its owner can replace the private root.
       this.pin(dirname(root), 0o022)
       for (const path of [root, this.folder]) {
         try {
@@ -102,7 +101,6 @@ export class SupervisorStorage {
           }
           syncDirectory(this.pins.at(-1)!.fd)
         }
-        tightenPluginDirectory(path)
         this.pin(path)
       }
       if (!isInsideCheckedRoot(root)) refuse('unsupported')

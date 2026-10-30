@@ -795,7 +795,7 @@ describe.skipIf(process.platform === 'win32')(
         storage.close()
       }
     })
-    it('refuses workspace aliases, symlinks and absent launchers while admitting a shared parent', async () => {
+    it('fails closed on shared roots, workspace aliases, symlinks, unknown ownership and absent launchers', async () => {
       const { parent, root, workspaces } = fixture()
       const launch = vi.fn(async () => {})
       await expect(attach(root, workspaces[0]!)).rejects.toMatchObject({ code: 'unavailable' })
@@ -805,11 +805,10 @@ describe.skipIf(process.platform === 'win32')(
       expect(() => new SupervisorStorage(join(workspaces[0]!, 'plugins'), [alias], true)).toThrow()
       expect(existsSync(join(workspaces[0]!, 'plugins'))).toBe(false)
       chmodSync(parent, 0o777)
-      const storage = new SupervisorStorage(root, workspaces, true)
-      storage.close()
-      expect(lstatSync(parent).mode & 0o777).toBe(0o777)
+      await expect(attach(root, workspaces[0]!, { launch })).rejects.toMatchObject({
+        code: 'unavailable',
+      })
       expect(launch).not.toHaveBeenCalled()
-      rmSync(root, { recursive: true })
       chmodSync(parent, 0o700)
       symlinkSync(workspaces[1]!, root)
       await expect(PluginSupervisor.start({ root, workspaceRoots: [] })).rejects.toMatchObject({
