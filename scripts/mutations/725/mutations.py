@@ -208,7 +208,7 @@ MUTATIONS = [
     ),
     (
         'M31 · R71 · the clause stands without the receipt — killed by `the-apps-own-ending-is-drawn.test.ts`',
-        [(TRANSCRIPT, '          ? `turn ${event.state} — ${THE_APPS_OWN_WORD}`\n', '          ? THE_APPS_OWN_WORD\n')],
+        [(TRANSCRIPT, "        event.wordOf === 'this-app'\n          ? `turn ${event.state} — ${THE_APPS_OWN_WORD}`\n", "        event.wordOf === 'this-app'\n          ? THE_APPS_OWN_WORD\n")],
     ),
     (
         "M32 · R71 · the words drop 'not the provider’s' — killed by `the-apps-own-ending-is-drawn.test.ts`",

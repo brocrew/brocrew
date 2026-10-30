@@ -182,7 +182,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "M12 · F076 — a turn Claude failed on a refused login is not marked `loginRefused` · "
         f"killed by `{RUNTIME}`",
         [(CLAUDE_RUNTIME,
-          "            if (event.cause === 'auth_stale') loginRefused = true\n",
+          "            if (event.cause === 'auth_stale' || event.cause === 'auth') loginRefused = true\n",
           "")],
     ),
     # `reads digest, then queue, then attempts only the transcripts …` — `sess_stall_login_refused`'s

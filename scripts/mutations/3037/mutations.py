@@ -189,7 +189,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "M18 · a conversation asks its provider for the profile's sign-in with no refusal on screen "
         f"· killed by `{RENEWED}`",
         [(PANE,
-          "    if (signIn === null || error === null) return\n",
+          "    if (signIn === null || (error === null && !refused)) return\n",
           "    if (signIn === null) return\n")],
     ),
     (

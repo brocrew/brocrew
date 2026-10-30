@@ -94,8 +94,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "M6 · 🔴 a key saved or removed, a re-copy or a sign-in in this app ends the walls, so held "
         f"words meet the old limit and are spent · killed by `{SIGNIN}`",
         [(HOST,
-          "    this.providersMoved({ what: 'login', provider })",
-          "    this.providersMoved({ what: 'login', provider })\n"
+          "    this.forgetTheUsage(provider)\n    this.providersMoved({ what: 'login', provider })",
+          "    this.forgetTheUsage(provider)\n    this.providersMoved({ what: 'login', provider })\n"
           "    this.aSignInChanged(provider, this.now())")],
     ),
     (
