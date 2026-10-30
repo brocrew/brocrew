@@ -427,7 +427,7 @@ describe('the beta builds run the check in a job of its own', () => {
 
   it.each([
     ['windows.yml', 'windows-2022', 'recovery-evidence-windows'],
-    ['macos.yml', 'macos-15', 'recovery-evidence-macos'],
+    ['macos.yml', 'macos-15-xlarge', 'recovery-evidence-macos'],
   ])(
     '%s: waits only for the question whether to build, and the build job no longer runs it',
     (name, runner, evidence) => {

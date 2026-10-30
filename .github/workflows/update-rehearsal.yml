@@ -131,7 +131,7 @@ jobs:
   macos:
     name: Build A and B for the Mac (dmg and zip, Apple silicon, signed ad hoc)
     needs: [plan, leak]
-    runs-on: macos-15
+    runs-on: macos-15-xlarge
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
@@ -307,7 +307,7 @@ jobs:
     name: Mac, the guided route
     needs: [plan, macos, publish-a]
     if: ${{ !cancelled() && needs.plan.outputs.runs_here == 'true' && needs.macos.result == 'success' && (needs.plan.outputs.mode == 'local' || needs.publish-a.result == 'success') }}
-    runs-on: macos-15
+    runs-on: macos-15-xlarge
     timeout-minutes: 110
     environment: ${{ needs.plan.outputs.environment }}
     permissions:

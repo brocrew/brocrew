@@ -62,7 +62,7 @@ jobs:
       matrix:
         # `windows-2022`, as in `windows.yml`: pnpm's node-gyp does not know the 2025 image's Visual
         # Studio. Its Git Bash is what Claude Code's Bash tool runs.
-        os: [macos-15, windows-2022]
+        os: [macos-15-xlarge, windows-2022]
         # The daily run tries the newest published version; a push, the two the file names.
         which: ${{ github.event_name == 'schedule' && fromJSON('["published"]') || fromJSON('["oldest","newest"]') }}
     # One run per branch, machine and version at a time: a newer push replaces one still running.

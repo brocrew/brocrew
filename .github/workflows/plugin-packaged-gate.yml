@@ -10,7 +10,7 @@ jobs:
     if: >-
       github.repository == 'brocrew/brocrew' &&
       startsWith(github.ref, 'refs/heads/gate/plugin-packaged-')
-    runs-on: macos-15
+    runs-on: macos-15-xlarge
     timeout-minutes: 45
     concurrency:
       group: plugin-packaged-${{ github.ref }}

@@ -90,7 +90,7 @@ jobs:
       )
     # ⚑ Apple silicon: the app is arm64 only (its bundled Codex is the darwin-arm64 build), and the
     # check runs Codex, Claude Code and the app itself, so the runner must be able to run them.
-    runs-on: macos-15
+    runs-on: macos-15-xlarge
     timeout-minutes: 45
     permissions:
       contents: write
@@ -266,13 +266,13 @@ jobs:
       )
     uses: ./.github/workflows/recovery-real-entry.yml
     with:
-      runner: macos-15
+      runner: macos-15-xlarge
       evidence: recovery-evidence-macos
 
   plugin-v2-review:
     name: Plugin v2 Review (${{ matrix.app_version || 'off' }})
     if: github.repository == 'brocrew/brocrew' && github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-')
-    runs-on: macos-15
+    runs-on: macos-15-xlarge
     timeout-minutes: ${{ (startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-sdk-') || startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-sdk-')) && 50 || 45 }}
     permissions:
       contents: read
