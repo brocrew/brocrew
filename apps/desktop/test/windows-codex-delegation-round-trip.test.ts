@@ -18,7 +18,6 @@ import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
@@ -26,7 +25,7 @@ class Window implements RuntimeEventSink {
   readonly ownerId = 'window:birch'
   readonly aPersonIsBehindIt = true
   readonly alive = true
-  send(_message: RuntimeEventMessage): void {}
+  send(): void {}
   sendLiveness(): void {}
 }
 
@@ -130,7 +129,7 @@ describe('Windows-suite Codex delegation round trip', () => {
           provider: 'codex',
           profileId,
           cwd: root,
-          approvalMode: 'auto',
+          approvalMode: holdExit ? 'ask' : 'auto',
         },
         window,
       )
@@ -201,6 +200,7 @@ describe('Windows-suite Codex delegation round trip', () => {
     holdExit = true
     const { parent, alder, cedar } = await family()
     await host.close(parent, window)
+    expect(store.messagesWaitingIn(parent)).toHaveLength(0)
     expect(host.sessionIds).not.toContain(parent)
     expect(parentStarts).toBe(1)
     await expect(host.resumeSession(parent, window)).rejects.toThrow(
@@ -218,8 +218,14 @@ describe('Windows-suite Codex delegation round trip', () => {
     expect(parentStarts).toBe(1)
     expect(parentResumes).toBe(1)
     expect(replies(parent)).toEqual(['Alder result', 'Cedar result'])
+    await until(() => store.events(parent).some(({ event }) => event.type === 'permission_request'))
+    const request = store
+      .events(parent)
+      .map(({ event }) => event)
+      .findLast((event) => event.type === 'permission_request')
+    if (request?.type !== 'permission_request') throw new Error('the fictional parent has no card')
+    await host.respondPermission(parent, request.id, { outcome: 'allow' }, window)
     await until(() => store.find(parent)?.status === 'idle')
-    host.claimSession(parent, window)
     await host.send(parent, 'Continue after retirement', window)
     expect(store.messagesWaitingIn(parent)).toHaveLength(0)
     expect(replies(parent)).toEqual(['Alder result', 'Cedar result'])
