@@ -11042,7 +11042,7 @@
         },
         {
           "id": "2003:M31",
-          "fingerprint": "902caff4676fdf257bc4489906e26119e9ac120ebffae0bf4272b7d94a89e720"
+          "fingerprint": "c9aec4d8426999f77a13da08bde8362f241d600cf4883ae1538f87eb44596061"
         },
         {
           "id": "2003:M32",
@@ -11157,7 +11157,7 @@
           "fingerprint": "52d2bb3dd8c66a7e90319aa5a0e2bfbba3ebd5267dbf701ccc26d08338191431"
         }
       ],
-      "definitionFingerprint": "ff7590c6de22755c7c27e2028ccb7ce670305058521c53841fa893af0ecbd7b9",
+      "definitionFingerprint": "a01d0fb78b2491870414877329ccdcd60ea4847afc808005fe9f69b7f1de465c",
       "retiredRows": [
         "M2",
         "M3",
@@ -14376,7 +14376,7 @@
         },
         {
           "id": "216:M16",
-          "fingerprint": "14008637669ce530d5707fabec085223c40105b55c66b6299c06032684bea917"
+          "fingerprint": "e4e2ea6d1c8c1d5d4bb4ca5d3864f7462f94be63c1c2ae7461c7271b84b5b4dd"
         },
         {
           "id": "216:M17",
@@ -14536,10 +14536,10 @@
         },
         {
           "id": "216:M57",
-          "fingerprint": "9eaffd95e0eadb74328de5b354b54a096b4c3f92c71074bb670a130fcf4b60bd"
+          "fingerprint": "653282f82d0c076a33a4641479bded6167c913a7c0d572453a8a5c4a39fc0838"
         }
       ],
-      "definitionFingerprint": "51cc59bf3f9eb824cea6823e7aa33d66330c74e778819bac3a4254bd7f78a8f0",
+      "definitionFingerprint": "99d9511fa3a573f9b71d8b4cc0f391d8a1c7be1ba68896e03fb95a855558aac5",
       "retiredRows": [
         "M14",
         "M15",
@@ -62501,7 +62501,7 @@
         },
         {
           "id": "667:M12",
-          "fingerprint": "1894d90dbafd5af91e82c297e458cf1ea4a8dde7b584af44a8d51c2b8a6f9fb1"
+          "fingerprint": "f2868a873dfbdfb5e5659321c30dcceb79993187b052f8d4525557e7f88956f7"
         },
         {
           "id": "667:M13",
@@ -62544,7 +62544,7 @@
           "fingerprint": "387c58a883cf80029fb4cb81f611568953e2e2a01d365cb5e540d852effb3632"
         }
       ],
-      "definitionFingerprint": "78b91df127824ff087e8386575d542801bfd62062f675939ec7f387b57a48c92",
+      "definitionFingerprint": "8b35cea2ed138338461bc4d27baca2d814161c2f728fc3eaabb86f29e71abc7b",
       "retiredRows": [
         "M9",
         "M18",

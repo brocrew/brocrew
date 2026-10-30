@@ -187,8 +187,19 @@ describe('to-dos in the conversation', () => {
     expect(m.q('inline-todo-said-req_report').textContent).toBe('This to-do was already answered.')
   })
   it('renaming the work leaves its to-do actionable', async () => {
-    const m = mount(ConversationPane, paneProps({ record: record([...events, { type: 'work_retitled', piece: 'work_report', title: 'Renamed sample' } as TranscriptEvent]) }))
+    const m = mount(
+      ConversationPane,
+      paneProps({
+        record: record([
+          ...events,
+          {
+            type: 'work_retitled',
+            piece: 'work_report',
+            title: 'Renamed sample',
+          } as TranscriptEvent,
+        ]),
+      }),
+    )
     expect(m.all('inline-todo-done-req_report')).toHaveLength(1)
   })
-
 })

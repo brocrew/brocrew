@@ -18148,7 +18148,8 @@ export class RuntimeHost implements LiveHost {
   ): void {
     const slot = this.slots.get(owner)
     if (slot !== undefined && slot.session === null) {
-      if (requireDurable) throw new Error('The conversation is still starting. Try again in a moment.')
+      if (requireDurable)
+        throw new Error('The conversation is still starting. Try again in a moment.')
       // ⛔ A bug guard rather than a rail: the copies were refused for a starting owner before this.
       if (copies.length > 0) throw new Error(`${row.piece} ended while ${owner} was starting`)
       this.writeIntoItsLedger(owner, row)

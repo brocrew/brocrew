@@ -638,26 +638,39 @@ describe('a helper that stopped with a piece open reads as stopped', () => {
     expect(host.workIncidentsForAPerson().rows).toEqual([])
   })
 
-
-  it.each([false, true])('a failed close write stays retryable with durable state unchanged (stopped holder: %s)', async (stopHolder) => {
-    const { brobot, ada, piece } = await aHelperThatStopped()
-    if (stopHolder) { await host.close(ada, THE_APP_ITSELF); await settle() }
-    const append = store.append.bind(store)
-    const failure = vi.spyOn(store, 'append').mockImplementation((...args) => {
-      if (args[2].type === 'work_closed') throw new Error('fixture close write failed')
-      return append(...args)
-    })
-    try {
-      await expect(host.closeForAPerson(piece, window)).rejects.toThrow('fixture close write failed')
-      expect(pieceOf(ada, piece)?.state).toBe('stalled')
-      expect(ledger(ada).some((event) => event.type === 'work_closed')).toBe(false)
-      expect(told(ada, 'A person closed')).toBe(false)
-      expect(told(brobot, 'A person closed')).toBe(false)
-    } finally { failure.mockRestore() }
-    expect(await host.closeForAPerson(piece, window)).toMatchObject({ ok: true, piece })
-    expect(createSessionStore(db, tick).piecesOwnedBy(ada).find((one) => one.piece === piece)?.state).toBe('closed')
-    expect(ledger(ada).filter((event) => event.type === 'work_closed')).toHaveLength(1)
-  })
+  it.each([false, true])(
+    'a failed close write stays retryable with durable state unchanged (stopped holder: %s)',
+    async (stopHolder) => {
+      const { brobot, ada, piece } = await aHelperThatStopped()
+      if (stopHolder) {
+        await host.close(ada, THE_APP_ITSELF)
+        await settle()
+      }
+      const append = store.append.bind(store)
+      const failure = vi.spyOn(store, 'append').mockImplementation((...args) => {
+        if (args[2].type === 'work_closed') throw new Error('fixture close write failed')
+        return append(...args)
+      })
+      try {
+        await expect(host.closeForAPerson(piece, window)).rejects.toThrow(
+          'fixture close write failed',
+        )
+        expect(pieceOf(ada, piece)?.state).toBe('stalled')
+        expect(ledger(ada).some((event) => event.type === 'work_closed')).toBe(false)
+        expect(told(ada, 'A person closed')).toBe(false)
+        expect(told(brobot, 'A person closed')).toBe(false)
+      } finally {
+        failure.mockRestore()
+      }
+      expect(await host.closeForAPerson(piece, window)).toMatchObject({ ok: true, piece })
+      expect(
+        createSessionStore(db, tick)
+          .piecesOwnedBy(ada)
+          .find((one) => one.piece === piece)?.state,
+      ).toBe('closed')
+      expect(ledger(ada).filter((event) => event.type === 'work_closed')).toHaveLength(1)
+    },
+  )
 
   it('refuses a close of work that is not stopped, of a root, and from no person', async () => {
     const { brobot, ada, piece } = await aHelperThatStopped()
