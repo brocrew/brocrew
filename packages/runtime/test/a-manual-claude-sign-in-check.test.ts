@@ -2,7 +2,7 @@ import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { probeClaudeCodeLogin } from '../src/internal/claude-login-renewal'
+import { probeClaudeCodeLogin, type RunAProgram } from '../src/internal/claude-login-renewal'
 
 let folder: string
 beforeEach(() => {
@@ -69,6 +69,42 @@ it('does not start a cancelled or missing program, and never exposes thrown diag
   expect(result.state).toBe('unknown')
   expect(JSON.stringify(result)).not.toContain('fake secret diagnostic')
 })
+
+it.each(['darwin', 'win32'] as const)(
+  'the %s probe uses the conversation environment instead of inherited backend routing',
+  async (platform) => {
+    const run = vi.fn<RunAProgram>(async () => ({ code: 0, timedOut: false }))
+    const inherited = {
+      HOME: '/fictional/home',
+      Path: 'C:\\fictional\\bin',
+      PATH: '/fictional/bin',
+      SystemRoot: 'C:\\fictional\\Windows',
+      HTTPS_PROXY: 'https://proxy.invalid',
+      CLAUDE_CODE_USE_BEDROCK: '1',
+      CLAUDE_CODE_USE_VERTEX: '1',
+      CLAUDE_CODE_USE_FOUNDRY: '1',
+      ANTHROPIC_BASE_URL: 'https://gateway.invalid',
+      claude_code_use_bedrock: '1',
+      anthropic_base_url: 'https://other-gateway.invalid',
+      AWS_PROFILE: 'fictional-backend',
+      CLAUDE_CONFIG_DIR: '/fictional/other-login',
+    }
+    const result = await probeClaudeCodeLogin({
+      findProgram: () => '/fictional/claude',
+      platform,
+      env: inherited,
+      run,
+    })
+    expect(result.state).toBe('usable')
+    const env = run.mock.calls[0]![2].env
+    for (const key of Object.keys(inherited).filter((key) => /claude|anthropic|aws/i.test(key)))
+      expect(env).not.toHaveProperty(key)
+    expect(env.HOME).toBe('/fictional/home')
+    expect(env.HTTPS_PROXY).toBe('https://proxy.invalid')
+    if (platform === 'win32') expect(env.SystemRoot).toBe('C:\\fictional\\Windows')
+    expect(inherited.CLAUDE_CODE_USE_BEDROCK).toBe('1')
+  },
+)
 
 describe.skipIf(process.platform === 'win32')(
   'fake programs are reaped before the check returns',

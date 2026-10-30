@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto'
 import { mkdirSync, realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { buildChildEnv } from './child-env'
 
 /**
  * Renewing the person's own Claude Code login by running their own Claude Code.
@@ -249,7 +250,11 @@ export async function probeClaudeCodeLogin(seams: ClaudeRenewalSeams): Promise<A
       {
         cwd: renewalFolder(),
         env: {
-          ...claudeRenewalEnv(seams.env, seams.platform, program),
+          ...claudeRenewalEnv(
+            buildChildEnv({}, seams.env, seams.platform),
+            seams.platform,
+            program,
+          ),
           CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1',
         },
         timeoutMs: seams.timeLimitMs ?? 8_000,
