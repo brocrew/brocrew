@@ -3,6 +3,7 @@ import { rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   pluginUnavailableNotice,
+  PluginStartupDiagnosticSchema,
   pluginStartupDiagnosticNotice,
   type PluginStartupDiagnostic,
   type PluginUnavailableReason,
@@ -13,6 +14,8 @@ import { PluginSupervisorError } from './supervisor/protocol'
 
 /** Keep one error line, excluding launch capabilities and terminal control characters. */
 export function pluginStartupStderr(text: string, secrets: readonly string[] = []): string | null {
+  // Strip terminal escapes before matching secrets, so normalization cannot reveal one.
+  text = text.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '')
   for (const secret of secrets) if (secret) text = text.split(secret).join('[redacted]')
   text = text
     .replace(/Bearer\s+[^\s]+/gi, 'Bearer [redacted]')
@@ -21,16 +24,20 @@ export function pluginStartupStderr(text: string, secrets: readonly string[] = [
       '$1[redacted]',
     )
     .replace(/[a-f0-9]{32,}/gi, '[redacted]')
-    .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '')
-  return (
+  const line =
     text
       .split(/\r?\n/)
-      .find((line) => line.trim())
+      .find((one) => one.trim())
       ?.replace(/[\p{Cc}\p{Cs}\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu, ' ')
-      .trim()
-      .slice(0, 512) || null
-  )
+      .trim() ?? ''
+  let bounded = ''
+  for (const character of line) {
+    if (bounded.length + character.length > 512) break
+    bounded += character
+  }
+  return PluginStartupDiagnosticSchema.shape.stderr.safeParse(bounded).success ? bounded : null
 }
+
 export class PluginSupervisorLaunchFailure extends Error {
   constructor(
     readonly diagnostic: PluginStartupDiagnostic,
@@ -57,15 +64,44 @@ export function observePluginSupervisorLaunch(child: ChildProcess, secrets: read
         4096 - stderr.length,
       )
   })
-  child.stderr?.on('error', () => {})
+  let ended = !child.stderr || child.stderr.readableEnded || child.stderr.destroyed
+  const drained = new Promise<void>((resolve) => {
+    const finish = () => {
+      ended = true
+      resolve()
+    }
+    if (ended) finish()
+    else {
+      child.stderr!.once('end', finish)
+      child.stderr!.once('close', finish)
+      child.stderr!.once('error', finish)
+    }
+  })
   ;(child.stderr as (NodeJS.ReadableStream & { unref?(): void }) | null)?.unref?.()
-  return () =>
+  const snapshot = () =>
     new PluginSupervisorLaunchFailure({
       exitCode: child.exitCode,
       signal: child.signalCode,
       stderr: pluginStartupStderr(stderr, secrets),
     })
+  return Object.assign(snapshot, {
+    async drainUntil(deadline: number): Promise<void> {
+      if (ended) return
+      let timer: ReturnType<typeof setTimeout> | undefined
+      try {
+        await Promise.race([
+          drained,
+          new Promise<void>((resolve) => {
+            timer = setTimeout(resolve, Math.max(0, deadline - performance.now()))
+          }),
+        ])
+      } finally {
+        clearTimeout(timer)
+      }
+    },
+  })
 }
+
 /** A failed startup phase; no launch configuration or provider data is part of its message. */
 export class PluginStartupError extends PluginSupervisorError {
   constructor(

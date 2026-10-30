@@ -21,7 +21,11 @@ import { keepPluginRootPrivate } from './private-files'
 import { installedChromeOnWindows } from './windows-chrome'
 import { pluginWorkspaceIdentity, type PluginSupervisorAttachment } from './supervisor/client'
 import { PluginSupervisorError } from './supervisor/protocol'
-import type { PluginCard, PluginUnavailableReason } from '../../shared/plugin-settings'
+import type {
+  PluginCard,
+  PluginUnavailableReason,
+  PluginStartupDiagnostic,
+} from '../../shared/plugin-settings'
 import { thisMachine, type PluginTarget } from './package-schema'
 
 /** Stable Settings/discovery facade. Repo fetch and plugin startup never block normal agents. */

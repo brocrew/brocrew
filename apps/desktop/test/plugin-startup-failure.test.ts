@@ -120,3 +120,45 @@ it('does not invent a child exit or stderr at an attachment timeout and bounds e
   ).toBe('Error: denied token=[redacted]')
   expect(pluginStartupStderr('x'.repeat(2000))).toHaveLength(512)
 })
+
+it('redacts a capability split by terminal escapes before display normalization', () => {
+  const capability = 'abcd1234'.repeat(8)
+  const escaped = capability.match(/.{16}/g)!.join('\u001b[0m')
+  expect(pluginStartupStderr(`Error: ${escaped}`, [capability])).toBe('Error: [redacted]')
+  const bounded = pluginStartupStderr('x'.repeat(511) + '😀')!
+  expect(bounded).toBe('x'.repeat(511))
+  expect(PluginStartupDiagnosticSchema.shape.stderr.safeParse(bounded).success).toBe(true)
+})
+it('drains stderr after exit before retaining the failure, within the original launch deadline', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
+  try {
+    const stderr = Object.assign(new EventEmitter(), {
+      unref: vi.fn(),
+      readableEnded: false,
+      destroyed: false,
+    })
+    const child = { stderr, exitCode: 17, signalCode: null }
+    const snapshot = observePluginSupervisorLaunch(child as unknown as ChildProcess, [])
+    let settled = false
+    const draining = snapshot.drainUntil(performance.now() + 100).then(() => {
+      settled = true
+    })
+    await vi.advanceTimersByTimeAsync(20)
+    expect(settled).toBe(false)
+    stderr.emit('data', Buffer.from('Error: fictional late pipe failure\n'))
+    stderr.emit('end')
+    await draining
+    expect(pluginStartupDiagnostic(snapshot())?.stderr).toBe('Error: fictional late pipe failure')
+    expect(pluginStartupDiagnostic(snapshot())?.exitCode).toBe(17)
+    const stuck = observePluginSupervisorLaunch(
+      { ...child, stderr: new EventEmitter() } as unknown as ChildProcess,
+      [],
+    )
+    const timed = stuck.drainUntil(performance.now() + 100)
+    await vi.advanceTimersByTimeAsync(100)
+    await timed
+    expect(vi.getTimerCount()).toBe(0)
+  } finally {
+    vi.useRealTimers()
+  }
+})

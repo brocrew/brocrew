@@ -31,7 +31,7 @@ export function createPluginSupervisorLauncher(options: {
   const { lifecycleForNewOwner, ...plain } = options
   const captured = structuredClone(plain)
   let pending: Promise<void> | undefined
-  let diagnostic: (() => Error) | undefined
+  let diagnostic: ReturnType<typeof observePluginSupervisorLaunch> | undefined
   async function launch(): Promise<void> {
     diagnostic = undefined
     const storage = new SupervisorStorage(captured.root, captured.workspaceRoots, true)
@@ -109,6 +109,7 @@ export function createPluginSupervisorLauncher(options: {
         }
         await new Promise((resolve) => setTimeout(resolve, 10))
       }
+      await diagnostic.drainUntil(until)
       throw new PluginSupervisorError('unavailable', {
         cause: Object.assign(diagnostic(), { cause: spawnError }),
       })
