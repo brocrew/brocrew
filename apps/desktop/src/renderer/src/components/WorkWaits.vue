@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { LOOK, usePersonsQueue } from '../lib/persons-queue'
 import { TAKE_BACK } from '../lib/take-back'
+import type { TodoRow } from '../lib/work-waits'
 import TodoCard from './TodoCard.vue'
 import CloseWorkButton from './CloseWorkButton.vue'
 
@@ -19,6 +20,7 @@ const props = withDefaults(
   }>(),
   { floating: false },
 )
+const emit = defineEmits<{ leave: [] }>()
 
 const queue = usePersonsQueue()
 const waits = computed(() => queue.workWaits.value)
@@ -37,6 +39,11 @@ const unreadSays: Record<typeof props.part, string> = {
 }
 
 const unread = computed(() => waits.value[props.part].unread)
+
+function openTodo(row: TodoRow): void {
+  if (props.floating) emit('leave')
+  queue.openWork(row)
+}
 </script>
 
 <template>
@@ -63,7 +70,7 @@ const unread = computed(() => waits.value[props.part].unread)
       class="wait"
       :class="{ settled: card.taken }"
     >
-      <TodoCard :card="card" :cy="cy" open-conversation />
+      <TodoCard :card="card" :cy="cy" open-conversation @open="openTodo(card.row)" />
     </li>
   </ol>
   <ol v-if="cards.length > 0" class="waits" :class="{ floating }" :data-cy="`${cy}-${part}`">

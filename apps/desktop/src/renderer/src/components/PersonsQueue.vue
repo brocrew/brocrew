@@ -999,7 +999,7 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
       <InstructionAsks v-if="props.floating" floating />
       <!-- The agents' requests to register an MCP server, in the corner, each decided on its row. -->
       <McpServerRequests v-if="props.floating" floating />
-      <WorkWaits v-if="props.floating" part="todos" floating />
+      <WorkWaits v-if="props.floating" part="todos" floating @leave="emit('leave')" />
       <!-- ⚑ **F097 · the work waiting on the person's reply, in the corner** — below the asks, each
            row a door to its conversation. ⛔ The corner copy only; see `replies` above. -->
       <WaitingOnWhoWrote v-if="props.floating" floating @leave="emit('leave')" />

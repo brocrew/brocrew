@@ -12,6 +12,7 @@ withDefaults(
   }>(),
   { canAnswer: true, openConversation: false },
 )
+const emit = defineEmits<{ open: [] }>()
 const queue = usePersonsQueue()
 const note = ref('')
 </script>
@@ -73,7 +74,7 @@ const note = ref('')
       <button
         type="button"
         :data-cy="`${cy}-todo-open-${card.row.key}`"
-        @click="queue.openWork(card.row)"
+        @click="emit('open')"
       >
         Open the conversation
       </button>

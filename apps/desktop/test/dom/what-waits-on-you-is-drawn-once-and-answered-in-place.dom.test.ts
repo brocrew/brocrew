@@ -316,6 +316,25 @@ describe('a to-do an agent asked of a person', () => {
     expect(read(m.q('persons-queue-count'))).toBe('1')
     assertDrawn(m.q('persons-queue-todo-done-req_board'), "the corner's Done")
   })
+  it('Open the conversation leaves the floating sheet before selecting its holder', async () => {
+    const doors = supply({ todos: [TODO] })
+    let openedAtClose: string[] | null = null
+    const Layer = defineComponent({
+      setup: () => () =>
+        h(
+          OverlayHost,
+          { label: 'Sample report', onClose: () => (openedAtClose = [...doors.opened]) },
+          () => h('p', 'Sample report'),
+        ),
+    })
+    const m = mount(Layer, {}, { width: 900, height: 700 })
+    await settle()
+    m.q('persons-queue-toggle').click()
+    await settle()
+    m.q('persons-queue-todo-open-req_board').click()
+    expect(openedAtClose).toEqual([])
+    expect(doors.opened).toEqual([TODO.askedBy])
+  })
 })
 
 describe('work that needs you', () => {
