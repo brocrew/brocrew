@@ -49,12 +49,19 @@ async function settingsPage() {
       `<script>${fixture}</script><script>${script}</script>`,
     )
   const url = URL.createObjectURL(new Blob([source], { type: 'text/html' }))
+  const loaded = new Promise<void>((resolve, reject) => {
+    frame.addEventListener('load', () => resolve(), { once: true })
+    frame.addEventListener('error', () => reject(new Error('Settings iframe did not load')), {
+      once: true,
+    })
+  })
   frame.src = url
   document.body.append(frame)
   cleanup.push(() => {
     frame.remove()
     URL.revokeObjectURL(url)
   })
+  await loaded
   await vi.waitFor(() =>
     expect(frame.contentDocument?.querySelectorAll('.group-name')).toHaveLength(4),
   )
@@ -98,6 +105,21 @@ it('filters names without case, keeps writing groups first and sorts each part b
   )
   const main = p.doc.querySelector('main')!.getBoundingClientRect()
   expect(main.width).toBe(p.doc.documentElement.clientWidth)
+})
+
+it('waits for a slow iframe load before checking its initial groups', async () => {
+  const append = document.body.append.bind(document.body)
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const delayed = vi.spyOn(document.body, 'append').mockImplementationOnce((...nodes) => {
+    timer = setTimeout(() => append(...nodes), 1200)
+  })
+  try {
+    const p = await settingsPage()
+    expect(p.names()).toEqual(['amber Club', 'Birch Club', 'ATLAS Team', 'Zulu Team'])
+  } finally {
+    if (timer !== undefined) clearTimeout(timer)
+    delayed.mockRestore()
+  }
 })
 
 it('refreshes through the bridge action without blocking the page, then keeps the filter and writing choices', async () => {

@@ -1,6 +1,6 @@
 import { lstat, opendir, realpath, statfs } from 'node:fs/promises'
 import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path'
-import { providerConversationDirectories } from '../providers/conversation-layout'
+import { providerConversationDirectories } from '../providers/workspace-layout.mjs'
 import {
   STORAGE_PART_IDS,
   isStorageLocation,
