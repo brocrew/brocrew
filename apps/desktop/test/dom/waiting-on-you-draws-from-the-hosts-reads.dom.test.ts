@@ -318,6 +318,8 @@ describe('§5 · Waiting on you and the overlay corner draw the same asks', () =
     supply({ walked: [ask], lastLookAnswered: true, nameOf })
 
     const m = await overlay()
+    m.q('persons-queue-toggle').click()
+    await nextTick()
 
     // ⚑ Pre-D-017 this card would not mount at all with nothing else present — see the `floating &&
     // asksSaySomething` clause `PersonsQueue.vue` added.

@@ -128,6 +128,11 @@ const LEDGER: readonly Row[] = [
     note: 'Long version labels shorten in the 120px footer control; its accessible label and title retain the complete version, and the button opens the full update details.',
   },
   {
+    component: 'AttachmentChips.vue',
+    standing: 'shortened-on-purpose',
+    note: 'Attachment filenames use an ellipsis inside compact chips. The Open button title retains the full absolute path, and Copy copies it. attachment-chips.dom.test.ts checks the long-name cut, complete title and chip bounds at 360 pixels.',
+  },
+  {
     component: 'ScheduleBar.vue',
     standing: 'shortened-on-purpose',
     note: 'Each job shows a one-line schedule and prompt preview. Pressing the named job button opens its complete available prompt, expression, reported time and start reason in the full-window dialog; scheduled-jobs-open-their-full-prompt.dom.test.ts covers 320/400-pixel cards at 1180/1440-pixel viewports.',
@@ -877,6 +882,7 @@ const HAND_ROLLED: Readonly<Record<string, Question>> = {
   // the End conversation press and its door are gone, and the suite with them.
 
   'app-frame-reachable.dom.test.ts': 'is-there-something-to-scroll',
+  'attachment-chips.dom.test.ts': 'does-this-box-fit',
   'paper-ink.dom.test.ts': 'is-there-something-to-scroll',
 
   'launcher-layout.dom.test.ts': 'does-the-page-overflow',

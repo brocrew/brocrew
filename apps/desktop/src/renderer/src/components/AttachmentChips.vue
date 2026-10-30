@@ -155,8 +155,8 @@ async function copy(handed: HandedPath): Promise<void> {
 }
 .open:focus-visible,
 .copy:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
+  outline: var(--focus-ring-width) solid var(--accent);
+  outline-offset: calc(-1 * var(--focus-ring-width));
 }
 .filename {
   min-width: 0;

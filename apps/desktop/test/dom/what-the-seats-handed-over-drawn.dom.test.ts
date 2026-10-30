@@ -197,6 +197,8 @@ describe('§2 · 712 draw 2 (`702` GAP-3) — the stalled band says its giver wa
     await page.viewport(900, 700)
     const m = mount(PersonsQueue as never, { floating: true }, { width: 880, height: 680 })
     await settle()
+    m.q('persons-queue-toggle').click()
+    await settle()
 
     const quiet = m.q('persons-queue-stall-says-work_quiet')
     expect(visible(quiet)).toBe(true)

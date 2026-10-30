@@ -197,6 +197,8 @@ describe('§2 · the person’s queue', () => {
     await page.viewport(900, 700)
     const m = mount(PersonsQueue as never, { floating: true }, { width: 880, height: 680 })
     await nextTick()
+    m.q('persons-queue-toggle').click()
+    await nextTick()
     // ⚑ **UI-009 (F052)** — a question this app asked is its card, and the card's head names the
     // piece by its label (*"… asked you · W1.12"*); *"that conversation is working on …"* went.
     const piece = (key: string): HTMLElement | null =>
@@ -245,6 +247,8 @@ describe('§2b · the person’s queue — the stalled band, which the review fo
     )
     await page.viewport(900, 700)
     const m = mount(PersonsQueue as never, { floating: true }, { width: 880, height: 680 })
+    await nextTick()
+    m.q('persons-queue-toggle').click()
     await nextTick()
     const says = m.q('persons-queue-stall-says-work_x')
     expect(visible(says)).toBe(true)
