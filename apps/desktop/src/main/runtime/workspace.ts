@@ -197,11 +197,12 @@ export function ensureWorkspace(userData: string): string {
   }
   // A link or junction the person made to keep the workspace on another disk is followed: what
   // decides is the folder it leads to.
-  const there = at?.isSymbolicLink() ? statOrNull(workspace) : at
-  if (there === null || !there.isDirectory()) {
+  const linked = at?.isSymbolicLink() === true
+  if (linked) at = statOrNull(workspace)
+  if (at === null || !at.isDirectory()) {
     throw new Error(
       `the BroCrew workspace at ${workspace} is not a directory this app can own — ` +
-        `${at === null ? 'nothing is there' : at.isSymbolicLink() ? 'it is a link to no folder' : 'it is not a directory'}. ` +
+        `${linked ? 'it is a link to no folder' : at === null ? 'nothing is there' : 'it is not a directory'}. ` +
         `Move or remove it and BroCrew will recreate the workspace.`,
     )
   }
