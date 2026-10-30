@@ -151,7 +151,11 @@ export interface CodexTransport {
    * and its absence must be read as *"this transport cannot say"* and never as an exit.
    */
   readonly exited?: Promise<void>
-  /** Positive cleanup fact for the owned group/tree; never a teardown deadline. */
+  /**
+   * Releases ownership after positive cleanup proof, or the logged Windows query-failure fallback.
+   * That fallback requires the leader and every remembered PID gone, but cannot rule out an
+   * unobserved descendant still writing the transcript.
+   */
   readonly quiesced?: Promise<void>
 }
 
@@ -203,6 +207,9 @@ const DEFAULTS = {
 
 /** How long a reading taken while the app-server runs may take: nothing waits on it. */
 const SAMPLE_TIMEOUT_MS = 15_000
+
+/** Persistent table failures may release only after all remembered process numbers are gone. */
+const WINDOWS_TABLE_FAILURE_RELEASE_MS = 120_000
 
 /** How many processes of its tree a transport remembers. */
 const KNOWN_MOST = 4096
@@ -299,6 +306,8 @@ export class SpawnCodexTransport implements CodexTransport {
   private closing: Promise<void> | null = null
   /** Single-flight bounded process-group teardown; runs on EVERY terminal transition (031). */
   private reaping: Promise<void> | null = null
+  private windowsStopReading: Promise<void> | null = null
+  private knownHistoryComplete = true
   /**
    * ⚑ **`readonly` and now PUBLIC** (233) — see {@link CodexTransport.exited}. Private, this was a
    * fact three lines of `doReapGroup` computed and dropped on the floor.
@@ -496,7 +505,10 @@ export class SpawnCodexTransport implements CodexTransport {
       const key = `${String(row.pid)}:${String(row.created)}`
       if (!this.known.has(key) && this.known.size >= KNOWN_MOST) {
         const oldest = this.known.keys().next().value
-        if (oldest !== undefined) this.known.delete(oldest)
+        if (oldest !== undefined) {
+          this.knownHistoryComplete = false
+          this.known.delete(oldest)
+        }
       }
       this.known.set(key, { ...row, seenAt: at })
     }
@@ -657,8 +669,80 @@ export class SpawnCodexTransport implements CodexTransport {
   private reapGroup(): Promise<void> {
     return (this.reaping ??= this.doReapGroup().then((quiet) => {
       if (quiet) this.markQuiesced()
-      else if (process.platform !== 'win32') void this.observeGroupExit()
+      else if (process.platform === 'win32') void this.observeWindowsTreeExit()
+      else void this.observeGroupExit()
     }))
+  }
+
+  /** Observe late cleanup without extending close or sending any more termination requests. */
+  private async observeWindowsTreeExit(): Promise<void> {
+    const pid = this.child.pid
+    if (pid === undefined) return
+    let pauseMs = 1000
+    let failedSince: number | null = null
+    for (;;) {
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, pauseMs)
+        timer.unref?.()
+      })
+      let unavailable = true
+      try {
+        // A live sampling read may still be finishing; never overlap it with another table read.
+        await this.sampling
+        await this.windowsStopReading
+        const endedAt = this.endedAt
+        if (endedAt !== null) {
+          const reading = await this.opts.processTable(SAMPLE_TIMEOUT_MS)
+          if (reading !== null && reading.at >= endedAt) {
+            unavailable = false
+            const known = [...this.known.values()]
+            const identities = new Set([pid, ...known.map((row) => row.pid)])
+            const unknown = reading.rows.some(
+              (row) => row.created <= 0n && (identities.has(row.pid) || identities.has(row.ppid)),
+            )
+            const tree = treeOf(reading.rows, { pid, startedAt: this.startedAt, endedAt }, known)
+            this.remember(tree, reading.at)
+            if (!unknown && tree.length === 0) {
+              this.markQuiesced()
+              return
+            }
+          }
+        }
+      } catch {
+        // Retry failed queries; they do not establish which descendants remain.
+      }
+      if (!unavailable) failedSince = null
+      else if (this.endedAt !== null) {
+        failedSince ??= performance.now()
+        if (
+          performance.now() - failedSince >= WINDOWS_TABLE_FAILURE_RELEASE_MS &&
+          this.rememberedWindowsPidsAreGone(pid)
+        ) {
+          console.warn(
+            `codex app-server ${String(pid)}: releasing the transcript after persistent process-table ` +
+              'failures; the leader exited and all remembered PIDs are gone, but unobserved ' +
+              'descendants may still be running and writing the transcript',
+          )
+          this.markQuiesced()
+          return
+        }
+      }
+      pauseMs = Math.min(pauseMs * 2, 30_000)
+    }
+  }
+
+  /** Number-only probes can hold a reused PID, but never signal or adopt it. */
+  private rememberedWindowsPidsAreGone(leader: number): boolean {
+    if (!this.knownHistoryComplete) return false
+    for (const pid of new Set([leader, ...[...this.known.values()].map((row) => row.pid)])) {
+      try {
+        process.kill(pid, 0)
+        return false
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ESRCH') return false
+      }
+    }
+    return true
   }
 
   /**
@@ -746,7 +830,14 @@ export class SpawnCodexTransport implements CodexTransport {
       },
       known: () => [...this.known.values()],
       remember: (rows, at) => this.remember(rows, at),
-      read: (ms) => this.opts.processTable(ms),
+      read: (ms) => {
+        const reading = this.opts.processTable(ms)
+        this.windowsStopReading = reading.then(
+          () => undefined,
+          () => undefined,
+        )
+        return reading
+      },
       startEnder,
       isRunning,
       now: () => Date.now(),

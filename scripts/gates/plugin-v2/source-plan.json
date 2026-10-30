@@ -108,7 +108,12 @@
     ".github/workflows/update-rehearsal.yml",
     ".github/workflows/upgrade-path.yml",
     "scripts/test/recovery-real-entry-check.test.mjs",
-    "scripts/test/release-workflow.test.mjs"
+    "scripts/test/release-workflow.test.mjs",
+    "apps/desktop/src/main/runtime/runtime-host.ts",
+    "apps/desktop/test/windows-codex-delegation-round-trip.test.ts",
+    "packages/runtime/src/codex/codex-transport.ts",
+    "packages/runtime/test/codex-transport-windows-wiring.test.ts",
+    "scripts/mutations/1017/mutations.py"
   ],
   "files": [
     {
@@ -268,8 +273,8 @@
     },
     {
       "path": "apps/desktop/src/main/runtime/runtime-host.ts",
-      "sha256": "f2c609f2c7c1ff60efd4bf411d19f5523e997d656f04198b8f26fe2249fd5ee0",
-      "bytes": 2423944
+      "sha256": "cadb2c52553a0df57f4635f74dcad92bdadfa385f69fb26a72ff7fc034c31645",
+      "bytes": 2424148
     },
     {
       "path": "apps/desktop/src/preload/index.ts",
@@ -888,7 +893,7 @@
     },
     {
       "path": "scripts/gates/plugin-v2/runtime-source-pins.json",
-      "sha256": "da7a37c2a67a825d8af9c94788af31e0d349cff4b276aca7f68856797e40d5eb",
+      "sha256": "b763ac2f079e15ba6c9bafee449307d31c42bb014ad8a58147163b24df493460",
       "bytes": 3626
     },
     {
