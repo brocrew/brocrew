@@ -30,6 +30,7 @@ import type {
   WhatAPickBecame,
 } from '../../../shared/runtime-ipc'
 import { PROVIDER_NAME } from '../../../shared/runtime-ipc'
+import { DEFAULT_CONVERSATION_PROVIDER } from '@brobot2/shared'
 import { stopJoinsThatAsk } from '../lib/stop-unanswered'
 import type { PickedModel } from '../lib/model-lists'
 import { useWhoCalledWhom } from '../composables/useWhoCalledWhom'
@@ -783,7 +784,7 @@ const claudeSignInRefused = computed(() => {
 const signInTarget = ref<string | null>(null)
 const signInRenewedFor = ref<string | null>(null)
 const signInSetup = useProviderSetup(
-  () => props.record.meta?.provider ?? 'claude',
+  () => props.record.meta?.provider ?? DEFAULT_CONVERSATION_PROVIDER,
   async (operation) => {
     if (operation !== 'signIn' || signInTarget.value !== props.record.sessionId) return
     const sessionId = props.record.sessionId

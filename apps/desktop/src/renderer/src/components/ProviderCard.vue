@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue'
+import { providerDescriptor } from '@brobot2/shared'
 import { PROVIDER_PARTS, type ProviderPart } from '../lib/provider-parts'
 import type {
   CapabilityStatus,
@@ -198,7 +199,7 @@ async function aPersonChecksAgain(publishChange = true): Promise<void> {
   const provider = props.provider
   const probe =
     publishChange &&
-    provider === 'claude' &&
+    providerDescriptor(provider).signIn.manualProbe &&
     !(auth.value?.state === 'usable' && auth.value.login === 'api-key')
   if (probe) noticeSays(null, false)
   if (props.readVersions === undefined) {
