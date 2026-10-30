@@ -1483,9 +1483,8 @@ const platform = platformHere()
             <span class="avatar" aria-hidden="true" data-cy="rail-workspace-initial">
               {{ workspaceInitial }}
             </span>
-            <span class="who">
-              <strong v-if="workspaceName" data-cy="rail-workspace-name">{{ workspaceName }}</strong
-              ><small class="only-for-a-reader">Local workspace</small>
+            <span v-if="workspaceName" class="who">
+              <strong data-cy="rail-workspace-name">{{ workspaceName }}</strong>
             </span>
           </button>
           <VersionButton
@@ -1968,15 +1967,6 @@ const platform = platformHere()
   border-color: var(--line-strong);
   margin-bottom: var(--space-3);
   background: var(--wash-2);
-}
-
-.only-for-a-reader {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
 }
 
 .rail-footer-controls {

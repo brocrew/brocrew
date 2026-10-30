@@ -79,6 +79,7 @@ it('keeps workspace selection separate from version, then exposes only the selec
     { width: 251.68, height: 800 },
   )
   await settle()
+  expect(m.q('rail-workspace').getAttribute('aria-label')).toBe('Harbor, choose a workspace')
   m.q('rail-workspace').click()
   await settle()
   expect(m.all('workspace-menu')).toHaveLength(1)

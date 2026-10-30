@@ -222,7 +222,13 @@ onMounted(measure)
           </button>
           <div class="storage-action">
             <template v-if="part.id === 'backups'"
-              ><button type="button" class="bb-btn" disabled>Keep the last 2</button
+              ><button
+                type="button"
+                class="bb-btn"
+                disabled
+                title="Backup retention is coming soon."
+              >
+                Keep the last 2</button
               ><span class="coming-soon">coming soon</span></template
             ><button
               v-if="part.id === 'cache'"
@@ -364,7 +370,7 @@ onMounted(measure)
   width: 100%;
   gap: 2px;
   overflow: hidden;
-  border-radius: var(--radius-small, 4px);
+  border-radius: var(--radius-2xs);
 }
 .storage-bar span {
   flex-basis: 0;
@@ -394,7 +400,7 @@ onMounted(measure)
   width: 10px;
   height: 10px;
   flex: none;
-  border-radius: 3px;
+  border-radius: var(--radius-seg-tight);
 }
 .storage-copy {
   min-width: 0;
@@ -487,7 +493,7 @@ onMounted(measure)
   background: transparent;
   color: var(--accent-text);
   font: inherit;
-  font-size: 20px;
+  font-size: var(--type-title);
   padding: 0 var(--space-3);
   cursor: pointer;
   line-height: 1;
@@ -521,7 +527,7 @@ onMounted(measure)
   padding: var(--space-8) var(--space-10);
 }
 .drill-head {
-  border-bottom: 1px solid var(--line);
+  border-bottom: var(--border-width) solid var(--line);
 }
 .drill-head h3 {
   margin: 0;
@@ -532,7 +538,7 @@ onMounted(measure)
   font-weight: var(--fw-semibold);
 }
 .drilled-row + .drilled-row {
-  border-top: 1px solid var(--line);
+  border-top: var(--border-width) solid var(--line);
 }
 .drilled-row .icon {
   width: 18px;
@@ -550,7 +556,7 @@ onMounted(measure)
   padding: var(--space-8) var(--space-10);
   color: var(--muted);
   font-size: var(--type-small);
-  border-top: 1px solid var(--line);
+  border-top: var(--border-width) solid var(--line);
 }
 .storage-loading {
   display: flex;
@@ -563,7 +569,7 @@ onMounted(measure)
   width: 14px;
   height: 14px;
   flex: none;
-  border: 2px solid var(--line);
+  border: calc(var(--border-width) * 2) solid var(--line);
   border-top-color: var(--accent);
   border-radius: 50%;
   animation: spin 1s linear infinite;

@@ -57,9 +57,10 @@ it('measures on open, shows loading, and uses the returned sizes rather than moc
   expect(m.host.textContent).toContain('8.0 GB')
   expect(m.host.querySelectorAll('[data-part]')).toHaveLength(8)
   const retention = [...m.host.querySelectorAll('button')].find(
-    (button) => button.textContent === 'Keep the last 2',
+    (button) => button.textContent?.trim() === 'Keep the last 2',
   )!
   expect(retention.disabled).toBe(true)
+  expect(retention.title).toBe('Backup retention is coming soon.')
 })
 it('drills through typed locations, shows the smaller-item summary, and returns through the breadcrumb', async () => {
   const { m, bridge } = setup()

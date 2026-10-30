@@ -92,6 +92,25 @@ it('exposes only the known provider conversation branches', async () => {
     16,
   )
   await file(join(roots.providers, 'default', 'agent', 'codex', 'unrelated-private-state'), 999)
+  for (const [provider, directory] of [
+    ['claude', 'sessions'],
+    ['codex', 'projects'],
+    ['other-provider', 'sessions'],
+    ['__proto__', 'projects'],
+  ]) {
+    await file(
+      join(roots.providers, 'default', 'agent', provider!, directory!, 'not-a-conversation'),
+      999,
+    )
+    expect(
+      (
+        await new StorageEngine(roots).children({
+          part: 'provider-conversations',
+          segments: ['default', 'agent', provider!, directory!],
+        })
+      ).error,
+    ).toBe('invalid-location')
+  }
   const reading = await new StorageEngine(roots).measure()
   expect(reading.parts.find((part) => part.id === 'provider-conversations')?.bytes).toBe(42)
   const listing = await new StorageEngine(roots).children({
@@ -587,12 +606,53 @@ it('rejects foreign senders and malformed IPC; cancels reads on navigation and r
   expect(service.run).not.toHaveBeenCalled()
   permitted = true
   const pending = h.invoke(STORAGE_CHANNELS.children, { part: 'workspace', segments: [] })
-  h.sender.emit('did-start-navigation')
+  h.sender.emit('did-navigate')
   expect(await pending).toMatchObject({ error: 'cancelled' })
   stop()
   expect(service.close).toHaveBeenCalledOnce()
-  expect(h.sender.listenerCount('did-start-navigation')).toBe(0)
+  expect(h.sender.listenerCount('did-navigate')).toBe(0)
 })
+
+it.each(['did-navigate', 'render-process-gone', 'destroyed'])(
+  'cancels a read on %s while refused navigation attempts preserve it',
+  async (event) => {
+    const h = harness()
+    const reading: { signal?: AbortSignal } = {}
+    const service = {
+      run: vi.fn(async (_request: StorageRequest, stop?: AbortSignal) => {
+        reading.signal = stop
+        return await new Promise<{ ok: false; error: 'cancelled' }>((resolve) =>
+          stop?.addEventListener('abort', () => resolve({ ok: false, error: 'cancelled' })),
+        )
+      }),
+      close: vi.fn(),
+    } as unknown as StorageService
+    const unregister = registerStorageIpc(h.ipc, service, {
+      clearCache: async () => {},
+      reveal: () => {},
+      isAppWindow: () => true,
+    })
+    let settled = false
+    const pending = h
+      .invoke(STORAGE_CHANNELS.children, { part: 'workspace', segments: [] })
+      .finally(() => {
+        settled = true
+      })
+    for (const attempted of ['did-start-loading', 'did-start-navigation']) {
+      expect(h.sender.listenerCount(attempted)).toBe(0)
+      h.sender.emit(attempted)
+      await Promise.resolve()
+      expect(reading.signal?.aborted).toBe(false)
+      expect(settled).toBe(false)
+    }
+    h.sender.emit(event)
+    expect(reading.signal?.aborted).toBe(true)
+    expect(await pending).toMatchObject({ error: 'cancelled' })
+    unregister()
+    for (const released of ['did-navigate', 'render-process-gone', 'destroyed'])
+      expect(h.sender.listenerCount(released)).toBe(0)
+  },
+)
 
 it('the preload forwards only the declared Storage methods and typed locations', async () => {
   const invoke = vi.fn(async () => ({ ok: true }))

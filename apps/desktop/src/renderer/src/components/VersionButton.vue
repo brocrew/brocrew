@@ -179,7 +179,7 @@ defineExpose({ focus: () => button.value?.focus() })
 .spinner {
   width: 10px;
   height: 10px;
-  border: 2px solid var(--line);
+  border: calc(var(--border-width) * 2) solid var(--line);
   border-top-color: var(--accent);
   border-radius: 50%;
   flex: none;

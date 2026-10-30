@@ -1,5 +1,6 @@
 import { lstat, opendir, realpath, statfs } from 'node:fs/promises'
 import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { providerConversationDirectories } from '../providers/conversation-layout'
 import {
   STORAGE_PART_IDS,
   isStorageLocation,
@@ -130,13 +131,9 @@ export class StorageEngine {
   private allowed(part: StoragePartId, segments: readonly string[]): boolean {
     if (part !== 'provider-conversations') return true
     if (segments.length >= 1 && segments[0] !== 'default') return false
-    if (segments.length >= 3 && segments[2] !== 'claude' && segments[2] !== 'codex') return false
-    if (segments.length >= 4) {
-      return segments[2] === 'claude'
-        ? segments[3] === 'projects'
-        : segments[3] === 'sessions' || segments[3] === 'archived_sessions'
-    }
-    return true
+    if (segments.length < 3) return true
+    const directories = providerConversationDirectories.get(segments[2]!)
+    return directories !== undefined && (segments.length < 4 || directories.includes(segments[3]!))
   }
 
   private async size(
