@@ -234,6 +234,8 @@ describe('the person’s MCP server card', () => {
   it('the corner copy shows the same complete request and sends its own decision', async () => {
     const m = mount(PersonsQueue, { floating: true }, { width: 420, height: 800 })
     await nextTick()
+    m.q('persons-queue-toggle').click()
+    await nextTick()
     expect(m.host.querySelector('[data-cy="persons-queue-server-requests"]')).not.toBeNull()
     expect(m.host.querySelector('.request-url')?.textContent).toBe(URL)
     expect(m.host.textContent).toContain(EXTERNAL_MCP_EVERYONE_MEANS)
@@ -261,6 +263,8 @@ describe('the person’s MCP server card', () => {
       const page = mount(WaitingOnYou, { needsYou: [], clock: 1000, agents: REGISTER })
       const corner = mount(PersonsQueue, { floating: true })
       pressed.mockResolvedValueOnce({ outcome: 'taken', reason })
+      await nextTick()
+      corner.q('persons-queue-toggle').click()
       await nextTick()
       page.q('waiting-server-request-approve-fictional-request').click()
       await expect

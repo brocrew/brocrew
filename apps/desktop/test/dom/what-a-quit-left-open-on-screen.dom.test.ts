@@ -863,6 +863,8 @@ async function overlay(): Promise<Mounted> {
   })
   const m = mount(Layer, {}, { width: 10, height: 10 })
   await settle()
+  m.q('persons-queue-toggle').click()
+  await settle()
   return m
 }
 

@@ -122,6 +122,10 @@ const draw = async (floating = false): Promise<Mounted> => {
     ? mount(PersonsQueue, { floating }, { width: 420, height: 900 })
     : mount(WaitingOnYou, { needsYou: [], clock: NOW }, { width: 1351, height: 1200 })
   await nextTick()
+  if (floating && view.all('persons-queue-toggle').length > 0) {
+    view.q('persons-queue-toggle').click()
+    await nextTick()
+  }
   return view
 }
 

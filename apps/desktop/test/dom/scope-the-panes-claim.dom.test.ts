@@ -150,6 +150,8 @@ describe('602 · what the screen says about a question with no card', () => {
     // element carries every sentence this case is about and `innerText` reads them all.
     const m = mount(PersonsQueue as never, { floating: true }, { width: 900, height: 420 })
     await nextTick()
+    m.q('persons-queue-toggle').click()
+    await nextTick()
 
     // ⚑ **UI-009 · the row is the question's own card**, and with its words in no conversation
     // this window holds (D-046) it says where they are.
@@ -189,6 +191,8 @@ describe('602 · what the screen says about a question with no card', () => {
     )
     await page.viewport(900, 420)
     const m = mount(PersonsQueue as never, { floating: true }, { width: 900, height: 420 })
+    await nextTick()
+    m.q('persons-queue-toggle').click()
     await nextTick()
     const queue = m.q('persons-queue')
     expect(queue.innerText).toContain('open it to answer')

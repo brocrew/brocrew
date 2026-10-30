@@ -119,8 +119,9 @@ it('reports missing files and clipboard failure beside the attachments', async (
 })
 
 it('wraps chips in a narrow column and keeps long names within it', () => {
+  const longPath = `/work/${'long-'.repeat(60)}.pdf`
   const { view } = bubble(
-    [...files, { path: `/work/${'long-'.repeat(60)}.pdf`, kind: 'file', outsideCwd: false }],
+    [...files, { path: longPath, kind: 'file', outsideCwd: false }],
     false,
     360,
   )
@@ -130,6 +131,9 @@ it('wraps chips in a narrow column and keeps long names within it', () => {
     expect(chip.getBoundingClientRect().height).toBeLessThanOrEqual(50)
   }
   expect(view.host.scrollWidth).toBeLessThanOrEqual(360)
+  const filename = view.all('user-attached-file').at(-1)!
+  expect(filename.scrollWidth).toBeGreaterThan(filename.clientWidth)
+  expect(view.all('attachment-open').at(-1)!.title).toBe(longPath)
 })
 
 it('does not treat folders or SVG documents as thumbnails', () => {

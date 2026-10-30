@@ -181,6 +181,8 @@ async function summons(): Promise<Mounted> {
   const m = mount(Layer, { open: () => h('div') }, { width: 10, height: 10 })
   await new Promise((resolve) => setTimeout(resolve, 0))
   await nextTick()
+  m.q('persons-queue-toggle').click()
+  await nextTick()
   return m
 }
 
