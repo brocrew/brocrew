@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, useId, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue'
 import { PROVIDER_PARTS, type ProviderPart } from '../lib/provider-parts'
 import type {
   CapabilityStatus,
@@ -46,6 +46,10 @@ import SignInPanel from './SignInPanel.vue'
 import ProviderOptions from './ProviderOptions.vue'
 import { createProviderAccess, type ProviderAccess } from '../lib/provider-access'
 import { providerStanding } from '../lib/provider-row'
+import { modelsAfterConnection } from '../lib/models-after-connection'
+import { useProviderSetup } from '../composables/useProviderSetup'
+import ProviderInstall from './ProviderInstall.vue'
+import ProviderSetupProgress from './ProviderSetupProgress.vue'
 
 /**
  * # W4.10 · one provider on the Providers screen
@@ -121,6 +125,22 @@ const emit = defineEmits<{
   startConversation: []
 }>()
 
+const nativeSetup = useProviderSetup(
+  () => props.provider,
+  async (operation) => {
+    if (operation === 'signIn') emit('authChanged', DEFAULT_PROFILE_ID)
+    await nextTick()
+    if (!cardOpen) return
+    await aPersonChecksAgain()
+    if (operation === 'signIn' && auth.value?.state === 'usable')
+      noticeSays(`Signed in with ${props.setup?.tool ?? name.value}.`, false)
+  },
+)
+const programMissing = computed(() => props.version?.program?.standing === 'missing')
+const nativeSignIn = computed(
+  () => nativeSetup.state.value?.available === true && nativeSetup.state.value.supported.signIn,
+)
+
 const name = computed(() => props.displayName ?? PROVIDER_NAME[props.provider])
 
 const partIds = useId()
@@ -176,12 +196,15 @@ function noticeSays(text: string | null, warns: boolean): void {
 }
 /** A person's Check again: the login, and the program and its version with it. */
 async function aPersonChecksAgain(): Promise<void> {
+  const provider = props.provider
   if (props.readVersions === undefined) {
     emit('checkedAgain')
     await check()
   } else {
     await Promise.all([props.readVersions(), check()])
   }
+  if (cardOpen && provider === props.provider && auth.value?.state === 'usable')
+    await refreshConnectedModels()
 }
 
 async function copyMachineSignIn(): Promise<void> {
@@ -203,11 +226,17 @@ async function copyMachineSignIn(): Promise<void> {
 }
 
 async function signInHere(): Promise<void> {
+  if (nativeSignIn.value) {
+    if (keyStatus.value?.set === false) await nativeSetup.signIn()
+    return
+  }
+  let connected = false
   await withGesture('signing-in', async () => {
     noticeSays('Finish signing in in your browser, then come back.', false)
     try {
       const result = await window.api.runtime.signInProvider(asked())
       auth.value = result.state
+      connected = result.success && auth.value?.state === 'usable'
       noticeSays(
         result.success
           ? 'Signed in. This profile now has its own sign-in.'
@@ -218,9 +247,14 @@ async function signInHere(): Promise<void> {
       noticeSays(readableError(error), true)
     }
   })
+  if (connected) await refreshConnectedModels()
 }
 
 async function cancelSignIn(): Promise<void> {
+  if (nativeSignIn.value) {
+    await nativeSetup.cancel()
+    return
+  }
   noticeSays(null, false)
   try {
     await window.api.runtime.cancelProviderSignIn(asked())
@@ -435,12 +469,40 @@ function cancelKeyEdit(): void {
 
 /* ------------------------------------------------------------------ models */
 
+const modelsRefreshing = ref(false)
+let modelRefresh: AbortController | null = null
+let cardOpen = true
+async function refreshConnectedModels(): Promise<void> {
+  if (!cardOpen) return
+  modelRefresh?.abort()
+  const refresh = new AbortController()
+  modelRefresh = refresh
+  modelsRefreshing.value = true
+  await nextTick()
+  try {
+    await modelsAfterConnection(lists.value, props.provider, refresh.signal)
+  } finally {
+    if (modelRefresh === refresh) modelsRefreshing.value = false
+  }
+}
+watch(
+  () => props.provider,
+  () => {
+    modelRefresh?.abort()
+    modelsRefreshing.value = false
+  },
+)
+onBeforeUnmount(() => {
+  cardOpen = false
+  modelRefresh?.abort()
+})
+
 const held = computed(() => lists.value.held(props.provider))
 const list = computed(() => (held.value?.state === 'answered' ? held.value.list : null))
 
 const listSays = computed(() => {
   const now = held.value
-  if (now === null || now.state === 'asking') {
+  if (modelsRefreshing.value || now === null || now.state === 'asking') {
     return { message: `Reading ${name.value}’s models…`, tone: 'note' as const, remedy: null }
   }
   const catalogue =
@@ -635,11 +697,14 @@ const setupReady = computed(
 watch(setupReady, (ready) => {
   if (ready) setupCheckFailure.value = null
 })
-const setupBusy = computed(() => setupChecking.value || keyBusy.value || authBusy.value !== 'idle')
+const setupBusy = computed(
+  () => setupChecking.value || keyBusy.value || authBusy.value !== 'idle' || nativeSetup.busy.value,
+)
 const canSetUpSignIn = computed(
   () =>
     keyStatus.value?.set === false &&
-    (signIn.value.state === 'available' ||
+    (nativeSignIn.value ||
+      signIn.value.state === 'available' ||
       (props.capabilities?.[props.provider]?.signIn.state === 'absent' && Boolean(props.setup))),
 )
 function beginSetup(): void {
@@ -668,7 +733,7 @@ function useSetupKey(): void {
 async function setupSignIn(): Promise<void> {
   if (setupBusy.value || !canSetUpSignIn.value) return
   setupKey.value = false
-  if (signIn.value.state === 'available') await signInHere()
+  if (nativeSignIn.value || signIn.value.state === 'available') await signInHere()
   else setupExternal.value = true
 }
 async function copySetupCommand(): Promise<void> {
@@ -752,7 +817,10 @@ onMounted(() => {
     void check()
     void readKey()
   }
-  void lists.value.read(props.provider, undefined, { once: true })
+  if (!programMissing.value) void lists.value.read(props.provider, undefined, { once: true })
+})
+watch(programMissing, (missing) => {
+  if (!missing) void lists.value.read(props.provider, undefined, { once: true })
 })
 
 /* ------------------------------------------------------------------ folding */
@@ -841,7 +909,12 @@ defineExpose({ beginSetup })
           <ProviderMark :provider="props.provider" :kind="markKind" />
         </span>
         <h2>{{ name }}</h2>
-        <span v-if="standing" class="standing" :class="standing.tone" data-cy="provider-standing">
+        <span
+          v-if="standing && !programMissing"
+          class="standing"
+          :class="standing.tone"
+          data-cy="provider-standing"
+        >
           <svg v-if="standing.tone === 'ready'" class="icon" aria-hidden="true">
             <use href="#i-check" />
           </svg>
@@ -850,9 +923,23 @@ defineExpose({ beginSetup })
           </svg>
           {{ standing.words }}
         </span>
-        <ProviderOptions v-if="configured" :name="name" @setup="beginSetup" />
+        <ProviderOptions v-if="configured && !programMissing" :name="name" @setup="beginSetup" />
       </header>
-      <p v-if="!configured && !settingUp" class="line">
+      <p v-if="programMissing && !props.setup?.install" class="line" role="status">
+        Reading installation details…
+      </p>
+      <ProviderInstall
+        v-if="programMissing && props.setup?.install"
+        :tool="props.setup?.tool ?? name"
+        :busy="nativeSetup.busy.value"
+        :progress="nativeSetup.state.value?.progress ?? ''"
+        :error="nativeSetup.error.value"
+        :details="nativeSetup.state.value?.details ?? null"
+        :docs="props.setup?.install?.docs ?? ''"
+        @install="nativeSetup.install()"
+        @cancel="nativeSetup.cancel()"
+      />
+      <p v-if="!programMissing && !configured && !settingUp" class="line">
         {{
           props.version?.program?.from === 'carried'
             ? `${name} is included.`
@@ -861,7 +948,7 @@ defineExpose({ beginSetup })
         Sign in or use an API key.
       </p>
       <p
-        v-if="atItsLimit"
+        v-if="atItsLimit && !programMissing"
         class="at-limit"
         role="status"
         :title="props.limit ? usageTitle(props.limit) : undefined"
@@ -870,7 +957,7 @@ defineExpose({ beginSetup })
         <svg class="icon" aria-hidden="true"><use href="#i-clock" /></svg>
         {{ atItsLimit }}
       </p>
-      <div v-if="!configured && !settingUp" class="setup-entry">
+      <div v-if="!programMissing && !configured && !settingUp" class="setup-entry">
         <button
           type="button"
           class="bb-button"
@@ -881,16 +968,13 @@ defineExpose({ beginSetup })
           Set up {{ name }}
         </button>
       </div>
-
-      <p v-if="limitsDisplay" data-cy="provider-limits-reading">
-        {{ warningHistoryLabel(limitsDisplay) }}
-        <span v-if="limitsDisplay.reading && limitsDisplay.status !== 'ready'">
-          · {{ limitsDisplayWords.lastReading(limitsDisplay.reading.evaluatedAt) }}
-        </span>
-      </p>
     </div>
 
-    <section v-if="settingUp" class="part inline-setup" data-cy="provider-inline-setup">
+    <section
+      v-if="!programMissing && settingUp"
+      class="part inline-setup"
+      data-cy="provider-inline-setup"
+    >
       <div class="setup-heading">
         <h3>Set up {{ name }}</h3>
         <button
@@ -930,7 +1014,7 @@ defineExpose({ beginSetup })
             Use an API key
           </button>
           <button
-            v-if="authBusy === 'signing-in'"
+            v-if="authBusy === 'signing-in' || nativeSetup.busy.value"
             type="button"
             class="bb-button"
             @click="cancelSignIn"
@@ -965,16 +1049,12 @@ defineExpose({ beginSetup })
         <p v-if="signIn.state !== 'available' && !setupKey && !props.setup" class="line quiet">
           {{ signIn.reason }}
         </p>
-        <p v-if="props.version?.program?.standing === 'missing'" class="line warn">
-          {{ props.version.program.said
-          }}<a
-            v-if="props.setup?.install"
-            :href="props.setup.install.docs"
-            target="_blank"
-            rel="noopener"
-            >Install {{ name }}</a
-          >
-        </p>
+        <ProviderSetupProgress
+          v-if="nativeSignIn"
+          :progress="nativeSetup.state.value?.progress ?? ''"
+          :auth-url="nativeSetup.state.value?.authUrl ?? null"
+          :error="nativeSetup.error.value"
+        />
         <div class="actions">
           <button
             type="button"
@@ -1012,7 +1092,12 @@ defineExpose({ beginSetup })
       </p>
     </section>
 
-    <section v-if="!settingUp" class="part" data-cy="provider-status" :data-open="isOpen('login')">
+    <section
+      v-if="!programMissing && !settingUp"
+      class="part"
+      data-cy="provider-status"
+      :data-open="isOpen('login')"
+    >
       <h3>
         <button
           type="button"
@@ -1050,7 +1135,43 @@ defineExpose({ beginSetup })
         </template>
         <p v-else-if="auth === null" class="line quiet">Asking {{ name }}…</p>
         <template v-else>
+          <div v-if="nativeSignIn" class="native-sign-in">
+            <p class="line">Sign in with {{ props.setup?.tool ?? name }}.</p>
+            <div class="actions">
+              <button
+                type="button"
+                class="bb-button bb-button--primary"
+                data-cy="native-sign-in"
+                :disabled="setupBusy || keyStatus?.set !== false"
+                @click="signInHere"
+              >
+                Sign in
+              </button>
+              <button
+                v-if="nativeSetup.busy.value"
+                type="button"
+                class="bb-button"
+                @click="cancelSignIn"
+              >
+                Cancel sign-in
+              </button>
+              <button
+                type="button"
+                class="bb-button"
+                :disabled="setupBusy"
+                @click="aPersonChecksAgain()"
+              >
+                Check again
+              </button>
+            </div>
+            <ProviderSetupProgress
+              :progress="nativeSetup.state.value?.progress ?? ''"
+              :auth-url="nativeSetup.state.value?.authUrl ?? null"
+              :error="nativeSetup.error.value"
+            />
+          </div>
           <SignInPanel
+            v-else
             :provider="props.provider"
             :state="auth"
             :sign-in="signIn"
@@ -1080,7 +1201,7 @@ defineExpose({ beginSetup })
     </section>
 
     <section
-      v-if="!settingUp"
+      v-if="!programMissing && !settingUp"
       ref="keyPart"
       class="part"
       data-cy="provider-key"
@@ -1189,7 +1310,12 @@ defineExpose({ beginSetup })
       </div>
     </section>
 
-    <section class="part" data-cy="provider-version" :data-open="isOpen('version')">
+    <section
+      v-if="!programMissing"
+      class="part"
+      data-cy="provider-version"
+      :data-open="isOpen('version')"
+    >
       <div class="program-heading">
         <h3>
           <button
@@ -1329,7 +1455,12 @@ defineExpose({ beginSetup })
       </div>
     </section>
 
-    <section class="part" data-cy="provider-usage" :data-open="isOpen('usage')">
+    <section
+      v-if="!programMissing"
+      class="part"
+      data-cy="provider-usage"
+      :data-open="isOpen('usage')"
+    >
       <h3>
         <button
           type="button"
@@ -1417,7 +1548,12 @@ defineExpose({ beginSetup })
     </section>
 
     <!-- Show this provider's running-agent count, memory and CPU on one line. -->
-    <section class="part" data-cy="provider-resources" :data-open="isOpen('resources')">
+    <section
+      v-if="!programMissing"
+      class="part"
+      data-cy="provider-resources"
+      :data-open="isOpen('resources')"
+    >
       <h3>
         <button
           type="button"
@@ -1447,7 +1583,12 @@ defineExpose({ beginSetup })
       </div>
     </section>
 
-    <section class="part" data-cy="provider-models" :data-open="isOpen('models')">
+    <section
+      v-if="!programMissing"
+      class="part"
+      data-cy="provider-models"
+      :data-open="isOpen('models')"
+    >
       <h3>
         <button
           type="button"
@@ -1481,7 +1622,7 @@ defineExpose({ beginSetup })
           {{ listSays.message }}
           <strong v-if="listSays.remedy">{{ listSays.remedy }}</strong>
           <button
-            v-if="held?.state === 'unread' || list?.notAsked"
+            v-if="!modelsRefreshing && (held?.state === 'unread' || list?.notAsked)"
             type="button"
             class="link"
             @click="readModelsAgain"
@@ -2004,8 +2145,8 @@ meter.time-meter::-webkit-meter-optimum-value {
   padding: var(--space-5) var(--space-6);
   border: var(--border-width) solid var(--control-border);
   border-radius: var(--radius-sm);
-  background: var(--code-bg);
-  color: var(--text-soft);
+  background: var(--panel-2);
+  color: var(--text);
   font-size: var(--type-small);
 }
 .program-location summary {

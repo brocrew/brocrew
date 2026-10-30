@@ -1,3 +1,4 @@
+import { providerSetupBridge } from './provider-setup'
 import type {
   MethodLibrary,
   MethodBody,
@@ -1080,6 +1081,7 @@ const api = Object.freeze({
   }),
   runtime,
   themes: themesBridge(ipcRenderer),
+  providerSetup: providerSetupBridge(ipcRenderer),
   plugins: pluginsBridge(ipcRenderer),
   /**
    * 🔴 **W4.109 · B1 — updates** (`main/updates.ts` decides; every call answers the new snapshot).

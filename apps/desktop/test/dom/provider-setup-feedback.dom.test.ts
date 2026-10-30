@@ -241,11 +241,11 @@ describe('setup feedback follows the latest facts', () => {
         said: 'The fictional program is missing.',
       },
     }
-    out.m.q('setup-check').click()
     await settled()
     expect(out.m.all('setup-done')).toHaveLength(0)
-    expect(words(out.m.q('provider-inline-setup'))).toContain('The provider program is not ready.')
-    expect(words(out.m.q('provider-inline-setup'))).toContain('The fictional program is missing.')
+    expect(out.m.all('provider-inline-setup')).toHaveLength(0)
+    expect(out.m.q('install-missing').textContent).toContain('isn’t installed.')
+    expect(out.m.q('install-program').textContent).toContain('Install')
   })
 
   it('explains the interactive login step without changing the quoted PowerShell command', async () => {
@@ -298,10 +298,9 @@ describe('usage readings and recorded warnings are separate evidence', () => {
     expect(words(out.m.q('provider-usage-none'))).toBe(
       'Usage is unknown. No reading yet from Claude.',
     )
-    for (const cy of ['provider-limits-reading', 'provider-usage-says']) {
-      expect(words(out.m.q(cy))).toMatch(/^No limit warnings recorded as of /)
-      expect(words(out.m.q(cy))).not.toContain('No limits reported')
-    }
+    expect(out.m.all('provider-limits-reading')).toHaveLength(0)
+    expect(words(out.m.q('provider-usage-says'))).toMatch(/^No limit warnings recorded as of /)
+    expect(words(out.m.q('provider-usage-says'))).not.toContain('No limits reported')
   })
 
   it.each(['unavailable', 'updating', 'unread-rows', 'skipped-ledger', 'no-ledger'] as const)(
@@ -326,7 +325,7 @@ describe('usage readings and recorded warnings are separate evidence', () => {
               },
             }
       await settled()
-      expect(words(out.m.q('provider-limits-reading'))).not.toContain('No limit warnings recorded')
+      expect(out.m.all('provider-limits-reading')).toHaveLength(0)
       expect(words(out.m.q('provider-usage-says'))).not.toContain('No limit warnings recorded')
       expect(out.m.all('provider-usage-reading')).toHaveLength(0)
     },

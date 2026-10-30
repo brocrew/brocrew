@@ -82,9 +82,9 @@ watch(failures, () => (open.value = true))
     </h2>
     <div v-show="open" :id="bodyId" class="kept-body">
       <p class="about">
-        What “Always allow” kept beyond its conversation, per provider, and the file it is kept in.
-        A rule does not carry to another provider. A rule you remove is asked about again from the
-        next start of each conversation; one running now may keep it until then.
+        Actions you chose “Always allow” for. They apply to every conversation that uses this
+        provider, not to other providers. If you remove one, agents will ask again the next time a
+        conversation starts.
       </p>
       <p v-if="unread !== null" class="note" data-cy="kept-rules-unread">
         They could not be read just now: {{ unread }}

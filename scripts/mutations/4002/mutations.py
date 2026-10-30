@@ -129,8 +129,8 @@ MUTATIONS = [('M1 · the give schema refuses its advertised provider argument �
  ('M25 · the rules panel no longer states that a grant stays on its provider — killed by '
   '`kept-rules-on-the-providers-page.dom.test.ts`',
   [('apps/desktop/src/renderer/src/components/KeptRules.vue',
-    '        A rule does not carry to another provider. A rule you remove is asked about again from the\n',
-    '        A rule you remove is asked about again from the\n')]),
+    '        provider, not to other providers. If you remove one, agents will ask again the next time a\n',
+    '        provider. If you remove one, agents will ask again the next time a\n')]),
  ('M26 · settings promise a person-started conversation for a service — killed by '
   '`the-model-control-reads-r31.dom.test.ts`',
   [('apps/desktop/src/renderer/src/components/CapabilitiesSheet.vue',

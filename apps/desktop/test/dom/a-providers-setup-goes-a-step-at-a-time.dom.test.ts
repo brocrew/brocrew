@@ -22,6 +22,7 @@ import type {
   ProviderVersion,
 } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll, type Mounted } from './harness'
+import type { ProviderSetupBridge, ProviderSetupState } from '../../src/shared/provider-setup'
 
 /**
  * A provider's setup, a step at a time. Each step says one thing to do; Copy puts the exact
@@ -145,6 +146,49 @@ const ABSENT: CapabilityStatus = {
 }
 const AVAILABLE: CapabilityStatus = { state: 'available' }
 
+function installBridge() {
+  let state: ProviderSetupState = {
+    provider: 'claude',
+    supported: { install: true, signIn: false },
+    available: true,
+    phase: 'idle',
+    progress: '',
+    authUrl: null,
+    error: null,
+    details: null,
+    exitCode: null,
+  }
+  const listeners = new Set<(next: ProviderSetupState) => void>()
+  const publish = (phase: ProviderSetupState['phase']) => {
+    state = { ...state, phase }
+    for (const listener of listeners) listener(state)
+  }
+  const bridge = {
+    state: async () => state,
+    onState: (listener) => {
+      listeners.add(listener)
+      return () => {
+        listeners.delete(listener)
+      }
+    },
+    install: vi.fn(async () => {
+      publish('installing')
+      return { ok: true as const }
+    }),
+    signIn: vi.fn(async () => ({ ok: false as const, reason: 'unsupported-provider' as const })),
+    cancel: vi.fn(async () => {
+      publish('cancelled')
+      return { ok: true as const }
+    }),
+  } satisfies ProviderSetupBridge
+  Object.defineProperty(window, 'api', {
+    configurable: true,
+    writable: true,
+    value: { ...window.api, providerSetup: bridge },
+  })
+  return { bridge, complete: () => publish('installed') }
+}
+
 /** The wizard in the app's dialog layer, over facts the test moves; `recheck` moves them. */
 function theWizard(start: {
   provider?: Provider
@@ -156,6 +200,7 @@ function theWizard(start: {
   signIn?: CapabilityStatus
   onRecheck?: (facts: { version: Ref<ProviderVersion | null>; auth: Ref<AuthState | null> }) => void
 }) {
+  const installer = installBridge()
   const versionNow = ref<ProviderVersion | null>(start.version)
   const authNow = ref<AuthState | null>(start.auth)
   const events: string[] = []
@@ -193,7 +238,7 @@ function theWizard(start: {
       ),
   })
   const m = mount(Host, {}, { width: 10, height: 10 })
-  return { m, events, versionNow, authNow, rechecks: () => rechecks }
+  return { m, events, versionNow, authNow, installer, rechecks: () => rechecks }
 }
 
 const stepOf = (m: Mounted): string | undefined => m.q('provider-setup-dialog').dataset.step
@@ -207,10 +252,12 @@ const next = async (m: Mounted): Promise<void> => {
 /* ------------------------------------------------------------------ §1 each step's state */
 
 describe('§1 · each step says one thing to do', () => {
-  it('where to paste it follows the platform main names, not the browser’s guess', async () => {
+  it('missing installs need no shell; fallback sign-in follows the shell main names', async () => {
     const mac = theWizard({ version: version('missing'), auth: SIGNED_OUT })
     await settled()
-    expect(text(mac.m.q('setup-says'))).toContain('Terminal')
+    expect(text(mac.m.q('install-program'))).toBe('Install The Tool')
+    expect(mac.m.all('setup-command')).toHaveLength(0)
+    expect(text(mac.m.q('provider-setup-dialog'))).not.toContain('Terminal')
     unmountAll()
 
     const windows = theWizard({
@@ -219,7 +266,9 @@ describe('§1 · each step says one thing to do', () => {
       setup: { ...SETUP, platform: 'Windows', shell: 'PowerShell' },
     })
     await settled()
-    expect(text(windows.m.q('setup-says'))).toContain('PowerShell')
+    expect(text(windows.m.q('install-program'))).toBe('Install The Tool')
+    expect(windows.m.all('setup-command')).toHaveLength(0)
+    expect(text(windows.m.q('provider-setup-dialog'))).not.toContain('PowerShell')
     unmountAll()
 
     // The shell named is the one main typed the command for, not a guess from the platform.
@@ -234,22 +283,25 @@ describe('§1 · each step says one thing to do', () => {
     )
   })
 
-  it('install: one command with Copy, where to paste it, and Next checks again', async () => {
-    const { m } = theWizard({ version: version('missing'), auth: SIGNED_OUT })
+  it('install: one primary action, with connection and check steps hidden', async () => {
+    const { m, installer } = theWizard({ version: version('missing'), auth: SIGNED_OUT })
     await settled()
     expect(stepOf(m)).toBe('install')
-    expect(titleOf(m)).toBe('Install The Tool')
-    expect(text(m.q('setup-command'))).toBe(SETUP.install!.command)
-    expect(text(m.q('setup-says'))).toMatch(/^Copy this command\. Paste it into .+ and press Enter/)
-    expect(text(m.q('setup-next'))).toBe('Next · check again')
-    expect(text(m.q('setup-eyebrow'))).toBe('Step 1 of 4')
-    expect(m.all('setup-step').map(text)).toEqual([
-      '1 Install',
-      '2 Version',
-      '3 Sign in',
-      '4 Ready',
+    expect(text(m.q('install-missing'))).toBe('The Tool isn’t installed.')
+    expect(text(m.q('install-program'))).toBe('Install The Tool')
+    for (const cy of [
+      'setup-command',
+      'setup-next',
+      'setup-step',
+      'setup-back',
+      'setup-use-key',
+      'sign-in-start',
     ])
-    expect(m.all('setup-back')).toHaveLength(0)
+      expect(m.all(cy)).toHaveLength(0)
+    m.q('install-program').click()
+    await settled()
+    expect(installer.bridge.install).toHaveBeenCalledExactlyOnceWith('claude')
+    expect((m.q('install-program') as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('a version read that failed is "could not check", never "missing"', async () => {
@@ -427,11 +479,14 @@ describe('§1 · each step says one thing to do', () => {
 
 describe('§2 · Copy', () => {
   it('puts the exact command on the clipboard, and says so', async () => {
-    const { m } = theWizard({ version: version('missing'), auth: SIGNED_OUT })
+    const { m } = theWizard({
+      version: version('older-than-tested', 'homebrew', { command: 'brew upgrade the-tool' }),
+      auth: SIGNED_OUT,
+    })
     await settled()
     m.q('setup-copy').click()
     await settled()
-    expect(copied).toEqual([SETUP.install!.command])
+    expect(copied).toEqual(['brew upgrade the-tool'])
     expect(text(m.q('setup-copy'))).toBe('Copied')
     expect(text(m.q('setup-feedback'))).toBe('Command copied.')
   })
@@ -445,7 +500,10 @@ describe('§2 · Copy', () => {
         },
       },
     })
-    const { m } = theWizard({ version: version('missing'), auth: SIGNED_OUT })
+    const { m } = theWizard({
+      version: version('older-than-tested', 'homebrew', { command: 'brew upgrade the-tool' }),
+      auth: SIGNED_OUT,
+    })
     await settled()
     m.q('setup-copy').click()
     await settled()
@@ -459,28 +517,31 @@ describe('§2 · Copy', () => {
 /* ------------------------------------------------------------------ §3 Next */
 
 describe('§3 · Next reads the facts again and moves on only when they changed', () => {
-  it('🔴 the program is still missing: Next checks, stays, and says what to do', async () => {
-    const { m, rechecks } = theWizard({ version: version('missing'), auth: SIGNED_OUT })
+  it('installer completion cannot claim success if re-detection still says missing', async () => {
+    const { m, rechecks, installer } = theWizard({ version: version('missing'), auth: SIGNED_OUT })
     await settled()
-    await next(m)
+    m.q('install-program').click()
+    await settled()
+    installer.complete()
+    await settled()
     expect(rechecks()).toBe(1)
     expect(stepOf(m)).toBe('install')
-    expect(text(m.q('setup-feedback'))).toBe(
-      'The Tool is still missing. Finish the installation, then choose Next again.',
-    )
+    expect(text(m.q('install-missing'))).toBe('The Tool isn’t installed.')
+    expect(m.all('setup-ready-checks')).toHaveLength(0)
   })
 
-  it('⚑ control: installed by the time Next checks, it moves to the version step', async () => {
-    const { m } = theWizard({
+  it('successful install re-detects and moves on without another click', async () => {
+    const { m, installer } = theWizard({
       version: version('missing'),
       auth: SIGNED_OUT,
       onRecheck: (facts) => (facts.version.value = version('tested')),
     })
     await settled()
-    await next(m)
-    expect(stepOf(m)).toBe('version')
-    expect(kindOf(m)).toBe('passed')
-    expect(text(m.q('setup-feedback'))).toBe('✓ Install checked.')
+    m.q('install-program').click()
+    await settled()
+    installer.complete()
+    await settled()
+    expect(stepOf(m)).toBe('sign-in')
     expect(document.activeElement).toBe(m.q('setup-title'))
   })
 
@@ -517,7 +578,7 @@ describe('§3 · Next reads the facts again and moves on only when they changed'
   })
 
   it('a check that throws says it could not check, and stays', async () => {
-    const versionNow = version('missing')
+    const versionNow = version('tested')
     const Host = defineComponent({
       setup: () => () =>
         h(ProviderSetupWizard as Component, {
@@ -538,7 +599,7 @@ describe('§3 · Next reads the facts again and moves on only when they changed'
     const m = mount(Host, {}, { width: 700, height: 900 })
     await settled()
     await next(m)
-    expect(stepOf(m)).toBe('install')
+    expect(stepOf(m)).toBe('sign-in')
     expect(text(m.q('setup-feedback'))).toMatch(/^Could not check just now\./)
   })
 })
@@ -548,7 +609,7 @@ describe('§3 · Next reads the facts again and moves on only when they changed'
 describe('§4 · newer than tested passes quietly', () => {
   it('a newer version passes with no warning; its range is only in Details', async () => {
     const { m } = theWizard({
-      version: version('missing'),
+      version: { version: null, reason: 'The initial read failed.' },
       auth: SIGNED_OUT,
       onRecheck: (facts) => (facts.version.value = version('newer-than-tested')),
     })
@@ -608,7 +669,7 @@ describe('§6 · keyboard and focus inside the dialog', () => {
   it('the step heading takes focus; Tab stays inside; Escape closes', async () => {
     const { m, events } = theWizard({ version: version('missing'), auth: SIGNED_OUT })
     await settled()
-    expect(document.activeElement).toBe(m.q('setup-title'))
+    expect(document.activeElement).toBe(m.q('install-missing'))
     const host = m.q('overlay-host')
     for (let i = 0; i < 12; i += 1) {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }))

@@ -1067,6 +1067,25 @@ function preloadSurface(): Map<string, string> {
   expect(surface.get('themes')).toMatch(/^ {2}themes: themesBridge\(ipcRenderer\),/)
   // This member is an object of verbs, read separately below, not a subscription exemption.
   surface.delete('themes')
+  surface.set(
+    'runtime.providerSetup',
+    membersOf(preload.slice(runtimeAt, apiAt)).get('providerSetup')!,
+  )
+  expect(surface.get('providerSetup')).toMatch(
+    /^ {2}providerSetup: providerSetupBridge\(ipcRenderer\),/,
+  )
+  surface.delete('providerSetup')
+  const setup = membersOf(
+    withoutProse(source('src/preload/provider-setup.ts'))
+      .split('return Object.freeze({')[1]!
+      .replace(/^ {4}(?=\w)/gm, '  '),
+  )
+  expect([...setup.keys()].sort()).toEqual(['cancel', 'install', 'onState', 'signIn', 'state'])
+  for (const [name, body] of setup)
+    surface.set(
+      name === 'onState' ? name : `providerSetup.${name}`,
+      body.replaceAll('ipc.invoke', 'ipcRenderer.invoke'),
+    )
   expect(surface.get('plugins')).toMatch(/^ {2}plugins: pluginsBridge\(ipcRenderer\),/)
   surface.delete('plugins')
   const plugins = membersOf(
@@ -1110,6 +1129,26 @@ describe('§3 · what is exempt is derived from the preload, not written down (3
     expect(members.get('onChanged')).toContain('ipc.off(THEMES_CHANNELS.changed, forward)')
     expect(invokesTheme('ipc.invoke(THEMES_CHANNELS.read)')).toBe(true)
     expect(invokesTheme('ipc.on(THEMES_CHANNELS.changed, forward)')).toBe(false)
+  })
+
+  it('setup actions all invoke; only the passive setup subscription is exempt', () => {
+    for (const name of ['state', 'install', 'signIn', 'cancel']) {
+      expect(invokes(surface.get(`providerSetup.${name}`)!)).toBe(true)
+      expect(NOT_THE_WIRE.has(`providerSetup.${name}`)).toBe(false)
+    }
+    const body = surface.get('onState')!
+    expect(body).toContain('ipc.on(PROVIDER_SETUP_CHANNELS.changed, forward)')
+    expect(body).toContain('ipc.off(PROVIDER_SETUP_CHANNELS.changed, forward)')
+    expect(invokes(body)).toBe(false)
+    expect(NOT_THE_WIRE.has('onState')).toBe(true)
+    const planted = body + "\nipcRenderer.invoke('planted-setup-command')"
+    expect(invokes(planted)).toBe(true)
+    expect(
+      [...surface]
+        .filter(([name, member]) => !invokes(name === 'onState' ? planted : member))
+        .map(([name]) => name)
+        .sort(),
+    ).not.toEqual([...NOT_THE_WIRE].sort())
   })
 
   it('the review subscription alone is exempt; planting any invoke makes it a wire member', () => {

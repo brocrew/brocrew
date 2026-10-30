@@ -1,3 +1,4 @@
+import type { ProviderSetupBridge } from '../../shared/provider-setup'
 import type { PluginsClient } from '../../shared/plugin-settings'
 import type { TranscriptRetention } from '../../shared/transcript-retention'
 import type { AttentionSignal } from '../../shared/attention-signals'
@@ -42,6 +43,7 @@ declare global {
     api: {
       getAppInfo: () => Promise<AppInfo>
       themes: ThemesBridge
+      providerSetup: ProviderSetupBridge
       plugins?: PluginsClient
       /** The page's own freeze report, for the stall log beside main's stalls. */
       recordPagePerformance: (report: PagePerformanceReport) => Promise<PageReportAnswer>

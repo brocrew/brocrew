@@ -8,7 +8,7 @@ import type {
   ProviderProgram,
   ProviderVersion,
 } from '../../../shared/runtime-ipc'
-import { PROVIDER_NAME } from '../../../shared/runtime-ipc'
+import { DEFAULT_PROFILE_ID, PROVIDER_NAME } from '../../../shared/runtime-ipc'
 import type { ProviderSetupSays } from '../lib/provider-setup'
 import {
   afterNext,
@@ -24,11 +24,16 @@ import {
 import { readableError } from '../lib/session-record'
 import SignInPanel from './SignInPanel.vue'
 import ProviderMark from './ProviderMark.vue'
+import ProviderInstall from './ProviderInstall.vue'
+import ProviderSetupProgress from './ProviderSetupProgress.vue'
+import { useProviderSetup } from '../composables/useProviderSetup'
+import { useModelLists } from '../composables/useModelLists'
+import { modelsAfterConnection } from '../lib/models-after-connection'
 
 /**
  * One provider's setup, a step at a time: install, version, sign-in, ready — or only sign-in and
  * ready for a program this app carries. Next reads the facts again through `recheck` and moves on
- * only when the step's own fact passes. Commands are copied, never run here.
+ * only when the step's own fact passes. Supported setup commands run through the main bridge.
  */
 const props = withDefaults(
   defineProps<{
@@ -64,6 +69,29 @@ const emit = defineEmits<{
 
 const name = computed(() => PROVIDER_NAME[props.provider])
 const tool = computed(() => props.setup?.tool ?? name.value)
+const nativeSetup = useProviderSetup(
+  () => props.provider,
+  async (operation) => {
+    const lists = useModelLists()
+    if (operation === 'signIn') lists.forget(DEFAULT_PROFILE_ID)
+    await props.recheck()
+    if (!alive) return
+    shown.value = firstToDo(facts.value)
+    focusHeading()
+    if (operation === 'signIn' && props.auth?.state === 'usable')
+      await modelsAfterConnection(lists, props.provider, modelsStop.signal)
+  },
+)
+const modelsStop = new AbortController()
+const nativeSignIn = computed(
+  () => nativeSetup.state.value?.available === true && nativeSetup.state.value.supported.signIn,
+)
+const installMissing = computed(
+  () =>
+    shown.value?.step === 'install' &&
+    shown.value.kind === 'missing' &&
+    props.setup?.install != null,
+)
 
 const facts = computed<SetupFacts>(() => ({
   version: props.version,
@@ -86,6 +114,7 @@ const checking = ref(false)
 const feedback = ref('')
 const copied = ref(false)
 const heading = ref<HTMLElement | null>(null)
+const installer = ref<InstanceType<typeof ProviderInstall> | null>(null)
 let alive = true
 
 /** The computer's platform as main says it, else as the browser does. */
@@ -112,7 +141,10 @@ const openTerminal = computed(() =>
 
 /** Signing in happens in the app where the provider offers it, else with its command. */
 const signsInHere = computed(
-  () => props.signIn.state === 'available' || props.reprovision.state === 'available',
+  () =>
+    nativeSignIn.value ||
+    props.signIn.state === 'available' ||
+    props.reprovision.state === 'available',
 )
 const program = computed(() => props.version?.program ?? null)
 
@@ -314,12 +346,15 @@ function stillSays(state: SetupState): string {
 }
 
 function focusHeading(): void {
-  void nextTick(() => heading.value?.focus())
+  void nextTick(() => {
+    if (installMissing.value) installer.value?.focus()
+    else heading.value?.focus()
+  })
 }
 
 async function next(): Promise<void> {
   const before = shown.value
-  if (before === null || checking.value) return
+  if (before === null || checking.value || nativeSetup.busy.value) return
   if (before.step === 'ready') {
     emit('start')
     return
@@ -347,7 +382,7 @@ async function next(): Promise<void> {
 
 function back(): void {
   const state = shown.value
-  if (state === null || checking.value) return
+  if (state === null || checking.value || nativeSetup.busy.value) return
   const before = stepBefore(state, facts.value)
   if (before === null) return
   shown.value = before
@@ -369,10 +404,11 @@ async function copy(command: string): Promise<void> {
 
 onMounted(() => {
   // After the dialog layer has placed its own first focus.
-  setTimeout(() => heading.value?.focus(), 0)
+  setTimeout(focusHeading, 0)
 })
 onBeforeUnmount(() => {
   alive = false
+  modelsStop.abort()
 })
 </script>
 
@@ -380,7 +416,7 @@ onBeforeUnmount(() => {
   <section
     class="setup-dialog"
     aria-labelledby="setup-title"
-    :aria-busy="checking"
+    :aria-busy="checking || nativeSetup.busy.value"
     data-cy="provider-setup-dialog"
     :data-provider="props.provider"
     :data-step="shown?.step ?? 'checking'"
@@ -399,7 +435,7 @@ onBeforeUnmount(() => {
           <svg class="icon" aria-hidden="true"><use href="#i-x" /></svg>
         </button>
       </div>
-      <ol class="stepper" aria-label="Setup progress" data-cy="setup-steps">
+      <ol v-if="!installMissing" class="stepper" aria-label="Setup progress" data-cy="setup-steps">
         <li
           v-for="(step, index) in steps"
           :key="step"
@@ -417,7 +453,19 @@ onBeforeUnmount(() => {
     </header>
 
     <div class="setup-body">
-      <template v-if="view === null || shown === null">
+      <ProviderInstall
+        ref="installer"
+        v-if="installMissing"
+        :tool="tool"
+        :busy="nativeSetup.busy.value"
+        :progress="nativeSetup.state.value?.progress ?? ''"
+        :error="nativeSetup.error.value"
+        :details="nativeSetup.state.value?.details ?? null"
+        :docs="props.setup?.install?.docs ?? ''"
+        @install="nativeSetup.install()"
+        @cancel="nativeSetup.cancel()"
+      />
+      <template v-else-if="view === null || shown === null">
         <h3 ref="heading" class="step-title" tabindex="-1" data-cy="setup-title">
           Checking this computer…
         </h3>
@@ -461,9 +509,35 @@ onBeforeUnmount(() => {
           </button>
         </div>
 
+        <div v-if="shown.step === 'sign-in' && nativeSignIn" class="native-sign-in">
+          <div class="actions">
+            <button
+              type="button"
+              class="bb-button bb-button--primary"
+              data-cy="native-sign-in"
+              :disabled="nativeSetup.busy.value || props.busy !== 'idle'"
+              @click="nativeSetup.signIn()"
+            >
+              Sign in
+            </button>
+            <button
+              v-if="nativeSetup.busy.value"
+              type="button"
+              class="bb-button"
+              @click="nativeSetup.cancel()"
+            >
+              Cancel sign-in
+            </button>
+          </div>
+          <ProviderSetupProgress
+            :progress="nativeSetup.state.value?.progress ?? ''"
+            :auth-url="nativeSetup.state.value?.authUrl ?? null"
+            :error="nativeSetup.error.value"
+          />
+        </div>
         <SignInPanel
           :provider="props.provider"
-          v-if="shown.step === 'sign-in' && signsInHere && props.auth !== null"
+          v-else-if="shown.step === 'sign-in' && signsInHere && props.auth !== null"
           :state="props.auth"
           :sign-in="props.signIn"
           :reprovision="props.reprovision"
@@ -564,12 +638,12 @@ onBeforeUnmount(() => {
       </template>
     </div>
 
-    <footer class="setup-foot">
+    <footer v-if="!installMissing" class="setup-foot">
       <button
         v-if="atStep > 0"
         type="button"
         class="bb-button"
-        :disabled="checking"
+        :disabled="checking || nativeSetup.busy.value"
         data-cy="setup-back"
         @click="back"
       >
@@ -587,7 +661,7 @@ onBeforeUnmount(() => {
           v-if="shown && view?.next"
           type="button"
           class="bb-button bb-button--primary"
-          :disabled="checking"
+          :disabled="checking || nativeSetup.busy.value"
           data-cy="setup-next"
           @click="next"
         >
