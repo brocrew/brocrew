@@ -9,7 +9,7 @@ import {
 } from '../../shared/storage'
 import { failedOverview, storageReason, type StorageRequest } from './engine'
 import type { StorageService } from './service'
-import { installSessionRelease, SESSION_RELEASE_EVENTS } from '../window-navigation'
+import { installSessionRelease } from '../window-navigation'
 
 export interface StorageActions {
   readonly reveal: (path: string) => void
@@ -58,7 +58,9 @@ export function registerStorageIpc(
       installSessionRelease(sender, abort)
       sender.once('destroyed', destroyed)
       watched.set(sender, () => {
-        for (const event of SESSION_RELEASE_EVENTS) sender.removeListener(event, abort)
+        sender.removeListener('did-navigate', abort)
+        sender.removeListener('render-process-gone', abort)
+        sender.removeListener('destroyed', abort)
         sender.removeListener('destroyed', destroyed)
       })
     }

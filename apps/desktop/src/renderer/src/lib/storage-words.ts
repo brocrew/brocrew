@@ -9,7 +9,7 @@ export const STORAGE_PARTS: Readonly<
   },
   'provider-conversations': {
     name: 'Provider conversations',
-    meaning: 'Claude and Codex history and settings for each agent',
+    meaning: 'Claude and Codex conversation history for each agent',
     colour: '#7b68a2',
   },
   'agent-output': {
