@@ -1,3 +1,4 @@
+import type { RecoveryRetentionClient } from '../../shared/recovery-retention'
 import type { PluginsClient } from '../../shared/plugin-settings'
 import type { TranscriptRetention } from '../../shared/transcript-retention'
 import type { AttentionSignal } from '../../shared/attention-signals'
@@ -63,6 +64,7 @@ declare global {
        */
       attentionSignals: (signal: AttentionSignal) => Promise<void>
       /** This workspace's short name and colour on the Dock icon (`shared/dock-label.ts`). */
+      recoveryRetention?: RecoveryRetentionClient
       transcriptRetention?: {
         read: () => Promise<TranscriptRetention>
         set: (period: TranscriptRetention) => Promise<TranscriptRetention>

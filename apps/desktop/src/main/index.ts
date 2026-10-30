@@ -17,6 +17,14 @@ import { profileSkillAccess, SharedSkillDiscovery } from './skills/shared-discov
 import { convertSharedSkills } from './skills/shared-conversion'
 import { SharedSkillLibrary } from './skills/shared-library'
 import { providerProcessesAreInFlight } from './runtime/live-hosts'
+import { armRecoveryExpiry } from './recovery/retention-timer'
+import { RECOVERY_RETENTION_CHANNELS } from '../shared/recovery-retention'
+import {
+  prune,
+  recordSuccessfulStart,
+  retainedCopyInfo,
+  deleteRetainedCopy,
+} from './recovery/checkpoint'
 import { TranscriptRetentionHost, transcriptStartupWasInterrupted } from './transcript-retention'
 import {
   TRANSCRIPT_RETENTION_CHANNELS,
@@ -400,6 +408,35 @@ let host: RuntimeHost | null = null
 const pluginSupervisor = new PluginSupervisorAttachment()
 let updates: ReturnType<typeof startUpdates> | null = null
 let transcriptRetention: TranscriptRetentionHost | undefined
+/** Serializes startup maintenance with Settings, so a stale read cannot race expiry or deletion. */
+let recoveryMaintenance: Promise<unknown> = Promise.resolve()
+let recoveryStartSucceeded = false
+let recoveryStartRecorded: Promise<void> | undefined
+let recoveryExpiryTimer: ReturnType<typeof setTimeout> | undefined
+function withRecoveryCopies<T>(work: () => Promise<T>): Promise<T> {
+  const next = recoveryMaintenance.then(work)
+  recoveryMaintenance = next.catch(() => undefined)
+  return next
+}
+
+async function scheduleRecoveryExpiry(): Promise<void> {
+  clearTimeout(recoveryExpiryTimer)
+  recoveryExpiryTimer = undefined
+  const copy = await retainedCopyInfo(app.getPath('userData'), theBuildsMigrations(), {
+    ownership: theOneAppAnswer?.held() ?? 'unknown',
+    currentAppVersion: app.getVersion(),
+  })
+  if (!copy) return
+  recoveryExpiryTimer = armRecoveryExpiry(copy.expiresAt, () => {
+    void withRecoveryCopies(async () => {
+      await prune(app.getPath('userData'), theBuildsMigrations(), {
+        ownership: theOneAppAnswer?.held() ?? 'unknown',
+        currentAppVersion: app.getVersion(),
+      })
+      await scheduleRecoveryExpiry()
+    }).catch((error) => console.warn('BroCrew kept its recovery copy:', error))
+  })
+}
 let signalFirstWindowLoad!: () => void
 const firstWindowLoad = new Promise<void>((resolve) => {
   signalFirstWindowLoad = resolve
@@ -541,6 +578,16 @@ function initDatabase(): AppDatabase {
   db = database
   // Only once the open and every migration have passed, so a start refused or failed there never
   // says it opened normally.
+  // Count a successful database open once, even if a provider or window fails later.
+  recoveryStartRecorded = withRecoveryCopies(() =>
+    recordSuccessfulStart(app.getPath('userData'), theBuildsMigrations(), {
+      ownership: theOneAppAnswer?.held() ?? 'unknown',
+      currentAppVersion: app.getVersion(),
+    }),
+  )
+  void recoveryStartRecorded.catch((error) =>
+    console.warn('BroCrew could not record its successful start:', error),
+  )
   if (presentation.hidden) sayAtOnce(OPENED_NORMALLY_LINE)
   return database
 }
@@ -1308,6 +1355,27 @@ function registerIpc(runtimeHost: RuntimeHost, localZone: () => LocalZone | null
     (event) => BrowserWindow.fromWebContents(event.sender),
     pluginController,
   )
+  ipcMain.handle(RECOVERY_RETENTION_CHANNELS.read, () =>
+    withRecoveryCopies(() =>
+      retainedCopyInfo(app.getPath('userData'), theBuildsMigrations(), {
+        ownership: theOneAppAnswer?.held() ?? 'unknown',
+        currentAppVersion: app.getVersion(),
+      }),
+    ),
+  )
+  ipcMain.handle(RECOVERY_RETENTION_CHANNELS.delete, (_event, id: unknown) =>
+    withRecoveryCopies(async () => {
+      if (
+        !recoveryStartSucceeded ||
+        typeof id !== 'string' ||
+        !(await deleteRetainedCopy(app.getPath('userData'), theBuildsMigrations(), id, {
+          ownership: theOneAppAnswer?.held() ?? 'unknown',
+          currentAppVersion: app.getVersion(),
+        }))
+      )
+        throw new Error('The recovery copy could not be deleted.')
+    }),
+  )
   ipcMain.handle(TRANSCRIPT_RETENTION_CHANNELS.read, () => transcriptRetention!.read())
   ipcMain.handle(TRANSCRIPT_RETENTION_CHANNELS.set, (_event, period: unknown) => {
     if (!isTranscriptRetention(period)) throw new Error('Invalid transcript retention.')
@@ -1991,19 +2059,24 @@ function showThisStartsWindow(): void {
 
 /** Lets go of the recovery copies no longer kept, once the start has said it is ready. */
 async function letGoOfOldCopies(): Promise<void> {
-  try {
-    const removed = await pruneTheCopies(
-      app.getPath('userData'),
-      resolveMigrationsFolder(),
-      theOneAppAnswer?.held() ?? 'unknown',
-      (line) => console.warn(line),
-    )
-    if (removed.length > 0) {
-      console.info(`BroCrew let go of ${String(removed.length)} old recovery copies`)
+  return withRecoveryCopies(async () => {
+    try {
+      await recoveryStartRecorded
+      const removed = await pruneTheCopies(
+        app.getPath('userData'),
+        resolveMigrationsFolder(),
+        theOneAppAnswer?.held() ?? 'unknown',
+        (line) => console.warn(line),
+        app.getVersion(),
+      )
+      await scheduleRecoveryExpiry()
+      if (removed.length > 0) {
+        console.info(`BroCrew let go of ${String(removed.length)} old recovery copies`)
+      }
+    } catch (error) {
+      console.warn('BroCrew could not let go of its old recovery copies:', error)
     }
-  } catch (error) {
-    console.warn('BroCrew could not let go of its old recovery copies:', error)
-  }
+  })
 }
 
 /**
@@ -2468,6 +2541,7 @@ function start(ownership: HostGateVerdict): void {
       mainThreadWork.add('the start', performance.now() - startBegan)
       // Once, last, when every step of the start has run; something watching the start matches the
       // line. Only then may old recovery copies go.
+      recoveryStartSucceeded = true
       sayAtOnce(READY_LINE)
       void letGoOfOldCopies()
     })
