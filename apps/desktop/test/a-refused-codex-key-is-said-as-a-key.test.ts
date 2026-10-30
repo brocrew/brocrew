@@ -102,8 +102,13 @@ describe('§1b · a refused sign-in this app replaces by itself says so', () => 
     expect(said).not.toMatch(/cannot continue|launcher|BroBot/)
   })
 
-  it('⛔ Claude, and Codex without the fact: today’s sentence, unchanged', () => {
-    expect(errorOf(started('claude'), REFUSED(false))).toBe(TODAY)
+  it('Claude keeps the conversation and asks for a renewed machine sign-in', () => {
+    expect(errorOf(started('claude'), REFUSED(false))).toBe(
+      'Claude rejected the current machine sign-in. Sign in again to continue this conversation. Its transcript is kept. It carries on without its “Allow for this conversation” approvals or anything that was running in the background.',
+    )
+  })
+
+  it('Codex without the replacement fact keeps its existing sentence', () => {
     expect(errorOf(started('codex'), REFUSED(false))).toBe(TODAY)
   })
 
