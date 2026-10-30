@@ -140,7 +140,7 @@ describe.skipIf(process.platform === 'win32')(
           { sender: owner.webContents, senderFrame: owner.webContents.mainFrame },
           { kind: 'list' },
         ),
-      ).resolves.toEqual({ ok: false, listState: 'fetch-error' })
+      ).resolves.toEqual({ ok: false, listState: 'fetch-error', reason: 'supervisor-unavailable' })
       expect(f.fetch).not.toHaveBeenCalled()
       expect(f.supervisor.start).not.toHaveBeenCalled()
     })
