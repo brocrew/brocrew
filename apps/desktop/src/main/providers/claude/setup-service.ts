@@ -236,13 +236,13 @@ export class ClaudeSetupService {
       child.once('spawn', () => {
         if (operation.stop) this.signal(operation, false)
       })
-      child.once('exit', (code: number | null) => {
+      child.once('exit', () => {
         if (this.active !== operation || operation.finished) return
         operation.exited = true
         operation.timers.push(
           setTimeout(() => {
-            this.signal(operation, true)
-            this.finish(operation, code)
+            // Exit does not close inherited pipes or prove that descendants have stopped.
+            this.stop(operation, 'timed-out')
           }, this.bounds.stopMs),
         )
       })
@@ -341,7 +341,7 @@ export class ClaudeSetupService {
           setTimeout(() => {
             if (this.active === operation && !operation.finished)
               this.publish({
-                phase: 'failed',
+                phase: 'cancelling',
                 error: 'timed-out',
                 progress: 'Claude Code setup has not stopped yet.',
                 authUrl: null,

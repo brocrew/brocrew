@@ -41,6 +41,7 @@ export function setupProcesses(
       if (pid !== undefined) {
         owned.add(pid)
         child.once('exit', () => {
+          // Windows cannot safely target this PID after its leader exits; descendants may remain.
           if (platform === 'win32') owned.delete(pid)
         })
         child.once('close', () => owned.delete(pid))

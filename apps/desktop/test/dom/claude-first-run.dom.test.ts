@@ -284,6 +284,24 @@ it('runs one mocked installer gesture, reports progress, and cancels without a t
   expect(m.all('setup-command')).toHaveLength(0)
 })
 
+it('keeps installer admission disabled while process cleanup remains unresolved', async () => {
+  const { m, publish, bridge } = fixture()
+  await settle()
+  m.q('install-program').click()
+  await settle()
+  publish({
+    phase: 'cancelling',
+    error: 'timed-out',
+    progress: 'Claude Code setup has not stopped yet.',
+  })
+  await settle()
+  expect(m.q('install-failure').textContent).toContain('has not stopped yet')
+  expect((m.q('install-program') as HTMLButtonElement).disabled).toBe(true)
+  m.q('install-program').click()
+  expect(bridge.install).toHaveBeenCalledTimes(1)
+  expect(m.all('provider-inline-setup')).toHaveLength(0)
+})
+
 it('shows real mocked installer error output and a separate installation-help link', async () => {
   const { m, publish } = fixture()
   await settle()
