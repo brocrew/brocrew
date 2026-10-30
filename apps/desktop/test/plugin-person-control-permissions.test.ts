@@ -32,6 +32,7 @@ describe.skipIf(process.platform === 'win32')(
       async (code) => {
         const f = await fixture()
         await f.controller.detach(f.handle)
+        vi.mocked(chmod).mockClear()
         const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
         fault.code = code
         const key = 'a'.repeat(64)
