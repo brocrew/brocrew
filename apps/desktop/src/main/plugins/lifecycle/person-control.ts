@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import { isSocketFile, localEndpoint } from '../local-endpoint'
 import { z } from 'zod'
 import { privateChild } from '../node-host-files'
+import { warnPluginPermissions } from '../private-files'
 import { PluginSupervisorError, Hex } from '../supervisor/protocol'
 import { PersonChannel } from './transport'
 import type { PluginLifecycleController, PreparedPluginMutation } from './controller'
@@ -413,7 +414,13 @@ export async function servePersonPluginControl(options: {
       resolve()
     })
   })
-  if (isSocketFile()) await chmod(path, 0o600)
+  if (isSocketFile()) {
+    try {
+      await chmod(path, 0o600)
+    } catch {
+      warnPluginPermissions(await lstat(path, { bigint: true }))
+    }
+  }
   const held = isSocketFile() ? await lstat(path, { bigint: true }) : null
   server.on('error', () => {
     for (const channel of channels) channel.close()
