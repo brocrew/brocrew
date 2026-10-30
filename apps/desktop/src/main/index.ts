@@ -1,3 +1,6 @@
+import { providerSetupServices } from './providers/program-compat'
+import { setupProcesses } from './provider-setup/process'
+import { registerProviderSetup } from './provider-setup/ipc'
 import { providerKnowledge } from './providers/knowledge-definitions'
 import { workspaceLaunchMessage } from './workspace-routing'
 import { WorkspacePluginAttachments } from './plugins/attachments'
@@ -443,6 +446,8 @@ const firstWindowLoad = new Promise<void>((resolve) => {
 })
 let themes: ThemeStore | null = null
 let stopThemeIpc: (() => void) | undefined
+let stopProviderSetup: (() => Promise<void>) | undefined
+const appSetupWindows = new WeakSet<WebContents>()
 let stopStorageIpc: (() => void) | undefined
 const storageAppWindows = new WeakSet<WebContents>()
 let dockLabel: Promise<DockLabelHost> | undefined
@@ -1307,6 +1312,18 @@ async function pick(
 }
 
 function registerIpc(runtimeHost: RuntimeHost, localZone: () => LocalZone | null): void {
+  stopProviderSetup = registerProviderSetup(
+    ipcMain,
+    providerSetupServices({
+      platform: process.platform,
+      systemRoot: process.env.SystemRoot,
+      ...setupProcesses(process.platform, process.env.SystemRoot),
+    }),
+    (event) =>
+      !event.sender.isDestroyed() &&
+      appSetupWindows.has(event.sender) &&
+      event.senderFrame === event.sender.mainFrame,
+  )
   const storageData = app.getPath('userData')
   let storagePlugins: string | null = null
   try {
@@ -1616,6 +1633,8 @@ function createWindow(): void {
       sandbox: true,
     },
   })
+
+  appSetupWindows.add(window.webContents)
 
   storageAppWindows.add(window.webContents)
   // Keep a hidden launch's window out of sight (`launch-presentation.ts`). Both paths use
@@ -1928,6 +1947,7 @@ async function whatAFailedStartEndsOn(
  */
 function stopWhatTheStartStarted(): Promise<void> {
   stoppingTheStart ??= (async () => {
+    await stopProviderSetup?.()
     await transcriptRetention?.stop()
     // A retry keeps the stopped startup attempt; clearing cannot reopen in this app session.
     stopThemeIpc?.()
@@ -2586,6 +2606,7 @@ const lifetime = createAppLifetime({
   // (046 review, P2): a pass still running when the connection closes would throw against it. It
   // ends at the next boundary.
   stopArchiveWork: () => {
+    void stopProviderSetup?.()
     updates?.stop()
     void transcriptRetention?.stop()
     host?.stopSweeping()
@@ -2598,6 +2619,7 @@ const lifetime = createAppLifetime({
   },
   // …and then WAIT for the work already admitted, so the database closes under nobody (062).
   drainArchiveWork: async () => {
+    await stopProviderSetup?.()
     await updates?.drain()
     await transcriptRetention?.stop()
     await (stoppingTheStart ?? host?.drainArchiveWork() ?? Promise.resolve())

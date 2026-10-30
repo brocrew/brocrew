@@ -74,8 +74,9 @@ describe('kept rules on the Providers page', () => {
   it('lists each provider’s rules, file by file, in the words a card says them', async () => {
     const { m } = aPage([KEPT], { removed: true })
     await settle()
-    expect(m.host.textContent).toContain('per provider')
-    expect(m.host.textContent).toContain('does not carry to another provider')
+    expect(m.host.querySelector('.about')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+      'Actions you chose “Always allow” for. They apply to every conversation that uses this provider, not to other providers. If you remove one, agents will ask again the next time a conversation starts.',
+    )
     expect(m.all('kept-rules-file').map((one) => one.textContent?.trim())).toEqual([PROJECT, RULES])
     expect(
       m.all('kept-rule').map((one) => one.querySelector('.rule')?.textContent?.trim()),

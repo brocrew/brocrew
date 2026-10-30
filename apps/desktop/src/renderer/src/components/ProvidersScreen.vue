@@ -459,14 +459,14 @@ const runningOf = (provider: Provider) => {
           /></span>
           <h2>{{ selectedDescriptor.displayName }}</h2>
           <span
-            v-if="standingOf(selected)"
+            v-if="standingOf(selected) && versions?.[selected]?.program?.standing !== 'missing'"
             class="standing"
             data-cy="provider-standing"
             :class="standingOf(selected)!.tone"
             >{{ standingOf(selected)!.words }}</span
           >
           <ProviderOptions
-            v-if="configured(selected)"
+            v-if="configured(selected) && versions?.[selected]?.program?.standing !== 'missing'"
             :name="selectedDescriptor.displayName"
             @setup="providerCard?.beginSetup()"
           />
@@ -510,6 +510,7 @@ const runningOf = (provider: Provider) => {
             @start-conversation="emit('startConversation')"
           />
           <KeptRules
+            v-if="versions?.[selected]?.program?.standing !== 'missing'"
             :providers="[selected]"
             :names="{ [selected]: selectedDescriptor.displayName }"
           />

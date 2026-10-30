@@ -1,3 +1,4 @@
+import type { ProviderSetupBridge } from '../../shared/provider-setup'
 import type { RecoveryRetentionClient } from '../../shared/recovery-retention'
 import type { PluginsClient } from '../../shared/plugin-settings'
 import type { TranscriptRetention } from '../../shared/transcript-retention'
@@ -44,6 +45,7 @@ declare global {
     api: {
       getAppInfo: () => Promise<AppInfo>
       themes: ThemesBridge
+      providerSetup: ProviderSetupBridge
       storage: StorageBridge
       plugins?: PluginsClient
       /** The page's own freeze report, for the stall log beside main's stalls. */

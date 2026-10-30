@@ -1,3 +1,4 @@
+import { providerSetupBridge } from './provider-setup'
 import type {
   MethodLibrary,
   MethodBody,
@@ -1097,6 +1098,7 @@ const api = Object.freeze({
   }),
   runtime,
   themes: themesBridge(ipcRenderer),
+  providerSetup: providerSetupBridge(ipcRenderer),
   plugins: pluginsBridge(ipcRenderer),
   storage: storageBridge(ipcRenderer),
   /**

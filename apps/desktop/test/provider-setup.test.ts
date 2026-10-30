@@ -1,0 +1,338 @@
+import { EventEmitter } from 'node:events'
+import { PassThrough } from 'node:stream'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { ProviderSetupState } from '../src/shared/provider-setup'
+import {
+  CLAUDE_SETUP_BOUNDS,
+  ClaudeSetupService,
+  officialAuthUrl,
+  officialInstaller,
+} from '../src/main/providers/claude/setup-service'
+import { setupProcesses } from '../src/main/provider-setup/process'
+
+class FakeChild extends EventEmitter {
+  readonly stdout = new PassThrough()
+  readonly stderr = new PassThrough()
+  constructor(readonly pid: number | undefined = 70123) {
+    super()
+  }
+}
+const children: FakeChild[] = []
+afterEach(() => {
+  for (const child of children.splice(0)) child.emit('close', 1)
+  vi.useRealTimers()
+})
+function fixture(platform: NodeJS.Platform = 'darwin', available = false) {
+  const child = new FakeChild()
+  children.push(child)
+  const findProgram = vi.fn((): string | null =>
+    available ? '/fictional/tools/official-cli' : null,
+  )
+  const spawn = vi.fn(() => child)
+  const stop = vi.fn()
+  const service = new ClaudeSetupService(
+    { platform, findProgram, spawn, stop },
+    { ...CLAUDE_SETUP_BOUNDS, installMs: 100, loginMs: 200, stopMs: 10 },
+  )
+  const states: ProviderSetupState[] = []
+  service.onState((state) => states.push(state))
+  return { child, service, spawn, stop, findProgram, states }
+}
+const auth =
+  'https://claude.ai/oauth/authorize?response_type=code&client_id=fictional-client&state=fictional-state&code_challenge=fictional-challenge&code=true'
+
+describe('fixed official setup commands, with no real execution', () => {
+  it.each(['darwin', 'linux'] as const)(
+    'uses the documented installer on %s with pipeline failure handling',
+    (platform) => {
+      expect(officialInstaller(platform)).toEqual({
+        file: '/bin/bash',
+        args: ['-o', 'pipefail', '-c', 'curl -fsSL https://claude.ai/install.sh | bash'],
+      })
+    },
+  )
+  it('uses native noninteractive hidden PowerShell, without a profile or Terminal app', () => {
+    expect(officialInstaller('win32', 'Z:\\FictionalOS')).toEqual({
+      file: 'Z:\\FictionalOS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+      args: [
+        '-NoLogo',
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        '$ErrorActionPreference = "Stop"; irm https://claude.ai/install.ps1 | iex',
+      ],
+    })
+    expect(officialInstaller('freebsd')).toBeNull()
+  })
+  it('redetects the installed CLI after success; no development SDK fallback', () => {
+    const f = fixture()
+    expect(f.service.install()).toEqual({ ok: true })
+    expect(f.service.state()).toMatchObject({
+      provider: 'claude',
+      supported: { install: true, signIn: true },
+      phase: 'installing',
+    })
+    f.findProgram.mockReturnValue('/fictional/native/bin/official-cli')
+    f.child.emit('close', 0)
+    expect(f.service.state()).toMatchObject({
+      phase: 'installed',
+      available: true,
+      exitCode: 0,
+      details: null,
+    })
+    expect(f.spawn).toHaveBeenCalledTimes(1)
+    expect(f.service.install()).toEqual({ ok: true })
+    expect(f.spawn).toHaveBeenCalledTimes(1)
+  })
+  it('does not call success when the installer exits zero but lookup still finds nothing', () => {
+    const f = fixture()
+    f.service.install()
+    f.child.emit('close', 0)
+    expect(f.service.state()).toMatchObject({
+      phase: 'failed',
+      error: 'not-found',
+      available: false,
+    })
+  })
+  it('reports bounded installer failure diagnostics and never publishes them during progress', () => {
+    const f = fixture()
+    f.service.install()
+    f.child.stderr.write('\u001b[31mDownload failed\u001b[0m\npassword=')
+    f.child.stderr.write('fictional-value\n')
+    expect(f.states.every((state) => state.details === null)).toBe(true)
+    f.child.emit('close', 7)
+    expect(f.service.state()).toMatchObject({
+      error: 'install-failed',
+      exitCode: 7,
+      details: 'Download failed\npassword=[redacted]\n',
+    })
+    expect(JSON.stringify(f.states)).not.toContain('fictional-value')
+  })
+  it('limits retained diagnostics separately from total process output', () => {
+    const f = fixture()
+    f.service.install()
+    f.child.stderr.write('x'.repeat(20_000))
+    f.child.emit('close', 1)
+    expect(f.service.state().details).toHaveLength(CLAUDE_SETUP_BOUNDS.diagnosticChars)
+  })
+  it('refuses unsupported platforms and missing login without spawning', () => {
+    const f = fixture('freebsd')
+    expect(f.service.install()).toEqual({ ok: false, reason: 'unsupported-platform' })
+    expect(f.service.signIn()).toEqual({ ok: false, reason: 'not-found' })
+    expect(f.spawn).not.toHaveBeenCalled()
+  })
+})
+
+describe('the CLI owns browser sign-in', () => {
+  it('invokes only the detected program with auth login and forwards only an approved chunked URL', () => {
+    const f = fixture('darwin', true)
+    expect(f.service.signIn()).toEqual({ ok: true })
+    expect(f.spawn).toHaveBeenCalledWith({
+      file: '/fictional/tools/official-cli',
+      args: ['auth', 'login'],
+    })
+    f.child.stdout.write('Never show fictional-login-output\n' + auth.slice(0, 40))
+    f.child.stdout.write(auth.slice(40) + '\n')
+    expect(f.service.state().authUrl).toBe(auth)
+    expect(JSON.stringify(f.states)).not.toContain('fictional-login-output')
+    f.child.stderr.write('invented private callback code\n')
+    f.child.emit('close', 1)
+    expect(f.service.state()).toMatchObject({
+      phase: 'failed',
+      error: 'login-failed',
+      details: null,
+      authUrl: null,
+    })
+    expect(JSON.stringify(f.states)).not.toContain('invented private callback code')
+  })
+  it('handles a final URL without newline, and clears it when the command closes', () => {
+    const f = fixture('darwin', true)
+    f.service.signIn()
+    f.child.stdout.write(auth)
+    f.child.emit('close', 0)
+    expect(f.states.some((state) => state.authUrl === auth)).toBe(true)
+    expect(f.service.state()).toMatchObject({ phase: 'signed-in', authUrl: null, error: null })
+  })
+  it.each([
+    'http://claude.ai/oauth/authorize?response_type=code',
+    'https://claude.ai.attacker.invalid/oauth/authorize?response_type=code',
+    'https://fictional-user@claude.ai/oauth/authorize?response_type=code',
+    'https://claude.ai:444/oauth/authorize?response_type=code',
+    'https://claude.ai/oauth/authorize?response_type=token',
+    'https://claude.ai/oauth/callback?code=fictional-code',
+    auth + '&access_token=fictional-value',
+    auth + '&code=fictional-callback',
+    auth + '#fictional-fragment',
+  ])('rejects non-request/credential-bearing URL %s', (url) =>
+    expect(officialAuthUrl(url)).toBeNull(),
+  )
+})
+
+describe('bounded process lifecycle', () => {
+  it('cancels softly then forcibly, retaining the busy permit until a close receipt', async () => {
+    vi.useFakeTimers()
+    const f = fixture()
+    f.service.install()
+    f.service.cancel()
+    expect(f.stop).toHaveBeenCalledWith(f.child.pid, false)
+    expect(f.service.install()).toEqual({ ok: false, reason: 'busy' })
+    await vi.advanceTimersByTimeAsync(20)
+    expect(f.stop).toHaveBeenCalledWith(f.child.pid, true)
+    expect(f.service.busy).toBe(true)
+    expect(f.service.install()).toEqual({ ok: false, reason: 'busy' })
+    f.child.emit('close', null)
+    expect(f.service.busy).toBe(false)
+    expect(f.service.state()).toMatchObject({ phase: 'cancelled', authUrl: null })
+  })
+  it.each(['install', 'signIn'] as const)(
+    'times out %s and never returns sign-in diagnostics',
+    async (action) => {
+      vi.useFakeTimers()
+      const f = fixture('darwin', action === 'signIn')
+      f.service[action]()
+      await vi.advanceTimersByTimeAsync(action === 'install' ? 100 : 200)
+      expect(f.stop).toHaveBeenCalledWith(f.child.pid, false)
+      f.child.emit('close', null)
+      expect(f.service.state()).toMatchObject({
+        phase: 'failed',
+        error: 'timed-out',
+        details: null,
+      })
+    },
+  )
+  it('bounds output across both pipes and stops rather than silently dropping unlimited data', () => {
+    const f = fixture()
+    f.service.install()
+    f.child.stdout.write(Buffer.alloc(140_000, 'x'))
+    f.child.stderr.write(Buffer.alloc(140_000, 'y'))
+    expect(f.stop).toHaveBeenCalledWith(f.child.pid, false)
+    f.child.emit('close', 1)
+    expect(f.service.state().error).toBe('output-limit')
+    expect(f.service.state().details!.length).toBeLessThanOrEqual(
+      CLAUDE_SETUP_BOUNDS.diagnosticChars,
+    )
+  })
+  it('bounds incomplete login lines and does not expose them', () => {
+    const f = fixture('darwin', true)
+    f.service.signIn()
+    f.child.stdout.write('x'.repeat(20_000))
+    f.child.emit('close', 1)
+    expect(f.service.state()).toMatchObject({ error: 'output-limit', details: null })
+  })
+  it('handles a failed output pipe without forwarding its error or losing the child permit', () => {
+    const f = fixture()
+    f.service.install()
+    f.child.stderr.emit('error', new Error('fictional pipe detail'))
+    expect(f.stop).toHaveBeenCalledWith(f.child.pid, false)
+    expect(f.service.busy).toBe(true)
+    f.child.emit('close', 1)
+    expect(f.service.state()).toMatchObject({ error: 'start-failed', details: null })
+    expect(JSON.stringify(f.states)).not.toContain('fictional pipe detail')
+  })
+  it('keeps spawn-error diagnostics fixed and releases only a failed spawn without a PID', () => {
+    const child = new FakeChild(undefined)
+    // Explicitly shadow the constructor default for an unspawned process.
+    Object.defineProperty(child, 'pid', { value: undefined })
+    const service = new ClaudeSetupService({
+      platform: 'darwin',
+      findProgram: () => null,
+      spawn: () => child,
+      stop: vi.fn(),
+    })
+    service.install()
+    child.emit('error', new Error('fictional spawn detail'))
+    expect(service.state()).toMatchObject({ error: 'start-failed', details: null })
+    expect(service.busy).toBe(false)
+  })
+  it('finishes after confirmed exit even when a descendant keeps a pipe open, and ignores late events', async () => {
+    vi.useFakeTimers()
+    const f = fixture()
+    f.service.install()
+    f.child.emit('exit', 5)
+    await vi.advanceTimersByTimeAsync(10)
+    expect(f.service.state()).toMatchObject({ error: 'install-failed', exitCode: 5 })
+    const before = f.states.length
+    f.child.emit('close', 0)
+    f.child.emit('exit', 0)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(f.states).toHaveLength(before)
+    expect(f.child.stdout.listenerCount('data')).toBe(0)
+    expect(f.stop).toHaveBeenCalledWith(f.child.pid, true)
+  })
+  it('bounds shutdown, retains a stuck permit, and prevents new commands after close', async () => {
+    vi.useFakeTimers()
+    const f = fixture()
+    f.service.onState(() => {
+      throw new Error('fictional closed observer')
+    })
+    f.service.install()
+    const closing = f.service.close()
+    await vi.advanceTimersByTimeAsync(30)
+    await closing
+    expect(f.stop).toHaveBeenCalledWith(f.child.pid, true)
+    expect(f.service.install()).toEqual({ ok: false, reason: 'closed' })
+    f.child.emit('close', null)
+    expect(f.service.busy).toBe(false)
+  })
+})
+
+describe('native process adapter with every OS call mocked', () => {
+  it('retains an owned POSIX group through the pipe-drain interval after its leader exits', () => {
+    const child = new FakeChild(),
+      kill = vi.fn()
+    const adapter = setupProcesses('darwin', undefined, {
+      spawn: () => child,
+      execFile: vi.fn(),
+      kill,
+    })
+    adapter.spawn({ file: '/fictional/cli', args: [] })
+    child.emit('exit', 1)
+    adapter.stop(child.pid!, true)
+    expect(kill).toHaveBeenCalledWith(-child.pid!, 'SIGKILL')
+    child.emit('close', 1)
+    kill.mockClear()
+    adapter.stop(child.pid!, true)
+    expect(kill).not.toHaveBeenCalled()
+  })
+  it.each(['darwin', 'win32'] as const)(
+    'hides %s shells, owns PIDs and never invokes a shell for CLI arguments',
+    (platform) => {
+      const child = new FakeChild()
+      const spawn = vi.fn(() => child),
+        execFile = vi.fn(),
+        kill = vi.fn()
+      const adapter = setupProcesses(platform, 'Z:\\FictionalOS', { spawn, execFile, kill })
+      adapter.stop(70123, true)
+      expect(kill).not.toHaveBeenCalled()
+      expect(execFile).not.toHaveBeenCalled()
+      adapter.spawn({ file: '/fictional/cli', args: ['auth', 'login'] })
+      expect(spawn).toHaveBeenCalledWith('/fictional/cli', ['auth', 'login'], {
+        shell: false,
+        windowsHide: true,
+        detached: platform !== 'win32',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      })
+      adapter.stop(70123, false)
+      adapter.stop(70123, true)
+      if (platform === 'win32') {
+        expect(execFile).toHaveBeenLastCalledWith(
+          'Z:\\FictionalOS\\System32\\taskkill.exe',
+          ['/PID', '70123', '/T', '/F'],
+          { windowsHide: true, timeout: 2000, maxBuffer: 4096 },
+          expect.any(Function),
+        )
+      } else
+        expect(kill.mock.calls).toEqual([
+          [-70123, 'SIGTERM'],
+          [-70123, 'SIGKILL'],
+        ])
+      child.emit('exit', 0)
+      child.emit('close', 0)
+      kill.mockClear()
+      execFile.mockClear()
+      adapter.stop(70123, true)
+      expect(kill).not.toHaveBeenCalled()
+      expect(execFile).not.toHaveBeenCalled()
+    },
+  )
+})

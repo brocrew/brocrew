@@ -1,3 +1,6 @@
+import { ClaudeSetupService, type ClaudeSetupDependencies } from './claude/setup-service'
+import { findClaudeProgramHere, LOOK_FOR_THE_INSTALLED_ONE } from './claude/program'
+import type { SetupServices } from '../provider-setup/service'
 import type { Provider } from '@brobot2/shared'
 import type { ProviderVersion } from '../../shared/runtime-ipc'
 import type { ClaudeProgram } from './claude/program'
@@ -62,4 +65,17 @@ export function providerVersionsReader(
     claude: claudeVersionReader(claudeProgram),
     codex: codexVersionReader(codexProgram),
   })
+}
+
+/** Setup uses the official installed-program lookup, including in a development checkout. */
+export function providerSetupServices(
+  deps: Omit<ClaudeSetupDependencies, 'findProgram'>,
+): SetupServices {
+  return {
+    claude: new ClaudeSetupService({
+      ...deps,
+      findProgram: () =>
+        findClaudeProgramHere({ isPackaged: true, given: LOOK_FOR_THE_INSTALLED_ONE }).path,
+    }),
+  }
 }
