@@ -5,6 +5,7 @@ export interface SetupService {
   readonly busy: boolean
   state(): ProviderSetupState
   onState(listener: (state: ProviderSetupState) => void): () => void
+  onCompleted(listener: (provider: Provider) => void): () => void
   install(): ProviderSetupAction
   signIn(): ProviderSetupAction
   cancel(): ProviderSetupAction

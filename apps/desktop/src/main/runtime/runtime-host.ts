@@ -35205,6 +35205,14 @@ export class RuntimeHost implements LiveHost {
     this.providersMoved({ what: 'login', provider })
   }
 
+  /** A successful native setup changes what future launches can use; windows must ask again. */
+  providerSetupCompleted(provider: Provider): void {
+    for (const key of this.modelProbes.keys()) {
+      if (key.startsWith(`${provider}:`)) this.modelProbes.delete(key)
+    }
+    this.providerLoginChanged(provider)
+  }
+
   /**
    * ⚑ **This life's usage is an older login's, and is not kept**: what it runs on changed after it
    * launched — in this app ({@link providerLoginChanged}) or, F096, on the Mac

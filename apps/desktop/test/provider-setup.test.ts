@@ -36,10 +36,68 @@ function fixture(platform: NodeJS.Platform = 'darwin', available = false) {
   )
   const states: ProviderSetupState[] = []
   service.onState((state) => states.push(state))
-  return { child, service, spawn, stop, findProgram, states }
+  const completed = vi.fn()
+  service.onCompleted(completed)
+  return { child, service, spawn, stop, findProgram, states, completed }
 }
 const auth =
   'https://claude.ai/oauth/authorize?response_type=code&client_id=fictional-client&state=fictional-state&code_challenge=fictional-challenge&code=true'
+
+describe('trusted native completion notifications', () => {
+  it.each(['install', 'signIn'] as const)(
+    'invalidates exactly once before terminal %s state, after successful close only',
+    (action) => {
+      const f = fixture('darwin', action === 'signIn')
+      const order: string[] = []
+      f.service.onCompleted(() => order.push('invalidate'))
+      f.service.onState((state) => {
+        if (state.phase === 'installed' || state.phase === 'signed-in') order.push('terminal')
+      })
+      f.service[action]()
+      f.child.stdout.write(auth + '\n')
+      expect(f.completed).not.toHaveBeenCalled()
+      f.findProgram.mockReturnValue('/fictional/tools/official-cli')
+      f.child.emit('close', 0)
+      expect(f.completed).toHaveBeenCalledExactlyOnceWith('claude')
+      expect(order).toEqual(['invalidate', 'terminal'])
+      f.service.state()
+      f.child.emit('close', 0)
+      expect(f.completed).toHaveBeenCalledTimes(1)
+    },
+  )
+  it.each(
+    (['install', 'signIn'] as const).flatMap((action) =>
+      (['failure', 'cancel', 'timeout', 'missing'] as const).map((outcome) => ({
+        action,
+        outcome,
+      })),
+    ),
+  )('does not announce $action $outcome as successful setup', async ({ action, outcome }) => {
+    vi.useFakeTimers()
+    const f = fixture('darwin', action === 'signIn')
+    f.service[action]()
+    if (outcome === 'cancel') f.service.cancel()
+    if (outcome === 'timeout') await vi.advanceTimersByTimeAsync(action === 'install' ? 100 : 200)
+    f.findProgram.mockReturnValue(outcome === 'missing' ? null : '/fictional/tools/official-cli')
+    f.child.emit('close', outcome === 'failure' ? 1 : 0)
+    expect(f.completed).not.toHaveBeenCalled()
+  })
+  it('does not announce an already installed idle action, and disposes completion listeners', () => {
+    const f = fixture('darwin', true)
+    f.service.install()
+    expect(f.completed).not.toHaveBeenCalled()
+    const discarded = vi.fn()
+    f.service.onCompleted(discarded)()
+    f.service.onCompleted(() => {
+      throw new Error('fictional observer failure')
+    })
+    f.service.signIn()
+    f.child.emit('close', 0)
+    expect(discarded).not.toHaveBeenCalled()
+    expect(f.completed).toHaveBeenCalledTimes(1)
+    expect(f.service.busy).toBe(false)
+  })
+})
 
 describe('fixed official setup commands, with no real execution', () => {
   it.each(['darwin', 'linux'] as const)(

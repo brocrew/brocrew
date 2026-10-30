@@ -1323,6 +1323,7 @@ function registerIpc(runtimeHost: RuntimeHost, localZone: () => LocalZone | null
       !event.sender.isDestroyed() &&
       appSetupWindows.has(event.sender) &&
       event.senderFrame === event.sender.mainFrame,
+    (provider) => runtimeHost.providerSetupCompleted(provider),
   )
   const storageData = app.getPath('userData')
   let storagePlugins: string | null = null
