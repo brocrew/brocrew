@@ -15,7 +15,7 @@ import { PluginSupervisorError } from './supervisor/protocol'
 /** Keep one error line, excluding launch capabilities and terminal control characters. */
 export function pluginStartupStderr(text: string, secrets: readonly string[] = []): string | null {
   // Strip terminal escapes before matching secrets, so normalization cannot reveal one.
-  text = text.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '')
+  text = text.replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*[a-zA-Z]`, 'g'), '')
   for (const secret of secrets) if (secret) text = text.split(secret).join('[redacted]')
   text = text
     .replace(/Bearer\s+[^\s]+/gi, 'Bearer [redacted]')
