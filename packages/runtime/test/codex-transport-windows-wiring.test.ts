@@ -30,7 +30,9 @@ let running: Set<number>
 let transports: SpawnCodexTransport[]
 let cleaning = false
 beforeEach(() => {
-  vi.useFakeTimers()
+  vi.useFakeTimers({
+    toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date', 'performance'],
+  })
   vi.setSystemTime(new Date('2026-01-01T00:00:00Z'))
   born = fileTimeOf(Date.now())
   app = child(4811)
@@ -559,4 +561,18 @@ it.each(['EPERM', 'EIO'])('retains exclusion when a direct PID probe reports %s'
   await vi.advanceTimersByTimeAsync(60_000)
   expect(quiet).toBe(true)
   expect(app.kill).not.toHaveBeenCalled()
+})
+
+it('does not shorten the failure delay when the wall clock jumps forward', async () => {
+  const value = transport(async () => null)
+  let quiet = false
+  void value.quiesced.then(() => {
+    quiet = true
+  })
+  await closed(value)
+  vi.setSystemTime(Date.now() + 600_000)
+  await vi.advanceTimersByTimeAsync(10_000)
+  expect(quiet).toBe(false)
+  await vi.advanceTimersByTimeAsync(200_000)
+  expect(quiet).toBe(true)
 })
