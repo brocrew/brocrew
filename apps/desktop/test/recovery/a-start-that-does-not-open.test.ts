@@ -362,9 +362,14 @@ describe('a start that never opened its data', () => {
         CODE.replace('} finally {\n      await pluginController.close()', '} finally {'),
       ),
     ).toBe(false)
-    expect(CODE).toMatch(
-      /drainArchiveWork: async \(\) => \{\s+await updates\?\.drain\(\)\s+await transcriptRetention\?\.stop\(\)\s+await \(stoppingTheStart \?\? host\?\.drainArchiveWork\(\) \?\? Promise\.resolve\(\)\)\s+await themes\?\.close\(\)\s+\}/,
-    )
+    const drainsArchiveWork =
+      /drainArchiveWork: async \(\) => \{\s+await stopProviderSetup\?\.\(\)\s+await updates\?\.drain\(\)\s+await transcriptRetention\?\.stop\(\)\s+await \(stoppingTheStart \?\? host\?\.drainArchiveWork\(\) \?\? Promise\.resolve\(\)\)\s+await themes\?\.close\(\)\s+\}/
+    expect(CODE).toMatch(drainsArchiveWork)
+    for (const replacement of ['', 'void stopProviderSetup?.()']) {
+      expect(
+        drainsArchiveWork.test(CODE.replaceAll('await stopProviderSetup?.()', replacement)),
+      ).toBe(false)
+    }
     // On what the failure means: a failed migration; a database the open refused, checked again
     // so a newer one is offered its copy; anything else with its own words, and a way to try again.
     const means = functionIn(CODE, 'async function whatAFailedStartEndsOn(')
