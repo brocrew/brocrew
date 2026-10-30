@@ -8,7 +8,7 @@ import {
   officialAuthUrl,
   officialInstaller,
 } from '../src/main/providers/claude/setup-service'
-import { setupProcesses } from '../src/main/provider-setup/process'
+import { setupProcesses, type SetupProcessHost } from '../src/main/provider-setup/process'
 
 class FakeChild extends EventEmitter {
   readonly stdout = new PassThrough()
@@ -244,13 +244,18 @@ describe('bounded process lifecycle', () => {
     expect(service.state()).toMatchObject({ error: 'start-failed', details: null })
     expect(service.busy).toBe(false)
   })
-  it('finishes after confirmed exit even when a descendant keeps a pipe open, and ignores late events', async () => {
+  it('requires close after leader exit with open pipes, and ignores late events after closure', async () => {
     vi.useFakeTimers()
     const f = fixture()
     f.service.install()
     f.child.emit('exit', 5)
-    await vi.advanceTimersByTimeAsync(10)
-    expect(f.service.state()).toMatchObject({ error: 'install-failed', exitCode: 5 })
+    await vi.advanceTimersByTimeAsync(30)
+    expect(f.service.busy).toBe(true)
+    expect(f.service.state()).toMatchObject({ phase: 'cancelling', error: 'timed-out' })
+    expect(f.service.install()).toEqual({ ok: false, reason: 'busy' })
+    expect(f.child.stdout.destroyed).toBe(false)
+    f.child.emit('close', 5)
+    expect(f.service.state()).toMatchObject({ error: 'timed-out', exitCode: 5 })
     const before = f.states.length
     f.child.emit('close', 0)
     f.child.emit('exit', 0)
@@ -277,6 +282,86 @@ describe('bounded process lifecycle', () => {
 })
 
 describe('native process adapter with every OS call mocked', () => {
+  it.each(['install', 'signIn'] as const)(
+    'keeps Windows %s busy after leader exit until inherited pipes really close',
+    async (action) => {
+      vi.useFakeTimers()
+      const child = new FakeChild(),
+        next = new FakeChild(70125)
+      children.push(child, next)
+      const spawn = vi
+        .fn(() => child)
+        .mockReturnValueOnce(child)
+        .mockReturnValueOnce(next)
+      const execFile = vi.fn(),
+        kill = vi.fn()
+      const adapter = setupProcesses('win32', 'Z:\\FictionalOS', { spawn, execFile, kill })
+      const service = new ClaudeSetupService(
+        {
+          platform: 'win32',
+          systemRoot: 'Z:\\FictionalOS',
+          ...adapter,
+          findProgram: () => (action === 'signIn' ? 'Z:\\FictionalTools\\official-cli.exe' : null),
+        },
+        { ...CLAUDE_SETUP_BOUNDS, installMs: 100, loginMs: 200, stopMs: 10 },
+      )
+      expect(service[action]()).toEqual({ ok: true })
+      child.emit('exit', 0)
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(service.state()).toMatchObject({ phase: 'cancelling', error: 'timed-out' })
+      expect(service.busy).toBe(true)
+      expect(service.install()).toEqual({ ok: false, reason: 'busy' })
+      expect(service.signIn()).toEqual({ ok: false, reason: 'busy' })
+      expect(spawn).toHaveBeenCalledTimes(1)
+      expect(child.stdout.destroyed).toBe(false)
+      expect(child.stderr.destroyed).toBe(false)
+      expect(execFile).not.toHaveBeenCalled()
+      expect(kill).not.toHaveBeenCalled()
+      // The descendant releases the inherited streams before the process emits its close receipt.
+      child.stdout.end()
+      child.stderr.end()
+      child.emit('close', 0)
+      expect(service.busy).toBe(false)
+      expect(service.state().phase).toBe('failed')
+      expect(service[action]()).toEqual({ ok: true })
+      expect(spawn).toHaveBeenCalledTimes(2)
+      child.emit('exit', 0)
+      child.emit('close', 0)
+      expect(service.busy).toBe(true)
+      next.emit('close', 0)
+    },
+  )
+  it('does not treat Windows taskkill completion as a process-tree close receipt', async () => {
+    vi.useFakeTimers()
+    const child = new FakeChild()
+    children.push(child)
+    const execFile = vi.fn<SetupProcessHost['execFile']>()
+    const adapter = setupProcesses('win32', 'Z:\\FictionalOS', {
+      spawn: () => child,
+      execFile,
+      kill: vi.fn(),
+    })
+    const service = new ClaudeSetupService(
+      { platform: 'win32', ...adapter, findProgram: () => null },
+      { ...CLAUDE_SETUP_BOUNDS, stopMs: 10 },
+    )
+    service.install()
+    service.cancel()
+    execFile.mock.calls[0]![3]()
+    expect(service.busy).toBe(true)
+    child.emit('exit', 0)
+    await vi.advanceTimersByTimeAsync(30)
+    expect(execFile).toHaveBeenCalledTimes(1)
+    expect(service.busy).toBe(true)
+    expect(service.install()).toEqual({ ok: false, reason: 'busy' })
+    const closing = service.close()
+    await vi.advanceTimersByTimeAsync(30)
+    await closing
+    expect(service.busy).toBe(true)
+    expect(service.install()).toEqual({ ok: false, reason: 'closed' })
+    child.emit('close', null)
+    expect(service.busy).toBe(false)
+  })
   it('retains an owned POSIX group through the pipe-drain interval after its leader exits', () => {
     const child = new FakeChild(),
       kill = vi.fn()
