@@ -745,23 +745,27 @@ function privateStageFolder(
   const staged = join(homesRoot, '.brobot-stage')
   const waiting = preparingStages.get(staged)
   if (waiting !== undefined) return waiting
+  // Whatever the privacy reads say, a folder replaced while they ran is refused; only a privacy
+  // failure lets the caller stage beside the file instead.
+  const keptPrivate = async (directory: StageDirectory): Promise<void> => {
+    try {
+      await verifyFileToThisUser(directory.path, seams.lists, 'win32')
+      await keepToThisUser(directory.path, seams.lists, 'win32')
+    } finally {
+      checkDirectory(directory)
+    }
+  }
   const prepare = async (): Promise<PrivateStage> => {
     const hierarchy: StageDirectory[] = []
-    // A shared data folder is never tightened here: correction is refused instead. Both existing
-    // parents must already be private, so another account cannot replace the staging directory.
     for (const path of [dirname(homesRoot), homesRoot]) {
       const directory = directoryIdentity(path)
-      await verifyFileToThisUser(path, seams.lists, 'win32')
-      await keepToThisUser(path, seams.lists, 'win32')
-      checkDirectory(directory)
       hierarchy.push(directory)
+      await keptPrivate(directory)
     }
     mkdirSync(staged, { recursive: true, mode: 0o700 })
     const directory = directoryIdentity(staged)
-    await verifyFileToThisUser(staged, seams.lists, 'win32')
-    await keepToThisUser(staged, seams.lists, 'win32')
-    checkDirectory(directory)
     hierarchy.push(directory)
+    await keptPrivate(directory)
     return { path: staged, dev: directory.dev, hierarchy }
   }
   const pending = prepare().finally(() => {
