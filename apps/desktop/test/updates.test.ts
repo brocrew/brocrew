@@ -282,18 +282,28 @@ describe('§1 · the rules', () => {
     })
   })
 
-  it('⛔ another workspace running, or one it cannot tell, keeps it waiting — it never stops one', async () => {
-    for (const otherWorkspaces of [1, null]) {
-      const win = anUpdater()
-      await win.updates.checkNow()
-      await win.updates.download()
-      win.setStops({ conversations: [], otherWorkspaces })
-      win.updates.restartWhenQuiet()
-      await settle()
-      await win.pass()
-      expect(win.asked.installs, String(otherWorkspaces)).toBe(0)
-      expect(win.updates.snapshot().state.kind).toBe('waiting-to-restart')
-    }
+  it('⛔ another workspace running keeps it waiting — it never stops one', async () => {
+    const win = anUpdater()
+    await win.updates.checkNow()
+    await win.updates.download()
+    win.setStops({ conversations: [], otherWorkspaces: 1 })
+    win.updates.restartWhenQuiet()
+    await settle()
+    await win.pass()
+    expect(win.asked.installs).toBe(0)
+    expect(win.updates.snapshot().state.kind).toBe('waiting-to-restart')
+  })
+
+  it('🔴 a process list it cannot read never holds the update: it installs, saying so', async () => {
+    const said: string[] = []
+    const win = anUpdater({ log: (line) => said.push(line) })
+    await win.updates.checkNow()
+    await win.updates.download()
+    win.setStops({ conversations: [], otherWorkspaces: null })
+    win.updates.restartWhenQuiet()
+    await settle()
+    expect(win.asked.installs).toBe(1)
+    expect(said).toContain('updates: other BroCrew windows could not be counted; restarting anyway')
   })
 
   it('⚑ a restart cancelled while it waits does not install, even from a look already under way', async () => {

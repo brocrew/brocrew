@@ -139,9 +139,9 @@ export async function whatSettingsSays(
 
 /**
  * Keeps a recovery folder inside the data folder no more open than the data folder: on Windows it
- * is made readable by this user alone where that can be done, and refused only when it could not
- * be while the data folder is private, since only then would the copies be more open than the
- * data. Elsewhere its mode does this.
+ * is made readable by this user alone where that can be done. When it cannot be, it is used anyway
+ * and the log says why: a recovery copy is worth more than its access list, and it holds only what
+ * the data folder holds. Elsewhere its mode does this.
  */
 export async function keepNoMoreOpenThanTheData(
   folder: string,
@@ -153,11 +153,12 @@ export async function keepNoMoreOpenThanTheData(
   try {
     await keepToThisUser(folder, options.lists, platform)
   } catch (error) {
-    const data = await whoMayRead(userData, options)
-    if (data.kind === 'this-user') throw error
     const why = error instanceof NotKeptToThisUser ? error.reason : String(error)
+    const data = await whoMayRead(userData, options).catch(() => null)
     ;(options.warn ?? ((line: string) => console.warn(line)))(
-      `BroCrew keeps ${folder} as open as its data folder, since it could not make it more private: ${why}`,
+      data?.kind === 'this-user'
+        ? `BroCrew could not make ${folder} readable by you alone, and used it anyway: ${why}`
+        : `BroCrew keeps ${folder} as open as its data folder, since it could not make it more private: ${why}`,
     )
   }
 }

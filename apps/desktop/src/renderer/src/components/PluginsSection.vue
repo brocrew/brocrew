@@ -52,8 +52,6 @@ const listMessage = computed(() => {
     case 'empty':
       return 'No plugins are available for this version yet.'
     case 'fetch-error':
-      if (listFailureReason.value === 'private-folder')
-        return "Couldn't make the plugin folder private. Check its Windows permissions and try again."
       if (listFailureReason.value === 'supervisor-unavailable')
         return "Couldn't start the plugin service. Try again."
       return "Couldn't load the plugin catalogue. Try again."

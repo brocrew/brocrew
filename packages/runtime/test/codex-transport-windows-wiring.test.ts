@@ -28,13 +28,17 @@ let stopOnEof: boolean, stopOnKill: boolean
 let outcomes: Map<string, string>
 let running: Set<number>
 let transports: SpawnCodexTransport[]
+let cleaning = false
 beforeEach(() => {
-  vi.useFakeTimers()
+  vi.useFakeTimers({
+    toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date', 'performance'],
+  })
   vi.setSystemTime(new Date('2026-01-01T00:00:00Z'))
   born = fileTimeOf(Date.now())
   app = child(4811)
   ender = child(9811)
   transports = []
+  cleaning = false
   stopOnEof = true
   stopOnKill = true
   outcomes = new Map()
@@ -72,11 +76,12 @@ beforeEach(() => {
   Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
 })
 afterEach(async () => {
+  cleaning = true
   try {
     for (const transport of transports) {
       const closing = transport.close()
       app.emit('exit')
-      await vi.advanceTimersByTimeAsync(5000)
+      await vi.advanceTimersByTimeAsync(60_000)
       await closing
     }
     expect(vi.getTimerCount()).toBe(0)
@@ -95,7 +100,8 @@ afterEach(async () => {
 function transport(read: (ms: number) => Promise<TableReading | null>) {
   const value = new SpawnCodexTransport('fictional-program', [], {
     env: {},
-    processTable: read,
+    processTable: (ms) =>
+      cleaning ? Promise.resolve(reading([], fileTimeOf(Date.now()))) : read(ms),
     exitGraceMs: 40,
     killGraceMs: 40,
     stopBudgetMs: 2000,
@@ -236,6 +242,10 @@ it('retains at most 4096 identities and refreshes a known launcher cutoff withou
   expect(console.warn).toHaveBeenCalledExactlyOnceWith(
     'codex app-server 4811: the process table was not read in time, so only the processes found before were ended; what it started since may still be running',
   )
+  running.clear()
+  running.add(rows[0]!.pid)
+  await vi.advanceTimersByTimeAsync(200_000)
+  expect(quiet).toBe(false)
 })
 
 it.each(['alive', 'failed'] as const)(
@@ -345,4 +355,224 @@ it('a spawn without a PID settles exit and close without starting an ending help
   expect(read).not.toHaveBeenCalled()
   expect(spawn).toHaveBeenCalledOnce()
   expect(ender.stdin.end).not.toHaveBeenCalled()
+})
+
+it('observes a late empty Windows tree after a missing stop reading without extending close', async () => {
+  const read = vi.fn<(ms: number) => Promise<TableReading | null>>().mockResolvedValue(null)
+  const value = transport(read)
+  let quiet = false
+  void value.quiesced.then(() => {
+    quiet = true
+  })
+  await closed(value)
+  await value.exited
+  expect(quiet).toBe(false)
+  const before = read.mock.calls.length
+  expect(before).toBeGreaterThanOrEqual(1)
+  read.mockImplementation(async () => reading([], fileTimeOf(Date.now())))
+  await vi.advanceTimersByTimeAsync(20_000)
+  expect(quiet).toBe(true)
+  expect(read.mock.calls.length).toBeGreaterThan(before)
+  expect(app.kill).not.toHaveBeenCalled()
+  expect(ender.stdin.end).toHaveBeenCalledTimes(1)
+  const count = read.mock.calls.length
+  await vi.advanceTimersByTimeAsync(60_000)
+  expect(read).toHaveBeenCalledTimes(count)
+})
+
+it('keeps unknown and live identities held, then ignores a reused PID without killing it', async () => {
+  const owned = { pid: 4813, ppid: 4811, created: born + 1000n }
+  const read = vi
+    .fn<(ms: number) => Promise<TableReading | null>>()
+    .mockImplementation(async () => reading([owned], fileTimeOf(Date.now())))
+  running.add(owned.pid)
+  outcomes.set(`4813:${owned.created}`, 'failed')
+  const value = transport(read)
+  let quiet = false
+  void value.quiesced.then(() => {
+    quiet = true
+  })
+  await closed(value)
+  const kills = ender.stdin.end.mock.calls.length
+  expect(quiet).toBe(false)
+  await vi.advanceTimersByTimeAsync(3000)
+  expect(quiet).toBe(false)
+  read.mockResolvedValue(null)
+  await vi.advanceTimersByTimeAsync(5000)
+  expect(quiet).toBe(false)
+  read.mockImplementation(async () => reading([{ ...owned, created: 0n }], fileTimeOf(Date.now())))
+  await vi.advanceTimersByTimeAsync(10_000)
+  expect(quiet).toBe(false)
+  const stranger = { pid: owned.pid, ppid: 1, created: fileTimeOf(Date.now()) }
+  read.mockImplementation(async () => reading([stranger], fileTimeOf(Date.now())))
+  await vi.advanceTimersByTimeAsync(60_000)
+  expect(quiet).toBe(true)
+  expect(ender.stdin.end).toHaveBeenCalledTimes(kills)
+  expect(app.kill).not.toHaveBeenCalled()
+})
+
+it('keeps post-stop table reads single-flight while a slow reading is outstanding', async () => {
+  let finish!: (value: TableReading) => void
+  const read = vi
+    .fn<(ms: number) => Promise<TableReading | null>>()
+    .mockResolvedValueOnce(null)
+    .mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        }),
+    )
+  const value = transport(read)
+  let quiet = false
+  void value.quiesced.then(() => {
+    quiet = true
+  })
+  try {
+    await closed(value)
+    expect(read).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(read).toHaveBeenCalledTimes(2)
+    expect(quiet).toBe(false)
+    finish(reading([], fileTimeOf(Date.now())))
+    await flush()
+    expect(quiet).toBe(true)
+    expect(ender.stdin.end).toHaveBeenCalledTimes(1)
+  } finally {
+    finish?.(reading([], fileTimeOf(Date.now())))
+  }
+})
+
+it('joins a stop reading that outlasted its budget before observing again', async () => {
+  let finish!: (value: TableReading | null) => void
+  const read = vi
+    .fn<(ms: number) => Promise<TableReading | null>>()
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        }),
+    )
+    .mockImplementation(async () => reading([], fileTimeOf(Date.now())))
+  const value = transport(read)
+  let quiet = false
+  void value.quiesced.then(() => {
+    quiet = true
+  })
+  try {
+    await closed(value)
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(read).toHaveBeenCalledTimes(1)
+    expect(quiet).toBe(false)
+    finish(null)
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(quiet).toBe(true)
+    expect(read).toHaveBeenCalledTimes(2)
+  } finally {
+    finish?.(null)
+  }
+})
+
+it('releases after bounded table failures only when the exited leader and known PIDs are gone', async () => {
+  const read = vi.fn<(ms: number) => Promise<TableReading | null>>().mockResolvedValue(null)
+  const value = transport(read)
+  let quiet = false
+  void value.quiesced.then(() => {
+    quiet = true
+  })
+  await closed(value)
+  read.mockRejectedValue(new Error('fictional CIM unavailable'))
+  await vi.advanceTimersByTimeAsync(110_000)
+  expect(quiet).toBe(false)
+  await vi.advanceTimersByTimeAsync(90_000)
+  expect(quiet).toBe(true)
+  expect(console.warn).toHaveBeenCalledWith(
+    expect.stringContaining('unobserved descendants may still be running'),
+  )
+  expect(app.kill).not.toHaveBeenCalled()
+  expect(ender.stdin.end).toHaveBeenCalledTimes(1)
+})
+
+it('does not release on table failures while a known or reused PID remains alive', async () => {
+  const owned = { pid: 4813, ppid: 4811, created: born + 1000n }
+  const read = vi
+    .fn<(ms: number) => Promise<TableReading | null>>()
+    .mockResolvedValue(reading([owned]))
+  const value = transport(read)
+  item()
+  await flush()
+  running.add(owned.pid)
+  outcomes.set(`4813:${owned.created}`, 'failed')
+  read.mockResolvedValue(null)
+  let quiet = false
+  void value.quiesced.then(() => {
+    quiet = true
+  })
+  await closed(value)
+  const endings = ender.stdin.end.mock.calls.length
+  await vi.advanceTimersByTimeAsync(200_000)
+  expect(quiet).toBe(false)
+  running.delete(owned.pid)
+  running.add(4811)
+  await vi.advanceTimersByTimeAsync(60_000)
+  expect(quiet).toBe(false)
+  running.delete(4811)
+  await vi.advanceTimersByTimeAsync(60_000)
+  expect(quiet).toBe(true)
+  expect(app.kill).not.toHaveBeenCalled()
+  expect(ender.stdin.end).toHaveBeenCalledTimes(endings)
+})
+
+it('never treats a successful table with an unknown identity as a table failure deadline', async () => {
+  const read = vi
+    .fn<(ms: number) => Promise<TableReading | null>>()
+    .mockResolvedValueOnce(null)
+    .mockImplementation(async () =>
+      reading([{ pid: 4813, ppid: 4811, created: 0n }], fileTimeOf(Date.now())),
+    )
+  const value = transport(read)
+  let quiet = false
+  void value.quiesced.then(() => {
+    quiet = true
+  })
+  await closed(value)
+  await vi.advanceTimersByTimeAsync(200_000)
+  expect(quiet).toBe(false)
+  read.mockImplementation(async () => reading([], fileTimeOf(Date.now())))
+  await vi.advanceTimersByTimeAsync(60_000)
+  expect(quiet).toBe(true)
+})
+
+it.each(['EPERM', 'EIO'])('retains exclusion when a direct PID probe reports %s', async (code) => {
+  const read = vi.fn<(ms: number) => Promise<TableReading | null>>().mockResolvedValue(null)
+  const value = transport(read)
+  let quiet = false
+  void value.quiesced.then(() => {
+    quiet = true
+  })
+  await closed(value)
+  vi.mocked(process.kill).mockImplementation(() => {
+    throw Object.assign(new Error('fictional probe unavailable'), { code })
+  })
+  await vi.advanceTimersByTimeAsync(200_000)
+  expect(quiet).toBe(false)
+  vi.mocked(process.kill).mockImplementation(() => {
+    throw Object.assign(new Error('fictional gone'), { code: 'ESRCH' })
+  })
+  await vi.advanceTimersByTimeAsync(60_000)
+  expect(quiet).toBe(true)
+  expect(app.kill).not.toHaveBeenCalled()
+})
+
+it('does not shorten the failure delay when the wall clock jumps forward', async () => {
+  const value = transport(async () => null)
+  let quiet = false
+  void value.quiesced.then(() => {
+    quiet = true
+  })
+  await closed(value)
+  vi.setSystemTime(Date.now() + 600_000)
+  await vi.advanceTimersByTimeAsync(10_000)
+  expect(quiet).toBe(false)
+  await vi.advanceTimersByTimeAsync(200_000)
+  expect(quiet).toBe(true)
 })

@@ -12,6 +12,7 @@ import {
   openSync,
   readdirSync,
   renameSync,
+  statSync,
   unlinkSync,
   writeFileSync,
   type BigIntStats,
@@ -423,6 +424,8 @@ export interface MemoryWriteSeams {
   readonly beforeStageCreate?: (folder: string) => void
   /** An interleaving after a prepared knowledge stage was checked, before its publish-time open. */
   readonly beforeStagePublishOpen?: (stage: string) => void
+  /** Where the one line about a shared data folder goes; the console by default. */
+  readonly warn?: (line: string) => void
 }
 
 /**
@@ -475,7 +478,9 @@ export async function stageKnowledgeFile(
   }
   validate()
   const platform = seams.platform ?? process.platform
-  const privateStage = platform === 'win32' ? await privateStageFolder(root, seams) : null
+  let privateStage = platform === 'win32' ? await stageIfPrivate(root, seams) : null
+  if (privateStage !== null && hierarchy[hierarchy.length - 1]?.dev !== privateStage.dev)
+    privateStage = null
   validate()
   const stageFolder = privateStage?.path ?? dirname(destination)
   const stageDirectories = privateStage?.hierarchy ?? hierarchy
@@ -485,8 +490,6 @@ export async function stageKnowledgeFile(
   seams.beforeStageCreate?.(stageFolder)
   validateStageFolder()
   validate()
-  if (privateStage !== null && hierarchy[hierarchy.length - 1]?.dev !== privateStage.dev)
-    throw new Error('The knowledge staging folder is not on the destination volume')
   const staged = aStagingName(join(stageFolder, `.${basename(destination)}`))
   const fd = createFreshFile(staged)
   let born: BigIntStats
@@ -529,7 +532,7 @@ export async function stageKnowledgeFile(
   }
   try {
     try {
-      await verifyFileToThisUser(staged, seams.lists, platform)
+      await sharedOnlyLogged(staged, seams, platform)
       validate()
       namedStage(born)
       if (platform === 'win32' && !isStillTheFileOpened(staged, fd))
@@ -625,21 +628,20 @@ async function rewrite(
   if (platform !== 'win32') sweepStaged(folder)
   const before = lstatSync(path)
   if (!before.isFile()) throw new Error(`${path} is not a regular file, so it was not rewritten`)
-  const privateStage = platform === 'win32' ? await privateStageFolder(homesRoot, seams) : null
+  let privateStage = platform === 'win32' ? await stageIfPrivate(homesRoot, seams) : null
+  if (privateStage !== null && lstatSync(path, { bigint: true }).dev !== privateStage.dev)
+    privateStage = null
   const stageFolder = privateStage?.path ?? folder
   const staged = aStagingName(join(stageFolder, `.${basename(path)}`))
   if (privateStage !== null) {
     seams.beforeStageCreate?.(stageFolder)
     for (const directory of privateStage.hierarchy) checkDirectory(directory)
-    if (lstatSync(path, { bigint: true }).dev !== privateStage.dev) {
-      throw new Error('The correction staging folder is not on the entry’s volume')
-    }
   }
   const fd = createFreshFile(staged)
   writing.add(staged)
   try {
     try {
-      await verifyFileToThisUser(staged, seams.lists, platform)
+      await sharedOnlyLogged(staged, seams, platform)
       if (platform === 'win32' && !isStillTheFileOpened(staged, fd)) {
         throw new Error(`${staged} was replaced as it was made private`)
       }
@@ -680,17 +682,58 @@ interface PrivateStage {
 const preparingStages = new Map<string, Promise<PrivateStage>>()
 
 function directoryIdentity(path: string): StageDirectory {
-  const stat = lstatSync(path, { bigint: true })
-  if (!stat.isDirectory() || stat.isSymbolicLink() || stat.ino === 0n) {
+  let stat = lstatSync(path, { bigint: true })
+  // A link the person made to keep a folder elsewhere is followed; its folder's identity is checked.
+  if (stat.isSymbolicLink()) stat = statSync(path, { bigint: true })
+  if (!stat.isDirectory() || stat.ino === 0n) {
     throw new Error('The correction staging hierarchy is not a numbered directory')
   }
   return { path, dev: stat.dev, ino: stat.ino }
 }
 
+/** A folder replaced while it was in use: this one still refuses. */
+class StagingReplaced extends Error {}
+
 function checkDirectory(expected: StageDirectory): void {
   const actual = directoryIdentity(expected.path)
   if (actual.dev !== expected.dev || actual.ino !== expected.ino) {
-    throw new Error('The correction staging hierarchy was replaced')
+    throw new StagingReplaced('The correction staging hierarchy was replaced')
+  }
+}
+
+/** Said once: a data folder others may read never stops a memory or a saved method being written. */
+let sharedSaid = false
+function sayShared(why: unknown, seams: MemoryWriteSeams): void {
+  if (sharedSaid) return
+  sharedSaid = true
+  ;(seams.warn ?? ((line: string) => console.warn(line)))(
+    `BroCrew writes memories and saved methods beside them, since other accounts may read its data folder: ${why instanceof Error ? why.message : String(why)}`,
+  )
+}
+
+/** The private stage on Windows, or null to stage beside the file as elsewhere when there is none. */
+async function stageIfPrivate(
+  homesRoot: string | null,
+  seams: MemoryWriteSeams,
+): Promise<PrivateStage | null> {
+  try {
+    return await privateStageFolder(homesRoot, seams)
+  } catch (error) {
+    if (error instanceof StagingReplaced) throw error
+    sayShared(error, seams)
+    return null
+  }
+}
+
+async function sharedOnlyLogged(
+  staged: string,
+  seams: MemoryWriteSeams,
+  platform: NodeJS.Platform,
+): Promise<void> {
+  try {
+    await verifyFileToThisUser(staged, seams.lists, platform)
+  } catch (error) {
+    sayShared(error, seams)
   }
 }
 
@@ -702,23 +745,27 @@ function privateStageFolder(
   const staged = join(homesRoot, '.brobot-stage')
   const waiting = preparingStages.get(staged)
   if (waiting !== undefined) return waiting
+  // Whatever the privacy reads say, a folder replaced while they ran is refused; only a privacy
+  // failure lets the caller stage beside the file instead.
+  const keptPrivate = async (directory: StageDirectory): Promise<void> => {
+    try {
+      await verifyFileToThisUser(directory.path, seams.lists, 'win32')
+      await keepToThisUser(directory.path, seams.lists, 'win32')
+    } finally {
+      checkDirectory(directory)
+    }
+  }
   const prepare = async (): Promise<PrivateStage> => {
     const hierarchy: StageDirectory[] = []
-    // A shared data folder is never tightened here: correction is refused instead. Both existing
-    // parents must already be private, so another account cannot replace the staging directory.
     for (const path of [dirname(homesRoot), homesRoot]) {
       const directory = directoryIdentity(path)
-      await verifyFileToThisUser(path, seams.lists, 'win32')
-      await keepToThisUser(path, seams.lists, 'win32')
-      checkDirectory(directory)
       hierarchy.push(directory)
+      await keptPrivate(directory)
     }
     mkdirSync(staged, { recursive: true, mode: 0o700 })
     const directory = directoryIdentity(staged)
-    await verifyFileToThisUser(staged, seams.lists, 'win32')
-    await keepToThisUser(staged, seams.lists, 'win32')
-    checkDirectory(directory)
     hierarchy.push(directory)
+    await keptPrivate(directory)
     return { path: staged, dev: directory.dev, hierarchy }
   }
   const pending = prepare().finally(() => {

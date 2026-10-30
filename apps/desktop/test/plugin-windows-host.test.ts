@@ -73,7 +73,7 @@ describe('the plugin host on Windows, by its platform seams', () => {
     expect(isLocalDrivePath('C:Users', 'win32')).toBe(false)
     expect(isLocalDrivePath('/fictional', 'darwin')).toBe(true)
   })
-  it('leaves privacy to the checked access list on Windows and to owner and mode elsewhere', () => {
+  it('checks owner and mode on POSIX and structural identity on Windows', () => {
     expect(isPrivateEntry(stat(0o40777, 0), 0o077, 'win32')).toBe(true)
     // An owner is compared only where this process has one.
     if (process.getuid) {
@@ -248,7 +248,7 @@ describe.runIf(process.platform === 'win32')('the plugin host on Windows', () =>
     },
   )
   it.each(['W', 'DC', 'WDAC', 'WO'])(
-    'refuses a preexisting root under a parent with an untrusted %s grant without changing ACLs',
+    'admits a preexisting root under a parent with an untrusted %s grant without changing the parent',
     async (rights) => {
       const parent = await privateParent()
       roots.push(parent)
@@ -261,14 +261,12 @@ describe.runIf(process.platform === 'win32')('the plugin host on Windows', () =>
         { windowsHide: true },
       )
       const before = await windowsAccessLists.read(parent)
-      const rootBefore = await windowsAccessLists.read(root)
-      await expect(keepPluginRootPrivate(root)).rejects.toThrow('unsafe-path')
+      await expect(keepPluginRootPrivate(root)).resolves.toBeUndefined()
       expect(await windowsAccessLists.read(parent)).toBe(before)
-      expect(await windowsAccessLists.read(root)).toBe(rootBefore)
-      expect(isInsideCheckedRoot(root)).toBe(false)
+      expect(isInsideCheckedRoot(root)).toBe(true)
     },
   )
-  it('refuses a foreign-owned existing root without changing its owner or either ACL', async () => {
+  it('admits a foreign-owned existing root without changing its owner or parent ACL', async () => {
     const parent = await privateParent()
     roots.push(parent)
     const root = join(parent, 'plugins')
@@ -283,34 +281,37 @@ describe.runIf(process.platform === 'win32')('the plugin host on Windows', () =>
     )
     expect(await windowsAccessLists.ownerSid(root)).toBe(foreign)
     const parentBefore = await windowsAccessLists.read(parent)
-    const rootBefore = await windowsAccessLists.read(root)
     const restrict = vi.fn(windowsAccessLists.restrict)
     await expect(
       keepPluginRootPrivate(root, {
         lists: { ...windowsAccessLists, restrict },
       }),
-    ).rejects.toThrow('unsafe-path')
-    expect(restrict).not.toHaveBeenCalled()
+    ).resolves.toBeUndefined()
+    expect(restrict).toHaveBeenCalledExactlyOnceWith(root, user, [])
     expect(await windowsAccessLists.ownerSid(root)).toBe(foreign)
     expect(await windowsAccessLists.read(parent)).toBe(parentBefore)
-    expect(await windowsAccessLists.read(root)).toBe(rootBefore)
-    expect(isInsideCheckedRoot(root)).toBe(false)
+    expect(isInsideCheckedRoot(root)).toBe(true)
   })
-  it('refuses a plugin root whose permissions cannot be restricted', async () => {
+  it('admits a plugin root whose permissions cannot be restricted and warns once', async () => {
     const parent = await privateParent()
     roots.push(parent)
     const root = join(parent, 'plugins')
-    await expect(
-      keepPluginRootPrivate(root, {
-        lists: {
-          ...windowsAccessLists,
-          restrict: async () => {
-            throw new Error('fictional ACL restriction failed')
-          },
-        },
-      }),
-    ).rejects.toThrow('fictional ACL restriction failed')
-    expect(isInsideCheckedRoot(root)).toBe(false)
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const restrict = vi.fn(async () => {
+      throw new Error('fictional ACL restriction failed')
+    })
+    try {
+      const lists = { ...windowsAccessLists, restrict }
+      await expect(keepPluginRootPrivate(root, { lists })).resolves.toBeUndefined()
+      await expect(keepPluginRootPrivate(root, { lists })).resolves.toBeUndefined()
+      expect(restrict).toHaveBeenCalledOnce()
+      expect(warning).toHaveBeenCalledExactlyOnceWith(
+        'Could not tighten plugin folder permissions; continuing.',
+      )
+      expect(isInsideCheckedRoot(root)).toBe(true)
+    } finally {
+      warning.mockRestore()
+    }
   })
   it("makes the plugin root this user's alone, inheriting nothing, and counts only it as checked", async () => {
     const parent = await privateParent()

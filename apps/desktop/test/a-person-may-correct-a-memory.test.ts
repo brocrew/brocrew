@@ -12,7 +12,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { claudeAutoMemoryDir } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
@@ -502,23 +502,22 @@ describe('§5 · 🔒 a correction never widens who may read the entry', () => {
     expect(readFileSync(note, 'utf8')).toBe('CORRECTED\n')
   })
 
-  it('on Windows, a staging folder that cannot be made private refuses without creating a stage', async () => {
+  it('on Windows, a staging folder that cannot be made private stages beside the entry instead', async () => {
     const { note } = plantTheNight()
-    const { lists, asked } = fakeLists(note, new Error('Access is denied.'))
+    const { lists } = fakeLists(note, new Error('Access is denied.'))
 
-    const outcome = await correct(note, { platform: 'win32', lists })
+    expect((await correct(note, { platform: 'win32', lists, warn: () => {} })).done).toBe(true)
 
-    expect(!outcome.done && outcome.refused).toBe('write-failed')
-    expect(readFileSync(note, 'utf8')).toBe(THE_FALSE_NOTE)
-    expect(asked).toEqual([])
+    expect(readFileSync(note, 'utf8')).toBe('CORRECTED\n')
     expect(readdirSync(join(homesRoot, '.brobot-stage'))).toEqual([])
   })
 
-  it('on Windows, an inherited file ACL that is still broad refuses without publishing', async () => {
+  it('on Windows, an inherited file ACL that is still broad is corrected all the same', async () => {
     const { note } = plantTheNight()
     const { lists } = fakeLists(note)
     const outcome = await correct(note, {
       platform: 'win32',
+      warn: () => {},
       lists: {
         ...lists,
         read: (path) =>
@@ -527,11 +526,8 @@ describe('§5 · 🔒 a correction never widens who may read the entry', () => {
             : Promise.resolve(`D:AI(A;;FA;;;${ME})(A;;FR;;;${USERS})`),
       },
     })
-    expect(!outcome.done && outcome.refused).toBe('write-failed')
-    expect(readFileSync(note, 'utf8')).toBe(THE_FALSE_NOTE)
-    const left = readdirSync(join(homesRoot, '.brobot-stage'))
-    expect(left).toHaveLength(1)
-    expect(readFileSync(join(homesRoot, '.brobot-stage', left[0] ?? ''), 'utf8')).toBe('')
+    expect(outcome.done).toBe(true)
+    expect(readFileSync(note, 'utf8')).toBe('CORRECTED\n')
   })
 
   it('on Windows, a correction leaves private crash stages and unrelated files untouched', async () => {
@@ -546,13 +542,14 @@ describe('§5 · 🔒 a correction never widens who may read the entry', () => {
   })
 
   it.each(['shared data', 'shared homes', 'unreadable data'] as const)(
-    'on Windows, %s refuses before creating or writing anything',
+    'on Windows, %s is corrected all the same',
     async (kind) => {
       const { note } = plantTheNight()
-      const { lists, asked } = fakeLists(note)
+      const { lists } = fakeLists(note)
       const refusedPath = kind === 'shared homes' ? homesRoot : root
       const outcome = await correct(note, {
         platform: 'win32',
+        warn: () => {},
         lists: {
           ...lists,
           read: (path) => {
@@ -563,10 +560,42 @@ describe('§5 · 🔒 a correction never widens who may read the entry', () => {
           },
         },
       })
+      expect(outcome.done).toBe(true)
+      expect(readFileSync(note, 'utf8')).toBe('CORRECTED\n')
+    },
+  )
+
+  it.each(['private', 'shared'] as const)(
+    'a homes folder replaced while its %s ACL is read still refuses, writing nothing',
+    async (kind) => {
+      const { note } = plantTheNight()
+      const { lists } = fakeLists(note)
+      let swapped = false
+      const outcome = await correct(note, {
+        platform: 'win32',
+        warn: () => {},
+        lists: {
+          ...lists,
+          read: (path) => {
+            if (path === homesRoot && !swapped) {
+              swapped = true
+              const copy = join(outside, relative(homesRoot, note))
+              mkdirSync(dirname(copy), { recursive: true })
+              writeFileSync(copy, THE_FALSE_NOTE)
+              renameSync(homesRoot, `${homesRoot}.held`)
+              symlinkSync(outside, homesRoot, 'junction')
+              if (kind === 'shared') return Promise.resolve(`D:AI(A;;FA;;;${ME})(A;;FR;;;${USERS})`)
+            }
+            return lists.read(path)
+          },
+        },
+      })
+      expect(swapped).toBe(true)
       expect(!outcome.done && outcome.refused).toBe('write-failed')
-      expect(readFileSync(note, 'utf8')).toBe(THE_FALSE_NOTE)
-      expect(asked).toEqual([])
-      expect(existsSync(join(homesRoot, '.brobot-stage'))).toBe(false)
+      expect(readFileSync(join(`${homesRoot}.held`, relative(homesRoot, note)), 'utf8')).toBe(
+        THE_FALSE_NOTE,
+      )
+      expect(readFileSync(join(outside, relative(homesRoot, note)), 'utf8')).toBe(THE_FALSE_NOTE)
     },
   )
 
@@ -682,17 +711,16 @@ describe('§5 · 🔒 a correction never widens who may read the entry', () => {
   )
 
   it.runIf(process.platform === 'win32')(
-    'on Windows real disk, a shared data folder refuses without changing ACLs or the note',
+    'on Windows real disk, a shared data folder is corrected all the same, its ACL unchanged',
     async () => {
       const { note } = plantTheNight()
       const icacls = join(process.env['SystemRoot'] ?? 'C:\\Windows', 'System32', 'icacls.exe')
       execFileSync(icacls, [root, '/grant', `*${USERS}:R`, '/Q'])
       const before = await windowsAccessLists.read(root)
-      const outcome = await correct(note, {})
-      expect(!outcome.done && outcome.refused).toBe('write-failed')
+      const outcome = await correct(note, { warn: () => {} })
+      expect(outcome.done).toBe(true)
       expect(await windowsAccessLists.read(root)).toBe(before)
-      expect(readFileSync(note, 'utf8')).toBe(THE_FALSE_NOTE)
-      expect(existsSync(join(homesRoot, '.brobot-stage'))).toBe(false)
+      expect(readFileSync(note, 'utf8')).toBe('CORRECTED\n')
     },
   )
 })

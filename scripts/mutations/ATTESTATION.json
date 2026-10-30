@@ -1852,7 +1852,7 @@
         },
         {
           "id": "1017:M65",
-          "fingerprint": "336e8b9830667614d90bc22da722a80efb492176f04e65e41ddbfac251ed2a5e"
+          "fingerprint": "b48575f30c1cb06299c294e660f144517ba07de515746bf66fe584f0a5f64e70"
         },
         {
           "id": "1017:M66",
@@ -2327,7 +2327,7 @@
           "fingerprint": "ed7f129f3c3f69d54a03bb9aba4876c219eefc7eb9273ce2c52ee8b11fe1940c"
         }
       ],
-      "definitionFingerprint": "e35ff472f3b0c328478df46d4778ff3cdc1b80f3057a726591bb70d3b4ac5c01",
+      "definitionFingerprint": "a31d85547b7ca75e3abc54cdea8723188e868b1f653ddec3a51f9dbeb893b157",
       "retiredRows": [
         "M56",
         "M61",

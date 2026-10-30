@@ -123,14 +123,29 @@ describe('the durable workspace without generated instructions', () => {
     )
   }
 
-  it('refuses a symlinked workspace without changing its target', () => {
-    const target = join(userData, 'outside')
+  it('accepts a workspace the person moved to another folder and linked, and keeps its files', () => {
+    const target = join(userData, 'on-another-disk')
     mkdirSync(target)
-    for (const file of legacyWorkspaceFiles()) writeFileSync(join(target, file.name), file.content)
+    writeFileSync(join(target, 'notes-of-wren.md'), 'kept')
+    symlinkSync(
+      target,
+      brobotWorkspace(userData),
+      process.platform === 'win32' ? 'junction' : 'dir',
+    )
+    expect(ensureWorkspace(userData)).toBe(brobotWorkspace(userData))
+    expect(readFileSync(join(target, 'notes-of-wren.md'), 'utf8')).toBe('kept')
+    expect(resolveSessionCwd(userData, 'sess_wren', undefined)).toBe(brobotWorkspace(userData))
+  })
+
+  it('refuses a link that leads to no folder, without changing what it points at', () => {
+    const target = join(userData, 'a-file-not-a-folder')
+    writeFileSync(target, 'kept')
     symlinkSync(target, brobotWorkspace(userData))
-    expect(() => ensureWorkspace(userData)).toThrow(/symlink/)
-    for (const file of legacyWorkspaceFiles())
-      expect(readFileSync(join(target, file.name), 'utf8')).toBe(file.content)
+    expect(() => ensureWorkspace(userData)).toThrow(/link to no folder/)
+    expect(readFileSync(target, 'utf8')).toBe('kept')
+    rmSync(brobotWorkspace(userData))
+    symlinkSync(join(userData, 'gone'), brobotWorkspace(userData))
+    expect(() => ensureWorkspace(userData)).toThrow(/link to no folder/)
   })
 
   it('keeps an explicit project folder and its own instruction files', () => {

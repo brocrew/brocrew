@@ -424,9 +424,17 @@ describe('provisionCodexAuth (022)', () => {
     )
   })
 
-  it('rejects a profile auth.json that is a symlink (tampering)', async () => {
+  it('keeps a profile auth.json the person linked to a sign-in, and replaces a link to nothing', async () => {
     symlinkSync(source, join(home, 'auth.json'))
-    await expect(provisionCodexAuth(home, { sourceAuthPath: source })).rejects.toThrow(/symlink/)
+    await provisionCodexAuth(home, { sourceAuthPath: source })
+    expect(lstatSync(join(home, 'auth.json')).isSymbolicLink()).toBe(true)
+    rmSync(join(home, 'auth.json'))
+    symlinkSync(join(sourceDir, 'gone.json'), join(home, 'auth.json'))
+    await provisionCodexAuth(home, { sourceAuthPath: source })
+    expect(lstatSync(join(home, 'auth.json')).isFile()).toBe(true)
+    expect(signInAt(join(home, 'auth.json'))).toBe(
+      digestOf('{"tokens":{"access_token":"CODEX-ACCESS"}}'),
+    )
   })
 
   it('does not write the credential through a pre-created predictable temp symlink (027 P1-H)', async () => {
@@ -505,17 +513,12 @@ describe('reprovisionCodexAuth (098) — the ONE writer allowed to replace a pro
     expect(readdirSync(home)).toEqual(['auth.json'])
   })
 
-  it('refuses a tampered destination, and accepts an honest one — the guards are not weakened', async () => {
+  it('replaces a linked destination with a copy, never writing through the link', async () => {
+    const before = readFileSync(source)
     symlinkSync(source, join(home, 'auth.json'))
-    await expect(reprovisionCodexAuth(home, { sourceAuthPath: source })).rejects.toThrow(/symlink/)
-
-    // Paired on a fresh home: the refusal above is about the symlink, not about the function.
-    const clean = mkdtempSync(join(tmpdir(), 'brobot-codex-home-'))
-    try {
-      expect(await reprovisionCodexAuth(clean, { sourceAuthPath: source })).toBe('replaced')
-    } finally {
-      rmSync(clean, { recursive: true, force: true })
-    }
+    expect(await reprovisionCodexAuth(home, { sourceAuthPath: source })).toBe('replaced')
+    expect(lstatSync(join(home, 'auth.json')).isFile()).toBe(true)
+    expect(readFileSync(source)).toEqual(before)
   })
 
   it('refuses when there is no machine credential to copy, and says what to do', async () => {
@@ -550,22 +553,20 @@ describe('codexAuthHealth (022)', () => {
     expect(health.reason).toMatch(/no managed Codex auth\.json/)
   })
 
-  it('not ok when the mode is not 0600, where a file has a mode', () => {
-    writeFileSync(join(home, 'auth.json'), 'x', { mode: 0o644 })
-    const health = codexAuthHealth(home, 'linux')
-    expect(health.ok).toBe(false)
-    expect(health.reason).toMatch(/mode/)
-    // On Windows a mode is only a read-only flag; the file's access list keeps it to its owner.
-    expect(codexAuthHealth(home, 'win32')).toEqual({ ok: true })
-  })
+  it.skipIf(process.platform === 'win32')(
+    'makes a file others may read 0600 again, and goes on',
+    () => {
+      writeFileSync(join(home, 'auth.json'), 'x', { mode: 0o644 })
+      expect(codexAuthHealth(home, 'linux')).toEqual({ ok: true })
+      expect(lstatSync(join(home, 'auth.json')).mode & 0o777).toBe(0o600)
+    },
+  )
 
-  it('not ok when auth.json is a symlink', () => {
+  it('ok when auth.json is a link the person made to a sign-in file', () => {
     const target = join(home, 'real')
     writeFileSync(target, 'x', { mode: 0o600 })
     symlinkSync(target, join(home, 'auth.json'))
-    const health = codexAuthHealth(home)
-    expect(health.ok).toBe(false)
-    expect(health.reason).toMatch(/symlink/)
+    expect(codexAuthHealth(home)).toEqual({ ok: true })
   })
 
   it('reports a 0600 DIRECTORY as unhealthy — auth.json must be a regular file (027 P1-H)', () => {

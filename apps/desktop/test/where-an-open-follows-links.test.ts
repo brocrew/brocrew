@@ -161,16 +161,14 @@ describe('a kept rule removed where an open follows links (Windows)', () => {
       'win32',
     )
 
-  it('🔴 a settings file that is a link is not rewritten, and says why', () => {
+  it('🔴 a settings file that is a link has the rule removed from the file it leads to, and stays a link', () => {
     const { file, theirs } = aLinkedSettingsFile()
     fake.followsLinks = true
 
-    const said = remove(file)
+    expect(remove(file)).toEqual({ removed: true })
 
-    expect(said).toMatchObject({ removed: false })
-    expect(said.removed === false && said.why).toContain('is a link')
     expect(lstatSync(file).isSymbolicLink()).toBe(true)
-    expect(JSON.parse(readFileSync(theirs, 'utf8'))).toEqual({ permissions: { allow: [RULE] } })
+    expect(JSON.parse(readFileSync(theirs, 'utf8'))).toEqual({ permissions: { allow: [] } })
   })
 
   it('a plain settings file is rewritten', () => {

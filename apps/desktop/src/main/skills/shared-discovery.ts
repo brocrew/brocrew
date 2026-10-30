@@ -216,7 +216,8 @@ export class SharedSkillDiscovery {
             enabled,
           })
         } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT')
+            console.warn(`BroCrew skipped the shared skill ${folder.name}: ${String(error)}`)
         } finally {
           await file?.close()
         }
@@ -255,19 +256,24 @@ export class SharedSkillDiscovery {
         a.name.localeCompare(b.name),
       )) {
         if (folder.name.startsWith('.')) continue
-        if (folder.isSymbolicLink()) throw new Error('Skills could not be read.')
+        // One skill that cannot be read is left out, with a line saying so; the rest are listed.
+        if (folder.isSymbolicLink()) {
+          console.warn(`BroCrew skipped the shared skill ${folder.name}: it is a link`)
+          continue
+        }
         if (!folder.isDirectory()) continue
         const path = join(root, folder.name, 'SKILL.md')
-        await assertSkillPathsAreReal(this.userData, [path], nodeFs)
         let file
         try {
+          await assertSkillPathsAreReal(this.userData, [path], nodeFs)
           file = await open(
             path,
             constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0),
           )
         } catch (error) {
-          if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue
-          throw error
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT')
+            console.warn(`BroCrew skipped the shared skill ${folder.name}: ${String(error)}`)
+          continue
         }
         try {
           const stat = await file.stat()
@@ -300,6 +306,8 @@ export class SharedSkillDiscovery {
             enabled,
             given: enabled,
           })
+        } catch (error) {
+          console.warn(`BroCrew skipped the shared skill ${folder.name}: ${String(error)}`)
         } finally {
           await file.close()
         }

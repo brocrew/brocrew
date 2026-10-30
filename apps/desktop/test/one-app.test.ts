@@ -9,6 +9,7 @@ import {
   realpathSync,
   rmSync,
   symlinkSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { createServer } from 'node:net'
@@ -775,26 +776,58 @@ describe('one app per userData (198)', () => {
         expect(lstatSync(name).isSocket()).toBe(true)
       })
 
-      it('🔴 a folder with group or other permissions, another user’s, or a link answers unknown', async () => {
+      it('🔴 a folder of this user’s that others may enter is made private again and used', async () => {
         const long = aLongFolderIn(dir)
         chmodSync(gates, 0o750)
-        expect(await claimSoleHost(long, process.platform, { folder: gates })).toBe('unknown')
-        expect(await whoIsOn(long, process.platform, { folder: gates })).toBe('unknown')
+        expect(await whoIsOn(long, process.platform, { folder: gates })).toBe('closed')
         chmodSync(gates, 0o707)
-        expect(await claimSoleHost(long, process.platform, { folder: gates })).toBe('unknown')
-        expect(readdirSync(gates)).toEqual([])
+        expect(await claimSoleHost(long, process.platform, { folder: gates })).toBe('sole')
+        expect(lstatSync(gates).mode & 0o777).toBe(0o700)
+        expect(await whoIsOn(long, process.platform, { folder: gates })).toBe('open')
+      })
+
+      it('🔴 …and one that cannot be made private is used, saying so', async () => {
+        const long = aLongFolderIn(dir)
+        chmodSync(gates, 0o750)
+        const warned: string[] = []
+        const stuck = {
+          folder: gates,
+          chmod: () => {
+            throw new Error('fictional refusal')
+          },
+          warn: (line: string) => warned.push(line),
+        }
+        expect(await claimSoleHost(long, process.platform, stuck)).toBe('sole')
+        expect(warned).toEqual([
+          `BroCrew uses ${gates} though others may enter it: fictional refusal`,
+        ])
         chmodSync(gates, 0o700)
+      })
+
+      it('🔴 a link the person made to a folder of theirs is followed', async () => {
+        const long = aLongFolderIn(dir)
+        // Beside the short folder, so its socket names still fit.
+        const linked = `${gates}-l`
+        symlinkSync(gates, linked)
+        try {
+          expect(await claimSoleHost(long, process.platform, { folder: linked })).toBe('sole')
+          expect(await whoIsOn(long, process.platform, { folder: linked })).toBe('open')
+          expect(readdirSync(gates).some((name) => name.endsWith('.sock'))).toBe(true)
+        } finally {
+          unlinkSync(linked)
+        }
+      })
+
+      it('⛔ another user’s folder still answers unknown, and nothing in it is touched', async () => {
+        const long = aLongFolderIn(dir)
         const anothers = {
           folder: gates,
           lstat: (path: string) => asEntry(path, path === gates ? UID + 1 : undefined),
         }
         expect(await claimSoleHost(long, process.platform, anothers)).toBe('unknown')
         expect(await whoIsOn(long, process.platform, anothers)).toBe('unknown')
-        const linked = join(dir, 'linked-gates')
-        symlinkSync(gates, linked)
-        expect(await claimSoleHost(long, process.platform, { folder: linked })).toBe('unknown')
         expect(readdirSync(gates)).toEqual([])
-        // The positive control: the same folder, this user's alone.
+        // The positive control: the same folder, this user's.
         expect(await claimSoleHost(long, process.platform, { folder: gates })).toBe('sole')
       })
 

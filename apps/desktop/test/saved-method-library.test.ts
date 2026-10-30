@@ -155,16 +155,13 @@ describe('saved methods in the agent book', () => {
     expect(index.ok && index.bytes).toBeGreaterThan(4096)
   })
 
-  it('resolves only app-issued keys and refuses linked or oversized method bodies', () => {
+  it('resolves only app-issued keys, reads a linked method body and refuses an oversized one', () => {
     const outside = join(root, 'outside.md')
     writeFileSync(outside, 'Outside the managed folder.')
     symlinkSync(outside, join(folder, 'linked.md'))
     writeFileSync(join(folder, 'large.md'), 'x'.repeat(SAVED_METHODS_MOST_METHOD_BYTES + 1))
     const catalog = listSavedMethodLibrary(inputs, 100)
-    expect(catalog.items.find((one) => one.name === 'linked.md')).toMatchObject({
-      problem: 'link',
-      canDelete: false,
-    })
+    expect(catalog.items.find((one) => one.name === 'linked.md')).not.toHaveProperty('problem')
     expect(catalog.items.find((one) => one.name === 'large.md')).toMatchObject({
       problem: 'too-large',
       canDelete: false,
@@ -172,10 +169,10 @@ describe('saved methods in the agent book', () => {
     expect(readSavedMethodBody(inputs, '../outside.md')).toEqual({ ok: false, problem: 'missing' })
     expect(
       readSavedMethodBody(inputs, catalog.items.find((one) => one.name === 'linked.md')!.key),
-    ).toEqual({ ok: false, problem: 'link' })
+    ).toMatchObject({ ok: true, text: 'Outside the managed folder.' })
   })
 
-  it('refuses redirected folders and does not treat a directory as a method file', () => {
+  it('follows a methods folder the person linked elsewhere, and does not treat a directory as a method file', () => {
     mkdirSync(join(folder, 'directory.md'))
     expect(listSavedMethodLibrary(inputs, 100).items[0]).toMatchObject({
       problem: 'not-a-file',
@@ -186,10 +183,10 @@ describe('saved methods in the agent book', () => {
     writeFileSync(join(redirected, 'private.md'), 'Different folder')
     rmSync(folder, { recursive: true })
     symlinkSync(redirected, folder, 'dir')
-    expect(listSavedMethodLibrary(inputs, 100).state).toBe('unavailable')
+    expect(listSavedMethodLibrary(inputs, 100).items.map((one) => one.name)).toEqual(['private.md'])
   })
 
-  it('reports an index directory and a linked index explicitly instead of implying there is no index', () => {
+  it('reports an index directory explicitly, and reads a linked index', () => {
     mkdirSync(join(folder, 'index.md'))
     expect(listSavedMethodLibrary(inputs, 100)).toMatchObject({
       indexState: 'problem',
@@ -199,10 +196,7 @@ describe('saved methods in the agent book', () => {
     const outside = join(root, 'other-index.md')
     writeFileSync(outside, 'Other index')
     symlinkSync(outside, join(folder, 'index.md'))
-    expect(listSavedMethodLibrary(inputs, 100)).toMatchObject({
-      indexState: 'problem',
-      indexProblem: 'link',
-    })
+    expect(listSavedMethodLibrary(inputs, 100)).toMatchObject({ indexState: 'ok' })
   })
 
   it('allows a hard-linked plain method to be read while rejecting symbolic links', () => {
@@ -262,19 +256,19 @@ describe('saved methods in the agent book', () => {
     expect(catalog.items[0]?.references).toHaveLength(1)
   })
 
-  it('refuses a symbolic managed root and a folder swapped after opening a method', () => {
+  it('follows a linked managed root, and refuses a folder swapped after opening a method', () => {
     const alternative = join(root, 'alternative')
     mkdirSync(alternative)
     writeFileSync(join(alternative, 'review.md'), 'Outside')
     const linkedRoot = join(root, 'linked-root')
     symlinkSync(inputs.homesRoot, linkedRoot, 'dir')
+    writeFileSync(join(folder, 'review.md'), 'Inside')
     expect(
       listSavedMethodLibrary(
         { folder: join(linkedRoot, 'default', 'wren', 'runbooks'), homesRoot: linkedRoot },
         100,
-      ).state,
-    ).toBe('unavailable')
-    writeFileSync(join(folder, 'review.md'), 'Inside')
+      ).items.map((one) => one.name),
+    ).toEqual(['review.md'])
     const key = listSavedMethodLibrary(inputs, 100).items[0]!.key
     expect(
       readSavedMethodBody(inputs, key, {

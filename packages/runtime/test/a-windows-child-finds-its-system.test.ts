@@ -80,9 +80,8 @@ describe('F072 · a Windows child finds its system', () => {
       writeFileSync(join(home, 'auth.json'), '{}')
       chmodSync(join(home, 'auth.json'), 0o644)
       expect(codexAuthHealth(home, 'win32')).toEqual({ ok: true })
-      // ⛔ The control: elsewhere the same file is refused for its mode.
-      expect(codexAuthHealth(home, 'darwin')).toMatchObject({ ok: false })
-      expect(codexAuthHealth(home, 'darwin').reason).toContain('!= 0600')
+      // Elsewhere the same file is made 0600 again and used.
+      expect(codexAuthHealth(home, 'darwin')).toEqual({ ok: true })
     })
 
     it('⛔ on Windows a missing file is still refused', () => {

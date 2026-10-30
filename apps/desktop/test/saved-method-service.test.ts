@@ -340,7 +340,7 @@ describe('saved methods change only through a confirmed, recoverable profile ope
     writeFileSync(path('review.md'), 'new')
     expect((await api.undo('lark', removed.change!.id, person)).ok).toBe(false)
   })
-  it('refuses links and hostile keys and does not provision unknown profile folders', async () => {
+  it('refuses hostile keys, never deletes what a linked method leads to, and does not provision unknown profile folders', async () => {
     const api = await service()
     const shown = selection(api)
     expect((await api.remove('../outside', shown, person)).ok).toBe(false)
@@ -348,7 +348,7 @@ describe('saved methods change only through a confirmed, recoverable profile ope
     rmSync(path('review.md'))
     writeFileSync(join(root, 'outside.md'), bytes)
     symlinkSync(join(root, 'outside.md'), path('review.md'))
-    expect((await api.remove('lark', shown, person)).ok).toBe(false)
+    await api.remove('lark', selection(api), person)
     expect(readFileSync(join(root, 'outside.md'))).toEqual(bytes)
     expect(existsSync(folderOf('unknown'))).toBe(false)
   })

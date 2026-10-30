@@ -359,11 +359,7 @@ export function productionPluginController() {
         let attempt: Peer | undefined
         let storage: SupervisorStorage | undefined
         try {
-          try {
-            await keepPluginRootPrivate(options.root)
-          } catch {
-            throw new PluginListError('fetch-error', 'private-folder')
-          }
+          await keepPluginRootPrivate(options.root)
           storage = new SupervisorStorage(options.root, [options.workspaceRoot], true)
           const devSource = await devPluginSource(options.devSource)
           loadCatalogue = () =>

@@ -214,7 +214,7 @@ export type PluginSettingsRequest =
   | { kind: 'bounds'; bounds: PluginScreenBounds }
   | { kind: 'close' }
 export type PluginListState = 'ready' | 'empty' | 'not-published' | 'fetch-error'
-export type PluginListFailureReason = 'private-folder' | 'supervisor-unavailable'
+export type PluginListFailureReason = 'supervisor-unavailable'
 export type PluginSettingsReply =
   | {
       ok: true

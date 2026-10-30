@@ -8,6 +8,7 @@ import {
   opendirSync,
   readSync,
   realpathSync,
+  statSync,
   type BigIntStats,
 } from 'node:fs'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
@@ -53,9 +54,11 @@ class Refused extends Error {
   }
 }
 
+/** What is at `path`, following a link the person made to keep a folder or a file elsewhere. */
 function at(path: string): BigIntStats | null {
   try {
-    return lstatSync(path, { bigint: true })
+    const entry = lstatSync(path, { bigint: true })
+    return entry.isSymbolicLink() ? statSync(path, { bigint: true }) : entry
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
     throw error
@@ -67,7 +70,7 @@ function within(root: string, path: string): boolean {
   return part !== '' && part !== '..' && !part.startsWith(`..${sep}`) && !isAbsolute(part)
 }
 
-/** Refuse redirected folders and every symbolic link below the managed root. */
+/** The methods folder, followed through any link the person made below the managed root. */
 function folderAt(inputs: MethodLibraryInputs): BigIntStats {
   const root = resolve(inputs.homesRoot)
   const folder = resolve(inputs.folder)
@@ -86,7 +89,6 @@ function folderAt(inputs: MethodLibraryInputs): BigIntStats {
     if (!entry.isDirectory()) throw new Refused('not-a-file')
     stat = entry
   }
-  if (!within(realpathSync(root), realpathSync(folder))) throw new Refused('link')
   return stat
 }
 
@@ -108,8 +110,10 @@ function image(
   seams: MethodReadSeams,
 ): FileImage | null {
   const folder = folderAt(inputs)
-  const path = join(inputs.folder, name)
-  const before = at(path)
+  const spelled = join(inputs.folder, name)
+  const before = at(spelled)
+  // A method file the person linked is read where it is.
+  const path = before === null ? spelled : realpathSync(spelled)
   if (before === null) return null
   if (before.isSymbolicLink()) throw new Refused('link')
   if (!before.isFile()) throw new Refused('not-a-file')
