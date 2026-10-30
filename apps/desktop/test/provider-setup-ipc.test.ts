@@ -39,21 +39,28 @@ function fixture() {
   const child = new FakeChild(),
     stop = vi.fn(),
     spawn = vi.fn(() => child)
+  const findProgram = vi.fn((): string | null => null),
+    completed = vi.fn()
   const service = new ClaudeSetupService({
     platform: 'darwin',
-    findProgram: () => null,
+    findProgram,
     spawn,
     stop,
   })
   const allowed = new Set<FakeContents>()
-  const close = registerProviderSetup(ipc, { claude: service }, (event) => {
-    const contents = event.sender as unknown as FakeContents
-    return (
-      allowed.has(contents) &&
-      !contents.isDestroyed() &&
-      event.senderFrame === event.sender.mainFrame
-    )
-  })
+  const close = registerProviderSetup(
+    ipc,
+    { claude: service },
+    (event) => {
+      const contents = event.sender as unknown as FakeContents
+      return (
+        allowed.has(contents) &&
+        !contents.isDestroyed() &&
+        event.senderFrame === event.sender.mainFrame
+      )
+    },
+    completed,
+  )
   const sender = new FakeContents(),
     other = new FakeContents(),
     foreign = new FakeContents()
@@ -72,10 +79,44 @@ function fixture() {
     } as unknown as IpcMainInvokeEvent
     return handlers.get(channels[action])!(event, ...args)
   }
-  return { invoke, sender, other, foreign, spawn, stop, child, close, handlers, service }
+  return {
+    invoke,
+    sender,
+    other,
+    foreign,
+    spawn,
+    stop,
+    child,
+    close,
+    handlers,
+    service,
+    findProgram,
+    completed,
+  }
 }
 
 describe('provider setup sender and document ownership', () => {
+  it('notifies the runtime before successful setup reaches the initiating window', async () => {
+    const f = fixture()
+    f.invoke('install')
+    f.findProgram.mockReturnValue('/fictional/tools/official-cli')
+    f.child.emit('close', 0)
+    expect(f.completed).toHaveBeenCalledExactlyOnceWith('claude')
+    const terminal = f.sender.send.mock.calls.findIndex(([, state]) => state.phase === 'installed')
+    expect(f.completed.mock.invocationCallOrder[0]).toBeLessThan(
+      f.sender.send.mock.invocationCallOrder[terminal]!,
+    )
+    f.child.emit('close', 0)
+    expect(f.completed).toHaveBeenCalledTimes(1)
+    await f.close()
+  })
+  it('detaches runtime completion delivery when the setup bridge closes', async () => {
+    const f = fixture()
+    await f.close()
+    f.findProgram.mockReturnValue('/fictional/tools/official-cli')
+    f.child.emit('close', 0)
+    expect(f.completed).not.toHaveBeenCalled()
+  })
   it('rejects unregistered windows, subframes, invalid providers and renderer command arguments', async () => {
     const f = fixture()
     expect(f.invoke('install', f.foreign)).toEqual({ ok: false, reason: 'not-authorized' })
@@ -137,7 +178,9 @@ describe('provider setup sender and document ownership', () => {
       f.sender.emit(actual)
       expect(f.stop).toHaveBeenCalledWith(f.child.pid, false)
       const count = f.sender.send.mock.calls.length
-      f.child.emit('close', null)
+      f.findProgram.mockReturnValue('/fictional/tools/official-cli')
+      f.child.emit('close', 0)
+      expect(f.completed).not.toHaveBeenCalled()
       expect(f.sender.send).toHaveBeenCalledTimes(count)
       for (const event of ['did-navigate', 'render-process-gone', 'destroyed'])
         expect(f.sender.listenerCount(event)).toBe(0)
@@ -162,6 +205,7 @@ describe('provider setup sender and document ownership', () => {
     f.child.emit('close', null)
     await closing
     await f.close()
+    expect(f.completed).not.toHaveBeenCalled()
     expect(f.sender.listenerCount('destroyed')).toBe(0)
   })
 })

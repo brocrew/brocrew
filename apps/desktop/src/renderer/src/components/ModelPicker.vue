@@ -682,7 +682,7 @@ async function focusAddOpen(provider: Provider): Promise<void> {
                     ? ' · Not set up'
                     : section.ready !== true
                       ? ' · Checking…'
-                      : ''
+                      : ' · Ready'
                 }}</span
               >
             </label>

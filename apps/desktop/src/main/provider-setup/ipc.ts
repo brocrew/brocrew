@@ -9,6 +9,7 @@ export function registerProviderSetup(
   ipc: Pick<IpcMain, 'handle' | 'removeHandler'>,
   services: SetupServices,
   authorized: (event: IpcMainInvokeEvent) => boolean,
+  completed: (provider: Provider) => void,
 ): () => Promise<void> {
   let closed = false
   const watchers = new Map<WebContents, Set<Provider>>()
@@ -62,6 +63,7 @@ export function registerProviderSetup(
       }
     }),
   )
+  const offCompleted = Object.values(services).map((service) => service.onCompleted(completed))
   ipc.handle(PROVIDER_SETUP_CHANNELS.state, (event, ...args: unknown[]) => {
     if (!valid(event, args)) throw new Error('Provider setup is not authorized.')
     const provider = args[0]
@@ -98,6 +100,7 @@ export function registerProviderSetup(
       ])
         ipc.removeHandler(channel)
       for (const stop of off) stop()
+      for (const stop of offCompleted) stop()
       for (const contents of [...watchers.keys()]) forget(contents)
       await Promise.all(Object.values(services).map((service) => service.close()))
     })()

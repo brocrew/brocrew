@@ -1416,7 +1416,9 @@ const capabilities = ref<ProviderCapabilityMap | null>(null)
  * says why.
  */
 const programs = ref<Partial<Record<Provider, ProviderProgram>> | null>(null)
+let programsRead = 0
 async function readPrograms(): Promise<void> {
+  const reading = ++programsRead
   const ask = window.api.runtime.providerVersions
   if (typeof ask !== 'function') return
   try {
@@ -1425,7 +1427,7 @@ async function readPrograms(): Promise<void> {
     for (const [provider, version] of Object.entries(versions) as [Provider, ProviderVersion][]) {
       if (version.program !== undefined) found[provider] = version.program
     }
-    programs.value = found
+    if (reading === programsRead) programs.value = found
   } catch {
     // said on the Providers screen
   }
@@ -1484,7 +1486,12 @@ function pickModelForActive(pick: PickedModel): Promise<WhatAPickBecame | null |
  * has just signed this profile in and is looking at the menu it should have changed. One provider
  * child per gesture, and nothing on a timer.
  */
-function authChangedFor(profileId: string): void {
+function authChangedFor(profileId: string, changedProvider?: Provider): void {
+  void readPrograms()
+  for (const provider of changedProvider
+    ? [changedProvider]
+    : (Object.keys(PROVIDER_NAME) as Provider[]))
+    void useProfileSignIn(provider, profileId).check()
   // ⛔ **This DISOWNS the read in flight as well as forgetting the answer** (293 §5). Without the
   // ticket, a read started under the previous account was free to land after the replacement.
   modelLists.forget(profileId)
@@ -3315,6 +3322,7 @@ watch(surface, (now) => {
  * disagreement `151` paired them to prevent.
  */
 let stopListening: (() => void) | null = null
+let stopProviderFacts: (() => void) | null = null
 /**
  * 🔴 **D-019 · what each agent is doing, told the moment it moves** — `runtime:states`, which
  * carries the answer where `runtime:changed` carries none: handed to the rail
@@ -3328,6 +3336,11 @@ let stopListening: (() => void) | null = null
 let stopHearingStates: (() => void) | null = null
 
 onMounted(() => {
+  if (typeof window.api.runtime.onProvidersChanged === 'function')
+    stopProviderFacts = window.api.runtime.onProvidersChanged((message) => {
+      if (message.what === 'login' || message.what === 'key')
+        authChangedFor(DEFAULT_PROFILE_ID, message.provider)
+    })
   stopHearingStates = listenProviderStates(window.api.runtime, store, (message) => {
     rail.value?.hearStates(message)
     // ⚑ **UI-002 · a file kept anywhere is read again at once** — see {@link readTheFiles}.
@@ -3432,6 +3445,9 @@ onUnmounted(() => {
   // `ipcRenderer`, which outlives this component under HMR, so a screen that did not let go would
   // leave a second listener re-reading through a store the new one has replaced.
   stopListening?.()
+  stopProviderFacts?.()
+  stopProviderFacts = null
+  programsRead++
   actionableReadsClosed = true
   actionableReadSequence++
   limitsLane.close()
@@ -3976,7 +3992,7 @@ onUnmounted(() => {
         {{ persons.view.value?.announcement ?? '' }}
       </div>
 
-      <AppTitleBar :info="info" :error="infoError" />
+      <AppTitleBar :info="info" :error="infoError" :provider-readiness="launchReadiness" />
 
       <div class="shell" :data-rail="railFold.collapsed.value ? 'collapsed' : 'open'">
         <!-- ⛔ **`:agents` SURVIVES the AGENTS section that is gone** (570). `449` folds this roster

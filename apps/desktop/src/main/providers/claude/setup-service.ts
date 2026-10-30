@@ -1,6 +1,7 @@
 import { StringDecoder } from 'node:string_decoder'
 import { stripVTControlCharacters } from 'node:util'
 import { win32 } from 'node:path'
+import type { Provider } from '@brobot2/shared'
 import type {
   ProviderSetupAction,
   ProviderSetupError,
@@ -122,6 +123,7 @@ export class ClaudeSetupService {
   private active: Operation | null = null
   private closed = false
   private readonly listeners = new Set<(state: ProviderSetupState) => void>()
+  private readonly completed = new Set<(provider: Provider) => void>()
   constructor(
     private readonly deps: ClaudeSetupDependencies,
     private readonly bounds: Bounds = CLAUDE_SETUP_BOUNDS,
@@ -146,6 +148,12 @@ export class ClaudeSetupService {
     this.listeners.add(listener)
     return () => {
       this.listeners.delete(listener)
+    }
+  }
+  onCompleted(listener: (provider: Provider) => void): () => void {
+    this.completed.add(listener)
+    return () => {
+      this.completed.delete(listener)
     }
   }
   private publish(change: Partial<ProviderSetupState>): void {
@@ -369,6 +377,14 @@ export class ClaudeSetupService {
       error ??
       (code === 0 ? null : operation.kind === 'install' ? 'install-failed' : 'login-failed')
     const failure = reason ?? (available ? null : 'not-found')
+    if (failure === null)
+      for (const listener of this.completed) {
+        try {
+          listener(this.current.provider)
+        } catch {
+          /* Runtime notification cannot stop child cleanup. */
+        }
+      }
     this.publish({
       phase:
         reason === 'cancelled'
@@ -423,5 +439,6 @@ export class ClaudeSetupService {
       }
     }
     this.listeners.clear()
+    this.completed.clear()
   }
 }

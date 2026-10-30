@@ -13,10 +13,13 @@ export type ProviderUsage = Readonly<Record<Provider, readonly ProviderUsageRead
 const usage = shallowRef<ProviderUsage | null>(null)
 let users = 0
 let stopListening: (() => void) | undefined
+let reading = 0
 
 async function readUsage(): Promise<void> {
+  const ours = ++reading
   try {
-    usage.value = await window.api.runtime.providerUsage()
+    const next = await window.api.runtime.providerUsage()
+    if (ours === reading) usage.value = next
   } catch {
     // The last good answer stays; the next notice asks again.
   }
@@ -28,7 +31,7 @@ export function useProviderUsage(): Readonly<ShallowRef<ProviderUsage | null>> {
     void readUsage()
     try {
       stopListening = window.api.runtime.onProvidersChanged((message) => {
-        if (message.what === 'usage') void readUsage()
+        if (message.what === 'usage' || message.what === 'login') void readUsage()
       })
     } catch {
       // A window without the bridge shows the readings as not read yet.
@@ -38,6 +41,7 @@ export function useProviderUsage(): Readonly<ShallowRef<ProviderUsage | null>> {
   onScopeDispose(() => {
     users -= 1
     if (users === 0) {
+      reading++
       stopListening?.()
       stopListening = undefined
     }
