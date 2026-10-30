@@ -303,6 +303,7 @@ export class SpawnCodexTransport implements CodexTransport {
   /** Single-flight bounded process-group teardown; runs on EVERY terminal transition (031). */
   private reaping: Promise<void> | null = null
   private windowsStopReading: Promise<void> | null = null
+  private knownHistoryComplete = true
   /**
    * ⚑ **`readonly` and now PUBLIC** (233) — see {@link CodexTransport.exited}. Private, this was a
    * fact three lines of `doReapGroup` computed and dropped on the floor.
@@ -500,7 +501,10 @@ export class SpawnCodexTransport implements CodexTransport {
       const key = `${String(row.pid)}:${String(row.created)}`
       if (!this.known.has(key) && this.known.size >= KNOWN_MOST) {
         const oldest = this.known.keys().next().value
-        if (oldest !== undefined) this.known.delete(oldest)
+        if (oldest !== undefined) {
+          this.knownHistoryComplete = false
+          this.known.delete(oldest)
+        }
       }
       this.known.set(key, { ...row, seenAt: at })
     }
@@ -725,6 +729,7 @@ export class SpawnCodexTransport implements CodexTransport {
 
   /** Number-only probes can hold a reused PID, but never signal or adopt it. */
   private rememberedWindowsPidsAreGone(leader: number): boolean {
+    if (!this.knownHistoryComplete) return false
     for (const pid of new Set([leader, ...[...this.known.values()].map((row) => row.pid)])) {
       try {
         process.kill(pid, 0)

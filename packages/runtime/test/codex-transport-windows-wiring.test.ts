@@ -240,6 +240,10 @@ it('retains at most 4096 identities and refreshes a known launcher cutoff withou
   expect(console.warn).toHaveBeenCalledExactlyOnceWith(
     'codex app-server 4811: the process table was not read in time, so only the processes found before were ended; what it started since may still be running',
   )
+  running.clear()
+  running.add(rows[0]!.pid)
+  await vi.advanceTimersByTimeAsync(200_000)
+  expect(quiet).toBe(false)
 })
 
 it.each(['alive', 'failed'] as const)(
