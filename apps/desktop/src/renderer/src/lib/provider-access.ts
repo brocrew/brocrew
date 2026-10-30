@@ -16,6 +16,7 @@ export function createProviderAccess(
   const keyStatus = shallowRef<ApiKeyStatus | null>(null)
   const keyError = ref<string | null>(null)
   let checkAgain = false
+  let probeAgain = false
 
   const asked = () => ({ provider: provider(), profileId: DEFAULT_PROFILE_ID })
 
@@ -31,20 +32,25 @@ export function createProviderAccess(
       authBusy.value = 'idle'
       if (phase !== 'checking') changed()
       if (checkAgain) {
+        const probe = probeAgain
         checkAgain = false
-        void check()
+        probeAgain = false
+        void check(probe)
       }
     }
   }
 
-  async function check(): Promise<void> {
+  async function check(probe = false): Promise<void> {
     if (authBusy.value !== 'idle') {
       checkAgain = true
+      probeAgain ||= probe
       return
     }
     await withGesture('checking', async () => {
       try {
-        auth.value = await bridge().checkProviderAuth(asked())
+        auth.value = await bridge().checkProviderAuth(
+          probe ? { ...asked(), probe: true as const } : asked(),
+        )
       } catch (error) {
         auth.value = { state: 'unknown', reason: readableError(error) }
       }
