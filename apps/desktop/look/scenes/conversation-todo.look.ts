@@ -40,6 +40,7 @@ scene('conversation-todo', (stage) => {
     } as TranscriptEvent,
   ]
   const session = record(events)
-  if (import.meta.env['LOOK_TODO_ENDED'] === 'true') markRequestFailed(session.transcript, 'req_report', 'This to-do was already answered.')
+  if (import.meta.env['LOOK_TODO_ENDED'] === 'true')
+    markRequestFailed(session.transcript, 'req_report', 'This to-do was already answered.')
   stage.mount(ConversationPane, paneProps({ record: session }))
 })
