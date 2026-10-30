@@ -499,7 +499,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "M65 · the automatic restart-for-what-it-held is disabled at its call site — a Close hands a message on in the ledger, but nothing ever starts the conversation again to send it — killed by `the-message-that-has-no-name.test.ts`",
         [
             # Disable the held-message wake while leaving its positive exit-proof barrier in place.
-            (RUNTIME_HOST, "        if (\n          this.heldAtAStop.has(session.id) &&\n          !this.signInStops.has(session) &&\n          session.diedOnAStaleSignIn !== true\n        ) {", "        if (false) {"),
+            (RUNTIME_HOST, "        if (\n          this.heldAtAStop\n            .get(session.id)\n            ?.some((queued) => queued.authorship.appNotice !== 'a-scheduled-job-that-will-not-run') &&\n          !this.signInStops.has(session) &&\n          session.diedOnAStaleSignIn !== true\n        ) {", "        if (false) {"),
         ],
     ),
     (

@@ -709,9 +709,9 @@ export class SpawnCodexTransport implements CodexTransport {
       }
       if (!unavailable) failedSince = null
       else if (this.endedAt !== null) {
-        failedSince ??= Date.now()
+        failedSince ??= performance.now()
         if (
-          Date.now() - failedSince >= WINDOWS_TABLE_FAILURE_RELEASE_MS &&
+          performance.now() - failedSince >= WINDOWS_TABLE_FAILURE_RELEASE_MS &&
           this.rememberedWindowsPidsAreGone(pid)
         ) {
           console.warn(

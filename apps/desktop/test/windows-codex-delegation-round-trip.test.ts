@@ -196,6 +196,23 @@ describe('Windows-suite Codex delegation round trip', () => {
     expect(replies(parent)).toEqual(['Alder result', 'Cedar result'])
   })
 
+  it('keeps a missed-job notice for the next start without waking a stopped parent', async () => {
+    holdExit = true
+    const parent = await open('birch-lead')
+    await host.close(parent, window)
+    const holding = host as unknown as {
+      holdUntilItStarts(id: string, text: string, facts: { appNotice: string }): void
+    }
+    holding.holdUntilItStarts(parent, 'A fictional missed job', {
+      appNotice: 'a-scheduled-job-that-will-not-run',
+    })
+    proveExit()
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    expect(parentResumes).toBe(0)
+    expect(host.sessionIds).not.toContain(parent)
+    expect(store.messagesWaitingIn(parent)).toHaveLength(1)
+  })
+
   it('late replies cannot launch a second provider and wake once after exit proof', async () => {
     holdExit = true
     const { parent, alder, cedar } = await family()

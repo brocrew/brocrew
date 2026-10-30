@@ -49,8 +49,8 @@
     },
     {
       "path": "apps/desktop/src/main/runtime/runtime-host.ts",
-      "bytes": 2424006,
-      "sha256": "a276e47c58e0cbd4747391984da5258698b2b2935364ed274412b7e4303f9788"
+      "bytes": 2424119,
+      "sha256": "e32912354e6df573e3fefd1f2bd21128ef49d1c4049dccf1e37653fb22b52f96"
     },
     {
       "path": "apps/desktop/src/main/db/connection.ts",

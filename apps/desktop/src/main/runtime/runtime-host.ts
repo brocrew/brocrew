@@ -36202,7 +36202,9 @@ export class RuntimeHost implements LiveHost {
     void Promise.resolve(session.terminated).then(
       () => {
         if (
-          this.heldAtAStop.has(session.id) &&
+          this.heldAtAStop
+            .get(session.id)
+            ?.some((queued) => queued.authorship.appNotice !== 'a-scheduled-job-that-will-not-run') &&
           !this.signInStops.has(session) &&
           session.diedOnAStaleSignIn !== true
         ) {
