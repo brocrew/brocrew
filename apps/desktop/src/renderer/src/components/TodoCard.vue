@@ -71,11 +71,7 @@ const note = ref('')
       {{ card.said }}
     </p>
     <div v-if="openConversation" class="todo-controls">
-      <button
-        type="button"
-        :data-cy="`${cy}-todo-open-${card.row.key}`"
-        @click="emit('open')"
-      >
+      <button type="button" :data-cy="`${cy}-todo-open-${card.row.key}`" @click="emit('open')">
         Open the conversation
       </button>
     </div>
