@@ -1,4 +1,8 @@
-import { pluginStartupReason, recordPluginStartupFailure } from './startup-failure'
+import {
+  PluginStartupError,
+  pluginStartupReason,
+  recordPluginStartupFailure,
+} from './startup-failure'
 import { pluginAdapter } from './lifecycle/adapters'
 import { join } from 'node:path'
 import { lstat } from 'node:fs/promises'
@@ -220,7 +224,7 @@ export function productionPluginController() {
       entries =
         entries?.map((one) => ({ ...one, state: 'Unavailable', tools: 'none', service: null })) ??
         null
-      return fail()
+      throw new PluginStartupError(failure, error)
     }
   }
   const current = () => {
@@ -550,6 +554,7 @@ export function productionPluginController() {
                   candidate.lost = true
                   // The notification belongs to this exact peer, even after its successor attaches.
                   if (peer !== candidate || candidate.detaching) return
+                  failed('connection-lost')
                   cleanupUncertain = true
                   connected = undefined
                   markUnavailable()

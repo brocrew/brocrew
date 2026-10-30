@@ -1024,6 +1024,24 @@ describe.skipIf(process.platform === 'win32')(
         'Plugin unavailable. Try again.',
       )
     })
+    it('keeps the first catalogue response failure instead of relabeling it as a connection failure', async () => {
+      const f = await setup()
+      const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      f.peer.catalogue.mockRejectedValue(new Error('fictional-private-catalogue-error'))
+      f.controller.start(f.options)
+      await f.controller.ready!()
+      const cards = await f.controller.catalogue()
+      expect(cards).toMatchObject([
+        { state: 'Unavailable', unavailableReason: 'catalogue-response' },
+      ])
+      expect(f.peer.close).toHaveBeenCalled()
+      expect(JSON.stringify(warning.mock.calls)).not.toContain('fictional-private-catalogue-error')
+      f.peer.catalogue.mockResolvedValue([
+        { id: f.pkg.release.id, name: 'Fictional Fir', installed: false, state: 'Available' },
+      ])
+      expect(await f.controller.retry!(f.pkg.release.id)).toMatchObject([{ state: 'Available' }])
+      expect(f.peer.install).not.toHaveBeenCalled()
+    })
     it('keeps the failed runtime reason on both uninstalled offers and Retry can recover', async () => {
       const f = await setup()
       const second = { ...f.pkg.release, id: 'fictional-elm' }
