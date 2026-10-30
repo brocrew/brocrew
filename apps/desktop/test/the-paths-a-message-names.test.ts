@@ -277,7 +277,7 @@ describe('marking what main found', () => {
     expect(out).toContain('data-message-path="projects/x/report.md"')
     expect(out).toContain('title="/Users/someone/work/projects/x/report.md"')
     expect(out).toContain('aria-label="Open file"')
-    expect(out).toContain('data-message-path-copy="projects/x/report.md"')
+    expect(out).toContain('data-message-path-copy="/Users/someone/work/projects/x/report.md"')
     expect(out).toContain('aria-label="Copy path"')
     expect(out).not.toContain('data-message-path="gone/missing.md"')
     // The full stop after the missing path is where it was.

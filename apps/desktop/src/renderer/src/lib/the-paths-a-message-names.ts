@@ -168,18 +168,18 @@ const icon = (fragment: string): string =>
   `<svg class="icon" aria-hidden="true"><use href="${fragment}"></use></svg>`
 
 /** The path as text a person can read and select, then its Copy control. Values arrive escaped. */
-function pathAndCopy(kind: string, display: string, title: string): string {
+function pathAndCopy(kind: string, display: string, absolute: string): string {
   return (
     `<span class="message-path" data-kind="${kind}">` +
-    `<span class="message-path-text" data-cy="message-path-text" title="${title}">${display}</span>` +
+    `<span class="message-path-text" data-cy="message-path-text" title="${absolute}">${display}</span>` +
     `<button type="button" class="message-path-icon" data-cy="message-path-copy" ` +
-    `${COPY_ATTRIBUTE}="${display}" title="Copy path" aria-label="Copy path">${icon('#i-copy')}</button>`
+    `${COPY_ATTRIBUTE}="${absolute}" title="Copy path" aria-label="Copy path">${icon('#i-copy')}</button>`
   )
 }
 
 /**
- * One found path: its text, which is not a control, then Copy and Open. Copy takes the path as it
- * is drawn; Open sends the text as written, and main decides whether it opens or only shows.
+ * One found path: its text, then Copy and Open. Copy takes main's resolved absolute path;
+ * Open sends the text as written, and main decides whether it opens or only shows.
  */
 export function pathMarkup(
   found: FoundMessagePath,

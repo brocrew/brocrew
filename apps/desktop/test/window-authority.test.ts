@@ -231,6 +231,8 @@ const CLASSIFIED: Record<
   retitleWork: 'no session',
   // ⚑ A person takes back the piece a service is on: it names a piece, and `requireAPerson` gates it.
   takeBackWork: 'no session',
+  // ⚑ A person closes stopped work: it names a piece, and `requireAPerson` gates it.
+  closeWork: 'no session',
   /**
    * ⛔ **`no session` for both, and it is `setAgentProvider`'s sentence** (677). Each names one
    * IDENTITY and no conversation. ⚠️ **It does not mean ungated**: `requireAPerson` stands in front

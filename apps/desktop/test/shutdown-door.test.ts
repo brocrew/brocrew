@@ -225,6 +225,7 @@ const SAMPLES: Record<RuntimeCommandKind, RuntimeCommand> = {
   // `no-piece-by-that-name` rather than writing a title anywhere.
   retitleWork: { kind: 'retitleWork', piece: 'W0', title: 'Build the pages' },
   takeBackWork: { kind: 'takeBackWork', piece: 'W0.1' },
+  closeWork: { kind: 'closeWork', piece: 'W0.1' },
   setAgentModelAndEffort: {
     kind: 'setAgentModelAndEffort',
     profileId: 'pm',
@@ -541,6 +542,7 @@ const NEEDS_A_PERSON = new Set<RuntimeCommandKind>([
   // own work with `update_work`, whose rails are its own; no toolset carries this verb.
   'retitleWork',
   'takeBackWork',
+  'closeWork',
 ])
 
 const sinkFor = (kind: RuntimeCommandKind): RuntimeEventSink =>

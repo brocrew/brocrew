@@ -457,6 +457,9 @@ describe('664 · one task, one reading, in every place it is drawn', () => {
           // `takeBackPiece`; `raiseAQuestion` asks `heldBy` and the one-open-task rail
           // `workAlreadyOpenIn` is gone)
           'takeBackPiece',
+          // ⚑ a person's close of stopped work: whether the piece is OPEN, an openness, as a
+          // take-back asks it
+          'closeForAPerson',
           'replyToParent',
           // ⚑ D-016 · who may title a piece or set its status line — an owner and a giver
           'updateWork',

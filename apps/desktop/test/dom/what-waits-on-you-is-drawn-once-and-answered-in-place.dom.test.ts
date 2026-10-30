@@ -310,6 +310,8 @@ describe('a to-do an agent asked of a person', () => {
     await page.viewport(900, 700)
     const m = mount(PersonsQueue as never, { floating: true }, { width: 260, height: 680 })
     await settle()
+    m.q('persons-queue-toggle').click()
+    await settle()
     expect(read(m.q('persons-queue-heading'))).toBe('An agent asked you to do something')
     expect(read(m.q('persons-queue-count'))).toBe('1')
     assertDrawn(m.q('persons-queue-todo-done-req_board'), "the corner's Done")

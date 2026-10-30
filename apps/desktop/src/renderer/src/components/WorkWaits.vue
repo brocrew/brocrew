@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, reactive } from 'vue'
+import { computed } from 'vue'
 import { LOOK, usePersonsQueue } from '../lib/persons-queue'
 import { TAKE_BACK } from '../lib/take-back'
-import { TODO_CANT, TODO_DONE, TODO_NOTE } from '../lib/work-waits'
+import TodoCard from './TodoCard.vue'
+import CloseWorkButton from './CloseWorkButton.vue'
 
 /**
  * One of the three lists Waiting on you draws of work that waits on a person, needs a look, or is
@@ -22,9 +23,6 @@ const props = withDefaults(
 const queue = usePersonsQueue()
 const waits = computed(() => queue.workWaits.value)
 const cy = computed(() => (props.floating ? 'persons-queue' : 'waiting'))
-
-/** The note typed on each to-do, by request id. */
-const notes = reactive(new Map<string, string>())
 
 /** The work list's cards, for the two parts that list pieces. */
 const cards = computed(() => (props.part === 'todos' ? [] : queue.workCards.value[props.part]))
@@ -64,69 +62,8 @@ const unread = computed(() => waits.value[props.part].unread)
       :key="card.row.key"
       class="wait"
       :class="{ settled: card.taken }"
-      :data-cy="`${cy}-todo-${card.row.key}`"
     >
-      <p class="wait-head" :data-cy="`${cy}-todo-head-${card.row.key}`">{{ card.row.head }}</p>
-      <p class="wait-text" :data-cy="`${cy}-todo-text-${card.row.key}`">{{ card.row.text }}</p>
-      <ul v-if="card.row.files.length > 0" class="wait-files">
-        <li v-for="file in card.row.files" :key="file.resource">
-          <span class="wait-file" :title="file.name">{{ file.name }}</span>
-          <button
-            type="button"
-            :data-cy="`${cy}-todo-file-${card.row.key}-${file.resource}`"
-            @click="queue.openFile(file.resource)"
-          >
-            Open
-          </button>
-        </li>
-      </ul>
-      <template v-if="card.listed && !card.taken">
-        <textarea
-          class="wait-note"
-          rows="2"
-          :placeholder="TODO_NOTE"
-          :aria-label="TODO_NOTE"
-          :disabled="card.pending"
-          :value="notes.get(card.row.key) ?? ''"
-          :data-cy="`${cy}-todo-note-${card.row.key}`"
-          @input="notes.set(card.row.key, ($event.target as HTMLTextAreaElement).value)"
-        ></textarea>
-        <div class="wait-controls">
-          <button
-            type="button"
-            :disabled="card.pending"
-            :data-cy="`${cy}-todo-done-${card.row.key}`"
-            @click="queue.answerTodo(card.row, true, notes.get(card.row.key) ?? '')"
-          >
-            {{ TODO_DONE }}
-          </button>
-          <button
-            type="button"
-            :disabled="card.pending"
-            :data-cy="`${cy}-todo-cant-${card.row.key}`"
-            @click="queue.answerTodo(card.row, false, notes.get(card.row.key) ?? '')"
-          >
-            {{ TODO_CANT }}
-          </button>
-        </div>
-      </template>
-      <p
-        v-if="card.said !== null"
-        class="wait-said"
-        role="status"
-        :data-cy="`${cy}-todo-said-${card.row.key}`"
-      >
-        {{ card.said }}
-      </p>
-      <div v-if="!card.listed && !card.pending" class="wait-controls">
-        <button
-          type="button"
-          :data-cy="`${cy}-todo-dismiss-${card.row.key}`"
-          @click="queue.dismissTodo(card.row)"
-        >
-          Dismiss
-        </button>
-      </div>
+      <TodoCard :card="card" :cy="cy" open-conversation />
     </li>
   </ol>
   <ol v-if="cards.length > 0" class="waits" :class="{ floating }" :data-cy="`${cy}-${part}`">
@@ -158,6 +95,12 @@ const unread = computed(() => waits.value[props.part].unread)
         >
           {{ TAKE_BACK }}
         </button>
+        <CloseWorkButton
+          v-if="part === 'incidents' && one.kind === 'stopped'"
+          :piece="one.key"
+          :disabled="pending"
+          :cy="`${cy}-${part}-close-${one.key}`"
+        />
       </div>
       <p
         v-if="said !== null"
@@ -211,13 +154,6 @@ const unread = computed(() => waits.value[props.part].unread)
   color: var(--muted);
 }
 
-.wait-head {
-  margin: 0;
-  font-size: var(--type-caption);
-  font-weight: var(--fw-semibold);
-  overflow-wrap: anywhere;
-}
-
 .wait-text,
 .wait-says,
 .wait-said {
@@ -225,37 +161,6 @@ const unread = computed(() => waits.value[props.part].unread)
   font-size: var(--type-caption);
   overflow-wrap: anywhere;
   white-space: pre-wrap;
-}
-
-.wait-files {
-  display: flex;
-  flex-direction: column;
-  margin: 0;
-  padding: 0;
-  gap: var(--space-2);
-  list-style: none;
-}
-
-.wait-files li {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: var(--space-3);
-  font-size: var(--type-caption);
-}
-
-.wait-file {
-  min-width: 0;
-  font-family: var(--font-mono);
-  overflow-wrap: anywhere;
-}
-
-.wait-note {
-  width: 100%;
-  padding: var(--space-2) var(--space-3);
-  font: inherit;
-  font-size: var(--type-caption);
-  resize: vertical;
 }
 
 .wait-controls {

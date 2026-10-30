@@ -239,7 +239,7 @@ const A_QUESTION_ENDED: Readonly<Record<string, string>> = {
   stranded: 'left behind when this app stopped',
   interrupted: 'ended when the turn that asked it was stopped',
   'work-withdrawn': 'about work that was taken back',
-  'work-closed': 'about work that was closed by the one that gave it',
+  'work-closed': 'about work that was closed',
   'work-replied': 'about work that was handed back',
   'recipient-ended': 'closed when the one it was asked of was ended',
 }

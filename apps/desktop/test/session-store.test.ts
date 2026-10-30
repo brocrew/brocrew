@@ -877,6 +877,7 @@ function fakeBridge() {
       ok: false as const,
       rail: 'not-a-piece-a-service-is-on' as const,
     }),
+    closeWork: async () => ({ ok: false as const, rail: 'not-a-stopped-piece' as const }),
     adoptSessions: async () => ({
       found: 0,
       adopted: 0,

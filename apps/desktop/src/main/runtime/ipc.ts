@@ -1140,6 +1140,11 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
     kind: z.literal('takeBackWork'),
     piece: z.string().min(1).max(200),
   }),
+  // ⚑ A person closes stopped work, by its label or its id: `takeBackWork`'s bound.
+  z.object({
+    kind: z.literal('closeWork'),
+    piece: z.string().min(1).max(200),
+  }),
   /**
    * 🔴 **A person sets an identity's DEFAULT model and effort** (677; D-042 · R2) — or `provider:
    * null` to clear.
@@ -1619,6 +1624,9 @@ const DURING_A_QUIT: Record<RuntimeCommandKind, QuitRuling> = {
   // ⛔ Refused, with `retitleWork` as the precedent: a person acting on work, while the service that
   // would go on to its next piece is closing with the process.
   takeBackWork: 'refused',
+  // ⛔ Refused, with `takeBackWork` as the precedent: a person ending work while the conversations
+  // that would be told are closing with the process.
+  closeWork: 'refused',
   // 677. ⛔ **Refused, with `setAgentProvider` as the precedent word for word**: a person configuring
   // an identity's NEXT conversations, while there are no next launches — `createSession` is already
   // refused by the host. ⚠️ And the door asks a provider for its catalogue, which is a launch of its
@@ -1984,6 +1992,7 @@ const WHAT_A_PERSONS_VERB_DOES: Partial<Record<RuntimeCommandKind, string>> = {
   setAgentProvider: 'sets the provider an agent runs on',
   retitleWork: 'renames a piece of work',
   takeBackWork: 'takes back a piece of work',
+  closeWork: 'closes a piece of work',
 }
 
 /** Throw {@link noPersonBehindIt} unless the channel this arrived on declares a person behind it. */
@@ -2646,6 +2655,11 @@ export async function executeRuntimeCommand(
       // service is on. ⚑ An agent takes work back with `withdraw_task`, whose rails are its own.
       requireAPerson(sink, command.kind)
       return await host.takeBackForAPerson(command.piece, sink)
+    case 'closeWork':
+      // ⛔ **`requireAPerson`, with `takeBackWork` as the precedent**: a person closes stopped work.
+      // ⚑ An agent closes work it gave with `update_work`, whose rails are its own.
+      requireAPerson(sink, command.kind)
+      return await host.closeForAPerson(command.piece, sink)
     case 'setAgentModelAndEffort':
       // ⛔ **`requireAPerson`, with `setAgentProvider` as the precedent** (677, 433). ⚑ **And here the
       // gate IS the ruling**: a person sets an agent's default, and `create_agent` the default of the

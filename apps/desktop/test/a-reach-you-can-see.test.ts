@@ -743,6 +743,9 @@ describe('433 §B · the agents a reach can see', () => {
           // ⚑ **D-016 · the assignment gate (`assertMayAssign`, 553) went with work sent as a
           // message**, and the spawn door's `spawnFacts` with `spawn_agent`.
           'cancelQueuedMessage',
+          // ⚑ **A person's close of stopped work asks what a giver's close asks**, through the same
+          // helper, with a person's own admission in place of a take-back's.
+          'closeForAPerson',
           'decideMoveRequest',
           'decideMoveRequest',
           // ⚑ **D-016 · `decideProposal` went with proposals** — `441`'s person-only verb, which
@@ -792,7 +795,8 @@ describe('433 §B · the agents a reach can see', () => {
       // ⚑ **Sixteen** — so do a message and an answer that ask the turn they wait behind to stop.
       // ⚑ **F009 · seventeen** — an agent's record asks the reach of each of that agent's
       // conversations, a reader as `agentsVisibleTo` and `agentCard` are.
-      expect(questions).toHaveLength(19)
+      // ⚑ **Twenty** — a person's close of stopped work asks the holder's standing.
+      expect(questions).toHaveLength(20)
       // ⛔ **The two readers ask the REACH**, which is the whole of §B at the source.
       expect(code).toContain('.filter((slot) => this.withinMessagingReach(slot.id, by, me))')
       expect(code).toContain('if (!this.withinMessagingReach(sessionId, by, me)) return null')

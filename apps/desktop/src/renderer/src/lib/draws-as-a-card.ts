@@ -9,5 +9,6 @@ import type { ToolItem } from './transcript'
 export function drawsAsACard(item: Pick<ToolItem, 'outgoing'>): boolean {
   const words = item.outgoing
   if (words === undefined) return false
+  if (words.tool === 'request_action') return words.asked?.action !== undefined
   return words.tool !== 'update_work' || words.rebriefed !== null
 }

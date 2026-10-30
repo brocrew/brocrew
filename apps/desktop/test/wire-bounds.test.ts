@@ -344,6 +344,9 @@ describe('221 §3 · the count is pinned, so a new field must be classified', ()
       // reading: a label or an id the window drew. A guessed value reaches nothing
       // (`not-a-piece-a-service-is-on`). Bounded at 200 like every other id on this wire.
       'piece',
+      // ⛔ **`closeWork.piece`** — classified: **no person types it**, `takeBackWork.piece`'s
+      // reading. A guessed value reaches nothing (`not-a-stopped-piece`). Bounded at 200.
+      'piece',
       // ⛔ **`setAgentModelAndEffort`'s `model` and `effort`** (677, `R25`) — classified: **no person
       // types either.** They come from a menu — the `models` catalogue — exactly as
       // `createSession`'s `model` and `reasoningEffort` above, and they carry `createSession`'s own

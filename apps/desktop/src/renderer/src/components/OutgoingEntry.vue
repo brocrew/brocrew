@@ -53,12 +53,16 @@ import ReadableWords from './ReadableWords.vue'
 import FileRows from './FileRows.vue'
 import QuestionCard from './QuestionCard.vue'
 import type { PathsHere } from '../composables/useMessagePaths'
+import TodoCard from './TodoCard.vue'
+import { usePersonsQueue } from '../lib/persons-queue'
+import { todoHead } from '../lib/work-waits'
 import { TAKE_BACK } from '../lib/take-back'
 
 const props = defineProps<{
   item: ToolItem & Pick<TranscriptItem, 'at'>
   /** The facts the fold landed on this call — `item.outgoing`, narrowed by the caller. */
   words: OutgoingWords
+  sessionId?: string
   /**
    * ⚑ The name this conversation's own agent is headed with — the SENDER here. ⚠️ **667 · `null`
    * where nothing names it**, drawn as {@link THIS_CONVERSATION_FIRST} — never a provider.
@@ -120,7 +124,9 @@ const question = computed(() =>
 )
 
 const card = computed(() =>
-  props.words.tool === 'ask_question' || props.words.tool === 'pass_question_up'
+  props.words.tool === 'request_action' ||
+  props.words.tool === 'ask_question' ||
+  props.words.tool === 'pass_question_up'
     ? null
     : outgoingCard(
         props.item,
@@ -130,6 +136,36 @@ const card = computed(() =>
         props.gaveOut ?? null,
       ),
 )
+
+const queue = usePersonsQueue()
+const todo = computed(() => {
+  if (props.words.tool !== 'request_action') return null
+  const asked = props.words.asked
+  if (!asked?.action) return null
+  const name = props.ownAgent ?? THIS_CONVERSATION_FIRST
+  const row = {
+    key: asked.requestId,
+    sessionId: props.sessionId ?? '',
+    askedByName: name,
+    head: todoHead({ askedByName: name, label: asked.label ?? null }),
+    text: asked.prompt,
+    files: asked.action.files,
+  }
+  const shared = queue.todoCards.value.find((one) => one.row.key === row.key)
+  const ended = asked.answered !== undefined || asked.closed !== undefined
+  return {
+    row,
+    listed: !ended,
+    pending: shared?.pending ?? false,
+    taken: ended || (shared?.taken ?? false),
+    said:
+      asked.answered !== undefined
+        ? (shared?.said ?? 'Your answer was sent.')
+        : asked.closed !== undefined
+          ? 'This to-do has ended.'
+          : (shared?.said ?? null),
+  }
+})
 
 const agentQuestion = computed(
   () =>
@@ -270,7 +306,16 @@ async function takeItBack(piece: string): Promise<void> {
   <!-- 🔴 **UI-009 · a question it asked — `QuestionCard`, in the same frame**, so the call is still
        one row and the card *Waiting on you* draws is this one. -->
   <OutsideCard
-    v-if="question"
+    v-if="todo"
+    class="outgoing"
+    :shifted="false"
+    data-cy="outgoing"
+    data-tool="request_action"
+  >
+    <TodoCard :card="todo" cy="inline" :can-answer="props.canAnswer && !!props.sessionId" />
+  </OutsideCard>
+  <OutsideCard
+    v-else-if="question"
     class="outgoing"
     :shifted="false"
     data-cy="outgoing"

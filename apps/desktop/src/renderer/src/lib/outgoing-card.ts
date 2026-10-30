@@ -153,7 +153,7 @@ export const OUTGOING_STATE_WORD: Readonly<Record<OutgoingState, string>> = {
  * ⚑ **The calls this file draws** — every outgoing call but the two question tools, which UI-009's
  * `QuestionCard` draws on both its surfaces (`question-card.ts`).
  */
-export type OutgoingCardWords = Exclude<OutgoingWords, { tool: QuestionTool }>
+export type OutgoingCardWords = Exclude<OutgoingWords, { tool: QuestionTool | 'request_action' }>
 
 /** ⚑ Everything one card says — see the file's docblock. */
 export interface OutgoingCardReading {

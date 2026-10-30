@@ -501,7 +501,7 @@ describe('a to-do for a person', () => {
       [
         'closed',
         'work-closed',
-        'The work that question was about was closed by the one that gave it, so your answer was not sent.',
+        'The work that question was about was closed, so your answer was not sent.',
         (_ada: string, brobot: string) =>
           call(agentToolsFor(host, brobot), 'update_work', { piece: 'W1.1', close: true }),
       ],

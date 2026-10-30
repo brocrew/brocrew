@@ -587,4 +587,88 @@ describe('a helper that stopped with a piece open reads as stopped', () => {
     })
     expect(waitsOf(brobot)?.waitingOnTheWorkOf).toHaveLength(1)
   })
+
+  /** Whether `conversation` was handed, or holds, this app's words starting with `text`. */
+  const told = (conversation: string, text: string): boolean =>
+    ledger(conversation).some(
+      (event) =>
+        (event.type === 'user_turn' || event.type === 'message_queued') &&
+        event.text.startsWith(text),
+    )
+
+  it('lets a person close a stopped piece for good: its holder and its giver are told', async () => {
+    const { brobot, ada, piece } = await aHelperThatStopped()
+    const closed = await host.closeForAPerson(piece, window)
+    expect(closed).toEqual({ ok: true, piece, label: 'W1.1', askedItsTurnToStop: false })
+    // The ledger says a person closed it: `work_closed` with no conversation in `by`.
+    expect(ledger(ada)).toContainEqual({ type: 'work_closed', piece, by: null })
+    expect(pieceOf(ada, piece)).toMatchObject({ state: 'closed', endedBy: null })
+    await waitFor(() => told(ada, 'A person closed W1.1'), 'its holder to be told')
+    await waitFor(() => told(brobot, 'A person closed W1.1'), 'its giver to be told')
+    // Read again from the database, it stays closed and off every list a person is shown.
+    const reread = createSessionStore(db, tick)
+    expect(reread.piecesOwnedBy(ada).find((one) => one.piece === piece)?.state).toBe('closed')
+    expect(host.stoppedWorkForAPerson().rows).toEqual([])
+    expect(host.workIncidentsForAPerson().rows).toEqual([])
+    expect(waitsOf(brobot)?.stoppedWork).toEqual([])
+    // A second press finds nothing stopped, and writes nothing.
+    expect(await host.closeForAPerson(piece, window)).toEqual({
+      ok: false,
+      rail: 'not-a-stopped-piece',
+    })
+    expect(ledger(ada).filter((event) => event.type === 'work_closed')).toHaveLength(1)
+  })
+
+  it('lets a person close a stopped work incident', async () => {
+    const { ada, piece } = await aHelperThatStopped('completed')
+    await waitFor(
+      () => host.workIncidentsForAPerson().rows.some((one) => one.piece === piece),
+      'the incident to be listed',
+    )
+    // Listed as an incident and not on the stopped band: admitted as an incident.
+    expect(host.stoppedWorkForAPerson().rows).toEqual([])
+    expect(await host.closeForAPerson(piece, window)).toEqual({
+      ok: true,
+      piece,
+      label: 'W1.1',
+      askedItsTurnToStop: false,
+    })
+    expect(pieceOf(ada, piece)?.state).toBe('closed')
+    await settle()
+    expect(host.workIncidentsForAPerson().rows).toEqual([])
+  })
+
+  it('refuses a close of work that is not stopped, of a root, and from no person', async () => {
+    const { brobot, ada, piece } = await aHelperThatStopped()
+    // No person behind the caller: refused, and the piece stays stopped.
+    expect(await host.closeForAPerson(piece, THE_APP_ITSELF)).toEqual({
+      ok: false,
+      rail: 'not-a-stopped-piece',
+    })
+    expect(pieceOf(ada, piece)?.state).toBe('stalled')
+    // A conversation's own root: no ledger row closes it.
+    const root = store.rootOf(brobot)
+    if (root === null) throw new Error('BroBot holds no root')
+    expect(await host.closeForAPerson(root.label, window)).toEqual({
+      ok: false,
+      rail: 'not-a-stopped-piece',
+    })
+    // A name that names nothing.
+    expect(await host.closeForAPerson('W9.9', window)).toEqual({
+      ok: false,
+      rail: 'not-a-stopped-piece',
+    })
+    // Once its holder asks about it, it is no longer stopped.
+    await callOn(agentToolsFor(host, ada), 'ask_question', {
+      piece: 'W1.1',
+      question: 'which pages first?',
+      who_answers: 'the-parent',
+    })
+    await settle()
+    expect(await host.closeForAPerson('W1.1', window)).toEqual({
+      ok: false,
+      rail: 'not-a-stopped-piece',
+    })
+    expect(ledger(ada).some((event) => event.type === 'work_closed')).toBe(false)
+  })
 })

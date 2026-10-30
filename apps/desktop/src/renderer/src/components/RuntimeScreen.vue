@@ -122,6 +122,7 @@ export function profilesToProbe(input: {
 </script>
 
 <script setup lang="ts">
+import { closeWorkSays } from '../lib/close-work'
 import { moveRequestFromWindow } from '../lib/move-request'
 import {
   computed,
@@ -3610,6 +3611,15 @@ watchEffect(() => {
       // A to-do answered Done or Can't do it, with its note; the host's words when it didn't take it.
       answerTodo: (sessionId, request, done, note) => answerATodo(sessionId, request, done, note),
       openFile: (resource) => void todoDocument.value?.open(resource),
+      closeWork: async (piece) => {
+        try {
+          const result = await window.api.runtime.closeWork({ piece })
+          void lookForWhatIsYours()
+          return closeWorkSays(result)
+        } catch (cause) {
+          return { ok: false, said: readableError(cause) }
+        }
+      },
       // A stopped piece handed back to its giver; the next look drops its row.
       handBack: async (label) => {
         const said = await takeBackForAPerson(label)

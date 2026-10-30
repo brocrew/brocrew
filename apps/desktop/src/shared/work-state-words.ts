@@ -11,7 +11,7 @@ export const WORK_STATE_WORD: Readonly<Record<TaskState, string>> = {
   stalled: 'not being worked on',
   answered: 'answered',
   withdrawn: 'taken back',
-  closed: 'closed by the one that gave it',
+  closed: 'closed',
   'waiting-on-the-person-who-wrote': 'waiting on you',
   'waiting-on-purpose': 'waiting on purpose',
 }

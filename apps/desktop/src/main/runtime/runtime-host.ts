@@ -323,6 +323,7 @@ import {
   theWorkAlone,
   type HowAPieceEnded,
   type RetitleRail,
+  type WorkClosedByAPerson,
   type WorkRetitled,
   type WorkTakenBackByAPerson,
   type WorkThatNamesIt,
@@ -15304,7 +15305,7 @@ export class RuntimeHost implements LiveHost {
     // ⚑ A person's take-back is told to the conversation that gave it too: its answer is not owed.
     // ⚑ Not waited for: the take-back stands whatever becomes of the tell, and a start it needs
     // is not the person's to wait on.
-    if (asAgent === null) void this.tellItsGiverAPersonTookItBack(piece)
+    if (asAgent === null) void this.tellItsGiverAPersonEndedIt(piece, 'took back')
     return { ...taken, ...theStop }
   }
 
@@ -15340,6 +15341,81 @@ export class RuntimeHost implements LiveHost {
       ok: false,
       rail: atANormalHolder ? 'not-a-stopped-piece' : 'not-a-piece-a-service-is-on',
     }
+  }
+
+  /**
+   * A person closes, from the window, stopped work *Waiting on you* lists ({@link
+   * aPersonMayCloseIt}): `work_closed` with `by: null`, in the order a giver's close writes it
+   * ({@link updateWork}). Its owner's questions about it and their copies passed up end with it, its
+   * held brief comes back, its holder is told to stop, at a service the turn working on it is asked
+   * to stop, and the conversation that gave it, if any, is told it is no longer owed.
+   * ⛔ Nothing is written above a refusal.
+   */
+  async closeForAPerson(spelled: string, by: Caller): Promise<WorkClosedByAPerson> {
+    const notStopped = { ok: false, rail: 'not-a-stopped-piece' } as const
+    if (!this.aPersonMayCloseIt(spelled, by)) return notStopped
+    const waiting = this.untilTheCopiesCanBeEnded(this.pieceNamed(spelled))
+    if (waiting !== null) {
+      await waiting
+      // ⚑ Asked again: a start that landed meanwhile may have driven it.
+      if (!this.aPersonMayCloseIt(spelled, by)) return notStopped
+    }
+    const row = this.pieceNamed(spelled)
+    if (row === null) return notStopped
+    const piece = this.deps.store.piecesOwnedBy(row.owner).find((one) => one.piece === row.piece)
+    if (piece === undefined || !TASK_IS_OPEN[piece.state]) return notStopped
+    const queued = this.queuedAtAService(piece)
+    const stands = queued
+      ? this.whereTheQueuedPieceStands(piece)
+      : this.whereItsHolderStands(piece, by, (one, caller) => this.aPersonMayCloseIt(one, caller))
+    if (!stands.ok) {
+      return {
+        ok: false,
+        rail: stands.because === 'out-of-its-reach' ? 'not-a-stopped-piece' : stands.because,
+      }
+    }
+    const itsTurn = queued ? null : this.theTurnOnThePieceItIsOn(piece, stands.held.session)
+    const copies = this.theCopiesToEnd(piece.owner, piece.piece)
+    if (!copies.ok) return { ok: false, rail: copies.because }
+    this.endThePiece(
+      piece.owner,
+      { type: 'work_closed', piece: piece.piece, by: null },
+      'work-closed',
+      copies.copies,
+    )
+    // ⛔ After `work_closed`, never before, as a giver's close takes them back.
+    this.takeBackTheHeldMessages(piece, stands.held)
+    // ⚑ Work a person gave has no giver holding notices about it.
+    if (givenByAConversation(piece)) this.takeBackWhatALaterFactMadeFalse(piece, 'closed')
+    this.theWorldMoved('work')
+    const live = this.slots.get(piece.owner)?.session ?? null
+    if (live !== null) this.publishStateIfChanged(live)
+    if (!queued) await this.tellItsOwnerItWasClosed(piece, null)
+    const askedItsTurnToStop =
+      itsTurn !== null &&
+      this.itsNoticeAsksItsTurnToStop(piece, 'a-piece-a-person-closed', by, itsTurn)
+    // ⚑ Not waited for, as a person's take-back's tell is not: the close stands either way.
+    void this.tellItsGiverAPersonEndedIt(piece, 'closed')
+    return { ok: true, piece: piece.piece, label: piece.label, askedItsTurnToStop }
+  }
+
+  /**
+   * Whether `by`, a person, may close the piece `spelled` names: one a conversation gave whose
+   * holder has stopped with it ({@link itsHolderStoppedWith}), or a `stopped` work incident
+   * ({@link itIsAStoppedIncident}). ⛔ Never a root, which no ledger row closes.
+   */
+  private aPersonMayCloseIt(spelled: string, by: Caller): boolean {
+    if (whoDidIt(by).who !== 'a-person') return false
+    const row = this.pieceNamed(spelled)
+    if (row === null || row.parent === null) return false
+    if (row.givenBy !== null && this.itsHolderStoppedWith(row)) return true
+    return this.itIsAStoppedIncident(row)
+  }
+
+  /** Whether `row` is read as stopped work, as the work incidents list reads it. */
+  private itIsAStoppedIncident(row: WorkRow): boolean {
+    const [read] = this.reconciliationReading(row.piece).rows
+    return read?.disposition === 'unresolved' && read.issue?.kind === 'stopped'
   }
 
   /**
@@ -15409,17 +15485,21 @@ export class RuntimeHost implements LiveHost {
   }
 
   /**
-   * A person took back `piece`, the one a service was on: its giver, or the conversation in its
-   * place, is told it is no longer owed, as an app notice about it — now, starting it if nothing
-   * runs it. ⚑ A tell that fails is kept for its next start, whatever starts it, as a reply is.
-   * ⛔ It never rejects: the take-back stands either way.
+   * A person took back or closed `piece`: its giver, or the conversation in its place, is told it is
+   * no longer owed, as an app notice about it — now, starting it if nothing runs it. ⚑ A tell that
+   * fails is kept for its next start, whatever starts it, as a reply is. ⛔ It never rejects: the
+   * ending stands either way. ⚑ Nobody is told of work a person gave.
    */
-  private async tellItsGiverAPersonTookItBack(piece: PieceRow): Promise<void> {
+  private async tellItsGiverAPersonEndedIt(
+    piece: PieceRow,
+    act: 'took back' | 'closed',
+  ): Promise<void> {
     if (piece.giver === null) return
     const giver = this.theOneInItsPlace(piece.giver)
-    const text = `A person took back ${pieceLine(piece.label, piece.title)}. It is no longer owed: do not wait for its answer.`
+    const text = `A person ${act} ${pieceLine(piece.label, piece.title)}. It is no longer owed: do not wait for its answer.`
     const facts = {
-      appNotice: 'a-piece-it-gave-a-person-took-back',
+      appNotice:
+        act === 'closed' ? 'a-piece-it-gave-a-person-closed' : 'a-piece-it-gave-a-person-took-back',
       aboutPiece: { piece: piece.piece, label: piece.label },
     } as const
     try {
@@ -15434,13 +15514,13 @@ export class RuntimeHost implements LiveHost {
       )
     } catch (error) {
       console.warn(
-        `runtime host could not tell ${giver} that a person took back ${piece.label}: ${errorMessage(error)}`,
+        `runtime host could not tell ${giver} that a person ${act} ${piece.label}: ${errorMessage(error)}`,
       )
       try {
         this.holdUntilItStarts(giver, text, facts)
       } catch (again) {
         console.warn(
-          `runtime host could not keep for ${giver} that a person took back ${piece.label}: ${errorMessage(again)}`,
+          `runtime host could not keep for ${giver} that a person ${act} ${piece.label}: ${errorMessage(again)}`,
         )
       }
     }
@@ -15623,19 +15703,25 @@ export class RuntimeHost implements LiveHost {
   }
 
   /**
-   * 🔴 **D-016 · R1 — tell the owner its piece was closed by its giver**, and wake it to hear it —
-   * {@link tellItsOwnerItWasTakenBack}'s shape exactly: an app notice (`a-piece-closed`) that says
-   * what to stop and what is still its own, only to the conversation holding it
-   * ({@link toItsHolderAlone}), answered by what reached it (D-022 · R3), and a tell that fails is
-   * logged and answered `not-delivered`; the close stands.
+   * 🔴 **D-016 · R1 — tell the owner its piece was closed by its giver, or by a person (`null`)**,
+   * and wake it to hear it — {@link tellItsOwnerItWasTakenBack}'s shape exactly: an app notice
+   * (`a-piece-closed`, `a-piece-a-person-closed`) that says what to stop and what is still its own,
+   * only to the conversation holding it ({@link toItsHolderAlone}), answered by what reached it
+   * (D-022 · R3), and a tell that fails is logged and answered `not-delivered`; the close stands.
    */
-  private async tellItsOwnerItWasClosed(piece: PieceRow, giver: string): Promise<Told> {
+  private async tellItsOwnerItWasClosed(piece: PieceRow, giver: string | null): Promise<Told> {
     const text = [
-      `${this.whatToCallTheConversation(giver)} closed ${pieceLine(piece.label, piece.title)}: its reply is no longer owed. Stop working on it and do not reply_to_parent about it.`,
+      `${giver === null ? 'A person' : this.whatToCallTheConversation(giver)} closed ${pieceLine(piece.label, piece.title)}: its reply is no longer owed. Stop working on it and do not reply_to_parent about it.`,
       ...this.itsOpenPiecesAreStillYours(piece),
     ].join(' ')
     try {
-      return deliveryOf(await this.anAppNoticeToItsHolder(piece, text, 'a-piece-closed'))
+      return deliveryOf(
+        await this.anAppNoticeToItsHolder(
+          piece,
+          text,
+          giver === null ? 'a-piece-a-person-closed' : 'a-piece-closed',
+        ),
+      )
     } catch (error) {
       console.warn(
         `runtime host could not tell ${piece.owner} that ${piece.label} was closed: ${errorMessage(error)}`,
@@ -15940,6 +16026,9 @@ export class RuntimeHost implements LiveHost {
   private whereItsHolderStands(
     piece: PieceRow,
     by: Caller,
+    /** Whether a person may end it here: take it back, unless the door says otherwise. */
+    aPersonMayEndIt: (spelled: string, by: Caller) => boolean = (spelled, caller) =>
+      this.aPersonMayTakeItBack(spelled, caller),
   ):
     | { readonly ok: true; readonly held: TheHeldMessagesCarrying }
     | {
@@ -15955,7 +16044,7 @@ export class RuntimeHost implements LiveHost {
       target === null ||
       (!mayCommand(this.commandedNow(target), by) &&
         this.thePieceItIsOnFor(piece.owner, by)?.piece !== piece.piece &&
-        !this.aPersonMayTakeItBack(piece.piece, by))
+        !aPersonMayEndIt(piece.piece, by))
     ) {
       return { ok: false, because: 'out-of-its-reach' }
     }

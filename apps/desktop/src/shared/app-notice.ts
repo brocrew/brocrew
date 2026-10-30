@@ -76,6 +76,10 @@ export const APP_NOTICES = [
   // working on it, and the conversation that gave it, so it no longer waits for its answer.
   'a-piece-a-person-took-back',
   'a-piece-it-gave-a-person-took-back',
+  // 🔴 A person closed stopped work, and this app tells the conversation holding it, so it stops
+  // working on it, and the conversation that gave it, so it no longer waits for its answer.
+  'a-piece-a-person-closed',
+  'a-piece-it-gave-a-person-closed',
   // 🔴 **D-016** — the conversation that gave this one a piece of work added files to it as inputs,
   // and this app tells the owner their ids (`update_work`'s resources).
   'inputs-added-to-a-piece',
@@ -164,6 +168,12 @@ export const NOTICE_MEANS: Readonly<Record<AppNotice, string>> = {
     'held. You did not write them, and they were not sent on anybody’s behalf.',
   'a-piece-it-gave-a-person-took-back':
     'This app put these words here because a person took back a piece of work this conversation ' +
+    'gave. You did not write them, and they were not sent on anybody’s behalf.',
+  'a-piece-a-person-closed':
+    'This app put these words here because a person closed a piece of work this conversation ' +
+    'held. You did not write them, and they were not sent on anybody’s behalf.',
+  'a-piece-it-gave-a-person-closed':
+    'This app put these words here because a person closed a piece of work this conversation ' +
     'gave. You did not write them, and they were not sent on anybody’s behalf.',
   'inputs-added-to-a-piece':
     'This app put these words here because the conversation that gave this conversation a piece of ' +
