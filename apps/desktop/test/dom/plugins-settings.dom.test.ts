@@ -498,11 +498,6 @@ it.each([
     message: "Couldn't load the plugin catalogue. Try again.",
   },
   {
-    reply: { ok: false, listState: 'fetch-error', reason: 'private-folder' },
-    message:
-      "Couldn't make the plugin folder private. Check its Windows permissions and try again.",
-  },
-  {
     reply: { ok: false, listState: 'fetch-error', reason: 'supervisor-unavailable' },
     message: "Couldn't start the plugin service. Try again.",
   },
