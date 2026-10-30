@@ -204,6 +204,9 @@ const DEFAULTS = {
 /** How long a reading taken while the app-server runs may take: nothing waits on it. */
 const SAMPLE_TIMEOUT_MS = 15_000
 
+/** Persistent table failures may release only after all remembered process numbers are gone. */
+const WINDOWS_TABLE_FAILURE_RELEASE_MS = 120_000
+
 /** How many processes of its tree a transport remembers. */
 const KNOWN_MOST = 4096
 
@@ -668,11 +671,13 @@ export class SpawnCodexTransport implements CodexTransport {
     const pid = this.child.pid
     if (pid === undefined) return
     let pauseMs = 1000
+    let failedSince: number | null = null
     for (;;) {
       await new Promise<void>((resolve) => {
         const timer = setTimeout(resolve, pauseMs)
         timer.unref?.()
       })
+      let unavailable = true
       try {
         // A live sampling read may still be finishing; never overlap it with another table read.
         await this.sampling
@@ -681,6 +686,7 @@ export class SpawnCodexTransport implements CodexTransport {
         if (endedAt !== null) {
           const reading = await this.opts.processTable(SAMPLE_TIMEOUT_MS)
           if (reading !== null && reading.at >= endedAt) {
+            unavailable = false
             const known = [...this.known.values()]
             const identities = new Set([pid, ...known.map((row) => row.pid)])
             const unknown = reading.rows.some(
@@ -695,10 +701,39 @@ export class SpawnCodexTransport implements CodexTransport {
           }
         }
       } catch {
-        // An unavailable reading is not proof that a process exited.
+        // Retry failed queries; they do not establish which descendants remain.
+      }
+      if (!unavailable) failedSince = null
+      else if (this.endedAt !== null) {
+        failedSince ??= Date.now()
+        if (
+          Date.now() - failedSince >= WINDOWS_TABLE_FAILURE_RELEASE_MS &&
+          this.rememberedWindowsPidsAreGone(pid)
+        ) {
+          console.warn(
+            `codex app-server ${String(pid)}: releasing the transcript after persistent process-table ` +
+              'failures; the leader exited and all remembered PIDs are gone, but unobserved ' +
+              'descendants may still be running and writing the transcript',
+          )
+          this.markQuiesced()
+          return
+        }
       }
       pauseMs = Math.min(pauseMs * 2, 30_000)
     }
+  }
+
+  /** Number-only probes can hold a reused PID, but never signal or adopt it. */
+  private rememberedWindowsPidsAreGone(leader: number): boolean {
+    for (const pid of new Set([leader, ...[...this.known.values()].map((row) => row.pid)])) {
+      try {
+        process.kill(pid, 0)
+        return false
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ESRCH') return false
+      }
+    }
+    return true
   }
 
   /**

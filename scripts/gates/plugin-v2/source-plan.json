@@ -108,7 +108,12 @@
     ".github/workflows/update-rehearsal.yml",
     ".github/workflows/upgrade-path.yml",
     "scripts/test/recovery-real-entry-check.test.mjs",
-    "scripts/test/release-workflow.test.mjs"
+    "scripts/test/release-workflow.test.mjs",
+    "apps/desktop/src/main/runtime/runtime-host.ts",
+    "apps/desktop/test/windows-codex-delegation-round-trip.test.ts",
+    "packages/runtime/src/codex/codex-transport.ts",
+    "packages/runtime/test/codex-transport-windows-wiring.test.ts",
+    "scripts/mutations/1017/mutations.py"
   ],
   "files": [
     {

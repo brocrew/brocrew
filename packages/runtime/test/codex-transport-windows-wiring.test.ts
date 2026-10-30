@@ -535,3 +535,24 @@ it('never treats a successful table with an unknown identity as a table failure 
   await vi.advanceTimersByTimeAsync(60_000)
   expect(quiet).toBe(true)
 })
+
+it.each(['EPERM', 'EIO'])('retains exclusion when a direct PID probe reports %s', async (code) => {
+  const read = vi.fn<(ms: number) => Promise<TableReading | null>>().mockResolvedValue(null)
+  const value = transport(read)
+  let quiet = false
+  void value.quiesced.then(() => {
+    quiet = true
+  })
+  await closed(value)
+  vi.mocked(process.kill).mockImplementation(() => {
+    throw Object.assign(new Error('fictional probe unavailable'), { code })
+  })
+  await vi.advanceTimersByTimeAsync(200_000)
+  expect(quiet).toBe(false)
+  vi.mocked(process.kill).mockImplementation(() => {
+    throw Object.assign(new Error('fictional gone'), { code: 'ESRCH' })
+  })
+  await vi.advanceTimersByTimeAsync(60_000)
+  expect(quiet).toBe(true)
+  expect(app.kill).not.toHaveBeenCalled()
+})
