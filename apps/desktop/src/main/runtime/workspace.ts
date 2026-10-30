@@ -12,6 +12,7 @@ import {
   mkdirSync,
   readSync,
   renameSync,
+  statSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs'
@@ -119,6 +120,14 @@ function lstatOrNull(path: string): Stats | null {
   }
 }
 
+function statOrNull(path: string): Stats | null {
+  try {
+    return statSync(path)
+  } catch {
+    return null
+  }
+}
+
 export function publishOwnFile(
   dir: string,
   name: string,
@@ -186,14 +195,13 @@ export function ensureWorkspace(userData: string): string {
     mkdirSync(workspace, { recursive: true, mode: 0o700 })
     at = lstatOrNull(workspace)
   }
-  // ⚑ **One clause covers the link too, and that is a property of `lstat` rather than luck.**
-  // `lstat` describes the LINK, not its target, so a symlink — dangling or not, pointing at a
-  // directory or not — answers `isDirectory()` with false. `isSymbolicLink()` therefore adds
-  // nothing to the DECISION and is used only to say which shape is in the way.
-  if (at === null || !at.isDirectory()) {
+  // A link or junction the person made to keep the workspace on another disk is followed: what
+  // decides is the folder it leads to.
+  const there = at?.isSymbolicLink() ? statOrNull(workspace) : at
+  if (there === null || !there.isDirectory()) {
     throw new Error(
       `the BroCrew workspace at ${workspace} is not a directory this app can own — ` +
-        `${at === null ? 'nothing is there' : at.isSymbolicLink() ? 'it is a symlink' : 'it is not a directory'}. ` +
+        `${at === null ? 'nothing is there' : at.isSymbolicLink() ? 'it is a link to no folder' : 'it is not a directory'}. ` +
         `Move or remove it and BroCrew will recreate the workspace.`,
     )
   }

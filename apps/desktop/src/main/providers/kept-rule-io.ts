@@ -3,14 +3,14 @@ import {
   constants,
   fchmodSync,
   fstatSync,
-  lstatSync,
   openSync,
   readSync,
+  realpathSync,
   renameSync,
   unlinkSync,
+  writeFileSync,
   writeSync,
 } from 'node:fs'
-import { dirname } from 'node:path'
 import {
   MAX_SETTINGS_BYTES,
   aStagingName,
@@ -63,44 +63,39 @@ function readAll(fd: number, size: number): string {
  * The file rewritten from what it holds now, keeping its permissions: staged under a fresh name and
  * renamed over it, so a reader never sees half of it.
  *
- * ⛔ **Never through a link**, its own or its folder's: the file is opened refusing to follow one, so
- * nothing a link points at is read or rewritten here. On Windows, whose opens follow a link, the
- * opened file must still be the one at its name. ⛔ **Never a file with a second name** (a hard
- * link): renaming over one name would part it from the other.
+ * A link the person made — the file's own or its folder's — is followed: the file it leads to is the
+ * one rewritten, and the link stays. A file with a second name (a hard link) is written in place,
+ * so every name keeps the same text.
  */
 export function rewrite(
   file: string,
   change: (text: string) => string,
   platform: NodeJS.Platform,
 ): void {
-  if (lstatSync(dirname(file)).isSymbolicLink()) {
-    throw new Error(`${dirname(file)} is a link, so ${file} was not rewritten`)
-  }
-  let fd: number
-  try {
-    fd = openSync(file, constants.O_RDONLY | constants.O_NONBLOCK | (constants.O_NOFOLLOW ?? 0))
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ELOOP') {
-      throw new Error(`${file} is a link, so it was not rewritten`, { cause: error })
-    }
-    throw error
-  }
+  const real = realpathSync(file)
+  const fd = openSync(real, constants.O_RDONLY | constants.O_NONBLOCK | (constants.O_NOFOLLOW ?? 0))
   let text: string
   let mode: number
+  let names: number
   try {
-    if (platform === 'win32' && !isStillTheFileOpened(file, fd)) {
-      throw new Error(`${file} is a link or was just replaced, so it was not rewritten`)
+    if (platform === 'win32' && !isStillTheFileOpened(real, fd)) {
+      throw new Error(`${file} was just replaced, so it was not rewritten`)
     }
     const stat = fstatSync(fd)
     if (!stat.isFile()) throw new Error(`${file} is not a regular file, so it was not rewritten`)
-    if (stat.nlink > 1) throw new Error(`${file} has another name too, so it was not rewritten`)
     if (stat.size > MAX_SETTINGS_BYTES) throw new Error(`${file} is too large to rewrite`)
     text = readAll(fd, stat.size)
     mode = stat.mode & 0o7777
+    names = stat.nlink
   } finally {
     closeSync(fd)
   }
   const next = change(text)
+  if (names > 1) {
+    writeFileSync(real, next)
+    return
+  }
+  file = real
   const staged = aStagingName(file)
   const out = createFreshFile(staged)
   try {

@@ -184,10 +184,12 @@ describe('a recovery folder is never more open than the data folder, nor held to
     }
   })
 
-  it('refuses only when it cannot and the data folder is private', async () => {
-    expect((await run(PRIVATE, true)).outcome).toBe(
-      'BroCrew could not make D:\\data\\backups readable by you alone, so it did not use it: Access is denied',
-    )
+  it('goes on, saying so, when it cannot and the data folder is private', async () => {
+    const { outcome, warned } = await run(PRIVATE, true)
+    expect(outcome).toBe('kept')
+    expect(warned).toEqual([
+      'BroCrew could not make D:\\data\\backups readable by you alone, and used it anyway: Access is denied',
+    ])
   })
 
   it('goes on, saying the drive keeps no access lists, when backups is on one', async () => {

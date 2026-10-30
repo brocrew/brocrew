@@ -8,7 +8,6 @@ import {
   readFileSync,
   renameSync,
   rmSync,
-  symlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -132,15 +131,10 @@ describe('a method delete is planned from the confirmed current inventory', () =
     writeFileSync(join(folder, 'index.md'), `${line}\n`)
     expect(() => plan.check()).toThrow()
   })
-  it('refuses invalid index text and symbolic method targets', () => {
+  it('refuses invalid index text', () => {
     capture()
     const shown = selection()
     writeFileSync(join(folder, 'index.md'), Buffer.from([0xff]))
-    expect(() => capture(shown)).toThrow()
-    writeFileSync(join(folder, 'index.md'), `${line}\r\n`)
-    rmSync(join(folder, 'review.md'))
-    writeFileSync(join(root, 'outside.md'), bytes)
-    symlinkSync(join(root, 'outside.md'), join(folder, 'review.md'))
     expect(() => capture(shown)).toThrow()
   })
   it('does not reject a hard-linked method or change its other name while planning', () => {

@@ -16,6 +16,7 @@ import {
   renameSync,
   rmSync,
   statSync,
+  unlinkSync,
   writeSync,
 } from 'node:fs'
 import { lstat, readFile, stat } from 'node:fs/promises'
@@ -1045,16 +1046,12 @@ async function provisionCodexAuthLocked(
       ancestry?.verify()
       const dest = join(providerHome, CODEX_AUTH_FILE)
 
-      // Copy exactly once: never clobber a possibly-refreshed profile credential, and
-      // require the existing dest to be a private REGULAR file (reject symlink/non-file).
-      const destStat = lstatOrNull(dest)
+      // Copy exactly once: never clobber a possibly-refreshed profile credential. A link the
+      // person made to a sign-in file is kept as the file it leads to.
+      const destStat = statOrNull(dest)
+      // A link that leads nowhere is no sign-in: it goes, and a fresh copy takes its place.
+      if (destStat === null && lstatOrNull(dest)?.isSymbolicLink()) unlinkSync(dest)
       if (destStat) {
-        if (destStat.isSymbolicLink()) {
-          throw new AuthUnavailableError(
-            'codex',
-            `profile auth.json is a symlink (tampered): ${dest}`,
-          )
-        }
         if (!destStat.isFile()) {
           throw new AuthUnavailableError(
             'codex',
@@ -1283,14 +1280,10 @@ export async function reprovisionCodexAuth(
   return await withProviderHomeLock(providerHome, () => {
     const dest = join(providerHome, CODEX_AUTH_FILE)
 
-    // The same fail-closed checks the copy-once path makes about an existing destination. A symlink
-    // or a directory here is tampering, and `rename` would happily follow or fail confusingly; both
-    // deserve the explicit error rather than a surprise.
+    // A directory here is no sign-in. A link is replaced by the copy: `rename` replaces the link
+    // itself, never the file it leads to.
     const destStat = lstatOrNull(dest)
-    if (destStat?.isSymbolicLink()) {
-      throw new AuthUnavailableError('codex', `profile auth.json is a symlink (tampered): ${dest}`)
-    }
-    if (destStat && !destStat.isFile()) {
+    if (destStat && !destStat.isFile() && !destStat.isSymbolicLink()) {
       throw new AuthUnavailableError('codex', `profile auth.json is not a regular file: ${dest}`)
     }
 
@@ -1346,24 +1339,29 @@ function readOrNull(path: string): Buffer | null {
 }
 
 /**
- * Codex auth-health: ok iff a managed `auth.json` exists, is a REGULAR file (not a dir/symlink), and
- * is 0600. ⚑ **F072 — the mode only where a file has one**: Windows reports every writable file as
- * `0666` whatever its access list says, so there the file's place under the person's own profile is
- * its protection, and the mode is not asked.
+ * Codex auth-health: ok iff a managed `auth.json` exists and is a regular file, or a link the person
+ * made to one. A file others may read is made 0600 again rather than refused, where a file has a
+ * mode: Windows reports every writable file as `0666` whatever its access list says (F072).
  */
 export function codexAuthHealth(
   providerHome: string,
   platform: NodeJS.Platform = process.platform,
 ): AuthHealth {
   const dest = join(providerHome, CODEX_AUTH_FILE)
-  const stat = lstatOrNull(dest)
+  const stat = statOrNull(dest)
   if (!stat) return { ok: false, reason: `no managed Codex auth.json in ${providerHome}` }
-  if (stat.isSymbolicLink()) return { ok: false, reason: `Codex auth.json is a symlink (tampered)` }
   if (!stat.isFile())
     return { ok: false, reason: `Codex auth.json is not a regular file (e.g. a directory)` }
   const mode = stat.mode & 0o777
-  if (platform !== 'win32' && mode !== 0o600)
-    return { ok: false, reason: `Codex auth.json mode ${mode.toString(8)} != 0600` }
+  if (platform !== 'win32' && mode !== 0o600) {
+    try {
+      chmodSync(dest, 0o600)
+    } catch (error) {
+      console.warn(
+        `BroCrew could not make ${dest} 0600, and used it anyway: ${error instanceof Error ? error.message : String(error)}`,
+      )
+    }
+  }
   return { ok: true }
 }
 
@@ -1553,6 +1551,14 @@ export function assertCodexSqliteHomeContained(providerHome: string): void {
 }
 
 /** `lstat` or null (path missing) — never throws for a missing path. */
+function statOrNull(path: string): Stats | null {
+  try {
+    return statSync(path)
+  } catch {
+    return null
+  }
+}
+
 function lstatOrNull(path: string): Stats | null {
   try {
     return lstatSync(path)

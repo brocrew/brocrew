@@ -320,6 +320,11 @@ export function createUpdates(deps: UpdatesDeps): Updates {
         otherWorkspaces = await deps.otherWorkspacesRunning()
         // ⚑ Cancelled, chosen again, or quitting, while it looked: the latest word stands.
         if (choice !== restartChoice) return
+        // A process list that could not be read is no reason to wait forever: it counts as none.
+        if (otherWorkspaces === null) {
+          deps.log('updates: other BroCrew windows could not be counted; restarting anyway')
+          otherWorkspaces = 0
+        }
         // ⛔ **Read again after that wait, and installed in the same turn**: a turn that started
         // while the process list was read is seen here, and none can start after this read.
         const stops = { conversations: deps.conversationsARestartWouldStop(), otherWorkspaces }

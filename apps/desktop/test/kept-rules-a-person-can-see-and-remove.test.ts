@@ -1,6 +1,7 @@
 import {
   chmodSync,
   linkSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -207,7 +208,7 @@ describe('Remove', () => {
     expect(readFileSync(elsewhere, 'utf8')).toContain('Bash')
   })
 
-  it('does not rewrite a file reached through a link, and says why', () => {
+  it('removes a rule from the file a link leads to, and keeps the link', () => {
     const real = join(root, 'real-settings.json')
     writeFileSync(real, JSON.stringify({ permissions: { allow: ['Bash(make *)'] } }))
     const linked = join(root, 'linked')
@@ -222,14 +223,12 @@ describe('Remove', () => {
       file: join(linked, '.claude', 'settings.local.json'),
       kept: 'Bash(make *)',
     })
-    expect(said).toMatchObject({ removed: false })
-    expect(said.removed === false && said.why).toContain('is a link')
-    expect(JSON.parse(readFileSync(real, 'utf8'))).toEqual({
-      permissions: { allow: ['Bash(make *)'] },
-    })
+    expect(said).toEqual({ removed: true })
+    expect(readFileSync(real, 'utf8')).not.toContain('Bash(make *)')
+    expect(lstatSync(join(linked, '.claude', 'settings.local.json')).isSymbolicLink()).toBe(true)
   })
 
-  it('does not rewrite through a linked `.claude` folder either', () => {
+  it('removes a rule through a linked `.claude` folder too', () => {
     const elsewhere = join(root, 'elsewhere')
     mkdirSync(elsewhere)
     writeFileSync(
@@ -250,20 +249,29 @@ describe('Remove', () => {
         kept: 'Bash(make *)',
       },
     )
-    expect(said.removed === false && said.why).toContain('is a link')
-    expect(readFileSync(join(elsewhere, 'settings.local.json'), 'utf8')).toContain('Bash(make *)')
+    expect(said).toEqual({ removed: true })
+    expect(readFileSync(join(elsewhere, 'settings.local.json'), 'utf8')).not.toContain(
+      'Bash(make *)',
+    )
   })
 
-  it('does not rewrite a file with a second name, and keeps the mode of one it rewrites', () => {
+  it('removes a rule from a file with a second name, under both names, and keeps the mode of one it rewrites', () => {
     const other = join(root, 'second-name.json')
     linkSync(PROJECT_FILE(), other)
-    const refused = removeKeptRule(where, {
-      provider: 'claude',
-      file: PROJECT_FILE(),
-      kept: 'Bash(make build *)',
-    })
-    expect(refused.removed === false && refused.why).toContain('another name')
+    expect(
+      removeKeptRule(where, {
+        provider: 'claude',
+        file: PROJECT_FILE(),
+        kept: 'Bash(make build *)',
+      }),
+    ).toEqual({ removed: true })
+    expect(readFileSync(other, 'utf8')).toBe(readFileSync(PROJECT_FILE(), 'utf8'))
+    expect(readFileSync(other, 'utf8')).not.toContain('Bash(make build *)')
     rmSync(other)
+    writeFileSync(
+      PROJECT_FILE(),
+      JSON.stringify({ permissions: { allow: ['Bash(make build *)'] } }),
+    )
     chmodSync(PROJECT_FILE(), 0o644)
     expect(
       removeKeptRule(where, {

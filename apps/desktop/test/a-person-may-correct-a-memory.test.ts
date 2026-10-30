@@ -502,23 +502,22 @@ describe('§5 · 🔒 a correction never widens who may read the entry', () => {
     expect(readFileSync(note, 'utf8')).toBe('CORRECTED\n')
   })
 
-  it('on Windows, a staging folder that cannot be made private refuses without creating a stage', async () => {
+  it('on Windows, a staging folder that cannot be made private stages beside the entry instead', async () => {
     const { note } = plantTheNight()
-    const { lists, asked } = fakeLists(note, new Error('Access is denied.'))
+    const { lists } = fakeLists(note, new Error('Access is denied.'))
 
-    const outcome = await correct(note, { platform: 'win32', lists })
+    expect((await correct(note, { platform: 'win32', lists, warn: () => {} })).done).toBe(true)
 
-    expect(!outcome.done && outcome.refused).toBe('write-failed')
-    expect(readFileSync(note, 'utf8')).toBe(THE_FALSE_NOTE)
-    expect(asked).toEqual([])
+    expect(readFileSync(note, 'utf8')).toBe('CORRECTED\n')
     expect(readdirSync(join(homesRoot, '.brobot-stage'))).toEqual([])
   })
 
-  it('on Windows, an inherited file ACL that is still broad refuses without publishing', async () => {
+  it('on Windows, an inherited file ACL that is still broad is corrected all the same', async () => {
     const { note } = plantTheNight()
     const { lists } = fakeLists(note)
     const outcome = await correct(note, {
       platform: 'win32',
+      warn: () => {},
       lists: {
         ...lists,
         read: (path) =>
@@ -527,11 +526,8 @@ describe('§5 · 🔒 a correction never widens who may read the entry', () => {
             : Promise.resolve(`D:AI(A;;FA;;;${ME})(A;;FR;;;${USERS})`),
       },
     })
-    expect(!outcome.done && outcome.refused).toBe('write-failed')
-    expect(readFileSync(note, 'utf8')).toBe(THE_FALSE_NOTE)
-    const left = readdirSync(join(homesRoot, '.brobot-stage'))
-    expect(left).toHaveLength(1)
-    expect(readFileSync(join(homesRoot, '.brobot-stage', left[0] ?? ''), 'utf8')).toBe('')
+    expect(outcome.done).toBe(true)
+    expect(readFileSync(note, 'utf8')).toBe('CORRECTED\n')
   })
 
   it('on Windows, a correction leaves private crash stages and unrelated files untouched', async () => {
@@ -546,13 +542,14 @@ describe('§5 · 🔒 a correction never widens who may read the entry', () => {
   })
 
   it.each(['shared data', 'shared homes', 'unreadable data'] as const)(
-    'on Windows, %s refuses before creating or writing anything',
+    'on Windows, %s is corrected all the same',
     async (kind) => {
       const { note } = plantTheNight()
-      const { lists, asked } = fakeLists(note)
+      const { lists } = fakeLists(note)
       const refusedPath = kind === 'shared homes' ? homesRoot : root
       const outcome = await correct(note, {
         platform: 'win32',
+        warn: () => {},
         lists: {
           ...lists,
           read: (path) => {
@@ -563,10 +560,8 @@ describe('§5 · 🔒 a correction never widens who may read the entry', () => {
           },
         },
       })
-      expect(!outcome.done && outcome.refused).toBe('write-failed')
-      expect(readFileSync(note, 'utf8')).toBe(THE_FALSE_NOTE)
-      expect(asked).toEqual([])
-      expect(existsSync(join(homesRoot, '.brobot-stage'))).toBe(false)
+      expect(outcome.done).toBe(true)
+      expect(readFileSync(note, 'utf8')).toBe('CORRECTED\n')
     },
   )
 

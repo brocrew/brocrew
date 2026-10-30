@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import {
+  chmodSync,
   linkSync,
   lstatSync,
   mkdirSync,
@@ -162,6 +163,10 @@ export interface OutsideGates {
   /** The id of the user this process runs as, who must own the folder and every name in it. */
   readonly uid: number
   readonly lstat: (path: string) => GateEntry
+  /** Where a link the person made at the folder leads. */
+  readonly stat: (path: string) => GateEntry
+  readonly chmod: (path: string, mode: number) => void
+  readonly warn: (line: string) => void
 }
 
 /** What a gate reads of a folder or a name it is about to trust. */
@@ -176,7 +181,15 @@ function outsideGates(changes: Partial<OutsideGates>, platform: string): Outside
   if (uid === undefined) return null
   const folder = changes.folder ?? theGatesFolder(platform)
   if (folder === null) return null
-  return { lstat: lstatSync, ...changes, folder, uid }
+  return {
+    lstat: lstatSync,
+    stat: statSync,
+    chmod: chmodSync,
+    warn: (line) => console.warn(line),
+    ...changes,
+    folder,
+    uid,
+  }
 }
 
 function theGatesFolder(platform: string): string | null {
@@ -253,8 +266,9 @@ function namesFit(gate: PosixGate, platform: string): boolean {
 }
 
 /**
- * Whether the folder of gates outside their data folders is this user's alone: a real folder, not
- * a link, owned by this user, with no permission for anyone else. Made first when `make` is set.
+ * Whether the folder of gates outside their data folders is this user's: a folder owned by this
+ * user, or a link the person made to one. Made first when `make` is set. A folder others may enter
+ * is made private again, and used either way: the name in it must still be this user's socket.
  */
 function thePrivateFolder(
   outside: OutsideGates,
@@ -273,9 +287,25 @@ function thePrivateFolder(
   } catch (error) {
     return (error as NodeJS.ErrnoException).code === 'ENOENT' ? 'absent' : 'not-private'
   }
-  return seen.isDirectory() && seen.uid === outside.uid && (seen.mode & 0o077) === 0
-    ? 'private'
-    : 'not-private'
+  if (!seen.isDirectory()) {
+    try {
+      seen = outside.stat(outside.folder)
+    } catch {
+      return 'not-private'
+    }
+    if (!seen.isDirectory()) return 'not-private'
+  }
+  if (seen.uid !== outside.uid) return 'not-private'
+  if ((seen.mode & 0o077) !== 0) {
+    try {
+      outside.chmod(outside.folder, 0o700)
+    } catch (error) {
+      outside.warn(
+        `BroCrew uses ${outside.folder} though others may enter it: ${error instanceof Error ? error.message : String(error)}`,
+      )
+    }
+  }
+  return 'private'
 }
 
 /** What is at a public name outside the data folder: nothing, this user's socket, or anything else. */

@@ -170,20 +170,26 @@ describe('knowledge changes prepare exact private bytes before publishing them',
     expect(readdirSync(join(homes, '.brobot-stage'))).toEqual([])
   })
 
-  it('refuses Windows privacy failure before writing any private bytes', async () => {
-    await expect(
-      prepare(target, {
-        platform: 'win32',
-        lists: lists(async (path) => {
-          if (path.includes('.review.md.brobot-')) return `D:AI(A;;FR;;;WD)`
-          return `D:PAI(A;OICI;FA;;;${me})(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)`
-        }),
-      }),
-    ).rejects.toThrow()
-    expect(existsSync(target)).toBe(false)
-    const stage = join(homes, '.brobot-stage')
-    for (const name of readdirSync(stage))
-      expect(readFileSync(join(stage, name))).toEqual(Buffer.alloc(0))
+  it('writes on Windows even when other accounts may read the data folder', async () => {
+    const warned: string[] = []
+    const stage = await prepare(target, {
+      platform: 'win32',
+      warn: (line) => warned.push(line),
+      lists: lists(async () => `D:AI(A;;FR;;;WD)(A;OICI;FA;;;${me})`),
+    })
+    stage.install(false, nothing)
+    expect(readFileSync(target)).toEqual(payload)
+    expect(readdirSync(folder)).toEqual(['review.md'])
+  })
+
+  it('writes into a methods folder the person linked elsewhere', async () => {
+    const elsewhere = join(root, 'elsewhere')
+    mkdirSync(elsewhere)
+    rmSync(folder, { recursive: true })
+    symlinkSync(elsewhere, folder, process.platform === 'win32' ? 'junction' : 'dir')
+    const stage = await prepare()
+    stage.install(false, nothing)
+    expect(readFileSync(join(elsewhere, 'review.md'))).toEqual(payload)
   })
 
   it('does not write through a stage swapped during its Windows privacy check', async () => {
