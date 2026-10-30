@@ -4079,7 +4079,7 @@ const QUESTION_STATE_SENTENCE: Partial<Readonly<Record<RequestState, string>>> =
   // ⚑ **D-016 · `work-withdrawn`'s twin for a close**, and for its reason: it says the request ended
   // and never who ended it — the actor is on the `work_closed` row.
   'work-closed':
-    'the work it was about was closed by the one that gave it, so nothing is left to decide — that conversation is still there, and list_tasks says what it holds now',
+    'the work it was about was closed, so nothing is left to decide — that conversation is still there, and list_tasks says what it holds now',
   // The twin for a hand-back: it says the request ended, and the reply row names who replied.
   'work-replied':
     'the work it was about was handed back, so nothing is left to decide — that conversation is still there, and list_tasks says what it holds now',

@@ -1914,6 +1914,7 @@ onUnmounted(() => {
           :key="props.record.sessionId"
           ref="view"
           :items="transcript.items"
+          :session-id="props.record.sessionId"
           :queued-disclosures="props.record.meta?.queued ?? null"
           :limit-now="limitMinute"
           :mode="props.mode"

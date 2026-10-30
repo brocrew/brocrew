@@ -35,6 +35,7 @@ import type {
   WorkRepliedEvent,
 } from '../../../shared/runtime-ipc'
 // ⚑ **D-027 · a value import with no cycle** — `runtime-ipc.ts` imports only types.
+import { anActionAsked, type ActionAsked } from '../../../shared/questions'
 import { A_RENEWED_SIGN_IN_SAYS } from '../../../shared/a-renewed-sign-in'
 import { PROVIDER_NAME, theMessagesOf } from '../../../shared/runtime-ipc'
 import { aTurnsLimitSays } from './usage-limit'
@@ -767,6 +768,7 @@ export type OutgoingWords =
   | { tool: 'reply_to_parent'; reply: OutgoingReply | null }
   | { tool: 'message_agent'; sent: OutgoingMessage | null }
   | { tool: 'ask_question'; asked: OutgoingQuestion | null }
+  | { tool: 'request_action'; asked: OutgoingQuestion | null }
   | { tool: 'pass_question_up'; asked: OutgoingQuestion | null }
   /**
    * Read the successful give's `work_sent` event from this ledger to show its complete title and brief before the call answers. Arguments can be cut at 200 characters; the separate `work_given` belongs to the recipient's ledger.
@@ -862,6 +864,7 @@ export interface OutgoingQuestionPart {
  * stops offering an answer once one was given.
  */
 export interface OutgoingQuestion {
+  action?: ActionAsked
   move?: MoveOffer
   movedTo?: MoveReceipt
   /** ⛔ The app's own `req_…` id — what `request_routed` and a closing row name. Never printed. */
@@ -2402,6 +2405,7 @@ function outgoingToolOf(
   return split.tool === 'reply_to_parent' ||
     split.tool === 'message_agent' ||
     split.tool === 'ask_question' ||
+    split.tool === 'request_action' ||
     split.tool === 'pass_question_up' ||
     split.tool === 'give_work' ||
     split.tool === 'take_on_work'
@@ -2758,6 +2762,7 @@ function questionAsked(event: QuestionAskedEvent): OutgoingQuestion | null {
   const parts = Array.isArray(event.questions) ? event.questions : []
   return {
     requestId: event.requestId,
+    ...(anActionAsked(event.action) ? { action: event.action } : {}),
     ...(moveOfferOf(event.move) === undefined ? {} : { move: moveOfferOf(event.move) }),
     ...(piece === undefined ? {} : { piece }),
     ...(piece !== undefined && isALabel(event.label) ? { label: event.label } : {}),
@@ -6390,7 +6395,12 @@ function foldEvent(
       const asked = questionAsked(event)
       if (asked !== null) {
         landOutgoing(state, {
-          tool: asked.passedUpFrom === undefined ? 'ask_question' : 'pass_question_up',
+          tool:
+            asked.action !== undefined
+              ? 'request_action'
+              : asked.passedUpFrom === undefined
+                ? 'ask_question'
+                : 'pass_question_up',
           asked,
         })
       }
@@ -6514,8 +6524,11 @@ function foldEvent(
       return
 
     // No item, as for an ending of the piece the question it carried was about: the queue drops it.
-    case 'question_ended_with_its_piece':
+    case 'question_ended_with_its_piece': {
+      const asked = isAnId(event.requestId) ? questionSent(state, event.requestId) : null
+      if (asked?.action !== undefined) asked.closed = 'withdrawn'
       return
+    }
 
     /**
      * ⛔ **D-009 · no item, for `request_interrupted`'s reason one act over.** A withdrawal is the

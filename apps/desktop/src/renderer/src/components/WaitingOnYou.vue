@@ -789,6 +789,7 @@ const showConversations = computed(() => attention.value.live > 0 || onlyYou.val
 }
 
 .attention-list :deep(.pq-stall > .pq-go),
+.attention-list :deep(.pq-stall-actions),
 .attention-list :deep(.reply-go) {
   align-self: flex-end;
 }

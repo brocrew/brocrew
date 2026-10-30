@@ -384,7 +384,8 @@ describe('what the transcript shows (216 §2, and 214 from the other end)', () =
 
     // Display the injected material.
     expect(visible(view.q('user-attachments'))).toBe(true)
-    expect(view.q('user-attached-file').textContent).toContain(FILE.path)
+    expect(view.q('user-attached-file').textContent).toBe('notes.md')
+    expect(view.q('attachment-open').title).toBe(FILE.path)
 
     // ⛔ **And `user-message` still holds exactly what they typed** — `214`'s defect from the other
     // end. `textContent` is what a copy, a search and every existing assertion get (001's rule).
@@ -406,11 +407,12 @@ describe('what the transcript shows (216 §2, and 214 from the other end)', () =
     expect(view.q('user-message').textContent?.trim()).toBe('have a look at this')
   })
 
-  it('🔒 an outside path says so in the transcript too, not only in the composer', () => {
+  it('an outside attachment says so on hover without adding a warning to the transcript', () => {
     // The composer's mark is gone the moment it sends; the transcript is where somebody goes later
     // to find out what they handed over.
     view = bubble([OUTSIDE])
-    expect(view.q('user-attached-outside').textContent).toContain('outside')
+    expect(view.q('attachment-open').title).toContain('Outside this conversation’s folder')
+    expect(view.q('user-attachments').textContent).not.toContain('outside')
 
     // ⚑ **THE PAIRED NEGATIVE, which was missing** (found in review). Asserted only positively —
     // and with `querySelector`, which takes the first match — dropping the `v-if` entirely would
@@ -419,12 +421,16 @@ describe('what the transcript shows (216 §2, and 214 from the other end)', () =
     // says it may not do.
     unmountAll()
     view = bubble([FILE])
-    expect(view.host.querySelector('[data-cy="user-attached-outside"]')).toBeNull()
+    expect(view.q('attachment-open').title).not.toContain('Outside this conversation’s folder')
 
     // …and with BOTH present, exactly one is marked — the case a per-`li` regression passes.
     unmountAll()
     view = bubble([FILE, OUTSIDE])
-    expect(view.host.querySelectorAll('[data-cy="user-attached-outside"]')).toHaveLength(1)
+    expect(
+      view
+        .all('attachment-open')
+        .filter((button) => button.title.includes('Outside this conversation’s folder')),
+    ).toHaveLength(1)
   })
 })
 

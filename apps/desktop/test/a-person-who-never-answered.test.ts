@@ -399,6 +399,8 @@ describe('465 · a person who never answered', () => {
       'work-taken-back-by-a-person': ['observed'],
       // ⚑ **D-016 · a close**, `work-taken-back`'s twin: the engine watched the giver close it.
       'work-closed': ['observed'],
+      // ⚑ A person's close of stopped work: the row's `by` names no conversation.
+      'work-closed-by-a-person': ['observed'],
       // ⚑ **475's one**, and this census is what made it declare itself: the engine watched a
       // held message end without being sent, so it is an observation and nothing an agent said.
       'work-not-sent': ['observed'],
@@ -538,6 +540,8 @@ describe('465 · a person who never answered', () => {
     row({ type: 'work_closed', piece: 'work_3', by: 'sess_brobot' })
     // ⚑ **A person's take-back, on a piece of its own**, handed out before this window.
     row({ type: 'work_taken_back', piece: 'work_4', by: null })
+    // ⚑ **A person's close, on a piece of its own**, handed out before this window.
+    row({ type: 'work_closed', piece: 'work_5', by: null })
     row({ type: 'request_routed', requestId: 'r_travelled', to: 'the-parent', parent: 'sess_up' })
     // ⚑ **611 · the THIRD routing outcome** (HO-088 §2) — `to: 'a-person'` with nothing refused,
     // which is an asker that addressed its question to the person.
@@ -620,6 +624,9 @@ describe('465 · a person who never answered', () => {
       'work-closed':
         '1 piece of work was closed by whoever gave it — the most recent is work handed out before ' +
         'this window.',
+      'work-closed-by-a-person':
+        '1 piece of work was closed by a person — the most recent is work handed out before ' +
+        'this window.',
       'question-travelled': '1 question travelled to a parent.',
       // ⚑ **611 · it says WHO it was for and never who read it** (HO-028 §2).
       'question-addressed-to-a-person':
@@ -656,6 +663,7 @@ describe('465 · a person who never answered', () => {
     expect(drawn.get('question-escalated')).toContain('a person')
     // ⚑ *"by a person"* is the row's own `by`, which names no conversation: a person took it back.
     expect(drawn.get('work-taken-back-by-a-person')).toContain('a person')
+    expect(drawn.get('work-closed-by-a-person')).toContain('a person')
     // ⛔ **And the one row that DOES carry an actor is drawn without naming it** —
     // `WorkInterruptedEvent.by` is `'a-person' | 'an-agent'` and this sentence reads neither. That
     // is conservative rather than wrong, and it is a finding, not a fix: see `465` §8.

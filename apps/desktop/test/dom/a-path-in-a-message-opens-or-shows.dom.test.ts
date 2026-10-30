@@ -337,7 +337,7 @@ describe('the path and its two icons', () => {
     expect(main.reveals).toEqual([])
   })
 
-  it('Copy writes the path as drawn, then says Copied on the icon', async () => {
+  it('Copy writes the resolved absolute path, then says Copied on the icon', async () => {
     const main = installMain()
     const written = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue()
     try {
@@ -347,7 +347,7 @@ describe('the path and its two icons', () => {
       expect(copy.title).toBe('Copy path')
       copy.querySelector('svg')!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
       await settle()
-      expect(written).toHaveBeenCalledWith('projects/x/report.md')
+      expect(written).toHaveBeenCalledWith(`${HERE}/projects/x/report.md`)
       expect(copy.getAttribute('aria-label')).toBe('Copied')
       expect(copy.querySelector('use')!.getAttribute('href')).toBe('#i-check')
       expect(main.opens).toEqual([])
@@ -355,6 +355,30 @@ describe('the path and its two icons', () => {
       written.mockRestore()
     }
   })
+
+  it.each([
+    ['./notes.md', '/Users/someone/work/notes.md'],
+    ['~/notes.md', '/Users/someone/notes.md'],
+    ['C:\\Work\\notes.md', 'C:\\Resolved Work\\notes.md'],
+  ])(
+    'copies main’s absolute answer for %s while Open keeps the original text',
+    async (text, absolute) => {
+      const main = installMain({ existing: [text], resolved: { [text]: absolute } })
+      const written = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue()
+      try {
+        const { view } = await transcript([typed(`Read ${text}`)])
+        expect(textFor(view, text)?.textContent).toBe(text)
+        copyFor(view, text).click()
+        await settle()
+        expect(written).toHaveBeenCalledWith(absolute)
+        controlFor(view, text)!.click()
+        await settle()
+        expect(main.opens).toEqual([{ sessionId: 'sess_1', text }])
+      } finally {
+        written.mockRestore()
+      }
+    },
+  )
 
   it('keeps Copied for its whole time after a second copy, then puts Copy back', async () => {
     installMain()
@@ -417,7 +441,7 @@ describe('the path and its two icons', () => {
       expect(document.activeElement).toBe(copyFor(view, 'projects/x/report.md'))
       await userEvent.keyboard('{Enter}')
       await settle()
-      expect(written).toHaveBeenCalledWith('projects/x/report.md')
+      expect(written).toHaveBeenCalledWith(`${HERE}/projects/x/report.md`)
       await userEvent.tab()
       expect(document.activeElement).toBe(controlFor(view, 'projects/x/report.md'))
       await userEvent.keyboard('{Enter}')

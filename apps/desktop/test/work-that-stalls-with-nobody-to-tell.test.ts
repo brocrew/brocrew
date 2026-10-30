@@ -568,6 +568,14 @@ describe('557 · work that stalls with nobody left to tell', () => {
       expect(store.workReportedTo(giver).size).toBe(0)
       // 🔴 **And a person is told**, which a liveness clause would have refused.
       expect(idsNamedToAPerson()).toEqual(['work_planted'])
+      expect(await host.closeForAPerson('work_planted', window)).toMatchObject({
+        ok: true,
+        piece: 'work_planted',
+      })
+      expect(store.piecesOwnedBy(holder).find((one) => one.piece === 'work_planted')?.state).toBe(
+        'closed',
+      )
+      expect(idsNamedToAPerson()).toEqual([])
     })
 
     it('⛔ work a person gave out mints no piece row, so no row of this walk can be one', async () => {

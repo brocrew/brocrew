@@ -160,6 +160,8 @@ export const DIGEST_LINE_KINDS = [
   // ⚑ A person took back the piece a service was on: `work_taken_back` with no conversation in `by`.
   'work-taken-back-by-a-person',
   'work-closed',
+  // ⚑ A person closed stopped work: `work_closed` with no conversation in `by`.
+  'work-closed-by-a-person',
   /**
    * 🔴 **475 · the one stall cause a windowed reader can attribute** — see
    * {@link DIGEST_EVENT_TYPES}. ⛔ It is about the MESSAGE and not about the piece's state: the
@@ -235,6 +237,8 @@ export const LINE_REGISTERS = {
   // ⚑ The engine watched the row, whose `by` says no conversation took it back: a person did.
   'work-taken-back-by-a-person': ['observed'],
   'work-closed': ['observed'],
+  // ⚑ The engine watched the row, whose `by` says no conversation closed it: a person did.
+  'work-closed-by-a-person': ['observed'],
   // ⚑ **475** — the engine watched a held message end without being sent, and the message names
   // the work. ⛔ Nothing an agent said is on this line.
   'work-not-sent': ['observed'],

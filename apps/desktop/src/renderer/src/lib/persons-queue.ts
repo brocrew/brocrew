@@ -2486,6 +2486,7 @@ export interface PersonsQueueDoors {
    * words. Optional: a caller that supplies no stopped work has none to hand back.
    */
   handBack?(label: string): Promise<string>
+  closeWork?(piece: string): Promise<{ ok: boolean; said: string }>
   /**
    * Answer a to-do an agent asked of a person: done or not, with an optional note. `null` when the
    * host took it, else its words for why not. Optional: a caller that supplies no to-dos has none.
@@ -2582,6 +2583,9 @@ export interface PersonsQueue {
   openWork(row: { readonly sessionId: string }): void
   /** Hand a stopped piece back — {@link PersonsQueueDoors.handBack}; its answer is on its card. */
   handBack(row: StoppedWorkRow): void
+  closeWork(piece: string): void
+  readonly closingWork: ReadonlySet<string>
+  readonly closedWork: ReadonlyMap<string, { ok: boolean; said: string }>
   /** The stopped band's cards: each listed stop, then each one a hand-back still speaks for. */
   readonly stoppedCards: ComputedRef<readonly StoppedWorkCard[]>
   /** Take away a card the list no longer holds, once its hand-back has answered. */
@@ -2845,6 +2849,9 @@ export function createPersonsQueue(): PersonsQueue {
   const answeringTodo = reactive(new Map<string, { row: TodoRow; press: number }>())
   const todoSaid = reactive(new Map<string, { row: TodoRow; said: string; taken: boolean }>())
   let todoPresses = 0
+  const closingWork = reactive(new Set<string>())
+  const closedWork = reactive(new Map<string, { ok: boolean; said: string }>())
+  let closeGeneration = 0
   // Take-backs pressed on a work entry, by list and piece, fenced per press.
   const takingEntry = reactive(new Map<string, { entry: WorkEntry; press: number }>())
   const entrySaid = reactive(new Map<string, { entry: WorkEntry; said: string }>())
@@ -3093,6 +3100,28 @@ export function createPersonsQueue(): PersonsQueue {
         })
     },
     stoppedCards,
+    closingWork,
+    closedWork,
+    closeWork(piece) {
+      const door = doors?.closeWork
+      if (door === undefined || closingWork.has(piece) || closedWork.get(piece)?.ok) return
+      const generation = closeGeneration
+      closingWork.add(piece)
+      closedWork.delete(piece)
+      void door(piece)
+        .then(
+          (result) => {
+            if (generation === closeGeneration) closedWork.set(piece, result)
+          },
+          () => {
+            if (generation === closeGeneration)
+              closedWork.set(piece, { ok: false, said: 'That piece did not close. Try again.' })
+          },
+        )
+        .finally(() => {
+          if (generation === closeGeneration) closingWork.delete(piece)
+        })
+    },
     workWaits,
     attentionReady,
     todoCards,
@@ -3235,6 +3264,9 @@ export function createPersonsQueue(): PersonsQueue {
       handedBack.clear()
       answeringTodo.clear()
       todoSaid.clear()
+      closeGeneration += 1
+      closingWork.clear()
+      closedWork.clear()
       takingEntry.clear()
       entrySaid.clear()
       answered.value = null

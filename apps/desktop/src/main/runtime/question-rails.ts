@@ -766,8 +766,7 @@ export const A_PERSONS_ANSWER_TO_AN_ENDED_QUESTION: Readonly<
   stranded: 'That question was left behind when this app stopped, so your answer was not sent.',
   interrupted: 'The turn that asked it was stopped, so your answer was not sent.',
   'work-withdrawn': 'The work that question was about was taken back, so your answer was not sent.',
-  'work-closed':
-    'The work that question was about was closed by the one that gave it, so your answer was not sent.',
+  'work-closed': 'The work that question was about was closed, so your answer was not sent.',
   'work-replied': 'The work that question was about was handed back, so your answer was not sent.',
   'recipient-ended':
     'That question was closed when the one it was asked of was ended, so your answer was not sent.',

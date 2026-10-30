@@ -29,7 +29,7 @@ export interface PathsHere {
    * Opens the path a text names, or shows it where main will not open it or the window may not.
    * Resolves to the line to show when it did not work.
    */
-  press(text: string): Promise<string | null>
+  press(text: string, kindHint?: 'file' | 'folder'): Promise<string | null>
 }
 
 /**
@@ -97,10 +97,10 @@ export function useMessagePaths(
           () => settle(fresh, []),
         )
       },
-      async press(text) {
+      async press(text, kindHint = 'file') {
         if (text === '') return null
         const answer = known(text)
-        const kind = answer?.found === true ? answer.kind : 'file'
+        const kind = answer?.found === true ? answer.kind : kindHint
         const opening = here.open !== null
         try {
           if (here.open !== null) {

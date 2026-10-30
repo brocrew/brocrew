@@ -62,6 +62,7 @@ const props = withDefaults(
       readonly import('../../../shared/runtime-ipc').QueuedMessageDisclosure[] | null
     limitNow?: number
     items: TranscriptItem[]
+    sessionId?: string
     mode?: TranscriptMode
     /**
      * Who the assistant is — the heading of this conversation's own rows. ⚠️ A NAME on a live
@@ -898,6 +899,7 @@ defineExpose({ focusItem })
           "
           :item="row.item"
           :words="row.item.outgoing"
+          :session-id="props.sessionId"
           :own-agent="props.ownAgent ?? null"
           :identities="props.identities ?? null"
           :held="heldIds"

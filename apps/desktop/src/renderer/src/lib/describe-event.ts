@@ -187,7 +187,7 @@ export function describeEvent(event: TranscriptEvent): string {
         event.messageId === undefined ? '' : ` · rides ${event.messageId}`
       } (ours)`
     case 'work_closed':
-      return `${event.piece} · closed by ${event.by} (ours)`
+      return `${event.piece} · closed by ${event.by ?? 'a person'} (ours)`
     // ⚑ **D-047 · what this conversation gave, from its own end** — the piece and its label, whether
     // it was given or given a new brief, and where it went; the title whole and the brief as a
     // LENGTH, as above.

@@ -7,6 +7,7 @@ import ModelGotSwitch from './ModelGotSwitch.vue'
 import { usePathsIn, type PathsHere } from '../composables/useMessagePaths'
 import { escaped } from '../lib/named-in-a-reply'
 import PersonWords from './PersonWords.vue'
+import AttachmentChips from './AttachmentChips.vue'
 
 const props = defineProps<{
   item: UserItem & Pick<TranscriptItem, 'at' | 'ordinal'>
@@ -70,15 +71,11 @@ const paths = usePathsIn(
         {{ paths.failure.value }}
       </p>
       <!-- Show app-supplied attachments outside `user-message` and label them as BroBot's. Keep the message body's text exactly as typed so copying and searching do not conflate injected paths with the person's words. -->
-      <ul v-if="item.attachments?.length" class="attached" data-cy="user-attachments">
-        <li v-for="handed in item.attachments" :key="handed.path" :data-kind="handed.kind">
-          <span class="by">This app attached</span>
-          <span class="what mono" :data-cy="`user-attached-${handed.kind}`">{{ handed.path }}</span>
-          <em v-if="handed.outsideCwd" class="outside" data-cy="user-attached-outside"
-            >outside this conversation’s folder</em
-          >
-        </li>
-      </ul>
+      <AttachmentChips
+        v-if="item.attachments?.length"
+        :attachments="item.attachments"
+        :paths="props.paths"
+      />
       <ModelGotSwitch
         :words="item.text"
         :sent="item.sent"
@@ -153,38 +150,6 @@ const paths = usePathsIn(
 
 .msg:hover .time {
   opacity: 1;
-}
-
-.attached {
-  display: grid;
-  margin: var(--space-2) 0 0;
-  padding: 0;
-  gap: var(--space-1);
-  list-style: none;
-}
-
-.attached li {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  color: var(--muted);
-  font-size: var(--type-caption);
-  gap: var(--space-3);
-}
-
-.attached .by {
-  color: var(--faint);
-}
-
-.attached .what {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  font-family: var(--font-mono);
-}
-
-.attached .outside {
-  color: var(--faint);
-  font-style: normal;
 }
 
 .msg-body {

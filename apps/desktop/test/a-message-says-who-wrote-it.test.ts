@@ -682,7 +682,7 @@ describe('624 · a message says who wrote it', () => {
       expect(code).not.toContain('tellTheAskerNobodyWillAnswer')
       expect(code).not.toContain('deliverDecision')
       // ⚑ **And the giver told a person took back the piece a service was on**
-      // (`tellItsGiverAPersonTookItBack`, `a-piece-it-gave-a-person-took-back`): a fact about work it
+      // (`tellItsGiverAPersonEndedIt`, `a-piece-it-gave-a-person-took-back`): a fact about work it
       // gave, which the rail above covers by its kind.
       // The lane is asked for eight times, including the personal-work notice: the stall notice (`tellOneParent`), an answer
       // (`deliverAnswer`), the owner's notice (`anAppNoticeToItsHolder`), the giver's when a person
