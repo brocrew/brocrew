@@ -222,7 +222,8 @@ describe('Windows-suite Codex delegation round trip', () => {
     const request = store
       .events(parent)
       .map(({ event }) => event)
-      .findLast((event) => event.type === 'permission_request')
+      .reverse()
+      .find((event) => event.type === 'permission_request')
     if (request?.type !== 'permission_request') throw new Error('the fictional parent has no card')
     await host.respondPermission(parent, request.id, { outcome: 'allow' }, window)
     await until(() => store.find(parent)?.status === 'idle')
