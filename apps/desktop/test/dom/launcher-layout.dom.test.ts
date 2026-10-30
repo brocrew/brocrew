@@ -487,7 +487,7 @@ describe('the launcher header says “not started” nowhere — it was once, no
     const m = await open(1200)
 
     // The chip names the provider it WOULD start on, and nothing else.
-    expect(m.q('provider-chip').textContent?.trim()).toBe('codex')
+    expect(m.q('provider-chip').textContent?.trim()).toBe('Codex')
     // The status pill is gone from this surface.
     expect(m.all('session-status')).toHaveLength(0)
     // The plate stays (081/082, not reopened). ⚑ **D-017b · and it is FACELESS with no line**: a

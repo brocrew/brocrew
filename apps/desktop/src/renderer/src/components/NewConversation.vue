@@ -77,6 +77,7 @@ export function blockingGroupShows(input: {
 
 <script setup lang="ts">
 import { defaultModel } from '../lib/provider-models'
+import { PROVIDER_DESCRIPTORS } from '@brobot2/shared/providers'
 import { computed, nextTick, onMounted, ref, useId, watch } from 'vue'
 import type {
   AuthState,
@@ -886,7 +887,7 @@ const checkingProviders = computed(
     props.providerReadiness !== null &&
     providers.value.some((provider) => props.providerReadiness?.[provider] == null),
 )
-const setupProvider = providers.value[0] ?? props.defaultProvider
+const setupProvider = PROVIDER_DESCRIPTORS[0].id
 const headerProvider = computed(() =>
   props.providerReadiness === null
     ? PROVIDER_NAME[props.defaultProvider]

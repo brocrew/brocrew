@@ -18,7 +18,12 @@ import { createAgentStore } from '../../src/renderer/src/lib/agent-store'
 import { createModelLists } from '../../src/renderer/src/lib/model-lists'
 import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { useOverlays } from '../../src/renderer/src/lib/overlay-store'
+import {
+  forgetProfileSignIns,
+  useProfileSignIn,
+} from '../../src/renderer/src/composables/useProfileSignIn'
 import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
+import { DEFAULT_PROFILE_ID } from '../../src/shared/runtime-ipc'
 import type { AgentIdentities, RuntimeBridge, ResumedSession } from '../../src/shared/runtime-ipc'
 import type { ResolvedMessageLink } from '../../src/renderer/src/lib/message-links'
 import { idlePanel } from './sub-agents-idle-fixture'
@@ -161,6 +166,13 @@ const runtime = {
 }
 
 beforeEach(() => {
+  forgetProfileSignIns()
+  for (const provider of ['claude', 'codex'] as const)
+    useProfileSignIn(provider, DEFAULT_PROFILE_ID).auth = {
+      state: 'usable',
+      login: 'account',
+      expiresAt: null,
+    }
   vi.clearAllMocks()
   runtime.resolveLink.mockReset()
   runtime.latestHistory.mockReset()

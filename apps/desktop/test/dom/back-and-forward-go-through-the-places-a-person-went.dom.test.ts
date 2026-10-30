@@ -7,6 +7,7 @@ import { createAgentStore } from '../../src/renderer/src/lib/agent-store'
 import { createModelLists } from '../../src/renderer/src/lib/model-lists'
 import { useOverlays } from '../../src/renderer/src/lib/overlay-store'
 import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
+import { DEFAULT_PROFILE_ID } from '../../src/shared/runtime-ipc'
 import type {
   AgentIdentities,
   ModelList,
@@ -16,7 +17,10 @@ import type {
 } from '../../src/shared/runtime-ipc'
 import type { ResolvedMessageLink } from '../../src/renderer/src/lib/message-links'
 import { applyTheme } from '../../src/renderer/src/lib/apply-theme'
-import { forgetProfileSignIns } from '../../src/renderer/src/composables/useProfileSignIn'
+import {
+  forgetProfileSignIns,
+  useProfileSignIn,
+} from '../../src/renderer/src/composables/useProfileSignIn'
 import { mount, unmountAll, META } from './harness'
 
 // The computer the window runs on, set by each test rather than read from the runner's.
@@ -977,6 +981,12 @@ it('a conversation that can’t be opened again keeps the window where it is and
 
 it('keeps the model a person picked when changing the front-door provider', async () => {
   forgetProfileSignIns()
+  for (const provider of ['claude', 'codex'] as const)
+    useProfileSignIn(provider, DEFAULT_PROFILE_ID).auth = {
+      state: 'usable',
+      login: 'account',
+      expiresAt: null,
+    }
   window.api.runtime.modelList = async ({
     provider,
   }: {
