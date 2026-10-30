@@ -128,10 +128,9 @@ const emit = defineEmits<{
 const nativeSetup = useProviderSetup(
   () => props.provider,
   async (operation) => {
-    if (operation === 'signIn') emit('authChanged', DEFAULT_PROFILE_ID)
     await nextTick()
     if (!cardOpen) return
-    await aPersonChecksAgain()
+    await aPersonChecksAgain(false)
     if (operation === 'signIn' && auth.value?.state === 'usable')
       noticeSays(`Signed in with ${props.setup?.tool ?? name.value}.`, false)
   },
@@ -195,7 +194,7 @@ function noticeSays(text: string | null, warns: boolean): void {
   authNoticeWarns.value = warns
 }
 /** A person's Check again: the login, and the program and its version with it. */
-async function aPersonChecksAgain(): Promise<void> {
+async function aPersonChecksAgain(publishChange = true): Promise<void> {
   const provider = props.provider
   if (props.readVersions === undefined) {
     emit('checkedAgain')
@@ -203,8 +202,10 @@ async function aPersonChecksAgain(): Promise<void> {
   } else {
     await Promise.all([props.readVersions(), check()])
   }
-  if (cardOpen && provider === props.provider && auth.value?.state === 'usable')
+  if (cardOpen && provider === props.provider && auth.value?.state === 'usable') {
+    if (publishChange) emit('authChanged', DEFAULT_PROFILE_ID)
     await refreshConnectedModels()
+  }
 }
 
 async function copyMachineSignIn(): Promise<void> {

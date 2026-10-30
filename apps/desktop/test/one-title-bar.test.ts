@@ -280,7 +280,9 @@ describe('§4 · three buttons, one per verb, and no decoration left (385 §1)',
     // ⚑ **The bar moved to its own component in 389 §2 and the controls moved with it.** The frame
     // still mounts exactly one bar, and the bar still mounts the controls — two links instead of
     // one, and the census below is what makes the pair a chain rather than two loose facts.
-    expect(RUNTIME_SCREEN).toContain('<AppTitleBar :info="info" :error="infoError" />')
+    expect(RUNTIME_SCREEN).toContain(
+      '<AppTitleBar :info="info" :error="infoError" :provider-readiness="launchReadiness" />',
+    )
     expect(RUNTIME_SCREEN).toContain("import AppTitleBar from './AppTitleBar.vue'")
     expect(TITLE_BAR).toContain('<WindowControls />')
     expect(TITLE_BAR).toContain("import WindowControls from './WindowControls.vue'")

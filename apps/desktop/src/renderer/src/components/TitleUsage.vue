@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useId } from 'vue'
+import type { Provider } from '../../../shared/runtime-ipc'
 import { useUsageCells } from '../composables/useUsageCells'
 import UsageCards from './UsageCards.vue'
 
@@ -8,7 +9,11 @@ import UsageCards from './UsageCards.vue'
  * their memory — for every screen at once. A press opens the usage cards under it; Escape or a
  * press outside closes them. The line opts out of the title bar's drag region, so it can be pressed.
  */
-const { cells, line, description } = useUsageCells()
+const props = withDefaults(
+  defineProps<{ readiness?: Readonly<Partial<Record<Provider, boolean | null>>> | null }>(),
+  { readiness: null },
+)
+const { cells, line, description } = useUsageCells(() => props.readiness)
 const cardsId = `title-usage-${useId()}`
 </script>
 

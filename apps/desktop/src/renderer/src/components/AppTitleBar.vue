@@ -4,6 +4,7 @@ import TitleUsage from './TitleUsage.vue'
 import WindowControls from './WindowControls.vue'
 import HistoryArrows from './HistoryArrows.vue'
 import type { AppInfo } from '@brobot2/shared'
+import type { Provider } from '../../../shared/runtime-ipc'
 
 /**
  * 🔴 **The window's own bar, and after 385 it is the ONLY one** (389 §2).
@@ -52,6 +53,7 @@ const props = defineProps<{
   info: AppInfo | null
   /** The startup read's own failure, on its own line — never folded into the chip. */
   error: string | null
+  providerReadiness?: Readonly<Partial<Record<Provider, boolean | null>>> | null
 }>()
 
 const showBuildDetails = computed(() => import.meta.env.DEV)
@@ -190,7 +192,7 @@ watch(
     <div class="title-left">
       <WindowControls />
       <HistoryArrows />
-      <TitleUsage />
+      <TitleUsage :readiness="props.providerReadiness ?? null" />
     </div>
     <!-- ⚑ **730 · the whole name on the title**, because a long one is cut — see `.window-title`. -->
     <div class="window-title" data-cy="window-title" :title="info?.windowTitle">

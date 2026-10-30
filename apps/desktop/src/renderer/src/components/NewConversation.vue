@@ -878,6 +878,22 @@ const needsApproval = computed(
 const launchMode = computed(
   () => firstApproval.value ?? (needsApproval.value ? null : props.defaultApprovalMode),
 )
+const canChooseProvider = computed(
+  () => props.providerReadiness === null || props.providerReadiness[props.defaultProvider] === true,
+)
+const checkingProviders = computed(
+  () =>
+    props.providerReadiness !== null &&
+    providers.value.some((provider) => props.providerReadiness?.[provider] == null),
+)
+const setupProvider = providers.value[0] ?? props.defaultProvider
+const headerProvider = computed(() =>
+  props.providerReadiness === null
+    ? PROVIDER_NAME[props.defaultProvider]
+    : canChooseProvider.value
+      ? `${PROVIDER_NAME[props.defaultProvider]} · Ready`
+      : undefined,
+)
 const approvalBlocked = computed(() =>
   props.providerReadiness?.[props.defaultProvider] === false
     ? `${PROVIDER_NAME[props.defaultProvider]} isn't set up. Set it up in Settings → Providers.`
@@ -969,7 +985,7 @@ watch(
       :session="null"
       :status="null"
       :debug="props.debug"
-      :default-provider="props.defaultProvider"
+      :default-provider="headerProvider"
       :facets="LAUNCHER_FACETS"
       :starting="props.busy"
       @toggle-debug="emit('toggleDebug')"
@@ -985,108 +1001,124 @@ watch(
             <h2 class="bb-title">What should we work through?</h2>
           </div>
 
-          <div
-            v-if="programNotice"
-            class="program-notice"
-            data-cy="launch-program"
-            :data-standing="programNotice.standing"
-            :role="programNotice.standing === 'missing' ? 'alert' : 'status'"
-          >
-            <p class="p-body">{{ programNotice.said }}</p>
-            <a
-              v-if="programNotice.help"
-              class="p-help"
-              :href="programNotice.help.url"
-              target="_blank"
-              rel="noopener"
+          <div v-if="!canChooseProvider" class="provider-setup-needed" role="status">
+            <p v-if="checkingProviders" class="note">Checking providers…</p>
+            <template v-else>
+              <p class="note">Set up a provider to start a conversation.</p>
+              <button
+                type="button"
+                class="bb-button bb-button--primary"
+                data-cy="new-provider-setup"
+                @click="emit('open-providers', setupProvider)"
+              >
+                Set up {{ PROVIDER_NAME[setupProvider] }}
+              </button>
+            </template>
+          </div>
+          <template v-else>
+            <div
+              v-if="programNotice"
+              class="program-notice"
+              data-cy="launch-program"
+              :data-standing="programNotice.standing"
+              :role="programNotice.standing === 'missing' ? 'alert' : 'status'"
             >
-              {{ programNotice.help.label }}
-            </a>
-          </div>
-
-          <div v-if="blockingShowing" class="blockers" data-cy="launch-blocked">
-            <div v-if="props.error" class="blocker" role="alert">
-              <p class="b-head">
-                <svg class="icon"><use href="#i-alert" /></svg>The launch didn’t start
-              </p>
-              <p class="b-body" data-cy="command-error">{{ props.error }}</p>
+              <p class="p-body">{{ programNotice.said }}</p>
+              <a
+                v-if="programNotice.help"
+                class="p-help"
+                :href="programNotice.help.url"
+                target="_blank"
+                rel="noopener"
+              >
+                {{ programNotice.help.label }}
+              </a>
             </div>
-            <SignInPanel
-              :provider="props.defaultProvider"
-              :state="authState"
-              :sign-in="signInCapability"
-              :reprovision="reprovisionCapability"
-              :busy="authBusy"
-              :notice="authNotice"
-              offer-providers
-              @open-providers="emit('open-providers')"
-              @check="checkAuth()"
-              @reprovision="reprovisionAuth"
-              @sign-in="signIn"
-              @cancel-sign-in="cancelSignIn"
+
+            <div v-if="blockingShowing" class="blockers" data-cy="launch-blocked">
+              <div v-if="props.error" class="blocker" role="alert">
+                <p class="b-head">
+                  <svg class="icon"><use href="#i-alert" /></svg>The launch didn’t start
+                </p>
+                <p class="b-body" data-cy="command-error">{{ props.error }}</p>
+              </div>
+              <SignInPanel
+                :provider="props.defaultProvider"
+                :state="authState"
+                :sign-in="signInCapability"
+                :reprovision="reprovisionCapability"
+                :busy="authBusy"
+                :notice="authNotice"
+                offer-providers
+                @open-providers="emit('open-providers')"
+                @check="checkAuth()"
+                @reprovision="reprovisionAuth"
+                @sign-in="signIn"
+                @cancel-sign-in="cancelSignIn"
+              />
+            </div>
+
+            <PromptComposer
+              ref="composer"
+              :state="props.busy ? 'starting' : 'idle'"
+              who="BroBot"
+              placeholder="What would you like BroBot to do?"
+              :draft="props.draft"
+              :handing="props.handing"
+              :can-attach="true"
+              :blocked="approvalBlocked"
+              @send="startWith"
+              @interrupt="emit('cancel')"
+              @update:draft="(text) => emit('update:draft', text)"
             />
-          </div>
+            <div class="said">
+              <div class="choices" data-cy="launcher-choices">
+                <div class="choice">
+                  <span class="lbl">model</span>
+                  <ModelPicker
+                    :providers="providers"
+                    :readiness="props.providerReadiness"
+                    :set-up="(provider) => emit('open-providers', provider)"
+                    :shown="shownPick"
+                    :empty="shownEmpty"
+                    take-words="Start on this"
+                    :take="startOn"
+                    :reaches="() => startsOnSays"
+                    :capabilities="props.capabilities"
+                    :lists="lists"
+                  />
+                </div>
+              </div>
 
-          <PromptComposer
-            ref="composer"
-            :state="props.busy ? 'starting' : 'idle'"
-            who="BroBot"
-            placeholder="What would you like BroBot to do?"
-            :draft="props.draft"
-            :handing="props.handing"
-            :can-attach="true"
-            :blocked="approvalBlocked"
-            @send="startWith"
-            @interrupt="emit('cancel')"
-            @update:draft="(text) => emit('update:draft', text)"
-          />
-          <div class="said">
-            <div class="choices" data-cy="launcher-choices">
-              <div class="choice">
-                <span class="lbl">model</span>
-                <ModelPicker
-                  :providers="providers"
-                  :readiness="props.providerReadiness"
-                  :set-up="(provider) => emit('open-providers', provider)"
-                  :shown="shownPick"
-                  :empty="shownEmpty"
-                  take-words="Start on this"
-                  :take="startOn"
-                  :reaches="() => startsOnSays"
-                  :capabilities="props.capabilities"
-                  :lists="lists"
-                />
+              <div class="setting" data-cy="first-approval-choice">
+                <p class="governs">
+                  {{ needsApproval ? 'CHOOSE HOW THIS AGENT WORKS' : 'HOW THIS AGENT WORKS' }}
+                </p>
+                <div class="first-approval-buttons">
+                  <button
+                    v-for="mode in ['ask', 'auto'] as const"
+                    :key="mode"
+                    type="button"
+                    class="bb-button"
+                    :class="{ 'bb-button--primary': launchMode === mode }"
+                    :data-cy="`choose-${mode}`"
+                    :aria-pressed="launchMode === mode"
+                    :disabled="props.busy"
+                    @click="firstApproval = mode"
+                  >
+                    {{ mode === 'ask' ? 'Ask' : 'Auto' }}
+                  </button>
+                </div>
+                <p v-if="launchMode" class="note" data-cy="first-approval-description">
+                  {{
+                    launchMode === 'ask'
+                      ? 'Asks when an action needs permission.'
+                      : 'Runs without asking. Use it only where you trust the agent with your files.'
+                  }}
+                </p>
               </div>
             </div>
-
-            <div class="setting" data-cy="first-approval-choice">
-              <p class="governs">
-                {{ needsApproval ? 'CHOOSE HOW THIS AGENT WORKS' : 'HOW THIS AGENT WORKS' }}
-              </p>
-              <div class="first-approval-buttons">
-                <button
-                  v-for="mode in ['ask', 'auto'] as const"
-                  :key="mode"
-                  type="button"
-                  class="bb-button"
-                  :class="{ 'bb-button--primary': launchMode === mode }"
-                  :data-cy="`choose-${mode}`"
-                  :aria-pressed="launchMode === mode"
-                  :disabled="props.busy"
-                  @click="firstApproval = mode"
-                >
-                  {{ mode === 'ask' ? 'Ask' : 'Auto' }}
-                </button>
-              </div>
-              <p v-if="launchMode" class="note" data-cy="first-approval-description">
-                {{
-                  launchMode === 'ask'
-                    ? 'Asks when an action needs permission.'
-                    : 'Runs without asking. Use it only where you trust the agent with your files.'
-                }}
-              </p>
-            </div>
-          </div>
+          </template>
         </div>
         <section
           class="recent-conversations"

@@ -205,8 +205,9 @@ it('opens only the requested provider setup inside Settings', async () => {
   )
   expect(claude).toBeNull()
 })
-it('blocks both the button and keyboard if the only selected provider needs setup', async () => {
+it('offers setup with no send control or keyboard launch when no provider is ready', async () => {
   const start = vi.fn()
+  const setup = vi.fn()
   const { lists } = fixture(missing())
   const m = mount(NewConversation, {
     busy: false,
@@ -220,16 +221,19 @@ it('blocks both the button and keyboard if the only selected provider needs setu
     choices: NO_LAUNCH_CHOICES,
     lists,
     onStart: start,
+    onOpenProviders: setup,
   })
   await settle()
-  expect((m.q('send-prompt') as HTMLButtonElement).disabled).toBe(true)
-  m.q('prompt-input').dispatchEvent(
+  expect(m.all('send-prompt')).toHaveLength(0)
+  expect(m.all('prompt-input')).toHaveLength(0)
+  expect(m.all('provider-chip')).toHaveLength(0)
+  m.host.dispatchEvent(
     new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, ctrlKey: true, bubbles: true }),
   )
   expect(start).not.toHaveBeenCalled()
-  expect(m.q('composer-hint').textContent).toContain(
-    "Codex isn't set up. Set it up in Settings → Providers.",
-  )
+  expect(m.q('new-provider-setup').textContent?.trim()).toBe('Set up Claude')
+  m.q('new-provider-setup').click()
+  expect(setup).toHaveBeenCalledExactlyOnceWith('claude')
 })
 
 it('blocks an unknown provider even with retained models, and never relabels its model on launch', async () => {

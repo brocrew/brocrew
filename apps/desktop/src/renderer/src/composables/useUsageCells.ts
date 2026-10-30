@@ -98,7 +98,9 @@ export interface UsageCells {
   readonly description: ComputedRef<string>
 }
 
-export function useUsageCells(): UsageCells {
+export function useUsageCells(
+  readiness: () => Readonly<Partial<Record<Provider, boolean | null>>> | null = () => null,
+): UsageCells {
   const usage = useProviderUsage()
   const cast = useWhoCalledWhom()
   const minute = useMinuteClock()
@@ -231,21 +233,33 @@ export function useUsageCells(): UsageCells {
       population === null
         ? `${NOT_READ_MARK} agents`
         : `${population.count} agents${population.count === 0 ? '' : ` · ${population.working} working`}`
-    const providers = windows.value.flatMap(({ provider, windows: theirs }) =>
-      theirs.map(({ short, reading }, index) => {
+    const providers = windows.value.flatMap(({ provider, windows: theirs }) => {
+      const ready = readiness()?.[provider]
+      if (ready === false) return [`${PROVIDER_NAME[provider]} · Needs setup`]
+      if (ready === true && theirs.every(({ reading }) => reading === null))
+        return [`${PROVIDER_NAME[provider]} · Ready · usage not read yet`]
+      return theirs.map(({ short, reading }, index) => {
         const used =
           reading?.usedPercent == null
             ? NOT_READ_MARK
             : `${String(Math.round(reading.usedPercent))}%`
-        return `${index === 0 ? `${PROVIDER_NAME[provider]} ` : ''}${short} ${used}`
-      }),
-    )
+        return `${index === 0 ? `${PROVIDER_NAME[provider]}${ready === true ? ' · Ready' : ''} ` : ''}${short} ${used}`
+      })
+    })
     const now = running.value
     return [...providers, agents, now === null ? NOT_READ_MARK : now.memory].join(' · ')
   })
 
   const description = computed(() =>
     [
+      ...PROVIDERS.flatMap((provider) => {
+        const ready = readiness()?.[provider]
+        return ready === true
+          ? [`${PROVIDER_NAME[provider]} is ready`]
+          : ready === false
+            ? [`${PROVIDER_NAME[provider]} needs setup`]
+            : []
+      }),
       ...windows.value.flatMap(({ provider, windows: theirs }) =>
         theirs.map(
           ({ word, reading }) =>
