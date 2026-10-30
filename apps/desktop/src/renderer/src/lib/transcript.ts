@@ -5873,11 +5873,8 @@ function foldEvent(
       // goes where diagnostics go, and the person gets a sentence they can act on. This is the
       // `cause` field's consumer, and it is why the field exists rather than being a comment.
       //
-      // Always `error`, never `warn`, **and the two causes reach that for opposite reasons** (110).
-      // Codex's `auth` arrives NON-fatal — the session stays open, and that is precisely the
-      // misleading part, a "recoverable" tag over a turn that cannot be retried. Claude's
-      // `auth_stale` arrives FATAL, because that session really is over. Reading the level off
-      // `fatal` would therefore have printed a warning over one of them; it is pinned instead.
+      // Both credential refusals need an error notice. Codex can keep its process open after
+      // refusal; Claude ends the child and distinguishes a current login from its old snapshot.
       //
       // ⚠️ **Exhaustive over the causes THAT EXIST, enforced by the compiler.** An earlier version
       // of this claimed exhaustiveness while ending in a `default` that fell through to the raw
