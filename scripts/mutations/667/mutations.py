@@ -205,8 +205,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         [
             (
                 VIEW,
-                "          :words=\"row.item.outgoing\"\n          :own-agent=\"props.ownAgent ?? null\"\n",
-                "          :words=\"row.item.outgoing\"\n          :own-agent=\"props.ownAgent ?? props.who\"\n",
+                "          :words=\"row.item.outgoing\"\n          :session-id=\"props.sessionId\"\n          :own-agent=\"props.ownAgent ?? null\"\n",
+                "          :words=\"row.item.outgoing\"\n          :session-id=\"props.sessionId\"\n          :own-agent=\"props.ownAgent ?? props.who\"\n",
             )
         ],
     ),

@@ -15382,6 +15382,7 @@ export class RuntimeHost implements LiveHost {
       { type: 'work_closed', piece: piece.piece, by: null },
       'work-closed',
       copies.copies,
+      true,
     )
     // ⛔ After `work_closed`, never before, as a giver's close takes them back.
     this.takeBackTheHeldMessages(piece, stands.held)
@@ -18143,9 +18144,11 @@ export class RuntimeHost implements LiveHost {
     row: WorkTakenBackEvent | WorkClosedEvent,
     ending: QuestionEndedWithItsPieceEvent['ending'],
     copies: PassedUpCopies,
+    requireDurable = false,
   ): void {
     const slot = this.slots.get(owner)
     if (slot !== undefined && slot.session === null) {
+      if (requireDurable) throw new Error('The conversation is still starting. Try again in a moment.')
       // ⛔ A bug guard rather than a rail: the copies were refused for a starting owner before this.
       if (copies.length > 0) throw new Error(`${row.piece} ended while ${owner} was starting`)
       this.writeIntoItsLedger(owner, row)
@@ -18162,6 +18165,11 @@ export class RuntimeHost implements LiveHost {
           theirs()
         }
       })
+    }
+    if (requireDurable) {
+      write()
+      thenShow()
+      return
     }
     if (session === null) {
       try {

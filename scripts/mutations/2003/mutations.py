@@ -150,7 +150,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M31 · 🔴 a passed-up question's row lands as an ASK · its words are looked for on ask calls, so the pass call never gets its question and stays 'sending' — killed by `a-question-sent-is-a-card.test.ts` and the new DOM file — killed by `a-question-sent-is-a-card.test.ts`, `the-question-card-says-what-became-of-the-question.dom.test.ts`",
         [
-            (TRANSCRIPT, "tool: asked.passedUpFrom === undefined ? 'ask_question' : 'pass_question_up',", "tool: 'ask_question',"),
+            (TRANSCRIPT, "asked.passedUpFrom === undefined\n                ? 'ask_question'\n                : 'pass_question_up'", "'ask_question'"),
         ],
     ),
     (

@@ -2751,6 +2751,18 @@ function questionSent(state: TranscriptState, requestId: string): OutgoingQuesti
   return null
 }
 
+/** End actions when their own piece ends, including rows waiting for their tool call. */
+function endActionsAbout(state: TranscriptState, piece: unknown): void {
+  if (!isAnId(piece)) return
+  const end = (words: OutgoingWords | undefined): void => {
+    if (words?.tool !== 'request_action') return
+    const asked = words.asked
+    if (asked?.piece === piece && asked.answered === undefined) asked.closed = 'withdrawn'
+  }
+  for (const words of state.outgoingAhead) end(words)
+  for (const item of state.items) if (item.kind === 'tool') end(item.outgoing)
+}
+
 /**
  * ⚑ **`question_asked`, read as the card draws it** — each field as a replayed row actually is:
  * an id a non-empty string, the words a string, a part only with a prompt, an option only with a
@@ -6179,6 +6191,7 @@ function foldEvent(
      * this conversation, and the card says it went to them ({@link OutgoingReply.toThePerson}).
      */
     case 'work_replied': {
+      endActionsAbout(state, event.piece)
       if (!isAnId(event.piece)) return
       const given = state.piecesGiven.get(event.piece)
       const giver = state.pieceGivers.get(event.piece)
@@ -6248,9 +6261,11 @@ function foldEvent(
      * piece is the Work tab's and `list_tasks`' to show; a status line lands on a take-on's card
      * (the arm above). ⚑ The raw Events tab prints every one of them (`describe-event.ts`).
      */
-    case 'work_taken_back':
     case 'work_retitled':
+      return
+    case 'work_taken_back':
     case 'work_closed':
+      endActionsAbout(state, event.piece)
       return
 
     /**
