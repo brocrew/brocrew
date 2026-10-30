@@ -36204,7 +36204,9 @@ export class RuntimeHost implements LiveHost {
         if (
           this.heldAtAStop
             .get(session.id)
-            ?.some((queued) => queued.authorship.appNotice !== 'a-scheduled-job-that-will-not-run') &&
+            ?.some(
+              (queued) => queued.authorship.appNotice !== 'a-scheduled-job-that-will-not-run',
+            ) &&
           !this.signInStops.has(session) &&
           session.diedOnAStaleSignIn !== true
         ) {

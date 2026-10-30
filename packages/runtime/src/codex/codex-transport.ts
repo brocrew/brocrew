@@ -151,7 +151,11 @@ export interface CodexTransport {
    * and its absence must be read as *"this transport cannot say"* and never as an exit.
    */
   readonly exited?: Promise<void>
-  /** Positive cleanup fact for the owned group/tree; never a teardown deadline. */
+  /**
+   * Releases ownership after positive cleanup proof, or the logged Windows query-failure fallback.
+   * That fallback requires the leader and every remembered PID gone, but cannot rule out an
+   * unobserved descendant still writing the transcript.
+   */
   readonly quiesced?: Promise<void>
 }
 

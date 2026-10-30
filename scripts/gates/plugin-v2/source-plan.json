@@ -273,8 +273,8 @@
     },
     {
       "path": "apps/desktop/src/main/runtime/runtime-host.ts",
-      "sha256": "e32912354e6df573e3fefd1f2bd21128ef49d1c4049dccf1e37653fb22b52f96",
-      "bytes": 2424119
+      "sha256": "cadb2c52553a0df57f4635f74dcad92bdadfa385f69fb26a72ff7fc034c31645",
+      "bytes": 2424148
     },
     {
       "path": "apps/desktop/src/preload/index.ts",
@@ -893,7 +893,7 @@
     },
     {
       "path": "scripts/gates/plugin-v2/runtime-source-pins.json",
-      "sha256": "a061dcd1a42889750da4c43569b3f2500d3f333f2d904dc19a52b99862710ea3",
+      "sha256": "b763ac2f079e15ba6c9bafee449307d31c42bb014ad8a58147163b24df493460",
       "bytes": 3626
     },
     {
