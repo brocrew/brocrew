@@ -200,6 +200,7 @@ export function isLocalDrivePath(path: string, platform: Platform = process.plat
 
 /** Structurally admitted plugin roots, by canonical path, with their folder identity. */
 const checkedRoots = new Map<string, { dev: bigint; ino: bigint }>()
+const rootTightenings = new Map<string, Promise<void>>()
 
 /**
  * On Windows, admits a plain local plugin folder and attempts once per identity to grant this
@@ -227,12 +228,20 @@ export async function keepPluginRootPrivate(
   const canonical = realPath(root, platform).toLowerCase()
   const checked = checkedRoots.get(canonical)
   if (checked?.dev === stat.dev && checked.ino === stat.ino) return
-  try {
-    const user = await lists.userSid()
-    await lists.restrict(root, user, [])
-  } catch {
-    console.warn('Could not tighten plugin folder permissions; continuing.')
+  const identity = `${canonical}:${stat.dev}:${stat.ino}`
+  let tightening = rootTightenings.get(identity)
+  if (!tightening) {
+    tightening = Promise.resolve().then(async () => {
+      try {
+        const user = await lists.userSid()
+        await lists.restrict(root, user, [])
+      } catch {
+        console.warn('Could not tighten plugin folder permissions; continuing.')
+      }
+    })
+    rootTightenings.set(identity, tightening)
   }
+  await tightening
   const again = lstatSync(root, { bigint: true })
   if (
     !again.isDirectory() ||
