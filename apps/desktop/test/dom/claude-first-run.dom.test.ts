@@ -420,7 +420,11 @@ it('never lets a late initial idle read erase newer installer progress', async (
 
 it('uses the same missing-only installer in the first-run wizard, then advances automatically', async () => {
   const { props, publish, bridge } = fixture()
-  const absent = { state: 'absent' as const, reason: 'The fictional tool owns its sign-in.' }
+  const absent = {
+    state: 'absent' as const,
+    reason: 'The fictional tool owns its sign-in.',
+    checkedAgainst: 'the fictional provider capability',
+  }
   const wizard = mount(
     defineComponent({
       setup: () => () =>
