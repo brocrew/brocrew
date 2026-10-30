@@ -122,7 +122,7 @@ describe.skipIf(process.platform === 'win32')(
       expect(f.controller.refreshFailed!()).toBe(false)
       expect(f.fetch).toHaveBeenCalledTimes(2)
     })
-    it('reports plugin-folder privacy failure through Settings without exposing the private error', async () => {
+    it('does not label a structural root failure as a folder-permission problem', async () => {
       const f = await setup()
       vi.spyOn(privateFiles, 'keepPluginRootPrivate').mockRejectedValue(
         new Error('fictional private path and ACL detail'),
@@ -140,7 +140,7 @@ describe.skipIf(process.platform === 'win32')(
           { sender: owner.webContents, senderFrame: owner.webContents.mainFrame },
           { kind: 'list' },
         ),
-      ).resolves.toEqual({ ok: false, listState: 'fetch-error', reason: 'private-folder' })
+      ).resolves.toEqual({ ok: false, listState: 'fetch-error' })
       expect(f.fetch).not.toHaveBeenCalled()
       expect(f.supervisor.start).not.toHaveBeenCalled()
     })

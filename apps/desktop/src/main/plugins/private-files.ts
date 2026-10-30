@@ -2,15 +2,7 @@ import { closeSync, constants, fstatSync, fsyncSync, lstatSync, mkdirSync, openS
 import { realpathSync, type BigIntStats, type Stats } from 'node:fs'
 import { lstat, open, type FileHandle } from 'node:fs/promises'
 import { dirname, isAbsolute, posix, win32 } from 'node:path'
-import {
-  accessEntries,
-  ADMINISTRATORS_SID,
-  SYSTEM_SID,
-  hasNoAccessList,
-  othersLetIn,
-  windowsAccessLists,
-  type OwnedAccessLists,
-} from '../recovery/windows-privacy'
+import { windowsAccessLists, type OwnedAccessLists } from '../recovery/windows-privacy'
 
 /**
  * The plugin host's private folders and files, on each platform.
@@ -18,11 +10,10 @@ import {
  * On macOS and Linux an entry is private when this user owns it and its mode gives the group and
  * others nothing, and opens refuse a link with `O_NOFOLLOW`.
  *
- * A stat on Windows carries no owner and no real mode. There the plugin root's access list is made
- * and checked once a process ({@link keepPluginRootPrivate}): this user, SYSTEM and Administrators
- * alone, inheriting nothing from above. What is made inside inherits that list, so an entry inside
- * a checked root passes on its kind alone. Opens look at the name again once open, since an open
- * there follows a link; a directory is never fsynced, which Windows refuses (NTFS journals the
+ * A stat on Windows carries no owner and no real mode. There the plugin root's access list is
+ * tightened best effort once per folder identity in a process ({@link keepPluginRootPrivate}).
+ * Permission failures do not block plugins; entries inside an admitted root pass on their kind.
+ * Opens look at the name again once open, since an open there follows a link; a directory is never fsynced, which Windows refuses (NTFS journals the
  * folder's own changes).
  */
 
@@ -207,14 +198,14 @@ export function isLocalDrivePath(path: string, platform: Platform = process.plat
   return platform !== 'win32' || /^[A-Za-z]:\\/.test(path)
 }
 
-/** Plugin roots whose access list this process checked, by canonical path, with their identity. */
+/** Structurally admitted plugin roots, by canonical path, with their folder identity. */
 const checkedRoots = new Map<string, { dev: bigint; ino: bigint }>()
 
 /**
- * On Windows, makes `root` (made here if missing) readable and writable by this user, SYSTEM and
- * Administrators alone, inheriting nothing from its parent, and checks that it is. The shared app
- * parent may grant sandbox agents read access; only this plugin folder's list is changed.
- * Elsewhere does nothing: the root's mode does this, checked where it is pinned.
+ * On Windows, admits a plain local plugin folder and attempts once per identity to grant this
+ * user, SYSTEM and Administrators access without inheritance. ACL and owner observations never
+ * gate plugins. Only this folder is tightened; parent and workspace permissions are untouched.
+ * Elsewhere does nothing: the root's mode is checked where it is pinned.
  */
 export async function keepPluginRootPrivate(
   root: string,
@@ -226,17 +217,6 @@ export async function keepPluginRootPrivate(
   if (!isAbsolute(root) || !isLocalDrivePath(root, platform)) throw new Error('unsafe-path')
   const parent = realPath(dirname(root), platform)
   if (parent.toLowerCase() !== dirname(root).toLowerCase()) throw new Error('unsafe-path')
-  const user = await lists.userSid()
-  const machine = await lists.machineSid().catch(() => null)
-  const checkParent = async () => {
-    const sddl = await lists.read(parent)
-    if (
-      hasNoAccessList(sddl) ||
-      othersLetIn(accessEntries(sddl, machine, { mutationOnly: true }), user).length > 0
-    )
-      throw new Error('unsafe-path')
-  }
-  await checkParent()
   try {
     mkdirSync(root)
   } catch (error) {
@@ -244,34 +224,29 @@ export async function keepPluginRootPrivate(
   }
   const stat = lstatSync(root, { bigint: true })
   if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('unsafe-path')
-  const looked = async (folder: string) => {
-    const owner = await lists.ownerSid(folder)
-    if (![user, SYSTEM_SID, ADMINISTRATORS_SID].includes(owner)) throw new Error('unsafe-path')
-    const sddl = await lists.read(folder)
-    if (hasNoAccessList(sddl)) throw new Error('unsupported')
-    return {
-      protectedList: /D:[A-Z_]*P/.test(sddl),
-      // Descendants must be private too, including grants that apply only to children.
-      others: othersLetIn(accessEntries(sddl, machine, { includeInheritOnly: true }), user),
-    }
+  const canonical = realPath(root, platform).toLowerCase()
+  const checked = checkedRoots.get(canonical)
+  if (checked?.dev === stat.dev && checked.ino === stat.ino) return
+  try {
+    const user = await lists.userSid()
+    await lists.restrict(root, user, [])
+  } catch {
+    console.warn('Could not tighten plugin folder permissions; continuing.')
   }
-  let now = await looked(root)
-  if (!now.protectedList || now.others.length > 0) {
-    await lists.restrict(root, user, now.others)
-    now = await looked(root)
-  }
-  if (!now.protectedList || now.others.length > 0) throw new Error('unsafe-path')
-  await checkParent()
-  now = await looked(root)
-  if (!now.protectedList || now.others.length > 0) throw new Error('unsafe-path')
   const again = lstatSync(root, { bigint: true })
-  if (again.dev !== stat.dev || again.ino !== stat.ino) throw new Error('unsafe-path')
-  checkedRoots.set(realPath(root, platform).toLowerCase(), { dev: stat.dev, ino: stat.ino })
+  if (
+    !again.isDirectory() ||
+    again.isSymbolicLink() ||
+    again.dev !== stat.dev ||
+    again.ino !== stat.ino
+  )
+    throw new Error('unsafe-path')
+  checkedRoots.set(canonical, { dev: stat.dev, ino: stat.ino })
 }
 
 /**
- * Whether `path` (canonical) is a root {@link keepPluginRootPrivate} checked in this process, or
- * inside one that is still the folder it checked. Always true off Windows.
+ * Whether `path` (canonical) is a root {@link keepPluginRootPrivate} admitted in this process, or
+ * inside one that is still the folder it admitted. Always true off Windows.
  */
 export function isInsideCheckedRoot(path: string, platform: Platform = process.platform): boolean {
   if (platform !== 'win32') return true
