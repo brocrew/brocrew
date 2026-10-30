@@ -73,6 +73,7 @@ function scene(
   extra: Record<string, unknown> = {},
   refusal: TranscriptEvent = refused,
   width = 1000,
+  content = events,
 ) {
   const r = record([])
   r.meta = {
@@ -82,7 +83,7 @@ function scene(
     ref: { ...META.ref!, provider: 'claude' },
   }
   r.transcript.ref = r.meta.ref
-  for (const event of events) applyEvent(r.transcript, event === refused ? refusal : event)
+  for (const event of content) applyEvent(r.transcript, event === refused ? refusal : event)
   r.phase = 'recorded'
   return mount(
     ConversationPane,
@@ -101,7 +102,8 @@ describe('Claude sign-in recovery where the error is read', () => {
     await page.viewport(1200, 800)
     const api = bridge(USABLE)
     const send = vi.fn()
-    const m = scene({ onSend: send })
+    const reopen = vi.fn()
+    const m = scene({ onSend: send, onReopenSignIn: reopen })
     await settled()
     expect(api.runtime.checkProviderAuth).toHaveBeenCalledWith({
       provider: 'claude',
@@ -127,7 +129,8 @@ describe('Claude sign-in recovery where the error is read', () => {
       })
     action.click()
     await settled()
-    expect(send).toHaveBeenCalledExactlyOnceWith('Please finish the bakery menu.', 'now', [])
+    expect(reopen).toHaveBeenCalledTimes(1)
+    expect(send).not.toHaveBeenCalled()
     details.querySelector('summary')!.click()
     await settled()
     expect(details.open).toBe(true)
@@ -193,6 +196,35 @@ describe('Claude sign-in recovery where the error is read', () => {
     expect(m.all('claude-sign-in-details')).toHaveLength(1)
     expect(m.host.innerText).not.toContain('Unmodeled event')
   })
+
+  it.each([
+    { type: 'provider_turn' },
+    { type: 'user_turn', text: 'An app-authored follow-up', attribution: 'app_authored' },
+    {
+      type: 'user_turn',
+      text: 'A relayed report',
+      attribution: 'app_authored',
+      relayedFrom: 'bakery-reviewer',
+    },
+  ] satisfies TranscriptEvent[])(
+    'reopens after $type without replaying an earlier human instruction',
+    async (turn) => {
+      await page.viewport(1200, 800)
+      bridge(USABLE)
+      const send = vi.fn()
+      const reopen = vi.fn()
+      const m = scene({ onSend: send, onReopenSignIn: reopen }, refused, 1000, [
+        events[0]!,
+        turn,
+        ...events.slice(1),
+      ])
+      await settled()
+      m.q('claude-sign-in-action').click()
+      await settled()
+      expect(reopen).toHaveBeenCalledTimes(1)
+      expect(send).not.toHaveBeenCalled()
+    },
+  )
 
   it('a rejected current login needs sign-in even when local expiry still says usable', async () => {
     await page.viewport(1200, 800)

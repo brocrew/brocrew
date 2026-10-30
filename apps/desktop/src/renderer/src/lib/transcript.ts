@@ -1513,7 +1513,7 @@ export interface NoticeItem {
   text: string
   /** Claude retries and the final refusal share one row; diagnostics stay in Details. */
   claudeSignIn?: {
-    state: 'retrying' | 'refused' | 'recovered'
+    state: 'retrying' | 'refused' | 'recovered' | 'ended'
     needsSignIn?: true
     details: string[]
   }
@@ -3183,6 +3183,19 @@ function claudeSignInNotice(
   if (previous?.kind === 'notice') Object.assign(previous, item)
   else state.items.push(item)
   state.lastError = { raw: detail, shown: text, claudeSignInNotice: item.id }
+}
+
+function currentSignInNotice(state: TranscriptState): NoticeItem | null {
+  const item = state.items.find((one) => one.id === state.lastError?.claudeSignInNotice)
+  return item?.kind === 'notice' && item.claudeSignIn ? item : null
+}
+
+function endSignInRetry(state: TranscriptState, stopped = false): void {
+  const item = currentSignInNotice(state)
+  if (item?.claudeSignIn?.state !== 'retrying') return
+  item.claudeSignIn.state = 'ended'
+  item.text = stopped ? 'Claude sign-in retry stopped.' : 'Claude sign-in retry ended.'
+  item.level = 'info'
 }
 
 /**
@@ -5803,24 +5816,22 @@ function foldEvent(
       // ⚠️ Compared strictly: a replayed payload is a cast (`session-store.ts`), never re-parsed.
       // 🔴 **F074 — and a turn its provider refused for the usage limit says so, on its ending**,
       // with the reset: the limit is recorded IN the ending, never only among the errors beside it.
-      if (state.lastError?.claudeSignInNotice !== undefined && event.state !== 'interrupted') {
-        const item = state.items.find((one) => one.id === state.lastError?.claudeSignInNotice)
-        if (item?.kind === 'notice' && item.claudeSignIn) {
+      {
+        const item = currentSignInNotice(state)
+        if (item?.claudeSignIn) {
           item.claudeSignIn.details.push(
             event.wordOf === 'this-app'
               ? `turn ${event.state} — ${THE_APPS_OWN_WORD}`
               : `turn ${event.state}`,
           )
-          if (event.state === 'completed') {
+          if (event.state === 'completed' && item.claudeSignIn.state === 'retrying') {
             item.text = 'Claude sign-in recovered.'
             item.level = 'info'
             item.claudeSignIn.state = 'recovered'
-          } else if (item.claudeSignIn.state === 'retrying') {
-            item.text = STALE_AUTH_NOTICE
-            item.level = 'error'
-            item.claudeSignIn.state = 'refused'
+            return
           }
-          return
+          if (event.state === 'failed' && item.claudeSignIn.state === 'refused') return
+          endSignInRetry(state, event.state === 'interrupted')
         }
       }
       notice(
@@ -5862,6 +5873,14 @@ function foldEvent(
         if (event.fatal) markTerminal(state, NOTHING_WAITS_FOR_THIS_ANSWER)
         return
       }
+      const authNotice = currentSignInNotice(state)
+      const endingDetail = turnFailureDetail(event.message)
+      const repeatsAuth =
+        endingDetail !== null &&
+        state.lastError !== null &&
+        (endingDetail === state.lastError.raw ||
+          providerErrorSentence(endingDetail) === providerErrorSentence(state.lastError.raw))
+      if (!repeatsAuth) endSignInRetry(state)
       // ⚠️ **A rejected credential is the one error whose provider text is useless to a reader**
       // (098). The measured sentence is *"Your access token could not be refreshed because your
       // refresh token was already used. Please log out and sign in again."* — every word true, every
@@ -5921,9 +5940,8 @@ function foldEvent(
         // it (`describe-event.ts`), 085's split.
         const ending = turnFailureDetail(event.message)
         if (ending !== null) {
-          if (state.lastError?.claudeSignInNotice !== undefined) {
-            const item = state.items.find((one) => one.id === state.lastError?.claudeSignInNotice)
-            if (item?.kind === 'notice') item.claudeSignIn?.details.push(event.message)
+          if (authNotice?.claudeSignIn && repeatsAuth) {
+            authNotice.claudeSignIn.details.push(event.message)
             if (event.fatal) markTerminal(state, NOTHING_WAITS_FOR_THIS_ANSWER)
             return
           }

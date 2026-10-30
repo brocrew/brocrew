@@ -38,7 +38,8 @@ describe('Claude sign-in failures', () => {
     expect(notices(state.items)[0]?.text).toContain('attempt 2/3')
     expect(notices(state.items)[0]?.claudeSignIn?.state).toBe('retrying')
     applyEvent(state, refused)
-    applyEvent(state, { type: 'error', message: 'turn failed: HTTP 401', fatal: false })
+    const restated = `turn failed: ${refused.message}`
+    applyEvent(state, { type: 'error', message: restated, fatal: false })
     applyEvent(state, { type: 'turn', state: 'failed', wordOf: 'this-app' })
     const [notice] = notices(state.items)
     expect(notices(state.items)).toHaveLength(1)
@@ -49,7 +50,7 @@ describe('Claude sign-in failures', () => {
         retry(1).message,
         retry(2).message,
         refused.message,
-        'turn failed: HTTP 401',
+        restated,
         `turn failed — ${THE_APPS_OWN_WORD}`,
       ],
     })
@@ -66,6 +67,49 @@ describe('Claude sign-in failures', () => {
       claudeSignIn: { state: 'recovered' },
     })
     expect(visibleItems('normal', state.items)).toHaveLength(0)
+  })
+
+  it.each(['error_max_turns', 'error_during_execution'])(
+    'keeps a distinct %s failure visible after a sign-in retry',
+    (reason) => {
+      const state = transcript()
+      applyEvent(state, retry(1))
+      applyEvent(state, { type: 'error', message: `turn failed: ${reason}`, fatal: false })
+      applyEvent(state, { type: 'turn', state: 'failed' })
+      expect(
+        visibleItems('normal', state.items).map((item) =>
+          item.kind === 'notice' ? item.text : '',
+        ),
+      ).toEqual([reason, 'turn failed'])
+      expect(notices(state.items)[0]?.claudeSignIn?.state).toBe('ended')
+      expect(notices(state.items).some((item) => item.claudeSignIn?.state === 'refused')).toBe(
+        false,
+      )
+    },
+  )
+
+  it('a bare failed ending settles a retry without claiming an authentication failure', () => {
+    const state = transcript()
+    applyEvent(state, retry(1))
+    applyEvent(state, { type: 'turn', state: 'failed' })
+    expect(notices(state.items)[0]?.claudeSignIn?.state).toBe('ended')
+    expect(
+      visibleItems('normal', state.items).map((item) => (item.kind === 'notice' ? item.text : '')),
+    ).toEqual(['turn failed'])
+  })
+
+  it('Stop during backoff settles the retry and retains the interruption', () => {
+    const state = transcript()
+    applyEvent(state, retry(1))
+    applyEvent(state, { type: 'turn', state: 'interrupted' })
+    expect(notices(state.items)[0]).toMatchObject({
+      text: 'Claude sign-in retry stopped.',
+      claudeSignIn: { state: 'ended' },
+    })
+    expect(notices(state.items)[0]?.claudeSignIn?.details).toContain('turn interrupted')
+    expect(
+      visibleItems('normal', state.items).map((item) => (item.kind === 'notice' ? item.text : '')),
+    ).toEqual(['turn interrupted'])
   })
 
   it('starts another row for a new user turn and leaves other failures visible', () => {

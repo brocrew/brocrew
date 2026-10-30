@@ -799,15 +799,6 @@ async function signInAgain(): Promise<void> {
   signInTarget.value = props.record.sessionId
   await signInSetup.signIn()
 }
-function retryClaudeSignIn(): void {
-  for (let index = transcript.value.items.length - 1; index >= 0; index--) {
-    const item = transcript.value.items[index]
-    if (item?.kind !== 'user' || item.attribution === 'provider_transcript') continue
-    emit('send', item.text, 'now', item.attachments ?? [])
-    return
-  }
-  emit('reopenSignIn')
-}
 watch(
   () => [profileSignIn.value, props.record.error, claudeSignInRefused.value] as const,
   ([signIn, error, refused], before) => {
@@ -1966,7 +1957,9 @@ onUnmounted(() => {
             claudeSignInRefused !== null &&
             props.record.phase !== 'closing' &&
             (props.record.meta?.cannotTakeAMessage ?? null) === null &&
-            profileSignIn !== null
+            profileSignIn !== null &&
+            canReopenSignIn &&
+            control.ended
           "
           :sign-in-expired="signInNeeded"
           :sign-in-renewed="signInRenewedFor === props.record.sessionId"
@@ -2021,7 +2014,7 @@ onUnmounted(() => {
           @restore-queued="restoreQueued"
           @send-answer="(text) => emit('send', text, 'now', [])"
           @sign-in="signInAgain()"
-          @retry-sign-in="retryClaudeSignIn"
+          @retry-sign-in="emit('reopenSignIn')"
         />
 
         <!-- This session's own failures, next to the session they belong to rather than at the top
