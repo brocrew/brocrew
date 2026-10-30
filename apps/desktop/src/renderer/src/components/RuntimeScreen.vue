@@ -232,7 +232,7 @@ import {
   usePersonsQueue,
   type PersonsQueueRow,
 } from '../lib/persons-queue'
-import { askedQuestionItemIn, briefItemIn } from '../lib/transcript'
+import { askedQuestionItemIn, briefItemIn, markRequestFailed } from '../lib/transcript'
 import { THE_BRIEF_IS_FURTHER_BACK } from '../lib/outgoing-card'
 // 🔴 **636 · the reading `621` built and left with no reader** — see {@link readWhatIsWaiting}.
 // ⚠️ **This file is `631`'s and the edit is deliberately four small ones**; the response document
@@ -542,6 +542,14 @@ async function answerATodo(
       done,
       ...(note === '' ? {} : { note }),
     })
+    if (ack.outcome === 'refused' && !ack.stillOpen) {
+      const record = store.get(sessionId)
+      if (record) {
+        markRequestFailed(record.transcript, request, ack.reason)
+        if (record.control !== record.transcript)
+          markRequestFailed(record.control, request, ack.reason)
+      }
+    }
     void lookForWhatIsYours()
     return ack.outcome === 'taken' ? null : ack.reason
   } catch (cause) {
