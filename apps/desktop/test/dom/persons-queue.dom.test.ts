@@ -336,6 +336,13 @@ async function overlayOf(
   const m = mount(Layer, { open, onClose }, { width: 10, height: 10 })
   await new Promise((resolve) => setTimeout(resolve, 0))
   await nextTick()
+  const toggle = m.all('persons-queue-toggle')[0]
+  if (toggle) {
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    toggle.click()
+    await nextTick()
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+  }
   return m
 }
 
@@ -791,6 +798,7 @@ describe('§5 · it takes you to the card, and it never answers', () => {
     ]
     // ⚑ Two: the way there, and `336`'s door — and the second one CLAIMS rather than answers.
     expect(controls.map((one) => one.getAttribute('data-cy'))).toEqual([
+      'persons-queue-toggle',
       'persons-queue-take-over-sess_worker-7:req_1',
       'persons-queue-go-sess_worker-7:req_1',
     ])

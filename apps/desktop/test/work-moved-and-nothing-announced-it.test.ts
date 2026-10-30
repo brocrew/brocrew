@@ -570,7 +570,9 @@ describe('638 · a change to a conversation’s work announces itself', () => {
       // announced once after its `message_unqueued` row.
       // ⚑ **+1**: `setServicesOn` — a person's switch changes whether each piece queued at a service
       // waits for services, announced once after the services list is written.
-      expect(host_.split("this.theWorldMoved('work')").length - 1).toBe(35)
+      // ⚑ **+1**: `closeForAPerson` — a person's close of stopped work, announced once after its
+      // `work_closed` row.
+      expect(host_.split("this.theWorldMoved('work')").length - 1).toBe(36)
       for (const verb of [
         'private declineMoveOffersFromText(',
         'async decideMoveRequest(',

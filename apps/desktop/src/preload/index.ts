@@ -78,7 +78,11 @@ import type { WaitingOnWhoWrote } from '../shared/waiting-on-who-wrote'
 import type { AgentRemoved } from '../shared/agent-roster'
 import type { ArchiveOutcome, DeleteOutcome, DeleteVerdict } from '../shared/conversation-archive'
 import type { AgentModelChoice, ModelChoiceSaved } from '../shared/model-choice'
-import type { WorkRetitled, WorkTakenBackByAPerson } from '../shared/piece-called'
+import type {
+  WorkClosedByAPerson,
+  WorkRetitled,
+  WorkTakenBackByAPerson,
+} from '../shared/piece-called'
 import type { WhoCalledWhom } from '../shared/who-called-whom'
 import type { WorkspaceReading } from '../shared/workspace-reading'
 import type { WhatIsBeingDone } from '../shared/what-is-being-done'
@@ -574,6 +578,8 @@ const runtime: RuntimeBridge = Object.freeze({
     command({ kind: 'retitleWork', ...input }) as Promise<WorkRetitled>,
   takeBackWork: (input: { piece: string }) =>
     command({ kind: 'takeBackWork', ...input }) as Promise<WorkTakenBackByAPerson>,
+  closeWork: (input: { piece: string }) =>
+    command({ kind: 'closeWork', ...input }) as Promise<WorkClosedByAPerson>,
   // 677 · ⚑ `{ kind, ...input }` and the payload is four primitives — a slug, a provider word or null,
   // and two strings or null — so it is `plain-by-construction` on both halves of `363`'s question,
   // exactly as `setAgentProvider` above is. ⚠️ Flat on purpose: a nested `choice` object here would

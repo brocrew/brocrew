@@ -524,9 +524,10 @@ function fold(rows: readonly DigestRow[], name: (id: string) => string): Tally {
         const named = tally.given.get(event.piece)
         tally.spokenFor.add(event.piece)
         for (const asked of tally.questionsAboutPiece.get(event.piece) ?? []) tally.ended.add(asked)
+        // ⚑ A person closed it (no conversation in `by`): the line says so, off the row itself.
         bump(
           tally,
-          'work-closed',
+          event.by === null ? 'work-closed-by-a-person' : 'work-closed',
           row.at,
           named === undefined ? null : pieceLine(named.label, named.title),
         )
@@ -751,6 +752,8 @@ function sentence(kind: ObservedLineKind, group: Grouped, tally: Tally): string 
       return `${many(group.count, 'piece of work was', 'pieces of work were')} taken back by a person — the most recent is ${group.detail ?? 'work handed out before this window'}.`
     case 'work-closed':
       return `${many(group.count, 'piece of work was', 'pieces of work were')} closed by whoever gave it — the most recent is ${group.detail ?? 'work handed out before this window'}.`
+    case 'work-closed-by-a-person':
+      return `${many(group.count, 'piece of work was', 'pieces of work were')} closed by a person — the most recent is ${group.detail ?? 'work handed out before this window'}.`
     // 🔴 **475 · what the app DID, never what the agent got.** ⛔ *Not sent* is this app's own
     // word for all three endings `abandoned` covers — `QueuedMessage.vue` leads every one of them
     // with it — and it is the strongest thing that is true of the mid-handover case, where the

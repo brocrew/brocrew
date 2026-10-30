@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, useId } from 'vue'
 // 🔴 **`KIND_WORDS` and `sinceWords` were declared HERE until `452 relay 1`** — *one derivation,
 // wherever it lives* is `persons-queue.ts`' rule: two sentences for one `kind` are free to
 // disagree about who else might still pick a row up. See `KIND_WORDS` there, and note that
@@ -39,6 +39,7 @@ import type { UserInputResponse } from '../../../shared/runtime-ipc'
 import InstructionAsks from './InstructionAsks.vue'
 import McpServerRequests from './McpServerRequests.vue'
 import WorkWaits from './WorkWaits.vue'
+import CloseWorkButton from './CloseWorkButton.vue'
 import QuestionCard from './QuestionCard.vue'
 import WaitingOnWhoWrote from './WaitingOnWhoWrote.vue'
 
@@ -165,6 +166,8 @@ const props = withDefaults(
 const emit = defineEmits<{ leave: [] }>()
 
 const queue = usePersonsQueue()
+const expanded = ref(false)
+const bodyId = useId()
 const view = computed(() => queue.view.value)
 const rows = computed(() => view.value?.rows ?? [])
 /** 🔴 **737 · `734` F-2 — the rows whose asker reads the same name as another conversation's.** */
@@ -380,23 +383,36 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
          widened by the asks this copy lists and (F097) the work waiting on the reply (`cornerHead`),
          so the corner counts what *Waiting on you* draws. ⛔ `null` under the same rule as before:
          nothing is said over lists nobody has read. -->
-    <template v-if="props.floating && corner !== null">
-      <header class="pq-head">
-        <span class="pq-mark"
+    <header v-if="props.floating" class="pq-head">
+      <button
+        type="button"
+        class="pq-toggle"
+        data-cy="persons-queue-toggle"
+        :aria-expanded="expanded"
+        :aria-controls="bodyId"
+        @click="expanded = !expanded"
+      >
+        <span class="pq-mark" aria-hidden="true"
           ><svg class="icon"><use href="#i-question" /></svg
         ></span>
-        <strong data-cy="persons-queue-heading">{{ corner.heading }}</strong>
-        <!-- ⛔ **The number, unrounded and uncapped — and NEVER drawn at zero** (see
-             `PersonsQueueView.count`). ⚠️ The card can reach zero rows since `403`: one read
-             refused and the other empty draws the disclosure and nothing else, and a `0` badge
-             there spends a reader's attention to tell them there was nothing to spend it on. -->
-        <span v-if="corner.count > 0" class="pq-count" data-cy="persons-queue-count">{{
-          corner.count
-        }}</span>
-      </header>
-    </template>
+        <strong data-cy="persons-queue-heading">{{
+          expanded ? (corner?.heading ?? 'Waiting on you') : 'Waiting on you'
+        }}</strong>
+        <span
+          v-if="!expanded || (corner?.count ?? 0) > 0"
+          class="pq-count"
+          data-cy="persons-queue-count"
+          >{{ corner?.count ?? 0 }}</span
+        >
+      </button>
+    </header>
 
-    <div class="pq-body">
+    <div
+      v-show="!props.floating || expanded"
+      :id="bodyId"
+      class="pq-body"
+      data-cy="persons-queue-body"
+    >
       <!-- 🔴 **557 · WORK THAT STOPPED WITH NOBODY LEFT TO TELL** — see `StalledWorkView`.
 
            ⛔ **A band and not a row, and the module's docblock is the argument**: there is no card —
@@ -437,15 +453,18 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
           <!-- ⛔ **What the button DOES is said before it is pressed** — `openingAction`, the same
                two words the rows below use, because a person reading one card may not be told the
                same act in two vocabularies. -->
-          <button
-            class="pq-go"
-            type="button"
-            :data-cy="`persons-queue-stall-go-${work.key}`"
-            @click="openStalled(work)"
-          >
-            {{ work.action }}
-            <svg class="icon"><use href="#i-arrow" /></svg>
-          </button>
+          <div class="pq-stop-actions pq-stall-actions">
+            <CloseWorkButton :piece="work.key" :cy="`persons-queue-stall-close-${work.key}`" />
+            <button
+              class="pq-go"
+              type="button"
+              :data-cy="`persons-queue-stall-go-${work.key}`"
+              @click="openStalled(work)"
+            >
+              {{ work.action }}
+              <svg class="icon"><use href="#i-arrow" /></svg>
+            </button>
+          </div>
         </li>
       </ul>
       <!-- 🔴 **557 · the stall look has stopped answering.** ⛔ Drawn rather than left blank: a band
@@ -505,6 +524,11 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
             >
               {{ TAKE_BACK }}
             </button>
+            <CloseWorkButton
+              :piece="card.row.key"
+              :disabled="card.pending"
+              :cy="`persons-queue-stopped-close-${card.row.key}`"
+            />
           </div>
           <p
             v-if="card.said !== null"
@@ -1029,6 +1053,18 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
      on the count instead, where it sits on this opaque card. */
   background: var(--panel);
   box-shadow: var(--shadow);
+}
+
+.pq-toggle {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  gap: var(--space-4);
 }
 
 .pq-head {

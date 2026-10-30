@@ -97,6 +97,7 @@ import type { AppNotice } from './app-notice'
 // in either direction, `app-notice.ts`' arrangement above.
 import type {
   RetitleRail,
+  WorkClosedByAPerson,
   WorkRetitled,
   WorkTakenBackByAPerson,
   WorkThatNamesIt,
@@ -5525,8 +5526,11 @@ export interface WorkSentEvent {
 export interface WorkClosedEvent {
   type: 'work_closed'
   piece: string
-  /** ⛔ **The conversation that closed it** — the giver, or the conversation in its place. */
-  by: string
+  /**
+   * ⛔ **The conversation that closed it** — the giver, or the conversation in its place — or
+   * `null`: a person, who closes only stopped work *Waiting on you* lists.
+   */
+  by: string | null
 }
 
 /**
@@ -8711,6 +8715,13 @@ export type RuntimeCommand =
    */
   | { kind: 'takeBackWork'; piece: string }
   /**
+   * A person closes stopped work, by its label or its id: a piece a conversation gave whose holder
+   * stopped with it, or a `stopped` work incident. It ends at `closed`, as its giver's close ends it:
+   * its holder is told to stop, and the conversation that gave it, if any, that it is no longer owed.
+   * ⛔ Any other piece: refused.
+   */
+  | { kind: 'closeWork'; piece: string }
+  /**
    * 🔴 **Set this identity's DEFAULT model and effort — what its new conversations start on** (677;
    * D-042 · R2) — or clear it with `provider: null`.
    *
@@ -9287,6 +9298,8 @@ export interface RuntimeCommandResults {
   retitleWork: WorkRetitled
   /** The piece a person took back, or the rail that refused it ({@link WorkTakenBackByAPerson}). */
   takeBackWork: WorkTakenBackByAPerson
+  /** The piece a person closed, or the rail that refused it ({@link WorkClosedByAPerson}). */
+  closeWork: WorkClosedByAPerson
   /**
    * ⚑ **The choice as it now stands, read back — or the rail that refused it** (677).
    *
@@ -10156,6 +10169,8 @@ export interface RuntimeBridge {
    * Take back the piece a service is on, as a person (see {@link RuntimeCommandResults.takeBackWork}).
    */
   takeBackWork(input: { piece: string }): Promise<WorkTakenBackByAPerson>
+  /** Close stopped work, as a person (see {@link RuntimeCommandResults.closeWork}). */
+  closeWork(input: { piece: string }): Promise<WorkClosedByAPerson>
   /**
    * Set this identity's default model and effort — what its new conversations start on (677; D-042
    * · R2) — or clear it with `provider: null`. See {@link RuntimeCommandResults.setAgentModelAndEffort}.

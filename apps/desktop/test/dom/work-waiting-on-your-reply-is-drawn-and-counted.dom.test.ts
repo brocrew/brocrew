@@ -371,6 +371,8 @@ describe('§6 · the overlay’s corner counts it, lists it, and leaves before i
       closed += 1
     })
 
+    m.q('persons-queue-toggle').click()
+    await nextTick()
     expect(said(m.q('persons-queue-heading'))).toBe('An agent is waiting on your reply')
     expect(said(m.q('persons-queue-count'))).toBe('1')
     expect(m.q('persons-queue-replies')).toBeTruthy()

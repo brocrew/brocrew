@@ -210,3 +210,31 @@ export type WorkTakenBackByAPerson =
       readonly askedItsTurnToStop: boolean
     }
   | { readonly ok: false; readonly rail: PersonTakeBackRail }
+
+/**
+ * Why a person's close was refused: the piece is not stopped work *Waiting on you* lists (a piece a
+ * conversation gave whose holder stopped with it, or a `stopped` work incident), or one of take
+ * back's reasons to try again. The window says each.
+ */
+export const PERSON_CLOSE_RAILS = [
+  'not-a-stopped-piece',
+  'that-conversation-has-not-started',
+  'that-work-is-being-sent',
+  'a-conversation-with-its-questions-is-starting',
+  'its-questions-could-not-all-be-read',
+] as const
+
+export type PersonCloseRail = (typeof PERSON_CLOSE_RAILS)[number]
+
+/**
+ * What a person's close answers: the piece closed, and whether the turn working on it was asked to
+ * stop with it — or the rail that refused it.
+ */
+export type WorkClosedByAPerson =
+  | {
+      readonly ok: true
+      readonly piece: string
+      readonly label: string
+      readonly askedItsTurnToStop: boolean
+    }
+  | { readonly ok: false; readonly rail: PersonCloseRail }
