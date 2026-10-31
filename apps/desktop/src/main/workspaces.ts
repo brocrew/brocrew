@@ -1,5 +1,5 @@
+import { PACKAGED_WORKSPACE_LIST } from './workspace-routing'
 import {
-  PACKAGED_WORKSPACE_LIST,
   packagedWorkspaceIsForbidden,
   routingWarning,
   WORKSPACE_POLICY_FILE,

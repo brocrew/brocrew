@@ -17,7 +17,6 @@ import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
 
 export const WORKSPACE_LIST_REFUSAL = "BroCrew couldn't read its list of workspaces."
 export const WORKSPACE_POLICY_FILE = 'workspace-policy.json'
-export const PACKAGED_WORKSPACE_LIST = 'packaged-workspaces.json'
 const MAX_BYTES = 1024 * 1024
 const OWNERS = 'packaged-workspace-owners'
 export type RoutingReason =

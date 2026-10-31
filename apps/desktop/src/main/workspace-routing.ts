@@ -12,16 +12,12 @@ import {
   withinWorkspace as within,
   WorkspaceRoutingError,
   WORKSPACE_POLICY_FILE,
-  PACKAGED_WORKSPACE_LIST,
   WORKSPACE_LIST_REFUSAL,
   type RoutingDiagnostic,
 } from './workspace-routing-store'
-export {
-  WORKSPACE_LIST_REFUSAL,
-  WORKSPACE_POLICY_FILE,
-  PACKAGED_WORKSPACE_LIST,
-} from './workspace-routing-store'
+export { WORKSPACE_LIST_REFUSAL, WORKSPACE_POLICY_FILE } from './workspace-routing-store'
 
+export const PACKAGED_WORKSPACE_LIST = 'packaged-workspaces.json'
 export const OTHER_BUILD_REFUSAL = 'This workspace opens in the BroCrew app in Applications.'
 export const PACKAGED_WORKSPACE_REFUSAL = "This workspace can't be opened in this app."
 /** A folder the policy keeps for a development build of BroCrew, as the packaged app is told. */
