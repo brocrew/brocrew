@@ -1,28 +1,18 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { defineComponent, h, nextTick, shallowRef } from 'vue'
-import ConversationMain from '../../src/renderer/src/components/ConversationMain.vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import TeamForest from '../../src/renderer/src/components/TeamForest.vue'
 import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
+import {
+  createFilesLibrary,
+  provideFilesLibrary,
+  type FilesLibraryController,
+} from '../../src/renderer/src/composables/useFilesLibrary'
+import { keptFileLibraryReplies } from '../fixtures/kept-file-library-replies'
 import type { KeptFile, AgentIdentity } from '../../src/shared/runtime-ipc'
 import { conv, forestDrawn, task, viewOf } from './forest-fixture'
-import { META, mount, paneProps, unmountAll, visible, type Mounted } from './harness'
-
-/**
- * # ⚑ A piece on the Graph tab counts its files, and the count opens the Files tab there
- *
- * A graph piece with files shows a small count opening the files tab at that piece. Count
- * distinct files in tree scope through `TheCast.treeFiles`.
- *
- * ⚑ **What is pinned here**: a task line with files shows their count, as a press that says what
- * it opens, and one with none shows nothing; the task line itself stays words; a press opens the
- * Files tab on All with that piece's group marked and in view; a tab chosen by hand
- * marks nothing; and the Team page, which is handed no counts, draws none.
- *
- * ⛔ **Every negative here is paired with the same mount one fact over** — a piece with files and
- * one without, the tree read and not — because a graph that drew no count at all would pass.
- */
+import { META, mount, paneProps, record, unmountAll, visible, type Mounted } from './harness'
 
 afterEach(async () => {
   unmountAll()
@@ -81,32 +71,42 @@ const FILES = [
 
 const read = (el: Element): string => (el.textContent ?? '').replace(/\s+/g, ' ').trim()
 
-async function graph(
-  files: readonly KeptFile[] | null,
-  over: Record<string, unknown> = {},
-): Promise<Mounted> {
+async function graph(files: readonly KeptFile[] | null, over: Record<string, unknown> = {}) {
   useWhoCalledWhom().treeFiles.value =
     files === null ? null : { conversation: ID, files, answered: true }
   await page.viewport(1200, 808)
-  const m = mount(
-    ConversationPane,
-    paneProps({
-      forest: FOREST(),
-      identities: IDS,
-      onReadResource: async () => ({ ok: false, reason: 'no-store' }),
-      ...over,
-    }),
-    { width: 1200, height: 808 },
-  )
+  const shown = shallowRef(record([], ID))
+  let library!: FilesLibraryController
+  const component = defineComponent({
+    setup() {
+      library = createFilesLibrary({
+        read: keptFileLibraryReplies(() => files ?? []),
+        workspace: () => 'fictional',
+        selected: () => ({ id: shown.value.sessionId, name: 'Selected conversation' }),
+      })
+      provideFilesLibrary(library)
+      return () =>
+        h(
+          ConversationPane,
+          paneProps({
+            record: shown.value,
+            forest: FOREST(),
+            identities: IDS,
+            onReadResource: async () => ({ ok: false, reason: 'no-store' }),
+            ...over,
+          }),
+        )
+    },
+  })
+  const m = mount(component, {}, { width: 1200, height: 808 })
   await nextTick()
   m.q('main-tab-graph').click()
   await forestDrawn()
-  return m
+  return Object.assign(m, { library, shown })
 }
+const line = (m: Mounted, piece: string): HTMLElement => m.q('forest-row-' + piece)
 
-const line = (m: Mounted, piece: string): HTMLElement => m.q(`forest-row-${piece}`)
-
-describe('a piece on the Graph tab counts its files', () => {
+describe('Graph file counts retain their own scope and explicitly enter the workspace library', () => {
   it('🔴 a task line with files shows their distinct count, as a press that says what it opens — one with none shows nothing', async () => {
     const m = await graph(FILES)
     const count = line(m, 'work_1').querySelector<HTMLElement>('[data-cy="forest-task-files"]')!
@@ -125,198 +125,75 @@ describe('a piece on the Graph tab counts its files', () => {
     expect(words.tagName).toBe('SPAN')
     expect(words.closest('button')).toBeNull()
   })
-
   it('⛔ with the tree not read, no line counts anything — its task lines still draw', async () => {
     const m = await graph(null)
     expect(m.all('forest-task-files')).toHaveLength(0)
     expect(read(line(m, 'work_1').querySelector('[data-cy="forest-task-number"]')!)).toBe('W1.1')
   })
 
-  it('🔴 a press opens the Files tab at that piece — its group marked, on All — and is not a card press', async () => {
-    const band: string[] = []
-    const opened: string[] = []
-    useWhoCalledWhom().goTo.value = (conversation) => opened.push(conversation)
+  it('a Graph count enters the exact task with subtasks off and clears query/kind/role while retaining view/sort', async () => {
+    const band: string[] = [],
+      opened: string[] = []
+    useWhoCalledWhom().goTo.value = (id) => opened.push(id)
     const m = await graph([...FILES, kept('res_c', 'work_9', 'W1.9', 'c')], {
-      'onUpdate:drawerTab': (tab: string) => band.push(`tab:${tab}`),
+      'onUpdate:drawerTab': (tab: string) => band.push(tab),
       onToggleDrawer: () => band.push('toggle'),
     })
-    // ⚑ The positive on the same mount: a CARD's press selects its agent and shows its card in the
-    // right panel — the spies see both.
-    m.q('forest-row-sess_ana').querySelector<HTMLElement>('[data-cy="forest-open"]')!.click()
-    await nextTick()
-    expect(band).toEqual(['tab:open', 'toggle'])
-    expect(opened).toEqual(['sess_ana'])
-    band.length = 0
-    line(m, 'work_1').querySelector<HTMLElement>('[data-cy="forest-task-files"]')!.click()
-    await nextTick()
-    await nextTick()
+    m.library.state.query = 'needle'
+    m.library.state.kind = 'images'
+    m.library.state.role = 'input'
+    m.library.state.view = 'list'
+    m.library.state.sort = 'name'
+    line(m, 'work_1').querySelector<HTMLElement>('[data-cy=forest-task-files]')!.click()
+    await vi.waitFor(() => expect(m.all('library-file')).toHaveLength(2))
     expect(m.q('main-tab-files').getAttribute('aria-selected')).toBe('true')
-    expect(visible(m.q('conversation-files'))).toBe(true)
-    const groups = m.all('tree-file-group')
-    const marked = groups.filter((group) => group.classList.contains('marked'))
-    expect(marked.map((group) => group.dataset.piece)).toEqual(['work_1'])
-    expect(marked[0]!.getAttribute('aria-current')).toBe('location')
-    // ⚑ The pair: the other piece's group is drawn, unmarked.
-    const other = groups.find((group) => group.dataset.piece === 'work_9')!
-    expect(other.classList.contains('marked')).toBe(false)
-    expect(other.getAttribute('aria-current')).toBeNull()
-    expect(m.q('tree-files-filter-all').getAttribute('aria-pressed')).toBe('true')
-    // ⛔ A count is not a card: the right panel was not shown, and no agent is selected.
-    expect(band).toEqual([])
-    expect(opened).toEqual(['sess_ana'])
-  })
-
-  it('🔴 a press on a piece whose files stand on another piece’s row marks its mention there, in view', async () => {
-    const opened: unknown[][] = []
-    // ⚑ W1.1 and W1.2 kept the same bytes; the row stands on W1.1, which kept them first.
-    const m = await graph(
-      [
-        { ...kept('res_a', 'work_1', 'W1.1', 'a'), keptAt: 1 },
-        { ...kept('res_a2', 'work_2', 'W1.2', 'a'), keptAt: 2 },
-      ],
-      { onOpenConversation: (...args: unknown[]) => opened.push(args) },
-    )
-    line(m, 'work_2').querySelector<HTMLElement>('[data-cy="forest-task-files"]')!.click()
-    await nextTick()
-    await nextTick()
-    expect(m.q('main-tab-files').getAttribute('aria-selected')).toBe('true')
-    expect(m.all('tree-file-group').map((group) => group.dataset.piece)).toEqual(['work_1'])
-    const mention = m.q('tree-file-also-piece')
-    expect(mention.dataset.piece).toBe('work_2')
-    expect(mention.classList.contains('marked')).toBe(true)
-    expect(mention.getAttribute('aria-current')).toBe('location')
-    expect(visible(mention)).toBe(true)
-    // ⚑ The pair: a press on W1.1 marks its group, and the mention is no longer marked.
-    m.q('main-tab-graph').click()
-    await forestDrawn()
-    line(m, 'work_1').querySelector<HTMLElement>('[data-cy="forest-task-files"]')!.click()
-    await nextTick()
-    await nextTick()
-    expect(m.q('tree-file-group').classList.contains('marked')).toBe(true)
-    expect(m.q('tree-file-also-piece').classList.contains('marked')).toBe(false)
-    // ⚑ The mention opens the conversation the forest says holds W1.2, though a person kept it.
-    m.q('tree-file-also-piece').click()
-    await nextTick()
-    expect(opened).toEqual([['sess_arjun', 'W1.2']])
-  })
-
-  it('🔴 the files on this conversation’s own root are counted on its card — a root is never a task line', async () => {
-    const band: string[] = []
-    const opened: string[] = []
-    useWhoCalledWhom().goTo.value = (conversation) => opened.push(conversation)
-    const m = await graph([kept('res_r', 'work_root', 'W1', 'r'), ...FILES], {
-      'onUpdate:drawerTab': (tab: string) => band.push(`tab:${tab}`),
-      onToggleDrawer: () => band.push('toggle'),
+    expect(m.library.state).toMatchObject({
+      scope: { type: 'task', id: 'work_1' },
+      includeSubtasks: false,
+      query: '',
+      kind: 'all',
+      role: 'all',
+      view: 'list',
+      sort: 'name',
     })
-    const mine = m
-      .q(`forest-row-${ID}`)
-      .querySelector<HTMLElement>('[data-cy="forest-root-files"]')!
-    expect(mine).not.toBeNull()
-    expect(read(mine)).toBe('1')
-    expect(mine.getAttribute('title')).toBe('Show the file kept on W1')
-    // ⛔ The pair on the same mount: another conversation's card draws no root count.
-    expect(read(m.q('forest-row-sess_boss').querySelector('[data-cy="forest-name"]')!)).toBe(
-      'BroBot',
-    )
-    expect(m.q('forest-row-sess_boss').querySelector('[data-cy="forest-root-files"]')).toBeNull()
-    mine.click()
-    await nextTick()
-    await nextTick()
-    const marked = m.all('tree-file-group').filter((group) => group.classList.contains('marked'))
-    expect(marked.map((group) => group.dataset.piece)).toEqual(['work_root'])
-    // ⛔ A count is not a card: the right panel was not shown, and no agent is selected.
+    expect(m.library.page.value).toMatchObject({ totalFiles: 2, totalKeeps: 3 })
+    expect(m.all('library-file').some((el) => el.dataset.document === 'res_c')).toBe(false)
     expect(band).toEqual([])
     expect(opened).toEqual([])
   })
-
-  it('⚑ a piece marked on one conversation’s work is not marked on the next — the tab stays on Files', async () => {
-    const shown = shallowRef({ conversation: ID, files: FILES as readonly KeptFile[] })
-    const m = mount(
-      defineComponent({
-        setup: () => () =>
-          h(ConversationMain, {
-            conversation: shown.value.conversation,
-            forest: FOREST(),
-            files: {
-              conversation: shown.value.conversation,
-              files: shown.value.files,
-              answered: true,
-            },
-            canOpenDocument: true,
-          }),
-      }),
-      {},
-      { width: 1200, height: 808 },
-    )
+  it('a shared hash kept on another task opens that exact placement and remains pinned across rail and tab changes', async () => {
+    const m = await graph([
+      kept('res_a', 'work_1', 'W1.1', 'a'),
+      { ...kept('res_a2', 'work_2', 'W1.2', 'a'), keptAt: 2 },
+    ])
+    line(m, 'work_2').querySelector<HTMLElement>('[data-cy=forest-task-files]')!.click()
+    await vi.waitFor(() => expect(m.all('library-file')).toHaveLength(1))
+    expect(m.q('library-file').dataset.document).toBe('res_a2')
+    m.shown.value = record([], 'sess_ana')
     await nextTick()
-    m.q('main-tab-graph').click()
-    await forestDrawn()
-    line(m, 'work_1').querySelector<HTMLElement>('[data-cy="forest-task-files"]')!.click()
-    await nextTick()
-    await nextTick()
-    expect(
-      m.all('tree-file-group').filter((group) => group.classList.contains('marked')),
-    ).toHaveLength(1)
-    // ⚑ Another conversation, whose own tree holds the same piece.
-    shown.value = { conversation: 'sess_ana', files: FILES }
-    await nextTick()
-    await nextTick()
-    expect(m.q('main-tab-files').getAttribute('aria-selected')).toBe('true')
-    expect(m.all('tree-file-group').map((group) => group.dataset.piece)).toEqual(['work_1'])
-    expect(
-      m.all('tree-file-group').filter((group) => group.classList.contains('marked')),
-    ).toHaveLength(0)
-  })
-
-  it('🔴 the piece it opens at is brought into view — the tab would otherwise open at its top', async () => {
-    // ⚑ Thirty pieces kept above W1.2's in the door's order: its group starts far below the fold.
-    const above = Array.from({ length: 30 }, (_, index) =>
-      kept(
-        `res_f${String(index)}`,
-        `work_f${String(index)}`,
-        `W1.1.${String(index + 1)}`,
-        `${index % 10}`,
-      ),
-    )
-    const m = await graph([...FILES, ...above, kept('res_z', 'work_2', 'W1.2', 'z')])
-    line(m, 'work_2').querySelector<HTMLElement>('[data-cy="forest-task-files"]')!.click()
-    await nextTick()
-    await nextTick()
-    await new Promise((done) => requestAnimationFrame(() => done(null)))
-    const box = m.q('tree-files').getBoundingClientRect()
-    const target = m.all('tree-file-group').find((group) => group.dataset.piece === 'work_2')!
-    const at = target.getBoundingClientRect()
-    expect(at.top).toBeGreaterThanOrEqual(box.top - 0.5)
-    expect(at.bottom).toBeLessThanOrEqual(box.bottom + 0.5)
-    // ⚑ The pair on the same mount: the first group has scrolled out above.
-    const first = m.all('tree-file-group')[0]!.getBoundingClientRect()
-    expect(first.bottom).toBeLessThan(box.top)
-  })
-
-  it('⚑ a tab chosen by hand marks nothing — a count pressed again marks its piece again', async () => {
-    const m = await graph(FILES)
-    line(m, 'work_1').querySelector<HTMLElement>('[data-cy="forest-task-files"]')!.click()
-    await nextTick()
-    await nextTick()
-    expect(
-      m.all('tree-file-group').filter((group) => group.classList.contains('marked')),
-    ).toHaveLength(1)
+    expect(m.library.state.scope).toMatchObject({ type: 'task', id: 'work_2' })
+    expect(m.q('library-file').dataset.document).toBe('res_a2')
     m.q('main-tab-conversation').click()
     await nextTick()
     m.q('main-tab-files').click()
     await nextTick()
-    await nextTick()
-    const groups = m.all('tree-file-group')
-    expect(groups.map((group) => group.dataset.piece)).toEqual(['work_1'])
-    expect(groups.filter((group) => group.classList.contains('marked'))).toHaveLength(0)
-    m.q('main-tab-graph').click()
-    await forestDrawn()
-    line(m, 'work_1').querySelector<HTMLElement>('[data-cy="forest-task-files"]')!.click()
-    await nextTick()
-    await nextTick()
-    expect(
-      m.all('tree-file-group').filter((group) => group.classList.contains('marked')),
-    ).toHaveLength(1)
+    expect(m.library.state.scope).toMatchObject({ id: 'work_2' })
+    expect(m.q('library-file').dataset.document).toBe('res_a2')
+  })
+  it('the current conversation root keeps its legacy Graph count and enters the exact root task', async () => {
+    const m = await graph([kept('res_r', 'work_root', 'W1', 'f'), ...FILES])
+    const mine = m.q('forest-row-' + ID).querySelector<HTMLElement>('[data-cy=forest-root-files]')!
+    expect(read(mine)).toBe('1')
+    expect(mine.title).toBe('Show the file kept on W1')
+    expect(m.q('forest-row-sess_boss').querySelector('[data-cy=forest-root-files]')).toBeNull()
+    mine.click()
+    await vi.waitFor(() => expect(m.all('library-file')).toHaveLength(1))
+    expect(m.library.state.scope).toMatchObject({
+      type: 'task',
+      id: 'work_root',
+      includeSubtasks: false,
+    })
+    expect(m.q('library-file').dataset.document).toBe('res_r')
   })
 
   it('⛔ the Team page is handed no counts, and draws none — the same forest with counts does', async () => {

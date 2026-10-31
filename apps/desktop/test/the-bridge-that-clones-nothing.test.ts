@@ -531,6 +531,7 @@ const HOW_EACH_VERB_IS_BUILT: Record<RuntimeCommandKind, VerbRow> = {
   // ⚑ **D-026 · `plain-by-construction`**, `whoCalledWhom`'s reading: the preload writes the outer
   // literal `{ kind: 'filesKept', ...input }` itself, and every field of every scope is a string.
   filesKept: { how: 'plain-by-construction' },
+  filesLibrary: { how: 'plain-by-construction' },
   readChildWork: { how: 'plain-by-construction' },
   readChildState: { how: 'plain-by-construction' },
   sendToChild: { how: 'plain-by-construction' },
@@ -668,7 +669,7 @@ const HOW_EACH_VERB_IS_BUILT: Record<RuntimeCommandKind, VerbRow> = {
   deleteConversation: { how: 'plain-by-construction' },
   // ⛔ **Not `nothing`.** `setSpawningEnabled` carries a boolean; the wrapper is an object literal
   // written by `agent-store.ts` and a `boolean` is a primitive however it was read. §7 is where that
-  // is measured rather than claimed, because this row is the value 102 others carry.
+  // is measured rather than claimed, because this row is the value 103 others carry.
   // ⚠️ **It said *41* and the assertion below said 43** (found by `446`, which moved neither). The
   // first number went 42 → 43 at `438`'s `digest` and this sentence did not, so it was one short
   // before this dispatch opened the file — `a-number-can-survive-the-death-of-its-derivation`, and
@@ -750,12 +751,12 @@ describe('§2 · every renderer→main verb is accounted for (361 §1)', () => {
     // ⚑ And `stoppedWorkForAPerson`, the pieces whose helper stopped: 115 → 116.
     // Link resolution, both typed-wait verbs and recent activity are present in the same bridge.
     // ⚑ And `closeWork`, a person's close of stopped work: 137 → 138.
-    expect(Object.keys(HOW_EACH_VERB_IS_BUILT)).toHaveLength(138)
+    expect(Object.keys(HOW_EACH_VERB_IS_BUILT)).toHaveLength(139)
     // ⚑ 8 → 10 at `744`: `savedDrafts`, `saveDrafts`. 10 → 9 at D-016: `getDemoSeed` out.
     // ⚑ 9 → 10 at D-031: `localZone`.
     expect(Object.keys(THE_APP_CHANNELS)).toHaveLength(10)
     // ⛔ **The split, pinned, because two comments quote it** (363). `§7` exists for the rows that
-    // carry the commonest answer, and *"the value 102 others carry"* is a claim about this number —
+    // carry the commonest answer, and *"the value 103 others carry"* is a claim about this number —
     // an unasserted one is a sentence that goes quietly wrong on the next merge.
     const split = (how: HowThePayloadIsBuilt): number =>
       Object.values(HOW_EACH_VERB_IS_BUILT).filter((entry) => entry.how === how).length
@@ -962,7 +963,7 @@ describe('§2 · every renderer→main verb is accounted for (361 §1)', () => {
       // Recent activity adds one plain packet, built from two numeric window bounds.
       // ⚑ `closeWork` moves the FIRST number by one (`{ kind, piece }` written by the preload); the
       // sentences quoting it are corrected with it.
-      103, 27, 8,
+      104, 27, 8,
     ])
   })
 

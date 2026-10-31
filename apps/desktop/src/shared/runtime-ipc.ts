@@ -8482,6 +8482,7 @@ export type RuntimeCommand =
    * to find a file is not a summary.
    */
   | ({ kind: 'filesKept' } & FilesKeptScope)
+  | { kind: 'filesLibrary'; request: import('./files-library').FilesLibraryRequest }
   | { kind: 'searchWork'; conversation: string; query: import('./work-search').WorkSearchQuery }
   // 112. Keyed on the AGENT even for the journal and the script, because the run id those two are
   // filed under is the one thing the provider does not put on the wire — see `main/child-work.ts`.
@@ -9168,6 +9169,7 @@ export interface RuntimeCommandResults {
   revealResource: ResourceReveal
   /** 🔴 **D-026 · the files kept in one scope**, or the word for a scope that names nothing. */
   filesKept: FilesKept
+  filesLibrary: import('./files-library').FilesLibraryResult
   searchWork: import('./work-search').WorkSearchResult
   /** Where one of this session's paths is, shown in the file manager (356 §1). */
   revealPath: RevealResult
@@ -9936,6 +9938,9 @@ export interface RuntimeBridge {
    * and the surfaces that draw it are two dispatches, and the surfaces are UI-002's.
    */
   filesKept(input: FilesKeptScope): Promise<FilesKept>
+  filesLibrary(
+    request: import('./files-library').FilesLibraryRequest,
+  ): Promise<import('./files-library').FilesLibraryResult>
   searchWork(input: {
     conversation: string
     query: import('./work-search').WorkSearchQuery

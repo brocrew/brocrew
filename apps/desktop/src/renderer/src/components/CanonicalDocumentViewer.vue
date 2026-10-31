@@ -246,6 +246,7 @@ async function showInFinder(): Promise<void> {
     </header>
 
     <p v-if="revealSaid" class="revealed" data-cy="canonical-document-revealed">{{ revealSaid }}</p>
+    <slot name="provenance" />
     <!-- 🔴 **635 · the stage branches on the FORM** (`HO-097` §1.3: *"show each type the way a
          person expects"*). ⛔ **And viewing never executes**: text is rendered by `DocumentBody`
          alone, whose renderer is `html: false` — *"the whole security story"* — so a page arrives
@@ -329,6 +330,9 @@ async function showInFinder(): Promise<void> {
 }
 
 .name {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
   color: var(--text-soft);
   font-size: var(--type-caption);
   /* ⚠️ D-032 · an agent's file name may hold direction overrides: kept to itself, never spilling. */
@@ -336,6 +340,7 @@ async function showInFinder(): Promise<void> {
 }
 
 .id {
+  overflow-wrap: anywhere;
   color: var(--faint);
   font: var(--type-caption) / 1.4 var(--font-mono);
 }

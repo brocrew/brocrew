@@ -258,6 +258,8 @@ import { THE_COMPACT_COMMAND } from '../lib/compaction-offer'
 import { type WorkGivenOutReading } from '../lib/work-given-out'
 import { theWorkAPersonGave } from '../lib/working-together'
 import { filesReadFor } from '../lib/files-kept'
+import { createFilesLibrary, provideFilesLibrary } from '../composables/useFilesLibrary'
+import FilesLibraryPreview from './FilesLibraryPreview.vue'
 import { useWhoCalledWhom } from '../composables/useWhoCalledWhom'
 import { MAX_DIGEST_SPAN_MS } from '../../../shared/digest'
 import type { RecentActivityReading } from '../../../shared/recent-activity'
@@ -1397,6 +1399,13 @@ const notice = ref<string | null>(null)
 
 const info = ref<AppInfo | null>(null)
 const infoError = ref<string | null>(null)
+const filesLibrary = createFilesLibrary({
+  read: (request) => window.api.runtime.filesLibrary(request),
+  workspace: () => info.value?.workspace.path ?? null,
+  selected: () =>
+    activeId.value === null ? null : { id: activeId.value, name: conversationName(activeId.value) },
+})
+provideFilesLibrary(filesLibrary)
 
 /**
  * What each provider can do, as its adapter declares it (039).
@@ -3344,13 +3353,17 @@ onMounted(() => {
   stopHearingStates = listenProviderStates(window.api.runtime, store, (message) => {
     rail.value?.hearStates(message)
     // ⚑ **UI-002 · a file kept anywhere is read again at once** — see {@link readTheFiles}.
-    if (message.kept.length > 0) void readTheFiles()
+    if (message.kept.length > 0) {
+      filesLibrary.markStale()
+      void readTheFiles()
+    }
   })
   // ⚑ **UI-002 · the files' first read** — they have no tick, so a screen that remounts on a
   // conversation already open reads them itself ({@link readTheFiles}); on the launcher it asks nothing.
   void readTheFiles()
   stopListening = whenTheWorldMoves((listener) => window.api.runtime.onChanged(listener), {
     conversations: () => {
+      filesLibrary.markStale()
       void rail.value?.refreshResumable().then(lookAgainIfItMoved)
       void library.value?.refreshResumable()
       // 🔴 **547 · and the band on the drawer's first tab**, which draws the SPAWN half of that
@@ -3380,6 +3393,7 @@ onMounted(() => {
     // conversations' ledgers, so the reader asks the question it already asks and gets the whole
     // answer — which is this channel's contract rather than an economy.
     work: () => {
+      filesLibrary.markStale()
       void readTheCast()
       // ⚑ **D-016 · commit 7 · R2 — and the rail's list, for the work that names each
       // conversation**, which a give, a reply, a take-back, a close or a retitle moves and nothing
@@ -3404,6 +3418,7 @@ onMounted(() => {
     // and this one are the same function rather than two readers of one store.
     // ⚑ **UI-012 · and the model lists** — a last pick, a default or a hand-added model moved.
     agents: () => {
+      filesLibrary.markStale()
       refreshAgents()
       void modelLists.reread()
     },
@@ -4261,6 +4276,13 @@ onUnmounted(() => {
       <!-- A file an agent handed with a to-do, opened from Waiting on you or its corner. -->
       <CanonicalDocumentOverlay
         ref="todoDocument"
+        :read="readResourceForAnySurface"
+        :draw="store.drawResource"
+        :reveal="store.revealResource"
+      />
+      <FilesLibraryPreview
+        :library="filesLibrary"
+        :workspace="info?.workspace.path ?? 'unread-workspace'"
         :read="readResourceForAnySurface"
         :draw="store.drawResource"
         :reveal="store.revealResource"
