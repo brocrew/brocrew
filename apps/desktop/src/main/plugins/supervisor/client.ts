@@ -225,7 +225,7 @@ export class PluginWorkspaceLease {
         const until = performance.now() + OWNER_LAUNCH_MS
         try {
           await Promise.race([
-            serializedLaunch(storage!.identity, options.launch),
+            serializedLaunch(`${storage!.root}\0${storage!.identity}`, options.launch),
             new Promise<never>((_, reject) => {
               timer = setTimeout(
                 () => reject(new PluginSupervisorError('unavailable')),
