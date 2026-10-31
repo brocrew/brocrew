@@ -10,6 +10,7 @@ import { validateTheme } from '../../src/shared/themes/validate'
 import DEFINED from '../../resources/themes/defined/theme.json'
 import CREW_NIGHT from '../../resources/themes/crew-night/theme.json'
 import BROCREW from '../../resources/themes/brocrew/theme.json'
+import SYNTHWAVE from '../../resources/themes/synthwave/theme.json'
 import { facetsOfState } from '../../src/renderer/src/lib/agent-state'
 import { sessionPanel } from '../../src/renderer/src/lib/session-panel'
 import { applyEvent, createTranscript } from '../../src/renderer/src/lib/transcript'
@@ -30,13 +31,12 @@ function color(value: string): Rgba {
   return [rgba[0]!, rgba[1]!, rgba[2]!, rgba[3]! / 255]
 }
 
-/** The new column and popup have flat opaque surfaces; canvas resolves derived oklab tokens too. */
-function readableContrast(element: Element): number {
-  const ink = color(getComputedStyle(element).color)
+/** Composite the flat surfaces; canvas resolves derived oklab tokens too. */
+function paintedBackground(element: Element): Rgba {
   const layers: string[] = []
   for (let node: Element | null = element; node !== null; node = node.parentElement) {
     const style = getComputedStyle(node)
-    expect(style.backgroundImage).toBe('none')
+    for (const image of style.backgroundImage.split(',')) expect(image.trim()).toBe('none')
     layers.push(style.backgroundColor)
     if (color(style.backgroundColor)[3] === 1) break
   }
@@ -48,7 +48,11 @@ function readableContrast(element: Element): number {
     pixels.fillRect(0, 0, 1, 1)
   }
   const paper = pixels.getImageData(0, 0, 1, 1).data
-  return contrast(ink, [paper[0]!, paper[1]!, paper[2]!, paper[3]! / 255])
+  return [paper[0]!, paper[1]!, paper[2]!, paper[3]! / 255]
+}
+
+function readableContrast(element: Element): number {
+  return contrast(color(getComputedStyle(element).color), paintedBackground(element))
 }
 
 afterEach(() => {
@@ -156,7 +160,14 @@ describe('human final answer surfaces', () => {
     },
   )
 
-  it.each(['Classic dark', 'Classic light', 'Defined', 'BroCrew', 'Crew Night'] as const)(
+  it.each([
+    'Classic dark',
+    'Classic light',
+    'Defined',
+    'BroCrew',
+    'Crew Night',
+    'Synthwave',
+  ] as const)(
     'reads history and the paired popup using the actual %s theme cascade',
     async (theme) => {
       const base = validateTheme(DEFINED, { assets: new Map(), builtIns: new Map(), builtIn: true })
@@ -164,6 +175,7 @@ describe('human final answer surfaces', () => {
       if (theme === 'Defined') applyTheme(base.theme)
       else if (theme === 'Crew Night') applyTheme(resolveTheme(CREW_NIGHT as Theme, base.theme))
       else if (theme === 'BroCrew') applyTheme(resolveTheme(BROCREW as Theme, base.theme))
+      else if (theme === 'Synthwave') applyTheme(resolveTheme(SYNTHWAVE as Theme, base.theme))
       else applyTheme(null)
       const state = stateOf(first)
       const assistants = state.items.filter((item) => item.kind === 'assistant')
@@ -196,6 +208,10 @@ describe('human final answer surfaces', () => {
       expect(color(bubbleStyle.borderInlineStartColor)).toEqual(
         color(bubbleStyle.getPropertyValue('--accent').trim()),
       )
+      expect(paintedBackground(column), `${theme} distinct message backgrounds`).not.toEqual(
+        paintedBackground(bubble),
+      )
+      expect(readableContrast(bubble), `${theme} person text`).toBeGreaterThanOrEqual(4.5)
       expect(getComputedStyle(column).backgroundColor).not.toBe('rgba(0, 0, 0, 0)')
       for (const selector of [
         '.final-label',

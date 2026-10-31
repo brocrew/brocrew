@@ -378,7 +378,7 @@ function openANamedDocument(event: MouseEvent): void {
 }
 
 .human-final .msg-column {
-  background: var(--accent-mix-9);
+  background: color-mix(in oklab, var(--accent-2) 7%, var(--panel));
   border-radius: var(--radius-sm);
   padding: 12px 14px;
 }
