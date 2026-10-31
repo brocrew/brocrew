@@ -1,0 +1,161 @@
+{
+  "sourceCommit": "9e4bd3da17011df1050d345e11b4addf466cb3e6",
+  "sourceTree": "beea1a529cab3d88fd18ef7ead9284e773e68a82",
+  "base": "6157fa1e33a8d5f36558bdd09d171f39f9dc5c07",
+  "historicalCounterexample": {
+    "row": "1004 M2 single-site",
+    "exit": 0,
+    "result": "SURVIVED: independent failed-turn path still marks the same life",
+    "originalLogSha256": "cf03d95bf0f4679ee7b445be2e727b1c528df96240eb46935443501281e9a51e"
+  },
+  "rows": [
+    {
+      "table": "1004",
+      "row": 2,
+      "label": "1004-M2-RED-second",
+      "description": "M2 · 🔴 **the death on a revoked sign-in is never marked** — the teardown's hook runs and finds nothing to act on, so the conversation stays stopped — killed by `a-conversation-reopens-on-a-renewed-sign-in.test.ts` (D-004)",
+      "edits": [
+        {
+          "path": "apps/desktop/src/main/runtime/runtime-host.ts",
+          "anchor": "      if (\n        (event.cause === 'auth_stale' && session.itRetriedRejectedLogin !== true) ||\n        canRenewRejected\n      ) {\n",
+          "replacement": "      if (false) {\n",
+          "occurrences": 1
+        },
+        {
+          "path": "apps/desktop/src/main/runtime/runtime-host.ts",
+          "anchor": "    session.diedOnAStaleSignIn = true\n    session.whatItsFailedTurnWasFor = wasFor\n",
+          "replacement": "    session.whatItsFailedTurnWasFor = wasFor\n",
+          "occurrences": 1
+        }
+      ],
+      "pristineSha256": "92557635d429b4b6cdc4f1a33d129c2d87ee28d19e21694d18fa0621c79944cc",
+      "mutantSha256": "3243aa935fc5806df06308bd0645f5b0b931c74786c597e8ae5f11b26dd6ee50",
+      "exit": 1,
+      "failedTests": [
+        {
+          "name": "D-004 · R101 — a login renewed elsewhere reopens the conversation it killed 🔴 a renewed login: reopened by itself on the new one, taken back by the window, said once",
+          "messages": [
+            "Error: timed out waiting for the reopen"
+          ]
+        }
+      ],
+      "assertionRED": true,
+      "restoredSha256": "92557635d429b4b6cdc4f1a33d129c2d87ee28d19e21694d18fa0621c79944cc",
+      "restoredExactly": true,
+      "originalReceiptSha256": "4e744be8bb22e3ded1619db9548e51a363f248f92d27301db9d7c5709f6d813a"
+    },
+    {
+      "table": "1004",
+      "row": 13,
+      "label": "1004-M13-RED-second",
+      "description": "M13 · ⚠️ **any fatal error counts as a revoked sign-in** — a child that crashed for another reason, while the token happened to be renewed, is reopened by itself under *\"Claude's login was renewed elsewhere\"*, a false cause · killed by `a-conversation-reopens-on-a-renewed-sign-in.test.ts` (the test T-002 added)",
+      "edits": [
+        {
+          "path": "apps/desktop/src/main/runtime/runtime-host.ts",
+          "anchor": "      if (\n        (event.cause === 'auth_stale' && session.itRetriedRejectedLogin !== true) ||\n        canRenewRejected\n      ) {\n",
+          "replacement": "      if (true) {\n",
+          "occurrences": 1
+        }
+      ],
+      "pristineSha256": "92557635d429b4b6cdc4f1a33d129c2d87ee28d19e21694d18fa0621c79944cc",
+      "mutantSha256": "be53b8b64940913fb29afdfe837e1871b003a666eaab2d2c7f05c4158a9291e2",
+      "exit": 1,
+      "failedTests": [
+        {
+          "name": "D-004 · R101 — a login renewed elsewhere reopens the conversation it killed a death that was not the sign-in, on a renewed login: today’s stop, and no reopen",
+          "messages": [
+            "Error: timed out waiting for the window’s record to end, drawn from the ledger"
+          ]
+        }
+      ],
+      "assertionRED": true,
+      "restoredSha256": "92557635d429b4b6cdc4f1a33d129c2d87ee28d19e21694d18fa0621c79944cc",
+      "restoredExactly": true,
+      "originalReceiptSha256": "a6e5856ec15a3689b5ca40169a49976d294777bcbbf5a76ec003e5a9e5f8ef41"
+    },
+    {
+      "table": "3025",
+      "row": 5,
+      "label": "3025-M5-RED-second",
+      "description": "M5 · 🔴 any death on a stale sign-in ends the walls, even on the same sign-in or a missing one · killed by `a-sign-in-that-changes-ends-only-the-limits-the-one-before-reached.test.ts`",
+      "edits": [
+        {
+          "path": "apps/desktop/src/main/runtime/runtime-host.ts",
+          "anchor": "        if ((await session.handle.checkSignIn?.()) !== true) return\n        if (\n          rejected &&\n          this.rejectedMachineLogins.get(session.provider) === session.rejectedLoginToRenew\n        ) {\n          this.rejectedMachineLogins.delete(session.provider)\n          this.providersMoved({ what: 'login', provider: session.provider })\n        }\n        // ⚑ The machine's login moved: the limits the login before reached stop applying.\n        this.aSignInChanged(session.provider, session.lifeSince, session.profileId)",
+          "replacement": "        this.aSignInChanged(session.provider, session.lifeSince, session.profileId)\n        if ((await session.handle.checkSignIn?.()) !== true) return\n        if (\n          rejected &&\n          this.rejectedMachineLogins.get(session.provider) === session.rejectedLoginToRenew\n        ) {\n          this.rejectedMachineLogins.delete(session.provider)\n          this.providersMoved({ what: 'login', provider: session.provider })\n        }\n        // ⚑ The machine's login moved: the limits the login before reached stop applying.",
+          "occurrences": 1
+        }
+      ],
+      "pristineSha256": "92557635d429b4b6cdc4f1a33d129c2d87ee28d19e21694d18fa0621c79944cc",
+      "mutantSha256": "6fcc2057f47d630759109220b21f3c770cf4e8bbb94016a2467fbe2a7f3d8110",
+      "exit": 1,
+      "failedTests": [
+        {
+          "name": "13a0ab52 · a sign-in that changes ends only the limits the sign-in before reached §3 · the reopen door: a conversation killed by a sign-in renewed elsewhere ⛔ killed with the sign-in missing or expired: nothing says it changed, and the wall still holds",
+          "messages": [
+            "AssertionError: expected [] to have a length of 1 but got +0"
+          ]
+        }
+      ],
+      "assertionRED": true,
+      "restoredSha256": "92557635d429b4b6cdc4f1a33d129c2d87ee28d19e21694d18fa0621c79944cc",
+      "restoredExactly": true,
+      "originalReceiptSha256": "8cba72c8737dbf565c541932477c001345e362afce609a95b75818e9f622d639"
+    }
+  ],
+  "restoredGreen": {
+    "exit": 0,
+    "passedTests": 45,
+    "failedTests": 0,
+    "productionSha256": "92557635d429b4b6cdc4f1a33d129c2d87ee28d19e21694d18fa0621c79944cc",
+    "restoredExactly": true
+  },
+  "freeze": {
+    "piece": "W4.1378.4",
+    "branch": "feature/claude-renew-running-login",
+    "head": "97df75738e74d76495cf87d697f0e5428168dbe6",
+    "headTree": "e3307684614e74d97c7a76154c66c1d70a2978de",
+    "actualMainBase": "6157fa1e33a8d5f36558bdd09d171f39f9dc5c07",
+    "files": [
+      {
+        "path": "scripts/mutations/1004/mutations.py",
+        "bytes": 20824,
+        "sha256": "9447e6dbf151cddd376697bd18ccbe99a01847f415273ff0a23b1bffa18ab786"
+      },
+      {
+        "path": "scripts/mutations/3025/mutations.py",
+        "bytes": 8852,
+        "sha256": "6fafa888dd2d8c5450005d5f119f8ad2a55be78173ae2bd98c83ad49594fa191"
+      }
+    ],
+    "productionHostSha256": "92557635d429b4b6cdc4f1a33d129c2d87ee28d19e21694d18fa0621c79944cc"
+  },
+  "static": {
+    "1004": {
+      "syntax": "PASS",
+      "unchangedDescriptions": true,
+      "unchangedOtherRows": true,
+      "rowCount": 13,
+      "changedRows": [
+        2,
+        13
+      ],
+      "plantCount": 3
+    },
+    "3025": {
+      "syntax": "PASS",
+      "unchangedDescriptions": true,
+      "unchangedOtherRows": true,
+      "rowCount": 10,
+      "changedRows": [
+        5
+      ],
+      "plantCount": 1
+    },
+    "productionBytesMatchHEAD": true,
+    "onlyTwoTablePathsChanged": true
+  },
+  "outerExit": 0,
+  "outerLogSha256": "31ef7e5804785f782dc27f7166c5f1e69b6a6be36aa133ed940704ddf3c1df7a",
+  "note": "Portable export of historical receipts. Local stack-frame paths removed; original receipt and log hashes retained. These are original selected-test predicate/assertion failures, not framework timeouts."
+}
