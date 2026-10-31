@@ -390,3 +390,65 @@ it('keeps Configure available and carries the plain update-unavailable reason fo
   expect(await f.call({ kind: 'configure', id: 'chrome', screenId, bounds })).toEqual({ ok: true })
   expect(await f.call({ kind: 'update', id: 'chrome' })).toMatchObject({ ok: false })
 })
+
+it('passes a closed unavailable reason through Settings and rejects arbitrary error text', async () => {
+  const f = setup()
+  vi.mocked(f.controller.catalogue).mockResolvedValueOnce([
+    {
+      id: 'fictional-fir',
+      name: 'Fictional Fir',
+      installed: false,
+      state: 'Unavailable',
+      unavailableReason: 'runtime',
+    },
+  ])
+  expect(await f.call({ kind: 'list' })).toMatchObject({
+    ok: true,
+    cards: [{ unavailableReason: 'runtime', installed: false }],
+  })
+  vi.mocked(f.controller.catalogue).mockResolvedValueOnce([
+    {
+      id: 'fictional-fir',
+      name: 'Fictional Fir',
+      installed: false,
+      state: 'Unavailable',
+      unavailableReason: 'fictional-secret-path' as never,
+    },
+  ])
+  expect(await f.call({ kind: 'list' })).toEqual({ ok: false, listState: 'fetch-error' })
+  expect(f.controller.install).not.toHaveBeenCalled()
+})
+
+it('passes bounded supervisor exit/stderr to the card and refuses multiline or extra diagnostic data', async () => {
+  const f = setup()
+  const card = {
+    id: 'fictional-fir',
+    name: 'Fictional Fir',
+    installed: false,
+    state: 'Unavailable' as const,
+    unavailableReason: 'service-start' as const,
+  }
+  const diagnostic = {
+    exitCode: 17,
+    signal: null,
+    stderr: 'Error: fictional bridge could not bind',
+  }
+  vi.mocked(f.controller.catalogue).mockResolvedValueOnce([
+    { ...card, startupDiagnostic: diagnostic },
+  ])
+  expect(await f.call({ kind: 'list' })).toMatchObject({
+    ok: true,
+    cards: [{ startupDiagnostic: diagnostic }],
+  })
+  for (const invalid of [
+    { ...diagnostic, stderr: 'line one\nline two' },
+    { ...diagnostic, stderr: 'x'.repeat(513) },
+    { ...diagnostic, configuration: 'fictional secret' },
+  ]) {
+    vi.mocked(f.controller.catalogue).mockResolvedValueOnce([
+      { ...card, startupDiagnostic: invalid },
+    ])
+    expect(await f.call({ kind: 'list' })).toEqual({ ok: false, listState: 'fetch-error' })
+  }
+  expect(f.controller.install).not.toHaveBeenCalled()
+})

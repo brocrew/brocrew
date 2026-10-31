@@ -132,12 +132,73 @@ export interface PluginMutationConsent {
   preparation: string
   displayedDetailsHash?: string
 }
+export const PLUGIN_UNAVAILABLE_REASONS = [
+  'storage',
+  'catalogue',
+  'runtime',
+  'service-start',
+  'service-version',
+  'connection',
+  'connection-lost',
+  'cleanup-pending',
+  'catalogue-response',
+  'operation-pending',
+  'unsupported',
+] as const
+export type PluginUnavailableReason = (typeof PLUGIN_UNAVAILABLE_REASONS)[number]
+export function pluginUnavailableNotice(reason?: PluginUnavailableReason): string {
+  switch (reason) {
+    case 'storage':
+      return "BroCrew couldn't open its plugin files. Check available disk space and try again."
+    case 'catalogue':
+      return "BroCrew couldn't load or verify the plugin catalogue. Check your connection and try again."
+    case 'runtime':
+      return "BroCrew couldn't prepare its bundled plugin runtime. Restart BroCrew or reinstall the app if retrying fails."
+    case 'service-start':
+      return "BroCrew couldn't start the plugin service. Try again."
+    case 'service-version':
+      return 'The running plugin service is incompatible with this app. Quit every BroCrew window, then reopen it.'
+    case 'connection':
+      return "The plugin service started, but Settings couldn't connect to it. Try again."
+    case 'connection-lost':
+      return 'Settings lost its connection to the plugin service. Try again.'
+    case 'cleanup-pending':
+      return 'The plugin service is busy or still stopping. Wait a moment, then try again.'
+    case 'catalogue-response':
+      return "The plugin service couldn't return a verified plugin list. Try again."
+    case 'operation-pending':
+      return 'A previous plugin operation has not finished. Try again to check its status.'
+    case 'unsupported':
+      return 'No compatible release is available for this computer and version of BroCrew.'
+    default:
+      return 'The plugin service did not report why this plugin is unavailable. Try again to reconnect.'
+  }
+}
+export function pluginUnavailableRetryable(reason?: PluginUnavailableReason): boolean {
+  return reason !== 'unsupported'
+}
+export const PluginStartupDiagnosticSchema = z.strictObject({
+  exitCode: z.number().int().min(-2147483648).max(4294967295).nullable(),
+  signal: z
+    .string()
+    .regex(/^SIG[A-Z0-9]{1,16}$/)
+    .nullable(),
+  stderr: disclosureText(512).nullable(),
+})
+export type PluginStartupDiagnostic = z.infer<typeof PluginStartupDiagnosticSchema>
+export function pluginStartupDiagnosticNotice(diagnostic: PluginStartupDiagnostic): string {
+  const exit =
+    diagnostic.exitCode === null ? 'Exit code not reported' : `Exit code ${diagnostic.exitCode}`
+  return `${exit}${diagnostic.signal ? ` (${diagnostic.signal})` : ''}. ${diagnostic.stderr ?? 'No stderr was reported.'}`
+}
 export interface PluginCard {
   id: string
   name: string
   /** null means storage could not establish presence; never permission to install. */
   installed: boolean | null
   state: PluginState
+  unavailableReason?: PluginUnavailableReason
+  startupDiagnostic?: PluginStartupDiagnostic
   /** Scheduling snapshot, unknown off macOS or when the owned process cannot be read. */
   priorityClamped?: boolean | null
   installedVersion?: string

@@ -1,3 +1,5 @@
+import { PluginStartupError, observePluginSupervisorLaunch } from '../startup-failure'
+import type { PluginUnavailableReason } from '../../../shared/plugin-settings'
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { dirname, join } from 'node:path'
@@ -25,20 +27,26 @@ export function createPluginSupervisorLauncher(options: {
   lifecycle?: PluginLifecyclePlan
   /** Resolves the app-fixed modern source only when a new owner is actually needed. */
   lifecycleForNewOwner?(): Promise<PluginLifecyclePlan>
-}): () => Promise<void> {
+}): (() => Promise<void>) & { diagnostic(cause?: unknown): Error | undefined } {
   const { lifecycleForNewOwner, ...plain } = options
   const captured = structuredClone(plain)
   let pending: Promise<void> | undefined
+  let diagnostic: ReturnType<typeof observePluginSupervisorLaunch> | undefined
   async function launch(): Promise<void> {
+    diagnostic = undefined
     const storage = new SupervisorStorage(captured.root, captured.workspaceRoots, true)
+    let phase: PluginUnavailableReason = 'storage'
     try {
       const root = storage.root
+      phase = 'catalogue'
       const lifecycle = lifecycleForNewOwner ? await lifecycleForNewOwner() : captured.lifecycle
+      phase = 'runtime'
       const runtime = await preparePluginNodeRuntime({
         resourcesRoot: captured.resourcesRoot,
         durableRoot: join(root, 'runtimes'),
       })
       const { node } = await runtimeFiles(runtime)
+      phase = 'service-start'
       const bytes = await sourceBytes(
         join(captured.resourcesRoot, 'plugin-supervisor/entry.cjs'),
         16 * 1024 * 1024,
@@ -73,13 +81,14 @@ export function createPluginSupervisorLauncher(options: {
         process.platform === 'win32' ? await privateChild(root, 'supervisor-temp') : null
       const child = spawn(node, [join(kept, 'entry.cjs'), configPath, digest(input)], {
         detached: true,
-        stdio: 'ignore',
+        stdio: ['ignore', 'ignore', 'pipe'],
         windowsHide: true,
         cwd: root,
         env: temporary
           ? { ...windowsSystemEnvironment(), USERPROFILE: root, TEMP: temporary, TMP: temporary }
           : { HOME: root, PATH: '/usr/bin:/bin', LC_ALL: 'C' },
       })
+      diagnostic = observePluginSupervisorLaunch(child, [config.lifecycle?.personKey ?? ''])
       let failed = false
       let spawnError: Error | undefined
       child.once('error', (error) => {
@@ -100,20 +109,31 @@ export function createPluginSupervisorLauncher(options: {
         }
         await new Promise((resolve) => setTimeout(resolve, 10))
       }
-      throw new PluginSupervisorError('unavailable', { cause: spawnError })
+      await diagnostic.drainUntil(until)
+      throw new PluginSupervisorError('unavailable', {
+        cause: Object.assign(diagnostic(), { cause: spawnError }),
+      })
+    } catch (error) {
+      throw new PluginStartupError(phase, error)
     } finally {
       storage.close()
     }
   }
-  return () => {
-    pending ??= launch()
-      .catch((error) => {
-        if (error instanceof PluginSupervisorError) throw error
-        throw new PluginSupervisorError('unavailable', { cause: error })
-      })
-      .finally(() => {
-        pending = undefined
-      })
-    return pending
-  }
+  return Object.assign(
+    () => {
+      pending ??= launch()
+        .catch((error) => {
+          if (error instanceof PluginSupervisorError) throw error
+          throw new PluginSupervisorError('unavailable', { cause: error })
+        })
+        .finally(() => {
+          pending = undefined
+        })
+      return pending
+    },
+    {
+      diagnostic: (cause?: unknown) =>
+        diagnostic ? Object.assign(diagnostic(), { cause }) : undefined,
+    },
+  )
 }

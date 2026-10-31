@@ -12,6 +12,7 @@ import { writeReceipt } from '../../../../resources/plugin-host/receipts.mjs'
 import { PluginSupervisor } from './owner'
 import { createSupervisedPluginHost } from './node-host'
 import { bootstrapPluginLifecycle } from '../lifecycle/bootstrap'
+import { pluginStartupStderr } from '../startup-failure'
 import { LaunchConfig } from './launch-format'
 
 export async function runPluginSupervisor(configPath: string, expectedDigest: string) {
@@ -32,6 +33,15 @@ export async function runPluginSupervisor(configPath: string, expectedDigest: st
   })
   const service = createSupervisedPluginHost(owner, host)
   const receipts = dirname(configPath)
+  const reportFailure = (error: unknown) => {
+    const message =
+      error instanceof Error && error.name !== 'ZodError'
+        ? error.message
+        : 'Invalid plugin service configuration'
+    console.error(
+      pluginStartupStderr(message, [config.lifecycle?.personKey ?? '']) ?? 'Plugin service failed',
+    )
+  }
   const stop = async () => {
     if (await owner.shutdown()) {
       await host.stop()
@@ -61,7 +71,8 @@ export async function runPluginSupervisor(configPath: string, expectedDigest: st
       })
       writeReceipt(receipts, 'lifecycle.json', { format: 1, ready: true })
     }
-    void bootstrap().catch(() => {
+    void bootstrap().catch((error) => {
+      reportFailure(error)
       void stop()
     })
   }
@@ -104,14 +115,22 @@ export async function runPluginSupervisor(configPath: string, expectedDigest: st
       }
       writeReceipt(receipts, 'runs.json', { format: 1, runs })
     }
-    void startup().catch(() => {
+    void startup().catch((error) => {
+      reportFailure(error)
       void stop()
     })
   }
   return { owner, service }
 }
 if (typeof require !== 'undefined' && require.main === module) {
-  void runPluginSupervisor(process.argv[2]!, process.argv[3]!).catch(() => {
+  void runPluginSupervisor(process.argv[2]!, process.argv[3]!).catch((error) => {
+    console.error(
+      pluginStartupStderr(
+        error instanceof Error && error.name !== 'ZodError'
+          ? error.message
+          : 'Invalid plugin service configuration',
+      ) ?? 'Plugin service failed',
+    )
     process.exitCode = 1
   })
 }

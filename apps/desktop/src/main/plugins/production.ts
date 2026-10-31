@@ -1,3 +1,9 @@
+import {
+  PluginStartupError,
+  pluginStartupReason,
+  pluginStartupDiagnostic,
+  recordPluginStartupFailure,
+} from './startup-failure'
 import { pluginAdapter } from './lifecycle/adapters'
 import { join } from 'node:path'
 import { lstat } from 'node:fs/promises'
@@ -15,11 +21,28 @@ import { keepPluginRootPrivate } from './private-files'
 import { installedChromeOnWindows } from './windows-chrome'
 import { pluginWorkspaceIdentity, type PluginSupervisorAttachment } from './supervisor/client'
 import { PluginSupervisorError } from './supervisor/protocol'
-import type { PluginCard } from '../../shared/plugin-settings'
+import type {
+  PluginCard,
+  PluginUnavailableReason,
+  PluginStartupDiagnostic,
+} from '../../shared/plugin-settings'
 import { thisMachine, type PluginTarget } from './package-schema'
 
 /** Stable Settings/discovery facade. Repo fetch and plugin startup never block normal agents. */
 export function productionPluginController() {
+  let failure: PluginUnavailableReason = 'service-start'
+  let startupDiagnostic: PluginStartupDiagnostic | undefined
+  let diagnosticRoot: string | undefined
+  let diagnosticWrite = Promise.resolve()
+  const failed = (reason: PluginUnavailableReason, error?: unknown) => {
+    failure = pluginStartupReason(error, reason)
+    startupDiagnostic = pluginStartupDiagnostic(error)
+    const root = diagnosticRoot,
+      reasonToKeep = failure
+    diagnosticWrite = diagnosticWrite.then(() =>
+      recordPluginStartupFailure(root, reasonToKeep, error),
+    )
+  }
   let connected: Awaited<ReturnType<typeof connectPluginSettings>> | undefined
   let entries: readonly PluginInstructionEntry[] | null = null
   let ready: Promise<boolean> = Promise.resolve(false)
@@ -61,6 +84,8 @@ export function productionPluginController() {
       id: entry.id,
       name: entry.name ?? entry.id,
       state: 'Unavailable',
+      unavailableReason: cleanupUncertain ? 'cleanup-pending' : failure,
+      ...(startupDiagnostic && !cleanupUncertain ? { startupDiagnostic } : {}),
       uninstallDeletesData: Boolean(pluginAdapter(entry.id)?.uninstall),
       installed: evidence
         ? evidence.installed.includes(entry.id)
@@ -176,12 +201,22 @@ export function productionPluginController() {
           const release = releases.find((one) => one.id === card.id)
           return {
             ...installed,
+            ...(card.state === 'Unavailable'
+              ? { unavailableReason: 'operation-pending' as const }
+              : {}),
             ...(card.installed === true && !release ? { updatesUnavailable: true as const } : {}),
             ...(updateVersion && release?.version === updateVersion ? { updateVersion } : {}),
           }
         }
         hints ??= unavailableCards(offered)
-        return hints.find((one) => one.id === entry.id)!
+        const hint = hints.find((one) => one.id === entry.id)!
+        return {
+          ...hint,
+          unavailableReason:
+            hint.installed !== false || releases.some((one) => one.id === entry.id)
+              ? 'operation-pending'
+              : 'unsupported',
+        }
       })
       entries = cards.map((card) => ({
         id: card.id,
@@ -192,13 +227,14 @@ export function productionPluginController() {
         service: card.state === 'Running' ? (names[card.id] ?? card.id) : null,
       }))
       return cards
-    } catch {
+    } catch (error) {
       if (ended || connected !== connection) return fail()
+      failed('catalogue-response', error)
       // Preserve a still-live channel for explicit retry/quit to detach with its acknowledgments.
       entries =
         entries?.map((one) => ({ ...one, state: 'Unavailable', tools: 'none', service: null })) ??
         null
-      return fail()
+      throw new PluginStartupError(failure, error)
     }
   }
   const current = () => {
@@ -356,11 +392,14 @@ export function productionPluginController() {
         }
       }
       initialize = async () => {
+        let phase: PluginUnavailableReason = 'storage'
         let attempt: Peer | undefined
         let storage: SupervisorStorage | undefined
         try {
           await keepPluginRootPrivate(options.root)
           storage = new SupervisorStorage(options.root, [options.workspaceRoot], true)
+          diagnosticRoot = options.root
+          phase = 'catalogue'
           const devSource = await devPluginSource(options.devSource)
           loadCatalogue = () =>
             loadRepoPluginList({
@@ -378,6 +417,7 @@ export function productionPluginController() {
               if (sourceVersion === 1) frozenCatalogue = catalogueEntries
               listFailure = undefined
             } catch (error) {
+              failed('catalogue', error)
               // List discovery does not imply a broken supervisor or plugin.
               listFailure =
                 error instanceof PluginListError ? error : new PluginListError('fetch-error')
@@ -408,8 +448,58 @@ export function productionPluginController() {
             const saved = observeInstallations()
             if (saved && saved.installed.length === 0 && saved.pending === null) return false
           }
+          phase = 'storage'
           const personKey = await pluginPersonCapability(options.root)
           storage.check()
+          phase = 'service-start'
+          const launch = createPluginSupervisorLauncher({
+            root: options.root,
+            workspaceRoots: [options.workspaceRoot],
+            resourcesRoot: options.resourcesRoot,
+            // Windows names no Chrome a plugin process could find by itself (see windows-chrome.ts).
+            browserExecutable:
+              options.browserExecutable ??
+              (process.platform === 'win32'
+                ? (installedChromeOnWindows() ?? undefined)
+                : undefined),
+            lifecycleForNewOwner:
+              options.fixtureSource || devSource
+                ? undefined
+                : async () => {
+                    const next = await loadRepoPluginList({
+                      root: options.root,
+                      appVersion: options.appVersion,
+                      target: options.target ?? thisMachine(),
+                      signal: lifetime.signal,
+                      sourceVersion: 2,
+                    })
+                    if (!frozenCatalogue) return fail()
+                    return {
+                      source: 'repo-list',
+                      sourceVersion: 2,
+                      appVersion: options.appVersion,
+                      catalogue: next.catalogue,
+                      catalogueSha256: next.sha256,
+                      repoList: next.repoList,
+                      legacyRepoList: frozenCatalogue.repoList,
+                      personKey,
+                      names: Object.fromEntries(
+                        next.entries.map((entry) => [entry.id, entry.name]),
+                      ),
+                    }
+                  },
+            lifecycle: {
+              source: 'repo-list',
+              appVersion: options.appVersion,
+              catalogue: catalogueEntries.catalogue,
+              catalogueSha256: catalogueEntries.sha256,
+              repoList: catalogueEntries.repoList,
+              personKey,
+              names,
+              fixtureSource: options.fixtureSource,
+              devSource,
+            },
+          })
           options.supervisor.start({
             root: options.root,
             workspaceRoot: options.workspaceRoot,
@@ -417,61 +507,27 @@ export function productionPluginController() {
             // The owner has already revoked what this lease held; wait for its clean stop.
             onLost() {
               if (ended) return
+              failed('connection-lost')
               cleanupUncertain = true
               connected = undefined
               markUnavailable()
               watchForCleanStop()
             },
-            launch: createPluginSupervisorLauncher({
-              root: options.root,
-              workspaceRoots: [options.workspaceRoot],
-              resourcesRoot: options.resourcesRoot,
-              // Windows names no Chrome a plugin process could find by itself (see windows-chrome.ts).
-              browserExecutable:
-                options.browserExecutable ??
-                (process.platform === 'win32'
-                  ? (installedChromeOnWindows() ?? undefined)
-                  : undefined),
-              lifecycleForNewOwner:
-                options.fixtureSource || devSource
-                  ? undefined
-                  : async () => {
-                      const next = await loadRepoPluginList({
-                        root: options.root,
-                        appVersion: options.appVersion,
-                        target: options.target ?? thisMachine(),
-                        signal: lifetime.signal,
-                        sourceVersion: 2,
-                      })
-                      if (!frozenCatalogue) return fail()
-                      return {
-                        source: 'repo-list',
-                        sourceVersion: 2,
-                        appVersion: options.appVersion,
-                        catalogue: next.catalogue,
-                        catalogueSha256: next.sha256,
-                        repoList: next.repoList,
-                        legacyRepoList: frozenCatalogue.repoList,
-                        personKey,
-                        names: Object.fromEntries(
-                          next.entries.map((entry) => [entry.id, entry.name]),
-                        ),
-                      }
-                    },
-              lifecycle: {
-                source: 'repo-list',
-                appVersion: options.appVersion,
-                catalogue: catalogueEntries.catalogue,
-                catalogueSha256: catalogueEntries.sha256,
-                repoList: catalogueEntries.repoList,
-                personKey,
-                names,
-                fixtureSource: options.fixtureSource,
-                devSource,
-              },
-            }),
+            launch,
           })
-          if (!(await options.supervisor.ready()) || ended) return false
+          if (!(await options.supervisor.ready()) || ended) {
+            if (!ended)
+              failed(
+                'service-start',
+                new PluginStartupError(
+                  pluginStartupReason(options.supervisor.lastStartError, 'service-start'),
+                  launch.diagnostic(options.supervisor.lastStartError) ??
+                    options.supervisor.lastStartError,
+                ),
+              )
+            return false
+          }
+          phase = 'catalogue'
           if (
             !options.fixtureSource &&
             !devSource &&
@@ -484,6 +540,8 @@ export function productionPluginController() {
             )
           }
           // The lifecycle's person control comes up after the supervisor; slower on Windows.
+          phase = 'connection'
+          let connectionError: unknown
           const until = performance.now() + (process.platform === 'win32' ? 60_000 : 5000)
           do {
             try {
@@ -515,6 +573,7 @@ export function productionPluginController() {
                   candidate.lost = true
                   // The notification belongs to this exact peer, even after its successor attaches.
                   if (peer !== candidate || candidate.detaching) return
+                  failed('connection-lost')
                   cleanupUncertain = true
                   connected = undefined
                   markUnavailable()
@@ -529,13 +588,15 @@ export function productionPluginController() {
               }
               connected = connection
               break
-            } catch {
+            } catch (error) {
+              connectionError = error
               if (cleanupUncertain || ended) return false
               if (peer === attempt) peer = undefined
               await new Promise((resolve) => setTimeout(resolve, 50))
             }
           } while (!ended && performance.now() < until)
           if (!connected || ended) {
+            if (!ended) failed('connection', launch.diagnostic(connectionError) ?? connectionError)
             if (attempt?.connection) await detach(attempt)
             return false
           }
@@ -554,7 +615,7 @@ export function productionPluginController() {
           timer.unref()
           return true
         } catch (error) {
-          console.warn('[plugins] plugin-initialization-failed')
+          failed(phase, error)
           if (!entries)
             listFailure =
               error instanceof PluginListError
@@ -581,6 +642,7 @@ export function productionPluginController() {
           // The transition may have installed a successor; close only that tracked peer.
           if (peer) await detach(peer)
         } finally {
+          await diagnosticWrite
           personLifetime.abort()
           connected = undefined
           entries = null
