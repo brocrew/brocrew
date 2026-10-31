@@ -166,7 +166,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         [
             (
                 HOST,
-                "      await session.handle.send(text, this.stampFor(null, []))\n",
+                "      await this.sendTheAppsWords(session, text)\n",
                 "      await session.handle.send(text, this.stampFor(this.originOf(by), []))\n",
             )
         ],

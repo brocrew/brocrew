@@ -251,7 +251,7 @@ MUTATIONS = [
                 HOST,
                 # ⚑ **Anchor corrected by `662`**: the go-ahead now passes its stamp, which is
                 # `null` for the frame's reason. The row still grows the frame and nothing else.
-                "      await session.handle.send(text, this.stampFor(null, []))",
+                "      await this.sendTheAppsWords(session, text)",
                 "      await session.handle.send(\n"
                 "        messageNamingItsSender(text, this.originOf(by)),\n"
                 "        this.stampFor(null, []),\n"
