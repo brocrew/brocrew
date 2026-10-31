@@ -102,3 +102,12 @@ describe('launchArgs: the whole command line, nothing else', () => {
     ])
   })
 })
+
+it('background policy is opt-in: suppresses the visible startup window and permits no-activation opening', () => {
+  const args = launchArgs({ ...base, background: true })
+  expect(args).toContain('--no-startup-window')
+  expect(args).toContain('--disable-popup-blocking')
+  expect(args).not.toContain('about:blank')
+  expect(launchArgs(base)).not.toContain('--no-startup-window')
+  expect(launchArgs({ ...base, background: true, mode: 'headless' })).toContain('about:blank')
+})

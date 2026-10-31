@@ -11,7 +11,7 @@ export const RESTORE_MAX_PAGES = 50
 export const RESTORE_PROFILE_BUDGET_MS = 5000
 export const RESTORE_TOTAL_BUDGET_MS = 90000
 export const RESTORE_LOAD_TIMEOUT_MS = 10000
-const KEPT_SCHEMES = new Set(['http:', 'https:'])
+const KEPT_SCHEMES = new Set(['http:', 'https:', 'file:'])
 export interface SavedProfile {
   name: string
   urls: string[]
@@ -165,7 +165,10 @@ export async function restoreVisibleSession(deps: RestoreDeps): Promise<string[]
           tabs.add(p.name, generation, page)
           opened++
           void page
-            .goto(url, { waitUntil: 'domcontentloaded', timeout: RESTORE_LOAD_TIMEOUT_MS })
+            .goto(url, {
+              waitUntil: 'domcontentloaded',
+              timeout: RESTORE_LOAD_TIMEOUT_MS,
+            })
             .catch(() => undefined)
         }
       })

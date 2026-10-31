@@ -17,8 +17,11 @@ export interface ProfileBrowser {
     profile: string,
     opts: {
       newWindow: boolean
+      windowOf?: Page
     },
   ): Promise<Page>
+  windowId(profile: string, page: Page): Promise<number>
+  usePage(profile: string, page: Page): Promise<void>
   onPage(profile: string, cb: (page: Page) => void): () => void
   onClosed(profile: string, cb: (generation: number) => void): () => void
   waitAllPagesClosed(profile: string, timeoutMs: number): Promise<'pages-closed' | 'timeout'>

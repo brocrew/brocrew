@@ -1,7 +1,7 @@
 {
   "format": 2,
   "id": "chrome",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "sourceCommit": "2618dab1b1e3672bdddae5ed771a0ecf84e0002e",
   "platforms": [
     {
@@ -172,7 +172,7 @@
     ]
   },
   "permissions": {
-    "description": "Uses your installed Google Chrome with its own separate profiles. Agents can read pages, use sites and save downloads in the plugin's private storage. You choose which profiles agents may use.",
+    "description": "Uses your installed Google Chrome with its own separate profiles. Agents can read web pages and local files accessible to Chrome, use sites and save downloads in the plugin's private storage. You choose which profiles agents may use.",
     "resources": [
       {
         "id": "browser-profiles",

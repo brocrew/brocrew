@@ -4,6 +4,7 @@ import type { BrowserMode } from './profileBrowser.js'
 export interface LaunchArgsInput {
   profileDir: string
   mode: BrowserMode
+  background?: boolean
 
   sync: boolean
 
@@ -32,10 +33,12 @@ export function launchArgs(i: LaunchArgsInput): string[] {
     '--disable-search-engine-choice-screen',
     ...(i.sync ? [] : ['--disable-sync']),
     ...(i.extensions ? [] : ['--disable-extensions']),
+    // Controlled background opening grants no user activation; site popups are also permitted.
+    ...(i.background ? ['--disable-popup-blocking'] : []),
     ...(i.mode === 'headless' ? ['--headless', '--hide-scrollbars', '--mute-audio'] : []),
     ...(platform === 'linux' ? ['--disable-dev-shm-usage'] : []),
     ...(i.noSandbox ? ['--no-sandbox'] : []),
     ...(i.extraArgs ?? []),
-    'about:blank',
+    ...(i.background && i.mode === 'visible' ? ['--no-startup-window'] : ['about:blank']),
   ]
 }

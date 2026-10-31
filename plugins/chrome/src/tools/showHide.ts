@@ -37,6 +37,8 @@ async function switchTo(deps: ToolDeps, id: string, mode: BrowserMode): Promise<
           `the page could not be opened again after the switch; the profile is now ${mode} — try open_tab again`,
         )
     }
+    await deps.browser.usePage(profile, deps.tabs.resolve(id, generationOf(deps)).page)
+    usableProfile(deps, profile)
     if (mode === 'visible') await deps.tabs.resolve(id, generationOf(deps)).page.bringToFront()
   })
 }

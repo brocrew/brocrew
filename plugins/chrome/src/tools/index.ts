@@ -25,11 +25,13 @@ import {
   MAX_SCREENSHOT_BYTES,
   MAX_TIMEOUT_MS,
   checkUrl,
+  checkDownloadUrl,
   describeError,
   generationOf,
   jsonValue,
   locate,
   onTab,
+  useTab,
   profileName,
   raceTimeout,
   ref,
@@ -219,10 +221,15 @@ export function buildToolDefs(): ToolDef[] {
       spec: {
         name: 'open_tab',
         description:
-          'Open a new tab in an enabled profile (headless unless visible:true) and load a URL. Returns the tabId used by every other tool. visible:true restarts the profile in a visible window, which invalidates its other tab ids; newWindow only has an effect when visible.',
+          'Open a background tab at an HTTP(S)/file URL or absolute local path. Returns tabId, numeric windowId, url and title. windowOf selects an existing tab’s window; otherwise use the most recently created or tool-used live window. newWindow:true opens a separate window only when visible. A mode change restores at most 20 tabs at their URLs under the same ids, with the selected anchor first; form state is lost.',
         props: {
           profile: profileName,
           url,
+          windowOf: {
+            ...tabId,
+            description:
+              'Open in this live tab’s window, in the same profile. Cannot accompany newWindow:true.',
+          },
           newWindow: {
             type: 'boolean',
             description: 'Open in a new window (visible profiles only; no effect headless).',
@@ -238,6 +245,16 @@ export function buildToolDefs(): ToolDef[] {
       async run(a, deps) {
         const name = a.profile as string
         const target = checkUrl(a.url as string)
+        if (a.windowOf !== undefined && a.newWindow === true)
+          throw new ToolError('give either newWindow:true or windowOf, not both')
+        const selectedAnchor = () => {
+          if (a.windowOf === undefined) return undefined
+          const tab = deps.tabs.resolve(a.windowOf as string, generationOf(deps))
+          if (tab.profile !== name)
+            throw new ToolError('windowOf must name a tab in the requested profile')
+          return tab
+        }
+        selectedAnchor()
         usableProfile(deps, name)
         const startedAt = nowMs(deps)
         deps.tabs.watch(name, deps.browser)
@@ -250,13 +267,15 @@ export function buildToolDefs(): ToolDef[] {
               : a.visible === false
                 ? 'headless'
                 : (deps.browser.state(name)?.mode ?? 'headless')
+          const selected = selectedAnchor()
           const before = deps.browser.state(name)
+          const known = deps.tabs.list(generationOf(deps), name)
+          const ordered = selected
+            ? [selected, ...known.filter((t) => t.id !== selected.id)]
+            : known
           const reopen =
             before !== null && before.mode !== mode
-              ? deps.tabs
-                  .list(generationOf(deps), name)
-                  .slice(0, MAX_REOPEN)
-                  .map((t) => ({ id: t.id, url: t.page.url() }))
+              ? ordered.slice(0, MAX_REOPEN).map((t) => ({ id: t.id, url: t.page.url() }))
               : []
           const { generation } = await deps.browser.ensure(name, mode)
           usableProfile(deps, name)
@@ -269,17 +288,24 @@ export function buildToolDefs(): ToolDef[] {
           )
           const page = await deps.browser.newPage(name, {
             newWindow: a.newWindow === true && mode === 'visible',
+            windowOf: selectedAnchor()?.page,
           })
+          await deps.browser.usePage(name, page)
+          usableProfile(deps, name)
           const tab = deps.tabs.add(name, generation, page)
           let loadError: string | undefined
           try {
-            await page.goto(target, { waitUntil: 'domcontentloaded', timeout: DEFAULT_TIMEOUT_MS })
+            await page.goto(target, {
+              waitUntil: 'domcontentloaded',
+              timeout: DEFAULT_TIMEOUT_MS,
+            })
           } catch (e) {
             loadError = describeError(e, DEFAULT_TIMEOUT_MS)
           }
           const skipped = restored.filter((t) => t.note !== undefined).length
           return {
             tabId: tab.id,
+            windowId: await deps.browser.windowId(name, page),
             url: page.url(),
             title: await titleAfterLoad(page),
             ...(loadError ? { loadError } : {}),
@@ -299,7 +325,7 @@ export function buildToolDefs(): ToolDef[] {
       spec: {
         name: 'list_tabs',
         description:
-          'List open tabs (id, profile, url, title) of enabled profiles, or of one profile.',
+          'List open tabs (tabId, numeric windowId, profile, url, title) of enabled profiles, or one profile. Read-only; does not change recent-window preference.',
         props: { profile: profileName },
       },
       async run(a, deps) {
@@ -311,6 +337,7 @@ export function buildToolDefs(): ToolDef[] {
           json: await Promise.all(
             tabs.map(async (t) => ({
               tabId: t.id,
+              windowId: await deps.browser.windowId(t.profile, t.page),
               profile: t.profile,
               url: t.page.url(),
               title: await titleOf(t.page),
@@ -356,7 +383,10 @@ export function buildToolDefs(): ToolDef[] {
         const target = a.url === undefined ? undefined : checkUrl(a.url as string)
         const ms = timeoutOf(a)
         const { value, notes } = await onTab(deps, a.tabId as string, async ({ tab, page }) => {
-          const opts = { waitUntil: 'domcontentloaded' as const, timeout: ms }
+          const opts = {
+            waitUntil: 'domcontentloaded' as const,
+            timeout: ms,
+          }
           const history = { waitUntil: 'commit' as const, timeout: ms }
           tab.refs = null
           const res =
@@ -383,7 +413,11 @@ export function buildToolDefs(): ToolDef[] {
           'Read the page. mode "aria" (default): an accessibility tree whose interactive elements carry refs like [ref=e12]; use those refs in click, fill, etc. Refs are valid until the next snapshot or navigation. mode "text": the visible page text (falls back to the aria tree if the page is too heavy to read in time). At most maxChars (default 100000) per call; a long page ends with a "[more: ... offset=N]" marker, call again with that offset to read on.',
         props: {
           tabId,
-          mode: { type: 'string', description: 'aria (default) or text.', enum: ['aria', 'text'] },
+          mode: {
+            type: 'string',
+            description: 'aria (default) or text.',
+            enum: ['aria', 'text'],
+          },
           offset: pageOffset,
           maxChars: pageMaxChars,
           timeoutMs,
@@ -436,7 +470,10 @@ export function buildToolDefs(): ToolDef[] {
             }
           }
           const f = await aria(ms)
-          return { header: await head(), body: f.body + moreMarker('snapshot', f.next) }
+          return {
+            header: await head(),
+            body: f.body + moreMarker('snapshot', f.next),
+          }
         })
         return {
           text: value.header + value.body + (notes.length ? `\n\nnotes: ${notes.join('; ')}` : ''),
@@ -482,8 +519,15 @@ export function buildToolDefs(): ToolDef[] {
         props: {
           tabId,
           ref,
-          text: { type: 'string', description: 'The new value.', maxLength: MAX_TEXT },
-          submit: { type: 'boolean', description: 'Press Enter after filling.' },
+          text: {
+            type: 'string',
+            description: 'The new value.',
+            maxLength: MAX_TEXT,
+          },
+          submit: {
+            type: 'boolean',
+            description: 'Press Enter after filling.',
+          },
           timeoutMs,
         },
         required: ['tabId', 'ref', 'text'],
@@ -506,7 +550,11 @@ export function buildToolDefs(): ToolDef[] {
         props: {
           tabId,
           ref,
-          text: { type: 'string', description: 'Text to type.', maxLength: 10000 },
+          text: {
+            type: 'string',
+            description: 'Text to type.',
+            maxLength: 10000,
+          },
           delayMs: {
             type: 'number',
             description: 'Pause between keys in ms (default 0, max 1000).',
@@ -536,7 +584,11 @@ export function buildToolDefs(): ToolDef[] {
           'Press a key or chord ("Enter", "Control+A", "ArrowDown"), on an element by ref or on the page.',
         props: {
           tabId,
-          key: { type: 'string', description: 'Key name or chord.', pattern: KEY },
+          key: {
+            type: 'string',
+            description: 'Key name or chord.',
+            pattern: KEY,
+          },
           ref,
           timeoutMs,
         },
@@ -546,7 +598,9 @@ export function buildToolDefs(): ToolDef[] {
         const ms = timeoutOf(a)
         const { notes } = await onTab(deps, a.tabId as string, async ({ tab, page }) => {
           if (a.ref !== undefined)
-            await locate(tab, page, a.ref as string).press(a.key as string, { timeout: ms })
+            await locate(tab, page, a.ref as string).press(a.key as string, {
+              timeout: ms,
+            })
           else await page.keyboard.press(a.key as string)
         })
         return withNotes({ ok: true }, notes)
@@ -617,7 +671,9 @@ export function buildToolDefs(): ToolDef[] {
         const ms = timeoutOf(a)
         const { notes } = await onTab(deps, a.tabId as string, async ({ tab, page }) => {
           if (a.ref !== undefined)
-            await locate(tab, page, a.ref as string).scrollIntoViewIfNeeded({ timeout: ms })
+            await locate(tab, page, a.ref as string).scrollIntoViewIfNeeded({
+              timeout: ms,
+            })
           if (a.dy !== undefined) await page.mouse.wheel(0, a.dy as number)
         })
         return withNotes({ ok: true }, notes)
@@ -646,13 +702,21 @@ export function buildToolDefs(): ToolDef[] {
         const { value } = await onTab(deps, a.tabId as string, async ({ tab, page }) => {
           const png =
             a.scope === 'element'
-              ? await locate(tab, page, a.ref as string).screenshot({ timeout: ms })
-              : await page.screenshot({ fullPage: a.scope === 'full', timeout: ms })
+              ? await locate(tab, page, a.ref as string).screenshot({
+                  timeout: ms,
+                })
+              : await page.screenshot({
+                  fullPage: a.scope === 'full',
+                  timeout: ms,
+                })
           if (png.length > MAX_SCREENSHOT_BYTES)
             throw new ToolError('the screenshot is too large — use scope viewport or element')
           return png
         })
-        return { image: value, caption: `${a.scope as string} screenshot of ${a.tabId as string}` }
+        return {
+          image: value,
+          caption: `${a.scope as string} screenshot of ${a.tabId as string}`,
+        }
       },
     },
     {
@@ -692,7 +756,9 @@ export function buildToolDefs(): ToolDef[] {
             ),
           ),
         )
-        return { text: value + (notes.length ? `\nnotes: ${notes.join('; ')}` : '') }
+        return {
+          text: value + (notes.length ? `\nnotes: ${notes.join('; ')}` : ''),
+        }
       },
     },
     {
@@ -702,7 +768,12 @@ export function buildToolDefs(): ToolDef[] {
           'Wait until text appears/disappears, an element (ref) is visible/hidden, the URL contains a string, and/or the page reaches a load state. At least one condition.',
         props: {
           tabId,
-          text: { type: 'string', description: 'Text to wait for.', minLength: 1, maxLength: 500 },
+          text: {
+            type: 'string',
+            description: 'Text to wait for.',
+            minLength: 1,
+            maxLength: 500,
+          },
           ref,
           state: {
             type: 'string',
@@ -743,14 +814,19 @@ export function buildToolDefs(): ToolDef[] {
               timeout: left(),
             })
           if (a.loadState !== undefined)
-            await page.waitForLoadState(a.loadState as 'load', { timeout: left() })
+            await page.waitForLoadState(a.loadState as 'load', {
+              timeout: left(),
+            })
           if (a.text !== undefined)
             await page
               .getByText(a.text as string)
               .first()
               .waitFor({ state, timeout: left() })
           if (a.ref !== undefined)
-            await locate(tab, page, a.ref as string).waitFor({ state, timeout: left() })
+            await locate(tab, page, a.ref as string).waitFor({
+              state,
+              timeout: left(),
+            })
         })
         return withNotes({ ok: true }, notes)
       },
@@ -762,13 +838,21 @@ export function buildToolDefs(): ToolDef[] {
           'Say how to answer the next alert/confirm/prompt dialog of this tab (accept or dismiss, with promptText for prompts). If a dialog is already open it is answered now. An unhandled dialog is dismissed after 10 s and reported in the next result.',
         props: {
           tabId,
-          accept: { type: 'boolean', description: 'Accept (true) or dismiss (false).' },
-          promptText: { type: 'string', description: 'Text for a prompt dialog.', maxLength: 2000 },
+          accept: {
+            type: 'boolean',
+            description: 'Accept (true) or dismiss (false).',
+          },
+          promptText: {
+            type: 'string',
+            description: 'Text for a prompt dialog.',
+            maxLength: 2000,
+          },
         },
         required: ['tabId', 'accept'],
       },
       async run(a, deps) {
-        const tab = deps.tabs.resolve(a.tabId as string, generationOf(deps))
+        const tab = await useTab(deps, a.tabId as string)
+        deps.tabs.resolve(a.tabId as string, generationOf(deps))
         usableProfile(deps, tab.profile)
         const pending = tab.pendingDialog
         if (pending) {
@@ -818,13 +902,19 @@ export function buildToolDefs(): ToolDef[] {
             total += file.size
             if (total > MAX_UPLOAD_TOTAL_BYTES)
               throw new ToolError('the files are too large together (100 MB)')
-            files.push({ name: file.name, mimeType: mimeFor(file.name), buffer: file.readAll() })
+            files.push({
+              name: file.name,
+              mimeType: mimeFor(file.name),
+              buffer: file.readAll(),
+            })
           } finally {
             file.close()
           }
         }
         const { notes } = await onTab(deps, a.tabId as string, ({ tab, page }) =>
-          locate(tab, page, a.ref as string).setInputFiles(files, { timeout: ms }),
+          locate(tab, page, a.ref as string).setInputFiles(files, {
+            timeout: ms,
+          }),
         )
         return withNotes({ ok: true, files: files.length }, notes)
       },
@@ -884,7 +974,8 @@ export function buildToolDefs(): ToolDef[] {
       },
       async run(a, deps) {
         const ms = timeoutOf(a)
-        const tab = deps.tabs.resolve(a.tabId as string, generationOf(deps))
+        const tab = await useTab(deps, a.tabId as string)
+        deps.tabs.resolve(a.tabId as string, generationOf(deps))
         usableProfile(deps, tab.profile)
         deps.browser.touch(tab.profile)
         const now = Date.now()
@@ -917,9 +1008,15 @@ export function buildToolDefs(): ToolDef[] {
         description:
           "Fetch a file by URL with the profile's cookies (signed-in downloads, e.g. a PDF link) and save it like download. Give tabId, or profile (uses one of its open tabs). http(s) only, max 200 MB, the file is not opened in a tab.",
         props: {
-          tabId: { ...tabId, description: "A tab whose profile's cookies are used." },
+          tabId: {
+            ...tabId,
+            description: "A tab whose profile's cookies are used.",
+          },
           profile: profileName,
-          url,
+          url: {
+            ...url,
+            description: 'HTTP(S) URL only; file URLs and local paths are not supported.',
+          },
           timeoutMs,
         },
         required: ['url'],
@@ -928,7 +1025,7 @@ export function buildToolDefs(): ToolDef[] {
         const ms = timeoutOf(a)
         if ((a.tabId === undefined) === (a.profile === undefined))
           throw new ToolError('give exactly one of tabId and profile')
-        const target = checkUrl(a.url as string)
+        const target = checkDownloadUrl(a.url as string)
         if (target === 'about:blank') throw new ToolError('the URL is not valid')
         let tab
         if (a.tabId !== undefined) tab = deps.tabs.resolve(a.tabId as string, generationOf(deps))
@@ -944,9 +1041,12 @@ export function buildToolDefs(): ToolDef[] {
         deps.browser.touch(tab.profile)
         const t = tab
         return {
-          json: await deps.browser.operate(t.profile, () =>
-            fetchToDisk(deps, t.page.context(), target, ms),
-          ),
+          json: await deps.browser.operate(t.profile, async () => {
+            await deps.browser.usePage(t.profile, t.page)
+            deps.tabs.resolve(t.id, generationOf(deps))
+            usableProfile(deps, t.profile)
+            return fetchToDisk(deps, t.page.context(), target, ms)
+          }),
         }
       },
     },
@@ -962,8 +1062,18 @@ export function buildToolDefs(): ToolDef[] {
             description: 'click, double_click, move, drag or scroll.',
             enum: ['click', 'double_click', 'move', 'drag', 'scroll'],
           },
-          x: { type: 'number', description: 'X in viewport pixels.', min: 0, max: 20000 },
-          y: { type: 'number', description: 'Y in viewport pixels.', min: 0, max: 20000 },
+          x: {
+            type: 'number',
+            description: 'X in viewport pixels.',
+            min: 0,
+            max: 20000,
+          },
+          y: {
+            type: 'number',
+            description: 'Y in viewport pixels.',
+            min: 0,
+            max: 20000,
+          },
           x2: {
             type: 'number',
             description: 'drag: end X. scroll: horizontal pixels (dx).',
@@ -1013,7 +1123,9 @@ export function buildToolDefs(): ToolDef[] {
             else if (action === 'drag') {
               await page.mouse.move(x, y)
               await page.mouse.down({ button })
-              await page.mouse.move(x2 as number, y2 as number, { steps: 10 })
+              await page.mouse.move(x2 as number, y2 as number, {
+                steps: 10,
+              })
               await page.mouse.up({ button })
             } else {
               await page.mouse.move(x, y)
@@ -1034,7 +1146,8 @@ export function buildToolDefs(): ToolDef[] {
         required: ['tabId'],
       },
       async run(a, deps) {
-        const tab = deps.tabs.resolve(a.tabId as string, generationOf(deps))
+        const tab = await useTab(deps, a.tabId as string)
+        deps.tabs.resolve(a.tabId as string, generationOf(deps))
         usableProfile(deps, tab.profile)
         return {
           json: {
@@ -1048,11 +1161,18 @@ export function buildToolDefs(): ToolDef[] {
       spec: {
         name: 'network',
         description: `Requests of the tab, newest first: method, URL without query, status (0 = failed, null = pending), type. No headers and no bodies. At most ${DEFAULT_NETWORK_LIMIT} unless limit is given (max 200; the tab keeps its last 200); type / urlIncludes narrow it down first, and "omitted" counts the matching ones left out.`,
-        props: { tabId, since, limit: networkLimit, type: networkType, urlIncludes },
+        props: {
+          tabId,
+          since,
+          limit: networkLimit,
+          type: networkType,
+          urlIncludes,
+        },
         required: ['tabId'],
       },
       async run(a, deps) {
-        const tab = deps.tabs.resolve(a.tabId as string, generationOf(deps))
+        const tab = await useTab(deps, a.tabId as string)
+        deps.tabs.resolve(a.tabId as string, generationOf(deps))
         usableProfile(deps, tab.profile)
         const type = typeof a.type === 'string' ? a.type.toLowerCase() : null
         const needle = typeof a.urlIncludes === 'string' ? a.urlIncludes.toLowerCase() : null
@@ -1067,7 +1187,11 @@ export function buildToolDefs(): ToolDef[] {
         const requests = matching.slice(-limit).reverse()
         const omitted = matching.length - requests.length
         return {
-          json: { last: tab.network.lastSeq, requests, ...(omitted > 0 ? { omitted } : {}) },
+          json: {
+            last: tab.network.lastSeq,
+            requests,
+            ...(omitted > 0 ? { omitted } : {}),
+          },
         }
       },
     },
@@ -1096,10 +1220,14 @@ async function fetchToDisk(
   let url = start
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     const cookie = (await ctx.cookies(url)).map((c) => `${c.name}=${c.value}`).join('; ')
-    const res = await fetch(url, { redirect: 'manual', signal, headers: cookie ? { cookie } : {} })
+    const res = await fetch(url, {
+      redirect: 'manual',
+      signal,
+      headers: cookie ? { cookie } : {},
+    })
     if (res.status >= 300 && res.status < 400 && res.headers.get('location')) {
       await res.body?.cancel().catch(() => undefined)
-      url = checkUrl(new URL(res.headers.get('location') as string, url).href)
+      url = checkDownloadUrl(new URL(res.headers.get('location') as string, url).href)
       continue
     }
     try {
@@ -1268,12 +1396,23 @@ export function createAgentChromeTools(deps: ToolDeps): ToolHandler[] {
         if ('image' in out) {
           return {
             content: [
-              { type: 'image', data: out.image.toString('base64'), mimeType: 'image/png' },
+              {
+                type: 'image',
+                data: out.image.toString('base64'),
+                mimeType: 'image/png',
+              },
               { type: 'text', text: out.caption },
             ],
           } as unknown as ToolResult
         }
-        return { content: [{ type: 'text', text: 'text' in out ? out.text : jsonValue(out.json) }] }
+        return {
+          content: [
+            {
+              type: 'text',
+              text: 'text' in out ? out.text : jsonValue(out.json),
+            },
+          ],
+        }
       } catch (e) {
         throw new PublicToolError(describeError(e, ms ?? DEFAULT_TIMEOUT_MS))
       }

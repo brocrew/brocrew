@@ -1,3 +1,5 @@
+import { navigationUrl } from '../shared/browser/navigationUrl.js'
+import { WindowTargetError } from '../shared/browser/chromiumWindows.js'
 import type { Locator, Page } from 'playwright-core'
 import { LocalFileGuardError } from '../localFileGuard.js'
 import type { LocalFileGuardConfig } from '../localFileGuard.js'
@@ -65,7 +67,7 @@ export const profileName: PropSpec = {
 }
 export const url: PropSpec = {
   type: 'string',
-  description: 'http(s) URL, or about:blank.',
+  description: 'HTTP(S) or file URL, native absolute local path, or about:blank.',
   minLength: 1,
   maxLength: 2000,
 }
@@ -118,16 +120,20 @@ export const generationOf =
   (p) =>
     deps.browser.state(p)?.generation ?? null
 export function checkUrl(raw: string): string {
-  if (raw === 'about:blank') return raw
-  let u: URL
   try {
-    u = new URL(raw)
-  } catch {
-    throw new ToolError('the URL is not valid')
+    return navigationUrl(raw)
+  } catch (error) {
+    throw new ToolError((error as Error).message)
   }
-  if (u.protocol !== 'http:' && u.protocol !== 'https:')
-    throw new ToolError('only http, https and about:blank URLs are allowed')
-  return u.href
+}
+/** Download transport never inherits local navigation support, including redirects. */
+export function checkDownloadUrl(raw: string): string {
+  const target = checkUrl(raw)
+  if (!/^https?:/.test(target))
+    throw new ToolError(
+      'download_url supports only http and https URLs; file URLs and local paths are not supported',
+    )
+  return target
 }
 export const timeoutOf = (args: Record<string, unknown>): number =>
   typeof args.timeoutMs === 'number' ? args.timeoutMs : DEFAULT_TIMEOUT_MS
@@ -145,7 +151,12 @@ export function jsonValue(value: unknown): string {
   return capped(text)
 }
 export function describeError(e: unknown, ms?: number): string {
-  if (e instanceof ToolError || e instanceof TabError || e instanceof LocalFileGuardError)
+  if (
+    e instanceof WindowTargetError ||
+    e instanceof ToolError ||
+    e instanceof TabError ||
+    e instanceof LocalFileGuardError
+  )
     return e.message
   if (e instanceof ProfileInUseError || e instanceof BrowserNotFoundError) return e.message
   if (e instanceof OperationBlockedError)
@@ -166,6 +177,20 @@ export function describeError(e: unknown, ms?: number): string {
   if (/net::|ERR_/.test(text)) return 'the page could not be loaded'
   return `the browser action failed${name ? ` (${name.replace(/[^\w]/g, '').slice(0, 30)})` : ''}`
 }
+/** Page-tool use which is not routed through onTab still updates context window preference. */
+export async function useTab(deps: ToolDeps, id: string): Promise<TabState> {
+  const tab = deps.tabs.resolve(id, generationOf(deps))
+  usableProfile(deps, tab.profile)
+  deps.browser.touch(tab.profile)
+  await deps.browser.operate(tab.profile, async () => {
+    deps.tabs.resolve(id, generationOf(deps))
+    usableProfile(deps, tab.profile)
+    await deps.browser.usePage(tab.profile, tab.page)
+    deps.tabs.resolve(id, generationOf(deps))
+    usableProfile(deps, tab.profile)
+  })
+  return tab
+}
 export interface TabCall {
   tab: TabState
   page: Page
@@ -182,7 +207,10 @@ export async function onTab<T>(
   usableProfile(deps, tab.profile)
   deps.browser.touch(tab.profile)
   const value = await deps.browser.operate(tab.profile, () =>
-    deps.serializer.runExclusive(tab.id, () => {
+    deps.serializer.runExclusive(tab.id, async () => {
+      deps.tabs.resolve(id, generationOf(deps))
+      usableProfile(deps, tab.profile)
+      await deps.browser.usePage(tab.profile, tab.page)
       deps.tabs.resolve(id, generationOf(deps))
       usableProfile(deps, tab.profile)
       return fn({ tab, page: tab.page })
@@ -246,7 +274,10 @@ export function pageText(
   next: number | null
 } {
   const body = text.slice(offset, offset + max)
-  return { body, next: offset + body.length < text.length ? offset + body.length : null }
+  return {
+    body,
+    next: offset + body.length < text.length ? offset + body.length : null,
+  }
 }
 export const moreMarker = (tool: string, next: number | null): string =>
   next === null ? '' : `\n[more: call ${tool} again with offset=${next} to read on]`

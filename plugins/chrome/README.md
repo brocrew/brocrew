@@ -23,3 +23,24 @@ The assets use only the contract’s window DOM packets: read/subscribe/unsubscr
 `manifest-template.json` contains the complete static UI text and method schemas. Package wording and production catalogue signing require separate review. No install, dispatch, provider integration or BroCrew launch code is added here.
 
 Within the plugin’s owner-only private folder, a same-user process swapping a checked directory during download placement is within the accepted trust boundary; these path checks do not provide atomic protection against that race.
+
+## Window targeting and local files
+
+`open_tab` accepts `windowOf:tabId` to join a live tab's window in the same profile, or
+`newWindow:true` for a separate visible background window. Otherwise it uses that profile's most
+recently created or tool-used live window. Listing tabs does not change this preference. Both
+`open_tab` and `list_tabs` return a numeric `windowId`; it is an observation, not a selector, and
+can change after a restart. Conflicting selectors and dead/foreign anchors are refused.
+
+`open_tab` and `navigate` accept HTTP(S), `file:` URLs, native absolute paths and `about:blank`.
+Native paths are encoded as file URLs, preserving spaces, Unicode, `#` and `?`; relative and tilde
+paths are rejected. Chrome and the OS determine local-file access; navigation has no upload-root
+allowlist. File tabs are eligible for normal mode/session URL restoration. The separate
+`download_url` transport stays HTTP(S)-only, including redirects; upload/download guards remain.
+
+Background opening grants no user activation. Its launch policy suppresses Chrome's startup
+window and disables popup blocking for this owned process, which also permits site-script popups.
+Only explicit show/Open requests may activate the browser. Run the optional disposable native
+focus check in `scripts/native/` to verify frontmost-app/Space behavior on a macOS seat; the opt-in
+`BROCREW_CHROME_RUNTIME_TEST=1` tests load real local files with visible bookkeeping forced headless
+and do not prove native focus. Never use personal or signed-in profiles for those checks.

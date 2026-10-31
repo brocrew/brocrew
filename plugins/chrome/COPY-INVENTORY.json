@@ -1,6 +1,6 @@
 {
   "productionSource": "agent-chrome code only",
-  "sharedCount": 11,
+  "sharedCount": 13,
   "extra": "shared/browser/launchGuard.ts is an approved addition to planned purposes; no current macOS-alert import/module, so omitted",
   "stripped": "All old comments; source-project imports/defaults/addresses; client material; person-step extension records/waits. No profiles, auth data, downloads, dashboard, proxy, deployment, local builds or integration tests copied.",
   "files": [
@@ -16,7 +16,7 @@
       "destination": "plugins/chrome/src/browser/chromeBrowser.ts",
       "sourceSha256": "b504f5128ab5f51b3d5dd875a197b137d0da27bfadbb1a59ff79d11b530449bf",
       "changes": "Private staging in every mode; CDP always allowAndName under private downloads; no OS Downloads fallback; local imports and comments/client material removed; queued permission rechecks or private-directory lstat/realpath fences; 0.1.1: minimal explicit owned arguments, drop all Playwright defaults, preserve private download staging/CDP in both modes; 0.1.2: the OS credential store for branded Chrome profiles; downloads bounded and unattended headless downloads denied; capture completion identifies the staging file actually saved; person-only idle profile removal and queued-open fencing",
-      "destinationSha256": "04239377d39656520d32a6f2236f250ff1d3dcf251777a9981f4fb7826974c35"
+      "destinationSha256": "f09aec7fbadd9cd23f8f3cbc76a3717716f22bf322a87e4bffb8f561aa675d7a"
     },
     {
       "source": "agent-chrome/src/browser/downloadRouter.ts",
@@ -37,7 +37,7 @@
       "destination": "plugins/chrome/src/browser/profileBrowser.ts",
       "sourceSha256": "f61ed5491f8270359481b8743f84714e32b38cc07741ead9ef40a031d4570cdc",
       "changes": "relative shared imports; comments and client references removed; private configuration adjustments listed in README; capture completion accepts the saved staging path; person-only idle profile removal and queued-open fencing",
-      "destinationSha256": "3903321c61eead084eb4250ebc8a5525ba68b5747a357cc225fb8c993515eca9"
+      "destinationSha256": "73c2b0e4480814ab3bcb881841188cc418d8e9e77427241ac3d3e1ceaa5bee55"
     },
     {
       "source": "agent-chrome/src/config.ts",
@@ -128,7 +128,7 @@
       "destination": "plugins/chrome/src/restoreSession.ts",
       "sourceSha256": "e908d8ff7e22867a7bf74c89b8021492c4e85e947d88eee23654638fc3fa0458",
       "changes": "relative shared imports; comments and client references removed; private configuration adjustments listed in README; current restore eligibility checked inside queue and after preparation",
-      "destinationSha256": "85b3d8558de6b88da7049817582160ff99454e9d3d66038f31121ec33ba2e7e3"
+      "destinationSha256": "1dbc2a24e8709e23cbc13920f50213c73bec42412b5da68a940357aac2504dcc"
     },
     {
       "source": "agent-chrome/src/settled.ts",
@@ -156,14 +156,14 @@
       "destination": "plugins/chrome/src/tools/common.ts",
       "sourceSha256": "d615113464b1f70e0602c85955cee01b502b2de9c731a151406f4642267d526e",
       "changes": "relative shared imports; comments and client references removed; private configuration adjustments listed in README; queued permission rechecks or private-directory lstat/realpath fences",
-      "destinationSha256": "34b45a09ffdba6319b317732e2c3358d8fb628e72a3347939a3c1f46ccec2b27"
+      "destinationSha256": "104bb074887f95c27564ede343c30deb844913ada8e8420360ea84f0b95635c9"
     },
     {
       "source": "agent-chrome/src/tools/index.ts",
       "destination": "plugins/chrome/src/tools/index.ts",
       "sourceSha256": "23f8ed4bafd42f3578e915f835a195c99bd8092d7215b4dd812b0fe406768569",
       "changes": "private downloads; reviewed errors; source dashboard instructions replaced by Plugins screen; comments/client references removed; queued permission rechecks or private-directory lstat/realpath fences; 0.1.1: back/forward wait for commit; URL/reload retain DOM load wait; 0.1.2: a download is watched for before the click or navigation that starts it; a headless wait ignores earlier denied downloads; 0.1.2: tool descriptions name the private files and downloads folders by their absolute paths; download waits describe serialized tool calls and independent events; agent clicks and navigation use the combined download tool; the saved staging file identifies the completed capture",
-      "destinationSha256": "abe3e07e65f59d40228cb16f48090724b4e5a03e8e94ac009ac3ab31b6ac7d52"
+      "destinationSha256": "c12ce9cd287a4957bf2528eddafbaa02f2b364d37d207fc6ba75bee4582e1215"
     },
     {
       "source": "agent-chrome/src/tools/modeSwitch.ts",
@@ -191,7 +191,7 @@
       "destination": "plugins/chrome/src/tools/showHide.ts",
       "sourceSha256": "dc1950bfce49cfabf39cafe8dbd599f54cd0482ce99141515e9b71aeb0b063b1",
       "changes": "relative shared imports; comments and client references removed; private configuration adjustments listed in README; queued permission rechecks or private-directory lstat/realpath fences",
-      "destinationSha256": "0b016ac5cc502489cb74898f775e568cd99dacf8a8672487736e82ba1276cee7"
+      "destinationSha256": "9673f2496ab43f6f14194152d8ebdff03d3c3dede3e0df3dd4c5f5bf5089a2bf"
     },
     {
       "source": "agent-chrome/src/tools/shownPath.ts",
@@ -289,14 +289,28 @@
       "destination": "plugins/chrome/test/fakes.ts",
       "sourceSha256": "e41f6a93e38d3bcc42e76a63357eef93af38552684f39fe09d52f3fceb71137e",
       "changes": "fake browser/page only; local imports, comments removed, no integration tests or Chrome launch; person-only idle profile removal and queued-open fencing",
-      "destinationSha256": "35832312c6371ffe0c8bab2cdfd88397aef73123802976a72abf0be20424624b"
+      "destinationSha256": "c6229dfe652eeb598faa2a6eb304c20188a061f3d2a97990c4a88b0750183569"
     },
     {
       "source": "agent-chrome/src/browser/launchArgs.ts",
       "destination": "plugins/chrome/src/browser/launchArgs.ts",
       "sourceSha256": "00d16dfd40601eaee51656e7b2e03079e4a58ef8b88c1c288565093782a7a319",
-      "destinationSha256": "a91c872c567214c9101d279f88207ff4327788986e18a9d9271172dcb42b570b",
+      "destinationSha256": "57d234a93afbfcdc3b030255b02725195b803719e4995c7f0d3979d31dfe2800",
       "changes": "0.1.1: minimal launch-argument builder; comments and source-specific environment descriptions removed; local imports; no runtime dependency on source repo; 0.1.2: the OS credential store for branded Chrome profiles"
+    },
+    {
+      "source": "shared/browser/chromiumWindows.ts",
+      "destination": "plugins/chrome/src/shared/browser/chromiumWindows.ts",
+      "sourceSha256": "0a35f5bc97ace0df312897e2cdbd5cf99512efc29a3766f42f960fcc7a0bf9b1",
+      "changes": "One-time patch-code adaptation; local imports and Node monotonic clock; no source-project dependency; no-activation background creation and numeric window identity validation",
+      "destinationSha256": "5203d2d80305e4c3569015c104dd9b6b6e3e1c12d0467a14ae20963966ad6e84"
+    },
+    {
+      "source": "shared/browser/navigationUrl.ts",
+      "destination": "plugins/chrome/src/shared/browser/navigationUrl.ts",
+      "sourceSha256": "39d0a2b4985a2b6ad0676b52b64e2d1fb958a27a81d09bd0bb2aabf34c9b1fa7",
+      "changes": "One-time patch-code adaptation; local imports and Node monotonic clock; no source-project dependency; no-activation background creation and numeric window identity validation",
+      "destinationSha256": "32ab3f7d561ecadf40d2742b9f1d2c19d4f08e47cdb118084cf2282abc8f0b45"
     }
   ],
   "metadata": {
@@ -304,7 +318,7 @@
     "destination": "plugins/chrome/package.json",
     "sourceSha256": "25dabff73274d95272fd6d693d823fe8dd13b3906f4a742f786b7d5c357acb34",
     "changes": "renamed; source-local dependency/scripts removed; exact direct production pins match source lock (SDK1.32.1, Express4.22.3, PlaywrightCore1.61.0); dev-only build tooling pinned separately; production metadata/hooks sanitized at build; standalone package version 0.1.2; next immutable author-bearing package version",
-    "destinationSha256": "c3a56833bda556526ebed47a099faf5d8eb3b264105d2f96d727747ae6185c23"
+    "destinationSha256": "5ef5ebed2484674bcda383e2bf9566cf53e5543477457f9b9cdfcd4b11787e00"
   },
   "recheckedCurrentSource": true,
   "packageAdditions": [
@@ -339,6 +353,16 @@
       "reason": "Global orphan/temp-profile matching does not prove exact-run ownership; could terminate browsers belonging to other apps or personal automation. Existing exact-run guardian/exit fencing covers BroCrew children; no replacement added.",
       "sourceSha256": "e46fb1a8b4c2fffcef1d49c2fc8d34636794ba13fdc94890e82b8768eb0681b2",
       "scope": "global sweep hooks only"
+    }
+  ],
+  "incrementalPorts": [
+    {
+      "version": "0.1.4",
+      "sourceCommits": [
+        "296a675119ec1cdf12432641c415144a5c1b8e53",
+        "618961de6b7def58d2030d9a5c1fb8aaf18c40b2"
+      ],
+      "changes": "Context-scoped window targeting and recency; local navigation and file restoration; background launch; permission rechecks after awaited metadata. Existing private-root, credential-store and download guards retained. Native focus evidence is separate from code/placement tests."
     }
   ]
 }

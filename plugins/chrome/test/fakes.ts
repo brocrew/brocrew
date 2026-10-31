@@ -257,6 +257,9 @@ export class FakeBrowser implements ProfileBrowser {
   closes: string[] = []
   touches: string[] = []
   private gen = 0
+  private nextWindow = 0
+  private readonly windowIds = new WeakMap<object, number>()
+  private readonly recentWindows = new Map<string, number>()
   cookies = new Map<
     string,
     Array<{
@@ -296,6 +299,7 @@ export class FakeBrowser implements ProfileBrowser {
       profile,
       (this.cookies.get(profile) ?? []).filter((c) => c.expires !== -1),
     )
+    this.recentWindows.delete(profile)
     this.states.delete(profile)
     this.pages.delete(profile)
     for (const cb of this.closedListeners.get(profile) ?? []) cb(cur.generation)
@@ -308,9 +312,28 @@ export class FakeBrowser implements ProfileBrowser {
   state(profile: string) {
     return this.states.get(profile) ?? null
   }
-  async newPage(profile: string): Promise<Page> {
+  async windowId(profile: string, page: Page): Promise<number> {
+    if (!this.pages.get(profile)?.includes(page as unknown as FakePage) || page.isClosed())
+      throw new Error('selected tab is closed')
+    return this.windowIds.get(page) ?? 1
+  }
+  async usePage(profile: string, page: Page): Promise<void> {
+    this.recentWindows.set(profile, await this.windowId(profile, page))
+  }
+  async newPage(
+    profile: string,
+    opts: { newWindow: boolean; windowOf?: Page } = { newWindow: false },
+  ): Promise<Page> {
     if (!this.states.has(profile)) throw new Error('profile is not open')
     const p = new FakePage()
+    const chosen = opts.windowOf
+      ? await this.windowId(profile, opts.windowOf)
+      : (opts.newWindow && this.state(profile)?.mode === 'visible') ||
+          !this.recentWindows.has(profile)
+        ? ++this.nextWindow
+        : this.recentWindows.get(profile)!
+    this.windowIds.set(p, chosen)
+    this.recentWindows.set(profile, chosen)
     if (!this.cookies.has(profile)) this.cookies.set(profile, [])
     p.store = this.cookies.get(profile)!
     this.pages.get(profile)!.push(p)

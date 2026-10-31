@@ -43,3 +43,27 @@ The server runtime version comes from manifest-template.json, the same release m
 ## 0.1.2: Windows
 
 Not an upstream change. On Windows, `src/browser/processes.ts` no longer ends a profile's browsers by process number: the BroCrew plugin host holds every process this server starts in a job object, Playwright's own force-close ends the browser through its handle, and the job ends the rest. The release builds one archive per target from the same source; each manifest names exactly its own target.
+
+## Window targeting and local navigation (0.1.4)
+
+One-time code adaptation of supplied changes `296a675119ec1cdf12432641c415144a5c1b8e53`
+and `618961de6b7def58d2030d9a5c1fb8aaf18c40b2`; no source-project dependency or address.
+Patch author headers and client-specific implementation were not imported.
+
+- Context-scoped Chromium window tracking implements most-recent-created/tool-used selection,
+  explicit same-profile `windowOf`, numeric window observations, and bounded marker-owned creation.
+- Navigation accepts native absolute paths and normalized `file:` URLs; file names use
+  `pathToFileURL` encoding. Downloads fetched with `download_url`, including redirects, remain
+  HTTP(S)-only. Upload roots and private download staging/limits are unchanged.
+- Visible launch suppresses the startup window; CDP creates background windows. Same-window
+  creation uses an isolated-world, detached modified link with no user activation. The opt-in
+  popup-blocking switch also permits site-script popups in this owned browser process.
+- Mode restoration prioritizes the chosen anchor within the unchanged 20-tab budget; saved
+  persistent visible sessions now retain local file URLs. Generations and window IDs remain
+  scoped to a running context; restarts do not preserve form state or native window grouping.
+- Added window metadata awaits recheck live tab/profile permission before page actions or
+  HTTP fetches. Launch guards, branded credential-store policy and private download fencing stay.
+
+Native AppKit/Space proof is a separate optional check (`scripts/native/`); headless runtime
+checks do not establish focus behavior. Neither the source import nor a dry build authorizes
+publication or deployment.

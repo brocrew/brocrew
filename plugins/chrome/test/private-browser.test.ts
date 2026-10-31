@@ -77,7 +77,7 @@ it.each(['visible', 'headless'] as const)(
       expect(launches[0].ignoreAllDefaultArgs).toBe(true)
       expect(launches[0].args).toContain(`--user-data-dir=${launches[0].profileDir}`)
       expect(launches[0].args).not.toContain('--disable-back-forward-cache')
-      expect(launches[0].args).not.toContain('--disable-popup-blocking')
+      expect(launches[0].args).toContain('--disable-popup-blocking')
       if (process.platform !== 'win32')
         expect(fs.statSync(path.join(home, 'downloads')).mode & 0o777).toBe(0o700)
       expect(sent.some((entry) => entry.method === 'Browser.setDownloadBehavior')).toBe(true)
