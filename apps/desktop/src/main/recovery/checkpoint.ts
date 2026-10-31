@@ -495,7 +495,7 @@ export interface PruneOptions {
   readonly warn?: (line: string) => void
   /** Leave unfinished folders alone when freeing room before making a new copy. */
   readonly includeUnfinished?: boolean
-  /** Also keep copies from a later app version when pruning before this version starts. */
+  /** Keep other versions' unexpired copies and protect copies from a later app version. */
   readonly currentAppVersion?: string
   /** Before migrations, even an expired newest intact copy must survive until a new one exists. */
   readonly expire?: boolean
@@ -505,6 +505,7 @@ export interface PruneOptions {
  * Lets go of the checkpoints no longer kept, and returns the folder names it removed.
  *
  * Keeps one newest intact copy, until three days or three successful starts of its version.
+ * Other versions' intact copies stay until their own age or matching start receipt expires them.
  * Before migrations the newest copy is protected regardless of expiry. Foreign, damaged,
  * unreadable and newer-build copies remain protected. Unfinished writer-marked UUID folders
  * are removed after an hour. Non-UUID folders, including manual timestamp copies, are untouched.
@@ -577,16 +578,27 @@ export async function prune(
   // kept while another would go, newest first, giving its place to the next when it does not
   // match; then each copy that would go, just before it goes.
   let candidates = whole
+  const expired = (checkpoint: Checkpoint): boolean =>
+    now() - Date.parse(checkpoint.manifest.createdAt) >= KEEP_WITHIN_MS ||
+    (receipt?.checkpointId === checkpoint.manifest.id &&
+      receipt.appVersion === checkpoint.manifest.madeBy.appVersion &&
+      receipt.successfulStarts >= 3)
   const keepingOf = (copies: readonly Checkpoint[]): Set<string> => {
     const newest = copies[0]
-    const expired =
-      newest !== undefined &&
-      options.expire !== false &&
-      (now() - Date.parse(newest.manifest.createdAt) >= KEEP_WITHIN_MS ||
-        (receipt?.checkpointId === newest.manifest.id &&
-          receipt.appVersion === newest.manifest.madeBy.appVersion &&
-          receipt.successfulStarts >= 3))
-    return new Set(expired ? [] : copies.slice(0, KEEP_NEWEST).map(({ manifest }) => manifest.id))
+    const newestExpired = newest !== undefined && options.expire !== false && expired(newest)
+    const kept = new Set(
+      newestExpired ? [] : copies.slice(0, KEEP_NEWEST).map(({ manifest }) => manifest.id),
+    )
+    for (const checkpoint of copies) {
+      if (
+        options.currentAppVersion !== undefined &&
+        checkpoint.manifest.madeBy.appVersion !== options.currentAppVersion &&
+        !expired(checkpoint)
+      ) {
+        kept.add(checkpoint.manifest.id)
+      }
+    }
+    return kept
   }
   const intact = new Set<string>()
   for (;;) {
