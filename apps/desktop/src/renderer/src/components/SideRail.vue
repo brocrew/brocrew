@@ -65,6 +65,7 @@ import { createProviderBlockStore, type ProviderBlockStore } from '../lib/provid
 import { useMinuteClock } from '../composables/useMinuteClock'
 import { useWhoCalledWhom, type RailSays } from '../composables/useWhoCalledWhom'
 import type { WorkspaceReading } from '../../../shared/workspace-reading'
+import type { WorkEdge } from '../../../shared/who-called-whom'
 import type { AppInfo } from '@brobot2/shared'
 import { profileItRunsAs, whereItWorks } from '../lib/session-record'
 import { agentName } from '../../../shared/runtime-ipc'
@@ -460,6 +461,17 @@ const listed = computed(() =>
 )
 
 const cast = useWhoCalledWhom()
+// Index the forest once per reading, rather than walking it for every row on every render.
+const workByHolder = computed(() => {
+  const holders = new Map<string, WorkEdge[]>()
+  for (const node of cast.forest.value?.nodes.rows ?? []) {
+    if (node.node !== 'a-task') continue
+    const pieces = holders.get(node.work.to)
+    if (pieces) pieces.push(node.work)
+    else holders.set(node.work.to, [node.work])
+  }
+  return holders
+})
 watchEffect(() => {
   cast.listedConversations.value = looked.value ? listed.value : null
   if (!looked.value) {
@@ -1347,9 +1359,7 @@ const platform = platformHere()
                       v-for="piece in workerSubtitles(
                         row.sessionId,
                         row.named,
-                        cast.forest.value?.nodes.rows.flatMap((node) =>
-                          node.node === 'a-task' ? [node.work] : [],
-                        ) ?? [],
+                        workByHolder.get(row.sessionId) ?? [],
                       )"
                       :key="piece.key"
                       class="rail-worker-piece"
