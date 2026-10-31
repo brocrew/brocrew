@@ -1,4 +1,9 @@
-import { PACKAGED_WORKSPACE_LIST } from './workspace-routing'
+import {
+  PACKAGED_WORKSPACE_LIST,
+  packagedWorkspaceIsForbidden,
+  routingWarning,
+  WORKSPACE_POLICY_FILE,
+} from './workspace-routing-store'
 import {
   existsSync,
   mkdirSync,
@@ -173,6 +178,18 @@ export function asStartedOn(folder: string, platform: NodeJS.Platform = process.
  * it is (the caller logs it).
  */
 export function rememberWorkspace(file: string, path: string, now: number): void {
+  if (
+    basename(file) === PACKAGED_WORKSPACE_LIST &&
+    packagedWorkspaceIsForbidden(dirname(dirname(file)), path)
+  ) {
+    routingWarning(
+      'forbidden-workspace-write',
+      file,
+      path,
+      join(dirname(file), WORKSPACE_POLICY_FILE),
+    )
+    return
+  }
   const others = readToRewrite(file).filter((one) => !samePath(one.path, path))
   writeWorkspaceList(file, [{ path, lastOpenedAt: now }, ...others], now)
 }

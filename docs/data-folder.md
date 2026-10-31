@@ -24,6 +24,31 @@ Without `--user-data-dir`, the build opens that person's conversations and setti
 
 Scripted runs also pass `--brobot-hidden`, which keeps the window out of sight. Leave it off when you test by hand: a hidden build shows no window and no Dock icon.
 
+## Separating packaged and development workspaces
+
+An optional `<appData>/@brobot2/workspace-policy.json` can reserve separate folders for each build:
+
+```json
+{
+  "version": 1,
+  "firstWorkspace": "/example/packaged-workspace",
+  "packagedForbidden": ["/example/development-workspace"],
+  "developmentForbidden": ["/example/packaged-workspace"]
+}
+```
+
+Use absolute paths for your machine. The packaged app skips recent-list rows inside `packagedForbidden`, opens the most recent allowed row, and otherwise uses `firstWorkspace`. It never adds a forbidden folder to its recent list or owner records. A skipped row is logged with `forbidden-row`, the list, policy and folder paths. Unreadable or malformed routing files still stop startup; the dialog includes a short reason and the log names the affected file.
+
+Treat `workspace-policy.json`, `packaged-workspaces.json` and `packaged-workspace-owners/` as one unit when moving or restoring this configuration. Back them up together. Owner records are durable: removing a recent row does not release its owner record, and policy changes do not delete existing records. Check those separately before reassigning a workspace between builds.
+
+With Node 24 or newer, run this before and after moving the routing files:
+
+```sh
+node scripts/check-workspace-routing.mjs --app-data /example/application-data
+```
+
+Pass Electron's `appData` folder, the parent of `@brobot2`, rather than a workspace folder. The command checks packaged and development routing without writing files, seeding lists, claiming owners, or opening workspace databases. It prints the selected paths and conflicts, and exits with status 1 for conflicts or refusals, 2 for invalid arguments. Add `--require-policy` to check a build that requires this policy.
+
 ## What a test build still shares with that person
 
 - **The Keychain entry that seals API keys, on macOS.** BroCrew seals the API keys it saves with a sealing key kept in the Keychain entry `@brobot2/desktop Safe Storage`, whatever data folder it runs on. When a test build saves or reads an API key, macOS asks on that person's screen whether it may use the entry. On someone else's Mac, choose **Deny**, never **Always Allow**. On Windows, the sealing key is kept inside the data folder itself, so nothing is shared.

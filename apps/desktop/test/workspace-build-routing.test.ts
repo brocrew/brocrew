@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process'
 import { runInNewContext } from 'node:vm'
 import { fileURLToPath } from 'node:url'
 import {
@@ -5,13 +6,15 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
+  statSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, expect, it } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { defaultDataFolder, pinTheDataFolder, type PinnableApp } from '../src/main/data-folder'
 import {
   DEVELOPMENT_BUILD_REFUSAL,
@@ -23,6 +26,11 @@ import {
   workspaceRouting,
   WORKSPACE_POLICY_FILE,
 } from '../src/main/workspace-routing'
+import {
+  claimPackagedWorkspace,
+  WorkspaceRoutingError,
+  packagedWorkspaceOwners,
+} from '../src/main/workspace-routing-store'
 import { rememberWorkspace, workspaceListFile } from '../src/main/workspaces'
 
 let root: string, appData: string, config: string, first: string, second: string, third: string
@@ -263,7 +271,7 @@ it.each([false, true])(
       runInNewContext(source.slice(start, end) + '\ncontinueStartup()', context),
     ).toThrow(exited)
     expect(events).toEqual([
-      ['show', 'BroCrew', WORKSPACE_LIST_REFUSAL],
+      ['show', 'BroCrew', `${WORKSPACE_LIST_REFUSAL} (missing-policy)`],
       ['exit', 1],
     ])
     expect(a.set).toEqual([])
@@ -312,3 +320,195 @@ it('a missing last workspace is refused rather than recreated empty', () => {
   expect(existsSync(second)).toBe(false)
   expect(existsSync(defaultDataFolder(appData))).toBe(false)
 })
+
+it('policy conflict: packaged launch skips a forbidden row and opens the latest allowed row', () => {
+  policy()
+  mkdirSync(first)
+  mkdirSync(second)
+  list(PACKAGED_WORKSPACE_LIST, [
+    [defaultDataFolder(appData), 100],
+    [first, 1],
+    [second, 2],
+  ])
+  const a = app(true, undefined, true)
+  pinTheDataFolder(a.fake)
+  expect(a.set).toEqual([second])
+  expect(packagedWorkspaceOwners(appData)).not.toContain(defaultDataFolder(appData))
+})
+
+it('policy conflict: a forbidden list row does not fence the development workspace', () => {
+  policy()
+  list(PACKAGED_WORKSPACE_LIST, [
+    [defaultDataFolder(appData), 100],
+    [first, 1],
+  ])
+  const routing = workspaceRouting(appData, false)
+  expect(routing.refusal(defaultDataFolder(appData))).toBeNull()
+  expect(routing.known(defaultDataFolder(appData))).toBe(false)
+  expect(routing.refusal(first)).toBe(OTHER_BUILD_REFUSAL)
+})
+
+it('policy conflict: the skipped row diagnostic names the reason, list, policy and folder', () => {
+  policy()
+  list(PACKAGED_WORKSPACE_LIST, [
+    [defaultDataFolder(appData), 100],
+    [first, 1],
+  ])
+  const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  try {
+    workspaceRouting(appData, true, false, { readOnly: true })
+    const lines = warning.mock.calls.flat().join(' ')
+    expect(lines).toContain('forbidden-row')
+    expect(lines).toContain(join(config, PACKAGED_WORKSPACE_LIST))
+    expect(lines).toContain(join(config, WORKSPACE_POLICY_FILE))
+    expect(lines).toContain(defaultDataFolder(appData))
+  } finally {
+    warning.mockRestore()
+  }
+})
+
+it('policy conflict: a policy installed after first run falls back to its first workspace', () => {
+  const original = app(true)
+  pinTheDataFolder(original.fake)
+  rememberWorkspace(join(config, PACKAGED_WORKSPACE_LIST), defaultDataFolder(appData), 1)
+  const before = readFileSync(join(config, PACKAGED_WORKSPACE_LIST), 'utf8')
+  policy()
+  mkdirSync(first)
+  const reopened = app(true, undefined, true)
+  pinTheDataFolder(reopened.fake)
+  expect(reopened.set).toEqual([first])
+  expect(readFileSync(join(config, PACKAGED_WORKSPACE_LIST), 'utf8')).toBe(before)
+})
+
+it('policy conflict: direct list and owner writers never record a forbidden folder or child', () => {
+  policy()
+  for (const folder of [defaultDataFolder(appData), join(defaultDataFolder(appData), 'child')]) {
+    rememberWorkspace(join(config, PACKAGED_WORKSPACE_LIST), folder, 1)
+    claimPackagedWorkspace(appData, folder)
+  }
+  expect(existsSync(join(config, PACKAGED_WORKSPACE_LIST))).toBe(false)
+  expect(packagedWorkspaceOwners(appData)).toEqual([])
+})
+
+function routingSnapshot(): unknown {
+  const files = (folder: string): unknown[] =>
+    readdirSync(folder)
+      .sort()
+      .map((name) => {
+        const file = join(folder, name)
+        const stat = statSync(file)
+        return [name, stat.mtimeMs, stat.isDirectory() ? files(file) : readFileSync(file, 'hex')]
+      })
+  return files(config)
+}
+
+it('the routing check reports both builds and conflicts without changing any routing files', () => {
+  policy()
+  list(PACKAGED_WORKSPACE_LIST, [
+    [defaultDataFolder(appData), 10],
+    [first, 1],
+  ])
+  const before = routingSnapshot()
+  const check = spawnSync(
+    process.execPath,
+    [
+      fileURLToPath(new URL('../../../scripts/check-workspace-routing.mjs', import.meta.url)),
+      '--app-data',
+      appData,
+    ],
+    { encoding: 'utf8' },
+  )
+  expect(check.status, check.stderr).toBe(1)
+  expect(check.stdout).toContain(`packaged: first workspace: ${first}`)
+  expect(check.stdout).toContain('development: first workspace:')
+  expect(check.stderr).toContain('forbidden-row')
+  expect(check.stderr).toContain(defaultDataFolder(appData))
+  expect(routingSnapshot()).toEqual(before)
+})
+
+it('the routing check does not seed a missing list or claim owners', () => {
+  list('workspaces.json', [[first, 1]])
+  const before = routingSnapshot()
+  const check = spawnSync(
+    process.execPath,
+    [
+      fileURLToPath(new URL('../../../scripts/check-workspace-routing.mjs', import.meta.url)),
+      '--app-data',
+      appData,
+    ],
+    { encoding: 'utf8' },
+  )
+  expect(check.status, check.stderr).toBe(0)
+  expect(check.stdout).toContain('packaged: first workspace:')
+  expect(check.stdout).toContain('development: first workspace:')
+  expect(routingSnapshot()).toEqual(before)
+})
+
+it.each([
+  'invalid-json',
+  'malformed-policy',
+  'malformed-list',
+  'file-too-large',
+  'owner-mismatch',
+] as const)('routing refusal names %s and logs the affected file and path', (reason) => {
+  policy()
+  let file = join(config, WORKSPACE_POLICY_FILE)
+  let offending = file
+  if (reason === 'invalid-json') writeFileSync(file, '{')
+  if (reason === 'malformed-policy') writeFileSync(file, '{}')
+  if (reason === 'file-too-large') writeFileSync(file, ' '.repeat(1024 * 1024 + 1))
+  if (reason === 'malformed-list') {
+    file = join(config, PACKAGED_WORKSPACE_LIST)
+    offending = 'relative-fictional-folder'
+    list(PACKAGED_WORKSPACE_LIST, [[offending, 1]])
+  }
+  if (reason === 'owner-mismatch') {
+    const owners = join(config, 'packaged-workspace-owners')
+    mkdirSync(owners)
+    file = join(owners, `${'0'.repeat(64)}.json`)
+    offending = first
+    writeFileSync(file, JSON.stringify({ version: 1, path: first }))
+  }
+  const log = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+  try {
+    let caught: unknown
+    try {
+      workspaceRouting(appData, true, false, { readOnly: true })
+    } catch (error) {
+      caught = error
+    }
+    expect(caught).toBeInstanceOf(WorkspaceRoutingError)
+    expect(caught).toMatchObject({ reason, file, path: offending })
+    expect(workspaceLaunchMessage(caught)).toBe(`${WORKSPACE_LIST_REFUSAL} (${reason})`)
+    expect(log.mock.calls.flat().join(' ')).toContain(file)
+    expect(log.mock.calls.flat().join(' ')).toContain(offending)
+  } finally {
+    log.mockRestore()
+  }
+})
+
+it('an explicit durable owner still fences the development build after a policy change', () => {
+  claimPackagedWorkspace(appData, defaultDataFolder(appData))
+  policy()
+  list(PACKAGED_WORKSPACE_LIST, [[defaultDataFolder(appData), 1]])
+  expect(workspaceRouting(appData, false).refusal(defaultDataFolder(appData))).toBe(
+    OTHER_BUILD_REFUSAL,
+  )
+})
+
+it.skipIf(process.platform === 'win32')(
+  'forbidden folder aliases cannot enter the list or owners',
+  () => {
+    const forbidden = defaultDataFolder(appData)
+    mkdirSync(forbidden, { recursive: true })
+    const alias = join(root, 'alias')
+    symlinkSync(forbidden, alias)
+    policy()
+    list(PACKAGED_WORKSPACE_LIST, [[first, 1]])
+    const before = readFileSync(join(config, PACKAGED_WORKSPACE_LIST), 'utf8')
+    rememberWorkspace(join(config, PACKAGED_WORKSPACE_LIST), join(alias, 'child'), 2)
+    claimPackagedWorkspace(appData, alias)
+    expect(readFileSync(join(config, PACKAGED_WORKSPACE_LIST), 'utf8')).toBe(before)
+    expect(packagedWorkspaceOwners(appData)).toEqual([])
+  },
+)

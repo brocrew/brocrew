@@ -1,24 +1,34 @@
 import { randomUUID } from 'node:crypto'
 import { linkSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
-import { isAbsolute, join } from 'node:path'
-import { insideBySpelling, samePath } from './same-folder'
+import { join } from 'node:path'
 import {
-  canonicalWorkspacePath,
   claimPackagedWorkspace,
   packagedWorkspaceOwners,
   readRoutingFile,
+  readWorkspacePolicy,
+  routingFailure,
+  routingPath,
+  routingWarning,
+  withinWorkspace as within,
+  WorkspaceRoutingError,
+  WORKSPACE_POLICY_FILE,
+  PACKAGED_WORKSPACE_LIST,
   WORKSPACE_LIST_REFUSAL,
+  type RoutingDiagnostic,
 } from './workspace-routing-store'
-export { WORKSPACE_LIST_REFUSAL } from './workspace-routing-store'
+export {
+  WORKSPACE_LIST_REFUSAL,
+  WORKSPACE_POLICY_FILE,
+  PACKAGED_WORKSPACE_LIST,
+} from './workspace-routing-store'
 
-export const WORKSPACE_POLICY_FILE = 'workspace-policy.json'
-export const PACKAGED_WORKSPACE_LIST = 'packaged-workspaces.json'
 export const OTHER_BUILD_REFUSAL = 'This workspace opens in the BroCrew app in Applications.'
 export const PACKAGED_WORKSPACE_REFUSAL = "This workspace can't be opened in this app."
 /** A folder the policy keeps for a development build of BroCrew, as the packaged app is told. */
 export const DEVELOPMENT_BUILD_REFUSAL =
   'This workspace opens in a development build of BroCrew, not in this app. Open it from that build.'
 export function workspaceLaunchMessage(error: unknown): string {
+  if (error instanceof WorkspaceRoutingError) return `${WORKSPACE_LIST_REFUSAL} (${error.reason})`
   return error instanceof Error &&
     [
       OTHER_BUILD_REFUSAL,
@@ -29,57 +39,36 @@ export function workspaceLaunchMessage(error: unknown): string {
     ? error.message
     : WORKSPACE_LIST_REFUSAL
 }
-const unavailable = (): never => {
-  throw new Error(WORKSPACE_LIST_REFUSAL)
-}
 interface Entry {
   path: string
   lastOpenedAt: number
 }
-interface Policy {
-  version: 1
-  firstWorkspace: string
-  packagedForbidden: string[]
-  developmentForbidden: string[]
-}
-function object(value: unknown): Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : unavailable()
-}
-function path(value: unknown): value is string {
-  return typeof value === 'string' && value.length <= 4096 && isAbsolute(value)
-}
-function paths(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every(path)
-}
-function entries(value: unknown): Entry[] {
-  const data = object(value)
-  if (data.version !== 1 || !Array.isArray(data.workspaces)) return unavailable()
+function entries(value: unknown, file: string): Entry[] {
+  if (typeof value !== 'object' || value === null || Array.isArray(value))
+    return routingFailure('malformed-list', file)
+  const data = value as Record<string, unknown>
+  if (data.version !== 1 || !Array.isArray(data.workspaces))
+    return routingFailure('malformed-list', file)
   for (const row of data.workspaces) {
-    const one = object(row)
+    if (typeof row !== 'object' || row === null || Array.isArray(row))
+      return routingFailure('malformed-list', file)
+    const one = row as Record<string, unknown>
     if (
-      !path(one.path) ||
+      !routingPath(one.path) ||
       typeof one.lastOpenedAt !== 'number' ||
       !Number.isFinite(one.lastOpenedAt)
     )
-      return unavailable()
+      return routingFailure('malformed-list', file, typeof one.path === 'string' ? one.path : file)
   }
   return data.workspaces as Entry[]
 }
-function within(folder: string, root: string): boolean {
-  if (samePath(folder, root) || insideBySpelling(folder, root)) return true
-  const one = canonicalWorkspacePath(folder),
-    other = canonicalWorkspacePath(root)
-  return samePath(one, other) || insideBySpelling(one, other)
-}
 
-function existingFolder(folder: string): boolean {
+function existingFolder(folder: string, file: string): boolean {
   try {
     return statSync(folder).isDirectory()
   } catch (error) {
     if (['ENOENT', 'ENOTDIR'].includes((error as NodeJS.ErrnoException).code ?? '')) return false
-    return unavailable()
+    return routingFailure('workspace-stat-failed', file, folder)
   }
 }
 
@@ -91,47 +80,40 @@ export function workspaceRouting(
   options: { readOnly?: boolean } = {},
 ) {
   const root = join(appData, '@brobot2')
-  const policyFile = readRoutingFile(join(root, WORKSPACE_POLICY_FILE))
-  let policy: Policy | undefined
-  if (policyFile) {
-    const data = object(policyFile.value)
-    if (
-      data.version !== 1 ||
-      !path(data.firstWorkspace) ||
-      !paths(data.packagedForbidden) ||
-      !paths(data.developmentForbidden)
-    )
-      return unavailable()
-    policy = data as unknown as Policy
-  } else if (required) return unavailable()
+  const policyPath = join(root, WORKSPACE_POLICY_FILE)
+  const policy = readWorkspacePolicy(appData, required)
   const listFile = join(root, PACKAGED_WORKSPACE_LIST)
   let list = readRoutingFile(listFile)
   if (packaged && !options.readOnly && !list && !policy) {
-    const legacy = readRoutingFile(join(root, 'workspaces.json'))
+    const legacyPath = join(root, 'workspaces.json')
+    const legacy = readRoutingFile(legacyPath)
     if (legacy) {
-      entries(legacy.value)
-      mkdirSync(root, { recursive: true })
+      entries(legacy.value, legacyPath)
       const temporary = `${listFile}.${process.pid}.${randomUUID()}.seed`
       try {
+        mkdirSync(root, { recursive: true })
         writeFileSync(temporary, legacy.text, { flag: 'wx', mode: 0o600 })
         try {
           linkSync(temporary, listFile)
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
         }
+      } catch {
+        return routingFailure('list-seed-failed', listFile, legacyPath)
       } finally {
         rmSync(temporary, { force: true })
       }
       list = readRoutingFile(listFile)
     }
   }
-  const rows = list ? entries(list.value) : []
-  if ((required || (packaged && policy)) && rows.length === 0) return unavailable()
-  if (packaged) {
-    for (const row of rows) {
-      if (policy?.packagedForbidden.some((root) => within(row.path, root))) return unavailable()
-      if (!options.readOnly) claimPackagedWorkspace(appData, row.path)
-    }
+  const diagnostics: RoutingDiagnostic[] = []
+  const rows = (list ? entries(list.value, listFile) : []).filter((row) => {
+    if (!policy?.packagedForbidden.some((root) => within(row.path, root))) return true
+    diagnostics.push(routingWarning('forbidden-row', listFile, row.path, policyPath))
+    return false
+  })
+  if (packaged && !options.readOnly) {
+    for (const row of rows) claimPackagedWorkspace(appData, row.path)
   }
   const owners = packagedWorkspaceOwners(appData)
   const known = (folder: string): boolean =>
@@ -153,19 +135,35 @@ export function workspaceRouting(
       : null)
   const ordered = [...rows].sort((a, b) => b.lastOpenedAt - a.lastOpenedAt)
   const latest = (
-    policy || !packaged ? ordered[0] : ordered.find((row) => existingFolder(row.path))
+    policy || !packaged ? ordered[0] : ordered.find((row) => existingFolder(row.path, listFile))
   )?.path
   const first = latest ?? policy?.firstWorkspace
-  if (first && packaged && refusal(first)) return unavailable()
-  return { listFile, first, refusal, creationRefusal, known, configured: policy !== undefined }
+  if (first && packaged && refusal(first))
+    return routingFailure('forbidden-first-workspace', policyPath, first)
+  return {
+    listFile,
+    first,
+    refusal,
+    creationRefusal,
+    known,
+    configured: policy !== undefined,
+    diagnostics,
+  }
 }
 
 /** Read immutable bundle metadata without importing Electron or changing its application name. */
 export function requiresWorkspacePolicy(appPath: string): boolean {
+  const file = join(appPath, 'package.json')
   try {
-    const data = object(JSON.parse(readFileSync(join(appPath, 'package.json'), 'utf8')))
-    return data.requireWorkspacePolicy === true
-  } catch {
-    return unavailable()
+    const data: unknown = JSON.parse(readFileSync(file, 'utf8'))
+    if (typeof data !== 'object' || data === null || Array.isArray(data))
+      return routingFailure('malformed-bundle-metadata', file)
+    return (data as Record<string, unknown>).requireWorkspacePolicy === true
+  } catch (error) {
+    if (error instanceof WorkspaceRoutingError) throw error
+    return routingFailure(
+      error instanceof SyntaxError ? 'malformed-bundle-metadata' : 'bundle-read-failed',
+      file,
+    )
   }
 }
