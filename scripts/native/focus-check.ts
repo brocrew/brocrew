@@ -63,6 +63,11 @@ async function cleanupBounded<T>(work: Promise<T>, ms: number): Promise<T> {
 }
 
 type OpenedTab = { tabId: string; windowId: number; url: string; title: string }
+function assertRunning(): void {
+  if (locked) throw new Error('screen locked; stopped native check')
+  if (stopping) throw new Error('native run cancelled; cleanup has started')
+  if (performance.now() - runStartedAt >= 75_000) throw new Error('native run exceeded75s budget')
+}
 async function bounded<T>(work: T | Promise<T>, ms = 10_000): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
@@ -198,6 +203,7 @@ try {
     const token = randomUUID()
     const sentAt = performance.now()
     try {
+      assertRunning()
       await bounded(
         new Promise<void>((resolve, reject) => {
           syncs.set(token, { sentAt, resolve, reject })
@@ -206,6 +212,7 @@ try {
         2000,
       )
     } catch (error) {
+      assertRunning() // Terminal controls are not calibration failures.
       const unavailable = {
         sentAt,
         receivedAt: performance.now(),
@@ -217,6 +224,7 @@ try {
     } finally {
       syncs.delete(token)
     }
+    assertRunning() // Also catch a stop delivered alongside a successful response.
   }
   await syncClock()
   for (let n = 0; n < 50 && !samples.length && !observerError; n++) await pause(100)
@@ -246,6 +254,7 @@ try {
     new ChromeBrowser({
       dirOf: store.dirOf,
       launchContext: async (opts) => {
+        assertRunning()
         const launchStartedAt = performance.now()
         ownedDirs.add(opts.profileDir)
         const launched = launchPersistentChromium(opts).then((ctx) => {
@@ -315,6 +324,7 @@ try {
     })
   let tools = makeTools()
   async function call(args: Record<string, unknown>): Promise<OpenedTab> {
+    assertRunning()
     const result = await bounded(
       tools
         .find((t) => t.definition.name === 'open_tab')!
@@ -331,6 +341,7 @@ try {
   async function resetBroCrew() {
     assert.equal(birth(baselinePid), baselineBirth, 'pinned BroCrew PID creation identity changed')
     await syncClock()
+    assertRunning()
     const startedAt = performance.now()
     const output = await bounded(
       new Promise<string>((resolve, reject) =>
