@@ -538,6 +538,17 @@ describe.skipIf(process.platform === 'win32')(
       await closing
       expect(settings.signal.aborted).toBe(true)
     })
+    it('an initial busy admission retries automatically without a Settings call', async () => {
+      const f = await setup()
+      f.supervisor.ready.mockResolvedValueOnce(false).mockResolvedValue(true)
+      Object.assign(f.supervisor, { lastStartError: { code: 'busy' } })
+      f.controller.start(f.options)
+      await f.controller.ready!()
+      await vi.waitFor(() => expect(seams.connect).toHaveBeenCalledOnce(), { timeout: 2500 })
+      expect(f.supervisor.start).toHaveBeenCalledTimes(2)
+      expect(f.peer.install).not.toHaveBeenCalled()
+      expect(f.peer.uninstall).not.toHaveBeenCalled()
+    })
     it('a blocked owner preserves installed display evidence and retry only reconnects', async () => {
       const f = await setup()
       vi.spyOn(GlobalPluginState, 'observeInstallations').mockReturnValue({
