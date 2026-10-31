@@ -230,6 +230,11 @@ const LEDGER: readonly Row[] = [
     note: '🔴 **UI-002 · the Files tab** (`07-where-resources-show` §2 item 3) — every file on this conversation\u2019s work. ⛔ Three clippers, each one line: a line\u2019s `.file-title` (an agent-written title, whole with the file\u2019s name on the line\u2019s own `:title`), the piece\u2019s `.piece-title` (whole on its own `:title`) and `.who` (an agent\u2019s name, whole on its own `:title`). ⚑ Measured in `the-files-tab-lists-every-file-on-the-work.dom.test.ts`, which cuts a long title at 520 px and reads it back whole.',
   },
   {
+    component: 'FilesLibrary.vue',
+    standing: 'measured',
+    note: 'File titles clamp to two lines. The enclosing file button retains the complete title and filename in its title, and opens the shared preview. files-library.dom.test.ts measures the long title with the drawn sensor.',
+  },
+  {
     component: 'SessionBot.vue',
     standing: 'measured',
     note: 'The agent name, profile and place each clip at one line beside the plate. The name is recoverable from the block title; profile and place have their own titles. The drawer-width sweep checks both narrow and wider layouts.',
@@ -392,7 +397,8 @@ const MEASURED_BY: Readonly<Record<string, string>> = {
   // ⚑ **UI-002 · the cards' file rows**, mounted by name for the cut, and through the pane.
   'FileRows.vue': 'the-cards-name-the-files-they-hand-over.dom.test.ts',
   // ⚑ **UI-002 · the Files tab's own suite**, which mounts `TreeFiles` by name.
-  'TreeFiles.vue': 'the-files-tab-lists-every-file-on-the-work.dom.test.ts',
+  'TreeFiles.vue': 'legacy-kept-file-lists.dom.test.ts',
+  'FilesLibrary.vue': 'files-library.dom.test.ts',
   'WorkingTogether.vue': 'the-first-picture-of-who-called-whom.dom.test.ts',
   // ⚑ **The band's task lines** — drawn through `SessionDrawer` and swept with the band.
   'TaskList.vue': 'the-first-picture-of-who-called-whom.dom.test.ts',
@@ -455,6 +461,11 @@ const sensorNames = (body: string, hook: string): boolean =>
  * are a `title`, a PRESS (`SessionTools`' tool detail) and nothing at all.
  */
 const CLAMPED: Readonly<Record<string, { readonly clamp: string; readonly recovery: string }>> = {
+  'FilesLibrary.vue · .file-title': {
+    clamp: '2',
+    recovery:
+      'The file button title preserves the complete file title and filename; pressing it opens the shared preview with the full text.',
+  },
   'AgentCard.vue · .said-text': {
     clamp: '3',
     recovery:
@@ -712,6 +723,7 @@ describe('§1 · the category, and nothing outside the ledger', () => {
       // tile’s title.
       'AgentCard.vue · .file-tile-name',
       'AgentCard.vue · .said-text',
+      'FilesLibrary.vue · .file-title',
       // ⚑ **672 · a FOURTH**, and the world moved again: a provider's words in a notice are clamped
       // where the app's own sentences wrap, and the title carries the whole of them
       'NoticeEntry.vue · .notice-entry .what.providers-words',
@@ -860,6 +872,9 @@ function questionOf(name: string, code: string): Question {
 }
 
 const HAND_ROLLED: Readonly<Record<string, Question>> = {
+  'files-library.dom.test.ts': 'does-this-box-fit',
+  'legacy-kept-file-lists.dom.test.ts': 'does-this-box-fit',
+  'the-viewer-says-what-a-file-is.dom.test.ts': 'does-this-box-fit',
   // The archived panel fits the viewport while its transcript can scroll to either end.
   'links-in-messages.dom.test.ts': 'does-this-box-fit',
   'the-title-counts-working-agents-on-every-page.dom.test.ts': 'does-this-box-fit',
@@ -941,9 +956,6 @@ const HAND_ROLLED: Readonly<Record<string, Question>> = {
   'the-conversation-header.dom.test.ts': 'does-this-box-fit',
   // ⚑ **D-016** — `the-documents-a-project-actually-produced.dom.test.ts` came off with the project
   // room it measured.
-  // ⚑ **UI-002** — the Files tab's list must not scroll sideways, or a row's who and time would sit
-  // past its edge where no clip sensor reads them (an `auto` box files that ink as *by scrolling*).
-  'the-files-tab-lists-every-file-on-the-work.dom.test.ts': 'does-this-box-fit',
   'the-first-picture-of-who-called-whom.dom.test.ts': 'does-this-box-fit',
   'the-panel-that-stopped-explaining-itself.dom.test.ts': 'does-this-box-fit',
   // ⚑ **D-016** — `the-room-behind-the-door.dom.test.ts` came off with the project room it drew.

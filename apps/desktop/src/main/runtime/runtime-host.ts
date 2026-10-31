@@ -5,6 +5,12 @@ import { providerDefinitions } from '../providers/definitions'
 import { StoppedBeforeSend, withManagedPluginAttachments } from '@brobot2/runtime'
 import type { WorkspacePluginAttachments } from '../plugins/attachments'
 import {
+  libraryUnavailable,
+  type FilesLibraryRequest,
+  type FilesLibraryResult,
+} from '../../shared/files-library'
+import type { FilesLibraryWindows } from '../db/files-library-windows'
+import {
   readPluginInstructions,
   pluginInstructionSection,
   PLUGINS_HEADING,
@@ -2812,6 +2818,8 @@ export interface RuntimeHostDeps {
   limitsReader?: LimitsReaderLifetime
   afterFirstWindowLoad?: Promise<void>
   windowReader?: WindowStoreReader
+  filesLibraries?: FilesLibraryWindows
+  filesLibraryRevision?: () => string | null
   windowWriterStamp?: (query: WindowReadQuery) => WindowWriterStamp | null
   workSearchReader?: WorkSearchReader
   pastWorkSearchReader?: Pick<PastWorkSearchReader, 'read' | 'close'>
@@ -23329,6 +23337,41 @@ export class RuntimeHost implements LiveHost {
       files: result.tree.map((row) => keptFileOf(row, result.roster)),
       added: result.added.map((row) => keptFileOf(row, result.roster)),
     }
+  }
+
+  async filesLibraryForWindow(
+    request: FilesLibraryRequest,
+    sink: RuntimeEventSink,
+  ): Promise<FilesLibraryResult> {
+    const libraries = this.deps.filesLibraries
+    if (libraries === undefined || this.launches.closed || !sink.alive)
+      return libraryUnavailable('closed')
+    const admission = libraries.admit(sink.ownerId)
+    const givers =
+      request.operation === 'query' && request.query.scope.type === 'conversationWork'
+        ? this.theIdsItStandsFor(request.query.scope.id)
+        : undefined
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (!libraries.isCurrent(sink.ownerId, admission)) return libraryUnavailable('cancelled')
+      const before = this.deps.filesLibraryRevision?.()
+      if (before === null || before === undefined) return libraryUnavailable('changed')
+      const result = await libraries.read(sink.ownerId, request, before, givers)
+      if (this.launches.closed || !sink.alive) return libraryUnavailable('closed')
+      if (!libraries.isCurrent(sink.ownerId, admission)) return libraryUnavailable('cancelled')
+      if (result.type === 'unavailable' && result.cause === 'cancelled') return result
+      const after = this.deps.filesLibraryRevision?.()
+      if (before === after) return result
+      if (request.operation !== 'query' && request.operation !== 'tasks') {
+        return result.type === 'files' || result.type === 'provenance'
+          ? { ...result, stale: true }
+          : result
+      }
+    }
+    return libraryUnavailable('changed')
+  }
+
+  async closeFilesLibraryWindow(owner: string): Promise<void> {
+    await this.deps.filesLibraries?.closeWindow(owner)
   }
 
   async searchWork(asAgent: string, input: WorkSearchQuery): Promise<WorkSearchResult> {
@@ -45019,6 +45062,7 @@ export class RuntimeHost implements LiveHost {
     const workSearchClosed = this.deps.workSearchReader?.close() ?? Promise.resolve()
     const pastWorkSearchClosed = this.deps.pastWorkSearchReader?.close() ?? Promise.resolve()
     const windowReadsClosed = this.deps.windowReader?.close() ?? Promise.resolve()
+    const filesLibrariesClosed = this.deps.filesLibraries?.close() ?? Promise.resolve()
     if (this.providerLimitExpiry !== null) clearTimeout(this.providerLimitExpiry)
     this.providerLimitExpiry = null
     this.providerLimitFacts.invalidate()
@@ -45060,6 +45104,7 @@ export class RuntimeHost implements LiveHost {
         workSearchClosed,
         pastWorkSearchClosed,
         windowReadsClosed,
+        filesLibrariesClosed,
         memoryClosed,
       ])
     } finally {

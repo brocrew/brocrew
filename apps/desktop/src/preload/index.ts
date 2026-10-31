@@ -526,6 +526,10 @@ const runtime: RuntimeBridge = Object.freeze({
   // D-026. The files kept in one scope, for a person — a tree, one conversation or one piece.
   filesKept: (input: FilesKeptScope): Promise<FilesKept> =>
     command({ kind: 'filesKept', ...input }) as Promise<FilesKept>,
+  filesLibrary: (request: import('../shared/files-library').FilesLibraryRequest) =>
+    command({ kind: 'filesLibrary', request }) as Promise<
+      import('../shared/files-library').FilesLibraryResult
+    >,
   searchWork: (input: {
     conversation: string
     query: import('../shared/work-search').WorkSearchQuery

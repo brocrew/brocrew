@@ -76,11 +76,12 @@ describe('every dialog host has a name', () => {
       .filter(([file]) => !file.endsWith('/OverlayHost.vue'))
       .flatMap(([file, text]) => mountTags(text).map((tag) => ({ file, tag })))
     // The name and stop censuses cover the same overlay mounts.
-    expect(tags).toHaveLength(18)
+    expect(tags).toHaveLength(19)
     const answerTags = tags.filter(({ file }) => file.endsWith('/HumanAnswerDialog.vue'))
     expect(answerTags).toHaveLength(1)
     expect(answerTags[0]!.tag).toMatch(/\slabel="Answer to you"/)
     expect(tags.filter(({ file }) => file.endsWith('/ProvidersScreen.vue'))).toHaveLength(1)
+    expect(tags.filter(({ file }) => file.endsWith('/FilesTaskPicker.vue'))).toHaveLength(1)
     for (const { file, tag } of tags) expect(named(tag), `${file}: ${tag}`).toBe(true)
   })
 

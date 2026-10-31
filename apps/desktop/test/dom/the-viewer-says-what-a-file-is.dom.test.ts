@@ -1,8 +1,14 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
-import { nextTick } from 'vue'
+import { defineComponent, h, nextTick } from 'vue'
 import CanonicalDocumentViewer from '../../src/renderer/src/components/CanonicalDocumentViewer.vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
+import FilesLibraryPreview from '../../src/renderer/src/components/FilesLibraryPreview.vue'
+import {
+  createFilesLibrary,
+  provideFilesLibrary,
+} from '../../src/renderer/src/composables/useFilesLibrary'
+import { keptFileLibraryReplies } from '../fixtures/kept-file-library-replies'
 import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { fullTime } from '../../src/renderer/src/lib/clock'
 import { clockTime } from '../../src/shared/clock'
@@ -77,6 +83,24 @@ const viewer = (props: Record<string, unknown>, width = 900): Mounted =>
   mount(CanonicalDocumentViewer, props, { width, height: 600 })
 
 describe('the viewer says what a file is', () => {
+  it('wraps the complete unbroken filename and resource id inside a narrow preview', async () => {
+    await page.viewport(390, 844)
+    const name = `${'x'.repeat(509)}.md`,
+      resourceId = `res_${'a'.repeat(124)}`
+    const m = viewer({ result: { ...RESULT, name, resourceId } }, 350)
+    await drawnReady()
+    expect(read(m.q('canonical-document-name'))).toBe(name)
+    expect(read(m.q('canonical-document-id'))).toBe(resourceId)
+    const frame = m.q('canonical-document-viewer').getBoundingClientRect()
+    for (const key of ['canonical-document-name', 'canonical-document-id']) {
+      const field = m.q(key)
+      expect(field.scrollWidth).toBeLessThanOrEqual(field.clientWidth + 1)
+      expect(field.getBoundingClientRect().right).toBeLessThanOrEqual(frame.right)
+      expect(field.getBoundingClientRect().height).toBeGreaterThan(16)
+    }
+    expect(m.q('document-body').getBoundingClientRect().height).toBeGreaterThan(0)
+  })
+
   it('🔴 the title first, then its name, kind and size, then who made it, for which piece, and when', async () => {
     const m = viewer({ result: RESULT, file: ROW })
     await drawnReady()
@@ -147,15 +171,33 @@ describe('the viewer says what a file is', () => {
       answered: true,
     }
     await page.viewport(1200, 808)
-    const m = mount(ConversationPane, paneProps({ onReadResource: async () => RESULT }), {
-      width: 1180,
-      height: 780,
+    const libraryPane = defineComponent({
+      setup() {
+        const library = createFilesLibrary({
+          read: keptFileLibraryReplies(() => [ROW]),
+          workspace: () => 'fictional',
+          selected: () => ({ id: META.sessionId, name: 'Fictional conversation' }),
+        })
+        provideFilesLibrary(library)
+        return () =>
+          h('div', { style: 'display:flex;flex:1;min-height:0' }, [
+            h(ConversationPane, paneProps({ onReadResource: async () => RESULT })),
+            h(FilesLibraryPreview, { library, workspace: 'fictional', read: async () => RESULT }),
+          ])
+      },
     })
+    const m = mount(
+      libraryPane,
+      {},
+      {
+        width: 1180,
+        height: 780,
+      },
+    )
     m.q('main-tab-files').click()
-    await drawnReady()
-    m.q('tree-file').click()
-    await nextTick()
-    await nextTick()
+    await vi.waitFor(() => expect(m.all('library-file')).toHaveLength(1))
+    m.q('library-file').click()
+    await vi.waitFor(() => expect(m.all('canonical-document-viewer')).toHaveLength(1))
     expect(read(m.q('canonical-document-title'))).toBe('Open findings')
     expect(read(m.q('canonical-document-from'))).toContain('Made by Ali for W1.9')
     unmountAll()

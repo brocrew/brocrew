@@ -107,8 +107,9 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
             (
                 OVERLAY,
                 # ⚑ **W4.205 · re-anchored in place, not retired** — W4.205 · the document overlay's host now carries a dialog name; the plant still makes it never draw, so every document press shows nothing
-                "  <OverlayHost v-if=\"showing\" label=\"Document\" @close=\"reading = null\">",
-                "  <OverlayHost v-if=\"false\" label=\"Document\" @close=\"reading = null\">",
+                # The host has a descriptive label and shared close handler; hiding it still kills every press.
+                '    v-if="showing"\n',
+                '    v-if="false"\n',
             )
         ],
     ),
@@ -168,7 +169,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         [
             (
                 OVERLAY,
-                "watch(\n  () => props.scope,\n  () => {\n    reading.value = null\n  },\n)\n\n",
+                # The same scope guard now invalidates pending body and drawing reads too.
+                "watch(\n  () => props.scope,\n  () => {\n    opens++\n    reading.value = null\n  },\n)\n\n",
                 "",
             )
         ],

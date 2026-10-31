@@ -102,6 +102,7 @@ const SAMPLES: Record<RuntimeCommandKind, RuntimeCommand> = {
   revealMessagePath: { kind: 'revealMessagePath', sessionId: null, text: '/tmp' },
   // ⚑ D-026 · a piece by its label; the three scopes share one kind, and one ruling.
   filesKept: { kind: 'filesKept', scope: 'piece', piece: 'W1' },
+  filesLibrary: { kind: 'filesLibrary', request: { operation: 'release' } },
   close: { kind: 'close', sessionId: SESSION },
   refreshConfig: { kind: 'refreshConfig', sessionId: SESSION },
   setApprovalMode: { kind: 'setApprovalMode', sessionId: SESSION, mode: 'ask' },

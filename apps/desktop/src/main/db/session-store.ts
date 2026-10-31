@@ -13,6 +13,7 @@ import {
   type MethodFileState,
 } from './method-changes'
 import { withOptionalIndexes } from './optional-indexes'
+import { currentWorkTitle } from './current-work-title'
 import { searchPastWork, closePastWorkSearch, pastWorkSource } from './past-work-search'
 import type { PastWorkSearchResult, PastWorkSource } from '../../shared/past-work-search'
 import {
@@ -12296,8 +12297,7 @@ export function createSessionStore(
       itsGeneration,
     ) => newestLineAbout(one, itsGeneration, 'work_retitled'),
   ): string | null => {
-    const retitled = newestRetitle(piece, generation)
-    return typeof retitled?.title === 'string' ? retitled.title : piece.title
+    return currentWorkTitle(piece.title, newestRetitle(piece, generation))
   }
 
   /**

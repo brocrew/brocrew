@@ -112,7 +112,7 @@ describe('640 §1 · one readingDocument, one mount, one place deciding', () => 
     // ⚑ **UI-002** — the panel is handed the row the press was drawn from too, for its header.
     // ⚑ **D-032** — …and the id pressed, the picture or PDF to draw, and the door to Finder.
     expect(CODE('components/CanonicalDocumentOverlay.vue')).toMatch(
-      /<CanonicalDocumentViewer\s+:resource-id="showing\.resourceId"\s+:result="showing\.result"\s+:file="showing\.file"\s+:drawing="showing\.drawing"\s+:reveal="props\.reveal"\s+@close="reading = null"\s*\/>/,
+      /<CanonicalDocumentViewer\s+:resource-id="showing\.resourceId"\s+:result="showing\.result"\s+:file="showing\.file"\s+:drawing="showing\.drawing"\s+:reveal="props\.reveal"\s+@close="close"\s*>\s*<template #provenance><slot name="provenance"\s*\/><\/template\s*>\s*<\/CanonicalDocumentViewer>/,
     )
   })
 
@@ -263,8 +263,12 @@ describe('640 §3 · viewing still never executes, and the guarantee did not mov
     expect(overlay).toContain("import CanonicalDocumentViewer from './CanonicalDocumentViewer.vue'")
     expect((overlay.match(/^import .* from '\.\/[A-Z]/gm) ?? []).length).toBe(2)
     // ⛔ …and the chrome is still `OverlayHost`'s: Esc, the backdrop, the trap, focus returned.
-    expect(overlay).toContain(
-      '<OverlayHost v-if="showing" label="Document" @close="reading = null">',
+    const host = overlay.slice(
+      overlay.indexOf('<OverlayHost'),
+      overlay.indexOf('<CanonicalDocumentViewer'),
     )
+    expect(host).toContain('v-if="showing"')
+    expect(host).toContain(':label=')
+    expect(host).toContain('@close="close"')
   })
 })

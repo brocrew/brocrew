@@ -359,11 +359,11 @@ describe('the main panel shows the conversation, or its whole tree', () => {
     const drawer = m.q('session-drawer').textContent ?? ''
     expect(drawer).not.toContain('Back to')
     expect(drawer).not.toContain('Open conversation')
-    // ⚑ Files follows: Ada's tree is not Arjun's, so nothing is counted until his is read.
+    // Legacy conversation-tree reads do not supply the workspace library's count.
     expect(m.all('main-tab-files-count')).toHaveLength(0)
     cast.treeFiles.value = { conversation: 'sess_arjun', files: [kept('work_2')], answered: true }
     await nextTick()
-    expect(m.q('main-tab-files-count').textContent?.trim()).toBe('(1)')
+    expect(m.all('main-tab-files-count')).toHaveLength(0)
     // ⚑ Conversation shows Arjun's conversation, not Ada's.
     m.q('main-tab-conversation').click()
     await nextTick()

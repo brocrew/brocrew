@@ -85,9 +85,10 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         ],
     ),
     (
-        "M9 · a renamed piece keeps its title as given · titleNow prefers the title the give carried over the newest retitle, so a file's piece is stale after the giver renames it — killed by `a-kept-file-is-titled-by-its-bytes-and-listed-by-one-door.test.ts` — killed by `a-kept-file-is-titled-by-its-bytes-and-listed-by-one-door.test.ts`",
+        "M9 · a renamed piece keeps its title as given · currentWorkTitle prefers the title the give carried over the newest retitle, so a file's piece is stale after the giver renames it — killed by `a-kept-file-is-titled-by-its-bytes-and-listed-by-one-door.test.ts` — killed by `a-kept-file-is-titled-by-its-bytes-and-listed-by-one-door.test.ts`",
         [
-            (SESSION_STORE, "    return typeof retitled?.title === 'string' ? retitled.title : piece.title\n", "    return piece.title ?? (typeof retitled?.title === 'string' ? retitled.title : null)\n"),
+            # The shared title helper still gives a current retitle precedence over the give.
+            ("apps/desktop/src/main/db/current-work-title.ts", "  return typeof retitled?.title === 'string' ? retitled.title : given\n", "  return given ?? (typeof retitled?.title === 'string' ? retitled.title : null)\n"),
         ],
     ),
     (
