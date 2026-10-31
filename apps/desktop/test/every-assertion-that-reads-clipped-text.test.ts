@@ -1175,6 +1175,7 @@ const RAIL_MOUNTED_AT: Readonly<Record<string, string[]>> = {
   // which is the third time that has happened and the reason this file says which each time.
   'rail-identity.dom.test.ts': ['200'],
   'rail-rhythm.dom.test.ts': ['a variable'],
+  'rail-work-is-indexed-between-renders.dom.test.ts': ['251.68'],
   'spawning-switch.dom.test.ts': ['240'],
   'status-agreement.dom.test.ts': ['the harness default, 1200'],
   // ⚑ **571** — the rail's one live signal (`EXT-008` §4.3), driven at BOTH shipped widths from a

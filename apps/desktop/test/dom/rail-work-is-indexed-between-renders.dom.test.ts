@@ -107,7 +107,7 @@ describe('Worker titles in a large conversation rail', () => {
       runtime: { listResumable: async () => rows, listUnresumable: async () => [] },
     })
     cast.forest.value = null
-    const view = mount(SideRail, { open: [], activeId: null, place: null })
+    const view = mount(SideRail, { open: [], activeId: null, place: null }, { width: 251.68 })
     await settled()
     const first = view.q(`open-session-${rows[0]!.sessionId}`)
     const finished = view.q(`open-session-${rows[1]!.sessionId}`)
