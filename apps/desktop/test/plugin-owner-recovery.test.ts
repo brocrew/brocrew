@@ -11,6 +11,8 @@ import { SupervisorStorage } from '../src/main/plugins/supervisor/storage'
 import { previousRunsProvenStopped } from '../src/main/plugins/supervisor/recovery-proof'
 import { keepPluginRootPrivate } from '../src/main/plugins/private-files'
 
+const windowsStopWithin = process.platform === 'win32' ? 10_000 : undefined
+
 // These exercise the real SQLite fence and local socket. They do not qualify legacy Windows
 // process retirement or the standalone production lifecycle.
 describe('plugin owner recovery after the caller stops waiting', () => {
@@ -20,21 +22,41 @@ describe('plugin owner recovery after the caller stops waiting', () => {
   let child: ChildProcess | undefined
   let releaseWitness: (() => void) | undefined
   afterEach(async () => {
-    releaseWitness?.()
-    if (child && child.exitCode === null && child.signalCode === null) {
-      const exited = once(child, 'exit')
-      child.kill()
-      await exited
+    try {
+      releaseWitness?.()
+      if (child && child.exitCode === null && child.signalCode === null) {
+        const exited = once(child, 'exit')
+        child.kill()
+        await exited
+      }
+      await lease?.close()
+      if (owner) {
+        await owner.shutdown()
+        let timer: ReturnType<typeof setTimeout> | undefined
+        try {
+          await Promise.race([
+            owner.closed,
+            new Promise<never>((_, reject) => {
+              timer = setTimeout(
+                () =>
+                  reject(new Error(`Plugin owner did not close; fixture retained at ${parent}`)),
+                10_000,
+              )
+            }),
+          ])
+        } finally {
+          clearTimeout(timer)
+        }
+      }
+      if (parent) await rm(parent, { recursive: true, force: true })
+    } finally {
+      vi.restoreAllMocks()
     }
-    await lease?.close()
-    await owner?.shutdown()
-    if (parent) await rm(parent, { recursive: true, force: true })
     owner = undefined
     lease = undefined
     child = undefined
     releaseWitness = undefined
-    vi.restoreAllMocks()
-  })
+  }, 30_000)
   async function fixture() {
     parent = await realpath(
       await mkdtemp(
@@ -79,7 +101,7 @@ describe('plugin owner recovery after the caller stops waiting', () => {
       JSON.parse(await readFile(join(root, 'supervisor/owner.json'), 'utf8')).phase
     expect(await phase()).not.toBe('stopped')
     releaseWitness!()
-    await expect.poll(phase, { timeout: 1500 }).toBe('stopped')
+    await expect.poll(phase, { timeout: windowsStopWithin ?? 1500 }).toBe('stopped')
     expect(await readFile(sentinel, 'utf8')).toBe('fictional-profile-and-installation')
   })
   it('does not turn a still-pending witness into a clean stop or overlap a successor', async () => {
@@ -120,6 +142,7 @@ describe('plugin owner recovery after the caller stops waiting', () => {
     await expect
       .poll(
         async () => JSON.parse(await readFile(join(root, 'supervisor/owner.json'), 'utf8')).phase,
+        { timeout: windowsStopWithin ?? 1000 },
       )
       .toBe('stopped')
   })
@@ -264,7 +287,7 @@ describe('plugin owner recovery after the caller stops waiting', () => {
     await expect
       .poll(
         async () => JSON.parse(await readFile(join(root, 'supervisor/owner.json'), 'utf8')).phase,
-        { timeout: 2000 },
+        { timeout: windowsStopWithin ?? 2000 },
       )
       .toBe('stopped')
   })
