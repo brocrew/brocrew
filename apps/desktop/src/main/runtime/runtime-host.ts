@@ -3753,6 +3753,10 @@ interface HostedSession {
   itsCopyWasReplaced?: true
   /** This life's one turn was a carrying on after a repaired sign-in: its refusal is never carried on again. */
   itCarriedOnAfterARepair?: true
+  /** This rejected turn may request one provider-owned renewal and safe carry-on. */
+  itRetriedRejectedLogin?: true
+  renewItsRejectedLogin?: true
+  rejectedLoginToRenew?: object
   /**
    * ⚑ **This app is closing it to start it again on the current sign-in, for what is held for it**
    * ({@link RuntimeHost.reopenForWhatWaits}) — once per life; the start it asks for says why
@@ -45951,13 +45955,25 @@ export class RuntimeHost implements LiveHost {
   private async carryOnAfterARepair(
     sessionId: string,
     decided: RefusedInputReference,
+    continuation?: { readonly text: string; readonly ref: SessionRef },
   ): Promise<void> {
     const itMay = (): HostedSession | null => {
       const slot = this.slots.get(sessionId)
       const session = slot?.session ?? null
       if (slot === undefined || session === null || onItsWayOut(slot)) return null
       if (this.launches.closed || this.keptStopped(sessionId)) return null
-      if (session.handle.carryOn === undefined || session.handle.status() !== 'idle') return null
+      if (session.handle.status() !== 'idle') return null
+      if (continuation === undefined && session.handle.carryOn === undefined) return null
+      if (continuation !== undefined) {
+        const ref = session.handle.ref ?? this.deps.store.findLive(sessionId)?.ref
+        if (
+          ref?.provider !== continuation.ref.provider ||
+          ref.sessionId !== continuation.ref.sessionId ||
+          ref.cwd !== continuation.ref.cwd ||
+          ref.rotation !== continuation.ref.rotation
+        )
+          return null
+      }
       if (session.mailbox.length > 0 || session.holdingQueue > 0) return null
       if (this.somethingIsOnItsWayTo(session)) return null
       if (this.itWaitsForItsLimit(session, false)) return null
@@ -45983,9 +45999,11 @@ export class RuntimeHost implements LiveHost {
     if (session !== before) return
     const turn: UserTurnEvent = {
       type: 'user_turn',
-      text: '',
+      text: continuation?.text ?? '',
       attribution: 'app_authored',
-      carriesOn: true,
+      ...(continuation === undefined
+        ? { carriesOn: true as const }
+        : { appNotice: 'a-turn-a-refused-login-stopped' as const }),
       ...(decided.piece === null ? {} : { carriedOnAfterAccountChange: true as const }),
       ...(decided.drives === null ? {} : { drives: decided.drives }),
     }
@@ -45996,6 +46014,7 @@ export class RuntimeHost implements LiveHost {
       session.handle.setWorkFolders(this.theWorkFoldersFor(session, []))
       // ⚑ Marked before the turn starts: a refusal of it may arrive before its row is written.
       session.itCarriedOnAfterARepair = true
+      if (continuation !== undefined) session.itRetriedRejectedLogin = true
       // ⚑ Whose turn it is, as its row says: a carry-on is always read as a person's, so a
       // piece's ending never stops it.
       this.aTurnIsHandedOver(
@@ -46003,7 +46022,8 @@ export class RuntimeHost implements LiveHost {
         { aPersons: aPersonsOwnWords(turn), names: thePiecesTheTurnNames([turn]) },
         false,
       )
-      await session.handle.carryOn!()
+      if (continuation === undefined) await session.handle.carryOn!()
+      else await session.handle.send(continuation.text)
     } catch (error) {
       console.warn(`runtime host did not carry ${sessionId} on: ${errorMessage(error)}`)
       return
@@ -46039,16 +46059,35 @@ export class RuntimeHost implements LiveHost {
     let attempted = false
     try {
       // ⚠️ The id is refused as *not confirmed stopped* until the old launch is released.
-      if (this.launches.closed) return
-      // A login that ended under it is renewed first, when it runs on the login and not a key.
+      if (this.launches.closed || this.keptStopped(session.id)) return
+      // A rejection can precede local expiry; an already replaced token needs no helper run.
       const renewal = this.deps.loginRenewal?.(session.provider)
+      const rejected = session.renewItsRejectedLogin === true
+      const movedBeforeRenewal = rejected && (await session.handle.checkSignIn?.()) === true
+      const renew = rejected ? renewal?.renewRejected : renewal?.renew
       const renewed =
+        !movedBeforeRenewal &&
         renewal !== undefined &&
+        renew !== undefined &&
         !this.aKeyIsSaved(session.provider) &&
-        (await this.withProviderLaunch(renewal.launchLabel, renewal.renew)) === 'renewed'
+        (await this.withProviderLaunch(renewal.launchLabel, renew)) === 'renewed'
+      if (
+        this.launches.closed ||
+        this.keptStopped(session.id) ||
+        !this.aReopenIsBeingDecidedFor.has(session.id) ||
+        (rejected && this.aKeyIsSaved(session.provider))
+      )
+        return
       // ⚑ A copy replaced by a fresh one of the same account: the account's limits still apply.
       if (session.itsCopyWasReplaced !== true) {
         if ((await session.handle.checkSignIn?.()) !== true) return
+        if (
+          rejected &&
+          this.rejectedMachineLogins.get(session.provider) === session.rejectedLoginToRenew
+        ) {
+          this.rejectedMachineLogins.delete(session.provider)
+          this.providersMoved({ what: 'login', provider: session.provider })
+        }
         // ⚑ The machine's login moved: the limits the login before reached stop applying.
         this.aSignInChanged(session.provider, session.lifeSince, session.profileId)
       }
@@ -46072,13 +46111,24 @@ export class RuntimeHost implements LiveHost {
       if (this.keptStopped(session.id)) return
       // A repaired copy can carry its refused words on. An account change can carry only an
       // accepted give on; the thread retains its input. A carried-on turn is never retried.
+      const continuationText = rejected ? renewal?.rejectedTurnContinuation : undefined
+      const failedRef = session.handle.ref
+      const recordedRef = this.deps.store.findLive(session.id)?.ref
+      const sameFailedThread =
+        failedRef !== null &&
+        recordedRef?.provider === failedRef.provider &&
+        recordedRef.sessionId === failedRef.sessionId &&
+        recordedRef.cwd === failedRef.cwd &&
+        recordedRef.rotation === failedRef.rotation
       const carryOn =
+        (!rejected || (continuationText !== undefined && sameFailedThread)) &&
         session.itCarriedOnAfterARepair !== true &&
         wasFor?.words === true &&
         (session.itsCopyWasReplaced === true ||
+          rejected ||
           (providerAuthPolicies[session.provider].copy.carriesAcceptedAfterAccountChange &&
             session.itsSignInMovedOn === true))
-          ? this.whatACarryOnWouldAnswer(session, session.itsCopyWasReplaced !== true)
+          ? this.whatACarryOnWouldAnswer(session, !rejected && session.itsCopyWasReplaced !== true)
           : null
       const watching = session.sink.alive && session.sink.aPersonIsBehindIt ? session.sink : null
       // ⚑ Only this reopen says the login was renewed for it.
@@ -46095,7 +46145,14 @@ export class RuntimeHost implements LiveHost {
       }
       // ⚑ Before its givers are told where its work stands, below: a piece this turn drives again
       // is not stalled, so they hear nothing.
-      if (carryOn !== null) await this.carryOnAfterARepair(session.id, carryOn)
+      if (carryOn !== null)
+        await this.carryOnAfterARepair(
+          session.id,
+          carryOn,
+          continuationText !== undefined && failedRef !== null
+            ? { text: continuationText, ref: failedRef }
+            : undefined,
+        )
     } catch (error) {
       // ⚑ Another door's start took the reservation first: it carries what was held.
       const raced = this.slots.get(session.id)
@@ -46820,12 +46877,17 @@ export class RuntimeHost implements LiveHost {
       this.keepAWindowFirstSeen()
       return
     }
+    if (event.type === 'turn' && event.state === 'completed' && session.itRetriedRejectedLogin) {
+      delete session.itRetriedRejectedLogin
+      delete session.itCarriedOnAfterARepair
+    }
     // ⚑ A turn its provider refused on the login, in a conversation whose provider keeps running
     // (Codex keeps its app-server): if the sign-in has moved since, it ends as a child killed by a
     // stale sign-in does, and its teardown reopens it on the current one.
     if (
       event.type === 'turn' &&
       event.loginRefused === true &&
+      session.itRetriedRejectedLogin !== true &&
       event.onAKey !== true &&
       session.diedOnAStaleSignIn !== true &&
       session.handle.checkSignIn !== undefined
@@ -46859,16 +46921,30 @@ export class RuntimeHost implements LiveHost {
       this.rejectedMachineLogins.set(session.provider, {})
       this.providersMoved({ what: 'login', provider: session.provider })
     }
-    // 🔴 **D-004 · R101 — a child killed by a revoked sign-in**, for the teardown to act on.
-    if (event.type === 'error' && event.fatal && event.cause === 'auth_stale') {
-      session.diedOnAStaleSignIn = true
-      // 🔴 **F076 — and what its turn was for, before that turn's ending clears it**; its givers
-      // are told nothing until its reopen is decided ({@link reopenOnARenewedSignIn}).
-      session.whatItsFailedTurnWasFor = this.whatItsTurnWasFor(session)
-      this.aReopenIsBeingDecidedFor.set(
-        session.id,
-        (this.aReopenIsBeingDecidedFor.get(session.id) ?? 0) + 1,
-      )
+    // Existing stale-login handling is unchanged outside the one rejected-turn retry.
+    if (event.type === 'error' && event.fatal) {
+      const canRenewRejected =
+        (event.cause === 'auth_stale' || event.cause === 'auth') &&
+        event.onAKey !== true &&
+        !this.aKeyIsSaved(session.provider) &&
+        session.itRetriedRejectedLogin !== true &&
+        session.diedOnAStaleSignIn !== true &&
+        this.deps.loginRenewal?.(session.provider)?.renewRejected !== undefined
+      if (
+        (event.cause === 'auth_stale' && session.itRetriedRejectedLogin !== true) ||
+        canRenewRejected
+      ) {
+        if (canRenewRejected) {
+          session.renewItsRejectedLogin = true
+          session.rejectedLoginToRenew = this.rejectedMachineLogins.get(session.provider)
+        }
+        session.diedOnAStaleSignIn = true
+        session.whatItsFailedTurnWasFor = this.whatItsTurnWasFor(session)
+        this.aReopenIsBeingDecidedFor.set(
+          session.id,
+          (this.aReopenIsBeingDecidedFor.get(session.id) ?? 0) + 1,
+        )
+      }
     }
     // ⚑ **F076 — background work its provider says has finished**, for a turn it starts by itself.
     // ⚠️ **One row per task**: Claude ends each twice, `task_updated` then `task_notification`

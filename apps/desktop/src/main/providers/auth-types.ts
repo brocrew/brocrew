@@ -17,6 +17,10 @@ export type LoginRenewalOutcome = 'renewed' | 'not-needed' | 'not-installed' | '
 export interface LoginRenewalOperations {
   readonly launchLabel: string
   renew(): Promise<LoginRenewalOutcome>
+  /** Retry a machine login actually refused by the provider, even before its local expiry. */
+  renewRejected?(): Promise<LoginRenewalOutcome>
+  /** Explicit app-authored input on the same resumed thread; never the original request again. */
+  readonly rejectedTurnContinuation?: string
   prepare(
     prepare: () => string | Promise<string>,
     renew: () => Promise<LoginRenewalOutcome>,

@@ -273,6 +273,94 @@ describe.skipIf(process.platform === 'win32')('a stand-in Claude Code, run for r
   })
 })
 
+describe('a token rejected before its recorded expiry', () => {
+  it('runs once on rejection and verifies a different current token, not just exit zero', async () => {
+    let current = login('fictional-rejected', NOW + HOUR)
+    let runs = 0
+    const renew = claudeLoginRenewer({
+      findProgram: () => '/fictional/cli',
+      readLogin: async () => current,
+      env: {},
+      run: async () => {
+        runs++
+        if (runs === 2) current = login('fictional-renewed', NOW + HOUR)
+        return ended(0)
+      },
+    })
+    expect(await renew()).toBe('not-needed')
+    expect(await renew('rejected')).toBe('not-renewed')
+    expect(await renew('rejected')).toBe('not-renewed')
+    expect(runs).toBe(1)
+    current = login('fictional-other-rejected', NOW + HOUR)
+    expect(await renew('rejected')).toBe('renewed')
+    expect(runs).toBe(2)
+  })
+
+  it('upgrades a simultaneous expiry check and dedupes rejected-token requests', async () => {
+    let current = login('fictional-rejected', NOW + HOUR)
+    let release!: () => void
+    let runs = 0
+    const renew = claudeLoginRenewer({
+      findProgram: () => '/fictional/cli',
+      readLogin: async () => current,
+      env: {},
+      run: () => {
+        runs++
+        return new Promise((resolve) => {
+          release = () => {
+            current = login('fictional-renewed', NOW + HOUR)
+            resolve(ended(0))
+          }
+        })
+      },
+    })
+    const results = [renew(), renew('rejected'), renew('rejected')]
+    await vi.waitFor(() => expect(runs).toBe(1))
+    release()
+    expect(await Promise.all(results)).toEqual(['not-needed', 'renewed', 'renewed'])
+    expect(runs).toBe(1)
+  })
+
+  it.each(['failure', 'timeout', 'throw'] as const)(
+    'bounds a %s without retrying the same token',
+    async (kind) => {
+      const run = vi.fn(async () => {
+        if (kind === 'throw') throw new Error('fictional failure')
+        return { code: kind === 'failure' ? 1 : null, timedOut: kind === 'timeout' }
+      })
+      const renew = claudeLoginRenewer({
+        findProgram: () => '/fictional/cli',
+        readLogin: async () => login('fictional-rejected', NOW + HOUR),
+        env: {},
+        run,
+      })
+      expect(await renew('rejected')).toBe('not-renewed')
+      expect(await renew('rejected')).toBe('not-renewed')
+      expect(run).toHaveBeenCalledTimes(1)
+    },
+  )
+
+  it('cancellation cannot publish a renewed result, even if the reader changed', async () => {
+    const controller = new AbortController()
+    let current = login('fictional-rejected', NOW + HOUR)
+    const run = vi.fn(async () => {
+      controller.abort()
+      current = login('fictional-renewed', NOW + HOUR)
+      return ended(0)
+    })
+    const renew = claudeLoginRenewer({
+      findProgram: () => '/fictional/cli',
+      readLogin: async () => current,
+      signal: controller.signal,
+      env: {},
+      run,
+    })
+    expect(await renew('rejected')).toBe('not-renewed')
+    expect(await renew('rejected')).toBe('not-renewed')
+    expect(run).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('one renewal at a time', () => {
   it('starts that find the login expired together wait for the same run', async () => {
     let runs = 0

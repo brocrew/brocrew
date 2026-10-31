@@ -56,7 +56,7 @@ export interface ClaudeAuthSeams {
   readonly key?: () => string | null | Promise<string | null>
   readonly keyStatus?: () => { set: boolean; unreadableReason?: string }
   readonly programFound?: () => string | null
-  readonly renewLogin?: () => Promise<LoginRenewalOutcome>
+  readonly renewLogin?: (reason?: 'rejected') => Promise<LoginRenewalOutcome>
 }
 
 /**
@@ -155,12 +155,15 @@ export function claudeAuth(paths: ProviderHomePaths, seams: ClaudeAuthSeams): Ho
     const behind = await (seams.loginPresence ?? machineLoginPresence)(signal)
     return behind === undefined ? state : { ...state, loginBehindTheKey: behind }
   }
+  const renewLogin = seams.renewLogin
   const renewal: LoginRenewalOperations | undefined =
-    seams.renewLogin === undefined
+    renewLogin === undefined
       ? undefined
       : {
           launchLabel: 'Claude sign-in renewal',
-          renew: seams.renewLogin,
+          renew: renewLogin,
+          renewRejected: () => renewLogin('rejected'),
+          rejectedTurnContinuation: 'Continue answering the last message.',
           prepare: (prepare, renew) => prepareOnTheLogin(prepare, renew, claudeCommandFor(seams)),
         }
   const claudeRefusal = (verb: string): Error =>

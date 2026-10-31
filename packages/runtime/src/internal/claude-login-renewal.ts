@@ -318,8 +318,9 @@ function fingerprintOf(raw: string | null): string {
 
 /**
  * One renewal at a time for the whole app: starts that find the login expired together wait for the
- * same run. It renewed only when the login reads afterwards as a current one other than before.
- * An expired login a run could not renew is not run for again; the next try is for the next login,
+ * same run. A provider rejection can request the same renewal before local expiry. It renewed only
+ * when the login reads afterwards as a current one other than before. A login a run could not renew
+ * is not run for again; the next try is for the next login,
  * one the person renews or signs in to by hand.
  */
 export function claudeLoginRenewer(
@@ -327,12 +328,19 @@ export function claudeLoginRenewer(
     /** Reads the person's login now, as its store holds it. */
     readonly readLogin: () => Promise<string | null>
   },
-): () => Promise<ClaudeLoginRenewal> {
+): (reason?: 'rejected') => Promise<ClaudeLoginRenewal> {
   let running: Promise<ClaudeLoginRenewal> | null = null
   let notRenewed: string | null = null
-  const renewal = async (): Promise<ClaudeLoginRenewal> => {
+  const renewal = async (reason?: 'rejected'): Promise<ClaudeLoginRenewal> => {
+    if (seams.signal?.aborted) return 'not-renewed'
     const before = await seams.readLogin()
-    if (!claudeLoginNeedsRenewal(before, Date.now())) return 'not-needed'
+    if (seams.signal?.aborted) return 'not-renewed'
+    if (
+      reason === 'rejected'
+        ? tokenOf(before) === null
+        : !claudeLoginNeedsRenewal(before, Date.now())
+    )
+      return 'not-needed'
     if (fingerprintOf(before) === notRenewed) return 'not-renewed'
     let ran: 'ran' | 'not-installed'
     try {
@@ -346,16 +354,23 @@ export function claudeLoginRenewer(
       return 'not-renewed'
     }
     if (ran === 'not-installed') return 'not-installed'
-    if (renewedSince(before, await seams.readLogin(), Date.now())) {
+    const after = await seams.readLogin()
+    if (seams.signal?.aborted) return 'not-renewed'
+    if (renewedSince(before, after, Date.now())) {
       notRenewed = null
       return 'renewed'
     }
-    console.warn('Claude Code ran, and its login still reads as expired to BroCrew.')
+    console.warn('Claude Code ran without replacing the login BroCrew could not use.')
     notRenewed = fingerprintOf(before)
     return 'not-renewed'
   }
-  return () => {
-    running ??= renewal()
+  return function renew(reason?: 'rejected'): Promise<ClaudeLoginRenewal> {
+    if (running !== null) {
+      return running.then((result) =>
+        reason === 'rejected' && result === 'not-needed' ? renew(reason) : result,
+      )
+    }
+    running = renewal(reason)
       .catch((): ClaudeLoginRenewal => 'not-renewed')
       .finally(() => {
         running = null

@@ -17,7 +17,8 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import type { ProviderAuthOps } from '../src/main/providers/auth-operations'
-import { prepareOnTheLogin } from '../src/main/providers/claude'
+import { claudeAuth, prepareOnTheLogin } from '../src/main/providers/claude'
+import { claudeLoginRenewer } from '../../../packages/runtime/src/internal/claude-login-renewal'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { createSessionStore as createRendererStore } from '../src/renderer/src/lib/session-store'
 import type { SessionRecord } from '../src/renderer/src/lib/session-record'
@@ -169,7 +170,9 @@ describe('D-004 · R101 — a login renewed elsewhere reopens the conversation i
   let machineLogin: string | null
   let readMachineLogin: (() => Promise<string | null>) | undefined
   /** The app's renewal of an expired Claude Code login, when a test gives one. */
-  let renewal: (() => Promise<ClaudeLoginRenewal>) | undefined
+  let renewal: ((reason?: 'rejected') => Promise<ClaudeLoginRenewal>) | undefined
+  let renewAfterRejection: boolean
+  let nextId: number
   /** Whether a Claude key is saved, which a launch runs on instead of the login. */
   let keySaved: boolean
   let authOps: ProviderAuthOps | undefined
@@ -216,17 +219,28 @@ describe('D-004 · R101 — a login renewed elsewhere reopens the conversation i
       },
       providerHomePath: (which) => join(dir, 'homes', which),
       resolveCwd: () => join(dir, 'cwd'),
-      newSessionId: () => 'sess_d004',
+      newSessionId: () => (nextId++ === 0 ? 'sess_d004' : `fictional-session-${nextId}`),
       ...(renewForThisHost === undefined
         ? {}
         : {
             loginRenewal: (provider: import('@brobot2/shared').Provider) =>
               provider === 'claude'
-                ? {
-                    launchLabel: 'Claude sign-in renewal',
-                    renew: renewForThisHost,
-                    prepare: prepareOnTheLogin,
-                  }
+                ? renewAfterRejection
+                  ? claudeAuth(
+                      {
+                        managedRoot: join(dir, 'homes'),
+                        defaultProfile: 'brobot',
+                        homeOf: (id) => join(dir, 'homes', id),
+                        profiles: () => ['brobot'],
+                        assertMayOpen: () => {},
+                      },
+                      { renewLogin: renewForThisHost },
+                    ).renewal
+                  : {
+                      launchLabel: 'Claude sign-in renewal',
+                      renew: renewForThisHost,
+                      prepare: prepareOnTheLogin,
+                    }
                 : undefined,
           }),
       ...(launchBarrier === undefined ? {} : { beforeProviderLaunch: launchBarrier }),
@@ -267,6 +281,8 @@ describe('D-004 · R101 — a login renewed elsewhere reopens the conversation i
     machineLogin = 'test-token-at-launch'
     readMachineLogin = undefined
     renewal = undefined
+    renewAfterRejection = false
+    nextId = 0
     keySaved = false
     launchBarrier = undefined
     authOps = undefined
@@ -358,6 +374,378 @@ describe('D-004 · R101 — a login renewed elsewhere reopens the conversation i
       sessionId,
     }
   }
+
+  const decided = async (host: RuntimeHost, id: string): Promise<void> => {
+    await waitFor(
+      () =>
+        !(
+          host as unknown as { aReopenIsBeingDecidedFor: Map<string, number> }
+        ).aReopenIsBeingDecidedFor.has(id),
+      'the recovery decision',
+    )
+  }
+
+  function rejectedRenewer(
+    outcome: 'changed' | 'unchanged' | 'failure' | 'timeout' = 'changed',
+    expired = false,
+  ) {
+    let runs = 0
+    let token = machineLogin!
+    const renew = claudeLoginRenewer({
+      findProgram: () => '/fictional/native/cli',
+      env: {},
+      readLogin: async () =>
+        JSON.stringify({
+          claudeAiOauth: {
+            accessToken: token,
+            expiresAt: Date.now() + (expired && machineLogin === null ? -1000 : 3600000),
+          },
+        }),
+      run: async () => {
+        runs++
+        if (outcome === 'changed') {
+          token = runs === 1 ? 'fictional-token-renewed' : `fictional-token-renewed-${runs}`
+          machineLogin = token
+        }
+        return {
+          code: outcome === 'failure' ? 1 : outcome === 'timeout' ? null : 0,
+          timedOut: outcome === 'timeout',
+        }
+      },
+    })
+    renewal = renew
+    renewAfterRejection = true
+    return () => runs
+  }
+
+  it.each([false, true])(
+    'renews a rejected token (expired=%s) and continues the exact session once without copying its accepted input',
+    async (expired) => {
+      const runs = rejectedRenewer('changed', expired)
+      const { host, sessionId } = await killedMidTurn(() => {
+        if (expired) machineLogin = null
+      })
+      await waitFor(() => launches.length === 2, 'the same-session resume')
+      const first = launches[0]!,
+        retry = launches[1]!
+      expect(retry.options.resume).toBe('provider-A')
+      expect(retry.options.cwd).toBe(first.options.cwd)
+      expect(retry.options.env?.['CLAUDE_CONFIG_DIR']).toBe(
+        first.options.env?.['CLAUDE_CONFIG_DIR'],
+      )
+      expect(retry.options.env?.['CLAUDE_CODE_OAUTH_TOKEN']).toBe('fictional-token-renewed')
+      retry.fq.emit(
+        frame({ type: 'system', subtype: 'init', session_id: 'provider-A', cwd: join(dir, 'cwd') }),
+      )
+      await waitFor(() => retry.fq.sent.length === 1, 'the app-authored continuation')
+      expect(retry.fq.sent).toEqual([
+        expect.objectContaining({
+          message: { role: 'user', content: 'Continue answering the last message.' },
+        }),
+      ])
+      await decided(host, sessionId)
+      expect(runs()).toBe(1)
+      expect(
+        eventsOf(sessionId).filter(
+          (event) => event.type === 'user_turn' && event.text === 'run the long job',
+        ),
+      ).toHaveLength(1)
+      expect(eventsOf(sessionId)).toContainEqual(
+        expect.objectContaining({
+          type: 'user_turn',
+          text: 'Continue answering the last message.',
+          attribution: 'app_authored',
+          appNotice: 'a-turn-a-refused-login-stopped',
+        }),
+      )
+      expect(
+        first.fq.sent.filter((message) => JSON.stringify(message).includes('run the long job')),
+      ).toHaveLength(1)
+      machineLogin = 'fictional-token-moved-again'
+      retry.fq.emit(
+        frame({
+          type: 'assistant',
+          message: { role: 'assistant', content: [{ type: 'text', text: REVOKED }] },
+          error: 'authentication_failed',
+        }),
+      )
+      await waitFor(
+        () =>
+          eventsOf(sessionId).filter((event) => event.type === 'turn' && event.loginRefused)
+            .length === 2,
+        'the second rejection',
+      )
+      await decided(host, sessionId)
+      expect(launches).toHaveLength(2)
+      expect(runs()).toBe(1)
+    },
+  )
+
+  it.each(['unchanged', 'failure', 'timeout'] as const)(
+    'keeps Sign in again when renewal is %s',
+    async (outcome) => {
+      const runs = rejectedRenewer(outcome)
+      locallyReadyAuth()
+      const { host, sessionId, record } = await killedMidTurn(() => {})
+      await waitFor(() => record().phase === 'recorded', 'the auth stop')
+      await decided(host, sessionId)
+      expect(runs()).toBe(1)
+      expect(launches).toHaveLength(1)
+      expect((await host.checkProviderAuth('claude', 'brobot')).state).toBe('stale')
+    },
+  )
+
+  it('a successfully continued turn allows one recovery for a later independent request', async () => {
+    const runs = rejectedRenewer()
+    const { host, window, sessionId } = await killedMidTurn(() => {})
+    await waitFor(() => launches.length === 2, 'the first recovery')
+    launches[1]!.fq.emit(
+      frame({ type: 'system', subtype: 'init', session_id: 'provider-A', cwd: join(dir, 'cwd') }),
+    )
+    await waitFor(() => launches[1]!.fq.sent.length === 1, 'the first continuation')
+    launches[1]!.fq.emit(frame({ type: 'result', subtype: 'success', is_error: false }))
+    await waitFor(
+      () =>
+        eventsOf(sessionId).filter((event) => event.type === 'turn' && event.state === 'completed')
+          .length === 2,
+      'the continued turn to complete',
+    )
+    await decided(host, sessionId)
+    await host.send(sessionId, 'fictional later request', window.sink)
+    launches[1]!.fq.emit(
+      frame({
+        type: 'assistant',
+        message: {
+          role: 'assistant',
+          model: '<synthetic>',
+          content: [{ type: 'text', text: REVOKED }],
+        },
+        error: 'authentication_failed',
+      }),
+    )
+    await waitFor(() => launches.length === 3, 'the independent request recovery')
+    launches[2]!.fq.emit(
+      frame({ type: 'system', subtype: 'init', session_id: 'provider-A', cwd: join(dir, 'cwd') }),
+    )
+    await waitFor(() => launches[2]!.fq.sent.length === 1, 'the independent continuation')
+    await decided(host, sessionId)
+    expect(runs()).toBe(2)
+    expect(launches[2]!.options.resume).toBe('provider-A')
+    expect(launches[2]!.options.env?.['CLAUDE_CODE_OAUTH_TOKEN']).toBe('fictional-token-renewed-2')
+    expect(
+      eventsOf(sessionId).filter(
+        (event) => event.type === 'user_turn' && event.text === 'fictional later request',
+      ),
+    ).toHaveLength(1)
+  })
+
+  it('a usable token already advanced by another login permits one continuation without another helper call', async () => {
+    const runs = rejectedRenewer()
+    const { host, sessionId } = await killedMidTurn(() => {
+      machineLogin = 'fictional-moved-elsewhere'
+    })
+    await waitFor(() => launches.length === 2, 'the resume on the advanced token')
+    launches[1]!.fq.emit(
+      frame({ type: 'system', subtype: 'init', session_id: 'provider-A', cwd: join(dir, 'cwd') }),
+    )
+    await waitFor(() => launches[1]!.fq.sent.length === 1, 'the continuation')
+    await decided(host, sessionId)
+    expect(launches[1]!.options.env?.['CLAUDE_CODE_OAUTH_TOKEN']).toBe('fictional-moved-elsewhere')
+    expect(runs()).toBe(0)
+  })
+
+  it.each(['assistant', 'tool'] as const)(
+    'does not repeat a turn that already produced %s progress',
+    async (progress) => {
+      const runs = rejectedRenewer()
+      const { host, sessionId } = await killedMidTurn(() => {
+        launches[0]!.fq.emit(
+          frame({
+            type: 'assistant',
+            message: {
+              role: 'assistant',
+              content:
+                progress === 'assistant'
+                  ? [{ type: 'text', text: 'fictional partial answer' }]
+                  : [{ type: 'tool_use', id: 'fictional-tool', name: 'fictional-tool', input: {} }],
+            },
+          }),
+        )
+      })
+      await waitFor(() => launches.length === 2, 'the reopened child')
+      await decided(host, sessionId)
+      expect(runs()).toBe(1)
+      expect(launches[1]!.fq.sent).toHaveLength(0)
+      expect(
+        eventsOf(sessionId).filter(
+          (event) => event.type === 'user_turn' && event.attribution === 'app_authored',
+        ),
+      ).toHaveLength(0)
+    },
+  )
+
+  it('two conversations rejected together share one renewal and each keeps its exact resumed session', async () => {
+    renewAfterRejection = true
+    let runs = 0
+    let release!: () => void
+    let rawToken = machineLogin!
+    renewal = claudeLoginRenewer({
+      findProgram: () => '/fictional/cli',
+      env: {},
+      readLogin: async () =>
+        JSON.stringify({
+          claudeAiOauth: { accessToken: rawToken, expiresAt: Date.now() + 3600000 },
+        }),
+      run: () => {
+        runs++
+        return new Promise((resolve) => {
+          release = () => {
+            rawToken = machineLogin = 'fictional-singleflight-token'
+            resolve({ code: 0, timedOut: false })
+          }
+        })
+      },
+    })
+    const host = buildHost()
+    const window = new Window(host)
+    const renderer = createRendererStore(window.bridge())
+    const sessionId = await renderer.create({ provider: 'claude', cwd: join(dir, 'cwd') })
+    const second = await renderer.create({ provider: 'claude', cwd: join(dir, 'cwd') })
+    if (sessionId === null || second === null)
+      throw new Error('fictional conversations not created')
+    await host.send(sessionId, 'fictional initial first request', window.sink)
+    await host.send(second, 'fictional initial second request', window.sink)
+    announced.add('provider-A')
+    announced.add('provider-B')
+    for (const [at, id] of ['provider-A', 'provider-B'].entries()) {
+      launches[at]!.fq.emit(
+        frame({ type: 'system', subtype: 'init', session_id: id, cwd: join(dir, 'cwd') }),
+      )
+      launches[at]!.fq.emit(frame({ type: 'result', subtype: 'success', is_error: false }))
+    }
+    await waitFor(
+      () =>
+        [sessionId, second].every((id) =>
+          eventsOf(id).some((event) => event.type === 'turn' && event.state === 'completed'),
+        ),
+      'both initial accepted requests',
+    )
+    await host.send(sessionId, 'fictional failed first request', window.sink)
+    await host.send(second, 'fictional failed second request', window.sink)
+    for (const at of [0, 1]) {
+      launches[at]!.fq.emit(
+        frame({
+          type: 'assistant',
+          message: {
+            role: 'assistant',
+            model: '<synthetic>',
+            content: [{ type: 'text', text: REVOKED }],
+          },
+          error: 'authentication_failed',
+        }),
+      )
+    }
+    await waitFor(() => runs === 1, 'the pending helper')
+    try {
+      await waitFor(
+        () => eventsOf(second).some((event) => event.type === 'turn' && event.loginRefused),
+        'the simultaneous rejection',
+      )
+    } finally {
+      release()
+    }
+    await waitFor(() => launches.length === 4, 'both exact resumes')
+    for (const launch of launches.slice(2)) {
+      launch.fq.emit(
+        frame({
+          type: 'system',
+          subtype: 'init',
+          session_id: launch.options.resume,
+          cwd: join(dir, 'cwd'),
+        }),
+      )
+    }
+    await decided(host, sessionId)
+    await decided(host, second)
+    await waitFor(
+      () => launches.slice(2).every((launch) => launch.fq.sent.length === 1),
+      'both continuations',
+    )
+    expect(runs).toBe(1)
+    expect(launches.slice(2).map((launch) => launch.options.resume)).toEqual([
+      'provider-A',
+      'provider-B',
+    ])
+    for (const launch of launches.slice(2)) {
+      expect(launch.options.env?.['CLAUDE_CODE_OAUTH_TOKEN']).toBe('fictional-singleflight-token')
+      expect(launch.fq.sent).toEqual([
+        expect.objectContaining({
+          message: { role: 'user', content: 'Continue answering the last message.' },
+        }),
+      ])
+    }
+  })
+
+  it('newer human input during renewal wins over the automatic continuation', async () => {
+    renewAfterRejection = true
+    let release!: () => void
+    let entered = false
+    renewal = async (reason) => {
+      if (reason !== 'rejected') return 'not-needed'
+      entered = true
+      await new Promise<void>((resolve) => {
+        release = resolve
+      })
+      machineLogin = 'fictional-after-new-input'
+      return 'renewed'
+    }
+    const { host, window, sessionId } = await killedMidTurn(() => {})
+    await waitFor(() => entered, 'the pending helper')
+    try {
+      await host.send(sessionId, 'newer human request', window.sink)
+    } finally {
+      release()
+    }
+    await decided(host, sessionId)
+    expect(launches).toHaveLength(2)
+    launches[1]!.fq.emit(
+      frame({ type: 'system', subtype: 'init', session_id: 'provider-A', cwd: join(dir, 'cwd') }),
+    )
+    await waitFor(() => launches[1]!.fq.sent.length === 1, 'the newer request')
+    expect(JSON.stringify(launches[1]!.fq.sent)).toContain('newer human request')
+    expect(JSON.stringify(launches[1]!.fq.sent)).not.toContain('Continue answering')
+  })
+
+  it.each(['archive', 'delete', 'shutdown'] as const)(
+    'a %s during renewal prevents a continuation',
+    async (action) => {
+      renewAfterRejection = true
+      let release!: () => void
+      let entered = false
+      renewal = async (reason) => {
+        if (reason !== 'rejected') return 'not-needed'
+        entered = true
+        await new Promise<void>((resolve) => {
+          release = resolve
+        })
+        machineLogin = 'fictional-after-cancel'
+        return 'renewed'
+      }
+      const { host, sessionId } = await killedMidTurn(() => {})
+      await waitFor(() => entered, 'the pending renewal')
+      let closing: Promise<void> | undefined
+      try {
+        if (action === 'archive') await host.archiveConversation(sessionId)
+        else if (action === 'delete') await host.deleteConversation(sessionId, ['records'])
+        else closing = host.closeAll()
+      } finally {
+        release()
+      }
+      if (closing) await closing
+      await decided(host, sessionId)
+      expect(launches).toHaveLength(1)
+    },
+  )
 
   it('🔴 a renewed login: reopened by itself on the new one, taken back by the window, said once', async () => {
     const { window, record, sessionId } = await killedMidTurn(() => {
