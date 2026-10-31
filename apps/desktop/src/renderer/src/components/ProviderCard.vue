@@ -248,7 +248,7 @@ async function signInHere(): Promise<void> {
       connected = result.success && auth.value?.state === 'usable'
       noticeSays(
         result.success
-          ? 'Signed in. This profile now has its own sign-in.'
+          ? `Signed in to ${PROVIDER_NAME[props.provider]}.`
           : (result.detail ?? 'The sign-in did not complete.'),
         !result.success,
       )

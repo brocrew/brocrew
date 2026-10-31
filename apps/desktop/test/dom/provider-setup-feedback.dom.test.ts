@@ -211,9 +211,7 @@ describe('setup feedback follows the latest facts', () => {
     await settled()
     out.m.q('setup-done').click()
     await settled()
-    expect(words(out.m.q('provider-auth-notice'))).toBe(
-      'Signed in. This profile now has its own sign-in.',
-    )
+    expect(words(out.m.q('provider-auth-notice'))).toBe('Signed in to Codex.')
   })
 
   it('clears the inline failure when a login-change check becomes usable', async () => {

@@ -231,9 +231,9 @@ it('offers setup with no send control or keyboard launch when no provider is rea
     new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, ctrlKey: true, bubbles: true }),
   )
   expect(start).not.toHaveBeenCalled()
-  expect(m.q('new-provider-setup').textContent?.trim()).toBe('Set up Claude')
+  expect(m.q('new-provider-setup').textContent?.trim()).toBe('Set up a provider')
   m.q('new-provider-setup').click()
-  expect(setup).toHaveBeenCalledExactlyOnceWith('claude')
+  expect(setup).toHaveBeenCalledExactlyOnceWith()
 })
 
 it('blocks an unknown provider even with retained models, and never relabels its model on launch', async () => {
