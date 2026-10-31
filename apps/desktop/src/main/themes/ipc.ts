@@ -47,9 +47,20 @@ export function registerThemeIpc(
   }
   ipc.on(THEME_FIRST_PAINT_CHANNEL, beforePaint)
   ipc.handle(THEMES_CHANNELS.list, () => store.refresh())
-  ipc.handle(THEMES_CHANNELS.read, async (_event, id: unknown) => {
+  ipc.handle(THEMES_CHANNELS.read, async (_event, id: unknown, options: unknown) => {
     if (id !== undefined && !validId(id)) return invalid()
-    await store.refresh()
+    if (options !== undefined) {
+      if (
+        typeof options !== 'object' ||
+        options === null ||
+        Array.isArray(options) ||
+        !('refresh' in options) ||
+        options.refresh !== false
+      )
+        return invalid()
+    } else {
+      await store.refresh()
+    }
     return store.reading(id)
   })
   ipc.handle(THEMES_CHANNELS.set, (_event, id: unknown) =>

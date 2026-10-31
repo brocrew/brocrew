@@ -1,6 +1,7 @@
 /** The words a person reads about themes: the Themes section and the toast an agent's change raises. */
 export const THEME_WORDS = {
   section: 'Themes',
+  loading: 'Loading themes…',
   use: 'Use',
   inUse: 'In use',
   builtIn: 'Built in',
