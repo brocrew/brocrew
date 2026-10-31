@@ -14,6 +14,7 @@ import type { KeptFile, AgentIdentity } from '../../src/shared/runtime-ipc'
 import { conv, forestDrawn, task, viewOf } from './forest-fixture'
 import { META, mount, paneProps, record, unmountAll, visible, type Mounted } from './harness'
 
+// Every negative below is paired with a reading of the same surface.
 afterEach(async () => {
   unmountAll()
   const cast = useWhoCalledWhom()

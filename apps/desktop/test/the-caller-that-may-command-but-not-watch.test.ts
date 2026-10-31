@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { returnsItsWindowSink } from './helpers/window-sink-source'
 import { FakeRuntime, type FakeSessionHandle, type StartOptions } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
@@ -721,7 +722,8 @@ describe('340 · a session an agent may drive and may not decide for', () => {
       const callers = everything.match(/host\.claimSession\(/g) ?? []
       expect(callers).toHaveLength(1)
       // …and the only sink the dispatcher is ever handed is a window's.
-      expect(index).toContain('sinkFor: (event) => webContentsSink(event.sender, mainThreadWork)')
+      expect(returnsItsWindowSink(index)).toBe(true)
+      expect(index.match(/webContentsSink\(event\.sender, mainThreadWork\)/g)).toHaveLength(1)
       expect((index.match(/sinkFor:/g) ?? []).length).toBe(1)
     })
 

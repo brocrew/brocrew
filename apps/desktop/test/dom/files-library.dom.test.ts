@@ -12,10 +12,15 @@ import {
 import { filesLibraryReplies } from '../fixtures/files-library-replies'
 import { libraryUnavailable, type LibraryKeep } from '../../src/shared/files-library'
 import type { ResourceReading } from '../../src/shared/runtime-ipc'
+import { readLocalTimeFrom, type LocalZone } from '../../src/shared/local-time'
 import { mount, unmountAll } from './harness'
-import { drawnReady } from './drawn'
+import { assertClippedButTold, assertDrawn, drawnReady } from './drawn'
 
-afterEach(() => unmountAll())
+// Every negative below is paired with a reading of the same surface.
+afterEach(() => {
+  unmountAll()
+  readLocalTimeFrom(() => null)
+})
 function stage(dense = false, over?: LibraryApi) {
   const fixture = filesLibraryReplies(dense)
   const selected = ref({ id: 'brobot', name: 'CODEX interim' }),
@@ -81,6 +86,7 @@ it('shows compact Icons by default with visible 13px task/person/kept time, and 
   expect(m.all('library-file')).toHaveLength(60)
   const files = m.all('library-file').map((one) => one.dataset.document)
   const first = m.q('library-file')
+  assertDrawn(first.querySelector<HTMLElement>('.file-title')!, 'the ordinary file title', m.host)
   for (const element of first.querySelectorAll<HTMLElement>('.file-meta,.kept-time')) {
     expect(parseFloat(getComputedStyle(element).fontSize)).toBeGreaterThanOrEqual(13)
     expect(element.getBoundingClientRect().width).toBeGreaterThan(0)
@@ -198,6 +204,7 @@ it('keeps required metadata readable at 390px with long names and supports keybo
   const long: LibraryKeep = {
     ...file,
     title: 'A long readable title '.repeat(9),
+    name: `${'long-filename-'.repeat(15)}.md`,
     label: 'W19.16.3.123',
     addedBy: { conversation: 'long', identity: 'long', name: 'اسم طويل لشخص يعمل على المراجعة' },
   }
@@ -206,7 +213,14 @@ it('keeps required metadata readable at 390px with long names and supports keybo
   await drawnReady()
   const first = m.q('library-file')
   expect(first.getAttribute('aria-label')).toContain(long.addedBy!.name)
+  expect(first.title).toContain(long.name)
+  assertClippedButTold(
+    first.querySelector<HTMLElement>('.file-title')!,
+    'the two-line file title',
+    m.host,
+  )
   for (const element of first.querySelectorAll<HTMLElement>('.file-meta,.kept-time')) {
+    assertDrawn(element, 'the long-name file metadata', m.host)
     expect(parseFloat(getComputedStyle(element).fontSize)).toBeGreaterThanOrEqual(13)
     expect(element.scrollWidth).toBeLessThanOrEqual(element.clientWidth + 1)
   }
@@ -214,6 +228,46 @@ it('keeps required metadata readable at 390px with long names and supports keybo
   await nextTick()
   expect(document.activeElement).toBe(m.q('files-search'))
   expect(m.q('files-library').scrollWidth).toBeLessThanOrEqual(390)
+  m.q('files-view-list').click()
+  await nextTick()
+  await drawnReady()
+  assertDrawn(first.querySelector<HTMLElement>('.file-title')!, 'the List file title', m.host)
+  assertDrawn(first.querySelector<HTMLElement>('.extra')!, 'the complete List filename', m.host)
+})
+
+it('keeps long pinned conversation and task names recoverable from their clamped scope buttons', async () => {
+  const { s, m } = await ready(false, 390, 844)
+  s.selected.value = { id: 'brobot', name: 'A long fictional conversation name '.repeat(12) }
+  await nextTick()
+  m.q('files-scope-conversation').click()
+  await drawnReady()
+  assertClippedButTold(m.q('files-scope-conversation'), 'the pinned conversation name', m.host)
+  s.library.task({ id: 't21', label: 'W21', title: 'A long fictional task name '.repeat(12) })
+  await nextTick()
+  await drawnReady()
+  assertClippedButTold(m.q('files-scope-task'), 'the selected task name', m.host)
+})
+
+it('draws kept times from the supplied local zone and redraws when that zone changes', async () => {
+  const zone = ref<LocalZone>({ before: 345 * 60_000, changes: [], rule: null })
+  readLocalTimeFrom(() => zone.value)
+  const { s, m } = await ready()
+  const first = s.library.page.value!.files[0]!
+  const keptAt = Date.parse('2026-10-24T23:38:00Z')
+  s.library.page.value = {
+    ...s.library.page.value!,
+    files: [{ ...first, file: { ...first.file, keptAt } }],
+  }
+  await nextTick()
+  const time = m.q('library-file').querySelector('time')!
+  expect(text(time)).toContain('05:23')
+  expect(text(time)).toContain('25')
+  expect(time.dateTime).toBe('2026-10-24T23:38:00.000Z')
+  zone.value = { before: -210 * 60_000, changes: [], rule: null }
+  await nextTick()
+  expect(text(time)).toContain('20:08')
+  expect(text(time)).toContain('24')
+  expect(time.dateTime).toBe('2026-10-24T23:38:00.000Z')
 })
 
 it('preserves same-query data visibly stale after failure and distinguishes initial failure from empty', async () => {

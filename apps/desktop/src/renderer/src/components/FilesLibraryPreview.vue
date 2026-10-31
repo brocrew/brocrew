@@ -154,11 +154,11 @@ function refreshLibrary(): void {
 .provenance {
   flex: none;
   min-width: 0;
-  border-bottom: 1px solid var(--line);
+  border-bottom: var(--border-width) solid var(--line);
   padding: 8px 12px;
   color: var(--text-soft);
-  font-size: 13px;
-  line-height: 1.45;
+  font-size: var(--type-small);
+  line-height: var(--leading-normal);
 }
 summary {
   cursor: pointer;
@@ -188,7 +188,7 @@ summary {
   margin: 6px 0;
 }
 .placements button {
-  color: var(--accent);
+  color: var(--accent-text);
   font: inherit;
   border: 0;
   background: transparent;

@@ -216,11 +216,11 @@ onUnmounted(() => {
   max-height: 82dvh;
   min-height: 200px;
   overflow: hidden;
-  border: 1px solid var(--line);
+  border: var(--border-width) solid var(--line);
   border-radius: var(--radius-lg);
   background: var(--panel);
   color: var(--text);
-  font-size: 14px;
+  font-size: var(--type-body);
 }
 header,
 footer {
@@ -230,10 +230,10 @@ footer {
   justify-content: space-between;
   gap: 12px;
   padding: 16px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: var(--border-width) solid var(--line);
 }
 h2 {
-  font-size: 18px;
+  font-size: var(--type-heading);
   margin: 0;
 }
 button,
@@ -242,7 +242,7 @@ input {
   color: inherit;
 }
 button {
-  border: 1px solid var(--line);
+  border: var(--border-width) solid var(--line);
   border-radius: var(--radius-sm);
   background: transparent;
   padding: 7px 10px;
@@ -273,7 +273,7 @@ input[type='search'] {
   width: 100%;
   min-width: 0;
   padding: 8px;
-  border: 1px solid var(--line);
+  border: var(--border-width) solid var(--line);
   border-radius: var(--radius-sm);
   background: var(--panel);
 }
@@ -289,7 +289,7 @@ input[type='search'] {
 .count,
 p {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--type-small);
   color: var(--muted);
 }
 ul {
@@ -315,16 +315,16 @@ li {
 }
 .task span,
 .task small {
-  font-size: 13px;
+  font-size: var(--type-small);
   color: var(--muted);
 }
 .children {
   flex: none;
-  font-size: 13px;
+  font-size: var(--type-small);
   max-width: 105px;
 }
 footer {
-  border-top: 1px solid var(--line);
+  border-top: var(--border-width) solid var(--line);
   border-bottom: 0;
   flex-wrap: wrap;
 }

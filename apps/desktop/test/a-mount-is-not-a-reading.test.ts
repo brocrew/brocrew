@@ -148,6 +148,8 @@ const DECLARES_AND_DRAWS = [
   'apps/desktop/test/dom/the-card-lists-the-files-its-agent-added.dom.test.ts',
   // ⚑ **UI-002** — the Files tab, each absence beside the same pane with its files.
   'apps/desktop/test/dom/the-files-tab-lists-every-file-on-the-work.dom.test.ts',
+  'apps/desktop/test/dom/files-library.dom.test.ts',
+  'apps/desktop/test/dom/legacy-kept-file-lists.dom.test.ts',
   // ⚑ **UI-002** — the cards' file rows, each absence beside the same card with its files read.
   'apps/desktop/test/dom/the-cards-name-the-files-they-hand-over.dom.test.ts',
   // ⚑ **UI-002** — the Graph tab's file counts, each absence beside a piece that has files.

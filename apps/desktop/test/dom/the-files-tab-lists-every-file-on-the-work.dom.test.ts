@@ -16,6 +16,7 @@ import { mount, paneProps, record, unmountAll, visible } from './harness'
 
 // Standalone legacy list and work-search checks remain in legacy-kept-file-lists.dom.test.ts.
 // This suite exercises the workspace library through the actual conversation pane.
+// Every negative below is paired with a reading of the same surface.
 afterEach(() => {
   unmountAll()
   useWhoCalledWhom().treeFiles.value = null

@@ -10,6 +10,7 @@ import type { KeptFile } from '../../src/shared/runtime-ipc'
 import { assertClippedButTold, assertDrawn, drawnReady } from './drawn'
 import { META, mount, unmountAll } from './harness'
 
+// Every negative below is paired with a reading of the same surface.
 afterEach(async () => {
   unmountAll()
   await page.viewport(1200, 808)

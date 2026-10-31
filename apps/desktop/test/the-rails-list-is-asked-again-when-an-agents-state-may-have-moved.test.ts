@@ -148,7 +148,9 @@ describe('D-019 · the rail learns what an agent is doing from the push, not by 
         mount,
       )
     expect(heard, 'the rail is not the first to hear each whole message').not.toBeNull()
-    expect(mount).toContain(`    if (${heard![1]!}.kept.length > 0) void readTheFiles()`)
+    expect(mount).toContain(
+      `    if (${heard![1]!}.kept.length > 0) {\n      filesLibrary.markStale()\n      void readTheFiles()\n    }`,
+    )
     expect(SCREEN.code.match(/\blistenProviderStates\(/g)).toHaveLength(1)
     expect(SCREEN.code.match(/\.onStates\(/g)).toBeNull()
     const listener = code(

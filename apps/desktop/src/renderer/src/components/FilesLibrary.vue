@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { fullTime } from '../lib/clock'
+import { localFormat } from '../../../shared/local-time'
 import {
   useFilesLibrary,
   libraryFailureSays,
@@ -18,14 +19,13 @@ const library = props.controller ?? useFilesLibrary()
 const picker = ref(false),
   scroller = ref<HTMLElement | null>(null)
 const modalDepth = useModalDepth()
-const shortTime = (at: number): string =>
-  new Intl.DateTimeFormat('en', {
-    day: 'numeric',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).format(at)
+const shortTime = localFormat({
+  day: 'numeric',
+  month: 'short',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+})
 const accessible = (file: LibraryKeep): string =>
   `${file.title}. ${file.name}. ${file.label}${file.pieceTitle ? ` · ${file.pieceTitle}` : ''}. Kept by ${file.addedBy?.name ?? 'a person'}, ${fullTime(file.keptAt)}. ${file.role}. ${file.sha256}${file.clipped ? '. Some display details are shortened' : ''}`
 const kinds = [
@@ -383,14 +383,14 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
   min-width: 0;
   min-height: 0;
   color: var(--text);
-  font-size: 14px;
+  font-size: var(--type-body);
 }
 .compact-toolbar {
   display: grid;
   gap: 10px;
   flex: none;
   padding: 12px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: var(--border-width) solid var(--line);
 }
 .toolbar-row {
   display: flex;
@@ -422,7 +422,7 @@ button,
 select {
   min-height: 34px;
   padding: 6px 9px;
-  border: 1px solid var(--line);
+  border: var(--border-width) solid var(--line);
   border-radius: var(--radius-sm);
   background: var(--panel);
   cursor: pointer;
@@ -445,7 +445,7 @@ button:hover:not(:disabled) {
   gap: 6px;
   flex-wrap: wrap;
   min-height: 34px;
-  font-size: 13px;
+  font-size: var(--type-small);
 }
 .depth span {
   color: var(--muted);
@@ -469,7 +469,7 @@ button:hover:not(:disabled) {
   flex: 1;
   min-width: 120px;
   padding: 5px 9px;
-  border: 1px solid var(--line);
+  border: var(--border-width) solid var(--line);
   border-radius: var(--radius-sm);
   background: var(--panel);
 }
@@ -480,20 +480,20 @@ button:hover:not(:disabled) {
   border: 0;
   outline: none;
   padding: 0;
-  line-height: 22px;
+  line-height: var(--leading-relaxed);
 }
 .search:focus-within {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 .filter-row select {
   max-width: 180px;
   min-width: 0;
-  font-size: 13px;
+  font-size: var(--type-small);
 }
 .count {
   white-space: nowrap;
-  font-size: 13px;
+  font-size: var(--type-small);
   color: var(--muted);
 }
 .reading-status {
@@ -501,14 +501,14 @@ button:hover:not(:disabled) {
 }
 .reading-status p {
   margin: 8px 12px;
-  font-size: 13px;
+  font-size: var(--type-small);
   color: var(--muted);
 }
 .reading-status button {
   min-height: 28px;
   padding: 3px 8px;
   margin-left: 8px;
-  font-size: 13px;
+  font-size: var(--type-small);
 }
 .results {
   min-height: 0;
@@ -557,8 +557,8 @@ button:hover:not(:disabled) {
 }
 .file-title {
   color: var(--text);
-  font-size: 14px;
-  line-height: 19px;
+  font-size: var(--type-body);
+  line-height: var(--leading-snug);
   overflow: hidden;
   display: -webkit-box;
   -webkit-box-orient: vertical;
@@ -569,8 +569,8 @@ button:hover:not(:disabled) {
 .file-meta,
 .kept-time,
 .extra {
-  font-size: 13px;
-  line-height: 18px;
+  font-size: var(--type-small);
+  line-height: var(--leading-normal);
   color: var(--muted);
   overflow-wrap: anywhere;
   max-width: 100%;
@@ -594,8 +594,8 @@ button:hover:not(:disabled) {
 }
 .glyph > span {
   position: absolute;
-  font-size: 10px;
-  font-weight: 700;
+  font-size: calc(var(--type-caption) * 5 / 6);
+  font-weight: var(--fw-heavy);
   bottom: 9px;
   left: 5px;
   right: 5px;
@@ -603,7 +603,7 @@ button:hover:not(:disabled) {
   background: var(--panel);
 }
 .glyph[data-kind='image'] {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .view-list {
   grid-template-columns: minmax(0, 1fr);
@@ -632,7 +632,7 @@ button:hover:not(:disabled) {
   height: 38px;
 }
 .view-list .glyph > span {
-  font-size: 8px;
+  font-size: calc(var(--type-caption) * 2 / 3);
   bottom: 6px;
 }
 .view-list .file-meta {
@@ -642,7 +642,7 @@ button:hover:not(:disabled) {
   padding: 28px;
   text-align: center;
   color: var(--muted);
-  font-size: 14px;
+  font-size: var(--type-body);
 }
 .empty .icon {
   width: 30px;
@@ -654,15 +654,15 @@ button:hover:not(:disabled) {
   gap: 12px;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
+  font-size: var(--type-small);
   color: var(--muted);
 }
 .read-at {
   margin: 0;
   padding: 6px 12px;
-  font-size: 13px;
+  font-size: var(--type-small);
   color: var(--muted);
-  border-top: 1px solid var(--line);
+  border-top: var(--border-width) solid var(--line);
 }
 @media (max-width: 1050px) {
   .filter-row {

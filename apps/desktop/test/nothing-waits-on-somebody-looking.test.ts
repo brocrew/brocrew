@@ -1054,6 +1054,9 @@ describe('396 · nothing waits on somebody looking', () => {
           'if (said !== null && session.sink.alive) this.emit(session, said)',
           // A row written into a ledger nothing runs, shown to a window that has it open.
           'if (!sink.alive) {',
+          // A Files query belongs to its window and has no work to deliver after that window closes.
+          'if (libraries === undefined || this.launches.closed || !sink.alive)',
+          "if (this.launches.closed || !sink.alive) return libraryUnavailable('closed')",
         ].sort(),
       )
       // ⚑ **The member is a DELIVERY only if `watching` chooses the sink and nothing else** — no
