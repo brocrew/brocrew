@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { PluginSupervisor } from '../src/main/plugins/supervisor/owner'
 import { PluginWorkspaceLease } from '../src/main/plugins/supervisor/client'
 import { SupervisorStorage } from '../src/main/plugins/supervisor/storage'
+import { keepPluginRootPrivate } from '../src/main/plugins/private-files'
 
 // These exercise the real SQLite fence and local socket. They do not qualify legacy Windows
 // process retirement or the standalone production lifecycle.
@@ -39,6 +40,7 @@ describe('plugin owner recovery after the caller stops waiting', () => {
       ),
     )
     const root = join(parent, 'plugins')
+    await keepPluginRootPrivate(root)
     const workspaceRoot = join(parent, 'workspace')
     await mkdir(workspaceRoot, { mode: 0o700 })
     const options = { root, workspaceRoot, build: 'fictional', generation: randomUUID() }
