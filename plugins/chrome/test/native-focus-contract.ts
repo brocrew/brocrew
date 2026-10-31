@@ -110,7 +110,7 @@ export function diagnoseNativeTiming(input: NativeCaseInput): string[] {
     failures.push('display active Space changed')
   return failures
 }
-// W4 2026-10-31 16:15: only the two endpoint ownership/Space observations decide a case.
+// Only the two endpoint ownership/Space observations decide a case.
 export function assessNativeCase(input: NativeCaseInput): string[] {
   const failures: string[] = []
   const endpoints = [input.at1, input.at4]

@@ -18,6 +18,7 @@ const createSync = new Function(
   'calibrations',
   'console',
   'assertRunning',
+  'observerIO',
   javascript + '\nreturn syncClock',
 )
 async function scenario(stop, succeeds = false) {
@@ -46,6 +47,7 @@ async function scenario(stop, succeeds = false) {
         NativeFatalError,
       )()
     },
+    { syncAvailable: true, outputAvailable: true },
   )
   let error
   try {

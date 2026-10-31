@@ -37,6 +37,7 @@ const wallStartedAt = new Date().toISOString()
 let clock: ReturnType<typeof calibrateNativeClock> | undefined
 const calibrations: unknown[] = []
 const observerWarnings: string[] = []
+const observerIO = { syncAvailable: true, outputAvailable: true }
 const syncs = new Map<string, { sentAt: number; resolve: () => void; reject: (e: Error) => void }>()
 const ownedContexts = new Set<Awaited<ReturnType<typeof launchPersistentChromium>>>()
 const pendingLaunches = new Set<Promise<unknown>>()
@@ -124,7 +125,7 @@ function snapshot() {
   return {
     capturedAt,
     sample,
-    observed: !!observed && observerAlive,
+    observed: !!observed && observerAlive && observerIO.outputAvailable,
     sampleAgeMs: capturedAt - sample.at,
     ancestryKnown:
       !ancestryError && (frontmostOwnership.owned || frontmostOwnership.chain.at(-1) === 1),
@@ -212,17 +213,35 @@ try {
     }
   })
   let observerError = ''
-  watcher.on('error', (e) => {
-    observerError = e.message
-  })
-  watcher.stderr!.on('data', (b) => {
-    observerError += b.toString()
+  function observerStreamFailure(
+    channel: 'stdin' | 'stdout' | 'stderr' | 'process',
+    error: unknown,
+  ): void {
+    observerError = `${channel}: ${String(error)}`
+    observerWarnings.push(observerError)
+    if (channel === 'stdout' || channel === 'process') observerIO.outputAvailable = false
+    if (channel !== 'stderr') {
+      observerIO.syncAvailable = false
+      for (const request of syncs.values()) request.reject(new Error(observerError))
+      syncs.clear()
+    }
+  }
+  watcher.on('error', (error) => observerStreamFailure('process', error))
+  watcher.once('exit', () => observerStreamFailure('process', 'observer exited'))
+  watcher.stdin!.on('error', (error) => observerStreamFailure('stdin', error))
+  watcher.stdin!.once('close', () => observerStreamFailure('stdin', 'observer input closed'))
+  watcher.stdout!.on('error', (error) => observerStreamFailure('stdout', error))
+  watcher.stdout!.once('close', () => observerStreamFailure('stdout', 'observer output closed'))
+  watcher.stderr!.on('error', (error) => observerStreamFailure('stderr', error))
+  watcher.stderr!.on('data', (bytes) => {
+    observerError += bytes.toString()
   })
   async function syncClock() {
     const token = randomUUID()
     const sentAt = performance.now()
     try {
       assertRunning()
+      if (!observerIO.syncAvailable) throw new Error('observer synchronization pipe unavailable')
       await bounded(
         new Promise<void>((resolve, reject) => {
           syncs.set(token, { sentAt, resolve, reject })
@@ -731,11 +750,12 @@ try {
         baselinePid,
         calibrations,
         observerWarnings,
+        observerIO,
         clock,
         cleanup,
         launches,
         authorization:
-          'Requires a fresh explicit W4 hands-off GO NOW; see external execution authorization receipt',
+          'Requires a fresh explicit hands-off execution authorization; see external execution authorization receipt',
         observer:
           'native AppKit frontmost PID + read-only SkyLight active Space and per-display active Spaces, 5ms target sampling; Node monotonic receipt timestamps, calibration diagnostic only (warn above100ms),timing precision recorded only; endpoint ownership/Space rule',
         disposableProfileOnly: true,
