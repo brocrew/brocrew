@@ -1513,6 +1513,177 @@ describe('prune', () => {
   })
 })
 
+describe('recovery copies from a previous release', () => {
+  it.each([false, true])(
+    'keeps the previous release copy after an update with migrations=%s',
+    async (migrate) => {
+      const userData = aDataFolder()
+      const oldMigrations = theFirstMigrations(THE_BUILDS.length - 1)
+      const oldLineage = await buildLineage(oldMigrations)
+      aLiveDatabase(userData, oldMigrations)
+      writeFileSync(join(userData, 'drafts.json'), '{"draft":"a fictional recipe"}')
+      const old = await make(userData, { appVersion: '0.1.17', now: () => START })
+      const files = ['database.sqlite', 'manifest.json', 'drafts.json']
+      const before = files.map((file) => fingerprint(join(old.folder, file)))
+      await recordSuccessfulStart(userData, oldLineage, { ...SOLE, currentAppVersion: '0.1.17' })
+      const current = await make(userData, {
+        appVersion: '0.1.19',
+        reason: migrate ? 'before-migration' : 'first-start-of-release',
+        now: () => minute(3),
+      })
+      if (migrate) {
+        const live = openDatabase(liveFile(userData))
+        applyMigrations(live, MIGRATIONS)
+        live.close()
+      }
+      const lineage = migrate ? LINEAGE : oldLineage
+      const options = { ...SOLE, currentAppVersion: '0.1.19', now: () => minute(4) }
+      await recordSuccessfulStart(userData, lineage, options)
+
+      expect(await prune(userData, lineage, options)).toEqual([])
+      expect(files.map((file) => fingerprint(join(old.folder, file)))).toEqual(before)
+      expect(await isIntact(current)).toBe(true)
+    },
+  )
+
+  it('still rotates a superseded copy of the current release', async () => {
+    const userData = aDataFolder()
+    aLiveDatabase(userData)
+    const old = await make(userData, { appVersion: '0.1.19', now: () => START })
+    const current = await make(userData, { appVersion: '0.1.19', now: () => minute(1) })
+    expect(
+      await prune(userData, LINEAGE, {
+        ...SOLE,
+        currentAppVersion: '0.1.19',
+        now: () => minute(2),
+      }),
+    ).toEqual([old.manifest.id])
+    expect(await isIntact(current)).toBe(true)
+  })
+
+  it('still removes a previous release copy older than three days', async () => {
+    const userData = aDataFolder()
+    aLiveDatabase(userData)
+    const old = await make(userData, { appVersion: '0.1.17', now: () => START - 4 * DAY_MS })
+    const current = await make(userData, { appVersion: '0.1.19', now: () => START })
+    expect(
+      await prune(userData, LINEAGE, {
+        ...SOLE,
+        currentAppVersion: '0.1.19',
+        now: () => minute(1),
+      }),
+    ).toEqual([old.manifest.id])
+    expect(await isIntact(current)).toBe(true)
+  })
+
+  it('keeps every unexpired previous release copy until its own exact three-day boundary', async () => {
+    const userData = aDataFolder()
+    aLiveDatabase(userData)
+    const old = await make(userData, { appVersion: '0.1.17', now: () => START })
+    const second = await make(userData, { appVersion: '0.1.17', now: () => minute(1) })
+    const current = await make(userData, { appVersion: '0.1.19', now: () => minute(2) })
+    const options = { ...SOLE, currentAppVersion: '0.1.19' }
+    expect(
+      await prune(userData, LINEAGE, { ...options, now: () => START + 3 * DAY_MS - 1 }),
+    ).toEqual([])
+    expect(await prune(userData, LINEAGE, { ...options, now: () => START + 3 * DAY_MS })).toEqual([
+      old.manifest.id,
+    ])
+    expect(await isIntact(second)).toBe(true)
+    expect(await isIntact(current)).toBe(true)
+  })
+
+  it.each([false, true])(
+    'never counts current release starts against the previous copy with a new copy=%s',
+    async (makeCurrent) => {
+      const userData = aDataFolder()
+      aLiveDatabase(userData)
+      const old = await make(userData, { appVersion: '0.1.17', now: () => START })
+      await recordSuccessfulStart(userData, LINEAGE, { ...SOLE, currentAppVersion: '0.1.17' })
+      const current = makeCurrent
+        ? await make(userData, { appVersion: '0.1.19', now: () => minute(1) })
+        : null
+      const options = { ...SOLE, currentAppVersion: '0.1.19', now: () => minute(2) }
+      for (let starts = 1; starts <= 3; starts++) {
+        await recordSuccessfulStart(userData, LINEAGE, options)
+        expect(await prune(userData, LINEAGE, options)).toEqual(
+          starts === 3 && current ? [current.manifest.id] : [],
+        )
+        expect(await isIntact(old)).toBe(true)
+      }
+    },
+  )
+
+  it.each([2, 3])(
+    'uses a previous copy receipt with %i starts of its own version',
+    async (starts) => {
+      const userData = aDataFolder()
+      aLiveDatabase(userData)
+      const old = await make(userData, { appVersion: '0.1.17', now: () => START })
+      for (let n = 0; n < starts; n++) {
+        await recordSuccessfulStart(userData, LINEAGE, { ...SOLE, currentAppVersion: '0.1.17' })
+      }
+      const current = await make(userData, { appVersion: '0.1.19', now: () => minute(1) })
+      expect(
+        await prune(userData, LINEAGE, {
+          ...SOLE,
+          currentAppVersion: '0.1.19',
+          now: () => minute(2),
+        }),
+      ).toEqual(starts === 3 ? [old.manifest.id] : [])
+      expect(existsSync(old.folder)).toBe(starts < 3)
+      expect(await isIntact(current)).toBe(true)
+    },
+  )
+
+  it('does not apply an expired receipt to another copy of the same previous version', async () => {
+    const userData = aDataFolder()
+    aLiveDatabase(userData)
+    const old = await make(userData, { appVersion: '0.1.17', now: () => START })
+    for (let n = 0; n < 3; n++) {
+      await recordSuccessfulStart(userData, LINEAGE, { ...SOLE, currentAppVersion: '0.1.17' })
+    }
+    const second = await make(userData, { appVersion: '0.1.17', now: () => minute(1) })
+    const current = await make(userData, { appVersion: '0.1.19', now: () => minute(2) })
+    expect(
+      await prune(userData, LINEAGE, {
+        ...SOLE,
+        currentAppVersion: '0.1.19',
+        now: () => minute(3),
+      }),
+    ).toEqual([old.manifest.id])
+    expect(await isIntact(second)).toBe(true)
+    expect(await isIntact(current)).toBe(true)
+  })
+
+  it('keeps the newest expired fallback and still frees an older expired previous copy before migration', async () => {
+    const userData = aDataFolder()
+    aLiveDatabase(userData)
+    const old = await make(userData, { appVersion: '0.1.17', now: () => START })
+    const newest = await make(userData, { appVersion: '0.1.17', now: () => minute(1) })
+    expect(
+      await prune(userData, LINEAGE, {
+        ...SOLE,
+        currentAppVersion: '0.1.19',
+        now: () => START + 4 * DAY_MS,
+        expire: false,
+      }),
+    ).toEqual([old.manifest.id])
+    expect(await isIntact(newest)).toBe(true)
+  })
+
+  it('retains the legacy rotation policy when the current version is omitted', async () => {
+    const userData = aDataFolder()
+    aLiveDatabase(userData)
+    const old = await make(userData, { appVersion: '0.1.17', now: () => START })
+    const current = await make(userData, { appVersion: '0.1.19', now: () => minute(1) })
+    expect(await prune(userData, LINEAGE, { ...SOLE, now: () => minute(2) })).toEqual([
+      old.manifest.id,
+    ])
+    expect(await isIntact(current)).toBe(true)
+  })
+})
+
 describe('recovery copy expiry and Settings', () => {
   it('keeps the last copy until exactly three days, then removes it', async () => {
     const userData = aDataFolder()
