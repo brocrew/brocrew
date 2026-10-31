@@ -153,32 +153,33 @@ try {
       const line = pending.slice(0, at)
       pending = pending.slice(at + 1)
       const raw = JSON.parse(line)
+      const receivedAt = performance.now()
       if (raw.sync && syncs.has(raw.sync)) {
         const request = syncs.get(raw.sync)!
         syncs.delete(raw.sync)
-        try {
-          const receivedAt = performance.now(),
-            calibrated = calibrateNativeClock(request.sentAt, receivedAt, raw.nativeAt)
-          if (
-            clock &&
-            Math.abs(calibrated.offset - clock.offset) >
-              calibrated.uncertainty + clock.uncertainty + 1
-          )
-            throw new Error('native clock calibration changed')
-          clock ??= calibrated
-          calibrations.push({
+        const calibrated = calibrateNativeClock(request.sentAt, receivedAt, raw.nativeAt)
+        calibrations.push({
+          sentAt: request.sentAt,
+          receivedAt,
+          nativeAt: raw.nativeAt,
+          offsetDriftMs:
+            clock?.offset != null && calibrated.offset != null
+              ? calibrated.offset - clock.offset
+              : null,
+          ...calibrated,
+        })
+        if (calibrated.warning)
+          console.warn(calibrated.warning, {
             sentAt: request.sentAt,
             receivedAt,
             nativeAt: raw.nativeAt,
-            ...calibrated,
+            uncertaintyMs: calibrated.uncertainty,
           })
-          request.resolve()
-        } catch (e) {
-          request.reject(e as Error)
-        }
+        clock = calibrated
+        request.resolve()
       }
-      if (!clock) continue
-      const sample = { ...raw, wallAt: raw.at, at: raw.nativeAt + clock.offset }
+      // Receipt time shares the endpoint clock; raw native/wall times remain diagnostic evidence.
+      const sample = { ...raw, wallAt: raw.at, at: receivedAt }
       samples.push(sample)
       if (sample.bundle === 'com.apple.loginwindow') {
         locked = true
@@ -195,13 +196,27 @@ try {
   })
   async function syncClock() {
     const token = randomUUID()
-    await bounded(
-      new Promise<void>((resolve, reject) => {
-        syncs.set(token, { sentAt: performance.now(), resolve, reject })
-        watcher!.stdin!.write(JSON.stringify({ sync: token }) + '\n')
-      }),
-      2000,
-    )
+    const sentAt = performance.now()
+    try {
+      await bounded(
+        new Promise<void>((resolve, reject) => {
+          syncs.set(token, { sentAt, resolve, reject })
+          watcher!.stdin!.write(JSON.stringify({ sync: token }) + '\n')
+        }),
+        2000,
+      )
+    } catch (error) {
+      const unavailable = {
+        sentAt,
+        receivedAt: performance.now(),
+        warning: 'native clock calibration unavailable',
+        reason: error instanceof Error ? error.message : String(error),
+      }
+      calibrations.push(unavailable)
+      console.warn(unavailable.warning, unavailable)
+    } finally {
+      syncs.delete(token)
+    }
   }
   await syncClock()
   for (let n = 0; n < 50 && !samples.length && !observerError; n++) await pause(100)
@@ -348,10 +363,7 @@ try {
     const fresh = snapshot()
     assert.equal(fresh.sample.pid, baselinePid, 'BroCrew reset did not become frontmost')
     assert.equal(fresh.sample.bundle, original!.bundle, 'BroCrew bundle changed')
-    assert(
-      fresh.sampleAgeMs >= -clock!.uncertainty && fresh.sampleAgeMs <= 20,
-      'reset observation stale',
-    )
+    assert(fresh.sampleAgeMs >= 0 && fresh.sampleAgeMs <= 20, 'reset observation stale')
     resets.push({ startedAt, finishedAt: performance.now(), output, fresh })
   }
   async function observe(
@@ -378,7 +390,6 @@ try {
     const failures = assessNativeCase({
       expectedPid: baselinePid,
       ownedPids,
-      clockUncertaintyMs: clock!.uncertainty,
       start,
       returnedAt,
       before,
@@ -610,7 +621,7 @@ try {
         authorization:
           'Requires a fresh explicit W4 hands-off GO NOW; see external execution authorization receipt',
         observer:
-          'native AppKit frontmost PID + read-only SkyLight active Space and per-display active Spaces, 5ms target sampling; calibrated monotonic clock,20ms maximum gap/endpoint age',
+          'native AppKit frontmost PID + read-only SkyLight active Space and per-display active Spaces, 5ms target sampling; Node monotonic receipt timestamps, calibration diagnostic only (warn above100ms),20ms maximum gap/endpoint age',
         disposableProfileOnly: true,
         signedIn: false,
         noProductFocusRestoration: true,

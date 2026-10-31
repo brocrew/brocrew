@@ -35,20 +35,23 @@ export function classifyPid(
   return { owned: false, relation: 'neither', rootPid: null, chain }
 }
 export function calibrateNativeClock(sentAt: number, receivedAt: number, nativeAt: number) {
-  if (
-    ![sentAt, receivedAt, nativeAt].every(Number.isFinite) ||
-    receivedAt < sentAt ||
-    receivedAt - sentAt > 10
-  )
-    throw new Error('native clock calibration uncertainty exceeds5ms')
-  return { offset: (sentAt + receivedAt) / 2 - nativeAt, uncertainty: (receivedAt - sentAt) / 2 }
+  const valid = [sentAt, receivedAt, nativeAt].every(Number.isFinite) && receivedAt >= sentAt
+  const uncertainty = valid ? (receivedAt - sentAt) / 2 : null
+  return {
+    offset: valid ? (sentAt + receivedAt) / 2 - nativeAt : null,
+    uncertainty,
+    warning: !valid
+      ? 'native clock calibration unavailable'
+      : uncertainty! > 100
+        ? 'native clock calibration uncertainty exceeds100ms'
+        : undefined,
+  }
 }
 export function assessNativeCase(input: {
   expectedPid: number
   ownedPids: number[]
   start: number
   returnedAt: number
-  clockUncertaintyMs: number
   before: NativeSnapshot
   at1: NativeSnapshot
   at4: NativeSnapshot
@@ -76,19 +79,9 @@ export function assessNativeCase(input: {
     ![input.start, input.returnedAt, ...snapshots.map((s) => s.capturedAt)].every(Number.isFinite)
   )
     failures.push('invalid observation timestamps')
-  // Both streams are mapped to the Node monotonic clock by a bounded round-trip calibration.
-  if (
-    !Number.isFinite(input.clockUncertaintyMs) ||
-    input.clockUncertaintyMs < 0 ||
-    input.clockUncertaintyMs > 5
-  )
-    failures.push('invalid clock calibration')
-  if (
-    snapshots.some(
-      (s) =>
-        s.capturedAt - s.sample.at < -input.clockUncertaintyMs || s.capturedAt - s.sample.at > 20,
-    )
-  )
+  // Native observations are timestamped on receipt in the same Node monotonic clock.
+  // Calibration remains a recorded diagnostic, never an observation admission gate.
+  if (snapshots.some((s) => s.capturedAt - s.sample.at < 0 || s.capturedAt - s.sample.at > 20))
     failures.push('stale native sample')
   if (
     Math.abs(at1.capturedAt - input.returnedAt - 1000) > 250 ||

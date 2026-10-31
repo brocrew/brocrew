@@ -22,18 +22,45 @@ function fixture() {
     start: 1000,
     returnedAt: 1000,
     before: { capturedAt: 1000, sample: sample(995) },
-    at1: { capturedAt: 2000, sample: sample(2000.5) },
+    at1: { capturedAt: 2000, sample: sample(1999.5) },
     at4: { capturedAt: 5000, sample: sample(4999) },
     samples,
   }
 }
 describe('native focus evidence admission', () => {
-  it('bounds monotonic clock conversion before accepting observations', () => {
-    expect(calibrateNativeClock(100, 104, 500)).toEqual({ offset: -398, uncertainty: 2 })
-    expect(() => calibrateNativeClock(100, 111, 500)).toThrow('uncertainty')
-    expect(() => calibrateNativeClock(104, 100, 500)).toThrow('uncertainty')
+  it('records clock calibration without rejecting latency and warns only above100ms', () => {
+    expect(calibrateNativeClock(100, 104, 500)).toMatchObject({ offset: -398, uncertainty: 2 })
+    expect(calibrateNativeClock(100, 111, 500)).toMatchObject({
+      uncertainty: 5.5,
+      warning: undefined,
+    })
+    expect(calibrateNativeClock(100, 300, 500)).toMatchObject({
+      uncertainty: 100,
+      warning: undefined,
+    })
+    expect(calibrateNativeClock(100, 301, 500)).toMatchObject({
+      uncertainty: 100.5,
+      warning: expect.stringContaining('100ms'),
+    })
+    expect(calibrateNativeClock(104, 100, 500)).toMatchObject({
+      offset: null,
+      uncertainty: null,
+      warning: expect.stringContaining('unavailable'),
+    })
+    expect(calibrateNativeClock(Number.NaN, 100, 500)).toMatchObject({
+      offset: null,
+      uncertainty: null,
+      warning: expect.stringContaining('unavailable'),
+    })
   })
-  it('accepts fresh independent baselines including fractional clock rounding', () => {
+  it('does not let diagnostic calibration uncertainty change the observation verdict', () => {
+    for (const uncertainty of [5.5, 100, 500, Number.NaN]) {
+      const f = fixture()
+      f.clockUncertaintyMs = uncertainty
+      expect(assessNativeCase(f)).toEqual([])
+    }
+  })
+  it('accepts fresh independent baselines in the Node receipt clock', () => {
     expect(assessNativeCase(fixture())).toEqual([])
   })
   it('rejects already-owned or unreset baselines even when the later PID stays unchanged', () => {
@@ -135,10 +162,7 @@ describe('native focus evidence admission', () => {
     Reflect.deleteProperty(f.cleanup, 'ownedProcessesGone')
     expect(finalNativeVerdict(f)).toBe('failed')
   })
-  it('refuses non-finite clock and observation witnesses', () => {
-    const f = fixture()
-    f.clockUncertaintyMs = Number.NaN
-    expect(assessNativeCase(f)).toContain('invalid clock calibration')
+  it('refuses non-finite observation witnesses independently of calibration', () => {
     const g = fixture()
     g.at1.capturedAt = Number.NaN
     expect(assessNativeCase(g)).toContain('invalid observation timestamps')
