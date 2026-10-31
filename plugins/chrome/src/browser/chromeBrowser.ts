@@ -352,12 +352,11 @@ export class ChromeBrowser implements ProfileBrowser {
     e.sync = sync
     e.generation = generation
     e.downloads = nativeDownloads
-    e.windows = new ChromiumWindows(ctx)
-    e.initial = ctx.pages()
-    ctx.on('page', (page) => {
+    e.windows = new ChromiumWindows(ctx, undefined, undefined, undefined, (page) => {
       if (e.ctx !== ctx) return
       for (const cb of [...e.pageListeners]) cb(page)
     })
+    e.initial = ctx.pages()
     ctx.on('close', () => this.ended(e, ctx, generation))
     ctx.browser()?.on('disconnected', () => this.ended(e, ctx, generation))
     this.logger.info('browser launched', {
@@ -584,7 +583,10 @@ export class ChromeBrowser implements ProfileBrowser {
       [...this.entries.values()].map((e) => this.closeNow(e).catch(() => undefined)),
     )
   }
-  async newPage(profile: string, opts: { newWindow: boolean; windowOf?: Page }): Promise<Page> {
+  async newPage(
+    profile: string,
+    opts: { newWindow: boolean; windowOf?: Page; onNote?: (note: string) => void },
+  ): Promise<Page> {
     const e = this.entries.get(profile)
     const ctx = e?.ctx
     if (!e || !ctx || !e.windows) throw new Error('profile is not open')

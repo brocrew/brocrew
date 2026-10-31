@@ -27,8 +27,8 @@ Within the plugin’s owner-only private folder, a same-user process swapping a 
 ## Window targeting and local files
 
 `open_tab` accepts `windowOf:tabId` to join a live tab's window in the same profile, or
-`newWindow:true` for a separate visible background window. Otherwise it uses that profile's most
-recently created or tool-used live window. Listing tabs does not change this preference. Both
+`newWindow:true` for a separate visible background window. Otherwise Chrome chooses its most recently active available window. If that differs from the
+last tool-used window, the result includes a placement note. Listing tabs does not focus Chrome. Both
 `open_tab` and `list_tabs` return a numeric `windowId`; it is an observation, not a selector, and
 can change after a restart. Conflicting selectors and dead/foreign anchors are refused.
 
@@ -40,7 +40,12 @@ allowlist. File tabs are eligible for normal mode/session URL restoration. The s
 
 Background opening grants no user activation. Its launch policy suppresses Chrome's startup
 window and disables popup blocking for this owned process, which also permits site-script popups.
-Only explicit show/Open requests may activate the browser. Run the optional disposable native
+Ordinary opens and separate background windows request inactive CDP creation. An explicit
+`windowOf` first uses a private unused background probe. If Chrome chooses another window, the
+probe is closed and the explicit request uses the isolated-link fallback; this cross-window
+fallback may bring Chrome forward and returns a warning note. It never restores focus afterwards.
+Internal probes are not admitted as tool tabs. Failed late creations retain cleanup ownership;
+after the finite unresolved-operation limit, creation refuses until the profile is restarted. Run the optional disposable native
 focus check in `scripts/native/` to verify frontmost-app/Space behavior on a macOS seat; the opt-in
 `BROCREW_CHROME_RUNTIME_TEST=1` tests load real local files with visible bookkeeping forced headless
 and do not prove native focus. Never use personal or signed-in profiles for those checks.

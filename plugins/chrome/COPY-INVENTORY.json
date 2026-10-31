@@ -15,8 +15,8 @@
       "source": "agent-chrome/src/browser/chromeBrowser.ts",
       "destination": "plugins/chrome/src/browser/chromeBrowser.ts",
       "sourceSha256": "b504f5128ab5f51b3d5dd875a197b137d0da27bfadbb1a59ff79d11b530449bf",
-      "changes": "Private staging in every mode; CDP always allowAndName under private downloads; no OS Downloads fallback; local imports and comments/client material removed; queued permission rechecks or private-directory lstat/realpath fences; 0.1.1: minimal explicit owned arguments, drop all Playwright defaults, preserve private download staging/CDP in both modes; 0.1.2: the OS credential store for branded Chrome profiles; downloads bounded and unattended headless downloads denied; capture completion identifies the staging file actually saved; person-only idle profile removal and queued-open fencing",
-      "destinationSha256": "f09aec7fbadd9cd23f8f3cbc76a3717716f22bf322a87e4bffb8f561aa675d7a"
+      "changes": "Private staging in every mode; CDP always allowAndName under private downloads; no OS Downloads fallback; local imports and comments/client material removed; queued permission rechecks or private-directory lstat/realpath fences; 0.1.1: minimal explicit owned arguments, drop all Playwright defaults, preserve private download staging/CDP in both modes; 0.1.2: the OS credential store for branded Chrome profiles; downloads bounded and unattended headless downloads denied; capture completion identifies the staging file actually saved; person-only idle profile removal and queued-open fencing; 0.1.4 follow-up: inactive native-default creation, explicit-only cross-window fallback disclosure and provisional-page admission fencing",
+      "destinationSha256": "f4296086bdd8faeb30a7e5738c5009ec828da7659d34551716d4da384255e759"
     },
     {
       "source": "agent-chrome/src/browser/downloadRouter.ts",
@@ -36,8 +36,8 @@
       "source": "agent-chrome/src/browser/profileBrowser.ts",
       "destination": "plugins/chrome/src/browser/profileBrowser.ts",
       "sourceSha256": "f61ed5491f8270359481b8743f84714e32b38cc07741ead9ef40a031d4570cdc",
-      "changes": "relative shared imports; comments and client references removed; private configuration adjustments listed in README; capture completion accepts the saved staging path; person-only idle profile removal and queued-open fencing",
-      "destinationSha256": "73c2b0e4480814ab3bcb881841188cc418d8e9e77427241ac3d3e1ceaa5bee55"
+      "changes": "relative shared imports; comments and client references removed; private configuration adjustments listed in README; capture completion accepts the saved staging path; person-only idle profile removal and queued-open fencing; 0.1.4 follow-up: inactive native-default creation, explicit-only cross-window fallback disclosure and provisional-page admission fencing",
+      "destinationSha256": "14ff7258f3e6c1d8bd11dd25424d04623351edf8dbbcb7a0cee5f7744bc03912"
     },
     {
       "source": "agent-chrome/src/config.ts",
@@ -162,8 +162,8 @@
       "source": "agent-chrome/src/tools/index.ts",
       "destination": "plugins/chrome/src/tools/index.ts",
       "sourceSha256": "23f8ed4bafd42f3578e915f835a195c99bd8092d7215b4dd812b0fe406768569",
-      "changes": "private downloads; reviewed errors; source dashboard instructions replaced by Plugins screen; comments/client references removed; queued permission rechecks or private-directory lstat/realpath fences; 0.1.1: back/forward wait for commit; URL/reload retain DOM load wait; 0.1.2: a download is watched for before the click or navigation that starts it; a headless wait ignores earlier denied downloads; 0.1.2: tool descriptions name the private files and downloads folders by their absolute paths; download waits describe serialized tool calls and independent events; agent clicks and navigation use the combined download tool; the saved staging file identifies the completed capture",
-      "destinationSha256": "c12ce9cd287a4957bf2528eddafbaa02f2b364d37d207fc6ba75bee4582e1215"
+      "changes": "private downloads; reviewed errors; source dashboard instructions replaced by Plugins screen; comments/client references removed; queued permission rechecks or private-directory lstat/realpath fences; 0.1.1: back/forward wait for commit; URL/reload retain DOM load wait; 0.1.2: a download is watched for before the click or navigation that starts it; a headless wait ignores earlier denied downloads; 0.1.2: tool descriptions name the private files and downloads folders by their absolute paths; download waits describe serialized tool calls and independent events; agent clicks and navigation use the combined download tool; the saved staging file identifies the completed capture; 0.1.4 follow-up: inactive native-default creation, explicit-only cross-window fallback disclosure and provisional-page admission fencing",
+      "destinationSha256": "4eaf33aea3473a5544ea845dc6e41b3cd1a0a444ece69fa27db67a90525ae082"
     },
     {
       "source": "agent-chrome/src/tools/modeSwitch.ts",
@@ -289,7 +289,7 @@
       "destination": "plugins/chrome/test/fakes.ts",
       "sourceSha256": "e41f6a93e38d3bcc42e76a63357eef93af38552684f39fe09d52f3fceb71137e",
       "changes": "fake browser/page only; local imports, comments removed, no integration tests or Chrome launch; person-only idle profile removal and queued-open fencing",
-      "destinationSha256": "c6229dfe652eeb598faa2a6eb304c20188a061f3d2a97990c4a88b0750183569"
+      "destinationSha256": "1b4e23370a9da44706d74ac8f800b2f98f92cc00127361edffbcfaead383f946"
     },
     {
       "source": "agent-chrome/src/browser/launchArgs.ts",
@@ -302,8 +302,8 @@
       "source": "shared/browser/chromiumWindows.ts",
       "destination": "plugins/chrome/src/shared/browser/chromiumWindows.ts",
       "sourceSha256": "0a35f5bc97ace0df312897e2cdbd5cf99512efc29a3766f42f960fcc7a0bf9b1",
-      "changes": "One-time patch-code adaptation; local imports and Node monotonic clock; no source-project dependency; no-activation background creation and numeric window identity validation",
-      "destinationSha256": "5203d2d80305e4c3569015c104dd9b6b6e3e1c12d0467a14ae20963966ad6e84"
+      "changes": "One-time patch-code adaptation; local imports and Node monotonic clock; no source-project dependency; no-activation background creation and numeric window identity validation; 0.1.4 follow-up: inactive native-default creation, explicit-only cross-window fallback disclosure and provisional-page admission fencing",
+      "destinationSha256": "5f740cf57e9d5f7f7b787d6c76f98b76570ea48ed869c245d226b6e69d52b86f"
     },
     {
       "source": "shared/browser/navigationUrl.ts",

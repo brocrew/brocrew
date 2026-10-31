@@ -38,6 +38,8 @@ class Ctx extends EventEmitter {
   redirectWindow = false
   closeAnchor = false
   invalidId = false
+  nativeWindow = 1
+  nextWindow = 2
   constructor() {
     super()
     this.add(1)
@@ -83,7 +85,8 @@ class Ctx extends EventEmitter {
         if (method === 'Page.createIsolatedWorld') return { executionContextId: 10 }
         if (method === 'Target.createTarget') {
           if (this.popupFirst) this.add(1, 'https://unrelated.test/')
-          this.add(2, params.url as string)
+          if (this.closeAnchor && page) await page.close()
+          this.add(params.newWindow ? this.nextWindow++ : this.nativeWindow, params.url as string)
           return { targetId: 'mine' }
         }
         if (method === 'Runtime.evaluate') {
@@ -106,15 +109,15 @@ const setup = () => {
 }
 
 describe('context window selection', () => {
-  it('A/B in W1, C/D in W2; windowOf and tool use move preference; listing does not', async () => {
+  it('default follows native selection; tool preference is observational; explicit windowOf is exact', async () => {
     const { ctx, windows } = setup()
     const a = ctx.pages()[0]
     await windows.used(a)
     const b = await windows.open({ newWindow: false })
     const c = await windows.open({ newWindow: true })
     const d = await windows.open({ newWindow: false })
-    expect(await Promise.all([a, b, c, d].map((p) => windows.windowId(p)))).toEqual([1, 1, 2, 2])
-    expect(await windows.windowId(await windows.open({ newWindow: false }))).toBe(2)
+    expect(await Promise.all([a, b, c, d].map((p) => windows.windowId(p)))).toEqual([1, 1, 2, 1])
+    expect(await windows.windowId(await windows.open({ newWindow: false }))).toBe(1)
     await windows.used(a)
     expect(await windows.windowId(await windows.open({ newWindow: false }))).toBe(1)
     expect(await windows.windowId(await windows.open({ newWindow: false, windowOf: c }))).toBe(2)
@@ -146,19 +149,19 @@ describe('context window selection', () => {
   })
   it('cleans observer and sessions when protocol creation fails', async () => {
     const { ctx, windows } = setup()
-    ctx.fail = 'Runtime.evaluate'
+    ctx.fail = 'Target.createTarget'
     await expect(windows.open({ newWindow: false })).rejects.toThrow('protocol failed')
     expect(ctx.listenerCount('page')).toBe(2)
     expect(ctx.detached).toBeGreaterThan(0)
   })
   it('bounds stalled creation/detach and closes only its late-created page', async () => {
     const ctx = new Ctx()
-    const windows = new ChromiumWindows(ctx as unknown as BrowserContext, 'darwin', 20)
-    ctx.hang = 'Runtime.evaluate'
+    const windows = new ChromiumWindows(ctx as unknown as BrowserContext, 'darwin', 1000)
+    ctx.hang = 'Target.createTarget'
     ctx.hangDetach = true
     const began = Date.now()
     await expect(windows.open({ newWindow: false })).rejects.toThrow(/timed out|in time/)
-    expect(Date.now() - began).toBeLessThan(500)
+    expect(Date.now() - began).toBeLessThan(1500)
     expect(ctx.listenerCount('page')).toBe(1) // only the context-scoped ownership/recency observer
     const old = ctx.all[0]
     ctx.release!()
@@ -191,7 +194,7 @@ it('a closed targeted window cannot silently fall back: the misdirected owned ta
   ctx.redirectWindow = true
   ctx.closeAnchor = true
   await expect(windows.open({ newWindow: false, windowOf: original })).rejects.toThrow(
-    'selected window closed',
+    /closed|changed/,
   )
   expect(ctx.all.at(-1)!.closed).toBe(true)
   expect(unrelated.closed).toBe(false)
@@ -213,7 +216,10 @@ it.each(['Page.getFrameTree', 'Page.createIsolatedWorld'])(
     const ctx = new Ctx()
     const windows = new ChromiumWindows(ctx as unknown as BrowserContext, 'darwin', 20)
     ctx.hang = method
-    await expect(windows.open({ newWindow: false })).rejects.toThrow(/timed out|in time/)
+    const anchor = ctx.add(2) as unknown as Page
+    await expect(windows.open({ newWindow: false, windowOf: anchor })).rejects.toThrow(
+      /timed out|in time/,
+    )
     ctx.release!()
     await new Promise((r) => setTimeout(r, 5))
     expect(ctx.all[0].closed).toBe(false)

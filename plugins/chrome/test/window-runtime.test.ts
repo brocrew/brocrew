@@ -18,6 +18,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 
 type RuntimeTab = { tabId: string; windowId: number; url: string; title: string }
 type OpenResult = RuntimeTab & {
+  note?: string
   loadError?: string
   restoredTabs?: Array<{ tabId: string }>
 }
@@ -152,8 +153,9 @@ describe.skipIf(!enabled)('window and file contract in disposable installed Chro
       h.call('open_tab', { profile: 'fern', url: 'about:blank', ...extra })
     const a = await open({ visible: true, newWindow: true }),
       b = await open()
-    const c = await open({ newWindow: true }),
-      d = await open()
+    const c = await open({ newWindow: true })
+    await h.call('show_tab', { tabId: c.tabId }) // deliberate HEADLESS native-order setup, never a native focus proof
+    const d = await open()
     expect([a.windowId, b.windowId, c.windowId, d.windowId]).toEqual([
       a.windowId,
       a.windowId,
@@ -167,7 +169,9 @@ describe.skipIf(!enabled)('window and file contract in disposable installed Chro
     expect((await open({ windowOf: a.tabId })).windowId).toBe(a.windowId)
     expect((await open()).windowId).toBe(a.windowId)
     await h.call('snapshot', { tabId: c.tabId })
-    expect((await open()).windowId).toBe(c.windowId)
+    const nativeDefault = await open()
+    expect(nativeDefault.windowId).toBe(a.windowId)
+    expect(nativeDefault.note).toContain('different window')
     await expect(open({ windowOf: 't999999' })).rejects.toThrow('unknown')
     await expect(open({ windowOf: 'bad' })).rejects.toThrow('wrong format')
     await expect(open({ windowOf: a.tabId, newWindow: true })).rejects.toThrow('either')

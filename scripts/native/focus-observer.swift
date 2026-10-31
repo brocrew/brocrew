@@ -11,7 +11,7 @@ let library = dlopen("/System/Library/PrivateFrameworks/SkyLight.framework/SkyLi
 let connection = library.flatMap { dlsym($0, "SLSMainConnectionID") ?? dlsym($0, "CGSMainConnectionID") }
 let active = library.flatMap { dlsym($0, "SLSGetActiveSpace") ?? dlsym($0, "CGSGetActiveSpace") }
 let managed = library.flatMap { dlsym($0, "SLSCopyManagedDisplaySpaces") ?? dlsym($0, "CGSCopyManagedDisplaySpaces") }
-func sample() {
+func sample(sync: String? = nil) {
     let app = NSWorkspace.shared.frontmostApplication
     let space: UInt64 = connection != nil && active != nil
         ? unsafeBitCast(active!, to: ActiveSpace.self)(unsafeBitCast(connection!, to: Connection.self)()) : 0
@@ -25,12 +25,20 @@ func sample() {
             }
         }
     }
-    let value: [String: Any] = ["at": Date().timeIntervalSince1970 * 1000,
-        "pid": app?.processIdentifier ?? 0, "bundle": app?.bundleIdentifier ?? "",
-        "space": String(space), "displays": displays]
+    var value: [String: Any] = ["at": Date().timeIntervalSince1970 * 1000,
+        "nativeAt": ProcessInfo.processInfo.systemUptime * 1000, "pid": app?.processIdentifier ?? 0, "bundle": app?.bundleIdentifier ?? "",
+        "space": String(space), "displays": displays, "name": app?.localizedName ?? "", "bundlePath": app?.bundleURL?.path ?? ""]
+    if let sync = sync { value["sync"] = sync }
     if let data = try? JSONSerialization.data(withJSONObject: value), let line = String(data: data, encoding: .utf8) {
         print(line); fflush(stdout)
     }
 }
+DispatchQueue.global().async {
+    while let line = readLine() {
+        if let data = line.data(using: .utf8), let request = (try? JSONSerialization.jsonObject(with: data)) as? [String: String], let token = request["sync"] {
+            DispatchQueue.main.async { sample(sync: token) }
+        }
+    }
+}
 let end = Date().addingTimeInterval(CommandLine.arguments.count > 1 ? Double(CommandLine.arguments[1]) ?? 120 : 120)
-repeat { sample(); RunLoop.current.run(until: Date().addingTimeInterval(0.05)) } while Date() < end
+repeat { sample(); RunLoop.current.run(until: Date().addingTimeInterval(0.005)) } while Date() < end

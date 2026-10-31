@@ -18,6 +18,7 @@ export interface ProfileBrowser {
     opts: {
       newWindow: boolean
       windowOf?: Page
+      onNote?: (note: string) => void
     },
   ): Promise<Page>
   windowId(profile: string, page: Page): Promise<number>

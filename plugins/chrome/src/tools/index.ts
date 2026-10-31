@@ -221,14 +221,14 @@ export function buildToolDefs(): ToolDef[] {
       spec: {
         name: 'open_tab',
         description:
-          'Open a background tab at an HTTP(S)/file URL or absolute local path. Returns tabId, numeric windowId, url and title. windowOf selects an existing tab’s window; otherwise use the most recently created or tool-used live window. newWindow:true opens a separate window only when visible. A mode change restores at most 20 tabs at their URLs under the same ids, with the selected anchor first; form state is lost.',
+          'Open a background tab at an HTTP(S)/file URL or absolute local path. Returns tabId, numeric windowId, url and title. windowOf selects an existing tab’s window; otherwise use Chrome’s most recently active available window. An explicit cross-window request may bring Chrome forward and returns a note. newWindow:true opens a separate window only when visible. A mode change restores at most 20 tabs at their URLs under the same ids, with the selected anchor first; form state is lost.',
         props: {
           profile: profileName,
           url,
           windowOf: {
             ...tabId,
             description:
-              'Open in this live tab’s window, in the same profile. Cannot accompany newWindow:true.',
+              'Open in this live tab’s window, in the same profile. May bring Chrome forward when another window is selected. Cannot accompany newWindow:true.',
           },
           newWindow: {
             type: 'boolean',
@@ -286,35 +286,54 @@ export function buildToolDefs(): ToolDef[] {
             reopen,
             startedAt + MAX_TIMEOUT_MS - DEFAULT_TIMEOUT_MS - TITLE_RESERVE_MS,
           )
+          let openingNote: string | undefined
           const page = await deps.browser.newPage(name, {
             newWindow: a.newWindow === true && mode === 'visible',
             windowOf: selectedAnchor()?.page,
+            onNote: (note) => {
+              openingNote = note
+            },
           })
-          await deps.browser.usePage(name, page)
-          usableProfile(deps, name)
-          const tab = deps.tabs.add(name, generation, page)
-          let loadError: string | undefined
           try {
-            await page.goto(target, {
-              waitUntil: 'domcontentloaded',
-              timeout: DEFAULT_TIMEOUT_MS,
-            })
-          } catch (e) {
-            loadError = describeError(e, DEFAULT_TIMEOUT_MS)
-          }
-          const skipped = restored.filter((t) => t.note !== undefined).length
-          return {
-            tabId: tab.id,
-            windowId: await deps.browser.windowId(name, page),
-            url: page.url(),
-            title: await titleAfterLoad(page),
-            ...(loadError ? { loadError } : {}),
-            ...(restored.length ? { restoredTabs: restored } : {}),
-            ...(skipped
-              ? {
-                  note: `the restart took long: ${skipped} of the ${restored.length} earlier tab(s) could not be reopened in time (their ids stay dead)`,
-                }
-              : {}),
+            await deps.browser.usePage(name, page)
+            usableProfile(deps, name)
+            const tab = deps.tabs.add(name, generation, page)
+            let loadError: string | undefined
+            try {
+              await page.goto(target, {
+                waitUntil: 'domcontentloaded',
+                timeout: DEFAULT_TIMEOUT_MS,
+              })
+            } catch (e) {
+              loadError = describeError(e, DEFAULT_TIMEOUT_MS)
+            }
+            const skipped = restored.filter((t) => t.note !== undefined).length
+            return {
+              tabId: tab.id,
+              windowId: await deps.browser.windowId(name, page),
+              url: page.url(),
+              title: await titleAfterLoad(page),
+              ...(loadError ? { loadError } : {}),
+              ...(restored.length ? { restoredTabs: restored } : {}),
+              ...(openingNote || skipped
+                ? {
+                    note: [
+                      openingNote,
+                      skipped
+                        ? `the restart took long: ${skipped} of the ${restored.length} earlier tab(s) could not be reopened in time (their ids stay dead)`
+                        : undefined,
+                    ]
+                      .filter(Boolean)
+                      .join(' '),
+                  }
+                : {}),
+            }
+          } catch (error) {
+            if (openingNote?.includes('fallback'))
+              throw new ToolError(
+                `${error instanceof Error ? error.message : 'opening the tab failed'} ${openingNote}`,
+              )
+            throw error
           }
         })
         deps.browser.touch(name)

@@ -19,7 +19,7 @@ describe('window-targeted tools and local navigation', () => {
     made.push(h)
     return h
   }
-  it('opens A/B in first and C/D in second window, reports IDs, and uses the addressed/used window', async () => {
+  it('reports native default IDs and exact explicit targets under revised placement contract', async () => {
     const h = setup()
     h.profile('p')
     const open = async (args = {}) =>
@@ -33,15 +33,38 @@ describe('window-targeted tools and local navigation', () => {
     const d = await open()
     expect([a.windowId, b.windowId]).toEqual([a.windowId, a.windowId])
     expect(c.windowId).not.toBe(a.windowId)
-    expect(d.windowId).toBe(c.windowId)
+    expect(d.windowId).toBe(a.windowId)
     await h.call('list_tabs')
-    expect((await open()).windowId).toBe(c.windowId)
+    expect((await open()).windowId).toBe(a.windowId)
     await h.call('snapshot', { tabId: a.tabId })
     expect((await open()).windowId).toBe(a.windowId)
     expect((await open({ windowOf: c.tabId })).windowId).toBe(c.windowId)
     expect((await h.call('list_tabs')).json).toEqual(
       expect.arrayContaining([expect.objectContaining({ tabId: a.tabId, windowId: a.windowId })]),
     )
+  })
+  it('returns placement and explicit fallback notes without hiding later failures', async () => {
+    const h = setup()
+    h.profile('p')
+    const a = (
+      await h.call('open_tab', { profile: 'p', url: 'about:blank', visible: true, newWindow: true })
+    ).json as { tabId: string; windowId: number }
+    const c = (await h.call('open_tab', { profile: 'p', url: 'about:blank', newWindow: true }))
+      .json as { tabId: string; windowId: number }
+    const plain = (await h.call('open_tab', { profile: 'p', url: 'about:blank' })).json as {
+      note: string
+    }
+    expect(plain.note).toContain('different window')
+    const explicit = (
+      await h.call('open_tab', { profile: 'p', url: 'about:blank', windowOf: c.tabId })
+    ).json as { note: string }
+    expect(explicit.note).toContain('may bring Chrome')
+    h.browser.usePage = async () => {
+      throw new Error('fictional admission failure')
+    }
+    expect(
+      await h.callError('open_tab', { profile: 'p', url: 'about:blank', windowOf: a.tabId }),
+    ).toContain('may bring Chrome')
   })
   it('rejects conflict, foreign/unknown/closed selectors without opening or switching profiles', async () => {
     const h = setup()

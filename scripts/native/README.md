@@ -1,0 +1,15 @@
+# Disposable native focus check
+
+This is qualification tooling, never part of the plugin runtime. Remy owns execution; an independent checker reviews the exact source and receipt. Compile/bundle preparation does not run the observer or activate an application. A new explicit W4 hands-off GO NOW is required for each native execution; never reuse an earlier allowance. No personal/signed-in Chrome profile is used.
+
+Compile `focus-observer.swift` and `focus-reset.swift` with `swiftc` into a new evidence directory. Bundle `focus-check.ts` with esbuild for Node, externalizing playwright-core; put the bundle under plugins/chrome/node_modules/.cache so that dependency resolves. Record SHA256 of source, observer, reset helper and bundle. Run from the clean canonical repository root:
+
+`node <bundle> <observer> <new-receipt.json> <reset-helper> <explicit-BroCrew-PID> <reviewed-full-SHA>`
+
+The operator must identify BroCrew's running main PID before the hands-off window; the harness refuses a different initial frontmost PID and pins that process's creation time, bundle identifier and bundle path. The reset helper activates only this same pinned application before EACH measured case, outside the measured interval. This deliberate test setup is never imported by product code. It cannot be used to claim that restoring focus after a product action is acceptable.
+
+A separate owned disposable calibration browser is shown FIRST to prove detection, then closed. Each of first visible launch, plain open_tab, matching windowOf and newWindow begins after a500ms stable BroCrew baseline. All four continue after ordinary focus assertion failures. The explicit cross-window fallback is a separately documented allowed activation exception; this four-case harness does not claim native qualification of that exception or opposed native/tool order. Those branches have independent model/headless tests and must be named as native UNRUN unless separately authorized.
+
+The observer polls at5ms target intervals. A bounded round-trip converts its monotonic system-uptime clock to Node's monotonic performance clock, with at most5ms calibration uncertainty. Endpoint age and every gap, including operation boundaries, must be at most20ms; captures occur at1s and4s after the call returns. Acquisition errors, drift/coverage failures, lock or PID ambiguity stop new work and cannot PASS. Polling cannot exclude excursions shorter than its actual maximum gap.
+
+New work has a75s global budget, each launch/tool operation a10s cap and each baseline a5s cap. Cleanup retains ownership of late-resolving launches, closes only registered disposable contexts/process roots, and records any incomplete witness; it never broadens to other profiles. Final PASS requires positive control, all four cases, window identities, continuous observation, observer exit, owned-process exit, root removal, and cleanup within35s. Normal execution is about30s; allow a two-minute hands-off window. If plain/background CDP activates Chrome, HOLD and return the receipt to W4; never substitute the synthetic path or restore focus in the product.

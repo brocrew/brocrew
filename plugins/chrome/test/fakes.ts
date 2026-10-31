@@ -300,6 +300,7 @@ export class FakeBrowser implements ProfileBrowser {
       (this.cookies.get(profile) ?? []).filter((c) => c.expires !== -1),
     )
     this.recentWindows.delete(profile)
+    this.nativeWindows.delete(profile)
     this.states.delete(profile)
     this.pages.delete(profile)
     for (const cb of this.closedListeners.get(profile) ?? []) cb(cur.generation)
@@ -320,18 +321,34 @@ export class FakeBrowser implements ProfileBrowser {
   async usePage(profile: string, page: Page): Promise<void> {
     this.recentWindows.set(profile, await this.windowId(profile, page))
   }
+  nativeWindows = new Map<string, number>()
   async newPage(
     profile: string,
-    opts: { newWindow: boolean; windowOf?: Page } = { newWindow: false },
+    opts: { newWindow: boolean; windowOf?: Page; onNote?: (note: string) => void } = {
+      newWindow: false,
+    },
   ): Promise<Page> {
     if (!this.states.has(profile)) throw new Error('profile is not open')
     const p = new FakePage()
     const chosen = opts.windowOf
       ? await this.windowId(profile, opts.windowOf)
       : (opts.newWindow && this.state(profile)?.mode === 'visible') ||
-          !this.recentWindows.has(profile)
+          !this.nativeWindows.has(profile)
         ? ++this.nextWindow
-        : this.recentWindows.get(profile)!
+        : this.nativeWindows.get(profile)!
+    if (opts.windowOf && this.nativeWindows.get(profile) !== chosen) {
+      opts.onNote?.(
+        'Opening in the requested window used a fallback that may bring Chrome to the front.',
+      )
+      this.nativeWindows.set(profile, chosen)
+    } else if (
+      !opts.newWindow &&
+      !opts.windowOf &&
+      this.recentWindows.has(profile) &&
+      this.recentWindows.get(profile) !== chosen
+    )
+      opts.onNote?.('Chrome opened this tab in a different window from the last tool-used window.')
+    if (!this.nativeWindows.has(profile)) this.nativeWindows.set(profile, chosen)
     this.windowIds.set(p, chosen)
     this.recentWindows.set(profile, chosen)
     if (!this.cookies.has(profile)) this.cookies.set(profile, [])
