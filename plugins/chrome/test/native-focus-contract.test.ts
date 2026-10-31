@@ -125,6 +125,24 @@ describe('native focus evidence admission', () => {
       ).toBe('failed')
     },
   )
+  it('refuses missing cleanup witnesses rather than treating an incomplete object as success', () => {
+    const f = {
+      positiveDetected: true,
+      screenLocked: false,
+      caseFailures: [[], [], [], []],
+      cleanup: { observerExited: true, rootRemoved: true, ownedProcessesGone: true },
+    }
+    Reflect.deleteProperty(f.cleanup, 'ownedProcessesGone')
+    expect(finalNativeVerdict(f)).toBe('failed')
+  })
+  it('refuses non-finite clock and observation witnesses', () => {
+    const f = fixture()
+    f.clockUncertaintyMs = Number.NaN
+    expect(assessNativeCase(f)).toContain('invalid clock calibration')
+    const g = fixture()
+    g.at1.capturedAt = Number.NaN
+    expect(assessNativeCase(g)).toContain('invalid observation timestamps')
+  })
   it('requires positive calibration and all four cases before final PASS', () => {
     const f = {
       positiveDetected: true,

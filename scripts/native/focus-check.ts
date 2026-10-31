@@ -402,7 +402,7 @@ try {
     })
     if (
       failures.some((f) =>
-        /gap|monotonic|stale|timing|too few|calibration|baseline|unavailable/.test(f),
+        /gap|monotonic|stale|timing|too few|calibration|baseline|unavailable|invalid/.test(f),
       )
     )
       throw new Error(

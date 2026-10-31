@@ -72,8 +72,16 @@ export function assessNativeCase(input: {
   if (input.ownedPids.includes(before.sample.pid))
     failures.push('baseline is an owned Chrome process')
   const snapshots = [before, at1, at4]
+  if (
+    ![input.start, input.returnedAt, ...snapshots.map((s) => s.capturedAt)].every(Number.isFinite)
+  )
+    failures.push('invalid observation timestamps')
   // Both streams are mapped to the Node monotonic clock by a bounded round-trip calibration.
-  if (input.clockUncertaintyMs < 0 || input.clockUncertaintyMs > 5)
+  if (
+    !Number.isFinite(input.clockUncertaintyMs) ||
+    input.clockUncertaintyMs < 0 ||
+    input.clockUncertaintyMs > 5
+  )
     failures.push('invalid clock calibration')
   if (
     snapshots.some(
@@ -111,11 +119,13 @@ export function finalNativeVerdict(input: {
   caseFailures: string[][]
   cleanup: { observerExited: boolean; rootRemoved: boolean; ownedProcessesGone: boolean }
 }): 'passed' | 'failed' {
-  return input.positiveDetected &&
-    !input.screenLocked &&
+  return input.positiveDetected === true &&
+    input.screenLocked === false &&
     input.caseFailures.length === 4 &&
     input.caseFailures.every((f) => f.length === 0) &&
-    Object.values(input.cleanup).every(Boolean)
+    input.cleanup.observerExited === true &&
+    input.cleanup.rootRemoved === true &&
+    input.cleanup.ownedProcessesGone === true
     ? 'passed'
     : 'failed'
 }
