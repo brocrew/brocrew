@@ -94,6 +94,7 @@ export const APP_NOTICES = [
   // was running, so that turn could not run; this app reopened it on the login this computer holds now and
   // says what the turn was for.
   'a-turn-a-refused-login-stopped',
+  'a-turn-continued-after-sign-in',
   // 🔴 The app's quit, or the app stopping unexpectedly, cut a turn this conversation was running,
   // and this app started it again, on the same account, to continue it.
   'a-turn-the-app-cut',
@@ -189,6 +190,9 @@ export const NOTICE_MEANS: Readonly<Record<AppNotice, string>> = {
     'This app put these words here because its provider refused the login this conversation was ' +
     'started with while a turn of it was running, and this app reopened it on the current login. ' +
     'You did not write them, and they were not sent on anybody’s behalf.',
+  'a-turn-continued-after-sign-in':
+    'This app asked the agent to continue the unanswered message after its sign-in changed. ' +
+    'You did not write these words.',
   'a-turn-the-app-cut':
     'This app put these words here because this conversation’s turn was cut while it was working: ' +
     'the app restarted or stopped, its program stopped, or a usage limit was reached. You did not ' +

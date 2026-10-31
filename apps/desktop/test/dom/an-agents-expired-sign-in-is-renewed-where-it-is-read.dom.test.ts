@@ -6,7 +6,7 @@ import {
   forgetProfileSignIns,
   useProfileSignIn,
 } from '../../src/renderer/src/composables/useProfileSignIn'
-import type { CreatedSession } from '../../src/shared/runtime-ipc'
+import type { CreatedSession, TranscriptEvent } from '../../src/shared/runtime-ipc'
 import { CAPABILITY_FIXTURE } from '../provider-capability-fixture'
 import { drawerProps, META, mount, paneProps, record, unmountAll } from './harness'
 
@@ -55,6 +55,44 @@ afterEach(() => {
 })
 
 describe('an agent’s expired sign-in, renewed where it is read', () => {
+  it.each([true, false])(
+    'the renewal advice matches whether continuation was sent: %s',
+    async (continued) => {
+      theBridge()
+      const events: TranscriptEvent[] = [
+        { type: 'session', state: 'started', ref: { ...META.ref!, provider: 'claude' } },
+        { type: 'user_turn', text: 'Read the fictional menu.' },
+        { type: 'error', message: 'Sign in again.', fatal: true, cause: 'auth' },
+        { type: 'turn', state: 'failed', loginRefused: true },
+        { type: 'reopened', because: 'the-sign-in-was-renewed' },
+      ]
+      if (continued)
+        events.push({
+          type: 'user_turn',
+          text: 'Continue answering the last message.',
+          attribution: 'app_authored',
+          appNotice: 'a-turn-continued-after-sign-in',
+        })
+      const r = record(events)
+      r.meta = { ...SESSION, provider: 'claude', ref: { ...META.ref!, provider: 'claude' } }
+      const m = mount(
+        ConversationPane as Component,
+        paneProps({ record: r, capabilities: CAPABILITY_FIXTURE }),
+      )
+      await settled()
+      if (continued) {
+        expect(m.host.textContent).toContain('Claude sign-in changed. The agent is carrying on.')
+        expect(m.host.textContent).not.toContain('Nothing was re-sent')
+        expect(m.host.textContent).not.toContain('send again to carry on')
+        expect(m.host.textContent).not.toContain('Sign in again.')
+      } else {
+        expect(m.host.textContent).toContain('Nothing was re-sent: send again to carry on.')
+        expect(m.host.textContent).not.toContain('The agent is carrying on.')
+      }
+      expect(r.transcript.items.filter((item) => item.kind === 'user')).toHaveLength(1)
+    },
+  )
+
   it('🔴 its conversation shows the sign-in panel under the refusal, for its own profile', async () => {
     const runtime = theBridge()
     const r = record([])

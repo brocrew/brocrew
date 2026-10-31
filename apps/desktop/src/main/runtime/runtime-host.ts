@@ -46003,7 +46003,7 @@ export class RuntimeHost implements LiveHost {
       attribution: 'app_authored',
       ...(continuation === undefined
         ? { carriesOn: true as const }
-        : { appNotice: 'a-turn-a-refused-login-stopped' as const }),
+        : { appNotice: 'a-turn-continued-after-sign-in' as const }),
       ...(decided.piece === null ? {} : { carriedOnAfterAccountChange: true as const }),
       ...(decided.drives === null ? {} : { drives: decided.drives }),
     }

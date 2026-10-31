@@ -4006,7 +4006,15 @@ function followTheTurnsErrors(state: TranscriptState, event: TranscriptEvent, fr
   }
   if (event.type !== 'user_turn') return
   const renewed = state.renewedLine
-  if (event.carriesOn === true && renewed !== null) {
+  const continued =
+    event.attribution === 'app_authored' && event.appNotice === 'a-turn-continued-after-sign-in'
+  if (continued && renewed !== null) {
+    for (const row of state.turnErrorRows) {
+      const index = state.items.indexOf(row)
+      if (index >= 0) state.items.splice(index, 1)
+    }
+    renewed.line.text = `${renewed.name} sign-in changed. The agent is carrying on.`
+  } else if (event.carriesOn === true && renewed !== null) {
     if (event.carriedOnAfterAccountChange === true) {
       renewed.line.text = `${renewed.name} sign-in changed. The agent is carrying on.`
     } else if (renewed.replacedCopy === true) {

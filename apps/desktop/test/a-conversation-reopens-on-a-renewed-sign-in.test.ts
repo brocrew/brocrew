@@ -455,7 +455,7 @@ describe('D-004 · R101 — a login renewed elsewhere reopens the conversation i
           type: 'user_turn',
           text: 'Continue answering the last message.',
           attribution: 'app_authored',
-          appNotice: 'a-turn-a-refused-login-stopped',
+          appNotice: 'a-turn-continued-after-sign-in',
         }),
       )
       expect(

@@ -61,6 +61,65 @@ const turns = (state: TranscriptState): number =>
   state.items.filter((item) => item.kind === 'user').length
 
 describe('the rows of a sign-in this app renewed fold into its one line', () => {
+  it('an explicit app continuation says it is carrying on without asking for another send', () => {
+    const started = ev({ ...STARTED, ref: { provider: 'claude', sessionId: 's2' } })
+    const continued = ev({
+      type: 'user_turn',
+      text: 'Continue answering the last message.',
+      attribution: 'app_authored',
+      appNotice: 'a-turn-continued-after-sign-in',
+    })
+    const events = [
+      started,
+      ASKED,
+      REFUSED,
+      FAILED,
+      ev({ type: 'reopened', because: 'the-sign-in-was-renewed' }),
+      continued,
+    ]
+    const state = folded(...events)
+    expect(rowsSaid(state)).toEqual(['Claude sign-in changed. The agent is carrying on.'])
+    expect(turns(state)).toBe(1)
+    expect(state.items.some((item) => item.kind === 'appNotice')).toBe(true)
+    expect(rowsSaid(folded(...events))).toEqual(rowsSaid(state))
+    expect(continued).not.toHaveProperty('carriesOn')
+  })
+
+  it('a stopped-turn notice is not evidence that a guarded continuation was sent', () => {
+    const state = folded(
+      STARTED,
+      ASKED,
+      REFUSED,
+      FAILED,
+      ev({ type: 'reopened', because: 'the-sign-in-was-renewed' }),
+      ev({
+        type: 'user_turn',
+        text: 'The previous turn was stopped.',
+        attribution: 'app_authored',
+        appNotice: 'a-turn-a-refused-login-stopped',
+      }),
+    )
+    expect(rowsSaid(state)).toContain(REOPENED_ON_A_RENEWED_SIGN_IN)
+    expect(rowsSaid(state).join(' ')).not.toContain('The agent is carrying on.')
+  })
+
+  it('a continuation notice without app authorship does not rewrite the renewal advice', () => {
+    const state = folded(
+      STARTED,
+      ASKED,
+      REFUSED,
+      FAILED,
+      ev({ type: 'reopened', because: 'the-sign-in-was-renewed' }),
+      ev({
+        type: 'user_turn',
+        text: 'Continue answering the last message.',
+        appNotice: 'a-turn-continued-after-sign-in',
+      }),
+    )
+    expect(rowsSaid(state)).toContain(REOPENED_ON_A_RENEWED_SIGN_IN)
+    expect(rowsSaid(state).join(' ')).not.toContain('The agent is carrying on.')
+  })
+
   it('a give carried on after an account change stops asking to send it again', () => {
     const changed = ev({ type: 'reopened', because: 'the-sign-in-was-renewed' })
     const state = folded(
