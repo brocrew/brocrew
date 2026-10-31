@@ -25,6 +25,7 @@ import {
   readPriorityClamped,
 } from '../../../resources/plugin-host/process-groups.mjs'
 import { writeReceipt } from '../../../resources/plugin-host/receipts.mjs'
+import { readBootWitness } from '../../../resources/plugin-host/boot-witness.mjs'
 
 export interface PluginNodeStart {
   package: VerifiedPluginPackage
@@ -260,6 +261,25 @@ export function createPluginNodeHost(options: {
     )
     const runId = randomUUID()
     const run = await privateChild(root, `runs/${runId}`)
+    let windowsJob
+    if (windows) {
+      const boot = await readBootWitness()
+      if (!boot || boot.kind !== 'windows-tick64-v1') throw new PluginHostError('unsupported')
+      const nonce = randomUUID()
+      windowsJob = {
+        format: 1,
+        runId,
+        pluginId: manifest.id,
+        releaseDigest: spec.releaseDigest,
+        nonce,
+        name: `Local\\BroCrew.Plugin.${nonce}`,
+        boot,
+      }
+      await immutableFile(
+        join(run, 'job-reservation.json'),
+        Buffer.from(JSON.stringify(windowsJob)),
+      )
+    }
     const mcpToken = randomBytes(32).toString('hex'),
       adminToken = randomBytes(32).toString('hex'),
       hookToken = randomBytes(32).toString('hex')
@@ -278,6 +298,7 @@ export function createPluginNodeHost(options: {
           runId,
           pluginId: manifest.id,
           releaseDigest: spec.releaseDigest,
+          ...(windowsJob ? { windowsJob } : {}),
           ...(windows ? { keeperCache: await privateChild(root, 'keeper') } : {}),
         }),
       ),

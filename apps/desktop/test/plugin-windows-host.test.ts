@@ -602,6 +602,20 @@ describe.runIf(process.platform === 'win32')('the plugin host on Windows', () =>
       const handle = await host.start(fixture(serverSource(browser)))
       const ready = await readyOrWhy(handle)
       expect([true, false, null]).toContain(ready.priorityClamped)
+      const runDirectory = resolve(handle.receiptPath, '..')
+      const reserved = JSON.parse(
+        await readFile(join(runDirectory, 'job-reservation.json'), 'utf8'),
+      )
+      const assigned = JSON.parse(await readFile(join(runDirectory, 'job-ready.json'), 'utf8'))
+      expect(assigned).toMatchObject({
+        runId: handle.runId,
+        nonce: reserved.nonce,
+        state: 'assigned-ready',
+        server: { pid: ready.serverPid },
+        job: { name: reserved.name, boot: { kind: 'windows-tick64-v1' } },
+      })
+      expect(assigned.job.guardian.birth).toMatch(/^[1-9][0-9]{1,19}$/)
+      expect(assigned.job.keeper.birth).toMatch(/^[1-9][0-9]{1,19}$/)
       await fetch(ready.origin + '/v1/launch', { headers: ready.admin().headers })
       const ids = await browserStarted(pidFile)
       expect(running(ids.pid) && running(ids.child)).toBe(true)

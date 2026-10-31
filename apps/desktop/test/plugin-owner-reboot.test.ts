@@ -1,0 +1,249 @@
+import { randomUUID } from 'node:crypto'
+import {
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rename,
+  rm,
+  unlink,
+  writeFile,
+} from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { PluginSupervisor } from '../src/main/plugins/supervisor/owner'
+import { previousRunsProvenStopped } from '../src/main/plugins/supervisor/recovery-proof'
+import { SupervisorStorage } from '../src/main/plugins/supervisor/storage'
+import { keepPluginRootPrivate } from '../src/main/plugins/private-files'
+
+describe('fenced reboot proof for historical plugin runs', () => {
+  let parent = '',
+    root = '',
+    epoch = '',
+    run = ''
+  let owner: PluginSupervisor | undefined
+  const firstBoot = randomUUID()
+  let witness: unknown
+  const observe = vi.fn(async () => witness)
+  const marker = () => join(root, 'supervisor/reboot-proofs', `pending-${epoch}.json`)
+  afterEach(async () => {
+    vi.restoreAllMocks()
+    if (owner) {
+      await owner.shutdown()
+      await owner.closed
+      owner = undefined
+    }
+    if (parent) await rm(parent, { recursive: true, force: true })
+  }, 30_000)
+  async function fixture(phase: 'blocked' | 'draining' = 'blocked', exited?: boolean) {
+    parent = await realpath(
+      await mkdtemp(join(process.platform === 'win32' ? tmpdir() : '/tmp', 'fictional-reboot-')),
+    )
+    root = join(parent, 'plugins')
+    await keepPluginRootPrivate(root)
+    const initial = await PluginSupervisor.start({ root, workspaceRoots: [] })
+    await initial.shutdown()
+    await initial.closed
+    const storage = new SupervisorStorage(root, [], false)
+    const previous = storage.read()!
+    epoch = previous.epoch
+    storage.write({ ...previous, phase })
+    storage.close()
+    const id = randomUUID()
+    run = join(root, 'host/runs', id)
+    await mkdir(run, { recursive: true, mode: 0o700 })
+    if (exited !== undefined)
+      await writeFile(
+        join(run, 'exit.json'),
+        JSON.stringify({
+          format: 1,
+          runId: id,
+          pluginId: 'fictional',
+          releaseDigest: 'f'.repeat(64),
+          guardianPid: 404941,
+          groups: [],
+          exited,
+        }),
+        { mode: 0o600 },
+      )
+    witness = { kind: 'darwin-boot-session-v1', value: firstBoot }
+    observe.mockClear()
+    return lstat(join(root, 'supervisor/owner-lock.sqlite'), { bigint: true })
+  }
+  const attempt = async () => {
+    owner = await PluginSupervisor.start({
+      root,
+      workspaceRoots: [],
+      recoverPrevious: (previous) =>
+        previousRunsProvenStopped(root, { previous, readBootWitness: observe }),
+    })
+    return owner
+  }
+  const refused = () => expect(attempt()).rejects.toMatchObject({ code: 'cleanup-pending' })
+  it.each(['blocked', 'draining'] as const)(
+    'stages once and heals %s missing receipts only after a different boot',
+    async (phase) => {
+      const lock = await fixture(phase)
+      await refused()
+      const pending = await readFile(marker(), 'utf8')
+      await refused()
+      expect(await readFile(marker(), 'utf8')).toBe(pending)
+      witness = { kind: 'darwin-boot-session-v1', value: randomUUID() }
+      await attempt()
+      const after = await lstat(join(root, 'supervisor/owner-lock.sqlite'), { bigint: true })
+      expect([after.dev, after.ino]).toEqual([lock.dev, lock.ino])
+      await expect(readFile(join(run, 'exit.json'))).rejects.toMatchObject({ code: 'ENOENT' })
+      const nonce = JSON.parse(pending).nonce
+      expect(
+        JSON.parse(
+          await readFile(
+            join(root, 'supervisor/reboot-proofs/certificates', `${nonce}.json`),
+            'utf8',
+          ),
+        ).method,
+      ).toBe('post-marker-boot-boundary')
+    },
+  )
+  it.each(['100', '101', '4294967396'])(
+    'keeps Windows equal/higher native ticks %s refused without refreshing the marker',
+    async (value) => {
+      await fixture('draining', false)
+      witness = { kind: 'windows-tick64-v1', value: '100' }
+      await refused()
+      const pending = await readFile(marker(), 'utf8')
+      witness = { kind: 'windows-tick64-v1', value }
+      await refused()
+      expect(await readFile(marker(), 'utf8')).toBe(pending)
+    },
+  )
+  it('uses a strict exact UInt64 Windows tick retreat, preserves false receipts and replays the certificate', async () => {
+    await fixture('blocked', false)
+    const original = await readFile(join(run, 'exit.json'), 'utf8')
+    witness = { kind: 'windows-tick64-v1', value: '18446744073709551000' }
+    await refused()
+    witness = { kind: 'windows-tick64-v1', value: '9007199254740993' }
+    const write = SupervisorStorage.prototype.write
+    const interrupted = vi.spyOn(SupervisorStorage.prototype, 'write').mockImplementation(function (
+      this: SupervisorStorage,
+      value,
+    ) {
+      if (value.phase === 'stopped')
+        throw Object.assign(new Error('fictional publication interruption'), { code: 'EIO' })
+      return write.call(this, value)
+    })
+    await expect(attempt()).rejects.toBeDefined()
+    interrupted.mockRestore()
+    witness = null
+    await attempt()
+    expect(await readFile(join(run, 'exit.json'), 'utf8')).toBe(original)
+  })
+  it.each([
+    null,
+    { kind: 'darwin-boot-session-v1', value: '00000000-0000-0000-0000-000000000000' },
+    { kind: 'windows-tick64-v1', value: '18446744073709551616' },
+  ])('fails closed on unavailable or invalid native evidence %j', async (invalid) => {
+    await fixture()
+    witness = invalid
+    await refused()
+    witness = { kind: 'darwin-boot-session-v1', value: randomUUID() }
+    await refused()
+    expect(JSON.parse(await readFile(marker(), 'utf8')).witness).toEqual(witness)
+  })
+  it('does not interpret UUID case changes or wall-clock jumps as a reboot', async () => {
+    await fixture()
+    await refused()
+    witness = { kind: 'darwin-boot-session-v1', value: firstBoot.toUpperCase() }
+    vi.spyOn(Date, 'now').mockReturnValue(99_999_999_999_999)
+    await refused()
+    vi.spyOn(Date, 'now').mockReturnValue(1)
+    await refused()
+    expect(observe).toHaveBeenCalledTimes(3)
+  })
+  it('refuses a changed full census rather than silently replacing its marker', async () => {
+    await fixture()
+    await refused()
+    const pending = await readFile(marker(), 'utf8')
+    await mkdir(join(root, 'host/runs', randomUUID()), { mode: 0o700 })
+    witness = { kind: 'darwin-boot-session-v1', value: randomUUID() }
+    await refused()
+    expect(await readFile(marker(), 'utf8')).toBe(pending)
+  })
+  it('does not let an old certificate prove a new run in a later owner generation', async () => {
+    await fixture()
+    await refused()
+    witness = { kind: 'darwin-boot-session-v1', value: randomUUID() }
+    await attempt()
+    await owner!.shutdown()
+    await owner!.closed
+    owner = undefined
+    const storage = new SupervisorStorage(root, [], false)
+    const next = storage.read()!
+    storage.write({ ...next, phase: 'blocked' })
+    storage.close()
+    epoch = next.epoch
+    await mkdir(join(root, 'host/runs', randomUUID()), { mode: 0o700 })
+    await refused()
+    expect(JSON.parse(await readFile(marker(), 'utf8')).epoch).toBe(next.epoch)
+  })
+  it('does not stage reboot recovery for an accepting legacy owner', async () => {
+    await fixture()
+    const storage = new SupervisorStorage(root, [], false)
+    storage.write({ ...storage.read()!, phase: 'accepting' })
+    storage.close()
+    await refused()
+    await expect(readFile(marker())).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+  it.each(['epoch', 'rootIdentity', 'fenceIdentity', 'runsIdentity'] as const)(
+    'refuses a changed marker binding %s without resealing it',
+    async (field) => {
+      await fixture()
+      await refused()
+      const pending = JSON.parse(await readFile(marker(), 'utf8'))
+      if (field === 'epoch') pending.epoch = randomUUID()
+      else pending.binding[field] = 'fictional-other-identity'
+      const changed = JSON.stringify(pending)
+      await writeFile(marker(), changed)
+      witness = { kind: 'darwin-boot-session-v1', value: randomUUID() }
+      await refused()
+      expect(await readFile(marker(), 'utf8')).toBe(changed)
+    },
+  )
+  it('refuses a replacement directory with the same run UUID', async () => {
+    await fixture()
+    await refused()
+    await rename(run, join(parent, 'retained-old-run'))
+    await mkdir(run, { mode: 0o700 })
+    witness = { kind: 'darwin-boot-session-v1', value: randomUUID() }
+    await refused()
+  })
+  it('keeps a torn certificate from becoming recovery success', async () => {
+    await fixture()
+    await refused()
+    const pending = JSON.parse(await readFile(marker(), 'utf8'))
+    await writeFile(
+      join(root, 'supervisor/reboot-proofs/certificates', `${pending.nonce}.json`),
+      '{',
+      { mode: 0o600 },
+    )
+    witness = { kind: 'darwin-boot-session-v1', value: randomUUID() }
+    await refused()
+  })
+  it('allows a late positive receipt independently of the pending witness', async () => {
+    await fixture('blocked', false)
+    await refused()
+    const pending = await readFile(marker(), 'utf8')
+    const proof = JSON.parse(await readFile(join(run, 'exit.json'), 'utf8'))
+    await writeFile(join(run, 'exit.json'), JSON.stringify({ ...proof, exited: true }))
+    witness = null
+    await attempt()
+    expect(await readFile(marker(), 'utf8')).toBe(pending)
+  })
+  it('does not invent a predecessor epoch for a missing owner record', async () => {
+    await fixture()
+    await unlink(join(root, 'supervisor/owner.json'))
+    await refused()
+    await expect(readFile(marker())).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+})

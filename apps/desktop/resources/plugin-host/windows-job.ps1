@@ -52,8 +52,10 @@ public static class BroCrewPluginJob {
     public IntPtr UniqueProcessId, InheritedFromUniqueProcessId;
   }
 
-  [DllImport("kernel32.dll", SetLastError = true)]
-  static extern IntPtr CreateJobObjectW(IntPtr attributes, IntPtr name);
+  [DllImport("kernel32.dll", CharSet = CharSet.Unicode, ExactSpelling = true, SetLastError = true)]
+  static extern IntPtr CreateJobObjectW(IntPtr attributes, string name);
+  [DllImport("kernel32.dll")]
+  static extern UInt64 GetTickCount64();
   [DllImport("kernel32.dll", SetLastError = true)]
   static extern bool SetInformationJobObject(IntPtr job, int kind, ref ExtendedLimit info, int size);
   [DllImport("kernel32.dll", SetLastError = true)]
@@ -99,18 +101,31 @@ public static class BroCrewPluginJob {
     return GetExitCodeProcess(process, out code) && code == StillActive;
   }
 
-  public static string Open() {
+  public static string Open(string name) {
+    if (name == null || !System.Text.RegularExpressions.Regex.IsMatch(name, @"^Local\\BroCrew\.Plugin\.[a-f0-9-]{36}$")) return "refused";
     guardianPid = ParentOf(GetCurrentProcess());
     if (guardianPid <= 0) return "refused";
     guardian = OpenProcess(QueryLimited | Synchronize, false, guardianPid);
     if (guardian == IntPtr.Zero || !Running(guardian)) return "refused";
     guardianCreated = CreatedOf(guardian);
-    job = CreateJobObjectW(IntPtr.Zero, IntPtr.Zero);
-    if (job == IntPtr.Zero || guardianCreated <= 0) return "refused";
+    job = CreateJobObjectW(IntPtr.Zero, name);
+    int openedError = Marshal.GetLastWin32Error();
+    // An existing name is never ours: do not change its limits or assign anything to it.
+    if (job == IntPtr.Zero || openedError == 183 || guardianCreated <= 0) {
+      if (job != IntPtr.Zero) CloseHandle(job);
+      job = IntPtr.Zero;
+      return "refused";
+    }
     ExtendedLimit limit = new ExtendedLimit();
     limit.Basic.LimitFlags = KillOnJobClose;
     if (!SetInformationJobObject(job, 9, ref limit, Marshal.SizeOf(typeof(ExtendedLimit)))) return "refused";
     return "ready";
+  }
+
+  public static string Identity() {
+    long keeperCreated = CreatedOf(GetCurrentProcess());
+    if (job == IntPtr.Zero || keeperCreated <= 0 || guardianCreated <= 0) return "refused";
+    return "identity " + guardianPid + " " + guardianCreated + " " + System.Diagnostics.Process.GetCurrentProcess().Id + " " + keeperCreated + " " + GetTickCount64().ToString(System.Globalization.CultureInfo.InvariantCulture);
   }
 
   public static string Assign(int pid) {
@@ -178,7 +193,7 @@ if (-not $loaded -and $cache) {
   $loaded = $true
 }
 if (-not $loaded) { Add-Type -TypeDefinition $source }
-$opened = [BroCrewPluginJob]::Open()
+$opened = [BroCrewPluginJob]::Open($env:BROCREW_PLUGIN_JOB_NAME)
 # A job opened from code loaded out of the cache says so, for the host's start-time record.
 [Console]::Out.WriteLine($(if ($opened -eq 'ready' -and $fromCache) { 'ready cached' } else { $opened }))
 [Console]::Out.Flush()
@@ -188,6 +203,7 @@ while ($true) {
   if ($null -eq $line) { break }
   $words = $line.Split(' ')
   $answer = switch ($words[0]) {
+    'identity' { [BroCrewPluginJob]::Identity() }
     'assign' { [BroCrewPluginJob]::Assign([int]$words[1]) }
     'count' { [BroCrewPluginJob]::Count() }
     'priority' { [BroCrewPluginJob]::Priority() }

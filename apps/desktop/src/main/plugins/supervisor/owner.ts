@@ -4,6 +4,7 @@ import { createServer, type Server, type Socket } from 'node:net'
 import { PluginFence } from '../state/fence'
 import { SupervisorStorage } from './storage'
 import { isSocketFile } from '../local-endpoint'
+import type { DrainTrace } from './drain-trace'
 import {
   compatible,
   OWNER_LIMITS,
@@ -51,6 +52,7 @@ export interface OwnerOptions {
   tickEvery?: number
   /** Trusted standalone bootstrap only. Runs inside the unchanged predecessor fence. */
   recoverPrevious?: (previous: OwnerRecord | null) => Promise<boolean>
+  traceDrain?: (event: DrainTrace) => void
 }
 declare global {
   var __brobotPluginOwnersV1: Set<string> | undefined
@@ -182,7 +184,9 @@ export class PluginSupervisor {
       await Promise.race([ready, owner.releaseDone])
       const previous = storage.read()
       if ((!previous && existingLock) || (previous && previous.phase !== 'stopped')) {
+        owner.fence.check(storage.lock)
         if (!(await options.recoverPrevious?.(previous))) refuse('cleanup-pending')
+        owner.fence.check(storage.lock)
         storage.check()
         if (previous) storage.write({ ...previous, phase: 'stopped' })
       }
@@ -481,6 +485,7 @@ export class PluginSupervisor {
   }
   private drain(): Promise<boolean> {
     this.drainWork ??= (async () => {
+      this.trace({ stage: 'child-proofs', state: 'waiting' })
       this.drainDeadline = performance.now() + (this.options.drainWithin ?? OWNER_LIMITS.cleanup)
       const result = await (async () => {
         await Promise.all(this.revocations)
@@ -489,16 +494,43 @@ export class PluginSupervisor {
         return (await Promise.all([...this.children].map(stopAndProveChild))).every(Boolean)
       })().catch(() => false)
       if (result !== true) {
+        this.trace({ stage: 'child-proofs', state: 'failed' })
         this.fail()
         return false
       }
+      this.trace({ stage: 'child-proofs', state: 'complete' })
+      this.trace({ stage: 'server.close', state: 'waiting' })
       await new Promise<void>((resolve) => this.server!.close(() => resolve()))
+      this.trace({ stage: 'server.close', state: 'complete' })
       // The proofs already arrived. Retain the same fence until their durable publication succeeds.
+      let attempt = 0
       for (;;) {
+        attempt++
         try {
+          this.trace({ stage: 'stopped-write', state: 'waiting', attempt })
           this.storage.write({ ...this.record, phase: 'stopped' })
+          this.trace({ stage: 'stopped-write', state: 'complete', attempt })
           break
-        } catch {
+        } catch (error) {
+          let errno = 'UNKNOWN'
+          try {
+            const code = (error as NodeJS.ErrnoException | null)?.code
+            if (
+              typeof code === 'string' &&
+              /^(EACCES|EPERM|ENOENT|ENOSPC|EBUSY|EIO|EROFS|EMFILE|ENFILE|ENOMEM|EINVAL)$/.test(
+                code,
+              )
+            )
+              errno = code
+          } catch {
+            /* An error's custom properties are not diagnostic authority. */
+          }
+          this.trace({
+            stage: 'stopped-write',
+            state: 'failed',
+            attempt,
+            errno,
+          })
           await new Promise((resolve) => setTimeout(resolve, 1000))
         }
       }
@@ -509,6 +541,7 @@ export class PluginSupervisor {
       this.fence!.release()
       owners.delete(this.storage.identity)
       this.storage.close()
+      this.trace({ stage: 'closed', state: 'complete' })
       this.stopped()
       return true
     })().catch(() => {
@@ -519,6 +552,13 @@ export class PluginSupervisor {
     return bounded(this.drainWork, this.options.drainWithin ?? OWNER_LIMITS.drain).then(
       (result) => result === true,
     )
+  }
+  private trace(event: DrainTrace): void {
+    try {
+      this.options.traceDrain?.(event)
+    } catch {
+      /* Diagnostics cannot change the drain. */
+    }
   }
   async shutdown(): Promise<boolean> {
     if (this.record.phase === 'stopped') return true

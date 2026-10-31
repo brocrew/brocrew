@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -18,6 +18,8 @@ function cacheFile(folder, script) {
   return join(folder, `job-${createHash('sha256').update(script).digest('hex').slice(0, 32)}.dll`)
 }
 export function startJobKeeper(options = {}) {
+  const name = options.name ?? `Local\\BroCrew.Plugin.${randomUUID()}`
+  if (!/^Local\\BroCrew\.Plugin\.[a-f0-9-]{36}$/.test(name)) return failedKeeper('refused')
   const program = powershellPath()
   const started = performance.now()
   if (!program) return failedKeeper('no-powershell')
@@ -38,6 +40,7 @@ export function startJobKeeper(options = {}) {
         windowsHide: true,
         env: {
           ...(options.env ?? process.env),
+          BROCREW_PLUGIN_JOB_NAME: name,
           ...(options.cache ? { BROCREW_PLUGIN_JOB_CACHE: cacheFile(options.cache, script) } : {}),
         },
       },
@@ -118,6 +121,29 @@ export function startJobKeeper(options = {}) {
     get cached() {
       return cached
     },
+    /** Durable identity metadata; this observation alone is never empty-job evidence. */
+    async identity() {
+      if ((await opened) === null) return null
+      const found = /^identity (\d{1,10}) (\d{1,20}) (\d{1,10}) (\d{1,20}) (\d{1,20})$/.exec(
+        (await answer('identity', 5000)) ?? '',
+      )
+      if (
+        !found ||
+        Number(found[1]) !== process.pid ||
+        Number(found[3]) !== child.pid ||
+        BigInt(found[2]) <= 0n ||
+        BigInt(found[4]) <= 0n ||
+        BigInt(found[5]) > 18446744073709551615n
+      )
+        return null
+      return {
+        format: 1,
+        name,
+        guardian: { pid: Number(found[1]), birth: found[2] },
+        keeper: { pid: Number(found[3]), birth: found[4] },
+        boot: { kind: 'windows-tick64-v1', value: found[5] },
+      }
+    },
     /** The child's creation time (a FILETIME, as text) once it is in the job; null if refused. */
     async assign(pid) {
       if ((await opened) === null || !Number.isSafeInteger(pid) || pid <= 0) return null
@@ -169,6 +195,7 @@ function failedKeeper(reason) {
     reason,
     pid: null,
     cached: false,
+    identity: none,
     assign: none,
     count: none,
     priorityClamped: none,
