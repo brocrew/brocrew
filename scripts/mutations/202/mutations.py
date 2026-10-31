@@ -302,8 +302,8 @@ MUTATIONS = [
         [
             (
                 HOST,
-                "    const work = ops.check(provider, profileId, launch.signal)\n",
-                "    const work = ops.check(provider, profileId, undefined)\n",
+                "        : ops.check(provider, profileId, launch.signal)\n",
+                "        : ops.check(provider, profileId, undefined)\n",
             )
         ],
     ),

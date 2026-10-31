@@ -16,6 +16,7 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import type { ProviderAuthOps } from '../src/main/providers/auth-operations'
 import { prepareOnTheLogin } from '../src/main/providers/claude'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { createSessionStore as createRendererStore } from '../src/renderer/src/lib/session-store'
@@ -50,6 +51,7 @@ class FakeQuery {
   private resolve: ((value: IteratorResult<SDKMessage>) => void) | null = null
   private readonly buffer: SDKMessage[] = []
   private done = false
+  readonly sent: unknown[] = []
 
   emit(message: SDKMessage): void {
     if (this.resolve) {
@@ -165,16 +167,23 @@ describe('D-004 · R101 — a login renewed elsewhere reopens the conversation i
   let launches: { fq: FakeQuery; options: Options }[]
   /** 🔒 The fake machine login — a test string, or `null` for missing or expired. */
   let machineLogin: string | null
+  let readMachineLogin: (() => Promise<string | null>) | undefined
   /** The app's renewal of an expired Claude Code login, when a test gives one. */
   let renewal: (() => Promise<ClaudeLoginRenewal>) | undefined
   /** Whether a Claude key is saved, which a launch runs on instead of the login. */
   let keySaved: boolean
+  let authOps: ProviderAuthOps | undefined
+  let authChanges: unknown[]
   let launchBarrier: (() => Promise<void>) | undefined
 
   function buildHost(): RuntimeHost {
     const renewForThisHost = renewal
     const built = new RuntimeHost({
       store: ledger,
+      ...(authOps === undefined ? {} : { providerAuth: authOps }),
+      providersMoved: (change) => {
+        authChanges.push(change)
+      },
       discoverSessions: NO_DISCOVERY,
       nativeTranscriptPath: () => null,
       exportDirectory: () => join(dir, 'exports'),
@@ -183,12 +192,19 @@ describe('D-004 · R101 — a login renewed elsewhere reopens the conversation i
           (params) => {
             const fq = new FakeQuery()
             launches.push({ fq, options: params.options })
-            fq.cli.listen(params.prompt)
+            fq.cli.listen(
+              (async function* () {
+                for await (const message of params.prompt) {
+                  fq.sent.push(message)
+                  yield message
+                }
+              })(),
+            )
             return fq as never
           },
           async (sessionId) => announced.has(sessionId),
           () => machineLogin,
-          async () => machineLogin,
+          async () => (readMachineLogin === undefined ? machineLogin : readMachineLogin()),
         ),
       prepareProviderHome: (which) => {
         if (machineLogin === null) {
@@ -249,9 +265,12 @@ describe('D-004 · R101 — a login renewed elsewhere reopens the conversation i
     announced = new Set()
     launches = []
     machineLogin = 'test-token-at-launch'
+    readMachineLogin = undefined
     renewal = undefined
     keySaved = false
     launchBarrier = undefined
+    authOps = undefined
+    authChanges = []
   })
 
   afterEach(async () => {
@@ -392,6 +411,62 @@ describe('D-004 · R101 — a login renewed elsewhere reopens the conversation i
     expect(after.some((event) => event.type === 'user_turn')).toBe(false)
   })
 
+  it.each(['idle', 'stopped'] as const)(
+    'one message to an old %s conversation resumes it on the current login',
+    async (state) => {
+      const host = buildHost()
+      const window = new Window(host)
+      const { sessionId } = await host.createSession(
+        { provider: 'claude', cwd: join(dir, 'cwd') },
+        window.sink,
+      )
+      await host.send(sessionId, 'first', window.sink)
+      announced.add('provider-A')
+      launches[0]!.fq.emit(
+        frame({ type: 'system', subtype: 'init', session_id: 'provider-A', cwd: join(dir, 'cwd') }),
+      )
+      launches[0]!.fq.emit(frame({ type: 'result', subtype: 'success', is_error: false }))
+      await waitFor(
+        () => eventsOf(sessionId).some((event) => event.type === 'turn'),
+        'the first turn',
+      )
+
+      if (state === 'stopped') await host.close(sessionId, window.sink)
+      machineLogin = 'test-current-machine-login'
+      await host.send(sessionId, 'continue on this Mac', window.sink)
+      await waitFor(() => launches.length === 2, 'the old conversation to resume')
+      launches[1]!.fq.emit(
+        frame({ type: 'system', subtype: 'init', session_id: 'provider-A', cwd: join(dir, 'cwd') }),
+      )
+      await waitFor(() => launches[1]!.fq.sent.length === 1, 'the one message to arrive')
+      expect(launches[1]!.options.resume).toBe('provider-A')
+      expect(launches[1]!.fq.sent).toEqual([
+        expect.objectContaining({
+          message: expect.objectContaining({
+            content: expect.stringContaining('continue on this Mac'),
+          }),
+        }),
+      ])
+      expect(launches[1]!.options.env?.['CLAUDE_CODE_OAUTH_TOKEN']).toBe(
+        'test-current-machine-login',
+      )
+      expect(
+        eventsOf(sessionId).filter(
+          (event) => event.type === 'user_turn' && event.text === 'continue on this Mac',
+        ),
+      ).toHaveLength(1)
+      launches[1]!.fq.emit(frame({ type: 'result', subtype: 'success', is_error: false }))
+      await waitFor(
+        () =>
+          eventsOf(sessionId).filter(
+            (event) => event.type === 'turn' && event.state === 'completed',
+          ).length === 2,
+        'the continued turn to finish',
+      )
+      expect(launches).toHaveLength(2)
+    },
+  )
+
   it('the same token: today’s stop, and no reopen', async () => {
     const { sessionId, record } = await killedMidTurn(() => {})
     await waitFor(
@@ -400,8 +475,283 @@ describe('D-004 · R101 — a login renewed elsewhere reopens the conversation i
     )
     await new Promise((resolve) => setTimeout(resolve, 100))
     expect(launches).toHaveLength(1)
+    expect(eventsOf(sessionId)).toContainEqual({
+      type: 'error',
+      message: REVOKED,
+      fatal: true,
+      cause: 'auth',
+    })
     expect(eventsOf(sessionId).some((event) => event.type === 'reopened')).toBe(false)
   })
+
+  function locallyReadyAuth() {
+    let probes = 0
+    const ready = { state: 'usable', login: 'account', expiresAt: Date.now() + 60_000 } as const
+    const ops = {
+      credentialHome: () => '/fake/home',
+      check: async () => ready,
+      probe: async () => {
+        probes++
+        return ready
+      },
+      reprovision: async () => 'replaced' as const,
+      signIn: async () => {
+        throw new Error('not used')
+      },
+      bringTheKeyToItsHomes: async () => null,
+      replaceARefusedCopy: async () => 'not-tried' as const,
+    }
+    authOps = ops
+    return { ready, probes: () => probes }
+  }
+
+  it('a rejected unexpired machine login stays nonReady on passive checks until native sign-in succeeds', async () => {
+    locallyReadyAuth()
+    const { host, sessionId, record } = await killedMidTurn(() => {})
+    await waitFor(() => record().phase === 'recorded', 'the rejected life to stop')
+    expect(await host.checkProviderAuth('claude', 'brobot')).toMatchObject({ state: 'stale' })
+    expect(authChanges).toContainEqual({ what: 'login', provider: 'claude' })
+    host.providerSetupCompleted('claude', 'install')
+    expect((await host.checkProviderAuth('claude', 'brobot')).state).toBe('stale')
+    host.providerSetupCompleted('claude', 'signIn')
+    expect(await host.checkProviderAuth('claude', 'brobot')).toMatchObject({ state: 'usable' })
+    expect(eventsOf(sessionId)).toContainEqual({
+      type: 'error',
+      message: REVOKED,
+      fatal: true,
+      cause: 'auth',
+    })
+  })
+
+  it('only an explicit manual probe runs once and clears the rejected-login fact on success', async () => {
+    const auth = locallyReadyAuth()
+    const { host, window, record } = await killedMidTurn(() => {})
+    await waitFor(() => record().phase === 'recorded', 'the rejected life to stop')
+    await host.checkProviderAuth('claude', 'brobot')
+    expect(auth.probes()).toBe(0)
+    const result = await executeRuntimeCommand(host, window.sink, {
+      kind: 'checkProviderAuth',
+      provider: 'claude',
+      profileId: 'brobot',
+      probe: true,
+    })
+    expect(auth.probes()).toBe(1)
+    expect(result).toEqual(auth.ready)
+    expect(await host.checkProviderAuth('claude', 'brobot')).toEqual(auth.ready)
+    expect(auth.probes()).toBe(1)
+  })
+
+  it('a failed manual probe stays nonReady and cannot clear a measured rejection', async () => {
+    locallyReadyAuth()
+    authOps = {
+      ...authOps!,
+      probe: async () => ({ state: 'unknown', reason: 'The fake check failed.' }),
+    }
+    const { host, record } = await killedMidTurn(() => {})
+    await waitFor(() => record().phase === 'recorded', 'the rejected life to stop')
+    expect(await host.checkProviderAuth('claude', 'brobot', true)).toEqual({
+      state: 'unknown',
+      reason: 'The fake check failed.',
+    })
+    expect((await host.checkProviderAuth('claude', 'brobot')).state).toBe('stale')
+  })
+
+  it('a probe started before a newer rejection cannot clear that newer fact', async () => {
+    const auth = locallyReadyAuth()
+    let resolveProbe!: (state: typeof auth.ready) => void
+    let started = false
+    authOps = {
+      ...authOps!,
+      probe: async () => {
+        started = true
+        return new Promise((resolve) => {
+          resolveProbe = resolve
+        })
+      },
+    }
+    const { host, window, sessionId, record } = await killedMidTurn(() => {})
+    await waitFor(() => record().phase === 'recorded', 'the first rejected life to stop')
+    const checking = host.checkProviderAuth('claude', 'brobot', true)
+    await waitFor(() => started, 'the manual probe to begin')
+    await host.send(sessionId, 'another fake turn', window.sink)
+    launches[1]!.fq.emit(
+      frame({ type: 'system', subtype: 'init', session_id: 'provider-A', cwd: join(dir, 'cwd') }),
+    )
+    launches[1]!.fq.emit(
+      frame({
+        type: 'assistant',
+        message: {
+          role: 'assistant',
+          model: '<synthetic>',
+          content: [{ type: 'text', text: REVOKED }],
+        },
+        error: 'authentication_failed',
+      }),
+    )
+    await waitFor(
+      () =>
+        eventsOf(sessionId).filter((event) => event.type === 'error' && event.cause === 'auth')
+          .length === 2,
+      'the newer refusal',
+    )
+    resolveProbe(auth.ready)
+    expect((await checking).state).toBe('stale')
+    expect((await host.checkProviderAuth('claude', 'brobot')).state).toBe('stale')
+  })
+
+  it('one human message after an auth stop and sign-in resumes the original conversation exactly once', async () => {
+    const { host, window, sessionId, record } = await killedMidTurn(() => {})
+    const deciding = (host as unknown as { aReopenIsBeingDecidedFor: Map<string, number> })
+      .aReopenIsBeingDecidedFor
+    await waitFor(
+      () => record().phase === 'recorded' && !deciding.has(sessionId),
+      'the auth stop and its reopen decision to finish',
+    )
+    expect(eventsOf(sessionId)).toContainEqual({
+      type: 'error',
+      message: REVOKED,
+      fatal: true,
+      cause: 'auth',
+    })
+    expect(launches).toHaveLength(1)
+    const beforeSignIn = eventsOf(sessionId)
+
+    machineLogin = 'test-login-after-sign-in'
+    await host.send(sessionId, 'continue after signing in', window.sink)
+    expect(launches).toHaveLength(2)
+    const resumed = launches[1]!
+    expect(resumed.options.resume).toBe('provider-A')
+    expect(resumed.options.env?.['CLAUDE_CODE_OAUTH_TOKEN']).toBe(machineLogin)
+    resumed.fq.emit(
+      frame({ type: 'system', subtype: 'init', session_id: 'provider-A', cwd: join(dir, 'cwd') }),
+    )
+    await waitFor(
+      () => resumed.fq.sent.length === 1,
+      'the human message to reach the resumed conversation',
+    )
+    expect(resumed.fq.sent).toEqual([
+      expect.objectContaining({
+        message: expect.objectContaining({
+          content: expect.stringContaining('continue after signing in'),
+        }),
+      }),
+    ])
+    resumed.fq.emit(frame({ type: 'result', subtype: 'success', is_error: false }))
+    await waitFor(
+      () =>
+        eventsOf(sessionId).filter((event) => event.type === 'turn' && event.state === 'completed')
+          .length === 2,
+      'the recovered turn to complete',
+    )
+    expect(eventsOf(sessionId).slice(0, beforeSignIn.length)).toEqual(beforeSignIn)
+    expect(
+      eventsOf(sessionId).filter(
+        (event) => event.type === 'user_turn' && event.text === 'continue after signing in',
+      ),
+    ).toHaveLength(1)
+    expect(launches).toHaveLength(2)
+    expect(deciding.size).toBe(0)
+  })
+
+  it.each(['immediate', 'after-finalize'] as const)(
+    'a login change between classification and the host read has one recovery and balances its decision (%s)',
+    async (timing) => {
+      let releaseHostRead!: () => void
+      const hostReadGate = new Promise<void>((resolve) => {
+        releaseHostRead = resolve
+      })
+      const reads: (string | null)[] = []
+      let decisionDuringHostRead: number | undefined
+      const { host, window, sessionId, record } = await killedMidTurn(() => {
+        readMachineLogin = async () => {
+          if (reads.length === 0) {
+            reads.push(machineLogin)
+            return machineLogin
+          }
+          if (reads.length === 1) {
+            machineLogin = 'test-login-moved-before-host-check'
+            const current = machineLogin
+            reads.push(current)
+            decisionDuringHostRead = (
+              hosts[0] as unknown as { aReopenIsBeingDecidedFor: Map<string, number> }
+            ).aReopenIsBeingDecidedFor.get('sess_d004')
+            if (timing === 'after-finalize') await hostReadGate
+            return current
+          }
+          reads.push(machineLogin)
+          return machineLogin
+        }
+      })
+      const deciding = (host as unknown as { aReopenIsBeingDecidedFor: Map<string, number> })
+        .aReopenIsBeingDecidedFor
+      try {
+        await waitFor(
+          () => reads.length >= 2,
+          'classification and the host check to read different logins',
+        )
+        expect(reads.slice(0, 2)).toEqual([
+          'test-token-at-launch',
+          'test-login-moved-before-host-check',
+        ])
+        expect(decisionDuringHostRead).toBe(1)
+        expect(eventsOf(sessionId)).toContainEqual({
+          type: 'error',
+          message: REVOKED,
+          fatal: true,
+          cause: 'auth',
+        })
+        if (timing === 'after-finalize') {
+          await waitFor(
+            () => record().phase === 'recorded',
+            'the old life to finalize before its read returns',
+          )
+          expect(deciding.get(sessionId)).toBe(1)
+          releaseHostRead()
+        }
+        await waitFor(() => !deciding.has(sessionId), 'the raced reopen decision to balance')
+        expect(launches.length).toBeLessThanOrEqual(2)
+        expect(eventsOf(sessionId).filter((event) => event.type === 'reopened')).toHaveLength(
+          launches.length - 1,
+        )
+
+        await host.send(sessionId, 'continue after the login race', window.sink)
+        expect(launches).toHaveLength(2)
+        const resumed = launches[1]!
+        expect(resumed.options.resume).toBe('provider-A')
+        expect(resumed.options.env?.['CLAUDE_CODE_OAUTH_TOKEN']).toBe(
+          'test-login-moved-before-host-check',
+        )
+        resumed.fq.emit(
+          frame({
+            type: 'system',
+            subtype: 'init',
+            session_id: 'provider-A',
+            cwd: join(dir, 'cwd'),
+          }),
+        )
+        await waitFor(() => resumed.fq.sent.length === 1, 'one human message after the race')
+        expect(resumed.fq.sent).toEqual([
+          expect.objectContaining({
+            message: expect.objectContaining({
+              content: expect.stringContaining('continue after the login race'),
+            }),
+          }),
+        ])
+        resumed.fq.emit(frame({ type: 'result', subtype: 'success', is_error: false }))
+        await waitFor(
+          () =>
+            eventsOf(sessionId).filter(
+              (event) => event.type === 'turn' && event.state === 'completed',
+            ).length === 2,
+          'the turn after the race to finish',
+        )
+        expect(launches).toHaveLength(2)
+        expect(deciding.size).toBe(0)
+      } finally {
+        releaseHostRead()
+      }
+    },
+  )
 
   // ⚑ **T-002 · `1004 M13`**: only a death the LOGIN caused is reopened on a renewed one. A child
   // that died another way while the login happened to be renewed keeps today's stop: the line

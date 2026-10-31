@@ -97,7 +97,10 @@
       "portScope": "profile",
       "profileScoped": false,
       "accountIsSignIn": false,
-      "changeWords": "this computer has moved on to a different one since — a renewal counts"
+      "changeWords": "this computer has moved on to a different one since — a renewal counts",
+      "manualProbe": true,
+      "refusalCause": "auth",
+      "retryPattern": "^claude could not authenticate; retrying\\b"
     },
     "usageWindows": ["5-hour", "weekly"],
     "commandPrefix": "/",
@@ -262,7 +265,10 @@
       "portScope": "machine",
       "profileScoped": true,
       "accountIsSignIn": true,
-      "changeWords": "its profile has been signed in to another account since"
+      "changeWords": "its profile has been signed in to another account since",
+      "manualProbe": false,
+      "refusalCause": null,
+      "retryPattern": null
     },
     "usageWindows": ["weekly"],
     "commandPrefix": "$",

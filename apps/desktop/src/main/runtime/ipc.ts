@@ -977,7 +977,12 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
    * reason: it becomes a path segment on the way to a provider home, so `../…` must be a rejected
    * command rather than a directory walk. A credential path is the last place to be lenient.
    */
-  z.object({ kind: z.literal('checkProviderAuth'), provider: providerSchema, profileId }),
+  z.object({
+    kind: z.literal('checkProviderAuth'),
+    provider: providerSchema,
+    profileId,
+    probe: z.boolean().optional(),
+  }),
   z.object({ kind: z.literal('reprovisionProviderAuth'), provider: providerSchema, profileId }),
   z.object({ kind: z.literal('signInProvider'), provider: providerSchema, profileId }),
   z.object({ kind: z.literal('cancelProviderSignIn'), provider: providerSchema, profileId }),
@@ -2572,7 +2577,11 @@ export async function executeRuntimeCommand(
     // 098. The profile defaults HERE rather than in the host, so that every credential path resolves
     // "which profile" in one place — the same rule `createSession` follows.
     case 'checkProviderAuth':
-      return await host.checkProviderAuth(command.provider, command.profileId ?? DEFAULT_PROFILE_ID)
+      return await host.checkProviderAuth(
+        command.provider,
+        command.profileId ?? DEFAULT_PROFILE_ID,
+        command.probe,
+      )
     case 'reprovisionProviderAuth':
       return await host.reprovisionProviderAuth(
         command.provider,

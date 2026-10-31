@@ -830,10 +830,11 @@ const statusEventSchema = z.object({
  *
  * `auth` — the credential was rejected and **the app cannot reach a better one**: it cannot start a
  * turn until someone signs in again. Codex says this as `TurnError.codexErrorInfo: "unauthorized"`.
+ * Claude uses it when the machine still holds the same login the provider just rejected.
  *
  * `auth_stale` — the credential **this session was launched with** is no longer accepted, and a
- * fresh launch reads a new one (110). The remedy is to reopen the conversation; signing in again is
- * not asked for and would usually be wrong.
+ * fresh launch reads the current machine login. Reopening may recover on a renewed login;
+ * an absent or rejected current login still needs sign-in.
  *
  * ⚑ **`onAKey` says which credential it was.** A Claude child launched on the API key a
  * person saved meets the same refusal when the key stops working (401), and the Mac's login has

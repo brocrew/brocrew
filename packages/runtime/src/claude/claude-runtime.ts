@@ -2934,12 +2934,19 @@ export class ClaudeSessionHandle implements SessionHandle {
           // ⚑ **A refused credential says WHICH one** — normalizing cannot know what this child was
           // launched on, and the handle does ({@link noteLaunchedOnAKey}).
           // A billing refusal on the saved key says it was the key's account too.
-          const event =
-            said.type === 'error' &&
-            (said.cause === 'auth_stale' || said.billingRefused === true) &&
-            this.launchedOnAKey
-              ? { ...said, onAKey: true as const }
+          const classified =
+            said.type === 'error' && said.cause === 'auth_stale'
+              ? { ...said, cause: await this.rejectedCredentialCause() }
               : said
+          if (this.terminated) return
+          const event =
+            classified.type === 'error' &&
+            (classified.cause === 'auth_stale' ||
+              classified.cause === 'auth' ||
+              classified.billingRefused === true) &&
+            this.launchedOnAKey
+              ? { ...classified, onAKey: true as const }
+              : classified
           this.emit(event)
           // ⚠️ **`fatal`, not the cause** (110 review). `fatal: true` already means "this session is
           // over" everywhere else it is read — `liveness.ts` terminalizes on it, the transcript fold
@@ -2950,7 +2957,7 @@ export class ClaudeSessionHandle implements SessionHandle {
           // Today the two are the same event; that is a fact about today, not the rule.
           if (event.type === 'error' && event.fatal) {
             fatalReported = true
-            if (event.cause === 'auth_stale') loginRefused = true
+            if (event.cause === 'auth_stale' || event.cause === 'auth') loginRefused = true
           }
         }
         // End a child after fatal credential rejection. It holds a launch-time Keychain access token without a refresh token or live reread, so another turn in that same process would fail identically.
@@ -3456,6 +3463,21 @@ export class ClaudeSessionHandle implements SessionHandle {
     if (credentialFingerprint(current) === this.launchCredential) return false
     this._signInSuperseded = true
     return true
+  }
+
+  /** A rejected current machine login needs sign-in; a replaced launch token needs a reopen. */
+  private async rejectedCredentialCause(): Promise<'auth' | 'auth_stale'> {
+    if (this.launchedOnAKey || this.launchCredential === null || !this.authTokenProviderAsync) {
+      return 'auth_stale'
+    }
+    try {
+      const current = await this.authTokenProviderAsync()
+      if (current !== null && credentialFingerprint(current) === this.launchCredential)
+        return 'auth'
+    } catch {
+      // An unavailable read cannot establish that the machine still holds the rejected token.
+    }
+    return 'auth_stale'
   }
 
   /** The latched answer (147) — free to read, and what the liveness disclosure carries. */

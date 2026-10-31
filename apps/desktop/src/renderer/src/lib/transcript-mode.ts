@@ -103,6 +103,7 @@ export function isVisibleIn(mode: TranscriptMode, item: TranscriptItem): boolean
       // ⚑ F035 · the scheduled job that woke a turn is content, not chrome: shown in both modes.
       return mode === 'debug' || item.level !== 'info' || item.wokenByAJob === true
     case 'unknown':
+      if (item.label === 'dev_intent') return false
       return item.category === 'unrecognized' || (mode === 'debug' && item.category === 'lifecycle')
     // A tool call the runtime told us is now rendered as something ELSE (028). Claude builds its
     // checklist out of `TaskCreate`/`TaskUpdate` calls, so without this the conversation shows both

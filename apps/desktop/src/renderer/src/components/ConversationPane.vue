@@ -30,11 +30,13 @@ import type {
   WhatAPickBecame,
 } from '../../../shared/runtime-ipc'
 import { PROVIDER_NAME } from '../../../shared/runtime-ipc'
+import { DEFAULT_CONVERSATION_PROVIDER } from '@brobot2/shared'
 import { stopJoinsThatAsk } from '../lib/stop-unanswered'
 import type { PickedModel } from '../lib/model-lists'
 import { useWhoCalledWhom } from '../composables/useWhoCalledWhom'
 import { aGiverWaitsOnPurposeSays, ownWaitSaid } from '../lib/conversation-list'
 import { useProfileSignIn, type ProfileSignIn } from '../composables/useProfileSignIn'
+import { useProviderSetup } from '../composables/useProviderSetup'
 import {
   activityLine,
   facetsOfState,
@@ -103,6 +105,7 @@ import PromptComposer, { type ComposerState } from './PromptComposer.vue'
 import ConversationMain from './ConversationMain.vue'
 import SessionDrawer from './SessionDrawer.vue'
 import SignInPanel from './SignInPanel.vue'
+import ProviderSetupProgress from './ProviderSetupProgress.vue'
 import { providerLimitDisplay, type ProviderBlockFacts } from '../lib/provider-limit-status'
 import { useMinuteClock } from '../composables/useMinuteClock'
 import { useStillThinking } from '../lib/still-thinking'
@@ -770,11 +773,40 @@ const profileSignIn = computed<ProfileSignIn | null>(() => {
   const profileId = profileItRunsAs(meta)
   return meta && profileId !== null ? useProfileSignIn(meta.provider, profileId) : null
 })
+const claudeSignInRefused = computed(() => {
+  for (let index = transcript.value.items.length - 1; index >= 0; index--) {
+    const item = transcript.value.items[index]
+    if (item?.kind === 'user') return null
+    if (item?.kind === 'notice' && item.claudeSignIn?.state === 'refused') return item.id
+  }
+  return null
+})
+const signInTarget = ref<string | null>(null)
+const signInRenewedFor = ref<string | null>(null)
+const signInSetup = useProviderSetup(
+  () => props.record.meta?.provider ?? DEFAULT_CONVERSATION_PROVIDER,
+  async (operation) => {
+    if (operation !== 'signIn' || signInTarget.value !== props.record.sessionId) return
+    const sessionId = props.record.sessionId
+    await profileSignIn.value?.check()
+    if (sessionId === props.record.sessionId && profileSignIn.value?.auth?.state === 'usable') {
+      signInRenewedFor.value = sessionId
+      emit('reopenSignIn')
+    }
+  },
+)
+async function signInAgain(): Promise<void> {
+  signInRenewedFor.value = null
+  signInTarget.value = props.record.sessionId
+  await signInSetup.signIn()
+}
 watch(
-  () => [profileSignIn.value, props.record.error] as const,
-  ([signIn, error], before) => {
-    if (signIn === null || error === null) return
-    if (signIn.auth === null || error !== before?.[1]) void signIn.check()
+  () => [profileSignIn.value, props.record.error, claudeSignInRefused.value] as const,
+  ([signIn, error, refused], before) => {
+    if (refused !== before?.[2]) signInRenewedFor.value = null
+    if (signIn === null || (error === null && !refused)) return
+    if (signIn.auth === null || error !== before?.[1] || refused !== before?.[2])
+      void signIn.check()
   },
   { immediate: true },
 )
@@ -1922,6 +1954,19 @@ onUnmounted(() => {
           :own-agent="ownAgent"
           :identities="props.identities ?? null"
           :provider="props.record.meta?.provider ?? null"
+          :can-recover-sign-in="
+            claudeSignInRefused !== null &&
+            props.record.phase !== 'closing' &&
+            (props.record.meta?.cannotTakeAMessage ?? null) === null &&
+            profileSignIn !== null &&
+            canReopenSignIn &&
+            control.ended
+          "
+          :sign-in-expired="signInNeeded"
+          :sign-in-renewed="signInRenewedFor === props.record.sessionId"
+          :recovering-sign-in="
+            props.record.busy || signInSetup.busy.value || profileSignIn?.busy !== 'idle'
+          "
           :held="props.held"
           :gave-out="gaveOut"
           :footprint="paneFootprint"
@@ -1969,6 +2014,8 @@ onUnmounted(() => {
           @open-instructions="emit('showInstructions')"
           @restore-queued="restoreQueued"
           @send-answer="(text) => emit('send', text, 'now', [])"
+          @sign-in="signInAgain()"
+          @retry-sign-in="emit('reopenSignIn')"
         />
 
         <!-- This session's own failures, next to the session they belong to rather than at the top
@@ -1976,7 +2023,27 @@ onUnmounted(() => {
         <p v-if="props.record.error" class="pane-error" data-cy="session-error">
           {{ props.record.error }}
         </p>
-        <div v-if="profileSignIn && signInNeeded" class="pane-sign-in" data-cy="pane-sign-in">
+        <ProviderSetupProgress
+          v-if="claudeSignInRefused && signInTarget === props.record.sessionId"
+          :progress="signInSetup.state.value?.progress ?? ''"
+          :auth-url="signInSetup.state.value?.authUrl ?? null"
+          :error="signInSetup.error.value"
+        />
+        <button
+          v-if="
+            claudeSignInRefused && signInTarget === props.record.sessionId && signInSetup.busy.value
+          "
+          type="button"
+          class="bb-button"
+          @click="signInSetup.cancel()"
+        >
+          Cancel sign-in
+        </button>
+        <div
+          v-if="profileSignIn && signInNeeded && !claudeSignInRefused"
+          class="pane-sign-in"
+          data-cy="pane-sign-in"
+        >
           <SignInPanel
             :provider="props.record.meta!.provider"
             :state="profileSignIn.auth"

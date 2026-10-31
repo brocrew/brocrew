@@ -1,8 +1,10 @@
 import { spawn } from 'node:child_process'
+import type { AuthState } from '../auth-state'
 import { createHash } from 'node:crypto'
 import { mkdirSync, realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { buildChildEnv } from './child-env'
 
 /**
  * Renewing the person's own Claude Code login by running their own Claude Code.
@@ -79,6 +81,7 @@ export type RunAProgram = (
     readonly cwd: string
     readonly env: NodeJS.ProcessEnv
     readonly timeoutMs: number
+    readonly stopGraceMs?: number
     readonly signal?: AbortSignal
   },
 ) => Promise<ARunEnded>
@@ -90,6 +93,7 @@ export interface ClaudeRenewalSeams {
   readonly env?: NodeJS.ProcessEnv
   readonly run?: RunAProgram
   readonly timeLimitMs?: number
+  readonly stopGraceMs?: number
   /** Stops a run under way, when the app quits. */
   readonly signal?: AbortSignal
 }
@@ -173,46 +177,103 @@ export function claudeRenewalEnv(
   return handed
 }
 
-const runAProgram: RunAProgram = (program, args, { cwd, env, timeoutMs, signal }) =>
+const runAProgram: RunAProgram = (
+  program,
+  args,
+  { cwd, env, timeoutMs, signal, stopGraceMs = STOP_GRACE_MS },
+) =>
   new Promise((resolve) => {
+    if (signal?.aborted) {
+      resolve({ code: null, timedOut: false })
+      return
+    }
     let child: ReturnType<typeof spawn>
     try {
-      child = spawn(program, [...args], {
-        cwd,
-        env,
-        stdio: 'ignore',
-        windowsHide: true,
-        ...(signal === undefined ? {} : { signal, killSignal: 'SIGTERM' as const }),
-      })
+      child = spawn(program, [...args], { cwd, env, stdio: 'ignore', windowsHide: true })
     } catch {
       resolve({ code: null, timedOut: false })
       return
     }
     let timedOut = false
+    let stopped = false
     const timers: NodeJS.Timeout[] = []
     let settled = false
     const settle = (code: number | null): void => {
       if (settled) return
       settled = true
       for (const timer of timers) clearTimeout(timer)
-      resolve({ code: timedOut ? null : code, timedOut })
+      signal?.removeEventListener('abort', stop)
+      resolve({ code: stopped ? null : code, timedOut })
+    }
+    const stop = (): void => {
+      if (stopped || settled) return
+      stopped = true
+      child.kill('SIGTERM')
+      timers.push(
+        setTimeout(() => {
+          if (!settled) child.kill('SIGKILL')
+        }, stopGraceMs),
+      )
     }
     timers.push(
       setTimeout(() => {
         timedOut = true
-        child.kill('SIGTERM')
-        timers.push(
-          setTimeout(() => {
-            child.kill('SIGKILL')
-            // A run that does not end even then is let go: the launch has waited enough.
-            timers.push(setTimeout(() => settle(null), STOP_GRACE_MS))
-          }, STOP_GRACE_MS),
-        )
+        stop()
       }, timeoutMs),
     )
-    child.once('error', () => settle(null))
-    child.once('exit', (code) => settle(code))
+    signal?.addEventListener('abort', stop, { once: true })
+    child.once('error', () => {
+      if (child.pid === undefined) settle(null)
+    })
+    child.once('close', (code) => settle(code))
+    if (signal?.aborted) stop()
   })
+
+/** Explicit manual model check; no credential read, output capture, tools or saved session. */
+export async function probeClaudeCodeLogin(seams: ClaudeRenewalSeams): Promise<AuthState> {
+  const unknown = (reason: string): AuthState => ({ state: 'unknown', reason })
+  if (seams.signal?.aborted) return unknown('The Claude sign-in check was cancelled.')
+  try {
+    const program = seams.findProgram()
+    if (program === null) return unknown('Claude Code was not found. Install it or sign in again.')
+    const ended = await (seams.run ?? runAProgram)(
+      program,
+      [
+        ...CLAUDE_RENEWAL_ARGS,
+        '--mcp-config',
+        '{"mcpServers":{}}',
+        '--disallowedTools',
+        'mcp__*',
+        '--settings',
+        '{"disableAllHooks":true}',
+      ],
+      {
+        cwd: renewalFolder(),
+        env: {
+          ...claudeRenewalEnv(
+            buildChildEnv({}, seams.env, seams.platform),
+            seams.platform,
+            program,
+          ),
+          CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1',
+        },
+        timeoutMs: seams.timeLimitMs ?? 8_000,
+        stopGraceMs: seams.stopGraceMs ?? 1_000,
+        ...(seams.signal === undefined ? {} : { signal: seams.signal }),
+      },
+    )
+    if (seams.signal?.aborted) return unknown('The Claude sign-in check was cancelled.')
+    if (ended.timedOut)
+      return unknown(
+        'Claude Code did not answer the sign-in check in time. Check again or sign in again.',
+      )
+    return ended.code === 0
+      ? { state: 'usable', login: 'account', expiresAt: null }
+      : unknown('Claude Code could not complete the sign-in check. Check again or sign in again.')
+  } catch {
+    return unknown('Claude Code could not run the sign-in check. Check again or sign in again.')
+  }
+}
 
 /** The folder the run works in: one, so Claude Code keeps no new entry per run. */
 function renewalFolder(): string {

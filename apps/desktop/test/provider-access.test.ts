@@ -28,6 +28,41 @@ function fixture() {
   }
 }
 describe('the list and provider controls share one serialized login reading', () => {
+  it('only an explicit probe sends the probe flag', async () => {
+    const { access, runtime } = fixture()
+    await access.check(true)
+    expect(runtime.checkProviderAuth).toHaveBeenCalledExactlyOnceWith({
+      provider: 'claude',
+      profileId: DEFAULT_PROFILE_ID,
+      probe: true,
+    })
+  })
+
+  it('retains an explicit probe queued behind a passive reading', async () => {
+    const { access, runtime } = fixture()
+    let release!: (value: Awaited<ReturnType<RuntimeBridge['checkProviderAuth']>>) => void
+    runtime.checkProviderAuth.mockImplementationOnce(
+      () =>
+        new Promise((done) => {
+          release = done
+        }),
+    )
+    const first = access.check()
+    await access.check(true)
+    expect(runtime.checkProviderAuth).toHaveBeenCalledTimes(1)
+    release({ state: 'usable', login: 'account', expiresAt: null })
+    await first
+    await vi.waitFor(() => expect(runtime.checkProviderAuth).toHaveBeenCalledTimes(2))
+    expect(runtime.checkProviderAuth.mock.calls[0]?.[0]).toEqual({
+      provider: 'claude',
+      profileId: DEFAULT_PROFILE_ID,
+    })
+    expect(runtime.checkProviderAuth).toHaveBeenLastCalledWith({
+      provider: 'claude',
+      profileId: DEFAULT_PROFILE_ID,
+      probe: true,
+    })
+  })
   it('sends plain provider/profile arguments and shares the returned readings', async () => {
     const { runtime, changed, access } = fixture()
     await Promise.all([access.check(), access.readKey()])

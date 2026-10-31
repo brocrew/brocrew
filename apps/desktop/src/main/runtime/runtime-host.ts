@@ -34609,6 +34609,8 @@ export class RuntimeHost implements LiveHost {
     { readonly setAt: number; readonly at: number }
   >()
   private readonly keyChanges = new Map<Provider, number>()
+  private readonly rejectedMachineLogins = new Map<Provider, object>()
+  private readonly manualAuthChecks = new Map<string, Promise<AuthState>>()
 
   /** 🔒 **Where a provider's API key stands** — never the key, which the window is not told. */
   apiKeyStatus(provider: Provider): ApiKeyStatus {
@@ -35206,7 +35208,8 @@ export class RuntimeHost implements LiveHost {
   }
 
   /** A successful native setup changes what future launches can use; windows must ask again. */
-  providerSetupCompleted(provider: Provider): void {
+  providerSetupCompleted(provider: Provider, kind: 'install' | 'signIn' = 'signIn'): void {
+    if (kind === 'signIn') this.rejectedMachineLogins.delete(provider)
     for (const key of this.modelProbes.keys()) {
       if (key.startsWith(`${provider}:`)) this.modelProbes.delete(key)
     }
@@ -35313,7 +35316,23 @@ export class RuntimeHost implements LiveHost {
    * 5/5 trials, surviving the app's own quit. The controller below is what the deadline hands the
    * child to.
    */
-  async checkProviderAuth(provider: Provider, profileId: string): Promise<AuthState> {
+  checkProviderAuth(provider: Provider, profileId: string, probe = false): Promise<AuthState> {
+    if (!probe) return this.runProviderAuthCheck(provider, profileId, false)
+    const key = `${provider}:${profileId}`
+    const held = this.manualAuthChecks.get(key)
+    if (held !== undefined) return held
+    const work = this.runProviderAuthCheck(provider, profileId, true).finally(() => {
+      if (this.manualAuthChecks.get(key) === work) this.manualAuthChecks.delete(key)
+    })
+    this.manualAuthChecks.set(key, work)
+    return work
+  }
+
+  private async runProviderAuthCheck(
+    provider: Provider,
+    profileId: string,
+    probe: boolean,
+  ): Promise<AuthState> {
     const ops = this.deps.providerAuth
     if (!ops) return { state: 'unknown', reason: 'this app build cannot check provider sign-ins' }
     // ⛔ **The one door, and it is the SAME door a session start goes through** (202, from 191 H1).
@@ -35351,10 +35370,35 @@ export class RuntimeHost implements LiveHost {
         }
       }
     }
-    const work = ops.check(provider, profileId, launch.signal)
+    const rejected = this.rejectedMachineLogins.get(provider)
+    const work = Promise.resolve().then(() => {
+      if (launch.signal.aborted)
+        return { state: 'unknown' as const, reason: 'The sign-in check was cancelled.' }
+      return probe
+        ? (ops.probe?.(provider, profileId, launch.signal) ?? {
+            state: 'unknown' as const,
+            reason: 'This app build cannot probe this sign-in.',
+          })
+        : ops.check(provider, profileId, launch.signal)
+    })
     this.launches.finish(launch, work)
     try {
-      return await withDeadline(work, AUTH_CHECK_TIMEOUT_MS, 'provider sign-in check')
+      const result = await withDeadline(work, AUTH_CHECK_TIMEOUT_MS, 'provider sign-in check')
+      if (launch.signal.aborted || this.launches.closed)
+        return { state: 'unknown', reason: 'The sign-in check was cancelled.' }
+      if (result.state !== 'usable' || result.login === 'api-key' || this.aKeyIsSaved(provider))
+        return result
+      if (probe && this.rejectedMachineLogins.get(provider) === rejected) {
+        this.rejectedMachineLogins.delete(provider)
+        this.providersMoved({ what: 'login', provider })
+      }
+      return this.rejectedMachineLogins.has(provider)
+        ? {
+            state: 'stale',
+            reason:
+              'Claude refused the current sign-in. Sign in again, or check it with Claude Code.',
+          }
+        : result
     } catch (error) {
       // ⛔ Aborted before the sentence is written, so "we could not ask" and "nothing of ours is
       // still running" become true in the same breath rather than ten seconds apart.
@@ -46804,6 +46848,17 @@ export class RuntimeHost implements LiveHost {
           : null,
       )
     }
+    if (
+      event.type === 'error' &&
+      event.cause === 'auth' &&
+      event.onAKey !== true &&
+      providerAuthPolicies[session.provider].remembersRejectedMachineLogin &&
+      !this.readsAnOlderLogin(session) &&
+      !this.aKeyIsSaved(session.provider)
+    ) {
+      this.rejectedMachineLogins.set(session.provider, {})
+      this.providersMoved({ what: 'login', provider: session.provider })
+    }
     // 🔴 **D-004 · R101 — a child killed by a revoked sign-in**, for the teardown to act on.
     if (event.type === 'error' && event.fatal && event.cause === 'auth_stale') {
       session.diedOnAStaleSignIn = true
@@ -46840,6 +46895,7 @@ export class RuntimeHost implements LiveHost {
       event.type === 'error' &&
       event.fatal &&
       event.cause !== 'auth_stale' &&
+      event.cause !== 'auth' &&
       event.billingRefused !== true &&
       event.endedByItsAdapter !== true &&
       !this.itsStreamBroke.has(session)

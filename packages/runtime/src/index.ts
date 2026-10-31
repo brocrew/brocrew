@@ -453,6 +453,7 @@ export {
   claudeLoginRenewer,
   claudeRenewalEnv,
   renewClaudeCodeLogin,
+  probeClaudeCodeLogin,
   type ClaudeLoginRenewal,
   type ARunEnded,
   type ClaudeRenewalSeams,

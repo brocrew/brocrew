@@ -13,6 +13,8 @@ import type { LoginRenewalOperations, ProviderSignIn, SignInCopySource } from '.
  */
 export interface ProviderAuthOps {
   loginRenewal?(provider: Provider): LoginRenewalOperations | undefined
+  /** An explicit user gesture may make a bounded model call; ordinary checks do not. */
+  probe?(provider: Provider, profileId: string, signal?: AbortSignal): Promise<AuthState>
   /**
    * 🔴 **The home whose authentication state a gesture would change — the identity, not a
    * provisioning** (265 §2, from 259 lens B finding 2).

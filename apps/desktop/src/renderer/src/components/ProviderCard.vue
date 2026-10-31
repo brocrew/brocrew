@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue'
+import { providerDescriptor } from '@brobot2/shared'
 import { PROVIDER_PARTS, type ProviderPart } from '../lib/provider-parts'
 import type {
   CapabilityStatus,
@@ -196,12 +197,19 @@ function noticeSays(text: string | null, warns: boolean): void {
 /** A person's Check again: the login, and the program and its version with it. */
 async function aPersonChecksAgain(publishChange = true): Promise<void> {
   const provider = props.provider
+  const probe =
+    publishChange &&
+    providerDescriptor(provider).signIn.manualProbe &&
+    !(auth.value?.state === 'usable' && auth.value.login === 'api-key')
+  if (probe) noticeSays(null, false)
   if (props.readVersions === undefined) {
     emit('checkedAgain')
-    await check()
+    await check(probe)
   } else {
-    await Promise.all([props.readVersions(), check()])
+    await Promise.all([props.readVersions(), check(probe)])
   }
+  if (probe && provider === props.provider && auth.value?.state === 'usable')
+    noticeSays('Claude sign-in works.', false)
   if (cardOpen && provider === props.provider && auth.value?.state === 'usable') {
     if (publishChange) emit('authChanged', DEFAULT_PROFILE_ID)
     await refreshConnectedModels()
@@ -1125,18 +1133,47 @@ defineExpose({ beginSetup })
               {{ authBusy === 'checking' ? 'Checking…' : 'Check again' }}
             </button>
             <button
-              v-if="auth.login !== 'api-key'"
+              v-if="nativeSignIn && auth.login !== 'api-key'"
+              type="button"
+              data-cy="native-sign-in-again"
+              :disabled="setupBusy || keyStatus?.set !== false"
+              @click="signInHere"
+            >
+              Sign in again
+            </button>
+            <button
+              v-else-if="auth.login !== 'api-key'"
               type="button"
               disabled
               title="Sign out is not available yet"
             >
               Sign out
             </button>
+            <button
+              v-if="nativeSignIn && nativeSetup.busy.value"
+              type="button"
+              @click="cancelSignIn"
+            >
+              Cancel sign-in
+            </button>
           </div>
+          <ProviderSetupProgress
+            v-if="nativeSignIn && nativeSetup.state.value?.phase !== 'idle'"
+            :progress="nativeSetup.state.value?.progress ?? ''"
+            :auth-url="nativeSetup.state.value?.authUrl ?? null"
+            :error="nativeSetup.error.value"
+          />
         </template>
         <p v-else-if="auth === null" class="line quiet">Asking {{ name }}…</p>
         <template v-else>
           <div v-if="nativeSignIn" class="native-sign-in">
+            <p
+              v-if="auth.state === 'stale' || auth.state === 'unknown'"
+              class="line"
+              data-cy="provider-auth-result"
+            >
+              {{ auth.reason }}
+            </p>
             <p class="line">Sign in with {{ props.setup?.tool ?? name }}.</p>
             <div class="actions">
               <button
@@ -1146,7 +1183,7 @@ defineExpose({ beginSetup })
                 :disabled="setupBusy || keyStatus?.set !== false"
                 @click="signInHere"
               >
-                Sign in
+                {{ auth.state === 'stale' ? 'Sign in again' : 'Sign in' }}
               </button>
               <button
                 v-if="nativeSetup.busy.value"
@@ -1162,7 +1199,7 @@ defineExpose({ beginSetup })
                 :disabled="setupBusy"
                 @click="aPersonChecksAgain()"
               >
-                Check again
+                {{ authBusy === 'checking' ? 'Checking…' : 'Check again' }}
               </button>
             </div>
             <ProviderSetupProgress

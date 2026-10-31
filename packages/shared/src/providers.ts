@@ -30,6 +30,9 @@ export interface ProviderDescriptor {
     /** Whether the sign-in tag already names the account, rather than only its login. */
     readonly accountIsSignIn: boolean
     readonly changeWords: string
+    readonly manualProbe: boolean
+    readonly refusalCause: string | null
+    readonly retryPattern: string | null
   }
   readonly apiKey: {
     /** The issuer named in the key check's result. */
@@ -126,6 +129,9 @@ export const PROVIDER_DESCRIPTORS = [
       profileScoped: false,
       accountIsSignIn: false,
       changeWords: 'this computer has moved on to a different one since — a renewal counts',
+      manualProbe: true,
+      refusalCause: 'auth',
+      retryPattern: '^claude could not authenticate; retrying\\b',
     },
     skillReminderPrefix: 'brobot:',
     usageWindows: ['5-hour', 'weekly'],
@@ -190,6 +196,9 @@ export const PROVIDER_DESCRIPTORS = [
       profileScoped: true,
       accountIsSignIn: true,
       changeWords: 'its profile has been signed in to another account since',
+      manualProbe: false,
+      refusalCause: null,
+      retryPattern: null,
     },
     skillReminderPrefix: '',
     usageWindows: ['weekly'],

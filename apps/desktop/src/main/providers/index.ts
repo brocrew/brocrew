@@ -47,6 +47,8 @@ function forwardAuth(auth: Readonly<Record<Provider, HomeAuthOperations>>): Prov
     loginRenewal: (provider) => auth[provider].renewal,
     credentialHome: (provider, profileId) => auth[provider].credentialHome(profileId),
     check: (provider, profileId, signal) => auth[provider].check(profileId, signal),
+    probe: (provider, profileId, signal) =>
+      auth[provider].probe?.(profileId, signal) ?? auth[provider].check(profileId, signal),
     reprovision: (provider, profileId) => auth[provider].reprovision(profileId),
     signIn: (provider, profileId, signal) => auth[provider].signIn(profileId, signal),
     replaceARefusedCopy: (provider, profileId, refused, stillWanted) =>

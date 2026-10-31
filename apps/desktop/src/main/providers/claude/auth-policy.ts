@@ -5,6 +5,7 @@ import type { ProviderAuthPolicy } from '../auth-policy'
 
 export const authPolicy: ProviderAuthPolicy = {
   refusalWords,
+  remembersRejectedMachineLogin: true,
   launchRefusal: (error) => (error instanceof ClaudeUnavailableError ? 'program' : null),
   setup: (platform, installedPath) => claudeSetup(platform, installedPath()),
   renewedNotice: CLAUDE_LOGIN_RENEWED,

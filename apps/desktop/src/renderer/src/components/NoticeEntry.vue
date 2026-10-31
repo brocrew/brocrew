@@ -26,7 +26,17 @@ const props = defineProps<{
    * notice then says *the provider*, which is what the fold wrote.
    */
   provider?: Provider | null
+  canRecoverSignIn?: boolean
+  signInExpired?: boolean
+  signInRenewed?: boolean
+  recoveringSignIn?: boolean
 }>()
+
+defineEmits<{ signIn: []; retrySignIn: [] }>()
+const expired = computed(
+  () =>
+    props.signInExpired || (props.item.claudeSignIn?.needsSignIn === true && !props.signInRenewed),
+)
 
 /**
  * ⚑ **712 · R41 — an ask about an identity's rules, both identities named** (`instruction-asked.ts`),
@@ -55,16 +65,25 @@ const stopOrAsked = computed(() =>
 )
 /** ⚑ **One function, with the roster** — the fold wrote the same function's roster-less answer. */
 const said = computed(() =>
-  props.item.lostReply === undefined
-    ? stopOrAsked.value
-    : lostReplySentence(props.item.lostReply, props.identities ?? null),
+  props.item.claudeSignIn?.state === 'refused'
+    ? expired.value
+      ? 'Claude sign-in expired.'
+      : "Couldn't continue with the old sign-in."
+    : props.item.lostReply === undefined
+      ? stopOrAsked.value
+      : lostReplySentence(props.item.lostReply, props.identities ?? null),
 )
 /** ⚑ **685 · what a refused call was told, off its own receipt** — see `NoticeItem.told`. */
 const told = computed(() => toldClause(props.item.told, props.item.toldInPart === true))
 </script>
 
 <template>
-  <div class="notice-entry" :class="item.level" :data-cy="`notice-${item.level}`">
+  <div
+    class="notice-entry"
+    :class="item.level"
+    :data-cy="`notice-${item.level}`"
+    :aria-live="item.claudeSignIn ? 'polite' : undefined"
+  >
     <span class="dot"></span>
     <!-- ⚠️ **Not `notice-…`**: `[data-cy^="notice-"]` is how every test counts NOTICES, and a child
          hook under that prefix counted each one twice. -->
@@ -81,6 +100,23 @@ const told = computed(() => toldClause(props.item.told, props.item.toldInPart ==
       :title="said"
       >{{ said }}<span v-if="told" class="told" data-cy="refusal-told">{{ told }}</span></span
     >
+    <button
+      v-if="item.claudeSignIn?.state === 'refused' && canRecoverSignIn"
+      class="sign-in-action"
+      type="button"
+      data-cy="claude-sign-in-action"
+      :disabled="recoveringSignIn"
+      @click="expired ? $emit('signIn') : $emit('retrySignIn')"
+    >
+      {{ expired ? 'Sign in again' : 'Retry with current sign-in' }}
+    </button>
+    <details v-if="item.claudeSignIn" class="sign-in-details" data-cy="claude-sign-in-details">
+      <summary>Details</summary>
+      <div class="diagnostics">
+        <p v-if="item.claudeSignIn.state === 'refused'">{{ item.text }}</p>
+        <p v-for="(detail, index) in item.claudeSignIn.details" :key="index">{{ detail }}</p>
+      </div>
+    </details>
     <span class="time" :title="fullTime(item.at)">{{ clockTime(item.at) }}</span>
   </div>
 </template>
@@ -159,5 +195,44 @@ const told = computed(() => toldClause(props.item.told, props.item.toldInPart ==
   flex: 0 0 auto;
   font-family: var(--font-mono);
   opacity: 0.7;
+}
+
+.sign-in-action,
+.sign-in-details summary {
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  white-space: nowrap;
+}
+
+.sign-in-action {
+  padding: var(--space-1) var(--space-2);
+  border: var(--border-width) solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+}
+
+.sign-in-action:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.notice-entry:has(.sign-in-details[open]) {
+  flex-wrap: wrap;
+}
+.sign-in-details[open] {
+  flex-basis: 100%;
+  order: 2;
+}
+.diagnostics {
+  max-height: 280px;
+  overflow: auto;
+  padding: var(--space-4);
+  border: var(--border-width) solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 </style>

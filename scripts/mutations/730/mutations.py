@@ -297,7 +297,7 @@ MUTATIONS = [
     ),
     (
         "M54 · R83 · TranscriptView does not hand its notices the provider — killed by `a-stop-the-provider-has-not-answered-drawn.render.test.ts`",
-        [(TRANSCRIPTVIEW, "          :provider=\"props.provider\"\n        />\n", "        />\n")],
+        [(TRANSCRIPTVIEW, "          :identities=\"props.identities ?? null\"\n          :provider=\"props.provider\"\n          :can-recover-sign-in=", "          :identities=\"props.identities ?? null\"\n          :can-recover-sign-in=")],
     ),
     (
         "M55 · R83 · ConversationPane does not pass the words to the composer — killed by `a-stop-the-provider-has-not-answered-drawn.dom.test.ts`",
