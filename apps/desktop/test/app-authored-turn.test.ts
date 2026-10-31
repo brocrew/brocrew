@@ -241,7 +241,7 @@ describe('the go-ahead reaches the provider and is signed by BroBot (278 §1)', 
     // ⚑ **F093 · R2** — the row also keeps the whole text the provider was handed (`sent`, the
     // words in their frame); the authorship is what this case is about, so it is set aside here.
     expect(turns.map(({ sent, ...row }) => (void sent, row))).toEqual([
-      { type: 'user_turn', text: 'do the thing' },
+      { type: 'user_turn', text: 'do the thing', humanInitiated: true },
     ])
     expect(turns[0]?.sent).toContain('do the thing')
   })

@@ -435,6 +435,7 @@
   --accent-mix-4: color-mix(in srgb, var(--accent) 4%, var(--panel));
   --accent-mix-5: color-mix(in srgb, var(--accent) 5%, var(--panel));
   --accent-mix-8: color-mix(in srgb, var(--accent) 8%, var(--panel));
+  --accent-mix-9: color-mix(in srgb, var(--accent) 9%, var(--panel));
   --accent-mix-10: color-mix(in srgb, var(--accent) 10%, var(--panel));
   --accent-mix-12: color-mix(in srgb, var(--accent) 12%, var(--panel));
   /* Words in the second accent. Classic draws them in the second accent itself. */
