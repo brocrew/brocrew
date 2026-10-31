@@ -37,6 +37,8 @@ class Ctx extends EventEmitter {
   hang = ''
   release: (() => void) | undefined
   failClose = false
+  changeProbe = false
+  failProbeIdentity = false
   moveAnchor = false
   closeAnchor = false
   initialBlank = false
@@ -69,7 +71,14 @@ class Ctx extends EventEmitter {
             this.release = resolve
           })
         if (this.fail === method) throw Error('protocol failed')
-        if (method === 'Browser.getWindowForTarget') return { windowId: p.wid }
+        if (method === 'Browser.getWindowForTarget') {
+          if (p?.probe && this.changeProbe) {
+            p.address = 'https://changed.fixture/'
+            p.emit('framenavigated')
+          }
+          if (p?.probe && this.failProbeIdentity) throw Error('fixture identity unavailable')
+          return { windowId: p.wid }
+        }
         if (method === 'Target.createTarget') {
           if (this.unrelated) this.add(88, 'https://unrelated.test/')
           const q = this.add(
@@ -215,14 +224,14 @@ describe('inactive native selection and explicit-only cross-window fallback', ()
   it('reserves the finite cleanup capacity before concurrent dispatch', async () => {
     const { ctx, windows } = setup(1000)
     ctx.hang = 'Target.createTarget'
-    await Promise.allSettled(Array.from({ length: 40 }, () => windows.open({ newWindow: false })))
-    expect(ctx.sent.filter((s) => s.method === 'Target.createTarget')).toHaveLength(32)
+    await Promise.allSettled(Array.from({ length: 65 }, () => windows.open({ newWindow: false })))
+    expect(ctx.sent.filter((s) => s.method === 'Target.createTarget')).toHaveLength(64)
     ctx.emit('close')
   })
   it('retains bounded unresolved ownership instead of evicting cleanup evidence', async () => {
     const { ctx, windows } = setup()
     ctx.fail = 'Target.createTarget'
-    for (let n = 0; n < 63; n++)
+    for (let n = 0; n < 64; n++)
       await expect(windows.open({ newWindow: false })).rejects.toThrow('protocol failed')
     const count = ctx.sent.filter((s) => s.method === 'Target.createTarget').length
     await expect(windows.open({ newWindow: false })).rejects.toThrow('too many unresolved')
@@ -243,6 +252,61 @@ describe('inactive native selection and explicit-only cross-window fallback', ()
     ).toBe(true)
     expect(published).toEqual([])
     expect(anchor.closed).toBe(false)
+  })
+  it('retains correlated failed page ownership after its URL changes, without public admission', async () => {
+    const { ctx, windows, published } = setup()
+    const anchor = ctx.add(2)
+    published.length = 0
+    ctx.changeProbe = true
+    await expect(
+      windows.open({ newWindow: false, windowOf: anchor as unknown as Page }),
+    ).rejects.toThrow('cleanup incomplete')
+    const probe = ctx.all.find((p) => p.probe)!
+    expect(probe.closed).toBe(false)
+    expect(published).not.toContain(probe as unknown as Page)
+    // Further navigation and unrelated admission must never release failed ownership.
+    probe.address = 'https://changed-again.fixture/'
+    probe.emit('framenavigated')
+    const unrelated = ctx.add(9, 'https://unrelated.fixture/')
+    await windows.used(anchor as unknown as Page)
+    expect(await windows.latest()).toBe(anchor)
+    expect(published).toContain(unrelated as unknown as Page)
+    expect(published).not.toContain(probe as unknown as Page)
+    expect(ctx.sent.some((s) => s.method === 'Runtime.evaluate')).toBe(false)
+    await probe.close()
+    ctx.emit('close')
+  })
+  it('reports incomplete owned cleanup while preserving the primary identity error', async () => {
+    const { ctx, windows, published } = setup()
+    ctx.failClose = true
+    ctx.failProbeIdentity = true
+    await expect(windows.open({ newWindow: false })).rejects.toThrow(
+      /fixture identity unavailable.*cleanup incomplete/,
+    )
+    const probe = ctx.all.find((p) => p.probe)!
+    expect(probe.closed).toBe(false)
+    expect(published).not.toContain(probe as unknown as Page)
+    ctx.emit('close')
+  })
+  it('keeps a failed fallback operation slot until its second creation closes', async () => {
+    const { ctx, windows } = setup(25)
+    const anchor = ctx.add(2)
+    ctx.hang = 'Runtime.evaluate'
+    await expect(
+      windows.open({ newWindow: false, windowOf: anchor as unknown as Page }),
+    ).rejects.toThrow(/cleanup incomplete.*may bring Chrome/)
+    // The probe is already closed. Its still-pending fallback continues to own one slot.
+    ctx.hang = ''
+    ctx.fail = 'Target.createTarget'
+    for (let n = 0; n < 63; n++)
+      await expect(windows.open({ newWindow: false })).rejects.toThrow('protocol failed')
+    await expect(windows.open({ newWindow: false })).rejects.toThrow('too many unresolved')
+    ctx.fail = ''
+    ctx.release!()
+    await new Promise((r) => setTimeout(r, 15))
+    // Closing the late fallback releases exactly its one slot, not any unknown creations.
+    await expect(windows.open({ newWindow: true })).resolves.toBeDefined()
+    ctx.emit('close')
   })
   it('new windows stay CDP-only and do not use explicit fallback', async () => {
     const { ctx, windows } = setup()

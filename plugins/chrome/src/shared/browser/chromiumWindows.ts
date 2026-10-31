@@ -14,15 +14,18 @@ type Attempt = {
   page?: Page
   targetId?: string
   resolved: boolean
+  failed: boolean
+  cleanup?: Promise<boolean>
 }
+type Operation = { active: boolean; attempts: Attempt[] }
 export class ChromiumWindows {
   private sequence = 0
   private pages = new Map<Page, { order: number; windowId?: number }>()
   private recent = new Map<number, number>()
-  private lateMarkers = new Set<string>()
-  private pendingMarkers = new Set<string>()
+  private operations = new Set<Operation>()
+  private markers = new Map<string, Attempt>()
+  private ownedPages = new Map<Page, Attempt>()
   private provisional = new Map<Page, () => void>()
-  private reserved = 0
   private closed = false
   private readonly onPage = (page: Page) => this.created(page)
   constructor(
@@ -41,8 +44,9 @@ export class ChromiumWindows {
       this.provisional.clear()
       this.pages.clear()
       this.recent.clear()
-      this.lateMarkers.clear()
-      this.pendingMarkers.clear()
+      this.operations.clear()
+      this.markers.clear()
+      this.ownedPages.clear()
     })
   }
   private budget(deadline: number): void {
@@ -106,25 +110,63 @@ export class ChromiumWindows {
     page.once('close', () => this.pages.delete(page))
     this.onAdmit?.(page)
   }
+  private releaseOperations(): void {
+    for (const operation of this.operations)
+      if (!operation.active && operation.attempts.every((a) => !a.dispatched || a.resolved))
+        this.operations.delete(operation)
+  }
+  private resolveAttempt(a: Attempt): void {
+    a.resolved = true
+    this.markers.delete(a.marker)
+    if (a.page) this.ownedPages.delete(a.page)
+    this.releaseOperations()
+  }
+  private claim(page: Page, a: Attempt): void {
+    if (a.page && a.page !== page)
+      throw new WindowTargetError('the private tab identity is ambiguous')
+    if (this.ownedPages.get(page) === a) return
+    a.page = page
+    this.ownedPages.set(page, a)
+    this.quarantine(page)
+    page.once('close', () => {
+      this.resolveAttempt(a)
+      this.flush()
+    })
+  }
+  private cleanupAttempt(a: Attempt): Promise<boolean> {
+    if (a.resolved || !a.dispatched) return Promise.resolve(true)
+    if (a.cleanup) return a.cleanup
+    // Exact correlated identity survives navigation. Never close changed user content or admit it.
+    if (!a.page) return Promise.resolve(false)
+    if (a.page.isClosed()) {
+      this.resolveAttempt(a)
+      return Promise.resolve(true)
+    }
+    if (a.page.url() !== a.marker) return Promise.resolve(false)
+    const page = a.page
+    a.cleanup = this.wait(page.close(), this.now() + 100)
+      .then(() => {
+        if (!page.isClosed()) return false
+        this.resolveAttempt(a)
+        return true
+      })
+      .catch(() => false)
+      .finally(() => {
+        a.cleanup = undefined
+      })
+    return a.cleanup
+  }
   created(page: Page): void {
     if (this.closed || page.isClosed()) return
-    if (this.lateMarkers.has(page.url())) {
-      this.quarantine(page)
-      const marker = page.url()
-      void this.wait(page.close(), this.now() + 100)
-        .then(() => {
-          if (page.isClosed()) {
-            this.lateMarkers.delete(marker)
-            this.flush()
-          }
-        })
-        .catch(() => undefined)
+    const attempt = this.ownedPages.get(page) ?? this.markers.get(page.url())
+    if (attempt) {
+      this.claim(page, attempt)
+      if (attempt.failed) void this.cleanupAttempt(attempt)
       return
     }
     if (
-      this.reserved ||
-      this.pendingMarkers.has(page.url()) ||
-      (this.lateMarkers.size && page.url() === 'about:blank')
+      [...this.operations].some((operation) => operation.active) ||
+      (this.markers.size && page.url() === 'about:blank')
     ) {
       if (!this.pages.has(page)) this.quarantine(page)
       return
@@ -132,7 +174,7 @@ export class ChromiumWindows {
     this.admit(page)
   }
   private flush(): void {
-    if (this.reserved || this.closed) return
+    if (this.closed || [...this.operations].some((operation) => operation.active)) return
     for (const page of [...this.provisional.keys()]) this.created(page)
   }
   private check(page: Page): void {
@@ -206,7 +248,7 @@ export class ChromiumWindows {
     const deadline = this.now() + this.timeoutMs
     if (opts.newWindow && opts.windowOf)
       throw new WindowTargetError('give either newWindow:true or windowOf, not both')
-    if (this.lateMarkers.size + this.reserved + 2 > MAX_UNRESOLVED)
+    if (this.operations.size >= MAX_UNRESOLVED)
       throw new WindowTargetError(
         'too many unresolved tab creations; close and reopen this profile before trying again',
       )
@@ -214,14 +256,16 @@ export class ChromiumWindows {
     if (anchor) this.check(anchor)
     const separate = opts.newWindow || !anchor
     const preferred = anchor ? await this.identity(anchor, deadline) : undefined
-    const attempts: Attempt[] = []
+    const operation: Operation = { active: true, attempts: [] }
+    const { attempts } = operation
     let fallback = false
     let admitted: Page | undefined
-    if (this.lateMarkers.size + this.reserved + 2 > MAX_UNRESOLVED)
+    if (this.operations.size >= MAX_UNRESOLVED)
       throw new WindowTargetError(
         'too many unresolved tab creations; close and reopen this profile before trying again',
       )
-    this.reserved += 2 // reserve both possible phases BEFORE dispatch; never evict late ownership.
+    // One slot owns BOTH possible phases until every dispatched creation is resolved.
+    this.operations.add(operation)
     const revalidate = async () => {
       if (opts.windowOf) {
         const current = await this.identity(opts.windowOf, deadline)
@@ -239,9 +283,10 @@ export class ChromiumWindows {
         marker: `about:blank#new-tab-${randomUUID()}`,
         dispatched: false,
         resolved: false,
+        failed: false,
       }
       attempts.push(a)
-      this.pendingMarkers.add(a.marker)
+      this.markers.set(a.marker, a)
       return a
     }
     let session: Awaited<ReturnType<BrowserContext['newCDPSession']>> | undefined
@@ -264,19 +309,21 @@ export class ChromiumWindows {
           background: true,
         }),
         deadline,
+        (late) => {
+          phase.targetId = late.targetId
+        },
       )
       phase.targetId = target.targetId
-      phase.page = await this.appeared(phase.marker, deadline)
-      let id = await this.identity(phase.page, deadline)
+      this.claim(await this.appeared(phase.marker, deadline), phase)
+      let id = await this.identity(phase.page!, deadline)
       await revalidate()
       if (opts.windowOf && id !== preferred) {
-        if (phase.page.url() !== phase.marker || phase.page.isClosed())
+        if (phase.page!.url() !== phase.marker || phase.page!.isClosed())
           throw new WindowTargetError('the unused background tab changed before cleanup')
-        await this.wait(phase.page.close(), deadline)
-        if (!phase.page.isClosed())
+        await this.wait(phase.page!.close(), deadline)
+        if (!phase.page!.isClosed())
           throw new WindowTargetError('the unused background tab could not be closed')
-        phase.resolved = true
-        this.pendingMarkers.delete(phase.marker)
+        this.resolveAttempt(phase)
         await revalidate()
         phase = attempt()
         const { frameTree } = await this.wait(session.send('Page.getFrameTree'), deadline)
@@ -304,19 +351,19 @@ export class ChromiumWindows {
         )
         if (result.exceptionDetails)
           throw new WindowTargetError('the tab could not be opened in the selected window')
-        phase.page = await this.appeared(phase.marker, deadline)
-        id = await this.identity(phase.page, deadline)
+        this.claim(await this.appeared(phase.marker, deadline), phase)
+        id = await this.identity(phase.page!, deadline)
         await revalidate()
         if (id !== preferred)
           throw new WindowTargetError(
             'the selected window closed before the new tab could be opened',
           )
       }
-      if (phase.page.url() !== phase.marker)
+      if (phase.page!.url() !== phase.marker)
         throw new WindowTargetError('the new tab changed before admission')
-      this.check(phase.page)
+      this.check(phase.page!)
       this.budget(deadline)
-      admitted = phase.page
+      admitted = phase.page!
       phase.resolved = true
       if (fallback) opts.onNote?.(FALLBACK_NOTE)
       else if (!separate && !opts.windowOf && preferred !== undefined && preferred !== id)
@@ -325,20 +372,28 @@ export class ChromiumWindows {
         )
       return admitted
     } catch (error) {
-      for (const a of attempts)
-        if (a.dispatched && !a.resolved) {
-          this.lateMarkers.add(a.marker)
-          for (const page of this.context.pages()) if (page.url() === a.marker) this.created(page)
-        }
-      if (fallback)
+      for (const a of attempts) {
+        if (!a.dispatched || a.resolved) continue
+        a.failed = true
+        for (const page of this.context.pages()) if (page.url() === a.marker) this.claim(page, a)
+      }
+      const cleaned = await Promise.all(attempts.map((a) => this.cleanupAttempt(a)))
+      const cleanupNote = cleaned.every(Boolean)
+        ? ''
+        : ' Private tab cleanup incomplete; unresolved creations remain quarantined until they close or this profile closes.'
+      const fallbackNote = fallback ? ` ${FALLBACK_NOTE}` : ''
+      if (cleanupNote || fallbackNote)
         throw new WindowTargetError(
-          `${error instanceof Error ? error.message : 'window operation failed'} ${FALLBACK_NOTE}`,
+          `${error instanceof Error ? error.message : 'window operation failed'}${cleanupNote}${fallbackNote}`,
         )
       throw error
     } finally {
-      for (const a of attempts) this.pendingMarkers.delete(a.marker)
-      this.reserved -= 2
-      // Flush in original page-event order; closed probes never increment recency or allocate tab IDs.
+      operation.active = false
+      for (const a of attempts) {
+        if (!a.dispatched || a.resolved) this.resolveAttempt(a)
+      }
+      this.releaseOperations()
+      // Failed page identities remain private independently of their current URLs.
       this.flush()
       if (admitted && !this.pages.has(admitted)) this.admit(admitted)
       if (session) await this.detach(session)

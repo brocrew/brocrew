@@ -302,8 +302,8 @@
       "source": "shared/browser/chromiumWindows.ts",
       "destination": "plugins/chrome/src/shared/browser/chromiumWindows.ts",
       "sourceSha256": "0a35f5bc97ace0df312897e2cdbd5cf99512efc29a3766f42f960fcc7a0bf9b1",
-      "changes": "One-time patch-code adaptation; local imports and Node monotonic clock; no source-project dependency; no-activation background creation and numeric window identity validation; 0.1.4 follow-up: inactive native-default creation, explicit-only cross-window fallback disclosure and provisional-page admission fencing",
-      "destinationSha256": "5f740cf57e9d5f7f7b787d6c76f98b76570ea48ed869c245d226b6e69d52b86f"
+      "changes": "One-time patch-code adaptation; local imports and Node monotonic clock; no source-project dependency; no-activation background creation and numeric window identity validation; 0.1.4 follow-up: inactive native-default creation, explicit-only cross-window fallback disclosure and provisional-page admission fencing; retained exact failed-page quarantine across navigation; bounded cleanup outcome disclosure; 64 operation slots each retain both creation phases",
+      "destinationSha256": "7586b1f9139ebab027b1860b35daf58576a63974cf7c23145a575330338a6766"
     },
     {
       "source": "shared/browser/navigationUrl.ts",

@@ -44,8 +44,10 @@ Ordinary opens and separate background windows request inactive CDP creation. An
 `windowOf` first uses a private unused background probe. If Chrome chooses another window, the
 probe is closed and the explicit request uses the isolated-link fallback; this cross-window
 fallback may bring Chrome forward and returns a warning note. It never restores focus afterwards.
-Internal probes are not admitted as tool tabs. Failed late creations retain cleanup ownership;
-after the finite unresolved-operation limit, creation refuses until the profile is restarted. Run the optional disposable native
+Internal probes are not admitted as tool tabs. Failed creations retain exact page ownership
+even if they navigate; incomplete cleanup is reported. Each of 64 operation slots retains both
+possible creation phases until all dispatched targets resolve. At capacity, creation refuses
+until cleanup resolves or the profile closes; it never restarts a live profile automatically. Run the optional disposable native
 focus check in `scripts/native/` to verify frontmost-app/Space behavior on a macOS seat; the opt-in
 `BROCREW_CHROME_RUNTIME_TEST=1` tests load real local files with visible bookkeeping forced headless
 and do not prove native focus. Never use personal or signed-in profiles for those checks.
