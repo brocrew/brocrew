@@ -223,9 +223,11 @@ export class PluginWorkspaceLease {
         // Exactly one attempt here. The launched service itself must acquire the OS fence.
         let timer: ReturnType<typeof setTimeout> | undefined
         const until = performance.now() + OWNER_LAUNCH_MS
+        const root = realpathSync.native(storage!.root)
+        const identity = `${process.platform === 'win32' ? root.toLowerCase() : root}\0${storage!.identity}`
         try {
           await Promise.race([
-            serializedLaunch(`${storage!.root}\0${storage!.identity}`, options.launch),
+            serializedLaunch(identity, options.launch),
             new Promise<never>((_, reject) => {
               timer = setTimeout(
                 () => reject(new PluginSupervisorError('unavailable')),

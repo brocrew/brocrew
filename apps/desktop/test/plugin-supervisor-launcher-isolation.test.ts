@@ -1,12 +1,14 @@
 import { randomUUID } from 'node:crypto'
-import { mkdir, mkdtemp, realpath, rm } from 'node:fs/promises'
-import { join } from 'node:path'
+import { lstat, mkdir, mkdtemp, realpath, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { PluginWorkspaceLease } from '../src/main/plugins/supervisor/client'
 import { PluginSupervisor } from '../src/main/plugins/supervisor/owner'
 import { SupervisorStorage } from '../src/main/plugins/supervisor/storage'
 import { OWNER_LAUNCH_MS } from '../src/main/plugins/supervisor/protocol'
 import { PluginStartupError } from '../src/main/plugins/startup-failure'
+import { keepPluginRootPrivate } from '../src/main/plugins/private-files'
 
 vi.mock('../src/main/plugins/supervisor/storage', async (original) => {
   const actual = await original<typeof import('../src/main/plugins/supervisor/storage')>()
@@ -22,7 +24,7 @@ vi.mock('../src/main/plugins/supervisor/storage', async (original) => {
   }
 })
 
-describe.skipIf(process.platform === 'win32')('supervisor launch isolation between roots', () => {
+describe('supervisor launch isolation between roots', () => {
   const roots: string[] = []
   let owner: PluginSupervisor | undefined
   let lease: PluginWorkspaceLease | undefined
@@ -39,10 +41,16 @@ describe.skipIf(process.platform === 'win32')('supervisor launch isolation betwe
     release = undefined
   })
   async function options() {
-    const folder = await realpath(await mkdtemp('/tmp/fictional-launch-isolation-'))
+    const folder = await realpath(
+      await mkdtemp(
+        join(process.platform === 'win32' ? tmpdir() : '/tmp', 'fictional-launch-isolation-'),
+      ),
+    )
     roots.push(folder)
     const workspaceRoot = join(folder, 'workspace')
     await mkdir(workspaceRoot, { mode: 0o700 })
+    await mkdir(join(folder, 'plugins'), { mode: 0o700 })
+    await keepPluginRootPrivate(join(folder, 'plugins'))
     return {
       root: join(folder, 'plugins'),
       workspaceRoot,
@@ -93,6 +101,27 @@ describe.skipIf(process.platform === 'win32')('supervisor launch isolation betwe
     )
     await vi.advanceTimersByTimeAsync(OWNER_LAUNCH_MS + 20)
     expect(await failed).toMatchObject({ code: 'unavailable', cause: { cause: original } })
+    expect(launch).toHaveBeenCalledOnce()
+  })
+  it('shares a pending launcher through admitted case aliases of the same root', async ({
+    skip,
+  }) => {
+    const first = await options()
+    const alias = { ...first, root: join(dirname(first.root), 'PLUGINS'), generation: randomUUID() }
+    const directory = await lstat(first.root, { bigint: true })
+    const alternate = await lstat(alias.root, { bigint: true }).catch(() => null)
+    if (!alternate || alternate.dev !== directory.dev || alternate.ino !== directory.ino)
+      skip('This volume has case-sensitive directory names')
+    const pending = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const launch = vi.fn(() => pending)
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
+    const attempts = [first, alias].map((one) =>
+      PluginWorkspaceLease.attach({ ...one, launch }).catch((error: unknown) => error),
+    )
+    await vi.advanceTimersByTimeAsync(OWNER_LAUNCH_MS + 20)
+    for (const attempt of attempts) expect(await attempt).toMatchObject({ code: 'unavailable' })
     expect(launch).toHaveBeenCalledOnce()
   })
 })
