@@ -106,6 +106,8 @@ import {
 import { pieceNumbersOf } from '../../../shared/piece-called'
 import { textPackRefusedSaid } from '../../../shared/text-pack'
 import { isClaudeLoginRefused, isClaudeSignInRetry } from './claude-sign-in'
+import type { HumanAnswers, HumanFinalContext } from '../../../shared/human-turn-answer'
+import { startHumanAnswer, finishHumanAnswer } from './human-answers'
 
 /**
  * The event stream, folded into what the screen shows.
@@ -582,6 +584,10 @@ export interface QueuedItem {
 }
 
 export interface AssistantItem {
+  /** A provider-marked final paired to an observed human turn. */
+  humanFinal?: true
+  humanFinalPromptOrdinal?: number
+  providerMessageId?: string
   kind: 'assistant'
   id: string
   text: string
@@ -1928,6 +1934,7 @@ export const MAX_CARRIED_CHANGE_REPORTS = 400
 export const MAX_HELD_DIFF_REPORTS = 20
 
 export interface TranscriptState {
+  humanAnswers: HumanAnswers
   items: TranscriptItem[]
   status: SessionStatus
   /** The provider ref once announced — null for Claude until its first turn's init. */
@@ -2231,6 +2238,7 @@ export interface TranscriptState {
 
 export function createTranscript(): TranscriptState {
   return {
+    humanAnswers: { latest: null, active: null },
     items: [],
     status: 'idle',
     ref: null,
@@ -3297,6 +3305,7 @@ export function toldClause(told: string | undefined, inPart = false): string {
  * if it never said anything at all.
  */
 export function markReopened(state: TranscriptState): void {
+  state.humanAnswers.active = null
   state.ended = false
   state.status = 'idle'
   // ⚠️ **The cards belong to the session we resumed FROM** (085 review, and the same call
@@ -3412,6 +3421,7 @@ export const NOTHING_WAITS_FOR_THIS_ANSWER = 'nothing waits for this answer any 
  * with `status:'ended'` alone. Whichever arrives first wins; the other is a no-op.
  */
 function markTerminal(state: TranscriptState, reason: string): void {
+  state.humanAnswers.active = null
   if (state.ended) return
   state.ended = true
   closeStreaming(state)
@@ -3969,10 +3979,12 @@ export function applyEvent(
   event: TranscriptEvent,
   at?: number,
   ordinal?: number,
+  humanFinal?: HumanFinalContext | null,
 ): void {
   const before = state.seq
   const from = state.items.length
-  foldEvent(state, event, at, ordinal)
+  startHumanAnswer(state.humanAnswers, event, ordinal ?? state.seq)
+  foldEvent(state, event, at, ordinal, humanFinal)
   followTheTurnsErrors(state, event, from)
   if ((at === undefined && ordinal === undefined) || state.seq === before) return
   // Walk back from the end while the items are ones this fold created. Counting by LENGTH would
@@ -4842,6 +4854,7 @@ function foldEvent(
   event: TranscriptEvent,
   at?: number,
   ordinal?: number,
+  humanFinal?: HumanFinalContext | null,
 ): void {
   switch (event.type) {
     case 'user_turn': {
@@ -5178,12 +5191,52 @@ function foldEvent(
         })
         return
       }
+      // A streamed Claude message is confirmed as final by its later end_turn receipt.
+      if (event.phase === 'final' && event.messageId !== undefined) {
+        const matching = state.items.filter(
+          (one) =>
+            one.kind === 'assistant' &&
+            one.parentToolCallId === undefined &&
+            one.providerMessageId === event.messageId,
+        )
+        const kept = matching.at(-1)
+        if (kept?.kind === 'assistant') {
+          const superseded = new Set(matching.map((one) => one.id))
+          state.items = state.items.filter((one) => !superseded.has(one.id) || one === kept)
+          kept.text = event.text
+          kept.streaming = false
+          if (at !== undefined) kept.at = at
+          if (ordinal !== undefined) kept.ordinal = ordinal
+          if (matching.some((one) => one.id === state.streamingId)) state.streamingId = null
+          if (matching.some((one) => one.id === state.provisionalId)) state.provisionalId = null
+          finishHumanAnswer(
+            state.humanAnswers,
+            kept,
+            event,
+            ordinal ?? state.seq,
+            at,
+            state.items,
+            humanFinal,
+          )
+          return
+        }
+      }
       const open = itemById(state, state.streamingId ?? undefined)
       if (open?.kind === 'assistant') {
         // Authoritative: the deltas were progressive rendering, not the source of truth.
         open.text = event.text
         open.streaming = false
+        if (event.messageId !== undefined) open.providerMessageId = event.messageId
         if (event.questions !== undefined) open.questions = event.questions
+        finishHumanAnswer(
+          state.humanAnswers,
+          open,
+          event,
+          ordinal ?? state.seq,
+          at,
+          state.items,
+          humanFinal,
+        )
         state.streamingId = null
         state.provisionalId = null
         return
@@ -5200,7 +5253,17 @@ function foldEvent(
         text: event.text,
         streaming: false,
         ...(event.questions === undefined ? {} : { questions: event.questions }),
+        ...(event.messageId === undefined ? {} : { providerMessageId: event.messageId }),
       })
+      finishHumanAnswer(
+        state.humanAnswers,
+        state.items.at(-1) as AssistantItem,
+        event,
+        ordinal ?? state.seq,
+        at,
+        state.items,
+        humanFinal,
+      )
       return
     }
 

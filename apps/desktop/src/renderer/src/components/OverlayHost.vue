@@ -65,7 +65,7 @@ const emit = defineEmits<{ close: [] }>()
  * What a screen reader calls this dialog: the words of the panel's own title. Required, so a new
  * mount site without a name is a type error.
  */
-const props = defineProps<{ label: string }>()
+const props = defineProps<{ label: string; returnFocus?: () => HTMLElement | null }>()
 
 /**
  * 🔴 **The summons's announcement channel INSIDE the layer that declares everything else inert**
@@ -205,7 +205,9 @@ onUnmounted(() => {
   const at = layer ? layers.indexOf(layer) : -1
   if (at >= 0) layers.splice(at, 1)
   // Back where it came from: a person who opened this with the keyboard has to land somewhere real.
-  opener?.focus?.()
+  const preferred = props.returnFocus?.()
+  if (preferred?.isConnected) preferred.focus({ preventScroll: true })
+  else if (opener?.isConnected) opener.focus()
 })
 </script>
 

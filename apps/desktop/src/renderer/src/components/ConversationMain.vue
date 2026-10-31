@@ -2,21 +2,22 @@
 /**
  * The conversation stays mounted across tabs so its scroll and draft survive.
  * The Graph tab shows its top-level tree with the current conversation outlined.
- * The Files tab shows the files kept on its work and everything under it.
+ * The Files tab reads the workspace library independently of the selected conversation.
  */
-import { computed, ref } from 'vue'
-import { distinctFiles, filesPerPiece, rootFilesOf, type FilesRead } from '../lib/files-kept'
+import { computed } from 'vue'
+import { filesPerPiece, rootFilesOf, type FilesRead } from '../lib/files-kept'
 import type { ForestView } from '../lib/the-forest'
 import { conversationForest } from '../lib/conversation-forest'
 import TeamForest from './TeamForest.vue'
-import TreeFiles from './TreeFiles.vue'
+import FilesLibrary from './FilesLibrary.vue'
+import { useFilesLibrary } from '../composables/useFilesLibrary'
 import { useMainTab, type MainTab } from '../composables/useMainTab'
 
 const props = defineProps<{
   conversation: string
   /** The forest is read only by the graph or a file's link to its holder. */
   forest: ForestView | null | (() => ForestView | null)
-  /** ⚑ **UI-002 · the files on this conversation's tree** — absent or `null` is *not read yet*. */
+  /** Legacy per-piece counts for the Graph; absent or null means unread. */
   files?: FilesRead | null
   /** ⚑ `true` where a reader can open a file, so the Files tab's lines are presses. */
   canOpenDocument?: boolean
@@ -32,6 +33,7 @@ const emit = defineEmits<{
 }>()
 
 const tab = useMainTab()
+const library = useFilesLibrary()
 const forest = computed(() => (typeof props.forest === 'function' ? props.forest() : props.forest))
 const graphView = computed(() => conversationForest(forest.value, props.conversation))
 /** A different tree gets a fresh viewport; a stand-in keeps its predecessor's tree key. */
@@ -66,33 +68,16 @@ const rootFiles = computed(() =>
   props.files ? rootFilesOf(props.conversation, props.files.files) : null,
 )
 
-/**
- * ⚑ **UI-002 · a piece's count, pressed on the Graph tab** — the Files tab, opened at that piece. ⚑ A
- * new number each press, so pressing the same piece again brings it back into view.
- */
-const filesAt = ref<{ readonly piece: string; readonly press: number } | null>(null)
-/** ⚑ A tab chosen by hand opens as it is — no piece marked from an earlier count's press. */
+/** A Graph count enters the library at that exact task. */
 function choose(one: MainTab): void {
-  filesAt.value = null
   tab.value = one
 }
 function showFiles(piece: string): void {
-  filesAt.value = { piece, press: (filesAt.value?.press ?? 0) + 1 }
+  const file = props.files?.files.find((one) => one.piece === piece)
+  library?.graphTask(piece, file?.label, file?.pieceTitle ?? null)
   tab.value = 'files'
 }
-
-/** The conversation holding each piece the forest draws, for the Files tab's links. */
-const holders = computed(() => {
-  const held = new Map<string, string>()
-  for (const row of forest.value?.rows ?? []) {
-    if (row.taskRow !== null) held.set(row.taskRow.piece, row.conversation)
-  }
-  return held
-})
-const holderOf = (piece: string): string | null => holders.value.get(piece) ?? null
-
-/** ⚑ **The Files tab's count** — distinct files, and none drawn before the tree has been read. */
-const fileCount = computed(() => (props.files ? distinctFiles(props.files.files) : null))
+const fileCount = computed(() => library?.count.value ?? null)
 </script>
 
 <template>
@@ -140,15 +125,8 @@ const fileCount = computed(() => (props.files ? distinctFiles(props.files.files)
         @files="showFiles"
       />
     </div>
-    <div v-if="tab === 'files'" class="main-files" data-cy="conversation-files">
-      <TreeFiles
-        :read="props.files ?? null"
-        :can-open="props.canOpenDocument ?? false"
-        :at="filesAt"
-        :holder-of="holderOf"
-        @open-document="(resourceId) => emit('openDocument', resourceId)"
-        @open-conversation="(sessionId, briefOf) => emit('openConversation', sessionId, briefOf)"
-      />
+    <div v-show="tab === 'files'" class="main-files" data-cy="conversation-files">
+      <FilesLibrary :can-open="props.canOpenDocument ?? false" :active="tab === 'files'" />
     </div>
   </div>
 </template>
@@ -220,5 +198,11 @@ const fileCount = computed(() => (props.files ? distinctFiles(props.files.files)
   min-height: 0;
   flex: 1;
   flex-direction: column;
+}
+
+@media (max-width: 650px) {
+  .main-files {
+    padding: 0;
+  }
 }
 </style>

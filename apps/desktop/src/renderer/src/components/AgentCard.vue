@@ -21,7 +21,9 @@ import { ROWS_UNREAD_LEAD } from '../lib/rows-unread'
 import type { PanelAsset, PanelEntry, SessionPanel as SessionPanelView } from '../lib/session-panel'
 import type { TranscriptState } from '../lib/transcript'
 import { isVisibleIn, type TranscriptMode } from '../lib/transcript-mode'
-import { latestWords } from '../lib/latest-words'
+import { panelWords } from '../lib/latest-words'
+import type { HumanTurnAnswer } from '../../../shared/human-turn-answer'
+import HumanAnswerDialog from './HumanAnswerDialog.vue'
 import type { CastTask } from '../lib/working-together'
 import { useMinuteClock } from '../composables/useMinuteClock'
 import type { AgentPanelActs } from '../composables/useAgentPanel'
@@ -229,12 +231,27 @@ const briefs = computed(() => {
 /**
  * Show the latest words and their age beside the plate only when this window holds the transcript. See `latest-words.ts`.
  */
-const latest = computed(() => latestWords(props.state))
+const latest = computed(() => panelWords(props.state))
+const humanAnswer = computed(() => {
+  const answer = props.state.humanAnswers.latest
+  return answer?.final == null ? null : answer
+})
+const answerPopup = ref<HumanTurnAnswer | null>(null)
+watch(
+  () => props.conversation,
+  () => {
+    answerPopup.value = null
+  },
+)
 const minute = useMinuteClock()
 const latestAgo = computed(() =>
   latest.value?.at == null ? null : agoWords(latest.value.at, minute.value),
 )
 function showLatest(): void {
+  if (humanAnswer.value !== null) {
+    answerPopup.value = { ...humanAnswer.value, final: { ...humanAnswer.value.final! } }
+    return
+  }
   if (latest.value && canReach(latest.value.itemId)) emit('navigate', latest.value.itemId)
 }
 
@@ -463,11 +480,11 @@ const fileManager = fileManagerHere()
       <!-- ⚑ **Its latest words, in a bubble beside the plate** — a way IN like every row here: a
            press shows the message in the conversation, where it is on screen. -->
       <component
-        :is="canReach(latest.itemId) ? 'button' : 'p'"
+        :is="humanAnswer || canReach(latest.itemId) ? 'button' : 'p'"
         v-if="latest"
         class="said"
-        :class="{ pressable: canReach(latest.itemId) }"
-        v-bind="canReach(latest.itemId) ? { type: 'button' } : {}"
+        :class="{ pressable: humanAnswer || canReach(latest.itemId) }"
+        v-bind="humanAnswer || canReach(latest.itemId) ? { type: 'button' } : {}"
         data-cy="card-latest"
         :data-item="latest.itemId"
         :title="latest.text"
@@ -477,6 +494,7 @@ const fileManager = fileManagerHere()
         <span class="said-text" data-cy="card-latest-words">{{ latest.text }}</span>
         <span v-if="latestAgo" class="said-ago" data-cy="card-latest-ago">{{ latestAgo }}</span>
       </component>
+      <HumanAnswerDialog v-if="answerPopup" :answer="answerPopup" @close="answerPopup = null" />
     </SessionBot>
 
     <!-- Show model, effort, context usage and process memory in the run strip. Omit facts this window lacks and explain missing readings where the strip names them. Provide the door to the conversation's supplied context. -->

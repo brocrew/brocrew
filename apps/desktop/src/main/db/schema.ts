@@ -20,6 +20,7 @@ import {
 import { RESOURCE_ROLES } from '../../shared/documents'
 // ⚑ **F071 · the fold index's types**, the list its readers repeat — see that module.
 import { FOLD_TYPE_LIST } from './fold-index'
+import { HUMAN_CONTEXT_TERM, HUMAN_FINAL_TERM } from './human-answer-index'
 
 /**
  * **The database, whole.** D-016 generated ONE migration from this file (`0000_the_tree.sql`), and
@@ -939,6 +940,16 @@ export const events = sqliteTable(
     uniqueIndex('events_session_ordinal_uq').on(t.sessionId, t.generation, t.ordinal),
     index('events_session_idx').on(t.sessionId),
     index('events_turn_idx').on(t.turnId),
+    // Latest human prompt and its final remain two seeks after the history page moves past them.
+    index('events_human_prompt_idx')
+      .on(t.sessionId, t.generation, t.type, t.ordinal)
+      .where(sql.raw(HUMAN_CONTEXT_TERM)),
+    index('events_human_final_idx')
+      .on(t.sessionId, t.generation, t.turnId, t.ordinal)
+      .where(sql.raw(HUMAN_FINAL_TERM)),
+    index('events_turn_opening_idx')
+      .on(t.sessionId, t.generation, t.turnId, t.ordinal)
+      .where(sql`${t.type} = 'user_turn'`),
     /**
      * 🔴 **D-016 · where the pieces of work are — a PARTIAL index over the seven piece types.**
      *

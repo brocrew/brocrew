@@ -58,7 +58,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M3 · 🔴 the bubble is always a button · a message that is not on screen is drawn as a control that does nothing — killed by `the-agent-card-frames-what-it-knows-and-nothing-more.dom.test.ts`",
         [
-            (AGENT_CARD_VUE, ":is=\"canReach(latest.itemId) ? 'button' : 'p'\"", ":is=\"'button'\""),
+            (AGENT_CARD_VUE, ":is=\"humanAnswer || canReach(latest.itemId) ? 'button' : 'p'\"", ":is=\"'button'\""),
         ],
     ),
     (

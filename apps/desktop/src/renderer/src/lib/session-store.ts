@@ -923,6 +923,7 @@ export function createSessionStore(bridge: RuntimeBridge): SessionStore {
         ordinal: past.ordinal,
         at: past.at,
         event: past.event,
+        ...(past.humanFinal === undefined ? {} : { humanFinal: past.humanFinal }),
       })
     }
     // ⚑ A page that stops short of the epoch is all previous life, so it is crossed at the end —

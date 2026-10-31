@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { returnsItsWindowSink } from './helpers/window-sink-source'
 import {
   FakeLaunchGate,
   FakeRuntime,
@@ -634,8 +635,31 @@ describe('349 · a sink that says whether a person is behind it', () => {
       )
       // …and the one place a sink is minted for the running app is still the one place.
       const index = readFileSync(join(here, '../src/main/index.ts'), 'utf8')
-      expect(index).toContain('sinkFor: (event) => webContentsSink(event.sender, mainThreadWork)')
+      expect(returnsItsWindowSink(index)).toBe(true)
+      expect(index.match(/webContentsSink\(event\.sender, mainThreadWork\)/g)).toHaveLength(1)
       expect((index.match(/sinkFor:/g) ?? []).length).toBe(1)
+    })
+
+    it('binds the returned window sink to its own callback construction', () => {
+      const source = `register({ sinkFor: (event) => {
+        const sink = webContentsSink(event.sender, mainThreadWork)
+        const cleanup = () => { return undefined }
+        return sink
+      } })`
+      expect(returnsItsWindowSink(source)).toBe(true)
+      expect(returnsItsWindowSink(source.replace('return sink', 'return anotherSink'))).toBe(false)
+      expect(
+        returnsItsWindowSink(
+          source.replace('return sink', 'return anotherSink') +
+            '\nfunction elsewhere() { return sink }',
+        ),
+      ).toBe(false)
+      expect(
+        returnsItsWindowSink(
+          source.replace('return sink', 'if (missing) return anotherSink; return sink'),
+        ),
+      ).toBe(false)
+      expect(returnsItsWindowSink(source.replace('event.sender', 'anotherContents'))).toBe(false)
     })
 
     it('⛔ the answer door reads the declaration, and the predicate is the only thing that does', () => {

@@ -1505,11 +1505,11 @@ function itemToEvents(item: unknown, phase: 'started' | 'completed'): RuntimeEve
 
   if (category === 'message') {
     // agentMessage: the streamed text arrives via `item/agentMessage/delta`; the
-    // completed item carries the authoritative message. A completed message with
-    // no text is malformed → surfaced.
+    // completed item carries the authoritative message, including an empty string.
+    // Missing or non-string text is malformed; empty text may still carry questions or recall.
     if (phase !== 'completed') return []
-    const text = readString(item, 'text')
-    if (!text) return [wrapUnknown('codex', item, 'unrecognized', type)]
+    const text = readField(item, 'text')
+    if (typeof text !== 'string') return [wrapUnknown('codex', item, 'unrecognized', type)]
     // 🔴 **The citation this function used to read past** (319). See {@link codexMemoryRecall} for
     // what the field is and why 316 could not find it.
     //
@@ -1526,6 +1526,11 @@ function itemToEvents(item: unknown, phase: 'started' | 'completed'): RuntimeEve
     const message: RuntimeEvent = {
       type: 'assistant_message',
       text,
+      ...(item['phase'] === 'final_answer'
+        ? { phase: 'final' as const }
+        : item['phase'] === 'commentary'
+          ? { phase: 'commentary' as const }
+          : {}),
       ...(questions.length > 0 ? { questions } : {}),
     }
     return recall ? [message, recall] : [message]

@@ -19,6 +19,7 @@ import {
   type SubAgentCard,
   type TranscriptState,
 } from './transcript'
+import { copyHumanAnswers } from './human-answers'
 
 /**
  * Which slice of a conversation is in memory, and what moving that slice costs (054).
@@ -208,6 +209,7 @@ export function tailWindow(entries: RuntimeEventMessage[]): WindowState {
  * not.
  */
 export interface FoldCarry {
+  humanAnswers: TranscriptState['humanAnswers']
   status: SessionStatus
   ref: SessionRef | null
   ended: boolean
@@ -523,6 +525,7 @@ export function carryForward(
     })
   }
   return {
+    humanAnswers: copyHumanAnswers(state.humanAnswers),
     status: state.status,
     ref: state.ref,
     ended: state.ended,
@@ -703,6 +706,7 @@ export function foldWindow(
   // side of it — and `null` from the start is a session that was never reopened.
   let epoch = liveFrom
   if (carry !== null) {
+    state.humanAnswers = copyHumanAnswers(carry.humanAnswers)
     state.status = carry.status
     state.ref = carry.ref
     state.ended = carry.ended
@@ -774,7 +778,7 @@ export function foldWindow(
     }
     // ⚑ **The ordinal goes in** (299 §2) — this is the one loop that has it, and everything that
     // has to survive a re-fold is stamped from here. See `transcript.ts`'s `Placed`.
-    applyEvent(state, message.event, message.at, message.ordinal)
+    applyEvent(state, message.event, message.at, message.ordinal, message.humanFinal)
   }
   if (epoch !== null) {
     markReopened(state)
@@ -795,6 +799,7 @@ export function openAt(window: WindowState, page: HistoryWindow, sessionId: stri
     ordinal: entry.ordinal,
     at: entry.at,
     event: entry.event,
+    ...(entry.humanFinal === undefined ? {} : { humanFinal: entry.humanFinal }),
   }))
   window.from = page.from
   window.hasOlder = page.hasOlder
@@ -827,6 +832,7 @@ export function prependPage(
     ordinal: entry.ordinal,
     at: entry.at,
     event: entry.event,
+    ...(entry.humanFinal === undefined ? {} : { humanFinal: entry.humanFinal }),
   }))
   window.entries = [...older, ...window.entries]
   window.from = page.from

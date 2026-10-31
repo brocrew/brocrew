@@ -15,6 +15,7 @@ import {
 import { openingLine } from './opening-line'
 import { basenameOf } from './paths'
 import { applyEvent, createTranscript, type TranscriptState } from './transcript'
+import { copyHumanAnswers } from './human-answers'
 import {
   WINDOW_MAX_EVENTS,
   appendLive,
@@ -796,7 +797,7 @@ export function acceptEvent(record: SessionRecord, message: RuntimeEventMessage)
     // running session after a busy turn overflowed the window.
     record.transcript = refold(record, record.window.entries, record.transcript)
   } else {
-    applyEvent(record.transcript, message.event, message.at, message.ordinal)
+    applyEvent(record.transcript, message.event, message.at, message.ordinal, message.humanFinal)
   }
   // Still the same object — the window kept the tail, so there is one projection here, and the
   // re-fold above replaced it. Assigned rather than left alone because `refold` returns a NEW state.
@@ -828,7 +829,7 @@ function foldIntoTail(record: SessionRecord, message: RuntimeEventMessage): void
   // truth this session has while the reader is away. 068's *"an open permission/user-input card can
   // leave effective state"* is this line without the carry (068 finding 4).
   if (released > 0) record.control = refold(record, record.tail.entries, record.control)
-  else applyEvent(record.control, message.event, message.at, message.ordinal)
+  else applyEvent(record.control, message.event, message.at, message.ordinal, message.humanFinal)
 }
 
 /**
@@ -861,6 +862,7 @@ export function openWindow(record: SessionRecord, page: HistoryWindow): void {
   // handed, read as each call is folded, and a provider states those once per start — so a page
   // that begins after that row drew every one of them as a plain tool line.
   const inForce = page.toolsInForce
+  if (page.humanAnswers !== undefined) transcript.humanAnswers = copyHumanAnswers(page.humanAnswers)
   if (inForce !== undefined) applyEvent(transcript, inForce.event, inForce.at, inForce.ordinal)
   record.transcript = transcript
   record.control = transcript
@@ -964,6 +966,8 @@ export function reopenAtLatest(record: SessionRecord, page: HistoryWindow): void
   openAt(record.window, page, record.sessionId)
   // ⚑ **D-035** — the window now begins where this page does, so its tools there go in first.
   record.transcript = refold(record, record.window.entries, carry, page.toolsInForce ?? null)
+  if (page.humanAnswers !== undefined)
+    record.transcript.humanAnswers = copyHumanAnswers(page.humanAnswers)
   // Back on the tail, so the two projections are ONE object again and the separate tail goes.
   record.control = record.transcript
   record.tail = null

@@ -1,6 +1,10 @@
 import { ipcMain } from './app-ipc'
-import { claimPackagedWorkspace, WORKSPACE_LIST_REFUSAL } from './workspace-routing-store'
-import { requiresWorkspacePolicy, workspaceRouting } from './workspace-routing'
+import { claimPackagedWorkspace } from './workspace-routing-store'
+import {
+  requiresWorkspacePolicy,
+  workspaceLaunchMessage,
+  workspaceRouting,
+} from './workspace-routing'
 import { spawn } from 'node:child_process'
 import { statSync } from 'node:fs'
 import { homedir } from 'node:os'
@@ -182,8 +186,8 @@ export function startWorkspaces(options: {
     if (app.isPackaged && !options.hidden) {
       try {
         claimPackagedWorkspace(app.getPath('appData'), folder)
-      } catch {
-        return WORKSPACE_LIST_REFUSAL
+      } catch (error) {
+        return workspaceLaunchMessage(error)
       }
     }
     const start = howToStart(

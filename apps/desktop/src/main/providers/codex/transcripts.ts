@@ -8,9 +8,34 @@ import { join } from 'node:path'
 import { localFields } from '../../../shared/local-time'
 import { importCodexRollout } from './import-transcript'
 import { nativePath, ownsRecord } from './native-record'
+import type { TranscriptEvent } from '../../../shared/runtime-ipc'
 import type { TranscriptPolicy } from '../transcript-policy'
+function eventForDisplay(event: TranscriptEvent): TranscriptEvent {
+  if (
+    event.type !== 'unknown' ||
+    event.provider !== 'codex' ||
+    event.label !== 'agentMessage' ||
+    event.category !== 'unrecognized'
+  )
+    return event
+  const raw = event.raw
+  const knownEmpty =
+    typeof raw === 'object' &&
+    raw !== null &&
+    !Array.isArray(raw) &&
+    'type' in raw &&
+    raw.type === 'agentMessage' &&
+    'text' in raw &&
+    raw.text === '' &&
+    (!('memoryCitation' in raw) || raw.memoryCitation == null) &&
+    (!('delivery' in raw) || raw.delivery == null) &&
+    (!('questions' in raw) || raw.questions == null)
+  return knownEmpty ? { ...event, category: 'activity' } : event
+}
+
 export const CODEX_ROLLOUT_JSONL = 'codex-rollout-jsonl'
 export const transcripts: TranscriptPolicy = {
+  eventForDisplay,
   splitToolName: (name) => splitQualified(CODEX_TOOL_NAMING, name),
   imageResolver,
   keepEarlierReportedEffort: () => false,

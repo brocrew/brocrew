@@ -14,9 +14,9 @@ BroCrew is an open-source desktop app that brings AI agents together on your com
 
 Additional providers are planned.
 
-## What's new in 0.1.9
+## What's new in 0.1.23
 
-Plugins now work on Windows with Codex. Settings shows the real reason when a plugin cannot load. Slow plugin reloads get more time to finish instead of failing the turn after 10 seconds.
+When you write in a conversation, the agent's final answer is highlighted, and you can open it in a popup. Typing stays smooth with many agents running, and Settings → Themes opens instantly. Updates keep the previous version's recovery copy. If one entry in the workspace list can't be used, BroCrew skips it and opens the next one instead of refusing to start.
 
 ## See it work
 

@@ -1,0 +1,6 @@
+/** Shared with the schema so these bounded seeks imply their partial indexes exactly. */
+export const HUMAN_CONTEXT_TERM =
+  "(type = 'user_turn' AND CASE WHEN json_valid(payload) THEN json_extract(payload, '$.humanInitiated') = 1 OR (json_type(payload, '$.humanInitiated') IS NULL AND COALESCE(json_extract(payload, '$.attribution'), '') != 'app_authored') ELSE 0 END) OR type = 'reopened' OR (type = 'status' AND CASE WHEN json_valid(payload) THEN json_extract(payload, '$.state') IN ('ended', 'errored') ELSE 0 END)"
+/** SQLite trims the same whitespace characters as JavaScript String.trim. */
+export const HUMAN_FINAL_TERM =
+  "type = 'assistant_message' AND CASE WHEN json_valid(payload) THEN json_extract(payload, '$.phase') = 'final' AND json_type(payload, '$.parentToolCallId') IS NULL AND json_type(payload, '$.text') = 'text' AND length(trim(json_extract(payload, '$.text'), char(9,10,11,12,13,32,160,5760,8192,8193,8194,8195,8196,8197,8198,8199,8200,8201,8202,8232,8233,8239,8287,12288,65279))) > 0 ELSE 0 END"

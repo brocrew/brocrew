@@ -4043,6 +4043,8 @@ export interface QueuedMessageDisclosure {
  * It is deliberately NOT a `RuntimeEvent`: nothing said it, we did.
  */
 export interface UserTurnEvent {
+  /** Positive observation at the window-caller boundary. Missing on legacy/imported rows. */
+  humanInitiated?: boolean
   /** The original person message forwarded by a Move press. */
   movedFrom?: MoveOrigin
   type: 'user_turn'
@@ -4418,6 +4420,7 @@ export interface LeadInFront {
  */
 export type TurnAuthorship = Pick<
   UserTurnEvent,
+  | 'humanInitiated'
   | 'attribution'
   | 'work'
   | 'relayedFrom'
@@ -4449,6 +4452,7 @@ export interface AnsweredQuestion {
  * that is not in `RuntimeHost`.
  */
 export const TURN_AUTHORSHIP_KEYS = [
+  'humanInitiated',
   'attribution',
   'work',
   'relayedFrom',
@@ -4458,6 +4462,9 @@ export const TURN_AUTHORSHIP_KEYS = [
   'answeredQuestion',
   'movedFrom',
 ] as const satisfies readonly (keyof TurnAuthorship)[]
+
+/** The observation stamp must not change existing attribution or Move admission tests. */
+export const TURN_ATTRIBUTION_KEYS = TURN_AUTHORSHIP_KEYS.filter((key) => key !== 'humanInitiated')
 
 /** ⛔ Compiles only while {@link TURN_AUTHORSHIP_KEYS} names every key of {@link TurnAuthorship}. */
 export const TURN_AUTHORSHIP_KEYS_ARE_EXHAUSTIVE: [
@@ -6863,6 +6870,8 @@ export type AgentProviderSet = AgentIdentity & {
 
 /** One recorded entry with the ordinal it was published under — the transcript, replayable. */
 export interface PersistedEventInfo {
+  /** Canonical human-final association for this history row; null means it is not selected. */
+  humanFinal?: import('./human-turn-answer').HumanFinalContext | null
   ordinal: number
   /** When it happened, epoch ms — the recorded time, not the moment it was replayed. */
   at: number
@@ -6896,6 +6905,8 @@ export const HISTORY_WINDOW_MAX_EVENTS = 2_500
  * row while the app runs; a migration that removes rows may renumber them before any window opens.
  */
 export interface HistoryWindow {
+  /** Latest observed human turn, even when it precedes this bounded page. */
+  humanAnswers?: import('./human-turn-answer').HumanAnswers
   /** The ledger slice, in order. Empty is a state the UI renders, not an error. */
   entries: PersistedEventInfo[]
   /** The ordinal this page begins at — the next request's `before`. */
@@ -7061,6 +7072,8 @@ export interface ReleasedSession {
  * key without inventing one.
  */
 export interface RuntimeEventMessage {
+  /** History reads supply canonical per-turn context, including for pages cut mid-turn. */
+  humanFinal?: import('./human-turn-answer').HumanFinalContext | null
   sessionId: string
   ordinal: number
   /**
@@ -8482,6 +8495,7 @@ export type RuntimeCommand =
    * to find a file is not a summary.
    */
   | ({ kind: 'filesKept' } & FilesKeptScope)
+  | { kind: 'filesLibrary'; request: import('./files-library').FilesLibraryRequest }
   | { kind: 'searchWork'; conversation: string; query: import('./work-search').WorkSearchQuery }
   // 112. Keyed on the AGENT even for the journal and the script, because the run id those two are
   // filed under is the one thing the provider does not put on the wire — see `main/child-work.ts`.
@@ -9168,6 +9182,7 @@ export interface RuntimeCommandResults {
   revealResource: ResourceReveal
   /** 🔴 **D-026 · the files kept in one scope**, or the word for a scope that names nothing. */
   filesKept: FilesKept
+  filesLibrary: import('./files-library').FilesLibraryResult
   searchWork: import('./work-search').WorkSearchResult
   /** Where one of this session's paths is, shown in the file manager (356 §1). */
   revealPath: RevealResult
@@ -9936,6 +9951,9 @@ export interface RuntimeBridge {
    * and the surfaces that draw it are two dispatches, and the surfaces are UI-002's.
    */
   filesKept(input: FilesKeptScope): Promise<FilesKept>
+  filesLibrary(
+    request: import('./files-library').FilesLibraryRequest,
+  ): Promise<import('./files-library').FilesLibraryResult>
   searchWork(input: {
     conversation: string
     query: import('./work-search').WorkSearchQuery

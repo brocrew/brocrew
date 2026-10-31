@@ -142,7 +142,7 @@ it('correction: two stale recent-list writers cannot lose either ownership fence
   ])
 })
 
-it('correction: required absent and empty lists both refuse before selecting data', () => {
+it('correction: absent and empty lists use the configured first workspace', () => {
   configure()
   mkdirSync(first)
   const observed: (string | null)[] = []
@@ -156,8 +156,8 @@ it('correction: required absent and empty lists both refuse before selecting dat
     observed.push(attempt(empty.fake))
     selected.push(...absent.selected, ...empty.selected)
   }
-  expect(observed).toEqual(Array(4).fill(WORKSPACE_LIST_REFUSAL))
-  expect(selected).toEqual([])
+  expect(observed).toEqual(Array(4).fill(null))
+  expect(selected).toEqual(Array(4).fill(first))
 })
 
 it('correction: missing explicit known folders and post-stat removal never create a workspace', () => {

@@ -123,6 +123,7 @@ const CLASSIFIED: Record<
   // ⚑ **D-026 · `reads`**, `whoCalledWhom`'s word and reason: two of its three scopes name a
   // conversation, and it offers no act.
   filesKept: 'reads',
+  filesLibrary: 'no session',
   searchWork: 'reads',
   close: 'controls',
   refreshConfig: 'controls',

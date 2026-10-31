@@ -903,7 +903,7 @@ describe('413 · words the person did not say', () => {
     const identityOf = (conversation: string): string | null => RELAYERS[conversation] ?? null
 
     it('🔴 a WINDOW is the only caller whose turn goes out unmarked', () => {
-      expect(whoseWordsTheseAre(aWindow, identityOf)).toEqual({})
+      expect(whoseWordsTheseAre(aWindow, identityOf)).toEqual({ humanInitiated: true })
       expect(aPersonTypedIt(aWindow)).toBe(true)
       expect(aPersonTypedIt(anAgent)).toBe(false)
       expect(aPersonTypedIt(THE_APP_ITSELF)).toBe(false)
@@ -1011,7 +1011,9 @@ describe('413 · words the person did not say', () => {
       expect(carried.relayedFrom).toBe('sess_asked')
       expect(carried).not.toHaveProperty('says')
       // ⚑ A window and a caller this app does not have yet declare nothing either.
-      expect(whoseWordsTheseAre(aWindow, identityOf, {}, 'follow-up')).toEqual({})
+      expect(whoseWordsTheseAre(aWindow, identityOf, {}, 'follow-up')).toEqual({
+        humanInitiated: true,
+      })
       expect(whoseWordsTheseAre({ ownerId: 'mcp:acme-7' }, identityOf, {}, 'follow-up')).toEqual({
         attribution: 'app_authored',
       })
