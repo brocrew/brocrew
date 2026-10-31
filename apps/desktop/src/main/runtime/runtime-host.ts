@@ -25089,7 +25089,7 @@ export class RuntimeHost implements LiveHost {
       session.handle.setWorkFolders(this.theWorkFoldersFor(session, []))
       // ⚑ A person's go-ahead, as its row says ({@link aPersonsOwnWords}): the turn is theirs.
       this.aTurnIsHandedOver(session, { aPersons: true, names: [] }, false)
-      await session.handle.send(text, this.stampFor(null, []))
+      await this.sendTheAppsWords(session, text)
     } catch (error) {
       // 🔴 **670 · two cases past the guard above, told apart by CLASS** (`657` F-b). ⛔ This said
       // *"a failure here means the session died between the two calls"*, and a lost race is not
@@ -25145,6 +25145,10 @@ export class RuntimeHost implements LiveHost {
       undefined,
       moveHandoff,
     )
+  }
+
+  private sendTheAppsWords(session: HostedSession, text: string): Promise<void> {
+    return session.handle.send(text, this.stampFor(null, []))
   }
 
   /**
@@ -46023,7 +46027,7 @@ export class RuntimeHost implements LiveHost {
         false,
       )
       if (continuation === undefined) await session.handle.carryOn!()
-      else await session.handle.send(continuation.text)
+      else await this.sendTheAppsWords(session, continuation.text)
     } catch (error) {
       console.warn(`runtime host did not carry ${sessionId} on: ${errorMessage(error)}`)
       return

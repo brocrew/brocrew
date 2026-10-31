@@ -527,24 +527,43 @@ describe('W4.189 · a give’s folder, as a grant on the conversation it has', (
   it('⛔ every handover to a provider sets the folders first — no send path can skip it', () => {
     const here = dirname(fileURLToPath(import.meta.url))
     const source = readFileSync(join(here, '../src/main/runtime/runtime-host.ts'), 'utf8')
-    // ⚑ Sends in code, never one a comment names.
-    const sends = [...source.matchAll(/^(?!\s*(?:\/\/|\*)).*session\.handle\.send\(/gm)]
-    expect(sends.length).toBeGreaterThanOrEqual(4)
-    // ⚑ Each send, read from the start of the method it is in.
-    const methods = [...source.matchAll(/\n {2}(?:private |public )?(?:async )?\w+\(/g)].map(
-      (one) => one.index ?? 0,
-    )
-    // ⚑ …and from the send before it, so two sends in one method are each held to it.
-    const sendsAt = sends.map((one) => one.index ?? 0)
-    for (const send of sends) {
-      const at = send.index ?? 0
-      const start = Math.max(
-        methods.filter((one) => one < at).at(-1) ?? 0,
-        sendsAt.filter((one) => one < at).at(-1) ?? 0,
-      )
-      expect(source.slice(start, at), `the send at offset ${String(at)}`).toContain(
-        'setWorkFolders(',
-      )
+    const method = /\n {2}(?:private |public )?(?:async )?\w+\(/g
+    const shared = [
+      '  private sendTheAppsWords(session: HostedSession, text: string): Promise<void> {',
+      '    return session.handle.send(text, this.stampFor(null, []))',
+      '  }',
+    ].join('\n')
+    const withoutFolders = (code: string): number[] => {
+      expect(code.split(shared)).toHaveLength(2)
+      expect(code.match(/await this\.sendTheAppsWords\(/g)).toHaveLength(2)
+      // Follow the exact shared send back to both callers, where their folders are set.
+      const expanded = code
+        .replace(shared, '')
+        .replaceAll('this.sendTheAppsWords(', 'session.handle.send(')
+      const sends = [...expanded.matchAll(/^(?!\s*(?:\/\/|\*)).*session\.handle\.send\(/gm)]
+      expect(sends.length).toBeGreaterThanOrEqual(4)
+      const methods = [...expanded.matchAll(method)].map((one) => one.index ?? 0)
+      const sendsAt = sends.map((one) => one.index ?? 0)
+      return sendsAt.filter((at) => {
+        const start = Math.max(
+          methods.filter((one) => one < at).at(-1) ?? 0,
+          sendsAt.filter((one) => one < at).at(-1) ?? 0,
+        )
+        return !expanded.slice(start, at).includes('setWorkFolders(')
+      })
+    }
+    expect(withoutFolders(source)).toEqual([])
+    for (const name of ['endPlanMode', 'carryOnAfterARepair']) {
+      const methods = [...source.matchAll(method)]
+      const at = methods.findIndex((one) => one[0].endsWith(`${name}(`))
+      expect(at).toBeGreaterThanOrEqual(0)
+      const start = methods[at]!.index ?? 0
+      const end = methods[at + 1]?.index ?? source.length
+      const body = source.slice(start, end)
+      const folders = 'session.handle.setWorkFolders(this.theWorkFoldersFor(session, []))'
+      expect(body.split(folders)).toHaveLength(2)
+      const planted = source.slice(0, start) + body.replace(folders, '') + source.slice(end)
+      expect(withoutFolders(planted), `${name} without its folder setup`).toHaveLength(1)
     }
   })
 })

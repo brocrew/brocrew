@@ -638,12 +638,20 @@ describe('413 · words the person did not say', () => {
       // 🔴 **662 · three doors now reach the provider THROUGH `handToProvider`**, which performs
       // the one handover itself so the frame and the stamp read the same `from`. ⚠️ **Re-aimed,
       // not weakened** (standing rule 26): a door is still a call site, but three of them are
-      // `this.handToProvider(` and only the go-ahead awaits a `session.handle.send(` of its own.
-      // The handover inside that method RETURNS its send, and is pinned by its exact text.
+      // `this.handToProvider(`. The go-ahead and login continuation share the app's stamped
+      // send. Both handovers return the provider's promise without adding an async wrapper.
       const composing = code.match(/await this\.handToProvider\(/g) ?? []
-      const sending = code.match(/await session\.handle\.send\(/g) ?? []
+      const sending =
+        code.match(/return session\.handle\.send\(text, this\.stampFor\(null, \[\]\)\)/g) ?? []
       expect(composing.length).toBe(3)
       expect(sending.length).toBe(1)
+      expect(code.match(/await this\.sendTheAppsWords\(/g)).toHaveLength(2)
+      expect(code).toContain('await this.sendTheAppsWords(session, text)')
+      expect(code).toContain('await this.sendTheAppsWords(session, continuation.text)')
+      expect(code).toContain(
+        'private sendTheAppsWords(session: HostedSession, text: string): Promise<void>',
+      )
+      expect(code.match(/await session\.handle\.send\(/g) ?? []).toHaveLength(0)
       expect(code).toContain('return session.handle.send(words, this.stampFor(from, handed))')
       // 🔴 **D-027 · and a fifth: a turn of several held messages**, which the flush hands to
       // `handTogetherToProvider` — the second method that performs a handover, and RETURNS its

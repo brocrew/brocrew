@@ -964,10 +964,16 @@ describe('624 · a message says who wrote it', () => {
       // without a subject unless the caller passed none, and the ONE door that composes its own
       // text and marks it by hand.
       const marked = code.split("attribution: 'app_authored'").length - 1
-      // ⚑ Three: the third is a turn that carries on after a repaired sign-in, whose subject is
-      // `carriesOn` and which the fold draws as nothing (the last test below).
+      // The third either carries on without words or records the app's explicit continuation note.
       expect(marked, 'a fourth place hand-marks an app-authored turn').toBe(3)
-      expect(code).toContain("      attribution: 'app_authored',\n      carriesOn: true,\n")
+      expect(code).toContain(
+        [
+          "      attribution: 'app_authored',",
+          '      ...(continuation === undefined',
+          '        ? { carriesOn: true as const }',
+          "        : { appNotice: 'a-turn-continued-after-sign-in' as const }),",
+        ].join('\n'),
+      )
       // ⛔ **The writer** — {@link whoseWordsTheseAre}'s return, which every other door spreads.
       expect(code).toContain("    attribution: 'app_authored',\n")
       // ⛔ **The door** — `endPlanMode`, and `278` is the dispatch that put it there.
