@@ -592,6 +592,38 @@ describe('theme IPC and preload facade', () => {
     expect(ipc.broadcast).toHaveBeenCalledTimes(broadcasts)
   })
 
+  it('picker previews reuse the listed registry while ordinary reads still refresh it', async () => {
+    await putTheme(fixture.library, 'mine', childTheme('mine', 'Before'))
+    const store = fixture.store()
+    await store.start()
+    const refresh = vi.spyOn(store, 'refresh')
+    const ipc = fictionalIpc()
+    const dispose = registerThemeIpc(ipc.main, store, ipc.broadcast)
+    const bridge = themesBridge(ipc.renderer)
+    try {
+      await bridge.list()
+      expect(refresh).toHaveBeenCalledTimes(1)
+      await putTheme(fixture.library, 'mine', childTheme('mine', 'After'))
+      for (let i = 0; i < 5; i++) {
+        expect(await bridge.read('mine', { refresh: false })).toMatchObject({
+          theme: { name: 'Before' },
+        })
+      }
+      expect(refresh).toHaveBeenCalledTimes(1)
+      expect(await bridge.read('mine')).toMatchObject({ theme: { name: 'After' } })
+      expect(refresh).toHaveBeenCalledTimes(2)
+      for (const options of [null, false, [], {}, { refresh: true }, 'cached']) {
+        expect(await ipc.renderer.invoke(THEMES_CHANNELS.read, 'mine', options)).toMatchObject({
+          outcome: 'refused',
+          rail: 'theme-invalid',
+        })
+      }
+      expect(refresh).toHaveBeenCalledTimes(2)
+    } finally {
+      dispose()
+    }
+  })
+
   it('refuses invalid IPC ids and duplicate names before store actions', async () => {
     await putTheme(fixture.library, 'mine', childTheme('mine'))
     const store = fixture.store()

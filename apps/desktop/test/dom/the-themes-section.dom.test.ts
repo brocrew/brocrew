@@ -84,6 +84,11 @@ const settle = async (): Promise<void> => {
     await new Promise((done) => setTimeout(done, 0))
     await nextTick()
   }
+  // IntersectionObserver delivers visible cards after layout.
+  for (let i = 0; i < 2; i++) {
+    await new Promise<void>((done) => requestAnimationFrame(() => done()))
+    await nextTick()
+  }
 }
 
 afterEach(() => {

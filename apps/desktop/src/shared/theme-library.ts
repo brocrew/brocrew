@@ -94,7 +94,8 @@ export interface ThemeChanged extends ThemeSnapshot {
 
 export interface ThemesBridge {
   list(): Promise<ThemeSnapshot>
-  read(id?: string): Promise<ThemeReading | ThemeRefused>
+  /** Picker previews reuse the registry just returned by list; other reads refresh from disk. */
+  read(id?: string, options?: { readonly refresh: false }): Promise<ThemeReading | ThemeRefused>
   set(id: string): Promise<ThemeSet | ThemeRefused>
   duplicate(id: string, name: string): Promise<ThemeSaved | ThemeRefused>
   delete(id: string): Promise<ThemeDeleted | ThemeRefused>

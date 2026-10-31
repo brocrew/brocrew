@@ -4,7 +4,10 @@ import { THEMES_CHANNELS, type ThemeChanged, type ThemesBridge } from '../shared
 export function themesBridge(ipc: Pick<IpcRenderer, 'invoke' | 'on' | 'off'>): ThemesBridge {
   return Object.freeze({
     list: () => ipc.invoke(THEMES_CHANNELS.list) as ReturnType<ThemesBridge['list']>,
-    read: (id?: string) => ipc.invoke(THEMES_CHANNELS.read, id) as ReturnType<ThemesBridge['read']>,
+    read: (id?: string, options?: { readonly refresh: false }) =>
+      (options === undefined
+        ? ipc.invoke(THEMES_CHANNELS.read, id)
+        : ipc.invoke(THEMES_CHANNELS.read, id, options)) as ReturnType<ThemesBridge['read']>,
     set: (id: string) => ipc.invoke(THEMES_CHANNELS.set, id) as ReturnType<ThemesBridge['set']>,
     duplicate: (id: string, name: string) =>
       ipc.invoke(THEMES_CHANNELS.duplicate, id, name) as ReturnType<ThemesBridge['duplicate']>,
