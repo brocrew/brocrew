@@ -96,7 +96,9 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M2 · 🔴 **the death on a revoked sign-in is never marked** — the teardown's hook runs and finds nothing to act on, so the conversation stays stopped — killed by `a-conversation-reopens-on-a-renewed-sign-in.test.ts` (D-004)",
         [
-            (HOST, "    if (event.type === 'error' && event.fatal && event.cause === 'auth_stale') {\n      session.diedOnAStaleSignIn = true\n", "    if (false && event.type === 'error' && event.fatal && event.cause === 'auth_stale') {\n      session.diedOnAStaleSignIn = true\n"),
+            # Both fatal-error and failed-turn recovery can mark this same rejected life.
+            (HOST, "      if (\n        (event.cause === 'auth_stale' && session.itRetriedRejectedLogin !== true) ||\n        canRenewRejected\n      ) {\n", "      if (false) {\n"),
+            (HOST, "    session.diedOnAStaleSignIn = true\n    session.whatItsFailedTurnWasFor = wasFor\n", "    session.whatItsFailedTurnWasFor = wasFor\n"),
         ],
     ),
     (
@@ -208,7 +210,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         'M13 · ⚠️ **any fatal error counts as a revoked sign-in** — a child that crashed for another reason, while the token happened to be renewed, is reopened by itself under *"Claude\'s login was renewed elsewhere"*, a false cause · killed by `a-conversation-reopens-on-a-renewed-sign-in.test.ts` (the test T-002 added)',
         [
-            (HOST, "    if (event.type === 'error' && event.fatal && event.cause === 'auth_stale') {\n", "    if (event.type === 'error' && event.fatal) {\n"),
+            (HOST, "      if (\n        (event.cause === 'auth_stale' && session.itRetriedRejectedLogin !== true) ||\n        canRenewRejected\n      ) {\n", "      if (true) {\n"),
         ],
     ),
 ]

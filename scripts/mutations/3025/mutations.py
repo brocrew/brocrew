@@ -87,8 +87,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         f"one · killed by `{SIGNIN}`",
         [(HOST,
           # ⚑ **a refused Codex copy is replaced once · re-anchored in place, not retired** — the three lines stand two spaces deeper, inside the branch that a copy replaced by a fresh one of the same account does not take
-          "        if ((await session.handle.checkSignIn?.()) !== true) return\n        // ⚑ The machine's login moved: the limits the login before reached stop applying.\n        this.aSignInChanged(session.provider, session.lifeSince, session.profileId)",
-          "        this.aSignInChanged(session.provider, session.lifeSince, session.profileId)\n        if ((await session.handle.checkSignIn?.()) !== true) return")],
+          "        if ((await session.handle.checkSignIn?.()) !== true) return\n        if (\n          rejected &&\n          this.rejectedMachineLogins.get(session.provider) === session.rejectedLoginToRenew\n        ) {\n          this.rejectedMachineLogins.delete(session.provider)\n          this.providersMoved({ what: 'login', provider: session.provider })\n        }\n        // ⚑ The machine's login moved: the limits the login before reached stop applying.\n        this.aSignInChanged(session.provider, session.lifeSince, session.profileId)",
+          "        this.aSignInChanged(session.provider, session.lifeSince, session.profileId)\n        if ((await session.handle.checkSignIn?.()) !== true) return\n        if (\n          rejected &&\n          this.rejectedMachineLogins.get(session.provider) === session.rejectedLoginToRenew\n        ) {\n          this.rejectedMachineLogins.delete(session.provider)\n          this.providersMoved({ what: 'login', provider: session.provider })\n        }\n        // ⚑ The machine's login moved: the limits the login before reached stop applying.")],
     ),
     (
         "M6 · 🔴 a key saved or removed, a re-copy or a sign-in in this app ends the walls, so held "
