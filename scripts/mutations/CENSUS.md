@@ -4765,7 +4765,7 @@ A row that cannot apply is RETIRED IN PLACE: its definition stays in its table a
 | 4003 | `apps/desktop/src/renderer/src/lib/provider-access.ts` | `8f3366ecd245c523` |
 | 4003 | `apps/desktop/src/renderer/src/lib/provider-row.ts` | `d257ad8db95fc5a7` |
 | 4003 | `packages/shared/src/providers.ts` | `3ff968e2afde20dd` |
-| 4007 | `apps/desktop/src/main/recovery/checkpoint.ts` | `8c2b615e8693aea6` |
+| 4007 | `apps/desktop/src/main/recovery/checkpoint.ts` | `51422f57a79a9ce4` |
 | 4007 | `apps/desktop/src/main/recovery/coordinator.ts` | `6794e191ac69d1dd` |
 | 4007 | `apps/desktop/src/main/recovery/retention-timer.ts` | `c70737a936624f14` |
 | 4007 | `apps/desktop/src/renderer/src/components/RecoveryCopiesSection.vue` | `59b9a671bbb22770` |
