@@ -297,7 +297,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M29 · 🔴 **the importer changed and nothing says so** · older adopted ledgers never read stale, "
         "and the Rebuild is never offered — killed by `raw-archive-import.test.ts`",
-        [(NORMALIZER, "export const NORMALIZER_VERSION = 4\n", "export const NORMALIZER_VERSION = 3\n")],
+        [(NORMALIZER, "export const NORMALIZER_VERSION = 5\n", "export const NORMALIZER_VERSION = 3\n")],
     ),
     # RETIREMENT APPROVED — 680 M30: file-gone; removed by e504ff460ce1a0b5cf1e8b8de9daf5aa46dc0aae.
     # Guarded parser and its test were deliberately removed under the standing rule forbidding

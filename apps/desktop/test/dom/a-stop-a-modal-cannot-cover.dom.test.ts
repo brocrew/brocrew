@@ -1,12 +1,14 @@
 // The approved plain words replace the former labels; the state and gesture checks remain.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
+import { assertDrawn, drawnReady } from './drawn'
 import { defineComponent, h, nextTick, type PropType, type VNode } from 'vue'
 import AgentInstructionsSheet from '../../src/renderer/src/components/AgentInstructionsSheet.vue'
 import AgentInputPopup from '../../src/renderer/src/components/AgentInputPopup.vue'
 import AllFilesDialog from '../../src/renderer/src/components/AllFilesDialog.vue'
 import AllTasksDialog from '../../src/renderer/src/components/AllTasksDialog.vue'
 import ContextDialog from '../../src/renderer/src/components/ContextDialog.vue'
+import HumanAnswerDialog from '../../src/renderer/src/components/HumanAnswerDialog.vue'
 import DeleteConversation from '../../src/renderer/src/components/DeleteConversation.vue'
 import { createTranscript } from '../../src/renderer/src/lib/transcript'
 import AgentSectionsSheet from '../../src/renderer/src/components/AgentSectionsSheet.vue'
@@ -229,6 +231,29 @@ let pressed: boolean[] = []
  * `a-number-can-survive-the-death-of-its-derivation`.
  */
 const PATHS = [
+  {
+    host: 'HumanAnswerDialog',
+    panel: 'HumanAnswerDialog',
+    cy: 'human-answer-dialog',
+    selfHosted: true,
+    open: () =>
+      h(HumanAnswerDialog, {
+        answer: {
+          promptOrdinal: 1,
+          prompt: '# Fictional question\n\n' + 'Please compare the bakery recipes.\n\n'.repeat(80),
+          final: {
+            ordinal: 2,
+            at: NOW,
+            text:
+              '| Recipe | Notes |\n| --- | --- |\n| Bread | ' +
+              'long-note'.repeat(80) +
+              ' |\n\n```text\n' +
+              'long-code'.repeat(100) +
+              '\n```\n\nLast answer paragraph.',
+          },
+        },
+      }),
+  },
   {
     host: 'ProvidersScreen',
     panel: 'ProviderCard',
@@ -629,6 +654,47 @@ describe('§1 · what the overlay layer does to the rail (388 §3)', () => {
 /* ------------------------------------------------------------------- §2 · the census of the paths */
 
 describe('§2 · every OverlayHost path carries a reachable stop (390 §3)', () => {
+  it('keeps the long human answer scrollable, its close button reachable, and Tab inside the dialog', async () => {
+    const path = PATHS.find((one) => one.host === 'HumanAnswerDialog')!
+    const m = await overlay(path.open, 1180, 808, true)
+    const dialog = m.q('human-answer-dialog')
+    const close = dialog.querySelector<HTMLButtonElement>('button')!
+    expect(document.activeElement).toBe(close)
+    tab(true)
+    await nextTick()
+    expect(m.q('overlay-spawning').contains(document.activeElement)).toBe(true)
+    tab()
+    await nextTick()
+    expect(document.activeElement).toBe(close)
+    const scroll = dialog.querySelector<HTMLElement>('.answer-scroll')!
+    expect(getComputedStyle(scroll).overflowY).toBe('auto')
+    scroll.scrollTop = 0
+    expect(scroll.scrollTop).toBe(0)
+    scroll.scrollTop = scroll.scrollHeight
+    await nextTick()
+    expect(scroll.scrollTop).toBeGreaterThan(0)
+    const last = m.q('human-answer-final').querySelector<HTMLElement>(':scope > :last-child')!
+    expect(last.textContent).toContain('Last answer paragraph')
+    await drawnReady()
+    assertDrawn(last, 'last answer paragraph after scrolling', scroll)
+    expect(m.q('human-answer-final').querySelector('table')).not.toBeNull()
+    expect(m.q('human-answer-final').querySelector('pre code')).not.toBeNull()
+    expect(reachable(close)).toBe(true)
+    expect(reachable(m.q('overlay-spawning'))).toBe(true)
+    const originalStyle = last.getAttribute('style')
+    try {
+      last.style.height = '0px'
+      last.style.overflow = 'hidden'
+      expect(() => assertDrawn(last, 'planted clipped answer paragraph', scroll)).toThrow()
+    } finally {
+      if (originalStyle === null) last.removeAttribute('style')
+      else last.setAttribute('style', originalStyle)
+    }
+    scroll.scrollTop = scroll.scrollHeight
+    await nextTick()
+    assertDrawn(last, 'restored last answer paragraph', scroll)
+  })
+
   for (const path of PATHS) {
     it(`⛔ ${path.host} → ${path.panel}`, async () => {
       const m = await overlay(path.open, 1180, 808, 'selfHosted' in path)
@@ -714,6 +780,7 @@ describe('§3 · the mount sites are counted from the source (390 §3)', () => {
     expect([...found.keys()].sort()).toEqual([
       'CanonicalDocumentOverlay',
       'ConversationPane',
+      'HumanAnswerDialog',
       'ProvidersScreen',
       'ReadingPane',
       'RuntimeScreen',
@@ -727,7 +794,7 @@ describe('§3 · the mount sites are counted from the source (390 §3)', () => {
     const censused = new Set(PATHS.map((path) => path.host))
     expect([...censused].sort()).toEqual([...found.keys()].sort())
     const sites = [...found.values()].reduce((all, one) => all + one, 0)
-    expect(sites, 'a mount site appeared that this file has never opened').toBe(17)
+    expect(sites, 'a mount site appeared that this file has never opened').toBe(18)
   })
 
   /**

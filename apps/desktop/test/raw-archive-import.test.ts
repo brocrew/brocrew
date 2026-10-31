@@ -47,6 +47,59 @@ class NullSink implements RuntimeEventSink {
 }
 
 describe('transcript import from the provider’s own file', () => {
+  it('imports only explicit top-level final phases without inferring human authorship', () => {
+    expect(NORMALIZER_VERSION).toBeGreaterThanOrEqual(5)
+    for (const [extra, expected] of [
+      [{}, 'final'],
+      [{ error: 'rate_limit' }, undefined],
+      [{ aborted: true }, undefined],
+    ] as const) {
+      const frame = JSON.stringify({
+        type: 'assistant',
+        ...extra,
+        message: { stop_reason: 'end_turn', content: [{ type: 'text', text: 'Fictional answer' }] },
+      })
+      const result = importClaudeTranscript([frame], 1000).entries.map((entry) => entry.event)
+      const prose = result.find((event) => event.type === 'assistant_message')
+      expect(prose).toEqual({
+        type: 'assistant_message',
+        text: 'Fictional answer',
+        ...(expected === undefined ? {} : { phase: expected }),
+      })
+      expect(result.some((event) => event.type === 'user_turn')).toBe(false)
+    }
+    for (const stop_reason of [null, 'tool_use', 'max_tokens']) {
+      const result = importClaudeTranscript(
+        [
+          JSON.stringify({
+            type: 'assistant',
+            message: { stop_reason, content: [{ type: 'text', text: 'Progress' }] },
+          }),
+        ],
+        1000,
+      )
+      expect(result.entries.map((entry) => entry.event)).toEqual([
+        { type: 'assistant_message', text: 'Progress' },
+      ])
+    }
+    const tool = importClaudeTranscript(
+      [
+        JSON.stringify({
+          type: 'assistant',
+          message: {
+            stop_reason: 'end_turn',
+            content: [
+              { type: 'text', text: 'Progress' },
+              { type: 'tool_use', id: 'fictional-tool', name: 'Bash', input: {} },
+            ],
+          },
+        }),
+      ],
+      1000,
+    )
+    expect(tool.entries[0]!.event).toEqual({ type: 'assistant_message', text: 'Progress' })
+  })
+
   let dir: string
   let userData: string
   let db: AppDatabase

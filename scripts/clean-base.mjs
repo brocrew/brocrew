@@ -71,7 +71,7 @@ const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
  * the sentence names nothing more.
  */
 // Rules provenance, seen state and saved method recovery live in the database being removed.
-const MIGRATIONS = 20
+const MIGRATIONS = 21
 
 const FLAGS = new Set([
   '--dry-run',

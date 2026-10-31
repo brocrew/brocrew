@@ -519,8 +519,7 @@ describe('normalizeNotification — full ThreadItem coverage + error shape (007 
     })
 
     it('a citation on a message with NO text stays surfaced as malformed', () => {
-      // ⚠️ The order of the two guards, asserted: an empty `text` is a malformed item and stays
-      // loud, and a citation must not be able to smuggle it past that.
+      // Missing text is malformed even when a citation is present; an explicit empty string is valid.
       const events = normalizeNotification('item/completed', {
         item: { type: 'agentMessage', id: 'm', memoryCitation: CITED.memoryCitation },
       })
@@ -2493,6 +2492,7 @@ describe('Codex 0.160.0 · a message that asks without waiting (request_user_inp
       {
         type: 'assistant_message',
         text: 'Which database?\n- Postgres\n- SQLite',
+        phase: 'final',
         questions: [{ title: 'Which database?', options: ['Postgres', 'SQLite'] }],
       },
     ])
@@ -2500,7 +2500,7 @@ describe('Codex 0.160.0 · a message that asks without waiting (request_user_inp
 
   it('only an ASYNC message carries them, and a malformed entry is dropped, never invented', () => {
     expect(normalizeNotification('item/completed', { item: { ...ASYNC, delivery: null } })).toEqual(
-      [{ type: 'assistant_message', text: ASYNC.text }],
+      [{ type: 'assistant_message', text: ASYNC.text, phase: 'final' }],
     )
     const [event] = normalizeNotification('item/completed', {
       item: {
@@ -2516,6 +2516,7 @@ describe('Codex 0.160.0 · a message that asks without waiting (request_user_inp
     expect(event).toEqual({
       type: 'assistant_message',
       text: ASYNC.text,
+      phase: 'final',
       questions: [{ title: 'Free text?' }, { title: 'Pick', options: ['A'] }],
     })
   })

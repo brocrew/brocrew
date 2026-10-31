@@ -1048,9 +1048,12 @@ describe('406 · finished, and finished with a question', () => {
       const several = turns.filter((block) => block.includes('parts:'))
       expect(several).toHaveLength(1)
       expect(several[0]).toContain('...one.queued.authorship,')
+      expect(several[0]).toContain(
+        'humanInitiated: went.some((one) => one.queued.authorship.humanInitiated === true),',
+      )
       // ⛔ **The cut is asserted, because a census that reads too much is green for the wrong
       // reason.** No block may reach the next publish or the end of a method.
-      for (const block of turns) {
+      const assertClosedPublisher = (block: string): void => {
         // ⚠️ **Non-empty lines**, because `codeOnly` leaves a blank line where every stripped
         // comment was — a raw line count is a count of this file's docblocks.
         const said = block.split('\n').filter((line) => line.trim().length > 0)
@@ -1061,7 +1064,7 @@ describe('406 · finished, and finished with a question', () => {
         // eleven, and it is the ONE block that bound is given to (asserted above).
         // ⚑ **And one line more in both**: the flush's turn says whether its words asked for the
         // turn before to be stopped (`askedForTheStop`).
-        const bound = block.includes('parts:') ? 13 : 10
+        const bound = block.includes('parts:') ? 14 : 10
         expect(
           said.length,
           `a publish block ran on: ${said.join(' / ').slice(0, 90)}`,
@@ -1069,6 +1072,8 @@ describe('406 · finished, and finished with a question', () => {
         expect(block.endsWith('}')).toBe(true)
         expect(block).not.toContain('publishOurs')
       }
+      turns.forEach(assertClosedPublisher)
+      expect(() => assertClosedPublisher(`${several[0]}\nthis.publishOurs({})`)).toThrow()
       // ⚑ **413 · the pair is STILL written by one expression, and the expression moved.**
       // ⛔ `406` marked each producer by hand and named a fourth it had not marked; `410` then
       // counted the residue live and only one of the two it found was that fourth. ⚠️ So no

@@ -61,7 +61,7 @@ const STATUS_WORDS: Readonly<Record<(typeof STATUS_NAMES)[number], string>> = {
  * The accent's fixed shares in its sRGB mixes with the panel, `--accent-mix-N` in tokens.css. The
  * right-hand panel draws accent text on each: its run values, filters, chips and file tags.
  */
-export const ACCENT_MIXES = [4, 5, 8, 10, 12] as const
+export const ACCENT_MIXES = [4, 5, 8, 9, 10, 12] as const
 
 /** How much of the content's accent a document's links keep, the rest the content's ink. */
 export const PAPER_LINK = 85

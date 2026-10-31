@@ -13,7 +13,7 @@ import { clockTimeFrom } from '../../../shared/clock'
 import type { AgentFacets, RailSays } from './agent-state'
 import { agoWords } from './clock'
 import { formatTokens, groupTokens, percentText } from './context-meter'
-import { latestWords } from './latest-words'
+import { panelWords } from './latest-words'
 import { FOR_A_PERSON } from './outgoing-card'
 import { basenameOf } from './paths'
 import { processMemoryWords } from './process-memory'
@@ -231,7 +231,7 @@ export function agentPanel(input: AgentPanelInput): AgentPanel {
 
   /* the header and the folder */
   const cwd = input.session?.cwd ?? null
-  const latest = latestWords(input.state)
+  const latest = panelWords(input.state)
 
   /* the run strip */
   const settings = input.session?.settings

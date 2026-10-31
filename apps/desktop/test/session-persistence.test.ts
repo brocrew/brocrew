@@ -360,7 +360,7 @@ describe('session persistence', () => {
     expect(ours).toHaveLength(1)
     // ⚑ **F093 · R2** — the row also keeps the whole text the provider was handed.
     const { sent, ...row } = JSON.parse(String(ours[0]?.payload)) as { sent?: string }
-    expect(row).toEqual({ type: 'user_turn', text: 'write the file' })
+    expect(row).toEqual({ type: 'user_turn', text: 'write the file', humanInitiated: true })
     expect(sent).toContain('write the file')
   })
 
@@ -918,7 +918,7 @@ describe('resume', () => {
         .map((h) => h.event)
         .filter((e) => e.type === 'user_turn')
         .map(({ sent, ...row }) => (void sent, row)),
-    ).toEqual([{ type: 'user_turn', text: 'hello' }])
+    ).toEqual([{ type: 'user_turn', text: 'hello', humanInitiated: true }])
     // …and which button we pressed, so an allowed card does not come back looking unanswered.
     expect(
       resumed.history.entries.map((h) => h.event).filter((e) => e.type === 'user_decision'),
@@ -1217,10 +1217,12 @@ describe('resume', () => {
         .filter((event) => event.type === 'user_turn')
         .map(({ sent, ...row }) => (void sent, row))
     expect(turnsOf(planning.created.sessionId)).toEqual([
-      { type: 'user_turn', text: 'hello' },
+      { type: 'user_turn', text: 'hello', humanInitiated: true },
       { type: 'user_turn', text: 'Go ahead with this plan.', attribution: 'app_authored' },
     ])
-    expect(turnsOf(untouched.created.sessionId)).toEqual([{ type: 'user_turn', text: 'hello' }])
+    expect(turnsOf(untouched.created.sessionId)).toEqual([
+      { type: 'user_turn', text: 'hello', humanInitiated: true },
+    ])
 
     // ⚠️ BOTH fields reach the adapter, and both are needed: `planMode` alone cannot distinguish a
     // released session from one that never planned, and those two must send different things on
