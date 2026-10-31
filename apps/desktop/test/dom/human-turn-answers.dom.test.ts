@@ -1,12 +1,14 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { defineComponent, h, nextTick, reactive, type Component } from 'vue'
 import AgentCard from '../../src/renderer/src/components/AgentCard.vue'
+import UserMessage from '../../src/renderer/src/components/UserMessage.vue'
 import AssistantMessage from '../../src/renderer/src/components/AssistantMessage.vue'
 import HumanAnswerDialog from '../../src/renderer/src/components/HumanAnswerDialog.vue'
 import { applyTheme } from '../../src/renderer/src/lib/apply-theme'
 import { resolveTheme, type Theme } from '../../src/shared/themes/theme'
 import { validateTheme } from '../../src/shared/themes/validate'
 import DEFINED from '../../resources/themes/defined/theme.json'
+import CREW_NIGHT from '../../resources/themes/crew-night/theme.json'
 import BROCREW from '../../resources/themes/brocrew/theme.json'
 import { facetsOfState } from '../../src/renderer/src/lib/agent-state'
 import { sessionPanel } from '../../src/renderer/src/lib/session-panel'
@@ -154,16 +156,18 @@ describe('human final answer surfaces', () => {
     },
   )
 
-  it.each(['Classic dark', 'Classic light', 'Defined', 'BroCrew'] as const)(
+  it.each(['Classic dark', 'Classic light', 'Defined', 'BroCrew', 'Crew Night'] as const)(
     'reads history and the paired popup using the actual %s theme cascade',
     async (theme) => {
       const base = validateTheme(DEFINED, { assets: new Map(), builtIns: new Map(), builtIn: true })
       if (!base.ok) throw new Error(JSON.stringify(base.problems))
       if (theme === 'Defined') applyTheme(base.theme)
+      else if (theme === 'Crew Night') applyTheme(resolveTheme(CREW_NIGHT as Theme, base.theme))
       else if (theme === 'BroCrew') applyTheme(resolveTheme(BROCREW as Theme, base.theme))
       else applyTheme(null)
       const state = stateOf(first)
       const assistants = state.items.filter((item) => item.kind === 'assistant')
+      const person = state.items.find((item) => item.kind === 'user')!
       const host = defineComponent({
         setup: () => () =>
           h(
@@ -172,6 +176,7 @@ describe('human final answer surfaces', () => {
               'data-chat-theme': theme === 'Classic dark' ? undefined : 'light',
             },
             [
+              h(UserMessage as Component, { item: person }),
               ...assistants.map((item) => h(AssistantMessage as Component, { item })),
               h(HumanAnswerDialog, { answer: state.humanAnswers.latest! }),
             ],
@@ -183,7 +188,14 @@ describe('human final answer surfaces', () => {
       expect(highlighted).toHaveLength(1)
       expect(highlighted[0]!.textContent).toContain('Answer to you')
       const column = highlighted[0]!.querySelector('.msg-column')!
-      expect(getComputedStyle(column).borderInlineStartWidth).toBe('3px')
+      expect(getComputedStyle(column).borderInlineStartWidth).toBe('0px')
+      const bubble = m.q('user-message')
+      const bubbleStyle = getComputedStyle(bubble)
+      expect(bubbleStyle.borderInlineStartWidth).toBe('3px')
+      expect(bubbleStyle.borderInlineStartStyle).toBe('solid')
+      expect(color(bubbleStyle.borderInlineStartColor)).toEqual(
+        color(bubbleStyle.getPropertyValue('--accent').trim()),
+      )
       expect(getComputedStyle(column).backgroundColor).not.toBe('rgba(0, 0, 0, 0)')
       for (const selector of [
         '.final-label',

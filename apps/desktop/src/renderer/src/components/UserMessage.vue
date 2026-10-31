@@ -162,6 +162,7 @@ const paths = usePathsIn(
   padding: var(--space-8);
   background: var(--accent-fill);
   border: var(--border-width) solid var(--accent-border-weak);
+  border-inline-start: var(--border-edge-width) solid var(--accent);
   border-radius: var(--radius-card);
 }
 </style>
