@@ -1,9 +1,9 @@
 import { lstat, readdir, open, rename, unlink } from 'node:fs/promises'
-import { constants, realpathSync } from 'node:fs'
+import { constants, realpathSync, type Stats } from 'node:fs'
 import { createHash, randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { z } from 'zod'
-import { privateChild, sourceBytes } from '../node-host-files'
+import { privateChild } from '../node-host-files'
 import { isPrivateEntry, openFileNotThroughALink, syncDirectoryAt } from '../private-files'
 import {
   bootWitness,
@@ -47,6 +47,39 @@ const identity = async (path: string) => {
   const stat = await lstat(path, { bigint: true })
   return `${stat.dev}:${stat.ino}`
 }
+/** Reboot metadata has the same descriptor trust boundary as a guardian's exit proof. */
+async function readRebootProof(path: string): Promise<unknown> {
+  const file = await openFileNotThroughALink(path, constants.O_RDONLY | constants.O_NONBLOCK)
+  const accepted = (stat: Stats) =>
+    stat.isFile() &&
+    stat.nlink === 1 &&
+    isPrivateEntry(stat) &&
+    stat.size > 0 &&
+    stat.size <= 1024 * 1024
+  try {
+    const before = await file.stat()
+    if (!accepted(before)) throw new Error('Untrusted recovery proof')
+    const bytes = Buffer.alloc(before.size + 1)
+    let length = 0
+    while (length < bytes.length) {
+      const result = await file.read(bytes, length, bytes.length - length, length)
+      if (!result.bytesRead) break
+      length += result.bytesRead
+    }
+    const after = await file.stat()
+    if (
+      !accepted(after) ||
+      before.dev !== after.dev ||
+      before.ino !== after.ino ||
+      before.size !== after.size ||
+      length !== before.size
+    )
+      throw new Error('Changed recovery proof')
+    return JSON.parse(bytes.subarray(0, length).toString('utf8'))
+  } finally {
+    await file.close()
+  }
+}
 async function binding(root: string) {
   const canonical = realpathSync.native(root)
   return {
@@ -64,12 +97,12 @@ async function publish(folder: string, name: string, value: unknown): Promise<vo
   const temporary = join(folder, `.proof-${randomUUID()}`)
   const file = await open(temporary, 'wx', 0o600)
   try {
-    await file.writeFile(JSON.stringify(value))
-    await file.sync()
-  } finally {
-    await file.close()
-  }
-  try {
+    try {
+      await file.writeFile(JSON.stringify(value))
+      await file.sync()
+    } finally {
+      await file.close()
+    }
     if (await exists(target)) throw new Error('Recovery proof already exists')
     await rename(temporary, target)
     await syncDirectoryAt(folder)
@@ -178,9 +211,9 @@ export async function previousRunsProvenStopped(
     if (entries.length > 4096) return false
     const identities = new Map(covered.map((run) => [run.id, run.identity]))
     for (const name of entries) {
-      const certificate = certificateSchema.parse(
-        JSON.parse((await sourceBytes(join(certificates, name), 1024 * 1024)).toString('utf8')),
-      )
+      // A crash may leave an unpublished temporary; it is never positive evidence.
+      if (name.startsWith('.proof-') && z.uuid().safeParse(name.slice(7)).success) continue
+      const certificate = certificateSchema.parse(await readRebootProof(join(certificates, name)))
       const marker = certificate.marker
       if (
         name !== `${marker.nonce}.json` ||
@@ -204,9 +237,7 @@ export async function previousRunsProvenStopped(
     const path = join(proofs, name)
     let pending: z.infer<typeof markerSchema> | undefined
     if (await exists(path)) {
-      pending = markerSchema.parse(
-        JSON.parse((await sourceBytes(path, 1024 * 1024)).toString('utf8')),
-      )
+      pending = markerSchema.parse(await readRebootProof(path))
       if (
         !validMarker(pending) ||
         pending.epoch !== previous.epoch ||

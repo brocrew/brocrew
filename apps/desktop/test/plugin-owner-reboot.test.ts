@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import {
+  chmod,
+  link,
   lstat,
   mkdir,
   mkdtemp,
@@ -82,6 +84,42 @@ describe('fenced reboot proof for historical plugin runs', () => {
     return owner
   }
   const refused = () => expect(attempt()).rejects.toMatchObject({ code: 'cleanup-pending' })
+  async function retainedProof(kind: 'pending' | 'certificate') {
+    await fixture()
+    await refused()
+    witness = { kind: 'darwin-boot-session-v1', value: randomUUID() }
+    if (kind === 'pending') return marker()
+    const pending = JSON.parse(await readFile(marker(), 'utf8'))
+    const write = SupervisorStorage.prototype.write
+    const interrupted = vi.spyOn(SupervisorStorage.prototype, 'write').mockImplementation(function (
+      this: SupervisorStorage,
+      value,
+    ) {
+      if (value.phase === 'stopped') throw new Error('fictional interrupted transition')
+      return write.call(this, value)
+    })
+    await expect(attempt()).rejects.toBeDefined()
+    interrupted.mockRestore()
+    witness = null
+    return join(root, 'supervisor/reboot-proofs/certificates', `${pending.nonce}.json`)
+  }
+  it.each(['pending', 'certificate'] as const)(
+    'refuses a hardlinked %s proof as takeover authority',
+    async (kind) => {
+      const path = await retainedProof(kind)
+      await link(path, join(parent, 'external-proof-alias'))
+      expect((await lstat(path)).nlink).toBe(2)
+      await refused()
+    },
+  )
+  it.skipIf(process.platform === 'win32').each(['pending', 'certificate'] as const)(
+    'refuses a publicly writable %s proof as takeover authority',
+    async (kind) => {
+      const path = await retainedProof(kind)
+      await chmod(path, 0o666)
+      await refused()
+    },
+  )
   it.each(['blocked', 'draining'] as const)(
     'stages once and heals %s missing receipts only after a different boot',
     async (phase) => {
@@ -230,6 +268,33 @@ describe('fenced reboot proof for historical plugin runs', () => {
     witness = { kind: 'darwin-boot-session-v1', value: randomUUID() }
     await refused()
   })
+  it.each(['torn', 'complete'])(
+    'ignores a recognized crash-leftover staging file without granting it authority: %s',
+    async (kind) => {
+      await fixture()
+      await refused()
+      const temporary = join(
+        root,
+        'supervisor/reboot-proofs/certificates',
+        `.proof-${randomUUID()}`,
+      )
+      const pending = JSON.parse(await readFile(marker(), 'utf8'))
+      const contents =
+        kind === 'torn'
+          ? '{'
+          : JSON.stringify({
+              format: 1,
+              method: 'post-marker-boot-boundary',
+              marker: pending,
+              after: { kind: 'darwin-boot-session-v1', value: randomUUID() },
+            })
+      await writeFile(temporary, contents, { mode: 0o600 })
+      await refused()
+      witness = { kind: 'darwin-boot-session-v1', value: randomUUID() }
+      await attempt()
+      expect(await readFile(temporary, 'utf8')).toBe(contents)
+    },
+  )
   it('allows a late positive receipt independently of the pending witness', async () => {
     await fixture('blocked', false)
     await refused()

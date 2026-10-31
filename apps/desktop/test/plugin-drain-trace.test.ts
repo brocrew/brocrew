@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, realpath, rm } from 'node:fs/promises'
+import { chmod, link, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -81,3 +81,26 @@ it('gives a plain Restart remedy in a restart-required phase diagnostic', () => 
   if (process.platform === 'win32') expect(text).toContain('Start > Power > Restart')
   expect(text).not.toContain('Shut down')
 })
+it('does not append through a hardlinked drain log to an outside fictional sentinel', async () => {
+  parent = await realpath(
+    await mkdtemp(join(process.platform === 'win32' ? tmpdir() : '/tmp', 'fictional-drain-alias-')),
+  )
+  const root = join(parent, 'plugins')
+  await mkdir(root, { mode: 0o700 })
+  const sentinel = join(parent, 'outside-sentinel')
+  await writeFile(sentinel, 'fictional unchanged bytes', { mode: 0o600 })
+  await link(sentinel, join(root, 'plugin-drain.log'))
+  recordDrainTrace(root, { stage: 'stopped-write', state: 'complete' })
+  expect(await readFile(sentinel, 'utf8')).toBe('fictional unchanged bytes')
+})
+it.skipIf(process.platform === 'win32')(
+  'does not append to a publicly writable existing drain log',
+  async () => {
+    parent = await realpath(await mkdtemp(join('/tmp', 'fictional-drain-permission-')))
+    const path = join(parent, 'plugin-drain.log')
+    await writeFile(path, 'fictional unchanged bytes', { mode: 0o600 })
+    await chmod(path, 0o666)
+    recordDrainTrace(parent, { stage: 'closed', state: 'complete' })
+    expect(await readFile(path, 'utf8')).toBe('fictional unchanged bytes')
+  },
+)

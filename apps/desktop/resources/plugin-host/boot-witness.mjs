@@ -34,15 +34,16 @@ export async function readBootWitness(options = {}) {
   const platform = options.platform ?? process.platform
   const read =
     options.read ??
-    (async (file, args) =>
-      (
-        await run(file, args, {
-          timeout: 10_000,
-          maxBuffer: 4096,
-          windowsHide: true,
-          encoding: 'utf8',
-        })
-      ).stdout)
+    (async (file, args) => {
+      const { stdout, stderr } = await run(file, args, {
+        timeout: 10_000,
+        maxBuffer: 4096,
+        windowsHide: true,
+        encoding: 'utf8',
+      })
+      if (stderr.trim()) throw new Error('Native boot observation failed')
+      return stdout
+    })
   try {
     if (platform === 'darwin') {
       const value = await read('/usr/sbin/sysctl', ['-n', 'kern.bootsessionuuid'])
