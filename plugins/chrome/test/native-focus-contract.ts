@@ -12,6 +12,9 @@ export interface NativeSample {
 export interface NativeSnapshot {
   capturedAt: number
   sample: NativeSample
+  observed?: boolean
+  ancestryKnown?: boolean
+  frontmostOwnership?: { owned: boolean }
 }
 export function classifyPid(
   pid: number,
@@ -47,7 +50,7 @@ export function calibrateNativeClock(sentAt: number, receivedAt: number, nativeA
         : undefined,
   }
 }
-export function assessNativeCase(input: {
+export interface NativeCaseInput {
   expectedPid: number
   ownedPids: number[]
   start: number
@@ -56,7 +59,8 @@ export function assessNativeCase(input: {
   at1: NativeSnapshot
   at4: NativeSnapshot
   samples: NativeSample[]
-}): string[] {
+}
+export function diagnoseNativeTiming(input: NativeCaseInput): string[] {
   const { before, at1, at4, samples } = input
   const failures: string[] = []
   if (
@@ -99,12 +103,79 @@ export function assessNativeCase(input: {
     failures.push('native observation gap exceeds 20ms')
   const observed = [...samples, at1.sample, at4.sample]
   if (observed.some((s) => s.pid !== before.sample.pid || s.bundle !== before.sample.bundle))
-    failures.push('frontmost application changed')
+    failures.push('intermediate frontmost application changed')
   if (observed.some((s) => s.space !== before.sample.space)) failures.push('global Space changed')
   const displayKey = (s: NativeSample) => JSON.stringify(Object.entries(s.displays).sort())
   if (observed.some((s) => displayKey(s) !== displayKey(before.sample)))
     failures.push('display active Space changed')
   return failures
+}
+// W4 2026-10-31 16:15: only the two endpoint ownership/Space observations decide a case.
+export function assessNativeCase(input: NativeCaseInput): string[] {
+  const failures: string[] = []
+  const endpoints = [input.at1, input.at4]
+  if (
+    endpoints.some(
+      (e) =>
+        e.observed === false ||
+        !Number.isInteger(e.sample.pid) ||
+        e.sample.pid <= 0 ||
+        !e.sample.bundle,
+    )
+  )
+    failures.push('endpoint frontmost identity unavailable')
+  if (endpoints.some((e) => e.ancestryKnown !== true))
+    failures.push('endpoint ancestry unavailable')
+  if (
+    endpoints.some(
+      (e) => input.ownedPids.includes(e.sample.pid) || e.frontmostOwnership?.owned === true,
+    )
+  )
+    failures.push('owned Chrome or descendant is frontmost at an endpoint')
+  const validSpace = (value: string) => !!value && value !== '0'
+  if (
+    !validSpace(input.before.sample.space) ||
+    endpoints.some(
+      (e) => !validSpace(e.sample.space) || e.sample.space !== input.before.sample.space,
+    )
+  )
+    failures.push('endpoint global Space changed or unavailable')
+  const displayKey = (s: NativeSample) => JSON.stringify(Object.entries(s.displays).sort())
+  if (
+    !Object.keys(input.before.sample.displays).length ||
+    endpoints.some(
+      (e) =>
+        !Object.keys(e.sample.displays).length ||
+        displayKey(e.sample) !== displayKey(input.before.sample),
+    )
+  )
+    failures.push('endpoint display active Space changed or unavailable')
+  return failures
+}
+export type NativeFatalCondition = 'positive-control' | 'screen-lock' | 'owned-pid' | 'cleanup'
+export class NativeFatalError extends Error {
+  constructor(
+    readonly condition: NativeFatalCondition,
+    message: string,
+  ) {
+    super(message)
+  }
+}
+export async function runNativeCases<T>(
+  count: number,
+  run: (index: number) => Promise<T>,
+  onError: (index: number, error: unknown) => Promise<T>,
+): Promise<T[]> {
+  const results: T[] = []
+  for (let index = 0; index < count; index++) {
+    try {
+      results.push(await run(index))
+    } catch (error) {
+      if (error instanceof NativeFatalError) throw error
+      results.push(await onError(index, error))
+    }
+  }
+  return results
 }
 export function finalNativeVerdict(input: {
   positiveDetected: boolean

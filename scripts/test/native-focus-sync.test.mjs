@@ -2,6 +2,7 @@
 import fs from 'node:fs'
 import ts from 'typescript'
 import { describe, expect, it } from 'vitest'
+import { NativeFatalError } from '../../plugins/chrome/test/native-focus-contract.ts'
 const source = fs.readFileSync(new URL('../native/focus-check.ts', import.meta.url), 'utf8')
 const start = source.indexOf('  async function syncClock()')
 const end = source.indexOf('  await syncClock()', start)
@@ -37,7 +38,13 @@ async function scenario(stop, succeeds = false) {
     calibrations,
     { warn() {} },
     () => {
-      if (active) throw terminal
+      createGuard(
+        active && stop === 'lock',
+        active && stop === 'cancel',
+        { now: () => (active && stop === 'budget' ? 75000 : 10) },
+        0,
+        NativeFatalError,
+      )()
     },
   )
   let error
@@ -59,31 +66,40 @@ const createGuard = new Function(
   'stopping',
   'performance',
   'runStartedAt',
+  'NativeFatalError',
   guardJavascript + '\nreturn assertRunning',
 )
 describe('native sync diagnostics preserve terminal controls', () => {
-  it.each([
-    [true, false, 10, 'screen locked'],
-    [false, true, 10, 'cancelled'],
-    [false, false, 75000, 'budget'],
-  ])(
-    'the actual guard propagates locked=%s stopping=%s elapsed=%s',
-    (locked, stopping, elapsed, reason) => {
-      expect(createGuard(locked, stopping, { now: () => elapsed }, 0)).toThrow(reason)
-    },
-  )
-  it('the actual guard permits live work below the unchanged run deadline', () => {
-    expect(createGuard(false, false, { now: () => 74999 }, 0)).not.toThrow()
+  it('the actual guard propagates screen lock only', () => {
+    expect(createGuard(true, false, { now: () => 10 }, 0, NativeFatalError)).toThrow(
+      'screen locked',
+    )
   })
-  it.each(['lock', 'budget', 'cancel'])('prevents caller dispatch after %s', async (stop) => {
-    const result = await scenario(stop)
-    expect(result.error).toBe(result.terminal)
+  it.each([
+    [false, true, 10],
+    [false, false, 75000],
+    [false, false, 100000],
+  ])('timing/cancellation are not additional fatal gates', (locked, stopping, elapsed) => {
+    expect(createGuard(locked, stopping, { now: () => elapsed }, 0, NativeFatalError)).not.toThrow()
+  })
+  it('prevents caller dispatch after lock', async () => {
+    const result = await scenario('lock')
+    expect(result.error).toBeInstanceOf(NativeFatalError)
     expect(result.dispatched).toBe(0)
     expect(result.pending).toBe(0)
   })
+  it.each(['budget', 'cancel'])(
+    'records ordinary %s error without stopping the caller',
+    async (stop) => {
+      const result = await scenario(stop)
+      expect(result.error).toBeUndefined()
+      expect(result.dispatched).toBe(1)
+      expect(result.pending).toBe(0)
+    },
+  )
   it('does not swallow terminal control after a successful sync response', async () => {
     const result = await scenario('lock', true)
-    expect(result.error).toBe(result.terminal)
+    expect(result.error).toBeInstanceOf(NativeFatalError)
     expect(result.dispatched).toBe(0)
     expect(result.pending).toBe(0)
   })

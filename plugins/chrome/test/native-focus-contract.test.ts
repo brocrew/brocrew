@@ -4,6 +4,9 @@ import {
   finalNativeVerdict,
   classifyPid,
   calibrateNativeClock,
+  diagnoseNativeTiming,
+  runNativeCases,
+  NativeFatalError,
 } from './native-focus-contract.js'
 
 const sample = (at: number, pid = 41) => ({
@@ -21,9 +24,24 @@ function fixture() {
     clockUncertaintyMs: 1,
     start: 1000,
     returnedAt: 1000,
-    before: { capturedAt: 1000, sample: sample(995) },
-    at1: { capturedAt: 2000, sample: sample(1999.5) },
-    at4: { capturedAt: 5000, sample: sample(4999) },
+    before: {
+      capturedAt: 1000,
+      sample: sample(995),
+      ancestryKnown: true,
+      frontmostOwnership: { owned: false },
+    },
+    at1: {
+      capturedAt: 2000,
+      sample: sample(1999.5),
+      ancestryKnown: true,
+      frontmostOwnership: { owned: false },
+    },
+    at4: {
+      capturedAt: 5000,
+      sample: sample(4999),
+      ancestryKnown: true,
+      frontmostOwnership: { owned: false },
+    },
     samples,
   }
 }
@@ -63,50 +81,51 @@ describe('native focus evidence admission', () => {
   it('accepts fresh independent baselines in the Node receipt clock', () => {
     expect(assessNativeCase(fixture())).toEqual([])
   })
-  it('rejects already-owned or unreset baselines even when the later PID stays unchanged', () => {
+  it('fails owned endpoints while baseline reset is diagnostic', () => {
     const f = fixture()
     f.expectedPid = 77
     f.ownedPids = [41]
-    expect(assessNativeCase(f)).toContain('baseline is not the pinned BroCrew process')
-    expect(assessNativeCase(f)).toContain('baseline is an owned Chrome process')
+    expect(diagnoseNativeTiming(f)).toContain('baseline is not the pinned BroCrew process')
+    expect(assessNativeCase(f)).toContain('owned Chrome or descendant is frontmost at an endpoint')
   })
-  it('rejects a brief focus theft even when both endpoints look unchanged', () => {
+  it('records intermediate focus changes without changing endpoint verdict', () => {
     const f = fixture()
     f.samples[3] = sample(1015, 77)
-    expect(assessNativeCase(f)).toContain('frontmost application changed')
+    expect(diagnoseNativeTiming(f)).toContain('intermediate frontmost application changed')
+    expect(assessNativeCase(f)).toEqual([])
   })
   it('rejects global or per-display Space changes', () => {
     const f = fixture()
-    f.samples[2].space = '10'
-    expect(assessNativeCase(f)).toContain('global Space changed')
-    f.samples[2].space = '9'
-    f.samples[3].displays.panel = '11'
-    expect(assessNativeCase(f)).toContain('display active Space changed')
+    f.at1.sample.space = '10'
+    expect(assessNativeCase(f)).toContain('endpoint global Space changed or unavailable')
+    f.at1.sample.space = '9'
+    f.at4.sample.displays.panel = '11'
+    expect(assessNativeCase(f)).toContain('endpoint display active Space changed or unavailable')
   })
   it('rejects a blind interval despite fresh endpoints and many samples', () => {
     const f = fixture()
     f.samples = f.samples.filter((s) => s.at < 2000 || s.at > 3500)
-    expect(assessNativeCase(f)).toContain('native observation gap exceeds 20ms')
+    expect(diagnoseNativeTiming(f)).toContain('native observation gap exceeds 20ms')
   })
   it('rejects nonmonotonic data and missing operation-boundary coverage', () => {
     const f = fixture()
     ;[f.samples[3], f.samples[4]] = [f.samples[4], f.samples[3]]
-    expect(assessNativeCase(f)).toContain('native timestamps are not monotonic')
+    expect(diagnoseNativeTiming(f)).toContain('native timestamps are not monotonic')
     const g = fixture()
     g.samples = g.samples.slice(10)
-    expect(assessNativeCase(g)).toContain('native observation gap exceeds 20ms')
+    expect(diagnoseNativeTiming(g)).toContain('native observation gap exceeds 20ms')
   })
   it('refuses unavailable native observations', () => {
     const f = fixture()
-    f.samples[5].pid = 0
-    expect(assessNativeCase(f)).toContain('native identity or Space unavailable')
+    f.at1.sample.pid = 0
+    expect(assessNativeCase(f)).toContain('endpoint frontmost identity unavailable')
   })
   it('rejects stale endpoints and incorrectly timed captures', () => {
     const f = fixture()
     f.at1.sample.at = 1700
     f.at4.capturedAt = 5500
-    expect(assessNativeCase(f)).toContain('stale native sample')
-    expect(assessNativeCase(f)).toContain('observation timing outside 250ms tolerance')
+    expect(diagnoseNativeTiming(f)).toContain('stale native sample')
+    expect(diagnoseNativeTiming(f)).toContain('observation timing outside 250ms tolerance')
   })
   it('records exact owned PID ancestry without treating a sibling as owned', () => {
     const rows = [
@@ -165,8 +184,62 @@ describe('native focus evidence admission', () => {
   it('refuses non-finite observation witnesses independently of calibration', () => {
     const g = fixture()
     g.at1.capturedAt = Number.NaN
-    expect(assessNativeCase(g)).toContain('invalid observation timestamps')
+    expect(diagnoseNativeTiming(g)).toContain('invalid observation timestamps')
   })
+  it('uses only endpoint ownership/Space despite arbitrary timing precision', () => {
+    const f = fixture()
+    f.before.capturedAt = 2000
+    f.at1.capturedAt = 9000
+    f.at4.capturedAt = 15000
+    f.samples = []
+    expect(diagnoseNativeTiming(f).length).toBeGreaterThan(0)
+    expect(assessNativeCase(f)).toEqual([])
+    f.at4.frontmostOwnership.owned = true
+    expect(assessNativeCase(f)).toContain('owned Chrome or descendant is frontmost at an endpoint')
+  })
+  it('permits another non-owned frontmost app and records missing ancestry as a failed case', () => {
+    const f = fixture()
+    f.at1.sample.pid = 99
+    expect(assessNativeCase(f)).toEqual([])
+    f.at1.ancestryKnown = false
+    expect(assessNativeCase(f)).toContain('endpoint ancestry unavailable')
+  })
+  it('always attempts four cases after ordinary errors or earlier failed results', async () => {
+    const calls: number[] = [],
+      errors: number[] = []
+    const results = await runNativeCases(
+      4,
+      async (n) => {
+        calls.push(n)
+        if (n === 0) throw new Error('timing or tool failure')
+        return 'failed'
+      },
+      async (n) => {
+        errors.push(n)
+        return 'unavailable'
+      },
+    )
+    expect(calls).toEqual([0, 1, 2, 3])
+    expect(errors).toEqual([0])
+    expect(results).toHaveLength(4)
+  })
+  it.each(['positive-control', 'screen-lock', 'owned-pid', 'cleanup'] as const)(
+    'only explicit fatal condition %s stops the driver',
+    async (condition) => {
+      const calls: number[] = []
+      await expect(
+        runNativeCases(
+          4,
+          async (n) => {
+            calls.push(n)
+            throw new NativeFatalError(condition, 'fixture fatal')
+          },
+          async () => 'unavailable',
+        ),
+      ).rejects.toThrow('fixture fatal')
+      expect(calls).toEqual([0])
+    },
+  )
   it('requires positive calibration and all four cases before final PASS', () => {
     const f = {
       positiveDetected: true,
