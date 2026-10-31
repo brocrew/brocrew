@@ -402,7 +402,7 @@ describe.skipIf(process.platform === 'win32')(
       await blocked
       expect(await client.close()).toBe(false)
       expect(JSON.parse(readFileSync(join(root, 'supervisor/owner.json'), 'utf8')).phase).toBe(
-        'blocked',
+        'draining',
       )
       await expect(PluginSupervisor.start({ root, workspaceRoots: [] })).rejects.toMatchObject({
         code: 'busy',

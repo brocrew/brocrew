@@ -8,6 +8,7 @@ import {
   compatible,
   OWNER_LIMITS,
   OWNER_WIRE,
+  OWNER_RECOVERY,
   pack,
   PluginSupervisorError,
   refuse,
@@ -48,6 +49,8 @@ export interface OwnerOptions {
   revoke?: (lease: Readonly<WorkspaceLease>) => Promise<void>
   drainWithin?: number
   tickEvery?: number
+  /** Trusted standalone bootstrap only. Runs inside the unchanged predecessor fence. */
+  recoverPrevious?: (previous: OwnerRecord | null) => Promise<boolean>
 }
 declare global {
   var __brobotPluginOwnersV1: Set<string> | undefined
@@ -92,7 +95,7 @@ async function stopAndProveChild(child: OwnedPluginChild): Promise<boolean> {
   return didExit && areGone
 }
 
-/** Single owner of the global process tree. A crashed/uncertain record is never taken over. */
+/** Single process-tree owner. A successor proves every prior run under the same OS fence. */
 export class PluginSupervisor {
   private readonly leases = new Map<string, WorkspaceLease>()
   private readonly children = new Set<OwnedPluginChild>()
@@ -114,7 +117,7 @@ export class PluginSupervisor {
   /** Remaining wall-clock time in the owner's bounded cleanup, for trusted child teardown. */
   remainingDrainMs(): number {
     return this.drainDeadline === undefined
-      ? (this.options.drainWithin ?? OWNER_LIMITS.drain)
+      ? (this.options.drainWithin ?? OWNER_LIMITS.cleanup)
       : Math.max(0, this.drainDeadline - performance.now())
   }
   private revocationFailed = false
@@ -178,8 +181,11 @@ export class PluginSupervisor {
       })
       await Promise.race([ready, owner.releaseDone])
       const previous = storage.read()
-      if ((!previous && existingLock) || (previous && previous.phase !== 'stopped'))
-        refuse('cleanup-pending')
+      if ((!previous && existingLock) || (previous && previous.phase !== 'stopped')) {
+        if (!(await options.recoverPrevious?.(previous))) refuse('cleanup-pending')
+        storage.check()
+        if (previous) storage.write({ ...previous, phase: 'stopped' })
+      }
       storage.clearSocket()
       owner.server = createServer((socket) => owner.accept(socket))
       await new Promise<void>((resolve, reject) => {
@@ -309,6 +315,12 @@ export class PluginSupervisor {
         result = {
           ok: false,
           code: error instanceof PluginSupervisorError ? error.code : 'unavailable',
+          ...(error instanceof PluginSupervisorError &&
+          error.diagnostic &&
+          request.command.kind === 'hello' &&
+          request.command.wire.features.includes(OWNER_RECOVERY)
+            ? { diagnostic: error.diagnostic }
+            : {}),
         }
       }
       socket.end(
@@ -323,17 +335,29 @@ export class PluginSupervisor {
     })
   }
   private command(command: Command): unknown {
+    if (command.kind === 'probe') return { phase: this.record.phase }
     this.expire()
-    if (this.record.phase !== 'accepting') refuse('busy')
+    if (this.record.phase !== 'accepting')
+      refuse('busy', {
+        phase: this.record.phase,
+        stage: 'hello',
+        probe: 'live',
+        reason: 'proof-pending',
+      })
     const now = this.clock()
     if (command.kind === 'hello') {
       const negotiated = compatible(this.record.wire, command.wire)
       if (!negotiated) refuse('incompatible')
-      if (
-        this.leases.size >= OWNER_LIMITS.leases ||
-        [...this.leases.values()].some((lease) => lease.workspace === command.workspace)
+      const duplicate = [...this.leases.values()].some(
+        (lease) => lease.workspace === command.workspace,
       )
-        refuse('busy')
+      if (duplicate || this.leases.size >= OWNER_LIMITS.leases)
+        refuse('busy', {
+          phase: 'accepting',
+          stage: 'hello',
+          probe: 'live',
+          reason: duplicate ? 'duplicate-workspace' : 'capacity',
+        })
       const lease: WorkspaceLease = {
         id: secret(),
         workspace: command.workspace,
@@ -457,23 +481,28 @@ export class PluginSupervisor {
   }
   private drain(): Promise<boolean> {
     this.drainWork ??= (async () => {
-      this.drainDeadline = performance.now() + (this.options.drainWithin ?? OWNER_LIMITS.drain)
-      const result = await bounded(
-        (async () => {
-          await Promise.all(this.revocations)
-          if (this.revocationFailed) return false
-          await Promise.all(this.starting)
-          return (await Promise.all([...this.children].map(stopAndProveChild))).every(Boolean)
-        })(),
-        this.options.drainWithin ?? OWNER_LIMITS.drain,
-      ).catch(() => false)
+      this.drainDeadline = performance.now() + (this.options.drainWithin ?? OWNER_LIMITS.cleanup)
+      const result = await (async () => {
+        await Promise.all(this.revocations)
+        if (this.revocationFailed) return false
+        await Promise.all(this.starting)
+        return (await Promise.all([...this.children].map(stopAndProveChild))).every(Boolean)
+      })().catch(() => false)
       if (result !== true) {
         this.fail()
         return false
       }
-      clearInterval(this.timer)
       await new Promise<void>((resolve) => this.server!.close(() => resolve()))
-      this.storage.write({ ...this.record, phase: 'stopped' })
+      // The proofs already arrived. Retain the same fence until their durable publication succeeds.
+      for (;;) {
+        try {
+          this.storage.write({ ...this.record, phase: 'stopped' })
+          break
+        } catch {
+          await new Promise((resolve) => setTimeout(resolve, 1000))
+        }
+      }
+      clearInterval(this.timer)
       this.record.phase = 'stopped'
       this.release()
       await this.releaseDone
@@ -486,7 +515,10 @@ export class PluginSupervisor {
       this.fail()
       return false
     })
-    return this.drainWork
+    // A caller's deadline ends only its wait; the captured exit work continues under the fence.
+    return bounded(this.drainWork, this.options.drainWithin ?? OWNER_LIMITS.drain).then(
+      (result) => result === true,
+    )
   }
   async shutdown(): Promise<boolean> {
     if (this.record.phase === 'stopped') return true

@@ -525,6 +525,12 @@ export function productionPluginController() {
                     options.supervisor.lastStartError,
                 ),
               )
+            if (
+              !ended &&
+              pluginStartupReason(options.supervisor.lastStartError, 'service-start') ===
+                'cleanup-pending'
+            )
+              watchForCleanStop()
             return false
           }
           phase = 'catalogue'
@@ -616,6 +622,7 @@ export function productionPluginController() {
           return true
         } catch (error) {
           failed(phase, error)
+          if (!ended && pluginStartupReason(error, phase) === 'cleanup-pending') watchForCleanStop()
           if (!entries)
             listFailure =
               error instanceof PluginListError

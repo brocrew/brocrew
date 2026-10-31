@@ -9,6 +9,7 @@ export const OWNER_LIMITS = {
   expires: 60_000,
   request: 2_000,
   drain: 5_000,
+  cleanup: 60_000,
 } as const
 /** Cold runtime verification, copying and child readiness share this bounded launch wait. */
 export const OWNER_LAUNCH_MS = process.platform === 'win32' ? 60_000 : 30_000
@@ -33,11 +34,18 @@ export const RENEW_RETRY = 'renew-retry'
 export const LOST_CHANNEL_ENDS = 'lost-channel-ends'
 /** Person configuration can explicitly negotiate checkpoint ledgers and safe-integer revisions. */
 export const CONFIGURATION_LEDGER_V2 = 'configuration-ledger-v2'
+export const OWNER_RECOVERY = 'owner-recovery'
 export const OWNER_WIRE: WireVersion = {
   major: 1,
   minMinor: 0,
   maxMinor: 0,
-  features: [RENEW_RETRY, LOST_CHANNEL_ENDS, CONFIGURATION_LEDGER_V2, ...PLUGIN_FRAMEWORK_FEATURES],
+  features: [
+    RENEW_RETRY,
+    LOST_CHANNEL_ENDS,
+    CONFIGURATION_LEDGER_V2,
+    OWNER_RECOVERY,
+    ...PLUGIN_FRAMEWORK_FEATURES,
+  ],
 }
 /** Every copy of the app sharing the plugin root reads this strictly: it never gains a field. */
 export const OwnerRecord = z.strictObject({
@@ -59,6 +67,7 @@ export const StopRecord = z.object({ epoch: Uuid, reason: StopReason })
 export type StopRecord = z.infer<typeof StopRecord>
 const Identity = { workspace: Hex, generation: Uuid }
 export const Command = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('probe') }),
   z.strictObject({
     kind: z.literal('hello'),
     ...Identity,
@@ -100,10 +109,29 @@ export type Refusal =
   | 'policy-refused'
   | 'source-mismatch'
   | 'network'
+export const OwnerDiagnostic = z.strictObject({
+  phase: z.enum(['accepting', 'draining', 'blocked', 'stopped', 'missing', 'unreadable']),
+  stage: z.enum(['attach-record', 'hello', 'detach', 'lease-lost', 'recovery']),
+  probe: z.enum(['live', 'no-answer', 'unknown']),
+  reason: z.enum([
+    'duplicate-workspace',
+    'capacity',
+    'drain-timeout',
+    'proof-pending',
+    'io',
+    'unknown',
+  ]),
+})
+export type OwnerDiagnostic = z.infer<typeof OwnerDiagnostic>
+export function ownerDiagnosticLine(diagnostic: OwnerDiagnostic): string {
+  const checked = OwnerDiagnostic.parse(diagnostic)
+  return `phase=${checked.phase} stage=${checked.stage} probe=${checked.probe} reason=${checked.reason}`
+}
 export class PluginSupervisorError extends Error {
+  readonly diagnostic?: OwnerDiagnostic
   constructor(
     readonly code: Refusal,
-    options?: ErrorOptions,
+    options?: ErrorOptions & { diagnostic?: OwnerDiagnostic },
   ) {
     super(
       code === 'busy'
@@ -114,10 +142,11 @@ export class PluginSupervisorError extends Error {
       options,
     )
     this.name = 'PluginSupervisorError'
+    if (options?.diagnostic) this.diagnostic = OwnerDiagnostic.parse(options.diagnostic)
   }
 }
-export function refuse(code: Refusal = 'unavailable'): never {
-  throw new PluginSupervisorError(code)
+export function refuse(code: Refusal = 'unavailable', diagnostic?: OwnerDiagnostic): never {
+  throw new PluginSupervisorError(code, { diagnostic })
 }
 const mac = (key: string, direction: string, data: string) =>
   createHmac('sha256', Buffer.from(key, 'hex')).update(`${direction}\n${data}`).digest('hex')

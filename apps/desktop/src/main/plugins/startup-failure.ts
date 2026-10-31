@@ -10,7 +10,7 @@ import {
 } from '../../shared/plugin-settings'
 import { StringDecoder } from 'node:string_decoder'
 import type { ChildProcess } from 'node:child_process'
-import { PluginSupervisorError } from './supervisor/protocol'
+import { PluginSupervisorError, ownerDiagnosticLine } from './supervisor/protocol'
 
 /** Keep one error line, excluding launch capabilities and terminal control characters. */
 export function pluginStartupStderr(text: string, secrets: readonly string[] = []): string | null {
@@ -49,6 +49,12 @@ export class PluginSupervisorLaunchFailure extends Error {
 export function pluginStartupDiagnostic(error: unknown): PluginStartupDiagnostic | undefined {
   for (let depth = 0; depth < 6 && error && typeof error === 'object'; depth++) {
     if (error instanceof PluginSupervisorLaunchFailure) return error.diagnostic
+    if (error instanceof PluginSupervisorError && error.diagnostic)
+      return {
+        exitCode: null,
+        signal: null,
+        stderr: ownerDiagnosticLine(error.diagnostic),
+      }
     error = (error as { cause?: unknown }).cause
   }
   return undefined
