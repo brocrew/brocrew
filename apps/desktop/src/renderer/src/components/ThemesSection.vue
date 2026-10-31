@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, shallowRef, useId } from 'vue'
+import { nextTick, onMounted, onUnmounted, ref, shallowRef, useId } from 'vue'
 import type {
-  ThemeReading,
   ThemeRefused,
   ThemeRow,
   ThemeSnapshot,
@@ -30,6 +29,10 @@ const snapshot = shallowRef<ThemeSnapshot | null>(null)
 const unread = ref<string | null>(null)
 const refused = ref<string | null>(null)
 const busy = ref(false)
+const loading = ref(true)
+const ready = shallowRef<ReadonlySet<string>>(new Set())
+const cards = ref<HTMLUListElement | null>(null)
+let observer: IntersectionObserver | null = null
 
 /** This section's own stylesheet for its cards' previews, in the head while it is mounted. */
 let previews: HTMLStyleElement | null = null
@@ -42,24 +45,67 @@ let latest = 0
 async function read(): Promise<void> {
   const themes = bridge()
   if (!themes || disposed) return
+  observer?.disconnect()
+  observer = null
   const mine = ++latest
   const current = (): boolean => !disposed && mine === latest
   try {
     const next = await themes.list()
     if (!current()) return
-    const readings = await Promise.all(
-      next.themes.map(async (row): Promise<[string, ThemeReading | null]> => {
-        if (row.status !== 'ok') return [row.id, null]
-        const answer = await themes.read(row.id).catch(() => null)
-        return [row.id, answer && !isRefusal(answer) ? answer : null]
-      }),
-    )
-    if (!current() || !previews) return
-    previews.textContent = readings.map(([id, r]) => previewCss(id, r)).join('')
     snapshot.value = next
     unread.value = null
+    loading.value = false
+    ready.value = new Set()
+    await nextTick()
+    if (!current() || !previews || !cards.value) return
+    previews.textContent = ''
+    const rows = new Map(next.themes.map((row) => [row.id, row]))
+    const waiting = new Map<string, Element>()
+    const started = new Set<string>()
+    let inFlight = 0
+    const drain = (): void => {
+      while (current() && inFlight < 4 && waiting.size > 0) {
+        const [id, card] = waiting.entries().next().value!
+        waiting.delete(id)
+        if (started.has(id)) continue
+        started.add(id)
+        inFlight++
+        const reading =
+          rows.get(id)?.status === 'ok'
+            ? themes.read(id, { refresh: false }).catch(() => null)
+            : Promise.resolve(null)
+        void reading
+          .then((answer) => {
+            if (!current() || !previews) return
+            const value = answer && !isRefusal(answer) ? answer : null
+            previews.appendChild(document.createTextNode(previewCss(id, value)))
+            ready.value = new Set([...ready.value, id])
+            observer?.unobserve(card)
+          })
+          .finally(() => {
+            inFlight--
+            drain()
+          })
+      }
+    }
+    observer = new IntersectionObserver(
+      (entries) => {
+        if (!current()) return
+        for (const entry of entries) {
+          const id = (entry.target as HTMLElement).dataset.themeId!
+          if (entry.isIntersecting) waiting.set(id, entry.target)
+          else waiting.delete(id)
+        }
+        drain()
+      },
+      { rootMargin: '120px' },
+    )
+    for (const card of cards.value.children) observer.observe(card)
   } catch (error) {
-    if (current()) unread.value = readableError(error)
+    if (current()) {
+      unread.value = readableError(error)
+      loading.value = false
+    }
   }
 }
 
@@ -106,6 +152,7 @@ onMounted(() => {
 onUnmounted(() => {
   disposed = true
   latest++
+  observer?.disconnect()
   unsubscribe?.()
   previews?.remove()
   previews = null
@@ -142,7 +189,10 @@ const bodyId = useId()
         {{ refused }}
       </p>
       <p v-if="snapshot?.reason" class="note" data-cy="themes-reason">{{ snapshot.reason }}</p>
-      <ul class="cards">
+      <p v-if="loading" class="note" role="status" data-cy="themes-loading">
+        {{ THEME_WORDS.loading }}
+      </p>
+      <ul ref="cards" class="cards" :aria-busy="loading">
         <li
           v-for="row in snapshot?.themes ?? []"
           :key="row.id"
@@ -151,7 +201,8 @@ const bodyId = useId()
           data-cy="theme-card"
           :data-theme-id="row.id"
         >
-          <div class="mini" :data-theme-preview="row.id" aria-hidden="true">
+          <div v-if="!ready.has(row.id)" class="mini preview-placeholder" aria-hidden="true" />
+          <div v-else class="mini" :data-theme-preview="row.id" aria-hidden="true">
             <div class="mini-bar"><span class="mini-mark" /></div>
             <div class="mini-body">
               <div class="mini-rail"><i /><i class="on" /><i /></div>
@@ -349,6 +400,10 @@ h3 {
   border: var(--border-width) solid var(--line);
   border-radius: var(--radius-sm);
   pointer-events: none;
+}
+.preview-placeholder {
+  background: var(--line);
+  opacity: 0.35;
 }
 .mini-bar {
   display: flex;
