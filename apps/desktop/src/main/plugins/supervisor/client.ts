@@ -437,6 +437,8 @@ export class PluginSupervisorAttachment {
   private quitting: Promise<void> | undefined
   private ended = false
   private startError: unknown
+  private options?: Omit<SupervisorClientOptions, 'generation'>
+  private recovering?: Promise<boolean>
   /** Internal diagnostics only; raw causes are never sent through plugin IPC or logs. */
   get lastStartError(): unknown {
     return this.startError
@@ -444,6 +446,7 @@ export class PluginSupervisorAttachment {
   start(options: Omit<SupervisorClientOptions, 'generation'>): void {
     if (this.pending || this.ended) return
     this.startError = undefined
+    this.options = options
     this.where = { root: options.root, workspaceRoot: options.workspaceRoot }
     this.pending = PluginWorkspaceLease.attach({ ...options, generation: randomUUID() })
       .then(async (lease) => {
@@ -463,6 +466,33 @@ export class PluginSupervisorAttachment {
   }
   supports(feature: string): boolean {
     return this.holdsLease() && Boolean(this.lease?.features.includes(feature))
+  }
+  /** A successor still passes the ordinary fenced admission and complete run-proof checks. */
+  recover(): Promise<boolean> {
+    this.recovering ??= (async () => {
+      if (this.ended || !this.options) return false
+      try {
+        const next = await PluginWorkspaceLease.attach({
+          ...this.options,
+          generation: randomUUID(),
+        })
+        if (this.ended) {
+          await next.close()
+          return false
+        }
+        this.lease?.abandon()
+        this.lease = next
+        this.pending = Promise.resolve(next)
+        this.startError = undefined
+        return true
+      } catch (error) {
+        this.startError = error
+        return false
+      }
+    })().finally(() => {
+      this.recovering = undefined
+    })
+    return this.recovering
   }
   async agentRoutes(input: {
     workspaceId: string

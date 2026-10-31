@@ -34,6 +34,8 @@ import {
   PluginSupervisorAttachment,
   PluginWorkspaceLease,
 } from '../src/main/plugins/supervisor/client'
+import { PluginSupervisor } from '../src/main/plugins/supervisor/owner'
+import { previousRunsProvenStopped } from '../src/main/plugins/supervisor/recovery-proof'
 import { SupervisorStorage } from '../src/main/plugins/supervisor/storage'
 import {
   LOST_CHANNEL_ENDS,
@@ -910,6 +912,46 @@ describe.skipIf(process.platform === 'win32')(
         expect(leases[0]!.close).not.toHaveBeenCalled()
       },
     )
+    it('automatically repairs a dead nonstopped owner after a person-channel loss under the original fence', async () => {
+      const f = await setup()
+      const supervisor = new PluginSupervisorAttachment()
+      let owner: PluginSupervisor | undefined
+      const launcher = () =>
+        Object.assign(
+          async () => {
+            owner = await PluginSupervisor.start({
+              root: f.options.root,
+              workspaceRoots: [f.options.workspaceRoot],
+              wire: { ...OWNER_WIRE, features: [LOST_CHANNEL_ENDS] },
+              recoverPrevious: () => previousRunsProvenStopped(f.options.root),
+            })
+          },
+          { diagnostic: () => undefined },
+        )
+      seams.launch.mockImplementationOnce(launcher).mockImplementationOnce(launcher)
+      try {
+        f.controller.start({ ...f.options, supervisor })
+        expect(await f.controller.ready!()).toBe(true)
+        expect(await owner!.shutdown()).toBe(true)
+        const storage = new SupervisorStorage(f.options.root, [f.options.workspaceRoot], false)
+        const record = storage.read()!
+        storage.write({ ...record, phase: 'blocked' })
+        storage.close()
+        ;(seams.connect.mock.calls[0]![0] as { lost(): void }).lost()
+        await vi.waitFor(() => expect(seams.connect).toHaveBeenCalledTimes(2), { timeout: 8000 })
+        expect(readPluginInstructions(f.controller)?.[0]?.state).toBe('Available')
+        const next = new SupervisorStorage(f.options.root, [f.options.workspaceRoot], false)
+        try {
+          expect(next.read()!.epoch).not.toBe(record.epoch)
+        } finally {
+          next.close()
+        }
+      } finally {
+        await f.controller.close()
+        await supervisor.quit()
+        await owner?.shutdown()
+      }
+    }, 15_000)
     it('a lost lease recovers by itself once the owner proves its clean stop', async () => {
       const f = await setup()
       const epoch = randomUUID()
