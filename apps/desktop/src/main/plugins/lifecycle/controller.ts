@@ -1390,7 +1390,8 @@ export class PluginLifecycleController {
   /** Trusted owner teardown only. Mark intent synchronously before any child can be stopped. */
   drain(): Promise<void> {
     this.draining = true
-    this.drainWork ??= bounded(async () => {
+    // The supervisor bounds its caller's wait while retaining this exact cleanup barrier.
+    this.drainWork ??= (async () => {
       const results = await Promise.allSettled(
         [...this.runs.values()].map(async (running) => {
           const [, exit] = await Promise.allSettled([
@@ -1407,7 +1408,7 @@ export class PluginLifecycleController {
         this.drained = true
       })
       if (!this.cleanForShutdown()) return pending()
-    })
+    })()
     return this.drainWork
   }
   /**

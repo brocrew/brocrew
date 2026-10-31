@@ -461,7 +461,7 @@ describe.skipIf(process.platform === 'win32')(
         await expect(run.client.catalogue()).rejects.toThrow()
         expect(run.fake.runs[0]!.process.stop).toHaveBeenCalled()
         expect(run.service.controller.cleanForShutdown()).toBe(false)
-        expect(await phase(f.root)).toBe('blocked')
+        expect(await phase(f.root)).toBe('draining')
       },
     )
     it('intentional drain cannot turn an unproved exact-run exit into clean shutdown', async () => {

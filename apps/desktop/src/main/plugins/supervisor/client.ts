@@ -11,6 +11,8 @@ import {
   OWNER_LAUNCH_MS,
   OWNER_LIMITS,
   OWNER_WIRE,
+  OWNER_RECOVERY,
+  OwnerDiagnostic,
   pack,
   PluginSupervisorError,
   LOST_CHANNEL_ENDS,
@@ -30,6 +32,7 @@ const Reply = z.discriminatedUnion('ok', [
     nonce: Hex,
     epoch: z.uuid(),
     code: z.enum(['unavailable', 'busy', 'incompatible', 'cleanup-pending', 'unsupported']),
+    diagnostic: OwnerDiagnostic.optional(),
   }),
 ])
 const Hello = z.strictObject({
@@ -47,6 +50,18 @@ class NoReply extends PluginSupervisorError {
 }
 /** How soon a renewal that got no answer is tried again, so several tries fit in the expiry. */
 const RETRY_EVERY = 5_000
+const launches = new Map<string, Promise<void>>()
+function serializedLaunch(identity: string, launch: () => Promise<void>): Promise<void> {
+  const existing = launches.get(identity)
+  if (existing) return existing
+  const work = Promise.resolve()
+    .then(launch)
+    .finally(() => {
+      if (launches.get(identity) === work) launches.delete(identity)
+    })
+  launches.set(identity, work)
+  return work
+}
 /** One authenticated, bounded command on a private socket. No raw error or packet leaves here. */
 export function supervisorRequest(
   storage: SupervisorStorage,
@@ -94,7 +109,8 @@ export function supervisorRequest(
         }
         const response = Reply.parse(unpack(record.key, 'response', line))
         if (response.nonce !== nonce || response.epoch !== record.epoch) refuse()
-        if (!response.ok) throw new PluginSupervisorError(response.code)
+        if (!response.ok)
+          throw new PluginSupervisorError(response.code, { diagnostic: response.diagnostic })
         storage.check()
         finish(undefined, response.value)
       } catch (error) {
@@ -151,21 +167,67 @@ export class PluginWorkspaceLease {
   }
   static async attach(options: SupervisorClientOptions): Promise<PluginWorkspaceLease> {
     let storage: SupervisorStorage | undefined
+    let phase: OwnerDiagnostic['phase'] = 'unreadable'
+    let stage: OwnerDiagnostic['stage'] = 'attach-record'
     try {
       const workspace = realpathSync(options.workspaceRoot)
       if (!lstatSync(workspace).isDirectory()) refuse()
       const workspaceId = createHash('sha256').update(workspace).digest('hex')
       storage = new SupervisorStorage(options.root, [workspace], !!options.launch)
+      const readOwner = () => {
+        try {
+          return storage!.read()
+        } catch (error) {
+          throw new PluginSupervisorError('cleanup-pending', {
+            cause: error,
+            diagnostic: {
+              phase: 'unreadable',
+              stage: 'attach-record',
+              probe: 'unknown',
+              reason: 'io',
+            },
+          })
+        }
+      }
       let launchError: unknown
-      let record = storage.read()
-      if (!record || record.phase === 'stopped') {
+      let record = readOwner()
+      phase = record?.phase ?? 'missing'
+      let launched = false
+      let probe: 'live' | 'no-answer' | 'unknown' = 'unknown'
+      if (record && (record.phase === 'blocked' || record.phase === 'draining')) {
+        try {
+          await supervisorRequest(
+            storage,
+            record,
+            record.wire.features.includes(OWNER_RECOVERY)
+              ? { kind: 'probe' }
+              : {
+                  kind: 'hello',
+                  workspace: workspaceId,
+                  generation: options.generation,
+                  build: options.build,
+                  wire: options.wire ?? OWNER_WIRE,
+                },
+          )
+          probe = 'live'
+        } catch (error) {
+          if (error instanceof NoReply) probe = 'no-answer'
+          else if (error instanceof PluginSupervisorError && error.code === 'busy') probe = 'live'
+        }
+        record = readOwner()
+      }
+      const launchOnce = async () => {
+        if (launched) return
+        launched = true
         if (!options.launch) refuse()
         // Exactly one attempt here. The launched service itself must acquire the OS fence.
         let timer: ReturnType<typeof setTimeout> | undefined
         const until = performance.now() + OWNER_LAUNCH_MS
+        const root = realpathSync.native(storage!.root)
+        const identity = `${process.platform === 'win32' ? root.toLowerCase() : root}\0${storage!.identity}`
         try {
           await Promise.race([
-            options.launch(),
+            serializedLaunch(identity, options.launch),
             new Promise<never>((_, reject) => {
               timer = setTimeout(
                 () => reject(new PluginSupervisorError('unavailable')),
@@ -181,29 +243,63 @@ export class PluginWorkspaceLease {
           clearTimeout(timer)
         }
         do {
-          record = storage.read()
+          record = readOwner()
           if (record && record.phase !== 'stopped') break
           await new Promise((resolve) => setTimeout(resolve, 10))
         } while (performance.now() < until)
       }
+      if (!record || record.phase === 'stopped' || (probe === 'no-answer' && options.launch))
+        await launchOnce()
       if (!record || record.phase !== 'accepting')
         throw new PluginSupervisorError(
           record?.phase === 'blocked' || record?.phase === 'draining' ? 'busy' : 'unavailable',
-          { cause: launchError },
+          {
+            cause: launchError,
+            diagnostic: {
+              phase: record?.phase ?? 'missing',
+              stage: 'attach-record',
+              probe,
+              reason: 'unknown',
+            },
+          },
         )
-      const hello = Hello.parse(
-        await supervisorRequest(storage, record, {
-          kind: 'hello',
-          workspace: workspaceId,
-          generation: options.generation,
-          build: options.build,
-          wire: options.wire ?? OWNER_WIRE,
-        }),
-      )
+      phase = record.phase
+      stage = 'hello'
+      const helloCommand: Command = {
+        kind: 'hello',
+        workspace: workspaceId,
+        generation: options.generation,
+        build: options.build,
+        wire: options.wire ?? OWNER_WIRE,
+      }
+      let answer: unknown
+      try {
+        answer = await supervisorRequest(storage, record, helloCommand)
+      } catch (error) {
+        if (!(error instanceof NoReply) || !options.launch || launched) throw error
+        await launchOnce()
+        const successor = readOwner()
+        if (!successor || successor.phase !== 'accepting') throw error
+        record = successor
+        phase = successor.phase
+        answer = await supervisorRequest(storage, record, helloCommand)
+      }
+      const hello = Hello.parse(answer)
       return new PluginWorkspaceLease(storage, record, options, workspaceId, hello)
     } catch (error) {
       storage?.close()
-      if (error instanceof PluginSupervisorError) throw error
+      if (error instanceof PluginSupervisorError) {
+        if (error.diagnostic) throw error
+        throw new PluginSupervisorError(error instanceof NoReply ? 'cleanup-pending' : error.code, {
+          cause: error,
+          diagnostic: {
+            phase,
+            stage,
+            probe: error instanceof NoReply ? 'no-answer' : 'unknown',
+            reason: 'unknown',
+          },
+        })
+      }
       throw new PluginSupervisorError('unavailable', { cause: error })
     }
   }
@@ -343,6 +439,8 @@ export class PluginSupervisorAttachment {
   private quitting: Promise<void> | undefined
   private ended = false
   private startError: unknown
+  private options?: Omit<SupervisorClientOptions, 'generation'>
+  private recovering?: Promise<boolean>
   /** Internal diagnostics only; raw causes are never sent through plugin IPC or logs. */
   get lastStartError(): unknown {
     return this.startError
@@ -350,6 +448,7 @@ export class PluginSupervisorAttachment {
   start(options: Omit<SupervisorClientOptions, 'generation'>): void {
     if (this.pending || this.ended) return
     this.startError = undefined
+    this.options = options
     this.where = { root: options.root, workspaceRoot: options.workspaceRoot }
     this.pending = PluginWorkspaceLease.attach({ ...options, generation: randomUUID() })
       .then(async (lease) => {
@@ -369,6 +468,33 @@ export class PluginSupervisorAttachment {
   }
   supports(feature: string): boolean {
     return this.holdsLease() && Boolean(this.lease?.features.includes(feature))
+  }
+  /** A successor still passes the ordinary fenced admission and complete run-proof checks. */
+  recover(): Promise<boolean> {
+    this.recovering ??= (async () => {
+      if (this.ended || !this.options) return false
+      try {
+        const next = await PluginWorkspaceLease.attach({
+          ...this.options,
+          generation: randomUUID(),
+        })
+        if (this.ended) {
+          await next.close()
+          return false
+        }
+        this.lease?.abandon()
+        this.lease = next
+        this.pending = Promise.resolve(next)
+        this.startError = undefined
+        return true
+      } catch (error) {
+        this.startError = error
+        return false
+      }
+    })().finally(() => {
+      this.recovering = undefined
+    })
+    return this.recovering
   }
   async agentRoutes(input: {
     workspaceId: string

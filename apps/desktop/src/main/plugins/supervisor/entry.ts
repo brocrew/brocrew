@@ -14,6 +14,7 @@ import { createSupervisedPluginHost } from './node-host'
 import { bootstrapPluginLifecycle } from '../lifecycle/bootstrap'
 import { pluginStartupStderr } from '../startup-failure'
 import { LaunchConfig } from './launch-format'
+import { previousRunsProvenStopped } from './recovery-proof'
 
 export async function runPluginSupervisor(configPath: string, expectedDigest: string) {
   const bytes = await sourceBytes(configPath, 1024 * 1024)
@@ -25,6 +26,7 @@ export async function runPluginSupervisor(configPath: string, expectedDigest: st
   const owner = await PluginSupervisor.start({
     root: config.root,
     workspaceRoots: config.workspaceRoots,
+    recoverPrevious: () => previousRunsProvenStopped(config.root),
   })
   const host = createPluginNodeHost({
     root: join(config.root, 'host'),

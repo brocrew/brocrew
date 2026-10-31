@@ -411,6 +411,50 @@ describe.skipIf(process.platform === 'win32')(
       expect(f.state.inspect().pending).toBeNull()
       expect((await next.status()).cards).toMatchObject([{ state: 'Available', installed: false }])
     })
+    it('trusted drain keeps observing a run whose positive exit arrives after twenty seconds', async () => {
+      const exit = deferred<void>()
+      const f = await fixture({
+        runtime: {
+          previousOwnerClean: async () => true,
+          removeCode: async () => {},
+          async start() {
+            return {
+              runId: randomUUID(),
+              exited: exit.promise,
+              stop: async () => {},
+              ready: async () => ({
+                serverPid: 404941,
+                origin: 'http://127.0.0.1:1',
+                mcp: () => ({ url: '', headers: { Authorization: '' } }),
+                admin: () => ({ url: '', headers: { Authorization: '' } }),
+              }),
+            }
+          },
+        },
+      })
+      await f.controller.install(f.handle, 'chrome')
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      let settled = false
+      const drainResult = f.controller.drain()
+      const draining = drainResult.then(
+        () => {
+          settled = true
+        },
+        () => {
+          settled = true
+        },
+      )
+      try {
+        await vi.advanceTimersByTimeAsync(20_001)
+        expect(settled).toBe(false)
+      } finally {
+        vi.useRealTimers()
+        exit.resolve()
+        await draining
+      }
+      await expect(drainResult).resolves.toBeUndefined()
+      expect(f.controller.cleanForShutdown()).toBe(true)
+    })
     it('offline A tool/UI bindings are cleaned on reopen before rebinding B', async () => {
       const f = await fixture()
       await f.controller.install(f.handle, 'chrome')

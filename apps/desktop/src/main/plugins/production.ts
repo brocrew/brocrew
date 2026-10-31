@@ -124,10 +124,19 @@ export function productionPluginController() {
     clearTimeout(recovery)
     const next = Math.min(delay * 2, 60_000)
     recovery = setTimeout(() => {
-      if (ended || connected) return
-      if (cleanupUncertain && !recover()) return watchForCleanStop(next)
-      void enter().then((attached) => {
+      void (async () => {
+        if (ended || connected) return
+        if (cleanupUncertain && !recover()) {
+          if (!(await supervisor?.recover?.()) || !recover()) {
+            if (supervisor?.lastStartError) failed('cleanup-pending', supervisor.lastStartError)
+            if (!ended) watchForCleanStop(next)
+            return
+          }
+        }
+        const attached = await enter()
         if (!attached && !ended) watchForCleanStop(next)
+      })().catch(() => {
+        if (!ended) watchForCleanStop(next)
       })
     }, delay)
     recovery.unref()
@@ -525,6 +534,12 @@ export function productionPluginController() {
                     options.supervisor.lastStartError,
                 ),
               )
+            if (
+              !ended &&
+              pluginStartupReason(options.supervisor.lastStartError, 'service-start') ===
+                'cleanup-pending'
+            )
+              watchForCleanStop()
             return false
           }
           phase = 'catalogue'
@@ -616,6 +631,7 @@ export function productionPluginController() {
           return true
         } catch (error) {
           failed(phase, error)
+          if (!ended && pluginStartupReason(error, phase) === 'cleanup-pending') watchForCleanStop()
           if (!entries)
             listFailure =
               error instanceof PluginListError
