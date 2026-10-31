@@ -280,7 +280,7 @@ describe('every other part opens for what it has to say', () => {
     expect(open.login).toBe(false)
     expect(shown(m, 'login')).toBe(false)
     // ⚑ The notice is there, folded with its part.
-    expect(m.q('provider-status').textContent).toContain('Signed in.')
+    expect(m.q('provider-status').textContent).toContain('Signed in to Claude.')
   })
 
   it('🔴 Usage: a warning that arrives while it is folded opens it', async () => {

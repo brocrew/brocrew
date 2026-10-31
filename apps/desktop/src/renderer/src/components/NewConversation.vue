@@ -77,7 +77,6 @@ export function blockingGroupShows(input: {
 
 <script setup lang="ts">
 import { defaultModel } from '../lib/provider-models'
-import { PROVIDER_DESCRIPTORS } from '@brobot2/shared/providers'
 import { computed, nextTick, onMounted, ref, useId, watch } from 'vue'
 import type {
   AuthState,
@@ -660,7 +659,7 @@ async function signIn(): Promise<void> {
       if (stillAsking(asked)) {
         authState.value = result.state
         authNotice.value = result.success
-          ? 'Signed in. This profile now has its own sign-in.'
+          ? `Signed in to ${PROVIDER_NAME[asked.provider]}.`
           : (result.detail ?? 'The sign-in did not complete.')
       }
     } catch (error) {
@@ -887,7 +886,6 @@ const checkingProviders = computed(
     props.providerReadiness !== null &&
     providers.value.some((provider) => props.providerReadiness?.[provider] == null),
 )
-const setupProvider = PROVIDER_DESCRIPTORS[0].id
 const headerProvider = computed(() =>
   props.providerReadiness === null
     ? PROVIDER_NAME[props.defaultProvider]
@@ -1010,9 +1008,9 @@ watch(
                 type="button"
                 class="bb-button bb-button--primary"
                 data-cy="new-provider-setup"
-                @click="emit('open-providers', setupProvider)"
+                @click="emit('open-providers')"
               >
-                Set up {{ PROVIDER_NAME[setupProvider] }}
+                Set up a provider
               </button>
             </template>
           </div>
