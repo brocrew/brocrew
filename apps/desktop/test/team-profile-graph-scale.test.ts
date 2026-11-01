@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { Worker } from 'node:worker_threads'
 import { graphFixture, graphContext } from './helpers/team-profile-graph-fixture'
 import { bundleAWorker } from './helpers/bundle-a-worker'
@@ -9,8 +9,11 @@ for (const [identities, conversations, events] of [
   [100, 1000, 10000],
   [1000, 10000, 100000],
 ] as const)
-  it(`reads fictional scale ${identities}/${conversations}/${events} without blocking its caller`, async () => {
-    const probeStart = performance.now()
+  describe(`fictional scale ${identities}/${conversations}/${events}`, () => {
+    let fixture: ReturnType<typeof graphFixture> | undefined
+    let bundle: string
+    let plans: unknown[]
+    let probeStart: number
     const probe = (phase: string) =>
       process.stdout.write(
         'GRAPH_PHASE ' +
@@ -23,10 +26,12 @@ for (const [identities, conversations, events] of [
           }) +
           '\n',
       )
-    probe('start')
-    const f = graphFixture()
-    probe('database-ready')
-    try {
+    // Fixture writes and bundling have their own budget; the worker read keeps its 20 seconds.
+    beforeAll(async () => {
+      probeStart = performance.now()
+      probe('start')
+      const f = (fixture = graphFixture())
+      probe('database-ready')
       f.db.transaction(() => {
         for (let i = 0; i < identities; i++) f.identity(`aid:fiction${i}`)
         for (let i = 0; i < conversations; i++) {
@@ -49,7 +54,7 @@ for (const [identities, conversations, events] of [
       })()
       f.db.prepare('UPDATE work SET created_at=?').run(graphCutoff - 86_400_000)
       probe('fixture-ready')
-      const plans = [
+      plans = [
         f.db
           .prepare('EXPLAIN QUERY PLAN SELECT rowid FROM work WHERE rowid>? ORDER BY rowid LIMIT ?')
           .all(0, 256),
@@ -64,12 +69,18 @@ for (const [identities, conversations, events] of [
           )
           .all('s0', 0, -1, 256),
       ]
-      const bundle = await bundleAWorker(
+      bundle = await bundleAWorker(
         'src/main/team-profile-graph.worker.ts',
         f.directory,
         'graph-worker.cjs',
       )
       probe('bundle-ready')
+    }, 60000)
+    afterAll(() => fixture?.close())
+
+    it(`reads fictional scale ${identities}/${conversations}/${events} without blocking its caller`, async () => {
+      const f = fixture
+      if (!f) throw new Error('No scale fixture')
       let exitAt: number | null = null
       const reader = new TeamProfileGraphLifetime(() => {
         const w = new Worker(bundle, {
@@ -91,6 +102,7 @@ for (const [identities, conversations, events] of [
       const start = performance.now()
       try {
         const header = await reader.read({ operation: 'snapshot' }, graphContext)
+        const snapshotMs = performance.now() - start
         probe('snapshot-ready')
         expect(header.type, JSON.stringify(header)).toBe('snapshot')
         if (header.type !== 'snapshot') throw new Error('no complete reading')
@@ -122,6 +134,8 @@ for (const [identities, conversations, events] of [
               metrics: header.metrics,
               nodes,
               edges,
+              snapshotMs,
+              paginationMs: callerAt - start - snapshotMs,
               callerMs: callerAt - start,
               nativeExitMs: processExitAt === null ? null : processExitAt - start,
               heartbeatMaxDelayMs: maxDelay,
@@ -140,23 +154,24 @@ for (const [identities, conversations, events] of [
         clearInterval(heartbeat)
         await reader.close()
       }
-    } finally {
-      f.close()
-    }
-  }, 20000)
+    }, 20000)
+  })
 
-it('admits or honestly refuses the 10k-identity/50k-pair boundary without partial counts', async () => {
-  const probeStart = performance.now()
+describe('10k-identity/50k-pair boundary', () => {
+  let fixture: ReturnType<typeof graphFixture> | undefined
+  let bundle: string
+  let probeStart: number
   const probe = (phase: string) =>
     process.stdout.write(
       'GRAPH_BOUNDARY_PHASE ' +
         JSON.stringify({ phase, elapsedMs: performance.now() - probeStart }) +
         '\n',
     )
-  probe('start')
-  const f = graphFixture()
-  probe('database-ready')
-  try {
+  beforeAll(async () => {
+    probeStart = performance.now()
+    probe('start')
+    const f = (fixture = graphFixture())
+    probe('database-ready')
     const at = graphCutoff - 86400000
     f.db.transaction(() => {
       for (let i = 0; i < 10000; i++) {
@@ -177,12 +192,18 @@ it('admits or honestly refuses the 10k-identity/50k-pair boundary without partia
     })()
     f.db.prepare('UPDATE work SET created_at=?').run(at)
     probe('fixture-ready')
-    const bundle = await bundleAWorker(
+    bundle = await bundleAWorker(
       'src/main/team-profile-graph.worker.ts',
       f.directory,
       'graph-boundary.cjs',
     )
     probe('bundle-ready')
+  }, 60000)
+  afterAll(() => fixture?.close())
+
+  it('admits or honestly refuses the 10k-identity/50k-pair boundary without partial counts', async () => {
+    const f = fixture
+    if (!f) throw new Error('No boundary fixture')
     const reader = new TeamProfileGraphLifetime(
       () =>
         new Worker(bundle, {
@@ -190,8 +211,11 @@ it('admits or honestly refuses the 10k-identity/50k-pair boundary without partia
           resourceLimits: { maxOldGenerationSizeMb: 128, maxYoungGenerationSizeMb: 16 },
         }),
     )
+    const start = performance.now()
+    let snapshotMs: number | undefined
     try {
       const result = await reader.read({ operation: 'snapshot' }, graphContext)
+      snapshotMs = performance.now() - start
       probe('snapshot-ready')
       if (result.type === 'snapshot')
         expect([result.nodeCount, result.edgeCount]).toEqual([10000, 50000])
@@ -203,15 +227,21 @@ it('admits or honestly refuses the 10k-identity/50k-pair boundary without partia
       process.stdout.write('GRAPH_BOUNDARY ' + JSON.stringify(result) + '\n')
     } finally {
       await reader.close()
+      process.stdout.write(
+        'GRAPH_BOUNDARY_TIMING ' +
+          JSON.stringify({ snapshotMs, nativeExitMs: performance.now() - start }) +
+          '\n',
+      )
     }
-  } finally {
-    f.close()
-  }
-}, 20000)
+  }, 20000)
+})
 
-it('leaves 80MiB of unrelated fictional prose outside event parsing and row counts', async () => {
-  const f = graphFixture()
-  try {
+describe('unrelated fictional prose', () => {
+  let fixture: ReturnType<typeof graphFixture> | undefined
+  let bundle: string
+  let fixtureBytes: number
+  beforeAll(async () => {
+    const f = (fixture = graphFixture())
     f.identity('aid:prose')
     f.session('prose', 'aid:prose')
     f.root('prose')
@@ -220,11 +250,18 @@ it('leaves 80MiB of unrelated fictional prose outside event parsing and row coun
     f.db.transaction(() => {
       for (let i = 0; i < 10000; i++) f.event('prose', 'text', prose, 0, Date.now() - 86400000, i)
     })()
-    const bundle = await bundleAWorker(
+    fixtureBytes = Buffer.byteLength(prose) * 10000
+    bundle = await bundleAWorker(
       'src/main/team-profile-graph.worker.ts',
       f.directory,
       'graph-prose.cjs',
     )
+  }, 60000)
+  afterAll(() => fixture?.close())
+
+  it('leaves 80MiB of unrelated fictional prose outside event parsing and row counts', async () => {
+    const f = fixture
+    if (!f) throw new Error('No prose fixture')
     const reader = new TeamProfileGraphLifetime(
       () => new Worker(bundle, { workerData: { file: f.file, executionFile: f.executionFile } }),
     )
@@ -236,7 +273,7 @@ it('leaves 80MiB of unrelated fictional prose outside event parsing and row coun
       process.stdout.write(
         'GRAPH_UNRELATED_PROSE ' +
           JSON.stringify({
-            fixtureBytes: Buffer.byteLength(prose) * 10000,
+            fixtureBytes,
             metrics: result.metrics,
           }) +
           '\n',
@@ -244,7 +281,5 @@ it('leaves 80MiB of unrelated fictional prose outside event parsing and row coun
     } finally {
       await reader.close()
     }
-  } finally {
-    f.close()
-  }
-}, 20000)
+  }, 20000)
+})
