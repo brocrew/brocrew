@@ -11,7 +11,9 @@ export const graphContext: TeamProfileGraphReadContext = {
   workspaceNonce: 'fictional-workspace',
   ownerNonce: 'fictional-window',
   hostRevision: '0',
-  timezone: 'UTC',
+  timezone: '+00:00',
+  readAt: graphCutoff,
+  todaySince: Date.UTC(2026, 9, 25),
 }
 export function graphFixture() {
   const directory = mkdtempSync(join(tmpdir(), 'fictional-team-graph-'))

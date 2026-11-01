@@ -933,6 +933,8 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
         'db/fold-index.ts',
         'db/schema.ts',
         'db/session-store.ts',
+        // The graph worker counts retained routed questions without deciding or writing their state.
+        'db/team-profile-graph-engine.ts',
         // The read-only worker selects the canonical routed-request candidates.
         'db/window-read-engine.ts',
         // The writer checks whether a projection change can affect routing candidates.

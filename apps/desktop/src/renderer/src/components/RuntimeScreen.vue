@@ -3349,12 +3349,6 @@ let stopProviderFacts: (() => void) | null = null
  * the states, and a message that kept a file reads the files again ({@link readTheFiles}, UI-002).
  */
 let stopHearingStates: (() => void) | null = null
-const hearGraphChanges = (listener: Parameters<typeof window.api.runtime.onChanged>[0]) =>
-  window.api.runtime.onChanged((message) => {
-    teamProfileGraph.markStale()
-    listener(message)
-  })
-
 onMounted(() => {
   if (typeof window.api.runtime.onProvidersChanged === 'function')
     stopProviderFacts = window.api.runtime.onProvidersChanged((message) => {
@@ -3362,8 +3356,8 @@ onMounted(() => {
         authChangedFor(DEFAULT_PROFILE_ID, message.provider)
     })
   stopHearingStates = listenProviderStates(window.api.runtime, store, (message) => {
-    teamProfileGraph.markStale()
     rail.value?.hearStates(message)
+    teamProfileGraph.markStale()
     // ⚑ **UI-002 · a file kept anywhere is read again at once** — see {@link readTheFiles}.
     if (message.kept.length > 0) {
       filesLibrary.markStale()
@@ -3373,8 +3367,9 @@ onMounted(() => {
   // ⚑ **UI-002 · the files' first read** — they have no tick, so a screen that remounts on a
   // conversation already open reads them itself ({@link readTheFiles}); on the launcher it asks nothing.
   void readTheFiles()
-  stopListening = whenTheWorldMoves(hearGraphChanges, {
+  stopListening = whenTheWorldMoves((listener) => window.api.runtime.onChanged(listener), {
     conversations: () => {
+      teamProfileGraph.markStale()
       filesLibrary.markStale()
       void rail.value?.refreshResumable().then(lookAgainIfItMoved)
       void library.value?.refreshResumable()
@@ -3405,6 +3400,7 @@ onMounted(() => {
     // conversations' ledgers, so the reader asks the question it already asks and gets the whole
     // answer — which is this channel's contract rather than an economy.
     work: () => {
+      teamProfileGraph.markStale()
       filesLibrary.markStale()
       void readTheCast()
       // ⚑ **D-016 · commit 7 · R2 — and the rail's list, for the work that names each
@@ -3430,6 +3426,7 @@ onMounted(() => {
     // and this one are the same function rather than two readers of one store.
     // ⚑ **UI-012 · and the model lists** — a last pick, a default or a hand-added model moved.
     agents: () => {
+      teamProfileGraph.markStale()
       filesLibrary.markStale()
       refreshAgents()
       void modelLists.reread()

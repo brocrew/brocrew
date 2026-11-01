@@ -846,10 +846,8 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
         .get()
       return JSON.stringify(stamp)
     },
-    teamProfileGraphs: new TeamProfileGraphWindows(
-      (admission, failure) =>
-        startTeamProfileGraph(database.name, profileExecutionFile(userData), admission, failure),
-      Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+    teamProfileGraphs: new TeamProfileGraphWindows((admission, failure) =>
+      startTeamProfileGraph(database.name, profileExecutionFile(userData), admission, failure),
     ),
     teamProfileGraphRevision: () => {
       if (store.canReadFreshSnapshot?.() !== true) return null

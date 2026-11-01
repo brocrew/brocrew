@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3'
+import { providerSchema } from '@brobot2/shared'
 import { randomUUID, randomBytes, createHmac, timingSafeEqual } from 'node:crypto'
 import { serialize } from 'node:v8'
 import {
@@ -10,7 +11,6 @@ import {
   graphEpoch,
   graphAdd,
   graphScalar,
-  graphDayStart,
   emptyGraphCoverage,
   type TeamProfileGraphRequest,
   type TeamProfileGraphResult,
@@ -51,8 +51,7 @@ class Failed extends Error {
   }
 }
 const epoch = (v: unknown): v is number => graphEpoch.safeParse(v).success
-const provider = (v: unknown): 'claude' | 'codex' | null =>
-  v === 'claude' || v === 'codex' ? v : null
+const provider = (v: unknown): 'claude' | 'codex' | null => providerSchema.safeParse(v).data ?? null
 const textBytes = (v: unknown): number => (typeof v === 'string' ? Buffer.byteLength(v, 'utf8') : 8)
 const key = (v: unknown): string => {
   if (typeof v !== 'string' || !v.length || v.length > 200) throw new Failed('metadata', 1)
@@ -331,10 +330,10 @@ export class TeamProfileGraphEngine {
     this.db.exec('BEGIN')
     if (this.db.prepare('SELECT rowid FROM agent_identity ORDER BY rowid LIMIT 1').get())
       this.visited++
-    const readAt = this.now()
+    const readAt = context.readAt
     if (!epoch(readAt)) throw new Failed('metadata')
     const recentSince = readAt - 7 * 86_400_000,
-      todaySince = graphDayStart(readAt, context.timezone)
+      todaySince = context.todaySince
     const coverage = emptyGraphCoverage(),
       nodes: GraphNode[] = [],
       byId = new Map<string, GraphNode>(),

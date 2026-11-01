@@ -118,7 +118,7 @@ it('bounds four windows to two workers plus two waiting windows and releases onl
     instances.push({ reader, resolveClose })
     return reader
   }
-  const windows = new TeamProfileGraphWindows(start, 'UTC')
+  const windows = new TeamProfileGraphWindows(start)
   await windows.read('a', { operation: 'snapshot' }, '0')
   await windows.read('b', { operation: 'snapshot' }, '0')
   const third = windows.read('c', { operation: 'snapshot' }, '0'),
@@ -152,7 +152,7 @@ it('shares failure cooldown across owner changes and resists backward wall time'
       failed = failure
       return { read: async () => header, close: async () => {} }
     },
-    'UTC',
+    undefined,
     () => mono,
   )
   await windows.read('a', { operation: 'snapshot' }, '0')
@@ -233,7 +233,7 @@ it('includes workspace admission wait in the same six-second native watchdog', a
         },
       }
     },
-    'UTC',
+    undefined,
     () => Date.now(),
   )
   await windows.read('a', { operation: 'snapshot' }, '0')

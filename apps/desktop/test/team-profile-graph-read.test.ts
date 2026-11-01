@@ -1,10 +1,10 @@
+import { localClockReading, readLocalTimeFrom } from '../src/shared/local-time'
 import { afterEach, expect, it } from 'vitest'
 import { writeFileSync, rmSync, existsSync } from 'node:fs'
 import { TeamProfileGraphEngine } from '../src/main/db/team-profile-graph-engine'
 import { graphContext, graphFixture } from './helpers/team-profile-graph-fixture'
 import { graphCutoff, graphOracle } from './fixtures/team-profile-graph-oracle'
 import {
-  graphDayStart,
   graphAdd,
   teamProfileGraphRequest,
   teamProfileGraphResult,
@@ -212,14 +212,29 @@ it('classifies only stable simple kind proofs and never repairs a file', () => {
   writeFileSync(f.executionFile, 'malformed')
   expect(complete(f).nodes[0]?.kindQuality).toBe('unknown-file')
 })
-it('uses timezone calendar midnights across DST and inclusive rolling ranges', () => {
-  expect(graphDayStart(Date.parse('2026-03-08T12:00:00Z'), 'America/New_York')).toBe(
-    Date.parse('2026-03-08T05:00:00Z'),
-  )
-  expect(graphDayStart(Date.parse('2026-11-01T12:00:00Z'), 'America/New_York')).toBe(
-    Date.parse('2026-11-01T04:00:00Z'),
-  )
-  expect(graphDayStart(graphCutoff, 'UTC')).toBe(Date.UTC(2026, 9, 25))
+it('uses the computer calendar across DST and includes rolling range boundaries', () => {
+  readLocalTimeFrom(() => ({
+    before: -5 * 3_600_000,
+    changes: [
+      { at: Date.parse('2026-03-08T07:00:00Z'), offset: -4 * 3_600_000 },
+      { at: Date.parse('2026-11-01T06:00:00Z'), offset: -5 * 3_600_000 },
+    ],
+    rule: null,
+  }))
+  try {
+    expect(localClockReading(Date.parse('2026-03-08T12:00:00Z'))).toEqual({
+      readAt: Date.parse('2026-03-08T12:00:00Z'),
+      todaySince: Date.parse('2026-03-08T05:00:00Z'),
+      timezone: '-04:00',
+    })
+    expect(localClockReading(Date.parse('2026-11-01T12:00:00Z')).todaySince).toBe(
+      Date.parse('2026-11-01T04:00:00Z'),
+    )
+    readLocalTimeFrom(() => ({ before: 0, changes: [], rule: null }))
+    expect(localClockReading(graphCutoff).todaySince).toBe(Date.UTC(2026, 9, 25))
+  } finally {
+    readLocalTimeFrom(() => null)
+  }
 })
 it('strictly validates the request/result shapes and refuses unsafe arithmetic', () => {
   for (const request of [

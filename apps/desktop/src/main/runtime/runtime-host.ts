@@ -23383,7 +23383,7 @@ export class RuntimeHost implements LiveHost {
     sink: RuntimeEventSink,
   ): Promise<TeamProfileGraphResult> {
     const graphs = this.deps.teamProfileGraphs
-    if (!graphs || this.launches.closed || !sink.alive || !sink.aPersonIsBehindIt)
+    if (!graphs || this.launches.closed || !sink.aPersonIsBehindIt)
       return graphUnavailable('closed')
     if (request.operation === 'release') {
       await graphs.closeWindow(sink.ownerId)
@@ -23393,7 +23393,7 @@ export class RuntimeHost implements LiveHost {
     const before = this.deps.teamProfileGraphRevision?.()
     if (before === null || before === undefined) return graphUnavailable('changed')
     const result = await graphs.read(sink.ownerId, request, before)
-    if (this.launches.closed || !sink.alive) return graphUnavailable('closed')
+    if (this.launches.closed) return graphUnavailable('closed')
     if (!graphs.isCurrent(sink.ownerId, admission)) return graphUnavailable('cancelled')
     const after = this.deps.teamProfileGraphRevision?.()
     return before !== after &&

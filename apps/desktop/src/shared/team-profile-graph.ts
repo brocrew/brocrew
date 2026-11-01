@@ -207,23 +207,20 @@ export const teamProfileGraphResult = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('released') }),
   graphUnavailableResult,
 ])
-export const graphReadContext = z.strictObject({
-  workspaceNonce: id,
-  ownerNonce: id,
-  hostRevision: token,
-  timezone: z
-    .string()
-    .min(1)
-    .max(128)
-    .refine((zone) => {
-      try {
-        new Intl.DateTimeFormat('en', { timeZone: zone })
-        return true
-      } catch {
-        return false
-      }
-    }),
-})
+export const graphReadContext = z
+  .strictObject({
+    workspaceNonce: id,
+    ownerNonce: id,
+    hostRevision: token,
+    readAt: graphEpoch,
+    todaySince: graphEpoch,
+    timezone: z.string().regex(/^[+-]\d{2}:\d{2}$/),
+  })
+  .refine(
+    (clock) =>
+      clock.todaySince <= clock.readAt && clock.readAt - clock.todaySince <= 48 * 60 * 60 * 1000,
+  )
+
 export type TeamProfileGraphRequest = z.infer<typeof teamProfileGraphRequest>
 export type TeamProfileGraphResult = z.infer<typeof teamProfileGraphResult>
 export type GraphNode = z.infer<typeof graphNode>
@@ -270,29 +267,3 @@ export function graphAdd(a: number, b: number): number {
   return sum
 }
 export const graphScalar = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0)
-
-export function graphDayStart(readAt: number, timezone: string): number {
-  const format = new Intl.DateTimeFormat('en-CA', {
-    timeZone: timezone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    era: 'short',
-  })
-  const dateKey = (at: number): string => {
-    const parts = format.formatToParts(at)
-    return ['era', 'year', 'month', 'day']
-      .map((k) => parts.find((p) => p.type === k)?.value ?? '')
-      .join('-')
-  }
-  const target = dateKey(readAt)
-  let low = readAt - 48 * 60 * 60 * 1000,
-    high = readAt
-  // The date changes at a timezone calendar boundary, including skipped midnight/DST.
-  while (low < high) {
-    const mid = Math.floor((low + high) / 2)
-    if (dateKey(mid) === target) high = mid
-    else low = mid + 1
-  }
-  return low
-}

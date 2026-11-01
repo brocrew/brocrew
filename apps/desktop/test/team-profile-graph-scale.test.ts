@@ -129,7 +129,7 @@ for (const [identities, conversations, events] of [
 it('admits or honestly refuses the 10k-identity/50k-pair boundary without partial counts', async () => {
   const f = graphFixture()
   try {
-    const at = Date.now() - 86400000
+    const at = graphCutoff - 86400000
     f.db.transaction(() => {
       for (let i = 0; i < 10000; i++) {
         f.identity(`aid:bound${i}`)

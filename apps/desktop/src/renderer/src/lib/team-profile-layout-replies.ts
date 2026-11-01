@@ -11,7 +11,9 @@ export function parseLayoutReply(value: unknown): LayoutReply | null {
     if (record.type === 'paused' || record.type === 'failed') {
       if (keys.length !== 2 || keys.some((key) => key !== 'type' && key !== 'generation'))
         return null
-      return { type: record.type, generation }
+      return record.type === 'paused'
+        ? { type: 'paused', generation }
+        : { type: 'failed', generation }
     }
     if (
       record.type !== 'positions' ||

@@ -11,6 +11,8 @@ import {
   scalarCompare,
 } from '../lib/team-profile-graph'
 import { useMinuteClock } from '../composables/useMinuteClock'
+import { fullTime } from '../lib/clock'
+import { localClockReading } from '../../../shared/local-time'
 import type { GraphNode } from '../../../shared/team-profile-graph'
 
 const props = defineProps<{ active: boolean }>()
@@ -53,13 +55,7 @@ const partners = computed(() =>
     ? graphPartners(reading.value, view.value, selected.value.id, controls.line)
     : [],
 )
-const savedAt = computed(() =>
-  reading.value
-    ? new Date(reading.value.header.readAt).toLocaleString(undefined, {
-        timeZone: reading.value.header.timezone,
-      })
-    : '',
-)
+const savedAt = computed(() => (reading.value ? fullTime(reading.value.header.readAt) : ''))
 const age = computed(() =>
   reading.value ? Math.max(0, Math.floor((minute.value - reading.value.header.readAt) / 60000)) : 0,
 )
@@ -103,7 +99,7 @@ function resetForces(): void {
   controls.proximity = 'messages'
 }
 function date(value: number | null): string {
-  return value === null ? 'Not recorded' : new Date(value).toLocaleString()
+  return value === null ? 'Not recorded' : fullTime(value)
 }
 function value(node: GraphNode): number {
   return controls.size === 'equal' ? 1 : node[controls.size]
@@ -176,16 +172,14 @@ watch(
     page.value = Math.min(page.value, pages.value - 1)
   },
 )
-watch(minute, () => {
-  const header = reading.value?.header
-  if (
-    header &&
-    (Intl.DateTimeFormat().resolvedOptions().timeZone !== header.timezone ||
-      new Date().toLocaleDateString(undefined, { timeZone: header.timezone }) !==
-        new Date(header.readAt).toLocaleDateString(undefined, { timeZone: header.timezone }))
-  )
-    controller?.markStale()
-})
+watch(
+  () => localClockReading(minute.value),
+  (clock) => {
+    const header = reading.value?.header
+    if (header && (clock.timezone !== header.timezone || clock.todaySince !== header.todaySince))
+      controller?.markStale()
+  },
+)
 onScopeDispose(() => controller?.setActive(false))
 </script>
 
@@ -201,9 +195,8 @@ onScopeDispose(() => controller?.setActive(false))
       <div>
         <h3>Profile graph</h3>
         <p v-if="reading">
-          Saved reading · {{ savedAt }} · {{ reading.header.timezone }} · {{ age }} min old<span
-            v-if="controller?.stale.value"
-          >
+          Saved reading · {{ savedAt }} · {{ localClockReading(reading.header.readAt).timezone }} ·
+          {{ age }} min old<span v-if="controller?.stale.value">
             · Stale — refresh for a newer reading</span
           >
         </p>
@@ -593,7 +586,7 @@ input[type='checkbox'] {
   width: 100%;
 }
 .agent-rows span {
-  font-size: max(13px, var(--type-small));
+  font-size: var(--type-small);
   overflow-wrap: anywhere;
 }
 .graph-stage {
@@ -609,7 +602,7 @@ canvas {
   border-radius: var(--radius-md);
   touch-action: none;
   font-family: inherit;
-  font-size: max(13px, var(--type-small));
+  font-size: var(--type-small);
 }
 .agent-preview {
   height: calc(8em * var(--leading-relaxed));
@@ -674,7 +667,7 @@ summary {
   input,
   select,
   .agent-inspector {
-    border: 1px solid CanvasText;
+    border-color: CanvasText;
   }
 }
 </style>

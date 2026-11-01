@@ -75,6 +75,8 @@ it('refuses the union of disjoint selected and message pairs before allocating l
   expect(view.nodes).toHaveLength(1000)
 })
 it('validates layout replies before generation access and rejects nonnumeric or extra data', () => {
+  for (const type of ['paused', 'failed'] as const)
+    expect(parseLayoutReply({ type, generation: 0 })).toEqual({ type, generation: 0 })
   for (const value of [
     null,
     undefined,

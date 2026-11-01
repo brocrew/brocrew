@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { localClockReading } from '../../shared/local-time'
 import {
   TEAM_PROFILE_GRAPH_BOUNDS as B,
   graphUnavailable,
@@ -33,7 +34,7 @@ export class TeamProfileGraphWindows {
       admission: () => number,
       failure: () => void,
     ) => TeamProfileGraphReader,
-    private readonly timezone: string,
+    private readonly clock: typeof localClockReading = localClockReading,
     private readonly now: () => number = () => performance.now(),
   ) {}
   admit(owner: string): number {
@@ -123,7 +124,7 @@ export class TeamProfileGraphWindows {
         workspaceNonce: this.workspaceNonce,
         ownerNonce: owned.nonce,
         hostRevision: revision,
-        timezone: this.timezone,
+        ...this.clock(),
       })
     } catch {
       this.failure()

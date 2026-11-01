@@ -53,7 +53,7 @@ it.each(['budget', 'worker', 'metadata'] as const)(
     const f = graphFixture(),
       read = vi.fn(async () => graphUnavailable(cause)),
       close = vi.fn(async () => {})
-    const graphs = new TeamProfileGraphWindows(() => ({ read, close }), 'UTC')
+    const graphs = new TeamProfileGraphWindows(() => ({ read, close }))
     const host = hostFor(f, graphs, () => '0', { afterFirstWindowLoad: new Promise(() => {}) })
     try {
       expect(await host.teamProfileGraphForWindow({ operation: 'snapshot' }, sink)).toMatchObject({
@@ -144,7 +144,7 @@ it('reads through the real graph worker with no main event fold and marks a conc
       admission,
       failure,
     )
-  }, 'UTC')
+  })
   const host = hostFor(f, graphs, () => String(stamp++), {
     store: { ...store, events: fold },
     afterFirstWindowLoad: new Promise<void>((r) => {
@@ -182,11 +182,11 @@ it('reads through the real graph worker with no main event fold and marks a conc
     f.close()
   }
 })
-it('refuses agent, dead, quit and unavailable-metadata reads while release still drains the owned worker', async () => {
+it('refuses agent, quit and unavailable-metadata reads while release still drains the owned worker', async () => {
   const f = graphFixture(),
     read = vi.fn(async () => fictionalGraph(1).header),
     close = vi.fn(async () => {}),
-    graphs = new TeamProfileGraphWindows(() => ({ read, close }), 'UTC')
+    graphs = new TeamProfileGraphWindows(() => ({ read, close }))
   let revision: string | null = '0'
   const host = hostFor(f, graphs, () => revision, { afterFirstWindowLoad: new Promise(() => {}) })
   try {
@@ -195,9 +195,6 @@ it('refuses agent, dead, quit and unavailable-metadata reads while release still
         { operation: 'snapshot' },
         { ...sink, aPersonIsBehindIt: false },
       ),
-    ).toMatchObject({ cause: 'closed' })
-    expect(
-      await host.teamProfileGraphForWindow({ operation: 'snapshot' }, { ...sink, alive: false }),
     ).toMatchObject({ cause: 'closed' })
     expect(read).not.toHaveBeenCalled()
     await host.teamProfileGraphForWindow({ operation: 'snapshot' }, sink)
@@ -213,6 +210,39 @@ it('refuses agent, dead, quit and unavailable-metadata reads while release still
     expect(await host.teamProfileGraphForWindow({ operation: 'snapshot' }, sink)).toMatchObject({
       cause: 'closed',
     })
+  } finally {
+    await host.closeAll()
+    f.close()
+  }
+})
+
+it('window closure cancels an in-flight reading through admission without consulting delivery liveness', async () => {
+  const f = graphFixture()
+  let finish!: (result: ReturnType<typeof fictionalGraph>['header']) => void
+  const read = vi.fn(
+    () =>
+      new Promise<ReturnType<typeof fictionalGraph>['header']>((resolve) => {
+        finish = resolve
+      }),
+  )
+  const graphs = new TeamProfileGraphWindows(() => ({
+    read,
+    close: async () => {
+      finish(fictionalGraph(1).header)
+    },
+  }))
+  const host = hostFor(f, graphs, () => '0', { afterFirstWindowLoad: new Promise(() => {}) })
+  const delivery = {
+    ...sink,
+    get alive(): boolean {
+      throw new Error('delivery liveness cannot gate a graph read')
+    },
+  }
+  try {
+    const pending = host.teamProfileGraphForWindow({ operation: 'snapshot' }, delivery)
+    expect(read).toHaveBeenCalledOnce()
+    await host.closeTeamProfileGraphWindow(sink.ownerId)
+    expect(await pending).toMatchObject({ type: 'unavailable', cause: 'cancelled' })
   } finally {
     await host.closeAll()
     f.close()

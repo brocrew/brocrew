@@ -247,3 +247,23 @@ function offsetZone(minutes: number): string {
   const hours = String(Math.floor(whole / 60)).padStart(2, '0')
   return `${minutes < 0 ? '-' : '+'}${hours}:${String(whole % 60).padStart(2, '0')}`
 }
+
+/** The saved reading's cutoff and calendar boundary, from the computer's clock. */
+export function localClockReading(readAt: number = Date.now()): {
+  readAt: number
+  todaySince: number
+  timezone: string
+} {
+  let low = Math.max(-8.64e15, readAt - 48 * 60 * 60 * 1000)
+  let high = readAt
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2)
+    if (sameLocalDay(middle, readAt)) high = middle
+    else low = middle + 1
+  }
+  return {
+    readAt,
+    todaySince: low,
+    timezone: offsetZone(Math.round(offsetAt(readAt) / 60_000)),
+  }
+}
