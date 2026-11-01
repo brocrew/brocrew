@@ -8,7 +8,7 @@
 
 ![BroCrew: describe a project, watch agents hand work to each other, answer requests, read the result.](docs/images/hero.gif)
 
-**[Download](https://github.com/brocrew/brocrew/releases/latest)** · [Install guide](#install) · [Run from source](docs/run-from-source.md)
+**[Download](https://github.com/brocrew/brocrew/releases/latest)** · [Website](https://brocrew.app) · [Install guide](#install) · [Run from source](docs/run-from-source.md)
 
 BroCrew is an open-source desktop app that brings AI agents together on your computer. Give an agent a task and it can share the work with other agents, Claude and Codex in the same tree. Each agent keeps its own memory and rules across conversations. Use your own Anthropic or OpenAI API key, and the provider bills your usage ([requirements and cost](docs/requirements-and-cost.md)).
 
