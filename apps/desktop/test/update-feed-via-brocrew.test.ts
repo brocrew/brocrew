@@ -292,10 +292,16 @@ describe('the public update feed', () => {
     asked = []
     beforeDownloadTransport = () => updates!.set({ checkAutomatically: false })
     expect((await updates!.download()).state.kind).toBe('ready')
-    expect(asked).toHaveLength(1)
-    expect(asked[0]!.url.href).toBe(
+    const checks = asked.filter((row) => !row.download)
+    expect(checks).toHaveLength(1)
+    expect(checks[0]!.url.href).toBe(`https://brocrew.app/update/latest.yml?v=${INSTALLED}`)
+    expect(checks[0]!.headers).toEqual({ 'User-Agent': 'BroCrew' })
+    const downloads = asked.filter((row) => row.download)
+    expect(downloads).toHaveLength(1)
+    expect(downloads[0]!.url.href).toBe(
       `https://github.com/brocrew/brocrew/releases/download/v${VERSION}/BroCrew-Setup-${VERSION}-x64.exe`,
     )
+    expect(downloads[0]!.headers).toEqual({ 'User-Agent': 'BroCrew', accept: '*/*' })
     expect(verify).toHaveBeenCalledOnce()
     expect(updater.install).not.toHaveBeenCalled()
   })
@@ -383,6 +389,36 @@ describe('the public update feed', () => {
     expect(updater.allowDowngrade).toBe(false)
   })
 
+  it.each(['win32', 'darwin'] as const)(
+    'rechecks before downloading with the same version-only URL and privacy headers: %s',
+    async (on) => {
+      await start(on)
+      expect((await updates!.checkNow()).state.kind).toBe('available')
+      expect((await updates!.download()).state.kind).toBe('ready')
+      const channel = on === 'darwin' ? 'latest-mac.yml' : 'latest.yml'
+      expect(
+        asked
+          .filter((row) => !row.download)
+          .map((row) => ({ url: row.url.href, headers: row.headers })),
+      ).toEqual([
+        {
+          url: `https://brocrew.app/update/${channel}?v=${INSTALLED}`,
+          headers: { 'User-Agent': 'BroCrew' },
+        },
+        {
+          url: `https://brocrew.app/update/${channel}?v=${INSTALLED}`,
+          headers: { 'User-Agent': 'BroCrew' },
+        },
+      ])
+      const downloads = asked.filter((row) => row.download)
+      expect(downloads).toHaveLength(1)
+      const file =
+        on === 'darwin' ? `BroCrew-${VERSION}-arm64.dmg` : `BroCrew-Setup-${VERSION}-x64.exe`
+      expect(downloads[0]!.url.href).toBe(`https://brocrew.app/update/${file}?v=${INSTALLED}`)
+      expect(updater.install).not.toHaveBeenCalled()
+    },
+  )
+
   it('cancels a website request that never responds and falls back after the deadline', async () => {
     vi.useFakeTimers()
     await start()
@@ -428,9 +464,21 @@ describe('the public update feed', () => {
       expect((await updates!.checkNow()).state.kind).toBe('available')
       asked = []
       expect((await updates!.download()).state.kind).toBe('ready')
-      expect(asked).toHaveLength(1)
-      expect(asked[0]!.url.origin).toBe('https://github.com')
-      expect(asked[0]!.url.search).toBe('')
+      const channel = on === 'darwin' ? 'latest-mac.yml' : 'latest.yml'
+      expect(asked.filter((row) => !row.download).map((row) => row.url.href)).toEqual([
+        `https://brocrew.app/update/${channel}?v=${INSTALLED}`,
+        'https://github.com/brocrew/brocrew/releases.atom',
+        'https://github.com/brocrew/brocrew/releases/latest',
+        `https://github.com/brocrew/brocrew/releases/download/v${VERSION}/${channel}`,
+      ])
+      expect(asked[0]!.headers).toEqual({ 'User-Agent': 'BroCrew' })
+      const downloads = asked.filter((row) => row.download)
+      expect(downloads).toHaveLength(1)
+      const file =
+        on === 'darwin' ? `BroCrew-${VERSION}-arm64.dmg` : `BroCrew-Setup-${VERSION}-x64.exe`
+      expect(downloads[0]!.url.href).toBe(
+        `https://github.com/brocrew/brocrew/releases/download/v${VERSION}/${file}`,
+      )
       expect(updater.install).not.toHaveBeenCalled()
     },
   )
