@@ -25,13 +25,16 @@ describe('ledger waits keep only committed folds', () => {
     vi.spyOn(db, 'prepare').mockImplementation((sql) => {
       const statement = prepare(sql)
       // A history read counts whether it materializes rows or streams them.
-      for (const name of ['all', 'iterate'] as const) {
-        const read = statement[name].bind(statement)
-        vi.spyOn(statement, name).mockImplementation((...args: unknown[]) => {
-          reads += 1
-          return read(...args)
-        })
-      }
+      const all = statement.all.bind(statement)
+      vi.spyOn(statement, 'all').mockImplementation((...args) => {
+        reads += 1
+        return all(...args)
+      })
+      const iterate = statement.iterate.bind(statement)
+      vi.spyOn(statement, 'iterate').mockImplementation((...args) => {
+        reads += 1
+        return iterate(...args)
+      })
       return statement
     })
     store = createSessionStore(db, () => 1)
