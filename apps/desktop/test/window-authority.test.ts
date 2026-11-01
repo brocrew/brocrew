@@ -124,6 +124,7 @@ const CLASSIFIED: Record<
   // conversation, and it offers no act.
   filesKept: 'reads',
   filesLibrary: 'no session',
+  teamProfileGraph: 'no session',
   searchWork: 'reads',
   close: 'controls',
   refreshConfig: 'controls',

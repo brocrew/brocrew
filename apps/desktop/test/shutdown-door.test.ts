@@ -103,6 +103,7 @@ const SAMPLES: Record<RuntimeCommandKind, RuntimeCommand> = {
   // ⚑ D-026 · a piece by its label; the three scopes share one kind, and one ruling.
   filesKept: { kind: 'filesKept', scope: 'piece', piece: 'W1' },
   filesLibrary: { kind: 'filesLibrary', request: { operation: 'release' } },
+  teamProfileGraph: { kind: 'teamProfileGraph', request: { operation: 'snapshot' } },
   close: { kind: 'close', sessionId: SESSION },
   refreshConfig: { kind: 'refreshConfig', sessionId: SESSION },
   setApprovalMode: { kind: 'setApprovalMode', sessionId: SESSION, mode: 'ask' },
