@@ -79,8 +79,9 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         [
             (
                 IPC,
-                "    executeRuntimeCommand(options.host, options.sinkFor(event), raw).catch((error: unknown) => {\n      throw withoutItsClassName(error)\n    }),\n",
-                "    executeRuntimeCommand(options.host, options.sinkFor(event), raw),\n",
+                # The native admission check stays; only rejection normalization is removed.
+                "    return executeRuntimeCommand(options.host, options.sinkFor(event), raw).catch(\n      (error: unknown) => {\n        throw withoutItsClassName(error)\n      },\n    )\n",
+                "    return executeRuntimeCommand(options.host, options.sinkFor(event), raw)\n",
             )
         ],
     ),

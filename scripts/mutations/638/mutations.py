@@ -190,9 +190,9 @@ MUTATIONS = [
         [
             (
                 SCREEN,
-                # Keep the library stale signal while breaking the original population refresh.
-                "    work: () => {\n      filesLibrary.markStale()\n      void readTheCast()\n",
-                "    work: () => {\n      filesLibrary.markStale()\n      void rail.value?.refreshResumable()\n",
+                # Keep both stale signals while breaking the original population refresh.
+                "    work: () => {\n      teamProfileGraph.markStale()\n      filesLibrary.markStale()\n      void readTheCast()\n",
+                "    work: () => {\n      teamProfileGraph.markStale()\n      filesLibrary.markStale()\n      void rail.value?.refreshResumable()\n",
             )
         ],
     ),
