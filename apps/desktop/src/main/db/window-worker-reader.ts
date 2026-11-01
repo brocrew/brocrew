@@ -2,6 +2,7 @@ import type { Worker } from 'node:worker_threads'
 import {
   WINDOW_READ_BOUNDS,
   WindowReadUnavailable,
+  windowReadFailure,
   windowReadQuery,
   windowReadResult,
   type WindowReadQuery,
@@ -74,7 +75,7 @@ export class WindowWorkerReader implements WindowStoreReader {
     const id = ++this.nextId
     // The caller can set this flag while the worker is inside synchronous SQLite.
     const flag =
-      query.kind === 'leads' && signal !== undefined
+      signal !== undefined
         ? new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT))
         : undefined
     let posted = false
@@ -151,7 +152,10 @@ export class WindowWorkerReader implements WindowStoreReader {
     if (message.type === 'failed') {
       this.pending.delete(message.id)
       pending.cleanUp()
-      pending.reject(new WindowReadUnavailable('failed'))
+      const failure = windowReadFailure.safeParse(message.reason)
+      pending.reject(
+        new WindowReadUnavailable('failed', failure.success ? failure.data : 'worker-read-failed'),
+      )
       return
     }
     const parsed = windowReadResult.safeParse(message.result)

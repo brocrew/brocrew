@@ -72,7 +72,7 @@ describe('F071 · the ledger folds read through their own index', () => {
       const reads = throughTheIndex()
       expect(reads).toHaveLength(23)
       const kindReads = reads.filter((sql) => sql.includes('events_kind_owner_idx'))
-      expect(kindReads).toHaveLength(8)
+      expect(kindReads).toHaveLength(9)
       expect(
         kindReads.filter((sql) => sql.includes("json_remove(payload, '$.sent', '$.given')")),
       ).toHaveLength(2)
