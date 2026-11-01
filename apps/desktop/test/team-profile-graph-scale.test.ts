@@ -10,7 +10,22 @@ for (const [identities, conversations, events] of [
   [1000, 10000, 100000],
 ] as const)
   it(`reads fictional scale ${identities}/${conversations}/${events} without blocking its caller`, async () => {
+    const probeStart = performance.now()
+    const probe = (phase: string) =>
+      process.stdout.write(
+        'GRAPH_PHASE ' +
+          JSON.stringify({
+            identities,
+            conversations,
+            events,
+            phase,
+            elapsedMs: performance.now() - probeStart,
+          }) +
+          '\n',
+      )
+    probe('start')
     const f = graphFixture()
+    probe('database-ready')
     try {
       f.db.transaction(() => {
         for (let i = 0; i < identities; i++) f.identity(`aid:fiction${i}`)
@@ -33,6 +48,7 @@ for (const [identities, conversations, events] of [
           )
       })()
       f.db.prepare('UPDATE work SET created_at=?').run(graphCutoff - 86_400_000)
+      probe('fixture-ready')
       const plans = [
         f.db
           .prepare('EXPLAIN QUERY PLAN SELECT rowid FROM work WHERE rowid>? ORDER BY rowid LIMIT ?')
@@ -53,6 +69,7 @@ for (const [identities, conversations, events] of [
         f.directory,
         'graph-worker.cjs',
       )
+      probe('bundle-ready')
       let exitAt: number | null = null
       const reader = new TeamProfileGraphLifetime(() => {
         const w = new Worker(bundle, {
@@ -74,6 +91,7 @@ for (const [identities, conversations, events] of [
       const start = performance.now()
       try {
         const header = await reader.read({ operation: 'snapshot' }, graphContext)
+        probe('snapshot-ready')
         expect(header.type, JSON.stringify(header)).toBe('snapshot')
         if (header.type !== 'snapshot') throw new Error('no complete reading')
         let nodes = 0,
@@ -91,6 +109,7 @@ for (const [identities, conversations, events] of [
             cursor = page.next ?? undefined
           } while (cursor)
         }
+        probe('pages-ready')
         const callerAt = performance.now()
         await reader.close()
         const processExitAt = exitAt
@@ -127,7 +146,16 @@ for (const [identities, conversations, events] of [
   }, 20000)
 
 it('admits or honestly refuses the 10k-identity/50k-pair boundary without partial counts', async () => {
+  const probeStart = performance.now()
+  const probe = (phase: string) =>
+    process.stdout.write(
+      'GRAPH_BOUNDARY_PHASE ' +
+        JSON.stringify({ phase, elapsedMs: performance.now() - probeStart }) +
+        '\n',
+    )
+  probe('start')
   const f = graphFixture()
+  probe('database-ready')
   try {
     const at = graphCutoff - 86400000
     f.db.transaction(() => {
@@ -148,11 +176,13 @@ it('admits or honestly refuses the 10k-identity/50k-pair boundary without partia
           )
     })()
     f.db.prepare('UPDATE work SET created_at=?').run(at)
+    probe('fixture-ready')
     const bundle = await bundleAWorker(
       'src/main/team-profile-graph.worker.ts',
       f.directory,
       'graph-boundary.cjs',
     )
+    probe('bundle-ready')
     const reader = new TeamProfileGraphLifetime(
       () =>
         new Worker(bundle, {
@@ -162,6 +192,7 @@ it('admits or honestly refuses the 10k-identity/50k-pair boundary without partia
     )
     try {
       const result = await reader.read({ operation: 'snapshot' }, graphContext)
+      probe('snapshot-ready')
       if (result.type === 'snapshot')
         expect([result.nodeCount, result.edgeCount]).toEqual([10000, 50000])
       else {
