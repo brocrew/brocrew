@@ -72,8 +72,8 @@ MUTATIONS = [
             # applicable again.
             (
                 COMPOSER,
-                "  canSend(text.value, props.state, props.blocked, staged.value.length),\n)",
-                "  canSend(text.value, props.state, null, staged.value.length),\n)",
+                "  !voiceActive.value && canSend(text.value, props.state, props.blocked, staged.value.length),\n)",
+                "  !voiceActive.value && canSend(text.value, props.state, null, staged.value.length),\n)",
             )
         ],
     ),

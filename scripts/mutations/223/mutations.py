@@ -69,7 +69,7 @@ STORE = "apps/desktop/src/renderer/src/lib/session-store.ts"
 WIRE = "apps/desktop/src/main/runtime/ipc.ts"
 
 # The computed 223 put between the button and the rule both send paths run through.
-CAN_SEND_NOW = "  canSend(text.value, props.state, props.blocked, staged.value.length),\n)"
+CAN_SEND_NOW = "  !voiceActive.value && canSend(text.value, props.state, props.blocked, staged.value.length),\n)"
 
 # (name, [(file, old, new), ...])
 MUTATIONS = [
@@ -87,7 +87,7 @@ MUTATIONS = [
     (
         "M3 · ⛔ 221 §6 REVERSED · the computed stops counting attachments, so an attachment-only "
         "message is refused again and a working feature hides behind a dead control",
-        [(COMPOSER, CAN_SEND_NOW, "  canSend(text.value, props.state, props.blocked, 0),\n)")],
+        [(COMPOSER, CAN_SEND_NOW, "  !voiceActive.value && canSend(text.value, props.state, props.blocked, 0),\n)")],
     ),
     (
         "M4 · the shared predicate stops trimming, so a message of nothing but spaces lights Send "
@@ -233,7 +233,7 @@ MUTATIONS = [
     (
         "M16 · ⚑ 169 M1 AND 219 M8, re-anchored and re-run · the button stops reading `blocked`, so "
         "Send is lit over `../../escape` and over a superseded sign-in again",
-        [(COMPOSER, CAN_SEND_NOW, "  canSend(text.value, props.state, null, staged.value.length),\n)")],
+        [(COMPOSER, CAN_SEND_NOW, "  !voiceActive.value && canSend(text.value, props.state, null, staged.value.length),\n)")],
     ),
 ]
 

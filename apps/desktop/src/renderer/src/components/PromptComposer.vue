@@ -161,6 +161,7 @@ import { createAttachmentBook, type DraftHanding } from '../lib/drafts'
 import { A_STOP_ASKS_THE_TURN } from '../lib/stop-unanswered'
 import { A_STOP_THEN_THIS_IS_SENT } from '../lib/stop-unanswered'
 import { isOnlyAStopWord } from '../lib/a-stop-word'
+import { useVoiceInput } from '../lib/voice-input'
 
 /** The one place a conversation is spoken to — and the place that says why you cannot speak. */
 const props = withDefaults(
@@ -326,6 +327,17 @@ const text = computed({
  * not a second message.
  */
 const canType = computed(() => props.state === 'idle' || props.state === 'busy')
+const voiceBridge = typeof window === 'undefined' ? undefined : window.api?.voice
+const voice = useVoiceInput({
+  bridge: voiceBridge,
+  draft: text,
+  identity: () => props.handing,
+  allowed: () => canType.value,
+})
+const voiceActive = voice.active
+const voicePhase = voice.phase
+const voiceError = voice.error
+const voiceRemaining = voice.remaining
 
 /**
  * ⛔ **The staged list — the ONE thing every reader and every write here computes from.**
@@ -450,8 +462,8 @@ async function settle(): Promise<void> {
  * that tells the two states apart: a staged file keeps the button lit, and an empty box with nothing
  * staged does not.
  */
-const canSendNow = computed(() =>
-  canSend(text.value, props.state, props.blocked, staged.value.length),
+const canSendNow = computed(
+  () => !voiceActive.value && canSend(text.value, props.state, props.blocked, staged.value.length),
 )
 
 /**
@@ -489,6 +501,7 @@ const canSendNow = computed(() =>
  * for a state.
  */
 const sendRefusal = computed<string | null>(() => {
+  if (voiceActive.value) return 'Finish dictating and review the text before sending'
   if (canSendNow.value) return null
   if (props.blocked !== null) return props.blocked
   if (props.state === 'starting') return 'This conversation is still opening — one at a time'
@@ -624,6 +637,7 @@ const stopWordOnly = computed(
 const sending = shallowRef<{ run: Promise<void>; interrupting: boolean } | null>(null)
 
 function send(interrupting = false): Promise<void> {
+  if (voiceActive.value) return Promise.resolve()
   const already = sending.value
   if (already !== null) {
     // ⚠️ Raised, never lowered inside one submission: `interrupting || …` would let a stray plain
@@ -651,7 +665,8 @@ async function emitOnce(latch: { interrupting: boolean }): Promise<void> {
   // interrupt can all land inside it, and the answer from before it would be a fact about a
   // composer that no longer exists. ⚑ A refusal here costs nothing — the words and the chips are
   // still in the box, which is what `019` means by not losing typing.
-  if (!canSend(text.value, props.state, props.blocked, staged.value.length)) return
+  if (voiceActive.value || !canSend(text.value, props.state, props.blocked, staged.value.length))
+    return
   // ⚠️ **Read AFTER the wait too.** A turn that started while the picture was being written turns
   // this press into a QUEUE, which is what pressing Send a beat later would have meant — reading it
   // before would send into a session that is now busy. ⚑ …and `latch.interrupting` rather than the
@@ -1304,6 +1319,30 @@ defineExpose({
         <!-- ⛔ **`busyChoices`, not `text.trim() !== ''`** (234 §2). See its docblock: a staged file
              with an empty box is content, and this selector was the last place in the app that
              still disagreed. -->
+        <button
+          v-if="voiceBridge?.supported"
+          type="button"
+          class="voice-button"
+          :class="{ listening: voicePhase === 'listening' }"
+          :disabled="!canType || (voiceActive && voicePhase !== 'listening')"
+          :aria-label="voicePhase === 'listening' ? 'Stop recording' : 'Dictate'"
+          :aria-pressed="voicePhase === 'listening'"
+          title="Your voice stays on this Mac. Review the text before sending."
+          data-cy="voice-mic"
+          @click="voicePhase === 'listening' ? voice.stop() : voice.start()"
+        >
+          <svg
+            class="icon"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.7"
+          >
+            <rect x="9" y="2" width="6" height="12" rx="3" />
+            <path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3m-4 0h8" />
+          </svg>
+        </button>
         <template v-if="busyChoices">
           <button
             class="queue-button"
@@ -1398,6 +1437,24 @@ defineExpose({
          header. The row carries the measure and the centring the hint used to carry itself, so with
          no button beside it the rendered result is what it was before. -->
     <div class="composer-foot">
+      <p
+        v-if="voiceActive || voiceError"
+        class="voice-status"
+        :role="voiceError ? 'alert' : 'status'"
+        data-cy="voice-status"
+      >
+        {{
+          voiceError ||
+          (voicePhase === 'permission'
+            ? 'Waiting for permission…'
+            : voicePhase === 'listening'
+              ? `Listening… ${voiceRemaining} s left`
+              : 'Transcribing…')
+        }}
+        <button v-if="voiceActive" type="button" data-cy="voice-cancel" @click="voice.cancel()">
+          Cancel
+        </button>
+      </p>
       <p class="composer-hint" :class="{ frozen: frozenLook }" data-cy="composer-hint">
         <!-- ⛔ **First, and it outranks the state's own sentence** (169 §1). Every other branch here
              answers *"what does pressing send mean from this state"*; this one answers *"it will not
@@ -1485,6 +1542,40 @@ defineExpose({
 </template>
 
 <style scoped>
+.voice-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-icon);
+  height: var(--control-h);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.voice-button.listening {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.voice-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.voice-status {
+  flex-basis: 100%;
+  color: var(--muted);
+  font-size: 12px;
+  margin: 0;
+}
+.composer-foot:has(.voice-status) {
+  flex-wrap: wrap;
+}
+.voice-status button {
+  color: var(--accent);
+  margin-left: 8px;
+  cursor: pointer;
+}
 .composer-wrap {
   flex: 0 0 auto;
   padding: var(--space-8) var(--space-12) var(--space-6);

@@ -14,6 +14,7 @@ import {
 } from '../shared/recovery-retention'
 import { pluginsBridge } from './plugins'
 import { storageBridge } from './storage'
+import { voiceBridge } from './voice'
 import type { SkillsRequest, SkillsReply } from '../shared/skills-window'
 import {
   TRANSCRIPT_RETENTION_CHANNELS,
@@ -1106,6 +1107,7 @@ const api = Object.freeze({
   providerSetup: providerSetupBridge(ipcRenderer),
   plugins: pluginsBridge(ipcRenderer),
   storage: storageBridge(ipcRenderer),
+  voice: voiceBridge(ipcRenderer, process.platform),
   /**
    * 🔴 **W4.109 · B1 — updates** (`main/updates.ts` decides; every call answers the new snapshot).
    * ⚑ `onChanged` is told every move: a check, a download's progress, a restart that waits.
