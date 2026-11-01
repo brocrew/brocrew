@@ -23,8 +23,6 @@ import { BODY_WAS_CUT } from '../lib/outgoing-card'
 import {
   ADDED_BESIDE,
   ANSWER_EACH_PART,
-  LESS,
-  MORE,
   PICK_AT_LEAST_ONE,
   PICK_SEVERAL,
   QUESTION_STATE_WORD,
@@ -218,6 +216,7 @@ watch(
 <template>
   <section
     class="question-card"
+    :class="{ 'queue-question': props.fold }"
     data-cy="question-card"
     :data-state="state"
     :data-request-id="props.reading.requestId ?? undefined"
@@ -296,7 +295,7 @@ watch(
       :aria-expanded="!folded"
       @click="toggle"
     >
-      {{ folded ? MORE : LESS }}
+      {{ folded ? 'Read full question' : 'Show less' }}
     </button>
 
     <p v-if="props.reading.move && !props.reading.movedTo" data-cy="move-offer">
@@ -705,5 +704,91 @@ watch(
 .aside.failed,
 .state.failed {
   color: var(--danger);
+}
+
+.queue-question {
+  padding: var(--space-4);
+}
+
+.queue-question .question-head {
+  gap: var(--space-3);
+}
+
+.queue-question .question-head > .icon {
+  width: 24px;
+  height: 24px;
+  box-sizing: border-box;
+  padding: 0;
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  background: var(--wash-2);
+  color: var(--text-soft);
+}
+
+.queue-question .who {
+  color: var(--text-soft);
+  font-size: var(--type-small);
+}
+
+.queue-question [data-cy='question-context'] {
+  padding: var(--space-6);
+  border-left: var(--border-accent-width) solid var(--line-strong);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--wash-2);
+  font-size: var(--type-small);
+  line-height: var(--leading-normal);
+  white-space: pre-wrap;
+}
+
+.queue-question [data-cy='question-context'] .lead {
+  display: block;
+  margin-bottom: var(--space-2);
+  color: var(--text-soft);
+}
+
+.queue-question .more {
+  min-height: 28px;
+  padding: var(--space-2) var(--space-4);
+  border: var(--border-width) solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  text-decoration: none;
+}
+
+.queue-question .more:hover {
+  background: var(--wash-2);
+}
+
+.queue-question .part {
+  padding-top: var(--space-6);
+  border-top: var(--border-width) solid var(--line);
+  gap: var(--space-4);
+}
+
+.queue-question .option {
+  padding: var(--space-4) var(--space-6);
+  border-radius: var(--radius-md);
+  font-size: var(--type-small);
+  font-weight: var(--fw-semibold);
+}
+
+.queue-question .box {
+  min-height: var(--control-h-touch);
+  padding: var(--space-5) var(--space-6);
+  font-size: var(--type-small);
+}
+
+.queue-question .press {
+  align-self: stretch;
+  padding-top: var(--space-6);
+  border-top: var(--border-width) solid var(--line);
+  border-radius: 0;
+  text-align: left;
+  text-decoration: none;
+}
+
+.queue-question .press:hover,
+.queue-question .press:focus-visible {
+  text-decoration: underline;
 }
 </style>
