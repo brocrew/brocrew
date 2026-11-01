@@ -12,6 +12,9 @@ for (const [identities, conversations, events] of [
   describe(`fictional scale ${identities}/${conversations}/${events}`, () => {
     let fixture: ReturnType<typeof graphFixture> | undefined
     let bundle: string
+    let bundling: Promise<string> | undefined
+    let ownedReader: TeamProfileGraphLifetime | undefined
+    let ownedHeartbeat: ReturnType<typeof setInterval> | undefined
     let plans: unknown[]
     let probeStart: number
     const probe = (phase: string) =>
@@ -69,14 +72,19 @@ for (const [identities, conversations, events] of [
           )
           .all('s0', 0, -1, 256),
       ]
-      bundle = await bundleAWorker(
+      bundle = await (bundling = bundleAWorker(
         'src/main/team-profile-graph.worker.ts',
         f.directory,
         'graph-worker.cjs',
-      )
+      ))
       probe('bundle-ready')
     }, 60000)
-    afterAll(() => fixture?.close())
+    afterAll(async () => {
+      if (ownedHeartbeat !== undefined) clearInterval(ownedHeartbeat)
+      await ownedReader?.close()
+      await bundling?.catch(() => {})
+      fixture?.close()
+    }, 60000)
 
     it(`reads fictional scale ${identities}/${conversations}/${events} without blocking its caller`, async () => {
       const f = fixture
@@ -90,6 +98,7 @@ for (const [identities, conversations, events] of [
         w.once('exit', () => (exitAt = performance.now()))
         return w
       })
+      ownedReader = reader
       let previous = performance.now(),
         maxDelay = 0,
         ticks = 0
@@ -99,6 +108,7 @@ for (const [identities, conversations, events] of [
         previous = now
         ticks++
       }, 10)
+      ownedHeartbeat = heartbeat
       const start = performance.now()
       try {
         const header = await reader.read({ operation: 'snapshot' }, graphContext)
@@ -160,6 +170,8 @@ for (const [identities, conversations, events] of [
 describe('10k-identity/50k-pair boundary', () => {
   let fixture: ReturnType<typeof graphFixture> | undefined
   let bundle: string
+  let bundling: Promise<string> | undefined
+  let ownedReader: TeamProfileGraphLifetime | undefined
   let probeStart: number
   const probe = (phase: string) =>
     process.stdout.write(
@@ -192,14 +204,18 @@ describe('10k-identity/50k-pair boundary', () => {
     })()
     f.db.prepare('UPDATE work SET created_at=?').run(at)
     probe('fixture-ready')
-    bundle = await bundleAWorker(
+    bundle = await (bundling = bundleAWorker(
       'src/main/team-profile-graph.worker.ts',
       f.directory,
       'graph-boundary.cjs',
-    )
+    ))
     probe('bundle-ready')
   }, 60000)
-  afterAll(() => fixture?.close())
+  afterAll(async () => {
+    await ownedReader?.close()
+    await bundling?.catch(() => {})
+    fixture?.close()
+  }, 60000)
 
   it('admits or honestly refuses the 10k-identity/50k-pair boundary without partial counts', async () => {
     const f = fixture
@@ -211,6 +227,7 @@ describe('10k-identity/50k-pair boundary', () => {
           resourceLimits: { maxOldGenerationSizeMb: 128, maxYoungGenerationSizeMb: 16 },
         }),
     )
+    ownedReader = reader
     const start = performance.now()
     let snapshotMs: number | undefined
     try {
@@ -239,6 +256,8 @@ describe('10k-identity/50k-pair boundary', () => {
 describe('unrelated fictional prose', () => {
   let fixture: ReturnType<typeof graphFixture> | undefined
   let bundle: string
+  let bundling: Promise<string> | undefined
+  let ownedReader: TeamProfileGraphLifetime | undefined
   let fixtureBytes: number
   beforeAll(async () => {
     const f = (fixture = graphFixture())
@@ -251,13 +270,17 @@ describe('unrelated fictional prose', () => {
       for (let i = 0; i < 10000; i++) f.event('prose', 'text', prose, 0, Date.now() - 86400000, i)
     })()
     fixtureBytes = Buffer.byteLength(prose) * 10000
-    bundle = await bundleAWorker(
+    bundle = await (bundling = bundleAWorker(
       'src/main/team-profile-graph.worker.ts',
       f.directory,
       'graph-prose.cjs',
-    )
+    ))
   }, 60000)
-  afterAll(() => fixture?.close())
+  afterAll(async () => {
+    await ownedReader?.close()
+    await bundling?.catch(() => {})
+    fixture?.close()
+  }, 60000)
 
   it('leaves 80MiB of unrelated fictional prose outside event parsing and row counts', async () => {
     const f = fixture
@@ -265,6 +288,7 @@ describe('unrelated fictional prose', () => {
     const reader = new TeamProfileGraphLifetime(
       () => new Worker(bundle, { workerData: { file: f.file, executionFile: f.executionFile } }),
     )
+    ownedReader = reader
     try {
       const result = await reader.read({ operation: 'snapshot' }, graphContext)
       expect(result).toMatchObject({ type: 'snapshot', nodeCount: 1, edgeCount: 0 })
