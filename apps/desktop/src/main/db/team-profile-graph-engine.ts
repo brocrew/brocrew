@@ -228,12 +228,13 @@ export class TeamProfileGraphEngine {
     }
   }
   private *pages(
-    sql: string,
+    query: string | Database.Statement,
     bindings: readonly unknown[] = [],
     ordinal = false,
     nativeBudget = 4 * 1024 * 1024,
   ): Generator<Row> {
-    const statement = this.db.prepare(sql)
+    const statement = typeof query === 'string' ? this.db.prepare(query) : query
+    const sql = statement.source
     let after: number | bigint = ordinal ? -1 : -9223372036854775808n
     while (true) {
       this.check()
@@ -519,15 +520,28 @@ export class TeamProfileGraphEngine {
       else if (!held) this.bump(coverage, 'unresolvedWork')
     }
     const routeKeys = new Set<string>()
+    const turns = this.db.prepare(
+      'SELECT ordinal AS position,opened_at,closed_at FROM turn WHERE session_id=? AND generation=? AND ordinal>? ORDER BY ordinal LIMIT ?',
+    )
+    const interactionQuery = (category: 'messages' | 'questions') => {
+      const valid =
+        "CASE WHEN typeof(payload)='text' AND length(CAST(payload AS BLOB))<=32768 THEN json_valid(payload) ELSE 0 END"
+      const object = `CASE WHEN ${valid} THEN json_type(payload)='object' ELSE 0 END`
+      const extract = (field: string) =>
+        `CASE WHEN ${object} THEN CASE WHEN json_type(payload,'$.${field}')='text' THEN substr(json_extract(payload,'$.${field}'),1,201) ELSE NULL END ELSE NULL END AS "${field}"`
+      return this.db.prepare(
+        `SELECT ordinal AS position,created_at,CASE WHEN ${object} THEN 0 ELSE 1 END AS bad_payload,${extract('to')}${category === 'questions' ? `,${extract('parent')},${extract('requestId')}` : ''} FROM events WHERE type=? AND session_id=? AND generation=? AND ordinal>? ORDER BY ordinal LIMIT ?`,
+      )
+    }
+    const interactions = {
+      messages: interactionQuery('messages'),
+      questions: interactionQuery('questions'),
+    }
     for (const s of sessions.values()) {
       const node = s.identity === null ? undefined : byId.get(s.identity)
       if (!node) continue
       this.phase = 'turns'
-      for (const row of this.pages(
-        'SELECT ordinal AS position,opened_at,closed_at FROM turn WHERE session_id=? AND generation=? AND ordinal>? ORDER BY ordinal LIMIT ?',
-        [s.id, s.generation],
-        true,
-      )) {
+      for (const row of this.pages(turns, [s.id, s.generation], true)) {
         const opened = row.opened_at,
           closed = row.closed_at
         if (!epoch(opened) || opened > readAt) continue
@@ -539,16 +553,7 @@ export class TeamProfileGraphEngine {
       for (const category of ['messages', 'questions'] as const) {
         this.phase = category
         const type = category === 'messages' ? 'message_sent' : 'request_routed'
-        const valid =
-          "CASE WHEN typeof(payload)='text' AND length(CAST(payload AS BLOB))<=32768 THEN json_valid(payload) ELSE 0 END"
-        const object = `CASE WHEN ${valid} THEN json_type(payload)='object' ELSE 0 END`
-        const extract = (field: string) =>
-          `CASE WHEN ${object} THEN CASE WHEN json_type(payload,'$.${field}')='text' THEN substr(json_extract(payload,'$.${field}'),1,201) ELSE NULL END ELSE NULL END AS "${field}"`
-        for (const row of this.pages(
-          `SELECT ordinal AS position,created_at,CASE WHEN ${object} THEN 0 ELSE 1 END AS bad_payload,${extract('to')}${category === 'questions' ? `,${extract('parent')},${extract('requestId')}` : ''} FROM events WHERE type=? AND session_id=? AND generation=? AND ordinal>? ORDER BY ordinal LIMIT ?`,
-          [type, s.id, s.generation],
-          true,
-        )) {
+        for (const row of this.pages(interactions[category], [type, s.id, s.generation], true)) {
           if (!epoch(row.created_at) || row.created_at > readAt) continue
           const to = key(row.to)
           if (category === 'messages') {

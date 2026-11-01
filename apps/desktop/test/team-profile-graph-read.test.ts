@@ -1,5 +1,6 @@
 import { localClockReading, readLocalTimeFrom } from '../src/shared/local-time'
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
+import Database from 'better-sqlite3'
 import { writeFileSync, rmSync, existsSync } from 'node:fs'
 import { TeamProfileGraphEngine } from '../src/main/db/team-profile-graph-engine'
 import { graphContext, graphFixture } from './helpers/team-profile-graph-fixture'
@@ -400,4 +401,58 @@ it('keeps a missing kind file unknown and distinguishes a readable empty file wi
   expect(existsSync(f.executionFile)).toBe(false)
   writeFileSync(f.executionFile, JSON.stringify({ version: 2, profiles: {} }))
   expect(complete(f).nodes[0]).toMatchObject({ kind: 'normal', kindQuality: 'legacy-normal' })
+})
+
+it('keeps SQL compilation bounded across conversations with distinct active generations', () => {
+  const f = setup()
+  f.identity('aid:sender')
+  f.identity('aid:recipient')
+  f.session('recipient', 'aid:recipient')
+  f.root('recipient')
+  const turns = f.db.prepare(
+    "INSERT INTO turn(id,session_id,ordinal,prompt,opened_at,generation) VALUES(?,?,1,'fictional',?,?)",
+  )
+  f.db.transaction(() => {
+    for (let i = 0; i < 40; i++) {
+      const session = `sender-${i}`
+      const generation = 1 + (i % 2)
+      f.session(session, 'aid:sender')
+      f.root(session)
+      f.db
+        .prepare(
+          'INSERT INTO derived_generation(session_id,active,normalizer_version,derived_through,highest,updated_at) VALUES(?,?,1,0,?,?)',
+        )
+        .run(session, generation, generation, graphCutoff)
+      for (const active of [0, generation]) {
+        turns.run(`${session}-${active}`, session, graphCutoff - 1, active)
+        f.event(session, 'message_sent', JSON.stringify({ to: 'recipient' }), active)
+        f.event(
+          session,
+          'request_routed',
+          JSON.stringify({ to: 'an-agent', parent: 'recipient', requestId: 'same-request' }),
+          active,
+        )
+      }
+    }
+  })()
+  const prepared = vi.spyOn(Database.prototype, 'prepare')
+  try {
+    const { h, nodes, edges } = complete(f)
+    expect([h.nodeCount, h.edgeCount]).toEqual([2, 1])
+    expect(nodes.find((n) => n.id === 'aid:sender')).toMatchObject({
+      conversations: 40,
+      messagesSent: 40,
+      recentTurns: 40,
+    })
+    expect(edges).toMatchObject([{ messages: 40, questions: 40 }])
+    const sql = prepared.mock.calls.map(([query]) => query)
+    expect(
+      sql.filter((query) => query.includes('FROM events WHERE type=')).length,
+    ).toBeLessThanOrEqual(2)
+    expect(
+      sql.filter((query) => query.includes('FROM turn WHERE session_id=')).length,
+    ).toBeLessThanOrEqual(1)
+  } finally {
+    prepared.mockRestore()
+  }
 })
