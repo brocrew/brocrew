@@ -34,13 +34,21 @@ function counting(target: AppDatabase): void {
   vi.spyOn(target, 'prepare').mockImplementation((sql) => {
     const statement = prepare(sql)
     // Whole folds stream their rows; count those alongside materialized reads.
-    for (const name of ['get', 'all', 'iterate'] as const) {
-      const read = statement[name].bind(statement)
-      vi.spyOn(statement, name).mockImplementation((...args: unknown[]) => {
-        ran.push(sql)
-        return read(...args)
-      })
-    }
+    const get = statement.get.bind(statement)
+    vi.spyOn(statement, 'get').mockImplementation((...args) => {
+      ran.push(sql)
+      return get(...args)
+    })
+    const all = statement.all.bind(statement)
+    vi.spyOn(statement, 'all').mockImplementation((...args) => {
+      ran.push(sql)
+      return all(...args)
+    })
+    const iterate = statement.iterate.bind(statement)
+    vi.spyOn(statement, 'iterate').mockImplementation((...args) => {
+      ran.push(sql)
+      return iterate(...args)
+    })
     return statement
   })
 }
