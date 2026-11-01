@@ -138,7 +138,15 @@ export class WindowReadEngine {
     this.db.exec('BEGIN')
     try {
       this.db.prepare("SELECT rootpage FROM sqlite_schema WHERE name = 'events'").get()
-      const store = createSessionStore(bounded, Date.now, undefined, Math.random, checkFoldState)
+      // Made for this snapshot alone, so a fold that read every row is not read again.
+      const store = createSessionStore(
+        bounded,
+        Date.now,
+        undefined,
+        Math.random,
+        checkFoldState,
+        true,
+      )
       let result: WindowReadResult
       if (query.kind === 'incidents') {
         const owners = store.reconciliationOwners()

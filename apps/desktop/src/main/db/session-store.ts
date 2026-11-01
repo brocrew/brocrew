@@ -5676,6 +5676,11 @@ export function createSessionStore(
   /** Where a new agent's name is drawn from: a number in [0, 1), as `Math.random` gives. */
   random: () => number = Math.random,
   checkFoldState?: (state: readonly unknown[], complete?: boolean) => void,
+  /**
+   * True when every read of this store happens inside one read-only snapshot that its caller holds
+   * for the store's whole life: nothing it reads can change, so a fold is kept until it is dropped.
+   */
+  oneSnapshot = false,
 ): SessionStore {
   const connection = db
   const ownNotesStore = createOwnNotesStore(connection)
@@ -9861,14 +9866,16 @@ export function createSessionStore(
     }
   }
   /**
-   * Whether a fold may be kept or answered from what is kept: never inside a transaction, whose
-   * rows may yet roll back, and only while every write of a fold row that this store did not make
-   * reaches it — on its connection through {@link watchFoldWrites}, and from another connection
-   * through `data_version`, which forgets everything kept. A connection that cannot hold the watch
-   * keeps nothing, and one whose watch was taken away forgets everything and puts it back. Every
-   * cache of what a fold read answers through this: the kept folds, the names, the fold floors.
+   * Whether a fold may be kept or answered from what is kept: always in a store made for one
+   * snapshot; otherwise never inside a transaction, whose rows may yet roll back, and only while
+   * every write of a fold row that this store did not make reaches it — on its connection through
+   * {@link watchFoldWrites}, and from another connection through `data_version`, which forgets
+   * everything kept. A connection that cannot hold the watch keeps nothing, and one whose watch was
+   * taken away forgets everything and puts it back. Every cache of what a fold read answers through
+   * this: the kept folds, the names, the fold floors.
    */
   function theFoldsMayBeKept(): boolean {
+    if (oneSnapshot) return true
     if (db.inTransaction) return false
     if (!watchTheFolds()) return false
     const known = selectWhatTheFoldsKnow.get(...foldWatchTriggers(aFoldRowWasWritten)) as {
@@ -9922,9 +9929,10 @@ export function createSessionStore(
    * person's look asks these folds of every conversation every few seconds; most have not changed.
    *
    * Only a fold that read every row is kept, and only when a counted reader saw that it did: an
-   * uncounted reader is not told of a row it skipped. Nothing is kept inside a transaction, and a
-   * write of a fold row this store did not make forgets that conversation's kept folds
-   * ({@link theFoldsMayBeKept}). Callers must treat what they get as read-only.
+   * uncounted reader is not told of a row it skipped. Nothing is kept inside a transaction, except
+   * by a store made for one snapshot, and a write of a fold row this store did not make forgets
+   * that conversation's kept folds ({@link theFoldsMayBeKept}). Callers must treat what they get as
+   * read-only.
    *
    * A fold that can be carried forward reads only the rows written above the newest it kept, so a
    * row it never acts on (an agent's `status`, mostly) costs a short read instead of a whole fold.
@@ -9983,7 +9991,8 @@ export function createSessionStore(
         readEveryRow = false
         noteSkip(ordinal)
       })
-      if (readEveryRow && !db.inTransaction) keep(sessionId, { generation, newest, answer })
+      if (readEveryRow && (oneSnapshot || !db.inTransaction))
+        keep(sessionId, { generation, newest, answer })
       return answer
     }
   }
