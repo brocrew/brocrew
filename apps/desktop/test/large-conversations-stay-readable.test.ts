@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Worker } from 'node:worker_threads'
-import { expect, it, vi } from 'vitest'
-import { openDatabase } from '../src/main/db/connection'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
 import { WindowReadEngine } from '../src/main/db/window-read-engine'
@@ -12,12 +12,23 @@ import { WINDOW_READ_BOUNDS } from '../src/main/db/window-read-protocol'
 import { WindowWorkerReader } from '../src/main/db/window-worker-reader'
 import { bundleAWorker } from './helpers/bundle-a-worker'
 
-it.each([175_930, 297_164])('completely reads a fictional %i-event conversation', (count) => {
-  const directory = mkdtempSync(join(tmpdir(), 'fictional-large-ledger-'))
-  const file = join(directory, 'fictional.sqlite')
-  const db = openDatabase(file)
-  let engine: WindowReadEngine | undefined
-  try {
+describe.each([175_930, 297_164])('a fictional %i-event conversation', (count) => {
+  let directory: string
+  let file: string
+  let db: AppDatabase | undefined
+  let probeStart: number
+  const probe = (phase: string) =>
+    process.stdout.write(
+      'LEDGER_PHASE ' +
+        JSON.stringify({ count, phase, elapsedMs: performance.now() - probeStart }) +
+        '\n',
+    )
+  // Building the fictional ledger has its own budget; the read keeps the project's 60 seconds.
+  beforeAll(() => {
+    probeStart = performance.now()
+    directory = mkdtempSync(join(tmpdir(), 'fictional-large-ledger-'))
+    file = join(directory, 'fictional.sqlite')
+    db = openDatabase(file)
     applyMigrations(db, join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations'))
     const store = createSessionStore(db)
     store.create({
@@ -55,74 +66,97 @@ it.each([175_930, 297_164])('completely reads a fictional %i-event conversation'
         11,
       )
     }
-    const insert = db.prepare(`INSERT INTO events
-      (id, session_id, generation, ordinal, type, payload, created_at)
-      VALUES (?, 'atlas', 0, ?, ?, ?, ?)`)
-    const payload = JSON.stringify({
-      type: count === 175_930 ? 'status' : 'launched',
-      state: 'idle',
-      padding: count === 175_930 ? 'x'.repeat(2048) : '',
-    })
-    db.transaction(() => {
-      for (let i = 0; i < count; i++) {
-        if (count === 175_930 && i === 1) continue
-        const event =
-          i === 0
-            ? {
-                type: 'request_routed',
-                requestId: 'atlas-question',
-                to: 'a-person',
-                parent: null,
-              }
-            : i === count - 1
-              ? { type: 'request_resolved', id: 'atlas-question' }
-              : count === 175_930 && i === count - 2
-                ? { type: 'work_closed', piece: 'atlas-piece', by: 'person' }
-                : null
-        const type =
-          event?.type ?? (count === 175_930 ? (i > 18_114 ? 'text' : 'status') : 'launched')
-        insert.run(
-          `atlas-${i}`,
-          i,
-          type,
-          event === null ? (type === 'text' ? '{"type":"text"}' : payload) : JSON.stringify(event),
-          i + 10,
-        )
-      }
-    })()
-    engine = new WindowReadEngine(file)
-    for (const kind of ['routes', 'incidents'] as const) {
-      const result = engine.read({ kind })
-      if (result.kind === 'routes') {
-        expect(result.routes).toHaveLength(1)
-        expect(result.routes[0]?.skipped).toEqual([])
-        expect(result.routes[0]?.requests).toMatchObject([
-          { requestId: 'atlas-question', state: 'withdrawn' },
-        ])
-        expect(result.questions.rows).toEqual([])
-        expect(result.questions.rowsUnread).toBe(0)
-      } else if (result.kind === 'incidents') {
-        expect(result.owners).toHaveLength(1)
-        expect(result.owners[0]?.routes).toMatchObject([
-          { requestId: 'atlas-question', state: 'withdrawn' },
-        ])
-        expect(result.owners[0]?.routesSkipped).toEqual([])
-        expect(result.owners[0]?.piecesSkipped).toEqual([])
-        expect(result.owners[0]?.pieces).toEqual([])
-      }
+    probe('database-ready')
+    // A connection without the store's fold watch, which would otherwise run for every row.
+    const rows = openDatabase(file)
+    try {
+      const insert = rows.prepare(`INSERT INTO events
+        (id, session_id, generation, ordinal, type, payload, created_at)
+        VALUES (?, 'atlas', 0, ?, ?, ?, ?)`)
+      const payload = JSON.stringify({
+        type: count === 175_930 ? 'status' : 'launched',
+        state: 'idle',
+        padding: count === 175_930 ? 'x'.repeat(2048) : '',
+      })
+      rows.transaction(() => {
+        for (let i = 0; i < count; i++) {
+          if (count === 175_930 && i === 1) continue
+          const event =
+            i === 0
+              ? {
+                  type: 'request_routed',
+                  requestId: 'atlas-question',
+                  to: 'a-person',
+                  parent: null,
+                }
+              : i === count - 1
+                ? { type: 'request_resolved', id: 'atlas-question' }
+                : count === 175_930 && i === count - 2
+                  ? { type: 'work_closed', piece: 'atlas-piece', by: 'person' }
+                  : null
+          const type =
+            event?.type ?? (count === 175_930 ? (i > 18_114 ? 'text' : 'status') : 'launched')
+          insert.run(
+            `atlas-${i}`,
+            i,
+            type,
+            event === null
+              ? type === 'text'
+                ? '{"type":"text"}'
+                : payload
+              : JSON.stringify(event),
+            i + 10,
+          )
+        }
+      })()
+    } finally {
+      rows.close()
     }
-    // A new snapshot must see a same-bound rewrite, rather than returning the last success.
-    db.prepare(
-      'UPDATE events SET payload = \'{"type":"request_stranded","requestId":"atlas-question"}\', type = \'request_stranded\' WHERE ordinal = ?',
-    ).run(count - 1)
-    const changed = engine.read({ kind: 'routes' })
-    if (changed.kind !== 'routes') throw new Error('Wrong result')
-    expect(changed.routes[0]?.requests[0]?.state).toBe('stranded')
-  } finally {
-    engine?.close()
-    db.close()
+    probe('fixture-ready')
+  }, 60_000)
+  afterAll(() => {
+    db?.close()
     rmSync(directory, { recursive: true, force: true })
-  }
+  })
+
+  it(`completely reads a fictional ${count}-event conversation`, () => {
+    if (db === undefined) throw new Error('No fictional ledger')
+    probeStart = performance.now()
+    const engine = new WindowReadEngine(file)
+    try {
+      for (const kind of ['routes', 'incidents'] as const) {
+        const result = engine.read({ kind })
+        probe(`${kind}-read`)
+        if (result.kind === 'routes') {
+          expect(result.routes).toHaveLength(1)
+          expect(result.routes[0]?.skipped).toEqual([])
+          expect(result.routes[0]?.requests).toMatchObject([
+            { requestId: 'atlas-question', state: 'withdrawn' },
+          ])
+          expect(result.questions.rows).toEqual([])
+          expect(result.questions.rowsUnread).toBe(0)
+        } else if (result.kind === 'incidents') {
+          expect(result.owners).toHaveLength(1)
+          expect(result.owners[0]?.routes).toMatchObject([
+            { requestId: 'atlas-question', state: 'withdrawn' },
+          ])
+          expect(result.owners[0]?.routesSkipped).toEqual([])
+          expect(result.owners[0]?.piecesSkipped).toEqual([])
+          expect(result.owners[0]?.pieces).toEqual([])
+        }
+      }
+      // A new snapshot must see a same-bound rewrite, rather than returning the last success.
+      db.prepare(
+        'UPDATE events SET payload = \'{"type":"request_stranded","requestId":"atlas-question"}\', type = \'request_stranded\' WHERE ordinal = ?',
+      ).run(count - 1)
+      const changed = engine.read({ kind: 'routes' })
+      probe('rewrite-read')
+      if (changed.kind !== 'routes') throw new Error('Wrong result')
+      expect(changed.routes[0]?.requests[0]?.state).toBe('stranded')
+    } finally {
+      engine.close()
+    }
+  })
 })
 
 it.each(['rows', 'bytes', 'reply', 'cancelled', 'unread'] as const)(
