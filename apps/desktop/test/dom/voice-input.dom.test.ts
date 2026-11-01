@@ -244,3 +244,53 @@ it('honors a fresh Send after dictation even while the attachment is still pendi
   await nextTick()
   expect(c.send).toHaveBeenCalledOnce()
 })
+
+it.each([false, true])(
+  'uses the fresh send intent after dictation: interrupt=%s',
+  async (interrupting) => {
+    const c = composer()
+    c.state.value = 'busy'
+    await nextTick()
+    let release!: () => void
+    const attaching = c.handing.acquire(
+      () =>
+        new Promise<null>((done) => {
+          release = () => done(null)
+        }),
+    )
+    await click(c.m.q('interrupt-send-prompt'))
+    await click(c.m.q('voice-mic'))
+    await c.phase('listening')
+    await c.finish({ ok: true, text: 'Reviewed words.' })
+    await click(c.m.q(interrupting ? 'interrupt-send-prompt' : 'queue-prompt'))
+    release()
+    await attaching
+    await c.handing.settle()
+    await new Promise<void>((done) => setTimeout(done, 0))
+    await nextTick()
+    expect(c.send).toHaveBeenCalledOnce()
+    expect(c.send.mock.calls[0]?.[1]).toBe(interrupting ? 'interrupt' : 'queue')
+  },
+)
+
+it('retains a deliberate interrupt within one dictation version', async () => {
+  const c = composer()
+  c.state.value = 'busy'
+  await nextTick()
+  let release!: () => void
+  const attaching = c.handing.acquire(
+    () =>
+      new Promise<null>((done) => {
+        release = () => done(null)
+      }),
+  )
+  await click(c.m.q('interrupt-send-prompt'))
+  await click(c.m.q('queue-prompt'))
+  release()
+  await attaching
+  await c.handing.settle()
+  await new Promise<void>((done) => setTimeout(done, 0))
+  await nextTick()
+  expect(c.send).toHaveBeenCalledOnce()
+  expect(c.send.mock.calls[0]?.[1]).toBe('interrupt')
+})

@@ -644,8 +644,8 @@ function send(interrupting = false): Promise<void> {
   if (voiceActive.value) return Promise.resolve()
   const already = sending.value
   if (already !== null) {
-    // ⚠️ Raised, never lowered inside one submission: `interrupting || …` would let a stray plain
-    // press cancel a deliberate ⇧⌘↵. The last press that ASKED for something wins.
+    // A new dictation invalidates the old gesture. Within one version, keep a deliberate interrupt.
+    if (already.voiceVersion !== voice.version.value) already.interrupting = false
     if (interrupting) already.interrupting = true
     already.voiceVersion = voice.version.value
     return already.run
