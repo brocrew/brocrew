@@ -676,3 +676,97 @@ export function inTheirPlace(
   }
   return out
 }
+
+export interface StartedHereCard extends CastCard {
+  readonly depth: number
+  readonly parent: string | null
+}
+
+/** Walk the existing bounded forest once, keeping each conversation beside its descendants. */
+export function startedHereCards(
+  input: WorkingTogetherInput,
+  view: WorkingTogetherView,
+  forest: TheWholeForest | null,
+  updatedAt?: ReadonlyMap<string, number>,
+): StartedHereCard[] {
+  const nodes = (forest?.nodes.rows ?? []).filter((row) => row.node === 'a-conversation')
+  const inputCards = [...view.children, ...view.others]
+  const atWork = input.reading ? atWorkOf(input.reading) : null
+  const cards = new Map(
+    inTheirPlace(
+      [...inputCards, ...nodes.map((node) => cardOf(node, input, atWork))],
+      forest,
+      input.identities ?? null,
+    ).map((card) => [card.conversation, card]),
+  )
+  const places = new Map<string, string>()
+  for (const node of nodes) {
+    const after = node.inItsPlace?.conversation
+    if (after && cards.has(after)) places.set(node.conversation, after)
+    // A stand-in still names earlier conversations that fell outside the forest's bound.
+    if (cards.has(node.conversation)) {
+      for (const previous of node.standsInFor) {
+        places.set(previous.conversation, node.conversation)
+      }
+    }
+  }
+  const place = (id: string) => places.get(id) ?? id
+  const root = place(input.forConversation)
+  const parents = new Map(view.children.map((card) => [place(card.conversation), root]))
+  for (const node of nodes) {
+    if (node.under.is === 'the-person') continue
+    const id = place(node.conversation)
+    const parent = place(node.under.conversation)
+    // A replacement inherits the earlier conversation's position, even if its own row came first.
+    if (id !== parent && (!parents.has(id) || id !== node.conversation)) parents.set(id, parent)
+  }
+  // The selected conversation's own read remains useful before the forest arrives or past its bound.
+  for (const card of view.children) parents.set(place(card.conversation), root)
+  const children = new Map<string, string[]>()
+  for (const [id, parent] of parents) {
+    const siblings = children.get(parent) ?? []
+    siblings.push(id)
+    children.set(parent, siblings)
+  }
+  if (updatedAt) {
+    for (const siblings of children.values()) {
+      siblings.sort((a, b) => (updatedAt.get(b) ?? 0) - (updatedAt.get(a) ?? 0))
+    }
+  }
+  const out: StartedHereCard[] = []
+  const seen = new Set([root, input.forConversation])
+  const stack = [...(children.get(root) ?? [])]
+    .reverse()
+    .map((id) => ({ id, depth: 1, parent: root }))
+  while (stack.length) {
+    const next = stack.pop()!
+    if (seen.has(next.id)) continue
+    seen.add(next.id)
+    const card = cards.get(next.id)
+    if (!card) continue
+    out.push({ ...card, depth: next.depth, parent: next.parent })
+    for (const id of [...(children.get(next.id) ?? [])].reverse()) {
+      stack.push({ id, depth: next.depth + 1, parent: next.id })
+    }
+  }
+  // Preserve older handoffs outside the recorded creation tree without claiming they started here.
+  for (const card of view.others) {
+    const id = place(card.conversation)
+    if (seen.has(id) && id !== root) continue
+    seen.add(id)
+    const shown = cards.get(id)
+    if (shown) out.push({ ...shown, depth: 1, parent: null })
+  }
+  if (updatedAt) {
+    const groups: StartedHereCard[][] = []
+    for (const card of out) {
+      if (card.depth === 1) groups.push([card])
+      else groups.at(-1)!.push(card)
+    }
+    groups.sort(
+      (a, b) => (updatedAt.get(b[0]!.conversation) ?? 0) - (updatedAt.get(a[0]!.conversation) ?? 0),
+    )
+    return groups.flat()
+  }
+  return out
+}

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { AgentIdentity } from '../../../shared/runtime-ipc'
 import type { WorkEdge } from '../../../shared/who-called-whom'
 import { TASK_IS_OPEN } from '../../../shared/tasks'
@@ -16,7 +16,7 @@ import { useWhoCalledWhom } from '../composables/useWhoCalledWhom'
 import { NOT_MEASURED, NOT_RUNNING_NOW, type AgentPanelSubAgent } from '../lib/agent-panel'
 import { priorityDotToken, standingOf, type AgentFacets } from '../lib/agent-state'
 import {
-  inTheirPlace,
+  startedHereCards,
   LIST_DOUBT_WORDS,
   workingTogetherView,
   type CastCard,
@@ -115,35 +115,70 @@ const view = computed(() =>
   }),
 )
 
-/** ⚑ Every agent this conversation works with: the ones it spawned, then the others it gave work to. */
 const cast = useWhoCalledWhom()
-
-// ⚑ F094 · a replaced conversation is drawn as its stand-in (D-034's place map, from the forest).
-const allAgents = computed(() =>
-  view.value
-    ? inTheirPlace(
-        [...view.value.children, ...view.value.others],
-        cast.forest.value,
-        props.identities,
-      ).map((card) => {
-        const listed = cast.listedConversations.value?.find(
-          (row) => row.sessionId === card.conversation,
-        )
-        const worker = listed?.worker
-        return worker
-          ? {
-              ...card,
-              name: workerLabel(workerName(worker, props.identities), worker, listed?.named),
-            }
-          : card
-      })
-    : [],
-)
-
 const latestFirst = usePersistentToggle('brobot2.subAgents.latestFirst', false)
 const showIdle = usePersistentToggle('brobot2.subAgents.showIdle', true)
+const listedByConversation = computed(
+  () => new Map((cast.listedConversations.value ?? []).map((row) => [row.sessionId, row])),
+)
+const allAgents = computed(() => {
+  if (!view.value) return []
+  const cards = startedHereCards(
+    {
+      reading: props.reading,
+      forConversation: props.conversation,
+      identities: props.identities,
+      now: minute.value,
+    },
+    view.value,
+    cast.forest.value,
+    latestFirst.value
+      ? new Map([...listedByConversation.value].map(([id, row]) => [id, row.updatedAt]))
+      : undefined,
+  )
+  return cards.map((card) => {
+    const listed = listedByConversation.value.get(card.conversation)
+    return listed?.worker
+      ? {
+          ...card,
+          name: workerLabel(
+            workerName(listed.worker, props.identities),
+            listed.worker,
+            listed.named,
+          ),
+        }
+      : card
+  })
+})
+const byConversation = computed(
+  () => new Map(allAgents.value.map((card) => [card.conversation, card])),
+)
+const hasDescendants = computed(() => allAgents.value.some((card) => card.depth > 1))
+const shownLimit = ref(40)
+watch(
+  () => props.conversation,
+  () => {
+    shownLimit.value = 40
+  },
+)
+const treeNotice = computed(() => {
+  const forest = cast.forest.value
+  if (!forest) return 'Showing direct agents while the rest of the tree loads.'
+  const walk = forest.nodes
+  return walk.walk !== 'every-conversation-this-app-placed' ||
+    walk.rowsUnread > 0 ||
+    (walk.ledgersSkipped ?? 0) > 0 ||
+    forest.conversations > walk.ledgers
+    ? 'Some conversations are outside the current tree read. More agents may be missing here.'
+    : null
+})
+function relation(card: (typeof allAgents.value)[number]): string {
+  if (card.parent === null) return 'Given work'
+  if (card.depth === 1) return 'Direct'
+  return `Level ${card.depth} · via ${byConversation.value.get(card.parent)?.name ?? 'another agent'}`
+}
 function listedCard(card: CastCard) {
-  return cast.listedConversations.value?.find((row) => row.sessionId === card.conversation)
+  return listedByConversation.value.get(card.conversation)
 }
 // Classify the same cards the panel names, without treating an unread state as idle.
 function hiddenWhenIdle(card: CastCard): boolean {
@@ -164,10 +199,9 @@ const agents = computed(() => {
   const rows = allAgents.value.filter(
     (card) => showIdle.value || !idleAgents.value.has(card.conversation),
   )
-  return latestFirst.value
-    ? rows.sort((a, b) => (listedCard(b)?.updatedAt ?? 0) - (listedCard(a)?.updatedAt ?? 0))
-    : rows
+  return rows
 })
+const visibleAgents = computed(() => agents.value.slice(0, shownLimit.value))
 const hiddenIdleCount = computed(() => (showIdle.value ? 0 : idleAgents.value.size))
 function subtitles(card: CastCard) {
   const listed = listedCard(card)
@@ -341,8 +375,19 @@ function chipWord(card: CastCard): string | undefined {
             >{{ hiddenIdleCount }} idle hidden</span
           >
         </div>
-        <ol v-if="agents.length" class="agent-chips" data-cy="cast-children-strip">
-          <li v-for="card in agents" :key="`chip-${card.conversation}`">
+        <p v-if="treeNotice" class="quiet" data-cy="cast-tree-notice">{{ treeNotice }}</p>
+        <ol
+          v-if="agents.length"
+          class="agent-chips"
+          :class="{ 'has-descendants': hasDescendants }"
+          data-cy="cast-children-strip"
+        >
+          <li
+            v-for="card in visibleAgents"
+            :key="`chip-${card.conversation}`"
+            :data-depth="card.depth"
+            :style="{ '--agent-depth': Math.min(card.depth - 1, 3) }"
+          >
             <!-- A chip opens that agent's conversation; parent navigation goes back up. Draw it as a control only when the caller can open the conversation. -->
             <component
               :is="canOpen ? 'button' : 'span'"
@@ -399,6 +444,12 @@ function chipWord(card: CastCard): string | undefined {
                     </span>
                   </span>
                   <span class="chip-meta">
+                    <span
+                      class="chip-relation"
+                      :title="relation(card)"
+                      data-cy="cast-tile-relation"
+                      >{{ relation(card) }}</span
+                    >
                     <!-- What it waits for, under its wait: the piece's status line, cut, whole on
                          its title. -->
                     <span
@@ -463,6 +514,15 @@ function chipWord(card: CastCard): string | undefined {
             </component>
           </li>
         </ol>
+        <button
+          v-if="agents.length > visibleAgents.length"
+          type="button"
+          class="cast-toggle"
+          data-cy="cast-show-more"
+          @click="shownLimit += 40"
+        >
+          Show more ({{ agents.length - visibleAgents.length }} remaining)
+        </button>
         <p v-if="!agents.length && hiddenIdleCount" class="quiet" data-cy="cast-idle-empty">
           All sub agents are idle.
         </p>
@@ -636,6 +696,19 @@ function chipWord(card: CastCard): string | undefined {
   /* ⚑ W4.183 · v3: two cards a row, at every width the panel takes. */
   grid-template-columns: repeat(2, minmax(0, 1fr));
   list-style: none;
+}
+
+.agent-chips.has-descendants {
+  grid-template-columns: minmax(0, 1fr);
+}
+.agent-chips.has-descendants > li {
+  padding-inline-start: calc(var(--agent-depth) * var(--space-3));
+}
+.chip-relation {
+  overflow: hidden;
+  color: var(--text-soft);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ⚑ Each card takes its row's height, so a card with a word and one without line up. */
