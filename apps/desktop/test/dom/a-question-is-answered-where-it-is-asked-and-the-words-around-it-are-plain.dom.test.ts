@@ -827,13 +827,13 @@ describe('on the page a long question folds at four lines', () => {
 
     const more = m.q('question-more')
     expect(visible(more)).toBe(true)
-    expect(said(more)).toBe('more')
+    expect(said(more)).toBe('Read full question')
     expect(more.getAttribute('aria-expanded')).toBe('false')
 
     await press(more)
     await settle()
     expect(words.getAttribute('data-folded')).toBe('false')
-    expect(said(more)).toBe('less')
+    expect(said(more)).toBe('Show less')
     expect(more.getAttribute('aria-expanded')).toBe('true')
     expect(words.scrollHeight).toBeLessThanOrEqual(words.clientHeight)
     expect(lineCount(words)).toBeGreaterThan(4)
@@ -841,7 +841,7 @@ describe('on the page a long question folds at four lines', () => {
     await press(more)
     await settle()
     expect(words.getAttribute('data-folded')).toBe('true')
-    expect(said(more)).toBe('more')
+    expect(said(more)).toBe('Read full question')
     unmountAll()
 
     // One fact over: the same question in the conversation's frame, which does not fold, is never
@@ -887,7 +887,7 @@ describe('on the page a long question folds at four lines', () => {
     await settle()
     const brief = added.q('question-words')
     expect(brief.scrollHeight).toBeLessThanOrEqual(brief.clientHeight + 1)
-    expect(said(added.q('question-more'))).toBe('more')
+    expect(said(added.q('question-more'))).toBe('Read full question')
     expect(added.all('question-context')).toHaveLength(0)
     await press(added.q('question-more'))
     expect(said(added.q('question-context'))).toBe('Added: Tried both.')
