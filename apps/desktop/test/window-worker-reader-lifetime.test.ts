@@ -37,6 +37,29 @@ const drain = async () => {
 }
 
 describe('window reader owns its native connection until confirmed exit', () => {
+  it.each([
+    'rows',
+    'bytes',
+    'reply',
+    'sessions',
+    'cancelled',
+    'worker-read-failed',
+    'private raw error',
+  ])('retains only a closed worker failure reason: %s', async (reason) => {
+    const worker = new ReadWorker()
+    const reader = new WindowWorkerReader(worker)
+    const answer = reader.read({ kind: 'routes' })
+    worker.emit('message', { type: 'ready' })
+    await drain()
+    worker.emit('message', { type: 'failed', id: 1, reason })
+    await expect(answer).rejects.toMatchObject({
+      why: 'failed',
+      reason: reason === 'private raw error' ? 'worker-read-failed' : reason,
+    })
+    worker.emit('exit', 0)
+    await reader.close()
+  })
+
   const leadQuery = {
     kind: 'leads' as const,
     sessionId: 'fictional',

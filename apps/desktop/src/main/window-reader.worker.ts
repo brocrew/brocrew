@@ -1,7 +1,7 @@
 import { parentPort, workerData } from 'node:worker_threads'
 import { z } from 'zod'
 import { WindowReadEngine } from './db/window-read-engine'
-import { windowReadQuery } from './db/window-read-protocol'
+import { windowReadQuery, WindowReadUnavailable } from './db/window-read-protocol'
 
 const options = z.object({ file: z.string().min(1) }).strict()
 const request = z.discriminatedUnion('type', [
@@ -46,8 +46,15 @@ if (parentPort !== null) {
           id,
           result: reader.read(query, () => flag !== undefined && Atomics.load(flag, 0) !== 0),
         })
-      } catch {
-        port.postMessage({ type: 'failed', id })
+      } catch (error) {
+        port.postMessage({
+          type: 'failed',
+          id,
+          reason:
+            error instanceof WindowReadUnavailable
+              ? (error.reason ?? 'worker-read-failed')
+              : 'worker-read-failed',
+        })
       }
     })
   }

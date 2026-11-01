@@ -6,6 +6,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -102,7 +103,7 @@ describe('a kept rule removed', () => {
   it('🔴 a link put at its staged name as it is made sends nothing outside', () => {
     const file = aSettingsFile()
     const target = join(outside, 'staged')
-    aLinkAsItIsMade((path) => path.startsWith(`${file}.brobot-`), target)
+    aLinkAsItIsMade((path) => path.startsWith(`${realpathSync(file)}.brobot-`), target)
 
     expect(remove(file)).toMatchObject({ removed: false })
 
