@@ -13,6 +13,7 @@ import {
   digest,
 } from '../node-host-files'
 import { SupervisorStorage } from './storage'
+import { readRecoveryAdvice } from './recovery-advice'
 import { windowsSystemEnvironment } from '../system-environment'
 import { OWNER_LAUNCH_MS, PluginSupervisorError } from './protocol'
 import { LaunchConfig, type PluginLifecyclePlan, type PluginStartupPlan } from './launch-format'
@@ -110,6 +111,8 @@ export function createPluginSupervisorLauncher(options: {
         await new Promise((resolve) => setTimeout(resolve, 10))
       }
       await diagnostic.drainUntil(until)
+      const advice = await readRecoveryAdvice(root, directory, () => storage.read())
+      if (advice) throw advice
       throw new PluginSupervisorError('unavailable', {
         cause: Object.assign(diagnostic(), { cause: spawnError }),
       })

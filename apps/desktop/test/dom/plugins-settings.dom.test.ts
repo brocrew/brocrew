@@ -226,6 +226,38 @@ it('a failed retry keeps the approved line and restart hint without raw errors',
   expect(m.host.textContent).not.toContain('fictional-private-owner-stack')
   expect(m.all('plugin-install')).toHaveLength(0)
 })
+it.each([
+  ['owner-window-open', 'If another BroCrew window is open, close it, then try again.'],
+  ['restart-required', 'Restart your computer, then reopen BroCrew.'],
+] as const)(
+  'shows the specific %s remedy without an app-restart contradiction',
+  async (reason, text) => {
+    const f = fictionalPlugins()
+    f.set([
+      {
+        id: 'fictional-fir',
+        name: 'Fictional Fir',
+        installed: true,
+        state: 'Unavailable',
+        unavailableReason: reason,
+      },
+    ])
+    const m = mount(settingsWindow('plugins', 'classic', f.client), {}, { width: 760, height: 900 })
+    await vi.waitFor(() => expect(m.all('plugin-retry')).toHaveLength(1))
+    if (import.meta.env.VITE_LIVE_OWNER_CAPTURE)
+      await page.screenshot({
+        element: m.q('plugin-card'),
+        path: `__screenshots__/live-owner-${import.meta.env.VITE_LIVE_OWNER_CAPTURE}-${reason}.png`,
+      })
+    expect(m.q('plugin-start-error').textContent).toContain(text)
+    m.q('plugin-retry').click()
+    await vi.waitFor(() => expect(f.calls.some((call) => call.kind === 'retry')).toBe(true))
+    await nextTick()
+    expect(m.q('plugin-start-error').textContent).toContain(text)
+    expect(m.all('plugin-restart-hint')).toHaveLength(0)
+    expect(m.all('plugin-install')).toHaveLength(0)
+  },
+)
 it.each([true, null] as const)(
   'an installed row stays in recovery after Running and failed detach with presence %s',
   async (presence) => {

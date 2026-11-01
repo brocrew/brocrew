@@ -34,7 +34,32 @@ export function productionPluginController() {
   let startupDiagnostic: PluginStartupDiagnostic | undefined
   let diagnosticRoot: string | undefined
   let diagnosticWrite = Promise.resolve()
+  let acceptingBusy:
+    { identity: string; since: number; observedAt: number; automaticFailures: number } | undefined
   const failed = (reason: PluginUnavailableReason, error?: unknown) => {
+    let observed = error
+    let identity: string | undefined
+    for (let depth = 0; depth < 6 && observed && typeof observed === 'object'; depth++) {
+      if (
+        observed instanceof PluginSupervisorError &&
+        observed.code === 'busy' &&
+        observed.diagnostic?.phase === 'accepting' &&
+        observed.diagnostic.stage === 'hello' &&
+        observed.diagnostic.probe === 'live' &&
+        observed.ownerIdentity
+      ) {
+        identity = observed.ownerIdentity
+        break
+      }
+      observed = (observed as { cause?: unknown }).cause
+    }
+    if (!identity) acceptingBusy = undefined
+    else {
+      const now = performance.now()
+      if (acceptingBusy?.identity !== identity || now < acceptingBusy.observedAt)
+        acceptingBusy = { identity, since: now, observedAt: now, automaticFailures: 0 }
+      else acceptingBusy.observedAt = now
+    }
     failure = pluginStartupReason(error, reason)
     startupDiagnostic = pluginStartupDiagnostic(error)
     const root = diagnosticRoot,
@@ -80,12 +105,21 @@ export function productionPluginController() {
   ): PluginCard[] => {
     // One fresh, non-mutating snapshot per fallback response; never retain presence across mutations.
     const evidence = observeInstallations()
+    const conditionalWindowAdvice =
+      acceptingBusy &&
+      acceptingBusy.automaticFailures >= 6 &&
+      acceptingBusy.observedAt - acceptingBusy.since >= 120_000
+    const specific = conditionalWindowAdvice
+      ? 'owner-window-open'
+      : failure === 'restart-required'
+        ? failure
+        : undefined
     return listed.map((entry) => ({
       id: entry.id,
       name: entry.name ?? entry.id,
       state: 'Unavailable',
-      unavailableReason: cleanupUncertain ? 'cleanup-pending' : failure,
-      ...(startupDiagnostic && !cleanupUncertain ? { startupDiagnostic } : {}),
+      unavailableReason: specific ?? (cleanupUncertain ? 'cleanup-pending' : failure),
+      ...(startupDiagnostic && (!cleanupUncertain || specific) ? { startupDiagnostic } : {}),
       uninstallDeletesData: Boolean(pluginAdapter(entry.id)?.uninstall),
       installed: evidence
         ? evidence.installed.includes(entry.id)
@@ -129,13 +163,17 @@ export function productionPluginController() {
         if (cleanupUncertain && !recover()) {
           if (!(await supervisor?.recover?.()) || !recover()) {
             if (supervisor?.lastStartError) failed('cleanup-pending', supervisor.lastStartError)
+            else acceptingBusy = undefined
+            if (acceptingBusy) acceptingBusy.automaticFailures++
             if (!ended) watchForCleanStop(next)
             return
           }
         }
         const attached = await enter()
+        if (!attached && acceptingBusy) acceptingBusy.automaticFailures++
         if (!attached && !ended) watchForCleanStop(next)
       })().catch(() => {
+        acceptingBusy = undefined
         if (!ended) watchForCleanStop(next)
       })
     }, delay)
@@ -536,8 +574,9 @@ export function productionPluginController() {
               )
             if (
               !ended &&
-              pluginStartupReason(options.supervisor.lastStartError, 'service-start') ===
-                'cleanup-pending'
+              ['cleanup-pending', 'restart-required'].includes(
+                pluginStartupReason(options.supervisor.lastStartError, 'service-start'),
+              )
             )
               watchForCleanStop()
             return false
@@ -616,6 +655,7 @@ export function productionPluginController() {
             return false
           }
           await update()
+          acceptingBusy = undefined
           timer = setInterval(() => {
             if (!refresh)
               refresh = update()
@@ -631,7 +671,11 @@ export function productionPluginController() {
           return true
         } catch (error) {
           failed(phase, error)
-          if (!ended && pluginStartupReason(error, phase) === 'cleanup-pending') watchForCleanStop()
+          if (
+            !ended &&
+            ['cleanup-pending', 'restart-required'].includes(pluginStartupReason(error, phase))
+          )
+            watchForCleanStop()
           if (!entries)
             listFailure =
               error instanceof PluginListError
@@ -649,6 +693,7 @@ export function productionPluginController() {
     close() {
       closing ??= (async () => {
         ended = true // Refuse new Settings/discovery calls before waiting for consumer cleanup.
+        acceptingBusy = undefined
         lifetime.abort() // Cancel catalogue I/O without destroying the attached person channel.
         if (!peer) personLifetime.abort() // No attached channel needs reverse acknowledgments.
         clearInterval(timer)

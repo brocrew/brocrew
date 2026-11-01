@@ -968,6 +968,8 @@ const HAND_ROLLED: Readonly<Record<string, Question>> = {
   // the non-vacuity half beside an `assertDrawn` over the same element.
   'the-tools-register.dom.test.ts': 'does-this-box-fit',
   'the-providers-cards-line-up.dom.test.ts': 'does-this-box-fit',
+  // The card and context boxes fit at both widths; the folded question must overflow its box.
+  'the-queue-question-card-keeps-context-and-answers-distinct.dom.test.ts': 'does-this-box-fit',
   // ⚑ **587 · per-ELEMENT rather than per-width, and the reason is a measurement.** `.tool-run` is
   // `max-width: var(--measure-message)` WITH `margin: 0 auto`, and an auto cross-axis margin
   // disables stretch — so the row is 760 px at every width this app can be, and a squeeze test

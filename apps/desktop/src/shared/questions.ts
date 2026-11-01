@@ -924,8 +924,9 @@ export interface VisibleQuestion {
  */
 export function deriveRoutedRequests(
   askedBy: string,
-  entries: readonly PersistedEventInfo[],
+  entries: Iterable<PersistedEventInfo>,
   notWellFormed?: (ordinal: number) => void,
+  checkState?: (state: readonly unknown[], complete?: boolean) => void,
 ): readonly RoutedRequest[] {
   const rows: RoutedRequest[] = []
   const open = new Map<string, number>()
@@ -948,6 +949,7 @@ export function deriveRoutedRequests(
   }
 
   for (const entry of entries) {
+    checkState?.([rows, open, everSeen, oursToOutlive, pieceOf])
     const event = entry.event
     if (event.type === 'launched') {
       questionsOutliveAStop = true
@@ -1094,6 +1096,7 @@ export function deriveRoutedRequests(
     }
   }
 
+  checkState?.([rows, open, everSeen, oursToOutlive, pieceOf], true)
   return rows
 }
 
