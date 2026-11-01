@@ -52,7 +52,7 @@ export async function readBootWitness(options = {}) {
     if (platform === 'win32') {
       const program = powershellPath()
       if (!program) return null
-      const command = `Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public static class BroCrewBootWitness { [DllImport("kernel32.dll")] public static extern UInt64 GetTickCount64(); }'; [Console]::Out.WriteLine([BroCrewBootWitness]::GetTickCount64().ToString([Globalization.CultureInfo]::InvariantCulture))`
+      const command = `$ProgressPreference='SilentlyContinue'; $ErrorActionPreference='Stop'; Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public static class BroCrewBootWitness { [DllImport("kernel32.dll")] public static extern UInt64 GetTickCount64(); }'; [Console]::Out.WriteLine([BroCrewBootWitness]::GetTickCount64().ToString([Globalization.CultureInfo]::InvariantCulture))`
       const value = await read(program, [
         '-NoLogo',
         '-NoProfile',

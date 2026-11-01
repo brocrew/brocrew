@@ -58,4 +58,39 @@ describe('native boot witnesses', () => {
       expect(laterBoot(a, b)).toBe(false)
     },
   )
+  it.runIf(process.platform === 'win32')(
+    'gets native Windows ticks with no error stream from a fresh PowerShell process',
+    async () => {
+      let diagnostic: { code: string | number | null; stderr: string } = {
+        code: 'not-started',
+        stderr: '',
+      }
+      const value = await readBootWitness({
+        read: async (program, args) => {
+          try {
+            const result = await promisify(execFile)(program, args, {
+              timeout: 10_000,
+              maxBuffer: 4096,
+              windowsHide: true,
+              encoding: 'utf8',
+            })
+            diagnostic = { code: null, stderr: result.stderr }
+            if (result.stderr.trim()) throw new Error('Unexpected native error stream')
+            return result.stdout
+          } catch (error) {
+            const failure = error as NodeJS.ErrnoException & { stderr?: string }
+            if (diagnostic.code === 'not-started')
+              diagnostic = { code: failure.code ?? 'unknown', stderr: failure.stderr ?? '' }
+            throw error
+          }
+        },
+      })
+      expect({ diagnostic, nativeWitness: value?.kind }).toEqual({
+        diagnostic: { code: null, stderr: '' },
+        nativeWitness: 'windows-tick64-v1',
+      })
+    },
+  )
 })
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'

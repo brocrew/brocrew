@@ -50,6 +50,12 @@ import { startJobKeeper } from '../resources/plugin-host/windows-job.mjs'
 import { writeReceipt } from '../resources/plugin-host/receipts.mjs'
 import { manifestFor, packageFixture, fictionalPublicKey } from './plugin-package-fixtures'
 
+const optionalRecoveryReader = vi.hoisted(() => vi.fn(async () => null))
+vi.mock('../resources/plugin-host/boot-witness.mjs', async (original) => ({
+  ...(await original<typeof import('../resources/plugin-host/boot-witness.mjs')>()),
+  readBootWitness: optionalRecoveryReader,
+}))
+
 const stat = (mode: number, uid = process.getuid?.() ?? 0) =>
   ({ mode, uid }) as unknown as import('node:fs').Stats
 
@@ -601,6 +607,8 @@ describe.runIf(process.platform === 'win32')('the plugin host on Windows', () =>
       const host = createPluginNodeHost({ root: folder, runtime, readyMs: 25000 })
       const handle = await host.start(fixture(serverSource(browser)))
       const ready = await readyOrWhy(handle)
+      // A new run does not need evidence about a historical boot or owner.
+      expect(optionalRecoveryReader).not.toHaveBeenCalled()
       expect([true, false, null]).toContain(ready.priorityClamped)
       const runDirectory = resolve(handle.receiptPath, '..')
       const reserved = JSON.parse(

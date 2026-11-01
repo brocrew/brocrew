@@ -49,7 +49,11 @@ const send = (value) => {
 // A first open compiles the job code, which can take tens of seconds on a cold machine.
 const keeper =
   process.platform === 'win32'
-    ? startJobKeeper({ cache: config.keeperCache, openMs: 120_000, name: config.windowsJob?.name })
+    ? startJobKeeper({
+        cache: config.keeperCache,
+        openMs: 120_000,
+        name: config.windowsJob?.name ?? '',
+      })
     : null
 /**
  * Stops the server and ends its job. The server is asked to stop over its channel, since a signal
@@ -142,12 +146,12 @@ if (keeper) {
     openedMs === null ||
     !jobIdentity ||
     !config.windowsJob ||
+    config.windowsJob.format !== 1 ||
+    config.windowsJob.name !== `Local\\BroCrew.Plugin.${config.windowsJob.nonce}` ||
     config.windowsJob.runId !== config.runId ||
     config.windowsJob.pluginId !== config.pluginId ||
     config.windowsJob.releaseDigest !== config.releaseDigest ||
-    config.windowsJob.name !== jobIdentity.name ||
-    config.windowsJob.boot?.kind !== jobIdentity.boot.kind ||
-    BigInt(jobIdentity.boot.value) < BigInt(config.windowsJob.boot.value)
+    config.windowsJob.name !== jobIdentity.name
   ) {
     send({ type: 'unsupported', reason: keeper.reason })
     await finish('keeper')
