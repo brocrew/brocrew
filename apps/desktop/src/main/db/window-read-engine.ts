@@ -12,6 +12,7 @@ import {
   windowReadQuery,
   WindowReadUnavailable,
   type RoutingReading,
+  type WindowReadFailure,
   type IncidentReading,
   type SkippedRow,
   type WindowReadQuery,
@@ -39,52 +40,91 @@ export class WindowReadEngine {
     const query = windowReadQuery.parse(input)
     let rows = 0
     let bytes = 0
-    let exceeded = false
+    let refused: WindowReadUnavailable | undefined
+    const fail = (reason: WindowReadFailure): never => {
+      refused = new WindowReadUnavailable('failed', reason)
+      throw refused
+    }
     const counted = (value: unknown): unknown => {
       if (value === undefined) return value
+      if (abandoned()) fail('cancelled')
       rows++
       bytes += serialize(value).byteLength
-      if (rows > WINDOW_READ_BOUNDS.rows || bytes > WINDOW_READ_BOUNDS.bytes) {
-        exceeded = true
-        throw new WindowReadUnavailable()
-      }
+      if (rows > WINDOW_READ_BOUNDS.rows) fail('rows')
+      if (bytes > WINDOW_READ_BOUNDS.bytes) fail('bytes')
       return value
     }
-    // Rows are reused only inside this read-only snapshot, never across transactions.
-    const pages = new Map<string, Map<string, unknown[]>>()
+    let foldRows = 0
+    const checkFoldState = (state: readonly unknown[], complete = false) => {
+      const retained = state.reduce<number>(
+        (total, value) =>
+          total +
+          (Array.isArray(value)
+            ? value.length
+            : value instanceof Map || value instanceof Set
+              ? value.size
+              : 0),
+        0,
+      )
+      if (retained > WINDOW_READ_BOUNDS.rows) fail('rows')
+      if (
+        (complete || foldRows++ % WINDOW_READ_BOUNDS.foldPageRows === 0) &&
+        serialize(state).byteLength > WINDOW_READ_BOUNDS.bytes
+      )
+        fail('bytes')
+    }
+    let unreadRows = 0
+    let unreadBytes = 0
+    const countSkipped = (sessionId: string, ordinal: SkippedRow) => {
+      unreadRows++
+      unreadBytes += serialize([sessionId, ordinal]).byteLength
+      if (unreadRows > WINDOW_READ_BOUNDS.rows) fail('rows')
+      if (unreadBytes > WINDOW_READ_BOUNDS.bytes) fail('bytes')
+    }
+    let replyBytes = 0
+    const keepReply = <T>(value: T): T => {
+      replyBytes += serialize(value).byteLength
+      if (replyBytes > WINDOW_READ_BOUNDS.replyBytes) fail('reply')
+      return value
+    }
     const bounded = new Proxy(this.db, {
       get: (database, key) => {
         if (key === 'prepare')
           return (sql: string) => {
             const statement = database.prepare(sql)
-            // Only the routed-request fold is shared by the three routing readers.
-            const reuse =
-              query.kind === 'routes' &&
+            const streamedFold =
               sql.includes("json_remove(payload, '$.sent', '$.given')") &&
-              sql.includes('session_id = @session AND generation = @generation')
+              (sql.includes('AND ordinal >= ?') ||
+                sql.includes('session_id = @session AND generation = @generation'))
             return new Proxy(statement, {
               get: (native, method) => {
                 if (method === 'all')
                   return (...args: unknown[]) => {
-                    if (!reuse) {
-                      const result: unknown[] = []
-                      for (const row of native.iterate(...args)) result.push(counted(row))
-                      return result
-                    }
-                    const key = serialize(args).toString('base64')
-                    let bindings = pages.get(sql)
-                    const kept = bindings?.get(key)
-                    if (kept !== undefined) return kept.slice()
                     const result: unknown[] = []
                     for (const row of native.iterate(...args)) result.push(counted(row))
-                    if (bindings === undefined) pages.set(sql, (bindings = new Map()))
-                    bindings.set(key, result)
-                    return result.slice()
+                    return result
                   }
                 if (method === 'get') return (...args: unknown[]) => counted(native.get(...args))
                 if (method === 'iterate')
                   return function* (...args: unknown[]) {
-                    for (const row of native.iterate(...args)) yield counted(row)
+                    if (!streamedFold) {
+                      for (const row of native.iterate(...args)) yield counted(row)
+                      return
+                    }
+                    // Canonical folds consume each page before reading on in the same WAL snapshot.
+                    let pageRows = 0
+                    let pageBytes = 0
+                    for (const row of native.iterate(...args)) {
+                      if (abandoned()) fail('cancelled')
+                      if (pageRows === WINDOW_READ_BOUNDS.foldPageRows) {
+                        pageRows = 0
+                        pageBytes = 0
+                      }
+                      pageRows++
+                      pageBytes += serialize(row).byteLength
+                      if (pageBytes > WINDOW_READ_BOUNDS.bytes) fail('bytes')
+                      yield row
+                    }
                   }
                 const value: unknown = Reflect.get(native, method, native)
                 return typeof value === 'function' ? value.bind(native) : value
@@ -98,14 +138,14 @@ export class WindowReadEngine {
     this.db.exec('BEGIN')
     try {
       this.db.prepare("SELECT rootpage FROM sqlite_schema WHERE name = 'events'").get()
-      const store = createSessionStore(bounded)
+      const store = createSessionStore(bounded, Date.now, undefined, Math.random, checkFoldState)
       let result: WindowReadResult
       if (query.kind === 'incidents') {
         const owners = store.reconciliationOwners()
-        if (owners.length > WINDOW_READ_BOUNDS.sessions) throw new WindowReadUnavailable()
+        if (owners.length > WINDOW_READ_BOUNDS.sessions) fail('sessions')
         const readings: IncidentReading[] = []
         for (const sessionId of owners) {
-          if (abandoned()) throw new WindowReadUnavailable()
+          if (abandoned()) fail('cancelled')
           const piecesSkipped = new Set<SkippedRow>()
           const routesSkipped = new Set<SkippedRow>()
           const messagesSkipped = new Set<SkippedRow>()
@@ -115,6 +155,7 @@ export class WindowReadEngine {
             return {
               in: (id) => (ordinal) => {
                 if (id !== sessionId) throw new WindowReadUnavailable()
+                countSkipped(id, ordinal)
                 skipped.add(ordinal)
                 unread.in(id)(ordinal)
               },
@@ -136,23 +177,25 @@ export class WindowReadEngine {
               return pieces
             },
           }
-          readings.push({
-            sessionId,
-            pieces,
-            work: foldedStore.reconciliationWork(new Set([sessionId]), noted(piecesSkipped)),
-            routes: store.routedRequestsOf(sessionId, noted(routesSkipped)),
-            messages: store.messagesWaitingIn(sessionId, noted(messagesSkipped)),
-            stop: store.lastAskToStop(sessionId, noted(stopSkipped)),
-            piecesSkipped: [...piecesSkipped],
-            routesSkipped: [...routesSkipped],
-            messagesSkipped: [...messagesSkipped],
-            stopSkipped: [...stopSkipped],
-          })
+          readings.push(
+            keepReply({
+              sessionId,
+              pieces,
+              work: foldedStore.reconciliationWork(new Set([sessionId]), noted(piecesSkipped)),
+              routes: store.routedRequestsOf(sessionId, noted(routesSkipped)),
+              messages: store.messagesWaitingIn(sessionId, noted(messagesSkipped)),
+              stop: store.lastAskToStop(sessionId, noted(stopSkipped)),
+              piecesSkipped: [...piecesSkipped],
+              routesSkipped: [...routesSkipped],
+              messagesSkipped: [...messagesSkipped],
+              stopSkipped: [...stopSkipped],
+            }),
+          )
         }
         result = { kind: 'incidents', owners: readings }
       } else if (query.kind === 'activity') {
         const reading = recentActivity(store, query.from, query.to)
-        if (reading.read.ledgers > WINDOW_READ_BOUNDS.sessions) throw new WindowReadUnavailable()
+        if (reading.read.ledgers > WINDOW_READ_BOUNDS.sessions) fail('sessions')
         result = { kind: 'activity', ...reading }
       } else if (query.kind === 'files') {
         if (store.conversationBinding(query.sessionId) === null) throw new WindowReadUnavailable()
@@ -162,7 +205,7 @@ export class WindowReadEngine {
           givers: query.givers,
         })
         const roster = store.agentIdentities()
-        if (roster.length > WINDOW_READ_BOUNDS.sessions) throw new WindowReadUnavailable()
+        if (roster.length > WINDOW_READ_BOUNDS.sessions) fail('sessions')
         result = { kind: 'files', ...files, roster }
       } else if (query.kind === 'leads') {
         // Bound each native page by ledger rows, including rows the lead selector skips.
@@ -174,7 +217,7 @@ export class WindowReadEngine {
         const rows: ThreadLeadRow[] = []
         let from = Number.NEGATIVE_INFINITY
         for (;;) {
-          if (abandoned()) throw new WindowReadUnavailable()
+          if (abandoned()) fail('cancelled')
           const ordinals = page.all({
             session: query.sessionId,
             from,
@@ -211,6 +254,7 @@ export class WindowReadEngine {
         const counts = rowsUnreadOnce()
         const unread: RowsUnread = {
           in: (sessionId) => (ordinal) => {
+            countSkipped(sessionId, ordinal)
             let seen = skipped.get(sessionId)
             if (seen === undefined) skipped.set(sessionId, (seen = new Set()))
             seen.add(ordinal)
@@ -224,12 +268,14 @@ export class WindowReadEngine {
           },
         }
         for (const { id } of candidates) {
-          if (routes.length >= WINDOW_READ_BOUNDS.sessions) throw new WindowReadUnavailable()
-          routes.push({
-            sessionId: id,
-            requests: store.routedRequestsOf(id, unread),
-            skipped: [...(skipped.get(id) ?? [])],
-          })
+          if (routes.length >= WINDOW_READ_BOUNDS.sessions) fail('sessions')
+          routes.push(
+            keepReply({
+              sessionId: id,
+              requests: store.routedRequestsOf(id, unread),
+              skipped: [...(skipped.get(id) ?? [])],
+            }),
+          )
         }
         result = {
           kind: 'routes',
@@ -238,8 +284,9 @@ export class WindowReadEngine {
           decisions: store.decisionsAwaitingAPerson(unread),
         }
       }
-      if (abandoned() || exceeded || serialize(result).byteLength > WINDOW_READ_BOUNDS.replyBytes)
-        throw new WindowReadUnavailable()
+      if (refused !== undefined) throw refused
+      if (abandoned()) fail('cancelled')
+      if (serialize(result).byteLength > WINDOW_READ_BOUNDS.replyBytes) fail('reply')
       this.db.exec('COMMIT')
       return result
     } catch (error) {

@@ -107,7 +107,7 @@ describe('canonical window worker folds and independent live-store reads', () =>
     )
   }
 
-  it('materializes a large routing ledger once inside one read-only snapshot', () => {
+  it('streams a large routing ledger inside one read-only snapshot', () => {
     const insert = db.prepare(
       'INSERT INTO events (id, session_id, generation, ordinal, type, payload, created_at) VALUES (?, ?, 0, ?, ?, ?, ?)',
     )
@@ -140,9 +140,9 @@ describe('canonical window worker folds and independent live-store reads', () =>
     })
     const result = engine.read({ kind: 'routes' })
     expect(result.kind).toBe('routes')
-    expect(routedRows).toBe(35_003)
+    expect(routedRows).toBe(3 * 35_003)
     routesMatch()
-    expect(routedRows).toBe(70_006)
+    expect(routedRows).toBe(6 * 35_003)
   })
 
   function routesMatch() {

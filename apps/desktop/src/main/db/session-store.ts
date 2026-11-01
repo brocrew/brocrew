@@ -1162,6 +1162,13 @@ export function toPersistedEvents(
   })
 }
 
+function* persistedEventsFrom(
+  rows: Iterable<EventRow>,
+  noteSkip?: SkipNote,
+): IterableIterator<PersistedEvent> {
+  for (const row of rows) yield* toPersistedEvents([row], noteSkip)
+}
+
 /**
  * 🔴 **One row a STATEMENT could not read, handled the way {@link toPersistedEvents} handles one
  * JSON.parse could not** (671 · R18) — warned always, counted when the caller has somewhere to put
@@ -5668,6 +5675,7 @@ export function createSessionStore(
   readPhases?: SessionReadPhases,
   /** Where a new agent's name is drawn from: a number in [0, 1), as `Math.random` gives. */
   random: () => number = Math.random,
+  checkFoldState?: (state: readonly unknown[], complete?: boolean) => void,
 ): SessionStore {
   const connection = db
   const ownNotesStore = createOwnNotesStore(connection)
@@ -10078,25 +10086,25 @@ export function createSessionStore(
     return readOrSkip(owner, skipped, [], () => {
       const floor = pieceFoldFloor(owner, generation, backgroundWakesIt)
       if (floor === null) return []
-      const rows = selectPieceEvents.all(owner, generation, floor) as EventRow[]
+      const rows = selectPieceEvents.iterate(owner, generation, floor) as Iterable<EventRow>
+      function* beforeTheBound() {
+        for (const row of rows) {
+          if (before === undefined || row.ordinal < before) yield row
+        }
+      }
       const stalled = new Map<string, number>()
-      const pieces = derivePieces(
-        owner,
-        toPersistedEvents(
-          before === undefined ? rows : rows.filter((row) => row.ordinal < before),
-          skipped,
-        ),
-        {
-          backgroundWakesIt,
-          trackChanges,
-          onStall: (piece, ordinal) => stalled.set(piece, ordinal),
-          // ⚑ **F076** — whose login a refusal names.
-          ...(provider !== undefined &&
-          (SUPPORTED_PROVIDERS as readonly string[]).includes(provider)
-            ? { provider: provider as Provider }
-            : {}),
-        },
-      )
+      const pieces = derivePieces(owner, persistedEventsFrom(beforeTheBound(), skipped), {
+        ...(checkFoldState === undefined
+          ? {}
+          : { checkState: (state, complete) => checkFoldState([...state, stalled], complete) }),
+        backgroundWakesIt,
+        trackChanges,
+        onStall: (piece, ordinal) => stalled.set(piece, ordinal),
+        // ⚑ **F076** — whose login a refusal names.
+        ...(provider !== undefined && (SUPPORTED_PROVIDERS as readonly string[]).includes(provider)
+          ? { provider: provider as Provider }
+          : {}),
+      })
       if (complete) {
         if (before === undefined) pieceStallOrdinals.set(pieces, stalled)
         return pieces
@@ -10446,24 +10454,36 @@ export function createSessionStore(
     const generation = activeGeneration(sessionId)
     // 🔴 **D-017 · R8** — a counted read skips a ledger whose fold throws ({@link readOrSkip}).
     return readOrSkip(sessionId, noteSkip, { answer: [], floor: null, entries: [] }, () => {
-      const entries = toPersistedEvents(
-        selectRoutedRequestEvents.all({ session: sessionId, generation }) as EventRow[],
-        noteSkip,
-      )
+      let floor: number | null = null
+      let actedOn: PersistedEvent[] | null = []
+      function* entries() {
+        const rows = selectRoutedRequestEvents.iterate({
+          session: sessionId,
+          generation,
+        }) as Iterable<EventRow>
+        for (const entry of persistedEventsFrom(rows, noteSkip)) {
+          if (entry.event.type === 'request_routed' || entry.event.type === 'question_asked')
+            floor = floor === null ? entry.ordinal : Math.min(floor, entry.ordinal)
+          if (actedOn !== null && aWaitIsReadFrom(entry.event)) {
+            actedOn.push(entry)
+            if (actedOn.length > ROUTED_ENTRIES_KEPT_AT_MOST) actedOn = null
+          }
+          yield entry
+        }
+      }
       const answer = deriveRoutedRequests(
         sessionId,
-        entries,
+        entries(),
         // ⚑ A routing that is no well-formed routing is counted like a torn row.
         (ordinal) => noteUnreadRow(sessionId, ordinal, noteSkip, 'is not a well-formed routing'),
+        checkFoldState === undefined
+          ? undefined
+          : (state, complete) => checkFoldState([...state, actedOn], complete),
       )
-      const opening = entries.filter(
-        (entry) => entry.event.type === 'request_routed' || entry.event.type === 'question_asked',
-      )
-      const actedOn = entries.filter((entry) => aWaitIsReadFrom(entry.event))
       return {
         answer,
-        floor: opening.length === 0 ? null : Math.min(...opening.map((entry) => entry.ordinal)),
-        entries: actedOn.length > ROUTED_ENTRIES_KEPT_AT_MOST ? null : actedOn,
+        floor,
+        entries: actedOn,
       }
     })
   }

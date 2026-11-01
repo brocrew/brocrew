@@ -11,6 +11,7 @@ export const WINDOW_READ_BOUNDS = {
   pending: 16,
   callers: 16,
   leadPageRows: 256,
+  foldPageRows: 256,
 } as const
 
 export const windowReadQuery = z.discriminatedUnion('kind', [
@@ -186,13 +187,27 @@ export interface WindowStoreReader {
   close(): Promise<void>
 }
 
+export const windowReadFailure = z.enum([
+  'rows',
+  'bytes',
+  'reply',
+  'sessions',
+  'cancelled',
+  'worker-read-failed',
+])
+export type WindowReadFailure = z.infer<typeof windowReadFailure>
+
 /** `busy`: all native permits are held; `failed`: the worker could not complete its read. */
 export class WindowReadUnavailable extends Error {
-  constructor(readonly why: 'unavailable' | 'failed' | 'restart' | 'busy' = 'unavailable') {
+  constructor(
+    readonly why: 'unavailable' | 'failed' | 'restart' | 'busy' = 'unavailable',
+    readonly reason?: WindowReadFailure,
+  ) {
     super(
       why === 'restart'
         ? 'The window’s record could not be read. Restart BroCrew to try again.'
-        : 'The window’s record could not be read. Please try again.',
+        : 'The window’s record could not be read. Please try again.' +
+            (reason === undefined ? '' : ` (${reason})`),
     )
   }
 }

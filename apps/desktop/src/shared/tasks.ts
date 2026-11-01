@@ -2663,7 +2663,7 @@ export function thePiecesTheTurnNames(
  */
 export function derivePieces(
   owner: string,
-  entries: readonly PersistedEventInfo[],
+  entries: Iterable<PersistedEventInfo>,
   /**
    * 🔴 **D-013 · does this conversation's provider wake it when its background work ends?** — the
    * provider's own `backgroundWake` capability, read by the store. ⚑ Claude does (a backgrounded
@@ -2672,6 +2672,7 @@ export function derivePieces(
    */
   options: {
     readonly trackChanges?: boolean
+    readonly checkState?: (state: readonly unknown[], complete?: boolean) => void
     /** The source ordinal of each observed stall, kept outside the public piece row. */
     readonly onStall?: (piece: string, ordinal: number) => void
     readonly backgroundWakesIt?: boolean
@@ -3472,7 +3473,35 @@ export function derivePieces(
     }
   }
 
+  const checkState = (complete = false) => {
+    options.checkState?.(
+      [
+        rows,
+        changeTimes,
+        open,
+        indexOfPiece,
+        byMessage,
+        travelled,
+        whoseWordsDroveItLast,
+        waitsOnWhoWroteSince,
+        waitingToDriveIt,
+        heldForTheQueue,
+        inTheBackground,
+        scheduled,
+        heldForTheBackground,
+        stalledAsItsWakeWasDue,
+        cutByAnInterrupt,
+        theTurnNames,
+        theTurnGoesBackTo,
+        theCutTurnDrove,
+        wentBackTo,
+      ],
+      complete,
+    )
+  }
+
   for (const entry of entries) {
+    checkState()
     changeAt = entry.at
     sourceOrdinal = entry.ordinal
     changeOrder += 1
@@ -4177,6 +4206,7 @@ export function derivePieces(
     open.set(piece, { row: rows[held.index] as PieceRow, index: held.index })
   }
 
+  checkState(true)
   return options.trackChanges
     ? rows.map((row) => ({ ...row, lastRecordedChangeAt: changeTimes.get(row.piece)?.at ?? null }))
     : rows
