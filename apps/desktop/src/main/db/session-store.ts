@@ -11244,7 +11244,7 @@ export function createSessionStore(
   )
   const workerGiverReplacements = db.prepare(
     `SELECT substr(payload, 1, 4097) AS payload, length(payload) AS characters
-       FROM events INDEXED BY events_fold_idx WHERE ${FOLD_TERM}
+       FROM events INDEXED BY events_kind_owner_idx WHERE ${FOLD_TERM}
          AND session_id = ? AND type = 'replaced_by'
        ORDER BY generation DESC, ordinal DESC LIMIT 2`,
   )
