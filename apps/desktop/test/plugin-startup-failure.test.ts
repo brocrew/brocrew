@@ -11,6 +11,7 @@ import type { ChildProcess } from 'node:child_process'
 import { afterEach, expect, it, vi } from 'vitest'
 import {
   PluginStartupError,
+  PluginSupervisorLaunchFailure,
   observePluginSupervisorLaunch,
   pluginStartupDiagnostic,
   pluginStartupStderr,
@@ -18,6 +19,7 @@ import {
   recordPluginStartupFailure,
 } from '../src/main/plugins/startup-failure'
 import { PluginSupervisorError } from '../src/main/plugins/supervisor/protocol'
+import { randomUUID } from 'node:crypto'
 const roots: string[] = []
 afterEach(async () => {
   vi.restoreAllMocks()
@@ -34,6 +36,54 @@ it('retains the failed phase through supervisor wrappers without exposing arbitr
   )
   expect(pluginStartupReason({ code: 'incompatible' }, 'service-start')).toBe('service-version')
   expect(pluginStartupReason(new Error('fictional secret'), 'connection')).toBe('connection')
+})
+it.each(['blocked', 'draining'] as const)(
+  'projects a typed eligible %s reboot refusal into the computer restart remedy',
+  (phase) => {
+    const error = new PluginSupervisorError('cleanup-pending', {
+      ownerEpoch: randomUUID(),
+      diagnostic: { phase, stage: 'recovery', probe: 'no-answer', reason: 'restart-required' },
+    })
+    expect(pluginStartupReason(error, 'service-start')).toBe('restart-required')
+    expect(pluginUnavailableNotice(pluginStartupReason(error, 'service-start'))).toBe(
+      'Restart your computer, then reopen BroCrew.',
+    )
+    expect(pluginStartupDiagnostic(error)?.stderr).toContain(`phase=${phase}`)
+    if (process.platform === 'win32')
+      expect(pluginStartupDiagnostic(error)?.stderr).toContain('Start > Power > Restart')
+  },
+)
+it.each(['accepting', 'missing', 'unreadable', 'stopped'] as const)(
+  'never projects a %s restart label into reboot advice',
+  (phase) => {
+    const error = new PluginSupervisorError('cleanup-pending', {
+      ownerEpoch: randomUUID(),
+      diagnostic: { phase, stage: 'recovery', probe: 'no-answer', reason: 'restart-required' },
+    })
+    expect(pluginStartupReason(error, 'service-start')).toBe('cleanup-pending')
+    expect(pluginStartupDiagnostic(error)?.stderr).not.toContain('Restart your computer')
+    expect(pluginStartupDiagnostic(error)?.stderr).not.toContain('Start > Power > Restart')
+  },
+)
+it.each(['blocked', 'draining'] as const)(
+  'keeps an unproven typed %s restart diagnostic generic in Settings and the log',
+  (phase) => {
+    const error = new PluginSupervisorError('cleanup-pending', {
+      diagnostic: { phase, stage: 'recovery', probe: 'no-answer', reason: 'restart-required' },
+    })
+    expect(pluginStartupReason(error, 'service-start')).toBe('cleanup-pending')
+    expect(pluginStartupDiagnostic(error)?.stderr).toContain('reason=proof-pending')
+    expect(pluginStartupDiagnostic(error)?.stderr).not.toContain('Restart your computer')
+    expect(pluginStartupDiagnostic(error)?.stderr).not.toContain('Start > Power > Restart')
+  },
+)
+it('does not turn a stderr lookalike into a typed reboot remedy', () => {
+  const error = new PluginSupervisorLaunchFailure({
+    exitCode: 1,
+    signal: null,
+    stderr: 'phase=blocked stage=recovery probe=no-answer reason=restart-required',
+  })
+  expect(pluginStartupReason(error, 'service-start')).toBe('service-start')
 })
 it('keeps a readable bounded log with an errno and no raw message or configuration', async () => {
   const root = await mkdtemp(join(tmpdir(), 'fictional-plugin-diagnostic-'))

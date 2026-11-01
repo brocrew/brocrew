@@ -110,7 +110,12 @@ export function supervisorRequest(
         const response = Reply.parse(unpack(record.key, 'response', line))
         if (response.nonce !== nonce || response.epoch !== record.epoch) refuse()
         if (!response.ok)
-          throw new PluginSupervisorError(response.code, { diagnostic: response.diagnostic })
+          throw new PluginSupervisorError(response.code, {
+            diagnostic:
+              response.diagnostic?.reason === 'restart-required'
+                ? { ...response.diagnostic, reason: 'proof-pending' }
+                : response.diagnostic,
+          })
         storage.check()
         finish(undefined, response.value)
       } catch (error) {
@@ -250,6 +255,24 @@ export class PluginWorkspaceLease {
       }
       if (!record || record.phase === 'stopped' || (probe === 'no-answer' && options.launch))
         await launchOnce()
+      if (record && (record.phase === 'blocked' || record.phase === 'draining')) {
+        let cause = launchError
+        for (let depth = 0; depth < 6 && cause && typeof cause === 'object'; depth++) {
+          if (
+            cause instanceof PluginSupervisorError &&
+            cause.ownerEpoch === record.epoch &&
+            cause.diagnostic?.phase === record.phase &&
+            cause.diagnostic.stage === 'recovery' &&
+            cause.diagnostic.reason === 'restart-required'
+          )
+            throw new PluginSupervisorError('cleanup-pending', {
+              cause: launchError,
+              diagnostic: cause.diagnostic,
+              ownerEpoch: record.epoch,
+            })
+          cause = (cause as { cause?: unknown }).cause
+        }
+      }
       if (!record || record.phase !== 'accepting')
         throw new PluginSupervisorError(
           record?.phase === 'blocked' || record?.phase === 'draining' ? 'busy' : 'unavailable',
@@ -259,12 +282,7 @@ export class PluginWorkspaceLease {
               phase: record?.phase ?? 'missing',
               stage: 'attach-record',
               probe,
-              reason:
-                probe === 'no-answer' &&
-                launched &&
-                (record?.phase === 'blocked' || record?.phase === 'draining')
-                  ? 'restart-required'
-                  : 'unknown',
+              reason: 'unknown',
             },
           },
         )
@@ -281,6 +299,32 @@ export class PluginWorkspaceLease {
       try {
         answer = await supervisorRequest(storage, record, helloCommand)
       } catch (error) {
+        if (error instanceof PluginSupervisorError && error.code === 'busy') {
+          const current = readOwner()
+          if (
+            current?.epoch === record.epoch &&
+            current.key === record.key &&
+            current.phase === 'accepting' &&
+            (!error.diagnostic ||
+              (error.diagnostic.phase === 'accepting' &&
+                error.diagnostic.stage === 'hello' &&
+                error.diagnostic.probe === 'live'))
+          )
+            throw new PluginSupervisorError('busy', {
+              cause: error,
+              diagnostic: {
+                phase: 'accepting',
+                stage: 'hello',
+                probe: 'live',
+                reason: error.diagnostic?.reason ?? 'unknown',
+              },
+              ownerIdentity: createHash('sha256')
+                .update(
+                  `${storage.rootIdentity}\0${storage.identity}\0${record.epoch}\0${record.key}`,
+                )
+                .digest('hex'),
+            })
+        }
         if (!(error instanceof NoReply) || !options.launch || launched) throw error
         await launchOnce()
         const successor = readOwner()

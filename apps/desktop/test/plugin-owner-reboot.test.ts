@@ -15,6 +15,20 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+const proofIo = vi.hoisted(() => ({ failRename: false }))
+vi.mock('node:fs/promises', async () => {
+  const fs = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises')
+  return {
+    ...fs,
+    rename: (...args: Parameters<typeof fs.rename>) => {
+      if (proofIo.failRename) {
+        proofIo.failRename = false
+        return Promise.reject(new Error('fictional publication failure'))
+      }
+      return fs.rename(...args)
+    },
+  }
+})
 import { PluginSupervisor } from '../src/main/plugins/supervisor/owner'
 import { previousRunsProvenStopped } from '../src/main/plugins/supervisor/recovery-proof'
 import { SupervisorStorage } from '../src/main/plugins/supervisor/storage'
@@ -233,6 +247,87 @@ describe('fenced reboot proof for historical plugin runs', () => {
     await refused()
     await expect(readFile(marker())).rejects.toMatchObject({ code: 'ENOENT' })
   })
+  it.each(['blocked', 'draining'] as const)(
+    'reports reboot advice only after a durable valid %s marker, without changing refusal',
+    async (phase) => {
+      await fixture(phase)
+      const advice = vi.fn()
+      const observeAttempt = () =>
+        PluginSupervisor.start({
+          root,
+          workspaceRoots: [],
+          recoverPrevious: (previous) =>
+            previousRunsProvenStopped(root, {
+              previous,
+              readBootWitness: observe,
+              onRebootRequired: advice,
+            }),
+        })
+      await expect(observeAttempt()).rejects.toMatchObject({ code: 'cleanup-pending' })
+      expect(advice).toHaveBeenCalledOnce()
+      const original = await readFile(marker(), 'utf8')
+      advice.mockClear()
+      await expect(observeAttempt()).rejects.toMatchObject({ code: 'cleanup-pending' })
+      expect(advice).toHaveBeenCalledOnce()
+      expect(await readFile(marker(), 'utf8')).toBe(original)
+      await writeFile(marker(), '{}')
+      advice.mockClear()
+      await expect(observeAttempt()).rejects.toMatchObject({ code: 'cleanup-pending' })
+      expect(advice).not.toHaveBeenCalled()
+    },
+  )
+  it('does not offer reboot advice when the native observation is unavailable', async () => {
+    await fixture()
+    const advice = vi.fn()
+    witness = null
+    const storage = new SupervisorStorage(root, [], false)
+    try {
+      expect(
+        await previousRunsProvenStopped(root, {
+          previous: storage.read(),
+          readBootWitness: observe,
+          onRebootRequired: advice,
+        }),
+      ).toBe(false)
+      expect(advice).not.toHaveBeenCalled()
+    } finally {
+      storage.close()
+    }
+  })
+  it.each(['method-mismatch', 'reader-failed', 'publication-failed', 'observer-failed'] as const)(
+    'keeps proof refusal unchanged when advice is %s',
+    async (failure) => {
+      await fixture()
+      const advice = vi.fn(() => {
+        if (failure === 'observer-failed') throw new Error('fictional observer failure')
+      })
+      if (failure === 'method-mismatch') {
+        await refused()
+        witness = { kind: 'windows-tick64-v1', value: '123456' }
+      }
+      if (failure === 'reader-failed')
+        observe.mockRejectedValueOnce(new Error('fictional reader failure'))
+      proofIo.failRename = failure === 'publication-failed'
+      try {
+        await expect(
+          PluginSupervisor.start({
+            root,
+            workspaceRoots: [],
+            recoverPrevious: (previous) =>
+              previousRunsProvenStopped(root, {
+                previous,
+                readBootWitness: observe,
+                onRebootRequired: advice,
+              }),
+          }),
+        ).rejects.toMatchObject({ code: 'cleanup-pending' })
+        if (failure === 'observer-failed') expect(advice).toHaveBeenCalledOnce()
+        else expect(advice).not.toHaveBeenCalled()
+      } finally {
+        proofIo.failRename = false
+      }
+    },
+  )
   it.each(['epoch', 'rootIdentity', 'fenceIdentity', 'runsIdentity'] as const)(
     'refuses a changed marker binding %s without resealing it',
     async (field) => {

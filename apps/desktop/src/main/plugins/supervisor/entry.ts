@@ -15,6 +15,7 @@ import { bootstrapPluginLifecycle } from '../lifecycle/bootstrap'
 import { pluginStartupStderr } from '../startup-failure'
 import { LaunchConfig } from './launch-format'
 import { previousRunsProvenStopped } from './recovery-proof'
+import { writeRecoveryAdvice } from './recovery-advice'
 import { recordDrainTrace } from './drain-trace'
 import { PluginSupervisorError, ownerDiagnosticLine } from './protocol'
 
@@ -25,17 +26,29 @@ export async function runPluginSupervisor(configPath: string, expectedDigest: st
   const config = LaunchConfig.parse(JSON.parse(bytes.toString('utf8')))
   await keepPluginRootPrivate(config.root)
   const runtime = await resumePluginNodeRuntime(config.runtime)
+  const receipts = dirname(configPath)
   const owner = await PluginSupervisor.start({
     root: config.root,
     workspaceRoots: config.workspaceRoots,
     recoverPrevious: async (previous) => {
-      if (await previousRunsProvenStopped(config.root, { previous })) return true
+      let eligible = false
+      if (
+        await previousRunsProvenStopped(config.root, {
+          previous,
+          onRebootRequired: () => {
+            eligible = true
+          },
+        })
+      )
+        return true
+      const advised =
+        eligible && previous && (await writeRecoveryAdvice(config.root, receipts, previous))
       throw new PluginSupervisorError('cleanup-pending', {
         diagnostic: {
           phase: previous?.phase ?? 'missing',
           stage: 'recovery',
           probe: 'no-answer',
-          reason: previous?.phase === 'accepting' ? 'proof-pending' : 'restart-required',
+          reason: advised ? 'restart-required' : 'proof-pending',
         },
       })
     },
@@ -47,7 +60,6 @@ export async function runPluginSupervisor(configPath: string, expectedDigest: st
     browserExecutable: config.browserExecutable,
   })
   const service = createSupervisedPluginHost(owner, host)
-  const receipts = dirname(configPath)
   const reportFailure = (error: unknown) => {
     const message =
       error instanceof Error && error.name !== 'ZodError'
