@@ -164,27 +164,59 @@ describe('only a fresh unchanged writer authorizes canonical preparation', () =>
       JSON.stringify({ type: 'user_turn', text: 'fictional person writes' }),
       AT,
     )
+    store.append(
+      'fictional',
+      3,
+      {
+        type: 'work_given',
+        piece: 'fictional-piece',
+        label: 'W1.1',
+        parent: 'fictional-root',
+        givenBy: 'fictional-giver',
+        title: 'fictional work',
+        brief: 'fictional brief',
+      },
+      AT,
+    )
+    store.append(
+      'fictional',
+      4,
+      {
+        type: 'request_routed',
+        requestId: 'fictional-request',
+        to: 'a-person',
+      },
+      AT,
+    )
     const owners = statements.filter(
       (statement) =>
+        (statement.source.includes('INDEXED BY events_fold_idx') &&
+          statement.source.includes('AND ordinal >= ?')) ||
+        statement.source.includes('AND (ordinal >= (SELECT min(ordinal)') ||
         statement.source.includes('run.readable AS readable') ||
         statement.source.includes('reported.readable AS readable') ||
         (statement.source.includes("type = 'user_turn'") &&
           statement.source.includes('created_at AS at') &&
           statement.source.includes('ORDER BY ordinal DESC LIMIT ?')),
     )
-    expect(owners).toHaveLength(4)
+    expect(owners).toHaveLength(6)
     const stamp = limitsWriterSampler(
       db,
       () => store.canReadFreshSnapshot?.() === true,
       () => ++clock,
     )
     for (const statement of owners) {
-      const argument = statement.source.includes('ORDER BY ordinal DESC LIMIT ?')
-        ? 200
-        : statement.source.includes('AS path')
-          ? 'task'
-          : 'agent'
-      const cursor = statement.iterate('fictional', 0, argument)
+      const argument = statement.source.includes('AND ordinal >= ?')
+        ? 0
+        : statement.source.includes('ORDER BY ordinal DESC LIMIT ?')
+          ? 200
+          : statement.source.includes('AS path')
+            ? 'task'
+            : 'agent'
+      const args = statement.source.includes('AND (ordinal >= (SELECT min(ordinal)')
+        ? [{ session: 'fictional', generation: 0 }]
+        : ['fictional', 0, argument]
+      const cursor = statement.iterate(...args)
       expect(cursor.next().done).toBe(false)
       expect(statement.busy).toBe(true)
       expect(store.canReadFreshSnapshot?.()).toBe(false)
@@ -192,10 +224,10 @@ describe('only a fresh unchanged writer authorizes canonical preparation', () =>
       cursor.return?.()
       expect(statement.busy).toBe(false)
       expect(stamp()).not.toBeNull()
-      const exhausted = statement.iterate('fictional', 0, argument)
-      expect([...exhausted]).toHaveLength(1)
+      const exhausted = statement.iterate(...args)
+      expect([...exhausted]).toHaveLength(statement.source.includes('AND ordinal >= ?') ? 3 : 1)
       expect(stamp()).not.toBeNull()
-      for (const row of statement.iterate('fictional', 0, argument)) {
+      for (const row of statement.iterate(...args)) {
         expect(row).toBeDefined()
         expect(stamp()).toBeNull()
         break
@@ -203,7 +235,7 @@ describe('only a fresh unchanged writer authorizes canonical preparation', () =>
       expect(statement.busy).toBe(false)
       expect(stamp()).not.toBeNull()
       expect(() => {
-        for (const row of statement.iterate('fictional', 0, argument)) {
+        for (const row of statement.iterate(...args)) {
           expect(row).toBeDefined()
           expect(stamp()).toBeNull()
           throw new Error('fictional consumer stopped')
@@ -224,6 +256,8 @@ describe('only a fresh unchanged writer authorizes canonical preparation', () =>
       [...text.matchAll(/\b([A-Za-z_$][\w$]*)\.iterate\(/g)].map((match) => match[1]).sort()
     const expected = [
       'selectNewestTurnsOpened',
+      'selectPieceEvents',
+      'selectRoutedRequestEvents',
       'selectSubAgentReported',
       'selectWorkflowAgentTask',
       'selectWorkflowOutput',

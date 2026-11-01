@@ -12753,6 +12753,8 @@ export function createSessionStore(
     ...ownNotesStore,
     canReadFreshSnapshot() {
       return (
+        selectPieceEvents.busy === false &&
+        selectRoutedRequestEvents.busy === false &&
         selectWorkflowOutput.busy === false &&
         selectWorkflowAgentTask.busy === false &&
         selectSubAgentReported.busy === false &&
