@@ -8,7 +8,7 @@ export const VOICE_CHANNELS = {
 export type VoicePhase = 'permission' | 'listening' | 'transcribing'
 export const VOICE_CAPTURE_SECONDS = 50
 export const VOICE_ERRORS = {
-  unavailable: 'Voice input is not available. Build the Mac voice helper and try again.',
+  unavailable: 'Voice input could not start. Restart BroCrew and try again.',
   busy: 'Voice input is already in use. Stop it in the other window first.',
   local: 'Local speech recognition is not available for your Mac’s language.',
   microphone: 'Allow BroCrew in System Settings → Privacy & Security → Microphone, then try again.',

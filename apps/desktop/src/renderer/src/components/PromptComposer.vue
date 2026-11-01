@@ -634,7 +634,11 @@ const stopWordOnly = computed(
  * press into a QUEUE"*. Dropping the second press's meaning on the floor would be `106`'s *"the
  * gesture happened and quietly did nothing"* arriving inside the fix for it.
  */
-const sending = shallowRef<{ run: Promise<void>; interrupting: boolean } | null>(null)
+const sending = shallowRef<{
+  run: Promise<void>
+  interrupting: boolean
+  voiceVersion: number
+} | null>(null)
 
 function send(interrupting = false): Promise<void> {
   if (voiceActive.value) return Promise.resolve()
@@ -643,9 +647,10 @@ function send(interrupting = false): Promise<void> {
     // ⚠️ Raised, never lowered inside one submission: `interrupting || …` would let a stray plain
     // press cancel a deliberate ⇧⌘↵. The last press that ASKED for something wins.
     if (interrupting) already.interrupting = true
+    already.voiceVersion = voice.version.value
     return already.run
   }
-  const latch = { run: Promise.resolve(), interrupting }
+  const latch = { run: Promise.resolve(), interrupting, voiceVersion: voice.version.value }
   // ⚠️ Assigned before `emitOnce` runs, so a press that arrives inside it coalesces rather than
   // seeing an empty latch. `run` is replaced immediately below with the real promise.
   sending.value = latch
@@ -655,7 +660,7 @@ function send(interrupting = false): Promise<void> {
   return latch.run
 }
 
-async function emitOnce(latch: { interrupting: boolean }): Promise<void> {
+async function emitOnce(latch: { interrupting: boolean; voiceVersion: number }): Promise<void> {
   // 🔴 **Nothing is emitted while this draft still has an attachment on the way** (262 §1). See
   // {@link acquiringNow}: an empty `staged` is not the same fact as nothing having been attached,
   // and this is the line that tells the two apart. ⚠️ ABOVE `canSend` on purpose — an empty box
@@ -665,7 +670,11 @@ async function emitOnce(latch: { interrupting: boolean }): Promise<void> {
   // interrupt can all land inside it, and the answer from before it would be a fact about a
   // composer that no longer exists. ⚑ A refusal here costs nothing — the words and the chips are
   // still in the box, which is what `019` means by not losing typing.
-  if (voiceActive.value || !canSend(text.value, props.state, props.blocked, staged.value.length))
+  if (
+    voiceActive.value ||
+    latch.voiceVersion !== voice.version.value ||
+    !canSend(text.value, props.state, props.blocked, staged.value.length)
+  )
     return
   // ⚠️ **Read AFTER the wait too.** A turn that started while the picture was being written turns
   // this press into a QUEUE, which is what pressing Send a beat later would have meant — reading it
@@ -1468,6 +1477,9 @@ defineExpose({
              more actionable than the reason the caller has — and `canSend` refuses both anyway, so
              nothing is left un-gated by the silence. Reachable from `idle` and `busy`. -->
         <template v-if="blocked !== null">{{ blocked }}</template>
+        <template v-else-if="voiceActive"
+          >Finish dictating and review the text before sending.</template
+        >
         <!-- The frozen hint names BOTH ways forward now (094). It used to name only one, and the
            other one did not exist. 🔴 **737 · `730` F-3** — and the second says what Esc does in
            R43's words: it said *"Esc stops the turn"*. -->

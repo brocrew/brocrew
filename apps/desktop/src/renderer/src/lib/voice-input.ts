@@ -16,6 +16,7 @@ export function useVoiceInput(options: {
   const phase = ref<VoicePhase | 'idle' | 'error'>('idle')
   const error = ref('')
   const remaining = ref(VOICE_CAPTURE_SECONDS)
+  const version = ref(0)
   const active = computed(() => phase.value !== 'idle' && phase.value !== 'error')
   let current: { id: string; identity: object; release: () => void } | undefined
   let ticker: ReturnType<typeof setInterval> | undefined
@@ -34,6 +35,7 @@ export function useVoiceInput(options: {
   const start = async (): Promise<void> => {
     const bridge = options.bridge
     if (!bridge?.supported || active.value || !options.allowed()) return
+    version.value += 1
     error.value = ''
     remaining.value = VOICE_CAPTURE_SECONDS
     phase.value = 'permission'
@@ -92,5 +94,5 @@ export function useVoiceInput(options: {
     { flush: 'sync' },
   )
   onBeforeUnmount(cancel)
-  return { phase, error, remaining, active, start, stop, cancel }
+  return { phase, error, remaining, active, version, start, stop, cancel }
 }

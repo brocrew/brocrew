@@ -36,15 +36,17 @@ function composer(supported = true) {
   const draft = ref('Keep my draft')
   const state = ref('idle')
   const identity = ref('first')
+  const blocked = ref<string | null>(null)
   const book = createAttachmentBook()
   const send = vi.fn()
   const Host = defineComponent({
     setup: () => () =>
       h(PromptComposer as Component, {
-          state: state.value,
-          draft: draft.value,
-          canAttach: true,
-          cwd: '/fictional',
+        state: state.value,
+        blocked: blocked.value,
+        draft: draft.value,
+        canAttach: true,
+        cwd: '/fictional',
         handing: book.handing(identity.value),
         'onUpdate:draft': (value: string) => {
           draft.value = value
@@ -59,7 +61,9 @@ function composer(supported = true) {
     draft,
     state,
     identity,
+    blocked,
     send,
+    handing: book.handing('first'),
     phase: async (phase: VoiceState['phase']) => {
       listener?.({ id, phase })
       await nextTick()
@@ -170,6 +174,14 @@ it('places the mic beside Send using the composer’s control size', () => {
   expect(send.left - mic.right).toBeGreaterThanOrEqual(0)
   expect(send.left - mic.right).toBeLessThan(24)
 })
+it('keeps Send dark when the composer reports a blocker over a typed draft', async () => {
+  const c = composer()
+  expect((c.m.q('send-prompt') as HTMLButtonElement).disabled).toBe(false)
+  c.blocked.value = 'This conversation is closing'
+  await nextTick()
+  expect((c.m.q('send-prompt') as HTMLButtonElement).disabled).toBe(true)
+  expect(c.m.q('composer-hint').textContent).toContain('This conversation is closing')
+})
 
 it('counts down and asks the core to stop at fifty seconds', async () => {
   vi.useFakeTimers()
@@ -184,4 +196,51 @@ it('counts down and asks the core to stop at fifty seconds', async () => {
   expect(c.bridge.stop).toHaveBeenCalledOnce()
   expect(c.m.q('voice-status').textContent).toContain('Transcribing')
   expect(c.send).not.toHaveBeenCalled()
+})
+
+it('requires a fresh Send when an earlier Send was waiting for an attachment', async () => {
+  const c = composer()
+  let release!: () => void
+  const attaching = c.handing.acquire(
+    () =>
+      new Promise<null>((done) => {
+        release = () => done(null)
+      }),
+  )
+  await click(c.m.q('send-prompt'))
+  expect(c.send).not.toHaveBeenCalled()
+  await click(c.m.q('voice-mic'))
+  await c.phase('listening')
+  await c.finish({ ok: true, text: 'Review this speech.' })
+  release()
+  await attaching
+  await c.handing.settle()
+  await new Promise<void>((done) => setTimeout(done, 0))
+  await nextTick()
+  expect(c.send).not.toHaveBeenCalled()
+  expect(c.draft.value).toBe('Keep my draft Review this speech.')
+  await click(c.m.q('send-prompt'))
+  expect(c.send).toHaveBeenCalledOnce()
+})
+
+it('honors a fresh Send after dictation even while the attachment is still pending', async () => {
+  const c = composer()
+  let release!: () => void
+  const attaching = c.handing.acquire(
+    () =>
+      new Promise<null>((done) => {
+        release = () => done(null)
+      }),
+  )
+  await click(c.m.q('send-prompt'))
+  await click(c.m.q('voice-mic'))
+  await c.phase('listening')
+  await c.finish({ ok: true, text: 'Reviewed speech.' })
+  await click(c.m.q('send-prompt'))
+  release()
+  await attaching
+  await c.handing.settle()
+  await new Promise<void>((done) => setTimeout(done, 0))
+  await nextTick()
+  expect(c.send).toHaveBeenCalledOnce()
 })
