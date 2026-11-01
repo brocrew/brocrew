@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import AgentBookButton from './AgentBookButton.vue'
 import type { AgentIdentities } from '../../../shared/runtime-ipc'
 import type { WhatIsBeingDone } from '../../../shared/what-is-being-done'
+import type { WorkEdge } from '../../../shared/who-called-whom'
 import type { AgentStore } from '../lib/agent-store'
 import { AGENT_REMOVAL_MEANS } from '../../../shared/agent-roster'
 import { activityWords, STANDING_TONE } from '../lib/agent-state'
@@ -49,6 +50,16 @@ import { noProviderSavedSays } from '../lib/front-door-words'
  * ([[a-number-can-survive-the-death-of-its-derivation]]).
  */
 const cast = useWhoCalledWhom()
+const workByHolder = computed(() => {
+  const holders = new Map<string, WorkEdge[]>()
+  for (const node of cast.forest.value?.nodes.rows ?? []) {
+    if (node.node !== 'a-task') continue
+    const pieces = holders.get(node.work.to)
+    if (pieces) pieces.push(node.work)
+    else holders.set(node.work.to, [node.work])
+  }
+  return holders
+})
 const props = withDefaults(
   defineProps<{
     agents: AgentIdentities | null
@@ -455,9 +466,7 @@ function pressForest(row: ForestRow): void {
                     v-for="piece in workerSubtitles(
                       row.conversation,
                       row.namingPiece,
-                      cast.forest.value?.nodes.rows.flatMap((node) =>
-                        node.node === 'a-task' ? [node.work] : [],
-                      ) ?? [],
+                      workByHolder.get(row.conversation) ?? [],
                     )"
                     :key="piece.key"
                     class="team-worker-piece"
