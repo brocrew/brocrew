@@ -182,6 +182,155 @@ function anUpdater(
 const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0))
 
 describe('§1 · the rules', () => {
+  for (const installs of ['on-restart', 'guided'] as const) {
+    it(`${installs}: Download refreshes an old offer and fetches the newest release`, async () => {
+      const old = { ...NEWER, version: '0.1.22' }
+      const newest = {
+        version: '0.1.25',
+        files: [{ url: 'BroCrew-0.1.25-arm64.dmg', sha512: 'new-digest' }],
+      }
+      let offered = old
+      const fetched: FoundUpdate[] = []
+      const channels: string[] = []
+      const take = async (release: FoundUpdate) => {
+        fetched.push(release)
+      }
+      const app = anUpdater({
+        installs,
+        start: { checkAutomatically: false, channel: 'beta' },
+        check: async (channel) => {
+          channels.push(channel)
+          return offered
+        },
+        download: take,
+        guide: async (release) => {
+          await take(release)
+          return '/fictional/newest.dmg'
+        },
+      })
+      await app.updates.checkNow()
+      expect(app.updates.snapshot().state).toEqual({ kind: 'available', version: '0.1.22' })
+      expect(fetched).toEqual([])
+      offered = newest
+      await app.updates.download()
+      expect(fetched).toEqual([newest])
+      expect(channels).toEqual(['beta', 'beta'])
+      expect(
+        app.asked.published.some(
+          ({ state }) => state.kind === 'downloading' && state.version === '0.1.25',
+        ),
+      ).toBe(true)
+      expect(app.updates.snapshot().state).toMatchObject({
+        kind: 'ready',
+        version: '0.1.25',
+        how: installs === 'guided' ? 'opened' : 'restart',
+      })
+      expect(app.asked.installs).toBe(0)
+    })
+
+    it(`${installs}: a failed refresh still attempts the previously offered download`, async () => {
+      let checks = 0
+      const fetched: FoundUpdate[] = []
+      const app = anUpdater({
+        installs,
+        check: async () => {
+          if (++checks > 1) throw new Error('feed temporarily unavailable')
+          return NEWER
+        },
+        download: async (release) => {
+          fetched.push(release)
+        },
+        guide: async (release) => {
+          fetched.push(release)
+          return '/fictional/previous.dmg'
+        },
+      })
+      await app.updates.checkNow()
+      await app.updates.download()
+      expect(checks).toBe(2)
+      expect(fetched).toEqual([NEWER])
+      expect(app.updates.snapshot().state).toMatchObject({ kind: 'ready', version: NEWER.version })
+    })
+
+    it(`${installs}: a refresh with no update downloads nothing`, async () => {
+      let offered: FoundUpdate | null = NEWER
+      const app = anUpdater({ installs, check: async () => offered })
+      await app.updates.checkNow()
+      offered = null
+      await app.updates.download()
+      expect(app.asked.downloads + app.asked.guides).toBe(0)
+      expect(app.updates.snapshot().state).toEqual({
+        kind: 'idle',
+        checkedAt: 1_000,
+        upToDate: true,
+      })
+    })
+
+    for (const outcome of ['resolve', 'reject'] as const) {
+      for (const change of ['channel', 'stop'] as const) {
+        it(`${installs}: ${change} during refresh prevents download when it ${outcome}s`, async () => {
+          let finish!: () => void
+          let checks = 0
+          const app = anUpdater({
+            installs,
+            start: { checkAutomatically: false, channel: 'beta' },
+            check: async () => {
+              if (++checks === 1) return NEWER
+              return new Promise<FoundUpdate>((resolve, reject) => {
+                finish = () =>
+                  outcome === 'resolve'
+                    ? resolve({ ...NEWER, version: '0.3.0-beta.1' })
+                    : reject(new Error('feed unavailable'))
+              })
+            },
+          })
+          await app.updates.checkNow()
+          const pending = app.updates.download()
+          expect(checks).toBe(2)
+          if (change === 'channel') app.updates.set({ channel: 'stable' })
+          else app.updates.stop()
+          const published = app.asked.published.length
+          finish()
+          await pending
+          expect(app.asked.downloads + app.asked.guides).toBe(0)
+          expect(app.asked.installs).toBe(0)
+          if (change === 'channel') {
+            expect(app.updates.snapshot()).toMatchObject({
+              channel: 'stable',
+              state: { kind: 'idle', checkedAt: null, upToDate: false },
+            })
+            await app.updates.download()
+            expect(app.asked.downloads + app.asked.guides).toBe(0)
+          } else {
+            expect(app.asked.published).toHaveLength(published)
+          }
+        })
+      }
+    }
+  }
+
+  it('keeps another click or check from racing a download refresh', async () => {
+    let releaseCheck!: (release: FoundUpdate) => void
+    let checks = 0
+    const app = anUpdater({
+      check: async () =>
+        ++checks === 1
+          ? NEWER
+          : new Promise((resolve) => {
+              releaseCheck = resolve
+            }),
+    })
+    await app.updates.checkNow()
+    const pending = app.updates.download()
+    await app.updates.download()
+    await app.updates.checkNow()
+    expect(checks).toBe(2)
+    expect(app.asked.downloads).toBe(0)
+    releaseCheck(NEWER)
+    await pending
+    expect(app.asked.downloads).toBe(1)
+  })
+
   it('🔴 the off switch: nothing is ever requested on its own, however long it runs', async () => {
     const off = anUpdater({ start: { checkAutomatically: false, channel: 'stable' } })
     off.updates.start()

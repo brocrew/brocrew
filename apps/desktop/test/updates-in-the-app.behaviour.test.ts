@@ -36,6 +36,8 @@ const fake = vi.hoisted(() => ({
   downloads: [] as string[],
   installer: '',
   installerDownloads: 0,
+  cachedVersion: null as string | null,
+  downloadedVersions: [] as (string | null)[],
   quits: 0,
   fetched: 0,
 }))
@@ -72,10 +74,12 @@ vi.mock('electron-updater', () => ({
       checkForUpdates: async () => {
         fake.checks += 1
         if (fake.fail !== null) throw fake.fail
+        if (fake.answer?.isUpdateAvailable) fake.cachedVersion = fake.answer.updateInfo.version
         return fake.answer
       },
       downloadUpdate: async () => {
         fake.installerDownloads += 1
+        fake.downloadedVersions.push(fake.cachedVersion)
         return [fake.installer]
       },
       on: () => undefined,
@@ -113,6 +117,7 @@ vi.mock('../src/main/guided-update', async (importOriginal) => {
 
 let root: string
 let resourceDescriptor: PropertyDescriptor | undefined
+let platformDescriptor: PropertyDescriptor | undefined
 let updates: ReturnType<typeof startUpdates> | null = null
 const ask = async <T = unknown>(channel: string, ...args: unknown[]): Promise<T> => {
   const handler = fake.handlers.get(channel)
@@ -144,6 +149,7 @@ const start = (packaged = true, hidden = true): void => {
 }
 
 beforeEach(() => {
+  platformDescriptor = Object.getOwnPropertyDescriptor(process, 'platform')
   root = mkdtempSync(join(tmpdir(), 'brobot-update-wiring-'))
   resourceDescriptor = Object.getOwnPropertyDescriptor(process, 'resourcesPath')
   Object.defineProperty(process, 'resourcesPath', { value: root, configurable: true })
@@ -165,18 +171,63 @@ beforeEach(() => {
   fake.downloads.length = 0
   fake.installer = join(root, 'fictional-update.AppImage')
   fake.installerDownloads = 0
+  fake.cachedVersion = null
+  fake.downloadedVersions.length = 0
   fake.quits = 0
   fake.fetched = 0
 })
 
 afterEach(() => {
   updates?.stop()
+  if (platformDescriptor !== undefined)
+    Object.defineProperty(process, 'platform', platformDescriptor)
   updates = null
   if (resourceDescriptor === undefined) Reflect.deleteProperty(process, 'resourcesPath')
   else Object.defineProperty(process, 'resourcesPath', resourceDescriptor)
   fake.handlers.clear()
   rmSync(root, { recursive: true, force: true })
 })
+
+for (const platform of ['win32', 'darwin'] as const) {
+  for (const fails of [false, true]) {
+    it(`${platform}: Download refreshes electron-updater's offer${fails ? ' and retains the previous download on check failure' : ' before fetching the newest release'}`, async () => {
+      Object.defineProperty(process, 'platform', { value: platform, configurable: true })
+      const offer = (version: string) => ({
+        isUpdateAvailable: true,
+        updateInfo: {
+          version,
+          files: [{ url: `BroCrew-${version}-arm64.dmg`, sha512: `digest-${version}` }],
+        },
+      })
+      fake.answer = offer('0.1.22')
+      start()
+      await ask(UPDATES_CHANNELS.checkNow)
+      expect(fake.installerDownloads).toBe(0)
+      expect(fake.downloads).toEqual([])
+      fake.answer = offer('0.1.25')
+      if (fails) fake.fail = new Error('feed temporarily unavailable')
+      const ready = await ask<UpdatesSnapshot>(UPDATES_CHANNELS.download)
+      const version = fails ? '0.1.22' : '0.1.25'
+      expect(fake.checks).toBe(2)
+      expect(ready.state).toMatchObject({
+        kind: 'ready',
+        version,
+        how: platform === 'darwin' ? 'opened' : 'restart',
+      })
+      if (platform === 'darwin') {
+        expect(fake.downloads).toEqual([
+          join(root, 'data', 'updates', `BroCrew-${version}-arm64.dmg`),
+        ])
+        expect(fake.installerDownloads).toBe(0)
+      } else {
+        expect(fake.downloadedVersions).toEqual([version])
+        expect(fake.downloads).toEqual([])
+      }
+      expect(fake.quits).toBe(0)
+      expect(fake.fetched).toBe(0)
+    })
+  }
+}
 
 it('keeps a development build from checking even when the window asks', async () => {
   start(false)

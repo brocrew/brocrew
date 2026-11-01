@@ -259,9 +259,28 @@ export function createUpdates(deps: UpdatesDeps): Updates {
   }
 
   async function download(): Promise<UpdatesSnapshot> {
-    if ((state.kind !== 'available' && !opened()) || found === null) return snapshot()
-    const offered = found
-    // ⚑ Told once per whole percent: a download's chunks are thousands, the window needs a hundred.
+    if (stopped || (state.kind !== 'available' && !opened()) || found === null) return snapshot()
+    let refreshed: FoundUpdate | null = found
+    const channel = deps.settings.read().channel
+    become({ kind: 'checking' })
+    try {
+      refreshed = await deps.check(channel)
+    } catch (error) {
+      deps.log(`updates: could not refresh before download: ${firstLineOf(error)}`)
+    }
+    if (stopped) return snapshot()
+    if (channel !== deps.settings.read().channel) {
+      found = null
+      become({ kind: 'idle', checkedAt: null, upToDate: false })
+      return snapshot()
+    }
+    found = refreshed
+    if (refreshed === null) {
+      become({ kind: 'idle', checkedAt: deps.now(), upToDate: true })
+      return snapshot()
+    }
+    const offered = refreshed
+    // Told once per whole percent: a download's chunks are thousands, the window needs a hundred.
     let told = -1
     const progress = (percent: number): void => {
       const now = Math.round(percent)
