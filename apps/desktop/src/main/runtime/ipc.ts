@@ -3007,11 +3007,15 @@ export function registerRuntimeIpc(options: {
     options.pageReceipt === undefined
       ? options.ipc
       : takingThePagesReports(options.ipc, options.pageReceipt)
-  ipc.handle(RUNTIME_COMMAND_CHANNEL, (event, raw) =>
-    executeRuntimeCommand(options.host, options.sinkFor(event), raw).catch((error: unknown) => {
-      throw withoutItsClassName(error)
-    }),
-  )
+  ipc.handle(RUNTIME_COMMAND_CHANNEL, async (event, raw) => {
+    if (aCommandsKind(raw) === 'teamProfileGraph' && event.sender.isDestroyed())
+      throw new Error('Window closed.')
+    return executeRuntimeCommand(options.host, options.sinkFor(event), raw).catch(
+      (error: unknown) => {
+        throw withoutItsClassName(error)
+      },
+    )
+  })
 }
 
 /** The registrar, with the page's report answered by `receipt` before the command's listener. */

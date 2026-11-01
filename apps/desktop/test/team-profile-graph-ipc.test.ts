@@ -1,7 +1,8 @@
 import { expect, it, vi } from 'vitest'
 import { Worker } from 'node:worker_threads'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import { executeRuntimeCommand } from '../src/main/runtime/ipc'
+import { executeRuntimeCommand, registerRuntimeIpc } from '../src/main/runtime/ipc'
+import type { IpcMainInvokeEvent } from 'electron'
 import { TeamProfileGraphWindows } from '../src/main/db/team-profile-graph-windows'
 import { TeamProfileGraphLifetime } from '../src/main/db/team-profile-graph-reader'
 import { graphUnavailable } from '../src/shared/team-profile-graph'
@@ -243,6 +244,44 @@ it('window closure cancels an in-flight reading through admission without consul
     expect(read).toHaveBeenCalledOnce()
     await host.closeTeamProfileGraphWindow(sink.ownerId)
     expect(await pending).toMatchObject({ type: 'unavailable', cause: 'cancelled' })
+  } finally {
+    await host.closeAll()
+    f.close()
+  }
+})
+
+it('refuses a native graph command from a destroyed sender before allocating its sink or reopening its worker', async () => {
+  const f = graphFixture()
+  const read = vi.fn(async () => fictionalGraph(1).header)
+  const start = vi.fn(() => ({ read, close: async () => {} }))
+  const graphs = new TeamProfileGraphWindows(start)
+  const host = hostFor(f, graphs, () => '0', { afterFirstWindowLoad: new Promise(() => {}) })
+  const sinkFor = vi.fn(() => sink)
+  let destroyed = true
+  let invoke!: (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown
+  registerRuntimeIpc({
+    host,
+    sinkFor,
+    ipc: {
+      handle: (_channel, listener) => {
+        invoke = listener
+      },
+    },
+  })
+  const event = { sender: { isDestroyed: () => destroyed } } as unknown as IpcMainInvokeEvent
+  const request = { kind: 'teamProfileGraph', request: { operation: 'snapshot' } }
+  try {
+    await expect(invoke(event, request)).rejects.toThrow('Window closed.')
+    expect(sinkFor).not.toHaveBeenCalled()
+    expect(start).not.toHaveBeenCalled()
+    destroyed = false
+    await expect(invoke(event, request)).resolves.toMatchObject({ type: 'snapshot' })
+    expect(read).toHaveBeenCalledOnce()
+    destroyed = true
+    await host.closeTeamProfileGraphWindow(sink.ownerId)
+    await expect(invoke(event, request)).rejects.toThrow('Window closed.')
+    expect(start).toHaveBeenCalledOnce()
+    expect(sinkFor).toHaveBeenCalledOnce()
   } finally {
     await host.closeAll()
     f.close()

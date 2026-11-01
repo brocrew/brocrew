@@ -1,3 +1,4 @@
+import { providerSchema } from '@brobot2/shared'
 import { z } from 'zod'
 
 export const TEAM_PROFILE_GRAPH_BOUNDS = {
@@ -103,7 +104,7 @@ export const emptyGraphCoverage = (): GraphCoverage =>
 const display = z.string().max(512)
 const configured = z
   .strictObject({
-    provider: z.enum(['claude', 'codex']).nullable(),
+    provider: providerSchema.nullable(),
     model: display.nullable(),
     source: graphSettingSource,
   })
