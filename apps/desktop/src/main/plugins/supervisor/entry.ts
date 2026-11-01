@@ -15,6 +15,8 @@ import { bootstrapPluginLifecycle } from '../lifecycle/bootstrap'
 import { pluginStartupStderr } from '../startup-failure'
 import { LaunchConfig } from './launch-format'
 import { previousRunsProvenStopped } from './recovery-proof'
+import { recordDrainTrace } from './drain-trace'
+import { PluginSupervisorError, ownerDiagnosticLine } from './protocol'
 
 export async function runPluginSupervisor(configPath: string, expectedDigest: string) {
   const bytes = await sourceBytes(configPath, 1024 * 1024)
@@ -26,7 +28,18 @@ export async function runPluginSupervisor(configPath: string, expectedDigest: st
   const owner = await PluginSupervisor.start({
     root: config.root,
     workspaceRoots: config.workspaceRoots,
-    recoverPrevious: () => previousRunsProvenStopped(config.root),
+    recoverPrevious: async (previous) => {
+      if (await previousRunsProvenStopped(config.root, { previous })) return true
+      throw new PluginSupervisorError('cleanup-pending', {
+        diagnostic: {
+          phase: previous?.phase ?? 'missing',
+          stage: 'recovery',
+          probe: 'no-answer',
+          reason: previous?.phase === 'accepting' ? 'proof-pending' : 'restart-required',
+        },
+      })
+    },
+    traceDrain: (event) => recordDrainTrace(config.root, event),
   })
   const host = createPluginNodeHost({
     root: join(config.root, 'host'),
@@ -128,9 +141,11 @@ if (typeof require !== 'undefined' && require.main === module) {
   void runPluginSupervisor(process.argv[2]!, process.argv[3]!).catch((error) => {
     console.error(
       pluginStartupStderr(
-        error instanceof Error && error.name !== 'ZodError'
-          ? error.message
-          : 'Invalid plugin service configuration',
+        error instanceof PluginSupervisorError && error.diagnostic
+          ? ownerDiagnosticLine(error.diagnostic)
+          : error instanceof Error && error.name !== 'ZodError'
+            ? error.message
+            : 'Invalid plugin service configuration',
       ) ?? 'Plugin service failed',
     )
     process.exitCode = 1

@@ -259,7 +259,12 @@ export class PluginWorkspaceLease {
               phase: record?.phase ?? 'missing',
               stage: 'attach-record',
               probe,
-              reason: 'unknown',
+              reason:
+                probe === 'no-answer' &&
+                launched &&
+                (record?.phase === 'blocked' || record?.phase === 'draining')
+                  ? 'restart-required'
+                  : 'unknown',
             },
           },
         )

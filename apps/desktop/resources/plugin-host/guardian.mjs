@@ -49,7 +49,11 @@ const send = (value) => {
 // A first open compiles the job code, which can take tens of seconds on a cold machine.
 const keeper =
   process.platform === 'win32'
-    ? startJobKeeper({ cache: config.keeperCache, openMs: 120_000 })
+    ? startJobKeeper({
+        cache: config.keeperCache,
+        openMs: 120_000,
+        name: config.windowsJob?.name ?? '',
+      })
     : null
 /**
  * Stops the server and ends its job. The server is asked to stop over its channel, since a signal
@@ -133,10 +137,22 @@ process.on('message', (message) => {
 })
 /** How long the keeper took to open its job, kept in the run's process receipt on Windows. */
 let openedMs
+let jobIdentity
 if (keeper) {
   openedMs = await keeper.opened
+  jobIdentity = openedMs === null ? null : await keeper.identity()
   // Without a job nothing may start: the refusal is closed, and nothing was left running.
-  if (openedMs === null) {
+  if (
+    openedMs === null ||
+    !jobIdentity ||
+    !config.windowsJob ||
+    config.windowsJob.format !== 1 ||
+    config.windowsJob.name !== `Local\\BroCrew.Plugin.${config.windowsJob.nonce}` ||
+    config.windowsJob.runId !== config.runId ||
+    config.windowsJob.pluginId !== config.pluginId ||
+    config.windowsJob.releaseDigest !== config.releaseDigest ||
+    config.windowsJob.name !== jobIdentity.name
+  ) {
     send({ type: 'unsupported', reason: keeper.reason })
     await finish('keeper')
   } else send({ type: 'job', openedMs })
@@ -191,6 +207,16 @@ if (!finishing) {
     const birth = keeper ? await keeper.assign(child.pid) : groupIdentity(child.pid)
     if (birth) groups.set(child.pid, birth)
     else uncertain = true
+    if (keeper && birth) {
+      // Assignment is real and durable before the server can evaluate any plugin code.
+      writeReceipt(receiptRoot, 'job-ready.json', {
+        ...receipt(),
+        nonce: config.windowsJob.nonce,
+        state: 'assigned-ready',
+        job: jobIdentity,
+        server: { pid: child.pid, birth },
+      })
+    }
     writeReceipt(receiptRoot, 'process.json', { ...receipt(), ...(keeper ? { openedMs } : {}) })
     send({ type: 'group', pid: child.pid, birth })
     if (keeper && !birth) void finish('assign-refused')

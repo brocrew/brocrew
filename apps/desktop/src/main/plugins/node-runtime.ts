@@ -27,6 +27,7 @@ export const PLUGIN_HOST_SCRIPTS = [
   'server.mjs',
   'process-groups.mjs',
   'receipts.mjs',
+  'boot-witness.mjs',
   'windows-job.mjs',
   'windows-job.ps1',
 ] as const

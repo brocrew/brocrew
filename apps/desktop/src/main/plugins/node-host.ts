@@ -260,6 +260,22 @@ export function createPluginNodeHost(options: {
     )
     const runId = randomUUID()
     const run = await privateChild(root, `runs/${runId}`)
+    let windowsJob
+    if (windows) {
+      const nonce = randomUUID()
+      windowsJob = {
+        format: 1,
+        runId,
+        pluginId: manifest.id,
+        releaseDigest: spec.releaseDigest,
+        nonce,
+        name: `Local\\BroCrew.Plugin.${nonce}`,
+      }
+      await immutableFile(
+        join(run, 'job-reservation.json'),
+        Buffer.from(JSON.stringify(windowsJob)),
+      )
+    }
     const mcpToken = randomBytes(32).toString('hex'),
       adminToken = randomBytes(32).toString('hex'),
       hookToken = randomBytes(32).toString('hex')
@@ -278,6 +294,7 @@ export function createPluginNodeHost(options: {
           runId,
           pluginId: manifest.id,
           releaseDigest: spec.releaseDigest,
+          ...(windowsJob ? { windowsJob } : {}),
           ...(windows ? { keeperCache: await privateChild(root, 'keeper') } : {}),
         }),
       ),
