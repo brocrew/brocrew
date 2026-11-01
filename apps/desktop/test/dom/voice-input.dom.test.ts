@@ -25,6 +25,7 @@ function composer(supported = true) {
     }),
     stop: vi.fn(async () => {}),
     cancel: vi.fn(async () => {}),
+    openSettings: vi.fn(async () => {}),
     onState: (next) => {
       listener = next
       return () => {
@@ -146,11 +147,14 @@ it('shows permission denial without losing the draft and allows retry', async ()
   const c = composer()
   await click(c.m.q('voice-mic'))
   await c.finish({ ok: false, error: 'microphone' })
-  expect(c.m.q('voice-status').getAttribute('role')).toBe('alert')
-  expect(c.m.q('voice-status').textContent).toContain('System Settings')
+  expect(c.m.q('voice-error').getAttribute('role')).toBe('alert')
+  expect(c.m.q('voice-error').textContent).toContain('System Settings')
+  await click(c.m.q('voice-open-settings'))
+  expect(c.bridge.openSettings).toHaveBeenCalledWith('microphone')
   expect(c.draft.value).toBe('Keep my draft')
   await click(c.m.q('voice-mic'))
   expect(c.bridge.start).toHaveBeenCalledTimes(2)
+  expect(c.m.all('voice-error')).toHaveLength(0)
 })
 it('clears an old error when the composer moves to another draft', async () => {
   const c = composer()
@@ -158,7 +162,7 @@ it('clears an old error when the composer moves to another draft', async () => {
   await c.finish({ ok: false, error: 'speech' })
   c.identity.value = 'second'
   await nextTick()
-  expect(c.m.all('voice-status')).toHaveLength(0)
+  expect(c.m.all('voice-error')).toHaveLength(0)
 })
 it('hides the microphone on unsupported platforms', () => {
   const c = composer(false)

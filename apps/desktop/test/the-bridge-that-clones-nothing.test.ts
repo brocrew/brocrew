@@ -1121,13 +1121,20 @@ function preloadSurface(): Map<string, string> {
       .split('return Object.freeze({')[1]!
       .replace(/^ {4}(?=\w)/gm, '  '),
   )
-  expect([...voice.keys()].sort()).toEqual(['cancel', 'onState', 'start', 'stop', 'supported'])
+  expect([...voice.keys()].sort()).toEqual([
+    'cancel',
+    'onState',
+    'openSettings',
+    'start',
+    'stop',
+    'supported',
+  ])
   expect(voice.get('supported')).toContain("platform === 'darwin'")
   expect(voice.get('onState')).toContain('ipc.on(VOICE_CHANNELS.state, receive)')
   expect(voice.get('onState')).toContain('ipc.removeListener(VOICE_CHANNELS.state, receive)')
   expect(voice.get('onState')).not.toContain('ipc.invoke')
   expect(NOT_THE_WIRE.has('onState')).toBe(true)
-  for (const name of ['start', 'stop', 'cancel'])
+  for (const name of ['start', 'stop', 'cancel', 'openSettings'])
     surface.set(`voice.${name}`, voice.get(name)!.replaceAll('ipc.invoke', 'ipcRenderer.invoke'))
   return surface
 }

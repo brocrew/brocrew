@@ -2,6 +2,7 @@ export const VOICE_CHANNELS = {
   start: 'voice:start',
   stop: 'voice:stop',
   cancel: 'voice:cancel',
+  openSettings: 'voice:open-settings',
   state: 'voice:state',
 } as const
 
@@ -22,6 +23,11 @@ export const VOICE_ERRORS = {
   cancelled: '',
 } as const
 export type VoiceError = keyof typeof VOICE_ERRORS
+/** The errors a person fixes in a System Settings pane. */
+export type VoiceSettingsPane = 'microphone' | 'speech'
+export function isVoiceSettingsPane(value: unknown): value is VoiceSettingsPane {
+  return value === 'microphone' || value === 'speech'
+}
 export type VoiceResult = { ok: true; text: string } | { ok: false; error: VoiceError }
 export interface VoiceState {
   id: string
@@ -32,6 +38,7 @@ export interface VoiceBridge {
   start(id: string): Promise<VoiceResult>
   stop(id: string): Promise<void>
   cancel(id: string): Promise<void>
+  openSettings(pane: VoiceSettingsPane): Promise<void>
   onState(listener: (state: VoiceState) => void): () => void
 }
 export function isVoiceId(id: unknown): id is string {

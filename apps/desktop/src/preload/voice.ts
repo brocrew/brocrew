@@ -4,6 +4,7 @@ import {
   isVoiceId,
   isVoicePhase,
   type VoiceBridge,
+  type VoiceSettingsPane,
   type VoiceResult,
   type VoiceState,
 } from '../shared/voice'
@@ -20,6 +21,9 @@ export function voiceBridge(
     },
     cancel: async (id: string) => {
       await ipc.invoke(VOICE_CHANNELS.cancel, id)
+    },
+    openSettings: async (pane: VoiceSettingsPane) => {
+      await ipc.invoke(VOICE_CHANNELS.openSettings, pane)
     },
     onState: (listener: (state: VoiceState) => void) => {
       const receive = (_event: unknown, value: unknown): void => {

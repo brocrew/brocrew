@@ -3,7 +3,9 @@ import {
   VOICE_CAPTURE_SECONDS,
   VOICE_ERRORS,
   appendDictation,
+  isVoiceSettingsPane,
   type VoiceBridge,
+  type VoiceError,
   type VoicePhase,
 } from '../../../shared/voice'
 
@@ -14,7 +16,10 @@ export function useVoiceInput(options: {
   allowed: () => boolean
 }) {
   const phase = ref<VoicePhase | 'idle' | 'error'>('idle')
-  const error = ref('')
+  const failure = ref<VoiceError | null>(null)
+  const error = computed(() => (failure.value ? VOICE_ERRORS[failure.value] : ''))
+  /** The System Settings pane that fixes the current error, if one does. */
+  const settingsPane = computed(() => (isVoiceSettingsPane(failure.value) ? failure.value : null))
   const remaining = ref(VOICE_CAPTURE_SECONDS)
   const version = ref(0)
   const active = computed(() => phase.value !== 'idle' && phase.value !== 'error')
@@ -36,7 +41,7 @@ export function useVoiceInput(options: {
     const bridge = options.bridge
     if (!bridge?.supported || active.value || !options.allowed()) return
     version.value += 1
-    error.value = ''
+    failure.value = null
     remaining.value = VOICE_CAPTURE_SECONDS
     phase.value = 'permission'
     const request = { id: crypto.randomUUID(), identity: options.identity(), release: () => {} }
@@ -61,12 +66,12 @@ export function useVoiceInput(options: {
         options.draft.value = appendDictation(options.draft.value, result.text)
         phase.value = 'idle'
       } else {
-        error.value = VOICE_ERRORS[result.error] ?? VOICE_ERRORS.protocol
+        failure.value = Object.hasOwn(VOICE_ERRORS, result.error) ? result.error : 'protocol'
         phase.value = error.value ? 'error' : 'idle'
       }
     } catch {
       if (current === request) {
-        error.value = VOICE_ERRORS.unavailable
+        failure.value = 'unavailable'
         phase.value = 'error'
       }
     } finally {
@@ -83,16 +88,36 @@ export function useVoiceInput(options: {
     clearTicker()
     void options.bridge?.stop(current.id).catch(() => cancel())
   }
+  function dismiss(): void {
+    failure.value = null
+    if (phase.value === 'error') phase.value = 'idle'
+  }
+  function openSettings(): void {
+    const pane = settingsPane.value
+    if (pane) void options.bridge?.openSettings(pane).catch(() => undefined)
+  }
   watch(
     [options.identity, options.allowed],
     ([identity, allowed], [previousIdentity]) => {
       if (identity !== previousIdentity) {
         cancel()
-        error.value = ''
+        dismiss()
       } else if (current && !allowed) cancel()
     },
     { flush: 'sync' },
   )
   onBeforeUnmount(cancel)
-  return { phase, error, remaining, active, version, start, stop, cancel }
+  return {
+    phase,
+    error,
+    settingsPane,
+    remaining,
+    active,
+    version,
+    start,
+    stop,
+    cancel,
+    dismiss,
+    openSettings,
+  }
 }

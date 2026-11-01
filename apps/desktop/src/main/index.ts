@@ -1396,6 +1396,7 @@ function registerIpc(runtimeHost: RuntimeHost, localZone: () => LocalZone | null
       storageAppWindows.has(event.sender) &&
       !event.sender.isDestroyed() &&
       event.senderFrame === event.sender.mainFrame,
+    (url) => shell.openExternal(url),
   )
   installPluginUiRpc(pluginIpcMain)
   registerPluginSettings(

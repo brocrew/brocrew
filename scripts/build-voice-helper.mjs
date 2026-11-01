@@ -1,13 +1,20 @@
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, renameSync, rmSync } from 'node:fs'
+import { mkdirSync, readdirSync, renameSync, rmSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const NATIVE = join(ROOT, 'apps/desktop/native/voice')
+/** Every Swift file of the helper, in a fixed order. */
+export function voiceHelperSources() {
+  return readdirSync(NATIVE)
+    .filter((name) => name.endsWith('.swift'))
+    .sort()
+    .map((name) => join(NATIVE, name))
+}
 export function buildVoiceHelper(arch = process.arch) {
   if (process.platform !== 'darwin') throw new Error('The voice helper must be built on macOS.')
   if (!['arm64', 'x64'].includes(arch)) throw new Error('Unsupported voice helper architecture.')
-  const native = join(ROOT, 'apps/desktop/native/voice')
   const output = join(ROOT, 'apps/desktop/resources/voice', arch, 'brocrew-voice')
   const temporary = `${output}.${process.pid}.tmp`
   mkdirSync(dirname(output), { recursive: true })
@@ -22,7 +29,7 @@ export function buildVoiceHelper(arch = process.arch) {
       `${arch === 'x64' ? 'x86_64' : 'arm64'}-apple-macos12.0`,
       '-module-cache-path',
       join(ROOT, 'apps/desktop/out/voice-module-cache'),
-      join(native, 'main.swift'),
+      ...voiceHelperSources(),
       '-o',
       temporary,
       '-Xlinker',
@@ -32,7 +39,7 @@ export function buildVoiceHelper(arch = process.arch) {
       '-Xlinker',
       '__info_plist',
       '-Xlinker',
-      join(native, 'Info.plist'),
+      join(NATIVE, 'Info.plist'),
     ],
     { stdio: 'inherit' },
   )

@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events'
 import { expect, it, vi } from 'vitest'
 import type { IpcMain, IpcMainInvokeEvent, IpcRenderer, WebContents } from 'electron'
-import { registerVoiceIpc } from '../src/main/voice/ipc'
+import { VOICE_SETTINGS, registerVoiceIpc } from '../src/main/voice/ipc'
 import { VoiceService } from '../src/main/voice/service'
 import type { VoicePhase, VoiceResult } from '../src/shared/voice'
 import { VOICE_CHANNELS } from '../src/shared/voice'
@@ -32,11 +32,17 @@ it('rejects foreign/subframe senders and cancels on renderer loss, navigation an
       cancel,
     }
   })
+  const openSettings = vi.fn<(url: string) => Promise<void>>(async () => {})
   const release = registerVoiceIpc(
     ipc as unknown as IpcMain,
     new VoiceService(engine),
     (candidate) => candidate === event,
+    openSettings,
   )
+  await handlers.get(VOICE_CHANNELS.openSettings)!(foreign, 'microphone')
+  await handlers.get(VOICE_CHANNELS.openSettings)!(event, 'https://example.invalid')
+  await handlers.get(VOICE_CHANNELS.openSettings)!(event, 'speech')
+  expect(openSettings).toHaveBeenCalledExactlyOnceWith(VOICE_SETTINGS.speech)
   expect(await handlers.get(VOICE_CHANNELS.start)!(foreign, 'fictional-session-12345')).toEqual({
     ok: false,
     error: 'unavailable',

@@ -13,6 +13,7 @@ final class LocalVoice {
     private var silence: DispatchWorkItem?
     private var limit: DispatchWorkItem?
     private var finalLimit: DispatchWorkItem?
+    private var transcript = Transcript()
 
     private func emit(_ object: [String: String]) {
         guard let data = try? JSONSerialization.data(withJSONObject: object),
@@ -42,12 +43,18 @@ final class LocalVoice {
         exit(0)
     }
 
+    /// Ends with the words heard so far, or with `error` when nothing was heard.
+    private func deliver(orElse error: String) {
+        let text = transcript.text
+        if text.isEmpty { finish(error: error) } else { finish(text: text) }
+    }
+
     func stop() {
         guard !ended, listening else { return }
         stopAudio()
         request?.endAudio()
         emit(["state": "transcribing"])
-        let timeout = DispatchWorkItem { self.finish(error: "timeout") }
+        let timeout = DispatchWorkItem { self.deliver(orElse: "timeout") }
         finalLimit = timeout
         DispatchQueue.main.asyncAfter(deadline: .now() + 15, execute: timeout)
     }
@@ -64,10 +71,15 @@ final class LocalVoice {
         task = recognizer.recognitionTask(with: recognition) { result, error in
             DispatchQueue.main.async {
                 guard !self.ended else { return }
+                if let result {
+                    self.transcript.hear(
+                        result.bestTranscription.formattedString,
+                        closesUtterance: result.isFinal || result.speechRecognitionMetadata != nil)
+                }
                 if let result, result.isFinal {
-                    self.finish(text: result.bestTranscription.formattedString)
+                    self.finish(text: self.transcript.text)
                 } else if error != nil {
-                    self.finish(error: "recognition")
+                    self.deliver(orElse: "recognition")
                 } else if result != nil && self.listening {
                     self.silence?.cancel()
                     let silence = DispatchWorkItem { self.stop() }
@@ -134,7 +146,7 @@ final class LocalVoice {
             // Fixture checks never request permission or open the microphone.
             guard SFSpeechRecognizer.authorizationStatus() == .authorized else { finish(error: "speech"); return }
             emit(["state": "transcribing"])
-            let timeout = DispatchWorkItem { self.finish(error: "timeout") }
+            let timeout = DispatchWorkItem { self.deliver(orElse: "timeout") }
             finalLimit = timeout
             DispatchQueue.main.asyncAfter(deadline: .now() + 15, execute: timeout)
             recognize(SFSpeechURLRecognitionRequest(url: URL(fileURLWithPath: fixture)))

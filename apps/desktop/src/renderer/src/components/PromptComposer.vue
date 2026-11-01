@@ -337,6 +337,7 @@ const voice = useVoiceInput({
 const voiceActive = voice.active
 const voicePhase = voice.phase
 const voiceError = voice.error
+const voiceSettingsPane = voice.settingsPane
 const voiceRemaining = voice.remaining
 
 /**
@@ -1237,6 +1238,29 @@ defineExpose({
       <p v-if="attachRefusal" class="attach-refused" role="alert" data-cy="attach-refused">
         {{ attachRefusal }}
       </p>
+      <div v-if="voiceError" class="voice-error" role="alert" data-cy="voice-error">
+        <svg class="icon" aria-hidden="true"><use href="#i-alert" /></svg>
+        <span class="voice-error-words">{{ voiceError }}</span>
+        <button
+          v-if="voiceSettingsPane"
+          type="button"
+          class="voice-settings"
+          data-cy="voice-open-settings"
+          @click="voice.openSettings()"
+        >
+          Open System Settings
+        </button>
+        <button
+          type="button"
+          class="voice-dismiss"
+          aria-label="Dismiss"
+          title="Dismiss"
+          data-cy="voice-dismiss"
+          @click="voice.dismiss()"
+        >
+          <svg class="icon" aria-hidden="true"><use href="#i-x" /></svg>
+        </button>
+      </div>
       <!-- ⛔ **Say what letting go will do, WHILE you are still holding it** (218 §2). A border that
            changes colour tells you something is happening; it does not tell you what. ⚑ Painted in
            `--accent`, the app's blue for *"this is live"* — deliberately NOT amber, which
@@ -1446,23 +1470,15 @@ defineExpose({
          header. The row carries the measure and the centring the hint used to carry itself, so with
          no button beside it the rendered result is what it was before. -->
     <div class="composer-foot">
-      <p
-        v-if="voiceActive || voiceError"
-        class="voice-status"
-        :role="voiceError ? 'alert' : 'status'"
-        data-cy="voice-status"
-      >
+      <p v-if="voiceActive" class="voice-status" role="status" data-cy="voice-status">
         {{
-          voiceError ||
-          (voicePhase === 'permission'
+          voicePhase === 'permission'
             ? 'Waiting for permission…'
             : voicePhase === 'listening'
               ? `Listening… ${voiceRemaining} s left`
-              : 'Transcribing…')
+              : 'Transcribing…'
         }}
-        <button v-if="voiceActive" type="button" data-cy="voice-cancel" @click="voice.cancel()">
-          Cancel
-        </button>
+        <button type="button" data-cy="voice-cancel" @click="voice.cancel()">Cancel</button>
       </p>
       <p class="composer-hint" :class="{ frozen: frozenLook }" data-cy="composer-hint">
         <!-- ⛔ **First, and it outranks the state's own sentence** (169 §1). Every other branch here
@@ -1577,8 +1593,57 @@ defineExpose({
 .voice-status {
   flex-basis: 100%;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--type-caption);
   margin: 0;
+}
+.voice-error {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-5);
+  border: var(--border-width) solid var(--waiting-card-border);
+  border-radius: var(--radius-md);
+  background: var(--waiting-bg);
+  color: var(--waiting-text);
+  font-size: var(--type-caption);
+  gap: var(--space-4);
+}
+.voice-error > .icon {
+  flex: 0 0 auto;
+  color: var(--waiting);
+}
+.voice-error-words {
+  flex: 1;
+  min-width: 0;
+}
+.voice-settings {
+  flex: 0 0 auto;
+  padding: var(--space-2) var(--space-5);
+  border: var(--border-width) solid var(--waiting-card-border);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--waiting-text);
+  font-size: var(--type-caption);
+  font-weight: var(--fw-semibold);
+  cursor: pointer;
+}
+.voice-settings:hover {
+  background: var(--waiting-bg);
+}
+.voice-dismiss {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--waiting-text);
+  cursor: pointer;
+}
+.voice-dismiss:hover {
+  background: var(--waiting-bg);
 }
 .composer-foot:has(.voice-status) {
   flex-wrap: wrap;
