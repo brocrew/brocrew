@@ -127,7 +127,9 @@ export type OwnerDiagnostic = z.infer<typeof OwnerDiagnostic>
 export function ownerDiagnosticLine(diagnostic: OwnerDiagnostic): string {
   const checked = OwnerDiagnostic.parse(diagnostic)
   const remedy =
-    checked.reason === 'restart-required'
+    checked.reason === 'restart-required' &&
+    (checked.phase === 'blocked' || checked.phase === 'draining') &&
+    checked.stage === 'recovery'
       ? process.platform === 'win32'
         ? ' Restart your computer using Start > Power > Restart, then open BroCrew again.'
         : ' Restart your computer once, then open BroCrew again.'
@@ -136,9 +138,16 @@ export function ownerDiagnosticLine(diagnostic: OwnerDiagnostic): string {
 }
 export class PluginSupervisorError extends Error {
   readonly diagnostic?: OwnerDiagnostic
+  /** Local authenticated owner continuity; never serialized or logged. */
+  readonly ownerIdentity?: string
+  readonly ownerEpoch?: string
   constructor(
     readonly code: Refusal,
-    options?: ErrorOptions & { diagnostic?: OwnerDiagnostic },
+    options?: ErrorOptions & {
+      diagnostic?: OwnerDiagnostic
+      ownerIdentity?: string
+      ownerEpoch?: string
+    },
   ) {
     super(
       code === 'busy'
@@ -150,6 +159,8 @@ export class PluginSupervisorError extends Error {
     )
     this.name = 'PluginSupervisorError'
     if (options?.diagnostic) this.diagnostic = OwnerDiagnostic.parse(options.diagnostic)
+    if (options?.ownerIdentity) this.ownerIdentity = Hex.parse(options.ownerIdentity)
+    if (options?.ownerEpoch) this.ownerEpoch = Uuid.parse(options.ownerEpoch)
   }
 }
 export function refuse(code: Refusal = 'unavailable', diagnostic?: OwnerDiagnostic): never {

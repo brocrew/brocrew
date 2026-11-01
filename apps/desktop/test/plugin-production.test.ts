@@ -40,6 +40,7 @@ import { SupervisorStorage } from '../src/main/plugins/supervisor/storage'
 import {
   LOST_CHANNEL_ENDS,
   OWNER_WIRE,
+  PluginSupervisorError,
   type OwnerRecord,
 } from '../src/main/plugins/supervisor/protocol'
 const roots: string[] = []
@@ -100,6 +101,118 @@ async function setup(pkg = packageFixture()) {
   }
   return { controller, options, peer, supervisor, fetch, pkg }
 }
+describe('bounded live-owner guidance with fake peers and monotonic time', () => {
+  afterEach(() => vi.useRealTimers())
+  function busy(epoch = randomUUID()) {
+    return Object.assign(
+      new PluginSupervisorError('busy', {
+        diagnostic: { phase: 'accepting', stage: 'hello', probe: 'live', reason: 'unknown' },
+      }),
+      { ownerIdentity: epoch.replaceAll('-', '').repeat(2) },
+    )
+  }
+  async function pending() {
+    const f = await setup()
+    f.supervisor.ready.mockResolvedValue(false)
+    Object.assign(f.supervisor, { lastStartError: busy() })
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
+    f.controller.start(f.options)
+    await f.controller.ready!()
+    const advance = async (ms: number) => {
+      await vi.advanceTimersByTimeAsync(ms)
+      await f.controller.ready!()
+    }
+    return { ...f, advance }
+  }
+  it('keeps the early ramp generic, shows the conditional hint after two minutes, then clears on success', async () => {
+    const f = await pending()
+    for (const seconds of [1, 2, 4, 8, 16, 32]) await f.advance(seconds * 1000)
+    expect(f.supervisor.start).toHaveBeenCalledTimes(7)
+    expect(await f.controller.catalogue()).toMatchObject([{ unavailableReason: 'cleanup-pending' }])
+    await f.advance(60_000)
+    expect(await f.controller.catalogue()).toMatchObject([
+      { unavailableReason: 'owner-window-open' },
+    ])
+    expect(seams.connect).not.toHaveBeenCalled()
+    f.supervisor.ready.mockResolvedValue(true)
+    await f.advance(60_000)
+    expect(await f.controller.catalogue()).toMatchObject([{ state: 'Available' }])
+    expect((await f.controller.catalogue())[0]?.unavailableReason).toBeUndefined()
+  })
+  it('never gives the close-window hint when the leftover heals at seventy seconds', async () => {
+    const f = await pending()
+    for (const seconds of [1, 2, 4, 8, 16, 32]) await f.advance(seconds * 1000)
+    await f.advance(7000)
+    f.supervisor.ready.mockResolvedValue(true)
+    await f.advance(53_000)
+    expect(await f.controller.catalogue()).toMatchObject([{ state: 'Available' }])
+    expect((await f.controller.catalogue())[0]?.unavailableReason).toBeUndefined()
+  })
+  it('does not count six manual retries as the automatic ramp', async () => {
+    const f = await pending()
+    vi.spyOn(performance, 'now').mockReturnValue(120_000)
+    for (let attempt = 0; attempt < 6; attempt++) await f.controller.retry!(f.pkg.release.id)
+    expect(await f.controller.catalogue()).toMatchObject([{ unavailableReason: 'cleanup-pending' }])
+  })
+  it('requires the full 120000 milliseconds at a fresh reply after the automatic ramp', async () => {
+    const f = await pending()
+    for (const seconds of [1, 2, 4, 8, 16, 32]) await f.advance(seconds * 1000)
+    const now = vi.spyOn(performance, 'now').mockReturnValue(119_999)
+    expect(await f.controller.retry!(f.pkg.release.id)).toMatchObject([
+      { unavailableReason: 'cleanup-pending' },
+    ])
+    now.mockReturnValue(120_000)
+    expect(await f.controller.retry!(f.pkg.release.id)).toMatchObject([
+      { unavailableReason: 'owner-window-open' },
+    ])
+  })
+  it('requires a fresh authenticated busy observation after two minutes, not just an elapsed timer', async () => {
+    const f = await setup()
+    f.controller.start(f.options)
+    await f.controller.ready!()
+    const lost = f.supervisor.start.mock.calls[0]![0].onLost
+    const recover = vi.fn(async () => false)
+    Object.assign(f.supervisor, { lastStartError: busy(), recover })
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
+    lost()
+    for (const seconds of [1, 2, 4, 8, 16, 32]) await vi.advanceTimersByTimeAsync(seconds * 1000)
+    expect(recover).toHaveBeenCalledTimes(6)
+    await vi.advanceTimersByTimeAsync(58_000)
+    expect(await f.controller.catalogue()).toMatchObject([{ unavailableReason: 'cleanup-pending' }])
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(await f.controller.catalogue()).toMatchObject([
+      { unavailableReason: 'owner-window-open' },
+    ])
+    recover.mockRejectedValueOnce(new Error('fictional unknown observation'))
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(await f.controller.catalogue()).toMatchObject([{ unavailableReason: 'cleanup-pending' }])
+  })
+  it.each(['epoch', 'no-answer', 'draining'] as const)(
+    'resets the continuous history on %s and does not reuse elapsed time',
+    async (change) => {
+      const f = await pending()
+      for (const seconds of [1, 2, 4, 8, 16, 32, 60]) await f.advance(seconds * 1000)
+      expect(await f.controller.catalogue()).toMatchObject([
+        { unavailableReason: 'owner-window-open' },
+      ])
+      const next = busy()
+      if (change !== 'epoch')
+        Object.assign(next, {
+          diagnostic: {
+            phase: change === 'draining' ? 'draining' : 'accepting',
+            stage: 'hello',
+            probe: change === 'no-answer' ? 'no-answer' : 'live',
+            reason: 'unknown',
+          },
+        })
+      Object.assign(f.supervisor, { lastStartError: next })
+      await f.advance(60_000)
+      expect(await f.controller.catalogue()).toMatchObject([
+        { unavailableReason: 'cleanup-pending' },
+      ])
+    },
+  )
+})
 describe.skipIf(process.platform === 'win32')(
   'production Plugins gate (explicit fake controller/lease peers)',
   () => {
@@ -1418,3 +1531,117 @@ it.skipIf(process.platform === 'win32')(
     expect(card).not.toHaveProperty('updatesUnavailable')
   },
 )
+
+it('refuses restart projection from an authenticated inconsistent Hello diagnostic', async () => {
+  const { createServer } = await import('node:net')
+  const { pack, unpack, secret } = await import('../src/main/plugins/supervisor/protocol')
+  const f = await setup()
+  await privateFiles.keepPluginRootPrivate(f.options.root)
+  const storage = new SupervisorStorage(f.options.root, [f.options.workspaceRoot], true)
+  const record: OwnerRecord = {
+    version: 1,
+    epoch: randomUUID(),
+    key: secret(),
+    phase: 'accepting',
+    wire: OWNER_WIRE,
+  }
+  storage.write(record)
+  const authenticated = vi.fn()
+  const server = createServer((socket) => {
+    const challenge = secret()
+    socket.write(JSON.stringify({ challenge }) + '\n')
+    socket.once('data', (packet) => {
+      const request = unpack(record.key, 'request', packet.toString().trim()) as {
+        epoch: string
+        nonce: string
+        challenge: string
+        command: { kind: string }
+      }
+      expect(request.epoch).toBe(record.epoch)
+      expect(request.challenge).toBe(challenge)
+      expect(request.command.kind).toBe('hello')
+      authenticated()
+      socket.end(
+        pack(record.key, 'response', {
+          ok: false,
+          nonce: request.nonce,
+          epoch: record.epoch,
+          code: 'busy',
+          diagnostic: {
+            phase: 'blocked',
+            stage: 'recovery',
+            probe: 'no-answer',
+            reason: 'restart-required',
+          },
+        }),
+      )
+    })
+  })
+  const supervisor = new PluginSupervisorAttachment()
+  await new Promise<void>((resolve) => server.listen(storage.endpoint(record), resolve))
+  try {
+    f.controller.start({ ...f.options, supervisor })
+    await f.controller.ready!()
+    const cards = await f.controller.catalogue()
+    expect(storage.read()?.phase).toBe('accepting')
+    expect(authenticated).toHaveBeenCalled()
+    expect((supervisor.lastStartError as PluginSupervisorError).code).toBe('busy')
+    expect(cards[0]?.unavailableReason).not.toBe('restart-required')
+  } finally {
+    await f.controller.close()
+    await supervisor.quit()
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+    storage.close()
+  }
+}, 15000)
+
+it('resets authenticated busy continuity when the root inode changes but its supervisor directory survives', async () => {
+  const { createServer } = await import('node:net')
+  const { rename } = await import('node:fs/promises')
+  const { pack, unpack, secret } = await import('../src/main/plugins/supervisor/protocol')
+  const f = await setup()
+  await privateFiles.keepPluginRootPrivate(f.options.root)
+  const storage = new SupervisorStorage(f.options.root, [f.options.workspaceRoot], true)
+  const record: OwnerRecord = {
+    version: 1,
+    epoch: randomUUID(),
+    key: secret(),
+    phase: 'accepting',
+    wire: OWNER_WIRE,
+  }
+  storage.write(record)
+  const server = createServer((socket) => {
+    const challenge = secret()
+    socket.write(JSON.stringify({ challenge }) + '\n')
+    socket.once('data', (packet) => {
+      const request = unpack(record.key, 'request', packet.toString().trim()) as { nonce: string }
+      socket.end(
+        pack(record.key, 'response', {
+          ok: false,
+          nonce: request.nonce,
+          epoch: record.epoch,
+          code: 'busy',
+        }),
+      )
+    })
+  })
+  await new Promise<void>((resolve) => server.listen(storage.endpoint(record), resolve))
+  try {
+    const options = { ...f.options, generation: randomUUID() }
+    const first = await PluginWorkspaceLease.attach(options).catch((e) => e)
+    expect(first.diagnostic).toMatchObject({ phase: 'accepting', probe: 'live' })
+    storage.close()
+    const oldRoot = f.options.root + '-old'
+    await rename(f.options.root, oldRoot)
+    await mkdir(f.options.root, { mode: 0o700 })
+    await rename(join(oldRoot, 'supervisor'), join(f.options.root, 'supervisor'))
+    await privateFiles.keepPluginRootPrivate(f.options.root)
+    const second = await PluginWorkspaceLease.attach(options).catch((e) => e)
+    expect(second.diagnostic).toMatchObject({ phase: 'accepting', probe: 'live' })
+    expect(second.ownerIdentity).toBeTruthy()
+    expect(second.ownerIdentity).not.toBe(first.ownerIdentity)
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+    storage.close()
+  }
+}, 15000)

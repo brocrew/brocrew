@@ -131,6 +131,8 @@ export interface RecoveryObservation {
   previous: OwnerRecord | null
   /** Trusted tests may substitute the native observation, never workspace or plugin input. */
   readBootWitness?: () => Promise<unknown>
+  /** A verified pending reboot marker permits advice, never admission. */
+  onRebootRequired?: () => void
 }
 
 const receipt = z.object({
@@ -266,9 +268,22 @@ export async function previousRunsProvenStopped(
           witness: current,
         }),
       )
+      try {
+        observation.onRebootRequired?.()
+      } catch {
+        /* Advice cannot change proof. */
+      }
       return false
     }
-    if (!laterBoot(pending.witness, current)) return false
+    if (pending.witness.kind !== current.kind) return false
+    if (!laterBoot(pending.witness, current)) {
+      try {
+        observation.onRebootRequired?.()
+      } catch {
+        /* Advice cannot change proof. */
+      }
+      return false
+    }
     await publish(
       certificates,
       `${pending.nonce}.json`,

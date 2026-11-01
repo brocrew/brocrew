@@ -46,6 +46,7 @@ export class SupervisorStorage {
   readonly record: string
   readonly stop: string
   readonly identity: string = ''
+  readonly rootIdentity: string = ''
   constructor(
     readonly root: string,
     workspaceRoots: readonly string[],
@@ -106,6 +107,8 @@ export class SupervisorStorage {
       if (!isInsideCheckedRoot(root)) refuse('unsupported')
       const stat = this.pins.at(-1)!.stat
       this.identity = `${stat.dev}:${stat.ino}`
+      const rootStat = this.pins.find((pin) => pin.path === root)!.stat
+      this.rootIdentity = `${rootStat.dev}:${rootStat.ino}`
     } catch (error) {
       this.close()
       if (error instanceof PluginSupervisorError) throw error

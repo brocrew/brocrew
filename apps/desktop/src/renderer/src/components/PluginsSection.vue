@@ -373,7 +373,13 @@ onUnmounted(() => {
             <span v-if="card.startupDiagnostic" data-cy="plugin-start-diagnostic">{{
               pluginStartupDiagnosticNotice(card.startupDiagnostic)
             }}</span>
-            <span v-if="failedRetries.has(card.id)" data-cy="plugin-restart-hint"
+            <span
+              v-if="
+                failedRetries.has(card.id) &&
+                card.unavailableReason !== 'owner-window-open' &&
+                card.unavailableReason !== 'restart-required'
+              "
+              data-cy="plugin-restart-hint"
               >Restart BroCrew if this keeps happening.</span
             >
           </p>

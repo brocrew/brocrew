@@ -10,6 +10,8 @@ import { PluginWorkspaceLease } from '../src/main/plugins/supervisor/client'
 import { SupervisorStorage } from '../src/main/plugins/supervisor/storage'
 import { previousRunsProvenStopped } from '../src/main/plugins/supervisor/recovery-proof'
 import { keepPluginRootPrivate } from '../src/main/plugins/private-files'
+import { PluginStartupError } from '../src/main/plugins/startup-failure'
+import { PluginSupervisorError } from '../src/main/plugins/supervisor/protocol'
 
 const windowsStopWithin = process.platform === 'win32' ? 10_000 : undefined
 
@@ -57,7 +59,7 @@ describe('plugin owner recovery after the caller stops waiting', () => {
     child = undefined
     releaseWitness = undefined
   }, 30_000)
-  async function fixture() {
+  async function fixture(now?: () => number) {
     parent = await realpath(
       await mkdtemp(
         join(process.platform === 'win32' ? tmpdir() : '/tmp', 'fictional-owner-recovery-'),
@@ -68,10 +70,42 @@ describe('plugin owner recovery after the caller stops waiting', () => {
     const workspaceRoot = join(parent, 'workspace')
     await mkdir(workspaceRoot, { mode: 0o700 })
     const options = { root, workspaceRoot, build: 'fictional', generation: randomUUID() }
-    owner = await PluginSupervisor.start({ root, workspaceRoots: [workspaceRoot], drainWithin: 30 })
+    owner = await PluginSupervisor.start({
+      root,
+      workspaceRoots: [workspaceRoot],
+      drainWithin: 30,
+      now,
+    })
     lease = await PluginWorkspaceLease.attach(options)
     return { root, options }
   }
+  it('measures existing sixty-second orphan expiry while another workspace retains the same owner', async () => {
+    let now = 0
+    const { root, options } = await fixture(() => now)
+    const epoch = lease!.epoch
+    const fence = await lstat(join(root, 'supervisor/owner-lock.sqlite'), { bigint: true })
+    const otherWorkspace = join(parent, 'other-workspace')
+    await mkdir(otherWorkspace, { mode: 0o700 })
+    const other = await PluginWorkspaceLease.attach({ ...options, workspaceRoot: otherWorkspace })
+    lease!.abandon()
+    let adopted: PluginWorkspaceLease | undefined
+    try {
+      now = 59_999
+      await other.renew()
+      await expect(
+        PluginWorkspaceLease.attach({ ...options, generation: randomUUID() }),
+      ).rejects.toMatchObject({ code: 'busy' })
+      now = 60_000
+      adopted = await PluginWorkspaceLease.attach({ ...options, generation: randomUUID() })
+      expect(adopted.epoch).toBe(epoch)
+      await expect(other.renew()).resolves.toBeUndefined()
+      const after = await lstat(join(root, 'supervisor/owner-lock.sqlite'), { bigint: true })
+      expect({ dev: after.dev, ino: after.ino }).toEqual({ dev: fence.dev, ino: fence.ino })
+    } finally {
+      await adopted?.close()
+      await other.close()
+    }
+  })
   it('publishes stopped after a delayed real child exit witness, even after shutdown returned false', async () => {
     const { root } = await fixture()
     const sentinel = join(root, 'profile-sentinel')
@@ -169,7 +203,7 @@ describe('plugin owner recovery after the caller stops waiting', () => {
       }),
     ).rejects.toMatchObject({
       code: 'busy',
-      diagnostic: { phase: 'accepting', stage: 'hello', reason: 'unknown' },
+      diagnostic: { phase: 'accepting', stage: 'hello', probe: 'live', reason: 'unknown' },
     })
     expect(launch).not.toHaveBeenCalled()
     await expect(lease.renew()).resolves.toBeUndefined()
@@ -177,6 +211,80 @@ describe('plugin owner recovery after the caller stops waiting', () => {
       'accepting',
     )
   })
+  it.each(['blocked', 'draining'] as const)(
+    'does not infer reboot advice from a %s pipe timeout and failed runtime launch',
+    async (phase) => {
+      const { root, options } = await fixture()
+      await lease!.close()
+      await owner!.shutdown()
+      const storage = new SupervisorStorage(root, [options.workspaceRoot], false)
+      const record = storage.read()!
+      storage.write({ ...record, phase })
+      storage.close()
+      try {
+        await expect(
+          PluginWorkspaceLease.attach({
+            ...options,
+            generation: randomUUID(),
+            launch: async () => {
+              throw new Error('fictional runtime assets unavailable')
+            },
+          }),
+        ).rejects.toMatchObject({
+          code: 'busy',
+          diagnostic: { phase, probe: 'no-answer', reason: 'unknown' },
+        })
+      } finally {
+        const saved = new SupervisorStorage(root, [options.workspaceRoot], false)
+        saved.write(record)
+        saved.close()
+      }
+    },
+  )
+  it.each(['current', 'foreign'] as const)(
+    'preserves only %s-epoch typed reboot advice through the launcher wrapper',
+    async (identity) => {
+      const { root, options } = await fixture()
+      await lease!.close()
+      await owner!.shutdown()
+      const storage = new SupervisorStorage(root, [options.workspaceRoot], false)
+      const record = storage.read()!
+      storage.write({ ...record, phase: 'blocked' })
+      storage.close()
+      try {
+        await expect(
+          PluginWorkspaceLease.attach({
+            ...options,
+            generation: randomUUID(),
+            launch: async () => {
+              throw new PluginStartupError(
+                'service-start',
+                new PluginSupervisorError('cleanup-pending', {
+                  ownerEpoch: identity === 'current' ? record.epoch : randomUUID(),
+                  diagnostic: {
+                    phase: 'blocked',
+                    stage: 'recovery',
+                    probe: 'no-answer',
+                    reason: 'restart-required',
+                  },
+                }),
+              )
+            },
+          }),
+        ).rejects.toMatchObject({
+          diagnostic: {
+            phase: 'blocked',
+            stage: identity === 'current' ? 'recovery' : 'attach-record',
+            reason: identity === 'current' ? 'restart-required' : 'unknown',
+          },
+        })
+      } finally {
+        const saved = new SupervisorStorage(root, [options.workspaceRoot], false)
+        saved.write(record)
+        saved.close()
+      }
+    },
+  )
   it.each(['blocked', 'draining'] as const)(
     'a %s refusal carries only the phase and attach stage',
     async (phase) => {
