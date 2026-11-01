@@ -438,6 +438,7 @@
   --accent-mix-9: color-mix(in srgb, var(--accent) 9%, var(--panel));
   --accent-mix-10: color-mix(in srgb, var(--accent) 10%, var(--panel));
   --accent-mix-12: color-mix(in srgb, var(--accent) 12%, var(--panel));
+  --accent-2-mix-7: color-mix(in oklab, var(--accent-2) 7%, var(--panel));
   /* Words in the second accent. Classic draws them in the second accent itself. */
   --accent-2-text: var(--accent-2);
   /* The fill behind words in --accent-ink: segmented tabs, send buttons, a running chip. */
