@@ -1,4 +1,5 @@
 import type { Page } from 'playwright-core'
+import type { HelperState } from './brocrewHelper.js'
 export type BrowserMode = 'headless' | 'visible'
 export interface ProfileBrowser {
   ensure(
@@ -12,6 +13,8 @@ export interface ProfileBrowser {
   state(profile: string): {
     mode: BrowserMode
     generation: number
+    /** The BroCrew helper in this browser; absent when this browser has none. */
+    helper?: HelperState
   } | null
   newPage(
     profile: string,
@@ -22,6 +25,8 @@ export interface ProfileBrowser {
     },
   ): Promise<Page>
   windowId(profile: string, page: Page): Promise<number>
+  /** The person turned the BroCrew helper on in the Chrome panel. */
+  turnHelperOn(profile: string): Promise<void>
   usePage(profile: string, page: Page): Promise<void>
   onPage(profile: string, cb: (page: Page) => void): () => void
   onClosed(profile: string, cb: (generation: number) => void): () => void

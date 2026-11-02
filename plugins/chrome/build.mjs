@@ -114,6 +114,13 @@ export async function buildChromePackage(
     recursive: true,
     dereference: false,
   })
+  // The BroCrew helper extension, loaded into visible profiles. Exactly these files, never links.
+  fs.mkdirSync(path.join(payload, 'helper'))
+  for (const name of ['manifest.json', 'worker.js']) {
+    const from = path.join(root, 'helper', name)
+    if (!fs.lstatSync(from).isFile()) throw new Error('Helper files must be regular files')
+    fs.copyFileSync(from, path.join(payload, 'helper', name))
+  }
   const licenses = path.join(payload, 'licenses')
   fs.mkdirSync(licenses)
   const packages = new Map()

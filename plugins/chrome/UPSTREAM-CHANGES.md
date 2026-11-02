@@ -67,3 +67,23 @@ Patch author headers and client-specific implementation were not imported.
 Native AppKit/Space proof is a separate optional check (`scripts/native/`); headless runtime
 checks do not establish focus behavior. Neither the source import nor a dry build authorizes
 publication or deployment.
+
+## BroCrew helper and background placement
+
+BroCrew's own change; nothing was imported from the source project.
+
+- The isolated-world modified-link fallback for an explicit `windowOf` is removed, with the
+  `--disable-popup-blocking` switch that existed for it. A page-made tab goes through Chrome's
+  new-contents path, which shows and activates the target window; on macOS that can switch Space.
+  Site popups are blocked by Chrome's normal popup blocker again.
+- `helper/` is a new built-in extension, "BroCrew helper": `manifest.json` (MV3, fixed public
+  `key`, no permissions) and `worker.js` (a versioned list of jobs; `place-tab` calls
+  `chrome.tabs.create({windowId, url, active: false})`, which sets no window action). `build.mjs`
+  copies exactly these two files into the package; `src/browser/brocrewHelper.ts` pins their
+  SHA-256 and refuses any other bytes, links or a linked folder.
+- Visible profiles with extensions allowed load the helper with CDP `Extensions.loadUnpacked` over
+  the existing `--remote-debugging-pipe`, adding `--enable-unsafe-extension-debugging`. Chrome
+  drops such a helper at its next start, so the plugin remembers the person's off switch itself
+  (`helper`: on, off or turning-on) and never loads it while off; the panel's "Turn on" and the tool note ask the person.
+- Sync and extensions default to on for new non-temporary profiles; `profiles.json` records
+  `defaults: 2` once existing profiles were switched on.

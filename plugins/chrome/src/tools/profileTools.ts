@@ -89,7 +89,7 @@ export function buildProfileToolDefs(): ToolDef[] {
       spec: {
         name: 'list_extensions',
         description:
-          'List the extensions installed in a profile: id, name, version, enabled, unpacked. Reads the profile files; the profile is not opened. Needs "Allow extensions".',
+          'List the extensions installed in a profile: id, name, version, enabled, unpacked; builtIn: true marks the BroCrew helper, which BroCrew installs and updates itself. Reads the profile files; the profile is not opened. Needs "Allow extensions".',
         props: { profile: profileName },
         required: ['profile'],
       },

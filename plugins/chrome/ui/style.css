@@ -74,6 +74,13 @@ h1 {
   font-weight: 600;
   margin: 0;
 }
+.profile-helper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 0;
+  font-size: 13px;
+}
 #create {
   display: flex;
   align-items: end;

@@ -14,14 +14,20 @@ export const ChromeProposal = z.union([
   z
     .strictObject({ action: z.literal('delete-profile'), profile, confirm: profile })
     .refine((input) => input.confirm === input.profile),
+  z.strictObject({ action: z.literal('helper-on'), profile }),
 ])
 export type ChromeProposal = z.infer<typeof ChromeProposal>
-/** Record the real disable prerequisite; the confirmed delete stays live and is never replayed. */
+/**
+ * Record each live command's real prerequisite: a confirmed delete needs the profile off; turning
+ * the helper on needs it enabled, and the plugin refuses otherwise. Neither is ever replayed.
+ */
 export function chromeProfileIntent(input: ChromeProposal): z.infer<typeof ChromeLedgerProposal> {
   const proposal = ChromeProposal.parse(input)
-  return proposal.action === 'delete-profile'
-    ? { action: 'set-enabled', profile: proposal.profile, enabled: false }
-    : proposal
+  if (proposal.action === 'delete-profile')
+    return { action: 'set-enabled', profile: proposal.profile, enabled: false }
+  if (proposal.action === 'helper-on')
+    return { action: 'set-enabled', profile: proposal.profile, enabled: true }
+  return proposal
 }
 /** Fixed reviewed admin adapter. Neither routes, credentials nor arbitrary JSON come from the page. */
 export async function applyChromeProfile(
@@ -48,6 +54,10 @@ export async function applyChromeProfile(
     case 'delete-profile':
       path = '/profiles/' + proposal.profile + '/delete'
       body = { confirm: proposal.profile }
+      break
+    case 'helper-on':
+      path = '/profiles/' + proposal.profile + '/helper'
+      body = {}
       break
   }
   const abort = new AbortController()

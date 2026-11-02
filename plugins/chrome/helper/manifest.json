@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "BroCrew helper",
+  "version": "1",
+  "description": "Small jobs BroCrew does in this Chrome profile, like opening an agent's tab in the background.",
+  "minimum_chrome_version": "120",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA466bEHM5rAETamaul3J5xxMxYGTdXGIRkz7EtQu9MNzzKJkvPTdmKu352ikP6fW9JUO/Q3iBYkQQrXRIgjH74ObWajlvmuBGRjYv4mFOxrU+eZ4eKF4n75Uq9g+8ctFzNJKxDeh1ZWk+Ev6q1Vp5pbvQ0RVFBnWS+Hma8P96bnH3cn1swn6Y3rc5UX81lGCMuAgWuJ6bh7JnSj6jX776lu/BxR6xdZ/tRn3lF1Urf6mihB8nwVBPYAvdtKi+rFz37vsal+0Vvap6QKeCK5oAZ4bmr1HH/JCHMY1W0bXNR5StY6Mt6yDk21EEoz8lbpZvYPXmyy+hobWbXqQbzcBwLQIDAQAB",
+  "background": {
+    "service_worker": "worker.js"
+  }
+}

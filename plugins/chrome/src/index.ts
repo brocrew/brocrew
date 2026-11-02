@@ -28,6 +28,10 @@ export function createChromeBrowser(
     ...(browser ? { browser } : {}),
     extensionsFor: (name) => store.get(name)?.allowExtensions === true,
     syncFor: (name) => store.get(name)?.allowSync === true,
+    helperFor: (name) => store.get(name)?.helper ?? 'on',
+    rememberHelper: (name, helper) => {
+      if (store.get(name) && store.get(name)?.helper !== helper) store.setHelper(name, helper)
+    },
     keepRunningFor: (name) => {
       const r = store.get(name)
       return r?.keepRunning === true && !r.temporary
@@ -59,6 +63,8 @@ async function main(): Promise<void> {
       noSandbox: config.noSandbox,
       noTestType: config.noTestType,
       downloadsRoot: config.downloadsRoot,
+      // The package ships the helper beside server.mjs; the working folder never matters.
+      helperSource: fileURLToPath(new URL('./helper/', import.meta.url)),
     })
     running = await startAgentChrome(config, { browser, store, logger })
   } catch (e) {
