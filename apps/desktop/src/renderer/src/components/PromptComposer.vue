@@ -1817,7 +1817,7 @@ defineExpose({
   cursor: pointer;
 }
 .voice-cancel:hover {
-  background: var(--wash-2);
+  background: linear-gradient(var(--wash-2), var(--wash-2)), var(--panel);
 }
 .composer-wrap {
   flex: 0 0 auto;
