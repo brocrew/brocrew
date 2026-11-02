@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { Worker } from 'node:worker_threads'
-import { GraphCallerProbe } from './helpers/graph-caller-probe'
+import { GraphCallerProbe, GraphHeartbeatProbe } from './helpers/graph-caller-probe'
 import { graphFixture, graphContext } from './helpers/team-profile-graph-fixture'
 import { bundleAWorker } from './helpers/bundle-a-worker'
 import { TeamProfileGraphLifetime } from '../src/main/db/team-profile-graph-reader'
@@ -16,7 +16,7 @@ for (const [identities, conversations, events] of [
     let bundle: string
     let bundling: Promise<string> | undefined
     let ownedReader: TeamProfileGraphLifetime | undefined
-    let ownedHeartbeat: ReturnType<typeof setInterval> | undefined
+    let ownedHeartbeat: GraphHeartbeatProbe | undefined
     let plans: unknown[]
     let probeStart: number
     const probe = (phase: string) =>
@@ -82,7 +82,7 @@ for (const [identities, conversations, events] of [
       probe('bundle-ready')
     }, 60000)
     afterAll(async () => {
-      if (ownedHeartbeat !== undefined) clearInterval(ownedHeartbeat)
+      await ownedHeartbeat?.close()
       await ownedReader?.close()
       await bundling?.catch(() => {})
       fixture?.close()
@@ -105,16 +105,9 @@ for (const [identities, conversations, events] of [
           return caller.worker(w)
         })
         ownedReader = reader
-        let previous = performance.now(),
-          maxDelay = 0,
-          ticks = 0
-        const heartbeat = setInterval(() => {
-          const now = performance.now()
-          maxDelay = Math.max(maxDelay, now - previous - 10)
-          previous = now
-          ticks++
-        }, 10)
+        const heartbeat = new GraphHeartbeatProbe(caller)
         ownedHeartbeat = heartbeat
+        await heartbeat.start()
         const start = performance.now()
         try {
           const header = await caller.call('snapshot-call', () =>
@@ -146,6 +139,7 @@ for (const [identities, conversations, events] of [
           await caller.call('close-call', () => reader.close())
           // Let the heartbeat observe the final synchronous turn before stopping it.
           await new Promise((resolve) => setTimeout(resolve, 10))
+          const heartbeatReport = heartbeat.report()
           const processExitAt = exitAt
           process.stdout.write(
             'GRAPH_SCALE ' +
@@ -162,8 +156,7 @@ for (const [identities, conversations, events] of [
                 callerMs: callerAt - start,
                 nativeExitMs: processExitAt === null ? null : processExitAt - start,
                 callerPhases: caller.phases,
-                heartbeatMaxDelayMs: maxDelay,
-                heartbeatTicks: ticks,
+                ...heartbeatReport,
                 plans,
               }) +
               '\n',
@@ -172,8 +165,8 @@ for (const [identities, conversations, events] of [
           expect(edges).toBe(identities)
           expect(header.metrics.rows).toBeLessThanOrEqual(250000)
           expect(header.metrics.cacheBytes).toBeLessThanOrEqual(32 * 1024 * 1024)
-          expect(ticks).toBeGreaterThan(0)
-          delays.push(maxDelay)
+          expect(heartbeatReport.heartbeatTicks).toBeGreaterThan(0)
+          delays.push(heartbeatReport.heartbeatMaxDelayMs)
           if (sample === 3) {
             expect(delays).toHaveLength(3)
             const medianDelay = [...delays].sort((a, b) => a - b)[1]!
@@ -183,9 +176,13 @@ for (const [identities, conversations, events] of [
             expect(medianDelay, JSON.stringify(delays)).toBeLessThan(100)
           }
           expect(caller.maxMs, JSON.stringify(caller.phases)).toBeLessThan(100)
+          expect(
+            heartbeatReport.heartbeatMaxGraphWorkMs,
+            JSON.stringify(heartbeatReport.maxGraphWorkGap),
+          ).toBeLessThan(100)
           expect(processExitAt).not.toBeNull()
         } finally {
-          clearInterval(heartbeat)
+          await heartbeat.close()
           await reader.close()
         }
       }, 20000)
