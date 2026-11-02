@@ -50,6 +50,14 @@ class Failed extends Error {
     super(reason)
   }
 }
+const sessionBatch = 64
+const sessionIds = Array.from({ length: sessionBatch }, () => '?').join(',')
+const sessionQuery = (table: 'turn' | 'events', projection: string): string => {
+  const select = `SELECT session_id,ordinal AS position,${projection} FROM ${table} WHERE ${table === 'events' ? 'type=? AND ' : ''}`
+  // Resume the current conversation by ordinal; seek only later conversations in the batch.
+  return `${select}session_id=? AND generation=? AND ordinal>? UNION ALL ${select}session_id IN (${sessionIds}) AND generation=? AND session_id>? AND ordinal>=0 ORDER BY session_id,position LIMIT ?`
+}
+
 const epoch = (v: unknown): v is number => graphEpoch.safeParse(v).success
 const provider = (v: unknown): 'claude' | 'codex' | null => providerSchema.safeParse(v).data ?? null
 const textBytes = (v: unknown): number => (typeof v === 'string' ? Buffer.byteLength(v, 'utf8') : 8)
@@ -232,17 +240,32 @@ export class TeamProfileGraphEngine {
     bindings: readonly unknown[] = [],
     ordinal = false,
     nativeBudget = 4 * 1024 * 1024,
+    sessionPage?: { generation: number; type?: string },
   ): Generator<Row> {
     const statement = typeof query === 'string' ? this.db.prepare(query) : query
     const sql = statement.source
     let after: number | bigint = ordinal ? -1 : -9223372036854775808n
+    let afterSession = ''
     while (true) {
       this.check()
       if (this.workingBytes + B.sqliteCacheBytes + nativeBudget + 2 * 1024 * 1024 > B.workingBytes)
         throw new Failed('budget')
       const pageSize = Math.min(B.page, B.rows - this.visited)
       if (pageSize <= 0) throw new Failed('budget')
-      const args = [...bindings, after, pageSize]
+      const type = sessionPage?.type ? [sessionPage.type] : []
+      const args = sessionPage
+        ? [
+            ...type,
+            afterSession,
+            sessionPage.generation,
+            after,
+            ...type,
+            ...bindings,
+            sessionPage.generation,
+            afterSession,
+            pageSize,
+          ]
+        : [...bindings, after, pageSize]
       this.trace?.(sql, args)
       const rows = statement.all(...args) as Row[]
       const bytes = serialize(rows).byteLength
@@ -259,8 +282,20 @@ export class TeamProfileGraphEngine {
         for (const row of rows) {
           this.check()
           const position = row.position
-          if (typeof position !== 'number' || !Number.isSafeInteger(position) || position <= after)
+          const session = sessionPage ? key(row.session_id) : afterSession
+          // SQLite orders session keys by their UTF-8 bytes, including non-BMP keys.
+          const order =
+            session === afterSession
+              ? 0
+              : Buffer.compare(Buffer.from(session), Buffer.from(afterSession))
+          if (
+            typeof position !== 'number' ||
+            !Number.isSafeInteger(position) ||
+            (sessionPage && (order < 0 || position < 0)) ||
+            (order === 0 && position <= after)
+          )
             throw new Failed('metadata', 1)
+          afterSession = session
           after = position
           for (const [name, value] of Object.entries(row))
             if (name.startsWith('bad_') && value !== 0) throw new Failed('metadata', 1)
@@ -297,6 +332,26 @@ export class TeamProfileGraphEngine {
       [
         'SELECT ordinal FROM events WHERE type=? AND session_id=? AND generation=? AND ordinal>? ORDER BY ordinal LIMIT ?',
         ['message_sent', 's', 0, -1, 256],
+        'events_kind_owner_idx',
+      ],
+      [
+        sessionQuery('turn', 'opened_at'),
+        ['', 0, -1, ...Array.from({ length: sessionBatch }, () => 's'), 0, '', 256],
+        'turn_session_ordinal_uq',
+      ],
+      [
+        sessionQuery('events', 'created_at'),
+        [
+          'message_sent',
+          '',
+          0,
+          -1,
+          'message_sent',
+          ...Array.from({ length: sessionBatch }, () => 's'),
+          0,
+          '',
+          256,
+        ],
         'events_kind_owner_idx',
       ],
     ] as const
@@ -520,9 +575,7 @@ export class TeamProfileGraphEngine {
       else if (!held) this.bump(coverage, 'unresolvedWork')
     }
     const routeKeys = new Set<string>()
-    const turns = this.db.prepare(
-      'SELECT ordinal AS position,opened_at,closed_at FROM turn WHERE session_id=? AND generation=? AND ordinal>? ORDER BY ordinal LIMIT ?',
-    )
+    const turns = this.db.prepare(sessionQuery('turn', 'opened_at,closed_at'))
     const interactionQuery = (category: 'messages' | 'questions') => {
       const valid =
         "CASE WHEN typeof(payload)='text' AND length(CAST(payload AS BLOB))<=32768 THEN json_valid(payload) ELSE 0 END"
@@ -530,53 +583,79 @@ export class TeamProfileGraphEngine {
       const extract = (field: string) =>
         `CASE WHEN ${object} THEN CASE WHEN json_type(payload,'$.${field}')='text' THEN substr(json_extract(payload,'$.${field}'),1,201) ELSE NULL END ELSE NULL END AS "${field}"`
       return this.db.prepare(
-        `SELECT ordinal AS position,created_at,CASE WHEN ${object} THEN 0 ELSE 1 END AS bad_payload,${extract('to')}${category === 'questions' ? `,${extract('parent')},${extract('requestId')}` : ''} FROM events WHERE type=? AND session_id=? AND generation=? AND ordinal>? ORDER BY ordinal LIMIT ?`,
+        sessionQuery(
+          'events',
+          `created_at,CASE WHEN ${object} THEN 0 ELSE 1 END AS bad_payload,${extract('to')}${category === 'questions' ? `,${extract('parent')},${extract('requestId')}` : ''}`,
+        ),
       )
     }
     const interactions = {
       messages: interactionQuery('messages'),
       questions: interactionQuery('questions'),
     }
+    // Group references only; the session records and keys are already reserved above.
+    const generations = new Map<number, string[]>()
     for (const s of sessions.values()) {
-      const node = s.identity === null ? undefined : byId.get(s.identity)
-      if (!node) continue
-      this.phase = 'turns'
-      for (const row of this.pages(turns, [s.id, s.generation], true)) {
-        const opened = row.opened_at,
-          closed = row.closed_at
-        if (!epoch(opened) || opened > readAt) continue
-        node.lastTurnAt = Math.max(node.lastTurnAt ?? opened, opened)
-        if (opened >= recentSince) this.bump(node, 'recentTurns')
-        if (epoch(closed) && closed >= opened && closed <= readAt)
-          node.lastTurnAt = Math.max(node.lastTurnAt, closed)
+      if (s.identity === null || !byId.has(s.identity)) continue
+      let group = generations.get(s.generation)
+      if (!group) {
+        this.reserve(96)
+        group = []
+        generations.set(s.generation, group)
       }
-      for (const category of ['messages', 'questions'] as const) {
-        this.phase = category
-        const type = category === 'messages' ? 'message_sent' : 'request_routed'
-        for (const row of this.pages(interactions[category], [type, s.id, s.generation], true)) {
-          if (!epoch(row.created_at) || row.created_at > readAt) continue
-          const to = key(row.to)
-          if (category === 'messages') {
-            this.bump(node, 'messagesSent')
-            addPair(node.id, sessions.get(to)?.identity ?? null, 'messages')
-          } else {
-            const request = key(row.requestId)
-            if (to === 'the-parent') {
-              this.bump(coverage, 'excludedParentRoutes')
-              continue
+      this.reserve(16)
+      group.push(s.id)
+    }
+    for (const [generation, group] of generations) {
+      for (let offset = 0; offset < group.length; offset += sessionBatch) {
+        this.check()
+        const ids = group.slice(offset, offset + sessionBatch)
+        // Padding keeps the SQL fixed: three compiled statements for every batch size.
+        while (ids.length < sessionBatch) ids.push(ids[0]!)
+        this.phase = 'turns'
+        for (const row of this.pages(turns, ids, true, 4 * 1024 * 1024, { generation })) {
+          const node = byId.get(sessions.get(key(row.session_id))!.identity!)!
+          const opened = row.opened_at,
+            closed = row.closed_at
+          if (!epoch(opened) || opened > readAt) continue
+          node.lastTurnAt = Math.max(node.lastTurnAt ?? opened, opened)
+          if (opened >= recentSince) this.bump(node, 'recentTurns')
+          if (epoch(closed) && closed >= opened && closed <= readAt)
+            node.lastTurnAt = Math.max(node.lastTurnAt, closed)
+        }
+        for (const category of ['messages', 'questions'] as const) {
+          this.phase = category
+          const type = category === 'messages' ? 'message_sent' : 'request_routed'
+          for (const row of this.pages(interactions[category], ids, true, 4 * 1024 * 1024, {
+            generation,
+            type,
+          })) {
+            const s = sessions.get(key(row.session_id))!
+            const node = byId.get(s.identity!)!
+            if (!epoch(row.created_at) || row.created_at > readAt) continue
+            const to = key(row.to)
+            if (category === 'messages') {
+              this.bump(node, 'messagesSent')
+              addPair(node.id, sessions.get(to)?.identity ?? null, 'messages')
+            } else {
+              const request = key(row.requestId)
+              if (to === 'the-parent') {
+                this.bump(coverage, 'excludedParentRoutes')
+                continue
+              }
+              if (to === 'a-person') {
+                this.bump(coverage, 'excludedPersonRoutes')
+                continue
+              }
+              if (to !== 'an-agent') throw new Failed('metadata', 1)
+              const recipient = key(row.parent),
+                dedup = JSON.stringify([s.id, request, recipient])
+              if (routeKeys.has(dedup)) continue
+              if (routeKeys.size >= B.routeKeys) throw new Failed('budget')
+              this.reserve(128 + textBytes(dedup) * 2)
+              routeKeys.add(dedup)
+              addPair(node.id, sessions.get(recipient)?.identity ?? null, 'questions')
             }
-            if (to === 'a-person') {
-              this.bump(coverage, 'excludedPersonRoutes')
-              continue
-            }
-            if (to !== 'an-agent') throw new Failed('metadata', 1)
-            const recipient = key(row.parent),
-              dedup = JSON.stringify([s.id, request, recipient])
-            if (routeKeys.has(dedup)) continue
-            if (routeKeys.size >= B.routeKeys) throw new Failed('budget')
-            this.reserve(128 + textBytes(dedup) * 2)
-            routeKeys.add(dedup)
-            addPair(node.id, sessions.get(recipient)?.identity ?? null, 'questions')
           }
         }
       }
