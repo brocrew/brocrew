@@ -16,6 +16,7 @@ export class GraphCallerProbe {
   private windowCpuMs = 0
 
   call<T>(phase: string, action: () => T): T {
+    if (this.spans.length + this.depth >= 256) throw new Error('Graph probe span budget exceeded')
     const start = performance.now()
     const cpu = process.threadCpuUsage()
     const depth = this.depth++
@@ -27,7 +28,6 @@ export class GraphCallerProbe {
       const used = process.threadCpuUsage(cpu)
       const cpuMs = (used.user + used.system) / 1000
       this.depth--
-      if (this.spans.length >= 256) throw new Error('Graph probe span budget exceeded')
       this.spans.push({ phase, start, end, cpuMs, depth })
       if (depth === 0) {
         this.windowWallMs += elapsed
