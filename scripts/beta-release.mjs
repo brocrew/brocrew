@@ -51,7 +51,7 @@ export function titleOf(tag) {
 
 const WINDOWS = `**Windows (x64):**
 1. Download \`BroCrew-Setup-….exe\` below. If your browser says the file is not commonly downloaded, choose Keep.
-2. Open it. Windows says "Windows protected your PC": choose More info, then Run anyway.
+2. Open it. If Windows says "Windows protected your PC", choose More info, then Run anyway. A signed BroCrew installer shows DEVERP as publisher.
 3. Install for yourself only ("Only for me"), so no administrator is needed.`
 
 const MAC = `**macOS (Apple silicon: M1 or later; macOS 15 or later):**
@@ -92,12 +92,12 @@ function pageOf(platform, commit, repository) {
 }
 
 /** Public versions describe API keys; private beta tags retain their platform's sign-in steps. */
-export function notesOf(tag, commit, repository = null) {
+export function notesOf(tag, commit, repository = null, windowsSigned = false) {
   const platforms = platformsOf(tag)
   const release = versionOf(tag)
   const what =
     release !== null
-      ? `BroCrew ${release.version}${release.beta ? ', a beta,' : ''} for Windows x64 and for Macs with Apple silicon (unsigned on Windows; signed ad hoc and not notarized on the Mac)`
+      ? `BroCrew ${release.version}${release.beta ? ', a beta,' : ''} for Windows x64 and for Macs with Apple silicon (${windowsSigned ? 'Windows publisher: DEVERP' : 'unsigned on Windows'}; signed ad hoc and not notarized on the Mac)`
       : platforms.length === 1
         ? platforms[0] === 'windows'
           ? 'Unsigned beta build of BroCrew for Windows x64'
@@ -142,7 +142,14 @@ if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.a
   if (command === 'title' && tag !== undefined) {
     console.log(titleOf(tag))
   } else if (command === 'notes' && tag !== undefined && commit !== undefined) {
-    console.log(notesOf(tag, commit, process.env.GITHUB_REPOSITORY || null))
+    console.log(
+      notesOf(
+        tag,
+        commit,
+        process.env.GITHUB_REPOSITORY || null,
+        process.env.BROCREW_WINDOWS_SIGNED === 'true',
+      ),
+    )
   } else {
     console.error('usage: beta-release.mjs title <tag> | notes <tag> <commit>')
     process.exit(2)
