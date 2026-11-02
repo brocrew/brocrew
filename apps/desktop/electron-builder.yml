@@ -153,7 +153,7 @@ mac:
     # it and the proof silently has nothing to run against.
     - target: dir
       arch: [arm64]
-# Windows x64: release tags can sign with DEVERP's eSigner account. Beta and CI builds stay
+# Windows x64: release tags can sign with DEVERP's eSigner account. windows.yml and CI builds stay
 # unsigned. A new signed build can still show SmartScreen's warning until it earns reputation.
 win:
   signtoolOptions:
