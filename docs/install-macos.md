@@ -92,7 +92,7 @@ Get the latest build from the [Releases page](https://github.com/brocrew/brocrew
 
 There's no Linux or Intel Mac build yet.
 
-**The builds aren't signed yet,** because signing needs a paid Apple or Microsoft certificate. So the first time you open BroCrew, your computer warns you; the steps below get you past that once. Download BroCrew only from this repo's Releases page. Each file's SHA-256 checksum is shown next to it there, if you want to check your download. If you'd rather not run an unsigned app at all, run BroCrew from source instead (below).
+**Mac builds are signed ad hoc and are not notarized.** Windows release builds support signing as DEVERP; older and test builds may be unsigned. Your computer may warn when you open a download. Download BroCrew only from this repo's Releases page. Each file's SHA-256 checksum is shown next to it there, if you want to check your download. You can also run BroCrew from source (below).
 
 **On a Mac** (these steps are for macOS 15 Sequoia or later):
 

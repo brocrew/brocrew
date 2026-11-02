@@ -153,9 +153,14 @@ mac:
     # it and the proof silently has nothing to run against.
     - target: dir
       arch: [arm64]
-# ⚑ F072 — Windows x64, unsigned: a beta tester accepts SmartScreen's warning (More info → Run
-# anyway). Built on GitHub's Windows runner (`.github/workflows/windows.yml`), never on the Mac.
+# Windows x64: release tags can sign with DEVERP's eSigner account. windows.yml and CI builds stay
+# unsigned. A new signed build can still show SmartScreen's warning until it earns reputation.
 win:
+  signtoolOptions:
+    sign: ./build/windows-sign.cjs
+    signingHashAlgorithms: [sha256]
+    # release.yml supplies publisherName: DEVERP only when signing is enabled. Unsigned upgrade
+    # candidates keep the existing updater policy, which accepts unsigned candidates.
   # ⚑ F082 — the same logo, the tile filling the square. electron-builder writes it into the
   # executable, and the installer and its uninstaller take it as theirs. The shortcuts and the Apps
   # entry show the executable's icon, and so does the window: one given no icon of its own takes the

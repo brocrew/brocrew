@@ -1,6 +1,6 @@
 # Installing BroCrew on Windows
 
-BroCrew's Windows installer is not signed. Windows will warn you about it, and these steps get you past the warning and set up your API keys.
+A signed BroCrew installer shows **DEVERP** as publisher. Older and test builds may be unsigned. Windows can still warn about a new signed build while it earns reputation; these steps cover that warning and setting up your API keys.
 
 ## Before you install
 
@@ -17,7 +17,7 @@ BroCrew's Windows installer is not signed. Windows will warn you about it, and t
 ## Install
 
 1. Download `BroCrew-Setup-….exe` from the latest release on the repository's **Releases** page. If your browser says the file is not commonly downloaded, choose to keep it.
-2. Open it. Windows shows **"Windows protected your PC"**, because the installer is not signed. Choose **More info**, then **Run anyway**.
+2. Open it. If Windows shows **"Windows protected your PC"**, choose **More info**, then **Run anyway**. A signature does not guarantee that SmartScreen will show no warning.
 3. When the installer asks who to install for, choose **Only for me**, so it does not ask for an administrator. Keep the suggested folder or pick another, and finish.
 4. Open **BroCrew** from the Start menu or the desktop shortcut. The first start takes a little longer.
 
@@ -63,12 +63,12 @@ Get the latest build from the [Releases page](https://github.com/brocrew/brocrew
 
 There's no Linux or Intel Mac build yet.
 
-**The builds aren't signed yet,** because signing needs a paid Apple or Microsoft certificate. So the first time you open BroCrew, your computer warns you; the steps below get you past that once. Download BroCrew only from this repo's Releases page. Each file's SHA-256 checksum is shown next to it there, if you want to check your download. If you'd rather not run an unsigned app at all, run BroCrew from source instead (below).
+**Windows release builds support signing as DEVERP; older and test builds may be unsigned.** Mac builds are signed ad hoc and are not notarized. Your computer may warn when you open a download. Download BroCrew only from this repo's Releases page. Each file's SHA-256 checksum is shown next to it there, if you want to check your download. You can also run BroCrew from source (below).
 
 **On Windows** (beta):
 
 1. If your browser says the file isn't commonly downloaded, choose **Keep**.
-2. Open the installer. Windows shows **"Windows protected your PC"**: click **More info**, then **Run anyway**.
+2. Open the installer. If Windows shows **"Windows protected your PC"**, click **More info**, then **Run anyway**.
 3. Choose **Only for me**, so no administrator is needed, and finish the install.
 4. Open **BroCrew** from the Start menu. The first start takes a little longer.
 
