@@ -382,8 +382,14 @@ describe('§3 · `PromptComposer` says, while `busy`, that Stop joins the ask th
 
   it('⚑ THE CONTROL — `blocked` outranks it, as it outranks every state’s own sentence (169 §1)', async () => {
     const blocked = 'This conversation’s folder is gone.'
-    const html = await composer({ state: 'busy', blocked, stopUnanswered: CODEX_STOP_JOINS })
-    expect(footOf(html)).toBe(blocked)
+    const html = await composer({
+      state: 'busy',
+      blocked: [{ words: blocked }],
+      stopUnanswered: CODEX_STOP_JOINS,
+    })
+    expect(shown(html)).toContain('data-cy="send-blocked"')
+    expect(shown(html)).toContain(blocked)
+    expect(shown(html)).not.toContain('data-cy="composer-hint"')
   })
 })
 

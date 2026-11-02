@@ -80,6 +80,7 @@ import { reopeningHeldBy, reopeningSays } from '../lib/reopening'
 import { sessionPanel } from '../lib/session-panel'
 import { CLOSING_BLOCK, SIGN_IN_SUPERSEDED_BLOCK } from '../lib/send-refusals'
 import { aCommandInTheBox, aCommandTakesNoAttachmentsYet } from '../lib/a-command-with-files'
+import type { SendBlock } from '../lib/composer-notice'
 import {
   aSurfaceMayOpenADocument,
   type ResourceDrawer,
@@ -1213,11 +1214,13 @@ const GO_AHEAD_WAITS_FOR_AN_ANSWER =
  * See `send-refusals.ts` for the whole set of states the host refuses a send in, and which of them
  * this window can know about at all.
  */
-const sendBlocked = computed<string | null>(() => {
+const sendBlocked = computed<SendBlock[]>(() => {
+  // Every reason that holds, most important first: the composer shows the first and counts the rest.
+  const reasons: SendBlock[] = []
   // ⚑ **D-017b · a message from here cannot continue it** — the host said so when it drew it
   // (another window has it open, or this app cannot start it again), in its own words.
   const cannot = props.record.meta?.cannotTakeAMessage ?? null
-  if (cannot !== null) return cannot
+  if (cannot !== null) reasons.push({ words: cannot })
   // ⛔ **Closing outranks `frozen`** (234 §2, from `228` M2). ⚠️ **219 gated Send on
   // `closing` and left this line above it**, so a conversation closed with a card open kept the
   // frozen advice: *"answer the request above to continue"*, about a request `close()` settles at
@@ -1225,13 +1228,16 @@ const sendBlocked = computed<string | null>(() => {
   // same precedence argument this block already makes for the sign-in: a conversation on its way
   // out cannot be repaired by the remedy the state names, so naming it first would name a later
   // that does not exist.
-  if (props.record.phase === 'closing') return CLOSING_BLOCK
-  if (composerState.value !== 'idle' && composerState.value !== 'busy') return null
-  if (signInSuperseded.value) return SIGN_IN_SUPERSEDED_BLOCK
+  if (props.record.phase === 'closing') reasons.push({ words: CLOSING_BLOCK })
+  if (composerState.value !== 'idle' && composerState.value !== 'busy') return reasons
+  if (signInSuperseded.value) reasons.push({ words: SIGN_IN_SUPERSEDED_BLOCK })
   const command = aCommandInTheBox(props.draft, control.value.commands)
-  return command === null || props.handing.staged.length === 0
-    ? null
-    : aCommandTakesNoAttachmentsYet(command)
+  if (command !== null && props.handing.staged.length > 0)
+    reasons.push({
+      words: aCommandTakesNoAttachmentsYet(command),
+      fix: { label: 'Remove attachments', press: () => props.handing.stage([]) },
+    })
+  return reasons
 })
 
 /**

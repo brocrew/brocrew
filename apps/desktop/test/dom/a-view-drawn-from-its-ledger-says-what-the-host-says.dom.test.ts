@@ -294,7 +294,7 @@ describe('the composer of a view drawn from its ledger', () => {
       await settle()
       await typeInto(m, WORDS)
       expect(visible(m.q('prompt-input')), `${name}: the box is gone`).toBe(true)
-      expect(words(m.q('composer-hint')), `${name}: the hint`).toContain(says)
+      expect(words(m.q('composer-notice')), `${name}: the notice`).toContain(says)
       expect(isDisabled(m.q('send-prompt')), `${name}: Send is lit`).toBe(true)
       m.q('send-prompt').click()
       await settle()

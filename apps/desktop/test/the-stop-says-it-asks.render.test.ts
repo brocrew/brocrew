@@ -469,7 +469,10 @@ describe('§5 · the words beside the Stop are untouched (scope)', () => {
     expect(count(idle, 'interrupt-session')).toBe(0)
     expect(footOf(idle)).toBe(`${SEND_KEY} to send · Enter for a new line`)
     const blocked = 'This conversation’s folder is gone.'
-    expect(footOf(await composer({ state: 'busy', blocked }))).toBe(blocked)
+    const html = await composer({ state: 'busy', blocked: [{ words: blocked }] })
+    expect(html).toContain('data-cy="send-blocked"')
+    expect(html).toContain(blocked)
+    expect(html).not.toContain('data-cy="composer-hint"')
   })
 })
 

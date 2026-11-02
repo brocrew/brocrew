@@ -94,8 +94,13 @@ function open(initial: SessionRecord, draft = TYPED) {
 }
 
 const send = (view: ReturnType<typeof open>['view']) => view.q('send-prompt') as HTMLButtonElement
+/** What the composer says about sending: the reason in its notice, else the hint under it. */
 const hint = (view: ReturnType<typeof open>['view']) =>
-  view.q('composer-hint').textContent?.replace(/\s+/g, ' ').trim() ?? ''
+  (
+    view.all('send-blocked')[0]?.querySelector('.notice-words') ?? view.q('composer-hint')
+  ).textContent
+    ?.replace(/\s+/g, ' ')
+    .trim() ?? ''
 
 describe('219 · Send is dark on a superseded sign-in, and says why', () => {
   it('🔴 the button is disabled, and its tooltip is the reason rather than "Send"', () => {
@@ -128,7 +133,7 @@ describe('219 · Send is dark on a superseded sign-in, and says why', () => {
     // is measured as one — the bar's box must end before the composer's begins.
     expect(hint(view)).toContain('above')
     const bar = view.q('sign-in-superseded').getBoundingClientRect()
-    const foot = view.q('composer-hint').getBoundingClientRect()
+    const foot = view.q('composer-notice').getBoundingClientRect()
     expect(bar.height, 'the bar has no box to be above anything').toBeGreaterThan(0)
     expect(
       bar.bottom,
@@ -228,7 +233,7 @@ describe('234 §2 · closing outranks the frozen card as well', () => {
     // for "an in-flight run is frozen on YOU"; wearing it over a sentence that says the opposite is
     // the composer disagreeing with itself in two registers at once.
     expect(
-      view.q('composer-hint').classList.contains('frozen'),
+      view.q('prompt-input').closest('form')?.classList.contains('frozen'),
       'the closing sentence is painted in the frozen-on-you register',
     ).toBe(false)
     expect(view.q('composer-band').querySelector('form')?.classList.contains('frozen')).toBe(false)

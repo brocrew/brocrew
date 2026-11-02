@@ -316,8 +316,9 @@ MUTATIONS = [
         [
             (
                 PANE,
-                "  return command === null || props.handing.staged.length === 0\n",
-                "  return command === null\n",
+                # ⚑ **one notice for every composer problem · re-anchored in place, not retired** — The pane hands the composer every reason as a list now; the plant does the same defect on the list.
+                "  if (command !== null && props.handing.staged.length > 0)\n",
+                "  if (command !== null)\n",
             )
         ],
     ),
@@ -327,10 +328,9 @@ MUTATIONS = [
         [
             (
                 PANE,
-                "  return command === null || props.handing.staged.length === 0\n"
-                "    ? null\n"
-                "    : aCommandTakesNoAttachmentsYet(command)\n",
-                "  return command === null ? null : null\n",
+                # ⚑ **one notice for every composer problem · re-anchored in place, not retired** — The pane hands the composer every reason as a list now; the plant does the same defect on the list.
+                "  if (command !== null && props.handing.staged.length > 0)\n",
+                "  if (command !== null && props.handing.staged.length < 0)\n",
             )
         ],
     ),
@@ -340,12 +340,9 @@ MUTATIONS = [
         [
             (
                 PANE,
-                "  if (signInSuperseded.value) return SIGN_IN_SUPERSEDED_BLOCK\n"
-                "  const command = aCommandInTheBox(props.draft, control.value.commands)\n",
-                "  const command = aCommandInTheBox(props.draft, control.value.commands)\n"
-                "  if (command !== null && props.handing.staged.length > 0)\n"
-                "    return aCommandTakesNoAttachmentsYet(command)\n"
-                "  if (signInSuperseded.value) return SIGN_IN_SUPERSEDED_BLOCK\n",
+                # ⚑ **one notice for every composer problem · re-anchored in place, not retired** — The pane hands the composer every reason as a list now; the plant does the same defect on the list. The command's reason is pushed ahead of the sign-in, so it is the one shown.
+                "  if (signInSuperseded.value) reasons.push({ words: SIGN_IN_SUPERSEDED_BLOCK })\n  const command = aCommandInTheBox(props.draft, control.value.commands)\n",
+                "  const command = aCommandInTheBox(props.draft, control.value.commands)\n  if (command !== null && props.handing.staged.length > 0)\n    reasons.push({ words: aCommandTakesNoAttachmentsYet(command) })\n  if (signInSuperseded.value) reasons.push({ words: SIGN_IN_SUPERSEDED_BLOCK })\n",
             )
         ],
     ),
@@ -515,7 +512,8 @@ MUTATIONS = [
         # `sendBlocked` null on the recorded phase only, so the row stays distinct from row 219's
         # plain `:blocked` removal.
         [
-            (CONVERSATIONPANE, '  const command = aCommandInTheBox(props.draft, control.value.commands)\n  return command === null || props.handing.staged.length === 0\n    ? null\n    : aCommandTakesNoAttachmentsYet(command)', "  const command = aCommandInTheBox(props.draft, control.value.commands)\n  return props.record.phase === 'recorded' || command === null || props.handing.staged.length === 0\n    ? null\n    : aCommandTakesNoAttachmentsYet(command)"),
+            # ⚑ **one notice for every composer problem · re-anchored in place, not retired** — The pane hands the composer every reason as a list now; the plant does the same defect on the list.
+            (CONVERSATIONPANE, "  if (command !== null && props.handing.staged.length > 0)\n", "  if (props.record.phase !== 'recorded' && command !== null && props.handing.staged.length > 0)\n"),
         ],
     ),
     (

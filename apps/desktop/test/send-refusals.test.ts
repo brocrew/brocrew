@@ -529,7 +529,7 @@ describe('219 §2 · the knowable verdicts are true of the code today', () => {
     // …and one a message cannot continue says the host's own refusal in place of Send — a
     // `blocked`, read off the hand-over, before the press.
     expect(pane).toContain('const cannot = props.record.meta?.cannotTakeAMessage ?? null')
-    expect(pane).toContain('if (cannot !== null) return cannot')
+    expect(pane).toContain('if (cannot !== null) reasons.push({ words: cannot })')
     // …and no composer exists at all before the session does, which is `still-starting`'s answer.
     expect(readFileSync(SCREEN, 'utf8')).toContain("surface === 'conversation' && active?.meta")
   })
@@ -545,12 +545,12 @@ describe('219 §2 · the knowable verdicts are true of the code today', () => {
     expect(transcript).toContain("case 'provider_commands': {")
     // ⚑ …and the pane asks the gate of it, into the `blocked` the composer already honours.
     const pane = readFileSync(PANE, 'utf8')
-    const from = pane.indexOf('const sendBlocked = computed<string | null>(() => {')
+    const from = pane.indexOf('const sendBlocked = computed<SendBlock[]>(() => {')
     expect(from, 'sendBlocked is gone').toBeGreaterThan(-1)
     const body = pane.slice(from, pane.indexOf('\n})', from))
     expect(body).toContain('aCommandInTheBox(props.draft, control.value.commands)')
     expect(body).toContain('aCommandTakesNoAttachmentsYet(command)')
-    expect(body).toContain('props.handing.staged.length === 0')
+    expect(body).toContain('props.handing.staged.length > 0')
     expect(pane).toContain(':blocked="sendBlocked"')
     // ⛔ **One home for the words** — searched over every renderer file by what a gate would have to
     // SAY, as `708` searched: only the gate's module says it, and this table describes it.
@@ -640,7 +640,7 @@ describe('219 §2 · the knowable verdicts are true of the code today', () => {
     // and the PANE gates on it. Two pins, because either one going away makes the row a lie.
     expect(readFileSync(STORE, 'utf8')).toContain("asked!.phase = 'closing'")
     expect(readFileSync(PANE, 'utf8')).toContain(
-      "if (props.record.phase === 'closing') return CLOSING_BLOCK",
+      "if (props.record.phase === 'closing') reasons.push({ words: CLOSING_BLOCK })",
     )
   })
 })

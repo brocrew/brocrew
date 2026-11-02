@@ -286,14 +286,14 @@ describe('223 · every dark Send names its OWN obstacle', () => {
     const seen = new Set<string>()
     for (const state of STATES) {
       for (const draft of ['', 'hello']) {
-        for (const blocked of [null, 'the sign-in moved']) {
+        for (const blocked of [[], [{ words: 'the sign-in moved' }]]) {
           // `busy` with text swaps the button for queue/interrupt-send, and `frozen`/`busy` render
           // the stop button — so this only speaks about the mounts where `send-prompt` exists.
           const m = composer({ state, draft, blocked, interruptible: false })
           const send = m.host.querySelector('[data-cy="send-prompt"]') as HTMLButtonElement | null
           if (send === null) continue
           seen.add(
-            `${state}/${draft === '' ? 'empty' : 'typed'}/${blocked === null ? 'free' : 'blocked'}`,
+            `${state}/${draft === '' ? 'empty' : 'typed'}/${blocked.length === 0 ? 'free' : 'blocked'}`,
           )
           if (send.disabled) {
             expect(send.title, `${state} dark with no reason`).not.toBe('')
@@ -326,7 +326,7 @@ describe('223 §4 · `blocked` outranks the empty box (219 §1)', () => {
     expect(button(m).disabled, 'both reasons are true, so it must be dark either way').toBe(true)
     expect(button(m).title).toBe(CLOSING_BLOCK)
     expect(button(m).title).not.toBe(nothingToSendYet(true))
-    expect(hint(m)).toBe(CLOSING_BLOCK)
+    expect(m.q('send-blocked').textContent?.trim()).toBe(CLOSING_BLOCK)
   })
 
   it('⚑ …and with the same record UNBLOCKED, the empty box gets the slot back', async () => {

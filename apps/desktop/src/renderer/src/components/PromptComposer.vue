@@ -156,12 +156,13 @@ export const MISSING_ON_RESTORE =
 </script>
 
 <script setup lang="ts">
-import { computed, ref, shallowRef } from 'vue'
+import { computed, ref, shallowRef, watch } from 'vue'
 import { createAttachmentBook, type DraftHanding } from '../lib/drafts'
 import { A_STOP_ASKS_THE_TURN } from '../lib/stop-unanswered'
 import { A_STOP_THEN_THIS_IS_SENT } from '../lib/stop-unanswered'
 import { isOnlyAStopWord } from '../lib/a-stop-word'
 import { useVoiceInput } from '../lib/voice-input'
+import type { SendBlock } from '../lib/composer-notice'
 
 /** The one place a conversation is spoken to — and the place that says why you cannot speak. */
 const props = withDefaults(
@@ -209,7 +210,8 @@ const props = withDefaults(
      */
     stopUnanswered?: string | null
     /**
-     * ⛔ **Why a send cannot happen right now, in the caller's own words — or `null`** (169 §1).
+     * ⛔ **Why a send cannot happen right now, in the caller's own words — every reason, most
+     * important first, or none** (169 §1).
      *
      * Not a boolean, and that is the whole of 118's rule: *"a greyed button still says 'this is the
      * thing to do here, later'; there is no later"*. A disabled control is only honest when the
@@ -221,7 +223,7 @@ const props = withDefaults(
      * keeping while the thing that blocks it is fixed), and nothing here inspects why — the caller
      * has the fact and the sentence, and this component has the two send paths.
      */
-    blocked?: string | null
+    blocked?: readonly SendBlock[]
     /**
      * ⛔ **The attachment TRANSACTION for this draft** (292 §2) — owned by the CALLER, keyed by
      * conversation, for exactly the reason {@link draft} is.
@@ -270,7 +272,7 @@ const props = withDefaults(
     interruptible: true,
     hasQueued: false,
     stopUnanswered: null,
-    blocked: null,
+    blocked: () => [],
     // ⚠️ A FACTORY, so each mount that owns no book gets its own — a shared one would be `019`'s
     // bug in the one place this component is allowed to keep state at all.
     handing: () => createAttachmentBook().handing('composer'),
@@ -339,6 +341,13 @@ const voicePhase = voice.phase
 const voiceError = voice.error
 const voiceSettingsPane = voice.settingsPane
 const voiceRemaining = voice.remaining
+/** The countdown beside the mic while it listens, as minutes and seconds. */
+const voiceCountdown = computed(
+  () =>
+    `${Math.floor(voiceRemaining.value / 60)}:${String(voiceRemaining.value % 60).padStart(2, '0')}`,
+)
+/** The reason Send can't go, the first of the caller's, or `null` when it can. */
+const blockedWords = computed(() => props.blocked[0]?.words ?? null)
 
 /**
  * ⛔ **The staged list — the ONE thing every reader and every write here computes from.**
@@ -464,7 +473,8 @@ async function settle(): Promise<void> {
  * staged does not.
  */
 const canSendNow = computed(
-  () => !voiceActive.value && canSend(text.value, props.state, props.blocked, staged.value.length),
+  () =>
+    !voiceActive.value && canSend(text.value, props.state, blockedWords.value, staged.value.length),
 )
 
 /**
@@ -504,7 +514,7 @@ const canSendNow = computed(
 const sendRefusal = computed<string | null>(() => {
   if (voiceActive.value) return 'Finish dictating and review the text before sending'
   if (canSendNow.value) return null
-  if (props.blocked !== null) return props.blocked
+  if (blockedWords.value !== null) return blockedWords.value
   if (props.state === 'starting') return 'This conversation is still opening — one at a time'
   if (props.state === 'frozen') return 'Answer the request above — a message will not answer it'
   return nothingToSendYet(props.canAttach)
@@ -544,7 +554,7 @@ const busyChoices = computed(() => props.state === 'busy' && canSendNow.value)
  * it"* in the colour that means the opposite. ⚑ One predicate, read by the form and by the hint,
  * so the two cannot disagree again: the register belongs to the sentence that is actually shown.
  */
-const frozenLook = computed(() => props.state === 'frozen' && props.blocked === null)
+const frozenLook = computed(() => props.state === 'frozen' && blockedWords.value === null)
 
 /**
  * Whether the turn can be taken back — **`frozen` included, and that is 094's P2.**
@@ -674,7 +684,7 @@ async function emitOnce(latch: { interrupting: boolean; voiceVersion: number }):
   if (
     voiceActive.value ||
     latch.voiceVersion !== voice.version.value ||
-    !canSend(text.value, props.state, props.blocked, staged.value.length)
+    !canSend(text.value, props.state, blockedWords.value, staged.value.length)
   )
     return
   // ⚠️ **Read AFTER the wait too.** A turn that started while the picture was being written turns
@@ -715,6 +725,60 @@ const attachRefusal = computed<string | null>({
   get: () => props.handing.refusal,
   set: (why) => props.handing.refuse(why),
 })
+
+interface ComposerNotice extends SendBlock {
+  key: string
+  /** The answer to a press the person just made, rather than a standing reason. */
+  answer: boolean
+  dismiss?: () => void
+}
+/**
+ * Every problem the composer has, in one list for one notice: the answers to the person's last
+ * attach or dictation first, since they're what the person is looking for, then why Send can't go,
+ * in the caller's order.
+ */
+const notices = computed<ComposerNotice[]>(() => [
+  ...(!attachRefusal.value
+    ? []
+    : [
+        {
+          key: 'attach-refused',
+          words: attachRefusal.value,
+          answer: true,
+          dismiss: () => {
+            attachRefusal.value = null
+          },
+        },
+      ]),
+  ...(!voiceError.value
+    ? []
+    : [
+        {
+          key: 'voice-error',
+          words: voiceError.value,
+          answer: true,
+          fix:
+            voiceSettingsPane.value === null
+              ? undefined
+              : { label: 'Open System Settings', press: () => voice.openSettings() },
+          dismiss: () => voice.dismiss(),
+        },
+      ]),
+  ...props.blocked.map((block, index) => ({
+    ...block,
+    key: `send-blocked-${index}`,
+    answer: false,
+  })),
+])
+/** Whether the notice lists every problem, or only the first with a count of the rest. */
+const noticesOpen = ref(false)
+watch(
+  () => notices.value.length,
+  (count) => {
+    if (count < 2) noticesOpen.value = false
+  },
+)
+const shownNotices = computed(() => (noticesOpen.value ? notices.value : notices.value.slice(0, 1)))
 
 /**
  * ⛔ **Whether anything can be staged here at all** — the paperclip's rule AND the drop's (218 §2).
@@ -1235,31 +1299,49 @@ defineExpose({
       <p v-if="acquiringNow" class="attaching" role="status" data-cy="composer-acquiring">
         Saving what you attached — Send waits for it
       </p>
-      <p v-if="attachRefusal" class="attach-refused" role="alert" data-cy="attach-refused">
-        {{ attachRefusal }}
-      </p>
-      <div v-if="voiceError" class="voice-error" role="alert" data-cy="voice-error">
+      <!-- One notice for every problem: the first one, and the rest behind "+N more". -->
+      <div v-if="notices.length > 0" class="composer-notice" data-cy="composer-notice">
         <svg class="icon" aria-hidden="true"><use href="#i-alert" /></svg>
-        <span class="voice-error-words">{{ voiceError }}</span>
-        <button
-          v-if="voiceSettingsPane"
-          type="button"
-          class="voice-settings"
-          data-cy="voice-open-settings"
-          @click="voice.openSettings()"
-        >
-          Open System Settings
-        </button>
-        <button
-          type="button"
-          class="voice-dismiss"
-          aria-label="Dismiss"
-          title="Dismiss"
-          data-cy="voice-dismiss"
-          @click="voice.dismiss()"
-        >
-          <svg class="icon" aria-hidden="true"><use href="#i-x" /></svg>
-        </button>
+        <ul class="notice-rows">
+          <li
+            v-for="(notice, index) in shownNotices"
+            :key="notice.key"
+            :role="notice.answer ? 'alert' : undefined"
+            :data-cy="notice.answer ? notice.key : 'send-blocked'"
+          >
+            <span class="notice-words">{{ notice.words }}</span>
+            <button
+              v-if="notice.fix"
+              type="button"
+              class="notice-fix"
+              data-cy="notice-fix"
+              @click="notice.fix.press()"
+            >
+              {{ notice.fix.label }}
+            </button>
+            <button
+              v-if="index === 0 && notices.length > 1"
+              type="button"
+              class="notice-more"
+              :aria-expanded="noticesOpen"
+              data-cy="notice-more"
+              @click="noticesOpen = !noticesOpen"
+            >
+              {{ noticesOpen ? 'Show less' : `+${notices.length - 1} more` }}
+            </button>
+            <button
+              v-if="notice.dismiss"
+              type="button"
+              class="notice-dismiss"
+              aria-label="Dismiss"
+              title="Dismiss"
+              data-cy="notice-dismiss"
+              @click="notice.dismiss()"
+            >
+              <svg class="icon" aria-hidden="true"><use href="#i-x" /></svg>
+            </button>
+          </li>
+        </ul>
       </div>
       <!-- ⛔ **Say what letting go will do, WHILE you are still holding it** (218 §2). A border that
            changes colour tells you something is happening; it does not tell you what. ⚑ Painted in
@@ -1353,6 +1435,16 @@ defineExpose({
              with an empty box is content, and this selector was the last place in the app that
              still disagreed. -->
         <button
+          v-if="voiceActive"
+          type="button"
+          class="voice-cancel"
+          title="Stop and discard what was heard"
+          data-cy="voice-cancel"
+          @click="voice.cancel()"
+        >
+          Cancel
+        </button>
+        <button
           v-if="voiceBridge?.supported"
           type="button"
           class="voice-button"
@@ -1375,6 +1467,12 @@ defineExpose({
             <rect x="9" y="2" width="6" height="12" rx="3" />
             <path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3m-4 0h8" />
           </svg>
+          <span
+            v-if="voicePhase === 'listening'"
+            class="voice-countdown"
+            data-cy="voice-countdown"
+            >{{ voiceCountdown }}</span
+          >
         </button>
         <template v-if="busyChoices">
           <button
@@ -1470,32 +1568,40 @@ defineExpose({
          header. The row carries the measure and the centring the hint used to carry itself, so with
          no button beside it the rendered result is what it was before. -->
     <div class="composer-foot">
-      <p v-if="voiceActive" class="voice-status" role="status" data-cy="voice-status">
+      <!-- While listening the lit mic and its countdown say it; the words stay for a screen reader. -->
+      <p
+        v-if="voiceActive"
+        class="voice-status"
+        :class="{ 'only-for-a-reader': voicePhase === 'listening' }"
+        role="status"
+        data-cy="voice-status"
+      >
         {{
           voicePhase === 'permission'
             ? 'Waiting for permission…'
             : voicePhase === 'listening'
-              ? `Listening… ${voiceRemaining} s left`
+              ? 'Listening…'
               : 'Transcribing…'
         }}
-        <button type="button" data-cy="voice-cancel" @click="voice.cancel()">Cancel</button>
       </p>
-      <p class="composer-hint" :class="{ frozen: frozenLook }" data-cy="composer-hint">
-        <!-- ⛔ **First, and it outranks the state's own sentence** (169 §1). Every other branch here
-             answers *"what does pressing send mean from this state"*; this one answers *"it will not
-             happen, and here is what to fix"*, which is the only sentence worth reading when it is
-             true.
+      <!-- ⛔ **A reason outranks the state's own sentence** (169 §1). Every branch here answers
+           *"what does pressing send mean from this state"*; a reason answers *"it will not happen,
+           and here is what to fix"*. The notice in the box says it, so the hint says nothing then:
+           its sentence would describe a press that can't happen.
 
-             ⚠️ **BOTH callers set it now, and both withhold it in the states whose own sentence is
-             the better one** (219 §1). The launcher withholds it while a launch is in flight, so the
-             launch keeps its own feedback; the pane withholds it while the composer is `frozen` or
-             `ended`, because a card waiting to be answered and a conversation that is over are each
-             more actionable than the reason the caller has — and `canSend` refuses both anyway, so
-             nothing is left un-gated by the silence. Reachable from `idle` and `busy`. -->
-        <template v-if="blocked !== null">{{ blocked }}</template>
-        <template v-else-if="voiceActive"
-          >Finish dictating and review the text before sending.</template
-        >
+           ⚠️ **BOTH callers set it now, and both withhold it in the states whose own sentence is
+           the better one** (219 §1). The launcher withholds it while a launch is in flight, so the
+           launch keeps its own feedback; the pane withholds it while the composer is `frozen` or
+           `ended`, because a card waiting to be answered and a conversation that is over are each
+           more actionable than the reason the caller has — and `canSend` refuses both anyway, so
+           nothing is left un-gated by the silence. Reachable from `idle` and `busy`. -->
+      <p
+        v-if="blockedWords === null"
+        class="composer-hint"
+        :class="{ frozen: frozenLook }"
+        data-cy="composer-hint"
+      >
+        <template v-if="voiceActive">Finish dictating and review the text before sending.</template>
         <!-- The frozen hint names BOTH ways forward now (094). It used to name only one, and the
            other one did not exist. 🔴 **737 · `730` F-3** — and the second says what Esc does in
            R43's words: it said *"Esc stops the turn"*. -->
@@ -1582,9 +1688,19 @@ defineExpose({
   color: var(--muted);
   cursor: pointer;
 }
+/* Listening: the mic is the one lit control, and it counts down to the automatic stop. */
 .voice-button.listening {
-  color: var(--accent);
-  border-color: var(--accent);
+  width: auto;
+  padding: 0 var(--space-4);
+  border-color: var(--accent-solid-bg);
+  background: var(--accent-solid-bg);
+  color: var(--accent-ink);
+  gap: var(--space-2);
+}
+.voice-countdown {
+  font-size: var(--type-caption);
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--fw-semibold);
 }
 .voice-button:disabled {
   opacity: 0.45;
@@ -1596,10 +1712,10 @@ defineExpose({
   font-size: var(--type-caption);
   margin: 0;
 }
-.voice-error {
+.composer-notice {
   display: flex;
   grid-column: 1 / -1;
-  align-items: center;
+  align-items: flex-start;
   padding: var(--space-3) var(--space-3) var(--space-3) var(--space-5);
   border: var(--border-width) solid var(--waiting-card-border);
   border-radius: var(--radius-md);
@@ -1608,15 +1724,30 @@ defineExpose({
   font-size: var(--type-caption);
   gap: var(--space-4);
 }
-.voice-error > .icon {
+.composer-notice > .icon {
   flex: 0 0 auto;
+  margin-top: var(--space-3);
   color: var(--waiting);
 }
-.voice-error-words {
+.notice-rows {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  gap: var(--space-3);
+  list-style: none;
+}
+.notice-rows > li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+.notice-words {
   flex: 1;
   min-width: 0;
 }
-.voice-settings {
+.notice-fix {
   flex: 0 0 auto;
   padding: var(--space-2) var(--space-5);
   border: var(--border-width) solid var(--waiting-card-border);
@@ -1627,10 +1758,25 @@ defineExpose({
   font-weight: var(--fw-semibold);
   cursor: pointer;
 }
-.voice-settings:hover {
+.notice-fix:hover {
   background: var(--waiting-bg);
 }
-.voice-dismiss {
+.notice-more {
+  flex: 0 0 auto;
+  padding: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--waiting-text);
+  font-size: var(--type-caption);
+  font-weight: var(--fw-semibold);
+  cursor: pointer;
+  text-decoration: underline;
+}
+.notice-more:hover {
+  background: var(--waiting-bg);
+}
+.notice-dismiss {
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
@@ -1642,16 +1788,35 @@ defineExpose({
   color: var(--waiting-text);
   cursor: pointer;
 }
-.voice-dismiss:hover {
+.notice-dismiss:hover {
   background: var(--waiting-bg);
 }
 .composer-foot:has(.voice-status) {
   flex-wrap: wrap;
 }
-.voice-status button {
+.voice-status.only-for-a-reader {
+  position: absolute;
+  overflow: hidden;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  margin: -1px;
+  clip-path: inset(50%);
+}
+.voice-cancel {
+  height: var(--control-h);
+  padding: 0 var(--space-4);
+  border: var(--border-width) solid var(--line);
+  border-radius: var(--radius-md);
+  background: transparent;
   color: var(--accent-text);
-  margin-left: 8px;
+  font-size: var(--type-caption);
+  font-weight: var(--fw-semibold);
   cursor: pointer;
+}
+.voice-cancel:hover {
+  background: var(--wash-2);
 }
 .composer-wrap {
   flex: 0 0 auto;
@@ -1729,7 +1894,6 @@ defineExpose({
 }
 
 .attached,
-.attach-refused,
 .attaching,
 .dropping-here {
   grid-column: 1 / -1;
@@ -1819,12 +1983,6 @@ defineExpose({
 .detach:hover {
   background: var(--panel-2);
   color: var(--text);
-}
-
-.attach-refused {
-  margin: 0;
-  color: var(--danger-text);
-  font-size: var(--type-caption);
 }
 
 .actions {

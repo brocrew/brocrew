@@ -270,14 +270,14 @@ describe('§1 · the screen asks for nothing, and the composer is what is left',
     {
       why: 'an unread default blocks sending and shows the choice',
       over: { defaultApprovalMode: null },
-      adds: [],
-      drops: ['first-approval-description'],
+      adds: ['composer-notice', 'send-blocked'],
+      drops: ['first-approval-description', 'composer-hint'],
     },
     {
       why: 'a never-chosen default has no preselection',
       over: { approvalDefaultChosen: false },
-      adds: [],
-      drops: ['first-approval-description'],
+      adds: ['composer-notice', 'send-blocked'],
+      drops: ['first-approval-description', 'composer-hint'],
     },
     {
       why: 'a refused launch keeps its error',

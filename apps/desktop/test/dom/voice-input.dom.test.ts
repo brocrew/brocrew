@@ -37,7 +37,7 @@ function composer(supported = true) {
   const draft = ref('Keep my draft')
   const state = ref('idle')
   const identity = ref('first')
-  const blocked = ref<string | null>(null)
+  const blocked = ref<{ words: string }[]>([])
   const book = createAttachmentBook()
   const send = vi.fn()
   const Host = defineComponent({
@@ -86,7 +86,7 @@ it('records, shows a countdown, preserves live edits and requires a fresh Send',
   await click(c.m.q('voice-mic'))
   expect(c.m.q('voice-status').textContent).toContain('Waiting for permission')
   await c.phase('listening')
-  expect(c.m.q('voice-status').textContent).toContain('50 s left')
+  expect(c.m.q('voice-countdown').textContent).toBe('0:50')
   c.draft.value = 'Keep my edited draft'
   await nextTick()
   expect((c.m.q('send-prompt') as HTMLButtonElement).disabled).toBe(true)
@@ -149,7 +149,7 @@ it('shows permission denial without losing the draft and allows retry', async ()
   await c.finish({ ok: false, error: 'microphone' })
   expect(c.m.q('voice-error').getAttribute('role')).toBe('alert')
   expect(c.m.q('voice-error').textContent).toContain('System Settings')
-  await click(c.m.q('voice-open-settings'))
+  await click(c.m.q('notice-fix'))
   expect(c.bridge.openSettings).toHaveBeenCalledWith('microphone')
   expect(c.draft.value).toBe('Keep my draft')
   await click(c.m.q('voice-mic'))
@@ -181,10 +181,10 @@ it('places the mic beside Send using the composer’s control size', () => {
 it('keeps Send dark when the composer reports a blocker over a typed draft', async () => {
   const c = composer()
   expect((c.m.q('send-prompt') as HTMLButtonElement).disabled).toBe(false)
-  c.blocked.value = 'This conversation is closing'
+  c.blocked.value = [{ words: 'This conversation is closing' }]
   await nextTick()
   expect((c.m.q('send-prompt') as HTMLButtonElement).disabled).toBe(true)
-  expect(c.m.q('composer-hint').textContent).toContain('This conversation is closing')
+  expect(c.m.q('send-blocked').textContent).toContain('This conversation is closing')
 })
 
 it('counts down and asks the core to stop at fifty seconds', async () => {
@@ -194,7 +194,7 @@ it('counts down and asks the core to stop at fifty seconds', async () => {
   await c.phase('listening')
   await vi.advanceTimersByTimeAsync(25_000)
   await nextTick()
-  expect(c.m.q('voice-status').textContent).toContain('25 s left')
+  expect(c.m.q('voice-countdown').textContent).toBe('0:25')
   await vi.advanceTimersByTimeAsync(25_000)
   await nextTick()
   expect(c.bridge.stop).toHaveBeenCalledOnce()

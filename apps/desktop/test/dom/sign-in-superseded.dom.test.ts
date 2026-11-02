@@ -231,6 +231,6 @@ describe('an open card survives the sign-in moving — 147 acceptance 7', () => 
     const { m } = pane({ record: quiet() })
     expect(visible(m.q('sign-in-superseded'))).toBe(true)
     expect(m.all('permission-allow')).toHaveLength(0)
-    expect(m.q('composer-hint').textContent).not.toContain("A message won't answer it")
+    expect(m.q('composer-band').textContent).not.toContain("A message won't answer it")
   })
 })

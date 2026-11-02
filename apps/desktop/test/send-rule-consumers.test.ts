@@ -106,7 +106,7 @@ describe('223 §5 · every consumer of the send rule asks it', () => {
     // attachment the composer had already accepted — 223's defect through a new door.
     // Dictation in progress also holds the button.
     expect(composer).toMatch(
-      /const canSendNow = computed\(\s*\(\) =>\s*!voiceActive\.value && canSend\(text\.value, props\.state, props\.blocked, staged\.value\.length\),?\s*\)/,
+      /const canSendNow = computed\(\s*\(\) =>\s*!voiceActive\.value && canSend\(text\.value, props\.state, blockedWords\.value, staged\.value\.length\),?\s*\)/,
     )
 
     // 3 · …and `canSend` calls the shared predicate. Three links, because that is what the code is:

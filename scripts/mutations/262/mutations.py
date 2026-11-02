@@ -556,8 +556,9 @@ MUTATIONS = [
         [
             (
                 COMPOSER,
-                ".attach-refused,\n.attaching,\n.dropping-here {\n  grid-column: 1 / -1;\n}",
-                ".attach-refused,\n.attaching,\n.dropping-here {\n  grid-column: auto;\n}",
+                # ⚑ **one notice for every composer problem · re-anchored in place, not retired** — The attach refusal moved into the composer's one notice, and its full-width span moved with it; the plant un-spans the notice. NOT VERIFIED: it survives attach-path, drop-to-attach, paste-image, voice-input and send-gate, since no test measures the notice's width; this table is unrun in the census.
+                ".composer-notice {\n  display: flex;\n  grid-column: 1 / -1;",
+                ".composer-notice {\n  display: flex;\n  grid-column: auto;",
             )
         ],
     ),

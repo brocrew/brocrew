@@ -333,7 +333,8 @@ MUTATIONS = [
     ),
     (
         "M62 · R83 · the stopUnanswered default is removed (an absent prop reads as set) — killed by `a-stop-the-provider-has-not-answered-drawn.render.test.ts`",
-        [(PROMPTCOMPOSER, "    stopUnanswered: null,\n    blocked: null,\n", "    blocked: null,\n")],
+        # ⚑ **one notice for every composer problem · re-anchored in place, not retired** — The blocked default is an empty list now; the plant still removes the stopUnanswered default.
+        [(PROMPTCOMPOSER, "    stopUnanswered: null,\n    blocked: () => [],\n", "    blocked: () => [],\n")],
     ),
     # ── the userData title — a long data folder ─────────────────────────────────────────────────────────
     (

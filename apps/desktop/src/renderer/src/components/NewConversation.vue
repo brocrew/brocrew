@@ -96,6 +96,7 @@ import { theFormSends, type ModelLists, type PickedModel } from '../lib/model-li
 import { useModelLists } from '../composables/useModelLists'
 import { CHANGEABLE_LIVE_IN } from '../lib/front-door-words'
 import type { DraftHanding } from '../lib/drafts'
+import type { SendBlock } from '../lib/composer-notice'
 import { readableError } from '../lib/session-record'
 import type { SendIntent } from '../lib/session-store'
 import PromptComposer from './PromptComposer.vue'
@@ -902,6 +903,9 @@ const approvalBlocked = computed(() =>
         ? 'Choose Ask or Auto before sending.'
         : null,
 )
+const launchBlocked = computed<SendBlock[]>(() =>
+  approvalBlocked.value === null ? [] : [{ words: approvalBlocked.value }],
+)
 
 const recentHeadingId = useId()
 
@@ -1065,7 +1069,7 @@ watch(
               :draft="props.draft"
               :handing="props.handing"
               :can-attach="true"
-              :blocked="approvalBlocked"
+              :blocked="launchBlocked"
               @send="startWith"
               @interrupt="emit('cancel')"
               @update:draft="(text) => emit('update:draft', text)"
