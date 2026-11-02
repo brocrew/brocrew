@@ -1,7 +1,7 @@
 {
   "format": 2,
   "id": "chrome",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "sourceCommit": "2618dab1b1e3672bdddae5ed771a0ecf84e0002e",
   "platforms": [
     {

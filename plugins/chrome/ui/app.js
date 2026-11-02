@@ -39,9 +39,10 @@ function text(tag, value) {
   node.textContent = value
   return node
 }
-async function propose(payload) {
+async function propose(payload, afterSuccess) {
   try {
     await rpc('proposeConfig', payload)
+    afterSuccess?.()
     await refresh()
   } catch {
     status.textContent = 'Plugin unavailable. Try again.'
@@ -180,7 +181,10 @@ async function refresh() {
 document.querySelector('#create').addEventListener('submit', (event) => {
   event.preventDefault()
   const input = document.querySelector('#name')
-  if (input.checkValidity()) void propose({ action: 'create-profile', profile: input.value })
+  if (input.checkValidity())
+    void propose({ action: 'create-profile', profile: input.value }, () => {
+      input.value = ''
+    })
 })
 const timer = setInterval(() => {
   if (!closed && pending.size === 0) void refresh()

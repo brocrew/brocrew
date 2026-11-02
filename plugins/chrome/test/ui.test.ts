@@ -224,3 +224,32 @@ it.each([true, false])(
     view.events.get('pagehide')!({})
   },
 )
+
+it.each([true, false])(
+  'clears the created profile name only after a successful reply (success=%s)',
+  async (success) => {
+    const view = screen()
+    view.reply({ configRevision: 1, profiles: [], tabs: [] })
+    await Promise.resolve()
+    await Promise.resolve()
+    const input = view.nodes.get('#name')!
+    input.value = 'fern'
+    view.nodes.get('#create')!.listeners.get('submit')!({ preventDefault() {} })
+    const create = view.packets.at(-1)!
+    expect(create.payload).toEqual({ action: 'create-profile', profile: 'fern' })
+    expect(input.value).toBe('fern')
+    view.reply(undefined, undefined, create, success)
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(input.value).toBe(success ? '' : 'fern')
+    if (success) {
+      expect(view.packets.at(-1)?.method).toBe('read')
+      // A follow-up refresh failure does not undo an acknowledged creation.
+      view.reply(undefined, undefined, view.packets.at(-1), false)
+      await Promise.resolve()
+      await Promise.resolve()
+      expect(input.value).toBe('')
+    }
+    view.events.get('pagehide')!({})
+  },
+)
