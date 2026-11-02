@@ -12,3 +12,9 @@ useDefault = true
 description = "a probe's own made-up nonce, recorded in a wire fixture"
 regexTarget = "match"
 regexes = ['''WIRE327_\d+_\d+''']
+
+[[allowlists]]
+# The BroCrew helper extension's manifest "key" is its RSA public key, which fixes the extension's
+# id in Chrome. It is public by design, so this exact value is allowed and nothing else.
+description = "the BroCrew helper extension's public key"
+regexes = ['''^MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA466bEHM5rAETamaul3J5xxMxYGTdXGIRkz7EtQu9MNzzKJkvPTdmKu352ikP6fW9JUO/Q3iBYkQQrXRIgjH74ObWajlvmuBGRjYv4mFOxrU\+eZ4eKF4n75Uq9g\+8ctFzNJKxDeh1ZWk\+Ev6q1Vp5pbvQ0RVFBnWS\+Hma8P96bnH3cn1swn6Y3rc5UX81lGCMuAgWuJ6bh7JnSj6jX776lu/BxR6xdZ/tRn3lF1Urf6mihB8nwVBPYAvdtKi\+rFz37vsal\+0Vvap6QKeCK5oAZ4bmr1HH/JCHMY1W0bXNR5StY6Mt6yDk21EEoz8lbpZvYPXmyy\+hobWbXqQbzcBwLQIDAQAB$''']
