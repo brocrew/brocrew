@@ -1576,7 +1576,7 @@ defineExpose({
   justify-content: center;
   width: var(--control-icon);
   height: var(--control-h);
-  border: 1px solid var(--line);
+  border: var(--border-width) solid var(--line);
   border-radius: var(--radius-md);
   background: transparent;
   color: var(--muted);

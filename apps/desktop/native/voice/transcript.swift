@@ -16,7 +16,7 @@ struct Transcript {
     mutating func hear(_ text: String, from start: Double, to end: Double, closesUtterance: Bool) {
         let words = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if !words.isEmpty {
-            if repeatsKept(words, from: start) {
+            if repeatsKept(words, from: start, to: end) {
                 kept = ""
                 keptEnd = 0
             }
@@ -37,8 +37,9 @@ struct Transcript {
     /// A recognizer that kept the whole recording repeats the kept words from the same audio.
     /// Without timing that proves it, a result is a new utterance: a doubled word can be
     /// deleted on review, a dropped one is gone.
-    private func repeatsKept(_ words: String, from start: Double) -> Bool {
-        guard !kept.isEmpty, keptEnd > 0, start < keptEnd, abs(start - keptStart) < 0.05,
+    private func repeatsKept(_ words: String, from start: Double, to end: Double) -> Bool {
+        guard !kept.isEmpty, keptEnd > keptStart, end > start, start < keptEnd,
+              abs(start - keptStart) < 0.05,
               let prefix = words.range(of: kept, options: [.anchored, .caseInsensitive])
         else { return false }
         return prefix.upperBound == words.endIndex

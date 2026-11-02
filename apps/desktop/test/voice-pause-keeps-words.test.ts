@@ -101,6 +101,9 @@ it.runIf(onMac)('keeps a new utterance that starts with the words before it', ()
     'Hello Hello there',
   )
   expect(heard(['Hello', 'closes'], ['Hello there', 'closes'])).toBe('Hello Hello there')
+  expect(heard(['Hello', 'closes', [0.02, 0.8]], ['Hello there', 'closes'])).toBe(
+    'Hello Hello there',
+  )
 })
 
 it.runIf(onMac)('repeats only whole words', () => {
