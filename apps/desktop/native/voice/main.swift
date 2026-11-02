@@ -72,8 +72,11 @@ final class LocalVoice {
             DispatchQueue.main.async {
                 guard !self.ended else { return }
                 if let result {
+                    let segments = result.bestTranscription.segments
                     self.transcript.hear(
                         result.bestTranscription.formattedString,
+                        from: segments.first?.timestamp ?? 0,
+                        to: segments.last.map { $0.timestamp + $0.duration } ?? 0,
                         closesUtterance: result.isFinal || result.speechRecognitionMetadata != nil)
                 }
                 if let result, result.isFinal {
