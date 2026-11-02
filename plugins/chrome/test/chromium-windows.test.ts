@@ -103,7 +103,7 @@ class Ctx extends EventEmitter {
 }
 const setup = () => {
   const ctx = new Ctx()
-  const windows = new ChromiumWindows(ctx as unknown as BrowserContext, 'darwin')
+  const windows = new ChromiumWindows(ctx as unknown as BrowserContext, { platform: 'darwin' })
   ctx.on('page', (p) => windows.created(p))
   return { ctx, windows }
 }
@@ -156,7 +156,10 @@ describe('context window selection', () => {
   })
   it('bounds stalled creation/detach and closes only its late-created page', async () => {
     const ctx = new Ctx()
-    const windows = new ChromiumWindows(ctx as unknown as BrowserContext, 'darwin', 1000)
+    const windows = new ChromiumWindows(ctx as unknown as BrowserContext, {
+      platform: 'darwin',
+      timeoutMs: 1000,
+    })
     ctx.hang = 'Target.createTarget'
     ctx.hangDetach = true
     const began = Date.now()
@@ -171,7 +174,10 @@ describe('context window selection', () => {
   })
   it('bounds read-only window identity when Chrome stops answering', async () => {
     const ctx = new Ctx()
-    const windows = new ChromiumWindows(ctx as unknown as BrowserContext, 'darwin', 20)
+    const windows = new ChromiumWindows(ctx as unknown as BrowserContext, {
+      platform: 'darwin',
+      timeoutMs: 20,
+    })
     ctx.hang = 'Browser.getWindowForTarget'
     await expect(windows.windowId(ctx.pages()[0])).rejects.toThrow('timed out')
     ctx.release!()
@@ -188,7 +194,10 @@ describe('context window selection', () => {
 
 it('a closed targeted window cannot silently fall back: the misdirected owned tab alone is closed', async () => {
   const ctx = new Ctx()
-  const windows = new ChromiumWindows(ctx as unknown as BrowserContext, 'darwin', 30)
+  const windows = new ChromiumWindows(ctx as unknown as BrowserContext, {
+    platform: 'darwin',
+    timeoutMs: 30,
+  })
   const original = ctx.pages()[0]
   const unrelated = ctx.add(2, 'https://unrelated.test/')
   ctx.redirectWindow = true
@@ -202,7 +211,10 @@ it('a closed targeted window cannot silently fall back: the misdirected owned ta
 })
 it('bounds CDP session acquisition and detaches a session which arrives after the deadline', async () => {
   const ctx = new Ctx()
-  const windows = new ChromiumWindows(ctx as unknown as BrowserContext, 'darwin', 20)
+  const windows = new ChromiumWindows(ctx as unknown as BrowserContext, {
+    platform: 'darwin',
+    timeoutMs: 20,
+  })
   ctx.hang = 'session'
   await expect(windows.windowId(ctx.pages()[0])).rejects.toThrow('timed out')
   ctx.release!()
@@ -214,7 +226,10 @@ it.each(['Page.getFrameTree', 'Page.createIsolatedWorld'])(
   'bounds stalled %s without affecting other tabs',
   async (method) => {
     const ctx = new Ctx()
-    const windows = new ChromiumWindows(ctx as unknown as BrowserContext, 'darwin', 20)
+    const windows = new ChromiumWindows(ctx as unknown as BrowserContext, {
+      platform: 'darwin',
+      timeoutMs: 20,
+    })
     ctx.hang = method
     const anchor = ctx.add(2) as unknown as Page
     await expect(windows.open({ newWindow: false, windowOf: anchor })).rejects.toThrow(

@@ -110,13 +110,11 @@ class Ctx extends EventEmitter {
 function setup(timeout = 1000) {
   const ctx = new Ctx(),
     published: Page[] = []
-  const windows = new ChromiumWindows(
-    ctx as unknown as BrowserContext,
-    'darwin',
-    timeout,
-    undefined,
-    (p) => published.push(p),
-  )
+  const windows = new ChromiumWindows(ctx as unknown as BrowserContext, {
+    platform: 'darwin',
+    timeoutMs: timeout,
+    onAdmit: (p) => published.push(p),
+  })
   published.length = 0
   return { ctx, windows, published }
 }
@@ -206,12 +204,11 @@ describe('inactive native selection and explicit-only cross-window fallback', ()
   it('does not renew the deadline between the probe and explicit fallback', async () => {
     const ctx = new Ctx()
     let clock = 0
-    const windows = new ChromiumWindows(
-      ctx as unknown as BrowserContext,
-      'darwin',
-      100,
-      () => clock,
-    )
+    const windows = new ChromiumWindows(ctx as unknown as BrowserContext, {
+      platform: 'darwin',
+      timeoutMs: 100,
+      now: () => clock,
+    })
     const anchor = ctx.add(2)
     ctx.tick = (method) => {
       if (method === 'Page.createIsolatedWorld') clock = 101

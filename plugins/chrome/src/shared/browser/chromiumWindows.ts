@@ -28,13 +28,23 @@ export class ChromiumWindows {
   private provisional = new Map<Page, () => void>()
   private closed = false
   private readonly onPage = (page: Page) => this.created(page)
+  private readonly platform: NodeJS.Platform
+  private readonly timeoutMs: number
+  private readonly now: () => number
+  private readonly onAdmit?: (page: Page) => void
   constructor(
     private readonly context: BrowserContext,
-    private readonly platform = process.platform,
-    private readonly timeoutMs = 10_000,
-    private readonly now = systemMonotonicClock,
-    private readonly onAdmit?: (page: Page) => void,
+    options: {
+      platform?: NodeJS.Platform
+      timeoutMs?: number
+      now?: () => number
+      onAdmit?: (page: Page) => void
+    } = {},
   ) {
+    this.platform = options.platform ?? process.platform
+    this.timeoutMs = options.timeoutMs ?? 10_000
+    this.now = options.now ?? systemMonotonicClock
+    this.onAdmit = options.onAdmit
     for (const page of context.pages()) this.admit(page)
     context.on('page', this.onPage)
     context.once('close', () => {

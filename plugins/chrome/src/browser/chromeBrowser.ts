@@ -352,9 +352,11 @@ export class ChromeBrowser implements ProfileBrowser {
     e.sync = sync
     e.generation = generation
     e.downloads = nativeDownloads
-    e.windows = new ChromiumWindows(ctx, undefined, undefined, undefined, (page) => {
-      if (e.ctx !== ctx) return
-      for (const cb of [...e.pageListeners]) cb(page)
+    e.windows = new ChromiumWindows(ctx, {
+      onAdmit: (page) => {
+        if (e.ctx !== ctx) return
+        for (const cb of [...e.pageListeners]) cb(page)
+      },
     })
     e.initial = ctx.pages()
     ctx.on('close', () => this.ended(e, ctx, generation))
