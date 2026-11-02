@@ -104,8 +104,9 @@ describe('223 §5 · every consumer of the send rule asks it', () => {
     // ⚠️ **`staged`, not `props.attachments`, since 236 §4.** The prop is a render behind whatever
     // this composer last decided, and a button that asked the stale list would be dark over an
     // attachment the composer had already accepted — 223's defect through a new door.
+    // Dictation in progress also holds the button.
     expect(composer).toMatch(
-      /const canSendNow = computed\(\(\) =>\s*canSend\(text\.value, props\.state, props\.blocked, staged\.value\.length\),?\s*\)/,
+      /const canSendNow = computed\(\s*\(\) =>\s*!voiceActive\.value && canSend\(text\.value, props\.state, props\.blocked, staged\.value\.length\),?\s*\)/,
     )
 
     // 3 · …and `canSend` calls the shared predicate. Three links, because that is what the code is:
@@ -123,7 +124,7 @@ describe('223 §5 · every consumer of the send rule asks it', () => {
       ':title="sendRefusal ??',
     )
     expect(composer).toMatch(
-      /const sendRefusal = computed<string \| null>\(\(\) => \{\s*if \(canSendNow\.value\) return null/,
+      /const sendRefusal = computed<string \| null>\(\(\) => \{\s*if \(voiceActive\.value\) return '[^']*'\s*if \(canSendNow\.value\) return null/,
     )
     // …and the content sentence is the SHARED one, not a local string (169's rule about words).
     expect(composer).toContain('return nothingToSendYet(props.canAttach)')
