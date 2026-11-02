@@ -43,6 +43,14 @@ export default defineConfigWithVueTs(
       globals: { ...globals.node, ...globals.browser },
     },
   },
+  {
+    // The BroCrew helper is a Chrome extension worker, where `chrome` is a global.
+    name: 'brobot2/chrome-helper',
+    files: ['plugins/chrome/helper/**/*.js'],
+    languageOptions: {
+      globals: globals.webextensions,
+    },
+  },
   js.configs.recommended,
   pluginVue.configs['flat/essential'],
   vueTsConfigs.recommended,
