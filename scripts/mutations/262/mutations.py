@@ -556,9 +556,9 @@ MUTATIONS = [
         [
             (
                 COMPOSER,
-                # ⚑ **one notice for every composer problem · re-anchored in place, not retired** — The attach refusal moved into the composer's one notice, and its full-width span moved with it; the plant un-spans the notice. NOT VERIFIED: it survives attach-path, drop-to-attach, paste-image, voice-input and send-gate, since no test measures the notice's width; this table is unrun in the census.
-                ".composer-notice {\n  display: flex;\n  grid-column: 1 / -1;",
-                ".composer-notice {\n  display: flex;\n  grid-column: auto;",
+                # ⚑ **one notice for every composer problem · re-anchored in place, not retired** — The attach refusal moved into the composer's one notice; the chip list keeps the full-width rule, and the plant takes the chip list out of it, which is the defect the label names. NOT VERIFIED: it survives paste-image, attach-path and drop-to-attach, since no test measures where the chips sit in the grid; this table is unrun in the census.
+                ".attached,\n.attaching,\n.dropping-here {\n  grid-column: 1 / -1;\n}",
+                ".attaching,\n.dropping-here {\n  grid-column: 1 / -1;\n}",
             )
         ],
     ),

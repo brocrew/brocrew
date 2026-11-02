@@ -1712,6 +1712,7 @@ defineExpose({
   font-size: var(--type-caption);
   margin: 0;
 }
+/* Its own surface, so it reads on any typing-field colour a theme gives the box. */
 .composer-notice {
   display: flex;
   grid-column: 1 / -1;
@@ -1719,7 +1720,7 @@ defineExpose({
   padding: var(--space-3) var(--space-3) var(--space-3) var(--space-5);
   border: var(--border-width) solid var(--waiting-card-border);
   border-radius: var(--radius-md);
-  background: var(--waiting-bg);
+  background: linear-gradient(var(--waiting-bg), var(--waiting-bg)), var(--panel);
   color: var(--waiting-text);
   font-size: var(--type-caption);
   gap: var(--space-4);
@@ -1809,7 +1810,7 @@ defineExpose({
   padding: 0 var(--space-4);
   border: var(--border-width) solid var(--line);
   border-radius: var(--radius-md);
-  background: transparent;
+  background: var(--panel);
   color: var(--accent-text);
   font-size: var(--type-caption);
   font-weight: var(--fw-semibold);
