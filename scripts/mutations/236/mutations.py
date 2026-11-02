@@ -351,8 +351,8 @@ MUTATIONS = [
         [
             (
                 COMPOSER,
-                '  canSend(text.value, props.state, props.blocked, staged.value.length),\n)',
-                '  canSend(text.value, props.state, null, staged.value.length),\n)',
+                '  () => !voiceActive.value && canSend(text.value, props.state, props.blocked, staged.value.length),\n)',
+                '  () => !voiceActive.value && canSend(text.value, props.state, null, staged.value.length),\n)',
             ),
         ],
     ),
@@ -492,8 +492,8 @@ MUTATIONS = [
         [
             (
                 COMPOSER,
-                '  canSend(text.value, props.state, props.blocked, staged.value.length),\n)',
-                '  canSend(text.value, props.state, null, staged.value.length),\n)',
+                '  () => !voiceActive.value && canSend(text.value, props.state, props.blocked, staged.value.length),\n)',
+                '  () => !voiceActive.value && canSend(text.value, props.state, null, staged.value.length),\n)',
             ),
         ],
     ),
@@ -522,8 +522,8 @@ MUTATIONS = [
         [
             (
                 COMPOSER,
-                '  canSend(text.value, props.state, props.blocked, staged.value.length),\n)',
-                '  canSend(text.value, props.state, props.blocked, 0),\n)',
+                '  () => !voiceActive.value && canSend(text.value, props.state, props.blocked, staged.value.length),\n)',
+                '  () => !voiceActive.value && canSend(text.value, props.state, props.blocked, 0),\n)',
             ),
         ],
     ),
@@ -532,8 +532,8 @@ MUTATIONS = [
         [
             (
                 COMPOSER,
-                '  canSend(text.value, props.state, props.blocked, staged.value.length),\n)',
-                '  canSend(text.value, props.state, null, staged.value.length),\n)',
+                '  () => !voiceActive.value && canSend(text.value, props.state, props.blocked, staged.value.length),\n)',
+                '  () => !voiceActive.value && canSend(text.value, props.state, null, staged.value.length),\n)',
             ),
         ],
     ),

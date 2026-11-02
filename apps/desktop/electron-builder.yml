@@ -97,6 +97,16 @@ extraResources:
   - from: resources/themes
     to: themes
 mac:
+  binaries:
+    - Contents/Helpers/brocrew-voice
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  extendInfo:
+    NSMicrophoneUsageDescription: BroCrew uses your microphone when you press Dictate to turn speech into text on this Mac.
+    NSSpeechRecognitionUsageDescription: BroCrew turns your speech into text on this Mac so you can review it before sending.
+  extraFiles:
+    - from: resources/voice/${arch}/brocrew-voice
+      to: Helpers/brocrew-voice
   # ⚑ F082 — BroCrew's logo: the idle avatar on a navy rounded tile, made from `icons/idle.png` by
   # `scripts/make-brobot-icon.py` into `build/`. electron-builder copies it into the bundle's
   # `Resources` and names it in `Info.plist`, and the dmg's volume takes it too. The Dock, Cmd-Tab,

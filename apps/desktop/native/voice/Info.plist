@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleIdentifier</key><string>com.brobot2.desktop.voice</string>
+  <key>CFBundleName</key><string>BroCrew Voice</string>
+  <key>CFBundleVersion</key><string>1</string>
+  <key>NSMicrophoneUsageDescription</key><string>BroCrew uses your microphone when you press Dictate to turn speech into text on this Mac.</string>
+  <key>NSSpeechRecognitionUsageDescription</key><string>BroCrew turns your speech into text on this Mac so you can review it before sending.</string>
+</dict></plist>
