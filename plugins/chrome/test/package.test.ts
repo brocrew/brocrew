@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
@@ -8,6 +9,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { loadConfig } from '../src/config.js'
 import { startAgentChrome, VERSION } from '../src/app.js'
 import { createProfileStore } from '../src/profiles/store.js'
+import { HELPER_FILES } from '../src/browser/brocrewHelper.js'
 import { silentLogger } from '../src/logger.js'
 import { FakeBrowser, FakePage, asPage } from './fakes.js'
 
@@ -86,6 +88,22 @@ describe('private Chrome package', () => {
     expect(builds.length).toBeGreaterThan(0)
     for (const folder of builds) {
       const manifest = JSON.parse(fs.readFileSync(path.join(folder, 'plugin.json'), 'utf8'))
+      // Every target ships exactly the helper files the server checks before loading them.
+      expect(
+        manifest.files
+          .filter((file: { path: string }) => file.path.startsWith('helper/'))
+          .map((file: { path: string }) => file.path),
+      ).toEqual(['helper/manifest.json', 'helper/worker.js'])
+      for (const file of HELPER_FILES) {
+        const bytes = fs.readFileSync(path.join(folder, 'helper', file.name))
+        expect(createHash('sha256').update(bytes).digest('hex')).toBe(file.sha256)
+        expect(manifest.files).toContainEqual({
+          path: `helper/${file.name}`,
+          type: 'file',
+          size: bytes.length,
+          sha256: file.sha256,
+        })
+      }
       const built = await import(pathToFileURL(path.join(folder, 'server.mjs')).href)
       const { url, request } = await boot(built.startAgentChrome)
       const health = await request('/healthz', adminToken)
@@ -190,6 +208,22 @@ describe('private Chrome package', () => {
       200,
     )
     expect(browser.state('fern')).toBeNull()
+  })
+  it('only the person turns the BroCrew helper on, and only in an enabled profile', async () => {
+    const { request, browser, store } = await boot()
+    store.create('birch', 'panel')
+    store.setHelper('birch', 'off')
+    expect((await request('/v1/profiles/birch/helper', mcpToken, {})).status).toBe(401)
+    expect((await request('/v1/profiles/birch/helper', adminToken, {})).status).toBe(409)
+    expect(store.get('birch')?.helper).toBe('off')
+    store.setFlags('birch', { enabled: true })
+    expect((await request('/v1/profiles/birch/helper', adminToken, { on: true })).status).toBe(400)
+    const turned = await request('/v1/profiles/birch/helper', adminToken, {})
+    expect(turned.status).toBe(200)
+    expect(turned.body).toMatchObject({ profile: { name: 'birch', helperOff: false } })
+    // Recorded first, so it holds even while this profile is closed.
+    expect(store.get('birch')?.helper).toBe('turning-on')
+    expect(browser.helperTurnedOn).toEqual(['birch'])
   })
   it('returns bounded typed tabs, excludes expired generations and strips URL credentials/query', async () => {
     const { request, browser, server, store } = await boot()

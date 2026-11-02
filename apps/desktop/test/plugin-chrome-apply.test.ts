@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { applyChromeProfile, ChromeProposal } from '../src/main/plugins/lifecycle/chrome-apply'
+import {
+  applyChromeProfile,
+  chromeProfileIntent,
+  ChromeLedgerProposal,
+  ChromeProposal,
+} from '../src/main/plugins/lifecycle/chrome-apply'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { PluginUiRpc } from '../src/main/plugins/ui/rpc'
@@ -31,6 +36,7 @@ describe('fixed person-only Chrome profile action mapping', () => {
       { confirm: 'birch' },
       200,
     ],
+    [{ action: 'helper-on', profile: 'birch' }, '/profiles/birch/helper', {}, 200],
   ])(
     'maps a validated action to only its own fixed admin endpoint',
     async (proposal, path, body, status) => {
@@ -65,6 +71,16 @@ describe('fixed person-only Chrome profile action mapping', () => {
       applyChromeProfile(connection, proposal as never, new AbortController().signal),
     ).rejects.toThrow()
     expect(fetch).not.toHaveBeenCalled()
+  })
+  it('records turning the helper on as its prerequisite, which earlier owners can read', () => {
+    const intent = chromeProfileIntent({ action: 'helper-on', profile: 'birch' })
+    expect(intent).toEqual({ action: 'set-enabled', profile: 'birch', enabled: true })
+    expect(ChromeLedgerProposal.safeParse({ action: 'helper-on', profile: 'birch' }).success).toBe(
+      false,
+    )
+    expect(
+      ChromeProposal.safeParse({ action: 'helper-on', profile: 'birch', on: true }).success,
+    ).toBe(false)
   })
   it('does not retry an ambiguous admin failure or return downstream bytes', async () => {
     const fetch = vi.fn(async () => new Response('fictional-private-diagnostic', { status: 500 }))
