@@ -11,10 +11,8 @@ const require = createRequire(join(root, 'apps/desktop/package.json'))
 const builderRequire = createRequire(require.resolve('electron-builder/package.json'))
 const libRequire = createRequire(builderRequire.resolve('app-builder-lib/package.json'))
 const { createSigner } = require(join(root, 'apps/desktop/build/windows-sign.cjs'))
-const { WindowsSignToolManager } = libRequire('./out/codeSign/windowsSignToolManager.js')
-const { WinPackager } = libRequire('./out/winPackager.js')
+const { WindowsSignToolManager, WinPackager, Platform } = libRequire('./out/index.js')
 const { getAppUpdatePublishConfiguration } = libRequire('./out/publish/PublishManager.js')
-const { Platform } = libRequire('./out/index.js')
 const { NsisUpdater } = require('electron-updater/out/NsisUpdater.js')
 const { load: parse } = libRequire('js-yaml')
 const builder = parse(readFileSync(join(root, 'apps/desktop/electron-builder.yml'), 'utf8'))
@@ -39,8 +37,8 @@ const fakeEnv = () => ({
 const packager = (signtoolOptions = {}) =>
   new WinPackager({
     outDir: '/fictional/dist',
-    config: { win: { signtoolOptions } },
-    appInfo: { version: '0.2.0', productName: 'BroCrew', computePackageUrl: async () => null },
+    config: { win: { signtoolOptions }, productName: 'BroCrew' },
+    metadata: { name: 'fictional-brocrew', version: '0.2.0', homepage: 'https://example.invalid/' },
     getWorkspaceRoot: async () => root,
   })
 const task = (file = 'win-unpacked/BroCrew.exe') => ({
