@@ -40,6 +40,8 @@ type Event = {
   bundle?: string
   id?: string
   onScreen?: number
+  /** On every front sample: on-screen windows of the watched (owned) Chrome processes; -1 unknown. */
+  owned?: number
 }
 const events: Event[] = []
 const replies = new Map<string, (count: number) => void>()
@@ -102,6 +104,8 @@ const browser = new ChromeBrowser({
     const info = await session.send('SystemInfo.getProcessInfo')
     const pid = info.processInfo.find((p) => p.type === 'browser')?.id
     if (Number.isInteger(pid)) owned.add(pid!)
+    // From now on every observer sample counts this Chrome's windows on the current Space.
+    observer.stdin!.write(JSON.stringify({ watch: [...owned] }) + '\n')
     await session.detach().catch(() => undefined)
     return ctx
   },
@@ -201,6 +205,12 @@ async function measure(
     verdict.problems.push(`observer evidence missing (${samples} samples)`)
   if (Object.values(verdict.frontAt).some((bundle) => bundle !== TEXTEDIT))
     verdict.focus.push('TextEdit was not in front at t0, t0+1 s or t0+4 s')
+  // Every sample, not just the end: a window that shows and goes again unfocused still counts.
+  const fronts = seen.filter((e) => e.kind === 'front')
+  if (fronts.some((e) => typeof e.owned !== 'number' || e.owned < 0))
+    verdict.problems.push('window state unknown during the action')
+  else if (fronts.some((e) => (e.owned ?? 0) > 0))
+    verdict.focus.push('a test window came on screen during the action')
   if (options.offscreen) {
     const shown = await onScreen([...owned])
     if (shown < 0) verdict.problems.push('window state unknown')
@@ -310,7 +320,7 @@ const steps: Record<string, () => Promise<void>> = {
           run,
           'launch',
           {
-            offscreen: false,
+            offscreen: true,
             expect: (result) =>
               (result as { helper?: string }).helper === 'ready'
                 ? []
@@ -378,7 +388,7 @@ const steps: Record<string, () => Promise<void>> = {
         1,
         'restart',
         {
-          offscreen: false,
+          offscreen: true,
           expect: () => [
             ...helperIs('off')(),
             ...(store.get('space-test-1')?.helper === 'off' ? [] : ['the switch was not kept']),

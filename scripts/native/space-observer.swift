@@ -24,6 +24,8 @@ func onScreen(_ pids: Set<Int32>) -> Int {
         return layer == 0 && pids.contains(pid)
     }.count
 }
+/// The test's own Chrome processes; every sample says how many of their windows are on screen.
+var watched = Set<Int32>()
 let center = NSWorkspace.shared.notificationCenter
 center.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { note in
     emit(["kind": "activate"].merging(app(note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)) { a, _ in a })
@@ -32,14 +34,22 @@ center.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification, object
     emit(["kind": "space"])
 }
 Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
-    emit(["kind": "front"].merging(app(NSWorkspace.shared.frontmostApplication)) { a, _ in a })
+    var sample: [String: Any] = ["kind": "front", "owned": watched.isEmpty ? 0 : onScreen(watched)]
+    sample.merge(app(NSWorkspace.shared.frontmostApplication)) { a, _ in a }
+    emit(sample)
 }
-// Requests on stdin, one JSON object per line: {"windows": [pid, ...], "id": "..."}.
+// Requests on stdin, one JSON object per line: {"windows": [pid, ...], "id": "..."} asks once;
+// {"watch": [pid, ...]} sets the processes every later sample counts.
 DispatchQueue.global().async {
     while let line = readLine() {
         guard let data = line.data(using: .utf8),
-              let request = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-              let id = request["id"] as? String else { continue }
+              let request = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { continue }
+        if let watch = request["watch"] as? [NSNumber] {
+            let pids = Set(watch.map { $0.int32Value })
+            DispatchQueue.main.async { watched = pids }
+            continue
+        }
+        guard let id = request["id"] as? String else { continue }
         let pids = Set(((request["windows"] as? [NSNumber]) ?? []).map { $0.int32Value })
         DispatchQueue.main.async { emit(["kind": "windows", "id": id, "onScreen": onScreen(pids)]) }
     }
