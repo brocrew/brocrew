@@ -413,7 +413,9 @@ async function composer(input: {
   return { m, sent, handing }
 }
 const sendButton = (m: Mounted): HTMLButtonElement => m.q('send-prompt') as HTMLButtonElement
-const foot = (m: Mounted): string => words(m.q('composer-hint'))
+/** What the composer says about sending: the reason in its notice, else the hint under it. */
+const foot = (m: Mounted): string =>
+  words(m.all('send-blocked')[0]?.querySelector('.notice-words') ?? m.q('composer-hint'))
 
 const LISTED = aCommandTakesNoAttachmentsYet({ word: '/compact', listed: true })
 

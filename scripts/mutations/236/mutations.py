@@ -351,8 +351,9 @@ MUTATIONS = [
         [
             (
                 COMPOSER,
-                '  () => !voiceActive.value && canSend(text.value, props.state, props.blocked, staged.value.length),\n)',
-                '  () => !voiceActive.value && canSend(text.value, props.state, null, staged.value.length),\n)',
+                # ⚑ **one notice for every composer problem · re-anchored in place, not retired** — The composer reads the first of the caller's reasons as blockedWords now; the plant does the same defect.
+                "    !voiceActive.value && canSend(text.value, props.state, blockedWords.value, staged.value.length),\n",
+                "    !voiceActive.value && canSend(text.value, props.state, null, staged.value.length),\n",
             ),
         ],
     ),
@@ -492,8 +493,9 @@ MUTATIONS = [
         [
             (
                 COMPOSER,
-                '  () => !voiceActive.value && canSend(text.value, props.state, props.blocked, staged.value.length),\n)',
-                '  () => !voiceActive.value && canSend(text.value, props.state, null, staged.value.length),\n)',
+                # ⚑ **one notice for every composer problem · re-anchored in place, not retired** — The composer reads the first of the caller's reasons as blockedWords now; the plant does the same defect.
+                "    !voiceActive.value && canSend(text.value, props.state, blockedWords.value, staged.value.length),\n",
+                "    !voiceActive.value && canSend(text.value, props.state, null, staged.value.length),\n",
             ),
         ],
     ),
@@ -522,8 +524,9 @@ MUTATIONS = [
         [
             (
                 COMPOSER,
-                '  () => !voiceActive.value && canSend(text.value, props.state, props.blocked, staged.value.length),\n)',
-                '  () => !voiceActive.value && canSend(text.value, props.state, props.blocked, 0),\n)',
+                # ⚑ **one notice for every composer problem · re-anchored in place, not retired** — The composer reads the first of the caller's reasons as blockedWords now; the plant does the same defect.
+                "    !voiceActive.value && canSend(text.value, props.state, blockedWords.value, staged.value.length),\n",
+                "    !voiceActive.value && canSend(text.value, props.state, blockedWords.value, 0),\n",
             ),
         ],
     ),
@@ -532,8 +535,9 @@ MUTATIONS = [
         [
             (
                 COMPOSER,
-                '  () => !voiceActive.value && canSend(text.value, props.state, props.blocked, staged.value.length),\n)',
-                '  () => !voiceActive.value && canSend(text.value, props.state, null, staged.value.length),\n)',
+                # ⚑ **one notice for every composer problem · re-anchored in place, not retired** — The composer reads the first of the caller's reasons as blockedWords now; the plant does the same defect.
+                "    !voiceActive.value && canSend(text.value, props.state, blockedWords.value, staged.value.length),\n",
+                "    !voiceActive.value && canSend(text.value, props.state, null, staged.value.length),\n",
             ),
         ],
     ),

@@ -210,7 +210,7 @@ describe('§1 · a running Codex conversation: the Stop says the turn is asked t
     // ⚑ **D-017b · in the closing's current words** (`CLOSING_BLOCK`): *"This conversation is
     // closing"* was a process fact (`05` rule 5); the foot now says the conversation is taking up
     // the change, and still says it instead of the Esc clause.
-    const foot = m.q('composer-hint')
+    const foot = m.q('send-blocked')
     expect(text(foot)).toContain('this conversation is taking up the change')
     expect(text(foot)).not.toContain('Esc')
     expect(keyHints(foot)).toEqual([])

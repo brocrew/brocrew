@@ -72,8 +72,9 @@ MUTATIONS = [
             # applicable again.
             (
                 COMPOSER,
-                "  () => !voiceActive.value && canSend(text.value, props.state, props.blocked, staged.value.length),\n)",
-                "  () => !voiceActive.value && canSend(text.value, props.state, null, staged.value.length),\n)",
+                # ⚑ **one notice for every composer problem · re-anchored in place, not retired** — The composer reads the first of the caller's reasons as blockedWords now; the plant does the same defect.
+                "    !voiceActive.value && canSend(text.value, props.state, blockedWords.value, staged.value.length),\n",
+                "    !voiceActive.value && canSend(text.value, props.state, null, staged.value.length),\n",
             )
         ],
     ),
@@ -98,8 +99,9 @@ MUTATIONS = [
         [
             (
                 COMPOSER,
-                '        <template v-if="blocked !== null">{{ blocked }}</template>\n',
-                '        <template v-if="blocked !== null"></template>\n',
+                # ⚑ **one notice for every composer problem · re-anchored in place, not retired** — Every problem is drawn in the composer's one notice now; the plant blanks its words.
+                "            <span class=\"notice-words\">{{ notice.words }}</span>\n",
+                "            <span class=\"notice-words\"></span>\n",
             )
         ],
     ),

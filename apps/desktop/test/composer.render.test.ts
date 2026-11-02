@@ -390,7 +390,7 @@ describe('the composer renders as a multi-line field', () => {
     const html = await render({
       state: 'busy',
       who: 'Codex',
-      blocked: 'This conversation is closing — nothing more can be sent to it.',
+      blocked: [{ words: 'This conversation is closing — nothing more can be sent to it.' }],
       attachments: [{ path: '/work/alpha/notes.md', kind: 'file', outsideCwd: false }],
     })
     expect(html).not.toContain('data-cy="queue-prompt"')

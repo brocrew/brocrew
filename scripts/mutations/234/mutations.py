@@ -223,10 +223,9 @@ MUTATIONS = [
         [
             (
                 PANE,
-                "  if (props.record.phase === 'closing') return CLOSING_BLOCK\n"
-                "  if (composerState.value !== 'idle' && composerState.value !== 'busy') return null\n",
-                "  if (composerState.value !== 'idle' && composerState.value !== 'busy') return null\n"
-                "  if (props.record.phase === 'closing') return CLOSING_BLOCK\n",
+                # ⚑ **one notice for every composer problem · re-anchored in place, not retired** — The pane hands the composer every reason as a list now; the plant does the same defect on the list. The order of the list is the precedence.
+                "  if (props.record.phase === 'closing') reasons.push({ words: CLOSING_BLOCK })\n  if (composerState.value !== 'idle' && composerState.value !== 'busy') return reasons\n",
+                "  if (composerState.value !== 'idle' && composerState.value !== 'busy') return reasons\n  if (props.record.phase === 'closing') reasons.push({ words: CLOSING_BLOCK })\n",
             )
         ],
     ),
@@ -263,7 +262,8 @@ MUTATIONS = [
         [
             (
                 COMPOSER,
-                "const frozenLook = computed(() => props.state === 'frozen' && props.blocked === null)",
+                # ⚑ **one notice for every composer problem · re-anchored in place, not retired** — The composer reads the first of the caller's reasons as blockedWords now; the plant does the same defect.
+                "const frozenLook = computed(() => props.state === 'frozen' && blockedWords.value === null)",
                 "const frozenLook = computed(() => props.state === 'frozen')",
             )
         ],
@@ -507,14 +507,9 @@ MUTATIONS = [
                 PANE,
                 # ⚑ ANCHOR CORRECTED IN PLACE BY 714 — `708` H-3a: a third reason (a command with
                 # files) follows the sign-in's; the defect planted is unchanged — no reason, ever.
-                "  if (props.record.phase === 'closing') return CLOSING_BLOCK\n"
-                "  if (composerState.value !== 'idle' && composerState.value !== 'busy') return null\n"
-                "  if (signInSuperseded.value) return SIGN_IN_SUPERSEDED_BLOCK\n"
-                "  const command = aCommandInTheBox(props.draft, control.value.commands)\n"
-                "  return command === null || props.handing.staged.length === 0\n"
-                "    ? null\n"
-                "    : aCommandTakesNoAttachmentsYet(command)",
-                "  return null",
+                # ⚑ **one notice for every composer problem · re-anchored in place, not retired** — The pane hands the composer every reason as a list now; the plant does the same defect on the list.
+                "  if (props.record.phase === 'closing') reasons.push({ words: CLOSING_BLOCK })\n  if (composerState.value !== 'idle' && composerState.value !== 'busy') return reasons\n  if (signInSuperseded.value) reasons.push({ words: SIGN_IN_SUPERSEDED_BLOCK })\n  const command = aCommandInTheBox(props.draft, control.value.commands)\n  if (command !== null && props.handing.staged.length > 0)\n    reasons.push({\n      words: aCommandTakesNoAttachmentsYet(command),\n      fix: { label: 'Remove attachments', press: () => props.handing.stage([]) },\n    })\n  return reasons\n})",
+                "  return []\n})",
             )
         ],
     ),
@@ -527,12 +522,9 @@ MUTATIONS = [
                 # ⚑ ANCHOR CORRECTED IN PLACE BY 714 — `708` H-3a: the sign-in's reason is a line of
                 # its own now, with the command's after it; the defect planted is unchanged — the
                 # sign-in and the close swap places.
-                "  if (props.record.phase === 'closing') return CLOSING_BLOCK\n"
-                "  if (composerState.value !== 'idle' && composerState.value !== 'busy') return null\n"
-                "  if (signInSuperseded.value) return SIGN_IN_SUPERSEDED_BLOCK\n",
-                "  if (composerState.value !== 'idle' && composerState.value !== 'busy') return null\n"
-                "  if (signInSuperseded.value) return SIGN_IN_SUPERSEDED_BLOCK\n"
-                "  if (props.record.phase === 'closing') return CLOSING_BLOCK\n",
+                # ⚑ **one notice for every composer problem · re-anchored in place, not retired** — The pane hands the composer every reason as a list now; the plant does the same defect on the list. The order of the list is the precedence.
+                "  if (props.record.phase === 'closing') reasons.push({ words: CLOSING_BLOCK })\n  if (composerState.value !== 'idle' && composerState.value !== 'busy') return reasons\n  if (signInSuperseded.value) reasons.push({ words: SIGN_IN_SUPERSEDED_BLOCK })\n",
+                "  if (composerState.value !== 'idle' && composerState.value !== 'busy') return reasons\n  if (signInSuperseded.value) reasons.push({ words: SIGN_IN_SUPERSEDED_BLOCK })\n  if (props.record.phase === 'closing') reasons.push({ words: CLOSING_BLOCK })\n",
             )
         ],
     ),
