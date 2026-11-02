@@ -9,8 +9,9 @@ import { graphCutoff } from './fixtures/team-profile-graph-oracle'
 for (const [identities, conversations, events] of [
   [100, 1000, 10000],
   [1000, 10000, 100000],
-] as const)
-  describe(`fictional scale ${identities}/${conversations}/${events}`, () => {
+] as const) {
+  const name = `fictional scale ${identities}/${conversations}/${events}`
+  describe(name, { sequential: true, shuffle: false }, () => {
     let fixture: ReturnType<typeof graphFixture> | undefined
     let bundle: string
     let bundling: Promise<string> | undefined
@@ -174,6 +175,7 @@ for (const [identities, conversations, events] of [
           expect(ticks).toBeGreaterThan(0)
           delays.push(maxDelay)
           if (sample === 3) {
+            expect(delays).toHaveLength(3)
             const medianDelay = [...delays].sort((a, b) => a - b)[1]!
             process.stdout.write(
               'GRAPH_HEARTBEAT ' + JSON.stringify({ identities, delays, medianDelay }) + '\n',
@@ -188,6 +190,7 @@ for (const [identities, conversations, events] of [
         }
       }, 20000)
   })
+}
 
 describe('10k-identity/50k-pair boundary', () => {
   let fixture: ReturnType<typeof graphFixture> | undefined
