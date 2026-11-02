@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { Worker } from 'node:worker_threads'
+import { runGraphScaleChild } from './helpers/run-graph-scale-child'
 import { graphFixture, graphContext } from './helpers/team-profile-graph-fixture'
 import { bundleAWorker } from './helpers/bundle-a-worker'
 import { TeamProfileGraphLifetime } from '../src/main/db/team-profile-graph-reader'
@@ -8,13 +9,13 @@ import { graphCutoff } from './fixtures/team-profile-graph-oracle'
 for (const [identities, conversations, events] of [
   [100, 1000, 10000],
   [1000, 10000, 100000],
-] as const)
-  describe(`fictional scale ${identities}/${conversations}/${events}`, () => {
+] as const) {
+  const name = `fictional scale ${identities}/${conversations}/${events}`
+  describe(name, { sequential: true, shuffle: false }, () => {
     let fixture: ReturnType<typeof graphFixture> | undefined
     let bundle: string
     let bundling: Promise<string> | undefined
-    let ownedReader: TeamProfileGraphLifetime | undefined
-    let ownedHeartbeat: ReturnType<typeof setInterval> | undefined
+    let callerBundle: string
     let plans: unknown[]
     let probeStart: number
     const probe = (phase: string) =>
@@ -77,95 +78,62 @@ for (const [identities, conversations, events] of [
         f.directory,
         'graph-worker.cjs',
       ))
+      callerBundle = await (bundling = bundleAWorker(
+        'test/helpers/graph-scale-child.ts',
+        f.directory,
+        'graph-caller.cjs',
+      ))
       probe('bundle-ready')
     }, 60000)
     afterAll(async () => {
-      if (ownedHeartbeat !== undefined) clearInterval(ownedHeartbeat)
-      await ownedReader?.close()
       await bundling?.catch(() => {})
       fixture?.close()
     }, 60000)
 
-    it(`reads fictional scale ${identities}/${conversations}/${events} without blocking its caller`, async () => {
-      const f = fixture
-      if (!f) throw new Error('No scale fixture')
-      let exitAt: number | null = null
-      const reader = new TeamProfileGraphLifetime(() => {
-        const w = new Worker(bundle, {
-          workerData: { file: f.file, executionFile: f.executionFile },
-          resourceLimits: { maxOldGenerationSizeMb: 128, maxYoungGenerationSizeMb: 16 },
+    // This measures a fresh reader process after fixture/build setup and imports, not app startup
+    // or a long-lived app heap. It does not establish what caused the historical timing failures.
+    const delays: number[] = []
+    for (let sample = 1; sample <= 3; sample++)
+      it(`reads fictional scale ${identities}/${conversations}/${events} without blocking its caller (sample ${sample}/3)`, async () => {
+        const f = fixture
+        if (!f) throw new Error('No scale fixture')
+        const result = await runGraphScaleChild(callerBundle, {
+          sample,
+          bundle,
+          file: f.file,
+          executionFile: f.executionFile,
+          context: graphContext,
         })
-        w.once('exit', () => (exitAt = performance.now()))
-        return w
-      })
-      ownedReader = reader
-      let previous = performance.now(),
-        maxDelay = 0,
-        ticks = 0
-      const heartbeat = setInterval(() => {
-        const now = performance.now()
-        maxDelay = Math.max(maxDelay, now - previous - 10)
-        previous = now
-        ticks++
-      }, 10)
-      ownedHeartbeat = heartbeat
-      const start = performance.now()
-      try {
-        const header = await reader.read({ operation: 'snapshot' }, graphContext)
-        const snapshotMs = performance.now() - start
-        probe('snapshot-ready')
-        expect(header.type, JSON.stringify(header)).toBe('snapshot')
-        if (header.type !== 'snapshot') throw new Error('no complete reading')
-        let nodes = 0,
-          edges = 0
-        for (const operation of ['nodes', 'edges'] as const) {
-          let cursor: string | undefined
-          do {
-            const page = await reader.read(
-              { operation, snapshot: header.snapshot, ...(cursor ? { cursor } : {}) },
-              graphContext,
-            )
-            if (page.type === 'nodes') nodes += page.nodes.length
-            else if (page.type === 'edges') edges += page.edges.length
-            else throw new Error(JSON.stringify(page))
-            cursor = page.next ?? undefined
-          } while (cursor)
-        }
-        probe('pages-ready')
-        const callerAt = performance.now()
-        await reader.close()
-        const processExitAt = exitAt
         process.stdout.write(
           'GRAPH_SCALE ' +
-            JSON.stringify({
-              identities,
-              conversations,
-              events,
-              metrics: header.metrics,
-              nodes,
-              edges,
-              snapshotMs,
-              paginationMs: callerAt - start - snapshotMs,
-              callerMs: callerAt - start,
-              nativeExitMs: processExitAt === null ? null : processExitAt - start,
-              heartbeatMaxDelayMs: maxDelay,
-              heartbeatTicks: ticks,
-              plans,
-            }) +
+            JSON.stringify({ identities, conversations, events, ...result, plans }) +
             '\n',
         )
-        expect(nodes).toBe(identities)
-        expect(edges).toBe(identities)
-        expect(header.metrics.rows).toBeLessThanOrEqual(250000)
-        expect(header.metrics.cacheBytes).toBeLessThanOrEqual(32 * 1024 * 1024)
-        expect(maxDelay).toBeLessThan(100)
-        expect(processExitAt).not.toBeNull()
-      } finally {
-        clearInterval(heartbeat)
-        await reader.close()
-      }
-    }, 20000)
+        expect(result.sample).toBe(sample)
+        expect(result.nodes).toBe(identities)
+        expect(result.edges).toBe(identities)
+        expect(result.metrics.rows).toBeLessThanOrEqual(250000)
+        expect(result.metrics.cacheBytes).toBeLessThanOrEqual(32 * 1024 * 1024)
+        expect(result.heartbeatTicks).toBeGreaterThan(0)
+        delays.push(result.heartbeatMaxDelayMs)
+        if (sample === 3) {
+          expect(delays).toHaveLength(3)
+          const medianDelay = [...delays].sort((a, b) => a - b)[1]!
+          process.stdout.write(
+            'GRAPH_HEARTBEAT ' + JSON.stringify({ identities, delays, medianDelay }) + '\n',
+          )
+          expect(medianDelay, JSON.stringify(delays)).toBeLessThan(100)
+        }
+        expect(result.callerMaxMs, JSON.stringify(result.callerPhases)).toBeLessThan(100)
+        expect(result.heartbeatMaxGraphWorkMs, JSON.stringify(result.maxGraphWorkGap)).toBeLessThan(
+          100,
+        )
+        expect(result.nativeExitMs).not.toBeNull()
+        expect(result.nativeExitMs).toBeTypeOf('number')
+        expect(result.nativeExitMs).toBeGreaterThanOrEqual(0)
+      }, 20000)
   })
+}
 
 describe('10k-identity/50k-pair boundary', () => {
   let fixture: ReturnType<typeof graphFixture> | undefined
