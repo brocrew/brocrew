@@ -279,7 +279,7 @@ describe('only one thing stages an attachment (218, acceptance 7)', () => {
     expect(waits, 'the wait moved BELOW the emit, which is no wait at all').toBeLessThan(emits)
     // ⚠️ **…and above `canSend` too.** With an empty box and a screenshot still being written there
     // is nothing for `canSend` to say yes to, so a press would be dropped in silence.
-    expect(waits).toBeLessThan(sending.indexOf('if (!canSend('))
+    expect(waits).toBeLessThan(sending.indexOf('!canSend('))
   })
 
   it('🔴 …and the press that starts the wait LATCHES before it (292 §1)', () => {

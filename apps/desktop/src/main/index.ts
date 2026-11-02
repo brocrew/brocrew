@@ -15,6 +15,9 @@ import startStorageWorker from './storage.worker?nodeWorker'
 import { StorageService } from './storage/service'
 import { clearHttpCache, httpCacheFolder } from './storage/cache'
 import { registerStorageIpc } from './storage/ipc'
+import { registerVoiceIpc } from './voice/ipc'
+import { VoiceService } from './voice/service'
+import { runVoiceHelper } from './voice/engine'
 import { backupsDir, databaseFile, recoveryDir, SIDECARS } from './recovery/layout'
 import { profileSkillAccess, SharedSkillDiscovery } from './skills/shared-discovery'
 import { convertSharedSkills } from './skills/shared-conversion'
@@ -453,6 +456,7 @@ let stopThemeIpc: (() => void) | undefined
 let stopProviderSetup: (() => Promise<void>) | undefined
 const appSetupWindows = new WeakSet<WebContents>()
 let stopStorageIpc: (() => void) | undefined
+let stopVoiceIpc: (() => void) | undefined
 const storageAppWindows = new WeakSet<WebContents>()
 let dockLabel: Promise<DockLabelHost> | undefined
 
@@ -1394,6 +1398,21 @@ function registerIpc(runtimeHost: RuntimeHost, localZone: () => LocalZone | null
       !event.sender.isDestroyed() &&
       event.senderFrame === event.sender.mainFrame,
   })
+  stopVoiceIpc = registerVoiceIpc(
+    ipcMain,
+    new VoiceService((state) => {
+      if (process.platform !== 'darwin') throw new Error('Voice input requires macOS')
+      const binary = app.isPackaged
+        ? join(process.resourcesPath, '..', 'Helpers', 'brocrew-voice')
+        : join(app.getAppPath(), 'resources', 'voice', process.arch, 'brocrew-voice')
+      return runVoiceHelper(binary, state)
+    }),
+    (event) =>
+      storageAppWindows.has(event.sender) &&
+      !event.sender.isDestroyed() &&
+      event.senderFrame === event.sender.mainFrame,
+    (url) => shell.openExternal(url),
+  )
   installPluginUiRpc(pluginIpcMain)
   registerPluginSettings(
     ipcMain,
@@ -1995,6 +2014,8 @@ function stopWhatTheStartStarted(): Promise<void> {
     stopThemeIpc = undefined
     stopStorageIpc?.()
     stopStorageIpc = undefined
+    stopVoiceIpc?.()
+    stopVoiceIpc = undefined
     void dockLabel?.then((label) => label.stop())
     await themes?.close().catch(() => undefined)
     const started = host
@@ -2655,6 +2676,8 @@ const lifetime = createAppLifetime({
     stopThemeIpc = undefined
     stopStorageIpc?.()
     stopStorageIpc = undefined
+    stopVoiceIpc?.()
+    stopVoiceIpc = undefined
     void dockLabel?.then((label) => label.stop())
     void themes?.close().catch(() => undefined)
   },
