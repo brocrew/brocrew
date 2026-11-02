@@ -35,7 +35,6 @@ class Ctx extends EventEmitter {
   hang = ''
   release: (() => void) | undefined
   hangDetach = false
-  redirectWindow = false
   closeAnchor = false
   invalidId = false
   nativeWindow = 1
@@ -81,20 +80,19 @@ class Ctx extends EventEmitter {
         if (this.fail === method) throw new Error('protocol failed')
         if (method === 'Browser.getWindowForTarget')
           return { windowId: this.invalidId ? undefined : page.wid }
+        // Chrome answers the page-click path too; tests assert it is never taken.
         if (method === 'Page.getFrameTree') return { frameTree: { frame: { id: 'frame' } } }
         if (method === 'Page.createIsolatedWorld') return { executionContextId: 10 }
+        if (method === 'Runtime.evaluate') {
+          const address = /a.href = (".*?");/.exec(params.expression as string)![1]
+          this.add(page.wid, JSON.parse(address))
+          return {}
+        }
         if (method === 'Target.createTarget') {
           if (this.popupFirst) this.add(1, 'https://unrelated.test/')
           if (this.closeAnchor && page) await page.close()
           this.add(params.newWindow ? this.nextWindow++ : this.nativeWindow, params.url as string)
           return { targetId: 'mine' }
-        }
-        if (method === 'Runtime.evaluate') {
-          const address = /a.href = (".*?");/.exec(params.expression as string)![1]
-          if (this.popupFirst) this.add(99, 'https://unrelated.test/')
-          if (this.closeAnchor) await page.close()
-          this.add(this.redirectWindow ? 2 : page.wid, JSON.parse(address))
-          return {}
         }
         throw new Error(method)
       },
@@ -103,13 +101,13 @@ class Ctx extends EventEmitter {
 }
 const setup = () => {
   const ctx = new Ctx()
-  const windows = new ChromiumWindows(ctx as unknown as BrowserContext, 'darwin')
+  const windows = new ChromiumWindows(ctx as unknown as BrowserContext)
   ctx.on('page', (p) => windows.created(p))
   return { ctx, windows }
 }
 
 describe('context window selection', () => {
-  it('default follows native selection; tool preference is observational; explicit windowOf is exact', async () => {
+  it('default follows native selection; tool preference is observational; without the helper windowOf keeps Chrome’s choice', async () => {
     const { ctx, windows } = setup()
     const a = ctx.pages()[0]
     await windows.used(a)
@@ -120,12 +118,15 @@ describe('context window selection', () => {
     expect(await windows.windowId(await windows.open({ newWindow: false }))).toBe(1)
     await windows.used(a)
     expect(await windows.windowId(await windows.open({ newWindow: false }))).toBe(1)
-    expect(await windows.windowId(await windows.open({ newWindow: false, windowOf: c }))).toBe(2)
-    expect(ctx.sent.some((s) => /activate|bringToFront|focus/i.test(s.method))).toBe(false)
-    const link = ctx.sent.find((s) => s.method === 'Runtime.evaluate')!
-    expect(link.params.userGesture).toBe(false)
-    expect(link.params.expression).toContain('metaKey: true')
-    expect(link.params.expression).toContain("a.rel = 'noopener noreferrer'")
+    const notes: string[] = []
+    const e = await windows.open({ newWindow: false, windowOf: c, onNote: (n) => notes.push(n) })
+    expect(await windows.windowId(e)).toBe(1)
+    expect(notes).toEqual([
+      'Opened in window 1; the requested window was 2. Chrome chose the window; placing it in another one could bring Chrome to the front.',
+    ])
+    expect(ctx.sent.some((s) => /activate|bringToFront|focus|Runtime\./i.test(s.method))).toBe(
+      false,
+    )
   })
   it('correlates own page when an unrelated popup arrives first and cleans listeners', async () => {
     const { ctx, windows } = setup()
@@ -134,7 +135,8 @@ describe('context window selection', () => {
     expect(page.url()).toMatch(/^about:blank#new-tab-/)
     expect(ctx.listenerCount('page')).toBe(2)
     const targeted = await windows.open({ newWindow: false, windowOf: page })
-    expect(await windows.windowId(targeted)).toBe(2)
+    expect(targeted.url()).toMatch(/^about:blank#new-tab-/)
+    expect(await windows.windowId(targeted)).toBe(1)
     expect(ctx.listenerCount('page')).toBe(2)
   })
   it('rejects closed/foreign anchors and conflict; falls back after recent window closes', async () => {
@@ -156,7 +158,7 @@ describe('context window selection', () => {
   })
   it('bounds stalled creation/detach and closes only its late-created page', async () => {
     const ctx = new Ctx()
-    const windows = new ChromiumWindows(ctx as unknown as BrowserContext, 'darwin', 1000)
+    const windows = new ChromiumWindows(ctx as unknown as BrowserContext, { timeoutMs: 1000 })
     ctx.hang = 'Target.createTarget'
     ctx.hangDetach = true
     const began = Date.now()
@@ -171,7 +173,7 @@ describe('context window selection', () => {
   })
   it('bounds read-only window identity when Chrome stops answering', async () => {
     const ctx = new Ctx()
-    const windows = new ChromiumWindows(ctx as unknown as BrowserContext, 'darwin', 20)
+    const windows = new ChromiumWindows(ctx as unknown as BrowserContext, { timeoutMs: 20 })
     ctx.hang = 'Browser.getWindowForTarget'
     await expect(windows.windowId(ctx.pages()[0])).rejects.toThrow('timed out')
     ctx.release!()
@@ -186,12 +188,11 @@ describe('context window selection', () => {
   })
 })
 
-it('a closed targeted window cannot silently fall back: the misdirected owned tab alone is closed', async () => {
+it('a targeted window that closes during creation fails: the owned tab alone is closed', async () => {
   const ctx = new Ctx()
-  const windows = new ChromiumWindows(ctx as unknown as BrowserContext, 'darwin', 30)
+  const windows = new ChromiumWindows(ctx as unknown as BrowserContext, { timeoutMs: 30 })
   const original = ctx.pages()[0]
   const unrelated = ctx.add(2, 'https://unrelated.test/')
-  ctx.redirectWindow = true
   ctx.closeAnchor = true
   await expect(windows.open({ newWindow: false, windowOf: original })).rejects.toThrow(
     /closed|changed/,
@@ -202,7 +203,7 @@ it('a closed targeted window cannot silently fall back: the misdirected owned ta
 })
 it('bounds CDP session acquisition and detaches a session which arrives after the deadline', async () => {
   const ctx = new Ctx()
-  const windows = new ChromiumWindows(ctx as unknown as BrowserContext, 'darwin', 20)
+  const windows = new ChromiumWindows(ctx as unknown as BrowserContext, { timeoutMs: 20 })
   ctx.hang = 'session'
   await expect(windows.windowId(ctx.pages()[0])).rejects.toThrow('timed out')
   ctx.release!()
@@ -210,22 +211,6 @@ it('bounds CDP session acquisition and detaches a session which arrives after th
   expect(ctx.detached).toBe(1)
   expect(ctx.all.every((p) => !p.closed)).toBe(true)
 })
-it.each(['Page.getFrameTree', 'Page.createIsolatedWorld'])(
-  'bounds stalled %s without affecting other tabs',
-  async (method) => {
-    const ctx = new Ctx()
-    const windows = new ChromiumWindows(ctx as unknown as BrowserContext, 'darwin', 20)
-    ctx.hang = method
-    const anchor = ctx.add(2) as unknown as Page
-    await expect(windows.open({ newWindow: false, windowOf: anchor })).rejects.toThrow(
-      /timed out|in time/,
-    )
-    ctx.release!()
-    await new Promise((r) => setTimeout(r, 5))
-    expect(ctx.all[0].closed).toBe(false)
-  },
-)
-
 it('refuses a malformed protocol identity instead of returning a non-numeric windowId', async () => {
   const ctx = new Ctx()
   const windows = new ChromiumWindows(ctx as unknown as BrowserContext)

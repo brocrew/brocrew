@@ -116,6 +116,33 @@ it('uses only bounded DOM RPC, displays current windows/tabs as text, and propos
   expect(view.packets.every((packet) => !JSON.stringify(packet).includes('Token'))).toBe(true)
   view.events.get('pagehide')!({})
 })
+it('offers "Turn on" for the BroCrew helper only where the person turned it off', async () => {
+  const view = screen()
+  view.reply({
+    configRevision: 1,
+    profiles: [
+      { name: 'fern', enabled: true, open: true, helperOff: true },
+      { name: 'willow', enabled: true, open: true, helperOff: false },
+      { name: 'aspen', enabled: false, open: false, helperOff: true },
+      { name: 'birch', enabled: true, open: false },
+    ],
+    tabs: [],
+  })
+  await Promise.resolve()
+  await Promise.resolve()
+  const [fern, willow, aspen, birch] = view.nodes.get('#profiles')!.children
+  expect(fern.children).toHaveLength(2)
+  const line = fern.children[1]
+  expect(line.children.map((child) => child.textContent)).toEqual(['Helper off.', 'Turn on'])
+  for (const row of [willow, aspen, birch]) expect(row.children).toHaveLength(1)
+  line.children[1].listeners.get('click')!({})
+  expect(view.packets.at(-1)).toMatchObject({
+    method: 'proposeConfig',
+    payload: { action: 'helper-on', profile: 'fern' },
+    configRevision: 1,
+  })
+  view.events.get('pagehide')!({})
+})
 it('shows the reviewed empty-profile message', async () => {
   const view = screen()
   view.reply({ configRevision: 0, profiles: [], tabs: [] })

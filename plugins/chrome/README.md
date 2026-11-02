@@ -38,15 +38,30 @@ paths are rejected. Chrome and the OS determine local-file access; navigation ha
 allowlist. File tabs are eligible for normal mode/session URL restoration. The separate
 `download_url` transport stays HTTP(S)-only, including redirects; upload/download guards remain.
 
-Background opening grants no user activation. Its launch policy suppresses Chrome's startup
-window and disables popup blocking for this owned process, which also permits site-script popups.
-Ordinary opens and separate background windows request inactive CDP creation. An explicit
-`windowOf` first uses a private unused background probe. If Chrome chooses another window, the
-probe is closed and the explicit request uses the isolated-link fallback; this cross-window
-fallback may bring Chrome forward and returns a warning note. It never restores focus afterwards.
-Internal probes are not admitted as tool tabs. Failed creations retain exact page ownership
-even if they navigate; incomplete cleanup is reported. Each of 64 operation slots retains both
-possible creation phases until all dispatched targets resolve. At capacity, creation refuses
+Background opening grants no user activation and never shows or activates a Chrome window. Its
+launch policy suppresses Chrome's startup window; Chrome's own popup blocker stays on. Ordinary
+opens and separate background windows request inactive CDP creation. An explicit `windowOf` asks
+the BroCrew helper (below) for an inactive tab in that window. When the helper is unavailable or
+turned off, or it says nothing was created, one inactive CDP tab opens where Chrome chooses and
+the answer's note names both windows; when the helper is off, the note asks the agent to have the
+person turn it back on. A helper call that may still create a tab is never followed by a second
+creation: it fails, and a late tab is closed. Internal tabs are not admitted until they resolve.
+Failed creations retain exact page ownership even if they navigate; incomplete cleanup is
+reported. Each of 64 operation slots retains every dispatched creation until it resolves.
+
+The BroCrew helper is one built-in extension (`helper/`: a manifest with a fixed key, and a worker
+with a short, versioned list of jobs; placing a tab is the only job). It asks for no permissions.
+In every visible profile with extensions allowed, the plugin copies the two shipped files into the
+profile folder after checking their hashes, and loads them with `Extensions.loadUnpacked` over its
+own debugging pipe (launched with `--enable-unsafe-extension-debugging`); no web store, policy or
+person step is involved. Chrome drops a helper loaded this way at its next start, so it is loaded
+at every launch, which also updates it. When the person switches it off in `chrome://extensions`,
+the plugin notices (or reads Chrome's record of the last session before Chrome starts and forgets
+it), remembers it in `profiles.json` and stops loading it. The Chrome panel then shows "Helper
+off." with "Turn on", which installs it again: at once in a running visible profile, else at
+the profile's next visible launch, where it takes precedence over Chrome's older record. A removed helper comes back at the next launch. `list_extensions` marks it `builtIn`. Headless profiles, and profiles
+where the person turned extensions off, have no helper. Sync and extensions are on by default
+(temporary profiles excepted); profiles made before that were switched on once. At capacity, creation refuses
 until cleanup resolves or the profile closes; it never restarts a live profile automatically. Run the optional disposable native
 focus check in `scripts/native/` to verify frontmost-app/Space behavior on a macOS seat; the opt-in
 `BROCREW_CHROME_RUNTIME_TEST=1` tests load real local files with visible bookkeeping forced headless

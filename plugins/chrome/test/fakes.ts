@@ -322,6 +322,12 @@ export class FakeBrowser implements ProfileBrowser {
     this.recentWindows.set(profile, await this.windowId(profile, page))
   }
   nativeWindows = new Map<string, number>()
+  helper: 'ready' | 'off' | 'unavailable' = 'ready'
+  helperTurnedOn: string[] = []
+  async turnHelperOn(profile: string): Promise<void> {
+    this.helperTurnedOn.push(profile)
+    this.helper = 'ready'
+  }
   async newPage(
     profile: string,
     opts: { newWindow: boolean; windowOf?: Page; onNote?: (note: string) => void } = {
@@ -330,18 +336,24 @@ export class FakeBrowser implements ProfileBrowser {
   ): Promise<Page> {
     if (!this.states.has(profile)) throw new Error('profile is not open')
     const p = new FakePage()
-    const chosen = opts.windowOf
-      ? await this.windowId(profile, opts.windowOf)
-      : (opts.newWindow && this.state(profile)?.mode === 'visible') ||
-          !this.nativeWindows.has(profile)
-        ? ++this.nextWindow
-        : this.nativeWindows.get(profile)!
-    if (opts.windowOf && this.nativeWindows.get(profile) !== chosen) {
+    const requested = opts.windowOf ? await this.windowId(profile, opts.windowOf) : undefined
+    const native = this.nativeWindows.get(profile)
+    // With the helper on, a requested window is exact; without it Chrome keeps its own choice.
+    const chosen =
+      requested !== undefined && (this.helper === 'ready' || native === undefined)
+        ? requested
+        : requested !== undefined
+          ? native!
+          : (opts.newWindow && this.state(profile)?.mode === 'visible') || native === undefined
+            ? ++this.nextWindow
+            : native
+    if (requested !== undefined && chosen !== requested)
       opts.onNote?.(
-        'Opening in the requested window used a fallback that may bring Chrome to the front.',
+        this.helper === 'off'
+          ? `Opened in window ${chosen}; the requested window was ${requested}. BroCrew helper is off for this Chrome profile, so Chrome chose the window. Ask the person to turn it on in Settings → Plugins → Chrome.`
+          : `Opened in window ${chosen}; the requested window was ${requested}. Chrome chose the window; placing it in another one could bring Chrome to the front.`,
       )
-      this.nativeWindows.set(profile, chosen)
-    } else if (
+    else if (
       !opts.newWindow &&
       !opts.windowOf &&
       this.recentWindows.has(profile) &&

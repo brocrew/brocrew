@@ -7,8 +7,12 @@ export interface ExtensionInfo {
   version: string
   enabled: boolean
   unpacked: boolean
+  /** The BroCrew helper, which this plugin installs and updates itself. */
+  builtIn?: true
 }
 export const EXTENSION_ID = /^[a-p]{32}$/
+/** The BroCrew helper's fixed id, from the public key in its manifest. */
+export const HELPER_ID = 'inepmalcpnmbpdjooamdnkhojadimbgn'
 const MAX_JSON_BYTES = 20 * 1024 * 1024
 const MAX_MANIFEST_BYTES = 1024 * 1024
 const BUILTIN_LOCATIONS = new Set([5, 10])
@@ -65,9 +69,20 @@ function describe(
   if (!isObject(manifest)) return null
   const rawName = typeof manifest.name === 'string' ? manifest.name : ''
   const name = printable(localized(dir, manifest, rawName, profileDir) ?? '', 100) || id
-  const reasons = pref && typeof pref.disable_reasons === 'number' ? pref.disable_reasons : 0
-  const enabled = pref !== undefined && pref.state !== 0 && reasons === 0
-  return { id, name, version: printable(manifest.version, 40), enabled, unpacked }
+  // Chrome keeps disable reasons as a bit mask in older profiles and as a list in newer ones.
+  const reasons = pref?.disable_reasons
+  const disabled = Array.isArray(reasons)
+    ? reasons.length > 0
+    : typeof reasons === 'number' && reasons !== 0
+  const enabled = pref !== undefined && pref.state !== 0 && !disabled
+  return {
+    id,
+    name,
+    version: printable(manifest.version, 40),
+    enabled,
+    unpacked,
+    ...(id === HELPER_ID ? { builtIn: true as const } : {}),
+  }
 }
 export function listExtensions(profileDir: string): ExtensionInfo[] {
   const settings: Record<string, Record<string, unknown>> = {}

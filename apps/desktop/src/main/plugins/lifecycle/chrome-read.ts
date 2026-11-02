@@ -7,6 +7,8 @@ const Profile = z.object({
   name: z.string().regex(/^[a-z0-9-]{1,32}$/),
   enabled: z.boolean(),
   open: z.boolean(),
+  /** The person turned the BroCrew helper off; earlier plugin versions leave it out. */
+  helperOff: z.boolean().optional(),
 })
 const Tab = z.object({
   id: z.string().max(128),

@@ -1,4 +1,7 @@
 import { ChromiumWindows } from '../shared/browser/chromiumWindows.js'
+import { BrocrewHelper, offInLastSession } from './brocrewHelper.js'
+import type { HelperSwitch } from '../profiles/store.js'
+import type { HelperState } from './brocrewHelper.js'
 import { privateFolder } from '../privatePaths.js'
 import { assertOwnProfileDir } from '../shared/browser/launchGuard.js'
 import fs from 'node:fs'
@@ -48,6 +51,11 @@ export interface ChromeBrowserOptions {
   downloadsRoot?: string
   nativeDownloadsInHeadless?: boolean
   extraArgs?: readonly string[]
+  /** The shipped BroCrew helper folder; without it no profile gets the helper. */
+  helperSource?: string
+  /** The person's switch for the helper in this profile, and where it is kept. */
+  helperFor?: (profile: string) => HelperSwitch
+  rememberHelper?: (profile: string, helper: HelperSwitch) => void
   noSandbox?: boolean
   noTestType?: boolean
   browser?: BrowserChoice
@@ -71,6 +79,7 @@ interface Entry {
   generation: number
   initial: Page[]
   windows: ChromiumWindows | null
+  helper: BrocrewHelper | null
   waiters: number
   idleTimer: ReturnType<typeof setTimeout> | null
   touched: number
@@ -197,6 +206,7 @@ export class ChromeBrowser implements ProfileBrowser {
         generation: 0,
         initial: [],
         windows: null,
+        helper: null,
         waiters: 0,
         idleTimer: null,
         touched: 0,
@@ -231,9 +241,15 @@ export class ChromeBrowser implements ProfileBrowser {
   state(profile: string): {
     mode: BrowserMode
     generation: number
+    helper?: HelperState
   } | null {
     const e = this.entries.get(profile)
-    return e?.ctx ? { mode: e.mode, generation: e.generation } : null
+    if (!e?.ctx) return null
+    return {
+      mode: e.mode,
+      generation: e.generation,
+      ...(e.helper ? { helper: e.helper.state } : {}),
+    }
   }
   async ensure(
     profile: string,
@@ -272,6 +288,16 @@ export class ChromeBrowser implements ProfileBrowser {
     sync: boolean,
   ): Promise<number> {
     const stagingDir = this.privateDownloadStage(dir)
+    const helped = mode === 'visible' && extensions && this.opts.helperSource !== undefined
+    const helperSwitch = () => this.opts.helperFor?.(e.name) ?? 'on'
+    // Chrome forgets the helper, and the person's switch, at any start; read it first. A Turn on
+    // pressed since is newer than that record.
+    if (
+      this.opts.helperSource !== undefined &&
+      helperSwitch() !== 'turning-on' &&
+      offInLastSession(dir)
+    )
+      this.opts.rememberHelper?.(e.name, 'off')
     const base: ChromiumLaunchOptions = {
       profileDir: dir,
       headless: mode === 'headless',
@@ -352,13 +378,31 @@ export class ChromeBrowser implements ProfileBrowser {
     e.sync = sync
     e.generation = generation
     e.downloads = nativeDownloads
-    e.windows = new ChromiumWindows(ctx, undefined, undefined, undefined, (page) => {
-      if (e.ctx !== ctx) return
-      for (const cb of [...e.pageListeners]) cb(page)
+    // Visible profiles with extensions on get the helper; it places tabs without showing Chrome.
+    e.helper =
+      helped && this.opts.helperSource
+        ? new BrocrewHelper({
+            context: ctx,
+            profileDir: dir,
+            source: this.opts.helperSource,
+            allowed: () =>
+              e.ctx === ctx && !this.shuttingDown && this.opts.extensionsFor?.(e.name) === true,
+            rememberedOff: () => helperSwitch() === 'off',
+            remember: (off) => this.opts.rememberHelper?.(e.name, off ? 'off' : 'on'),
+            logger: this.logger,
+          })
+        : null
+    e.windows = new ChromiumWindows(ctx, {
+      onAdmit: (page) => {
+        if (e.ctx !== ctx) return
+        for (const cb of [...e.pageListeners]) cb(page)
+      },
+      ...(e.helper ? { placer: e.helper } : {}),
     })
     e.initial = ctx.pages()
     ctx.on('close', () => this.ended(e, ctx, generation))
     ctx.browser()?.on('disconnected', () => this.ended(e, ctx, generation))
+    if (e.helper) await (helperSwitch() === 'turning-on' ? e.helper.turnOn() : e.helper.install())
     this.logger.info('browser launched', {
       mode,
       generation,
@@ -391,6 +435,7 @@ export class ChromeBrowser implements ProfileBrowser {
     e.ctx = null
     e.initial = []
     e.windows = null
+    e.helper = null
     this.clearIdle(e)
     for (const hook of e.endedHooks.splice(0)) hook()
     for (const cb of [...e.closedListeners]) {
@@ -599,6 +644,11 @@ export class ChromeBrowser implements ProfileBrowser {
       ...opts,
       newWindow: opts.newWindow && e.mode === 'visible',
     })
+  }
+  /** The person turned the helper on: installed now in a running visible profile, else at its next. */
+  async turnHelperOn(profile: string): Promise<void> {
+    this.opts.rememberHelper?.(profile, 'turning-on')
+    await this.entries.get(profile)?.helper?.turnOn()
   }
   async windowId(profile: string, page: Page): Promise<number> {
     const windows = this.entries.get(profile)?.windows

@@ -43,7 +43,7 @@ describe('window-targeted tools and local navigation', () => {
       expect.arrayContaining([expect.objectContaining({ tabId: a.tabId, windowId: a.windowId })]),
     )
   })
-  it('returns placement and explicit fallback notes without hiding later failures', async () => {
+  it('returns placement notes, and the helper-off note, without hiding later failures', async () => {
     const h = setup()
     h.profile('p')
     const a = (
@@ -55,16 +55,23 @@ describe('window-targeted tools and local navigation', () => {
       note: string
     }
     expect(plain.note).toContain('different window')
+    const placed = (
+      await h.call('open_tab', { profile: 'p', url: 'about:blank', windowOf: c.tabId })
+    ).json as { note?: string; windowId: number }
+    expect(placed.windowId).toBe(c.windowId)
+    expect(placed.note).toBeUndefined()
+    h.browser.helper = 'off'
     const explicit = (
       await h.call('open_tab', { profile: 'p', url: 'about:blank', windowOf: c.tabId })
-    ).json as { note: string }
-    expect(explicit.note).toContain('may bring Chrome')
+    ).json as { note: string; windowId: number }
+    expect(explicit.windowId).toBe(a.windowId)
+    expect(explicit.note).toContain('turn it on in Settings → Plugins → Chrome')
     h.browser.usePage = async () => {
       throw new Error('fictional admission failure')
     }
     expect(
       await h.callError('open_tab', { profile: 'p', url: 'about:blank', windowOf: a.tabId }),
-    ).toContain('may bring Chrome')
+    ).toBe('the browser action failed (Error)')
   })
   it('rejects conflict, foreign/unknown/closed selectors without opening or switching profiles', async () => {
     const h = setup()

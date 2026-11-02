@@ -3,9 +3,17 @@ import { randomUUID } from 'node:crypto'
 import { performance } from 'node:perf_hooks'
 import { setTimeout as delay } from 'node:timers/promises'
 import type { BrowserContext, Page } from 'playwright-core'
+import type { TabPlacer, Unplaced } from '../../browser/brocrewHelper.js'
 const systemMonotonicClock = () => performance.now()
-const FALLBACK_NOTE =
-  'Opening in the requested window used a fallback that may bring Chrome to the front.'
+/** What the agent reads when a tab could not be opened in the window it asked for. */
+function elsewhere(actual: number, requested: number, helper: Unplaced | 'none'): string {
+  const opened = `Opened in window ${actual}; the requested window was ${requested}.`
+  if (helper === 'off')
+    return `${opened} BroCrew helper is off for this Chrome profile, so Chrome chose the window. Ask the person to turn it on in Settings → Plugins → Chrome.`
+  if (helper === 'ready') return opened
+  if (helper === 'refused') return `${opened} Chrome did not accept that window.`
+  return `${opened} Chrome chose the window; placing it in another one could bring Chrome to the front.`
+}
 const MAX_UNRESOLVED = 64
 export class WindowTargetError extends Error {}
 type Attempt = {
@@ -28,13 +36,24 @@ export class ChromiumWindows {
   private provisional = new Map<Page, () => void>()
   private closed = false
   private readonly onPage = (page: Page) => this.created(page)
+  private readonly timeoutMs: number
+  private readonly now: () => number
+  private readonly onAdmit?: (page: Page) => void
+  private readonly placer?: TabPlacer
   constructor(
     private readonly context: BrowserContext,
-    private readonly platform = process.platform,
-    private readonly timeoutMs = 10_000,
-    private readonly now = systemMonotonicClock,
-    private readonly onAdmit?: (page: Page) => void,
+    options: {
+      timeoutMs?: number
+      now?: () => number
+      onAdmit?: (page: Page) => void
+      /** Places a tab in a requested window without showing Chrome; see brocrewHelper.ts. */
+      placer?: TabPlacer
+    } = {},
   ) {
+    this.timeoutMs = options.timeoutMs ?? 10_000
+    this.now = options.now ?? systemMonotonicClock
+    this.onAdmit = options.onAdmit
+    this.placer = options.placer
     for (const page of context.pages()) this.admit(page)
     context.on('page', this.onPage)
     context.once('close', () => {
@@ -258,13 +277,12 @@ export class ChromiumWindows {
     const preferred = anchor ? await this.identity(anchor, deadline) : undefined
     const operation: Operation = { active: true, attempts: [] }
     const { attempts } = operation
-    let fallback = false
     let admitted: Page | undefined
     if (this.operations.size >= MAX_UNRESOLVED)
       throw new WindowTargetError(
         'too many unresolved tab creations; close and reopen this profile before trying again',
       )
-    // One slot owns BOTH possible phases until every dispatched creation is resolved.
+    // One slot owns every dispatched creation until each is resolved.
     this.operations.add(operation)
     const revalidate = async () => {
       if (opts.windowOf) {
@@ -290,85 +308,69 @@ export class ChromiumWindows {
       return a
     }
     let session: Awaited<ReturnType<BrowserContext['newCDPSession']>> | undefined
+    let helper: Unplaced | 'none' = 'none'
     try {
       this.budget(deadline)
-      const acquiring = anchor
-        ? this.context.newCDPSession(anchor)
-        : this.context.browser()?.newBrowserCDPSession()
-      if (!acquiring) throw new WindowTargetError('the browser is closed')
-      session = await this.wait(acquiring, deadline, (late) => {
-        void this.detach(late)
-      })
-      await revalidate()
-      let phase = attempt()
-      phase.dispatched = true
-      const target = await this.wait(
-        session.send('Target.createTarget', {
-          url: phase.marker,
-          newWindow: separate,
-          background: true,
-        }),
-        deadline,
-        (late) => {
-          phase.targetId = late.targetId
-        },
-      )
-      phase.targetId = target.targetId
-      this.claim(await this.appeared(phase.marker, deadline), phase)
-      let id = await this.identity(phase.page!, deadline)
-      await revalidate()
-      if (opts.windowOf && id !== preferred) {
-        if (phase.page!.url() !== phase.marker || phase.page!.isClosed())
-          throw new WindowTargetError('the unused background tab changed before cleanup')
-        await this.wait(phase.page!.close(), deadline)
-        if (!phase.page!.isClosed())
-          throw new WindowTargetError('the unused background tab could not be closed')
-        this.resolveAttempt(phase)
+      let phase: Attempt | undefined
+      if (opts.windowOf && this.placer && preferred !== undefined) {
         await revalidate()
-        phase = attempt()
-        const { frameTree } = await this.wait(session.send('Page.getFrameTree'), deadline)
-        this.budget(deadline)
-        const { executionContextId } = await this.wait(
-          session.send('Page.createIsolatedWorld', {
-            frameId: frameTree.frame.id,
-            worldName: 'background-tab',
-          }),
+        const placing = attempt()
+        placing.dispatched = true
+        const placed = await this.wait(
+          this.placer.place(preferred, placing.marker, deadline - this.now()),
           deadline,
+          (late) => {
+            if (!late.created) this.resolveAttempt(placing)
+          },
         )
-        await revalidate()
-        const modifier = this.platform === 'darwin' ? 'metaKey' : 'ctrlKey'
-        const expression = `(() => { const a = document.createElement('a'); a.href = ${JSON.stringify(phase.marker)}; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.dispatchEvent(new MouseEvent('click', { ${modifier}: true })); })()`
-        this.budget(deadline)
-        fallback = true
-        phase.dispatched = true
-        const result = await this.wait(
-          session.send('Runtime.evaluate', {
-            expression,
-            contextId: executionContextId,
-            userGesture: false,
-          }),
-          deadline,
-        )
-        if (result.exceptionDetails)
-          throw new WindowTargetError('the tab could not be opened in the selected window')
-        this.claim(await this.appeared(phase.marker, deadline), phase)
-        id = await this.identity(phase.page!, deadline)
-        await revalidate()
-        if (id !== preferred)
-          throw new WindowTargetError(
-            'the selected window closed before the new tab could be opened',
-          )
+        if (placed.created) {
+          phase = placing
+          helper = 'ready'
+        } else {
+          // Nothing was created, so the background creation below cannot duplicate it.
+          this.resolveAttempt(placing)
+          helper = placed.helper
+        }
       }
+      if (!phase) {
+        const acquiring = anchor
+          ? this.context.newCDPSession(anchor)
+          : this.context.browser()?.newBrowserCDPSession()
+        if (!acquiring) throw new WindowTargetError('the browser is closed')
+        session = await this.wait(acquiring, deadline, (late) => {
+          void this.detach(late)
+        })
+        await revalidate()
+        const creating = attempt()
+        creating.dispatched = true
+        const target = await this.wait(
+          session.send('Target.createTarget', {
+            url: creating.marker,
+            newWindow: separate,
+            background: true,
+          }),
+          deadline,
+          (late) => {
+            creating.targetId = late.targetId
+          },
+        )
+        creating.targetId = target.targetId
+        phase = creating
+      }
+      this.claim(await this.appeared(phase.marker, deadline), phase)
+      const id = await this.identity(phase.page!, deadline)
+      await revalidate()
       if (phase.page!.url() !== phase.marker)
         throw new WindowTargetError('the new tab changed before admission')
       this.check(phase.page!)
       this.budget(deadline)
       admitted = phase.page!
       phase.resolved = true
-      if (fallback) opts.onNote?.(FALLBACK_NOTE)
-      else if (!separate && !opts.windowOf && preferred !== undefined && preferred !== id)
+      if (!separate && preferred !== undefined && preferred !== id)
         opts.onNote?.(
-          'Chrome opened this tab in a different window from the last tool-used window.',
+          opts.windowOf
+            ? elsewhere(id, preferred, helper)
+            : 'Chrome opened this tab in a different window from the last tool-used window.',
         )
       return admitted
     } catch (error) {
@@ -378,13 +380,9 @@ export class ChromiumWindows {
         for (const page of this.context.pages()) if (page.url() === a.marker) this.claim(page, a)
       }
       const cleaned = await Promise.all(attempts.map((a) => this.cleanupAttempt(a)))
-      const cleanupNote = cleaned.every(Boolean)
-        ? ''
-        : ' Private tab cleanup incomplete; unresolved creations remain quarantined until they close or this profile closes.'
-      const fallbackNote = fallback ? ` ${FALLBACK_NOTE}` : ''
-      if (cleanupNote || fallbackNote)
+      if (!cleaned.every(Boolean))
         throw new WindowTargetError(
-          `${error instanceof Error ? error.message : 'window operation failed'}${cleanupNote}${fallbackNote}`,
+          `${error instanceof Error ? error.message : 'window operation failed'} Private tab cleanup incomplete; unresolved creations remain quarantined until they close or this profile closes.`,
         )
       throw error
     } finally {

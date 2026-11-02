@@ -33,8 +33,8 @@ export function launchArgs(i: LaunchArgsInput): string[] {
     '--disable-search-engine-choice-screen',
     ...(i.sync ? [] : ['--disable-sync']),
     ...(i.extensions ? [] : ['--disable-extensions']),
-    // Controlled background opening grants no user activation; site popups are also permitted.
-    ...(i.background ? ['--disable-popup-blocking'] : []),
+    // Lets this plugin load the BroCrew helper over its own debugging pipe.
+    ...(i.extensions && i.mode === 'visible' ? ['--enable-unsafe-extension-debugging'] : []),
     ...(i.mode === 'headless' ? ['--headless', '--hide-scrollbars', '--mute-audio'] : []),
     ...(platform === 'linux' ? ['--disable-dev-shm-usage'] : []),
     ...(i.noSandbox ? ['--no-sandbox'] : []),

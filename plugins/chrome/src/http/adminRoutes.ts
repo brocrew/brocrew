@@ -38,6 +38,7 @@ export const ADMIN_ERRORS = {
   inUse: 'The profile is open in another Chrome.',
   deleteInUse: 'Turn this profile off and wait for agent work to finish, then try again.',
   noBrowser: 'Install Google Chrome, then try again.',
+  helper: 'Enable this profile first, then turn the helper on.',
   failed: 'The request could not be completed.',
 } as const
 const isRecord = (v: unknown): v is Record<string, unknown> =>
@@ -79,6 +80,7 @@ export function registerAdminRoutes(app: Express, deps: AdminDeps): void {
       ...rec,
       open: s !== null,
       mode: s?.mode ?? null,
+      helperOff: rec.helper === 'off',
     }
   }
   const bodyOf = (req: Request, allowed: readonly string[]): Record<string, unknown> | null => {
@@ -165,6 +167,17 @@ export function registerAdminRoutes(app: Express, deps: AdminDeps): void {
     if (body.enabled === false || extensionsChanged)
       await browser.exclusive(name, () => browser.close(name)).catch(() => undefined)
     deps.logger.info('profile flags changed', { flags: Object.keys(body) })
+    send(res, 200, { profile: view(name) })
+  })
+  // The person's "Turn on" for the BroCrew helper; an enabled profile only.
+  app.post('/v1/profiles/:name/helper', async (req, res) => {
+    const name = named(req, res)
+    if (!name) return
+    if (!bodyOf(req, [])) return fail(res, 400, ADMIN_ERRORS.body)
+    if (store.get(name)?.enabled !== true) return fail(res, 409, ADMIN_ERRORS.helper)
+    store.setHelper(name, 'turning-on')
+    await browser.turnHelperOn(name).catch(() => undefined)
+    deps.logger.info('BroCrew helper turned on', { by: 'panel' })
     send(res, 200, { profile: view(name) })
   })
   app.post('/v1/profiles/:name/open', async (req, res) => {

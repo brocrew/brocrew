@@ -93,7 +93,7 @@
         "properties": {
           "action": {
             "type": "string",
-            "enum": ["create-profile", "set-enabled", "open-window", "delete-profile"],
+            "enum": ["create-profile", "set-enabled", "open-window", "delete-profile", "helper-on"],
             "maxLength": 32
           },
           "profile": {
@@ -168,6 +168,14 @@
       {
         "id": "closed",
         "text": "Closed"
+      },
+      {
+        "id": "helper-off",
+        "text": "Helper off."
+      },
+      {
+        "id": "helper-on",
+        "text": "Turn on"
       }
     ]
   },

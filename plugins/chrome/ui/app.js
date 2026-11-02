@@ -126,6 +126,15 @@ function draw(snapshot) {
     actions.append(remove)
     heading.append(name, state, actions)
     row.append(heading)
+    if (profile.enabled && profile.helperOff === true) {
+      const helper = document.createElement('p')
+      helper.className = 'profile-helper'
+      helper.append(
+        text('span', 'Helper off.'),
+        action('Turn on', { action: 'helper-on', profile: profile.name }),
+      )
+      row.append(helper)
+    }
     if (deleting === profile.name) {
       const confirmation = document.createElement('section')
       confirmation.className = 'profile-delete-confirmation'

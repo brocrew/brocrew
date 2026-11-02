@@ -37,7 +37,7 @@ describe('launchArgs: the whole command line, nothing else', () => {
       expect(unbranded).toContain('--password-store=basic')
     },
   )
-  it('headless adds only the headless flags; sync / extensions on remove only their own flag; test-type off removes only itself', () => {
+  it('headless adds only the headless flags; sync on removes only its flag; extensions on swap their flag for the helper’s; test-type off removes only itself', () => {
     const head = launchArgs({ ...base, mode: 'headless' })
     expect(head.filter((a) => !launchArgs(base).includes(a))).toEqual([
       '--headless',
@@ -48,7 +48,13 @@ describe('launchArgs: the whole command line, nothing else', () => {
       launchArgs(base).filter((a) => a !== '--disable-sync'),
     )
     expect(launchArgs({ ...base, extensions: true })).toEqual(
-      launchArgs(base).filter((a) => a !== '--disable-extensions'),
+      launchArgs(base).map((a) =>
+        a === '--disable-extensions' ? '--enable-unsafe-extension-debugging' : a,
+      ),
+    )
+    const headless = { ...base, mode: 'headless' as const }
+    expect(launchArgs({ ...headless, extensions: true })).toEqual(
+      launchArgs(headless).filter((a) => a !== '--disable-extensions'),
     )
     expect(launchArgs({ ...base, noTestType: true })).toEqual(
       launchArgs(base).filter((a) => a !== '--test-type'),
@@ -103,10 +109,10 @@ describe('launchArgs: the whole command line, nothing else', () => {
   })
 })
 
-it('background policy is opt-in: suppresses the visible startup window and permits no-activation opening', () => {
+it('background policy is opt-in: suppresses the visible startup window and keeps Chrome’s popup blocker', () => {
   const args = launchArgs({ ...base, background: true })
   expect(args).toContain('--no-startup-window')
-  expect(args).toContain('--disable-popup-blocking')
+  expect(args).not.toContain('--disable-popup-blocking')
   expect(args).not.toContain('about:blank')
   expect(launchArgs(base)).not.toContain('--no-startup-window')
   expect(launchArgs({ ...base, background: true, mode: 'headless' })).toContain('about:blank')

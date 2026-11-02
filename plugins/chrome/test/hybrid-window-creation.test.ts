@@ -79,6 +79,14 @@ class Ctx extends EventEmitter {
           if (p?.probe && this.failProbeIdentity) throw Error('fixture identity unavailable')
           return { windowId: p.wid }
         }
+        // Chrome answers the page-click path too; tests assert it is never taken.
+        if (method === 'Page.getFrameTree') return { frameTree: { frame: { id: 'fixture-frame' } } }
+        if (method === 'Page.createIsolatedWorld') return { executionContextId: 7 }
+        if (method === 'Runtime.evaluate') {
+          const marker = JSON.parse(/a.href = (".*?");/.exec(params.expression as string)![1])
+          this.add(p.wid, marker)
+          return {}
+        }
         if (method === 'Target.createTarget') {
           if (this.unrelated) this.add(88, 'https://unrelated.test/')
           const q = this.add(
@@ -95,13 +103,6 @@ class Ctx extends EventEmitter {
             }, 5)
           return { targetId: 'owned-' + this.all.indexOf(q) }
         }
-        if (method === 'Page.getFrameTree') return { frameTree: { frame: { id: 'fixture-frame' } } }
-        if (method === 'Page.createIsolatedWorld') return { executionContextId: 7 }
-        if (method === 'Runtime.evaluate') {
-          const marker = JSON.parse(/a.href = (".*?");/.exec(params.expression as string)![1])
-          this.add(p.wid, marker)
-          return {}
-        }
         throw Error(method)
       },
     }
@@ -110,17 +111,14 @@ class Ctx extends EventEmitter {
 function setup(timeout = 1000) {
   const ctx = new Ctx(),
     published: Page[] = []
-  const windows = new ChromiumWindows(
-    ctx as unknown as BrowserContext,
-    'darwin',
-    timeout,
-    undefined,
-    (p) => published.push(p),
-  )
+  const windows = new ChromiumWindows(ctx as unknown as BrowserContext, {
+    timeoutMs: timeout,
+    onAdmit: (p) => published.push(p),
+  })
   published.length = 0
   return { ctx, windows, published }
 }
-describe('inactive native selection and explicit-only cross-window fallback', () => {
+describe('inactive native selection without the helper', () => {
   it('plain opens use background CDP/native window despite opposed tool recency, with a note', async () => {
     const { ctx, windows } = setup()
     const a = ctx.pages()[0]
@@ -138,7 +136,7 @@ describe('inactive native selection and explicit-only cross-window fallback', ()
     })
     expect(ctx.sent.some((s) => s.method === 'Runtime.evaluate')).toBe(false)
   })
-  it('matching explicit window uses one background CDP page without fallback or warning', async () => {
+  it('matching explicit window uses one background CDP page without a note', async () => {
     const { ctx, windows } = setup()
     const notes: string[] = []
     const page = await windows.open({
@@ -150,7 +148,7 @@ describe('inactive native selection and explicit-only cross-window fallback', ()
     expect(notes).toEqual([])
     expect(ctx.sent.some((s) => s.method === 'Runtime.evaluate')).toBe(false)
   })
-  it('mismatch closes one unpublished blank probe before exact-window fallback, with warning', async () => {
+  it('mismatch keeps the one background tab where Chrome put it and says so', async () => {
     const { ctx, windows, published } = setup()
     const anchor = ctx.add(2)
     published.length = 0
@@ -160,14 +158,16 @@ describe('inactive native selection and explicit-only cross-window fallback', ()
       windowOf: anchor as unknown as Page,
       onNote: (n) => notes.push(n),
     })
-    const probe = ctx.all.find((p) => p.probe)!
-    expect(probe.closed).toBe(true)
-    expect(published).not.toContain(probe as unknown as Page)
+    const created = ctx.all.find((p) => p.probe)!
+    expect(page).toBe(created)
+    expect(created.closed).toBe(false)
     expect(published).toEqual([page])
-    expect(await windows.windowId(page)).toBe(2)
-    expect(notes.join(' ')).toContain('may bring Chrome')
+    expect(await windows.windowId(page)).toBe(1)
+    expect(notes).toEqual([
+      'Opened in window 1; the requested window was 2. Chrome chose the window; placing it in another one could bring Chrome to the front.',
+    ])
     expect(ctx.sent.filter((s) => s.method === 'Target.createTarget')).toHaveLength(1)
-    expect(ctx.sent.filter((s) => s.method === 'Runtime.evaluate')).toHaveLength(1)
+    expect(ctx.sent.some((s) => s.method.startsWith('Runtime.'))).toBe(false)
   })
   it('quarantines initially blank page events and preserves unrelated popup admission', async () => {
     const { ctx, windows, published } = setup()
@@ -176,51 +176,25 @@ describe('inactive native selection and explicit-only cross-window fallback', ()
     ctx.initialBlank = true
     ctx.unrelated = true
     const page = await windows.open({ newWindow: false, windowOf: anchor as unknown as Page })
-    expect(published).not.toContain(ctx.all.find((p) => p.probe) as unknown as Page)
-    expect(published).toContain(page)
+    expect(page).toBe(ctx.all.find((p) => p.probe))
+    expect(published.filter((p) => p === page)).toHaveLength(1)
     expect(published.some((p) => p.url() === 'https://unrelated.test/')).toBe(true)
   })
-  it.each(['protocol failure', 'probe close failure', 'anchor movement', 'anchor close'])(
-    'never falls back after %s',
+  it.each(['protocol failure', 'anchor movement', 'anchor close'])(
+    'fails without a second creation after %s',
     async (fault) => {
       const { ctx, windows } = setup(40)
       const anchor = ctx.add(2)
       if (fault === 'protocol failure') ctx.fail = 'Target.createTarget'
-      if (fault === 'probe close failure') ctx.failClose = true
       if (fault === 'anchor movement') ctx.moveAnchor = true
       if (fault === 'anchor close') ctx.closeAnchor = true
       await expect(
         windows.open({ newWindow: false, windowOf: anchor as unknown as Page }),
       ).rejects.toThrow()
-      expect(ctx.sent.some((s) => s.method === 'Runtime.evaluate')).toBe(false)
+      expect(ctx.sent.filter((s) => s.method === 'Target.createTarget')).toHaveLength(1)
+      expect(ctx.sent.some((s) => s.method.startsWith('Runtime.'))).toBe(false)
     },
   )
-  it('includes fallback warning even when synthetic creation fails', async () => {
-    const { ctx, windows } = setup()
-    const anchor = ctx.add(2)
-    ctx.fail = 'Runtime.evaluate'
-    await expect(
-      windows.open({ newWindow: false, windowOf: anchor as unknown as Page }),
-    ).rejects.toThrow('may bring Chrome')
-  })
-  it('does not renew the deadline between the probe and explicit fallback', async () => {
-    const ctx = new Ctx()
-    let clock = 0
-    const windows = new ChromiumWindows(
-      ctx as unknown as BrowserContext,
-      'darwin',
-      100,
-      () => clock,
-    )
-    const anchor = ctx.add(2)
-    ctx.tick = (method) => {
-      if (method === 'Page.createIsolatedWorld') clock = 101
-    }
-    await expect(
-      windows.open({ newWindow: false, windowOf: anchor as unknown as Page }),
-    ).rejects.toThrow('timed out')
-    expect(ctx.sent.some((s) => s.method === 'Runtime.evaluate')).toBe(false)
-  })
   it('reserves the finite cleanup capacity before concurrent dispatch', async () => {
     const { ctx, windows } = setup(1000)
     ctx.hang = 'Target.createTarget'
@@ -236,22 +210,6 @@ describe('inactive native selection and explicit-only cross-window fallback', ()
     const count = ctx.sent.filter((s) => s.method === 'Target.createTarget').length
     await expect(windows.open({ newWindow: false })).rejects.toThrow('too many unresolved')
     expect(ctx.sent.filter((s) => s.method === 'Target.createTarget')).toHaveLength(count)
-  })
-  it('failed explicit fallback cleans its late page without admitting the closed probe', async () => {
-    const { ctx, windows, published } = setup(25)
-    const anchor = ctx.add(2)
-    published.length = 0
-    ctx.hang = 'Runtime.evaluate'
-    await expect(
-      windows.open({ newWindow: false, windowOf: anchor as unknown as Page }),
-    ).rejects.toThrow('may bring Chrome')
-    ctx.release!()
-    await new Promise((r) => setTimeout(r, 15))
-    expect(
-      ctx.all.filter((p) => p.url().startsWith('about:blank#new-tab-')).every((p) => p.closed),
-    ).toBe(true)
-    expect(published).toEqual([])
-    expect(anchor.closed).toBe(false)
   })
   it('retains correlated failed page ownership after its URL changes, without public admission', async () => {
     const { ctx, windows, published } = setup()
@@ -272,7 +230,6 @@ describe('inactive native selection and explicit-only cross-window fallback', ()
     expect(await windows.latest()).toBe(anchor)
     expect(published).toContain(unrelated as unknown as Page)
     expect(published).not.toContain(probe as unknown as Page)
-    expect(ctx.sent.some((s) => s.method === 'Runtime.evaluate')).toBe(false)
     await probe.close()
     ctx.emit('close')
   })
@@ -288,31 +245,11 @@ describe('inactive native selection and explicit-only cross-window fallback', ()
     expect(published).not.toContain(probe as unknown as Page)
     ctx.emit('close')
   })
-  it('keeps a failed fallback operation slot until its second creation closes', async () => {
-    const { ctx, windows } = setup(25)
-    const anchor = ctx.add(2)
-    ctx.hang = 'Runtime.evaluate'
-    await expect(
-      windows.open({ newWindow: false, windowOf: anchor as unknown as Page }),
-    ).rejects.toThrow(/cleanup incomplete.*may bring Chrome/)
-    // The probe is already closed. Its still-pending fallback continues to own one slot.
-    ctx.hang = ''
-    ctx.fail = 'Target.createTarget'
-    for (let n = 0; n < 63; n++)
-      await expect(windows.open({ newWindow: false })).rejects.toThrow('protocol failed')
-    await expect(windows.open({ newWindow: false })).rejects.toThrow('too many unresolved')
-    ctx.fail = ''
-    ctx.release!()
-    await new Promise((r) => setTimeout(r, 15))
-    // Closing the late fallback releases exactly its one slot, not any unknown creations.
-    await expect(windows.open({ newWindow: true })).resolves.toBeDefined()
-    ctx.emit('close')
-  })
-  it('new windows stay CDP-only and do not use explicit fallback', async () => {
+  it('new windows stay CDP-only', async () => {
     const { ctx, windows } = setup()
     const page = await windows.open({ newWindow: true })
     expect(await windows.windowId(page)).toBe(2)
-    expect(ctx.sent.some((s) => s.method === 'Runtime.evaluate')).toBe(false)
+    expect(ctx.sent.map((s) => s.method)).not.toContain('Runtime.evaluate')
   })
   it('timeout consumes no public probe IDs and closes only the late owned page', async () => {
     const { ctx, windows, published } = setup(20)
