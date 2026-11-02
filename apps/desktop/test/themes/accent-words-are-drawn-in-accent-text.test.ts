@@ -78,6 +78,7 @@ const MARKS = [
   'KeptRules.vue: .kept-icon',
   'MemoryLoadedEntry.vue: .ml-link .arrow',
   'MemoryNoteEntry.vue: .mn-link .arrow',
+  'PromptComposer.vue: .voice-button.listening',
   'ProvidersScreen.vue: .debug-icon',
   'ProvidersScreen.vue: .page-icon',
   'SessionContext.vue: .hist-row .jump .arrow',

@@ -1649,7 +1649,7 @@ defineExpose({
   flex-wrap: wrap;
 }
 .voice-status button {
-  color: var(--accent);
+  color: var(--accent-text);
   margin-left: 8px;
   cursor: pointer;
 }
