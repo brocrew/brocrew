@@ -1,5 +1,7 @@
 /* eslint-disable @typescript-eslint/no-require-imports -- electron-builder loads this hook as CommonJS. */
 const { spawnSync } = require('node:child_process')
+const { createHash } = require('node:crypto')
+const { appendFileSync, copyFileSync, constants, readFileSync } = require('node:fs')
 const path = require('node:path')
 
 const SECRET_NAMES = ['ES_USERNAME', 'ES_PASSWORD', 'CREDENTIAL_ID', 'ES_TOTP_SECRET']
@@ -16,16 +18,20 @@ function createSigner({ env = process.env, run = spawnSync, platform = process.p
   }
   return async function sign(configuration, packager) {
     const present = SECRET_NAMES.filter((name) => Boolean(env[name]))
+    const recordDir = env.BROCREW_WINDOWS_SIGNING_RECORD_DIR
+    if (recordDir && present.length) {
+      throw new Error('Record-only Windows packaging requires no eSigner secrets')
+    }
     // With no signing account, leave every byte and the updater's existing policy alone.
-    if (present.length === 0) return
-    if (present.length !== SECRET_NAMES.length) {
+    if (!recordDir && present.length === 0) return
+    if (!recordDir && present.length !== SECRET_NAMES.length) {
       throw new Error('Windows signing requires all four eSigner environment secrets')
     }
     if (
       platform !== 'win32' ||
       env.GITHUB_ACTIONS !== 'true' ||
       env.GITHUB_REPOSITORY !== 'brocrew/brocrew' ||
-      !/^refs\/tags\/v\d+\.\d+\.\d+(-beta\.\d+)?$/.test(env.GITHUB_REF || '')
+      (!recordDir && !/^refs\/tags\/v\d+\.\d+\.\d+(-beta\.\d+)?$/.test(env.GITHUB_REF || ''))
     ) {
       throw new Error('Windows signing is restricted to BroCrew release tags on Windows CI')
     }
@@ -41,6 +47,32 @@ function createSigner({ env = process.env, run = spawnSync, platform = process.p
       path.join(outDir, `${installer}.__uninstaller.exe`),
     ]
     const file = path.resolve(configuration.path)
+    // Record actual callback bytes, preserving the transient uninstaller before builder deletes it.
+    // This branch always returns before any signing or verification subprocess can run.
+    if (recordDir) {
+      if (!path.isAbsolute(recordDir) || !/^[a-f0-9]{40}$/.test(env.GITHUB_SHA || '')) {
+        throw new Error('Record-only packaging needs an absolute evidence directory and commit SHA')
+      }
+      const role = ['app', 'installer', 'uninstaller'][targets.indexOf(file)] || null
+      const bytes = readFileSync(file)
+      if (role === 'uninstaller') {
+        copyFileSync(file, path.join(recordDir, 'uninstaller.exe'), constants.COPYFILE_EXCL)
+      }
+      appendFileSync(
+        path.join(recordDir, 'callbacks.jsonl'),
+        JSON.stringify({
+          mode: 'record-only',
+          sha: env.GITHUB_SHA,
+          path: file,
+          role,
+          hash: configuration.hash,
+          isNest: Boolean(configuration.isNest),
+          size: bytes.length,
+          sha256: createHash('sha256').update(bytes).digest('hex'),
+        }) + '\n',
+      )
+      return
+    }
     // Builder also offers vendor executables and native modules. They keep their original bytes.
     if (!targets.includes(file)) return
     if (signed.has(file)) throw new Error('Refusing a duplicate Windows signing call')

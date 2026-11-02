@@ -1,10 +1,11 @@
 import { createHash } from 'node:crypto'
 import { createRequire } from 'node:module'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { checkWitness } from '../windows-signing-witness.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const require = createRequire(join(root, 'apps/desktop/package.json'))
@@ -34,8 +35,8 @@ const fakeEnv = () => ({
   JAVA_HOME: '/fictional/java',
   CODE_SIGN_TOOL_PATH: '/fictional/CodeSignTool',
 })
-const packager = (signtoolOptions = {}, output = 'dist') => {
-  const info = new Packager({ projectDir: '/fictional/app' })
+const packager = (signtoolOptions = {}, output = 'dist', projectDir = '/fictional/app') => {
+  const info = new Packager({ projectDir })
   info._configuration = {
     win: { signtoolOptions },
     productName: 'BroCrew',
@@ -56,6 +57,53 @@ const task = (file = 'win-unpacked/BroCrew.exe') => ({
 })
 
 describe('Windows release signing', () => {
+  it('record-only real builder callbacks preserve bytes, never spawn, and match actual output files', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'brocrew-signing-witness-'))
+    temps.push(dir)
+    const evidence = join(dir, 'evidence')
+    mkdirSync(evidence)
+    const env = {
+      GITHUB_ACTIONS: 'true',
+      GITHUB_REPOSITORY: 'brocrew/brocrew',
+      GITHUB_SHA: 'a'.repeat(40),
+      BROCREW_WINDOWS_SIGNING_RECORD_DIR: evidence,
+    }
+    const run = vi.fn()
+    const sign = createSigner({ env, run, platform: 'win32' })
+    const real = packager({ ...builder.win.signtoolOptions, sign }, 'dist', dir)
+    vi.spyOn(real, 'getCscLink').mockReturnValue(null)
+    for (const name of [
+      'win-unpacked/resources/node.exe',
+      'win-unpacked/resources/codex.exe',
+      'win-unpacked/BroCrew.exe',
+      'BroCrew-Setup-0.2.0-x64.__uninstaller.exe',
+      'BroCrew-Setup-0.2.0-x64.exe',
+    ]) {
+      const file = join(dir, 'dist', name)
+      mkdirSync(dirname(file), { recursive: true })
+      writeFileSync(file, `MZ original ${name}`)
+      await real.signIf(file)
+    }
+    const uninstaller = join(dir, 'dist/BroCrew-Setup-0.2.0-x64.__uninstaller.exe')
+    rmSync(uninstaller)
+    const result = checkWitness(evidence, join(dir, 'dist'), env.GITHUB_SHA)
+    expect(result.callbacks).toBe(5)
+    expect(result.selected.map((row) => row.role)).toEqual(['app', 'uninstaller', 'installer'])
+    expect(run).not.toHaveBeenCalled()
+    await expect(
+      createSigner({ env: { ...env, ...fakeEnv() }, run, platform: 'win32' })(task(), real),
+    ).rejects.toThrow(/requires no eSigner secrets/)
+    expect(run).not.toHaveBeenCalled()
+
+    const rows = readFileSync(join(evidence, 'callbacks.jsonl'), 'utf8')
+    writeFileSync(join(evidence, 'callbacks.jsonl'), rows.replace('"role":"app"', '"role":null'))
+    expect(() => checkWitness(evidence, join(dir, 'dist'), env.GITHUB_SHA)).toThrow(/exactly app/)
+    writeFileSync(join(evidence, 'callbacks.jsonl'), rows)
+    expect(() => checkWitness(evidence, join(dir, 'dist'), 'b'.repeat(40))).toThrow()
+    writeFileSync(join(dir, 'dist/win-unpacked/resources/node.exe'), 'MZ changed vendor')
+    expect(() => checkWitness(evidence, join(dir, 'dist'), env.GITHUB_SHA)).toThrow()
+  })
+
   it('runs through real Packager, WinPackager and signing manager without an outDir property', async () => {
     const run = vi.fn(() => ({ status: 0 }))
     vi.spyOn(console, 'info').mockImplementation(() => {})
@@ -338,10 +386,17 @@ describe('Windows release signing', () => {
     expect(builder.win.signtoolOptions.publisherName).toBeUndefined()
     expect(builder.win.signtoolOptions.sign).toBe('./build/windows-sign.cjs')
     for (const name of ['windows.yml', 'ci.yml', 'upgrade-path.yml']) {
-      expect(readFileSync(join(root, '.github/workflows', name), 'utf8')).not.toMatch(
-        /windows-signing|secrets\.(ES_USERNAME|ES_PASSWORD|CREDENTIAL_ID|ES_TOTP_SECRET)/,
-      )
+      const text = readFileSync(join(root, '.github/workflows', name), 'utf8')
+      expect(text).not.toMatch(/secrets\.(ES_USERNAME|ES_PASSWORD|CREDENTIAL_ID|ES_TOTP_SECRET)/)
+      for (const job of Object.values(parse(text).jobs)) {
+        expect(job.environment).not.toBe('windows-signing')
+      }
     }
+    const windows = parse(readFileSync(join(root, '.github/workflows/windows.yml'), 'utf8'))
+    expect(windows.on.workflow_dispatch.inputs.signing_witness.default).toBe(false)
+    expect(
+      windows.jobs.windows.steps.find((step) => step.name === 'Keep signing callback witness').if,
+    ).toContain('inputs.signing_witness')
     for (const [name, job] of Object.entries(workflow.jobs)) {
       if (name !== 'windows')
         expect(JSON.stringify(job)).not.toMatch(
