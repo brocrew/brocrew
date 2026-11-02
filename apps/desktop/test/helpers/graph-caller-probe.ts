@@ -117,8 +117,25 @@ export class GraphHeartbeatProbe {
     ))
     control.on('error', (error) => (this.controlError = error))
     await new Promise<void>((resolve, reject) => {
-      control.once('message', () => resolve())
-      control.once('error', reject)
+      const ready = () => finish()
+      const failed = (error: Error) => finish(error)
+      const exited = (code: number) =>
+        finish(new Error(`Graph control worker exited before startup (${code})`))
+      const timeout = setTimeout(
+        () => finish(new Error('Graph control worker did not start within 5 seconds')),
+        5000,
+      )
+      function finish(error?: Error) {
+        clearTimeout(timeout)
+        control.removeListener('message', ready)
+        control.removeListener('error', failed)
+        control.removeListener('exit', exited)
+        if (error) reject(error)
+        else resolve()
+      }
+      control.once('message', ready)
+      control.once('error', failed)
+      control.once('exit', exited)
     })
     Atomics.store(this.state, 2, 1n)
     this.origin = this.previous = performance.now()
