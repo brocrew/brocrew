@@ -31,10 +31,14 @@ function createSigner({ env = process.env, run = spawnSync, platform = process.p
     }
 
     const installer = `BroCrew-Setup-${packager.appInfo.version}-x64`
+    const outDir = path.resolve(
+      packager.projectDir,
+      packager.expandMacro(packager.config.directories.output, 'x64'),
+    )
     const targets = [
-      path.resolve(packager.info.outDir, 'win-unpacked', 'BroCrew.exe'),
-      path.resolve(packager.info.outDir, `${installer}.exe`),
-      path.resolve(packager.info.outDir, `${installer}.__uninstaller.exe`),
+      path.join(outDir, 'win-unpacked', 'BroCrew.exe'),
+      path.join(outDir, `${installer}.exe`),
+      path.join(outDir, `${installer}.__uninstaller.exe`),
     ]
     const file = path.resolve(configuration.path)
     // Builder also offers vendor executables and native modules. They keep their original bytes.

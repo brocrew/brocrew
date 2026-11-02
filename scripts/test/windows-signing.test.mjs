@@ -11,7 +11,7 @@ const require = createRequire(join(root, 'apps/desktop/package.json'))
 const builderRequire = createRequire(require.resolve('electron-builder/package.json'))
 const libRequire = createRequire(builderRequire.resolve('app-builder-lib/package.json'))
 const { createSigner } = require(join(root, 'apps/desktop/build/windows-sign.cjs'))
-const { WindowsSignToolManager, WinPackager, Platform } = libRequire('./out/index.js')
+const { WindowsSignToolManager, Packager, WinPackager, Platform } = libRequire('./out/index.js')
 const { getAppUpdatePublishConfiguration } = libRequire('./out/publish/PublishManager.js')
 const { NsisUpdater } = require('electron-updater/out/NsisUpdater.js')
 const { load: parse } = libRequire('js-yaml')
@@ -34,21 +34,29 @@ const fakeEnv = () => ({
   JAVA_HOME: '/fictional/java',
   CODE_SIGN_TOOL_PATH: '/fictional/CodeSignTool',
 })
-const packager = (signtoolOptions = {}) =>
-  new WinPackager({
-    outDir: '/fictional/dist',
-    config: { win: { signtoolOptions }, productName: 'BroCrew' },
-    metadata: { name: 'fictional-brocrew', version: '0.2.0', homepage: 'https://example.invalid/' },
-    getWorkspaceRoot: async () => root,
-  })
+const packager = (signtoolOptions = {}, output = 'dist') => {
+  const info = new Packager({ projectDir: '/fictional/app' })
+  info._configuration = {
+    win: { signtoolOptions },
+    productName: 'BroCrew',
+    directories: { output },
+  }
+  info._metadata = {
+    name: 'fictional-brocrew',
+    version: '0.2.0',
+    homepage: 'https://example.invalid/',
+  }
+  info.getWorkspaceRoot = async () => root
+  return new WinPackager(info)
+}
 const task = (file = 'win-unpacked/BroCrew.exe') => ({
-  path: join(packager().info.outDir, file),
+  path: join('/fictional/app/dist', file),
   hash: 'sha256',
   isNest: false,
 })
 
 describe('Windows release signing', () => {
-  it('runs through the real WinPackager and its signing manager using info.outDir', async () => {
+  it('runs through real Packager, WinPackager and signing manager without an outDir property', async () => {
     const run = vi.fn(() => ({ status: 0 }))
     vi.spyOn(console, 'info').mockImplementation(() => {})
     const real = packager({
@@ -57,6 +65,8 @@ describe('Windows release signing', () => {
     })
     vi.spyOn(real, 'getCscLink').mockReturnValue(null)
     expect(real.outDir).toBeUndefined()
+    expect(real.info).toBeInstanceOf(Packager)
+    expect(real.info.outDir).toBeUndefined()
     for (const file of [
       'win-unpacked/BroCrew.exe',
       'BroCrew-Setup-0.2.0-x64.__uninstaller.exe',
@@ -65,6 +75,26 @@ describe('Windows release signing', () => {
       await real.signIf(task(file).path)
     expect(run).toHaveBeenCalledTimes(6)
     expect(run.mock.calls.filter(([, args]) => args.includes('sign'))).toHaveLength(3)
+  })
+
+  it('expands the configured output macros with the real builder before choosing signing targets', async () => {
+    const run = vi.fn(() => ({ status: 0 }))
+    vi.spyOn(console, 'info').mockImplementation(() => {})
+    const real = packager(
+      {
+        ...builder.win.signtoolOptions,
+        sign: createSigner({ env: fakeEnv(), run, platform: 'win32' }),
+      },
+      'packages/${os}/${arch}',
+    )
+    vi.spyOn(real, 'getCscLink').mockReturnValue(null)
+    for (const name of [
+      'win-unpacked/BroCrew.exe',
+      'BroCrew-Setup-0.2.0-x64.__uninstaller.exe',
+      'BroCrew-Setup-0.2.0-x64.exe',
+    ])
+      await real.signIf(join('/fictional/app/packages/win/x64', name))
+    expect(run).toHaveBeenCalledTimes(6)
   })
 
   it('no secrets means no child process and identical bytes for every offered file', async () => {
@@ -103,7 +133,7 @@ describe('Windows release signing', () => {
     expect(run).toHaveBeenCalledTimes(6)
     for (let i = 0; i < 6; i += 2) {
       const [command, args, options] = run.mock.calls[i]
-      expect(command).toBe('/fictional/java/bin/java.exe')
+      expect(command).toBe(join(env.JAVA_HOME, 'bin', 'java.exe'))
       expect(args).toContain('sign')
       expect(args).toContain(`-password=${env.ES_PASSWORD}`)
       expect(args).toContain('-override=true')
