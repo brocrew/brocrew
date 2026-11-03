@@ -4,7 +4,7 @@
 
 **Give one agent a project. Follow the team's work in one tree, answer requests in one queue, and get a report back.**
 
-[![Latest release](https://img.shields.io/github/v/release/brocrew/brocrew)](https://github.com/brocrew/brocrew/releases/latest) [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE) ![Platforms: macOS Apple Silicon and Windows beta](https://img.shields.io/badge/platform-macOS%20Apple%20Silicon%20%C2%B7%20Windows%20beta-lightgrey)
+[![Latest release](https://img.shields.io/github/v/release/brocrew/brocrew)](https://github.com/brocrew/brocrew/releases/latest) [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE) ![Platforms: macOS Apple Silicon and Windows](https://img.shields.io/badge/platform-macOS%20Apple%20Silicon%20%C2%B7%20Windows-lightgrey)
 
 ![BroCrew: describe a project, watch agents hand work to each other, answer requests, read the result.](docs/images/hero.gif)
 
@@ -13,10 +13,6 @@
 BroCrew is an open-source desktop app that brings AI agents together on your computer. Give an agent a task and it can share the work with other agents, Claude and Codex in the same tree. Each agent keeps its own memory and rules across conversations. Use your own Anthropic or OpenAI API key, and the provider bills your usage ([requirements and cost](docs/requirements-and-cost.md)).
 
 Additional providers are planned.
-
-## What's new in 0.1.23
-
-When you write in a conversation, the agent's final answer is highlighted, and you can open it in a popup. Typing stays smooth with many agents running, and Settings → Themes opens instantly. Updates keep the previous version's recovery copy. If one entry in the workspace list can't be used, BroCrew skips it and opens the next one instead of refusing to start.
 
 ## See it work
 
@@ -55,7 +51,7 @@ Get the latest build from the [Releases page](https://github.com/brocrew/brocrew
 | Your computer                        | File                              |
 | ------------------------------------ | --------------------------------- |
 | Mac with Apple Silicon (M1 or later) | `BroCrew-<version>-arm64.dmg`     |
-| Windows 10 or 11, 64-bit (beta)      | `BroCrew-Setup-<version>-x64.exe` |
+| Windows 10 or 11, 64-bit             | `BroCrew-Setup-<version>-x64.exe` |
 
 The Mac download isn't notarized. Windows release builds support signing as DEVERP; older and test builds may be unsigned, and new signed builds can still show a SmartScreen warning. Follow the [Mac install guide](docs/install-macos.md) or [Windows install guide](docs/install-windows.md) to open the app.
 

@@ -1,6 +1,6 @@
 # Installing BroCrew on Windows
 
-A signed BroCrew installer shows **DEVERP** as publisher. Older and test builds may be unsigned. Windows can still warn about a new signed build while it earns reputation; these steps cover that warning and setting up your API keys.
+Windows can still warn about a new version at first; these steps cover that warning and setting up your API keys.
 
 ## Before you install
 
