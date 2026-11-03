@@ -1,5 +1,6 @@
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { createHash } from 'node:crypto'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, expect, it } from 'vitest'
@@ -9,6 +10,12 @@ import { applyMigrations } from '../src/main/db/migrate'
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 const journal = JSON.parse(readFileSync(join(migrations, 'meta/_journal.json'), 'utf8')) as {
   entries: { idx: number; tag: string; when: number }[]
+}
+const released = JSON.parse(
+  readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'fixtures/provider-connections-releases.json'), 'utf8'),
+) as {
+  prefixes: Record<string, { count: number; sha256: string }>
+  releases: { release: string; commit: string; prefix: string }[]
 }
 const folders: string[] = []
 afterEach(() => {
@@ -27,9 +34,26 @@ function rows(db: AppDatabase, table: string, columns: string[]) {
   return db.prepare(`SELECT ${columns.map((name) => `"${name}"`).join(', ')} FROM "${table}"`).all()
 }
 
-it.each(Array.from({ length: 21 }, (_, n) => n + 1))(
-  'upgrades migration prefix %i without changing agents, sign-in references or conversation history',
-  (count) => {
+it('binds the upgrade fixtures to the unchanged migration bytes of published releases', () => {
+  for (const prefix of Object.values(released.prefixes)) {
+    const entries = journal.entries.slice(0, prefix.count).map(({ tag, when }) => ({
+      tag, when,
+      sha256: createHash('sha256').update(readFileSync(join(migrations, `${tag}.sql`))).digest('hex'),
+    }))
+    expect(createHash('sha256').update(JSON.stringify(entries)).digest('hex')).toBe(prefix.sha256)
+  }
+  for (const release of released.releases) {
+    expect(release.commit).toMatch(/^[a-f0-9]{40}$/)
+    expect(released.prefixes[release.prefix]).toBeDefined()
+  }
+})
+
+it.each([
+  ...Array.from({ length: 21 }, (_, n) => ({ label: `migration prefix ${n + 1}`, count: n + 1 })),
+  ...released.releases.map(({ release, prefix }) => ({ label: release, count: released.prefixes[prefix]!.count })),
+])(
+  'upgrades $label without changing agents, sign-in references or conversation history',
+  ({ count }) => {
     const folder = mkdtempSync(join(tmpdir(), 'fictional-connections-upgrade-'))
     folders.push(folder)
     const db = openDatabase(join(folder, 'fictional.sqlite'))
