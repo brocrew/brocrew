@@ -3,7 +3,11 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
-import { createSessionStore, type NewSessionRecord, type SessionStore } from '../src/main/db/session-store'
+import {
+  createSessionStore,
+  type NewSessionRecord,
+  type SessionStore,
+} from '../src/main/db/session-store'
 
 let db: AppDatabase
 let store: SessionStore
@@ -16,7 +20,12 @@ afterEach(() => db.close())
 
 function create(id: string, connectionId?: string) {
   const input: NewSessionRecord & { connectionId?: string } = {
-    id, provider: 'claude', cwd: '/fictional/fern', approvalMode: 'ask', profileId: 'fern', model: 'fictional-small',
+    id,
+    provider: 'claude',
+    cwd: '/fictional/fern',
+    approvalMode: 'ask',
+    profileId: 'fern',
+    model: 'fictional-small',
     ...(connectionId === undefined ? {} : { connectionId }),
   }
   store.create(input)
@@ -24,8 +33,15 @@ function create(id: string, connectionId?: string) {
 
 it('records a new successful launch binding without rewriting its original fields', () => {
   create('fictional-new', 'claude:sign-in')
-  expect(db.prepare('SELECT connection_id,provider,cwd,model FROM provider_session WHERE id=?').get('fictional-new')).toEqual({
-    connection_id: 'claude:sign-in', provider: 'claude', cwd: '/fictional/fern', model: 'fictional-small',
+  expect(
+    db
+      .prepare('SELECT connection_id,provider,cwd,model FROM provider_session WHERE id=?')
+      .get('fictional-new'),
+  ).toEqual({
+    connection_id: 'claude:sign-in',
+    provider: 'claude',
+    cwd: '/fictional/fern',
+    model: 'fictional-small',
   })
 })
 
@@ -37,41 +53,83 @@ it('keeps legacy null choices null when read and reopened', () => {
   expect(read?.('fictional-legacy')).toBeNull()
   expect(read?.('fictional-missing')).toBeNull()
   store.find('fictional-legacy')
-  expect(db.prepare('SELECT * FROM provider_session WHERE id=?').get('fictional-legacy')).toEqual(before)
+  expect(db.prepare('SELECT * FROM provider_session WHERE id=?').get('fictional-legacy')).toEqual(
+    before,
+  )
   store.reopened('fictional-legacy', 200)
-  expect(db.prepare('SELECT connection_id FROM provider_session WHERE id=?').get('fictional-legacy')).toEqual({ connection_id: null })
+  expect(
+    db.prepare('SELECT connection_id FROM provider_session WHERE id=?').get('fictional-legacy'),
+  ).toEqual({ connection_id: null })
 })
 
 for (const connectionId of ['codex:sign-in', 'fictional-missing', 'claude:api-key']) {
   it(`refuses unavailable binding ${connectionId} atomically`, () => {
     expect(() => create('fictional-refused', connectionId)).toThrow()
-    expect(db.prepare('SELECT * FROM provider_session WHERE id=?').get('fictional-refused')).toBeUndefined()
+    expect(
+      db.prepare('SELECT * FROM provider_session WHERE id=?').get('fictional-refused'),
+    ).toBeUndefined()
     expect(db.prepare("SELECT * FROM agent_identity WHERE slug='fern'").get()).toBeUndefined()
   })
 }
 
 it('keeps a saved-key reference rather than copying the sealed value', () => {
-  db.prepare('INSERT INTO provider_api_key(provider,sealed,updated_at) VALUES(?,?,?)').run('claude', 'fictional-sealed', 1)
+  db.prepare('INSERT INTO provider_api_key(provider,sealed,updated_at) VALUES(?,?,?)').run(
+    'claude',
+    'fictional-sealed',
+    1,
+  )
   create('fictional-key', 'claude:api-key')
-  expect(db.prepare('SELECT connection_id FROM provider_session WHERE id=?').get('fictional-key')).toEqual({ connection_id: 'claude:api-key' })
-  expect(db.prepare('SELECT sealed FROM provider_api_key WHERE provider=?').get('claude')).toEqual({ sealed: 'fictional-sealed' })
+  expect(
+    db.prepare('SELECT connection_id FROM provider_session WHERE id=?').get('fictional-key'),
+  ).toEqual({ connection_id: 'claude:api-key' })
+  expect(db.prepare('SELECT sealed FROM provider_api_key WHERE provider=?').get('claude')).toEqual({
+    sealed: 'fictional-sealed',
+  })
 })
 
 it('binds an unlaunched service only on its first actual launch and refuses later retargeting', () => {
   create('fictional-service')
-  const first = Reflect.apply(store.firstLaunchOf, store, [{ id: 'fictional-service', model: 'fictional-small', connectionId: 'claude:sign-in' }])
+  const first = Reflect.apply(store.firstLaunchOf, store, [
+    { id: 'fictional-service', model: 'fictional-small', connectionId: 'claude:sign-in' },
+  ])
   expect(first).toBe(true)
-  expect(db.prepare('SELECT connection_id FROM provider_session WHERE id=?').get('fictional-service')).toEqual({ connection_id: 'claude:sign-in' })
+  expect(
+    db.prepare('SELECT connection_id FROM provider_session WHERE id=?').get('fictional-service'),
+  ).toEqual({ connection_id: 'claude:sign-in' })
   const before = db.prepare('SELECT * FROM provider_session WHERE id=?').get('fictional-service')
-  db.prepare('INSERT INTO provider_api_key(provider,sealed,updated_at) VALUES(?,?,?)').run('claude', 'fictional-sealed', 1)
-  expect(() => Reflect.apply(store.firstLaunchOf, store, [{ id: 'fictional-service', connectionId: 'claude:api-key' }])).toThrow()
-  expect(db.prepare('SELECT * FROM provider_session WHERE id=?').get('fictional-service')).toEqual(before)
+  db.prepare('INSERT INTO provider_api_key(provider,sealed,updated_at) VALUES(?,?,?)').run(
+    'claude',
+    'fictional-sealed',
+    1,
+  )
+  expect(() =>
+    Reflect.apply(store.firstLaunchOf, store, [
+      { id: 'fictional-service', connectionId: 'claude:api-key' },
+    ]),
+  ).toThrow()
+  expect(db.prepare('SELECT * FROM provider_session WHERE id=?').get('fictional-service')).toEqual(
+    before,
+  )
 })
 
 it('does not fill a legacy NULL binding when its provider already named the conversation', () => {
   create('fictional-old')
-  db.prepare('UPDATE provider_session SET external_ref=? WHERE id=?').run(JSON.stringify({ provider: 'claude', sessionId: 'fictional-native', cwd: '/fictional/fern', rotation: 0 }), 'fictional-old')
+  db.prepare('UPDATE provider_session SET external_ref=? WHERE id=?').run(
+    JSON.stringify({
+      provider: 'claude',
+      sessionId: 'fictional-native',
+      cwd: '/fictional/fern',
+      rotation: 0,
+    }),
+    'fictional-old',
+  )
   const before = db.prepare('SELECT * FROM provider_session WHERE id=?').get('fictional-old')
-  expect(Reflect.apply(store.firstLaunchOf, store, [{ id: 'fictional-old', connectionId: 'claude:sign-in' }])).toBe(false)
-  expect(db.prepare('SELECT * FROM provider_session WHERE id=?').get('fictional-old')).toEqual(before)
+  expect(
+    Reflect.apply(store.firstLaunchOf, store, [
+      { id: 'fictional-old', connectionId: 'claude:sign-in' },
+    ]),
+  ).toBe(false)
+  expect(db.prepare('SELECT * FROM provider_session WHERE id=?').get('fictional-old')).toEqual(
+    before,
+  )
 })

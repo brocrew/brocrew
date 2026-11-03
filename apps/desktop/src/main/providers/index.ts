@@ -8,7 +8,12 @@ import { codexDesktopInputs, type CodexDesktopSeams } from './codex/desktop'
 import type { DesktopProviderContext } from './desktop-context'
 import { orderedProgramVersions } from './program-policy'
 import type { ProviderAuthOps } from './compat'
-import type { HomeAuthOperations, ProviderHomePaths, ProviderModules, ProviderConnectionOperations } from './module'
+import type {
+  HomeAuthOperations,
+  ProviderHomePaths,
+  ProviderModules,
+  ProviderConnectionOperations,
+} from './module'
 import { onProviderConnection } from './connection-runtime'
 
 export { prepareOnTheLogin } from './claude'
@@ -60,7 +65,13 @@ export function createProviderModules(
       ...inner,
       connections,
       createRuntime: (connectionId?: string | null) =>
-        onProviderConnection(provider, () => inner.createRuntime(), connections.resolve, connectionId, connections.revision),
+        onProviderConnection(
+          provider,
+          () => inner.createRuntime(),
+          connections.resolve,
+          connectionId,
+          connections.revision,
+        ),
     }
   })
 }

@@ -18,7 +18,13 @@ import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-
 let db: AppDatabase
 let dir: string
 let host: RuntimeHost
-const sink: RuntimeEventSink = { ownerId: 'fictional-window', aPersonIsBehindIt: true, alive: true, send: () => {}, sendLiveness: () => {} }
+const sink: RuntimeEventSink = {
+  ownerId: 'fictional-window',
+  aPersonIsBehindIt: true,
+  alive: true,
+  send: () => {},
+  sendLiveness: () => {},
+}
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'brocrew-connections-'))
@@ -36,11 +42,13 @@ function fixture() {
   const sessions = new FakeProviderSessions()
   const state = { revision: 0 }
   let number = 0
-  const prepare = vi.fn<(provider: Provider, profile: string) => string | Promise<string>>((provider, profile) => {
-    const home = join(dir, profile, provider)
-    mkdirSync(home, { recursive: true })
-    return home
-  })
+  const prepare = vi.fn<(provider: Provider, profile: string) => string | Promise<string>>(
+    (provider, profile) => {
+      const home = join(dir, profile, provider)
+      mkdirSync(home, { recursive: true })
+      return home
+    },
+  )
   const resolve = (provider: Provider, id?: string | null) => {
     const connection = resolveProviderConnection(db, { provider, connectionId: id })
     if (id != null && connection.id !== resolveProviderConnection(db, { provider }).id)
@@ -48,15 +56,31 @@ function fixture() {
     return connection
   }
   const connectionFor = vi.fn((provider: Provider, id?: string | null) => resolve(provider, id).id)
-  const create = vi.fn((provider: Provider, id?: string | null) => onProviderConnection(
-    provider, () => new FakeRuntime(provider, { sessions }), (requested) => resolve(provider, requested), id,
-  ))
+  const create = vi.fn((provider: Provider, id?: string | null) =>
+    onProviderConnection(
+      provider,
+      () => new FakeRuntime(provider, { sessions }),
+      (requested) => resolve(provider, requested),
+      id,
+    ),
+  )
   const deps = {
-    store, discoverSessions: NO_DISCOVERY, nativeTranscriptPath: () => null,
-    exportDirectory: () => join(dir, 'exports'), createRuntime: create,
-    prepareProviderHome: prepare, providerHomePath: (provider: Provider, profile: string) => join(dir, profile, provider),
-    resolveCwd: () => dir, newSessionId: () => `fictional-session-${++number}`,
-    readProviderConfig: (_provider: Provider, home: string) => ({ home, homeEnv: 'CLAUDE_CONFIG_DIR', model: 'fictional-small', authNote: null, files: [] }),
+    store,
+    discoverSessions: NO_DISCOVERY,
+    nativeTranscriptPath: () => null,
+    exportDirectory: () => join(dir, 'exports'),
+    createRuntime: create,
+    prepareProviderHome: prepare,
+    providerHomePath: (provider: Provider, profile: string) => join(dir, profile, provider),
+    resolveCwd: () => dir,
+    newSessionId: () => `fictional-session-${++number}`,
+    readProviderConfig: (_provider: Provider, home: string) => ({
+      home,
+      homeEnv: 'CLAUDE_CONFIG_DIR',
+      model: 'fictional-small',
+      authNote: null,
+      files: [],
+    }),
   }
   Reflect.set(deps, 'connectionFor', connectionFor)
   Reflect.set(deps, 'connectionRevision', () => state.revision)
@@ -74,27 +98,40 @@ it('Codex key consumption during real home preparation cannot launch under chang
   Reflect.set(f.deps, 'connectionRevision', (provider: Provider) => keys.revision(provider))
   let applied: string | undefined
   const copied = vi.fn()
-  f.prepare.mockImplementation((_provider, profile) => prepareCodexHome({
-    managedRoot: dir, defaultProfile: 'fern', homeOf: (name) => join(dir, name, 'codex'),
-    profiles: () => ['fern'], assertMayOpen: () => {},
-  }, profile, {
-    provisionHome: (_root, home) => { mkdirSync(home, { recursive: true }) },
-    provisionCodexAuth: copied,
-    key: {
-      isSaved: () => keys.status('codex').set,
-      current: async () => {
-        await keys.set('codex', 'fictional-willow-key')
-        const key = await keys.current('codex')
-        keys.remove('codex')
-        return key
+  f.prepare.mockImplementation((_provider, profile) =>
+    prepareCodexHome(
+      {
+        managedRoot: dir,
+        defaultProfile: 'fern',
+        homeOf: (name) => join(dir, name, 'codex'),
+        profiles: () => ['fern'],
+        assertMayOpen: () => {},
       },
-      change: async (_home, change) => {
-        applied = change.to
-        return { ok: true, authMethod: 'apikey' }
+      profile,
+      {
+        provisionHome: (_root, home) => {
+          mkdirSync(home, { recursive: true })
+        },
+        provisionCodexAuth: copied,
+        key: {
+          isSaved: () => keys.status('codex').set,
+          current: async () => {
+            await keys.set('codex', 'fictional-willow-key')
+            const key = await keys.current('codex')
+            keys.remove('codex')
+            return key
+          },
+          change: async (_home, change) => {
+            applied = change.to
+            return { ok: true, authMethod: 'apikey' }
+          },
+        },
       },
-    },
-  }))
-  await expect(host.createSession({ provider: 'codex', profileId: 'fern' }, sink)).rejects.toThrow('connection changed')
+    ),
+  )
+  await expect(host.createSession({ provider: 'codex', profileId: 'fern' }, sink)).rejects.toThrow(
+    'connection changed',
+  )
   expect(applied).toBe('the-key')
   expect(keys.revision('codex')).toBe(2)
   expect(copied).not.toHaveBeenCalled()
@@ -145,8 +182,15 @@ for (const provider of ['claude', 'codex'] as const) {
     const f = fixture()
     const created = await host.createSession({ provider, profileId: 'fern' }, sink)
     await host.close(created.sessionId, sink)
-    db.prepare('UPDATE provider_session SET connection_id=? WHERE id=?').run(`${provider}:sign-in`, created.sessionId)
-    db.prepare('INSERT INTO provider_api_key(provider,sealed,updated_at) VALUES(?,?,?)').run(provider, 'fictional-sealed', 1)
+    db.prepare('UPDATE provider_session SET connection_id=? WHERE id=?').run(
+      `${provider}:sign-in`,
+      created.sessionId,
+    )
+    db.prepare('INSERT INTO provider_api_key(provider,sealed,updated_at) VALUES(?,?,?)').run(
+      provider,
+      'fictional-sealed',
+      1,
+    )
     f.prepare.mockClear()
     f.create.mockClear()
     await expect(host.resumeSession(created.sessionId, sink)).rejects.toThrow()
@@ -160,7 +204,11 @@ for (const provider of ['claude', 'codex'] as const) {
     const created = await host.createSession({ provider, profileId: 'fern' }, sink)
     await host.close(created.sessionId, sink)
     db.prepare('UPDATE provider_session SET connection_id=NULL WHERE id=?').run(created.sessionId)
-    db.prepare('INSERT INTO provider_api_key(provider,sealed,updated_at) VALUES(?,?,?)').run(provider, 'fictional-sealed', 1)
+    db.prepare('INSERT INTO provider_api_key(provider,sealed,updated_at) VALUES(?,?,?)').run(
+      provider,
+      'fictional-sealed',
+      1,
+    )
     const resumed = await host.resumeSession(created.sessionId, sink)
     expect(resumed.ref).toEqual(created.ref)
     expect(resumed.providerHome).toBe(join(dir, 'fern', provider))

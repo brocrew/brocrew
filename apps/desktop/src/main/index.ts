@@ -907,7 +907,8 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
     },
     // Resolve the bundled Codex by absolute path, independent of PATH and the user's installed
     // version. Resolve per launch so a missing binary is reported on the command that needs it.
-    createRuntime: (provider, connectionId) => providerModules[provider].createRuntime(connectionId),
+    createRuntime: (provider, connectionId) =>
+      providerModules[provider].createRuntime(connectionId),
     connectionFor: (provider, connectionId) => {
       const connections = providerModules[provider].connections
       if (!connections) throw new Error('Provider connection services were not bound')

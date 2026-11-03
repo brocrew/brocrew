@@ -24408,9 +24408,10 @@ export class RuntimeHost implements LiveHost {
     // The runtime first: it is made with the program it runs, so a program this computer lacks is
     // refused here in its own words, before a model list is asked whose failure would read as a
     // list that names no model.
-    const rawRuntime = connectionId === undefined
-      ? this.deps.createRuntime(input.provider)
-      : this.deps.createRuntime(input.provider, connectionId)
+    const rawRuntime =
+      connectionId === undefined
+        ? this.deps.createRuntime(input.provider)
+        : this.deps.createRuntime(input.provider, connectionId)
     const runtime = this.runtimeWithPlugins(rawRuntime, input.provider, profileId)
     // 🔴 **D-042 · R1 — every start names its model and effort** (024's effort, 038's model): what
     // the caller named, else this agent's default, else the last pair a person picked on this
@@ -42386,9 +42387,10 @@ export class RuntimeHost implements LiveHost {
         await this.deps.beforeProviderLaunch()
         launch.signal.throwIfAborted()
       }
-      const runtime = connectionId === undefined
-        ? this.deps.createRuntime(provider)
-        : this.deps.createRuntime(provider, connectionId)
+      const runtime =
+        connectionId === undefined
+          ? this.deps.createRuntime(provider)
+          : this.deps.createRuntime(provider, connectionId)
       const listing = runtime.listModels({ providerHome, signal: launch.signal })
       // Owned until the probe's own promise settles — both adapters close their child in a
       // `finally`, so that is the nearest thing to a termination receipt a probe has. Handed
@@ -43483,9 +43485,10 @@ export class RuntimeHost implements LiveHost {
     const recordedModel = row.model ?? undefined
     // The runtime first, as a start makes it: a missing program is refused in its own words, never
     // as a list that names no model.
-    const rawRuntime = connectionId === undefined
-      ? this.deps.createRuntime(row.provider)
-      : this.deps.createRuntime(row.provider, connectionId)
+    const rawRuntime =
+      connectionId === undefined
+        ? this.deps.createRuntime(row.provider)
+        : this.deps.createRuntime(row.provider, connectionId)
     const runtime = this.runtimeWithPlugins(rawRuntime, row.provider, row.profileId)
     const selected = await this.theSelectedModel(row.provider, row.profileId, profileId, {
       ...(recordedModel === undefined ? {} : { model: recordedModel }),

@@ -96,16 +96,19 @@ export function onProviderConnection(
       const id = admit(options)
       const wrap = attribution(id)
       const scoped: ResumeOptions = options.onSessionCreated
-        ? { ...options, onSessionCreated: (handle) => {
-          // The delegate retains cleanup ownership until it returns. A changed binding is
-          // checked and closed below rather than exposed through the early ownership callback.
-          try {
-            assertCurrent(id, options, beganAt)
-          } catch {
-            return
+        ? {
+            ...options,
+            onSessionCreated: (handle) => {
+              // The delegate retains cleanup ownership until it returns. A changed binding is
+              // checked and closed below rather than exposed through the early ownership callback.
+              try {
+                assertCurrent(id, options, beganAt)
+              } catch {
+                return
+              }
+              options.onSessionCreated!(wrap(handle))
+            },
           }
-          options.onSessionCreated!(wrap(handle))
-        } }
         : options
       return checked(wrap(await runtime().resume(ref, scoped)), id, options, beganAt)
     },

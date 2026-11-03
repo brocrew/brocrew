@@ -1,5 +1,11 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { FakeProviderSessions, FakeRuntime, type AgentRuntime, type SessionHandle, type SessionRef } from '@brobot2/runtime'
+import {
+  FakeProviderSessions,
+  FakeRuntime,
+  type AgentRuntime,
+  type SessionHandle,
+  type SessionRef,
+} from '@brobot2/runtime'
 import type { Provider, ProviderConnection } from '@brobot2/shared'
 import * as providers from '../src/main/providers'
 
@@ -45,7 +51,14 @@ function fixture(provider: Provider, selected?: string | null) {
     if (id != null && id !== state.current.id) throw new Error('Connection unavailable')
     return state.current
   })
-  return { runtime: bind(provider, create, resolve, selected, () => state.revision), state, runtimes, sessions, create, resolve }
+  return {
+    runtime: bind(provider, create, resolve, selected, () => state.revision),
+    state,
+    runtimes,
+    sessions,
+    create,
+    resolve,
+  }
 }
 
 for (const provider of ['claude', 'codex'] as const) {
@@ -53,12 +66,18 @@ for (const provider of ['claude', 'codex'] as const) {
     const f = fixture(provider)
     expect(f.create).not.toHaveBeenCalled()
     expect(f.resolve).not.toHaveBeenCalled()
-    const first = await f.runtime.start({ cwd: '/fictional/fern', providerHome: '/fictional/fern/state' })
+    const first = await f.runtime.start({
+      cwd: '/fictional/fern',
+      providerHome: '/fictional/fern/state',
+    })
     handles.push(first)
     expect(Reflect.get(first, 'connectionId')).toBe(`${provider}:sign-in`)
     expect('connectionId' in first).toBe(true)
     f.state.current = record(provider, 'api-key')
-    const second = await f.runtime.start({ cwd: '/fictional/willow', providerHome: '/fictional/willow/state' })
+    const second = await f.runtime.start({
+      cwd: '/fictional/willow',
+      providerHome: '/fictional/willow/state',
+    })
     handles.push(second)
     expect(Reflect.get(second, 'connectionId')).toBe(`${provider}:api-key`)
     expect(Reflect.get(first, 'connectionId')).toBe(`${provider}:sign-in`)
@@ -69,17 +88,24 @@ for (const provider of ['claude', 'codex'] as const) {
 
   it(`${provider}: an explicit unavailable binding refuses before any runtime is created`, async () => {
     const f = fixture(provider, `${provider}:api-key`)
-    await expect(f.runtime.start({ cwd: '/fictional/fern', providerHome: '/fictional/state' })).rejects.toThrow('Connection unavailable')
+    await expect(
+      f.runtime.start({ cwd: '/fictional/fern', providerHome: '/fictional/state' }),
+    ).rejects.toThrow('Connection unavailable')
     expect(f.create).not.toHaveBeenCalled()
   })
 
   it(`${provider}: a fixed binding never falls back after its key is removed`, async () => {
     const f = fixture(provider, `${provider}:api-key`)
     f.state.current = record(provider, 'api-key')
-    const handle = await f.runtime.start({ cwd: '/fictional/fern', providerHome: '/fictional/state' })
+    const handle = await f.runtime.start({
+      cwd: '/fictional/fern',
+      providerHome: '/fictional/state',
+    })
     handles.push(handle)
     f.state.current = record(provider, 'sign-in')
-    await expect(f.runtime.resume(handle.ref!, { providerHome: '/fictional/state' })).rejects.toThrow('Connection unavailable')
+    await expect(
+      f.runtime.resume(handle.ref!, { providerHome: '/fictional/state' }),
+    ).rejects.toThrow('Connection unavailable')
     expect(f.create).toHaveBeenCalledTimes(1)
     expect(Reflect.get(handle, 'connectionId')).toBe(`${provider}:api-key`)
   })
@@ -95,7 +121,13 @@ for (const provider of ['claude', 'codex'] as const) {
     const f = fixture(provider)
     const controller = new AbortController()
     controller.abort()
-    await expect(f.runtime.start({ cwd: '/fictional/fern', providerHome: '/fictional/state', signal: controller.signal })).rejects.toThrow()
+    await expect(
+      f.runtime.start({
+        cwd: '/fictional/fern',
+        providerHome: '/fictional/state',
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow()
     expect(f.resolve).not.toHaveBeenCalled()
     expect(f.create).not.toHaveBeenCalled()
   })
@@ -107,8 +139,12 @@ for (const provider of ['claude', 'codex'] as const) {
       const start = raw.start.bind(raw)
       let release!: () => void
       let entered!: () => void
-      const arrived = new Promise<void>((resolve) => { entered = resolve })
-      const held = new Promise<void>((resolve) => { release = resolve })
+      const arrived = new Promise<void>((resolve) => {
+        entered = resolve
+      })
+      const held = new Promise<void>((resolve) => {
+        release = resolve
+      })
       const close = vi.fn<() => Promise<void>>()
       vi.spyOn(raw, 'start').mockImplementation(async (options) => {
         const handle = await start(options)
@@ -122,7 +158,11 @@ for (const provider of ['claude', 'codex'] as const) {
       })
       f.create.mockReturnValue(raw)
       const controller = new AbortController()
-      const pending = f.runtime.start({ cwd: '/fictional/fern', providerHome: '/fictional/state', signal: controller.signal })
+      const pending = f.runtime.start({
+        cwd: '/fictional/fern',
+        providerHome: '/fictional/state',
+        signal: controller.signal,
+      })
       await arrived
       if (change === 'method') f.state.current = record(provider, 'api-key')
       else if (change === 'cancel') controller.abort()
@@ -147,20 +187,28 @@ for (const provider of ['claude', 'codex'] as const) {
 
   it(`${provider}: concurrent teardown calls own the underlying close exactly once`, async () => {
     const f = fixture(provider)
-    const handle = await f.runtime.start({ cwd: '/fictional/fern', providerHome: '/fictional/state' })
+    const handle = await f.runtime.start({
+      cwd: '/fictional/fern',
+      providerHome: '/fictional/state',
+    })
     const issued = f.sessions.lookUp(handle.ref!.sessionId)
     expect(issued).toBeDefined()
     const innerClose = vi.spyOn(Object.getPrototypeOf(handle), 'close')
     try {
       await Promise.all([handle.close(), handle.close()])
       expect(innerClose).toHaveBeenCalledTimes(1)
-    } finally { innerClose.mockRestore() }
+    } finally {
+      innerClose.mockRestore()
+    }
   })
 
   for (const changed of [false, true]) {
     it(`${provider}: resume callback ${changed ? 'withholds changed binding' : 'owns the same attributed handle'}`, async () => {
       const f = fixture(provider)
-      const first = await f.runtime.start({ cwd: '/fictional/fern', providerHome: '/fictional/state' })
+      const first = await f.runtime.start({
+        cwd: '/fictional/fern',
+        providerHome: '/fictional/state',
+      })
       await first.close()
       const raw = new FakeRuntime(provider, { sessions: f.sessions })
       const resume = raw.resume.bind(raw)
@@ -175,7 +223,10 @@ for (const provider of ['claude', 'codex'] as const) {
       })
       f.create.mockReturnValue(raw)
       const callback = vi.fn()
-      const pending = f.runtime.resume(first.ref!, { providerHome: '/fictional/state', onSessionCreated: callback })
+      const pending = f.runtime.resume(first.ref!, {
+        providerHome: '/fictional/state',
+        onSessionCreated: callback,
+      })
       if (changed) {
         await expect(pending).rejects.toThrow()
         expect(callback).not.toHaveBeenCalled()
@@ -201,15 +252,24 @@ for (const provider of ['claude', 'codex'] as const) {
     it(`${provider}: invalid connection metadata ${JSON.stringify(changed)} cannot open a child`, async () => {
       const f = fixture(provider)
       Object.assign(f.state.current, changed)
-      await expect(f.runtime.start({ cwd: '/fictional/fern', providerHome: '/fictional/state' })).rejects.toThrow()
+      await expect(
+        f.runtime.start({ cwd: '/fictional/fern', providerHome: '/fictional/state' }),
+      ).rejects.toThrow()
       expect(f.create).not.toHaveBeenCalled()
     })
   }
 
   it(`${provider}: a foreign transcript ref is refused without fallback or a child`, async () => {
     const f = fixture(provider)
-    const ref: SessionRef = { provider: provider === 'claude' ? 'codex' : 'claude', sessionId: 'fictional-old', cwd: '/fictional/original', rotation: 0 }
-    await expect(f.runtime.resume(ref, { providerHome: '/fictional/original-state' })).rejects.toThrow()
+    const ref: SessionRef = {
+      provider: provider === 'claude' ? 'codex' : 'claude',
+      sessionId: 'fictional-old',
+      cwd: '/fictional/original',
+      rotation: 0,
+    }
+    await expect(
+      f.runtime.resume(ref, { providerHome: '/fictional/original-state' }),
+    ).rejects.toThrow()
     expect(f.create).not.toHaveBeenCalled()
   })
 }
