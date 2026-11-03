@@ -99,8 +99,9 @@ it('uses only bounded DOM RPC, displays current windows/tabs as text, and propos
     'Open window',
     'Delete',
   ])
-  expect(row.children[1].textContent).toBe('Open tabs')
-  const tab = row.children[2].children[0]
+  const details = row.children[1]
+  expect(details.children[0].textContent).toBe('Open tabs')
+  const tab = details.children[1].children[0]
   expect(tab.children.map((child) => child.textContent)).toEqual([
     '<script>fictional</script>',
     'https://fictional.invalid/',
