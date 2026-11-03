@@ -45,3 +45,10 @@ On 2026-10-29, the equivalent history/restore checks in `prune` moved from liter
 `python3 scripts/mutations/verify_row.py 4007 M6 --json "$EVIDENCE/round2-M6-verified.json"` (external qualification evidence directory) exited 0. The unchanged killer file passed all 87 tests before mutation. M6 was RED in both marker cases and the resumed-deletion restore guard, and target bytes were restored and re-hashed. JSON SHA-256: `668ea3a326702db8c22b75fde59ab3af1feef31f7b8b04def588c9af1b35fa7b`.
 
 This is one current row proof, not a complete table execution. The historical measurements above and full-table deferral remain unchanged.
+
+# Newest-two policy
+
+The current definitions replace the former age/start-expiry plants with wrong-count,
+age-expiry, real-path-escape, pre-success-pruning and file-parent-swap plants. The results below
+are historical evidence for the former definitions, not a measurement of the replacement plants.
+Current qualification is recorded with the candidate's external test evidence.

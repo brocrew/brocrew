@@ -69,6 +69,22 @@ async function fixture(withTrees = false) {
   return { root, userData, lineage, copy, options }
 }
 
+it.each(['backups', 'copy'])(
+  'refuses deletion when the real %s folder escapes its parent',
+  async (target) => {
+    const { root, userData, copy } = await fixture()
+    const redirected = target === 'backups' ? join(userData, 'backups') : copy.folder
+    const fs = {
+      ...nodeFs,
+      realpath: async (path: string) =>
+        path === redirected ? join(root, 'outside', basename(path)) : path,
+    }
+    await expect(beginCheckpointDeletion(userData, copy, fs)).rejects.toThrow()
+    expect(existsSync(join(copy.folder, 'database.sqlite'))).toBe(true)
+    expect(existsSync(join(userData, 'backups', 'deletion.json'))).toBe(false)
+  },
+)
+
 it.each([
   ['retry', 'before rename'],
   ['prune', 'before rename'],
@@ -599,8 +615,19 @@ it.each(['depth', 'unsupported kind'])(
   },
 )
 
-it('ordinary expiry pruning also preserves a note arriving at final rmdir and keeps the fragment visible', async () => {
+it('ordinary retention pruning also preserves a note arriving at final rmdir and keeps the fragment visible', async () => {
   const { userData, lineage, copy, options } = await fixture()
+  for (let n = 1; n <= 2; n++)
+    await makeCheckpoint({
+      userData,
+      ownership: 'sole',
+      appVersion: '0.1.9',
+      build: null,
+      reason: 'first-start-of-release',
+      freeBytes: () => null,
+      log: () => {},
+      now: () => Date.parse(copy.manifest.createdAt) + n * 1000,
+    })
   const fragment = join(userData, 'backups', 'deleting-' + copy.manifest.id)
   let inserted = false
   const fs = {

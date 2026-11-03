@@ -87,10 +87,18 @@ async function reveal(next?: StorageLocation) {
   }
 }
 async function clearCache() {
+  await cleanStorage('cache')
+}
+async function pruneBackups() {
+  await cleanStorage('backups')
+}
+async function cleanStorage(part: 'cache' | 'backups') {
   if (acting.value) return
   acting.value = true
   try {
-    const result = await window.api.storage.clearCache()
+    const result = await (part === 'cache'
+      ? window.api.storage.clearCache()
+      : window.api.storage.pruneBackups())
     if (!live) return
     if (!result.ok) {
       message.value = storageError(result.error)
@@ -100,7 +108,7 @@ async function clearCache() {
     foldersLoading.value = false
     workspaceFolders.value = null
     await measure()
-    if (live && !overview.value?.partial) message.value = 'Cache cleared.'
+    if (part === 'cache' && live && !overview.value?.partial) message.value = 'Cache cleared.'
   } catch (error) {
     if (live) message.value = readableError(error)
   } finally {
@@ -225,11 +233,12 @@ onMounted(measure)
               ><button
                 type="button"
                 class="bb-btn"
-                disabled
-                title="Backup retention is coming soon."
+                :disabled="acting || loading"
+                data-cy="storage-prune-backups"
+                @click="pruneBackups"
               >
-                Keep the last 2</button
-              ><span class="coming-soon">coming soon</span></template
+                Keep the last 2
+              </button></template
             ><button
               v-if="part.id === 'cache'"
               type="button"
@@ -446,10 +455,6 @@ onMounted(measure)
   white-space: nowrap;
   min-height: 30px;
   padding: var(--space-4) var(--space-8);
-}
-.coming-soon {
-  color: var(--muted);
-  font-size: var(--type-caption);
 }
 .largest-folders {
   margin: 0 var(--space-6) var(--space-6) 34px;

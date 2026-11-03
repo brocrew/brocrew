@@ -319,7 +319,7 @@ describe('a copy this build must not restore', () => {
     expect(filesIn(userData)).toEqual(before)
   })
 
-  it('of a later manifest version is never pruned, while whole copies past the newest are', async () => {
+  it('of a later manifest version is never pruned, while copies past the newest two are', async () => {
     const template = await aTemplate(scratch, {
       migrations: THIS_BUILD,
       checkpoints: [
@@ -341,13 +341,13 @@ describe('a copy this build must not restore', () => {
       () => undefined,
     )
     const gone = removed.map((id) => ids.indexOf(id))
-    // The newest whole copy stays, and a copy of a later manifest version is never touched.
-    for (const kept of [3, 7]) expect(gone, `copy ${String(kept)}`).not.toContain(kept)
+    // The newest two whole copies stay, and later manifest versions remain untouched.
+    for (const kept of [3, 6, 7]) expect(gone, `copy ${String(kept)}`).not.toContain(kept)
     expect(Object.keys(filesIn(template.fixture.checkpoints[3]?.dir ?? ''))).toContain(
       'manifest.json',
     )
-    // Whole copies past the newest go.
-    expect(gone).toEqual(expect.arrayContaining([0, 4, 5, 6]))
+    // Whole copies past the newest two go.
+    expect(gone).toEqual(expect.arrayContaining([0, 4, 5]))
   })
 
   /** Five copies on this build's schema, oldest first; the second newest damaged after its manifest when asked. */
@@ -373,15 +373,15 @@ describe('a copy this build must not restore', () => {
     const damaged = ids[3] ?? ''
     const before = filesIn(checkpointDir(userData, damaged))
     const removed = await pruneTheCopies(userData, MIGRATIONS_FOLDER, 'sole', () => undefined)
-    // The newest intact copy stays; damaged copies remain protected.
-    expect([...removed].sort()).toEqual([ids[0], ids[1], ids[2]].sort())
+    // The newest two intact copies stay; damaged copies remain protected.
+    expect([...removed].sort()).toEqual([ids[0], ids[1]].sort())
     expect(filesIn(checkpointDir(userData, damaged))).toEqual(before)
   })
 
-  it('control: with no damage, only the newest is kept and the four oldest go', async () => {
+  it('control: with no damage, the newest two stay and three oldest go', async () => {
     const { userData, ids } = await fiveCopies(false)
     const removed = await pruneTheCopies(userData, MIGRATIONS_FOLDER, 'sole', () => undefined)
-    expect([...removed].sort()).toEqual([ids[0], ids[1], ids[2], ids[3]].sort())
+    expect([...removed].sort()).toEqual([ids[0], ids[1], ids[2]].sort())
   })
 })
 
@@ -423,15 +423,15 @@ describe('a folder with no manifest', () => {
     expect(filesIn(folder)).toEqual(before)
   })
 
-  it('control: with it, the same folder is pruned', async () => {
+  it('even with a writer marker, an unfinished folder is preserved', async () => {
     const { userData, id, folder } = await theLeftover()
     untouchedFor2Hours(folder)
     expect(Object.keys(filesIn(folder)).sort()).toEqual([COPY_FILE, UNFINISHED_FILE])
-    expect(await pruned(userData)).toContain(id)
-    expect(existsSync(folder)).toBe(false)
+    expect(await pruned(userData)).not.toContain(id)
+    expect(existsSync(folder)).toBe(true)
   })
 
-  it('left by a copy stopped part-way holds the writer’s unfinished file, and is pruned once old', async () => {
+  it('left by a stopped copy holds the writer’s unfinished file and stays protected when old', async () => {
     const userData = await aCopyOf(scratch, leftover)
     const known = new Set(readdirSync(backupsDir(userData)))
     const stopping = stoppedAfterTheMarker()
@@ -451,7 +451,7 @@ describe('a folder with no manifest', () => {
     // Within the hour it may still be being written, so it stays.
     expect(await pruned(userData)).not.toContain(id)
     untouchedFor2Hours(folder)
-    expect(await pruned(userData)).toContain(id)
+    expect(await pruned(userData)).not.toContain(id)
   })
 })
 

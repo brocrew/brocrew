@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import type { RetainedRecoveryCopy } from '../../../shared/recovery-retention'
-import { fullTime } from '../lib/clock'
 
 const bridge = window.api?.recoveryRetention
 const copy = ref<RetainedRecoveryCopy | null>(null)
@@ -15,7 +14,6 @@ const size = computed(() => {
     ? `${(bytes / 1e9).toFixed(1)} GB`
     : `${Math.max(1, Math.round(bytes / 1e6))} MB`
 })
-const expiry = computed(() => (copy.value ? fullTime(Date.parse(copy.value.expiresAt)) : ''))
 onMounted(async () => {
   if (!bridge) return
   try {
@@ -45,11 +43,7 @@ async function deleteNow(): Promise<void> {
   <section class="setting-card" data-cy="recovery-retention">
     <div class="setting-copy">
       <h2>Recovery copy</h2>
-      <p v-if="copy">
-        {{ size }}, made before the update to {{ copy.appVersion }}. Deleted on {{ expiry }}, or
-        sooner after {{ copy.startsLeft }} more successful
-        {{ copy.startsLeft === 1 ? 'start' : 'starts' }}.
-      </p>
+      <p v-if="copy">{{ size }}, made before the update to {{ copy.appVersion }}.</p>
       <p v-else-if="loaded">No recovery copy kept.</p>
       <p v-else-if="!status">Reading recovery copy…</p>
       <p v-if="status" role="status">{{ status }}</p>
@@ -70,7 +64,7 @@ async function deleteNow(): Promise<void> {
       class="recovery-confirmation"
       data-cy="recovery-delete-confirmation"
     >
-      <p>Delete the recovery copy? You can't go back to the earlier version after this.</p>
+      <p>Delete this recovery copy? You won’t be able to restore this copy afterwards.</p>
       <button
         class="bb-button"
         type="button"

@@ -1,6 +1,7 @@
 import type { Worker } from 'node:worker_threads'
 import type { StorageError } from '../../shared/storage'
 import type { StorageReply, StorageRequest, StorageRoots } from './engine'
+import { STORAGE_MEASURE_TIMEOUT } from './engine'
 
 export interface StorageWorker {
   once(...args: Parameters<Worker['once']>): void
@@ -16,7 +17,7 @@ export class StorageService {
   constructor(
     private readonly roots: StorageRoots,
     private readonly start: StorageWorkerFactory,
-    private readonly timeout = 15_000,
+    private readonly timeout = STORAGE_MEASURE_TIMEOUT,
   ) {}
 
   run(request: StorageRequest, signal?: AbortSignal): Promise<Result> {
@@ -48,10 +49,13 @@ export class StorageService {
         finish({ ok: false, error: 'cancelled' })
         stop()
       }
-      const timer = setTimeout(() => {
-        finish({ ok: false, error: 'limit' })
-        stop()
-      }, this.timeout)
+      const timer = setTimeout(
+        () => {
+          finish({ ok: false, error: 'limit' })
+          stop()
+        },
+        request.kind === 'measure' ? this.timeout : Math.min(this.timeout, 15_000),
+      )
       this.active.add(abort)
       worker.once('message', (result: Result) => {
         finish(result)

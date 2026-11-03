@@ -15,6 +15,7 @@ export interface StorageActions {
   readonly reveal: (path: string) => void
   /** Electron's HTTP cache API preserves cookies, sessions, files, plugins and recovery copies. */
   readonly clearCache: () => Promise<void>
+  readonly pruneBackups: () => Promise<void>
   readonly isAppWindow: (event: IpcMainInvokeEvent) => boolean
 }
 
@@ -128,6 +129,19 @@ export function registerStorageIpc(
       return { ok: true }
     } catch (error) {
       return { ok: false, error: storageReason(error) }
+    }
+  })
+  ipc.handle(STORAGE_CHANNELS.pruneBackups, async (event): Promise<StorageAction> => {
+    if (closed || !actions.isAppWindow(event)) return { ok: false, error: 'unavailable' }
+    if (clearing) return { ok: false, error: 'busy' }
+    clearing = true
+    try {
+      await actions.pruneBackups()
+      return { ok: true }
+    } catch (error) {
+      return { ok: false, error: storageReason(error) }
+    } finally {
+      clearing = false
     }
   })
   return () => {

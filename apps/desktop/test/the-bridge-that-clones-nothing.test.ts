@@ -1112,7 +1112,13 @@ function preloadSurface(): Map<string, string> {
   const storage = membersOf(
     withoutProse(source('src/preload/storage.ts')).replace(/^ {4}(?=\w)/gm, '  '),
   )
-  expect([...storage.keys()].sort()).toEqual(['children', 'clearCache', 'measure', 'reveal'])
+  expect([...storage.keys()].sort()).toEqual([
+    'children',
+    'clearCache',
+    'measure',
+    'pruneBackups',
+    'reveal',
+  ])
   for (const [name, body] of storage)
     surface.set(`storage.${name}`, body.replaceAll('ipc.invoke', 'ipcRenderer.invoke'))
   expect(surface.get('voice')).toMatch(/^ {2}voice: voiceBridge\(ipcRenderer, process.platform\),/)
@@ -1153,6 +1159,7 @@ describe('§3 · what is exempt is derived from the preload, not written down (3
       'storage.children',
       'storage.clearCache',
       'storage.measure',
+      'storage.pruneBackups',
       'storage.reveal',
     ])
     for (const [name, body] of storage) {
@@ -1174,11 +1181,13 @@ describe('§3 · what is exempt is derived from the preload, not written down (3
     await bridge.children(location)
     await bridge.reveal(location)
     await bridge.clearCache()
+    await bridge.pruneBackups()
     expect(seen).toEqual([
       { channel: STORAGE_CHANNELS.measure, arguments: [] },
       { channel: STORAGE_CHANNELS.children, arguments: [location] },
       { channel: STORAGE_CHANNELS.reveal, arguments: [location] },
       { channel: STORAGE_CHANNELS.clearCache, arguments: [] },
+      { channel: STORAGE_CHANNELS.pruneBackups, arguments: [] },
     ])
     expect(seen[1]!.arguments[0]).not.toBe(location)
     await expect(bridge.children(reactive(location))).rejects.toThrow(

@@ -59,12 +59,14 @@ export interface StorageBridge {
   children(location: StorageLocation): Promise<StorageDirectory>
   reveal(location?: StorageLocation): Promise<StorageAction>
   clearCache(): Promise<StorageAction>
+  pruneBackups(): Promise<StorageAction>
 }
 export const STORAGE_CHANNELS = {
   measure: 'storage:measure',
   children: 'storage:children',
   reveal: 'storage:reveal',
   clearCache: 'storage:clear-cache',
+  pruneBackups: 'storage:prune-backups',
 } as const
 
 export function isStorageLocation(value: unknown): value is StorageLocation {

@@ -93,6 +93,7 @@ export interface RecoveryFs {
   stat(path: string): Promise<RecoveryStats>
   /** The entry itself, a link included. */
   lstat(path: string): Promise<RecoveryStats>
+  realpath(path: string): Promise<string>
   /** The file's text, as UTF-8. */
   readFile(path: string): Promise<string>
   writeFile(
@@ -121,6 +122,7 @@ export function recoveryStats(stats: BigIntStats): RecoveryStats {
 }
 
 export const nodeFs: RecoveryFs = {
+  realpath: (path) => nodeFsPromises.realpath(path),
   rename: (from, to) => nodeFsPromises.rename(from, to),
   copyFile: (from, to, mode) => nodeFsPromises.copyFile(from, to, mode),
   link: (existing, name) => nodeFsPromises.link(existing, name),

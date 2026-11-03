@@ -260,7 +260,7 @@ describe('a copy before a migration', () => {
     return `There isn't enough free space for a recovery copy: it needs about ${inWords(Math.ceil(bytes * 1.1) + 64 * 1024 * 1024)}, and 1 MB is free.`
   }
 
-  it('prunes a retention-droppable copy before retrying a full-disk migration copy', async () => {
+  it('refuses a full-disk migration without deleting older recovery copies', async () => {
     const userData = join(await aRoot(), 'data')
     const fixture = await makeRecoveryFixture(userData, {
       migrations: THIS_BUILD,
@@ -281,15 +281,33 @@ describe('a copy before a migration', () => {
       freeBytes: () => (existsSync(oldest.dir) ? 0 : 1_000_000_000),
     })
 
-    expect(await inspect(deps)).toEqual({ kind: 'open', checkpoint: 'made' })
-    expect(existsSync(oldest.dir)).toBe(false)
+    expect(await inspect(deps)).toMatchObject({ kind: 'failed', reason: 'checkpoint-failed' })
+    expect(existsSync(oldest.dir)).toBe(true)
     expect(existsSync(newest.dir)).toBe(true)
     expect(existsSync(fixture.checkpoints[0]!.dir), 'a newer build').toBe(true)
     expect(existsSync(fixture.checkpoints[1]!.dir), 'another workspace').toBe(true)
-    expect(await listCheckpoints(userData)).toHaveLength(3)
+    expect(await listCheckpoints(userData)).toHaveLength(4)
+    expect(fixture.checkpoints.every(({ dir }) => existsSync(dir))).toBe(true)
   })
 
-  it('keeps the newest copy and reports the approved words when pruning still leaves no room', async () => {
+  it('with newest-two retention, a failed update keeps every existing backup', async () => {
+    const userData = join(await aRoot(), 'data')
+    await makeRecoveryFixture(userData, {
+      migrations: THIS_BUILD,
+      checkpoints: [dated(9), dated(2), dated(1)],
+      now,
+    })
+    const before = await treeOf(backupsDir(userData))
+    const { deps } = checkOf(userData, {
+      buildMigrationsFolder: await aBuildWithOneMoreMigration(),
+      now: () => now,
+      freeBytes: () => 0,
+    })
+    expect(await inspect(deps)).toMatchObject({ kind: 'failed', reason: 'checkpoint-failed' })
+    expect(await treeOf(backupsDir(userData))).toEqual(before)
+  })
+
+  it('reports insufficient room while preserving all copies', async () => {
     const userData = join(await aRoot(), 'data')
     const fixture = await makeRecoveryFixture(userData, {
       migrations: THIS_BUILD,
@@ -306,12 +324,14 @@ describe('a copy before a migration', () => {
       kind: 'failed',
       reason: 'checkpoint-failed',
       canRetry: true,
-      detail: `${await noRoom(userData)} BroCrew already removed its older recovery copies. Free some space, then try again.`,
+      detail: await noRoom(userData),
     })
-    expect(existsSync(fixture.checkpoints[0]!.dir)).toBe(false)
+    expect(existsSync(fixture.checkpoints[0]!.dir)).toBe(true)
     expect(existsSync(fixture.checkpoints[2]!.dir)).toBe(true)
     expect((await listCheckpoints(userData)).map(({ manifest }) => manifest.id)).toEqual([
       fixture.checkpoints[2]!.id,
+      fixture.checkpoints[1]!.id,
+      fixture.checkpoints[0]!.id,
     ])
   })
 
@@ -360,7 +380,7 @@ describe('a copy before a migration', () => {
       const { deps, seen } = checkOf(userData, {
         buildMigrationsFolder: await aBuildWithOneMoreMigration(),
         now: () => now,
-        freeBytes: () => (existsSync(oldest.dir) ? 0 : 1_000_000_000),
+        freeBytes: () => 1_000_000_000,
         beforeCheckpointStep: (step) => {
           reached.push({ step, fallbackExists: existsSync(fallback.dir) })
           if (step === stoppedAt) throw new Error('the synthetic replacement stopped')
@@ -373,16 +393,13 @@ describe('a copy before a migration', () => {
         canRetry: true,
         detail: expect.stringContaining('the synthetic replacement stopped'),
       })
-      expect(existsSync(oldest.dir), 'low-space pruning ran before the replacement').toBe(false)
+      expect(existsSync(oldest.dir), 'failed updates preserve every earlier copy').toBe(true)
       expect(reached.at(-1)?.step).toBe(stoppedAt)
       expect(reached.every(({ fallbackExists }) => fallbackExists)).toBe(true)
       expect(await treeOf(fallback.dir)).toEqual(before)
       expect(await isIntact(checked)).toBe(true)
       expect((await listCheckpoints(userData)).map(({ manifest }) => manifest.id).sort()).toEqual(
-        fixture.checkpoints
-          .slice(1)
-          .map(({ id }) => id)
-          .sort(),
+        fixture.checkpoints.map(({ id }) => id).sort(),
       )
       expect(seen.lines).not.toContain(CHECKPOINT_LINE)
     },

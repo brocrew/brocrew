@@ -1193,7 +1193,42 @@ function anHourAndMoreAgo(userData: string, name: string, now = Date.now()): voi
 }
 
 describe('prune', () => {
-  it('keeps one newest intact offerable copy across migration counts', async () => {
+  it('keeps the newest two update copies regardless of age or successful-start receipts', async () => {
+    const userData = aDataFolder()
+    aLiveDatabase(userData)
+    const copies = []
+    for (let n = 0; n < 4; n++) {
+      const copy = await make(userData, { appVersion: '0.1.19', now: () => minute(n) })
+      copies.push(copy)
+    }
+    const options = {
+      ...SOLE,
+      currentAppVersion: '0.1.19',
+      now: () => START + 30 * DAY_MS,
+    }
+    for (let n = 0; n < 3; n++) await recordSuccessfulStart(userData, LINEAGE, options)
+    expect(await prune(userData, LINEAGE, options)).toEqual(ids([copies[1]!, copies[0]!]))
+    expect(ids(await listOfferable(userData, LINEAGE))).toEqual(ids([copies[3]!, copies[2]!]))
+    expect(await prune(userData, LINEAGE, options)).toEqual([])
+  })
+
+  it('leaves unfinished update copies alone while rotating completed copies', async () => {
+    const userData = aDataFolder()
+    aLiveDatabase(userData)
+    const copies = []
+    for (let n = 0; n < 4; n++) copies.push(await make(userData, { now: () => minute(n) }))
+    const unfinished = copyOf(userData, copies[3]!)
+    leftUnfinished(userData, unfinished)
+    anHourAndMoreAgo(userData, unfinished)
+    const options = {
+      ...SOLE,
+      now: () => START + 30 * DAY_MS,
+    }
+    expect(await prune(userData, LINEAGE, options)).toEqual(ids([copies[1]!, copies[0]!]))
+    expect(existsSync(join(userData, 'backups', unfinished, 'unfinished'))).toBe(true)
+  })
+
+  it('keeps two newest intact offerable copies across migration counts', async () => {
     const userData = aDataFolder()
     aLiveDatabase(userData, theFirstMigrations(THE_BUILDS.length - 1))
     const six = [
@@ -1223,18 +1258,19 @@ describe('prune', () => {
 
     const [s1, s2, s3] = ids(six)
     const [v4, v5, v6, v7, v8] = ids(seven)
-    expect(removed.sort()).toEqual([s1, s2, v4, v5, v6, v7].sort())
+    expect(removed.sort()).toEqual([s1, s2, v4, v5, v6].sort())
     expect(ids(await listCheckpoints(userData)), 'not whole, or made by a newer build').toEqual([
       eightNewer,
       eightOlder,
       v8,
+      v7,
       s3,
     ])
-    expect(ids(await listOfferable(userData, LINEAGE))).toEqual([v8])
+    expect(ids(await listOfferable(userData, LINEAGE))).toEqual([v8, v7])
     expect(await prune(userData, LINEAGE, recent), 'a second pass finds nothing more').toEqual([])
   })
 
-  it('keeps only the newest of three recent copies with the same migration count', async () => {
+  it('keeps the newest two of three recent copies with the same migration count', async () => {
     const userData = aDataFolder()
     aLiveDatabase(userData)
     const now = minute(12)
@@ -1243,10 +1279,9 @@ describe('prune', () => {
     const newest = await make(userData, { now: () => now - 60_000 })
 
     expect(await prune(userData, LINEAGE, { ...SOLE, now: () => now })).toEqual([
-      middle.manifest.id,
       oldest.manifest.id,
     ])
-    expect(ids(await listOfferable(userData, LINEAGE))).toEqual(ids([newest]))
+    expect(ids(await listOfferable(userData, LINEAGE))).toEqual(ids([newest, middle]))
   })
 
   async function copiesAcrossMigration(daysOld: number): Promise<{
@@ -1271,31 +1306,25 @@ describe('prune', () => {
   it('prunes an eight-day-old migration-count copy when a newer copy exists', async () => {
     const { userData, older, middle, newer, now } = await copiesAcrossMigration(8)
 
-    expect(await prune(userData, LINEAGE, { ...SOLE, now: () => now })).toEqual([
-      middle.manifest.id,
-      older.manifest.id,
-    ])
-    expect(ids(await listOfferable(userData, LINEAGE))).toEqual(ids([newer]))
+    expect(await prune(userData, LINEAGE, { ...SOLE, now: () => now })).toEqual([older.manifest.id])
+    expect(ids(await listOfferable(userData, LINEAGE))).toEqual(ids([newer, middle]))
   })
 
-  it('expires even the last copy at three days', async () => {
+  it('keeps the last copy regardless of age', async () => {
     const userData = aDataFolder()
     aLiveDatabase(userData)
     const now = START + 40 * DAY_MS
     const only = await make(userData, { now: () => now - 30 * DAY_MS })
 
-    expect(await prune(userData, LINEAGE, { ...SOLE, now: () => now })).toEqual([only.manifest.id])
-    expect(await listOfferable(userData, LINEAGE)).toEqual([])
+    expect(await prune(userData, LINEAGE, { ...SOLE, now: () => now })).toEqual([])
+    expect(ids(await listOfferable(userData, LINEAGE))).toEqual([only.manifest.id])
   })
 
   it('drops older migration-count anchors', async () => {
     const { userData, older, middle, newer, now } = await copiesAcrossMigration(6)
 
-    expect(await prune(userData, LINEAGE, { ...SOLE, now: () => now })).toEqual([
-      middle.manifest.id,
-      older.manifest.id,
-    ])
-    expect(ids(await listOfferable(userData, LINEAGE))).toEqual(ids([newer]))
+    expect(await prune(userData, LINEAGE, { ...SOLE, now: () => now })).toEqual([older.manifest.id])
+    expect(ids(await listOfferable(userData, LINEAGE))).toEqual(ids([newer, middle]))
   })
 
   it.each(['taken', 'unknown'] as const)(
@@ -1312,11 +1341,11 @@ describe('prune', () => {
 
       expect(await prune(userData, LINEAGE, { ownership })).toEqual([])
       expect(readdirSync(join(userData, 'backups')).sort()).toEqual(before)
-      expect(await prune(userData, LINEAGE, SOLE)).toHaveLength(5)
+      expect(await prune(userData, LINEAGE, SOLE)).toHaveLength(3)
     },
   )
 
-  it('never removes a folder it cannot read, another workspace’s copy, or an unfinished copy younger than an hour', async () => {
+  it('never removes unknown, foreign or unfinished copies regardless of age', async () => {
     const userData = aDataFolder()
     aLiveDatabase(userData)
     const made: Checkpoint[] = []
@@ -1343,24 +1372,16 @@ describe('prune', () => {
 
     const removed = await prune(userData, LINEAGE, { ...SOLE, now: () => minute(12) })
 
-    expect(removed.sort()).toEqual([c3.manifest.id, c4.manifest.id, c5.manifest.id, stale].sort())
+    expect(removed.sort()).toEqual([c3.manifest.id, c4.manifest.id].sort())
     expect(
       readdirSync(join(userData, 'backups'))
         .filter((name) => name !== 'deletion.json')
         .sort(),
-    ).toEqual(
-      before.filter(
-        (name) =>
-          name !== c3.manifest.id &&
-          name !== c4.manifest.id &&
-          name !== c5.manifest.id &&
-          name !== stale,
-      ),
-    )
-    expect(ids(await listOfferable(userData, LINEAGE))).toEqual(ids([c6]))
+    ).toEqual(before.filter((name) => name !== c3.manifest.id && name !== c4.manifest.id))
+    expect(ids(await listOfferable(userData, LINEAGE))).toEqual(ids([c6, c5]))
   })
 
-  it('removes an unfinished copy only when its name is an id, it is marked, and it holds only what the writer makes', async () => {
+  it('leaves unfinished copies alone, including marked folders holding only writer files', async () => {
     const userData = aDataFolder()
     aLiveDatabase(userData)
     const backups = join(userData, 'backups')
@@ -1401,11 +1422,11 @@ describe('prune', () => {
     mkdirSync(join(backups, markedAsAFolder, 'unfinished'))
     anHourAndMoreAgo(userData, markedAsAFolder)
 
-    expect(await prune(userData, LINEAGE, SOLE)).toEqual([writersOnly])
+    expect(await prune(userData, LINEAGE, SOLE)).toEqual([])
     expect(readdirSync(backups)).toEqual(
       expect.arrayContaining([withTheirOwn, withAFolder, theirs, anId, setAside, markedAsAFolder]),
     )
-    expect(readdirSync(backups)).not.toContain(writersOnly)
+    expect(readdirSync(backups)).toContain(writersOnly)
     expect(readdirSync(join(backups, setAside)).sort()).toEqual([
       'database.sqlite',
       'database.sqlite-shm',
@@ -1501,10 +1522,10 @@ describe('prune', () => {
       }),
     ).toEqual([])
     expect(warnings).toHaveLength(1)
-    expect(warnings.join('\n')).toContain(made[2]?.manifest.id)
+    expect(warnings.join('\n')).toContain(made[1]?.manifest.id)
     expect(await listCheckpoints(userData)).toHaveLength(3)
     expect(await retainedCopyInfo(userData, LINEAGE, SOLE)).toMatchObject({
-      id: made[2]?.manifest.id,
+      id: made[1]?.manifest.id,
     })
   })
 
@@ -1546,7 +1567,7 @@ describe('recovery copies from a previous release', () => {
     },
   )
 
-  it('still rotates a superseded copy of the current release', async () => {
+  it('keeps two copies of the current release', async () => {
     const userData = aDataFolder()
     aLiveDatabase(userData)
     const old = await make(userData, { appVersion: '0.1.19', now: () => START })
@@ -1557,11 +1578,12 @@ describe('recovery copies from a previous release', () => {
         currentAppVersion: '0.1.19',
         now: () => minute(2),
       }),
-    ).toEqual([old.manifest.id])
+    ).toEqual([])
     expect(await isIntact(current)).toBe(true)
+    expect(await isIntact(old)).toBe(true)
   })
 
-  it('still removes a previous release copy older than three days', async () => {
+  it('keeps the previous release copy regardless of age', async () => {
     const userData = aDataFolder()
     aLiveDatabase(userData)
     const old = await make(userData, { appVersion: '0.1.17', now: () => START - 4 * DAY_MS })
@@ -1572,11 +1594,12 @@ describe('recovery copies from a previous release', () => {
         currentAppVersion: '0.1.19',
         now: () => minute(1),
       }),
-    ).toEqual([old.manifest.id])
+    ).toEqual([])
     expect(await isIntact(current)).toBe(true)
+    expect(await isIntact(old)).toBe(true)
   })
 
-  it('keeps every unexpired previous release copy until its own exact three-day boundary', async () => {
+  it('rotates older previous-release copies independently of their age', async () => {
     const userData = aDataFolder()
     aLiveDatabase(userData)
     const old = await make(userData, { appVersion: '0.1.17', now: () => START })
@@ -1585,10 +1608,10 @@ describe('recovery copies from a previous release', () => {
     const options = { ...SOLE, currentAppVersion: '0.1.19' }
     expect(
       await prune(userData, LINEAGE, { ...options, now: () => START + 3 * DAY_MS - 1 }),
-    ).toEqual([])
-    expect(await prune(userData, LINEAGE, { ...options, now: () => START + 3 * DAY_MS })).toEqual([
-      old.manifest.id,
-    ])
+    ).toEqual([old.manifest.id])
+    expect(await prune(userData, LINEAGE, { ...options, now: () => START + 3 * DAY_MS })).toEqual(
+      [],
+    )
     expect(await isIntact(second)).toBe(true)
     expect(await isIntact(current)).toBe(true)
   })
@@ -1606,35 +1629,31 @@ describe('recovery copies from a previous release', () => {
       const options = { ...SOLE, currentAppVersion: '0.1.19', now: () => minute(2) }
       for (let starts = 1; starts <= 3; starts++) {
         await recordSuccessfulStart(userData, LINEAGE, options)
-        expect(await prune(userData, LINEAGE, options)).toEqual(
-          starts === 3 && current ? [current.manifest.id] : [],
-        )
+        expect(await prune(userData, LINEAGE, options)).toEqual([])
+        if (current) expect(await isIntact(current)).toBe(true)
         expect(await isIntact(old)).toBe(true)
       }
     },
   )
 
-  it.each([2, 3])(
-    'uses a previous copy receipt with %i starts of its own version',
-    async (starts) => {
-      const userData = aDataFolder()
-      aLiveDatabase(userData)
-      const old = await make(userData, { appVersion: '0.1.17', now: () => START })
-      for (let n = 0; n < starts; n++) {
-        await recordSuccessfulStart(userData, LINEAGE, { ...SOLE, currentAppVersion: '0.1.17' })
-      }
-      const current = await make(userData, { appVersion: '0.1.19', now: () => minute(1) })
-      expect(
-        await prune(userData, LINEAGE, {
-          ...SOLE,
-          currentAppVersion: '0.1.19',
-          now: () => minute(2),
-        }),
-      ).toEqual(starts === 3 ? [old.manifest.id] : [])
-      expect(existsSync(old.folder)).toBe(starts < 3)
-      expect(await isIntact(current)).toBe(true)
-    },
-  )
+  it.each([2, 3])('keeps previous copies after %i starts of their version', async (starts) => {
+    const userData = aDataFolder()
+    aLiveDatabase(userData)
+    const old = await make(userData, { appVersion: '0.1.17', now: () => START })
+    for (let n = 0; n < starts; n++) {
+      await recordSuccessfulStart(userData, LINEAGE, { ...SOLE, currentAppVersion: '0.1.17' })
+    }
+    const current = await make(userData, { appVersion: '0.1.19', now: () => minute(1) })
+    expect(
+      await prune(userData, LINEAGE, {
+        ...SOLE,
+        currentAppVersion: '0.1.19',
+        now: () => minute(2),
+      }),
+    ).toEqual([])
+    expect(existsSync(old.folder)).toBe(true)
+    expect(await isIntact(current)).toBe(true)
+  })
 
   it('does not apply an expired receipt to another copy of the same previous version', async () => {
     const userData = aDataFolder()
@@ -1656,7 +1675,7 @@ describe('recovery copies from a previous release', () => {
     expect(await isIntact(current)).toBe(true)
   })
 
-  it('keeps the newest expired fallback and still frees an older expired previous copy before migration', async () => {
+  it('keeps two previous copies regardless of their old start receipt', async () => {
     const userData = aDataFolder()
     aLiveDatabase(userData)
     const old = await make(userData, { appVersion: '0.1.17', now: () => START })
@@ -1666,38 +1685,36 @@ describe('recovery copies from a previous release', () => {
         ...SOLE,
         currentAppVersion: '0.1.19',
         now: () => START + 4 * DAY_MS,
-        expire: false,
       }),
-    ).toEqual([old.manifest.id])
+    ).toEqual([])
     expect(await isIntact(newest)).toBe(true)
+    expect(await isIntact(old)).toBe(true)
   })
 
-  it('retains the legacy rotation policy when the current version is omitted', async () => {
+  it('keeps two copies when the current version is omitted', async () => {
     const userData = aDataFolder()
     aLiveDatabase(userData)
     const old = await make(userData, { appVersion: '0.1.17', now: () => START })
     const current = await make(userData, { appVersion: '0.1.19', now: () => minute(1) })
-    expect(await prune(userData, LINEAGE, { ...SOLE, now: () => minute(2) })).toEqual([
-      old.manifest.id,
-    ])
+    expect(await prune(userData, LINEAGE, { ...SOLE, now: () => minute(2) })).toEqual([])
     expect(await isIntact(current)).toBe(true)
+    expect(await isIntact(old)).toBe(true)
   })
 })
 
-describe('recovery copy expiry and Settings', () => {
-  it('keeps the last copy until exactly three days, then removes it', async () => {
+describe('recovery copy retention and Settings', () => {
+  it('keeps the last copy across the former expiry boundary', async () => {
     const userData = aDataFolder()
     aLiveDatabase(userData)
     const copy = await make(userData, { now: () => START })
     expect(await prune(userData, LINEAGE, { ...SOLE, now: () => START + 3 * DAY_MS - 1 })).toEqual(
       [],
     )
-    expect(await prune(userData, LINEAGE, { ...SOLE, now: () => START + 3 * DAY_MS })).toEqual([
-      copy.manifest.id,
-    ])
+    expect(await prune(userData, LINEAGE, { ...SOLE, now: () => START + 3 * DAY_MS })).toEqual([])
+    expect(await isIntact(copy)).toBe(true)
   })
 
-  it('expires after three successful starts of its new version and does not recreate it on the fourth', async () => {
+  it('keeps its copy after three successful starts and does not recreate it on the fourth', async () => {
     const userData = aDataFolder()
     aLiveDatabase(userData)
     const copy = await make(userData)
@@ -1706,7 +1723,7 @@ describe('recovery copy expiry and Settings', () => {
     for (let starts = 1; starts <= 3; starts++) {
       await recordSuccessfulStart(userData, LINEAGE, options)
       await prune(userData, LINEAGE, options)
-      expect(await listOfferable(userData, LINEAGE)).toHaveLength(starts < 3 ? 1 : 0)
+      expect(await listOfferable(userData, LINEAGE)).toHaveLength(1)
     }
     expect(
       await checkpointNeeded({
@@ -1726,7 +1743,7 @@ describe('recovery copy expiry and Settings', () => {
     ).toBe('first-start-of-release')
   })
 
-  it('shows total copied bytes, expiry and starts left; Delete now removes the selected copy', async () => {
+  it('shows total copied bytes; Delete now removes the selected copy', async () => {
     const userData = aDataFolder()
     aLiveDatabase(userData)
     writeFileSync(join(userData, 'drafts.json'), '{"draft":"fictional"}')
@@ -1737,8 +1754,6 @@ describe('recovery copy expiry and Settings', () => {
     expect(info).toMatchObject({
       id: copy.manifest.id,
       bytes: copy.manifest.database.bytes + Buffer.byteLength('{"draft":"fictional"}'),
-      expiresAt: new Date(Date.parse(copy.manifest.createdAt) + 3 * DAY_MS).toISOString(),
-      startsLeft: 2,
     })
     expect(await deleteRetainedCopy(userData, LINEAGE, copy.manifest.id, options)).toBe(true)
     expect(await retainedCopyInfo(userData, LINEAGE, options)).toBeNull()
@@ -1798,22 +1813,19 @@ describe('recovery copy expiry and Settings', () => {
     anHourAndMoreAgo(userData, '20260101-020202')
     const before = readFileSync(join(personal, 'brobot2.sqlite'))
     const copy = await make(userData, { now: () => START })
-    expect(await prune(userData, LINEAGE, { ...SOLE, now: () => START + 4 * DAY_MS })).toEqual([
-      copy.manifest.id,
-    ])
+    expect(await prune(userData, LINEAGE, { ...SOLE, now: () => START + 4 * DAY_MS })).toEqual([])
     expect(readdirSync(personal)).toEqual(['brobot2.sqlite'])
     expect(readFileSync(join(personal, 'brobot2.sqlite'))).toEqual(before)
+    expect(await isIntact(copy)).toBe(true)
   })
 })
 
 describe('retention safety boundaries', () => {
-  it('protects the newest expired copy during pre-migration low-space cleanup', async () => {
+  it('protects the newest copy even after thirty days', async () => {
     const userData = aDataFolder()
     aLiveDatabase(userData)
     const copy = await make(userData, { now: () => START })
-    expect(
-      await prune(userData, LINEAGE, { ...SOLE, now: () => START + 30 * DAY_MS, expire: false }),
-    ).toEqual([])
+    expect(await prune(userData, LINEAGE, { ...SOLE, now: () => START + 30 * DAY_MS })).toEqual([])
     expect(await isIntact(copy)).toBe(true)
   })
 
@@ -1822,18 +1834,23 @@ describe('retention safety boundaries', () => {
     aLiveDatabase(userData)
     const copy = await make(userData)
     const options = { ...SOLE, currentAppVersion: copy.manifest.madeBy.appVersion }
-    expect(await retainedCopyInfo(userData, LINEAGE, options)).toMatchObject({ startsLeft: 3 })
+    expect(await retainedCopyInfo(userData, LINEAGE, options)).toMatchObject({
+      id: copy.manifest.id,
+    })
     await recordSuccessfulStart(userData, LINEAGE, { ...options, ownership: 'unknown' })
-    expect(await retainedCopyInfo(userData, LINEAGE, options)).toMatchObject({ startsLeft: 3 })
+    expect(await retainedCopyInfo(userData, LINEAGE, options)).toMatchObject({
+      id: copy.manifest.id,
+    })
     await recordSuccessfulStart(userData, LINEAGE, { ...options, currentAppVersion: '0.0.9' })
-    expect(await retainedCopyInfo(userData, LINEAGE, options)).toMatchObject({ startsLeft: 3 })
+    expect(await retainedCopyInfo(userData, LINEAGE, options)).toMatchObject({
+      id: copy.manifest.id,
+    })
     await recordSuccessfulStart(userData, LINEAGE, options)
     await recordSuccessfulStart(userData, LINEAGE, options)
     const next = await make(userData, { now: () => Date.now() + 1000 })
     await recordSuccessfulStart(userData, LINEAGE, options)
     expect(await retainedCopyInfo(userData, LINEAGE, options)).toMatchObject({
       id: next.manifest.id,
-      startsLeft: 2,
     })
   })
 

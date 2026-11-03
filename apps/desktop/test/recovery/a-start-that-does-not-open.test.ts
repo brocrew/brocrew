@@ -115,9 +115,8 @@ describe('the open path', () => {
     expect(CODE.match(/recordSuccessfulStart\(/g)).toHaveLength(1)
     expect(init).toContain("theOneAppAnswer?.held() ?? 'unknown'")
     expect(CODE).toContain('withRecoveryCopies(async () => {')
-    expect(functionIn(CODE, 'async function scheduleRecoveryExpiry(')).toContain(
-      'armRecoveryExpiry(copy.expiresAt,',
-    )
+    expect(CODE).not.toContain('armRecoveryExpiry')
+    expect(CODE).not.toContain('scheduleRecoveryExpiry')
   })
 
   it('lets old copies go only for the sole app, as the one-app check last answered', () => {
