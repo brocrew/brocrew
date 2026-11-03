@@ -2536,7 +2536,9 @@ export interface RuntimeHostDeps {
   /** Records synchronous work without timing provider waits. */
   mainThreadWork?: Pick<MainThreadWork, 'start' | 'timed'>
   /** The adapter for a provider, already wired with its auth seam. */
-  createRuntime(provider: Provider): AgentRuntime
+  createRuntime(provider: Provider, connectionId?: string): AgentRuntime
+  /** Resolve metadata before home/provider work; absence preserves legacy test/runtime wiring. */
+  connectionFor?(provider: Provider, recordedConnection?: string | null): string
   /**
    * Provision the app-owned home for a provider IN A GIVEN PROFILE and return its path.
    * The profile is passed rather than pinned because it decides what the provider remembers:
@@ -24367,6 +24369,7 @@ export class RuntimeHost implements LiveHost {
     // ⚑ **A folder a person or the spawn rails named, else the durable workspace** — `resolveCwd`'s
     // blank branch, which is where every conversation that asked for none runs.
     const cwd = this.deps.resolveCwd(id, input.cwd)
+    const connectionId = this.deps.connectionFor?.(input.provider)
     const { home: providerHome, loginRenewed } = await this.prepareAHome(input.provider, profileId)
     // ⛔ **Asked again now the home exists, because the first answer was about a different disk**
     // (265 §4). The claim above covers every creation in THIS host; a variant laid down while we
@@ -24395,7 +24398,9 @@ export class RuntimeHost implements LiveHost {
     // The runtime first: it is made with the program it runs, so a program this computer lacks is
     // refused here in its own words, before a model list is asked whose failure would read as a
     // list that names no model.
-    const rawRuntime = this.deps.createRuntime(input.provider)
+    const rawRuntime = connectionId === undefined
+      ? this.deps.createRuntime(input.provider)
+      : this.deps.createRuntime(input.provider, connectionId)
     const runtime = this.runtimeWithPlugins(rawRuntime, input.provider, profileId)
     // 🔴 **D-042 · R1 — every start names its model and effort** (024's effort, 038's model): what
     // the caller named, else this agent's default, else the last pair a person picked on this
@@ -24596,6 +24601,7 @@ export class RuntimeHost implements LiveHost {
           this.deps.store.create({
             id,
             provider: input.provider,
+            ...(handle.connectionId === undefined ? {} : { connectionId: handle.connectionId }),
             cwd,
             approvalMode,
             profileId,
@@ -43411,6 +43417,10 @@ export class RuntimeHost implements LiveHost {
     // ⚑ `592` recorded that move deliberately: see `test/session-profile.test.ts`'s *"the path for
     // an omitted profile moved, and only because the SLUG did"*.
     const profileId = row.profileId ?? DEFAULT_PROFILE_ID
+    const connectionId = this.deps.connectionFor?.(
+      row.provider,
+      this.deps.store.connectionOf(sessionId),
+    )
     const { home: providerHome, loginRenewed } = await this.prepareAHome(
       row.provider,
       profileId,
@@ -43454,7 +43464,9 @@ export class RuntimeHost implements LiveHost {
     const recordedModel = row.model ?? undefined
     // The runtime first, as a start makes it: a missing program is refused in its own words, never
     // as a list that names no model.
-    const rawRuntime = this.deps.createRuntime(row.provider)
+    const rawRuntime = connectionId === undefined
+      ? this.deps.createRuntime(row.provider)
+      : this.deps.createRuntime(row.provider, connectionId)
     const runtime = this.runtimeWithPlugins(rawRuntime, row.provider, row.profileId)
     const selected = await this.theSelectedModel(row.provider, row.profileId, profileId, {
       ...(recordedModel === undefined ? {} : { model: recordedModel }),

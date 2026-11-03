@@ -1,6 +1,6 @@
 import type { TranscriptPolicy, DiscoveryPolicy } from './transcript-policy'
 import type { AgentRuntime, AuthState, ReprovisionOutcome } from '@brobot2/runtime'
-import type { Provider } from '@brobot2/shared'
+import type { Provider, ProviderConnection } from '@brobot2/shared'
 import type { LoginRenewalOperations, ProviderSignIn, SignInCopySource } from './auth-types'
 import type { ProviderAuthPolicy } from './auth-policy'
 
@@ -41,6 +41,12 @@ export interface ProviderHomeStrategy {
   prepare(profileId: string): Promise<string>
 }
 
+/** Metadata only; providers retain all existing credential and state operations. */
+export interface ProviderConnectionOperations {
+  list(): readonly ProviderConnection[]
+  resolve(connectionId?: string | null): ProviderConnection
+}
+
 export interface ProviderModule {
   readonly program?: import('./program-policy').ProviderProgramOperations
   readonly authPolicy: ProviderAuthPolicy
@@ -52,7 +58,9 @@ export interface ProviderModule {
   readonly skills: import('./skill-policy').SkillPolicy
   readonly keptRules: import('./kept-rule-policy').KeptRulePolicy
   /** A fresh runtime for this launch; the program is resolved only when called. */
-  createRuntime(): AgentRuntime
+  createRuntime(connectionId?: string | null): AgentRuntime
+  /** Bound by the desktop composition; legacy runtime-only constructions may omit it. */
+  readonly connections?: ProviderConnectionOperations
   readonly home: ProviderHomeStrategy
   readonly auth: HomeAuthOperations
 }

@@ -796,6 +796,8 @@ export type TurnProvenance =
  *    is eventually answered — by the app, or safe-rejected on teardown.
  */
 export interface SessionHandle {
+  /** The admitted app connection for this launch; older adapters may not provide attribution. */
+  readonly connectionId?: string
   /**
    * True after this adapter has begun retiring its provider, before its final status arrives.
    * The host must carry deliveries past that interval instead of sending into an idle-looking

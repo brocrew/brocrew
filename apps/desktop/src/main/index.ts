@@ -138,6 +138,7 @@ import {
   totalBytes,
 } from './process-tree'
 import { openDatabase, type AppDatabase } from './db/connection'
+import { listProviderConnections, resolveProviderConnection } from './db/provider-connections'
 import { newProviderSessionId } from './db/ids'
 import { discoverSessionsIn } from './adopt/discover-sessions'
 import {
@@ -816,6 +817,10 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
         status: (provider) => apiKeys.status(provider),
       },
     }),
+    (provider) => ({
+      list: () => listProviderConnections(database, provider),
+      resolve: (connectionId) => resolveProviderConnection(database, { provider, connectionId }),
+    }),
   )
   const providerAuth = providerAuthFromModules(providerModules)
   const runtimeHost = new RuntimeHost({
@@ -901,7 +906,12 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
     },
     // Resolve the bundled Codex by absolute path, independent of PATH and the user's installed
     // version. Resolve per launch so a missing binary is reported on the command that needs it.
-    createRuntime: (provider) => providerModules[provider].createRuntime(),
+    createRuntime: (provider, connectionId) => providerModules[provider].createRuntime(connectionId),
+    connectionFor: (provider, connectionId) => {
+      const connections = providerModules[provider].connections
+      if (!connections) throw new Error('Provider connection services were not bound')
+      return connections.resolve(connectionId).id
+    },
     // Derive the profile from the session; keep its provider home under `HOME_FOLDER`.
     beforeProviderLaunch: async () => {
       await transcriptRetention?.beforeLaunch()
