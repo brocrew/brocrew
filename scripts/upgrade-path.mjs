@@ -83,6 +83,7 @@ import {
   requireEvidence,
   resultLine,
   rowsPreserved,
+  CONNECTION_UPGRADE_DEFAULTS,
   SAVED_KEY_LIMIT,
   APP_NAMES_BEFORE,
   keychainAttributes,
@@ -2802,6 +2803,7 @@ try {
     undefined,
     before.keys,
     candidateSkills,
+    CONNECTION_UPGRADE_DEFAULTS,
   )
   const afterFirstSkills = skillsKept(before.tables, afterFirst.tables, candidateSkills)
   check(
@@ -3074,6 +3076,7 @@ try {
     undefined,
     before.keys,
     candidateSkills,
+    CONNECTION_UPGRADE_DEFAULTS,
   )
   const afterSecondSkills = skillsKept(before.tables, afterSecond.tables, candidateSkills)
   check(
