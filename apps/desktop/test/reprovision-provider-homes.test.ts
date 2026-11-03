@@ -524,6 +524,69 @@ describe('copying this install’s provider sign-ins', () => {
     expect(copy).toHaveBeenCalledTimes(3)
   })
 
+  it('admits an auth probe atomically before a competing copy can claim the home', async () => {
+    let entered!: () => void
+    let release!: () => void
+    const started = new Promise<void>((resolve) => {
+      entered = resolve
+    })
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    ops.check = vi.fn(async () => {
+      entered()
+      await held
+      return { state: 'unknown', reason: 'fictional probe' }
+    })
+    const checking = host.checkProviderAuth('codex', DEFAULT_PROFILE_ID)
+    const copying = run()
+    await started
+    try {
+      expect(await copying).toMatchObject({ replaced: 2, pending: 1 })
+      expect(copy.mock.calls.some((call) => call[1] === DEFAULT_PROFILE_ID)).toBe(false)
+    } finally {
+      release()
+    }
+    await checking
+    await vi.waitFor(async () =>
+      expect(await host.reprovisionProviderHomes('codex', true)).toMatchObject({
+        replaced: 3,
+        pending: 0,
+      }),
+    )
+  })
+
+  it('does not start an auth probe while a competing copy owns the home', async () => {
+    let entered!: () => void
+    let release!: () => void
+    const started = new Promise<void>((resolve) => {
+      entered = resolve
+    })
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const realCopy = copy.getMockImplementation()!
+    copy.mockImplementation(async (provider, id) => {
+      if (id === DEFAULT_PROFILE_ID) {
+        entered()
+        await held
+      }
+      return realCopy(provider, id)
+    })
+    ops.check = vi.fn(async () => ({ state: 'unknown', reason: 'fictional probe' }))
+    const copying = run()
+    const checking = host.checkProviderAuth('codex', DEFAULT_PROFILE_ID)
+    await started
+    try {
+      expect(ops.check).not.toHaveBeenCalled()
+    } finally {
+      release()
+    }
+    expect(await copying).toMatchObject({ replaced: 3, pending: 0 })
+    await checking
+    expect(ops.check).toHaveBeenCalledTimes(1)
+  })
+
   it('leaves homes alone when API-key status cannot be checked', async () => {
     keyStatusFails = true
     expect(await run()).toMatchObject({

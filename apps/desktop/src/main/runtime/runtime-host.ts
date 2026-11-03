@@ -35480,7 +35480,9 @@ export class RuntimeHost implements LiveHost {
     // ours — and it is the same sentence a refused session gets.
     let launch: Launch
     try {
-      await this.homeCopyJobs.get(profileSignInKey(provider, profileId))
+      let copying: Promise<void> | undefined
+      while ((copying = this.homeCopyJobs.get(profileSignInKey(provider, profileId))) !== undefined)
+        await copying
       launch = this.launches.open(`${provider} sign-in check`)
       this.rememberHomeLaunch(provider, profileId, launch)
     } catch {
@@ -35687,12 +35689,11 @@ export class RuntimeHost implements LiveHost {
       return Promise.resolve()
     const sessions = slots.flatMap((slot) => (slot.session === null ? [] : [slot.session]))
     for (const session of sessions) this.signInStops.add(session)
-    const closing = sessions.map((session) => this.close(session.id, THE_APP_ITSELF))
-    // Install the gate before starting any async work; new launches wait for the same copy.
+    // Install the gate before closing a provider can admit another probe or launch.
     let copied: ProviderHomesReprovision['profiles'][number] | undefined
     const job = Promise.resolve().then(async () => {
       try {
-        await Promise.all(closing)
+        await Promise.all(sessions.map((session) => this.close(session.id, THE_APP_ITSELF)))
         await Promise.all(sessions.map((session) => session.terminated))
         const keyStatus = (): boolean => this.deps.apiKeys?.status(provider).set === true
         // A key saved while the providers stopped outranks this request too.
@@ -42588,7 +42589,9 @@ export class RuntimeHost implements LiveHost {
     }
     let launch: Launch | null = null
     try {
-      await this.homeCopyJobs.get(profileSignInKey(provider, profileId))
+      let copying: Promise<void> | undefined
+      while ((copying = this.homeCopyJobs.get(profileSignInKey(provider, profileId))) !== undefined)
+        await copying
       launch = this.launches.open(`${provider} model probe`)
       this.rememberHomeLaunch(provider, profileId, launch)
       if (this.deps.beforeProviderLaunch) {
