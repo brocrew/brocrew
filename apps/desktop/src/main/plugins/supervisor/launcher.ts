@@ -17,6 +17,7 @@ import { readRecoveryAdvice } from './recovery-advice'
 import { windowsSystemEnvironment } from '../system-environment'
 import { OWNER_LAUNCH_MS, PluginSupervisorError } from './protocol'
 import { LaunchConfig, type PluginLifecyclePlan, type PluginStartupPlan } from './launch-format'
+import type { SharedDataOwner } from '../shared-data'
 
 /** App/controller input only; no defaults to a system executable, app entry or live root. */
 export function createPluginSupervisorLauncher(options: {
@@ -26,6 +27,7 @@ export function createPluginSupervisorLauncher(options: {
   browserExecutable?: string
   startup?: PluginStartupPlan
   lifecycle?: PluginLifecyclePlan
+  sharedDataOwner?: SharedDataOwner
   /** Resolves the app-fixed modern source only when a new owner is actually needed. */
   lifecycleForNewOwner?(): Promise<PluginLifecyclePlan>
 }): (() => Promise<void>) & { diagnostic(cause?: unknown): Error | undefined } {
@@ -73,6 +75,7 @@ export function createPluginSupervisorLauncher(options: {
         browserExecutable: captured.browserExecutable,
         startup: captured.startup,
         lifecycle,
+        sharedDataOwner: captured.sharedDataOwner,
       })
       const input = Buffer.from(JSON.stringify(config)),
         configPath = join(directory, 'launch.json')

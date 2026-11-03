@@ -10,6 +10,7 @@ import type { LocalFileGuardConfig } from './localFileGuard.js'
 import { createLogger } from './logger.js'
 import type { Logger } from './logger.js'
 import { createProfileStore } from './profiles/store.js'
+import { createSharedProfileStore } from './profiles/sharedStore.js'
 import type { ProfileStore } from './profiles/store.js'
 import type { ProfileBrowser } from './browser/profileBrowser.js'
 import { createKeyedSerializer } from './shared/browser/browser-lease.js'
@@ -46,7 +47,17 @@ export async function startAgentChrome(
   const logger = deps.logger ?? createLogger('agent-chrome')
   if (!LOOPBACK.has(resolveBindHost('127.0.0.1')))
     throw new ConfigError('agent-chrome listens on loopback only; unset MCP_BIND_HOST')
-  const store = deps.store ?? createProfileStore({ home: config.home })
+  const store =
+    deps.store ??
+    (config.shared
+      ? createSharedProfileStore({
+          home: config.home,
+          shared: config.shared.root,
+          workspaceId: config.shared.workspaceId,
+          workspaceLabel: config.shared.workspaceLabel,
+          migrationApproved: config.shared.migrationApproved,
+        })
+      : createProfileStore({ home: config.home }))
   for (const p of store.list().filter((r) => r.temporary)) {
     await deps.browser
       .exclusive(p.name, async () => {

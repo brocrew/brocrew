@@ -27,6 +27,7 @@ import type {
   PluginStartupDiagnostic,
 } from '../../shared/plugin-settings'
 import { thisMachine, type PluginTarget } from './package-schema'
+import type { SharedDataOwner } from './shared-data'
 
 /** Stable Settings/discovery facade. Repo fetch and plugin startup never block normal agents. */
 export function productionPluginController() {
@@ -424,6 +425,7 @@ export function productionPluginController() {
       devSource?: DevPluginSource
       supervisor: PluginSupervisorAttachment
       target?: PluginTarget
+      sharedDataOwner?: SharedDataOwner
     }): void {
       if (ended || started) return
       started = true
@@ -503,6 +505,8 @@ export function productionPluginController() {
             root: options.root,
             workspaceRoots: [options.workspaceRoot],
             resourcesRoot: options.resourcesRoot,
+            sharedDataOwner:
+              options.fixtureSource || devSource ? undefined : options.sharedDataOwner,
             // Windows names no Chrome a plugin process could find by itself (see windows-chrome.ts).
             browserExecutable:
               options.browserExecutable ??

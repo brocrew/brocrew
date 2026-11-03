@@ -144,3 +144,30 @@ it('keeps legacy release metadata unchanged without requiring author-bearing pac
   expect(entry.minAppVersion).toBe('0.0.0')
   expect(entry).not.toHaveProperty('authors')
 })
+
+it.each([true, false])(
+  'binds sharedData:%s archives to the approved first host 0.1.34',
+  async (sharedData) => {
+    const options = fixture()
+    const out = path.join(options.base, 'shared')
+    const entry = await assemblePluginRelease({
+      id: 'chrome',
+      out,
+      proof: verifyPluginSource(options),
+      targets: [{ os: 'darwin', cpu: 'arm64' }],
+      buildPackage: async (destination) => {
+        fs.mkdirSync(path.join(destination, 'package'), { recursive: true })
+        fs.writeFileSync(
+          path.join(destination, 'package', 'plugin.json'),
+          JSON.stringify({ sharedData }),
+        )
+        fs.writeFileSync(path.join(destination, 'chrome.tar'), 'fictional shared archive')
+        return { version: '0.2.0', authors: ['fictional'], manifestSha256: 'a'.repeat(64) }
+      },
+    })
+    expect(entry.minAppVersion).toBe('0.1.34')
+    expect(
+      JSON.parse(fs.readFileSync(path.join(out, 'plugin-list-entry.json'), 'utf8')).minAppVersion,
+    ).toBe('0.1.34')
+  },
+)

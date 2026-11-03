@@ -6,6 +6,7 @@ import { pluginPackagePath, PluginPackagePaths } from './package-path'
 import { strictPluginJson } from './strict-json'
 import { HookDeclaration } from './hooks/definitions'
 import { refusePlugin } from './verification-error'
+import { SHARED_DATA_FEATURE, SHARED_DATA_PERMISSION } from './shared-data-contract'
 
 const integer = z.number().int().nonnegative().safe()
 const version = SkillRelease.shape.version
@@ -157,6 +158,7 @@ const manifest = z.strictObject({
   toolApi: api.nullable(),
   uiApi: api.nullable(),
   dataSchema: integer,
+  sharedData: z.boolean().optional(),
   files: z.array(file).max(PLUGIN_LIMITS.files - 1),
   server: z.strictObject({ entry: path, mcpPath: endpoint, adminPath: endpoint }).nullable(),
   skills: z.array(skill).max(SKILL_LIMITS.skills),
@@ -290,6 +292,14 @@ export function parsePluginManifest(bytes: Uint8Array): PluginManifest {
     .safeParse(strictPluginJson(bytes, PLUGIN_LIMITS.manifestBytes))
   if (!parsed.success) refusePlugin('invalid')
   const result = parsed.data
+  if (
+    result.permissions.resources.some((resource) => resource.id === SHARED_DATA_PERMISSION) ||
+    (result.sharedData === true &&
+      (result.format !== 2 ||
+        !result.hostApi.requiredFeatures.includes(SHARED_DATA_FEATURE) ||
+        result.permissions.resources.length >= 128))
+  )
+    refusePlugin('invalid')
   targets(result.platforms)
   for (const value of [result.hostApi, result.toolApi, result.uiApi]) range(value)
   if (

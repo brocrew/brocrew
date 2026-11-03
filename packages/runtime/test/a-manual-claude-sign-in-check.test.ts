@@ -1,6 +1,7 @@
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { setTimeout as wait } from 'node:timers/promises'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { probeClaudeCodeLogin, type RunAProgram } from '../src/internal/claude-login-renewal'
 
@@ -120,6 +121,7 @@ describe.skipIf(process.platform === 'win32')(
         )
         chmodSync(program, 0o700)
         const abort = new AbortController()
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
         const work = probeClaudeCodeLogin({
           findProgram: () => program,
           env: { PATH: '/usr/bin:/bin' },
@@ -127,11 +129,32 @@ describe.skipIf(process.platform === 'win32')(
           timeLimitMs: how === 'timeout' ? 200 : 5_000,
           stopGraceMs: 20,
         })
-        await vi.waitFor(() => expect(() => readFileSync(pidFile, 'utf8')).not.toThrow())
-        const pid = Number(readFileSync(pidFile, 'utf8').trim())
-        if (how === 'cancel') abort.abort()
-        expect((await work).state).toBe('unknown')
-        expect(() => process.kill(pid, 0)).toThrow()
+        try {
+          // Let the fake program install its signal handler before advancing its deadline.
+          let pid = 0
+          const deadline = Date.now() + 3_000
+          while (!pid && Date.now() < deadline) {
+            try {
+              pid = Number(readFileSync(pidFile, 'utf8').trim())
+            } catch {
+              // The child has not written its ready marker yet.
+            }
+            if (!pid) await wait(10)
+          }
+          expect(pid).toBeGreaterThan(0)
+          expect(() => process.kill(pid, 0)).not.toThrow()
+          if (how === 'cancel') abort.abort()
+          else vi.advanceTimersByTime(200)
+          expect(() => process.kill(pid, 0)).not.toThrow()
+          vi.advanceTimersByTime(20)
+          expect((await work).state).toBe('unknown')
+          expect(() => process.kill(pid, 0)).toThrow()
+        } finally {
+          abort.abort()
+          vi.runAllTimers()
+          await work
+          vi.useRealTimers()
+        }
       },
     )
   },

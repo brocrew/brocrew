@@ -12,10 +12,16 @@ export async function assemblePluginRelease({ id, out, proof, targets, buildPack
   fs.mkdirSync(out)
   const downloads = []
   let version, authors
+  let needsSharedDataHost = false
   for (const target of targets) {
     const name = `${id}-${target.os}-${target.cpu}`
     const built = path.join(out, name)
     const release = await buildPackage(built, proof.sourceCommit, target)
+    const manifestPath = path.join(built, 'package', 'plugin.json')
+    const manifest = fs.existsSync(manifestPath)
+      ? JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
+      : release
+    needsSharedDataHost ||= Object.hasOwn(manifest, 'sharedData')
     version = release.version
     authors = release.authors
     const bytes = gzipSync(fs.readFileSync(path.join(built, `${id}.tar`)), { level: 9 })
@@ -40,7 +46,7 @@ export async function assemblePluginRelease({ id, out, proof, targets, buildPack
         : 'Lets agents read your WhatsApp chats when you allow it, and send to the groups you choose.',
     version,
     authors,
-    minAppVersion: authors === undefined ? '0.0.0' : '0.1.7',
+    minAppVersion: needsSharedDataHost ? '0.1.34' : authors === undefined ? '0.0.0' : '0.1.7',
     sourceCommit: proof.sourceCommit,
     targets: downloads,
   }

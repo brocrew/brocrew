@@ -88,10 +88,16 @@ export class TabRegistry {
     this.next = opts.start ?? 1 + Math.floor(Math.random() * 9000)
     this.later = opts.setTimeout ?? ((fn, ms) => setTimeout(fn, ms))
   }
+  private readonly privateDownloads = new Map<string, (download: Download) => Promise<boolean>>()
   private readonly watched = new Set<string>()
   watch(profile: string, browser: ProfileBrowser): void {
     if (this.watched.has(profile)) return
     this.watched.add(profile)
+
+    this.privateDownloads.set(
+      profile,
+      (download) => browser.downloadIsPrivate?.(profile, download) ?? Promise.resolve(true),
+    )
     browser.onPage(profile, (page) => {
       const generation = browser.state(profile)?.generation
       if (generation !== undefined) this.add(profile, generation, page)
@@ -178,11 +184,22 @@ export class TabRegistry {
       if (frame === page.mainFrame()) tab.refs = null
     })
     page.on('download', (download) => {
-      tab.pendingDownloads.push({ download, at: Date.now() })
-      while (tab.pendingDownloads.length > MAX_PENDING_DOWNLOADS)
-        void tab.pendingDownloads
-          .shift()!
-          .download.delete()
+      const beganAt = Date.now()
+      const accept = () => {
+        if (tab.closed || Date.now() - beganAt > PENDING_DOWNLOAD_MS) return
+        tab.pendingDownloads.push({ download, at: beganAt })
+        // Bound metadata only. Router retention, not queue eviction, owns the file.
+        while (tab.pendingDownloads.length > MAX_PENDING_DOWNLOADS) tab.pendingDownloads.shift()
+      }
+      // Correlate the GUID artifact with Browser.downloadWillBegin, never the policy
+      // at this later Page event. Public/unknown items are neither queued nor deleted.
+      const classify = this.privateDownloads.get(tab.profile)
+      if (!classify) accept()
+      else
+        void classify(download)
+          .then((owned) => {
+            if (owned) accept()
+          })
           .catch(() => undefined)
     })
     page.on('console', (msg) => {

@@ -108,7 +108,7 @@ async function routed(visible = true) {
       totalBytes: 11,
       state: 'completed',
     })
-  return { ...f, stage, native, session, begin, complete }
+  return { ...f, stage, native, session, begin, complete, routedBrowser: browser }
 }
 it.each([false, true])(
   'arms capture before navigation and saves its download (navigation abort=%s)',
@@ -252,4 +252,97 @@ it('keeps a user download when the wait times out before receiving its event', a
   await vi.waitFor(() =>
     expect(fs.readFileSync(path.join(f.native, 'fresh.txt'), 'utf8')).toBe('fresh bytes'),
   )
+})
+
+it('ignores a delayed public page event while waiting for a fresh private download', async () => {
+  const f = await routed()
+  Object.assign(f.h.browser, {
+    agentCall: f.routedBrowser.agentCall.bind(f.routedBrowser),
+    downloadIsPrivate: f.routedBrowser.downloadIsPrivate.bind(f.routedBrowser),
+  })
+  f.begin('earlier-public', 'public-paper.txt')
+  const native = new FakeDownload(
+    'public-paper.txt',
+    Buffer.from('native bytes'),
+    path.join(f.stage, 'earlier-public'),
+  )
+  const cancel = vi.spyOn(native, 'cancel')
+  const ready = Promise.withResolvers<void>()
+  const wait = f.page.waitForEvent.bind(f.page)
+  f.page.waitForEvent = vi.fn((event, opts) => {
+    ready.resolve()
+    return wait(event, opts)
+  })
+  const result = f.h.call('wait_for_download', { tabId: f.tabId })
+  await ready.promise
+  f.page.emit('download', native)
+  f.begin('fresh-private', 'private-paper.txt')
+  const fresh = new FakeDownload(
+    'private-paper.txt',
+    Buffer.from('fresh bytes'),
+    path.join(f.stage, 'fresh-private'),
+  )
+  f.page.emit('download', fresh)
+  f.complete('fresh-private')
+  const saved = (await result).json as { path: string }
+  expect(fs.readFileSync(saved.path, 'utf8')).toBe('fresh bytes')
+  expect(native.deleted).toBe(false)
+  expect(cancel).not.toHaveBeenCalled()
+})
+it('refuses a public item injected into pending recovery without deleting or canceling it', async () => {
+  const f = await routed()
+  Object.assign(f.h.browser, {
+    agentCall: f.routedBrowser.agentCall.bind(f.routedBrowser),
+    downloadIsPrivate: f.routedBrowser.downloadIsPrivate.bind(f.routedBrowser),
+  })
+  f.begin('public-recovery', 'public-paper.txt')
+  const normal = new FakeDownload(
+    'public-paper.txt',
+    Buffer.from('native bytes'),
+    path.join(f.stage, 'public-recovery'),
+  )
+  const cancel = vi.spyOn(normal, 'cancel')
+  const tab = f.h.tabs.resolve(f.tabId, (name) => f.h.browser.state(name)?.generation ?? null)
+  tab.pendingDownloads.push({ download: normal as never, at: Date.now() })
+  await expect(f.h.call('wait_for_download', { tabId: f.tabId })).rejects.toThrow('download failed')
+  expect(normal.deleted).toBe(false)
+  expect(cancel).not.toHaveBeenCalled()
+})
+
+it('refuses a private-attributed artifact whose real path is a native file without copying or cleanup', async () => {
+  const f = await routed()
+  Object.assign(f.h.browser, {
+    agentCall: f.routedBrowser.agentCall.bind(f.routedBrowser),
+    downloadIsPrivate: f.routedBrowser.downloadIsPrivate.bind(f.routedBrowser),
+    downloadFileIsPrivate: f.routedBrowser.downloadFileIsPrivate.bind(f.routedBrowser),
+    deletePrivateDownload: f.routedBrowser.deletePrivateDownload.bind(f.routedBrowser),
+    cancelPrivateDownload: f.routedBrowser.cancelPrivateDownload.bind(f.routedBrowser),
+  })
+  const normal = path.join(f.h.home, 'Downloads', 'fictional-normal.txt')
+  fs.mkdirSync(path.dirname(normal))
+  fs.writeFileSync(normal, 'fictional native bytes')
+  const source = path.join(f.stage, 'private-linked-guid')
+  fs.symlinkSync(normal, source)
+  const linked = new FakeDownload(
+    'fictional-normal.txt',
+    Buffer.from('fictional native bytes'),
+    source,
+  )
+  const deletion = vi.spyOn(linked, 'delete'),
+    cancel = vi.spyOn(linked, 'cancel')
+  f.page.goto = vi.fn(async () => {
+    f.session.emit('Browser.downloadWillBegin', {
+      guid: 'private-linked-guid',
+      frameId: 'fern-frame',
+      suggestedFilename: 'fictional-normal.txt',
+    })
+    f.page.emit('download', linked)
+    return { status: () => 200 }
+  })
+  await expect(
+    f.h.call('download', { tabId: f.tabId, url: 'https://fictional.invalid/paper' }),
+  ).rejects.toThrow('download failed')
+  expect(deletion).not.toHaveBeenCalled()
+  expect(cancel).not.toHaveBeenCalled()
+  expect(fs.readFileSync(normal, 'utf8')).toBe('fictional native bytes')
 })

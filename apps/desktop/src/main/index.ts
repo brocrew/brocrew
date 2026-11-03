@@ -8,6 +8,7 @@ import { pluginWorkspaceIdentity } from './plugins/supervisor/client'
 import { registerPluginSettings } from './plugins/settings'
 import { productionPluginController } from './plugins/production'
 import { PluginSupervisorAttachment, pluginSupervisorRoot } from './plugins/supervisor/client'
+import { sharedDataOwner } from './plugins/shared-data'
 import { PLUGIN_SCHEME } from './plugins/ui/assets'
 import { installPluginUiRpc } from './plugins/ui/host'
 import { ipcMain } from './app-ipc'
@@ -1376,6 +1377,10 @@ function registerIpc(runtimeHost: RuntimeHost, localZone: () => LocalZone | null
       backups: [backupsDir(storageData), recoveryDir(storageData)],
       recovery: recoveryDir(storageData),
       plugins: storagePlugins,
+      sharedPlugins:
+        !presentation.hidden && storagePlugins
+          ? join(app.getPath('appData'), '@brobot2', 'shared')
+          : null,
       cache: httpCacheFolder(session.defaultSession.storagePath),
       resources: resourcesRoot(storageData),
     },
@@ -2515,6 +2520,18 @@ function start(ownership: HostGateVerdict): void {
               : undefined,
             root,
             workspaceRoot: app.getPath('userData'),
+            sharedDataOwner: sharedDataOwner({
+              appData: app.getPath('appData'),
+              root,
+              workspaceRoot: app.getPath('userData'),
+              hidden: presentation.hidden,
+              label: !presentation.hidden
+                ? await carefulWorkspaceName(
+                    app.getPath('userData'),
+                    samePath(app.getPath('userData'), defaultDataFolder(app.getPath('appData'))),
+                  ).catch(() => undefined)
+                : undefined,
+            }),
             resourcesRoot: app.isPackaged
               ? process.resourcesPath
               : join(__dirname, '../../resources'),
