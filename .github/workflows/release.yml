@@ -23,8 +23,9 @@
 # `release` environment (where a reviewer can be required), attest the files (on a public
 # repository) and publish them as one release.
 #
-# ⚑ Unsigned on Windows and signed ad hoc on the Mac, as the beta builds are (`windows.yml`,
-# `macos.yml`, whose `*-beta-*` tags hand out builds and are not read by the updater).
+# Windows signs with DEVERP when the windows-signing environment has all four eSigner secrets.
+# Majid restricts that environment to v* tags. Other workflows cannot read its secrets; their
+# Windows builds stay unsigned. Mac builds remain signed ad hoc and not notarized.
 name: Release
 
 on:
@@ -95,11 +96,14 @@ jobs:
         run: node scripts/leak-check.mjs --require-patterns
 
   windows:
-    name: Build for Windows (NSIS, x64, unsigned)
+    name: Build for Windows (NSIS, x64)
     needs: [plan, leak]
     # ⚑ `windows-2022`: pnpm's node-gyp does not know the Visual Studio of `windows-latest` (`windows.yml`).
     runs-on: windows-2022
+    environment: windows-signing
     timeout-minutes: 45
+    outputs:
+      signed: ${{ steps.signing.outputs.enabled }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -119,15 +123,46 @@ jobs:
       # this lockfile installs.
       - name: The third-party notices are up to date
         run: node scripts/third-party-notices.mjs --check
-      - name: Build and package (NSIS, x64, unsigned)
+      - name: Check whether Windows signing is configured
+        id: signing
+        shell: pwsh
+        env:
+          ES_USERNAME: ${{ secrets.ES_USERNAME }}
+          ES_PASSWORD: ${{ secrets.ES_PASSWORD }}
+          CREDENTIAL_ID: ${{ secrets.CREDENTIAL_ID }}
+          ES_TOTP_SECRET: ${{ secrets.ES_TOTP_SECRET }}
+        run: |
+          $count = @($env:ES_USERNAME, $env:ES_PASSWORD, $env:CREDENTIAL_ID, $env:ES_TOTP_SECRET).Where({ -not [string]::IsNullOrEmpty($_) }).Count
+          if ($count -eq 0) { 'enabled=false' >> $env:GITHUB_OUTPUT }
+          elseif ($count -eq 4) { 'enabled=true' >> $env:GITHUB_OUTPUT }
+          else { throw 'Windows signing needs all four eSigner secrets, or none' }
+      # Set up the pinned tool without passing it an account or making a signing call.
+      - name: Set up CodeSignTool
+        if: steps.signing.outputs.enabled == 'true'
+        uses: sslcom/esigner-codesign@b7f8ff36fc0de8690fbbab8e5b4421d29802f747
+        with:
+          command: --version
+          signing_method: v2
+          jvm_max_memory: 1024M
+      - name: Build and package (NSIS, x64)
         shell: bash
+        env:
+          WINDOWS_SIGNING_ENABLED: ${{ steps.signing.outputs.enabled }}
+          ES_USERNAME: ${{ secrets.ES_USERNAME }}
+          ES_PASSWORD: ${{ secrets.ES_PASSWORD }}
+          CREDENTIAL_ID: ${{ secrets.CREDENTIAL_ID }}
+          ES_TOTP_SECRET: ${{ secrets.ES_TOTP_SECRET }}
         run: |
           set -euo pipefail
+          signing=()
+          if [ "$WINDOWS_SIGNING_ENABLED" = true ]; then
+            signing+=(-c.win.signtoolOptions.publisherName=DEVERP)
+          fi
           pnpm --filter @brobot2/desktop run build
           pnpm --filter @brobot2/desktop exec electron-builder --win nsis --x64 --config electron-builder.yml \
             -c.extraMetadata.version=${{ needs.plan.outputs.version }} \
             -c.publish.provider=github -c.publish.owner=${{ needs.plan.outputs.owner }} -c.publish.repo=${{ needs.plan.outputs.name }} \
-            --publish never
+            "${signing[@]}" --publish never
       # The app carries no Claude Code: the check runs the newest tested one, installed with npm
       # outside the app, as `windows.yml` does.
       - name: Install Claude Code (the newest tested version) outside the app
@@ -277,6 +312,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ needs.plan.outputs.repo }}
           BETA: ${{ needs.plan.outputs.beta }}
+          BROCREW_WINDOWS_SIGNED: ${{ needs.windows.outputs.signed }}
         shell: bash
         run: |
           set -euo pipefail

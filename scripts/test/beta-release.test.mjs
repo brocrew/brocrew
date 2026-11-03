@@ -35,6 +35,12 @@ describe('§1 · a tag names its platforms', () => {
 })
 
 describe('§2 · the words', () => {
+  it('describes the Windows signing result, while older and test builds stay unsigned', () => {
+    expect(notesOf('v0.2.0', '1a2b3c4', null, true)).toContain('Windows publisher: DEVERP;')
+    expect(notesOf('v0.2.0', '1a2b3c4')).toContain('unsigned on Windows;')
+    expect(notesOf('windows-beta-4', '1a2b3c4', null, true)).toContain('Unsigned beta build')
+    expect(notesOf('v0.2.0', '1a2b3c4', null, true)).toContain('If Windows says')
+  })
   it('discloses existing update checks only in the 0.1.8 release notes', () => {
     const disclosure =
       'Stable automatic update checks continue through brocrew.app and include your installed app version, without a user or installation ID. Network errors, a 60-second timeout or server errors fall back to GitHub; beta checks use GitHub. Turn off Check automatically to stop new automatic requests to brocrew.app; manual checks and downloads then use GitHub. See https://brocrew.app/privacy/ and the [Updates guide](https://github.com/brocrew/brocrew/blob/v0.1.8/docs/updates.md) for details.'

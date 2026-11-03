@@ -34,6 +34,11 @@ on:
     # ⚑ A push matches when its branch OR its tag does.
     tags: ['windows-beta-*', 'beta-*']
   workflow_dispatch:
+    inputs:
+      signing_witness:
+        description: Record signing callback paths without secrets or signing (test only)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -139,9 +144,30 @@ jobs:
       - name: The third-party notices are up to date
         run: node scripts/third-party-notices.mjs --check
 
+      - name: Prepare signing callback witness
+        if: github.event_name == 'workflow_dispatch' && inputs.signing_witness
+        shell: bash
+        run: node scripts/windows-signing-witness.mjs prepare "${RUNNER_TEMP//\\//}/signing-witness"
+
       - name: Build and package (NSIS, x64, unsigned)
+        env:
+          BROCREW_WINDOWS_SIGNING_RECORD_DIR: ${{ github.event_name == 'workflow_dispatch' && inputs.signing_witness && format('{0}/signing-witness', runner.temp) || '' }}
         shell: bash
         run: pnpm --filter @brobot2/desktop package:win -c.extraMetadata.version=0.1.8
+
+      - name: Check signing callbacks against packaged files
+        if: github.event_name == 'workflow_dispatch' && inputs.signing_witness
+        shell: bash
+        run: node scripts/windows-signing-witness.mjs check "${RUNNER_TEMP//\\//}/signing-witness" apps/desktop/dist "$GITHUB_SHA"
+
+      - name: Keep signing callback witness
+        if: github.event_name == 'workflow_dispatch' && inputs.signing_witness
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-signing-witness-${{ github.sha }}
+          path: ${{ runner.temp }}/signing-witness
+          if-no-files-found: error
+          retention-days: 7
 
       # The app carries no Claude Code, so the check runs the newest tested version, installed with
       # npm outside the app as a person would. npm puts the native program at `bin/claude.exe` in

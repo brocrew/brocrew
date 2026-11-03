@@ -8,4 +8,6 @@ Turn off **Check automatically** in the menu that opens when you press the works
 
 Nothing downloads or installs until you choose it. With automatic checks on and the stable channel selected, downloads offered through brocrew.app start there. The installed app version is the only query parameter the app adds to requests to brocrew.app. The existing SHA-512 download checks and Windows installer signature checks remain in place. A failed download check prevents installation.
 
+A Windows build signed as DEVERP requires future automatic updates to carry a valid DEVERP signature. Older and test builds may be unsigned. A signed installer can still show a SmartScreen warning while it earns reputation; see the [Windows install guide](install-windows.md).
+
 On Windows, BroCrew installs when you choose to restart, once nothing is running. On Mac, **Download** fetches and checks the disk image, then opens it for you to drag into Applications after you quit BroCrew. BroCrew run from source never checks; update it with `git pull`.
