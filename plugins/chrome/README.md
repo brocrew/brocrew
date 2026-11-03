@@ -94,3 +94,7 @@ out. EXDEV leaves the original local profile usable. Ambiguous/missing/replaced 
 reserved for recovery. No rollback to the old per-workspace storage format is supported after
 migration. Folder/inode fixture tests establish the filesystem behavior; actual sign-in survival
 and native cross-workspace Chrome use require the approved machine gates before rollout.
+
+## Downloads
+
+In a visible Chrome window, downloads started during an agent call stay in the plugin's private folder; other downloads go to your normal Downloads folder and stay in Chrome's download list. An agent download still in progress when the browser closes is discarded.

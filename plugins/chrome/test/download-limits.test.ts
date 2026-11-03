@@ -29,8 +29,11 @@ function fixture(allowUnclaimed = true, quota = new UnclaimedDownloadQuota()) {
     nativeDir: () => path.join(dir, 'kept'),
     onPolicyFailure: failed,
   })
-  const begin = (guid: string, frameId = 'fern-frame') =>
+  const begin = (guid: string, frameId = 'fern-frame') => {
+    if (!fs.existsSync(path.join(dir, guid)))
+      fs.writeFileSync(path.join(dir, guid), 'fictional staged bytes')
     session.emit('Browser.downloadWillBegin', { guid, frameId, suggestedFilename: 'paper.txt' })
+  }
   const progress = (guid: string, receivedBytes: number, state = 'inProgress', totalBytes = 0) =>
     session.emit('Browser.downloadProgress', { guid, receivedBytes, totalBytes, state })
   return { dir, session, router, failed, begin, progress }
@@ -156,4 +159,38 @@ it('discards the saved claim only after its own completed event', async () => {
   await vi.waitFor(() => expect(fs.existsSync(staged)).toBe(false))
   expect(h.session.send).not.toHaveBeenCalled()
   expect(fs.existsSync(path.join(h.dir, 'kept'))).toBe(false)
+})
+
+it('does not let a later call claim a download whose frame lookup outlived the original call', async () => {
+  const h = fixture(true)
+  const frames = Promise.withResolvers<ReadonlySet<string>>()
+  const first = h.router.capture(() => frames.promise)
+  fs.writeFileSync(path.join(h.dir, 'slow-decision'), 'fictional held bytes')
+  h.begin('slow-decision')
+  await flush()
+  first.end()
+  const later = h.router.capture(async () => new Set(['fern-frame']))
+  h.progress('slow-decision', 20, 'completed')
+  frames.resolve(new Set(['fern-frame']))
+  await vi.waitFor(() =>
+    expect(fs.readFileSync(path.join(h.dir, 'kept', 'paper.txt'), 'utf8')).toBe(
+      'fictional held bytes',
+    ),
+  )
+  later.end()
+})
+
+it('does not cancel an unverified file but retries the size guard once a private partial is proven', async () => {
+  const h = fixture()
+  h.session.emit('Browser.downloadWillBegin', {
+    guid: 'not-yet-written',
+    frameId: 'fern-frame',
+    suggestedFilename: 'fictional-paper.txt',
+  })
+  await flush()
+  h.progress('not-yet-written', MAX_DOWNLOAD_BYTES + 1)
+  expect(h.session.send).not.toHaveBeenCalled()
+  fs.writeFileSync(path.join(h.dir, 'not-yet-written.crdownload'), 'fictional private partial')
+  h.progress('not-yet-written', MAX_DOWNLOAD_BYTES + 2)
+  expect(h.session.send).toHaveBeenCalledWith('Browser.cancelDownload', { guid: 'not-yet-written' })
 })

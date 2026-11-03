@@ -1,7 +1,14 @@
-import type { Page } from 'playwright-core'
+import type { Page, Download } from 'playwright-core'
 import type { HelperState } from './brocrewHelper.js'
 export type BrowserMode = 'headless' | 'visible'
 export interface ProfileBrowser {
+  /** One admitted agent call; private routing covers its entire lifetime. */
+  agentCall?<T>(profiles: readonly string[], fn: () => Promise<T>): Promise<T>
+  privateDownloadsActive?(profile: string): boolean
+  downloadIsPrivate?(profile: string, download: Download): Promise<boolean>
+  downloadFileIsPrivate?(profile: string, file: string): boolean
+  deletePrivateDownload?(profile: string, download: Download): Promise<void>
+  cancelPrivateDownload?(profile: string, download: Download): Promise<void>
   ensure(
     profile: string,
     mode: BrowserMode,

@@ -250,7 +250,9 @@ it('refuses a linked day folder for a browser-stream download too', async () => 
   tab.pendingDownloads.push({ download: download as never, at: Date.now() })
   await expect(h.call('wait_for_download', { tabId: id })).rejects.toThrow()
   expect(fs.readdirSync(target)).toEqual([])
-  expect(download.deleted).toBe(true)
+  // A refused destination must not destroy the only recoverable staging copy.
+  expect(download.deleted).toBe(false)
+  expect(fs.readFileSync(source, 'utf8')).toBe('fictional bytes')
 })
 it('refuses a linked downloads root before the launch seam', async () => {
   const root = home(),

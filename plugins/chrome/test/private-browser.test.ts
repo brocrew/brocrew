@@ -83,19 +83,19 @@ it.each(['visible', 'headless'] as const)(
       expect(sent.some((entry) => entry.method === 'Browser.setDownloadBehavior')).toBe(true)
       const behavior = () =>
         sent.filter((v) => v.method === 'Browser.setDownloadBehavior').map((v) => v.params.behavior)
-      expect(behavior()).toEqual([mode === 'headless' ? 'deny' : 'allowAndName'])
+      expect(behavior()).toEqual([mode === 'headless' ? 'deny' : 'default'])
       await browser.captureDownloads('fern', {} as Page, async () => {
         expect(behavior().at(-1)).toBe('allowAndName')
         await browser.captureDownloads('fern', {} as Page, async () => undefined)
         expect(behavior().at(-1)).toBe('allowAndName')
       })
-      expect(behavior().at(-1)).toBe(mode === 'headless' ? 'deny' : 'allowAndName')
+      expect(behavior().at(-1)).toBe(mode === 'headless' ? 'deny' : 'default')
       await expect(
         browser.captureDownloads('fern', {} as Page, async () => {
           throw new Error('fictional canceled call')
         }),
       ).rejects.toThrow('fictional canceled call')
-      expect(behavior().at(-1)).toBe(mode === 'headless' ? 'deny' : 'allowAndName')
+      expect(behavior().at(-1)).toBe(mode === 'headless' ? 'deny' : 'default')
       policyFails = true
       const invoke = vi.fn(async () => undefined)
       await expect(browser.captureDownloads('fern', {} as Page, invoke)).rejects.toThrow(

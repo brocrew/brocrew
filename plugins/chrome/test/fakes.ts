@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import { Readable } from 'node:stream'
 import os from 'node:os'
 import path from 'node:path'
-import type { Page } from 'playwright-core'
+import type { Page, Download } from 'playwright-core'
 import type { BrowserMode, ProfileBrowser } from '../src/browser/profileBrowser.js'
 import { ProfileInUseError } from '../src/browser/profileBrowser.js'
 import type { KeyedSerializer } from '../src/shared/browser/browser-lease.js'
@@ -65,12 +65,15 @@ export class FakeLocator {
   }
 }
 export class FakeDownload {
+  readonly _artifact: { _initializer: { absolutePath: string } }
   deleted = false
   constructor(
     private readonly name: string,
     private readonly content: Buffer,
     public file = '',
-  ) {}
+  ) {
+    this._artifact = { _initializer: { absolutePath: file } }
+  }
   suggestedFilename() {
     return this.name
   }
@@ -195,21 +198,33 @@ export class FakePage extends EventEmitter {
   }
   waitForEvent(
     event: string,
-    opts: {
-      timeout?: number
-    } = {},
+    opts: { timeout?: number; predicate?: (value: unknown) => boolean | Promise<boolean> } = {},
   ) {
     return new Promise((resolve, reject) => {
-      const timer = opts.timeout
-        ? setTimeout(
-            () => reject(Object.assign(new Error('timeout'), { name: 'TimeoutError' })),
-            opts.timeout,
-          )
-        : undefined
-      this.once(event, (v) => {
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const cleanup = () => {
         if (timer) clearTimeout(timer)
-        resolve(v)
-      })
+        this.off(event, listener)
+      }
+      const listener = (value: unknown) => {
+        void Promise.resolve(opts.predicate?.(value) ?? true)
+          .then((accepted) => {
+            if (accepted) {
+              cleanup()
+              resolve(value)
+            }
+          })
+          .catch((error: unknown) => {
+            cleanup()
+            reject(error)
+          })
+      }
+      if (opts.timeout)
+        timer = setTimeout(() => {
+          cleanup()
+          reject(Object.assign(new Error('timeout'), { name: 'TimeoutError' }))
+        }, opts.timeout)
+      this.on(event, listener)
     })
   }
   cookieJar: Array<{
@@ -306,6 +321,14 @@ export class FakeBrowser implements ProfileBrowser {
     for (const cb of this.closedListeners.get(profile) ?? []) cb(cur.generation)
   }
   captures: string[] = []
+  async deletePrivateDownload(profile: string, download: Download): Promise<void> {
+    void profile
+    await download.delete()
+  }
+  async cancelPrivateDownload(profile: string, download: Download): Promise<void> {
+    void profile
+    await download.cancel()
+  }
   async captureDownloads<T>(profile: string, _page: Page, fn: () => Promise<T>): Promise<T> {
     this.captures.push(profile)
     return fn()
