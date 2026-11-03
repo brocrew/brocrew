@@ -8557,7 +8557,7 @@ export type RuntimeCommand =
   // provider home and "is Codex signed in?" therefore has one answer per profile, not one answer.
   | ({ kind: 'checkProviderAuth' } & CheckProviderAuthInput)
   | ({ kind: 'reprovisionProviderAuth' } & ProviderProfileInput)
-  | { kind: 'reprovisionProviderHomes'; provider: Provider }
+  | { kind: 'reprovisionProviderHomes'; provider: Provider; statusOnly?: boolean }
   | ({ kind: 'signInProvider' } & ProviderProfileInput)
   | ({ kind: 'cancelProviderSignIn' } & ProviderProfileInput)
   /**
@@ -9465,14 +9465,15 @@ export interface CheckProviderAuthInput extends ProviderProfileInput {
 /** The result of a person's request to replace this install's profile sign-ins. */
 export interface ProviderHomesReprovision {
   readonly replaced: number
+  readonly pending: number
   readonly skipped: number
   readonly failed: number
   readonly profiles: readonly (
-    | { readonly profileId: string; readonly state: 'replaced' }
+    | { readonly profileId: string; readonly state: 'replaced' | 'pending' }
     | {
         readonly profileId: string
         readonly state: 'skipped'
-        readonly reason: 'api-key' | 'key-status-unavailable' | 'busy' | 'unchanged'
+        readonly reason: 'api-key' | 'key-status-unavailable' | 'unchanged'
       }
     | { readonly profileId: string; readonly state: 'failed'; readonly reason: 'copy-failed' }
   )[]
@@ -10365,7 +10366,10 @@ export interface RuntimeBridge {
    */
   reprovisionProviderAuth(input: ProviderProfileInput): Promise<ReprovisionOutcome>
   /** Re-copy this install’s profile homes, leaving keys and open sessions alone. */
-  reprovisionProviderHomes(input: { provider: Provider }): Promise<ProviderHomesReprovision>
+  reprovisionProviderHomes(input: {
+    provider: Provider
+    statusOnly?: boolean
+  }): Promise<ProviderHomesReprovision>
   /**
    * Sign this profile into its own account. **Resolves when the browser flow settles**, which may
    * be minutes — render a Cancel beside it and call {@link RuntimeBridge.cancelProviderSignIn}.

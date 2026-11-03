@@ -1,12 +1,15 @@
 import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeRuntime, reprovisionCodexAuth } from '@brobot2/runtime'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
-import { NULL_SESSION_STORE } from '../src/main/db/session-store'
+import { createSessionStore } from '../src/main/db/session-store'
+import { openDatabase, type AppDatabase } from '../src/main/db/connection'
+import { applyMigrations } from '../src/main/db/migrate'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import {
   deriveProviderHome,
@@ -27,6 +30,8 @@ const sink: RuntimeEventSink = {
 
 describe('copying this install’s provider sign-ins', () => {
   let root: string
+  let db: AppDatabase
+  let launches: number
   let host: RuntimeHost
   let ops: ProviderAuthOps
   const copy = vi.fn()
@@ -39,6 +44,9 @@ describe('copying this install’s provider sign-ins', () => {
 
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'brocrew-recopy-'))
+    db = openDatabase(join(root, 'test.sqlite'))
+    applyMigrations(db, join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations'))
+    launches = 0
     messages.length = 0
     keySaved = false
     keyStatusFails = false
@@ -67,12 +75,26 @@ describe('copying this install’s provider sign-ins', () => {
       replaceARefusedCopy: async () => 'not-tried',
     }
     let counter = 0
+    const runtime = new FakeRuntime('codex')
     host = new RuntimeHost({
-      store: NULL_SESSION_STORE,
+      store: createSessionStore(db),
       discoverSessions: NO_DISCOVERY,
       nativeTranscriptPath: () => null,
       exportDirectory: () => join(root, 'exports'),
-      createRuntime: (provider) => new FakeRuntime(provider),
+      createRuntime: () => ({
+        provider: 'codex',
+        listModels: runtime.listModels.bind(runtime),
+        start: async (options) => {
+          const handle = await runtime.start(options)
+          launches++
+          return handle
+        },
+        resume: async (ref, options) => {
+          const handle = await runtime.resume(ref, options)
+          launches++
+          return handle
+        },
+      }),
       prepareProviderHome: (_provider, id) => home(id),
       providerHomePath: (_provider, id) => home(id),
       resolveCwd: () => root,
@@ -100,6 +122,7 @@ describe('copying this install’s provider sign-ins', () => {
 
   afterEach(async () => {
     await host.closeAll()
+    db.close()
     rmSync(root, { recursive: true, force: true })
   })
 
@@ -126,7 +149,7 @@ describe('copying this install’s provider sign-ins', () => {
     expect(keyRead).not.toHaveBeenCalled()
   })
 
-  it('leaves a running turn open and reports its profile as busy, then copies after it closes', async () => {
+  it('keeps a running task intact, then switches and restarts it automatically at idle', async () => {
     const created = await host.createSession(
       { provider: 'codex', profileId: 'alpha', cwd: root },
       sink,
@@ -138,15 +161,47 @@ describe('copying this install’s provider sign-ins', () => {
     const before = statSync(join(home('alpha'), 'auth.json')).ino
     expect(await run()).toMatchObject({
       replaced: 2,
-      skipped: 1,
+      pending: 1,
+      skipped: 0,
       failed: 0,
-      profiles: expect.arrayContaining([{ profileId: 'alpha', state: 'skipped', reason: 'busy' }]),
+      profiles: expect.arrayContaining([{ profileId: 'alpha', state: 'pending' }]),
     })
     expect(host.sessionIds).toContain(created.sessionId)
     expect(messages.some((one) => one.event.type === 'turn')).toBe(false)
     expect(statSync(join(home('alpha'), 'auth.json')).ino).toBe(before)
-    await host.close(created.sessionId, sink)
-    expect(await run()).toMatchObject({ replaced: 1, skipped: 2, failed: 0 })
+    await host.respondPermission(created.sessionId, 'turn_1_perm', { outcome: 'allow' }, sink)
+    await vi.waitFor(async () =>
+      expect(await host.reprovisionProviderHomes('codex', true)).toMatchObject({
+        replaced: 3,
+        pending: 0,
+        failed: 0,
+      }),
+    )
+    await vi.waitFor(() => {
+      expect(launches).toBe(2)
+      expect(host.sessionIds).toContain(created.sessionId)
+    })
+    expect(
+      messages.filter((one) => one.event.type === 'turn').map((one) => one.event),
+    ).toContainEqual(expect.objectContaining({ state: 'completed' }))
+    expect(statSync(join(home('alpha'), 'auth.json')).ino).not.toBe(before)
+  })
+
+  it('switches an idle open conversation now and reopens it automatically', async () => {
+    const created = await host.createSession(
+      { provider: 'codex', profileId: 'alpha', cwd: root },
+      sink,
+    )
+    await vi.waitFor(() =>
+      expect(
+        messages.some((one) => one.event.type === 'status' && one.event.state === 'idle'),
+      ).toBe(true),
+    )
+    expect(await run()).toMatchObject({ replaced: 3, pending: 0, failed: 0 })
+    await vi.waitFor(() => {
+      expect(launches).toBe(2)
+      expect(host.sessionIds).toContain(created.sessionId)
+    })
   })
 
   it('leaves homes alone when API-key status cannot be checked', async () => {

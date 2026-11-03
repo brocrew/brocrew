@@ -24250,6 +24250,7 @@ export class RuntimeHost implements LiveHost {
     profileId: string,
     sessionId?: string,
   ): Promise<{ readonly home: string; readonly loginRenewed: boolean }> {
+    await this.homeCopyJobs.get(signInKey(provider, profileId))
     const renewedForIt = sessionId !== undefined && this.renewedForItsReopen.delete(sessionId)
     const prepare = (): string | Promise<string> =>
       this.deps.prepareProviderHome(provider, profileId)
@@ -32085,6 +32086,10 @@ export class RuntimeHost implements LiveHost {
    * "unreachable"; there is a test now that pins it by making the two disagree.
    */
   private flushQueued(session: HostedSession): void {
+    if (this.homeCopies.get(session.provider)?.get(session.profileId)?.state === 'pending') {
+      void this.copyHomeWhenIdle(session.provider, session.profileId)
+      if (this.homeCopyJobs.has(signInKey(session.provider, session.profileId))) return
+    }
     // A reopen for the tools a person approved goes before anything held: what is held goes in as
     // the conversation starts again.
     if (
@@ -35527,45 +35532,123 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
-  /** Re-copy only homes without an open provider session; each copy keeps the existing admission. */
-  async reprovisionProviderHomes(provider: Provider): Promise<ProviderHomesReprovision> {
+  private readonly homeCopies = new Map<
+    Provider,
+    Map<string, ProviderHomesReprovision['profiles'][number]>
+  >()
+  private readonly homeCopyJobs = new Map<string, Promise<void>>()
+
+  /** A person's batch request; pending homes are retried at an idle or termination boundary. */
+  async reprovisionProviderHomes(
+    provider: Provider,
+    statusOnly = false,
+  ): Promise<ProviderHomesReprovision> {
     if (providerDescriptor(provider).credential !== 'profile-or-key')
       throw new Error('This provider does not keep a separate sign-in for each agent.')
-    const profiles: ProviderHomesReprovision['profiles'][number][] = []
-    for (const profileId of new Set(this.profiles(provider))) {
-      try {
-        if (this.deps.apiKeys?.status(provider).set === true) {
-          profiles.push({ profileId, state: 'skipped', reason: 'api-key' })
-          continue
-        }
-      } catch {
-        profiles.push({ profileId, state: 'skipped', reason: 'key-status-unavailable' })
-        continue
-      }
-      const busy = [...this.slots.values()].some(
-        (slot) => slot.provider === provider && slot.profileId === profileId,
+    let rows = this.homeCopies.get(provider)
+    if (!statusOnly && ![...(rows?.values() ?? [])].some((one) => one.state === 'pending')) {
+      rows = new Map(
+        this.profiles(provider).map((profileId) => [
+          profileId,
+          { profileId, state: 'pending' as const },
+        ]),
       )
-      if (busy) {
-        profiles.push({ profileId, state: 'skipped', reason: 'busy' })
-        continue
+      this.homeCopies.set(provider, rows)
+      for (const profileId of rows.keys()) await this.copyHomeWhenIdle(provider, profileId)
+    }
+    const profiles = [...(rows?.values() ?? [])]
+    return {
+      replaced: profiles.filter((one) => one.state === 'replaced').length,
+      pending: profiles.filter((one) => one.state === 'pending').length,
+      skipped: profiles.filter((one) => one.state === 'skipped').length,
+      failed: profiles.filter((one) => one.state === 'failed').length,
+      profiles,
+    }
+  }
+
+  /** Stop idle app-servers before replacing their copy so a late refresh cannot overwrite it. */
+  private copyHomeWhenIdle(provider: Provider, profileId: string): Promise<void> {
+    const rows = this.homeCopies.get(provider)
+    if (rows?.get(profileId)?.state !== 'pending') return Promise.resolve()
+    const key = signInKey(provider, profileId)
+    const current = this.homeCopyJobs.get(key)
+    if (current) return current
+    try {
+      if (this.deps.apiKeys?.status(provider).set === true) {
+        rows.set(profileId, { profileId, state: 'skipped', reason: 'api-key' })
+        return Promise.resolve()
       }
+    } catch {
+      rows.set(profileId, { profileId, state: 'skipped', reason: 'key-status-unavailable' })
+      return Promise.resolve()
+    }
+    const slots = [...this.slots.values()].filter(
+      (slot) => slot.provider === provider && slot.profileId === profileId,
+    )
+    if (
+      slots.some(
+        (slot) =>
+          slot.session === null ||
+          onItsWayOut(slot) ||
+          this.aTurnRunsIn(slot.session) ||
+          this.whatAReopenWaitsFor(slot.session) !== null,
+      )
+    )
+      return Promise.resolve()
+    const sessions = slots.flatMap((slot) => (slot.session === null ? [] : [slot.session]))
+    for (const session of sessions) this.signInStops.add(session)
+    const closing = sessions.map((session) => this.close(session.id, THE_APP_ITSELF))
+    // Install the gate before starting any async work; new launches wait for the same copy.
+    const job = Promise.resolve().then(async () => {
       try {
+        const keyStatus = (): boolean => this.deps.apiKeys?.status(provider).set === true
+        try {
+          if (keyStatus()) {
+            rows.set(profileId, { profileId, state: 'skipped', reason: 'api-key' })
+            return
+          }
+        } catch {
+          rows.set(profileId, { profileId, state: 'skipped', reason: 'key-status-unavailable' })
+          return
+        }
+        await Promise.all(closing)
+        await Promise.all(sessions.map((session) => session.terminated))
+        // A key saved while the providers stopped outranks this request too.
+        if (keyStatus()) {
+          rows.set(profileId, { profileId, state: 'skipped', reason: 'api-key' })
+          return
+        }
         const outcome = await this.reprovisionProviderAuth(provider, profileId)
-        profiles.push(
+        rows.set(
+          profileId,
           outcome === 'replaced'
             ? { profileId, state: 'replaced' }
             : { profileId, state: 'skipped', reason: 'unchanged' },
         )
       } catch {
-        profiles.push({ profileId, state: 'failed', reason: 'copy-failed' })
+        rows.set(profileId, { profileId, state: 'failed', reason: 'copy-failed' })
+      } finally {
+        this.homeCopyJobs.delete(key)
       }
-    }
-    return {
-      replaced: profiles.filter((one) => one.state === 'replaced').length,
-      skipped: profiles.filter((one) => one.state === 'skipped').length,
-      failed: profiles.filter((one) => one.state === 'failed').length,
-      profiles,
-    }
+    })
+    this.homeCopyJobs.set(key, job)
+    void job.then(async () => {
+      for (const session of sessions) {
+        this.signInStops.delete(session)
+        if (this.launches.closed || this.keptStopped(session.id) || this.slots.has(session.id))
+          continue
+        const watching = session.sink.alive && session.sink.aPersonIsBehindIt ? session.sink : null
+        try {
+          await this.resumeSession(session.id, watching, null, undefined, 'not-read')
+        } catch {
+          // The next message also reopens it; no accepted turn is repeated here.
+          console.warn(
+            'An agent could not restart after its sign-in was copied; its next message will reopen it.',
+          )
+        }
+      }
+    })
+    return job
   }
 
   /**
@@ -36454,6 +36537,10 @@ export class RuntimeHost implements LiveHost {
     }
     // The reservation goes with the session: the id is free again only once nothing is left to own.
     this.slots.delete(session.id)
+    void Promise.resolve(session.terminated).then(
+      () => this.copyHomeWhenIdle(session.provider, session.profileId),
+      () => undefined,
+    )
     // ⚑ **D-019 · stopped: only its ledger speaks for it now**, read afresh when it is next asked.
     this.waitAsLastRead.delete(session.id)
     this.workOutAsLastRead.delete(session.id)
@@ -47412,7 +47499,10 @@ export class RuntimeHost implements LiveHost {
     if (event.type === 'status' && event.state === 'idle') this.flushQueued(session)
     // ⚑ **Work that ran in the background is one thing a reopen on the current sign-in waits for**
     // — so a level that moved asks again ({@link reopenForWhatWaits}).
-    if (event.type === 'background_work') this.reopenForWhatWaits(session)
+    if (event.type === 'background_work') {
+      void this.copyHomeWhenIdle(session.provider, session.profileId)
+      this.reopenForWhatWaits(session)
+    }
   }
 
   /**

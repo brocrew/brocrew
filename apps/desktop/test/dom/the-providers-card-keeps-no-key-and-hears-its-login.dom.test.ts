@@ -113,7 +113,10 @@ interface Doors {
   setApiKey?: (input: { provider: string; key: string }) => Promise<ApiKeyChanged>
   removeApiKey?: () => Promise<ApiKeyChanged>
   checkApiKey?: () => Promise<ApiKeyCheck>
-  reprovisionProviderHomes?: () => Promise<ProviderHomesReprovision>
+  reprovisionProviderHomes?: (input: {
+    provider: string
+    statusOnly?: boolean
+  }) => Promise<ProviderHomesReprovision>
   reprovisionProviderAuth?: () => Promise<'replaced' | 'unchanged'>
 }
 
@@ -147,10 +150,18 @@ function theCard(
   const reprovisionProviderAuth: NonNullable<Doors['reprovisionProviderAuth']> =
     doors.reprovisionProviderAuth ?? (async () => 'replaced')
   const runtime = {
-    reprovisionProviderHomes: vi.fn(
-      doors.reprovisionProviderHomes ??
-        (async () => ({ replaced: 0, skipped: 0, failed: 0, profiles: [] })),
-    ),
+    reprovisionProviderHomes: vi.fn(async (input: { provider: string; statusOnly?: boolean }) => {
+      if (input.statusOnly) return { replaced: 0, pending: 0, skipped: 0, failed: 0, profiles: [] }
+      return (
+        doors.reprovisionProviderHomes?.(input) ?? {
+          replaced: 0,
+          pending: 0,
+          skipped: 0,
+          failed: 0,
+          profiles: [],
+        }
+      )
+    }),
     checkProviderAuth: vi.fn(checkProviderAuth),
     apiKeyStatus: vi.fn(apiKeyStatus),
     setApiKey: vi.fn(setApiKey),
@@ -852,22 +863,25 @@ describe('copying the machine sign-in for all agents', () => {
     expect(runtime.reprovisionProviderHomes).toHaveBeenCalledWith({ provider: 'codex' })
     copy.answer({
       replaced: 1,
-      skipped: 2,
+      pending: 1,
+      skipped: 1,
       failed: 1,
       profiles: [
         { profileId: 'alpha', state: 'replaced' },
         { profileId: 'beta', state: 'skipped', reason: 'api-key' },
-        { profileId: 'gamma', state: 'skipped', reason: 'busy' },
+        { profileId: 'gamma', state: 'pending' },
         { profileId: 'delta', state: 'failed', reason: 'copy-failed' },
       ],
     })
     await settled()
-    expect(section.textContent).toContain('1 replaced / 2 skipped / 1 failed.')
-    expect(section.textContent).toContain('beta: API key saved')
-    expect(section.textContent).toContain('gamma: Conversation open.')
+    expect(section.textContent).toContain(
+      '1 switched now, 1 will switch when they finish their current task.',
+    )
+    expect(section.textContent).toContain('beta: Saved API key')
+    expect(section.textContent).toContain('Agents restart automatically between tasks')
     expect(section.textContent).toContain('delta: Could not copy')
-    expect(button.disabled).toBe(false)
-    expect(authChanged).toEqual(['alpha'])
+    expect(button.disabled).toBe(true)
+    expect(authChanged).toEqual([])
   })
 
   it('reports a request failure and enables retry', async () => {

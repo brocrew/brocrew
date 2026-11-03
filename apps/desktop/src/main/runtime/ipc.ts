@@ -987,7 +987,11 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
     profileId,
     probe: z.boolean().optional(),
   }),
-  z.object({ kind: z.literal('reprovisionProviderHomes'), provider: providerSchema }),
+  z.object({
+    kind: z.literal('reprovisionProviderHomes'),
+    provider: providerSchema,
+    statusOnly: z.boolean().optional(),
+  }),
   z.object({ kind: z.literal('reprovisionProviderAuth'), provider: providerSchema, profileId }),
   z.object({ kind: z.literal('signInProvider'), provider: providerSchema, profileId }),
   z.object({ kind: z.literal('cancelProviderSignIn'), provider: providerSchema, profileId }),
@@ -2595,7 +2599,7 @@ export async function executeRuntimeCommand(
         command.probe,
       )
     case 'reprovisionProviderHomes':
-      return await host.reprovisionProviderHomes(command.provider)
+      return await host.reprovisionProviderHomes(command.provider, command.statusOnly)
     case 'reprovisionProviderAuth':
       return await host.reprovisionProviderAuth(
         command.provider,
