@@ -1,3 +1,4 @@
+import type { ProviderHomesReprovision } from '../../shared/runtime-ipc'
 import { providerKnowledge } from '../providers/knowledge-definitions'
 import { legacyAccountRecordFormat, providerAuthPolicies } from '../providers/auth-definitions'
 import type { IdentityFact, ProviderAuthPolicy } from '../providers/auth-policy'
@@ -35523,6 +35524,47 @@ export class RuntimeHost implements LiveHost {
         reason: signInNotChecked(didNotAnswerInTime(error)),
         ...this.logAuthDiagnostic('check', provider, error),
       }
+    }
+  }
+
+  /** Re-copy only homes without an open provider session; each copy keeps the existing admission. */
+  async reprovisionProviderHomes(provider: Provider): Promise<ProviderHomesReprovision> {
+    if (providerDescriptor(provider).credential !== 'profile-or-key')
+      throw new Error('This provider does not keep a separate sign-in for each agent.')
+    const profiles: ProviderHomesReprovision['profiles'][number][] = []
+    for (const profileId of new Set(this.profiles(provider))) {
+      try {
+        if (this.deps.apiKeys?.status(provider).set === true) {
+          profiles.push({ profileId, state: 'skipped', reason: 'api-key' })
+          continue
+        }
+      } catch {
+        profiles.push({ profileId, state: 'skipped', reason: 'key-status-unavailable' })
+        continue
+      }
+      const busy = [...this.slots.values()].some(
+        (slot) => slot.provider === provider && slot.profileId === profileId,
+      )
+      if (busy) {
+        profiles.push({ profileId, state: 'skipped', reason: 'busy' })
+        continue
+      }
+      try {
+        const outcome = await this.reprovisionProviderAuth(provider, profileId)
+        profiles.push(
+          outcome === 'replaced'
+            ? { profileId, state: 'replaced' }
+            : { profileId, state: 'skipped', reason: 'unchanged' },
+        )
+      } catch {
+        profiles.push({ profileId, state: 'failed', reason: 'copy-failed' })
+      }
+    }
+    return {
+      replaced: profiles.filter((one) => one.state === 'replaced').length,
+      skipped: profiles.filter((one) => one.state === 'skipped').length,
+      failed: profiles.filter((one) => one.state === 'failed').length,
+      profiles,
     }
   }
 

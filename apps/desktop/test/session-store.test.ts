@@ -907,6 +907,7 @@ function fakeBridge() {
       login: 'account' as const,
       expiresAt: null,
     }),
+    reprovisionProviderHomes: async () => ({ replaced: 0, skipped: 0, failed: 0, profiles: [] }),
     reprovisionProviderAuth: async () => 'unchanged' as const,
     signInProvider: async () => ({
       success: false,

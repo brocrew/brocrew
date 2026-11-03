@@ -9,6 +9,7 @@ import type {
   ProviderResources,
   ProviderUsageReading,
   ProviderVersion,
+  ProviderHomesReprovision,
 } from '../../../shared/runtime-ipc'
 import {
   A_STANDING_IN_A_WORD,
@@ -269,6 +270,46 @@ async function cancelSignIn(): Promise<void> {
     await window.api.runtime.cancelProviderSignIn(asked())
   } catch (error) {
     noticeSays(readableError(error), true)
+  }
+}
+
+const copyingHomes = ref(false)
+const copiedHomes = ref<ProviderHomesReprovision | null>(null)
+const copyHomesError = ref<string | null>(null)
+const keepsProfileSignIns = computed(
+  () => providerDescriptor(props.provider).credential === 'profile-or-key',
+)
+async function copyAllMachineSignIns(): Promise<void> {
+  if (copyingHomes.value) return
+  copyingHomes.value = true
+  copiedHomes.value = null
+  copyHomesError.value = null
+  try {
+    copiedHomes.value = await window.api.runtime.reprovisionProviderHomes({
+      provider: props.provider,
+    })
+    for (const profile of copiedHomes.value.profiles)
+      if (profile.state === 'replaced') emit('authChanged', profile.profileId)
+  } catch {
+    copyHomesError.value = 'Could not copy the sign-ins. Try again.'
+  } finally {
+    copyingHomes.value = false
+  }
+}
+function copyHomeReason(
+  reason: 'api-key' | 'key-status-unavailable' | 'busy' | 'unchanged' | 'copy-failed',
+): string {
+  switch (reason) {
+    case 'api-key':
+      return 'API key saved.'
+    case 'key-status-unavailable':
+      return 'API key status could not be checked. Try again.'
+    case 'busy':
+      return 'Conversation open. Close its conversations and try again; running turns were left alone.'
+    case 'unchanged':
+      return 'Sign-in unchanged.'
+    case 'copy-failed':
+      return 'Could not copy the sign-in. Check this Mac’s sign-in and try again.'
   }
 }
 
@@ -1232,6 +1273,36 @@ defineExpose({ beginSetup })
         >
           {{ authNotice }}
         </p>
+        <div v-if="keepsProfileSignIns" data-cy="copy-all-sign-ins">
+          <p class="line quiet">
+            Replaces agent sign-ins in this install; skips API keys and open conversations.
+          </p>
+          <button
+            type="button"
+            class="action"
+            :disabled="copyingHomes || setupBusy"
+            @click="copyAllMachineSignIns"
+          >
+            {{
+              copyingHomes ? 'Copying sign-ins…' : `Use this Mac's ${name} sign-in for all agents`
+            }}
+          </button>
+          <div v-if="copiedHomes" role="status">
+            <p class="line">
+              {{ copiedHomes.replaced }} replaced / {{ copiedHomes.skipped }} skipped /
+              {{ copiedHomes.failed }} failed.
+            </p>
+            <p
+              v-for="profile in copiedHomes.profiles.filter((one) => one.state !== 'replaced')"
+              :key="profile.profileId"
+              class="line quiet"
+            >
+              {{ profile.profileId }}:
+              {{ profile.state !== 'replaced' ? copyHomeReason(profile.reason) : '' }}
+            </p>
+          </div>
+          <p v-if="copyHomesError" role="alert" class="line">{{ copyHomesError }}</p>
+        </div>
         <p v-if="renewalSends !== null" class="line quiet" data-cy="provider-login-renewal">
           {{ renewalSends }}
         </p>

@@ -7,6 +7,7 @@ import { clockTimeFrom } from '../../src/shared/clock'
 import type { ProviderCondition } from '../../src/shared/provider-limit'
 import {
   DEFAULT_PROFILE_ID,
+  type ProviderHomesReprovision,
   type ApiKeyChanged,
   type ApiKeyCheck,
   type ApiKeyStatus,
@@ -112,6 +113,7 @@ interface Doors {
   setApiKey?: (input: { provider: string; key: string }) => Promise<ApiKeyChanged>
   removeApiKey?: () => Promise<ApiKeyChanged>
   checkApiKey?: () => Promise<ApiKeyCheck>
+  reprovisionProviderHomes?: () => Promise<ProviderHomesReprovision>
   reprovisionProviderAuth?: () => Promise<'replaced' | 'unchanged'>
 }
 
@@ -145,6 +147,10 @@ function theCard(
   const reprovisionProviderAuth: NonNullable<Doors['reprovisionProviderAuth']> =
     doors.reprovisionProviderAuth ?? (async () => 'replaced')
   const runtime = {
+    reprovisionProviderHomes: vi.fn(
+      doors.reprovisionProviderHomes ??
+        (async () => ({ replaced: 0, skipped: 0, failed: 0, profiles: [] })),
+    ),
     checkProviderAuth: vi.fn(checkProviderAuth),
     apiKeyStatus: vi.fn(apiKeyStatus),
     setApiKey: vi.fn(setApiKey),
@@ -826,5 +832,65 @@ describe('§6 · each usage box shows how much of its window has gone, and says 
       'Weekly limit: was 95% used; it reset 1 day ago.',
     )
     expect(inBox(all[3]!, 'provider-usage-time')).not.toBeNull()
+  })
+})
+
+describe('copying the machine sign-in for all agents', () => {
+  it('is available while signed in and reports counts, skipped profiles and failures', async () => {
+    const copy = held<ProviderHomesReprovision>()
+    const { m, runtime, authChanged } = theCard(
+      { reprovisionProviderHomes: () => copy.promise },
+      { provider: 'codex' },
+    )
+    await settled()
+    const section = m.q('copy-all-sign-ins')
+    const button = section.querySelector('button')!
+    expect(button.textContent).toContain("Use this Mac's Codex sign-in for all agents")
+    button.click()
+    await settled()
+    expect(button.disabled).toBe(true)
+    expect(runtime.reprovisionProviderHomes).toHaveBeenCalledWith({ provider: 'codex' })
+    copy.answer({
+      replaced: 1,
+      skipped: 2,
+      failed: 1,
+      profiles: [
+        { profileId: 'alpha', state: 'replaced' },
+        { profileId: 'beta', state: 'skipped', reason: 'api-key' },
+        { profileId: 'gamma', state: 'skipped', reason: 'busy' },
+        { profileId: 'delta', state: 'failed', reason: 'copy-failed' },
+      ],
+    })
+    await settled()
+    expect(section.textContent).toContain('1 replaced / 2 skipped / 1 failed.')
+    expect(section.textContent).toContain('beta: API key saved')
+    expect(section.textContent).toContain('gamma: Conversation open.')
+    expect(section.textContent).toContain('delta: Could not copy')
+    expect(button.disabled).toBe(false)
+    expect(authChanged).toEqual(['alpha'])
+  })
+
+  it('reports a request failure and enables retry', async () => {
+    const { m } = theCard(
+      {
+        reprovisionProviderHomes: async () => {
+          throw new Error('private details')
+        },
+      },
+      { provider: 'codex' },
+    )
+    await settled()
+    const section = m.q('copy-all-sign-ins')
+    section.querySelector('button')!.click()
+    await settled()
+    expect(section.textContent).toContain('Could not copy the sign-ins. Try again.')
+    expect(section.textContent).not.toContain('private details')
+    expect(section.querySelector('button')!.disabled).toBe(false)
+  })
+
+  it('does not offer the action for a provider without profile sign-ins', async () => {
+    const { m } = theCard()
+    await settled()
+    expect(m.all('copy-all-sign-ins')).toHaveLength(0)
   })
 })

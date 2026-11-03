@@ -987,6 +987,7 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
     profileId,
     probe: z.boolean().optional(),
   }),
+  z.object({ kind: z.literal('reprovisionProviderHomes'), provider: providerSchema }),
   z.object({ kind: z.literal('reprovisionProviderAuth'), provider: providerSchema, profileId }),
   z.object({ kind: z.literal('signInProvider'), provider: providerSchema, profileId }),
   z.object({ kind: z.literal('cancelProviderSignIn'), provider: providerSchema, profileId }),
@@ -1729,6 +1730,7 @@ const DURING_A_QUIT: Record<RuntimeCommandKind, QuitRuling> = {
   // already refused during a quit by `launches.open`, `checkProviderAuth` in its own `unknown`
   // vocabulary. ⚑ Left to say so themselves rather than being flattened into one sentence here.
   checkProviderAuth: 'answered',
+  reprovisionProviderHomes: 'answered',
   reprovisionProviderAuth: 'answered',
   signInProvider: 'answered',
   cancelProviderSignIn: 'answered',
@@ -2592,6 +2594,8 @@ export async function executeRuntimeCommand(
         command.profileId ?? DEFAULT_PROFILE_ID,
         command.probe,
       )
+    case 'reprovisionProviderHomes':
+      return await host.reprovisionProviderHomes(command.provider)
     case 'reprovisionProviderAuth':
       return await host.reprovisionProviderAuth(
         command.provider,
