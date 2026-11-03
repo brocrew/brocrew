@@ -354,7 +354,7 @@ describe('712 §1 · R56 — the provider row says what a press would clear, BEF
       whatTheProviderPressCleared({ provider: 'claude', model: 'opus', effort: 'high' }, 'codex'),
     )
     expect(said(cleared)).toBe(CLEARED_OPUS_HIGH_NOW_CODEX)
-    expect(said(m.q('model-picker-face'))).toBe('Codex · Fictional account · Nobody has chosen')
+    expect(said(m.q('model-picker-face'))).toBe('Codex · Fictional subscription · Nobody has chosen')
     expect(m.all('agent-model-held')).toHaveLength(0)
   })
 
@@ -376,7 +376,7 @@ describe('712 §1 · R56 — the provider row says what a press would clear, BEF
       release()
     }
     await settle()
-    expect(said(m.q('model-picker-face'))).toBe('Codex · Fictional account · Nobody has chosen')
+    expect(said(m.q('model-picker-face'))).toBe('Codex · Fictional subscription · Nobody has chosen')
     expect(m.all('capabilities-provider-will-clear')).toHaveLength(0)
   })
 
