@@ -5,6 +5,7 @@ import {
   ChromeLedgerProposal,
   ChromeProposal,
 } from '../src/main/plugins/lifecycle/chrome-apply'
+import { readChromeConfiguration } from '../src/main/plugins/lifecycle/chrome-read'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { PluginUiRpc } from '../src/main/plugins/ui/rpc'
@@ -34,6 +35,12 @@ describe('fixed person-only Chrome profile action mapping', () => {
       { action: 'delete-profile', profile: 'birch', confirm: 'birch' },
       '/profiles/birch/delete',
       { confirm: 'birch' },
+      200,
+    ],
+    [
+      { action: 'rename-profile', profile: 'birch', newName: 'Birch account' },
+      '/profiles/birch/rename',
+      { newName: 'Birch account' },
       200,
     ],
     [{ action: 'helper-on', profile: 'birch' }, '/profiles/birch/helper', {}, 200],
@@ -194,4 +201,39 @@ it('the real package RPC schema admits a confirmed person Delete to the reviewed
   } finally {
     await rpc.close()
   }
+})
+
+it('person rename is a live non-replayed action with an immutable profile selector', () => {
+  const rename = { action: 'rename-profile' as const, profile: 'birch', newName: 'Birch account' }
+  expect(ChromeProposal.parse(rename)).toEqual(rename)
+  expect(chromeProfileIntent(rename)).toBeNull()
+  expect(ChromeLedgerProposal.safeParse(rename).success).toBe(false)
+  expect(ChromeProposal.safeParse({ ...rename, profile: '../foreign' }).success).toBe(false)
+  expect(ChromeProposal.safeParse({ ...rename, url: 'https://fictional.invalid' }).success).toBe(
+    false,
+  )
+})
+
+it('the validated person snapshot keeps displayName without changing its stable profile selector', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(
+      async (url) =>
+        new Response(
+          JSON.stringify(
+            String(url).endsWith('/profiles')
+              ? {
+                  profiles: [
+                    { name: 'fern', displayName: 'Fern account', enabled: true, open: false },
+                  ],
+                }
+              : { tabs: [] },
+          ),
+          { headers: { 'content-type': 'application/json' } },
+        ),
+    ),
+  )
+  expect(await readChromeConfiguration('chrome', connection)).toMatchObject({
+    profiles: [{ name: 'fern', displayName: 'Fern account' }],
+  })
 })

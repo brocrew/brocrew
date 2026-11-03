@@ -99,13 +99,18 @@
               "open-window",
               "delete-profile",
               "helper-on",
-              "set-flags"
+              "set-flags",
+              "rename-profile"
             ],
             "maxLength": 32
           },
           "profile": {
             "type": "string",
             "maxLength": 32
+          },
+          "newName": {
+            "type": "string",
+            "maxLength": 4096
           },
           "enabled": {
             "type": "boolean"
@@ -203,7 +208,7 @@
     ]
   },
   "permissions": {
-    "description": "Uses your installed Google Chrome with its own separate profiles. Agents can read web pages and local files accessible to Chrome, use sites and save downloads in the plugin's private storage. You choose which profiles agents may use. Permanent profiles and their Chrome data are shared across your BroCrew workspaces. Each workspace chooses which profiles agents may use.",
+    "description": "Uses your installed Google Chrome with its own separate profiles. Agents can read web pages and local files accessible to Chrome, use sites and save downloads in the plugin's private storage. You choose which profiles agents may use. Permanent profiles and their Chrome data are shared across your BroCrew workspaces. Choose which profiles agents may use. For now, all workspaces that use the default plugin folder share this choice.",
     "resources": [
       {
         "id": "browser-profiles",

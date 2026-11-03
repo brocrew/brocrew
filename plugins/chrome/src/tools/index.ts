@@ -86,6 +86,7 @@ export function buildToolDefs(): ToolDef[] {
               const s = deps.browser.state(p.name)
               return {
                 name: p.name,
+                displayName: p.displayName ?? p.name,
                 description: p.description,
                 temporary: p.temporary,
                 enabled: p.enabled,

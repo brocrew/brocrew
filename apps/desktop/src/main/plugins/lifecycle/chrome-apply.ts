@@ -11,6 +11,7 @@ export const ChromeLedgerProposal = z.discriminatedUnion('action', [
 ])
 export const ChromeProposal = z.union([
   ChromeLedgerProposal,
+  z.strictObject({ action: z.literal('rename-profile'), profile, newName: z.string().max(4096) }),
   z
     .strictObject({
       action: z.literal('delete-profile'),
@@ -49,6 +50,7 @@ export function chromeProfileIntent(
   const proposal = ChromeProposal.parse(input)
   if (
     proposal.action === 'set-flags' ||
+    proposal.action === 'rename-profile' ||
     (proposal.action === 'delete-profile' && proposal.deleteConfirmation)
   )
     return null
@@ -99,6 +101,10 @@ export async function applyChromeProfile(
       }
       break
     }
+    case 'rename-profile':
+      path = '/profiles/' + proposal.profile + '/rename'
+      body = { newName: proposal.newName }
+      break
     case 'helper-on':
       path = '/profiles/' + proposal.profile + '/helper'
       body = {}
