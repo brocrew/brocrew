@@ -1,6 +1,18 @@
 import { defineConfig } from 'vitest/config'
 import vue from '@vitejs/plugin-vue'
 import { playwright } from '@vitest/browser-playwright'
+import { createServer, type AddressInfo } from 'node:net'
+
+async function freeBrowserPort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createServer()
+    server.once('error', reject)
+    server.listen(0, 'localhost', () => {
+      const { port } = server.address() as AddressInfo
+      server.close((error) => (error ? reject(error) : resolve(port)))
+    })
+  })
+}
 
 /**
  * The second project: components in a real engine (083).
@@ -21,7 +33,7 @@ import { playwright } from '@vitest/browser-playwright'
  * playwright's own "Executable doesn't exist" message. `.github/workflows/ci.yml` has the
  * equivalent step. Found in review, which is the only reason it is not a trap.
  */
-export default defineConfig({
+export default defineConfig(async () => ({
   plugins: [vue()],
   /**
    * ⚠️ **Pre-declared, because otherwise the first run RELOADS mid-test.** Vite discovers these two
@@ -50,6 +62,11 @@ export default defineConfig({
     setupFiles: ['test/dom/setup/the-window-is-a-wire.ts'],
     browser: {
       enabled: true,
+      // Vitest replaces port 0 with 63315; probe a port the Windows runner permits instead.
+      api:
+        process.platform === 'win32'
+          ? { port: await freeBrowserPort(), strictPort: false }
+          : undefined,
       headless: true,
       provider: playwright(),
       instances: [{ browser: 'chromium' }],
@@ -61,4 +78,4 @@ export default defineConfig({
       screenshotFailures: false,
     },
   },
-})
+}))
