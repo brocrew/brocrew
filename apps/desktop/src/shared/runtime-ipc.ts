@@ -9475,7 +9475,11 @@ export interface ProviderHomesReprovision {
         readonly state: 'skipped'
         readonly reason: 'api-key' | 'key-status-unavailable' | 'unchanged'
       }
-    | { readonly profileId: string; readonly state: 'failed'; readonly reason: 'copy-failed' }
+    | {
+        readonly profileId: string
+        readonly state: 'failed'
+        readonly reason: 'copy-failed' | 'restart-failed'
+      }
   )[]
 }
 

@@ -286,7 +286,7 @@ async function readHomeCopies(statusOnly = false): Promise<void> {
     ...(statusOnly ? { statusOnly: true } : {}),
   })
   if (!cardOpen) return
-  copiedHomes.value = result
+  copiedHomes.value = result.profiles.length === 0 ? null : result
   if (result.pending > 0)
     copyHomesTimer = setTimeout(() => {
       void readHomeCopies(true).catch(() => {
@@ -309,7 +309,7 @@ async function copyAllMachineSignIns(): Promise<void> {
   }
 }
 function copyHomeReason(
-  reason: 'api-key' | 'key-status-unavailable' | 'unchanged' | 'copy-failed',
+  reason: 'api-key' | 'key-status-unavailable' | 'unchanged' | 'copy-failed' | 'restart-failed',
 ): string {
   switch (reason) {
     case 'api-key':
@@ -320,6 +320,8 @@ function copyHomeReason(
       return 'Already uses this Mac’s sign-in.'
     case 'copy-failed':
       return 'Could not copy the sign-in. Check this Mac’s sign-in and try again.'
+    case 'restart-failed':
+      return 'Sign-in copied, but this agent could not restart. Try again.'
   }
 }
 

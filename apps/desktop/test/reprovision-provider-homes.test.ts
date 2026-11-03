@@ -32,6 +32,9 @@ describe('copying this install’s provider sign-ins', () => {
   let root: string
   let db: AppDatabase
   let launches: number
+  let oldProcessExit: Promise<void> | undefined
+  let stopped: number
+  let resumeFails: boolean
   let host: RuntimeHost
   let ops: ProviderAuthOps
   const copy = vi.fn()
@@ -47,6 +50,9 @@ describe('copying this install’s provider sign-ins', () => {
     db = openDatabase(join(root, 'test.sqlite'))
     applyMigrations(db, join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations'))
     launches = 0
+    oldProcessExit = undefined
+    stopped = 0
+    resumeFails = false
     messages.length = 0
     keySaved = false
     keyStatusFails = false
@@ -86,10 +92,17 @@ describe('copying this install’s provider sign-ins', () => {
         listModels: runtime.listModels.bind(runtime),
         start: async (options) => {
           const handle = await runtime.start(options)
+          handle.awaitProcessExit = () => oldProcessExit
+          const close = handle.close.bind(handle)
+          handle.close = async () => {
+            stopped++
+            await close()
+          }
           launches++
           return handle
         },
         resume: async (ref, options) => {
+          if (resumeFails) throw new Error('fictional restart failure')
           const handle = await runtime.resume(ref, options)
           launches++
           return handle
@@ -201,6 +214,79 @@ describe('copying this install’s provider sign-ins', () => {
     await vi.waitFor(() => {
       expect(launches).toBe(2)
       expect(host.sessionIds).toContain(created.sessionId)
+    })
+  })
+
+  it('waits for every busy conversation sharing a home before switching', async () => {
+    const one = await host.createSession({ provider: 'codex', profileId: 'alpha', cwd: root }, sink)
+    const two = await host.createSession({ provider: 'codex', profileId: 'alpha', cwd: root }, sink)
+    await host.send(one.sessionId, 'one', sink)
+    await host.send(two.sessionId, 'two', sink)
+    await vi.waitFor(() =>
+      expect(messages.filter((one) => one.event.type === 'permission_request')).toHaveLength(2),
+    )
+    expect(await run()).toMatchObject({ replaced: 2, pending: 1 })
+    await host.respondPermission(one.sessionId, 'turn_1_perm', { outcome: 'allow' }, sink)
+    await vi.waitFor(() =>
+      expect(
+        messages.some(
+          (message) => message.sessionId === one.sessionId && message.event.type === 'turn',
+        ),
+      ).toBe(true),
+    )
+    expect(copy.mock.calls.some((call) => call[1] === 'alpha')).toBe(false)
+    await host.respondPermission(two.sessionId, 'turn_1_perm', { outcome: 'allow' }, sink)
+    await vi.waitFor(async () =>
+      expect(await host.reprovisionProviderHomes('codex', true)).toMatchObject({
+        replaced: 3,
+        pending: 0,
+      }),
+    )
+    await vi.waitFor(() => {
+      expect(launches).toBe(4)
+      expect(host.sessionIds).toHaveLength(2)
+    })
+  })
+
+  it('does not copy while a stopped app-server can still write its old sign-in', async () => {
+    let confirmExit!: () => void
+    oldProcessExit = new Promise((resolve) => {
+      confirmExit = resolve
+    })
+    await host.createSession({ provider: 'codex', profileId: 'alpha', cwd: root }, sink)
+    await vi.waitFor(() =>
+      expect(
+        messages.some((one) => one.event.type === 'status' && one.event.state === 'idle'),
+      ).toBe(true),
+    )
+    const copying = run()
+    await vi.waitFor(() => expect(stopped).toBe(1))
+    expect(copy.mock.calls.some((call) => call[1] === 'alpha')).toBe(false)
+    // A final write from the old process is replaced only after exit is confirmed.
+    writeFileSync(join(home('alpha'), 'auth.json'), '{"madeUpSignIn":"late-old-refresh"}')
+    confirmExit()
+    expect(await copying).toMatchObject({ replaced: 3, pending: 0, failed: 0 })
+    await vi.waitFor(() => {
+      expect(launches).toBe(2)
+      expect(host.sessionIds).toHaveLength(1)
+    })
+  })
+
+  it('reports a failed automatic restart as a failure instead of a completed switch', async () => {
+    await host.createSession({ provider: 'codex', profileId: 'alpha', cwd: root }, sink)
+    await vi.waitFor(() =>
+      expect(
+        messages.some((one) => one.event.type === 'status' && one.event.state === 'idle'),
+      ).toBe(true),
+    )
+    resumeFails = true
+    expect(await run()).toMatchObject({
+      replaced: 2,
+      pending: 0,
+      failed: 1,
+      profiles: expect.arrayContaining([
+        { profileId: 'alpha', state: 'failed', reason: 'restart-failed' },
+      ]),
     })
   })
 

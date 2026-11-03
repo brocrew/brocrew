@@ -35537,6 +35537,7 @@ export class RuntimeHost implements LiveHost {
     Map<string, ProviderHomesReprovision['profiles'][number]>
   >()
   private readonly homeCopyJobs = new Map<string, Promise<void>>()
+  private readonly homeCopyRestarts = new Map<string, Promise<void>>()
 
   /** A person's batch request; pending homes are retried at an idle or termination boundary. */
   async reprovisionProviderHomes(
@@ -35569,10 +35570,12 @@ export class RuntimeHost implements LiveHost {
   /** Stop idle app-servers before replacing their copy so a late refresh cannot overwrite it. */
   private copyHomeWhenIdle(provider: Provider, profileId: string): Promise<void> {
     const rows = this.homeCopies.get(provider)
-    if (rows?.get(profileId)?.state !== 'pending') return Promise.resolve()
     const key = signInKey(provider, profileId)
-    const current = this.homeCopyJobs.get(key)
+    const current = this.homeCopyRestarts.get(key)
     if (current) return current
+    if (rows?.get(profileId)?.state !== 'pending') return Promise.resolve()
+    const copying = this.homeCopyJobs.get(key)
+    if (copying) return copying
     try {
       if (this.deps.apiKeys?.status(provider).set === true) {
         rows.set(profileId, { profileId, state: 'skipped', reason: 'api-key' })
@@ -35599,32 +35602,22 @@ export class RuntimeHost implements LiveHost {
     for (const session of sessions) this.signInStops.add(session)
     const closing = sessions.map((session) => this.close(session.id, THE_APP_ITSELF))
     // Install the gate before starting any async work; new launches wait for the same copy.
+    let copied: ProviderHomesReprovision['profiles'][number] | undefined
     const job = Promise.resolve().then(async () => {
       try {
-        const keyStatus = (): boolean => this.deps.apiKeys?.status(provider).set === true
-        try {
-          if (keyStatus()) {
-            rows.set(profileId, { profileId, state: 'skipped', reason: 'api-key' })
-            return
-          }
-        } catch {
-          rows.set(profileId, { profileId, state: 'skipped', reason: 'key-status-unavailable' })
-          return
-        }
         await Promise.all(closing)
         await Promise.all(sessions.map((session) => session.terminated))
+        const keyStatus = (): boolean => this.deps.apiKeys?.status(provider).set === true
         // A key saved while the providers stopped outranks this request too.
         if (keyStatus()) {
           rows.set(profileId, { profileId, state: 'skipped', reason: 'api-key' })
           return
         }
         const outcome = await this.reprovisionProviderAuth(provider, profileId)
-        rows.set(
-          profileId,
+        copied =
           outcome === 'replaced'
             ? { profileId, state: 'replaced' }
-            : { profileId, state: 'skipped', reason: 'unchanged' },
-        )
+            : { profileId, state: 'skipped', reason: 'unchanged' }
       } catch {
         rows.set(profileId, { profileId, state: 'failed', reason: 'copy-failed' })
       } finally {
@@ -35632,23 +35625,27 @@ export class RuntimeHost implements LiveHost {
       }
     })
     this.homeCopyJobs.set(key, job)
-    void job.then(async () => {
-      for (const session of sessions) {
-        this.signInStops.delete(session)
-        if (this.launches.closed || this.keptStopped(session.id) || this.slots.has(session.id))
-          continue
-        const watching = session.sink.alive && session.sink.aPersonIsBehindIt ? session.sink : null
-        try {
-          await this.resumeSession(session.id, watching, null, undefined, 'not-read')
-        } catch {
-          // The next message also reopens it; no accepted turn is repeated here.
-          console.warn(
-            'An agent could not restart after its sign-in was copied; its next message will reopen it.',
-          )
+    const restarting = job
+      .then(async () => {
+        for (const session of sessions) {
+          this.signInStops.delete(session)
+          if (this.launches.closed || this.keptStopped(session.id) || this.slots.has(session.id))
+            continue
+          const watching =
+            session.sink.alive && session.sink.aPersonIsBehindIt ? session.sink : null
+          try {
+            await this.resumeSession(session.id, watching, null, undefined, 'not-read')
+          } catch {
+            if (!this.slots.has(session.id))
+              rows.set(profileId, { profileId, state: 'failed', reason: 'restart-failed' })
+          }
         }
-      }
-    })
-    return job
+        if (rows.get(profileId)?.state === 'pending' && copied !== undefined)
+          rows.set(profileId, copied)
+      })
+      .finally(() => this.homeCopyRestarts.delete(key))
+    this.homeCopyRestarts.set(key, restarting)
+    return restarting
   }
 
   /**
