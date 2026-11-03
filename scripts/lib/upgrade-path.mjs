@@ -31,6 +31,12 @@ export const MAY_MOVE_AT_A_START = {
   skill_catalogue_state: ['revision'],
 }
 
+/** Only post-migration comparisons add these defaults; recovery copies keep their old schema. */
+export const CONNECTION_UPGRADE_DEFAULTS = Object.freeze({
+  agent_identity: Object.freeze({ connection_id: null }),
+  provider_session: Object.freeze({ connection_id: null }),
+})
+
 /**
  * Tables a later migration drops on purpose: the beta's rows in them are not kept, and the
  * candidate must have no such table at all. `raw_frame` was a copy of each provider's own file.
@@ -397,6 +403,8 @@ function skillAvailabilityMatches(old, now, before, after, candidateSkills) {
  * as a multiset, every column but the few a start may move. Rows the candidate added are counted,
  * not refused: they are evidence for a reader. A table that went is a loss. Each lost row says
  * whether its key is gone or which of its columns changed, where `keys` names the table's key.
+ * Explicit post-upgrade additions require their exact defaults on legacy rows; an already
+ * recorded value stays exact. Recovery-copy callers supply no additions.
  */
 export function rowsPreserved(
   before,
@@ -404,6 +412,7 @@ export function rowsPreserved(
   mayMove = MAY_MOVE_AT_A_START,
   keys = {},
   candidateSkills,
+  additions = {},
 ) {
   const lost = []
   const added = {}
@@ -413,24 +422,34 @@ export function rowsPreserved(
       lost.push({ table, gone: 'the table' })
       continue
     }
-    const ignored = mayMove[table] ?? []
+    const requiredDefaults = additions[table] ?? {}
+    const requiredColumns = Object.keys(requiredDefaults)
+    const ignored = (mayMove[table] ?? []).filter((column) => !requiredColumns.includes(column))
     const left = new Map()
     for (const row of now) {
       const key = canonicalRow(row, ignored)
-      left.set(key, (left.get(key) ?? 0) + 1)
+      // An absent/undefined new value must not compare as SQL NULL through JSON serialization.
+      const complete = requiredColumns.every(
+        (column) => Object.hasOwn(row, column) && row[column] !== undefined,
+      )
+      const comparisonKey = complete ? key : JSON.stringify(['missing migration column', key])
+      left.set(comparisonKey, (left.get(comparisonKey) ?? 0) + 1)
     }
     const keyOf = (row) =>
       (keys[table] ?? []).length > 0
         ? JSON.stringify(keys[table].map((column) => comparable(row[column])))
         : null
-    const migrationDefaults =
-      table === 'identity_instruction'
+    const migrationDefaults = {
+      ...(table === 'identity_instruction'
         ? { author: null }
         : table === 'identity_memory_amendment'
           ? { source_id: null, outcome: 'done', actual: null, settled_by: null, settled_at: null }
-          : {}
-    const addedColumns = Object.entries(migrationDefaults).filter(([column]) =>
-      now.some((one) => Object.hasOwn(one, column)),
+          : {}),
+      ...requiredDefaults,
+    }
+    const addedColumns = Object.entries(migrationDefaults).filter(
+      ([column]) =>
+        Object.hasOwn(requiredDefaults, column) || now.some((one) => Object.hasOwn(one, column)),
     )
     for (const original of rows) {
       // Only missing legacy fields gain this migration's defaults; recorded values stay exact.
@@ -463,10 +482,11 @@ export function rowsPreserved(
           : {
               table,
               row: named,
-              changed: Object.keys(row).filter(
+              changed: [...new Set([...Object.keys(row), ...Object.keys(counterpart)])].filter(
                 (column) =>
                   !ignored.includes(column) &&
-                  !isDeepStrictEqual(comparable(row[column]), comparable(counterpart[column])),
+                  (Object.hasOwn(row, column) !== Object.hasOwn(counterpart, column) ||
+                    !isDeepStrictEqual(comparable(row[column]), comparable(counterpart[column]))),
               ),
             },
       )

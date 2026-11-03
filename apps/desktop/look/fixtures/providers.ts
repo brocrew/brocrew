@@ -102,6 +102,33 @@ export function providersBridge(signedOut = false): void {
   const keySet = (provider: Provider) => signedOut && provider === 'codex'
   window.api = {
     runtime: {
+      providerConnections: async () =>
+        (['claude', 'codex'] as const).flatMap((provider) => [
+          {
+            id: `${provider}:sign-in`,
+            provider,
+            name: provider === 'claude' ? 'subscription' : 'ChatGPT',
+            authMethod: 'sign-in',
+            credentialSource: 'provider-sign-in',
+            baseUrl: null,
+            enabled: true,
+            contractVersion: 1,
+          },
+          ...(keySet(provider)
+            ? [
+                {
+                  id: `${provider}:api-key`,
+                  provider,
+                  name: 'API key',
+                  authMethod: 'api-key',
+                  credentialSource: 'provider-api-key',
+                  baseUrl: null,
+                  enabled: true,
+                  contractVersion: 1,
+                },
+              ]
+            : []),
+        ]),
       checkProviderAuth: async ({ provider }: { provider: Provider }) => auth[provider],
       reprovisionProviderAuth: async () => 'unchanged',
       signInProvider: async () => ({ success: true, state: null, detail: null }),

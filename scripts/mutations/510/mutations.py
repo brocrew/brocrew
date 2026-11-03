@@ -260,7 +260,9 @@ MUTATIONS = [
         # hands the window the full kept path join(root, sha256, name) instead of row.name. Killed
         # by `the-id-this-app-hands-a-person.test.ts`.
         [
-            (HOST, '      name: row.name,', '      name: join(root, row.sha256, row.name),'),
+            (HOST,
+             "      resourceId: row.resource,\n      // ⚑ **The name a person reads is the FILE's** — the name it was handed in with, never a path.\n      name: row.name,",
+             "      resourceId: row.resource,\n      // ⚑ **The name a person reads is the FILE's** — the name it was handed in with, never a path.\n      name: join(root, row.sha256, row.name),"),
         ],
     ),
     # ── the fold: what the row may offer ────────────────────────────────────────────────────────

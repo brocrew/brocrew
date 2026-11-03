@@ -967,6 +967,7 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
    * looks up whichever provider is selected.
    */
   z.object({ kind: z.literal('capabilities') }),
+  z.object({ kind: z.literal('providerConnections') }),
   /**
    * Which profiles exist (167). Parameterless for the same reason again, and one more: the renderer
    * has nothing to narrow the answer WITH — it is asking precisely because it does not know what
@@ -1577,6 +1578,9 @@ const DURING_A_QUIT: Record<RuntimeCommandKind, QuitRuling> = {
   checkCwd: 'answered',
   // ⚑ Forgets which window looks at a conversation, held in memory only.
   stopLooking: 'answered',
+
+  // Connection names and references are database records, not build-time capabilities.
+  providerConnections: 'refused',
 
   // ⛔ **The capability door, refused for its neighbours' reason** (355). Both statements are the
   // ledger's. The READ is worth nothing — the surface asking is on a window that is going — and the
@@ -2580,6 +2584,8 @@ export async function executeRuntimeCommand(
       return host.latestHistory(command.sessionId)
     case 'capabilities':
       return host.capabilities()
+    case 'providerConnections':
+      return host.providerConnections()
     case 'profiles':
       // Synchronous host-side — it is a `readdir` under `userData` — and returned without an
       // `await` for the same reason `attachOpen` is: there is nothing asynchronous to wait for.

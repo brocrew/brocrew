@@ -11,6 +11,13 @@
     "instructionPlacement": "sdk-context",
     "ownNotesPlacement": "profile-bundle",
     "connectionKind": "standard",
+    "connections": {
+      "contractVersion": 1,
+      "authMethods": ["sign-in", "api-key"],
+      "protocol": "claude-agent-sdk",
+      "versionSource": "sdk",
+      "additionalConnections": false
+    },
     "capabilities": {
       "mark": {
         "state": "available",
@@ -179,6 +186,13 @@
     "instructionPlacement": "native-file",
     "ownNotesPlacement": "first-lead",
     "connectionKind": "standard",
+    "connections": {
+      "contractVersion": 1,
+      "authMethods": ["sign-in", "api-key"],
+      "protocol": "codex-app-server",
+      "versionSource": "app-server",
+      "additionalConnections": false
+    },
     "capabilities": {
       "mark": {
         "state": "available",

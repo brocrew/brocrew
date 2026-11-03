@@ -1,3 +1,4 @@
+import { legacyIdentity } from './fixtures/legacy-migration-data'
 import { createHash } from 'node:crypto'
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -203,7 +204,7 @@ describe('the app records interrupted method outcomes without impersonating the 
       copyFileSync(join(migrations, entry.tag + '.sql'), join(older, entry.tag + '.sql'))
     db = openDatabase(join(folder, 'app.sqlite'))
     applyMigrations(db, older)
-    identities()
+    for (const slug of ['lark', 'wren']) legacyIdentity(db, slug, 'codex')
     const insert = db.prepare(`INSERT INTO identity_method_change
       (id, identity_id, seq, operation, source_id, target, files, by, outcome, actual, created_at)
       VALUES (?, ?, ?, 'delete', NULL, 'review.md', ?, ?, ?, ?, 1000)`)

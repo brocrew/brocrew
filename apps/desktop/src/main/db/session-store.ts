@@ -1,4 +1,5 @@
 import { createOwnNotesStore, type OwnNotesStore } from './own-notes'
+import { resolveProviderConnection } from './provider-connections'
 import {
   createMemoryRecoveryStore,
   validMemoryIntent,
@@ -582,6 +583,8 @@ export interface GivenPiece {
 }
 
 export interface NewSessionRecord {
+  /** The admitted connection for this successful launch; omitted legacy choices stay dynamic. */
+  connectionId?: string
   /** A normal worker's binding, written atomically at ordinal zero of its first life. */
   worker?: Omit<WorkerRegisteredEvent, 'type'>
   id: string
@@ -1639,13 +1642,18 @@ export interface SessionStore extends OwnNotesStore {
    * numbered among the roots, untitled until its owner names it.
    */
   create(record: NewSessionRecord): void
+  /** A recorded binding only; reading an older row never chooses or writes a default. */
+  connectionOf(sessionId: string): string | null
   /**
    * A service's one conversation, recorded with nothing launched, launched for the first time under
    * its own id: what that launch runs on, as {@link create} records it for a new one. ⛔ Only a row
    * its provider never named: `false` for any other, and nothing is written.
    */
   firstLaunchOf(
-    record: Pick<NewSessionRecord, 'id' | 'model' | 'reasoningEffort' | 'planMode' | 'launchedAs'>,
+    record: Pick<
+      NewSessionRecord,
+      'id' | 'model' | 'reasoningEffort' | 'planMode' | 'launchedAs' | 'connectionId'
+    >,
   ): boolean
   /**
    * Whether a launch of `sessionId` asked its provider for an id (`launched_as`) that its provider
@@ -4001,6 +4009,7 @@ export interface SessionStore extends OwnNotesStore {
  */
 export const NULL_SESSION_STORE: SessionStore = {
   create: () => {},
+  connectionOf: () => null,
   firstLaunchOf: () => false,
   aLaunchWentUnnamed: () => false,
   adopt: () => {},
@@ -5693,8 +5702,11 @@ export function createSessionStore(
     readPhases === undefined ? read() : readPhases.timed(`store.providerLimitsSeen.${name}`, read)
 
   const insertSession = db.prepare(
-    `INSERT INTO provider_session (id, provider, cwd, status, approval_mode, profile_id, reasoning_effort, model, plan_mode, created_at, updated_at)
-     VALUES (?, ?, ?, 'idle', ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO provider_session (id, provider, cwd, status, approval_mode, profile_id, reasoning_effort, model, plan_mode, connection_id, created_at, updated_at)
+     VALUES (?, ?, ?, 'idle', ?, ?, ?, ?, ?, ?, ?, ?)`,
+  )
+  const readConnection = db.prepare(
+    'SELECT connection_id, provider, external_ref FROM provider_session WHERE id = ?',
   )
   /**
    * **A field a person cleared is null, and a field they never touched is also null** (339).
@@ -12655,7 +12667,7 @@ export function createSessionStore(
    * later write puts one there.
    */
   const writeAFirstLaunch = db.prepare(
-    `UPDATE provider_session SET reasoning_effort = ?, model = ?, plan_mode = ?, updated_at = ?
+    `UPDATE provider_session SET reasoning_effort = ?, model = ?, plan_mode = ?, connection_id = COALESCE(connection_id, ?), updated_at = ?
       WHERE id = ? AND external_ref IS NULL`,
   )
   const selectALaunchUnnamed = db.prepare(
@@ -12666,14 +12678,31 @@ export function createSessionStore(
     (
       record: Pick<
         NewSessionRecord,
-        'id' | 'model' | 'reasoningEffort' | 'planMode' | 'launchedAs'
+        'id' | 'model' | 'reasoningEffort' | 'planMode' | 'launchedAs' | 'connectionId'
       >,
       at: number,
     ): boolean => {
+      const prior = readConnection.get(record.id) as
+        | {
+            connection_id: string | null
+            provider: Provider
+            external_ref: string | null
+          }
+        | undefined
+      if (!prior || prior.external_ref !== null) return false
+      if (record.connectionId !== undefined) {
+        if (prior.connection_id !== null && prior.connection_id !== record.connectionId)
+          throw new Error('The recorded connection cannot be replaced')
+        resolveProviderConnection(db, {
+          provider: prior.provider,
+          connectionId: record.connectionId,
+        })
+      }
       const wrote = writeAFirstLaunch.run(
         record.reasoningEffort ?? null,
         record.model ?? null,
         record.planMode === undefined ? null : record.planMode ? 1 : 0,
+        record.connectionId ?? null,
         at,
         record.id,
       )
@@ -12684,6 +12713,11 @@ export function createSessionStore(
   )
 
   const createTx = db.transaction((record: NewSessionRecord, at: number) => {
+    if (record.connectionId !== undefined)
+      resolveProviderConnection(db, {
+        provider: record.provider,
+        connectionId: record.connectionId,
+      })
     const identityId = identityRowFor(record.profileId, at)
     if (record.worker !== undefined) {
       const fact = workerRegistrationOf({ type: 'worker_registered', ...record.worker })
@@ -12724,6 +12758,7 @@ export function createSessionStore(
       // Null vs 0 again: "nobody asked" and "asked for no plan mode" are different rows, and only
       // the second is a decision this conversation made.
       record.planMode === undefined ? null : record.planMode ? 1 : 0,
+      record.connectionId ?? null,
       at,
       at,
     )
@@ -12772,6 +12807,10 @@ export function createSessionStore(
     },
     create(record) {
       createTx(record, now())
+    },
+    connectionOf(sessionId) {
+      const row = readConnection.get(sessionId) as { connection_id: string | null } | undefined
+      return row?.connection_id ?? null
     },
     firstLaunchOf(record) {
       return firstLaunchTx(record, now())

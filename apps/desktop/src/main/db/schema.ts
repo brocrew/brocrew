@@ -191,6 +191,8 @@ export const agentIdentity = sqliteTable(
      * folds to NULL, which is both the narrow direction and the value that changes nothing.
      */
     provider: text('provider'),
+    /** Null retains the legacy dynamic provider/key selection for future starts. */
+    connectionId: text('connection_id').references(() => providerConnection.id),
     /**
      * 🔴 **This identity's DEFAULT model and effort — what its new conversations start on — or NULL,
      * it has none** (677's column; D-042 · R2).
@@ -525,11 +527,38 @@ export const providerApiKey = sqliteTable('provider_api_key', {
   updatedAt: integer('updated_at').notNull(),
 })
 
+/** Connection metadata references existing credential services; no credential bytes live here. */
+export const providerConnection = sqliteTable(
+  'provider_connection',
+  {
+    id: text('id').primaryKey(),
+    provider: text('provider').notNull(),
+    name: text('name').notNull(),
+    authMethod: text('auth_method').notNull(),
+    credentialSource: text('credential_source').notNull(),
+    baseUrl: text('base_url'),
+    enabled: integer('enabled').notNull().default(1),
+    contractVersion: integer('contract_version').notNull().default(1),
+  },
+  (t) => [
+    uniqueIndex('provider_connection_name_uq').on(t.provider, sql`${t.name} COLLATE NOCASE`),
+    check('provider_connection_auth_ck', sql`${t.authMethod} IN ('sign-in', 'api-key')`),
+    check(
+      'provider_connection_source_ck',
+      sql`(${t.authMethod} = 'sign-in' AND ${t.credentialSource} = 'provider-sign-in') OR (${t.authMethod} = 'api-key' AND ${t.credentialSource} = 'provider-api-key')`,
+    ),
+    check('provider_connection_enabled_ck', sql`${t.enabled} IN (0, 1)`),
+    check('provider_connection_version_ck', sql`${t.contractVersion} = 1`),
+  ],
+)
+
 export const providerSession = sqliteTable(
   'provider_session',
   {
     id: text('id').primaryKey(),
     provider: text('provider').notNull(),
+    /** Null preserves the original provider/profile binding on older conversations. */
+    connectionId: text('connection_id').references(() => providerConnection.id),
     // Provider thread/session ref used to resume; unknown until the session starts.
     externalRef: text('external_ref'),
     /**

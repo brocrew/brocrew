@@ -8,7 +8,13 @@ import { codexDesktopInputs, type CodexDesktopSeams } from './codex/desktop'
 import type { DesktopProviderContext } from './desktop-context'
 import { orderedProgramVersions } from './program-policy'
 import type { ProviderAuthOps } from './compat'
-import type { HomeAuthOperations, ProviderHomePaths, ProviderModules } from './module'
+import type {
+  HomeAuthOperations,
+  ProviderHomePaths,
+  ProviderModules,
+  ProviderConnectionOperations,
+} from './module'
+import { onProviderConnection } from './connection-runtime'
 
 export { prepareOnTheLogin } from './claude'
 export { bringTheCodexKeyTo } from './codex'
@@ -35,11 +41,39 @@ export function desktopProviderInputs(
 export function createProviderModules(
   pathsFor: (provider: Provider) => ProviderHomePaths,
   seams: ProviderModuleInputs,
+  connectionsFor?: (provider: Provider) => ProviderConnectionOperations,
 ): ProviderModules {
-  return {
+  const modules: ProviderModules = {
     claude: createClaudeModule(pathsFor('claude'), seams.claude),
     codex: createCodexModule(pathsFor('codex'), seams.codex),
   }
+  if (!connectionsFor) return modules
+  return providerRecord((provider) => {
+    const inner = modules[provider]
+    const metadata = connectionsFor(provider)
+    const connections: ProviderConnectionOperations = {
+      list: () => metadata.list(),
+      ...(metadata.revision ? { revision: () => metadata.revision!() } : {}),
+      resolve(connectionId) {
+        const selected = metadata.resolve(connectionId)
+        if (connectionId != null && selected.id !== metadata.resolve().id)
+          throw new Error('The selected connection conflicts with the current credential route')
+        return selected
+      },
+    }
+    return {
+      ...inner,
+      connections,
+      createRuntime: (connectionId?: string | null) =>
+        onProviderConnection(
+          provider,
+          () => inner.createRuntime(),
+          connections.resolve,
+          connectionId,
+          connections.revision,
+        ),
+    }
+  })
 }
 
 function forwardAuth(auth: Readonly<Record<Provider, HomeAuthOperations>>): ProviderAuthOps {
@@ -68,6 +102,7 @@ export function providerAuthFromModules(modules: ProviderModules): ProviderAuthO
 }
 
 export { providerKnowledge } from './knowledge-definitions'
+export { onProviderConnection } from './connection-runtime'
 
 /** Use the caches already bound by each provider; legacy runtime-only modules have no versions. */
 export function providerVersionsFromModules(

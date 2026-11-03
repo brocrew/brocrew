@@ -6,6 +6,7 @@ import { expect, it } from 'vitest'
 import { openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
+import { legacyConversation } from './fixtures/legacy-migration-data'
 
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
@@ -16,9 +17,11 @@ it('adds the human-answer indexes to a large fictional ledger without changing o
   const journal = JSON.parse(readFileSync(join(migrations, 'meta/_journal.json'), 'utf8')) as {
     entries: { tag: string }[]
   }
+  const target = journal.entries.findIndex((entry) => entry.tag === '0020_human_answers')
+  expect(target).toBeGreaterThan(0)
   const prior = {
     ...journal,
-    entries: journal.entries.filter((entry) => entry.tag !== '0020_human_answers'),
+    entries: journal.entries.slice(0, target),
   }
   for (const entry of prior.entries)
     copyFileSync(join(migrations, `${entry.tag}.sql`), join(old, `${entry.tag}.sql`))
@@ -26,7 +29,14 @@ it('adds the human-answer indexes to a large fictional ledger without changing o
   const db = openDatabase(join(directory, 'fictional.sqlite'))
   try {
     applyMigrations(db, old)
-    createSessionStore(db).create({
+    expect(
+      db
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE name IN ('events_human_prompt_idx','events_human_final_idx','events_turn_opening_idx')",
+        )
+        .all(),
+    ).toHaveLength(0)
+    legacyConversation(db, {
       id: 's',
       provider: 'codex',
       cwd: directory,

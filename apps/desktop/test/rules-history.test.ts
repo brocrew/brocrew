@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
+import { legacyConversation } from './fixtures/legacy-migration-data'
 import * as instructions from '../src/shared/own-instructions'
 import type { OwnInstructionsVersion, OwnInstructionsWrite } from '../src/shared/own-instructions'
 import type { ActedBy } from '../src/shared/who-did-it'
@@ -129,8 +130,7 @@ describe('standing rules retain their author and can be restored without losing 
         copyFileSync(join(migrations, `${entry.tag}.sql`), join(oldFolder, `${entry.tag}.sql`))
       writeFileSync(join(oldFolder, 'meta/_journal.json'), JSON.stringify(journal))
       applyMigrations(legacy, oldFolder)
-      const beforeStore = createSessionStore(legacy, () => now++)
-      beforeStore.create({
+      legacyConversation(legacy, {
         id: 'origin',
         profileId: 'wren',
         provider: 'codex',
@@ -144,7 +144,7 @@ describe('standing rules retain their author and can be restored without losing 
         'its-creator',
       ].entries()) {
         const identity = `bird-${index}`
-        beforeStore.create({
+        legacyConversation(legacy, {
           id: `ses-${identity}`,
           profileId: identity,
           provider: 'codex',

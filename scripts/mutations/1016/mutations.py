@@ -502,7 +502,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M45 · resume of a row with no recorded profile uses the folder's own name 'default' as the profile, so it reopens in default/default instead of the default profile's home — killed by `session-profile.test.ts`",
         [
-            (RUNTIME_HOST, "const profileId = row.profileId ?? DEFAULT_PROFILE_ID\n    const { home: providerHome, loginRenewed } = await this.prepareAHome(", "const profileId = row.profileId ?? 'default'\n    const { home: providerHome, loginRenewed } = await this.prepareAHome("),
+            (RUNTIME_HOST, "const profileId = row.profileId ?? DEFAULT_PROFILE_ID\n    const connectionId = this.deps.connectionFor?.(", "const profileId = row.profileId ?? 'default'\n    const connectionId = this.deps.connectionFor?.("),
         ],
     ),
     (

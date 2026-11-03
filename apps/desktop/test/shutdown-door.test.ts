@@ -195,6 +195,7 @@ const SAMPLES: Record<RuntimeCommandKind, RuntimeCommand> = {
   earlierHistory: { kind: 'earlierHistory', sessionId: SESSION, before: 3 },
   latestHistory: { kind: 'latestHistory', sessionId: SESSION },
   capabilities: { kind: 'capabilities' },
+  providerConnections: { kind: 'providerConnections' },
   profiles: { kind: 'profiles' },
   checkProviderAuth: { kind: 'checkProviderAuth', provider: 'claude' },
   reprovisionProviderAuth: { kind: 'reprovisionProviderAuth', provider: 'claude' },

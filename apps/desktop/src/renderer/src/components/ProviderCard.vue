@@ -55,6 +55,7 @@ import { modelsAfterConnection } from '../lib/models-after-connection'
 import { useProviderSetup } from '../composables/useProviderSetup'
 import ProviderInstall from './ProviderInstall.vue'
 import ProviderSetupProgress from './ProviderSetupProgress.vue'
+import ProviderConnections from './ProviderConnections.vue'
 
 /**
  * # W4.10 · one provider on the Providers screen
@@ -998,6 +999,14 @@ defineExpose({ beginSetup })
           Set up {{ name }}
         </button>
       </div>
+      <ProviderConnections
+        :provider="props.provider"
+        :name="name"
+        :auth="auth"
+        :key-status="keyStatus"
+        :login-moved="props.loginMoved"
+        :models-known="!programMissing && list !== null && list.notAsked === null"
+      />
     </div>
 
     <section
