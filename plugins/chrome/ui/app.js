@@ -11,7 +11,10 @@ let lastSnapshot = null
 const expanded = new Set()
 // The rename field is one node reused by every redraw, so typing keeps its text.
 let renaming = null
+// A redraw mid-composition would cut an input method's unfinished word, so a read waits for it.
 let composing = false
+let heldSnapshot = null
+let clearing = false
 const RENAME_ERRORS = {
   invalid: 'Profile name must be 1–60 characters.',
   duplicate: 'Another profile already uses that name.',
@@ -93,19 +96,26 @@ function startRename(profile) {
       if (event.key === 'Escape') stopRename()
     })
     input.addEventListener('compositionstart', () => (composing = true))
-    input.addEventListener('compositionend', () => (composing = false))
+    input.addEventListener('compositionend', endComposition)
+    input.addEventListener('blur', endComposition)
     renaming = { profile: profile.name, input, error: '', pending: false }
     draw(lastSnapshot)
   }
   renaming.input.focus()
   renaming.input.select()
 }
+function endComposition() {
+  if (!composing) return
+  composing = false
+  // Clearing the cards blurs the field; drawing again from inside that draw would duplicate them.
+  if (heldSnapshot && !clearing) show(heldSnapshot)
+}
 function stopRename() {
   if (!renaming || renaming.pending) return
   const { profile } = renaming
   renaming = null
   composing = false
-  draw(lastSnapshot)
+  show(heldSnapshot ?? lastSnapshot)
   refocus(`rename:${profile}`)
 }
 async function saveRename() {
@@ -233,6 +243,7 @@ function draw(snapshot) {
   if (renaming && !snapshot.profiles.some((p) => p.name === renaming.profile)) {
     renaming = null
     composing = false
+    heldSnapshot = null
   }
   const active = document.activeElement
   const focused = active?.dataset?.focus
@@ -241,7 +252,9 @@ function draw(snapshot) {
       ? [active.selectionStart, active.selectionEnd, active.selectionDirection]
       : null
   const profiles = document.querySelector('#profiles')
+  clearing = true
   profiles.replaceChildren()
+  clearing = false
   for (const profile of snapshot.profiles.slice(0, 128)) {
     if (!/^[a-z0-9-]{1,32}$/.test(profile.name)) continue
     const row = document.createElement('article')
@@ -464,9 +477,18 @@ function draw(snapshot) {
   if (caret && document.activeElement === renaming?.input)
     renaming.input.setSelectionRange(...caret)
 }
+function show(snapshot) {
+  heldSnapshot = composing ? snapshot : null
+  if (composing) return
+  try {
+    draw(snapshot)
+  } catch {
+    say(UNAVAILABLE, 'warn')
+  }
+}
 async function refresh() {
   try {
-    draw(await rpc('read', { surface: 'chrome' }))
+    show(await rpc('read', { surface: 'chrome' }))
   } catch {
     say(UNAVAILABLE, 'warn')
   }
@@ -480,7 +502,6 @@ document.querySelector('#create').addEventListener('submit', (event) => {
     })
 })
 const timer = setInterval(() => {
-  // A redraw mid-composition would cut an input method's unfinished word.
   if (!closed && !composing && pending.size === 0) void refresh()
 }, 1500)
 window.addEventListener('pagehide', () => {

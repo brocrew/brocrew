@@ -32,6 +32,7 @@ function screen() {
   const events = new Map<string, (event: unknown) => void>()
   const packets: Record<string, unknown>[] = []
   const origin = 'brocrew-plugin://fictional-view'
+  let interval = () => {}
   const window = {
     addEventListener: (type: string, callback: (event: unknown) => void) =>
       events.set(type, callback),
@@ -46,7 +47,10 @@ function screen() {
     document: { querySelector: (id: string) => nodes.get(id), createElement: () => new Element() },
     setTimeout: () => 1,
     clearTimeout() {},
-    setInterval: () => 1,
+    setInterval: (callback: () => void) => {
+      interval = callback
+      return 1
+    },
     clearInterval() {},
     CSS: { escape: (value: string) => value },
   })
@@ -54,6 +58,7 @@ function screen() {
     nodes,
     events,
     packets,
+    tick: () => interval(),
     reply(result: unknown, source: unknown = window, packet = packets[0], ok = true) {
       events.get('message')!({
         source,
@@ -403,5 +408,34 @@ it('closes the rename field on Escape without proposing anything', async () => {
   row().children[1].children[0].listeners.get('keydown')!({ key: 'Escape' })
   expect(row().children).toHaveLength(1)
   expect(view.packets).toHaveLength(1)
+  view.events.get('pagehide')!({})
+})
+
+it('holds a read that arrives mid-composition and draws it once the word is finished', async () => {
+  const view = screen()
+  const snapshot = {
+    configRevision: 1,
+    profiles: [{ name: 'fern', enabled: true, open: false }],
+    tabs: [],
+  }
+  view.reply(snapshot)
+  await settle()
+  const row = () => view.nodes.get('#profiles')!.children[0] as unknown as Drawn
+  row().children[0].children[2].children[2].listeners.get('click')!({})
+  const form = row().children[1]
+  const input = form.children[0]
+  view.tick()
+  const read = view.packets.at(-1)!
+  expect(read.method).toBe('read')
+  input.listeners.get('compositionstart')!({})
+  view.reply({ ...snapshot, profiles: [{ ...snapshot.profiles[0], open: true }] }, undefined, read)
+  await settle()
+  expect(row().children[1]).toBe(form)
+  expect(row().children[0].children[1].textContent).toBe('Closed')
+  view.tick()
+  expect(view.packets.at(-1)).toBe(read)
+  input.listeners.get('compositionend')!({})
+  expect(row().children[0].children[1].textContent).toBe('Open')
+  expect(row().children[1].children[0]).toBe(input)
   view.events.get('pagehide')!({})
 })
