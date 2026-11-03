@@ -113,6 +113,7 @@ interface Doors {
   setApiKey?: (input: { provider: string; key: string }) => Promise<ApiKeyChanged>
   removeApiKey?: () => Promise<ApiKeyChanged>
   checkApiKey?: () => Promise<ApiKeyCheck>
+  homeCopyStatus?: () => ProviderHomesReprovision
   reprovisionProviderHomes?: (input: {
     provider: string
     statusOnly?: boolean
@@ -151,7 +152,16 @@ function theCard(
     doors.reprovisionProviderAuth ?? (async () => 'replaced')
   const runtime = {
     reprovisionProviderHomes: vi.fn(async (input: { provider: string; statusOnly?: boolean }) => {
-      if (input.statusOnly) return { replaced: 0, pending: 0, skipped: 0, failed: 0, profiles: [] }
+      if (input.statusOnly)
+        return (
+          doors.homeCopyStatus?.() ?? {
+            replaced: 0,
+            pending: 0,
+            skipped: 0,
+            failed: 0,
+            profiles: [],
+          }
+        )
       return (
         doors.reprovisionProviderHomes?.(input) ?? {
           replaced: 0,
@@ -882,6 +892,49 @@ describe('copying the machine sign-in for all agents', () => {
     expect(section.textContent).toContain('delta: Could not copy')
     expect(button.disabled).toBe(true)
     expect(authChanged).toEqual([])
+  })
+
+  it('updates a pending switch automatically and enables the button when it finishes', async () => {
+    let requested = false
+    const { m } = theCard(
+      {
+        reprovisionProviderHomes: async () => {
+          requested = true
+          return {
+            replaced: 0,
+            pending: 1,
+            skipped: 0,
+            failed: 0,
+            profiles: [{ profileId: 'alpha', state: 'pending' }],
+          }
+        },
+        homeCopyStatus: () =>
+          requested
+            ? {
+                replaced: 1,
+                pending: 0,
+                skipped: 0,
+                failed: 0,
+                profiles: [{ profileId: 'alpha', state: 'replaced' }],
+              }
+            : { replaced: 0, pending: 0, skipped: 0, failed: 0, profiles: [] },
+      },
+      { provider: 'codex' },
+    )
+    await settled()
+    const section = m.q('copy-all-sign-ins')
+    const button = section.querySelector('button')!
+    button.click()
+    await settled()
+    expect(section.textContent).toContain('1 will switch when they finish their current task.')
+    expect(button.disabled).toBe(true)
+    await vi.waitFor(
+      () => {
+        expect(section.textContent).toContain('1 switched now, 0 will switch')
+        expect(button.disabled).toBe(false)
+      },
+      { timeout: 3000 },
+    )
   })
 
   it('reports a request failure and enables retry', async () => {

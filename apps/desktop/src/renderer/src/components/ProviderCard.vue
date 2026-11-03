@@ -309,7 +309,13 @@ async function copyAllMachineSignIns(): Promise<void> {
   }
 }
 function copyHomeReason(
-  reason: 'api-key' | 'key-status-unavailable' | 'unchanged' | 'copy-failed' | 'restart-failed',
+  reason:
+    | 'api-key'
+    | 'key-status-unavailable'
+    | 'unchanged'
+    | 'copy-failed'
+    | 'restart-failed'
+    | 'stop-failed',
 ): string {
   switch (reason) {
     case 'api-key':
@@ -322,6 +328,8 @@ function copyHomeReason(
       return 'Could not copy the sign-in. Check this Mac’s sign-in and try again.'
     case 'restart-failed':
       return 'Sign-in copied, but this agent could not restart. Try again.'
+    case 'stop-failed':
+      return 'Could not confirm this agent stopped. Its sign-in was left unchanged.'
   }
 }
 

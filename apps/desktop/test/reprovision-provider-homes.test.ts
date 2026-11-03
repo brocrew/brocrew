@@ -35,6 +35,8 @@ describe('copying this install’s provider sign-ins', () => {
   let oldProcessExit: Promise<void> | undefined
   let stopped: number
   let resumeFails: boolean
+  let beforeStart: (() => Promise<void>) | undefined
+  let beforeResume: (() => Promise<void>) | undefined
   let host: RuntimeHost
   let ops: ProviderAuthOps
   const copy = vi.fn()
@@ -53,6 +55,8 @@ describe('copying this install’s provider sign-ins', () => {
     oldProcessExit = undefined
     stopped = 0
     resumeFails = false
+    beforeStart = undefined
+    beforeResume = undefined
     messages.length = 0
     keySaved = false
     keyStatusFails = false
@@ -91,6 +95,7 @@ describe('copying this install’s provider sign-ins', () => {
         provider: 'codex',
         listModels: runtime.listModels.bind(runtime),
         start: async (options) => {
+          await beforeStart?.()
           const handle = await runtime.start(options)
           handle.awaitProcessExit = () => oldProcessExit
           const close = handle.close.bind(handle)
@@ -102,6 +107,7 @@ describe('copying this install’s provider sign-ins', () => {
           return handle
         },
         resume: async (ref, options) => {
+          await beforeResume?.()
           if (resumeFails) throw new Error('fictional restart failure')
           const handle = await runtime.resume(ref, options)
           launches++
@@ -288,6 +294,195 @@ describe('copying this install’s provider sign-ins', () => {
         { profileId: 'alpha', state: 'failed', reason: 'restart-failed' },
       ]),
     })
+  })
+
+  it('keeps a former slot’s unconfirmed process ahead of the copy', async () => {
+    let confirm!: () => void
+    oldProcessExit = new Promise((resolve) => {
+      confirm = resolve
+    })
+    const former = await host.createSession(
+      { provider: 'codex', profileId: 'alpha', cwd: root },
+      sink,
+    )
+    await host.close(former.sessionId, sink)
+    oldProcessExit = undefined
+    const current = await host.createSession(
+      { provider: 'codex', profileId: 'alpha', cwd: root },
+      sink,
+    )
+    await host.send(current.sessionId, 'current task', sink)
+    await vi.waitFor(() =>
+      expect(
+        messages.some(
+          (one) => one.sessionId === current.sessionId && one.event.type === 'permission_request',
+        ),
+      ).toBe(true),
+    )
+    expect(await run()).toMatchObject({ replaced: 2, pending: 1 })
+    await host.respondPermission(current.sessionId, 'turn_1_perm', { outcome: 'allow' }, sink)
+    await vi.waitFor(() =>
+      expect(
+        messages.some((one) => one.sessionId === current.sessionId && one.event.type === 'turn'),
+      ).toBe(true),
+    )
+    expect(copy.mock.calls.some((call) => call[1] === 'alpha')).toBe(false)
+    confirm()
+    await vi.waitFor(async () =>
+      expect(await host.reprovisionProviderHomes('codex', true)).toMatchObject({
+        replaced: 3,
+        pending: 0,
+      }),
+    )
+  })
+
+  it('holds a new launch behind a busy home’s pending switch without blocking the switch itself', async () => {
+    const current = await host.createSession(
+      { provider: 'codex', profileId: 'alpha', cwd: root },
+      sink,
+    )
+    await host.send(current.sessionId, 'current task', sink)
+    await vi.waitFor(() =>
+      expect(messages.some((one) => one.event.type === 'permission_request')).toBe(true),
+    )
+    expect(await run()).toMatchObject({ replaced: 2, pending: 1 })
+    let opened = false
+    const next = host
+      .createSession({ provider: 'codex', profileId: 'alpha', cwd: root }, sink)
+      .then((one) => {
+        opened = true
+        return one
+      })
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(opened).toBe(false)
+    expect(launches).toBe(1)
+    await host.respondPermission(current.sessionId, 'turn_1_perm', { outcome: 'allow' }, sink)
+    expect((await next).sessionId).not.toBe(current.sessionId)
+    await vi.waitFor(async () =>
+      expect(await host.reprovisionProviderHomes('codex', true)).toMatchObject({
+        replaced: 3,
+        pending: 0,
+      }),
+    )
+  })
+
+  it('switches after leaving planning without sending a message', async () => {
+    const current = await host.createSession(
+      { provider: 'codex', profileId: 'alpha', cwd: root, planMode: true },
+      sink,
+    )
+    expect(await run()).toMatchObject({ replaced: 2, pending: 1 })
+    await host.endPlanMode(current.sessionId, sink)
+    await vi.waitFor(async () =>
+      expect(await host.reprovisionProviderHomes('codex', true)).toMatchObject({
+        replaced: 3,
+        pending: 0,
+      }),
+    )
+  })
+
+  it('switches after an in-flight start fails and gives up its home', async () => {
+    let entered!: () => void
+    let fail!: () => void
+    const started = new Promise<void>((resolve) => {
+      entered = resolve
+    })
+    const blocked = new Promise<void>((_resolve, reject) => {
+      fail = () => reject(new Error('fictional start failure'))
+    })
+    beforeStart = async () => {
+      entered()
+      await blocked
+    }
+    const opening = host
+      .createSession({ provider: 'codex', profileId: 'alpha', cwd: root }, sink)
+      .catch(() => null)
+    await started
+    expect(await run()).toMatchObject({ replaced: 2, pending: 1 })
+    fail()
+    expect(await opening).toBeNull()
+    await vi.waitFor(async () =>
+      expect(await host.reprovisionProviderHomes('codex', true)).toMatchObject({
+        replaced: 3,
+        pending: 0,
+      }),
+    )
+  })
+
+  it('does not declare a racing reopen complete while its provider start can still fail', async () => {
+    const current = await host.createSession(
+      { provider: 'codex', profileId: 'alpha', cwd: root },
+      sink,
+    )
+    let releaseCopy!: () => void
+    const heldCopy = new Promise<void>((resolve) => {
+      releaseCopy = resolve
+    })
+    const realCopy = copy.getMockImplementation()!
+    copy.mockImplementation(async (provider, id) => {
+      if (id === 'alpha') await heldCopy
+      return realCopy(provider, id)
+    })
+    let finished = false
+    const copying = run().then((result) => {
+      finished = true
+      return result
+    })
+    await vi.waitFor(() => expect(copy.mock.calls.some((call) => call[1] === 'alpha')).toBe(true))
+    let entered!: () => void
+    let fail!: () => void
+    const started = new Promise<void>((resolve) => {
+      entered = resolve
+    })
+    const heldStart = new Promise<void>((_resolve, reject) => {
+      fail = () => reject(new Error('fictional racing resume failure'))
+    })
+    beforeResume = async () => {
+      entered()
+      await heldStart
+    }
+    const reopening = host.resumeSession(current.sessionId, sink).catch(() => null)
+    releaseCopy()
+    await started
+    expect(finished).toBe(false)
+    try {
+      expect(await host.reprovisionProviderHomes('codex', true)).toMatchObject({
+        profiles: expect.arrayContaining([{ profileId: 'alpha', state: 'pending' }]),
+      })
+    } finally {
+      fail()
+    }
+    expect(await reopening).toBeNull()
+    expect(await copying).toMatchObject({
+      replaced: 2,
+      pending: 0,
+      failed: 1,
+      profiles: expect.arrayContaining([
+        { profileId: 'alpha', state: 'failed', reason: 'restart-failed' },
+      ]),
+    })
+  })
+
+  it('does not copy after process-exit confirmation fails', async () => {
+    let rejectExit!: () => void
+    oldProcessExit = new Promise((_resolve, reject) => {
+      rejectExit = () => reject(new Error('fictional exit failure'))
+    })
+    const former = await host.createSession(
+      { provider: 'codex', profileId: 'alpha', cwd: root },
+      sink,
+    )
+    await host.close(former.sessionId, sink)
+    rejectExit()
+    expect(await run()).toMatchObject({
+      replaced: 2,
+      pending: 0,
+      failed: 1,
+      profiles: expect.arrayContaining([
+        { profileId: 'alpha', state: 'failed', reason: 'stop-failed' },
+      ]),
+    })
+    expect(copy.mock.calls.some((call) => call[1] === 'alpha')).toBe(false)
   })
 
   it('leaves homes alone when API-key status cannot be checked', async () => {

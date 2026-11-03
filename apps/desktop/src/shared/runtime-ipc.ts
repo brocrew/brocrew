@@ -9478,7 +9478,7 @@ export interface ProviderHomesReprovision {
     | {
         readonly profileId: string
         readonly state: 'failed'
-        readonly reason: 'copy-failed' | 'restart-failed'
+        readonly reason: 'copy-failed' | 'restart-failed' | 'stop-failed'
       }
   )[]
 }
