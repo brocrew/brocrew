@@ -35594,7 +35594,14 @@ export class RuntimeHost implements LiveHost {
     if (providerDescriptor(provider).credential !== 'profile-or-key')
       throw new Error('This provider does not keep a separate sign-in for each agent.')
     let rows = this.homeCopies.get(provider)
-    if (!statusOnly && ![...(rows?.values() ?? [])].some((one) => one.state === 'pending')) {
+    const restartActive = [...this.homeCopyRestarts.keys()].some((key) =>
+      key.startsWith(`${provider}:`),
+    )
+    if (
+      !statusOnly &&
+      !restartActive &&
+      ![...(rows?.values() ?? [])].some((one) => one.state === 'pending')
+    ) {
       rows = new Map(
         this.profiles(provider).map((profileId) => [
           profileId,
@@ -35690,7 +35697,7 @@ export class RuntimeHost implements LiveHost {
         const keyStatus = (): boolean => this.deps.apiKeys?.status(provider).set === true
         // A key saved while the providers stopped outranks this request too.
         if (keyStatus()) {
-          rows.set(profileId, { profileId, state: 'skipped', reason: 'api-key' })
+          copied = { profileId, state: 'skipped', reason: 'api-key' }
           return
         }
         const outcome = await this.reprovisionProviderAuth(provider, profileId)
@@ -35699,7 +35706,7 @@ export class RuntimeHost implements LiveHost {
             ? { profileId, state: 'replaced' }
             : { profileId, state: 'skipped', reason: 'unchanged' }
       } catch {
-        rows.set(profileId, { profileId, state: 'failed', reason: 'copy-failed' })
+        copied = { profileId, state: 'failed', reason: 'copy-failed' }
       } finally {
         this.homeCopyJobs.delete(key)
         this.releaseHomeCopyBarrier(provider, profileId)
@@ -35715,7 +35722,7 @@ export class RuntimeHost implements LiveHost {
           if (alreadyStarting !== undefined) {
             await alreadyStarting.arrived
             if (this.slots.get(session.id)?.session == null)
-              rows.set(profileId, { profileId, state: 'failed', reason: 'restart-failed' })
+              copied = { profileId, state: 'failed', reason: 'restart-failed' }
             continue
           }
           const watching =
@@ -35726,7 +35733,7 @@ export class RuntimeHost implements LiveHost {
             const raced = this.slots.get(session.id)
             if (raced !== undefined) await raced.arrived
             if (this.slots.get(session.id)?.session == null)
-              rows.set(profileId, { profileId, state: 'failed', reason: 'restart-failed' })
+              copied = { profileId, state: 'failed', reason: 'restart-failed' }
           }
         }
         if (rows.get(profileId)?.state === 'pending' && copied !== undefined)

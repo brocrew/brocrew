@@ -485,6 +485,45 @@ describe('copying this install’s provider sign-ins', () => {
     expect(copy.mock.calls.some((call) => call[1] === 'alpha')).toBe(false)
   })
 
+  it('keeps the batch identity while a failed copy is still restarting its last home', async () => {
+    await host.createSession({ provider: 'codex', profileId: 'beta', cwd: root }, sink)
+    let entered!: () => void
+    let release!: () => void
+    const restarting = new Promise<void>((resolve) => {
+      entered = resolve
+    })
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    beforeResume = async () => {
+      entered()
+      await held
+    }
+    const realCopy = copy.getMockImplementation()!
+    copy.mockImplementation((provider, id) => {
+      if (id === 'beta') throw new Error('fictional last-home copy failure')
+      return realCopy(provider, id)
+    })
+    const first = run()
+    await restarting
+    try {
+      expect(await host.reprovisionProviderHomes('codex', true)).toMatchObject({
+        pending: 1,
+        failed: 0,
+      })
+      expect(await run()).toMatchObject({ pending: 1, failed: 0 })
+      expect(copy).toHaveBeenCalledTimes(3)
+    } finally {
+      release()
+    }
+    expect(await first).toMatchObject({ replaced: 2, pending: 0, failed: 1 })
+    expect(await host.reprovisionProviderHomes('codex', true)).toMatchObject({
+      pending: 0,
+      failed: 1,
+    })
+    expect(copy).toHaveBeenCalledTimes(3)
+  })
+
   it('leaves homes alone when API-key status cannot be checked', async () => {
     keyStatusFails = true
     expect(await run()).toMatchObject({
