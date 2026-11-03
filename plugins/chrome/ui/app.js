@@ -326,7 +326,9 @@ function draw(snapshot) {
     empty.className = 'profiles-empty'
     profiles.append(empty)
   }
-  if (focused) profiles.querySelector(`[data-focus="${CSS.escape(focused)}"]`)?.focus()
+  // Without preventScroll, every refresh would scroll the page back to the focused control.
+  if (focused)
+    profiles.querySelector(`[data-focus="${CSS.escape(focused)}"]`)?.focus({ preventScroll: true })
 }
 async function refresh() {
   try {
