@@ -9,6 +9,17 @@ let deletionPending = false
 let lastSnapshot = null
 // Cards the person opened; every redraw keeps them open.
 const expanded = new Set()
+// The rename field is one node reused by every redraw, so typing keeps its text.
+let renaming = null
+let composing = false
+const RENAME_ERRORS = {
+  invalid: 'Profile name must be 1–60 characters.',
+  duplicate: 'Another profile already uses that name.',
+  deleting: 'This profile is being deleted. Try again after deletion finishes.',
+}
+const UNAVAILABLE = 'Plugin unavailable. Try again.'
+// eslint-disable-next-line no-control-regex -- The same characters the plugin refuses in a name.
+const CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f]/
 const status = document.querySelector('#status')
 function say(words, tone) {
   status.textContent = words
@@ -51,8 +62,103 @@ async function propose(payload, afterSuccess) {
     afterSuccess?.()
     await refresh()
   } catch {
-    say('Plugin unavailable. Try again.', 'warn')
+    say(UNAVAILABLE, 'warn')
   }
+}
+function refocus(key) {
+  document
+    .querySelector(`#profiles [data-focus="${CSS.escape(key)}"]`)
+    ?.focus({ preventScroll: true })
+}
+function shownName(profile) {
+  return typeof profile.displayName === 'string' ? profile.displayName.slice(0, 120) : profile.name
+}
+// The plugin checks these too; the page says them before sending because a refusal reaches it without words.
+function renameRefusal(profiles, name, value) {
+  const label = value.trim()
+  const length = [...label].length
+  if (length < 1 || length > 60 || CONTROL.test(label)) return RENAME_ERRORS.invalid
+  if (profiles.find((p) => p.name === name)?.status === 'deleting') return RENAME_ERRORS.deleting
+  if (profiles.some((p) => p.name !== name && shownName(p).toLowerCase() === label.toLowerCase()))
+    return RENAME_ERRORS.duplicate
+  return ''
+}
+function startRename(profile) {
+  if (!renaming || renaming.profile !== profile.name) {
+    const input = focusKey(document.createElement('input'), `rename-field:${profile.name}`)
+    input.value = shownName(profile)
+    input.ariaLabel = 'Profile name'
+    input.autocomplete = 'off'
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') stopRename()
+    })
+    input.addEventListener('compositionstart', () => (composing = true))
+    input.addEventListener('compositionend', () => (composing = false))
+    renaming = { profile: profile.name, input, error: '', pending: false }
+    draw(lastSnapshot)
+  }
+  renaming.input.focus()
+  renaming.input.select()
+}
+function stopRename() {
+  if (!renaming || renaming.pending) return
+  const { profile } = renaming
+  renaming = null
+  composing = false
+  draw(lastSnapshot)
+  refocus(`rename:${profile}`)
+}
+async function saveRename() {
+  if (!renaming || renaming.pending) return
+  const { profile, input } = renaming
+  const newName = input.value.trim()
+  const current = lastSnapshot.profiles.find((p) => p.name === profile)
+  if (current && newName === shownName(current)) return stopRename()
+  renaming.error = renameRefusal(lastSnapshot.profiles, profile, newName)
+  if (renaming.error) return draw(lastSnapshot)
+  renaming.pending = true
+  draw(lastSnapshot)
+  try {
+    await rpc('proposeConfig', { action: 'rename-profile', profile, newName })
+    if (renaming?.profile === profile) {
+      renaming.pending = false
+      stopRename()
+    }
+    await refresh()
+  } catch {
+    let refusal = UNAVAILABLE
+    try {
+      const snapshot = await rpc('read', { surface: 'chrome' })
+      draw(snapshot)
+      refusal = renameRefusal(snapshot.profiles, profile, newName) || UNAVAILABLE
+    } catch {
+      // Without a fresh read, the generic line is the only true one.
+    }
+    if (renaming?.profile !== profile) return
+    renaming.error = refusal
+    renaming.pending = false
+    draw(lastSnapshot)
+    renaming.input.focus()
+  }
+}
+function renameForm(profile) {
+  const form = document.createElement('form')
+  form.className = 'profile-rename'
+  form.addEventListener('submit', (event) => {
+    event.preventDefault()
+    void saveRename()
+  })
+  const deletingNow = profile.status === 'deleting'
+  const save = focusKey(text('button', 'Save'), `save-rename:${profile.name}`)
+  save.disabled = renaming.pending || deletingNow
+  const cancel = focusKey(text('button', 'Cancel'), `cancel-rename:${profile.name}`)
+  cancel.type = 'button'
+  cancel.disabled = renaming.pending
+  cancel.addEventListener('click', stopRename)
+  form.append(renaming.input, save, cancel)
+  const error = deletingNow ? RENAME_ERRORS.deleting : renaming.error
+  if (error) form.append(text('p', error))
+  return form
 }
 // The page redraws every refresh, so each control carries a key that lets focus come back to it.
 function focusKey(node, key) {
@@ -124,7 +230,16 @@ function draw(snapshot) {
   revision = snapshot.configRevision
   lastSnapshot = snapshot
   say('Running', 'live')
-  const focused = document.activeElement?.dataset?.focus
+  if (renaming && !snapshot.profiles.some((p) => p.name === renaming.profile)) {
+    renaming = null
+    composing = false
+  }
+  const active = document.activeElement
+  const focused = active?.dataset?.focus
+  const caret =
+    active && active === renaming?.input
+      ? [active.selectionStart, active.selectionEnd, active.selectionDirection]
+      : null
   const profiles = document.querySelector('#profiles')
   profiles.replaceChildren()
   for (const profile of snapshot.profiles.slice(0, 128)) {
@@ -175,13 +290,14 @@ function draw(snapshot) {
           ),
         )
       details.append(notes)
-    } else if (profile.migration)
+    } else if (profile.migration && profile.migration !== 'chrome-unknown')
+      // Any other code is the plugin's own wording, so the page names none of it.
       details.append(
         text(
           'p',
           profile.migration === 'qualification-required'
             ? 'Sharing awaits migration qualification.'
-            : `Profile migration: ${profile.migration}.`,
+            : 'This profile is still only in this workspace. You can keep using it here.',
         ),
       )
     const tabs = document.createElement('ul')
@@ -203,9 +319,10 @@ function draw(snapshot) {
     heading.className = 'profile-heading'
     // A card with nothing to fold shows its name; any other card folds on its name.
     let name
+    const label = shownName(profile)
     if (details.childElementCount) {
       const open = expanded.has(profile.name)
-      name = focusKey(text('button', profile.name), `toggle:${profile.name}`)
+      name = focusKey(text('button', label), `toggle:${profile.name}`)
       name.className = 'profile-toggle'
       name.ariaExpanded = String(open)
       name.addEventListener('click', () => {
@@ -215,9 +332,12 @@ function draw(snapshot) {
       })
       details.hidden = !open
     } else {
-      name = text('strong', profile.name)
+      name = text('strong', label)
       name.className = 'profile-name'
     }
+    // Agents still use the original name, so it stays readable beside a new one.
+    const key = label === profile.name ? [] : [text('span', profile.name)]
+    for (const k of key) k.className = 'profile-key'
     const state = text(
       'span',
       profile.inUseIn
@@ -253,6 +373,10 @@ function draw(snapshot) {
       ),
       openWindow,
     )
+    const rename = focusKey(text('button', 'Rename'), `rename:${profile.name}`)
+    rename.disabled = profile.status === 'deleting'
+    rename.addEventListener('click', () => startRename(profile))
+    actions.append(rename)
     const remove = focusKey(text('button', 'Delete'), `delete:${profile.name}`)
     remove.className = 'quiet-danger'
     remove.addEventListener('click', () => {
@@ -262,7 +386,7 @@ function draw(snapshot) {
       draw(lastSnapshot)
     })
     actions.append(remove)
-    heading.append(name, state, actions)
+    heading.append(name, ...key, state, actions)
     const summary = [
       ...(profile.shared ? [`On in ${(profile.onIn ?? []).join(', ') || 'no workspaces'}`] : []),
       ...(tabCount ? [tabCount === 1 ? '1 open tab' : `${tabCount} open tabs`] : []),
@@ -273,6 +397,15 @@ function draw(snapshot) {
       heading.append(line)
     }
     row.append(heading)
+    if (renaming?.profile === profile.name) row.append(renameForm(profile))
+    if (profile.migration === 'chrome-unknown') {
+      const sharing = text(
+        'p',
+        "This profile is still only in this workspace because Chrome couldn't be checked. You can keep using it here. We'll try to share it again next time the plugin starts.",
+      )
+      sharing.className = 'profile-notice'
+      row.append(sharing)
+    }
     if (profile.enabled && profile.helperOff === true) {
       const helper = document.createElement('p')
       helper.className = 'profile-helper'
@@ -289,8 +422,8 @@ function draw(snapshot) {
         text(
           'p',
           profile.shared
-            ? `Delete “${profile.name}” for every workspace? It is on in ${(profile.onIn ?? []).join(', ') || 'no workspaces'}. This removes its Chrome data, sign-ins and history. This cannot be undone.`
-            : `Delete “${profile.name}”? This removes its browsing data, cookies, sign-ins and profile downloads. Agents can no longer use it.`,
+            ? `Delete “${label}” for every workspace? It is on in ${(profile.onIn ?? []).join(', ') || 'no workspaces'}. This removes its Chrome data, sign-ins and history. This cannot be undone.`
+            : `Delete “${label}”? This removes its browsing data, cookies, sign-ins and profile downloads. Agents can no longer use it.`,
         ),
       )
       const cancel = focusKey(text('button', 'Cancel'), `cancel-delete:${profile.name}`)
@@ -327,14 +460,15 @@ function draw(snapshot) {
     profiles.append(empty)
   }
   // Without preventScroll, every refresh would scroll the page back to the focused control.
-  if (focused)
-    profiles.querySelector(`[data-focus="${CSS.escape(focused)}"]`)?.focus({ preventScroll: true })
+  if (focused) refocus(focused)
+  if (caret && document.activeElement === renaming?.input)
+    renaming.input.setSelectionRange(...caret)
 }
 async function refresh() {
   try {
     draw(await rpc('read', { surface: 'chrome' }))
   } catch {
-    say('Plugin unavailable. Try again.', 'warn')
+    say(UNAVAILABLE, 'warn')
   }
 }
 document.querySelector('#create').addEventListener('submit', (event) => {
@@ -346,7 +480,8 @@ document.querySelector('#create').addEventListener('submit', (event) => {
     })
 })
 const timer = setInterval(() => {
-  if (!closed && pending.size === 0) void refresh()
+  // A redraw mid-composition would cut an input method's unfinished word.
+  if (!closed && !composing && pending.size === 0) void refresh()
 }, 1500)
 window.addEventListener('pagehide', () => {
   closed = true

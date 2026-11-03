@@ -233,6 +233,7 @@ article[data-off='true'] .profile-name {
 .profile-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
   margin-left: auto;
 }
@@ -245,6 +246,36 @@ article[data-off='true'] .profile-name {
 }
 .profile-heading:has(.profile-name) .profile-summary {
   padding-left: 0;
+}
+.profile-key {
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.profile-rename {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 0;
+}
+.profile-rename input {
+  flex: 1 1 14rem;
+  max-width: 24rem;
+}
+.profile-rename p {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--danger);
+  font-size: 13px;
+}
+.profile-notice {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--warn);
+  color: var(--warn-ink);
+  font-size: 13px;
 }
 .profile-helper,
 .profile-delete-confirmation {
