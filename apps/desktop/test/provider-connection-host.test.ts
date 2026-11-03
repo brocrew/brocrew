@@ -166,7 +166,9 @@ for (const provider of ['claude', 'codex'] as const) {
       const f = fixture()
       let sessionId: string | undefined
       if (opening === 'bound resume' || opening === 'legacy resume') {
-        const created = await host.createSession({ provider, profileId: 'fern' }, sink)
+        const created = await host.createSession({
+          provider, profileId: 'fern', model: `fake-${provider}-a`, reasoningEffort: 'medium',
+        }, sink)
         sessionId = created.sessionId
         await host.close(sessionId, sink)
         if (opening === 'legacy resume')
@@ -185,7 +187,9 @@ for (const provider of ['claude', 'codex'] as const) {
       const pending = opening === 'models'
         ? host.providerModels('fern', provider)
         : sessionId === undefined
-          ? host.createSession({ provider, profileId: 'fern' }, sink)
+          ? host.createSession({
+              provider, profileId: 'fern', model: `fake-${provider}-a`, reasoningEffort: 'medium',
+            }, sink)
           : host.resumeSession(sessionId, sink)
       await entered.promise
       f.state.revision += 2
