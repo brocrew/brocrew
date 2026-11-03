@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { runtimePathCalls, useMessagePaths, usePathsIn } from '../composables/useMessagePaths'
-import { escaped } from '../lib/named-in-a-reply'
+import { renderChatMarkdown } from '../lib/markdown'
 import MarkdownWords from './MarkdownWords.vue'
 
 const props = defineProps<{ text: string; sessionId?: string }>()
@@ -10,7 +10,7 @@ const here = useMessagePaths(
 )
 const paths = usePathsIn(
   () => here.value,
-  () => [escaped(props.text)],
+  () => [renderChatMarkdown(props.text)],
 )
 </script>
 

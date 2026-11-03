@@ -42,6 +42,7 @@ import {
   type QuestionState,
 } from '../lib/question-card'
 import { escaped } from '../lib/named-in-a-reply'
+import { renderChatMarkdown } from '../lib/markdown'
 import {
   runtimePathCalls,
   useMessagePaths,
@@ -63,7 +64,7 @@ const props = defineProps<{
   draft?: RequestDraft
   /** ⚑ **Fold the words after a few lines, with *more*** — the queue, where rows sit side by side. */
   fold?: boolean
-  /** The asking conversation's paths. Absent: a path in the question stays plain text. */
+  /** The conversation's path context, when supplied by its frame. */
   paths?: PathsHere | null
   /** Queue cards resolve paths in their asking conversation. */
   pathSessionId?: string
@@ -78,7 +79,7 @@ const paths = usePathsIn(
   () => props.paths ?? queuePaths.value,
   () =>
     [props.reading.words ?? '', ...props.reading.parts.map((part) => part.prompt ?? '')].map(
-      escaped,
+      (text) => (props.markdown ? renderChatMarkdown(text) : escaped(text)),
     ),
 )
 
