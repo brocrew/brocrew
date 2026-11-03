@@ -20,6 +20,7 @@ import {
   stackingWindow,
 } from './a-window-with-a-workflow-and-nested-agents'
 import { aWaitingPageWithEveryCard } from './a-waiting-page-with-every-card'
+import { aWaitingPageWithMarkdown } from './a-waiting-page-with-markdown'
 import { META, mount, paneProps, record, unmountAll } from './harness'
 import { paintedReadings, pictures } from './what-is-painted-under'
 
@@ -130,6 +131,26 @@ async function mustPress(root: ParentNode, selector: string): Promise<void> {
 
 /** Each state of the window that stacks its surfaces, brought about as a person would. */
 const STATES: readonly [string, () => Promise<Element>][] = [
+  [
+    'Waiting on you, markdown question words and added notes',
+    async () => {
+      await page.viewport(1180, 1000)
+      const m = await aWaitingPageWithMarkdown()
+      m.q('question-more').click()
+      await pause()
+      return m.host
+    },
+  ],
+  [
+    'Waiting on you, markdown to-dos',
+    async () => {
+      await page.viewport(1180, 1000)
+      const m = await aWaitingPageWithMarkdown()
+      m.q('waiting-todo-head-req_todo').scrollIntoView({ block: 'center' })
+      await pause()
+      return m.host
+    },
+  ],
   [
     'docked, a workflow under the pointer',
     async () => {
@@ -365,6 +386,17 @@ const PROOF: Record<string, Proof> = {
       '[data-cy="activity-line"]:hover',
       '[data-cy="activity-claimed-note"]',
     ],
+  },
+  'Waiting on you, markdown question words and added notes': {
+    read: [
+      '[data-cy="question-words"] strong',
+      '[data-cy="question-context"] code',
+      '.pq-asked-part strong',
+      '.pq-request-line code',
+    ],
+  },
+  'Waiting on you, markdown to-dos': {
+    read: ['.todo-text strong', '.todo-text a', '.todo-text code'],
   },
   'Waiting on you, with usage, stopped work and requests, each request’s details open': {
     read: [

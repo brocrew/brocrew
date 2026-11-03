@@ -42,7 +42,12 @@ import {
   type QuestionState,
 } from '../lib/question-card'
 import { escaped } from '../lib/named-in-a-reply'
-import { usePathsIn, type PathsHere } from '../composables/useMessagePaths'
+import {
+  runtimePathCalls,
+  useMessagePaths,
+  usePathsIn,
+  type PathsHere,
+} from '../composables/useMessagePaths'
 import PathsInText from './PathsInText.vue'
 import MarkdownWords from './MarkdownWords.vue'
 
@@ -60,11 +65,17 @@ const props = defineProps<{
   fold?: boolean
   /** The asking conversation's paths. Absent: a path in the question stays plain text. */
   paths?: PathsHere | null
+  /** Queue cards resolve paths in their asking conversation. */
+  pathSessionId?: string
 }>()
 
+const queuePaths = useMessagePaths(
+  () => props.pathSessionId ?? null,
+  () => (!props.paths && props.pathSessionId ? runtimePathCalls() : null),
+)
 /** The question's words and each part's prompt; an option's words sit inside its button. */
 const paths = usePathsIn(
-  () => props.paths,
+  () => props.paths ?? queuePaths.value,
   () =>
     [props.reading.words ?? '', ...props.reading.parts.map((part) => part.prompt ?? '')].map(
       escaped,
