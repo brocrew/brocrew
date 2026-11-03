@@ -24489,6 +24489,7 @@ export class RuntimeHost implements LiveHost {
       { provider: input.provider, kind: 'fresh' },
       (startPhases) => {
         if (builtInSkills && !builtInSkills.isCurrent()) throw new Error(BUILT_IN_SKILLS_FAILURE)
+        this.assertConnectionUnchanged(input.provider, connectionRevision)
         return runtime.start({
           startPhases,
           cwd,
@@ -42387,6 +42388,7 @@ export class RuntimeHost implements LiveHost {
         await this.deps.beforeProviderLaunch()
         launch.signal.throwIfAborted()
       }
+      this.assertConnectionUnchanged(provider, connectionRevision)
       const runtime =
         connectionId === undefined
           ? this.deps.createRuntime(provider)
@@ -43581,6 +43583,7 @@ export class RuntimeHost implements LiveHost {
           ).catch(() => null)
         }
         if (builtInSkills && !builtInSkills.isCurrent()) throw new Error(BUILT_IN_SKILLS_FAILURE)
+        this.assertConnectionUnchanged(row.provider, connectionRevision)
         return runtime.resume(row.ref, {
           startPhases,
           providerHome,
