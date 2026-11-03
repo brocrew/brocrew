@@ -97,6 +97,39 @@ for (const provider of ['claude', 'codex'] as const) {
     expect(f.create).not.toHaveBeenCalled()
   })
 
+  for (const change of ['method', 'cancel'] as const) {
+    it(`${provider}: ${change} across a launch await closes the child instead of returning false attribution`, async () => {
+      const f = fixture(provider)
+      const raw = new FakeRuntime(provider)
+      const start = raw.start.bind(raw)
+      let release!: () => void
+      let entered!: () => void
+      const arrived = new Promise<void>((resolve) => { entered = resolve })
+      const held = new Promise<void>((resolve) => { release = resolve })
+      const close = vi.fn<() => Promise<void>>()
+      vi.spyOn(raw, 'start').mockImplementation(async (options) => {
+        const handle = await start(options)
+        const original = handle.close.bind(handle)
+        close.mockImplementation(original)
+        handle.close = close
+        handles.push(handle)
+        entered()
+        await held
+        return handle
+      })
+      f.create.mockReturnValue(raw)
+      const controller = new AbortController()
+      const pending = f.runtime.start({ cwd: '/fictional/fern', providerHome: '/fictional/state', signal: controller.signal })
+      await arrived
+      if (change === 'method') f.state.current = record(provider, 'api-key')
+      else controller.abort()
+      release()
+      await expect(pending).rejects.toThrow()
+      expect(close).toHaveBeenCalledTimes(1)
+      handles.pop()
+    })
+  }
+
   for (const changed of [
     { provider: provider === 'claude' ? 'codex' : 'claude' },
     { id: 'fictional-extra' },
