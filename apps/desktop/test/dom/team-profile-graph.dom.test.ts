@@ -498,23 +498,29 @@ it.each([299, 300])(
   },
 )
 
-it('says saved and card times on the computer clock and marks a moved calendar stale without rereading', async () => {
-  const zone = ref<LocalZone>({ before: 5.75 * 3_600_000, changes: [], rule: null })
-  readLocalTimeFrom(() => zone.value)
-  const s = setup(2)
-  Object.assign(s.reading.header, localClockReading(s.reading.header.readAt))
-  await vi.waitFor(() => expect(s.controller.reading.value?.nodes).toHaveLength(2))
-  const at = s.reading.header.readAt
-  expect(s.mounted.host.textContent).toContain(`Saved reading · ${fullTime(at)} · +05:45`)
-  const item = s.mounted.host.querySelector<HTMLButtonElement>('[data-graph-agent]')!
-  item.click()
-  await nextTick()
-  const savedUpdate = s.reading.nodes[0]!.lastSavedUpdate!
-  expect(s.mounted.host.querySelector('aside')?.textContent).toContain(fullTime(savedUpdate))
-  expect(s.controller.stale.value).toBe(false)
-  zone.value = { before: -3.5 * 3_600_000, changes: [], rule: null }
-  await nextTick()
-  expect(s.mounted.host.textContent).toContain(`Saved reading · ${fullTime(at)} · -03:30`)
-  expect(s.controller.stale.value).toBe(true)
-  expect(s.read.mock.calls.filter(([request]) => request.operation === 'snapshot')).toHaveLength(1)
-})
+it.each([0, 59_999])(
+  'says saved and card times on the computer clock and marks a moved calendar stale without rereading (%s ms into a minute)',
+  async (intoMinute) => {
+    vi.spyOn(Date, 'now').mockReturnValue(fictionalGraph(2).header.readAt + intoMinute)
+    const zone = ref<LocalZone>({ before: 5.75 * 3_600_000, changes: [], rule: null })
+    readLocalTimeFrom(() => zone.value)
+    const s = setup(2)
+    Object.assign(s.reading.header, localClockReading(s.reading.header.readAt))
+    await vi.waitFor(() => expect(s.controller.reading.value?.nodes).toHaveLength(2))
+    const at = s.reading.header.readAt
+    expect(s.mounted.host.textContent).toContain(`Saved reading · ${fullTime(at)} · +05:45`)
+    const item = s.mounted.host.querySelector<HTMLButtonElement>('[data-graph-agent]')!
+    item.click()
+    await nextTick()
+    const savedUpdate = s.reading.nodes[0]!.lastSavedUpdate!
+    expect(s.mounted.host.querySelector('aside')?.textContent).toContain(fullTime(savedUpdate))
+    expect(s.controller.stale.value).toBe(false)
+    zone.value = { before: -3.5 * 3_600_000, changes: [], rule: null }
+    await nextTick()
+    expect(s.mounted.host.textContent).toContain(`Saved reading · ${fullTime(at)} · -03:30`)
+    expect(s.controller.stale.value).toBe(true)
+    expect(s.read.mock.calls.filter(([request]) => request.operation === 'snapshot')).toHaveLength(
+      1,
+    )
+  },
+)
