@@ -68,6 +68,7 @@ export function providerAuthFromModules(modules: ProviderModules): ProviderAuthO
 }
 
 export { providerKnowledge } from './knowledge-definitions'
+export { onProviderConnection } from './connection-runtime'
 
 /** Use the caches already bound by each provider; legacy runtime-only modules have no versions. */
 export function providerVersionsFromModules(
