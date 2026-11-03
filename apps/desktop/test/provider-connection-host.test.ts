@@ -10,6 +10,8 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
 import { resolveProviderConnection } from '../src/main/db/provider-connections'
 import { onProviderConnection } from '../src/main/providers'
+import { prepareCodexHome } from '../src/main/providers/codex'
+import { ApiKeys } from '../src/main/runtime/api-keys'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 
@@ -34,7 +36,7 @@ function fixture() {
   const sessions = new FakeProviderSessions()
   const state = { revision: 0 }
   let number = 0
-  const prepare = vi.fn((provider: Provider, profile: string) => {
+  const prepare = vi.fn<(provider: Provider, profile: string) => string | Promise<string>>((provider, profile) => {
     const home = join(dir, profile, provider)
     mkdirSync(home, { recursive: true })
     return home
@@ -59,8 +61,46 @@ function fixture() {
   Reflect.set(deps, 'connectionFor', connectionFor)
   Reflect.set(deps, 'connectionRevision', () => state.revision)
   host = new RuntimeHost(deps)
-  return { store, prepare, create, connectionFor, state }
+  return { store, prepare, create, connectionFor, state, deps }
 }
+
+it('Codex key consumption during real home preparation cannot launch under changed-back sign-in metadata', async () => {
+  const f = fixture()
+  const keys = new ApiKeys(f.store, {
+    available: () => true,
+    seal: (key) => Buffer.from(key).toString('base64'),
+    open: (sealed) => Buffer.from(sealed, 'base64').toString(),
+  })
+  Reflect.set(f.deps, 'connectionRevision', (provider: Provider) => keys.revision(provider))
+  let applied: string | undefined
+  const copied = vi.fn()
+  f.prepare.mockImplementation((_provider, profile) => prepareCodexHome({
+    managedRoot: dir, defaultProfile: 'fern', homeOf: (name) => join(dir, name, 'codex'),
+    profiles: () => ['fern'], assertMayOpen: () => {},
+  }, profile, {
+    provisionHome: (_root, home) => { mkdirSync(home, { recursive: true }) },
+    provisionCodexAuth: copied,
+    key: {
+      isSaved: () => keys.status('codex').set,
+      current: async () => {
+        await keys.set('codex', 'fictional-willow-key')
+        const key = await keys.current('codex')
+        keys.remove('codex')
+        return key
+      },
+      change: async (_home, change) => {
+        applied = change.to
+        return { ok: true, authMethod: 'apikey' }
+      },
+    },
+  }))
+  await expect(host.createSession({ provider: 'codex', profileId: 'fern' }, sink)).rejects.toThrow('connection changed')
+  expect(applied).toBe('the-key')
+  expect(keys.revision('codex')).toBe(2)
+  expect(copied).not.toHaveBeenCalled()
+  expect(f.create).not.toHaveBeenCalled()
+  expect(db.prepare('SELECT connection_id FROM provider_session').all()).toEqual([])
+})
 
 for (const provider of ['claude', 'codex'] as const) {
   it(`${provider}: records successful new launches on the admitted connection and per-agent home`, async () => {
