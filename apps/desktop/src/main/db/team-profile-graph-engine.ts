@@ -240,7 +240,7 @@ export class TeamProfileGraphEngine {
     bindings: readonly unknown[] = [],
     ordinal = false,
     nativeBudget = 4 * 1024 * 1024,
-    sessionPage?: { generation: number; type?: string },
+    sessionPage?: { generation: number; eventType?: string },
   ): Generator<Row> {
     const statement = typeof query === 'string' ? this.db.prepare(query) : query
     const sql = statement.source
@@ -252,7 +252,13 @@ export class TeamProfileGraphEngine {
         throw new Failed('budget')
       const pageSize = Math.min(B.page, B.rows - this.visited)
       if (pageSize <= 0) throw new Failed('budget')
-      const type = sessionPage?.type ? [sessionPage.type] : []
+      const type = sessionPage?.eventType ? [sessionPage.eventType] : []
+      const cursorBytes = Buffer.from(afterSession)
+      const later = sessionPage
+        ? bindings.filter((id) => Buffer.compare(Buffer.from(key(id)), cursorBytes) > 0)
+        : []
+      // Do not let SQLite probe consumed sessions again; NULL pads an empty remainder.
+      if (sessionPage) while (later.length < sessionBatch) later.push(later[0] ?? null)
       const args = sessionPage
         ? [
             ...type,
@@ -260,7 +266,7 @@ export class TeamProfileGraphEngine {
             sessionPage.generation,
             after,
             ...type,
-            ...bindings,
+            ...later,
             sessionPage.generation,
             afterSession,
             pageSize,
@@ -628,7 +634,7 @@ export class TeamProfileGraphEngine {
           const type = category === 'messages' ? 'message_sent' : 'request_routed'
           for (const row of this.pages(interactions[category], ids, true, 4 * 1024 * 1024, {
             generation,
-            type,
+            eventType: type,
           })) {
             const s = sessions.get(key(row.session_id))!
             const node = byId.get(s.identity!)!

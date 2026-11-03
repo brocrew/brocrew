@@ -213,3 +213,45 @@ for (const stop of ['deadline', 'cancellation'] as const)
     expect(result).not.toHaveProperty('nodes')
     expect(f.db.inTransaction).toBe(false)
   })
+
+it('removes consumed session IDs before SQLite resumes a long conversation', () => {
+  const f = fixture()
+  f.identity('aid:source')
+  f.identity('aid:target')
+  for (const id of ['source', 'target']) {
+    f.session(id, `aid:${id}`)
+    f.root(id)
+  }
+  f.db.transaction(() => {
+    for (let ordinal = 0; ordinal < 10000; ordinal++)
+      f.event('source', 'message_sent', JSON.stringify({ to: 'target' }), 0, graphCutoff, ordinal)
+  })()
+  let resumed = 0
+  const engine = new TeamProfileGraphEngine(
+    f.file,
+    f.executionFile,
+    () => graphCutoff,
+    () => performance.now(),
+    (sql, args) => {
+      if (!sql.includes('UNION ALL')) return
+      const events = sql.includes('FROM events WHERE')
+      const cursor = args[events ? 1 : 0] as string
+      const later = args.slice(events ? 5 : 3, (events ? 5 : 3) + 64)
+      for (const id of later)
+        if (id !== null)
+          expect(Buffer.compare(Buffer.from(id as string), Buffer.from(cursor))).toBeGreaterThan(0)
+      if (cursor === 'source') {
+        resumed++
+        expect(later).not.toContain('source')
+        expect(args[events ? 3 : 2]).toBeGreaterThanOrEqual(255)
+      }
+    },
+  )
+  owned.push(engine)
+  const { nodes, edges } = complete(engine)
+  expect(resumed).toBeGreaterThan(30)
+  expect(nodes.find(({ id }) => id === 'aid:source')?.messagesSent).toBe(10000)
+  expect(edges).toEqual([
+    { source: 'aid:source', target: 'aid:target', work: 0, messages: 10000, questions: 0 },
+  ])
+})
