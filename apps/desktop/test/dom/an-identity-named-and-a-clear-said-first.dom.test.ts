@@ -354,7 +354,9 @@ describe('712 §1 · R56 — the provider row says what a press would clear, BEF
       whatTheProviderPressCleared({ provider: 'claude', model: 'opus', effort: 'high' }, 'codex'),
     )
     expect(said(cleared)).toBe(CLEARED_OPUS_HIGH_NOW_CODEX)
-    expect(said(m.q('model-picker-face'))).toBe('Codex · Fictional subscription · Nobody has chosen')
+    expect(said(m.q('model-picker-face'))).toBe(
+      'Claude · Fictional subscription · Nobody has chosen',
+    )
     expect(m.all('agent-model-held')).toHaveLength(0)
   })
 
@@ -376,7 +378,9 @@ describe('712 §1 · R56 — the provider row says what a press would clear, BEF
       release()
     }
     await settle()
-    expect(said(m.q('model-picker-face'))).toBe('Codex · Fictional subscription · Nobody has chosen')
+    expect(said(m.q('model-picker-face'))).toBe(
+      'Claude · Fictional subscription · Nobody has chosen',
+    )
     expect(m.all('capabilities-provider-will-clear')).toHaveLength(0)
   })
 
@@ -384,7 +388,9 @@ describe('712 §1 · R56 — the provider row says what a press would clear, BEF
     reset()
     const m = await theSheet('worker')
     // ⚑ The premise: the read ANSWERED — *nobody chose* is known, not missing.
-    expect(said(m.q('model-picker-face'))).toBe('Claude · Fictional subscription · Nobody has chosen')
+    expect(said(m.q('model-picker-face'))).toBe(
+      'Claude · Fictional subscription · Nobody has chosen',
+    )
     expect(m.all('capabilities-provider-will-clear')).toHaveLength(0)
     await pick(m, 'capabilities-provider-select', 'codex')
     expect(m.all('capabilities-provider-will-clear')).toHaveLength(0)
@@ -404,7 +410,9 @@ describe('712 §1 · R56 — the provider row says what a press would clear, BEF
     expect(line(m)).toBe(WILL_CLEAR_OPUS_HIGH)
     // ⚑ …and Clear takes it away again, on the same row.
     await press(m, 'agent-model-clear')
-    expect(said(m.q('model-picker-face'))).toBe('Claude · Fictional subscription · Nobody has chosen')
+    expect(said(m.q('model-picker-face'))).toBe(
+      'Claude · Fictional subscription · Nobody has chosen',
+    )
     expect(m.all('capabilities-provider-will-clear')).toHaveLength(0)
   })
 
@@ -457,7 +465,9 @@ describe('712 §1 · R56 — the provider row says what a press would clear, BEF
     // ⚑ An identity nobody chose for: the line goes.
     await m.point('other')
     expect(said(m.q('capabilities-slug'))).toBe('other')
-    expect(said(m.q('model-picker-face'))).toBe('Claude · Fictional subscription · Nobody has chosen')
+    expect(said(m.q('model-picker-face'))).toBe(
+      'Claude · Fictional subscription · Nobody has chosen',
+    )
     expect(m.all('capabilities-provider-will-clear')).toHaveLength(0)
 
     // ⚑ Back to `worker`: the line is back, from its own read.
