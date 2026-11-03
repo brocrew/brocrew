@@ -115,7 +115,7 @@ function stopRename() {
   const { profile } = renaming
   renaming = null
   composing = false
-  show(heldSnapshot ?? lastSnapshot)
+  redraw()
   refocus(`rename:${profile}`)
 }
 async function saveRename() {
@@ -125,9 +125,9 @@ async function saveRename() {
   const current = lastSnapshot.profiles.find((p) => p.name === profile)
   if (current && newName === shownName(current)) return stopRename()
   renaming.error = renameRefusal(lastSnapshot.profiles, profile, newName)
-  if (renaming.error) return draw(lastSnapshot)
+  if (renaming.error) return redraw()
   renaming.pending = true
-  draw(lastSnapshot)
+  redraw()
   try {
     await rpc('proposeConfig', { action: 'rename-profile', profile, newName })
     if (renaming?.profile === profile) {
@@ -138,8 +138,8 @@ async function saveRename() {
   } catch {
     let refusal = UNAVAILABLE
     try {
-      const snapshot = await rpc('read', { surface: 'chrome' })
-      draw(snapshot)
+      const snapshot = checked(await rpc('read', { surface: 'chrome' }))
+      show(snapshot)
       refusal = renameRefusal(snapshot.profiles, profile, newName) || UNAVAILABLE
     } catch {
       // Without a fresh read, the generic line is the only true one.
@@ -147,7 +147,7 @@ async function saveRename() {
     if (renaming?.profile !== profile) return
     renaming.error = refusal
     renaming.pending = false
-    draw(lastSnapshot)
+    redraw()
     renaming.input.focus()
   }
 }
@@ -199,7 +199,7 @@ async function confirmDelete(profile, displayedConfirmation, shared) {
   const wasEnabled = lastSnapshot.profiles.find((value) => value.name === profile)?.enabled === true
   deletionPending = true
   deletionError = ''
-  draw(lastSnapshot)
+  redraw()
   try {
     await rpc('proposeConfig', {
       action: 'delete-profile',
@@ -213,8 +213,8 @@ async function confirmDelete(profile, displayedConfirmation, shared) {
     deletionError =
       'Couldn’t delete this profile. Turn it off and wait for agent work to finish, then try again.'
     try {
-      const snapshot = await rpc('read', { surface: 'chrome' })
-      draw(snapshot)
+      const snapshot = checked(await rpc('read', { surface: 'chrome' }))
+      show(snapshot)
       const retained = snapshot.profiles.find((value) => value.name === profile)
       if (!retained) deleting = null
       else if (retained.enabled === false)
@@ -226,10 +226,10 @@ async function confirmDelete(profile, displayedConfirmation, shared) {
     }
   } finally {
     deletionPending = false
-    if (lastSnapshot) draw(lastSnapshot)
+    if (lastSnapshot) redraw()
   }
 }
-function draw(snapshot) {
+function checked(snapshot) {
   if (
     !snapshot ||
     !Number.isSafeInteger(snapshot.configRevision) ||
@@ -237,6 +237,10 @@ function draw(snapshot) {
     !Array.isArray(snapshot.tabs)
   )
     throw new Error('invalid')
+  return snapshot
+}
+function draw(snapshot) {
+  checked(snapshot)
   revision = snapshot.configRevision
   lastSnapshot = snapshot
   say('Running', 'live')
@@ -341,7 +345,7 @@ function draw(snapshot) {
       name.addEventListener('click', () => {
         if (expanded.has(profile.name)) expanded.delete(profile.name)
         else expanded.add(profile.name)
-        draw(lastSnapshot)
+        redraw()
       })
       details.hidden = !open
     } else {
@@ -396,7 +400,7 @@ function draw(snapshot) {
       if (deletionPending) return
       deleting = profile.name
       deletionError = ''
-      draw(lastSnapshot)
+      redraw()
     })
     actions.append(remove)
     heading.append(name, ...key, state, actions)
@@ -445,7 +449,7 @@ function draw(snapshot) {
         if (deletionPending) return
         deleting = null
         deletionError = ''
-        draw(lastSnapshot)
+        redraw()
       })
       const confirm = focusKey(
         text(
@@ -476,6 +480,10 @@ function draw(snapshot) {
   if (focused) refocus(focused)
   if (caret && document.activeElement === renaming?.input)
     renaming.input.setSelectionRange(...caret)
+}
+// Redraws go through here, so none lands in the middle of a composition.
+function redraw() {
+  show(heldSnapshot ?? lastSnapshot)
 }
 function show(snapshot) {
   heldSnapshot = composing ? snapshot : null

@@ -439,3 +439,33 @@ it('holds a read that arrives mid-composition and draws it once the word is fini
   expect(row().children[1].children[0]).toBe(input)
   view.events.get('pagehide')!({})
 })
+
+it('holds the redraw after a refused rename while the person is composing a word', async () => {
+  const view = screen()
+  const snapshot = {
+    configRevision: 1,
+    profiles: [{ name: 'fern', enabled: true, open: false }],
+    tabs: [],
+  }
+  view.reply(snapshot)
+  await settle()
+  const row = () => view.nodes.get('#profiles')!.children[0] as unknown as Drawn
+  row().children[0].children[2].children[2].listeners.get('click')!({})
+  const input = row().children[1].children[0]
+  input.value = 'Garden'
+  row().children[1].listeners.get('submit')!({ preventDefault() {} })
+  const form = row().children[1]
+  input.listeners.get('compositionstart')!({})
+  view.reply(undefined, undefined, view.packets.at(-1), false)
+  await settle()
+  expect(view.packets.at(-1)?.method).toBe('read')
+  view.reply(snapshot, undefined, view.packets.at(-1))
+  await settle()
+  await settle()
+  expect(row().children[1]).toBe(form)
+  expect(form.children).toHaveLength(3)
+  input.listeners.get('compositionend')!({})
+  expect(row().children[1].children[0]).toBe(input)
+  expect(row().children[1].children[3].textContent).toBe('Plugin unavailable. Try again.')
+  view.events.get('pagehide')!({})
+})
