@@ -61,6 +61,7 @@ export { AnswerRefused, answerRefusalOf, type AnswerRefusal } from './answer-ref
 // Distinguish a held turn, which clears on its own, from a session that stopped accepting
 // turns. The type carries the distinction for overlapping-send refusals.
 export { TurnInProgress, TURN_REFUSED } from './turn-in-progress'
+export { RejectedSessionLaunch } from './rejected-session-launch'
 
 // Classify provider requests that a parent may answer and those reserved for a person.
 // Keep this here because the adapters derive these shapes directly from their provider wires.

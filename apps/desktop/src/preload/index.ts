@@ -125,6 +125,7 @@ import {
   type CheckProviderAuthInput,
   type ProviderSignInResult,
   type ReprovisionOutcome,
+  type ProviderHomesReprovision,
   type CreateSessionInput,
   type ExportAsked,
   type ExportedSession,
@@ -822,6 +823,11 @@ const runtime: RuntimeBridge = Object.freeze({
 
   checkProviderAuth: (input: CheckProviderAuthInput): Promise<AuthState> =>
     command({ kind: 'checkProviderAuth', ...input }) as Promise<AuthState>,
+  reprovisionProviderHomes: (input: {
+    provider: Provider
+    statusOnly?: boolean
+  }): Promise<ProviderHomesReprovision> =>
+    command({ kind: 'reprovisionProviderHomes', ...input }) as Promise<ProviderHomesReprovision>,
   reprovisionProviderAuth: (input: ProviderProfileInput): Promise<ReprovisionOutcome> =>
     command({ kind: 'reprovisionProviderAuth', ...input }) as Promise<ReprovisionOutcome>,
   signInProvider: (input: ProviderProfileInput): Promise<ProviderSignInResult> =>

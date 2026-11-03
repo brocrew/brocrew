@@ -1,3 +1,4 @@
+import { RejectedSessionLaunch } from '@brobot2/runtime'
 import type {
   AgentRuntime,
   ProviderRuntimeContext,
@@ -72,8 +73,10 @@ export function onProviderConnection(
       assertCurrent(id, context, beganAt)
       return handle
     } catch (error) {
-      await handle.close()
-      throw error
+      const closing = Promise.resolve().then(() => handle.close())
+      const refused = new RejectedSessionLaunch(error, handle, closing)
+      await closing.catch(() => {})
+      throw refused
     }
   }
 

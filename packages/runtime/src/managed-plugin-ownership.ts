@@ -1,4 +1,5 @@
 import type { SessionHandle } from './runtime'
+import type { RejectedSessionLaunch } from './rejected-session-launch'
 
 /** Retired handles remain owned until teardown and their exit fact both settle. */
 export class ManagedPluginOwnership {
@@ -10,6 +11,7 @@ export class ManagedPluginOwnership {
       retired: boolean
     }
   >()
+  private readonly refused = new Map<Promise<void>, Promise<void>>()
   private sealed = false
   private hasWitness = false
   private resolveExit!: () => void
@@ -28,6 +30,21 @@ export class ManagedPluginOwnership {
     this.hasWitness ||= exit !== undefined
     exit?.catch(() => undefined)
     this.handles.set(handle, { exit, retired: false })
+  }
+  trackRefused(launch: RejectedSessionLaunch): void {
+    const terminated = launch.terminated
+    if (this.refused.has(terminated)) return
+    this.hasWitness ||= launch.processExit !== undefined
+    this.refused.set(terminated, launch.closing)
+    void terminated.then(
+      () => {
+        this.refused.delete(terminated)
+        this.finish()
+      },
+      () => {
+        /* Failed proof remains owned, just like an uncertain retired handle. */
+      },
+    )
   }
   retire(handle: SessionHandle): Promise<void> {
     this.track(handle)
@@ -52,17 +69,24 @@ export class ManagedPluginOwnership {
   async mayReopen(): Promise<boolean> {
     // Witnesses are already awaited; an unknown retirement blocks replacement, not turns.
     await Promise.resolve()
-    return ![...this.handles.values()].some((record) => record.retired)
+    return this.refused.size === 0 && ![...this.handles.values()].some((record) => record.retired)
   }
   async closeAll(): Promise<void> {
-    await Promise.allSettled([...this.handles.keys()].map((handle) => this.retire(handle)))
+    const handles = [...this.handles.keys()]
+    const closed = await Promise.allSettled(handles.map((handle) => this.retire(handle)))
+    for (const [index, result] of closed.entries()) {
+      if (result.status === 'rejected' && this.handles.get(handles[index]!)?.exit === undefined)
+        throw result.reason
+    }
+    await Promise.all(this.refused.values())
   }
+
   seal(): void {
     this.sealed = true
     this.finish()
   }
   private finish(): void {
-    if (this.sealed && this.handles.size === 0) this.resolveExit()
+    if (this.sealed && this.handles.size === 0 && this.refused.size === 0) this.resolveExit()
   }
   awaitProcessExit(): Promise<void> | undefined {
     return this.hasWitness ? this.exit : undefined

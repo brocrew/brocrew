@@ -5,6 +5,7 @@ import type { ManagedPluginMcpServer } from './managed-plugin-mcp'
 import { managedPluginHttpServers } from './managed-plugin-mcp'
 import { AsyncQueue } from './internal/async-queue'
 import { ManagedPluginOwnership } from './managed-plugin-ownership'
+import { RejectedSessionLaunch } from './rejected-session-launch'
 
 export interface ManagedPluginAttachment {
   readonly revision: string
@@ -219,6 +220,7 @@ export function withManagedPluginAttachments(
                         ownership.track(handle)
                         return handle
                       } catch (error) {
+                        if (error instanceof RejectedSessionLaunch) ownership.trackRefused(error)
                         if (allocated) await ownership.retire(allocated).catch(() => undefined)
                         throw error
                       } finally {

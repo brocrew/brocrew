@@ -483,6 +483,7 @@ const runningOf = (provider: Provider) => {
           <ProviderCard
             :key="selected"
             :provider="selected!"
+            :descriptor="selectedDescriptor"
             ref="providerCard"
             frameless
             :display-name="selectedDescriptor.displayName"
