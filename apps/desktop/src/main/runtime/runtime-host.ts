@@ -2539,6 +2539,7 @@ export interface RuntimeHostDeps {
   createRuntime(provider: Provider, connectionId?: string): AgentRuntime
   /** Resolve metadata before home/provider work; absence preserves legacy test/runtime wiring. */
   connectionFor?(provider: Provider, recordedConnection?: string | null): string
+  connectionRevision?(provider: Provider): number
   /**
    * Provision the app-owned home for a provider IN A GIVEN PROFILE and return its path.
    * The profile is passed rather than pinned because it decides what the provider remembers:
@@ -24322,6 +24323,11 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
+  private assertConnectionUnchanged(provider: Provider, revision: number | undefined): void {
+    if (revision !== undefined && this.deps.connectionRevision?.(provider) !== revision)
+      throw new Error('The selected connection changed during preparation')
+  }
+
   private runtimeWithPlugins(
     runtime: AgentRuntime,
     provider: Provider,
@@ -24369,8 +24375,12 @@ export class RuntimeHost implements LiveHost {
     // ⚑ **A folder a person or the spawn rails named, else the durable workspace** — `resolveCwd`'s
     // blank branch, which is where every conversation that asked for none runs.
     const cwd = this.deps.resolveCwd(id, input.cwd)
-    const connectionId = this.deps.connectionFor?.(input.provider)
+    const connectionId = recorded
+      ? this.deps.connectionFor?.(input.provider, this.deps.store.connectionOf(id))
+      : this.deps.connectionFor?.(input.provider)
+    const connectionRevision = this.deps.connectionRevision?.(input.provider)
     const { home: providerHome, loginRenewed } = await this.prepareAHome(input.provider, profileId)
+    this.assertConnectionUnchanged(input.provider, connectionRevision)
     // ⛔ **Asked again now the home exists, because the first answer was about a different disk**
     // (265 §4). The claim above covers every creation in THIS host; a variant laid down while we
     // waited — another BroBot tree over the same `userData`, or a person making the directory — is
@@ -24590,6 +24600,7 @@ export class RuntimeHost implements LiveHost {
           if (recorded) {
             const launched = this.deps.store.firstLaunchOf({
               id,
+              ...(handle.connectionId === undefined ? {} : { connectionId: handle.connectionId }),
               model,
               ...(reasoningEffort ? { reasoningEffort } : {}),
               ...(planMode !== undefined ? { planMode } : {}),
@@ -42348,12 +42359,17 @@ export class RuntimeHost implements LiveHost {
     // that ran short, said in words (`710`, {@link howAFailureReads}); the log keeps the errno.
     if (this.launches.closed) return { ok: false, reason: 'closing' }
     let providerHome: string
+    let connectionId: string | undefined
+    let connectionRevision: number | undefined
     try {
+      connectionId = this.deps.connectionFor?.(provider)
+      connectionRevision = this.deps.connectionRevision?.(provider)
       const preparation = this.launches.open(`${provider} model home preparation`)
       try {
         if (this.deps.beforeProviderLaunch) await this.deps.beforeProviderLaunch()
         preparation.signal.throwIfAborted()
         providerHome = await this.deps.prepareProviderHome(provider, profileId)
+        this.assertConnectionUnchanged(provider, connectionRevision)
       } finally {
         this.launches.finish(preparation)
       }
@@ -42370,9 +42386,10 @@ export class RuntimeHost implements LiveHost {
         await this.deps.beforeProviderLaunch()
         launch.signal.throwIfAborted()
       }
-      const listing = this.deps
-        .createRuntime(provider)
-        .listModels({ providerHome, signal: launch.signal })
+      const runtime = connectionId === undefined
+        ? this.deps.createRuntime(provider)
+        : this.deps.createRuntime(provider, connectionId)
+      const listing = runtime.listModels({ providerHome, signal: launch.signal })
       // Owned until the probe's own promise settles — both adapters close their child in a
       // `finally`, so that is the nearest thing to a termination receipt a probe has. Handed
       // over BEFORE the await, so a quit landing mid-probe finds it in the registry.
@@ -43421,11 +43438,13 @@ export class RuntimeHost implements LiveHost {
       row.provider,
       this.deps.store.connectionOf(sessionId),
     )
+    const connectionRevision = this.deps.connectionRevision?.(row.provider)
     const { home: providerHome, loginRenewed } = await this.prepareAHome(
       row.provider,
       profileId,
       sessionId,
     )
+    this.assertConnectionUnchanged(row.provider, connectionRevision)
     // Null only for rows written before the mode was recorded, and for adopted ones we never
     // ran; those resume PROMPTING, which is the safe direction — never the other way round.
     const approvalMode = row.approvalMode ?? 'ask'

@@ -12,6 +12,7 @@ export function onProviderConnection(
   create: () => AgentRuntime,
   resolve: (connectionId?: string | null) => ProviderConnection,
   connectionId?: string | null,
+  revision: () => number = () => 0,
 ): AgentRuntime {
   function admit(context: ProviderRuntimeContext): string {
     context.signal?.throwIfAborted()
@@ -59,35 +60,55 @@ export function onProviderConnection(
     handle: SessionHandle,
     id: string,
     context: ProviderRuntimeContext,
+    beganAt: number,
   ): Promise<SessionHandle> {
     try {
-      if (admit(context) !== id) throw new Error('The selected connection changed during launch')
-      return attribution(id)(handle)
+      assertCurrent(id, context, beganAt)
+      return handle
     } catch (error) {
       await handle.close()
       throw error
     }
   }
 
+  function assertCurrent(id: string, context: ProviderRuntimeContext, beganAt: number): void {
+    if (admit(context) !== id || revision() !== beganAt)
+      throw new Error('The selected connection changed during launch')
+  }
+
   return {
     provider,
     async start(options) {
+      const beganAt = revision()
       const id = admit(options)
-      return checked(await runtime().start(options), id, options)
+      return attribution(id)(await checked(await runtime().start(options), id, options, beganAt))
     },
     async resume(ref, options) {
       options.signal?.throwIfAborted()
       if (ref.provider !== provider) throw new Error('The recorded provider does not match')
+      const beganAt = revision()
       const id = admit(options)
       const wrap = attribution(id)
       const scoped: ResumeOptions = options.onSessionCreated
-        ? { ...options, onSessionCreated: (handle) => options.onSessionCreated!(wrap(handle)) }
+        ? { ...options, onSessionCreated: (handle) => {
+          // The delegate retains cleanup ownership until it returns. A changed binding is
+          // checked and closed below rather than exposed through the early ownership callback.
+          try {
+            assertCurrent(id, options, beganAt)
+          } catch {
+            return
+          }
+          options.onSessionCreated!(wrap(handle))
+        } }
         : options
-      return checked(wrap(await runtime().resume(ref, scoped)), id, options)
+      return wrap(await checked(await runtime().resume(ref, scoped), id, options, beganAt))
     },
     async listModels(context) {
-      admit(context)
-      return runtime().listModels(context)
+      const beganAt = revision()
+      const id = admit(context)
+      const models = await runtime().listModels(context)
+      assertCurrent(id, context, beganAt)
+      return models
     },
   }
 }

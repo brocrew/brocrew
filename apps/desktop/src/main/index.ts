@@ -820,6 +820,7 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
     (provider) => ({
       list: () => listProviderConnections(database, provider),
       resolve: (connectionId) => resolveProviderConnection(database, { provider, connectionId }),
+      revision: () => apiKeys.revision(provider),
     }),
   )
   const providerAuth = providerAuthFromModules(providerModules)
@@ -912,6 +913,7 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
       if (!connections) throw new Error('Provider connection services were not bound')
       return connections.resolve(connectionId).id
     },
+    connectionRevision: (provider) => apiKeys.revision(provider),
     // Derive the profile from the session; keep its provider home under `HOME_FOLDER`.
     beforeProviderLaunch: async () => {
       await transcriptRetention?.beforeLaunch()

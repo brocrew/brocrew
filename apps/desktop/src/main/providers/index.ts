@@ -48,6 +48,7 @@ export function createProviderModules(
     const metadata = connectionsFor(provider)
     const connections: ProviderConnectionOperations = {
       list: () => metadata.list(),
+      ...(metadata.revision ? { revision: () => metadata.revision!() } : {}),
       resolve(connectionId) {
         const selected = metadata.resolve(connectionId)
         if (connectionId != null && selected.id !== metadata.resolve().id)
@@ -59,7 +60,7 @@ export function createProviderModules(
       ...inner,
       connections,
       createRuntime: (connectionId?: string | null) =>
-        onProviderConnection(provider, () => inner.createRuntime(), connections.resolve, connectionId),
+        onProviderConnection(provider, () => inner.createRuntime(), connections.resolve, connectionId, connections.revision),
     }
   })
 }

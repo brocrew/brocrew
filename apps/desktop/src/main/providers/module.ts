@@ -45,6 +45,8 @@ export interface ProviderHomeStrategy {
 export interface ProviderConnectionOperations {
   list(): readonly ProviderConnection[]
   resolve(connectionId?: string | null): ProviderConnection
+  /** A non-secret generation of the existing key service, including changed-back selections. */
+  revision?(): number
 }
 
 export interface ProviderModule {
