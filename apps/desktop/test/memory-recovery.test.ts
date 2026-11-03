@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import * as storage from '../src/main/db/session-store'
+import { legacyIdentity } from './fixtures/legacy-migration-data'
 import { agentIdentityRowId } from '../src/main/db/identity'
 import type { ActedBy } from '../src/shared/who-did-it'
 
@@ -279,12 +280,7 @@ describe('memory intent survives interruption before its single honest observati
     const legacy = openDatabase(join(root, 'upgrading.sqlite'))
     try {
       applyMigrations(legacy, prefix)
-      storage
-        .createSessionStore(legacy)
-        .createAgentIdentity(
-          { slug: 'lark', displayName: null, provider: 'codex' },
-          { by: 'a-person' },
-        )
+      legacyIdentity(legacy, 'lark', 'codex')
       const insert = legacy.prepare(`INSERT INTO identity_memory_amendment
         (id, identity_id, seq, provider, entry, act, by, text_before, text_after, created_at, source_id)
         VALUES (?, ?, ?, 'claude', ?, ?, ?, ?, ?, ?, ?)`)

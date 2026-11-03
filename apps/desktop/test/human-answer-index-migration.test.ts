@@ -6,6 +6,7 @@ import { expect, it } from 'vitest'
 import { openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
+import { legacyConversation } from './fixtures/legacy-migration-data'
 
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
@@ -35,7 +36,7 @@ it('adds the human-answer indexes to a large fictional ledger without changing o
         )
         .all(),
     ).toHaveLength(0)
-    createSessionStore(db).create({
+    legacyConversation(db, {
       id: 's',
       provider: 'codex',
       cwd: directory,

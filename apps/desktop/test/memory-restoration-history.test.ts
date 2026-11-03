@@ -7,6 +7,7 @@ import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { agentIdentityRowId } from '../src/main/db/identity'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
+import { legacyIdentity } from './fixtures/legacy-migration-data'
 import { MEMORY_AMENDMENT } from '../src/shared/agent-memory'
 import { runtimeCommandSchema } from '../src/main/runtime/ipc'
 import type { ActedBy } from '../src/shared/who-did-it'
@@ -244,11 +245,7 @@ describe('memory restoration keeps absence, source and author in the existing hi
     const old = openDatabase(join(root, 'legacy.sqlite'))
     try {
       applyMigrations(old, prior)
-      const legacy = createSessionStore(old)
-      legacy.createAgentIdentity(
-        { slug: 'lark', displayName: null, provider: 'codex' },
-        { by: 'a-person' },
-      )
+      legacyIdentity(old, 'lark', 'codex')
       old
         .prepare(
           `INSERT INTO identity_memory_amendment

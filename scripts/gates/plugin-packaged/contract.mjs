@@ -142,7 +142,7 @@ export function projectBuild(config, entry, appData, browser) {
   )
   entry = replace(
     entry,
-    'providerModules[provider].createRuntime()',
+    'providerModules[provider].createRuntime(connectionId)',
     `/* ${GATE_BUILD_MARKER} */ new PackagedGateRuntime(provider, ${JSON.stringify(path.dirname(appData))})`,
   )
   entry = replace(
