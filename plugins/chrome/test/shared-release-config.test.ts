@@ -39,13 +39,15 @@ function fixture() {
   }
 }
 
-it('ships an immutable release signal with every platform off', () => {
-  expect(release.sharedProfilesRelease).toEqual({ format: 1, mac: false, windows: false })
+it('ships an immutable release signal for qualified Mac and Windows only', () => {
+  expect(release.sharedProfilesRelease).toEqual({ format: 1, mac: true, windows: true })
   expect(Object.isFrozen(release.sharedProfilesRelease)).toBe(true)
-  for (const platform of ['darwin', 'win32', 'linux', 'unknown'])
+  for (const platform of ['darwin', 'win32'])
+    expect(release.sharedProfilesReleased(platform, release.sharedProfilesRelease)).toBe(true)
+  for (const platform of ['linux', 'unknown'])
     expect(release.sharedProfilesReleased(platform, release.sharedProfilesRelease)).toBe(false)
   expect(release.sharedProfilesReleased('darwin')).toBe(false)
-  expect(loadConfig(fixture()).shared).toBeUndefined()
+  expect(!!loadConfig(fixture()).shared).toBe(['darwin', 'win32'].includes(process.platform))
 })
 
 it.each([
@@ -97,6 +99,7 @@ it.each([
     legacyOwnersRetired: true,
   }),
 ])('owner receipts and environment release claims cannot enable migration: %s', (receipt) => {
+  vi.spyOn(release, 'sharedProfilesReleased').mockReturnValue(false)
   const env = {
     ...fixture(),
     BROCREW_CHROME_MIGRATION_QUALIFICATION: receipt,
@@ -111,6 +114,7 @@ it.each([
 })
 
 it('OFF preserves the original local names, list, storage and profile bytes with no shared writes', () => {
+  vi.spyOn(release, 'sharedProfilesReleased').mockReturnValue(false)
   const env = fixture()
   const local = createProfileStore({ home: env.BROCREW_CHROME_DATA })
   local.create('fern', 'panel')
@@ -143,6 +147,7 @@ it('OFF preserves the original local names, list, storage and profile bytes with
   ).toBeUndefined()
 })
 it('OFF ignores unused shared environment fields exactly as the local-only plugin does', () => {
+  vi.spyOn(release, 'sharedProfilesReleased').mockReturnValue(false)
   const env = fixture()
   expect(
     loadConfig({

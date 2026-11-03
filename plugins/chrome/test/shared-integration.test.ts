@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
 import { loadConfig } from '../src/config.js'
+import { sharedProfilesRelease, sharedProfilesReleased } from '../src/sharedProfilesRelease.js'
 import { createConfiguredProfileStore } from '../src/index.js'
 import { createSharedProfileStore } from '../src/profiles/sharedStore.js'
 import { startAgentChrome } from '../src/app.js'
@@ -49,7 +50,15 @@ function fixture() {
 }
 it('config uses only supplied capability, binds workspace identity and keeps files/downloads local', () => {
   const f = fixture()
-  expect(f.config.shared).toBeUndefined()
+  const released = sharedProfilesReleased(process.platform, sharedProfilesRelease)
+  if (released)
+    expect(f.config.shared).toEqual({
+      root: f.shared,
+      workspaceId: f.env.BROCREW_PLUGIN_OWNER_ID,
+      workspaceLabel: 'Alpha',
+      migrationApproved: true,
+    })
+  else expect(f.config.shared).toBeUndefined()
   expect(f.config.downloadsRoot.startsWith(f.home + path.sep)).toBe(true)
   expect(f.config.workspace.startsWith(f.home + path.sep)).toBe(true)
   const localEnv: Record<string, string | undefined> = {
@@ -58,11 +67,14 @@ it('config uses only supplied capability, binds workspace identity and keeps fil
   }
   expect(loadConfig(localEnv).shared).toBeUndefined()
   expect(createConfiguredProfileStore(loadConfig(localEnv)).shared).toBeUndefined()
-  for (const id of ['', '../beta', 'space id'])
-    expect(loadConfig({ ...f.env, BROCREW_PLUGIN_OWNER_ID: id }).shared).toBeUndefined()
-  expect(
-    loadConfig({ ...f.env, BROCREW_CHROME_MIGRATION_QUALIFICATION: '{}' }).shared,
-  ).toBeUndefined()
+  for (const id of ['', '../beta', 'space id']) {
+    if (released)
+      expect(() => loadConfig({ ...f.env, BROCREW_PLUGIN_OWNER_ID: id })).toThrow('identity')
+    else expect(loadConfig({ ...f.env, BROCREW_PLUGIN_OWNER_ID: id }).shared).toBeUndefined()
+  }
+  expect(loadConfig({ ...f.env, BROCREW_CHROME_MIGRATION_QUALIFICATION: '{}' }).shared).toEqual(
+    f.config.shared,
+  )
 })
 it('fresh admin warning binds the immutable identity/revision; agent bearer cannot delete', async () => {
   const f = fixture()

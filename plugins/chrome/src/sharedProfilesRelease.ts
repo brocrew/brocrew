@@ -1,4 +1,4 @@
-export const sharedProfilesRelease = Object.freeze({ format: 1, mac: false, windows: false })
+export const sharedProfilesRelease = Object.freeze({ format: 1, mac: true, windows: true })
 
 export function sharedProfilesReleased(platform: string, signal?: unknown): boolean {
   if (!signal || typeof signal !== 'object') return false
