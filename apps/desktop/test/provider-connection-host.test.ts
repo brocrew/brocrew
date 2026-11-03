@@ -96,8 +96,10 @@ function fixture() {
     }),
   }
   Reflect.set(deps, 'connectionFor', connectionFor)
-  Reflect.set(deps, 'connectionRevision', (provider: Provider) =>
-    state.revisionOf?.(provider) ?? state.revision,
+  Reflect.set(
+    deps,
+    'connectionRevision',
+    (provider: Provider) => state.revisionOf?.(provider) ?? state.revision,
   )
   host = new RuntimeHost(deps)
   return { store, prepare, create, connectionFor, state, deps, rawRuntimes }
@@ -105,7 +107,9 @@ function fixture() {
 
 function deferred() {
   let resolve!: () => void
-  const promise = new Promise<void>((done) => { resolve = done })
+  const promise = new Promise<void>((done) => {
+    resolve = done
+  })
   return { promise, resolve }
 }
 
@@ -166,9 +170,15 @@ for (const provider of ['claude', 'codex'] as const) {
       const f = fixture()
       let sessionId: string | undefined
       if (opening !== 'fresh') {
-        const created = await host.createSession({
-          provider, profileId: 'fern', model: `fake-${provider}-a`, reasoningEffort: 'medium',
-        }, sink)
+        const created = await host.createSession(
+          {
+            provider,
+            profileId: 'fern',
+            model: `fake-${provider}-a`,
+            reasoningEffort: 'medium',
+          },
+          sink,
+        )
         sessionId = created.sessionId
         await host.close(sessionId, sink)
         if (opening === 'legacy resume')
@@ -184,13 +194,20 @@ for (const provider of ['claude', 'codex'] as const) {
         entered.resolve()
         await released.promise
       }
-      const pending = opening === 'models'
-        ? host.providerModels('fern', provider)
-        : sessionId === undefined
-          ? host.createSession({
-              provider, profileId: 'fern', model: `fake-${provider}-a`, reasoningEffort: 'medium',
-            }, sink)
-          : host.resumeSession(sessionId, sink)
+      const pending =
+        opening === 'models'
+          ? host.providerModels('fern', provider)
+          : sessionId === undefined
+            ? host.createSession(
+                {
+                  provider,
+                  profileId: 'fern',
+                  model: `fake-${provider}-a`,
+                  reasoningEffort: 'medium',
+                },
+                sink,
+              )
+            : host.resumeSession(sessionId, sink)
       await entered.promise
       f.state.revision += 2
       released.resolve()

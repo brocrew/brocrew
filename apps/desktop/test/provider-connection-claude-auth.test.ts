@@ -25,7 +25,12 @@ class Query implements ClaudeQuery {
     return []
   }
   [Symbol.asyncIterator](): AsyncIterator<SDKMessage> {
-    return { next: async () => { await this.ended; return { done: true, value: undefined } } }
+    return {
+      next: async () => {
+        await this.ended
+        return { done: true, value: undefined }
+      },
+    }
   }
 }
 
