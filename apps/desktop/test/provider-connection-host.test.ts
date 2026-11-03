@@ -165,7 +165,7 @@ for (const provider of ['claude', 'codex'] as const) {
     it(`${provider}: changed-back credentials in the final ${opening} wait refuse before delegation`, async () => {
       const f = fixture()
       let sessionId: string | undefined
-      if (opening === 'bound resume' || opening === 'legacy resume') {
+      if (opening !== 'fresh') {
         const created = await host.createSession({
           provider, profileId: 'fern', model: `fake-${provider}-a`, reasoningEffort: 'medium',
         }, sink)
