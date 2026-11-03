@@ -10,14 +10,12 @@ afterEach(() => {
   Reflect.deleteProperty(window, 'api')
 })
 
-it('shows copy size and expiry; Delete now waits, reports failures, and refreshes on success', async () => {
+it('shows copy size; Delete now waits, reports failures, and refreshes on success', async () => {
   providersBridge()
   themesBridge('brocrew')
   const copy = {
     id: '11111111-1111-4111-8111-111111111111',
     bytes: 2_500_000_000,
-    expiresAt: '2026-11-03T09:00:00.000Z',
-    startsLeft: 2,
     appVersion: '0.1.9',
   }
   let kept: typeof copy | null = copy
@@ -44,14 +42,14 @@ it('shows copy size and expiry; Delete now waits, reports failures, and refreshe
     { width: 1000, height: 800 },
   )
   await vi.waitFor(() => expect(m.q('recovery-retention').textContent).toContain('2.5 GB'))
-  expect(m.q('recovery-retention').textContent).toContain('2 more successful starts')
-  expect(m.q('recovery-retention').textContent).toContain('2026')
+  expect(m.q('recovery-retention').textContent).not.toContain('successful starts')
+  expect(m.q('recovery-retention').textContent).not.toContain('Deleted on')
   expect(m.q('recovery-retention').textContent).toContain('made before the update to 0.1.9')
   m.q('recovery-delete').click()
   await nextTick()
   expect(deletes).toEqual([])
   expect(m.q('recovery-delete-confirmation').textContent).toContain(
-    "Delete the recovery copy? You can't go back to the earlier version after this.",
+    'Delete this recovery copy? You won’t be able to restore this copy afterwards.',
   )
   m.q('recovery-delete-cancel').click()
   await nextTick()
@@ -80,4 +78,24 @@ it('shows copy size and expiry; Delete now waits, reports failures, and refreshe
     expect(m.q('recovery-retention').textContent).toContain('No recovery copy kept.'),
   )
   expect(m.all('recovery-delete')).toHaveLength(0)
+})
+
+it('does not promise age or start expiry for the newest-two update policy', async () => {
+  providersBridge()
+  themesBridge('brocrew')
+  window.api = {
+    ...window.api,
+    recoveryRetention: {
+      read: async () => ({
+        id: '11111111-1111-4111-8111-111111111111',
+        bytes: 2_500_000_000,
+        appVersion: '0.1.9',
+      }),
+      deleteNow: async () => {},
+    },
+  }
+  const m = mount(SettingsScreen, { tab: 'general', capabilities: null, warnings: null, clock: 0 })
+  await vi.waitFor(() => expect(m.q('recovery-retention').textContent).toContain('2.5 GB'))
+  expect(m.q('recovery-retention').textContent).not.toContain('Deleted on')
+  expect(m.q('recovery-retention').textContent).not.toContain('successful starts')
 })

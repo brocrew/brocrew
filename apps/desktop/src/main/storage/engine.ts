@@ -31,6 +31,7 @@ export type StorageRequest =
   | { readonly kind: 'reveal'; readonly location?: StorageLocation }
 export type StorageReply = StorageOverview | StorageDirectory | { readonly path: string }
 export const STORAGE_BOUNDS = { entries: 100_000, depth: 64, milliseconds: 10_000 } as const
+export const STORAGE_MEASURE_TIMEOUT = STORAGE_PART_IDS.length * STORAGE_BOUNDS.milliseconds + 5000
 
 export class StorageFailure extends Error {
   constructor(readonly reason: StorageError) {
@@ -48,7 +49,7 @@ export function insideData(root: string, path: string): boolean {
 /** This engine runs in a disposable worker. It never reads file contents or follows links. */
 export class StorageEngine {
   private visited = 0
-  private readonly started = performance.now()
+  private started = performance.now()
   private canonicalData = ''
   constructor(
     private readonly roots: StorageRoots,
@@ -141,6 +142,7 @@ export class StorageEngine {
     part: StoragePartId,
     segments: readonly string[],
     state: { error?: StorageError },
+    checkedParent = false,
   ): Promise<number> {
     let bytes = 0
     if (segments.length > this.bounds.depth) {
@@ -148,19 +150,24 @@ export class StorageEngine {
       return 0
     }
     try {
-      const safe = await this.checked(path, part)
+      this.checkpoint()
+      const safe = checkedParent ? path : await this.checked(path, part)
       const stat = await lstat(safe)
+      if (stat.isSymbolicLink()) throw new StorageFailure('linked-path')
+      const actual = await realpath(safe)
+      if (!insideData(safe, actual)) throw new StorageFailure('outside-data')
       if (stat.isFile()) return stat.size
       if (!stat.isDirectory()) {
         state.error ??= 'unavailable'
         return 0
       }
-      const directory = await opendir(safe)
+      const directory = await opendir(actual)
       for await (const entry of directory) {
         this.checkpoint()
         const child = [...segments, entry.name]
         if (!this.allowed(part, child)) continue
-        bytes += await this.size(join(path, entry.name), part, child, state)
+        bytes += await this.size(join(actual, entry.name), part, child, state, true)
+        if (state.error === 'limit') break
       }
       return bytes
     } catch (error) {
@@ -229,6 +236,9 @@ export class StorageEngine {
         // Individual parts can still be measured when the filesystem has no free-space reading.
       }
       for (const id of STORAGE_PART_IDS) {
+        // A large or slow part must not spend the budget of every later part.
+        this.visited = 0
+        this.started = performance.now()
         let bytes = 0
         const state: { error?: StorageError } = {}
         try {

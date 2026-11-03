@@ -130,12 +130,8 @@ const RESTORED_WITH_THE_DATABASE: ReadonlySet<string> = new Set(
   APP_STATE_FILES.filter((file) => file.restore === 'with-the-database').map((file) => file.name),
 )
 
-/** The one copy made before the latest upgrade. */
-const KEEP_NEWEST = 1
-/** Age at which even the last copy expires after a successful database open. */
-const KEEP_WITHIN_MS = 3 * 24 * 60 * 60 * 1000
-/** A checkpoint folder with no manifest this old is a copy that never finished. */
-const UNFINISHED_AFTER_MS = 60 * 60 * 1000
+/** The newest verified update copies retained for recovery. */
+const KEEP_NEWEST = 2
 /** The room a copy needs beyond the database's own size, for the copy's journal and the rest. */
 const HEADROOM_SHARE = 1.1
 const HEADROOM_BYTES = 64 * 1024 * 1024
@@ -493,22 +489,17 @@ export interface PruneOptions {
   /** Epoch ms. */
   readonly now?: () => number
   readonly warn?: (line: string) => void
-  /** Leave unfinished folders alone when freeing room before making a new copy. */
-  readonly includeUnfinished?: boolean
-  /** Keep other versions' unexpired copies and protect copies from a later app version. */
+  /** Protect copies from a later app version. */
   readonly currentAppVersion?: string
-  /** Before migrations, even an expired newest intact copy must survive until a new one exists. */
-  readonly expire?: boolean
 }
 
 /**
  * Lets go of the checkpoints no longer kept, and returns the folder names it removed.
  *
- * Keeps one newest intact copy, until three days or three successful starts of its version.
- * Other versions' intact copies stay until their own age or matching start receipt expires them.
- * Before migrations the newest copy is protected regardless of expiry. Foreign, damaged,
- * unreadable and newer-build copies remain protected. Unfinished writer-marked UUID folders
- * are removed after an hour. Non-UUID folders, including manual timestamp copies, are untouched.
+ * Keeps the newest two intact, compatible copies of this workspace without age or start expiry.
+ * Foreign, damaged, unreadable and newer-build copies remain protected and do not consume those
+ * two places. Unfinished writers and non-UUID folders are untouched. Call only after startup
+ * succeeds, or for an explicit Settings cleanup after that successful start.
  *
  * It removes nothing unless this process is the only app on the data folder, and nothing in a run
  * where anything in `backups/` could not be read, since what to keep is then not known.
@@ -520,7 +511,6 @@ export async function prune(
 ): Promise<string[]> {
   if (options.ownership !== 'sole') return []
   const fs = options.fs ?? nodeFs
-  const now = options.now ?? Date.now
   const warn = options.warn ?? ((line: string) => console.warn(line))
   const notThisTime = (why: string): string[] => {
     warn(`BroCrew kept every old recovery copy this time: ${why}`)
@@ -532,7 +522,7 @@ export async function prune(
   try {
     await assertOwnedPathsAreReal(userData, [], fs)
     if ((await pathExists(gateFile(userData), fs)) || (await pathExists(journalFile(userData), fs)))
-      return []
+      return notThisTime('A restore is in progress.')
     folders = await foldersInBackups(userData, fs)
     workspace = await readWorkspaceId(userData, fs)
   } catch (error) {
@@ -546,17 +536,14 @@ export async function prune(
     return notThisTime(`${workspaceIdFile(userData)} could not be read.`)
   }
 
-  let receipt: RetentionReceipt | null
   let deletion: CheckpointDeletion | null
   try {
-    receipt = await readRetentionReceipt(userData, fs)
+    await readRetentionReceipt(userData, fs)
     deletion = await readCheckpointDeletion(
       userData,
       workspace.kind === 'id' ? workspace.id : null,
       fs,
     )
-    if (deletion && (await deletionRemnant(userData, deletion, fs)) && options.expire === false)
-      return []
   } catch (error) {
     return notThisTime(messageOf(error))
   }
@@ -578,28 +565,8 @@ export async function prune(
   // kept while another would go, newest first, giving its place to the next when it does not
   // match; then each copy that would go, just before it goes.
   let candidates = whole
-  const expired = (checkpoint: Checkpoint): boolean =>
-    now() - Date.parse(checkpoint.manifest.createdAt) >= KEEP_WITHIN_MS ||
-    (receipt?.checkpointId === checkpoint.manifest.id &&
-      receipt.appVersion === checkpoint.manifest.madeBy.appVersion &&
-      receipt.successfulStarts >= 3)
-  const keepingOf = (copies: readonly Checkpoint[]): Set<string> => {
-    const newest = copies[0]
-    const newestExpired = newest !== undefined && options.expire !== false && expired(newest)
-    const kept = new Set(
-      newestExpired ? [] : copies.slice(0, KEEP_NEWEST).map(({ manifest }) => manifest.id),
-    )
-    for (const checkpoint of copies) {
-      if (
-        options.currentAppVersion !== undefined &&
-        checkpoint.manifest.madeBy.appVersion !== options.currentAppVersion &&
-        !expired(checkpoint)
-      ) {
-        kept.add(checkpoint.manifest.id)
-      }
-    }
-    return kept
-  }
+  const keepingOf = (copies: readonly Checkpoint[]): Set<string> =>
+    new Set(copies.slice(0, KEEP_NEWEST).map(({ manifest }) => manifest.id))
   const intact = new Set<string>()
   for (;;) {
     const keeping = keepingOf(candidates)
@@ -623,19 +590,8 @@ export async function prune(
     }
   }
 
-  const unfinished = (options.includeUnfinished === false ? [] : folders).flatMap(
-    ({ name, found }) =>
-      isUuid(name) &&
-      name !== deletion?.manifest.id &&
-      found.kind === 'unfinished' &&
-      found.marked &&
-      found.onlyTheWritersFiles &&
-      now() - found.changedAt > UNFINISHED_AFTER_MS
-        ? [name]
-        : [],
-  )
   const removed: string[] = []
-  if (deletion && options.expire !== false) {
+  if (deletion) {
     const selected = {
       folder: checkpointDir(userData, deletion.manifest.id),
       manifest: deletion.manifest,
@@ -666,15 +622,6 @@ export async function prune(
       warn(`BroCrew could not remove the old recovery copy in ${folder}: ${messageOf(error)}`)
       // Keep the one in-progress marker until this fragment is finished; never overwrite it.
       return removed
-    }
-  }
-  for (const name of unfinished) {
-    const folder = checkpointDir(userData, name)
-    try {
-      await removeCheckpointCopy(userData, folder, fs)
-      removed.push(name)
-    } catch (error) {
-      warn(`BroCrew could not remove the old recovery copy in ${folder}: ${messageOf(error)}`)
     }
   }
   return removed
@@ -1199,7 +1146,7 @@ export async function retainedCopyInfo(
 ): Promise<RetainedRecoveryCopy | null> {
   const fs = options.fs ?? nodeFs
   await assertOwnedPathsAreReal(userData, [], fs)
-  const receipt = await readRetentionReceipt(userData, fs)
+  await readRetentionReceipt(userData, fs)
   const workspace = await readWorkspaceId(userData, fs)
   const deletion = await readCheckpointDeletion(
     userData,
@@ -1213,8 +1160,6 @@ export async function retainedCopyInfo(
       id: deletion.manifest.id,
       appVersion: deletion.manifest.madeBy.appVersion,
       bytes: remnant.bytes,
-      expiresAt: new Date(Date.parse(deletion.manifest.createdAt) + KEEP_WITHIN_MS).toISOString(),
-      startsLeft: 0,
     }
   }
   const copy = (await listOfferable(userData, lineage, fs)).find(
@@ -1229,15 +1174,6 @@ export async function retainedCopyInfo(
     bytes:
       copy.manifest.database.bytes +
       copy.manifest.files.reduce((total, file) => total + (file.present ? file.bytes : 0), 0),
-    expiresAt: new Date(Date.parse(copy.manifest.createdAt) + KEEP_WITHIN_MS).toISOString(),
-    startsLeft: Math.max(
-      0,
-      3 -
-        (receipt?.checkpointId === copy.manifest.id &&
-        receipt.appVersion === copy.manifest.madeBy.appVersion
-          ? receipt.successfulStarts
-          : 0),
-    ),
   }
 }
 
@@ -1290,7 +1226,8 @@ export async function deleteRetainedCopy(
       !(await onlyCheckpointFiles(copy, fs))
     )
       return false
-    if (!receipt || receipt.appVersion !== copy.manifest.madeBy.appVersion) return false
+    const runningVersion = options.currentAppVersion ?? copy.manifest.madeBy.appVersion
+    if (!receipt || receipt.appVersion !== runningVersion) return false
     await assertOwnedPathsAreReal(userData, [copy.folder], fs)
     await finishCheckpointDeletion(userData, await beginCheckpointDeletion(userData, copy, fs), fs)
     return true

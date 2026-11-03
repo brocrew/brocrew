@@ -1,4 +1,4 @@
-import { basename, dirname, join } from 'node:path'
+import { basename, dirname, join, relative } from 'node:path'
 import { parseManifest, type CheckpointManifest } from './contract'
 import {
   assertOwnedPathsAreReal,
@@ -79,6 +79,17 @@ async function copyRoot(userData: string, folder: string, fs: RecoveryFs): Promi
   await assertOwnedPathsAreReal(userData, [folder], fs)
   const stats = await statOrNull(folder, fs)
   if (stats && (stats.isSymbolicLink() || !stats.isDirectory())) throw failed()
+  if (stats) {
+    const data = await fs.realpath(userData)
+    const backups = await fs.realpath(backupsDir(userData))
+    const copy = await fs.realpath(folder)
+    if (
+      relative(data, dirname(backups)) !== '' ||
+      relative(backups, dirname(copy)) !== '' ||
+      relative(join(backups, name), copy) !== ''
+    )
+      throw failed()
+  }
 }
 
 interface DirectoryBinding {

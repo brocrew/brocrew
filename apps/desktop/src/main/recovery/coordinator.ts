@@ -538,35 +538,16 @@ async function decide(
       ...(deps.beforeCheckpointStep === undefined ? {} : { beforeStep: deps.beforeCheckpointStep }),
     })
   try {
-    try {
-      await make()
-    } catch (error) {
-      if (!(error instanceof CheckpointNoRoom)) throw error
-      const removed = await prune(userData, lineage, {
-        ownership: owner,
-        fs,
-        ...(deps.now === undefined ? {} : { now: deps.now }),
-        includeUnfinished: false,
-        expire: false,
-        currentAppVersion: deps.appVersion,
-      })
-      try {
-        await make()
-      } catch (retryError) {
-        if (!(retryError instanceof CheckpointNoRoom)) throw retryError
-        const first =
-          `There isn't enough free space for a recovery copy: it needs about ` +
-          `${inWords(retryError.needed)}, and ${inWords(retryError.free)} is free.`
-        return failed(
-          'checkpoint-failed',
-          true,
-          removed.length === 0
-            ? first
-            : `${first} BroCrew already removed its older recovery copies. Free some space, then try again.`,
-        )
-      }
-    }
+    await make()
   } catch (error) {
+    if (error instanceof CheckpointNoRoom) {
+      return failed(
+        'checkpoint-failed',
+        true,
+        `There isn't enough free space for a recovery copy: it needs about ` +
+          `${inWords(error.needed)}, and ${inWords(error.free)} is free.`,
+      )
+    }
     return error instanceof CheckpointFailed
       ? failed('checkpoint-failed', error.canRetry, error.message)
       : failed(

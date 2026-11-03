@@ -10,5 +10,7 @@ export function storageBridge(ipc: Pick<IpcRenderer, 'invoke'>): StorageBridge {
       ipc.invoke(STORAGE_CHANNELS.reveal, location) as ReturnType<StorageBridge['reveal']>,
     clearCache: () =>
       ipc.invoke(STORAGE_CHANNELS.clearCache) as ReturnType<StorageBridge['clearCache']>,
+    pruneBackups: () =>
+      ipc.invoke(STORAGE_CHANNELS.pruneBackups) as ReturnType<StorageBridge['pruneBackups']>,
   })
 }

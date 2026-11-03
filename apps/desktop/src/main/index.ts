@@ -15,6 +15,7 @@ import startStorageWorker from './storage.worker?nodeWorker'
 import { StorageService } from './storage/service'
 import { clearHttpCache, httpCacheFolder } from './storage/cache'
 import { registerStorageIpc } from './storage/ipc'
+import { StorageFailure } from './storage/engine'
 import { registerVoiceIpc } from './voice/ipc'
 import { VoiceService } from './voice/service'
 import { runVoiceHelper } from './voice/engine'
@@ -23,7 +24,6 @@ import { profileSkillAccess, SharedSkillDiscovery } from './skills/shared-discov
 import { convertSharedSkills } from './skills/shared-conversion'
 import { SharedSkillLibrary } from './skills/shared-library'
 import { providerProcessesAreInFlight } from './runtime/live-hosts'
-import { armRecoveryExpiry } from './recovery/retention-timer'
 import { RECOVERY_RETENTION_CHANNELS } from '../shared/recovery-retention'
 import {
   prune,
@@ -165,7 +165,6 @@ import {
   createRecoveryService,
   createRecoveryServiceForTests,
   faultsFromSwitch,
-  pruneTheCopies,
   KEEP_RECOVERY_WINDOW_SWITCH,
   RECOVERY_FAULT_SWITCH,
   keepsTheRecoveryWindow,
@@ -423,31 +422,12 @@ let transcriptRetention: TranscriptRetentionHost | undefined
 let recoveryMaintenance: Promise<unknown> = Promise.resolve()
 let recoveryStartSucceeded = false
 let recoveryStartRecorded: Promise<void> | undefined
-let recoveryExpiryTimer: ReturnType<typeof setTimeout> | undefined
 function withRecoveryCopies<T>(work: () => Promise<T>): Promise<T> {
   const next = recoveryMaintenance.then(work)
   recoveryMaintenance = next.catch(() => undefined)
   return next
 }
 
-async function scheduleRecoveryExpiry(): Promise<void> {
-  clearTimeout(recoveryExpiryTimer)
-  recoveryExpiryTimer = undefined
-  const copy = await retainedCopyInfo(app.getPath('userData'), theBuildsMigrations(), {
-    ownership: theOneAppAnswer?.held() ?? 'unknown',
-    currentAppVersion: app.getVersion(),
-  })
-  if (!copy) return
-  recoveryExpiryTimer = armRecoveryExpiry(copy.expiresAt, () => {
-    void withRecoveryCopies(async () => {
-      await prune(app.getPath('userData'), theBuildsMigrations(), {
-        ownership: theOneAppAnswer?.held() ?? 'unknown',
-        currentAppVersion: app.getVersion(),
-      })
-      await scheduleRecoveryExpiry()
-    }).catch((error) => console.warn('BroCrew kept its recovery copy:', error))
-  })
-}
 let signalFirstWindowLoad!: () => void
 const firstWindowLoad = new Promise<void>((resolve) => {
   signalFirstWindowLoad = resolve
@@ -1408,6 +1388,21 @@ function registerIpc(runtimeHost: RuntimeHost, localZone: () => LocalZone | null
   stopStorageIpc = registerStorageIpc(ipcMain, storage, {
     reveal: (path) => shell.showItemInFolder(path),
     clearCache: () => clearHttpCache(storage, () => session.defaultSession.clearCache()),
+    pruneBackups: () =>
+      withRecoveryCopies(async () => {
+        if (!recoveryStartSucceeded || theOneAppAnswer?.held() !== 'sole')
+          throw new StorageFailure('unavailable')
+        let failed = false
+        await prune(app.getPath('userData'), theBuildsMigrations(), {
+          ownership: 'sole',
+          currentAppVersion: app.getVersion(),
+          warn: (line) => {
+            failed = true
+            console.warn(line)
+          },
+        })
+        if (failed) throw new StorageFailure('unavailable')
+      }),
     isAppWindow: (event) =>
       storageAppWindows.has(event.sender) &&
       !event.sender.isDestroyed() &&
@@ -2159,14 +2154,10 @@ async function letGoOfOldCopies(): Promise<void> {
   return withRecoveryCopies(async () => {
     try {
       await recoveryStartRecorded
-      const removed = await pruneTheCopies(
-        app.getPath('userData'),
-        resolveMigrationsFolder(),
-        theOneAppAnswer?.held() ?? 'unknown',
-        (line) => console.warn(line),
-        app.getVersion(),
-      )
-      await scheduleRecoveryExpiry()
+      const removed = await prune(app.getPath('userData'), theBuildsMigrations(), {
+        ownership: theOneAppAnswer?.held() ?? 'unknown',
+        currentAppVersion: app.getVersion(),
+      })
       if (removed.length > 0) {
         console.info(`BroCrew let go of ${String(removed.length)} old recovery copies`)
       }

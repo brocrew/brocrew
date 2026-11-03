@@ -33,6 +33,7 @@ function setup(over: Partial<StorageBridge> = {}) {
     children: vi.fn(async () => directory),
     reveal: vi.fn(async () => ({ ok: true as const })),
     clearCache: vi.fn(async () => ({ ok: true as const })),
+    pruneBackups: vi.fn(async () => ({ ok: true as const })),
     ...over,
   } satisfies StorageBridge
   Reflect.set(window, 'api', { storage: bridge })
@@ -59,8 +60,35 @@ it('measures on open, shows loading, and uses the returned sizes rather than moc
   const retention = [...m.host.querySelectorAll('button')].find(
     (button) => button.textContent?.trim() === 'Keep the last 2',
   )!
-  expect(retention.disabled).toBe(true)
-  expect(retention.title).toBe('Backup retention is coming soon.')
+  expect(retention.disabled).toBe(false)
+  expect(m.host.textContent).not.toContain('coming soon')
+})
+
+it('Keep the last 2 waits for pruning, refuses repeat clicks, and refreshes only on success', async () => {
+  let finish!: (value: { ok: true }) => void
+  const { m, bridge } = setup({
+    pruneBackups: vi.fn<StorageBridge['pruneBackups']>(
+      () =>
+        new Promise<{ ok: true }>((resolve) => {
+          finish = resolve
+        }),
+    ),
+  })
+  await settle()
+  m.q('storage-prune-backups').click()
+  await settle()
+  expect((m.q('storage-prune-backups') as HTMLButtonElement).disabled).toBe(true)
+  m.q('storage-prune-backups').dispatchEvent(new MouseEvent('click', { bubbles: true }))
+  expect(bridge.pruneBackups).toHaveBeenCalledTimes(1)
+  expect(bridge.measure).toHaveBeenCalledTimes(1)
+  finish({ ok: true })
+  await settle()
+  expect(bridge.measure).toHaveBeenCalledTimes(2)
+  vi.mocked(bridge.pruneBackups).mockResolvedValueOnce({ ok: false, error: 'unavailable' })
+  m.q('storage-prune-backups').click()
+  await settle()
+  expect(bridge.measure).toHaveBeenCalledTimes(2)
+  expect(m.q('storage-message').textContent).toContain('Storage could not be read.')
 })
 it('drills through typed locations, shows the smaller-item summary, and returns through the breadcrumb', async () => {
   const { m, bridge } = setup()

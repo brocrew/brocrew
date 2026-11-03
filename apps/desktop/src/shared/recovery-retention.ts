@@ -7,8 +7,6 @@ export interface RetainedRecoveryCopy {
   readonly id: string
   readonly appVersion: string
   readonly bytes: number
-  readonly expiresAt: string
-  readonly startsLeft: number
 }
 
 export interface RecoveryRetentionClient {
