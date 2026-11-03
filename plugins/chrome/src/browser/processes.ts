@@ -14,45 +14,86 @@ export const realRun: RunProgram = (file, args) =>
   })
 export const BROWSER_EXE = /^(google chrome|chromium|chrome|msedge|microsoft[- ]edge)/i
 export const WINDOWS_LIST_SCRIPT =
-  '[Console]::OutputEncoding=[Text.Encoding]::UTF8; Get-CimInstance Win32_Process | Select-Object ProcessId,CommandLine | ConvertTo-Csv -NoTypeInformation'
-function csvRows(text: string): string[][] {
+  '[Console]::OutputEncoding=[Text.Encoding]::UTF8; Get-CimInstance Win32_Process | Select-Object ProcessId,CommandLine,Name | ConvertTo-Csv -NoTypeInformation'
+function csvRows(text: string): string[][] | undefined {
   const rows: string[][] = []
-  let row: string[] = []
-  let field = ''
-  let quoted = false
+  let row: string[] = [],
+    field = '',
+    quoted = false,
+    closed = false
   for (let i = 0; i < text.length; i++) {
     const c = text[i]
     if (quoted) {
       if (c === '"' && text[i + 1] === '"') {
         field += '"'
         i++
-      } else if (c === '"') quoted = false
-      else field += c
-    } else if (c === '"') quoted = true
-    else if (c === ',') {
+      } else if (c === '"') {
+        quoted = false
+        closed = true
+      } else field += c
+    } else if (c === ',') {
       row.push(field)
       field = ''
+      closed = false
     } else if (c === '\n' || c === '\r') {
       if (c === '\r' && text[i + 1] === '\n') i++
       row.push(field)
       field = ''
+      closed = false
       if (row.length > 1 || row[0] !== '') rows.push(row)
       row = []
-    } else field += c
+    } else if (c === '"') {
+      if (field !== '' || closed) return undefined
+      quoted = true
+    } else {
+      if (closed) return undefined
+      field += c
+    }
   }
-  if (field !== '' || row.length > 0) {
+  if (quoted) return undefined
+  if (field !== '' || row.length > 0 || closed) {
     row.push(field)
     rows.push(row)
   }
   return rows
 }
-export function parseCimCsv(csv: string): string {
-  const lines: string[] = []
-  for (const [pid, command] of csvRows(csv.replace(/^\uFEFF/, ''))) {
-    if (!/^\d+$/.test(pid ?? '') || !command?.trim()) continue
-    lines.push(`${pid} ${command.replace(/\s+/g, ' ').trim()}`)
+export interface CimProcessRow {
+  pid: number
+  command: string
+  name: string
+}
+/** Keep every CIM row, including an unquoted null CommandLine. Absence proofs need its identity. */
+export function parseCimRows(csv: string): CimProcessRow[] | undefined {
+  const rows = csvRows(csv.replace(/^\uFEFF/, ''))
+  if (!rows?.length) return undefined
+  const header = rows[0].map((field) => field.toLowerCase())
+  const pidAt = header.indexOf('processid'),
+    commandAt = header.indexOf('commandline'),
+    nameAt = header.indexOf('name')
+  if (
+    pidAt < 0 ||
+    commandAt < 0 ||
+    new Set(header).size !== header.length ||
+    header.some((field) => !['processid', 'commandline', 'name'].includes(field))
+  )
+    return undefined
+  const result: CimProcessRow[] = []
+  for (const fields of rows.slice(1)) {
+    if (fields.length !== header.length || !/^\d+$/.test(fields[pidAt])) return undefined
+    const pid = Number(fields[pidAt])
+    if (!Number.isSafeInteger(pid) || pid < 0 || pid > 0xffffffff) return undefined
+    const name = nameAt < 0 ? '' : fields[nameAt].trim()
+    if (/[\r\n\0]/.test(name)) return undefined
+    result.push({ pid, command: fields[commandAt].trim(), name })
   }
-  return lines.join('\n')
+  return result
+}
+/** Command-bearing adapter for positive process matching; never use its count as an absence proof. */
+export function parseCimCsv(csv: string): string {
+  return (parseCimRows(csv) ?? [])
+    .filter((row) => row.command)
+    .map((row) => `${row.pid} ${row.command.replace(/\s+/g, ' ')}`)
+    .join('\n')
 }
 export async function processList(
   platform: Platform = process.platform,

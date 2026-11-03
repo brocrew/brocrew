@@ -3,7 +3,12 @@ import path from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { privateFolder } from '../privatePaths.js'
-import { browserProcessesOf, parseCimCsv, WINDOWS_LIST_SCRIPT } from '../browser/processes.js'
+import {
+  browserProcessesOf,
+  parseCimRows,
+  BROWSER_EXE,
+  WINDOWS_LIST_SCRIPT,
+} from '../browser/processes.js'
 import {
   createProfileStore,
   checkDescription,
@@ -129,20 +134,35 @@ export function inspectChrome(
           win
             ? ['-NoProfile', '-NonInteractive', '-Command', WINDOWS_LIST_SCRIPT]
             : ['-axo', 'pid=,command='],
-          { encoding: 'utf8', timeout: 2000, maxBuffer: 16 * 1024 * 1024, windowsHide: true },
+          { encoding: 'utf8', timeout: 10000, maxBuffer: 16 * 1024 * 1024, windowsHide: true },
         )
     if (!text?.trim()) return 'unknown'
-    const listing = win ? parseCimCsv(text) : text
-    const rows = listing.split(/\r?\n/).filter((line) => line.trim())
-    if (!rows.length || rows.some((line) => !/^\s*\d+\s+\S/.test(line))) return 'unknown'
-    // CIM omits command lines it cannot inspect. Such a listing is not an absence proof.
-    if (win && rows.length !== text.split(/\r?\n/).filter((line) => line.trim()).length - 1)
-      return 'unknown'
+    let listing: string
+    if (win) {
+      const processes = parseCimRows(text)
+      if (!processes?.length) return 'unknown'
+      // CIM withholds command lines for system/other-user processes. A name can identify a
+      // non-browser; an unreadable browser or unidentified row never proves Chrome has ended.
+      if (
+        processes.some(
+          (p) => !p.command && (!p.name || BROWSER_EXE.test(path.win32.basename(p.name))),
+        )
+      )
+        return 'unknown'
+      listing = processes
+        .filter((p) => p.command)
+        .map((p) => `${p.pid} ${p.command.replace(/\s+/g, ' ')}`)
+        .join('\n')
+    } else {
+      listing = text
+      const rows = listing.split(/\r?\n/).filter((line) => line.trim())
+      if (!rows.length || rows.some((line) => !/^\s*\d+\s+\S/.test(line))) return 'unknown'
+    }
     if (browserProcessesOf(listing, dir, win ? 'win32' : process.platform).length) return 'live'
     const normalized = win ? listing.toLowerCase() : listing
     const target = win ? dir.toLowerCase() : dir
-    // Negative proof does not rely on a guessed browser executable name. Any process mentioning
-    // the exact profile directory keeps it excluded, including launch wrappers and renamed Chrome.
+    // Readable commands are checked without guessing the browser executable name. Any process
+    // mentioning the exact profile directory keeps it excluded, including wrappers and renamed Chrome.
     if (normalized.includes(target)) return 'unknown'
     for (const name of ['SingletonLock', 'lockfile']) {
       try {
@@ -357,6 +377,7 @@ export function createSharedProfileStore(
       update(p)
       return effective(p, r)
     })
+  const migrationHolds = new Map<string, 'chrome-unknown'>()
   const pendingDisk = new Map<string, { release(): boolean | void }>()
   const shared: SharedProfileAccess = {
     acquire(name) {
@@ -500,7 +521,9 @@ export function createSharedProfileStore(
           shared: false,
           migration: lp.temporary
             ? undefined
-            : (migrationOf(r, lp)?.migration?.error ?? 'qualification-required'),
+            : (migrationOf(r, lp)?.migration?.error ??
+              migrationHolds.get(lp.name) ??
+              'qualification-required'),
         }
       const p = raw(r, name)
       return {
@@ -732,7 +755,12 @@ export function createSharedProfileStore(
       if (migrationOf(read(), lp)) continue
       const source = local.dirOf(lp.name)
       const sourceId = fileIdentity(source)
-      if (!sourceId || chrome(source) !== 'ended') continue
+      if (!sourceId) continue
+      const state = chrome(source)
+      if (state !== 'ended') {
+        if (state === 'unknown') migrationHolds.set(lp.name, 'chrome-unknown')
+        continue
+      }
       transaction((r) => {
         if (migrationOf(r, lp)) return
         const baseName = lp.name.startsWith('local-')
@@ -781,26 +809,107 @@ export function createSharedProfileStore(
         same(p.migration.home, homeId),
     )) {
       const journal = snapshot.migration!
-      const recoveryChrome = chrome(sharedDir(snapshot.name))
+      const source = local.dirOf(journal.sourceName)
+      const destination = sharedDir(snapshot.name)
+      const sameOwner = (a: Lease, b: Lease) =>
+        a.token === b.token &&
+        a.workspaceId === b.workspaceId &&
+        a.runId === b.runId &&
+        a.pid === b.pid &&
+        a.birth === b.birth &&
+        a.label === b.label &&
+        a.startedAt === b.startedAt
+      // Unknown inspection must not strand an untouched local account behind our reservation.
+      // Never withdraw a moved/ambiguous journal or another live owner's authority.
+      const withdrawUnknown = (expectedOwner: Lease): boolean => {
+        if (expectedOwner.runId !== runId && alive(expectedOwner) !== 'gone') return false
+        const withdrawn = transaction((r) => {
+          const index = r.profiles.findIndex(
+            (p) => p.id === snapshot.id && p.name === snapshot.name,
+          )
+          if (index < 0) return false
+          const p = r.profiles[index]
+          const m = p.migration
+          if (
+            p.state !== 'moving' ||
+            p.authorizationSchema !== 1 ||
+            !same(p.directory, journal.source) ||
+            !m ||
+            m.phase !== 'reserved' ||
+            m.error ||
+            p.lease ||
+            m.id !== journal.id ||
+            m.workspaceId !== o.workspaceId ||
+            m.workspaceId !== journal.workspaceId ||
+            m.sourceAlias !== journal.sourceAlias ||
+            m.sourceName !== journal.sourceName ||
+            !same(m.source, journal.source) ||
+            !same(m.home, journal.home) ||
+            !sameOwner(m.owner, expectedOwner) ||
+            !same(fileIdentity(o.home), journal.home) ||
+            !same(fileIdentity(source), journal.source) ||
+            fileIdentity(destination)
+          )
+            return false
+          const localProfile = local.get(journal.sourceName)
+          if (
+            !localProfile ||
+            localProfile.deleting ||
+            localProfile.temporary ||
+            localProfile.createdAt !== snapshot.createdAt ||
+            (m.sourceAlias && alias(localProfile) !== m.sourceAlias)
+          )
+            return false
+          r.profiles.splice(index, 1)
+          return true
+        })
+        if (withdrawn) migrationHolds.set(journal.sourceName, 'chrome-unknown')
+        return withdrawn
+      }
+      const recoveryChrome = chrome(destination)
+      if (recoveryChrome === 'unknown') {
+        withdrawUnknown(journal.owner)
+        // A refused withdrawal must never fall through and replace changed authority.
+        continue
+      }
+      const claimable =
+        journal.owner.runId === runId ||
+        (recoveryChrome === 'ended' && alive(journal.owner) === 'gone')
+      if (!claimable) continue
       const claimed = transaction((r) => {
         const p = raw(r, snapshot.name)
-        const m = p.migration!
-        if (m.id !== journal.id || p.state !== 'moving') return false
-        if (m.owner.runId !== runId && (alive(m.owner) !== 'gone' || recoveryChrome !== 'ended'))
+        const m = p.migration
+        // Inspection/liveness happened outside this transaction. Revalidate the complete
+        // observed journal and owner before acquiring authority, even for this run.
+        if (
+          p.id !== snapshot.id ||
+          p.state !== 'moving' ||
+          p.authorizationSchema !== 1 ||
+          p.lease ||
+          !same(p.directory, snapshot.directory) ||
+          !m ||
+          m.id !== journal.id ||
+          m.phase !== journal.phase ||
+          m.error !== journal.error ||
+          m.workspaceId !== journal.workspaceId ||
+          m.sourceName !== journal.sourceName ||
+          m.sourceAlias !== journal.sourceAlias ||
+          !same(m.home, journal.home) ||
+          !same(m.source, journal.source) ||
+          !sameOwner(m.owner, journal.owner)
+        )
           return false
         m.owner = mine()
-        return true
+        return m.owner
       })
       if (!claimed) continue
       const migrationWrite = (apply: (p: SharedRecord) => void) =>
         transaction((r) => {
           const p = raw(r, snapshot.name)
-          if (p.migration?.id !== journal.id || p.migration.owner.runId !== runId)
+          if (p.migration?.id !== journal.id || !sameOwner(p.migration.owner, claimed))
             throw new ProfileStoreError('Migration ownership changed.')
           apply(p)
         })
-      const source = local.dirOf(journal.sourceName)
-      const destination = sharedDir(snapshot.name)
       const src = fileIdentity(source)
       const dst = fileIdentity(destination)
       if (
@@ -815,7 +924,11 @@ export function createSharedProfileStore(
         continue
       }
       if (src) {
-        if (chrome(source) !== 'ended') continue
+        const sourceState = chrome(source)
+        if (sourceState !== 'ended') {
+          if (sourceState === 'unknown') withdrawUnknown(claimed)
+          continue
+        }
         try {
           ;(o.rename ?? fs.renameSync)(source, destination)
           if (process.platform !== 'win32')

@@ -407,3 +407,296 @@ it('a registry publication fault during disk release retains the handle for same
   a.shared.acquire('fern').release()
   other.shared.acquire('fern').release()
 })
+
+it('Windows inspection accepts named system processes without command lines, but not unreadable browsers', () => {
+  const f = fixture()
+  const dir = path.join(f.home, 'profiles')
+  fs.mkdirSync(dir)
+  const csv = (extra: string) =>
+    '"ProcessId","CommandLine","Name"\n"0",,"System Idle Process"\n"4",,"System"\n"88",,"Registry"\n"99",,"svchost.exe"\n' +
+    extra
+  const other = '"201","C:\\Chrome\\chrome.exe --user-data-dir=C:\\Fictional\\Other","chrome.exe"'
+  expect(inspectChrome(dir, { platform: 'win32', list: () => csv(other) })).toBe('ended')
+  expect(inspectChrome(dir, { platform: 'win32', list: () => csv('') })).toBe('ended')
+  expect(
+    inspectChrome(dir, {
+      platform: 'win32',
+      list: () => '"ProcessId","CommandLine","Name"\n"0",,"chrome.exe"',
+    }),
+  ).toBe('unknown')
+  expect(inspectChrome(dir, { platform: 'win32', list: () => csv('"202","","chrome.exe"') })).toBe(
+    'unknown',
+  )
+  expect(inspectChrome(dir, { platform: 'win32', list: () => csv('"203","",""') })).toBe('unknown')
+  const command = `C:\\Chrome\\chrome.exe --user-data-dir=${dir}`
+  expect(
+    inspectChrome(dir, { platform: 'win32', list: () => csv(`"204","${command}","chrome.exe"`) }),
+  ).toBe('live')
+})
+it('unknown migration inspection stays usable with a fixed warning and retries on a later start', () => {
+  const f = fixture()
+  const local = createProfileStore({ home: f.home })
+  local.create('fern', 'panel')
+  local.setFlags('fern', { enabled: true, keepRunning: true })
+  const source = local.dirOf('fern')
+  fs.writeFileSync(path.join(source, 'fictional-sign-in'), 'fictional account')
+  const before = fs.statSync(source).ino
+  const held = f.open('alpha', { migrationApproved: true, chromeState: () => 'unknown' })
+  const profile = held.list()[0]
+  expect(held.shared.view(profile.name)).toMatchObject({
+    shared: false,
+    migration: 'chrome-unknown',
+  })
+  expect(profile).toMatchObject({ enabled: true, keepRunning: true })
+  expect(held.dirOf(profile.name)).toBe(source)
+  const lease = held.shared.acquire(profile.name)
+  lease.release()
+  expect(fs.statSync(source).ino).toBe(before)
+  expect(fs.readFileSync(path.join(source, 'fictional-sign-in'), 'utf8')).toBe('fictional account')
+  const retried = f.open('alpha', { migrationApproved: true })
+  const next = retried.list()[0]
+  expect(retried.shared.view(next.name)).toMatchObject({ shared: true })
+  expect(retried.shared.view(next.name)).not.toHaveProperty('migration', 'chrome-unknown')
+  expect(fs.statSync(retried.dirOf(next.name)).ino).toBe(before)
+  expect(fs.readFileSync(path.join(retried.dirOf(next.name), 'fictional-sign-in'), 'utf8')).toBe(
+    'fictional account',
+  )
+})
+
+it('retains every traced unquoted-empty CIM row instead of dropping it from inspection', async () => {
+  const { parseCimRows } = await import('../src/browser/processes.js')
+  expect(parseCimRows).toBeTypeOf('function')
+  const rows = parseCimRows('"ProcessId","CommandLine"\r\n"0",\r\n"4",\r\n"72",\r\n')
+  expect(rows).toEqual([
+    { pid: 0, command: '', name: '' },
+    { pid: 4, command: '', name: '' },
+    { pid: 72, command: '', name: '' },
+  ])
+  const f = fixture()
+  expect(
+    inspectChrome(f.home, { platform: 'win32', list: () => '"ProcessId","CommandLine"\n"0",' }),
+  ).toBe('unknown')
+})
+
+it('Windows inspection refuses malformed or truncated CSV rather than proving absence', () => {
+  const f = fixture()
+  for (const text of [
+    '"ProcessId","CommandLine","Name"\n"123","unterminated',
+    '"ProcessId","CommandLine","Name"\n"123","service","svchost.exe","extra"',
+    '"Unexpected","CommandLine"\n"123","service"',
+  ])
+    expect(inspectChrome(f.home, { platform: 'win32', list: () => text })).toBe('unknown')
+})
+it('Windows inspection retains the native lockfile open-for-write refusal', () => {
+  const f = fixture()
+  const lock = path.join(f.home, 'lockfile')
+  fs.writeFileSync(lock, 'fictional lock')
+  const open = fs.openSync
+  const witness = vi.spyOn(fs, 'openSync').mockImplementation((file, flags, mode) => {
+    if (String(file) === lock && flags === 'r+')
+      throw Object.assign(new Error('fictional lock held'), { code: 'EACCES' })
+    return open(file, flags, mode)
+  })
+  const csv = '"ProcessId","CommandLine","Name"\n"123","service","svchost.exe"'
+  expect(inspectChrome(f.home, { platform: 'win32', list: () => csv })).toBe('unknown')
+  expect(witness).toHaveBeenCalledWith(lock, 'r+')
+})
+
+it.each(['destination', 'source'])(
+  'unknown inspection after reservation at %s restores the unchanged local profile and retries later',
+  (at) => {
+    const f = fixture()
+    const local = createProfileStore({ home: f.home })
+    local.create('fern', 'panel')
+    local.setFlags('fern', { enabled: true, keepRunning: true })
+    const source = local.dirOf('fern')
+    fs.writeFileSync(path.join(source, 'fictional-sign-in'), 'fictional account')
+    const inode = fs.statSync(source).ino
+    let sourceCalls = 0
+    const held = f.open('alpha', {
+      migrationApproved: true,
+      chromeState: (dir: string) => {
+        if (dir === source) {
+          sourceCalls++
+          return sourceCalls > 1 ? 'unknown' : 'ended'
+        }
+        return at === 'destination' ? 'unknown' : 'ended'
+      },
+    })
+    const p = held.list().find((entry) => entry.name.startsWith('local-'))!
+    expect(p).toMatchObject({ enabled: true, keepRunning: true })
+    expect(held.shared.view(p.name)).toMatchObject({ shared: false, migration: 'chrome-unknown' })
+    expect(held.dirOf(p.name)).toBe(source)
+    held.shared.acquire(p.name).release()
+    expect(fs.statSync(source).ino).toBe(inode)
+    expect(fs.readFileSync(path.join(source, 'fictional-sign-in'), 'utf8')).toBe(
+      'fictional account',
+    )
+    expect(
+      JSON.parse(fs.readFileSync(path.join(f.shared, 'registry.json'), 'utf8')).profiles,
+    ).toEqual([])
+    const retry = f.open('alpha', { migrationApproved: true })
+    const migrated = retry.list()[0]
+    expect(retry.shared.view(migrated.name)).toMatchObject({ shared: true, status: 'ready' })
+    expect(fs.statSync(retry.dirOf(migrated.name)).ino).toBe(inode)
+  },
+)
+it('unknown inspection can withdraw an untouched reservation left by a provably dead owner', () => {
+  const f = fixture()
+  const local = createProfileStore({ home: f.home })
+  local.create('fern', 'panel')
+  local.setFlags('fern', { enabled: true })
+  expect(() =>
+    f.open('alpha', {
+      migrationApproved: true,
+      checkpoint: (phase: string) => {
+        if (phase === 'reserved') throw new Error('fictional stopped owner')
+      },
+    }),
+  ).toThrow('fictional stopped owner')
+  const held = f.open('alpha', {
+    migrationApproved: true,
+    ownerState: () => 'gone',
+    chromeState: () => 'unknown',
+  })
+  const p = held.list().find((entry) => entry.name.startsWith('local-'))!
+  expect(p.enabled).toBe(true)
+  expect(held.shared.view(p.name)).toMatchObject({ migration: 'chrome-unknown' })
+  held.shared.acquire(p.name).release()
+  expect(held.dirOf(p.name)).toBe(local.dirOf('fern'))
+})
+it.each(['live-owner', 'destination-present', 'already-moved'])(
+  'unknown inspection never withdraws an ambiguous reservation: %s',
+  (scenario) => {
+    const f = fixture()
+    const local = createProfileStore({ home: f.home })
+    local.create('fern', 'panel')
+    local.setFlags('fern', { enabled: true })
+    const source = local.dirOf('fern')
+    fs.writeFileSync(path.join(source, 'fictional-sign-in'), 'fictional account')
+    const phaseToStop = scenario === 'already-moved' ? 'renamed' : 'reserved'
+    expect(() =>
+      f.open('alpha', {
+        migrationApproved: true,
+        checkpoint: (phase: string) => {
+          if (phase === phaseToStop) throw new Error('fictional stopped owner')
+        },
+      }),
+    ).toThrow('fictional stopped owner')
+    const destination = path.join(f.shared, 'profiles', 'fern')
+    if (scenario === 'destination-present') fs.mkdirSync(destination)
+    const held = f.open('alpha', {
+      migrationApproved: true,
+      ownerState: () => (scenario === 'live-owner' ? 'alive' : 'gone'),
+      chromeState: () => 'unknown',
+    })
+    const p = held.list().find((entry) => entry.name.startsWith('local-'))!
+    expect(p.enabled).toBe(false)
+    expect(() => held.dirOf(p.name)).toThrow(/reserved|missing/)
+    expect(() => held.shared.acquire(p.name)).toThrow(/reserved|missing/)
+    expect(
+      JSON.parse(fs.readFileSync(path.join(f.shared, 'registry.json'), 'utf8')).profiles[0].state,
+    ).toBe('moving')
+    expect(
+      fs.readFileSync(
+        path.join(scenario === 'already-moved' ? destination : source, 'fictional-sign-in'),
+        'utf8',
+      ),
+    ).toBe('fictional account')
+  },
+)
+
+it.each([
+  'owner-changed',
+  'owner-workspace-changed',
+  'phase-moved',
+  'future-schema',
+  'source-replaced',
+])('unknown inspection keeps a changed reservation fenced: %s', (change) => {
+  const f = fixture()
+  const local = createProfileStore({ home: f.home })
+  local.create('fern', 'panel')
+  local.setFlags('fern', { enabled: true })
+  const source = local.dirOf('fern'),
+    saved = path.join(f.root, 'saved-fictional-account')
+  fs.writeFileSync(path.join(source, 'fictional-sign-in'), 'fictional account')
+  let sourceCalls = 0
+  const held = f.open('alpha', {
+    migrationApproved: true,
+    chromeState: (dir: string) => {
+      if (dir !== source) return 'ended'
+      if (++sourceCalls === 1) return 'ended'
+      const registryFile = path.join(f.shared, 'registry.json')
+      const r = JSON.parse(fs.readFileSync(registryFile, 'utf8'))
+      if (change === 'owner-changed')
+        r.profiles[0].migration.owner.token = '00000000-0000-4000-8000-000000000000'
+      else if (change === 'owner-workspace-changed')
+        r.profiles[0].migration.owner.workspaceId = 'cedar'
+      else if (change === 'future-schema') r.profiles[0].authorizationSchema = 2
+      else if (change === 'phase-moved') r.profiles[0].migration.phase = 'moved'
+      else {
+        fs.renameSync(source, saved)
+        fs.mkdirSync(source)
+      }
+      fs.writeFileSync(registryFile, JSON.stringify(r))
+      return 'unknown'
+    },
+  })
+  const p = held.list().find((entry) => entry.name.startsWith('local-'))!
+  expect(p.enabled).toBe(false)
+  expect(() => held.shared.acquire(p.name)).toThrow(/reserved/)
+  expect(() => held.dirOf(p.name)).toThrow(/reserved/)
+  expect(
+    JSON.parse(fs.readFileSync(path.join(f.shared, 'registry.json'), 'utf8')).profiles[0].state,
+  ).toBe('moving')
+  expect(
+    fs.readFileSync(
+      path.join(change === 'source-replaced' ? saved : source, 'fictional-sign-in'),
+      'utf8',
+    ),
+  ).toBe('fictional account')
+})
+
+// The destination inspection is an external interval before the reservation claim.
+it.each(
+  (['unknown', 'ended'] as const).flatMap((inspection) =>
+    ['token', 'workspaceId', 'runId', 'pid', 'birth', 'label', 'startedAt'].map((field) => ({
+      inspection,
+      field,
+    })),
+  ),
+)('destination inspection $inspection preserves changed owner $field', ({ inspection, field }) => {
+  const f = fixture()
+  const local = createProfileStore({ home: f.home })
+  local.create('fern', 'panel')
+  local.setFlags('fern', { enabled: true })
+  const source = local.dirOf('fern')
+  fs.writeFileSync(path.join(source, 'fictional-sign-in'), 'fictional account')
+  const inode = fs.statSync(source).ino
+  let sourceCalls = 0
+  let changedOwner: unknown
+  const registryFile = path.join(f.shared, 'registry.json')
+  const held = f.open('alpha', {
+    migrationApproved: true,
+    ownerState: () => 'gone',
+    chromeState: (dir: string) => {
+      if (dir === source) return ++sourceCalls === 1 ? 'ended' : 'unknown'
+      const data = JSON.parse(fs.readFileSync(registryFile, 'utf8'))
+      const owner = data.profiles[0].migration.owner
+      owner[field] = field === 'pid' ? owner.pid + 1 : 'fictional-changed-authority'
+      changedOwner = { ...owner }
+      fs.writeFileSync(registryFile, JSON.stringify(data))
+      return inspection
+    },
+  })
+  const p = held.list().find((entry) => entry.name.startsWith('local-'))!
+  expect(p.enabled, field).toBe(false)
+  expect(() => held.dirOf(p.name)).toThrow(/reserved/)
+  expect(() => held.shared.acquire(p.name)).toThrow(/reserved/)
+  const persisted = JSON.parse(fs.readFileSync(registryFile, 'utf8')).profiles[0]
+  expect(persisted.state).toBe('moving')
+  expect(persisted.migration.owner).toEqual(changedOwner)
+  expect(sourceCalls).toBe(1)
+  expect(fs.statSync(source).ino).toBe(inode)
+  expect(fs.readFileSync(path.join(source, 'fictional-sign-in'), 'utf8')).toBe('fictional account')
+})
