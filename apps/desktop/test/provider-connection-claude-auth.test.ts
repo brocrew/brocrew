@@ -24,8 +24,8 @@ class Query implements ClaudeQuery {
   async supportedModels() {
     return []
   }
-  async *[Symbol.asyncIterator](): AsyncIterator<SDKMessage> {
-    await this.ended
+  [Symbol.asyncIterator](): AsyncIterator<SDKMessage> {
+    return { next: async () => { await this.ended; return { done: true, value: undefined } } }
   }
 }
 

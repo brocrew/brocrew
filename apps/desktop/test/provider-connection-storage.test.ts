@@ -133,3 +133,21 @@ it('does not fill a legacy NULL binding when its provider already named the conv
     before,
   )
 })
+
+it('renaming compatibility connections cannot split or erase the existing provider wall', () => {
+  create('fictional-subscription', 'claude:sign-in')
+  db.prepare('INSERT INTO provider_api_key(provider,sealed,updated_at) VALUES(?,?,?)').run(
+    'claude', 'fictional-sealed', 1,
+  )
+  create('fictional-key-wall', 'claude:api-key')
+  for (const id of ['fictional-subscription', 'fictional-key-wall'])
+    store.append(id, 0, {
+      type: 'error', fatal: false,
+      message: 'claude is rate-limited (seven_day); resets 1970-01-01T01:00:00.200Z',
+    }, 110)
+  const before = store.providerLimitsSeen(200).rows
+  expect(before.map((wall) => [wall.provider, wall.standing])).toEqual([['claude', 'stopped']])
+  db.prepare('UPDATE provider_connection SET name=? WHERE id=?').run('Fictional renamed subscription', 'claude:sign-in')
+  db.prepare('UPDATE provider_connection SET name=? WHERE id=?').run('Fictional renamed key', 'claude:api-key')
+  expect(store.providerLimitsSeen(200).rows).toEqual(before)
+})
