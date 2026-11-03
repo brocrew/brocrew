@@ -872,6 +872,8 @@ function questionOf(name: string, code: string): Question {
 }
 
 const HAND_ROLLED: Readonly<Record<string, Question>> = {
+  // Markdown cards fit while their complete code lines scroll inside each block.
+  'waiting-on-you-markdown.dom.test.ts': 'does-this-box-fit',
   'files-library.dom.test.ts': 'does-this-box-fit',
   'legacy-kept-file-lists.dom.test.ts': 'does-this-box-fit',
   'the-viewer-says-what-a-file-is.dom.test.ts': 'does-this-box-fit',
