@@ -154,20 +154,10 @@ describe('provisionCodexAuth (022)', () => {
     await provisionCodexAuth(home, { sourceAuthPath: source })
     const dest = join(home, 'auth.json')
     expect(signInAt(dest)).toBe(digestOf('{"tokens":{"access_token":"CODEX-ACCESS"}}'))
-    if (process.platform !== 'win32') expect(whoElseCanOpen(dest, 0o600)).toEqual([])
+    expect(whoElseCanOpen(dest, 0o600)).toEqual([])
     expect(lstatSync(dest).isSymbolicLink()).toBe(false)
     expect(readdirSync(home)).toEqual(['auth.json']) // no leftover .tmp
   })
-
-  // PowerShell can take longer to start than the copy. The copy above keeps its five-second bound.
-  it.skipIf(process.platform !== 'win32')(
-    'the copied sign-in grants access only to its owner',
-    async () => {
-      await provisionCodexAuth(home, { sourceAuthPath: source })
-      expect(whoElseCanOpen(join(home, 'auth.json'), 0o600)).toEqual([])
-    },
-    30_000,
-  )
 
   it('throws AuthUnavailableError when the personal auth.json is absent (no global fallback)', async () => {
     await expect(
