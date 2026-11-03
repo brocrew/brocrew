@@ -134,8 +134,10 @@ const STATES: readonly [string, () => Promise<Element>][] = [
   [
     'Waiting on you, markdown question words and added notes',
     async () => {
-      await page.viewport(1180, 1000)
-      const m = await aWaitingPageWithMarkdown()
+      await page.viewport(1180, 1400)
+      const m = await aWaitingPageWithMarkdown(1180, 1400)
+      for (const more of m.host.querySelectorAll<HTMLDetailsElement>('details.pq-more'))
+        more.open = true
       m.q('question-more').click()
       await pause()
       return m.host
@@ -144,8 +146,10 @@ const STATES: readonly [string, () => Promise<Element>][] = [
   [
     'Waiting on you, markdown to-dos',
     async () => {
-      await page.viewport(1180, 1000)
-      const m = await aWaitingPageWithMarkdown()
+      await page.viewport(1180, 1400)
+      const m = await aWaitingPageWithMarkdown(1180, 1400)
+      for (const more of m.host.querySelectorAll<HTMLDetailsElement>('details.pq-more'))
+        more.open = true
       m.q('waiting-todo-head-req_todo').scrollIntoView({ block: 'center' })
       await pause()
       return m.host

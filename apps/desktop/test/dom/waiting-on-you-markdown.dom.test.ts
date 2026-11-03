@@ -26,7 +26,10 @@ describe.each(['classic', 'crew-night'] as const)('Waiting on you markdown in %s
     const m = await aWaitingPageWithMarkdown()
     m.q('question-more').click()
     await nextTick()
-    for (const selector of ['[data-cy="question-words"]', '.pq-asked-words']) {
+    for (const selector of [
+      '[data-cy="question-words"]',
+      '[data-cy="persons-queue-asked-sess_glint:req_provider"] .pq-asked-words',
+    ]) {
       const words = m.host.querySelector(selector)!
       expect(words.querySelector('strong')?.textContent).toBe('Choose a draft')
       expect(words.querySelectorAll('ul > li')).toHaveLength(2)
@@ -89,12 +92,12 @@ describe.each(['classic', 'crew-night'] as const)('Waiting on you markdown in %s
     for (const selector of [
       '[data-cy="question-words"]',
       '.pq-asked-part',
-      '.pq-asked-words',
+      '[data-cy="persons-queue-asked-sess_glint:req_provider"] .pq-asked-words',
       '.todo-text',
     ]) {
       const words = m.host.querySelector(selector)!
       const open = words.querySelector<HTMLButtonElement>('[aria-label="Open file"]')!
-      expect(open).not.toBeNull()
+      expect(open, selector).not.toBeNull()
       expect(words.querySelector('[aria-label="Copy path"]')).not.toBeNull()
       open.click()
       await nextTick()
