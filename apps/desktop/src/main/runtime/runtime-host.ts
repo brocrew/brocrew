@@ -177,6 +177,7 @@ import {
   providerRecord,
   providerSchema,
   type Provider,
+  type ProviderConnection,
   type SessionStatus,
 } from '@brobot2/shared'
 import { assetUrl } from '../../shared/asset-url'
@@ -2540,6 +2541,7 @@ export interface RuntimeHostDeps {
   /** Resolve metadata before home/provider work; absence preserves legacy test/runtime wiring. */
   connectionFor?(provider: Provider, recordedConnection?: string | null): string
   connectionRevision?(provider: Provider): number
+  listConnections?(): readonly ProviderConnection[]
   /**
    * Provision the app-owned home for a provider IN A GIVEN PROFILE and return its path.
    * The profile is passed rather than pinned because it decides what the provider remembers:
@@ -38764,6 +38766,20 @@ export class RuntimeHost implements LiveHost {
    */
   capabilities(): ProviderCapabilityMap {
     return allProviderCapabilities()
+  }
+
+  /** Return declared metadata only, without invoking any provider or credential operation. */
+  providerConnections(): readonly ProviderConnection[] {
+    return (this.deps.listConnections?.() ?? []).map((row) => ({
+      id: row.id,
+      provider: row.provider,
+      name: row.name,
+      authMethod: row.authMethod,
+      credentialSource: row.credentialSource,
+      baseUrl: row.baseUrl,
+      enabled: row.enabled,
+      contractVersion: row.contractVersion,
+    }))
   }
 
   /**

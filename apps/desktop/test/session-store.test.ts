@@ -710,6 +710,7 @@ function fakeBridge() {
     // The real declarations rather than a stub: the store never reads them, so a fake here would be
     // a shape this file invented and nothing would notice if it stopped matching the wire.
     capabilities: async () => allProviderCapabilities(),
+    providerConnections: async () => [],
     // 167 — the launcher's menu. Nothing in this file drives it; the entry exists so the stub is a
     // whole `RuntimeBridge` rather than one with a hole in it.
     profiles: async () => ['default'],

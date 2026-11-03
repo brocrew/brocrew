@@ -161,7 +161,7 @@ import {
   providerDescriptor,
   providerRecord,
 } from '@brobot2/shared/providers'
-import type { Provider, SessionStatus, TurnEnding } from '@brobot2/shared'
+import type { Provider, ProviderConnection, SessionStatus, TurnEnding } from '@brobot2/shared'
 import type { AgentState } from './agent-state'
 // ⚑ **The capability schema, which is a `src/shared` module and holds no zod** (355) — the same
 // rule this file is written under, so the renderer may name a capability without paying for a
@@ -8508,6 +8508,7 @@ export type RuntimeCommand =
   | ({ kind: 'earlierHistory' } & EarlierHistoryInput)
   | ({ kind: 'latestHistory' } & SessionInput)
   | { kind: 'capabilities' }
+  | { kind: 'providerConnections' }
   /**
    * 🔴 **D-042 · R3 — the one list a person picks from**, for one provider and one agent
    * ({@link ModelList}). ⚑ `profileId` absent is BroBot's own.
@@ -9241,6 +9242,7 @@ export interface RuntimeCommandResults {
   latestHistory: HistoryWindow
   /** What each provider can do, as the adapters declare it (039). */
   capabilities: ProviderCapabilityMap
+  providerConnections: readonly ProviderConnection[]
   /**
    * Every profile that exists, {@link DEFAULT_PROFILE_ID} first (167).
    *
@@ -10049,6 +10051,8 @@ export interface RuntimeBridge {
    * this map indexed by its provider. Never branch on the provider instead of asking.
    */
   capabilities(): Promise<ProviderCapabilityMap>
+  /** Existing connection metadata only; no credential, home preparation or provider probe. */
+  providerConnections(): Promise<readonly ProviderConnection[]>
   /**
    * 🔴 **D-042 · R3 — the one list a person picks from** ({@link ModelList}): one provider's rows and
    * the person's own, the last pick, and what a new conversation starts on.

@@ -540,6 +540,7 @@ const HOW_EACH_VERB_IS_BUILT: Record<RuntimeCommandKind, VerbRow> = {
   latestHistory: { how: 'plain-by-construction' },
   // ── what the app can run, and where ──────────────────────────────────────────────────────────
   capabilities: { how: 'nothing' },
+  providerConnections: { how: 'nothing' },
   profiles: { how: 'nothing' },
   checkProviderAuth: { how: 'plain-by-construction' },
   reprovisionProviderAuth: { how: 'plain-by-construction' },
@@ -752,7 +753,8 @@ describe('§2 · every renderer→main verb is accounted for (361 §1)', () => {
     // ⚑ And `stoppedWorkForAPerson`, the pieces whose helper stopped: 115 → 116.
     // Link resolution, both typed-wait verbs and recent activity are present in the same bridge.
     // ⚑ And `closeWork`, a person's close of stopped work: 137 → 138.
-    expect(Object.keys(HOW_EACH_VERB_IS_BUILT)).toHaveLength(140)
+    // The metadata-only connection list adds one parameterless verb.
+    expect(Object.keys(HOW_EACH_VERB_IS_BUILT)).toHaveLength(141)
     // ⚑ 8 → 10 at `744`: `savedDrafts`, `saveDrafts`. 10 → 9 at D-016: `getDemoSeed` out.
     // ⚑ 9 → 10 at D-031: `localZone`.
     expect(Object.keys(THE_APP_CHANNELS)).toHaveLength(10)
@@ -964,7 +966,7 @@ describe('§2 · every renderer→main verb is accounted for (361 §1)', () => {
       // Recent activity adds one plain packet, built from two numeric window bounds.
       // ⚑ `closeWork` moves the FIRST number by one (`{ kind, piece }` written by the preload); the
       // sentences quoting it are corrected with it.
-      105, 27, 8,
+      105, 28, 8,
     ])
   })
 

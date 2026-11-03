@@ -915,6 +915,8 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
       return connections.resolve(connectionId).id
     },
     connectionRevision: (provider) => apiKeys.revision(provider),
+    listConnections: () =>
+      Object.values(providerModules).flatMap((module) => module.connections?.list() ?? []),
     // Derive the profile from the session; keep its provider home under `HOME_FOLDER`.
     beforeProviderLaunch: async () => {
       await transcriptRetention?.beforeLaunch()

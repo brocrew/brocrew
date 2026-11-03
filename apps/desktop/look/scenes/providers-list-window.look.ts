@@ -7,6 +7,32 @@ import { CAPABILITY_FIXTURE } from '../../test/provider-capability-fixture'
 scene('providers-list-window', async (stage) => {
   const theme = import.meta.env['LOOK_PROVIDER_THEME'] === 'crew-night' ? 'crew-night' : 'classic'
   const preview = settingsWindow('providers', theme, undefined, CAPABILITY_FIXTURE)
+  if (import.meta.env['LOOK_PROVIDER_KEY'] === 'true') {
+    const read = window.api.runtime.providerConnections
+    window.api.runtime.providerConnections = async () => [
+      ...(await read()),
+      {
+        id: 'claude:api-key',
+        provider: 'claude',
+        name: 'API key',
+        authMethod: 'api-key',
+        credentialSource: 'provider-api-key',
+        baseUrl: null,
+        enabled: true,
+        contractVersion: 1,
+      },
+    ]
+    const keyStatus = window.api.runtime.apiKeyStatus
+    window.api.runtime.apiKeyStatus = async (input) =>
+      input.provider === 'claude'
+        ? { provider: 'claude', set: true, setAt: Date.now(), inUse: true }
+        : keyStatus(input)
+    const auth = window.api.runtime.checkProviderAuth
+    window.api.runtime.checkProviderAuth = async (input) =>
+      input.provider === 'claude'
+        ? { state: 'usable', login: 'api-key', expiresAt: null }
+        : auth(input)
+  }
   if (import.meta.env['LOOK_PROVIDER_SETUP'] === 'true') {
     const check = window.api.runtime.checkProviderAuth
     window.api.runtime.checkProviderAuth = async (asked) =>
