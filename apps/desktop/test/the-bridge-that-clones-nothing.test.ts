@@ -1196,7 +1196,7 @@ describe('§3 · what is exempt is derived from the preload, not written down (3
     await expect(bridge.reveal(reactive(location))).rejects.toThrow(
       /would not survive ipcRenderer\.invoke/,
     )
-    expect(seen).toHaveLength(4)
+    expect(seen).toHaveLength(5)
   })
 
   it('the separate theme surface classifies each verb and exempts only its subscription', () => {

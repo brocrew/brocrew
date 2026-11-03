@@ -1703,6 +1703,27 @@ describe('recovery copies from a previous release', () => {
 })
 
 describe('recovery copy retention and Settings', () => {
+  it('lets Settings delete each of two retained versions after this version starts successfully', async () => {
+    const userData = aDataFolder()
+    aLiveDatabase(userData)
+    const older = await make(userData, { appVersion: '0.1.18', now: () => START })
+    const newer = await make(userData, { appVersion: '0.1.19', now: () => minute(1) })
+    const options = { ...SOLE, currentAppVersion: '0.1.19' }
+    await recordSuccessfulStart(userData, LINEAGE, options)
+    expect(await deleteRetainedCopy(userData, LINEAGE, newer.manifest.id, options)).toBe(true)
+    expect(await retainedCopyInfo(userData, LINEAGE, options)).toMatchObject({
+      id: older.manifest.id,
+    })
+    expect(
+      await deleteRetainedCopy(userData, LINEAGE, older.manifest.id, {
+        ...options,
+        currentAppVersion: '0.1.18',
+      }),
+    ).toBe(false)
+    expect(await deleteRetainedCopy(userData, LINEAGE, older.manifest.id, options)).toBe(true)
+    expect(await retainedCopyInfo(userData, LINEAGE, options)).toBeNull()
+  })
+
   it('keeps the last copy across the former expiry boundary', async () => {
     const userData = aDataFolder()
     aLiveDatabase(userData)

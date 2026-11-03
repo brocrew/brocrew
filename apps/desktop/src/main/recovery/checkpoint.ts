@@ -1226,7 +1226,8 @@ export async function deleteRetainedCopy(
       !(await onlyCheckpointFiles(copy, fs))
     )
       return false
-    if (!receipt || receipt.appVersion !== copy.manifest.madeBy.appVersion) return false
+    const runningVersion = options.currentAppVersion ?? copy.manifest.madeBy.appVersion
+    if (!receipt || receipt.appVersion !== runningVersion) return false
     await assertOwnedPathsAreReal(userData, [copy.folder], fs)
     await finishCheckpointDeletion(userData, await beginCheckpointDeletion(userData, copy, fs), fs)
     return true
