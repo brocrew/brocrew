@@ -8557,6 +8557,7 @@ export type RuntimeCommand =
   // provider home and "is Codex signed in?" therefore has one answer per profile, not one answer.
   | ({ kind: 'checkProviderAuth' } & CheckProviderAuthInput)
   | ({ kind: 'reprovisionProviderAuth' } & ProviderProfileInput)
+  | { kind: 'reprovisionProviderHomes'; provider: Provider; statusOnly?: boolean }
   | ({ kind: 'signInProvider' } & ProviderProfileInput)
   | ({ kind: 'cancelProviderSignIn' } & ProviderProfileInput)
   /**
@@ -9427,6 +9428,7 @@ export interface RuntimeCommandResults {
   checkProviderAuth: AuthState
   /** Whether the re-copy actually changed anything — `unchanged` when the bytes already matched. */
   reprovisionProviderAuth: ReprovisionOutcome
+  reprovisionProviderHomes: ProviderHomesReprovision
   /** How the sign-in ended, INCLUDING what the credential looks like afterwards. */
   signInProvider: ProviderSignInResult
   /** Nothing — cancelling is an acknowledgement, and cancelling nothing is still success. */
@@ -9458,6 +9460,27 @@ export type ProviderCapabilityMap = Record<Provider, ProviderCapabilities>
 export interface CheckProviderAuthInput extends ProviderProfileInput {
   /** Explicit user gesture only; passive refreshes must omit this. */
   probe?: boolean
+}
+
+/** The result of a person's request to replace this install's profile sign-ins. */
+export interface ProviderHomesReprovision {
+  readonly replaced: number
+  readonly pending: number
+  readonly skipped: number
+  readonly failed: number
+  readonly profiles: readonly (
+    | { readonly profileId: string; readonly state: 'replaced' | 'pending' }
+    | {
+        readonly profileId: string
+        readonly state: 'skipped'
+        readonly reason: 'api-key' | 'key-status-unavailable' | 'unchanged'
+      }
+    | {
+        readonly profileId: string
+        readonly state: 'failed'
+        readonly reason: 'copy-failed' | 'restart-failed' | 'stop-failed'
+      }
+  )[]
 }
 
 export interface ProviderProfileInput {
@@ -10346,6 +10369,11 @@ export interface RuntimeBridge {
    * side breaks the other again. {@link RuntimeBridge.signInProvider} is the one that ends it.
    */
   reprovisionProviderAuth(input: ProviderProfileInput): Promise<ReprovisionOutcome>
+  /** Re-copy this install’s profile homes, leaving keys and open sessions alone. */
+  reprovisionProviderHomes(input: {
+    provider: Provider
+    statusOnly?: boolean
+  }): Promise<ProviderHomesReprovision>
   /**
    * Sign this profile into its own account. **Resolves when the browser flow settles**, which may
    * be minutes — render a Cancel beside it and call {@link RuntimeBridge.cancelProviderSignIn}.

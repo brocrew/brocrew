@@ -177,8 +177,9 @@ MUTATIONS = [
         [
             (
                 HOST,
-                "    const { home: providerHome, loginRenewed } = await this.prepareAHome(input.provider, profileId)",
-                "    const { home: providerHome, loginRenewed } = this.prepareAHome(input.provider, profileId) as unknown as { home: string; loginRenewed: boolean }",
+                # ⚑ **Codex home switching · re-anchored in place, not retired** — The home preparation call now includes the session id; the mutation still drops its await.
+                "    const { home: providerHome, loginRenewed } = await this.prepareAHome(\n      input.provider,\n      profileId,\n      id,\n    )",
+                "    const { home: providerHome, loginRenewed } = this.prepareAHome(\n      input.provider,\n      profileId,\n      id,\n    ) as unknown as { home: string; loginRenewed: boolean }",
             )
         ],
     ),

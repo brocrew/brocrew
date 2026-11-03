@@ -351,6 +351,7 @@ const CLASSIFIED: Record<
   profiles: 'no session',
   checkProviderAuth: 'no session',
   reprovisionProviderAuth: 'no session',
+  reprovisionProviderHomes: 'no session',
   signInProvider: 'no session',
   cancelProviderSignIn: 'no session',
 

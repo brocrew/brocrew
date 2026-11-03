@@ -1049,6 +1049,8 @@ describe('396 · nothing waits on somebody looking', () => {
           // ⚑ `keepWhatItsProgramCut` choosing WHERE a stopped program's restart is delivered: onto
           // the window that watched it stop, or no window. ⛔ The restart is planned either way.
           'const watching = session.sink.alive && session.sink.aPersonIsBehindIt ? session.sink : null',
+          // Copying a sign-in restarts the conversation either way; this only chooses its window.
+          'session.sink.alive && session.sink.aPersonIsBehindIt ? session.sink : null',
           // ⚑ `placeTheWakeUpsAgain` sending a running conversation's level read again in a moved
           // zone: the row is written either way, and only its send waits on a window.
           'if (said !== null && session.sink.alive) this.emit(session, said)',
@@ -1078,6 +1080,14 @@ describe('396 · nothing waits on somebody looking', () => {
       )
       expect(byId).toMatch(/await this\.ensureRunning\(sessionId, watching\)/)
       expect(byId.match(/\bwatching\b/g)).toHaveLength(2)
+      const copyingSignIn = bodyOf(
+        sourceOf(join(mainRoot, 'runtime'), 'runtime-host.ts'),
+        'private copyHomeWhenIdle(',
+      )
+      expect(copyingSignIn).toContain(
+        "await this.resumeSession(session.id, watching, null, undefined, 'not-read')",
+      )
+      expect(copyingSignIn.match(/\bwatching\b/g)).toHaveLength(2)
     })
 
     it('⛔ D-004 · the reopen on a renewed sign-in does not wait on somebody looking', () => {
