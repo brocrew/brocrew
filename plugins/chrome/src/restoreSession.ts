@@ -15,8 +15,10 @@ const KEPT_SCHEMES = new Set(['http:', 'https:', 'file:'])
 export interface SavedProfile {
   name: string
   urls: string[]
+  identity?: string
 }
 export interface SavedSession {
+  format?: 2
   savedAt: string
   profiles: SavedProfile[]
 }
@@ -47,18 +49,27 @@ export function saveVisibleSession(
   canSave: (name: string) => boolean,
   now: () => Date = () => new Date(),
   logger?: Logger,
+  identityOf?: (name: string) => string,
 ): void {
   try {
     const profiles = source
       .visiblePages()
       .filter((p) => canSave(p.profile))
-      .map((p) => ({ name: p.profile, urls: urlsToKeep(p.urls) }))
+      .map((p) => ({
+        name: p.profile,
+        urls: urlsToKeep(p.urls),
+        ...(identityOf ? { identity: identityOf(p.profile) } : {}),
+      }))
       .filter((p) => p.urls.length > 0)
     if (profiles.length === 0) {
       fs.rmSync(file, { force: true })
       return
     }
-    const session: SavedSession = { savedAt: now().toISOString(), profiles }
+    const session: SavedSession = {
+      ...(identityOf ? { format: 2 } : {}),
+      savedAt: now().toISOString(),
+      profiles,
+    }
     const tmp = `${file}.${process.pid}.tmp`
     fs.writeFileSync(tmp, JSON.stringify(session) + '\n', { mode: 0o600 })
     fs.renameSync(tmp, file)
@@ -84,6 +95,7 @@ export function takeFreshSession(
   fs.rmSync(file, { force: true })
   try {
     const parsed = JSON.parse(text) as Partial<SavedSession>
+    if (parsed.format !== undefined && parsed.format !== 2) return null
     const at = typeof parsed.savedAt === 'string' ? Date.parse(parsed.savedAt) : NaN
     if (!Number.isFinite(at) || !Array.isArray(parsed.profiles)) return null
     const age = now().getTime() - at
@@ -103,10 +115,15 @@ export function takeFreshSession(
       )
       .map((p) => ({
         name: p.name,
+        ...(typeof p.identity === 'string' ? { identity: p.identity } : {}),
         urls: urlsToKeep(p.urls.filter((u): u is string => typeof u === 'string')),
       }))
       .filter((p) => p.urls.length > 0)
-    return { savedAt: parsed.savedAt as string, profiles }
+    return {
+      ...(parsed.format === 2 ? { format: 2 } : {}),
+      savedAt: parsed.savedAt as string,
+      profiles,
+    }
   } catch {
     return null
   }
@@ -127,7 +144,12 @@ export async function restoreVisibleSession(deps: RestoreDeps): Promise<string[]
   const clock = deps.clock ?? Date.now
   const totalEnd = clock() + RESTORE_TOTAL_BUDGET_MS
   const done: string[] = []
-  for (const p of session.profiles) {
+  for (const saved of session.profiles) {
+    if (!store.shared && session.format === 2) continue
+    const resolved = store.shared?.resolveSaved(saved.name, saved.identity, session.format !== 2)
+    const name = store.shared ? resolved?.name : saved.name
+    if (!name) continue
+    const p = { ...saved, name }
     if (clock() >= totalEnd) {
       logger.warn('restore: out of time, profile skipped')
       continue
@@ -142,16 +164,30 @@ export async function restoreVisibleSession(deps: RestoreDeps): Promise<string[]
     try {
       let opened = 0
       tabs.watch(p.name, browser)
+      const admission = {
+        authorization: store.shared?.authorization(p.name),
+        generation: undefined as number | undefined,
+      }
       await browser.exclusive(p.name, async () => {
         const allowed = (): boolean => {
           const current = store.get(p.name)
-          return current !== undefined && current.enabled && !current.temporary
+          return (
+            current !== undefined &&
+            current.enabled &&
+            !current.temporary &&
+            (!store.shared || store.shared.identity(p.name) === resolved?.identity) &&
+            store.shared?.authorization(p.name) === admission.authorization &&
+            (admission.generation === undefined ||
+              browser.state(p.name)?.generation === admission.generation)
+          )
         }
         if (!allowed()) return
         const { generation } = await browser.ensure(p.name, 'visible')
+        admission.generation = generation
         if (!allowed()) return
         const profileEnd = Math.min(totalEnd, clock() + RESTORE_PROFILE_BUDGET_MS)
         for (const url of p.urls) {
+          if (store.shared && new URL(url).protocol === 'file:') continue
           if (!allowed()) break
           if (clock() >= profileEnd) {
             logger.warn('restore: out of time, remaining tabs dropped', {

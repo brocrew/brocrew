@@ -53,14 +53,19 @@ function action(label, payload) {
   button.addEventListener('click', () => propose(payload))
   return button
 }
-async function confirmDelete(profile) {
+async function confirmDelete(profile, displayedConfirmation, shared) {
   if (deletionPending) return
   const wasEnabled = lastSnapshot.profiles.find((value) => value.name === profile)?.enabled === true
   deletionPending = true
   deletionError = ''
   draw(lastSnapshot)
   try {
-    await rpc('proposeConfig', { action: 'delete-profile', profile, confirm: profile })
+    await rpc('proposeConfig', {
+      action: 'delete-profile',
+      profile,
+      confirm: profile,
+      ...(shared ? { deleteConfirmation: displayedConfirmation } : {}),
+    })
     deleting = null
     await refresh()
   } catch {
@@ -104,16 +109,36 @@ function draw(snapshot) {
     heading.className = 'profile-heading'
     const name = text('strong', profile.name)
     name.className = 'profile-name'
-    const state = text('span', profile.open ? 'Open' : 'Closed')
+    const state = text(
+      'span',
+      profile.inUseIn
+        ? `In use in ${profile.inUseIn}`
+        : profile.status === 'deleting'
+          ? 'Deletion incomplete; name reserved'
+          : profile.status === 'moving'
+            ? 'Migration pending'
+            : profile.open
+              ? 'Open'
+              : 'Closed',
+    )
     state.className = 'profile-state'
     const actions = document.createElement('div')
     actions.className = 'profile-actions'
     actions.append(
-      action(profile.enabled ? 'Disable' : 'Enable', {
-        action: 'set-enabled',
-        profile: profile.name,
-        enabled: !profile.enabled,
-      }),
+      action(
+        profile.shared
+          ? profile.enabled
+            ? 'Switch off here'
+            : 'Switch on here'
+          : profile.enabled
+            ? 'Disable'
+            : 'Enable',
+        {
+          action: 'set-enabled',
+          profile: profile.name,
+          enabled: !profile.enabled,
+        },
+      ),
       action('Open window', { action: 'open-window', profile: profile.name }),
     )
     const remove = text('button', 'Delete')
@@ -126,6 +151,62 @@ function draw(snapshot) {
     actions.append(remove)
     heading.append(name, state, actions)
     row.append(heading)
+    if (profile.shared) {
+      row.append(text('p', `On in ${(profile.onIn ?? []).join(', ') || 'no workspaces'}.`))
+      row.append(
+        text(
+          'p',
+          'Workspaces using the default Chrome setup share these switches. Workspaces with their own Chrome setup have separate switches.',
+        ),
+      )
+      if (profile.migratedFrom && profile.migratedFrom !== profile.name)
+        row.append(text('p', `Renamed from ${profile.migratedFrom}.`))
+      const settings = document.createElement('fieldset')
+      settings.append(text('legend', 'Applies to this profile in every workspace'))
+      for (const [flag, label] of [
+        ['allowSync', 'Allow sync'],
+        ['allowExtensions', 'Allow extensions'],
+        ['allowSettings', 'Allow settings'],
+      ]) {
+        const control = text('label', label)
+        const checkbox = document.createElement('input')
+        checkbox.type = 'checkbox'
+        checkbox.checked = profile[flag] === true
+        checkbox.addEventListener('change', () =>
+          propose({ action: 'set-flags', profile: profile.name, [flag]: checkbox.checked }),
+        )
+        control.prepend(checkbox)
+        settings.append(control)
+      }
+      row.append(settings)
+      const keep = text(
+        'label',
+        'Keep running here. While on, workspaces with a separate Chrome setup cannot use this profile.',
+      )
+      const checkbox = document.createElement('input')
+      checkbox.type = 'checkbox'
+      checkbox.checked = profile.keepRunning === true
+      checkbox.addEventListener('change', () =>
+        propose({ action: 'set-flags', profile: profile.name, keepRunning: checkbox.checked }),
+      )
+      keep.prepend(checkbox)
+      row.append(keep)
+      if (profile.appliesAtNextLaunch)
+        row.append(
+          text(
+            'p',
+            'Launch settings apply when this profile next starts. Revoked agent access applies to new work immediately.',
+          ),
+        )
+    } else if (profile.migration)
+      row.append(
+        text(
+          'p',
+          profile.migration === 'qualification-required'
+            ? 'Sharing awaits migration qualification.'
+            : `Profile migration: ${profile.migration}.`,
+        ),
+      )
     if (profile.enabled && profile.helperOff === true) {
       const helper = document.createElement('p')
       helper.className = 'profile-helper'
@@ -141,7 +222,9 @@ function draw(snapshot) {
       confirmation.append(
         text(
           'p',
-          `Delete “${profile.name}”? This removes its browsing data, cookies, sign-ins and profile downloads. Agents can no longer use it.`,
+          profile.shared
+            ? `Delete “${profile.name}” for every workspace? It is on in ${(profile.onIn ?? []).join(', ') || 'no workspaces'}. This removes its Chrome data, sign-ins and history. This cannot be undone.`
+            : `Delete “${profile.name}”? This removes its browsing data, cookies, sign-ins and profile downloads. Agents can no longer use it.`,
         ),
       )
       const cancel = text('button', 'Cancel')
@@ -157,7 +240,10 @@ function draw(snapshot) {
         deletionPending ? 'Deleting…' : deletionError ? 'Try again' : 'Delete profile',
       )
       confirm.disabled = deletionPending
-      confirm.addEventListener('click', () => void confirmDelete(profile.name))
+      confirm.addEventListener(
+        'click',
+        () => void confirmDelete(profile.name, profile.deleteConfirmation, profile.shared === true),
+      )
       confirmation.append(cancel, confirm)
       if (deletionError) confirmation.append(text('p', deletionError))
       row.append(confirmation)

@@ -3,10 +3,12 @@ import { lstatSync, readFileSync, mkdirSync, chmodSync } from 'node:fs'
 import path from 'node:path'
 import { browserChoice } from './shared/browser/launchConfig.js'
 import type { BrowserChoice } from './shared/browser/launchConfig.js'
+import { sharedProfilesRelease, sharedProfilesReleased } from './sharedProfilesRelease.js'
 
 export class ConfigError extends Error {}
 export interface AgentChromeConfig {
   port: number
+  shared?: { root: string; workspaceId: string; workspaceLabel: string; migrationApproved: boolean }
   home: string
   authPath: string
   workspace: string
@@ -53,6 +55,28 @@ export function loadConfig(env: Record<string, string | undefined>): AgentChrome
     typeof v === 'string' && /^[\x21-\x7e]{32,4096}$/.test(v)
   if (!valid(pair?.mcpToken) || !valid(pair?.adminToken) || pair.mcpToken === pair.adminToken)
     throw new ConfigError('Plugin unavailable. Try again.')
+  const sharedRoot = env.BROCREW_CHROME_SHARED
+  let shared: AgentChromeConfig['shared']
+  if (sharedRoot !== undefined && sharedProfilesReleased(process.platform, sharedProfilesRelease)) {
+    const workspaceId = env.BROCREW_PLUGIN_OWNER_ID
+    if (
+      !path.isAbsolute(sharedRoot) ||
+      !workspaceId ||
+      !/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(workspaceId)
+    )
+      throw new ConfigError('Shared Chrome workspace identity is invalid.')
+    privateFolder(sharedRoot, sharedRoot)
+    shared = {
+      root: sharedRoot,
+      workspaceId,
+      workspaceLabel:
+        (env.BROCREW_PLUGIN_OWNER_LABEL ?? '')
+          .replace(/[\p{Cc}\p{Cf}\p{Cs}\u2028\u2029]/gu, ' ')
+          .trim()
+          .slice(0, 80) || 'another',
+      migrationApproved: true,
+    }
+  }
   const workspace = path.join(home, 'files')
   const downloadsRoot = path.join(home, 'downloads')
   for (const dir of [workspace, downloadsRoot]) {
@@ -65,6 +89,7 @@ export function loadConfig(env: Record<string, string | undefined>): AgentChrome
     authPath,
     workspace,
     downloadsRoot,
+    ...(shared ? { shared } : {}),
     token: pair.mcpToken,
     adminToken: pair.adminToken,
     browser: browserChoice('chrome', env.BROCREW_CHROME_EXECUTABLE),

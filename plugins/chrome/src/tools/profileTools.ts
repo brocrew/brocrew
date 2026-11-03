@@ -1,3 +1,4 @@
+import { fenceToolDefs } from './authorization.js'
 import path from 'node:path'
 import { openGuardedFile } from '../localFileGuard.js'
 import { listExtensions, webStoreId, webStoreUrl } from '../extensions.js'
@@ -7,6 +8,14 @@ import { profileName, usableProfile } from './common.js'
 import type { ToolDef } from './common.js'
 const TABS_DIE = 'This restarted the profile: its tab ids are dead, call open_tab again.'
 const FOLDER_MANIFEST_MAX = 1024 * 1024
+function diskAccess<T>(
+  deps: Parameters<ToolDef['run']>[1],
+  name: string,
+  write: boolean,
+  work: () => T,
+): T {
+  return deps.store.shared ? deps.store.shared.withDiskAccess(name, write, work) : work()
+}
 function checkUnpackedFolder(folder: string, guard: Parameters<typeof openGuardedFile>[1]): void {
   const file = openGuardedFile(path.join(folder, 'manifest.json'), guard)
   let manifest: unknown
@@ -32,7 +41,7 @@ function checkUnpackedFolder(folder: string, guard: Parameters<typeof openGuarde
   }
 }
 export function buildProfileToolDefs(): ToolDef[] {
-  return [
+  return fenceToolDefs([
     {
       spec: {
         name: 'install_extension',
@@ -56,7 +65,11 @@ export function buildProfileToolDefs(): ToolDef[] {
         deps.browser.touch(name)
         const id = webStoreId(source)
         if (id) {
-          if (listExtensions(deps.browser.dir(name)).some((e) => e.id === id))
+          if (
+            diskAccess(deps, name, false, () => listExtensions(deps.browser.dir(name))).some(
+              (e) => e.id === id,
+            )
+          )
             return { json: { status: 'already-installed', id } }
           await deps.windows.open(name, webStoreUrl(id), () =>
             usableProfile(deps, name, 'allowExtensions'),
@@ -95,7 +108,11 @@ export function buildProfileToolDefs(): ToolDef[] {
       },
       async run(a, deps) {
         usableProfile(deps, a.profile as string, 'allowExtensions')
-        return { json: listExtensions(deps.browser.dir(a.profile as string)) }
+        return {
+          json: diskAccess(deps, a.profile as string, false, () =>
+            listExtensions(deps.browser.dir(a.profile as string)),
+          ),
+        }
       },
     },
     {
@@ -117,7 +134,11 @@ export function buildProfileToolDefs(): ToolDef[] {
         const name = a.profile as string
         usableProfile(deps, name, 'allowExtensions')
         const id = a.id as string
-        if (!listExtensions(deps.browser.dir(name)).some((e) => e.id === id))
+        if (
+          !diskAccess(deps, name, false, () => listExtensions(deps.browser.dir(name))).some(
+            (e) => e.id === id,
+          )
+        )
           throw new ToolError('that extension is not installed in this profile')
         deps.browser.touch(name)
         await deps.windows.open(name, `chrome://extensions/?id=${id}`, () =>
@@ -142,7 +163,13 @@ export function buildProfileToolDefs(): ToolDef[] {
       },
       async run(a, deps) {
         usableProfile(deps, a.profile as string, 'allowSettings')
-        return { json: { settings: readSettings(deps.browser.dir(a.profile as string)) } }
+        return {
+          json: {
+            settings: diskAccess(deps, a.profile as string, false, () =>
+              readSettings(deps.browser.dir(a.profile as string)),
+            ),
+          },
+        }
       },
     },
     {
@@ -167,7 +194,10 @@ export function buildProfileToolDefs(): ToolDef[] {
           const open = deps.browser.state(name) !== null
           await deps.browser.close(name)
           usableProfile(deps, name, 'allowSettings')
-          writeSetting(deps.browser.dir(name), key, value)
+          diskAccess(deps, name, true, () => {
+            usableProfile(deps, name, 'allowSettings')
+            writeSetting(deps.browser.dir(name), key, value)
+          })
           return open
         })
         return {
@@ -182,5 +212,5 @@ export function buildProfileToolDefs(): ToolDef[] {
         }
       },
     },
-  ]
+  ])
 }

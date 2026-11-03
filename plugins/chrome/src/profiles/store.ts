@@ -1,6 +1,8 @@
 import fs from 'node:fs'
+import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 import { privateFolder } from '../privatePaths.js'
+import type { SharedProfileAccess } from './sharedTypes.js'
 import { PRIVATE } from '../privateModes.js'
 export const PROFILE_NAME = /^[a-z0-9-]{1,32}$/
 export interface ProfileFlags {
@@ -19,6 +21,8 @@ export const FLAG_NAMES = [
 ] as const
 export type CreatedBy = 'agent' | 'panel'
 export interface ProfileRecord {
+  /** Local capability-mode epoch; persisted with flags so failed registry writes cannot admit ABA. */
+  authorizationEpoch?: string
   name: string
   enabled: boolean
   allowExtensions: boolean
@@ -50,6 +54,7 @@ export function checkDescription(value: unknown): string {
 }
 export class ProfileStoreError extends Error {}
 export interface ProfileStore {
+  shared?: SharedProfileAccess
   list(): ProfileRecord[]
   get(name: string): ProfileRecord | undefined
   dirOf(name: string): string
@@ -75,7 +80,11 @@ export function isProfileName(value: unknown): value is string {
  * off is kept.
  */
 export const DEFAULTS_VERSION = 2
-export function createProfileStore(opts: { home: string; now?: () => Date }): ProfileStore {
+export function createProfileStore(opts: {
+  home: string
+  now?: () => Date
+  scopedAuthorization?: boolean
+}): ProfileStore {
   const now = opts.now ?? (() => new Date())
   const file = path.join(opts.home, 'profiles.json')
   const profilesDir = path.join(opts.home, 'profiles')
@@ -100,6 +109,9 @@ export function createProfileStore(opts: { home: string; now?: () => Date }): Pr
       const profiles: ProfileRecord[] = parsed.profiles
         .filter((p): p is ProfileRecord => isRecord(p) && isProfileName(p.name))
         .map((p) => ({
+          ...(typeof p.authorizationEpoch === 'string'
+            ? { authorizationEpoch: p.authorizationEpoch }
+            : {}),
           name: p.name,
           enabled: p.enabled === true,
           allowExtensions: p.allowExtensions === true,
@@ -190,7 +202,10 @@ export function createProfileStore(opts: { home: string; now?: () => Date }): Pr
     },
     setFlags(name, flags) {
       const { all, index } = must(name)
-      const next = { ...all[index] }
+      const next = {
+        ...all[index],
+        ...(opts.scopedAuthorization ? { authorizationEpoch: randomUUID() } : {}),
+      }
       for (const f of FLAG_NAMES) if (typeof flags[f] === 'boolean') next[f] = flags[f] as boolean
       all[index] = next
       write(all)

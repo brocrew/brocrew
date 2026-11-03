@@ -1,3 +1,4 @@
+import { fenceToolDefs, sharedAccess, checkToolAuthorization } from './authorization.js'
 import { privateFolder } from '../privatePaths.js'
 import { PublicToolError } from '../shared/toolServer.js'
 import { randomBytes } from 'node:crypto'
@@ -68,7 +69,7 @@ export {
 } from './common.js'
 export type { ToolDeps, ToolOutput } from './common.js'
 export function buildToolDefs(): ToolDef[] {
-  return [
+  return fenceToolDefs([
     {
       spec: {
         name: 'list_browser_profiles',
@@ -78,19 +79,22 @@ export function buildToolDefs(): ToolDef[] {
       },
       async run(_a, deps) {
         return {
-          json: deps.store.list().map((p) => {
-            const s = deps.browser.state(p.name)
-            return {
-              name: p.name,
-              description: p.description,
-              temporary: p.temporary,
-              enabled: p.enabled,
-              allowExtensions: p.allowExtensions,
-              allowSettings: p.allowSettings,
-              open: s !== null,
-              mode: s?.mode ?? null,
-            }
-          }),
+          json: deps.store
+            .list()
+            .filter((p) => !sharedAccess(deps) || p.enabled)
+            .map((p) => {
+              const s = deps.browser.state(p.name)
+              return {
+                name: p.name,
+                description: p.description,
+                temporary: p.temporary,
+                enabled: p.enabled,
+                allowExtensions: p.allowExtensions,
+                allowSettings: p.allowSettings,
+                open: s !== null,
+                mode: s?.mode ?? null,
+              }
+            }),
         }
       },
     },
@@ -98,7 +102,7 @@ export function buildToolDefs(): ToolDef[] {
       spec: {
         name: 'create_browser_profile',
         description:
-          'Create a new empty Chrome profile (one per account). It starts DISABLED: the user enables it in the Settings → Plugins → Chrome. temporary:true instead makes a throwaway profile that is enabled at once, never signed in and without extensions or settings access; it is deleted after 10 minutes idle, when the server restarts, or by delete_browser_profile. name is optional for a temporary profile (tmp-xxxxxx).',
+          'Create a new empty Chrome profile (one per account). Shared profiles start enabled in this workspace. Workspace-local profiles start disabled: the user enables them in Settings → Plugins → Chrome. temporary:true instead makes a throwaway profile that is enabled at once, never signed in and without extensions or settings access; it is deleted after 10 minutes idle, when the server restarts, or by delete_browser_profile. name is optional for a temporary profile (tmp-xxxxxx).',
         props: {
           name: profileName,
           description: {
@@ -140,7 +144,9 @@ export function buildToolDefs(): ToolDef[] {
               description: rec.description,
               note: temporary
                 ? 'created enabled and temporary: it is deleted after 10 minutes idle, on a server restart, or by delete_browser_profile'
-                : 'created disabled; the user enables it in the Settings → Plugins → Chrome (signing in is optional)',
+                : sharedAccess(deps)
+                  ? 'created enabled in this workspace (signing in is optional)'
+                  : 'created disabled; the user enables it in the Settings → Plugins → Chrome (signing in is optional)',
             },
           }
         } catch (e) {
@@ -157,7 +163,7 @@ export function buildToolDefs(): ToolDef[] {
     {
       spec: {
         name: 'set_browser_profile_description',
-        description: `Set the description of any profile (enabled or not): a plain-text label of what the profile is for, at most ${DESCRIPTION_MAX} characters, shown in list_browser_profiles and the Plugins screen. An empty string clears it.`,
+        description: `Set the description of an available profile: a plain-text label of what the profile is for, at most ${DESCRIPTION_MAX} characters, shown in list_browser_profiles and the Plugins screen. An empty string clears it.`,
         props: {
           profile: profileName,
           description: {
@@ -1206,7 +1212,7 @@ export function buildToolDefs(): ToolDef[] {
         }
       },
     },
-  ]
+  ])
 }
 export const MAX_PROFILES = 20
 function safeDecode(text: string): string {
@@ -1231,11 +1237,18 @@ async function fetchToDisk(
   let url = start
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     const cookie = (await ctx.cookies(url)).map((c) => `${c.name}=${c.value}`).join('; ')
+    checkToolAuthorization(deps)
     const res = await fetch(url, {
       redirect: 'manual',
       signal,
       headers: cookie ? { cookie } : {},
     })
+    try {
+      checkToolAuthorization(deps)
+    } catch (error) {
+      await res.body?.cancel().catch(() => undefined)
+      throw error
+    }
     if (res.status >= 300 && res.status < 400 && res.headers.get('location')) {
       await res.body?.cancel().catch(() => undefined)
       url = checkDownloadUrl(new URL(res.headers.get('location') as string, url).href)
@@ -1265,6 +1278,12 @@ async function fetchToDisk(
       let bytes = 0
       const cap = new Transform({
         transform(chunk: Buffer, _enc, cb) {
+          try {
+            checkToolAuthorization(deps)
+          } catch (error) {
+            cb(error as Error)
+            return
+          }
           bytes += chunk.length
           if (bytes > MAX_DOWNLOAD_BYTES) cb(new DownloadTooLarge())
           else cb(null, chunk)
@@ -1276,6 +1295,7 @@ async function fetchToDisk(
           cap,
           fs.createWriteStream(target, { fd }),
         )
+        checkToolAuthorization(deps)
       } catch (e) {
         fs.rmSync(target, { force: true })
         if (e instanceof DownloadTooLarge)
@@ -1343,6 +1363,7 @@ async function saveDownload(
   let tmp: string | null
   try {
     tmp = await raceTimeout(download.path(), ms)
+    checkToolAuthorization(deps)
   } catch (e) {
     await download.cancel().catch(() => undefined)
     throw e
@@ -1353,6 +1374,7 @@ async function saveDownload(
   try {
     if (fs.statSync(tmp).size > MAX_DOWNLOAD_BYTES) throw tooLarge
     const source = await download.createReadStream()
+    checkToolAuthorization(deps)
     if (!source) throw new ToolError('the download failed')
     const dir = path.join(deps.downloadsRoot, dayFolder((deps.now ?? (() => new Date()))()))
     privateFolder(path.dirname(deps.downloadsRoot), deps.downloadsRoot, true)
@@ -1361,6 +1383,12 @@ async function saveDownload(
     let bytes = 0
     const cap = new Transform({
       transform(chunk: Buffer, _enc, cb) {
+        try {
+          checkToolAuthorization(deps)
+        } catch (error) {
+          cb(error as Error)
+          return
+        }
         bytes += chunk.length
         if (bytes > MAX_DOWNLOAD_BYTES) cb(new DownloadTooLarge())
         else cb(null, chunk)
@@ -1368,6 +1396,7 @@ async function saveDownload(
     })
     try {
       await pipeline(source, cap, fs.createWriteStream(target, { fd }))
+      checkToolAuthorization(deps)
     } catch (e) {
       fs.rmSync(target, { force: true })
       throw e instanceof DownloadTooLarge ? tooLarge : e

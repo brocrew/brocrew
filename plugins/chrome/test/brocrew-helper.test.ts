@@ -10,6 +10,8 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   BrocrewHelper,
   HELPER_FILES,
+  HELPER_VERSION,
+  HELPER_PROTOCOL,
   copyHelper,
   offInLastSession,
 } from '../src/browser/brocrewHelper.js'
@@ -216,7 +218,7 @@ describe('installing the helper', () => {
   it('copies verified files into the profile, loads them over the pipe and checks the worker', async () => {
     const { fixture, helper, profileDir } = setup()
     expect(await helper.install(1000)).toBe('ready')
-    const folder = path.join(profileDir, 'brocrew-helper')
+    const folder = path.join(profileDir, 'brocrew-helper', HELPER_VERSION)
     expect(fixture.sent.find((s) => s.method === 'Extensions.loadUnpacked')!.params).toEqual({
       path: folder,
     })
@@ -228,16 +230,16 @@ describe('installing the helper', () => {
     }
     expect(fixture.detached).toBe(fixture.sessions)
   })
-  it('replaces planted files and links in its folder', async () => {
+  it('refuses planted files and links without changing immutable version files', async () => {
     const { helper, profileDir, home } = setup()
-    const folder = path.join(profileDir, 'brocrew-helper')
-    fs.mkdirSync(folder)
+    const folder = path.join(profileDir, 'brocrew-helper', HELPER_VERSION)
+    fs.mkdirSync(folder, { recursive: true })
     fs.writeFileSync(path.join(folder, 'extra.js'), 'planted')
     fs.writeFileSync(path.join(home, 'elsewhere.js'), 'outside')
     fs.symlinkSync(path.join(home, 'elsewhere.js'), path.join(folder, 'worker.js'))
-    expect(await helper.install(1000)).toBe('ready')
-    expect(fs.readdirSync(folder).sort()).toEqual(['manifest.json', 'worker.js'])
-    expect(fs.lstatSync(path.join(folder, 'worker.js')).isSymbolicLink()).toBe(false)
+    expect(await helper.install(1000)).toBe('unavailable')
+    expect(fs.readdirSync(folder).sort()).toEqual(['extra.js', 'worker.js'])
+    expect(fs.lstatSync(path.join(folder, 'worker.js')).isSymbolicLink()).toBe(true)
     expect(fs.readFileSync(path.join(home, 'elsewhere.js'), 'utf8')).toBe('outside')
   })
   it('refuses changed shipped bytes, a linked shipped file and a linked folder, loading nothing', () => {
@@ -254,6 +256,47 @@ describe('installing the helper', () => {
     fs.rmSync(path.join(profileDir, 'brocrew-helper'), { recursive: true, force: true })
     fs.symlinkSync(home, path.join(profileDir, 'brocrew-helper'))
     expect(() => copyHelper(shipped, profileDir)).toThrow()
+  })
+  it('coexists with other immutable helper versions in an explicit shared root', () => {
+    const { profileDir, home } = setup()
+    const root = path.join(home, 'shared-helper')
+    fs.mkdirSync(root)
+    const old = path.join(root, 'p1-old-version')
+    fs.mkdirSync(old)
+    fs.writeFileSync(path.join(old, 'worker.js'), 'fictional old holder')
+    const folder = copyHelper(shipped, profileDir, root)
+    expect(HELPER_PROTOCOL).toBe(1)
+    expect(folder).toBe(path.join(root, HELPER_VERSION))
+    const inode = fs.statSync(path.join(folder, 'worker.js')).ino
+    expect(copyHelper(shipped, profileDir, root)).toBe(folder)
+    expect(fs.statSync(path.join(folder, 'worker.js')).ino).toBe(inode)
+    expect(fs.readFileSync(path.join(old, 'worker.js'), 'utf8')).toBe('fictional old holder')
+    fs.appendFileSync(path.join(folder, 'worker.js'), 'tampered')
+    expect(() => copyHelper(shipped, profileDir, root)).toThrow()
+    expect(fs.readFileSync(path.join(folder, 'worker.js'), 'utf8')).toContain('tampered')
+  })
+  it('does not load after extensions are revoked during helper inspection', async () => {
+    let allowed = true
+    const { helper, fixture } = setup({ allowed: () => allowed })
+    const original = fixture.browser.bind(fixture)
+    fixture.browser = () => {
+      const driver = original()
+      const opening = driver.newBrowserCDPSession
+      driver.newBrowserCDPSession = async () => {
+        const session = await opening()
+        const send = session.send
+        session.send = async (method, params) => {
+          const result = await send(method, params)
+          if (method === 'Extensions.getExtensions') allowed = false
+          return result
+        }
+        return session
+      }
+      return driver
+    }
+    expect(await helper.install(1000)).toBe('unavailable')
+    expect(methods(fixture)).not.toContain('Extensions.loadUnpacked')
+    expect(methods(fixture)).not.toContain('Extensions.uninstall')
   })
   it('loads nothing in a profile where BroCrew remembers the person turned it off', async () => {
     const { fixture, helper } = setup({ off: true })

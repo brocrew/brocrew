@@ -13,7 +13,7 @@
     "major": 1,
     "minMinor": 0,
     "maxMinor": 0,
-    "requiredFeatures": ["contributions-v1"]
+    "requiredFeatures": ["contributions-v1", "shared-data-v1"]
   },
   "toolApi": {
     "major": 1,
@@ -93,7 +93,14 @@
         "properties": {
           "action": {
             "type": "string",
-            "enum": ["create-profile", "set-enabled", "open-window", "delete-profile", "helper-on"],
+            "enum": [
+              "create-profile",
+              "set-enabled",
+              "open-window",
+              "delete-profile",
+              "helper-on",
+              "set-flags"
+            ],
             "maxLength": 32
           },
           "profile": {
@@ -106,6 +113,22 @@
           "confirm": {
             "type": "string",
             "maxLength": 32
+          },
+          "deleteConfirmation": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "allowExtensions": {
+            "type": "boolean"
+          },
+          "allowSync": {
+            "type": "boolean"
+          },
+          "allowSettings": {
+            "type": "boolean"
+          },
+          "keepRunning": {
+            "type": "boolean"
           }
         },
         "required": ["action", "profile"],
@@ -180,7 +203,7 @@
     ]
   },
   "permissions": {
-    "description": "Uses your installed Google Chrome with its own separate profiles. Agents can read web pages and local files accessible to Chrome, use sites and save downloads in the plugin's private storage. You choose which profiles agents may use.",
+    "description": "Uses your installed Google Chrome with its own separate profiles. Agents can read web pages and local files accessible to Chrome, use sites and save downloads in the plugin's private storage. You choose which profiles agents may use. Permanent profiles and their Chrome data are shared across your BroCrew workspaces. Each workspace chooses which profiles agents may use.",
     "resources": [
       {
         "id": "browser-profiles",
@@ -199,5 +222,6 @@
     "kind": "node",
     "entry": "server.mjs"
   },
-  "hooks": []
+  "hooks": [],
+  "sharedData": true
 }
