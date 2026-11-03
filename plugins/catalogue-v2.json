@@ -5,30 +5,30 @@
       "id": "chrome",
       "name": "Chrome",
       "description": "Lets agents use Google Chrome with its own separate profiles: read pages, use sites and save downloads.",
-      "version": "0.1.6",
+      "version": "0.1.7",
       "authors": [
         "brocrew"
       ],
-      "minAppVersion": "0.1.7",
-      "sourceCommit": "ca13f70eaa3b9cb3667bfc581a12fbe9c8ee0396",
+      "minAppVersion": "0.1.34",
+      "sourceCommit": "a5aa7cf9ee7b724cd044df2c76ffa1fd9dd25f42",
       "targets": [
         {
           "os": "darwin",
           "cpu": "arm64",
-          "url": "https://github.com/brocrew/brocrew-plugin-chrome/releases/download/v0.1.6/chrome-darwin-arm64.tar.gz",
-          "sha256": "d867ac200d46dc35ba68bb0e2ab40a766a6e7b8913baee1879a2cbc5cedc09a7",
-          "bytes": 3586722,
+          "url": "https://github.com/brocrew/brocrew-plugin-chrome/releases/download/v0.1.7/chrome-darwin-arm64.tar.gz",
+          "sha256": "52b836a548dc60a3e1a8742b5b6fdaf2ad49a3656ece62962928f809146e6498",
+          "bytes": 3606309,
           "compression": "tar.gz",
-          "manifestSha256": "9c9eea3060634eb7cca27ce24ecfd32eaeacf0a40cf27fc7f0e9d1b39d3650ce"
+          "manifestSha256": "d5ae959d65ac2ca37582cd476107fb68343845b31b1e9249fd827374de51c9b5"
         },
         {
           "os": "win32",
           "cpu": "x64",
-          "url": "https://github.com/brocrew/brocrew-plugin-chrome/releases/download/v0.1.6/chrome-win32-x64.tar.gz",
-          "sha256": "33218598b4945eab9819721b5320fe944846d240b9600e96bea7c44bfb4947be",
-          "bytes": 3586721,
+          "url": "https://github.com/brocrew/brocrew-plugin-chrome/releases/download/v0.1.7/chrome-win32-x64.tar.gz",
+          "sha256": "a2cbb3ad127f2eb2917fac923f8ce9ad8f7215f0c56099b396dcc9cf561c803f",
+          "bytes": 3606310,
           "compression": "tar.gz",
-          "manifestSha256": "f14767b23fae775284d4ba2c5100fa668026ec1149b0f829cdd611d582c793f1"
+          "manifestSha256": "6f199a49a88ad992744e443723e3110a4e2b67603b4f033ce3881f08c16f141f"
         }
       ]
     },
