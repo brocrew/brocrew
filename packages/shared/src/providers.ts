@@ -4,6 +4,7 @@ import {
   type ProviderConfigLayout,
 } from './providers/configuration'
 import type { ProviderCapabilities } from './provider-capabilities'
+import type { ProviderConnectionCapabilities } from './provider-connections'
 import { CLAUDE_CAPABILITIES } from './providers/claude-capabilities'
 import { CODEX_CAPABILITIES } from './providers/codex-capabilities'
 
@@ -20,6 +21,7 @@ export interface ProviderDescriptor {
   readonly instructionPlacement: 'sdk-context' | 'native-file'
   readonly ownNotesPlacement: 'profile-bundle' | 'first-lead'
   readonly connectionKind: 'standard'
+  readonly connections: ProviderConnectionCapabilities
   readonly capabilities: ProviderCapabilities
   /** The provider's own program, as a conversation's words name it. */
   readonly programName: string
@@ -121,6 +123,13 @@ export const PROVIDER_DESCRIPTORS = [
     instructionPlacement: 'sdk-context',
     ownNotesPlacement: 'profile-bundle',
     connectionKind: 'standard',
+    connections: {
+      contractVersion: 1,
+      authMethods: ['sign-in', 'api-key'],
+      protocol: 'claude-agent-sdk',
+      versionSource: 'sdk',
+      additionalConnections: false,
+    },
     capabilities: Object.freeze(CLAUDE_CAPABILITIES),
     programName: 'Claude Code',
     config: CLAUDE_CONFIG_LAYOUT,
@@ -188,6 +197,13 @@ export const PROVIDER_DESCRIPTORS = [
     instructionPlacement: 'native-file',
     ownNotesPlacement: 'first-lead',
     connectionKind: 'standard',
+    connections: {
+      contractVersion: 1,
+      authMethods: ['sign-in', 'api-key'],
+      protocol: 'codex-app-server',
+      versionSource: 'app-server',
+      additionalConnections: false,
+    },
     capabilities: Object.freeze(CODEX_CAPABILITIES),
     programName: 'Codex',
     config: CODEX_CONFIG_LAYOUT,

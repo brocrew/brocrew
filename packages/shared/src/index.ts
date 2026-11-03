@@ -19,6 +19,13 @@ export {
   providerRecord,
 } from './providers'
 export type { ProviderDescriptor } from './providers'
+export { compatibilityConnectionId } from './provider-connections'
+export type {
+  ConnectionAuthMethod,
+  ConnectionCredentialSource,
+  ProviderConnection,
+  ProviderConnectionCapabilities,
+} from './provider-connections'
 export { isAvailable } from './provider-capabilities'
 export type {
   CapabilityState,
