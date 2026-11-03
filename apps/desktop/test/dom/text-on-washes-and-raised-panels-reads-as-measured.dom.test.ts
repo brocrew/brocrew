@@ -159,13 +159,15 @@ describe('text on the content’s washes and raised panels', () => {
     expect(panel, 'the picker is open').not.toBeNull()
     await expect
       .poll(() =>
-        panel!.querySelector('[data-cy="model-picker-row"] input:checked + .words .label')
+        panel!
+          .querySelector('[data-cy="model-picker-row"] input:checked + .words .label')
           ?.textContent?.trim(),
       )
       .toBe('Opus')
     await expect
       .poll(() =>
-        panel!.querySelector('[data-cy="model-picker-effort"] input:checked + .label')
+        panel!
+          .querySelector('[data-cy="model-picker-effort"] input:checked + .label')
           ?.textContent?.trim(),
       )
       .toBe('high')

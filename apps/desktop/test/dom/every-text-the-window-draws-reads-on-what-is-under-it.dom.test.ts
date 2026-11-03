@@ -248,13 +248,15 @@ const STATES: readonly [string, () => Promise<Element>][] = [
       await mustPress(m.host, '[data-cy="card-run-model"]')
       await expect
         .poll(() =>
-          m.host.querySelector('[data-cy="model-picker-row"] input:checked + .words .label')
+          m.host
+            .querySelector('[data-cy="model-picker-row"] input:checked + .words .label')
             ?.textContent?.trim(),
         )
         .toBe('Opus')
       await expect
         .poll(() =>
-          m.host.querySelector('[data-cy="model-picker-effort"] input:checked + .label')
+          m.host
+            .querySelector('[data-cy="model-picker-effort"] input:checked + .label')
             ?.textContent?.trim(),
         )
         .toBe('high')
