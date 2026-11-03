@@ -615,6 +615,10 @@ export class PluginSupervisorAttachment {
   }
 }
 
+export function defaultPluginRoot(appData: string): string {
+  return join(appData, '@brobot2', 'plugins')
+}
+
 /** Hidden fixtures stay explicit; normal startup may select a paired workspace opt-in. */
 export function pluginSupervisorRoot(options: {
   appData: string
@@ -625,7 +629,7 @@ export function pluginSupervisorRoot(options: {
 }): string | null {
   if (!options.hidden) {
     if (typeof options.workspaceRoot !== 'string') refuse()
-    const defaultRoot = join(options.appData, '@brobot2', 'plugins')
+    const defaultRoot = defaultPluginRoot(options.appData)
     return workspacePluginRoot({
       appData: options.appData,
       workspaceRoot: options.workspaceRoot,

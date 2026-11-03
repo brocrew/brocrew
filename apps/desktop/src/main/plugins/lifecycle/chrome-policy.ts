@@ -1,12 +1,14 @@
 import { z } from 'zod'
 import type { PluginNodeReady } from '../node-host'
-import type { BrokerServer, PluginExecution } from '../tool-broker'
+import type { BrokerRequest, BrokerServer, PluginExecution } from '../tool-broker'
 
 const Profile = z.object({
   name: z.string(),
   enabled: z.boolean(),
   allowSettings: z.boolean().optional(),
   allowExtensions: z.boolean().optional(),
+  shared: z.boolean().optional(),
+  status: z.string().max(32).optional(),
 })
 const Snapshot = z.object({
   profiles: z.array(Profile).max(128),
@@ -61,6 +63,23 @@ const metadata = new Set([
   'delete_browser_profile',
   'list_tabs',
 ])
+function permitted(value: ChromeAccessSnapshot, request: BrokerRequest): boolean {
+  const tabProfile = value.tabs.find((one) => one.id === request.input.tabId)?.profile
+  if (
+    request.input.tabId !== undefined &&
+    (!tabProfile || (request.input.profile !== undefined && request.input.profile !== tabProfile))
+  )
+    return false
+  const profile = typeof request.input.profile === 'string' ? request.input.profile : tabProfile
+  const record = value.profiles.find((one) => one.name === profile)
+  return (
+    !!record?.enabled &&
+    (!record.shared || record.status === 'ready') &&
+    (!['get_settings', 'set_setting'].includes(request.name) || !!record.allowSettings) &&
+    (!['install_extension', 'list_extensions', 'remove_extension'].includes(request.name) ||
+      !!record.allowExtensions)
+  )
+}
 /** Recheck current profile choices at broker dispatch; Chrome also checks them in its own queue. */
 export function withChromeResourcePolicy(
   port: BrokerServer,
@@ -82,26 +101,7 @@ export function withChromeResourcePolicy(
         try {
           if (!metadata.has(request.name)) {
             const value = await snapshot(activeSignal)
-            const tabProfile = value.tabs.find((one) => one.id === request.input.tabId)?.profile
-            if (
-              request.input.tabId !== undefined &&
-              (!tabProfile ||
-                (request.input.profile !== undefined && request.input.profile !== tabProfile))
-            ) {
-              settle()
-              return { ok: false as const }
-            }
-            const profile =
-              typeof request.input.profile === 'string' ? request.input.profile : tabProfile
-            const record = value.profiles.find((one) => one.name === profile)
-            if (
-              !record?.enabled ||
-              (['get_settings', 'set_setting'].includes(request.name) && !record.allowSettings) ||
-              (['install_extension', 'list_extensions', 'remove_extension'].includes(
-                request.name,
-              ) &&
-                !record.allowExtensions)
-            ) {
+            if (!permitted(value, request)) {
               settle()
               return { ok: false as const }
             }
@@ -111,13 +111,19 @@ export function withChromeResourcePolicy(
             return { ok: false as const }
           }
           execution = port.tool(request, activeSignal)
-          void execution.quiescent.then(settle, fail)
-          return await execution.result
+          const reply = await execution.result
+          if (!metadata.has(request.name) && !permitted(await snapshot(activeSignal), request))
+            return { ok: false as const }
+          return activeSignal.aborted ? { ok: false as const } : reply
         } catch {
           if (!execution) settle()
           return { ok: false as const }
         }
       })()
+      void result.then(() => {
+        if (execution) void execution.quiescent.then(settle, fail)
+        else settle()
+      }, fail)
       return {
         result,
         quiescent,

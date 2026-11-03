@@ -7,9 +7,11 @@ import {
   FLAG_NAMES,
   PROFILE_NAME,
   ProfileStoreError,
+  RENAME_ERRORS,
   checkDescription,
   isProfileName,
 } from '../profiles/store.js'
+import { ProfileInUseElsewhereError } from '../profiles/sharedStore.js'
 import type { ProfileStore } from '../profiles/store.js'
 import type { WindowTasks } from '../windows.js'
 import { bareUrl } from '../tabs.js'
@@ -78,6 +80,8 @@ export function registerAdminRoutes(app: Express, deps: AdminDeps): void {
     const s = browser.state(name)
     return {
       ...rec,
+      ...store.shared?.view(name),
+      ...(rec.deleting ? { status: 'deleting' } : {}),
       open: s !== null,
       mode: s?.mode ?? null,
       helperOff: rec.helper === 'off',
@@ -188,12 +192,29 @@ export function registerAdminRoutes(app: Express, deps: AdminDeps): void {
     try {
       await deps.opener.open(name)
     } catch (e) {
+      if (e instanceof ProfileInUseElsewhereError) return fail(res, 409, e.message)
       if (e instanceof ProfileInUseError) return fail(res, 409, ADMIN_ERRORS.inUse)
       if (e instanceof BrowserNotFoundError) return fail(res, 409, ADMIN_ERRORS.noBrowser)
       deps.logger.warn('open window failed to open')
       return fail(res, 409, ADMIN_ERRORS.failed)
     }
     send(res, 202, { profile: view(name) })
+  })
+  app.post('/v1/profiles/:name/rename', (req, res) => {
+    const name = named(req, res)
+    if (!name) return
+    const body = bodyOf(req, ['newName'])
+    if (!body || typeof body.newName !== 'string') return fail(res, 400, ADMIN_ERRORS.body)
+    try {
+      store.rename(name, body.newName)
+      send(res, 200, { profile: view(name) })
+    } catch (error) {
+      const message = error instanceof ProfileStoreError ? error.message : ''
+      if (message === RENAME_ERRORS.invalid) return fail(res, 400, message)
+      if (message === RENAME_ERRORS.duplicate || message === RENAME_ERRORS.deleting)
+        return fail(res, 409, message)
+      return fail(res, 409, ADMIN_ERRORS.failed)
+    }
   })
   app.post('/v1/profiles/:name/description', (req, res) => {
     const name = named(req, res)
@@ -216,15 +237,23 @@ export function registerAdminRoutes(app: Express, deps: AdminDeps): void {
   app.post('/v1/profiles/:name/delete', async (req, res) => {
     const name = named(req, res)
     if (!name) return
-    const body = bodyOf(req, ['confirm'])
+    const body = bodyOf(req, ['confirm', 'deleteConfirmation'])
     if (!body) return fail(res, 400, ADMIN_ERRORS.body)
     if (body.confirm !== name) return fail(res, 400, ADMIN_ERRORS.confirm)
     try {
       await browser.removeWhenIdle(name, () => {
-        store.setFlags(name, { enabled: false })
-        store.remove(name)
+        if (store.shared?.view(name).shared === true) {
+          if (typeof body.deleteConfirmation !== 'string')
+            throw new ProfileStoreError('Review the global deletion warning first.')
+          store.shared.remove(name, body.deleteConfirmation)
+        } else {
+          store.setFlags(name, { enabled: false })
+          store.remove(name)
+        }
       })
     } catch (error) {
+      if (error instanceof ProfileInUseElsewhereError) return fail(res, 409, error.message)
+      if (error instanceof ProfileStoreError) return fail(res, 409, error.message)
       if (error instanceof ProfileInUseError) return fail(res, 409, ADMIN_ERRORS.deleteInUse)
       return fail(res, 409, ADMIN_ERRORS.failed)
     }

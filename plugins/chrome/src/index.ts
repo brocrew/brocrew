@@ -12,6 +12,8 @@ import { restoreFileOf, restoreVisibleSession, saveVisibleSession } from './rest
 import { createLogger } from './logger.js'
 import type { Logger } from './logger.js'
 import { createProfileStore } from './profiles/store.js'
+import { createSharedProfileStore } from './profiles/sharedStore.js'
+import { sharedProfilesRelease, sharedProfilesReleased } from './sharedProfilesRelease.js'
 import type { ProfileStore } from './profiles/store.js'
 export function createChromeBrowser(
   store: ProfileStore,
@@ -22,6 +24,9 @@ export function createChromeBrowser(
 ): ChromeBrowser {
   return new ChromeBrowser({
     dirOf: store.dirOf,
+    ...(store.shared
+      ? { acquireLease: store.shared.acquire, authorization: store.shared.authorization }
+      : {}),
     profileExists: (name) => store.get(name) !== undefined,
     logger,
     ...(idleMs !== undefined ? { idleMs } : {}),
@@ -50,6 +55,17 @@ export function createChromeBrowser(
     ...over,
   })
 }
+export function createConfiguredProfileStore(config: AgentChromeConfig): ProfileStore {
+  return config.shared && sharedProfilesReleased(process.platform, sharedProfilesRelease)
+    ? createSharedProfileStore({
+        home: config.home,
+        shared: config.shared.root,
+        workspaceId: config.shared.workspaceId,
+        workspaceLabel: config.shared.workspaceLabel,
+        migrationApproved: true,
+      })
+    : createProfileStore({ home: config.home })
+}
 async function main(): Promise<void> {
   const logger = createLogger('agent-chrome')
   let running: RunningAgentChrome
@@ -58,11 +74,12 @@ async function main(): Promise<void> {
   let store: ProfileStore
   try {
     config = loadConfig(process.env)
-    store = createProfileStore({ home: config.home })
+    store = createConfiguredProfileStore(config)
     browser = createChromeBrowser(store, logger, undefined, config.browser, {
       noSandbox: config.noSandbox,
       noTestType: config.noTestType,
       downloadsRoot: config.downloadsRoot,
+      ...(config.shared ? { helperDir: () => path.join(config.shared!.root, 'helper') } : {}),
       // The package ships the helper beside server.mjs; the working folder never matters.
       helperSource: fileURLToPath(new URL('./helper/', import.meta.url)),
     })
@@ -92,6 +109,7 @@ async function main(): Promise<void> {
         },
         undefined,
         logger,
+        store.shared ? (name) => store.shared!.identity(name) : undefined,
       )
       await browser.closeAll()
     },

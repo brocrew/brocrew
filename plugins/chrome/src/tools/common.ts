@@ -9,6 +9,7 @@ import { OperationBlockedError } from '../shared/browser/browser-lease.js'
 import type { KeyedSerializer } from '../shared/browser/browser-lease.js'
 import { isProfileName } from '../profiles/store.js'
 import type { ProfileStore } from '../profiles/store.js'
+import { ProfileInUseElsewhereError } from '../profiles/sharedStore.js'
 import { TabError } from '../tabs.js'
 import type { TabRegistry, TabState } from '../tabs.js'
 import type { WindowTasks } from '../windows.js'
@@ -158,7 +159,12 @@ export function describeError(e: unknown, ms?: number): string {
     e instanceof LocalFileGuardError
   )
     return e.message
-  if (e instanceof ProfileInUseError || e instanceof BrowserNotFoundError) return e.message
+  if (
+    e instanceof ProfileInUseError ||
+    e instanceof ProfileInUseElsewhereError ||
+    e instanceof BrowserNotFoundError
+  )
+    return e.message
   if (e instanceof OperationBlockedError)
     return 'the profile is being restarted — call again in a few seconds'
   const name = e instanceof Error ? e.name : ''

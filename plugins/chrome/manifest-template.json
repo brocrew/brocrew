@@ -13,7 +13,7 @@
     "major": 1,
     "minMinor": 0,
     "maxMinor": 0,
-    "requiredFeatures": ["contributions-v1"]
+    "requiredFeatures": ["contributions-v1", "shared-data-v1"]
   },
   "toolApi": {
     "major": 1,
@@ -93,12 +93,24 @@
         "properties": {
           "action": {
             "type": "string",
-            "enum": ["create-profile", "set-enabled", "open-window", "delete-profile", "helper-on"],
+            "enum": [
+              "create-profile",
+              "set-enabled",
+              "open-window",
+              "delete-profile",
+              "helper-on",
+              "set-flags",
+              "rename-profile"
+            ],
             "maxLength": 32
           },
           "profile": {
             "type": "string",
             "maxLength": 32
+          },
+          "newName": {
+            "type": "string",
+            "maxLength": 4096
           },
           "enabled": {
             "type": "boolean"
@@ -106,6 +118,22 @@
           "confirm": {
             "type": "string",
             "maxLength": 32
+          },
+          "deleteConfirmation": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "allowExtensions": {
+            "type": "boolean"
+          },
+          "allowSync": {
+            "type": "boolean"
+          },
+          "allowSettings": {
+            "type": "boolean"
+          },
+          "keepRunning": {
+            "type": "boolean"
           }
         },
         "required": ["action", "profile"],
@@ -180,7 +208,7 @@
     ]
   },
   "permissions": {
-    "description": "Uses your installed Google Chrome with its own separate profiles. Agents can read web pages and local files accessible to Chrome, use sites and save downloads in the plugin's private storage. You choose which profiles agents may use.",
+    "description": "Uses your installed Google Chrome with its own separate profiles. Agents can read web pages and local files accessible to Chrome, use sites and save downloads in the plugin's private storage. You choose which profiles agents may use. Permanent profiles and their Chrome data are shared across your BroCrew workspaces. Choose which profiles agents may use. For now, all workspaces that use the default plugin folder share this choice.",
     "resources": [
       {
         "id": "browser-profiles",
@@ -199,5 +227,6 @@
     "kind": "node",
     "entry": "server.mjs"
   },
-  "hooks": []
+  "hooks": [],
+  "sharedData": true
 }

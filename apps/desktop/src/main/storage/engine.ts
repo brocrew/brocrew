@@ -22,6 +22,7 @@ export interface StorageRoots {
   readonly backups: readonly string[]
   readonly recovery?: string
   readonly plugins: string | null
+  readonly sharedPlugins?: string | null
   readonly cache: string | null
   readonly resources: string
 }
@@ -79,8 +80,8 @@ export class StorageEngine {
   private boundary(path: string, part?: StoragePartId): string {
     if (insideData(this.roots.data, path)) return this.roots.data
     if (insideData(this.canonicalData, path)) return this.canonicalData
-    const trusted = part === 'plugins' ? [this.roots.plugins] : []
-    const root = trusted.find((candidate) => candidate !== null && insideData(candidate, path))
+    const trusted = part === 'plugins' ? [this.roots.plugins, this.roots.sharedPlugins] : []
+    const root = trusted.find((candidate) => candidate != null && insideData(candidate, path))
     if (!root) throw new StorageFailure('outside-data')
     return root
   }
@@ -119,7 +120,7 @@ export class StorageEngine {
         return this.roots.backups
       case 'plugins':
         if (this.roots.plugins === null) throw new StorageFailure('unavailable')
-        return [this.roots.plugins]
+        return [this.roots.plugins, ...(this.roots.sharedPlugins ? [this.roots.sharedPlugins] : [])]
       case 'cache':
         if (this.roots.cache === null) throw new StorageFailure('unavailable')
         return [this.roots.cache]
@@ -176,7 +177,11 @@ export class StorageEngine {
   }
 
   private virtual(part: StoragePartId): boolean {
-    return part === 'database' || part === 'backups'
+    return (
+      part === 'database' ||
+      part === 'backups' ||
+      (part === 'plugins' && !!this.roots.sharedPlugins)
+    )
   }
 
   private groupedPaths(part: StoragePartId): { name: string; path: string }[] {

@@ -15,7 +15,8 @@ export const HELPER_FILES = Object.freeze([
   },
   { name: 'worker.js', sha256: '03ce208b86c780228ce2068c2d8e02d649c347c5fff8891b056715d2e81edbe9' },
 ])
-const HELPER_PROTOCOL = 1
+export const HELPER_PROTOCOL = 1
+export const HELPER_VERSION = `p${HELPER_PROTOCOL}-${createHash('sha256').update(JSON.stringify(HELPER_FILES)).digest('hex')}`
 const HELPER_FOLDER = 'brocrew-helper'
 const WORKER_URL = `chrome-extension://${HELPER_ID}/worker.js`
 const MAX_FILE_BYTES = 64 * 1024
@@ -39,28 +40,61 @@ class HelperProblem extends Error {
 }
 const digest = (bytes: Buffer): string => createHash('sha256').update(bytes).digest('hex')
 
-/** Copies the shipped helper into the profile's own folder; nothing outside it is followed. */
-export function copyHelper(source: string, profileDir: string): string {
+/** Publishes a verified immutable version; never edits or removes an existing holder's files. */
+export function copyHelper(source: string, profileDir: string, helperDir?: string): string {
   const shipped = fs.lstatSync(source)
   if (!shipped.isDirectory() || shipped.isSymbolicLink()) throw new HelperProblem('files')
-  const folder = privateFolder(profileDir, path.join(profileDir, HELPER_FOLDER), true)
-  const names = new Set(HELPER_FILES.map((file) => file.name))
-  for (const entry of fs.readdirSync(folder))
-    if (!names.has(entry)) fs.rmSync(path.join(folder, entry), { recursive: true, force: true })
-  for (const file of HELPER_FILES) {
+  const files = HELPER_FILES.map((file) => {
     const from = path.join(source, file.name)
     const stat = fs.lstatSync(from)
     if (!stat.isFile() || stat.size > MAX_FILE_BYTES) throw new HelperProblem('files')
     const bytes = fs.readFileSync(from)
     if (digest(bytes) !== file.sha256) throw new HelperProblem('files')
-    const to = path.join(folder, file.name)
-    const temporary = `${to}.part`
-    fs.rmSync(temporary, { force: true })
-    fs.writeFileSync(temporary, bytes, { flag: 'wx', mode: 0o600 })
-    fs.renameSync(temporary, to)
-    const copied = fs.lstatSync(to)
-    if (!copied.isFile() || digest(fs.readFileSync(to)) !== file.sha256)
+    return { ...file, bytes }
+  })
+  const root = helperDir
+    ? privateFolder(path.dirname(helperDir), helperDir, true)
+    : privateFolder(profileDir, path.join(profileDir, HELPER_FOLDER), true)
+  const folder = privateFolder(root, path.join(root, HELPER_VERSION))
+  const verify = () => {
+    privateFolder(root, folder)
+    const names = fs.readdirSync(folder).sort()
+    if (
+      names.join('\n') !==
+      files
+        .map((file) => file.name)
+        .sort()
+        .join('\n')
+    )
       throw new HelperProblem('files')
+    for (const file of files) {
+      const target = path.join(folder, file.name)
+      const stat = fs.lstatSync(target)
+      if (
+        !stat.isFile() ||
+        stat.size > MAX_FILE_BYTES ||
+        digest(fs.readFileSync(target)) !== file.sha256
+      )
+        throw new HelperProblem('files')
+    }
+  }
+  if (fs.existsSync(folder)) {
+    verify()
+    return folder
+  }
+  const staging = fs.mkdtempSync(path.join(root, '.preparing-'))
+  try {
+    for (const file of files)
+      fs.writeFileSync(path.join(staging, file.name), file.bytes, { flag: 'wx', mode: 0o600 })
+    try {
+      fs.renameSync(staging, folder)
+    } catch (error) {
+      if (!['EEXIST', 'ENOTEMPTY'].includes((error as NodeJS.ErrnoException).code ?? ''))
+        throw error
+    }
+    verify()
+  } finally {
+    fs.rmSync(staging, { recursive: true, force: true })
   }
   return folder
 }
@@ -75,6 +109,8 @@ export class BrocrewHelper implements TabPlacer {
       context: BrowserContext
       profileDir: string
       source: string
+      /** Host-authorized shared helper root; absent keeps helper files local. */
+      helperDir?: string
       /** False once the browser generation ends, the person turns extensions off, or the plugin stops. */
       allowed: () => boolean
       /** Whether the person has turned the helper off, as this plugin remembers it. */
@@ -112,6 +148,7 @@ export class BrocrewHelper implements TabPlacer {
     ]).finally(() => clearTimeout(timer))
   }
   private async withSession<T>(deadline: number, use: (session: CDPSession) => Promise<T>) {
+    this.recheck()
     const browser = this.o.context.browser()
     if (!browser) throw new HelperProblem('closed')
     const opening = browser.newBrowserCDPSession()
@@ -122,15 +159,18 @@ export class BrocrewHelper implements TabPlacer {
       void opening.then((late) => late.detach()).catch(() => undefined)
       throw error
     }
+    let result: T
     try {
       this.recheck()
-      return await use(session)
+      result = await use(session)
     } finally {
       // Detaching waits on Chrome too; never past the caller's deadline, and never long.
       await this.within(session.detach(), Math.min(deadline, this.now() + DETACH_MS)).catch(
         () => undefined,
       )
     }
+    this.recheck()
+    return result
   }
   /** true or false when Chrome says; undefined when the helper is not installed; 'unknown' otherwise. */
   private async enabled(
@@ -138,7 +178,9 @@ export class BrocrewHelper implements TabPlacer {
     deadline: number,
   ): Promise<boolean | undefined | 'unknown'> {
     try {
+      this.recheck()
       const { extensions } = await this.within(session.send('Extensions.getExtensions'), deadline)
+      this.recheck()
       return extensions.find((one) => one.id === HELPER_ID)?.enabled
     } catch (error) {
       if (error instanceof HelperProblem) throw error
@@ -147,6 +189,7 @@ export class BrocrewHelper implements TabPlacer {
   }
   /** The person switched it off in chrome://extensions: remembered, so a restart keeps it off. */
   private turnedOff(): void {
+    this.recheck()
     this.set('off')
     this.o.remember(true)
   }
@@ -180,6 +223,7 @@ export class BrocrewHelper implements TabPlacer {
     })
     started.catch(() => undefined)
     try {
+      this.recheck()
       const { id } = await this.within(
         session.send('Extensions.loadUnpacked', { path: folder }),
         deadline,
@@ -187,6 +231,7 @@ export class BrocrewHelper implements TabPlacer {
       if (id !== HELPER_ID) throw new HelperProblem('id')
       this.recheck()
       const worker = await started
+      this.recheck()
       this.watch(worker)
       return worker
     } finally {
@@ -195,6 +240,7 @@ export class BrocrewHelper implements TabPlacer {
     }
   }
   private async answers(worker: Worker, deadline: number): Promise<void> {
+    this.recheck()
     const protocol = await this.within(
       worker.evaluate(
         () => (globalThis as { brocrewHelper?: { protocol?: unknown } }).brocrewHelper?.protocol,
@@ -218,9 +264,10 @@ export class BrocrewHelper implements TabPlacer {
           return this.current
         }
         this.recheck()
-        this.folder = copyHelper(this.o.source, this.o.profileDir)
+        this.folder = copyHelper(this.o.source, this.o.profileDir, this.o.helperDir)
         const worker = await this.load(session, this.folder, deadline)
         await this.answers(worker, deadline)
+        this.recheck()
         this.o.remember(false)
         return this.set('ready')
       })
@@ -285,6 +332,7 @@ export class BrocrewHelper implements TabPlacer {
       ),
       deadline,
     )) as { ok?: unknown; created?: unknown; windowId?: unknown } | null
+    this.recheck()
     if (answer?.ok === true && Number.isSafeInteger(answer.windowId))
       return { created: true, windowId: answer.windowId as number }
     if (answer?.ok === false && answer.created === false)

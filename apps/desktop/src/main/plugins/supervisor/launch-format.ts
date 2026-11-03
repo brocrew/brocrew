@@ -1,5 +1,6 @@
 import { isAbsolute } from 'node:path'
 import { z } from 'zod'
+import { SharedDataOwner } from '../shared-data'
 
 const path = z.string().min(1).max(4096).refine(isAbsolute)
 const hex = z.string().regex(/^[a-f0-9]{64}$/)
@@ -73,6 +74,18 @@ export const LaunchConfig = z
     browserExecutable: path.optional(),
     startup: StartupPlan.optional(),
     lifecycle: LifecyclePlan.optional(),
+    sharedDataOwner: SharedDataOwner.optional(),
   })
   .refine((value) => !(value.startup && value.lifecycle))
+  .refine(
+    (value) =>
+      !value.sharedDataOwner ||
+      ((!value.sharedDataOwner.workspaceRoot ||
+        (value.workspaceRoots.length === 1 &&
+          value.workspaceRoots[0] === value.sharedDataOwner.workspaceRoot)) &&
+        value.lifecycle &&
+        'source' in value.lifecycle &&
+        !value.lifecycle.fixtureSource &&
+        !value.lifecycle.devSource),
+  )
 export type PluginLaunchConfig = z.infer<typeof LaunchConfig>

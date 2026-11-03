@@ -35,6 +35,8 @@ import {
 } from '../resources/plugin-host/process-groups.mjs'
 import { createPluginVerifier } from '../src/main/plugins/package-verifier'
 import { manifestFor, packageFixture, fictionalPublicKey } from './plugin-package-fixtures'
+import { sharedDataOwner } from '../src/main/plugins/shared-data'
+import { SHARED_DATA_FEATURE } from '../src/main/plugins/shared-data-contract'
 
 const copyFault = vi.hoisted(() => ({ once: false }))
 const admissionFault = vi.hoisted(() => ({
@@ -198,12 +200,13 @@ const server = http.createServer((req, res) => {
  }
  if (req.url === '/v1/owner') return res.end(JSON.stringify({pid:process.ppid}));
  if (req.url === '/v1/env') return res.end(JSON.stringify({home, exec:process.execPath, pid:process.pid, inherited:!!process.env.FICTIONAL_HOST_SECRET}));
+ if (req.url === '/v1/shared') return res.end(JSON.stringify(Object.fromEntries(['BROCREW_CHROME_SHARED','BROCREW_PLUGIN_OWNER_ID','BROCREW_PLUGIN_OWNER_LABEL','BROCREW_CHROME_MIGRATION_QUALIFICATION'].filter(key=>process.env[key]!==undefined).map(key=>[key,process.env[key]]))));
  res.writeHead(404).end();
 });
 server.listen(0,'127.0.0.1',()=>process.send({channel:'brocrew-plugin-node:v1',runId:process.env.BROCREW_PLUGIN_RUN_ID,type:'listening',port:server.address().port}));
 process.on('SIGTERM',()=>{});
 `
-function fixture(body = source, mcpPath = '/mcp') {
+function fixture(body = source, mcpPath = '/mcp', sharedData = false) {
   const files = new Map([['server.mjs', Buffer.from(body)]])
   const manifest = manifestFor(files)
   manifest.id = 'chrome'
@@ -215,6 +218,15 @@ function fixture(body = source, mcpPath = '/mcp') {
   manifest.serviceTemplates = []
   manifest.ui = null
   manifest.uiApi = null
+  if (sharedData)
+    Object.assign(manifest, {
+      format: 2,
+      authors: ['fictional'],
+      executor: { kind: 'node', entry: manifest.server.entry },
+      hooks: [],
+      sharedData: true,
+      hostApi: { ...manifest.hostApi, requiredFeatures: [SHARED_DATA_FEATURE] },
+    })
   const value = packageFixture({ files, manifest })
   const catalogue = createPluginVerifier({
     pinnedPublicKey: fictionalPublicKey,
@@ -402,6 +414,9 @@ process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
       pid: ready.serverPid,
       inherited: false,
     })
+    expect(
+      await (await fetch(ready.origin + '/v1/shared', { headers: ready.admin().headers })).json(),
+    ).toEqual({})
     for (const path of [
       home,
       join(home, 'data/chrome'),
@@ -420,6 +435,53 @@ process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
     })
     expect(await readdir(resolve(handle.receiptPath, '..'))).not.toContain('auth.json')
     expect(() => ready.mcp()).toThrow('plugin-host-ready')
+  }, 15000)
+  it('passes shared storage and stable workspace identity through the guardian only for an eligible owner', async () => {
+    const folder = await realpath(await mkdtemp('/tmp/shared-host-'))
+    const appData = join(folder, 'a'),
+      workspaceRoot = join(folder, 'fern')
+    await mkdir(join(appData, '@brobot2'), { recursive: true, mode: 0o700 })
+    await mkdir(workspaceRoot, { mode: 0o700 })
+    await writeFile(
+      join(workspaceRoot, 'plugin-root.json'),
+      JSON.stringify({ format: 1, slot: 'a' }),
+      { mode: 0o600 },
+    )
+    await writeFile(
+      join(appData, '@brobot2', 'plugin-root-pins.json'),
+      JSON.stringify({ format: 1, selections: [{ workspace: workspaceRoot, slot: 'a' }] }),
+      { mode: 0o600 },
+    )
+    const pluginRoot = join(appData, '@brobot2', 'plugins-a')
+    await mkdir(pluginRoot, { mode: 0o700 })
+    const owner = sharedDataOwner({
+      appData,
+      root: pluginRoot,
+      workspaceRoot,
+      hidden: false,
+      label: 'Fern\n\u202e workspace',
+    })!
+    const host = createPluginNodeHost({
+      root: join(pluginRoot, 'host'),
+      runtime,
+      sharedDataOwner: owner,
+    })
+    hosts.push(host)
+    try {
+      const run = await host.start(fixture(source, '/mcp', true)),
+        ready = await run.ready()
+      expect(
+        await (await fetch(ready.origin + '/v1/shared', { headers: ready.admin().headers })).json(),
+      ).toEqual({
+        BROCREW_CHROME_SHARED: join(appData, '@brobot2', 'shared', 'chrome'),
+        BROCREW_PLUGIN_OWNER_ID: owner.ownerId,
+        BROCREW_PLUGIN_OWNER_LABEL: 'Fern workspace',
+      })
+      expect(await run.stop()).toEqual({ exited: true })
+    } finally {
+      await host.stop()
+      await rm(folder, { recursive: true, force: true })
+    }
   }, 15000)
   it.each(['stop', 'crash', 'quit'] as const)(
     'contains a requested detached browser and cleans its descendant after %s',
