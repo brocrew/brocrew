@@ -1,6 +1,18 @@
 import { defineConfig } from 'vitest/config'
 import vue from '@vitejs/plugin-vue'
 import { playwright } from '@vitest/browser-playwright'
+import { createServer, type AddressInfo } from 'node:net'
+
+async function freeBrowserPort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createServer()
+    server.once('error', reject)
+    server.listen(0, 'localhost', () => {
+      const { port } = server.address() as AddressInfo
+      server.close((error) => (error ? reject(error) : resolve(port)))
+    })
+  })
+}
 
 /**
  * The second project: components in a real engine (083).
@@ -22,7 +34,17 @@ import { playwright } from '@vitest/browser-playwright'
  * equivalent step. Found in review, which is the only reason it is not a trap.
  */
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [
+    vue(),
+    {
+      name: 'dom-browser-port',
+      async config() {
+        if (process.platform !== 'win32') return
+        // Vitest replaces port 0 with 63315; probe a port the Windows runner permits instead.
+        return { test: { browser: { api: { port: await freeBrowserPort(), strictPort: false } } } }
+      },
+    },
+  ],
   /**
    * ⚠️ **Pre-declared, because otherwise the first run RELOADS mid-test.** Vite discovers these two
    * while the suite is already running, re-optimises, and reloads the page — vitest says so out
