@@ -3,6 +3,7 @@ import { nextTick } from 'vue'
 import ModelPicker from '../../src/renderer/src/components/ModelPicker.vue'
 import { createModelLists } from '../../src/renderer/src/lib/model-lists'
 import type { ListedModel, ModelList, RuntimeBridge } from '../../src/shared/runtime-ipc'
+import { compatibilityConnections } from '../provider-connection-fixture'
 import { mount, unmountAll, type Mounted } from './harness'
 
 afterEach(unmountAll)
@@ -51,6 +52,7 @@ function picker() {
   const take = vi.fn(async (): Promise<string | null> => null)
   const m = mount(ModelPicker, {
     providers: ['codex'],
+    connections: compatibilityConnections(),
     profileId: 'fictional-worker',
     shown: null,
     takeWords: 'Use this model',
@@ -98,6 +100,7 @@ describe('model picker host refusals and pending gestures', () => {
     expect(take).toHaveBeenCalledTimes(1)
     expect(take).toHaveBeenLastCalledWith({
       provider: 'codex',
+      connectionId: 'codex:sign-in',
       model: 'listed-model',
       effort: 'high',
     })
@@ -171,6 +174,7 @@ describe('model picker host refusals and pending gestures', () => {
     await expect.poll(() => take.mock.calls.length).toBe(1)
     expect(take).toHaveBeenLastCalledWith({
       provider: 'codex',
+      connectionId: 'codex:sign-in',
       model: 'listed-model',
       effort: 'high',
     })

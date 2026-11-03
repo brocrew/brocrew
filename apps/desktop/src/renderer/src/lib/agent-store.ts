@@ -548,6 +548,7 @@ export function createAgentStore(bridge: RuntimeBridge): AgentStore {
         const saved = await bridge.setAgentModelAndEffort({
           profileId,
           provider: choice?.provider ?? null,
+          ...(choice?.connectionId === undefined ? {} : { connectionId: choice.connectionId }),
           model: choice?.model ?? null,
           effort: choice?.effort ?? null,
         })
@@ -606,6 +607,7 @@ export function createAgentStore(bridge: RuntimeBridge): AgentStore {
           slug: said.slug,
           displayName: said.displayName,
           provider: said.provider,
+          ...(said.connectionId === undefined ? {} : { connectionId: said.connectionId }),
           ...(said.asAService === true ? { asAService: true as const } : {}),
         })
         // ⛔ **Re-read, never pushed — and NOT patched-then-re-read like `save` above.** That

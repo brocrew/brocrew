@@ -432,6 +432,7 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('createSession'),
     provider: providerSchema,
+    connectionId: z.string().trim().min(1).max(200).optional(),
     /** Absent/blank means the durable BroBot workspace. */
     cwd: z.string().optional(),
     /**
@@ -1178,11 +1179,12 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
       provider: providerSchema.nullable(),
       model: z.string().min(1).max(120).nullable(),
       effort: z.string().min(1).max(60).nullable(),
+      connectionId: z.string().trim().min(1).max(200).optional(),
     })
     .refine(
       (command) =>
         command.provider === null
-          ? command.model === null && command.effort === null
+          ? command.model === null && command.effort === null && command.connectionId === undefined
           : command.model !== null,
       'a default is a model for a provider; clear it with all three null',
     ),
@@ -1192,7 +1194,12 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
    * 🔴 **D-042 · R3 — the one list a person picks from**: a provider off the closed enum and the
    * `isPathSegment`-checked profile, absent meaning BroBot's own — the credential gestures' shape.
    */
-  z.object({ kind: z.literal('modelList'), provider: providerSchema, profileId }),
+  z.object({
+    kind: z.literal('modelList'),
+    provider: providerSchema,
+    profileId,
+    connectionId: z.string().trim().min(1).max(200).optional(),
+  }),
   /**
    * ⚑ **D-042 · R3 — a model a person adds to, or takes off, a provider's list** — bounded as
    * `createSession`'s `model` is, with no control characters: it is shown in a list and sent as is.
@@ -1489,6 +1496,7 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
     slug: agentSlug,
     displayName: agentDisplayName.nullable(),
     provider: providerSchema.nullable(),
+    connectionId: z.string().min(1).max(240).optional(),
     // A person makes a service only while services are on; the host refuses it otherwise.
     asAService: z.literal(true).optional(),
   }),
@@ -2695,7 +2703,12 @@ export async function executeRuntimeCommand(
         command.profileId,
         command.provider === null || command.model === null
           ? null
-          : { provider: command.provider, model: command.model, effort: command.effort },
+          : {
+              provider: command.provider,
+              model: command.model,
+              effort: command.effort,
+              ...(command.connectionId === undefined ? {} : { connectionId: command.connectionId }),
+            },
       )
     case 'agentModelAndEffort':
       // ⚑ **Gated like `agentIdentities`, the roster it sits beside** (677): the sheet is a person's.
@@ -2706,7 +2719,13 @@ export async function executeRuntimeCommand(
       // last pick. ⚑ The profile defaults HERE, the credential gestures' rule: every path that
       // resolves "which profile" does it in one place (257 §2).
       requireAPerson(sink, command.kind)
-      return host.modelList(command.provider, command.profileId ?? DEFAULT_PROFILE_ID)
+      return command.connectionId === undefined
+        ? host.modelList(command.provider, command.profileId ?? DEFAULT_PROFILE_ID)
+        : host.modelList(
+            command.provider,
+            command.profileId ?? DEFAULT_PROFILE_ID,
+            command.connectionId,
+          )
     case 'addHandAddedModel':
       // ⛔ **D-042 · R3 — only the person adds and deletes them**, and no toolset carries the verb.
       requireAPerson(sink, command.kind)
@@ -2939,6 +2958,7 @@ export async function executeRuntimeCommand(
         slug: command.slug,
         displayName: command.displayName,
         provider: command.provider,
+        ...(command.connectionId === undefined ? {} : { connectionId: command.connectionId }),
         ...(command.asAService === true ? { asAService: true as const } : {}),
       })
   }

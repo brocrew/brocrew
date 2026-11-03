@@ -445,6 +445,8 @@ export type AgentIdentityName = Pick<AgentIdentity, 'id' | 'slug' | 'displayName
  * writing the second over the first.
  */
 export interface AgentIdentity {
+  /** An explicitly chosen default; absent legacy choices remain dynamic. */
+  readonly connectionId?: string
   /**
    * `aid:<folded slug>` — derived, and shown because it is the thing the rails key on.
    *
@@ -575,6 +577,8 @@ export interface NewAgent {
   readonly displayName: string | null
   /** Which provider its next conversation runs on, or null — nobody has said. */
   readonly provider: Provider | null
+  /** Canonical connection for future conversations; absent keeps the legacy dynamic default. */
+  readonly connectionId?: string
   /**
    * Made a service: one conversation its callers share, which runs their work one piece at a time.
    * Absent, it is a normal agent. ⛔ Refused while services are off.
@@ -3553,6 +3557,8 @@ export interface CreatedSession {
   /** Host-owned id. Not the provider ref: Claude's ref is null until its first turn's init. */
   sessionId: string
   provider: Provider
+  /** Persisted binding only; absent on legacy NULL conversations, which remain dynamic. */
+  connectionId?: string
   /** The working directory the session actually runs in (the BroBot workspace by default). */
   cwd: string
   /** The app-owned per-profile provider home this session was launched in. */
@@ -4829,6 +4835,8 @@ export interface QueuedMessageEvent {
    * ⚠️ Absent on every other held row, and on every row written before D-030.
    */
   forItsNextStart?: true
+  /** Canonical connection of a held work brief, preserved across a restart. */
+  connectionId?: string
 }
 
 /**
@@ -5383,6 +5391,8 @@ export interface WorkGivenEvent {
    * piece's turn comes; absent when it asked for none.
    */
   asked?: ModelAndEffort
+  /** Canonical connection requested by this give; absent on legacy work. */
+  connectionId?: string
 }
 
 /**
@@ -7094,6 +7104,8 @@ export interface RuntimeEventMessage {
 
 export interface CreateSessionInput {
   provider: Provider
+  /** A declared connection reference; omitted legacy choices keep their existing resolution. */
+  connectionId?: string
   /**
    * Where the conversation works. **Omit to take the default**, which is the durable BroBot
    * workspace.
@@ -8513,7 +8525,7 @@ export type RuntimeCommand =
    * 🔴 **D-042 · R3 — the one list a person picks from**, for one provider and one agent
    * ({@link ModelList}). ⚑ `profileId` absent is BroBot's own.
    */
-  | ({ kind: 'modelList' } & ProviderProfileInput)
+  | ({ kind: 'modelList'; connectionId?: string } & ProviderProfileInput)
   /**
    * ⚑ **D-042 · R3 — a person adds a model to a provider's list by hand.** ⛔ Never checked when added:
    * no test call, nothing spent. A provider that refuses it says so at the call that names it.
@@ -8759,6 +8771,7 @@ export type RuntimeCommand =
       provider: Provider | null
       model: string | null
       effort: string | null
+      connectionId?: string
     }
   /**
    * ⚑ **Read the default {@link RuntimeCommand} `setAgentModelAndEffort` wrote** (677) — `null` when
@@ -10057,7 +10070,11 @@ export interface RuntimeBridge {
    * 🔴 **D-042 · R3 — the one list a person picks from** ({@link ModelList}): one provider's rows and
    * the person's own, the last pick, and what a new conversation starts on.
    */
-  modelList(input: { provider: Provider; profileId?: string }): Promise<ModelList>
+  modelList(input: {
+    provider: Provider
+    profileId?: string
+    connectionId?: string
+  }): Promise<ModelList>
   /** ⚑ **D-042 · R3** — add a model to a provider's list by hand; answers the hand-added models. */
   addHandAddedModel(input: { provider: Provider; model: string }): Promise<readonly string[]>
   /** ⚑ **D-042 · R3** — take a hand-added model off the list; answers the hand-added models. */
@@ -10215,6 +10232,7 @@ export interface RuntimeBridge {
     provider: Provider | null
     model: string | null
     effort: string | null
+    connectionId?: string
   }): Promise<ModelChoiceSaved>
   /** The default `setAgentModelAndEffort` wrote, or `null` (677). */
   agentModelAndEffort(input: { profileId: string }): Promise<AgentModelChoice | null>

@@ -49,6 +49,8 @@ export interface ModelAndEffort {
  */
 export interface AgentModelChoice extends ModelAndEffort {
   readonly provider: Provider
+  /** A separately stored explicit default; omitted legacy choices remain dynamic. */
+  readonly connectionId?: string
 }
 
 /** ⚑ **D-042 · R1 — where a conversation's selected pair came from**, in the ruling's order. */

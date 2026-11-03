@@ -602,13 +602,14 @@ const runtime: RuntimeBridge = Object.freeze({
     provider: Provider | null
     model: string | null
     effort: string | null
+    connectionId?: string
   }) => command({ kind: 'setAgentModelAndEffort', ...input }) as Promise<ModelChoiceSaved>,
   // 677 · ⚑ One primitive, built here — `agentInstructions`' shape.
   agentModelAndEffort: (input: { profileId: string }) =>
     command({ kind: 'agentModelAndEffort', ...input }) as Promise<AgentModelChoice | null>,
   // ⚑ **D-042 · the model list's three doors** — each payload built here, so
   // `plain-by-construction` on both halves: each spreads its primitives (`{ kind, ...input }`).
-  modelList: (input: { provider: Provider; profileId?: string }) =>
+  modelList: (input: { provider: Provider; profileId?: string; connectionId?: string }) =>
     command({ kind: 'modelList', ...input }) as Promise<ModelList>,
   addHandAddedModel: (input: { provider: Provider; model: string }) =>
     command({ kind: 'addHandAddedModel', ...input }) as Promise<readonly string[]>,

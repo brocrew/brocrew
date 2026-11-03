@@ -27,6 +27,7 @@ import type {
   RuntimeBridge,
   TranscriptEvent,
 } from '../../src/shared/runtime-ipc'
+import { compatibilityConnections } from '../provider-connection-fixture'
 import { mount, paneProps, record, unmountAll, visible, type Mounted } from './harness'
 
 /**
@@ -54,6 +55,7 @@ import { mount, paneProps, record, unmountAll, visible, type Mounted } from './h
 
 afterEach(async () => {
   unmountAll()
+  Reflect.deleteProperty(window, 'api')
   usePersonsQueue().forget()
   await page.viewport(1100, 900)
 })
@@ -157,6 +159,7 @@ function storeOver(): { store: AgentStore; lists: ModelLists } {
       use: [],
     }) as unknown as AgentIdentities
   const bridge = {
+    providerConnections: async () => compatibilityConnections(),
     agentIdentities: async () => roster(),
     profiles: async () => ['brobot', 'worker'],
     // ⚑ UI-012 · D-042's list door, answering from `world.map` as the host composes a list.
@@ -177,6 +180,7 @@ function storeOver(): { store: AgentStore; lists: ModelLists } {
       provider: 'claude' | 'codex' | null
       model: string | null
       effort: string | null
+      connectionId?: string
     }) => {
       if (input.provider === null) {
         world.held = null
@@ -190,7 +194,11 @@ function storeOver(): { store: AgentStore; lists: ModelLists } {
       const row = theListedRow(catalogue.models, input.model)
       const pair = { model: input.model, effort: input.effort ?? theDefaultEffortOf(row) }
       if (judgeAgainstTheList(catalogue.models, pair) !== null) throw new Error('refused')
-      world.held = { provider: input.provider, ...pair }
+      world.held = {
+        provider: input.provider,
+        ...pair,
+        ...(input.connectionId === undefined ? {} : { connectionId: input.connectionId }),
+      }
       return { ok: true, choice: world.held }
     },
     setAgentProvider: async (input: { profileId: string; provider: 'claude' | 'codex' | null }) => {
@@ -207,6 +215,7 @@ function storeOver(): { store: AgentStore; lists: ModelLists } {
       return { ...ident(world.slug, { provider: input.provider }), modelChoiceCleared: cleared }
     },
   } as unknown as RuntimeBridge
+  Reflect.set(window, 'api', { runtime: bridge })
   return { store: createAgentStore(bridge), lists: createModelLists(() => bridge) }
 }
 
@@ -277,7 +286,9 @@ describe('696 §1 · a never-run agent’s menus say whose list they are, before
     expect(before).toMatch(/^Its new conversations start on this, on Codex — /)
     await press(m, 'model-picker-take')
     // ⚑ Saved: the row holds the default, and its sentence is the draft's, word for word.
-    expect(words(m.q('model-picker-face'))).toBe('gpt-5.6-terra · medium')
+    expect(words(m.q('model-picker-face'))).toBe(
+      'Codex · Fictional subscription · gpt-5.6-terra · medium',
+    )
     expect(words(m.q('agent-model-reaches'))).toBe(before)
   })
 
@@ -420,7 +431,9 @@ describe('696 §4 · the provider press says what the same act cleared', () => {
     expect(m.q('capabilities-provider').contains(cleared)).toBe(true)
     expect(select.compareDocumentPosition(cleared) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     // ⚑ …and the control below agrees: the choice is gone.
-    expect(words(m.q('model-picker-face'))).toBe('Nobody has chosen')
+    expect(words(m.q('model-picker-face'))).toBe(
+      'Claude · Fictional subscription · Nobody has chosen',
+    )
     // ⚑ It reports the LAST press: the next one, which clears nothing, takes the line away.
     await pick(m, 'capabilities-provider-select', '')
     expect(m.all('capabilities-provider-cleared')).toHaveLength(0)
@@ -440,7 +453,7 @@ describe('696 §4 · the provider press says what the same act cleared', () => {
     expect(words(m.q('capabilities-provider-note'))).toContain('unless you choose')
     await pick(m, 'capabilities-provider-select', '')
     expect(m.all('capabilities-provider-cleared')).toHaveLength(0)
-    expect(words(m.q('model-picker-face'))).toBe('opus · high')
+    expect(words(m.q('model-picker-face'))).toBe('Claude · Fictional subscription · opus · high')
   })
 })
 

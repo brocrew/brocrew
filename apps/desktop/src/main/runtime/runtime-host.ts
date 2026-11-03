@@ -550,8 +550,9 @@ function credentialHomeKey(home: string): string {
 }
 
 /** One provider's catalogue in one profile's home — the cache key {@link RuntimeHost.providerModels} keeps. */
-function modelProbeKey(provider: Provider, profileId: string): string {
-  return `${provider}:${profileId}`
+function modelProbeKey(provider: Provider, profileId: string, connectionId?: string): string {
+  const home = `${provider}:${profileId}`
+  return connectionId === undefined ? home : `${home}\u0000${connectionId}`
 }
 
 /**
@@ -1807,6 +1808,7 @@ interface Giving {
    * turn names them and the store writes their rows with the give's own ({@link recordTheGive}).
    */
   readonly inputs: readonly GivenInput[]
+  readonly connectionId?: string
 }
 
 /**
@@ -2542,6 +2544,7 @@ export interface RuntimeHostDeps {
   connectionFor?(provider: Provider, recordedConnection?: string | null): string
   connectionRevision?(provider: Provider): number
   listConnections?(): readonly ProviderConnection[]
+  connectionNamed?(selection: string, provider?: Provider): ProviderConnection
   /**
    * Provision the app-owned home for a provider IN A GIVEN PROFILE and return its path.
    * The profile is passed rather than pinned because it decides what the provider remembers:
@@ -5251,6 +5254,7 @@ export interface ProfileReport {
    * first conversation decides it, or its conversations ran on both and a person has to choose.
    */
   readonly provider: Provider | null
+  readonly connectionId?: string
   /**
    * 🔴 **D-042 · R6 — its DEFAULT model and effort, or null — it has none**: what its new
    * conversations start on when a give names none (`677`'s inbox 8: *"a spawner knows before it
@@ -7651,6 +7655,16 @@ export class RuntimeHost implements LiveHost {
    * name. Scrolling a profile picker spawns nothing; only asking does.
    */
   private readonly modelProbes = new Map<string, Promise<ModelCatalogue>>()
+  private readonly modelLoginEpoch = new Map<Provider, number>()
+  private readonly modelProfileLoginEpoch = new Map<string, number>()
+  private readonly creationConnectionChoices = new WeakMap<
+    AgentModelChoice,
+    {
+      readonly provider: Provider
+      readonly revision: number | undefined
+      readonly epoch: string
+    }
+  >()
   /**
    * ⚑ **689 · the probes in {@link modelProbes} that have SETTLED** — so *a failure already cached*
    * can be told from one another ask is still waiting on (see {@link modelsAskedAgainIfTheyFailed}).
@@ -11273,6 +11287,7 @@ export class RuntimeHost implements LiveHost {
       messageId,
       ...(giving.givenFolder === null ? {} : { givenFolder: giving.givenFolder }),
       ...(pairAsked === null ? {} : { asked: pairAsked }),
+      ...(giving.connectionId === undefined ? {} : { connectionId: giving.connectionId }),
     }
     const ordinal = this.deps.store.nextOrdinal(service)
     const at = this.now()
@@ -11360,7 +11375,13 @@ export class RuntimeHost implements LiveHost {
     // ⚑ The pair its give asked for, else its agent's own: never the one a caller before it asked.
     let pair = head.asked ?? this.theServicesOwnPair(conversation)
     let unread: string | null = null
+    try {
+      this.assertQueuedConnection(conversation, head)
+    } catch (error) {
+      unread = errorMessage(error)
+    }
     if (
+      unread === null &&
       pair === null &&
       session !== null &&
       this.deps.store.whatItRunsOn(conversation)?.aPersonChoseItAt == null
@@ -11385,6 +11406,7 @@ export class RuntimeHost implements LiveHost {
       authorship: whoseWordsTheseAre(by, this.profileOf),
       piece: head.piece,
       label: head.label,
+      ...(head.connectionId === undefined ? {} : { connectionId: head.connectionId }),
       ...(from === null ? {} : { origin: from }),
     }
     const row: QueuedMessageEvent = {
@@ -11395,6 +11417,7 @@ export class RuntimeHost implements LiveHost {
       ...brief.authorship,
       piece: head.piece,
       label: head.label,
+      ...(head.connectionId === undefined ? {} : { connectionId: head.connectionId }),
     }
     if (session !== null) {
       session.mailbox.push(brief)
@@ -11414,6 +11437,13 @@ export class RuntimeHost implements LiveHost {
         }
         return
       }
+      try {
+        this.assertQueuedConnection(conversation, brief)
+      } catch (error) {
+        if (!this.endTheServicesBriefUnsent(conversation, brief.id, errorMessage(error)))
+          this.servicesHeldBack.add(conversation)
+        return
+      }
       if (pair !== null) this.switchedFor(conversation, pair)
       this.publishStateIfChanged(session)
       this.flushQueued(session)
@@ -11423,6 +11453,13 @@ export class RuntimeHost implements LiveHost {
         return
       }
       this.heldAtAStop.set(conversation, [...(this.heldAtAStop.get(conversation) ?? []), brief])
+      try {
+        this.assertQueuedConnection(conversation, brief)
+      } catch (error) {
+        if (!this.endTheServicesBriefUnsent(conversation, brief.id, errorMessage(error)))
+          this.servicesHeldBack.add(conversation)
+        return
+      }
       if (pair !== null) this.switchedFor(conversation, pair)
       // ⚑ With none named, its start reads the pair its agent starts on: none a caller before asked.
       else if (this.deps.store.whatItRunsOn(conversation)?.aPersonChoseItAt == null) {
@@ -11442,7 +11479,13 @@ export class RuntimeHost implements LiveHost {
     const conversation = life.id
     const agent = this.deps.store.identityOf(conversation)?.profileSlug ?? null
     this.servicesReadingAPair.add(conversation)
-    void this.theSelectedModel(life.provider, agent, agent ?? DEFAULT_PROFILE_ID, {})
+    void this.theSelectedModel(
+      life.provider,
+      agent,
+      agent ?? DEFAULT_PROFILE_ID,
+      {},
+      life.handle.connectionId,
+    )
       .then(
         (own) => {
           this.pairsReadForTheHead.set(conversation, { piece, life, pair: own })
@@ -11884,6 +11927,16 @@ export class RuntimeHost implements LiveHost {
    */
   private startTheServiceFor(conversation: string, messageId: string): void {
     if (this.servicesStarting.has(conversation)) return
+    try {
+      const held = this.deps.store
+        .messagesWaitingIn(conversation)
+        .find((row) => row.messageId === messageId)
+      if (held !== undefined) this.assertQueuedConnection(conversation, held)
+    } catch (error) {
+      if (!this.endTheServicesBriefUnsent(conversation, messageId, errorMessage(error)))
+        this.servicesHeldBack.add(conversation)
+      return
+    }
     this.servicesStarting.add(conversation)
     void this.ensureRunning(conversation, null).then(
       () => {
@@ -14597,10 +14650,18 @@ export class RuntimeHost implements LiveHost {
           profile: one.slug,
           displayName: one.displayName,
           provider: runsOn,
+          ...(one.connectionId === undefined ? {} : { connectionId: one.connectionId }),
           // ⚑ **D-042 · R6 — the default IN FORCE**, as three plain fields.
           defaultModel:
             chosen !== null && aChoiceIsInForce(chosen, runsOn)
-              ? { provider: chosen.provider, model: chosen.model, effort: chosen.effort }
+              ? {
+                  provider: chosen.provider,
+                  model: chosen.model,
+                  effort: chosen.effort,
+                  ...(chosen.connectionId === undefined
+                    ? {}
+                    : { connectionId: chosen.connectionId }),
+                }
               : null,
           ...(kindOf(read, conflicts, one.id, one.createdAt) === 'service'
             ? { isAService: true as const }
@@ -24377,9 +24438,19 @@ export class RuntimeHost implements LiveHost {
     // ⚑ **A folder a person or the spawn rails named, else the durable workspace** — `resolveCwd`'s
     // blank branch, which is where every conversation that asked for none runs.
     const cwd = this.deps.resolveCwd(id, input.cwd)
-    const connectionId = recorded
-      ? this.deps.connectionFor?.(input.provider, this.deps.store.connectionOf(id))
-      : this.deps.connectionFor?.(input.provider)
+    const recordedConnection = recorded ? this.deps.store.connectionOf(id) : null
+    const requestedConnection =
+      recordedConnection ??
+      input.connectionId ??
+      (this.deps.store.providerOf(profileId) === input.provider
+        ? this.deps.store.defaultConnectionOf?.(profileId)
+        : null)
+    if (requestedConnection != null && !this.deps.connectionFor)
+      throw new Error('The selected connection is unavailable')
+    const connectionId =
+      requestedConnection == null
+        ? this.deps.connectionFor?.(input.provider)
+        : this.deps.connectionFor?.(input.provider, requestedConnection)
     const connectionRevision = this.deps.connectionRevision?.(input.provider)
     const { home: providerHome, loginRenewed } = await this.prepareAHome(input.provider, profileId)
     this.assertConnectionUnchanged(input.provider, connectionRevision)
@@ -24422,10 +24493,16 @@ export class RuntimeHost implements LiveHost {
     // (a launch of its own) comes first. Recorded on the row below, which every later start
     // replays. Nothing runs on an unnamed default; the effort is absent only for a model that
     // offers none.
-    const selected = await this.theSelectedModel(input.provider, profileId, profileId, {
-      ...(input.model === undefined ? {} : { model: input.model }),
-      ...(input.reasoningEffort === undefined ? {} : { effort: input.reasoningEffort }),
-    })
+    const selected = await this.theSelectedModel(
+      input.provider,
+      profileId,
+      profileId,
+      {
+        ...(input.model === undefined ? {} : { model: input.model }),
+        ...(input.reasoningEffort === undefined ? {} : { effort: input.reasoningEffort }),
+      },
+      requestedConnection ?? undefined,
+    )
     const model = selected.model
     const reasoningEffort = selected.effort ?? undefined
     // The composition root resolves the mode ONCE (078): absent ⇒ the prompting default, and only
@@ -24681,6 +24758,7 @@ export class RuntimeHost implements LiveHost {
     return {
       sessionId: id,
       provider: session.provider,
+      ...this.recordedConnectionDisclosure(id),
       cwd,
       providerHome,
       profileId,
@@ -28062,10 +28140,80 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
-  private createFromGive(start: AdmittedSpawn, startsOn: ModelAndEffort | null) {
+  private pendingServiceConnection(conversation: string): string | undefined {
+    const unread = rowsUnreadOnce()
+    const pieces = this.deps.store.piecesOwnedBy(conversation, unread)
+    if (unread.count > 0 || unread.ledgersSkipped > 0)
+      throw new Error('The selected connection is unavailable')
+    const selected = pieces.find(
+      (piece) =>
+        TASK_IS_OPEN[piece.state] &&
+        piece.stalledBecause !== 'message_never_sent' &&
+        piece.connectionId !== undefined,
+    )?.connectionId
+    if (selected !== undefined && (typeof selected !== 'string' || selected === ''))
+      throw new Error('The selected connection is unavailable')
+    return selected
+  }
+
+  private assertServiceConnection(conversation: string, selected: string): void {
+    const provider = this.theProviderOfConversation(conversation)
+    if (
+      provider === null ||
+      !this.deps.connectionFor ||
+      this.deps.connectionFor(provider, selected) !== selected
+    )
+      throw new Error('The selected connection is unavailable')
+    const session = this.slots.get(conversation)?.session
+    const bound = session?.handle.connectionId ?? this.deps.store.connectionOf(conversation)
+    const pending = bound ?? this.pendingServiceConnection(conversation)
+    if (pending !== undefined && pending !== null && pending !== selected)
+      throw new Error('This conversation keeps its connection.')
+  }
+
+  private assertQueuedConnection(
+    conversation: string,
+    queued: { readonly piece?: string; readonly connectionId?: string },
+  ): void {
+    const selected = queued.connectionId
+    if (selected === undefined) return
+    this.assertServiceConnection(conversation, selected)
+  }
+
+  connectionNamed(name: string, provider?: Provider): ProviderConnection {
+    return this.selectedConnectionByName(name, provider)
+  }
+
+  private selectedConnectionByName(name: string, provider?: Provider): ProviderConnection {
+    if (!this.deps.connectionNamed || !this.deps.connectionFor)
+      throw new Error('The selected connection is unavailable')
+    const connection = this.deps.connectionNamed(name, provider)
+    if (
+      (provider !== undefined && provider !== connection.provider) ||
+      this.deps.connectionFor(connection.provider, connection.id) !== connection.id
+    )
+      throw new Error('The selected connection is unavailable')
+    return connection
+  }
+
+  private assertConversationConnection(id: string, connection: ProviderConnection): void {
+    const session = this.slots.get(id)?.session
+    const provider = session?.provider ?? this.theProviderOfConversation(id)
+    if (provider !== connection.provider) throw new Error('This conversation keeps its connection.')
+    const bound = session?.handle.connectionId ?? this.deps.store.connectionOf(id)
+    const effective = bound ?? this.deps.connectionFor?.(provider)
+    if (effective !== connection.id) throw new Error('This conversation keeps its connection.')
+  }
+
+  private createFromGive(
+    start: AdmittedSpawn,
+    startsOn: ModelAndEffort | null,
+    connectionId?: string,
+  ) {
     return this.createSession(
       {
         provider: start.provider,
+        ...(connectionId === undefined ? {} : { connectionId }),
         cwd: start.cwd,
         approvalMode: start.approvalMode,
         profileId: start.profileId,
@@ -28084,13 +28232,36 @@ export class RuntimeHost implements LiveHost {
     // so: `raiseAQuestion`'s shape. ⚠️ **An agent with no session in this host cannot be
     // mid-tool-call**, so for one this is a bug guard for a caller inside this process.
     const speaking = sessionSpeakingAs(by)
+    let selectedConnection: ProviderConnection | null = null
+    let selectedRevision: number | undefined
+    const routeRefused = (why: string): GiveOutcome => ({
+      ok: false,
+      refusal: refuse('malformed-request', { problems: [why] }),
+    })
+    const parsedSelection = giveRequestSchema.safeParse(input)
+    if (
+      speaking !== null &&
+      parsedSelection.success &&
+      parsedSelection.data.connection !== undefined
+    ) {
+      try {
+        selectedConnection = this.selectedConnectionByName(
+          parsedSelection.data.connection,
+          parsedSelection.data.provider,
+        )
+        selectedRevision = this.deps.connectionRevision?.(selectedConnection.provider)
+        input = { ...parsedSelection.data, provider: selectedConnection.provider }
+      } catch {
+        return routeRefused('The selected connection is unavailable')
+      }
+    }
     // 🔴 **D-042 · the list it chooses from, read before the stretch** — the one await a give that
     // names a model or an effort takes before its rails; the giver is read after it. ⛔ **A give
     // that names neither awaits nothing**, so it reaches its reservation in the tick it was made.
     const asking =
       by === THE_APP_ITSELF || speaking === null
         ? null
-        : this.theListAGiveChoosesFrom(input, speaking)
+        : this.theListAGiveChoosesFrom(input, speaking, selectedConnection?.id)
     const choosing = asking === null ? null : await asking
     // ⚑ A service starting is waited for here, before admission: its row goes into a conversation
     // that has arrived, never beside a start reading where its new life begins.
@@ -28110,6 +28281,18 @@ export class RuntimeHost implements LiveHost {
     )
     if (!admission.ok) return admission
     let { asked, under, goes } = admission
+    if (selectedConnection !== null) {
+      try {
+        this.assertConnectionUnchanged(selectedConnection.provider, selectedRevision)
+        this.deps.connectionFor?.(selectedConnection.provider, selectedConnection.id)
+        if (goes.to === 'the-one-it-has')
+          this.assertConversationConnection(goes.conversation, selectedConnection)
+        if (goes.to === 'a-service' && goes.conversation !== null)
+          this.assertServiceConnection(goes.conversation, selectedConnection.id)
+      } catch {
+        return routeRefused('This conversation keeps its connection.')
+      }
+    }
     // 🔴 **D-042 · R4 — the choice, judged after every rail and before anything is written.**
     let chosen = this.theChoiceOfAGive(asked, goes, choosing)
     if (chosen !== null && !chosen.ok) return { ok: false, refusal: chosen.refusal }
@@ -28157,6 +28340,7 @@ export class RuntimeHost implements LiveHost {
     const number = this.deps.store.numberUnder(under.piece)
     const giving: Giving = {
       piece,
+      ...(selectedConnection === null ? {} : { connectionId: selectedConnection.id }),
       parent: under.piece,
       number,
       // ⚑ The parent's label and this number — `W1.2` under `W1`, the spelling `pieceCalled` makes.
@@ -28203,6 +28387,7 @@ export class RuntimeHost implements LiveHost {
         to: string,
         onAStop?: (to: string) => Promise<QueueOutcome>,
       ): Promise<QueueOutcome> => {
+        if (selectedConnection !== null) this.assertConversationConnection(to, selectedConnection)
         reached = to
         // ⚑ The pair this hand-over switched it from — `undefined` when it switched nothing.
         let switchedFrom: ModelAndEffort | null | undefined
@@ -28341,7 +28526,7 @@ export class RuntimeHost implements LiveHost {
         normal?.fact === null || normal === null
           ? null
           : { conversation: normal.conversation, fact: normal.fact }
-      const starting = this.createFromGive(start, startsOn)
+      const starting = this.createFromGive(start, startsOn, selectedConnection?.id)
       this.reservingAStartFrom = null
       this.reservingNormalWorker = null
       // ⚠️ Awaited in a `try`, for the hand-over's reason below: a `.catch()` adds a tick.
@@ -28399,6 +28584,7 @@ export class RuntimeHost implements LiveHost {
   private theListAGiveChoosesFrom(
     input: unknown,
     speaking: string,
+    connectionId?: string,
   ): Promise<{
     readonly provider: Provider
     readonly list: TheListAsked
@@ -28429,7 +28615,7 @@ export class RuntimeHost implements LiveHost {
             ? asked.profile
             : STAND_IN_PROFILE
           : (this.profileOf(found) ?? STAND_IN_PROFILE)
-      return this.theListFor(provider, home)
+      return this.theListFor(provider, home, connectionId)
     }
     return (async () => {
       const first = preferred === null ? null : await listFor(preferred)
@@ -30527,6 +30713,7 @@ export class RuntimeHost implements LiveHost {
       throw new Error(`${conversation}'s first launch was cut before its provider named it`)
     }
     const profileId = row.profileId ?? DEFAULT_PROFILE_ID
+    const requestedConnection = this.pendingServiceConnection(conversation)
     const slot = this.refusalsTranslated(() =>
       this.reserve(
         conversation,
@@ -30546,6 +30733,7 @@ export class RuntimeHost implements LiveHost {
         slot,
         {
           provider: recorded.provider,
+          ...(requestedConnection === undefined ? {} : { connectionId: requestedConnection }),
           cwd: recorded.cwd,
           approvalMode: row.approvalMode ?? 'ask',
           profileId,
@@ -31066,6 +31254,7 @@ export class RuntimeHost implements LiveHost {
       ...(carried === null
         ? {}
         : { piece: carried.piece, label: carried.label, ...theRebriefMark }),
+      ...(giving?.connectionId === undefined ? {} : { connectionId: giving.connectionId }),
       ...(drives === null ? {} : { drives }),
       // ⚑ **414** — see {@link QueuedMessage.origin}: the flush has no `by` to derive from.
       ...(from === null ? {} : { origin: from }),
@@ -31099,6 +31288,7 @@ export class RuntimeHost implements LiveHost {
         ? {}
         : { piece: carried.piece, label: carried.label, ...theRebriefMark }),
       // ⚑ **D-016 · commit 6 · R4** — see {@link QueuedMessageEvent.drives}.
+      ...(giving?.connectionId === undefined ? {} : { connectionId: giving.connectionId }),
       ...(drives === null ? {} : { drives }),
       // ⚑ **F088** — see {@link QueuedMessageEvent.about}.
       ...(about === null ? {} : { about }),
@@ -31175,6 +31365,7 @@ export class RuntimeHost implements LiveHost {
       // ⚑ **W4.189** — what became of its folder, absent when it named none.
       ...(piece.givenFolder === null ? {} : { givenFolder: piece.givenFolder }),
       ...(pairAsked === null ? {} : { asked: pairAsked }),
+      ...(piece.connectionId === undefined ? {} : { connectionId: piece.connectionId }),
     }
     this.record(session, () =>
       this.deps.store.recordGive(
@@ -32843,7 +33034,17 @@ export class RuntimeHost implements LiveHost {
       // over ({@link letGoOfAContinuationNotForThisLife}).
       this.dropObsoleteReconciliationNotices(session)
       this.letGoOfAContinuationNotForThisLife(session)
-      going = going.filter(({ queued }) => this.holdsQueued(session, queued))
+      going = going.filter(({ queued }) => {
+        if (!this.holdsQueued(session, queued)) return false
+        try {
+          this.assertQueuedConnection(session.id, queued)
+          return true
+        } catch (error) {
+          if (!this.endTheServicesBriefUnsent(session.id, queued.id, errorMessage(error)))
+            this.servicesHeldBack.add(session.id)
+          return false
+        }
+      })
       if (going.length === 0) return true
       // ⛔ A caller's words held for a service are asked again after the last wait, in the tick the
       // handover begins ({@link aCallersWordsGoNow}): the piece they carried may have ended, or the
@@ -33374,6 +33575,7 @@ export class RuntimeHost implements LiveHost {
       attachments: row.attachments,
       authorship: row.authorship,
       ...(row.piece === undefined ? {} : { piece: row.piece }),
+      ...(row.connectionId === undefined ? {} : { connectionId: row.connectionId }),
       ...(row.label === undefined ? {} : { label: row.label }),
       ...(row.rebrief === undefined ? {} : { rebrief: row.rebrief }),
       ...(row.drives === undefined ? {} : { drives: row.drives }),
@@ -34804,6 +35006,7 @@ export class RuntimeHost implements LiveHost {
     const refused = await keys.set(provider, key)
     if (refused !== null) return { ...this.apiKeyStatus(provider), refused }
     this.keyChanges.set(provider, (this.keyChanges.get(provider) ?? 0) + 1)
+    this.providerModelsChanged(provider)
     this.keyRefusedForBilling.delete(provider)
     const notice = await this.bringTheKeyToItsHomes(provider)
     this.providerLoginChanged(provider)
@@ -34820,6 +35023,7 @@ export class RuntimeHost implements LiveHost {
     if (!keys) return this.apiKeyStatus(provider)
     keys.remove(provider)
     this.keyChanges.set(provider, (this.keyChanges.get(provider) ?? 0) + 1)
+    this.providerModelsChanged(provider)
     this.keyRefusedForBilling.delete(provider)
     const notice = await this.bringTheKeyToItsHomes(provider)
     this.providerLoginChanged(provider)
@@ -35316,6 +35520,7 @@ export class RuntimeHost implements LiveHost {
    * an older login's and is not kept ({@link HostedSession.runsOnAnOlderLogin}).
    */
   private providerLoginChanged(provider: Provider, profileId?: string): void {
+    this.providerModelsChanged(provider, profileId)
     this.deps.limitsReader?.signInChanged()
     this.providerLimitFacts.retireHistory()
     this.publishProviderLimitFactsSoon()
@@ -38768,6 +38973,11 @@ export class RuntimeHost implements LiveHost {
     return allProviderCapabilities()
   }
 
+  private recordedConnectionDisclosure(conversation: string): { readonly connectionId?: string } {
+    const id = this.deps.store.connectionOf(conversation)
+    return id === null ? {} : { connectionId: id }
+  }
+
   /** Return declared metadata only, without invoking any provider or credential operation. */
   providerConnections(): readonly ProviderConnection[] {
     return (this.deps.listConnections?.() ?? []).map((row) => ({
@@ -38862,6 +39072,14 @@ export class RuntimeHost implements LiveHost {
     // Record `a-person` as the actor when the person creates an identity through the app. `this-app` would conflate that action with an identity minted during launch; no agent grant is needed for the person's action.
     if (said.asAService === true && !this.servicesAreOn()) {
       throw new Error(NO_SERVICE_IS_MADE_WHILE_OFF)
+    }
+    if (said.connectionId !== undefined) {
+      if (
+        said.provider === null ||
+        !this.deps.connectionFor ||
+        this.deps.connectionFor(said.provider, said.connectionId) !== said.connectionId
+      )
+        throw new Error('The selected connection is unavailable')
     }
     const created = this.deps.store.createAgentIdentity(said, { by: 'a-person' })
     if (created === null) throw new Error(nameIsTaken(said.slug))
@@ -38965,7 +39183,43 @@ export class RuntimeHost implements LiveHost {
     // 3 · the name, last — and its provider kept from the start: the one it names, else its
     // default's, else the creator's.
     const provider = said.provider ?? itsDefault?.provider ?? this.theProviderOfConversation(me)
-    const created = this.deps.store.createAgentIdentity({ ...said, provider }, may.creator)
+    const connectionId = said.connectionId ?? itsDefault?.connectionId
+    if (connectionId !== undefined) {
+      try {
+        if (
+          provider === null ||
+          (itsDefault !== null && itsDefault.provider !== provider) ||
+          (said.connectionId !== undefined &&
+            itsDefault?.connectionId !== undefined &&
+            said.connectionId !== itsDefault.connectionId) ||
+          !this.deps.connectionFor ||
+          this.deps.connectionFor(provider, connectionId) !== connectionId
+        )
+          throw new Error('The selected connection is unavailable')
+        const admission =
+          itsDefault === null ? undefined : this.creationConnectionChoices.get(itsDefault)
+        if (admission !== undefined) {
+          this.assertConnectionUnchanged(admission.provider, admission.revision)
+          if (this.modelEpoch(admission.provider, STAND_IN_PROFILE) !== admission.epoch)
+            throw new Error('The selected connection is unavailable')
+        }
+      } catch {
+        return {
+          ok: false,
+          rail: 'malformed-request',
+          detail: { problems: ['The selected connection is unavailable'] },
+        }
+      }
+    }
+    const created = this.deps.store.atomically(() => {
+      const made = this.deps.store.createAgentIdentity(
+        { ...said, provider, ...(connectionId === undefined ? {} : { connectionId }) },
+        may.creator,
+      )
+      if (made !== null && itsDefault !== null)
+        this.deps.store.setModelChoice(made.slug, itsDefault)
+      return made
+    })
     if (created === null) {
       return { ok: false, rail: 'agent-name-taken', detail: { agent: foldProfileName(said.slug) } }
     }
@@ -39035,7 +39289,6 @@ export class RuntimeHost implements LiveHost {
     // asynchronous separates the two today; the ORDER is what keeps that true when something does.
     // ⚑ **D-042 · R2 — its default, after the name and only on the call that minted it** — what its
     // new conversations start on. ⛔ Unreachable `false` while rail 3 holds, as the rules' write is.
-    if (itsDefault !== null) this.deps.store.setModelChoice(created.slug, itsDefault)
     this.theWorldMoved('agents')
     return {
       ok: true,
@@ -40719,9 +40972,27 @@ export class RuntimeHost implements LiveHost {
       model: choice.model,
       ...(choice.effort === null ? {} : { effort: choice.effort }),
     }
+    const originalProvider = this.deps.store.providerOf(profileSlug)
+    const originalDefault = this.deps.store.defaultConnectionOf?.(profileSlug) ?? null
+    let connectionId: string | undefined
+    let connectionRevision: number | undefined
+    const unavailableConnection = (): ModelChoiceSaved =>
+      refuseModelChoice('models-unavailable', {
+        ...about,
+        why: 'The selected connection is unavailable',
+      })
+    if (choice.connectionId !== undefined) {
+      try {
+        if (!this.deps.connectionFor) return unavailableConnection()
+        connectionId = this.deps.connectionFor(choice.provider, choice.connectionId)
+        connectionRevision = this.deps.connectionRevision?.(choice.provider)
+      } catch {
+        return unavailableConnection()
+      }
+    }
     // 🔴 **682 · `R31b` — a default is always for the identity's own provider.**
     const itsProvider = this.itsProvider(profileSlug).provider
-    if (!aChoiceIsInForce(choice, itsProvider)) {
+    if (connectionId === undefined && !aChoiceIsInForce(choice, itsProvider)) {
       return refuseModelChoice('not-its-provider', {
         ...about,
         ...(itsProvider === null ? {} : { itsProvider }),
@@ -40729,7 +41000,7 @@ export class RuntimeHost implements LiveHost {
         named: agentName(profileSlug, this.deps.store.agentIdentities()),
       })
     }
-    const list = await this.theListFor(choice.provider, profileSlug)
+    const list = await this.theListFor(choice.provider, profileSlug, connectionId)
     const row = theListedRow(list.rows, choice.model)
     // ⚠️ **A model a person added, while the provider's list could not be read, offers efforts
     // nobody knows** — not *"none"* — so it is the list's absence that is said, as the agents' seam
@@ -40754,14 +41025,44 @@ export class RuntimeHost implements LiveHost {
     // list above is an `await`, and a person moving this identity's provider during it would
     // otherwise leave exactly the contradiction the two doors must never leave.
     const itsProviderNow = this.itsProvider(profileSlug).provider
-    if (!aChoiceIsInForce(choice, itsProviderNow)) {
+    if (connectionId === undefined && !aChoiceIsInForce(choice, itsProviderNow)) {
       return refuseModelChoice('not-its-provider', {
         ...about,
         ...(itsProviderNow === null ? {} : { itsProvider: itsProviderNow }),
         named: agentName(profileSlug, this.deps.store.agentIdentities()),
       })
     }
-    if (!this.deps.store.setModelChoice(profileSlug, { provider: choice.provider, ...pair })) {
+    if (connectionId !== undefined) {
+      try {
+        this.assertConnectionUnchanged(choice.provider, connectionRevision)
+        if (
+          this.deps.store.providerOf(profileSlug) !== originalProvider ||
+          (this.deps.store.defaultConnectionOf?.(profileSlug) ?? null) !== originalDefault ||
+          this.deps.connectionFor?.(choice.provider, connectionId) !== connectionId
+        )
+          return unavailableConnection()
+      } catch {
+        return unavailableConnection()
+      }
+    }
+    const noAgent = new Error('The agent default could not be saved')
+    let saved: boolean
+    try {
+      saved = this.deps.store.atomically(() => {
+        if (
+          connectionId !== undefined &&
+          !this.deps.store.setAgentConnection(profileSlug, choice.provider, connectionId)
+        )
+          return false
+        if (!this.deps.store.setModelChoice(profileSlug, { provider: choice.provider, ...pair }))
+          throw noAgent
+        return true
+      })
+    } catch (error) {
+      if (error !== noAgent) throw error
+      saved = false
+    }
+    if (!saved) {
       return refuseModelChoice('no-such-agent', said)
     }
     this.deps.store.aPersonPicked(choice.provider, pair, this.now())
@@ -40783,8 +41084,18 @@ export class RuntimeHost implements LiveHost {
    * ⚑ Asked as {@link providerModels} asks: an agent with no folder in {@link STAND_IN_PROFILE}'s
    * home, a failure already cached asked once more, and nothing creates a folder.
    */
-  async modelList(provider: Provider, profileId: string = DEFAULT_PROFILE_ID): Promise<ModelList> {
-    const list = await this.theListFor(provider, profileId)
+  async modelList(
+    provider: Provider,
+    profileId: string = DEFAULT_PROFILE_ID,
+    connectionId?: string,
+  ): Promise<ModelList> {
+    const revision = this.deps.connectionRevision?.(provider)
+    if (connectionId !== undefined) {
+      if (!this.deps.connectionFor) throw new Error('The selected connection is unavailable')
+      connectionId = this.deps.connectionFor(provider, connectionId)
+    }
+    const list = await this.theListFor(provider, profileId, connectionId)
+    if (connectionId !== undefined) this.assertConnectionUnchanged(provider, revision)
     return {
       provider,
       notAsked: list.notAsked,
@@ -40861,7 +41172,7 @@ export class RuntimeHost implements LiveHost {
   async judgeTheDefaultItNames(
     me: string,
     named: Provider | null,
-    asked: { readonly model?: string; readonly effort?: string },
+    asked: { readonly model?: string; readonly effort?: string; readonly connectionId?: string },
   ): Promise<
     | { readonly ok: true; readonly chosen: AgentModelChoice }
     | { readonly ok: false; readonly refusal: ModelRefusal }
@@ -40872,9 +41183,32 @@ export class RuntimeHost implements LiveHost {
       this.theProviderOfConversation(me)
     // ⛔ **Unreachable while a tool call is made**: the caller is mid-call, so it runs.
     if (provider === null) throw new Error(`create_agent: ${me} runs on no provider`)
-    const list = await this.theListFor(provider, STAND_IN_PROFILE)
+    const connectionId = asked.connectionId
+    if (connectionId !== undefined) {
+      if (
+        !this.deps.connectionFor ||
+        this.deps.connectionFor(provider, connectionId) !== connectionId
+      )
+        throw new Error('The selected connection is unavailable')
+    }
+    const revision = this.deps.connectionRevision?.(provider)
+    const epoch = this.modelEpoch(provider, STAND_IN_PROFILE)
+    const list = await this.theListFor(provider, STAND_IN_PROFILE, connectionId)
+    if (connectionId !== undefined) {
+      this.assertConnectionUnchanged(provider, revision)
+      if (this.modelEpoch(provider, STAND_IN_PROFILE) !== epoch)
+        throw new Error('The selected connection is unavailable')
+    }
     const verdict = judgeAnAgentsChoice(asked, provider, list, null, 'create')
-    return verdict.ok ? { ok: true, chosen: { provider, ...verdict.chosen } } : verdict
+    if (!verdict.ok) return verdict
+    const chosen: AgentModelChoice = {
+      provider,
+      ...verdict.chosen,
+      ...(connectionId === undefined ? {} : { connectionId }),
+    }
+    if (connectionId !== undefined)
+      this.creationConnectionChoices.set(chosen, { provider, revision, epoch })
+    return { ok: true, chosen }
   }
 
   /**
@@ -40914,17 +41248,48 @@ export class RuntimeHost implements LiveHost {
    * 🔴 **Never during a quit** (`689`'s review): asking again runs `prepareProviderHome` before the
    * launch registry can refuse the child, and a quit hands back what it has (070, from 068 finding 7).
    */
+  private catalogueKey(provider: Provider, profile: string, connectionId?: string): string {
+    const revision = this.deps.connectionRevision?.(provider) ?? this.keyChanges.get(provider) ?? 0
+    const epoch = this.modelLoginEpoch.get(provider) ?? 0
+    return `${modelProbeKey(provider, profile, connectionId)}\u0000${revision}:${epoch}`
+  }
+
+  private modelEpoch(provider: Provider, profileId: string): string {
+    const all = this.modelLoginEpoch.get(provider) ?? 0
+    const home =
+      this.modelProfileLoginEpoch.get(modelProbeKey(provider, foldProfileName(profileId))) ?? 0
+    return `${all}:${home}`
+  }
+
+  private providerModelsChanged(provider: Provider, profileId?: string): void {
+    if (profileId !== undefined) {
+      const home = modelProbeKey(provider, foldProfileName(profileId))
+      this.modelProfileLoginEpoch.set(home, (this.modelProfileLoginEpoch.get(home) ?? 0) + 1)
+      this.forgetModels(provider, profileId)
+      return
+    }
+    this.modelLoginEpoch.set(provider, (this.modelLoginEpoch.get(provider) ?? 0) + 1)
+    for (const key of this.modelProbes.keys()) {
+      if (key.startsWith(`${provider}:`)) this.modelProbes.delete(key)
+    }
+  }
+
   private async modelsAskedAgainIfTheyFailed(
     provider: Provider,
     folder: string,
+    connectionId?: string,
   ): Promise<ModelCatalogue> {
-    const key = modelProbeKey(provider, folder)
+    if (connectionId !== undefined && !this.launches.closed) {
+      if (!this.deps.connectionFor) throw new Error('The selected connection is unavailable')
+      this.deps.connectionFor(provider, connectionId)
+    }
+    const key = this.catalogueKey(provider, folder, connectionId)
     const cached = this.modelProbes.get(key)
     const stale = cached !== undefined && this.settledModelProbes.has(cached)
-    const catalogue = await this.probeModelsFor(provider, folder)
+    const catalogue = await this.probeModelsFor(provider, folder, connectionId)
     if (catalogue.ok || !stale || this.launches.closed) return catalogue
-    if (this.modelProbes.get(key) === cached) this.forgetModels(provider, folder)
-    return this.probeModelsFor(provider, folder)
+    if (this.modelProbes.get(key) === cached) this.forgetModels(provider, folder, connectionId)
+    return this.probeModelsFor(provider, folder, connectionId)
   }
 
   /**
@@ -40933,8 +41298,12 @@ export class RuntimeHost implements LiveHost {
    * {@link modelsAskedAgainIfTheyFailed}, the one memo every door shares, so a launch after a window
    * read costs no second child.
    */
-  private async theListIn(provider: Provider, profileId: string): Promise<TheListAsked> {
-    const catalogue = await this.modelsAskedAgainIfTheyFailed(provider, profileId)
+  private async theListIn(
+    provider: Provider,
+    profileId: string,
+    connectionId?: string,
+  ): Promise<TheListAsked> {
+    const catalogue = await this.modelsAskedAgainIfTheyFailed(provider, profileId, connectionId)
     return this.theListOf(provider, catalogue)
   }
 
@@ -40952,13 +41321,16 @@ export class RuntimeHost implements LiveHost {
   private async theListFor(
     provider: Provider,
     profileId: string,
+    connectionId?: string,
   ): Promise<TheListAsked & { readonly standIn: string | null }> {
     const folded = foldProfileName(profileId)
     const own = this.profiles().find((named) => foldProfileName(named) === folded) ?? profileId
-    const catalogue = await this.providerModels(own, provider).catch((): ModelCatalogue => ({
-      ok: false,
-      reason: 'closing',
-    }))
+    const catalogue = await this.providerModels(own, provider, connectionId).catch(
+      (): ModelCatalogue => ({
+        ok: false,
+        reason: 'closing',
+      }),
+    )
     return {
       ...this.theListOf(provider, catalogue),
       standIn: catalogue.ok ? (catalogue.standIn ?? null) : null,
@@ -40979,10 +41351,11 @@ export class RuntimeHost implements LiveHost {
     const lists: ListsAsLastRead = {}
     for (const provider of Object.keys(PROVIDER_NAME) as Provider[]) {
       const itsHomes = modelProbeKey(provider, '')
+      const generation = this.catalogueKey(provider, '').slice(itsHomes.length)
       const read =
-        answered(this.modelProbes.get(modelProbeKey(provider, STAND_IN_PROFILE))) ??
+        answered(this.modelProbes.get(this.catalogueKey(provider, STAND_IN_PROFILE))) ??
         [...this.modelProbes]
-          .filter(([key]) => key.startsWith(itsHomes))
+          .filter(([key]) => key.startsWith(itsHomes) && key.endsWith(generation))
           .map(([, probe]) => answered(probe))
           .filter((one) => one !== undefined)
           .at(-1)
@@ -41106,6 +41479,7 @@ export class RuntimeHost implements LiveHost {
     /** ⚑ The profile whose home the launch prepared, where a list it needs is asked. */
     askIn: string,
     named: { readonly model?: string; readonly effort?: string },
+    connectionId?: string,
   ): Promise<SelectedModel> {
     const unnamed = (list: TheListAsked, model: string | null): SessionUnavailable => {
       const why =
@@ -41126,19 +41500,19 @@ export class RuntimeHost implements LiveHost {
       if (named.effort !== undefined) {
         return { model: named.model, effort: named.effort, from: 'named' }
       }
-      const list = await this.theListIn(provider, askIn)
+      const list = await this.theListIn(provider, askIn, connectionId)
       const effort = this.theEffortOfAModelNamedAlone(list, provider, named.model)
       if (effort === undefined) throw unnamed(list, named.model)
       return { model: named.model, effort, from: 'named' }
     }
     let selected = this.theSelectedPairIfNamed(provider, profileSlug)
     if (selected === null) {
-      const list = await this.theListIn(provider, askIn)
+      const list = await this.theListIn(provider, askIn, connectionId)
       selected = this.theProvidersDefaultIn(list, provider, named.effort)
       if (selected === null) throw unnamed(list, null)
     }
     if (named.effort === undefined) return selected
-    const list = await this.theListIn(provider, askIn)
+    const list = await this.theListIn(provider, askIn, connectionId)
     const row = theListedRow(list.rows, selected.model)
     const offered = row === undefined ? theEffortLadder(list.rows) : theEffortsOf(row)
     const judged = list.notAsked === null || offered.length > 0
@@ -42255,7 +42629,11 @@ export class RuntimeHost implements LiveHost {
    * profile's catalogue). ⚠️ The free-text model field stays: it is why a stale or missing menu is
    * survivable at all, and the reason this cache can be allowed no timer.
    */
-  providerModels(profileId: string, provider: Provider): Promise<ModelCatalogue> {
+  providerModels(
+    profileId: string,
+    provider: Provider,
+    connectionId?: string,
+  ): Promise<ModelCatalogue> {
     // ⚠️ **Refused once a quit has started, and only when nothing is cached** (070, from 068
     // finding 7). A probe answered earlier is a value, not a process, and handing it back during a
     // shutdown costs nothing. Starting a NEW one does: a give, a Save or an agent's tool asking for
@@ -42273,7 +42651,7 @@ export class RuntimeHost implements LiveHost {
     // stand-in list is refused during a quit rather than decided from a store that may be gone, and
     // a failure is handed back rather than asked again ({@link modelsAskedAgainIfTheyFailed}).
     if (this.launches.closed) {
-      const answered = this.modelProbes.get(modelProbeKey(provider, profileId))
+      const answered = this.modelProbes.get(this.catalogueKey(provider, profileId, connectionId))
       return (
         answered ??
         Promise.reject(
@@ -42286,6 +42664,10 @@ export class RuntimeHost implements LiveHost {
     // guard below exists to prevent; the stand-in's is the product's own, which this read already
     // asks in for BroBot's launcher. ⛔ **A name with no identity row still answers `no-profile`** —
     // somebody typing a new profile's name is not an agent that exists.
+    if (connectionId !== undefined) {
+      if (!this.deps.connectionFor) throw new Error('The selected connection is unavailable')
+      connectionId = this.deps.connectionFor(provider, connectionId)
+    }
     const standIn = this.hasNeverRun(profileId, provider) ? STAND_IN_PROFILE : null
     const askIn = standIn ?? profileId
     // 🔴 **A profile that does not exist yet is not probed, and this guard is what makes taking a
@@ -42302,7 +42684,7 @@ export class RuntimeHost implements LiveHost {
     }
     // ⚑ **689 · a failure already cached is asked once more** (`685` H1) — the Save door's rule;
     // see {@link modelsAskedAgainIfTheyFailed}.
-    return this.modelsAskedAgainIfTheyFailed(provider, askIn).then((one) =>
+    return this.modelsAskedAgainIfTheyFailed(provider, askIn, connectionId).then((one) =>
       standIn !== null && one.ok ? { ...one, standIn } : one,
     )
   }
@@ -42320,19 +42702,26 @@ export class RuntimeHost implements LiveHost {
    * {@link modelsAskedAgainIfTheyFailed}. ⛔ Still not a schedule: it costs a child only when
    * somebody asks and the last answer was a failure.
    */
-  private forgetModels(provider: Provider, profileId: string): void {
-    this.modelProbes.delete(modelProbeKey(provider, profileId))
+  private forgetModels(provider: Provider, profileId: string, connectionId?: string): void {
+    const key = modelProbeKey(provider, profileId, connectionId)
+    for (const one of this.modelProbes.keys()) {
+      if (one === key || one.startsWith(`${key}\u0000`)) this.modelProbes.delete(one)
+    }
   }
 
   /**
    * One provider's catalogue in one profile's home, memoized — the PROMISE, so two surfaces asking
    * in the same tick share one child rather than racing two.
    */
-  private probeModelsFor(provider: Provider, profileId: string): Promise<ModelCatalogue> {
-    const key = modelProbeKey(provider, profileId)
+  private probeModelsFor(
+    provider: Provider,
+    profileId: string,
+    connectionId?: string,
+  ): Promise<ModelCatalogue> {
+    const key = this.catalogueKey(provider, profileId, connectionId)
     const known = this.modelProbes.get(key)
     if (known) return known
-    const probe = this.askProviderForModels(provider, profileId)
+    const probe = this.askProviderForModels(provider, profileId, connectionId)
     // ⚑ **689** — see {@link settledModelProbes}. Both arms, so a rejection is not left unhandled.
     const settled = (): void => {
       this.settledModelProbes.add(probe)
@@ -42357,6 +42746,7 @@ export class RuntimeHost implements LiveHost {
   private async askProviderForModels(
     provider: Provider,
     profileId: string,
+    requestedConnection?: string,
   ): Promise<ModelCatalogue> {
     // ⚠️ **A probe is a LAUNCH** (070, from 068 finding 7), and this is the whole of that
     // finding: it spawns a real, authenticated provider child — Claude ~1.4 s, Codex ~0.6 s
@@ -42376,11 +42766,17 @@ export class RuntimeHost implements LiveHost {
     // `refused`, in the provider's own words, like every other failure to answer — except a machine
     // that ran short, said in words (`710`, {@link howAFailureReads}); the log keeps the errno.
     if (this.launches.closed) return { ok: false, reason: 'closing' }
+    const loginEpoch = this.modelEpoch(provider, profileId)
     let providerHome: string
     let connectionId: string | undefined
     let connectionRevision: number | undefined
     try {
-      connectionId = this.deps.connectionFor?.(provider)
+      if (requestedConnection !== undefined && !this.deps.connectionFor)
+        throw new Error('The selected connection is unavailable')
+      connectionId =
+        requestedConnection === undefined
+          ? this.deps.connectionFor?.(provider)
+          : this.deps.connectionFor?.(provider, requestedConnection)
       connectionRevision = this.deps.connectionRevision?.(provider)
       const preparation = this.launches.open(`${provider} model home preparation`)
       try {
@@ -42426,7 +42822,13 @@ export class RuntimeHost implements LiveHost {
       // with zero rows, and if one did it would be the provider saying it has none — a fact, not a
       // silence. See {@link ModelCatalogue}; the surfaces collapse the two to one INSTRUCTION (no
       // menu) in one place, and say two different sentences.
-      return { ok: true, models: await listing }
+      const models = await listing
+      if (requestedConnection !== undefined) {
+        this.assertConnectionUnchanged(provider, connectionRevision)
+        if (this.modelEpoch(provider, profileId) !== loginEpoch)
+          throw new Error('The selected connection changed during preparation')
+      }
+      return { ok: true, models }
     } catch (error) {
       // A probe REFUSED by the registry never started, so it is not an unavailable model list —
       // it is a quit. Reporting it in the same sentence as a login failure would put "model list
@@ -43508,10 +43910,16 @@ export class RuntimeHost implements LiveHost {
         ? this.deps.createRuntime(row.provider)
         : this.deps.createRuntime(row.provider, connectionId)
     const runtime = this.runtimeWithPlugins(rawRuntime, row.provider, row.profileId)
-    const selected = await this.theSelectedModel(row.provider, row.profileId, profileId, {
-      ...(recordedModel === undefined ? {} : { model: recordedModel }),
-      ...(recordedEffort === undefined ? {} : { effort: recordedEffort }),
-    })
+    const selected = await this.theSelectedModel(
+      row.provider,
+      row.profileId,
+      profileId,
+      {
+        ...(recordedModel === undefined ? {} : { model: recordedModel }),
+        ...(recordedEffort === undefined ? {} : { effort: recordedEffort }),
+      },
+      this.deps.store.connectionOf(sessionId) ?? undefined,
+    )
     const model = selected.model
     const reasoningEffort = selected.effort ?? undefined
     // …and whether it was PLANNING (030). Null is a row older than the column, which resumes
@@ -43882,6 +44290,7 @@ export class RuntimeHost implements LiveHost {
     return {
       sessionId: session.id,
       provider: session.provider,
+      ...this.recordedConnectionDisclosure(session.id),
       cwd: session.cwd,
       providerHome: session.providerHome,
       // The RECORDED profile, resolved the same way the resume resolves it — null means a row that
