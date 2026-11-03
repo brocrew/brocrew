@@ -18,11 +18,11 @@ One x64 NSIS build makes **three CodeSignTool `sign` calls**, each signing and t
 2. `BroCrew-Setup-<version>-x64.__uninstaller.exe`, before it is embedded in the installer.
 3. `BroCrew-Setup-<version>-x64.exe`, before the blockmap and update metadata.
 
-`signingHashAlgorithms: [sha256]` avoids electron-builder's default of two calls per file. Every other offered path is skipped, including bundled `node.exe`, `codex.exe`, native modules and vendor helpers. The hook checks each signature for Windows `Valid` status, publisher DEVERP, certificate thumbprint `382E2CDE6834E3400371451FEBD6AB5943C71647`, and a timestamp certificate. Renewing the certificate requires updating this public pin.
+`signingHashAlgorithms: [sha256]` avoids electron-builder's default of two calls per file. Every other offered path is skipped, including bundled `node.exe`, `codex.exe`, native modules and vendor helpers. The hook checks each signature for Windows `Valid` status, the configured publisher, certificate thumbprint `382E2CDE6834E3400371451FEBD6AB5943C71647`, and a timestamp certificate. Renewing the certificate requires updating this public pin.
 
 Budget three signings per successful release. Setup and signature verification consume none. A rerun can consume three more, and a failed build may have consumed one or more already; confirm SSL.com's actual balance change on the first release rather than assuming its billing unit matches a CLI call. Twenty unused signings allow six complete releases with two left, if each call consumes one signing.
 
-Versioned prereleases (`vX.Y.Z-beta.N`) in `release.yml` also sign and consume three calls, so cut them sparingly. This keeps the beta channel usable for clients that already require DEVERP signatures. Ordinary `windows-beta-*` and `beta-*` builds remain unsigned.
+Versioned prereleases (`vX.Y.Z-beta.N`) in `release.yml` also sign and consume three calls, so cut them sparingly. This keeps the beta channel usable for clients that already require signatures. Ordinary `windows-beta-*` and `beta-*` builds remain unsigned.
 
 ## Packaging witness without signing
 
@@ -32,15 +32,15 @@ The following check compares the three selected callbacks with the actual app an
 
 ## Publisher checks and upgrades
 
-Only a build with signing enabled passes `win.signtoolOptions.publisherName=DEVERP`. Builder writes this into that app's `app-update.yml`; electron-updater 6.8.10 then requires a valid matching signature on future downloaded installers. Unsigned builds omit `publisherName`, keeping their existing update policy and bytes. App id, package name, NSIS identity and install location are unchanged.
+Only a build with signing enabled passes `win.signtoolOptions.publisherName` (the publisher name set in `release.yml`). Builder writes this into that app's `app-update.yml`; electron-updater 6.8.10 then requires a valid matching signature on future downloaded installers. Unsigned builds omit `publisherName`, keeping their existing update policy and bytes. App id, package name, NSIS identity and install location are unchanged.
 
-An existing unsigned app can install the first signed update. Afterwards, signed apps require signed updates from DEVERP; do not publish an unsigned replacement release as a rollback. Use a new signed version. The Upgrade path workflow remains unsigned and installs its candidate over the old release directly with NSIS `/S`; it does not use the automatic updater. Its green result does not prove unsigned-to-signed or signed-to-signed automatic updating.
+An existing unsigned app can install the first signed update. Afterwards, signed apps require signed updates from the same publisher; do not publish an unsigned replacement release as a rollback. Use a new signed version. The Upgrade path workflow remains unsigned and installs its candidate over the old release directly with NSIS `/S`; it does not use the automatic updater. Its green result does not prove unsigned-to-signed or signed-to-signed automatic updating.
 
 ## First signing
 
 The first signed release is the first stable release after this change lands and the account owner has activated eSigner and configured the environment secrets. Existing releases proceed independently. The unsigned candidate first passes CI, Windows and Upgrade path and independent review, including the hosted packaging witness. The release owner then selects the next unused stable `vX.Y.Z` tag. Creating a tag and publishing a release require the release owner's approval; this implementation creates neither.
 
-On that first build, retain the three `Verified DEVERP signature` lines and compare the account's signing balance before and after. Confirm `release-check.mjs` passes on the final signed files. On an isolated Windows machine, inspect the installer, installed app and installed uninstaller with `Get-AuthenticodeSignature`; require Valid, DEVERP, the pinned thumbprint and a timestamp. Also confirm bundled Node and Codex hashes match their unsigned inputs.
+On that first build, retain the three `Verified … signature` lines and compare the account's signing balance before and after. Confirm `release-check.mjs` passes on the final signed files. On an isolated Windows machine, inspect the installer, installed app and installed uninstaller with `Get-AuthenticodeSignature`; require Valid, the configured publisher, the pinned thumbprint and a timestamp. Also confirm bundled Node and Codex hashes match their unsigned inputs.
 
 Exercise automatic updating from the last unsigned release to the signed release, then from that signed release to the next signed release. These are separate native checks; fixture tests and the manual Upgrade path gate cannot substitute for them. Two successful signed releases cost six signing calls in total. Report the measured allowance change before choosing a subscription. OV signing establishes the publisher but does not promise immediate SmartScreen reputation.
 

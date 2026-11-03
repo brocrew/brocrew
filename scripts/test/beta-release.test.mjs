@@ -36,7 +36,7 @@ describe('§1 · a tag names its platforms', () => {
 
 describe('§2 · the words', () => {
   it('describes the Windows signing result, while older and test builds stay unsigned', () => {
-    expect(notesOf('v0.2.0', '1a2b3c4', null, true)).toContain('Windows publisher: DEVERP;')
+    expect(notesOf('v0.2.0', '1a2b3c4', null, true)).toContain('signed on Windows;')
     expect(notesOf('v0.2.0', '1a2b3c4')).toContain('unsigned on Windows;')
     expect(notesOf('windows-beta-4', '1a2b3c4', null, true)).toContain('Unsigned beta build')
     expect(notesOf('v0.2.0', '1a2b3c4', null, true)).toContain('If Windows says')
