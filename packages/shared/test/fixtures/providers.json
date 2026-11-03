@@ -13,10 +13,7 @@
     "connectionKind": "standard",
     "connections": {
       "contractVersion": 1,
-      "authMethods": [
-        "sign-in",
-        "api-key"
-      ],
+      "authMethods": ["sign-in", "api-key"],
       "protocol": "claude-agent-sdk",
       "versionSource": "sdk",
       "additionalConnections": false
@@ -112,10 +109,7 @@
       "refusalCause": "auth",
       "retryPattern": "^claude could not authenticate; retrying\\b"
     },
-    "usageWindows": [
-      "5-hour",
-      "weekly"
-    ],
+    "usageWindows": ["5-hour", "weekly"],
     "commandPrefix": "/",
     "defaults": {
       "conversation": false,
@@ -125,9 +119,7 @@
       "autoNote": "⚠ approvals: Auto — nothing is asked",
       "grantReach": "reads",
       "protections": {
-        "ask": [
-          "the-card-before-an-act"
-        ],
+        "ask": ["the-card-before-an-act"],
         "auto": []
       }
     },
@@ -196,10 +188,7 @@
     "connectionKind": "standard",
     "connections": {
       "contractVersion": 1,
-      "authMethods": [
-        "sign-in",
-        "api-key"
-      ],
+      "authMethods": ["sign-in", "api-key"],
       "protocol": "codex-app-server",
       "versionSource": "app-server",
       "additionalConnections": false
@@ -295,9 +284,7 @@
       "refusalCause": null,
       "retryPattern": null
     },
-    "usageWindows": [
-      "weekly"
-    ],
+    "usageWindows": ["weekly"],
     "commandPrefix": "$",
     "defaults": {
       "conversation": true,
@@ -307,10 +294,7 @@
       "autoNote": "⚠ approvals: Auto — nothing is asked · sandbox OFF",
       "grantReach": "writes",
       "protections": {
-        "ask": [
-          "the-card-before-an-act",
-          "the-sandbox-around-an-act"
-        ],
+        "ask": ["the-card-before-an-act", "the-sandbox-around-an-act"],
         "auto": []
       }
     },
