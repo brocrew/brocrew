@@ -33,15 +33,17 @@ const Checkpoint = z
     previous: Previous,
   })
   .refine((value) => (value.revision === 0) === (value.previous === null))
-// The durable grammar stays readable after a rollback; live destructive commands cannot enter it.
+// Profile actions stay rollback-readable. Live commands publish only a consumed checkpoint.
 const LedgerProposal = z.union([ChromeLedgerProposal, WhatsAppProposal])
-const Intent = z.strictObject({
-  format: z.union([z.literal(1), z.literal(2)]),
-  installId: z.uuid(),
-  revision: Revision.refine((value) => value > 0),
-  previous: Previous,
-  proposal: LedgerProposal,
-})
+const Intent = z
+  .strictObject({
+    format: z.union([z.literal(1), z.literal(2)]),
+    installId: z.uuid(),
+    revision: Revision.refine((value) => value > 0),
+    previous: Previous,
+    proposal: LedgerProposal.nullable(),
+  })
+  .refine((value) => value.proposal !== null || value.format === 2)
 const TAIL_LIMIT = 16
 const refuse = (): never => {
   throw new PluginSupervisorError('unavailable')
@@ -259,10 +261,11 @@ export class PluginProfileLedger {
     format: 1 | 2 = 1,
   ): Promise<number> {
     if (!Number.isSafeInteger(expected) || expected < 0) return refuse()
-    const proposal = LedgerProposal.parse(input),
+    const proposal = LedgerProposal.nullable().parse(input),
       state = await this.state(installId, true, format === 2)
+    if (proposal === null && format !== 2) return refuse()
     // Keep existing apps able to configure installations until the legacy history is exhausted.
-    if (format === 2 && !state.hasV2 && expected < 4096) format = 1
+    if (proposal !== null && format === 2 && !state.hasV2 && expected < 4096) format = 1
     if (
       state.revision !== expected ||
       expected >= (format === 1 ? 4096 : Number.MAX_SAFE_INTEGER) ||
@@ -303,7 +306,7 @@ export class PluginProfileLedger {
       await rename(stage, join(folder, name))
       pin.sync() // Positive durable intent BEFORE any downstream effect.
       await this.publishFloor(parent, installId, revision, digest(bytes), format)
-      if (format === 2 && state.records.length + 1 >= TAIL_LIMIT)
+      if (format === 2 && (proposal === null || state.records.length + 1 >= TAIL_LIMIT))
         await this.publishCheckpoint(folder, parent, installId, revision, digest(bytes), [
           ...state.records,
           name,

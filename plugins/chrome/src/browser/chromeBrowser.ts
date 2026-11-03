@@ -7,7 +7,7 @@ import { assertOwnProfileDir } from '../shared/browser/launchGuard.js'
 import fs from 'node:fs'
 import { open as openFile, readlink } from 'node:fs/promises'
 import path from 'node:path'
-import type { BrowserContext, CDPSession, Page } from 'playwright-core'
+import type { BrowserContext, CDPSession, Page, Download } from 'playwright-core'
 import { launchPersistentChromium } from '../shared/browser/browser-launch.js'
 import type { ChromiumLaunchOptions } from '../shared/browser/browser-launch.js'
 import { createKeyedSerializer, createTransitionBarrier } from '../shared/browser/browser-lease.js'
@@ -21,8 +21,15 @@ import type { Logger } from '../logger.js'
 import { silentLogger } from '../logger.js'
 import { settledWithin } from '../settled.js'
 import { launchArgs } from './launchArgs.js'
+import { PrivateDownloadFiles } from './privateDownloadFiles.js'
 import { DownloadRouter, UnclaimedDownloadQuota } from './downloadRouter.js'
-import { BROWSER_MISSING, BrowserNotFoundError, ProfileInUseError } from './profileBrowser.js'
+import {
+  BROWSER_MISSING,
+  BrowserNotFoundError,
+  ProfileInUseError,
+  fenceBrowserHandles,
+  unwrapBrowserHandle,
+} from './profileBrowser.js'
 import type { BrowserMode, ProfileBrowser } from './profileBrowser.js'
 import {
   browserPidsOf,
@@ -40,6 +47,11 @@ export const KILL_GRACE_MS = 3000
 export const WAIT_POLL_MS = 1500
 export interface ChromeBrowserOptions {
   dirOf: (profile: string) => string
+  /** Synchronous admission; release must retain its token while Chrome termination is uncertain. */
+  acquireLease?: (profile: string) => { release(): boolean | void }
+  /** A fresh effective authorization identity, including revocation epochs. */
+  authorization?: (profile: string) => string
+  helperDir?: (profile: string) => string
   profileExists?: (profile: string) => boolean
   logger?: Logger
   idleMs?: number
@@ -79,6 +91,7 @@ interface Entry {
   generation: number
   initial: Page[]
   windows: ChromiumWindows | null
+  windowContext: BrowserContext | null
   helper: BrocrewHelper | null
   waiters: number
   idleTimer: ReturnType<typeof setTimeout> | null
@@ -89,10 +102,15 @@ interface Entry {
   pageListeners: Set<(page: Page) => void>
   closedListeners: Set<(generation: number) => void>
   endedHooks: Array<() => void>
+  lease: { release(): boolean | void } | null
+  authorization: string | undefined
+  agentCalls: number
   downloads: {
     dir: string
+    files: PrivateDownloadFiles
     session: CDPSession
     captures: number
+    privateMode: boolean
     chain: Promise<void>
     router: DownloadRouter
   } | null
@@ -206,6 +224,7 @@ export class ChromeBrowser implements ProfileBrowser {
         generation: 0,
         initial: [],
         windows: null,
+        windowContext: null,
         helper: null,
         waiters: 0,
         idleTimer: null,
@@ -215,8 +234,11 @@ export class ChromeBrowser implements ProfileBrowser {
         removing: false,
         pageListeners: new Set(),
         closedListeners: new Set(),
+        agentCalls: 0,
         downloads: null,
         endedHooks: [],
+        lease: null,
+        authorization: undefined,
       }
       this.entries.set(profile, e)
     }
@@ -260,17 +282,43 @@ export class ChromeBrowser implements ProfileBrowser {
     if (this.shuttingDown) throw new Error('the server is shutting down')
     if (this.opts.profileExists?.(profile) === false) throw new Error('profile does not exist')
     if (this.entries.get(profile)?.removing) throw new ProfileInUseError()
+    const authorization = this.opts.authorization?.(profile)
+    const check = () => {
+      if (this.shuttingDown || this.opts.authorization?.(profile) !== authorization)
+        throw new Error('profile authorization changed')
+    }
     const dir = this.dir(profile)
     const e = this.entry(profile)
     return this.lifecycle(e, async () => {
+      check()
       const extensions = this.opts.extensionsFor?.(profile) === true
       const sync = this.opts.syncFor?.(profile) === true
-      if (e.ctx && e.mode === mode && e.extensions === extensions)
+      if (
+        e.ctx &&
+        e.mode === mode &&
+        e.extensions === extensions &&
+        e.sync === sync &&
+        e.authorization === authorization
+      )
         return { generation: e.generation }
       if (e.ctx) await e.barrier.transition(() => this.closeNow(e))
-      await this.waitForLock(dir)
-      const generation = await this.launch(e, dir, mode, extensions, sync)
-      return { generation }
+      check()
+      // Take admission before the first launch await, including lock and UA inspection.
+      this.releaseLease(e)
+      if (e.lease) throw new ProfileInUseError()
+      const lease = this.opts.acquireLease?.(profile) ?? null
+      e.lease = lease
+      try {
+        await this.waitForLock(dir)
+        check()
+        const generation = await this.launch(e, dir, mode, extensions, sync, authorization, check)
+        check()
+        return { generation }
+      } catch (error) {
+        if (e.ctx) await this.closeNow(e).catch(() => undefined)
+        this.releaseLease(e, lease)
+        throw error
+      }
     })
   }
   private async waitForLock(dir: string): Promise<void> {
@@ -286,6 +334,8 @@ export class ChromeBrowser implements ProfileBrowser {
     mode: BrowserMode,
     extensions: boolean,
     sync: boolean,
+    authorization: string | undefined,
+    check: () => void,
   ): Promise<number> {
     const stagingDir = this.privateDownloadStage(dir)
     const helped = mode === 'visible' && extensions && this.opts.helperSource !== undefined
@@ -324,6 +374,7 @@ export class ChromeBrowser implements ProfileBrowser {
     let ctx: BrowserContext
     try {
       const options = await build()
+      check()
       assertOwnProfileDir(options)
       privateFolder(this.downloadRoot(dir), stagingDir)
       ctx = await this.launchContext(options)
@@ -333,7 +384,7 @@ export class ChromeBrowser implements ProfileBrowser {
           mode,
           channel: this.choice.channel,
         })
-        if (stagingDir) fs.rmSync(stagingDir, { recursive: true, force: true })
+        if (stagingDir) new PrivateDownloadFiles(this.downloadRoot(dir)).removeEmpty(stagingDir)
         throw new BrowserNotFoundError()
       }
       if (
@@ -346,29 +397,41 @@ export class ChromeBrowser implements ProfileBrowser {
           mode,
           errorName: err instanceof Error ? err.name : 'unknown',
         })
-        if (stagingDir) fs.rmSync(stagingDir, { recursive: true, force: true })
+        if (stagingDir) new PrivateDownloadFiles(this.downloadRoot(dir)).removeEmpty(stagingDir)
         throw err
       }
       this.logger.warn('browser launch failed, re-reading the Chrome UA once', {
         mode,
       })
+      check()
       this.ua.invalidate()
       const options = await build()
+      check()
       assertOwnProfileDir(options)
       privateFolder(this.downloadRoot(dir), stagingDir)
       ctx = await this.launchContext(options)
     }
-    if (this.shuttingDown) {
+    try {
+      check()
+    } catch (error) {
       await ctx.close().catch(() => undefined)
-      if (stagingDir) fs.rmSync(stagingDir, { recursive: true, force: true })
-      throw new Error('the server is shutting down')
+      throw error
     }
     let nativeDownloads: Entry['downloads']
     try {
-      nativeDownloads = await this.nativeDownloads(ctx, stagingDir, dir, mode, () => e.ctx === ctx)
+      nativeDownloads = await this.nativeDownloads(
+        ctx,
+        stagingDir,
+        dir,
+        mode,
+        () => e.ctx === ctx,
+        check,
+        e,
+      )
+      check()
     } catch (error) {
       await this.endDownloadBrowser(ctx, dir)
-      fs.rmSync(stagingDir, { recursive: true, force: true })
+      new PrivateDownloadFiles(this.downloadRoot(dir)).removeEmpty(stagingDir)
       throw error
     }
     const generation = ++this.generations
@@ -377,6 +440,7 @@ export class ChromeBrowser implements ProfileBrowser {
     e.extensions = extensions
     e.sync = sync
     e.generation = generation
+    e.authorization = authorization
     e.downloads = nativeDownloads
     // Visible profiles with extensions on get the helper; it places tabs without showing Chrome.
     e.helper =
@@ -385,24 +449,35 @@ export class ChromeBrowser implements ProfileBrowser {
             context: ctx,
             profileDir: dir,
             source: this.opts.helperSource,
+            ...(this.opts.helperDir ? { helperDir: this.opts.helperDir(e.name) } : {}),
             allowed: () =>
-              e.ctx === ctx && !this.shuttingDown && this.opts.extensionsFor?.(e.name) === true,
+              e.ctx === ctx &&
+              !this.shuttingDown &&
+              this.authorized(e) &&
+              this.opts.extensionsFor?.(e.name) === true,
             rememberedOff: () => helperSwitch() === 'off',
             remember: (off) => this.opts.rememberHelper?.(e.name, off ? 'off' : 'on'),
             logger: this.logger,
           })
         : null
-    e.windows = new ChromiumWindows(ctx, {
+    const windowContext = this.opts.authorization
+      ? fenceBrowserHandles(ctx, () => {
+          if (e.ctx !== ctx || !this.authorized(e)) throw new Error('profile authorization changed')
+        })
+      : ctx
+    e.windowContext = windowContext
+    e.windows = new ChromiumWindows(windowContext, {
       onAdmit: (page) => {
         if (e.ctx !== ctx) return
         for (const cb of [...e.pageListeners]) cb(page)
       },
       ...(e.helper ? { placer: e.helper } : {}),
     })
-    e.initial = ctx.pages()
+    e.initial = windowContext.pages()
     ctx.on('close', () => this.ended(e, ctx, generation))
     ctx.browser()?.on('disconnected', () => this.ended(e, ctx, generation))
     if (e.helper) await (helperSwitch() === 'turning-on' ? e.helper.turnOn() : e.helper.install())
+    check()
     this.logger.info('browser launched', {
       mode,
       generation,
@@ -412,29 +487,39 @@ export class ChromeBrowser implements ProfileBrowser {
     this.armIdle(e)
     return generation
   }
+  private authorized(e: Entry): boolean {
+    try {
+      return this.opts.authorization?.(e.name) === e.authorization
+    } catch {
+      return false
+    }
+  }
+  private releaseLease(e: Entry, lease = e.lease): void {
+    if (!lease || e.lease !== lease) return
+    try {
+      if (lease.release() !== false) e.lease = null
+    } catch {
+      this.logger.warn('browser lease retained: Chrome end is uncertain')
+    }
+  }
   private ended(e: Entry, ctx: BrowserContext, generation: number): void {
     if (e.ctx !== ctx) return
+    this.releaseLease(e)
     this.logger.info('browser ended', { generation })
     if (e.downloads) {
       const kept = e.downloads.router.sweep()
-      if (kept.size === 0) fs.rmSync(e.downloads.dir, { recursive: true, force: true })
-      else {
-        for (const entry of fs.readdirSync(e.downloads.dir))
-          if (!kept.has(entry))
-            fs.rmSync(path.join(e.downloads.dir, entry), {
-              recursive: true,
-              force: true,
-            })
+      const remaining = e.downloads.router.cleanupStage(kept)
+      if (remaining.size > 0)
         this.logger.warn(
           'downloads of the user could not be placed and stay in the staging folder',
-          { count: kept.size, dir: e.downloads.dir },
+          { count: remaining.size, dir: e.downloads.dir },
         )
-      }
     }
     e.downloads = null
     e.ctx = null
     e.initial = []
     e.windows = null
+    e.windowContext = null
     e.helper = null
     this.clearIdle(e)
     for (const hook of e.endedHooks.splice(0)) hook()
@@ -478,8 +563,11 @@ export class ChromeBrowser implements ProfileBrowser {
     profileDir: string,
     mode: BrowserMode,
     isCurrent: () => boolean,
+    check: () => void,
+    e: Entry,
   ): Promise<NonNullable<Entry['downloads']>> {
     const session = await ctx.browser()!.newBrowserCDPSession()
+    check()
     let ending: Promise<void> | undefined
     const end = (): Promise<void> =>
       (ending ??= this.endDownloadBrowser(ctx, profileDir, isCurrent))
@@ -488,22 +576,157 @@ export class ChromeBrowser implements ProfileBrowser {
       quota = new UnclaimedDownloadQuota()
       this.downloadQuotas.set(profileDir, quota)
     }
-    const router = new DownloadRouter({
+    const files = new PrivateDownloadFiles(this.downloadRoot(profileDir))
+    const router: DownloadRouter = new DownloadRouter({
       dir,
+      files,
       session,
       nativeDir: () => this.downloadRoot(profileDir),
       fallbackDirs: () => [this.downloadRoot(profileDir)],
       logger: this.logger,
       allowUnclaimed: mode === 'visible',
+      privateActive: () =>
+        mode === 'headless' || e.agentCalls > 0 || downloads.privateMode || downloads.captures > 0,
       quota,
       onPolicyFailure: end,
     })
-    await session.send('Browser.setDownloadBehavior', {
-      behavior: mode === 'headless' ? 'deny' : 'allowAndName',
-      downloadPath: dir,
+    const downloads: NonNullable<Entry['downloads']> = {
+      dir,
+      files,
+      session,
+      captures: 0,
+      privateMode: true,
+      chain: Promise.resolve(),
+      router,
+    }
+    await session.send(
+      'Browser.setDownloadBehavior',
+      this.downloadBehavior(mode, dir, e.agentCalls > 0, 0),
+    )
+    downloads.privateMode = mode === 'headless' || e.agentCalls > 0
+    return downloads
+  }
+  private downloadBehavior(mode: BrowserMode, dir: string, agent: boolean, captures: number) {
+    const behavior: 'default' | 'deny' | 'allowAndName' =
+      mode === 'headless'
+        ? captures > 0
+          ? 'allowAndName'
+          : 'deny'
+        : agent || captures > 0
+          ? 'allowAndName'
+          : 'default'
+    return {
+      behavior,
+      ...(behavior === 'default' ? {} : { downloadPath: dir }),
       eventsEnabled: true,
-    })
-    return { dir, session, captures: 0, chain: Promise.resolve(), router }
+    }
+  }
+  private async applyDownloadBehavior(e: Entry): Promise<void> {
+    const d = e.downloads,
+      ctx = e.ctx
+    if (!d || !ctx) return
+    d.chain = d.chain
+      .then(async () => {
+        if (e.downloads !== d || e.ctx !== ctx) return
+        if (!this.authorized(e)) throw new Error('profile authorization changed')
+        const policy = this.downloadBehavior(e.mode, d.dir, e.agentCalls > 0, d.captures)
+        if (policy.behavior !== 'default') d.privateMode = true
+        await d.session.send('Browser.setDownloadBehavior', policy)
+        // Keep late private events owned until Chrome acknowledges normal routing.
+        d.privateMode = policy.behavior !== 'default'
+      })
+      .catch(async (error: unknown) => {
+        await this.endDownloadBrowser(ctx, this.dir(e.name), () => e.ctx === ctx)
+        throw error
+      })
+    await d.chain
+  }
+  privateDownloadsActive(profile: string): boolean {
+    const e = this.entries.get(profile)
+    return (
+      !!e &&
+      (e.mode === 'headless' ||
+        e.agentCalls > 0 ||
+        (e.downloads?.privateMode ?? false) ||
+        (e.downloads?.captures ?? 0) > 0)
+    )
+  }
+  private readonly downloadOwnership = new WeakMap<
+    Download,
+    { downloads: NonNullable<Entry['downloads']>; result: Promise<boolean> }
+  >()
+  downloadIsPrivate(profile: string, handle: Download): Promise<boolean> {
+    const download = unwrapBrowserHandle(handle)
+    const d = this.entries.get(profile)?.downloads
+    if (!d) return Promise.resolve(false)
+    const existing = this.downloadOwnership.get(download)
+    if (existing) return existing.downloads === d ? existing.result : Promise.resolve(false)
+    const result = (async () => {
+      try {
+        // Playwright 1.61.0 serializes Artifact.absolutePath before Page.download.
+        // Its Chromium Download artifact is downloadsPath/GUID, independent of
+        // Chrome's native destination. Read only this pinned identity, not path()
+        // (which waits for completion and would break in-flight wait recovery).
+        const artifact = Object.getOwnPropertyDescriptor(download, '_artifact')?.value
+        const initializer =
+          artifact && Object.getOwnPropertyDescriptor(artifact, '_initializer')?.value
+        const file =
+          initializer && Object.getOwnPropertyDescriptor(initializer, 'absolutePath')?.value
+        if (typeof file !== 'string' || path.dirname(file) !== d.dir) return false
+        const owned = await d.router.origin(path.basename(file))
+        return owned && this.entries.get(profile)?.downloads === d
+      } catch {
+        return false
+      }
+    })()
+    this.downloadOwnership.set(download, { downloads: d, result })
+    return result
+  }
+  downloadFileIsPrivate(profile: string, file: string): boolean {
+    const d = this.entries.get(profile)?.downloads
+    return !!d && path.dirname(file) === d.dir && d.files.file(file)
+  }
+  private artifactPath(download: Download): string | undefined {
+    const raw = unwrapBrowserHandle(download)
+    const artifact = Object.getOwnPropertyDescriptor(raw, '_artifact')?.value
+    const initializer = artifact && Object.getOwnPropertyDescriptor(artifact, '_initializer')?.value
+    const file = initializer && Object.getOwnPropertyDescriptor(initializer, 'absolutePath')?.value
+    return typeof file === 'string' ? file : undefined
+  }
+  async deletePrivateDownload(profile: string, download: Download): Promise<void> {
+    if (!(await this.downloadIsPrivate(profile, download))) return
+    const file = this.artifactPath(download)
+    if (!file || !this.downloadFileIsPrivate(profile, file)) return
+    // Re-check and unlink locally in one synchronous turn. Do not hand a
+    // checked pathname to a later asynchronous Playwright cleanup RPC.
+    this.entries.get(profile)?.downloads?.files.remove(file)
+  }
+  async cancelPrivateDownload(profile: string, download: Download): Promise<void> {
+    if (!(await this.downloadIsPrivate(profile, download))) return
+    const file = this.artifactPath(download)
+    if (
+      !file ||
+      (!this.downloadFileIsPrivate(profile, file) &&
+        !this.downloadFileIsPrivate(profile, file + '.crdownload'))
+    )
+      return
+    await unwrapBrowserHandle(download).cancel()
+  }
+  async agentCall<T>(profiles: readonly string[], fn: () => Promise<T>): Promise<T> {
+    const entries = [...new Set(profiles)].map((name) => this.entry(name))
+    const applyAll = async () => {
+      const results = await Promise.allSettled(entries.map((e) => this.applyDownloadBehavior(e)))
+      const failed = results.find((result) => result.status === 'rejected')
+      if (failed?.status === 'rejected') throw failed.reason
+    }
+    for (const e of entries) e.agentCalls++
+    try {
+      await applyAll()
+      return await fn()
+    } finally {
+      for (const e of entries) e.agentCalls--
+      await applyAll()
+    }
   }
   async captureDownloads<T>(
     profile: string,
@@ -515,39 +738,32 @@ export class ChromeBrowser implements ProfileBrowser {
     const d = e?.downloads
     const ctx = e?.ctx
     if (!e || !d || !ctx) throw new Error('Plugin unavailable. Try again.')
-    const mode = e.mode
-    const apply = (): Promise<void> => {
-      d.chain = d.chain
-        .then(async () => {
-          if (e.ctx !== ctx || e.downloads !== d) throw new Error('Plugin unavailable. Try again.')
-          await d.session.send('Browser.setDownloadBehavior', {
-            behavior: mode === 'headless' && d.captures === 0 ? 'deny' : 'allowAndName',
-            downloadPath: d.dir,
-            eventsEnabled: true,
-          })
-        })
-        .catch(async (error: unknown) => {
-          await this.endDownloadBrowser(ctx, this.dir(profile), () => e.ctx === ctx)
-          throw error
-        })
-      return d.chain
+    const check = () => {
+      if (e.ctx !== ctx || !this.authorized(e)) throw new Error('profile authorization changed')
     }
+    check()
+    const apply = () => this.applyDownloadBehavior(e)
     d.captures++
     const held: {
       session?: Promise<CDPSession>
     } = {}
     const capture = d.router.capture(async () => {
-      held.session ??= ctx.newCDPSession(page)
-      const tree = (await (await held.session).send('Page.getFrameTree')) as {
+      held.session ??= ctx.newCDPSession(unwrapBrowserHandle(page))
+      const session = await held.session
+      check()
+      const tree = (await session.send('Page.getFrameTree')) as {
         frameTree: FrameTree
       }
+      check()
       return frameIdsOf(tree.frameTree)
     })
     let completed = false
     let savedGuid: string | undefined
     try {
       await apply()
+      check()
       const result = await fn()
+      check()
       const saved = savedFile?.()
       if (saved !== undefined) {
         const relative = path.relative(d.dir, saved)
@@ -564,7 +780,10 @@ export class ChromeBrowser implements ProfileBrowser {
   }
   private async closeNow(e: Entry): Promise<void> {
     const ctx = e.ctx
-    if (!ctx) return
+    if (!ctx) {
+      this.releaseLease(e)
+      return
+    }
     const { generation } = e
     const closed = settledWithin(ctx.close(), this.closeMs).then((ok) => ({
       ok,
@@ -596,12 +815,14 @@ export class ChromeBrowser implements ProfileBrowser {
       )
     }
     if (e.ctx === ctx) this.ended(e, ctx, generation)
+    this.releaseLease(e)
   }
   async close(profile: string): Promise<void> {
     const e = this.entries.get(profile)
     if (!e) return
     await this.lifecycle(e, async () => {
       if (e.ctx) await e.barrier.transition(() => this.closeNow(e))
+      else this.releaseLease(e)
     })
   }
   visiblePages(): Array<{
@@ -634,9 +855,11 @@ export class ChromeBrowser implements ProfileBrowser {
   ): Promise<Page> {
     const e = this.entries.get(profile)
     const ctx = e?.ctx
+    if (e && !this.authorized(e)) throw new Error('profile authorization changed')
     if (!e || !ctx || !e.windows) throw new Error('profile is not open')
     const emptyLaunchWindow =
-      e.initial.length > 0 && ctx.pages().every((page) => e.initial.includes(page) && isBlank(page))
+      e.initial.length > 0 &&
+      (e.windowContext ?? ctx).pages().every((page) => e.initial.includes(page) && isBlank(page))
     const reuse = !opts.windowOf && emptyLaunchWindow ? e.initial.find(isBlank) : undefined
     e.initial = []
     if (reuse) return reuse
@@ -647,6 +870,9 @@ export class ChromeBrowser implements ProfileBrowser {
   }
   /** The person turned the helper on: installed now in a running visible profile, else at its next. */
   async turnHelperOn(profile: string): Promise<void> {
+    const e = this.entries.get(profile)
+    if (this.opts.authorization) this.opts.authorization(profile)
+    if (e?.ctx && !this.authorized(e)) throw new Error('profile authorization changed')
     this.opts.rememberHelper?.(profile, 'turning-on')
     await this.entries.get(profile)?.helper?.turnOn()
   }
@@ -748,7 +974,17 @@ export class ChromeBrowser implements ProfileBrowser {
   operate<T>(profile: string, fn: () => Promise<T>): Promise<T> {
     const e = this.entry(profile)
     if (e.removing) return Promise.reject(new ProfileInUseError())
-    return e.barrier.runOp(fn)
+    const ctx = e.ctx
+    const check = () => {
+      if (e.ctx !== ctx || (ctx && !this.authorized(e)))
+        throw new Error('profile authorization changed')
+    }
+    return e.barrier.runOp(async () => {
+      check()
+      const result = await fn()
+      check()
+      return result
+    })
   }
   touch(profile: string): void {
     const e = this.entries.get(profile)

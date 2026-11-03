@@ -14,6 +14,7 @@ import { createSupervisedPluginHost } from './node-host'
 import { bootstrapPluginLifecycle } from '../lifecycle/bootstrap'
 import { pluginStartupStderr } from '../startup-failure'
 import { LaunchConfig } from './launch-format'
+import { checkedSharedDataOwner } from '../shared-data'
 import { previousRunsProvenStopped } from './recovery-proof'
 import { writeRecoveryAdvice } from './recovery-advice'
 import { recordDrainTrace } from './drain-trace'
@@ -24,6 +25,8 @@ export async function runPluginSupervisor(configPath: string, expectedDigest: st
   if (!/^[a-f0-9]{64}$/.test(expectedDigest) || digest(bytes) !== expectedDigest)
     throw new Error('unavailable')
   const config = LaunchConfig.parse(JSON.parse(bytes.toString('utf8')))
+  if (config.sharedDataOwner)
+    checkedSharedDataOwner(config.sharedDataOwner, join(config.root, 'host'))
   await keepPluginRootPrivate(config.root)
   const runtime = await resumePluginNodeRuntime(config.runtime)
   const receipts = dirname(configPath)
@@ -58,6 +61,7 @@ export async function runPluginSupervisor(configPath: string, expectedDigest: st
     root: join(config.root, 'host'),
     runtime,
     browserExecutable: config.browserExecutable,
+    sharedDataOwner: config.sharedDataOwner,
   })
   const service = createSupervisedPluginHost(owner, host)
   const reportFailure = (error: unknown) => {

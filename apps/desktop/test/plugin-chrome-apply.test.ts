@@ -5,6 +5,7 @@ import {
   ChromeLedgerProposal,
   ChromeProposal,
 } from '../src/main/plugins/lifecycle/chrome-apply'
+import { readChromeConfiguration } from '../src/main/plugins/lifecycle/chrome-read'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { PluginUiRpc } from '../src/main/plugins/ui/rpc'
@@ -36,7 +37,37 @@ describe('fixed person-only Chrome profile action mapping', () => {
       { confirm: 'birch' },
       200,
     ],
+    [
+      { action: 'rename-profile', profile: 'birch', newName: 'Birch account' },
+      '/profiles/birch/rename',
+      { newName: 'Birch account' },
+      200,
+    ],
     [{ action: 'helper-on', profile: 'birch' }, '/profiles/birch/helper', {}, 200],
+    [
+      {
+        action: 'set-flags',
+        profile: 'birch',
+        allowSync: false,
+        allowExtensions: true,
+        allowSettings: false,
+        keepRunning: true,
+      },
+      '/profiles/birch/flags',
+      { allowSync: false, allowExtensions: true, allowSettings: false, keepRunning: true },
+      200,
+    ],
+    [
+      {
+        action: 'delete-profile',
+        profile: 'birch',
+        confirm: 'birch',
+        deleteConfirmation: 'a'.repeat(64),
+      },
+      '/profiles/birch/delete',
+      { confirm: 'birch', deleteConfirmation: 'a'.repeat(64) },
+      200,
+    ],
   ])(
     'maps a validated action to only its own fixed admin endpoint',
     async (proposal, path, body, status) => {
@@ -64,6 +95,15 @@ describe('fixed person-only Chrome profile action mapping', () => {
     { action: 'set-enabled', profile: 'birch', enabled: true, url: 'http://foreign.invalid/' },
     { action: 'delete-profile', profile: 'birch' },
     { action: 'delete-profile', profile: 'birch', confirm: 'fern' },
+    {
+      action: 'delete-profile',
+      profile: 'birch',
+      confirm: 'birch',
+      deleteConfirmation: 'malformed',
+    },
+    { action: 'set-flags', profile: 'birch' },
+    { action: 'set-flags', profile: 'birch', enabled: false },
+    { action: 'set-flags', profile: 'birch', allowExtensions: 'true' },
   ])('rejects unreviewed actions/fields before any request', async (proposal) => {
     const fetch = vi.fn()
     vi.stubGlobal('fetch', fetch)
@@ -80,6 +120,23 @@ describe('fixed person-only Chrome profile action mapping', () => {
     )
     expect(
       ChromeProposal.safeParse({ action: 'helper-on', profile: 'birch', on: true }).success,
+    ).toBe(false)
+  })
+  it('keeps shared deletion confirmation and live flags out of replayable profile intent', () => {
+    expect(
+      chromeProfileIntent({
+        action: 'delete-profile',
+        profile: 'birch',
+        confirm: 'birch',
+        deleteConfirmation: 'a'.repeat(64),
+      }),
+    ).toBeNull()
+    expect(
+      chromeProfileIntent({ action: 'set-flags', profile: 'birch', keepRunning: true }),
+    ).toBeNull()
+    expect(
+      ChromeLedgerProposal.safeParse({ action: 'set-flags', profile: 'birch', keepRunning: true })
+        .success,
     ).toBe(false)
   })
   it('does not retry an ambiguous admin failure or return downstream bytes', async () => {
@@ -144,4 +201,39 @@ it('the real package RPC schema admits a confirmed person Delete to the reviewed
   } finally {
     await rpc.close()
   }
+})
+
+it('person rename is a live non-replayed action with an immutable profile selector', () => {
+  const rename = { action: 'rename-profile' as const, profile: 'birch', newName: 'Birch account' }
+  expect(ChromeProposal.parse(rename)).toEqual(rename)
+  expect(chromeProfileIntent(rename)).toBeNull()
+  expect(ChromeLedgerProposal.safeParse(rename).success).toBe(false)
+  expect(ChromeProposal.safeParse({ ...rename, profile: '../foreign' }).success).toBe(false)
+  expect(ChromeProposal.safeParse({ ...rename, url: 'https://fictional.invalid' }).success).toBe(
+    false,
+  )
+})
+
+it('the validated person snapshot keeps displayName without changing its stable profile selector', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(
+      async (url) =>
+        new Response(
+          JSON.stringify(
+            String(url).endsWith('/profiles')
+              ? {
+                  profiles: [
+                    { name: 'fern', displayName: 'Fern account', enabled: true, open: false },
+                  ],
+                }
+              : { tabs: [] },
+          ),
+          { headers: { 'content-type': 'application/json' } },
+        ),
+    ),
+  )
+  expect(await readChromeConfiguration('chrome', connection)).toMatchObject({
+    profiles: [{ name: 'fern', displayName: 'Fern account' }],
+  })
 })

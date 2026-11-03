@@ -13,11 +13,20 @@
   --card: #ffffff;
   --ink: #202338;
   --muted: #575d70;
-  --line: #d6d7df;
+  --line: #e1e2e8;
+  --strong-line: #c9cbd5;
   --soft: #f0f1f5;
+  --hover: #f5f6f9;
   --button: #353b54;
   --button-ink: #ffffff;
   --focus: #495478;
+  --live: #e2f3e8;
+  --live-ink: #1d6b3f;
+  --warn: #fbefd9;
+  --warn-ink: #7a4b00;
+  --danger: #b42318;
+  --danger-soft: #fdecea;
+  --shadow: 0 1px 2px rgb(32 35 56 / 6%);
   color: var(--ink);
   background: var(--paper);
 }
@@ -27,11 +36,20 @@
     --card: #202431;
     --ink: #f1f2f7;
     --muted: #bfc5d6;
-    --line: #495064;
+    --line: #363c4e;
+    --strong-line: #495064;
     --soft: #2e3445;
+    --hover: #282d3c;
     --button: #e2e6f2;
     --button-ink: #202338;
     --focus: #c1ceff;
+    --live: #1f3a2b;
+    --live-ink: #9fe0b5;
+    --warn: #3d3020;
+    --warn-ink: #f3c98b;
+    --danger: #ff9b8f;
+    --danger-soft: #3a2326;
+    --shadow: none;
   }
 }
 * {
@@ -45,16 +63,14 @@ main {
   padding: 24px;
   margin: auto;
 }
-.screen-heading,
-.profile-heading,
-.profile-actions {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 10px;
+[hidden] {
+  display: none !important;
 }
 .screen-heading {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
+  gap: 10px;
   margin-bottom: 18px;
 }
 h1 {
@@ -65,46 +81,47 @@ h1 {
 }
 #status,
 .profile-state {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   border-radius: 999px;
   background: var(--soft);
-  padding: 4px 10px;
-  color: var(--ink);
+  padding: 3px 10px;
+  color: var(--muted);
   font-size: 12px;
   font-weight: 600;
   margin: 0;
+  white-space: nowrap;
 }
-.profile-helper {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 8px 0 0;
-  font-size: 13px;
+#status::before,
+.profile-state::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.7;
 }
-#create {
-  display: flex;
-  align-items: end;
-  gap: 12px;
-  margin-top: 22px;
+#status[data-tone='live'],
+.profile-state[data-tone='live'] {
+  background: var(--live);
+  color: var(--live-ink);
 }
-label {
-  display: flex;
-  flex: 1;
-  min-width: 0;
-  flex-direction: column;
-  gap: 8px;
-  font-weight: 600;
+#status[data-tone='warn'],
+.profile-state[data-tone='warn'] {
+  background: var(--warn);
+  color: var(--warn-ink);
 }
 button,
-input {
+input:not([type='checkbox']) {
   font: inherit;
   line-height: 1.4;
-  min-height: 38px;
-  padding: 9px 14px;
-  border-radius: 10px;
-  border: 1px solid var(--line);
+  min-height: 34px;
+  padding: 6px 12px;
+  border-radius: 9px;
+  border: 1px solid var(--strong-line);
 }
-input {
+input:not([type='checkbox']) {
   width: 100%;
   min-width: 0;
   background: var(--card);
@@ -117,55 +134,232 @@ button {
   font-weight: 600;
   white-space: nowrap;
 }
+button:hover {
+  background: var(--hover);
+}
+button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
 #create button,
-.profile-actions button:nth-child(2) {
+button.primary {
   background: var(--button);
   color: var(--button-ink);
   border-color: var(--button);
 }
-button:hover {
-  box-shadow: 0 0 0 1px var(--line);
+#create button:hover,
+button.primary:hover {
+  background: var(--button);
+  opacity: 0.9;
+}
+button.quiet-danger {
+  border-color: transparent;
+  background: transparent;
+  color: var(--danger);
+}
+button.quiet-danger:hover {
+  background: var(--danger-soft);
+}
+button.danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: var(--card);
 }
 button:focus-visible,
 input:focus-visible {
   outline: 2px solid var(--focus);
-  outline-offset: 3px;
+  outline-offset: 2px;
+}
+input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  flex: none;
+  accent-color: var(--button);
 }
 #profiles {
   display: grid;
-  gap: 12px;
+  gap: 10px;
 }
 article {
   border: 1px solid var(--line);
   border-radius: 14px;
   background: var(--card);
-  padding: 20px;
+  box-shadow: var(--shadow);
+  padding: 14px 16px;
 }
+.profile-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+.profile-toggle,
 .profile-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   font-size: 16px;
+  font-weight: 700;
   overflow-wrap: anywhere;
 }
+.profile-toggle {
+  min-height: 30px;
+  margin-left: -6px;
+  padding: 2px 8px 2px 6px;
+  border-color: transparent;
+  background: transparent;
+  white-space: normal;
+  text-align: left;
+}
+.profile-toggle::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  margin: 0 3px 2px 2px;
+  border: solid var(--muted);
+  border-width: 0 2px 2px 0;
+  transform: rotate(-45deg);
+  transition: transform 120ms ease;
+}
+.profile-toggle[aria-expanded='true']::before {
+  transform: rotate(45deg);
+  margin-bottom: 4px;
+}
+article[data-off='true'] .profile-toggle,
+article[data-off='true'] .profile-name {
+  color: var(--muted);
+}
 .profile-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
   margin-left: auto;
 }
+.profile-summary {
+  flex-basis: 100%;
+  margin: 0;
+  padding-left: 22px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.profile-heading:has(.profile-name) .profile-summary {
+  padding-left: 0;
+}
+.profile-key {
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.profile-rename {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 0;
+}
+.profile-rename input {
+  flex: 1 1 14rem;
+  max-width: 24rem;
+}
+.profile-rename p {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--danger);
+  font-size: 13px;
+}
+.profile-notice {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--warn);
+  color: var(--warn-ink);
+  font-size: 13px;
+}
+.profile-helper,
+.profile-delete-confirmation {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--warn);
+  color: var(--warn-ink);
+  font-size: 13px;
+}
+.profile-delete-confirmation {
+  background: var(--danger-soft);
+  color: var(--ink);
+}
+.profile-delete-confirmation p {
+  flex-basis: 100%;
+  margin: 0;
+}
+.profile-details {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.profile-details p {
+  margin: 0;
+}
+fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+legend,
 h2 {
+  padding: 0;
+  margin: 0 0 8px;
   font-size: 12px;
   font-weight: 600;
   color: var(--muted);
-  margin: 20px 0 8px;
+}
+h2 {
+  margin: 4px 0 0;
+}
+.check {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+}
+.profile-notes {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
 }
 ul {
   padding: 0;
   margin: 0;
   list-style: none;
+  border: 1px solid var(--line);
+  border-radius: 10px;
 }
 li {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
+  display: grid;
+  gap: 1px;
+  padding: 8px 12px;
+  min-width: 0;
+}
+li + li {
   border-top: 1px solid var(--line);
-  padding: 10px 0;
-  overflow-wrap: anywhere;
+}
+.tab-title,
+.tab-url {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .tab-title {
   font-weight: 500;
@@ -174,9 +368,34 @@ li {
   font-size: 12px;
   color: var(--muted);
 }
-@media (max-width: 480px) {
+.profiles-empty {
+  margin: 0;
+  padding: 28px 16px;
+  border: 1px dashed var(--strong-line);
+  border-radius: 14px;
+  color: var(--muted);
+  text-align: center;
+}
+#create {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+  margin-top: 18px;
+  padding: 14px 16px;
+  border: 1px dashed var(--strong-line);
+  border-radius: 14px;
+}
+#create label {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+  font-weight: 600;
+}
+@media (max-width: 560px) {
   main {
-    padding: 18px;
+    padding: 16px;
   }
   #create {
     flex-wrap: wrap;
@@ -184,12 +403,9 @@ li {
   #create label {
     flex-basis: 100%;
   }
-  article {
-    padding: 16px;
-  }
   .profile-actions {
     flex-basis: 100%;
-    margin-top: 6px;
     margin-left: 0;
+    order: 1;
   }
 }

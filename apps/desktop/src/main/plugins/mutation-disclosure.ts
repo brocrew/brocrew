@@ -10,14 +10,25 @@ import {
   type PluginMutationReview,
 } from '../../shared/plugin-settings'
 import type { PluginPackageVault } from './lifecycle/vault'
+import { SHARED_DATA_PERMISSION } from './shared-data-contract'
 /** Only a verified package can supply display metadata. This never executes or stages code. */
 export function releaseDisclosure(pkg: VerifiedPluginPackage): PluginReleaseDetails {
+  if (!verifiedPluginDigest(pkg)) throw new Error('Unverified plugin disclosure')
+  const permissions = structuredClone(pkg.manifest.permissions)
+  if (pkg.manifest.sharedData === true)
+    permissions.resources.push({
+      id: SHARED_DATA_PERMISSION,
+      label:
+        'Shared plugin data on this computer, accessible to other plugin owners; workspaces using the same plugin owner share its settings',
+      read: true,
+      write: true,
+    })
   return PluginReleaseDetailsSchema.parse({
     version: pkg.manifest.version,
     digest: verifiedPluginDigest(pkg),
     manifestSha256: pluginSha256(pkg.readFile('plugin.json')!),
     authors: pkg.manifest.authors ? [...pkg.manifest.authors] : null,
-    permissions: structuredClone(pkg.manifest.permissions),
+    permissions,
   })
 }
 export function installedDisclosureIdentity(root: string, id: string) {

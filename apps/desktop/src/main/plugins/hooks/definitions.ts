@@ -1,6 +1,11 @@
 import { z } from 'zod'
+import { SHARED_DATA_FEATURE } from '../shared-data-contract'
 
-export const PLUGIN_FRAMEWORK_FEATURES = ['contributions-v1', 'hooks-v1'] as const
+export const PLUGIN_FRAMEWORK_FEATURES = [
+  'contributions-v1',
+  'hooks-v1',
+  SHARED_DATA_FEATURE,
+] as const
 const identifier = z.string().regex(/^[a-z][a-z0-9-]{0,63}$/)
 export const HookDeclaration = z
   .strictObject({

@@ -23,6 +23,8 @@ function screen() {
     checkValidity() {
       return true
     }
+    focus() {}
+    select() {}
   }
   const nodes = new Map(
     ['#status', '#profiles', '#tabs', '#create', '#name'].map((id) => [id, new Element()]),
@@ -30,6 +32,7 @@ function screen() {
   const events = new Map<string, (event: unknown) => void>()
   const packets: Record<string, unknown>[] = []
   const origin = 'brocrew-plugin://fictional-view'
+  let interval = () => {}
   const window = {
     addEventListener: (type: string, callback: (event: unknown) => void) =>
       events.set(type, callback),
@@ -44,13 +47,18 @@ function screen() {
     document: { querySelector: (id: string) => nodes.get(id), createElement: () => new Element() },
     setTimeout: () => 1,
     clearTimeout() {},
-    setInterval: () => 1,
+    setInterval: (callback: () => void) => {
+      interval = callback
+      return 1
+    },
     clearInterval() {},
+    CSS: { escape: (value: string) => value },
   })
   return {
     nodes,
     events,
     packets,
+    tick: () => interval(),
     reply(result: unknown, source: unknown = window, packet = packets[0], ok = true) {
       events.get('message')!({
         source,
@@ -97,10 +105,12 @@ it('uses only bounded DOM RPC, displays current windows/tabs as text, and propos
   expect(actions.children.map((child) => child.textContent)).toEqual([
     'Disable',
     'Open window',
+    'Rename',
     'Delete',
   ])
-  expect(row.children[1].textContent).toBe('Open tabs')
-  const tab = row.children[2].children[0]
+  const details = row.children[1]
+  expect(details.children[0].textContent).toBe('Open tabs')
+  const tab = details.children[1].children[0]
   expect(tab.children.map((child) => child.textContent)).toEqual([
     '<script>fictional</script>',
     'https://fictional.invalid/',
@@ -164,7 +174,7 @@ it('names the profile and deleted data before the person confirms, and Cancel se
   await Promise.resolve()
   view.nodes
     .get('#profiles')!
-    .children[0].children[0].children[2].children[2].listeners.get('click')!({})
+    .children[0].children[0].children[2].children[3].listeners.get('click')!({})
   const confirmation = view.nodes.get('#profiles')!.children[0].children[1]
   expect(confirmation.children[0].textContent).toBe(
     'Delete “fern”? This removes its browsing data, cookies, sign-ins and profile downloads. Agents can no longer use it.',
@@ -187,7 +197,7 @@ it('sends only the confirmed person proposal and keeps a plain retry message on 
   await Promise.resolve()
   view.nodes
     .get('#profiles')!
-    .children[0].children[0].children[2].children[2].listeners.get('click')!({})
+    .children[0].children[0].children[2].children[3].listeners.get('click')!({})
   const confirmation = view.nodes.get('#profiles')!.children[0].children[1]
   confirmation.children[2].listeners.get('click')!({})
   const proposal = view.packets.at(-1)!
@@ -224,7 +234,7 @@ it.each([true, false])(
     await Promise.resolve()
     view.nodes
       .get('#profiles')!
-      .children[0].children[0].children[2].children[2].listeners.get('click')!({})
+      .children[0].children[0].children[2].children[3].listeners.get('click')!({})
     view.nodes.get('#profiles')!.children[0].children[1].children[2].listeners.get('click')!({})
     view.reply(undefined, undefined, view.packets.at(-1), false)
     await Promise.resolve()
@@ -280,3 +290,182 @@ it.each([true, false])(
     view.events.get('pagehide')!({})
   },
 )
+
+type Drawn = {
+  textContent: string
+  className?: string
+  hidden?: boolean
+  disabled?: boolean
+  value?: string
+  children: Drawn[]
+  listeners: Map<string, (event: unknown) => void>
+}
+const words = (node: Drawn): string[] => [node.textContent, ...node.children.flatMap(words)]
+async function settle() {
+  await Promise.resolve()
+  await Promise.resolve()
+}
+
+it('keeps the plain sharing warning on a folded card and never shows a migration code', async () => {
+  const view = screen()
+  view.reply({
+    configRevision: 2,
+    profiles: [
+      { name: 'fern', enabled: true, open: false, migration: 'chrome-unknown' },
+      { name: 'willow', enabled: true, open: false, migration: 'folder-identity-conflict' },
+    ],
+    tabs: [{ profile: 'fern', title: 'Fictional', url: 'https://fictional.invalid/' }],
+  })
+  await settle()
+  const [fern, willow] = view.nodes.get('#profiles')!.children as unknown as Drawn[]
+  expect(fern.children[1]).toMatchObject({
+    className: 'profile-notice',
+    textContent:
+      "This profile is still only in this workspace because Chrome couldn't be checked. You can keep using it here. We'll try to share it again next time the plugin starts.",
+  })
+  expect(fern.children.at(-1)).toMatchObject({ className: 'profile-details', hidden: true })
+  expect(words(willow)).toContain(
+    'This profile is still only in this workspace. You can keep using it here.',
+  )
+  for (const row of [fern, willow]) {
+    expect(words(row).join(' ')).not.toContain('chrome-unknown')
+    expect(words(row).join(' ')).not.toContain('folder-identity-conflict')
+  }
+  view.events.get('pagehide')!({})
+})
+
+it('checks a new profile name with the approved words before the person proposes it', async () => {
+  const view = screen()
+  const snapshot = {
+    configRevision: 5,
+    profiles: [
+      { name: 'fern', displayName: 'Work', enabled: true, open: false },
+      { name: 'willow', enabled: true, open: false },
+    ],
+    tabs: [],
+  }
+  view.reply(snapshot)
+  await settle()
+  const rows = () => view.nodes.get('#profiles')!.children as unknown as Drawn[]
+  expect(
+    rows()[0]
+      .children[0].children.slice(0, 2)
+      .map((child) => child.textContent),
+  ).toEqual(['Work', 'fern'])
+  rows()[1].children[0].children[2].children[2].listeners.get('click')!({})
+  const form = () => rows()[1].children[1]
+  const input = form().children[0]
+  expect(input.value).toBe('willow')
+  const save = async (value: string) => {
+    input.value = value
+    form().listeners.get('submit')!({ preventDefault() {} })
+    await settle()
+    return form().children[3]?.textContent
+  }
+  expect(await save('   ')).toBe('Profile name must be 1–60 characters.')
+  expect(await save('x'.repeat(61))).toBe('Profile name must be 1–60 characters.')
+  expect(await save(' work ')).toBe('Another profile already uses that name.')
+  expect(view.packets).toHaveLength(1)
+  await save(` ${'🌿'.repeat(60)} `)
+  const proposal = view.packets.at(-1)!
+  expect(proposal).toMatchObject({
+    method: 'proposeConfig',
+    payload: { action: 'rename-profile', profile: 'willow', newName: '🌿'.repeat(60) },
+    configRevision: 5,
+  })
+  view.reply(undefined, undefined, proposal, false)
+  await settle()
+  expect(view.packets.at(-1)?.method).toBe('read')
+  view.reply(
+    {
+      ...snapshot,
+      profiles: [snapshot.profiles[0], { ...snapshot.profiles[1], status: 'deleting' }],
+    },
+    undefined,
+    view.packets.at(-1),
+  )
+  await settle()
+  expect(form().children[3].textContent).toBe(
+    'This profile is being deleted. Try again after deletion finishes.',
+  )
+  expect(form().children[1].disabled).toBe(true)
+  expect(rows()[1].children[0].children[2].children[2].disabled).toBe(true)
+  expect(view.packets.filter((packet) => packet.method === 'proposeConfig')).toHaveLength(1)
+  view.events.get('pagehide')!({})
+})
+
+it('closes the rename field on Escape without proposing anything', async () => {
+  const view = screen()
+  view.reply({
+    configRevision: 1,
+    profiles: [{ name: 'fern', enabled: true, open: false }],
+    tabs: [],
+  })
+  await settle()
+  const row = () => view.nodes.get('#profiles')!.children[0] as unknown as Drawn
+  row().children[0].children[2].children[2].listeners.get('click')!({})
+  expect(row().children[1].className).toBe('profile-rename')
+  row().children[1].children[0].listeners.get('keydown')!({ key: 'Escape' })
+  expect(row().children).toHaveLength(1)
+  expect(view.packets).toHaveLength(1)
+  view.events.get('pagehide')!({})
+})
+
+it('holds a read that arrives mid-composition and draws it once the word is finished', async () => {
+  const view = screen()
+  const snapshot = {
+    configRevision: 1,
+    profiles: [{ name: 'fern', enabled: true, open: false }],
+    tabs: [],
+  }
+  view.reply(snapshot)
+  await settle()
+  const row = () => view.nodes.get('#profiles')!.children[0] as unknown as Drawn
+  row().children[0].children[2].children[2].listeners.get('click')!({})
+  const form = row().children[1]
+  const input = form.children[0]
+  view.tick()
+  const read = view.packets.at(-1)!
+  expect(read.method).toBe('read')
+  input.listeners.get('compositionstart')!({})
+  view.reply({ ...snapshot, profiles: [{ ...snapshot.profiles[0], open: true }] }, undefined, read)
+  await settle()
+  expect(row().children[1]).toBe(form)
+  expect(row().children[0].children[1].textContent).toBe('Closed')
+  view.tick()
+  expect(view.packets.at(-1)).toBe(read)
+  input.listeners.get('compositionend')!({})
+  expect(row().children[0].children[1].textContent).toBe('Open')
+  expect(row().children[1].children[0]).toBe(input)
+  view.events.get('pagehide')!({})
+})
+
+it('holds the redraw after a refused rename while the person is composing a word', async () => {
+  const view = screen()
+  const snapshot = {
+    configRevision: 1,
+    profiles: [{ name: 'fern', enabled: true, open: false }],
+    tabs: [],
+  }
+  view.reply(snapshot)
+  await settle()
+  const row = () => view.nodes.get('#profiles')!.children[0] as unknown as Drawn
+  row().children[0].children[2].children[2].listeners.get('click')!({})
+  const input = row().children[1].children[0]
+  input.value = 'Garden'
+  row().children[1].listeners.get('submit')!({ preventDefault() {} })
+  const form = row().children[1]
+  input.listeners.get('compositionstart')!({})
+  view.reply(undefined, undefined, view.packets.at(-1), false)
+  await settle()
+  expect(view.packets.at(-1)?.method).toBe('read')
+  view.reply(snapshot, undefined, view.packets.at(-1))
+  await settle()
+  await settle()
+  expect(row().children[1]).toBe(form)
+  expect(form.children).toHaveLength(3)
+  input.listeners.get('compositionend')!({})
+  expect(row().children[1].children[0]).toBe(input)
+  expect(row().children[1].children[3].textContent).toBe('Plugin unavailable. Try again.')
+  view.events.get('pagehide')!({})
+})

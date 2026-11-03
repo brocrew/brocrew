@@ -38,3 +38,44 @@ it('passes the remembered helper switch to the Chrome panel, and reads earlier p
     ),
   ).rejects.toThrow()
 })
+
+it('retains bounded shared panel fields and strips foreign workspace paths', async () => {
+  const shared = {
+    name: 'fern',
+    enabled: true,
+    open: false,
+    shared: true,
+    profileId: '00000000-0000-4000-8000-000000000001',
+    globalRevision: 4,
+    onIn: ['Fern', 'Cedar'],
+    inUseIn: 'Cedar',
+    status: 'ready',
+    migratedFrom: 'birch',
+    appliesAtNextLaunch: true,
+    deleteConfirmation: 'a'.repeat(64),
+    allowSync: false,
+    allowExtensions: false,
+    allowSettings: true,
+    keepRunning: false,
+  }
+  const snapshot = await readChromeConfiguration(
+    'chrome',
+    await serving([
+      {
+        ...shared,
+        source: '/fictional/foreign/path',
+        migrationJournal: { home: '/fictional/foreign/home' },
+      },
+    ]),
+  )
+  expect(snapshot).toEqual({ configRevision: 0, profiles: [shared], tabs: [] })
+  for (const invalid of [
+    { onIn: Array(257).fill('Workspace') },
+    { globalRevision: -1 },
+    { deleteConfirmation: 'bad' },
+    { status: 'unknown' },
+  ])
+    await expect(
+      readChromeConfiguration('chrome', await serving([{ ...shared, ...invalid }])),
+    ).rejects.toThrow()
+})

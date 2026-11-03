@@ -1,3 +1,4 @@
+import { browserIdentity, fenceToolDefs } from './authorization.js'
 import { ToolError } from './schema.js'
 import { generationOf, tabId, titleOf, usableProfile } from './common.js'
 import type { ToolDef, ToolDeps } from './common.js'
@@ -46,10 +47,11 @@ export function watchWindow(deps: Pick<ToolDeps, 'browser' | 'logger'>, profile:
   const state = deps.browser.state(profile)
   if (!state || state.mode !== 'visible') return
   const key = `${profile}:${state.generation}`
-  let set = watched.get(deps.browser)
+  const identity = browserIdentity(deps.browser)
+  let set = watched.get(identity)
   if (!set) {
     set = new Set()
-    watched.set(deps.browser, set)
+    watched.set(identity, set)
   }
   if (set.has(key)) return
   set.add(key)
@@ -72,7 +74,7 @@ export function watchWindow(deps: Pick<ToolDeps, 'browser' | 'logger'>, profile:
   })()
 }
 export function buildShowHideDefs(): ToolDef[] {
-  return [
+  return fenceToolDefs([
     {
       spec: {
         name: 'show_tab',
@@ -110,5 +112,5 @@ export function buildShowHideDefs(): ToolDef[] {
         return { json: await infoOf(deps, id) }
       },
     },
-  ]
+  ])
 }

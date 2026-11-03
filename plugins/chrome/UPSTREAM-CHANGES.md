@@ -87,3 +87,13 @@ BroCrew's own change; nothing was imported from the source project.
   (`helper`: on, off or turning-on) and never loads it while off; the panel's "Turn on" and the tool note ask the person.
 - Sync and extensions default to on for new non-temporary profiles; `profiles.json` records
   `defaults: 2` once existing profiles were switched on.
+
+## Shared profiles
+
+BroCrew-specific storage facade, revisioned registry, process-birth/token lease ownership,
+short metadata mutex, immutable helper versions and journalled rename-only migration.
+The host capability is explicit and verified; scratch/no-capability runs retain their own local
+home. Temporary profiles and files/downloads/restore state remain workspace-scoped.
+Global delete confirmations and per-command authorization epochs prevent stale person or agent
+work from adopting changed permissions. Real migration remains gated pending native sign-in and
+legacy-owner retirement qualification; no personal profile data is used by the tests.
