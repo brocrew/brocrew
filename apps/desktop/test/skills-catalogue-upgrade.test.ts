@@ -89,6 +89,12 @@ function identity(db: AppDatabase) {
     "INSERT INTO agent_identity (id, slug, created_at) VALUES ('aid:recipe-worker', 'recipe-worker', 1)",
   ).run()
 }
+function expectUpgradedIdentities(db: AppDatabase, before: readonly unknown[]) {
+  // Every original field stays equal; the additive connection choice must remain unset.
+  expect(db.prepare('SELECT * FROM agent_identity').all()).toEqual(
+    before.map((row) => ({ ...(row as object), connection_id: null })),
+  )
+}
 
 describe('skills follow the database upgrade and recovery boundary', () => {
   it('upgrades the previous workspace in place and declares exactly four restored tables', () => {
@@ -114,7 +120,7 @@ describe('skills follow the database upgrade and recovery boundary', () => {
       ['skills-off', 'with-the-database'],
       ['skills-conversion.json', 'with-the-database'],
     ])
-    expect(db.prepare('SELECT * FROM agent_identity').all()).toEqual(before)
+    expectUpgradedIdentities(db, before)
     const catalogue = new SqliteSkillCatalogue(db, source())
     expect(catalogue.list().total).toBe(8)
     catalogue.select('aid:recipe-worker', 'built-in/delegate', 'off', catalogue.list().revision)
@@ -206,7 +212,7 @@ describe('skills follow the database upgrade and recovery boundary', () => {
     catalogue = new SqliteSkillCatalogue(db, source())
     expect(migrationsRecordedIn(db)).toHaveProperty('migrations.length', journal.entries.length)
     expect(catalogue.list().total).toBe(8)
-    expect(db.prepare('SELECT * FROM agent_identity').all()).toEqual(oldRows)
+    expectUpgradedIdentities(db, oldRows)
     expect(db.prepare('SELECT * FROM skill_selection').all()).toEqual([])
     expect(catalogue.detail(first.id)).toBeNull()
     db.close()
@@ -214,7 +220,7 @@ describe('skills follow the database upgrade and recovery boundary', () => {
     db = database(file)
     catalogue = new SqliteSkillCatalogue(db, source())
     expect(migrationsRecordedIn(db)).toHaveProperty('migrations.length', journal.entries.length)
-    expect(db.prepare('SELECT * FROM agent_identity').all()).toEqual(oldRows)
+    expectUpgradedIdentities(db, oldRows)
     expect(catalogue.detail(first.id)?.body).toBe(second.body)
     expect(catalogue.detail(first.id, first.versionId)?.body).toBe(first.body)
     expect(
