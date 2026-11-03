@@ -235,7 +235,7 @@ it('removes consumed session IDs before SQLite resumes a long conversation', () 
     (sql, args) => {
       if (!sql.includes('UNION ALL')) return
       const events = sql.includes('FROM events WHERE')
-      const cursor = args[events ? 1 : 0] as string
+      const cursor = (args[events ? 1 : 0] as string | null) ?? ''
       const later = args.slice(events ? 5 : 3, (events ? 5 : 3) + 64)
       for (const id of later)
         if (id !== null)
@@ -253,5 +253,19 @@ it('removes consumed session IDs before SQLite resumes a long conversation', () 
   expect(nodes.find(({ id }) => id === 'aid:source')?.messagesSent).toBe(10000)
   expect(edges).toEqual([
     { source: 'aid:source', target: 'aid:target', work: 0, messages: 10000, questions: 0 },
+  ])
+})
+
+it('does not probe a future empty-ID session as an initial cursor sentinel', () => {
+  const f = fixture()
+  f.identity('aid:valid')
+  f.session('valid', 'aid:valid')
+  f.root('valid')
+  f.session('', 'aid:valid', graphCutoff + 1)
+  f.event('', 'message_sent', '{', 0, graphCutoff, 0)
+  const engine = new TeamProfileGraphEngine(f.file, f.executionFile, () => graphCutoff)
+  owned.push(engine)
+  expect(complete(engine).nodes).toMatchObject([
+    { id: 'aid:valid', conversations: 1, messagesSent: 0 },
   ])
 })

@@ -262,7 +262,7 @@ export class TeamProfileGraphEngine {
       const args = sessionPage
         ? [
             ...type,
-            afterSession,
+            afterSession || null,
             sessionPage.generation,
             after,
             ...type,
@@ -342,14 +342,14 @@ export class TeamProfileGraphEngine {
       ],
       [
         sessionQuery('turn', 'opened_at'),
-        ['', 0, -1, ...Array.from({ length: sessionBatch }, () => 's'), 0, '', 256],
+        [null, 0, -1, ...Array.from({ length: sessionBatch }, () => 's'), 0, '', 256],
         'turn_session_ordinal_uq',
       ],
       [
         sessionQuery('events', 'created_at'),
         [
           'message_sent',
-          '',
+          null,
           0,
           -1,
           'message_sent',
