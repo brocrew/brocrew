@@ -47,6 +47,52 @@ async function file(path: string, bytes: number): Promise<void> {
   await writeFile(path, Buffer.alloc(bytes, 65))
 }
 
+it('accounts for shared plugin data as a separate trusted plugin root and keeps other parts contained', async () => {
+  const shared = join(folder, 'machine-shared')
+  roots = { ...roots, sharedPlugins: shared }
+  await file(join(roots.plugins!, 'local'), 11)
+  await file(join(shared, 'chrome', 'profile'), 23)
+  const reading = await new StorageEngine(roots).measure()
+  expect(reading.parts.find((part) => part.id === 'plugins')?.bytes).toBe(34)
+  expect(
+    (await new StorageEngine(roots).children({ part: 'plugins', segments: [] })).entries,
+  ).toEqual([
+    { name: 'machine-shared', bytes: 23, isDirectory: true },
+    { name: 'plugins', bytes: 11, isDirectory: true },
+  ])
+  expect(
+    (
+      await new StorageEngine(roots).children({
+        part: 'plugins',
+        segments: ['machine-shared', 'chrome'],
+      })
+    ).totalBytes,
+  ).toBe(23)
+  expect(
+    await new StorageEngine(roots).reveal({
+      part: 'plugins',
+      segments: ['machine-shared', 'chrome'],
+    }),
+  ).toEqual({ path: await realpath(join(shared, 'chrome')) })
+  expect(
+    (
+      await new StorageEngine({ ...roots, workspace: shared }).children({
+        part: 'workspace',
+        segments: [],
+      })
+    ).error,
+  ).toBe('outside-data')
+  await symlink(folder, join(shared, 'escape'), process.platform === 'win32' ? 'junction' : 'dir')
+  expect(
+    (
+      await new StorageEngine(roots).children({
+        part: 'plugins',
+        segments: ['machine-shared', 'escape'],
+      })
+    ).error,
+  ).toBe('linked-path')
+})
+
 it('measures logical bytes from the host roots, including database sidecars and recovery, without counting unrelated files', async () => {
   await file(join(roots.workspace, 'nested', 'file'), 13)
   await file(roots.database[0]!, 21)

@@ -80,3 +80,21 @@ it('cancellation of a held policy read never admits a late tool', async () => {
   await work.quiescent
   expect(f.tool).not.toHaveBeenCalled()
 })
+
+it('refuses a result revoked in another workspace while the tool was running', async () => {
+  const f = fixture()
+  let finish!: (value: { ok: true; value: string }) => void
+  f.tool.mockImplementationOnce(() => ({
+    result: new Promise((resolve) => {
+      finish = resolve
+    }),
+    quiescent: Promise.resolve(),
+    cancel() {},
+  }))
+  const work = f.policy.tool(request('set_setting'), new AbortController().signal)
+  await vi.waitFor(() => expect(f.tool).toHaveBeenCalledOnce())
+  f.snapshot.profiles[0]!.allowSettings = false
+  finish({ ok: true, value: 'revoked result' })
+  expect(await work.result).toEqual({ ok: false })
+  await work.quiescent
+})

@@ -9,6 +9,23 @@ const Profile = z.object({
   open: z.boolean(),
   /** The person turned the BroCrew helper off; earlier plugin versions leave it out. */
   helperOff: z.boolean().optional(),
+  shared: z.boolean().optional(),
+  profileId: z.uuid().optional(),
+  globalRevision: z.number().int().nonnegative().safe().optional(),
+  onIn: z.array(z.string().max(320)).max(256).optional(),
+  inUseIn: z.string().max(320).optional(),
+  status: z.enum(['ready', 'moving', 'deleting']).optional(),
+  migratedFrom: z.string().max(128).optional(),
+  appliesAtNextLaunch: z.boolean().optional(),
+  deleteConfirmation: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/)
+    .optional(),
+  migration: z.string().max(160).optional(),
+  allowSync: z.boolean().optional(),
+  allowExtensions: z.boolean().optional(),
+  allowSettings: z.boolean().optional(),
+  keepRunning: z.boolean().optional(),
 })
 const Tab = z.object({
   id: z.string().max(128),

@@ -37,6 +37,30 @@ describe('fixed person-only Chrome profile action mapping', () => {
       200,
     ],
     [{ action: 'helper-on', profile: 'birch' }, '/profiles/birch/helper', {}, 200],
+    [
+      {
+        action: 'set-flags',
+        profile: 'birch',
+        allowSync: false,
+        allowExtensions: true,
+        allowSettings: false,
+        keepRunning: true,
+      },
+      '/profiles/birch/flags',
+      { allowSync: false, allowExtensions: true, allowSettings: false, keepRunning: true },
+      200,
+    ],
+    [
+      {
+        action: 'delete-profile',
+        profile: 'birch',
+        confirm: 'birch',
+        deleteConfirmation: 'a'.repeat(64),
+      },
+      '/profiles/birch/delete',
+      { confirm: 'birch', deleteConfirmation: 'a'.repeat(64) },
+      200,
+    ],
   ])(
     'maps a validated action to only its own fixed admin endpoint',
     async (proposal, path, body, status) => {
@@ -64,6 +88,15 @@ describe('fixed person-only Chrome profile action mapping', () => {
     { action: 'set-enabled', profile: 'birch', enabled: true, url: 'http://foreign.invalid/' },
     { action: 'delete-profile', profile: 'birch' },
     { action: 'delete-profile', profile: 'birch', confirm: 'fern' },
+    {
+      action: 'delete-profile',
+      profile: 'birch',
+      confirm: 'birch',
+      deleteConfirmation: 'malformed',
+    },
+    { action: 'set-flags', profile: 'birch' },
+    { action: 'set-flags', profile: 'birch', enabled: false },
+    { action: 'set-flags', profile: 'birch', allowExtensions: 'true' },
   ])('rejects unreviewed actions/fields before any request', async (proposal) => {
     const fetch = vi.fn()
     vi.stubGlobal('fetch', fetch)
@@ -80,6 +113,23 @@ describe('fixed person-only Chrome profile action mapping', () => {
     )
     expect(
       ChromeProposal.safeParse({ action: 'helper-on', profile: 'birch', on: true }).success,
+    ).toBe(false)
+  })
+  it('keeps shared deletion confirmation and live flags out of replayable profile intent', () => {
+    expect(
+      chromeProfileIntent({
+        action: 'delete-profile',
+        profile: 'birch',
+        confirm: 'birch',
+        deleteConfirmation: 'a'.repeat(64),
+      }),
+    ).toBeNull()
+    expect(
+      chromeProfileIntent({ action: 'set-flags', profile: 'birch', keepRunning: true }),
+    ).toBeNull()
+    expect(
+      ChromeLedgerProposal.safeParse({ action: 'set-flags', profile: 'birch', keepRunning: true })
+        .success,
     ).toBe(false)
   })
   it('does not retry an ambiguous admin failure or return downstream bytes', async () => {

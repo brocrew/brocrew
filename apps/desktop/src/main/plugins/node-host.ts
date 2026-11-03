@@ -19,6 +19,7 @@ import {
 } from './node-host-files'
 import { runtimeFiles, type PluginNodeRuntime } from './node-runtime'
 import { windowsSystemEnvironment } from './system-environment'
+import { sharedDataEnvironment, type SharedDataOwner } from './shared-data'
 import {
   endWindowsTree,
   stopGroups,
@@ -203,8 +204,12 @@ export function createPluginNodeHost(options: {
   runtime: PluginNodeRuntime
   browserExecutable?: string
   readyMs?: number
+  sharedDataOwner?: SharedDataOwner
 }) {
-  options = Object.freeze({ ...options })
+  options = Object.freeze({
+    ...options,
+    sharedDataOwner: options.sharedDataOwner ? structuredClone(options.sharedDataOwner) : undefined,
+  })
   let closing = false
   const starts = new Map<string, Promise<PluginNodeProcess>>()
   const readyMs = options.readyMs ?? 15000
@@ -230,6 +235,11 @@ export function createPluginNodeHost(options: {
       throw new PluginHostError('package')
     const runtime = await runtimeFiles(options.runtime)
     const root = await privateRoot(options.root)
+    const sharedEnvironment = await sharedDataEnvironment(
+      spec.package,
+      root,
+      options.sharedDataOwner,
+    )
     const home = await privateChild(root, `data/${manifest.id}`)
     for (const dir of ['downloads', 'files', 'tmp']) await privateChild(home, dir)
     const windows = process.platform === 'win32'
@@ -325,6 +335,7 @@ export function createPluginNodeHost(options: {
         TMP: join(home, 'tmp'),
         TEMP: join(home, 'tmp'),
         BROCREW_PLUGIN_RUN_ID: runId,
+        ...sharedEnvironment,
         [`BROCREW_${hosted.env}_DATA`]: home,
         [`BROCREW_${hosted.env}_AUTH`]: join(run, 'auth.json'),
         [`BROCREW_${hosted.env}_PORT`]: '0',
