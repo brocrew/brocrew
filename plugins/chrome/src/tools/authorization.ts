@@ -20,7 +20,7 @@ export function checkToolAuthorization(deps: ToolDeps): void {
 
 /** Each call keeps its admission identities. Old callbacks cannot adopt new permission epochs. */
 export function fenceToolDefs(defs: ToolDef[]): ToolDef[] {
-  return defs.map((def) => ({
+  const fenced: ToolDef[] = defs.map((def) => ({
     ...def,
     async run(args, deps) {
       const shared = sharedAccess(deps)
@@ -117,7 +117,14 @@ export function fenceToolDefs(defs: ToolDef[]): ToolDef[] {
           const field = Reflect.get(target, prop, target)
           if (typeof field !== 'function') return field
           // These are long-lived observer registrations, not work belonging to this call.
-          if (prop === 'onPage' || prop === 'onClosed') return field.bind(target)
+          if (
+            prop === 'onPage' ||
+            prop === 'onClosed' ||
+            prop === 'privateDownloadsActive' ||
+            prop === 'downloadIsPrivate' ||
+            prop === 'deletePrivateDownload'
+          )
+            return field.bind(target)
           return (...input: unknown[]) => {
             check()
             const name = input[0] as string
@@ -185,6 +192,26 @@ export function fenceToolDefs(defs: ToolDef[]): ToolDef[] {
       const out = await def.run(args, scoped)
       check()
       return out
+    },
+  }))
+  return fenced.map((def) => ({
+    ...def,
+    async run(args, deps) {
+      const call = deps.browser.agentCall
+      if (!call) return def.run(args, deps)
+      let profiles: string[]
+      if (typeof args.profile === 'string') profiles = [args.profile]
+      else if (typeof args.tabId === 'string')
+        profiles = [
+          deps.tabs.resolve(args.tabId, (name) => deps.browser.state(name)?.generation ?? null)
+            .profile,
+        ]
+      else
+        profiles = deps.store
+          .list()
+          .filter((p) => p.enabled)
+          .map((p) => p.name)
+      return deps.browser.agentCall!(profiles, () => def.run(args, deps))
     },
   }))
 }

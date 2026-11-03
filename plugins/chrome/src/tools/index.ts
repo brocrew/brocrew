@@ -1,4 +1,5 @@
 import { fenceToolDefs, sharedAccess, checkToolAuthorization } from './authorization.js'
+import { PrivateDownloadFiles } from '../browser/privateDownloadFiles.js'
 import { privateFolder } from '../privatePaths.js'
 import { PublicToolError } from '../shared/toolServer.js'
 import { randomBytes } from 'node:crypto'
@@ -957,7 +958,11 @@ export function buildToolDefs(): ToolDef[] {
           const save = async () => {
             const startedAt = Date.now()
             const [download] = await Promise.all([
-              page.waitForEvent('download', { timeout: ms }),
+              page.waitForEvent('download', {
+                timeout: ms,
+                predicate: (download) =>
+                  deps.browser.downloadIsPrivate?.(tab.profile, download) ?? true,
+              }),
               target === undefined
                 ? loc!.click({ timeout: ms })
                 : page
@@ -973,7 +978,7 @@ export function buildToolDefs(): ToolDef[] {
                     }),
             ])
             dropPending(tab, download)
-            return saveDownload(deps, download, ms, startedAt, (file) => {
+            return saveDownload(deps, tab.profile, download, ms, startedAt, (file) => {
               savedFile = file
             })
           }
@@ -986,7 +991,7 @@ export function buildToolDefs(): ToolDef[] {
       spec: {
         name: 'wait_for_download',
         description:
-          'Wait for and save a download this tab starts independently, from a page timer or script, or from a user in a visible window. For an agent-triggered click or navigation, use download with ref or url to arm capture and trigger the action in one call. Only one tool call runs at a time: another tool cannot trigger the download while this wait is active. In headless mode, start the wait before the timer fires; downloads outside an active call are denied and cannot be recovered afterwards. In a visible window, an unclaimed download from the last 60 s also counts. Saved like download; returns the path. A visible-window download that began before this call was already saved by Chrome in the private plugin downloads folder: the result then has savedBy:"chrome" and that file\'s path. Start the wait before an independent event to get a copy under the agent downloads folder. In a visible window only this tab\'s first download during the wait is taken (downloads in other tabs go to the private plugin downloads folder as usual); one the user starts in this same tab during the wait may be the one taken. Max 200 MB.',
+          'Wait for and save a download this tab starts independently, from a page timer or script, or from a user in a visible window. For an agent-triggered click or navigation, use download with ref or url to arm capture and trigger the action in one call. Only one tool call runs at a time: another tool cannot trigger the download while this wait is active. In headless mode, start the wait before the timer fires; downloads outside an active call are denied and cannot be recovered afterwards. In a visible window, a private download from an earlier agent call in the last 60 s also counts. Saved like download; returns the path. A private download kept before this call can return savedBy:"chrome" with its private path. Downloads begun outside an agent call use normal Chrome downloads and are not taken by this tool. Start the wait before an independent event to get a copy under the agent downloads folder. In a visible window only this tab\'s first download during the wait is taken (downloads in other tabs go to the private plugin downloads folder as usual); one the user starts in this same tab during the wait may be the one taken. Max 200 MB.',
         props: { tabId, timeoutMs },
         required: ['tabId'],
       },
@@ -1007,10 +1012,15 @@ export function buildToolDefs(): ToolDef[] {
         const save = async () => {
           const startedAt = waiting?.at ?? Date.now()
           const download =
-            waiting?.download ?? (await tab.page.waitForEvent('download', { timeout: ms }))
+            waiting?.download ??
+            (await tab.page.waitForEvent('download', {
+              timeout: ms,
+              predicate: (download) =>
+                deps.browser.downloadIsPrivate?.(tab.profile, download) ?? true,
+            }))
           dropPending(tab, download)
           return deps.browser.operate(tab.profile, () =>
-            saveDownload(deps, download, ms, startedAt, (file) => {
+            saveDownload(deps, tab.profile, download, ms, startedAt, (file) => {
               savedFile = file
             }),
           )
@@ -1272,6 +1282,7 @@ async function fetchToDisk(
       const dir = path.join(deps.downloadsRoot, dayFolder((deps.now ?? (() => new Date()))()))
       privateFolder(path.dirname(deps.downloadsRoot), deps.downloadsRoot, true)
       privateFolder(deps.downloadsRoot, dir, true)
+      const privateFiles = new PrivateDownloadFiles(deps.downloadsRoot)
       const { fd, target } = reserveFile(
         dir,
         sanitizeDownloadName(disposition ? safeDecode(disposition) : urlName),
@@ -1298,7 +1309,7 @@ async function fetchToDisk(
         )
         checkToolAuthorization(deps)
       } catch (e) {
-        fs.rmSync(target, { force: true })
+        privateFiles.remove(target)
         if (e instanceof DownloadTooLarge)
           throw new ToolError('the file is larger than 200 MB and was discarded')
         throw e
@@ -1332,6 +1343,7 @@ function nativeDownload(
 ): Record<string, unknown> {
   const dir = deps.nativeDownloads ?? deps.downloadsRoot
   privateFolder(deps.downloadsRoot, dir)
+  const privateFiles = new PrivateDownloadFiles(deps.downloadsRoot)
   let best: {
     target: string
     bytes: number
@@ -1341,6 +1353,7 @@ function nativeDownload(
     for (const f of fs.readdirSync(dir)) {
       if (!chromeNameMatches(suggested, f)) continue
       const target = path.join(dir, f)
+      if (!privateFiles.file(target)) continue
       const st = fs.statSync(target)
       if (st.isFile() && st.mtimeMs >= startedAt - 2000 && (!best || st.mtimeMs > best.mtime))
         best = { target, bytes: st.size, mtime: st.mtimeMs }
@@ -1356,22 +1369,31 @@ function nativeDownload(
 }
 async function saveDownload(
   deps: ToolDeps,
+  profile: string,
   download: Download,
   ms: number,
   startedAt: number,
   savedFile?: (file: string) => void,
 ): Promise<Record<string, unknown>> {
+  if (
+    deps.browser.downloadIsPrivate &&
+    !(await raceTimeout(deps.browser.downloadIsPrivate(profile, download), ms))
+  )
+    throw new ToolError('the download failed')
   let tmp: string | null
   try {
     tmp = await raceTimeout(download.path(), ms)
     checkToolAuthorization(deps)
   } catch (e) {
-    await download.cancel().catch(() => undefined)
+    await deps.browser.cancelPrivateDownload?.(profile, download).catch(() => undefined)
     throw e
   }
   if (!tmp) throw new ToolError('the download failed')
   if (!fs.existsSync(tmp)) return nativeDownload(deps, download.suggestedFilename(), startedAt)
+  if (deps.browser.downloadFileIsPrivate?.(profile, tmp) === false)
+    throw new ToolError('the download failed')
   const tooLarge = new ToolError('the download is larger than 200 MB and was discarded')
+  let copied = false
   try {
     if (fs.statSync(tmp).size > MAX_DOWNLOAD_BYTES) throw tooLarge
     const source = await download.createReadStream()
@@ -1380,6 +1402,7 @@ async function saveDownload(
     const dir = path.join(deps.downloadsRoot, dayFolder((deps.now ?? (() => new Date()))()))
     privateFolder(path.dirname(deps.downloadsRoot), deps.downloadsRoot, true)
     privateFolder(deps.downloadsRoot, dir, true)
+    const privateFiles = new PrivateDownloadFiles(deps.downloadsRoot)
     const { fd, target } = reserveFile(dir, sanitizeDownloadName(download.suggestedFilename()))
     let bytes = 0
     const cap = new Transform({
@@ -1399,13 +1422,14 @@ async function saveDownload(
       await pipeline(source, cap, fs.createWriteStream(target, { fd }))
       checkToolAuthorization(deps)
     } catch (e) {
-      fs.rmSync(target, { force: true })
+      privateFiles.remove(target)
       throw e instanceof DownloadTooLarge ? tooLarge : e
     }
     savedFile?.(tmp)
+    copied = true
     return { path: target, bytes }
   } finally {
-    await download.delete().catch(() => undefined)
+    if (copied) await deps.browser.deletePrivateDownload?.(profile, download).catch(() => undefined)
   }
 }
 export function allToolDefs(): ToolDef[] {
