@@ -1663,6 +1663,7 @@ describe('conformance · the gap ledger (186)', () => {
       [
         'fake',
         [
+          'connectionId',
           'isRetiring',
           'refreshManagedPlugins',
           'builtInSkillsConfirmed',
@@ -1727,6 +1728,7 @@ describe('conformance · the gap ledger (186)', () => {
       [
         'claude',
         [
+          'connectionId',
           'instructionSources',
           'signInCopyAtLaunch',
           'carryOn',
@@ -1758,6 +1760,7 @@ describe('conformance · the gap ledger (186)', () => {
       [
         'codex',
         [
+          'connectionId',
           'isRetiring',
           'refreshManagedPlugins',
           'builtInSkillsConfirmed',

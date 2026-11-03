@@ -44,9 +44,15 @@ export function onProviderConnection(
     return (handle) => {
       const prior = wrapped.get(handle)
       if (prior) return prior
+      let closing: Promise<void> | undefined
       const proxy = new Proxy(handle, {
+        has(target, key) {
+          return key === 'connectionId' || Reflect.has(target, key)
+        },
         get(target, key) {
           if (key === 'connectionId') return id
+          if (key === 'close')
+            return () => (closing ??= Promise.resolve().then(() => target.close()))
           const value = Reflect.get(target, key, target)
           return typeof value === 'function' ? value.bind(target) : value
         },
@@ -81,7 +87,7 @@ export function onProviderConnection(
     async start(options) {
       const beganAt = revision()
       const id = admit(options)
-      return attribution(id)(await checked(await runtime().start(options), id, options, beganAt))
+      return checked(attribution(id)(await runtime().start(options)), id, options, beganAt)
     },
     async resume(ref, options) {
       options.signal?.throwIfAborted()
@@ -101,7 +107,7 @@ export function onProviderConnection(
           options.onSessionCreated!(wrap(handle))
         } }
         : options
-      return wrap(await checked(await runtime().resume(ref, scoped), id, options, beganAt))
+      return checked(wrap(await runtime().resume(ref, scoped)), id, options, beganAt)
     },
     async listModels(context) {
       const beganAt = revision()
