@@ -12,7 +12,10 @@ const journal = JSON.parse(readFileSync(join(migrations, 'meta/_journal.json'), 
   entries: { idx: number; tag: string; when: number }[]
 }
 const released = JSON.parse(
-  readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'fixtures/provider-connections-releases.json'), 'utf8'),
+  readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), 'fixtures/provider-connections-releases.json'),
+    'utf8',
+  ),
 ) as {
   prefixes: Record<string, { count: number; sha256: string }>
   releases: { release: string; commit: string; prefix: string }[]
@@ -37,8 +40,11 @@ function rows(db: AppDatabase, table: string, columns: string[]) {
 it('binds the upgrade fixtures to the unchanged migration bytes of published releases', () => {
   for (const prefix of Object.values(released.prefixes)) {
     const entries = journal.entries.slice(0, prefix.count).map(({ tag, when }) => ({
-      tag, when,
-      sha256: createHash('sha256').update(readFileSync(join(migrations, `${tag}.sql`))).digest('hex'),
+      tag,
+      when,
+      sha256: createHash('sha256')
+        .update(readFileSync(join(migrations, `${tag}.sql`)))
+        .digest('hex'),
     }))
     expect(createHash('sha256').update(JSON.stringify(entries)).digest('hex')).toBe(prefix.sha256)
   }
@@ -50,7 +56,10 @@ it('binds the upgrade fixtures to the unchanged migration bytes of published rel
 
 it.each([
   ...Array.from({ length: 21 }, (_, n) => ({ label: `migration prefix ${n + 1}`, count: n + 1 })),
-  ...released.releases.map(({ release, prefix }) => ({ label: release, count: released.prefixes[prefix]!.count })),
+  ...released.releases.map(({ release, prefix }) => ({
+    label: release,
+    count: released.prefixes[prefix]!.count,
+  })),
 ])(
   'upgrades $label without changing agents, sign-in references or conversation history',
   ({ count }) => {
