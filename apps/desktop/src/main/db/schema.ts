@@ -543,7 +543,10 @@ export const providerConnection = sqliteTable(
   (t) => [
     uniqueIndex('provider_connection_name_uq').on(t.provider, sql`${t.name} COLLATE NOCASE`),
     check('provider_connection_auth_ck', sql`${t.authMethod} IN ('sign-in', 'api-key')`),
-    check('provider_connection_source_ck', sql`(${t.authMethod} = 'sign-in' AND ${t.credentialSource} = 'provider-sign-in') OR (${t.authMethod} = 'api-key' AND ${t.credentialSource} = 'provider-api-key')`),
+    check(
+      'provider_connection_source_ck',
+      sql`(${t.authMethod} = 'sign-in' AND ${t.credentialSource} = 'provider-sign-in') OR (${t.authMethod} = 'api-key' AND ${t.credentialSource} = 'provider-api-key')`,
+    ),
     check('provider_connection_enabled_ck', sql`${t.enabled} IN (0, 1)`),
     check('provider_connection_version_ck', sql`${t.contractVersion} = 1`),
   ],

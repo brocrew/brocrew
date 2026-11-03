@@ -51,24 +51,57 @@ it.each(Array.from({ length: 21 }, (_, n) => n + 1))(
         db.prepare(
           `INSERT INTO provider_api_key (provider,sealed,updated_at) VALUES ('claude','fictional-sealed-reference',1)`,
         ).run()
-      const tables = ['agent_identity', 'provider_session', 'events', ...(count >= 4 ? ['provider_api_key'] : [])]
+      const tables = [
+        'agent_identity',
+        'provider_session',
+        'events',
+        ...(count >= 4 ? ['provider_api_key'] : []),
+      ]
       const before = tables.map((table) => {
-        const columns = (db.prepare(`PRAGMA table_info("${table}")`).all() as { name: string }[]).map(
-          (column) => column.name,
-        )
+        const columns = (
+          db.prepare(`PRAGMA table_info("${table}")`).all() as { name: string }[]
+        ).map((column) => column.name)
         return { table, columns, values: rows(db, table, columns) }
       })
       applyMigrations(db, migrations)
       for (const saved of before) expect(rows(db, saved.table, saved.columns)).toEqual(saved.values)
-      expect(db.prepare('SELECT connection_id FROM agent_identity').all()).toEqual([{ connection_id: null }])
-      expect(db.prepare('SELECT connection_id FROM provider_session').all()).toEqual([{ connection_id: null }])
+      expect(db.prepare('SELECT connection_id FROM agent_identity').all()).toEqual([
+        { connection_id: null },
+      ])
+      expect(db.prepare('SELECT connection_id FROM provider_session').all()).toEqual([
+        { connection_id: null },
+      ])
       expect(
-        db.prepare('SELECT provider, auth_method, credential_source, base_url FROM provider_connection ORDER BY id').all(),
+        db
+          .prepare(
+            'SELECT provider, auth_method, credential_source, base_url FROM provider_connection ORDER BY id',
+          )
+          .all(),
       ).toEqual([
-        { provider: 'claude', auth_method: 'api-key', credential_source: 'provider-api-key', base_url: null },
-        { provider: 'claude', auth_method: 'sign-in', credential_source: 'provider-sign-in', base_url: null },
-        { provider: 'codex', auth_method: 'api-key', credential_source: 'provider-api-key', base_url: null },
-        { provider: 'codex', auth_method: 'sign-in', credential_source: 'provider-sign-in', base_url: null },
+        {
+          provider: 'claude',
+          auth_method: 'api-key',
+          credential_source: 'provider-api-key',
+          base_url: null,
+        },
+        {
+          provider: 'claude',
+          auth_method: 'sign-in',
+          credential_source: 'provider-sign-in',
+          base_url: null,
+        },
+        {
+          provider: 'codex',
+          auth_method: 'api-key',
+          credential_source: 'provider-api-key',
+          base_url: null,
+        },
+        {
+          provider: 'codex',
+          auth_method: 'sign-in',
+          credential_source: 'provider-sign-in',
+          base_url: null,
+        },
       ])
       const saved = db.prepare('SELECT * FROM provider_connection ORDER BY id').all()
       applyMigrations(db, migrations)

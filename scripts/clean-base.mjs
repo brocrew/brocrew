@@ -71,7 +71,8 @@ const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
  * the sentence names nothing more.
  */
 // Rules provenance, seen state and saved method recovery live in the database being removed.
-const MIGRATIONS = 21
+// Compatibility connection entries are recreated; personal defaults and credential rows are removed.
+const MIGRATIONS = 22
 
 const FLAGS = new Set([
   '--dry-run',
@@ -280,6 +281,7 @@ function nextLaunch({
   const opening =
     `  next launch${dryRun ? ', if you run this without --dry-run' : ''}: MIGRATED AND UNSEEDED, ` +
     `not empty — ${String(MIGRATIONS)} migration${MIGRATIONS === 1 ? '' : 's'}, one app-policy row, ` +
+    `four compatibility connection entries, no connection defaults, ` +
     // 🔴 **500 · the one thing on that row a PERSON set, named because this line is where they
     // learn it went.** ⛔ The approval default lives on `app_policy` and the ledger is deleted, so
     // a reset puts every new conversation back to asking — which is the decision (a first-time

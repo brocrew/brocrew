@@ -25,6 +25,9 @@ export interface ProviderConnectionCapabilities {
 }
 
 /** Stable identifiers have no dependency on this computer's paths or login identity. */
-export function compatibilityConnectionId(provider: Provider, method: ConnectionAuthMethod): string {
+export function compatibilityConnectionId(
+  provider: Provider,
+  method: ConnectionAuthMethod,
+): string {
   return `${provider}:${method}`
 }
