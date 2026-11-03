@@ -15,6 +15,8 @@ let renaming = null
 let composing = false
 let heldSnapshot = null
 let clearing = false
+// Profiles whose on/off change is in flight, with the asked-for state, so every redraw shows it busy.
+const switching = new Map()
 const RENAME_ERRORS = {
   invalid: 'Profile name must be 1–60 characters.',
   duplicate: 'Another profile already uses that name.',
@@ -179,6 +181,35 @@ function action(label, payload) {
   const button = focusKey(text('button', label), `${payload.action}:${payload.profile}`)
   button.addEventListener('click', () => propose(payload))
   return button
+}
+async function setEnabled(profile, enabled) {
+  if (switching.has(profile)) return
+  switching.set(profile, enabled)
+  redraw()
+  try {
+    await rpc('proposeConfig', { action: 'set-enabled', profile, enabled })
+    switching.delete(profile)
+    await refresh()
+  } catch {
+    switching.delete(profile)
+    redraw()
+    say(UNAVAILABLE, 'warn')
+  }
+}
+// A switch with the same words in both states; its knob, colour and aria-checked say which state it is in.
+function onSwitch(profile, label) {
+  const words = profile.shared ? 'On here' : 'On'
+  const control = focusKey(text('button', words), `set-enabled:${profile.name}`)
+  const asked = switching.get(profile.name)
+  control.role = 'switch'
+  control.ariaChecked = String(asked ?? profile.enabled === true)
+  control.ariaLabel = `${label}: ${words.toLowerCase()}`
+  if (asked !== undefined) {
+    control.ariaBusy = 'true'
+    control.ariaDisabled = 'true'
+  }
+  control.addEventListener('click', () => void setEnabled(profile.name, !profile.enabled))
+  return control
 }
 function checkbox(label, checked, key, onChange) {
   const control = text('label', label)
@@ -373,23 +404,7 @@ function draw(snapshot) {
     actions.className = 'profile-actions'
     const openWindow = action('Open window', { action: 'open-window', profile: profile.name })
     openWindow.className = 'primary'
-    actions.append(
-      action(
-        profile.shared
-          ? profile.enabled
-            ? 'Switch off here'
-            : 'Switch on here'
-          : profile.enabled
-            ? 'Disable'
-            : 'Enable',
-        {
-          action: 'set-enabled',
-          profile: profile.name,
-          enabled: !profile.enabled,
-        },
-      ),
-      openWindow,
-    )
+    actions.append(onSwitch(profile, label), openWindow)
     const rename = focusKey(text('button', 'Rename'), `rename:${profile.name}`)
     rename.disabled = profile.status === 'deleting'
     rename.addEventListener('click', () => startRename(profile))

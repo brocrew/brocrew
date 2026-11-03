@@ -122,19 +122,15 @@ export async function enabledProfile(page, wait = waitFor) {
   await wait(() =>
     page.evaluate(`
       const row = document.querySelector('[data-profile="fern"]');
-      return Boolean(row && [...row.querySelectorAll('button')].some(b => b.textContent === 'Disable' && !b.disabled))`),
+      return Boolean(row && [...row.querySelectorAll('button')].some(b => b.role === 'switch' && b.ariaChecked === 'true' && b.ariaBusy !== 'true'))`),
   )
 }
-export async function pluginButton(page, label) {
-  await waitFor(() =>
-    page.evaluate(`
-    const row = document.querySelector('[data-profile="fern"]');
-    const button = [...(row?.querySelectorAll('button') ?? [])].find(b => b.textContent === ${JSON.stringify(label)});
-    return Boolean(button && !button.disabled)`),
-  )
+/** Presses the profile's on/off switch once it shows the profile off and is not busy. */
+export async function switchOnProfile(page) {
+  const find = `[...(document.querySelector('[data-profile="fern"]')?.querySelectorAll('button') ?? [])].find(b => b.role === 'switch' && b.ariaChecked === 'false' && b.ariaBusy !== 'true')`
+  await waitFor(() => page.evaluate(`return Boolean(${find})`))
   const box = await page.evaluate(`
-    const row = document.querySelector('[data-profile="fern"]');
-    const button = [...row.querySelectorAll('button')].find(b => b.textContent === ${JSON.stringify(label)});
+    const button = ${find};
     const r = button.getBoundingClientRect(); return {x:r.x+r.width/2,y:r.y+r.height/2}`)
   await page.send('Input.dispatchMouseEvent', {
     type: 'mousePressed',
