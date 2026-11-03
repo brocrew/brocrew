@@ -6,6 +6,7 @@ import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { FakeProviderSessions, FakeRuntime, ResumeError } from '@brobot2/runtime'
 import type {
+  AgentRuntime,
   FakeSessionHandle,
   ProviderRuntimeContext,
   SessionHandle,
@@ -164,6 +165,12 @@ export interface AServiceWorld {
     limitsWriterStamp?: ConstructorParameters<typeof RuntimeHost>[0]['limitsWriterStamp']
     listProfiles?: (provider?: Provider) => string[]
     readInstructions?: ConstructorParameters<typeof RuntimeHost>[0]['readInstructions']
+    connectionRouting?: Pick<
+      ConstructorParameters<typeof RuntimeHost>[0],
+      'connectionFor' | 'connectionNamed' | 'connectionRevision'
+    > & {
+      wrap(runtime: AgentRuntime, provider: Provider, connectionId?: string): AgentRuntime
+    }
   }): RuntimeHost
   /** An agent made now, on Claude unless `provider` says otherwise, kept as a service unless `kind` does. */
   anAgent(
@@ -350,8 +357,17 @@ export function aServiceWorld(fixture: { holderReminders?: 'declined' } = {}): A
         nativeTranscriptPath: () => null,
         exportDirectory: () => join(folder, 'exports'),
         resourcesRoot: () => resourcesRoot(folder),
-        createRuntime: (provider: Provider) =>
-          new ProviderOfThisWorld(provider, { sessions: issued }),
+        createRuntime: (provider: Provider, connectionId?: string) => {
+          const runtime = new ProviderOfThisWorld(provider, { sessions: issued })
+          return opts.connectionRouting?.wrap(runtime, provider, connectionId) ?? runtime
+        },
+        ...(opts.connectionRouting === undefined
+          ? {}
+          : {
+              connectionFor: opts.connectionRouting.connectionFor,
+              connectionNamed: opts.connectionRouting.connectionNamed,
+              connectionRevision: opts.connectionRouting.connectionRevision,
+            }),
         prepareProviderHome: (provider: Provider, profileId?: string) => {
           const home = join(folder, 'provider-homes', profileId ?? 'default', provider)
           world.preparedIn.push(home)

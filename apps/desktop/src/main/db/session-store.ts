@@ -646,6 +646,7 @@ export interface WaitingMessage {
    * minted.
    */
   readonly piece?: string
+  readonly connectionId?: string
   /** ⚑ **D-016 · its label** — present only beside {@link piece}, and only when it is a label. */
   readonly label?: string
   /**
@@ -2000,6 +2001,9 @@ export interface SessionStore extends OwnNotesStore {
    * possible at all.
    */
   setAgentProvider(profileSlug: string, provider: Provider | null): boolean
+  /** A new-conversation default; never a rewrite of existing conversations. */
+  defaultConnectionOf(profileSlug: string): string | null
+  setAgentConnection(profileSlug: string, provider: Provider, connectionId: string | null): boolean
   /**
    * 🔴 **Correct what this identity is CALLED, and answer whether there was a row to correct**
    * (558, `HO-063` gap 2).
@@ -4101,6 +4105,8 @@ export const NULL_SESSION_STORE: SessionStore = {
   // claimed to have been, and the door turns it into the same *there is nothing here* a slug with no
   // row gets.
   setAgentProvider: () => false,
+  defaultConnectionOf: () => null,
+  setAgentConnection: () => false,
   // ⚑ **`false`, for `setAgentProvider`'s reason exactly** (558): nothing was renamed, so nothing
   // may be claimed to have been.
   setAgentDisplayName: () => false,
@@ -6675,7 +6681,7 @@ export function createSessionStore(
    * by-name lookup, so the creation door's answer and the surface's list cannot come to two shapes.
    * ⚠️ The capability columns are {@link CAPABILITY_COLUMNS} and are therefore never typed out here.
    */
-  const IDENTITY_COLUMNS = `id, slug, display_name, provider, created_at, created_by, ${CAPABILITY_COLUMNS.join(', ')}`
+  const IDENTITY_COLUMNS = `id, slug, display_name, provider, connection_id, created_at, created_by, ${CAPABILITY_COLUMNS.join(', ')}`
 
   /**
    * ⛔ **One row of {@link listIdentities}, as `better-sqlite3` hands it back** (419) — the named
@@ -6688,6 +6694,7 @@ export function createSessionStore(
     slug: string
     display_name: string | null
     provider: string | null
+    connection_id: string | null
     created_at: number
     /** ⚑ **598 · selected since this dispatch** — see {@link AgentIdentity.createdBy}. */
     created_by: string | null
@@ -6735,6 +6742,7 @@ export function createSessionStore(
       // must not be handed `'clade'` to draw as a provider, and *nobody has said* is the reading of
       // an unreadable column that changes nothing.
       provider: parseProvider(row.provider),
+      ...(row.connection_id == null ? {} : { connectionId: row.connection_id }),
       // 🔴 **516 · which registered servers this identity was GRANTED — ids, and the ROW's presence
       // is the grant** (HO-040 §4.2, endorsed in `HO-042` §6). ⚠️ **Since 524 that is no longer the
       // same question as *may reach*** (`HO-048` §1): an available-to-all server is usable by every
@@ -6884,6 +6892,14 @@ export function createSessionStore(
     (profileSlug: string, provider: Provider | null): boolean => {
       const rowId = agentIdentityRowId(profileSlug)
       if (spawnSql().writeProvider.run(provider, rowId).changes === 0) return false
+      const identity = spawnSql().identityBySlug.get(foldProfileName(profileSlug)) as IdentityRow
+      if (identity.connection_id !== null) {
+        const connection = db
+          .prepare('SELECT provider FROM provider_connection WHERE id = ?')
+          .get(identity.connection_id) as { provider: string } | undefined
+        if (provider === null || connection?.provider !== provider)
+          db.prepare('UPDATE agent_identity SET connection_id = NULL WHERE id = ?').run(rowId)
+      }
       if (provider === null) return true
       const held = spawnSql().readModelChoice.get(foldProfileName(profileSlug)) as
         { model_choice: string | null } | undefined
@@ -6912,6 +6928,10 @@ export function createSessionStore(
     (said: NewAgent, at: number, broughtIntoBeingBy: IdentityCreator): AgentIdentity | null => {
       const slug = foldProfileName(said.slug)
       if (spawnSql().identityBySlug.get(slug) !== undefined) return null
+      if (said.connectionId !== undefined) {
+        if (said.provider === null) throw new Error('The selected connection is unavailable')
+        resolveProviderConnection(db, { provider: said.provider, connectionId: said.connectionId })
+      }
       writeIdentityRow(
         slug,
         at,
@@ -6937,6 +6957,12 @@ export function createSessionStore(
         // know, and `mayCreateAgents`, which is where the agent arm is resolved exactly once.
         broughtIntoBeingBy,
       )
+      if (said.connectionId !== undefined) {
+        db.prepare('UPDATE agent_identity SET connection_id = ? WHERE id = ?').run(
+          said.connectionId,
+          agentIdentityRowId(slug),
+        )
+      }
       return identityFrom(spawnSql().identityBySlug.get(slug) as IdentityRow)
     },
   )
@@ -13112,6 +13138,24 @@ export function createSessionStore(
       return setAgentProviderTx(profileSlug, provider)
     },
 
+    defaultConnectionOf(profileSlug) {
+      const row = spawnSql().identityBySlug.get(foldProfileName(profileSlug)) as
+        IdentityRow | undefined
+      return row?.connection_id ?? null
+    },
+
+    setAgentConnection(profileSlug, provider, connectionId) {
+      return db.transaction(() => {
+        if (connectionId !== null) resolveProviderConnection(db, { provider, connectionId })
+        if (!setAgentProviderTx(profileSlug, provider)) return false
+        db.prepare('UPDATE agent_identity SET connection_id = ? WHERE id = ?').run(
+          connectionId,
+          agentIdentityRowId(profileSlug),
+        )
+        return true
+      })()
+    },
+
     setAgentDisplayName(profileSlug, displayName) {
       // ⛔ **`blankToNull` on the way in, so *clear it* and *name it nothing* are one value** (558).
       // The column's readers already treat null as *nobody has named this identity* — a `''` would be a third state every one of
@@ -13132,7 +13176,13 @@ export function createSessionStore(
         { model_choice: string | null } | undefined
       // ⚠️ **No row and no choice are ONE answer**, {@link SessionStore.providerOf}'s collapse: give
       // has already asked existence through `capabilitiesOf` by the time it reads this.
-      return row === undefined ? null : parseModelChoice(row.model_choice)
+      const choice = row === undefined ? null : parseModelChoice(row.model_choice)
+      if (choice === null) return null
+      const identity = spawnSql().identityBySlug.get(foldProfileName(profileSlug)) as
+        IdentityRow | undefined
+      return identity?.connection_id == null
+        ? choice
+        : { ...choice, connectionId: identity.connection_id }
     },
 
     setModelChoice(profileSlug, choice) {
@@ -14402,6 +14452,11 @@ export function createSessionStore(
             authorship: authorshipStoredOn(row.payload),
             at: row.created_at,
             ...(piece === null ? {} : { piece }),
+            ...(stored.connectionId === undefined
+              ? {}
+              : {
+                  connectionId: typeof stored.connectionId === 'string' ? stored.connectionId : '',
+                }),
             ...(label === null ? {} : { label }),
             ...(piece !== null && stored.rebrief === true ? { rebrief: true as const } : {}),
             // ⚑ **D-016 · commit 6 · R4 — what the held words drive, bounded as `boundTheDrive`

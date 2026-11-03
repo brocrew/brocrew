@@ -139,7 +139,11 @@ import {
   totalBytes,
 } from './process-tree'
 import { openDatabase, type AppDatabase } from './db/connection'
-import { listProviderConnections, resolveProviderConnection } from './db/provider-connections'
+import {
+  listProviderConnections,
+  resolveProviderConnection,
+  resolveNamedProviderConnection,
+} from './db/provider-connections'
 import { newProviderSessionId } from './db/ids'
 import { discoverSessionsIn } from './adopt/discover-sessions'
 import {
@@ -896,6 +900,8 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
       return connections.resolve(connectionId).id
     },
     connectionRevision: (provider) => apiKeys.revision(provider),
+    connectionNamed: (connection, provider) =>
+      resolveNamedProviderConnection(database, { connection, provider }),
     listConnections: () =>
       Object.values(providerModules).flatMap((module) => module.connections?.list() ?? []),
     // Derive the profile from the session; keep its provider home under `HOME_FOLDER`.

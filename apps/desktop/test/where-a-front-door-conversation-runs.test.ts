@@ -196,19 +196,17 @@ describe('420 §3 · a conversation opened through the front door', () => {
   }
 
   describe('§0 · the payload this file sends is the payload the front door sends', () => {
-    it('⛔ the launcher builds exactly three fields, and neither of the two that place a session', () => {
+    it('⛔ the launcher offers connection, model and effort, without either session placement', () => {
       // 🔴 **The non-vacuity for everything below.** If the front door grew a `cwd` again — a
       // picker restored, a default filled in — every assertion in §1 and §2 would still pass while
       // measuring a launch the product no longer makes.
-      // 🔴 **Five since `435`, and the LAST TWO are omissions** (HO-025 §4/§5). The front door
-      // offers a model and a reasoning effort again, and each is on the wire only when a person
-      // answered it — so an untouched door still sends the three `417` sent, byte for byte.
-      // ⛔ **That is the property, and it is why the two live behind a spread**: *asks nothing*
-      // survives as a fact about the PAYLOAD rather than about the DOM.
+      // The three choices are conditional: an untouched door keeps the original three-field
+      // payload. Connection identity chooses a route; cwd and project placement remain absent.
       expect(FRONT_DOOR_SENDS).toEqual([
         'provider',
         'profileId',
         'approvalMode',
+        'connectionId',
         'model',
         'reasoningEffort',
       ])

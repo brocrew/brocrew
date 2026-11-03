@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import type { Provider, ProviderCapabilityMap } from '../../../shared/runtime-ipc'
+import {
+  PROVIDER_NAME,
+  type ModelList,
+  type Provider,
+  type ProviderCapabilityMap,
+} from '../../../shared/runtime-ipc'
 import {
   aChoiceInWords,
   aChoiceIsInForce,
@@ -82,6 +87,12 @@ const emit = defineEmits<{
 
 const store = computed(() => props.store ?? useAgentStore())
 const modelLists = computed(() => props.lists ?? useModelLists())
+const providers = Object.keys(PROVIDER_NAME) as Provider[]
+const defaultConnection = computed(
+  () =>
+    store.value.identities.value?.identities.find((one) => one.slug === props.profileSlug)
+      ?.connectionId,
+)
 
 /** ⛔ Whether an answer has arrived at all (086) — `held: null` is *nobody chose*, and ordinary. */
 const asked = ref(false)
@@ -136,12 +147,11 @@ const roster = computed(() => store.value.identities.value?.identities ?? null)
  * agent's own home answered (`682`'s `R31d`; `688` §1b). ⚑ The save door judges by that same list,
  * so the picker says whose it is before the press.
  */
-const standInSays = computed(() => {
-  const listed = modelLists.value.held(menusFor.value, props.profileSlug)
-  if (listed?.state !== 'answered' || listed.list.standIn === null) return null
-  const named = theStandInNamed({ standIn: listed.list.standIn }, roster.value).standIn
+function standInSays(list: ModelList | null): string | null {
+  if (list === null || list.standIn === null) return null
+  const named = theStandInNamed({ standIn: list.standIn }, roster.value).standIn
   return `This is ${named}’s list: this agent has no list of its own to ask.`
-})
+}
 
 /**
  * ⚑ **The face: the default as held, when it is for the provider the menus are for.** ⚠️ One for
@@ -214,14 +224,16 @@ async function clear(): Promise<void> {
         <strong v-if="!readOnce" data-cy="agent-model-unknown">Not known</strong>
         <template v-else>
           <ModelPicker
-            :providers="[menusFor]"
+            :providers="providers"
+            :preferred-provider="menusFor"
+            :connection-id="held?.connectionId ?? defaultConnection"
             :profile-id="props.profileSlug"
             :shown="shown"
             empty="Nobody has chosen"
             take-words="Save as its default"
             :take="save"
             :reaches="aPickReaches"
-            :note="standInSays"
+            :list-note="standInSays"
             :capabilities="props.capabilities"
             :lists="modelLists"
           />
