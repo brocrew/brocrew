@@ -75,10 +75,9 @@ describe('§1 · an untouched door sends what 417 sent, byte for byte', () => {
     expect(Object.isFrozen(NO_LAUNCH_CHOICES)).toBe(true)
   })
 
-  it('🔴 the two new fields are OMISSIONS, and the three old ones are not', () => {
-    // ⛔ **Read off the payload the door builds**, not restated (standing rule 1). `model` and
-    // `reasoningEffort` ride conditional spreads — which is what *we did not ask* means on this
-    // wire — and the three `417` shipped are unconditional.
+  it('🔴 connection, model and effort are OMISSIONS, and the three old fields are not', () => {
+    // Read the payload itself: connection, model and effort ride conditional spreads.
+    // The original provider, profile and approval fields remain unconditional.
     const door = source(DOOR)
     const at = door.indexOf('const settings = computed<CreateSessionInput>')
     expect(at, 'the front door no longer builds its payload in one literal').toBeGreaterThan(-1)
@@ -88,7 +87,7 @@ describe('§1 · an untouched door sends what 417 sent, byte for byte', () => {
     const whenAsked = [...literal.matchAll(/^\s{2}\.\.\.\([^\n]*?\{\s*([a-zA-Z]+):/gm)].map(
       (m) => m[1],
     )
-    expect(whenAsked).toEqual(['model', 'reasoningEffort'])
+    expect(whenAsked).toEqual(['connectionId', 'model', 'reasoningEffort'])
     // ⛔ **And the two that did NOT come back** (HO-025 §4 names three settings and these are not
     // among them): a folder and a project are placements, and the front door places nothing.
     expect(literal).not.toContain('cwd')

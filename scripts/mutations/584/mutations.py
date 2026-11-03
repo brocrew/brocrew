@@ -202,7 +202,7 @@ MUTATIONS = [
         # D-014 deleted the `role:` line after it; the line after it is now `provider:`. Re-verified
         # RED alone.
         [
-            (TOOLS, '            displayName: null,\n            provider: provider === undefined ? null : (provider as Provider),', "            displayName: (args as Record<string, unknown>)['display_name'] as string | null,\n            provider: provider === undefined ? null : (provider as Provider),"),
+            (TOOLS, '            displayName: null,\n            provider: selectedProvider,\n', "            displayName: (args as Record<string, unknown>)['display_name'] as string | null,\n            provider: selectedProvider,\n"),
         ],
     ),
     # Re-anchored, NOT VERIFIED and HELD; its test reaches a held path.

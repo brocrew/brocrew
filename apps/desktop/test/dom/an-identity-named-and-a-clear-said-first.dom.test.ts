@@ -46,6 +46,7 @@ import {
   type TranscriptEvent,
 } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll, visible, type Mounted } from './harness'
+import { compatibilityConnections } from '../provider-connection-fixture'
 
 /**
  * # 🔴 712 — an identity NAMED where a person reads it, and a clear SAID before the press
@@ -73,6 +74,7 @@ const ORIGINAL = { width: window.innerWidth, height: window.innerHeight }
 
 afterEach(async () => {
   unmountAll()
+  delete (window as { api?: unknown }).api
   await page.viewport(ORIGINAL.width, ORIGINAL.height)
 })
 
@@ -234,6 +236,9 @@ function storeOver(): { store: AgentStore; lists: ModelLists } {
       return world.reading
     },
   } as unknown as RuntimeBridge
+  ;(window as { api?: unknown }).api = {
+    runtime: { providerConnections: async () => compatibilityConnections() },
+  }
   return { store: createAgentStore(bridge), lists: createModelLists(() => bridge) }
 }
 
@@ -324,7 +329,7 @@ describe('712 §1 · R56 — the provider row says what a press would clear, BEF
     expect(whatAProviderPressWouldClear(OPUS_HIGH)).toBe(WILL_CLEAR_OPUS_HIGH)
     const m = await theSheet('worker')
     // ⚑ The premise: the control below has read the choice this line is about.
-    expect(said(m.q('model-picker-face'))).toBe('opus · high')
+    expect(said(m.q('model-picker-face'))).toBe('Claude · Fictional subscription · opus · high')
 
     const line = m.q('capabilities-provider-will-clear')
     expect(visible(line)).toBe(true)
@@ -349,7 +354,9 @@ describe('712 §1 · R56 — the provider row says what a press would clear, BEF
       whatTheProviderPressCleared({ provider: 'claude', model: 'opus', effort: 'high' }, 'codex'),
     )
     expect(said(cleared)).toBe(CLEARED_OPUS_HIGH_NOW_CODEX)
-    expect(said(m.q('model-picker-face'))).toBe('Nobody has chosen')
+    expect(said(m.q('model-picker-face'))).toBe(
+      'Claude · Fictional subscription · Nobody has chosen',
+    )
     expect(m.all('agent-model-held')).toHaveLength(0)
   })
 
@@ -363,7 +370,7 @@ describe('712 §1 · R56 — the provider row says what a press would clear, BEF
       await pick(m, 'capabilities-provider-select', 'codex')
       // ⚑ The premise: the control below has NOT re-read — it still draws the choice it last knew —
       // so the line's absence is the door's answer and nothing else.
-      expect(said(m.q('model-picker-face'))).toBe('opus · high')
+      expect(said(m.q('model-picker-face'))).toBe('Claude · Fictional subscription · opus · high')
       expect(said(m.q('capabilities-provider-cleared'))).toBe(CLEARED_OPUS_HIGH_NOW_CODEX)
       expect(m.all('capabilities-provider-will-clear')).toHaveLength(0)
     } finally {
@@ -371,7 +378,9 @@ describe('712 §1 · R56 — the provider row says what a press would clear, BEF
       release()
     }
     await settle()
-    expect(said(m.q('model-picker-face'))).toBe('Nobody has chosen')
+    expect(said(m.q('model-picker-face'))).toBe(
+      'Claude · Fictional subscription · Nobody has chosen',
+    )
     expect(m.all('capabilities-provider-will-clear')).toHaveLength(0)
   })
 
@@ -379,7 +388,9 @@ describe('712 §1 · R56 — the provider row says what a press would clear, BEF
     reset()
     const m = await theSheet('worker')
     // ⚑ The premise: the read ANSWERED — *nobody chose* is known, not missing.
-    expect(said(m.q('model-picker-face'))).toBe('Nobody has chosen')
+    expect(said(m.q('model-picker-face'))).toBe(
+      'Claude · Fictional subscription · Nobody has chosen',
+    )
     expect(m.all('capabilities-provider-will-clear')).toHaveLength(0)
     await pick(m, 'capabilities-provider-select', 'codex')
     expect(m.all('capabilities-provider-will-clear')).toHaveLength(0)
@@ -395,11 +406,13 @@ describe('712 §1 · R56 — the provider row says what a press would clear, BEF
     await choose(m, 'model-picker-row', 'opus')
     await choose(m, 'model-picker-effort', 'high')
     await press(m, 'model-picker-take')
-    expect(said(m.q('model-picker-face'))).toBe('opus · high')
+    expect(said(m.q('model-picker-face'))).toBe('Claude · Fictional subscription · opus · high')
     expect(line(m)).toBe(WILL_CLEAR_OPUS_HIGH)
     // ⚑ …and Clear takes it away again, on the same row.
     await press(m, 'agent-model-clear')
-    expect(said(m.q('model-picker-face'))).toBe('Nobody has chosen')
+    expect(said(m.q('model-picker-face'))).toBe(
+      'Claude · Fictional subscription · Nobody has chosen',
+    )
     expect(m.all('capabilities-provider-will-clear')).toHaveLength(0)
   })
 
@@ -421,7 +434,7 @@ describe('712 §1 · R56 — the provider row says what a press would clear, BEF
     await m.store.load()
     await settle()
     expect(m.all('agent-model-unreadable')).toHaveLength(1)
-    expect(said(m.q('model-picker-face'))).toBe('opus · high')
+    expect(said(m.q('model-picker-face'))).toBe('Claude · Fictional subscription · opus · high')
     expect(line(m)).toBe(WILL_CLEAR_OPUS_HIGH)
   })
 
@@ -434,7 +447,7 @@ describe('712 §1 · R56 — the provider row says what a press would clear, BEF
     // ⚑ The premise: the door kept it — main's rule, and the sentence's own last clause.
     expect(world.held.worker).toEqual(OPUS_HIGH)
     expect(m.all('capabilities-provider-cleared')).toHaveLength(0)
-    expect(said(m.q('model-picker-face'))).toBe('opus · high')
+    expect(said(m.q('model-picker-face'))).toBe('Claude · Fictional subscription · opus · high')
     expect(line(m)).toBe(WILL_CLEAR_OPUS_HIGH)
 
     // ⚑ Back to Claude — the one provider the sentence says keeps it.
@@ -452,7 +465,9 @@ describe('712 §1 · R56 — the provider row says what a press would clear, BEF
     // ⚑ An identity nobody chose for: the line goes.
     await m.point('other')
     expect(said(m.q('capabilities-slug'))).toBe('other')
-    expect(said(m.q('model-picker-face'))).toBe('Nobody has chosen')
+    expect(said(m.q('model-picker-face'))).toBe(
+      'Claude · Fictional subscription · Nobody has chosen',
+    )
     expect(m.all('capabilities-provider-will-clear')).toHaveLength(0)
 
     // ⚑ Back to `worker`: the line is back, from its own read.
