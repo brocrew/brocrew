@@ -55,11 +55,25 @@ export function onProviderConnection(
     }
   }
 
+  async function checked(
+    handle: SessionHandle,
+    id: string,
+    context: ProviderRuntimeContext,
+  ): Promise<SessionHandle> {
+    try {
+      if (admit(context) !== id) throw new Error('The selected connection changed during launch')
+      return attribution(id)(handle)
+    } catch (error) {
+      await handle.close()
+      throw error
+    }
+  }
+
   return {
     provider,
     async start(options) {
       const id = admit(options)
-      return attribution(id)(await runtime().start(options))
+      return checked(await runtime().start(options), id, options)
     },
     async resume(ref, options) {
       options.signal?.throwIfAborted()
@@ -69,7 +83,7 @@ export function onProviderConnection(
       const scoped: ResumeOptions = options.onSessionCreated
         ? { ...options, onSessionCreated: (handle) => options.onSessionCreated!(wrap(handle)) }
         : options
-      return wrap(await runtime().resume(ref, scoped))
+      return checked(wrap(await runtime().resume(ref, scoped)), id, options)
     },
     async listModels(context) {
       admit(context)
