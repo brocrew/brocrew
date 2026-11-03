@@ -485,6 +485,28 @@ describe('copying this install’s provider sign-ins', () => {
     expect(copy.mock.calls.some((call) => call[1] === 'alpha')).toBe(false)
   })
 
+  it('does not copy or restart when an exit proof fails during the batch close', async () => {
+    let rejectExit!: () => void
+    oldProcessExit = new Promise((_resolve, reject) => {
+      rejectExit = () => reject(new Error('fictional exit failure during batch close'))
+    })
+    await host.createSession({ provider: 'codex', profileId: 'alpha', cwd: root }, sink)
+    const copying = run()
+    await vi.waitFor(() => expect(stopped).toBe(1))
+    rejectExit()
+    const outcome = await copying
+    expect.soft(launches).toBe(1)
+    expect(outcome).toMatchObject({
+      replaced: 2,
+      pending: 0,
+      failed: 1,
+      profiles: expect.arrayContaining([
+        { profileId: 'alpha', state: 'failed', reason: 'stop-failed' },
+      ]),
+    })
+    expect(copy.mock.calls.some((call) => call[1] === 'alpha')).toBe(false)
+  })
+
   it('keeps the batch identity while a failed copy is still restarting its last home', async () => {
     await host.createSession({ provider: 'codex', profileId: 'beta', cwd: root }, sink)
     let entered!: () => void
@@ -536,7 +558,7 @@ describe('copying this install’s provider sign-ins', () => {
     ops.check = vi.fn(async () => {
       entered()
       await held
-      return { state: 'unknown', reason: 'fictional probe' }
+      return { state: 'unknown' as const, reason: 'fictional probe' }
     })
     const checking = host.checkProviderAuth('codex', DEFAULT_PROFILE_ID)
     const copying = run()
@@ -573,7 +595,7 @@ describe('copying this install’s provider sign-ins', () => {
       }
       return realCopy(provider, id)
     })
-    ops.check = vi.fn(async () => ({ state: 'unknown', reason: 'fictional probe' }))
+    ops.check = vi.fn(async () => ({ state: 'unknown' as const, reason: 'fictional probe' }))
     const copying = run()
     const checking = host.checkProviderAuth('codex', DEFAULT_PROFILE_ID)
     await started

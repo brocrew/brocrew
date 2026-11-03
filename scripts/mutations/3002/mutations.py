@@ -141,8 +141,9 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "M7 · the background work's end does not ask again — the reopen held for it never comes · "
         f"killed by `{HELD}`",
         [(HOST,
-          "    if (event.type === 'background_work') this.reopenForWhatWaits(session)\n",
-          "")],
+          # ⚑ **Codex home switching · re-anchored in place, not retired** — Background completion also retries home switching; the mutation removes only the existing reopen wake.
+          "    if (event.type === 'background_work') {\n      void this.copyHomeWhenIdle(session.provider, session.profileId)\n      this.reopenForWhatWaits(session)\n    }\n",
+          "    if (event.type === 'background_work') {\n      void this.copyHomeWhenIdle(session.provider, session.profileId)\n    }\n")],
     ),
     # ⚠️ **M8 · dropped by W4.78 before it was committed**: the ten-minute loop guard defeated
     # (`return false`) makes `sign-in-supersede.test.ts` reopen without end — the test HANGS rather

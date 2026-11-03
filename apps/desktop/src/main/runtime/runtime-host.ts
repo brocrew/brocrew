@@ -35691,10 +35691,12 @@ export class RuntimeHost implements LiveHost {
     for (const session of sessions) this.signInStops.add(session)
     // Install the gate before closing a provider can admit another probe or launch.
     let copied: ProviderHomesReprovision['profiles'][number] | undefined
+    let confirmedStopped = false
     const job = Promise.resolve().then(async () => {
       try {
         await Promise.all(sessions.map((session) => this.close(session.id, THE_APP_ITSELF)))
         await Promise.all(sessions.map((session) => session.terminated))
+        confirmedStopped = true
         const keyStatus = (): boolean => this.deps.apiKeys?.status(provider).set === true
         // A key saved while the providers stopped outranks this request too.
         if (keyStatus()) {
@@ -35707,7 +35709,11 @@ export class RuntimeHost implements LiveHost {
             ? { profileId, state: 'replaced' }
             : { profileId, state: 'skipped', reason: 'unchanged' }
       } catch {
-        copied = { profileId, state: 'failed', reason: 'copy-failed' }
+        copied = {
+          profileId,
+          state: 'failed',
+          reason: confirmedStopped ? 'copy-failed' : 'stop-failed',
+        }
       } finally {
         this.homeCopyJobs.delete(key)
         this.releaseHomeCopyBarrier(provider, profileId)
@@ -35718,7 +35724,7 @@ export class RuntimeHost implements LiveHost {
       .then(async () => {
         for (const session of sessions) {
           this.signInStops.delete(session)
-          if (this.launches.closed || this.keptStopped(session.id)) continue
+          if (!confirmedStopped || this.launches.closed || this.keptStopped(session.id)) continue
           const alreadyStarting = this.slots.get(session.id)
           if (alreadyStarting !== undefined) {
             await alreadyStarting.arrived

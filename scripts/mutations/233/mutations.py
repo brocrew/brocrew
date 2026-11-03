@@ -184,7 +184,8 @@ MUTATIONS = [
         [
             (
                 HOST,
-                "    this.launches.finish(slot.launch, this.terminationOf(handle, closing))",
+                # ⚑ **Codex home switching · re-anchored in place, not retired** — Process termination now records its launch owner; the mutation still releases ownership on bounded close.
+                "    this.launches.finish(slot.launch, this.terminationOf(handle, closing, slot.launch))",
                 "    this.launches.finish(slot.launch, closing)",
             )
         ],
@@ -195,7 +196,8 @@ MUTATIONS = [
         [
             (
                 HOST,
-                "          await this.terminationOf(handle, closing)",
+                # ⚑ **Codex home switching · re-anchored in place, not retired** — Late handles now pass their launch owner; the mutation still replaces confirmed termination with bounded close.
+                "          await this.terminationOf(handle, closing, slot.launch)",
                 "          await closing",
             )
         ],
