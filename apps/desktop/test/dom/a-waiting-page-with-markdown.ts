@@ -68,16 +68,25 @@ function question(
 }
 
 /** The real page with made-up questions, a to-do and a command requiring approval. */
-export async function aWaitingPageWithMarkdown(width = 1180, height = 1000, long = false) {
+export async function aWaitingPageWithMarkdown(
+  width = 1180,
+  height = 1000,
+  long = false,
+  relativeLink = false,
+) {
   const words: AskedQuestion = {
-    prompt: MARKDOWN_PROMPT + (long ? '\n\n' + LONG_MARKDOWN : ''),
+    prompt: relativeLink
+      ? 'Read [the draft](notes.md).'
+      : MARKDOWN_PROMPT + (long ? '\n\n' + LONG_MARKDOWN : ''),
     context: 'Added **after review**: read `summary.md`.',
     passedUp: true,
     parts: [
       {
         id: 'draft',
         header: 'Draft',
-        prompt: 'Use **the short draft** from /work/sample/notes.md?',
+        prompt: relativeLink
+          ? 'Use [the draft](notes.md)?'
+          : 'Use **the short draft** from /work/sample/notes.md?',
         options: [],
       },
     ],
@@ -87,9 +96,10 @@ export async function aWaitingPageWithMarkdown(width = 1180, height = 1000, long
   const todo = {
     ...question('req_todo', 'this-app', null),
     action: {
-      text:
-        '**Check the preview**\n\n- Read `notes.md`\n- Open [the preview](https://example.test/preview)\n\nSee /work/sample/notes.md.' +
-        (long ? '\n\n' + LONG_MARKDOWN : ''),
+      text: relativeLink
+        ? 'Read [the draft](notes.md).'
+        : '**Check the preview**\n\n- Read `notes.md`\n- Open [the preview](https://example.test/preview)\n\nSee /work/sample/notes.md.' +
+          (long ? '\n\n' + LONG_MARKDOWN : ''),
       files: [],
     },
   }

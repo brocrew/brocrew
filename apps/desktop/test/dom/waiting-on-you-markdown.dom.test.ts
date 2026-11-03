@@ -107,6 +107,47 @@ describe.each(['classic', 'crew-night'] as const)('Waiting on you markdown in %s
     expect(opens.every((target) => target.text === '/work/sample/notes.md')).toBe(true)
   })
 
+  it('resolves explicitly linked relative files in prompts, parts and to-dos', async () => {
+    const asks: MessagePathAsk[] = []
+    const opens: MessagePathTarget[] = []
+    ;(window as unknown as { api: unknown }).api = {
+      runtime: {
+        resolveMessagePaths: async (ask: MessagePathAsk) => {
+          asks.push(ask)
+          return ask.texts.map((text) =>
+            text === 'notes.md'
+              ? {
+                  text,
+                  found: true,
+                  absolute: '/work/sample/notes.md',
+                  name: 'notes.md',
+                  kind: 'file',
+                  opens: true,
+                }
+              : { text, found: false },
+          )
+        },
+        openMessagePath: async (target: MessagePathTarget) => {
+          opens.push(target)
+          return { ok: true, did: 'opened' }
+        },
+        revealMessagePath: async () => ({ ok: true }),
+      },
+    }
+    if (theme === 'crew-night') wearTheme(theme)
+    const m = await aWaitingPageWithMarkdown(1180, 1000, false, true)
+    await expect.poll(() => m.host.querySelectorAll('[aria-label="Open file"]').length).toBe(5)
+    for (const button of m.host.querySelectorAll<HTMLButtonElement>('[aria-label="Open file"]'))
+      button.click()
+    await nextTick()
+    expect(asks.flatMap((ask) => ask.texts)).toContain('notes.md')
+    expect(opens).toHaveLength(5)
+    expect(
+      opens.every((target) => target.sessionId === 'sess_glint' && target.text === 'notes.md'),
+    ).toBe(true)
+    expect(m.host.querySelectorAll('[aria-label="Copy path"]')).toHaveLength(5)
+  })
+
   it.each([1180, 480])(
     'keeps long markdown inside its cards at %s pixels and preserves the fold',
     async (width) => {
