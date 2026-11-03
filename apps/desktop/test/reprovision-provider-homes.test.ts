@@ -206,22 +206,32 @@ describe('copying this install’s provider sign-ins', () => {
     expect(statSync(join(home('alpha'), 'auth.json')).ino).not.toBe(before)
   })
 
-  it('switches an idle open conversation now and reopens it automatically', async () => {
-    const created = await host.createSession(
-      { provider: 'codex', profileId: 'alpha', cwd: root },
-      sink,
-    )
-    await vi.waitFor(() =>
-      expect(
-        messages.some((one) => one.event.type === 'status' && one.event.state === 'idle'),
-      ).toBe(true),
-    )
-    expect(await run()).toMatchObject({ replaced: 3, pending: 0, failed: 0 })
-    await vi.waitFor(() => {
-      expect(launches).toBe(2)
-      expect(host.sessionIds).toContain(created.sessionId)
-    })
-  })
+  it.each([true, false])(
+    'switches and reopens an idle conversation with a live window: %s',
+    async (alive) => {
+      let windowAlive = true
+      const created = await host.createSession(
+        { provider: 'codex', profileId: 'alpha', cwd: root },
+        {
+          ...sink,
+          get alive() {
+            return windowAlive
+          },
+        },
+      )
+      await vi.waitFor(() =>
+        expect(
+          messages.some((one) => one.event.type === 'status' && one.event.state === 'idle'),
+        ).toBe(true),
+      )
+      windowAlive = alive
+      expect(await run()).toMatchObject({ replaced: 3, pending: 0, failed: 0 })
+      await vi.waitFor(() => {
+        expect(launches).toBe(2)
+        expect(host.sessionIds).toContain(created.sessionId)
+      })
+    },
+  )
 
   it('waits for every busy conversation sharing a home before switching', async () => {
     const one = await host.createSession({ provider: 'codex', profileId: 'alpha', cwd: root }, sink)

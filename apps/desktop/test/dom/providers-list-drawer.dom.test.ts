@@ -156,6 +156,26 @@ describe('the Providers list opens the existing controls in one drawer', () => {
     expect(ids()).toEqual(['claude', 'codex'])
     expect(m.host.querySelector('[data-cy="provider-drawer"]')).toBeNull()
   })
+  it('uses an injected descriptor’s sign-in policy in the reused card', async () => {
+    const check = window.api.runtime.checkProviderAuth
+    window.api.runtime.checkProviderAuth = async (asked) =>
+      (asked.provider as string) === 'fable'
+        ? { state: 'usable', login: 'account', expiresAt: null }
+        : check(asked)
+    const descriptor = {
+      ...PROVIDER_DESCRIPTORS.find((item) => item.credential === 'profile-or-key')!,
+      id: 'fable',
+      displayName: 'Fable',
+      debugOnly: false,
+    }
+    const m = screen({ descriptors: [...PROVIDER_DESCRIPTORS, descriptor] })
+    await settle()
+    row(m, 'fable').click()
+    await settle()
+    expect(m.q('copy-all-sign-ins').textContent).toContain(
+      "Use this Mac's Fable sign-in for all agents",
+    )
+  })
   it('opens the reused card and only that provider’s kept rules, then restores focus on Escape', async () => {
     const check = vi.spyOn(window.api.runtime, 'checkProviderAuth')
     const key = vi.spyOn(window.api.runtime, 'apiKeyStatus')

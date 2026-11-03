@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue'
-import { providerDescriptor } from '@brobot2/shared'
+import { PROVIDER_DESCRIPTORS, type ProviderDescriptor } from '@brobot2/shared'
 import { PROVIDER_PARTS, type ProviderPart } from '../lib/provider-parts'
 import type {
   CapabilityStatus,
@@ -74,6 +74,7 @@ const props = withDefaults(
     frameless?: boolean
     displayName?: string
     provider: Provider
+    descriptor?: ProviderDescriptor
     capabilities: ProviderCapabilityMap | null
     /** This provider's usage warning, or `null` when it has sent none. */
     limit: ProviderCondition | null
@@ -200,7 +201,7 @@ async function aPersonChecksAgain(publishChange = true): Promise<void> {
   const provider = props.provider
   const probe =
     publishChange &&
-    providerDescriptor(provider).signIn.manualProbe &&
+    descriptor.value?.signIn.manualProbe === true &&
     !(auth.value?.state === 'usable' && auth.value.login === 'api-key')
   if (probe) noticeSays(null, false)
   if (props.readVersions === undefined) {
@@ -277,9 +278,10 @@ const copyingHomes = ref(false)
 const copiedHomes = ref<ProviderHomesReprovision | null>(null)
 const copyHomesError = ref<string | null>(null)
 let copyHomesTimer: ReturnType<typeof setTimeout> | undefined
-const keepsProfileSignIns = computed(
-  () => providerDescriptor(props.provider).credential === 'profile-or-key',
+const descriptor = computed(
+  () => props.descriptor ?? PROVIDER_DESCRIPTORS.find((item) => item.id === props.provider),
 )
+const keepsProfileSignIns = computed(() => descriptor.value?.credential === 'profile-or-key')
 async function readHomeCopies(statusOnly = false): Promise<void> {
   const result = await window.api.runtime.reprovisionProviderHomes({
     provider: props.provider,
