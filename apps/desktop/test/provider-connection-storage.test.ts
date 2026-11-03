@@ -56,3 +56,22 @@ it('keeps a saved-key reference rather than copying the sealed value', () => {
   expect(db.prepare('SELECT connection_id FROM provider_session WHERE id=?').get('fictional-key')).toEqual({ connection_id: 'claude:api-key' })
   expect(db.prepare('SELECT sealed FROM provider_api_key WHERE provider=?').get('claude')).toEqual({ sealed: 'fictional-sealed' })
 })
+
+it('binds an unlaunched service only on its first actual launch and refuses later retargeting', () => {
+  create('fictional-service')
+  const first = Reflect.apply(store.firstLaunchOf, store, [{ id: 'fictional-service', model: 'fictional-small', connectionId: 'claude:sign-in' }])
+  expect(first).toBe(true)
+  expect(db.prepare('SELECT connection_id FROM provider_session WHERE id=?').get('fictional-service')).toEqual({ connection_id: 'claude:sign-in' })
+  const before = db.prepare('SELECT * FROM provider_session WHERE id=?').get('fictional-service')
+  db.prepare('INSERT INTO provider_api_key(provider,sealed,updated_at) VALUES(?,?,?)').run('claude', 'fictional-sealed', 1)
+  expect(() => Reflect.apply(store.firstLaunchOf, store, [{ id: 'fictional-service', connectionId: 'claude:api-key' }])).toThrow()
+  expect(db.prepare('SELECT * FROM provider_session WHERE id=?').get('fictional-service')).toEqual(before)
+})
+
+it('does not fill a legacy NULL binding when its provider already named the conversation', () => {
+  create('fictional-old')
+  db.prepare('UPDATE provider_session SET external_ref=? WHERE id=?').run(JSON.stringify({ provider: 'claude', sessionId: 'fictional-native', cwd: '/fictional/fern', rotation: 0 }), 'fictional-old')
+  const before = db.prepare('SELECT * FROM provider_session WHERE id=?').get('fictional-old')
+  expect(Reflect.apply(store.firstLaunchOf, store, [{ id: 'fictional-old', connectionId: 'claude:sign-in' }])).toBe(false)
+  expect(db.prepare('SELECT * FROM provider_session WHERE id=?').get('fictional-old')).toEqual(before)
+})
