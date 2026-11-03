@@ -32,6 +32,7 @@ afterEach(async () => {
 function fixture() {
   const store = createSessionStore(db)
   const sessions = new FakeProviderSessions()
+  const state = { revision: 0 }
   let number = 0
   const prepare = vi.fn((provider: Provider, profile: string) => {
     const home = join(dir, profile, provider)
@@ -56,8 +57,9 @@ function fixture() {
     readProviderConfig: (_provider: Provider, home: string) => ({ home, homeEnv: 'CLAUDE_CONFIG_DIR', model: 'fictional-small', authNote: null, files: [] }),
   }
   Reflect.set(deps, 'connectionFor', connectionFor)
+  Reflect.set(deps, 'connectionRevision', () => state.revision)
   host = new RuntimeHost(deps)
-  return { store, prepare, create, connectionFor }
+  return { store, prepare, create, connectionFor, state }
 }
 
 for (const provider of ['claude', 'codex'] as const) {
@@ -75,6 +77,26 @@ for (const provider of ['claude', 'codex'] as const) {
     db.prepare('UPDATE provider_connection SET enabled=0 WHERE id=?').run(`${provider}:sign-in`)
     await expect(host.createSession({ provider, profileId: 'fern' }, sink)).rejects.toThrow()
     expect(f.prepare).not.toHaveBeenCalled()
+    expect(f.create).not.toHaveBeenCalled()
+    expect(db.prepare('SELECT id FROM provider_session').all()).toEqual([])
+  })
+
+  it(`${provider}: model admission refuses a disabled connection before preparing its home`, async () => {
+    const f = fixture()
+    db.prepare('UPDATE provider_connection SET enabled=0 WHERE id=?').run(`${provider}:sign-in`)
+    expect(await host.providerModels('fern', provider)).toMatchObject({ ok: false })
+    expect(f.prepare).not.toHaveBeenCalled()
+    expect(f.create).not.toHaveBeenCalled()
+  })
+
+  it(`${provider}: a key changed and changed back during preparation cannot launch`, async () => {
+    const f = fixture()
+    const prepare = f.prepare.getMockImplementation()!
+    f.prepare.mockImplementation((kind, profile) => {
+      f.state.revision += 2
+      return prepare(kind, profile)
+    })
+    await expect(host.createSession({ provider, profileId: 'fern' }, sink)).rejects.toThrow()
     expect(f.create).not.toHaveBeenCalled()
     expect(db.prepare('SELECT id FROM provider_session').all()).toEqual([])
   })

@@ -211,6 +211,7 @@ interface ContractLedger {
  * heuristic anywhere in that chain — an optional member is a key like any other.
  */
 const CONTRACT_MEMBERS: Record<keyof SessionHandle, string> = {
+  connectionId: 'the admitted app connection for this launch, where attribution is provided',
   isRetiring: 'adapter-initiated teardown before its terminal status arrives',
   builtInSkillsConfirmed:
     'whether SDK init confirmed the installed skill catalogue for this launch',

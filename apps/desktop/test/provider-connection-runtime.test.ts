@@ -8,6 +8,7 @@ type Bind = (
   create: () => AgentRuntime,
   resolve: (connectionId?: string | null) => ProviderConnection,
   connectionId?: string | null,
+  revision?: () => number,
 ) => AgentRuntime
 
 const handles: SessionHandle[] = []
@@ -32,7 +33,7 @@ function fixture(provider: Provider, selected?: string | null) {
   const bind = Reflect.get(providers, 'onProviderConnection') as Bind | undefined
   expect(bind, 'the registered connection runtime boundary').toBeTypeOf('function')
   if (!bind) throw new Error('Connection runtime boundary is absent')
-  const state = { current: record(provider, 'sign-in') }
+  const state = { current: record(provider, 'sign-in'), revision: 0 }
   const runtimes: FakeRuntime[] = []
   const create = vi.fn(() => {
     const runtime = new FakeRuntime(provider)
@@ -43,7 +44,7 @@ function fixture(provider: Provider, selected?: string | null) {
     if (id != null && id !== state.current.id) throw new Error('Connection unavailable')
     return state.current
   })
-  return { runtime: bind(provider, create, resolve, selected), state, runtimes, create, resolve }
+  return { runtime: bind(provider, create, resolve, selected, () => state.revision), state, runtimes, create, resolve }
 }
 
 for (const provider of ['claude', 'codex'] as const) {
@@ -84,7 +85,7 @@ for (const provider of ['claude', 'codex'] as const) {
   it(`${provider}: model listing uses the same admission and keeps the agent state context`, async () => {
     const f = fixture(provider)
     await f.runtime.listModels({ providerHome: '/fictional/fern/state' })
-    expect(f.resolve).toHaveBeenCalledTimes(1)
+    expect(f.resolve).toHaveBeenCalledTimes(2)
     expect(f.create).toHaveBeenCalledTimes(1)
   })
 
@@ -97,7 +98,7 @@ for (const provider of ['claude', 'codex'] as const) {
     expect(f.create).not.toHaveBeenCalled()
   })
 
-  for (const change of ['method', 'cancel'] as const) {
+  for (const change of ['method', 'cancel', 'changed-back'] as const) {
     it(`${provider}: ${change} across a launch await closes the child instead of returning false attribution`, async () => {
       const f = fixture(provider)
       const raw = new FakeRuntime(provider)
@@ -122,13 +123,25 @@ for (const provider of ['claude', 'codex'] as const) {
       const pending = f.runtime.start({ cwd: '/fictional/fern', providerHome: '/fictional/state', signal: controller.signal })
       await arrived
       if (change === 'method') f.state.current = record(provider, 'api-key')
-      else controller.abort()
+      else if (change === 'cancel') controller.abort()
+      else f.state.revision += 2
       release()
       await expect(pending).rejects.toThrow()
       expect(close).toHaveBeenCalledTimes(1)
       handles.pop()
     })
   }
+
+  it(`${provider}: a model answer is not attributed after a credential revision changed`, async () => {
+    const f = fixture(provider)
+    const raw = new FakeRuntime(provider)
+    vi.spyOn(raw, 'listModels').mockImplementation(async () => {
+      f.state.revision++
+      return [{ id: 'fictional-small', label: 'Small' }]
+    })
+    f.create.mockReturnValue(raw)
+    await expect(f.runtime.listModels({ providerHome: '/fictional/state' })).rejects.toThrow()
+  })
 
   for (const changed of [
     { provider: provider === 'claude' ? 'codex' : 'claude' },
