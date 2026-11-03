@@ -40,7 +40,7 @@ afterEach(async () => {
 function fixture() {
   const store = createSessionStore(db)
   const sessions = new FakeProviderSessions()
-  const state = { revision: 0 }
+  const state: { revision: number; revisionOf?: (provider: Provider) => number } = { revision: 0 }
   let number = 0
   const prepare = vi.fn<(provider: Provider, profile: string) => string | Promise<string>>(
     (provider, profile) => {
@@ -83,7 +83,9 @@ function fixture() {
     }),
   }
   Reflect.set(deps, 'connectionFor', connectionFor)
-  Reflect.set(deps, 'connectionRevision', () => state.revision)
+  Reflect.set(deps, 'connectionRevision', (provider: Provider) =>
+    state.revisionOf?.(provider) ?? state.revision,
+  )
   host = new RuntimeHost(deps)
   return { store, prepare, create, connectionFor, state, deps }
 }
@@ -95,7 +97,7 @@ it('Codex key consumption during real home preparation cannot launch under chang
     seal: (key) => Buffer.from(key).toString('base64'),
     open: (sealed) => Buffer.from(sealed, 'base64').toString(),
   })
-  Reflect.set(f.deps, 'connectionRevision', (provider: Provider) => keys.revision(provider))
+  f.state.revisionOf = (provider) => keys.revision(provider)
   let applied: string | undefined
   const copied = vi.fn()
   f.prepare.mockImplementation((_provider, profile) =>
