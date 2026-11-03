@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { FakeRuntime, type AgentRuntime, type SessionHandle, type SessionRef } from '@brobot2/runtime'
+import { FakeProviderSessions, FakeRuntime, type AgentRuntime, type SessionHandle, type SessionRef } from '@brobot2/runtime'
 import type { Provider, ProviderConnection } from '@brobot2/shared'
 import * as providers from '../src/main/providers'
 
@@ -35,8 +35,9 @@ function fixture(provider: Provider, selected?: string | null) {
   if (!bind) throw new Error('Connection runtime boundary is absent')
   const state = { current: record(provider, 'sign-in'), revision: 0 }
   const runtimes: FakeRuntime[] = []
+  const sessions = new FakeProviderSessions()
   const create = vi.fn(() => {
-    const runtime = new FakeRuntime(provider)
+    const runtime = new FakeRuntime(provider, { sessions })
     runtimes.push(runtime)
     return runtime
   })
@@ -44,7 +45,7 @@ function fixture(provider: Provider, selected?: string | null) {
     if (id != null && id !== state.current.id) throw new Error('Connection unavailable')
     return state.current
   })
-  return { runtime: bind(provider, create, resolve, selected, () => state.revision), state, runtimes, create, resolve }
+  return { runtime: bind(provider, create, resolve, selected, () => state.revision), state, runtimes, sessions, create, resolve }
 }
 
 for (const provider of ['claude', 'codex'] as const) {
@@ -55,6 +56,7 @@ for (const provider of ['claude', 'codex'] as const) {
     const first = await f.runtime.start({ cwd: '/fictional/fern', providerHome: '/fictional/fern/state' })
     handles.push(first)
     expect(Reflect.get(first, 'connectionId')).toBe(`${provider}:sign-in`)
+    expect('connectionId' in first).toBe(true)
     f.state.current = record(provider, 'api-key')
     const second = await f.runtime.start({ cwd: '/fictional/willow', providerHome: '/fictional/willow/state' })
     handles.push(second)
@@ -142,6 +144,51 @@ for (const provider of ['claude', 'codex'] as const) {
     f.create.mockReturnValue(raw)
     await expect(f.runtime.listModels({ providerHome: '/fictional/state' })).rejects.toThrow()
   })
+
+  it(`${provider}: concurrent teardown calls own the underlying close exactly once`, async () => {
+    const f = fixture(provider)
+    const handle = await f.runtime.start({ cwd: '/fictional/fern', providerHome: '/fictional/state' })
+    const issued = f.sessions.lookUp(handle.ref!.sessionId)
+    expect(issued).toBeDefined()
+    const innerClose = vi.spyOn(Object.getPrototypeOf(handle), 'close')
+    try {
+      await Promise.all([handle.close(), handle.close()])
+      expect(innerClose).toHaveBeenCalledTimes(1)
+    } finally { innerClose.mockRestore() }
+  })
+
+  for (const changed of [false, true]) {
+    it(`${provider}: resume callback ${changed ? 'withholds changed binding' : 'owns the same attributed handle'}`, async () => {
+      const f = fixture(provider)
+      const first = await f.runtime.start({ cwd: '/fictional/fern', providerHome: '/fictional/state' })
+      await first.close()
+      const raw = new FakeRuntime(provider, { sessions: f.sessions })
+      const resume = raw.resume.bind(raw)
+      const innerClose = vi.fn<() => Promise<void>>()
+      vi.spyOn(raw, 'resume').mockImplementation(async (ref, options) => {
+        const handle = await resume(ref, options)
+        innerClose.mockImplementation(handle.close.bind(handle))
+        handle.close = innerClose
+        if (changed) f.state.revision++
+        options.onSessionCreated?.(handle)
+        return handle
+      })
+      f.create.mockReturnValue(raw)
+      const callback = vi.fn()
+      const pending = f.runtime.resume(first.ref!, { providerHome: '/fictional/state', onSessionCreated: callback })
+      if (changed) {
+        await expect(pending).rejects.toThrow()
+        expect(callback).not.toHaveBeenCalled()
+        expect(innerClose).toHaveBeenCalledTimes(1)
+      } else {
+        const handle = await pending
+        handles.push(handle)
+        expect(callback).toHaveBeenCalledWith(handle)
+        expect(handle.ref).toEqual(first.ref)
+        expect(Reflect.get(handle, 'connectionId')).toBe(`${provider}:sign-in`)
+      }
+    })
+  }
 
   for (const changed of [
     { provider: provider === 'claude' ? 'codex' : 'claude' },

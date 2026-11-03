@@ -532,6 +532,7 @@ const claudeDriver: Driver = {
     wholesaleGrant: 'standing',
     unattended: 'no-card',
     gaps: {
+      connectionId: 'the desktop connection wrapper supplies app attribution; this raw adapter does not choose app connections',
       instructionSources:
         'Claude has no provider-reported instruction list — this app does that reading itself, ' +
         'through `StartOptions.systemHint` (158)',
@@ -906,6 +907,7 @@ const codexDriver: Driver = {
       'the approval profile rides on `turn/start`, so the SERVER does the not-asking and there is ' +
       'no card for this adapter to suppress (034, measured on the live app-server)',
     gaps: {
+      connectionId: 'the desktop connection wrapper supplies app attribution; this raw adapter does not choose app connections',
       isRetiring:
         'Codex has no adapter-initiated closing interval before a terminal status; host-initiated closes carry the host closing state',
       refreshManagedPlugins:
@@ -1049,6 +1051,7 @@ const fakeDriver: Driver = {
     wholesaleGrant: 'standing',
     unattended: 'no-card',
     gaps: {
+      connectionId: 'the desktop connection wrapper supplies app attribution; the base Fake does not choose app connections',
       isRetiring:
         'the base Fake has no adapter-initiated retirement; host close and terminal status cover its lifecycle',
       refreshManagedPlugins:
