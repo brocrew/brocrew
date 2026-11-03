@@ -7,6 +7,7 @@ import {
   FLAG_NAMES,
   PROFILE_NAME,
   ProfileStoreError,
+  RENAME_ERRORS,
   checkDescription,
   isProfileName,
 } from '../profiles/store.js'
@@ -80,6 +81,7 @@ export function registerAdminRoutes(app: Express, deps: AdminDeps): void {
     return {
       ...rec,
       ...store.shared?.view(name),
+      ...(rec.deleting ? { status: 'deleting' } : {}),
       open: s !== null,
       mode: s?.mode ?? null,
       helperOff: rec.helper === 'off',
@@ -197,6 +199,22 @@ export function registerAdminRoutes(app: Express, deps: AdminDeps): void {
       return fail(res, 409, ADMIN_ERRORS.failed)
     }
     send(res, 202, { profile: view(name) })
+  })
+  app.post('/v1/profiles/:name/rename', (req, res) => {
+    const name = named(req, res)
+    if (!name) return
+    const body = bodyOf(req, ['newName'])
+    if (!body || typeof body.newName !== 'string') return fail(res, 400, ADMIN_ERRORS.body)
+    try {
+      store.rename(name, body.newName)
+      send(res, 200, { profile: view(name) })
+    } catch (error) {
+      const message = error instanceof ProfileStoreError ? error.message : ''
+      if (message === RENAME_ERRORS.invalid) return fail(res, 400, message)
+      if (message === RENAME_ERRORS.duplicate || message === RENAME_ERRORS.deleting)
+        return fail(res, 409, message)
+      return fail(res, 409, ADMIN_ERRORS.failed)
+    }
   })
   app.post('/v1/profiles/:name/description', (req, res) => {
     const name = named(req, res)

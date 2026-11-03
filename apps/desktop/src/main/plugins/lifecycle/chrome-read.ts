@@ -5,6 +5,7 @@ import { readAdminJson } from './admin-read'
 
 const Profile = z.object({
   name: z.string().regex(/^[a-z0-9-]{1,32}$/),
+  displayName: z.string().max(120).optional(),
   enabled: z.boolean(),
   open: z.boolean(),
   /** The person turned the BroCrew helper off; earlier plugin versions leave it out. */

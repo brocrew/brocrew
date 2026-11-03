@@ -7,6 +7,9 @@ import { browserProcessesOf, parseCimCsv, WINDOWS_LIST_SCRIPT } from '../browser
 import {
   createProfileStore,
   checkDescription,
+  checkDisplayName,
+  checkDisplayNameAvailable,
+  RENAME_ERRORS,
   isProfileName,
   ProfileStoreError,
   FLAG_NAMES,
@@ -218,6 +221,9 @@ export function createSharedProfileStore(
       if (
         !p ||
         !isProfileName(p.name) ||
+        (p.displayName !== undefined &&
+          (typeof p.displayName !== 'string' ||
+            checkDisplayName(p.displayName) !== p.displayName)) ||
         typeof p.id !== 'string' ||
         ids.has(p.id) ||
         names.has(p.name) ||
@@ -269,6 +275,7 @@ export function createSharedProfileStore(
             Number(p.perWorkspace[o.workspaceId].accessEpoch) >= 0))))
   const effective = (p: SharedRecord, r: Registry): ProfileRecord => ({
     name: p.name,
+    ...(p.displayName !== undefined ? { displayName: p.displayName } : {}),
     description: p.description,
     createdAt: p.createdAt,
     createdBy: p.createdBy,
@@ -669,6 +676,29 @@ export function createSharedProfileStore(
             p.helper = helper
           })
     },
+    rename(name, newName) {
+      const text = checkDisplayName(newName)
+      return transaction((r) => {
+        const lp = localRecord(name)
+        const records = [
+          ...r.profiles.map((p) => effective(p, r)),
+          ...local.list().map((p) => localView(p, r)),
+        ]
+        if (lp) {
+          if (lp.deleting) throw new ProfileStoreError(RENAME_ERRORS.deleting)
+          localAvailable(lp, r)
+          checkDisplayNameAvailable(records, name, text)
+          return localView(local.rename(lp.name, text), r)
+        }
+        const p = raw(r, name)
+        if (p.state === 'deleting') throw new ProfileStoreError(RENAME_ERRORS.deleting)
+        if (!supported(p, r))
+          throw new ProfileStoreError('Profile is reserved or requires a newer plugin.')
+        checkDisplayNameAvailable(records, name, text)
+        p.displayName = text
+        return effective(p, r)
+      })
+    },
     setDescription(name, description) {
       const text = checkDescription(description)
       const lp = localRecord(name)
@@ -698,7 +728,7 @@ export function createSharedProfileStore(
   function migrate() {
     // Only the released platform signal reaches here; tests opt in on fictional folders.
     const homeId = fileIdentity(o.home)!
-    for (const lp of local.list().filter((p) => !p.temporary)) {
+    for (const lp of local.list().filter((p) => !p.temporary && !p.deleting)) {
       if (migrationOf(read(), lp)) continue
       const source = local.dirOf(lp.name)
       const sourceId = fileIdentity(source)

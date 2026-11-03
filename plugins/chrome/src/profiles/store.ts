@@ -24,6 +24,9 @@ export interface ProfileRecord {
   /** Local capability-mode epoch; persisted with flags so failed registry writes cannot admit ABA. */
   authorizationEpoch?: string
   name: string
+  /** Person-facing label only; name remains the immutable storage/tool key. */
+  displayName?: string
+  deleting?: boolean
   enabled: boolean
   allowExtensions: boolean
   allowSettings: boolean
@@ -53,6 +56,30 @@ export function checkDescription(value: unknown): string {
   return text
 }
 export class ProfileStoreError extends Error {}
+export const RENAME_ERRORS = {
+  invalid: 'Profile name must be 1–60 characters.',
+  duplicate: 'Another profile already uses that name.',
+  deleting: 'This profile is being deleted. Try again after deletion finishes.',
+} as const
+export function checkDisplayName(value: unknown): string {
+  if (typeof value !== 'string') throw new ProfileStoreError(RENAME_ERRORS.invalid)
+  const text = value.trim()
+  if ([...text].length < 1 || [...text].length > 60 || CONTROL.test(text))
+    throw new ProfileStoreError(RENAME_ERRORS.invalid)
+  return text
+}
+export const displayNameOf = (p: Pick<ProfileRecord, 'name' | 'displayName'>): string =>
+  p.displayName ?? p.name
+export function checkDisplayNameAvailable(
+  profiles: ProfileRecord[],
+  name: string,
+  label: string,
+): void {
+  if (
+    profiles.some((p) => p.name !== name && displayNameOf(p).toLowerCase() === label.toLowerCase())
+  )
+    throw new ProfileStoreError(RENAME_ERRORS.duplicate)
+}
 export interface ProfileStore {
   shared?: SharedProfileAccess
   list(): ProfileRecord[]
@@ -66,6 +93,7 @@ export interface ProfileStore {
       description?: string
     },
   ): ProfileRecord
+  rename(name: string, newName: string): ProfileRecord
   setDescription(name: string, description: string): ProfileRecord
   setFlags(name: string, flags: Partial<ProfileFlags>): ProfileRecord
   setHelper(name: string, helper: HelperSwitch): ProfileRecord
@@ -113,6 +141,10 @@ export function createProfileStore(opts: {
             ? { authorizationEpoch: p.authorizationEpoch }
             : {}),
           name: p.name,
+          ...(typeof p.displayName === 'string'
+            ? { displayName: checkDisplayName(p.displayName) }
+            : {}),
+          ...(p.deleting === true ? { deleting: true } : {}),
           enabled: p.enabled === true,
           allowExtensions: p.allowExtensions === true,
           allowSettings: p.allowSettings === true,
@@ -217,6 +249,15 @@ export function createProfileStore(opts: {
       write(all)
       return all[index]
     },
+    rename(name, newName) {
+      const text = checkDisplayName(newName)
+      const { all, index } = must(name)
+      if (all[index].deleting) throw new ProfileStoreError(RENAME_ERRORS.deleting)
+      checkDisplayNameAvailable(all, name, text)
+      all[index] = { ...all[index], displayName: text }
+      write(all)
+      return all[index]
+    },
     setDescription(name, description) {
       const text = checkDescription(description)
       const { all, index } = must(name)
@@ -228,6 +269,8 @@ export function createProfileStore(opts: {
       const { all, index } = must(name)
       const dir = dirOf(name)
       // Keep the name reserved if disk removal fails, so old sign-ins cannot be reused.
+      all[index] = { ...all[index], deleting: true }
+      write(all)
       fs.rmSync(dir, { recursive: true, force: true })
       all.splice(index, 1)
       write(all)
