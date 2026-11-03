@@ -440,12 +440,17 @@ describe('connection columns added by a candidate upgrade', () => {
   }
   const before = {
     agent_identity: [{ id: 'aid:fern', slug: 'fern', model_choice: 'fictional model' }],
-    provider_session: [{ id: 'fictional-thread', external_ref: 'original-thread', cwd: '/fictional/original' }],
+    provider_session: [
+      { id: 'fictional-thread', external_ref: 'original-thread', cwd: '/fictional/original' },
+    ],
     provider_api_key: [{ provider: 'codex', sealed: 'fictional-sealed-reference' }],
     events: [{ id: 'fictional-event', payload: 'Fictional history' }],
   }
   const keys = {
-    agent_identity: ['id'], provider_session: ['id'], provider_api_key: ['provider'], events: ['id'],
+    agent_identity: ['id'],
+    provider_session: ['id'],
+    provider_api_key: ['provider'],
+    events: ['id'],
   }
   const migrated = () => ({
     ...copy(before),
@@ -501,13 +506,20 @@ describe('connection columns added by a candidate upgrade', () => {
   })
 
   it.each([
-    ['agent_identity', 'model_choice'], ['provider_session', 'external_ref'],
-    ['provider_session', 'cwd'], ['provider_api_key', 'sealed'], ['events', 'payload'],
+    ['agent_identity', 'model_choice'],
+    ['provider_session', 'external_ref'],
+    ['provider_session', 'cwd'],
+    ['provider_api_key', 'sealed'],
+    ['events', 'payload'],
   ])('still refuses a changed original %s.%s', (table, column) => {
     const after = migrated()
     after[table][0][column] = 'fictional rewritten value'
     expect(compare(after).lost).toEqual([
-      { table, row: JSON.stringify(keys[table].map((key) => before[table][0][key])), changed: [column] },
+      {
+        table,
+        row: JSON.stringify(keys[table].map((key) => before[table][0][key])),
+        changed: [column],
+      },
     ])
   })
 

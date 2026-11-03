@@ -447,8 +447,9 @@ export function rowsPreserved(
           : {}),
       ...requiredDefaults,
     }
-    const addedColumns = Object.entries(migrationDefaults).filter(([column]) =>
-      Object.hasOwn(requiredDefaults, column) || now.some((one) => Object.hasOwn(one, column)),
+    const addedColumns = Object.entries(migrationDefaults).filter(
+      ([column]) =>
+        Object.hasOwn(requiredDefaults, column) || now.some((one) => Object.hasOwn(one, column)),
     )
     for (const original of rows) {
       // Only missing legacy fields gain this migration's defaults; recorded values stay exact.
