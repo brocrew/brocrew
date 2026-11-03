@@ -40,7 +40,12 @@ afterEach(async () => {
 function fixture() {
   const store = createSessionStore(db)
   const sessions = new FakeProviderSessions()
-  const state: { revision: number; revisionOf?: (provider: Provider) => number } = { revision: 0 }
+  const state: {
+    revision: number
+    revisionOf?: (provider: Provider) => number
+    beforeLaunch?: () => Promise<void>
+  } = { revision: 0 }
+  const rawRuntimes: FakeRuntime[] = []
   let number = 0
   const prepare = vi.fn<(provider: Provider, profile: string) => string | Promise<string>>(
     (provider, profile) => {
@@ -59,7 +64,14 @@ function fixture() {
   const create = vi.fn((provider: Provider, id?: string | null) =>
     onProviderConnection(
       provider,
-      () => new FakeRuntime(provider, { sessions }),
+      () => {
+        const runtime = new FakeRuntime(provider, { sessions })
+        vi.spyOn(runtime, 'start')
+        vi.spyOn(runtime, 'resume')
+        vi.spyOn(runtime, 'listModels')
+        rawRuntimes.push(runtime)
+        return runtime
+      },
       (requested) => resolve(provider, requested),
       id,
     ),
@@ -70,6 +82,7 @@ function fixture() {
     nativeTranscriptPath: () => null,
     exportDirectory: () => join(dir, 'exports'),
     createRuntime: create,
+    beforeProviderLaunch: async () => state.beforeLaunch?.(),
     prepareProviderHome: prepare,
     providerHomePath: (provider: Provider, profile: string) => join(dir, profile, provider),
     resolveCwd: () => dir,
@@ -87,7 +100,13 @@ function fixture() {
     state.revisionOf?.(provider) ?? state.revision,
   )
   host = new RuntimeHost(deps)
-  return { store, prepare, create, connectionFor, state, deps }
+  return { store, prepare, create, connectionFor, state, deps, rawRuntimes }
+}
+
+function deferred() {
+  let resolve!: () => void
+  const promise = new Promise<void>((done) => { resolve = done })
+  return { promise, resolve }
 }
 
 it('Codex key consumption during real home preparation cannot launch under changed-back sign-in metadata', async () => {
@@ -142,6 +161,55 @@ it('Codex key consumption during real home preparation cannot launch under chang
 })
 
 for (const provider of ['claude', 'codex'] as const) {
+  for (const opening of ['fresh', 'bound resume', 'legacy resume', 'models'] as const) {
+    it(`${provider}: changed-back credentials in the final ${opening} wait refuse before delegation`, async () => {
+      const f = fixture()
+      let sessionId: string | undefined
+      if (opening === 'bound resume' || opening === 'legacy resume') {
+        const created = await host.createSession({ provider, profileId: 'fern' }, sink)
+        sessionId = created.sessionId
+        await host.close(sessionId, sink)
+        if (opening === 'legacy resume')
+          db.prepare('UPDATE provider_session SET connection_id=NULL WHERE id=?').run(sessionId)
+        f.rawRuntimes.length = 0
+      }
+      const entered = deferred()
+      const released = deferred()
+      let calls = 0
+      f.state.beforeLaunch = async () => {
+        calls++
+        if (opening === 'models' && calls === 1) return
+        entered.resolve()
+        await released.promise
+      }
+      const pending = opening === 'models'
+        ? host.providerModels('fern', provider)
+        : sessionId === undefined
+          ? host.createSession({ provider, profileId: 'fern' }, sink)
+          : host.resumeSession(sessionId, sink)
+      await entered.promise
+      f.state.revision += 2
+      released.resolve()
+      if (opening === 'models') {
+        expect(await pending).toMatchObject({ ok: false, reason: 'refused' })
+      } else {
+        await expect(pending).rejects.toThrow('connection changed')
+      }
+      for (const runtime of f.rawRuntimes) {
+        expect(runtime.start).not.toHaveBeenCalled()
+        expect(runtime.resume).not.toHaveBeenCalled()
+        expect(runtime.listModels).not.toHaveBeenCalled()
+      }
+      if (sessionId === undefined) {
+        expect(db.prepare('SELECT id FROM provider_session').all()).toEqual([])
+      } else {
+        expect(f.store.connectionOf(sessionId)).toBe(
+          opening === 'legacy resume' ? null : `${provider}:sign-in`,
+        )
+      }
+    })
+  }
+
   it(`${provider}: records successful new launches on the admitted connection and per-agent home`, async () => {
     const f = fixture()
     const created = await host.createSession({ provider, profileId: 'fern', cwd: dir }, sink)

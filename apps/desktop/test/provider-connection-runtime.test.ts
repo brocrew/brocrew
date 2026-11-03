@@ -234,7 +234,8 @@ for (const provider of ['claude', 'codex'] as const) {
       } else {
         const handle = await pending
         handles.push(handle)
-        expect(callback).toHaveBeenCalledWith(handle)
+        expect(callback).toHaveBeenCalledTimes(1)
+        expect(callback.mock.calls[0]![0]).toBe(handle)
         expect(handle.ref).toEqual(first.ref)
         expect(Reflect.get(handle, 'connectionId')).toBe(`${provider}:sign-in`)
       }
