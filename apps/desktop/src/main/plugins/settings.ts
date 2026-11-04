@@ -51,6 +51,7 @@ export interface PluginSettingsController {
   update?(id: string, consent?: PluginMutationConsent): Promise<void>
   /** Reattach person control only; no install or removal. */
   retry?(id: string): Promise<PluginCard[]>
+  restartChrome?(): Promise<void>
   install(id: string, consent?: PluginMutationConsent): Promise<void>
   uninstall(id: string): Promise<PluginRemovalOutcome | void>
   screen(id: string): Promise<PluginUiHostOptions>
@@ -152,6 +153,7 @@ export function registerPluginSettings(
               'installed',
               'priorityClamped',
               'toolsUnavailable',
+              'canRestart',
               'installedVersion',
               'updateVersion',
               'updatesUnavailable',
@@ -171,6 +173,11 @@ export function registerPluginSettings(
               PluginStartupDiagnosticSchema.safeParse(card.startupDiagnostic).success)) &&
           (card.toolsUnavailable === undefined ||
             (card.state === 'Running' && card.toolsUnavailable === true)) &&
+          (card.canRestart === undefined ||
+            (card.canRestart === true &&
+              card.id === 'chrome' &&
+              card.installed === true &&
+              (card.toolsUnavailable === true || card.state === 'Unavailable'))) &&
           (card.priorityClamped === undefined ||
             typeof card.priorityClamped === 'boolean' ||
             card.priorityClamped === null) &&
@@ -285,7 +292,7 @@ export function registerPluginSettings(
         }
         if (!controller || !(controller.available?.() ?? true)) return refused
         if (
-          !['install', 'update', 'uninstall', 'configure', 'retry', 'prepare'].includes(
+          !['install', 'update', 'uninstall', 'configure', 'retry', 'restart', 'prepare'].includes(
             String(input.kind),
           ) ||
           typeof input.id !== 'string' ||
@@ -314,6 +321,14 @@ export function registerPluginSettings(
           }
           if (typeof input.screenId !== 'string' || !/^[a-f0-9-]{36}$/.test(input.screenId))
             return refused
+        }
+        if (input.kind === 'restart') {
+          if (input.id !== 'chrome' || !controller.restartChrome) return refused
+          state.reviews.clear()
+          controller.cancelPreparations?.()
+          await close(owner)
+          await controller.restartChrome()
+          return { ok: true, cards: await catalogue(() => controller.catalogue(false)) }
         }
         if (input.kind === 'retry') {
           state.reviews.clear()

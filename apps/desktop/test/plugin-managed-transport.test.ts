@@ -167,6 +167,31 @@ it('does not invent remote quiescence when an authenticated stream is cancelled'
   noPrivateCredential(f.audit, f.credential)
 })
 
+it('delivers the failed call before closing its route while retaining unknown remote quiescence', async () => {
+  const f = await fixture(),
+    route = await f.route('willow'),
+    client = new Client({ name: 'fictional', version: '1' })
+  cleanup.push(() => client.close())
+  client.onerror = () => undefined
+  f.reply('hold')
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL(route.server.url), {
+      requestInit: { headers: { Authorization: `Bearer ${route.server.capability}` } },
+    }),
+  )
+  const pending = client
+    .callTool({ name: 'echo', arguments: { profile: 'fern' } }, undefined, { timeout: 1500 })
+    .catch(() => ({ lost: true }))
+  await vi.waitFor(() => expect(f.seen).toHaveLength(1))
+  await route.close()
+  const reply = await pending
+  expect(reply).toMatchObject({ isError: true })
+  await vi.waitFor(() => expect(f.broker.status().available).toBe(false), { timeout: 2000 })
+  expect(f.broker.status().awaitingQuiescence).toBe(true)
+  expect(f.broker.owner.hasCompletionProof()).toBe(false)
+  noPrivateCredential([reply, f.audit], f.credential)
+})
+
 it('keeps malformed downstream configuration errors closed', () => {
   const credential = 'fictional-private-'.repeat(4)
   let error: unknown

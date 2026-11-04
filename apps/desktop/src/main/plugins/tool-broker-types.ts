@@ -96,6 +96,8 @@ export interface BrokerOptions {
   readonly resources: readonly BrokerResource[]
   readonly isAllowed: (identity: BrokerIdentity, use: ResourceUse) => boolean
   readonly server: BrokerServer
+  /** Trusted owner proof for the exact retained host and its descendants, never plugin input. */
+  readonly hostExited?: Promise<void>
   readonly clock?: BrokerClock
   readonly audit?: (event: BrokerAudit) => void
 }
@@ -137,6 +139,8 @@ export interface PluginToolBroker {
     revoke(capability: BrokerAgent | BrokerPerson): void
     detach(workspace: BrokerWorkspace): void
     invalidate(): void
+    /** Positive completion of every dispatched call; a failed/absent proof never grants this. */
+    hasCompletionProof(): boolean
   }
   status(): Readonly<{
     available: boolean
