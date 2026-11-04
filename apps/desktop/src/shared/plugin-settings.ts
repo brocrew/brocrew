@@ -255,19 +255,26 @@ export type PluginRemovalOutcome =
   | {
       data: 'kept' | 'deleted'
       cleanup: 'not-requested' | 'completed' | 'unconfirmed'
+      result?: unknown
       logout?: never
     }
 export function pluginRemovalOutcome(value: unknown): PluginRemovalOutcome | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   const result = value as Partial<PluginRemovalOutcome>
-  if (Object.keys(value).length !== 2 || !Object.hasOwn(value, 'data')) return null
+  if (!Object.hasOwn(value, 'data')) return null
   if (
+    Object.keys(value).every((key) => ['data', 'cleanup', 'result'].includes(key)) &&
     Object.hasOwn(value, 'cleanup') &&
     (result.data === 'kept' || result.data === 'deleted') &&
     ['not-requested', 'completed', 'unconfirmed'].includes(result.cleanup ?? '')
   )
-    return { data: result.data, cleanup: result.cleanup! }
+    return {
+      data: result.data,
+      cleanup: result.cleanup!,
+      ...(Object.hasOwn(value, 'result') ? { result: result.result } : {}),
+    }
   if (
+    Object.keys(value).length === 2 &&
     Object.hasOwn(value, 'logout') &&
     result.data === 'deleted' &&
     (result.logout === 'confirmed' || result.logout === 'unconfirmed')
@@ -278,9 +285,23 @@ export function pluginRemovalOutcome(value: unknown): PluginRemovalOutcome | nul
 export function pluginRemovalNotice(name: string, outcome: PluginRemovalOutcome): string {
   if (outcome.cleanup !== undefined) {
     const data = outcome.data === 'deleted' ? 'was deleted' : 'was kept'
+    const result = outcome.result as { content?: unknown } | undefined
+    const text = Array.isArray(result?.content)
+      ? result.content
+          .filter(
+            (block): block is { type: 'text'; text: string } =>
+              !!block &&
+              typeof block === 'object' &&
+              block.type === 'text' &&
+              typeof block.text === 'string',
+          )
+          .map((block) => block.text)
+          .join('\n')
+      : ''
     return (
       `${name}'s local data ${data}.` +
-      (outcome.cleanup === 'unconfirmed' ? ' Plugin cleanup was not confirmed.' : '')
+      (outcome.cleanup === 'unconfirmed' ? ' Plugin cleanup was not confirmed.' : '') +
+      (text ? '\n' + text : '')
     )
   }
   return outcome.logout === 'confirmed'

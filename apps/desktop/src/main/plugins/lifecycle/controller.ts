@@ -1407,20 +1407,22 @@ export class PluginLifecycleController {
     effect.cleanupResult = 'unconfirmed'
     await this.effects.write(effect)
     const running = this.runs.get(effect.pluginId)
-    if (!running || running.ended || running.installId !== effect.installId) return 'unconfirmed'
+    if (!running || running.ended || running.installId !== effect.installId || !effect.workspaceId)
+      return 'unconfirmed'
     try {
-      const connection = await bounded(() => running.run.ready(), 5000)
+      const connection = await running.run.ready()
       if (!connection.client) return 'unconfirmed'
       const binding = manifest.lifecycle.beforeRemove
-      const result = await connection.client.callTool(
-        {
-          name: binding.tool,
-          arguments: binding.arguments ?? {},
-          _meta: { origin: 'lifecycle.beforeRemove', requestId: effect.operationId },
+      const result = await connection.client.callTool({
+        name: binding.tool,
+        arguments: binding.arguments ?? {},
+        _meta: {
+          workspaceId: effect.workspaceId,
+          origin: 'lifecycle.beforeRemove',
+          requestId: effect.operationId,
         },
-        undefined,
-        { signal: AbortSignal.timeout(5000), timeout: 5000 },
-      )
+      })
+      effect.cleanupReply = result
       effect.cleanupResult = result.isError ? 'unconfirmed' : 'completed'
       await this.effects.write(effect)
       return effect.cleanupResult
@@ -1448,6 +1450,7 @@ export class PluginLifecycleController {
             ? 'deleted'
             : 'kept',
         cleanup,
+        ...(effect.cleanupReply === undefined ? {} : { result: effect.cleanupReply }),
       }
       effect.removalOutcome = outcome
       await this.effects.write(effect)
@@ -1491,6 +1494,7 @@ export class PluginLifecycleController {
     id: string,
     operationId: string,
     compensates: string | null,
+    workspaceId?: string,
   ): Promise<PluginRemovalOutcome | void> {
     const state = this.options.state.inspect(),
       before = this.current(id)
@@ -1520,6 +1524,7 @@ export class PluginLifecycleController {
       phase: 'prepared',
       offlineCleanup: true,
       compensates,
+      ...(workspaceId === undefined ? {} : { workspaceId }),
     }
     await this.effects.write(effect)
     return this.finishRemoval(effect, operation.next!)
@@ -1529,7 +1534,7 @@ export class PluginLifecycleController {
     id: string,
     operationId: string = randomUUID(),
   ): Promise<PluginRemovalOutcome | void> {
-    this.workspace(handle)
+    const workspace = this.workspace(handle)
     if (!idSchema.safeParse(id).success || !z.uuid().safeParse(operationId).success) return refuse()
     let absent = false
     let outcome: PluginRemovalOutcome | void = undefined
@@ -1564,7 +1569,7 @@ export class PluginLifecycleController {
           outcome = await this.finishRemoval(effect, prior.operation.next)
           return
         }
-        outcome = await this.remove(id, operationId, null)
+        outcome = await this.remove(id, operationId, null, workspace.sink.workspaceId)
       })
       if (this.blocks.get(id) === token) this.blocks.delete(id)
       return outcome

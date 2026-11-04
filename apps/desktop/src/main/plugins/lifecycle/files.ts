@@ -21,12 +21,15 @@ export const Effect = z.strictObject({
   phase: z.enum(['prepared', 'committed', 'aborted']),
   offlineCleanup: z.boolean(),
   compensates: z.uuid().nullable(),
+  workspaceId: z.string().optional(),
   cleanupAttempted: z.boolean().optional(),
+  cleanupReply: z.unknown().optional(),
   cleanupResult: z.enum(['completed', 'unconfirmed']).optional(),
   removalOutcome: z
     .strictObject({
       data: z.enum(['kept', 'deleted']),
       cleanup: z.enum(['not-requested', 'completed', 'unconfirmed']),
+      result: z.unknown().optional(),
     })
     .optional(),
   previousVersion: z.string().optional(),
