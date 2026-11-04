@@ -92,7 +92,8 @@ export function recordPluginToolFailure(
     if (
       !stat.isFile() ||
       stat.nlink !== 1 ||
-      (process.platform !== 'win32' && (stat.mode & 0o077) !== 0)
+      (process.platform !== 'win32' &&
+        (stat.uid !== process.getuid?.() || (stat.mode & 0o077) !== 0))
     )
       return
     const line = `${new Date().toISOString()} [plugins] tool-failure plugin=${encodeURIComponent(pluginId)} reason=${reason}\n`
