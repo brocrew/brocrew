@@ -7,7 +7,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { fork, type ChildProcess } from 'node:child_process'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { join, dirname, isAbsolute, normalize } from 'node:path'
-import { rm } from 'node:fs/promises'
+import { chmod, rm } from 'node:fs/promises'
 import { verifiedPluginDigest, type VerifiedPluginPackage } from './package-verifier'
 import {
   immutableFile,
@@ -194,6 +194,11 @@ export function createPluginNodeHost(options: {
     if (windows)
       for (const dir of ['AppData/Roaming', 'AppData/Local']) await privateChild(home, dir)
     const packages = await privateChild(root, 'packages')
+    const executable = (path: string) =>
+      spec.package.isExecutable?.(path) === true ||
+      (manifest.format === 3 &&
+        manifest.runtime.kind === 'process' &&
+        normalize(manifest.runtime.command) === normalize(path))
     const release = await publishPrivateDirectory(
       packages,
       spec.releaseDigest,
@@ -203,13 +208,7 @@ export function createPluginNodeHost(options: {
           if (!bytes) throw new PluginHostError('package')
           const parent = dirname(file.path)
           if (parent !== '.') await privateChild(stage, parent)
-          await immutableFile(
-            join(stage, file.path),
-            bytes,
-            manifest.format === 3 &&
-              manifest.runtime.kind === 'process' &&
-              normalize(manifest.runtime.command) === normalize(file.path),
-          )
+          await immutableFile(join(stage, file.path), bytes, executable(file.path))
         }
       },
       async (directory) => {
@@ -218,7 +217,10 @@ export function createPluginNodeHost(options: {
           if (!bytes) throw new PluginHostError('package')
           const parent = dirname(file.path)
           if (parent !== '.') await privateChild(directory, parent, false)
-          await verifyImmutableFile(join(directory, file.path), bytes)
+          const path = join(directory, file.path)
+          await verifyImmutableFile(path, bytes)
+          // Repair older cached modes only after the selected file bytes still match.
+          if (!windows && executable(file.path)) await chmod(path, 0o500)
         }
       },
     )

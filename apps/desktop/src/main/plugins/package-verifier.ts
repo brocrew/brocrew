@@ -7,7 +7,7 @@ import {
   verifyPluginDigest,
   pluginSha256,
 } from './package-digests'
-import { readPluginArchive } from './package-archive'
+import { archiveFileExecutable, readPluginArchive } from './package-archive'
 import {
   parsePluginCatalogue,
   parsePluginManifest,
@@ -53,6 +53,8 @@ export interface VerifiedPluginPackage<M extends AnyPluginManifest = AnyPluginMa
   readonly contract: Readonly<NormalizedPluginManifest>
   readonly compatibility: Readonly<{ host: boolean; tools: boolean; ui: boolean }>
   readonly filePaths: readonly string[]
+  /** Optional for older adapters; real verified archives retain their tar execute bits. */
+  isExecutable?(path: string): boolean
   /** Copies keep callers from changing the bytes retained behind a verified result. */
   readFile(path: string): Uint8Array | undefined
 }
@@ -196,6 +198,9 @@ function verifiedContents(
       ui: host && (manifest.format === 3 || compatible(manifest.uiApi, support.ui)),
     }),
     filePaths: Object.freeze([...files.keys()]),
+    isExecutable(path: string) {
+      return archiveFileExecutable(files, filePath(path))
+    },
     readFile(path: string) {
       const body = lookup(path)
       return body === undefined ? undefined : Uint8Array.from(body)

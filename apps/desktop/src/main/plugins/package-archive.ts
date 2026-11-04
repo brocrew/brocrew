@@ -26,7 +26,14 @@ function octal(header: Buffer, start: number, length: number): number {
   return number
 }
 
-/** Decodes only the admitted USTAR profile. No path is ever opened or written here. */
+const executableFiles = new WeakMap<ReadonlyMap<string, Buffer>, ReadonlySet<string>>()
+
+/** Tar execute bits are file metadata; ownership and other mode bits are not applied. */
+export function archiveFileExecutable(files: ReadonlyMap<string, Buffer>, path: string): boolean {
+  return executableFiles.get(files)?.has(path) ?? false
+}
+
+/** Decode package files without opening or writing any selected path. */
 export function readPluginArchive(
   downloaded: Buffer,
   compression: 'tar' | 'tar.gz',
@@ -52,6 +59,8 @@ export function readPluginArchive(
     refusePlugin('limit')
   const paths = new PluginPackagePaths()
   const files = new Map<string, Buffer>()
+  const executable = new Set<string>()
+  executableFiles.set(files, executable)
   let offset = 0
   let entries = 0
   let expanded = 0
@@ -111,10 +120,8 @@ export function readPluginArchive(
       octal(header, 337, 8) !== 0
     )
       refusePlugin('path')
-    if (
-      !generic &&
-      (header.subarray(500).some((value) => value !== 0) || octal(header, 100, 8) > 0o777)
-    )
+    const mode = octal(header, 100, 8)
+    if (!generic && (header.subarray(500).some((value) => value !== 0) || mode > 0o777))
       refusePlugin('invalid')
     // Validate numeric fields even though ownership and timestamps are never applied.
     octal(header, 108, 8)
@@ -147,7 +154,11 @@ export function readPluginArchive(
     offset = start + Math.ceil(size / 512) * 512
     if (offset > archive.length || archive.subarray(end, offset).some((value) => value !== 0))
       refusePlugin('invalid')
-    if (!directory) files.set(path, archive.subarray(start, end))
+    if (!directory) {
+      files.set(path, archive.subarray(start, end))
+      if ((mode & 0o111) !== 0) executable.add(path)
+      else executable.delete(path)
+    }
   }
   return refusePlugin('invalid')
 }
