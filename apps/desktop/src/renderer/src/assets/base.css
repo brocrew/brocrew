@@ -332,6 +332,15 @@ code .message-path-text {
   line-height: var(--leading-normal);
 }
 
+.md-code-punctuation {
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+.md-code-punctuation code {
+  white-space: normal;
+}
+
 /* Code keeps its own lines: `pre` does not soft-wrap, so the transcript's inherited
    `overflow-wrap: anywhere` cannot shred it, and a long line scrolls THIS block rather than
    widening the chat — which holds because the grid column is `minmax(0, 1fr)` over a

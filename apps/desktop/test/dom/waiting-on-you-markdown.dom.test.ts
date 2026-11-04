@@ -5,8 +5,9 @@ import type { MessagePathAsk, MessagePathTarget } from '../../src/shared/runtime
 import { applyTheme } from '../../src/renderer/src/lib/apply-theme'
 import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
 import { wearTheme } from '../../look/fixtures/themes'
+import RequestMarkdown from '../../src/renderer/src/components/RequestMarkdown.vue'
 import { aWaitingPageWithMarkdown, LITERAL_COMMAND } from './a-waiting-page-with-markdown'
-import { unmountAll } from './harness'
+import { mount, unmountAll } from './harness'
 
 const original = { width: window.innerWidth, height: window.innerHeight }
 afterEach(() => {
@@ -20,6 +21,29 @@ afterAll(async () => {
 })
 
 describe.each(['classic', 'crew-night'] as const)('Waiting on you markdown in %s', (theme) => {
+  it('keeps the added note punctuation with its filename and outside its code text', async () => {
+    if (theme === 'crew-night') wearTheme(theme)
+    const m = await aWaitingPageWithMarkdown()
+    const context = m.host.querySelector('.pq-asked-context')!
+    const code = context.querySelector('code')!
+    const group = code.parentElement!
+    expect(code.textContent).toBe('summary.md')
+    expect(group.textContent).toBe('summary.md.')
+    expect(group.lastChild?.nodeType).toBe(Node.TEXT_NODE)
+    expect(group.lastChild?.textContent).toBe('.')
+    expect(getComputedStyle(group).whiteSpace).toBe('nowrap')
+    expect(getComputedStyle(group).fontFamily).toBe(getComputedStyle(code).fontFamily)
+    const range = document.createRange()
+    range.selectNodeContents(group.lastChild!)
+    expect(range.getBoundingClientRect().top).toBeLessThan(code.getBoundingClientRect().bottom)
+    expect(context.textContent).toBe('Added: Added after review: read summary.md.')
+    const filename = 'long-name-'.repeat(80) + 'summary.md'
+    const narrow = mount(RequestMarkdown, { text: `Read \`${filename}\`.` }, { width: 180 })
+    expect(narrow.host.querySelector('code')?.textContent).toBe(filename)
+    expect(narrow.host.textContent).toBe(`Read ${filename}.`)
+    expect(narrow.host.scrollWidth).toBeLessThanOrEqual(narrow.host.clientWidth)
+  })
+
   it('renders question words, added notes, part prompts, disclosed requests and to-dos', async () => {
     await page.viewport(1180, 1000)
     if (theme === 'crew-night') wearTheme(theme)
