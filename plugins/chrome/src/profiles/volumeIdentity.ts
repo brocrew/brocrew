@@ -37,11 +37,11 @@ export function readVolumeIdentity(
     }
   }
   const rows = observe('/bin/df', ['-P', file]).trim().split(/\r?\n/)
-  const disk = rows.length === 2 && /^(\/dev\/disk[0-9]+(?:s[0-9]+)+)\s/.exec(rows[1])?.[1]
+  const disk = rows.length === 2 && /^(\/dev\/disk[0-9]+(?:s[0-9]+)+)\s/.exec(rows[1] ?? '')?.[1]
   if (!disk) throw new Error('Volume identity unavailable')
   const plist = observe('/usr/sbin/diskutil', ['info', '-plist', disk])
   const matches = [...plist.matchAll(/<key>VolumeUUID<\/key>\s*<string>([^<]+)<\/string>/g)]
-  const value = matches.length === 1 ? matches[0][1] : ''
+  const value = matches.length === 1 ? (matches[0]?.[1] ?? '') : ''
   if (!uuid.test(value) || !/[1-9a-f]/i.test(value.replace(/-/g, '')))
     throw new Error('Volume identity unavailable')
   return `apfs:${value.toLowerCase()}`

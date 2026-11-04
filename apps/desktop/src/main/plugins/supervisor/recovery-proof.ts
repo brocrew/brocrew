@@ -73,7 +73,7 @@ function matchesIdentity(
   if (saved === current || saved === runtime) return true
   const old = legacyIdentity.exec(saved),
     next = durableIdentity.exec(current)
-  return !!(allowDeviceChange && old && next?.[1].startsWith('apfs:') && old[2] === next[2])
+  return !!(allowDeviceChange && old && next?.[1]?.startsWith('apfs:') && old[2] === next[2])
 }
 function matchesBinding(
   saved: Binding,
