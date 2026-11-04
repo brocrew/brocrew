@@ -112,7 +112,7 @@ export function productionPluginController() {
       acceptingBusy.observedAt - acceptingBusy.since >= 120_000
     const specific = conditionalWindowAdvice
       ? 'owner-window-open'
-      : failure === 'restart-required'
+      : failure === 'restart-required' || failure === 'previous-service-stopping'
         ? failure
         : undefined
     return listed.map((entry) => ({

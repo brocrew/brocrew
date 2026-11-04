@@ -377,7 +377,8 @@ onUnmounted(() => {
               v-if="
                 failedRetries.has(card.id) &&
                 card.unavailableReason !== 'owner-window-open' &&
-                card.unavailableReason !== 'restart-required'
+                card.unavailableReason !== 'restart-required' &&
+                card.unavailableReason !== 'previous-service-stopping'
               "
               data-cy="plugin-restart-hint"
               >Restart BroCrew if this keeps happening.</span

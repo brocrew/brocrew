@@ -36,6 +36,8 @@ export interface WorkspaceLease {
 }
 /** Supplied only by the trusted process host, never over workspace IPC. */
 export interface OwnedPluginChild {
+  /** Trusted in-process consumers only. Omitted means a physical process/descendant obligation. */
+  readonly inProcess?: true
   stop(): void | Promise<void>
   exited: Promise<void>
   descendantsGone(): Promise<boolean>
@@ -53,6 +55,8 @@ export interface OwnerOptions {
   /** Trusted standalone bootstrap only. Runs inside the unchanged predecessor fence. */
   recoverPrevious?: (previous: OwnerRecord | null) => Promise<boolean>
   traceDrain?: (event: DrainTrace) => void
+  /** Standalone bootstrap only: exit synchronously with the fence still held. Never admission. */
+  onBlockedWithoutProcesses?: () => void
 }
 declare global {
   var __brobotPluginOwnersV1: Set<string> | undefined
@@ -123,6 +127,7 @@ export class PluginSupervisor {
       : Math.max(0, this.drainDeadline - performance.now())
   }
   private revocationFailed = false
+  private startFailed = false
   private server: Server | undefined
   private timer: ReturnType<typeof setInterval> | undefined
   private drainWork: Promise<boolean> | undefined
@@ -462,6 +467,8 @@ export class PluginSupervisor {
         },
         () => {
           // A rejected asynchronous start is not evidence that it left no descendant behind.
+          // Keep this negative proof after the settled promise leaves the pending set.
+          this.startFailed = true
           this.fail()
           refuse('cleanup-pending')
         },
@@ -488,14 +495,35 @@ export class PluginSupervisor {
       this.trace({ stage: 'child-proofs', state: 'waiting' })
       this.drainDeadline = performance.now() + (this.options.drainWithin ?? OWNER_LIMITS.cleanup)
       const result = await (async () => {
-        await Promise.all(this.revocations)
-        if (this.revocationFailed) return false
+        if ((await bounded(Promise.all(this.revocations), this.remainingDrainMs())) === undefined)
+          this.revocationFailed = true
         await Promise.all(this.starting)
-        return (await Promise.all([...this.children].map(stopAndProveChild))).every(Boolean)
-      })().catch(() => false)
-      if (result !== true) {
+        return Promise.all(
+          [...this.children].map(async (child) => ({
+            inProcess: child.inProcess === true,
+            // A consumer timeout is not exit proof. Only actual process death can end its work,
+            // and self-exit still requires separate positive proof for every physical child.
+            proven:
+              child.inProcess === true
+                ? (await bounded(stopAndProveChild(child), this.remainingDrainMs())) === true
+                : await stopAndProveChild(child),
+          })),
+        )
+      })().catch(() => undefined)
+      if (
+        !result ||
+        this.startFailed ||
+        this.revocationFailed ||
+        !result.every((child) => child.proven)
+      ) {
         this.trace({ stage: 'child-proofs', state: 'failed' })
         this.fail()
+        // A failed consumer can leave this process's own async work unresolved. Do not unlock
+        // and let a successor overlap it. Only process death ends that work and releases the OS
+        // fence. Every physical child must still supply its exact exit and descendant proof.
+        // A rejected/unfinished start or an unknown physical witness never reaches this seam.
+        if (!this.startFailed && result?.every((child) => child.inProcess || child.proven))
+          this.options.onBlockedWithoutProcesses?.()
         return false
       }
       this.trace({ stage: 'child-proofs', state: 'complete' })

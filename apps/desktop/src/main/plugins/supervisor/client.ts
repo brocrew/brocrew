@@ -62,6 +62,55 @@ function serializedLaunch(identity: string, launch: () => Promise<void>): Promis
   launches.set(identity, work)
   return work
 }
+// This bounded, process-local observation changes advice only, never ownership or admission.
+// Sixty seconds matches the owner's complete child-cleanup grace, not its caller's shorter wait.
+const releasedDrains = new Map<string, { epoch: string; key: string; since: number }>()
+function releasedDrainStalled(
+  storage: SupervisorStorage,
+  record: OwnerRecord | null,
+  probe: 'live' | 'no-answer' | 'unknown',
+): boolean {
+  const id = `${storage.rootIdentity}\0${storage.identity}`
+  try {
+    const stop = storage.readStop()
+    if (
+      probe !== 'live' ||
+      !record ||
+      (record.phase !== 'draining' && record.phase !== 'blocked') ||
+      stop?.epoch !== record.epoch ||
+      stop.reason !== 'released'
+    ) {
+      releasedDrains.delete(id)
+      return false
+    }
+    const now = performance.now()
+    const previous = releasedDrains.get(id)
+    if (
+      !previous ||
+      previous.epoch !== record.epoch ||
+      previous.key !== record.key ||
+      !Number.isFinite(now) ||
+      now < previous.since
+    ) {
+      if (releasedDrains.size >= 64) releasedDrains.delete(releasedDrains.keys().next().value!)
+      releasedDrains.set(id, { epoch: record.epoch, key: record.key, since: now })
+      return false
+    }
+    const current = storage.read()
+    if (
+      current?.epoch !== record.epoch ||
+      current.key !== record.key ||
+      current.phase !== record.phase
+    ) {
+      releasedDrains.delete(id)
+      return false
+    }
+    return now - previous.since >= OWNER_LIMITS.cleanup
+  } catch {
+    releasedDrains.delete(id)
+    return false
+  }
+}
 /** One authenticated, bounded command on a private socket. No raw error or packet leaves here. */
 export function supervisorRequest(
   storage: SupervisorStorage,
@@ -200,6 +249,7 @@ export class PluginWorkspaceLease {
       let launched = false
       let probe: 'live' | 'no-answer' | 'unknown' = 'unknown'
       if (record && (record.phase === 'blocked' || record.phase === 'draining')) {
+        const observed = record
         try {
           await supervisorRequest(
             storage,
@@ -220,7 +270,14 @@ export class PluginWorkspaceLease {
           else if (error instanceof PluginSupervisorError && error.code === 'busy') probe = 'live'
         }
         record = readOwner()
+        if (
+          record?.epoch !== observed.epoch ||
+          record.key !== observed.key ||
+          record.phase !== observed.phase
+        )
+          probe = 'unknown'
       }
+      const stalled = releasedDrainStalled(storage, record, probe)
       const launchOnce = async () => {
         if (launched) return
         launched = true
@@ -282,8 +339,9 @@ export class PluginWorkspaceLease {
               phase: record?.phase ?? 'missing',
               stage: 'attach-record',
               probe,
-              reason: 'unknown',
+              reason: stalled ? 'released-owner-stalled' : 'unknown',
             },
+            ...(stalled && record ? { ownerEpoch: record.epoch } : {}),
           },
         )
       phase = record.phase

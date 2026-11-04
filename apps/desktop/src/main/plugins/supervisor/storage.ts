@@ -155,6 +155,29 @@ export class SupervisorStorage {
       closeSync(fd)
     }
   }
+  /** Advice only; this receipt never releases the fence or authorizes another owner. */
+  readStop(): ReturnType<typeof StopRecord.parse> | null {
+    this.check()
+    try {
+      const before = lstatSync(this.stop, { bigint: true })
+      privateEntry(before, false)
+      const fd = openNotThroughALink(this.stop, constants.O_RDONLY | constants.O_NONBLOCK)
+      try {
+        const held = fstatSync(fd, { bigint: true })
+        if (!same(before, held) || held.size > 4096n) refuse()
+        const result = StopRecord.parse(JSON.parse(readFileSync(fd, 'utf8')))
+        const after = fstatSync(fd, { bigint: true })
+        if (!same(held, after) || held.size !== after.size) refuse()
+        this.check()
+        return result
+      } finally {
+        closeSync(fd)
+      }
+    } catch (error) {
+      if (missing(error)) return null
+      refuse()
+    }
+  }
   write(value: OwnerRecord): void {
     this.publish(this.record, JSON.stringify(OwnerRecord.parse(value)))
   }

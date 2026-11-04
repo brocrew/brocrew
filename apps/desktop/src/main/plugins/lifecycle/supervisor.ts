@@ -48,9 +48,13 @@ export async function createSupervisorLifecycle(options: {
   let closed = false
   let closing: Promise<void> | undefined
   let exited!: () => void
-  const done = new Promise<void>((resolve) => {
+  let failed!: (error: unknown) => void
+  const done = new Promise<void>((resolve, reject) => {
     exited = resolve
+    failed = reject
   })
+  // close() may fail before the owner starts its own drain. Keep the negative witness observed.
+  void done.catch(() => undefined)
   const bridge = await servePersonPluginControl({
     root: options.lifecycle.root,
     key: options.personKey,
@@ -80,12 +84,18 @@ export async function createSupervisorLifecycle(options: {
         throw new PluginSupervisorError('cleanup-pending')
       closed = true
       exited()
-    })()
+    })().catch((error: unknown) => {
+      // A failed bridge stop is a negative exit witness, not a promise that can never settle.
+      // The owner retains its fence as blocked; it must never publish a false clean stop.
+      failed(error)
+      throw error
+    })
     return closing
   }
   // The owner waits for consumer/UI cleanup along with the real host children at last-lease drain.
   try {
     await options.owner.startChild(async () => ({
+      inProcess: true,
       stop: close,
       exited: done,
       descendantsGone: async () => closed,
