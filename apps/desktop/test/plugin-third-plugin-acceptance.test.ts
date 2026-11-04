@@ -487,3 +487,43 @@ it('recovers uninstall after code retirement without replaying an ambiguous cons
     Buffer.from([0, 255, 3, 17, 128]),
   )
 }, 180000)
+
+it('does not infer destructive explicit uninstall intent from a prepared operation with no effect', async () => {
+  const f = await acceptance('stdio', { dataOnRemove: 'remove' })
+  let session = await f.start()
+  await session.clients[0]!.applyPackage!(f.packages[0]!.ref, 'install')
+  const operationId = randomUUID()
+  const before = f.state.inspect()
+  const install = f.state.exportActivation().entries.find((one) => one.pluginId === thirdPluginId)!
+  // A reconstructed pending operation can lack the controller's prior explicit-removal fact.
+  // Publish only the real state journal entry, then close/reopen with no matching effect file.
+  await f.state.withExclusive(async () => {
+    f.state.prepare({
+      operationId,
+      snapshot: null,
+      workspaces: [...f.ids].sort(),
+      consent: {
+        action: 'uninstall',
+        pluginId: thirdPluginId,
+        expectedSequence: before.sequence,
+        expectedInstallId: install.installId,
+        release: null,
+        at: 1,
+      },
+    })
+  })
+  expect(f.state.inspect().pending?.request.operationId).toBe(operationId)
+  expect(existsSync(join(f.root, 'lifecycle-effects', operationId + '.json'))).toBe(false)
+  await session.close()
+  f.reopenState()
+  session = await f.start()
+  expect(f.state.inspect().pending).toBeNull()
+  expect(session.service.controller.agentAttachments(f.ids[0]!)).toEqual([])
+  const privateData = join(f.root, 'host', 'data', thirdPluginId)
+  const sharedData = join(f.appData, '@brobot2', 'shared', thirdPluginId)
+  const opaque = Buffer.from([0, 255, 3, 17, 128])
+  expect(await readFile(join(privateData, 'opaque.bin'))).toEqual(opaque)
+  expect(await readFile(join(sharedData, 'opaque.bin'))).toEqual(opaque)
+  expect(await records(join(privateData, 'explicit-cleanup.jsonl'))).toEqual([])
+  expect(await records(join(sharedData, 'cleanup-events.jsonl'))).toEqual([])
+}, 180000)
