@@ -36,7 +36,9 @@ export function importLegacyConfiguration(
       value.consumed !== true ||
       !Number.isSafeInteger(value.revision) ||
       (value.revision as number) < 0 ||
-      !record(value.source)
+      !record(value.source) ||
+      (value.installId !== undefined &&
+        (typeof value.installId !== 'string' || !value.installId.trim()))
     )
       throw new Error('Legacy Chrome import marker is invalid.')
     if (value.source.directory !== source.directory || value.source.floor !== source.floor)
@@ -47,6 +49,7 @@ export function importLegacyConfiguration(
   let previous: string | null = null
   let found = false
   const rememberInstall = (id: string): void => {
+    if (!id.trim()) throw new Error('Legacy Chrome installation metadata is invalid.')
     if (installId !== undefined && installId !== id)
       throw new Error('Legacy Chrome installation does not match.')
     installId = id
@@ -54,11 +57,15 @@ export function importLegacyConfiguration(
   const consume = (value: unknown): void => {
     if (
       !record(value) ||
-      (value.format !== 1 && value.format !== 2) ||
+      value.format !== 2 ||
       typeof value.installId !== 'string' ||
       !Number.isSafeInteger(value.revision) ||
       (value.revision as number) < 0 ||
-      !(value.previous === null || typeof value.previous === 'string')
+      !(
+        value.previous === null ||
+        (typeof value.previous === 'string' && /^[a-f0-9]{64}$/.test(value.previous))
+      ) ||
+      (value.revision === 0) !== (value.previous === null)
     )
       throw new Error('Legacy Chrome configuration metadata is invalid.')
     rememberInstall(value.installId)
