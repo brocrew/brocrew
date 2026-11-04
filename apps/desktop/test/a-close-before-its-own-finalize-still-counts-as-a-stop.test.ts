@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
 import type { AgentRuntime, RuntimeEvent, SessionHandle } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
@@ -11,7 +11,7 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import type { RuntimeEventSink, RuntimeHostDeps } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
@@ -99,12 +99,19 @@ describe('M55 · a Close counts as a stop before its own finalize', () => {
     closeDrainTimeoutMs: number,
     retiring?: { pending: boolean; wait: Promise<void> },
     replacement?: { pending: boolean; wait: Promise<void> },
-    titles = false,
+    titles: boolean | NonNullable<RuntimeHostDeps['pluginContext']> = false,
+    heldRetirement?: { pending: boolean; wait: Promise<void> },
+    sent?: { launch: number; text: string }[],
   ): RuntimeHost =>
     new RuntimeHost({
       store,
       ...(titles
-        ? { pluginContext: { active: () => true, beforeTurn: async () => ({ pointers: [] }) } }
+        ? {
+            pluginContext:
+              typeof titles === 'boolean'
+                ? { active: () => true, beforeTurn: async () => ({ pointers: [] }) }
+                : titles,
+          }
         : {}),
       discoverSessions: NO_DISCOVERY,
       nativeTranscriptPath: () => null,
@@ -117,13 +124,25 @@ describe('M55 · a Close counts as a stop before its own finalize', () => {
           const value = Reflect.get(target, prop) as unknown
           return typeof value === 'function' ? value.bind(target) : value
         }
-        const wrap = <H extends object>(handle: H): H =>
-          thisLaunch !== 1 && retirement === undefined
+        const held = thisLaunch === 1 ? heldRetirement : undefined
+        const wrap = <H extends object>(handle: H): H => {
+          if (sent) {
+            const real = handle as unknown as SessionHandle
+            const send = real.send.bind(real)
+            vi.spyOn(real, 'send').mockImplementation(async (text, origin) => {
+              await send(text, origin)
+              sent.push({ launch: thisLaunch, text })
+            })
+          }
+          if (held)
+            void held.wait.then(() => (handle as unknown as SessionHandle).close()).catch(() => {})
+          return thisLaunch !== 1 && retirement === undefined
             ? handle
             : new Proxy(handle, {
                 get(h, p) {
-                  if (p === 'events' && retirement === undefined)
+                  if (p === 'events' && retirement === undefined && held === undefined)
                     return holdTheStreamOpenPastItsEnd(h as unknown as SessionHandle)
+                  if (p === 'isRetiring' && held !== undefined) return () => held.pending
                   if (p === 'isRetiring' && retirement !== undefined)
                     return () => retirement.pending
                   if (p === 'send' && retirement !== undefined)
@@ -137,6 +156,7 @@ describe('M55 · a Close counts as a stop before its own finalize', () => {
                   return bind(h, p)
                 },
               })
+        }
         return new Proxy(inner, {
           get(target, prop) {
             if (prop === 'start') {
@@ -263,6 +283,90 @@ describe('M55 · a Close counts as a stop before its own finalize', () => {
       // ⚑ A second launch really ran — the redelivery is observed, not merely inferred from the
       // absence of a thrown error.
       expect(launches).toBe(2)
+    },
+  )
+
+  it.each(
+    (['claude', 'codex'] as const).flatMap((provider) =>
+      (['close', 'retirement'] as const).flatMap((stop) =>
+        (['send', 'sendInterrupting'] as const).map((door) => ({ provider, stop, door })),
+      ),
+    ),
+  )(
+    'retains $provider $door words when $stop lands during an active title hook',
+    async ({ provider, stop, door }) => {
+      let enter!: () => void, finish!: () => void, release!: () => void
+      const entered = new Promise<void>((resolve) => {
+        enter = resolve
+      })
+      const hook = new Promise<void>((resolve) => {
+        finish = resolve
+      })
+      const retiring = {
+        pending: false,
+        wait: new Promise<void>((resolve) => {
+          release = resolve
+        }),
+      }
+      const beforeTurn = vi.fn<NonNullable<RuntimeHostDeps['pluginContext']>['beforeTurn']>(
+        async () => ({ pointers: [] }),
+      )
+      beforeTurn.mockImplementationOnce(async () => {
+        enter()
+        await hook
+        return { pointers: [{ resourceId: 'fictional-guide', version: 'v1' }] }
+      })
+      const sent: { launch: number; text: string }[] = []
+      host = buildHost(40, undefined, undefined, { active: () => true, beforeTurn }, retiring, sent)
+      const { sessionId } = await host.createSession(
+        { provider, profileId: DEFAULT_PROFILE_ID, approvalMode: 'auto', cwd: work },
+        window,
+      )
+      const root = store.ensurePersonalRoot(sessionId, clock++)
+      const previousCandidates = store.pluginTitleCandidates
+      store.pluginTitleCandidates = vi.fn(() => [
+        {
+          resourceId: 'fictional-guide',
+          version: 'v1',
+          title: 'Fictional guide',
+          pieceId: root.piece,
+        },
+      ])
+      const words = 'Keep these fictional replacement words exactly once'
+      const sending = host[door](sessionId, words, window)
+      sending.catch(() => {})
+      try {
+        await entered
+        expect(turnTexts(sessionId)).toEqual([])
+        let closing: Promise<void> | undefined
+        if (stop === 'close') closing = host.close(sessionId, window)
+        else retiring.pending = true
+        finish()
+        if (stop === 'retirement') {
+          await Promise.resolve()
+          expect(turnTexts(sessionId)).toEqual([])
+          release()
+        }
+        await expect(sending).resolves.toBeUndefined()
+        await closing
+        expect(turnTexts(sessionId)).toEqual([words])
+        expect(launches).toBe(2)
+        const turn = eventsOf(sessionId).find((event) => event.type === 'user_turn')!
+        expect(turn.text).toBe(words)
+        expect(turn.text).not.toContain('Suggested file titles')
+        expect(beforeTurn).toHaveBeenCalledTimes(2)
+        expect(sent).toHaveLength(1)
+        expect(sent[0]!.launch).toBe(2)
+        expect(sent[0]!.text).toContain(words)
+        expect(sent[0]!.text).not.toContain('Suggested file titles')
+        expect(
+          eventsOf(sessionId).findIndex((event) => event.type === 'user_turn'),
+        ).toBeGreaterThan(eventsOf(sessionId).findIndex((event) => event.type === 'reopened'))
+      } finally {
+        finish()
+        release()
+        store.pluginTitleCandidates = previousCandidates
+      }
     },
   )
 
