@@ -599,3 +599,34 @@ it('keeps an accepted switch change on every redraw when the read after it fails
   })
   view.events.get('pagehide')!({})
 })
+
+it('lets a later read that lands before the switch is accepted keep its own state', async () => {
+  const view = screen()
+  const snapshot = {
+    configRevision: 1,
+    profiles: [{ name: 'fern', enabled: false, open: false }],
+    tabs: [],
+  }
+  view.reply(snapshot)
+  await settle()
+  const row = () => view.nodes.get('#profiles')!.children[0] as unknown as Drawn
+  const control = () => row().children[0].children[2].children[0] as Drawn & Record<string, unknown>
+  control().listeners.get('click')!({})
+  const proposal = view.packets.at(-1)!
+  row().children[0].children[2].children[2].listeners.get('click')!({})
+  row().children[1].children[0].value = 'Garden'
+  row().children[1].listeners.get('submit')!({ preventDefault() {} })
+  view.reply(undefined, undefined, view.packets.at(-1), false)
+  await settle()
+  const reread = view.packets.at(-1)!
+  expect(reread.method).toBe('read')
+  view.reply({ ...snapshot, configRevision: 2 }, undefined, reread)
+  await settle()
+  expect(control()).toMatchObject({ ariaChecked: 'true', ariaBusy: 'true' })
+  view.reply(undefined, undefined, proposal)
+  await settle()
+  expect(control()).toMatchObject({ ariaChecked: 'false' })
+  expect(control().ariaBusy).toBeUndefined()
+  expect(view.packets.at(-1)?.method).toBe('read')
+  view.events.get('pagehide')!({})
+})

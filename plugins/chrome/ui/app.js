@@ -188,6 +188,7 @@ async function setEnabled(profile, enabled) {
   if (switching.has(profile)) return
   switching.set(profile, enabled)
   redraw()
+  const asked = revision
   try {
     await rpc('proposeConfig', { action: 'set-enabled', profile, enabled })
   } catch {
@@ -198,10 +199,11 @@ async function setEnabled(profile, enabled) {
     return
   }
   switching.delete(profile)
-  // The plugin took the change, so redraws show it even if the next read fails.
+  // The plugin took the change, so redraws show it even if the next read fails. Replies are not
+  // ordered, so a read of a later revision than the one asked against already knows better.
   for (const snapshot of [lastSnapshot, heldSnapshot]) {
     const known = snapshot?.profiles.find((p) => p.name === profile)
-    if (known) known.enabled = enabled
+    if (known && snapshot.configRevision <= asked) known.enabled = enabled
   }
   redraw()
   await refresh()
