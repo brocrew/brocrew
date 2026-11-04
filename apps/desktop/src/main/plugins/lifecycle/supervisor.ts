@@ -3,7 +3,7 @@ import { sharedLifecycleWorkspaces } from './workspaces'
 import { createLifecycleAgentBridge } from './agent-bridge'
 import type { PluginSupervisor } from '../supervisor/owner'
 import { createSupervisedPluginHost } from '../supervisor/node-host'
-import type { createPluginNodeHost, PluginNodeReady } from '../node-host'
+import type { createPluginNodeHost } from '../node-host'
 import { PluginLifecycleController } from './controller'
 import { servePersonPluginControl } from './person-control'
 import type { LifecycleOptions } from './types'
@@ -14,7 +14,6 @@ export async function createSupervisorLifecycle(options: {
   host: ReturnType<typeof createPluginNodeHost>
   lifecycle: Omit<LifecycleOptions, 'runtime'>
   personKey: string
-  read(pluginId: string, connection: PluginNodeReady): Promise<unknown>
 }) {
   const host = createSupervisedPluginHost(options.owner, options.host)
   const consumer: { agents?: ReturnType<typeof createLifecycleAgentBridge> } = {}
@@ -51,7 +50,6 @@ export async function createSupervisorLifecycle(options: {
     root: options.lifecycle.root,
     key: options.personKey,
     controller,
-    read: options.read,
     restartPlugin: (id) => agents.restartPlugin(id),
   })
   function close(): Promise<void> {

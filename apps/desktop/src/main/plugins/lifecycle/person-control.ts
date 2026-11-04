@@ -1,6 +1,5 @@
 import { PackageRefSchema } from '../../../shared/plugin-package'
 import { PLUGIN_FRAMEWORK_FEATURES } from '../hooks/definitions'
-import { PluginProposal } from './proposals'
 import { createServer, createConnection, type Socket } from 'node:net'
 import { join } from 'node:path'
 import { localEndpoint } from '../local-endpoint'
@@ -36,7 +35,6 @@ const Request = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('list-tool-health') }),
   z.strictObject({ kind: z.literal('features') }),
   z.strictObject({ kind: z.literal('restart-plugin'), pluginId: id }),
-  z.strictObject({ kind: z.literal('configure-ledger'), format: z.literal(2) }),
   z.strictObject({ kind: z.literal('refresh'), catalogueDigest: Hex }),
   z.strictObject({ kind: z.literal('update'), pluginId: id, operationId: z.uuid() }),
   z.strictObject({ kind: z.literal('install'), pluginId: id, operationId: z.uuid() }),
@@ -48,19 +46,6 @@ const Request = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('host-screen'), pluginId: id, viewId: z.string().optional() }),
   z.strictObject({ kind: z.literal('page-tool'), input: PluginPageCall }),
   z.strictObject({ kind: z.literal('page-cancel'), input: PluginPageCancel }),
-  z.strictObject({ kind: z.literal('read'), pluginId: id, installId: z.uuid() }),
-  z.strictObject({
-    kind: z.literal('apply'),
-    pluginId: id,
-    installId: z.uuid(),
-    incarnation: z.uuid(),
-    revision: z
-      .number()
-      .int()
-      .nonnegative()
-      .max(Number.MAX_SAFE_INTEGER - 1),
-    proposal: PluginProposal,
-  }),
   z.strictObject({ kind: z.literal('detach') }),
 ])
 export const ProjectionChange = z.strictObject({
@@ -90,10 +75,6 @@ export async function servePersonPluginControl(options: {
   key: string
   controller: PluginLifecycleController
   restartPlugin?: (pluginId: string) => Promise<void>
-  read(
-    pluginId: string,
-    connection: Awaited<ReturnType<PluginLifecycleController['screen']>['connection']>,
-  ): Promise<unknown>
 }) {
   const folder = await privateChild(options.root, 'person-control')
   const path = localEndpoint(join(folder, 'person.sock'), 'person', options.key)
@@ -104,7 +85,6 @@ export async function servePersonPluginControl(options: {
       attaching: boolean
       lost: boolean
       failed: boolean
-      ledgerV2?: boolean
       detaching?: Promise<void>
     }>()
   let closing = false
@@ -267,46 +247,6 @@ export async function servePersonPluginControl(options: {
             const screen = options.controller.screen(handle, request.pluginId)
             return screen.installation
           }
-          case 'configure-ledger':
-            session.ledgerV2 = true
-            return { format: 2, maxRevision: Number.MAX_SAFE_INTEGER }
-          case 'apply':
-            if (!session.ledgerV2 && request.revision > 4095)
-              throw new PluginSupervisorError('incompatible')
-            await options.controller.applyProfile(handle, {
-              ...request,
-              ledgerFormat: session.ledgerV2 ? 2 : 1,
-            })
-            return true
-          case 'read': {
-            const screen = options.controller.screen(handle, request.pluginId)
-            if (screen.installation.installId !== request.installId)
-              throw new PluginSupervisorError('unavailable')
-            const revision = await options.controller.profileRevision(
-              handle,
-              request.pluginId,
-              request.installId,
-              session.ledgerV2 === true,
-            )
-            const snapshot = await options.read(request.pluginId, await screen.connection)
-            // Recheck after the asynchronous read so uninstall never publishes a stale snapshot.
-            if (!options.controller.admitted(handle, request.pluginId, request.installId))
-              throw new PluginSupervisorError('unavailable')
-            if (
-              revision !==
-                (await options.controller.profileRevision(
-                  handle,
-                  request.pluginId,
-                  request.installId,
-                  session.ledgerV2 === true,
-                )) ||
-              !snapshot ||
-              typeof snapshot !== 'object' ||
-              Array.isArray(snapshot)
-            )
-              throw new PluginSupervisorError('unavailable')
-            return { ...snapshot, configRevision: revision }
-          }
           case 'detach':
             await detach(session)
             return true
@@ -320,7 +260,6 @@ export async function servePersonPluginControl(options: {
       attaching: boolean
       lost: boolean
       failed: boolean
-      ledgerV2?: boolean
       detaching?: Promise<void>
     }
 

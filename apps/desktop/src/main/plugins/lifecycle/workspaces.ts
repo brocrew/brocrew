@@ -102,8 +102,6 @@ export function sharedLifecycleWorkspaces(
           'updatePrepared',
           'update',
           'uninstall',
-          'profileRevision',
-          'applyProfile',
         ].includes(String(key))
       )
         return (handle: LifecycleWorkspace, ...args: unknown[]) =>

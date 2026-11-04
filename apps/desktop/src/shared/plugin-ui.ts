@@ -1,15 +1,4 @@
-export const PLUGIN_UI_CHANNEL = 'brocrew-plugin-ui:v1'
 export const PLUGIN_UI_RPC = 'plugin-ui:rpc'
-export const PLUGIN_UI_EVENT = 'plugin-ui:snapshot'
-export const PLUGIN_UI_METHODS = ['read', 'subscribe', 'unsubscribe', 'proposeConfig'] as const
-export type PluginUiMethod = (typeof PLUGIN_UI_METHODS)[number]
-export interface PluginUiPacket {
-  channel: typeof PLUGIN_UI_CHANNEL
-  requestId: string
-  method: PluginUiMethod
-  payload: unknown
-  configRevision: number
-}
 export const PLUGIN_UI_LIMITS = {
   request: 64 * 1024,
   reply: 1024 * 1024,
@@ -65,17 +54,4 @@ export function boundedJson(value: unknown, maximum: number): string | null {
   } catch {
     return null
   }
-}
-export function pluginUiPacket(value: unknown): value is PluginUiPacket {
-  return (
-    plain(value) &&
-    exact(value, ['channel', 'requestId', 'method', 'payload', 'configRevision']) &&
-    value.channel === PLUGIN_UI_CHANNEL &&
-    typeof value.requestId === 'string' &&
-    /^[A-Za-z0-9_-]{1,64}$/.test(value.requestId) &&
-    PLUGIN_UI_METHODS.some((method) => method === value.method) &&
-    Number.isSafeInteger(value.configRevision) &&
-    Number(value.configRevision) >= 0 &&
-    boundedJson(value, PLUGIN_UI_LIMITS.request) !== null
-  )
 }

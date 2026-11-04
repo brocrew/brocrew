@@ -4,7 +4,7 @@ import type { PackageRef, PluginPackageInput } from '../../../shared/plugin-pack
 import { PLUGIN_STATES, pluginRemovalOutcome } from '../../../shared/plugin-settings'
 import type { PluginSettingsController } from '../settings'
 import type { PluginUiHostOptions } from '../ui/host'
-import type { PluginUiBinding } from '../ui/rpc'
+import type { PluginUiBinding } from '../ui/binding'
 import type { PluginTarget, PluginRelease } from '../package-schema'
 import { parsePluginCatalogue } from '../package-schema'
 import { inspectPluginPackage, selectPluginPackage, releasePackageRef } from '../package-source'
@@ -13,8 +13,6 @@ import { PluginPackageVault } from './vault'
 import { ConsumerCommand, connectPersonPluginControl } from './person-control'
 import type { WorkspaceProjection } from './types'
 import { Installation } from '../state/format'
-import { proposalFor } from './proposals'
-import { pluginAdapter } from './adapters'
 import { PluginSupervisorError } from '../supervisor/protocol'
 import type { PluginHostSnapshot, PluginHostUiRequest } from '../../../shared/plugin-host'
 import type {
@@ -48,7 +46,6 @@ export async function connectPluginSettings(options: {
   appVersion?: string
   catalogue: { bytes: Uint8Array; signature: Uint8Array }
   projection: WorkspaceProjection
-  propose(publicProposal: unknown, revision: number): void
   lost?(): void
   signal?: AbortSignal
   download?(release: Readonly<PluginRelease>, signal: AbortSignal): Promise<Uint8Array>
@@ -121,33 +118,12 @@ export async function connectPluginSettings(options: {
     options.lost?.()
     for (const id of screens.keys()) void invalidate(id).catch(() => {})
   })
-  let modern: boolean
   try {
-    const attached = await channel.call({
-      kind: 'attach',
-      workspaceId: options.projection.workspaceId,
-    })
-    modern = z.object({ personProtocol: z.literal(2) }).safeParse(attached).success
+    await channel.call({ kind: 'attach', workspaceId: options.projection.workspaceId })
   } catch (error) {
     channel.close()
     throw error
   }
-  // Older owners reject this request without losing the channel and retain their old format.
-  if (modern)
-    await channel.call({ kind: 'configure-ledger', format: 2 }).then(
-      (reply) => {
-        try {
-          z.strictObject({
-            format: z.literal(2),
-            maxRevision: z.literal(Number.MAX_SAFE_INTEGER),
-          }).parse(reply)
-        } catch {
-          channel.close()
-          throw new PluginSupervisorError('incompatible')
-        }
-      },
-      () => undefined,
-    )
   const featureReply = await channel.call({ kind: 'features' }).catch(() => ({ features: [] }))
   const features = z.object({ features: z.array(z.string()) }).parse(featureReply).features
   const selectedRef = (input: string | PackageRef): PackageRef => {
@@ -310,11 +286,8 @@ export async function connectPluginSettings(options: {
         throw new PluginSupervisorError('unavailable')
       const reply = result[1]
       if (!reply || reply.status !== 'fulfilled') throw new PluginSupervisorError('unavailable')
-      // Legacy owners returned only true; local deletion never proves remote logout.
-      if (reply.value === true) {
-        if (pluginAdapter(pluginId)?.uninstall) return { data: 'deleted', logout: 'unconfirmed' }
-        return
-      }
+      // A historical true reply carries no data or cleanup facts.
+      if (reply.value === true) return
       const outcome = pluginRemovalOutcome(reply.value)
       if (!outcome) throw new PluginSupervisorError('unavailable')
       return outcome
@@ -335,29 +308,28 @@ export async function connectPluginSettings(options: {
         },
         [],
       )
-      const generic =
-        checked.manifest.format === 3
-          ? z
-              .object({
-                installation: Installation,
-                instanceId: z.string(),
-                viewId: z.string(),
-                contributionHandle: z.string(),
-                page: z.object({
-                  title: z.string(),
-                  entry: z.string(),
-                  assets: z.array(z.string()),
-                  fields: z.union([z.boolean(), z.record(z.string(), z.json())]).optional(),
-                }),
-              })
-              .parse(
-                await channel.call({
-                  kind: 'host-screen',
-                  pluginId,
-                  ...(askedViewId ? { viewId: askedViewId } : {}),
-                }),
-              )
-          : undefined
+      if (checked.manifest.format !== 3) throw new PluginSupervisorError('unavailable')
+      const generic = z
+        .object({
+          installation: Installation,
+          instanceId: z.string(),
+          viewId: z.string(),
+          contributionHandle: z.string(),
+          page: z.object({
+            title: z.string(),
+            entry: z.string(),
+            assets: z.array(z.string()),
+            fields: z.union([z.boolean(), z.record(z.string(), z.json())]).optional(),
+          }),
+        })
+        .parse(
+          await channel.call({
+            kind: 'host-screen',
+            pluginId,
+            ...(askedViewId ? { viewId: askedViewId } : {}),
+          }),
+        )
+
       if (
         generic &&
         (generic.installation.installId !== installed.installId ||
@@ -382,19 +354,6 @@ export async function connectPluginSettings(options: {
         releaseDigest: installed.release.archiveSha256,
         leaseId: randomUUID(), // UI scope identity only. Never a supervisor/broker/agent lease capability.
       })
-      let applying = false
-      const current = (candidate: Readonly<PluginUiBinding>) =>
-        alive && state.live && screens.get(pluginId) === state && candidate === binding
-      const read = async () => {
-        if (!current(binding)) throw new PluginSupervisorError('unavailable')
-        const result = await channel.call({
-          kind: 'read',
-          pluginId,
-          installId: installed.installId,
-        })
-        if (!current(binding)) throw new PluginSupervisorError('unavailable')
-        return result
-      }
       const common = {
         verified: checked,
         binding,
@@ -412,97 +371,41 @@ export async function connectPluginSettings(options: {
           return () => state.revokers.delete(revoke)
         },
       }
-      if (generic)
-        return {
-          ...common,
-          hostViewId: generic.viewId,
-          page: generic.page,
-          tools: {
-            current: () => current(binding),
-            async callTool(name, args, requestId, signal) {
-              if (!current(binding) || signal.aborted) return { status: 'disabled' }
-              return (await channel.call({
-                kind: 'page-tool',
-                input: {
-                  pluginId,
-                  instanceId: generic.instanceId,
-                  contributionHandle: generic.contributionHandle,
-                  viewId: generic.viewId,
-                  name,
-                  arguments: args,
-                  requestId,
-                },
-              })) as PluginToolCallResult
-            },
-            cancelTool: async (requestId) =>
-              channel.call({
-                kind: 'page-cancel',
-                input: { pluginId, instanceId: generic.instanceId, requestId },
-              }),
-          },
-          detached: () => {
-            void channel
-              .call({
-                kind: 'host-ui',
-                request: { kind: 'settings-close', viewId: generic.viewId },
-              })
-              .catch(() => {})
-          },
-        }
       return {
         ...common,
-        propose: options.propose,
-        peer: {
-          async read() {
-            return read()
-          },
-          async subscribe(_payload, _revision, _binding, signal, emit) {
-            let stopped = false
-            const update = async () => {
-              try {
-                const value = await read()
-                if (!stopped && !signal.aborted) emit(value)
-              } catch {
-                /* RPC admission fails closed. */
-              }
-            }
-            await update()
-            const timer = setInterval(() => {
-              void update()
-            }, 3000)
-            const stop = () => {
-              stopped = true
-              clearInterval(timer)
-            }
-            signal.addEventListener('abort', stop, { once: true })
-            return () => {
-              stop()
-              signal.removeEventListener('abort', stop)
-            }
-          },
-          async proposeConfig(payload, revision, _binding, signal) {
-            const schema = proposalFor(pluginId)
-            if (!schema || !current(binding) || applying || signal.aborted)
-              throw new PluginSupervisorError('unavailable')
-            const proposal = schema.parse(payload)
-            applying = true
-            try {
-              // The person's package-screen button press is confirmation; no second dialog.
-              await channel.call({
-                kind: 'apply',
+        hostViewId: generic.viewId,
+        page: generic.page,
+        tools: {
+          current: () => alive && state.live && screens.get(pluginId) === state,
+          async callTool(name, args, requestId, signal) {
+            if (!alive || !state.live || screens.get(pluginId) !== state || signal.aborted)
+              return { status: 'disabled' }
+            return (await channel.call({
+              kind: 'page-tool',
+              input: {
                 pluginId,
-                installId: installed.installId,
-                incarnation: installed.incarnation,
-                revision,
-                proposal,
-              })
-              if (!current(binding) || signal.aborted)
-                throw new PluginSupervisorError('unavailable')
-              return { applied: true }
-            } finally {
-              applying = false
-            }
+                instanceId: generic.instanceId,
+                contributionHandle: generic.contributionHandle,
+                viewId: generic.viewId,
+                name,
+                arguments: args,
+                requestId,
+              },
+            })) as PluginToolCallResult
           },
+          cancelTool: async (requestId) =>
+            channel.call({
+              kind: 'page-cancel',
+              input: { pluginId, instanceId: generic.instanceId, requestId },
+            }),
+        },
+        detached: () => {
+          void channel
+            .call({
+              kind: 'host-ui',
+              request: { kind: 'settings-close', viewId: generic.viewId },
+            })
+            .catch(() => {})
         },
       }
     },

@@ -1,16 +1,6 @@
 import { ipcRenderer } from 'electron'
 import { PLUGIN_PAGE_CHANNEL } from '../shared/plugin-page'
-import {
-  boundedJson,
-  exact,
-  plain,
-  pluginUiPacket,
-  PLUGIN_UI_CHANNEL,
-  PLUGIN_UI_EVENT,
-  PLUGIN_UI_LIMITS,
-  PLUGIN_UI_RPC,
-  PLUGIN_UI_UNAVAILABLE,
-} from '../shared/plugin-ui'
+import { exact, plain, PLUGIN_UI_RPC, PLUGIN_UI_UNAVAILABLE } from '../shared/plugin-ui'
 
 // This preload is typechecked with the Node main project; name only the DOM subset it uses.
 declare const window: {
@@ -40,24 +30,21 @@ if (
     const data = event.data
     const generic =
       plain(data) &&
+      exact(data, ['channel', 'requestId', 'method', 'params']) &&
       data.channel === PLUGIN_PAGE_CHANNEL &&
       data.method === 'callTool' &&
       typeof data.requestId === 'string' &&
       plain(data.params) &&
+      exact(data.params, ['tool', 'arguments']) &&
       typeof data.params.tool === 'string' &&
       plain(data.params.arguments)
-    if (!pluginUiPacket(data) && !generic) return
+    if (!generic) return
     const packet = data as { requestId: string; channel: string }
-    if (pending.has(packet.requestId) || (!generic && pending.size >= PLUGIN_UI_LIMITS.pending))
-      return
+    if (pending.has(packet.requestId)) return
     pending.add(packet.requestId)
     try {
       const result: unknown = await ipcRenderer.invoke(PLUGIN_UI_RPC, { generation, packet })
-      if (
-        !plain(result) ||
-        !(exact(result, ['ok', 'data']) || exact(result, ['ok', 'error'])) ||
-        (!generic && boundedJson(result, PLUGIN_UI_LIMITS.reply + 1024) === null)
-      )
+      if (!plain(result) || !(exact(result, ['ok', 'data']) || exact(result, ['ok', 'error'])))
         return
       window.postMessage(
         { channel: packet.channel, requestId: packet.requestId, ...result },
@@ -76,10 +63,5 @@ if (
     } finally {
       pending.delete(packet.requestId)
     }
-  })
-  ipcRenderer.on(PLUGIN_UI_EVENT, (_event, version: unknown, snapshot: unknown) => {
-    if (version !== generation || boundedJson(snapshot, PLUGIN_UI_LIMITS.reply + 1024) === null)
-      return
-    window.postMessage({ channel: PLUGIN_UI_CHANNEL, snapshot }, origin)
   })
 }

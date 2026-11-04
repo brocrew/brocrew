@@ -4,10 +4,6 @@ import type { InstanceToolScope, PluginToolCall, PluginToolService } from '../to
 import { createContributionRegistry, pluginContributions } from '../contributions'
 import { pluginNodePolicy } from '../node-policy'
 import { parseRepoPluginList } from '../catalogue/repo-list'
-import { PluginProfileLedger } from './profile-ledger'
-import { chromeProfileIntent, ChromeProposal } from './chrome-apply'
-import { pluginAdapter } from './adapters'
-import { PluginProposal, proposalFor } from './proposals'
 import { pluginSha256 } from '../package-digests'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
@@ -139,7 +135,6 @@ export class PluginLifecycleController {
   private retryAt = 0
   private retryDelay = 5_000
   private readonly registrations = createContributionRegistry()
-  private readonly profileCalls = new Map<string, AbortController>()
   private constructor(
     private readonly options: LifecycleOptions,
     private readonly effects: LifecycleEffects,
@@ -523,7 +518,6 @@ export class PluginLifecycleController {
   private block(id: string): symbol {
     this.invalidateHost(id)
     this.registrations.revoke(id)
-    this.profileCalls.get(id)?.abort()
     const token = Symbol()
     this.blocks.set(id, token)
     try {
@@ -579,10 +573,12 @@ export class PluginLifecycleController {
           return {
             id,
             name,
-            uninstallDeletesData:
-              this.runs.get(id)?.package.manifest.format === 3
-                ? this.runs.get(id)!.package.contract.lifecycle.dataOnRemove === 'remove'
-                : Boolean(pluginAdapter(id)?.uninstall),
+            ...(this.runs.get(id)?.package.manifest.format === 3
+              ? {
+                  uninstallDeletesData:
+                    this.runs.get(id)!.package.contract.lifecycle.dataOnRemove === 'remove',
+                }
+              : {}),
             ...(active ? { installedVersion: active.release.version } : {}),
             ...(active &&
             release &&
@@ -1372,28 +1368,6 @@ export class PluginLifecycleController {
       installId: install.installId,
     })
   }
-  /** A running plugin's own clean-up before uninstall, such as logging out of an account. Its failure is not refused:
-   * the plugin's data is deleted below either way. */
-  private async beforeRemoval(id: string): Promise<PluginRemovalOutcome['logout']> {
-    const adapter = pluginAdapter(id),
-      running = this.runs.get(id)
-    if (!adapter?.uninstall || !running || running.ended) return 'unconfirmed'
-    let timer: ReturnType<typeof setTimeout> | undefined
-    try {
-      const connection = await Promise.race([
-        running.run.ready(),
-        new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(new Error('unavailable')), 5000)
-        }),
-      ])
-      return await adapter.uninstall(connection, new AbortController().signal)
-    } catch {
-      // Local deletion can finish even when remote removal was not confirmed.
-      return 'unconfirmed'
-    } finally {
-      clearTimeout(timer)
-    }
-  }
   /** A consumed lifecycle callback is never replayed after an ambiguous reply or owner crash. */
   private async genericBeforeRemoval(
     effect: Effect,
@@ -1461,20 +1435,13 @@ export class PluginLifecycleController {
       effect.removalOutcome = outcome
       await this.effects.write(effect)
     }
-    const logout = legacyResolved
-      ? effect.legacyRemovalOutcome?.logout
-      : generic || effect.explicitRemoval !== true
-        ? undefined
-        : await this.beforeRemoval(install.pluginId)
+    // Legacy effects are facts only. Missing facts never authorize a new logout or data wipe.
+    const logout = effect.legacyRemovalOutcome?.logout
     const deleteData = generic
       ? outcome!.data === 'deleted'
-      : legacyResolved
-        ? effect.legacyRemovalOutcome?.data === 'deleted'
-        : effect.explicitRemoval === true && Boolean(pluginAdapter(install.pluginId)?.uninstall)
+      : effect.legacyRemovalOutcome?.data === 'deleted'
     if (!generic && !legacyResolved) {
-      effect.legacyRemovalOutcome = deleteData
-        ? { data: 'deleted', logout: logout ?? 'unconfirmed' }
-        : null
+      effect.legacyRemovalOutcome = null
       await this.effects.write(effect)
     }
     const results = await Promise.allSettled([
@@ -1667,64 +1634,6 @@ export class PluginLifecycleController {
       )
         this.blocks.delete(next.pluginId)
     }
-  }
-  /** Page revision is this per-install intent ledger, separate from package configRevision. */
-  async profileRevision(
-    handle: LifecycleWorkspace,
-    id: string,
-    installId: string,
-    allowLedgerV2 = true,
-  ): Promise<number> {
-    return this.options.state.withExclusive(async () => {
-      const screen = this.screen(handle, id)
-      if (!pluginAdapter(id) || screen.installation.installId !== installId) return refuse()
-      return new PluginProfileLedger(this.options.root).revision(installId, allowLedgerV2)
-    })
-  }
-  async applyProfile(
-    handle: LifecycleWorkspace,
-    input: {
-      pluginId: string
-      installId: string
-      incarnation: string
-      revision: number
-      proposal: unknown
-      ledgerFormat?: 1 | 2
-    },
-  ): Promise<void> {
-    const proposal = PluginProposal.parse(input.proposal)
-    await this.options.state.withExclusive(async () => {
-      const screen = this.screen(handle, input.pluginId)
-      const adapter = pluginAdapter(input.pluginId)
-      if (
-        !adapter ||
-        !proposalFor(input.pluginId)?.safeParse(proposal).success ||
-        screen.installation.installId !== input.installId ||
-        screen.installation.incarnation !== input.incarnation
-      )
-        return refuse()
-      const connection = await screen.connection
-      if (!this.admitted(handle, input.pluginId, input.installId)) return refuse()
-      // Consume even on an ambiguous HTTP failure; read actual state next time, never replay.
-      await new PluginProfileLedger(this.options.root).reserve(
-        input.installId,
-        input.revision,
-        input.pluginId === 'chrome'
-          ? chromeProfileIntent(ChromeProposal.parse(proposal))
-          : proposal,
-        input.ledgerFormat ?? 1,
-      )
-      const abort = new AbortController()
-      this.profileCalls.set(input.pluginId, abort)
-      try {
-        if (!this.admitted(handle, input.pluginId, input.installId)) return refuse()
-        await adapter.apply(connection, proposal, abort.signal)
-        if (!this.admitted(handle, input.pluginId, input.installId)) return refuse()
-      } finally {
-        if (this.profileCalls.get(input.pluginId) === abort)
-          this.profileCalls.delete(input.pluginId)
-      }
-    })
   }
   /** Trusted owner teardown only. Mark intent synchronously before any child can be stopped. */
   drain(): Promise<void> {

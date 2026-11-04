@@ -9,7 +9,6 @@ import {
   pluginStartupDiagnostic,
   recordPluginStartupFailure,
 } from './startup-failure'
-import { pluginAdapter } from './lifecycle/adapters'
 import { join } from 'node:path'
 import { PluginListError } from './catalogue/list-error'
 import { GlobalPluginState } from './state/store'
@@ -159,7 +158,6 @@ export function productionPluginController() {
       state: 'Unavailable',
       unavailableReason: specific ?? (cleanupUncertain ? 'cleanup-pending' : failure),
       ...(startupDiagnostic && (!cleanupUncertain || specific) ? { startupDiagnostic } : {}),
-      uninstallDeletesData: Boolean(pluginAdapter(entry.id)?.uninstall),
       installed: evidence
         ? evidence.installed.includes(entry.id)
           ? true
@@ -857,7 +855,6 @@ export function productionPluginController() {
                     return true
                   },
                 },
-                propose: () => {},
                 signal: personLifetime.signal,
                 lost() {
                   candidate.lost = true

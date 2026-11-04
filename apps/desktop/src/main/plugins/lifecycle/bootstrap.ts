@@ -9,7 +9,6 @@ import { PLUGIN_LIMITS, pluginSha256 } from '../package-digests'
 import { thisMachine } from '../package-schema'
 import { createRepoAwarePluginVerifier } from '../package-verifier'
 import { createSupervisorLifecycle } from './supervisor'
-import { requirePluginAdapter } from './adapters'
 import type { PluginSupervisor } from '../supervisor/owner'
 import type { createPluginNodeHost } from '../node-host'
 import type { PluginLifecyclePlan } from '../supervisor/launch-format'
@@ -69,22 +68,10 @@ export async function bootstrapPluginLifecycle(options: {
     workspaceRoots: options.workspaceRoots,
   })
   try {
-    const reads = new Map<string, Set<AbortController>>()
     const service = await createSupervisorLifecycle({
       owner: options.owner,
       host: options.host,
       personKey: plan.personKey,
-      async read(id, connection) {
-        const abort = new AbortController()
-        const active = reads.get(id) ?? new Set<AbortController>()
-        reads.set(id, active)
-        active.add(abort)
-        try {
-          return await requirePluginAdapter(id).read(connection, abort.signal)
-        } finally {
-          active.delete(abort)
-        }
-      },
       lifecycle: {
         root: options.root,
         state,
@@ -95,7 +82,7 @@ export async function bootstrapPluginLifecycle(options: {
         legacyRepoList,
         target,
         catalogue,
-        names: repo?.names ?? { chrome: 'Chrome' },
+        names: repo?.names ?? {},
         refreshCatalogue: repo?.appVersion
           ? async () => {
               const list = await loadRepoPluginList({
@@ -136,12 +123,7 @@ export async function bootstrapPluginLifecycle(options: {
               }
             }
           : undefined,
-        // This is the central lifecycle gate. Person/broker consumers must use controller.admitted;
-        // an invalidated run can never grant calls merely because its host is still alive.
-        deny: (id) => {
-          for (const read of reads.get(id) ?? []) read.abort()
-          reads.delete(id)
-        },
+        deny() {},
         // The trusted launch plan binds one source for the complete install; no local network fallback.
         download: repo?.devSource
           ? async (release) => devPluginArchive(repo.devSource!, release)
