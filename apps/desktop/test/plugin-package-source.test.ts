@@ -13,6 +13,7 @@ import {
 } from '../src/main/plugins/package-source'
 import { servePersonPluginControl } from '../src/main/plugins/lifecycle/person-control'
 import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
+import { createRepoAwarePluginVerifier } from '../src/main/plugins/package-verifier'
 import { settingsPeer } from './plugin-disclosure-fixtures'
 import { PluginPackageVault } from '../src/main/plugins/lifecycle/vault'
 import { parseRepoPluginList, loadRepoPluginList } from '../src/main/plugins/catalogue/repo-list'
@@ -47,6 +48,7 @@ function fixture(
   schema = 3,
   platform: { os: 'darwin' | 'win32' | 'linux'; cpu: 'arm64' | 'x64' } = target,
   name = 'Fictional oven',
+  minAppVersion = '1.0.0',
 ) {
   const files = new Map([
     ['.config/oven settings.json', Buffer.from('{"oven":"fictional"}')],
@@ -60,7 +62,7 @@ function fixture(
     description: 'Fictional appliance',
     authors: ['Fictional Baker & Partners'],
     platforms: [platform],
-    minAppVersion: '1.0.0',
+    minAppVersion,
     permissions: { description: 'Use fictional ovens.', dataUses: ['Oven preferences'] },
     files: [...files].map(([path, body]) => ({
       path,
@@ -105,6 +107,26 @@ describe('ordinary selected package sources', () => {
       authors: f.manifest.authors,
       permissions: f.manifest.permissions,
     })
+  })
+  it('requires the actual app version for every declared generic minimum, including zero', async () => {
+    const f = fixture('1.0.0', 'fictional-oven', 3, target, 'Fictional oven', '0.0.0')
+    const inspected = await inspectPluginPackage(
+      {
+        source: 'http://localhost/fictional',
+        sha256: pluginSha256(f.archive),
+        bytes: f.archive.length,
+      },
+      { target, appVersion: '0.0.0', fetch: async () => new Response(f.archive) },
+    )
+    const catalogue = Buffer.from(JSON.stringify({ format: 3, entries: [inspected.release] }))
+    for (const appVersion of [undefined, 'fictional-invalid']) {
+      const verifier = createRepoAwarePluginVerifier({ pinnedPublicKey: null, target, appVersion })
+      expect(() =>
+        verifier
+          .verifyCatalogue(catalogue, Buffer.alloc(0))
+          .verifyPackage(inspected.release.id, inspected.release.version, f.archive),
+      ).toThrow(expect.objectContaining({ code: 'target' }))
+    }
   })
   it('reads ordinary PAX long names and dot-prefixed tar entries without the curated path vocabulary', async () => {
     const path = `.settings/${'fictional ovens '.repeat(12)}recipe.json`,

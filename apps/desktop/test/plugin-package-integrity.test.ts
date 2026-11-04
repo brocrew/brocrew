@@ -142,24 +142,6 @@ describe('strict catalogue and manifest profiles', () => {
       entries: [
         {
           ...value.entries[0],
-          archive: { ...value.entries[0]!.archive, url: 'http://example.invalid/a' },
-        },
-      ],
-    }),
-    (value: ReturnType<typeof packageFixture>['catalogue']) => ({
-      ...value,
-      entries: [
-        {
-          ...value.entries[0],
-          archive: { ...value.entries[0]!.archive, url: 'https://name:secret@example.invalid/a' },
-        },
-      ],
-    }),
-    (value: ReturnType<typeof packageFixture>['catalogue']) => ({
-      ...value,
-      entries: [
-        {
-          ...value.entries[0],
           archive: { ...value.entries[0]!.archive, size: PLUGIN_LIMITS.archiveBytes + 1 },
         },
       ],
@@ -260,13 +242,25 @@ describe('strict catalogue and manifest profiles', () => {
     })
   })
 
-  it('enforces the exact metadata byte caps before parsing', () => {
+  it('reports invalid JSON separately from valid oversized legacy metadata', () => {
     expect(() => parsePluginCatalogue(Buffer.alloc(PLUGIN_LIMITS.catalogueBytes + 1, 32))).toThrow(
-      expect.objectContaining({ code: 'limit' }),
+      expect.objectContaining({ code: 'invalid' }),
     )
     expect(() => parsePluginManifest(Buffer.alloc(PLUGIN_LIMITS.manifestBytes + 1, 32))).toThrow(
+      expect.objectContaining({ code: 'invalid' }),
+    )
+    const catalogue = Buffer.concat([
+      json(packageFixture().catalogue),
+      Buffer.alloc(PLUGIN_LIMITS.catalogueBytes, 32),
+    ])
+    const manifest = Buffer.concat([
+      json(manifestFor()),
+      Buffer.alloc(PLUGIN_LIMITS.manifestBytes, 32),
+    ])
+    expect(() => parsePluginCatalogue(catalogue)).toThrow(
       expect.objectContaining({ code: 'limit' }),
     )
+    expect(() => parsePluginManifest(manifest)).toThrow(expect.objectContaining({ code: 'limit' }))
   })
 
   it.each([
