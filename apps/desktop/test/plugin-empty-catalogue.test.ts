@@ -134,6 +134,7 @@ async function restarted(appVersion: string, empty: boolean) {
     repoCatalogueSha256: view.sha256,
     target: f.opts.target,
     catalogue: { bytes: view.bytes, signature: Buffer.alloc(0) },
+    download: f.opts.download,
     projection: projection(f.events).sink,
     propose() {},
   })
@@ -179,8 +180,34 @@ async function restarted(appVersion: string, empty: boolean) {
   recordGuards()
   expect(fetch).not.toHaveBeenCalled()
   if (empty) {
-    await expect(client.install('chrome')).rejects.toThrow()
-    await expect(client.update!('chrome')).rejects.toThrow()
+    const selected = await client.inspectPackage!('chrome')
+    expect(selected.ref).toMatchObject({
+      sha256: pluginSha256(f.pkg.archive),
+      bytes: f.pkg.archive.length,
+    })
+    expect(selected.details).toMatchObject({
+      authors: null,
+      permissions: f.pkg.manifest.permissions,
+      manifestSha256: f.pkg.release.manifestSha256,
+    })
+    await expect(
+      client.inspectPackage!({ ...selected.ref, bytes: selected.ref.bytes + 1 }),
+    ).rejects.toThrow('The selected package byte count does not match its archive.')
+    expect(f.state.exportActivation().entries[0]?.installId).toBe(installedBefore.installId)
+    const starts = f.starts()
+    await client.install('chrome')
+    const reinstalled = f.state.exportActivation().entries[0]!
+    expect(reinstalled.installId).not.toBe(installedBefore.installId)
+    expect(reinstalled.release).toEqual(installedBefore.release)
+    await client.update!('chrome')
+    const updated = f.state.exportActivation().entries[0]!
+    expect(updated.installId).toBe(reinstalled.installId)
+    expect(updated.release).toEqual(reinstalled.release)
+    expect(updated.releaseRevision).toBe(reinstalled.releaseRevision + 1)
+    expect(f.starts()).toBe(starts + 2)
+    expect(f.state.inspect().pending).toBeNull()
+    expect(f.events.slice(refreshed)).not.toContain('remove-data chrome')
+    expect(fetch).not.toHaveBeenCalled()
   }
   await client.uninstall('chrome')
   expect((await client.catalogue()).every((card) => !card.installed)).toBe(true)

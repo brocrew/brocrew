@@ -3,7 +3,6 @@ import * as nodeHost from '../src/main/plugins/node-host'
 import { parsePluginManifest } from '../src/main/plugins/package-schema'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
 import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
-import { connectPluginSettings as oldClient } from './fixtures/plugin-update-parent/lifecycle-settings-client'
 import { servePersonPluginControl } from '../src/main/plugins/lifecycle/person-control'
 import { parseRepoPluginList } from '../src/main/plugins/catalogue/repo-list'
 import { pluginSha256 } from '../src/main/plugins/package-digests'
@@ -127,7 +126,7 @@ describe.skipIf(process.platform === 'win32')('independent owned contributions',
     expect(updated.current()).toBe(false)
     expect(get.call(f.controller, restored, f.pkg.manifest.id).current()).toBe(true)
   })
-  it('keeps an old frozen source admitted when the new owner uses a versioned source', async () => {
+  it('installs exact caller-selected legacy bytes while the owner uses a different versioned source', async () => {
     const f = await fixture()
     const legacy = repoListFor(f.pkg.release)
     const raw = Buffer.from(
@@ -148,6 +147,7 @@ describe.skipIf(process.platform === 'win32')('independent owned contributions',
       legacyRepoList: { bytes: legacyRaw, sha256: pluginSha256(legacyRaw), appVersion: '1.0.0' },
     }
     const controller = await PluginLifecycleController.open(options)
+    closers.push(() => controller.drain())
     const bridge = await servePersonPluginControl({
       root: f.root,
       key: 'b'.repeat(64),
@@ -155,7 +155,7 @@ describe.skipIf(process.platform === 'win32')('independent owned contributions',
       read: async () => ({}),
     })
     closers.push(() => bridge.close())
-    const client = await oldClient({
+    const client = await connectPluginSettings({
       root: f.root,
       path: bridge.path,
       personKey: 'b'.repeat(64),
@@ -163,11 +163,31 @@ describe.skipIf(process.platform === 'win32')('independent owned contributions',
       repoCatalogueSha256: old.sha256,
       target: f.opts.target,
       catalogue: { bytes: old.bytes, signature: Buffer.alloc(0) },
+      download: f.opts.download,
       projection: projection().sink,
       propose() {},
     })
     closers.push(() => client.close())
     expect((await client.catalogue()).map((entry) => entry.id)).toEqual([f.pkg.manifest.id])
+    const selected = await client.inspectPackage!(f.pkg.manifest.id)
+    expect(selected.ref).toMatchObject({
+      sha256: pluginSha256(f.pkg.archive),
+      bytes: f.pkg.archive.length,
+    })
+    expect(selected.details).toMatchObject({
+      authors: null,
+      permissions: f.pkg.manifest.permissions,
+    })
+    await client.applyPackage!(selected.ref, 'install')
+    expect(f.state.currentInstallation(f.pkg.manifest.id)?.release).toMatchObject({
+      version: f.pkg.manifest.version,
+      archiveSha256: selected.ref.sha256,
+      manifestSha256: f.pkg.release.manifestSha256,
+    })
+    const page = await client.screen(f.pkg.manifest.id)
+    expect(page.current(page.binding)).toBe(true)
+    expect(page.verified.readFile('plugin.json')).toEqual(Uint8Array.from(f.pkg.manifestBytes))
+    expect(f.state.inspect().pending).toBeNull()
   })
   it('negotiates contribution support without expanding the strict attach reply', async () => {
     const f = await fixture()

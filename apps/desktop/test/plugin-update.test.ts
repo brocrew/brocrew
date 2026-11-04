@@ -120,7 +120,20 @@ describe.skipIf(process.platform === 'win32')(
       const starts = f.starts()
       await f.controller.update(f.handle, 'whatsapp', operationId)
       expect(f.starts()).toBe(starts)
-      await expect(f.controller.update(f.handle, 'whatsapp')).rejects.toThrow()
+      await f.controller.update(f.handle, 'whatsapp')
+      const selectedAgain = f.state.exportActivation().entries[0]!
+      expect(selectedAgain).toMatchObject({
+        installId: after.installId,
+        release: after.release,
+        configRevision: after.configRevision,
+        releaseRevision: after.releaseRevision + 1,
+      })
+      expect(selectedAgain.incarnation).not.toBe(after.incarnation)
+      expect(f.starts()).toBe(starts + 1)
+      expect(await ledger.revision(selectedAgain.installId)).toBe(revision)
+      expect(await readFile(join(f.data, 'login'), 'utf8')).toBe('fictional-paired-phone')
+      expect(await readFile(join(f.data, 'settings'), 'utf8')).toBe('{"fictionalGroup":true}')
+      expect(fetch).not.toHaveBeenCalled()
     })
     it.each(['staged', 'prepared', 'ready', 'receipted', 'activated'] as const)(
       'recovers after %s to one complete version without touching login or settings',
@@ -202,7 +215,7 @@ describe.skipIf(process.platform === 'win32')(
       expect(f.state.exportActivation().entries[0]?.release.version).toBe('0.1.0')
       expect(f.state.inspect().pending).toBeNull()
     })
-    it('person control refreshes the trusted source and updates while revoking a stale screen', async () => {
+    it('person control uses caller-selected catalogue bytes and updates while revoking a stale screen', async () => {
       const f = await setup(true)
       await f.controller.detach(f.handle)
       let offered = f.old
@@ -225,6 +238,7 @@ describe.skipIf(process.platform === 'win32')(
         target: f.opts.target,
         repoCatalogueSha256: pluginSha256(f.old.bytes),
         catalogue: { bytes: f.old.bytes, signature: Buffer.alloc(0) },
+        download: f.opts.download,
         projection: projection().sink,
         propose() {},
       })
@@ -232,10 +246,29 @@ describe.skipIf(process.platform === 'win32')(
         const screen = await client.screen('whatsapp')
         expect(screen.current(screen.binding)).toBe(true)
         offered = f.next
-        await expect(client.refreshCatalogue!('0'.repeat(64))).rejects.toThrow()
+        const before = f.state.inspect()
+        await client.refreshCatalogue!('0'.repeat(64))
         expect((await client.catalogue())[0]?.updateVersion).toBeUndefined()
-        await client.refreshCatalogue!(pluginSha256(f.next.bytes))
+        expect(f.state.inspect()).toEqual(before)
+        expect(screen.current(screen.binding)).toBe(true)
+        await client.refreshCatalogue!(pluginSha256(f.next.bytes), {
+          bytes: f.next.bytes,
+          signature: Buffer.alloc(0),
+        })
         expect((await client.catalogue())[0]?.updateVersion).toBe('0.1.3')
+        const selected = await client.inspectPackage!('whatsapp')
+        expect(selected.ref).toMatchObject({
+          sha256: pluginSha256(f.next.archive),
+          bytes: f.next.archive.length,
+        })
+        expect(selected.details).toMatchObject({
+          authors: null,
+          permissions: f.next.manifest.permissions,
+        })
+        await expect(
+          client.inspectPackage!({ ...selected.ref, bytes: selected.ref.bytes + 1 }),
+        ).rejects.toThrow('The selected package byte count does not match its archive.')
+        expect(screen.current(screen.binding)).toBe(true)
         await client.update!('whatsapp')
         expect(screen.current(screen.binding)).toBe(false)
         const nextScreen = await client.screen('whatsapp')
