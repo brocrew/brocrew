@@ -14,6 +14,7 @@ import { createRepoAwarePluginVerifier, type VerifiedPluginPackage } from '../pa
 import { PluginSupervisorError } from '../supervisor/protocol'
 import { downloadPluginArchive } from './download'
 import { LifecycleEffects, type Effect } from './files'
+import { equalState, OperationRequest } from '../state/format'
 import { PluginPackageVault } from './vault'
 import type {
   LifecycleOptions,
@@ -285,6 +286,7 @@ export class PluginLifecycleController {
         active = this.current(id),
         run = this.runs.get(id)
       return (
+        this.options.state.getEnabled(workspace.sink.workspaceId, id).enabled &&
         !this.blocks.has(id) &&
         active?.installId === installId &&
         run?.installId === installId &&
@@ -586,6 +588,23 @@ export class PluginLifecycleController {
     void prepared
     return this.installMutation(handle, id, operationId)
   }
+  private prepareStateOperation(request: OperationRequest) {
+    const prior = this.options.state.operation(request.operationId)
+    if (prior?.status === 'prepared' && !this.options.state.inspect().pending) {
+      const original = prior.operation.request
+      const retry = OperationRequest.parse({
+        ...request,
+        consent: {
+          ...request.consent,
+          at: original.consent.at,
+          expectedSequence: original.consent.expectedSequence,
+        },
+      })
+      if (!equalState(retry, original)) return refuse()
+      return this.options.state.prepare(original)
+    }
+    return this.options.state.prepare(request)
+  }
   private async installMutation(
     handle: LifecycleWorkspace,
     id: string,
@@ -603,10 +622,8 @@ export class PluginLifecycleController {
       await this.mutationFence(async () => {
         if (!selected && preflight && this.options.catalogue !== preflight.proof) return refuse()
         if (this.requiresPreparedMutations()) token = this.block(id)
-        const prior = this.options.state
-          .inspect()
-          .operations.find((one) => one.operation.request.operationId === operationId)
-        if (prior) {
+        const prior = this.options.state.operation(operationId)
+        if (prior && !(prior.status === 'prepared' && !this.options.state.inspect().pending)) {
           if (
             prior.operation.request.consent.action !== 'install' ||
             prior.operation.request.consent.pluginId !== id ||
@@ -649,7 +666,7 @@ export class PluginLifecycleController {
           before = state.guards.find((one) => one.pluginId === id)
         if (!workspace.live) return refuse()
         const cohort = [...this.workspaces.values()].filter((one) => one.live)
-        const operation = this.options.state.prepare({
+        const operation = this.prepareStateOperation({
           workspaces: cohort.map((one) => one.sink.workspaceId).sort(),
           operationId,
           snapshot: null,
@@ -716,9 +733,7 @@ export class PluginLifecycleController {
           for (const [one, receipt] of receipts) one.receipts.set(id, receipt)
           this.options.fault?.('activated')
         } catch (error) {
-          const committed = this.options.state
-            .inspect()
-            .operations.find((one) => one.operation.request.operationId === operationId)
+          const committed = this.options.state.operation(operationId)
           if (
             committed?.status === 'completed' &&
             committed.operation.request.workspaces !== undefined
@@ -786,10 +801,8 @@ export class PluginLifecycleController {
         if (!selected && preflight && this.options.catalogue !== preflight.proof) return refuse()
         if (this.requiresPreparedMutations()) token = this.block(id)
         const state = this.options.state.inspect()
-        const prior = state.operations.find(
-          (one) => one.operation.request.operationId === operationId,
-        )
-        if (prior) {
+        const prior = this.options.state.operation(operationId)
+        if (prior && !(prior.status === 'prepared' && !state.pending)) {
           if (
             prior.operation.request.consent.action !== 'update' ||
             prior.operation.request.consent.pluginId !== id
@@ -838,7 +851,7 @@ export class PluginLifecycleController {
         this.options.state.requireUpdateReader()
         this.options.fault?.('update-fenced')
         const updateState = this.options.state.inspect()
-        const operation = this.options.state.prepare({
+        const operation = this.prepareStateOperation({
           operationId,
           snapshot: null,
           workspaces: [...this.workspaces.values()]
@@ -1110,9 +1123,7 @@ export class PluginLifecycleController {
       try {
         this.options.state.complete(effect.operationId)
       } catch {
-        const completed = this.options.state
-          .inspect()
-          .operations.find((one) => one.operation.request.operationId === effect.operationId)
+        const completed = this.options.state.operation(effect.operationId)
         if (completed?.status !== 'completed') return pending()
       }
     }
@@ -1129,7 +1140,7 @@ export class PluginLifecycleController {
     const state = this.options.state.inspect(),
       before = this.current(id)
     if (!before) return refuse()
-    const operation = this.options.state.prepare({
+    const operation = this.prepareStateOperation({
       operationId,
       workspaces: [...this.workspaces.values()]
         .filter((one) => one.live)
@@ -1185,9 +1196,8 @@ export class PluginLifecycleController {
             ? state.pending.request.operationId
             : operationId
         const prior =
-          state.operations.find((one) => one.operation.request.operationId === operationId) ??
-          state.operations.find((one) => one.operation.request.operationId === pendingId)
-        if (prior) {
+          this.options.state.operation(operationId) ?? this.options.state.operation(pendingId)
+        if (prior && !(prior.status === 'prepared' && !state.pending)) {
           if (
             prior.operation.request.consent.action !== 'uninstall' ||
             prior.operation.request.consent.pluginId !== id
@@ -1236,7 +1246,7 @@ export class PluginLifecycleController {
   }
   private async recover(): Promise<void> {
     const state = this.options.state.inspect()
-    for (const record of state.operations) {
+    for (const record of this.options.state.recoveryOperations()) {
       const operation = record.operation
       if (operation.request.consent.action === 'global-restore') continue
       const next = operation.next!,
@@ -1431,13 +1441,16 @@ export class PluginLifecycleController {
         )
           return []
         const run = this.runs.get(id)!
+        const choice = this.options.state.getEnabled(workspaceId, id)
         return [
           {
             ...view,
             runId: run.run.runId,
             exited: run.run.exited,
             current: () =>
-              this.runs.get(id) === run && this.admitted(handle, id, view.installation.installId),
+              this.options.state.getEnabled(workspaceId, id).revision === choice.revision &&
+              this.runs.get(id) === run &&
+              this.admitted(handle, id, view.installation.installId),
           },
         ]
       } catch {
@@ -1449,6 +1462,7 @@ export class PluginLifecycleController {
   contributions(handle: LifecycleWorkspace, id: string, switchRevision = 0) {
     const view = this.screen(handle, id)
     const running = this.runs.get(id)!
+    const choice = this.options.state.getEnabled(view.workspaceId, id)
     const identity = {
       pluginId: id,
       releaseDigest: view.installation.release.archiveSha256,
@@ -1462,6 +1476,7 @@ export class PluginLifecycleController {
       view.package,
       identity,
       () =>
+        this.options.state.getEnabled(view.workspaceId, id).revision === choice.revision &&
         this.admitted(handle, id, identity.installId) &&
         this.runs.get(id)?.run.runId === identity.runId &&
         this.current(id)?.incarnation === identity.incarnation,

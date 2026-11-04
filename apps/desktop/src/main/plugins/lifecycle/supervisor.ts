@@ -33,7 +33,7 @@ export async function createSupervisorLifecycle(options: {
         start: (spec) => host.prepare(spec),
         removeCode: (id, digest) => options.host.removePackage(id, digest),
         removeData: (id) => options.host.removeData(id),
-        // PluginSupervisor.start refuses every unclean predecessor before it can issue this seam.
+        // The runtime adapter uses the current owner and its captured process handles.
         previousOwnerClean: async () => true,
       },
     }),

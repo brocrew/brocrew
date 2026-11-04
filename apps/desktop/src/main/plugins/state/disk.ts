@@ -1,340 +1,99 @@
 import { randomUUID } from 'node:crypto'
-import { isMainThread } from 'node:worker_threads'
-import { PluginFence } from './fence'
+import Database from 'better-sqlite3'
 import {
   closeSync,
-  constants,
-  fstatSync,
+  existsSync,
   fsyncSync,
-  linkSync,
-  lstatSync,
   mkdirSync,
-  readSync,
-  readdirSync,
-  rmdirSync,
+  openSync,
+  readFileSync,
+  renameSync,
   unlinkSync,
   writeFileSync,
-  type BigIntStats,
 } from 'node:fs'
-import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
-import { createFreshFile, openNotThroughALink } from '@brobot2/runtime/provider-home'
+import { join, resolve } from 'node:path'
+import { z } from 'zod'
+import { PluginFence } from './fence'
+import { syncDirectory } from '../private-files'
 import {
-  isInsideCheckedRoot,
-  isPrivateEntry,
-  isWithinOrSame,
-  openDirectoryNotThroughALink,
-  realPath,
-  syncDirectory,
-} from '../private-files'
-import { pluginSha256 } from '../package-digests'
-import {
+  WorkspacePluginChoice,
+  workspacePluginKey,
   decodeState,
   encodeState,
-  equalState,
+  Event,
+  Installation,
   JournalRecord,
-  PluginStateError,
-  STATE_LIMITS,
+  Operation,
+  ProjectionReceipt,
   refuseState,
-  type ActivationRef,
-  type ActivationSnapshot,
-  type Operation,
-  type ResolutionReservation,
 } from './format'
-import {
-  foldRecord,
-  newLifecycle,
-  resolvedSnapshot,
-  snapshotReference,
-  type LifecycleState,
-} from './machine'
+import { foldRecord, type LifecycleState, newLifecycle } from './machine'
+import { readLegacyPluginState } from './legacy'
 
 export interface PluginDiskOptions {
-  /** Explicit global plugin root. There is deliberately no workspace/live-root fallback. */
   root: string
   workspaceRoots: readonly string[]
-  /** Fault seam for inert scratch-folder controls only. */
   fault?: (point: 'staged' | 'published' | 'durable') => void
 }
-interface Pin {
-  path: string
-  stat: BigIntStats
-  fd: number
+const OperationRecord = z.object({
+  operation: Operation,
+  status: z.enum(['prepared', 'completed', 'aborted']),
+})
+type OperationRecord = z.infer<typeof OperationRecord>
+const Snapshot = z.object({
+  format: z.literal(2),
+  rootId: z.uuid(),
+  epoch: z.uuid(),
+  sequence: z.number().int().nonnegative().safe(),
+  installations: z.array(Installation),
+  active: z.array(Installation),
+  operations: z.array(OperationRecord).optional(),
+  recentOperations: z.array(OperationRecord).optional(),
+  pending: Operation.nullable(),
+  projections: z.array(ProjectionReceipt),
+  workspaceEnabled: z.array(WorkspacePluginChoice).optional(),
+  workspaceTitlesEnabled: z.array(WorkspacePluginChoice).optional(),
+})
+function decodeSnapshot(bytes: Buffer): LifecycleState {
+  const value = decodeState(bytes, Snapshot),
+    state = newLifecycle()
+  state.rootId = value.rootId
+  state.epoch = value.epoch
+  state.sequence = value.sequence
+  state.head = String(value.sequence)
+  state.guards = new Map(value.installations.map((entry) => [entry.pluginId, entry]))
+  state.admitted = new Map(value.active.map((entry) => [entry.pluginId, entry]))
+  state.operations = new Map(
+    (value.recentOperations ?? value.operations ?? []).map((entry) => [
+      entry.operation.request.operationId,
+      entry,
+    ]),
+  )
+  state.pending = value.pending
+  state.projections = new Map(
+    value.projections.map((entry) => [`${entry.workspaceId}/${entry.pluginId}`, entry]),
+  )
+  for (const field of ['workspaceEnabled', 'workspaceTitlesEnabled'] as const)
+    state[field] = new Map(
+      (value[field] ?? []).map((entry) => [
+        workspacePluginKey(entry.workspaceId, entry.pluginId),
+        entry,
+      ]),
+    )
+  return state
 }
-interface Counterpart {
-  folder: string
-  name: string
+function readState(root: string): LifecycleState {
+  try {
+    return decodeSnapshot(readFileSync(join(root, 'installed-state.json')))
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code !== 'ENOENT') throw error
+    return readLegacyPluginState(root)
+  }
 }
-const same = (left: BigIntStats, right: BigIntStats) =>
-  left.dev === right.dev && left.ino === right.ino
-const stageName = /^\.stage-[0-9a-f-]{36}$/
-const recordName = /^\d{8}\.json$/
-const sealName = /^\d{8}-[a-f0-9]{64}\.seal$/
-
-/** Shared pinned journal reader. The display entry point never opens the writer disk or fence. */
-class PluginJournalReader {
-  protected readonly pins: Pin[] = []
-  readonly root: string
-  readonly guard: string
-  readonly activations: string
-  readonly reservations: string
-  protected closed = false
-  constructor(
-    protected readonly options: PluginDiskOptions,
-    create = false,
-  ) {
-    this.root = resolve(options.root)
-    this.guard = join(this.root, 'lifecycle-guard')
-    this.activations = join(this.root, 'activations')
-    this.reservations = join(this.root, 'resolution-reservations')
-    try {
-      if (!isMainThread) refuseState('unsupported')
-      if (!isAbsolute(options.root)) refuseState('unsafe-path')
-      const parent = dirname(this.root)
-      const canonicalParent = realPath(parent)
-      if (canonicalParent !== parent) refuseState('unsafe-path')
-      if (!isInsideCheckedRoot(canonicalParent)) refuseState('unsupported')
-      const canonicalRoot = create
-        ? join(canonicalParent, basename(this.root))
-        : realPath(this.root)
-      const workspaces = options.workspaceRoots.map((workspace) => {
-        const path = realPath(workspace)
-        const stat = lstatSync(path, { bigint: true })
-        if (!stat.isDirectory()) refuseState('unsafe-path')
-        return { path, stat }
-      })
-      if (workspaces.some((workspace) => isWithinOrSame(workspace.path, canonicalRoot)))
-        refuseState('unsafe-path')
-      // Canonical string comparison is supplemented by physical ancestry for case aliases.
-      for (let ancestor = create ? canonicalParent : canonicalRoot; workspaces.length > 0;) {
-        const stat = lstatSync(ancestor, { bigint: true })
-        if (workspaces.some((workspace) => same(stat, workspace.stat))) refuseState('unsafe-path')
-        const above = dirname(ancestor)
-        if (above === ancestor) break
-        ancestor = above
-      }
-      this.pin(parent)
-    } catch (error) {
-      this.close()
-      throw error instanceof PluginStateError ? error : new PluginStateError('unsafe-path')
-    }
-  }
-  protected pinExistingDirectories(): void {
-    this.pin(this.root)
-    this.pin(this.guard)
-    this.pin(this.activations)
-    this.check()
-  }
-
-  protected privateDirectory(stat: BigIntStats): void {
-    if (!stat.isDirectory() || stat.isSymbolicLink() || !isPrivateEntry(stat))
-      refuseState('unsafe-path')
-  }
-  protected pin(path: string): void {
-    const stat = lstatSync(path, { bigint: true })
-    this.privateDirectory(stat)
-    const fd = openDirectoryNotThroughALink(path)
-    try {
-      const held = fstatSync(fd, { bigint: true })
-      this.privateDirectory(held)
-      if (!same(stat, held)) refuseState('unsafe-path')
-      this.pins.push({ path, stat, fd })
-    } catch (error) {
-      closeSync(fd)
-      throw error
-    }
-  }
-  protected check(): void {
-    if (this.closed) refuseState('unsafe-path')
-    for (const pin of this.pins) {
-      const now = lstatSync(pin.path, { bigint: true })
-      this.privateDirectory(now)
-      if (!same(now, pin.stat) || !same(fstatSync(pin.fd, { bigint: true }), pin.stat))
-        refuseState('unsafe-path')
-    }
-  }
-  protected file(stat: BigIntStats): void {
-    if (
-      !stat.isFile() ||
-      !isPrivateEntry(stat) ||
-      stat.nlink !== 1n ||
-      stat.size > BigInt(STATE_LIMITS.recordBytes)
-    )
-      refuseState('unsafe-path')
-  }
-  protected links(
-    folder: string,
-    name: string,
-    held: BigIntStats,
-    counterparts: readonly Counterpart[],
-  ): void {
-    if (held.nlink !== 2n) return
-    if (
-      counterparts.some((candidate) => {
-        try {
-          const stat = lstatSync(join(candidate.folder, candidate.name), { bigint: true })
-          return stat.isFile() && same(stat, held)
-        } catch {
-          return false
-        }
-      })
-    )
-      return
-    // Prove the second link is our private crash stage before reading any bytes.
-    const names = readdirSync(folder)
-    if (names.length > STATE_LIMITS.records * 2) refuseState('limit')
-    if (
-      !names.some((candidate) => {
-        if (candidate === name || !stageName.test(candidate)) return false
-        const stat = lstatSync(join(folder, candidate), { bigint: true })
-        return stat.isFile() && same(stat, held)
-      })
-    )
-      refuseState('unsafe-path')
-  }
-  protected read(folder: string, name: string, counterparts: readonly Counterpart[] = []): Buffer {
-    this.check()
-    const path = join(folder, name)
-    const fd = openNotThroughALink(path, constants.O_RDONLY | constants.O_NONBLOCK)
-    try {
-      const held = fstatSync(fd, { bigint: true })
-      this.file(held)
-      this.links(folder, name, held, counterparts)
-      const bytes = Buffer.alloc(Number(held.size) + 1)
-      let at = 0
-      for (;;) {
-        const n = readSync(fd, bytes, at, bytes.length - at, null)
-        if (n === 0) break
-        at += n
-        if (at === bytes.length) refuseState('corrupt')
-      }
-      const after = fstatSync(fd, { bigint: true })
-      if (
-        at !== Number(held.size) ||
-        !same(held, after) ||
-        held.size !== after.size ||
-        !same(lstatSync(path, { bigint: true }), held)
-      )
-        refuseState('corrupt')
-      this.check()
-      return bytes.subarray(0, at)
-    } finally {
-      closeSync(fd)
-    }
-  }
-  protected readPublished(
-    folder: string,
-    name: string,
-    _reservation: string,
-    _source: string,
-  ): Buffer {
-    void _reservation
-    void _source
-    return this.read(folder, name)
-  }
-  protected readJournal(name: string, _prior: ResolutionReservation | null): Buffer {
-    void _prior
-    return this.read(this.guard, name)
-  }
-  protected loadLocked(keptActivations?: Set<string>, repair = false): LifecycleState {
-    try {
-      this.check()
-      const names = readdirSync(this.guard)
-      if (
-        names.length > STATE_LIMITS.records * 2 ||
-        names.some(
-          (name) => !recordName.test(name) && !stageName.test(name) && !sealName.test(name),
-        )
-      )
-        refuseState('corrupt')
-      const records = names.filter((name) => recordName.test(name)).sort()
-      if (records.length === 0) refuseState('missing-guard')
-      if (records.length > STATE_LIMITS.records) refuseState('limit')
-      const recordNames = new Set(records)
-      const seals = new Map<string, string>()
-      // Even a missing final record must not rewind the last denying lifecycle floor.
-      for (const name of names.filter((name) => sealName.test(name))) {
-        const sequence = name.slice(0, 8)
-        if (seals.has(sequence) || !recordNames.has(`${sequence}.json`)) refuseState('corrupt')
-        seals.set(sequence, name)
-      }
-      const state = newLifecycle()
-      let total = 0
-      records.forEach((name, index) => {
-        if (name !== `${String(index).padStart(8, '0')}.json`) refuseState('corrupt')
-        const priorReservation = state.reservation
-        const bytes = this.readJournal(name, priorReservation)
-        total += bytes.length
-        if (total > STATE_LIMITS.journalBytes) refuseState('limit')
-        const checksum = pluginSha256(bytes)
-        const record = decodeState(bytes, JournalRecord)
-        foldRecord(state, record, checksum)
-        if (record.event.kind === 'completed' || record.event.kind === 'aborted')
-          keptActivations?.add(record.event.activation.name)
-        const expectedSeal = `${name.slice(0, 8)}-${checksum}.seal`
-        const existingSeal = seals.get(name.slice(0, 8))
-        if (existingSeal !== undefined && existingSeal !== expectedSeal) refuseState('corrupt')
-        if (existingSeal === undefined && !repair) refuseState('corrupt')
-        const reservation =
-          record.event.kind === 'prepared' ? record.event.reservation : priorReservation
-        const reservedName =
-          record.event.kind === 'prepared'
-            ? 'prepare.seal'
-            : record.event.kind === 'completed'
-              ? 'complete.seal'
-              : 'abort.seal'
-        if (existingSeal === undefined) this.repairSeal(expectedSeal, reservation?.id, reservedName)
-        else if (
-          (reservation
-            ? this.readPublished(this.guard, expectedSeal, reservation.id, reservedName)
-            : this.read(this.guard, expectedSeal)
-          ).length !== 0
-        )
-          refuseState('corrupt')
-      })
-      this.check()
-      return state
-    } catch (error) {
-      throw error instanceof PluginStateError ? error : new PluginStateError('corrupt')
-    }
-  }
-  readActivation(ref: ActivationRef): Buffer {
-    try {
-      const bytes = this.read(this.activations, ref.name)
-      if (pluginSha256(bytes) !== ref.sha256) refuseState('corrupt')
-      return bytes
-    } catch (error) {
-      throw error instanceof PluginStateError ? error : new PluginStateError('corrupt')
-    }
-  }
-  close(): void {
-    if (this.closed) return
-    for (const pin of this.pins.splice(0)) closeSync(pin.fd)
-    this.closed = true
-  }
-  protected repairSeal(_name: string, _reservation: string | undefined, _source: string): void {
-    void _name
-    void _reservation
-    void _source
-    refuseState('corrupt')
-  }
-  openForDisplay(): void {
-    this.pinExistingDirectories()
-  }
-  descriptor(id: string) {
-    const stamp = () => {
-      this.check()
-      const names = readdirSync(this.guard).sort()
-      if (names.length > STATE_LIMITS.records * 2) refuseState('limit')
-      return names
-        .map((name) => {
-          const s = lstatSync(join(this.guard, name), { bigint: true })
-          return [name, s.dev, s.ino, s.size, s.mtimeNs, s.ctimeNs].join(':')
-        })
-        .join('\n')
-    }
-    const before = stamp(),
-      state = this.loadLocked(undefined, false)
-    if (state.pending !== null || before !== stamp()) refuseState('busy')
+/** Read-only display uses the same atomic selection as production, including old journal input. */
+export function readInstalledPluginDescriptor(options: PluginDiskOptions, id: string) {
+  try {
+    const state = readState(resolve(options.root))
     const installed = state.admitted.get(id)
     if (!installed) return null
     return Object.freeze({
@@ -342,503 +101,266 @@ class PluginJournalReader {
       archiveSha256: installed.release.archiveSha256,
       manifestSha256: installed.release.manifestSha256,
     })
-  }
-}
-/** Display evidence only. No mkdir, SQLite, fence, repair, reclaim or admission. */
-export function readInstalledPluginDescriptor(options: PluginDiskOptions, id: string) {
-  let reader: PluginJournalReader | undefined
-  try {
-    reader = new PluginJournalReader(options)
-    reader.openForDisplay()
-    return reader.descriptor(id)
   } catch {
-    // Missing, partial, busy or unsafe data is an unknown installed side, never an action state.
     return null
-  } finally {
-    reader?.close()
   }
 }
 
-/** Kept-current journal + immutable activation objects, never a workspace DB. */
-export class PluginStateDisk extends PluginJournalReader {
-  private fence: PluginFence | undefined
-  constructor(options: PluginDiskOptions, create = false, existingOnly = false) {
-    super(options, create)
-    try {
-      if (create) mkdirSync(this.root, { mode: 0o700 })
-      this.pin(this.root)
-      if (create) {
-        mkdirSync(this.guard, { mode: 0o700 })
-        mkdirSync(this.activations, { mode: 0o700 })
-        syncDirectory(this.pins[1]!.fd)
-      }
-      this.pin(this.guard)
-      this.pin(this.activations)
-      try {
-        lstatSync(this.reservations)
-      } catch (error) {
-        if (existingOnly || !(error instanceof Error && 'code' in error && error.code === 'ENOENT'))
-          throw error
-        this.check()
-        mkdirSync(this.reservations, { mode: 0o700 })
-        syncDirectory(this.pins[1]!.fd)
-      }
-      this.pin(this.reservations)
-      this.fence = PluginFence.acquire(join(this.root, 'writer-lock.sqlite'), existingOnly)
-      this.check()
-      if (create) syncDirectory(this.pins[0]!.fd)
-    } catch (error) {
-      this.close()
-      throw error instanceof PluginStateError ? error : new PluginStateError('unsafe-path')
+/** One atomic selection file, with ordinary serialized writes across app copies. */
+export class PluginStateDisk {
+  readonly root: string
+  private lock?: PluginFence
+  private closed = false
+  private archive?: Database.Database
+  constructor(
+    private readonly options: PluginDiskOptions,
+    _create = false,
+    private readonly readOnly = false,
+  ) {
+    void _create
+    this.root = resolve(options.root)
+    if (!readOnly) {
+      mkdirSync(this.root, { recursive: true })
+      this.lock = PluginFence.acquire(join(this.root, 'writer-lock.sqlite'))
     }
   }
-  protected override check(): void {
-    super.check()
-    this.fence?.check(join(this.root, 'writer-lock.sqlite'))
-  }
-  protected override file(stat: BigIntStats): void {
-    if (
-      !stat.isFile() ||
-      !isPrivateEntry(stat) ||
-      (stat.nlink !== 1n && stat.nlink !== 2n) ||
-      stat.size > BigInt(STATE_LIMITS.recordBytes)
-    )
-      refuseState('unsafe-path')
-  }
-  protected withReservation<T>(id: string, create: boolean, run: (folder: string) => T): T {
-    if (!/^[a-f0-9-]{36}$/.test(id)) refuseState('corrupt')
-    this.check()
-    const folder = join(this.reservations, id)
-    if (create) {
-      if (readdirSync(this.reservations).length >= STATE_LIMITS.records * 2) refuseState('limit')
-      mkdirSync(folder, { mode: 0o700 })
-      syncDirectory(this.pins.find((pin) => pin.path === this.reservations)!.fd)
-    }
-    this.pin(folder)
-    try {
-      return run(folder)
-    } finally {
-      closeSync(this.pins.pop()!.fd)
-    }
-  }
-  protected override repairSeal(
-    name: string,
-    reservation: string | undefined,
-    source: string,
-  ): void {
-    if (reservation)
-      this.withReservation(reservation, false, (folder) => {
-        this.publishReserved(this.guard, name, folder, source, Buffer.alloc(0))
-      })
-    else this.put(this.guard, name, Buffer.alloc(0))
-  }
-  protected override readPublished(
-    folder: string,
-    name: string,
-    reservation: string,
-    source: string,
-  ): Buffer {
-    if (lstatSync(join(folder, name), { bigint: true }).nlink === 1n) return this.read(folder, name)
-    return this.withReservation(reservation, false, (reserved) =>
-      this.read(folder, name, [{ folder: reserved, name: source }]),
-    )
-  }
-  protected override readJournal(name: string, prior: ResolutionReservation | null): Buffer {
-    if (lstatSync(join(this.guard, name), { bigint: true }).nlink === 1n)
-      return this.read(this.guard, name)
-    if (prior)
-      return this.withReservation(prior.id, false, (folder) =>
-        this.read(this.guard, name, [
-          { folder, name: 'complete.record' },
-          { folder, name: 'abort.record' },
-        ]),
-      )
-    const target = lstatSync(join(this.guard, name), { bigint: true })
-    for (const id of readdirSync(this.reservations)) {
-      const found = this.withReservation(id, false, (folder) => {
-        try {
-          if (!same(lstatSync(join(folder, 'prepare.record'), { bigint: true }), target))
-            return null
-        } catch (error) {
-          if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return null
-          throw error
-        }
-        return this.read(this.guard, name, [{ folder, name: 'prepare.record' }])
-      })
-      if (found !== null) return found
-    }
-    // Completed legacy publications may still have their verified guard-local crash stage.
-    return this.read(this.guard, name)
+  private check(): void {
+    if (this.closed) refuseState('conflict')
   }
   private exclusive<T>(run: () => T): T {
     this.check()
-    try {
-      return this.fence!.sync(this, () => {
-        this.check()
-        return run()
+    return this.lock ? this.lock.sync(this, run) : run()
+  }
+  withExclusive<T>(run: () => Promise<T>): Promise<T> {
+    this.check()
+    if (!this.lock) refuseState('conflict')
+    return this.lock.async(this, run)
+  }
+  load(_keptActivations?: Set<string>): LifecycleState {
+    void _keptActivations
+    return this.exclusive(() => readState(this.root))
+  }
+  loadForObservation(): LifecycleState {
+    return this.load()
+  }
+  private historyDatabase(): Database.Database {
+    if (this.readOnly) refuseState('conflict')
+    if (!this.archive) {
+      this.archive = new Database(join(this.root, 'operations.sqlite'), { timeout: 0 })
+      this.archive.exec(
+        'CREATE TABLE IF NOT EXISTS operations (id TEXT PRIMARY KEY, sequence INTEGER NOT NULL, value TEXT NOT NULL, status TEXT NOT NULL)',
+      )
+    }
+    return this.archive
+  }
+  private archiveOperation(record: OperationRecord, sequence: number): void {
+    this.historyDatabase()
+      .prepare(
+        'INSERT INTO operations (id, sequence, value, status) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET value = excluded.value, status = excluded.status',
+      )
+      .run(record.operation.request.operationId, sequence, JSON.stringify(record), record.status)
+  }
+  operation(id: string): OperationRecord | undefined {
+    return this.exclusive(() => {
+      const state = readState(this.root)
+      const current = state.operations.get(id)
+      if (current) return current
+      const row = this.historyDatabase()
+        .prepare('SELECT value FROM operations WHERE id = ?')
+        .get(id) as { value: string } | undefined
+      return row ? OperationRecord.parse(JSON.parse(row.value)) : undefined
+    })
+  }
+  operationHistory(view: LifecycleState): OperationRecord[] {
+    if (!existsSync(join(this.root, 'operations.sqlite'))) return [...view.operations.values()]
+    const read = (database: Database.Database) => {
+      const rows = database
+        .prepare(
+          "SELECT value FROM operations WHERE status <> 'prepared' AND sequence <= ? ORDER BY sequence, id",
+        )
+        .all(view.sequence) as Array<{ value: string }>
+      const records = new Map(
+        rows.map((row) => {
+          const value = OperationRecord.parse(JSON.parse(row.value))
+          return [value.operation.request.operationId, value]
+        }),
+      )
+      for (const [id, record] of view.operations) records.set(id, record)
+      return [...records.values()]
+    }
+    if (this.closed) {
+      const database = new Database(join(this.root, 'operations.sqlite'), {
+        readonly: true,
+        fileMustExist: true,
       })
-    } catch (error) {
-      throw error instanceof PluginStateError ? error : new PluginStateError('corrupt')
+      try {
+        return read(database)
+      } finally {
+        database.close()
+      }
     }
+    return this.exclusive(() => read(this.historyDatabase()))
   }
-  async withExclusive<T>(run: () => Promise<T>): Promise<T> {
-    this.check()
-    try {
-      return await this.fence!.async(this, async () => {
-        this.check()
-        return run()
-      })
-    } catch (error) {
-      throw error instanceof PluginStateError ? error : new PluginStateError('corrupt')
-    }
+  recoveryOperations(): OperationRecord[] {
+    return [...this.load().operations.values()]
   }
-  private publishReserved(
-    folder: string,
-    name: string,
-    reservedFolder: string,
-    reservedName: string,
-    bytes: Buffer,
-  ): void {
-    this.check()
-    if (!this.read(reservedFolder, reservedName, [{ folder, name }]).equals(bytes))
-      refuseState('corrupt')
-    this.options.fault?.('staged')
-    this.check()
-    try {
-      linkSync(join(reservedFolder, reservedName), join(folder, name))
-    } catch (error) {
-      if (!(error instanceof Error && 'code' in error && error.code === 'EEXIST')) throw error
-      if (!this.read(folder, name, [{ folder: reservedFolder, name: reservedName }]).equals(bytes))
-        refuseState('conflict')
-    }
-    this.options.fault?.('published')
-    syncDirectory(this.pins.find((pin) => pin.path === folder)!.fd)
-    this.options.fault?.('durable')
-    this.check()
+  private compact(state: LifecycleState): void {
+    const recent = new Map<string, OperationRecord>()
+    for (const record of state.operations.values())
+      recent.set(record.operation.request.consent.pluginId ?? '', record)
+    state.operations = new Map(
+      [...recent.values()].map((record) => [record.operation.request.operationId, record]),
+    )
   }
-  private put(folder: string, name: string, bytes: Buffer): void {
-    this.check()
-    if (bytes.length > STATE_LIMITS.recordBytes) refuseState('limit')
-    if (readdirSync(folder).length >= STATE_LIMITS.records * 2) refuseState('limit')
-    const stage = join(folder, `.stage-${randomUUID()}`)
-    const fd = createFreshFile(stage, 0o600)
+  private save(state: LifecycleState): void {
+    if (this.readOnly) refuseState('conflict')
+    this.compact(state)
+    const bytes = encodeState({
+      format: 2,
+      rootId: state.rootId,
+      epoch: state.epoch,
+      sequence: state.sequence,
+      installations: [...state.guards.values()],
+      active: [...state.admitted.values()],
+      recentOperations: [...state.operations.values()],
+      pending: state.pending,
+      projections: [...state.projections.values()],
+      workspaceEnabled: [...state.workspaceEnabled.values()],
+      workspaceTitlesEnabled: [...state.workspaceTitlesEnabled.values()],
+    })
+    const temporary = join(this.root, '.state-' + randomUUID())
+    const fd = openSync(temporary, 'wx', 0o600)
     try {
-      const held = fstatSync(fd, { bigint: true })
-      this.file(held)
-      if (held.nlink !== 1n) refuseState('unsafe-path')
       writeFileSync(fd, bytes)
       fsyncSync(fd)
       this.options.fault?.('staged')
-      this.check()
-      if (!same(lstatSync(stage, { bigint: true }), held)) refuseState('unsafe-path')
-      try {
-        linkSync(stage, join(folder, name))
-      } catch (error) {
-        if (!(error instanceof Error && 'code' in error && error.code === 'EEXIST')) throw error
-        if (!this.read(folder, name).equals(bytes)) {
-          this.check()
-          if (!same(lstatSync(stage, { bigint: true }), held)) refuseState('unsafe-path')
-          unlinkSync(stage)
-          syncDirectory(this.pins.find((pin) => pin.path === folder)!.fd)
-          refuseState('conflict')
+      renameSync(temporary, join(this.root, 'installed-state.json'))
+      this.options.fault?.('published')
+      if (process.platform !== 'win32') {
+        const directory = openSync(this.root, 'r')
+        try {
+          syncDirectory(directory)
+        } finally {
+          closeSync(directory)
         }
       }
-      this.options.fault?.('published')
-      const pin = this.pins.find((pin) => pin.path === folder)!
-      syncDirectory(pin.fd)
       this.options.fault?.('durable')
-      this.check()
-      if (!same(lstatSync(stage, { bigint: true }), held)) refuseState('unsafe-path')
-      unlinkSync(stage)
-      syncDirectory(pin.fd)
     } finally {
       closeSync(fd)
+      try {
+        unlinkSync(temporary)
+      } catch {
+        // Unpublished temporary files are ignored on reopening.
+      }
     }
   }
-  load(keptActivations?: Set<string>): LifecycleState {
-    return this.exclusive(() => this.loadLocked(keptActivations, true))
-  }
-  /** Display readers must not finish an interrupted owner publication. */
-  loadForObservation(): LifecycleState {
-    return this.exclusive(() => this.loadLocked(undefined, false))
-  }
-  private encodedRecord(
-    sequence: number,
-    previous: string | null,
-    publicationId: string,
-    event: JournalRecord['event'],
-  ): Buffer {
-    return encodeState({ sequence, previous, publicationId, event })
-  }
-  /** Only called with kernel exclusion: no other process can still be preparing these objects. */
+  /** Opening imports a legacy selection once; old journals and all plugin data remain untouched. */
   reclaim(): void {
-    this.exclusive(() => this.reclaimLocked())
-  }
-  private removeFile(folder: string, name: string): void {
-    this.check()
-    const path = join(folder, name)
-    const fd = openNotThroughALink(path, constants.O_RDONLY | constants.O_NONBLOCK)
-    try {
-      const held = fstatSync(fd, { bigint: true })
-      this.file(held)
-      if (held.nlink === 2n)
-        this.links(folder, name, held, [
-          ...readdirSync(folder)
-            .filter((candidate) => candidate !== name)
-            .map((candidate) => ({ folder, name: candidate })),
-          ...(folder.startsWith(this.reservations + sep)
-            ? readdirSync(this.guard).map((candidate) => ({ folder: this.guard, name: candidate }))
-            : []),
-        ])
-      if (!same(lstatSync(path, { bigint: true }), held)) refuseState('unsafe-path')
-      unlinkSync(path)
-    } finally {
-      closeSync(fd)
-    }
-  }
-  private reclaimLocked(): void {
-    const keep = new Set<string>(),
-      state = this.load(keep)
-    if (state.reservation) {
-      keep.add(state.reservation.complete.name)
-      keep.add(state.reservation.abort.name)
-    }
-    const names = readdirSync(this.reservations)
-    if (names.length > STATE_LIMITS.records * 2) refuseState('limit')
-    for (const id of names) {
-      if (id === state.reservation?.id) continue
-      this.withReservation(id, false, (folder) => {
-        const files = readdirSync(folder)
-        if (
-          files.length > STATE_LIMITS.records * 2 ||
-          files.some(
-            (name) =>
-              !stageName.test(name) &&
-              ![
-                'prepare.record',
-                'complete.record',
-                'abort.record',
-                'prepare.seal',
-                'complete.seal',
-                'abort.seal',
-              ].includes(name),
+    this.exclusive(() => {
+      const exists = existsSync(join(this.root, 'installed-state.json'))
+      const state = readState(this.root)
+      if (state.sequence < 0)
+        this.apply(state, { kind: 'created', rootId: randomUUID(), epoch: randomUUID() })
+      const database = this.historyDatabase()
+      const insert = database.prepare(
+        'INSERT OR IGNORE INTO operations (id, sequence, value, status) VALUES (?, ?, ?, ?)',
+      )
+      database.transaction(() => {
+        let sequence = 0
+        for (const record of state.operations.values())
+          insert.run(
+            record.operation.request.operationId,
+            sequence++,
+            JSON.stringify(record),
+            record.status,
           )
-        )
-          refuseState('corrupt')
-        for (const name of files) this.removeFile(folder, name)
-        syncDirectory(this.pins.find((pin) => pin.path === folder)!.fd)
-        this.check()
-        rmdirSync(folder)
-      })
-      syncDirectory(this.pins.find((pin) => pin.path === this.reservations)!.fd)
-    }
-    const activations = readdirSync(this.activations)
-    if (activations.length > STATE_LIMITS.records * 2) refuseState('limit')
-    for (const name of activations) {
-      if (keep.has(name)) continue
-      if (!stageName.test(name) && !/^\d{8}-[a-f0-9]{64}\.json$/.test(name)) refuseState('corrupt')
-      this.removeFile(this.activations, name)
-    }
-    syncDirectory(this.pins.find((pin) => pin.path === this.activations)!.fd)
+      })()
+      if (
+        exists &&
+        JSON.parse(readFileSync(join(this.root, 'installed-state.json'), 'utf8'))
+          .recentOperations !== undefined
+      )
+        return
+      this.save(state)
+    })
   }
-  private journalSize(): number {
-    return readdirSync(this.guard)
-      .filter((name) => recordName.test(name))
-      .reduce((sum, name) => sum + lstatSync(join(this.guard, name)).size, 0)
+  private current(previous: LifecycleState): LifecycleState {
+    const current = readState(this.root)
+    if (current.sequence !== previous.sequence) refuseState('conflict')
+    return current
   }
-  /** Reserve the whole two-record operation, both activation outcomes and publication inputs. */
+  private apply(state: LifecycleState, event: Event): void {
+    foldRecord(
+      state,
+      { sequence: state.sequence + 1, previous: null, publicationId: randomUUID(), event },
+      '',
+    )
+  }
   prepare(previous: LifecycleState, operation: Operation): void {
     this.exclusive(() => {
-      this.reclaimLocked()
-      try {
-        this.prepareLocked(previous, operation)
-      } finally {
-        this.reclaimLocked()
-      }
+      const state = this.current(previous)
+      if (state.pending) refuseState('busy')
+      this.apply(state, { kind: 'prepared', operation })
+      this.archiveOperation({ operation, status: 'prepared' }, state.sequence)
+      this.save(state)
     })
   }
-  private prepareLocked(previous: LifecycleState, operation: Operation): void {
-    try {
-      if (previous.sequence + 2 >= STATE_LIMITS.records) refuseState('limit')
-      const future: LifecycleState = {
-        ...previous,
-        guards: new Map(previous.guards),
-        pending: operation,
-      }
-      if (operation.next !== null) future.guards.set(operation.next.pluginId, operation.next)
-      const complete = resolvedSnapshot(future, true),
-        abort = resolvedSnapshot(future, false)
-      const completeRef = snapshotReference(complete, previous.sequence + 2),
-        abortRef = snapshotReference(abort, previous.sequence + 2)
-      const id = operation.request.operationId
-      const completeEvent: JournalRecord['event'] = {
-        kind: 'completed',
-        operationId: operation.request.operationId,
-        activation: completeRef,
-      }
-      const abortEvent: JournalRecord['event'] = {
-        kind: 'aborted',
-        operationId: operation.request.operationId,
-        activation: abortRef,
-      }
-      const recordBytes = Math.max(
-        this.encodedRecord(previous.sequence + 2, '0'.repeat(64), id, completeEvent).length,
-        this.encodedRecord(previous.sequence + 2, '0'.repeat(64), id, abortEvent).length,
-      )
-      const reservation: ResolutionReservation = {
-        id,
-        complete: completeRef,
-        abort: abortRef,
-        recordBytes,
-        records: 1,
-        guardNames: 2,
-        activationNames: 0,
-      }
-      const prepared = this.encodedRecord(previous.sequence + 1, previous.head, id, {
-        kind: 'prepared',
-        operation,
-        reservation,
-      })
-      const head = pluginSha256(prepared)
-      const completeRecord = this.encodedRecord(previous.sequence + 2, head, id, completeEvent),
-        abortRecord = this.encodedRecord(previous.sequence + 2, head, id, abortEvent)
-      if (Math.max(completeRecord.length, abortRecord.length) !== recordBytes)
-        refuseState('corrupt')
-      const current = this.load()
-      if (current.sequence !== previous.sequence || current.head !== previous.head)
-        refuseState('conflict')
-      if (
-        this.journalSize() + prepared.length + recordBytes > STATE_LIMITS.journalBytes ||
-        readdirSync(this.guard).length + 6 > STATE_LIMITS.records * 2 ||
-        readdirSync(this.activations).length + 4 > STATE_LIMITS.records * 2
-      )
-        refuseState('limit')
-      this.withReservation(id, true, (folder) => {
-        this.put(folder, 'prepare.record', prepared)
-        this.put(folder, 'complete.record', completeRecord)
-        this.put(folder, 'abort.record', abortRecord)
-        for (const name of ['prepare.seal', 'complete.seal', 'abort.seal'])
-          this.put(folder, name, Buffer.alloc(0))
-        // Both possible snapshots are durable before prepare can start the global barrier.
-        this.putActivation(complete, completeRef)
-        this.putActivation(abort, abortRef)
-        const checked = this.load()
-        if (checked.sequence !== previous.sequence || checked.head !== previous.head)
-          refuseState('conflict')
-        if (readdirSync(this.guard).length + 6 > STATE_LIMITS.records * 2) refuseState('limit')
-        const name = `${String(previous.sequence + 1).padStart(8, '0')}.json`
-        this.publishReserved(this.guard, name, folder, 'prepare.record', prepared)
-        this.publishReserved(
-          this.guard,
-          `${name.slice(0, 8)}-${head}.seal`,
-          folder,
-          'prepare.seal',
-          Buffer.alloc(0),
-        )
-      })
-    } catch (error) {
-      throw error instanceof PluginStateError ? error : new PluginStateError('corrupt')
-    }
-  }
-  /** No fresh bytes, stage names, activation files or reservation directories are allocated. */
   resolve(previous: LifecycleState, success: boolean): void {
     this.exclusive(() => {
-      try {
-        this.resolveLocked(previous, success)
-      } finally {
-        this.reclaimLocked()
-      }
+      const state = this.current(previous)
+      if (!state.pending) refuseState('conflict')
+      const operation = state.pending
+      this.apply(state, {
+        kind: success ? 'completed' : 'aborted',
+        operationId: operation.request.operationId,
+      })
+      this.archiveOperation(
+        { operation, status: success ? 'completed' : 'aborted' },
+        state.sequence,
+      )
+      this.save(state)
     })
   }
-  private resolveLocked(previous: LifecycleState, success: boolean): void {
-    try {
-      const reservation = previous.reservation,
-        operation = previous.pending
-      if (!reservation || !operation) refuseState('corrupt')
-      const snapshot = resolvedSnapshot(previous, success),
-        ref = snapshotReference(snapshot, previous.sequence + 1)
-      if (
-        !equalState(ref, success ? reservation.complete : reservation.abort) ||
-        !this.readActivation(ref).equals(encodeState(snapshot))
-      )
-        refuseState('corrupt')
-      const event: JournalRecord['event'] = success
-        ? { kind: 'completed', operationId: operation.request.operationId, activation: ref }
-        : { kind: 'aborted', operationId: operation.request.operationId, activation: ref }
-      const bytes = this.encodedRecord(previous.sequence + 1, previous.head, reservation.id, event)
-      if (bytes.length > reservation.recordBytes) refuseState('corrupt')
-      const current = this.load()
-      if (current.sequence !== previous.sequence || current.head !== previous.head)
-        refuseState('conflict')
-      this.withReservation(reservation.id, false, (folder) => {
-        const name = `${String(previous.sequence + 1).padStart(8, '0')}.json`,
-          choice = success ? 'complete' : 'abort'
-        this.publishReserved(this.guard, name, folder, `${choice}.record`, bytes)
-        this.publishReserved(
-          this.guard,
-          `${name.slice(0, 8)}-${pluginSha256(bytes)}.seal`,
-          folder,
-          `${choice}.seal`,
-          Buffer.alloc(0),
-        )
-      })
-    } catch (error) {
-      throw error instanceof PluginStateError ? error : new PluginStateError('corrupt')
-    }
-  }
   append(previous: LifecycleState, event: JournalRecord['event']): void {
-    this.exclusive(() => this.appendLocked(previous, event))
+    this.exclusive(() => {
+      const state = this.current(previous)
+      if (state.pending) refuseState('busy')
+      this.apply(state, event)
+      this.save(state)
+    })
   }
-  private appendLocked(previous: LifecycleState, event: JournalRecord['event']): void {
-    try {
-      if (
-        event.kind === 'created'
-          ? previous.sequence !== -1
-          : !['projected', 'reader-floor'].includes(event.kind) ||
-            previous.sequence < 0 ||
-            previous.pending !== null
-      )
-        refuseState('conflict')
-      if (previous.sequence + 1 >= STATE_LIMITS.records) refuseState('limit')
-      const bytes = encodeState({
-        sequence: previous.sequence + 1,
-        previous: previous.head,
-        publicationId: randomUUID(),
-        event,
+  setWorkspaceChoice(
+    field: 'workspaceEnabled' | 'workspaceTitlesEnabled',
+    workspaceId: string,
+    pluginId: string,
+    enabled: boolean,
+  ) {
+    return this.exclusive(() => {
+      const state = readState(this.root)
+      const key = workspacePluginKey(workspaceId, pluginId)
+      const before = state[field].get(key) ?? {
+        enabled: field === 'workspaceEnabled',
+        revision: 0,
+      }
+      if (before.enabled === enabled) return { enabled, revision: before.revision }
+      const row = WorkspacePluginChoice.parse({
+        workspaceId,
+        pluginId,
+        enabled,
+        revision: before.revision + 1,
       })
-      const current = this.loadIfAny()
-      if (current.sequence !== previous.sequence || current.head !== previous.head)
-        refuseState('conflict')
-      const total = readdirSync(this.guard)
-        .filter((name) => recordName.test(name))
-        .reduce((sum, name) => sum + lstatSync(join(this.guard, name)).size, 0)
-      if (total + bytes.length > STATE_LIMITS.journalBytes) refuseState('limit')
-      this.put(this.guard, `${String(previous.sequence + 1).padStart(8, '0')}.json`, bytes)
-      this.put(
-        this.guard,
-        `${String(previous.sequence + 1).padStart(8, '0')}-${pluginSha256(bytes)}.seal`,
-        Buffer.alloc(0),
-      )
-    } catch (error) {
-      throw error instanceof PluginStateError ? error : new PluginStateError('corrupt')
-    }
+      state[field].set(key, row)
+      state.sequence++
+      this.save(state)
+      return { enabled: row.enabled, revision: row.revision }
+    })
   }
-  private loadIfAny(): LifecycleState {
-    if (readdirSync(this.guard).every((name) => stageName.test(name))) return newLifecycle()
-    return this.load()
-  }
-  private putActivation(snapshot: ActivationSnapshot, ref: ActivationRef): void {
-    try {
-      const bytes = encodeState(snapshot)
-      if (pluginSha256(bytes) !== ref.sha256) refuseState('corrupt')
-      this.put(this.activations, ref.name, bytes)
-    } catch (error) {
-      throw error instanceof PluginStateError ? error : new PluginStateError('corrupt')
-    }
-  }
-  override close(): void {
-    this.fence?.release()
-    this.fence = undefined
-    super.close()
+  close(): void {
+    if (this.closed) return
+    this.closed = true
+    this.archive?.close()
+    this.archive = undefined
+    this.lock?.release()
+    this.lock = undefined
   }
 }

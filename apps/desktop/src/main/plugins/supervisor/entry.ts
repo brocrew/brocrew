@@ -4,7 +4,6 @@ import { dirname, join } from 'node:path'
 import { createPluginNodeHost } from '../node-host'
 import { resumePluginNodeRuntime } from '../node-runtime'
 import { sourceBytes, digest } from '../node-host-files'
-import { keepPluginRootPrivate } from '../private-files'
 import { createPluginVerifier } from '../package-verifier'
 import { PLUGIN_LIMITS } from '../package-digests'
 import { thisMachine } from '../package-schema'
@@ -15,8 +14,6 @@ import { bootstrapPluginLifecycle } from '../lifecycle/bootstrap'
 import { pluginStartupStderr } from '../startup-failure'
 import { LaunchConfig } from './launch-format'
 import { checkedSharedDataOwner } from '../shared-data'
-import { previousRunsProvenStopped } from './recovery-proof'
-import { writeRecoveryAdvice } from './recovery-advice'
 import { recordDrainTrace } from './drain-trace'
 import { PluginSupervisorError, ownerDiagnosticLine } from './protocol'
 
@@ -27,38 +24,12 @@ export async function runPluginSupervisor(configPath: string, expectedDigest: st
   const config = LaunchConfig.parse(JSON.parse(bytes.toString('utf8')))
   if (config.sharedDataOwner)
     checkedSharedDataOwner(config.sharedDataOwner, join(config.root, 'host'))
-  await keepPluginRootPrivate(config.root)
   const runtime = await resumePluginNodeRuntime(config.runtime)
   const receipts = dirname(configPath)
   const owner = await PluginSupervisor.start({
     root: config.root,
     workspaceRoots: config.workspaceRoots,
-    recoverPrevious: async (previous) => {
-      let eligible = false
-      if (
-        await previousRunsProvenStopped(config.root, {
-          previous,
-          onRebootRequired: () => {
-            eligible = true
-          },
-        })
-      )
-        return true
-      const advised =
-        eligible && previous && (await writeRecoveryAdvice(config.root, receipts, previous))
-      throw new PluginSupervisorError('cleanup-pending', {
-        diagnostic: {
-          phase: previous?.phase ?? 'missing',
-          stage: 'recovery',
-          probe: 'no-answer',
-          reason: advised ? 'restart-required' : 'proof-pending',
-        },
-      })
-    },
     traceDrain: (event) => recordDrainTrace(config.root, event),
-    // Keep the blocked record and the fence until this process is actually dead. The next
-    // owner rechecks durable run receipts under the unchanged fence before it can start.
-    onBlockedWithoutProcesses: () => process.exit(0),
   })
   const host = createPluginNodeHost({
     root: join(config.root, 'host'),
@@ -129,23 +100,31 @@ export async function runPluginSupervisor(configPath: string, expectedDigest: st
       )
       const runs = []
       for (const spec of plan.packages) {
-        const release = verifier.entries.find(
-          (entry) => entry.id === spec.id && entry.version === spec.version,
-        )
-        if (!release) throw new Error('unavailable')
-        const checked = verifier.verifyPackage(
-          spec.id,
-          spec.version,
-          await sourceBytes(spec.archive, PLUGIN_LIMITS.archiveBytes),
-        )
-        const run = await service.start({ package: checked, releaseDigest: release.archive.sha256 })
-        runs.push({
-          runId: run.runId,
-          receiptPath: run.receiptPath,
-          serverPid: run.connection.serverPid,
-          pluginId: spec.id,
-          releaseDigest: release.archive.sha256,
-        })
+        try {
+          const release = verifier.entries.find(
+            (entry) => entry.id === spec.id && entry.version === spec.version,
+          )
+          if (!release) throw new Error('unavailable')
+          const checked = verifier.verifyPackage(
+            spec.id,
+            spec.version,
+            await sourceBytes(spec.archive, PLUGIN_LIMITS.archiveBytes),
+          )
+          const run = await service.start({
+            package: checked,
+            releaseDigest: release.archive.sha256,
+          })
+          runs.push({
+            runId: run.runId,
+            receiptPath: run.receiptPath,
+            serverPid: run.connection.serverPid,
+            pluginId: spec.id,
+            releaseDigest: release.archive.sha256,
+          })
+        } catch (error) {
+          // A plugin's failed start does not stop independently running plugins.
+          reportFailure(error)
+        }
       }
       writeReceipt(receipts, 'runs.json', { format: 1, runs })
     }

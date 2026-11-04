@@ -11,11 +11,9 @@ import {
   OWNER_LAUNCH_MS,
   OWNER_LIMITS,
   OWNER_WIRE,
-  OWNER_RECOVERY,
   OwnerDiagnostic,
   pack,
   PluginSupervisorError,
-  LOST_CHANNEL_ENDS,
   refuse,
   RENEW_RETRY,
   secret,
@@ -62,56 +60,7 @@ function serializedLaunch(identity: string, launch: () => Promise<void>): Promis
   launches.set(identity, work)
   return work
 }
-// This bounded, process-local observation changes advice only, never ownership or admission.
-// Sixty seconds matches the owner's complete child-cleanup grace, not its caller's shorter wait.
-const releasedDrains = new Map<string, { epoch: string; key: string; since: number }>()
-function releasedDrainStalled(
-  storage: SupervisorStorage,
-  record: OwnerRecord | null,
-  probe: 'live' | 'no-answer' | 'unknown',
-): boolean {
-  const id = `${storage.rootIdentity}\0${storage.identity}`
-  try {
-    const stop = storage.readStop()
-    if (
-      probe !== 'live' ||
-      !record ||
-      (record.phase !== 'draining' && record.phase !== 'blocked') ||
-      stop?.epoch !== record.epoch ||
-      stop.reason !== 'released'
-    ) {
-      releasedDrains.delete(id)
-      return false
-    }
-    const now = performance.now()
-    const previous = releasedDrains.get(id)
-    if (
-      !previous ||
-      previous.epoch !== record.epoch ||
-      previous.key !== record.key ||
-      !Number.isFinite(now) ||
-      now < previous.since
-    ) {
-      if (releasedDrains.size >= 64) releasedDrains.delete(releasedDrains.keys().next().value!)
-      releasedDrains.set(id, { epoch: record.epoch, key: record.key, since: now })
-      return false
-    }
-    const current = storage.read()
-    if (
-      current?.epoch !== record.epoch ||
-      current.key !== record.key ||
-      current.phase !== record.phase
-    ) {
-      releasedDrains.delete(id)
-      return false
-    }
-    return now - previous.since >= OWNER_LIMITS.cleanup
-  } catch {
-    releasedDrains.delete(id)
-    return false
-  }
-}
-/** One authenticated, bounded command on a private socket. No raw error or packet leaves here. */
+/** One JSON request on the current instance's local endpoint, correlated by epoch and nonce. */
 export function supervisorRequest(
   storage: SupervisorStorage,
   record: OwnerRecord,
@@ -122,7 +71,6 @@ export function supervisorRequest(
   return new Promise((resolve, reject) => {
     const socket = createConnection(storage.endpoint(record))
     let bytes = Buffer.alloc(0),
-      challenge: string | undefined,
       done = false
     const finish = (error?: PluginSupervisorError, value?: unknown) => {
       if (done) return
@@ -133,37 +81,26 @@ export function supervisorRequest(
       else resolve(value)
     }
     const deadline = setTimeout(() => finish(new NoReply()), OWNER_LIMITS.request)
+    socket.once('connect', () => {
+      socket.write(pack(record.key, 'request', { epoch: record.epoch, nonce, command }))
+    })
     socket.on('error', () => finish(new NoReply()))
     socket.on('close', () => {
       if (!done) finish(new NoReply())
     })
     socket.on('data', (chunk: Buffer) => {
       bytes = Buffer.concat([bytes, chunk])
-      if (bytes.length > OWNER_LIMITS.packet) {
-        finish(new PluginSupervisorError('unavailable'))
-        return
-      }
       const end = bytes.indexOf(10)
       if (end < 0) return
       try {
         if (end !== bytes.length - 1) refuse()
         const line = bytes.toString('utf8', 0, end)
         bytes = Buffer.alloc(0)
-        if (!challenge) {
-          challenge = z.strictObject({ challenge: Hex }).parse(JSON.parse(line)).challenge
-          socket.write(
-            pack(record.key, 'request', { epoch: record.epoch, nonce, challenge, command }),
-          )
-          return
-        }
         const response = Reply.parse(unpack(record.key, 'response', line))
         if (response.nonce !== nonce || response.epoch !== record.epoch) refuse()
         if (!response.ok)
           throw new PluginSupervisorError(response.code, {
-            diagnostic:
-              response.diagnostic?.reason === 'restart-required'
-                ? { ...response.diagnostic, reason: 'proof-pending' }
-                : response.diagnostic,
+            diagnostic: response.diagnostic,
           })
         storage.check()
         finish(undefined, response.value)
@@ -175,7 +112,7 @@ export function supervisorRequest(
     })
   })
 }
-/** Stable projection identity for the authenticated canonical workspace path. */
+/** Stable routing identity for the canonical workspace path. */
 export function pluginWorkspaceIdentity(workspaceRoot: string): string {
   const hash = createHash('sha256').update(realpathSync(workspaceRoot)).digest('hex')
   return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-5${hash.slice(13, 16)}-a${hash.slice(17, 20)}-${hash.slice(20, 32)}`
@@ -187,7 +124,7 @@ export interface SupervisorClientOptions {
   generation: string
   build: string
   wire?: WireVersion
-  /** Slice 6 supplies only a verified immutable supervisor/Node launcher. Never an app-bundle fallback. */
+  /** App-selected launcher for the supervisor and Node runtime. */
   launch?: () => Promise<void>
   onLost?: () => void
 }
@@ -228,68 +165,24 @@ export class PluginWorkspaceLease {
       if (!lstatSync(workspace).isDirectory()) refuse()
       const workspaceId = createHash('sha256').update(workspace).digest('hex')
       storage = new SupervisorStorage(options.root, [workspace], !!options.launch)
-      const readOwner = () => {
+      const readOwner = (): OwnerRecord | null => {
         try {
           return storage!.read()
-        } catch (error) {
-          throw new PluginSupervisorError('cleanup-pending', {
-            cause: error,
-            diagnostic: {
-              phase: 'unreadable',
-              stage: 'attach-record',
-              probe: 'unknown',
-              reason: 'io',
-            },
-          })
+        } catch {
+          return null
         }
       }
-      let launchError: unknown
       let record = readOwner()
-      phase = record?.phase ?? 'missing'
       let launched = false
-      let probe: 'live' | 'no-answer' | 'unknown' = 'unknown'
-      if (record && (record.phase === 'blocked' || record.phase === 'draining')) {
-        const observed = record
-        try {
-          await supervisorRequest(
-            storage,
-            record,
-            record.wire.features.includes(OWNER_RECOVERY)
-              ? { kind: 'probe' }
-              : {
-                  kind: 'hello',
-                  workspace: workspaceId,
-                  generation: options.generation,
-                  build: options.build,
-                  wire: options.wire ?? OWNER_WIRE,
-                },
-          )
-          probe = 'live'
-        } catch (error) {
-          if (error instanceof NoReply) probe = 'no-answer'
-          else if (error instanceof PluginSupervisorError && error.code === 'busy') probe = 'live'
-        }
-        record = readOwner()
-        if (
-          record?.epoch !== observed.epoch ||
-          record.key !== observed.key ||
-          record.phase !== observed.phase
-        )
-          probe = 'unknown'
-      }
-      const stalled = releasedDrainStalled(storage, record, probe)
+      let launchError: unknown
       const launchOnce = async () => {
-        if (launched) return
+        if (launched || !options.launch) refuse()
         launched = true
-        if (!options.launch) refuse()
-        // Exactly one attempt here. The launched service itself must acquire the OS fence.
         let timer: ReturnType<typeof setTimeout> | undefined
         const until = performance.now() + OWNER_LAUNCH_MS
-        const root = realpathSync.native(storage!.root)
-        const identity = `${process.platform === 'win32' ? root.toLowerCase() : root}\0${storage!.identity}`
         try {
           await Promise.race([
-            serializedLaunch(identity, options.launch),
+            serializedLaunch(storage!.rootIdentity, options.launch),
             new Promise<never>((_, reject) => {
               timer = setTimeout(
                 () => reject(new PluginSupervisorError('unavailable')),
@@ -298,53 +191,35 @@ export class PluginWorkspaceLease {
             }),
           ])
         } catch (error) {
+          // A simultaneous launch may have acquired the writer. Its current endpoint can
+          // still answer hello; the discovery file alone never establishes a live owner.
           launchError = error
-          // A simultaneous starter may have won the fence. Only its authenticated record can
-          // turn this failed launch into an attachment; never launch a second time here.
         } finally {
           clearTimeout(timer)
         }
         do {
           record = readOwner()
           if (record && record.phase !== 'stopped') break
+          if (launchError) break
           await new Promise((resolve) => setTimeout(resolve, 10))
         } while (performance.now() < until)
       }
-      if (!record || record.phase === 'stopped' || (probe === 'no-answer' && options.launch))
-        await launchOnce()
-      if (record && (record.phase === 'blocked' || record.phase === 'draining')) {
-        let cause = launchError
-        for (let depth = 0; depth < 6 && cause && typeof cause === 'object'; depth++) {
-          if (
-            cause instanceof PluginSupervisorError &&
-            cause.ownerEpoch === record.epoch &&
-            cause.diagnostic?.phase === record.phase &&
-            cause.diagnostic.stage === 'recovery' &&
-            cause.diagnostic.reason === 'restart-required'
-          )
-            throw new PluginSupervisorError('cleanup-pending', {
-              cause: launchError,
-              diagnostic: cause.diagnostic,
-              ownerEpoch: record.epoch,
-            })
-          cause = (cause as { cause?: unknown }).cause
-        }
-      }
-      if (!record || record.phase !== 'accepting')
-        throw new PluginSupervisorError(
-          record?.phase === 'blocked' || record?.phase === 'draining' ? 'busy' : 'unavailable',
-          {
+      if (!record) await launchOnce()
+      const currentInstance = () => {
+        phase = record?.phase ?? 'missing'
+        if (!record)
+          throw new PluginSupervisorError('unavailable', {
             cause: launchError,
             diagnostic: {
-              phase: record?.phase ?? 'missing',
+              phase,
               stage: 'attach-record',
-              probe,
-              reason: stalled ? 'released-owner-stalled' : 'unknown',
+              probe: 'no-answer',
+              reason: 'unknown',
             },
-            ...(stalled && record ? { ownerEpoch: record.epoch } : {}),
-          },
-        )
-      phase = record.phase
+          })
+        return record
+      }
+      record = currentInstance()
       stage = 'hello'
       const helloCommand: Command = {
         kind: 'hello',
@@ -359,36 +234,18 @@ export class PluginWorkspaceLease {
       } catch (error) {
         if (error instanceof PluginSupervisorError && error.code === 'busy') {
           const current = readOwner()
-          if (
-            current?.epoch === record.epoch &&
-            current.key === record.key &&
-            current.phase === 'accepting' &&
-            (!error.diagnostic ||
-              (error.diagnostic.phase === 'accepting' &&
-                error.diagnostic.stage === 'hello' &&
-                error.diagnostic.probe === 'live'))
-          )
+          if (current?.epoch === record.epoch && current.phase === 'accepting')
             throw new PluginSupervisorError('busy', {
               cause: error,
-              diagnostic: {
-                phase: 'accepting',
-                stage: 'hello',
-                probe: 'live',
-                reason: error.diagnostic?.reason ?? 'unknown',
-              },
+              diagnostic: error.diagnostic,
               ownerIdentity: createHash('sha256')
-                .update(
-                  `${storage.rootIdentity}\0${storage.identity}\0${record.epoch}\0${record.key}`,
-                )
+                .update(`${storage.rootIdentity}\0${record.epoch}`)
                 .digest('hex'),
             })
         }
         if (!(error instanceof NoReply) || !options.launch || launched) throw error
         await launchOnce()
-        const successor = readOwner()
-        if (!successor || successor.phase !== 'accepting') throw error
-        record = successor
-        phase = successor.phase
+        record = currentInstance()
         answer = await supervisorRequest(storage, record, helloCommand)
       }
       const hello = Hello.parse(answer)
@@ -520,7 +377,7 @@ export class PluginWorkspaceLease {
         }),
       )
       if (result.remaining) return true
-      // Acknowledged release is not proof of child exit. Wait for the fenced clean-stop record.
+      // Observe ordinary shutdown completion after releasing the last registration.
       const until = performance.now() + OWNER_LIMITS.drain + OWNER_LIMITS.request
       while (performance.now() < until) {
         const record = this.storage.read()
@@ -576,7 +433,7 @@ export class PluginSupervisorAttachment {
   supports(feature: string): boolean {
     return this.holdsLease() && Boolean(this.lease?.features.includes(feature))
   }
-  /** A successor still passes the ordinary fenced admission and complete run-proof checks. */
+  /** Reattach or launch through the ordinary writer serialization. */
   recover(): Promise<boolean> {
     this.recovering ??= (async () => {
       if (this.ended || !this.options) return false
@@ -616,11 +473,7 @@ export class PluginSupervisorAttachment {
   async ready(): Promise<boolean> {
     return Boolean((await this.pending) && !this.ended)
   }
-  /**
-   * True when the owner this lease came from has proven a clean stop; the next start launches
-   * a new one. The owner writes stopped only after every child and descendant has exited, and a
-   * successor starts only over that record and under the owner lock, so a new epoch proves it too.
-   */
+  /** Legacy name: observes a stopped or superseded instance; historical runs are not inspected. */
   stoppedCleanly(): boolean {
     const lease = this.lease
     if (this.ended || !lease || !this.where) return false
@@ -645,13 +498,7 @@ export class PluginSupervisorAttachment {
    */
   holdsLease(): boolean {
     const lease = this.lease
-    if (
-      this.ended ||
-      !lease?.standing() ||
-      !lease.features.includes(LOST_CHANNEL_ENDS) ||
-      !this.where
-    )
-      return false
+    if (this.ended || !lease?.standing() || !this.where) return false
     let storage: SupervisorStorage | undefined
     try {
       storage = new SupervisorStorage(this.where.root, [this.where.workspaceRoot], false)

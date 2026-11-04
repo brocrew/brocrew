@@ -1,5 +1,5 @@
 // Explicit offline setup only. Compilation stays in memory, including preview mode.
-import { createRequire } from 'node:module'
+import { createRequire, Module } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
 
@@ -14,14 +14,22 @@ try {
     ],
     bundle: true,
     platform: 'node',
-    format: 'esm',
+    format: 'cjs',
+    external: ['better-sqlite3'],
     target: 'node24',
     write: false,
     logLevel: 'silent',
   })
-  const { rootOptInCommand } = await import(
-    'data:text/javascript;base64,' + Buffer.from(result.outputFiles[0].contents).toString('base64')
+  const filename = fileURLToPath(
+    new URL('../apps/desktop/plugin-root-command.cjs', import.meta.url),
   )
+  const command = new Module(filename)
+  command.filename = filename
+  command.paths = Module._nodeModulePaths(
+    fileURLToPath(new URL('../apps/desktop', import.meta.url)),
+  )
+  command._compile(Buffer.from(result.outputFiles[0].contents).toString('utf8'), filename)
+  const { rootOptInCommand } = command.exports
   const output = await rootOptInCommand(process.argv.slice(2))
   if (typeof output === 'string') console.log(output)
   else

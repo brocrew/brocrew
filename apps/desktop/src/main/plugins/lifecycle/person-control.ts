@@ -2,10 +2,8 @@ import { PackageRefSchema } from '../../../shared/plugin-package'
 import { PLUGIN_FRAMEWORK_FEATURES } from '../hooks/definitions'
 import { PluginProposal } from './proposals'
 import { createServer, createConnection, type Socket } from 'node:net'
-import { chmod, lstat, unlink } from 'node:fs/promises'
-import { randomBytes } from 'node:crypto'
 import { join } from 'node:path'
-import { isSocketFile, localEndpoint } from '../local-endpoint'
+import { localEndpoint } from '../local-endpoint'
 import { z } from 'zod'
 import { privateChild } from '../node-host-files'
 import { PluginSupervisorError, Hex } from '../supervisor/protocol'
@@ -67,9 +65,7 @@ export const ConsumerCommand = z.discriminatedUnion('kind', [
     receipt: ProjectionReceipt.nullable(),
   }),
 ])
-/** Started inside the exclusively owned supervisor, using a distinct app/person capability.
- * Neither the key nor a lifecycle command is accepted by the workspace lease/broker protocol.
- */
+/** Local settings methods served by the current supervisor instance. */
 export async function servePersonPluginControl(options: {
   root: string
   key: string
@@ -80,11 +76,8 @@ export async function servePersonPluginControl(options: {
     connection: Awaited<ReturnType<PluginLifecycleController['screen']>['connection']>,
   ): Promise<unknown>
 }) {
-  if (!Hex.safeParse(options.key).success) throw new PluginSupervisorError('unavailable')
   const folder = await privateChild(options.root, 'person-control')
   const path = localEndpoint(join(folder, 'person.sock'), 'person', options.key)
-  if (isSocketFile() && Buffer.byteLength(path) > 100)
-    throw new PluginSupervisorError('unavailable')
   const channels = new Set<PersonChannel>(),
     sessions = new Set<{
       channel: PersonChannel
@@ -105,7 +98,6 @@ export async function servePersonPluginControl(options: {
     detaching?: Promise<void>
   }): Promise<void> =>
     (session.detaching ??= (async () => {
-      if (session.failed && session.channel.open) throw new PluginSupervisorError('cleanup-pending')
       const handle = session.handle
       session.handle = undefined
       try {
@@ -120,18 +112,15 @@ export async function servePersonPluginControl(options: {
       session.detaching = undefined
     }))
   const server = createServer((socket: Socket) => {
-    if (closing || channels.size >= 64) {
+    if (closing) {
       socket.destroy()
       return
     }
-    const challenge = randomBytes(32).toString('hex')
-    // Fresh challenge binds every MAC/counter stream; even a captured attach cannot be replayed.
-    socket.write(challenge + '\n')
     let negotiatedRefusals = false
     const channel = new PersonChannel(
       socket,
       options.key,
-      challenge,
+      '',
       'server',
       async (input) => {
         const request = Request.parse(input)
@@ -140,7 +129,6 @@ export async function servePersonPluginControl(options: {
           if (session.handle || session.attaching || session.lost || session.failed)
             throw new PluginSupervisorError('unavailable')
           // Snapshot actual source provenance, never today's IDs or caller-supplied metadata.
-          clearTimeout(authentication)
           session.attaching = true
           // A closed channel was this consumer's only route to its plugins, so the consumer ended
           // with it: every notice to it holds, and a lost session detaches without its answer.
@@ -180,7 +168,6 @@ export async function servePersonPluginControl(options: {
             throw error
           }
           session.attaching = false
-          clearTimeout(authentication)
           if (session.lost || closing) {
             await detach(session)
             throw new PluginSupervisorError('unavailable')
@@ -227,8 +214,7 @@ export async function servePersonPluginControl(options: {
           case 'list-tool-health':
             return (await options.controller.status()).cards
           case 'restart-plugin':
-            if (!options.restartPlugin)
-              throw new PluginSupervisorError('incompatible')
+            if (!options.restartPlugin) throw new PluginSupervisorError('incompatible')
             await options.restartPlugin(request.pluginId)
             return true
           case 'refresh':
@@ -296,7 +282,6 @@ export async function servePersonPluginControl(options: {
       },
       () => negotiatedRefusals,
     )
-    const authentication = setTimeout(() => channel.close(), 2000)
     type PersonSession = {
       channel: PersonChannel
       handle?: LifecycleWorkspace
@@ -316,10 +301,9 @@ export async function servePersonPluginControl(options: {
     sessions.add(session)
     channels.add(channel)
     channel.onClose(() => {
-      clearTimeout(authentication)
       session.lost = true
-      void channel.settled().then(() => channels.delete(channel))
-      // Unproved disconnect cleanup stays a lifecycle obligation, never a success acknowledgment.
+      channels.delete(channel)
+      // Closed sessions detach independently; their callbacks cannot hold the service open.
       if (!session.attaching)
         void detach(session)
           .catch(() => detach(session)) // An attempt begun while it was open is made again.
@@ -337,8 +321,6 @@ export async function servePersonPluginControl(options: {
       resolve()
     })
   })
-  if (isSocketFile()) await chmod(path, 0o600)
-  const held = isSocketFile() ? await lstat(path, { bigint: true }) : null
   server.on('error', () => {
     for (const channel of channels) channel.close()
   })
@@ -349,24 +331,13 @@ export async function servePersonPluginControl(options: {
   return {
     path,
     endConsumers,
-    async close(options: { endConsumers?: boolean } = {}): Promise<void> {
+    async close(_options: { endConsumers?: boolean } = {}): Promise<void> {
+      void _options
       closing = true
-      // Ending the only person route also ends its consumer's authority when grace expires.
-      if (options.endConsumers) endConsumers()
-      await Promise.allSettled([...sessions].map(detach))
-      for (const channel of channels) channel.close()
-      await Promise.all([...channels].map((channel) => channel.settled()))
-      // A detach refused over an open channel, or still running, is settled once all are closed.
-      const result = await Promise.allSettled(
-        [...sessions]
-          .filter((session) => session.failed || session.detaching)
-          .map((session) => detach(session)),
-      )
+      // Close channels first; UI work and detach acknowledgements never own a process.
+      endConsumers()
+      for (const session of sessions) void detach(session).catch(() => undefined)
       await new Promise<void>((resolve) => server.close(() => resolve()))
-      const now = held && (await lstat(path, { bigint: true }).catch(() => null))
-      if (held && now && now.dev === held.dev && now.ino === held.ino) await unlink(path)
-      if (result.some((one) => one.status !== 'fulfilled'))
-        throw new PluginSupervisorError('cleanup-pending')
     },
   }
 }
@@ -375,10 +346,8 @@ export async function connectPersonPluginControl(options: {
   key: string
   handle(input: unknown): Promise<unknown>
 }): Promise<PersonChannel> {
-  if (!Hex.safeParse(options.key).success) throw new PluginSupervisorError('unavailable')
   return new Promise((resolve, reject) => {
     const socket = createConnection(localEndpoint(options.path, 'person', options.key))
-    let input = ''
     const timer = setTimeout(() => {
       socket.destroy()
       reject(new PluginSupervisorError('unavailable'))
@@ -389,19 +358,10 @@ export async function connectPersonPluginControl(options: {
       reject(new PluginSupervisorError('unavailable'))
     }
     socket.once('error', failed)
-    const hello = (bytes: Buffer) => {
-      input += bytes.toString('utf8')
-      if (input.length > 65 || !input.endsWith('\n')) {
-        if (input.length > 65) failed()
-        return
-      }
-      const challenge = input.trimEnd()
-      if (!Hex.safeParse(challenge).success) return failed()
-      socket.off('data', hello)
+    socket.once('connect', () => {
       socket.off('error', failed)
       clearTimeout(timer)
-      resolve(new PersonChannel(socket, options.key, challenge, 'client', options.handle))
-    }
-    socket.on('data', hello)
+      resolve(new PersonChannel(socket, options.key, '', 'client', options.handle))
+    })
   })
 }

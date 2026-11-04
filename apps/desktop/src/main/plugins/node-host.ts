@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import Database from 'better-sqlite3'
 import { pluginNodePolicy } from './node-policy'
 export { pluginNodePolicy } from './node-policy'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
@@ -158,6 +159,7 @@ export function createPluginNodeHost(options: {
   let closing = false
   const starts = new Map<string, Promise<PluginNodeProcess>>()
   const definitions = new Map<string, PluginNodeStart>()
+  const retiring = new Set<string>()
   const readyMs = options.readyMs ?? 15000
   if (
     !Number.isFinite(readyMs) ||
@@ -599,7 +601,8 @@ export function createPluginNodeHost(options: {
   }
   function start(spec: PluginNodeStart): Promise<PluginNodeProcess> {
     const id = spec.package.manifest.id
-    if (closing || starts.has(id)) return Promise.reject(new PluginHostError('start'))
+    if (closing || starts.has(id) || retiring.has(id))
+      return Promise.reject(new PluginHostError('start'))
     const captured = { ...spec }
     const promise = launch(captured)
       .then((run) => {
@@ -619,6 +622,30 @@ export function createPluginNodeHost(options: {
     const pending = starts.get(id)
     return pending ? (await pending).stop() : { exited: true }
   }
+  async function retire(id: string, remove: (root: string) => Promise<void>): Promise<void> {
+    if (starts.has(id) || retiring.has(id)) throw new PluginHostError('cleanup')
+    retiring.add(id)
+    let database: Database.Database | undefined
+    try {
+      const root = await privateRoot(options.root)
+      const slots = await privateChild(root, 'process-slots')
+      database = new Database(join(slots, `${id}.sqlite`), { timeout: 0 })
+      for (;;) {
+        try {
+          database.exec('BEGIN EXCLUSIVE')
+          break
+        } catch (error) {
+          if ((error as { code?: string }).code !== 'SQLITE_BUSY') throw error
+          await new Promise((resolve) => setTimeout(resolve, 25))
+        }
+      }
+      // The same mutex stays held by an older guardian until its managed process stops.
+      await remove(root)
+    } finally {
+      database?.close()
+      retiring.delete(id)
+    }
+  }
   return {
     stopPlugin,
     async restart(input: string | PluginNodeStart): Promise<PluginNodeProcess> {
@@ -628,17 +655,15 @@ export function createPluginNodeHost(options: {
       return start(spec)
     },
     async removePackage(id: string, releaseDigest: string): Promise<void> {
-      if (starts.has(id)) throw new PluginHostError('cleanup')
-      const root = await privateRoot(options.root)
-      const packages = await privateChild(root, 'packages')
-      await removePrivateCode(packages, releaseDigest)
-      if (definitions.get(id)?.releaseDigest === releaseDigest) definitions.delete(id)
+      await retire(id, async (root) => {
+        const packages = await privateChild(root, 'packages')
+        await removePrivateCode(packages, releaseDigest)
+        if (definitions.get(id)?.releaseDigest === releaseDigest) definitions.delete(id)
+      })
     },
-    /** Deletes one stopped plugin's private data folder. */
+    /** Deletes only private data after the managed runtime releases its lifetime mutex. */
     async removeData(id: string): Promise<void> {
-      if (starts.has(id) || !/^[a-z][a-z0-9-]{0,63}$/.test(id)) throw new PluginHostError('cleanup')
-      const root = await privateRoot(options.root)
-      await rm(join(root, 'data', id), { recursive: true, force: true })
+      await retire(id, (root) => rm(join(root, 'data', id), { recursive: true, force: true }))
     },
     start,
     async stop(): Promise<PluginNodeExit> {

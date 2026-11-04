@@ -1,10 +1,11 @@
 import { PLUGIN_FRAMEWORK_FEATURES } from '../hooks/definitions'
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
+import { randomBytes } from 'node:crypto'
 import { z } from 'zod'
 
 export const OWNER_LIMITS = {
-  packet: 16 * 1024,
-  leases: 64,
+  /** Legacy lifecycle transport compatibility. The supervisor imposes no packet quota. */
+  packet: Infinity,
+  leases: Infinity,
   heartbeat: 15_000,
   expires: 60_000,
   request: 2_000,
@@ -13,6 +14,7 @@ export const OWNER_LIMITS = {
 } as const
 /** Cold runtime verification, copying and child readiness share this bounded launch wait. */
 export const OWNER_LAUNCH_MS = process.platform === 'win32' ? 60_000 : 30_000
+/** Legacy name for an opaque request/registration ID, never an admission secret. */
 export const secret = () => randomBytes(32).toString('hex')
 export const Hex = z.string().regex(/^[a-f0-9]{64}$/)
 const Uuid = z.uuid()
@@ -47,10 +49,11 @@ export const OWNER_WIRE: WireVersion = {
     ...PLUGIN_FRAMEWORK_FEATURES,
   ],
 }
-/** Every copy of the app sharing the plugin root reads this strictly: it never gains a field. */
+/** Discovery metadata only. The SQLite writer transaction determines the current owner. */
 export const OwnerRecord = z.strictObject({
   version: z.literal(1),
   epoch: Uuid,
+  /** Legacy pipe routing token; possession grants no authority. */
   key: Hex,
   phase: z.enum(['accepting', 'draining', 'blocked', 'stopped']),
   wire: Wire,
@@ -97,9 +100,8 @@ export const Command = z.discriminatedUnion('kind', [
   }),
 ])
 export type Command = z.infer<typeof Command>
-export const Request = z.strictObject({ epoch: Uuid, nonce: Hex, challenge: Hex, command: Command })
+export const Request = z.strictObject({ epoch: Uuid, nonce: Hex, command: Command })
 export type Request = z.infer<typeof Request>
-export const Envelope = z.strictObject({ data: z.string().max(OWNER_LIMITS.packet), mac: Hex })
 export type Refusal =
   | 'unavailable'
   | 'busy'
@@ -127,19 +129,11 @@ export const OwnerDiagnostic = z.strictObject({
 export type OwnerDiagnostic = z.infer<typeof OwnerDiagnostic>
 export function ownerDiagnosticLine(diagnostic: OwnerDiagnostic): string {
   const checked = OwnerDiagnostic.parse(diagnostic)
-  const remedy =
-    checked.reason === 'restart-required' &&
-    (checked.phase === 'blocked' || checked.phase === 'draining') &&
-    checked.stage === 'recovery'
-      ? process.platform === 'win32'
-        ? ' Restart your computer using Start > Power > Restart, then open BroCrew again.'
-        : ' Restart your computer once, then open BroCrew again.'
-      : ''
-  return `phase=${checked.phase} stage=${checked.stage} probe=${checked.probe} reason=${checked.reason}${remedy}`
+  return `phase=${checked.phase} stage=${checked.stage} probe=${checked.probe} reason=${checked.reason}`
 }
 export class PluginSupervisorError extends Error {
   readonly diagnostic?: OwnerDiagnostic
-  /** Local authenticated owner continuity; never serialized or logged. */
+  /** Process-local current-instance identity for existing diagnostic callers. */
   readonly ownerIdentity?: string
   readonly ownerEpoch?: string
   constructor(
@@ -167,24 +161,12 @@ export class PluginSupervisorError extends Error {
 export function refuse(code: Refusal = 'unavailable', diagnostic?: OwnerDiagnostic): never {
   throw new PluginSupervisorError(code, { diagnostic })
 }
-const mac = (key: string, direction: string, data: string) =>
-  createHmac('sha256', Buffer.from(key, 'hex')).update(`${direction}\n${data}`).digest('hex')
-export function pack(key: string, direction: 'request' | 'response', value: unknown): string {
-  const data = JSON.stringify(value)
-  const packet = JSON.stringify({ data, mac: mac(key, direction, data) }) + '\n'
-  if (Buffer.byteLength(packet) > OWNER_LIMITS.packet) refuse()
-  return packet
+/** Legacy call shape retained for lifecycle callers; transport is ordinary JSON lines. */
+export function pack(_key: string, _direction: 'request' | 'response', value: unknown): string {
+  return JSON.stringify(value) + '\n'
 }
-export function unpack(key: string, direction: 'request' | 'response', bytes: string): unknown {
-  const packet = Envelope.parse(JSON.parse(bytes))
-  if (
-    !timingSafeEqual(
-      Buffer.from(packet.mac, 'hex'),
-      Buffer.from(mac(key, direction, packet.data), 'hex'),
-    )
-  )
-    refuse()
-  return JSON.parse(packet.data)
+export function unpack(_key: string, _direction: 'request' | 'response', bytes: string): unknown {
+  return JSON.parse(bytes)
 }
 export function compatible(
   left: WireVersion,

@@ -1,12 +1,6 @@
 import { createHash } from 'node:crypto'
 
-/**
- * Where one of the plugin host's local servers listens: its socket file inside the private plugin
- * root, or on Windows a named pipe named from the server's secret key, which only this user can
- * read. Node gives its pipes Windows' default access list, under which other accounts may open a
- * pipe to read but never to write; so each server writes nothing before a client has proved it
- * holds the key, except one fresh random challenge.
- */
+/** The selected local socket, or a Windows pipe named for this server instance. */
 export function localEndpoint(
   socketPath: string,
   purpose: 'owner' | 'person',
@@ -18,6 +12,6 @@ export function localEndpoint(
   return `\\\\.\\pipe\\brocrew-plugin-${purpose}-${name.slice(0, 32)}`
 }
 
-/** Whether endpoints are socket files, made private and removed by their path; pipes are not. */
+/** Whether local endpoints use filesystem socket paths rather than Windows pipes. */
 export const isSocketFile = (platform: NodeJS.Platform = process.platform): boolean =>
   platform !== 'win32'

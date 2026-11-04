@@ -1,9 +1,7 @@
 import { randomUUID } from 'node:crypto'
-import { chmodSync, lstatSync } from 'node:fs'
 import { createServer, type Server, type Socket } from 'node:net'
 import { PluginFence } from '../state/fence'
 import { SupervisorStorage } from './storage'
-import { isSocketFile } from '../local-endpoint'
 import type { DrainTrace } from './drain-trace'
 import {
   compatible,
@@ -36,10 +34,11 @@ export interface WorkspaceLease {
 }
 /** Supplied only by the trusted process host, never over workspace IPC. */
 export interface OwnedPluginChild {
-  /** Trusted in-process consumers only. Omitted means a physical process/descendant obligation. */
+  /** Compatibility marker for non-process cleanup callbacks. These never hold the writer lock. */
   readonly inProcess?: true
   stop(): void | Promise<void>
   exited: Promise<void>
+  /** Deprecated acknowledgement; actual exit comes from the captured process handle. */
   descendantsGone(): Promise<boolean>
 }
 export interface OwnerOptions {
@@ -52,16 +51,10 @@ export interface OwnerOptions {
   revoke?: (lease: Readonly<WorkspaceLease>) => Promise<void>
   drainWithin?: number
   tickEvery?: number
-  /** Trusted standalone bootstrap only. Runs inside the unchanged predecessor fence. */
-  recoverPrevious?: (previous: OwnerRecord | null) => Promise<boolean>
   traceDrain?: (event: DrainTrace) => void
-  /** Standalone bootstrap only: exit synchronously with the fence still held. Never admission. */
+  /** Deprecated compatibility input. Synthetic cleanup failure no longer blocks the owner. */
   onBlockedWithoutProcesses?: () => void
 }
-declare global {
-  var __brobotPluginOwnersV1: Set<string> | undefined
-}
-const owners = (globalThis.__brobotPluginOwnersV1 ??= new Set<string>())
 const bounded = async <T>(work: Promise<T>, within: number): Promise<T | undefined> => {
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
@@ -76,29 +69,22 @@ const bounded = async <T>(work: Promise<T>, within: number): Promise<T | undefin
   }
 }
 
-/** A stop attempt is not exit evidence, and no child can skip another child's cleanup. */
-async function stopAndProveChild(child: OwnedPluginChild): Promise<boolean> {
-  const exited = Promise.resolve()
-    .then(() => child.exited)
-    .then(
-      () => true,
-      () => false,
-    )
-  const stopped = Promise.resolve()
-    .then(() => child.stop())
+/** Stop only the captured child. The actual exit event completes ownership, not stop's reply. */
+async function stopOwnedChild(child: OwnedPluginChild): Promise<boolean> {
+  notify(() => child.stop())
+  try {
+    await child.exited
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Consumer notifications are best effort; a UI acknowledgement cannot own a physical process. */
+function notify(work: () => void | Promise<void>): void {
+  void Promise.resolve()
+    .then(work)
     .catch(() => undefined)
-  // Even a rejected exit witness still runs the descendant check. Wait for an actual exit
-  // before probing a healthy child so a process still shutting down is not counted as a leak.
-  const descendantsGone = exited.then(() =>
-    Promise.resolve()
-      .then(() => child.descendantsGone())
-      .then(
-        (gone) => gone === true,
-        () => false,
-      ),
-  )
-  const [, didExit, areGone] = await Promise.all([stopped, exited, descendantsGone])
-  return didExit && areGone
 }
 
 function drainWriteErrno(error: unknown): string {
@@ -115,13 +101,12 @@ function drainWriteErrno(error: unknown): string {
   return 'UNKNOWN'
 }
 
-/** Single process-tree owner. A successor proves every prior run under the same OS fence. */
+/** One service owner per selected root, serialized by the ordinary SQLite writer transaction. */
 export class PluginSupervisor {
   private readonly leases = new Map<string, WorkspaceLease>()
   private readonly children = new Set<OwnedPluginChild>()
   private readonly starting = new Set<Promise<OwnedPluginChild>>()
   private readonly sockets = new Set<Socket>()
-  private readonly revocations = new Set<Promise<void>>()
   private agentBridge?: {
     routes(
       lease: Readonly<WorkspaceLease>,
@@ -142,8 +127,6 @@ export class PluginSupervisor {
       ? (this.options.drainWithin ?? OWNER_LIMITS.cleanup)
       : Math.max(0, this.drainDeadline - performance.now())
   }
-  private revocationFailed = false
-  private startFailed = false
   private server: Server | undefined
   private timer: ReturnType<typeof setInterval> | undefined
   private drainWork: Promise<boolean> | undefined
@@ -170,11 +153,6 @@ export class PluginSupervisor {
   }
   static async start(options: OwnerOptions): Promise<PluginSupervisor> {
     const storage = new SupervisorStorage(options.root, options.workspaceRoots, true)
-    if (owners.has(storage.identity)) {
-      storage.close()
-      refuse('busy')
-    }
-    owners.add(storage.identity)
     const owner = new PluginSupervisor(storage, options, {
       version: 1,
       epoch: randomUUID(),
@@ -183,14 +161,10 @@ export class PluginSupervisor {
       wire: options.wire ?? OWNER_WIRE,
     })
     try {
-      let existingLock = false
-      try {
-        lstatSync(storage.lock)
-        existingLock = true
-      } catch (error) {
-        if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error
-      }
       owner.fence = PluginFence.acquire(storage.lock)
+      // In-process callers share the connection. Fail busy instead of queuing a second owner
+      // behind an indefinite lifetime transaction (including alternate paths to the same DB).
+      owner.fence.sync(owner.marker, () => undefined)
       let held!: () => void
       const ready = new Promise<void>((resolve) => {
         held = resolve
@@ -203,21 +177,13 @@ export class PluginSupervisor {
         await untilRelease
       })
       await Promise.race([ready, owner.releaseDone])
-      const previous = storage.read()
-      if ((!previous && existingLock) || (previous && previous.phase !== 'stopped')) {
-        owner.fence.check(storage.lock)
-        if (!(await options.recoverPrevious?.(previous))) refuse('cleanup-pending')
-        owner.fence.check(storage.lock)
-        storage.check()
-        if (previous) storage.write({ ...previous, phase: 'stopped' })
-      }
       storage.clearSocket()
+      storage.clearPersonSocket()
       owner.server = createServer((socket) => owner.accept(socket))
       await new Promise<void>((resolve, reject) => {
         owner.server!.once('error', reject)
         owner.server!.listen(storage.endpoint(owner.record), resolve)
       })
-      if (isSocketFile()) chmodSync(storage.socket, 0o600)
       storage.write(owner.record)
       owner.timer = setInterval(() => {
         void owner.tick().catch(() => owner.fail())
@@ -228,7 +194,6 @@ export class PluginSupervisor {
       owner.release?.()
       await owner.releaseDone?.catch(() => undefined)
       owner.fence?.release()
-      owners.delete(storage.identity)
       storage.close()
       if (error instanceof PluginSupervisorError) throw error
       if (error instanceof Error && 'code' in error && error.code === 'busy') refuse('busy')
@@ -253,26 +218,6 @@ export class PluginSupervisor {
     clearInterval(this.timer)
     return published
   }
-  private async publishBlockedBeforeExit(): Promise<void> {
-    let attempt = 1
-    for (;;) {
-      attempt++
-      try {
-        this.trace({ stage: 'blocked-write', state: 'waiting', attempt })
-        this.storage.write(this.record)
-        this.trace({ stage: 'blocked-write', state: 'complete', attempt })
-        return
-      } catch (error) {
-        this.trace({
-          stage: 'blocked-write',
-          state: 'failed',
-          attempt,
-          errno: drainWriteErrno(error),
-        })
-        await new Promise((resolve) => setTimeout(resolve, 1000))
-      }
-    }
-  }
   private clock(): number {
     const current = this.now()
     if (!Number.isFinite(current) || current < this.lastTime) {
@@ -283,10 +228,6 @@ export class PluginSupervisor {
     return current
   }
   private accept(socket: Socket): void {
-    if (this.sockets.size >= 64) {
-      socket.destroy()
-      return
-    }
     this.sockets.add(socket)
     const deadline = setTimeout(() => socket.destroy(), OWNER_LIMITS.request)
     socket.on('close', () => {
@@ -294,8 +235,6 @@ export class PluginSupervisor {
       this.sockets.delete(socket)
     })
     socket.on('error', () => socket.destroy())
-    const challenge = secret()
-    socket.write(`${JSON.stringify({ challenge })}\n`)
     let bytes = Buffer.alloc(0),
       answered = false
     socket.on('data', (chunk: Buffer) => {
@@ -304,10 +243,6 @@ export class PluginSupervisor {
         return
       }
       bytes = Buffer.concat([bytes, chunk])
-      if (bytes.length > OWNER_LIMITS.packet) {
-        socket.destroy()
-        return
-      }
       const end = bytes.indexOf(10)
       if (end < 0) return
       answered = true
@@ -315,7 +250,7 @@ export class PluginSupervisor {
       try {
         if (end !== bytes.length - 1) refuse()
         request = Request.parse(unpack(this.record.key, 'request', bytes.toString('utf8', 0, end)))
-        if (request.epoch !== this.record.epoch || request.challenge !== challenge) refuse()
+        if (request.epoch !== this.record.epoch) refuse()
       } catch {
         socket.destroy()
         return
@@ -396,7 +331,7 @@ export class PluginSupervisor {
         phase: this.record.phase,
         stage: 'hello',
         probe: 'live',
-        reason: 'proof-pending',
+        reason: 'unknown',
       })
     const now = this.clock()
     if (command.kind === 'hello') {
@@ -405,12 +340,12 @@ export class PluginSupervisor {
       const duplicate = [...this.leases.values()].some(
         (lease) => lease.workspace === command.workspace,
       )
-      if (duplicate || this.leases.size >= OWNER_LIMITS.leases)
+      if (duplicate)
         refuse('busy', {
           phase: 'accepting',
           stage: 'hello',
           probe: 'live',
-          reason: duplicate ? 'duplicate-workspace' : 'capacity',
+          reason: 'duplicate-workspace',
         })
       const lease: WorkspaceLease = {
         id: secret(),
@@ -434,10 +369,8 @@ export class PluginSupervisor {
     if (!lease || lease.workspace !== command.workspace || lease.generation !== command.generation)
       refuse()
     if (command.kind === 'renew') {
-      // The next renewal, or the last one again when its reply was lost. The fresh challenge
-      // proves a retry is not a captured packet; an older counter, or another renewal under
-      // the last counter, is refused. A renew without a renewal, as a client without
-      // RENEW_RETRY sends it, can only be the next counter.
+      // The next renewal, or the last request again after a lost reply. Counters correlate
+      // retries within the current workspace registration; they are not admission proofs.
       const retry =
         command.renewal !== undefined &&
         command.counter === lease.counter &&
@@ -458,23 +391,16 @@ export class PluginSupervisor {
     } catch {
       /* The reason is for reading afterwards; it never holds up the drain. */
     }
-    this.storage.write(this.record)
+    try {
+      this.storage.write(this.record)
+    } catch {
+      /* Discovery IO must not cancel actual child teardown. */
+    }
   }
   private remove(lease: WorkspaceLease, reason: StopReason): void {
     this.leases.delete(lease.id)
-    try {
-      this.agentBridge?.revoke(lease)
-    } catch {
-      this.revocationFailed = true
-    }
-    const work: Promise<void> = Promise.resolve()
-      .then(() => this.options.revoke?.(Object.freeze({ ...lease })))
-      .then(() => undefined)
-      .catch(() => {
-        this.revocationFailed = true
-      })
-      .finally(() => this.revocations.delete(work))
-    this.revocations.add(work)
+    notify(() => this.agentBridge?.revoke(lease))
+    notify(() => this.options.revoke?.(Object.freeze({ ...lease })))
     if (this.leases.size === 0) this.drainFor(reason)
   }
   private expire(): void {
@@ -492,9 +418,10 @@ export class PluginSupervisor {
     this.expire()
     if (this.record.phase !== 'accepting' || this.leases.size === 0) refuse()
     this.children.add(child)
-    // Retain the witness until drain: parent exit alone is not descendant-exit proof.
+    // Keep the captured handle for shutdown; never reconstruct a process from saved PIDs.
+    void child.exited.catch(() => undefined)
   }
-  /** Reserve the drain barrier before an asynchronous host can start a child. */
+  /** A start reservation keeps the writer until the host returns its actual handle or rejects. */
   /** Trusted in-process controller only, not an IPC command. */
   acceptsStarts(): boolean {
     this.expire()
@@ -505,19 +432,11 @@ export class PluginSupervisor {
     if (this.record.phase !== 'accepting' || this.leases.size === 0) refuse()
     const pending = Promise.resolve()
       .then(start)
-      .then(
-        (child) => {
-          this.children.add(child)
-          return child
-        },
-        () => {
-          // A rejected asynchronous start is not evidence that it left no descendant behind.
-          // Keep this negative proof after the settled promise leaves the pending set.
-          this.startFailed = true
-          this.fail()
-          refuse('cleanup-pending')
-        },
-      )
+      .then((child) => {
+        this.children.add(child)
+        void child.exited.catch(() => undefined)
+        return child
+      })
     this.starting.add(pending)
     try {
       return await pending
@@ -539,80 +458,44 @@ export class PluginSupervisor {
     this.drainWork ??= (async () => {
       this.trace({ stage: 'child-proofs', state: 'waiting' })
       this.drainDeadline = performance.now() + (this.options.drainWithin ?? OWNER_LIMITS.cleanup)
-      void Promise.resolve()
-        .then(() => this.agentBridge?.close?.())
-        .catch(() => {
-          // Cleanup notification cannot hold or replace actual physical child drain.
-        })
-      const result = await (async () => {
-        if ((await bounded(Promise.all(this.revocations), this.remainingDrainMs())) === undefined)
-          this.revocationFailed = true
-        await Promise.all(this.starting)
-        return Promise.all(
-          [...this.children].map(async (child) => ({
-            inProcess: child.inProcess === true,
-            // A consumer timeout is not exit proof. Only actual process death can end its work,
-            // and self-exit still requires separate positive proof for every physical child.
-            proven:
-              child.inProcess === true
-                ? (await bounded(stopAndProveChild(child), this.remainingDrainMs())) === true
-                : await stopAndProveChild(child),
-          })),
-        )
-      })().catch(() => undefined)
-      if (
-        !result ||
-        this.startFailed ||
-        this.revocationFailed ||
-        !result.every((child) => child.proven)
-      ) {
+      notify(() => this.agentBridge?.close?.())
+      // A host reserves before spawning and must return/register a handle for every physical
+      // child it creates. A rejection with no handle is an ordinary plugin start failure.
+      await Promise.allSettled([...this.starting])
+      const physical: OwnedPluginChild[] = []
+      for (const child of this.children) {
+        if (child.inProcess) notify(() => child.stop())
+        else physical.push(child)
+      }
+      const result = await Promise.all(physical.map(stopOwnedChild))
+      if (!result.every(Boolean)) {
         this.trace({ stage: 'child-proofs', state: 'failed' })
-        const published = this.fail()
-        // A failed consumer can leave this process's own async work unresolved. Do not unlock
-        // and let a successor overlap it. Only process death ends that work and releases the OS
-        // fence. Every physical child must still supply its exact exit and descendant proof.
-        // A rejected/unfinished start or an unknown physical witness never reaches this seam.
-        if (
-          this.options.onBlockedWithoutProcesses &&
-          !this.startFailed &&
-          result?.every((child) => child.inProcess || child.proven)
-        ) {
-          // A sharing refusal must not turn a blocked owner into a durable draining record.
-          // Retain the same fence and all physical proofs until publication succeeds.
-          if (!published) await this.publishBlockedBeforeExit()
-          this.options.onBlockedWithoutProcesses()
-        }
+        this.fail()
         return false
       }
       this.trace({ stage: 'child-proofs', state: 'complete' })
       this.trace({ stage: 'server.close', state: 'waiting' })
       await new Promise<void>((resolve) => this.server!.close(() => resolve()))
       this.trace({ stage: 'server.close', state: 'complete' })
-      // The proofs already arrived. Retain the same fence until their durable publication succeeds.
-      let attempt = 0
-      for (;;) {
-        attempt++
-        try {
-          this.trace({ stage: 'stopped-write', state: 'waiting', attempt })
-          this.storage.write({ ...this.record, phase: 'stopped' })
-          this.trace({ stage: 'stopped-write', state: 'complete', attempt })
-          break
-        } catch (error) {
-          this.trace({
-            stage: 'stopped-write',
-            state: 'failed',
-            attempt,
-            errno: drainWriteErrno(error),
-          })
-          await new Promise((resolve) => setTimeout(resolve, 1000))
-        }
+      // Discovery publication is informational. Once the actual children are gone, a failed
+      // record write must not keep a zero-child service holding the writer indefinitely.
+      this.trace({ stage: 'stopped-write', state: 'waiting', attempt: 1 })
+      try {
+        this.storage.write({ ...this.record, phase: 'stopped' })
+        this.trace({ stage: 'stopped-write', state: 'complete', attempt: 1 })
+      } catch (error) {
+        this.trace({
+          stage: 'stopped-write',
+          state: 'failed',
+          attempt: 1,
+          errno: drainWriteErrno(error),
+        })
       }
       clearInterval(this.timer)
       this.record.phase = 'stopped'
       this.release()
       await this.releaseDone
       this.fence!.release()
-      owners.delete(this.storage.identity)
       this.storage.close()
       this.trace({ stage: 'closed', state: 'complete' })
       this.stopped()
@@ -621,7 +504,7 @@ export class PluginSupervisor {
       this.fail()
       return false
     })
-    // A caller's deadline ends only its wait; the captured exit work continues under the fence.
+    // A caller deadline ends its wait; actual child exit work continues under the same writer.
     return bounded(this.drainWork, this.options.drainWithin ?? OWNER_LIMITS.drain).then(
       (result) => result === true,
     )

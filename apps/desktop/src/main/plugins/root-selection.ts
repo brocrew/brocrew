@@ -1,168 +1,87 @@
-import {
-  closeSync,
-  constants,
-  fstatSync,
-  lstatSync,
-  openSync,
-  readSync,
-  realpathSync,
-} from 'node:fs'
-import { dirname, isAbsolute, join, resolve } from 'node:path'
+import { readFileSync, realpathSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 import { z } from 'zod'
-import {
-  isLocalDrivePath,
-  isOwnerOnlyDirectory,
-  isPrivateEntry,
-  isWithinOrSame,
-  realPath,
-} from './private-files'
-import { isSocketFile } from './local-endpoint'
-import { refuse } from './supervisor/protocol'
 
-const Slot = z.string().regex(/^[a-z][a-z0-9]{0,5}$/)
-export const Marker = z.strictObject({ format: z.literal(1), slot: Slot })
-export const Pins = z.strictObject({
+// Old slot records remain location preferences; neither copy is an enrollment certificate.
+const Slot = z
+  .string()
+  .min(1)
+  .refine((value) => !/[\\/]/.test(value) && value !== '.' && value !== '..')
+export const Marker = z.object({ format: z.literal(1), slot: Slot })
+export const Pins = z.object({
   format: z.literal(1),
-  selections: z
-    .array(z.strictObject({ workspace: z.string().min(1).max(4096), slot: Slot }))
-    .max(256),
+  selections: z.array(z.object({ workspace: z.string().min(1), slot: Slot.nullable() })),
 })
-const missing = (error: unknown) =>
-  error instanceof Error && 'code' in error && error.code === 'ENOENT'
+const missing = (error: unknown) => (error as NodeJS.ErrnoException)?.code === 'ENOENT'
+function location(path: string): string {
+  try {
+    return realpathSync.native(path)
+  } catch (error) {
+    if (!missing(error)) throw error
+    return resolve(path)
+  }
+}
 const identity = (path: string) => (process.platform === 'win32' ? path.toLowerCase() : path)
 
-/** Read only a bounded, unchanged regular file. Selection never creates or repairs configuration. */
+/** Legacy arguments are retained for callers; ordinary filesystem reads determine availability. */
 export function readRootSelectionBytes(
   path: string,
-  limit: number,
-  expectedLinks: 1 | 2 = 1,
+  _limit: number,
+  _expectedLinks: 1 | 2 = 1,
 ): Buffer | undefined {
-  let before
+  void _limit
+  void _expectedLinks
   try {
-    before = lstatSync(path, { bigint: true })
+    return readFileSync(path)
   } catch (error) {
     if (missing(error)) return undefined
     throw error
   }
-  if (
-    !before.isFile() ||
-    before.isSymbolicLink() ||
-    before.nlink !== BigInt(expectedLinks) ||
-    !isPrivateEntry(before) ||
-    before.size > BigInt(limit)
-  )
-    refuse()
-  if (identity(realPath(dirname(path))) !== identity(dirname(path))) refuse()
-  const fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0))
-  try {
-    const opened = fstatSync(fd, { bigint: true })
-    if (opened.dev !== before.dev || opened.ino !== before.ino) refuse()
-    const bytes = Buffer.alloc(limit + 1)
-    let size = 0
-    while (size < bytes.length) {
-      const count = readSync(fd, bytes, size, bytes.length - size, null)
-      if (!count) break
-      size += count
-    }
-    const after = lstatSync(path, { bigint: true }),
-      final = fstatSync(fd, { bigint: true })
-    if (
-      size > limit ||
-      after.isSymbolicLink() ||
-      after.nlink !== BigInt(expectedLinks) ||
-      final.nlink !== BigInt(expectedLinks) ||
-      after.dev !== opened.dev ||
-      after.ino !== opened.ino ||
-      final.size !== before.size ||
-      final.mtimeNs !== before.mtimeNs ||
-      final.ctimeNs !== before.ctimeNs ||
-      after.size !== final.size ||
-      after.mtimeNs !== final.mtimeNs ||
-      after.ctimeNs !== final.ctimeNs
-    )
-      refuse()
-    return bytes.subarray(0, size)
-  } finally {
-    closeSync(fd)
-  }
 }
-
-function record(path: string, limit: number): unknown | undefined {
-  const bytes = readRootSelectionBytes(path, limit)
+function record(path: string): unknown | undefined {
+  const bytes = readRootSelectionBytes(path, 0)
   return bytes === undefined ? undefined : JSON.parse(bytes.toString('utf8'))
 }
 
-/** The effective workspace selects a root only with two matching, independently kept records. */
+/** Prefer the saved app selection, with the old workspace record as a migration fallback. */
 export function workspacePluginRoot(options: {
   appData: string
   workspaceRoot: string
   defaultRoot: string
 }): string {
-  try {
-    if (!isAbsolute(options.workspaceRoot)) refuse()
-    const workspace = realpathSync.native(options.workspaceRoot)
-    if (!lstatSync(workspace).isDirectory()) refuse()
-    const parent = join(realPath(options.appData), '@brobot2')
-    const markerValue = record(join(workspace, 'plugin-root.json'), 1024)
-    const pinValue = record(join(parent, 'plugin-root-pins.json'), 64 * 1024)
-    const pins = validatedRootPins(pinValue)
-    const pin = pins.selections.find((entry) => identity(entry.workspace) === identity(workspace))
-    if (markerValue === undefined && !pin) return options.defaultRoot
-    const marker = Marker.parse(markerValue)
-    if (!pin || pin.slot !== marker.slot) refuse()
-    return plannedPluginRoot(parent, workspace, pins.selections, marker.slot)
-  } catch {
-    refuse()
-  }
+  const workspace = location(options.workspaceRoot),
+    parent = join(options.appData, '@brobot2')
+  const pins = validatedRootPins(record(join(parent, 'plugin-root-pins.json')))
+  const pin = pins.selections.find(
+    (entry) => identity(location(entry.workspace)) === identity(workspace),
+  )
+  if (pin)
+    return pin.slot === null
+      ? options.defaultRoot
+      : plannedPluginRoot(parent, workspace, pins.selections, pin.slot)
+  const markerValue = record(join(workspace, 'plugin-root.json'))
+  if (markerValue === undefined) return options.defaultRoot
+  return plannedPluginRoot(parent, workspace, pins.selections, Marker.parse(markerValue).slot)
 }
 
-/** Validate the exact root the reader would select, including a proposed offline enrollment. */
+/** Construct an old selected location without root, mode, inode or workspace eligibility tests. */
 export function plannedPluginRoot(
   parent: string,
-  workspace: string,
-  selections: Array<{ workspace: string; slot: string }>,
+  _workspace: string,
+  _selections: Array<{ workspace: string; slot: string | null }>,
   slot: string,
 ): string {
-  if (identity(realPath(parent)) !== identity(parent) || !isPrivateEntry(lstatSync(parent), 0o022))
-    refuse()
-  const root = join(parent, `plugins-${slot}`)
-  if (
-    isWithinOrSame(workspace, root) ||
-    selections.some((entry) => isWithinOrSame(entry.workspace, root))
-  )
-    refuse()
-  if (
-    isSocketFile() &&
-    [join(root, 'supervisor', 'owner.sock'), join(root, 'person-control', 'person.sock')].some(
-      (path) => Buffer.byteLength(path) > 100,
-    )
-  )
-    refuse()
-  try {
-    const stat = lstatSync(root)
-    if (stat.isSymbolicLink() || !stat.isDirectory() || !isOwnerOnlyDirectory(stat)) refuse()
-  } catch (error) {
-    if (!missing(error)) throw error
-  }
-  return root
+  void _workspace
+  void _selections
+  return join(parent, `plugins-${Slot.parse(slot)}`)
+}
+export function validatedRootPins(value: unknown) {
+  return value === undefined ? { format: 1 as const, selections: [] } : Pins.parse(value)
 }
 
-/** Validate the complete pin map even when a partial target selection cannot be read. */
-export function validatedRootPins(value: unknown) {
-  const pins = value === undefined ? { format: 1 as const, selections: [] } : Pins.parse(value)
-  const folders = new Set<string>(),
-    slots = new Set<string>()
-  for (const entry of pins.selections) {
-    if (
-      !isAbsolute(entry.workspace) ||
-      !isLocalDrivePath(entry.workspace) ||
-      resolve(entry.workspace) !== entry.workspace ||
-      folders.has(identity(entry.workspace)) ||
-      slots.has(entry.slot)
-    )
-      refuse()
-    folders.add(identity(entry.workspace))
-    slots.add(entry.slot)
-  }
-  return pins
+export function rootSelectionPath(path: string): string {
+  return location(path)
+}
+export function rootSelectionIdentity(path: string): string {
+  return identity(location(path))
 }

@@ -1,23 +1,23 @@
 import { randomUUID } from 'node:crypto'
 import {
+  type WorkspacePluginEnabled,
+  workspacePluginKey,
   ActivationSnapshot,
   Event,
   installationProjection,
-  STATE_LIMITS,
   OperationRequest,
   ProjectionReceipt,
-  decodeState,
   equalState,
   frozen,
   refuseState,
   stateInput,
-  type Operation,
+  Operation,
   type ProjectionReceipt as Receipt,
 } from './format'
 import { PluginStateDisk, readInstalledPluginDescriptor, type PluginDiskOptions } from './disk'
 import { newLifecycle, planOperation, type LifecycleState } from './machine'
 
-/** Storage only. The later person-command controller owns authentication and consent collection. */
+/** Persistent installation selection and independent workspace preferences. */
 export class GlobalPluginState {
   private constructor(private readonly disk: PluginStateDisk) {}
   static create(options: PluginDiskOptions): GlobalPluginState {
@@ -40,7 +40,7 @@ export class GlobalPluginState {
       throw error
     }
   }
-  /** Display evidence only: no repair, reclaim, prepare, activation or admission. Busy refuses. */
+  /** Read-only installation display; never repairs or starts a plugin. */
   static observeInstallations(options: PluginDiskOptions) {
     const disk = new PluginStateDisk(options, false, true)
     try {
@@ -53,7 +53,7 @@ export class GlobalPluginState {
       disk.close()
     }
   }
-  /** Authenticated display snapshot only. No reclaim, mutation or execution; busy refuses. */
+  /** Read the selected release without mutating state or executing plugin code. */
   static readInstalledPackage(options: PluginDiskOptions, id: string) {
     return readInstalledPluginDescriptor(options, id)
   }
@@ -66,30 +66,96 @@ export class GlobalPluginState {
   }
   inspect() {
     const state = this.disk.load()
-    return frozen({
+    const current = frozen({
       rootId: state.rootId,
       epoch: state.epoch,
       sequence: state.sequence,
       guards: [...state.guards.values()],
       pending: state.pending,
       reservation: state.reservation,
-      operations: [...state.operations.values()],
+    })
+    const disk = this.disk
+    let history: ReturnType<PluginStateDisk['operationHistory']> | undefined
+    return Object.freeze({
+      ...current,
+      get operations() {
+        return frozen((history ??= disk.operationHistory(state)))
+      },
     })
   }
-  /** Older readers must refuse before any update can reach their removal recovery. */
-  requireUpdateReader(): void {
-    const state = this.disk.load()
-    if (state.pending) refuseState('busy')
-    if (!state.updateReader) this.disk.append(state, { kind: 'reader-floor', version: 2 })
+  getEnabled(workspaceId: string, pluginId: string): WorkspacePluginEnabled {
+    return this.workspaceChoice('workspaceEnabled', workspaceId, pluginId)
   }
-  /** Persist exact structured consent and stable identity allocation before any installer effect. */
+  setEnabled(workspaceId: string, pluginId: string, enabled: boolean): WorkspacePluginEnabled {
+    return frozen(this.disk.setWorkspaceChoice('workspaceEnabled', workspaceId, pluginId, enabled))
+  }
+  getTitlesEnabled(workspaceId: string, pluginId: string): WorkspacePluginEnabled {
+    return this.workspaceChoice('workspaceTitlesEnabled', workspaceId, pluginId)
+  }
+  setTitlesEnabled(
+    workspaceId: string,
+    pluginId: string,
+    enabled: boolean,
+  ): WorkspacePluginEnabled {
+    return frozen(
+      this.disk.setWorkspaceChoice('workspaceTitlesEnabled', workspaceId, pluginId, enabled),
+    )
+  }
+  private workspaceChoice(
+    field: 'workspaceEnabled' | 'workspaceTitlesEnabled',
+    workspaceId: string,
+    pluginId: string,
+  ): WorkspacePluginEnabled {
+    const row = this.disk.load()[field].get(workspacePluginKey(workspaceId, pluginId))
+    return frozen(
+      row
+        ? { enabled: row.enabled, revision: row.revision }
+        : {
+            enabled: field === 'workspaceEnabled',
+            revision: 0,
+          },
+    )
+  }
+  /** Indexed retry lookup; ordinary operations do not scan retained history. */
+  operation(operationId: string) {
+    return frozen(this.disk.operation(operationId))
+  }
+  /** Only each plugin's latest selected operation can need filesystem recovery. */
+  recoveryOperations() {
+    return frozen(this.disk.recoveryOperations())
+  }
+
+  /** Kept for callers upgrading from the journal format; no reader floor is written. */
+  requireUpdateReader(): void {}
+  /** Persist the operation and its allocation before installer effects. */
   prepare(input: unknown): Readonly<Operation> {
     const request = stateInput(input, OperationRequest)
     const state = this.disk.load()
-    const previous = state.operations.get(request.operationId)
+    const previous = this.disk.operation(request.operationId)
     if (previous !== undefined) {
       if (!equalState(previous.operation.request, request)) refuseState('conflict')
-      if (previous.status === 'prepared' && state.reservation === null) refuseState('corrupt')
+      if (
+        previous.status === 'prepared' &&
+        state.pending &&
+        state.pending.request.operationId !== request.operationId
+      )
+        refuseState('busy')
+      if (previous.status === 'prepared' && !state.pending) {
+        if (
+          request.consent.action === 'global-restore' &&
+          request.consent.expectedSequence !== state.sequence
+        )
+          refuseState('conflict')
+        const planned = Operation.parse(
+          planOperation(
+            state,
+            { ...request, consent: { ...request.consent, expectedSequence: state.sequence } },
+            previous.operation.allocated,
+          ),
+        )
+        if (!equalState(planned.next, previous.operation.next)) refuseState('conflict')
+        this.disk.prepare(state, previous.operation)
+      }
       return frozen(previous.operation)
     }
     if (request.consent.action !== 'global-restore') this.active(state)
@@ -98,45 +164,35 @@ export class GlobalPluginState {
     this.disk.prepare(state, operation)
     return frozen(operation)
   }
-  /** Caller must finish required readiness/drain work first. This starts/stops no consumer. */
+  /** Select a completed installation after its caller finishes the filesystem operation. */
   complete(operationId: string): void {
     this.resolve(operationId, true)
   }
-  /** Fail closed rather than reviving the prior installation after an interrupted mutation. */
+  /** Abort keeps the previous selected installation; caller cleans only its unpublished code. */
   abort(operationId: string): void {
     this.resolve(operationId, false)
   }
   private resolve(operationId: string, success: boolean): void {
     const state = this.disk.load()
-    const operation = state.operations.get(operationId)
-    if (operation === undefined) refuseState('conflict')
-    if (operation.status !== 'prepared') {
-      if (operation.status === (success ? 'completed' : 'aborted')) return
-      refuseState('conflict')
+    if (state.pending?.request.operationId === operationId) {
+      this.disk.resolve(state, success)
+      return
     }
-    if (state.pending?.request.operationId !== operationId) refuseState('conflict')
-    this.disk.resolve(state, success)
+    const operation = this.disk.operation(operationId)
+    if (operation?.status === (success ? 'completed' : 'aborted')) return
+    refuseState('conflict')
   }
+
   private active(state: LifecycleState): ActivationSnapshot {
     if (state.pending !== null) refuseState('busy')
-    if (state.activation === null) {
-      if (state.guards.size !== 0) refuseState('corrupt')
-      return { format: 1, rootId: state.rootId, epoch: state.epoch, entries: [] }
+    return {
+      format: 1,
+      rootId: state.rootId,
+      epoch: state.epoch,
+      entries: [...state.admitted.values()],
     }
-    const snapshot = decodeState(this.disk.readActivation(state.activation), ActivationSnapshot)
-    if (
-      snapshot.rootId !== state.rootId ||
-      snapshot.epoch !== state.epoch ||
-      new Set(snapshot.entries.map((entry) => entry.pluginId)).size !== snapshot.entries.length ||
-      snapshot.entries.some(
-        (entry) => entry.phase !== 'active' || !equalState(state.guards.get(entry.pluginId), entry),
-      )
-    )
-      refuseState('corrupt')
-    if (this.disk.load().head !== state.head) refuseState('conflict')
-    return snapshot
   }
-  /** Back up only this data. lifecycle-guard is explicitly excluded from every restore set. */
+  /** Export the selected installations for backup. */
   exportActivation(): Readonly<ActivationSnapshot> {
     const state = this.disk.load()
     return frozen(this.active(state))
@@ -152,7 +208,7 @@ export class GlobalPluginState {
       ),
     )
   }
-  /** Inactive receipt preview, bound to the pre-reserved install cohort. */
+  /** Preview the workspace installation binding for a pending operation. */
   previewProjection(operationId: string, workspaceId: string): Receipt {
     const state = this.disk.load(),
       operation = state.pending
@@ -167,7 +223,7 @@ export class GlobalPluginState {
     return frozen(installationProjection(state.rootId, state.epoch, workspaceId, operation.next))
   }
 
-  /** Canonical receipts live in the non-restorable global journal, never a workspace DB. */
+  /** Transient workspace installation bindings are persisted for reconciliation. */
   projections(workspaceId: string): readonly Receipt[] {
     if (!ProjectionReceipt.shape.workspaceId.safeParse(workspaceId).success) refuseState('conflict')
     return frozen(
@@ -176,22 +232,16 @@ export class GlobalPluginState {
   }
   recordProjection(workspaceId: string, pluginId: string, receipt: Receipt | null): void {
     const state = this.disk.load()
-    this.active(state) // Never consume the reserved completion slot of a pending operation.
+    this.active(state)
     const event = stateInput({ kind: 'projected', workspaceId, pluginId, receipt }, Event)
     if (event.kind !== 'projected') refuseState('conflict')
     if (receipt && (receipt.pluginId !== pluginId || !this.matchesProjection(receipt, workspaceId)))
       refuseState('conflict')
     const key = `${workspaceId}/${pluginId}`
     if (equalState(state.projections.get(key) ?? null, receipt)) return
-    if (
-      receipt &&
-      !state.projections.has(key) &&
-      state.projections.size >= STATE_LIMITS.projections
-    )
-      refuseState('limit')
     this.disk.append(state, event)
   }
-  /** A match is data for the later admission gate, never permission to start/call a process. */
+  /** Compare a workspace binding with the current installation. */
   matchesProjection(input: unknown, workspaceId: string): boolean {
     const parsed = ProjectionReceipt.safeParse(input)
     if (!parsed.success || parsed.data.workspaceId !== workspaceId) return false

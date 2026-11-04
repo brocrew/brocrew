@@ -1,16 +1,18 @@
 import { z } from 'zod'
 import { SkillDigest } from '../../../shared/skills-catalogue'
-import { pluginSha256 } from '../package-digests'
 
-export const STATE_LIMITS = {
-  recordBytes: 128 * 1024,
-  records: 4096,
-  journalBytes: 32 * 1024 * 1024,
-  plugins: 200,
-  projections: 4096,
-} as const
 const integer = z.number().int().nonnegative().safe()
 const uuid = z.uuid()
+export const WorkspacePluginChoice = z.strictObject({
+  workspaceId: z.string(),
+  pluginId: z.string(),
+  enabled: z.boolean(),
+  revision: integer,
+})
+export type WorkspacePluginChoice = z.infer<typeof WorkspacePluginChoice>
+export type WorkspacePluginEnabled = Readonly<Pick<WorkspacePluginChoice, 'enabled' | 'revision'>>
+export const workspacePluginKey = (workspaceId: string, pluginId: string): string =>
+  JSON.stringify([workspaceId, pluginId])
 export const ReleaseState = z.strictObject({
   version: z.string(),
   archiveSha256: SkillDigest,
@@ -67,7 +69,7 @@ export const ResolutionReservation = z.strictObject({
   id: uuid,
   complete: ActivationRef,
   abort: ActivationRef,
-  recordBytes: integer.max(STATE_LIMITS.recordBytes),
+  recordBytes: integer,
   records: z.literal(1),
   guardNames: z.literal(2),
   activationNames: z.literal(0),
@@ -126,8 +128,16 @@ export const Event = z.discriminatedUnion('kind', [
     operation: Operation,
     reservation: ResolutionReservation.optional(),
   }),
-  z.strictObject({ kind: z.literal('completed'), operationId: uuid, activation: ActivationRef }),
-  z.strictObject({ kind: z.literal('aborted'), operationId: uuid, activation: ActivationRef }),
+  z.strictObject({
+    kind: z.literal('completed'),
+    operationId: uuid,
+    activation: ActivationRef.optional(),
+  }),
+  z.strictObject({
+    kind: z.literal('aborted'),
+    operationId: uuid,
+    activation: ActivationRef.optional(),
+  }),
 ])
 export type Event = z.infer<typeof Event>
 export const JournalRecord = z.strictObject({
@@ -156,22 +166,18 @@ export class PluginStateError extends Error {
 export function refuseState(code: PluginStateError['code']): never {
   throw new PluginStateError(code)
 }
-const envelope = z.strictObject({ payload: z.string(), sha256: SkillDigest })
+/** New local state is plain JSON; old checksummed envelopes remain readable during migration. */
 export function encodeState(value: unknown): Buffer {
-  const payload = JSON.stringify(value)
-  const bytes = Buffer.from(JSON.stringify({ payload, sha256: pluginSha256(Buffer.from(payload)) }))
-  return bytes
+  return Buffer.from(JSON.stringify(value))
 }
 export function decodeState<T>(bytes: Uint8Array, schema: z.ZodType<T>): T {
   try {
-    const outer = envelope.safeParse(
-      JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)),
-    )
-    if (!outer.success || pluginSha256(Buffer.from(outer.data.payload)) !== outer.data.sha256)
-      refuseState('corrupt')
-    const parsed = schema.safeParse(JSON.parse(outer.data.payload))
-    if (!parsed.success) refuseState('corrupt')
-    return parsed.data
+    const outer: unknown = JSON.parse(Buffer.from(bytes).toString('utf8'))
+    const value =
+      outer && typeof outer === 'object' && 'payload' in outer && typeof outer.payload === 'string'
+        ? JSON.parse(outer.payload)
+        : outer
+    return schema.parse(value)
   } catch {
     return refuseState('corrupt')
   }

@@ -3,9 +3,8 @@ import { localPluginArchive } from '../catalogue/local'
 import { devPluginArchive } from '../catalogue/dev-source'
 import { createPublicKey } from 'node:crypto'
 import { join } from 'node:path'
-import { lstat } from 'node:fs/promises'
 import { GlobalPluginState } from '../state/store'
-import { immutableFile, sourceBytes, verifyImmutableFile } from '../node-host-files'
+import { sourceBytes, verifyImmutableFile } from '../node-host-files'
 import { PLUGIN_LIMITS, pluginSha256 } from '../package-digests'
 import { thisMachine } from '../package-schema'
 import { createRepoAwarePluginVerifier } from '../package-verifier'
@@ -65,30 +64,10 @@ export async function bootstrapPluginLifecycle(options: {
       throw new Error('unavailable')
     legacyRepoList = { bytes, sha256: repo.legacyRepoList.sha256, appVersion: repo.appVersion }
   }
-  const root = join(options.root, 'state')
-  const exists = await lstat(root).then(
-    () => true,
-    (error) => {
-      if (error.code === 'ENOENT') return false
-      throw error
-    },
-  )
-  if (!exists) {
-    // A partial/removed guard is never silently initialized again. Birth is outside all restore sets.
-    const marker = join(options.root, 'lifecycle-state-born')
-    await lstat(marker).then(
-      () => {
-        throw new Error('unavailable')
-      },
-      (error) => {
-        if (error.code !== 'ENOENT') throw error
-      },
-    )
-    await immutableFile(marker, Buffer.from('1\n'))
-  }
-  const state = exists
-    ? GlobalPluginState.open({ root, workspaceRoots: options.workspaceRoots })
-    : GlobalPluginState.create({ root, workspaceRoots: options.workspaceRoots })
+  const state = GlobalPluginState.open({
+    root: join(options.root, 'state'),
+    workspaceRoots: options.workspaceRoots,
+  })
   try {
     const reads = new Map<string, Set<AbortController>>()
     const service = await createSupervisorLifecycle({
