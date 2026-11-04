@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { mkdir, writeFile, readdir, readFile, unlink, chmod } from 'node:fs/promises'
+import { mkdir, writeFile, readdir, readFile, unlink, chmod, stat } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 
@@ -88,8 +88,31 @@ async function seedOpaque(root: string, installId: string) {
     await mkdir(join(path, '..'), { recursive: true, mode: 0o700 })
     await writeFile(path, bytes)
   }
+  const metadata = await Promise.all(
+    [...files.keys()].map(async (path) => {
+      const info = await stat(path)
+      return [path, { mtimeMs: info.mtimeMs, size: info.size, mode: info.mode }] as const
+    }),
+  )
+  const inventory = async (path: string): Promise<string[]> => {
+    const rows: string[] = []
+    for (const entry of await readdir(path, { withFileTypes: true })) {
+      rows.push(entry.name)
+      if (entry.isDirectory())
+        rows.push(
+          ...(await inventory(join(path, entry.name))).map((name) => entry.name + '/' + name),
+        )
+    }
+    return rows.sort()
+  }
+  const before = await inventory(join(root, 'profile-apply'))
   const unchanged = async () => {
     for (const [path, bytes] of files) expect(await readFile(path, 'utf8')).toBe(bytes)
+    for (const [path, saved] of metadata) {
+      const info = await stat(path)
+      expect({ mtimeMs: info.mtimeMs, size: info.size, mode: info.mode }).toEqual(saved)
+    }
+    expect(await inventory(join(root, 'profile-apply'))).toEqual(before)
   }
   return { directory, floor, unchanged }
 }
@@ -109,6 +132,7 @@ it.each([1, 2] as const)(
     vi.stubGlobal('fetch', fetch)
     await f.controller.install(f.handle, 'chrome')
     const before = f.state.exportActivation().entries[0]!
+    await expect(readdir(join(f.root, 'profile-apply'))).rejects.toMatchObject({ code: 'ENOENT' })
     const opaque = await seedOpaque(f.root, before.installId)
     const archive = new PluginPackageVault(f.root, fictionalPublicKey, f.opts.target)
     const installed = await archive.load(
