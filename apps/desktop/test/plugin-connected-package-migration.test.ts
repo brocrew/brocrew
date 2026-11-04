@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { randomUUID } from 'node:crypto'
 import { copyFile, cp, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createPluginNodeHost } from '../src/main/plugins/node-host'
@@ -9,6 +9,7 @@ import { preparePluginNodeRuntime } from '../src/main/plugins/node-runtime'
 import { GlobalPluginState } from '../src/main/plugins/state/store'
 import { PluginSupervisor } from '../src/main/plugins/supervisor/owner'
 import { PluginWorkspaceLease } from '../src/main/plugins/supervisor/client'
+import { PluginPackageVault } from '../src/main/plugins/lifecycle/vault'
 import { createSupervisorLifecycle } from '../src/main/plugins/lifecycle/supervisor'
 import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
 import { PluginPageTools } from '../src/main/plugins/ui/tool-rpc'
@@ -18,6 +19,7 @@ import type { WorkspaceProjection } from '../src/main/plugins/lifecycle/types'
 import { pluginSha256 } from '../src/main/plugins/package-digests'
 import { fictionalPublicKey, signed } from './plugin-package-fixtures'
 import {
+  historicalPackage,
   migrationPackages,
   packageBundleProvenance,
   type MigratedPackage,
@@ -70,7 +72,11 @@ function jsonResult(answer: PluginToolCallResult): Record<string, unknown> {
     throw new Error('Expected the actual package JSON text result: ' + JSON.stringify(answer))
   return JSON.parse(text.text) as Record<string, unknown>
 }
-async function fixture(id: MigratedPackage, warning = false) {
+async function fixture(
+  id: MigratedPackage,
+  warning = false,
+  boundary: 'conflicting' | 'numeric' = 'conflicting',
+) {
   const parent = await realpath(
     await mkdtemp(join(process.platform === 'win32' ? tmpdir() : '/tmp', 'connected-packages-')),
   )
@@ -164,6 +170,7 @@ async function fixture(id: MigratedPackage, warning = false) {
   let legacy: { directory: string; floor: string } | undefined
   let installId: string | undefined
   const oldFiles = new Map<string, Buffer>()
+  const oldMtimes = new Map<string, bigint>()
   const audits: CallAudit[] = []
   const sessions: ConnectedSession[] = []
   // Seed at the real reservation boundary, before any package process exists. This callback
@@ -179,12 +186,17 @@ async function fixture(id: MigratedPackage, warning = false) {
       floor: join(root, 'profile-apply', installId + '.floor'),
     }
     mkdirSync(join(legacy.directory, 'intents'), { recursive: true })
-    const boundary = Buffer.from(
+    const checkpoint = Buffer.from(
       JSON.stringify({ format: 2, installId, revision: 40, previous: 'b'.repeat(64) }) + '\n',
     )
     oldFiles.set(join(legacy.directory, 'birth'), Buffer.from(installId))
-    oldFiles.set(legacy.floor, boundary)
-    oldFiles.set(join(legacy.directory, 'checkpoint.json'), boundary)
+    oldFiles.set(legacy.floor, boundary === 'numeric' ? Buffer.from('9000\n') : checkpoint)
+    oldFiles.set(
+      join(legacy.directory, 'checkpoint.json'),
+      Buffer.from(
+        JSON.stringify({ format: 2, installId, revision: 40, previous: 'c'.repeat(64) }) + '\n',
+      ),
+    )
     // A reserved old action is consumed metadata, even when its command body cannot be parsed.
     oldFiles.set(
       join(legacy.directory, 'intents', '0000000000000041.json'),
@@ -194,7 +206,10 @@ async function fixture(id: MigratedPackage, warning = false) {
       join(legacy.directory, 'intents', '.new-fictional'),
       Buffer.from('unpublished action'),
     )
-    for (const [path, bytes] of oldFiles) writeFileSync(path, bytes)
+    for (const [path, bytes] of oldFiles) {
+      writeFileSync(path, bytes)
+      oldMtimes.set(path, statSync(path, { bigint: true }).mtimeNs)
+    }
   }
   async function start(): Promise<ConnectedSession> {
     const owner = await PluginSupervisor.start({ root, workspaceRoots: [workspaceRoot] })
@@ -325,8 +340,12 @@ async function fixture(id: MigratedPackage, warning = false) {
         }),
       )
     },
+    consumedRevision: boundary === 'numeric' ? 9000 : 41,
     async unchangedLegacy() {
-      for (const [path, bytes] of oldFiles) expect(await readFile(path)).toEqual(bytes)
+      for (const [path, bytes] of oldFiles) {
+        expect(await readFile(path)).toEqual(bytes)
+        expect(statSync(path, { bigint: true }).mtimeNs).toBe(oldMtimes.get(path))
+      }
     },
     reopenState() {
       state.close()
@@ -334,6 +353,91 @@ async function fixture(id: MigratedPackage, warning = false) {
     },
   }
 }
+async function migrateSelected(f: Awaited<ReturnType<typeof fixture>>, format: 1 | 2) {
+  const oldPackage = await historicalPackage(f.id, format, f.parent)
+  expect(oldPackage.manifest.format).toBe(format)
+  let session = await f.start()
+  await session.client.applyPackage!(oldPackage.ref, 'install')
+  const selected = f.state.exportActivation().entries.find((entry) => entry.pluginId === f.id)!
+  const rootId = f.state.inspect().rootId
+  expect(selected.release.archiveSha256).toBe(oldPackage.release.archive.sha256)
+  expect(selected.release.version).toBe('0.0.1')
+  expect(selected.installId).toBe(f.installId)
+  await session.client.host!.request({ kind: 'enabled', pluginId: f.id, enabled: false })
+  await session.client.host!.request({ kind: 'titles-enabled', pluginId: f.id, enabled: false })
+  const enabled = f.state.getEnabled(f.workspaceId, f.id)
+  const titles = f.state.getTitlesEnabled(f.workspaceId, f.id)
+  expect(enabled.enabled).toBe(false)
+  expect(titles.enabled).toBe(false)
+  expect(
+    existsSync(
+      join(
+        f.home,
+        f.id === 'chrome' ? 'legacy-configuration-import.json' : 'legacy-configuration.json',
+      ),
+    ),
+  ).toBe(false)
+  await session.close()
+  f.reopenState()
+  expect(f.state.exportActivation().entries).toEqual([selected])
+  expect(
+    GlobalPluginState.readInstalledPackage(
+      { root: join(f.root, 'state'), workspaceRoots: [join(f.parent, 'workspace')] },
+      f.id,
+    ),
+  ).toEqual({
+    version: oldPackage.manifest.version,
+    archiveSha256: oldPackage.release.archive.sha256,
+    manifestSha256: oldPackage.release.manifestSha256,
+  })
+  const persisted = await new PluginPackageVault(
+    f.root,
+    fictionalPublicKey,
+    target,
+    undefined,
+    '1.0.0',
+  ).load(oldPackage.release, [])
+  expect(persisted.manifest.format).toBe(format)
+  expect(persisted.manifest.id).toBe(f.id)
+  expect(
+    pluginSha256(
+      await readFile(join(f.root, 'package-vault', oldPackage.release.archive.sha256, 'archive')),
+    ),
+  ).toBe(oldPackage.release.archive.sha256)
+  session = await f.start()
+  expect(f.state.exportActivation().entries).toEqual([selected])
+  expect(f.state.getEnabled(f.workspaceId, f.id)).toEqual(enabled)
+  expect(f.state.getTitlesEnabled(f.workspaceId, f.id)).toEqual(titles)
+  await preserved(f)
+  // This is the actual person Update path, after an old selected installation cold reopen.
+  await session.client.applyPackage!(f.packages.refs[0]!, 'update')
+  const converted = f.state.exportActivation().entries.find((entry) => entry.pluginId === f.id)!
+  expect(converted.installId).toBe(selected.installId)
+  expect(converted.incarnation).not.toBe(selected.incarnation)
+  expect(converted.release.archiveSha256).toBe(f.packages.refs[0]!.sha256)
+  expect(f.state.inspect().rootId).toBe(rootId)
+  expect(f.state.getEnabled(f.workspaceId, f.id)).toEqual(enabled)
+  expect(f.state.getTitlesEnabled(f.workspaceId, f.id)).toEqual(titles)
+  expect(session.service.controller.agentAttachments(f.workspaceId)).toEqual([])
+  const boots = (await f.boundaryEvents()).filter(
+    (event) => event.event === (f.id === 'chrome' ? 'browser-start' : 'bridge-start'),
+  )
+  expect(boots).toHaveLength(1)
+  expect(boots[0]).toMatchObject({
+    bootstrap: {
+      dataDirectory: f.home,
+      sharedDataDirectory: f.shared,
+      priorOwner,
+      legacyConfiguration: f.legacy,
+      previousVersion: '0.0.1',
+      previousDataSchema: 1,
+    },
+  })
+  // Only a new explicit person choice re-enables tools; update did not reset the old switch.
+  await session.client.host!.request({ kind: 'enabled', pluginId: f.id, enabled: true })
+  return { session, selected, titles }
+}
+
 async function configure(session: ConnectedSession, id: MigratedPackage) {
   const snapshot = await session.client.host!.snapshot()
   expect(snapshot.contributions).toEqual(
@@ -376,128 +480,137 @@ async function preserved(f: Awaited<ReturnType<typeof fixture>>) {
 // These test targets run the source entry under Node. They do not qualify a native browser,
 // Go binary, rendered Electron DOM, published package dependencies or unchanged installed app.
 describe('ordinary package migration through actual app and package code', () => {
-  it('Chrome preserves old profile bytes and consumption boundary through Configure, update and reopen', async () => {
-    const f = await fixture('chrome')
-    let session = await f.start()
-    await session.client.applyPackage!(f.packages.refs[0]!, 'install')
-    const first = current(session, f.workspaceId)
-    const page = await configure(session, 'chrome')
-    const initial = jsonResult(await page.invoke('configuration_snapshot')) as {
-      profiles: { name: string; displayName: string; enabled: boolean }[]
-    }
-    expect(initial.profiles).toHaveLength(1)
-    const name = initial.profiles[0]!.name
-    expect(initial.profiles[0]).toMatchObject({
-      displayName: 'Retained fictional fern',
-      enabled: true,
-    })
-    const profileRoot =
-      process.platform === 'darwin' || process.platform === 'win32' ? f.shared : f.home
-    expect(await readFile(join(profileRoot, 'profiles', name, 'Default', 'Cookies'))).toEqual(
-      opaque,
-    )
-    expect(
-      jsonResult(
+  it.each([
+    { format: 1 as const, boundary: 'conflicting' as const },
+    { format: 2 as const, boundary: 'numeric' as const },
+  ])(
+    'Chrome updates selected format$format with $boundary highwater through Configure and reopen',
+    async ({ format, boundary }) => {
+      const f = await fixture('chrome', false, boundary)
+      let { session } = await migrateSelected(f, format)
+      const first = current(session, f.workspaceId)
+      const page = await configure(session, 'chrome')
+      const initial = jsonResult(await page.invoke('configuration_snapshot')) as {
+        profiles: { name: string; displayName: string; enabled: boolean }[]
+      }
+      expect(initial.profiles).toHaveLength(1)
+      const name = initial.profiles[0]!.name
+      expect(initial.profiles[0]).toMatchObject({
+        displayName: 'Retained fictional fern',
+        enabled: true,
+      })
+      const profileRoot =
+        process.platform === 'darwin' || process.platform === 'win32' ? f.shared : f.home
+      expect(await readFile(join(profileRoot, 'profiles', name, 'Default', 'Cookies'))).toEqual(
+        opaque,
+      )
+      expect(
+        jsonResult(
+          await page.invoke('configure_profile', {
+            profile: name,
+            action: 'rename-profile',
+            newName: 'Fictional kept fern',
+          }),
+        ),
+      ).toEqual({ profile: name, completed: true })
+      expect(
+        jsonResult(
+          await page.invoke('configure_profile', {
+            profile: name,
+            action: 'set-flags',
+            allowSync: true,
+          }),
+        ),
+      ).toEqual({ profile: name, completed: true })
+      expect(
         await page.invoke('configure_profile', {
           profile: name,
-          action: 'rename-profile',
-          newName: 'Fictional kept fern',
+          action: 'set-enabled',
+          enabled: 'wrong',
         }),
-      ),
-    ).toEqual({ profile: name, completed: true })
-    expect(
-      jsonResult(
-        await page.invoke('configure_profile', {
-          profile: name,
-          action: 'set-flags',
-          allowSync: true,
-        }),
-      ),
-    ).toEqual({ profile: name, completed: true })
-    expect(
-      await page.invoke('configure_profile', {
-        profile: name,
-        action: 'set-enabled',
-        enabled: 'wrong',
-      }),
-    ).toMatchObject({ status: 'result', result: { isError: true } })
-    const markerPath = join(f.home, 'legacy-configuration-import.json')
-    const marker = await readFile(markerPath)
-    expect(JSON.parse(marker.toString())).toMatchObject({
-      source: f.legacy,
-      installId: f.installId,
-      revision: 41,
-      consumed: true,
-    })
-    expect((await f.boundaryEvents()).filter((e) => e.event === 'browser-open')).toEqual([])
-    if (process.platform === 'darwin' || process.platform === 'win32') {
-      const registry = JSON.parse(await readFile(join(f.shared, 'registry.json'), 'utf8'))
-      expect(Object.keys(registry.workspaces)).toEqual([priorOwner.ownerId])
-      expect(registry.profiles[0].perWorkspace).toHaveProperty(priorOwner.ownerId)
-      expect(registry.workspaces).not.toHaveProperty(f.workspaceId)
-    }
-    await session.client.applyPackage!(f.packages.refs[1]!, 'update')
-    await expect(page.invoke('configuration_snapshot')).rejects.toThrow('Plugin unavailable.')
-    expect(current(session, f.workspaceId).instanceId).not.toBe(first.instanceId)
-    let updated = await configure(session, 'chrome')
-    expect(jsonResult(await updated.invoke('configuration_snapshot'))).toMatchObject({
-      profiles: [
-        expect.objectContaining({ name, displayName: 'Fictional kept fern', allowSync: true }),
-      ],
-    })
-    await session.service.controller.restartPluginTools('chrome', undefined, () => {})
-    await expect(updated.invoke('configuration_snapshot')).rejects.toThrow('Plugin unavailable.')
-    expect(await readFile(markerPath)).toEqual(marker)
-    await preserved(f)
-    await session.close()
-    f.reopenState()
-    session = await f.start()
-    updated = await configure(session, 'chrome')
-    expect(jsonResult(await updated.invoke('configuration_snapshot'))).toMatchObject({
-      profiles: [expect.objectContaining({ displayName: 'Fictional kept fern', allowSync: true })],
-    })
-    expect(await readFile(join(profileRoot, 'profiles', name, 'Default', 'Cookies'))).toEqual(
-      opaque,
-    )
-    expect(await readFile(markerPath)).toEqual(marker)
-    await preserved(f)
-    const boots = (await f.boundaryEvents()).filter((e) => e.event === 'browser-start')
-    expect(boots).toHaveLength(4)
-    expect(boots[1]).toMatchObject({
-      bootstrap: {
-        dataDirectory: f.home,
-        sharedDataDirectory: f.shared,
-        priorOwner,
-        legacyConfiguration: f.legacy,
-        previousVersion: f.packages.versions[0],
-        previousDataSchema: 1,
-      },
-    })
-    expect((await f.boundaryEvents()).filter((e) => e.event === 'browser-open')).toEqual([])
-    const configured = f
-      .forwarded('configure_profile')
-      .filter((call) => call.params._meta?.origin === 'settings.page')
-    expect(configured).toHaveLength(3)
-    for (const call of configured)
-      expect(call).toMatchObject({
-        pluginId: 'chrome',
-        runId: first.instanceId,
-        params: {
-          _meta: {
-            origin: 'settings.page',
-            workspaceId: f.workspaceId,
-            requestId: expect.any(String),
-          },
+      ).toMatchObject({ status: 'result', result: { isError: true } })
+      const markerPath = join(f.home, 'legacy-configuration-import.json')
+      const marker = await readFile(markerPath)
+      expect(JSON.parse(marker.toString())).toMatchObject({
+        source: f.legacy,
+        installId: f.installId,
+        revision: f.consumedRevision,
+        consumed: true,
+      })
+      expect((await f.boundaryEvents()).filter((e) => e.event === 'browser-open')).toEqual([])
+      if (process.platform === 'darwin' || process.platform === 'win32') {
+        const registry = JSON.parse(await readFile(join(f.shared, 'registry.json'), 'utf8'))
+        expect(Object.keys(registry.workspaces)).toEqual([priorOwner.ownerId])
+        expect(registry.profiles[0].perWorkspace).toHaveProperty(priorOwner.ownerId)
+        expect(registry.workspaces).not.toHaveProperty(f.workspaceId)
+      }
+      await session.client.applyPackage!(f.packages.refs[1]!, 'update')
+      await expect(page.invoke('configuration_snapshot')).rejects.toThrow('Plugin unavailable.')
+      expect(current(session, f.workspaceId).instanceId).not.toBe(first.instanceId)
+      let updated = await configure(session, 'chrome')
+      expect(jsonResult(await updated.invoke('configuration_snapshot'))).toMatchObject({
+        profiles: [
+          expect.objectContaining({ name, displayName: 'Fictional kept fern', allowSync: true }),
+        ],
+      })
+      await session.service.controller.restartPluginTools('chrome', undefined, () => {})
+      await expect(updated.invoke('configuration_snapshot')).rejects.toThrow('Plugin unavailable.')
+      expect(await readFile(markerPath)).toEqual(marker)
+      await preserved(f)
+      await session.close()
+      f.reopenState()
+      session = await f.start()
+      expect(f.state.currentInstallation('chrome')?.installId).toBe(f.installId)
+      expect(f.state.getTitlesEnabled(f.workspaceId, 'chrome').enabled).toBe(false)
+      updated = await configure(session, 'chrome')
+      expect(jsonResult(await updated.invoke('configuration_snapshot'))).toMatchObject({
+        profiles: [
+          expect.objectContaining({ displayName: 'Fictional kept fern', allowSync: true }),
+        ],
+      })
+      expect(await readFile(join(profileRoot, 'profiles', name, 'Default', 'Cookies'))).toEqual(
+        opaque,
+      )
+      expect(await readFile(markerPath)).toEqual(marker)
+      await preserved(f)
+      const boots = (await f.boundaryEvents()).filter((e) => e.event === 'browser-start')
+      expect(boots).toHaveLength(4)
+      expect(boots[1]).toMatchObject({
+        bootstrap: {
+          dataDirectory: f.home,
+          sharedDataDirectory: f.shared,
+          priorOwner,
+          legacyConfiguration: f.legacy,
+          previousVersion: f.packages.versions[0],
+          previousDataSchema: 1,
         },
       })
-  }, 240000)
+      expect((await f.boundaryEvents()).filter((e) => e.event === 'browser-open')).toEqual([])
+      const configured = f
+        .forwarded('configure_profile')
+        .filter((call) => call.params._meta?.origin === 'settings.page')
+      expect(configured).toHaveLength(3)
+      for (const call of configured)
+        expect(call).toMatchObject({
+          pluginId: 'chrome',
+          runId: first.instanceId,
+          params: {
+            _meta: {
+              origin: 'settings.page',
+              workspaceId: f.workspaceId,
+              requestId: expect.any(String),
+            },
+          },
+        })
+    },
+    240000,
+  )
 
   it.each([false, true])(
     'WhatsApp keeps opaque account/history and settings, with explicit uninstall warning=%s',
     async (warning) => {
       const f = await fixture('whatsapp', warning)
-      let session = await f.start()
-      await session.client.applyPackage!(f.packages.refs[0]!, 'install')
+      let { session } = await migrateSelected(f, 2)
       const first = current(session, f.workspaceId)
       let page = await configure(session, 'whatsapp')
       expect(jsonResult(await page.invoke('whatsapp_settings'))).toMatchObject({
@@ -547,6 +660,8 @@ describe('ordinary package migration through actual app and package code', () =>
       const chosen = await readFile(join(f.home, 'settings.json'))
       await session.client.applyPackage!(f.packages.refs[1]!, 'update')
       await expect(page.invoke('whatsapp_settings')).rejects.toThrow('Plugin unavailable.')
+      expect(f.state.currentInstallation('whatsapp')?.installId).toBe(f.installId)
+      expect(f.state.getTitlesEnabled(f.workspaceId, 'whatsapp').enabled).toBe(false)
       page = await configure(session, 'whatsapp')
       expect(jsonResult(await page.invoke('whatsapp_settings'))).toMatchObject({
         read: true,
@@ -557,6 +672,8 @@ describe('ordinary package migration through actual app and package code', () =>
       await session.close()
       f.reopenState()
       session = await f.start()
+      expect(f.state.currentInstallation('whatsapp')?.installId).toBe(f.installId)
+      expect(f.state.getTitlesEnabled(f.workspaceId, 'whatsapp').enabled).toBe(false)
       page = await configure(session, 'whatsapp')
       expect(jsonResult(await page.invoke('whatsapp_settings'))).toMatchObject({
         read: true,

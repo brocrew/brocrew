@@ -2,8 +2,9 @@ import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { readFile, realpath, writeFile } from 'node:fs/promises'
+import { SHARED_DATA_FEATURE } from '../../src/main/plugins/shared-data-contract'
 import { pluginSha256 } from '../../src/main/plugins/package-digests'
-import { tar } from '../plugin-package-fixtures'
+import { manifestFor, packageFixture, tar } from '../plugin-package-fixtures'
 
 export type MigratedPackage = 'chrome' | 'whatsapp'
 const repository = fileURLToPath(new URL('../../../..', import.meta.url))
@@ -242,4 +243,54 @@ export async function migrationPackages(id: MigratedPackage, output: string) {
     dependencies,
     provenance,
   }
+}
+
+/** Fictional predecessor only: no domain read/apply/migration/delete behavior or data access. */
+export async function historicalPackage(id: MigratedPackage, format: 1 | 2, output: string) {
+  const entry = String.raw`
+import fs from 'node:fs';
+import http from 'node:http';
+const auth=JSON.parse(fs.readFileSync(process.env['BROCREW_'+PLUGIN.toUpperCase()+'_AUTH'],'utf8'));
+const server=http.createServer((req,res)=>{
+ if(req.url!=='/mcp') {res.writeHead(404);return res.end();}
+ if(req.headers.authorization!=='Bearer '+auth.mcpToken) {res.writeHead(401);return res.end();}
+ if(req.method!=='POST') {res.writeHead(405);return res.end();}
+ let body=''; req.on('data',chunk=>body+=chunk); req.on('end',()=>{
+  const packet=JSON.parse(body);
+  if(packet.id===undefined) {res.writeHead(202);return res.end();}
+  let response;
+  if(packet.method==='initialize') response={result:{protocolVersion:packet.params.protocolVersion,serverInfo:{name:'fictional-historical-readiness-only',version:'0.0.1'},capabilities:{tools:{}}}};
+  else if(packet.method==='tools/list') response={result:{tools:[]}};
+  else response={error:{code:-32601,message:'No domain behavior in the fictional predecessor'}};
+  res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({jsonrpc:'2.0',id:packet.id,...response}));
+ });
+});
+server.listen(0,'127.0.0.1',()=>process.send({channel:'brocrew-plugin-node:v1',runId:process.env.BROCREW_PLUGIN_RUN_ID,type:'listening',port:server.address().port}));
+process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
+`.replace('PLUGIN', JSON.stringify(id))
+  const files = new Map([['historical.mjs', Buffer.from(entry)]])
+  const manifest = manifestFor(files)
+  manifest.id = id
+  manifest.version = '0.0.1'
+  manifest.platforms = [
+    { os: process.platform as 'darwin' | 'linux' | 'win32', cpu: process.arch as 'arm64' | 'x64' },
+  ]
+  manifest.server = { entry: 'historical.mjs', mcpPath: '/mcp', adminPath: '/unused' }
+  manifest.skills = []
+  manifest.serviceTemplates = []
+  manifest.ui = null
+  manifest.uiApi = null
+  if (format === 2)
+    Object.assign(manifest, {
+      format: 2,
+      authors: ['Fictional predecessor'],
+      executor: { kind: 'node', entry: 'historical.mjs' },
+      hooks: [],
+      sharedData: true,
+      hostApi: { ...manifest.hostApi, requiredFeatures: [SHARED_DATA_FEATURE] },
+    })
+  const pkg = packageFixture({ files, manifest })
+  const source = join(output, `${id}-historical-format${format}.tar`)
+  await writeFile(source, pkg.archive)
+  return { ...pkg, ref: { source, sha256: pkg.release.archive.sha256, bytes: pkg.archive.length } }
 }
