@@ -14,7 +14,7 @@ const cleanups: (() => Promise<void>)[] = []
 afterEach(async () => {
   for (const close of cleanups.splice(0)) await close()
 })
-async function fixture(provider: Provider) {
+async function fixture(provider: Provider, context: 'active' | 'inactive' | 'absent' = 'active') {
   const directory = mkdtempSync(
     join(process.platform === 'win32' ? tmpdir() : '/tmp', 'fictional-titles-'),
   )
@@ -22,14 +22,16 @@ async function fixture(provider: Provider) {
     original = raw.start.bind(raw)
   let handle!: FakeSessionHandle
   const said: string[] = []
+  const ordering: string[] = []
   vi.spyOn(raw, 'start').mockImplementation(async (options) => {
     handle = await original(options)
     const send = handle.send.bind(handle)
-    vi.spyOn(handle, 'send').mockImplementation((text, stamp) =>
-      send(text, stamp).then(() => {
+    vi.spyOn(handle, 'send').mockImplementation((text, stamp) => {
+      ordering.push('provider')
+      return send(text, stamp).then(() => {
         said.push(text)
-      }),
-    )
+      })
+    })
     return handle
   })
   let present = false
@@ -74,7 +76,20 @@ async function fixture(provider: Provider) {
       authNote: null,
       files: [],
     }),
-    pluginContext: { active: () => true, beforeTurn },
+    ...(context === 'absent'
+      ? {}
+      : {
+          pluginContext: {
+            active: () => {
+              if (context === 'inactive') {
+                ordering.push('inactive')
+                queueMicrotask(() => ordering.push('inactive tick'))
+              }
+              return context === 'active'
+            },
+            beforeTurn,
+          },
+        }),
   })
   const events: RuntimeEventMessage[] = []
   const sink: RuntimeEventSink = {
@@ -99,6 +114,7 @@ async function fixture(provider: Provider) {
     events,
     said,
     beforeTurn,
+    ordering,
     store,
     row,
     get handle() {
@@ -106,6 +122,33 @@ async function fixture(provider: Provider) {
     },
   }
 }
+it.each(['claude', 'codex'] as const)(
+  'keeps an inactive title hook off direct, queued and interrupt handoff waits for %s',
+  async (provider) => {
+    const f = await fixture(provider, 'inactive')
+    const expectNoHookWait = () => {
+      expect(f.ordering.filter((value) => value === 'provider')).toHaveLength(1)
+      expect(f.ordering.indexOf('inactive')).toBeGreaterThanOrEqual(0)
+      expect(f.ordering.indexOf('provider')).toBeLessThan(f.ordering.indexOf('inactive tick'))
+      expect(f.beforeTurn).not.toHaveBeenCalled()
+    }
+    f.ordering.length = 0
+    await f.host.send(f.sessionId, 'First fictional words without a hook', f.sink)
+    expectNoHookWait()
+    await vi.waitFor(() => expect(f.handle.status()).toBe('waiting_permission'))
+    await f.host.send(f.sessionId, 'Queued fictional words without a hook', f.sink)
+    f.ordering.length = 0
+    await f.host.interrupt(f.sessionId, f.sink)
+    await vi.waitFor(() => expect(f.said).toHaveLength(2))
+    expectNoHookWait()
+    await vi.waitFor(() => expect(f.handle.status()).toBe('waiting_permission'))
+    f.ordering.length = 0
+    await f.host.sendInterrupting(f.sessionId, 'Replacement fictional words without a hook', f.sink)
+    expectNoHookWait()
+    expect(f.said).toHaveLength(3)
+    expect(f.said.every((text) => !text.includes('Suggested file titles'))).toBe(true)
+  },
+)
 it.each(['claude', 'codex'] as const)(
   'omits titles when the receiving piece is reassigned during the hook for %s',
   async (provider) => {
