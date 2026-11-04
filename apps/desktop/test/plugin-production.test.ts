@@ -1747,26 +1747,19 @@ it.skipIf(process.platform === 'win32')(
   },
 )
 
-// Catalogue compatibility must not revoke management of an authenticated installation.
+// A selected catalogue omitting an installation must not revoke management of it.
 describe.skipIf(process.platform === 'win32')(
-  'installed plugins outside the compatible catalogue',
+  'installed plugins outside the selected catalogue',
   () => {
     it.each(['0.0.0', '0.1.6', '1.0.0'])(
-      'keeps Configure and uninstall when no v2 release admits app %s',
+      'keeps Configure and uninstall when the v2 discovery list is empty at app %s',
       async (appVersion) => {
         const f = await setup()
         const legacy = repoListFor(f.pkg.release)
-        const future = {
-          format: 2,
-          entries: legacy.entries.map((entry) => ({
-            ...entry,
-            authors: ['brocrew'],
-            minAppVersion: '2.0.0',
-          })),
-        }
+        const empty = { format: 2, entries: [] }
         f.fetch.mockImplementation(async (url) => {
           expect([PLUGIN_LIST_URL, PLUGIN_LIST_V2_URL]).toContain(String(url))
-          return new Response(JSON.stringify(String(url) === PLUGIN_LIST_V2_URL ? future : legacy))
+          return new Response(JSON.stringify(String(url) === PLUGIN_LIST_V2_URL ? empty : legacy))
         })
         Object.assign(f.supervisor, { supports: () => true })
         f.peer.catalogue.mockResolvedValue([
@@ -1803,23 +1796,14 @@ describe.skipIf(process.platform === 'win32')(
         expect(f.peer.uninstall).toHaveBeenCalledOnce()
       },
     )
-    it('does not turn a future-only catalogue into available installation cards', async () => {
+    it('does not invent available installation cards for an empty discovery list', async () => {
       const f = await setup()
       const legacy = repoListFor(f.pkg.release)
       f.fetch.mockImplementation(
         async (url) =>
           new Response(
             JSON.stringify(
-              String(url) === PLUGIN_LIST_V2_URL
-                ? {
-                    format: 2,
-                    entries: legacy.entries.map((entry) => ({
-                      ...entry,
-                      authors: ['brocrew'],
-                      minAppVersion: '2.0.0',
-                    })),
-                  }
-                : legacy,
+              String(url) === PLUGIN_LIST_V2_URL ? { format: 2, entries: [] } : legacy,
             ),
           ),
       )

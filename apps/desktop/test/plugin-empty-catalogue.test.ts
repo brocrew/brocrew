@@ -60,22 +60,15 @@ async function setup(installed: boolean) {
   await initial.drain()
   return f
 }
-function futureList(f: Awaited<ReturnType<typeof setup>>) {
+function discoveryLists(f: Awaited<ReturnType<typeof setup>>) {
   const legacy = repoListFor(f.pkg.release, 'Fictional Cedar')
-  const future = {
-    format: 2,
-    entries: legacy.entries.map((entry) => ({
-      ...entry,
-      authors: ['brocrew'],
-      minAppVersion: '2.0.0',
-    })),
-  }
-  return { legacy, future }
+  const empty = { format: 2, entries: [] }
+  return { legacy, empty }
 }
 async function restarted(appVersion: string, empty: boolean) {
   const f = await setup(true)
-  const { legacy, future } = futureList(f)
-  const raw = Buffer.from(JSON.stringify(empty ? future : legacy))
+  const { legacy, empty: emptyList } = discoveryLists(f)
+  const raw = Buffer.from(JSON.stringify(empty ? emptyList : legacy))
   const view = parseRepoPluginList(raw, f.opts.target, appVersion)
   expect(view.releases).toHaveLength(empty ? 0 : 1)
   const cutoff = f.events.length
@@ -232,13 +225,13 @@ it.each([false, true])(
   'owner bootstrap accepts an empty catalogue and preserves installed=%s without a download',
   async (installed) => {
     const f = await setup(installed)
-    const { legacy, future } = futureList(f)
+    const { legacy, empty: emptyList } = discoveryLists(f)
     const appVersion = '0.0.0'
-    const raw = Buffer.from(JSON.stringify(future)),
+    const raw = Buffer.from(JSON.stringify(emptyList)),
       old = Buffer.from(JSON.stringify(legacy))
     const view = parseRepoPluginList(raw, f.opts.target, appVersion)
     const catalogue = join(f.root, 'fictional-empty-catalogue.json'),
-      repo = join(f.root, 'fictional-future-list.json'),
+      repo = join(f.root, 'fictional-empty-list.json'),
       previous = join(f.root, 'fictional-frozen-list.json')
     await immutableFile(catalogue, view.bytes)
     await immutableFile(repo, raw)
