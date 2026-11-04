@@ -492,13 +492,15 @@ describe('payload inventory, install hooks and existing skill rules', () => {
     ['install.sh', 'inert'],
     ['setup.ps1', 'inert'],
     ['Makefile', 'inert'],
-  ])('refuses an inventoried installation recipe %s', (path, content) => {
-    const files = payload()
-    files.set(path, Buffer.from(content))
-    expect(() => verified(packageFixture({ files }))).toThrow(
-      expect.objectContaining({ code: 'install-hook' }),
-    )
-  })
+  ])(
+    'retains inventoried build metadata and helper bytes without executing them: %s',
+    (path, content) => {
+      const files = payload()
+      files.set(path, Buffer.from(content))
+      const pkg = verified(packageFixture({ files }))
+      expect(pkg.readFile(path)).toEqual(Uint8Array.from(Buffer.from(content)))
+    },
+  )
   it('accepts built dependency metadata without scripts, including an empty scripts object', () => {
     const files = payload()
     files.set(
