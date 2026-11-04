@@ -1,21 +1,30 @@
 import { browserIdentity, fenceToolDefs } from './authorization.js'
 import { ToolError } from './schema.js'
-import { generationOf, tabId, titleOf, usableProfile } from './common.js'
+import { profileName, profileTab, tabId, titleOf, usableProfile } from './common.js'
 import type { ToolDef, ToolDeps } from './common.js'
 import { nowMs, profileTabs, reopenTabs, restoreCookies, sessionCookies } from './modeSwitch.js'
 import type { BrowserMode } from '../browser/profileBrowser.js'
 const SWITCH_MS = 45000
 const WATCH_MS = 6 * 60 * 60 * 1000
 const watched = new WeakMap<object, Set<string>>()
-async function infoOf(deps: ToolDeps, id: string): Promise<Record<string, unknown>> {
-  const tab = deps.tabs.resolve(id, generationOf(deps))
+async function infoOf(
+  deps: ToolDeps,
+  profile: string,
+  id: string,
+): Promise<Record<string, unknown>> {
+  const tab = profileTab(deps, profile, id)
   return { tabId: id, url: tab.page.url(), title: await titleOf(tab.page) }
 }
-async function switchTo(deps: ToolDeps, id: string, mode: BrowserMode): Promise<void> {
-  const profile = deps.tabs.resolve(id, generationOf(deps)).profile
+async function switchTo(
+  deps: ToolDeps,
+  profile: string,
+  id: string,
+  mode: BrowserMode,
+): Promise<void> {
+  profileTab(deps, profile, id)
   await deps.browser.exclusive(profile, async () => {
     usableProfile(deps, profile)
-    const tab = deps.tabs.resolve(id, generationOf(deps))
+    const tab = profileTab(deps, profile, id)
     if (deps.browser.state(profile)?.mode !== mode) {
       const known = [
         { id, url: tab.page.url() },
@@ -38,9 +47,9 @@ async function switchTo(deps: ToolDeps, id: string, mode: BrowserMode): Promise<
           `the page could not be opened again after the switch; the profile is now ${mode} — try open_tab again`,
         )
     }
-    await deps.browser.usePage(profile, deps.tabs.resolve(id, generationOf(deps)).page)
+    await deps.browser.usePage(profile, profileTab(deps, profile, id).page)
     usableProfile(deps, profile)
-    if (mode === 'visible') await deps.tabs.resolve(id, generationOf(deps)).page.bringToFront()
+    if (mode === 'visible') await profileTab(deps, profile, id).page.bringToFront()
   })
 }
 export function watchWindow(deps: Pick<ToolDeps, 'browser' | 'logger'>, profile: string): void {
@@ -80,18 +89,19 @@ export function buildShowHideDefs(): ToolDef[] {
         name: 'show_tab',
         description:
           'Put this tab in front of the user: the profile is shown in a visible Chrome window on the same page, under the same tab ids and session, and the window is brought to the front. Returns {tabId, url, title} at once and never waits for the user. Tell the user in your own conversation what to do in the window (for example a 2FA or passkey step), watch the page yourself (snapshot, wait_for, the URL) and call hide_tab when you are done. Your tools keep working on the visible profile. If the profile is already visible this only brings the window to the front. Closing the window sends the profile back to headless (its tabs are gone then, use open_tab). A visible profile is never idle-closed. Form state of open pages is lost in the switch.',
-        props: { tabId },
-        required: ['tabId'],
+        props: { profile: profileName, tabId },
+        required: ['profile', 'tabId'],
       },
       async run(a, deps) {
         const id = a.tabId as string
-        const profile = deps.tabs.resolve(id, generationOf(deps)).profile
+        const profile = a.profile as string
+        profileTab(deps, profile, id)
         usableProfile(deps, profile)
         deps.browser.touch(profile)
-        await switchTo(deps, id, 'visible')
+        await switchTo(deps, profile, id, 'visible')
         watchWindow(deps, profile)
         deps.browser.touch(profile)
-        return { json: await infoOf(deps, id) }
+        return { json: await infoOf(deps, profile, id) }
       },
     },
     {
@@ -99,17 +109,18 @@ export function buildShowHideDefs(): ToolDef[] {
         name: 'hide_tab',
         description:
           "Take this tab away from the user again: the profile goes back to headless on the current page, under the same tab ids, cookies and session. Returns {tabId, url, title} at once. If the profile is already headless this does nothing. Call it when the user's step is done. Form state of open pages is lost in the switch.",
-        props: { tabId },
-        required: ['tabId'],
+        props: { profile: profileName, tabId },
+        required: ['profile', 'tabId'],
       },
       async run(a, deps) {
         const id = a.tabId as string
-        const profile = deps.tabs.resolve(id, generationOf(deps)).profile
+        const profile = a.profile as string
+        profileTab(deps, profile, id)
         usableProfile(deps, profile)
         deps.browser.touch(profile)
-        await switchTo(deps, id, 'headless')
+        await switchTo(deps, profile, id, 'headless')
         deps.browser.touch(profile)
-        return { json: await infoOf(deps, id) }
+        return { json: await infoOf(deps, profile, id) }
       },
     },
   ])

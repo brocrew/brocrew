@@ -48,7 +48,7 @@ it('temporary names cannot shadow a shared name and never leave the workspace', 
   a.create('fern', 'panel')
   expect(() => a.create('fern', 'agent', { temporary: true })).toThrow()
   const temp = a.create('tmp-a', 'agent', { temporary: true })
-  expect(temp.name).toMatch(/^local-/)
+  expect(temp.name).toBe('tmp-a')
   expect(f.open('other').get(temp.name)).toBeUndefined()
 })
 it('unknown fields survive revisions; unsupported formats cannot run or write', () => {
@@ -229,6 +229,164 @@ it('temporary/shared same-name records have one stable, collision-free facade re
   expect(a.dirOf(temp.name)).toBe(path.join(f.home, 'profiles', 'fern'))
   expect(a.dirOf('fern')).toBe(path.join(f.shared, 'profiles', 'fern'))
   expect(a.shared.restoreName('fern')).toBe(temp.name)
+})
+it('new named temporaries retain their name, restore identity and permission epochs after reopening', () => {
+  const f = fixture()
+  const a = f.open()
+  const profile = a.create('named-fern', 'agent', { temporary: true })
+  expect(profile.name).toBe('named-fern')
+  const directory = a.dirOf(profile.name)
+  const marker = path.join(directory, 'opaque-session')
+  fs.writeFileSync(marker, 'fictional temporary session')
+  const identity = a.shared.identity(profile.name)
+  const authorization = a.shared.authorization(profile.name)
+  const reopened = f.open()
+  expect(reopened.get('named-fern')).toMatchObject({ temporary: true, enabled: true })
+  expect(reopened.dirOf('named-fern')).toBe(directory)
+  expect(reopened.shared.identity('named-fern')).toBe(identity)
+  expect(reopened.shared.authorization('named-fern')).toBe(authorization)
+  expect(reopened.shared.restoreName('named-fern')).toBe('named-fern')
+  expect(reopened.shared.resolveSaved('named-fern', identity, false)).toEqual({
+    name: 'named-fern',
+    identity,
+  })
+  reopened.setFlags('named-fern', { enabled: false })
+  reopened.setFlags('named-fern', { enabled: true })
+  expect(reopened.shared.authorization('named-fern')).not.toBe(authorization)
+  expect(reopened.shared.identity('named-fern')).toBe(identity)
+  expect(fs.readFileSync(marker, 'utf8')).toBe('fictional temporary session')
+})
+it('a later shared creation cannot retarget a named temporary profile in another owner', () => {
+  const f = fixture()
+  const a = f.open()
+  a.create('named-fern', 'agent', { temporary: true })
+  const identity = a.shared.identity('named-fern')
+  const b = f.open('beta')
+  expect(b.get('named-fern')).toBeUndefined()
+  expect(() => b.create('named-fern', 'panel')).toThrow(/already exists/)
+  expect(a.get('named-fern')?.temporary).toBe(true)
+  expect(a.shared.identity('named-fern')).toBe(identity)
+  a.remove('named-fern')
+  b.create('named-fern', 'panel')
+  expect(a.get('named-fern')?.temporary).toBe(false)
+  expect(a.shared.resolveSaved('named-fern', identity, false)).toBeUndefined()
+})
+it('recreating a named temporary cannot adopt a removed profile restore identity', () => {
+  const f = fixture()
+  const a = f.open('alpha', { now: () => new Date('2026-11-04T12:00:00Z') })
+  a.create('named-fern', 'agent', { temporary: true })
+  const identity = a.shared.identity('named-fern')
+  const authorization = a.shared.authorization('named-fern')
+  a.remove('named-fern')
+  a.create('named-fern', 'agent', { temporary: true })
+  expect(a.shared.identity('named-fern')).not.toBe(identity)
+  expect(a.shared.authorization('named-fern')).not.toBe(authorization)
+  expect(a.shared.resolveSaved('named-fern', identity, false)).toBeUndefined()
+})
+it('can retry named temporary reservation retirement after a registry-write fault and reopen', () => {
+  const f = fixture()
+  const a = f.open('alpha', {
+    readVolumeIdentity: () => 'apfs:11111111-1111-4111-8111-111111111111',
+  })
+  a.create('named-fern', 'agent', { temporary: true })
+  const directory = a.dirOf('named-fern')
+  const identity = a.shared.identity('named-fern')
+  const registry = path.join(f.shared, 'registry.json')
+  const rename = fs.renameSync
+  let fail = true
+  vi.spyOn(fs, 'renameSync').mockImplementation((source, dest) => {
+    if (fail && String(dest) === registry) throw new Error('retirement publication fault')
+    return rename(source, dest)
+  })
+  expect(() => a.remove('named-fern')).toThrow('retirement publication fault')
+  expect(createProfileStore({ home: f.home }).get('named-fern')).toBeUndefined()
+  expect(fs.existsSync(directory)).toBe(false)
+  expect(JSON.parse(fs.readFileSync(registry, 'utf8')).namedTemporaryProfiles).toHaveLength(1)
+  fail = false
+  const reopened = f.open('alpha', {
+    readVolumeIdentity: () => 'apfs:11111111-1111-4111-8111-111111111111',
+  })
+  expect(reopened.get('named-fern')).toBeUndefined()
+  expect(() => reopened.create('named-fern', 'panel')).toThrow(/already exists/)
+  expect(() => reopened.create('named-fern', 'agent', { temporary: true })).toThrow(
+    /already exists/,
+  )
+  fail = true
+  expect(() => reopened.remove('named-fern')).toThrow('retirement publication fault')
+  expect(JSON.parse(fs.readFileSync(registry, 'utf8')).namedTemporaryProfiles).toHaveLength(1)
+  fail = false
+  reopened.remove('named-fern')
+  expect(JSON.parse(fs.readFileSync(registry, 'utf8')).namedTemporaryProfiles).toEqual([])
+  reopened.create('named-fern', 'panel')
+  expect(reopened.get('named-fern')?.temporary).toBe(false)
+  expect(reopened.shared.resolveSaved('named-fern', identity, false)).toBeUndefined()
+})
+it('retirement retry preserves remaining profile bytes and another owner reservation', () => {
+  const f = fixture()
+  const options = { readVolumeIdentity: () => 'apfs:11111111-1111-4111-8111-111111111111' }
+  const a = f.open('alpha', options)
+  a.create('named-fern', 'agent', { temporary: true })
+  const directory = a.dirOf('named-fern')
+  const registry = path.join(f.shared, 'registry.json')
+  const rename = fs.renameSync
+  const fault = vi.spyOn(fs, 'renameSync').mockImplementation((source, dest) => {
+    if (String(dest) === registry) throw new Error('retirement publication fault')
+    return rename(source, dest)
+  })
+  expect(() => a.remove('named-fern')).toThrow('retirement publication fault')
+  fault.mockRestore()
+  const beta = f.open('beta', options)
+  expect(() => beta.remove('named-fern')).toThrow()
+  expect(() => beta.create('named-fern', 'panel')).toThrow(/already exists/)
+  fs.mkdirSync(directory)
+  const marker = path.join(directory, 'opaque-session')
+  fs.writeFileSync(marker, 'fictional remaining session')
+  const reopened = f.open('alpha', options)
+  expect(() => reopened.remove('named-fern')).toThrow(/still present/)
+  expect(fs.readFileSync(marker, 'utf8')).toBe('fictional remaining session')
+  expect(() => beta.create('named-fern', 'panel')).toThrow(/already exists/)
+})
+it('legacy temporary admission token bytes keep their existing shape', () => {
+  const f = fixture()
+  const legacy = createProfileStore({ home: f.home })
+  legacy.create('legacy-fern', 'agent', { temporary: true })
+  const a = f.open('alpha', {
+    readVolumeIdentity: () => 'apfs:11111111-1111-4111-8111-111111111111',
+  })
+  const profile = a.list().find((p) => p.temporary)!
+  expect(a.shared.authorization(profile.name)).toBe(
+    JSON.stringify([
+      'alpha',
+      profile.name,
+      profile.createdAt,
+      profile.authorizationEpoch ?? '',
+      0,
+      profile.enabled,
+      profile.allowExtensions,
+      profile.allowSettings,
+      profile.allowSync,
+    ]),
+  )
+})
+it('an already authorized legacy migration cannot take a new temporary public name', () => {
+  const f = fixture()
+  const a = f.open()
+  a.create('named-fern', 'agent', { temporary: true })
+  const identity = a.shared.identity('named-fern')
+  const home = path.join(f.root, 'local-beta')
+  fs.mkdirSync(home)
+  const legacy = createProfileStore({ home })
+  legacy.create('named-fern', 'panel')
+  const marker = path.join(legacy.dirOf('named-fern'), 'opaque-session')
+  fs.writeFileSync(marker, 'fictional legacy session')
+  const beta = f.open('beta', { migrationApproved: true })
+  const migrated = beta.list().find((p) => !p.temporary)!
+  expect(migrated.name).not.toBe('named-fern')
+  expect(fs.readFileSync(path.join(beta.dirOf(migrated.name), 'opaque-session'), 'utf8')).toBe(
+    'fictional legacy session',
+  )
+  expect(a.get('named-fern')?.temporary).toBe(true)
+  expect(a.shared.identity('named-fern')).toBe(identity)
 })
 it('refuses shared metadata or profile-folder symlinks without following them', () => {
   const f = fixture()

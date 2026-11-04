@@ -63,7 +63,8 @@ export const timeoutMs: PropSpec = {
 }
 export const profileName: PropSpec = {
   type: 'string',
-  description: 'Profile name (a-z, 0-9, dash; 1-32 characters).',
+  description: 'Explicit profile name (a-z, 0-9, dash; 1-32 characters).',
+  minLength: 1,
   pattern: /^[a-z0-9-]{1,32}$/,
 }
 export const url: PropSpec = {
@@ -103,11 +104,25 @@ const refusalNotEnabled = (name: string): string =>
 const refusalNotAllowed = (what: 'extensions' | 'settings', name: string): string =>
   `${what} are not allowed on profile "${name}" — the user can allow them in the Settings → Plugins → Chrome`
 export type ProfileNeed = 'allowExtensions' | 'allowSettings'
+export function explicitProfile(value: unknown): string {
+  if (typeof value !== 'string' || !isProfileName(value))
+    throw new ToolError(
+      'profile is required and must be a nonempty named profile (a-z, 0-9, dash; 1-32 characters)',
+    )
+  return value
+}
+/** Resolve ownership only to compare with the supplied profile, never to select it. */
+export function profileTab(deps: ToolDeps, profile: string, id: string): TabState {
+  usableProfile(deps, profile)
+  const tab = deps.tabs.resolve(id, generationOf(deps))
+  if (tab.profile !== profile) throw new ToolError('tab must belong to the requested profile')
+  return tab
+}
 export function usableProfile(deps: ToolDeps, name: string, need?: ProfileNeed): void {
   const rec = isProfileName(name) ? deps.store.get(name) : undefined
   if (!rec && isProfileName(name))
     throw new ToolError(
-      `no profile named "${name}" — list_browser_profiles shows the profiles that exist`,
+      `no profile named "${name}" — check Settings → Plugins → Chrome for available profiles`,
     )
   if (!rec || !rec.enabled)
     throw new ToolError(refusalNotEnabled(isProfileName(name) ? name : 'unknown'))
@@ -184,16 +199,16 @@ export function describeError(e: unknown, ms?: number): string {
   return `the browser action failed${name ? ` (${name.replace(/[^\w]/g, '').slice(0, 30)})` : ''}`
 }
 /** Page-tool use which is not routed through onTab still updates context window preference. */
-export async function useTab(deps: ToolDeps, id: string): Promise<TabState> {
-  const tab = deps.tabs.resolve(id, generationOf(deps))
-  usableProfile(deps, tab.profile)
-  deps.browser.touch(tab.profile)
-  await deps.browser.operate(tab.profile, async () => {
-    deps.tabs.resolve(id, generationOf(deps))
-    usableProfile(deps, tab.profile)
-    await deps.browser.usePage(tab.profile, tab.page)
-    deps.tabs.resolve(id, generationOf(deps))
-    usableProfile(deps, tab.profile)
+export async function useTab(deps: ToolDeps, profile: string, id: string): Promise<TabState> {
+  const tab = profileTab(deps, profile, id)
+  usableProfile(deps, profile)
+  deps.browser.touch(profile)
+  await deps.browser.operate(profile, async () => {
+    profileTab(deps, profile, id)
+    usableProfile(deps, profile)
+    await deps.browser.usePage(profile, tab.page)
+    profileTab(deps, profile, id)
+    usableProfile(deps, profile)
   })
   return tab
 }
@@ -203,22 +218,23 @@ export interface TabCall {
 }
 export async function onTab<T>(
   deps: ToolDeps,
+  profile: string,
   id: string,
   fn: (c: TabCall) => Promise<T>,
 ): Promise<{
   value: T
   notes: string[]
 }> {
-  const tab = deps.tabs.resolve(id, generationOf(deps))
-  usableProfile(deps, tab.profile)
-  deps.browser.touch(tab.profile)
-  const value = await deps.browser.operate(tab.profile, () =>
+  const tab = profileTab(deps, profile, id)
+  usableProfile(deps, profile)
+  deps.browser.touch(profile)
+  const value = await deps.browser.operate(profile, () =>
     deps.serializer.runExclusive(tab.id, async () => {
-      deps.tabs.resolve(id, generationOf(deps))
-      usableProfile(deps, tab.profile)
-      await deps.browser.usePage(tab.profile, tab.page)
-      deps.tabs.resolve(id, generationOf(deps))
-      usableProfile(deps, tab.profile)
+      profileTab(deps, profile, id)
+      usableProfile(deps, profile)
+      await deps.browser.usePage(profile, tab.page)
+      profileTab(deps, profile, id)
+      usableProfile(deps, profile)
       return fn({ tab, page: tab.page })
     }),
   )

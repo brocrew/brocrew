@@ -34,12 +34,12 @@ describe('window-targeted tools and local navigation', () => {
     expect([a.windowId, b.windowId]).toEqual([a.windowId, a.windowId])
     expect(c.windowId).not.toBe(a.windowId)
     expect(d.windowId).toBe(a.windowId)
-    await h.call('list_tabs')
+    await h.call('list_tabs', { profile: 'p' })
     expect((await open()).windowId).toBe(a.windowId)
-    await h.call('snapshot', { tabId: a.tabId })
+    await h.call('snapshot', { profile: 'p', tabId: a.tabId })
     expect((await open()).windowId).toBe(a.windowId)
     expect((await open({ windowOf: c.tabId })).windowId).toBe(c.windowId)
-    expect((await h.call('list_tabs')).json).toEqual(
+    expect((await h.call('list_tabs', { profile: 'p' })).json).toEqual(
       expect.arrayContaining([expect.objectContaining({ tabId: a.tabId, windowId: a.windowId })]),
     )
   })
@@ -104,7 +104,7 @@ describe('window-targeted tools and local navigation', () => {
         windowOf: 't999',
       }),
     ).toMatch(/unknown/)
-    await h.call('close_tab', { tabId: a.tabId })
+    await h.call('close_tab', { profile: 'p', tabId: a.tabId })
     expect(
       await h.callError('open_tab', {
         profile: 'p',
@@ -122,14 +122,11 @@ describe('window-targeted tools and local navigation', () => {
       url: string
     }
     expect(a.url).toBe(pathToFileURL(file).href)
-    await h.call('navigate', {
-      tabId: a.tabId,
-      url: 'file:///tmp/é space.html',
-    })
+    await h.call('navigate', { profile: 'p', tabId: a.tabId, url: 'file:///tmp/é space.html' })
     expect(h.browser.pages.get('p')![0].url()).toBe('file:///tmp/%C3%A9%20space.html')
-    expect(await h.callError('download_url', { tabId: a.tabId, url: file })).toContain(
-      'file URLs and local paths are not supported',
-    )
+    expect(
+      await h.callError('download_url', { profile: 'p', tabId: a.tabId, url: file }),
+    ).toContain('file URLs and local paths are not supported')
   })
   it('refuses HTTP redirects to local files before a second fetch', async () => {
     const h = setup()
@@ -148,6 +145,7 @@ describe('window-targeted tools and local navigation', () => {
     try {
       expect(
         await h.callError('download_url', {
+          profile: 'p',
           tabId: a.tabId,
           url: 'https://fixture.test/file',
         }),
@@ -183,7 +181,9 @@ describe('window-targeted tools and local navigation', () => {
     ).json as { restoredTabs: Array<{ tabId: string }> }
     expect(out.restoredTabs[0].tabId).toBe(ids[20])
     expect(out.restoredTabs).toHaveLength(20)
-    expect((await h.call('snapshot', { tabId: ids[20] })).text).toContain('https://fixture.test/20')
+    expect((await h.call('snapshot', { profile: 'p', tabId: ids[20] })).text).toContain(
+      'https://fixture.test/20',
+    )
   })
 })
 
@@ -250,6 +250,7 @@ it.each(['navigate', 'download_url'])(
       })
       vi.stubGlobal('fetch', fetcher)
       const pending = h.callError(tool, {
+        profile: 'fern',
         tabId: a.tabId,
         url: 'https://fictional.invalid/',
       })
@@ -283,9 +284,12 @@ it.each(['console', 'network', 'handle_dialog', 'wait_for_download'])(
         c = await open({ newWindow: true })
       expect(a.windowId).not.toBe(c.windowId)
       if (tool === 'wait_for_download')
-        expect(await h.callError(tool, { tabId: a.tabId, timeoutMs: 1 })).toContain('timed out')
+        expect(
+          await h.callError(tool, { profile: 'fern', tabId: a.tabId, timeoutMs: 1 }),
+        ).toContain('timed out')
       else
         await h.call(tool, {
+          profile: 'fern',
           tabId: a.tabId,
           ...(tool === 'handle_dialog' ? { accept: true } : {}),
         })

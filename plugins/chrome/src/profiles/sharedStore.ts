@@ -24,6 +24,11 @@ import { durableJson, identity, ownerState, withSharedLock } from './sharedLock.
 import type { ProcessIdentity, Liveness } from './sharedLock.js'
 import type { SharedProfileAccess, SharedProfileAdmission } from './sharedTypes.js'
 import { readVolumeIdentity } from './volumeIdentity.js'
+const namedTemporaryRemovalRetries = new WeakMap<ProfileStore, (name: string) => boolean>()
+/** Retry only metadata retirement for a known owned, absent temporary profile. */
+export function retryNamedTemporaryRemoval(store: ProfileStore, name: string): boolean {
+  return namedTemporaryRemovalRetries.get(store)?.(name) ?? false
+}
 export type ChromeState = 'ended' | 'live' | 'unknown'
 export class ProfileInUseElsewhereError extends ProfileStoreError {
   readonly transient = true
@@ -78,11 +83,18 @@ interface SharedRecord extends Omit<ProfileRecord, 'enabled' | 'keepRunning'> {
   deleteOwner?: Lease
   [key: string]: unknown
 }
+interface NamedTemporaryProfile {
+  workspaceId: string
+  name: string
+  createdAt: string
+  id: string
+}
 interface Registry {
   format: number
   revision: number
   workspaces: Record<string, Workspace>
   profiles: SharedRecord[]
+  namedTemporaryProfiles?: NamedTemporaryProfile[]
   [key: string]: unknown
 }
 /** workspaceId/workspaceLabel are historical schema names for the verified plugin OWNER/root,
@@ -285,6 +297,19 @@ export function createSharedProfileStore(
       !Array.isArray(r.profiles)
     )
       throw new ProfileStoreError('Shared Chrome registry is invalid.')
+    if (
+      r.namedTemporaryProfiles !== undefined &&
+      (!Array.isArray(r.namedTemporaryProfiles) ||
+        r.namedTemporaryProfiles.some(
+          (p) =>
+            !p ||
+            typeof p.workspaceId !== 'string' ||
+            !isProfileName(p.name) ||
+            typeof p.createdAt !== 'string' ||
+            typeof p.id !== 'string',
+        ))
+    )
+      throw new ProfileStoreError('Shared Chrome registry is invalid.')
     const ids = new Set<string>()
     const names = new Set<string>()
     for (const p of r.profiles) {
@@ -372,10 +397,21 @@ export function createSharedProfileStore(
     if (!isProfileName(name)) throw new ProfileStoreError('Invalid profile name.')
     return privateFolder(profilesDir, path.join(profilesDir, name))
   }
-  // One unambiguous namespace: local profiles always have a workspace-scoped facade name.
+  // Legacy local profiles retain their workspace-scoped facade and restore identity.
+  // Only newly created named temporaries opt into the explicit public name.
   const alias = (p: ProfileRecord) =>
     `local-${createHash('sha256').update(`${o.workspaceId}\0${p.name}\0${p.createdAt}`).digest('hex').slice(0, 20)}`
-  const localRecord = (name: string) => local.list().find((p) => alias(p) === name)
+  const namedTemporary = (p: ProfileRecord, r: Registry) =>
+    p.temporary
+      ? r.namedTemporaryProfiles?.find(
+          (n) =>
+            n.workspaceId === o.workspaceId && n.name === p.name && n.createdAt === p.createdAt,
+        )
+      : undefined
+  const localName = (p: ProfileRecord, r: Registry) => namedTemporary(p, r)?.name ?? alias(p)
+  const localId = (p: ProfileRecord, r: Registry) => namedTemporary(p, r)?.id ?? alias(p)
+  const localRecord = (name: string, r = read()) =>
+    local.list().find((p) => localName(p, r) === name)
   const localFallbackAllowed = (reservation: SharedRecord | undefined) =>
     !reservation ||
     (reservation.migration?.error === 'different-disk' &&
@@ -399,7 +435,7 @@ export function createSharedProfileStore(
     const moving = migrationOf(r, p)
     return {
       ...p,
-      name: alias(p),
+      name: localName(p, r),
       enabled: p.enabled && !!fileIdentity(local.dirOf(p.name)) && localFallbackAllowed(moving),
     }
   }
@@ -456,7 +492,7 @@ export function createSharedProfileStore(
         throw new ProfileStoreError('Profile migration is reserved.')
       return {
         profile: p,
-        identity: `local:${alias(lp)}`,
+        identity: `local:${localId(lp, r)}`,
         authorization: JSON.stringify([
           o.workspaceId,
           p.name,
@@ -467,6 +503,7 @@ export function createSharedProfileStore(
           p.allowExtensions,
           p.allowSettings,
           p.allowSync,
+          ...(namedTemporary(lp, r) ? [localId(lp, r)] : []),
         ]),
       }
     }
@@ -551,8 +588,9 @@ export function createSharedProfileStore(
     identity(name) {
       const lp = localRecord(name)
       if (lp) {
-        localAvailable(lp, read())
-        return `local:${alias(lp)}`
+        const r = read()
+        localAvailable(lp, r)
+        return `local:${localId(lp, r)}`
       }
       const r = read()
       const p = raw(r, name)
@@ -576,8 +614,8 @@ export function createSharedProfileStore(
         const sourceAlias = savedIdentity.slice(6)
         const p = migrated((m) => m.sourceAlias === sourceAlias)
         if (p) return resolved(p)
-        const lp = localRecord(sourceAlias)
-        return lp ? { name: alias(lp), identity: `local:${alias(lp)}` } : undefined
+        const lp = local.list().find((p) => localId(p, r) === sourceAlias)
+        return lp ? { name: localName(lp, r), identity: `local:${localId(lp, r)}` } : undefined
       }
       // Only unversioned local saves may use the legacy rename map. A new save
       // without its immutable identity is never guessed from an overlapping name.
@@ -586,7 +624,7 @@ export function createSharedProfileStore(
       if (p) return resolved(p)
       const lp = local.get(name) ?? localRecord(name)
       return lp
-        ? { name: alias(lp), identity: `local:${alias(lp)}` }
+        ? { name: localName(lp, r), identity: `local:${localId(lp, r)}` }
         : resolved(r.profiles.find((p) => p.name === name))
     },
     admission: admissionSnapshot,
@@ -673,7 +711,7 @@ export function createSharedProfileStore(
       )
       if (p) return p.name
       const lp = local.get(name)
-      return lp ? alias(lp) : name
+      return lp ? localName(lp, r) : name
     },
   }
   const facade: ProfileStore & { shared: SharedProfileAccess } = {
@@ -708,11 +746,20 @@ export function createSharedProfileStore(
       return transaction((r) => {
         if (
           r.profiles.some((p) => p.name === name) ||
+          r.namedTemporaryProfiles?.some(
+            (p) => p.name === name && (!opts.temporary || p.workspaceId === o.workspaceId),
+          ) ||
           local.list().some((p) => p.name === name || alias(p) === name)
         )
           throw new ProfileStoreError(`profile "${name}" already exists`)
         if (opts.temporary) {
           const p = local.create(name, createdBy, opts)
+          ;(r.namedTemporaryProfiles ??= []).push({
+            workspaceId: o.workspaceId,
+            name,
+            createdAt: p.createdAt,
+            id: randomUUID(),
+          })
           return localView(p, r)
         }
         const dir = sharedDir(name)
@@ -819,12 +866,48 @@ export function createSharedProfileStore(
         transaction((r) => {
           localAvailable(lp, r)
           local.remove(lp.name)
+          if (r.namedTemporaryProfiles)
+            r.namedTemporaryProfiles = r.namedTemporaryProfiles.filter(
+              (p) =>
+                !(
+                  p.workspaceId === o.workspaceId &&
+                  p.name === lp.name &&
+                  p.createdAt === lp.createdAt
+                ),
+            )
         })
         return
       }
+      if (retireAbsentTemporary(name)) return
       throw new ProfileStoreError('A fresh global deletion confirmation is required.')
     },
   }
+  const retireAbsentTemporary = (name: string): boolean => {
+    // A completed local deletion can outlive failed publication of its reservation
+    // retirement. Explicit retry may retire that exact owned marker only after both
+    // the local record and directory are positively absent; remaining bytes are never
+    // removed by this recovery path.
+    const pending = read().namedTemporaryProfiles?.find(
+      (p) => p.workspaceId === o.workspaceId && p.name === name,
+    )
+    if (pending && !local.get(name)) {
+      transaction((r) => {
+        const current = r.namedTemporaryProfiles?.find(
+          (p) => p.workspaceId === o.workspaceId && p.name === name && p.id === pending.id,
+        )
+        if (!current || r.profiles.some((p) => p.name === name))
+          throw new ProfileStoreError('Profile reservation changed; try again.')
+        if (local.get(name) || fileIdentity(local.dirOf(name)))
+          throw new ProfileStoreError(
+            'Profile record or directory is still present; its name stays reserved.',
+          )
+        r.namedTemporaryProfiles = r.namedTemporaryProfiles!.filter((p) => p !== current)
+      })
+      return true
+    }
+    return false
+  }
+  namedTemporaryRemovalRetries.set(facade, retireAbsentTemporary)
   if (o.migrationApproved && read().format === 1) migrate()
   for (const api of [shared, facade]) {
     for (const key of Object.keys(api)) {
@@ -931,6 +1014,7 @@ export function createSharedProfileStore(
         while (
           name.startsWith('local-') ||
           r.profiles.some((p) => p.name === name) ||
+          r.namedTemporaryProfiles?.some((p) => p.name === name) ||
           fileIdentity(sharedDir(name))
         ) {
           const suffix = `-${createHash('sha256').update(o.workspaceId).digest('hex').slice(0, 6)}-${n++}`

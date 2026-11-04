@@ -129,8 +129,12 @@ it('back and forward wait for a commit while URL navigation and reload retain th
   })
   const goto = vi.spyOn(page, 'goto')
   for (const action of ['back', 'forward', 'reload'])
-    await h.call('navigate', { tabId: opened.tabId, action })
-  await h.call('navigate', { tabId: opened.tabId, url: 'https://fictional.invalid/next' })
+    await h.call('navigate', { profile: 'fern', tabId: opened.tabId, action })
+  await h.call('navigate', {
+    profile: 'fern',
+    tabId: opened.tabId,
+    url: 'https://fictional.invalid/next',
+  })
   expect(nav.goBack).toHaveBeenCalledWith(expect.objectContaining({ waitUntil: 'commit' }))
   expect(nav.goForward).toHaveBeenCalledWith(expect.objectContaining({ waitUntil: 'commit' }))
   expect(nav.reload).toHaveBeenCalledWith(
@@ -150,11 +154,15 @@ it('generic show and hide return immediately and tools still work while the pers
   const opened = (
     await h.call('open_tab', { profile: 'fern', url: 'https://fictional.invalid/first' })
   ).json as { tabId: string }
-  await h.call('show_tab', { tabId: opened.tabId })
+  await h.call('show_tab', { profile: 'fern', tabId: opened.tabId })
   expect(h.browser.state('fern')?.mode).toBe('visible')
-  await h.call('navigate', { tabId: opened.tabId, url: 'https://fictional.invalid/shared' })
+  await h.call('navigate', {
+    profile: 'fern',
+    tabId: opened.tabId,
+    url: 'https://fictional.invalid/shared',
+  })
   expect(h.browser.pages.get('fern')![0].url()).toBe('https://fictional.invalid/shared')
-  await h.call('hide_tab', { tabId: opened.tabId })
+  await h.call('hide_tab', { profile: 'fern', tabId: opened.tabId })
   expect(h.browser.state('fern')?.mode).toBe('headless')
 })
 it('a graceful visible-session save restores every eligible tab in order, without reserving the window', async () => {

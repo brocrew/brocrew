@@ -245,7 +245,13 @@ it.each(['revocation', 'generation'] as const)(
   'fences submit after fill awaits a %s change',
   async (change) => {
     const f = toolFixture()
-    const call = f.call('fill', { tabId: f.tab.id, ref: 'e1', text: 'fictional', submit: true })
+    const call = f.call('fill', {
+      profile: 'fern',
+      tabId: f.tab.id,
+      ref: 'e1',
+      text: 'fictional',
+      submit: true,
+    })
     await f.filling.promise
     if (change === 'revocation') f.revoke()
     else f.replace()
@@ -258,7 +264,13 @@ it('fences queued work even when off is followed by on before the queue drains',
   const f = toolFixture()
   const blocker = deferred()
   const blocking = f.deps.serializer.runExclusive(f.tab.id, () => blocker.promise)
-  const call = f.call('fill', { tabId: f.tab.id, ref: 'e1', text: 'fictional', submit: true })
+  const call = f.call('fill', {
+    profile: 'fern',
+    tabId: f.tab.id,
+    ref: 'e1',
+    text: 'fictional',
+    submit: true,
+  })
   await until(() => vi.mocked(f.deps.browser.usePage).mock.calls.length === 0)
   await Promise.resolve()
   f.revoke()
@@ -269,7 +281,7 @@ it('fences queued work even when off is followed by on before the queue drains',
 })
 it('hides off metadata in listings and direct-name operations', async () => {
   const f = toolFixture()
-  const out = await f.call('list_browser_profiles', {})
+  const out = await f.call('list_browser_profiles', { profile: 'fern' })
   expect(JSON.stringify(out)).not.toContain('hidden')
   expect(JSON.stringify(out)).not.toContain('private off metadata')
   await expect(
@@ -284,7 +296,11 @@ it('blocks a download request when cookies finish after revocation', async () =>
   const fetching = vi
     .spyOn(globalThis, 'fetch')
     .mockRejectedValue(new Error('fictional blocked request'))
-  const call = f.call('download_url', { tabId: f.tab.id, url: 'https://fictional.invalid/file' })
+  const call = f.call('download_url', {
+    profile: 'fern',
+    tabId: f.tab.id,
+    url: 'https://fictional.invalid/file',
+  })
   await until(() => f.cookies.mock.calls.length === 1)
   f.revoke()
   cookieRead.resolve([])
@@ -329,6 +345,7 @@ it('discards an interrupted download stream after permission revocation', async 
   )
   vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(body, { status: 200 }))
   const call = f.call('download_url', {
+    profile: 'fern',
     tabId: f.tab.id,
     url: 'https://fictional.invalid/file.txt',
   })
@@ -412,7 +429,13 @@ it.each(['off-on', 'permission'] as const)(
     const f = realSharedFixture()
     const blocker = deferred()
     const blocking = f.deps.serializer.runExclusive(f.tab.id, () => blocker.promise)
-    const call = f.call('fill', { tabId: f.tab.id, ref: 'e1', text: 'fictional', submit: true })
+    const call = f.call('fill', {
+      profile: 'fern',
+      tabId: f.tab.id,
+      ref: 'e1',
+      text: 'fictional',
+      submit: true,
+    })
     // The queued operation is admitted; an independent process changes only the fictional registry.
     const child = spawnSync(
       process.execPath,

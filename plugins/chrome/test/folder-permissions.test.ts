@@ -97,7 +97,7 @@ it('refuses a tab action after waiting in the tab queue', async () => {
   const id = (opened.json as { tabId: string }).tabId
   h.deps.serializer = serializer
   const first = serializer.runExclusive(id, () => gate.promise)
-  const pending = h.call('snapshot', { tabId: id })
+  const pending = h.call('snapshot', { profile: 'fern', tabId: id })
   h.store.setFlags('fern', { enabled: false })
   gate.resolve()
   await first
@@ -171,6 +171,7 @@ it.each(['outside', 'internal'] as const)(
     )
     const opened = await h.call('open_tab', { profile: 'fern', url: 'https://fictional.invalid/' })
     const pending = h.call('download_url', {
+      profile: 'fern',
       tabId: (opened.json as { tabId: string }).tabId,
       url: 'https://fictional.invalid/paper.txt',
     })
@@ -186,6 +187,7 @@ it('still saves bytes in a real download day folder', async () => {
   )
   const opened = await h.call('open_tab', { profile: 'fern', url: 'https://fictional.invalid/' })
   const result = await h.call('download_url', {
+    profile: 'fern',
     tabId: (opened.json as { tabId: string }).tabId,
     url: 'https://fictional.invalid/paper.txt',
   })
@@ -222,7 +224,10 @@ it.each(['show_tab', 'hide_tab'])(
       gate = held()
     const opened = await h.call('open_tab', { profile: 'fern', url: 'https://fictional.invalid/' })
     const first = h.browser.exclusive('fern', () => gate.promise)
-    const pending = h.call(tool, { tabId: (opened.json as { tabId: string }).tabId })
+    const pending = h.call(tool, {
+      profile: 'fern',
+      tabId: (opened.json as { tabId: string }).tabId,
+    })
     h.store.setFlags('fern', { enabled: false })
     gate.resolve()
     await first
@@ -248,7 +253,7 @@ it('refuses a linked day folder for a browser-stream download too', async () => 
   const tab = h.tabs.resolve(id, (name) => h.browser.state(name)?.generation ?? null)
   const download = new FakeDownload('paper.txt', Buffer.from('fictional bytes'), source)
   tab.pendingDownloads.push({ download: download as never, at: Date.now() })
-  await expect(h.call('wait_for_download', { tabId: id })).rejects.toThrow()
+  await expect(h.call('wait_for_download', { profile: 'fern', tabId: id })).rejects.toThrow()
   expect(fs.readdirSync(target)).toEqual([])
   // A refused destination must not destroy the only recoverable staging copy.
   expect(download.deleted).toBe(false)

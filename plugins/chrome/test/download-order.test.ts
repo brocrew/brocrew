@@ -122,7 +122,11 @@ it.each([false, true])(
       return { status: () => 200 }
     })
     const result = (
-      await f.h.call('download', { tabId: f.tabId, url: 'https://fictional.invalid/paper.txt' })
+      await f.h.call('download', {
+        profile: 'fern',
+        tabId: f.tabId,
+        url: 'https://fictional.invalid/paper.txt',
+      })
     ).json as { path: string; bytes: number }
     expect(fs.readFileSync(result.path, 'utf8')).toBe('fictional bytes')
     expect(download.deleted).toBe(true)
@@ -137,7 +141,7 @@ it('arms a fresh headless wait instead of consuming an earlier denied download',
     .mockRejectedValue(new Error('fictional denied download'))
   const tab = f.h.tabs.resolve(f.tabId, (profile) => f.h.browser.state(profile)?.generation ?? null)
   tab.pendingDownloads.push({ download: stale as never, at: Date.now() })
-  const pending = f.h.call('wait_for_download', { tabId: f.tabId })
+  const pending = f.h.call('wait_for_download', { profile: 'fern', tabId: f.tabId })
   await f.ready
   expect(f.active()).toBe(true)
   f.page.emit('download', f.download('fresh.txt'))
@@ -155,7 +159,12 @@ it('guides agent downloads to one call and reserves waits for independent events
   expect(definition.spec.description).toContain('Only one tool call runs at a time')
   expect(definition.spec.description).not.toMatch(/parallel|start this wait before the action/i)
   await expect(
-    f.h.call('download', { tabId: f.tabId, ref: 'e1', url: 'https://fictional.invalid/' }),
+    f.h.call('download', {
+      profile: 'fern',
+      tabId: f.tabId,
+      ref: 'e1',
+      url: 'https://fictional.invalid/',
+    }),
   ).rejects.toThrow('give exactly one')
   expect(f.active()).toBe(false)
 })
@@ -165,7 +174,8 @@ it('retains an earlier visible-window download without waiting for another event
   const saved = f.download('visible.txt')
   const tab = f.h.tabs.resolve(f.tabId, (profile) => f.h.browser.state(profile)?.generation ?? null)
   tab.pendingDownloads.push({ download: saved as never, at: Date.now() })
-  const result = (await f.h.call('wait_for_download', { tabId: f.tabId })).json as { path: string }
+  const result = (await f.h.call('wait_for_download', { profile: 'fern', tabId: f.tabId }))
+    .json as { path: string }
   expect(fs.readFileSync(result.path, 'utf8')).toBe('fictional bytes')
   expect(saved.deleted).toBe(true)
 })
@@ -186,7 +196,7 @@ it.each([false, true])(
     })
     const tab = f.h.tabs.resolve(f.tabId, (name) => f.h.browser.state(name)?.generation ?? null)
     tab.pendingDownloads.push({ download: older as never, at: Date.now() })
-    const saving = f.h.call('wait_for_download', { tabId: f.tabId })
+    const saving = f.h.call('wait_for_download', { profile: 'fern', tabId: f.tabId })
     try {
       await preparing.promise
       f.begin('fresh-guid')
@@ -221,7 +231,11 @@ it('releases a fresh claim after saving that same download', async () => {
     return { status: () => 200 }
   })
   const result = (
-    await f.h.call('download', { tabId: f.tabId, url: 'https://fictional.invalid/fresh.txt' })
+    await f.h.call('download', {
+      profile: 'fern',
+      tabId: f.tabId,
+      url: 'https://fictional.invalid/fresh.txt',
+    })
   ).json as { path: string }
   expect(fs.readFileSync(result.path, 'utf8')).toBe('fresh bytes')
   f.complete('fresh-guid')
@@ -240,9 +254,9 @@ it('keeps a user download when the wait times out before receiving its event', a
     armed.resolve()
     return event.promise
   })
-  const failed = expect(f.h.call('wait_for_download', { tabId: f.tabId })).rejects.toThrow(
-    'timed out',
-  )
+  const failed = expect(
+    f.h.call('wait_for_download', { profile: 'fern', tabId: f.tabId }),
+  ).rejects.toThrow('timed out')
   await armed.promise
   f.begin('fresh-guid')
   await flush()
@@ -273,7 +287,7 @@ it('ignores a delayed public page event while waiting for a fresh private downlo
     ready.resolve()
     return wait(event, opts)
   })
-  const result = f.h.call('wait_for_download', { tabId: f.tabId })
+  const result = f.h.call('wait_for_download', { profile: 'fern', tabId: f.tabId })
   await ready.promise
   f.page.emit('download', native)
   f.begin('fresh-private', 'private-paper.txt')
@@ -304,7 +318,9 @@ it('refuses a public item injected into pending recovery without deleting or can
   const cancel = vi.spyOn(normal, 'cancel')
   const tab = f.h.tabs.resolve(f.tabId, (name) => f.h.browser.state(name)?.generation ?? null)
   tab.pendingDownloads.push({ download: normal as never, at: Date.now() })
-  await expect(f.h.call('wait_for_download', { tabId: f.tabId })).rejects.toThrow('download failed')
+  await expect(f.h.call('wait_for_download', { profile: 'fern', tabId: f.tabId })).rejects.toThrow(
+    'download failed',
+  )
   expect(normal.deleted).toBe(false)
   expect(cancel).not.toHaveBeenCalled()
 })
@@ -340,7 +356,11 @@ it('refuses a private-attributed artifact whose real path is a native file witho
     return { status: () => 200 }
   })
   await expect(
-    f.h.call('download', { tabId: f.tabId, url: 'https://fictional.invalid/paper' }),
+    f.h.call('download', {
+      profile: 'fern',
+      tabId: f.tabId,
+      url: 'https://fictional.invalid/paper',
+    }),
   ).rejects.toThrow('download failed')
   expect(deletion).not.toHaveBeenCalled()
   expect(cancel).not.toHaveBeenCalled()

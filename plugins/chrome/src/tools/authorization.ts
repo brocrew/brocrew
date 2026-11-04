@@ -1,5 +1,7 @@
 import { createWindowTasks } from '../windows.js'
+import { retryNamedTemporaryRemoval } from '../profiles/sharedStore.js'
 import { ToolError } from './schema.js'
+import { explicitProfile, profileTab, usableProfile } from './common.js'
 import type { ToolDef, ToolDeps } from './common.js'
 import type { TabState } from '../tabs.js'
 
@@ -25,8 +27,10 @@ export function fenceToolDefs(defs: ToolDef[]): ToolDef[] {
     async run(args, deps) {
       const shared = sharedAccess(deps)
       if (!shared) return def.run(args, deps)
+      const profile = args.profile as string
       const admitted = new Map<string, string>()
       const admit = (name: string) => {
+        if (name !== profile) throw new ToolError('operation must use the supplied profile')
         try {
           if (!deps.store.get(name)?.enabled) throw unavailable()
           const token = shared.authorization(name)
@@ -40,7 +44,7 @@ export function fenceToolDefs(defs: ToolDef[]): ToolDef[] {
       const check = () => {
         for (const name of admitted.keys()) admit(name)
       }
-      if (typeof args.profile === 'string') admit(args.profile)
+      if (def.spec.name !== 'create_browser_profile') admit(args.profile as string)
       const originals = new WeakMap<object, object>()
       const unwrap = (v: unknown): unknown => {
         if (!v || typeof v !== 'object') return v
@@ -93,16 +97,17 @@ export function fenceToolDefs(defs: ToolDef[]): ToolDef[] {
         return proxy
       }
       const tab = (raw: TabState): TabState => {
-        admit(raw.profile)
+        if (raw.profile !== profile) throw new ToolError('tab must belong to the requested profile')
+        admit(profile)
         return new Proxy(raw, {
           get(target, prop) {
             const value = Reflect.get(target, prop, target)
             if (prop === 'page' || prop === 'pendingDialog')
-              return handle(value, raw.profile, raw.generation)
+              return handle(value, profile, raw.generation)
             if (prop === 'pendingDownloads')
               return raw.pendingDownloads.map((d) => ({
                 ...d,
-                download: handle(d.download, raw.profile, raw.generation),
+                download: handle(d.download, profile, raw.generation),
               }))
             return value
           },
@@ -164,7 +169,7 @@ export function fenceToolDefs(defs: ToolDef[]): ToolDef[] {
             const out = Reflect.apply(field, target, input.map(unwrap))
             if (prop === 'resolve' || prop === 'add') return tab(out as TabState)
             if (prop === 'list')
-              return (out as TabState[]).filter((t) => deps.store.get(t.profile)?.enabled).map(tab)
+              return (out as TabState[]).filter((t) => t.profile === profile).map(tab)
             return out
           }
         },
@@ -197,21 +202,31 @@ export function fenceToolDefs(defs: ToolDef[]): ToolDef[] {
   return fenced.map((def) => ({
     ...def,
     async run(args, deps) {
+      const profile = explicitProfile(args.profile)
+      if (
+        def.spec.name === 'delete_browser_profile' &&
+        args.tabId === undefined &&
+        args.windowOf === undefined &&
+        !deps.store.get(profile) &&
+        retryNamedTemporaryRemoval(deps.store, profile)
+      )
+        return { json: { deleted: profile } }
+      if (def.spec.name === 'create_browser_profile') {
+        if (deps.store.get(profile)) throw new ToolError(`profile "${profile}" already exists`)
+      } else {
+        try {
+          usableProfile(deps, profile)
+        } catch (error) {
+          if (sharedAccess(deps)) throw unavailable()
+          throw error
+        }
+      }
+      for (const key of ['tabId', 'windowOf']) {
+        if (typeof args[key] === 'string') profileTab(deps, profile, args[key] as string)
+      }
       const call = deps.browser.agentCall
       if (!call) return def.run(args, deps)
-      let profiles: string[]
-      if (typeof args.profile === 'string') profiles = [args.profile]
-      else if (typeof args.tabId === 'string')
-        profiles = [
-          deps.tabs.resolve(args.tabId, (name) => deps.browser.state(name)?.generation ?? null)
-            .profile,
-        ]
-      else
-        profiles = deps.store
-          .list()
-          .filter((p) => p.enabled)
-          .map((p) => p.name)
-      return deps.browser.agentCall!(profiles, () => def.run(args, deps))
+      return deps.browser.agentCall!([profile], () => def.run(args, deps))
     },
   }))
 }

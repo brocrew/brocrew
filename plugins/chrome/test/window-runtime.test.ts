@@ -154,7 +154,7 @@ describe.skipIf(!enabled)('window and file contract in disposable installed Chro
     const a = await open({ visible: true, newWindow: true }),
       b = await open()
     const c = await open({ newWindow: true })
-    await h.call('show_tab', { tabId: c.tabId }) // deliberate HEADLESS native-order setup, never a native focus proof
+    await h.call('show_tab', { profile: 'fern', tabId: c.tabId }) // deliberate HEADLESS native-order setup, never a native focus proof
     const d = await open()
     expect([a.windowId, b.windowId, c.windowId, d.windowId]).toEqual([
       a.windowId,
@@ -163,12 +163,12 @@ describe.skipIf(!enabled)('window and file contract in disposable installed Chro
       c.windowId,
     ])
     expect(c.windowId).not.toBe(a.windowId)
-    const rows = await h.call('list_tabs')
+    const rows = await h.call('list_tabs', { profile: 'fern' })
     expect(rows.every((t) => Number.isInteger(t.windowId))).toBe(true)
     expect((await open()).windowId).toBe(c.windowId)
     expect((await open({ windowOf: a.tabId })).windowId).toBe(a.windowId)
     expect((await open()).windowId).toBe(a.windowId)
-    await h.call('snapshot', { tabId: c.tabId })
+    await h.call('snapshot', { profile: 'fern', tabId: c.tabId })
     const nativeDefault = await open()
     expect(nativeDefault.windowId).toBe(a.windowId)
     expect(nativeDefault.note).toContain('different window')
@@ -186,7 +186,7 @@ describe.skipIf(!enabled)('window and file contract in disposable installed Chro
     expect(h.browser.state('willow')).toBeNull()
     const existing = await h.call('list_tabs', { profile: 'fern' })
     for (const t of existing)
-      if (t.windowId === c.windowId) await h.call('close_tab', { tabId: t.tabId })
+      if (t.windowId === c.windowId) await h.call('close_tab', { profile: 'fern', tabId: t.tabId })
     expect((await open()).windowId).toBe(a.windowId)
     await expect(open({ windowOf: c.tabId })).rejects.toThrow('no longer exists')
     const headA = await h.call('open_tab', {
@@ -227,15 +227,15 @@ describe.skipIf(!enabled)('window and file contract in disposable installed Chro
       url: path.join(a.home, 'missing fixture.html'),
     })
     expect(missing.loadError).toBeDefined()
-    await a.call('close_tab', { tabId: missing.tabId })
-    await a.call('navigate', { tabId: second.tabId, url: file })
-    await a.call('navigate', { tabId: first.tabId, url })
-    await expect(a.call('download_url', { tabId: first.tabId, url: file })).rejects.toThrow(
-      'file URLs and local paths are not supported',
-    )
-    await expect(a.call('download_url', { tabId: first.tabId, url })).rejects.toThrow(
-      'file URLs and local paths are not supported',
-    )
+    await a.call('close_tab', { profile: 'fern', tabId: missing.tabId })
+    await a.call('navigate', { profile: 'fern', tabId: second.tabId, url: file })
+    await a.call('navigate', { profile: 'fern', tabId: first.tabId, url })
+    await expect(
+      a.call('download_url', { profile: 'fern', tabId: first.tabId, url: file }),
+    ).rejects.toThrow('file URLs and local paths are not supported')
+    await expect(
+      a.call('download_url', { profile: 'fern', tabId: first.tabId, url }),
+    ).rejects.toThrow('file URLs and local paths are not supported')
     const switched = await a.call('open_tab', {
       profile: 'fern',
       url: 'about:blank',
@@ -243,7 +243,9 @@ describe.skipIf(!enabled)('window and file contract in disposable installed Chro
       windowOf: second.tabId,
     })
     expect(switched.restoredTabs?.[0]?.tabId).toBe(second.tabId)
-    expect((await a.call('list_tabs')).find((t) => t.tabId === second.tabId)?.url).toBe(url)
+    expect(
+      (await a.call('list_tabs', { profile: 'fern' })).find((t) => t.tabId === second.tabId)?.url,
+    ).toBe(url)
     await a.call('open_tab', {
       profile: 'fern',
       url: 'about:blank',
@@ -275,7 +277,7 @@ describe.skipIf(!enabled)('window and file contract in disposable installed Chro
     expect(fs.existsSync(save)).toBe(false)
     await vi.waitFor(
       async () => {
-        const rows = await b.call('list_tabs')
+        const rows = await b.call('list_tabs', { profile: 'fern' })
         expect(rows.map((t) => t.url)).toEqual([url, url])
         expect(rows.map((t) => t.title)).toEqual([
           'Fictional local fixture',

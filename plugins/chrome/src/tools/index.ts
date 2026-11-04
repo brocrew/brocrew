@@ -2,7 +2,6 @@ import { fenceToolDefs, sharedAccess, checkToolAuthorization } from './authoriza
 import { PrivateDownloadFiles } from '../browser/privateDownloadFiles.js'
 import { privateFolder } from '../privatePaths.js'
 import { PublicToolError } from '../shared/toolServer.js'
-import { randomBytes } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { pipeline } from 'node:stream/promises'
@@ -34,6 +33,7 @@ import {
   locate,
   onTab,
   useTab,
+  profileTab,
   profileName,
   raceTimeout,
   ref,
@@ -75,14 +75,15 @@ export function buildToolDefs(): ToolDef[] {
       spec: {
         name: 'list_browser_profiles',
         description:
-          'List the Chrome profiles: name, description, whether the user enabled it, temporary or not, open or closed, mode (headless/visible). Only enabled profiles can be used.',
-        props: {},
+          'Describe the supplied enabled Chrome profile: name, description, temporary or not, open or closed, mode (headless/visible). Discover available names in Settings → Plugins → Chrome.',
+        props: { profile: profileName },
+        required: ['profile'],
       },
-      async run(_a, deps) {
+      async run(a, deps) {
         return {
           json: deps.store
             .list()
-            .filter((p) => !sharedAccess(deps) || p.enabled)
+            .filter((p) => p.name === a.profile)
             .map((p) => {
               const s = deps.browser.state(p.name)
               return {
@@ -104,9 +105,9 @@ export function buildToolDefs(): ToolDef[] {
       spec: {
         name: 'create_browser_profile',
         description:
-          'Create a new empty Chrome profile (one per account). Shared profiles start enabled in this workspace. Workspace-local profiles start disabled: the user enables them in Settings → Plugins → Chrome. temporary:true instead makes a throwaway profile that is enabled at once, never signed in and without extensions or settings access; it is deleted after 10 minutes idle, when the server restarts, or by delete_browser_profile. name is optional for a temporary profile (tmp-xxxxxx).',
+          'Create a new empty Chrome profile (one per account). Shared profiles start enabled in this workspace. Workspace-local profiles start disabled: the user enables them in Settings → Plugins → Chrome. temporary:true instead makes a throwaway profile that is enabled at once, never signed in and without extensions or settings access; it is deleted after 10 minutes idle, when the server restarts, or by delete_browser_profile. profile is required for both normal and temporary creation.',
         props: {
-          name: profileName,
+          profile: profileName,
           description: {
             type: 'string',
             description: `What the profile is for (plain text, at most ${DESCRIPTION_MAX} characters).`,
@@ -117,16 +118,15 @@ export function buildToolDefs(): ToolDef[] {
             description: 'true: a throwaway profile, enabled at once, deleted when idle.',
           },
         },
+        required: ['profile'],
       },
       async run(a, deps) {
         const temporary = a.temporary === true
-        if (a.name === undefined && !temporary)
-          throw new ToolError('name is required (only a temporary profile gets a generated name)')
         if (deps.store.list().length >= MAX_PROFILES)
           throw new ToolError(
             `there are already ${MAX_PROFILES} profiles — ask the user to delete one in the Settings → Plugins → Chrome`,
           )
-        const name = (a.name as string | undefined) ?? `tmp-${randomBytes(3).toString('hex')}`
+        const name = a.profile as string
         try {
           deps.logger?.info('admin action', {
             action: 'create',
@@ -344,14 +344,13 @@ export function buildToolDefs(): ToolDef[] {
       spec: {
         name: 'list_tabs',
         description:
-          'List open tabs (tabId, numeric windowId, profile, url, title) of enabled profiles, or one profile. Read-only; does not change recent-window preference.',
+          'List open tabs (tabId, numeric windowId, profile, url, title) of the supplied enabled profile. Read-only; does not change recent-window preference.',
         props: { profile: profileName },
+        required: ['profile'],
       },
       async run(a, deps) {
-        if (a.profile !== undefined) usableProfile(deps, a.profile as string)
-        let tabs = deps.tabs.list(generationOf(deps), a.profile as string | undefined)
-        if (a.profile === undefined)
-          tabs = tabs.filter((t) => deps.store.get(t.profile)?.enabled === true)
+        usableProfile(deps, a.profile as string)
+        const tabs = deps.tabs.list(generationOf(deps), a.profile as string)
         return {
           json: await Promise.all(
             tabs.map(async (t) => ({
@@ -369,13 +368,18 @@ export function buildToolDefs(): ToolDef[] {
       spec: {
         name: 'close_tab',
         description: 'Close a tab.',
-        props: { tabId },
-        required: ['tabId'],
+        props: { profile: profileName, tabId },
+        required: ['profile', 'tabId'],
       },
       async run(a, deps) {
-        const { notes } = await onTab(deps, a.tabId as string, async ({ page }) => {
-          await page.close()
-        })
+        const { notes } = await onTab(
+          deps,
+          a.profile as string,
+          a.tabId as string,
+          async ({ page }) => {
+            await page.close()
+          },
+        )
         return withNotes({ ok: true }, notes)
       },
     },
@@ -385,6 +389,7 @@ export function buildToolDefs(): ToolDef[] {
         description:
           'Go to a URL, or back / forward / reload (exactly one of url and action). Refs of the tab become invalid; call snapshot again.',
         props: {
+          profile: profileName,
           tabId,
           url,
           action: {
@@ -394,34 +399,39 @@ export function buildToolDefs(): ToolDef[] {
           },
           timeoutMs,
         },
-        required: ['tabId'],
+        required: ['profile', 'tabId'],
       },
       async run(a, deps) {
         if ((a.url === undefined) === (a.action === undefined))
           throw new ToolError('give exactly one of url and action')
         const target = a.url === undefined ? undefined : checkUrl(a.url as string)
         const ms = timeoutOf(a)
-        const { value, notes } = await onTab(deps, a.tabId as string, async ({ tab, page }) => {
-          const opts = {
-            waitUntil: 'domcontentloaded' as const,
-            timeout: ms,
-          }
-          const history = { waitUntil: 'commit' as const, timeout: ms }
-          tab.refs = null
-          const res =
-            target !== undefined
-              ? await page.goto(target, opts)
-              : a.action === 'back'
-                ? await page.goBack(history)
-                : a.action === 'forward'
-                  ? await page.goForward(history)
-                  : await page.reload(opts)
-          return {
-            url: page.url(),
-            title: await titleAfterLoad(page),
-            status: res ? res.status() : null,
-          }
-        })
+        const { value, notes } = await onTab(
+          deps,
+          a.profile as string,
+          a.tabId as string,
+          async ({ tab, page }) => {
+            const opts = {
+              waitUntil: 'domcontentloaded' as const,
+              timeout: ms,
+            }
+            const history = { waitUntil: 'commit' as const, timeout: ms }
+            tab.refs = null
+            const res =
+              target !== undefined
+                ? await page.goto(target, opts)
+                : a.action === 'back'
+                  ? await page.goBack(history)
+                  : a.action === 'forward'
+                    ? await page.goForward(history)
+                    : await page.reload(opts)
+            return {
+              url: page.url(),
+              title: await titleAfterLoad(page),
+              status: res ? res.status() : null,
+            }
+          },
+        )
         return withNotes(value, notes)
       },
     },
@@ -431,6 +441,7 @@ export function buildToolDefs(): ToolDef[] {
         description:
           'Read the page. mode "aria" (default): an accessibility tree whose interactive elements carry refs like [ref=e12]; use those refs in click, fill, etc. Refs are valid until the next snapshot or navigation. mode "text": the visible page text (falls back to the aria tree if the page is too heavy to read in time). At most maxChars (default 100000) per call; a long page ends with a "[more: ... offset=N]" marker, call again with that offset to read on.',
         props: {
+          profile: profileName,
           tabId,
           mode: {
             type: 'string',
@@ -441,59 +452,64 @@ export function buildToolDefs(): ToolDef[] {
           maxChars: pageMaxChars,
           timeoutMs,
         },
-        required: ['tabId'],
+        required: ['profile', 'tabId'],
       },
       async run(a, deps) {
         const ms = timeoutOf(a)
         const offset = (a.offset as number | undefined) ?? 0
         const max = (a.maxChars as number | undefined) ?? MAX_TEXT
-        const { value, notes } = await onTab(deps, a.tabId as string, async ({ tab, page }) => {
-          const head = async (extra = ''): Promise<string> =>
-            `url: ${page.url()}\ntitle: ${await titleOf(page)}\n${offset ? `offset: ${offset}\n` : ''}${extra}\n`
-          const aria = async (
-            timeout: number,
-          ): Promise<{
-            body: string
-            next: number | null
-          }> => {
-            const full = await page.ariaSnapshot({ mode: 'ai', timeout })
-            tab.refs = new Set([...full.matchAll(/\[ref=([A-Za-z0-9]+)\]/g)].map((m) => m[1]))
-            return pageText(full, offset, max)
-          }
-          if (a.mode === 'text') {
-            let got: string | undefined
-            try {
-              got = String(
-                await raceTimeout(
-                  page.evaluate(
-                    (r: { from: number; to: number }) =>
-                      (document.body?.innerText ?? '').slice(r.from, r.to),
-                    { from: offset, to: offset + max + 1 },
+        const { value, notes } = await onTab(
+          deps,
+          a.profile as string,
+          a.tabId as string,
+          async ({ tab, page }) => {
+            const head = async (extra = ''): Promise<string> =>
+              `url: ${page.url()}\ntitle: ${await titleOf(page)}\n${offset ? `offset: ${offset}\n` : ''}${extra}\n`
+            const aria = async (
+              timeout: number,
+            ): Promise<{
+              body: string
+              next: number | null
+            }> => {
+              const full = await page.ariaSnapshot({ mode: 'ai', timeout })
+              tab.refs = new Set([...full.matchAll(/\[ref=([A-Za-z0-9]+)\]/g)].map((m) => m[1]))
+              return pageText(full, offset, max)
+            }
+            if (a.mode === 'text') {
+              let got: string | undefined
+              try {
+                got = String(
+                  await raceTimeout(
+                    page.evaluate(
+                      (r: { from: number; to: number }) =>
+                        (document.body?.innerText ?? '').slice(r.from, r.to),
+                      { from: offset, to: offset + max + 1 },
+                    ),
+                    Math.ceil(ms / 2),
                   ),
-                  Math.ceil(ms / 2),
-                ),
-              )
-            } catch {
-              const f = await aria(Math.floor(ms / 2))
+                )
+              } catch {
+                const f = await aria(Math.floor(ms / 2))
+                return {
+                  header: await head(
+                    '[text mode timed out on this page; showing the aria tree instead]\n',
+                  ),
+                  body: f.body + moreMarker('snapshot', f.next),
+                }
+              }
+              const more = got.length > max
               return {
-                header: await head(
-                  '[text mode timed out on this page; showing the aria tree instead]\n',
-                ),
-                body: f.body + moreMarker('snapshot', f.next),
+                header: await head(),
+                body: got.slice(0, max) + moreMarker('snapshot', more ? offset + max : null),
               }
             }
-            const more = got.length > max
+            const f = await aria(ms)
             return {
               header: await head(),
-              body: got.slice(0, max) + moreMarker('snapshot', more ? offset + max : null),
+              body: f.body + moreMarker('snapshot', f.next),
             }
-          }
-          const f = await aria(ms)
-          return {
-            header: await head(),
-            body: f.body + moreMarker('snapshot', f.next),
-          }
-        })
+          },
+        )
         return {
           text: value.header + value.body + (notes.length ? `\n\nnotes: ${notes.join('; ')}` : ''),
         }
@@ -504,6 +520,7 @@ export function buildToolDefs(): ToolDef[] {
         name: 'click',
         description: 'Click an element by ref.',
         props: {
+          profile: profileName,
           tabId,
           ref,
           button: {
@@ -514,19 +531,24 @@ export function buildToolDefs(): ToolDef[] {
           double: { type: 'boolean', description: 'Double-click.' },
           timeoutMs,
         },
-        required: ['tabId', 'ref'],
+        required: ['profile', 'tabId', 'ref'],
       },
       async run(a, deps) {
         const ms = timeoutOf(a)
-        const { notes } = await onTab(deps, a.tabId as string, async ({ tab, page }) => {
-          const loc = locate(tab, page, a.ref as string)
-          const opts = {
-            button: (a.button as 'left' | 'right' | 'middle' | undefined) ?? 'left',
-            timeout: ms,
-          }
-          if (a.double === true) await loc.dblclick(opts)
-          else await loc.click(opts)
-        })
+        const { notes } = await onTab(
+          deps,
+          a.profile as string,
+          a.tabId as string,
+          async ({ tab, page }) => {
+            const loc = locate(tab, page, a.ref as string)
+            const opts = {
+              button: (a.button as 'left' | 'right' | 'middle' | undefined) ?? 'left',
+              timeout: ms,
+            }
+            if (a.double === true) await loc.dblclick(opts)
+            else await loc.click(opts)
+          },
+        )
         return withNotes({ ok: true }, notes)
       },
     },
@@ -536,6 +558,7 @@ export function buildToolDefs(): ToolDef[] {
         description:
           'Replace the value of an input or textarea by ref; submit:true presses Enter afterwards.',
         props: {
+          profile: profileName,
           tabId,
           ref,
           text: {
@@ -549,15 +572,20 @@ export function buildToolDefs(): ToolDef[] {
           },
           timeoutMs,
         },
-        required: ['tabId', 'ref', 'text'],
+        required: ['profile', 'tabId', 'ref', 'text'],
       },
       async run(a, deps) {
         const ms = timeoutOf(a)
-        const { notes } = await onTab(deps, a.tabId as string, async ({ tab, page }) => {
-          const loc = locate(tab, page, a.ref as string)
-          await loc.fill(a.text as string, { timeout: ms })
-          if (a.submit === true) await loc.press('Enter', { timeout: ms })
-        })
+        const { notes } = await onTab(
+          deps,
+          a.profile as string,
+          a.tabId as string,
+          async ({ tab, page }) => {
+            const loc = locate(tab, page, a.ref as string)
+            await loc.fill(a.text as string, { timeout: ms })
+            if (a.submit === true) await loc.press('Enter', { timeout: ms })
+          },
+        )
         return withNotes({ ok: true }, notes)
       },
     },
@@ -567,6 +595,7 @@ export function buildToolDefs(): ToolDef[] {
         description:
           'Type text key by key into an element by ref (for fields that react to key events). Use fill for plain values.',
         props: {
+          profile: profileName,
           tabId,
           ref,
           text: {
@@ -583,16 +612,21 @@ export function buildToolDefs(): ToolDef[] {
           },
           timeoutMs,
         },
-        required: ['tabId', 'ref', 'text'],
+        required: ['profile', 'tabId', 'ref', 'text'],
       },
       async run(a, deps) {
         const ms = timeoutOf(a)
-        const { notes } = await onTab(deps, a.tabId as string, async ({ tab, page }) => {
-          await locate(tab, page, a.ref as string).pressSequentially(a.text as string, {
-            delay: (a.delayMs as number | undefined) ?? 0,
-            timeout: ms,
-          })
-        })
+        const { notes } = await onTab(
+          deps,
+          a.profile as string,
+          a.tabId as string,
+          async ({ tab, page }) => {
+            await locate(tab, page, a.ref as string).pressSequentially(a.text as string, {
+              delay: (a.delayMs as number | undefined) ?? 0,
+              timeout: ms,
+            })
+          },
+        )
         return withNotes({ ok: true }, notes)
       },
     },
@@ -602,6 +636,7 @@ export function buildToolDefs(): ToolDef[] {
         description:
           'Press a key or chord ("Enter", "Control+A", "ArrowDown"), on an element by ref or on the page.',
         props: {
+          profile: profileName,
           tabId,
           key: {
             type: 'string',
@@ -611,17 +646,22 @@ export function buildToolDefs(): ToolDef[] {
           ref,
           timeoutMs,
         },
-        required: ['tabId', 'key'],
+        required: ['profile', 'tabId', 'key'],
       },
       async run(a, deps) {
         const ms = timeoutOf(a)
-        const { notes } = await onTab(deps, a.tabId as string, async ({ tab, page }) => {
-          if (a.ref !== undefined)
-            await locate(tab, page, a.ref as string).press(a.key as string, {
-              timeout: ms,
-            })
-          else await page.keyboard.press(a.key as string)
-        })
+        const { notes } = await onTab(
+          deps,
+          a.profile as string,
+          a.tabId as string,
+          async ({ tab, page }) => {
+            if (a.ref !== undefined)
+              await locate(tab, page, a.ref as string).press(a.key as string, {
+                timeout: ms,
+              })
+            else await page.keyboard.press(a.key as string)
+          },
+        )
         return withNotes({ ok: true }, notes)
       },
     },
@@ -631,6 +671,7 @@ export function buildToolDefs(): ToolDef[] {
         description:
           'Choose option(s) of a <select> by value or label. Returns the selected values.',
         props: {
+          profile: profileName,
           tabId,
           ref,
           values: {
@@ -642,12 +683,16 @@ export function buildToolDefs(): ToolDef[] {
           },
           timeoutMs,
         },
-        required: ['tabId', 'ref', 'values'],
+        required: ['profile', 'tabId', 'ref', 'values'],
       },
       async run(a, deps) {
         const ms = timeoutOf(a)
-        const { value, notes } = await onTab(deps, a.tabId as string, ({ tab, page }) =>
-          locate(tab, page, a.ref as string).selectOption(a.values as string[], { timeout: ms }),
+        const { value, notes } = await onTab(
+          deps,
+          a.profile as string,
+          a.tabId as string,
+          ({ tab, page }) =>
+            locate(tab, page, a.ref as string).selectOption(a.values as string[], { timeout: ms }),
         )
         return withNotes({ selected: value }, notes)
       },
@@ -656,13 +701,16 @@ export function buildToolDefs(): ToolDef[] {
       spec: {
         name: 'hover',
         description: 'Move the pointer over an element by ref.',
-        props: { tabId, ref, timeoutMs },
-        required: ['tabId', 'ref'],
+        props: { profile: profileName, tabId, ref, timeoutMs },
+        required: ['profile', 'tabId', 'ref'],
       },
       async run(a, deps) {
         const ms = timeoutOf(a)
-        const { notes } = await onTab(deps, a.tabId as string, ({ tab, page }) =>
-          locate(tab, page, a.ref as string).hover({ timeout: ms }),
+        const { notes } = await onTab(
+          deps,
+          a.profile as string,
+          a.tabId as string,
+          ({ tab, page }) => locate(tab, page, a.ref as string).hover({ timeout: ms }),
         )
         return withNotes({ ok: true }, notes)
       },
@@ -673,6 +721,7 @@ export function buildToolDefs(): ToolDef[] {
         description:
           'Scroll an element into view (ref) and/or scroll the page by dy pixels (positive = down).',
         props: {
+          profile: profileName,
           tabId,
           ref,
           dy: {
@@ -683,18 +732,23 @@ export function buildToolDefs(): ToolDef[] {
           },
           timeoutMs,
         },
-        required: ['tabId'],
+        required: ['profile', 'tabId'],
       },
       async run(a, deps) {
         if (a.ref === undefined && a.dy === undefined) throw new ToolError('give ref, dy or both')
         const ms = timeoutOf(a)
-        const { notes } = await onTab(deps, a.tabId as string, async ({ tab, page }) => {
-          if (a.ref !== undefined)
-            await locate(tab, page, a.ref as string).scrollIntoViewIfNeeded({
-              timeout: ms,
-            })
-          if (a.dy !== undefined) await page.mouse.wheel(0, a.dy as number)
-        })
+        const { notes } = await onTab(
+          deps,
+          a.profile as string,
+          a.tabId as string,
+          async ({ tab, page }) => {
+            if (a.ref !== undefined)
+              await locate(tab, page, a.ref as string).scrollIntoViewIfNeeded({
+                timeout: ms,
+              })
+            if (a.dy !== undefined) await page.mouse.wheel(0, a.dy as number)
+          },
+        )
         return withNotes({ ok: true }, notes)
       },
     },
@@ -703,6 +757,7 @@ export function buildToolDefs(): ToolDef[] {
         name: 'screenshot',
         description: 'PNG screenshot of the viewport, the full page, or one element (ref).',
         props: {
+          profile: profileName,
           tabId,
           scope: {
             type: 'string',
@@ -712,26 +767,31 @@ export function buildToolDefs(): ToolDef[] {
           ref,
           timeoutMs,
         },
-        required: ['tabId', 'scope'],
+        required: ['profile', 'tabId', 'scope'],
       },
       async run(a, deps) {
         const ms = timeoutOf(a)
         if ((a.scope === 'element') !== (a.ref !== undefined))
           throw new ToolError('scope "element" needs ref, and the other scopes take none')
-        const { value } = await onTab(deps, a.tabId as string, async ({ tab, page }) => {
-          const png =
-            a.scope === 'element'
-              ? await locate(tab, page, a.ref as string).screenshot({
-                  timeout: ms,
-                })
-              : await page.screenshot({
-                  fullPage: a.scope === 'full',
-                  timeout: ms,
-                })
-          if (png.length > MAX_SCREENSHOT_BYTES)
-            throw new ToolError('the screenshot is too large — use scope viewport or element')
-          return png
-        })
+        const { value } = await onTab(
+          deps,
+          a.profile as string,
+          a.tabId as string,
+          async ({ tab, page }) => {
+            const png =
+              a.scope === 'element'
+                ? await locate(tab, page, a.ref as string).screenshot({
+                    timeout: ms,
+                  })
+                : await page.screenshot({
+                    fullPage: a.scope === 'full',
+                    timeout: ms,
+                  })
+            if (png.length > MAX_SCREENSHOT_BYTES)
+              throw new ToolError('the screenshot is too large — use scope viewport or element')
+            return png
+          },
+        )
         return {
           image: value,
           caption: `${a.scope as string} screenshot of ${a.tabId as string}`,
@@ -744,6 +804,7 @@ export function buildToolDefs(): ToolDef[] {
         description:
           'Evaluate a JavaScript expression in the page and return its JSON result (capped at 100 KB). Reads what the signed-in page shows; same trust level as the other Chrome tools.',
         props: {
+          profile: profileName,
           tabId,
           expression: {
             type: 'string',
@@ -759,21 +820,25 @@ export function buildToolDefs(): ToolDef[] {
           },
           timeoutMs,
         },
-        required: ['tabId', 'expression'],
+        required: ['profile', 'tabId', 'expression'],
       },
       async run(a, deps) {
         const ms = timeoutOf(a)
-        const { value, notes } = await onTab(deps, a.tabId as string, async ({ page }) =>
-          jsonValue(
-            await raceTimeout(
-              page.evaluate(
-                a.arg === undefined
-                  ? (a.expression as string)
-                  : `(${a.expression as string})(${JSON.stringify(a.arg)})`,
+        const { value, notes } = await onTab(
+          deps,
+          a.profile as string,
+          a.tabId as string,
+          async ({ page }) =>
+            jsonValue(
+              await raceTimeout(
+                page.evaluate(
+                  a.arg === undefined
+                    ? (a.expression as string)
+                    : `(${a.expression as string})(${JSON.stringify(a.arg)})`,
+                ),
+                ms,
               ),
-              ms,
             ),
-          ),
         )
         return {
           text: value + (notes.length ? `\nnotes: ${notes.join('; ')}` : ''),
@@ -786,6 +851,7 @@ export function buildToolDefs(): ToolDef[] {
         description:
           'Wait until text appears/disappears, an element (ref) is visible/hidden, the URL contains a string, and/or the page reaches a load state. At least one condition.',
         props: {
+          profile: profileName,
           tabId,
           text: {
             type: 'string',
@@ -813,7 +879,7 @@ export function buildToolDefs(): ToolDef[] {
           },
           timeoutMs,
         },
-        required: ['tabId'],
+        required: ['profile', 'tabId'],
       },
       async run(a, deps) {
         if (
@@ -825,28 +891,33 @@ export function buildToolDefs(): ToolDef[] {
           throw new ToolError('give text, ref, urlIncludes or loadState')
         const total = timeoutOf(a)
         const state = (a.state as 'visible' | 'hidden' | undefined) ?? 'visible'
-        const { notes } = await onTab(deps, a.tabId as string, async ({ tab, page }) => {
-          const deadline = Date.now() + total
-          const left = (): number => Math.max(1, deadline - Date.now())
-          if (a.urlIncludes !== undefined)
-            await page.waitForURL((u) => u.href.includes(a.urlIncludes as string), {
-              timeout: left(),
-            })
-          if (a.loadState !== undefined)
-            await page.waitForLoadState(a.loadState as 'load', {
-              timeout: left(),
-            })
-          if (a.text !== undefined)
-            await page
-              .getByText(a.text as string)
-              .first()
-              .waitFor({ state, timeout: left() })
-          if (a.ref !== undefined)
-            await locate(tab, page, a.ref as string).waitFor({
-              state,
-              timeout: left(),
-            })
-        })
+        const { notes } = await onTab(
+          deps,
+          a.profile as string,
+          a.tabId as string,
+          async ({ tab, page }) => {
+            const deadline = Date.now() + total
+            const left = (): number => Math.max(1, deadline - Date.now())
+            if (a.urlIncludes !== undefined)
+              await page.waitForURL((u) => u.href.includes(a.urlIncludes as string), {
+                timeout: left(),
+              })
+            if (a.loadState !== undefined)
+              await page.waitForLoadState(a.loadState as 'load', {
+                timeout: left(),
+              })
+            if (a.text !== undefined)
+              await page
+                .getByText(a.text as string)
+                .first()
+                .waitFor({ state, timeout: left() })
+            if (a.ref !== undefined)
+              await locate(tab, page, a.ref as string).waitFor({
+                state,
+                timeout: left(),
+              })
+          },
+        )
         return withNotes({ ok: true }, notes)
       },
     },
@@ -856,6 +927,7 @@ export function buildToolDefs(): ToolDef[] {
         description:
           'Say how to answer the next alert/confirm/prompt dialog of this tab (accept or dismiss, with promptText for prompts). If a dialog is already open it is answered now. An unhandled dialog is dismissed after 10 s and reported in the next result.',
         props: {
+          profile: profileName,
           tabId,
           accept: {
             type: 'boolean',
@@ -867,12 +939,12 @@ export function buildToolDefs(): ToolDef[] {
             maxLength: 2000,
           },
         },
-        required: ['tabId', 'accept'],
+        required: ['profile', 'tabId', 'accept'],
       },
       async run(a, deps) {
-        const tab = await useTab(deps, a.tabId as string)
+        const tab = await useTab(deps, a.profile as string, a.tabId as string)
         deps.tabs.resolve(a.tabId as string, generationOf(deps))
-        usableProfile(deps, tab.profile)
+        usableProfile(deps, a.profile as string)
         const pending = tab.pendingDialog
         if (pending) {
           tab.pendingDialog = null
@@ -894,6 +966,7 @@ export function buildToolDefs(): ToolDef[] {
         description:
           'Put local file(s) into a file input (ref). Only files under {roots}, up to 50 MB each, are allowed; the bytes are passed to the page, not the path.',
         props: {
+          profile: profileName,
           tabId,
           ref,
           paths: {
@@ -905,7 +978,7 @@ export function buildToolDefs(): ToolDef[] {
           },
           timeoutMs,
         },
-        required: ['tabId', 'ref', 'paths'],
+        required: ['profile', 'tabId', 'ref', 'paths'],
       },
       async run(a, deps) {
         const ms = timeoutOf(a)
@@ -930,10 +1003,14 @@ export function buildToolDefs(): ToolDef[] {
             file.close()
           }
         }
-        const { notes } = await onTab(deps, a.tabId as string, ({ tab, page }) =>
-          locate(tab, page, a.ref as string).setInputFiles(files, {
-            timeout: ms,
-          }),
+        const { notes } = await onTab(
+          deps,
+          a.profile as string,
+          a.tabId as string,
+          ({ tab, page }) =>
+            locate(tab, page, a.ref as string).setInputFiles(files, {
+              timeout: ms,
+            }),
         )
         return withNotes({ ok: true, files: files.length }, notes)
       },
@@ -943,47 +1020,52 @@ export function buildToolDefs(): ToolDef[] {
         name: 'download',
         description:
           'Start and save a download in one call: give exactly one of ref (click the element) or url (navigate this tab). Capture is armed before the action, so this works headless too; do not click or navigate first and wait afterwards in headless mode. Saved under {downloads}/<date>/; returns the saved path. Only the first download this tab starts during the call is taken; downloads in other tabs are never taken. Max 200 MB.',
-        props: { tabId, ref, url, timeoutMs },
-        required: ['tabId'],
+        props: { profile: profileName, tabId, ref, url, timeoutMs },
+        required: ['profile', 'tabId'],
       },
       async run(a, deps) {
         if ((a.ref === undefined) === (a.url === undefined))
           throw new ToolError('give exactly one of ref or url')
         const target = a.url === undefined ? undefined : checkUrl(a.url as string)
         const ms = timeoutOf(a)
-        const { value, notes } = await onTab(deps, a.tabId as string, async ({ tab, page }) => {
-          const loc = target === undefined ? locate(tab, page, a.ref as string) : null
-          if (target !== undefined) tab.refs = null
-          let savedFile: string | undefined
-          const save = async () => {
-            const startedAt = Date.now()
-            const [download] = await Promise.all([
-              page.waitForEvent('download', {
-                timeout: ms,
-                predicate: (download) =>
-                  deps.browser.downloadIsPrivate?.(tab.profile, download) ?? true,
-              }),
-              target === undefined
-                ? loc!.click({ timeout: ms })
-                : page
-                    .goto(target, { waitUntil: 'commit', timeout: ms })
-                    .catch((error: unknown) => {
-                      // Chrome ends a navigation when it becomes a download. This
-                      // alone is not success: the matching download must still arrive.
-                      if (
-                        !(error instanceof Error) ||
-                        !/net::ERR_ABORTED|Download is starting/i.test(error.message)
-                      )
-                        throw error
-                    }),
-            ])
-            dropPending(tab, download)
-            return saveDownload(deps, tab.profile, download, ms, startedAt, (file) => {
-              savedFile = file
-            })
-          }
-          return deps.browser.captureDownloads(tab.profile, page, save, () => savedFile)
-        })
+        const { value, notes } = await onTab(
+          deps,
+          a.profile as string,
+          a.tabId as string,
+          async ({ tab, page }) => {
+            const loc = target === undefined ? locate(tab, page, a.ref as string) : null
+            if (target !== undefined) tab.refs = null
+            let savedFile: string | undefined
+            const save = async () => {
+              const startedAt = Date.now()
+              const [download] = await Promise.all([
+                page.waitForEvent('download', {
+                  timeout: ms,
+                  predicate: (download) =>
+                    deps.browser.downloadIsPrivate?.(a.profile as string, download) ?? true,
+                }),
+                target === undefined
+                  ? loc!.click({ timeout: ms })
+                  : page
+                      .goto(target, { waitUntil: 'commit', timeout: ms })
+                      .catch((error: unknown) => {
+                        // Chrome ends a navigation when it becomes a download. This
+                        // alone is not success: the matching download must still arrive.
+                        if (
+                          !(error instanceof Error) ||
+                          !/net::ERR_ABORTED|Download is starting/i.test(error.message)
+                        )
+                          throw error
+                      }),
+              ])
+              dropPending(tab, download)
+              return saveDownload(deps, a.profile as string, download, ms, startedAt, (file) => {
+                savedFile = file
+              })
+            }
+            return deps.browser.captureDownloads(a.profile as string, page, save, () => savedFile)
+          },
+        )
         return withNotes(value, notes)
       },
     },
@@ -992,18 +1074,18 @@ export function buildToolDefs(): ToolDef[] {
         name: 'wait_for_download',
         description:
           'Wait for and save a download this tab starts independently, from a page timer or script, or from a user in a visible window. For an agent-triggered click or navigation, use download with ref or url to arm capture and trigger the action in one call. Only one tool call runs at a time: another tool cannot trigger the download while this wait is active. In headless mode, start the wait before the timer fires; downloads outside an active call are denied and cannot be recovered afterwards. In a visible window, a private download from an earlier agent call in the last 60 s also counts. Saved like download; returns the path. A private download kept before this call can return savedBy:"chrome" with its private path. Downloads begun outside an agent call use normal Chrome downloads and are not taken by this tool. Start the wait before an independent event to get a copy under the agent downloads folder. In a visible window only this tab\'s first download during the wait is taken (downloads in other tabs go to the private plugin downloads folder as usual); one the user starts in this same tab during the wait may be the one taken. Max 200 MB.',
-        props: { tabId, timeoutMs },
-        required: ['tabId'],
+        props: { profile: profileName, tabId, timeoutMs },
+        required: ['profile', 'tabId'],
       },
       async run(a, deps) {
         const ms = timeoutOf(a)
-        const tab = await useTab(deps, a.tabId as string)
+        const tab = await useTab(deps, a.profile as string, a.tabId as string)
         deps.tabs.resolve(a.tabId as string, generationOf(deps))
-        usableProfile(deps, tab.profile)
-        deps.browser.touch(tab.profile)
+        usableProfile(deps, a.profile as string)
+        deps.browser.touch(a.profile as string)
         const now = Date.now()
         tab.pendingDownloads = tab.pendingDownloads.filter((d) => now - d.at <= PENDING_DOWNLOAD_MS)
-        const headless = deps.browser.state(tab.profile)?.mode === 'headless'
+        const headless = deps.browser.state(a.profile as string)?.mode === 'headless'
         // Before this call headless downloads were denied. A stale failed event
         // must not immediately consume the newly armed wait and hide its trigger.
         const waiting = headless ? undefined : tab.pendingDownloads.shift()
@@ -1016,17 +1098,22 @@ export function buildToolDefs(): ToolDef[] {
             (await tab.page.waitForEvent('download', {
               timeout: ms,
               predicate: (download) =>
-                deps.browser.downloadIsPrivate?.(tab.profile, download) ?? true,
+                deps.browser.downloadIsPrivate?.(a.profile as string, download) ?? true,
             }))
           dropPending(tab, download)
-          return deps.browser.operate(tab.profile, () =>
-            saveDownload(deps, tab.profile, download, ms, startedAt, (file) => {
+          return deps.browser.operate(a.profile as string, () =>
+            saveDownload(deps, a.profile as string, download, ms, startedAt, (file) => {
               savedFile = file
             }),
           )
         }
         return {
-          json: await deps.browser.captureDownloads(tab.profile, tab.page, save, () => savedFile),
+          json: await deps.browser.captureDownloads(
+            a.profile as string,
+            tab.page,
+            save,
+            () => savedFile,
+          ),
         }
       },
     },
@@ -1034,7 +1121,7 @@ export function buildToolDefs(): ToolDef[] {
       spec: {
         name: 'download_url',
         description:
-          "Fetch a file by URL with the profile's cookies (signed-in downloads, e.g. a PDF link) and save it like download. Give tabId, or profile (uses one of its open tabs). http(s) only, max 200 MB, the file is not opened in a tab.",
+          "Fetch a file by URL with the profile's cookies (signed-in downloads, e.g. a PDF link) and save it like download. Give profile and optionally tabId (otherwise uses one of that profile’s open tabs). http(s) only, max 200 MB, the file is not opened in a tab.",
         props: {
           tabId: {
             ...tabId,
@@ -1047,16 +1134,14 @@ export function buildToolDefs(): ToolDef[] {
           },
           timeoutMs,
         },
-        required: ['url'],
+        required: ['profile', 'url'],
       },
       async run(a, deps) {
         const ms = timeoutOf(a)
-        if ((a.tabId === undefined) === (a.profile === undefined))
-          throw new ToolError('give exactly one of tabId and profile')
         const target = checkDownloadUrl(a.url as string)
         if (target === 'about:blank') throw new ToolError('the URL is not valid')
         let tab
-        if (a.tabId !== undefined) tab = deps.tabs.resolve(a.tabId as string, generationOf(deps))
+        if (a.tabId !== undefined) tab = profileTab(deps, a.profile as string, a.tabId as string)
         else {
           usableProfile(deps, a.profile as string)
           tab = deps.tabs.list(generationOf(deps), a.profile as string)[0]
@@ -1065,14 +1150,14 @@ export function buildToolDefs(): ToolDef[] {
               `profile "${a.profile as string}" has no open tab — call open_tab first`,
             )
         }
-        usableProfile(deps, tab.profile)
-        deps.browser.touch(tab.profile)
+        usableProfile(deps, a.profile as string)
+        deps.browser.touch(a.profile as string)
         const t = tab
         return {
-          json: await deps.browser.operate(t.profile, async () => {
-            await deps.browser.usePage(t.profile, t.page)
+          json: await deps.browser.operate(a.profile as string, async () => {
+            await deps.browser.usePage(a.profile as string, t.page)
             deps.tabs.resolve(t.id, generationOf(deps))
-            usableProfile(deps, t.profile)
+            usableProfile(deps, a.profile as string)
             return fetchToDisk(deps, t.page.context(), target, ms)
           }),
         }
@@ -1084,6 +1169,7 @@ export function buildToolDefs(): ToolDef[] {
         description:
           'Pointer input at viewport coordinates (pixels from the top-left of what screenshot shows), for canvases and elements without a ref. action: click, double_click, move, drag (from x,y to x2,y2) or scroll (wheel at x,y by dx=x2, dy=y2 pixels, positive = right/down). Headless: nothing is focused or brought to the front.',
         props: {
+          profile: profileName,
           tabId,
           action: {
             type: 'string',
@@ -1121,7 +1207,7 @@ export function buildToolDefs(): ToolDef[] {
           },
           timeoutMs,
         },
-        required: ['tabId', 'action', 'x', 'y'],
+        required: ['profile', 'tabId', 'action', 'x', 'y'],
       },
       async run(a, deps) {
         const action = a.action as string
@@ -1143,25 +1229,30 @@ export function buildToolDefs(): ToolDef[] {
         )
           throw new ToolError('button is only for click, double_click and drag')
         const button = (a.button as 'left' | 'right' | 'middle' | undefined) ?? 'left'
-        const { notes } = await onTab(deps, a.tabId as string, async ({ page }) => {
-          const run = async (): Promise<void> => {
-            if (action === 'move') await page.mouse.move(x, y)
-            else if (action === 'click') await page.mouse.click(x, y, { button })
-            else if (action === 'double_click') await page.mouse.dblclick(x, y, { button })
-            else if (action === 'drag') {
-              await page.mouse.move(x, y)
-              await page.mouse.down({ button })
-              await page.mouse.move(x2 as number, y2 as number, {
-                steps: 10,
-              })
-              await page.mouse.up({ button })
-            } else {
-              await page.mouse.move(x, y)
-              await page.mouse.wheel(x2 ?? 0, y2 ?? 0)
+        const { notes } = await onTab(
+          deps,
+          a.profile as string,
+          a.tabId as string,
+          async ({ page }) => {
+            const run = async (): Promise<void> => {
+              if (action === 'move') await page.mouse.move(x, y)
+              else if (action === 'click') await page.mouse.click(x, y, { button })
+              else if (action === 'double_click') await page.mouse.dblclick(x, y, { button })
+              else if (action === 'drag') {
+                await page.mouse.move(x, y)
+                await page.mouse.down({ button })
+                await page.mouse.move(x2 as number, y2 as number, {
+                  steps: 10,
+                })
+                await page.mouse.up({ button })
+              } else {
+                await page.mouse.move(x, y)
+                await page.mouse.wheel(x2 ?? 0, y2 ?? 0)
+              }
             }
-          }
-          await raceTimeout(run(), timeoutOf(a))
-        })
+            await raceTimeout(run(), timeoutOf(a))
+          },
+        )
         return withNotes({ ok: true }, notes)
       },
     },
@@ -1170,13 +1261,13 @@ export function buildToolDefs(): ToolDef[] {
         name: 'console',
         description:
           'The last 200 console lines of the tab (type and text). Pass the "last" of an earlier call as since to get only new lines.',
-        props: { tabId, since },
-        required: ['tabId'],
+        props: { profile: profileName, tabId, since },
+        required: ['profile', 'tabId'],
       },
       async run(a, deps) {
-        const tab = await useTab(deps, a.tabId as string)
+        const tab = await useTab(deps, a.profile as string, a.tabId as string)
         deps.tabs.resolve(a.tabId as string, generationOf(deps))
-        usableProfile(deps, tab.profile)
+        usableProfile(deps, a.profile as string)
         return {
           json: {
             last: tab.console.lastSeq,
@@ -1190,18 +1281,19 @@ export function buildToolDefs(): ToolDef[] {
         name: 'network',
         description: `Requests of the tab, newest first: method, URL without query, status (0 = failed, null = pending), type. No headers and no bodies. At most ${DEFAULT_NETWORK_LIMIT} unless limit is given (max 200; the tab keeps its last 200); type / urlIncludes narrow it down first, and "omitted" counts the matching ones left out.`,
         props: {
+          profile: profileName,
           tabId,
           since,
           limit: networkLimit,
           type: networkType,
           urlIncludes,
         },
-        required: ['tabId'],
+        required: ['profile', 'tabId'],
       },
       async run(a, deps) {
-        const tab = await useTab(deps, a.tabId as string)
+        const tab = await useTab(deps, a.profile as string, a.tabId as string)
         deps.tabs.resolve(a.tabId as string, generationOf(deps))
-        usableProfile(deps, tab.profile)
+        usableProfile(deps, a.profile as string)
         const type = typeof a.type === 'string' ? a.type.toLowerCase() : null
         const needle = typeof a.urlIncludes === 'string' ? a.urlIncludes.toLowerCase() : null
         const limit = typeof a.limit === 'number' ? a.limit : DEFAULT_NETWORK_LIMIT

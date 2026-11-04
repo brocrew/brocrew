@@ -57,7 +57,7 @@ it('rename endpoint is person-only and tool lists show the new display name on t
   })
   tool.profile('cedar')
   tool.store.rename('cedar', 'Cedar account')
-  expect((await tool.call('list_browser_profiles')).json).toEqual(
+  expect((await tool.call('list_browser_profiles', { profile: 'cedar' })).json).toEqual(
     expect.arrayContaining([
       expect.objectContaining({ name: 'cedar', displayName: 'Cedar account' }),
     ]),

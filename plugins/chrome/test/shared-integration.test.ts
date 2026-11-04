@@ -120,8 +120,9 @@ it('shared tool listing hides off profiles while Settings can still list them', 
     guard: () => ({ roots: [f.config.workspace], hostHome: '', mount: '', maxBytes: 1000 }),
     downloadsRoot: f.config.downloadsRoot,
   })
-  const result = await tools.find((t) => t.definition.name === 'list_browser_profiles')!.execute({})
-  expect(JSON.stringify(result)).not.toContain('fern')
+  await expect(
+    tools.find((t) => t.definition.name === 'list_browser_profiles')!.execute({ profile: 'fern' }),
+  ).rejects.toThrow(/unavailable|not enabled/)
   expect(f.store.list()).toHaveLength(1)
 })
 it('restores migration-mapped names, applies workspace access and excludes local file URLs from shared automatic restore', async () => {

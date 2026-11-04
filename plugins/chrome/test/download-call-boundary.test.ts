@@ -29,7 +29,11 @@ it('arms ordinary agent navigation at the tool boundary before page work, and re
       throw new Error('fictional navigation failure')
     })
     await expect(
-      h.call('navigate', { tabId: opened.tabId, url: 'https://fictional.invalid/paper' }),
+      h.call('navigate', {
+        profile: 'fern',
+        tabId: opened.tabId,
+        url: 'https://fictional.invalid/paper',
+      }),
     ).rejects.toThrow()
     expect(calls).toEqual([['fern']])
     expect(page.goto).toHaveBeenCalledOnce()
