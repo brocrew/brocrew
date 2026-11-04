@@ -17,7 +17,11 @@ import type { PluginJsonObject, PluginToolCallResult } from '../src/shared/plugi
 import type { WorkspaceProjection } from '../src/main/plugins/lifecycle/types'
 import { pluginSha256 } from '../src/main/plugins/package-digests'
 import { fictionalPublicKey, signed } from './plugin-package-fixtures'
-import { migrationPackages, type MigratedPackage } from './fixtures/connected-package-migration'
+import {
+  migrationPackages,
+  packageBundleProvenance,
+  type MigratedPackage,
+} from './fixtures/connected-package-migration'
 
 const cleanups: (() => Promise<unknown>)[] = []
 afterEach(async () => {
@@ -684,4 +688,45 @@ describe('ordinary package migration through actual app and package code', () =>
     ).toEqual([])
     expect(f.forwarded('whatsapp_before_remove')).toEqual([])
   }, 240000)
+})
+
+it('rejects an ancestor dependency shadow while accepting the locked SDK transitive Express copy', async () => {
+  const parent = await realpath(await mkdtemp(join(tmpdir(), 'fictional-package-provenance-')))
+  cleanups.push(() => rm(parent, { recursive: true, force: true }))
+  const project = join(parent, 'isolated')
+  const dependencies = join(project, 'node_modules')
+  const top = join(dependencies, 'express')
+  const nested = join(dependencies, '@modelcontextprotocol', 'sdk', 'node_modules', 'express')
+  const shadow = join(parent, 'node_modules', 'express')
+  for (const [root, version] of [
+    [top, '4.22.3'],
+    [nested, '5.2.1'],
+    [shadow, '5.2.1'],
+  ]) {
+    await mkdir(root!, { recursive: true })
+    await writeFile(join(root!, 'package.json'), JSON.stringify({ name: 'express', version }))
+    await writeFile(join(root!, 'index.js'), 'export const fictional = true;')
+  }
+  await writeFile(
+    join(project, 'package-lock.json'),
+    JSON.stringify({
+      packages: {
+        'node_modules/express': { version: '4.22.3' },
+        'node_modules/@modelcontextprotocol/sdk/node_modules/express': { version: '5.2.1' },
+      },
+    }),
+  )
+  expect(
+    await packageBundleProvenance([join(top, 'index.js'), join(nested, 'index.js')], dependencies),
+  ).toEqual([
+    { name: 'express', version: '4.22.3', lockPath: 'node_modules/express' },
+    {
+      name: 'express',
+      version: '5.2.1',
+      lockPath: 'node_modules/@modelcontextprotocol/sdk/node_modules/express',
+    },
+  ])
+  await expect(packageBundleProvenance([join(shadow, 'index.js')], dependencies)).rejects.toThrow(
+    'Shadowed package dependency outside staged root: express',
+  )
 })

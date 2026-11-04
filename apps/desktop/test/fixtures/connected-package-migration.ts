@@ -1,7 +1,7 @@
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
-import { join, resolve } from 'node:path'
-import { readFile, writeFile } from 'node:fs/promises'
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
+import { readFile, realpath, writeFile } from 'node:fs/promises'
 import { pluginSha256 } from '../../src/main/plugins/package-digests'
 import { tar } from '../plugin-package-fixtures'
 
@@ -10,12 +10,18 @@ const repository = fileURLToPath(new URL('../../../..', import.meta.url))
 
 // Exact package pins are staged privately by the root executor, separate from app dependencies.
 interface Builder {
+  resolve(
+    path: string,
+    options: { resolveDir: string; kind: string; pluginData: { staged: true } },
+  ): Promise<{ path: string; errors: unknown[] }>
   onResolve(
     options: { filter: RegExp },
     resolve: (args: {
       path: string
       importer: string
-    }) => { path: string; namespace: string } | undefined,
+      kind: string
+      pluginData?: { staged?: boolean }
+    }) => { path: string; namespace?: string } | undefined | Promise<{ path: string } | undefined>,
   ): void
   onLoad(
     options: { filter: RegExp; namespace: string },
@@ -27,6 +33,46 @@ interface Bundle {
     outputFiles: { contents: Uint8Array }[]
     metafile: { inputs: Record<string, unknown> }
   }>
+}
+
+const pinnedImports = ['@modelcontextprotocol/sdk', 'express', 'playwright-core']
+
+/** Check actual bundle inputs against the isolated npm lock, including legitimate nested deps. */
+export async function packageBundleProvenance(inputs: string[], dependencyRoot: string) {
+  const realRoot = await realpath(dependencyRoot)
+  const lock = JSON.parse(
+    await readFile(join(dirname(dependencyRoot), 'package-lock.json'), 'utf8'),
+  ) as {
+    packages: Record<string, { version?: string }>
+  }
+  const roots = new Map<string, string>()
+  for (const file of inputs) {
+    const absolute = resolve(repository, file).replaceAll('\\', '/')
+    const marker = '/node_modules/'
+    const at = absolute.lastIndexOf(marker)
+    if (at === -1) continue
+    const tail = absolute.slice(at + marker.length).split('/')
+    const name = tail[0]!.startsWith('@') ? tail.slice(0, 2).join('/') : tail[0]!
+    if (pinnedImports.includes(name))
+      roots.set(absolute.slice(0, at + marker.length + name.length), name)
+  }
+  const checked: { name: string; version: string; lockPath: string }[] = []
+  for (const [root, name] of roots) {
+    const path = relative(realRoot, await realpath(root))
+    if (
+      path === '..' ||
+      path.startsWith('..' + (process.platform === 'win32' ? '\\' : '/')) ||
+      isAbsolute(path)
+    )
+      throw new Error(`Shadowed package dependency outside staged root: ${name}`)
+    const lockPath = 'node_modules/' + path.replaceAll('\\', '/')
+    const version = lock.packages[lockPath]?.version
+    const actual = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
+    if (!version || actual.version !== version)
+      throw new Error(`Bundled dependency disagrees with isolated package lock: ${name}`)
+    checked.push({ name, version, lockPath })
+  }
+  return checked
 }
 
 /** The only replacement modules are the native browser and Go process boundaries. */
@@ -77,7 +123,9 @@ export function startBridge(options) {
  * The root stages exact package dependencies; the fixture never falls back to app SDK versions.
  */
 export async function migrationPackages(id: MigratedPackage, output: string) {
-  const dependencyRoot = join(repository, '.test-toolchain/package-dependencies/node_modules')
+  const dependencyRoot =
+    process.env.BROCREW_PLUGIN_TEST_DEPENDENCIES ??
+    join(repository, 'scripts/gates/plugin-test-dependencies/node_modules')
   const packageRequire = createRequire(join(dependencyRoot, 'fictional-fixture.cjs'))
   const dependencies: Record<string, string> = {}
   for (const [name, version] of [
@@ -116,6 +164,21 @@ export async function migrationPackages(id: MigratedPackage, output: string) {
       {
         name: 'fictional-native-boundary',
         setup(builder: Builder) {
+          builder.onResolve(
+            { filter: /^(?:@modelcontextprotocol\/sdk|express|playwright-core)(?:\/|$)/ },
+            async (args) => {
+              if (args.pluginData?.staged || !args.importer.startsWith(packageRoot))
+                return undefined
+              const resolved = await builder.resolve(args.path, {
+                resolveDir: dirname(dependencyRoot),
+                kind: args.kind,
+                pluginData: { staged: true },
+              })
+              if (resolved.errors.length)
+                throw new Error('Cannot resolve staged package dependency: ' + args.path)
+              return { path: resolved.path }
+            },
+          )
           builder.onResolve({ filter: boundary }, (args) =>
             args.importer === entry ? { path: id, namespace: 'fictional-native' } : undefined,
           )
@@ -128,19 +191,16 @@ export async function migrationPackages(id: MigratedPackage, output: string) {
       },
     ],
   })
-  const sdkMarker = '/node_modules/@modelcontextprotocol/sdk/'
-  const sdkRoots = new Set(
-    Object.keys(result.metafile.inputs).flatMap((file) => {
-      const absolute = resolve(repository, file).replaceAll('\\', '/')
-      const at = absolute.lastIndexOf(sdkMarker)
-      return at === -1 ? [] : [absolute.slice(0, at + sdkMarker.length)]
-    }),
+  const provenance = await packageBundleProvenance(
+    Object.keys(result.metafile.inputs),
+    dependencyRoot,
   )
-  if (sdkRoots.size === 0) throw new Error('Actual package MCP SDK was not bundled')
-  for (const root of sdkRoots) {
-    const actual = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
-    if (actual.version !== '1.32.1') throw new Error('App SDK fallback entered the package bundle')
-  }
+  if (
+    !provenance.some(
+      (entry) => entry.name === '@modelcontextprotocol/sdk' && entry.version === '1.32.1',
+    )
+  )
+    throw new Error('Actual staged package MCP SDK was not bundled')
   const server = Buffer.from(result.outputFiles[0]!.contents)
   const files = new Map<string, Buffer>([['server.mjs', server]])
   for (const name of ['index.html', 'app.js', 'style.css'])
@@ -180,5 +240,6 @@ export async function migrationPackages(id: MigratedPackage, output: string) {
     files,
     inputs: Object.keys(result.metafile.inputs),
     dependencies,
+    provenance,
   }
 }
