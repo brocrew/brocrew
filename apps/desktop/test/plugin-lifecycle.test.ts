@@ -699,7 +699,7 @@ describe.skipIf(process.platform === 'win32')(
       await consumerClosed
       expect(consumer.open).toBe(false)
     })
-    it('lease and broker packets are not person-control authority', async () => {
+    it('uses ordinary local packets while keeping supervisor and person method schemas distinct', async () => {
       const f = await fixture()
       await f.controller.detach(f.handle)
       const bridge = await servePersonPluginControl({
@@ -714,9 +714,15 @@ describe.skipIf(process.platform === 'win32')(
         handle: async () => true,
       })
       try {
-        await expect(
-          wrong.call({ kind: 'attach', workspaceId: randomUUID() }),
-        ).rejects.toMatchObject({ code: 'unavailable' })
+        await expect(wrong.call({ kind: 'attach', workspaceId: randomUUID() })).resolves.toEqual({
+          personProtocol: 2,
+        })
+        await expect(wrong.call({ kind: 'agent-routes' })).rejects.toMatchObject({
+          code: 'unavailable',
+        })
+        await expect(wrong.call({ kind: 'screen', pluginId: 'chrome' })).rejects.toMatchObject({
+          code: 'unavailable',
+        })
         expect(
           Command.safeParse({ kind: 'install', pluginId: 'chrome', operationId: randomUUID() })
             .success,

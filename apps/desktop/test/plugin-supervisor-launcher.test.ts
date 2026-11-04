@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, realpath, rm, access } from 'node:fs/promises'
+import { mkdtemp, mkdir, realpath, rm, access, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -172,15 +172,52 @@ describe.skipIf(process.platform === 'win32')('immutable supervisor launcher ref
       await owner.shutdown()
     }
   })
-  it('refuses a global root inside a workspace before writing or starting anything', async () => {
+  it('reuses one real owner at a selected root inside a workspace without a duplicate launch', async () => {
     root = await realpath(await mkdtemp('/tmp/fictional-launcher-'))
+    const selected = join(root, 'global'),
+      secondWorkspace = join(root, 'second-workspace')
+    await mkdir(selected)
+    await mkdir(secondWorkspace)
+    const sentinel = join(selected, 'fictional-profile')
+    await writeFile(sentinel, 'fictional opaque bytes')
+    const owner = await PluginSupervisor.start({ root: selected, workspaceRoots: [root] })
     const launch = createPluginSupervisorLauncher({
-      root: join(root, 'global'),
+      root: selected,
       workspaceRoots: [root],
       resourcesRoot: join(root, 'absent-app'),
     })
-    await expect(launch()).rejects.toMatchObject({ code: 'unavailable' })
-    expect(program.start).not.toHaveBeenCalled()
-    await expect(access(join(root, 'global'))).rejects.toThrow()
+    let first: PluginWorkspaceLease | undefined, second: PluginWorkspaceLease | undefined
+    try {
+      first = await PluginWorkspaceLease.attach({
+        root: selected,
+        workspaceRoot: root,
+        generation: randomUUID(),
+        build: 'fictional-build',
+        launch,
+      })
+      second = await PluginWorkspaceLease.attach({
+        root: selected,
+        workspaceRoot: secondWorkspace,
+        generation: randomUUID(),
+        build: 'fictional-build',
+        launch,
+      })
+      expect(owner.valid(first.lease, first.epoch)).toBe(true)
+      expect(owner.valid(second.lease, second.epoch)).toBe(true)
+      expect(second.epoch).toBe(first.epoch)
+      const storage = new SupervisorStorage(selected, [root], false)
+      try {
+        expect(storage.read()?.epoch).toBe(first.epoch)
+      } finally {
+        storage.close()
+      }
+      expect(program.start).not.toHaveBeenCalled()
+      expect(await readFile(sentinel, 'utf8')).toBe('fictional opaque bytes')
+    } finally {
+      await first?.close()
+      await second?.close()
+      await owner.shutdown()
+    }
+    expect(await readFile(sentinel, 'utf8')).toBe('fictional opaque bytes')
   })
 })
