@@ -3,28 +3,29 @@ import { nextTick } from 'vue'
 import PluginsSection from '../../src/renderer/src/components/PluginsSection.vue'
 import { everythingOverTheWire } from '../lib/the-wire'
 import { mount, unmountAll } from './harness'
-import type { PluginSettingsReply } from '../../src/shared/plugin-settings'
+import type {
+  PluginCard,
+  PluginPackageInspection,
+  PluginsClient,
+  PluginSettingsReply,
+  PluginSettingsRequest,
+} from '../../src/shared/plugin-settings'
 afterEach(() => unmountAll())
 function setup(update = false) {
-  let cards = [
+  let cards: PluginCard[] = [
     {
-      id: 'chrome',
-      name: 'Chrome',
+      id: 'fern-recipes',
+      name: 'Fern recipes',
       installed: update,
       state: update ? 'Running' : 'Available',
-      preparationRequired: true,
       ...(update ? { installedVersion: '1.0.1', updateVersion: '1.0.2' } : {}),
     },
   ]
-  const consent = {
-    reviewId: '00000000-0000-4000-8000-000000000001',
-    displayedDetailsHash: 'b'.repeat(64),
-  }
-  const review = {
-    id: 'chrome',
-    action: update ? 'update' : 'install',
-    catalogueDigest: 'd'.repeat(64),
-    consent,
+  const inspection: PluginPackageInspection = {
+    id: 'fern-recipes',
+    name: 'Fern recipes',
+    ref: { source: 'https://fictional.invalid/fern.tar.gz', sha256: 'a'.repeat(64), bytes: 1234 },
+    manifest: {},
     details: {
       version: '1.0.2',
       digest: 'a'.repeat(64),
@@ -32,38 +33,40 @@ function setup(update = false) {
       authors: ['fern-makers'],
       permissions: {
         description: 'Read fictional recipes.',
-        resources: [{ id: 'recipes', label: 'Fictional recipes', read: true, write: false }],
+        dataUses: ['Store fictional recipe notes.'],
+        resources: [
+          { id: 'recipes', label: 'Fictional recipes', read: true, write: false },
+          { id: 'notes', label: 'Fictional notes', read: false, write: true },
+          { id: 'private', label: 'Fictional private collection', read: false, write: false },
+        ],
       },
     },
-    installed: null,
-    changes: { authors: true, permissions: true },
   }
   const invalidations = new Set<() => void>()
-  let fail: string | undefined
-  const request = vi.fn(async (input: unknown): Promise<PluginSettingsReply> => {
-    const value = input as Record<string, unknown>
-    if (value.kind === 'prepare') return { ok: true, review } as unknown as PluginSettingsReply
+  let fail: 'policy-refused' | 'source-mismatch' | 'network' | undefined
+  const request = vi.fn(async (input: PluginSettingsRequest): Promise<PluginSettingsReply> => {
+    const value = input
+    if (value.kind === 'inspect') return { ok: true, inspection }
     if (value.kind === 'install' || value.kind === 'update') {
       if (fail)
         return {
           ok: false,
           error: 'Plugin unavailable. Try again.',
           mutationFailure: fail,
-        } as unknown as PluginSettingsReply
+        }
       cards = [
         {
-          id: 'chrome',
-          name: 'Chrome',
+          id: 'fern-recipes',
+          name: 'Fern recipes',
           installed: true,
           state: 'Running',
-          preparationRequired: true,
           installedVersion: '1.0.2',
         },
       ]
     }
-    return { ok: true, cards } as PluginSettingsReply
+    return { ok: true, cards }
   })
-  const client = {
+  const client: PluginsClient = {
     request,
     onClosed: () => () => {},
     onReviewInvalidated(listener: () => void) {
@@ -74,17 +77,17 @@ function setup(update = false) {
   return {
     client: everythingOverTheWire(client, 'plugins'),
     request,
-    consent,
+    ref: inspection.ref,
     invalidate: () => {
       for (const f of invalidations) f()
     },
-    fail: (code: string) => {
+    fail: (code: NonNullable<typeof fail>) => {
       fail = code
     },
   }
 }
 it.each([false, true])(
-  'shows verified authors and every permission before confirming update=%s',
+  'shows inspected authors and every permission before confirming update=%s',
   async (update) => {
     const f = setup(update),
       m = mount(PluginsSection, { client: f.client })
@@ -99,10 +102,20 @@ it.each([false, true])(
     expect(m.q('plugin-review-details').textContent).toContain('fern-makers')
     expect(m.q('plugin-review-details').textContent).toContain('Fictional recipes')
     expect(m.q('plugin-review-details').textContent).toContain('Read')
-    if (update)
-      expect(m.q('plugin-review-details').textContent).toContain(
-        "The installed version's details couldn't be checked, so all its authors and permissions are shown as new.",
-      )
+    expect(m.q('plugin-review-details').textContent).toContain('Store fictional recipe notes.')
+    expect(m.q('plugin-review-details').textContent).toContain(
+      'https://fictional.invalid/fern.tar.gz',
+    )
+    expect(
+      [...m.q('plugin-review-details').querySelectorAll('li')].map((item) =>
+        item.textContent?.trim(),
+      ),
+    ).toEqual([
+      'Store fictional recipe notes.',
+      'Fictional recipes: Read',
+      'Fictional notes: Write',
+      'Fictional private collection: No access',
+    ])
     m.q('plugin-review-confirm').click()
     await vi.waitFor(() =>
       expect(
@@ -113,13 +126,15 @@ it.each([false, true])(
     )
     const calls = f.request.mock.calls.map(([x]) => x as Record<string, unknown>),
       command = calls.find((x) => x.kind === (update ? 'update' : 'install'))!
-    expect(command.consent).toEqual(f.consent)
-    const prepareIndex = calls.findIndex((x) => x.kind === 'prepare'),
+    expect(command.package).toEqual(f.ref)
+    expect(command.package).not.toBe(f.ref)
+    expect(command).not.toHaveProperty('consent')
+    const inspectIndex = calls.findIndex((x) => x.kind === 'inspect'),
       commitIndex = calls.indexOf(command)
-    expect(calls.slice(prepareIndex + 1, commitIndex).some((x) => x.kind === 'close')).toBe(false)
+    expect(calls.slice(inspectIndex + 1, commitIndex).some((x) => x.kind === 'close')).toBe(false)
   },
 )
-it('removes displayed consent on invalidation and never auto-renews it', async () => {
+it('removes displayed package details on invalidation and never auto-inspects again', async () => {
   const f = setup(),
     m = mount(PluginsSection, { client: f.client })
   await vi.waitFor(() => expect(m.all('plugin-card')).toHaveLength(1))
@@ -129,11 +144,11 @@ it('removes displayed consent on invalidation and never auto-renews it', async (
   await nextTick()
   expect(m.all('plugin-review-details')).toHaveLength(0)
   expect(
-    f.request.mock.calls.filter(([x]) => (x as { kind: string }).kind === 'prepare'),
+    f.request.mock.calls.filter(([x]) => (x as { kind: string }).kind === 'inspect'),
   ).toHaveLength(1)
   expect(f.request.mock.calls.some(([x]) => (x as { kind: string }).kind === 'install')).toBe(false)
 })
-it.each(['policy-refused', 'source-mismatch', 'network'])(
+it.each(['policy-refused', 'source-mismatch', 'network'] as const)(
   'shows honest %s words and refreshes without resending',
   async (cause) => {
     const f = setup(),
@@ -155,7 +170,7 @@ it.each(['policy-refused', 'source-mismatch', 'network'])(
       f.request.mock.calls.filter(([x]) => (x as { kind: string }).kind === 'install'),
     ).toHaveLength(1)
     expect(
-      f.request.mock.calls.filter(([x]) => (x as { kind: string }).kind === 'prepare'),
+      f.request.mock.calls.filter(([x]) => (x as { kind: string }).kind === 'inspect'),
     ).toHaveLength(1)
     expect(
       f.request.mock.calls.filter(([x]) => (x as { kind: string }).kind === 'list').length,
