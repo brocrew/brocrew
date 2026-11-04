@@ -7,7 +7,13 @@ import type {
 /** Explicitly fictional install/uninstall seams. No installation, supervisor or Chrome process. */
 export function fictionalPlugins(installed = true) {
   let cards: PluginCard[] = [
-    { id: 'chrome', name: 'Chrome', installed, state: installed ? 'Running' : 'Available' },
+    {
+      id: 'chrome',
+      name: 'Chrome',
+      installed,
+      state: installed ? 'Running' : 'Available',
+      uninstallDeletesData: false,
+    },
     { id: 'fictional-maps', name: 'Fictional Maps', installed: false, state: 'Available' },
   ]
   const calls: PluginSettingsRequest[] = [],
