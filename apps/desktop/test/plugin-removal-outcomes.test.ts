@@ -30,3 +30,21 @@ it('keeps the legacy removal reader while refusing conflicting or invented clean
   ])
     expect(pluginRemovalOutcome(value)).toBeNull()
 })
+
+it('keeps a plugin warning and its ordinary MCP result through removal and user notice', () => {
+  const result = {
+    content: [
+      { type: 'text', text: 'Fictional remote disconnect is unconfirmed; remove its old link.' },
+    ],
+    structuredContent: {
+      status: 'warning',
+      message: 'Fictional remote cleanup warning',
+      extra: [1, 2],
+    },
+  }
+  const outcome = { data: 'deleted', cleanup: 'completed', result } as const
+  expect(pluginRemovalOutcome(outcome)).toEqual(outcome)
+  expect(pluginRemovalNotice('Fictional pebbles', outcome)).toContain(
+    'Fictional remote disconnect is unconfirmed; remove its old link.',
+  )
+})
