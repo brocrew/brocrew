@@ -39,7 +39,12 @@ function handle(packet) {
  if(name==='pebble.tool_error') return result({isError:true,content:[{type:'text',text:'Fictional basket is full'}],structuredContent:{reason:'fictional-full',revision}});
  if(name==='pebble.lose_reply') { setImmediate(()=>process.exit(19)); return; }
  if(name==='pebble.write_settings') fs.writeFileSync(settingsPath,JSON.stringify({...JSON.parse(fs.readFileSync(settingsPath,'utf8')),...args}));
- if(name==='pebble.cleanup') fs.appendFileSync(path.join(home,'explicit-cleanup.jsonl'),JSON.stringify({revision,args,meta,runId:process.env.BROCREW_PLUGIN_RUN_ID})+'\n');
+ if(name==='pebble.cleanup') {
+  const record=JSON.stringify({revision,args,meta,runId:process.env.BROCREW_PLUGIN_RUN_ID})+'\n';
+  fs.appendFileSync(path.join(home,'explicit-cleanup.jsonl'),record);
+  fs.appendFileSync(path.join(shared,'cleanup-events.jsonl'),record);
+  if(args.loseReply) {setImmediate(()=>process.exit(23));return;}
+ }
  let helper;
  if(name==='pebble.helper') {
   const executable=fileURLToPath(new URL('./helpers/opaque-helper.mjs',import.meta.url));
@@ -66,7 +71,11 @@ if(transport==='stdio') {
 }
 `
 
-export function thirdPluginPackage(revision: 1 | 2, transport: ThirdPluginTransport) {
+export function thirdPluginPackage(
+  revision: 1 | 2,
+  transport: ThirdPluginTransport,
+  options: { dataOnRemove?: 'keep' | 'remove'; cleanupLosesReply?: boolean } = {},
+) {
   const fields = {
     type: 'object',
     properties: {
@@ -125,9 +134,12 @@ export function thirdPluginPackage(revision: 1 | 2, transport: ThirdPluginTransp
       stop: { signal: 'SIGTERM', graceMs: 300 },
       beforeRemove: {
         tool: 'pebble.cleanup',
-        arguments: { reason: 'declared fictional uninstall' },
+        arguments: {
+          reason: 'declared fictional uninstall',
+          ...(options.cleanupLosesReply ? { loseReply: true } : {}),
+        },
       },
-      dataOnRemove: 'keep',
+      dataOnRemove: options.dataOnRemove ?? 'keep',
     },
     data: { schema: revision, migrateOnStart: true },
   }

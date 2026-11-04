@@ -1,7 +1,8 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { randomUUID, createHash } from 'node:crypto'
 import { copyFile, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { GlobalPluginState } from '../src/main/plugins/state/store'
 import { PluginSupervisor } from '../src/main/plugins/supervisor/owner'
@@ -9,6 +10,9 @@ import { PluginWorkspaceLease } from '../src/main/plugins/supervisor/client'
 import { createPluginNodeHost } from '../src/main/plugins/node-host'
 import { preparePluginNodeRuntime } from '../src/main/plugins/node-runtime'
 import { createSupervisorLifecycle } from '../src/main/plugins/lifecycle/supervisor'
+import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
+import { PluginPageTools } from '../src/main/plugins/ui/tool-rpc'
+import { PLUGIN_PAGE_CHANNEL } from '../src/shared/plugin-page'
 import type { LifecycleWorkspace, WorkspaceProjection } from '../src/main/plugins/lifecycle/types'
 import type { ProjectionReceipt } from '../src/main/plugins/state/format'
 import { fictionalPublicKey, signed } from './plugin-package-fixtures'
@@ -38,6 +42,17 @@ function projection(workspaceId: string) {
   }
   return { sink, receipts }
 }
+interface AcceptanceSession {
+  owner: PluginSupervisor
+  lease: PluginWorkspaceLease
+  host: ReturnType<typeof createPluginNodeHost>
+  service: Awaited<ReturnType<typeof createSupervisorLifecycle>>
+  close(): Promise<void>
+  handles: LifecycleWorkspace[]
+  projections: ReturnType<typeof projection>[]
+  clients: Awaited<ReturnType<typeof connectPluginSettings>>[]
+  pages: PluginPageTools[]
+}
 async function records(path: string): Promise<Record<string, unknown>[]> {
   try {
     return (await readFile(path, 'utf8'))
@@ -65,7 +80,10 @@ async function appSourceIdentity() {
     ),
   )
 }
-async function acceptance(transport: ThirdPluginTransport) {
+async function acceptance(
+  transport: ThirdPluginTransport,
+  options: { dataOnRemove?: 'keep' | 'remove'; cleanupLosesReply?: boolean } = {},
+) {
   const parent = await realpath(
     await mkdtemp(join(process.platform === 'win32' ? tmpdir() : '/tmp', 'third-plugin-')),
   )
@@ -91,15 +109,15 @@ async function acceptance(transport: ThirdPluginTransport) {
   })
   const packages = []
   for (const revision of [1, 2] as const) {
-    const pkg = thirdPluginPackage(revision, transport)
+    const pkg = thirdPluginPackage(revision, transport, options)
     const source = join(parent, `fictional-pebbles-${revision}.tar`)
     await writeFile(source, pkg.archive)
     packages.push({ ...pkg, ref: { source, sha256: pkg.sha256, bytes: pkg.archive.length } })
   }
   const ids = [randomUUID(), randomUUID()]
   let state = GlobalPluginState.create({ root: join(root, 'state'), workspaceRoots: workspaces })
-  const sessions: Awaited<ReturnType<typeof start>>[] = []
-  async function start() {
+  const sessions: AcceptanceSession[] = []
+  async function start(): Promise<AcceptanceSession> {
     const owner = await PluginSupervisor.start({ root, workspaceRoots: workspaces })
     cleanup.push(async () => {
       await owner.shutdown()
@@ -138,10 +156,14 @@ async function acceptance(transport: ThirdPluginTransport) {
         deny() {},
       },
     })
+    const clients: AcceptanceSession['clients'] = []
+    const pages: PluginPageTools[] = []
     let closed = false
     const close = async () => {
       if (closed) return
       closed = true
+      for (const page of pages) page.close()
+      for (const client of clients) await client.close()
       await service.close()
       await host.stop()
       await lease.close()
@@ -151,7 +173,37 @@ async function acceptance(transport: ThirdPluginTransport) {
     const projections = ids.map(projection)
     for (const projection of projections)
       handles.push(await service.controller.attach(projection.sink))
-    const session = { owner, lease, host, service, close, handles, projections }
+    for (const local of projections) {
+      clients.push(
+        await connectPluginSettings({
+          path: service.path,
+          personKey: '7'.repeat(64),
+          root,
+          pinnedPublicKey: fictionalPublicKey,
+          target: {
+            os: process.platform as 'darwin' | 'linux' | 'win32',
+            cpu: process.arch as 'arm64' | 'x64',
+          },
+          appVersion: '1.0.0',
+          catalogue: signed({ format: 1, entries: [] }),
+          projection: local.sink,
+          propose: () => {
+            throw new Error('Fictional generic settings must use MCP.')
+          },
+        }),
+      )
+    }
+    const session: AcceptanceSession = {
+      owner,
+      lease,
+      host,
+      service,
+      close,
+      handles,
+      projections,
+      clients,
+      pages,
+    }
     sessions.push(session)
     return session
   }
@@ -199,11 +251,7 @@ describe.each(['stdio', 'streamable-http'] as const)(
           requestId: randomUUID(),
           origin: 'acceptance',
         })
-      await session.service.controller.installPackage(
-        session.handles[0]!,
-        f.packages[0]!.ref,
-        'install',
-      )
+      await session.clients[0]!.applyPackage!(f.packages[0]!.ref, 'install')
       const first = scope()
       expect((await call('pebble.helper')).structuredContent).toMatchObject({
         helper: 'opaque-third-helper',
@@ -211,13 +259,47 @@ describe.each(['stdio', 'streamable-http'] as const)(
       const initial = await session.service.controller.genericListTools(first)
       expect(initial.map((tool) => tool.name)).toContain('pebble.echo')
       expect(initial.map((tool) => tool.name)).not.toContain('pebble.count')
-      const configured = await call('pebble.write_settings', { label: 'Opaque fictional basket' })
-      expect(configured.structuredContent).toMatchObject({
-        revision: 1,
-        settings: { label: 'Opaque fictional basket' },
-        home: privateData,
-        shared: sharedData,
+      const configuration = async (workspace = 0) => {
+        const client = session.clients[workspace]!
+        const snapshot = await client.host!.snapshot()
+        expect(snapshot.contributions).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ pluginId: id, kind: 'settings.page', state: 'active' }),
+          ]),
+        )
+        const screen = await client.screen(id)
+        if (!screen.tools) throw new Error('Expected the real generic Configure tool service.')
+        expect(screen.hostViewId).toEqual(expect.any(String))
+        expect(screen.verified.readFile(screen.page!.entry)).toBeDefined()
+        const page = new PluginPageTools(screen.tools)
+        session.pages.push(page)
+        return {
+          screen,
+          invoke: (tool: string, args: Record<string, unknown> = {}) =>
+            page.invoke({
+              channel: PLUGIN_PAGE_CHANNEL,
+              requestId: randomUUID(),
+              method: 'callTool',
+              params: { tool, arguments: args },
+            }),
+        }
+      }
+      const pageV1 = await configuration()
+      const configured = await pageV1.invoke('pebble.write_settings', {
+        label: 'Opaque fictional basket',
       })
+      expect(configured).toMatchObject({
+        status: 'result',
+        result: {
+          structuredContent: {
+            revision: 1,
+            settings: { label: 'Opaque fictional basket' },
+            home: privateData,
+            shared: sharedData,
+          },
+        },
+      })
+      expect(pageV1.screen.page!.fields).toEqual(f.packages[0]!.fields)
       expect(
         session.service.controller.contributions(session.handles[0]!, id).contributions.settings
           ?.fields,
@@ -225,19 +307,18 @@ describe.each(['stdio', 'streamable-http'] as const)(
       const opaque = Buffer.from([0, 255, 3, 17, 128])
       expect(await readFile(join(privateData, 'opaque.bin'))).toEqual(opaque)
       expect(await readFile(join(sharedData, 'opaque.bin'))).toEqual(opaque)
-      await f.state.withExclusive(async () => {
-        f.state.setEnabled(f.ids[1]!, id, false)
-      })
+      expect(
+        await session.clients[1]!.host!.request({ kind: 'enabled', pluginId: id, enabled: false }),
+      ).toMatchObject({ value: { enabled: false } })
       expect(session.service.controller.agentAttachments(f.ids[1]!)).toEqual([])
       await expect(
         session.service.controller.genericListTools({ ...first, workspaceId: f.ids[1]! }),
       ).rejects.toMatchObject({ code: 'disabled' })
-      await session.service.controller.installPackage(
-        session.handles[0]!,
-        f.packages[1]!.ref,
-        'update',
-      )
+      await session.clients[0]!.applyPackage!(f.packages[1]!.ref, 'update')
       const updated = scope()
+      await expect(pageV1.invoke('pebble.read_settings')).rejects.toThrow('Plugin unavailable.')
+      const pageV2 = await configuration()
+      expect(pageV2.screen.page!.fields).toEqual(f.packages[1]!.fields)
       expect(updated.instanceId).not.toBe(first.instanceId)
       await expect(session.service.controller.genericListTools(first)).rejects.toMatchObject({
         code: 'disabled',
@@ -254,9 +335,26 @@ describe.each(['stdio', 'streamable-http'] as const)(
         shared: sharedData,
       })
       expect(
-        (await call('pebble.write_settings', { colour: 'fictional violet' })).structuredContent,
+        await pageV2.invoke('pebble.write_settings', { colour: 'fictional violet' }),
       ).toMatchObject({
-        settings: { label: 'Opaque fictional basket', colour: 'fictional violet' },
+        status: 'result',
+        result: {
+          structuredContent: {
+            settings: { label: 'Opaque fictional basket', colour: 'fictional violet' },
+          },
+        },
+      })
+      expect(await pageV2.invoke('pebble.tool_error')).toMatchObject({
+        status: 'result',
+        result: { isError: true, structuredContent: { reason: 'fictional-full', revision: 2 } },
+      })
+      expect(await pageV2.invoke('pebble.protocol_error')).toEqual({
+        status: 'protocol-error',
+        error: {
+          code: -32602,
+          message: 'MCP error -32602: Fictional invalid pebble',
+          data: { field: 'basket', revision: 2 },
+        },
       })
       expect(
         session.service.controller.contributions(session.handles[0]!, id).contributions.settings
@@ -300,10 +398,8 @@ describe.each(['stdio', 'streamable-http'] as const)(
         ),
       ).toHaveLength(1)
       // Restart never replays the package call whose reply was lost after its side effect.
-      await f.state.withExclusive(async () => {
-        f.state.setEnabled(f.ids[0]!, id, false)
-        f.state.setEnabled(f.ids[1]!, id, true)
-      })
+      await session.clients[0]!.host!.request({ kind: 'enabled', pluginId: id, enabled: false })
+      await session.clients[1]!.host!.request({ kind: 'enabled', pluginId: id, enabled: true })
       await session.close()
       f.reopenState()
       session = await f.start()
@@ -316,16 +412,18 @@ describe.each(['stdio', 'streamable-http'] as const)(
         home: privateData,
         shared: sharedData,
       })
-      await f.state.withExclusive(async () => {
-        f.state.setEnabled(f.ids[0]!, id, true)
-      })
+      await session.clients[0]!.host!.request({ kind: 'enabled', pluginId: id, enabled: true })
       expect(
         (await session.service.controller.genericListTools(scope())).map((tool) => tool.name),
       ).toContain('pebble.count')
       // Updates, explicit process restart and app reopening must not run uninstall cleanup.
       expect(await records(join(privateData, 'explicit-cleanup.jsonl'))).toEqual([])
       const removing = scope()
-      await session.service.controller.uninstall(session.handles[0]!, id)
+      expect(await session.clients[0]!.uninstall(id)).toMatchObject({
+        data: 'kept',
+        cleanup: 'completed',
+        result: { content: expect.any(Array) },
+      })
       expect(session.service.controller.agentAttachments(f.ids[0]!)).toEqual([])
       expect(await records(join(privateData, 'explicit-cleanup.jsonl'))).toEqual([
         {
@@ -341,3 +439,48 @@ describe.each(['stdio', 'streamable-http'] as const)(
     }, 240000)
   },
 )
+
+it('uninstall removes only declared private data while retaining shared data and its cleanup receipt', async () => {
+  const f = await acceptance('stdio', { dataOnRemove: 'remove' })
+  const session = await f.start()
+  await session.clients[0]!.applyPackage!(f.packages[0]!.ref, 'install')
+  const outcome = await session.clients[0]!.uninstall(thirdPluginId)
+  expect(outcome).toMatchObject({ data: 'deleted', cleanup: 'completed' })
+  await expect(
+    readFile(join(f.root, 'host', 'data', thirdPluginId, 'opaque.bin')),
+  ).rejects.toMatchObject({ code: 'ENOENT' })
+  const shared = join(f.appData, '@brobot2', 'shared', thirdPluginId)
+  expect(await readFile(join(shared, 'opaque.bin'))).toEqual(Buffer.from([0, 255, 3, 17, 128]))
+  expect(await records(join(shared, 'cleanup-events.jsonl'))).toHaveLength(1)
+}, 180000)
+
+it('recovers uninstall after code retirement without replaying an ambiguous consumed cleanup', async () => {
+  const f = await acceptance('stdio', { cleanupLosesReply: true })
+  let session = await f.start()
+  await session.clients[0]!.applyPackage!(f.packages[0]!.ref, 'install')
+  const code = join(f.root, 'host', 'packages', f.packages[0]!.sha256, 'peer.mjs')
+  const audit = join(f.appData, '@brobot2', 'shared', thirdPluginId, 'cleanup-events.jsonl')
+  let interrupted = false
+  const completion = vi.spyOn(f.state, 'complete').mockImplementationOnce(() => {
+    interrupted = !existsSync(code)
+    throw new Error('Fictional interruption after code retirement, before state completion')
+  })
+  try {
+    await expect(session.clients[0]!.uninstall(thirdPluginId)).rejects.toBeDefined()
+  } finally {
+    completion.mockRestore()
+  }
+  expect(interrupted).toBe(true)
+  expect(f.state.inspect().pending).not.toBeNull()
+  expect(await records(audit)).toHaveLength(1)
+  await session.close()
+  f.reopenState()
+  session = await f.start()
+  expect(f.state.inspect().pending).toBeNull()
+  expect(f.state.exportActivation().entries).toEqual([])
+  await session.clients[0]!.uninstall(thirdPluginId)
+  expect(await records(audit)).toHaveLength(1)
+  expect(await readFile(join(f.root, 'host', 'data', thirdPluginId, 'opaque.bin'))).toEqual(
+    Buffer.from([0, 255, 3, 17, 128]),
+  )
+}, 180000)
