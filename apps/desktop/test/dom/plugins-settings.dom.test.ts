@@ -18,9 +18,20 @@ it('uses explicitly fake install/uninstall seams, searches, configures its measu
   const f = fictionalPlugins(false),
     m = mount(settingsWindow('plugins', 'classic', f.client), {}, { width: 1180, height: 900 })
   await vi.waitFor(() => expect(m.all('plugin-card')).toHaveLength(2))
-  m.q('plugin-install').click()
+  m.q('plugin-review-install').click()
+  await vi.waitFor(() => expect(m.all('plugin-review-confirm')).toHaveLength(1))
+  expect(f.calls.filter((call) => call.kind === 'inspect')).toHaveLength(1)
+  expect(f.calls.some((call) => call.kind === 'install')).toBe(false)
+  m.q('plugin-review-confirm').click()
   await vi.waitFor(() => expect(m.q('plugin-state').textContent).toBe('Installed'))
-  expect(f.calls.some((c) => c.kind === 'install' && c.id === 'chrome')).toBe(true)
+  expect(f.calls.find((call) => call.kind === 'install')).toMatchObject({
+    id: 'chrome',
+    package: {
+      source: 'https://fictional.invalid/chrome.tar.gz',
+      sha256: 'a'.repeat(64),
+      bytes: 1234,
+    },
+  })
   const search = m.q('plugins-search') as HTMLInputElement
   search.value = 'chrome'
   search.dispatchEvent(new Event('input', { bubbles: true }))
@@ -55,7 +66,9 @@ it('says an install is starting while it waits, and not as an error', async () =
     m = mount(settingsWindow('plugins', 'classic', f.client), {}, { width: 1180, height: 900 })
   await vi.waitFor(() => expect(m.all('plugin-card')).toHaveLength(2))
   const release = f.holdInstall()
-  m.q('plugin-install').click()
+  m.q('plugin-review-install').click()
+  await vi.waitFor(() => expect(m.all('plugin-review-confirm')).toHaveLength(1))
+  m.q('plugin-review-confirm').click()
   await vi.waitFor(() =>
     expect(m.q('plugin-starting').textContent).toContain(
       'Installing and starting Chrome. The first start can take a minute.',
@@ -198,7 +211,7 @@ it('an installed blocked plugin explains recovery, retry becomes Running, and ne
   await vi.waitFor(() => expect(m.all('plugin-card')).toHaveLength(1))
   expect(m.q('plugin-start-error').textContent).toContain("Fictional Fir can't start right now.")
   expect(m.q('plugin-retry').textContent?.trim()).toBe('Try again')
-  expect(m.all('plugin-install')).toHaveLength(0)
+  expect(m.all('plugin-review-install')).toHaveLength(0)
   expect(m.all('plugin-uninstall')).toHaveLength(0)
   expect(m.all('plugin-restart-hint')).toHaveLength(0)
   m.q('plugin-retry').click()
@@ -217,14 +230,14 @@ it('a failed retry keeps the approved line and restart hint without raw errors',
   }
   const m = mount(settingsWindow('plugins', 'classic', f.client), {}, { width: 760, height: 900 })
   await vi.waitFor(() => expect(m.all('plugin-retry')).toHaveLength(1))
-  expect(m.all('plugin-install')).toHaveLength(0)
+  expect(m.all('plugin-review-install')).toHaveLength(0)
   m.q('plugin-retry').click()
   await vi.waitFor(() =>
     expect(m.q('plugin-restart-hint').textContent).toBe('Restart BroCrew if this keeps happening.'),
   )
   expect(m.q('plugin-start-error').textContent).toContain("Fictional Fir can't start right now.")
   expect(m.host.textContent).not.toContain('fictional-private-owner-stack')
-  expect(m.all('plugin-install')).toHaveLength(0)
+  expect(m.all('plugin-review-install')).toHaveLength(0)
 })
 it.each([
   ['owner-window-open', 'If another BroCrew window is open, close it, then try again.'],
@@ -259,7 +272,7 @@ it.each([
     await nextTick()
     expect(m.q('plugin-start-error').textContent).toContain(text)
     expect(m.all('plugin-restart-hint')).toHaveLength(0)
-    expect(m.all('plugin-install')).toHaveLength(0)
+    expect(m.all('plugin-review-install')).toHaveLength(0)
   },
 )
 it.each([true, null] as const)(
@@ -289,8 +302,10 @@ it.each([true, null] as const)(
       return reply
     }
     let m = mount(settingsWindow('plugins', 'classic', f.client), {}, { width: 760, height: 900 })
-    await vi.waitFor(() => expect(m.all('plugin-install')).toHaveLength(1))
-    m.q('plugin-install').click()
+    await vi.waitFor(() => expect(m.all('plugin-review-install')).toHaveLength(1))
+    m.q('plugin-review-install').click()
+    await vi.waitFor(() => expect(m.all('plugin-review-confirm')).toHaveLength(1))
+    m.q('plugin-review-confirm').click()
     await vi.waitFor(() => expect(m.q('plugin-state').textContent).toBe('Running'))
     m.unmount()
     // A newly listed unavailable owner must keep the previously installed row out of Install.
@@ -304,7 +319,7 @@ it.each([true, null] as const)(
       ),
     )
     expect(m.q('plugin-start-error').textContent).toContain("Fictional Fir can't start right now.")
-    expect(m.all('plugin-install')).toHaveLength(0)
+    expect(m.all('plugin-review-install')).toHaveLength(0)
     expect(f.calls.filter((call) => call.kind === 'install')).toHaveLength(1)
     expect(f.calls.some((call) => call.kind === 'uninstall')).toBe(false)
   },
@@ -321,7 +336,7 @@ it('a completed retry with uncertain cleanup keeps the restart hint and never of
   m.q('plugin-retry').click()
   await vi.waitFor(() => expect(f.calls.filter((call) => call.kind === 'retry')).toHaveLength(2))
   expect(m.q('plugin-start-error').textContent).toContain("Fictional Fir can't start right now.")
-  expect(m.all('plugin-install')).toHaveLength(0)
+  expect(m.all('plugin-review-install')).toHaveLength(0)
   expect(f.calls.some((call) => call.kind === 'install' || call.kind === 'uninstall')).toBe(false)
 })
 it.each([1180, 760])(
@@ -332,7 +347,7 @@ it.each([1180, 760])(
     f.set([{ id: 'fictional-fir', name: 'Fictional Fir', installed: false, state: 'Unavailable' }])
     let m = mount(settingsWindow('plugins', 'classic', f.client), {}, { width, height: 900 })
     await vi.waitFor(() => expect(m.all('plugin-retry')).toHaveLength(1))
-    expect(m.all('plugin-install')).toHaveLength(0)
+    expect(m.all('plugin-review-install')).toHaveLength(0)
     expect(m.q('plugin-start-error').textContent).toContain('did not report why')
     if (import.meta.env.VITE_W41144_CAPTURE)
       await page.screenshot({
@@ -343,7 +358,7 @@ it.each([1180, 760])(
     f.set([{ id: 'fictional-fir', name: 'Fictional Fir', installed: true, state: 'Unavailable' }])
     m = mount(settingsWindow('plugins', 'classic', f.client), {}, { width, height: 900 })
     await vi.waitFor(() => expect(m.all('plugin-retry')).toHaveLength(1))
-    expect(m.all('plugin-install')).toHaveLength(0)
+    expect(m.all('plugin-review-install')).toHaveLength(0)
     if (import.meta.env.VITE_W41144_CAPTURE)
       await page.screenshot({
         element: m.q('plugin-card'),
@@ -430,15 +445,17 @@ it('offers the current update on every page opening and tells the truth about da
     return request(input)
   }
   const m = mount(settingsWindow('plugins', 'classic', f.client), {}, { width: 1180, height: 900 })
-  await vi.waitFor(() => expect(m.all('plugin-update')).toHaveLength(1))
-  expect(m.q('plugin-update').textContent?.trim()).toBe('Update to 0.1.3')
+  await vi.waitFor(() => expect(m.all('plugin-review-update')).toHaveLength(1))
+  m.q('plugin-review-update').click()
+  await vi.waitFor(() => expect(m.all('plugin-review-confirm')).toHaveLength(1))
+  expect(m.q('plugin-review-confirm').textContent?.trim()).toBe('Update to 0.1.3')
   if (import.meta.env.VITE_PLUGIN_UPDATE_CAPTURE)
     await page.screenshot({
       element: m.q('plugin-card'),
       path: '__screenshots__/plugin-before-update.png',
     })
-  m.q('plugin-update').click()
-  await vi.waitFor(() => expect(m.all('plugin-update')).toHaveLength(0))
+  m.q('plugin-review-confirm').click()
+  await vi.waitFor(() => expect(m.all('plugin-review-update')).toHaveLength(0))
   expect(f.calls.some((call) => call.kind === 'update' && call.id === 'whatsapp')).toBe(true)
   expect(f.calls.some((call) => call.kind === 'uninstall')).toBe(false)
   if (import.meta.env.VITE_PLUGIN_UPDATE_CAPTURE)
@@ -480,12 +497,14 @@ it('keeps the installed card and offers retry after an update failure, without u
       ? { ok: false, error: 'Plugin unavailable. Try again.' }
       : request(input)
   const m = mount(settingsWindow('plugins', 'classic', f.client), {}, { width: 1180, height: 900 })
-  await vi.waitFor(() => expect(m.all('plugin-update')).toHaveLength(1))
-  m.q('plugin-update').click()
+  await vi.waitFor(() => expect(m.all('plugin-review-update')).toHaveLength(1))
+  m.q('plugin-review-update').click()
+  await vi.waitFor(() => expect(m.all('plugin-review-confirm')).toHaveLength(1))
+  m.q('plugin-review-confirm').click()
   await vi.waitFor(() =>
     expect(m.q('plugins-error').textContent).toBe('Plugin unavailable. Try again.'),
   )
-  expect((m.q('plugin-update') as HTMLButtonElement).disabled).toBe(false)
+  expect((m.q('plugin-review-update') as HTMLButtonElement).disabled).toBe(false)
   expect(m.q('plugin-state').textContent).toBe('Running')
   expect(f.calls.some((call) => call.kind === 'uninstall')).toBe(false)
 })
@@ -636,8 +655,8 @@ it('explains unavailable updates while retaining Configure and Uninstall for an 
   expect(m.q('plugin-updates-unavailable').textContent?.trim()).toBe(
     'Updates aren’t available for this version of BroCrew.',
   )
-  expect(m.all('plugin-install')).toHaveLength(0)
-  expect(m.all('plugin-update')).toHaveLength(0)
+  expect(m.all('plugin-review-install')).toHaveLength(0)
+  expect(m.all('plugin-review-update')).toHaveLength(0)
   expect(m.all('plugin-configure')).toHaveLength(1)
   expect(m.all('plugin-uninstall')).toHaveLength(1)
 })
@@ -675,11 +694,11 @@ it('explains an uninstalled unavailable offer and retries without installing it'
     'Exit code 17. Error: fictional <bridge> could not bind',
   )
   expect(m.q('plugin-start-diagnostic').querySelector('bridge')).toBeNull()
-  expect(m.all('plugin-install')).toHaveLength(0)
+  expect(m.all('plugin-review-install')).toHaveLength(0)
   m.q('plugin-retry').click()
   await vi.waitFor(() => expect(m.q('plugin-state').textContent).toBe('Available'))
   expect(m.all('plugin-start-error')).toHaveLength(0)
-  expect((m.q('plugin-install') as HTMLButtonElement).disabled).toBe(false)
+  expect((m.q('plugin-review-install') as HTMLButtonElement).disabled).toBe(false)
   expect(f.calls.some((call) => call.kind === 'install')).toBe(false)
 })
 it('explains an unsupported offer without a futile Retry', async () => {
