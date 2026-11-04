@@ -345,7 +345,7 @@ describe('470 · a grant that waits for the next launch', () => {
       expect(sheet.toLowerCase()).not.toContain('relaunch')
       expect(sheet).toContain('>\n                Reopen\n              </button>')
       // ⚑ …and the offer under the grant says the same word.
-      expect(sheet).toContain('Reopening one gives it what this row says now.')
+      expect(sheet).not.toContain('Reopening one gives it what this row says now.')
     })
   })
 

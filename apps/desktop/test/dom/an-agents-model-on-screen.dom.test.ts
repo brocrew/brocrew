@@ -521,6 +521,7 @@ describe('685 §2 · a choice held for ANOTHER provider', () => {
   it('⚑ *Runs on* moving while the picker is open re-seeds it from a choice that is now its own', async () => {
     reset()
     world.held = { provider: 'claude', model: 'opus', effort: 'max' }
+    world.itsProvider = 'codex'
     const { store, lists } = storeOver()
     await store.load()
     // ⚠️ **696** · the sheet moves BOTH — `runsOn` is resolved from the agent's own provider — and
@@ -545,6 +546,8 @@ describe('685 §2 · a choice held for ANOTHER provider', () => {
     // ⚑ Codex's list — not seeded from the Claude choice, which it cannot hold.
     expect(rows(m)).toEqual(['gpt-5.6-terra', 'gpt-5.6-luna'])
     expect(drafted(m)).toBeNull()
+    world.itsProvider = 'claude'
+    await store.load()
     runsOn.value = 'claude'
     await settle()
     expect(drafted(m)).toBe('opus')

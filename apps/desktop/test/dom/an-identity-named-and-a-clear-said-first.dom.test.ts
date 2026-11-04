@@ -348,7 +348,7 @@ describe('712 §1 · R56 — the provider row says what a press would clear, BEF
     if (!answer.ok) throw new Error(answer.reason)
     expect(whatTheProviderPressCleared(answer.cleared!, 'codex')).toBe(CLEARED_OPUS_HIGH_NOW_CODEX)
     expect(said(m.q('model-picker-face'))).toBe(
-      'Claude · Fictional subscription · Nobody has chosen',
+      'Codex · Fictional subscription · Nobody has chosen',
     )
     expect(m.all('agent-model-held')).toHaveLength(0)
     // The current UI chooses connection, model and effort together.
@@ -384,7 +384,12 @@ describe('712 §1 · R56 — the provider row says what a press would clear, BEF
       if (!answer.ok) throw new Error(answer.reason)
       // ⚑ The premise: the control below has NOT re-read — it still draws the choice it last knew —
       // so the line's absence is the door's answer and nothing else.
-      expect(said(m.q('model-picker-face'))).toBe('Claude · Fictional subscription · opus · high')
+      expect(said(m.q('model-picker-face'))).toBe(
+        'Codex · Fictional subscription · Nobody has chosen',
+      )
+      expect(visible(m.q('agent-model-held'))).toBe(true)
+      expect(said(m.q('agent-model-held'))).toContain('“opus” at high effort on Claude')
+      expect(said(m.q('agent-model-not-in-force'))).toBe('not in force')
       expect(whatTheProviderPressCleared(answer.cleared!, 'codex')).toBe(
         CLEARED_OPUS_HIGH_NOW_CODEX,
       )
@@ -395,7 +400,7 @@ describe('712 §1 · R56 — the provider row says what a press would clear, BEF
     }
     await settle()
     expect(said(m.q('model-picker-face'))).toBe(
-      'Claude · Fictional subscription · Nobody has chosen',
+      'Codex · Fictional subscription · Nobody has chosen',
     )
     expect(m.all('capabilities-provider-will-clear')).toHaveLength(0)
   })

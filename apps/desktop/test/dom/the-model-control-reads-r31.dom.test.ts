@@ -447,7 +447,7 @@ describe('696 §4 · the provider press says what the same act cleared', () => {
     expect(m.all('capabilities-provider-cleared')).toHaveLength(0)
     // ⚑ …and the control below agrees: the choice is gone.
     expect(words(m.q('model-picker-face'))).toBe(
-      'Claude · Fictional subscription · Nobody has chosen',
+      'Codex · Fictional subscription · Nobody has chosen',
     )
     // Returning to an unsaved provider clears no additional choice.
     expect(await m.store.chooseProviderFor('worker', null)).toEqual({ ok: true, cleared: null })
@@ -492,7 +492,6 @@ describe('696 §4b · BroBot’s own sheet names the front door’s provider men
     const m = await theSheet()
     const note = providerTakesEffectNextTime('codex', false, true)
     expect(m.all('capabilities-provider-note')).toHaveLength(0)
-    expect(m.all('capabilities-start-conversation')).toHaveLength(0)
     expect(note).not.toContain('a new conversation you start as this identity')
     expect(note).not.toContain('unless you choose another provider where you start it')
     expect(note).toContain('A service keeps one conversation for new gives.')

@@ -94,7 +94,8 @@ describe('model picker host refusals and pending gestures', () => {
     const selectedEffort = m
       .all('model-picker-effort')
       .find((one) => one.querySelector('input')?.checked)
-    expect(words(selectedEffort!)).toBe('High')
+    expect(words(selectedEffort!.querySelector('.label')!)).toBe('High')
+    expect(words(selectedEffort!.querySelector('.tag')!)).toBe('default')
     button(m, 'model-picker-take').click()
     await nextTick()
     expect(button(m, 'model-picker-take').disabled).toBe(true)

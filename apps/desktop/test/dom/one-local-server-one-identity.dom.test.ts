@@ -243,8 +243,8 @@ describe('516 §1 · the grant, on the sheet where every other grant is', () => 
     answers.list = { ...answers.list, externalMcpServers: [] }
     const m = await openSheet('claude')
     expect(m.all('external-mcp-grants')).toHaveLength(0)
-    // The empty state tells a person the route to the registration form.
-    expect(m.q('external-mcp-empty').textContent).toContain('Settings → Tools')
+    expect(m.all('external-mcp-empty')).toHaveLength(0)
+    expect(m.q('external-mcp-state').textContent?.trim()).toBe('None')
   })
 
   it('⚑ the sentence about WHEN it lands is drawn, and it says nothing running moves', async () => {
