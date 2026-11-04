@@ -529,6 +529,49 @@ describe('ordinary package migration through actual app and package code', () =>
           enabled: 'wrong',
         }),
       ).toMatchObject({ status: 'result', result: { isError: true } })
+      const sequenceBeforeHelper = f.state.inspect().sequence
+      expect(
+        jsonResult(
+          await page.invoke('configure_profile', {
+            profile: name,
+            action: 'set-enabled',
+            enabled: false,
+          }),
+        ),
+      ).toEqual({ profile: name, completed: true })
+      expect(
+        await page.invoke('configure_profile', { profile: name, action: 'helper-on' }),
+      ).toMatchObject({
+        status: 'result',
+        result: {
+          isError: true,
+          content: [{ type: 'text', text: 'Enable this profile first, then turn the helper on.' }],
+        },
+      })
+      expect(jsonResult(await page.invoke('configuration_snapshot'))).toMatchObject({
+        profiles: [expect.objectContaining({ name, enabled: false, helper: 'off' })],
+      })
+      expect((await f.boundaryEvents()).filter((event) => event.event === 'helper-on')).toEqual([])
+      expect(
+        jsonResult(
+          await page.invoke('configure_profile', {
+            profile: name,
+            action: 'set-enabled',
+            enabled: true,
+          }),
+        ),
+      ).toEqual({ profile: name, completed: true })
+      expect(
+        jsonResult(await page.invoke('configure_profile', { profile: name, action: 'helper-on' })),
+      ).toEqual({ profile: name, completed: true })
+      expect(jsonResult(await page.invoke('configuration_snapshot'))).toMatchObject({
+        profiles: [expect.objectContaining({ name, enabled: true, helper: 'turning-on' })],
+      })
+      expect((await f.boundaryEvents()).filter((event) => event.event === 'helper-on')).toEqual([
+        expect.objectContaining({ profile: name, runId: first.instanceId }),
+      ])
+      expect(f.state.inspect().sequence).toBe(sequenceBeforeHelper)
+      await f.unchangedLegacy()
       const markerPath = join(f.home, 'legacy-configuration-import.json')
       const marker = await readFile(markerPath)
       expect(JSON.parse(marker.toString())).toMatchObject({
@@ -550,7 +593,12 @@ describe('ordinary package migration through actual app and package code', () =>
       let updated = await configure(session, 'chrome')
       expect(jsonResult(await updated.invoke('configuration_snapshot'))).toMatchObject({
         profiles: [
-          expect.objectContaining({ name, displayName: 'Fictional kept fern', allowSync: true }),
+          expect.objectContaining({
+            name,
+            displayName: 'Fictional kept fern',
+            allowSync: true,
+            helper: 'turning-on',
+          }),
         ],
       })
       await session.service.controller.restartPluginTools('chrome', undefined, () => {})
@@ -565,7 +613,11 @@ describe('ordinary package migration through actual app and package code', () =>
       updated = await configure(session, 'chrome')
       expect(jsonResult(await updated.invoke('configuration_snapshot'))).toMatchObject({
         profiles: [
-          expect.objectContaining({ displayName: 'Fictional kept fern', allowSync: true }),
+          expect.objectContaining({
+            displayName: 'Fictional kept fern',
+            allowSync: true,
+            helper: 'turning-on',
+          }),
         ],
       })
       expect(await readFile(join(profileRoot, 'profiles', name, 'Default', 'Cookies'))).toEqual(
@@ -586,10 +638,13 @@ describe('ordinary package migration through actual app and package code', () =>
         },
       })
       expect((await f.boundaryEvents()).filter((e) => e.event === 'browser-open')).toEqual([])
+      expect(
+        (await f.boundaryEvents()).filter((event) => event.event === 'helper-on'),
+      ).toHaveLength(1)
       const configured = f
         .forwarded('configure_profile')
         .filter((call) => call.params._meta?.origin === 'settings.page')
-      expect(configured).toHaveLength(3)
+      expect(configured).toHaveLength(7)
       for (const call of configured)
         expect(call).toMatchObject({
           pluginId: 'chrome',

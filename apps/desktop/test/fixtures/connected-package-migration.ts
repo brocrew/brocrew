@@ -94,6 +94,7 @@ import {FakeBrowser} from ${imports};
 export class ChromeBrowser extends FakeBrowser {
  constructor(options) { super(options.dirOf); record('browser-start',{bootstrap}); }
  async ensure(profile,mode) { record('browser-open',{profile,mode}); return super.ensure(profile,mode); }
+ async turnHelperOn(profile) { record('helper-on',{profile}); await super.turnHelperOn(profile); }
  visiblePages() { return []; }
  async closeAll() { for(const name of [...this.states.keys()]) await this.close(name); record('browser-close'); }
 }
