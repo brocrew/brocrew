@@ -48,7 +48,7 @@ async function setup(fixedVersion = false, invalidSource?: 'view') {
   const chrome = packageFixture({ manifest: { ...f.pkg.manifest, id: 'fictional-pointers' } })
   const extra = packageFixture({ manifest: { ...f.pkg.manifest, id: 'fictional-maps' } })
   const original = repoListFor(f.pkg.release, 'Fictional messages')
-  // Each caller filters this ordinary discovery list for its own app version.
+  // Callers may select different source lists; row minimums do not filter their offers.
   const legacySource = {
     format: 1,
     entries: [
@@ -76,7 +76,7 @@ async function setup(fixedVersion = false, invalidSource?: 'view') {
   const parse = (input: unknown, version = '1.0.0') =>
     parseRepoPluginList(Buffer.from(JSON.stringify(input)), f.opts.target, version)
   const one = parse(original),
-    two = parse(expanded),
+    two = parse(legacySource),
     three = parse(expanded, '99.0.0')
   let source = fixedVersion ? three : two
   const initial = fixedVersion ? three : one
@@ -200,7 +200,7 @@ async function setup(fixedVersion = false, invalidSource?: 'view') {
 describe.skipIf(process.platform === 'win32')(
   'ordinary production discovery and legacy package data',
   () => {
-    it('keeps listing and Configure while each caller filters higher-minimum offers', async () => {
+    it('keeps listing and Configure across app versions despite stale high row minimums', async () => {
       const f = await setup()
       await f.expand()
       const facade = f.facade()
@@ -208,6 +208,7 @@ describe.skipIf(process.platform === 'win32')(
       expect(await facade.catalogue()).toMatchObject([
         { id: 'fictional-bakery', state: 'Running', installed: true },
         { id: 'fictional-pointers', state: 'Available', installed: false },
+        { id: 'fictional-maps', state: 'Available', installed: false },
       ])
       const screen = await facade.screen('fictional-bakery')
       expect(screen.verified.manifest.id).toBe('fictional-bakery')
@@ -223,6 +224,7 @@ describe.skipIf(process.platform === 'win32')(
       expect((await facade.catalogue()).map((one) => one.id)).toEqual([
         'fictional-bakery',
         'fictional-pointers',
+        'fictional-maps',
       ])
       await facade.close()
       const reattached = f.facade()
@@ -230,6 +232,7 @@ describe.skipIf(process.platform === 'win32')(
       expect((await reattached.catalogue()).map((one) => one.id)).toEqual([
         'fictional-bakery',
         'fictional-pointers',
+        'fictional-maps',
       ])
       expect(
         (await reattached.screen('fictional-bakery')).verified.readFile('plugin.json'),
@@ -301,7 +304,7 @@ describe.skipIf(process.platform === 'win32')(
       expect(fetch).not.toHaveBeenCalled()
     })
 
-    it('keeps a caller minimum-version view independent of the owner source view', async () => {
+    it('keeps a different caller-selected source independent of the owner app version', async () => {
       const f = await setup(true, 'view')
       const caller = await connectPluginSettings(f.clientOptions(f.two))
       keepClient(caller)
@@ -309,6 +312,9 @@ describe.skipIf(process.platform === 'win32')(
         'fictional-bakery',
         'fictional-pointers',
       ])
+      const sameSource = parseRepoPluginList(f.raw, f.opts.target, '1.0.0')
+      expect(sameSource.bytes).toEqual(f.three.bytes)
+      expect(sameSource.sha256).toBe(f.three.sha256)
       expect(f.three.releases.map((one) => one.id)).toContain('fictional-maps')
       expect(f.two.releases.map((one) => one.id)).not.toContain('fictional-maps')
       const screen = await caller.screen('fictional-bakery')

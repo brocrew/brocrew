@@ -81,7 +81,7 @@ function fixture(
       ...[...files].map(([path, body]) => ({ path, body })),
     ]),
   )
-  return { archive, manifest }
+  return { archive, manifest, files }
 }
 const options = { target, appVersion: '1.2.0' }
 describe('ordinary selected package sources', () => {
@@ -128,6 +128,142 @@ describe('ordinary selected package sources', () => {
       ).toThrow(expect.objectContaining({ code: 'target' }))
     }
   })
+  function cataloguePackage(f: ReturnType<typeof fixture>, rowMinimum: string) {
+    const row = {
+      id: f.manifest.id,
+      name: f.manifest.name,
+      version: f.manifest.version,
+      description: f.manifest.description,
+      authors: f.manifest.authors,
+      minAppVersion: rowMinimum,
+      targets: [
+        {
+          ...target,
+          url: 'http://localhost/fictional-selected',
+          sha256: pluginSha256(f.archive),
+          bytes: f.archive.length,
+          compression: 'tar.gz',
+          manifestSha256: pluginSha256(Buffer.from(JSON.stringify(f.manifest))),
+        },
+      ],
+    }
+    const parsed = parseRepoPluginList(
+      Buffer.from(JSON.stringify({ format: 3, entries: [row] })),
+      target,
+      options.appVersion,
+    )
+    expect(parsed.releases).toHaveLength(1)
+    const verifier = createRepoAwarePluginVerifier({ pinnedPublicKey: null, ...options })
+    const catalogue = verifier.verifyCatalogue(parsed.bytes, Buffer.alloc(0))
+    return { parsed, catalogue, row }
+  }
+  it('verifies and discloses a compatible manifest despite a stale high catalogue minimum', async () => {
+    const f = fixture()
+    const { parsed, catalogue } = cataloguePackage(f, '99.0.0')
+    const release = parsed.releases[0]!
+    const pkg = catalogue.verifyPackage(release.id, release.version, f.archive)
+    expect(pkg.manifest).toEqual(f.manifest)
+    expect(releaseDisclosure(pkg)).toMatchObject({
+      authors: f.manifest.authors,
+      permissions: f.manifest.permissions,
+    })
+    const fetch = vi.fn(async () => new Response(f.archive))
+    const selected = await inspectPluginPackage(releasePackageRef(release), { ...options, fetch })
+    expect(selected.ref).toEqual({
+      source: 'http://localhost/fictional-selected',
+      sha256: pluginSha256(f.archive),
+      bytes: f.archive.length,
+    })
+    expect(selected.package.manifest).toEqual(f.manifest)
+    expect(fetch).toHaveBeenCalledOnce()
+  })
+  it.each([
+    { minimum: '99.0.0', platform: target, reason: 'manifest app version' },
+    {
+      minimum: '1.0.0',
+      platform: { os: 'darwin', cpu: 'arm64' } as const,
+      reason: 'manifest platform',
+    },
+  ])(
+    'refuses an incompatible $reason despite permissive catalogue metadata',
+    async ({ minimum, platform }) => {
+      const f = fixture('1.0.0', 'fictional-oven', 3, platform, 'Fictional oven', minimum)
+      const { parsed, catalogue } = cataloguePackage(f, '0.0.0')
+      const release = parsed.releases[0]!
+      expect(() => catalogue.verifyPackage(release.id, release.version, f.archive)).toThrow(
+        expect.objectContaining({ code: 'target' }),
+      )
+      await expect(
+        inspectPluginPackage(releasePackageRef(release), {
+          ...options,
+          fetch: async () => new Response(f.archive),
+        }),
+      ).rejects.toMatchObject({
+        message: 'This plugin does not support this computer or version of BroCrew.',
+        cause: expect.objectContaining({ code: 'target' }),
+      })
+    },
+  )
+  it('keeps archive, manifest and file digests authoritative despite permissive row metadata', () => {
+    const f = fixture()
+    const { parsed, catalogue, row } = cataloguePackage(f, '0.0.0')
+    const release = parsed.releases[0]!
+    const tampered = Buffer.from(f.archive)
+    tampered[0] = tampered[0]! ^ 1
+    expect(() => catalogue.verifyPackage(release.id, release.version, tampered)).toThrow(
+      expect.objectContaining({ code: 'digest' }),
+    )
+    const wrongManifest = {
+      ...row,
+      targets: [{ ...row.targets[0]!, manifestSha256: '0'.repeat(64) }],
+    }
+    const changed = parseRepoPluginList(
+      Buffer.from(JSON.stringify({ format: 3, entries: [wrongManifest] })),
+      target,
+      options.appVersion,
+    )
+    const verifier = createRepoAwarePluginVerifier({ pinnedPublicKey: null, ...options })
+    expect(() =>
+      verifier
+        .verifyCatalogue(changed.bytes, Buffer.alloc(0))
+        .verifyPackage(release.id, release.version, f.archive),
+    ).toThrow(expect.objectContaining({ code: 'digest' }))
+    const fileTampered = {
+      ...f,
+      archive: gzipSync(
+        tar([
+          { path: 'plugin.json', body: Buffer.from(JSON.stringify(f.manifest)) },
+          ...[...f.files].map(([path, body]) => ({
+            path,
+            body: path === 'dist/café.cjs' ? Buffer.from('y'.repeat(body.length)) : body,
+          })),
+        ]),
+      ),
+    }
+    const next = cataloguePackage(fileTampered, '0.0.0')
+    expect(() =>
+      next.catalogue.verifyPackage(release.id, release.version, fileTampered.archive),
+    ).toThrow(expect.objectContaining({ code: 'digest' }))
+  })
+  it.each(['id', 'version'] as const)(
+    'keeps selected catalogue %s bound to the verified manifest',
+    (field) => {
+      const f = fixture()
+      const { row } = cataloguePackage(f, '0.0.0')
+      const selected = { ...row, [field]: field === 'id' ? 'fictional-teapot' : '2.0.0' }
+      const parsed = parseRepoPluginList(
+        Buffer.from(JSON.stringify({ format: 3, entries: [selected] })),
+        target,
+        options.appVersion,
+      )
+      const verifier = createRepoAwarePluginVerifier({ pinnedPublicKey: null, ...options })
+      expect(() =>
+        verifier
+          .verifyCatalogue(parsed.bytes, Buffer.alloc(0))
+          .verifyPackage(selected.id, selected.version, f.archive),
+      ).toThrow(expect.objectContaining({ code: 'digest' }))
+    },
+  )
   it('reads ordinary PAX long names and dot-prefixed tar entries without the curated path vocabulary', async () => {
     const path = `.settings/${'fictional ovens '.repeat(12)}recipe.json`,
       body = Buffer.from('fictional recipe')
@@ -294,7 +430,9 @@ describe('ordinary selected package sources', () => {
       target,
       '1.2.0',
     )
-    expect(later.releases).toEqual([])
+    expect(later.releases).toEqual(loaded.releases)
+    expect(later.bytes).toEqual(loaded.bytes)
+    expect(later.sha256).toBe(loaded.sha256)
   })
   it('turns a selected source into an exact byte reference without executing code', async () => {
     const f = fixture(),

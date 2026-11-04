@@ -47,7 +47,7 @@ describe('declared package authors', () => {
     expect(check(['fictional-publisher'])).toThrow()
     expect(check()().manifest.authors).toEqual(['brocrew'])
   })
-  it('rejects authorless v2 rows even when the release is filtered out by app version', () => {
+  it('rejects authorless v2 rows even with a stale high row minimum', () => {
     const list = { ...repoListFor(packageFixture().release), format: 2 }
     const entry = list.entries[0]!
     entry.minAppVersion = '99.0.0'

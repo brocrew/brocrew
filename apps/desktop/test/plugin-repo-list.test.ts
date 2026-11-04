@@ -18,17 +18,57 @@ afterEach(async () => {
   await cleanupLifecycleFixtures()
 })
 describe('fixed repository plugin list, no signing key', () => {
-  it('parses the list, selects OS/CPU and minimum app version, and retains the display name', () => {
+  it('selects OS/CPU and retains the display name without row app-version admission', () => {
     const list = repoListFor(packageFixture().release)
     const input = Buffer.from(JSON.stringify(list))
     const parsed = parseRepoPluginList(input, target, '1.2.3-beta.1')
     expect(parsed.entries[0]?.name).toBe('Fictional bakery')
     expect(parsed.releases).toHaveLength(1)
     list.entries[0]!.minAppVersion = '9.0.0'
-    expect(
-      parseRepoPluginList(Buffer.from(JSON.stringify(list)), target, '1.2.3').releases,
-    ).toHaveLength(0)
+    const stale = parseRepoPluginList(Buffer.from(JSON.stringify(list)), target, '1.2.3')
+    expect(stale.releases).toEqual(parsed.releases)
+    expect(stale.bytes).toEqual(parsed.bytes)
+    expect(stale.sha256).toBe(parsed.sha256)
+    expect(parseRepoPluginList(input, { os: 'darwin', cpu: 'arm64' }, '1.2.3').releases).toEqual([])
   })
+  it.each([1, 2, 3])('has one version-independent target view for list format %s', (format) => {
+    const list = repoListFor(packageFixture().release)
+    const input = Buffer.from(
+      JSON.stringify({
+        format,
+        entries: list.entries.map((entry) => ({
+          ...entry,
+          ...(format === 1 ? {} : { authors: ['fictional'] }),
+          minAppVersion: '99.0.0',
+        })),
+      }),
+    )
+    const first = parseRepoPluginList(input, target, '0.0.0')
+    expect(first.releases).toHaveLength(1)
+    for (const appVersion of ['1.2.3-beta.1', '100.0.0', 'fictional-unknown', '']) {
+      const next = parseRepoPluginList(input, target, appVersion)
+      expect(next.bytes).toEqual(first.bytes)
+      expect(next.sha256).toBe(first.sha256)
+      expect(next.releases).toEqual(first.releases)
+      expect(next.legacyCatalogues).toEqual(first.legacyCatalogues)
+    }
+    expect(first.legacyCatalogues).toEqual(
+      format === 1 ? [{ releases: first.releases, bytes: first.bytes, sha256: first.sha256 }] : [],
+    )
+  })
+  it.each([undefined, 'fictional-obsolete', { ignored: true }])(
+    'treats obsolete row minimum metadata as non-authoritative: %j',
+    (minAppVersion) => {
+      const list = repoListFor(packageFixture().release)
+      const input = Buffer.from(
+        JSON.stringify({
+          ...list,
+          entries: list.entries.map((entry) => ({ ...entry, minAppVersion })),
+        }),
+      )
+      expect(parseRepoPluginList(input, target, '').releases).toHaveLength(1)
+    },
+  )
   it.each([
     'https://github.com/foreign/plugin/releases/download/v1/a.tar',
     'https://raw.githubusercontent.com/brocrew/brocrew/main/plugins/catalogue.json',

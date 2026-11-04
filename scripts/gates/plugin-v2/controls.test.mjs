@@ -508,7 +508,7 @@ test('external admission nulls or identity mismatch cannot be replaced by runtim
   )
 })
 
-test('generated framing emits separate LF records, not a literal backslash-n', async () => {
+test('generated framing emits separate LF records and an actually empty discovery list', async () => {
   const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'plugin-v2-framing-')))
   try {
     const token = 'a'.repeat(64)
@@ -536,13 +536,16 @@ test('generated framing emits separate LF records, not a literal backslash-n', a
       },
     })
     vm.runInContext(js, context)
-    await context.call(
+    const selected = await context.call(
       'https://raw.githubusercontent.com/brocrew/brocrew/main/plugins/catalogue-v2.json',
     )
+    assert.deepEqual(Buffer.from(await selected.arrayBuffer()), candidate)
     fs.writeFileSync(path.join(root, 'list-mode'), 'empty')
-    await context.call(
+    const empty = await context.call(
       'https://raw.githubusercontent.com/brocrew/brocrew/main/plugins/catalogue-v2.json',
     )
+    const emptyBytes = Buffer.from(await empty.arrayBuffer())
+    assert.deepEqual(JSON.parse(emptyBytes), { ...JSON.parse(candidate), entries: [] })
     const witness = fs.readFileSync(path.join(root, 'fetch-owner.jsonl'), 'utf8')
     assert.equal(witness.includes('\\n'), false)
     const lines = witness.trim().split('\n')
@@ -550,6 +553,10 @@ test('generated framing emits separate LF records, not a literal backslash-n', a
     assert.deepEqual(
       lines.map((line) => JSON.parse(line).mode),
       ['candidate', 'empty'],
+    )
+    assert.deepEqual(
+      lines.map((line) => JSON.parse(line).sha256),
+      [hash(candidate), hash(emptyBytes)],
     )
   } finally {
     fs.rmSync(root, { recursive: true, force: true })

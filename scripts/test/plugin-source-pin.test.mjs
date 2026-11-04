@@ -123,7 +123,7 @@ it('makes identical archive and catalogue bytes for canonical and exported build
   expect(readReceipt('two').exportCommit).toBe(exported.exportCommit)
 })
 
-it('keeps legacy release metadata unchanged without requiring author-bearing package sources', async () => {
+it('exports legacy release identity without inventing authors or an app-version floor', async () => {
   const options = fixture()
   const proof = verifyPluginSource(options)
   await assemblePluginRelease({
@@ -141,35 +141,39 @@ it('keeps legacy release metadata unchanged without requiring author-bearing pac
     fs.readFileSync(path.join(options.base, 'legacy/plugin-list-entry.json'), 'utf8'),
   )
   expect(entry.version).toBe('0.1.2')
-  expect(entry.minAppVersion).toBe('0.0.0')
+  expect(entry).not.toHaveProperty('minAppVersion')
   expect(entry).not.toHaveProperty('authors')
 })
 
-it.each([
-  ['chrome', '0.1.35'],
-  ['whatsapp', '0.1.34'],
-])('binds %s sharedData archives to paired host %s', async (id, minimum) => {
-  for (const sharedData of [true, false]) {
-    const options = fixture()
-    const out = path.join(options.base, 'shared-' + sharedData)
-    const entry = await assemblePluginRelease({
-      id,
-      out,
-      proof: verifyPluginSource(options),
-      targets: [{ os: 'darwin', cpu: 'arm64' }],
-      buildPackage: async (destination) => {
-        fs.mkdirSync(path.join(destination, 'package'), { recursive: true })
-        fs.writeFileSync(
-          path.join(destination, 'package', 'plugin.json'),
-          JSON.stringify({ sharedData }),
-        )
-        fs.writeFileSync(path.join(destination, `${id}.tar`), 'fictional shared archive')
-        return { version: '0.2.0', authors: ['fictional'], manifestSha256: 'a'.repeat(64) }
-      },
-    })
-    expect(entry.minAppVersion).toBe(minimum)
-    expect(
-      JSON.parse(fs.readFileSync(path.join(out, 'plugin-list-entry.json'), 'utf8')).minAppVersion,
-    ).toBe(minimum)
-  }
-})
+it.each(['chrome', 'whatsapp'])(
+  'exports %s without generating a plugin-specific host floor',
+  async (id) => {
+    for (const sharedData of [true, false]) {
+      const options = fixture()
+      const out = path.join(options.base, 'shared-' + sharedData)
+      const entry = await assemblePluginRelease({
+        id,
+        out,
+        proof: verifyPluginSource(options),
+        targets: [{ os: 'darwin', cpu: 'arm64' }],
+        buildPackage: async (destination) => {
+          fs.mkdirSync(path.join(destination, 'package'), { recursive: true })
+          fs.writeFileSync(
+            path.join(destination, 'package', 'plugin.json'),
+            JSON.stringify({ sharedData }),
+          )
+          fs.writeFileSync(path.join(destination, `${id}.tar`), 'fictional shared archive')
+          return { version: '0.2.0', authors: ['fictional'], manifestSha256: 'a'.repeat(64) }
+        },
+      })
+      expect(entry).not.toHaveProperty('minAppVersion')
+      expect(
+        JSON.parse(fs.readFileSync(path.join(out, 'plugin-list-entry.json'), 'utf8')),
+      ).not.toHaveProperty('minAppVersion')
+      expect(entry.authors).toEqual(['fictional'])
+      expect(entry.sourceCommit).toBe(verifyPluginSource(options).sourceCommit)
+      expect(entry.targets).toHaveLength(1)
+      expect(entry.targets[0].manifestSha256).toBe('a'.repeat(64))
+    }
+  },
+)
