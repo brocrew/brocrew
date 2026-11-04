@@ -633,7 +633,7 @@ export function productionPluginController() {
       return outcome
     },
     screen(id, viewId) {
-      return current().screen(id, viewId)
+      return viewId === undefined ? current().screen(id) : current().screen(id, viewId)
     },
   }
   return Object.assign(facade, {

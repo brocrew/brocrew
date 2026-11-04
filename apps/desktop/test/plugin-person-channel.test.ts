@@ -110,9 +110,11 @@ describe('ordinary local settings channel', () => {
     )
     folders.push(root)
     const detach = vi.fn(async () => new Promise<void>(() => {}))
+    const stopHost = vi.fn()
     const controller = {
       attach: vi.fn(async () => ({ workspaceId: randomUUID() })),
       detach,
+      onHostChanged: vi.fn(() => stopHost),
     } as unknown as PluginLifecycleController
     const service = await servePersonPluginControl({
       root,
@@ -135,5 +137,6 @@ describe('ordinary local settings channel', () => {
     })
     await vi.waitFor(() => expect(closed).toBe(true))
     expect(detach).toHaveBeenCalled()
+    expect(stopHost).toHaveBeenCalledOnce()
   })
 })
