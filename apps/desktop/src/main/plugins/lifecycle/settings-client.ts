@@ -480,7 +480,18 @@ export async function connectPluginSettings(options: {
       }
     },
     async catalogue() {
-      await checkOwner()
+      // A catalogue switch refuses owner checks while it runs. A list waits for the switch and
+      // reads its outcome, so the switch is never reported as the plugin service failing.
+      for (;;) {
+        while (switching) await catalogueRefresh
+        const ticket = generation
+        try {
+          await checkOwner()
+          break
+        } catch (error) {
+          if (!switching && generation === ticket) throw error
+        }
+      }
       const cards = Cards.parse(
         await channel.call({
           kind: modern
