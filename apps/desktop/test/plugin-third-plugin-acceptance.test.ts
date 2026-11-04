@@ -205,6 +205,9 @@ describe.each(['stdio', 'streamable-http'] as const)(
         'install',
       )
       const first = scope()
+      expect((await call('pebble.helper')).structuredContent).toMatchObject({
+        helper: 'opaque-third-helper',
+      })
       const initial = await session.service.controller.genericListTools(first)
       expect(initial.map((tool) => tool.name)).toContain('pebble.echo')
       expect(initial.map((tool) => tool.name)).not.toContain('pebble.count')
@@ -319,11 +322,19 @@ describe.each(['stdio', 'streamable-http'] as const)(
       expect(
         (await session.service.controller.genericListTools(scope())).map((tool) => tool.name),
       ).toContain('pebble.count')
-      await call('pebble.cleanup', { reason: 'explicit fictional disconnect' })
-      expect(await records(join(privateData, 'explicit-cleanup.jsonl'))).toHaveLength(1)
+      // Updates, explicit process restart and app reopening must not run uninstall cleanup.
+      expect(await records(join(privateData, 'explicit-cleanup.jsonl'))).toEqual([])
+      const removing = scope()
       await session.service.controller.uninstall(session.handles[0]!, id)
       expect(session.service.controller.agentAttachments(f.ids[0]!)).toEqual([])
-      expect(await records(join(privateData, 'explicit-cleanup.jsonl'))).toHaveLength(1)
+      expect(await records(join(privateData, 'explicit-cleanup.jsonl'))).toEqual([
+        {
+          revision: 2,
+          args: { reason: 'declared fictional uninstall' },
+          meta: expect.objectContaining({ origin: 'lifecycle.beforeRemove' }),
+          runId: removing.instanceId,
+        },
+      ])
       expect(await readFile(join(privateData, 'opaque.bin'))).toEqual(opaque)
       expect(await readFile(join(sharedData, 'opaque.bin'))).toEqual(opaque)
       expect(await appSourceIdentity()).toEqual(app)

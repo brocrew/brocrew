@@ -10,6 +10,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
 import http from 'node:http';
+import {execFileSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 const revision = RELEASE;
 const transport = TRANSPORT;
 const home = process.env.BROCREW_PLUGIN_DATA;
@@ -22,7 +24,7 @@ for (const directory of [home,shared]) {
  if (!fs.existsSync(path.join(directory,'opaque.bin'))) fs.writeFileSync(path.join(directory,'opaque.bin'),Buffer.from([0,255,3,17,128]));
 }
 fs.appendFileSync(path.join(home,'boots.jsonl'),JSON.stringify({revision,bootstrap,pid:process.pid})+'\n');
-const names = ['pebble.echo','pebble.read_settings','pebble.write_settings','pebble.tool_error','pebble.protocol_error','pebble.lose_reply','pebble.cleanup',...(revision===2?['pebble.count']:[])];
+const names = ['pebble.echo','pebble.read_settings','pebble.write_settings','pebble.tool_error','pebble.protocol_error','pebble.lose_reply','pebble.cleanup','pebble.helper',...(revision===2?['pebble.count']:[])];
 function handle(packet) {
  if(packet.id===undefined) return;
  const result = value=>({jsonrpc:'2.0',id:packet.id,result:value});
@@ -37,8 +39,13 @@ function handle(packet) {
  if(name==='pebble.tool_error') return result({isError:true,content:[{type:'text',text:'Fictional basket is full'}],structuredContent:{reason:'fictional-full',revision}});
  if(name==='pebble.lose_reply') { setImmediate(()=>process.exit(19)); return; }
  if(name==='pebble.write_settings') fs.writeFileSync(settingsPath,JSON.stringify({...JSON.parse(fs.readFileSync(settingsPath,'utf8')),...args}));
- if(name==='pebble.cleanup') fs.appendFileSync(path.join(home,'explicit-cleanup.jsonl'),JSON.stringify({revision,args})+'\n');
- return result({content:[{type:'text',text:JSON.stringify({name,args})}],structuredContent:{revision,name,args,meta,settings:JSON.parse(fs.readFileSync(settingsPath,'utf8')),home,shared,pid:process.pid,...(name==='pebble.count'?{count:args.stones?.length??0}:{})}});
+ if(name==='pebble.cleanup') fs.appendFileSync(path.join(home,'explicit-cleanup.jsonl'),JSON.stringify({revision,args,meta,runId:process.env.BROCREW_PLUGIN_RUN_ID})+'\n');
+ let helper;
+ if(name==='pebble.helper') {
+  const executable=fileURLToPath(new URL('./helpers/opaque-helper.mjs',import.meta.url));
+  helper=execFileSync(process.platform==='win32'?process.execPath:executable,process.platform==='win32'?[executable]:[],{encoding:'utf8'});
+ }
+ return result({content:[{type:'text',text:JSON.stringify({name,args})}],structuredContent:{revision,name,args,meta,...(helper?{helper}:{}),settings:JSON.parse(fs.readFileSync(settingsPath,'utf8')),home,shared,pid:process.pid,...(name==='pebble.count'?{count:args.stones?.length??0}:{})}});
 }
 if(transport==='stdio') {
  readline.createInterface({input:process.stdin}).on('line',line=>{
@@ -77,6 +84,10 @@ export function thirdPluginPackage(revision: 1 | 2, transport: ThirdPluginTransp
     ],
     ['tools.json', Buffer.from(JSON.stringify({ source: 'mcp' }))],
     [
+      'helpers/opaque-helper.mjs',
+      Buffer.from('#!' + process.execPath + '\nprocess.stdout.write("opaque-third-helper");\n'),
+    ],
+    [
       '.fictional settings/配置.html',
       Buffer.from(
         '<!doctype html><meta charset="utf-8"><title>Fictional pebbles</title>' +
@@ -110,12 +121,23 @@ export function thirdPluginPackage(revision: 1 | 2, transport: ThirdPluginTransp
       page: { entry: '.fictional settings/配置.html', assets: ['.fictional settings/配置.html'] },
       fields,
     },
-    lifecycle: { stop: { signal: 'SIGTERM', graceMs: 300 }, dataOnRemove: 'keep' },
+    lifecycle: {
+      stop: { signal: 'SIGTERM', graceMs: 300 },
+      beforeRemove: {
+        tool: 'pebble.cleanup',
+        arguments: { reason: 'declared fictional uninstall' },
+      },
+      dataOnRemove: 'keep',
+    },
     data: { schema: revision, migrateOnStart: true },
   }
   const archive = tar([
     { path: 'plugin.json', body: Buffer.from(JSON.stringify(manifest)) },
-    ...[...files].map(([path, body]) => ({ path, body })),
+    ...[...files].map(([path, body]) => ({
+      path,
+      body,
+      mode: path === 'helpers/opaque-helper.mjs' ? 0o755 : 0o644,
+    })),
   ])
   return { manifest, archive, sha256: pluginSha256(archive), fields }
 }
