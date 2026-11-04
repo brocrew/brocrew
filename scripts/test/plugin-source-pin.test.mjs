@@ -123,7 +123,7 @@ it('makes identical archive and catalogue bytes for canonical and exported build
   expect(readReceipt('two').exportCommit).toBe(exported.exportCommit)
 })
 
-it('exports legacy release identity without inventing authors or an app-version floor', async () => {
+it('exports legacy release identity and neutral wire metadata without inventing authors', async () => {
   const options = fixture()
   const proof = verifyPluginSource(options)
   await assemblePluginRelease({
@@ -141,7 +141,7 @@ it('exports legacy release identity without inventing authors or an app-version 
     fs.readFileSync(path.join(options.base, 'legacy/plugin-list-entry.json'), 'utf8'),
   )
   expect(entry.version).toBe('0.1.2')
-  expect(entry).not.toHaveProperty('minAppVersion')
+  expect(entry.minAppVersion).toBe('0.0.0')
   expect(entry).not.toHaveProperty('authors')
 })
 
@@ -166,10 +166,10 @@ it.each(['chrome', 'whatsapp'])(
           return { version: '0.2.0', authors: ['fictional'], manifestSha256: 'a'.repeat(64) }
         },
       })
-      expect(entry).not.toHaveProperty('minAppVersion')
+      expect(entry.minAppVersion).toBe('0.0.0')
       expect(
         JSON.parse(fs.readFileSync(path.join(out, 'plugin-list-entry.json'), 'utf8')),
-      ).not.toHaveProperty('minAppVersion')
+      ).toHaveProperty('minAppVersion', '0.0.0')
       expect(entry.authors).toEqual(['fictional'])
       expect(entry.sourceCommit).toBe(verifyPluginSource(options).sourceCommit)
       expect(entry.targets).toHaveLength(1)

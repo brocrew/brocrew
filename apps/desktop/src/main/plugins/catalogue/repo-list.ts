@@ -97,8 +97,10 @@ const fail = (): never => {
 export function parseRepoPluginList(
   inputBytes: Uint8Array,
   target: PluginTarget,
-  _appVersion: string,
+  appVersion: string,
 ) {
+  // Preserve the caller interface; discovery does not interpret app versions.
+  void appVersion
   let input: unknown
   try {
     input = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(inputBytes))

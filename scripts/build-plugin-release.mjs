@@ -40,6 +40,8 @@ export async function assemblePluginRelease({ id, out, proof, targets, buildPack
         : 'Lets agents read your WhatsApp chats when you allow it, and send to the groups you choose.',
     version,
     authors,
+    // Retain the legacy catalogue wire field without imposing a plugin-specific host floor.
+    minAppVersion: '0.0.0',
     sourceCommit: proof.sourceCommit,
     targets: downloads,
   }
