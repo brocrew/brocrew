@@ -196,7 +196,7 @@ export function createLifecycleAgentBridge(options: {
     for (const view of views) {
       if (!valid(lease) || !view.current()) continue
       const id = view.installation.pluginId
-      const version = versions.get(id) ?? 0
+      let version = versions.get(id) ?? 0
       const identity = `${view.installation.installId}:${view.installation.incarnation}:${view.installation.configRevision}`
       const key = `${caller}:${id}`
       let cached = routes.get(key)
@@ -218,6 +218,7 @@ export function createLifecycleAgentBridge(options: {
         let work = entries.get(id)
         if (work && (await work).identity !== identity) {
           deny(id)
+          version = versions.get(id) ?? 0
           work = undefined
         }
         if (!work) {

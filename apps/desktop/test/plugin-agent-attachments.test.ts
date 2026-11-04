@@ -205,6 +205,45 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
       log.mockRestore()
     }
   })
+  it('binds a changed installation identity after its own invalidation and rotates the caller route', async () => {
+    const f = await live()
+    const views = f.controller.agentAttachments
+    let changed = false
+    const projection = vi
+      .spyOn(f.controller, 'agentAttachments')
+      .mockImplementation((workspaceId) =>
+        views(workspaceId).map((one) => ({
+          ...one,
+          installation: {
+            ...one.installation,
+            configRevision: one.installation.configRevision + (changed ? 1 : 0),
+          },
+        })),
+      )
+    const log = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const owner = lease(),
+        req = request(f.local.sink.workspaceId)
+      const [before] = await f.bridge.routes(owner, req)
+      const oldClient = await connected(before!)
+      await oldClient.callTool({ name: 'echo', arguments: {} })
+      changed = true
+      const next = await f.bridge.routes(owner, req)
+      expect(next).toHaveLength(1)
+      expect(next[0]!.capability).not.toBe(before!.capability)
+      const client = await connected(next[0]!)
+      expect(await client.callTool({ name: 'echo', arguments: {} })).toMatchObject({
+        content: [{ text: 'fictional fern' }],
+      })
+      await expect(oldClient.callTool({ name: 'echo', arguments: {} })).rejects.toThrow()
+      expect(f.binding).toHaveBeenCalledTimes(2)
+      expect(f.call).toHaveBeenCalledTimes(2)
+      expect((await f.controller.status()).cards[0]).not.toHaveProperty('toolsUnavailable')
+    } finally {
+      projection.mockRestore()
+      log.mockRestore()
+    }
+  })
   it.each(['installation', 'lease'])(
     'does not carry a late binding failure from a revoked %s onto a healthy caller',
     async (scope) => {
