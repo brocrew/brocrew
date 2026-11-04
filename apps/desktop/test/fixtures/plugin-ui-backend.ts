@@ -169,10 +169,7 @@ async function run() {
   return { fetch: true, websocket: true, asset: true, tools: true, invalidation: true }
 }
 
-void run().then(
-  (result) => {
-    clearTimeout(watchdog)
-    process.stdout.write(JSON.stringify(result) + '\n', () => app.exit(0))
-  },
-  fail,
-)
+void run().then((result) => {
+  clearTimeout(watchdog)
+  process.stdout.write(JSON.stringify(result) + '\n', () => app.exit(0))
+}, fail)
