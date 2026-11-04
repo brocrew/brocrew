@@ -251,7 +251,7 @@ export function pluginMutationFailureNotice(cause: PluginMutationFailure): strin
 }
 /** Closed uninstall facts; remote removal is never inferred from deleting local data. */
 export type PluginRemovalOutcome =
-  | { data: 'deleted'; logout: 'confirmed' | 'unconfirmed'; cleanup?: never }
+  | { data: 'deleted'; logout: 'confirmed' | 'unconfirmed'; cleanup?: never; result?: never }
   | {
       data: 'kept' | 'deleted'
       cleanup: 'not-requested' | 'completed' | 'unconfirmed'
