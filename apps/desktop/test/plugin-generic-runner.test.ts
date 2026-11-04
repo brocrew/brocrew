@@ -24,6 +24,12 @@ import { pluginSha256 } from '../src/main/plugins/package-digests'
 import { tar } from './plugin-package-fixtures'
 import { sharedDataOwner } from '../src/main/plugins/shared-data'
 import { defaultPluginRoot } from '../src/main/plugins/supervisor/client'
+import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
+import {
+  fixture as lifecycleFixture,
+  cleanupLifecycleFixtures,
+  reopenLifecycleFixture,
+} from './plugin-lifecycle-fixtures'
 
 // The fictional server deliberately has no packaged tool inventory or domain health routes.
 const stdioSource = String.raw`
@@ -130,7 +136,7 @@ function fixture(
     { sha256: pluginSha256(archive), bytes: archive.length, compression: 'tar' },
     { target: manifest.platforms[0] as never, appVersion: '1.0.0' },
   )
-  return { package: checked, releaseDigest: verifier.verifiedPluginDigest(checked)! }
+  return { package: checked, releaseDigest: verifier.verifiedPluginDigest(checked)!, archive }
 }
 let root: string, runtime: PluginNodeRuntime
 const hosts: ReturnType<typeof createPluginNodeHost>[] = []
@@ -179,6 +185,7 @@ describe('generic plugin process runner', () => {
   afterEach(async () => {
     await Promise.all(hosts.splice(0).map((host) => host.stop()))
     vi.unstubAllEnvs()
+    await cleanupLifecycleFixtures()
   })
   afterAll(async () => {
     if (root) await rm(root, { recursive: true, force: true })
@@ -258,6 +265,65 @@ ${stdioSource}`
     expect(await run.stop()).toEqual({ exited: true })
     await expect(replacement).resolves.toHaveProperty('client')
     expect((await otherReady.client!.listTools()).tools).toHaveLength(1)
+  })
+  it('recovered uninstall waits for an older guardian and delayed managed child before deleting code or data', async () => {
+    const f = await lifecycleFixture()
+    const source = `process.on('SIGTERM',()=>setTimeout(()=>process.exit(0),150));\n${stdioSource}`
+    const spec = fixture({ id: 'chrome', source })
+    const archive = join(f.parent, 'fictional-selected.tar')
+    await writeFile(archive, spec.archive)
+    await f.controller.installPackage(
+      f.handle,
+      {
+        source: archive,
+        sha256: spec.releaseDigest,
+        bytes: spec.archive.length,
+      },
+      'install',
+    )
+    const home = join(f.root, 'host')
+    const old = await context({ root: home })
+    const run = await old.host.start(spec)
+    await run.ready()
+    const data = join(home, 'data', 'chrome', 'opaque.bin')
+    await writeFile(data, Buffer.from([0, 255, 17, 4]))
+    const code = join(home, 'packages', spec.releaseDigest, 'main.mjs')
+    f.failStop()
+    await expect(f.controller.uninstall(f.handle, 'chrome')).rejects.toThrow()
+    const successor = await context({ root: home })
+    const state = reopenLifecycleFixture(f)
+    let settled = false
+    const recovered = PluginLifecycleController.open({
+      ...f.opts,
+      state,
+      runtime: {
+        ...f.opts.runtime,
+        removeCode: (id, digest) => successor.host.removePackage(id, digest),
+        removeData: (id) => successor.host.removeData(id),
+      },
+    }).then((value) => {
+      settled = true
+      return value
+    })
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(settled).toBe(false)
+    expect(await readFile(code, 'utf8')).toBe(source)
+    expect(await readFile(data)).toEqual(Buffer.from([0, 255, 17, 4]))
+    const unrelated = fixture({ id: 'fictional-neighbor' })
+    const neighbor = await successor.host.start(unrelated)
+    expect((await (await neighbor.ready()).client!.listTools()).tools).toHaveLength(1)
+    const stopped = run.stop()
+    await new Promise((resolve) => setTimeout(resolve, 25))
+    expect(settled).toBe(false)
+    expect(await readFile(data)).toEqual(Buffer.from([0, 255, 17, 4]))
+    expect(await stopped).toEqual({ exited: true })
+    const controller = await recovered
+    expect(state.inspect().pending).toBeNull()
+    expect(state.exportActivation().entries).toEqual([])
+    await expect(readFile(code)).rejects.toMatchObject({ code: 'ENOENT' })
+    await expect(readFile(data)).rejects.toMatchObject({ code: 'ENOENT' })
+    expect((await (await neighbor.ready()).client!.listTools()).tools).toHaveLength(1)
+    await controller.drain()
   })
   it('starts an unknown Node package over stdio and preserves arguments and ordinary environment', async () => {
     vi.stubEnv('FICTIONAL_RUNNER_VALUE', 'inherited fictional value')

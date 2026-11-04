@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { GlobalPluginState } from '../src/main/plugins/state/store'
+import type { PluginDiskOptions } from '../src/main/plugins/state/disk'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
 import type {
   LifecycleOptions,
@@ -60,6 +61,7 @@ export async function fixture(
   change: Partial<LifecycleOptions> = {},
   includeSkills = false,
   id = 'chrome',
+  stateFault?: PluginDiskOptions['fault'],
 ) {
   // POSIX needs short Unix socket paths; Windows uses named pipes and its own temp directory.
   const temp = process.platform === 'win32' ? tmpdir() : '/tmp'
@@ -71,7 +73,11 @@ export async function fixture(
   await mkdir(root, { mode: 0o700 })
   await mkdir(workspace, { mode: 0o700 })
   await keepPluginRootPrivate(root)
-  const state = GlobalPluginState.create({ root: join(root, 'state'), workspaceRoots: [workspace] })
+  const state = GlobalPluginState.create({
+    root: join(root, 'state'),
+    workspaceRoots: [workspace],
+    fault: stateFault,
+  })
   stores.push(state)
   const manifest = manifestFor()
   manifest.id = id

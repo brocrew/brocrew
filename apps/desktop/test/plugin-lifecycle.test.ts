@@ -12,7 +12,7 @@ import {
   servePersonPluginControl,
   connectPersonPluginControl,
 } from '../src/main/plugins/lifecycle/person-control'
-import { Command, pack } from '../src/main/plugins/supervisor/protocol'
+import { Command } from '../src/main/plugins/supervisor/protocol'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
 import { sharedLifecycleWorkspaces } from '../src/main/plugins/lifecycle/workspaces'
 
@@ -767,7 +767,7 @@ describe.skipIf(process.platform === 'win32')(
       expect(f.state.inspect().pending).toBeNull()
       expect(f.state.projections(f.local.sink.workspaceId)).toEqual([])
     })
-    it('replayed authenticated frames cannot create a second session or operation', async () => {
+    it('correlates ordinary frames and refuses a second attach on one person session', async () => {
       const f = await fixture()
       await f.controller.detach(f.handle)
       const key = 'a'.repeat(64)
@@ -779,22 +779,28 @@ describe.skipIf(process.platform === 'win32')(
       })
       const socket = createConnection(bridge.path)
       try {
-        const challenge = String((await once(socket, 'data'))[0]).trimEnd()
-        const frame = pack(key, 'request', {
-          challenge,
-          sequence: 1,
-          packet: {
+        await once(socket, 'connect')
+        const requestId = randomUUID()
+        const frame =
+          JSON.stringify({
             kind: 'call',
-            id: randomUUID(),
+            id: requestId,
             value: { kind: 'attach', workspaceId: randomUUID() },
-          },
-        })
+          }) + '\n'
         const response = once(socket, 'data')
         socket.write(frame)
-        await response
-        const closed = once(socket, 'close')
+        expect(JSON.parse(String((await response)[0]))).toMatchObject({
+          kind: 'reply',
+          id: requestId,
+          ok: true,
+        })
+        const refused = once(socket, 'data')
         socket.write(frame)
-        await closed
+        expect(JSON.parse(String((await refused)[0]))).toMatchObject({
+          kind: 'reply',
+          id: requestId,
+          ok: false,
+        })
         expect(f.starts()).toBe(0)
       } finally {
         socket.destroy()

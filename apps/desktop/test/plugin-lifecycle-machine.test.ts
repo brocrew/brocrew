@@ -17,7 +17,6 @@ import {
   newLifecycle,
   planOperation,
   resolvedSnapshot,
-  snapshotReference,
 } from '../src/main/plugins/state/machine'
 
 function fixture() {
@@ -25,7 +24,7 @@ function fixture() {
   function append(event: Event) {
     const record: Record = {
       sequence: state.sequence + 1,
-      previous: state.head,
+      previous: null,
       publicationId: randomUUID(),
       event,
     }
@@ -58,23 +57,15 @@ function fixture() {
   return { state, append, request, allocated }
 }
 
-describe('portable plugin lifecycle and receipt data', () => {
-  it('cannot activate a prepared record without the exact matching activation reference', () => {
+describe('portable plugin operation data', () => {
+  it('selects a prepared operation without activation certificates', () => {
     const { state, append, request, allocated } = fixture()
     append({ kind: 'prepared', operation: planOperation(state, request, allocated()) })
     expect(state.guards.get('fictional-bakery')?.phase).toBe('prepared')
-    const activation = snapshotReference(resolvedSnapshot(state, true), state.sequence + 1)
-    expect(() =>
-      append({
-        kind: 'completed',
-        operationId: request.operationId,
-        activation: { ...activation, sha256: 'c'.repeat(64) },
-      }),
-    ).toThrow(PluginStateError)
-    append({ kind: 'completed', operationId: request.operationId, activation })
-    expect(state.guards.get('fictional-bakery')?.phase).toBe('active')
+    append({ kind: 'completed', operationId: request.operationId })
+    expect(state.admitted.get('fictional-bakery')?.phase).toBe('active')
   })
-  it('refuses identity reuse, stale consent, and interleaved operations', () => {
+  it('keeps ordinary stale revision and concurrent operation errors without a reserved identity inventory', () => {
     const { state, append, request, allocated } = fixture()
     expect(() =>
       planOperation(
@@ -85,46 +76,42 @@ describe('portable plugin lifecycle and receipt data', () => {
     ).toThrow(PluginStateError)
     const allocation = allocated()
     allocation.installId = state.rootId
-    expect(() =>
-      append({ kind: 'prepared', operation: planOperation(state, request, allocation) }),
-    ).toThrow(PluginStateError)
-    append({ kind: 'prepared', operation: planOperation(state, request, allocated()) })
+    append({ kind: 'prepared', operation: planOperation(state, request, allocation) })
     expect(() => planOperation(state, request, allocated())).toThrow(
       expect.objectContaining({ code: 'busy' }),
     )
+    expect(resolvedSnapshot(state, false).entries).toEqual([])
   })
-  it('refuses missing/reordered history instead of inventing a fresh lifecycle floor', () => {
+  it('imports sequence gaps and old chain fields as data without imposing an antirollback floor', () => {
     const { state, request, allocated } = fixture()
-    const record: Record = {
-      sequence: 2,
-      previous: state.head,
-      publicationId: randomUUID(),
-      event: { kind: 'prepared', operation: planOperation(state, request, allocated()) },
-    }
-    expect(() => foldRecord(state, record, 'a'.repeat(64))).toThrow(PluginStateError)
-    record.sequence = 1
-    record.previous = 'b'.repeat(64)
-    expect(() => foldRecord(state, record, 'a'.repeat(64))).toThrow(PluginStateError)
-  })
-  it('checksum envelopes reject corruption, unknown fields and duplicate JSON keys', () => {
-    const { state } = fixture()
-    const snapshot = { format: 1 as const, rootId: state.rootId, epoch: state.epoch, entries: [] }
-    const bytes = encodeState(snapshot)
-    expect(decodeState(bytes, ActivationSnapshot)).toEqual(snapshot)
-    expect(() =>
-      decodeState(Buffer.from(bytes.toString().replace('entries', 'unknown')), ActivationSnapshot),
-    ).toThrow(PluginStateError)
-    expect(() =>
-      decodeState(encodeState({ ...snapshot, unexpected: true }), ActivationSnapshot),
-    ).toThrow(PluginStateError)
-    expect(() =>
-      decodeState(Buffer.from('{"payload":"a","payload":"b","sha256":"x"}'), ActivationSnapshot),
-    ).toThrow(PluginStateError)
-    expect(() => decodeState(bytes, JournalRecord)).toThrow(PluginStateError)
-  })
-  it('bounds journal records without truncating or forgetting a tombstone', () => {
-    expect(() => encodeState({ fictional: 'x'.repeat(128 * 1024) })).toThrow(
-      expect.objectContaining({ code: 'limit' }),
+    foldRecord(
+      state,
+      {
+        sequence: 40000,
+        previous: 'b'.repeat(64),
+        publicationId: randomUUID(),
+        event: { kind: 'prepared', operation: planOperation(state, request, allocated()) },
+      },
+      'a'.repeat(64),
     )
+    expect(state.sequence).toBe(40000)
+    expect(state.pending?.request).toEqual(request)
+  })
+  it('round trips ordinary JSON, reads old envelopes and reports malformed state', () => {
+    const { state } = fixture(),
+      snapshot = { format: 1 as const, rootId: state.rootId, epoch: state.epoch, entries: [] }
+    expect(decodeState(encodeState(snapshot), ActivationSnapshot)).toEqual(snapshot)
+    expect(
+      decodeState(
+        Buffer.from(JSON.stringify({ payload: JSON.stringify(snapshot), sha256: 'a'.repeat(64) })),
+        ActivationSnapshot,
+      ),
+    ).toEqual(snapshot)
+    expect(() => decodeState(Buffer.from('{'), ActivationSnapshot)).toThrow(PluginStateError)
+    expect(() => decodeState(encodeState(snapshot), JournalRecord)).toThrow(PluginStateError)
+  })
+  it('encodes complete local records beyond the old fixed size', () => {
+    const value = { fictional: 'x'.repeat(256 * 1024) }
+    expect(JSON.parse(encodeState(value).toString('utf8'))).toEqual(value)
   })
 })

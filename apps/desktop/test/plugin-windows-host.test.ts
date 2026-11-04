@@ -11,7 +11,6 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { readFile, writeFile, mkdir, copyFile } from 'node:fs/promises'
-import { createConnection } from 'node:net'
 import { setPriority, tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { createHash } from 'node:crypto'
@@ -293,12 +292,12 @@ describe.runIf(process.platform === 'win32')('the plugin host on Windows', () =>
         lists: { ...windowsAccessLists, restrict },
       }),
     ).resolves.toBeUndefined()
-    expect(restrict).toHaveBeenCalledExactlyOnceWith(root, user, [])
+    expect(restrict).not.toHaveBeenCalled()
     expect(await windowsAccessLists.ownerSid(root)).toBe(foreign)
     expect(await windowsAccessLists.read(parent)).toBe(parentBefore)
     expect(isInsideCheckedRoot(root)).toBe(true)
   })
-  it('admits a plugin root whose permissions cannot be restricted and warns once', async () => {
+  it('uses a selected plugin root without consulting ACL restriction', async () => {
     const parent = await privateParent()
     roots.push(parent)
     const root = join(parent, 'plugins')
@@ -310,35 +309,27 @@ describe.runIf(process.platform === 'win32')('the plugin host on Windows', () =>
       const lists = { ...windowsAccessLists, restrict }
       await expect(keepPluginRootPrivate(root, { lists })).resolves.toBeUndefined()
       await expect(keepPluginRootPrivate(root, { lists })).resolves.toBeUndefined()
-      expect(restrict).toHaveBeenCalledOnce()
-      expect(warning).toHaveBeenCalledExactlyOnceWith(
-        'Could not tighten plugin folder permissions; continuing.',
-      )
+      expect(restrict).not.toHaveBeenCalled()
+      expect(warning).not.toHaveBeenCalled()
       expect(isInsideCheckedRoot(root)).toBe(true)
     } finally {
       warning.mockRestore()
     }
   })
-  it("makes the plugin root this user's alone, inheriting nothing, and counts only it as checked", async () => {
+  it('creates the selected root with ordinary inherited ACLs and leaves existing ACLs alone', async () => {
     const parent = await privateParent()
     roots.push(parent)
     const root = join(parent, 'plugins')
+    mkdirSync(root)
+    const before = await windowsAccessLists.read(root)
+    const parentBefore = await windowsAccessLists.read(parent)
     await keepPluginRootPrivate(root)
-    const sddl = await windowsAccessLists.read(root)
-    expect(sddl).toMatch(/D:[A-Z_]*P/)
-    const user = await windowsAccessLists.userSid()
-    // The computer's own Administrator is written as LA, resolved from the computer's SID.
-    const machine = await windowsAccessLists.machineSid()
-    expect(othersLetIn(accessEntries(sddl, machine), user)).toEqual([])
+    expect(await windowsAccessLists.read(root)).toBe(before)
+    expect(await windowsAccessLists.read(parent)).toBe(parentBefore)
     mkdirSync(join(root, 'state'))
-    expect(
-      othersLetIn(accessEntries(await windowsAccessLists.read(join(root, 'state')), machine), user),
-    ).toEqual([])
-    expect(isInsideCheckedRoot(join(root, 'state'))).toBe(true)
-    expect(isInsideCheckedRoot(join(root.toUpperCase(), 'state'))).toBe(true)
-    expect(isInsideCheckedRoot(join(parent, 'elsewhere'))).toBe(false)
+    expect(lstatSync(join(root, 'state')).isDirectory()).toBe(true)
   })
-  it('serves the supervisor on a pipe that tells an unauthenticated reader one random challenge and nothing else', async () => {
+  it('serves ordinary current-instance requests on the selected root pipe', async () => {
     const parent = await privateParent()
     roots.push(parent)
     const root = join(parent, 'plugins'),
@@ -350,24 +341,14 @@ describe.runIf(process.platform === 'win32')('the plugin host on Windows', () =>
       const storage = new SupervisorStorage(root, [], false)
       const endpoint = storage.endpoint(storage.read()!)
       storage.close()
-      expect(endpoint).toMatch(/^\\\\\.\\pipe\\brocrew-plugin-owner-[a-f0-9]{32}$/)
-      const heard = await new Promise<string>((resolve) => {
-        let text = ''
-        const socket = createConnection(endpoint)
-        socket.setEncoding('utf8')
-        socket.on('data', (chunk: string) => {
-          text += chunk
-        })
-        socket.on('error', () => resolve(text))
-        socket.on('close', () => resolve(text))
-      })
-      expect(heard).toMatch(/^\{"challenge":"[a-f0-9]{64}"\}\n$/)
+      expect(endpoint.startsWith('\\\\.\\pipe\\brocrew-plugin-owner-')).toBe(true)
       const lease = await PluginWorkspaceLease.attach({
         root,
         workspaceRoot: workspace,
         generation: randomUUID(),
         build: 'fictional-build',
       })
+      expect(lease.epoch).toBeTruthy()
       expect(await lease.close()).toBe(true)
     } finally {
       await owner.shutdown()

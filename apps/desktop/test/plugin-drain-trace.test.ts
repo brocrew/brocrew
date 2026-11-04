@@ -19,7 +19,7 @@ afterEach(async () => {
   }
   if (parent) await rm(parent, { recursive: true, force: true })
 }, 30_000)
-it('logs actual drain stages and a sanitized failed-write errno while retaining the fence', async () => {
+it('logs actual drain stages and releases an empty writer after discovery publication fails', async () => {
   parent = await realpath(
     await mkdtemp(join(process.platform === 'win32' ? tmpdir() : '/tmp', 'fictional-drain-trace-')),
   )
@@ -50,11 +50,10 @@ it('logs actual drain stages and a sanitized failed-write errno while retaining 
     }
     return write.call(this, value)
   })
-  expect(await owner.shutdown()).toBe(false)
-  await expect(PluginSupervisor.start({ root, workspaceRoots: [] })).rejects.toMatchObject({
-    code: 'busy',
-  })
+  expect(await owner.shutdown()).toBe(true)
   await owner.closed
+  const successor = await PluginSupervisor.start({ root, workspaceRoots: [] })
+  expect(await successor.shutdown()).toBe(true)
   expect(events).toEqual([
     { stage: 'child-proofs', state: 'waiting' },
     { stage: 'child-proofs', state: 'complete' },
@@ -62,23 +61,21 @@ it('logs actual drain stages and a sanitized failed-write errno while retaining 
     { stage: 'server.close', state: 'complete' },
     { stage: 'stopped-write', state: 'waiting', attempt: 1 },
     { stage: 'stopped-write', state: 'failed', attempt: 1, errno: 'EBUSY' },
-    { stage: 'stopped-write', state: 'waiting', attempt: 2 },
-    { stage: 'stopped-write', state: 'complete', attempt: 2 },
     { stage: 'closed', state: 'complete' },
   ])
   const log = await readFile(join(root, 'plugin-drain.log'), 'utf8')
   expect(log).toContain('stage=stopped-write state=failed attempt=1 errno=EBUSY')
   expect(log).not.toMatch(/fictional-secret|private-path|Bearer/)
 })
-it('gives a plain Restart remedy in a restart-required phase diagnostic', () => {
+it('keeps legacy diagnostic fields without prescribing a machine restart', () => {
   const text = ownerDiagnosticLine({
     phase: 'blocked',
     stage: 'recovery',
     probe: 'no-answer',
     reason: 'restart-required',
   })
-  expect(text).toContain('Restart your computer')
-  if (process.platform === 'win32') expect(text).toContain('Start > Power > Restart')
+  expect(text).toContain('phase=blocked stage=recovery probe=no-answer reason=restart-required')
+  expect(text).not.toContain('Restart your computer')
   expect(text).not.toContain('Shut down')
 })
 it('does not append through a hardlinked drain log to an outside fictional sentinel', async () => {

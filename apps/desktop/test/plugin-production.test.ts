@@ -35,7 +35,6 @@ import {
   PluginWorkspaceLease,
 } from '../src/main/plugins/supervisor/client'
 import { PluginSupervisor } from '../src/main/plugins/supervisor/owner'
-import { previousRunsProvenStopped } from '../src/main/plugins/supervisor/recovery-proof'
 import { SupervisorStorage } from '../src/main/plugins/supervisor/storage'
 import {
   LOST_CHANNEL_ENDS,
@@ -1376,7 +1375,6 @@ describe.skipIf(process.platform === 'win32')(
               root: f.options.root,
               workspaceRoots: [f.options.workspaceRoot],
               wire: { ...OWNER_WIRE, features: [LOST_CHANNEL_ENDS] },
-              recoverPrevious: () => previousRunsProvenStopped(f.options.root),
             })
           },
           { diagnostic: () => undefined },
@@ -1875,7 +1873,7 @@ it.skipIf(process.platform === 'win32')(
   },
 )
 
-it('refuses restart projection from an authenticated inconsistent Hello diagnostic', async () => {
+it('keeps the selected instance when a correlated Hello reports inconsistent diagnostics', async () => {
   const { createServer } = await import('node:net')
   const { pack, unpack, secret } = await import('../src/main/plugins/supervisor/protocol')
   const f = await setup()
@@ -1891,17 +1889,14 @@ it('refuses restart projection from an authenticated inconsistent Hello diagnost
   storage.write(record)
   const authenticated = vi.fn()
   const server = createServer((socket) => {
-    const challenge = secret()
-    socket.write(JSON.stringify({ challenge }) + '\n')
     socket.once('data', (packet) => {
       const request = unpack(record.key, 'request', packet.toString().trim()) as {
         epoch: string
         nonce: string
-        challenge: string
         command: { kind: string }
       }
       expect(request.epoch).toBe(record.epoch)
-      expect(request.challenge).toBe(challenge)
+      expect(request).not.toHaveProperty('challenge')
       expect(request.command.kind).toBe('hello')
       authenticated()
       socket.end(
@@ -1938,7 +1933,7 @@ it('refuses restart projection from an authenticated inconsistent Hello diagnost
   }
 }, 15000)
 
-it('resets authenticated busy continuity when the root inode changes but its supervisor directory survives', async () => {
+it('keeps ordinary busy correlation when a selected root directory is replaced', async () => {
   const { createServer } = await import('node:net')
   const { rename } = await import('node:fs/promises')
   const { pack, unpack, secret } = await import('../src/main/plugins/supervisor/protocol')
@@ -1954,8 +1949,6 @@ it('resets authenticated busy continuity when the root inode changes but its sup
   }
   storage.write(record)
   const server = createServer((socket) => {
-    const challenge = secret()
-    socket.write(JSON.stringify({ challenge }) + '\n')
     socket.once('data', (packet) => {
       const request = unpack(record.key, 'request', packet.toString().trim()) as { nonce: string }
       socket.end(
@@ -1982,7 +1975,7 @@ it('resets authenticated busy continuity when the root inode changes but its sup
     const second = await PluginWorkspaceLease.attach(options).catch((e) => e)
     expect(second.diagnostic).toMatchObject({ phase: 'accepting', probe: 'live' })
     expect(second.ownerIdentity).toBeTruthy()
-    expect(second.ownerIdentity).not.toBe(first.ownerIdentity)
+    expect(second.ownerIdentity).toBe(first.ownerIdentity)
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()))
     storage.close()

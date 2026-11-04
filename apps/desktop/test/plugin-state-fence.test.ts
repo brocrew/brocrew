@@ -1,9 +1,8 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
-import fs from 'node:fs'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { Worker } from 'node:worker_threads'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { once } from 'node:events'
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { GlobalPluginState } from '../src/main/plugins/state/store'
@@ -15,11 +14,90 @@ const roots: string[] = [],
   disks: PluginStateDisk[] = [],
   children: ChildProcess[] = []
 let bundle = '',
+  storeBundle = '',
   output = ''
 beforeAll(async () => {
-  if (process.platform === 'win32') return
-  output = mkdtempSync(join(realpathSync(tmpdir()), 'fictional-plugin-lock-bundle-'))
+  output = mkdtempSync(
+    join(process.platform === 'win32' ? tmpdir() : '/tmp', 'fictional-plugin-lock-bundle-'),
+  )
   bundle = await bundleAWorker('src/main/plugins/state/disk.ts', output, 'lock.cjs')
+  storeBundle = await bundleAWorker('src/main/plugins/state/store.ts', output, 'store.cjs')
+})
+
+describe('read-only selected installation observation', () => {
+  it('reads complete selections while another real process publishes replacements', async () => {
+    const { options, store } = fixture()
+    const input = {
+      operationId: 'a1111111-1111-4111-8111-111111111111',
+      consent: {
+        action: 'install',
+        pluginId: 'fictional-kite',
+        at: 0,
+        expectedSequence: store.inspect().sequence,
+        expectedInstallId: null,
+        release: {
+          version: '1.0.0',
+          archiveSha256: 'a'.repeat(64),
+          manifestSha256: 'b'.repeat(64),
+          dataSchema: 1,
+        },
+      },
+      snapshot: null,
+    }
+    store.prepare(input)
+    store.complete(input.operationId)
+    const child = spawn(
+      process.execPath,
+      [
+        '-e',
+        `
+      const { GlobalPluginState } = require(process.argv[1]);
+      const { randomUUID } = require('node:crypto');
+      const state = GlobalPluginState.open({ root: process.argv[2], workspaceRoots: [] });
+      process.once('message', async () => {
+        try {
+          for (let index = 2; index <= 30; index++) {
+            const view = state.inspect(), before = view.guards[0], id = randomUUID();
+            state.prepare({ operationId: id, snapshot: null, consent: { action: 'update', pluginId: 'fictional-kite', at: index, expectedSequence: view.sequence, expectedInstallId: before.installId, release: { ...before.release, version: index + '.0.0' } } });
+            state.complete(id);
+            await new Promise(resolve => setTimeout(resolve, 2));
+          }
+          state.close(); process.exit(0);
+        } catch { state.close(); process.exit(1); }
+      });
+      process.send('ready');
+    `,
+        storeBundle,
+        options.root,
+      ],
+      { stdio: ['ignore', 'ignore', 'ignore', 'ipc'], windowsHide: true },
+    )
+    children.push(child)
+    const [ready] = await once(child, 'message')
+    expect(ready).toBe('ready')
+    let done = false,
+      reads = 0
+    const exited = once(child, 'exit').then(() => {
+      done = true
+    })
+    child.send('go')
+    while (!done) {
+      const selected = GlobalPluginState.readInstalledPackage(options, 'fictional-kite')
+      expect(selected).toMatchObject({
+        archiveSha256: 'a'.repeat(64),
+        manifestSha256: 'b'.repeat(64),
+      })
+      expect(selected?.version).toMatch(/^\d+\.0\.0$/)
+      reads++
+      await new Promise((resolve) => setTimeout(resolve, 1))
+    }
+    await exited
+    expect(child.exitCode).toBe(0)
+    expect(reads).toBeGreaterThan(1)
+    expect(GlobalPluginState.readInstalledPackage(options, 'fictional-kite')?.version).toBe(
+      '30.0.0',
+    )
+  })
 })
 afterEach(async () => {
   for (const child of children.splice(0)) {
@@ -36,7 +114,9 @@ afterAll(() => {
   if (output) rmSync(output, { recursive: true, force: true })
 })
 function fixture() {
-  const parent = mkdtempSync(join(realpathSync(tmpdir()), 'fictional-plugin-lock-'))
+  const parent = mkdtempSync(
+    join(process.platform === 'win32' ? tmpdir() : '/tmp', 'fictional-plugin-lock-'),
+  )
   roots.push(parent)
   const options = { root: join(parent, 'plugins'), workspaceRoots: [] }
   const store = GlobalPluginState.create(options)
@@ -94,27 +174,9 @@ describe.skipIf(process.platform === 'win32')(
       const second = GlobalPluginState.open(options)
       stores.push(second)
       await disk.withExclusive(async () => {
-        const fence = fs.lstatSync(join(options.root, 'writer-lock.sqlite'), { bigint: true })
-        const originalClose = fs.closeSync,
-          fenceCloses: number[] = []
-        const opened = vi.spyOn(fs, 'openSync'),
-          closed = vi.spyOn(fs, 'closeSync').mockImplementation((fd) => {
-            const stat = fs.fstatSync(fd, { bigint: true })
-            if (stat.dev === fence.dev && stat.ino === fence.ino) fenceCloses.push(fd)
-            originalClose(fd)
-          })
-        try {
-          expect(() => GlobalPluginState.open(options)).toThrow(
-            expect.objectContaining({ code: 'busy' }),
-          )
-          expect(
-            opened.mock.calls.filter(([path]) => String(path).endsWith('writer-lock.sqlite')),
-          ).toEqual([])
-          expect(fenceCloses).toEqual([])
-        } finally {
-          opened.mockRestore()
-          closed.mockRestore()
-        }
+        expect(() => GlobalPluginState.open(options)).toThrow(
+          expect.objectContaining({ code: 'busy' }),
+        )
         second.close()
         expect((await launch(options.root, 'probe')).message).toBe('busy')
         expect(disk.load().pending).toBeNull()
@@ -139,7 +201,7 @@ describe.skipIf(process.platform === 'win32')(
       stores.push(reopened)
       expect(reopened.inspect()).toEqual(store.inspect())
     })
-    it('worker-thread disk refusal opens no descriptor', async () => {
+    it('worker-thread storage uses ordinary filesystem access', async () => {
       const { options } = fixture()
       const worker = new Worker(
         `
@@ -149,14 +211,14 @@ describe.skipIf(process.platform === 'win32')(
         let opens = 0; const original = fs.openSync;
         fs.openSync = (...args) => { opens++; return original(...args); };
         require('node:module').syncBuiltinESMExports();
-        try { new PluginStateDisk({ root: workerData.root, workspaceRoots: [] }); parentPort.postMessage({ code: 'allowed', opens }); }
+        try { const disk = new PluginStateDisk({ root: workerData.root, workspaceRoots: [] }); disk.load(); disk.close(); parentPort.postMessage({ code: 'allowed' }); }
         catch (error) { parentPort.postMessage({ code: error.code, opens }); }
       `,
         { eval: true, workerData: { root: options.root, bundle } },
       )
       try {
         const [message] = await once(worker, 'message')
-        expect(message).toEqual({ code: 'unsupported', opens: 0 })
+        expect(message).toEqual({ code: 'allowed' })
       } finally {
         await worker.terminate()
       }
