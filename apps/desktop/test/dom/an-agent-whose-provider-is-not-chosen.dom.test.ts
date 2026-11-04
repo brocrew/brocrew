@@ -69,37 +69,41 @@ function storeOver(list: AgentIdentities) {
     setSpawningEnabled: async () => ({ spawningEnabled: true }),
     setAgentProvider: vi.fn(async () => null),
     agentModelAndEffort: async () => held,
-    setAgentModelAndEffort: vi.fn(async (
-      input: Parameters<RuntimeBridge['setAgentModelAndEffort']>[0],
-    ): Promise<Awaited<ReturnType<RuntimeBridge['setAgentModelAndEffort']>>> => {
-      structuredClone(input)
-      const { provider, model, effort, connectionId } = input
-      if (provider === null || model === null || connectionId === undefined) {
-        throw new Error('choose a fictional connection and model')
-      }
-      held = { provider, connectionId, model, effort }
-      list = {
-        ...list,
-        identities: list.identities.map((one) =>
-          one.slug === input.profileId ? { ...one, provider, connectionId } : one,
-        ),
-        use: list.use.map((one) =>
-          one.slug === input.profileId
-            ? { ...one, runsOn: { provider, from: 'saved' as const } }
-            : one,
-        ),
-      }
-      return { ok: true, choice: held }
-    }),
+    setAgentModelAndEffort: vi.fn(
+      async (
+        input: Parameters<RuntimeBridge['setAgentModelAndEffort']>[0],
+      ): Promise<Awaited<ReturnType<RuntimeBridge['setAgentModelAndEffort']>>> => {
+        structuredClone(input)
+        const { provider, model, effort, connectionId } = input
+        if (provider === null || model === null || connectionId === undefined) {
+          throw new Error('choose a fictional connection and model')
+        }
+        held = { provider, connectionId, model, effort }
+        list = {
+          ...list,
+          identities: list.identities.map((one) =>
+            one.slug === input.profileId ? { ...one, provider, connectionId } : one,
+          ),
+          use: list.use.map((one) =>
+            one.slug === input.profileId
+              ? { ...one, runsOn: { provider, from: 'saved' as const } }
+              : one,
+          ),
+        }
+        return { ok: true, choice: held }
+      },
+    ),
     modelList: async ({ provider }: { provider: 'claude' | 'codex' }) => ({
       provider,
-      models: [{
-        id: 'fictional-model',
-        label: 'Fictional model',
-        addedBy: 'the-provider',
-        efforts: [{ id: 'high', label: 'High' }],
-        defaultEffort: 'high',
-      }],
+      models: [
+        {
+          id: 'fictional-model',
+          label: 'Fictional model',
+          addedBy: 'the-provider',
+          efforts: [{ id: 'high', label: 'High' }],
+          defaultEffort: 'high',
+        },
+      ],
       notAsked: null,
       standIn: null,
       lastPicked: null,

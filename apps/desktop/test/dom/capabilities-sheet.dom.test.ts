@@ -445,7 +445,7 @@ describe('355 · the capabilities sheet', () => {
   // §3.1 · what it RUNS ON, which is not a capability (433)
   // ─────────────────────────────────────────────────────────────────────────────────────────
 
-  describe('§3.1 · the connection chooses the provider', () => {
+  describe('§3.1 · the provider control, and the sentence beside it', () => {
     async function openPicker(m: Mounted): Promise<HTMLSelectElement> {
       await expect.poll(() => m.all('model-picker-face').length).toBe(1)
       m.q('model-picker-face').click()
@@ -461,7 +461,7 @@ describe('355 · the capabilities sheet', () => {
       await nextTick()
     }
 
-    it('a connection and model save the provider separately from capability Save', async () => {
+    it('🔴 a person picks a provider and it writes on its own, without touching Save', async () => {
       const { m } = await openSheet()
       expect(m.all('capabilities-provider-select')).toHaveLength(0)
       const select = await openPicker(m)
@@ -482,7 +482,7 @@ describe('355 · the capabilities sheet', () => {
       expect(answers.saved).toEqual([])
     })
 
-    it('an unknown connection cannot write an unknown provider', async () => {
+    it('⛔ a value this app does not know is sent as nothing, not as itself', async () => {
       const { m } = await openSheet()
       const select = await openPicker(m)
       const planted = document.createElement('option')
@@ -496,7 +496,7 @@ describe('355 · the capabilities sheet', () => {
       expect(answers.saved).toEqual([])
     })
 
-    it('changing the default leaves existing conversation-use records exact', async () => {
+    it('⛔ it says a running conversation does not move, and names what the next one starts on', async () => {
       answers.list = {
         ...answers.list,
         use: [
@@ -522,7 +522,7 @@ describe('355 · the capabilities sheet', () => {
       expect(m.all('capabilities-provider-note')).toHaveLength(0)
     })
 
-    it('a refused connection save stays in the picker and preserves the held default', async () => {
+    it('⛔ a refused change says so beside the control, and the sheet stays open', async () => {
       answers.chooseFails = 'a person must be asking'
       const { m } = await openSheet()
       const select = await openPicker(m)
@@ -538,7 +538,7 @@ describe('355 · the capabilities sheet', () => {
       expect(answers.saved).toEqual([])
     })
 
-    it('a profile with no row has no provider or model control', async () => {
+    it('⛔ a profile with no row is offered no provider control', async () => {
       const { m } = await openSheet({ profileSlug: 'nobody' })
       expect(m.all('capabilities-provider-select')).toHaveLength(0)
       expect(m.all('agent-model')).toHaveLength(0)

@@ -2,10 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
 import OwnInstructions from '../../src/renderer/src/components/OwnInstructions.vue'
-import {
-  WROTE_IT_MEANS,
-  type AgentInstructionsReading,
-} from '../../src/shared/own-instructions'
+import { WROTE_IT_MEANS, type AgentInstructionsReading } from '../../src/shared/own-instructions'
 import type { AgentStore } from '../../src/renderer/src/lib/agent-store'
 import { assertDrawn, drawnReady } from './drawn'
 import { mount, unmountAll, type Mounted } from './harness'

@@ -267,10 +267,12 @@ describe('470 · synthetic launch-bound field and live external-MCP grant', () =
       expect(text(m, 'grant-canFutureLaunch-open-now')).toContain('login-explorer')
       // The title identifies the agent; the offer retains its exact folder and action.
       expect(text(m, 'capabilities-title')).toContain('pm')
-      expect(m.q('grant-canFutureLaunch-open-now').querySelector(':scope > p.identity-note')).toBeNull()
-      expect(m.q('grant-canFutureLaunch-open-now').querySelector('.reopen-where')?.textContent).toBe(
-        'login-explorer',
-      )
+      expect(
+        m.q('grant-canFutureLaunch-open-now').querySelector(':scope > p.identity-note'),
+      ).toBeNull()
+      expect(
+        m.q('grant-canFutureLaunch-open-now').querySelector('.reopen-where')?.textContent,
+      ).toBe('login-explorer')
       const button = m.q('grant-canFutureLaunch-reopen-sess_7') as HTMLButtonElement
       expect(button.textContent?.trim()).toBe('Reopen')
       expect(button.disabled).toBe(false)
@@ -283,9 +285,9 @@ describe('470 · synthetic launch-bound field and live external-MCP grant', () =
 
     it('⚠️ …and the row falls back to the session id when this app holds no path for it', async () => {
       const { m } = await sheet([open({ sessionId: 'sess_9', where: null })])
-      expect(m.q('grant-canFutureLaunch-open-now').querySelector('.reopen-where')?.textContent).toBe(
-        'sess_9',
-      )
+      expect(
+        m.q('grant-canFutureLaunch-open-now').querySelector('.reopen-where')?.textContent,
+      ).toBe('sess_9')
       const button = m.q('grant-canFutureLaunch-reopen-sess_9') as HTMLButtonElement
       expect(button.textContent?.trim()).toBe('Reopen')
       expect(button.disabled).toBe(false)

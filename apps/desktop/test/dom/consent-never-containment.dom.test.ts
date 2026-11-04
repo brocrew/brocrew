@@ -4,10 +4,7 @@ import { defineComponent, h, nextTick, type PropType } from 'vue'
 import CapabilitiesSheet from '../../src/renderer/src/components/CapabilitiesSheet.vue'
 import OverlayHost from '../../src/renderer/src/components/OverlayHost.vue'
 import { createAgentStore, type AgentStore } from '../../src/renderer/src/lib/agent-store'
-import {
-  CAPABILITY_FIELDS,
-  DEFAULT_CAPABILITIES,
-} from '../../src/shared/capabilities'
+import { CAPABILITY_FIELDS, DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import type { AgentIdentity, RuntimeBridge } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll } from './harness'
 
@@ -196,6 +193,8 @@ describe('§2 · it stays one readable paragraph across `335`’s range', () => 
     expect(control.getBoundingClientRect().height).toBeGreaterThan(0)
     expect(control.scrollWidth - control.clientWidth).toBeLessThanOrEqual(1)
     const body = said.parentElement as HTMLElement
-    expect(getComputedStyle(body).flexDirection, 'the sheet body stopped being a column').toBe('column')
+    expect(getComputedStyle(body).flexDirection, 'the sheet body stopped being a column').toBe(
+      'column',
+    )
   })
 })

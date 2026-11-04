@@ -385,7 +385,9 @@ describe('712 §1 · R56 — the provider row says what a press would clear, BEF
       // ⚑ The premise: the control below has NOT re-read — it still draws the choice it last knew —
       // so the line's absence is the door's answer and nothing else.
       expect(said(m.q('model-picker-face'))).toBe('Claude · Fictional subscription · opus · high')
-      expect(whatTheProviderPressCleared(answer.cleared!, 'codex')).toBe(CLEARED_OPUS_HIGH_NOW_CODEX)
+      expect(whatTheProviderPressCleared(answer.cleared!, 'codex')).toBe(
+        CLEARED_OPUS_HIGH_NOW_CODEX,
+      )
       expect(m.all('capabilities-provider-will-clear')).toHaveLength(0)
     } finally {
       world.gate = null
@@ -744,8 +746,10 @@ const OPEN: readonly AConversationToReopen[] = [
 function namedSentences(m: Mounted): Record<string, string> {
   const out: Record<string, string> = {
     title: said(m.q('capabilities-title')),
-    servers: m.q('capability-external-mcp')
-      .querySelector(':scope > span')!.firstChild!.textContent!.trim(),
+    servers: m
+      .q('capability-external-mcp')
+      .querySelector(':scope > span')!
+      .firstChild!.textContent!.trim(),
   }
   for (const field of LAUNCH_TIME) {
     out[`${field.key}-open`] = said(m.q(`grant-${field.key}-reopen-sess_1`))

@@ -345,7 +345,7 @@ describe('685 §1 · the control, idle — it asks no provider anything until a 
     expect(world.modelsAsked).toBe(1)
   })
 
-  it('🔴 a held choice is drawn as stored without explanatory prose', async () => {
+  it('🔴 a held choice is drawn as stored, with the sentence beside it', async () => {
     reset()
     world.held = { provider: 'claude', model: 'opus', effort: 'max' }
     const { m } = await control()
@@ -362,7 +362,7 @@ describe('685 §1 · the control, idle — it asks no provider anything until a 
   // judges a default again, so a default saved from BroBot's list is the verdict, and the clause
   // that promised a later check would be false. ⚑ What stands of `691`'s pin: whose list it is is
   // said ABOVE THE LIST, before a press, and the held row reads as any default.
-  it('🔴 a default held for an agent with no list of its own is drawn as any other — its picker keeps the default without list prose', async () => {
+  it('🔴 a default held for an agent with no list of its own is drawn as any other — its picker says whose list it is', async () => {
     reset()
     world.map = {
       claude: { ok: true, models: CLAUDE_ROWS, standIn: 'brobot' },
@@ -382,7 +382,7 @@ describe('685 §1 · the control, idle — it asks no provider anything until a 
   // ⚑ **D-042 · re-aimed: *an effort chosen alone* is gone** — a default is a model and its effort
   // (R1). What the row drew for a half nobody named stands for the one half that may be empty: a
   // model that offers no effort level — ⚑ UI-012 · the face names the model alone.
-  it('⚑ a held model without efforts has no effort controls', async () => {
+  it('⚑ a held model that offers no effort level says so, in the effort’s place', async () => {
     reset()
     world.held = { provider: 'claude', model: 'haiku', effort: null }
     const { m } = await control()
@@ -395,7 +395,7 @@ describe('685 §1 · the control, idle — it asks no provider anything until a 
 })
 
 describe('685 §2 · set — the list is the provider’s, and Save sends the choice', () => {
-  it('🔴 pick a model and an effort, Save — and the row is what the door read back', async () => {
+  it('🔴 pick a model and an effort, see what it will reach, Save — and the row is what the door read back', async () => {
     reset()
     const { m } = await control()
     await press(m, 'model-picker-face')
@@ -622,7 +622,7 @@ describe('685 §4 · a refusal — drawn with the door’s `reason`', () => {
 })
 
 describe('685 §5 · an agent that has never run, and no list', () => {
-  it('🔴 an agent that has never run HAS a list since `682` — BroBot’s own, offered without explanatory prose', async () => {
+  it('🔴 an agent that has never run HAS a list since `682` — BroBot’s own, said above it before the press', async () => {
     // ⚑ `691` · re-aimed from 677's `has-never-run` sentence, which `682` (`R31d`) retired: the list
     // door answers such an agent from BroBot's home and marks it `standIn`. ⚑ **D-042** · the saved
     // row does not say so: whose list it was is said where a person picks from it.
@@ -778,7 +778,7 @@ describe('685 §7 · where it is — beside the provider choice on the agent’s
     expect(m.all('agent-model-reaches')).toHaveLength(0)
   })
 
-  it('🔴 above the agent’s own instructions, inside the sheet’s width', async () => {
+  it('🔴 between *Runs on* and the agent’s own instructions, inside the sheet’s width', async () => {
     reset()
     await page.viewport(700, 900)
     // ⚑ A label longer than the sheet — so the fit below is a claim that could fail (`685`'s review).
@@ -833,7 +833,7 @@ it('a default connection without a saved model preselects its own route in the a
   expect(rows(m)).toEqual(['gpt-5.6-terra', 'gpt-5.6-luna'])
 })
 
-it('the selected catalogue ignores a warm legacy cache without list prose', async () => {
+it('whose-list notice follows the selected catalogue and ignores a warm legacy cache', async () => {
   reset()
   world.map.claude = { ok: true, models: CLAUDE_ROWS, standIn: 'brobot' }
   const { store, lists } = storeOver()

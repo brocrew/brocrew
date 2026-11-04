@@ -83,38 +83,47 @@ function sheetHost() {
     ),
     providerConnections: vi.fn(async () => compatibilityConnections()),
     agentModelAndEffort: vi.fn(async () => held),
-    setAgentModelAndEffort: vi.fn(async (
-      input: Parameters<RuntimeBridge['setAgentModelAndEffort']>[0],
-    ): Promise<Awaited<ReturnType<RuntimeBridge['setAgentModelAndEffort']>>> => {
-      structuredClone(input)
-      identity = { ...identity, provider: input.provider }
-      held = input.provider === null ? null : {
-        provider: input.provider,
-        ...(input.connectionId === undefined ? {} : { connectionId: input.connectionId }),
-        model: input.model!,
-        effort: input.effort,
-      }
-      return { ok: true, choice: held }
-    }),
+    setAgentModelAndEffort: vi.fn(
+      async (
+        input: Parameters<RuntimeBridge['setAgentModelAndEffort']>[0],
+      ): Promise<Awaited<ReturnType<RuntimeBridge['setAgentModelAndEffort']>>> => {
+        structuredClone(input)
+        identity = { ...identity, provider: input.provider }
+        held =
+          input.provider === null
+            ? null
+            : {
+                provider: input.provider,
+                ...(input.connectionId === undefined ? {} : { connectionId: input.connectionId }),
+                model: input.model!,
+                effort: input.effort,
+              }
+        return { ok: true, choice: held }
+      },
+    ),
     agentInstructions: vi.fn(async () => ({
       own: { identity: 'fictional-worker', versions: [] },
       waiting: [],
       readAt: 1_700_000_000_000,
     })),
-    modelList: vi.fn(async ({ provider }: { provider: 'claude' | 'codex' }): Promise<ModelList> => ({
-      provider,
-      models: [{
-        id: 'fictional-model',
-        label: 'Fictional model',
-        addedBy: 'the-provider',
-        efforts: [{ id: 'high', label: 'High' }],
-        defaultEffort: 'high',
-      }],
-      notAsked: null,
-      standIn: null,
-      lastPicked: null,
-      startsOn: null,
-    })),
+    modelList: vi.fn(
+      async ({ provider }: { provider: 'claude' | 'codex' }): Promise<ModelList> => ({
+        provider,
+        models: [
+          {
+            id: 'fictional-model',
+            label: 'Fictional model',
+            addedBy: 'the-provider',
+            efforts: [{ id: 'high', label: 'High' }],
+            defaultEffort: 'high',
+          },
+        ],
+        notAsked: null,
+        standIn: null,
+        lastPicked: null,
+        startsOn: null,
+      }),
+    ),
     addHandAddedModel: vi.fn(async () => []),
     deleteHandAddedModel: vi.fn(async () => []),
   }
@@ -287,16 +296,18 @@ describe('capabilities sheet pending actions', () => {
     expect(host.setCapabilities).not.toHaveBeenCalled()
     pending.reject(new Error('The fictional host kept the previous provider.'))
     await expect.poll(() => m.all('model-picker-refusal').length).toBe(1)
-    expect(words(m.q('model-picker-refusal'))).toBe('The fictional host kept the previous provider.')
+    expect(words(m.q('model-picker-refusal'))).toBe(
+      'The fictional host kept the previous provider.',
+    )
     expect(take.disabled).toBe(false)
     expect(words(m.q('model-picker-face'))).toContain('Codex')
     take.click()
     await expect.poll(() => m.q('model-picker-panel').matches(':popover-open')).toBe(false)
     await store.load()
     await nextTick()
-    await expect.poll(() => words(m.q('model-picker-face'))).toBe(
-      'Claude · Fictional subscription · fictional-model · high',
-    )
+    await expect
+      .poll(() => words(m.q('model-picker-face')))
+      .toBe('Claude · Fictional subscription · fictional-model · high')
     expect(store.identities.value?.identities[0]?.provider).toBe('claude')
     expect(host.setAgentModelAndEffort).toHaveBeenCalledTimes(2)
     expect(host.setCapabilities).not.toHaveBeenCalled()
