@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { chmod, mkdir, rename, symlink, unlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, readFile, rename, stat, symlink, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { devPluginArchive, devPluginSource } from '../src/main/plugins/catalogue/dev-source'
 import { loadRepoPluginList } from '../src/main/plugins/catalogue/repo-list'
@@ -161,36 +161,46 @@ describe.skipIf(process.platform === 'win32')('unpackaged local plugin source', 
       }
     },
   )
-  it.each([
-    'tampered archive',
-    'wrong manifest',
-    'missing asset',
-    'root permission change',
-    'linked asset',
-  ])('refuses %s without a run or network fallback', async (fault) => {
-    const { f, archive, directory, list, fetch, load } = await setup()
-    if (fault === 'wrong manifest') {
-      list.entries[0]!.targets[0]!.manifestSha256 = '0'.repeat(64)
-      await writeFile(join(directory, 'catalogue.json'), JSON.stringify(list))
-    }
+  it.each(['tampered archive', 'wrong manifest', 'missing asset', 'linked asset'])(
+    'refuses %s without a run or network fallback',
+    async (fault) => {
+      const { f, archive, directory, list, fetch, load } = await setup()
+      if (fault === 'wrong manifest') {
+        list.entries[0]!.targets[0]!.manifestSha256 = '0'.repeat(64)
+        await writeFile(join(directory, 'catalogue.json'), JSON.stringify(list))
+      }
+      const { controller, handle } = await load()
+      if (fault === 'tampered archive') {
+        const bytes = Buffer.from(f.pkg.archive)
+        bytes[0] = bytes[0]! ^ 1
+        await writeFile(archive, bytes)
+      }
+      if (fault === 'missing asset') await unlink(archive)
+      if (fault === 'linked asset') {
+        await rename(archive, archive + '.kept')
+        await symlink(archive + '.kept', archive)
+      }
+      await expect(controller.install(handle, 'chrome')).rejects.toThrow(
+        'Plugin unavailable. Try again.',
+      )
+      expect(f.starts()).toBe(0)
+      expect(f.state.exportActivation().entries).toHaveLength(0)
+      expect(f.state.inspect().pending).toBeNull()
+      expect(fetch).not.toHaveBeenCalled()
+    },
+  )
+  it('installs intact local bytes after a directory permission change without changing the selected source', async () => {
+    const { f, directory, archive, fetch, load } = await setup()
     const { controller, handle } = await load()
-    if (fault === 'tampered archive') {
-      const bytes = Buffer.from(f.pkg.archive)
-      bytes[0] = bytes[0]! ^ 1
-      await writeFile(archive, bytes)
-    }
-    if (fault === 'missing asset') await unlink(archive)
-    if (fault === 'root permission change') await chmod(directory, 0o755)
-    if (fault === 'linked asset') {
-      await rename(archive, archive + '.kept')
-      await symlink(archive + '.kept', archive)
-    }
-    await expect(controller.install(handle, 'chrome')).rejects.toThrow(
-      'Plugin unavailable. Try again.',
+    await chmod(directory, 0o755)
+    await controller.install(handle, 'chrome')
+    expect(f.starts()).toBe(1)
+    expect(f.state.exportActivation().entries[0]?.release.archiveSha256).toBe(
+      f.pkg.release.archive.sha256,
     )
-    expect(f.starts()).toBe(0)
-    expect(f.state.exportActivation().entries).toHaveLength(0)
     expect(f.state.inspect().pending).toBeNull()
+    expect(await readFile(archive)).toEqual(f.pkg.archive)
+    expect((await stat(directory)).mode & 0o777).toBe(0o755)
     expect(fetch).not.toHaveBeenCalled()
   })
   it('ignores even unsafe local input in packaged builds and reads only the fixed network list', async () => {
@@ -219,7 +229,7 @@ describe.skipIf(process.platform === 'win32')('unpackaged local plugin source', 
     await rename(directory, directory + '-absent')
     expect(await devPluginSource({ isPackaged: false, appData })).toBeUndefined()
   })
-  it.each(['symlink', 'shared mode', 'canonical alias'])(
+  it.each(['symlink', 'canonical alias'])(
     'refuses an existing %s source before any fetch',
     async (fault) => {
       const { directory, appData, fetch } = await setup()
@@ -227,8 +237,7 @@ describe.skipIf(process.platform === 'win32')('unpackaged local plugin source', 
       if (fault === 'symlink') {
         await rename(directory, directory + '-kept')
         await symlink(directory + '-kept', directory)
-      } else if (fault === 'shared mode') await chmod(directory, 0o755)
-      else {
+      } else {
         path = appData + '-alias'
         await symlink(appData, path)
       }
@@ -236,4 +245,28 @@ describe.skipIf(process.platform === 'win32')('unpackaged local plugin source', 
       expect(fetch).not.toHaveBeenCalled()
     },
   )
+  it('uses an existing shared-mode source with exact asset verification and no network fallback', async () => {
+    const { f, directory, appData, archive, list, fetch, load } = await setup()
+    await chmod(directory, 0o755)
+    expect(await devPluginSource({ isPackaged: false, appData })).toBe(directory)
+    const { loaded, controller, handle } = await load()
+    expect(loaded.rawBytes).toEqual(Buffer.from(JSON.stringify(list)))
+    expect(loaded.releases[0]).toMatchObject({
+      id: 'chrome',
+      version: '1.0.0',
+      manifestSha256: f.pkg.release.manifestSha256,
+      archive: { sha256: f.pkg.release.archive.sha256, size: f.pkg.archive.length },
+    })
+    await controller.install(handle, 'chrome')
+    expect((await controller.status()).cards[0]).toMatchObject({
+      installed: true,
+      state: 'Running',
+      installedVersion: '1.0.0',
+    })
+    expect(f.starts()).toBe(1)
+    expect(f.state.inspect().pending).toBeNull()
+    expect(await readFile(archive)).toEqual(f.pkg.archive)
+    expect((await stat(directory)).mode & 0o777).toBe(0o755)
+    expect(fetch).not.toHaveBeenCalled()
+  })
 })
