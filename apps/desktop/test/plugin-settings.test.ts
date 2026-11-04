@@ -272,7 +272,7 @@ it.skipIf(process.platform === 'win32')(
       await import('./plugin-lifecycle-fixtures')
     const { PluginLifecycleController } = await import('../src/main/plugins/lifecycle/controller')
     try {
-      const live = await fixture()
+      const live = await fixture({}, false, 'fictional-bakery')
       await live.controller.install(live.handle, 'fictional-bakery')
       live.failStop()
       await expect(live.controller.uninstall(live.handle, 'fictional-bakery')).rejects.toThrow()
