@@ -6,7 +6,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { fork, type ChildProcess } from 'node:child_process'
 import { randomBytes, randomUUID } from 'node:crypto'
-import { join, dirname, isAbsolute, normalize } from 'node:path'
+import { join, dirname, isAbsolute, normalize, relative, resolve, sep } from 'node:path'
 import { chmod, rm } from 'node:fs/promises'
 import { verifiedPluginDigest, type VerifiedPluginPackage } from './package-verifier'
 import {
@@ -676,6 +676,11 @@ export function createPluginNodeHost(options: {
     },
     /** Deletes only private data after the managed runtime releases its lifetime mutex. */
     async removeData(id: string): Promise<void> {
+      const data = resolve(options.root, 'data'),
+        target = join(data, id),
+        below = relative(data, target)
+      if (!below || below === '..' || below.startsWith(`..${sep}`) || isAbsolute(below))
+        throw new PluginHostError('cleanup')
       await retire(id, (root) => rm(join(root, 'data', id), { recursive: true, force: true }))
     },
     start,

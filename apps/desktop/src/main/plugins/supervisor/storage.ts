@@ -6,6 +6,7 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
+  realpathSync,
   renameSync,
   unlinkSync,
   writeFileSync,
@@ -37,10 +38,15 @@ export class SupervisorStorage {
     this.lock = join(this.folder, 'owner-lock.sqlite')
     this.record = join(this.folder, 'owner.json')
     this.stop = join(this.folder, 'owner-stop.json')
-    const path = resolve(root)
+    if (create) mkdirSync(this.folder, { recursive: true, mode: 0o700 })
+    let path = resolve(root)
+    try {
+      path = realpathSync(path)
+    } catch (error) {
+      if (!missing(error)) throw error
+    }
     this.rootIdentity = process.platform === 'win32' ? path.toLowerCase() : path
     this.identity = this.rootIdentity
-    if (create) mkdirSync(this.folder, { recursive: true, mode: 0o700 })
   }
   check(): void {
     if (this.closed) refuse()
