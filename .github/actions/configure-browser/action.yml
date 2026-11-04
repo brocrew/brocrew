@@ -1,0 +1,19 @@
+name: Configure browser prerequisites
+description: Provision Linux display and sandbox prerequisites for the real Configure browser test.
+runs:
+  using: composite
+  steps:
+    - name: Install browser system libraries and a virtual display
+      shell: bash
+      run: |
+        set -euo pipefail
+        pnpm --filter @brobot2/desktop exec playwright install-deps chromium
+        sudo apt-get install -y --no-install-recommends xvfb xauth libgtk-3-0t64 libxss1
+
+    - name: Enable the installed Electron sandbox helper
+      shell: bash
+      run: |
+        set -euo pipefail
+        sandbox_helper="$(pnpm --filter @brobot2/desktop exec node -p "require('node:path').join(require('node:path').dirname(require.resolve('electron/package.json')), 'dist/chrome-sandbox')")"
+        sudo chown root:root "$sandbox_helper"
+        sudo chmod 4755 "$sandbox_helper"

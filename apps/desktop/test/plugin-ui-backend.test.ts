@@ -33,14 +33,18 @@ it('the actual hidden Configure browser can fetch its backend and assets, connec
     'dist',
     readFileSync(join(electronRoot, 'path.txt'), 'utf8').trim(),
   )
+  const args = [
+    HIDDEN_LAUNCH_ARG,
+    `--user-data-dir=${join(root, 'user-data')}`,
+    bundle,
+    join(root, 'user-data'),
+  ]
+  const needsDisplay = process.platform === 'linux' && !process.env.DISPLAY
   const { stdout } = await promisify(execFile)(
-    executable,
-    [
-      HIDDEN_LAUNCH_ARG,
-      `--user-data-dir=${join(root, 'user-data')}`,
-      bundle,
-      join(root, 'user-data'),
-    ],
+    needsDisplay ? 'xvfb-run' : executable,
+    needsDisplay
+      ? ['--auto-servernum', '--server-args=-screen 0 1280x800x24', executable, ...args]
+      : args,
     {
       env: { ...process.env, ELECTRON_RUN_AS_NODE: undefined },
       windowsHide: true,

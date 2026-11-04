@@ -140,6 +140,9 @@ jobs:
       - name: Install exact plugin test dependencies
         run: npm ci --prefix scripts/gates/plugin-test-dependencies --ignore-scripts --no-audit --no-fund
 
+      - name: Prepare the real Configure browser
+        uses: ./.github/actions/configure-browser
+
       # `cli-equivalence` chooses the real `~/.claude` and `~/.codex` as a working directory, and a
       # fresh runner has neither CLI's home. Empty is enough; nothing reads them.
       - name: Give the runner the two CLI homes

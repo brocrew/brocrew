@@ -94,6 +94,10 @@ jobs:
       - name: Install exact plugin test dependencies
         run: npm ci --prefix scripts/gates/plugin-test-dependencies --ignore-scripts --no-audit --no-fund
 
+      - name: Prepare the real Configure browser
+        if: matrix.set == 'node'
+        uses: ./.github/actions/configure-browser
+
       # `coverage-measurement.config.ts` sits at the root and imports the Vue plugin, which only the
       # desktop app depends on, so pnpm links it there and not at the root. One link, in this run's
       # checkout, lets the config load; no tracked file changes.
