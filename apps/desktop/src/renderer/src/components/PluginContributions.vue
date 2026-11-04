@@ -8,7 +8,7 @@ import type {
 } from '../../../shared/plugin-host'
 
 const props = defineProps<{ client?: PluginHostClient; surface: 'composer' | 'settings' }>()
-const client = props.client ?? window.api?.pluginHost
+const client = props.client ?? (typeof window === 'undefined' ? undefined : window.api?.pluginHost)
 const snapshot = ref<PluginHostSnapshot>({ contributions: [], notifications: [] })
 const error = ref('')
 const pending = ref(new Set<string>())
