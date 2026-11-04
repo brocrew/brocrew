@@ -1,4 +1,4 @@
-const channel = 'brocrew-plugin-ui:v1'
+const channel = 'brocrew-plugin-tools:v1'
 const pending = new Map()
 let revision = 0
 let next = 0
@@ -42,7 +42,15 @@ function rpc(method, payload) {
     }, 10000)
     pending.set(requestId, { resolve, reject, timer })
     window.postMessage(
-      { channel, requestId, method, payload, configRevision: revision },
+      {
+        channel,
+        requestId,
+        method: 'callTool',
+        params: {
+          tool: method === 'read' ? 'configuration_snapshot' : 'configure_profile',
+          arguments: method === 'read' ? {} : payload,
+        },
+      },
       location.origin,
     )
   })
@@ -56,7 +64,19 @@ window.addEventListener('message', (event) => {
   clearTimeout(request.timer)
   pending.delete(packet.requestId)
   if (!packet.ok) request.reject(new Error('unavailable'))
-  else request.resolve(packet.data)
+  else {
+    const result = packet.data
+    if (result?.status !== 'result' || result.result?.isError)
+      request.reject(new Error('unavailable'))
+    else {
+      try {
+        const content = result.result.content.find((item) => item.type === 'text')
+        request.resolve(JSON.parse(content.text))
+      } catch {
+        request.reject(new Error('invalid'))
+      }
+    }
+  }
 })
 function text(tag, value) {
   const node = document.createElement(tag)

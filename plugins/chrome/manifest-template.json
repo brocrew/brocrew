@@ -1,5 +1,5 @@
 {
-  "format": 2,
+  "format": 3,
   "id": "chrome",
   "version": "0.1.8",
   "sourceCommit": "2618dab1b1e3672bdddae5ed771a0ecf84e0002e",
@@ -9,224 +9,45 @@
       "cpu": "arm64"
     }
   ],
-  "hostApi": {
-    "major": 1,
-    "minMinor": 0,
-    "maxMinor": 0,
-    "requiredFeatures": ["contributions-v1", "shared-data-v1"]
-  },
-  "toolApi": {
-    "major": 1,
-    "minMinor": 0,
-    "maxMinor": 0,
-    "requiredFeatures": []
-  },
-  "uiApi": {
-    "major": 1,
-    "minMinor": 0,
-    "maxMinor": 0,
-    "requiredFeatures": []
-  },
-  "dataSchema": 1,
-  "files": [],
-  "server": {
-    "entry": "server.mjs",
-    "mcpPath": "/mcp",
-    "adminPath": "/v1"
-  },
-  "skills": [],
-  "serviceTemplates": [],
-  "ui": {
-    "entry": "ui/index.html",
-    "assets": [
-      {
-        "path": "ui/index.html",
-        "mime": "text/html"
-      },
-      {
-        "path": "ui/app.js",
-        "mime": "text/javascript"
-      },
-      {
-        "path": "ui/style.css",
-        "mime": "text/css"
-      }
-    ],
-    "methodSchemas": {
-      "read": {
-        "type": "object",
-        "properties": {
-          "surface": {
-            "type": "string",
-            "enum": ["chrome"],
-            "maxLength": 6
-          }
-        },
-        "required": ["surface"],
-        "additionalProperties": false
-      },
-      "subscribe": {
-        "type": "object",
-        "properties": {
-          "surface": {
-            "type": "string",
-            "enum": ["chrome"],
-            "maxLength": 6
-          }
-        },
-        "required": ["surface"],
-        "additionalProperties": false
-      },
-      "unsubscribe": {
-        "type": "object",
-        "properties": {
-          "subscriptionId": {
-            "type": "string",
-            "maxLength": 64
-          }
-        },
-        "required": ["subscriptionId"],
-        "additionalProperties": false
-      },
-      "proposeConfig": {
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "enum": [
-              "create-profile",
-              "set-enabled",
-              "open-window",
-              "delete-profile",
-              "helper-on",
-              "set-flags",
-              "rename-profile"
-            ],
-            "maxLength": 32
-          },
-          "profile": {
-            "type": "string",
-            "maxLength": 32
-          },
-          "newName": {
-            "type": "string",
-            "maxLength": 4096
-          },
-          "enabled": {
-            "type": "boolean"
-          },
-          "confirm": {
-            "type": "string",
-            "maxLength": 32
-          },
-          "deleteConfirmation": {
-            "type": "string",
-            "maxLength": 64
-          },
-          "allowExtensions": {
-            "type": "boolean"
-          },
-          "allowSync": {
-            "type": "boolean"
-          },
-          "allowSettings": {
-            "type": "boolean"
-          },
-          "keepRunning": {
-            "type": "boolean"
-          }
-        },
-        "required": ["action", "profile"],
-        "additionalProperties": false
-      }
-    },
-    "texts": [
-      {
-        "id": "title",
-        "text": "Chrome"
-      },
-      {
-        "id": "profile-name",
-        "text": "Profile name"
-      },
-      {
-        "id": "create-profile",
-        "text": "Create profile"
-      },
-      {
-        "id": "profiles",
-        "text": "Profiles"
-      },
-      {
-        "id": "open-tabs",
-        "text": "Open tabs"
-      },
-      {
-        "id": "enable",
-        "text": "Enable"
-      },
-      {
-        "id": "disable",
-        "text": "Disable"
-      },
-      {
-        "id": "needs-setup",
-        "text": "Needs setup"
-      },
-      {
-        "id": "running",
-        "text": "Running"
-      },
-      {
-        "id": "unavailable",
-        "text": "Plugin unavailable. Try again."
-      },
-      {
-        "id": "open-window",
-        "text": "Open window"
-      },
-      {
-        "id": "no-profiles",
-        "text": "No profiles yet. Create one to get started."
-      },
-      {
-        "id": "open",
-        "text": "Open"
-      },
-      {
-        "id": "closed",
-        "text": "Closed"
-      },
-      {
-        "id": "helper-off",
-        "text": "Helper off."
-      },
-      {
-        "id": "helper-on",
-        "text": "Turn on"
-      }
-    ]
-  },
-  "permissions": {
-    "description": "Uses your installed Google Chrome with its own separate profiles. Agents can read web pages and local files accessible to Chrome, use sites and save downloads in the plugin's private storage. You choose which profiles agents may use. Permanent profiles and their Chrome data are shared across your BroCrew workspaces. Choose which profiles agents may use. For now, all workspaces that use the default plugin folder share this choice.",
-    "resources": [
-      {
-        "id": "browser-profiles",
-        "label": "Enabled Chrome profiles",
-        "read": true,
-        "write": true
-      }
-    ]
-  },
-  "dataCompatibility": {
-    "minSchema": 1,
-    "maxSchema": 1
-  },
   "authors": ["brocrew"],
-  "executor": {
+  "name": "Chrome",
+  "description": "Chrome profiles and browser tools for BroCrew",
+  "permissions": {
+    "description": "Uses your installed Google Chrome with its own separate profiles. Agents can read web pages and local files accessible to Chrome, use sites and save downloads in the plugin's private storage. You choose which profiles agents may use. Permanent profiles and their Chrome data are shared across your BroCrew workspaces. Choose which profiles agents may use. For now, all workspaces that use the default plugin folder share this choice."
+  },
+  "files": [],
+  "runtime": {
     "kind": "node",
     "entry": "server.mjs"
   },
-  "hooks": [],
-  "sharedData": true
+  "mcp": {
+    "transport": "streamable-http",
+    "bootstrap": "ready-message"
+  },
+  "tools": {
+    "source": "mcp",
+    "inventory": "tools.json"
+  },
+  "settings": {
+    "page": {
+      "entry": "ui/index.html",
+      "assets": ["ui/index.html", "ui/app.js", "ui/style.css"]
+    }
+  },
+  "lifecycle": {
+    "stop": {
+      "signal": "SIGTERM",
+      "graceMs": 5000
+    },
+    "dataOnRemove": "keep"
+  },
+  "data": {
+    "schema": 1,
+    "compatibility": {
+      "minSchema": 1,
+      "maxSchema": 1
+    },
+    "migrateOnStart": true,
+    "rollback": "code-only; retained data is never restored from an older snapshot"
+  }
 }

@@ -67,7 +67,7 @@ export function createConfiguredProfileStore(config: AgentChromeConfig): Profile
     : createProfileStore({ home: config.home })
 }
 async function main(): Promise<void> {
-  const logger = createLogger('agent-chrome')
+  const logger = createLogger('brocrew-chrome')
   let running: RunningAgentChrome
   let browser: ChromeBrowser
   let config: AgentChromeConfig
@@ -90,13 +90,16 @@ async function main(): Promise<void> {
     )
     process.exit(1)
   }
-  if (process.connected)
-    process.send?.({
-      channel: 'brocrew-plugin-node:v1',
-      runId: process.env.BROCREW_PLUGIN_RUN_ID,
-      type: 'listening',
-      port: (running.httpServer.address() as { port: number }).port,
-    })
+  process.stdout.write(
+    JSON.stringify({
+      type: 'brocrew-plugin-ready',
+      api: 1,
+      mcp: {
+        url: `http://127.0.0.1:${(running.httpServer.address() as { port: number }).port}/mcp`,
+        headers: { Authorization: `Bearer ${config.token}` },
+      },
+    }) + '\n',
+  )
   const restoreFile = restoreFileOf(config.home)
   installShutdownSignals({
     closeAll: async () => {
@@ -132,3 +135,5 @@ export { startAgentChrome } from './app.js'
 export { loadConfig } from './config.js'
 export { createProfileStore } from './profiles/store.js'
 export { TabRegistry } from './tabs.js'
+
+export { chromeToolInventory } from './inventory.js'

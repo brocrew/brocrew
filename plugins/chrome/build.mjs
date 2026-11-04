@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { createHash } from 'node:crypto'
 import { build } from 'esbuild'
 
@@ -174,14 +174,18 @@ export async function buildChromePackage(
       2,
     ) + '\n',
   )
+  const { chromeToolInventory } = await import(pathToFileURL(path.join(payload, 'server.mjs')).href)
+  fs.writeFileSync(
+    path.join(payload, 'tools.json'),
+    JSON.stringify(chromeToolInventory(), null, 2) + '\n',
+  )
   const files = filesBelow(payload)
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest-template.json')))
   manifest.sourceCommit = sourceCommit
   manifest.platforms = [{ os: target.os, cpu: target.cpu }]
   manifest.files = files.map((file) => ({
     path: file.path,
-    type: 'file',
-    size: file.bytes.length,
+    bytes: file.bytes.length,
     sha256: digest(file.bytes),
   }))
   const manifestBytes = Buffer.from(JSON.stringify(manifest))
