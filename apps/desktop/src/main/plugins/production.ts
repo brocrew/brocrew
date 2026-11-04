@@ -495,6 +495,9 @@ export function productionPluginController() {
       if (workspace !== workspaceId || !connected?.host) return fail()
       const answer = await facade.host!.request({ kind: 'enabled', pluginId: id, enabled })
       if ('error' in answer) return fail()
+      const choice = answer.value as { enabled?: unknown; revision?: unknown } | undefined
+      if (typeof choice?.enabled !== 'boolean' || typeof choice.revision !== 'number') return fail()
+      return { enabled: choice.enabled, revision: choice.revision }
     },
     install: installSelected,
     update: updateSelected,

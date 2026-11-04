@@ -229,7 +229,7 @@ export class PluginLifecycleController {
     this.syncHostWorkspace(workspace)
     return {
       ...this.hostRegistry.snapshot(workspace.sink.workspaceId),
-      plugins: this.options.state.exportActivation().entries.map((install) => ({
+      plugins: this.options.state.currentInstallations().map((install) => ({
         pluginId: install.pluginId,
         name:
           this.packageNames.get(install.pluginId) ??
