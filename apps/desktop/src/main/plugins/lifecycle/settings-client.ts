@@ -52,7 +52,7 @@ export async function connectPluginSettings(options: {
     options.pinnedPublicKey,
     options.target,
     options.repoCatalogueSha256,
-    options.appVersion ?? '0.0.0',
+    options.appVersion ?? '',
   )
   const screens = new Map<
     string,
@@ -127,7 +127,7 @@ export async function connectPluginSettings(options: {
         : undefined
     const inspectOptions = {
       target: options.target,
-      appVersion: options.appVersion ?? '0.0.0',
+      appVersion: options.appVersion ?? '',
       signal: options.signal,
       ...(options.download && release
         ? {

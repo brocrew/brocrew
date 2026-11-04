@@ -28,7 +28,7 @@ export class PluginPackageVault {
     _key: KeyObject | null,
     private readonly target: PluginTarget,
     _repoCatalogueSha256?: string,
-    private readonly appVersion = '0.0.0',
+    private readonly appVersion = '',
   ) {}
   private async checked(directory: string, release: Readonly<VaultRelease>) {
     const names = (await readdir(directory)).sort()

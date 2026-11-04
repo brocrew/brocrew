@@ -118,7 +118,7 @@ export class PluginLifecycleController {
           options.pinnedPublicKey,
           options.target,
           options.repoCatalogueSha256,
-          options.appVersion ?? options.repoList?.appVersion ?? '0.0.0',
+          options.appVersion ?? options.repoList?.appVersion ?? '',
         ),
       )
       const catalogue = controller.catalogue() // Complete verification before retaining provenance.
@@ -557,7 +557,7 @@ export class PluginLifecycleController {
       ? { ...cached, ref }
       : await inspectPluginPackage(ref, {
           target: this.options.target,
-          appVersion: this.options.appVersion ?? this.options.repoList?.appVersion ?? '0.0.0',
+          appVersion: this.options.appVersion ?? this.options.repoList?.appVersion ?? '',
         })
     this.packageNames.set(selected.release.id, selected.package.contract.name)
     await this.vault.stage(

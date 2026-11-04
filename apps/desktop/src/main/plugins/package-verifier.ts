@@ -325,7 +325,7 @@ function catalogueVerifier(
               },
               {
                 target: target.data,
-                appVersion: options.appVersion ?? '0.0.0',
+                appVersion: options.appVersion ?? '',
                 apiSupport: support,
               },
             )

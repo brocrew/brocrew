@@ -183,13 +183,19 @@ export function pluginUnavailableNotice(reason?: PluginUnavailableReason): strin
 export function pluginUnavailableRetryable(reason?: PluginUnavailableReason): boolean {
   return reason !== 'unsupported'
 }
+const diagnosticText = (maximum: number) =>
+  z
+    .string()
+    .min(1)
+    .max(maximum)
+    .regex(/^[^\p{Cc}\p{Cs}\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]+$/u)
 export const PluginStartupDiagnosticSchema = z.strictObject({
   exitCode: z.number().int().min(-2147483648).max(4294967295).nullable(),
   signal: z
     .string()
     .regex(/^SIG[A-Z0-9]{1,16}$/)
     .nullable(),
-  stderr: disclosureText(512).nullable(),
+  stderr: diagnosticText(512).nullable(),
 })
 export type PluginStartupDiagnostic = z.infer<typeof PluginStartupDiagnosticSchema>
 export function pluginStartupDiagnosticNotice(diagnostic: PluginStartupDiagnostic): string {
