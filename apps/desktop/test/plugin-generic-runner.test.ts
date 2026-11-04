@@ -54,7 +54,7 @@ readline.createInterface({input:process.stdin}).on('line', async line => {
    return reply(packet.id,{content:[],structuredContent:{host:await result}});
   }
   if(args?.write) fs.writeFileSync(process.env.BROCREW_PLUGIN_DATA+'/opaque.bin',Buffer.from([0,255,3,4]));
-  return reply(packet.id,{content:[{type:'text',text:JSON.stringify(args)}],structuredContent:{arguments:args,argv:process.argv.slice(2),data:process.env.BROCREW_PLUGIN_DATA,shared:process.env.BROCREW_PLUGIN_SHARED,bootstrap:JSON.parse(process.env.BROCREW_PLUGIN_BOOTSTRAP),inherited:process.env.FICTIONAL_RUNNER_VALUE,home:process.env.HOME}});
+  return reply(packet.id,{content:[{type:'text',text:JSON.stringify(args)}],structuredContent:{arguments:args,argv:process.argv.slice(2),data:process.env.BROCREW_PLUGIN_DATA,shared:process.env.BROCREW_PLUGIN_SHARED,bootstrap:JSON.parse(process.env.BROCREW_PLUGIN_BOOTSTRAP),inherited:process.env.FICTIONAL_RUNNER_VALUE,home:process.env.HOME,ownerId:process.env.BROCREW_PLUGIN_OWNER_ID,ownerLabel:process.env.BROCREW_PLUGIN_OWNER_LABEL}});
  }
 });
 `
@@ -76,6 +76,7 @@ process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
 function fixture(
   options: {
     id?: string
+    version?: string
     source?: string
     process?: boolean
     http?: boolean
@@ -97,7 +98,7 @@ function fixture(
   const manifest = {
     format: 3,
     id: options.id ?? 'fictional-orchard',
-    version: '1.0.0',
+    version: options.version ?? '1.0.0',
     name: 'Fictional orchard',
     description: 'Fictional process fixture',
     authors: ['Fictional Gardener'],
@@ -324,6 +325,88 @@ ${stdioSource}`
     await expect(readFile(data)).rejects.toMatchObject({ code: 'ENOENT' })
     expect((await (await neighbor.ready()).client!.listTools()).tools).toHaveLength(1)
     await controller.drain()
+  })
+  it('passes actual installation legacy paths through controller and runner bootstrap unchanged across update', async () => {
+    const f = await lifecycleFixture()
+    const appData = join(f.parent, 'fictional-app-data')
+    await mkdir(appData)
+    const priorOwner = {
+      ownerId: '0c6462db-745c-405e-a826-3bc49852cdad',
+      ownerLabel: 'Fictional legacy workspaces',
+    }
+    const { host } = await context({
+      root: join(f.root, 'host'),
+      sharedDataOwner: { appData, ...priorOwner },
+    })
+    const runs: Awaited<ReturnType<typeof host.start>>[] = []
+    const controller = await PluginLifecycleController.open({
+      ...f.opts,
+      runtime: {
+        ...f.opts.runtime,
+        async start(spec) {
+          const run = await host.start(spec)
+          runs.push(run)
+          return {
+            runId: run.runId,
+            ready: run.ready,
+            exited: run.exited.then((result) => {
+              if (!result.exited) throw new Error('fictional stop failure')
+            }),
+            async stop() {
+              if (!(await run.stop()).exited) throw new Error('fictional stop failure')
+            },
+          }
+        },
+        removeCode: (id, digest) => host.removePackage(id, digest),
+        removeData: (id) => host.removeData(id),
+      },
+    })
+    const handle = await controller.attach(f.local.sink)
+    const install = async (version: string, action: 'install' | 'update') => {
+      const spec = fixture({ version })
+      const path = join(f.parent, 'fictional-' + version + '.tar')
+      await writeFile(path, spec.archive)
+      await controller.installPackage(
+        handle,
+        { source: path, sha256: spec.releaseDigest, bytes: spec.archive.length },
+        action,
+      )
+    }
+    try {
+      await install('1.0.0', 'install')
+      const installId = f.state.exportActivation().entries[0]!.installId
+      const legacyConfiguration = {
+        directory: join(f.root, 'profile-apply', pluginSha256(Buffer.from(installId))),
+        floor: join(f.root, 'profile-apply', installId + '.floor'),
+      }
+      const echo = async () =>
+        (
+          await (
+            await runs.at(-1)!.ready()
+          ).client!.callTool({ name: 'orchard.echo', arguments: {} })
+        ).structuredContent
+      expect(await echo()).toMatchObject({
+        ...priorOwner,
+        bootstrap: { legacyConfiguration, priorOwner },
+      })
+      await expect(readFile(legacyConfiguration.floor)).rejects.toMatchObject({ code: 'ENOENT' })
+      await expect(readdir(legacyConfiguration.directory)).rejects.toMatchObject({ code: 'ENOENT' })
+      await mkdir(legacyConfiguration.directory, { recursive: true })
+      const sentinel = join(legacyConfiguration.directory, 'fictional-consumed.json')
+      const bytes = Buffer.from('fictional opaque consumed-boundary\u0000not an app parser input')
+      await writeFile(sentinel, bytes)
+      await writeFile(legacyConfiguration.floor, 'fictional opaque floor')
+      await install('2.0.0', 'update')
+      expect(f.state.exportActivation().entries[0]!.installId).toBe(installId)
+      expect(await echo()).toMatchObject({
+        ...priorOwner,
+        bootstrap: { legacyConfiguration, priorOwner, previousVersion: '1.0.0' },
+      })
+      expect(await readFile(sentinel)).toEqual(bytes)
+      expect(await readFile(legacyConfiguration.floor, 'utf8')).toBe('fictional opaque floor')
+    } finally {
+      await controller.drain()
+    }
   })
   it('starts an unknown Node package over stdio and preserves arguments and ordinary environment', async () => {
     vi.stubEnv('FICTIONAL_RUNNER_VALUE', 'inherited fictional value')
