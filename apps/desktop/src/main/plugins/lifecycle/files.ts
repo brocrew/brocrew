@@ -16,12 +16,14 @@ import { PluginSupervisorError } from '../supervisor/protocol'
 export const Effect = z.strictObject({
   format: z.literal(1),
   operationId: z.uuid(),
-  pluginId: z.string().regex(/^[a-z][a-z0-9-]{0,63}$/),
+  pluginId: z.string(),
   installId: z.uuid(),
   action: z.enum(['install', 'update', 'uninstall']),
   phase: z.enum(['prepared', 'committed', 'aborted']),
   offlineCleanup: z.boolean(),
   compensates: z.uuid().nullable(),
+  previousVersion: z.string().optional(),
+  previousDataSchema: z.number().int().nonnegative().safe().optional(),
 })
 export type Effect = z.infer<typeof Effect>
 const refuse = (): never => {
@@ -42,8 +44,7 @@ export class LifecycleEffects {
         constants.O_RDONLY | constants.O_NONBLOCK,
       )
       const stat = await handle.stat()
-      if (!stat.isFile() || stat.nlink !== 1 || !isPrivateEntry(stat) || stat.size > 128 * 1024)
-        return refuse()
+      if (!stat.isFile() || stat.nlink !== 1 || !isPrivateEntry(stat)) return refuse()
       return decodeState(await handle.readFile(), Effect)
     } catch (error) {
       if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return null

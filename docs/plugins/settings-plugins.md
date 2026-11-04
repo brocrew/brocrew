@@ -6,15 +6,21 @@ shipped registration has no controller until slices 9–10 attach one, so it
 exposes no fictional catalogue or broken tab. Direct calls without a controller
 return the approved unavailable words. Test and look fixtures inject fakes.
 
-`registerPluginSettings` accepts the person-owned lifecycle controller. It bounds
-and validates catalogue cards, checks the owning main frame, selects only a
-catalogue ID, and invokes install/uninstall seams. Configure asks that controller
-for the verified package and authenticated own-peer binding, then opens the 12a
-host as a native child view at the measured Settings placeholder. Bounds must fit
-the owning window. Changing screens, navigation, renderer loss and window close
-revoke its generation and tear it down; Configure captures admission before the catalogue await, so delayed catalogue or peer reads cannot attach after close. Each opening has a bounded random screen ID; destruction notifications carry only that ID, so an old screen cannot clear a newer screen’s renderer state.
-Uninstall closes its view before invoking the lifecycle seam. The controller is
-responsible for global uninstall revocation and journal/consent in slices 9–10.
+`registerPluginSettings` checks the owning main frame and accepts list selection,
+package inspection and ordinary install/update actions. A package URL or local
+path can be selected directly; details show its authors and permissions before
+Install or Update. The selected byte reference travels through the preload and
+person-control protocol without a preparation token or a shared source list.
+The [production source contract](../contracts/plugin-production.md) describes
+references, list formats and offline archives.
+
+Configure asks the controller for its verified package and current own-peer
+binding, then opens the host as a native child view at the measured Settings
+placeholder. Bounds must fit the owning window. Changing screens, navigation,
+renderer loss and window close revoke its generation and tear it down. Delayed
+reads cannot attach a screen after close. Each opening has its own screen ID,
+so an old screen's destruction cannot clear a newer screen's renderer state.
+Uninstall closes the view and invokes the separate global lifecycle operation.
 
 The package page proposes actions through the existing host, never committing
 configuration itself. The controller's BroCrew-owned proposal callback remains

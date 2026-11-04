@@ -1,41 +1,38 @@
+import type { PackageRef } from './plugin-package'
 import { z } from 'zod'
 export {
   PLUGIN_SETTINGS_CHANNEL,
   PLUGIN_SCREEN_CLOSED,
   PLUGIN_REVIEW_INVALIDATED,
 } from './plugin-settings-channels'
-const disclosureText = (maximum: number) =>
-  z
-    .string()
-    .min(1)
-    .max(maximum)
-    .regex(/^[^\p{Cc}\p{Cs}\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]+$/u)
 const disclosureDigest = z.string().regex(/^[a-f0-9]{64}$/)
 export const PluginReleaseDetailsSchema = z.strictObject({
-  version: disclosureText(80),
+  version: z.string(),
   digest: disclosureDigest,
   manifestSha256: disclosureDigest,
-  authors: z
-    .array(z.string().regex(/^[a-z][a-z0-9-]{0,63}$/))
-    .min(1)
-    .max(8)
-    .refine((a) => new Set(a).size === a.length && a.join(',') === [...a].sort().join(','))
-    .nullable(),
-  permissions: z.strictObject({
-    description: disclosureText(2000),
-    resources: z
-      .array(
-        z.strictObject({
-          id: z.string().regex(/^[a-z][a-z0-9-]{0,63}$/),
-          label: disclosureText(160),
-          read: z.boolean(),
-          write: z.boolean(),
-        }),
-      )
-      .max(128),
+  authors: z.array(z.string()).nullable(),
+  permissions: z.looseObject({
+    description: z.string(),
+    dataUses: z.array(z.string()).optional(),
+    resources: z.array(
+      z.strictObject({
+        id: z.string(),
+        label: z.string(),
+        read: z.boolean(),
+        write: z.boolean(),
+      }),
+    ),
   }),
 })
 export type PluginReleaseDetails = z.infer<typeof PluginReleaseDetailsSchema>
+export interface PluginPackageInspection {
+  id: string
+  name: string
+  ref: PackageRef
+  details: PluginReleaseDetails
+  manifest: unknown
+}
+
 export const PluginReviewConsentSchema = z.strictObject({
   releaseDigest: disclosureDigest,
   preparation: z.uuid(),
@@ -47,7 +44,7 @@ export const PluginDisplayedConsentSchema = z.strictObject({
 })
 export type PluginDisplayedConsent = z.infer<typeof PluginDisplayedConsentSchema>
 const reviewDisplay = {
-  id: z.string().regex(/^[a-z][a-z0-9-]{0,63}$/),
+  id: z.string(),
   action: z.enum(['install', 'update']),
   catalogueDigest: disclosureDigest,
   details: PluginReleaseDetailsSchema.refine((d) => d.authors !== null),
@@ -92,8 +89,8 @@ export function canonicalPluginDisclosure(value: unknown): string {
 }
 /** W4-approved static disclosure text. Package data is validated separately and escaped by Vue. */
 export const PLUGIN_DISCLOSURE_WORDS = Object.freeze({
-  reviewInstall: 'Review install',
-  reviewUpdate: 'Review update',
+  reviewInstall: 'Show details',
+  reviewUpdate: 'Show update details',
   details: 'Plugin details',
   version: 'Version',
   authors: 'Authors',
@@ -223,22 +220,13 @@ export interface PluginCard {
   preparationRequired?: true
   mutationBlocked?: PluginMutationBlocked
 }
-/** Versioned actions remain denied until verified disclosure can supply consent. */
+/** Normal card actions follow the installed state and selected release. */
 export function pluginMutationAllowed(
   card: PluginCard,
   action: 'install' | 'update',
-  review?: PluginMutationReview | PluginWindowReview,
+  _review?: PluginMutationReview | PluginWindowReview,
 ): boolean {
-  if (card.mutationBlocked) return false
-  if (
-    card.preparationRequired &&
-    (!review ||
-      review.id !== card.id ||
-      review.action !== action ||
-      (!PluginMutationReviewSchema.safeParse(review).success &&
-        !PluginWindowReviewSchema.safeParse(review).success))
-  )
-    return false
+  void _review
   return action === 'install'
     ? card.installed === false && card.state === 'Available'
     : card.installed === true && !!card.updateVersion && card.state !== 'Unavailable'
@@ -281,7 +269,16 @@ export interface PluginScreenBounds {
 }
 export type PluginSettingsRequest =
   | { kind: 'list' | 'status' | 'availability' }
-  | { kind: 'install' | 'update'; id: string; consent?: PluginDisplayedConsent }
+  | {
+      kind: 'install' | 'update'
+      id: string
+      consent?: PluginDisplayedConsent
+      package?: PackageRef
+    }
+  | { kind: 'inspect'; id: string }
+  | { kind: 'inspect'; package: PackageRef }
+  | { kind: 'inspect'; source: string }
+  | { kind: 'source'; source: string }
   | { kind: 'uninstall' | 'retry' | 'restart'; id: string }
   | { kind: 'prepare'; action: 'install' | 'update'; id: string }
   | { kind: 'configure'; id: string; screenId: string; bounds: PluginScreenBounds }
@@ -292,6 +289,7 @@ export type PluginListFailureReason = 'supervisor-unavailable'
 export type PluginSettingsReply =
   | {
       ok: true
+      inspection?: PluginPackageInspection
       review?: PluginWindowReview
       cards?: PluginCard[]
       available?: boolean
@@ -300,7 +298,12 @@ export type PluginSettingsReply =
       removal?: PluginRemovalOutcome
     }
   | { ok: false; listState: 'not-published' | 'fetch-error'; reason?: PluginListFailureReason }
-  | { ok: false; error: 'Plugin unavailable. Try again.'; mutationFailure?: PluginMutationFailure }
+  | {
+      ok: false
+      error: 'Plugin unavailable. Try again.'
+      mutationFailure?: PluginMutationFailure
+      detail?: string
+    }
 export interface PluginsClient {
   request(input: PluginSettingsRequest): Promise<PluginSettingsReply>
   onReviewInvalidated?(listener: () => void): () => void

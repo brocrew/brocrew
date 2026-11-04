@@ -1,3 +1,7 @@
+import type { PluginInterface, PluginPackageCard } from '../../shared/plugin-contract'
+import { PackageRefSchema, type PackageRef } from '../../shared/plugin-package'
+import type { AnyPluginManifest } from './package-schema'
+import type { PluginMutationConsent } from '../../shared/plugin-settings'
 import {
   PluginStartupError,
   pluginStartupReason,
@@ -6,7 +10,6 @@ import {
 } from './startup-failure'
 import { pluginAdapter } from './lifecycle/adapters'
 import { join } from 'node:path'
-import { lstat } from 'node:fs/promises'
 import { PluginListError } from './catalogue/list-error'
 import { GlobalPluginState } from './state/store'
 import type { PluginSettingsController } from './settings'
@@ -30,6 +33,7 @@ import type { SharedDataOwner } from './shared-data'
 
 /** Stable Settings/discovery facade. Repo fetch and plugin startup never block normal agents. */
 export function productionPluginController() {
+  let discoveryError: PluginListError | undefined
   let failure: PluginUnavailableReason = 'service-start'
   let startupDiagnostic: PluginStartupDiagnostic | undefined
   let diagnosticRoot: string | undefined
@@ -139,8 +143,8 @@ export function productionPluginController() {
   let catalogueLoadedAt: number | undefined
   let startupCatalogueVerifiedAt: number | undefined
   let firstSettingsList = true
-  let frozenCatalogue: typeof catalogueEntries | undefined
   let sourceVersion: 1 | 2 = 1
+  let selectedCatalogueSource: string | undefined
   const fail = (): never => {
     throw new PluginSupervisorError('unavailable')
   }
@@ -237,9 +241,19 @@ export function productionPluginController() {
       }
       // Installed cards come from the authenticated owner, independently of today's offers.
       let hints: PluginCard[] | undefined
+      const legacyInstalled = admittedCards.some(
+        (card) => !card.installed && card.state === 'Unavailable',
+      )
+        ? (observeInstallations()?.installed ?? [])
+        : []
       const offered =
         !connection.refreshCatalogue || refreshFailed
-          ? admittedCards
+          ? admittedCards.filter(
+              (card) =>
+                card.installed ||
+                releases.some((release) => release.id === card.id) ||
+                (card.state === 'Unavailable' && legacyInstalled.includes(card.id)),
+            )
           : [
               ...catalogueEntries.entries.filter((entry) =>
                 releases.some((release) => release.id === entry.id),
@@ -315,10 +329,7 @@ export function productionPluginController() {
         )
       }
       const reuseStartup =
-        firstSettingsList &&
-        startupStillFresh() &&
-        !refreshFailed &&
-        (catalogueEntries.format !== 2 || connected.mutationStatus?.() === null)
+        firstSettingsList && !discoveryError && startupStillFresh() && !refreshFailed
       if (refreshList) firstSettingsList = false
       if (refreshList && !reuseStartup) {
         refreshFailed = false
@@ -326,12 +337,11 @@ export function productionPluginController() {
         if (loadCatalogue && connection.refreshCatalogue) {
           try {
             const next = await loadCatalogue()
-            if (next.format === 2)
-              await connection.refreshCatalogue(next.sha256, {
-                bytes: next.bytes,
-                signature: new Uint8Array(),
-              })
-            else await connection.refreshCatalogue(next.sha256)
+            if (next.discoveryError) throw next.discoveryError
+            await connection.refreshCatalogue(next.sha256, {
+              bytes: next.bytes,
+              signature: new Uint8Array(),
+            })
             if (ended || connected !== connection) return fail()
             catalogueEntries = next
             names = Object.fromEntries(next.entries.map((one) => [one.id, one.name]))
@@ -343,11 +353,12 @@ export function productionPluginController() {
       }
       const cards = (await update())!
       if (
-        refreshList &&
-        reuseStartup &&
-        (!startupStillFresh() ||
-          (catalogueEntries.format === 2 && connected?.mutationStatus?.() !== null))
-      ) {
+        discoveryError &&
+        !catalogueEntries.releases.length &&
+        !cards.some((card) => card.installed)
+      )
+        throw discoveryError
+      if (refreshList && reuseStartup && !startupStillFresh()) {
         // The authenticated read can outlast freshness or invalidate source status. The allowance is
         // already consumed, so this takes the normal refresh/failure path exactly once.
         return await catalogue(true)
@@ -359,7 +370,98 @@ export function productionPluginController() {
       return unavailableCards()
     }
   }
-  const facade: PluginSettingsController & PluginInstructionSource = {
+  type SourceInterface = Pick<
+    PluginInterface<AnyPluginManifest>,
+    'list' | 'inspect' | 'install' | 'update'
+  >
+  async function installSelected(
+    ref: PackageRef,
+  ): Promise<{ pluginId: string; version: string; state: string }>
+  async function installSelected(id: string, consent?: PluginMutationConsent): Promise<void>
+  async function installSelected(
+    input: PackageRef | string,
+    consent?: PluginMutationConsent,
+  ): Promise<void | { pluginId: string; version: string; state: string }> {
+    const connection = current()
+    if (typeof input === 'string') {
+      if (!catalogueEntries.releases.some((release) => release.id === input))
+        throw new Error('No package is selected for this plugin.')
+      if (consent) await connection.install(input, consent)
+      else await connection.install(input)
+      await update()
+      return
+    }
+    if (!connection.inspectPackage || !connection.applyPackage) return fail()
+    const inspected = await connection.inspectPackage(input)
+    await connection.applyPackage(input, 'install')
+    const cards = await update()
+    return {
+      pluginId: inspected.id,
+      version: inspected.details.version,
+      state: cards?.find((card) => card.id === inspected.id)?.state ?? 'Installed',
+    }
+  }
+  async function updateSelected(
+    id: string,
+    ref: PackageRef,
+  ): Promise<{ version: string; state: string }>
+  async function updateSelected(id: string, consent?: PluginMutationConsent): Promise<void>
+  async function updateSelected(
+    id: string,
+    selection?: PackageRef | PluginMutationConsent,
+  ): Promise<void | { version: string; state: string }> {
+    const connection = current()
+    if (selection && typeof selection === 'object' && 'source' in selection)
+      PackageRefSchema.parse(selection)
+    const parsed = PackageRefSchema.safeParse(selection)
+    if (!parsed.success) {
+      if (!connection.update) return fail()
+      if (!catalogueEntries.releases.some((release) => release.id === id))
+        throw new Error('No update package is selected for this plugin.')
+      if (selection) await connection.update(id, selection as PluginMutationConsent)
+      else await connection.update(id)
+      await update()
+      return
+    }
+    if (!connection.inspectPackage || !connection.applyPackage) return fail()
+    const inspected = await connection.inspectPackage(parsed.data)
+    if (inspected.id !== id) throw new Error('The selected update belongs to a different plugin.')
+    await connection.applyPackage(parsed.data, 'update')
+    const cards = await update()
+    return {
+      version: inspected.details.version,
+      state: cards?.find((card) => card.id === id)?.state ?? 'Installed',
+    }
+  }
+  const facade: PluginSettingsController & PluginInstructionSource & SourceInterface = {
+    install: installSelected,
+    update: updateSelected,
+    async list(source) {
+      const cards = source ? await facade.selectCatalogue!(source) : await facade.catalogue()
+      return Promise.all(
+        cards.map(async (card): Promise<PluginPackageCard> => {
+          const inspected = await facade.inspectPackage!(card.id)
+          return {
+            id: card.id,
+            name: inspected.name,
+            version: inspected.details.version,
+            authors: inspected.details.authors ?? [],
+            permissions: inspected.details.permissions,
+            installed: card.installed === true,
+            state: card.state,
+          }
+        }),
+      )
+    },
+    async inspect(ref) {
+      const inspected = await facade.inspectPackage!(ref)
+      return {
+        manifest: inspected.manifest as AnyPluginManifest,
+        authors: inspected.details.authors ?? [],
+        permissions: inspected.details.permissions,
+        intact: true,
+      }
+    },
     onReviewInvalidated(listener) {
       reviewListeners.add(listener)
       return () => {
@@ -368,6 +470,39 @@ export function productionPluginController() {
     },
     cancelPreparations() {
       connected?.cancelPreparations?.()
+    },
+    async selectCatalogue(source) {
+      if (!loadCatalogue) return fail()
+      const previous = selectedCatalogueSource
+      selectedCatalogueSource = source
+      try {
+        const next = await loadCatalogue()
+        await current().refreshCatalogue?.(next.sha256, {
+          bytes: next.bytes,
+          signature: Buffer.alloc(0),
+        })
+        discoveryError = next.discoveryError
+        refreshFailed = Boolean(discoveryError)
+        catalogueEntries = next
+        names = Object.fromEntries(next.entries.map((entry) => [entry.id, entry.name]))
+        return (await update()) ?? []
+      } catch (error) {
+        selectedCatalogueSource = previous
+        throw error
+      }
+    },
+    async inspectPackage(input) {
+      const connection = current()
+      if (!connection.inspectPackage) return fail()
+      return connection.inspectPackage(input)
+    },
+    async applyPackage(ref, action) {
+      if (action === 'install') {
+        await installSelected(ref)
+        return
+      }
+      const inspected = await facade.inspectPackage!(ref)
+      await updateSelected(inspected.id, ref)
     },
     async reviewMutation(action, id) {
       const connection = current()
@@ -425,25 +560,6 @@ export function productionPluginController() {
       const connection = current()
       if (!connection.restartPlugin) return fail()
       await connection.restartPlugin(pluginId)
-      await update()
-    },
-    async update(id, consent) {
-      const connection = current()
-      if (catalogueEntries?.format === 2 || connection.mutationRequired?.()) {
-        if (!consent?.displayedDetailsHash) throw new PluginSupervisorError('policy-refused')
-      } else if (consent) return fail()
-      if (!connection.update || !catalogueEntries?.releases.some((release) => release.id === id))
-        return fail()
-      await (consent ? connection.update(id, consent) : connection.update(id))
-      await update()
-    },
-    async install(id, consent) {
-      const connection = current()
-      if (catalogueEntries?.format === 2 || connection.mutationRequired?.()) {
-        if (!consent?.displayedDetailsHash) throw new PluginSupervisorError('policy-refused')
-      } else if (consent) return fail()
-      if (!catalogueEntries?.releases.some((release) => release.id === id)) return fail()
-      await (consent ? connection.install(id, consent) : connection.install(id))
       await update()
     },
     async uninstall(id) {
@@ -504,14 +620,17 @@ export function productionPluginController() {
               target: options.target ?? thisMachine(),
               signal: lifetime.signal,
               sourceVersion,
+              offlineEmpty: !selectedCatalogueSource,
+              source: selectedCatalogueSource,
             })
+            discoveryError = next.discoveryError
+            refreshFailed = Boolean(discoveryError)
             catalogueLoadedAt = performance.now()
             return next
           }
           if (!catalogueEntries || !options.supervisor.holdsLease()) {
             try {
               catalogueEntries = await loadCatalogue()
-              if (sourceVersion === 1) frozenCatalogue = catalogueEntries
               listFailure = undefined
             } catch (error) {
               failed('catalogue', error)
@@ -533,18 +652,6 @@ export function productionPluginController() {
               tools: 'none',
               service: null,
             }))
-          if (!catalogueEntries.releases.length) {
-            const existing = await lstat(join(options.root, 'state')).then(
-              (stat) => stat.isDirectory(),
-              (error: NodeJS.ErrnoException) => {
-                if (error.code === 'ENOENT') return false
-                throw error
-              },
-            )
-            if (!existing) return false
-            const saved = observeInstallations()
-            if (saved && saved.installed.length === 0 && saved.pending === null) return false
-          }
           phase = 'storage'
           const personKey = await pluginPersonCapability(options.root)
           storage.check()
@@ -566,8 +673,8 @@ export function productionPluginController() {
                       target: options.target ?? thisMachine(),
                       signal: lifetime.signal,
                       sourceVersion: 2,
+                      offlineEmpty: true,
                     })
-                    if (!frozenCatalogue) return fail()
                     return {
                       source: 'repo-list',
                       sourceVersion: 2,
@@ -575,7 +682,6 @@ export function productionPluginController() {
                       catalogue: next.catalogue,
                       catalogueSha256: next.sha256,
                       repoList: next.repoList,
-                      legacyRepoList: frozenCatalogue.repoList,
                       personKey,
                       names: Object.fromEntries(
                         next.entries.map((entry) => [entry.id, entry.name]),

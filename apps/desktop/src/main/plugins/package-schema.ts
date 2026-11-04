@@ -45,26 +45,14 @@ const api = z
   })
   .refine((value) => value.minMinor <= value.maxMinor)
 export type PluginApiRange = z.infer<typeof api>
-const https = z
-  .string()
-  .max(2048)
-  .refine((value) => {
-    try {
-      const url = new URL(value)
-      return (
-        url.protocol === 'https:' && url.username === '' && url.password === '' && url.hash === ''
-      )
-    } catch {
-      return false
-    }
-  })
+const packageSource = z.string().min(1)
 const release = z.strictObject({
   id: SkillName,
   version,
-  sourceCommit: commit,
+  sourceCommit: z.string().optional(),
   platforms,
   archive: z.strictObject({
-    url: https,
+    url: packageSource,
     size: integer.min(1).max(PLUGIN_LIMITS.archiveBytes),
     sha256: SkillDigest,
     compression: z.enum(['tar', 'tar.gz']),
@@ -95,6 +83,22 @@ const versionedCatalogue = z.strictObject({
   format: z.literal(2),
   entries: z.array(versionedRelease).max(PLUGIN_LIMITS.catalogueEntries),
 })
+const genericRelease = z.looseObject({
+  id: z.string().min(1),
+  version: z.string().min(1),
+  sourceCommit: z.string().optional(),
+  platforms: z.array(PluginTarget).min(1),
+  authors: z.array(z.string()).optional(),
+  description: z.string().optional(),
+  archive: z.object({
+    url: z.string().min(1),
+    size: integer,
+    sha256: SkillDigest,
+    compression: z.enum(['tar', 'tar.gz']),
+  }),
+  manifestSha256: SkillDigest,
+})
+const genericCatalogue = z.object({ format: z.literal(3), entries: z.array(genericRelease) })
 export type PluginRelease = z.infer<typeof release> & { authors?: string[]; legacy?: true }
 
 const file = z.strictObject({
@@ -278,9 +282,18 @@ function schemaRules(root: PluginValueSchema): void {
 }
 
 export function parsePluginCatalogue(bytes: Uint8Array): PluginRelease[] {
-  const parsed = z
-    .union([catalogue, versionedCatalogue])
-    .safeParse(strictPluginJson(bytes, PLUGIN_LIMITS.catalogueBytes))
+  let input: unknown
+  try {
+    input = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes))
+  } catch {
+    refusePlugin('invalid')
+  }
+  const parsed =
+    (input as { format?: number })?.format === 3
+      ? genericCatalogue.safeParse(input)
+      : z
+          .union([catalogue, versionedCatalogue])
+          .safeParse(strictPluginJson(bytes, PLUGIN_LIMITS.catalogueBytes))
   if (!parsed.success) refusePlugin('invalid')
   if (
     parsed.data.format === 2 &&
@@ -294,6 +307,18 @@ export function parsePluginCatalogue(bytes: Uint8Array): PluginRelease[] {
 }
 
 export function parsePluginManifest(bytes: Uint8Array): AnyPluginManifest {
+  // Format 3 is an ordinary JSON manifest; legacy schemas retain their exact decoder.
+  let generic: unknown
+  try {
+    generic = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes))
+  } catch {
+    refusePlugin('invalid')
+  }
+  if ((generic as { format?: unknown } | null)?.format === 3) {
+    const result = GenericPluginManifestSchema.safeParse(generic)
+    if (!result.success) refusePlugin('invalid')
+    return result.data
+  }
   const parsed = z
     .union([manifest, versionedManifest, GenericPluginManifestSchema])
     .safeParse(strictPluginJson(bytes, PLUGIN_LIMITS.manifestBytes))

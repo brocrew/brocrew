@@ -75,18 +75,6 @@ export function planOperation(
     if (state.projections.size + additions > STATE_LIMITS.projections) refuseState('limit')
   }
   if (consent.expectedSequence !== state.sequence) refuseState('conflict')
-  if (consent.release !== null) {
-    for (const { operation } of state.operations.values()) {
-      const prior = operation.request.consent
-      if (
-        prior.pluginId === consent.pluginId &&
-        prior.release?.version === consent.release.version &&
-        (prior.release.archiveSha256 !== consent.release.archiveSha256 ||
-          prior.release.manifestSha256 !== consent.release.manifestSha256)
-      )
-        refuseState('conflict')
-    }
-  }
   let next: Installation | null = null
   if (consent.action === 'global-restore') {
     if (
@@ -133,11 +121,7 @@ export function planOperation(
         next = { ...before, lifecycleSequence: sequence, phase: 'removed' }
       } else {
         if (!state.admitted.has(consent.pluginId)) refuseState('conflict')
-        if (
-          consent.release === null ||
-          !Number.isSafeInteger(before.releaseRevision + 1) ||
-          consent.release.dataSchema !== before.release.dataSchema
-        )
+        if (consent.release === null || !Number.isSafeInteger(before.releaseRevision + 1))
           refuseState('conflict')
         next = {
           ...before,

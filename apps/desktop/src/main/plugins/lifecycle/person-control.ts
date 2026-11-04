@@ -1,56 +1,41 @@
+import { PackageRefSchema } from '../../../shared/plugin-package'
 import { PLUGIN_FRAMEWORK_FEATURES } from '../hooks/definitions'
 import { PluginProposal } from './proposals'
 import { createServer, createConnection, type Socket } from 'node:net'
 import { chmod, lstat, unlink } from 'node:fs/promises'
-import { randomBytes, randomUUID } from 'node:crypto'
+import { randomBytes } from 'node:crypto'
 import { join } from 'node:path'
 import { isSocketFile, localEndpoint } from '../local-endpoint'
 import { z } from 'zod'
 import { privateChild } from '../node-host-files'
 import { PluginSupervisorError, Hex } from '../supervisor/protocol'
 import { PersonChannel } from './transport'
-import type { PluginLifecycleController, PreparedPluginMutation } from './controller'
+import type { PluginLifecycleController } from './controller'
 import type { LifecycleWorkspace } from './types'
 import { ProjectionReceipt } from '../state/format'
 
-const id = z.string().regex(/^[a-z][a-z0-9-]{0,63}$/)
+const id = z.string()
 const Request = z.discriminatedUnion('kind', [
   z.strictObject({
     kind: z.literal('attach'),
     workspaceId: z.uuid(),
     catalogueDigest: Hex.optional(),
   }),
+  z.strictObject({
+    kind: z.literal('package-install'),
+    action: z.enum(['install', 'update']),
+    package: PackageRefSchema,
+    operationId: z.uuid(),
+  }),
   z.strictObject({ kind: z.literal('list') }),
   z.strictObject({ kind: z.literal('list-v2') }),
   z.strictObject({ kind: z.literal('list-tool-health') }),
   z.strictObject({ kind: z.literal('features') }),
   z.strictObject({ kind: z.literal('restart-plugin'), pluginId: id }),
-  z.strictObject({ kind: z.literal('mutation-policy'), catalogueDigest: Hex }),
-  z.strictObject({ kind: z.literal('mutation-status'), catalogueDigest: Hex }),
-  z.strictObject({
-    kind: z.literal('prepare-mutation'),
-    action: z.enum(['install', 'update']),
-    pluginId: id,
-    releaseDigest: Hex,
-  }),
-  z.strictObject({
-    kind: z.literal('update-prepared'),
-    pluginId: id,
-    operationId: z.uuid(),
-    releaseDigest: Hex,
-    preparation: z.uuid(),
-  }),
   z.strictObject({ kind: z.literal('configure-ledger'), format: z.literal(2) }),
   z.strictObject({ kind: z.literal('refresh'), catalogueDigest: Hex }),
   z.strictObject({ kind: z.literal('update'), pluginId: id, operationId: z.uuid() }),
   z.strictObject({ kind: z.literal('install'), pluginId: id, operationId: z.uuid() }),
-  z.strictObject({
-    kind: z.literal('install-prepared'),
-    preparation: z.uuid(),
-    pluginId: id,
-    operationId: z.uuid(),
-    releaseDigest: Hex,
-  }),
   z.strictObject({ kind: z.literal('uninstall'), pluginId: id, operationId: z.uuid() }),
   z.strictObject({ kind: z.literal('screen'), pluginId: id }),
   z.strictObject({ kind: z.literal('read'), pluginId: id, installId: z.uuid() }),
@@ -108,9 +93,6 @@ export async function servePersonPluginControl(options: {
       lost: boolean
       failed: boolean
       ledgerV2?: boolean
-      mutationSource?: string
-      preparations: Map<string, PreparedPluginMutation & { expiresAt: number }>
-      legacyIds?: readonly string[]
       detaching?: Promise<void>
     }>()
   let closing = false
@@ -158,17 +140,11 @@ export async function servePersonPluginControl(options: {
           if (session.handle || session.attaching || session.lost || session.failed)
             throw new PluginSupervisorError('unavailable')
           // Snapshot actual source provenance, never today's IDs or caller-supplied metadata.
-          session.legacyIds =
-            request.catalogueDigest === undefined
-              ? undefined
-              : options.controller.legacyCatalogueIds(request.catalogueDigest)
           clearTimeout(authentication)
           session.attaching = true
           // A closed channel was this consumer's only route to its plugins, so the consumer ended
           // with it: every notice to it holds, and a lost session detaches without its answer.
           const tell = async (command: z.infer<typeof ConsumerCommand>): Promise<unknown> => {
-            const id = command.kind === 'reconcile' ? command.change.pluginId : command.pluginId
-            if (session.legacyIds && !session.legacyIds.includes(id)) return true
             if (!channel.open) return true
             try {
               return await channel.call(command)
@@ -213,124 +189,57 @@ export async function servePersonPluginControl(options: {
         }
         if (!session.handle || session.failed) throw new PluginSupervisorError('unavailable')
         const handle = session.handle
-        if (
-          'pluginId' in request &&
-          session.legacyIds &&
-          !session.legacyIds.includes(request.pluginId)
-        )
-          throw new PluginSupervisorError('incompatible')
-        const visible = (id: string) => !session.legacyIds || session.legacyIds.includes(id)
         switch (request.kind) {
-          case 'mutation-status':
-            options.controller.requireMutationSource(request.catalogueDigest)
-            if (!session.mutationSource) throw new PluginSupervisorError('incompatible')
-            return { format: 1, catalogueDigest: request.catalogueDigest }
-          case 'mutation-policy':
+          case 'package-install':
             negotiatedRefusals = true
-            session.preparations.clear()
-            session.mutationSource = undefined
-            options.controller.requireMutationSource(request.catalogueDigest)
-            session.mutationSource = request.catalogueDigest
-            return { format: 1, catalogueDigest: request.catalogueDigest }
-          case 'prepare-mutation': {
-            if (!session.mutationSource) throw new PluginSupervisorError('incompatible')
-            options.controller.requireMutationSource(session.mutationSource)
-            const value = await options.controller.prepareMutation(
+            await options.controller.installPackage(
               handle,
+              request.package,
               request.action,
-              request.pluginId,
-              request.releaseDigest,
-              session.mutationSource,
+              request.operationId,
             )
-            // Bounded, one outstanding consent per plugin and session; replacement revokes the old consent.
-            for (const [key, old] of session.preparations)
-              if (old.pluginId === request.pluginId) session.preparations.delete(key)
-            if (session.preparations.size >= 200) throw new PluginSupervisorError('policy-refused')
-            const preparation = randomUUID()
-            session.preparations.set(preparation, { ...value, expiresAt: Date.now() + 5 * 60_000 })
-            return { preparation }
-          }
+            return true
           case 'features':
             return {
               features: [
                 ...PLUGIN_FRAMEWORK_FEATURES,
                 'tool-health-v1',
                 ...(options.restartPlugin ? ['plugin-restart-v1'] : []),
-                ...(options.controller.preparedMutationFeature()
-                  ? ['authors-v1', 'prepared-mutations-v1']
-                  : []),
               ],
             }
           case 'list':
-            if (!session.legacyIds) throw new PluginSupervisorError('incompatible')
-            return (await options.controller.status()).cards
-              .filter((card) => visible(card.id))
-              .map(({ id, name, state, installed, priorityClamped }) => ({
+            return (await options.controller.status()).cards.map(
+              ({ id, name, state, installed, priorityClamped }) => ({
                 id,
                 name,
                 state,
                 installed,
                 ...(priorityClamped !== undefined ? { priorityClamped } : {}),
-              }))
+              }),
+            )
           case 'list-v2':
             // Older clients strictly validate their reply. New health fields require negotiation.
-            return (await options.controller.status()).cards
-              .filter((card) => visible(card.id))
-              .map((card) => {
-                const legacy = { ...card }
-                delete legacy.toolsUnavailable
-                return legacy
-              })
+            return (await options.controller.status()).cards.map((card) => {
+              const legacy = { ...card }
+              delete legacy.toolsUnavailable
+              return legacy
+            })
           case 'list-tool-health':
-            return (await options.controller.status()).cards.filter((card) => visible(card.id))
+            return (await options.controller.status()).cards
           case 'restart-plugin':
-            if (!options.restartPlugin || !visible(request.pluginId))
+            if (!options.restartPlugin)
               throw new PluginSupervisorError('incompatible')
             await options.restartPlugin(request.pluginId)
             return true
           case 'refresh':
-            for (const one of sessions) one.preparations.clear()
             await options.controller.refreshCatalogue(request.catalogueDigest)
             return true
           case 'update':
           case 'install':
-            if (options.controller.requiresPreparedMutations())
-              throw new PluginSupervisorError('incompatible')
             if (request.kind === 'install')
               await options.controller.install(handle, request.pluginId, request.operationId)
             else await options.controller.update(handle, request.pluginId, request.operationId)
             return true
-          case 'install-prepared':
-          case 'update-prepared': {
-            if (!session.mutationSource) throw new PluginSupervisorError('incompatible')
-            const prepared = session.preparations.get(request.preparation)
-            session.preparations.delete(request.preparation) // Consume even a failed attempt; no replay.
-            options.controller.requireMutationSource(session.mutationSource)
-            const action = request.kind === 'install-prepared' ? 'install' : 'update'
-            if (
-              !prepared ||
-              prepared.expiresAt < Date.now() ||
-              prepared.action !== action ||
-              prepared.pluginId !== request.pluginId ||
-              prepared.releaseDigest !== request.releaseDigest
-            )
-              throw new PluginSupervisorError('policy-refused')
-            if (action === 'install')
-              await options.controller.installPrepared(
-                handle,
-                request.pluginId,
-                prepared,
-                request.operationId,
-              )
-            else
-              await options.controller.updatePrepared(
-                handle,
-                request.pluginId,
-                prepared,
-                request.operationId,
-              )
-            return true
-          }
           case 'uninstall':
             return (
               (await options.controller.uninstall(handle, request.pluginId, request.operationId)) ??
@@ -395,15 +304,11 @@ export async function servePersonPluginControl(options: {
       lost: boolean
       failed: boolean
       ledgerV2?: boolean
-      mutationSource?: string
-      preparations: Map<string, PreparedPluginMutation & { expiresAt: number }>
-      legacyIds?: readonly string[]
       detaching?: Promise<void>
     }
 
     const session: PersonSession = {
       channel,
-      preparations: new Map(),
       attaching: false,
       lost: false,
       failed: false,

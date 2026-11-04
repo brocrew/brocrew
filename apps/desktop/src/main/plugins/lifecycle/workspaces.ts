@@ -87,6 +87,7 @@ export function sharedLifecycleWorkspaces(
           'screen',
           'admitted',
           'install',
+          'installPackage',
           'prepareMutation',
           'installPrepared',
           'updatePrepared',

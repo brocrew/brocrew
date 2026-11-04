@@ -1,3 +1,4 @@
+import { posix, sep } from 'node:path'
 import type { KeyObject } from 'node:crypto'
 import { SkillRelease } from '../../shared/skills-catalogue'
 import {
@@ -18,7 +19,6 @@ import {
   type PluginRelease,
 } from './package-schema'
 import { PLUGIN_FRAMEWORK_FEATURES } from './hooks/definitions'
-import { strictPluginJson } from './strict-json'
 import { refusePlugin } from './verification-error'
 
 export interface PluginReleasePin {
@@ -57,7 +57,7 @@ export interface VerifiedPluginPackage<M extends AnyPluginManifest = AnyPluginMa
   readFile(path: string): Uint8Array | undefined
 }
 export interface VerifiedPluginCatalogue {
-  readonly format: 1 | 2
+  readonly format: 1 | 2 | 3
   readonly entries: readonly Readonly<PluginRelease>[]
   readonly pins: readonly PluginReleasePin[]
   verifyPackage(id: string, version: string, downloaded: Uint8Array): VerifiedPluginPackage
@@ -86,13 +86,16 @@ export function verifyPluginPackage(
   verifyPluginDigest(
     archive,
     { size: expected.bytes, sha256: expected.sha256 },
-    PLUGIN_LIMITS.archiveBytes,
+    Number.MAX_SAFE_INTEGER,
   )
-  const files = readPluginArchive(archive, expected.compression ?? 'tar')
+  const files = readPluginArchive(
+    archive,
+    archive[0] === 0x1f && archive[1] === 0x8b ? 'tar.gz' : 'tar',
+    true,
+  )
   const manifestBytes = files.get('plugin.json')
   if (!manifestBytes) refusePlugin('invalid')
   const manifest = parsePluginManifest(manifestBytes)
-
   return verifiedContents(
     files,
     manifest,
@@ -135,12 +138,25 @@ function verifiedContents(
   if (!manifest.platforms.some((value) => value.os === target.os && value.cpu === target.cpu))
     refusePlugin('target')
   checkAppVersion(manifest, appVersion)
-  if (files.size !== manifest.files.length + 1) refusePlugin('digest')
+  const filePath = (path: string) =>
+    manifest.format === 3 ? posix.normalize(sep === '\\' ? path.replaceAll('\\', '/') : path) : path
+  const lookup = (path: string) => files.get(filePath(path))
+  const inventory = new Set(['plugin.json', ...manifest.files.map((entry) => filePath(entry.path))])
+  if (
+    manifest.format === 3
+      ? files.size !== inventory.size || [...files.keys()].some((path) => !inventory.has(path))
+      : files.size !== manifest.files.length + 1
+  )
+    refusePlugin('digest')
   for (const entry of manifest.files) {
-    const body = files.get(entry.path)
+    const body = lookup(entry.path)
     if (!body) refusePlugin('digest')
     const size = 'bytes' in entry ? entry.bytes : entry.size
-    verifyPluginDigest(body, { size, sha256: entry.sha256 }, PLUGIN_LIMITS.expandedBytes)
+    verifyPluginDigest(
+      body,
+      { size, sha256: entry.sha256 },
+      manifest.format === 3 ? Number.MAX_SAFE_INTEGER : PLUGIN_LIMITS.expandedBytes,
+    )
   }
   if (manifest.format !== 3)
     for (const skill of manifest.skills) {
@@ -181,7 +197,7 @@ function verifiedContents(
     }),
     filePaths: Object.freeze([...files.keys()]),
     readFile(path: string) {
-      const body = files.get(path)
+      const body = lookup(path)
       return body === undefined ? undefined : Uint8Array.from(body)
     },
   })
@@ -229,18 +245,12 @@ export function createRepoAwarePluginVerifier(
     repoCatalogueSha256?: string
   },
 ) {
-  if (options.pinnedPublicKey && options.repoCatalogueSha256 === undefined)
-    return createPluginVerifier({ ...options, pinnedPublicKey: options.pinnedPublicKey })
-  if (options.pinnedPublicKey !== null || !/^[a-f0-9]{64}$/.test(options.repoCatalogueSha256 ?? ''))
-    return refusePlugin('invalid')
-  const expected = options.repoCatalogueSha256
-  return catalogueVerifier(options, (bytes, signature) => {
-    if (signature.byteLength !== 0 || pluginSha256(bytes) !== expected) refusePlugin('digest')
-  })
+  return catalogueVerifier({ ...options, knownReleases: [] }, () => {}, true)
 }
 function catalogueVerifier(
   options: Omit<PluginVerifierOptions, 'pinnedPublicKey'>,
   authenticate: (bytes: Buffer, signature: Uint8Array) => void,
+  ordinary = false,
 ) {
   const target = PluginTarget.safeParse(options.target)
   if (!target.success) refusePlugin('target')
@@ -270,27 +280,27 @@ function catalogueVerifier(
       refusePlugin('immutable-release')
     into.set(key, freeze({ ...pin }))
   }
-  for (const pin of options.knownReleases ?? []) remember(pin, pins)
+  if (!ordinary) for (const pin of options.knownReleases ?? []) remember(pin, pins)
 
   return Object.freeze({
     verifyCatalogue(input: Uint8Array, signature: Uint8Array): VerifiedPluginCatalogue {
-      if (input.byteLength > PLUGIN_LIMITS.catalogueBytes) refusePlugin('limit')
+      if (!ordinary && input.byteLength > PLUGIN_LIMITS.catalogueBytes) refusePlugin('limit')
       const bytes = Buffer.from(input)
       authenticate(bytes, signature)
       const entries = freeze(parsePluginCatalogue(bytes))
-      const format = (strictPluginJson(bytes, PLUGIN_LIMITS.catalogueBytes) as { format: 1 | 2 })
-        .format
+      const format = (JSON.parse(bytes.toString('utf8')) as { format: 1 | 2 | 3 }).format
       const nextPins = new Map(pins)
-      for (const entry of entries)
-        remember(
-          {
-            id: entry.id,
-            version: entry.version,
-            archiveSha256: entry.archive.sha256,
-            manifestSha256: entry.manifestSha256,
-          },
-          nextPins,
-        )
+      if (!ordinary)
+        for (const entry of entries)
+          remember(
+            {
+              id: entry.id,
+              version: entry.version,
+              archiveSha256: entry.archive.sha256,
+              manifestSha256: entry.manifestSha256,
+            },
+            nextPins,
+          )
       for (const [key, pin] of nextPins) pins.set(key, pin)
       return Object.freeze({
         format,
@@ -305,6 +315,28 @@ function catalogueVerifier(
             )
           )
             refusePlugin('target')
+          if (ordinary) {
+            const pkg = verifyPluginPackage(
+              input,
+              {
+                sha256: release.archive.sha256,
+                bytes: release.archive.size,
+                compression: release.archive.compression,
+              },
+              {
+                target: target.data,
+                appVersion: options.appVersion ?? '0.0.0',
+                apiSupport: support,
+              },
+            )
+            if (
+              pkg.manifest.id !== id ||
+              pkg.manifest.version !== version ||
+              pluginSha256(pkg.readFile('plugin.json')!) !== release.manifestSha256
+            )
+              refusePlugin('digest')
+            return pkg
+          }
           if (input.byteLength > PLUGIN_LIMITS.archiveBytes) refusePlugin('limit')
           const archive = Buffer.from(input)
           verifyPluginDigest(archive, release.archive, PLUGIN_LIMITS.archiveBytes)

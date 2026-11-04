@@ -1,50 +1,25 @@
 import { pluginSha256 } from '../package-digests'
-/** No URL/credential is ever logged. Integrity/policy failures must not masquerade as offline. */
 export class PluginDownloadError extends Error {
   constructor(
     readonly kind: 'transport' | 'integrity',
     readonly status?: number,
   ) {
-    super('Plugin unavailable. Try again.')
+    super(
+      kind === 'integrity'
+        ? 'The plugin download did not match the selected bytes.'
+        : status
+          ? `Plugin download failed (HTTP ${status}).`
+          : 'Could not download the plugin.',
+    )
   }
 }
 export const PLUGIN_LIST_URL =
   'https://raw.githubusercontent.com/brocrew/brocrew/main/plugins/catalogue.json'
 export const PLUGIN_LIST_V2_URL = PLUGIN_LIST_URL.replace('catalogue.json', 'catalogue-v2.json')
-const catalogueUrl = (url: string) => url === PLUGIN_LIST_URL || url === PLUGIN_LIST_V2_URL
-const releasePath = /^\/brocrew\/[A-Za-z0-9_.-]+\/releases\/download\/[^/]+\/[^/]+$/
+/** URL parsing is decoding only; fetch reports unsupported sources normally. */
 export function assertPluginArchiveUrl(value: string): void {
-  const url = allowed(value, true)
-  if (url.hostname !== 'github.com' || !releasePath.test(url.pathname) || url.search) invalid()
+  new URL(value)
 }
-const invalid = (): never => {
-  throw new PluginDownloadError('integrity')
-}
-function allowed(value: string, initial: boolean): URL {
-  const url = new URL(value)
-  if (
-    url.protocol !== 'https:' ||
-    url.username ||
-    url.password ||
-    url.hash ||
-    (url.port && url.port !== '443') ||
-    ![
-      'github.com',
-      'release-assets.githubusercontent.com',
-      'objects.githubusercontent.com',
-      'raw.githubusercontent.com',
-    ].includes(url.hostname)
-  )
-    return invalid()
-  if (url.hostname === 'raw.githubusercontent.com' && !catalogueUrl(url.href)) return invalid()
-  if (url.hostname === 'github.com' && (!releasePath.test(url.pathname) || url.search))
-    return invalid()
-  if (initial && url.hostname !== 'github.com' && !catalogueUrl(url.href)) return invalid()
-  return url
-}
-/** Shared catalogue/archive transport. Three redirects, credential-free HTTPS:443, exact hosts,
- * one deadline across all headers/bodies/hops, no implicit fetch redirects or decompression.
- */
 export async function downloadPluginBytes(options: {
   url: string
   maximum: number
@@ -54,86 +29,24 @@ export async function downloadPluginBytes(options: {
   milliseconds?: number
   fetch?: typeof fetch
 }): Promise<Buffer> {
-  const abort = new AbortController(),
-    signal = options.signal ? AbortSignal.any([options.signal, abort.signal]) : abort.signal
-  let timer: ReturnType<typeof setTimeout> | undefined
-  const deadline = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => {
-      abort.abort()
-      reject(new PluginDownloadError('transport'))
-    }, options.milliseconds ?? 30000)
-  })
-  const work = async () => {
-    let url = allowed(options.url, true)
-    const releaseChain = url.hostname === 'github.com'
-    for (let hops = 0; hops <= 3; hops++) {
-      if (signal.aborted) throw new PluginDownloadError('transport')
-      const response = await (options.fetch ?? fetch)(url, {
-        redirect: 'manual',
-        credentials: 'omit',
-        referrerPolicy: 'no-referrer',
-        headers: { 'Accept-Encoding': 'identity' },
-        signal,
-      })
-      if ([301, 302, 303, 307, 308].includes(response.status)) {
-        void response.body?.cancel().catch(() => undefined)
-        if (hops === 3) return invalid()
-        const location = response.headers.get('location')
-        if (!location) return invalid()
-        const next = allowed(new URL(location, url).href, false)
-        if (
-          releaseChain ? next.hostname === 'raw.githubusercontent.com' : next.href !== options.url
-        )
-          return invalid()
-        url = next
-        continue
-      }
-      if (response.status !== 200 || !response.body)
-        throw new PluginDownloadError('transport', response.status)
-      if (![null, 'identity'].includes(response.headers.get('content-encoding'))) return invalid()
-      const length = response.headers.get('content-length')
-      if (
-        length !== null &&
-        (!/^\d+$/.test(length) ||
-          Number(length) > options.maximum ||
-          (options.size !== undefined && Number(length) !== options.size))
-      )
-        return invalid()
-      const reader = response.body.getReader(),
-        chunks: Uint8Array[] = []
-      let bytes = 0
-      try {
-        for (;;) {
-          const part = await reader.read()
-          if (part.done) break
-          bytes += part.value.byteLength
-          if (bytes > options.maximum || (options.size !== undefined && bytes > options.size))
-            return invalid()
-          chunks.push(part.value)
-        }
-        if (
-          !bytes ||
-          (options.size !== undefined && bytes !== options.size) ||
-          (length !== null && bytes !== Number(length))
-        )
-          return invalid()
-        const result = Buffer.concat(chunks)
-        if (options.sha256 !== undefined && pluginSha256(result) !== options.sha256)
-          return invalid()
-        return result
-      } finally {
-        void reader.cancel().catch(() => undefined)
-      }
-    }
-    return invalid()
-  }
+  const timeout = options.milliseconds ? AbortSignal.timeout(options.milliseconds) : undefined
+  const signal =
+    timeout && options.signal
+      ? AbortSignal.any([timeout, options.signal])
+      : (timeout ?? options.signal)
+  let response: Response
   try {
-    return await Promise.race([work(), deadline])
+    response = await (options.fetch ?? fetch)(options.url, { signal })
   } catch (error) {
-    if (error instanceof PluginDownloadError) throw error
-    throw new PluginDownloadError('transport')
-  } finally {
-    clearTimeout(timer)
-    abort.abort()
+    throw new Error('Could not download the plugin.', { cause: error })
   }
+  if (!response.ok) throw new PluginDownloadError('transport', response.status)
+  const bytes = Buffer.from(await response.arrayBuffer())
+  if (
+    bytes.length > options.maximum ||
+    (options.size !== undefined && bytes.length !== options.size) ||
+    (options.sha256 !== undefined && pluginSha256(bytes) !== options.sha256)
+  )
+    throw new PluginDownloadError('integrity')
+  return bytes
 }

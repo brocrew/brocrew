@@ -1,31 +1,64 @@
-# Repository plugin list and one-press installation
+# Plugin package sources and installation
 
-Production reads one fixed URL: `https://raw.githubusercontent.com/brocrew/brocrew/main/plugins/catalogue.json`. Plugins come only from BroCrew’s repositories. The list is ordinary JSON served over HTTPS; there is no signing key, detached signature, bundled catalogue or bundled archive in the production path. The legacy signed-catalogue and local-source verifier remain available for their existing tests, but index.ts does not select them.
+The production plugin controller uses the same source operations as Settings:
+`list(source?)`, `inspect(ref)`, `install(ref)` and `update(pluginId, ref)`.
+A package reference identifies selected bytes:
 
-## List format
+```ts
+{ source: 'http://127.0.0.1:8080/fictional-oven.tar.gz', sha256: '<archive SHA-256>', bytes: 5120 }
+```
 
-`plugins/catalogue.json` has `{format:1, entries:[...]}`. Each entry contains `id`, `name`, approved one-line `description`, immutable `version`, `minAppVersion`, `sourceCommit` and `targets`. Each target contains `os`, `cpu`, `url`, `sha256`, `bytes`, `compression` (`tar` or `tar.gz`) and `manifestSha256`. Release CI generates the byte count, digests and source commit; people do not calculate them or run install commands. The extra manifest pin preserves the existing strict package verifier and lifecycle journal.
+`source` can be an ordinary HTTP(S) URL, a file URL or a local path. Fetch handles
+redirects, HTTP decoding and unsupported URL schemes normally. A publisher,
+repository, signing key, matching list in another window, or development build
+is not required. The default repository list is a discovery convenience.
 
-The list is strict UTF-8 JSON, at most 1 MiB and 200 entries, with unique plugin ids and OS/CPU targets. Names/descriptions are bounded single lines. Minimum app versions are numeric major.minor.patch; archive support also requires the matching target. All target URLs are checked, including targets not selected on the current machine. Unsupported versions/targets are shown as Unavailable. The current Chrome release supports macOS arm64; other app hosts remain unavailable until their existing runtime/storage support is built.
+Settings accepts a package location directly. **Show package details** reads it
+without executing code, computes its byte reference and shows the package's
+authors and declared permissions. The subsequent **Install** or **Update** action
+uses those exact bytes. A supplied reference must match its archive hash and
+byte count. The decoded manifest and each declared file must also match; extra
+or missing payload files are errors. Tar and gzip are detected from the bytes,
+so a public reference does not need a compression field. Ordinary tar names and
+PAX long names are supported. A path that would write outside the code directory
+cannot be extracted there.
 
-The app trusts the repository HTTPS response, not a signature. A compromised repository can publish a different plugin; this is the accepted first-party repository trust decision. Catalogue bytes are normalized into the existing release descriptor format and snapshotted by hash in the private global store. That exact admitted digest is passed in the immutable supervisor launch plan, never an agent/person IPC packet. Both main and supervisor recheck it. The vault records a catalogue digest rather than pretending it is a signature. Cached metadata can only select the exact archive/manifest pins supplied by the authenticated installation or newly admitted list; a later list description change does not revoke that installation’s package bytes. Existing immutable release pins, journal/tombstones and per-file checks still apply.
+Platform and minimum app version checks use the running application's target
+and version. A missing resource or failing runtime is reported as an operation
+error. Package version ordering, previous archive history and data schema
+changes do not authorize or refuse an update. The package receives the prior
+version and data schema in its bootstrap and owns any data migration.
 
-## Download and install
+## Lists
 
-The list URL and host policy are app-owned. Archive URLs must be credential-free HTTPS port 443 GitHub release URLs under `/brocrew/<repo>/releases/download/<tag>/<asset>`. The shared downloader allows at most three redirects. Only chains starting at an allowed BroCrew release URL may use the exact asset hosts `release-assets.githubusercontent.com` and `objects.githubusercontent.com`; neither asset host is a starting URL. Every return to GitHub must still use an allowed BroCrew release path. The fixed raw list URL may redirect only to itself, never to another URL or host. No runtime GitHub token, cookies, Authorization header, referrer or URL/query logging. Each request has one deadline and consuming byte cap. List loading is bounded to five seconds; archive requests to thirty seconds. An archive must match its exact list size/SHA256 before staging, then its manifest and every payload file are checked by the existing bounded USTAR/gzip verifier.
+Each window can select its own list with **Load plugin list**. Existing format-1
+and format-2 lists remain readable. A generic format-3 list contains `entries`
+with `id`, `name`, `description`, `version`, optional `authors`, optional
+`minAppVersion` and `targets`. Each target names `os`, `cpu`, `url`, `sha256`,
+`bytes`, `manifestSha256` and `compression` (`tar` or `tar.gz`). Source commits
+are optional metadata. Author names are ordinary display strings.
 
-Settings → Plugins is available after the production facade starts. A successful list/controller connection supplies cards and agent instruction discovery. Install needs one press: download, digest checks, stage, readiness, global activation and receipts use the existing lifecycle. No second dialog, key setup or terminal command. Uninstall retains profiles/downloads and preserves the existing deny-first, tombstone, revoke, retirement and exact-run cleanup rules.
+The list's target and minimum version filter discovery for the current app.
+Inspection still reads the actual package and displays its own authors and
+permissions. An unavailable default list leaves the controller available for
+local packages and installed packages. Explicit list and download failures are
+reported, with HTTP status or operation details when available.
 
-A private or missing list, no network, invalid metadata, an unapproved URL or a wrong digest returns only `Plugin unavailable. Try again.` and grants no calls or half-install. Known cards become Unavailable on connection loss. There is no production fallback to a local folder, a token, a bundled demo or an old cached list after an initial fetch failure. A person retry reloads a failed list/connection without restarting the app; successful leases are reused and unknown owner cleanup still fences replacement. Normal agents and app startup continue. The catalogue is admitted at app startup; live supervisor/catalogue migration remains outside this slice.
+## Installed bytes and updates
 
-## Source and releases
+The package vault keeps the exact archive and its release descriptor. It can
+load an installed package offline without a current list or source proof. The
+legacy reader obtains a descriptor from an older saved catalogue without using
+its signature as an admission test.
 
-`plugins/chrome` remains the app integration-test source. `scripts/export-chrome-plugin.mjs` prepares a history-free, allowlisted standalone source repository, excluding installed dependencies and the app-specific archive integration test. Its own fake-browser/UI/release tests remain. The standalone release workflow runs only in the private `brocrew/brocrew-plugin-chrome` repository, builds with Node 22.23.3 and hook-free locked dependencies, canonicalizes the gzip OS byte to 255 (with a pinned ten-byte header), and attaches `chrome-darwin-arm64.tar.gz`, `chrome-win32-x64.tar.gz` and `plugin-list-entry.json` to its private versioned release. Both archives come from the same source and commit; each manifest names exactly its own target. The generated list entry is promoted to `plugins/catalogue.json` in brocrew. It must be the entry from the exact published archive; a changed release needs a new version. All pushes and release publication belong to the project owner. Nothing is made public by these local commits. Release publication requires configured leak patterns, commit patterns and approved identities; the full commit history is checked before attachment. The existing `private == true` release gate is deliberately unchanged and must be revisited as a separate go-public prerequisite.
+Install and update keep the existing serialized mutation and atomic code
+publication path. An update stops the previous run before starting replacement
+code. Workspace enablement still controls contributions and tools. A code
+update retains the plugin's existing data locations and opaque data files;
+uninstall cleanup remains a separate lifecycle operation. A different list in
+another window does not replace the selected reference or prevent an action.
 
-While the repositories are private, tests and the scratch production proof use an explicit local list/archive adapter with the same format and pins. index.ts never passes that fixture input. The packaged gate is retargeted separately and is not claimed here. Profile Apply remains person-only, revision-checked and scoped to fixed Create 201 / flags 200 / Open 202 admin actions; a consumed intent is never replayed automatically. Internal lease/person/broker capabilities remain private authentication, not a signing-key setup step for a person.
-
-## Existing installs that cannot be admitted
-
-Unavailable owner attachment no longer means the plugin is absent. Main observes the existing global journal under its existing exclusive rule for display only, without reclaim, file creation or new admission. A committed install remains `installed:true`; an interrupted first install or unreadable/busy evidence is unknown (`installed:null`), never permission to install. A genuinely absent install remains false. This hint does not start code, authorize a call, or replace the supervisor's checks.
-
-For an installed or unknown unavailable plugin, Settings shows “{plugin} can't start right now.” and “Try again”. Retry detaches person control with its acknowledgments, then runs the existing catalogue/connect/attach path. It never invokes Install or Uninstall, changes profile data, or takes over a blocked owner. Failure keeps the line and adds “Restart BroCrew if this keeps happening.” Raw exceptions remain private. Pending retry cleanup also completes before normal quit closes the person channel. Other agents continue using their existing supervisor admission rules.
+Source tests use inert fictional packages and process peers. They exercise the
+real Settings/person-control path without opening browser profiles, accounts or
+pairing data. Packaged application and native platform qualification are
+separate checks.

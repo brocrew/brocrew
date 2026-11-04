@@ -48,9 +48,7 @@ export async function bootstrapPluginLifecycle(options: {
     await verifyImmutableFile(repo.repoList.path, bytes)
     if (
       pluginSha256(bytes) !== repo.repoList.sha256 ||
-      parseRepoPluginList(bytes, target, repo.appVersion).sha256 !== repo.catalogueSha256 ||
-      parseRepoPluginList(bytes, target, repo.appVersion).format !== (repo.sourceVersion ?? 1) ||
-      (repo.sourceVersion === 2 && !repo.legacyRepoList)
+      parseRepoPluginList(bytes, target, repo.appVersion).format !== (repo.sourceVersion ?? 1)
     )
       throw new Error('unavailable')
     repoList = { bytes, sha256: repo.repoList.sha256, appVersion: repo.appVersion }
@@ -112,11 +110,11 @@ export async function bootstrapPluginLifecycle(options: {
         root: options.root,
         state,
         pinnedPublicKey,
+        appVersion: repo?.appVersion,
         repoCatalogueSha256: repo?.catalogueSha256,
         repoList,
         legacyRepoList,
         target,
-        appVersion: repo?.appVersion,
         catalogue,
         names: repo?.names ?? { chrome: 'Chrome' },
         refreshCatalogue: repo?.appVersion

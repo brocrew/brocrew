@@ -1,3 +1,4 @@
+import { readPluginSource } from '../package-source'
 import { z } from 'zod'
 import { join } from 'node:path'
 import { strictPluginJson } from '../strict-json'
@@ -13,7 +14,6 @@ import { PluginSupervisorError } from '../supervisor/protocol'
 import { readLocalRelease } from './local'
 import {
   downloadPluginBytes,
-  assertPluginArchiveUrl,
   PLUGIN_LIST_URL,
   PLUGIN_LIST_V2_URL,
   PluginDownloadError,
@@ -38,7 +38,7 @@ const RepoList = z.strictObject({
         description: text(240),
         version: text(80),
         minAppVersion: coreVersion,
-        sourceCommit: z.string().regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/),
+        sourceCommit: z.string().optional(),
         targets: z
           .array(
             PluginTarget.extend({
@@ -67,6 +67,34 @@ const RepoListV2 = RepoList.extend({
     )
     .max(PLUGIN_LIMITS.catalogueEntries),
 })
+const GenericRepoList = z.object({
+  format: z.literal(3),
+  entries: z.array(
+    z.looseObject({
+      id: z.string().min(1),
+      name: z.string().min(1),
+      description: z.string(),
+      version: z.string().min(1),
+      minAppVersion: z
+        .string()
+        .regex(/^\d+\.\d+\.\d+$/)
+        .default('0.0.0'),
+      sourceCommit: z.string().optional(),
+      authors: z.array(z.string()).optional(),
+      targets: z
+        .array(
+          PluginTarget.extend({
+            url: z.string(),
+            sha256: sha,
+            bytes: z.number().int().nonnegative().safe(),
+            compression: z.enum(['tar', 'tar.gz']),
+            manifestSha256: sha,
+          }),
+        )
+        .min(1),
+    }),
+  ),
+})
 const fail = (): never => {
   throw new PluginSupervisorError('unavailable')
 }
@@ -78,15 +106,27 @@ function compatible(actual: string, minimum: string): boolean {
   for (let i = 0; i < 3; i++) if (current[i] !== required[i]) return current[i]! > required[i]!
   return true
 }
-export function parseRepoPluginList(input: Uint8Array, target: PluginTarget, appVersion: string) {
-  const list = z
-    .union([RepoList, RepoListV2])
-    .parse(strictPluginJson(input, PLUGIN_LIMITS.catalogueBytes))
+export function parseRepoPluginList(
+  inputBytes: Uint8Array,
+  target: PluginTarget,
+  appVersion: string,
+) {
+  let input: unknown
+  try {
+    input = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(inputBytes))
+  } catch {
+    return fail()
+  }
+  const list =
+    (input as { format?: number })?.format === 3
+      ? GenericRepoList.parse(input)
+      : z
+          .union([RepoList, RepoListV2])
+          .parse(strictPluginJson(inputBytes, PLUGIN_LIMITS.catalogueBytes))
   if (new Set(list.entries.map((entry) => entry.id)).size !== list.entries.length) return fail()
   for (const entry of list.entries) {
     if (new Set(entry.targets.map((one) => one.os + '/' + one.cpu)).size !== entry.targets.length)
       return fail()
-    for (const one of entry.targets) assertPluginArchiveUrl(one.url)
   }
   const view = (version: string) => {
     const releases = list.entries.flatMap((entry) => {
@@ -134,7 +174,7 @@ export function parseRepoPluginList(input: Uint8Array, target: PluginTarget, app
     legacyCatalogues: list.format === 1 ? [...views.values()] : [],
   }
 }
-/** The endpoint is app-owned and fixed. Local inputs come only from trusted app launch code. */
+/** Each app window can select its own list; default discovery is a convenience. */
 export async function loadRepoPluginList(options: {
   root: string
   target: PluginTarget
@@ -143,27 +183,49 @@ export async function loadRepoPluginList(options: {
   fixtureSource?: string
   devSource?: string
   sourceVersion?: 1 | 2
+  source?: string
+  offlineEmpty?: boolean
 }) {
   if (options.devSource && options.fixtureSource) return fail()
+  let discoveryError: PluginListError | undefined
   const name = options.sourceVersion === 2 ? 'catalogue-v2.json' : 'catalogue.json'
-  const input = options.devSource
-    ? await readLocalRelease(options.devSource, [name], PLUGIN_LIMITS.catalogueBytes, true)
-    : options.fixtureSource
-      ? await readLocalRelease(options.fixtureSource, [name], PLUGIN_LIMITS.catalogueBytes)
-      : await downloadPluginBytes({
-          url: options.sourceVersion === 2 ? PLUGIN_LIST_V2_URL : PLUGIN_LIST_URL,
-          maximum: PLUGIN_LIMITS.catalogueBytes,
-          milliseconds: 5000,
-          signal: options.signal,
-        }).catch((error: unknown) => {
-          throw new PluginListError(
-            error instanceof PluginDownloadError && error.status === 404
-              ? 'not-published'
-              : 'fetch-error',
-          )
-        })
-  const parsed = parseRepoPluginList(input, options.target, options.appVersion)
-  if (parsed.format !== (options.sourceVersion ?? 1)) return fail()
+  let input = options.source
+    ? await readPluginSource(options.source, { signal: options.signal })
+    : options.devSource
+      ? await readLocalRelease(options.devSource, [name], PLUGIN_LIMITS.catalogueBytes, true)
+      : options.fixtureSource
+        ? await readLocalRelease(options.fixtureSource, [name], PLUGIN_LIMITS.catalogueBytes)
+        : await downloadPluginBytes({
+            url: options.sourceVersion === 2 ? PLUGIN_LIST_V2_URL : PLUGIN_LIST_URL,
+            maximum: Number.MAX_SAFE_INTEGER,
+            milliseconds: 5000,
+            signal: options.signal,
+          }).catch((error: unknown) => {
+            if (options.offlineEmpty) {
+              discoveryError = new PluginListError(
+                error instanceof PluginDownloadError && error.status === 404
+                  ? 'not-published'
+                  : 'fetch-error',
+              )
+              return Buffer.from(
+                JSON.stringify({ format: options.sourceVersion ?? 1, entries: [] }),
+              )
+            }
+            throw new PluginListError(
+              error instanceof PluginDownloadError && error.status === 404
+                ? 'not-published'
+                : 'fetch-error',
+            )
+          })
+  let parsed: ReturnType<typeof parseRepoPluginList>
+  try {
+    parsed = parseRepoPluginList(input, options.target, options.appVersion)
+  } catch (error) {
+    if (!options.offlineEmpty) throw error
+    discoveryError = new PluginListError('fetch-error')
+    input = Buffer.from(JSON.stringify({ format: options.sourceVersion ?? 1, entries: [] }))
+    parsed = parseRepoPluginList(input, options.target, options.appVersion)
+  }
   const parent = await privateChild(options.root, 'repo-catalogues')
   const kept = await publishPrivateDirectory(
     parent,
@@ -181,6 +243,7 @@ export async function loadRepoPluginList(options: {
   )
   return {
     ...parsed,
+    discoveryError,
     catalogue: join(kept, 'catalogue.json'),
     repoList: { path: join(raw, 'catalogue.json'), sha256: rawSha256 },
     rawBytes: Buffer.from(input),

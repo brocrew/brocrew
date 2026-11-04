@@ -106,8 +106,13 @@ export class PersonChannel {
                 ]),
               })
               .safeParse(packet.value)
+            const detail = z.object({ pluginError: z.string() }).safeParse(packet.value)
             waiter.reject(
-              new PluginSupervisorError(cause.success ? cause.data.pluginRefusal : 'unavailable'),
+              detail.success
+                ? new Error(detail.data.pluginError)
+                : new PluginSupervisorError(
+                    cause.success ? cause.data.pluginRefusal : 'unavailable',
+                  ),
             )
           }
         } else {
@@ -129,7 +134,9 @@ export class PersonChannel {
                       error.code,
                     )
                       ? { pluginRefusal: error.code }
-                      : null,
+                      : this.reportRefusals() && error instanceof Error
+                        ? { pluginError: error.message }
+                        : null,
                 }),
             )
             .catch(() => this.close())

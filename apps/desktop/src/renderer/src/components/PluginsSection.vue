@@ -2,19 +2,16 @@
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { loadPluginConfiguration } from '../lib/plugin-configuration-load'
 import {
-  pluginMutationAllowed,
   pluginUnavailableNotice,
   pluginStartupDiagnosticNotice,
   pluginUnavailableRetryable,
-  pluginDisplayedConsent,
   pluginMutationNotice,
-  PluginWindowReviewSchema,
   pluginMutationFailureNotice,
   PLUGIN_DISCLOSURE_WORDS as words,
 } from '../../../shared/plugin-settings'
 import type {
   PluginCard,
-  PluginWindowReview,
+  PluginPackageInspection,
   PluginListState,
   PluginListFailureReason,
   PluginsClient,
@@ -30,7 +27,8 @@ const cards = ref<PluginCard[]>([]),
   busy = ref(false),
   /** The plugin an install is starting, so the wait reads as progress, not a fault. */
   starting = ref<string | null>(null)
-const reviews = ref(new Map<string, PluginWindowReview>())
+const reviews = ref(new Map<string, PluginPackageInspection & { action: 'install' | 'update' }>())
+const packageLocation = ref('')
 let stopReviews = () => {}
 const selected = ref<PluginCard | null>(null),
   confirmation = ref<PluginCard | null>(null),
@@ -221,23 +219,56 @@ async function configure(card: PluginCard) {
   })
   if (stage.value) observer.observe(stage.value)
 }
-async function preview(action: 'install' | 'update', card: PluginCard) {
-  if (busy.value || card.mutationBlocked) return
+async function inspectSelection(
+  selection: { id: string } | { source: string },
+  action?: 'install' | 'update',
+) {
+  if (busy.value) return
   const turn = ++generation
   busy.value = true
   error.value = ''
   reviews.value.clear()
-  const answer = await request({ kind: 'prepare', action, id: card.id })
+  const answer = await request({ kind: 'inspect', ...selection })
   if (!alive || turn !== generation) return
   busy.value = false
-  const parsed = answer.ok ? PluginWindowReviewSchema.safeParse(answer.review) : null
-  if (parsed?.success && parsed.data.id === card.id && parsed.data.action === action)
-    reviews.value.set(card.id, parsed.data)
-  else
-    error.value =
-      !answer.ok && 'mutationFailure' in answer && answer.mutationFailure
-        ? pluginMutationFailureNotice(answer.mutationFailure)
-        : unavailable
+  if (answer.ok && answer.inspection) {
+    const inspected = answer.inspection
+    const installed = cards.value.some((card) => card.id === inspected.id && card.installed)
+    if (!cards.value.some((card) => card.id === inspected.id))
+      cards.value.push({
+        id: inspected.id,
+        name: inspected.name,
+        installed: false,
+        state: 'Available',
+      })
+    reviews.value.set(inspected.id, {
+      ...inspected,
+      action: action ?? (installed ? 'update' : 'install'),
+    })
+  } else
+    error.value = !answer.ok && 'detail' in answer && answer.detail ? answer.detail : unavailable
+}
+async function preview(action: 'install' | 'update', card: PluginCard) {
+  await inspectSelection({ id: card.id }, action)
+}
+async function inspectLocation() {
+  const value = packageLocation.value
+  if (!value.trim()) return
+  await inspectSelection({ source: value })
+}
+async function listFromLocation() {
+  const source = packageLocation.value
+  if (!source.trim() || busy.value) return
+  busy.value = true
+  reviews.value.clear()
+  const answer = await request({ kind: 'source', source })
+  busy.value = false
+  if (answer.ok && answer.cards) {
+    cards.value = answer.cards
+    listState.value = cards.value.length ? 'ready' : 'empty'
+    error.value = ''
+  } else
+    error.value = !answer.ok && 'detail' in answer && answer.detail ? answer.detail : unavailable
 }
 async function cancelReview() {
   reviews.value.clear()
@@ -245,14 +276,7 @@ async function cancelReview() {
 }
 async function change(kind: 'install' | 'update' | 'uninstall', card: PluginCard) {
   const shown = reviews.value.get(card.id)
-  const guarded = kind !== 'uninstall' && card.preparationRequired === true
-  if (
-    busy.value ||
-    (kind !== 'uninstall' &&
-      (card.preparationRequired || card.mutationBlocked) &&
-      !pluginMutationAllowed(card, kind, shown))
-  )
-    return
+  if (busy.value || (kind !== 'uninstall' && !shown)) return
   busy.value = true
   error.value = ''
   confirmation.value = null
@@ -261,39 +285,29 @@ async function change(kind: 'install' | 'update' | 'uninstall', card: PluginCard
   screenId = null
   selected.value = null
   observer?.disconnect()
-  // Main closes the existing screen while preserving only this validated review.
-  if (!guarded) await request({ kind: 'close' })
   if (kind === 'install') starting.value = card.id
-  const input: PluginSettingsRequest =
+  const answer = await request(
     kind === 'uninstall'
       ? { kind, id: card.id }
-      : {
-          kind,
-          id: card.id,
-          ...(guarded && shown ? { consent: pluginDisplayedConsent(shown) } : {}),
-        }
-  const answer = await request(input)
+      : { kind, id: card.id, package: JSON.parse(JSON.stringify(shown!.ref)) },
+  )
   if (!alive) return
   starting.value = null
   busy.value = false
   if (answer.ok && answer.cards) {
     cards.value = answer.cards
-    if (kind === 'uninstall' && answer.removal) {
+    if (kind === 'uninstall' && answer.removal)
       removalNotice.value =
         answer.removal.logout === 'confirmed'
-          ? `${card.name}'s local data was deleted and its device was logged out.`
-          : `${card.name}'s local data was deleted. Logout was not confirmed. Open Linked devices on your phone and remove this device if it is still listed.`
-    }
-  } else {
+          ? `${card.name}'s local data was deleted and its account was logged out.`
+          : `${card.name}'s local data was deleted. Account logout was not confirmed.`
+  } else
     error.value =
-      guarded && !answer.ok && 'mutationFailure' in answer && answer.mutationFailure
-        ? pluginMutationFailureNotice(answer.mutationFailure)
-        : unavailable
-    if (guarded) {
-      const listed = await request({ kind: 'list' })
-      if (alive && listed.ok && listed.cards) cards.value = listed.cards
-    }
-  }
+      !answer.ok && 'detail' in answer && answer.detail
+        ? answer.detail
+        : !answer.ok && 'mutationFailure' in answer && answer.mutationFailure
+          ? pluginMutationFailureNotice(answer.mutationFailure)
+          : unavailable
 }
 onMounted(async () => {
   stopReviews =
@@ -341,6 +355,28 @@ onUnmounted(() => {
 })
 </script>
 <template>
+  <form class="plugin-package-source" @submit.prevent="inspectLocation">
+    <label for="plugin-package-location">Install or update from a package</label>
+    <input
+      id="plugin-package-location"
+      v-model="packageLocation"
+      @input="reviews.clear()"
+      placeholder="Package URL or local file path"
+      :disabled="busy"
+    />
+    <button class="bb-button" type="submit" :disabled="busy || !packageLocation.trim()">
+      Show package details
+    </button>
+    <button
+      class="bb-button"
+      type="button"
+      :disabled="busy || !packageLocation.trim()"
+      @click="listFromLocation"
+    >
+      Load plugin list
+    </button>
+  </form>
+
   <section
     class="plugins-section"
     :class="{ configuring: selected }"
@@ -489,7 +525,7 @@ onUnmounted(() => {
           class="plugin-confirmation plugin-disclosure"
           data-cy="plugin-review-details"
         >
-          <template v-for="review in [reviews.get(card.id)!]" :key="review.consent.reviewId">
+          <template v-for="review in [reviews.get(card.id)!]" :key="review.ref.sha256">
             <h3>{{ words.details }}</h3>
             <p>{{ words.beforeChange }}</p>
             <p>
@@ -498,12 +534,20 @@ onUnmounted(() => {
             </p>
             <p>
               <strong>{{ words.authors }}</strong>
-              <bdi dir="auto">{{ review.details.authors?.join(', ') }}</bdi>
+              <bdi dir="auto">{{ review.details.authors?.join(', ') ?? 'Not declared' }}</bdi>
+            </p>
+            <p>
+              <strong>Source</strong> <bdi dir="auto">{{ review.ref.source }}</bdi>
             </p>
             <h4>{{ words.permissions }}</h4>
             <p>
               <bdi dir="auto">{{ review.details.permissions.description }}</bdi>
             </p>
+            <ul v-if="review.details.permissions.dataUses?.length">
+              <li v-for="use in review.details.permissions.dataUses" :key="use">
+                <bdi dir="auto">{{ use }}</bdi>
+              </li>
+            </ul>
             <ul>
               <li v-for="resource in review.details.permissions.resources" :key="resource.id">
                 <bdi dir="auto">{{ resource.label }}</bdi
@@ -513,23 +557,11 @@ onUnmounted(() => {
                 ><span v-if="!resource.read && !resource.write">{{ words.noAccess }}</span>
               </li>
             </ul>
-            <template v-if="review.action === 'update'">
-              <h4>{{ words.changes }}</h4>
-              <p v-if="!review.installed">
-                {{ words.unknownInstalled }}
-              </p>
-              <p>{{ review.changes.authors ? words.authorsChanged : words.authorsUnchanged }}</p>
-              <p>
-                {{
-                  review.changes.permissions ? words.permissionsChanged : words.permissionsUnchanged
-                }}
-              </p>
-            </template>
             <div class="plugin-actions">
               <button
                 class="bb-button bb-button--primary"
                 type="button"
-                :disabled="busy || !pluginMutationAllowed(card, review.action, review)"
+                :disabled="busy"
                 data-cy="plugin-review-confirm"
                 @click="change(review.action, card)"
               >
@@ -561,12 +593,7 @@ onUnmounted(() => {
             Try again
           </button>
           <button
-            v-else-if="
-              card.installed === false &&
-              card.preparationRequired &&
-              !card.mutationBlocked &&
-              !reviews.has(card.id)
-            "
+            v-else-if="card.installed === false && !reviews.has(card.id)"
             :disabled="busy || card.state === 'Unavailable'"
             type="button"
             class="bb-button bb-button--primary"
@@ -574,21 +601,6 @@ onUnmounted(() => {
             @click="preview('install', card)"
           >
             {{ words.reviewInstall }}
-          </button>
-          <button
-            v-else-if="card.installed === false && !reviews.has(card.id)"
-            :disabled="
-              busy ||
-              card.state === 'Unavailable' ||
-              !!card.preparationRequired ||
-              !!card.mutationBlocked
-            "
-            type="button"
-            class="bb-button bb-button--primary"
-            data-cy="plugin-install"
-            @click="change('install', card)"
-          >
-            Install
           </button>
           <template v-else-if="card.installed"
             ><button
@@ -600,12 +612,7 @@ onUnmounted(() => {
             >
               Configure</button
             ><button
-              v-if="
-                card.updateVersion &&
-                card.preparationRequired &&
-                !card.mutationBlocked &&
-                !reviews.has(card.id)
-              "
+              v-if="card.updateVersion && !reviews.has(card.id)"
               class="bb-button"
               :disabled="busy || card.state === 'Unavailable'"
               type="button"
@@ -613,24 +620,6 @@ onUnmounted(() => {
               @click="preview('update', card)"
             >
               {{ words.reviewUpdate }}</button
-            ><button
-              v-if="
-                card.updateVersion &&
-                !reviews.has(card.id) &&
-                (!card.preparationRequired || card.mutationBlocked)
-              "
-              class="bb-button"
-              :disabled="
-                busy ||
-                card.state === 'Unavailable' ||
-                !!card.preparationRequired ||
-                !!card.mutationBlocked
-              "
-              type="button"
-              data-cy="plugin-update"
-              @click="change('update', card)"
-            >
-              Update to {{ card.updateVersion }}</button
             ><button
               class="bb-button"
               :disabled="busy"

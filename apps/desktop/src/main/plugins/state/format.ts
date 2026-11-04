@@ -1,7 +1,6 @@
 import { z } from 'zod'
-import { SkillName, SkillDigest } from '../../../shared/skills-catalogue'
+import { SkillDigest } from '../../../shared/skills-catalogue'
 import { pluginSha256 } from '../package-digests'
-import { strictPluginJson } from '../strict-json'
 
 export const STATE_LIMITS = {
   recordBytes: 128 * 1024,
@@ -13,13 +12,13 @@ export const STATE_LIMITS = {
 const integer = z.number().int().nonnegative().safe()
 const uuid = z.uuid()
 export const ReleaseState = z.strictObject({
-  version: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9.+_-]{0,79}$/),
+  version: z.string(),
   archiveSha256: SkillDigest,
   manifestSha256: SkillDigest,
   dataSchema: integer,
 })
 export const Installation = z.strictObject({
-  pluginId: SkillName,
+  pluginId: z.string(),
   installId: uuid,
   incarnation: uuid,
   lifecycleSequence: integer.min(1),
@@ -33,12 +32,12 @@ export const ActivationSnapshot = z.strictObject({
   format: z.literal(1),
   rootId: uuid,
   epoch: uuid,
-  entries: z.array(Installation).max(STATE_LIMITS.plugins),
+  entries: z.array(Installation),
 })
 export type ActivationSnapshot = z.infer<typeof ActivationSnapshot>
 export const Consent = z.strictObject({
   action: z.enum(['install', 'update', 'uninstall', 'global-restore']),
-  pluginId: SkillName.nullable(),
+  pluginId: z.string().nullable(),
   at: integer,
   expectedSequence: integer,
   expectedInstallId: uuid.nullable(),
@@ -50,7 +49,7 @@ export const OperationRequest = z.strictObject({
   consent: Consent,
   snapshot: ActivationSnapshot.nullable(),
   /** Optional format-1 extension: empty workspace receipts resolve atomically with this operation. */
-  workspaces: z.array(uuid).max(64).optional(),
+  workspaces: z.array(uuid).optional(),
 })
 export type OperationRequest = z.infer<typeof OperationRequest>
 export const Operation = z.strictObject({
@@ -79,7 +78,7 @@ export const ProjectionReceipt = z.strictObject({
   rootId: uuid,
   workspaceId: uuid,
   epoch: uuid,
-  pluginId: SkillName,
+  pluginId: z.string(),
   installId: uuid,
   incarnation: uuid,
   lifecycleSequence: integer.min(1),
@@ -117,7 +116,7 @@ export const Event = z.discriminatedUnion('kind', [
   z.strictObject({
     kind: z.literal('projected'),
     workspaceId: uuid,
-    pluginId: SkillName,
+    pluginId: z.string(),
     receipt: ProjectionReceipt.nullable(),
   }),
   z.strictObject({ kind: z.literal('created'), rootId: uuid, epoch: uuid }),
@@ -161,17 +160,16 @@ const envelope = z.strictObject({ payload: z.string(), sha256: SkillDigest })
 export function encodeState(value: unknown): Buffer {
   const payload = JSON.stringify(value)
   const bytes = Buffer.from(JSON.stringify({ payload, sha256: pluginSha256(Buffer.from(payload)) }))
-  if (bytes.length > STATE_LIMITS.recordBytes) refuseState('limit')
   return bytes
 }
 export function decodeState<T>(bytes: Uint8Array, schema: z.ZodType<T>): T {
   try {
-    const outer = envelope.safeParse(strictPluginJson(bytes, STATE_LIMITS.recordBytes))
+    const outer = envelope.safeParse(
+      JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)),
+    )
     if (!outer.success || pluginSha256(Buffer.from(outer.data.payload)) !== outer.data.sha256)
       refuseState('corrupt')
-    const parsed = schema.safeParse(
-      strictPluginJson(Buffer.from(outer.data.payload), STATE_LIMITS.recordBytes),
-    )
+    const parsed = schema.safeParse(JSON.parse(outer.data.payload))
     if (!parsed.success) refuseState('corrupt')
     return parsed.data
   } catch {

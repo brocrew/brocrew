@@ -1,28 +1,27 @@
 import {
+  PackageRefSchema,
+  type PackageRef,
+  type PluginPackageInput,
+} from '../../shared/plugin-package'
+import type { PluginPackageInspection } from '../../shared/plugin-settings'
+import {
   PLUGIN_UNAVAILABLE_REASONS,
   PluginStartupDiagnosticSchema,
 } from '../../shared/plugin-settings'
-import { randomUUID } from 'node:crypto'
 import type { BrowserWindow, IpcMain, IpcMainInvokeEvent } from 'electron'
-import { PluginSupervisorError } from './supervisor/protocol'
-import { displayedDetailsHash } from './mutation-disclosure'
 import { PluginListError } from './catalogue/list-error'
 import {
   openPluginConfigurationView,
   type PluginConfigurationView,
   type PluginUiHostOptions,
 } from './ui/host'
-import { exact, plain, boundedJson, PLUGIN_UI_UNAVAILABLE } from '../../shared/plugin-ui'
+import { exact, plain, PLUGIN_UI_UNAVAILABLE } from '../../shared/plugin-ui'
 import {
   PLUGIN_SETTINGS_CHANNEL,
   PLUGIN_SCREEN_CLOSED,
   PLUGIN_STATES,
   pluginMutationAllowed,
-  PluginMutationReviewSchema,
-  PluginDisplayedConsentSchema,
-  PLUGIN_REVIEW_INVALIDATED,
   type PluginMutationReview,
-  type PluginMutationFailure,
   type PluginMutationConsent,
   type PluginMutationBlocked,
   pluginRemovalOutcome,
@@ -33,6 +32,9 @@ import {
 } from '../../shared/plugin-settings'
 /** Person-owned install/uninstall controller. Tests inject explicitly fictional fakes. */
 export interface PluginSettingsController {
+  selectCatalogue?(source: string): Promise<PluginCard[]>
+  inspectPackage?(input: PluginPackageInput): Promise<PluginPackageInspection>
+  applyPackage?(ref: PackageRef, action: 'install' | 'update'): Promise<void>
   features?(): readonly string[]
   mutationStatus?(): PluginMutationBlocked | null
   mutationRequired?(): boolean
@@ -72,27 +74,13 @@ export function registerPluginSettings(
     {
       generation: number
       screen?: PluginConfigurationView
-      reviews: Map<string, { reviewId: string; review: PluginMutationReview }>
     }
   >()
   const liveWindows = new Set<BrowserWindow>()
-  controller?.onReviewInvalidated?.(() => {
-    for (const owner of liveWindows) {
-      const state = windows.get(owner)
-      if (state?.reviews.size) {
-        state.reviews.clear()
-        if (!owner.isDestroyed()) owner.webContents.send(PLUGIN_REVIEW_INVALIDATED)
-      }
-    }
-  })
-  async function close(owner: BrowserWindow, preservingReview = false) {
+  async function close(owner: BrowserWindow) {
     const state = windows.get(owner)
     if (!state) return 0
     const generation = ++state.generation
-    if (!preservingReview) {
-      state.reviews.clear()
-      controller?.cancelPreparations?.()
-    }
     const previous = state.screen
     await previous?.close()
     if (state.screen === previous) state.screen = undefined
@@ -138,8 +126,6 @@ export function registerPluginSettings(
     const cards = await load()
     if (
       !Array.isArray(cards) ||
-      cards.length > 200 ||
-      boundedJson(cards, 256 * 1024) === null ||
       new Set(cards.map((card) => card.id)).size !== cards.length ||
       !cards.every(
         (card) =>
@@ -182,12 +168,7 @@ export function registerPluginSettings(
             typeof card.priorityClamped === 'boolean' ||
             card.priorityClamped === null) &&
           [card.installedVersion, card.updateVersion].every(
-            (version) =>
-              version === undefined ||
-              (typeof version === 'string' &&
-                version.length > 0 &&
-                version.length <= 80 &&
-                !/[\r\n\0]/.test(version)),
+            (version) => version === undefined || typeof version === 'string',
           ) &&
           (card.updatesUnavailable === undefined ||
             (card.updatesUnavailable === true &&
@@ -201,10 +182,8 @@ export function registerPluginSettings(
           (card.preparationRequired === undefined || card.preparationRequired === true) &&
           (card.mutationBlocked === undefined ||
             ['source-mismatch', 'owner-incompatible'].includes(card.mutationBlocked)) &&
-          /^[a-z][a-z0-9-]{0,63}$/.test(card.id) &&
+          typeof card.id === 'string' &&
           typeof card.name === 'string' &&
-          card.name.length > 0 &&
-          card.name.length <= 128 &&
           (typeof card.installed === 'boolean' || card.installed === null) &&
           PLUGIN_STATES.includes(card.state) &&
           (card.state === 'Unavailable' || card.installed === (card.state !== 'Available')),
@@ -228,7 +207,7 @@ export function registerPluginSettings(
       )
         return refused
       if (!windows.has(owner)) {
-        windows.set(owner, { generation: 0, reviews: new Map() })
+        windows.set(owner, { generation: 0 })
         liveWindows.add(owner)
         owner.once('closed', () => {
           liveWindows.delete(owner)
@@ -246,7 +225,6 @@ export function registerPluginSettings(
       }
       const state = windows.get(owner)!
       let created: PluginConfigurationView | undefined
-      let mutationContext = false
       try {
         if (input.kind === 'close' && exact(input, ['kind'])) {
           await close(owner)
@@ -270,8 +248,6 @@ export function registerPluginSettings(
           return { ok: true, cards: await catalogue(() => controller.catalogue(false)) }
         }
         if (input.kind === 'list' && exact(input, ['kind'])) {
-          state.reviews.clear()
-          controller?.cancelPreparations?.()
           if (!controller || !(controller.available?.() ?? true))
             return { ok: false, listState: 'fetch-error' }
           try {
@@ -292,11 +268,40 @@ export function registerPluginSettings(
         }
         if (!controller || !(controller.available?.() ?? true)) return refused
         if (
+          input.kind === 'source' &&
+          typeof input.source === 'string' &&
+          controller.selectCatalogue
+        )
+          return { ok: true, cards: await controller.selectCatalogue(input.source) }
+        if (input.kind === 'inspect' && controller.inspectPackage) {
+          const selection =
+            typeof input.source === 'string'
+              ? { source: input.source }
+              : typeof input.id === 'string'
+                ? input.id
+                : PackageRefSchema.parse(input.package)
+          return { ok: true, inspection: await controller.inspectPackage(selection) }
+        }
+        if (
+          (input.kind === 'install' || input.kind === 'update') &&
+          input.package &&
+          controller.applyPackage
+        ) {
+          const ref = PackageRefSchema.parse(input.package)
+          if (controller.inspectPackage) {
+            const selected = await controller.inspectPackage(ref)
+            if (selected.id !== input.id)
+              throw new Error('The selected package belongs to a different plugin.')
+          }
+          await close(owner)
+          await controller.applyPackage(ref, input.kind)
+          return { ok: true, cards: await catalogue() }
+        }
+        if (
           !['install', 'update', 'uninstall', 'configure', 'retry', 'restart', 'prepare'].includes(
             String(input.kind),
           ) ||
-          typeof input.id !== 'string' ||
-          !/^[a-z][a-z0-9-]{0,63}$/.test(input.id)
+          typeof input.id !== 'string'
         )
           return refused
         if (
@@ -314,7 +319,6 @@ export function registerPluginSettings(
         )
           return refused
         if (input.kind === 'configure') {
-          if (state.reviews.size) await close(owner)
           if (!rectangle(input.bounds, owner)) {
             screenRefused('bounds', input.bounds, owner)
             return refused
@@ -324,15 +328,11 @@ export function registerPluginSettings(
         }
         if (input.kind === 'restart') {
           if (!controller.restartPlugin) return refused
-          state.reviews.clear()
-          controller.cancelPreparations?.()
           await close(owner)
           await controller.restartPlugin(input.id as string)
           return { ok: true, cards: await catalogue(() => controller.catalogue(false)) }
         }
         if (input.kind === 'retry') {
-          state.reviews.clear()
-          controller.cancelPreparations?.()
           // Same catalogue/connect path as list; never an install/uninstall or new authority.
           const id = input.id
           const cards = await catalogue(() =>
@@ -360,88 +360,9 @@ export function registerPluginSettings(
         const admittedGeneration = state.generation
         const card = (await catalogue()).find((card) => card.id === input.id)
         if (!card) return refused
-        mutationContext =
-          card.preparationRequired === true &&
-          ['prepare', 'install', 'update'].includes(String(input.kind))
         if (input.kind === 'prepare') {
-          if (!mutationContext || !['install', 'update'].includes(String(input.action)))
-            return refused
-          if (card.mutationBlocked)
-            throw new PluginSupervisorError(
-              card.mutationBlocked === 'source-mismatch' ? 'source-mismatch' : 'incompatible',
-            )
-          const action = input.action as 'install' | 'update'
-          if (
-            !controller.reviewMutation ||
-            !pluginMutationAllowed({ ...card, preparationRequired: undefined }, action)
-          )
-            throw new PluginSupervisorError('policy-refused')
-          const generation = await close(owner)
-          const parsed = PluginMutationReviewSchema.safeParse(
-            await controller.reviewMutation(action, card.id),
-          )
-          if (!parsed.success || generation !== state.generation || owner.isDestroyed()) {
-            controller.cancelPreparations?.()
-            throw new PluginSupervisorError('policy-refused')
-          }
-          const { consent, ...display } = parsed.data
-          if (
-            parsed.data.id !== card.id ||
-            parsed.data.action !== action ||
-            boundedJson(parsed.data, 64 * 1024) === null ||
-            displayedDetailsHash(display) !== consent.displayedDetailsHash
-          ) {
-            controller.cancelPreparations?.()
-            throw new PluginSupervisorError('policy-refused')
-          }
-          const reviewId = randomUUID()
-          state.reviews.set(card.id, { reviewId, review: parsed.data })
-          return {
-            ok: true,
-            review: {
-              ...display,
-              consent: {
-                reviewId,
-                displayedDetailsHash: consent.displayedDetailsHash,
-              },
-            },
-          }
-        }
-        if (input.kind === 'install' || input.kind === 'update') {
-          if (mutationContext) {
-            const held = state.reviews.get(card.id)
-            state.reviews.delete(card.id)
-            if (card.mutationBlocked)
-              throw new PluginSupervisorError(
-                card.mutationBlocked === 'source-mismatch' ? 'source-mismatch' : 'incompatible',
-              )
-            const parsed = PluginDisplayedConsentSchema.safeParse(input.consent)
-            if (
-              !held ||
-              !parsed.success ||
-              held.review.action !== input.kind ||
-              held.reviewId !== parsed.data.reviewId ||
-              held.review.consent.displayedDetailsHash !== parsed.data.displayedDetailsHash ||
-              displayedDetailsHash(
-                (({ consent, ...display }) => {
-                  void consent
-                  return display
-                })(held.review),
-              ) !== parsed.data.displayedDetailsHash ||
-              !pluginMutationAllowed(card, input.kind, held.review)
-            ) {
-              if (held) controller.cancelPreparations?.()
-              throw new PluginSupervisorError('policy-refused')
-            }
-            await close(owner, true)
-            if (owner.isDestroyed()) throw new PluginSupervisorError('policy-refused')
-            if (input.kind === 'update') {
-              if (!controller.update) throw new PluginSupervisorError('incompatible')
-              await controller.update(card.id, held.review.consent)
-            } else await controller.install(card.id, held.review.consent)
-            return { ok: true, cards: await catalogue() }
-          }
-          if (Object.hasOwn(input, 'consent')) return refused
+          if (!controller.inspectPackage) return refused
+          return { ok: true, inspection: await controller.inspectPackage(card.id) }
         }
         if (
           input.kind === 'configure' &&
@@ -515,17 +436,7 @@ export function registerPluginSettings(
         return { ok: true, cards: await catalogue() }
       } catch (error) {
         await created?.close().catch(() => {})
-        if (mutationContext) {
-          const code = error instanceof PluginSupervisorError ? error.code : 'unavailable'
-          const mutationFailure: PluginMutationFailure =
-            code === 'incompatible'
-              ? 'owner-incompatible'
-              : ['policy-refused', 'source-mismatch', 'network'].includes(code)
-                ? (code as PluginMutationFailure)
-                : 'unavailable'
-          return { ...refused, mutationFailure }
-        }
-        return refused
+        return { ...refused, ...(error instanceof Error ? { detail: error.message } : {}) }
       }
     },
   )
