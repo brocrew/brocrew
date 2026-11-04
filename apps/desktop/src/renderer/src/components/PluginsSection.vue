@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { loadPluginConfiguration } from '../lib/plugin-configuration-load'
 import {
   pluginUnavailableNotice,
+  pluginRemovalNotice,
   pluginStartupDiagnosticNotice,
   pluginUnavailableRetryable,
   pluginMutationNotice,
@@ -297,10 +298,7 @@ async function change(kind: 'install' | 'update' | 'uninstall', card: PluginCard
   if (answer.ok && answer.cards) {
     cards.value = answer.cards
     if (kind === 'uninstall' && answer.removal)
-      removalNotice.value =
-        answer.removal.logout === 'confirmed'
-          ? `${card.name}'s local data was deleted and its account was logged out.`
-          : `${card.name}'s local data was deleted. Account logout was not confirmed.`
+      removalNotice.value = pluginRemovalNotice(card.name, answer.removal)
   } else
     error.value =
       !answer.ok && 'detail' in answer && answer.detail

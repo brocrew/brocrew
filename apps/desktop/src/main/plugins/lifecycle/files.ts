@@ -21,6 +21,8 @@ export const Effect = z.strictObject({
   phase: z.enum(['prepared', 'committed', 'aborted']),
   offlineCleanup: z.boolean(),
   compensates: z.uuid().nullable(),
+  cleanupAttempted: z.boolean().optional(),
+  cleanupResult: z.enum(['completed', 'unconfirmed']).optional(),
   previousVersion: z.string().optional(),
   previousDataSchema: z.number().int().nonnegative().safe().optional(),
 })

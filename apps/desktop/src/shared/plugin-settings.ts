@@ -250,22 +250,42 @@ export function pluginMutationFailureNotice(cause: PluginMutationFailure): strin
   return 'Plugin unavailable. Try again.'
 }
 /** Closed uninstall facts; remote removal is never inferred from deleting local data. */
-export interface PluginRemovalOutcome {
-  data: 'deleted'
-  logout: 'confirmed' | 'unconfirmed'
-}
+export type PluginRemovalOutcome =
+  | { data: 'deleted'; logout: 'confirmed' | 'unconfirmed'; cleanup?: never }
+  | {
+      data: 'kept' | 'deleted'
+      cleanup: 'not-requested' | 'completed' | 'unconfirmed'
+      logout?: never
+    }
 export function pluginRemovalOutcome(value: unknown): PluginRemovalOutcome | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   const result = value as Partial<PluginRemovalOutcome>
+  if (Object.keys(value).length !== 2 || !Object.hasOwn(value, 'data')) return null
   if (
-    Object.keys(value).length !== 2 ||
-    !Object.hasOwn(value, 'data') ||
-    !Object.hasOwn(value, 'logout') ||
-    result.data !== 'deleted' ||
-    (result.logout !== 'confirmed' && result.logout !== 'unconfirmed')
+    Object.hasOwn(value, 'cleanup') &&
+    (result.data === 'kept' || result.data === 'deleted') &&
+    ['not-requested', 'completed', 'unconfirmed'].includes(result.cleanup ?? '')
   )
-    return null
-  return { data: 'deleted', logout: result.logout }
+    return { data: result.data, cleanup: result.cleanup! }
+  if (
+    Object.hasOwn(value, 'logout') &&
+    result.data === 'deleted' &&
+    (result.logout === 'confirmed' || result.logout === 'unconfirmed')
+  )
+    return { data: 'deleted', logout: result.logout }
+  return null
+}
+export function pluginRemovalNotice(name: string, outcome: PluginRemovalOutcome): string {
+  if (outcome.cleanup !== undefined) {
+    const data = outcome.data === 'deleted' ? 'was deleted' : 'was kept'
+    return (
+      `${name}'s local data ${data}.` +
+      (outcome.cleanup === 'unconfirmed' ? ' Plugin cleanup was not confirmed.' : '')
+    )
+  }
+  return outcome.logout === 'confirmed'
+    ? `${name}'s local data was deleted and its account was logged out.`
+    : `${name}'s local data was deleted. Account logout was not confirmed.`
 }
 export interface PluginScreenBounds {
   x: number

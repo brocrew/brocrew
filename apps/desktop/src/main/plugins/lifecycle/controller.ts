@@ -338,7 +338,10 @@ export class PluginLifecycleController {
           return {
             id,
             name,
-            uninstallDeletesData: Boolean(pluginAdapter(id)?.uninstall),
+            uninstallDeletesData:
+              this.runs.get(id)?.package.manifest.format === 3
+                ? this.runs.get(id)!.package.contract.lifecycle.dataOnRemove === 'remove'
+                : Boolean(pluginAdapter(id)?.uninstall),
             ...(active ? { installedVersion: active.release.version } : {}),
             ...(active &&
             release &&
@@ -1125,11 +1128,53 @@ export class PluginLifecycleController {
       clearTimeout(timer)
     }
   }
+  /** A consumed lifecycle callback is never replayed after an ambiguous reply or owner crash. */
+  private async genericBeforeRemoval(
+    effect: Effect,
+    pkg: VerifiedPluginPackage,
+  ): Promise<'not-requested' | 'completed' | 'unconfirmed'> {
+    const manifest = pkg.manifest
+    if (manifest.format !== 3 || !manifest.lifecycle.beforeRemove || effect.compensates !== null)
+      return 'not-requested'
+    if (effect.cleanupAttempted) return effect.cleanupResult ?? 'unconfirmed'
+    effect.cleanupAttempted = true
+    effect.cleanupResult = 'unconfirmed'
+    await this.effects.write(effect)
+    const running = this.runs.get(effect.pluginId)
+    if (!running || running.ended || running.installId !== effect.installId) return 'unconfirmed'
+    try {
+      const connection = await bounded(() => running.run.ready(), 5000)
+      if (!connection.client) return 'unconfirmed'
+      const binding = manifest.lifecycle.beforeRemove
+      const result = await connection.client.callTool(
+        {
+          name: binding.tool,
+          arguments: binding.arguments ?? {},
+          _meta: { origin: 'lifecycle.beforeRemove', requestId: effect.operationId },
+        },
+        undefined,
+        { signal: AbortSignal.timeout(5000), timeout: 5000 },
+      )
+      effect.cleanupResult = result.isError ? 'unconfirmed' : 'completed'
+      await this.effects.write(effect)
+      return effect.cleanupResult
+    } catch {
+      return 'unconfirmed'
+    }
+  }
   private async finishRemoval(
     effect: Effect,
     install: Installation,
-  ): Promise<PluginRemovalOutcome['logout']> {
-    const logout = await this.beforeRemoval(install.pluginId)
+  ): Promise<PluginRemovalOutcome | void> {
+    const pkg =
+      this.runs.get(install.pluginId)?.package ??
+      (await this.vault.load(this.descriptor(install), []))
+    const generic = pkg.manifest.format === 3
+    const cleanup = generic ? await this.genericBeforeRemoval(effect, pkg) : undefined
+    const logout = generic ? undefined : await this.beforeRemoval(install.pluginId)
+    const deleteData = generic
+      ? pkg.contract.lifecycle.dataOnRemove === 'remove' && effect.compensates === null
+      : Boolean(pluginAdapter(install.pluginId)?.uninstall)
     const results = await Promise.allSettled([
       this.stop(install.pluginId, effect.operationId),
       this.revoke(install),
@@ -1139,7 +1184,7 @@ export class PluginLifecycleController {
       return pending()
     }
     await this.removeFiles(install, effect.operationId)
-    if (pluginAdapter(install.pluginId)?.uninstall) {
+    if (deleteData) {
       if (!this.options.runtime.removeData) return pending()
       await this.options.runtime.removeData(install.pluginId)
     }
@@ -1158,13 +1203,14 @@ export class PluginLifecycleController {
     // Cohort receipts clear in the reserved completion. Any older/offline receipt is only a
     // cleanup obligation: the tombstone already invalidates it, never authority to reactivate.
     this.cleanup.delete(install.pluginId)
-    return logout
+    if (generic) return { data: deleteData ? 'deleted' : 'kept', cleanup: cleanup! }
+    if (deleteData) return { data: 'deleted', logout: logout ?? 'unconfirmed' }
   }
   private async remove(
     id: string,
     operationId: string,
     compensates: string | null,
-  ): Promise<PluginRemovalOutcome['logout']> {
+  ): Promise<PluginRemovalOutcome | void> {
     const state = this.options.state.inspect(),
       before = this.current(id)
     if (!before) return refuse()
@@ -1205,7 +1251,7 @@ export class PluginLifecycleController {
     this.workspace(handle)
     if (!idSchema.safeParse(id).success || !z.uuid().safeParse(operationId).success) return refuse()
     let absent = false
-    let logout: PluginRemovalOutcome['logout'] = 'unconfirmed'
+    let outcome: PluginRemovalOutcome | void
     const token = this.block(id) // Synchronous denial before the queue, tombstone, or any consumer awaits.
     try {
       await this.options.state.withExclusive(async () => {
@@ -1234,13 +1280,13 @@ export class PluginLifecycleController {
           if (prior.status === 'completed') return
           const effect = await this.effects.read(prior.operation.request.operationId)
           if (!effect || !prior.operation.next) return pending()
-          logout = await this.finishRemoval(effect, prior.operation.next)
+          outcome = await this.finishRemoval(effect, prior.operation.next)
           return
         }
-        logout = await this.remove(id, operationId, null)
+        outcome = await this.remove(id, operationId, null)
       })
       if (this.blocks.get(id) === token) this.blocks.delete(id)
-      if (pluginAdapter(id)?.uninstall) return { data: 'deleted', logout }
+      return outcome
     } catch {
       if (absent) {
         if (!this.cleanup.has(id) && this.blocks.get(id) === token) this.blocks.delete(id)
