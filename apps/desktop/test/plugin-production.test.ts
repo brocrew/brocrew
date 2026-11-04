@@ -224,6 +224,135 @@ describe.skipIf(process.platform === 'win32')('first Settings startup catalogue 
     expect(f.fetch).toHaveBeenCalledTimes(3)
     expect(f.peer.refreshCatalogue).toHaveBeenCalledOnce()
   })
+  it('invalidates reuse after a failed authenticated-owner read', async () => {
+    const f = await modern()
+    f.controller.start(f.options)
+    await f.controller.ready!()
+    expect(f.fetch).toHaveBeenCalledTimes(3)
+    f.peer.catalogue.mockRejectedValueOnce(new Error('fictional read failure'))
+    expect(await f.controller.catalogue()).toMatchObject([{ state: 'Unavailable' }])
+    expect(await f.controller.catalogue(true)).toMatchObject([{ state: 'Available' }])
+    expect(f.fetch).toHaveBeenCalledTimes(6)
+    expect(f.peer.refreshCatalogue).toHaveBeenCalledOnce()
+  })
+  it('waits for unfinished startup verification before first Settings result', async () => {
+    const f = await modern()
+    const cards = await f.peer.catalogue()
+    f.peer.catalogue.mockClear()
+    let release!: () => void
+    const hold = new Promise<PluginCard[]>((resolve) => {
+      release = () => resolve(cards)
+    })
+    f.peer.catalogue.mockImplementationOnce(() => hold)
+    f.controller.start(f.options)
+    let settled = false
+    const list = f.controller.catalogue(true).finally(() => {
+      settled = true
+    })
+    await vi.waitFor(() => expect(f.peer.catalogue).toHaveBeenCalledOnce())
+    const before = settled
+    release()
+    expect(await list).toMatchObject([{ state: 'Available' }])
+    expect(before).toBe(false)
+    expect(f.fetch).toHaveBeenCalledTimes(3)
+    expect(f.peer.refreshCatalogue).not.toHaveBeenCalled()
+  })
+  it('Try again refreshes successor instead of joining a held old-peer list', async () => {
+    const f = await modern()
+    f.controller.start(f.options)
+    await f.controller.ready!()
+    const cards = [
+      {
+        id: f.pkg.release.id,
+        name: 'Fictional Bakery',
+        installed: false,
+        state: 'Available' as const,
+      },
+    ]
+    let release!: () => void
+    const hold = new Promise<PluginCard[]>((resolve) => {
+      release = () => resolve(cards)
+    })
+    f.peer.catalogue.mockImplementationOnce(() => hold)
+    const oldList = f.controller.catalogue(true)
+    await vi.waitFor(() => expect(f.peer.catalogue).toHaveBeenCalledTimes(2))
+    const successor = {
+      ...f.peer,
+      catalogue: vi.fn(async () => cards),
+      close: vi.fn(async () => {}),
+      refreshCatalogue: vi.fn(async () => {}),
+      mutationStatus: () => null,
+    }
+    seams.connect.mockResolvedValueOnce(successor)
+    const retry = f.controller.retry!(f.pkg.release.id)
+    try {
+      await vi.waitFor(() => expect(successor.catalogue).toHaveBeenCalled())
+    } finally {
+      release()
+    }
+    const [oldResult, retryResult] = await Promise.all([oldList, retry])
+    expect(retryResult).toMatchObject([{ state: 'Available' }])
+    expect(successor.refreshCatalogue).toHaveBeenCalledOnce()
+  })
+
+  it('refetches if authenticated first-list read invalidates pre-read status', async () => {
+    const f = await modern()
+    let status: string | null = null
+    Object.assign(f.peer, { mutationStatus: () => status })
+    f.controller.start(f.options)
+    await f.controller.ready!()
+    const cards = [
+      {
+        id: f.pkg.release.id,
+        name: 'Fictional Bakery',
+        installed: false,
+        state: 'Available' as const,
+      },
+    ]
+    f.peer.catalogue.mockImplementationOnce(async () => {
+      status = 'source-mismatch'
+      return cards.map((c) => ({ ...c, mutationBlocked: 'source-mismatch' as const }))
+    })
+    const refresh = f.peer.refreshCatalogue.getMockImplementation()!
+    f.peer.refreshCatalogue.mockImplementationOnce(async (...args) => {
+      await refresh(...args)
+      status = null
+    })
+    const result = await f.controller.catalogue(true)
+    expect(f.fetch).toHaveBeenCalledTimes(6)
+    expect(f.peer.refreshCatalogue).toHaveBeenCalledOnce()
+    expect(status).toBe(null)
+  })
+  it.each(['fetch', 'owner'] as const)(
+    'keeps mismatch blocked after %s refresh failure, without retry loops',
+    async (failure) => {
+      const f = await modern()
+      let status: string | null = null
+      Object.assign(f.peer, { mutationStatus: () => status })
+      f.controller.start(f.options)
+      await f.controller.ready!()
+      f.peer.catalogue.mockImplementation(async () => {
+        status = 'source-mismatch'
+        return [
+          {
+            id: f.pkg.release.id,
+            name: 'Fictional Bakery',
+            installed: false,
+            state: 'Available',
+            mutationBlocked: 'source-mismatch',
+          },
+        ]
+      })
+      if (failure === 'fetch') f.fetch.mockRejectedValue(new Error('fictional offline refresh'))
+      else f.peer.refreshCatalogue.mockRejectedValue(new Error('fictional refused refresh'))
+      const result = await f.controller.catalogue(true)
+      expect(result).toMatchObject([{ mutationBlocked: 'source-mismatch' }])
+      expect(f.controller.refreshFailed!()).toBe(true)
+      expect(f.fetch).toHaveBeenCalledTimes(4)
+      expect(f.peer.refreshCatalogue).toHaveBeenCalledTimes(failure === 'fetch' ? 0 : 1)
+      expect(f.peer.install).not.toHaveBeenCalled()
+    },
+  )
 })
 describe('bounded live-owner guidance with fake peers and monotonic time', () => {
   afterEach(() => vi.useRealTimers())

@@ -337,7 +337,18 @@ export function productionPluginController() {
           }
         }
       }
-      return (await update())!
+      const cards = (await update())!
+      if (
+        refreshList &&
+        reuseStartup &&
+        catalogueEntries.format === 2 &&
+        connected?.mutationStatus?.() !== null
+      ) {
+        // The authenticated read can invalidate the pre-read status. The allowance is
+        // already consumed, so this takes the normal refresh/failure path exactly once.
+        return await catalogue(true)
+      }
+      return cards
     } catch (error) {
       if (ended) return fail()
       if (error instanceof PluginListError) throw error
@@ -393,6 +404,9 @@ export function productionPluginController() {
       // A person's Try again must never spend the first-list allowance.
       firstSettingsList = false
       startupCatalogueVerifiedAt = undefined
+      // An older list may still be awaiting the peer we are about to detach.
+      // Its promise must not become the successor's explicit refresh.
+      catalogueRefresh = undefined
       recover()
       await enter(true)
       if (ended || !entries) return fail()
