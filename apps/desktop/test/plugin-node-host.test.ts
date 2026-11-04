@@ -757,6 +757,39 @@ process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
     hosts.push(other)
     await (await other.start(fixture())).ready()
   })
+  it('cannot re-enter another plugin data folder through a different retirement slot', async () => {
+    const { host, home } = await context(),
+      child = await host.start(fixture())
+    try {
+      await child.ready()
+      let exited = false
+      void child.exited.then(() => {
+        exited = true
+      })
+      const data = join(home, 'data', 'chrome', 'bridge'),
+        slots = join(home, 'process-slots')
+      await mkdir(data, { mode: 0o700 })
+      await writeFile(join(data, 'messages.db'), 'fictional running data')
+      const names = (await readdir(slots)).sort(),
+        bytes = await Promise.all(names.map((name) => readFile(join(slots, name))))
+      expect(names).toContain('chrome.sqlite')
+      const aliases = [
+        '../data/chrome',
+        './chrome',
+        'chrome/../chrome',
+        ...(process.platform === 'win32' ? ['..\\data\\chrome'] : []),
+      ]
+      for (const id of aliases) {
+        await expect(host.removeData(id)).rejects.toThrow('plugin-host-cleanup')
+        expect(await readFile(join(data, 'messages.db'), 'utf8')).toBe('fictional running data')
+        expect((await readdir(slots)).sort()).toEqual(names)
+        expect(await Promise.all(names.map((name) => readFile(join(slots, name))))).toEqual(bytes)
+        expect(exited).toBe(false)
+      }
+    } finally {
+      expect(await child.stop()).toEqual({ exited: true })
+    }
+  })
   it('serializes duplicate starts and refuses new starts after quit', async () => {
     const { host } = await context(),
       spec = fixture()
