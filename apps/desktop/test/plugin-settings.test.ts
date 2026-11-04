@@ -1,7 +1,8 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { EventEmitter } from 'node:events'
 import { registerPluginSettings, type PluginSettingsController } from '../src/main/plugins/settings'
-import { chromeUiFixture, FICTIONAL_CHROME } from './chrome-ui-fixture'
+import { genericUiFixture } from './plugin-ui-fixtures'
+import type { PluginToolCallResult } from '../src/shared/plugin-contract'
 import { pluginsBridge } from '../src/preload/plugins'
 import {
   PLUGIN_SETTINGS_CHANNEL,
@@ -26,13 +27,20 @@ function setup(available = false, missing = false) {
   fake.open.mockImplementation(async () => ({ view, close }))
   const cards: PluginCard[] = [
     {
-      id: 'chrome',
-      name: 'Chrome',
+      id: 'fictional-bakery',
+      name: 'Fictional bakery',
       installed: !available,
       state: available ? 'Available' : 'Running',
     },
   ]
-  const f = chromeUiFixture()
+  const f = genericUiFixture()
+  const tools = {
+    current: () => true,
+    callTool: vi.fn(async (): Promise<PluginToolCallResult> => ({
+      status: 'result',
+      result: { content: [{ type: 'text', text: 'Fictional settings answer' }] },
+    })),
+  }
   // Explicit fake lifecycle controller; performs no install or process launch.
   const controller: PluginSettingsController = {
     catalogue: vi.fn(async () => cards.map((card) => ({ ...card }))),
@@ -46,14 +54,9 @@ function setup(available = false, missing = false) {
     }),
     screen: vi.fn(async () => ({
       ...f,
-      peer: {
-        read: async () => FICTIONAL_CHROME,
-        subscribe: async () => () => {},
-        proposeConfig: async () => ({ resources: [] }),
-      },
+      tools,
       current: () => true,
       onInvalidate: () => () => {},
-      propose: () => {},
     })),
   }
   const ipc = { handle: vi.fn() }
@@ -67,8 +70,9 @@ function setup(available = false, missing = false) {
     view,
     close,
     controller,
+    tools,
     event,
-    call: (input: unknown, seen = event) => handler(seen, input),
+    call: (input: unknown, seen = event) => handler(seen, structuredClone(input)),
   }
 }
 const screenId = '00000000-0000-0000-0000-000000000001'
@@ -91,20 +95,42 @@ it('the fixed preload carries only the request and only a bounded screen identit
 })
 it('uses fake install/uninstall seams and binds Configure to its own verified source', async () => {
   const f = setup(true)
-  expect(await f.call({ kind: 'install', id: 'chrome' })).toMatchObject({
+  expect(await f.call({ kind: 'install', id: 'fictional-bakery' })).toMatchObject({
     ok: true,
     cards: [{ state: 'Installed' }],
   })
-  expect(f.controller.install).toHaveBeenCalledWith('chrome')
-  expect(await f.call({ kind: 'configure', id: 'chrome', screenId, bounds })).toEqual({ ok: true })
-  expect(fake.open.mock.calls.at(-1)?.[0].binding.pluginId).toBe('chrome')
+  expect(f.controller.install).toHaveBeenCalledWith('fictional-bakery')
+  expect(await f.call({ kind: 'configure', id: 'fictional-bakery', screenId, bounds })).toEqual({
+    ok: true,
+  })
+  expect(fake.open.mock.calls.at(-1)?.[0].binding.pluginId).toBe('fictional-bakery')
+  const opened = fake.open.mock.calls.at(-1)![0]
+  expect(opened.verified).toBeDefined()
+  expect(opened.verified.manifest.format).toBe(3)
+  expect(opened.tools).toBe(f.tools)
+  expect(opened).not.toHaveProperty('peer')
+  expect(opened).not.toHaveProperty('propose')
+  const args = { profile: 'fictional-birch', enabled: false }
+  const signal = new AbortController().signal
+  await expect(
+    opened.tools.callTool('fictional_settings', args, 'fictional-request', signal),
+  ).resolves.toEqual({
+    status: 'result',
+    result: { content: [{ type: 'text', text: 'Fictional settings answer' }] },
+  })
+  expect(f.tools.callTool).toHaveBeenCalledWith(
+    'fictional_settings',
+    args,
+    'fictional-request',
+    signal,
+  )
   expect(f.owner.contentView.addChildView).toHaveBeenCalledWith(f.view)
   expect(f.view.setBounds).toHaveBeenCalledWith(bounds)
-  expect(await f.call({ kind: 'uninstall', id: 'chrome' })).toMatchObject({
+  expect(await f.call({ kind: 'uninstall', id: 'fictional-bakery' })).toMatchObject({
     ok: true,
     cards: [{ state: 'Available' }],
   })
-  expect(f.controller.uninstall).toHaveBeenCalledWith('chrome')
+  expect(f.controller.uninstall).toHaveBeenCalledWith('fictional-bakery')
 })
 it('fails visibly without a controller and rejects foreign frames, IDs and too little room in the window', async () => {
   const missing = setup(false, true)
@@ -114,12 +140,12 @@ it('fails visibly without a controller and rejects foreign frames, IDs and too l
   })
   const f = setup()
   for (const input of [
-    { kind: 'configure', id: 'chrome', screenId, bounds: { ...bounds, x: 1000 } },
-    { kind: 'configure', id: 'chrome', screenId, bounds: { ...bounds, y: 760 } },
-    { kind: 'configure', id: 'chrome', screenId, bounds: { ...bounds, width: -1 } },
-    { kind: 'configure', id: 'chrome', screenId, bounds: { ...bounds, x: 0.5 } },
+    { kind: 'configure', id: 'fictional-bakery', screenId, bounds: { ...bounds, x: 1000 } },
+    { kind: 'configure', id: 'fictional-bakery', screenId, bounds: { ...bounds, y: 760 } },
+    { kind: 'configure', id: 'fictional-bakery', screenId, bounds: { ...bounds, width: -1 } },
+    { kind: 'configure', id: 'fictional-bakery', screenId, bounds: { ...bounds, x: 0.5 } },
     { kind: 'configure', id: 'other', screenId, bounds },
-    { kind: 'configure', id: 'chrome', screenId, bounds, extra: true },
+    { kind: 'configure', id: 'fictional-bakery', screenId, bounds, extra: true },
   ])
     expect(await f.call(input)).toMatchObject({ ok: false })
   expect(await f.call({ kind: 'list' }, { ...f.event, senderFrame: {} })).toMatchObject({
@@ -131,7 +157,9 @@ it('shows a screen over only the part of its stage inside the window', async () 
   const f = setup()
   // A window narrower than the app's frame scrolls it: the stage runs past either edge.
   const wide = { x: 87, y: 279, width: 1200, height: 415 }
-  expect(await f.call({ kind: 'configure', id: 'chrome', screenId, bounds: wide })).toEqual({
+  expect(
+    await f.call({ kind: 'configure', id: 'fictional-bakery', screenId, bounds: wide }),
+  ).toEqual({
     ok: true,
   })
   expect(f.view.setBounds).toHaveBeenLastCalledWith({ x: 87, y: 279, width: 1093, height: 415 })
@@ -146,14 +174,14 @@ it('shows a screen over only the part of its stage inside the window', async () 
 it('discards a delayed Configure after the screen was closed', async () => {
   const f = setup()
   let release: () => void = () => {}
-  const source = await f.controller.screen('chrome')
+  const source = await f.controller.screen('fictional-bakery')
   f.controller.screen = vi.fn(
     () =>
       new Promise<typeof source>((resolve) => {
         release = () => resolve(source)
       }),
   )
-  const opening = f.call({ kind: 'configure', id: 'chrome', screenId, bounds })
+  const opening = f.call({ kind: 'configure', id: 'fictional-bakery', screenId, bounds })
   await vi.waitFor(() => expect(f.controller.screen).toHaveBeenCalled())
   await f.call({ kind: 'close' })
   release()
@@ -171,7 +199,7 @@ it('a cancellation during the catalogue read prevents a late screen from opening
         release = () => resolve(cards)
       }),
   )
-  const opening = f.call({ kind: 'configure', id: 'chrome', screenId, bounds })
+  const opening = f.call({ kind: 'configure', id: 'fictional-bakery', screenId, bounds })
   await vi.waitFor(() => expect(f.controller.catalogue).toHaveBeenCalledOnce())
   await f.call({ kind: 'close' })
   release()
@@ -181,7 +209,9 @@ it('a cancellation during the catalogue read prevents a late screen from opening
 })
 it('an old screen destruction is tagged with A while B is opening', async () => {
   const f = setup()
-  expect(await f.call({ kind: 'configure', id: 'chrome', screenId, bounds })).toEqual({ ok: true })
+  expect(await f.call({ kind: 'configure', id: 'fictional-bakery', screenId, bounds })).toEqual({
+    ok: true,
+  })
   let destroyA = () => {}
   const closedA = new Promise<void>((resolve) => {
     destroyA = () => {
@@ -194,7 +224,12 @@ it('an old screen destruction is tagged with A while B is opening', async () => 
   const bView = { webContents: bContents, setBounds: vi.fn() }
   fake.open.mockImplementation(async () => ({ view: bView, close: async () => {} }))
   const cancelling = f.call({ kind: 'close' })
-  const openingB = f.call({ kind: 'configure', id: 'chrome', screenId: nextScreenId, bounds })
+  const openingB = f.call({
+    kind: 'configure',
+    id: 'fictional-bakery',
+    screenId: nextScreenId,
+    bounds,
+  })
   // B reaches its close(A) await before A's delayed destruction completes.
   await vi.waitFor(() => expect(f.close).toHaveBeenCalledTimes(2))
   destroyA()
@@ -207,7 +242,7 @@ it('an old screen destruction is tagged with A while B is opening', async () => 
 
 it('P3: real Settings dispatch denies uninstall before catalogue or slow UI teardown', async () => {
   const f = setup()
-  await f.call({ kind: 'configure', id: 'chrome', screenId, bounds })
+  await f.call({ kind: 'configure', id: 'fictional-bakery', screenId, bounds })
   const never = new Promise<void>(() => {})
   f.close.mockImplementationOnce(() => never)
   vi.mocked(f.controller.catalogue).mockImplementationOnce(() => new Promise(() => {}))
@@ -215,18 +250,18 @@ it('P3: real Settings dispatch denies uninstall before catalogue or slow UI tear
   vi.mocked(f.controller.uninstall).mockImplementationOnce(async () => {
     denied()
   })
-  void f.call({ kind: 'uninstall', id: 'chrome' })
+  void f.call({ kind: 'uninstall', id: 'fictional-bakery' })
   expect(denied).toHaveBeenCalledOnce()
 })
 it('P3: failed UI teardown cannot suppress the real Settings uninstall dispatch', async () => {
   const f = setup()
-  await f.call({ kind: 'configure', id: 'chrome', screenId, bounds })
+  await f.call({ kind: 'configure', id: 'fictional-bakery', screenId, bounds })
   f.close.mockRejectedValueOnce(new Error('fictional failed close'))
   const denied = vi.fn()
   vi.mocked(f.controller.uninstall).mockImplementationOnce(async () => {
     denied()
   })
-  expect(await f.call({ kind: 'uninstall', id: 'chrome' })).toMatchObject({ ok: false })
+  expect(await f.call({ kind: 'uninstall', id: 'fictional-bakery' })).toMatchObject({ ok: false })
   expect(denied).toHaveBeenCalledOnce()
 })
 
@@ -238,9 +273,9 @@ it.skipIf(process.platform === 'win32')(
     const { PluginLifecycleController } = await import('../src/main/plugins/lifecycle/controller')
     try {
       const live = await fixture()
-      await live.controller.install(live.handle, 'chrome')
+      await live.controller.install(live.handle, 'fictional-bakery')
       live.failStop()
-      await expect(live.controller.uninstall(live.handle, 'chrome')).rejects.toThrow()
+      await expect(live.controller.uninstall(live.handle, 'fictional-bakery')).rejects.toThrow()
       const state = reopenLifecycleFixture(live)
       live.failStop(false)
       const recovered = await PluginLifecycleController.open({ ...live.opts, state })
@@ -250,7 +285,7 @@ it.skipIf(process.platform === 'win32')(
         async () => (await recovered.status()).cards,
       )
       vi.mocked(f.controller.install).mockImplementation((id) => recovered.install(handle, id))
-      expect(await f.call({ kind: 'install', id: 'chrome' })).toMatchObject({
+      expect(await f.call({ kind: 'install', id: 'fictional-bakery' })).toMatchObject({
         ok: true,
         cards: [{ state: 'Running' }],
       })
@@ -264,28 +299,30 @@ it('Try again uses the existing catalogue/connect path and never invokes install
   const f = setup()
   vi.mocked(f.controller.catalogue)
     .mockResolvedValueOnce([
-      { id: 'chrome', name: 'Fictional Fir', installed: true, state: 'Unavailable' },
+      { id: 'fictional-bakery', name: 'Fictional Fir', installed: true, state: 'Unavailable' },
     ])
     .mockResolvedValueOnce([
-      { id: 'chrome', name: 'Fictional Fir', installed: true, state: 'Running' },
+      { id: 'fictional-bakery', name: 'Fictional Fir', installed: true, state: 'Running' },
     ])
   expect(await f.call({ kind: 'list' })).toMatchObject({
     ok: true,
     cards: [{ state: 'Unavailable', installed: true }],
   })
-  expect(await f.call({ kind: 'retry', id: 'chrome' })).toMatchObject({
+  expect(await f.call({ kind: 'retry', id: 'fictional-bakery' })).toMatchObject({
     ok: true,
     cards: [{ state: 'Running', installed: true }],
   })
   expect(f.controller.install).not.toHaveBeenCalled()
   expect(f.controller.uninstall).not.toHaveBeenCalled()
   expect(f.controller.screen).not.toHaveBeenCalled()
-  expect(await f.call({ kind: 'retry', id: 'chrome', raw: true })).toMatchObject({ ok: false })
+  expect(await f.call({ kind: 'retry', id: 'fictional-bakery', raw: true })).toMatchObject({
+    ok: false,
+  })
   expect(await f.call({ kind: 'retry', id: 'foreign' })).toMatchObject({ ok: false })
   f.controller.retry = vi.fn(async () => {
     throw new Error('fictional-private-owner-stack')
   })
-  expect(await f.call({ kind: 'retry', id: 'chrome' })).toEqual({
+  expect(await f.call({ kind: 'retry', id: 'fictional-bakery' })).toEqual({
     ok: false,
     detail: 'fictional-private-owner-stack',
     error: 'Plugin unavailable. Try again.',
@@ -297,12 +334,26 @@ it.each([true, false, null])(
   async (priorityClamped) => {
     const f = setup()
     vi.mocked(f.controller.catalogue).mockResolvedValueOnce([
-      { id: 'chrome', name: 'Chrome', installed: true, state: 'Running', priorityClamped },
+      {
+        id: 'fictional-bakery',
+        name: 'Fictional bakery',
+        installed: true,
+        state: 'Running',
+        priorityClamped,
+      },
     ])
     expect(await f.call({ kind: 'list' })).toEqual({
       ok: true,
       listState: 'ready',
-      cards: [{ id: 'chrome', name: 'Chrome', installed: true, state: 'Running', priorityClamped }],
+      cards: [
+        {
+          id: 'fictional-bakery',
+          name: 'Fictional bakery',
+          installed: true,
+          state: 'Running',
+          priorityClamped,
+        },
+      ],
     })
   },
 )
@@ -313,7 +364,13 @@ it('refuses raw scheduling output and extra diagnostic fields at Settings', asyn
     { rawPriority: 'fictional-private-output' },
   ]) {
     vi.mocked(f.controller.catalogue).mockResolvedValueOnce([
-      { id: 'chrome', name: 'Chrome', installed: true, state: 'Running', ...diagnostic } as never,
+      {
+        id: 'fictional-bakery',
+        name: 'Fictional bakery',
+        installed: true,
+        state: 'Running',
+        ...diagnostic,
+      } as never,
     ])
     expect(await f.call({ kind: 'list' })).toEqual({
       ok: false,
@@ -327,8 +384,8 @@ it('a page list refreshes the source; update uses its own door and closes config
   const catalogue = vi.mocked(f.controller.catalogue)
   catalogue.mockResolvedValue([
     {
-      id: 'chrome',
-      name: 'Chrome',
+      id: 'fictional-bakery',
+      name: 'Fictional bakery',
       installed: true,
       state: 'Running',
       installedVersion: '0.1.0',
@@ -339,13 +396,19 @@ it('a page list refreshes the source; update uses its own door and closes config
   f.controller.update = vi.fn(async () => {})
   expect((await f.call({ kind: 'list' })).ok).toBe(true)
   expect(catalogue).toHaveBeenCalledWith(true)
-  expect((await f.call({ kind: 'update', id: 'chrome' })).ok).toBe(true)
-  expect(f.controller.update).toHaveBeenCalledWith('chrome')
+  expect((await f.call({ kind: 'update', id: 'fictional-bakery' })).ok).toBe(true)
+  expect(f.controller.update).toHaveBeenCalledWith('fictional-bakery')
   expect(f.controller.uninstall).not.toHaveBeenCalled()
   catalogue.mockResolvedValue([
-    { id: 'chrome', name: 'Chrome', installed: true, state: 'Running', installedVersion: '0.1.3' },
+    {
+      id: 'fictional-bakery',
+      name: 'Fictional bakery',
+      installed: true,
+      state: 'Running',
+      installedVersion: '0.1.3',
+    },
   ])
-  expect((await f.call({ kind: 'update', id: 'chrome' })).ok).toBe(false)
+  expect((await f.call({ kind: 'update', id: 'fictional-bakery' })).ok).toBe(false)
   expect(f.controller.update).toHaveBeenCalledOnce()
 })
 
@@ -377,7 +440,7 @@ it('keeps Configure available and carries the plain update-unavailable reason fo
   const f = setup()
   vi.mocked(f.controller.catalogue).mockResolvedValue([
     {
-      id: 'chrome',
+      id: 'fictional-bakery',
       name: 'Fictional Cedar',
       installed: true,
       state: 'Running',
@@ -388,8 +451,10 @@ it('keeps Configure available and carries the plain update-unavailable reason fo
     ok: true,
     cards: [{ installed: true, state: 'Running', updatesUnavailable: true }],
   })
-  expect(await f.call({ kind: 'configure', id: 'chrome', screenId, bounds })).toEqual({ ok: true })
-  expect(await f.call({ kind: 'update', id: 'chrome' })).toMatchObject({ ok: false })
+  expect(await f.call({ kind: 'configure', id: 'fictional-bakery', screenId, bounds })).toEqual({
+    ok: true,
+  })
+  expect(await f.call({ kind: 'update', id: 'fictional-bakery' })).toMatchObject({ ok: false })
 })
 
 it('passes a closed unavailable reason through Settings and rejects arbitrary error text', async () => {
@@ -457,7 +522,13 @@ it('passes bounded supervisor exit/stderr to the card and refuses multiline or e
 it('reads current tool health without refreshing the catalogue or cancelling a person review', async () => {
   const f = setup()
   f.controller.catalogue = vi.fn(async (): Promise<PluginCard[]> => [
-    { id: 'chrome', name: 'Chrome', installed: true, state: 'Running', toolsUnavailable: true },
+    {
+      id: 'fictional-bakery',
+      name: 'Fictional bakery',
+      installed: true,
+      state: 'Running',
+      toolsUnavailable: true,
+    },
   ])
   f.controller.cancelPreparations = vi.fn()
   expect(await f.call({ kind: 'status' })).toMatchObject({
@@ -476,10 +547,10 @@ it('routes generic plugin IDs from the owned Settings frame to process restart',
   expect(await f.call({ kind: 'restart', id: 'fictional-meadow' })).toMatchObject({ ok: true })
   expect(restart).toHaveBeenNthCalledWith(1, 'fictional-orchard')
   expect(restart).toHaveBeenNthCalledWith(2, 'fictional-meadow')
-  for (const input of [{ kind: 'restart', id: 'chrome', force: true }])
+  for (const input of [{ kind: 'restart', id: 'fictional-bakery', force: true }])
     expect(await f.call(input)).toMatchObject({ ok: false })
   expect(
-    await f.call({ kind: 'restart', id: 'chrome' }, { ...f.event, senderFrame: {} }),
+    await f.call({ kind: 'restart', id: 'fictional-bakery' }, { ...f.event, senderFrame: {} }),
   ).toMatchObject({ ok: false })
   expect(restart).toHaveBeenCalledTimes(2)
   expect(f.controller.install).not.toHaveBeenCalled()
