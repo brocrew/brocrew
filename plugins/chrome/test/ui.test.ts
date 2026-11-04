@@ -33,7 +33,10 @@ function screen() {
     ['#status', '#profiles', '#tabs', '#create', '#name'].map((id) => [id, new Element()]),
   )
   const events = new Map<string, (event: unknown) => void>()
-  const packets: Record<string, unknown>[] = []
+  type Packet = Record<string, unknown> & {
+    params: { tool: string; arguments: Record<string, unknown> }
+  }
+  const packets: Packet[] = []
   const origin = 'brocrew-plugin://fictional-view'
   let interval = () => {}
   const window = {
@@ -41,7 +44,7 @@ function screen() {
       events.set(type, callback),
     postMessage: (packet: Record<string, unknown>, target: string) => {
       expect(target).toBe(origin)
-      packets.push(packet)
+      packets.push(packet as Packet)
     },
   }
   vm.runInNewContext(fs.readFileSync('plugins/chrome/ui/app.js', 'utf8'), {
@@ -67,24 +70,28 @@ function screen() {
         source,
         origin,
         data: {
-          channel: 'brocrew-plugin-ui:v1',
+          channel: 'brocrew-plugin-tools:v1',
           requestId: packet.requestId,
           ok,
-          data: result,
+          data: {
+            status: 'result',
+            result: {
+              content: [{ type: 'text', text: JSON.stringify(result ?? { completed: true }) }],
+            },
+          },
         },
       })
     },
   }
 }
-it('uses only bounded DOM RPC, displays current windows/tabs as text, and proposes opening without a login state', async () => {
+it('uses generic MCP page RPC, displays current windows/tabs as text, and proposes opening without a login state', async () => {
   const view = screen()
   expect(view.packets).toEqual([
     {
-      channel: 'brocrew-plugin-ui:v1',
+      channel: 'brocrew-plugin-tools:v1',
       requestId: '1',
-      method: 'read',
-      payload: { surface: 'chrome' },
-      configRevision: 0,
+      method: 'callTool',
+      params: { tool: 'configuration_snapshot', arguments: {} },
     },
   ])
   const snapshot = {
@@ -125,11 +132,10 @@ it('uses only bounded DOM RPC, displays current windows/tabs as text, and propos
   ])
   actions.children[1].listeners.get('click')!({})
   expect(view.packets.at(-1)).toEqual({
-    channel: 'brocrew-plugin-ui:v1',
+    channel: 'brocrew-plugin-tools:v1',
     requestId: '2',
-    method: 'proposeConfig',
-    payload: { action: 'open-window', profile: 'fern' },
-    configRevision: 3,
+    method: 'callTool',
+    params: { tool: 'configure_profile', arguments: { action: 'open-window', profile: 'fern' } },
   })
   expect(view.packets.every((packet) => !JSON.stringify(packet).includes('Token'))).toBe(true)
   view.events.get('pagehide')!({})
@@ -155,9 +161,8 @@ it('offers "Turn on" for the BroCrew helper only where the person turned it off'
   for (const row of [willow, aspen, birch]) expect(row.children).toHaveLength(1)
   line.children[1].listeners.get('click')!({})
   expect(view.packets.at(-1)).toMatchObject({
-    method: 'proposeConfig',
-    payload: { action: 'helper-on', profile: 'fern' },
-    configRevision: 1,
+    method: 'callTool',
+    params: { tool: 'configure_profile', arguments: { action: 'helper-on', profile: 'fern' } },
   })
   view.events.get('pagehide')!({})
 })
@@ -210,14 +215,16 @@ it('sends only the confirmed person proposal and keeps a plain retry message on 
   confirmation.children[2].listeners.get('click')!({})
   const proposal = view.packets.at(-1)!
   expect(proposal).toMatchObject({
-    method: 'proposeConfig',
-    payload: { action: 'delete-profile', profile: 'fern', confirm: 'fern' },
-    configRevision: 3,
+    method: 'callTool',
+    params: {
+      tool: 'configure_profile',
+      arguments: { action: 'delete-profile', profile: 'fern', confirm: 'fern' },
+    },
   })
   view.reply(undefined, undefined, proposal, false)
   await Promise.resolve()
   await Promise.resolve()
-  expect(view.packets.at(-1)?.method).toBe('read')
+  expect(view.packets.at(-1)?.params.tool).toBe('configuration_snapshot')
   view.reply(snapshot, undefined, view.packets.at(-1))
   await Promise.resolve()
   await Promise.resolve()
@@ -225,7 +232,7 @@ it('sends only the confirmed person proposal and keeps a plain retry message on 
   expect(refusal.children.at(-1)!.textContent).toContain(
     'Turn it off and wait for agent work to finish',
   )
-  expect(view.packets.filter((p) => p.method === 'proposeConfig')).toHaveLength(1)
+  expect(view.packets.filter((p) => p.params.tool === 'configure_profile')).toHaveLength(1)
   view.events.get('pagehide')!({})
 })
 
@@ -247,7 +254,7 @@ it.each([true, false])(
     view.reply(undefined, undefined, view.packets.at(-1), false)
     await Promise.resolve()
     await Promise.resolve()
-    expect(view.packets.at(-1)?.method).toBe('read')
+    expect(view.packets.at(-1)?.params.tool).toBe('configuration_snapshot')
     view.reply(
       { configRevision: 4, profiles: [{ name: 'fern', enabled: false, open: false }], tabs: [] },
       undefined,
@@ -264,7 +271,9 @@ it.each([true, false])(
     expect(
       view.nodes.get('#profiles')!.children[0].children[0].children[2].children[0],
     ).toMatchObject({ textContent: 'On', role: 'switch', ariaChecked: 'false' })
-    expect(view.packets.filter((packet) => packet.method === 'proposeConfig')).toHaveLength(1)
+    expect(
+      view.packets.filter((packet) => packet.params.tool === 'configure_profile'),
+    ).toHaveLength(1)
     expect(confirmation.children[2].textContent).toBe('Try again')
     view.events.get('pagehide')!({})
   },
@@ -281,14 +290,14 @@ it.each([true, false])(
     input.value = 'fern'
     view.nodes.get('#create')!.listeners.get('submit')!({ preventDefault() {} })
     const create = view.packets.at(-1)!
-    expect(create.payload).toEqual({ action: 'create-profile', profile: 'fern' })
+    expect(create.params.arguments).toEqual({ action: 'create-profile', profile: 'fern' })
     expect(input.value).toBe('fern')
     view.reply(undefined, undefined, create, success)
     await Promise.resolve()
     await Promise.resolve()
     expect(input.value).toBe(success ? '' : 'fern')
     if (success) {
-      expect(view.packets.at(-1)?.method).toBe('read')
+      expect(view.packets.at(-1)?.params.tool).toBe('configuration_snapshot')
       // A follow-up refresh failure does not undo an acknowledged creation.
       view.reply(undefined, undefined, view.packets.at(-1), false)
       await Promise.resolve()
@@ -377,13 +386,15 @@ it('checks a new profile name with the approved words before the person proposes
   await save(` ${'🌿'.repeat(60)} `)
   const proposal = view.packets.at(-1)!
   expect(proposal).toMatchObject({
-    method: 'proposeConfig',
-    payload: { action: 'rename-profile', profile: 'willow', newName: '🌿'.repeat(60) },
-    configRevision: 5,
+    method: 'callTool',
+    params: {
+      tool: 'configure_profile',
+      arguments: { action: 'rename-profile', profile: 'willow', newName: '🌿'.repeat(60) },
+    },
   })
   view.reply(undefined, undefined, proposal, false)
   await settle()
-  expect(view.packets.at(-1)?.method).toBe('read')
+  expect(view.packets.at(-1)?.params.tool).toBe('configuration_snapshot')
   view.reply(
     {
       ...snapshot,
@@ -398,7 +409,9 @@ it('checks a new profile name with the approved words before the person proposes
   )
   expect(form().children[1].disabled).toBe(true)
   expect(rows()[1].children[0].children[2].children[2].disabled).toBe(true)
-  expect(view.packets.filter((packet) => packet.method === 'proposeConfig')).toHaveLength(1)
+  expect(view.packets.filter((packet) => packet.params.tool === 'configure_profile')).toHaveLength(
+    1,
+  )
   view.events.get('pagehide')!({})
 })
 
@@ -434,7 +447,7 @@ it('holds a read that arrives mid-composition and draws it once the word is fini
   const input = form.children[0]
   view.tick()
   const read = view.packets.at(-1)!
-  expect(read.method).toBe('read')
+  expect(read.params.tool).toBe('configuration_snapshot')
   input.listeners.get('compositionstart')!({})
   view.reply({ ...snapshot, profiles: [{ ...snapshot.profiles[0], open: true }] }, undefined, read)
   await settle()
@@ -466,7 +479,7 @@ it('holds the redraw after a refused rename while the person is composing a word
   input.listeners.get('compositionstart')!({})
   view.reply(undefined, undefined, view.packets.at(-1), false)
   await settle()
-  expect(view.packets.at(-1)?.method).toBe('read')
+  expect(view.packets.at(-1)?.params.tool).toBe('configuration_snapshot')
   view.reply(snapshot, undefined, view.packets.at(-1))
   await settle()
   await settle()
@@ -509,14 +522,18 @@ it('turns a profile on here with one switch press, shows it busy, and puts it ba
   control(0).listeners.get('click')!({})
   const proposal = view.packets.at(-1)!
   expect(proposal).toMatchObject({
-    method: 'proposeConfig',
-    payload: { action: 'set-enabled', profile: 'fern', enabled: true },
-    configRevision: 2,
+    method: 'callTool',
+    params: {
+      tool: 'configure_profile',
+      arguments: { action: 'set-enabled', profile: 'fern', enabled: true },
+    },
   })
   expect(control(0)).toMatchObject({ ariaChecked: 'true', ariaBusy: 'true', ariaDisabled: 'true' })
   control(0).listeners.get('click')!({})
   view.tick()
-  expect(view.packets.filter((packet) => packet.method === 'proposeConfig')).toHaveLength(1)
+  expect(view.packets.filter((packet) => packet.params.tool === 'configure_profile')).toHaveLength(
+    1,
+  )
   expect(view.packets.at(-1)).toBe(proposal)
   view.reply(undefined, undefined, proposal, false)
   await settle()
@@ -525,10 +542,10 @@ it('turns a profile on here with one switch press, shows it busy, and puts it ba
   expect(view.nodes.get('#status')!.textContent).toBe('Plugin unavailable. Try again.')
   control(0).listeners.get('click')!({})
   const retry = view.packets.at(-1)!
-  expect(retry.payload).toEqual({ action: 'set-enabled', profile: 'fern', enabled: true })
+  expect(retry.params.arguments).toEqual({ action: 'set-enabled', profile: 'fern', enabled: true })
   view.reply(undefined, undefined, retry)
   await settle()
-  expect(view.packets.at(-1)?.method).toBe('read')
+  expect(view.packets.at(-1)?.params.tool).toBe('configuration_snapshot')
   view.reply(
     { ...snapshot, profiles: [{ ...snapshot.profiles[0], enabled: true }, snapshot.profiles[1]] },
     undefined,
@@ -582,7 +599,7 @@ it('keeps an accepted switch change on every redraw when the read after it fails
   view.reply(undefined, undefined, view.packets.at(-1))
   await settle()
   const read = view.packets.at(-1)!
-  expect(read.method).toBe('read')
+  expect(read.params.tool).toBe('configuration_snapshot')
   expect(control()).toMatchObject({ ariaChecked: 'true' })
   expect(control().ariaBusy).toBeUndefined()
   view.reply(undefined, undefined, read, false)
@@ -594,8 +611,11 @@ it('keeps an accepted switch change on every redraw when the read after it fails
   expect(control().ariaBusy).toBeUndefined()
   control().listeners.get('click')!({})
   expect(view.packets.at(-1)).toMatchObject({
-    method: 'proposeConfig',
-    payload: { action: 'set-enabled', profile: 'fern', enabled: false },
+    method: 'callTool',
+    params: {
+      tool: 'configure_profile',
+      arguments: { action: 'set-enabled', profile: 'fern', enabled: false },
+    },
   })
   view.events.get('pagehide')!({})
 })
@@ -603,7 +623,7 @@ it('keeps an accepted switch change on every redraw when the read after it fails
 it('lets a later read that lands before the switch is accepted keep its own state', async () => {
   const view = screen()
   const snapshot = {
-    configRevision: 1,
+    configRevision: 0,
     profiles: [{ name: 'fern', enabled: false, open: false }],
     tabs: [],
   }
@@ -619,14 +639,14 @@ it('lets a later read that lands before the switch is accepted keep its own stat
   view.reply(undefined, undefined, view.packets.at(-1), false)
   await settle()
   const reread = view.packets.at(-1)!
-  expect(reread.method).toBe('read')
-  view.reply({ ...snapshot, configRevision: 2 }, undefined, reread)
+  expect(reread.params.tool).toBe('configuration_snapshot')
+  view.reply({ ...snapshot, configRevision: 0 }, undefined, reread)
   await settle()
   expect(control()).toMatchObject({ ariaChecked: 'true', ariaBusy: 'true' })
   view.reply(undefined, undefined, proposal)
   await settle()
   expect(control()).toMatchObject({ ariaChecked: 'false' })
   expect(control().ariaBusy).toBeUndefined()
-  expect(view.packets.at(-1)?.method).toBe('read')
+  expect(view.packets.at(-1)?.params.tool).toBe('configuration_snapshot')
   view.events.get('pagehide')!({})
 })
