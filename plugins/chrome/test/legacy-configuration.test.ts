@@ -172,3 +172,45 @@ it('refuses an invalid published intent filename before publishing a marker', ()
   expect(() => importLegacyConfiguration(f.home, f.input)).toThrow(/filename/)
   expect(fs.existsSync(f.marker)).toBe(false)
 })
+
+it.each(['', '  '])(
+  'refuses empty installation birth metadata %j without publishing a marker',
+  (birth) => {
+    const f = fixture()
+    fs.writeFileSync(path.join(f.input.directory, 'birth'), birth)
+    expect(() => importLegacyConfiguration(f.home, f.input)).toThrow(/installation/)
+    expect(fs.existsSync(f.marker)).toBe(false)
+  },
+)
+
+it.each(['floor', 'checkpoint'])(
+  'refuses unsupported format-1 JSON %s boundary without publishing a marker',
+  (location) => {
+    const f = fixture()
+    const file =
+      location === 'floor' ? f.input.floor : path.join(f.input.directory, 'checkpoint.json')
+    fs.writeFileSync(
+      file,
+      JSON.stringify({
+        format: 1,
+        installId: 'fictional-install',
+        revision: 1,
+        previous: 'a'.repeat(64),
+      }),
+    )
+    expect(() => importLegacyConfiguration(f.home, f.input)).toThrow(/metadata/)
+    expect(fs.existsSync(f.marker)).toBe(false)
+  },
+)
+
+it.each([
+  { installId: '', revision: 1, previous: 'a'.repeat(64) },
+  { installId: 'fictional-install', revision: 0, previous: 'a'.repeat(64) },
+  { installId: 'fictional-install', revision: 1, previous: null },
+  { installId: 'fictional-install', revision: 1, previous: 'invalid-digest' },
+])('refuses malformed format-2 boundary metadata %j before publishing a marker', (boundary) => {
+  const f = fixture()
+  fs.writeFileSync(f.input.floor, JSON.stringify({ format: 2, ...boundary }))
+  expect(() => importLegacyConfiguration(f.home, f.input)).toThrow()
+  expect(fs.existsSync(f.marker)).toBe(false)
+})
