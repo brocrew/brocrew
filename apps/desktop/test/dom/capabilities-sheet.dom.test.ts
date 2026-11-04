@@ -182,6 +182,21 @@ describe('355 · the capabilities sheet', () => {
     },
   )
 
+  it('connection-led polish: the agent sheet has no provider select or standing explanations', async () => {
+    const { m } = await openSheet()
+    expect(m.host.querySelector('[data-cy="capabilities-provider-select"]')).toBeNull()
+    for (const cy of [
+      'capabilities-owner',
+      'capabilities-provider-note',
+      'rules-fixed-policy',
+      'spawn-rail-means',
+      'own-instructions-when',
+      'own-instructions-empty',
+    ]) expect(m.host.querySelector(`[data-cy="${cy}"]`), cy).toBeNull()
+    expect(m.q('agent-model')).toBeDefined()
+    expect(m.q('capabilities-save')).toBeDefined()
+  })
+
   describe('§1 · one control per capability, drawn from the schema', () => {
     it('draws every active schema field and keeps the dormant rules grant out of the editor', async () => {
       const { m } = await openSheet()

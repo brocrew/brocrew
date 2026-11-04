@@ -81,3 +81,21 @@ it('still accepts the legacy all-null clear', () => {
   }
   expect(runtimeCommandSchema.parse(input)).toEqual(input)
 })
+
+
+it('connection-led polish: legacy provider-and-model payloads retain their omitted connection', async () => {
+  const input = {
+    kind: 'setAgentModelAndEffort',
+    profileId: 'fern',
+    provider: 'claude',
+    model: 'fictional-small',
+    effort: 'high',
+  }
+  const command = runtimeCommandSchema.parse(input)
+  expect(command).toEqual(input)
+  const save = vi.fn(async () => ({ ok: true }))
+  await executeRuntimeCommand({ setAgentModelAndEffort: save } as unknown as RuntimeHost, sink, command)
+  expect(save).toHaveBeenCalledExactlyOnceWith('fern', {
+    provider: 'claude', model: 'fictional-small', effort: 'high',
+  })
+})

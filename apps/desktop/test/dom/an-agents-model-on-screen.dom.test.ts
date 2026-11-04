@@ -876,3 +876,28 @@ it('whose-list notice follows the selected catalogue and ignores a warm legacy c
   expect(m.all('model-picker-note')).toHaveLength(0)
   expect(rows(m)).toEqual(['default', 'opus', 'haiku'])
 })
+
+
+it.each(['claude', 'codex'] as const)(
+  'connection-led polish: a legacy %s-only agent opens its default connection without saving',
+  async (provider) => {
+    reset()
+    world.itsProvider = provider
+    const { m } = await control(provider, provider)
+    expect(face(m)).toContain(provider === 'claude' ? 'Claude' : 'Codex')
+    await press(m, 'model-picker-face')
+    expect((m.q('model-picker-connection') as HTMLSelectElement).value).toBe(`${provider}:sign-in`)
+    expect(world.sent).toEqual([])
+    expect(world.defaultConnection).toBeUndefined()
+  },
+)
+
+it('connection-led polish: a held default and its picker omit explanatory paragraphs', async () => {
+  reset()
+  world.held = { provider: 'claude', model: 'opus', effort: 'high' }
+  const { m } = await control()
+  expect(m.host.querySelector('[data-cy="agent-model-reaches"]')).toBeNull()
+  await press(m, 'model-picker-face')
+  expect(m.host.querySelector('[data-cy="model-picker-reaches"]')).toBeNull()
+  expect(m.host.querySelector('[data-cy="model-picker-note"]')).toBeNull()
+})
