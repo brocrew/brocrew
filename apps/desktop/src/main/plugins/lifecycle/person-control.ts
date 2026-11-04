@@ -24,6 +24,7 @@ const Request = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('list-v2') }),
   z.strictObject({ kind: z.literal('list-tool-health') }),
   z.strictObject({ kind: z.literal('features') }),
+  z.strictObject({ kind: z.literal('restart-chrome') }),
   z.strictObject({ kind: z.literal('mutation-policy'), catalogueDigest: Hex }),
   z.strictObject({ kind: z.literal('mutation-status'), catalogueDigest: Hex }),
   z.strictObject({
@@ -88,6 +89,7 @@ export async function servePersonPluginControl(options: {
   root: string
   key: string
   controller: PluginLifecycleController
+  restartChrome?: () => Promise<void>
   read(
     pluginId: string,
     connection: Awaited<ReturnType<PluginLifecycleController['screen']>['connection']>,
@@ -253,6 +255,7 @@ export async function servePersonPluginControl(options: {
               features: [
                 ...PLUGIN_FRAMEWORK_FEATURES,
                 'tool-health-v1',
+                ...(options.restartChrome ? ['chrome-recovery-v1'] : []),
                 ...(options.controller.preparedMutationFeature()
                   ? ['authors-v1', 'prepared-mutations-v1']
                   : []),
@@ -280,6 +283,11 @@ export async function servePersonPluginControl(options: {
               })
           case 'list-tool-health':
             return (await options.controller.status()).cards.filter((card) => visible(card.id))
+          case 'restart-chrome':
+            if (!options.restartChrome || !visible('chrome'))
+              throw new PluginSupervisorError('incompatible')
+            await options.restartChrome()
+            return true
           case 'refresh':
             for (const one of sessions) one.preparations.clear()
             await options.controller.refreshCatalogue(request.catalogueDigest)

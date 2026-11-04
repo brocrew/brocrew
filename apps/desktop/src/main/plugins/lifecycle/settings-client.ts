@@ -504,12 +504,29 @@ export async function connectPluginSettings(options: {
       // Project reviewed local adapter capabilities without expanding the legacy owner wire.
       return cards.map((card) => ({
         ...card,
+        ...(features.includes('chrome-recovery-v1') &&
+        card.id === 'chrome' &&
+        card.installed &&
+        (card.toolsUnavailable || card.state === 'Unavailable')
+          ? { canRestart: true as const }
+          : {}),
         ...(!modern ? { uninstallDeletesData: Boolean(pluginAdapter(card.id)?.uninstall) } : {}),
         hasRemoteLogout: Boolean(pluginAdapter(card.id)?.uninstall),
         ...(sourceFormat === 2 || blocked ? { preparationRequired: true as const } : {}),
         ...(blocked ? { mutationBlocked: blocked } : {}),
       }))
     },
+    ...(features.includes('chrome-recovery-v1')
+      ? {
+          async restartChrome() {
+            await checkOwner()
+            if (!features.includes('chrome-recovery-v1'))
+              throw new PluginSupervisorError('incompatible')
+            if ((await channel.call({ kind: 'restart-chrome' })) !== true)
+              throw new PluginSupervisorError('unavailable')
+          },
+        }
+      : {}),
     ...(modern
       ? {
           async refreshCatalogue(

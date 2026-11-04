@@ -27,6 +27,7 @@ import type {
   ElicitationResult,
   ModelInfo,
   Options,
+  Query,
   PermissionMode,
   PermissionResult,
   PermissionUpdate,
@@ -941,6 +942,8 @@ function promptGuardHooks(
 
 /** The subset of the SDK `Query` this adapter drives — kept minimal so tests can inject a fake. */
 export interface ClaudeQuery extends AsyncIterable<SDKMessage> {
+  mcpServerStatus?: Query['mcpServerStatus']
+  reconnectMcpServer?: Query['reconnectMcpServer']
   setMcpServers?(servers: NonNullable<Options['mcpServers']>): Promise<unknown>
   reloadPlugins?(): Promise<unknown>
   interrupt(): Promise<unknown>
@@ -1721,7 +1724,29 @@ export class ClaudeSessionHandle implements SessionHandle {
   configurePluginRefresh(build: NonNullable<ClaudeSessionHandle['pluginRefresh']>): void {
     this.pluginRefresh = build
   }
-  async refreshManagedPlugins(servers: readonly ManagedPluginMcpServer[]): Promise<void> {
+  async managedPluginHealth(
+    servers: readonly ManagedPluginMcpServer[],
+  ): Promise<readonly string[] | undefined> {
+    if (!this.query?.mcpServerStatus || this.status() !== 'idle') return undefined
+    try {
+      const rows = await this.query.mcpServerStatus()
+      if (!Array.isArray(rows)) return undefined
+      const failed: string[] = []
+      let unknown = false
+      for (const { name } of servers) {
+        const row = rows.find((one) => one?.name === name)
+        if (row?.status === 'failed') failed.push(name)
+        else if (row?.status !== 'connected') unknown = true
+      }
+      return failed.length || !unknown ? failed : undefined
+    } catch {
+      return undefined
+    }
+  }
+  async refreshManagedPlugins(
+    servers: readonly ManagedPluginMcpServer[],
+    reconnect: readonly string[] = [],
+  ): Promise<void> {
     try {
       if (!this.query?.setMcpServers || !this.pluginRefresh)
         throw new Error('Plugin unavailable. Try again.')
@@ -1734,6 +1759,12 @@ export class ClaudeSessionHandle implements SessionHandle {
         Object.keys(result.errors).length
       )
         throw new Error('Plugin unavailable. Try again.')
+      // Applying an identical configuration may keep the failed SDK connection.
+      for (const name of new Set(reconnect)) {
+        if (!servers.some((one) => one.name === name)) continue
+        if (!this.query.reconnectMcpServer) throw new Error('Plugin unavailable. Try again.')
+        await this.query.reconnectMcpServer(name)
+      }
     } catch {
       throw new Error('Plugin unavailable. Try again.')
     }

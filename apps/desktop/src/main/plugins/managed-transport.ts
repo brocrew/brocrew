@@ -231,8 +231,10 @@ export async function openManagedPluginRoute(
   const capability = randomBytes(32).toString('hex')
   const expected = Buffer.from(`Bearer ${capability}`)
   let accepting = true
+  let closing: Promise<void> | undefined
   const exchanges = new Set<StreamableHTTPServerTransport>()
   const active = new Map<string | number, AbortController>()
+  const responses = new Set<Promise<void>>()
   const http = createServer(
     { maxHeaderSize: 8192, requestTimeout: 15_000, headersTimeout: 10_000 },
     (req, res) => {
@@ -271,6 +273,17 @@ export async function openManagedPluginRoute(
           res.end()
           return
         }
+        const flushed: Promise<void> = new Promise<void>((resolve) => {
+          const done = () => {
+            res.off('finish', done)
+            res.off('close', done)
+            responses.delete(flushed)
+            resolve()
+          }
+          res.once('finish', done)
+          res.once('close', done)
+        })
+        responses.add(flushed)
         const chunks: Buffer[] = []
         let length = 0
         for await (const chunk of req) {
@@ -379,14 +392,31 @@ export async function openManagedPluginRoute(
       url: `http://127.0.0.1:${(http.address() as AddressInfo).port}/mcp`,
       capability,
     }),
-    async close() {
-      accepting = false
-      for (const controller of active.values()) controller.abort()
-      active.clear()
-      broker.owner.revoke(agent)
-      await Promise.allSettled([...exchanges].map((transport) => transport.close()))
-      http.closeAllConnections()
-      await new Promise<void>((resolve) => http.close(() => resolve()))
+    close() {
+      return (closing ??= (async () => {
+        accepting = false
+        const closed = new Promise<void>((resolve) => http.close(() => resolve()))
+        broker.owner.revoke(agent)
+        // Revocation answers the old caller immediately. Let that fixed failure
+        // reach its HTTP response before closing the MCP transport. This bounded
+        // local flush grants no remote completion or host-exit authority.
+        let grace: ReturnType<typeof setTimeout> | undefined
+        try {
+          await Promise.race([
+            Promise.all([...responses]),
+            new Promise<void>((resolve) => {
+              grace = setTimeout(resolve, 500)
+            }),
+          ])
+        } finally {
+          clearTimeout(grace)
+        }
+        for (const controller of active.values()) controller.abort()
+        active.clear()
+        await Promise.allSettled([...exchanges].map((transport) => transport.close()))
+        http.closeAllConnections()
+        await closed
+      })())
     },
   }
 }

@@ -226,6 +226,8 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
   let lastWorkspace = ''
   let count = 0
   let active: Job | undefined
+  // Retained independently of queue size: a throw after dispatch is not completion.
+  let completed = true
   let available = true
   let scheduled = false
 
@@ -302,7 +304,10 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
     job.offProof()
     job.offSignal()
     job.state = 'finished'
-    if (active === job) active = undefined
+    if (active === job) {
+      if (job.quiet) completed = true
+      active = undefined
+    }
     log('finished', job.operation)
     schedule()
   }
@@ -416,6 +421,7 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
     job.state = 'running'
     job.startedAt = clock.now()
     active = job
+    completed = false
     job.offCall = clock.after(PLUGIN_BROKER_LIMITS.callMs, () => stop(job, 'deadline'))
     const request: BrokerRequest = Object.freeze({
       identity: job.actor.identity,
@@ -618,6 +624,17 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
     actors.set(capability, actor)
     return capability
   }
+  void options.hostExited?.then(
+    () => {
+      unavailable('tool', 'host-exited')
+      if (active) {
+        active.quiet = true
+        finished(active)
+      }
+      completed = true
+    },
+    () => log('refused', 'tool', 'unavailable', 'host-exit-unproven'),
+  )
   return Object.freeze({
     agent: Object.freeze({
       discover(capability: BrokerAgent) {
@@ -643,6 +660,7 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
       ) => submit(capability, 'person', 'admin', operation, args, signal),
     }),
     owner: Object.freeze({
+      hasCompletionProof: () => !available && completed && active === undefined,
       attach(workspaceId: string): BrokerWorkspace {
         if (!available || !identifier(workspaceId)) return refuse('unauthorized')
         const existing = workspaces.get(workspaceId)

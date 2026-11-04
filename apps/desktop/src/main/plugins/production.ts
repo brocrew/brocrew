@@ -422,6 +422,12 @@ export function productionPluginController() {
         return unavailableCards()
       }
     },
+    async restartChrome() {
+      const connection = current()
+      if (!connection.restartChrome) return fail()
+      await connection.restartChrome()
+      await update()
+    },
     async update(id, consent) {
       const connection = current()
       if (catalogueEntries?.format === 2 || connection.mutationRequired?.()) {

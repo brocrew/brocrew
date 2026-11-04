@@ -81,6 +81,7 @@ import { authStateReason, blocksLaunch } from '../auth-state'
 import { probeCodexAuth } from './auth-probe'
 import {
   MANAGED_PLUGIN_READY_WITHIN_MS,
+  failedManagedPluginConnections,
   waitForManagedPluginTools,
 } from './managed-plugin-readiness'
 import { AsyncQueue } from '../internal/async-queue'
@@ -5889,6 +5890,17 @@ export class CodexSessionHandle implements SessionHandle {
         },
       )
     })
+  }
+
+  async managedPluginHealth(
+    servers: readonly ManagedPluginMcpServer[],
+  ): Promise<readonly string[] | undefined> {
+    if (!this._ref || this.status() !== 'idle') return undefined
+    return failedManagedPluginConnections(
+      this.transport,
+      this._ref.sessionId,
+      servers.map((server) => server.name),
+    )
   }
 
   private startAfterManagedPlugins(localId: CodexTurn['localId'], dispatch: () => void): void {

@@ -65,6 +65,9 @@ async function builtInventory(
     const workspaceId = randomUUID()
     const view = {
       package: pkg,
+      runId: randomUUID(),
+      // The inert server remains live until cleanup; this never fabricates exit proof.
+      exited: new Promise<void>(() => {}),
       workspaceId,
       current: () => true,
       connection: Promise.resolve({

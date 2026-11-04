@@ -212,6 +212,8 @@ export interface PluginCard {
   priorityClamped?: boolean | null
   /** A living process does not imply that its agent tools are reachable. */
   toolsUnavailable?: true
+  /** Negotiated person-only Chrome recovery; absent for older supervisors. */
+  canRestart?: true
   installedVersion?: string
   updateVersion?: string
   /** Installed package is manageable but has no release admitted for this app. */
@@ -280,7 +282,7 @@ export interface PluginScreenBounds {
 export type PluginSettingsRequest =
   | { kind: 'list' | 'status' | 'availability' }
   | { kind: 'install' | 'update'; id: string; consent?: PluginDisplayedConsent }
-  | { kind: 'uninstall' | 'retry'; id: string }
+  | { kind: 'uninstall' | 'retry' | 'restart'; id: string }
   | { kind: 'prepare'; action: 'install' | 'update'; id: string }
   | { kind: 'configure'; id: string; screenId: string; bounds: PluginScreenBounds }
   | { kind: 'bounds'; bounds: PluginScreenBounds }

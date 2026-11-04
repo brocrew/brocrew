@@ -19,6 +19,9 @@ interface Entry {
   readonly identity: string
   readonly broker: PluginToolBroker
   readonly workspaces: Map<string, BrokerWorkspace>
+  readonly view: View
+  readonly confirmHostExit: () => void
+  readonly hostExitProof: Promise<void>
 }
 interface Route {
   lease: WorkspaceLease
@@ -34,6 +37,11 @@ export function createLifecycleAgentBridge(options: {
   controller: Pick<PluginLifecycleController, 'agentAttachments' | 'attach' | 'detach'>
   refused?: () => void | Promise<void>
   diagnostic?: (pluginId: string, reason: Parameters<PluginToolDiagnostic>[0]) => void
+  now?: () => number
+  /** Owner-only: callback only after positive exit of view.runId and its descendants. */
+  recoverChromeHost?: (view: View, stopped: () => void) => Promise<void>
+  /** Person fallback when no broker was bound. Chrome only, never owner shutdown. */
+  restartChromeHost?: () => Promise<void>
   binding(
     view: View,
     diagnostic: PluginToolDiagnostic,
@@ -82,16 +90,24 @@ export function createLifecycleAgentBridge(options: {
       }
     }
   const routes = new Map<string, Route>()
+  const rebuilding = new Set<string>()
+  const recoveries = new Map<Entry, Promise<boolean>>()
+  const hostExitNotifications = new WeakMap<Entry, Promise<void>>()
+  const limited = new WeakSet<Entry>()
+  const automaticRestarts: number[] = []
+  const now = options.now ?? (() => performance.now())
   const versions = new Map<string, number>()
   const retired = new Set<string>()
   let closed = false
   const valid = (lease: Readonly<WorkspaceLease>) =>
     !closed && options.owner.valid(lease.id, lease.epoch)
-  function deny(id: string): void {
+  function deny(id: string): Promise<void>[] {
+    const pending: Promise<void>[] = []
     versions.set(id, (versions.get(id) ?? 0) + 1)
     const entry = entries.get(id)
     entries.delete(id)
     liveEntries.delete(id)
+    rebuilding.delete(id)
     overflowFailures.delete(id)
     for (const [key, plugin] of failedRoutes) if (plugin === id) failedRoutes.delete(key)
     if (entry) {
@@ -101,8 +117,94 @@ export function createLifecycleAgentBridge(options: {
     for (const [key, item] of routes)
       if (item.pluginId === id) {
         routes.delete(key)
-        void closeRoute(item.route).catch(() => undefined)
+        const work = closeRoute(item.route)
+        pending.push(work)
+        void work.catch(() => undefined)
       }
+    return pending
+  }
+  function recoverEntry(entry: Entry, manual = false, hostGone = false): Promise<boolean> {
+    const id = entry.view.installation.pluginId
+    const prior = recoveries.get(entry)
+    if (prior) return prior
+    if (closed || id !== 'chrome' || (!manual && !hostGone && liveEntries.get(id) !== entry))
+      return Promise.resolve(false)
+    if (!manual && entry.broker.status().available) return Promise.resolve(false)
+    const completed = entry.broker.owner.hasCompletionProof()
+    if ((manual || hostGone || !completed) && !options.recoverChromeHost)
+      return Promise.resolve(false)
+    if (!manual) {
+      const at = now()
+      while (automaticRestarts.length && automaticRestarts[0]! <= at - 600_000)
+        automaticRestarts.shift()
+      if (automaticRestarts.length >= 3) {
+        if (!limited.has(entry)) reportPluginToolFailure(diagnostic(id), 'recovery-rate-limited')
+        limited.add(entry)
+        return Promise.resolve(false)
+      }
+      automaticRestarts.push(at)
+    }
+    let hostProven = false
+    const work = Promise.resolve()
+      .then(async () => {
+        if (closed || (!manual && !hostGone && liveEntries.get(id) !== entry)) return false
+        if (completed && !manual && !hostGone) {
+          const closing = deny(id)
+          rebuilding.add(id)
+          await Promise.all(closing)
+          reportPluginToolFailure(diagnostic(id), 'recovery-broker-completed')
+        } else {
+          reportPluginToolFailure(diagnostic(id), 'recovery-host-started')
+          await options.recoverChromeHost!(entry.view, () => {
+            hostProven = true
+            entry.confirmHostExit()
+            reportPluginToolFailure(diagnostic(id), 'recovery-host-proven')
+          })
+          reportPluginToolFailure(diagnostic(id), 'recovery-restarted')
+          const replacement = liveEntries.get(id)
+          const usable =
+            replacement?.view.current() &&
+            replacement.broker.status().available &&
+            [...routes.values()].some(
+              (route) =>
+                route.pluginId === id &&
+                route.identity === replacement.identity &&
+                valid(route.lease) &&
+                !retired.has(`${route.lease.id}:${route.incarnation}`),
+            )
+          // External install/revoke must not carry an old warning into its replacement.
+          if (
+            !usable &&
+            options.controller
+              .agentAttachments(entry.view.workspaceId)
+              .some(
+                (view) =>
+                  view.current() &&
+                  view.installation.installId === entry.view.installation.installId &&
+                  view.installation.incarnation === entry.view.installation.incarnation &&
+                  view.installation.configRevision === entry.view.installation.configRevision,
+              )
+          )
+            rebuilding.add(id)
+        }
+        return true
+      })
+      .catch(() => {
+        reportPluginToolFailure(
+          diagnostic(id),
+          completed && !manual && !hostGone
+            ? 'recovery-route-close-failed'
+            : hostProven
+              ? 'recovery-rebind-failed'
+              : 'recovery-host-unproven',
+        )
+        return false
+      })
+      .finally(() => {
+        if (recoveries.get(entry) === work) recoveries.delete(entry)
+      })
+    recoveries.set(entry, work)
+    return work
   }
   function revoke(lease: Readonly<WorkspaceLease>): void {
     failedAttachments.delete(lease.id)
@@ -202,12 +304,16 @@ export function createLifecycleAgentBridge(options: {
       let cached = routes.get(key)
       const known = liveEntries.get(id)
       if (known?.identity === identity && !known.broker.status().available) {
-        // Keep the failed broker and its proof barrier. Removing advertisement is not recovery.
-        if (cached) {
-          routes.delete(key)
-          await closeRoute(cached.route)
+        if (!(await recoverEntry(known))) {
+          // Keep the failed broker and its proof barrier until positive completion.
+          if (cached) {
+            routes.delete(key)
+            await closeRoute(cached.route)
+          }
+          continue
         }
-        continue
+        // Re-read the new run/projection with this same caller after proven recovery.
+        return read(lease, request)
       }
       if (cached?.identity !== identity) {
         if (cached) {
@@ -226,8 +332,16 @@ export function createLifecycleAgentBridge(options: {
           work = options.binding(view, report).then((binding) => {
             if (!view.current() || closed || (versions.get(id) ?? 0) !== version)
               throw new Error('unavailable')
+            if (typeof view.exited?.then !== 'function') throw new Error('unavailable')
+            let confirmHostExit!: () => void
+            const stopped = new Promise<void>((resolve) => {
+              confirmHostExit = resolve
+            })
+            const held: { entry?: Entry } = {}
+            const hostExitProof = Promise.any([view.exited, stopped])
             const broker = createPluginToolBroker({
               ...binding,
+              hostExited: hostExitProof,
               audit(event) {
                 if (event.event === 'unavailable' || event.event === 'refused')
                   reportPluginToolFailure(report, event.reason ?? event.code ?? 'unavailable')
@@ -236,8 +350,16 @@ export function createLifecycleAgentBridge(options: {
                 } catch {
                   /* Diagnostic only. */
                 }
+                if (event.event === 'unavailable' || event.event === 'finished')
+                  queueMicrotask(() => {
+                    if (held.entry) void recoverEntry(held.entry)
+                  })
               },
-              binding: { pluginId: id, installId: view.installation.installId, epoch: identity },
+              binding: {
+                pluginId: id,
+                installId: view.installation.installId,
+                epoch: randomUUID(),
+              },
               reservedNamespace: 'brobot',
               hostToolNames: [],
               occupiedNamespaces: [],
@@ -252,7 +374,15 @@ export function createLifecycleAgentBridge(options: {
                 return active && binding.isAllowed(who, use)
               },
             })
-            const entry = { identity, broker, workspaces: new Map<string, BrokerWorkspace>() }
+            const entry: Entry = {
+              identity,
+              broker,
+              view,
+              confirmHostExit,
+              hostExitProof,
+              workspaces: new Map<string, BrokerWorkspace>(),
+            }
+            held.entry = entry
             liveEntries.set(id, entry)
             return entry
           })
@@ -300,6 +430,7 @@ export function createLifecycleAgentBridge(options: {
           }
           routes.set(key, cached)
           failedRoutes.delete(key)
+          if (liveEntries.get(id) === entry) rebuilding.delete(id)
         } catch {
           // A retired attempt may be diagnosed, but cannot degrade its replacement's health.
           const current = valid(lease) && view.current() && (versions.get(id) ?? 0) === version
@@ -329,9 +460,47 @@ export function createLifecycleAgentBridge(options: {
   return {
     deny,
     revoke,
+    /** A run id is a non-authorizing wakeup, never a substitute for its retained proof. */
+    hostExited(runId: string): void {
+      void (async () => {
+        const entry = liveEntries.get('chrome') ?? (await stopping.get('chrome'))
+        if (closed || !entry || entry.view.runId !== runId) return
+        let work = hostExitNotifications.get(entry)
+        if (!work) {
+          work = (async () => {
+            await entry.view.exited
+            await entry.hostExitProof
+            if (closed) return
+            const prior = recoveries.get(entry)
+            if (prior && (await prior)) return
+            if (!closed) await recoverEntry(entry, false, true)
+          })()
+          hostExitNotifications.set(entry, work)
+        }
+        await work
+      })().catch(() => reportPluginToolFailure(diagnostic('chrome'), 'host-exit-unproven'))
+    },
+    async restartChrome(): Promise<void> {
+      if (closed) throw new Error('unavailable')
+      const entry = liveEntries.get('chrome') ?? (await stopping.get('chrome'))
+      if (entry && (!entry.broker.owner.hasCompletionProof() || !options.restartChromeHost)) {
+        if (!(await recoverEntry(entry, true))) throw new Error('unavailable')
+      } else {
+        if (!options.restartChromeHost) throw new Error('unavailable')
+        reportPluginToolFailure(diagnostic('chrome'), 'recovery-host-started')
+        try {
+          await options.restartChromeHost()
+          reportPluginToolFailure(diagnostic('chrome'), 'recovery-host-proven')
+        } catch {
+          reportPluginToolFailure(diagnostic('chrome'), 'recovery-restart-failed')
+          throw new Error('unavailable')
+        }
+      }
+    },
     toolsUnavailable(id: string): boolean {
       return (
         failedAttachments.size > 0 ||
+        rebuilding.has(id) ||
         overflowFailures.has(id) ||
         liveEntries.get(id)?.broker.status().available === false ||
         [...failedRoutes.values()].includes(id)
@@ -362,6 +531,7 @@ export function createLifecycleAgentBridge(options: {
     async close() {
       closed = true
       for (const id of entries.keys()) deny(id)
+      await Promise.allSettled([...recoveries.values()])
       await tail
       const detaches = await Promise.allSettled(
         [...attachments.values()].map(async (one) => options.controller.detach(await one)),
