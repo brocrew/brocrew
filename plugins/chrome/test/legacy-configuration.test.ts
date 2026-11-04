@@ -115,3 +115,60 @@ it('treats absent supplied legacy paths as no input and imports a numeric floor 
     revision: 9876,
   })
 })
+
+it('refuses changed legacy source paths instead of skipping a different installation', () => {
+  const f = fixture()
+  f.put(1)
+  importLegacyConfiguration(f.home, f.input)
+  const before = fs.readFileSync(f.marker)
+  expect(() =>
+    importLegacyConfiguration(f.home, {
+      directory: path.join(f.root, 'another-install'),
+      floor: f.input.floor,
+    }),
+  ).toThrow(/source/)
+  expect(() =>
+    importLegacyConfiguration(f.home, {
+      directory: f.input.directory,
+      floor: path.join(f.root, 'another.floor'),
+    }),
+  ).toThrow(/source/)
+  expect(fs.readFileSync(f.marker)).toEqual(before)
+})
+
+it('refuses a changed install identity at the same old paths without replacing the marker', () => {
+  const f = fixture()
+  f.put(1)
+  importLegacyConfiguration(f.home, f.input)
+  const before = fs.readFileSync(f.marker)
+  fs.writeFileSync(path.join(f.input.directory, 'birth'), 'another-fictional-install')
+  expect(() => importLegacyConfiguration(f.home, f.input)).toThrow(/installation/)
+  expect(fs.readFileSync(f.marker)).toEqual(before)
+})
+
+it('consumes the exact published filename boundary even when its command body disagrees or is corrupt', () => {
+  const f = fixture()
+  f.put(1)
+  fs.renameSync(
+    path.join(f.input.directory, 'intents', '0000000000000001.json'),
+    path.join(f.input.directory, 'intents', '0000000000009001.json'),
+  )
+  fs.writeFileSync(
+    path.join(f.input.directory, 'intents', '0000000000009002.json'),
+    'opaque corrupt command body that must never be opened',
+  )
+  const before = f.inventory()
+  importLegacyConfiguration(f.home, f.input)
+  expect(JSON.parse(fs.readFileSync(f.marker, 'utf8'))).toMatchObject({
+    revision: 9002,
+    consumed: true,
+  })
+  expect(f.inventory()).toEqual(before)
+})
+
+it('refuses an invalid published intent filename before publishing a marker', () => {
+  const f = fixture()
+  fs.writeFileSync(path.join(f.input.directory, 'intents', '123456789.json'), 'opaque command')
+  expect(() => importLegacyConfiguration(f.home, f.input)).toThrow(/filename/)
+  expect(fs.existsSync(f.marker)).toBe(false)
+})
