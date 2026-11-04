@@ -51,7 +51,7 @@ export interface PluginSettingsController {
   update?(id: string, consent?: PluginMutationConsent): Promise<void>
   /** Reattach person control only; no install or removal. */
   retry?(id: string): Promise<PluginCard[]>
-  restartChrome?(): Promise<void>
+  restartPlugin?(pluginId: string): Promise<void>
   install(id: string, consent?: PluginMutationConsent): Promise<void>
   uninstall(id: string): Promise<PluginRemovalOutcome | void>
   screen(id: string): Promise<PluginUiHostOptions>
@@ -323,11 +323,11 @@ export function registerPluginSettings(
             return refused
         }
         if (input.kind === 'restart') {
-          if (input.id !== 'chrome' || !controller.restartChrome) return refused
+          if (!controller.restartPlugin) return refused
           state.reviews.clear()
           controller.cancelPreparations?.()
           await close(owner)
-          await controller.restartChrome()
+          await controller.restartPlugin(input.id as string)
           return { ok: true, cards: await catalogue(() => controller.catalogue(false)) }
         }
         if (input.kind === 'retry') {

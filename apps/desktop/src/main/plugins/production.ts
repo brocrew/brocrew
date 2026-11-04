@@ -18,7 +18,6 @@ import { connectPluginSettings } from './lifecycle/settings-client'
 import { createPluginSupervisorLauncher } from './supervisor/launcher'
 import { SupervisorStorage } from './supervisor/storage'
 import { keepPluginRootPrivate } from './private-files'
-import { installedChromeOnWindows } from './windows-chrome'
 import { pluginWorkspaceIdentity, type PluginSupervisorAttachment } from './supervisor/client'
 import { PluginSupervisorError } from './supervisor/protocol'
 import type {
@@ -422,10 +421,10 @@ export function productionPluginController() {
         return unavailableCards()
       }
     },
-    async restartChrome() {
+    async restartPlugin(pluginId) {
       const connection = current()
-      if (!connection.restartChrome) return fail()
-      await connection.restartChrome()
+      if (!connection.restartPlugin) return fail()
+      await connection.restartPlugin(pluginId)
       await update()
     },
     async update(id, consent) {
@@ -556,12 +555,7 @@ export function productionPluginController() {
             resourcesRoot: options.resourcesRoot,
             sharedDataOwner:
               options.fixtureSource || devSource ? undefined : options.sharedDataOwner,
-            // Windows names no Chrome a plugin process could find by itself (see windows-chrome.ts).
-            browserExecutable:
-              options.browserExecutable ??
-              (process.platform === 'win32'
-                ? (installedChromeOnWindows() ?? undefined)
-                : undefined),
+            browserExecutable: options.browserExecutable,
             lifecycleForNewOwner:
               options.fixtureSource || devSource
                 ? undefined

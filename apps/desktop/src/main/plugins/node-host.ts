@@ -5,7 +5,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { fork, type ChildProcess } from 'node:child_process'
 import { randomBytes, randomUUID } from 'node:crypto'
-import { join, dirname, isAbsolute } from 'node:path'
+import { join, dirname, isAbsolute, normalize } from 'node:path'
 import { rm } from 'node:fs/promises'
 import { verifiedPluginDigest, type VerifiedPluginPackage } from './package-verifier'
 import {
@@ -18,7 +18,7 @@ import {
   removePrivateCode,
 } from './node-host-files'
 import { runtimeFiles, type PluginNodeRuntime } from './node-runtime'
-import { windowsSystemEnvironment } from './system-environment'
+import { launchPluginProcess, type PluginHostRequestHandler } from './process-runner'
 import { sharedDataEnvironment, type SharedDataOwner } from './shared-data'
 import {
   endWindowsTree,
@@ -30,6 +30,8 @@ import { writeReceipt } from '../../../resources/plugin-host/receipts.mjs'
 export interface PluginNodeStart {
   package: VerifiedPluginPackage
   releaseDigest: string
+  previousVersion?: string
+  previousDataSchema?: number
 }
 export interface PluginNodeExit {
   exited: boolean
@@ -37,6 +39,8 @@ export interface PluginNodeExit {
 export interface PluginNodeReady {
   readonly serverPid: number
   readonly origin: string
+  /** Retained duplex MCP connection for a generic package; stays in the owner process. */
+  readonly client?: Client
   /** Diagnostic snapshot of this authenticated owned server; never admission evidence. */
   readonly priorityClamped?: boolean | null
   /** These capabilities stay with the supervisor/broker; JSON contains no credential. */
@@ -65,86 +69,24 @@ function deferred<T>(): Deferred<T> {
   void promise.catch(() => {})
   return { promise, resolve, reject }
 }
-async function authenticatedHealth(
-  origin: string,
-  mcp: string,
-  admin: string,
-  version: string,
-  mcpPath: string,
-  adminPath: string,
-  probe: string,
-): Promise<void> {
-  for (const [path, token, expected, method] of [
-    ['/healthz', '', 401, 'GET'],
-    ['/healthz', 'invalid', 401, 'GET'],
-    ['/healthz', mcp, 401, 'GET'],
-    ...(probe ? [[adminPath + probe, mcp, 401, 'GET'] as const] : []),
-    [mcpPath, '', 401, 'POST'],
-    [mcpPath, admin, 401, 'POST'],
-    ['/healthz', admin, 200, 'GET'],
-  ] as const) {
-    const response = await fetch(origin + path, {
-      method,
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      redirect: 'manual',
-      signal: AbortSignal.timeout(1500),
-    })
-    if (response.status !== expected) {
-      await response.body?.cancel()
-      throw new PluginHostError('ready')
-    }
-    if (expected === 200) {
-      const reader = response.body?.getReader()
-      const chunks: Uint8Array[] = []
-      let length = 0
-      if (!reader) throw new PluginHostError('ready')
-      try {
-        for (;;) {
-          const part = await reader.read()
-          if (part.done) break
-          length += part.value.length
-          if (length > 4096) throw new PluginHostError('ready')
-          chunks.push(part.value)
-        }
-      } finally {
-        await reader.cancel()
-      }
-      const body = JSON.parse(Buffer.concat(chunks).toString('utf8'))
-      if (body?.ok !== true || body.version !== version) throw new PluginHostError('ready')
-    } else await response.body?.cancel()
-  }
-  if (probe) {
-    const adminResponse = await fetch(origin + adminPath + probe, {
-      headers: { Authorization: `Bearer ${admin}` },
-      redirect: 'manual',
-      signal: AbortSignal.timeout(1500),
-    })
-    await adminResponse.body?.cancel()
-    if (adminResponse.status !== 200) throw new PluginHostError('ready')
-  }
+function withMcpClient<T extends object>(
+  connection: T,
+  client?: Client,
+): Readonly<T & { client?: Client }> {
+  return Object.freeze(Object.defineProperty(connection, 'client', { value: client }))
+}
+async function authenticatedHealth(origin: string, mcp: string, mcpPath: string): Promise<Client> {
   const client = new Client({ name: 'brocrew-plugin-host', version: '1' }, { capabilities: {} })
   client.onerror = () => {}
   const transport = new StreamableHTTPClientTransport(new URL(origin + mcpPath), {
     requestInit: { headers: { Authorization: `Bearer ${mcp}` } },
-    fetch: (url, init) => {
-      const target = typeof url === 'object' && 'url' in url ? String(url.url) : String(url)
-      if (new URL(target).origin !== origin) return Promise.reject(new PluginHostError('ready'))
-      return fetch(url, {
-        ...init,
-        redirect: 'manual',
-        signal: AbortSignal.any([
-          AbortSignal.timeout(2000),
-          ...(init?.signal ? [init.signal] : []),
-        ]),
-      })
-    },
   })
   try {
     await client.connect(transport)
-    if (client.getServerVersion()?.version !== version) throw new PluginHostError('ready')
-  } finally {
-    await transport.terminateSession().catch(() => {})
+    return client
+  } catch (error) {
     await client.close().catch(() => {})
+    throw error
   }
 }
 
@@ -207,6 +149,7 @@ export function createPluginNodeHost(options: {
   browserExecutable?: string
   readyMs?: number
   sharedDataOwner?: SharedDataOwner
+  hostRequest?: PluginHostRequestHandler
 }) {
   options = Object.freeze({
     ...options,
@@ -214,11 +157,11 @@ export function createPluginNodeHost(options: {
   })
   let closing = false
   const starts = new Map<string, Promise<PluginNodeProcess>>()
+  const definitions = new Map<string, PluginNodeStart>()
   const readyMs = options.readyMs ?? 15000
   if (
     !Number.isFinite(readyMs) ||
-    readyMs < 10 ||
-    readyMs > 30000 ||
+    readyMs < 0 ||
     (options.browserExecutable && !isAbsolute(options.browserExecutable))
   )
     throw new PluginHostError('start')
@@ -226,8 +169,6 @@ export function createPluginNodeHost(options: {
   async function launch(spec: PluginNodeStart): Promise<PluginNodeProcess> {
     const manifest = spec.package.manifest
     const hosted = pluginNodePolicy(spec.package)
-    // This legacy launcher does not implement format 3 transports.
-    if (manifest.format === 3 || !('entry' in hosted)) throw new PluginHostError('start')
     if (
       !spec.package.compatibility.host ||
       verifiedPluginDigest(spec.package) !== spec.releaseDigest ||
@@ -259,7 +200,13 @@ export function createPluginNodeHost(options: {
           if (!bytes) throw new PluginHostError('package')
           const parent = dirname(file.path)
           if (parent !== '.') await privateChild(stage, parent)
-          await immutableFile(join(stage, file.path), bytes)
+          await immutableFile(
+            join(stage, file.path),
+            bytes,
+            manifest.format === 3 &&
+              manifest.runtime.kind === 'process' &&
+              normalize(manifest.runtime.command) === normalize(file.path),
+          )
         }
       },
       async (directory) => {
@@ -273,7 +220,92 @@ export function createPluginNodeHost(options: {
       },
     )
     const runId = randomUUID()
+    const slot = join(await privateChild(root, 'process-slots'), `${manifest.id}.sqlite`)
     const run = await privateChild(root, `runs/${runId}`)
+    if (manifest.format === 3) {
+      if (closing) throw new PluginHostError('start')
+      const declaration = manifest.runtime
+      const declared = declaration.kind === 'node' ? declaration.entry : declaration.command
+      const entry = isAbsolute(declared)
+        ? declared
+        : manifest.files.some((file) => normalize(file.path) === normalize(declared))
+          ? join(release, declared)
+          : declared
+      const command = declaration.kind === 'node' ? runtime.node : entry
+      const args =
+        declaration.kind === 'node'
+          ? [entry, ...(declaration.args ?? [])]
+          : (declaration.args ?? [])
+      const bootstrap = {
+        api: 1,
+        pluginId: manifest.id,
+        instanceId: runId,
+        dataDirectory: home,
+        sharedDataDirectory: sharedEnvironment.BROCREW_PLUGIN_SHARED,
+        previousVersion: spec.previousVersion,
+        previousDataSchema: spec.previousDataSchema,
+        dataSchema: manifest.data.schema,
+        host: { api: 1, method: 'brocrew/host' },
+      }
+      const processRun = launchPluginProcess({
+        pluginId: manifest.id,
+        runId,
+        node: runtime.node,
+        guardian: join(dirname(runtime.guardian), 'process-guardian.mjs'),
+        slot,
+        keeperCache: windows ? await privateChild(root, 'keeper') : undefined,
+        command,
+        args,
+        cwd: home,
+        env: {
+          ...process.env,
+          ...sharedEnvironment,
+          BROCREW_PLUGIN_DATA: home,
+          BROCREW_PLUGIN_RUN_ID: runId,
+          BROCREW_PLUGIN_BOOTSTRAP: JSON.stringify(bootstrap),
+        },
+        mcp: manifest.mcp,
+        stop: manifest.lifecycle.stop,
+        readyMs,
+        hostRequest: options.hostRequest,
+      })
+      const generation = starts.get(manifest.id)
+      void processRun.exited
+        .then((result) => {
+          if (result.exited && starts.get(manifest.id) === generation) starts.delete(manifest.id)
+          writeReceipt(run, 'exit.json', {
+            format: 1,
+            runId,
+            pluginId: manifest.id,
+            releaseDigest: spec.releaseDigest,
+            ...result,
+          })
+        })
+        .catch(() => {})
+      return Object.freeze({
+        runId,
+        receiptPath: join(run, 'exit.json'),
+        ready: async () => {
+          const ready = await processRun.ready()
+          return withMcpClient(
+            {
+              serverPid: ready.serverPid,
+              origin: ready.origin,
+              mcp(): never {
+                throw new PluginHostError('ready')
+              },
+              admin(): never {
+                throw new PluginHostError('ready')
+              },
+            },
+            ready.client,
+          )
+        },
+        stop: processRun.stop,
+        exited: processRun.exited,
+      })
+    }
+    if (!('entry' in hosted) || !runtime) throw new PluginHostError('package')
     let windowsJob
     if (windows) {
       const nonce = randomUUID()
@@ -310,6 +342,7 @@ export function createPluginNodeHost(options: {
           releaseDigest: spec.releaseDigest,
           ...(windowsJob ? { windowsJob } : {}),
           ...(windows ? { keeperCache: await privateChild(root, 'keeper') } : {}),
+          runtimeSlot: slot,
         }),
       ),
     )
@@ -326,31 +359,22 @@ export function createPluginNodeHost(options: {
       detached: true,
       stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
       env: {
-        ...(windows
-          ? {
-              ...windowsSystemEnvironment(),
-              USERPROFILE: home,
-              APPDATA: join(home, 'AppData', 'Roaming'),
-              LOCALAPPDATA: join(home, 'AppData', 'Local'),
-            }
-          : { PATH: '/usr/bin:/bin', XDG_CONFIG_HOME: home, LC_ALL: 'C' }),
-        HOME: home,
-        TMPDIR: join(home, 'tmp'),
-        TMP: join(home, 'tmp'),
-        TEMP: join(home, 'tmp'),
+        ...process.env,
+        BROCREW_PLUGIN_DATA: home,
         BROCREW_PLUGIN_RUN_ID: runId,
         ...sharedEnvironment,
         [`BROCREW_${hosted.env}_DATA`]: home,
         [`BROCREW_${hosted.env}_AUTH`]: join(run, 'auth.json'),
         [`BROCREW_${hosted.env}_PORT`]: '0',
-        ...(options.browserExecutable && manifest.id === 'chrome'
-          ? { BROCREW_CHROME_EXECUTABLE: options.browserExecutable }
+        ...(options.browserExecutable
+          ? { [`BROCREW_${hosted.env}_EXECUTABLE`]: options.browserExecutable }
           : {}),
       },
     })
     const ready = deferred<PluginNodeReady>(),
       exited = deferred<PluginNodeExit>()
     const groups = new Map<number, string>()
+    let mcpClient: Client | undefined
     let stopped = false,
       unsupported = false,
       proof = false,
@@ -360,10 +384,11 @@ export function createPluginNodeHost(options: {
       if (stopPromise) return stopPromise
       stopped = true
       ready.reject(new PluginHostError('ready'))
+      void mcpClient?.close().catch(() => {})
       if (child.connected)
         child.send({ channel: 'brocrew-plugin-node:v1', runId, type: 'stop' }, () => {})
       const cap = setTimeout(() => {
-        child.kill('SIGKILL')
+        child.kill('SIGTERM')
       }, 10000)
       cap.unref()
       stopPromise = Promise.race([
@@ -445,69 +470,70 @@ export function createPluginNodeHost(options: {
         // The server has loaded both capabilities before announcing its listener.
         // Retain them only in this host's closures, never on disk for its lifetime.
         void rm(join(run, 'auth.json'), { force: true })
-          .then(() => {
+          .then(async (): Promise<Client | undefined> => {
             if (stopped) throw new PluginHostError('ready')
-            if (hosted.transport === 'hooks')
-              return authenticatedHookHealth({
+            if (hosted.transport === 'hooks') {
+              await authenticatedHookHealth({
                 origin,
                 hookToken,
                 otherTokens: [mcpToken, adminToken],
                 version: manifest.version,
               })
-            return authenticatedHealth(
-              origin,
-              mcpToken,
-              adminToken,
-              manifest.version,
-              manifest.server!.mcpPath,
-              manifest.server!.adminPath,
-              hosted.probe,
-            )
+              return undefined
+            }
+            return authenticatedHealth(origin, mcpToken, manifest.server!.mcpPath)
           })
-          .then(() => {
-            if (stopped) return
+          .then((client) => {
+            mcpClient = client || undefined
+            if (stopped) {
+              void mcpClient?.close().catch(() => {})
+              return
+            }
             clearTimeout(timer)
             const current = () => {
               if (stopped) throw new PluginHostError('ready')
             }
             ready.resolve(
-              Object.freeze({
-                serverPid: Number(value.serverPid),
-                origin,
-                // On Windows the guardian reads it from the job, which also holds the browser.
-                priorityClamped: windows
-                  ? typeof value.priorityClamped === 'boolean'
-                    ? value.priorityClamped
-                    : null
-                  : readPriorityClamped(Number(value.serverPid)),
-                ...(hosted.transport === 'hooks'
-                  ? {
-                      hooks() {
-                        current()
-                        return {
-                          url: origin + '/v1/hooks',
-                          headers: { Authorization: `Bearer ${hookToken}` },
-                        }
-                      },
+              withMcpClient(
+                {
+                  serverPid: Number(value.serverPid),
+                  origin,
+                  // On Windows the guardian reads it from the job, which also holds the browser.
+                  priorityClamped: windows
+                    ? typeof value.priorityClamped === 'boolean'
+                      ? value.priorityClamped
+                      : null
+                    : readPriorityClamped(Number(value.serverPid)),
+                  ...(hosted.transport === 'hooks'
+                    ? {
+                        hooks() {
+                          current()
+                          return {
+                            url: origin + '/v1/hooks',
+                            headers: { Authorization: `Bearer ${hookToken}` },
+                          }
+                        },
+                      }
+                    : {}),
+                  mcp() {
+                    current()
+                    if (!manifest.server) throw new PluginHostError('ready')
+                    return {
+                      url: origin + manifest.server!.mcpPath,
+                      headers: { Authorization: `Bearer ${mcpToken}` },
                     }
-                  : {}),
-                mcp() {
-                  current()
-                  if (!manifest.server) throw new PluginHostError('ready')
-                  return {
-                    url: origin + manifest.server!.mcpPath,
-                    headers: { Authorization: `Bearer ${mcpToken}` },
-                  }
+                  },
+                  admin() {
+                    current()
+                    if (!manifest.server) throw new PluginHostError('ready')
+                    return {
+                      url: origin + manifest.server!.adminPath,
+                      headers: { Authorization: `Bearer ${adminToken}` },
+                    }
+                  },
                 },
-                admin() {
-                  current()
-                  if (!manifest.server) throw new PluginHostError('ready')
-                  return {
-                    url: origin + manifest.server!.adminPath,
-                    headers: { Authorization: `Bearer ${adminToken}` },
-                  }
-                },
-              }),
+                mcpClient,
+              ),
             )
           })
           .catch(() => {
@@ -520,6 +546,7 @@ export function createPluginNodeHost(options: {
       if (finished) return
       finished = true
       stopped = true
+      void mcpClient?.close().catch(() => {})
       clearTimeout(timer)
       ready.reject(new PluginHostError(unsupported ? 'unsupported' : 'ready'))
       // A guardian crash is not an exit receipt; independently clean the groups already admitted.
@@ -570,12 +597,42 @@ export function createPluginNodeHost(options: {
       exited: exited.promise,
     })
   }
+  function start(spec: PluginNodeStart): Promise<PluginNodeProcess> {
+    const id = spec.package.manifest.id
+    if (closing || starts.has(id)) return Promise.reject(new PluginHostError('start'))
+    const captured = { ...spec }
+    const promise = launch(captured)
+      .then((run) => {
+        definitions.set(id, captured)
+        return run
+      })
+      .catch((error: unknown) => {
+        throw error instanceof PluginHostError ? error : new PluginHostError('start')
+      })
+    starts.set(id, promise)
+    void promise.catch(() => {
+      if (starts.get(id) === promise) starts.delete(id)
+    })
+    return promise
+  }
+  async function stopPlugin(id: string): Promise<PluginNodeExit> {
+    const pending = starts.get(id)
+    return pending ? (await pending).stop() : { exited: true }
+  }
   return {
+    stopPlugin,
+    async restart(input: string | PluginNodeStart): Promise<PluginNodeProcess> {
+      const spec = typeof input === 'string' ? definitions.get(input) : input
+      if (!spec) throw new PluginHostError('start')
+      if (!(await stopPlugin(spec.package.manifest.id)).exited) throw new PluginHostError('cleanup')
+      return start(spec)
+    },
     async removePackage(id: string, releaseDigest: string): Promise<void> {
       if (starts.has(id)) throw new PluginHostError('cleanup')
       const root = await privateRoot(options.root)
       const packages = await privateChild(root, 'packages')
       await removePrivateCode(packages, releaseDigest)
+      if (definitions.get(id)?.releaseDigest === releaseDigest) definitions.delete(id)
     },
     /** Deletes one stopped plugin's private data folder. */
     async removeData(id: string): Promise<void> {
@@ -583,18 +640,7 @@ export function createPluginNodeHost(options: {
       const root = await privateRoot(options.root)
       await rm(join(root, 'data', id), { recursive: true, force: true })
     },
-    start(spec: PluginNodeStart): Promise<PluginNodeProcess> {
-      const id = spec.package.manifest.id
-      if (closing || starts.has(id)) return Promise.reject(new PluginHostError('start'))
-      const promise = launch({ ...spec }).catch((error: unknown) => {
-        throw error instanceof PluginHostError ? error : new PluginHostError('start')
-      })
-      starts.set(id, promise)
-      void promise.catch(() => {
-        if (starts.get(id) === promise) starts.delete(id)
-      })
-      return promise
-    },
+    start,
     async stop(): Promise<PluginNodeExit> {
       closing = true
       const results = await Promise.allSettled(

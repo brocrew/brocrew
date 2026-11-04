@@ -9,7 +9,6 @@ import type { createPluginNodeHost, PluginNodeReady } from '../node-host'
 import { PluginLifecycleController } from './controller'
 import { servePersonPluginControl } from './person-control'
 import type { LifecycleOptions } from './types'
-import { PluginSupervisorError } from '../supervisor/protocol'
 
 /** Called in the exclusive supervisor process, never in a workspace renderer or agent handler. */
 export async function createSupervisorLifecycle(options: {
@@ -29,7 +28,7 @@ export async function createSupervisorLifecycle(options: {
         consumer.agents?.deny(id)
         options.lifecycle.deny(id)
       },
-      onChromeHostExit: (runId) => consumer.agents?.hostExited(runId),
+      onHostExit: (id, runId) => consumer.agents?.hostExited(id, runId),
       runtime: {
         start: (spec) => host.prepare(spec),
         removeCode: (id, digest) => options.host.removePackage(id, digest),
@@ -47,70 +46,30 @@ export async function createSupervisorLifecycle(options: {
       requirePluginAdapter(view.installation.pluginId).broker(view, refused, diagnostic),
     diagnostic: (id, reason) => recordPluginToolFailure(options.lifecycle.root, id, reason),
     refused,
-    recoverChromeHost: (view, stopped) => controller.restartChromeTools(view.runId, stopped),
-    restartChromeHost: () => controller.restartChromeTools(undefined, () => {}),
+    recoverHost: (view, stopped) =>
+      controller.restartPluginTools(view.installation.pluginId, view.runId, stopped),
+    restartHost: (id) => controller.restartPluginTools(id, undefined, () => {}),
   })
   consumer.agents = agents
-  options.owner.bindAgentBridge(agents)
-  let closed = false
   let closing: Promise<void> | undefined
-  let exited!: () => void
-  let failed!: (error: unknown) => void
-  const done = new Promise<void>((resolve, reject) => {
-    exited = resolve
-    failed = reject
-  })
-  // close() may fail before the owner starts its own drain. Keep the negative witness observed.
-  void done.catch(() => undefined)
   const bridge = await servePersonPluginControl({
     root: options.lifecycle.root,
     key: options.personKey,
     controller,
     read: options.read,
-    restartChrome: () => agents.restartChrome(),
+    restartPlugin: (id) => agents.restartPlugin(id),
   })
   function close(): Promise<void> {
     closing ??= (async () => {
-      // Intent precedes the concurrent host stops in the owner's child drain. Each exact run must
-      // still prove exit, and neither a failed consumer nor another child skips the remaining work.
-      const drained = controller.drain()
-      // Keep one grace budget across crash revocations and the final consumer detach.
-      const personClosed = (async () => {
-        const timer = setTimeout(
-          () => bridge.endConsumers(),
-          Math.floor(options.owner.remainingDrainMs() * 0.75),
-        )
-        try {
-          await drained.catch(() => undefined)
-          await bridge.close()
-        } finally {
-          clearTimeout(timer)
-        }
-      })()
-      const results = await Promise.allSettled([agents.close(), personClosed, drained])
-      if (results.some((one) => one.status !== 'fulfilled') || !controller.cleanForShutdown())
-        throw new PluginSupervisorError('cleanup-pending')
-      closed = true
-      exited()
-    })().catch((error: unknown) => {
-      // A failed bridge stop is a negative exit witness, not a promise that can never settle.
-      // The owner retains its fence as blocked; it must never publish a false clean stop.
-      failed(error)
-      throw error
-    })
+      // Cleanup is attempted independently; only real process handles belong to physical drain.
+      bridge.endConsumers()
+      await Promise.allSettled([agents.close(), bridge.close(), controller.drain()])
+    })()
     return closing
   }
-  // The owner waits for consumer/UI cleanup along with the real host children at last-lease drain.
-  try {
-    await options.owner.startChild(async () => ({
-      inProcess: true,
-      stop: close,
-      exited: done,
-      descendantsGone: async () => closed,
-    }))
-  } catch {
-    await bridge.close().catch(() => undefined)
-    throw new PluginSupervisorError('unavailable')
-  }
+  const lifecycleBridge = { ...agents, close }
+  options.owner.bindAgentBridge(lifecycleBridge)
+  // Older owners do not call the optional cleanup hook; their physical shutdown still closes UI.
+  void options.owner.closed.then(() => close())
   return { controller, path: bridge.path, close }
 }

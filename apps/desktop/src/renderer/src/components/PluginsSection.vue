@@ -105,12 +105,12 @@ const listMessage = computed(() => {
 const unavailable = 'Plugin unavailable. Try again.'
 const failedRetries = ref(new Set<string>())
 const cannotStart = (card: PluginCard) => card.state === 'Unavailable'
-async function restartChrome() {
+async function restartPlugin(card: PluginCard) {
   if (busy.value) return
   generation++
   busy.value = true
   error.value = ''
-  const answer = await request({ kind: 'restart', id: 'chrome' })
+  const answer = await request({ kind: 'restart', id: card.id })
   if (!alive) return
   busy.value = false
   if (answer.ok && answer.cards) cards.value = answer.cards
@@ -439,7 +439,6 @@ onUnmounted(() => {
           <p v-if="card.installed">Installed for all workspaces.</p>
           <template
             v-if="
-              card.id === 'chrome' &&
               card.canRestart &&
               card.installed &&
               (card.toolsUnavailable || card.state === 'Unavailable')
@@ -450,13 +449,11 @@ onUnmounted(() => {
               type="button"
               :disabled="busy"
               data-cy="plugin-restart"
-              @click="restartChrome"
+              @click="restartPlugin(card)"
             >
-              Restart Chrome
+              Restart {{ card.name }}
             </button>
-            <p class="plugin-trust" data-cy="plugin-restart-note">
-              Closes the Chrome windows BroCrew opened.
-            </p>
+            <p class="plugin-trust" data-cy="plugin-restart-note">Stops and starts this plugin.</p>
           </template>
           <p v-if="card.updatesUnavailable" role="status" data-cy="plugin-updates-unavailable">
             Updates aren’t available for this version of BroCrew.

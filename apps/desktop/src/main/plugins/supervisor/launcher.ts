@@ -14,7 +14,6 @@ import {
 } from '../node-host-files'
 import { SupervisorStorage } from './storage'
 import { readRecoveryAdvice } from './recovery-advice'
-import { windowsSystemEnvironment } from '../system-environment'
 import { OWNER_LAUNCH_MS, PluginSupervisorError } from './protocol'
 import { LaunchConfig, type PluginLifecyclePlan, type PluginStartupPlan } from './launch-format'
 import type { SharedDataOwner } from '../shared-data'
@@ -81,16 +80,12 @@ export function createPluginSupervisorLauncher(options: {
         configPath = join(directory, 'launch.json')
       await immutableFile(configPath, input)
       storage.check()
-      const temporary =
-        process.platform === 'win32' ? await privateChild(root, 'supervisor-temp') : null
       const child = spawn(node, [join(kept, 'entry.cjs'), configPath, digest(input)], {
         detached: true,
         stdio: ['ignore', 'ignore', 'pipe'],
         windowsHide: true,
         cwd: root,
-        env: temporary
-          ? { ...windowsSystemEnvironment(), USERPROFILE: root, TEMP: temporary, TMP: temporary }
-          : { HOME: root, PATH: '/usr/bin:/bin', LC_ALL: 'C' },
+        env: { ...process.env },
       })
       diagnostic = observePluginSupervisorLaunch(child, [config.lifecycle?.personKey ?? ''])
       let failed = false

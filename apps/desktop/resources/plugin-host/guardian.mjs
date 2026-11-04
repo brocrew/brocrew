@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url'
 import { stopGroups, groupIdentity, pluginServerLaunch } from './process-groups.mjs'
 import { writeReceipt } from './receipts.mjs'
 import { startJobKeeper } from './windows-job.mjs'
+import { acquireRuntimeLock } from './runtime-locks.mjs'
 const configPath = process.argv[2]
 const config = JSON.parse(readFileSync(configPath, 'utf8'))
 const receiptRoot = dirname(configPath)
@@ -28,6 +29,7 @@ let awaiting = false
 let admissionSent = false
 /** The server, once forked. */
 let child
+let releaseRuntimeLocks
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 function releaseEntry() {
   if (!finishing && admitted && awaiting && !admissionSent && child.connected) {
@@ -47,14 +49,7 @@ const send = (value) => {
     process.send({ channel: 'brocrew-plugin-node:v1', runId: config.runId, ...value }, () => {})
 }
 // A first open compiles the job code, which can take tens of seconds on a cold machine.
-const keeper =
-  process.platform === 'win32'
-    ? startJobKeeper({
-        cache: config.keeperCache,
-        openMs: 120_000,
-        name: config.windowsJob?.name ?? '',
-      })
-    : null
+let keeper = null
 /**
  * Stops the server and ends its job. The server is asked to stop over its channel, since a signal
  * on Windows ends a process at once and its own shutdown would never run; then the job is ended,
@@ -87,11 +82,14 @@ async function finish(why = 'stop') {
     // came while the keeper was still compiling its code.
     const keeperGone = await keeper.end()
     exited = !uncertain && (!child || closed) && empty && keeperGone
-  } else {
+  } else if (child) {
     await stopGroups(groups)
     await Promise.race([childClosed, pause(2000)])
     exited = !uncertain && closed && (await stopGroups(groups, 0))
-  }
+  } else exited = !uncertain
+  // The captured managed child must actually exit before this guardian releases its mutexes.
+  if (child && !closed) await childClosed
+  await releaseRuntimeLocks?.()
   await Promise.all(
     ['auth.json', 'launch.json'].map((name) => rm(join(receiptRoot, name), { force: true })),
   )
@@ -138,6 +136,14 @@ process.on('message', (message) => {
 /** How long the keeper took to open its job, kept in the run's process receipt on Windows. */
 let openedMs
 let jobIdentity
+if (config.runtimeSlot)
+  releaseRuntimeLocks = await acquireRuntimeLock(config.runtimeSlot, () => finishing)
+if (!finishing && process.platform === 'win32')
+  keeper = startJobKeeper({
+    cache: config.keeperCache,
+    openMs: 120_000,
+    name: config.windowsJob?.name ?? '',
+  })
 if (keeper) {
   openedMs = await keeper.opened
   jobIdentity = openedMs === null ? null : await keeper.identity()

@@ -128,6 +128,8 @@ export class PluginSupervisor {
       request: Extract<Command, { kind: 'agent-routes' }>,
     ): Promise<unknown>
     revoke(lease: Readonly<WorkspaceLease>): void
+    /** Lifecycle cleanup notification, independent of physical child exit. */
+    close?(): Promise<void>
   }
   /** Only the trusted lifecycle bootstrap installs this agent-only command handler. */
   bindAgentBridge(bridge: NonNullable<PluginSupervisor['agentBridge']>): void {
@@ -537,6 +539,11 @@ export class PluginSupervisor {
     this.drainWork ??= (async () => {
       this.trace({ stage: 'child-proofs', state: 'waiting' })
       this.drainDeadline = performance.now() + (this.options.drainWithin ?? OWNER_LIMITS.cleanup)
+      void Promise.resolve()
+        .then(() => this.agentBridge?.close?.())
+        .catch(() => {
+          // Cleanup notification cannot hold or replace actual physical child drain.
+        })
       const result = await (async () => {
         if ((await bounded(Promise.all(this.revocations), this.remainingDrainMs())) === undefined)
           this.revocationFailed = true

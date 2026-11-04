@@ -507,8 +507,7 @@ export async function connectPluginSettings(options: {
       // Project reviewed local adapter capabilities without expanding the legacy owner wire.
       return cards.map((card) => ({
         ...card,
-        ...(features.includes('chrome-recovery-v1') &&
-        card.id === 'chrome' &&
+        ...(features.includes('plugin-restart-v1') &&
         card.installed &&
         (card.toolsUnavailable || card.state === 'Unavailable')
           ? { canRestart: true as const }
@@ -519,13 +518,13 @@ export async function connectPluginSettings(options: {
         ...(blocked ? { mutationBlocked: blocked } : {}),
       }))
     },
-    ...(features.includes('chrome-recovery-v1')
+    ...(features.includes('plugin-restart-v1')
       ? {
-          async restartChrome() {
+          async restartPlugin(pluginId: string) {
             await checkOwner()
-            if (!features.includes('chrome-recovery-v1'))
+            if (!features.includes('plugin-restart-v1'))
               throw new PluginSupervisorError('incompatible')
-            if ((await channel.call({ kind: 'restart-chrome' })) !== true)
+            if ((await channel.call({ kind: 'restart-plugin', pluginId })) !== true)
               throw new PluginSupervisorError('unavailable')
           },
         }

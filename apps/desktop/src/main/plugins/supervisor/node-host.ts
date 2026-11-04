@@ -3,7 +3,7 @@ import { PluginSupervisor, type OwnedPluginChild } from './owner'
 import { PluginSupervisorError } from './protocol'
 import { PluginHostError } from '../node-host-files'
 
-/** Only the positive proof from this exact host handle establishes descendant exit. */
+/** Adapt the actual owned process result to the supervisor child interface. */
 export function ownedPluginNodeProcess(process: PluginNodeProcess): OwnedPluginChild {
   const proof = process.exited.then(
     (result) => result.exited === true,
@@ -30,7 +30,7 @@ export function createSupervisedPluginHost(
 ) {
   async function prepare(spec: PluginNodeStart) {
     let process!: PluginNodeProcess
-    // Register the asynchronous start before the host can create a guardian or browser.
+    // Register the asynchronous launch before it creates the package process.
     const child = await owner.startChild(async () => {
       process = await host.start(spec)
       return ownedPluginNodeProcess(process)
@@ -40,26 +40,8 @@ export function createSupervisedPluginHost(
       receiptPath: process.receiptPath,
       ready: () => process.ready(),
       exited: child.exited,
-      async stop(): Promise<void> {
-        let timer: ReturnType<typeof setTimeout> | undefined
-        try {
-          await Promise.race([
-            Promise.all([
-              Promise.resolve()
-                .then(() => child.stop())
-                .catch(() => undefined),
-              child.exited,
-              child.descendantsGone().then((gone) => {
-                if (gone !== true) throw new PluginSupervisorError('cleanup-pending')
-              }),
-            ]),
-            new Promise<never>((_, reject) => {
-              timer = setTimeout(() => reject(new PluginSupervisorError('cleanup-pending')), 20000)
-            }),
-          ])
-        } finally {
-          clearTimeout(timer)
-        }
+      stop: async () => {
+        await child.stop()
       },
     })
   }

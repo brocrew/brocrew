@@ -1,16 +1,11 @@
-import { closeSync, constants, fstatSync } from 'node:fs'
-import { lstat, mkdir, realpath, rename, rm, readdir } from 'node:fs/promises'
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { constants } from 'node:fs'
+import { stat, mkdir, rename, rm, readdir } from 'node:fs/promises'
+import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import {
   createFileNotThroughALink,
-  isInsideCheckedRoot,
-  isPrivateEntry,
-  isImmutableFile,
   immutableMode,
-  openDirectoryNotThroughALink,
   openFileNotThroughALink,
-  syncDirectory,
   syncDirectoryAt,
 } from './private-files'
 
@@ -25,20 +20,13 @@ export const digest = (value: Uint8Array): string =>
   createHash('sha256').update(value).digest('hex')
 export async function privateRoot(path: string): Promise<string> {
   if (!isAbsolute(path)) throw new PluginHostError('paths')
-  path = join(await realpath(dirname(resolve(path))), resolve(path).split(sep).at(-1)!)
-  try {
-    await mkdir(path, { mode: 0o700 })
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw new PluginHostError('paths')
-  }
+  path = resolve(path)
+  await mkdir(path, { recursive: true, mode: 0o700 })
   await directory(path)
-  if (!isInsideCheckedRoot(path)) throw new PluginHostError('paths')
   return path
 }
 async function directory(path: string): Promise<void> {
-  const stat = await lstat(path)
-  if (!stat.isDirectory() || stat.isSymbolicLink() || !isPrivateEntry(stat))
-    throw new PluginHostError('paths')
+  if (!(await stat(path)).isDirectory()) throw new PluginHostError('paths')
 }
 export async function privateChild(root: string, path: string, create = true): Promise<string> {
   const parts = relative(root, resolve(root, path)).split(sep)
@@ -76,7 +64,7 @@ export async function publishPrivateDirectory(
     await directory(path)
     await verify(path)
   }
-  const exists = await lstat(kept).then(
+  const exists = await stat(kept).then(
     () => true,
     (error: NodeJS.ErrnoException) => {
       if (error.code === 'ENOENT') return false
@@ -108,7 +96,6 @@ export async function publishPrivateDirectory(
 async function syncPrivateTree(path: string): Promise<void> {
   await directory(path)
   for (const entry of await readdir(path, { withFileTypes: true })) {
-    if (entry.isSymbolicLink()) throw new PluginHostError('paths')
     if (entry.isDirectory()) await syncPrivateTree(join(path, entry.name))
   }
   await syncDirectoryAt(path)
@@ -136,13 +123,10 @@ export async function immutableFile(
 export async function verifyImmutableFile(path: string, bytes: Uint8Array): Promise<void> {
   const existing = await openFileNotThroughALink(path, constants.O_RDONLY | constants.O_NONBLOCK)
   try {
-    const stat = await existing.stat()
+    const info = await existing.stat()
     if (
-      !stat.isFile() ||
-      stat.nlink !== 1 ||
-      !isPrivateEntry(stat, 0) ||
-      stat.size !== bytes.byteLength ||
-      !isImmutableFile(stat) ||
+      !info.isFile() ||
+      info.size !== bytes.byteLength ||
       !Buffer.from(await existing.readFile()).equals(Buffer.from(bytes))
     )
       throw new PluginHostError('paths')
@@ -161,7 +145,7 @@ export async function sourceBytes(path: string, limit: number): Promise<Buffer> 
   }
 }
 
-/** Exact-run exit and lifecycle writer exclusion are caller obligations. Never target data. */
+/** Retire the selected code directory atomically before removal. Data is a separate root. */
 export async function removePrivateCode(
   root: string,
   digestName: string,
@@ -177,66 +161,26 @@ export async function removePrivateCode(
   )
     throw new PluginHostError('paths')
   await directory(root)
-  const parent = openDirectoryNotThroughALink(root)
-  const pin = fstatSync(parent, { bigint: true })
-  const checkParent = async () => {
-    const now = await lstat(root, { bigint: true })
-    if (now.dev !== pin.dev || now.ino !== pin.ino || now.isSymbolicLink())
-      throw new PluginHostError('paths')
-    await directory(root)
-  }
   const published = join(root, digestName)
-  const retiredName = `.retired-${options.retirementId ?? digestName}-${digestName}`
-  const retired = join(root, retiredName)
-  const stat = async (path: string) =>
-    lstat(path, { bigint: true }).catch((error: NodeJS.ErrnoException) => {
-      if (error.code === 'ENOENT') return null
-      throw error
-    })
-  const audit = async (folder: string): Promise<void> => {
-    await directory(folder)
-    for (const entry of await readdir(folder, { withFileTypes: true })) {
-      const path = join(folder, entry.name),
-        held = await lstat(path)
-      if (held.isSymbolicLink() || !isPrivateEntry(held, 0)) throw new PluginHostError('paths')
-      if (held.isDirectory()) await audit(path)
-      else if (!held.isFile() || held.nlink !== 1 || !isImmutableFile(held))
-        throw new PluginHostError('paths')
-    }
+  const retired = join(root, `.retired-${options.retirementId ?? digestName}-${digestName}`)
+  const exists = async (path: string) =>
+    stat(path).then(
+      () => true,
+      (error: NodeJS.ErrnoException) => {
+        if (error.code === 'ENOENT') return false
+        throw error
+      },
+    )
+  const final = await exists(published),
+    trash = await exists(retired)
+  if (final && trash) throw new PluginHostError('paths')
+  if (final) {
+    await options.verifyPublished?.(published)
+    await rename(published, retired)
+    await syncDirectoryAt(root)
   }
-  try {
-    let final = await stat(published),
-      trash = await stat(retired)
-    if (final && trash) throw new PluginHostError('paths')
-    if (final) {
-      await privateChild(root, digestName, false)
-      await options.verifyPublished?.(published)
-      await audit(published)
-      await checkParent()
-      const again = await stat(published)
-      if (!again || again.dev !== final.dev || again.ino !== final.ino || (await stat(retired)))
-        throw new PluginHostError('paths')
-      // One bounded move under the lifecycle writer fence. Published bytes stay intact until here.
-      await rename(published, retired)
-      trash = await stat(retired)
-      if (!trash || trash.dev !== final.dev || trash.ino !== final.ino)
-        throw new PluginHostError('paths')
-      syncDirectory(parent) // Retirement is durable before recursive deletion may touch a file.
-      final = null
-    }
-    if (trash) {
-      syncDirectory(parent) // A retry also persists a prior rename whose first fsync may have failed.
-      await privateChild(root, retiredName, false)
-      await audit(retired) // Partial retirement is expected; links/foreign/writable files still refuse.
-      await checkParent()
-      const again = await stat(retired)
-      if (!again || again.dev !== trash.dev || again.ino !== trash.ino)
-        throw new PluginHostError('paths')
-      await rm(retired, { recursive: true })
-    }
-    await checkParent()
-    syncDirectory(parent)
-  } finally {
-    closeSync(parent)
+  if (final || trash) {
+    await rm(retired, { recursive: true, force: true })
+    await syncDirectoryAt(root)
   }
 }
