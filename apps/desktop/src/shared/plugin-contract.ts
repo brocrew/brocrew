@@ -251,9 +251,7 @@ export interface PluginOperationState {
 /** App-facing contract. Implementations are supplied by the generic lifecycle and MCP runner. */
 export interface PluginInterface<Manifest = unknown, Connection = unknown> {
   list(source?: string): Promise<PluginPackageCard[]>
-  inspect(
-    ref: PluginPackageRef,
-  ): Promise<{
+  inspect(ref: PluginPackageRef): Promise<{
     manifest: Manifest
     authors: string[]
     permissions: PluginPackageCard['permissions']
@@ -272,9 +270,7 @@ export interface PluginInterface<Manifest = unknown, Connection = unknown> {
     pluginId: string,
     enabled: boolean,
   ): Promise<{ enabled: boolean; revision: number }>
-  uninstall(
-    pluginId: string,
-  ): Promise<{
+  uninstall(pluginId: string): Promise<{
     removed: boolean
     data: 'kept' | 'removed'
     pluginCleanup?: { status: string; message?: string }

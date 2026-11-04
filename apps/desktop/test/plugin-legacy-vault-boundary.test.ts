@@ -32,7 +32,8 @@ async function snapshot(root: string): Promise<{ path: string; bytes?: string }[
       if (entry.isDirectory()) {
         result.push({ path: child + '/' })
         await visit(child)
-      } else result.push({ path: child, bytes: (await readFile(join(root, child))).toString('hex') })
+      } else
+        result.push({ path: child, bytes: (await readFile(join(root, child))).toString('hex') })
     }
   }
   await visit('')
@@ -48,25 +49,43 @@ it('refuses format 3 before publishing any historical vault cache', async () => 
     ['main.cjs', Buffer.from('// Inert fictional runtime.')],
     ['tools.json', Buffer.from('{"tools":[]}')],
   ])
-  const manifestBytes = Buffer.from(JSON.stringify({
-    format: 3, id: 'fictional-mill', version: '1.0.0', name: 'Fictional mill',
-    description: 'Count fictional grain.', authors: ['fictional-baker'], platforms: [target],
-    permissions: { description: 'Read fictional grain.' },
-    files: [...files].map(([path, bytes]) => ({ path, bytes: bytes.length, sha256: pluginSha256(bytes) })),
-    runtime: { kind: 'node', entry: 'main.cjs' }, mcp: { transport: 'stdio' },
-    tools: { source: 'mcp', inventory: 'tools.json' },
-    lifecycle: { stop: { signal: 'SIGTERM' }, dataOnRemove: 'keep' }, data: { schema: 1 },
-  }))
+  const manifestBytes = Buffer.from(
+    JSON.stringify({
+      format: 3,
+      id: 'fictional-mill',
+      version: '1.0.0',
+      name: 'Fictional mill',
+      description: 'Count fictional grain.',
+      authors: ['fictional-baker'],
+      platforms: [target],
+      permissions: { description: 'Read fictional grain.' },
+      files: [...files].map(([path, bytes]) => ({
+        path,
+        bytes: bytes.length,
+        sha256: pluginSha256(bytes),
+      })),
+      runtime: { kind: 'node', entry: 'main.cjs' },
+      mcp: { transport: 'stdio' },
+      tools: { source: 'mcp', inventory: 'tools.json' },
+      lifecycle: { stop: { signal: 'SIGTERM' }, dataOnRemove: 'keep' },
+      data: { schema: 1 },
+    }),
+  )
   const archive = tar([
     { path: 'plugin.json', body: manifestBytes },
     ...[...files].map(([path, body]) => ({ path, body })),
   ])
   const release = {
-    id: 'fictional-mill', version: '1.0.0', authors: ['fictional-baker'],
-    sourceCommit: 'a'.repeat(40), platforms: [target],
+    id: 'fictional-mill',
+    version: '1.0.0',
+    authors: ['fictional-baker'],
+    sourceCommit: 'a'.repeat(40),
+    platforms: [target],
     archive: {
-      url: 'https://plugins.example.invalid/mill.tar', size: archive.length,
-      sha256: pluginSha256(archive), compression: 'tar' as const,
+      url: 'https://plugins.example.invalid/mill.tar',
+      size: archive.length,
+      sha256: pluginSha256(archive),
+      compression: 'tar' as const,
     },
     manifestSha256: pluginSha256(manifestBytes),
   }
@@ -80,24 +99,33 @@ it('refuses format 3 before publishing any historical vault cache', async () => 
   expect(await readdir(join(root, 'package-vault'))).toEqual([])
 })
 
-it.each([1, 2])('keeps format %i manifest and payload bytes through stage and load', async (format) => {
-  const root = await fixtureRoot()
-  const manifest = manifestFor()
-  if (format === 2) Object.assign(manifest, {
-    format: 2, authors: ['fictional-baker'],
-    executor: { kind: 'node', entry: 'dist/recipe.mjs' }, hooks: [],
-  })
-  const f = packageFixture({ manifest })
-  const vault = new PluginPackageVault(root, fictionalPublicKey, target)
-  const staged = await vault.stage(f.release, f.archive, f, [])
-  const loaded = await vault.load(f.release, [])
-  for (const pkg of [staged, loaded]) {
-    expect(pkg.manifest).toEqual(f.manifest)
-    expect(pkg.readFile('plugin.json')).toEqual(Uint8Array.from(f.manifestBytes))
-    for (const [path, bytes] of f.files) expect(pkg.readFile(path)).toEqual(Uint8Array.from(bytes))
-  }
-  expect(await readFile(join(root, 'opaque-pairing'), 'utf8')).toBe('fictional opaque pairing bytes')
-})
+it.each([1, 2])(
+  'keeps format %i manifest and payload bytes through stage and load',
+  async (format) => {
+    const root = await fixtureRoot()
+    const manifest = manifestFor()
+    if (format === 2)
+      Object.assign(manifest, {
+        format: 2,
+        authors: ['fictional-baker'],
+        executor: { kind: 'node', entry: 'dist/recipe.mjs' },
+        hooks: [],
+      })
+    const f = packageFixture({ manifest })
+    const vault = new PluginPackageVault(root, fictionalPublicKey, target)
+    const staged = await vault.stage(f.release, f.archive, f, [])
+    const loaded = await vault.load(f.release, [])
+    for (const pkg of [staged, loaded]) {
+      expect(pkg.manifest).toEqual(f.manifest)
+      expect(pkg.readFile('plugin.json')).toEqual(Uint8Array.from(f.manifestBytes))
+      for (const [path, bytes] of f.files)
+        expect(pkg.readFile(path)).toEqual(Uint8Array.from(bytes))
+    }
+    expect(await readFile(join(root, 'opaque-pairing'), 'utf8')).toBe(
+      'fictional opaque pairing bytes',
+    )
+  },
+)
 
 it('preserves a legacy digest failure without publishing a cache', async () => {
   const root = await fixtureRoot()
