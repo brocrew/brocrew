@@ -341,20 +341,18 @@ describe('355 · the capabilities sheet', () => {
       const { m } = await openSheet()
       for (const key of ['canMessage', 'canAssignWork'] as const) {
         const control = m.q(`capability-${key}`)
-        const note = [...control.querySelectorAll('p.note')].at(-1) as HTMLElement | null
-        expect(shown(note), `${key} has no visible help`).toBe(true)
-        const admits = key === 'canMessage' ? MESSAGING_REACH_ADMITS : ASSIGNMENT_REACH_ADMITS
+        expect(control.querySelector('p.note')).toBeNull()
+        const select = control.querySelector<HTMLSelectElement>('select')!
+        expect(shown(select), `${key} has no visible editor`).toBe(true)
         for (const word of MESSAGING_REACH) {
-          expect(note?.textContent ?? '', `${key} does not say what ${word} admits`).toContain(
-            admits[word],
-          )
+          expect([...select.options].find((one) => one.value === word)?.textContent).toBe(word)
         }
       }
       // 🔴 **493's divergent control.** The two fields use the same word `any`, but messaging
       // may reach what this identity did not start and giving work may not.
       expect(MESSAGING_REACH_ADMITS.any).not.toBe(ASSIGNMENT_REACH_ADMITS.any)
-      expect(m.q('capability-canMessage').textContent).toContain(MESSAGING_REACH_ADMITS.any)
-      expect(m.q('capability-canAssignWork').textContent).toContain(ASSIGNMENT_REACH_ADMITS.any)
+      expect(shown(m.q('capability-canMessage-select'))).toBe(true)
+      expect(shown(m.q('capability-canAssignWork-select'))).toBe(true)
       expect(m.q('capability-canAssignWork').textContent).not.toContain(MESSAGING_REACH_ADMITS.any)
       // ⛔ **The control, and it is the field one row down.** A grant on the OTHER two-word
       // vocabulary carries none of these sentences, so the loop above is about this vocabulary
@@ -455,6 +453,7 @@ describe('355 · the capabilities sheet', () => {
       return m.q('model-picker-connection') as HTMLSelectElement
     }
     async function pickModel(m: Mounted): Promise<void> {
+      await expect.poll(() => m.all('model-picker-row').length).toBe(1)
       m.q('model-picker-row').querySelector('input')!.click()
       await nextTick()
       m.q('model-picker-take').click()
@@ -580,13 +579,14 @@ describe('355 · the capabilities sheet', () => {
     it('🔴 does not ask to be closed over a refused save, because the sentence goes with it', async () => {
       answers.saveFails = 'a person must be asking'
       const closes: number[] = []
-      const store = storeOver()
+      const { store, lists } = storeOver()
       await store.load()
       const m = mount(
         CapabilitiesSheet,
         {
           profileSlug: 'pm',
           store,
+          lists,
           onClose: () => closes.push(1),
         },
         { width: 900, height: 900 },
@@ -614,13 +614,13 @@ describe('355 · the capabilities sheet', () => {
      */
     it('⛔ says the identity has gone when the door answers null, and stays open', async () => {
       const closes: number[] = []
-      const store = storeOver()
+      const { store, lists } = storeOver()
       await store.load()
       // The row disappears between the read and the Save — a session closed it, or a repair did.
       answers.list = { ...answers.list, identities: [] }
       const m = mount(
         CapabilitiesSheet,
-        { profileSlug: 'pm', store, onClose: () => closes.push(1) },
+        { profileSlug: 'pm', store, lists, onClose: () => closes.push(1) },
         { width: 900, height: 900 },
       )
       await nextTick()

@@ -820,7 +820,10 @@ async function focusAddOpen(provider: Provider): Promise<void> {
         >
           <h4>{{ section.name }}</h4>
           <p
-            v-if="section.field.message && section.field.state !== 'no-profile'"
+            v-if="
+              section.field.message &&
+              (!('state' in section.field) || section.field.state !== 'no-profile')
+            "
             class="said"
             :class="{ warn: section.field.tone === 'warn' }"
             data-cy="model-picker-said"

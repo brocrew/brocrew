@@ -127,11 +127,10 @@ watch(
  * CHOICE's provider (`R31a`). ⛔ Until `696`, *Change…* on such an agent's Claude choice opened the
  * screen's fallback — Codex's rows (`RuntimeScreen`'s `DEFAULT_PROVIDER`).
  */
-const ownProvider = computed(
-  () =>
-    store.value.identities.value?.identities.find((one) => one.slug === props.profileSlug)
-      ?.provider ?? props.itsProvider,
-)
+const ownProvider = computed(() => {
+  const row = store.value.identities.value?.identities.find((one) => one.slug === props.profileSlug)
+  return row === undefined ? props.itsProvider : row.provider
+})
 const menusFor = computed(() =>
   theMenusAreFor(ownProvider.value ?? props.runsOn, ownProvider.value, held.value),
 )

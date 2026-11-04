@@ -273,6 +273,7 @@ async function control(
   runsOn: 'claude' | 'codex' = 'claude',
   itsProvider: 'claude' | 'codex' | null = null,
 ): Promise<{ m: Mounted; store: AgentStore }> {
+  world.itsProvider = itsProvider
   const { store, lists } = storeOver()
   await store.load()
   const m = mount(

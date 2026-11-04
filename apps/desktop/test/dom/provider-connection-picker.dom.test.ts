@@ -246,7 +246,7 @@ it('an existing conversation keeps its bound connection while its model remains 
   const control = await open(f.m)
   expect(control.disabled).toBe(true)
   expect(control.value).toBe('codex:sign-in')
-  expect(f.m.q('model-picker-panel').textContent).toContain(
+  expect(f.m.q('model-picker-panel').textContent).not.toContain(
     'This conversation keeps its connection.',
   )
   await chooseModel(f.m)

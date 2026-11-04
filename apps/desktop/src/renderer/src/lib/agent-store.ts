@@ -554,7 +554,11 @@ export function createAgentStore(bridge: RuntimeBridge): AgentStore {
         })
         if (!saved.ok) return { ok: false, reason: saved.reason }
         const selected = saved.choice
-        if (selected?.connectionId !== undefined && identities.value !== null) {
+        if (
+          choice?.connectionId !== undefined &&
+          selected?.connectionId !== undefined &&
+          identities.value !== null
+        ) {
           // An explicit connection save also saves the provider in the same transaction.
           identities.value = {
             ...identities.value,

@@ -328,36 +328,6 @@ const externalMcpStatus = computed<CapabilityStatus | null>(
  */
 const externalMcpIsHeldBack = computed(() => externalMcpStatus.value?.state !== 'available')
 
-/**
- * 🔴 **524 · why the block is answering for a provider nobody chose** (`HO-048` §3).
- *
- * ⛔ **The PO asked whether resolving the EFFECTIVE provider is cheap. It was already done** —
- * {@link runsOn} is `providerForALaunch(identities, slug, DEFAULT_PROVIDER)` and has been since
- * `433`, so this block has never asked *what does this identity's provider support*. ⚠️ **What the
- * measurement found instead was that resolving it did not make the held-back state disappear**:
- * the app's own fallback was, then, the provider whose `externalMcpServers` entry was `unwired`,
- * so an identity that had chosen nothing resolved to it and was held back with ITS sentence.
- *
- * 🔴 **`605` moved that entry to `available`, so the fallback no longer produces a held-back
- * state.** ⛔ **The paragraph stays and its condition is unchanged**, because what it adds is
- * *which provider answered* — still the question a person who has chosen none has, and still
- * asked whenever anything holds the grant back, including the not-read-yet arm.
- *
- * ⚑ **So what was missing was never the resolution — it was saying that a resolution happened.**
- * *"An inert control with no explanation is the thing that cost him the trip, more than the setting
- * did."* ⛔ This says nothing the row does not carry and names no provider (`039`), and it points at
- * the control that already draws the answer rather than restating it.
- *
- * ⚠️ **Null when the identity HAS chosen**, because then there is no resolution to explain — the
- * reason beside it is about a provider a person picked.
- */
-const externalMcpAnswersForTheFallback = computed<string | null>(() =>
-  externalMcpIsHeldBack.value && identity.value !== null && runsOnNow.value?.provider == null
-    ? 'This identity has not said which provider to start on, so this answers for the one BroCrew ' +
-      'falls back to — Runs on, above, names it.'
-    : null,
-)
-
 /** The provider's OWN sentence for why — never one this file composed (`423` §2). */
 const externalMcpHeldBackBecause = computed<string | null>(() => {
   const held = externalMcpStatus.value
@@ -843,13 +813,6 @@ function onKey(event: KeyboardEvent): void {
              {@link externalMcpAnswersForTheFallback}. ⛔ Its own paragraph and NOT appended to the
              provider's sentence: that string belongs to `ProviderCapabilities` and this app does not
              own it, so growing it here would be composing a second refusal (`423` §2). -->
-        <p
-          v-if="externalMcpAnswersForTheFallback"
-          class="identity-note"
-          data-cy="external-mcp-answers-for-the-fallback"
-        >
-          {{ externalMcpAnswersForTheFallback }}
-        </p>
 
         <!-- 🔴 **524 · the servers this identity may use without being granted anything** (`HO-048` §1).
              ⛔ **No `<input>` at all, rather than a ticked one that is `disabled`.** A checkbox is a
@@ -899,10 +862,6 @@ function onKey(event: KeyboardEvent): void {
              error, not an empty form, and it says where the thing that would fill it lives, because
              *a disabled control must say what would let it* (`106`). -->
         <!-- The empty-state pointer names the Settings row and its Tools tab. -->
-        <p v-if="registry.length === 0" class="note" data-cy="external-mcp-empty">
-          No external MCP servers are registered yet. Add one from Settings → Tools — a local
-          address, registered once for the whole app.
-        </p>
       </div>
 
       <!-- ⚠️ **The blind spot, named where a person meets it** — see `CapabilityOrigin`. -->
