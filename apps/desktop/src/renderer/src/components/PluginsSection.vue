@@ -333,13 +333,19 @@ async function change(kind: 'install' | 'update' | 'uninstall', card: PluginCard
     cards.value = answer.cards
     if (kind === 'uninstall' && answer.removal)
       removalNotice.value = pluginRemovalNotice(card.name, answer.removal)
-  } else
+  } else {
     error.value =
       !answer.ok && 'detail' in answer && answer.detail
         ? answer.detail
         : !answer.ok && 'mutationFailure' in answer && answer.mutationFailure
           ? pluginMutationFailureNotice(answer.mutationFailure)
           : unavailable
+    if (kind !== 'uninstall') {
+      const turn = generation
+      const listed = await request({ kind: 'list' })
+      if (alive && turn === generation && listed.ok && listed.cards) cards.value = listed.cards
+    }
+  }
 }
 onMounted(async () => {
   stopHostSettings = listenForPluginSettings(window.api?.pluginHost, openHostView)
