@@ -97,6 +97,7 @@ interface World {
   /** The agent's own provider column, as the roster answers it. */
   itsProvider: 'claude' | 'codex' | null
   defaultConnection?: string
+  inferredProvider?: Provider
 }
 
 let world: World
@@ -153,7 +154,9 @@ const roster = (): AgentIdentities =>
         isStarting: false,
         runsOn:
           world.itsProvider === null
-            ? { provider: null, from: 'nothing-yet' }
+            ? world.inferredProvider === undefined
+              ? { provider: null, from: 'nothing-yet' }
+              : { provider: world.inferredProvider, from: 'its-conversations' }
             : { provider: world.itsProvider, from: 'saved' },
       },
     ],
@@ -927,3 +930,24 @@ it('review regression: a stored null provider takes precedence over a stale prov
   expect(face(m)).toBe('Claude · Fictional subscription · opus · high')
   expect(m.all('agent-model-not-in-force')).toHaveLength(0)
 })
+
+it.each(['claude', 'codex'] as const)(
+  'inferred-provider regression: a provider-only historical %s inference remains authoritative',
+  async (provider) => {
+    reset()
+    world.inferredProvider = provider
+    world.held =
+      provider === 'claude'
+        ? { provider: 'codex', model: 'gpt-5.6-luna', effort: 'medium' }
+        : { provider: 'claude', model: 'opus', effort: 'high' }
+    const { m, store } = await control(provider, null)
+    expect(store.identities.value?.identities[0]?.provider).toBeNull()
+    expect(m.all('agent-model-not-in-force')).toHaveLength(1)
+    expect(face(m)).toBe(
+      `${provider === 'claude' ? 'Claude' : 'Codex'} · Fictional subscription · Nobody has chosen`,
+    )
+    await press(m, 'model-picker-face')
+    expect((m.q('model-picker-connection') as HTMLSelectElement).value).toBe(`${provider}:sign-in`)
+    expect(world.sent).toEqual([])
+  },
+)
