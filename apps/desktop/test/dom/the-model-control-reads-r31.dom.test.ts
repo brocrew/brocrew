@@ -7,6 +7,8 @@ import CapabilitiesSheet from '../../src/renderer/src/components/CapabilitiesShe
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import { createAgentStore, type AgentStore } from '../../src/renderer/src/lib/agent-store'
 import { createModelLists, type ModelLists } from '../../src/renderer/src/lib/model-lists'
+import { providerTakesEffectNextTime } from '../../src/renderer/src/lib/front-door-words'
+import { whatTheProviderPressCleared } from '../../src/renderer/src/lib/agent-model-choice'
 import { GO_AHEAD_MESSAGE } from '../../src/renderer/src/lib/plan-mode'
 import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
 import {
@@ -27,6 +29,7 @@ import type {
   RuntimeBridge,
   TranscriptEvent,
 } from '../../src/shared/runtime-ipc'
+import { compatibilityConnections } from '../provider-connection-fixture'
 import { mount, paneProps, record, unmountAll, visible, type Mounted } from './harness'
 
 /**
@@ -54,6 +57,7 @@ import { mount, paneProps, record, unmountAll, visible, type Mounted } from './h
 
 afterEach(async () => {
   unmountAll()
+  Reflect.deleteProperty(window, 'api')
   usePersonsQueue().forget()
   await page.viewport(1100, 900)
 })
@@ -157,6 +161,7 @@ function storeOver(): { store: AgentStore; lists: ModelLists } {
       use: [],
     }) as unknown as AgentIdentities
   const bridge = {
+    providerConnections: async () => compatibilityConnections(),
     agentIdentities: async () => roster(),
     profiles: async () => ['brobot', 'worker'],
     // ⚑ UI-012 · D-042's list door, answering from `world.map` as the host composes a list.
@@ -177,6 +182,7 @@ function storeOver(): { store: AgentStore; lists: ModelLists } {
       provider: 'claude' | 'codex' | null
       model: string | null
       effort: string | null
+      connectionId?: string
     }) => {
       if (input.provider === null) {
         world.held = null
@@ -190,7 +196,11 @@ function storeOver(): { store: AgentStore; lists: ModelLists } {
       const row = theListedRow(catalogue.models, input.model)
       const pair = { model: input.model, effort: input.effort ?? theDefaultEffortOf(row) }
       if (judgeAgainstTheList(catalogue.models, pair) !== null) throw new Error('refused')
-      world.held = { provider: input.provider, ...pair }
+      world.held = {
+        provider: input.provider,
+        ...pair,
+        ...(input.connectionId === undefined ? {} : { connectionId: input.connectionId }),
+      }
       return { ok: true, choice: world.held }
     },
     setAgentProvider: async (input: { profileId: string; provider: 'claude' | 'codex' | null }) => {
@@ -207,6 +217,7 @@ function storeOver(): { store: AgentStore; lists: ModelLists } {
       return { ...ident(world.slug, { provider: input.provider }), modelChoiceCleared: cleared }
     },
   } as unknown as RuntimeBridge
+  Reflect.set(window, 'api', { runtime: bridge })
   return { store: createAgentStore(bridge), lists: createModelLists(() => bridge) }
 }
 
@@ -224,13 +235,6 @@ async function theControl(runsOn: 'claude' | 'codex'): Promise<Mounted> {
 
 async function press(m: Mounted, cy: string): Promise<void> {
   m.q(cy).click()
-  await settle()
-}
-
-async function pick(m: Mounted, cy: string, value: string): Promise<void> {
-  const select = m.q(cy) as HTMLSelectElement
-  select.value = value
-  select.dispatchEvent(new Event('change'))
   await settle()
 }
 
@@ -269,16 +273,24 @@ describe('696 §1 · a never-run agent’s menus say whose list they are, before
     })
     const m = await theControl('codex')
     await press(m, 'model-picker-face')
-    const note = m.q('model-picker-note')
-    expect(visible(note)).toBe(true)
-    expect(words(note)).toBe('This is BroBot’s list: this agent has no list of its own to ask.')
+    expect(m.all('model-picker-note')).toHaveLength(0)
+    expect(sections(m)).toEqual(['codex'])
     await draft(m, 'gpt-5.6-terra')
-    const before = words(m.q('model-picker-reaches'))
-    expect(before).toMatch(/^Its new conversations start on this, on Codex — /)
+    expect(m.all('model-picker-reaches')).toHaveLength(0)
+    expect(drafted(m)).toBe('gpt-5.6-terra')
+    expect(draftedEffort(m)).toBe('medium')
     await press(m, 'model-picker-take')
-    // ⚑ Saved: the row holds the default, and its sentence is the draft's, word for word.
-    expect(words(m.q('model-picker-face'))).toBe('gpt-5.6-terra · medium')
-    expect(words(m.q('agent-model-reaches'))).toBe(before)
+    // The saved face and payload agree with the selected model and effort.
+    expect(words(m.q('model-picker-face'))).toBe(
+      'Codex · Fictional subscription · gpt-5.6-terra · medium',
+    )
+    expect(m.all('agent-model-reaches')).toHaveLength(0)
+    expect(world.held).toEqual({
+      provider: 'codex',
+      connectionId: 'codex:sign-in',
+      model: 'gpt-5.6-terra',
+      effort: 'medium',
+    })
   })
 
   it('⚑ THE CONTROL — an agent with its own list: no note, and the same words before and after', async () => {
@@ -287,10 +299,17 @@ describe('696 §1 · a never-run agent’s menus say whose list they are, before
     await press(m, 'model-picker-face')
     expect(m.all('model-picker-note')).toHaveLength(0)
     await draft(m, 'gpt-5.6-terra')
-    const before = words(m.q('model-picker-reaches'))
-    expect(before).toMatch(/^Its new conversations start on this, on Codex — /)
+    expect(m.all('model-picker-reaches')).toHaveLength(0)
+    expect(drafted(m)).toBe('gpt-5.6-terra')
+    expect(draftedEffort(m)).toBe('medium')
     await press(m, 'model-picker-take')
-    expect(words(m.q('agent-model-reaches'))).toBe(before)
+    expect(m.all('agent-model-reaches')).toHaveLength(0)
+    expect(world.held).toEqual({
+      provider: 'codex',
+      connectionId: 'codex:sign-in',
+      model: 'gpt-5.6-terra',
+      effort: 'medium',
+    })
   })
 })
 
@@ -320,7 +339,7 @@ describe('696 §2 · the held row says where the choice stands', () => {
     ).getBoundingClientRect()
     const box = mark.getBoundingClientRect()
     expect(Math.abs(box.top - provider.top)).toBeLessThan(provider.height)
-    expect(words(m.q('agent-model-other-provider'))).toContain('so no launch reads it')
+    expect(m.all('agent-model-other-provider')).toHaveLength(0)
     // ⚑ D-042 · *"no provenance for a choice nothing reads"* is retired with the provenance itself:
     // a held default carries no `standIn`, so the row has no list to draw for any choice.
   })
@@ -330,7 +349,8 @@ describe('696 §2 · the held row says where the choice stands', () => {
     const m = await theControl('codex')
     expect(m.all('agent-model-not-in-force')).toHaveLength(0)
     expect(m.all('agent-model-other-provider')).toHaveLength(0)
-    expect(visible(m.q('agent-model-reaches'))).toBe(true)
+    expect(m.all('agent-model-reaches')).toHaveLength(0)
+    expect(words(m.q('model-picker-face'))).toBe('Claude · Fictional subscription · opus · max')
   })
 })
 
@@ -360,12 +380,15 @@ describe('696 §3 · *Change…* on a no-provider agent opens its CHOICE’s pro
       held: { provider: 'codex', model: 'gpt-5.6-luna', effort: 'medium' },
     })
     const m = await theControl('codex')
-    const idle = words(m.q('agent-model-reaches'))
-    expect(idle).toMatch(/^Its new conversations start on this, on Codex — /)
+    expect(m.all('agent-model-reaches')).toHaveLength(0)
+    expect(words(m.q('model-picker-face'))).toBe(
+      'Codex · Fictional subscription · gpt-5.6-luna · medium',
+    )
     await press(m, 'model-picker-face')
     expect(m.all('model-picker-note')).toHaveLength(0)
     expect(drafted(m)).toBe('gpt-5.6-luna')
-    expect(words(m.q('model-picker-reaches'))).toBe(idle)
+    expect(draftedEffort(m)).toBe('medium')
+    expect(m.all('model-picker-reaches')).toHaveLength(0)
     // ⚑ THE CONTROL: a draft that differs is a save the door would admit, and Take is alive.
     await draft(m, 'gpt-5.6-terra')
     expect(m.all('model-picker-refusal')).toHaveLength(0)
@@ -388,7 +411,7 @@ describe('696 §3 · *Change…* on a no-provider agent opens its CHOICE’s pro
 
 /* ═════════════════ §4 · the provider press ═════════════════ */
 
-async function theSheet(): Promise<Mounted> {
+async function theSheet(): Promise<Mounted & { store: AgentStore }> {
   await page.viewport(720, 900)
   const { store, lists } = storeOver()
   await store.load()
@@ -398,7 +421,7 @@ async function theSheet(): Promise<Mounted> {
     { width: 700, height: 880 },
   )
   await settle()
-  return m
+  return { ...m, store }
 }
 
 describe('696 §4 · the provider press says what the same act cleared', () => {
@@ -409,20 +432,26 @@ describe('696 §4 · the provider press says what the same act cleared', () => {
     })
     const m = await theSheet()
     expect(m.all('capabilities-provider-cleared')).toHaveLength(0)
-    await pick(m, 'capabilities-provider-select', 'codex')
-    const cleared = m.q('capabilities-provider-cleared')
-    expect(visible(cleared)).toBe(true)
-    expect(words(cleared)).toBe(
+    // The removed select's backend compatibility remains independently exercised.
+    const answer = await m.store.chooseProviderFor('worker', 'codex')
+    await settle()
+    expect(answer).toEqual({
+      ok: true,
+      cleared: { provider: 'claude', model: 'opus', effort: 'high' },
+    })
+    if (!answer.ok) throw new Error(answer.reason)
+    expect(whatTheProviderPressCleared(answer.cleared!, 'codex')).toBe(
       'The model and effort chosen for it — “opus” at high effort on Claude — were cleared: a choice is always for its own provider, and its provider is now Codex.',
     )
-    // ⚑ In the provider block, after the select that did it.
-    const select = m.q('capabilities-provider-select')
-    expect(m.q('capabilities-provider').contains(cleared)).toBe(true)
-    expect(select.compareDocumentPosition(cleared) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(m.all('capabilities-provider-select')).toHaveLength(0)
+    expect(m.all('capabilities-provider-cleared')).toHaveLength(0)
     // ⚑ …and the control below agrees: the choice is gone.
-    expect(words(m.q('model-picker-face'))).toBe('Nobody has chosen')
-    // ⚑ It reports the LAST press: the next one, which clears nothing, takes the line away.
-    await pick(m, 'capabilities-provider-select', '')
+    expect(words(m.q('model-picker-face'))).toBe(
+      'Codex · Fictional subscription · Nobody has chosen',
+    )
+    // Returning to an unsaved provider clears no additional choice.
+    expect(await m.store.chooseProviderFor('worker', null)).toEqual({ ok: true, cleared: null })
+    await settle()
     expect(m.all('capabilities-provider-cleared')).toHaveLength(0)
   })
 
@@ -433,14 +462,17 @@ describe('696 §4 · the provider press says what the same act cleared', () => {
       clears: false,
     })
     const m = await theSheet()
-    expect(words(m.q('capabilities-provider-note'))).toMatch(
+    expect(m.all('capabilities-provider-note')).toHaveLength(0)
+    expect(visible(m.q('model-picker-face'))).toBe(true)
+    expect(providerTakesEffectNextTime(world.itsProvider!, true)).toMatch(
       /^The default for a new conversation you start as this identity is Claude, unless you choose another provider where you start it\. /,
     )
     // The new-conversation picker also offers a provider when starting as this identity.
-    expect(words(m.q('capabilities-provider-note'))).toContain('unless you choose')
-    await pick(m, 'capabilities-provider-select', '')
+    expect(providerTakesEffectNextTime(world.itsProvider!, true)).toContain('unless you choose')
+    expect(await m.store.chooseProviderFor('worker', null)).toEqual({ ok: true, cleared: null })
+    await settle()
     expect(m.all('capabilities-provider-cleared')).toHaveLength(0)
-    expect(words(m.q('model-picker-face'))).toBe('opus · high')
+    expect(words(m.q('model-picker-face'))).toBe('Claude · Fictional subscription · opus · high')
   })
 })
 
@@ -448,7 +480,9 @@ describe('696 §4b · BroBot’s own sheet names the front door’s provider men
   it('🔴 *unless you choose another provider where you start it* — BroBot’s identity, which the front door starts and asks about', async () => {
     reset({ slug: 'brobot', itsProvider: 'codex' })
     const m = await theSheet()
-    expect(words(m.q('capabilities-provider-note'))).toMatch(
+    expect(m.all('capabilities-provider-note')).toHaveLength(0)
+    expect(visible(m.q('model-picker-face'))).toBe(true)
+    expect(providerTakesEffectNextTime(world.itsProvider!, true)).toMatch(
       /^The default for a new conversation you start as this identity is Codex, unless you choose another provider where you start it\. /,
     )
   })
@@ -456,7 +490,8 @@ describe('696 §4b · BroBot’s own sheet names the front door’s provider men
   it('a service describes its first give without promising a person start', async () => {
     reset({ kind: 'service', itsProvider: 'codex' })
     const m = await theSheet()
-    const note = words(m.q('capabilities-provider-note'))
+    const note = providerTakesEffectNextTime('codex', false, true)
+    expect(m.all('capabilities-provider-note')).toHaveLength(0)
     expect(note).not.toContain('a new conversation you start as this identity')
     expect(note).not.toContain('unless you choose another provider where you start it')
     expect(note).toContain('A service keeps one conversation for new gives.')

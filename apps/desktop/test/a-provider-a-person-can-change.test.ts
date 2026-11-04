@@ -631,11 +631,10 @@ describe('433 §A · the provider a person can change', () => {
         join(srcRoot, 'renderer/src/components/CapabilitiesSheet.vue'),
         'utf8',
       )
-      // ⚑ **696** · with a second argument — whether a door asks the provider (BroBot's front door) —
-      // and still from `props.runsOn`, which is what this line pins.
-      expect(sheet).toContain('providerTakesEffectNextTime(props.runsOn,')
-      expect(sheet).toContain('data-cy="capabilities-provider-select"')
-      expect(sheet).toContain('store.chooseProviderFor(props.profileSlug, chosen)')
+      // Connection and model are chosen together; the legacy store/API assertions above stay.
+      expect(withoutProse(sheet)).not.toContain('data-cy="capabilities-provider-select"')
+      expect(sheet).toContain('<AgentModelChoice')
+      expect(sheet).toContain(':profile-slug="profileSlug"')
       // 🔴 **NOT on the grant**, which is `419` §3's ruling and the reason the column has its own
       // writer: `grant()` is built from `props.fields`, and a provider that had leaked into it
       // would be a capability by accident.

@@ -11,6 +11,7 @@ import type {
   TranscriptEvent,
   WhatAPickBecame,
 } from '../../src/shared/runtime-ipc'
+import { compatibilityConnections } from '../provider-connection-fixture'
 import { META, mount, paneProps, record, unmountAll, type Mounted } from './harness'
 
 /**
@@ -19,7 +20,10 @@ import { META, mount, paneProps, record, unmountAll, type Mounted } from './harn
  * nothing set here would reach draws them as plain facts.
  */
 
-afterEach(unmountAll)
+afterEach(() => {
+  unmountAll()
+  Reflect.deleteProperty(window, 'api')
+})
 
 const levels = (...ids: string[]): { id: string; label: string }[] =>
   ids.map((id) => ({ id, label: id }))
@@ -51,7 +55,10 @@ const listOf = (provider: Provider): ModelList => ({
 
 function installBridge(): void {
   ;(window as unknown as { api: unknown }).api = {
-    runtime: { modelList: async ({ provider }: { provider: Provider }) => listOf(provider) },
+    runtime: {
+      providerConnections: async () => compatibilityConnections(),
+      modelList: async ({ provider }: { provider: Provider }) => listOf(provider),
+    },
   }
 }
 
@@ -167,6 +174,8 @@ describe('the Agent panel’s model and effort open the model picker', () => {
     expect(take.textContent?.trim()).toBe('Switch from your next message')
     take.click()
     await settle()
+    // This fixture is a legacy NULL conversation: its Take keeps the original omitted route.
+    expect(META).not.toHaveProperty('connectionId')
     // The effort a person had is kept where the new model offers it, as the picker always does.
     expect(picks).toEqual([{ provider: 'claude', model: 'sonnet', effort: 'high' }])
     expect(panel(m), 'Take left the picker open').toBeNull()

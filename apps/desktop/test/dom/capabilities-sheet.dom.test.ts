@@ -3,6 +3,12 @@ import { nextTick } from 'vue'
 import CapabilitiesSheet from '../../src/renderer/src/components/CapabilitiesSheet.vue'
 import { createAgentStore, type AgentStore } from '../../src/renderer/src/lib/agent-store'
 import {
+  createModelLists,
+  type ModelLists,
+  type PickedModel,
+} from '../../src/renderer/src/lib/model-lists'
+import { compatibilityConnections } from '../provider-connection-fixture'
+import {
   ASSIGNMENT_REACH_ADMITS,
   CAPABILITY_FIELDS,
   DEFAULT_CAPABILITIES,
@@ -39,10 +45,6 @@ interface Answers {
 
 let answers: Answers
 
-// The approved words are a UI contract, independent of the production constant.
-const RULE_WRITING_POLICY =
-  "You can read any agent's standing rules and propose a replacement; the person decides. A BroBot conversation the person started may also save one directly, but never its own. Each version keeps its author and reason, and the person can undo it."
-
 const identity = (over: Partial<AgentIdentity> = {}): AgentIdentity => ({
   id: 'agp:default:pm',
   slug: 'pm',
@@ -64,7 +66,8 @@ const identity = (over: Partial<AgentIdentity> = {}): AgentIdentity => ({
   ...over,
 })
 
-function storeOver(): AgentStore {
+function storeOver(): { store: AgentStore; lists: ModelLists } {
+  let savedChoice: PickedModel | null = null
   const bridge = {
     agentIdentities: async () => {
       if (answers.loadFails !== null) throw new Error(answers.loadFails)
@@ -89,6 +92,35 @@ function storeOver(): AgentStore {
       if (answers.saveFails !== null) throw new Error(answers.saveFails)
       return answers.list.identities[0] ?? null
     },
+    providerConnections: async () => compatibilityConnections(),
+    agentModelAndEffort: async () => savedChoice,
+    modelList: async ({ provider }: { provider: 'claude' | 'codex' }) => ({
+      provider,
+      notAsked: null,
+      standIn: null,
+      lastPicked: null,
+      startsOn: null,
+      models: [
+        { id: 'fictional-model', label: 'Fictional model', addedBy: 'the-provider', efforts: [] },
+      ],
+    }),
+    setAgentModelAndEffort: async (input: {
+      profileId: string
+      provider: 'claude' | 'codex'
+      connectionId: string
+      model: string
+      effort: string | null
+    }) => {
+      answers.chose.push(structuredClone(input))
+      if (answers.chooseFails !== null) throw new Error(answers.chooseFails)
+      savedChoice = {
+        provider: input.provider,
+        connectionId: input.connectionId,
+        model: input.model,
+        effort: input.effort,
+      }
+      return { ok: true, choice: savedChoice }
+    },
     setSpawningEnabled: async () => ({ spawningEnabled: answers.list.spawningEnabled }),
     // 433 · ⚑ **Cloned the way the real bridge clones, for `setCapabilities`' reason above.** This
     // payload is two primitives, so nothing here can be a Proxy — which is exactly the claim
@@ -103,17 +135,18 @@ function storeOver(): AgentStore {
       return one === undefined ? null : { ...one, modelChoiceCleared: null }
     },
   } as unknown as RuntimeBridge
-  return createAgentStore(bridge)
+  Reflect.set(window, 'api', { runtime: bridge })
+  return { store: createAgentStore(bridge), lists: createModelLists(() => bridge) }
 }
 
 async function openSheet(
   props: Record<string, unknown> = {},
 ): Promise<{ m: Mounted; store: AgentStore }> {
-  const store = storeOver()
+  const { store, lists } = storeOver()
   await store.load()
   const m = mount(
     CapabilitiesSheet,
-    { profileSlug: 'pm', runsOn: 'codex', store, ...props },
+    { profileSlug: 'pm', runsOn: 'codex', store, lists, ...props },
     { width: 900, height: 900 },
   )
   await nextTick()
@@ -154,6 +187,7 @@ describe('355 · the capabilities sheet', () => {
   })
   afterEach(() => {
     unmountAll()
+    Reflect.deleteProperty(window, 'api')
   })
 
   it.each(['none', 'propose', 'relay', null] as const)(
@@ -182,6 +216,24 @@ describe('355 · the capabilities sheet', () => {
     },
   )
 
+  it('connection-led polish: the agent sheet has no provider select or standing explanations', async () => {
+    const { m } = await openSheet()
+    expect(m.host.querySelector('[data-cy="capabilities-provider-select"]')).toBeNull()
+    for (const cy of [
+      'capabilities-owner',
+      'capabilities-provider-note',
+      'rules-fixed-policy',
+      'spawn-rail-means',
+      'external-mcp-answers-for-the-fallback',
+      'external-mcp-empty',
+      'own-instructions-when',
+      'own-instructions-empty',
+    ])
+      expect(m.host.querySelector(`[data-cy="${cy}"]`), cy).toBeNull()
+    expect(m.q('agent-model')).toBeDefined()
+    expect(m.q('capabilities-save')).toBeDefined()
+  })
+
   describe('§1 · one control per capability, drawn from the schema', () => {
     it('draws every active schema field and keeps the dormant rules grant out of the editor', async () => {
       const { m } = await openSheet()
@@ -189,7 +241,7 @@ describe('355 · the capabilities sheet', () => {
         expect(shown(m.q(`capability-${field.key}`)), `${field.key} is not on screen`).toBe(true)
       }
       expect(m.host.querySelector('[data-cy="capability-canWriteRules"]')).toBeNull()
-      expect(m.q('rules-fixed-policy').textContent).toBe(RULE_WRITING_POLICY)
+      expect(m.all('rules-fixed-policy')).toHaveLength(0)
       // ⛔ **EXACTLY the schema, and a `toBeGreaterThanOrEqual` over a PREFIX selector was neither**
       // (review): every control inside a field also matches `[data-cy^="capability-"]`, so the count
       // was a lower bound over a superset and a stray field could never have failed it. The field
@@ -289,20 +341,18 @@ describe('355 · the capabilities sheet', () => {
       const { m } = await openSheet()
       for (const key of ['canMessage', 'canAssignWork'] as const) {
         const control = m.q(`capability-${key}`)
-        const note = [...control.querySelectorAll('p.note')].at(-1) as HTMLElement | null
-        expect(shown(note), `${key} has no visible help`).toBe(true)
-        const admits = key === 'canMessage' ? MESSAGING_REACH_ADMITS : ASSIGNMENT_REACH_ADMITS
+        expect(control.querySelector('p.note')).toBeNull()
+        const select = control.querySelector<HTMLSelectElement>('select')!
+        expect(shown(select), `${key} has no visible editor`).toBe(true)
         for (const word of MESSAGING_REACH) {
-          expect(note?.textContent ?? '', `${key} does not say what ${word} admits`).toContain(
-            admits[word],
-          )
+          expect([...select.options].find((one) => one.value === word)?.textContent).toBe(word)
         }
       }
       // 🔴 **493's divergent control.** The two fields use the same word `any`, but messaging
       // may reach what this identity did not start and giving work may not.
       expect(MESSAGING_REACH_ADMITS.any).not.toBe(ASSIGNMENT_REACH_ADMITS.any)
-      expect(m.q('capability-canMessage').textContent).toContain(MESSAGING_REACH_ADMITS.any)
-      expect(m.q('capability-canAssignWork').textContent).toContain(ASSIGNMENT_REACH_ADMITS.any)
+      expect(shown(m.q('capability-canMessage-select'))).toBe(true)
+      expect(shown(m.q('capability-canAssignWork-select'))).toBe(true)
       expect(m.q('capability-canAssignWork').textContent).not.toContain(MESSAGING_REACH_ADMITS.any)
       // ⛔ **The control, and it is the field one row down.** A grant on the OTHER two-word
       // vocabulary carries none of these sentences, so the loop above is about this vocabulary
@@ -396,117 +446,102 @@ describe('355 · the capabilities sheet', () => {
   // ─────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§3.1 · the provider control, and the sentence beside it', () => {
-    /**
-     * 🔴 **433 §A · the control a person presses, and it is NOT part of Save.**
-     *
-     * ⛔ **Provider is not a capability** — no rail reads it, `419` §3 — so it does not ride
-     * {@link CapabilityGrant}, and the sharper reason is what a combined Save would have to report:
-     * two commands behind one button can half-succeed, and this sheet would then have to draw a
-     * state that is neither saved nor unsaved. ⚑ **So the press writes on its own**, which is what
-     * the two lists below measure separately.
-     *
-     * ⚠️ **In the DOM project rather than as a source census**, on this file's own rule: a string
-     * assertion over markup cannot tell a rendered control from one that is present and dead —
-     * and `chose()` on the wrapper's `@change` is exactly the mistake `355` made once already.
-     */
+    async function openPicker(m: Mounted): Promise<HTMLSelectElement> {
+      await expect.poll(() => m.all('model-picker-face').length).toBe(1)
+      m.q('model-picker-face').click()
+      await expect.poll(() => m.all('model-picker-row').length).toBe(1)
+      return m.q('model-picker-connection') as HTMLSelectElement
+    }
+    async function pickModel(m: Mounted): Promise<void> {
+      await expect.poll(() => m.all('model-picker-row').length).toBe(1)
+      m.q('model-picker-row').querySelector('input')!.click()
+      await nextTick()
+      m.q('model-picker-take').click()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      await nextTick()
+    }
+
     it('🔴 a person picks a provider and it writes on its own, without touching Save', async () => {
       const { m } = await openSheet()
-      const select = m.q('capabilities-provider-select') as HTMLSelectElement
-      expect(shown(select)).toBe(true)
-      // ⚑ **Nobody has said**, which is the row's state and the option the select starts on.
-      expect(select.value).toBe('')
-
-      select.value = 'claude'
+      expect(m.all('capabilities-provider-select')).toHaveLength(0)
+      const select = await openPicker(m)
+      select.value = 'claude:sign-in'
       select.dispatchEvent(new Event('change'))
-      // ⛔ **The screen follows the gesture straight away** — measured BEFORE the write resolves,
-      // because binding to the row made the disabled control snap back to the old provider for the
-      // whole round trip, which reads as a refusal at the moment a person is waiting for one.
       await nextTick()
-      expect((m.q('capabilities-provider-select') as HTMLSelectElement).value).toBe('claude')
-      await new Promise((resolve) => setTimeout(resolve, 0))
-      expect(answers.chose).toEqual([{ profileId: 'pm', provider: 'claude' }])
-      // ⛔ **Save was never pressed and nothing was saved**, which is what makes this its own gesture.
+      expect(answers.chose).toEqual([])
+      await pickModel(m)
+      expect(answers.chose).toEqual([
+        {
+          profileId: 'pm',
+          provider: 'claude',
+          connectionId: 'claude:sign-in',
+          model: 'fictional-model',
+          effort: null,
+        },
+      ])
       expect(answers.saved).toEqual([])
-
-      // ⚑ **And the reversible half**: the empty option is a real value on the wire, not an absence.
-      select.value = ''
-      select.dispatchEvent(new Event('change'))
-      await new Promise((resolve) => setTimeout(resolve, 0))
-      expect(answers.chose[1]).toEqual({ profileId: 'pm', provider: null })
     })
 
-    /**
-     * ⛔ **A word this app does not know NARROWS to *nobody has said*** — `parseProvider`'s
-     * direction, one layer up, and the reason the handler folds against the table rather than
-     * casting the `<select>`'s value.
-     *
-     * ⚠️ **The hazard this measures is a hand-injected option**, which is the only way the value can
-     * be something the app did not render — and it is the shape a cast would have passed straight
-     * through to the wire.
-     */
     it('⛔ a value this app does not know is sent as nothing, not as itself', async () => {
       const { m } = await openSheet()
-      const select = m.q('capabilities-provider-select') as HTMLSelectElement
+      const select = await openPicker(m)
       const planted = document.createElement('option')
-      planted.value = 'gemini'
+      planted.value = 'fictional-unknown'
       select.append(planted)
-      select.value = 'gemini'
-      expect(select.value, 'the plant did not take, so this measures nothing').toBe('gemini')
+      select.value = 'fictional-unknown'
+      expect(select.value).toBe('fictional-unknown')
       select.dispatchEvent(new Event('change'))
-      await new Promise((resolve) => setTimeout(resolve, 0))
-      expect(answers.chose).toEqual([{ profileId: 'pm', provider: null }])
+      await nextTick()
+      expect(answers.chose).toEqual([])
+      expect(answers.saved).toEqual([])
     })
 
-    /**
-     * ⛔ **HO-025, through `433` relay 1:** *"changing it means a new conversation, and the app
-     * should SAY that rather than offer a control that silently relaunches."*
-     *
-     * ⚑ **Rendered from the RESOLVED provider** — `props.runsOn`, which the screen computes with the
-     * same `providerForALaunch` the front door uses. ⚠️ The pair is the two values of that prop, so
-     * the sentence is measured as something that FOLLOWS a value rather than as a fixed string.
-     */
     it('⛔ it says a running conversation does not move, and names what the next one starts on', async () => {
+      answers.list = {
+        ...answers.list,
+        use: [
+          {
+            slug: 'pm',
+            conversations: 1,
+            thisAppMintsIt: false,
+            isLaunching: true,
+            isStarting: false,
+            runsOn: { provider: 'codex', from: 'saved' },
+          },
+        ],
+      }
       const { m } = await openSheet()
-      const said = m.q('capabilities-provider-note').textContent ?? ''
-      expect(said).toContain('Codex')
-      expect(said).toContain('starts nothing and moves nothing')
-
-      const { m: other } = await openSheet({ runsOn: 'claude' })
-      const elsewhere = other.q('capabilities-provider-note').textContent ?? ''
-      expect(elsewhere).toContain('Claude')
-      expect(elsewhere).not.toBe(said)
+      const before = structuredClone(answers.list.use)
+      const select = await openPicker(m)
+      select.value = 'claude:sign-in'
+      select.dispatchEvent(new Event('change'))
+      await nextTick()
+      await pickModel(m)
+      expect(answers.chose).toHaveLength(1)
+      expect(answers.list.use).toEqual(before)
+      expect(m.all('capabilities-provider-note')).toHaveLength(0)
     })
 
-    /**
-     * ⛔ **A refusal is shown where the gesture is**, and Save's own sentence is somewhere else —
-     * two gestures, two places to be told, which is the price of not folding them together and is
-     * paid here rather than hidden.
-     */
     it('⛔ a refused change says so beside the control, and the sheet stays open', async () => {
       answers.chooseFails = 'a person must be asking'
       const { m } = await openSheet()
-      const select = m.q('capabilities-provider-select') as HTMLSelectElement
-      select.value = 'claude'
+      const select = await openPicker(m)
+      const before = m.q('model-picker-face').textContent
+      select.value = 'claude:sign-in'
       select.dispatchEvent(new Event('change'))
-      await new Promise((resolve) => setTimeout(resolve, 0))
       await nextTick()
-      expect(m.q('capabilities-provider-error').textContent).toContain('a person must be asking')
-      // ⛔ **And the control went BACK to what the database says** — a select left showing a choice
-      // that did not take is a surface claiming a write nobody made.
-      expect((m.q('capabilities-provider-select') as HTMLSelectElement).value).toBe('')
-      // ⚑ **The pair**: a change that succeeds draws no sentence at all.
-      answers.chooseFails = null
-      select.value = ''
-      select.dispatchEvent(new Event('change'))
-      await new Promise((resolve) => setTimeout(resolve, 0))
-      await nextTick()
-      expect(m.all('capabilities-provider-error')).toHaveLength(0)
+      await pickModel(m)
+      await expect.poll(() => m.all('model-picker-refusal').length).toBe(1)
+      expect(m.q('model-picker-refusal').textContent).toContain('a person must be asking')
+      expect(m.q('model-picker-face').textContent).toBe(before)
+      expect(m.q('model-picker-panel').matches(':popover-open')).toBe(true)
+      expect(answers.saved).toEqual([])
     })
 
-    /** ⛔ Criterion 12: an identity with no row has no control to press. */
     it('⛔ a profile with no row is offered no provider control', async () => {
       const { m } = await openSheet({ profileSlug: 'nobody' })
       expect(m.all('capabilities-provider-select')).toHaveLength(0)
+      expect(m.all('agent-model')).toHaveLength(0)
       expect(answers.chose).toEqual([])
     })
   })
@@ -544,13 +579,14 @@ describe('355 · the capabilities sheet', () => {
     it('🔴 does not ask to be closed over a refused save, because the sentence goes with it', async () => {
       answers.saveFails = 'a person must be asking'
       const closes: number[] = []
-      const store = storeOver()
+      const { store, lists } = storeOver()
       await store.load()
       const m = mount(
         CapabilitiesSheet,
         {
           profileSlug: 'pm',
           store,
+          lists,
           onClose: () => closes.push(1),
         },
         { width: 900, height: 900 },
@@ -578,13 +614,13 @@ describe('355 · the capabilities sheet', () => {
      */
     it('⛔ says the identity has gone when the door answers null, and stays open', async () => {
       const closes: number[] = []
-      const store = storeOver()
+      const { store, lists } = storeOver()
       await store.load()
       // The row disappears between the read and the Save — a session closed it, or a repair did.
       answers.list = { ...answers.list, identities: [] }
       const m = mount(
         CapabilitiesSheet,
-        { profileSlug: 'pm', store, onClose: () => closes.push(1) },
+        { profileSlug: 'pm', store, lists, onClose: () => closes.push(1) },
         { width: 900, height: 900 },
       )
       await nextTick()

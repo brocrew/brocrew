@@ -205,7 +205,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         # ⚠️ **RE-AIMED at 682, not retired** — the reopen reads the wake's resolution as `resumesOn` now.
         # ⚑ **W4.78 · re-anchored in place, not retired** — 0c50fe0b (D-042) replaced `resumesOn` with theSelectedModel's `selected`. The second line pins the anchor to reopenSession, since createSession has the same first line with input.provider. A wake of an empty row then sends R1's model without its effort. The '…an agent's default IS sent' test expects reasoningEffort 'high'.
         # ⚑ **W4.205 · re-anchored in place, not retired** — W4.205 · the runtime is now made before the model is chosen, so the line after the effort is no longer the runtime's; the anchor takes the recorded-effort lines above it instead, and the plant still sends the recorded effort at a wake rather than the chosen one
-        [(HOST, "      ...(recordedEffort === undefined ? {} : { effort: recordedEffort }),\n    })\n    const model = selected.model\n    const reasoningEffort = selected.effort ?? undefined\n", "      ...(recordedEffort === undefined ? {} : { effort: recordedEffort }),\n    })\n    const model = selected.model\n    const reasoningEffort = recordedEffort\n")],
+        [(HOST, '      this.deps.store.connectionOf(sessionId) ?? undefined,\n    )\n    const model = selected.model\n    const reasoningEffort = selected.effort ?? undefined\n', '      this.deps.store.connectionOf(sessionId) ?? undefined,\n    )\n    const model = selected.model\n    const reasoningEffort = recordedEffort\n')],
     ),
     (
         "M17 · 🔴 the door asks the provider BEFORE asking whether the identity exists — a folder with "
@@ -219,7 +219,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         # keeps is the one under it — the door never makes a never-run identity's folder — and this
         # plants asking in its OWN home, which would.
         # ⚑ **W4.78 · re-anchored in place, not retired** — 0c50fe0b (D-042) routed the door through theListFor → providerModels, where the stand-in is chosen (askIn). Planting at `standIn` itself is caught by the no-profile guard and spawns nothing. Probing under profileId spawns a child in the never-run name's folder. Killer: '682 · R31d — an identity that has NEVER RUN … its own folder is not made'.
-        [(HOST, "    return this.modelsAskedAgainIfTheyFailed(provider, askIn).then((one) =>\n", "    return this.modelsAskedAgainIfTheyFailed(provider, profileId).then((one) =>\n")],
+        [(HOST, '    return this.modelsAskedAgainIfTheyFailed(provider, askIn, connectionId).then((one) =>\n', '    return this.modelsAskedAgainIfTheyFailed(provider, profileId, connectionId).then((one) =>\n')],
     ),
     (
         "M19 · 🔴 the catalogue's verdict is ignored — any model and any effort is saved · killed by "
@@ -233,7 +233,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         # ⚠️ **ANCHOR CORRECTED IN PLACE BY 689** — the door's one call into the probe is now the shared helper's, and
         # the row still makes THIS door spawn a probe the memo never sees (and no other door).
         # ⚑ **W4.78 · re-anchored in place, not retired** — 0c50fe0b (D-042): the door now reaches the memo only through providerModels, which the window's `models` read shares, so the plant bypasses the memo for both. Killer: 'the catalogue is the models read's: asked once' expects no second child.
-        [(HOST, "    return this.modelsAskedAgainIfTheyFailed(provider, askIn).then((one) =>\n", "    return this.askProviderForModels(provider, askIn).then((one) =>\n")],
+        [(HOST, '    return this.modelsAskedAgainIfTheyFailed(provider, askIn, connectionId).then((one) =>\n', '    return this.askProviderForModels(provider, askIn, connectionId).then((one) =>\n')],
     ),
     (
         "M21 · 🔴 the door is open to a channel no person is behind · killed by "
@@ -244,7 +244,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "M22 · ⛔ a model with no provider beside it passes the wire · killed by "
         "`the-model-a-person-chose.test.ts`",
         # ⚑ **W4.78 · re-anchored in place, not retired** — D-042 rewrote the refine as a ternary on provider (a provider also needs a model); the plant lets a model or effort with no provider pass the wire. Killer: the-model-a-person-chose.test.ts:786-791.
-        [(IPC, "          ? command.model === null && command.effort === null\n", "          ? true\n")],
+        [(IPC, '          ? command.model === null && command.effort === null && command.connectionId === undefined\n', '          ? true\n')],
     ),
     (
         "M23 · 🔴 with no model named, the efforts are POOLED — a level the default may not take · "
@@ -349,14 +349,14 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         # ⚠️ **ANCHOR CORRECTED IN PLACE BY 689** — the re-ask is `modelsAskedAgainIfTheyFailed`'s now; the row takes
         # THIS door past it to the bare memo, so a cached failure is never asked again from a Save.
         # ⚑ **W4.78 · re-anchored in place, not retired** — 0c50fe0b (D-042): the door asks through providerModels, the one call to modelsAskedAgainIfTheyFailed on its path. Using the bare memo leaves a cached failure cached. Killer: '⚠️ a cached FAILURE is asked once more on the next Save'.
-        [(HOST, "    return this.modelsAskedAgainIfTheyFailed(provider, askIn).then((one) =>\n", "    return this.probeModelsFor(provider, askIn).then((one) =>\n")],
+        [(HOST, '    return this.modelsAskedAgainIfTheyFailed(provider, askIn, connectionId).then((one) =>\n', '    return this.probeModelsFor(provider, askIn, connectionId).then((one) =>\n')],
     ),
     (
         "M37 · ⚠️ round 1 · the door asks under the SLUG, not the folder's spelling — a second child per "
         "Save · killed by `the-model-a-person-chose.test.ts`",
         # ⚠️ **ANCHOR CORRECTED IN PLACE BY 689** — the door's one call into the probe is now the shared helper's.
         # ⚑ **W4.78 · re-anchored in place, not retired** — 0c50fe0b (D-042): the folder-spelling lookup is now `own` in theListFor. Asking under the slug no longer pays a second child. providerModels' exact-name guard answers no-profile, so the Save is refused models-unavailable: the same plant, a different symptom. Killer: 'the catalogue is the models read's: asked once, and under the FOLDER's own spelling' expects ok.
-        [(HOST, "    const catalogue = await this.providerModels(own, provider).catch((): ModelCatalogue => ({\n", "    const catalogue = await this.providerModels(profileId, provider).catch((): ModelCatalogue => ({\n")],
+        [(HOST, '    const catalogue = await this.providerModels(own, provider, connectionId).catch(\n', '    const catalogue = await this.providerModels(profileId, provider, connectionId).catch(\n')],
     ),
     (
         # ⛔ **RETIRED BY RULING (landing D-016b, 5e931be8, the tree):** The rail's `anotherProvider`
@@ -440,8 +440,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         # and a Save that produced the failure itself awaited no cached one — so the fresh failure is
         # guarded twice, and the row takes BOTH away to plant what its label says.
         [
-            (HOST, "    if (catalogue.ok || !stale || this.launches.closed) return catalogue\n", "    if (catalogue.ok || this.launches.closed) return catalogue\n"),
-            (HOST, "    if (this.modelProbes.get(key) === cached) this.forgetModels(provider, folder)\n", "    this.forgetModels(provider, folder)\n"),
+            (HOST, '    if (catalogue.ok || !stale || this.launches.closed) return catalogue\n', '    if (catalogue.ok || this.launches.closed) return catalogue\n'),
+            (HOST, '    if (this.modelProbes.get(key) === cached) this.forgetModels(provider, folder, connectionId)\n', '    this.forgetModels(provider, folder, connectionId)\n'),
         ],
     ),
     (

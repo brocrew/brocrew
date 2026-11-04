@@ -258,7 +258,8 @@ export function placedDoorSends() {
  * an optional field is a conditional spread — `...(folder.value === null ? {} : { cwd: … })` in
  * `StartAsAgent.vue` — and a reader that saw only `key:` lines would report the sheet's folder as
  * a field no surface carries. ⚠️ So a spread line counts its one key, on either arm and in either
- * spelling (`{ cwd: x }` or the shorthand `{ cwd }`); a spread of anything else names no key here.
+ * spelling (`{ cwd: x }` or the shorthand `{ cwd }`), including a line break before the
+ * conditional's question mark; a spread of anything else names no key here.
  *
  * ⚑ **Exported so that rule has a test**: the literal this reads in production is a real
  * component, which cannot have a fixture planted in it.
@@ -271,7 +272,7 @@ export function fieldsOf(body) {
     ...body
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .matchAll(
-        /^\s+(?:([A-Za-z_$][\w$]*):|\.\.\.\([^\n]*?\?\s*(?:\{\s*\}\s*:\s*)?\{\s*([A-Za-z_$][\w$]*)\s*[:,}])/gm,
+        /^\s+(?:([A-Za-z_$][\w$]*):|\.\.\.\([^\n]*?(?:\n[ \t]*)?\?\s*(?:\{\s*\}\s*:\s*)?\{\s*([A-Za-z_$][\w$]*)\s*[:,}])/gm,
       ),
   ].map((m) => m[1] ?? m[2])
 }

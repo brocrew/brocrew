@@ -7,6 +7,8 @@ import { createAgentStore, type AgentStore } from '../../src/renderer/src/lib/ag
 import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import type { ItsProvider } from '../../src/shared/agent-roster'
 import type { AgentIdentities, AgentIdentity, RuntimeBridge } from '../../src/shared/runtime-ipc'
+import { createModelLists } from '../../src/renderer/src/lib/model-lists'
+import { compatibilityConnections } from '../provider-connection-fixture'
 import { mount, unmountAll } from './harness'
 
 /**
@@ -58,41 +60,123 @@ const roster = (runsOn: ItsProvider): AgentIdentities => ({
   externalMcpServers: [],
 })
 
-const storeOver = (list: AgentIdentities): AgentStore =>
-  createAgentStore({
+function storeOver(list: AgentIdentities) {
+  let held: Awaited<ReturnType<RuntimeBridge['agentModelAndEffort']>> = null
+  const host = {
+    providerConnections: async () => compatibilityConnections(),
     agentIdentities: async () => list,
     setCapabilities: async () => list.identities[0] ?? null,
     setSpawningEnabled: async () => ({ spawningEnabled: true }),
-    setAgentProvider: async () => null,
-  } as unknown as RuntimeBridge)
+    setAgentProvider: vi.fn(async () => null),
+    agentModelAndEffort: async () => held,
+    setAgentModelAndEffort: vi.fn(
+      async (
+        input: Parameters<RuntimeBridge['setAgentModelAndEffort']>[0],
+      ): Promise<Awaited<ReturnType<RuntimeBridge['setAgentModelAndEffort']>>> => {
+        structuredClone(input)
+        const { provider, model, effort, connectionId } = input
+        if (provider === null || model === null || connectionId === undefined) {
+          throw new Error('choose a fictional connection and model')
+        }
+        held = { provider, connectionId, model, effort }
+        list = {
+          ...list,
+          identities: list.identities.map((one) =>
+            one.slug === input.profileId ? { ...one, provider, connectionId } : one,
+          ),
+          use: list.use.map((one) =>
+            one.slug === input.profileId
+              ? { ...one, runsOn: { provider, from: 'saved' as const } }
+              : one,
+          ),
+        }
+        return { ok: true, choice: held }
+      },
+    ),
+    modelList: async ({ provider }: { provider: 'claude' | 'codex' }) => ({
+      provider,
+      models: [
+        {
+          id: 'fictional-model',
+          label: 'Fictional model',
+          addedBy: 'the-provider',
+          efforts: [{ id: 'high', label: 'High' }],
+          defaultEffort: 'high',
+        },
+      ],
+      notAsked: null,
+      standIn: null,
+      lastPicked: null,
+      startsOn: null,
+    }),
+  } as unknown as RuntimeBridge
+  Reflect.set(window, 'api', { runtime: host })
+  return { store: createAgentStore(host), lists: createModelLists(() => host), host }
+}
 
-afterEach(unmountAll)
+afterEach(() => {
+  unmountAll()
+  Reflect.deleteProperty(window, 'api')
+})
 
 describe('the sheet says it first', () => {
   it('a mixed agent’s sheet says to choose, and how many conversations ran on each', async () => {
-    const store = storeOver(roster(MIXED))
+    const { store, lists, host } = storeOver(roster(MIXED))
     await store.load()
-    const m = mount(CapabilitiesSheet, { profileSlug: 'ana', runsOn: 'codex', store })
+    const m = mount(CapabilitiesSheet, { profileSlug: 'ana', runsOn: 'codex', store, lists })
     await nextTick()
 
-    expect(m.q('capabilities-provider-not-chosen').textContent?.trim()).toBe(
-      'Choose a provider for this agent: its conversations ran on Claude (2) and Codex (1), so no agent can start a new conversation with it until a person chooses one on its sheet.',
+    expect(m.all('capabilities-provider-select')).toHaveLength(0)
+    expect(m.all('capabilities-provider-note')).toHaveLength(0)
+    expect(m.all('capabilities-provider-not-chosen')).toHaveLength(0)
+    expect(m.q('capabilities-title').textContent?.trim()).toBe('Ana')
+    await expect.poll(() => m.all('model-picker-face').length).toBe(1)
+    m.q('model-picker-face').click()
+    await expect.poll(() => m.all('model-picker-connection').length).toBe(1)
+    const select = m.q('model-picker-connection') as HTMLSelectElement
+    expect([...select.options].map((one) => one.textContent?.trim())).toEqual([
+      'Claude · Fictional subscription',
+      'Codex · Fictional subscription',
+    ])
+    select.value = 'codex:sign-in'
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+    await nextTick()
+    await expect.poll(() => m.all('model-picker-row').length).toBe(1)
+    m.q('model-picker-row').querySelector('input')!.click()
+    await nextTick()
+    m.q('model-picker-take').click()
+    await expect.poll(() => m.q('model-picker-panel').matches(':popover-open')).toBe(false)
+    expect(host.setAgentModelAndEffort).toHaveBeenCalledExactlyOnceWith({
+      profileId: 'ana',
+      provider: 'codex',
+      connectionId: 'codex:sign-in',
+      model: 'fictional-model',
+      effort: 'high',
+    })
+    expect(host.setAgentProvider).not.toHaveBeenCalled()
+    await store.load()
+    await nextTick()
+    expect(store.identities.value?.identities.find((one) => one.slug === 'ana')?.provider).toBe(
+      'codex',
     )
-    expect(m.all('capabilities-provider-note')).toEqual([])
-    const empty = m.q('capabilities-provider-select').querySelector('option[value=""]')
-    expect(empty?.textContent?.trim()).toBe('Not chosen: its conversations ran on both')
+    expect(m.q('model-picker-face').textContent).toContain('fictional-model')
   })
 
   it('the control: an agent its conversations name says what they ran on, and no warning', async () => {
-    const store = storeOver(roster({ provider: 'claude', from: 'its-conversations' }))
+    const { store, lists } = storeOver(roster({ provider: 'claude', from: 'its-conversations' }))
     await store.load()
-    const m = mount(CapabilitiesSheet, { profileSlug: 'ana', runsOn: 'claude', store })
+    const m = mount(CapabilitiesSheet, { profileSlug: 'ana', runsOn: 'claude', store, lists })
     await nextTick()
 
     expect(m.all('capabilities-provider-not-chosen')).toEqual([])
-    expect(m.q('capabilities-provider-note').textContent).toContain('Claude')
-    const empty = m.q('capabilities-provider-select').querySelector('option[value=""]')
-    expect(empty?.textContent?.trim()).toBe('Not saved: its conversations ran on Claude')
+    expect(m.all('capabilities-provider-note')).toHaveLength(0)
+    expect(m.all('capabilities-provider-select')).toHaveLength(0)
+    await expect.poll(() => m.all('model-picker-face').length).toBe(1)
+    m.q('model-picker-face').click()
+    await expect.poll(() => m.all('model-picker-connection').length).toBe(1)
+    expect((m.q('model-picker-connection') as HTMLSelectElement).value).toBe('claude:sign-in')
+    await expect.poll(() => m.all('model-picker-row').length).toBe(1)
+    expect(m.q('model-picker-row').textContent).toContain('Fictional model')
   })
 })
 

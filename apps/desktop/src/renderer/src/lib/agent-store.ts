@@ -548,10 +548,28 @@ export function createAgentStore(bridge: RuntimeBridge): AgentStore {
         const saved = await bridge.setAgentModelAndEffort({
           profileId,
           provider: choice?.provider ?? null,
+          ...(choice?.connectionId === undefined ? {} : { connectionId: choice.connectionId }),
           model: choice?.model ?? null,
           effort: choice?.effort ?? null,
         })
-        return saved.ok ? { ok: true, held: saved.choice } : { ok: false, reason: saved.reason }
+        if (!saved.ok) return { ok: false, reason: saved.reason }
+        const selected = saved.choice
+        if (
+          choice?.connectionId !== undefined &&
+          selected?.connectionId !== undefined &&
+          identities.value !== null
+        ) {
+          // An explicit connection save also saves the provider in the same transaction.
+          identities.value = {
+            ...identities.value,
+            identities: identities.value.identities.map((one) =>
+              one.slug === profileId
+                ? { ...one, provider: selected.provider, connectionId: selected.connectionId }
+                : one,
+            ),
+          }
+        }
+        return { ok: true, held: selected }
       } catch (error) {
         return { ok: false, reason: sentence(error) }
       }
@@ -606,6 +624,7 @@ export function createAgentStore(bridge: RuntimeBridge): AgentStore {
           slug: said.slug,
           displayName: said.displayName,
           provider: said.provider,
+          ...(said.connectionId === undefined ? {} : { connectionId: said.connectionId }),
           ...(said.asAService === true ? { asAService: true as const } : {}),
         })
         // ⛔ **Re-read, never pushed — and NOT patched-then-re-read like `save` above.** That
