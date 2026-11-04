@@ -529,7 +529,12 @@ describe('W4.189 · a give’s folder, as a grant on the conversation it has', (
     const source = readFileSync(join(here, '../src/main/runtime/runtime-host.ts'), 'utf8')
     const method = /\n {2}(?:private |public )?(?:async )?\w+\(/g
     const shared = [
-      '  private sendTheAppsWords(session: HostedSession, text: string): Promise<void> {',
+      '  private async sendTheAppsWords(session: HostedSession, text: string): Promise<void> {',
+      '    if (this.deps.pluginContext?.active()) {',
+      '      const block = await this.preparePluginTitles(session, null, [{ text, from: null }])',
+      '      if (this.itStoppedUnder(session)) throw new StoppedBeforeSend()',
+      '      text = withPluginTitles(text, block)',
+      '    }',
       '    return session.handle.send(text, this.stampFor(null, []))',
       '  }',
     ].join('\n')
