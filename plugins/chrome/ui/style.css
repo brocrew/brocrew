@@ -170,6 +170,90 @@ input:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
+/* The track and knob are drawn around the label, so the words stay the button's only text. */
+button[role='switch'] {
+  position: relative;
+  padding-left: 50px;
+  border-color: transparent;
+  background: transparent;
+}
+button[role='switch']:hover {
+  background: var(--hover);
+}
+button[role='switch']::before,
+button[role='switch']::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  border-radius: 999px;
+  transition:
+    transform 120ms ease,
+    background-color 120ms ease,
+    border-color 120ms ease;
+}
+button[role='switch']::before {
+  left: 8px;
+  width: 34px;
+  height: 20px;
+  margin-top: -10px;
+  border: 1px solid var(--muted);
+  background: var(--soft);
+}
+button[role='switch']::after {
+  left: 11px;
+  width: 14px;
+  height: 14px;
+  margin-top: -7px;
+  background: var(--muted);
+}
+button[role='switch'][aria-checked='true']::before {
+  border-color: var(--live-ink);
+  background: var(--live-ink);
+}
+button[role='switch'][aria-checked='true']::after {
+  background: var(--card);
+  transform: translateX(14px);
+}
+button[role='switch'][aria-checked='false'] {
+  color: var(--muted);
+}
+/* Busy keeps every colour at full contrast; the knob turns into a ring at the asked-for position. */
+button[role='switch'][aria-busy='true'] {
+  cursor: progress;
+}
+button[role='switch'][aria-busy='true']::after {
+  border: 2px solid var(--muted);
+  background: transparent;
+}
+button[role='switch'][aria-busy='true'][aria-checked='true']::after {
+  border-color: var(--card);
+}
+@media (prefers-reduced-motion: reduce) {
+  button[role='switch']::before,
+  button[role='switch']::after {
+    transition: none;
+  }
+}
+@media (forced-colors: active) {
+  button[role='switch']::after {
+    forced-color-adjust: none;
+    background: ButtonText;
+  }
+  button[role='switch'][aria-checked='true']::before {
+    forced-color-adjust: none;
+    background: Highlight;
+  }
+  button[role='switch'][aria-checked='true']::after {
+    background: HighlightText;
+  }
+  button[role='switch'][aria-busy='true']::after {
+    border-color: ButtonText;
+    background: transparent;
+  }
+  button[role='switch'][aria-busy='true'][aria-checked='true']::after {
+    border-color: HighlightText;
+  }
+}
 input[type='checkbox'] {
   width: 16px;
   height: 16px;

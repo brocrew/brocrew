@@ -20,7 +20,7 @@ import {
   openPlugins,
   enabledProfile,
   pluginPage,
-  pluginButton,
+  switchOnProfile,
   waitFor,
 } from '../plugin-packaged/cdp.mjs'
 import {
@@ -1075,7 +1075,7 @@ export async function gate(node22) {
       return page
     })
     await step('profile-enable', async () => {
-      await pluginButton(view, 'Enable')
+      await switchOnProfile(view)
       await enabledProfile(view)
       check(summary, 'profileEnabled', true)
       await closeView(a, view)
