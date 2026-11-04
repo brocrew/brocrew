@@ -174,7 +174,7 @@ jobs:
   mac:
     name: Mac, from the tester's beta to the candidate
     if: github.repository == 'brocrew/brocrew'
-    runs-on: macos-15-xlarge
+    runs-on: ${{ vars.MAC_RUNNER || 'macos-15' }}
     timeout-minutes: 75
     steps:
       - uses: actions/checkout@v7
