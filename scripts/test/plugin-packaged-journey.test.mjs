@@ -166,7 +166,7 @@ function fixture(fail, { corrupt = false, snapshotFails = false, missingRoute = 
       return page(run.number)
     },
     press: async () => {},
-    pluginButton: async () => {},
+    switchOnProfile: async () => {},
     waitFor: async (test) => {
       expect(await test()).toBe(true)
     },
@@ -284,9 +284,9 @@ describe('packaged restart journey without a native launch', () => {
   it('waits for the restored enabled row, rejecting empty, disabled or pending UI', async () => {
     const observations = [
       null,
-      { textContent: 'Enable' },
-      { textContent: 'Disable', disabled: true },
-      { textContent: 'Disable', disabled: false },
+      { role: 'switch', ariaChecked: 'false' },
+      { role: 'switch', ariaChecked: 'true', ariaBusy: 'true' },
+      { role: 'switch', ariaChecked: 'true' },
     ]
     let attempts = 0
     await enabledProfile(

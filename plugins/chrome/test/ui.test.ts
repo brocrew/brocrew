@@ -14,6 +14,9 @@ function screen() {
     append(...nodes: Element[]) {
       this.children.push(...nodes)
     }
+    prepend(...nodes: Element[]) {
+      this.children.unshift(...nodes)
+    }
     replaceChildren(...nodes: Element[]) {
       this.children = nodes
     }
@@ -103,11 +106,16 @@ it('uses only bounded DOM RPC, displays current windows/tabs as text, and propos
   expect(heading.children.slice(0, 2).map((child) => child.textContent)).toEqual(['fern', 'Open'])
   const actions = heading.children[2]
   expect(actions.children.map((child) => child.textContent)).toEqual([
-    'Disable',
+    'On',
     'Open window',
     'Rename',
     'Delete',
   ])
+  expect(actions.children[0]).toMatchObject({
+    role: 'switch',
+    ariaChecked: 'true',
+    ariaLabel: 'fern: on',
+  })
   const details = row.children[1]
   expect(details.children[0].textContent).toBe('Open tabs')
   const tab = details.children[1].children[0]
@@ -254,8 +262,8 @@ it.each([true, false])(
         : 'Couldn’t delete this profile. It’s turned off. Wait for agent work to finish, then try again.',
     )
     expect(
-      view.nodes.get('#profiles')!.children[0].children[0].children[2].children[0].textContent,
-    ).toBe('Enable')
+      view.nodes.get('#profiles')!.children[0].children[0].children[2].children[0],
+    ).toMatchObject({ textContent: 'On', role: 'switch', ariaChecked: 'false' })
     expect(view.packets.filter((packet) => packet.method === 'proposeConfig')).toHaveLength(1)
     expect(confirmation.children[2].textContent).toBe('Try again')
     view.events.get('pagehide')!({})
@@ -467,5 +475,158 @@ it('holds the redraw after a refused rename while the person is composing a word
   input.listeners.get('compositionend')!({})
   expect(row().children[1].children[0]).toBe(input)
   expect(row().children[1].children[3].textContent).toBe('Plugin unavailable. Try again.')
+  view.events.get('pagehide')!({})
+})
+
+it('turns a profile on here with one switch press, shows it busy, and puts it back on a refusal', async () => {
+  const view = screen()
+  const snapshot = {
+    configRevision: 2,
+    profiles: [
+      { name: 'fern', displayName: 'Work', shared: true, enabled: false, open: false },
+      { name: 'willow', enabled: true, open: false },
+    ],
+    tabs: [],
+  }
+  view.reply(snapshot)
+  await settle()
+  const control = (index: number) =>
+    (view.nodes.get('#profiles')!.children as unknown as Drawn[])[index].children[0].children.find(
+      (child) => child.className === 'profile-actions',
+    )!.children[0] as Drawn & Record<string, unknown>
+  expect(control(0)).toMatchObject({
+    textContent: 'On here',
+    role: 'switch',
+    ariaChecked: 'false',
+    ariaLabel: 'Work: on here',
+  })
+  expect(control(0).ariaBusy).toBeUndefined()
+  expect(control(1)).toMatchObject({
+    textContent: 'On',
+    ariaChecked: 'true',
+    ariaLabel: 'willow: on',
+  })
+  control(0).listeners.get('click')!({})
+  const proposal = view.packets.at(-1)!
+  expect(proposal).toMatchObject({
+    method: 'proposeConfig',
+    payload: { action: 'set-enabled', profile: 'fern', enabled: true },
+    configRevision: 2,
+  })
+  expect(control(0)).toMatchObject({ ariaChecked: 'true', ariaBusy: 'true', ariaDisabled: 'true' })
+  control(0).listeners.get('click')!({})
+  view.tick()
+  expect(view.packets.filter((packet) => packet.method === 'proposeConfig')).toHaveLength(1)
+  expect(view.packets.at(-1)).toBe(proposal)
+  view.reply(undefined, undefined, proposal, false)
+  await settle()
+  expect(control(0)).toMatchObject({ ariaChecked: 'false' })
+  expect(control(0).ariaBusy).toBeUndefined()
+  expect(view.nodes.get('#status')!.textContent).toBe('Plugin unavailable. Try again.')
+  control(0).listeners.get('click')!({})
+  const retry = view.packets.at(-1)!
+  expect(retry.payload).toEqual({ action: 'set-enabled', profile: 'fern', enabled: true })
+  view.reply(undefined, undefined, retry)
+  await settle()
+  expect(view.packets.at(-1)?.method).toBe('read')
+  view.reply(
+    { ...snapshot, profiles: [{ ...snapshot.profiles[0], enabled: true }, snapshot.profiles[1]] },
+    undefined,
+    view.packets.at(-1),
+  )
+  await settle()
+  expect(control(0)).toMatchObject({ ariaChecked: 'true' })
+  expect(control(0).ariaBusy).toBeUndefined()
+  view.events.get('pagehide')!({})
+})
+
+it('holds the switch put-back after a refusal while the person is composing a name', async () => {
+  const view = screen()
+  view.reply({
+    configRevision: 1,
+    profiles: [{ name: 'fern', enabled: true, open: false }],
+    tabs: [],
+  })
+  await settle()
+  const row = () => view.nodes.get('#profiles')!.children[0] as unknown as Drawn
+  const control = () => row().children[0].children[2].children[0] as Drawn & Record<string, unknown>
+  control().listeners.get('click')!({})
+  const proposal = view.packets.at(-1)!
+  row().children[0].children[2].children[2].listeners.get('click')!({})
+  const input = row().children[1].children[0]
+  input.listeners.get('compositionstart')!({})
+  view.reply(undefined, undefined, proposal, false)
+  await settle()
+  expect(row().children[1].children[0]).toBe(input)
+  expect(control()).toMatchObject({ ariaChecked: 'false', ariaBusy: 'true' })
+  expect(view.nodes.get('#status')!.textContent).toBe('Plugin unavailable. Try again.')
+  input.listeners.get('compositionend')!({})
+  expect(row().children[1].children[0]).toBe(input)
+  expect(control()).toMatchObject({ ariaChecked: 'true' })
+  expect(control().ariaBusy).toBeUndefined()
+  expect(view.nodes.get('#status')!.textContent).toBe('Plugin unavailable. Try again.')
+  view.events.get('pagehide')!({})
+})
+
+it('keeps an accepted switch change on every redraw when the read after it fails', async () => {
+  const view = screen()
+  view.reply({
+    configRevision: 1,
+    profiles: [{ name: 'fern', enabled: false, open: false }],
+    tabs: [],
+  })
+  await settle()
+  const row = () => view.nodes.get('#profiles')!.children[0] as unknown as Drawn
+  const control = () => row().children[0].children[2].children[0] as Drawn & Record<string, unknown>
+  control().listeners.get('click')!({})
+  view.reply(undefined, undefined, view.packets.at(-1))
+  await settle()
+  const read = view.packets.at(-1)!
+  expect(read.method).toBe('read')
+  expect(control()).toMatchObject({ ariaChecked: 'true' })
+  expect(control().ariaBusy).toBeUndefined()
+  view.reply(undefined, undefined, read, false)
+  await settle()
+  expect(view.nodes.get('#status')!.textContent).toBe('Plugin unavailable. Try again.')
+  row().children[0].children[2].children[2].listeners.get('click')!({})
+  expect(row().children[1].className).toBe('profile-rename')
+  expect(control()).toMatchObject({ ariaChecked: 'true' })
+  expect(control().ariaBusy).toBeUndefined()
+  control().listeners.get('click')!({})
+  expect(view.packets.at(-1)).toMatchObject({
+    method: 'proposeConfig',
+    payload: { action: 'set-enabled', profile: 'fern', enabled: false },
+  })
+  view.events.get('pagehide')!({})
+})
+
+it('lets a later read that lands before the switch is accepted keep its own state', async () => {
+  const view = screen()
+  const snapshot = {
+    configRevision: 1,
+    profiles: [{ name: 'fern', enabled: false, open: false }],
+    tabs: [],
+  }
+  view.reply(snapshot)
+  await settle()
+  const row = () => view.nodes.get('#profiles')!.children[0] as unknown as Drawn
+  const control = () => row().children[0].children[2].children[0] as Drawn & Record<string, unknown>
+  control().listeners.get('click')!({})
+  const proposal = view.packets.at(-1)!
+  row().children[0].children[2].children[2].listeners.get('click')!({})
+  row().children[1].children[0].value = 'Garden'
+  row().children[1].listeners.get('submit')!({ preventDefault() {} })
+  view.reply(undefined, undefined, view.packets.at(-1), false)
+  await settle()
+  const reread = view.packets.at(-1)!
+  expect(reread.method).toBe('read')
+  view.reply({ ...snapshot, configRevision: 2 }, undefined, reread)
+  await settle()
+  expect(control()).toMatchObject({ ariaChecked: 'true', ariaBusy: 'true' })
+  view.reply(undefined, undefined, proposal)
+  await settle()
+  expect(control()).toMatchObject({ ariaChecked: 'false' })
+  expect(control().ariaBusy).toBeUndefined()
+  expect(view.packets.at(-1)?.method).toBe('read')
   view.events.get('pagehide')!({})
 })
