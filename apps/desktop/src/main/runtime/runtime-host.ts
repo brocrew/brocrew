@@ -25298,12 +25298,12 @@ export class RuntimeHost implements LiveHost {
     )
   }
 
-  private sendTheAppsWords(session: HostedSession, text: string): Promise<void> {
-    if (this.deps.pluginContext?.active())
-      return this.preparePluginTitles(session, null, [{ text, from: null }]).then((block) => {
-        if (this.itStoppedUnder(session)) throw new StoppedBeforeSend()
-        return session.handle.send(withPluginTitles(text, block), this.stampFor(null, []))
-      })
+  private async sendTheAppsWords(session: HostedSession, text: string): Promise<void> {
+    if (this.deps.pluginContext?.active()) {
+      const block = await this.preparePluginTitles(session, null, [{ text, from: null }])
+      if (this.itStoppedUnder(session)) throw new StoppedBeforeSend()
+      text = withPluginTitles(text, block)
+    }
     return session.handle.send(text, this.stampFor(null, []))
   }
 
