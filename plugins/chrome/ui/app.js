@@ -1,6 +1,6 @@
 const channel = 'brocrew-plugin-tools:v1'
 const pending = new Map()
-let revision = 0
+const snapshotOrder = new WeakMap()
 let next = 0
 let closed = false
 let deleting = null
@@ -40,7 +40,7 @@ function rpc(method, payload) {
       pending.delete(requestId)
       reject(new Error('timeout'))
     }, 10000)
-    pending.set(requestId, { resolve, reject, timer })
+    pending.set(requestId, { resolve, reject, timer, method, order: next })
     window.postMessage(
       {
         channel,
@@ -71,7 +71,9 @@ window.addEventListener('message', (event) => {
     else {
       try {
         const content = result.result.content.find((item) => item.type === 'text')
-        request.resolve(JSON.parse(content.text))
+        const value = JSON.parse(content.text)
+        if (request.method === 'read') snapshotOrder.set(value, request.order)
+        request.resolve(value)
       } catch {
         request.reject(new Error('invalid'))
       }
@@ -208,7 +210,7 @@ async function setEnabled(profile, enabled) {
   if (switching.has(profile)) return
   switching.set(profile, enabled)
   redraw()
-  const asked = revision
+  const asked = next
   try {
     await rpc('proposeConfig', { action: 'set-enabled', profile, enabled })
   } catch {
@@ -219,11 +221,11 @@ async function setEnabled(profile, enabled) {
     return
   }
   switching.delete(profile)
-  // The plugin took the change, so redraws show it even if the next read fails. Replies are not
-  // ordered, so a read of a later revision than the one asked against already knows better.
+  // Keep an accepted change if refresh fails. A read requested after this switch has its own
+  // state and must survive a delayed acceptance, including while a composition holds its draw.
   for (const snapshot of [lastSnapshot, heldSnapshot]) {
     const known = snapshot?.profiles.find((p) => p.name === profile)
-    if (known && snapshot.configRevision <= asked) known.enabled = enabled
+    if (known && (snapshotOrder.get(snapshot) ?? 0) <= asked) known.enabled = enabled
   }
   redraw()
   await refresh()
@@ -304,7 +306,6 @@ function checked(snapshot) {
 }
 function draw(snapshot) {
   checked(snapshot)
-  revision = snapshot.configRevision
   lastSnapshot = snapshot
   if (snapshot === refusedOn) say(UNAVAILABLE, 'warn')
   else {
