@@ -312,7 +312,7 @@ describe.skipIf(process.platform === 'win32')(
           revoke: async () => true,
           reconcile,
         }),
-      ).rejects.toMatchObject({ code: 'corrupt' })
+      ).rejects.toMatchObject({ code: 'cleanup-pending' })
       expect(reconcile).toHaveBeenCalledExactlyOnceWith({
         pluginId: 'chrome',
         before: null,
