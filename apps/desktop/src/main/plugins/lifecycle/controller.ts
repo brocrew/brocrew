@@ -10,6 +10,7 @@ import { pluginAdapter } from './adapters'
 import { PluginProposal, proposalFor } from './proposals'
 import { pluginSha256 } from '../package-digests'
 import { randomUUID } from 'node:crypto'
+import { join } from 'node:path'
 import { z } from 'zod'
 import { createRepoAwarePluginVerifier, type VerifiedPluginPackage } from '../package-verifier'
 import { PluginSupervisorError } from '../supervisor/protocol'
@@ -513,6 +514,14 @@ export class PluginLifecycleController {
     const run = await this.options.runtime.start({
       package: checked,
       releaseDigest: install.release.archiveSha256,
+      legacyConfiguration: {
+        directory: join(
+          this.options.root,
+          'profile-apply',
+          pluginSha256(Buffer.from(install.installId)),
+        ),
+        floor: join(this.options.root, 'profile-apply', install.installId + '.floor'),
+      },
       ...previous,
     })
     const running: Running = { run, installId: install.installId, package: checked, ended: false }

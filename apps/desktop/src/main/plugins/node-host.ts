@@ -33,6 +33,7 @@ export interface PluginNodeStart {
   releaseDigest: string
   previousVersion?: string
   previousDataSchema?: number
+  legacyConfiguration?: { directory: string; floor: string }
 }
 export interface PluginNodeExit {
   exited: boolean
@@ -246,6 +247,13 @@ export function createPluginNodeHost(options: {
         sharedDataDirectory: sharedEnvironment.BROCREW_PLUGIN_SHARED,
         previousVersion: spec.previousVersion,
         previousDataSchema: spec.previousDataSchema,
+        legacyConfiguration: spec.legacyConfiguration,
+        priorOwner: options.sharedDataOwner
+          ? {
+              ownerId: options.sharedDataOwner.ownerId,
+              ownerLabel: options.sharedDataOwner.ownerLabel,
+            }
+          : undefined,
         dataSchema: manifest.data.schema,
         host: { api: 1, method: 'brocrew/host' },
       }
