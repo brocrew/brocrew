@@ -23,6 +23,12 @@ export const Effect = z.strictObject({
   compensates: z.uuid().nullable(),
   cleanupAttempted: z.boolean().optional(),
   cleanupResult: z.enum(['completed', 'unconfirmed']).optional(),
+  removalOutcome: z
+    .strictObject({
+      data: z.enum(['kept', 'deleted']),
+      cleanup: z.enum(['not-requested', 'completed', 'unconfirmed']),
+    })
+    .optional(),
   previousVersion: z.string().optional(),
   previousDataSchema: z.number().int().nonnegative().safe().optional(),
 })

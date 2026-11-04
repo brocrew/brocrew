@@ -1166,14 +1166,29 @@ export class PluginLifecycleController {
     effect: Effect,
     install: Installation,
   ): Promise<PluginRemovalOutcome | void> {
-    const pkg =
-      this.runs.get(install.pluginId)?.package ??
-      (await this.vault.load(this.descriptor(install), []))
-    const generic = pkg.manifest.format === 3
-    const cleanup = generic ? await this.genericBeforeRemoval(effect, pkg) : undefined
+    // Persist the selected package's removal facts before retiring its archive/code. Recovery
+    // can then complete after those files are already gone without loading them or replaying I/O.
+    const pkg = effect.removalOutcome
+      ? undefined
+      : (this.runs.get(install.pluginId)?.package ??
+        (await this.vault.load(this.descriptor(install), [])))
+    const generic = effect.removalOutcome !== undefined || pkg?.manifest.format === 3
+    let outcome = effect.removalOutcome
+    if (generic && !outcome) {
+      const cleanup = await this.genericBeforeRemoval(effect, pkg!)
+      outcome = {
+        data:
+          pkg!.contract.lifecycle.dataOnRemove === 'remove' && effect.compensates === null
+            ? 'deleted'
+            : 'kept',
+        cleanup,
+      }
+      effect.removalOutcome = outcome
+      await this.effects.write(effect)
+    }
     const logout = generic ? undefined : await this.beforeRemoval(install.pluginId)
     const deleteData = generic
-      ? pkg.contract.lifecycle.dataOnRemove === 'remove' && effect.compensates === null
+      ? outcome!.data === 'deleted'
       : Boolean(pluginAdapter(install.pluginId)?.uninstall)
     const results = await Promise.allSettled([
       this.stop(install.pluginId, effect.operationId),
@@ -1203,7 +1218,7 @@ export class PluginLifecycleController {
     // Cohort receipts clear in the reserved completion. Any older/offline receipt is only a
     // cleanup obligation: the tombstone already invalidates it, never authority to reactivate.
     this.cleanup.delete(install.pluginId)
-    if (generic) return { data: deleteData ? 'deleted' : 'kept', cleanup: cleanup! }
+    if (generic) return outcome!
     if (deleteData) return { data: 'deleted', logout: logout ?? 'unconfirmed' }
   }
   private async remove(
@@ -1251,7 +1266,7 @@ export class PluginLifecycleController {
     this.workspace(handle)
     if (!idSchema.safeParse(id).success || !z.uuid().safeParse(operationId).success) return refuse()
     let absent = false
-    let outcome: PluginRemovalOutcome | void
+    let outcome: PluginRemovalOutcome | void = undefined
     const token = this.block(id) // Synchronous denial before the queue, tombstone, or any consumer awaits.
     try {
       await this.options.state.withExclusive(async () => {
