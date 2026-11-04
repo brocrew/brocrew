@@ -20,10 +20,13 @@ export function readVolumeIdentity(file: string, device: string, options: {
     env: { ...process.env, LC_ALL: 'C', LANG: 'C' },
     stdio: ['ignore', 'pipe', 'pipe'],
   }))
-  const rows = read('/bin/df', ['-P', file]).trim().split(/\r?\n/)
+  const observe = (program: string, args: string[]) => {
+    try { return read(program, args) } catch { throw new Error('Volume identity unavailable') }
+  }
+  const rows = observe('/bin/df', ['-P', file]).trim().split(/\r?\n/)
   const disk = rows.length === 2 && /^(\/dev\/disk[0-9]+(?:s[0-9]+)+)\s/.exec(rows[1])?.[1]
   if (!disk) throw new Error('Volume identity unavailable')
-  const plist = read('/usr/sbin/diskutil', ['info', '-plist', disk])
+  const plist = observe('/usr/sbin/diskutil', ['info', '-plist', disk])
   const matches = [...plist.matchAll(/<key>VolumeUUID<\/key>\s*<string>([^<]+)<\/string>/g)]
   const value = matches.length === 1 ? matches[0][1] : ''
   if (!uuid.test(value) || !/[1-9a-f]/i.test(value.replace(/-/g, '')))

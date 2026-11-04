@@ -50,7 +50,8 @@ it('legacy anchorless record on a renumbered or cloned volume is rebound and log
   expect(f.open().get('fern')?.enabled).toBe(true)
   expect(warn).not.toHaveBeenCalled()
 })
-it.each(['inode', 'mode', 'uid', 'type', 'birthtime', 'volume', 'replacement', 'symlink'])(
+it.each(['inode', 'mode', 'uid', 'type', 'birthtime', 'volume', 'replacement', 'symlink']
+  .filter((change) => change !== 'mode' || process.platform !== 'win32'))(
   'refuses %s and preserves the record', (change) => {
     const f = fixture(), dir = path.join(f.shared, 'profiles/fern')
     if (change === 'inode') f.edit((r) => { r.profiles[0].directory.ino = '999999999' })
@@ -106,7 +107,7 @@ it('rebinds directory, migrated source and owner home together without touching 
     expect(id.volume).toBe('apfs:11111111-1111-4111-8111-111111111111')
   expect(log).toHaveBeenCalledTimes(3)
 })
-it('refuses a legacy directory with changed private mode rather than repairing it', () => {
+it.skipIf(process.platform === 'win32')('refuses a legacy directory with changed private mode rather than repairing it', () => {
   const f = fixture()
   f.edit((r) => { r.profiles[0].directory = { dev: '999999999', ino: r.profiles[0].directory.ino } })
   const before = JSON.stringify(f.read().profiles[0])
@@ -123,7 +124,7 @@ it('a Windows serial change is refused even for an anchorless legacy record', ()
   expect(open.get('fern')?.enabled).toBe(false)
   expect(() => open.shared.acquire('fern')).toThrow()
 })
-it('does not chmod a changed migration home before judging its legacy identity', () => {
+it.skipIf(process.platform === 'win32')('does not chmod a changed migration home before judging its legacy identity', () => {
   const f = fixture()
   createProfileStore({ home: f.home }).create('moss', 'panel')
   f.open({ migrationApproved: true })

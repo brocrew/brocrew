@@ -117,7 +117,8 @@ async function snapshot(root: string, readVolume: VolumeReader) {
     if (pin !== `${stat.dev}:${stat.ino}:${stat.uid}:${stat.mode}`)
       throw new Error('Changed recovery identity')
   }
-  return { bound, covered, runtimeBinding, runtimeCensus, pins }
+  return { bound, covered, runtimeBinding, runtimeCensus,
+    pins: Object.fromEntries(Object.entries(pins).sort(([a], [b]) => a.localeCompare(b))) }
 }
 /** Reboot metadata has the same descriptor trust boundary as a guardian's exit proof. */
 async function readRebootProof(path: string): Promise<unknown> {

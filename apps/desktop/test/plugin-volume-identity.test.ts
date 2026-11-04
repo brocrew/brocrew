@@ -27,4 +27,9 @@ describe.each([['supervisor', host], ['standalone Chrome', chrome]] as const)('%
   it('does not claim a persistent identity on an unqualified platform', () => {
     expect(readVolume('/fictional', '17', { platform: 'linux' })).toBeUndefined()
   })
+  it('keeps native failure text and file paths out of the error', () => {
+    const read = () => { throw new Error('fictional private native output') }
+    expect(() => readVolume('/fictional/private-folder', '17', { platform: 'darwin', read }))
+      .toThrowError(new Error('Volume identity unavailable'))
+  })
 })
