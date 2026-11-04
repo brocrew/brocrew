@@ -216,6 +216,7 @@ const CONTRACT_MEMBERS: Record<keyof SessionHandle, string> = {
   builtInSkillsConfirmed:
     'whether SDK init confirmed the installed skill catalogue for this launch',
   refreshManagedPlugins: 'refresh managed tool attachments at a turn boundary where supported',
+  managedPluginHealth: 'fresh public status identifies failed managed tool connections',
   ref: 'stable identity, or null until the provider gives one (011)',
   launchedAs: 'the id a launch asked for, before any init names it — never a ref (722 · R79)',
   agentInfo: 'what the provider says it is running (081)',
@@ -1059,6 +1060,8 @@ const fakeDriver: Driver = {
         'the base Fake has no adapter-initiated retirement; host close and terminal status cover its lifecycle',
       refreshManagedPlugins:
         'The base Fake has no external plugin connection; wrapper controls supply a refresh fake',
+      managedPluginHealth:
+        'The base Fake has no provider MCP connection to observe; wrapper tests inject public health facts',
       builtInSkillsConfirmed:
         'The base Fake receives no SDK init; receipt tests supply their own method',
       launchedAs: 'the Fake confirms its ref at construction — there is no pre-init window (722)',
@@ -1669,6 +1672,7 @@ describe('conformance · the gap ledger (186)', () => {
           'connectionId',
           'isRetiring',
           'refreshManagedPlugins',
+          'managedPluginHealth',
           'builtInSkillsConfirmed',
           // 722 · R79: a pre-init window only a Claude launch has — the Fake's ref is set at birth.
           'launchedAs',

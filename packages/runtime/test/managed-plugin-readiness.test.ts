@@ -10,6 +10,7 @@ import { AsyncQueue } from '../src/internal/async-queue'
 import { CODEX_PROTOCOL_VERSION } from '../src/codex/protocol-version'
 import type { RuntimeEvent, SessionHandle } from '../src/index'
 import { threadStartResponse, turnStartResponse, completedTurn } from './fixtures/codex-protocol'
+import { withManagedPluginAttachments } from '../src/managed-plugin-session'
 import { MANAGED_PLUGIN_READY_WITHIN_MS } from '../src/codex/managed-plugin-readiness'
 
 const route = { name: 'plugin-fern', url: 'http://127.0.0.1:8123/mcp', capability: 'a'.repeat(64) }
@@ -280,4 +281,126 @@ it('Claude still delivers its first prompt immediately with its authenticated ma
       headers: { Authorization: `Bearer ${route.capability}` },
     },
   })
+})
+
+it.each([false, true])(
+  'recovers Codex before the next tool call, preserving its thread (route changed %s)',
+  async (changed) => {
+    const location = home(),
+      wires: Wire[] = []
+    let currentRoute = route
+    const runtime = withManagedPluginAttachments(
+      new CodexRuntime(() => {
+        const wire = new Wire(location)
+        // A fake process owns a real completion promise, settled only by close.
+        let exit!: () => void
+        Object.assign(wire, {
+          quiesced: new Promise<void>((resolve) => {
+            exit = resolve
+          }),
+        })
+        const close = wire.close.bind(wire)
+        wire.close = () => {
+          close()
+          exit()
+        }
+        wire.catalog = ['echo']
+        wires.push(wire)
+        return wire
+      }),
+      {
+        read: async () => ({ revision: 'unchanged', servers: [currentRoute] }),
+        close: async () => {},
+      },
+    )
+    const handle = await runtime.start(location)
+    handles.push(handle)
+    const saved = handle.ref
+    await handle.send('fictional initial tool call')
+    await tick()
+    expect(wires[0]!.catalogsAtTurns).toEqual([['echo']])
+    wires[0]!.finish()
+    await tick()
+    wires[0]!.catalog = []
+    wires[0]!.discovery = async () => ({ data: [{ name: route.name, runtimeStatus: 'failed' }] })
+    if (changed)
+      currentRoute = { ...route, url: 'http://127.0.0.1:8124/mcp', capability: 'b'.repeat(64) }
+    await handle.send('fictional recovered tool call')
+    await tick()
+    expect(wires).toHaveLength(2)
+    expect(handle.ref).toEqual(saved)
+    expect(wires[0]!.catalogsAtTurns).toHaveLength(1)
+    expect(wires[1]!.catalogsAtTurns).toEqual([['echo']])
+    expect(wires[1]!.requests.find((one) => one.method === 'thread/resume')).toMatchObject({
+      params: {
+        threadId: saved!.sessionId,
+        config: {
+          mcp_servers: {
+            [route.name]: {
+              url: currentRoute.url,
+              http_headers: { Authorization: `Bearer ${currentRoute.capability}` },
+            },
+          },
+        },
+      },
+    })
+    wires[1]!.finish()
+    await tick()
+    await handle.send('fictional healthy following call')
+    await tick()
+    expect(wires).toHaveLength(2)
+    expect(wires[1]!.catalogsAtTurns).toEqual([['echo'], ['echo']])
+  },
+)
+
+it.each([
+  ['failed', [route.name]],
+  ['connected', []],
+  ['starting', undefined],
+  ['notStarted', undefined],
+  ['authenticationRequired', undefined],
+  ['disabled', undefined],
+  ['cancelled', undefined],
+  [null, undefined],
+  ['invented-status', undefined],
+] as const)(
+  'Codex public attachment health treats %s conservatively',
+  async (runtimeStatus, expected) => {
+    const { wire, handle } = await start()
+    wire.discovery = async () => ({
+      data: [{ name: route.name, runtimeStatus, tools: {}, toolsError: null }],
+    })
+    const health = (
+      handle as SessionHandle & {
+        managedPluginHealth(
+          servers: readonly (typeof route)[],
+        ): Promise<readonly string[] | undefined>
+      }
+    ).managedPluginHealth
+    expect(typeof health).toBe('function')
+    expect(await health.call(handle, [route])).toEqual(expected)
+    expect(wire.requests.filter((one) => one.method === 'mcpServerStatus/list')).toEqual([
+      {
+        method: 'mcpServerStatus/list',
+        params: {
+          threadId: 'fictional-thread',
+          serverName: route.name,
+          detail: 'toolsAndAuthOnly',
+        },
+      },
+    ])
+  },
+)
+it('an unscoped or missing Codex status row cannot authorize a recovery', async () => {
+  const { wire, handle } = await start()
+  wire.discovery = async () => ({ data: [{ name: 'person-server', runtimeStatus: 'failed' }] })
+  const health = (
+    handle as SessionHandle & {
+      managedPluginHealth(
+        servers: readonly (typeof route)[],
+      ): Promise<readonly string[] | undefined>
+    }
+  ).managedPluginHealth
+  expect(typeof health).toBe('function')
+  expect(await health.call(handle, [route])).toBeUndefined()
 })

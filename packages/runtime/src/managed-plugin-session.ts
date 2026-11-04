@@ -154,13 +154,34 @@ export function withManagedPluginAttachments(
                 } catch {
                   noteUnavailable()
                 }
+                let stale: readonly string[] = []
+                if (next && attachment.servers.length && inner.managedPluginHealth) {
+                  try {
+                    const failed = await bounded(
+                      inner.managedPluginHealth(attachment.servers),
+                      wait.signal,
+                    )
+                    // Only names from this handle's admitted routes may authorize recovery.
+                    stale =
+                      failed?.filter((name) =>
+                        attachment.servers.some((one) => one.name === name),
+                      ) ?? []
+                  } catch {
+                    // An unreadable or late status is unknown, not a reason to replace a provider.
+                  }
+                }
                 if (closed || wait.signal.aborted)
                   throw new Error('the turn was stopped before its message could be sent')
-                if (next && signature(next) !== signature(attachment)) {
+                if (inner.status() !== 'idle') throw new TurnInProgress()
+                if (next && (signature(next) !== signature(attachment) || stale.length)) {
                   if (inner.refreshManagedPlugins) {
                     let settled = false
                     try {
-                      const refreshing = inner.refreshManagedPlugins(next.servers).then(
+                      const refreshing = (
+                        stale.length
+                          ? inner.refreshManagedPlugins(next.servers, stale)
+                          : inner.refreshManagedPlugins(next.servers)
+                      ).then(
                         () => {
                           settled = true
                         },
