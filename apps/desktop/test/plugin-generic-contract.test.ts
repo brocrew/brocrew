@@ -128,7 +128,7 @@ describe('generic package declarations', () => {
     expect(policy).not.toHaveProperty('probe')
   })
   it('allows ordinary tools without a settings page, buttons or hooks', () => {
-    const { settings: _settings, ui: _ui, hooks: _hooks, ...raw } = genericManifest()
+    const raw = { ...genericManifest(), settings: undefined, ui: undefined, hooks: undefined }
     expect(pluginContributions(check(raw)).declarations).toEqual([])
   })
   it('treats packaged inventory as documentation rather than a tool allowlist', () => {
