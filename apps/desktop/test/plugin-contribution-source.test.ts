@@ -5,6 +5,7 @@ import { productionPluginController } from '../src/main/plugins/production'
 import { fixture, cleanupLifecycleFixtures } from './plugin-lifecycle-fixtures'
 import { repoListFor } from './plugin-repo-list-fixtures'
 import { PLUGIN_LIST_URL, PLUGIN_LIST_V2_URL } from '../src/main/plugins/catalogue/download'
+import { pluginSha256 } from '../src/main/plugins/package-digests'
 
 const seams = vi.hoisted(() => ({
   connect: vi.fn(),
@@ -30,7 +31,7 @@ describe.skipIf(process.platform === 'win32')(
   'source selection from negotiated owner support',
   () => {
     async function setup(modern: boolean) {
-      const f = await fixture()
+      const f = await fixture({}, false, 'fictional-bakery')
       const frozen = repoListFor(f.pkg.release)
       const expanded = {
         format: 2,
@@ -72,31 +73,41 @@ describe.skipIf(process.platform === 'win32')(
         } as unknown as PluginSupervisorAttachment,
       })
       await controller.ready!()
-      return { controller, fetch, frozen }
+      return { controller, fetch, frozen, expanded }
     }
-    it('selects v2 for a capable owner and binds the unchanged v1 raw list into a fresh owner plan', async () => {
+    it('selects v2 discovery and carries its exact selected raw and parsed bytes into a fresh owner plan', async () => {
       const f = await setup(true)
       expect((await f.controller.catalogue()).map((entry) => entry.id)).toEqual([
-        'chrome',
+        'fictional-bakery',
         'fictional-pointers',
       ])
       expect(f.fetch.mock.calls.map(([url]) => String(url))).toContain(PLUGIN_LIST_V2_URL)
       const launch = seams.launch.mock.calls[0]![0] as unknown as {
         lifecycleForNewOwner(): Promise<{
           sourceVersion: number
-          legacyRepoList: { path: string; sha256: string }
+          repoList: { path: string; sha256: string }
+          catalogue: string
+          catalogueSha256: string
         }>
       }
       expect(typeof launch.lifecycleForNewOwner).toBe('function')
       const plan = await launch.lifecycleForNewOwner()
       expect(plan.sourceVersion).toBe(2)
-      expect(await readFile(plan.legacyRepoList.path)).toEqual(
-        Buffer.from(JSON.stringify(f.frozen)),
-      )
+      const raw = await readFile(plan.repoList.path)
+      expect(raw).toEqual(Buffer.from(JSON.stringify(f.expanded)))
+      expect(pluginSha256(raw)).toBe(plan.repoList.sha256)
+      const selected = await readFile(plan.catalogue)
+      expect(pluginSha256(selected)).toBe(plan.catalogueSha256)
+      expect(JSON.parse(selected.toString())).toMatchObject({
+        format: 2,
+        entries: [{ id: 'fictional-bakery' }, { id: 'fictional-pointers' }],
+      })
     })
     it('keeps a live older owner on the v1 surface without fetching or sending new metadata', async () => {
       const f = await setup(false)
-      expect((await f.controller.catalogue()).map((entry) => entry.id)).toEqual(['chrome'])
+      expect((await f.controller.catalogue()).map((entry) => entry.id)).toEqual([
+        'fictional-bakery',
+      ])
       expect(f.fetch.mock.calls.map(([url]) => String(url))).toEqual([PLUGIN_LIST_URL])
     })
   },

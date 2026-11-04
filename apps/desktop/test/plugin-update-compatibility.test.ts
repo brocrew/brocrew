@@ -112,43 +112,54 @@ describe.skipIf(process.platform === 'win32')(
   'mixed-version plugin owners on fictional roots',
   () => {
     it.each(['install', 'update'] as const)(
-      'keeps raw %s refused with a historical v2 legacy-row vault',
+      'keeps ordinary %s working with an intact historical v2 legacy-row vault',
       async (action) => {
-        const f = await fixture()
+        const f = await fixture({}, false, 'fictional-bakery')
         exitable(f)
-        const historical = await ParentController.open({
-          ...f.opts,
-          state: f.state as never,
-          catalogue: signed({ format: 2, entries: [{ ...f.pkg.release, legacy: true }] }),
-        })
-        await historical.install(await historical.attach(projection().sink), 'chrome')
-        await historical.drain()
+        if (action === 'update') await f.controller.install(f.handle, 'fictional-bakery')
+        await f.controller.drain()
         const next = packageFixture({ manifest: { ...f.pkg.manifest, version: '1.0.3' } })
+        const historical = signed({ format: 2, entries: [{ ...next.release, legacy: true }] })
+        const kept = join(f.root, 'package-vault', next.release.archive.sha256)
+        await mkdir(kept, { recursive: true })
+        await writeFile(join(kept, 'archive'), next.archive)
+        await writeFile(join(kept, 'catalogue.json'), historical.bytes)
+        await writeFile(join(kept, 'catalogue.sig'), historical.signature)
+        const data = join(f.root, 'data', 'fictional-bakery', 'pairing.bin')
+        await mkdir(join(f.root, 'data', 'fictional-bakery'), { recursive: true })
+        const pairing = Buffer.from([0, 255, 17, 10])
+        await writeFile(data, pairing)
         const download = vi.fn(async () => next.archive)
         const controller = await PluginLifecycleController.open({
           ...f.opts,
-          catalogue: signed({ format: 2, entries: [{ ...next.release, legacy: true }] }),
+          catalogue: historical,
           download,
         })
         try {
           const handle = await controller.attach(projection().sink)
-          const before = {
-            state: structuredClone(f.state.inspect()),
-            tree: await diskBytes(f.root),
-            events: [...f.events],
-            starts: f.starts(),
-            downloads: download.mock.calls.length,
-          }
-          await expect(controller[action](handle, 'chrome')).rejects.toMatchObject({
-            code: 'policy-refused',
+          const starts = f.starts()
+          await controller[action](handle, 'fictional-bakery')
+          expect((await controller.status()).cards).toMatchObject([
+            {
+              id: 'fictional-bakery',
+              installed: true,
+              state: 'Running',
+              installedVersion: '1.0.3',
+            },
+          ])
+          expect(f.state.currentInstallation('fictional-bakery')?.release).toMatchObject({
+            version: '1.0.3',
+            archiveSha256: pluginSha256(next.archive),
+            manifestSha256: next.release.manifestSha256,
           })
-          expect({
-            state: f.state.inspect(),
-            tree: await diskBytes(f.root),
-            events: [...f.events],
-            starts: f.starts(),
-            downloads: download.mock.calls.length,
-          }).toEqual(before)
+          expect(f.state.inspect().pending).toBeNull()
+          expect(f.starts()).toBe(starts + 1)
+          expect(download).toHaveBeenCalledOnce()
+          expect(await readFile(data)).toEqual(pairing)
+          expect(await readFile(join(kept, 'archive'))).toEqual(next.archive)
+          expect(await readFile(join(kept, 'catalogue.json'))).toEqual(historical.bytes)
+          expect(await readFile(join(kept, 'catalogue.sig'))).toEqual(historical.signature)
+          expect(fetch).not.toHaveBeenCalled()
         } finally {
           await controller.drain()
         }
