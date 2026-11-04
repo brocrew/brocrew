@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { createHash, randomUUID } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 
 export interface LegacyConfigurationInput {
   directory: string
@@ -18,13 +18,14 @@ function optional(file: string): Buffer | undefined {
 const record = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value)
 
-/** Import consumption metadata only. Proposals are never interpreted, retained or executed. */
+/** Import consumption metadata only. Intent command bodies are never opened or executed. */
 export function importLegacyConfiguration(
   home: string,
   input?: LegacyConfigurationInput,
   beforePublish?: () => void,
 ): void {
   if (!input) return
+  const source = { directory: path.resolve(input.directory), floor: path.resolve(input.floor) }
   const marker = path.join(home, LEGACY_MARKER)
   const existing = optional(marker)
   if (existing) {
@@ -34,16 +35,23 @@ export function importLegacyConfiguration(
       value.format !== 1 ||
       value.consumed !== true ||
       !Number.isSafeInteger(value.revision) ||
-      (value.revision as number) < 0
+      (value.revision as number) < 0 ||
+      !record(value.source)
     )
       throw new Error('Legacy Chrome import marker is invalid.')
-    return
+    if (value.source.directory !== source.directory || value.source.floor !== source.floor)
+      throw new Error('Legacy Chrome import source does not match.')
   }
   let installId: string | undefined
   let revision = 0
   let previous: string | null = null
   let found = false
-  const consume = (value: unknown, hash?: string): void => {
+  const rememberInstall = (id: string): void => {
+    if (installId !== undefined && installId !== id)
+      throw new Error('Legacy Chrome installation does not match.')
+    installId = id
+  }
+  const consume = (value: unknown): void => {
     if (
       !record(value) ||
       (value.format !== 1 && value.format !== 2) ||
@@ -53,21 +61,19 @@ export function importLegacyConfiguration(
       !(value.previous === null || typeof value.previous === 'string')
     )
       throw new Error('Legacy Chrome configuration metadata is invalid.')
-    if (installId && installId !== value.installId)
-      throw new Error('Legacy Chrome installation does not match.')
-    installId = value.installId
+    rememberInstall(value.installId)
     found = true
     if ((value.revision as number) >= revision) {
       revision = value.revision as number
-      previous = hash ?? (value.previous as string | null)
+      previous = value.previous as string | null
     }
   }
-  const birth = optional(path.join(input.directory, 'birth'))
+  const birth = optional(path.join(source.directory, 'birth'))
   if (birth) {
-    installId = birth.toString('utf8')
+    rememberInstall(birth.toString('utf8'))
     found = true
   }
-  const floor = optional(input.floor)
+  const floor = optional(source.floor)
   if (floor) {
     const text = floor.toString('utf8')
     if (/^\d+$/.test(text)) {
@@ -78,30 +84,46 @@ export function importLegacyConfiguration(
       found = true
     } else consume(JSON.parse(text))
   }
-  const checkpoint = optional(path.join(input.directory, 'checkpoint.json'))
+  const checkpoint = optional(path.join(source.directory, 'checkpoint.json'))
   if (checkpoint) consume(JSON.parse(checkpoint.toString('utf8')))
+  if (existing) {
+    const value = JSON.parse(existing.toString('utf8')) as { installId?: string }
+    if (installId !== undefined && value.installId !== installId)
+      throw new Error('Legacy Chrome installation does not match.')
+    return
+  }
   let names: string[]
   try {
-    names = fs.readdirSync(path.join(input.directory, 'intents'))
+    names = fs.readdirSync(path.join(source.directory, 'intents'))
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
     names = []
   }
-  for (const name of names.filter((name) => /^\d+\.json$/.test(name)).sort()) {
-    const bytes = fs.readFileSync(path.join(input.directory, 'intents', name))
-    consume(JSON.parse(bytes.toString('utf8')), createHash('sha256').update(bytes).digest('hex'))
+  for (const name of names) {
+    if (!name.endsWith('.json')) continue // Unpublished staging names are not consumed reservations.
+    if (!/^(?:\d{8}|\d{16})\.json$/.test(name))
+      throw new Error('Legacy Chrome intent filename is invalid.')
+    const publishedRevision = Number(name.slice(0, -5))
+    if (!Number.isSafeInteger(publishedRevision) || publishedRevision < 1)
+      throw new Error('Legacy Chrome intent filename is invalid.')
+    found = true
+    if (publishedRevision > revision) {
+      revision = publishedRevision
+      previous = null
+    }
   }
   if (!found) return
-  const bytes = JSON.stringify({ format: 1, installId, revision, previous, consumed: true }) + '\n'
+  const bytes =
+    JSON.stringify({ format: 1, source, installId, revision, previous, consumed: true }) + '\n'
   const stage = path.join(home, '.legacy-import-' + randomUUID())
-  const fd = fs.openSync(stage, 'wx', 0o600)
   try {
-    fs.writeFileSync(fd, bytes)
-    fs.fsyncSync(fd)
-  } finally {
-    fs.closeSync(fd)
-  }
-  try {
+    const fd = fs.openSync(stage, 'wx', 0o600)
+    try {
+      fs.writeFileSync(fd, bytes)
+      fs.fsyncSync(fd)
+    } finally {
+      fs.closeSync(fd)
+    }
     beforePublish?.()
     fs.renameSync(stage, marker)
     if (process.platform !== 'win32') {
