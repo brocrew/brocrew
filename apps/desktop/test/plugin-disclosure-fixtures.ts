@@ -166,7 +166,6 @@ export async function disclosureFixture(
     root: f.root,
     key,
     controller: sharedLifecycleWorkspaces(controller),
-    read: async () => null,
   })
   const clients: DisclosureClient[] = []
   const download = vi.fn(async () => next.archive)

@@ -503,7 +503,6 @@ describe('ordinary selected package sources', () => {
       root: f.root,
       key: personKey,
       controller: sharedLifecycleWorkspaces(f.controller),
-      read: async () => null,
     })
     const client = await connectPluginSettings({
       root: f.root,
@@ -554,7 +553,6 @@ describe('ordinary selected package sources', () => {
       root: f.root,
       key: personKey,
       controller: owner,
-      read: async () => ({}),
     })
     const clients: Awaited<ReturnType<typeof connectPluginSettings>>[] = []
     try {

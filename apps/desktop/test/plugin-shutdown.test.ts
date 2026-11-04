@@ -99,7 +99,6 @@ describe.skipIf(process.platform === 'win32')(
         host: fake.host,
         lifecycle: { ...f.opts, state },
         personKey: 'a'.repeat(64),
-        read: async () => ({}),
       })
       closes.push(() => service.close())
       const sink = projection()
@@ -114,7 +113,6 @@ describe.skipIf(process.platform === 'win32')(
         catalogue: f.opts.catalogue,
         download: f.opts.download,
         projection: stableSink,
-        propose: () => {},
       })
       closes.push(() => client.close())
       return { owner, lease, service, client, fake, sink: { ...sink, sink: stableSink } }
@@ -187,7 +185,6 @@ describe.skipIf(process.platform === 'win32')(
         catalogue: f.opts.catalogue,
         download: f.opts.download,
         projection: secondSink,
-        propose: () => {},
       })
       closes.push(() => second.close())
       const ack = deferred<boolean>()

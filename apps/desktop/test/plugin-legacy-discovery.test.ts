@@ -129,7 +129,6 @@ async function setup(fixedVersion = false, invalidSource?: 'view') {
     root: f.root,
     key,
     controller: sharedLifecycleWorkspaces(controller),
-    read: async () => ({}),
   })
   closers.push(() => bridge.close())
   vi.stubGlobal(
@@ -154,7 +153,6 @@ async function setup(fixedVersion = false, invalidSource?: 'view') {
           ? chrome.archive
           : extra.archive,
     projection: projection().sink,
-    propose: () => {},
   })
   const facade = () => {
     const client = productionPluginController()
@@ -260,8 +258,7 @@ describe.skipIf(process.platform === 'win32')(
         root: f.root,
         key: f.key,
         controller: sharedLifecycleWorkspaces(restored),
-        read: async () => ({}),
-      })
+          })
       closers.push(() => bridge.close())
       const again = await connectPluginSettings({
         ...f.clientOptions(f.two),

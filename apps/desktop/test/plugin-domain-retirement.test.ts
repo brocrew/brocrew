@@ -23,7 +23,11 @@ it('has no application-owned domain dispatcher, ledger reader or person proposal
       .flatMap((line, index) => (forbidden.test(line) ? [`${path}:${index + 1}: ${line}`] : [])),
   )
   // Historical declarations are decoded only in package-schema, never executable UI RPC.
-  expect(violations.filter((line) => !line.includes('/plugins/package-schema.ts:'))).toEqual([])
+  expect(
+    violations.filter(
+      (line) => !/\/plugins\/package-schema\.ts:\d+:\s*proposeConfig: valueSchema,/.test(line),
+    ),
+  ).toEqual([])
 })
 
 // These controls exercise actual host installation/state/vault readers with an inert process

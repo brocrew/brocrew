@@ -31,7 +31,6 @@ it('v2 HTTP404 leaves the real v1 Settings install, update, Configure and UI rep
       root: f.root,
       key,
       controller: sharedLifecycleWorkspaces(f.controller),
-      read: async () => null,
     })
   const download = vi.fn(f.opts.download),
     input = {

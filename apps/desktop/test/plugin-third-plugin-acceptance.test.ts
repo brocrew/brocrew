@@ -143,7 +143,7 @@ async function acceptance(
       owner,
       host,
       personKey: '7'.repeat(64),
-      read: async () => null,
+
       lifecycle: {
         root,
         state,
@@ -190,9 +190,6 @@ async function acceptance(
           appVersion: '1.0.0',
           catalogue: signed({ format: 1, entries: [] }),
           projection: local.sink,
-          propose: () => {
-            throw new Error('Fictional generic settings must use MCP.')
-          },
         }),
       )
     }

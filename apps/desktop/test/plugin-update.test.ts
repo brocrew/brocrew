@@ -16,7 +16,7 @@ import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-cl
 import { pluginSha256 } from '../src/main/plugins/package-digests'
 import { sharedLifecycleWorkspaces } from '../src/main/plugins/lifecycle/workspaces'
 import { LifecycleEffects } from '../src/main/plugins/lifecycle/files'
-import { PluginProfileLedger } from '../src/main/plugins/lifecycle/profile-ledger'
+import { PluginProfileLedger as HistoricalLedger } from './fixtures/plugin-delete-parent/profile-ledger'
 
 afterEach(async () => {
   await cleanupLifecycleFixtures()
@@ -80,7 +80,7 @@ describe.skipIf(process.platform === 'win32')(
     it('keeps the login, settings, installation and other workspace; stops before starting the verified replacement', async () => {
       const f = await setup()
       const before = f.state.exportActivation().entries[0]!
-      const ledger = new PluginProfileLedger(f.root)
+      const ledger = new HistoricalLedger(f.root)
       const revision = await ledger.reserve(before.installId, 0, {
         action: 'set-read',
         enabled: true,
@@ -91,8 +91,8 @@ describe.skipIf(process.platform === 'win32')(
       expect((await f.controller.status()).cards[0]).toMatchObject({
         installedVersion: '0.1.0',
         updateVersion: '0.1.3',
-        uninstallDeletesData: true,
       })
+      expect((await f.controller.status()).cards[0]).not.toHaveProperty('uninstallDeletesData')
       f.events.length = 0
       const operationId = randomUUID()
       await f.controller.update(f.handle, 'whatsapp', operationId)
@@ -228,7 +228,6 @@ describe.skipIf(process.platform === 'win32')(
         root: f.root,
         key: 'a'.repeat(64),
         controller: sharedLifecycleWorkspaces(f.controller),
-        read: async () => null,
       })
       const client = await connectPluginSettings({
         path: bridge.path,

@@ -43,7 +43,6 @@ describe('ordinary legacy owner package selection', () => {
       root: f.root,
       key,
       controller: sharedLifecycleWorkspaces(f.controller),
-      read: async () => null,
     })
     const client = await connectPluginSettings({
       path: bridge.path,

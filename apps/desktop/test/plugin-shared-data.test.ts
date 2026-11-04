@@ -13,7 +13,6 @@ import {
   checkedSharedDataOwner,
   pluginOwnerIdentity,
 } from '../src/main/plugins/shared-data'
-import { PluginProfileLedger } from '../src/main/plugins/lifecycle/profile-ledger'
 import { PluginProfileLedger as EarlierProfileLedger } from './fixtures/plugin-delete-parent/profile-ledger'
 import { randomUUID } from 'node:crypto'
 import {
@@ -251,33 +250,31 @@ it('keeps fixture and development-source owners outside the trusted shared launc
   expect(LaunchConfig.safeParse({ ...config, lifecycle: undefined }).success).toBe(false)
 })
 
-it('consumes live commands durably without storing a replayable profile action', async () => {
+it('imports actual historical consumption through the package without retaining or replaying its commands', async () => {
   const f = await ownerFixture()
   await mkdir(f.root, { mode: 0o700 })
-  const ledger = new PluginProfileLedger(f.root),
-    installId = randomUUID()
-  expect(await ledger.reserve(installId, 0, null, 2)).toBe(1)
-  expect(await ledger.revision(installId)).toBe(1)
-  await expect(ledger.reserve(installId, 0, null, 2)).rejects.toThrow()
-  await expect(ledger.revision(installId, false)).rejects.toThrow()
+  const installId = randomUUID()
+  const historical = new EarlierProfileLedger(f.root)
+  await historical.reserve(installId, 0, { action: 'set-enabled', profile: 'fern', enabled: true })
   const { digest } = await import('../src/main/plugins/node-host-files')
-  const checkpoint = JSON.parse(
-    await readFile(
-      join(f.root, 'profile-apply', digest(Buffer.from(installId)), 'checkpoint.json'),
-      'utf8',
-    ),
-  )
-  expect(checkpoint).toMatchObject({ format: 2, revision: 1 })
-  expect(checkpoint).not.toHaveProperty('proposal')
-  expect(await new EarlierProfileLedger(f.root).revision(installId)).toBe(1)
+  const directory = join(f.root, 'profile-apply', digest(Buffer.from(installId)))
+  const floor = join(f.root, 'profile-apply', installId + '.floor')
+  const before = await readFile(join(directory, 'intents', '00000001.json'))
+  const { importLegacyConfiguration } = await vi.importActual<{
+    importLegacyConfiguration(home: string, input: { directory: string; floor: string }): void
+  }>('../../../plugins/chrome/src/legacyConfiguration')
+  const home = join(f.root, 'host', 'data', 'chrome')
+  await mkdir(home, { recursive: true })
+  importLegacyConfiguration(home, { directory, floor })
+  const marker = JSON.parse(await readFile(join(home, 'legacy-configuration-import.json'), 'utf8'))
+  expect(marker).toMatchObject({ consumed: true, revision: 1, installId })
+  expect(marker).not.toHaveProperty('proposal')
+  expect(await readFile(join(directory, 'intents', '00000001.json'))).toEqual(before)
+  expect(await historical.revision(installId)).toBe(1)
+  importLegacyConfiguration(home, { directory, floor })
   expect(
-    await ledger.reserve(
-      installId,
-      1,
-      { action: 'set-enabled', profile: 'fern', enabled: true },
-      2,
-    ),
-  ).toBe(2)
+    JSON.parse(await readFile(join(home, 'legacy-configuration-import.json'), 'utf8')),
+  ).toEqual(marker)
 })
 
 it('gives all default-root workspaces one stable owner identity and shared switch scope', async () => {

@@ -152,7 +152,6 @@ describe.skipIf(process.platform === 'win32')('independent owned contributions',
       root: f.root,
       key: 'b'.repeat(64),
       controller,
-      read: async () => ({}),
     })
     closers.push(() => bridge.close())
     const client = await connectPluginSettings({
@@ -195,7 +194,6 @@ describe.skipIf(process.platform === 'win32')('independent owned contributions',
       root: f.root,
       key: 'c'.repeat(64),
       controller: f.controller,
-      read: async () => ({}),
     })
     closers.push(() => bridge.close())
     const client = await connectPluginSettings({

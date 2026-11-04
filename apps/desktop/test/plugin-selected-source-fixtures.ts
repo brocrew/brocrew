@@ -31,7 +31,6 @@ export async function selectedSourceFixture(installed = false) {
     root: f.root,
     key,
     controller,
-    read: async () => null,
   })
   const clients: Awaited<ReturnType<typeof connectPluginSettings>>[] = []
   const download = vi.fn(async () => next.archive)

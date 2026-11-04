@@ -74,9 +74,6 @@ async function setup() {
     root: f.root,
     key: 'c'.repeat(64),
     controller,
-    read: async () => {
-      throw new Error('Legacy reads must not be used by a generic page.')
-    },
   })
   closes.push(() => service.close())
   const first = projection().sink,
@@ -91,9 +88,6 @@ async function setup() {
       appVersion: '1.0.0',
       catalogue: f.opts.catalogue,
       projection: sink,
-      propose: () => {
-        throw new Error('Generic pages do not propose app configuration.')
-      },
     })
     const close = client.close.bind(client)
     let closed = false

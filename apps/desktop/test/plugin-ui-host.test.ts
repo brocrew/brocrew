@@ -2,9 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
 import { resolve, join, relative } from 'node:path'
 import ts from 'typescript'
-import { genericUiFixture, uiFixture } from './plugin-ui-fixtures'
-import type { PluginUiPeer } from '../src/main/plugins/ui/rpc'
-import { PLUGIN_UI_RPC, PLUGIN_UI_CHANNEL } from '../src/shared/plugin-ui'
+import { genericUiFixture } from './plugin-ui-fixtures'
+import type { PluginPageTools } from '../src/main/plugins/ui/tool-rpc'
+import { PLUGIN_UI_RPC } from '../src/shared/plugin-ui'
 import { PLUGIN_PAGE_CHANNEL } from '../src/shared/plugin-page'
 import type { PluginJsonObject, PluginToolCallResult } from '../src/shared/plugin-contract'
 import { McpError } from '@modelcontextprotocol/sdk/types.js'
@@ -105,30 +105,32 @@ afterEach(async () => {
   for (const view of owned.splice(0)) await view.close()
   vi.clearAllMocks()
 })
-async function host(overrideRead?: PluginUiPeer['read']) {
-  const { verified, binding } = uiFixture(),
-    read = overrideRead ?? vi.fn(async () => ({ loaves: 2 })),
-    proposePeer = vi.fn(async () => ({ resources: [] })),
+async function host(overrideRead?: ConstructorParameters<typeof PluginPageTools>[0]['callTool']) {
+  const { verified, binding } = genericUiFixture(),
+    read =
+      overrideRead ??
+      vi.fn(async () => ({
+        status: 'result' as const,
+        result: { content: [], structuredContent: { loaves: 2 } },
+      })),
     detached = vi.fn()
   let valid = true,
     invalidate = () => {}
   const view = await openPluginConfigurationView({
     verified,
     binding,
-    peer: { read, subscribe: async () => () => {}, proposeConfig: proposePeer },
+    tools: { current: () => valid, callTool: read },
     current: () => valid,
     onInvalidate: (revoke) => {
       invalidate = revoke
       return () => {}
     },
-    propose: () => {},
     detached,
   })
   owned.push(view)
   return {
     view,
     read,
-    proposePeer,
     detached,
     contents: fake.contents.at(-1)!,
     session: fake.sessions.at(-1)!,
@@ -296,16 +298,17 @@ describe('the actual isolated host wiring', () => {
       call = handler(),
       generation = String(f.contents.preferences.additionalArguments).split('=')[1]
     const packet = {
-      channel: PLUGIN_UI_CHANNEL,
-      method: 'read',
+      channel: PLUGIN_PAGE_CHANNEL,
+      method: 'callTool',
       requestId: 'one',
-      payload: {},
-      configRevision: 0,
+      params: { tool: 'bakery_read', arguments: {} },
     }
     const event = { sender: f.contents, senderFrame: f.contents.mainFrame }
-    expect(await call(event, { generation, packet })).toEqual({ ok: true, data: { loaves: 2 } })
-    packet.method = 'proposeConfig'
-    packet.payload = { loaves: 1 }
+    expect(await call(event, { generation, packet })).toEqual({
+      ok: true,
+      data: { status: 'result', result: { content: [], structuredContent: { loaves: 2 } } },
+    })
+    packet.params.tool = 'bakery_save'
     for (const senderFrame of [null, { ...f.contents.mainFrame }])
       expect(await call({ ...event, senderFrame }, { generation, packet })).toMatchObject({
         ok: false,
@@ -315,38 +318,38 @@ describe('the actual isolated host wiring', () => {
     f.contents.mainFrame.url = 'https://example.invalid/'
     expect(await call(event, { generation, packet })).toMatchObject({ ok: false })
     expect(f.read).toHaveBeenCalledTimes(1)
-    expect(f.proposePeer).not.toHaveBeenCalled()
     f.invalidate()
     expect(await call(event, { generation, packet })).toMatchObject({ ok: false })
   })
-  it('returns a paced successful refresh through the registered main handler after Apply', async () => {
-    vi.useFakeTimers()
-    const clock = vi.spyOn(performance, 'now').mockReturnValue(0)
-    try {
-      const f = await host(),
-        call = handler()
-      const generation = String(f.contents.preferences.additionalArguments).split('=')[1]
-      const event = { sender: f.contents, senderFrame: f.contents.mainFrame }
-      const request = (method: string, requestId: string, payload: unknown) =>
-        call(event, {
-          generation,
-          packet: { channel: PLUGIN_UI_CHANNEL, method, requestId, payload, configRevision: 0 },
-        })
-      expect(await request('read', 'before', {})).toEqual({ ok: true, data: { loaves: 2 } })
-      expect(await request('proposeConfig', 'apply', { loaves: 3 })).toEqual({
-        ok: true,
-        data: { proposed: true },
+  it('reads current package state after a save through the generic registered handler', async () => {
+    let loaves = 2
+    const f = await host(async (tool, args) => {
+      if (tool === 'bakery_save') loaves = Number(args.loaves)
+      return { status: 'result', result: { content: [], structuredContent: { loaves } } }
+    })
+    const call = handler()
+    const generation = String(f.contents.preferences.additionalArguments).split('=')[1]
+    const event = { sender: f.contents, senderFrame: f.contents.mainFrame }
+    const request = (tool: string, requestId: string, args: PluginJsonObject = {}) =>
+      call(event, {
+        generation,
+        packet: {
+          channel: PLUGIN_PAGE_CHANNEL,
+          method: 'callTool',
+          requestId,
+          params: { tool, arguments: args },
+        },
       })
-      const refreshed = request('read', 'after', {})
-      await vi.advanceTimersByTimeAsync(0)
-      expect(f.read).toHaveBeenCalledOnce()
-      clock.mockReturnValue(1000)
-      await vi.advanceTimersByTimeAsync(1000)
-      expect(await refreshed).toEqual({ ok: true, data: { loaves: 2 } })
-    } finally {
-      clock.mockRestore()
-      vi.useRealTimers()
-    }
+    expect(await request('bakery_read', 'before')).toMatchObject({
+      ok: true,
+      data: { result: { structuredContent: { loaves: 2 } } },
+    })
+    expect(await request('bakery_save', 'save', { loaves: 3 })).toMatchObject({ ok: true })
+    expect(await request('bakery_read', 'after')).toMatchObject({
+      ok: true,
+      data: { result: { structuredContent: { loaves: 3 } } },
+    })
+    expect(f.read).toHaveBeenCalledTimes(3)
   })
   it('allows generic backend fetch and WebSocket requests only for the current page lifetime', async () => {
     const { verified, binding } = genericUiFixture()
@@ -438,7 +441,7 @@ describe('the actual isolated host wiring', () => {
     let changeDocument = () => {}
     const f = await host(async () => {
       changeDocument()
-      return { loaves: 2 }
+      return { status: 'result', result: { content: [], structuredContent: { loaves: 2 } } }
     })
     changeDocument = () => {
       f.contents.mainFrame.url = 'https://example.invalid/replaced'
@@ -449,11 +452,10 @@ describe('the actual isolated host wiring', () => {
       {
         generation,
         packet: {
-          channel: PLUGIN_UI_CHANNEL,
-          method: 'read',
+          channel: PLUGIN_PAGE_CHANNEL,
+          method: 'callTool',
           requestId: 'changed',
-          payload: {},
-          configRevision: 0,
+          params: { tool: 'bakery_read', arguments: {} },
         },
       },
     )
@@ -467,7 +469,11 @@ describe('the actual isolated host wiring', () => {
     const f = await host((_payload, _revision, _binding, seen) => {
       signal = seen
       return new Promise((resolve) => {
-        release = () => resolve({ late: 'fictional-private-value' })
+        release = () =>
+          resolve({
+            status: 'result',
+            result: { content: [], structuredContent: { late: 'fictional-private-value' } },
+          })
       })
     })
     const generation = String(f.contents.preferences.additionalArguments).split('=')[1]
@@ -477,11 +483,10 @@ describe('the actual isolated host wiring', () => {
       {
         generation,
         packet: {
-          channel: PLUGIN_UI_CHANNEL,
-          method: 'read',
+          channel: PLUGIN_PAGE_CHANNEL,
+          method: 'callTool',
           requestId: 'pending',
-          payload: {},
-          configRevision: 0,
+          params: { tool: 'bakery_read', arguments: {} },
         },
       },
     )

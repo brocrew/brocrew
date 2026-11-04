@@ -44,7 +44,6 @@ it.each([1, 2] as const)(
         root: f.root,
         key,
         controller,
-        read: async () => null,
       })
     closers.push(() => bridge.close())
     const channel = await connectPersonPluginControl({

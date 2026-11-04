@@ -120,7 +120,6 @@ describe('ordinary local settings channel', () => {
       root,
       key: 'fictional-instance',
       controller,
-      read: async () => null,
     })
     const channel = await connectPersonPluginControl({
       path: service.path,

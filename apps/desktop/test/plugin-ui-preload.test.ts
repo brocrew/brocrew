@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { PLUGIN_UI_CHANNEL, PLUGIN_UI_EVENT, PLUGIN_UI_RPC } from '../src/shared/plugin-ui'
+import { PLUGIN_UI_RPC } from '../src/shared/plugin-ui'
 import { PLUGIN_PAGE_CHANNEL } from '../src/shared/plugin-page'
 const renderer = vi.hoisted(() => ({
   invoke: vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => ({
@@ -29,11 +29,10 @@ function page() {
   return value
 }
 const packet = (requestId = 'one') => ({
-  channel: PLUGIN_UI_CHANNEL,
+  channel: PLUGIN_PAGE_CHANNEL,
   requestId,
-  method: 'read',
-  payload: {},
-  configRevision: 0,
+  method: 'callTool',
+  params: { tool: 'bakery_read', arguments: {} },
 })
 beforeEach(() => {
   vi.resetModules()
@@ -64,15 +63,10 @@ it('the actual preload exports no API, accepts only its own source/origin and us
   await deliver({ source: window, origin, data: packet() })
   expect(renderer.invoke).toHaveBeenCalledWith(PLUGIN_UI_RPC, { generation, packet: packet() })
   expect(window.postMessage).toHaveBeenCalledWith(
-    { channel: PLUGIN_UI_CHANNEL, requestId: 'one', ok: true, data: { loaves: 2 } },
+    { channel: PLUGIN_PAGE_CHANNEL, requestId: 'one', ok: true, data: { loaves: 2 } },
     origin,
   )
-  expect(renderer.on.mock.calls[0]![0]).toBe(PLUGIN_UI_EVENT)
-  const snapshot = renderer.on.mock.calls[0]![1]
-  snapshot({ secretElectronEvent: true }, 'stale', { subscriptionId: 'x', data: {} })
-  expect(window.postMessage).toHaveBeenCalledTimes(1)
-  snapshot({ secretElectronEvent: true }, generation, { subscriptionId: 'x', data: {} })
-  expect(JSON.stringify(window.postMessage.mock.calls)).not.toContain('secretElectronEvent')
+  expect(renderer.on).not.toHaveBeenCalled()
 })
 it('installs no bridge in a child frame', async () => {
   const window = page()
@@ -82,7 +76,7 @@ it('installs no bridge in a child frame', async () => {
   expect(window.addEventListener).not.toHaveBeenCalled()
   expect(renderer.on).not.toHaveBeenCalled()
 })
-it('drops duplicate and excess pending DOM packets before IPC', async () => {
+it('drops duplicate DOM request IDs before IPC while retaining generic concurrency', async () => {
   const window = page()
   vi.stubGlobal('window', window)
   const releases: ((value: { ok: boolean; data: { loaves: number } }) => void)[] = []
@@ -92,7 +86,7 @@ it('drops duplicate and excess pending DOM packets before IPC', async () => {
   const waits = ['a', 'b', 'c', 'd', 'e', 'a'].map((id) =>
     deliver({ source: window, origin, data: packet(id) }),
   )
-  expect(renderer.invoke).toHaveBeenCalledTimes(4)
+  expect(renderer.invoke).toHaveBeenCalledTimes(5)
   for (const release of releases) release({ ok: true, data: { loaves: 2 } })
   await Promise.all(waits)
 })
