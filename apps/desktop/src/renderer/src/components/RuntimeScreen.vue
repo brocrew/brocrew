@@ -446,12 +446,6 @@ const pane = ref<InstanceType<typeof ConversationPane> | null>(null)
 const { place, activeId, active, surface, view, showConversation } = useSurface(store)
 const settingsTab = ref<SettingsTab>('providers')
 let stopPluginSettings = () => {}
-onMounted(() => {
-  stopPluginSettings = listenForPluginSettings(window.api?.pluginHost, () =>
-    openSettings('plugins'),
-  )
-})
-onUnmounted(() => stopPluginSettings())
 const setupProvider = ref<Provider | null>(null)
 function openProviderSettings(provider?: Provider): void {
   setupProvider.value = provider ?? null
@@ -3358,6 +3352,9 @@ let stopProviderFacts: (() => void) | null = null
  */
 let stopHearingStates: (() => void) | null = null
 onMounted(() => {
+  stopPluginSettings = listenForPluginSettings(window.api?.pluginHost, () =>
+    openSettings('plugins'),
+  )
   if (typeof window.api.runtime.onProvidersChanged === 'function')
     stopProviderFacts = window.api.runtime.onProvidersChanged((message) => {
       if (message.what === 'login' || message.what === 'key')
@@ -3476,6 +3473,7 @@ onUnmounted(() => {
   // ⛔ **534 · unsubscribed like every interval below.** The preload holds the listener on
   // `ipcRenderer`, which outlives this component under HMR, so a screen that did not let go would
   // leave a second listener re-reading through a store the new one has replaced.
+  stopPluginSettings()
   stopListening?.()
   stopProviderFacts?.()
   stopProviderFacts = null

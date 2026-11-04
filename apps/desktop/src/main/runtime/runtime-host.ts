@@ -26650,7 +26650,13 @@ export class RuntimeHost implements LiveHost {
         titleContext = await this.preparePluginTitles(session, drives ?? handing?.piece ?? null, [
           { text, from: this.originOf(by) },
         ])
-        if (this.itStoppedUnder(session)) throw new StoppedBeforeSend()
+        if (this.itStoppedUnder(session)) {
+          titleContext = ''
+          if (how.onAStop === 'start-it-again') {
+            if (session.moveRequestHandoff === moveHandoff) session.moveRequestRowPending = false
+            return this.aDeliveryAStopCaught(sessionId, text, by, attachments, how)
+          }
+        }
       }
       if (this.aCallersWordsNoLongerGoStraightIn(sessionId, by)) throw new TurnInProgress()
       await this.handToProvider(
@@ -27634,7 +27640,10 @@ export class RuntimeHost implements LiveHost {
         titleContext = await this.preparePluginTitles(session, null, [
           { text, from: this.originOf(by) },
         ])
-        if (this.itStoppedUnder(session)) throw new StoppedBeforeSend()
+        if (this.itStoppedUnder(session)) {
+          if (session.moveRequestHandoff === moveHandoff) session.moveRequestRowPending = false
+          return this.send(session.id, text, by, attachments)
+        }
       }
       await this.handToProvider(
         session,
@@ -33036,7 +33045,7 @@ export class RuntimeHost implements LiveHost {
             [...namedPieces][0] ?? null,
             sending.map(({ queued, words }) => ({ text: words, from: queued.origin ?? null })),
           )
-          if (this.itStoppedUnder(session)) throw new StoppedBeforeSend()
+          if (this.itStoppedUnder(session)) return false
         }
         for (const { queued, handed } of sending) {
           if (queued.authorship.movedFrom === undefined) continue
