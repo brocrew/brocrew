@@ -45,6 +45,7 @@ export function genericUiFixture(
   options: Pick<GenericPluginManifest, 'ui' | 'hooks'> & {
     version?: string
     target?: PluginTarget
+    dataOnRemove?: 'keep' | 'remove'
   } = {},
 ) {
   const target: PluginTarget = options.target ?? { os: 'linux', cpu: 'x64' }
@@ -77,7 +78,7 @@ export function genericUiFixture(
     mcp: { transport: 'stdio' },
     tools: { source: 'mcp', inventory: 'tools.json' },
     settings: { page: { entry: 'ui/index.html', assets: ['ui/index.html', 'ui/app.js'] } },
-    lifecycle: { stop: { signal: 'SIGTERM' }, dataOnRemove: 'keep' },
+    lifecycle: { stop: { signal: 'SIGTERM' }, dataOnRemove: options.dataOnRemove ?? 'keep' },
     data: { schema: 1 },
     ...(options.ui ? { ui: options.ui } : {}),
     ...(options.hooks ? { hooks: options.hooks } : {}),

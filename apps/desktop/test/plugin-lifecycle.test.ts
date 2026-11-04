@@ -572,7 +572,6 @@ describe.skipIf(process.platform === 'win32')(
           root: f.root,
           key,
           controller: f.controller,
-          read: async () => null,
         })
         let client: Awaited<ReturnType<typeof connectPluginSettings>> | undefined
         try {
@@ -585,7 +584,6 @@ describe.skipIf(process.platform === 'win32')(
             catalogue: f.opts.catalogue,
             download: f.opts.download,
             projection: projection().sink,
-            propose: () => {},
           })
           expect((await client.catalogue())[0]).not.toHaveProperty('priorityClamped')
           await client.install('chrome')
@@ -608,7 +606,6 @@ describe.skipIf(process.platform === 'win32')(
         root: f.root,
         key,
         controller: f.controller,
-        read: async () => null,
       })
       let client: Awaited<ReturnType<typeof connectPluginSettings>> | undefined
       const held = deferred<void>()
@@ -622,7 +619,6 @@ describe.skipIf(process.platform === 'win32')(
           catalogue: f.opts.catalogue,
           download: f.opts.download,
           projection: projection().sink,
-          propose: () => {},
         })
         // An Install of over 30 s holds the lock while this list waits behind it.
         const holding = f.state.withExclusive(() => held.promise)
@@ -647,7 +643,6 @@ describe.skipIf(process.platform === 'win32')(
         root: f.root,
         key,
         controller: sharedLifecycleWorkspaces(f.controller),
-        read: async () => null,
       })
       const workspaceId = randomUUID()
       const consumer = () =>
@@ -679,7 +674,6 @@ describe.skipIf(process.platform === 'win32')(
         root: f.root,
         key,
         controller: sharedLifecycleWorkspaces(f.controller),
-        read: async () => null,
       })
       let refuses = false
       const consumer = await connectPersonPluginControl({
@@ -706,7 +700,6 @@ describe.skipIf(process.platform === 'win32')(
         root: f.root,
         key: 'a'.repeat(64),
         controller: f.controller,
-        read: async () => null,
       })
       const wrong = await connectPersonPluginControl({
         path: bridge.path,
@@ -782,7 +775,6 @@ describe.skipIf(process.platform === 'win32')(
         root: f.root,
         key,
         controller: f.controller,
-        read: async () => null,
       })
       const socket = createConnection(bridge.path)
       try {
@@ -880,8 +872,8 @@ it.skipIf(process.platform === 'win32')(
   'negotiates tool health through Settings without adding fields to older list replies',
   async () => {
     let unavailable = false
-    const f = await fixture({ toolsUnavailable: () => unavailable })
-    await f.controller.install(f.handle, 'chrome')
+    const f = await fixture({ toolsUnavailable: () => unavailable }, false, 'fictional-orchard')
+    await f.controller.install(f.handle, 'fictional-orchard')
     const key = 'b'.repeat(64)
     const restartPlugin = vi.fn(async () => {
       unavailable = false
@@ -890,7 +882,7 @@ it.skipIf(process.platform === 'win32')(
       root: f.root,
       key,
       controller: sharedLifecycleWorkspaces(f.controller),
-      read: async () => null,
+
       restartPlugin,
     })
     const client = await connectPluginSettings({
@@ -902,7 +894,6 @@ it.skipIf(process.platform === 'win32')(
       catalogue: f.opts.catalogue,
       download: f.opts.download,
       projection: projection().sink,
-      propose() {},
     })
     const legacy = await connectPersonPluginControl({
       path: service.path,
@@ -929,10 +920,12 @@ it.skipIf(process.platform === 'win32')(
       expect(
         ((await legacy.call({ kind: 'list-v2' })) as Record<string, unknown>[])[0],
       ).not.toHaveProperty('canRestart')
-      expect(Command.safeParse({ kind: 'restart-plugin', pluginId: 'chrome' }).success).toBe(false)
+      expect(
+        Command.safeParse({ kind: 'restart-plugin', pluginId: 'fictional-orchard' }).success,
+      ).toBe(false)
       expect(client.restartPlugin).toBeTypeOf('function')
-      await client.restartPlugin!('chrome')
-      expect(restartPlugin).toHaveBeenCalledWith('chrome')
+      await client.restartPlugin!('fictional-orchard')
+      expect(restartPlugin).toHaveBeenCalledWith('fictional-orchard')
       expect(
         ((await legacy.call({ kind: 'list' })) as Record<string, unknown>[])[0],
       ).not.toHaveProperty('toolsUnavailable')

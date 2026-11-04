@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { mkdir, writeFile, readdir, readFile } from 'node:fs/promises'
+import { mkdir, writeFile, readdir, readFile, unlink } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 
@@ -216,3 +216,51 @@ it('refuses retired person methods and old declarations without reading or chang
   expect(f.state.exportActivation().entries[0]).toEqual(active)
   await opaque.unchanged()
 })
+
+import { genericUiFixture } from './plugin-ui-fixtures'
+import { deferred } from './plugin-lifecycle-fixtures'
+it.each(['keep', 'remove'] as const)(
+  'uses the selected verified package removal policy %s after its process has stopped',
+  async (policy) => {
+    const f = await fixture({ appVersion: '1.0.0' }, false, 'fictional-unused')
+    const exit = deferred<void>()
+    const start = f.opts.runtime.start
+    f.opts.runtime.start = async (spec) => {
+      const run = await start(spec)
+      return {
+        ...run,
+        exited: exit.promise,
+        async stop() {
+          await run.stop()
+          exit.resolve()
+        },
+      }
+    }
+    const pkg = genericUiFixture({ target: f.opts.target, dataOnRemove: policy })
+    const source = join(f.parent, 'fictional-generic.tar')
+    await writeFile(source, pkg.archive)
+    await f.controller.installPackage(
+      f.handle,
+      { source, sha256: pkg.binding.releaseDigest, bytes: pkg.archive.length },
+      'install',
+    )
+    await f.controller.drain()
+    const starts = f.starts()
+    const state = reopenLifecycleFixture(f)
+    const stopped = await PluginLifecycleController.open({ ...f.opts, state })
+    expect(
+      (await stopped.status()).cards.find((card) => card.id === pkg.binding.pluginId),
+    ).toMatchObject({
+      installed: true,
+      uninstallDeletesData: policy === 'remove',
+    })
+    expect(f.starts()).toBe(starts)
+    // An unavailable archive is unknown metadata, not permission to promise preservation.
+    await unlink(join(f.root, 'package-vault', pkg.binding.releaseDigest, 'archive'))
+    const unreadable = await PluginLifecycleController.open({ ...f.opts, state })
+    expect(
+      (await unreadable.status()).cards.find((card) => card.id === pkg.binding.pluginId),
+    ).not.toHaveProperty('uninstallDeletesData')
+    expect(f.starts()).toBe(starts)
+  },
+)

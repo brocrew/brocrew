@@ -136,3 +136,24 @@ it('normal Settings accepts long card metadata and declared display resources wi
     (await f.call({ kind: 'inspect', package: ref })).inspection.details.permissions.resources,
   ).toEqual(resources)
 })
+
+it.each([
+  { state: 'Running' as const, toolsUnavailable: true as const },
+  { state: 'Unavailable' as const },
+])(
+  'lists a non-Chrome negotiated restart card in state $state without refusing the whole list',
+  async (health) => {
+    const f = setup()
+    f.cards[0] = {
+      id: 'fictional-orchard',
+      name: 'Fictional orchard',
+      installed: true,
+      canRestart: true,
+      ...health,
+    }
+    expect(await f.call({ kind: 'list' })).toMatchObject({
+      ok: true,
+      cards: [{ id: 'fictional-orchard', canRestart: true }],
+    })
+  },
+)
