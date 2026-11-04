@@ -8,6 +8,12 @@ import { PluginUiAssets, PLUGIN_SCHEME } from '../../src/main/plugins/ui/assets'
 import { installPluginUiRpc, openPluginConfigurationView } from '../../src/main/plugins/ui/host'
 import { genericUiFixture } from '../plugin-ui-fixtures'
 
+const fail = (error: unknown) => {
+  console.error(error)
+  app.exit(1)
+}
+process.on('uncaughtException', fail)
+process.on('unhandledRejection', fail)
 app.setPath('userData', process.argv.at(-1)!)
 protocol.registerSchemesAsPrivileged([PLUGIN_SCHEME])
 app.on('window-all-closed', () => {})
@@ -168,8 +174,5 @@ void run().then(
     clearTimeout(watchdog)
     process.stdout.write(JSON.stringify(result) + '\n', () => app.exit(0))
   },
-  (error: unknown) => {
-    console.error(error)
-    app.exit(1)
-  },
+  fail,
 )
