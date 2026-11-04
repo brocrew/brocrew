@@ -226,7 +226,9 @@ export function createSharedProfileStore(
     throw new ProfileStoreError('Shared Chrome workspace identity is invalid.')
   privateFolder(o.shared, o.shared)
   const profilesDir = privateFolder(o.shared, path.join(o.shared, 'profiles'), true)
-  // Bounded to one metadata read/transaction. A later API call re-observes the native UUID.
+  // Nested synchronous reads share one native observation per device. Every outer public
+  // operation starts and ends empty; lease callbacks outside an operation read afresh.
+  let operationDepth = 0
   const volumes = new Map<string, string | undefined>()
   const fileIdentity = (p: string): FileIdentity | undefined => {
     const s = directoryStat(p)
@@ -266,7 +268,7 @@ export function createSharedProfileStore(
   const file = path.join(o.shared, 'registry.json')
   const now = () => (o.now?.() ?? new Date()).toISOString()
   const read = (): Registry => {
-    volumes.clear()
+    if (operationDepth === 0) volumes.clear()
     const r = readJson<Registry>(file, () => ({
       format: 1,
       revision: 0,
@@ -811,6 +813,24 @@ export function createSharedProfileStore(
     },
   }
   if (o.migrationApproved && read().format === 1) migrate()
+  for (const api of [shared, facade]) {
+    for (const key of Object.keys(api)) {
+      const method = Reflect.get(api, key)
+      if (typeof method !== 'function') continue
+      Reflect.set(api, key, function (this: unknown, ...args: unknown[]) {
+        const outer = operationDepth === 0
+        if (outer) volumes.clear()
+        operationDepth++
+        try {
+          return Reflect.apply(method, this, args)
+        } finally {
+          operationDepth--
+          if (outer) volumes.clear()
+        }
+      })
+    }
+  }
+  volumes.clear()
   return facade
   function rebindVolumes(r: Registry) {
     const eligible = (saved: FileIdentity, current: FileIdentity | undefined) =>

@@ -271,3 +271,30 @@ it.each(['private-mode', 'anchored-volume', 'different-disk-home'])(
     )
   },
 )
+
+it('re-observes a changed UUID between public operations with unchanged device and inode', () => {
+  const f = fixture()
+  const store = f.open()
+  expect(store.get('fern')?.enabled).toBe(true)
+  expect(store.shared.authorization('fern')).toBeTruthy()
+  const before = JSON.stringify(f.read().profiles[0])
+  f.volume('apfs:22222222-2222-4222-8222-222222222222')
+  expect(store.get('fern')?.enabled).toBe(false)
+  expect(() => store.shared.authorization('fern')).toThrow(/reserved/)
+  expect(() => store.shared.acquire('fern')).toThrow(/reserved/)
+  expect(JSON.stringify(f.read().profiles[0])).toBe(before)
+  f.volume('apfs:11111111-1111-4111-8111-111111111111')
+  expect(store.get('fern')?.enabled).toBe(true)
+})
+it('clears volume observations when a synchronous disk operation throws', () => {
+  const f = fixture()
+  const store = f.open()
+  expect(() =>
+    store.shared.withDiskAccess('fern', false, () => {
+      expect(store.get('fern')?.enabled).toBe(true)
+      throw new Error('fictional failed callback')
+    }),
+  ).toThrow('fictional failed callback')
+  f.volume('apfs:22222222-2222-4222-8222-222222222222')
+  expect(() => store.dirOf('fern')).toThrow(/reserved/)
+})
