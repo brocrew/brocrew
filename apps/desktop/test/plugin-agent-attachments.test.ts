@@ -83,7 +83,7 @@ async function live(
     firstExit?: Promise<void>
     firstStop?: () => Promise<void>
     now?: () => number
-    recoverChromeHost?: (
+    recoverHost?: (
       view: ReturnType<ReturnType<typeof sharedLifecycleWorkspaces>['agentAttachments']>[number],
       stopped: () => void,
     ) => Promise<void>
@@ -94,7 +94,7 @@ async function live(
   const f = await fixture({
     deny: (id) => consumer.bridge?.deny(id),
     toolsUnavailable: (id) => consumer.bridge?.toolsUnavailable?.(id) ?? false,
-    onChromeHostExit: (runId) => consumer.bridge?.hostExited?.(runId),
+    onHostExit: (id, runId) => consumer.bridge?.hostExited?.(id, runId),
   })
   if (firstExit || firstStop) {
     const start = f.opts.runtime.start.bind(f.opts.runtime)
@@ -184,10 +184,10 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
 
       const f = await live({
         firstExit: exited.promise,
-        recoverChromeHost: (view, stopped) => restart(view.runId, stopped),
+        recoverHost: (view, stopped) => restart(view.runId, stopped),
       })
       const restart = (runId: string, stopped: () => void) =>
-        f.controller.restartChromeTools(runId, stopped)
+        f.controller.restartPluginTools('chrome', runId, stopped)
       if (mode === 'active') {
         const original = await f.binding()
         f.binding.mockResolvedValueOnce({
@@ -237,10 +237,10 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
     const f = await live({
       firstExit: exited.promise,
       firstStop: () => stopping.promise,
-      recoverChromeHost: (view, stopped) => restart(view.runId, stopped),
+      recoverHost: (view, stopped) => restart(view.runId, stopped),
     })
     const restart = (runId: string, stopped: () => void) =>
-      f.controller.restartChromeTools(runId, stopped)
+      f.controller.restartPluginTools('chrome', runId, stopped)
     const original = await f.binding()
     let fail!: (error: Error) => void
     f.binding.mockResolvedValueOnce({
@@ -266,7 +266,7 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
       fail(new Error('fictional negative completion proof'))
       expect(await pending).toMatchObject({ isError: true })
       await vi.waitFor(
-        () => expect(f.diagnostic).toHaveBeenCalledWith('chrome', 'recovery-host-unproven'),
+        () => expect(f.diagnostic).toHaveBeenCalledWith('chrome', 'recovery-restart-failed'),
         { timeout: 22000 },
       )
       expect(f.starts()).toBe(1)
@@ -291,10 +291,10 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
 
     const f = await live({
       firstExit: exited,
-      recoverChromeHost: (view, stopped) => restart(view.runId, stopped),
+      recoverHost: (view, stopped) => restart(view.runId, stopped),
     })
     const restart = (runId: string, stopped: () => void) =>
-      f.controller.restartChromeTools(runId, stopped)
+      f.controller.restartPluginTools('chrome', runId, stopped)
     const owner = lease(),
       req = request(f.local.sink.workspaceId)
     await f.bridge.routes(owner, req)
@@ -303,11 +303,11 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
       expect((await f.controller.status()).cards[0]?.state).toBe('Unavailable'),
     )
     f.failStop()
-    await expect(f.bridge.restartChrome()).rejects.toThrow()
+    await expect(f.bridge.restartPlugin('chrome')).rejects.toThrow()
     expect(f.starts()).toBe(1)
     expect(f.events.filter((event) => event === 'stop')).toHaveLength(1)
     f.failStop(false)
-    await f.bridge.restartChrome()
+    await f.bridge.restartPlugin('chrome')
     expect(f.starts()).toBe(2)
     const [after] = await f.bridge.routes(owner, req)
     expect(await (await connected(after!)).callTool({ name: 'echo', arguments: {} })).toMatchObject(
@@ -318,16 +318,16 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
     const exited = deferred<void>()
     const f = await live({
       firstExit: exited.promise,
-      recoverChromeHost: (view, stopped) => restart(view.runId, stopped),
+      recoverHost: (view, stopped) => restart(view.runId, stopped),
     })
     const restart = (runId: string, stopped: () => void) =>
-      f.controller.restartChromeTools(runId, stopped)
+      f.controller.restartPluginTools('chrome', runId, stopped)
     const owner = lease(),
       req = request(f.local.sink.workspaceId)
     const [before] = await f.bridge.routes(owner, req)
     const old = f.controller.agentAttachments(f.local.sink.workspaceId)[0]!
-    f.bridge.hostExited(randomUUID())
-    for (let i = 0; i < 5; i++) f.bridge.hostExited(old.runId)
+    f.bridge.hostExited('chrome', randomUUID())
+    for (let i = 0; i < 5; i++) f.bridge.hostExited('chrome', old.runId)
     await Promise.resolve()
     expect(f.starts()).toBe(1)
     expect(f.events).not.toContain('stop')
@@ -337,7 +337,7 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
     ).toMatchObject({ content: [{ text: 'fictional fern' }] })
     exited.resolve()
     await vi.waitFor(() => expect(f.starts()).toBe(2))
-    for (let i = 0; i < 5; i++) f.bridge.hostExited(old.runId)
+    for (let i = 0; i < 5; i++) f.bridge.hostExited('chrome', old.runId)
     const [after] = await f.bridge.routes(owner, req)
     expect(after!.capability).not.toBe(before!.capability)
     expect(await (await connected(after!)).callTool({ name: 'echo', arguments: {} })).toMatchObject(
@@ -350,9 +350,9 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
     async (action) => {
       const exited = deferred<void>()
       const recover = vi.fn((view, stopped) => restart(view.runId, stopped))
-      const f = await live({ firstExit: exited.promise, recoverChromeHost: recover })
+      const f = await live({ firstExit: exited.promise, recoverHost: recover })
       const restart = (runId: string, stopped: () => void) =>
-        f.controller.restartChromeTools(runId, stopped)
+        f.controller.restartPluginTools('chrome', runId, stopped)
       const owner = lease(),
         req = request(f.local.sink.workspaceId)
       await f.bridge.routes(owner, req)
@@ -362,22 +362,22 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
       else draining = f.controller.drain()
       exited.resolve()
       await draining
-      f.bridge.hostExited(old.runId)
+      f.bridge.hostExited('chrome', old.runId)
       // Neither a wakeup nor a direct trusted request can restore an installation or drain.
-      await expect(f.controller.restartChromeTools(old.runId, vi.fn())).rejects.toThrow()
+      await expect(f.controller.restartPluginTools('chrome', old.runId, vi.fn())).rejects.toThrow()
       expect(f.starts()).toBe(1)
       expect(await f.bridge.routes(owner, req)).toEqual([])
       // An already coalesced broker retirement may settle, but cannot start another host.
-      await f.bridge.restartChrome().catch(() => undefined)
+      await f.bridge.restartPlugin('chrome').catch(() => undefined)
       expect(f.starts()).toBe(1)
     },
   )
   it.each(['claude', 'codex'] as const)(
     '%s keeps its conversation identity and calls the real replacement route on its next sent turn',
     async (provider) => {
-      const f = await live({ recoverChromeHost: (view, stopped) => restart(view.runId, stopped) })
+      const f = await live({ recoverHost: (view, stopped) => restart(view.runId, stopped) })
       const restart = (runId: string, stopped: () => void) =>
-        f.controller.restartChromeTools(runId, stopped)
+        f.controller.restartPluginTools('chrome', runId, stopped)
       const original = await f.binding()
       let fail!: (error: Error) => void
       f.binding.mockResolvedValueOnce({
@@ -587,17 +587,13 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
     expect(f.call).toHaveBeenCalledTimes(3)
     expect((await f.controller.status()).cards[0]).not.toHaveProperty('toolsUnavailable')
   })
-  it('automatically restarts only the exact Chrome host, bounds attempts, and keeps failed exit negative', async () => {
-    let now = 0
-
+  it('recovers the selected plugin repeatedly without a historical attempt cap and keeps failed stop local', async () => {
     const f = await live({
-      now: () => now,
-      recoverChromeHost: (view, stopped) => restart(view.runId, stopped),
+      recoverHost: (view, stopped) => restart(view.runId, stopped),
     })
     const restart = (runId: string, stopped: () => void) =>
-      f.controller.restartChromeTools(runId, stopped)
+      f.controller.restartPluginTools('chrome', runId, stopped)
     const bridgeClose = closes.pop()!
-    let negative = false
     try {
       const original = await f.binding()
       let rejectProof!: (error: Error) => void
@@ -628,28 +624,19 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
         await vi.waitFor(() => expect(f.call).toHaveBeenCalledTimes(attempt))
         rejectProof(new Error('fictional private failure'))
         expect(await pending).toMatchObject({ isError: true })
-        if (attempt === 4) negative = true
-        if (attempt <= 3) await vi.waitFor(() => expect(f.starts()).toBe(attempt + 1))
-        else
-          await vi.waitFor(() =>
-            expect(f.diagnostic).toHaveBeenCalledWith('chrome', 'recovery-rate-limited'),
-          )
-        now += 100
+        await vi.waitFor(() => expect(f.starts()).toBe(attempt + 1))
       }
-      expect(f.starts()).toBe(4)
-      expect(await f.bridge.routes(owner, req)).toEqual([])
-      expect((await f.controller.status()).cards[0]).toMatchObject({
-        state: 'Running',
-        toolsUnavailable: true,
-      })
+      expect(f.starts()).toBe(5)
+      const healthy = await f.bridge.routes(owner, req)
+      expect(healthy).toHaveLength(1)
+      expect((await f.controller.status()).cards[0]).toMatchObject({ state: 'Running' })
       // A person fallback can try the same exact run; a failed physical proof still grants nothing.
       f.failStop()
-      await expect(f.bridge.restartChrome()).rejects.toThrow()
-      expect(f.starts()).toBe(4)
-      expect(f.diagnostic).toHaveBeenCalledWith('chrome', 'recovery-host-unproven')
+      await expect(f.bridge.restartPlugin('chrome')).rejects.toThrow()
+      expect(f.starts()).toBe(5)
+      expect(f.diagnostic).toHaveBeenCalledWith('chrome', 'recovery-restart-failed')
     } finally {
-      if (negative) await expect(bridgeClose()).rejects.toThrow()
-      else await bridgeClose()
+      await bridgeClose()
     }
   })
   it('reports failed binding, then clears the health warning only after a usable route exists', async () => {
@@ -681,13 +668,13 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
     })
 
     const f = await live({
-      async recoverChromeHost(view, stopped) {
+      async recoverHost(view, stopped) {
         await restart(view.runId, stopped)
         await held
       },
     })
     const restart = (runId: string, stopped: () => void) =>
-      f.controller.restartChromeTools(runId, stopped)
+      f.controller.restartPluginTools('chrome', runId, stopped)
     const original = await f.binding()
     let fail!: (error: Error) => void
     f.binding.mockResolvedValueOnce({

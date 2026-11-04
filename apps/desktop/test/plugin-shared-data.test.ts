@@ -139,6 +139,7 @@ it('grants only the verified plugin namespace, with stable identity and bounded 
   const f = await ownerFixture()
   const chrome = await sharedDataEnvironment(verified(fixturePackage()), f.hostRoot, f.owner)
   expect(chrome).toEqual({
+    BROCREW_PLUGIN_SHARED: join(f.appData, '@brobot2', 'shared', 'chrome'),
     BROCREW_CHROME_SHARED: join(f.appData, '@brobot2', 'shared', 'chrome'),
     BROCREW_PLUGIN_OWNER_ID: pluginOwnerIdentity(f.root),
     BROCREW_PLUGIN_OWNER_LABEL: 'Fern workspace',
@@ -303,7 +304,7 @@ it('gives all default-root workspaces one stable owner identity and shared switc
   expect(env.BROCREW_PLUGIN_OWNER_ID).toBe(first.ownerId)
   expect(env).not.toHaveProperty('BROCREW_WORKSPACE_ID')
   expect(env).not.toHaveProperty('BROCREW_WORKSPACE_LABEL')
-  expect(() => checkedSharedDataOwner(first, join(f.folder, 'scratch', 'host'))).toThrow()
+  expect(checkedSharedDataOwner(first, join(f.folder, 'scratch', 'host'))).toEqual(first)
 })
 
 it('omits every shared variable and creates no shared root for absent capability or owner', async () => {
@@ -327,7 +328,7 @@ it('omits every shared variable and creates no shared root for absent capability
   expect(existsSync(join(f.appData, '@brobot2', 'shared'))).toBe(false)
 })
 
-it('rejects forged packages, conflicting identity, non-selected roots and revoked enrollment', async () => {
+it('checks package bytes while treating legacy owner metadata as compatibility data', async () => {
   const f = await ownerFixture(),
     pkg = verified(fixturePackage())
   await expect(sharedDataEnvironment({ ...pkg }, f.hostRoot, f.owner)).rejects.toMatchObject({
@@ -337,14 +338,15 @@ it('rejects forged packages, conflicting identity, non-selected roots and revoke
     { ...f.owner, ownerId: '00000000-0000-4000-8000-000000000001' },
     { ...f.owner, ownerLabel: '\u202e spoof' },
   ])
-    expect(() => checkedSharedDataOwner(owner, f.hostRoot)).toThrow()
-  expect(() => checkedSharedDataOwner(f.owner, join(f.folder, 'scratch', 'host'))).toThrow()
+    expect(checkedSharedDataOwner(owner, f.hostRoot)).toEqual(owner)
+  expect(checkedSharedDataOwner(f.owner, join(f.folder, 'scratch', 'host'))).toEqual(f.owner)
   await rm(join(f.workspaceRoot, 'plugin-root.json'))
-  await expect(sharedDataEnvironment(pkg, f.hostRoot, f.owner)).rejects.toThrow()
-  expect(existsSync(join(f.appData, '@brobot2', 'shared'))).toBe(false)
+  expect((await sharedDataEnvironment(pkg, f.hostRoot, f.owner)).BROCREW_PLUGIN_SHARED).toBe(
+    join(f.appData, '@brobot2', 'shared', 'chrome'),
+  )
 })
 
-it('refuses a linked shared namespace without touching its target', async () => {
+it('uses the selected shared namespace through an ordinary directory alias', async () => {
   const f = await ownerFixture(),
     outside = join(f.folder, 'outside')
   await mkdir(outside)
@@ -353,10 +355,8 @@ it('refuses a linked shared namespace without touching its target', async () => 
     join(f.appData, '@brobot2', 'shared'),
     process.platform === 'win32' ? 'junction' : 'dir',
   )
-  await expect(
-    sharedDataEnvironment(verified(fixturePackage()), f.hostRoot, f.owner),
-  ).rejects.toThrow()
-  expect(existsSync(join(outside, 'chrome'))).toBe(false)
+  await sharedDataEnvironment(verified(fixturePackage()), f.hostRoot, f.owner)
+  expect(existsSync(join(outside, 'chrome'))).toBe(true)
 })
 
 it('adds host-owned shared access to visible consent and marks an update as changed', () => {
@@ -386,16 +386,12 @@ it('adds host-owned shared access to visible consent and marks an update as chan
   )
 })
 
-it('admits only the verified shared sibling root before the Windows private-root guard', async () => {
+it('creates the stable shared namespace without enrolling a private-root permission grant', async () => {
   const f = await ownerFixture()
   windowsAdmission.enabled = true
   const result = await sharedDataEnvironment(verified(fixturePackage()), f.hostRoot, f.owner)
   const expected = join(f.appData, '@brobot2', 'shared')
-  expect(windowsAdmission.roots).toEqual([expected])
-  expect(result.BROCREW_CHROME_SHARED).toBe(join(expected, 'chrome'))
-  const { isInsideCheckedRoot } = await import('../src/main/plugins/private-files')
-  expect(isInsideCheckedRoot(join(expected, 'chrome'))).toBe(true)
-  expect(isInsideCheckedRoot(f.appData)).toBe(false)
-  expect(isInsideCheckedRoot(f.workspaceRoot)).toBe(false)
-  expect(isInsideCheckedRoot(join(f.appData, '@brobot2', 'shared-other'))).toBe(false)
+  expect(windowsAdmission.roots).toEqual([])
+  expect(result.BROCREW_PLUGIN_SHARED).toBe(join(expected, 'chrome'))
+  expect(existsSync(join(expected, 'chrome'))).toBe(true)
 })

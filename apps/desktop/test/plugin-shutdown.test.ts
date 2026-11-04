@@ -121,19 +121,17 @@ describe.skipIf(process.platform === 'win32')(
     async function phase(root: string) {
       return JSON.parse(await readFile(join(root, 'supervisor/owner.json'), 'utf8')).phase
     }
-    it('settles a failed synthetic lifecycle exit instead of leaving child-proofs pending forever', async () => {
+    it('notifies lifecycle cleanup without making a synthetic child hold zero-process shutdown', async () => {
       const f = await fixture()
       const run = await attached(f)
-      // No host processes exist. The synthetic bridge child is still an exit witness.
+      // Cleanup notification is separate from the set of captured physical processes.
       expect(run.fake.runs).toHaveLength(0)
       const clean = vi.spyOn(run.service.controller, 'cleanForShutdown').mockReturnValue(false)
+      const drain = vi.spyOn(run.service.controller, 'drain')
       try {
-        expect(await run.owner.shutdown()).toBe(false)
-        await expect.poll(() => phase(f.root), { timeout: 1500 }).toBe('blocked')
-        // Failure must never become a stopped record or release admission to a successor.
-        await expect(
-          PluginSupervisor.start({ root: f.root, workspaceRoots: [f.workspace] }),
-        ).rejects.toMatchObject({ code: 'busy' })
+        expect(await run.owner.shutdown()).toBe(true)
+        await vi.waitFor(() => expect(drain).toHaveBeenCalledOnce())
+        expect(await phase(f.root)).toBe('stopped')
       } finally {
         clean.mockRestore()
       }
@@ -156,22 +154,25 @@ describe.skipIf(process.platform === 'win32')(
       await second.client.close()
       expect(await second.lease.close()).toBe(true)
     })
-    it('positive host exit before a delayed bridge clean check is still a clean intentional quit', async () => {
+    it('finishes physical shutdown while a person cleanup callback is unresponsive', async () => {
       const f = await fixture()
       const run = await attached(f)
       await run.client.install('chrome')
       const ack = deferred<boolean>()
-      const revoke = vi.spyOn(run.sink.sink, 'revoke').mockImplementation(() => ack.promise)
+      vi.spyOn(run.sink.sink, 'revoke').mockImplementation(() => ack.promise)
       const closing = run.owner.shutdown()
-      await vi.waitFor(() => expect(revoke).toHaveBeenCalled())
-      await expect(run.fake.runs[0]!.process.exited).resolves.toEqual({ exited: true })
-      await Promise.resolve() // Let the lifecycle's exit observer run before the bridge finishes.
-      ack.resolve(true)
-      expect(await closing).toBe(true)
-      expect(await phase(f.root)).toBe('stopped')
+      try {
+        await expect(run.fake.runs[0]!.process.exited).resolves.toEqual({ exited: true })
+        expect(await closing).toBe(true)
+        expect(await phase(f.root)).toBe('stopped')
+        await expect(run.client.catalogue()).rejects.toThrow()
+      } finally {
+        ack.resolve(true)
+        await run.service.close()
+      }
       expect(run.service.controller.cleanForShutdown()).toBe(true)
     })
-    it('revokes every shared person consumer after the intentional plugin exit', async () => {
+    it('closes every shared person consumer when the physical plugin exits', async () => {
       const f = await fixture()
       const run = await attached(f)
       await run.client.install('chrome')
@@ -188,18 +189,16 @@ describe.skipIf(process.platform === 'win32')(
       })
       closes.push(() => second.close())
       const ack = deferred<boolean>()
-      const firstRevoke = vi.spyOn(run.sink.sink, 'revoke').mockImplementation(() => ack.promise)
-      const secondRevoke = vi.spyOn(secondSink, 'revoke').mockImplementation(() => ack.promise)
+      vi.spyOn(run.sink.sink, 'revoke').mockImplementation(() => ack.promise)
+      vi.spyOn(secondSink, 'revoke').mockImplementation(() => ack.promise)
       const closing = run.owner.shutdown()
       try {
-        await vi.waitFor(() => {
-          expect(firstRevoke).toHaveBeenCalled()
-          expect(secondRevoke).toHaveBeenCalled()
-        })
         await expect(run.fake.runs[0]!.process.exited).resolves.toEqual({ exited: true })
         ack.resolve(true)
         expect(await closing).toBe(true)
         expect(await phase(f.root)).toBe('stopped')
+        await expect(run.client.catalogue()).rejects.toThrow()
+        await expect(second.catalogue()).rejects.toThrow()
       } finally {
         ack.resolve(true)
         await closing.catch(() => undefined)
@@ -210,13 +209,12 @@ describe.skipIf(process.platform === 'win32')(
       const run = await attached(f)
       await run.client.install('chrome')
       const ack = deferred<boolean>()
-      const revoke = vi.spyOn(run.sink.sink, 'revoke').mockImplementation(() => ack.promise)
+      vi.spyOn(run.sink.sink, 'revoke').mockImplementation(() => ack.promise)
       const closing = run.owner.shutdown()
       try {
-        await vi.waitFor(() => expect(revoke).toHaveBeenCalled())
         expect(await closing).toBe(true)
         expect(await phase(f.root)).toBe('stopped')
-        expect(run.service.controller.cleanForShutdown()).toBe(true)
+        await expect(run.client.catalogue()).rejects.toThrow()
       } finally {
         ack.resolve(true)
         await closing.catch(() => undefined)
@@ -373,7 +371,7 @@ describe.skipIf(process.platform === 'win32')(
         if (!closed) await first.client.uninstall('chrome').catch(() => undefined)
       }
     })
-    it('keeps the person bridge open for a crash revoke pending at last-lease drain', async () => {
+    it('closes the person bridge at last-lease drain while crash cleanup is pending', async () => {
       const f = await fixture()
       const first = await attached(f)
       await first.client.install('chrome')
@@ -382,18 +380,15 @@ describe.skipIf(process.platform === 'win32')(
       first.fake.runs[0]!.exit.resolve({ exited: true })
       await vi.waitFor(() => expect(revoke).toHaveBeenCalled())
       const closing = first.lease.close()
-      let settled = false
-      void closing.finally(() => {
-        settled = true
-      })
       try {
         await vi.waitFor(() => expect(first.fake.runs[0]!.process.stop).toHaveBeenCalled())
         await new Promise<void>((resolve) => setImmediate(resolve))
-        expect(settled).toBe(false)
-        await expect(first.client.catalogue()).resolves.toMatchObject([{ state: 'Unavailable' }])
+        expect(await closing).toBe(true)
+        await expect(first.client.catalogue()).rejects.toThrow()
         ack.resolve(true)
         expect(await closing).toBe(true)
         expect(await phase(f.root)).toBe('stopped')
+        await first.service.close()
         expect(first.service.controller.cleanForShutdown()).toBe(true)
         const state = reopenLifecycleFixture(f)
         const second = await attached(f, state)
@@ -430,7 +425,7 @@ describe.skipIf(process.platform === 'win32')(
         await closing.catch(() => undefined)
       }
     })
-    it('acknowledges a proven exit arriving at the drain boundary before closing person control', async () => {
+    it('waits for the exact managed exit at the boundary while person control closes', async () => {
       const f = await fixture()
       const run = await attached(f)
       await run.client.install('chrome')
@@ -444,16 +439,16 @@ describe.skipIf(process.platform === 'win32')(
         process.exit.resolve({ exited: true })
         return { exited: true }
       })
-      const revoke = vi.spyOn(run.sink.sink, 'revoke').mockImplementationOnce(() => ack.promise)
+      vi.spyOn(run.sink.sink, 'revoke').mockImplementationOnce(() => ack.promise)
       const closing = run.owner.shutdown()
       try {
         await entered.promise
         process.exit.resolve({ exited: true })
         release.resolve()
-        await vi.waitFor(() => expect(revoke).toHaveBeenCalled())
         ack.resolve(true)
         expect(await closing).toBe(true)
         expect(await phase(f.root)).toBe('stopped')
+        await expect(run.client.catalogue()).rejects.toThrow()
       } finally {
         release.resolve()
         ack.resolve(true)
@@ -474,11 +469,11 @@ describe.skipIf(process.platform === 'win32')(
         await expect(run.service.controller.drain()).rejects.toMatchObject({
           code: 'cleanup-pending',
         })
-        expect(await run.owner.shutdown()).toBe(false)
+        expect(await run.owner.shutdown()).toBe(failure !== 'unproved exit')
         await expect(run.client.catalogue()).rejects.toThrow()
         expect(run.fake.runs[0]!.process.stop).toHaveBeenCalled()
         expect(run.service.controller.cleanForShutdown()).toBe(false)
-        expect(await phase(f.root)).toBe('blocked')
+        expect(await phase(f.root)).toBe(failure === 'unproved exit' ? 'blocked' : 'stopped')
       },
     )
     it('intentional drain cannot turn an unproved exact-run exit into clean shutdown', async () => {

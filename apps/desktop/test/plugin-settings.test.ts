@@ -467,21 +467,20 @@ it('reads current tool health without refreshing the catalogue or cancelling a p
   expect(f.controller.cancelPreparations).not.toHaveBeenCalled()
 })
 
-it('routes Chrome restart only from its owned Settings frame to the separate lifecycle recovery seam', async () => {
+it('routes generic plugin IDs from the owned Settings frame to process restart', async () => {
   const f = setup(),
     restart = vi.fn(async () => {})
-  Object.assign(f.controller, { restartChrome: restart })
-  expect(await f.call({ kind: 'restart', id: 'chrome' })).toMatchObject({ ok: true })
-  expect(restart).toHaveBeenCalledOnce()
-  for (const input of [
-    { kind: 'restart', id: 'whatsapp' },
-    { kind: 'restart', id: 'chrome', force: true },
-  ])
+  Object.assign(f.controller, { restartPlugin: restart })
+  expect(await f.call({ kind: 'restart', id: 'fictional-orchard' })).toMatchObject({ ok: true })
+  expect(await f.call({ kind: 'restart', id: 'fictional-meadow' })).toMatchObject({ ok: true })
+  expect(restart).toHaveBeenNthCalledWith(1, 'fictional-orchard')
+  expect(restart).toHaveBeenNthCalledWith(2, 'fictional-meadow')
+  for (const input of [{ kind: 'restart', id: 'chrome', force: true }])
     expect(await f.call(input)).toMatchObject({ ok: false })
   expect(
     await f.call({ kind: 'restart', id: 'chrome' }, { ...f.event, senderFrame: {} }),
   ).toMatchObject({ ok: false })
-  expect(restart).toHaveBeenCalledOnce()
+  expect(restart).toHaveBeenCalledTimes(2)
   expect(f.controller.install).not.toHaveBeenCalled()
   expect(f.controller.uninstall).not.toHaveBeenCalled()
 })

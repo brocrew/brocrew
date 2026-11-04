@@ -873,7 +873,7 @@ it.skipIf(process.platform === 'win32')(
     const f = await fixture({ toolsUnavailable: () => unavailable })
     await f.controller.install(f.handle, 'chrome')
     const key = 'b'.repeat(64)
-    const restartChrome = vi.fn(async () => {
+    const restartPlugin = vi.fn(async () => {
       unavailable = false
     })
     const service = await servePersonPluginControl({
@@ -881,7 +881,7 @@ it.skipIf(process.platform === 'win32')(
       key,
       controller: sharedLifecycleWorkspaces(f.controller),
       read: async () => null,
-      restartChrome,
+      restartPlugin,
     })
     const client = await connectPluginSettings({
       path: service.path,
@@ -918,10 +918,10 @@ it.skipIf(process.platform === 'win32')(
       expect(
         ((await legacy.call({ kind: 'list-v2' })) as Record<string, unknown>[])[0],
       ).not.toHaveProperty('canRestart')
-      expect(Command.safeParse({ kind: 'restart-chrome' }).success).toBe(false)
-      expect(client.restartChrome).toBeTypeOf('function')
-      await client.restartChrome!()
-      expect(restartChrome).toHaveBeenCalledOnce()
+      expect(Command.safeParse({ kind: 'restart-plugin', pluginId: 'chrome' }).success).toBe(false)
+      expect(client.restartPlugin).toBeTypeOf('function')
+      await client.restartPlugin!('chrome')
+      expect(restartPlugin).toHaveBeenCalledWith('chrome')
       expect(
         ((await legacy.call({ kind: 'list' })) as Record<string, unknown>[])[0],
       ).not.toHaveProperty('toolsUnavailable')

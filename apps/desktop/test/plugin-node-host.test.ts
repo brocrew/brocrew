@@ -39,6 +39,7 @@ import { sharedDataOwner } from '../src/main/plugins/shared-data'
 import { SHARED_DATA_FEATURE } from '../src/main/plugins/shared-data-contract'
 
 const copyFault = vi.hoisted(() => ({ once: false }))
+const runtimeCopyFault = vi.hoisted(() => ({ once: false, prefix: '' }))
 const admissionFault = vi.hoisted(() => ({
   once: false,
   guardian: 0,
@@ -160,6 +161,32 @@ vi.mock('node:child_process', async (importOriginal) => {
     },
   }
 })
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const original = await importOriginal<typeof import('node:fs/promises')>()
+  return {
+    ...original,
+    async writeFile(...args: Parameters<typeof original.writeFile>) {
+      const [path, bytes, options] = args
+      if (
+        runtimeCopyFault.once &&
+        typeof path === 'string' &&
+        path.startsWith(runtimeCopyFault.prefix) &&
+        /[\\/]node(?:\.exe)?$/.test(path)
+      ) {
+        runtimeCopyFault.once = false
+        await original.writeFile(
+          path,
+          Buffer.isBuffer(bytes) ? bytes.subarray(0, 8) : 'partial',
+          options,
+        )
+        throw Object.assign(new Error('Fictional interrupted ordinary runtime write'), {
+          code: 'ENOSPC',
+        })
+      }
+      return original.writeFile(...args)
+    },
+  }
+})
 vi.mock('../src/main/plugins/node-host-files', async (importOriginal) => {
   const original = await importOriginal<typeof import('../src/main/plugins/node-host-files')>()
   return {
@@ -240,7 +267,7 @@ function fixture(body = source, mcpPath = '/mcp', sharedData = false) {
 let root: string, resources: string, runtime: PluginNodeRuntime, node: string
 const hosts: ReturnType<typeof createPluginNodeHost>[] = []
 let sequence = 0
-async function context() {
+async function context(options: Partial<Parameters<typeof createPluginNodeHost>[0]> = {}) {
   const path = join(root, String(++sequence))
   await mkdir(path, { mode: 0o700 })
   const browser = join(path, 'fake-browser')
@@ -250,12 +277,13 @@ async function context() {
     `#!${node}\nimport fs from 'node:fs'; import {spawn} from 'node:child_process';\nconst child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'});\nfs.writeFileSync(${JSON.stringify(pidFile)},JSON.stringify({pid:process.pid, child:child.pid}));\nprocess.on('SIGTERM',()=>{}); setInterval(()=>{},1000);\n`,
     { mode: 0o700 },
   )
-  const home = join(path, 'private')
+  const home = options.root ?? join(path, 'private')
   const host = createPluginNodeHost({
     root: home,
     runtime,
     browserExecutable: browser,
     readyMs: 5000,
+    ...options,
   })
   hosts.push(host)
   return { host, home, pidFile }
@@ -313,6 +341,59 @@ describe.skipIf(process.platform === 'win32')('app-supplied plugin Node host', (
   afterAll(async () => {
     if (root) await rm(root, { recursive: true, force: true })
   })
+  it.each([1, 2] as const)(
+    'serializes legacy format %s runtimes within the same installation',
+    async (format) => {
+      const appData = join(root, `legacy-shared-${format}`)
+      await mkdir(appData)
+      const sharedDataOwner = {
+        appData,
+        ownerId: '0c6462db-745c-405e-a826-3bc49852cdad',
+        ownerLabel: 'Fictional owner',
+      }
+      const first = await context({ sharedDataOwner })
+      const second = await context({ root: first.home, sharedDataOwner })
+      const spec = fixture(source, '/mcp', format === 2)
+      const run = await first.host.start(spec)
+      await run.ready()
+      const waiting = await second.host.start(spec)
+      let settled = false
+      const next = waiting.ready().then(
+        (value) => {
+          settled = true
+          return value
+        },
+        (error: unknown) => {
+          settled = true
+          throw error
+        },
+      )
+      void next.catch(() => {})
+      await new Promise((resolve) => setTimeout(resolve, 500))
+      expect(settled).toBe(false)
+      expect(await run.stop()).toEqual({ exited: true })
+      await expect(next).resolves.toHaveProperty('client')
+    },
+    20000,
+  )
+  it('keeps separate legacy installations concurrent despite the same provided shared directory', async () => {
+    const appData = join(root, 'legacy-separate-installs-shared')
+    await mkdir(appData)
+    const sharedDataOwner = {
+      appData,
+      ownerId: '0c6462db-745c-405e-a826-3bc49852cdad',
+      ownerLabel: 'Fictional workspaces',
+    }
+    const first = await context({ sharedDataOwner })
+    const second = await context({ sharedDataOwner })
+    const spec = fixture(source, '/mcp', true)
+    const a = await first.host.start(spec)
+    const b = await second.host.start(spec)
+    const [one, two] = await Promise.all([a.ready(), b.ready()])
+    expect(one.serverPid).not.toBe(two.serverPid)
+    expect(one.client).toBeDefined()
+    expect(two.client).toBeDefined()
+  }, 15000)
   it('starts a verified hook-only package with no MCP or configuration server', async () => {
     const { host } = await context()
     const body = `import http from 'node:http'; import fs from 'node:fs';
@@ -376,7 +457,7 @@ process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
     const { host, home } = await context()
     const body = source.replace(
       " const token = req.url === '/mcp' ? auth.mcpToken : auth.adminToken;",
-      ` if (req.url === '/healthz') fs.writeFileSync(home+'/auth-presence-at-health.json',
+      ` if (req.url === '/mcp') fs.writeFileSync(home+'/auth-presence-at-health.json',
         JSON.stringify({present:fs.existsSync(process.env.BROCREW_CHROME_AUTH)}));
  const token = req.url === '/mcp' ? auth.mcpToken : auth.adminToken;`,
     )
@@ -390,7 +471,7 @@ process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
     expect(await readdir(resolve(handle.receiptPath, '..'))).not.toContain('auth.json')
     expect(await handle.stop()).toEqual({ exited: true })
   })
-  it('uses the durable app copy, private data/download roots and authenticated readiness without inheriting host secrets', async () => {
+  it('uses the durable app copy, private data/download roots and MCP readiness and ordinary inherited environment', async () => {
     const { host, home } = await context()
     process.env.FICTIONAL_HOST_SECRET = 'fictional-only'
     let handle
@@ -401,6 +482,8 @@ process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
     }
     const ready = await handle.ready()
     expect([true, false, null]).toContain(ready.priorityClamped)
+    expect(ready.client?.getServerVersion()?.name).toBe('fictional-host')
+    expect((await handle.ready()).client).toBe(ready.client)
     expect((await fetch(ready.origin + '/healthz')).status).toBe(401)
     expect((await fetch(ready.origin + '/healthz', { headers: ready.mcp().headers })).status).toBe(
       401,
@@ -412,7 +495,7 @@ process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
       home: join(home, 'data/chrome'),
       exec: node,
       pid: ready.serverPid,
-      inherited: false,
+      inherited: true,
     })
     expect(
       await (await fetch(ready.origin + '/v1/shared', { headers: ready.admin().headers })).json(),
@@ -602,13 +685,13 @@ process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
       await once(unrelated, 'close')
     }
   }, 15000)
-  it('refuses an unauthenticated healthy server, and a process that never becomes ready', async () => {
+  it('does not probe a package health/auth policy and still bounds a process that never becomes ready', async () => {
     const { host } = await context()
     const child = await host.start(
       fixture(source.replace('res.writeHead(401).end()', 'res.writeHead(200).end()')),
     )
-    await expect(child.ready()).rejects.toThrow('plugin-host-ready')
-    expect(await child.exited).toEqual({ exited: true })
+    await child.ready()
+    expect(await child.stop()).toEqual({ exited: true })
     const other = createPluginNodeHost({ root: join(root, 'never-ready'), runtime, readyMs: 50 })
     hosts.push(other)
     const silent = await other.start(fixture('setInterval(()=>{},1000)'))
@@ -647,21 +730,22 @@ process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
     await expect(host.removeData('../data')).rejects.toThrow('plugin-host-cleanup')
     expect(await readdir(join(home, 'data'))).toEqual(['chrome'])
   })
-  it('refuses linked or public data roots, with no outside write', async () => {
+  it('keeps configured data aliases and ordinary folder permissions usable', async () => {
     const { host, home } = await context()
     await mkdir(home, { mode: 0o700 })
     await mkdir(join(home, 'data'), { mode: 0o700 })
     const outside = join(root, 'outside')
     await mkdir(outside, { mode: 0o700 })
     await symlink(outside, join(home, 'data/chrome'))
-    await expect(host.start(fixture())).rejects.toThrow('plugin-host-paths')
-    expect(await readdir(outside)).toEqual([])
+    const linked = await host.start(fixture())
+    await linked.ready()
+    expect(await readdir(outside)).toEqual(expect.arrayContaining(['downloads', 'files', 'tmp']))
     const path = join(root, 'public')
     await mkdir(path, { mode: 0o700 })
     await chmod(path, 0o755)
     const other = createPluginNodeHost({ root: path, runtime })
     hosts.push(other)
-    await expect(other.start(fixture())).rejects.toThrow('plugin-host-paths')
+    await (await other.start(fixture())).ready()
   })
   it('serializes duplicate starts and refuses new starts after quit', async () => {
     const { host } = await context(),
@@ -700,7 +784,7 @@ process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
     await expect(host.start(spec)).rejects.toThrow('plugin-host-paths')
     expect(await readFile(path, 'utf8')).toBe('fictional tampered package')
   }, 15000)
-  it('refuses runtime tampering and never falls back to PATH', async () => {
+  it('reports an unknown runtime locator and ordinary missing bundled files', async () => {
     const bad = { id: 'fictional', version: process.versions.node }
     await expect(runtimeFiles(bad)).rejects.toThrow('plugin-host-runtime')
     await expect(
@@ -708,9 +792,9 @@ process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
         resourcesRoot: join(root, 'absent'),
         durableRoot: join(root, 'unused'),
       }),
-    ).rejects.toThrow('plugin-host-runtime')
+    ).rejects.toMatchObject({ code: 'ENOENT' })
   })
-  it('refuses modified executable or bootstrap bytes in a kept runtime', async () => {
+  it('returns an existing runtime locator without a repeated byte admission check', async () => {
     const runtime = await preparePluginNodeRuntime({
       resourcesRoot: resources,
       durableRoot: join(root, 'other-runtimes'),
@@ -718,43 +802,43 @@ process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
     const paths = await runtimeFiles(runtime)
     await chmod(paths.node, 0o700)
     await writeFile(paths.node, 'fictional replaced node')
-    await expect(runtimeFiles(runtime)).rejects.toThrow('plugin-host-runtime')
+    await expect(runtimeFiles(runtime)).resolves.toEqual(paths)
   })
-  it('retries the same runtime after an interrupted private copy without publishing partial bytes', async () => {
+  it('retries an interrupted ordinary runtime copy without publishing partial bytes', async () => {
     const durableRoot = join(root, 'interrupted-runtime')
-    copyFault.once = true
+    runtimeCopyFault.prefix = durableRoot
+    runtimeCopyFault.once = true
     await expect(
       preparePluginNodeRuntime({ resourcesRoot: resources, durableRoot }),
-    ).rejects.toThrow('plugin-host-runtime')
-    const entries = await readdir(durableRoot)
-    expect(entries.filter((name) => /^[a-f0-9]{64}$/.test(name))).toEqual([])
-    // A process killed before finally may leave its private stage; it is never a published runtime.
+    ).rejects.toMatchObject({ code: 'ENOSPC' })
+    expect((await readdir(durableRoot)).filter((name) => /^[a-f0-9]{64}$/.test(name))).toEqual([])
     const orphan = join(durableRoot, '.stage-fictional-abandoned')
     await mkdir(orphan, { mode: 0o700 })
     await writeFile(join(orphan, 'node'), 'partial fictional executable', { mode: 0o500 })
     const retried = await preparePluginNodeRuntime({ resourcesRoot: resources, durableRoot })
     expect(retried.id).toBe(runtime.id)
     expect((await runtimeFiles(retried)).node).toBe(join(durableRoot, retried.id, 'node'))
+    expect((await stat((await runtimeFiles(retried)).node)).size).toBe((await stat(node)).size)
     expect(await readFile(join(orphan, 'node'), 'utf8')).toBe('partial fictional executable')
   }, 15000)
-  it('refuses a tampered published runtime on preparation instead of repairing it', async () => {
+  it('reuses a selected runtime cache without repairing or admitting its existing bytes', async () => {
     const durableRoot = join(root, 'published-tamper')
     const kept = await preparePluginNodeRuntime({ resourcesRoot: resources, durableRoot })
     const path = (await runtimeFiles(kept)).node
     await chmod(path, 0o700)
     await writeFile(path, 'fictional tampered published executable')
-    await expect(
-      preparePluginNodeRuntime({ resourcesRoot: resources, durableRoot }),
-    ).rejects.toThrow('plugin-host-runtime')
+    expect((await preparePluginNodeRuntime({ resourcesRoot: resources, durableRoot })).id).toBe(
+      kept.id,
+    )
     expect(await readFile(path, 'utf8')).toBe('fictional tampered published executable')
   }, 15000)
-  it('reopens the exact durable runtime and refuses another identity or replaced metadata', async () => {
+  it('reopens a durable runtime with an arbitrary cache label and descriptive metadata', async () => {
     const paths = await runtimeFiles(runtime)
     const directory = join(paths.node, '..')
     const reopened = await resumePluginNodeRuntime({ directory, id: runtime.id })
     expect(await runtimeFiles(reopened)).toEqual(paths)
-    await expect(resumePluginNodeRuntime({ directory, id: '0'.repeat(64) })).rejects.toThrow(
-      'plugin-host-runtime',
+    expect((await resumePluginNodeRuntime({ directory, id: '0'.repeat(64) })).id).toBe(
+      '0'.repeat(64),
     )
     const metadata = join(directory, 'runtime.json'),
       before = await readFile(metadata)
@@ -764,9 +848,7 @@ process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
         metadata,
         JSON.stringify({ ...JSON.parse(before.toString()), version: '24.99.0' }),
       )
-      await expect(resumePluginNodeRuntime({ directory, id: runtime.id })).rejects.toThrow(
-        'plugin-host-runtime',
-      )
+      expect((await resumePluginNodeRuntime({ directory, id: runtime.id })).version).toBe('24.99.0')
     } finally {
       await writeFile(metadata, before)
       await chmod(metadata, 0o400)

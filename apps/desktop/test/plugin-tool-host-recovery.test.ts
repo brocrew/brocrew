@@ -4,11 +4,11 @@ import { fixture, cleanupLifecycleFixtures, deferred } from './plugin-lifecycle-
 afterEach(cleanupLifecycleFixtures)
 
 type Recovery = {
-  restartChromeTools(runId: string, stopped: () => void): Promise<void>
+  restartPluginTools(pluginId: string, runId: string, stopped: () => void): Promise<void>
 }
 
-it('retains the exact Chrome host and consumers until its positive stop receipt, then reprojects the same installation', async () => {
-  const f = await fixture()
+it('retains the selected process until its stop completes, then reprojects the same installation', async () => {
+  const f = await fixture({}, false, 'fictional-orchard')
   const start = f.opts.runtime.start.bind(f.opts.runtime)
   const stopping = deferred<void>(),
     entered = deferred<void>(),
@@ -25,17 +25,21 @@ it('retains the exact Chrome host and consumers until its positive stop receipt,
       },
     }
   }
-  await f.controller.install(f.handle, 'chrome')
+  await f.controller.install(f.handle, 'fictional-orchard')
   const old = f.controller.agentAttachments(f.local.sink.workspaceId)[0]!
   const proof = vi.fn()
-  const pending = (f.controller as unknown as Recovery).restartChromeTools(runIds[0]!, proof)
+  const pending = (f.controller as unknown as Recovery).restartPluginTools(
+    'fictional-orchard',
+    runIds[0]!,
+    proof,
+  )
   await entered.promise
   expect(f.starts()).toBe(1)
   expect(proof).not.toHaveBeenCalled()
   expect(old.current()).toBe(false)
   expect(f.controller.agentAttachments(f.local.sink.workspaceId)).toEqual([])
   expect(f.events).not.toContain('remove-code')
-  expect(f.events).not.toContain('remove-data chrome')
+  expect(f.events).not.toContain('remove-data fictional-orchard')
   stopping.resolve()
   await pending
   expect(proof).toHaveBeenCalledOnce()
@@ -44,13 +48,13 @@ it('retains the exact Chrome host and consumers until its positive stop receipt,
   expect(fresh.installation).toEqual(old.installation)
   expect(fresh.current()).toBe(true)
   expect(old.current()).toBe(false)
-  expect(f.local.rows.get('chrome')?.installId).toBe(old.installation.installId)
+  expect(f.local.rows.get('fictional-orchard')?.installId).toBe(old.installation.installId)
   expect(runIds[1]).not.toBe(runIds[0])
   expect(f.downloads()).toBe(1)
 })
 
-it('never recreates a Chrome host or confirms completion after a failed exit proof', async () => {
-  const f = await fixture()
+it('does not create a second running copy when the selected process fails to stop', async () => {
+  const f = await fixture({}, false, 'fictional-orchard')
   let runId = ''
   const start = f.opts.runtime.start.bind(f.opts.runtime)
   f.opts.runtime.start = async (spec) => {
@@ -58,11 +62,11 @@ it('never recreates a Chrome host or confirms completion after a failed exit pro
     runId = run.runId
     return run
   }
-  await f.controller.install(f.handle, 'chrome')
+  await f.controller.install(f.handle, 'fictional-orchard')
   f.failStop()
   const proof = vi.fn()
   await expect(
-    (f.controller as unknown as Recovery).restartChromeTools(runId, proof),
+    (f.controller as unknown as Recovery).restartPluginTools('fictional-orchard', runId, proof),
   ).rejects.toThrow()
   expect(f.starts()).toBe(1)
   expect(proof).not.toHaveBeenCalled()
@@ -71,8 +75,8 @@ it('never recreates a Chrome host or confirms completion after a failed exit pro
   expect(f.events).not.toContain('remove-code')
 })
 
-it('refuses a stale Chrome run identity and never stops a different plugin', async () => {
-  const f = await fixture({}, false, 'whatsapp')
+it('refuses the wrong plugin ID and restarts the selected unfamiliar plugin', async () => {
+  const f = await fixture({}, false, 'fictional-meadow')
   let runId = ''
   const start = f.opts.runtime.start.bind(f.opts.runtime)
   f.opts.runtime.start = async (spec) => {
@@ -80,13 +84,30 @@ it('refuses a stale Chrome run identity and never stops a different plugin', asy
     runId = run.runId
     return run
   }
-  await f.controller.install(f.handle, 'whatsapp')
+  await f.controller.install(f.handle, 'fictional-meadow')
   const proof = vi.fn()
   await expect(
-    (f.controller as unknown as Recovery).restartChromeTools(runId, proof),
+    (f.controller as unknown as Recovery).restartPluginTools('fictional-orchard', runId, proof),
   ).rejects.toThrow()
   expect(f.events).not.toContain('stop')
   expect(proof).not.toHaveBeenCalled()
   expect(f.starts()).toBe(1)
+  expect((await f.controller.status()).cards[0]?.state).toBe('Running')
+  await f.controller.restartPluginTools('fictional-meadow', runId, proof)
+  expect(f.starts()).toBe(2)
+  expect(proof).toHaveBeenCalledOnce()
+})
+
+it('coalesces a restart by plugin ID and does not require a UI cleanup acknowledgement', async () => {
+  const f = await fixture({}, false, 'fictional-orchard')
+  await f.controller.install(f.handle, 'fictional-orchard')
+  f.local.failRevoke()
+  const stopped = vi.fn()
+  await Promise.all([
+    f.controller.restartPluginTools('fictional-orchard', undefined, stopped),
+    f.controller.restartPluginTools('fictional-orchard', undefined, stopped),
+  ])
+  expect(f.starts()).toBe(2)
+  expect(stopped).toHaveBeenCalledTimes(2)
   expect((await f.controller.status()).cards[0]?.state).toBe('Running')
 })

@@ -818,14 +818,14 @@ it('refreshes tool health on an already open card without another catalogue fetc
   expect(kinds.filter((kind) => kind === 'list')).toHaveLength(1)
 })
 
-it('offers the approved one-click Chrome restart only on the supported degraded card', async () => {
+it('restarts an unfamiliar plugin from its degraded card by plugin ID', async () => {
   const f = fictionalPlugins(),
-    calls: string[] = []
+    calls: { kind: string; id?: string }[] = []
   f.set([
     Object.assign(
       {
-        id: 'chrome',
-        name: 'Chrome',
+        id: 'fictional-orchard',
+        name: 'Fictional orchard',
         installed: true,
         state: 'Running' as const,
         toolsUnavailable: true as const,
@@ -835,26 +835,27 @@ it('offers the approved one-click Chrome restart only on the supported degraded 
   ])
   const original = f.client.request
   f.client.request = async (input) => {
-    calls.push(input.kind)
+    calls.push(input as { kind: string; id?: string })
     if (String(input.kind) === 'restart')
       return {
         ok: true,
-        cards: [{ id: 'chrome', name: 'Chrome', installed: true, state: 'Running' }],
+        cards: [
+          { id: 'fictional-orchard', name: 'Fictional orchard', installed: true, state: 'Running' },
+        ],
       }
     return original(input)
   }
   const m = mount(settingsWindow('plugins', 'classic', f.client), {}, { width: 1180, height: 900 })
   await vi.waitFor(() => expect(m.all('plugin-card')).toHaveLength(1))
-  expect(m.q('plugin-restart').textContent?.trim()).toBe('Restart Chrome')
-  expect(m.q('plugin-restart-note').textContent?.trim()).toBe(
-    'Closes the Chrome windows BroCrew opened.',
-  )
+  expect(m.q('plugin-restart').textContent?.trim()).toBe('Restart Fictional orchard')
+  expect(m.q('plugin-restart-note').textContent?.trim()).toBe('Stops and starts this plugin.')
   m.q('plugin-restart').click()
-  await vi.waitFor(() => expect(calls.filter((kind) => kind === 'restart')).toHaveLength(1))
+  await vi.waitFor(() => expect(calls.filter((call) => call.kind === 'restart')).toHaveLength(1))
   await vi.waitFor(() => expect(m.all('plugin-tools-unavailable')).toHaveLength(0))
   expect(m.all('plugin-restart')).toHaveLength(0)
-  expect(calls).not.toContain('install')
-  expect(calls).not.toContain('uninstall')
+  expect(calls).toContainEqual({ kind: 'restart', id: 'fictional-orchard' })
+  expect(calls.map((call) => call.kind)).not.toContain('install')
+  expect(calls.map((call) => call.kind)).not.toContain('uninstall')
 })
 
 it('finishes Loading plugins before displaying the truthful Running Chrome warning', async () => {
