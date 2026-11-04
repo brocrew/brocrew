@@ -112,7 +112,7 @@ export function productionPluginController() {
       acceptingBusy.observedAt - acceptingBusy.since >= 120_000
     const specific = conditionalWindowAdvice
       ? 'owner-window-open'
-      : failure === 'restart-required'
+      : failure === 'restart-required' || failure === 'previous-service-stopping'
         ? failure
         : undefined
     return listed.map((entry) => ({
@@ -278,7 +278,7 @@ export function productionPluginController() {
         name: names[card.id] ?? card.id,
         description: catalogueEntries!.entries.find((one) => one.id === card.id)?.description,
         state: card.state,
-        tools: card.state === 'Running' ? 'all agents' : 'none',
+        tools: card.state === 'Running' && !card.toolsUnavailable ? 'all agents' : 'none',
         service: card.state === 'Running' ? (names[card.id] ?? card.id) : null,
       }))
       return cards
@@ -307,12 +307,17 @@ export function productionPluginController() {
     if (ended || !entries) return fail()
     if (!connected || cleanupUncertain) return unavailableCards()
     try {
-      const now = performance.now()
+      const startupStillFresh = () => {
+        const now = performance.now()
+        return (
+          startupCatalogueVerifiedAt !== undefined &&
+          now >= startupCatalogueVerifiedAt &&
+          now - startupCatalogueVerifiedAt < startupCatalogueFreshMs
+        )
+      }
       const reuseStartup =
         firstSettingsList &&
-        startupCatalogueVerifiedAt !== undefined &&
-        now >= startupCatalogueVerifiedAt &&
-        now - startupCatalogueVerifiedAt < startupCatalogueFreshMs &&
+        startupStillFresh() &&
         !refreshFailed &&
         (catalogueEntries.format !== 2 || connected.mutationStatus?.() === null)
       if (refreshList) firstSettingsList = false
@@ -341,10 +346,10 @@ export function productionPluginController() {
       if (
         refreshList &&
         reuseStartup &&
-        catalogueEntries.format === 2 &&
-        connected?.mutationStatus?.() !== null
+        (!startupStillFresh() ||
+          (catalogueEntries.format === 2 && connected?.mutationStatus?.() !== null))
       ) {
-        // The authenticated read can invalidate the pre-read status. The allowance is
+        // The authenticated read can outlast freshness or invalidate source status. The allowance is
         // already consumed, so this takes the normal refresh/failure path exactly once.
         return await catalogue(true)
       }

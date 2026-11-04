@@ -173,6 +173,27 @@ describe.skipIf(process.platform === 'win32')('first Settings startup catalogue 
     await f.controller.catalogue(true)
     expect(f.fetch).toHaveBeenCalledTimes(6)
   })
+  it('refetches when the first owner read outlasts startup freshness', async () => {
+    const f = await modern()
+    const clock = vi.spyOn(performance, 'now').mockReturnValue(0)
+    f.controller.start(f.options)
+    await f.controller.ready!()
+    const cards = [
+      {
+        id: f.pkg.release.id,
+        name: 'Fictional Bakery',
+        installed: false,
+        state: 'Available' as const,
+      },
+    ]
+    f.peer.catalogue.mockImplementationOnce(async () => {
+      clock.mockReturnValue(30_000)
+      return cards
+    })
+    expect(await f.controller.catalogue(true)).toMatchObject([{ state: 'Available' }])
+    expect(f.fetch).toHaveBeenCalledTimes(6)
+    expect(f.peer.refreshCatalogue).toHaveBeenCalledOnce()
+  })
   it('refetches after a failed startup instead of treating its input as verified', async () => {
     const f = await modern()
     f.fetch.mockRejectedValueOnce(new Error('fictional offline startup'))

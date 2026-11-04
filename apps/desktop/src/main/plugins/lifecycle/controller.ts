@@ -482,6 +482,13 @@ export class PluginLifecycleController {
             ...(this.runs.get(id)?.priorityClamped !== undefined
               ? { priorityClamped: this.runs.get(id)!.priorityClamped }
               : {}),
+            ...(!this.cleanup.has(id) &&
+            !this.blocks.has(id) &&
+            this.runs.has(id) &&
+            !this.runs.get(id)!.ended &&
+            this.options.toolsUnavailable?.(id)
+              ? { toolsUnavailable: true as const }
+              : {}),
             installed:
               !!active ||
               (['uninstall', 'update'].includes(state.pending?.request.consent.action ?? '') &&

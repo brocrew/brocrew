@@ -1,3 +1,4 @@
+import type { PluginToolFailureReason } from './tool-diagnostics'
 export type BrokerValue =
   | null
   | boolean
@@ -81,6 +82,7 @@ export interface BrokerAudit {
   readonly operation: 'tool' | 'admin'
   readonly queued: number
   readonly code?: BrokerFailure
+  readonly reason?: PluginToolFailureReason
 }
 export interface BrokerOptions {
   readonly binding: BrokerBinding

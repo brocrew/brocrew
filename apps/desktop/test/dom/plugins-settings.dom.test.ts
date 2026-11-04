@@ -229,6 +229,10 @@ it('a failed retry keeps the approved line and restart hint without raw errors',
 it.each([
   ['owner-window-open', 'If another BroCrew window is open, close it, then try again.'],
   ['restart-required', 'Restart your computer, then reopen BroCrew.'],
+  [
+    'previous-service-stopping',
+    "The previous plugin service didn't finish stopping. Restart your computer, then open BroCrew again.",
+  ],
 ] as const)(
   'shows the specific %s remedy without an app-restart contradiction',
   async (reason, text) => {
@@ -696,4 +700,147 @@ it('explains an unsupported offer without a futile Retry', async () => {
   )
   expect(m.all('plugin-retry')).toHaveLength(0)
   expect(f.calls.some((call) => call.kind === 'install')).toBe(false)
+})
+
+it.each([
+  { label: 'the list', cards: fictionalPlugins().client, shownCards: 2, message: null },
+  {
+    label: 'no plugins',
+    cards: null,
+    shownCards: 0,
+    message: 'No plugins are available for this version yet.',
+  },
+])(
+  'says plugins are loading until $label really arrives, and never says there are none before',
+  async ({ cards, shownCards, message }) => {
+    let answer: (reply: PluginSettingsReply) => void = () => {}
+    const held = new Promise<PluginSettingsReply>((resolve) => {
+      answer = resolve
+    })
+    const f = fictionalPlugins()
+    const original = f.client.request
+    f.client.request = (input) => (input.kind === 'list' ? held : original(input))
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      const m = mount(
+        settingsWindow('plugins', 'classic', f.client),
+        {},
+        { width: 1180, height: 900 },
+      )
+      const seen: string[] = []
+      const watch = new MutationObserver(() => {
+        if (m.all('plugins-list-status').length) seen.push('list status')
+        if (m.host.textContent?.includes('No plugins')) seen.push('no plugins')
+        if (m.all('plugin-card').length && m.all('plugins-list-loading').length)
+          seen.push('cards beside loading')
+      })
+      watch.observe(m.host, { subtree: true, childList: true, characterData: true })
+      await nextTick()
+      const loading = m.q('plugins-list-loading')
+      expect(loading.getAttribute('role')).toBe('status')
+      expect(loading.textContent?.trim()).toBe('Loading plugins…')
+      expect(m.q('plugins-section').getAttribute('aria-busy')).toBe('true')
+      expect(m.all('plugin-card')).toHaveLength(0)
+      await vi.advanceTimersByTimeAsync(9_999)
+      expect(m.all('plugins-list-slow')).toHaveLength(0)
+      await vi.advanceTimersByTimeAsync(1)
+      expect(m.q('plugins-list-slow').textContent?.trim()).toBe(
+        'This can take a little while after BroCrew starts.',
+      )
+      expect(seen).toEqual([])
+      answer(cards ? await cards.request({ kind: 'list' }) : { ok: true, cards: [] })
+      await vi.advanceTimersByTimeAsync(0)
+      await nextTick()
+      watch.disconnect()
+      expect(m.all('plugins-list-loading')).toHaveLength(0)
+      expect(m.all('plugins-list-slow')).toHaveLength(0)
+      expect(m.q('plugins-section').getAttribute('aria-busy')).toBe('false')
+      expect(m.all('plugin-card')).toHaveLength(shownCards)
+      if (message) expect(m.q('plugins-list-status').textContent?.trim()).toBe(message)
+      else expect(m.all('plugins-list-status')).toHaveLength(0)
+      expect(seen).not.toContain('cards beside loading')
+    } finally {
+      vi.useRealTimers()
+    }
+  },
+)
+
+it('keeps Running and shows the approved agent health line for a live Chrome with dead tools', async () => {
+  const f = fictionalPlugins()
+  f.set([
+    { id: 'chrome', name: 'Chrome', installed: true, state: 'Running', toolsUnavailable: true },
+  ])
+  const m = mount(settingsWindow('plugins', 'classic', f.client), {}, { width: 1180, height: 900 })
+  await vi.waitFor(() => expect(m.all('plugin-card')).toHaveLength(1))
+  expect(m.q('plugin-state').textContent).toBe('Running')
+  expect(m.q('plugin-tools-unavailable').textContent?.trim()).toBe(
+    "Agents can't use Chrome right now.",
+  )
+  expect(m.all('plugin-start-error')).toHaveLength(0)
+  expect(m.all('plugin-retry')).toHaveLength(0)
+})
+
+it('refreshes tool health on an already open card without another catalogue fetch', async () => {
+  const f = fictionalPlugins()
+  f.set([{ id: 'chrome', name: 'Chrome', installed: true, state: 'Running' }])
+  const original = f.client.request
+  const kinds: string[] = []
+  let unavailable = false
+  f.client.request = async (input) => {
+    kinds.push(input.kind)
+    if (input.kind === 'status')
+      return {
+        ok: true,
+        cards: [
+          {
+            id: 'chrome',
+            name: 'Chrome',
+            installed: true,
+            state: 'Running',
+            ...(unavailable ? { toolsUnavailable: true as const } : {}),
+          },
+        ],
+      }
+    return original(input)
+  }
+  const m = mount(settingsWindow('plugins', 'classic', f.client), {}, { width: 1180, height: 900 })
+  await vi.waitFor(() => expect(m.all('plugin-card')).toHaveLength(1))
+  expect(m.all('plugin-tools-unavailable')).toHaveLength(0)
+  unavailable = true
+  await vi.waitFor(
+    () =>
+      expect(m.q('plugin-tools-unavailable').textContent?.trim()).toBe(
+        "Agents can't use Chrome right now.",
+      ),
+    { timeout: 7000 },
+  )
+  expect(m.q('plugin-state').textContent).toBe('Running')
+  expect(kinds.filter((kind) => kind === 'list')).toHaveLength(1)
+})
+
+it('finishes Loading plugins before displaying the truthful Running Chrome warning', async () => {
+  const f = fictionalPlugins()
+  const original = f.client.request
+  let answer!: (reply: PluginSettingsReply) => void
+  const held = new Promise<PluginSettingsReply>((resolve) => {
+    answer = resolve
+  })
+  f.client.request = (input) => (input.kind === 'list' ? held : original(input))
+  const m = mount(settingsWindow('plugins', 'classic', f.client), {}, { width: 1180, height: 900 })
+  await nextTick()
+  expect(m.q('plugins-list-loading').textContent).toContain('Loading plugins…')
+  expect(m.all('plugin-tools-unavailable')).toHaveLength(0)
+  answer({
+    ok: true,
+    cards: [
+      { id: 'chrome', name: 'Chrome', installed: true, state: 'Running', toolsUnavailable: true },
+    ],
+  })
+  await vi.waitFor(() => expect(m.all('plugin-card')).toHaveLength(1))
+  expect(m.all('plugins-list-loading')).toHaveLength(0)
+  expect(m.q('plugins-section').getAttribute('aria-busy')).toBe('false')
+  expect(m.q('plugin-state').textContent).toBe('Running')
+  expect(m.q('plugin-tools-unavailable').textContent?.trim()).toBe(
+    "Agents can't use Chrome right now.",
+  )
 })

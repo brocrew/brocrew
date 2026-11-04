@@ -22,7 +22,7 @@ import { failureFor, printFailure, stepFailure, printAppStderr, phaseStep } from
 import { integrityCheckpoint } from './integrity.mjs'
 import { pageStateSnapshot, printPageState } from './page-state.mjs'
 import { pluginStateSnapshot, printPluginState, unknownPluginState } from './plugin-state.mjs'
-import { openPlugins, enabledProfile, pluginPage, pluginButton, waitFor } from './cdp.mjs'
+import { openPlugins, enabledProfile, pluginPage, switchOnProfile, waitFor } from './cdp.mjs'
 import { requireSelection } from './matrix.mjs'
 import { serveFixture, createProviderTurn, browserEvidence, waitTabs } from './browser-journey.mjs'
 import { fixtureTitle } from './fake-browser.mjs'
@@ -359,7 +359,7 @@ export async function journey(root) {
     )
     requireCheck(summary, 'profileCreated', true)
     step = 'profile-enable'
-    await pluginButton(view, 'Enable')
+    await switchOnProfile(view)
     await enabledProfile(view)
     requireCheck(summary, 'profileEnabled', true)
     step = 'provider-start'
