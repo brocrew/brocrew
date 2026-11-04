@@ -15,11 +15,19 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-const proofIo = vi.hoisted(() => ({ failRename: false }))
+const proofIo = vi.hoisted(() => ({ failRename: false, deviceOffset: 0n }))
 vi.mock('node:fs/promises', async () => {
   const fs = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises')
   return {
     ...fs,
+    lstat: async (...args: Parameters<typeof fs.lstat>) => {
+      const stat = await fs.lstat(...args)
+      if (typeof stat.dev === 'bigint' && proofIo.deviceOffset)
+        return Object.assign(Object.create(Object.getPrototypeOf(stat)), stat, {
+          dev: stat.dev + proofIo.deviceOffset,
+        })
+      return stat
+    },
     rename: (...args: Parameters<typeof fs.rename>) => {
       if (proofIo.failRename) {
         proofIo.failRename = false
@@ -42,9 +50,12 @@ describe('fenced reboot proof for historical plugin runs', () => {
   let owner: PluginSupervisor | undefined
   const firstBoot = randomUUID()
   let witness: unknown
+  let volume = 'apfs:11111111-1111-4111-8111-111111111111'
   const observe = vi.fn(async () => witness)
   const marker = () => join(root, 'supervisor/reboot-proofs', `pending-${epoch}.json`)
   afterEach(async () => {
+    proofIo.deviceOffset = 0n
+    volume = 'apfs:11111111-1111-4111-8111-111111111111'
     vi.restoreAllMocks()
     if (owner) {
       await owner.shutdown()
@@ -93,11 +104,48 @@ describe('fenced reboot proof for historical plugin runs', () => {
       root,
       workspaceRoots: [],
       recoverPrevious: (previous) =>
-        previousRunsProvenStopped(root, { previous, readBootWitness: observe }),
+        previousRunsProvenStopped(root, {
+          previous,
+          readBootWitness: observe,
+          readVolumeIdentity: async () => volume,
+        }),
     })
     return owner
   }
   const refused = () => expect(attempt()).rejects.toMatchObject({ code: 'cleanup-pending' })
+  it('records a durable volume and replays its certificate after two device renumberings', async () => {
+    await fixture()
+    await refused()
+    expect((await readFile(marker(), 'utf8'))).toContain(volume)
+    proofIo.deviceOffset = 17n
+    witness = { kind: 'darwin-boot-session-v1', value: randomUUID() }
+    const write = SupervisorStorage.prototype.write
+    const interrupted = vi.spyOn(SupervisorStorage.prototype, 'write').mockImplementation(function (
+      this: SupervisorStorage, value,
+    ) {
+      if (value.phase === 'stopped') throw new Error('fictional interrupted transition')
+      return write.call(this, value)
+    })
+    await expect(attempt()).rejects.toBeDefined()
+    interrupted.mockRestore()
+    proofIo.deviceOffset = 29n
+    witness = null
+    await attempt()
+  })
+  it('refuses a changed anchored volume even with identical inodes and a different boot', async () => {
+    await fixture()
+    await refused()
+    volume = 'apfs:22222222-2222-4222-8222-222222222222'
+    proofIo.deviceOffset = 17n
+    witness = { kind: 'darwin-boot-session-v1', value: randomUUID() }
+    await refused()
+  })
+  it('refuses device drift in the same boot', async () => {
+    await fixture()
+    await refused()
+    proofIo.deviceOffset = 17n
+    await refused()
+  })
   async function retainedProof(kind: 'pending' | 'certificate') {
     await fixture()
     await refused()
