@@ -1,3 +1,4 @@
+import type { PluginToolDiagnostic } from '../tool-diagnostics'
 import type { BrokerInput, BrokerOptions } from '../tool-broker'
 import { createPrivatePluginPort } from '../managed-transport'
 import { admittedPluginTools } from './broker-inventory'
@@ -21,6 +22,7 @@ export const whatsappBrokerResourceId = 'whatsapp'
 export async function whatsappBrokerBinding(
   view: ReturnType<PluginLifecycleController['agentAttachments']>[number],
   refused: () => void | Promise<void>,
+  diagnostic?: PluginToolDiagnostic,
 ) {
   if (view.installation.pluginId !== 'whatsapp' || !view.package.compatibility.tools)
     throw new Error('unavailable')
@@ -63,6 +65,7 @@ export async function whatsappBrokerBinding(
       url: endpoint.url,
       credential,
       privateCredentials: [adminCredential],
+      diagnostic,
     }),
   } satisfies Omit<
     BrokerOptions,

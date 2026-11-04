@@ -764,3 +764,83 @@ it.each([
     }
   },
 )
+
+it('keeps Running and shows the approved agent health line for a live Chrome with dead tools', async () => {
+  const f = fictionalPlugins()
+  f.set([
+    { id: 'chrome', name: 'Chrome', installed: true, state: 'Running', toolsUnavailable: true },
+  ])
+  const m = mount(settingsWindow('plugins', 'classic', f.client), {}, { width: 1180, height: 900 })
+  await vi.waitFor(() => expect(m.all('plugin-card')).toHaveLength(1))
+  expect(m.q('plugin-state').textContent).toBe('Running')
+  expect(m.q('plugin-tools-unavailable').textContent?.trim()).toBe(
+    "Agents can't use Chrome right now.",
+  )
+  expect(m.all('plugin-start-error')).toHaveLength(0)
+  expect(m.all('plugin-retry')).toHaveLength(0)
+})
+
+it('refreshes tool health on an already open card without another catalogue fetch', async () => {
+  const f = fictionalPlugins()
+  f.set([{ id: 'chrome', name: 'Chrome', installed: true, state: 'Running' }])
+  const original = f.client.request
+  const kinds: string[] = []
+  let unavailable = false
+  f.client.request = async (input) => {
+    kinds.push(input.kind)
+    if (input.kind === 'status')
+      return {
+        ok: true,
+        cards: [
+          {
+            id: 'chrome',
+            name: 'Chrome',
+            installed: true,
+            state: 'Running',
+            ...(unavailable ? { toolsUnavailable: true as const } : {}),
+          },
+        ],
+      }
+    return original(input)
+  }
+  const m = mount(settingsWindow('plugins', 'classic', f.client), {}, { width: 1180, height: 900 })
+  await vi.waitFor(() => expect(m.all('plugin-card')).toHaveLength(1))
+  expect(m.all('plugin-tools-unavailable')).toHaveLength(0)
+  unavailable = true
+  await vi.waitFor(
+    () =>
+      expect(m.q('plugin-tools-unavailable').textContent?.trim()).toBe(
+        "Agents can't use Chrome right now.",
+      ),
+    { timeout: 7000 },
+  )
+  expect(m.q('plugin-state').textContent).toBe('Running')
+  expect(kinds.filter((kind) => kind === 'list')).toHaveLength(1)
+})
+
+it('finishes Loading plugins before displaying the truthful Running Chrome warning', async () => {
+  const f = fictionalPlugins()
+  const original = f.client.request
+  let answer!: (reply: PluginSettingsReply) => void
+  const held = new Promise<PluginSettingsReply>((resolve) => {
+    answer = resolve
+  })
+  f.client.request = (input) => (input.kind === 'list' ? held : original(input))
+  const m = mount(settingsWindow('plugins', 'classic', f.client), {}, { width: 1180, height: 900 })
+  await nextTick()
+  expect(m.q('plugins-list-loading').textContent).toContain('Loading plugins…')
+  expect(m.all('plugin-tools-unavailable')).toHaveLength(0)
+  answer({
+    ok: true,
+    cards: [
+      { id: 'chrome', name: 'Chrome', installed: true, state: 'Running', toolsUnavailable: true },
+    ],
+  })
+  await vi.waitFor(() => expect(m.all('plugin-card')).toHaveLength(1))
+  expect(m.all('plugins-list-loading')).toHaveLength(0)
+  expect(m.q('plugins-section').getAttribute('aria-busy')).toBe('false')
+  expect(m.q('plugin-state').textContent).toBe('Running')
+  expect(m.q('plugin-tools-unavailable').textContent?.trim()).toBe(
+    "Agents can't use Chrome right now.",
+  )
+})

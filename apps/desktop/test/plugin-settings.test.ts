@@ -452,3 +452,17 @@ it('passes bounded supervisor exit/stderr to the card and refuses multiline or e
   }
   expect(f.controller.install).not.toHaveBeenCalled()
 })
+
+it('reads current tool health without refreshing the catalogue or cancelling a person review', async () => {
+  const f = setup()
+  f.controller.catalogue = vi.fn(async (): Promise<PluginCard[]> => [
+    { id: 'chrome', name: 'Chrome', installed: true, state: 'Running', toolsUnavailable: true },
+  ])
+  f.controller.cancelPreparations = vi.fn()
+  expect(await f.call({ kind: 'status' })).toMatchObject({
+    ok: true,
+    cards: [{ state: 'Running', toolsUnavailable: true }],
+  })
+  expect(f.controller.catalogue).toHaveBeenCalledWith(false)
+  expect(f.controller.cancelPreparations).not.toHaveBeenCalled()
+})

@@ -151,6 +151,7 @@ export function registerPluginSettings(
               'state',
               'installed',
               'priorityClamped',
+              'toolsUnavailable',
               'installedVersion',
               'updateVersion',
               'updatesUnavailable',
@@ -168,6 +169,8 @@ export function registerPluginSettings(
           (card.startupDiagnostic === undefined ||
             (card.state === 'Unavailable' &&
               PluginStartupDiagnosticSchema.safeParse(card.startupDiagnostic).success)) &&
+          (card.toolsUnavailable === undefined ||
+            (card.state === 'Running' && card.toolsUnavailable === true)) &&
           (card.priorityClamped === undefined ||
             typeof card.priorityClamped === 'boolean' ||
             card.priorityClamped === null) &&
@@ -255,6 +258,10 @@ export function registerPluginSettings(
               ? await controller.ready()
               : Boolean(controller && (controller.available?.() ?? true)),
           }
+        if (input.kind === 'status' && exact(input, ['kind'])) {
+          if (!controller || !(controller.available?.() ?? true)) return refused
+          return { ok: true, cards: await catalogue(() => controller.catalogue(false)) }
+        }
         if (input.kind === 'list' && exact(input, ['kind'])) {
           state.reviews.clear()
           controller?.cancelPreparations?.()

@@ -1,3 +1,4 @@
+import type { PluginToolDiagnostic } from '../tool-diagnostics'
 import type { PluginRemovalOutcome } from '../../../shared/plugin-settings'
 import type { PluginNodeReady } from '../node-host'
 import { PluginSupervisorError } from '../supervisor/protocol'
@@ -18,7 +19,11 @@ type Binding = ReturnType<Parameters<typeof createLifecycleAgentBridge>[0]['bind
 export interface PluginAdapter {
   read(connection: PluginNodeReady, signal: AbortSignal): Promise<unknown>
   apply(connection: PluginNodeReady, proposal: PluginProposal, signal: AbortSignal): Promise<void>
-  broker(view: AgentView, refused: () => void | Promise<void>): Binding
+  broker(
+    view: AgentView,
+    refused: () => void | Promise<void>,
+    diagnostic?: PluginToolDiagnostic,
+  ): Binding
   /**
    * The plugin's own clean-up while it still runs, before it is uninstalled. A plugin that has one also has
    * its private data folder deleted with it.
@@ -33,12 +38,12 @@ const adapters: Readonly<Record<string, PluginAdapter>> = Object.freeze({
     read: (connection, signal) => readChromeConfiguration('chrome', connection, signal),
     apply: (connection, proposal, signal) =>
       applyChromeProfile(connection, ChromeProposal.parse(proposal), signal),
-    broker: (view, refused) => chromeBrokerBinding(view, refused),
+    broker: (view, refused, diagnostic) => chromeBrokerBinding(view, refused, diagnostic),
   },
   whatsapp: {
     read: (connection, signal) => readWhatsAppConfiguration(connection, signal),
     apply: (connection, proposal, signal) => applyWhatsAppSettings(connection, proposal, signal),
-    broker: (view, refused) => whatsappBrokerBinding(view, refused),
+    broker: (view, refused, diagnostic) => whatsappBrokerBinding(view, refused, diagnostic),
     uninstall: (connection, signal) => logOutBeforeUninstall(connection, signal),
   },
 })

@@ -52,13 +52,17 @@ async function connected(route: ManagedPluginMcpServer) {
 }
 async function live() {
   const consumer: { bridge?: ReturnType<typeof createLifecycleAgentBridge> } = {}
-  const f = await fixture({ deny: (id) => consumer.bridge?.deny(id) })
+  const f = await fixture({
+    deny: (id) => consumer.bridge?.deny(id),
+    toolsUnavailable: (id) => consumer.bridge?.toolsUnavailable?.(id) ?? false,
+  })
   await f.controller.detach(f.handle)
   const controller = sharedLifecycleWorkspaces(f.controller)
   const person = await controller.attach(f.local.sink)
   await controller.install(person, 'chrome')
   let valid = true,
     allowed = true
+  const revoked = new Set<string>()
   const call = vi.fn()
   const binding = vi.fn(async () => ({
     tools: [
@@ -92,7 +96,13 @@ async function live() {
       },
     },
   }))
-  const bridge = createLifecycleAgentBridge({ controller, owner: { valid: () => valid }, binding })
+  const diagnostic = vi.fn()
+  const bridge = createLifecycleAgentBridge({
+    controller,
+    owner: { valid: (id) => valid && !revoked.has(id) },
+    binding,
+    diagnostic,
+  })
   consumer.bridge = bridge
   closes.push(() => bridge.close())
   return {
@@ -102,6 +112,11 @@ async function live() {
     bridge,
     binding,
     call,
+    diagnostic,
+    revokeLease: (one: WorkspaceLease) => {
+      revoked.add(one.id)
+      bridge.revoke(one)
+    },
     setValid: (v: boolean) => {
       valid = v
     },
@@ -122,6 +137,153 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
       log.mockRestore()
     }
   })
+  it('reports an unavailable broker on the Running card, withholds dead routes and never overlaps a failed proof', async () => {
+    const f = await live()
+    const original = await f.binding()
+    let rejectProof!: (error: Error) => void
+    const proof = new Promise<void>((_resolve, reject) => {
+      rejectProof = reject
+    })
+    void proof.catch(() => undefined)
+    f.binding.mockResolvedValueOnce({
+      ...original,
+      server: {
+        ...original.server,
+        tool() {
+          f.call()
+          return { result: new Promise<never>(() => {}), quiescent: proof, cancel() {} }
+        },
+      },
+    })
+    const close = closes.pop()!
+    try {
+      const owner = lease(),
+        req = request(f.local.sink.workspaceId)
+      const [route] = await f.bridge.routes(owner, req)
+      const client = await connected(route!)
+      const pending = client.callTool({
+        name: 'echo',
+        arguments: { private: 'fictional-private-input' },
+      })
+      await vi.waitFor(() => expect(f.call).toHaveBeenCalledOnce())
+      rejectProof(new Error('fictional-private-proof-error'))
+      expect(await pending).toMatchObject({ isError: true })
+      expect((await f.controller.status()).cards[0]).toMatchObject({
+        state: 'Running',
+        toolsUnavailable: true,
+      })
+      expect(await f.bridge.routes(owner, req)).toEqual([])
+      expect(await f.bridge.routes(owner, request(f.local.sink.workspaceId))).toEqual([])
+      // A new lease must also refuse when its reconciliation cannot prove the old work quiet.
+      await expect(f.bridge.routes(lease(), request(f.local.sink.workspaceId))).rejects.toThrow()
+      expect(f.binding).toHaveBeenCalledTimes(2) // One fixture lookup, one broker. No replacement.
+      expect(f.call).toHaveBeenCalledOnce()
+    } finally {
+      // An intentionally rejected remote proof must remain a negative shutdown receipt.
+      await expect(close()).rejects.toThrow()
+    }
+  })
+  it('reports failed binding, then clears the health warning only after a usable route exists', async () => {
+    const f = await live()
+    const log = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      f.binding.mockRejectedValueOnce(new Error('fictional-private-downstream-name'))
+      const owner = lease(),
+        req = request(f.local.sink.workspaceId)
+      expect(await f.bridge.routes(owner, req)).toEqual([])
+      expect((await f.controller.status()).cards[0]).toMatchObject({
+        state: 'Running',
+        toolsUnavailable: true,
+      })
+      const [route] = await f.bridge.routes(owner, req)
+      const client = await connected(route!)
+      expect(await client.callTool({ name: 'echo', arguments: {} })).toMatchObject({
+        content: [{ text: 'fictional fern' }],
+      })
+      expect((await f.controller.status()).cards[0]).not.toHaveProperty('toolsUnavailable')
+    } finally {
+      log.mockRestore()
+    }
+  })
+  it('binds a changed installation identity after its own invalidation and rotates the caller route', async () => {
+    const f = await live()
+    const views = f.controller.agentAttachments
+    let changed = false
+    const projection = vi
+      .spyOn(f.controller, 'agentAttachments')
+      .mockImplementation((workspaceId) =>
+        views(workspaceId).map((one) => ({
+          ...one,
+          installation: {
+            ...one.installation,
+            configRevision: one.installation.configRevision + (changed ? 1 : 0),
+          },
+        })),
+      )
+    const log = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const owner = lease(),
+        req = request(f.local.sink.workspaceId)
+      const [before] = await f.bridge.routes(owner, req)
+      const oldClient = await connected(before!)
+      await oldClient.callTool({ name: 'echo', arguments: {} })
+      changed = true
+      const next = await f.bridge.routes(owner, req)
+      expect(next).toHaveLength(1)
+      expect(next[0]!.capability).not.toBe(before!.capability)
+      const client = await connected(next[0]!)
+      expect(await client.callTool({ name: 'echo', arguments: {} })).toMatchObject({
+        content: [{ text: 'fictional fern' }],
+      })
+      await expect(oldClient.callTool({ name: 'echo', arguments: {} })).rejects.toThrow()
+      expect(f.binding).toHaveBeenCalledTimes(2)
+      expect(f.call).toHaveBeenCalledTimes(2)
+      expect((await f.controller.status()).cards[0]).not.toHaveProperty('toolsUnavailable')
+    } finally {
+      projection.mockRestore()
+      log.mockRestore()
+    }
+  })
+  it.each(['installation', 'lease'])(
+    'does not carry a late binding failure from a revoked %s onto a healthy caller',
+    async (scope) => {
+      const f = await live()
+      const close = scope === 'lease' ? closes.pop()! : undefined
+      const log = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      let rejectBinding!: (error: Error) => void
+      const binding = new Promise<Awaited<ReturnType<typeof f.binding>>>((_resolve, reject) => {
+        rejectBinding = reject
+      })
+      f.binding.mockImplementationOnce(() => binding)
+      try {
+        const owner = lease()
+        const pending = f.bridge.routes(owner, request(f.local.sink.workspaceId))
+        await vi.waitFor(() => expect(f.binding).toHaveBeenCalledOnce())
+        if (scope === 'installation') f.bridge.deny('chrome')
+        else f.revokeLease(owner)
+        rejectBinding(new Error('fictional stale binding failure'))
+        expect(await pending).toEqual([])
+        const [route] = await f.bridge.routes(
+          scope === 'installation' ? owner : lease(),
+          request(f.local.sink.workspaceId),
+        )
+        const client = await connected(route!)
+        expect(await client.callTool({ name: 'echo', arguments: {} })).toMatchObject({
+          content: [{ text: 'fictional fern' }],
+        })
+        expect(f.binding).toHaveBeenCalledTimes(2)
+        expect(f.call).toHaveBeenCalledOnce()
+        expect(f.diagnostic).toHaveBeenCalledWith('chrome', 'route-stale')
+        expect((await f.controller.status()).cards[0]).toMatchObject({ state: 'Running' })
+        expect((await f.controller.status()).cards[0]).not.toHaveProperty('toolsUnavailable')
+      } finally {
+        log.mockRestore()
+        // The revoked consumer's intentionally failed binding remains a negative cleanup receipt.
+        // A truthful warning must not clear that separate safety barrier.
+        if (close) await expect(close()).rejects.toThrow()
+      }
+    },
+  )
   it('every incarnation gets a distinct authenticated capability and shares one installation broker', async () => {
     const f = await live(),
       owner = lease()

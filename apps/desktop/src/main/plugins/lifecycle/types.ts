@@ -60,6 +60,8 @@ export interface LifecycleOptions {
   deny(pluginId: string): void
   download?: (release: Readonly<PluginRelease>, signal: AbortSignal) => Promise<Uint8Array>
   now?: () => number
+  /** Live host-broker reachability, separate from the plugin process lifecycle. */
+  toolsUnavailable?: (pluginId: string) => boolean
   /** Inert fault controls only; never a production launch option. */
   fault?: (
     point: 'prepared' | 'staged' | 'ready' | 'activated' | 'receipted' | 'update-fenced',
