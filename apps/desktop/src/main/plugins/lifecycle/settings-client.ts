@@ -121,27 +121,33 @@ export async function connectPluginSettings(options: {
     options.lost?.()
     for (const id of screens.keys()) void invalidate(id).catch(() => {})
   })
+  let modern: boolean
   try {
-    await channel.call({ kind: 'attach', workspaceId: options.projection.workspaceId })
+    const attached = await channel.call({
+      kind: 'attach',
+      workspaceId: options.projection.workspaceId,
+    })
+    modern = z.object({ personProtocol: z.literal(2) }).safeParse(attached).success
   } catch (error) {
     channel.close()
     throw error
   }
   // Older owners reject this request without losing the channel and retain their old format.
-  await channel.call({ kind: 'configure-ledger', format: 2 }).then(
-    (reply) => {
-      try {
-        z.strictObject({
-          format: z.literal(2),
-          maxRevision: z.literal(Number.MAX_SAFE_INTEGER),
-        }).parse(reply)
-      } catch {
-        channel.close()
-        throw new PluginSupervisorError('incompatible')
-      }
-    },
-    () => undefined,
-  )
+  if (modern)
+    await channel.call({ kind: 'configure-ledger', format: 2 }).then(
+      (reply) => {
+        try {
+          z.strictObject({
+            format: z.literal(2),
+            maxRevision: z.literal(Number.MAX_SAFE_INTEGER),
+          }).parse(reply)
+        } catch {
+          channel.close()
+          throw new PluginSupervisorError('incompatible')
+        }
+      },
+      () => undefined,
+    )
   const featureReply = await channel.call({ kind: 'features' }).catch(() => ({ features: [] }))
   const features = z.object({ features: z.array(z.string()) }).parse(featureReply).features
   const selectedRef = (input: string | PackageRef): PackageRef => {
