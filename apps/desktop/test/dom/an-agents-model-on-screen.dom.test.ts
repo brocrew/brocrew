@@ -83,10 +83,6 @@ const CODEX_ROWS: ModelChoice[] = [
   },
 ]
 
-/** ⚑ **D-042 · what the sheet's own sentence says beside a default IN FORCE on Claude** (R2). */
-const REACHES_ON_CLAUDE =
-  'Its new conversations start on this, on Claude — the ones you start and the ones another agent starts for it. A conversation already open keeps its own until it is changed there, and an agent that gives it work may name another for that one conversation.'
-
 interface World {
   /** ⚑ **The agent's default, as the door holds it** — D-042 took `682`'s `standIn` off it. */
   held: Choice | null
@@ -348,13 +344,13 @@ describe('685 §1 · the control, idle — it asks no provider anything until a 
     expect(world.modelsAsked).toBe(1)
   })
 
-  it('🔴 a held choice is drawn as stored, with the sentence beside it', async () => {
+  it('🔴 a held choice is drawn as stored without explanatory prose', async () => {
     reset()
     world.held = { provider: 'claude', model: 'opus', effort: 'max' }
     const { m } = await control()
     expect(face(m)).toBe('Claude · Fictional subscription · opus · max')
     // ⚑ **D-042 · R2's sentence** — what the agent's NEW conversations start on.
-    expect(words(m.q('agent-model-reaches'))).toBe(REACHES_ON_CLAUDE)
+    expect(m.all('agent-model-reaches')).toHaveLength(0)
     expect(m.all('agent-model-clear')).toHaveLength(1)
     // ⚑ **696** · it is in force. ⚑ D-042 · the row names no list at all: `682`'s stand-in mark
     // went with the stand-in re-judge (the next case).
@@ -365,7 +361,7 @@ describe('685 §1 · the control, idle — it asks no provider anything until a 
   // judges a default again, so a default saved from BroBot's list is the verdict, and the clause
   // that promised a later check would be false. ⚑ What stands of `691`'s pin: whose list it is is
   // said ABOVE THE LIST, before a press, and the held row reads as any default.
-  it('🔴 a default held for an agent with no list of its own is drawn as any other — its picker says whose list it is', async () => {
+  it('🔴 a default held for an agent with no list of its own is drawn as any other — its picker keeps the default without list prose', async () => {
     reset()
     world.map = {
       claude: { ok: true, models: CLAUDE_ROWS, standIn: 'brobot' },
@@ -373,35 +369,32 @@ describe('685 §1 · the control, idle — it asks no provider anything until a 
     }
     world.held = { provider: 'claude', model: 'opus', effort: 'max' }
     const { m } = await control()
-    const idle = words(m.q('agent-model-reaches'))
-    expect(idle).toBe(REACHES_ON_CLAUDE)
+    expect(m.all('agent-model-reaches')).toHaveLength(0)
     await press(m, 'model-picker-face')
     // ⚑ **696** · the picker says whose list it is, NAMED — `agentName`, never the slug.
-    expect(words(m.q('model-picker-note'))).toBe(
-      'This is BroBot’s list: this agent has no list of its own to ask.',
-    )
+    expect(m.all('model-picker-note')).toHaveLength(0)
     // ⚑ …and with nothing changed, the words before Save are the held row's.
     expect(drafted(m)).toBe('opus')
-    expect(words(m.q('model-picker-reaches'))).toBe(idle)
+    expect(m.all('model-picker-reaches')).toHaveLength(0)
   })
 
   // ⚑ **D-042 · re-aimed: *an effort chosen alone* is gone** — a default is a model and its effort
   // (R1). What the row drew for a half nobody named stands for the one half that may be empty: a
   // model that offers no effort level — ⚑ UI-012 · the face names the model alone.
-  it('⚑ a held model that offers no effort level says so, in the effort’s place', async () => {
+  it('⚑ a held model without efforts has no effort controls', async () => {
     reset()
     world.held = { provider: 'claude', model: 'haiku', effort: null }
     const { m } = await control()
     expect(face(m)).toBe('Claude · Fictional subscription · haiku')
-    expect(words(m.q('agent-model-reaches'))).toBe(REACHES_ON_CLAUDE)
+    expect(m.all('agent-model-reaches')).toHaveLength(0)
     await press(m, 'model-picker-face')
     expect(efforts(m)).toEqual([])
-    expect(words(m.q('model-picker-effort-none'))).toBe('“haiku” has no effort levels.')
+    expect(m.all('model-picker-effort-none')).toHaveLength(0)
   })
 })
 
 describe('685 §2 · set — the list is the provider’s, and Save sends the choice', () => {
-  it('🔴 pick a model and an effort, see what it will reach, Save — and the row is what the door read back', async () => {
+  it('🔴 pick a model and an effort, Save — and the row is what the door read back', async () => {
     reset()
     const { m } = await control()
     await press(m, 'model-picker-face')
@@ -416,7 +409,7 @@ describe('685 §2 · set — the list is the provider’s, and Save sends the ch
     expect(draftedEffort(m)).toBe('high')
     await draftEffort(m, 'max')
     // 🔴 The sentence beside the control is rendered from the DRAFT before the press.
-    expect(words(m.q('model-picker-reaches'))).toBe(REACHES_ON_CLAUDE)
+    expect(m.all('model-picker-reaches')).toHaveLength(0)
     expect(takeIsDead(m)).toBe(false)
     await press(m, 'model-picker-take')
     expect(world.sent).toEqual([
@@ -510,9 +503,7 @@ describe('685 §2 · a choice held for ANOTHER provider', () => {
     world.held = { provider: 'claude', model: 'opus', effort: 'max' }
     const { m } = await control('codex', 'codex')
     expect(words(m.q('agent-model-not-in-force'))).toBe('not in force')
-    expect(words(m.q('agent-model-other-provider'))).toBe(
-      'It is for Claude, and this agent runs on Codex, so no launch reads it: another agent that starts this one, or whose message starts it, does so as though nobody had chosen. Its picker picks a Codex model in its place, and Clear takes it away.',
-    )
+    expect(m.all('agent-model-other-provider')).toHaveLength(0)
     // 🔴 **`691` · and no sentence claiming the choice holds its launches** — main reads nothing of
     // a choice not in force (`R31b`), so *"its new conversations start on this, on Claude"*
     // (D-042's words) would be false here.
@@ -523,7 +514,7 @@ describe('685 §2 · a choice held for ANOTHER provider', () => {
     const none = await control('codex', null)
     expect(none.m.all('agent-model-other-provider')).toHaveLength(0)
     expect(none.m.all('agent-model-not-in-force')).toHaveLength(0)
-    expect(words(none.m.q('agent-model-reaches'))).toBe(REACHES_ON_CLAUDE)
+    expect(none.m.all('agent-model-reaches')).toHaveLength(0)
   })
 
   it('⚑ *Runs on* moving while the picker is open re-seeds it from a choice that is now its own', async () => {
@@ -630,7 +621,7 @@ describe('685 §4 · a refusal — drawn with the door’s `reason`', () => {
 })
 
 describe('685 §5 · an agent that has never run, and no list', () => {
-  it('🔴 an agent that has never run HAS a list since `682` — BroBot’s own, said above it before the press', async () => {
+  it('🔴 an agent that has never run HAS a list since `682` — BroBot’s own, offered without explanatory prose', async () => {
     // ⚑ `691` · re-aimed from 677's `has-never-run` sentence, which `682` (`R31d`) retired: the list
     // door answers such an agent from BroBot's home and marks it `standIn`. ⚑ **D-042** · the saved
     // row does not say so: whose list it was is said where a person picks from it.
@@ -641,9 +632,7 @@ describe('685 §5 · an agent that has never run, and no list', () => {
     }
     const { m } = await control()
     await press(m, 'model-picker-face')
-    expect(words(m.q('model-picker-note'))).toBe(
-      'This is BroBot’s list: this agent has no list of its own to ask.',
-    )
+    expect(m.all('model-picker-note')).toHaveLength(0)
     expect(rows(m)).toEqual(['default', 'opus', 'haiku'])
     await draft(m, 'opus')
     await press(m, 'model-picker-take')
@@ -659,7 +648,7 @@ describe('685 §5 · an agent that has never run, and no list', () => {
     ])
     expect(face(m)).toBe('Claude · Fictional subscription · opus · high')
     // 🔴 …and the saved row reads as §1's, whose own home answered: the same sentence, no clause.
-    expect(words(m.q('agent-model-reaches'))).toBe(REACHES_ON_CLAUDE)
+    expect(m.all('agent-model-reaches')).toHaveLength(0)
   })
 
   it('⚑ `no-profile` — no list, no Take, and Cancel', async () => {
@@ -672,11 +661,7 @@ describe('685 §5 · an agent that has never run, and no list', () => {
     }
     const { m } = await control()
     await press(m, 'model-picker-face')
-    expect(m.all('model-picker-said')).toHaveLength(1)
-    // ⚑ W4.78 · the words too: *nothing was asked* is not *it listed none* (685 M7).
-    expect(words(m.q('model-picker-said'))).toBe(
-      'The model list arrives once this profile exists — it is created when the conversation starts, not now.',
-    )
+    expect(m.all('model-picker-said')).toHaveLength(0)
     expect(rows(m)).toEqual([])
     expect(takeIsDead(m)).toBe(true)
     await press(m, 'model-picker-cancel')
@@ -787,14 +772,12 @@ describe('685 §7 · where it is — beside the provider choice on the agent’s
       { width: 680, height: 880 },
     )
     await settle()
-    expect(words(m.q('agent-model-other-provider'))).toBe(
-      'It is for Claude, and this agent runs on Codex, so no launch reads it: another agent that starts this one, or whose message starts it, does so as though nobody had chosen. Its picker picks a Codex model in its place, and Clear takes it away.',
-    )
+    expect(m.all('agent-model-other-provider')).toHaveLength(0)
     // ⛔ `691` · …and the sheet draws no sentence claiming it holds (see §2's pair).
     expect(m.all('agent-model-reaches')).toHaveLength(0)
   })
 
-  it('🔴 between *Runs on* and the agent’s own instructions, inside the sheet’s width', async () => {
+  it('🔴 above the agent’s own instructions, inside the sheet’s width', async () => {
     reset()
     await page.viewport(700, 900)
     // ⚑ A label longer than the sheet — so the fit below is a claim that could fail (`685`'s review).
@@ -820,17 +803,16 @@ describe('685 §7 · where it is — beside the provider choice on the agent’s
       { width: 680, height: 880 },
     )
     await settle()
-    const provider = m.q('capabilities-provider')
+    expect(m.all('capabilities-provider')).toHaveLength(0)
     const model = m.q('agent-model')
     const own = m.q('own-instructions')
-    expect(provider.compareDocumentPosition(model) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(model.compareDocumentPosition(own) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     // ⚑ The sheet's resolved provider is the one the picker lists.
     await press(m, 'model-picker-face')
     expect((m.q('model-picker-connection') as HTMLSelectElement).value).toBe('codex:sign-in')
     expect(rows(m)).toEqual(['gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-long'])
     // ⛔ Nothing pushes the sheet sideways.
-    const body = m.q('capabilities-provider').parentElement as HTMLElement
+    const body = m.q('agent-model').parentElement as HTMLElement
     expect(body.scrollWidth).toBeLessThanOrEqual(body.clientWidth)
   })
 })
@@ -850,7 +832,7 @@ it('a default connection without a saved model preselects its own route in the a
   expect(rows(m)).toEqual(['gpt-5.6-terra', 'gpt-5.6-luna'])
 })
 
-it('whose-list notice follows the selected catalogue and ignores a warm legacy cache', async () => {
+it('the selected catalogue ignores a warm legacy cache without list prose', async () => {
   reset()
   world.map.claude = { ok: true, models: CLAUDE_ROWS, standIn: 'brobot' }
   const { store, lists } = storeOver()
@@ -866,9 +848,7 @@ it('whose-list notice follows the selected catalogue and ignores a warm legacy c
   routes.value = 'codex:sign-in'
   routes.dispatchEvent(new Event('change', { bubbles: true }))
   await settle()
-  expect(words(m.q('model-picker-note'))).toBe(
-    'This is BroBot’s list: this agent has no list of its own to ask.',
-  )
+  expect(m.all('model-picker-note')).toHaveLength(0)
   expect(rows(m)).toEqual(['gpt-5.6-terra', 'gpt-5.6-luna'])
   routes.value = 'claude:sign-in'
   routes.dispatchEvent(new Event('change', { bubbles: true }))
