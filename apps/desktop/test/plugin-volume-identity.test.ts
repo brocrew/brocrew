@@ -1,3 +1,6 @@
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { readVolumeIdentity as host } from '../resources/plugin-host/volume-identity.mjs'
 import { readVolumeIdentity as chrome } from '../../../plugins/chrome/src/profiles/volumeIdentity'
@@ -60,3 +63,18 @@ describe.each([
     ).toThrowError(new Error('Volume identity unavailable'))
   })
 })
+
+it.skipIf(process.platform !== 'darwin')(
+  'reads the real persistent UUID on a new macOS directory without app automation',
+  () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fictional-native-volume-'))
+    try {
+      const device = String(fs.statSync(root).dev)
+      const volume = host(root, device)
+      expect(volume).toMatch(/^apfs:[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/)
+      expect(chrome(root, device)).toBe(volume)
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  },
+)
