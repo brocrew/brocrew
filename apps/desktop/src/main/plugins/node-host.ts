@@ -679,7 +679,13 @@ export function createPluginNodeHost(options: {
       const data = resolve(options.root, 'data'),
         target = join(data, id),
         below = relative(data, target)
-      if (!below || below === '..' || below.startsWith(`..${sep}`) || isAbsolute(below))
+      if (
+        below !== id ||
+        !below ||
+        below === '..' ||
+        below.startsWith(`..${sep}`) ||
+        isAbsolute(below)
+      )
         throw new PluginHostError('cleanup')
       await retire(id, (root) => rm(join(root, 'data', id), { recursive: true, force: true }))
     },
