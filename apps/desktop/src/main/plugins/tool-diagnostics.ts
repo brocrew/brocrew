@@ -70,7 +70,9 @@ export function recordPluginToolFailure(
   try {
     const path = join(root, 'plugin-tool-failures.log')
     try {
-      fd = openNotThroughALink(path, constants.O_WRONLY | constants.O_APPEND | constants.O_NONBLOCK)
+      // Windows append-only handles cannot truncate a full log. Pin one writable
+      // descriptor, then write at its verified end (or zero after truncation).
+      fd = openNotThroughALink(path, constants.O_WRONLY | constants.O_NONBLOCK)
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
       fd = createFreshFile(path, 0o600)
@@ -79,8 +81,9 @@ export function recordPluginToolFailure(
     if (!stat.isFile() || stat.nlink !== 1 || !isPrivateEntry(stat)) return
     const line = `${new Date().toISOString()} [plugins] tool-failure plugin=${pluginId} reason=${reason}\n`
     // Keep accepting new reasons after the bounded history fills, without following another name.
-    if (stat.size + Buffer.byteLength(line) > 1024 * 1024) ftruncateSync(fd, 0)
-    writeSync(fd, line)
+    const full = stat.size + Buffer.byteLength(line) > 1024 * 1024
+    if (full) ftruncateSync(fd, 0)
+    writeSync(fd, line, full ? 0 : stat.size)
   } catch {
     /* Logging failure never changes admission, cancellation or exit proof. */
   } finally {

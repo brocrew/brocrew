@@ -145,10 +145,14 @@ async function fixture(name: string, mode: string, fault?: string) {
   return { root, workspaceRoot, child, options, lease, runId }
 }
 describe('blocked standalone owner self-exit under its unchanged fence', () => {
-  it.each(['proven', 'revoke-hung'])(
-    'keeps the blocked publication after a transient sharing refusal with %s runs',
-    async (mode) => {
-      const target = await fixture('blocked-write-once-' + mode, mode, 'blocked-write-once')
+  it.each([
+    ['proven', 'blocked-write-once'],
+    ['revoke-hung', 'blocked-write-once'],
+    ['proven', 'blocked-write-twice'],
+  ])(
+    'keeps the blocked publication after a transient sharing refusal with %s runs (%s)',
+    async (mode, fault) => {
+      const target = await fixture(fault + '-' + mode, mode, fault)
       await target.lease.close()
       await ended(target.child)
       expect(target.child.exitCode).toBe(0)
@@ -157,7 +161,20 @@ describe('blocked standalone owner self-exit under its unchanged fence', () => {
       ).toBe('blocked')
       const trace = await readFile(join(target.root, 'plugin-drain.log'), 'utf8')
       expect(trace).toContain('stage=blocked-write state=failed attempt=1 errno=EPERM')
-      expect(trace).toContain('stage=blocked-write state=complete attempt=2')
+      const events = [...trace.matchAll(/stage=blocked-write state=(\w+) attempt=(\d+)/g)].map(
+        (match) => ({ state: match[1], attempt: Number(match[2]) }),
+      )
+      const final = events.at(-1)!
+      expect(final.state).toBe('complete')
+      expect(final.attempt).toBeGreaterThanOrEqual(fault === 'blocked-write-twice' ? 3 : 2)
+      const expected = [{ state: 'failed', attempt: 1 }]
+      for (let attempt = 2; attempt <= final.attempt; attempt++) {
+        expected.push({ state: 'waiting', attempt })
+        expected.push({ state: attempt === final.attempt ? 'complete' : 'failed', attempt })
+      }
+      // Real Windows sharing refusals may add attempts after the injected one.
+      // Every retry must remain ordered, ending in publication before actual exit.
+      expect(events).toEqual(expected)
       expect(trace).not.toMatch(/Bearer|fictional-secret|private-owner-path/)
     },
   )

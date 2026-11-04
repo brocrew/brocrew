@@ -115,7 +115,7 @@ async function builtInventory(
         detach: async () => {},
         agentAttachments: () => [view],
       },
-      binding: chromeBinding.chromeBrokerBinding,
+      binding: (view, diagnostic) => chromeBinding.chromeBrokerBinding(view, undefined, diagnostic),
     })
     const routes = () =>
       bridge!.routes(
