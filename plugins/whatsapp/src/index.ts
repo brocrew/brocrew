@@ -36,13 +36,6 @@ async function main(): Promise<void> {
     )
     process.exit(1)
   }
-  if (process.connected)
-    process.send?.({
-      channel: 'brocrew-plugin-node:v1',
-      runId: process.env.BROCREW_PLUGIN_RUN_ID,
-      type: 'listening',
-      port: (running.httpServer.address() as { port: number }).port,
-    })
   let stopping = false
   const stop = () => {
     if (stopping) return
@@ -51,11 +44,13 @@ async function main(): Promise<void> {
   }
   process.on('SIGTERM', stop)
   process.on('SIGINT', stop)
+  // The generic runner owns stdin. Losing it must also stop our package-owned bridge.
+  process.stdin.on('end', stop)
   process.on('unhandledRejection', (e) =>
     logger.error('unhandled rejection', { errorName: e instanceof Error ? e.name : typeof e }),
   )
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) void main()
 
-export { startWhatsApp } from './app.js'
+export { startWhatsApp, whatsappTools } from './app.js'
 export { loadConfig } from './config.js'

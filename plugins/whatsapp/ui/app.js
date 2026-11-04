@@ -1,6 +1,5 @@
-const channel = 'brocrew-plugin-ui:v1'
+const channel = 'brocrew-plugin-tools:v1'
 const pending = new Map()
-let revision = 0
 let next = 0
 let closed = false
 let drawnCode = ''
@@ -11,17 +10,13 @@ let confirming = null
 const $ = (id) => document.querySelector('#' + id)
 const status = $('status')
 const UNAVAILABLE = 'Plugin unavailable. Try again.'
-function rpc(method, payload) {
-  if (pending.size >= 4 || closed) return Promise.reject(new Error('busy'))
+function callTool(tool, args = {}) {
+  if (closed) return Promise.reject(new Error('closed'))
   const requestId = String(++next)
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      pending.delete(requestId)
-      reject(new Error('timeout'))
-    }, 10000)
-    pending.set(requestId, { resolve, reject, timer })
+    pending.set(requestId, { resolve, reject })
     window.postMessage(
-      { channel, requestId, method, payload, configRevision: revision },
+      { channel, requestId, method: 'callTool', params: { tool, arguments: args } },
       location.origin,
     )
   })
@@ -32,14 +27,22 @@ window.addEventListener('message', (event) => {
   if (!packet || packet.channel !== channel || typeof packet.ok !== 'boolean') return
   const request = pending.get(packet.requestId)
   if (!request) return
-  clearTimeout(request.timer)
   pending.delete(packet.requestId)
   if (!packet.ok) request.reject(new Error('unavailable'))
-  else request.resolve(packet.data)
+  else {
+    try {
+      if (packet.data?.status !== 'result' || packet.data.result?.isError)
+        throw new Error('tool failed')
+      const text = packet.data.result?.content?.find((part) => part.type === 'text')?.text
+      request.resolve(JSON.parse(text))
+    } catch {
+      request.reject(new Error('unavailable'))
+    }
+  }
 })
-async function propose(payload) {
+async function propose(tool, args = {}) {
   try {
-    await rpc('proposeConfig', payload)
+    await callTool(tool, args)
     await refresh()
   } catch {
     status.textContent = UNAVAILABLE
@@ -129,7 +132,7 @@ function drawGroups() {
     input.addEventListener('change', () => {
       // Redraw from what the plugin saved, whether or not the change went through.
       drawnGroups = ''
-      void propose({ action: 'set-group-write', group: group.jid, enabled: input.checked })
+      void propose('whatsapp_set_group_write', { group: group.jid, enabled: input.checked })
     })
     label.append(input, ' Can write')
     item.append(name, label)
@@ -145,7 +148,6 @@ function drawGroups() {
 function draw(snapshot) {
   if (
     !snapshot ||
-    !Number.isSafeInteger(snapshot.configRevision) ||
     !snapshot.status ||
     typeof snapshot.status.state !== 'string' ||
     typeof snapshot.read !== 'boolean' ||
@@ -153,7 +155,6 @@ function draw(snapshot) {
     !Array.isArray(snapshot.groups)
   )
     throw new Error('invalid')
-  revision = snapshot.configRevision
   drawLink(snapshot.status.state, snapshot)
   drawSwitch('read', snapshot.read)
   drawSwitch('prefix', snapshot.prefix)
@@ -162,7 +163,7 @@ function draw(snapshot) {
 }
 async function refresh() {
   try {
-    draw(await rpc('read', { surface: 'whatsapp' }))
+    draw(await callTool('whatsapp_settings'))
   } catch {
     status.textContent = UNAVAILABLE
   }
@@ -175,7 +176,7 @@ $('refresh-groups').addEventListener('click', async () => {
   button.disabled = true
   button.textContent = 'Refreshing…'
   try {
-    await rpc('proposeConfig', { action: 'refresh-groups' })
+    await callTool('whatsapp_refresh_groups')
     await refresh()
   } catch {
     status.textContent = UNAVAILABLE
@@ -185,8 +186,8 @@ $('refresh-groups').addEventListener('click', async () => {
     button.textContent = 'Refresh'
   }
 })
-$('link-phone').addEventListener('click', () => propose({ action: 'link-phone' }))
-$('new-code').addEventListener('click', () => propose({ action: 'link-phone' }))
+$('link-phone').addEventListener('click', () => propose('whatsapp_link'))
+$('new-code').addEventListener('click', () => propose('whatsapp_link'))
 $('unlink').addEventListener('click', (event) => {
   event.stopPropagation()
   show('unlink', false)
@@ -200,7 +201,7 @@ $('unlink').addEventListener('click', (event) => {
 $('unlink-confirmed').addEventListener('click', (event) => {
   event.stopPropagation()
   endConfirming()
-  void propose({ action: 'unlink-phone' })
+  void propose('whatsapp_unlink')
 })
 document.addEventListener('click', () => {
   if (confirming !== null) {
@@ -209,10 +210,10 @@ document.addEventListener('click', () => {
   }
 })
 $('read').addEventListener('change', (event) =>
-  propose({ action: 'set-read', enabled: event.target.checked }),
+  propose('whatsapp_set_read', { enabled: event.target.checked }),
 )
 $('prefix').addEventListener('change', (event) =>
-  propose({ action: 'set-prefix', enabled: event.target.checked }),
+  propose('whatsapp_set_prefix', { enabled: event.target.checked }),
 )
 const timer = setInterval(() => {
   if (!closed && pending.size === 0) void refresh()
@@ -222,7 +223,6 @@ window.addEventListener('pagehide', () => {
   clearInterval(timer)
   clearTimeout(confirming)
   for (const p of pending.values()) {
-    clearTimeout(p.timer)
     p.reject(new Error('closed'))
   }
   pending.clear()

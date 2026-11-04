@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { createHash } from 'node:crypto'
 import { build } from 'esbuild'
 
@@ -148,6 +148,24 @@ export async function buildWhatsAppPackage(
       js: "import { createRequire as brocrewCreateRequire } from 'node:module'; const require = brocrewCreateRequire(import.meta.url);",
     },
   })
+  // Inventory comes from the same definitions as tools/list; no process, bridge or database starts.
+  const { whatsappTools } = await import(pathToFileURL(path.join(payload, 'server.mjs')).href)
+  const data = '${BROCREW_PLUGIN_DATA}'
+  const definitions = whatsappTools(
+    {
+      home: data,
+      files: data + '/files',
+      downloads: data + '/downloads',
+      bridgeData: data + '/bridge',
+      scratch: data + '/scratch',
+      bin: data + '/bin',
+    },
+    { bridge: {}, settings: {} },
+  ).map((tool) => tool.definition)
+  fs.writeFileSync(
+    path.join(payload, 'tools.json'),
+    JSON.stringify({ tools: definitions }, null, 2) + '\n',
+  )
   fs.cpSync(path.join(root, 'ui'), path.join(payload, 'ui'), {
     recursive: true,
     dereference: false,
@@ -227,8 +245,7 @@ export async function buildWhatsAppPackage(
   manifest.platforms = [{ os: chosen.os, cpu: chosen.cpu }]
   manifest.files = files.map((file) => ({
     path: file.path,
-    type: 'file',
-    size: file.bytes.length,
+    bytes: file.bytes.length,
     sha256: digest(file.bytes),
   }))
   const manifestBytes = Buffer.from(JSON.stringify(manifest))

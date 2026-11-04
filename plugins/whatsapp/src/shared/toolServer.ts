@@ -1,3 +1,4 @@
+import { withRequestSignal } from './requestSignal.js'
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 export class PublicToolError extends Error {}
@@ -12,11 +13,18 @@ export interface ToolDefinition {
   }
 }
 export type ToolResult = {
+  structuredContent?: Record<string, unknown>
   content: Array<{ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }>
+}
+export interface ToolCallContext {
+  metadata?: Record<string, unknown>
 }
 export interface ToolHandler {
   definition: ToolDefinition
-  execute(args: Record<string, unknown>): ToolResult | Promise<ToolResult>
+  execute(
+    args: Record<string, unknown>,
+    context?: ToolCallContext,
+  ): ToolResult | Promise<ToolResult>
 }
 export interface ToolServerOptions {
   name: string
@@ -29,20 +37,22 @@ export function createToolServer(options: ToolServerOptions): Server {
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: tools.map((t) => t.definition),
   }))
-  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     const { name: toolName, arguments: args } = request.params
     const tool = tools.find((t) => t.definition.name === toolName)
     if (!tool) {
-      return { content: [{ type: 'text', text: `Unknown tool: ${toolName}` }] }
+      return { isError: true, content: [{ type: 'text', text: `Unknown tool: ${toolName}` }] }
     }
     try {
-      return await tool.execute((args as Record<string, unknown>) ?? {})
+      return await withRequestSignal(extra.signal, () =>
+        tool.execute((args as Record<string, unknown>) ?? {}, { metadata: request.params._meta }),
+      )
     } catch (err: unknown) {
       const msg =
         err instanceof PublicToolError
           ? err.message.slice(0, 2000)
           : 'Plugin unavailable. Try again.'
-      return { content: [{ type: 'text', text: `Error: ${msg}` }] }
+      return { isError: true, content: [{ type: 'text', text: `Error: ${msg}` }] }
     }
   })
   return server

@@ -260,18 +260,6 @@
       "destinationSha256": "5f4363e8672784993adf724be4c6b075a25e69606d77652cd3d48b9292a4806f"
     },
     {
-      "destination": "plugins/whatsapp/src/http/auth.ts",
-      "sources": [
-        {
-          "project": "brocrew",
-          "path": "plugins/chrome/src/http/auth.ts",
-          "sha256": "17d7a75c22b23dc290975a38d1eeb5d99eea3f48b7824b0c0f54e59b5fc3bd87"
-        }
-      ],
-      "changes": "Unchanged.",
-      "destinationSha256": "17d7a75c22b23dc290975a38d1eeb5d99eea3f48b7824b0c0f54e59b5fc3bd87"
-    },
-    {
       "destination": "plugins/whatsapp/src/logger.ts",
       "sources": [
         {
@@ -294,18 +282,6 @@
       ],
       "changes": "Unchanged.",
       "destinationSha256": "ab551f910e464ce8fbc0a254382fe534aee73446837fe51ba4f394a3118153f5"
-    },
-    {
-      "destination": "plugins/whatsapp/src/shared/httpMcpServer.ts",
-      "sources": [
-        {
-          "project": "brocrew",
-          "path": "plugins/chrome/src/shared/httpMcpServer.ts",
-          "sha256": "97b5b9d122ddebc88526ce2c700b870d5db03fb9a507fb3a5e35088005f0f255"
-        }
-      ],
-      "changes": "Loopback host fixed; unused options removed.",
-      "destinationSha256": "d27905c7f609ee604c9ea5ea36708d574f22d8aec466f3fd785526943c041b16"
     },
     {
       "destination": "plugins/whatsapp/src/shared/requestSignal.ts",
@@ -340,8 +316,8 @@
           "sha256": "eb9cd938673ff23dee812dc07dd902203de4d594fd9cf8e54963b77c40fb63bf"
         }
       ],
-      "changes": "Image results; no resources.",
-      "destinationSha256": "36c389ff2cf6b03e4ed282b044bdeeb688d6145cc5dfccd3e067595465a6a641"
+      "changes": "MCP errors use isError; propagate cancellation and generic caller metadata; preserve structured tool output.",
+      "destinationSha256": "072c6a57989a1b6cd861f26d8be864d90963cf906e18d5a6e91c7de78443e7c6"
     },
     {
       "destination": "plugins/whatsapp/src/tools/schema.ts",
