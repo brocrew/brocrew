@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import {
   chmod,
   link,
@@ -9,6 +9,7 @@ import {
   realpath,
   rename,
   rm,
+  symlink,
   unlink,
   writeFile,
 } from 'node:fs/promises'
@@ -150,6 +151,59 @@ describe('fenced reboot proof for historical plugin runs', () => {
     proofIo.deviceOffset = 17n
     await refused()
   })
+  async function makeLegacy(file: string) {
+    const proof = JSON.parse(await readFile(file, 'utf8'))
+    const pending = proof.marker ?? proof
+    for (const [key, folder] of Object.entries({
+      rootIdentity: root,
+      fenceIdentity: join(root, 'supervisor/owner-lock.sqlite'),
+      hostIdentity: join(root, 'host'),
+      runsIdentity: join(root, 'host/runs'),
+    })) pending.binding[key] = `999999999:${(await lstat(folder, { bigint: true })).ino}`
+    for (const item of pending.census)
+      item.identity = `999999999:${(await lstat(join(root, 'host/runs', item.id), { bigint: true })).ino}`
+    pending.digest = createHash('sha256').update(JSON.stringify(pending.census)).digest('hex')
+    const text = JSON.stringify(proof)
+    await writeFile(file, text)
+    return text
+  }
+  it('legacy anchorless record on a renumbered or cloned volume is rebound and logged only after reboot', async () => {
+    await fixture()
+    await refused()
+    const original = await makeLegacy(marker())
+    const log = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await refused()
+    expect(log).not.toHaveBeenCalled()
+    witness = { kind: 'darwin-boot-session-v1', value: randomUUID() }
+    await attempt()
+    expect(log).toHaveBeenCalledWith('rebound after device renumbering')
+    expect(await readFile(marker(), 'utf8')).toBe(original)
+    const nonce = JSON.parse(original).nonce
+    const certificate = await readFile(join(root, 'supervisor/reboot-proofs/certificates', `${nonce}.json`), 'utf8')
+    expect(certificate).toContain(volume)
+  })
+  it.each(['mode', 'symlink'] as const)('refuses changed run %s across a genuine reboot', async (change) => {
+    await fixture()
+    await refused()
+    if (change === 'mode') await chmod(run, 0o755)
+    else {
+      const saved = join(parent, 'saved-run')
+      await rename(run, saved)
+      await symlink(saved, run, 'dir')
+    }
+    witness = { kind: 'darwin-boot-session-v1', value: randomUUID() }
+    await refused()
+  })
+  it('keeps dev:ino pinning when native volume observation races with a mount change', async () => {
+    await fixture()
+    await expect(PluginSupervisor.start({
+      root, workspaceRoots: [], recoverPrevious: (previous) => previousRunsProvenStopped(root, {
+        previous, readBootWitness: observe,
+        readVolumeIdentity: async () => { proofIo.deviceOffset = 41n; return volume },
+      }),
+    })).rejects.toMatchObject({ code: 'cleanup-pending' })
+    await expect(readFile(marker())).rejects.toMatchObject({ code: 'ENOENT' })
+  })
   async function retainedProof(kind: 'pending' | 'certificate') {
     await fixture()
     await refused()
@@ -169,6 +223,19 @@ describe('fenced reboot proof for historical plugin runs', () => {
     witness = null
     return join(root, 'supervisor/reboot-proofs/certificates', `${pending.nonce}.json`)
   }
+  it('enrols a legacy certificate without rewriting it, then refuses a changed recorded volume', async () => {
+    const file = await retainedProof('certificate')
+    const original = await makeLegacy(file)
+    const log = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await attempt()
+    expect(await readFile(file, 'utf8')).toBe(original)
+    expect(log).toHaveBeenCalledWith('rebound after device renumbering')
+    await owner!.shutdown(); await owner!.closed; owner = undefined
+    const storage = new SupervisorStorage(root, [], false)
+    storage.write({ ...storage.read()!, phase: 'blocked' }); storage.close()
+    volume = 'apfs:22222222-2222-4222-8222-222222222222'
+    await refused()
+  })
   it.each(['pending', 'certificate'] as const)(
     'refuses a hardlinked %s proof as takeover authority',
     async (kind) => {

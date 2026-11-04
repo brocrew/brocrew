@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
 import { createSharedProfileStore } from '../src/profiles/sharedStore.js'
+import { createProfileStore } from '../src/profiles/store.js'
 
 const roots: string[] = []
 afterEach(() => {
@@ -16,9 +17,9 @@ function fixture() {
   fs.mkdirSync(home, { mode: 0o700 })
   fs.mkdirSync(shared, { mode: 0o700 })
   let volume = 'apfs:11111111-1111-4111-8111-111111111111'
-  const open = () => createSharedProfileStore({
+  const open = (over = {}) => createSharedProfileStore({
     home, shared, workspaceId: 'alpha', workspaceLabel: 'alpha',
-    chromeState: () => 'ended', readVolumeIdentity: () => volume,
+    chromeState: () => 'ended', readVolumeIdentity: () => volume, ...over,
   })
   const file = path.join(shared, 'registry.json')
   const read = () => JSON.parse(fs.readFileSync(file, 'utf8'))
@@ -70,9 +71,70 @@ it.each(['inode', 'mode', 'uid', 'volume', 'replacement', 'symlink'])(
       expect(String(error)).toMatch(/identity|unavailable/i)
     }
     if (store) {
-      expect(store.get('fern')?.enabled).toBe(false)
+      if (change === 'symlink') expect(() => store!.get('fern')).toThrow()
+      else expect(store.get('fern')?.enabled).toBe(false)
       expect(() => store.shared.acquire('fern')).toThrow()
     }
     expect(JSON.stringify(f.read().profiles[0])).toBe(before)
   },
 )
+it('rebinds directory, migrated source and owner home together without touching signed-in data', () => {
+  const f = fixture()
+  const local = createProfileStore({ home: f.home })
+  local.create('moss', 'panel')
+  const original = local.dirOf('moss')
+  fs.writeFileSync(path.join(original, 'fictional-sign-in'), 'fictional account')
+  const store = f.open({ migrationApproved: true })
+  const name = store.list().find((p) => p.name === 'moss')!.name
+  f.edit((r) => {
+    const p = r.profiles.find((p: { name: string }) => p.name === name)
+    for (const id of [p.directory, p.migration.source, p.migration.home]) {
+      const ino = id.ino
+      for (const key of Object.keys(id)) delete id[key]
+      Object.assign(id, { dev: '999999999', ino })
+    }
+  })
+  const log = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  const restored = f.open()
+  restored.setFlags(name, { enabled: true })
+  expect(restored.shared.restoreName('moss')).toBe(name)
+  expect(fs.readFileSync(path.join(restored.dirOf(name), 'fictional-sign-in'), 'utf8')).toBe('fictional account')
+  const p = f.read().profiles.find((p: { name: string }) => p.name === name)
+  for (const id of [p.directory, p.migration.source, p.migration.home])
+    expect(id.volume).toBe('apfs:11111111-1111-4111-8111-111111111111')
+  expect(log).toHaveBeenCalledTimes(3)
+})
+it('refuses a legacy directory with changed private mode rather than repairing it', () => {
+  const f = fixture()
+  f.edit((r) => { r.profiles[0].directory = { dev: '999999999', ino: r.profiles[0].directory.ino } })
+  const before = JSON.stringify(f.read().profiles[0])
+  const dir = path.join(f.shared, 'profiles/fern')
+  fs.chmodSync(dir, 0o755)
+  expect(f.open().get('fern')?.enabled).toBe(false)
+  expect(JSON.stringify(f.read().profiles[0])).toBe(before)
+  expect(fs.statSync(dir).mode & 0o777).toBe(0o755)
+})
+it('a Windows serial change is refused even for an anchorless legacy record', () => {
+  const f = fixture()
+  f.edit((r) => { r.profiles[0].directory = { dev: '999999999', ino: r.profiles[0].directory.ino } })
+  const open = f.open({ readVolumeIdentity: (_path: string, dev: string) => `winvol:${dev}` })
+  expect(open.get('fern')?.enabled).toBe(false)
+  expect(() => open.shared.acquire('fern')).toThrow()
+})
+it('never publishes a rebind when a directory changes during native observation', () => {
+  const f = fixture(), dir = path.join(f.shared, 'profiles/fern')
+  f.edit((r) => { r.profiles[0].directory.dev = '999999999' })
+  const before = JSON.stringify(f.read().profiles[0])
+  let changed = false
+  const store = f.open({ readVolumeIdentity: (target: string) => {
+    if (target === dir && !changed) {
+      changed = true
+      fs.renameSync(dir, path.join(f.root, 'original'))
+      fs.mkdirSync(dir, { mode: 0o700 })
+    }
+    return 'apfs:11111111-1111-4111-8111-111111111111'
+  } })
+  expect(changed).toBe(true)
+  expect(store.get('fern')?.enabled).toBe(false)
+  expect(JSON.stringify(f.read().profiles[0])).toBe(before)
+})
