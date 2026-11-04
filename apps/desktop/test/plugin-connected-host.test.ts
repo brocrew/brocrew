@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events'
+import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { writeFile } from 'node:fs/promises'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -241,6 +242,40 @@ it('connects preload/UI actions to one instance and persists a workspace switch 
   expect(f.f.starts()).toBe(1)
   await f.a.close()
   expect(f.f.state.getEnabled(f.first.workspaceId, 'fictional-bakery').enabled).toBe(false)
+})
+
+it('keeps the unrelated host snapshot and callbacks usable during another plugin mutation', async () => {
+  const f = await setup()
+  const before = await f.snapshot()
+  const operationId = randomUUID()
+  await f.f.state.withExclusive(async () =>
+    f.f.state.prepare({
+      operationId,
+      snapshot: null,
+      consent: {
+        action: 'install',
+        pluginId: 'fictional-orchard',
+        at: 1,
+        expectedSequence: f.f.state.inspect().sequence,
+        expectedInstallId: null,
+        release: {
+          version: '1.0.0',
+          archiveSha256: 'a'.repeat(64),
+          manifestSha256: 'b'.repeat(64),
+          dataSchema: 1,
+        },
+      },
+    }),
+  )
+  try {
+    expect(await f.snapshot()).toEqual(before)
+    const button = before.contributions.find((item) => item.kind === 'ui.button')!
+    expect(await f.bridge.request({ kind: 'activate', handle: button.handle })).toMatchObject({
+      value: { content: [] },
+    })
+  } finally {
+    await f.f.state.withExclusive(async () => f.f.state.abort(operationId))
+  }
 })
 
 it('uses the same page call/cancel service and preserves protocol errors through real person-control frames', async () => {

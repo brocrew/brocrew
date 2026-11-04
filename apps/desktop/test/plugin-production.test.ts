@@ -33,6 +33,7 @@ import { productionPluginController } from '../src/main/plugins/production'
 import {
   PluginSupervisorAttachment,
   PluginWorkspaceLease,
+  pluginWorkspaceIdentity,
 } from '../src/main/plugins/supervisor/client'
 import { PluginSupervisor } from '../src/main/plugins/supervisor/owner'
 import { SupervisorStorage } from '../src/main/plugins/supervisor/storage'
@@ -100,6 +101,32 @@ async function setup(pkg = packageFixture()) {
   }
   return { controller, options, peer, supervisor, fetch, pkg }
 }
+it('returns the committed workspace preference from the public interface', async () => {
+  const f = await setup()
+  const choice = { enabled: false, revision: 1 }
+  const request = vi.fn(async () => ({ value: choice }))
+  Object.assign(f.peer, {
+    host: {
+      snapshot: async () => ({ contributions: [], notifications: [] }),
+      request,
+      onChanged: () => () => {},
+    },
+  })
+  f.controller.start(f.options)
+  await f.controller.ready!()
+  expect(
+    await f.controller.setEnabled(
+      pluginWorkspaceIdentity(f.options.workspaceRoot),
+      f.pkg.release.id,
+      false,
+    ),
+  ).toEqual(choice)
+  expect(request).toHaveBeenCalledExactlyOnceWith({
+    kind: 'enabled',
+    pluginId: f.pkg.release.id,
+    enabled: false,
+  })
+})
 it('the actual production facade exposes the ordinary public package interface', async () => {
   const f = await setup()
   const ref = {
