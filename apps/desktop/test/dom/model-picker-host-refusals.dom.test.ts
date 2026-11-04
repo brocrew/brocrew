@@ -90,7 +90,11 @@ describe('model picker host refusals and pending gestures', () => {
     await open(m)
     expect(button(m, 'model-picker-take').disabled).toBe(true)
     await draft(m, 'listed-model')
-    expect(words(m.q('model-picker-effort-said'))).toBe('More time for reasoning.')
+    expect(m.all('model-picker-effort-said')).toHaveLength(0)
+    const selectedEffort = m.all('model-picker-effort').find(
+      (one) => one.querySelector('input')?.checked,
+    )
+    expect(words(selectedEffort!)).toBe('High')
     button(m, 'model-picker-take').click()
     await nextTick()
     expect(button(m, 'model-picker-take').disabled).toBe(true)

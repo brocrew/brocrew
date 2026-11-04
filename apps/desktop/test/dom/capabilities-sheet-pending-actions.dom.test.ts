@@ -11,9 +11,13 @@ import type {
   ModelList,
   RuntimeBridge,
 } from '../../src/shared/runtime-ipc'
+import { compatibilityConnections } from '../provider-connection-fixture'
 import { mount, unmountAll, type Mounted } from './harness'
 
-afterEach(unmountAll)
+afterEach(() => {
+  unmountAll()
+  Reflect.deleteProperty(window, 'api')
+})
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -47,6 +51,7 @@ const person = (): AgentIdentity => ({
 
 function sheetHost() {
   let identity = person()
+  let held: Awaited<ReturnType<RuntimeBridge['agentModelAndEffort']>> = null
   const host = {
     agentIdentities: vi.fn(async (): Promise<AgentIdentities> => ({
       identities: [identity],
@@ -76,15 +81,35 @@ function sheetHost() {
         return { ...identity, modelChoiceCleared: null } satisfies AgentProviderSet
       },
     ),
-    agentModelAndEffort: vi.fn(async () => null),
+    providerConnections: vi.fn(async () => compatibilityConnections()),
+    agentModelAndEffort: vi.fn(async () => held),
+    setAgentModelAndEffort: vi.fn(async (
+      input: Parameters<RuntimeBridge['setAgentModelAndEffort']>[0],
+    ): Promise<Awaited<ReturnType<RuntimeBridge['setAgentModelAndEffort']>>> => {
+      structuredClone(input)
+      identity = { ...identity, provider: input.provider }
+      held = input.provider === null ? null : {
+        provider: input.provider,
+        ...(input.connectionId === undefined ? {} : { connectionId: input.connectionId }),
+        model: input.model!,
+        effort: input.effort,
+      }
+      return { ok: true, choice: held }
+    }),
     agentInstructions: vi.fn(async () => ({
       own: { identity: 'fictional-worker', versions: [] },
       waiting: [],
       readAt: 1_700_000_000_000,
     })),
-    modelList: vi.fn(async (): Promise<ModelList> => ({
-      provider: 'codex',
-      models: [],
+    modelList: vi.fn(async ({ provider }: { provider: 'claude' | 'codex' }): Promise<ModelList> => ({
+      provider,
+      models: [{
+        id: 'fictional-model',
+        label: 'Fictional model',
+        addedBy: 'the-provider',
+        efforts: [{ id: 'high', label: 'High' }],
+        defaultEffort: 'high',
+      }],
       notAsked: null,
       standIn: null,
       lastPicked: null,
@@ -93,6 +118,7 @@ function sheetHost() {
     addHandAddedModel: vi.fn(async () => []),
     deleteHandAddedModel: vi.fn(async () => []),
   }
+  Reflect.set(window, 'api', { runtime: host })
   const store = createAgentStore(host as unknown as RuntimeBridge)
   const close = vi.fn()
   const m = mount(CapabilitiesSheet, {
@@ -232,32 +258,47 @@ describe('capabilities sheet pending actions', () => {
     const { m, host, store } = sheetHost()
     await store.load()
     await nextTick()
-    const pending = deferred<AgentProviderSet>()
-    host.setAgentProvider.mockImplementationOnce((input) => {
+    const pending = deferred<Awaited<ReturnType<RuntimeBridge['setAgentModelAndEffort']>>>()
+    host.setAgentModelAndEffort.mockImplementationOnce((input) => {
       structuredClone(input)
       return pending.promise
     })
-    await pick(m, 'capabilities-provider-select', 'claude')
-    const select = m.q('capabilities-provider-select') as HTMLSelectElement
-    expect(select.disabled).toBe(true)
-    expect(select.value).toBe('claude')
-    expect(host.setAgentProvider).toHaveBeenCalledExactlyOnceWith({
+    await expect.poll(() => m.all('model-picker-face').length).toBe(1)
+    button(m, 'model-picker-face').click()
+    await expect.poll(() => m.all('model-picker-connection').length).toBe(1)
+    await pick(m, 'model-picker-connection', 'claude:sign-in')
+    await expect.poll(() => m.all('model-picker-row').length).toBe(1)
+    m.q('model-picker-row').querySelector('input')!.click()
+    await nextTick()
+    const take = button(m, 'model-picker-take')
+    take.click()
+    await nextTick()
+    expect(take.disabled).toBe(true)
+    take.click()
+    expect((m.q('model-picker-connection') as HTMLSelectElement).value).toBe('claude:sign-in')
+    expect(host.setAgentModelAndEffort).toHaveBeenCalledExactlyOnceWith({
       profileId: 'fictional-worker',
       provider: 'claude',
+      connectionId: 'claude:sign-in',
+      model: 'fictional-model',
+      effort: 'high',
     })
+    expect(host.setAgentProvider).not.toHaveBeenCalled()
     expect(host.setCapabilities).not.toHaveBeenCalled()
     pending.reject(new Error('The fictional host kept the previous provider.'))
-    await expect.poll(() => m.all('capabilities-provider-error').length).toBe(1)
-    expect(words(m.q('capabilities-provider-error'))).toBe(
-      'The fictional host kept the previous provider.',
+    await expect.poll(() => m.all('model-picker-refusal').length).toBe(1)
+    expect(words(m.q('model-picker-refusal'))).toBe('The fictional host kept the previous provider.')
+    expect(take.disabled).toBe(false)
+    expect(words(m.q('model-picker-face'))).toContain('Codex')
+    take.click()
+    await expect.poll(() => m.q('model-picker-panel').matches(':popover-open')).toBe(false)
+    await store.load()
+    await nextTick()
+    await expect.poll(() => words(m.q('model-picker-face'))).toBe(
+      'Claude · Fictional subscription · fictional-model · high',
     )
-    expect(select.disabled).toBe(false)
-    expect(select.value).toBe('codex')
-    await pick(m, 'capabilities-provider-select', 'claude')
-    await expect.poll(() => m.all('capabilities-provider-error').length).toBe(0)
-    expect(select.disabled).toBe(false)
-    expect(select.value).toBe('claude')
-    expect(host.setAgentProvider).toHaveBeenCalledTimes(2)
+    expect(store.identities.value?.identities[0]?.provider).toBe('claude')
+    expect(host.setAgentModelAndEffort).toHaveBeenCalledTimes(2)
     expect(host.setCapabilities).not.toHaveBeenCalled()
   })
 })
