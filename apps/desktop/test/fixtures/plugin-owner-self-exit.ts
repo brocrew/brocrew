@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { PluginSupervisor } from '../../src/main/plugins/supervisor/owner'
+import { keepPluginRootPrivate } from '../../src/main/plugins/private-files'
 
 const [root, workspace, mode] = process.argv.slice(2) as [string, string, string]
 let releaseRevocations!: () => void
@@ -13,6 +14,7 @@ const revocations = new Promise<void>((resolve) => {
 })
 let rejectStart: ((error: Error) => void) | undefined
 let starting: Promise<unknown> | undefined
+await keepPluginRootPrivate(root)
 const owner = await PluginSupervisor.start({
   root,
   workspaceRoots: [workspace],

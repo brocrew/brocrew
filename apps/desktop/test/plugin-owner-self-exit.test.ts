@@ -22,6 +22,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import { PluginSupervisor } from '../src/main/plugins/supervisor/owner'
 import { PluginWorkspaceLease } from '../src/main/plugins/supervisor/client'
 import { SupervisorStorage } from '../src/main/plugins/supervisor/storage'
+import { keepPluginRootPrivate } from '../src/main/plugins/private-files'
 import { previousRunsProvenStopped } from '../src/main/plugins/supervisor/recovery-proof'
 import { pluginStartupReason } from '../src/main/plugins/startup-failure'
 
@@ -72,6 +73,26 @@ beforeAll(async () => {
     },
     target: 'node24',
     external: ['better-sqlite3'],
+    plugins: [
+      {
+        name: 'fixture-windows-root-admission',
+        setup(builder: {
+          onResolve(
+            options: { filter: RegExp },
+            resolve: (args: { importer: string }) => { path: string } | undefined,
+          ): void
+        }) {
+          const privacy = fileURLToPath(
+            new URL('./fixtures/plugin-owner-private-root.ts', import.meta.url),
+          )
+          builder.onResolve({ filter: /private-files$/ }, (args) => {
+            if (args.importer.replaceAll('\\', '/').endsWith('/plugin-owner-private-root.ts'))
+              return undefined
+            return { path: privacy }
+          })
+        },
+      },
+    ],
   })
 })
 afterEach(async () => {
@@ -97,6 +118,7 @@ async function fixture(name: string, mode: string) {
     root = join(parent, 'p'),
     workspaceRoot = join(parent, 'w')
   await mkdir(workspaceRoot, { recursive: true, mode: 0o700 })
+  await keepPluginRootPrivate(root)
   const child = fork(join(folder, 'owner.mjs'), [root, workspaceRoot, mode], {
     stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
   })
