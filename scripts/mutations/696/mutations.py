@@ -191,8 +191,8 @@ MUTATIONS = [
         [
             (
                 CONTROL,
-                "  () => held.value !== null && !aChoiceIsInForce(held.value, props.itsProvider),\n",
-                "  () => held.value !== null && aChoiceIsInForce(held.value, props.itsProvider),\n",
+                "  () => held.value !== null && !aChoiceIsInForce(held.value, ownProvider.value),\n",
+                "  () => held.value !== null && aChoiceIsInForce(held.value, ownProvider.value),\n",
             )
         ],
     ),

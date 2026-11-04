@@ -306,7 +306,7 @@ MUTATIONS = [
                 # control is not on the sheet.
                 # ⚑ **W4.78 · re-anchored in place, not retired** — 6d2d195d (UI-012) added the :capabilities and :lists props to the mount. Same deletion. The named killer still asserts it: §7 mounts CapabilitiesSheet and queries agent-model.
                 # ⚑ **an agent keeps its provider · re-anchored in place, not retired** — the sheet hands the control the provider the agent runs on (runsOnNow), not the raw column.
-                "      <AgentModelChoice\n        :profile-slug=\"profileSlug\"\n        :runs-on=\"props.runsOn\"\n        :its-provider=\"runsOnNow?.provider ?? null\"\n        :capabilities=\"props.capabilities\"\n        :store=\"props.store\"\n        :lists=\"props.lists\"\n        @held=\"(choice) => (heldChoice = choice)\"\n      />\n",
+                "      <AgentModelChoice\n        :profile-slug=\"profileSlug\"\n        :runs-on=\"props.runsOn\"\n        :its-provider=\"runsOnNow?.provider ?? null\"\n        :capabilities=\"props.capabilities\"\n        :store=\"props.store\"\n        :lists=\"props.lists\"\n      />\n",
                 "",
             )
         ],
