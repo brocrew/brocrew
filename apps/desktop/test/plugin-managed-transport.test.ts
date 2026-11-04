@@ -270,3 +270,43 @@ it('records a closed connect-failure reason without arguments, credentials or ra
     vi.unstubAllGlobals()
   }
 })
+
+it('does not diagnose successful calls as failures when their per-call MCP streams close', async () => {
+  const reasons: string[] = []
+  const f = await pluginProviderFixture({ diagnostic: (reason) => reasons.push(reason) })
+  cleanup.push(() => f.close())
+  const route = await f.route('fictional-diagnostic'),
+    client = new Client({ name: 'fictional-success', version: '1' })
+  cleanup.push(() => client.close())
+  client.onerror = () => undefined
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL(route.server.url), {
+      requestInit: { headers: { Authorization: `Bearer ${route.server.capability}` } },
+    }),
+  )
+  expect(await client.callTool({ name: 'echo', arguments: { profile: 'fern' } })).toMatchObject({
+    content: [{ text: PLUGIN_MARKER }],
+  })
+  await new Promise<void>((resolve) => setTimeout(resolve, 50))
+  expect(reasons).toEqual([])
+})
+
+it('still diagnoses an actual failed call even though its MCP client also closes', async () => {
+  const reasons: string[] = []
+  const f = await pluginProviderFixture({ diagnostic: (reason) => reasons.push(reason) })
+  cleanup.push(() => f.close())
+  f.reply('error')
+  const route = await f.route('fictional-failed'),
+    client = new Client({ name: 'fictional-failed', version: '1' })
+  cleanup.push(() => client.close())
+  client.onerror = () => undefined
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL(route.server.url), {
+      requestInit: { headers: { Authorization: `Bearer ${route.server.capability}` } },
+    }),
+  )
+  expect(await client.callTool({ name: 'echo', arguments: { profile: 'fern' } })).toMatchObject({
+    isError: true,
+  })
+  expect(reasons).toContain('transport-call-failed')
+})

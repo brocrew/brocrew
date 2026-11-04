@@ -64,14 +64,24 @@ const metadata = new Set([
   'delete_browser_profile',
   'list_tabs',
 ])
-function permitted(value: ChromeAccessSnapshot, request: BrokerRequest): boolean {
+function permitted(
+  value: ChromeAccessSnapshot,
+  request: BrokerRequest,
+  closedProfile?: string,
+): boolean {
   const tabProfile = value.tabs.find((one) => one.id === request.input.tabId)?.profile
   if (
     request.input.tabId !== undefined &&
-    (!tabProfile || (request.input.profile !== undefined && request.input.profile !== tabProfile))
+    ((!tabProfile && !closedProfile) ||
+      (tabProfile !== undefined &&
+        request.input.profile !== undefined &&
+        request.input.profile !== tabProfile))
   )
     return false
-  const profile = typeof request.input.profile === 'string' ? request.input.profile : tabProfile
+  const profile =
+    typeof request.input.profile === 'string'
+      ? request.input.profile
+      : (tabProfile ?? closedProfile)
   const record = value.profiles.find((one) => one.name === profile)
   return (
     !!record?.enabled &&
@@ -101,6 +111,7 @@ export function withChromeResourcePolicy(
       void quiescent.catch(() => undefined)
       const result = (async () => {
         try {
+          let closedProfile: string | undefined
           if (!metadata.has(request.name)) {
             const value = await snapshot(activeSignal)
             if (!permitted(value, request)) {
@@ -108,6 +119,10 @@ export function withChromeResourcePolicy(
               settle()
               return { ok: false as const }
             }
+            // Closing removes the tab. Retain its admitted profile for the result check;
+            // current profile permission and the existing tab/profile checks still apply.
+            if (request.name === 'close_tab')
+              closedProfile = value.tabs.find((one) => one.id === request.input.tabId)?.profile
           }
           if (activeSignal.aborted) {
             settle()
@@ -115,7 +130,10 @@ export function withChromeResourcePolicy(
           }
           execution = port.tool(request, activeSignal)
           const reply = await execution.result
-          if (!metadata.has(request.name) && !permitted(await snapshot(activeSignal), request)) {
+          if (
+            !metadata.has(request.name) &&
+            !permitted(await snapshot(activeSignal), request, closedProfile)
+          ) {
             reportPluginToolFailure(diagnostic, 'resource-policy-refused')
             return { ok: false as const }
           }

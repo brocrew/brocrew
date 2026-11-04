@@ -1,3 +1,4 @@
+import type { PluginToolDiagnostic } from '../../src/main/plugins/tool-diagnostics'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
@@ -18,7 +19,9 @@ export function noPrivateCredential(value: unknown, secret: string): void {
     return item
   })
 }
-export async function pluginProviderFixture(options: { extraPrivateCredential?: string } = {}) {
+export async function pluginProviderFixture(
+  options: { extraPrivateCredential?: string; diagnostic?: PluginToolDiagnostic } = {},
+) {
   const credential = createPluginCredential()
   const seen: { method: string; authenticated: boolean }[] = []
   const audit: unknown[] = []
@@ -121,6 +124,7 @@ export async function pluginProviderFixture(options: { extraPrivateCredential?: 
     server: createPrivatePluginPort({
       url,
       credential,
+      diagnostic: options.diagnostic,
       privateCredentials: options.extraPrivateCredential ? [options.extraPrivateCredential] : [],
     }),
     audit: (event) => audit.push(event),
