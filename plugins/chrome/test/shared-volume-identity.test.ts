@@ -298,3 +298,16 @@ it('clears volume observations when a synchronous disk operation throws', () => 
   f.volume('apfs:22222222-2222-4222-8222-222222222222')
   expect(() => store.dirOf('fern')).toThrow(/reserved/)
 })
+
+it('each admission snapshot observes the current volume even when device and inode match', () => {
+  const f = fixture(),
+    store = f.open()
+  const first = store.shared.admission('fern')
+  expect(first.profile.enabled).toBe(true)
+  expect(first.identity).toBe(store.shared.identity('fern'))
+  expect(first.authorization).toBe(store.shared.authorization('fern'))
+  f.volume('apfs:22222222-2222-4222-8222-222222222222')
+  expect(() => store.shared.admission('fern')).toThrow(/reserved/)
+  f.volume('apfs:11111111-1111-4111-8111-111111111111')
+  expect(store.shared.admission('fern').profile.enabled).toBe(true)
+})
