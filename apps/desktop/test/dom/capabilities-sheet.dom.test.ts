@@ -192,7 +192,8 @@ describe('355 · the capabilities sheet', () => {
       'spawn-rail-means',
       'own-instructions-when',
       'own-instructions-empty',
-    ]) expect(m.host.querySelector(`[data-cy="${cy}"]`), cy).toBeNull()
+    ])
+      expect(m.host.querySelector(`[data-cy="${cy}"]`), cy).toBeNull()
     expect(m.q('agent-model')).toBeDefined()
     expect(m.q('capabilities-save')).toBeDefined()
   })

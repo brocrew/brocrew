@@ -418,11 +418,14 @@ for (const switched of [false, true]) {
   })
 }
 
-
 it('connection-led polish: every picker hides supplied prose and model descriptions', async () => {
   const f = fixture()
   Reflect.set(f.props, 'note', 'Fictional explanatory paragraph that must stay out of the picker.')
-  Reflect.set(f.props, 'reaches', () => 'Fictional save explanation that must stay out of the picker.')
+  Reflect.set(
+    f.props,
+    'reaches',
+    () => 'Fictional save explanation that must stay out of the picker.',
+  )
   await open(f.m)
   await chooseModel(f.m)
   expect(f.m.host.querySelector('[data-cy="model-picker-note"]')).toBeNull()

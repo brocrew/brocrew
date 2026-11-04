@@ -877,7 +877,6 @@ it('whose-list notice follows the selected catalogue and ignores a warm legacy c
   expect(rows(m)).toEqual(['default', 'opus', 'haiku'])
 })
 
-
 it.each(['claude', 'codex'] as const)(
   'connection-led polish: a legacy %s-only agent opens its default connection without saving',
   async (provider) => {
@@ -902,7 +901,6 @@ it('connection-led polish: a held default and its picker omit explanatory paragr
   expect(m.host.querySelector('[data-cy="model-picker-note"]')).toBeNull()
 })
 
-
 it('connection-led polish: saving another connection immediately shows its provider and model', async () => {
   reset()
   world.itsProvider = 'claude'
@@ -914,10 +912,15 @@ it('connection-led polish: saving another connection immediately shows its provi
   await settle()
   await draft(m, 'gpt-5.6-luna')
   await press(m, 'model-picker-take')
-  expect(world.sent).toEqual([{
-    profileId: 'worker', provider: 'codex', connectionId: 'codex:sign-in',
-    model: 'gpt-5.6-luna', effort: 'medium',
-  }])
+  expect(world.sent).toEqual([
+    {
+      profileId: 'worker',
+      provider: 'codex',
+      connectionId: 'codex:sign-in',
+      model: 'gpt-5.6-luna',
+      effort: 'medium',
+    },
+  ])
   expect(face(m)).toBe('Codex · Fictional subscription · gpt-5.6-luna · medium')
   expect(m.all('agent-model-not-in-force')).toHaveLength(0)
   await press(m, 'model-picker-face')

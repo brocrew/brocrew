@@ -2,23 +2,16 @@
 import { computed, ref, watch } from 'vue'
 import {
   PROVIDER_NAME,
-  type ModelList,
   type Provider,
   type ProviderCapabilityMap,
 } from '../../../shared/runtime-ipc'
 import {
   aChoiceInWords,
   aChoiceIsInForce,
-  whatAModelChoiceReaches,
   type AgentModelChoice,
 } from '../../../shared/model-choice'
 import type { AgentStore } from '../lib/agent-store'
-import {
-  aChoiceForAnotherProviderSays,
-  heldReachesSays,
-  theMenusAreFor,
-  theStandInNamed,
-} from '../lib/agent-model-choice'
+import { theMenusAreFor } from '../lib/agent-model-choice'
 import type { ModelLists, PickedModel } from '../lib/model-lists'
 import { useAgentStore } from '../composables/useAgentStore'
 import { useModelLists } from '../composables/useModelLists'
@@ -134,24 +127,14 @@ watch(
  * CHOICE's provider (`R31a`). ⛔ Until `696`, *Change…* on such an agent's Claude choice opened the
  * screen's fallback — Codex's rows (`RuntimeScreen`'s `DEFAULT_PROVIDER`).
  */
-const menusFor = computed(() => theMenusAreFor(props.runsOn, props.itsProvider, held.value))
-/**
- * ⚑ **`696` · the roster, so a sentence names the stand-in the way every surface names that agent**
- * — `theStandInNamed`. ⚠️ `null` before the read lands: `agentName` then answers the product's own
- * label for BroBot's slug (`profileLabel`), and a name a person gave it only once the roster lands.
- */
-const roster = computed(() => store.value.identities.value?.identities ?? null)
-
-/**
- * 🔴 **`696` · whose list the picker is** — the profile that stood in, NAMED, or `null` when the
- * agent's own home answered (`682`'s `R31d`; `688` §1b). ⚑ The save door judges by that same list,
- * so the picker says whose it is before the press.
- */
-function standInSays(list: ModelList | null): string | null {
-  if (list === null || list.standIn === null) return null
-  const named = theStandInNamed({ standIn: list.standIn }, roster.value).standIn
-  return `This is ${named}’s list: this agent has no list of its own to ask.`
-}
+const ownProvider = computed(
+  () =>
+    store.value.identities.value?.identities.find((one) => one.slug === props.profileSlug)
+      ?.provider ?? props.itsProvider,
+)
+const menusFor = computed(() =>
+  theMenusAreFor(ownProvider.value ?? props.runsOn, ownProvider.value, held.value),
+)
 
 /**
  * ⚑ **The face: the default as held, when it is for the provider the menus are for.** ⚠️ One for
@@ -161,26 +144,9 @@ const shown = computed<PickedModel | null>(() =>
   held.value !== null && held.value.provider === menusFor.value ? held.value : null,
 )
 
-const otherProvider = computed(() =>
-  held.value === null ? null : aChoiceForAnotherProviderSays(held.value, props.itsProvider),
-)
-/**
- * 🔴 **`696` · the row says a choice is NOT IN FORCE** (`R31b`; `688` §1b) — beside the values, not
- * only in the sentence under them, so the row a person reads first does not look like a choice
- * that holds. ⚑ `682`'s own predicate, the one main reads.
- */
 const notInForce = computed(
-  () => held.value !== null && !aChoiceIsInForce(held.value, props.itsProvider),
+  () => held.value !== null && !aChoiceIsInForce(held.value, ownProvider.value),
 )
-/** ⛔ **`691` · only for a choice IN FORCE** — see `heldReachesSays` for why. */
-const heldReaches = computed(() =>
-  held.value === null ? null : heldReachesSays(held.value, props.itsProvider),
-)
-
-/** 🔴 **What a Save would reach, rendered from the pick** (standing rule 8.2). */
-function aPickReaches(pick: PickedModel): string {
-  return whatAModelChoiceReaches(pick)
-}
 
 /**
  * ⚑ **The picker's Take is this door's Save** — `setAgentModelAndEffort`. ⛔ **What is drawn
@@ -232,8 +198,6 @@ async function clear(): Promise<void> {
             empty="Nobody has chosen"
             take-words="Save as its default"
             :take="save"
-            :reaches="aPickReaches"
-            :list-note="standInSays"
             :capabilities="props.capabilities"
             :lists="modelLists"
           />
@@ -255,15 +219,6 @@ async function clear(): Promise<void> {
           Clear
         </button>
       </div>
-
-      <!-- 🔴 **`whatAModelChoiceReaches`, rendered from the choice** (standing rule 8.2) — the held
-           one, IN FORCE only (`691`); the picker says it of a pick before its Save. -->
-      <p v-if="heldReaches" class="agent-model-note" data-cy="agent-model-reaches">
-        {{ heldReaches }}
-      </p>
-      <p v-if="otherProvider" class="agent-model-note" data-cy="agent-model-other-provider">
-        {{ otherProvider }}
-      </p>
 
       <p
         v-if="unreadable"

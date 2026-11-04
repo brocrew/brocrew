@@ -403,20 +403,6 @@ const pick = computed<PickedModel | null>(() =>
 )
 
 const levels = computed(() => (offered.value?.known === true ? offered.value.levels : []))
-/** ⚑ The provider's own words about the level drafted (076 §2). */
-const effortDescription = computed(
-  () => levels.value.find((level) => level.id === draftEffort.value)?.description ?? null,
-)
-/** ⚑ Why there is no level to pick, in one sentence — or `null` when there are levels. */
-const effortSilence = computed(() => {
-  const drafted = draft.value
-  if (drafted === null || offered.value === null) return null
-  if (!offered.value.known) {
-    return `${PROVIDER_NAME[drafted.provider]} could not be asked which efforts “${drafted.model}” offers.`
-  }
-  if (offered.value.levels.length === 0) return `“${drafted.model}” has no effort levels.`
-  return null
-})
 /** ⛔ Levels offered and none named: the door's own sentence, and Take waits for a pick. */
 const effortWanted = computed(() =>
   draft.value !== null && draftEffort.value === undefined
@@ -426,17 +412,6 @@ const effortWanted = computed(() =>
         offered: levels.value.map((level) => level.id),
       })
     : null,
-)
-const selectedNote = computed(
-  () =>
-    props.listNote?.(selectedProvider.value === null ? null : listOf(selectedProvider.value)) ??
-    props.note,
-)
-
-const reachesSays = computed(() =>
-  pick.value === null || props.reaches === undefined
-    ? null
-    : props.reaches(pick.value, draftList.value),
 )
 
 function hide(): void {
@@ -800,8 +775,6 @@ async function focusAddOpen(provider: Provider): Promise<void> {
       @toggle="onToggle"
     >
       <div v-if="isOpen" class="inside">
-        <p v-if="selectedNote" class="said" data-cy="model-picker-note">{{ selectedNote }}</p>
-
         <p v-if="metadataLoading" class="said">Reading…</p>
         <template v-else>
           <label class="connection-choice">
@@ -828,7 +801,6 @@ async function focusAddOpen(provider: Provider): Promise<void> {
               </option>
             </select>
           </label>
-          <p v-if="props.lockedConnection" class="said">This conversation keeps its connection.</p>
           <p v-if="metadataError" class="said warn">{{ metadataError }}</p>
           <p v-else-if="connectionRows.length === 0" class="said">No connections available.</p>
           <p
@@ -848,7 +820,7 @@ async function focusAddOpen(provider: Provider): Promise<void> {
         >
           <h4>{{ section.name }}</h4>
           <p
-            v-if="section.field.message"
+            v-if="section.field.message && section.field.state !== 'no-profile'"
             class="said"
             :class="{ warn: section.field.tone === 'warn' }"
             data-cy="model-picker-said"
@@ -903,9 +875,6 @@ async function focusAddOpen(provider: Provider): Promise<void> {
                 <span v-if="one.row?.note" class="warn" :title="one.row.note">⚠</span>
                 <span v-if="one.mark" class="tag">{{ one.mark }}</span>
                 <span v-if="one.row?.addedBy === 'a-person'" class="tag">added by you</span>
-                <span v-if="one.row?.description" class="description">{{
-                  one.row.description
-                }}</span>
               </span>
             </label>
             <button
@@ -966,7 +935,11 @@ async function focusAddOpen(provider: Provider): Promise<void> {
         </section>
 
         <fieldset
-          v-if="draft !== null && selectedProvider === draft.provider"
+          v-if="
+            draft !== null &&
+            selectedProvider === draft.provider &&
+            (levels.length > 0 || effortWanted)
+          "
           class="efforts"
           data-cy="model-picker-efforts"
         >
@@ -977,7 +950,6 @@ async function focusAddOpen(provider: Provider): Promise<void> {
             class="pick"
             data-cy="model-picker-effort"
             :data-effort="level.id"
-            :title="level.description ?? ''"
           >
             <input
               type="radio"
@@ -994,19 +966,12 @@ async function focusAddOpen(provider: Provider): Promise<void> {
               >default</span
             >
           </label>
-          <p v-if="effortSilence" class="said" data-cy="model-picker-effort-none">
-            {{ effortSilence }}
-          </p>
-          <p v-else-if="effortWanted" class="said warn" data-cy="model-picker-effort-wanted">
+          <p v-if="effortWanted" class="said warn" data-cy="model-picker-effort-wanted">
             {{ effortWanted }}
-          </p>
-          <p v-else-if="effortDescription" class="said" data-cy="model-picker-effort-said">
-            {{ effortDescription }}
           </p>
         </fieldset>
 
         <div class="foot">
-          <p v-if="reachesSays" class="said" data-cy="model-picker-reaches">{{ reachesSays }}</p>
           <p v-if="refusal" class="said refused" data-cy="model-picker-refusal" role="alert">
             {{ refusal }}
           </p>
@@ -1172,12 +1137,6 @@ h4 {
   color: var(--muted);
   font-size: var(--type-caption);
   overflow-wrap: anywhere;
-}
-
-.description {
-  width: 100%;
-  color: var(--faint);
-  font-size: var(--type-caption);
 }
 
 .warn {
