@@ -75,6 +75,29 @@ async function connected(plugin = 'chrome') {
 }
 
 describe.skipIf(process.platform === 'win32')('ledger reader and wire', () => {
+  it('leaves an older attach protocol on its existing reader format', async () => {
+    const original = PersonChannel.prototype.call
+    const call = vi.spyOn(PersonChannel.prototype, 'call').mockImplementation(async function (
+      this: PersonChannel,
+      input,
+      within,
+    ) {
+      const reply = await original.call(this, input, within)
+      return input && typeof input === 'object' && 'kind' in input && input.kind === 'attach'
+        ? true
+        : reply
+    })
+    await connected()
+    expect(
+      call.mock.calls.some(
+        ([input]) =>
+          input &&
+          typeof input === 'object' &&
+          'kind' in input &&
+          input.kind === 'configure-ledger',
+      ),
+    ).toBe(false)
+  })
   it('negotiates the existing legacy reader format before opening a page', async () => {
     const call = vi.spyOn(PersonChannel.prototype, 'call')
     await connected()
