@@ -88,7 +88,8 @@ export function createPrivatePluginPort(options: {
   return {
     tool(request, signal) {
       let client: Client | undefined,
-        cancelled = false
+        cancelled = false,
+        closingAfterReply = false
       let prove!: () => void, unproved!: () => void
       const quiescent = new Promise<void>((resolve, reject) => {
         prove = resolve
@@ -135,8 +136,13 @@ export function createPrivatePluginPort(options: {
             return { ok: false }
           }
           client = new Client({ name: 'brocrew-plugin-broker', version: '1' })
-          client.onerror = (error) =>
-            reportError(error, connected ? 'transport-call-failed' : 'transport-connect-failed')
+          client.onerror = (error) => {
+            // Closing a completed per-call client aborts its idle SSE reader. That
+            // local teardown callback is not a failed tool call. Catch still reports
+            // call failures; close() rejection below retains its separate diagnostic.
+            if (!closingAfterReply)
+              reportError(error, connected ? 'transport-call-failed' : 'transport-connect-failed')
+          }
           signal.addEventListener('abort', cancel, { once: true })
           const transport = new StreamableHTTPClientTransport(url, {
             requestInit: { headers: { Authorization: `Bearer ${credential}` }, redirect: 'error' },
@@ -194,6 +200,7 @@ export function createPrivatePluginPort(options: {
         } finally {
           signal.removeEventListener('abort', cancel)
           let closed = false
+          closingAfterReply = natural && !cancelled && !signal.aborted
           try {
             await client?.close()
             closed = true
