@@ -391,3 +391,89 @@ it('restore refuses a profile replaced between saved identity resolution and que
   ).toEqual([])
   expect(f.browser.pages.get('fern') ?? []).toHaveLength(0)
 })
+
+it('restores fifty tabs within the unchanged profile budget with a 35ms native volume observation', async () => {
+  const f = fixture()
+  let elapsed = 0
+  const store = createSharedProfileStore({
+    home: f.home,
+    shared: f.shared,
+    workspaceId: f.env.BROCREW_PLUGIN_OWNER_ID,
+    workspaceLabel: 'Alpha',
+    chromeState: () => 'ended',
+    // Actual native Foundation observations measured about35ms. Advance only the budget
+    // clock instead of delaying this fixture or increasing the product's five-second limit.
+    readVolumeIdentity: () => {
+      elapsed += 35
+      return 'apfs:11111111-1111-4111-8111-111111111111'
+    },
+  })
+  store.create('fern', 'panel')
+  const browser = new FakeBrowser(store.dirOf)
+  const file = path.join(f.home, 'restore.json')
+  fs.writeFileSync(
+    file,
+    JSON.stringify({
+      format: 2,
+      savedAt: new Date().toISOString(),
+      profiles: [
+        {
+          name: 'fern',
+          identity: store.shared.identity('fern'),
+          urls: Array.from({ length: 50 }, (_, i) => `https://example.test/${i}`),
+        },
+      ],
+    }),
+  )
+  const tabs = new TabRegistry()
+  expect(
+    await restoreVisibleSession({
+      file,
+      store,
+      browser,
+      tabs,
+      logger: silentLogger,
+      clock: () => elapsed,
+    }),
+  ).toEqual(['fern'])
+  expect(tabs.list(() => browser.state('fern')?.generation ?? null)).toHaveLength(50)
+})
+it('refuses a changed volume after awaited page creation before admitting the restored page', async () => {
+  const f = fixture()
+  let volume = 'apfs:11111111-1111-4111-8111-111111111111'
+  const store = createSharedProfileStore({
+    home: f.home,
+    shared: f.shared,
+    workspaceId: f.env.BROCREW_PLUGIN_OWNER_ID,
+    workspaceLabel: 'Alpha',
+    chromeState: () => 'ended',
+    readVolumeIdentity: () => volume,
+  })
+  store.create('fern', 'panel')
+  const browser = new FakeBrowser(store.dirOf)
+  const newPage = browser.newPage.bind(browser)
+  browser.newPage = async (...args) => {
+    const page = await newPage(...args)
+    volume = 'apfs:22222222-2222-4222-8222-222222222222'
+    return page
+  }
+  const file = path.join(f.home, 'restore.json')
+  fs.writeFileSync(
+    file,
+    JSON.stringify({
+      format: 2,
+      savedAt: new Date().toISOString(),
+      profiles: [
+        { name: 'fern', identity: store.shared.identity('fern'), urls: ['https://example.test/'] },
+      ],
+    }),
+  )
+  const tabs = new TabRegistry()
+  expect(await restoreVisibleSession({ file, store, browser, tabs, logger: silentLogger })).toEqual(
+    [],
+  )
+  // The watcher can register the newly created blank page before permission changes.
+  // Admission must prevent the saved URL from being navigated after the await.
+  expect(browser.pages.get('fern')).toHaveLength(1)
+  expect(browser.pages.get('fern')![0]!.gotos).toEqual([])
+})

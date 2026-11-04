@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import {
   chmod,
   link,
@@ -9,17 +9,54 @@ import {
   realpath,
   rename,
   rm,
+  symlink,
   unlink,
   writeFile,
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-const proofIo = vi.hoisted(() => ({ failRename: false }))
+const proofIo = vi.hoisted(() => ({ failRename: false, deviceOffset: 0n, noFollowFallback: false }))
+// Exercise Windows' descriptor-vs-path check even on a Mac: Windows has no O_NOFOLLOW.
+vi.mock('node:fs', async () => {
+  const fs = await vi.importActual<typeof import('node:fs')>('node:fs')
+  return {
+    ...fs,
+    constants: {
+      ...fs.constants,
+      get O_NOFOLLOW() {
+        return proofIo.noFollowFallback ? undefined : fs.constants.O_NOFOLLOW
+      },
+    },
+  }
+})
 vi.mock('node:fs/promises', async () => {
   const fs = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises')
   return {
     ...fs,
+    open: async (...args: Parameters<typeof fs.open>) => {
+      const handle = await fs.open(...args)
+      const stat = handle.stat.bind(handle)
+      // Renumbering affects both the pathname and an already opened descriptor. Windows'
+      // no-O_NOFOLLOW guard compares them; contradictory mock devices must not bypass it.
+      handle.stat = (async (...options: Parameters<typeof handle.stat>) => {
+        const observed = await stat(...options)
+        if (typeof observed.dev === 'bigint' && proofIo.deviceOffset)
+          return Object.assign(Object.create(Object.getPrototypeOf(observed)), observed, {
+            dev: observed.dev + proofIo.deviceOffset,
+          })
+        return observed
+      }) as typeof handle.stat
+      return handle
+    },
+    lstat: async (...args: Parameters<typeof fs.lstat>) => {
+      const stat = await fs.lstat(...args)
+      if (typeof stat.dev === 'bigint' && proofIo.deviceOffset)
+        return Object.assign(Object.create(Object.getPrototypeOf(stat)), stat, {
+          dev: stat.dev + proofIo.deviceOffset,
+        })
+      return stat
+    },
     rename: (...args: Parameters<typeof fs.rename>) => {
       if (proofIo.failRename) {
         proofIo.failRename = false
@@ -42,9 +79,13 @@ describe('fenced reboot proof for historical plugin runs', () => {
   let owner: PluginSupervisor | undefined
   const firstBoot = randomUUID()
   let witness: unknown
+  let volume = 'apfs:11111111-1111-4111-8111-111111111111'
   const observe = vi.fn(async () => witness)
   const marker = () => join(root, 'supervisor/reboot-proofs', `pending-${epoch}.json`)
   afterEach(async () => {
+    proofIo.deviceOffset = 0n
+    proofIo.noFollowFallback = false
+    volume = 'apfs:11111111-1111-4111-8111-111111111111'
     vi.restoreAllMocks()
     if (owner) {
       await owner.shutdown()
@@ -93,11 +134,133 @@ describe('fenced reboot proof for historical plugin runs', () => {
       root,
       workspaceRoots: [],
       recoverPrevious: (previous) =>
-        previousRunsProvenStopped(root, { previous, readBootWitness: observe }),
+        previousRunsProvenStopped(root, {
+          previous,
+          readBootWitness: observe,
+          readVolumeIdentity: async () => volume,
+        }),
     })
     return owner
   }
   const refused = () => expect(attempt()).rejects.toMatchObject({ code: 'cleanup-pending' })
+  it('records durable volume identities in newly staged reboot proofs', async () => {
+    await fixture()
+    await refused()
+    expect(await readFile(marker(), 'utf8')).toContain(volume)
+  })
+  it.each([false, true])(
+    'records a durable volume and replays its certificate after two device renumberings (no-follow fallback: %s)',
+    async (fallback) => {
+      proofIo.noFollowFallback = fallback
+      await fixture()
+      await refused()
+      proofIo.deviceOffset = 17n
+      witness = { kind: 'darwin-boot-session-v1', value: randomUUID() }
+      const write = SupervisorStorage.prototype.write
+      const interrupted = vi
+        .spyOn(SupervisorStorage.prototype, 'write')
+        .mockImplementation(function (this: SupervisorStorage, value) {
+          if (value.phase === 'stopped') throw new Error('fictional interrupted transition')
+          return write.call(this, value)
+        })
+      await expect(attempt()).rejects.toBeDefined()
+      interrupted.mockRestore()
+      proofIo.deviceOffset = 29n
+      witness = null
+      await attempt()
+    },
+  )
+  it('refuses a changed anchored volume even with identical inodes and a different boot', async () => {
+    await fixture()
+    await refused()
+    volume = 'apfs:22222222-2222-4222-8222-222222222222'
+    proofIo.deviceOffset = 17n
+    witness = { kind: 'darwin-boot-session-v1', value: randomUUID() }
+    await refused()
+  })
+  it('refuses device drift in the same boot', async () => {
+    await fixture()
+    await refused()
+    proofIo.deviceOffset = 17n
+    await refused()
+  })
+  async function makeLegacy(file: string) {
+    const proof = JSON.parse(await readFile(file, 'utf8'))
+    const pending = proof.marker ?? proof
+    for (const [key, folder] of Object.entries({
+      rootIdentity: root,
+      fenceIdentity: join(root, 'supervisor/owner-lock.sqlite'),
+      hostIdentity: join(root, 'host'),
+      runsIdentity: join(root, 'host/runs'),
+    }))
+      pending.binding[key] = `999999999:${(await lstat(folder, { bigint: true })).ino}`
+    for (const item of pending.census)
+      item.identity = `999999999:${(await lstat(join(root, 'host/runs', item.id), { bigint: true })).ino}`
+    pending.digest = createHash('sha256').update(JSON.stringify(pending.census)).digest('hex')
+    const text = JSON.stringify(proof)
+    await writeFile(file, text)
+    return text
+  }
+  it('legacy anchorless record on a renumbered or cloned volume is rebound and logged only after reboot', async () => {
+    await fixture()
+    await refused()
+    const original = await makeLegacy(marker())
+    const log = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await refused()
+    expect(log).not.toHaveBeenCalled()
+    witness = { kind: 'darwin-boot-session-v1', value: randomUUID() }
+    await attempt()
+    expect(log).toHaveBeenCalledWith('rebound after device renumbering')
+    expect(await readFile(marker(), 'utf8')).toBe(original)
+    const nonce = JSON.parse(original).nonce
+    const certificate = await readFile(
+      join(root, 'supervisor/reboot-proofs/certificates', `${nonce}.json`),
+      'utf8',
+    )
+    expect(certificate).toContain(volume)
+  })
+  it('never treats a changed Windows volume serial as legacy device renumbering', async () => {
+    await fixture()
+    await refused()
+    await makeLegacy(marker())
+    volume = `winvol:${(await lstat(root, { bigint: true })).dev}`
+    witness = { kind: 'darwin-boot-session-v1', value: randomUUID() }
+    await refused()
+  })
+  it.skipIf(process.platform === 'win32').each(['mode', 'symlink'] as const)(
+    'refuses changed run %s across a genuine reboot',
+    async (change) => {
+      await fixture()
+      await refused()
+      if (change === 'mode') await chmod(run, 0o755)
+      else {
+        const saved = join(parent, 'saved-run')
+        await rename(run, saved)
+        await symlink(saved, run, 'dir')
+      }
+      witness = { kind: 'darwin-boot-session-v1', value: randomUUID() }
+      await refused()
+    },
+  )
+  it('keeps dev:ino pinning when native volume observation races with a mount change', async () => {
+    await fixture()
+    await expect(
+      PluginSupervisor.start({
+        root,
+        workspaceRoots: [],
+        recoverPrevious: (previous) =>
+          previousRunsProvenStopped(root, {
+            previous,
+            readBootWitness: observe,
+            readVolumeIdentity: async () => {
+              proofIo.deviceOffset = 41n
+              return volume
+            },
+          }),
+      }),
+    ).rejects.toMatchObject({ code: 'cleanup-pending' })
+    await expect(readFile(marker())).rejects.toMatchObject({ code: 'ENOENT' })
+  })
   async function retainedProof(kind: 'pending' | 'certificate') {
     await fixture()
     await refused()
@@ -117,6 +280,63 @@ describe('fenced reboot proof for historical plugin runs', () => {
     witness = null
     return join(root, 'supervisor/reboot-proofs/certificates', `${pending.nonce}.json`)
   }
+  it.each([false, true])(
+    'enrols a legacy certificate without rewriting it, then refuses a changed recorded volume (no-follow fallback: %s)',
+    async (fallback) => {
+      proofIo.noFollowFallback = fallback
+      const file = await retainedProof('certificate')
+      const original = await makeLegacy(file)
+      const log = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      await attempt()
+      expect(await readFile(file, 'utf8')).toBe(original)
+      expect(log).toHaveBeenCalledWith('rebound after device renumbering')
+      await owner!.shutdown()
+      await owner!.closed
+      owner = undefined
+      const storage = new SupervisorStorage(root, [], false)
+      storage.write({ ...storage.read()!, phase: 'blocked' })
+      storage.close()
+      proofIo.deviceOffset = 71n
+      await attempt()
+      await owner!.shutdown()
+      await owner!.closed
+      owner = undefined
+      const nextStorage = new SupervisorStorage(root, [], false)
+      nextStorage.write({ ...nextStorage.read()!, phase: 'blocked' })
+      nextStorage.close()
+      volume = 'apfs:22222222-2222-4222-8222-222222222222'
+      await refused()
+    },
+  )
+  it.each(['digest', 'inode', 'hardlink'] as const)(
+    'refuses a changed legacy certificate enrollment: %s',
+    async (change) => {
+      const file = await retainedProof('certificate')
+      const original = await makeLegacy(file)
+      await attempt()
+      await owner!.shutdown()
+      await owner!.closed
+      owner = undefined
+      const storage = new SupervisorStorage(root, [], false)
+      storage.write({ ...storage.read()!, phase: 'blocked' })
+      storage.close()
+      const nonce = JSON.parse(original).marker.nonce
+      const enrollment = join(root, 'supervisor/reboot-proofs/volume-bindings', `${nonce}.json`)
+      if (change === 'hardlink') await link(enrollment, join(parent, 'external-enrollment-alias'))
+      else {
+        const value = JSON.parse(await readFile(enrollment, 'utf8'))
+        if (change === 'digest') value.certificateDigest = 'f'.repeat(64)
+        else {
+          const parts = value.census[0].identity.split(':')
+          parts[2] = '999999999'
+          value.census[0].identity = parts.join(':')
+          value.digest = createHash('sha256').update(JSON.stringify(value.census)).digest('hex')
+        }
+        await writeFile(enrollment, JSON.stringify(value))
+      }
+      await refused()
+    },
+  )
   it.each(['pending', 'certificate'] as const)(
     'refuses a hardlinked %s proof as takeover authority',
     async (kind) => {

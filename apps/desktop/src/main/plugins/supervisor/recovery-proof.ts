@@ -11,6 +11,7 @@ import {
   readBootWitness,
 } from '../../../../resources/plugin-host/boot-witness.mjs'
 import type { OwnerRecord } from './protocol'
+import { readVolumeIdentity } from '../../../../resources/plugin-host/volume-identity.mjs'
 
 const directoryIdentity = z.strictObject({ id: z.uuid(), identity: z.string().max(128) })
 const bindingSchema = z.strictObject({
@@ -40,12 +41,130 @@ const certificateSchema = z.strictObject({
   marker: markerSchema,
   after: witnessSchema,
 })
+// Existing certificates stay immutable. A hash-bound enrollment supplies durable identities
+// for an older certificate without rewriting its original reboot evidence.
+const enrollmentSchema = z.strictObject({
+  format: z.literal(1),
+  certificateDigest: z.string().regex(/^[a-f0-9]{64}$/),
+  binding: bindingSchema,
+  census: z.array(directoryIdentity).max(4096),
+  digest: z.string().regex(/^[a-f0-9]{64}$/),
+})
 type Census = z.infer<typeof markerSchema>['census']
+type Binding = z.infer<typeof bindingSchema>
+type VolumeReader = (
+  path: string,
+  device: string,
+) => string | undefined | Promise<string | undefined>
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex')
 const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 const identity = async (path: string) => {
   const stat = await lstat(path, { bigint: true })
   return `${stat.dev}:${stat.ino}`
+}
+const legacyIdentity = /^([0-9]+):([0-9]+)$/
+const durableIdentity = /^(apfs:[a-f0-9-]{36}|winvol:[0-9]+):([0-9]+):([0-9]+):([0-9]+)$/
+function matchesIdentity(
+  saved: string,
+  current: string,
+  runtime: string | undefined,
+  allowDeviceChange: boolean,
+) {
+  if (saved === current || saved === runtime) return true
+  const old = legacyIdentity.exec(saved),
+    next = durableIdentity.exec(current)
+  return !!(allowDeviceChange && old && next?.[1]?.startsWith('apfs:') && old[2] === next[2])
+}
+function matchesBinding(
+  saved: Binding,
+  current: Binding,
+  runtime: Binding | undefined,
+  allowDeviceChange: boolean,
+) {
+  return (
+    saved.root === current.root &&
+    (['rootIdentity', 'fenceIdentity', 'hostIdentity', 'runsIdentity'] as const).every((key) =>
+      matchesIdentity(saved[key], current[key], runtime?.[key], allowDeviceChange),
+    )
+  )
+}
+function matchesCensus(
+  saved: Census,
+  current: Census,
+  runtime: Census | undefined,
+  allowDeviceChange: boolean,
+  full: boolean,
+) {
+  const identities = new Map(current.map((run) => [run.id, run.identity]))
+  const pins = new Map(runtime?.map((run) => [run.id, run.identity]))
+  return (
+    (!full || saved.length === current.length) &&
+    saved.every((run) => {
+      const now = identities.get(run.id),
+        pin = pins.get(run.id)
+      return now !== undefined && matchesIdentity(run.identity, now, pin, allowDeviceChange)
+    })
+  )
+}
+function rebindReason(
+  saved: { binding: Binding; census: Census },
+  runtimeBinding: Binding,
+  runtimeCensus: Census,
+) {
+  const pins = new Map(runtimeCensus.map((run) => [run.id, run.identity]))
+  const changed =
+    (['rootIdentity', 'fenceIdentity', 'hostIdentity', 'runsIdentity'] as const).some(
+      (key) =>
+        legacyIdentity.test(saved.binding[key]) && saved.binding[key] !== runtimeBinding[key],
+    ) ||
+    saved.census.some(
+      (run) => legacyIdentity.test(run.identity) && run.identity !== pins.get(run.id),
+    )
+  return changed ? 'rebound after device renumbering' : 'recorded durable volume identity'
+}
+async function snapshot(root: string, readVolume: VolumeReader) {
+  // The cache lasts for this one snapshot only. Each revalidation asks the native system again.
+  const volumes = new Map<string, Promise<string | undefined>>()
+  const pins: Record<string, string> = {}
+  const identify = async (path: string) => {
+    const stat = await lstat(path, { bigint: true })
+    if (
+      stat.isSymbolicLink() ||
+      (!stat.isDirectory() && !stat.isFile()) ||
+      (process.platform !== 'win32' &&
+        (stat.uid !== BigInt(process.getuid!()) || (stat.mode & 0o077n) !== 0n))
+    )
+      throw new Error('Untrusted recovery identity')
+    const device = String(stat.dev),
+      runtime = `${stat.dev}:${stat.ino}`
+    let volume = volumes.get(device)
+    if (!volume) {
+      volume = Promise.resolve(readVolume(path, device))
+      volumes.set(device, volume)
+    }
+    const value = await volume
+    if (value !== undefined && !/^(apfs:[a-f0-9-]{36}|winvol:[0-9]+)$/.test(value))
+      throw new Error('Invalid volume identity')
+    pins[path] = `${runtime}:${stat.uid}:${stat.mode}`
+    return value ? `${value}:${stat.ino}:${stat.uid}:${stat.mode}` : runtime
+  }
+  const bound = await binding(root, identify)
+  const covered = await census(root, identify)
+  const runtimeBinding = await binding(root, identity)
+  const runtimeCensus = await census(root)
+  // Native volume observation may yield. Retain the original dev:ino race check.
+  for (const [path, pin] of Object.entries(pins)) {
+    const stat = await lstat(path, { bigint: true })
+    if (pin !== `${stat.dev}:${stat.ino}:${stat.uid}:${stat.mode}`)
+      throw new Error('Changed recovery identity')
+  }
+  return {
+    bound,
+    covered,
+    runtimeBinding,
+    runtimeCensus,
+    pins: Object.fromEntries(Object.entries(pins).sort(([a], [b]) => a.localeCompare(b))),
+  }
 }
 /** Reboot metadata has the same descriptor trust boundary as a guardian's exit proof. */
 async function readRebootProof(path: string): Promise<unknown> {
@@ -80,14 +199,14 @@ async function readRebootProof(path: string): Promise<unknown> {
     await file.close()
   }
 }
-async function binding(root: string) {
+async function binding(root: string, identify = identity) {
   const canonical = realpathSync.native(root)
   return {
     root: process.platform === 'win32' ? canonical.toLowerCase() : canonical,
-    rootIdentity: await identity(root),
-    fenceIdentity: await identity(join(root, 'supervisor/owner-lock.sqlite')),
-    hostIdentity: await identity(join(root, 'host')),
-    runsIdentity: await identity(join(root, 'host/runs')),
+    rootIdentity: await identify(root),
+    fenceIdentity: await identify(join(root, 'supervisor/owner-lock.sqlite')),
+    hostIdentity: await identify(join(root, 'host')),
+    runsIdentity: await identify(join(root, 'host/runs')),
   }
 }
 /** The original fence excludes every legitimate publisher while these immutable proofs are made. */
@@ -110,7 +229,7 @@ async function publish(folder: string, name: string, value: unknown): Promise<vo
     await unlink(temporary).catch(() => {})
   }
 }
-async function census(root: string): Promise<Census> {
+async function census(root: string, identify = identity): Promise<Census> {
   if (!(await exists(join(root, 'host')))) return []
   const host = await privateChild(root, 'host', false)
   if (!(await exists(join(host, 'runs')))) return []
@@ -122,7 +241,7 @@ async function census(root: string): Promise<Census> {
     if (!entry.isDirectory() || !z.uuid().safeParse(entry.name).success)
       throw new Error('Invalid run history')
     const directory = await privateChild(runs, entry.name, false)
-    result.push({ id: entry.name, identity: await identity(directory) })
+    result.push({ id: entry.name, identity: await identify(directory) })
   }
   return result.sort((a, b) => a.id.localeCompare(b.id))
 }
@@ -131,6 +250,8 @@ export interface RecoveryObservation {
   previous: OwnerRecord | null
   /** Trusted tests may substitute the native observation, never workspace or plugin input. */
   readBootWitness?: () => Promise<unknown>
+  /** Native identity seam for trusted fictional-volume tests; never a plugin setting. */
+  readVolumeIdentity?: VolumeReader
   /** A verified pending reboot marker permits advice, never admission. */
   onRebootRequired?: () => void
 }
@@ -198,20 +319,25 @@ export async function previousRunsProvenStopped(
   observation?: RecoveryObservation,
 ): Promise<boolean> {
   try {
-    const covered = await census(root)
+    let covered = await census(root)
     const unresolved = new Set<string>()
     for (const run of covered) if (!(await hasExitReceipt(root, run.id))) unresolved.add(run.id)
     if (!unresolved.size) return true
     if (!observation) return false
-    const bound = await binding(root)
+    const readVolume = observation.readVolumeIdentity ?? readVolumeIdentity
+    const initial = await snapshot(root, readVolume)
+    if (!equal(covered, initial.runtimeCensus)) return false
+    const bound = initial.bound
+    covered = initial.covered
+    const unchanged = async () => equal(initial, await snapshot(root, readVolume))
     const proofs = await privateChild(root, 'supervisor/reboot-proofs')
     if ((await readdir(proofs)).length > 8192) return false
     const certificates = await privateChild(proofs, 'certificates')
+    const enrollments = await privateChild(proofs, 'volume-bindings')
     await syncDirectoryAt(join(root, 'supervisor'))
     await syncDirectoryAt(proofs)
     const entries = await readdir(certificates)
     if (entries.length > 4096) return false
-    const identities = new Map(covered.map((run) => [run.id, run.identity]))
     for (const name of entries) {
       // A crash may leave an unpublished temporary; it is never positive evidence.
       if (name.startsWith('.proof-') && z.uuid().safeParse(name.slice(7)).success) continue
@@ -220,18 +346,69 @@ export async function previousRunsProvenStopped(
       if (
         name !== `${marker.nonce}.json` ||
         !validMarker(marker) ||
-        !equal(marker.binding, bound) ||
-        !laterBoot(marker.witness, certificate.after) ||
-        marker.census.some((run) => identities.get(run.id) !== run.identity)
+        !laterBoot(marker.witness, certificate.after)
       )
         return false
+      const enrollmentPath = join(enrollments, name)
+      let enrolled: z.infer<typeof enrollmentSchema> | undefined
+      if (await exists(enrollmentPath)) {
+        enrolled = enrollmentSchema.parse(await readRebootProof(enrollmentPath))
+        // Its link to the immutable certificate is exact; a different nonce, census or
+        // previously recorded volume cannot be laundered through a new enrollment.
+        if (
+          enrolled.certificateDigest !== hash(certificate) ||
+          enrolled.digest !== hash(enrolled.census) ||
+          ![
+            enrolled.binding.rootIdentity,
+            enrolled.binding.fenceIdentity,
+            enrolled.binding.hostIdentity,
+            enrolled.binding.runsIdentity,
+            ...enrolled.census.map((run) => run.identity),
+          ].every((value) => durableIdentity.test(value)) ||
+          !matchesBinding(marker.binding, enrolled.binding, undefined, true) ||
+          !matchesCensus(marker.census, enrolled.census, undefined, true, true)
+        )
+          return false
+      }
+      const acceptedBinding = enrolled?.binding ?? marker.binding
+      const acceptedCensus = enrolled?.census ?? marker.census
+      if (
+        !matchesBinding(acceptedBinding, bound, initial.runtimeBinding, !enrolled) ||
+        !matchesCensus(acceptedCensus, covered, initial.runtimeCensus, !enrolled, false)
+      )
+        return false
+      const legacy =
+        !enrolled &&
+        [
+          marker.binding.rootIdentity,
+          marker.binding.fenceIdentity,
+          marker.binding.hostIdentity,
+          marker.binding.runsIdentity,
+          ...marker.census.map((run) => run.identity),
+        ].some((value) => legacyIdentity.test(value))
+      if (legacy && bound.rootIdentity.startsWith('apfs:')) {
+        const selected = covered.filter((run) => marker.census.some((old) => old.id === run.id))
+        if (!(await unchanged())) return false
+        await publish(
+          enrollments,
+          name,
+          enrollmentSchema.parse({
+            format: 1,
+            certificateDigest: hash(certificate),
+            binding: bound,
+            census: selected,
+            digest: hash(selected),
+          }),
+        )
+        console.warn(rebindReason(marker, initial.runtimeBinding, initial.runtimeCensus))
+      }
       for (const run of marker.census) unresolved.delete(run.id)
     }
     // A completed certificate survives a crash between proof and owner publication. It never
     // needs a second tick comparison and cannot cover a newly created run directory.
     if (!unresolved.size) {
       await syncDirectoryAt(certificates)
-      return equal(bound, await binding(root)) && equal(covered, await census(root))
+      return unchanged()
     }
     const previous = observation.previous
     if (!previous || (previous.phase !== 'blocked' && previous.phase !== 'draining')) return false
@@ -243,16 +420,13 @@ export async function previousRunsProvenStopped(
       if (
         !validMarker(pending) ||
         pending.epoch !== previous.epoch ||
-        pending.phase !== previous.phase ||
-        !equal(pending.binding, bound) ||
-        !equal(pending.census, covered)
+        pending.phase !== previous.phase
       )
         return false
       await syncDirectoryAt(proofs)
     }
     const current = bootWitness(await (observation.readBootWitness ?? readBootWitness)())
-    if (!current || !equal(bound, await binding(root)) || !equal(covered, await census(root)))
-      return false
+    if (!current || !(await unchanged())) return false
     if (!pending) {
       await publish(
         proofs,
@@ -276,7 +450,13 @@ export async function previousRunsProvenStopped(
       return false
     }
     if (pending.witness.kind !== current.kind) return false
-    if (!laterBoot(pending.witness, current)) {
+    const rebooted = laterBoot(pending.witness, current)
+    if (
+      !matchesBinding(pending.binding, bound, initial.runtimeBinding, rebooted) ||
+      !matchesCensus(pending.census, covered, initial.runtimeCensus, rebooted, true)
+    )
+      return false
+    if (!rebooted) {
       try {
         observation.onRebootRequired?.()
       } catch {
@@ -290,11 +470,16 @@ export async function previousRunsProvenStopped(
       certificateSchema.parse({
         format: 1,
         method: 'post-marker-boot-boundary',
-        marker: pending,
+        // The release decision accepts an anchorless same-path clone/restore with matching
+        // inodes. The changed boot proves old processes gone; enroll the current UUID
+        // now so every later volume change refuses. The pending marker stays intact.
+        marker: { ...pending, binding: bound, census: covered, digest: hash(covered) },
         after: current,
       }),
     )
-    return equal(bound, await binding(root)) && equal(covered, await census(root))
+    if (!equal(pending.binding, bound) || !equal(pending.census, covered))
+      console.warn(rebindReason(pending, initial.runtimeBinding, initial.runtimeCensus))
+    return unchanged()
   } catch {
     return false
   }

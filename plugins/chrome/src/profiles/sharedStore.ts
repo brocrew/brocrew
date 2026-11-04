@@ -22,7 +22,8 @@ import {
 import type { ProfileStore, ProfileRecord, HelperSwitch } from './store.js'
 import { durableJson, identity, ownerState, withSharedLock } from './sharedLock.js'
 import type { ProcessIdentity, Liveness } from './sharedLock.js'
-import type { SharedProfileAccess } from './sharedTypes.js'
+import type { SharedProfileAccess, SharedProfileAdmission } from './sharedTypes.js'
+import { readVolumeIdentity } from './volumeIdentity.js'
 export type ChromeState = 'ended' | 'live' | 'unknown'
 export class ProfileInUseElsewhereError extends ProfileStoreError {
   readonly transient = true
@@ -47,6 +48,11 @@ interface Lease extends ProcessIdentity {
 interface FileIdentity {
   dev: string
   ino: string
+  volume?: string
+  uid?: string
+  mode?: string
+  birthtime?: string
+  type?: 'directory'
 }
 interface Migration {
   id: string
@@ -94,6 +100,8 @@ export interface SharedStoreOptions {
   processIdentity?: ProcessIdentity
   checkpoint?: (phase: string) => void
   rename?: (source: string, destination: string) => void
+  /** Trusted fictional-volume tests only; never a plugin or workspace configuration field. */
+  readVolumeIdentity?: (path: string, device: string) => string | undefined
 }
 function readJson<T>(file: string, absent: () => T): T {
   try {
@@ -106,19 +114,27 @@ function readJson<T>(file: string, absent: () => T): T {
     throw e
   }
 }
-const fileIdentity = (p: string): FileIdentity | undefined => {
+const directoryStat = (p: string) => {
   try {
     const s = fs.lstatSync(p, { bigint: true })
     if (!s.isDirectory() || s.isSymbolicLink())
       throw new ProfileStoreError('Profile folder identity changed.')
-    return { dev: String(s.dev), ino: String(s.ino) }
+    return s
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === 'ENOENT') return undefined
     throw e
   }
 }
 const same = (a: FileIdentity | undefined, b: FileIdentity | undefined) =>
-  a !== undefined && b !== undefined && a.dev === b.dev && a.ino === b.ino
+  a !== undefined &&
+  b !== undefined &&
+  a.dev === b.dev &&
+  a.ino === b.ino &&
+  a.volume === b.volume &&
+  a.uid === b.uid &&
+  a.mode === b.mode &&
+  a.birthtime === b.birthtime &&
+  a.type === b.type
 /** A successful complete process listing AND absent native lock is required for an ended proof.
  * Inspection errors and a native lock with no provable owner remain unknown. */
 export function inspectChrome(
@@ -210,7 +226,40 @@ export function createSharedProfileStore(
     throw new ProfileStoreError('Shared Chrome workspace identity is invalid.')
   privateFolder(o.shared, o.shared)
   const profilesDir = privateFolder(o.shared, path.join(o.shared, 'profiles'), true)
-  const local = createProfileStore({ home: o.home, now: o.now, scopedAuthorization: true })
+  // Nested synchronous reads share one native observation per device. Every outer public
+  // operation starts and ends empty; lease callbacks outside an operation read afresh.
+  let operationDepth = 0
+  const volumes = new Map<string, string | undefined>()
+  const fileIdentity = (p: string): FileIdentity | undefined => {
+    const s = directoryStat(p)
+    if (!s) return undefined
+    const dev = String(s.dev)
+    if (!volumes.has(dev)) volumes.set(dev, (o.readVolumeIdentity ?? readVolumeIdentity)(p, dev))
+    const volume = volumes.get(dev)
+    if (volume !== undefined && !/^(apfs:[a-f0-9-]{36}|winvol:[0-9]+)$/.test(volume))
+      throw new ProfileStoreError('Profile folder identity changed.')
+    const after = directoryStat(p)
+    if (
+      !after ||
+      s.dev !== after.dev ||
+      s.ino !== after.ino ||
+      s.uid !== after.uid ||
+      s.mode !== after.mode
+    )
+      throw new ProfileStoreError('Profile folder identity changed.')
+    return {
+      dev,
+      ino: String(s.ino),
+      ...(volume ? { volume } : {}),
+      uid: String(s.uid),
+      mode: String(s.mode),
+      birthtime: String(s.birthtimeNs),
+      type: 'directory',
+    }
+  }
+  // createProfileStore enforces the home mode. Observe it first so that enforcement cannot
+  // accidentally hide a changed mode on a previously bound migration home.
+  const initialHome = fileIdentity(o.home)
   const owner = o.processIdentity ?? identity()
   const alive = o.ownerState ?? ownerState
   const chrome = o.chromeState ?? inspectChrome
@@ -219,6 +268,7 @@ export function createSharedProfileStore(
   const file = path.join(o.shared, 'registry.json')
   const now = () => (o.now?.() ?? new Date()).toISOString()
   const read = (): Registry => {
+    if (operationDepth === 0) volumes.clear()
     const r = readJson<Registry>(file, () => ({
       format: 1,
       revision: 0,
@@ -256,6 +306,17 @@ export function createSharedProfileStore(
     }
     return r
   }
+  const initialRegistry = read()
+  if (
+    process.platform !== 'win32' &&
+    initialRegistry.format === 1 &&
+    initialRegistry.profiles.some((p) => p.migration?.workspaceId === o.workspaceId) &&
+    (!initialHome ||
+      initialHome.uid !== String(process.getuid!()) ||
+      initialHome.mode !== String(0o40700))
+  )
+    throw new ProfileStoreError('Profile folder identity changed.')
+  const local = createProfileStore({ home: o.home, now: o.now, scopedAuthorization: true })
   const write = (r: Registry) => {
     r.revision++
     durableJson(file, r)
@@ -315,35 +376,41 @@ export function createSharedProfileStore(
   const alias = (p: ProfileRecord) =>
     `local-${createHash('sha256').update(`${o.workspaceId}\0${p.name}\0${p.createdAt}`).digest('hex').slice(0, 20)}`
   const localRecord = (name: string) => local.list().find((p) => alias(p) === name)
-  const migrationOf = (r: Registry, p: ProfileRecord) =>
-    r.profiles.find(
-      (s) =>
-        s.migration?.workspaceId === o.workspaceId &&
-        s.migration.sourceName === p.name &&
-        same(s.migration.home, fileIdentity(o.home)),
+  const localFallbackAllowed = (reservation: SharedRecord | undefined) =>
+    !reservation ||
+    (reservation.migration?.error === 'different-disk' &&
+      same(reservation.migration.home, fileIdentity(o.home)))
+  const migrationOf = (r: Registry, p: ProfileRecord) => {
+    // A failed identity enrollment does not dissolve a reservation. Keep even an
+    // unrecognized home fenced, and prefer any blocking reservation over a proven
+    // different-disk fallback when duplicate legacy journals already exist.
+    const reservations = r.profiles.filter(
+      (s) => s.migration?.workspaceId === o.workspaceId && s.migration.sourceName === p.name,
     )
+    return reservations.find((s) => !localFallbackAllowed(s)) ?? reservations[0]
+  }
   const localAvailable = (p: ProfileRecord, r: Registry) => {
     if (!fileIdentity(local.dirOf(p.name)))
       throw new ProfileStoreError('Profile folder is missing; its name stays reserved.')
     const m = migrationOf(r, p)
-    if (m && m.migration?.error !== 'different-disk')
-      throw new ProfileStoreError('Profile migration is reserved.')
+    if (!localFallbackAllowed(m)) throw new ProfileStoreError('Profile migration is reserved.')
   }
   const localView = (p: ProfileRecord, r: Registry) => {
     const moving = migrationOf(r, p)
     return {
       ...p,
       name: alias(p),
-      enabled:
-        p.enabled &&
-        !!fileIdentity(local.dirOf(p.name)) &&
-        (!moving || moving.migration?.error === 'different-disk'),
+      enabled: p.enabled && !!fileIdentity(local.dirOf(p.name)) && localFallbackAllowed(moving),
     }
   }
-  if (read().format === 1)
+  const reboundReasons: string[] = []
+  if (read().format === 1) {
     transaction((r) => {
+      rebindVolumes(r)
       r.workspaces[o.workspaceId] = { ...r.workspaces[o.workspaceId], label, lastSeenAt: now() }
     })
+    for (const reason of reboundReasons) console.warn(reason)
+  }
   const mine = (): Lease => ({
     ...owner,
     token: randomUUID(),
@@ -379,6 +446,48 @@ export function createSharedProfileStore(
     })
   const migrationHolds = new Map<string, 'chrome-unknown'>()
   const pendingDisk = new Map<string, { release(): boolean | void }>()
+  const admissionSnapshot = (name: string): SharedProfileAdmission => {
+    const lp = localRecord(name)
+    const r = read()
+    if (lp) {
+      localAvailable(lp, r)
+      const p = localView(lp, r)
+      if (!localFallbackAllowed(migrationOf(r, lp)))
+        throw new ProfileStoreError('Profile migration is reserved.')
+      return {
+        profile: p,
+        identity: `local:${alias(lp)}`,
+        authorization: JSON.stringify([
+          o.workspaceId,
+          p.name,
+          p.createdAt,
+          p.authorizationEpoch ?? '',
+          r.workspaces[o.workspaceId]?.authorizationEpoch ?? 0,
+          p.enabled,
+          p.allowExtensions,
+          p.allowSettings,
+          p.allowSync,
+        ]),
+      }
+    }
+    const p = raw(r, name)
+    if (!supported(p, r))
+      throw new ProfileStoreError('Profile is reserved or requires a newer plugin.')
+    const profile = effective(p, r)
+    return {
+      profile,
+      identity: `shared:${p.id}`,
+      authorization: JSON.stringify([
+        p.id,
+        p.permissionRevision,
+        p.perWorkspace[o.workspaceId]?.accessEpoch ?? 0,
+        profile.enabled,
+        p.allowExtensions,
+        p.allowSettings,
+        p.allowSync,
+      ]),
+    }
+  }
   const shared: SharedProfileAccess = {
     acquire(name) {
       const pending = pendingDisk.get(name)
@@ -388,7 +497,7 @@ export function createSharedProfileStore(
         const r = read()
         localAvailable(lp, r)
         const moving = migrationOf(r, lp)
-        if (moving && moving.migration?.error !== 'different-disk')
+        if (!localFallbackAllowed(moving))
           throw new ProfileStoreError('Profile migration is reserved.')
         return { release() {} }
       }
@@ -480,38 +589,9 @@ export function createSharedProfileStore(
         ? { name: alias(lp), identity: `local:${alias(lp)}` }
         : resolved(r.profiles.find((p) => p.name === name))
     },
+    admission: admissionSnapshot,
     authorization(name) {
-      const lp = localRecord(name)
-      const r = read()
-      if (lp) {
-        localAvailable(lp, r)
-        const p = localView(lp, r)
-        if (migrationOf(r, lp) && migrationOf(r, lp)?.migration?.error !== 'different-disk')
-          throw new ProfileStoreError('Profile migration is reserved.')
-        return JSON.stringify([
-          o.workspaceId,
-          p.name,
-          p.createdAt,
-          p.authorizationEpoch ?? '',
-          r.workspaces[o.workspaceId]?.authorizationEpoch ?? 0,
-          p.enabled,
-          p.allowExtensions,
-          p.allowSettings,
-          p.allowSync,
-        ])
-      }
-      const p = raw(r, name)
-      if (!supported(p, r))
-        throw new ProfileStoreError('Profile is reserved or requires a newer plugin.')
-      return JSON.stringify([
-        p.id,
-        p.permissionRevision,
-        p.perWorkspace[o.workspaceId]?.accessEpoch ?? 0,
-        effective(p, r).enabled,
-        p.allowExtensions,
-        p.allowSettings,
-        p.allowSync,
-      ])
+      return admissionSnapshot(name).authorization
     },
     view(name) {
       const r = read()
@@ -613,8 +693,7 @@ export function createSharedProfileStore(
       if (lp) {
         localAvailable(lp, read())
         const p = migrationOf(read(), lp)
-        if (p && p.migration?.error !== 'different-disk')
-          throw new ProfileStoreError('Profile migration is reserved.')
+        if (!localFallbackAllowed(p)) throw new ProfileStoreError('Profile migration is reserved.')
         return local.dirOf(lp.name)
       }
       const r = read()
@@ -747,7 +826,88 @@ export function createSharedProfileStore(
     },
   }
   if (o.migrationApproved && read().format === 1) migrate()
+  for (const api of [shared, facade]) {
+    for (const key of Object.keys(api)) {
+      const method = Reflect.get(api, key)
+      if (typeof method !== 'function') continue
+      Reflect.set(api, key, function (this: unknown, ...args: unknown[]) {
+        const outer = operationDepth === 0
+        if (outer) volumes.clear()
+        operationDepth++
+        try {
+          return Reflect.apply(method, this, args)
+        } finally {
+          operationDepth--
+          if (outer) volumes.clear()
+        }
+      })
+    }
+  }
+  volumes.clear()
   return facade
+  function rebindVolumes(r: Registry) {
+    const eligible = (saved: FileIdentity, current: FileIdentity | undefined) =>
+      !!saved &&
+      !!current &&
+      /^[0-9]+$/.test(saved.dev) &&
+      /^[0-9]+$/.test(saved.ino) &&
+      saved.ino === current.ino &&
+      (saved.type === undefined || saved.type === current.type) &&
+      (saved.uid === undefined
+        ? current.uid === String(process.getuid?.() ?? 0)
+        : saved.uid === current.uid) &&
+      (saved.mode === undefined
+        ? process.platform === 'win32' || current.mode === String(0o40700)
+        : saved.mode === current.mode) &&
+      (saved.birthtime === undefined || saved.birthtime === current.birthtime) &&
+      (saved.volume === undefined || saved.volume === current.volume) &&
+      (saved.dev === current.dev || current.volume?.startsWith('apfs:') === true)
+    for (const p of r.profiles) {
+      if (p.authorizationSchema !== 1 || !['ready', 'moving', 'deleting'].includes(p.state))
+        continue
+      try {
+        const destination = sharedDir(p.name)
+        const migration = p.migration
+        let source: string | undefined
+        if (migration?.workspaceId === o.workspaceId) source = local.dirOf(migration.sourceName)
+        const directoryPath =
+          p.state === 'moving' && source && fileIdentity(source) ? source : destination
+        const candidates: Array<{
+          saved: FileIdentity
+          current: FileIdentity | undefined
+          path: string
+        }> = [{ saved: p.directory, current: fileIdentity(directoryPath), path: directoryPath }]
+        if (migration) {
+          // A moved/retired journal's source inode is now at the destination. No Chrome data
+          // is copied or read; this is the original rename-only migration identity.
+          const sourcePath = source && fileIdentity(source) ? source : destination
+          candidates.push({
+            saved: migration.source,
+            current: fileIdentity(sourcePath),
+            path: sourcePath,
+          })
+          if (migration.workspaceId === o.workspaceId)
+            candidates.push({ saved: migration.home, current: initialHome, path: o.home })
+        }
+        if (candidates.some((c) => !eligible(c.saved, c.current))) continue
+        volumes.clear()
+        if (candidates.some((c) => !same(c.current, fileIdentity(c.path)))) continue
+        // The explicit proportionate-security decision accepts a legacy same-path clone
+        // or restore with matching inode/private ownership. Its current UUID is enrolled
+        // once; an already anchored volume mismatch is never accepted.
+        for (const { saved, current } of candidates) {
+          if (same(saved, current)) continue
+          const renumbered = saved.dev !== current!.dev
+          Object.assign(saved, current)
+          reboundReasons.push(
+            renumbered ? 'rebound after device renumbering' : 'recorded durable volume identity',
+          )
+        }
+      } catch {
+        // Leave the exact profile/journal identities alone. Existing admission remains closed.
+      }
+    }
+  }
   function migrate() {
     // Only the released platform signal reaches here; tests opt in on fictional folders.
     const homeId = fileIdentity(o.home)!
