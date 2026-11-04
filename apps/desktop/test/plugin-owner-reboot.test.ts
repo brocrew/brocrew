@@ -182,6 +182,14 @@ describe('fenced reboot proof for historical plugin runs', () => {
     const certificate = await readFile(join(root, 'supervisor/reboot-proofs/certificates', `${nonce}.json`), 'utf8')
     expect(certificate).toContain(volume)
   })
+  it('never treats a changed Windows volume serial as legacy device renumbering', async () => {
+    await fixture()
+    await refused()
+    await makeLegacy(marker())
+    volume = `winvol:${(await lstat(root, { bigint: true })).dev}`
+    witness = { kind: 'darwin-boot-session-v1', value: randomUUID() }
+    await refused()
+  })
   it.each(['mode', 'symlink'] as const)('refuses changed run %s across a genuine reboot', async (change) => {
     await fixture()
     await refused()
@@ -233,7 +241,35 @@ describe('fenced reboot proof for historical plugin runs', () => {
     await owner!.shutdown(); await owner!.closed; owner = undefined
     const storage = new SupervisorStorage(root, [], false)
     storage.write({ ...storage.read()!, phase: 'blocked' }); storage.close()
+    proofIo.deviceOffset = 71n
+    await attempt()
+    await owner!.shutdown(); await owner!.closed; owner = undefined
+    const nextStorage = new SupervisorStorage(root, [], false)
+    nextStorage.write({ ...nextStorage.read()!, phase: 'blocked' }); nextStorage.close()
     volume = 'apfs:22222222-2222-4222-8222-222222222222'
+    await refused()
+  })
+  it.each(['digest', 'inode', 'hardlink'] as const)('refuses a changed legacy certificate enrollment: %s', async (change) => {
+    const file = await retainedProof('certificate')
+    const original = await makeLegacy(file)
+    await attempt()
+    await owner!.shutdown(); await owner!.closed; owner = undefined
+    const storage = new SupervisorStorage(root, [], false)
+    storage.write({ ...storage.read()!, phase: 'blocked' }); storage.close()
+    const nonce = JSON.parse(original).marker.nonce
+    const enrollment = join(root, 'supervisor/reboot-proofs/volume-bindings', `${nonce}.json`)
+    if (change === 'hardlink') await link(enrollment, join(parent, 'external-enrollment-alias'))
+    else {
+      const value = JSON.parse(await readFile(enrollment, 'utf8'))
+      if (change === 'digest') value.certificateDigest = 'f'.repeat(64)
+      else {
+        const parts = value.census[0].identity.split(':')
+        parts[2] = '999999999'
+        value.census[0].identity = parts.join(':')
+        value.digest = createHash('sha256').update(JSON.stringify(value.census)).digest('hex')
+      }
+      await writeFile(enrollment, JSON.stringify(value))
+    }
     await refused()
   })
   it.each(['pending', 'certificate'] as const)(

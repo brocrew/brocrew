@@ -238,7 +238,6 @@ export function createSharedProfileStore(
   // createProfileStore enforces the home mode. Observe it first so that enforcement cannot
   // accidentally hide a changed mode on a previously bound migration home.
   const initialHome = fileIdentity(o.home)
-  const local = createProfileStore({ home: o.home, now: o.now, scopedAuthorization: true })
   const owner = o.processIdentity ?? identity()
   const alive = o.ownerState ?? ownerState
   const chrome = o.chromeState ?? inspectChrome
@@ -285,6 +284,12 @@ export function createSharedProfileStore(
     }
     return r
   }
+  const initialRegistry = read()
+  if (process.platform !== 'win32' && initialRegistry.format === 1 &&
+    initialRegistry.profiles.some((p) => p.migration?.workspaceId === o.workspaceId) &&
+    (!initialHome || initialHome.uid !== String(process.getuid!()) || initialHome.mode !== String(0o40700)))
+    throw new ProfileStoreError('Profile folder identity changed.')
+  const local = createProfileStore({ home: o.home, now: o.now, scopedAuthorization: true })
   const write = (r: Registry) => {
     r.revision++
     durableJson(file, r)

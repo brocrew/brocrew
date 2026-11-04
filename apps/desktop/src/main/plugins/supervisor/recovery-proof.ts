@@ -79,6 +79,13 @@ function matchesCensus(saved: Census, current: Census, runtime: Census | undefin
     return now !== undefined && matchesIdentity(run.identity, now, pin, allowDeviceChange)
   })
 }
+function rebindReason(saved: { binding: Binding; census: Census }, runtimeBinding: Binding, runtimeCensus: Census) {
+  const pins = new Map(runtimeCensus.map((run) => [run.id, run.identity]))
+  const changed = (['rootIdentity', 'fenceIdentity', 'hostIdentity', 'runsIdentity'] as const)
+    .some((key) => legacyIdentity.test(saved.binding[key]) && saved.binding[key] !== runtimeBinding[key]) ||
+    saved.census.some((run) => legacyIdentity.test(run.identity) && run.identity !== pins.get(run.id))
+  return changed ? 'rebound after device renumbering' : 'recorded durable volume identity'
+}
 async function snapshot(root: string, readVolume: VolumeReader) {
   // The cache lasts for this one snapshot only. Each revalidation asks the native system again.
   const volumes = new Map<string, Promise<string | undefined>>()
@@ -324,7 +331,7 @@ export async function previousRunsProvenStopped(
           format: 1, certificateDigest: hash(certificate), binding: bound,
           census: selected, digest: hash(selected),
         }))
-        console.warn('rebound after device renumbering')
+        console.warn(rebindReason(marker, initial.runtimeBinding, initial.runtimeCensus))
       }
       for (const run of marker.census) unresolved.delete(run.id)
     }
@@ -400,7 +407,7 @@ export async function previousRunsProvenStopped(
       }),
     )
     if (!equal(pending.binding, bound) || !equal(pending.census, covered))
-      console.warn('rebound after device renumbering')
+      console.warn(rebindReason(pending, initial.runtimeBinding, initial.runtimeCensus))
     return unchanged()
   } catch {
     return false

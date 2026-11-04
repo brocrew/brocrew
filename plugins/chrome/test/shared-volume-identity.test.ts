@@ -50,12 +50,14 @@ it('legacy anchorless record on a renumbered or cloned volume is rebound and log
   expect(f.open().get('fern')?.enabled).toBe(true)
   expect(warn).not.toHaveBeenCalled()
 })
-it.each(['inode', 'mode', 'uid', 'volume', 'replacement', 'symlink'])(
+it.each(['inode', 'mode', 'uid', 'type', 'birthtime', 'volume', 'replacement', 'symlink'])(
   'refuses %s and preserves the record', (change) => {
     const f = fixture(), dir = path.join(f.shared, 'profiles/fern')
     if (change === 'inode') f.edit((r) => { r.profiles[0].directory.ino = '999999999' })
     if (change === 'mode') fs.chmodSync(dir, 0o755)
     if (change === 'uid') f.edit((r) => { r.profiles[0].directory.uid = '999999999' })
+    if (change === 'type') f.edit((r) => { r.profiles[0].directory.type = 'file' })
+    if (change === 'birthtime') f.edit((r) => { r.profiles[0].directory.birthtime = '1' })
     if (change === 'volume') f.volume('apfs:22222222-2222-4222-8222-222222222222')
     if (change === 'replacement' || change === 'symlink') {
       const saved = path.join(f.root, 'saved')
@@ -120,6 +122,30 @@ it('a Windows serial change is refused even for an anchorless legacy record', ()
   const open = f.open({ readVolumeIdentity: (_path: string, dev: string) => `winvol:${dev}` })
   expect(open.get('fern')?.enabled).toBe(false)
   expect(() => open.shared.acquire('fern')).toThrow()
+})
+it('does not chmod a changed migration home before judging its legacy identity', () => {
+  const f = fixture()
+  createProfileStore({ home: f.home }).create('moss', 'panel')
+  f.open({ migrationApproved: true })
+  fs.chmodSync(f.home, 0o755)
+  const before = JSON.stringify(f.read().profiles)
+  expect(() => f.open()).toThrow('Profile folder identity changed.')
+  expect(() => f.open()).toThrow('Profile folder identity changed.')
+  expect(fs.statSync(f.home).mode & 0o777).toBe(0o755)
+  expect(JSON.stringify(f.read().profiles)).toBe(before)
+})
+it('a legacy record still requires current-user ownership', () => {
+  const f = fixture(), dir = path.join(f.shared, 'profiles/fern')
+  f.edit((r) => { r.profiles[0].directory = { dev: '999999999', ino: r.profiles[0].directory.ino } })
+  const stat = fs.lstatSync
+  vi.spyOn(fs, 'lstatSync').mockImplementation(((target: fs.PathLike, options?: { bigint?: boolean }) => {
+    const s = stat(target, options as { bigint: true })
+    if (String(target) !== dir || !options?.bigint) return s
+    return Object.assign(Object.create(Object.getPrototypeOf(s)), s, { uid: 999999999n })
+  }) as typeof fs.lstatSync)
+  const store = f.open()
+  expect(store.get('fern')?.enabled).toBe(false)
+  expect(() => store.shared.acquire('fern')).toThrow()
 })
 it('never publishes a rebind when a directory changes during native observation', () => {
   const f = fixture(), dir = path.join(f.shared, 'profiles/fern')

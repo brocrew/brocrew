@@ -2,9 +2,9 @@
 
 macOS device numbers are mount assignments. Reboot proof identities and shared Chrome directory identities use the volume's persistent UUID and inode across launches; current-run revalidation still pins device and inode. The native reader resolves the path through `df -P` (including APFS Data-volume firmlinks), then reads exactly one `VolumeUUID` from `diskutil info -plist`. Missing or ambiguous native identity refuses admission.
 
-On Windows, the pinned Node 24.6.0 libuv implementation fills `st_dev` from `VolumeSerialNumber.LowPart`. This is a formatted-volume serial, rather than a macOS mount assignment. Records qualify it as `winvol:<serial>`; a changed serial is refused, including for legacy records. The serial is not a hardware identifier and is not claimed to distinguish an exact filesystem clone. Linux retains its existing device/inode behavior; no new persistent-volume qualification is claimed there.
+On Windows, the packaged Node 24.22.0 libuv implementation fills `st_dev` from `VolumeSerialNumber.LowPart`. This is a formatted-volume serial, rather than a macOS mount assignment. Records qualify it as `winvol:<serial>`; a changed serial is refused, including for legacy records. The serial is not a hardware identifier and is not claimed to distinguish an exact filesystem clone. Linux retains its existing device/inode behavior; no new persistent-volume qualification is claimed there.
 
-Sources: [Node's pinned Windows stat implementation](https://github.com/nodejs/node/blob/v24.6.0/deps/uv/src/win/fs.c), [Microsoft's formatted-volume serial contract](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getvolumeinformationa), [Apple's persistent volume UUID](https://developer.apple.com/documentation/foundation/urlresourcekey/volumeuuidstringkey).
+Sources: [Node's pinned Windows stat implementation](https://github.com/nodejs/node/blob/v24.22.0/deps/uv/src/win/fs.c), [Microsoft's formatted-volume serial contract](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getvolumeinformationa), [Apple's persistent volume UUID](https://developer.apple.com/documentation/foundation/urlresourcekey/volumeuuidstringkey).
 
 ## Explicit legacy acceptance decision
 
