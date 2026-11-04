@@ -606,38 +606,58 @@ it('keeps Running and Configure beside a quiet failed-refresh notice', async () 
   expect(f.calls.some((call) => call.kind === 'configure')).toBe(true)
 })
 
-it('keeps phone-removal guidance after uninstall removes the configuration page', async () => {
-  const f = fictionalPlugins()
-  f.set([
-    {
-      id: 'whatsapp',
-      name: 'WhatsApp',
-      installed: true,
-      state: 'Running',
-      uninstallDeletesData: true,
-      hasRemoteLogout: true,
-    },
-  ])
-  const request = f.client.request.bind(f.client)
-  f.client.request = async (input) => {
-    const answer = await request(input)
-    return input.kind === 'uninstall' && answer.ok
-      ? { ...answer, removal: { data: 'deleted' as const, logout: 'unconfirmed' as const } }
-      : answer
-  }
-  const m = mount(settingsWindow('plugins', 'classic', f.client), {}, { width: 1180, height: 900 })
-  await vi.waitFor(() => expect(m.all('plugin-uninstall')).toHaveLength(1))
-  m.q('plugin-uninstall').click()
-  await nextTick()
-  expect(m.q('plugin-confirmation').textContent).not.toContain('This logs it out')
-  expect(m.q('plugin-confirmation').textContent).toContain('If logout cannot be confirmed')
-  m.q('plugin-uninstall-confirm').click()
-  await vi.waitFor(() => expect(m.all('plugin-uninstall')).toHaveLength(0))
-  expect(m.q('plugins-removal-notice').textContent).toContain('local data was deleted')
-  expect(m.q('plugins-removal-notice').textContent).toContain('WhatsApp')
-  expect(m.q('plugins-removal-notice').textContent).toContain('Linked devices')
-  expect(m.all('plugin-configuration')).toHaveLength(0)
-})
+it.each(['deleted', 'kept'] as const)(
+  'keeps package cleanup guidance and %s data facts after uninstall removes the configuration page',
+  async (data) => {
+    const f = fictionalPlugins()
+    f.set([
+      {
+        id: 'fictional-orchid',
+        name: 'Fictional Orchid',
+        installed: true,
+        state: 'Running',
+        uninstallDeletesData: data === 'deleted',
+      },
+    ])
+    const guidance = "Open Fictional Orchid's account page to unlink <fictional-device>."
+    const request = f.client.request.bind(f.client)
+    f.client.request = async (input) => {
+      const answer = await request(structuredClone(input))
+      return input.kind === 'uninstall' && answer.ok
+        ? {
+            ...answer,
+            removal: {
+              data,
+              cleanup: 'unconfirmed' as const,
+              result: { isError: true, content: [{ type: 'text', text: guidance }] },
+            },
+          }
+        : answer
+    }
+    const m = mount(
+      settingsWindow('plugins', 'classic', f.client),
+      {},
+      { width: 1180, height: 900 },
+    )
+    await vi.waitFor(() => expect(m.all('plugin-uninstall')).toHaveLength(1))
+    m.q('plugin-uninstall').click()
+    await nextTick()
+    expect(m.q('plugin-confirmation').textContent).toContain(
+      data === 'deleted' ? 'delete its local data' : 'Its data will be kept.',
+    )
+    expect(m.q('plugin-confirmation').textContent).not.toContain('This logs it out')
+    m.q('plugin-uninstall-confirm').click()
+    await vi.waitFor(() => expect(m.all('plugin-uninstall')).toHaveLength(0))
+    const notice = m.q('plugins-removal-notice')
+    expect(notice.textContent).toContain(`local data was ${data}`)
+    expect(notice.textContent).toContain('Fictional Orchid')
+    expect(notice.textContent).toContain('Plugin cleanup was not confirmed.')
+    expect(notice.textContent).toContain(guidance)
+    expect(notice.querySelector('fictional-device')).toBeNull()
+    expect(m.all('plugin-configuration')).toHaveLength(0)
+    expect(f.calls.filter((call) => call.kind === 'uninstall')).toHaveLength(1)
+  },
+)
 
 it('explains unavailable updates while retaining Configure and Uninstall for an installed plugin', async () => {
   const f = fictionalPlugins()
