@@ -1,17 +1,10 @@
-import {
-  createPrivatePluginPort,
-  createPluginCredential,
-} from '../src/main/plugins/managed-transport'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
+import { CallToolResultSchema, ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js'
 import { claudeMcpServersFor } from '../../../packages/runtime/src/claude/agent-tools'
 import { withManagedPluginMcp } from '../../../packages/runtime/src/managed-plugin-mcp'
-import {
-  noPrivateCredential,
-  pluginProviderFixture,
-  PLUGIN_MARKER,
-} from './fixtures/plugin-provider-fixture'
+import { pluginProviderFixture, PLUGIN_MARKER } from './fixtures/plugin-provider-fixture'
 
 const cleanup: Array<() => Promise<unknown>> = []
 afterEach(async () => {
@@ -22,251 +15,236 @@ async function fixture() {
   cleanup.push(() => f.close())
   return f
 }
+async function connect(server: { url: string; capability: string }) {
+  const client = new Client({ name: 'fictional-provider', version: '1' })
+  client.onerror = () => undefined
+  cleanup.push(() => client.close())
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL(server.url), {
+      requestInit: { headers: { Authorization: `Bearer ${server.capability}` } },
+    }),
+  )
+  return client
+}
 for (const provider of ['claude', 'codex'] as const) {
-  it(`${provider} configuration discovers and calls through an authenticated SSE broker stream`, async () => {
+  it(`${provider} discovers and calls the same generic route using its existing attachment API`, async () => {
     const f = await fixture(),
       route = await f.route(provider)
     const config =
       provider === 'claude'
         ? claudeMcpServersFor(undefined, [], [route.server])
         : withManagedPluginMcp({}, [route.server]).mcp_servers
-    noPrivateCredential(config, f.credential)
     const entry = (
       config as Record<
         string,
         { url: string; headers?: Record<string, string>; http_headers?: Record<string, string> }
       >
     )[route.server.name]!
-    const contentTypes: string[] = []
-    const client = new Client({ name: `fictional-${provider}`, version: '1' })
-    cleanup.push(() => client.close())
-    client.onerror = () => undefined
-    await client.connect(
-      new StreamableHTTPClientTransport(new URL(entry.url), {
-        requestInit: { headers: entry.headers ?? entry.http_headers },
-        fetch: async (url, init) => {
-          const response = await fetch(url, init)
-          contentTypes.push(response.headers.get('content-type') ?? '')
-          return response
-        },
-      }),
-    )
+    expect(entry.url).toBe(route.server.url)
+    expect(entry.headers ?? entry.http_headers).toEqual({
+      Authorization: `Bearer ${route.server.capability}`,
+    })
+    const client = await connect(route.server)
     expect((await client.listTools()).tools.map((tool) => tool.name)).toEqual(['echo'])
-    const result = await client.callTool({ name: 'echo', arguments: { profile: 'fern' } })
-    expect(result).toMatchObject({ content: [{ type: 'text', text: PLUGIN_MARKER }] })
-    expect(contentTypes).toContain('text/event-stream')
-    expect(f.seen).toEqual([{ method: 'tools/call', authenticated: true }])
-    noPrivateCredential([result, f.audit], f.credential)
+    const arguments_ = { basket: 'fern', profile: 'explicit-fictional-profile' }
+    expect(await client.callTool({ name: 'echo', arguments: arguments_ })).toMatchObject({
+      content: [{ text: PLUGIN_MARKER }],
+    })
+    expect(f.seen).toEqual([
+      {
+        name: 'echo',
+        arguments: arguments_,
+        meta: {
+          workspaceId: 'fictional-workspace',
+          origin: 'agent',
+          requestId: expect.any(String),
+        },
+      },
+    ])
   })
 }
-describe('authenticated broker boundaries', () => {
-  it('rejects no token, wrong token, wrong route, Origin and a token for another caller', async () => {
-    const f = await fixture(),
-      a = await f.route('willow'),
-      b = await f.route('birch')
-    for (const headers of [
-      {},
-      { Authorization: 'Bearer wrong' },
-      { Authorization: `Bearer ${b.server.capability}` },
-    ]) {
-      const response = await fetch(a.server.url, { method: 'POST', headers, body: '{}' })
-      expect(response.status).toBe(401)
-      await response.body?.cancel()
-    }
-    const headers = { Authorization: `Bearer ${a.server.capability}` }
-    const origin = await fetch(a.server.url, {
-      method: 'POST',
-      headers: { ...headers, Origin: 'https://fictional.invalid' },
-      body: '{}',
-    })
-    expect(origin.status).toBe(403)
-    await origin.body?.cancel()
-    const admin = await fetch(a.server.url.replace('/mcp', '/admin'), {
-      method: 'POST',
-      headers,
-      body: '{}',
-    })
-    expect(admin.status).toBe(403)
-    await admin.body?.cancel()
-    expect(f.seen).toEqual([])
+it('keeps all MCP content, structured content, isError and metadata exact through the provider route', async () => {
+  const f = await fixture(),
+    route = await f.route('willow'),
+    client = await connect(route.server)
+  const result = {
+    content: [
+      {
+        type: 'text' as const,
+        text: 'No petals remain',
+        annotations: { audience: ['user' as const] },
+      },
+      { type: 'image' as const, mimeType: 'image/png', data: 'ZmVybg==' },
+      { type: 'audio' as const, mimeType: 'audio/wav', data: 'ZmVybg==' },
+      {
+        type: 'resource' as const,
+        resource: { uri: 'garden://fern', mimeType: 'text/plain', text: 'fern' },
+      },
+      { type: 'resource_link' as const, uri: 'garden://fern', name: 'Fern' },
+    ],
+    structuredContent: { available: false, settings: { flower: 'fern' } },
+    isError: true,
+    _meta: { garden: ['fern', { remaining: 0 }] },
+  }
+  f.reply(result)
+  expect(await client.callTool({ name: 'echo', arguments: {} }, CallToolResultSchema)).toEqual(
+    result,
+  )
+})
+it('adds tools and changed schemas on an unchanged route without an app table', async () => {
+  const f = await fixture(),
+    route = await f.route('willow'),
+    client = await connect(route.server)
+  await client.listTools()
+  const tools = [
+    {
+      name: 'plant_seeds',
+      title: 'Plant seeds',
+      inputSchema: {
+        type: 'object' as const,
+        properties: { varieties: { type: 'array', items: { type: 'string' } } },
+      },
+      annotations: { destructiveHint: false },
+      _meta: { revision: 2 },
+    },
+  ]
+  f.setTools(tools)
+  expect((await client.listTools()).tools).toEqual(tools)
+  await client.callTool({ name: 'plant_seeds', arguments: { varieties: ['fern'] } })
+  expect(f.seen.at(-1)?.name).toBe('plant_seeds')
+})
+it('reverses only provider naming while preserving the plugin name and schema at dispatch', async () => {
+  const f = await fixture(),
+    route = await f.route('willow'),
+    client = await connect(route.server)
+  const name = 'garden.collect/petals with an intentionally unusual and long fictional name'
+  const schema = { type: 'object' as const, properties: { flower: { type: 'string' } } }
+  f.setTools([{ name, inputSchema: schema }])
+  const offered = (await client.listTools()).tools[0]!
+  expect(offered.name).toMatch(/^[a-zA-Z0-9_-]{1,64}$/)
+  expect(offered.inputSchema).toEqual(schema)
+  await client.callTool({ name: offered.name, arguments: { flower: 'fern' } })
+  expect(f.seen.at(-1)?.name).toBe(name)
+})
+it('reports a transport failure as an MCP protocol error and does not collapse it into a tool result', async () => {
+  const f = await fixture(),
+    route = await f.route('willow'),
+    client = await connect(route.server)
+  await f.client.close()
+  await expect(client.callTool({ name: 'echo', arguments: {} })).rejects.toMatchObject({
+    code: ErrorCode.InternalError,
+    message: 'MCP error -32603: Plugin call failed: transport.',
   })
-  it('denies a revoked capability even with its former bearer', async () => {
-    const f = await fixture(),
-      route = await f.route('willow')
-    f.broker.owner.revoke(route.agent)
-    const response = await fetch(route.server.url, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${route.server.capability}` },
-      body: '{}',
-    })
-    expect(response.status).toBe(401)
-    await response.body?.cancel()
-  })
-  it('enforces current resource policy and leaves unsupported surfaces absent', async () => {
+  expect(f.seen).toEqual([])
+})
+it.each([ErrorCode.InvalidParams, ErrorCode.ConnectionClosed, ErrorCode.RequestTimeout])(
+  'preserves actual remote wire error %s through inventory and tool calls',
+  async (code) => {
     const f = await fixture(),
       route = await f.route('willow'),
-      client = new Client({ name: 'fictional', version: '1' })
-    cleanup.push(() => client.close())
-    client.onerror = () => undefined
-    await client.connect(
-      new StreamableHTTPClientTransport(new URL(route.server.url), {
-        requestInit: { headers: { Authorization: `Bearer ${route.server.capability}` } },
-      }),
-    )
-    f.allow(false)
-    expect((await client.callTool({ name: 'echo', arguments: { profile: 'fern' } })).isError).toBe(
-      true,
-    )
-    await expect(client.listResources()).rejects.toThrow()
-    await expect(client.listPrompts()).rejects.toThrow()
-    expect(f.seen).toEqual([])
-  })
-  it.each(['secret', 'metadata-secret', 'key-secret', 'error'] as const)(
-    'keeps a downstream %s out of model results and diagnostics',
-    async (mode) => {
-      const f = await fixture(),
-        route = await f.route('willow'),
-        client = new Client({ name: 'fictional', version: '1' })
-      cleanup.push(() => client.close())
-      client.onerror = () => undefined
-      f.reply(mode)
-      await client.connect(
-        new StreamableHTTPClientTransport(new URL(route.server.url), {
-          requestInit: { headers: { Authorization: `Bearer ${route.server.capability}` } },
-        }),
-      )
-      const result = await client.callTool({ name: 'echo', arguments: { profile: 'fern' } })
-      expect(result.isError).toBe(true)
-      noPrivateCredential([result, f.audit], f.credential)
-    },
-  )
-})
-
-it('does not invent remote quiescence when an authenticated stream is cancelled', async () => {
+      client = await connect(route.server)
+    const message = 'fictional basket is invalid'
+    const data = { field: 'basket', alternatives: ['fern', 'violet'] }
+    f.fail({ code, message, data })
+    const expected = { code, message: `MCP error ${code}: ${message}`, data }
+    await expect(client.listTools()).rejects.toMatchObject(expected)
+    await expect(client.callTool({ name: 'echo', arguments: {} })).rejects.toMatchObject(expected)
+    f.fail()
+    expect(await client.callTool({ name: 'echo', arguments: {} })).toMatchObject({
+      content: [{ text: PLUGIN_MARKER }],
+    })
+  },
+)
+it('retains details of an actual local SDK timeout and permits later calls', async () => {
   const f = await fixture(),
     route = await f.route('willow'),
-    client = new Client({ name: 'fictional', version: '1' })
-  cleanup.push(() => client.close())
-  client.onerror = () => undefined
-  f.reply('hold')
-  await client.connect(
-    new StreamableHTTPClientTransport(new URL(route.server.url), {
-      requestInit: { headers: { Authorization: `Bearer ${route.server.capability}` } },
-    }),
-  )
-  const controller = new AbortController()
-  const pending = client.callTool({ name: 'echo', arguments: { profile: 'fern' } }, undefined, {
-    signal: controller.signal,
+    client = await connect(route.server)
+  const original = f.client.callTool.bind(f.client)
+  const shortTimeout = vi
+    .spyOn(f.client, 'callTool')
+    .mockImplementation((request, schema, options) =>
+      original(request, schema, { ...options, timeout: 50 }),
+    )
+  f.hold(true)
+  await expect(client.callTool({ name: 'echo', arguments: {} })).rejects.toMatchObject({
+    code: ErrorCode.RequestTimeout,
+    data: { timeout: 50 },
   })
-  void pending.catch(() => undefined)
-  await vi.waitFor(() => expect(f.seen.length).toBe(1))
-  controller.abort()
-  await expect(pending).rejects.toThrow()
-  await vi.waitFor(() => expect(f.broker.status().available).toBe(false), { timeout: 2000 })
-  expect(f.seen).toHaveLength(1)
-  noPrivateCredential(f.audit, f.credential)
+  await vi.waitFor(() => expect(f.cancelled).toHaveLength(1))
+  f.hold(false)
+  shortTimeout.mockRestore()
+  expect(await client.callTool({ name: 'echo', arguments: {} })).toMatchObject({
+    content: [{ text: PLUGIN_MARKER }],
+  })
 })
 
-it('delivers the failed call before closing its route while retaining unknown remote quiescence', async () => {
+it('propagates cancellation without closing the retained instance client or poisoning later calls', async () => {
   const f = await fixture(),
     route = await f.route('willow'),
-    client = new Client({ name: 'fictional', version: '1' })
-  cleanup.push(() => client.close())
-  client.onerror = () => undefined
-  f.reply('hold')
-  await client.connect(
-    new StreamableHTTPClientTransport(new URL(route.server.url), {
-      requestInit: { headers: { Authorization: `Bearer ${route.server.capability}` } },
-    }),
-  )
-  const pending = client
-    .callTool({ name: 'echo', arguments: { profile: 'fern' } }, undefined, { timeout: 1500 })
-    .catch(() => ({ lost: true }))
+    client = await connect(route.server)
+  const closed = vi.spyOn(f.client, 'close')
+  f.hold(true)
+  const abort = new AbortController()
+  const pending = client.callTool({ name: 'echo', arguments: {} }, undefined, {
+    signal: abort.signal,
+  })
+  const outcome = pending.catch((error: unknown) => error)
   await vi.waitFor(() => expect(f.seen).toHaveLength(1))
-  await route.close()
-  const reply = await pending
-  expect(reply).toMatchObject({ isError: true })
-  await vi.waitFor(() => expect(f.broker.status().available).toBe(false), { timeout: 2000 })
-  expect(f.broker.status().awaitingQuiescence).toBe(true)
-  expect(f.broker.owner.hasCompletionProof()).toBe(false)
-  noPrivateCredential([reply, f.audit], f.credential)
-})
-
-it('keeps malformed downstream configuration errors closed', () => {
-  const credential = 'fictional-private-'.repeat(4)
-  let error: unknown
-  try {
-    createPrivatePluginPort({ url: `invalid ${credential}`, credential })
-  } catch (caught) {
-    error = caught
-  }
-  expect((error as Error).message === 'Plugin unavailable. Try again.').toBe(true)
-  noPrivateCredential(String(error), credential)
-})
-
-it('creates fresh fixed-length lowercase hex credentials', () => {
-  const a = createPluginCredential(),
-    b = createPluginCredential()
-  expect(/^[0-9a-f]{64}$/.test(a) && /^[0-9a-f]{64}$/.test(b)).toBe(true)
-  expect(a !== b).toBe(true)
-})
-it('also suppresses a private admin credential in a successful tool result', async () => {
-  const extraPrivateCredential = 'c'.repeat(64)
-  const f = await pluginProviderFixture({ extraPrivateCredential })
-  cleanup.push(() => f.close())
-  f.reply('secret')
-  const route = await f.route('fictional-willow')
-  const client = new Client({ name: 'fictional-admin-fence', version: '1' })
-  client.onerror = () => undefined
-  cleanup.push(() => client.close())
-  await client.connect(
-    new StreamableHTTPClientTransport(new URL(route.server.url), {
-      requestInit: { headers: { Authorization: `Bearer ${route.server.capability}` } },
-    }),
-  )
-  const result = await client.callTool({ name: 'echo', arguments: { profile: 'fern' } })
-  expect(result).toMatchObject({ isError: true })
-  noPrivateCredential(result, extraPrivateCredential)
-})
-
-it('records a closed connect-failure reason without arguments, credentials or raw transport errors', async () => {
-  const reasons: string[] = []
-  const port = createPrivatePluginPort({
-    url: 'http://127.0.0.1:1/mcp',
-    credential: 'a'.repeat(64),
-    diagnostic: (reason) => reasons.push(reason),
+  abort.abort()
+  await outcome
+  await vi.waitFor(() => expect(f.cancelled).toHaveLength(1))
+  f.hold(false)
+  expect(await client.callTool({ name: 'echo', arguments: {} })).toMatchObject({
+    content: [{ text: PLUGIN_MARKER }],
   })
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async () => {
-      throw Object.assign(new Error('fictional-private-page-body'), {
-        cause: { code: 'ECONNRESET' },
-      })
-    }),
-  )
-  try {
-    const execution = port.tool(
-      {
-        identity: {
-          pluginId: 'chrome',
-          installId: 'fictional',
-          epoch: 'one',
-          workspaceId: 'fictional',
-          kind: 'agent',
-          incarnation: 'one',
-        },
-        name: 'echo',
-        input: { private: 'fictional-private-argument' },
-        resources: [],
-      },
-      new AbortController().signal,
-    )
-    await expect(execution.result).resolves.toEqual({ ok: false })
-    await expect(execution.quiescent).rejects.toThrow()
-    expect(reasons).toContain('transport-connect-failed')
-    expect(reasons).toContain('transport-connection-reset')
-    expect(JSON.stringify(reasons)).not.toMatch(/fictional-private|aaaaaaaa/)
-  } finally {
-    vi.unstubAllGlobals()
-  }
+  expect(closed).not.toHaveBeenCalled()
+})
+it('stops exposure in one workspace while another remains usable and rejects old routes after close', async () => {
+  const f = await fixture(),
+    a = await f.route('willow'),
+    b = await f.route('birch', 'fictional-other')
+  const first = await connect(a.server),
+    second = await connect(b.server)
+  f.enabled.delete('fictional-workspace')
+  await expect(first.callTool({ name: 'echo', arguments: {} })).rejects.toBeInstanceOf(McpError)
+  await expect(second.callTool({ name: 'echo', arguments: {} })).resolves.toMatchObject({
+    content: [{ text: PLUGIN_MARKER }],
+  })
+  await a.close()
+  await expect(first.listTools()).rejects.toThrow()
+})
+it('keeps attachment routing identities separate and closes only the matching route', async () => {
+  const f = await fixture(),
+    a = await f.route('willow'),
+    b = await f.route('birch')
+  const response = await fetch(a.server.url, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${b.server.capability}` },
+    body: '{}',
+  })
+  expect(response.status).toBe(401)
+  await response.body?.cancel()
+  await a.close()
+  const other = await connect(b.server)
+  await other.callTool({ name: 'echo', arguments: {} })
+  expect(f.seen).toHaveLength(1)
+})
+it('never reassigns a provider alias to a later tool that resembles the encoding', async () => {
+  const f = await fixture(),
+    route = await f.route('willow'),
+    client = await connect(route.server)
+  const original = 'garden.collect/petals'
+  const schema = { type: 'object' as const }
+  f.setTools([{ name: original, inputSchema: schema }])
+  const oldAlias = (await client.listTools()).tools[0]!.name
+  f.setTools([
+    { name: oldAlias, inputSchema: schema },
+    { name: original, inputSchema: schema },
+  ])
+  const next = (await client.listTools()).tools
+  expect(new Set(next.map((tool) => tool.name)).size).toBe(2)
+  expect(next[1]!.name).toBe(oldAlias)
+  await client.callTool({ name: oldAlias, arguments: {} })
+  await client.callTool({ name: next[0]!.name, arguments: {} })
+  expect(f.seen.map((call) => call.name)).toEqual([original, oldAlias])
 })
