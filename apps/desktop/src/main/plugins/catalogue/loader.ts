@@ -3,7 +3,7 @@ import { readLocalRelease } from './local'
 import type { PluginRelease } from '../package-schema'
 import { createPublicKey } from 'node:crypto'
 import { join } from 'node:path'
-import { lstat, rename, unlink, readdir } from 'node:fs/promises'
+import { lstat, stat, rename, unlink, readdir } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { createPluginVerifier } from '../package-verifier'
 import type { PluginTarget } from '../package-schema'
@@ -140,7 +140,7 @@ export async function loadPluginCatalogue(options: {
       if (!value || Object.keys(value).join(',') !== 'digest') return unavailable()
       cached = await checked(value.digest)
     } catch (error) {
-      // Corrupt/linked caches are refused, never quietly reset or replaced.
+      // Invalid persisted bytes are reported, never quietly reset or replaced.
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
       if (
         await lstat(pointer).then(
@@ -236,9 +236,9 @@ export async function loadPluginCatalogue(options: {
         temporary = join(folder, '.current-' + randomUUID())
       try {
         await immutableFile(temporary, Buffer.from(JSON.stringify({ digest: name })))
-        const now = await lstat(folder, { bigint: true })
-        if (now.dev !== before.dev || now.ino !== before.ino || now.isSymbolicLink())
-          return unavailable()
+        // Compare the directory opened by pinDirectory, including ordinary aliases.
+        const now = await stat(folder, { bigint: true })
+        if (now.dev !== before.dev || now.ino !== before.ino) return unavailable()
         await rename(temporary, pointer)
         pin.sync()
       } finally {
