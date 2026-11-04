@@ -7,7 +7,7 @@ export function pluginHostBridge(
 ): PluginHostClient {
   return Object.freeze({
     request: (input: PluginHostUiRequest) => ipc.invoke(PLUGIN_HOST_CHANNEL, input),
-    onChanged(listener: () => void) {
+    onChanged: (listener: () => void) => {
       const notify = () => listener()
       ipc.on(PLUGIN_HOST_CHANGED, notify)
       return () => {
