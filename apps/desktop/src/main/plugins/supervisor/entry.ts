@@ -56,6 +56,9 @@ export async function runPluginSupervisor(configPath: string, expectedDigest: st
       })
     },
     traceDrain: (event) => recordDrainTrace(config.root, event),
+    // Keep the blocked record and the fence until this process is actually dead. The next
+    // owner rechecks durable run receipts under the unchanged fence before it can start.
+    onBlockedWithoutProcesses: () => process.exit(0),
   })
   const host = createPluginNodeHost({
     root: join(config.root, 'host'),

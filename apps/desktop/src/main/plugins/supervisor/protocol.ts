@@ -119,6 +119,7 @@ export const OwnerDiagnostic = z.strictObject({
     'drain-timeout',
     'proof-pending',
     'restart-required',
+    'released-owner-stalled',
     'io',
     'unknown',
   ]),

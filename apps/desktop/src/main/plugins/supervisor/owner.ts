@@ -36,6 +36,8 @@ export interface WorkspaceLease {
 }
 /** Supplied only by the trusted process host, never over workspace IPC. */
 export interface OwnedPluginChild {
+  /** Trusted in-process consumers only. Omitted means a physical process/descendant obligation. */
+  readonly inProcess?: true
   stop(): void | Promise<void>
   exited: Promise<void>
   descendantsGone(): Promise<boolean>
@@ -53,6 +55,8 @@ export interface OwnerOptions {
   /** Trusted standalone bootstrap only. Runs inside the unchanged predecessor fence. */
   recoverPrevious?: (previous: OwnerRecord | null) => Promise<boolean>
   traceDrain?: (event: DrainTrace) => void
+  /** Standalone bootstrap only: exit synchronously with the fence still held. Never admission. */
+  onBlockedWithoutProcesses?: () => void
 }
 declare global {
   var __brobotPluginOwnersV1: Set<string> | undefined
@@ -97,6 +101,20 @@ async function stopAndProveChild(child: OwnedPluginChild): Promise<boolean> {
   return didExit && areGone
 }
 
+function drainWriteErrno(error: unknown): string {
+  try {
+    const code = (error as NodeJS.ErrnoException | null)?.code
+    if (
+      typeof code === 'string' &&
+      /^(EACCES|EPERM|ENOENT|ENOSPC|EBUSY|EIO|EROFS|EMFILE|ENFILE|ENOMEM|EINVAL)$/.test(code)
+    )
+      return code
+  } catch {
+    /* An error's custom properties are not diagnostic authority. */
+  }
+  return 'UNKNOWN'
+}
+
 /** Single process-tree owner. A successor proves every prior run under the same OS fence. */
 export class PluginSupervisor {
   private readonly leases = new Map<string, WorkspaceLease>()
@@ -123,6 +141,7 @@ export class PluginSupervisor {
       : Math.max(0, this.drainDeadline - performance.now())
   }
   private revocationFailed = false
+  private startFailed = false
   private server: Server | undefined
   private timer: ReturnType<typeof setInterval> | undefined
   private drainWork: Promise<boolean> | undefined
@@ -214,14 +233,43 @@ export class PluginSupervisor {
       refuse()
     }
   }
-  private fail(): void {
+  private fail(): boolean {
     this.record.phase = 'blocked'
+    let published = false
     try {
       this.storage.write(this.record)
-    } catch {
+      published = true
+    } catch (error) {
       /* Retain the lock even if the record cannot be updated. */
+      this.trace({
+        stage: 'blocked-write',
+        state: 'failed',
+        attempt: 1,
+        errno: drainWriteErrno(error),
+      })
     }
     clearInterval(this.timer)
+    return published
+  }
+  private async publishBlockedBeforeExit(): Promise<void> {
+    let attempt = 1
+    for (;;) {
+      attempt++
+      try {
+        this.trace({ stage: 'blocked-write', state: 'waiting', attempt })
+        this.storage.write(this.record)
+        this.trace({ stage: 'blocked-write', state: 'complete', attempt })
+        return
+      } catch (error) {
+        this.trace({
+          stage: 'blocked-write',
+          state: 'failed',
+          attempt,
+          errno: drainWriteErrno(error),
+        })
+        await new Promise((resolve) => setTimeout(resolve, 1000))
+      }
+    }
   }
   private clock(): number {
     const current = this.now()
@@ -462,6 +510,8 @@ export class PluginSupervisor {
         },
         () => {
           // A rejected asynchronous start is not evidence that it left no descendant behind.
+          // Keep this negative proof after the settled promise leaves the pending set.
+          this.startFailed = true
           this.fail()
           refuse('cleanup-pending')
         },
@@ -488,14 +538,43 @@ export class PluginSupervisor {
       this.trace({ stage: 'child-proofs', state: 'waiting' })
       this.drainDeadline = performance.now() + (this.options.drainWithin ?? OWNER_LIMITS.cleanup)
       const result = await (async () => {
-        await Promise.all(this.revocations)
-        if (this.revocationFailed) return false
+        if ((await bounded(Promise.all(this.revocations), this.remainingDrainMs())) === undefined)
+          this.revocationFailed = true
         await Promise.all(this.starting)
-        return (await Promise.all([...this.children].map(stopAndProveChild))).every(Boolean)
-      })().catch(() => false)
-      if (result !== true) {
+        return Promise.all(
+          [...this.children].map(async (child) => ({
+            inProcess: child.inProcess === true,
+            // A consumer timeout is not exit proof. Only actual process death can end its work,
+            // and self-exit still requires separate positive proof for every physical child.
+            proven:
+              child.inProcess === true
+                ? (await bounded(stopAndProveChild(child), this.remainingDrainMs())) === true
+                : await stopAndProveChild(child),
+          })),
+        )
+      })().catch(() => undefined)
+      if (
+        !result ||
+        this.startFailed ||
+        this.revocationFailed ||
+        !result.every((child) => child.proven)
+      ) {
         this.trace({ stage: 'child-proofs', state: 'failed' })
-        this.fail()
+        const published = this.fail()
+        // A failed consumer can leave this process's own async work unresolved. Do not unlock
+        // and let a successor overlap it. Only process death ends that work and releases the OS
+        // fence. Every physical child must still supply its exact exit and descendant proof.
+        // A rejected/unfinished start or an unknown physical witness never reaches this seam.
+        if (
+          this.options.onBlockedWithoutProcesses &&
+          !this.startFailed &&
+          result?.every((child) => child.inProcess || child.proven)
+        ) {
+          // A sharing refusal must not turn a blocked owner into a durable draining record.
+          // Retain the same fence and all physical proofs until publication succeeds.
+          if (!published) await this.publishBlockedBeforeExit()
+          this.options.onBlockedWithoutProcesses()
+        }
         return false
       }
       this.trace({ stage: 'child-proofs', state: 'complete' })
@@ -512,24 +591,11 @@ export class PluginSupervisor {
           this.trace({ stage: 'stopped-write', state: 'complete', attempt })
           break
         } catch (error) {
-          let errno = 'UNKNOWN'
-          try {
-            const code = (error as NodeJS.ErrnoException | null)?.code
-            if (
-              typeof code === 'string' &&
-              /^(EACCES|EPERM|ENOENT|ENOSPC|EBUSY|EIO|EROFS|EMFILE|ENFILE|ENOMEM|EINVAL)$/.test(
-                code,
-              )
-            )
-              errno = code
-          } catch {
-            /* An error's custom properties are not diagnostic authority. */
-          }
           this.trace({
             stage: 'stopped-write',
             state: 'failed',
             attempt,
-            errno,
+            errno: drainWriteErrno(error),
           })
           await new Promise((resolve) => setTimeout(resolve, 1000))
         }
