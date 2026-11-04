@@ -112,6 +112,7 @@ describe.skipIf(process.platform === 'win32')(
         pinnedPublicKey: fictionalPublicKey,
         target: f.opts.target,
         catalogue: f.opts.catalogue,
+        download: f.opts.download,
         projection: stableSink,
         propose: () => {},
       })
@@ -184,6 +185,7 @@ describe.skipIf(process.platform === 'win32')(
         pinnedPublicKey: fictionalPublicKey,
         target: f.opts.target,
         catalogue: f.opts.catalogue,
+        download: f.opts.download,
         projection: secondSink,
         propose: () => {},
       })
