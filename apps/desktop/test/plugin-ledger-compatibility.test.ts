@@ -75,6 +75,24 @@ async function connected(plugin = 'chrome') {
 }
 
 describe.skipIf(process.platform === 'win32')('ledger reader and wire', () => {
+  it('negotiates the existing legacy reader format before opening a page', async () => {
+    const call = vi.spyOn(PersonChannel.prototype, 'call')
+    await connected()
+    expect(
+      call.mock.calls.filter(
+        ([input]) =>
+          input &&
+          typeof input === 'object' &&
+          'kind' in input &&
+          input.kind === 'configure-ledger',
+      ),
+    ).toEqual([[{ kind: 'configure-ledger', format: 2 }]])
+    expect(
+      call.mock.calls.some(
+        ([input]) => input && typeof input === 'object' && 'kind' in input && input.kind === 'read',
+      ),
+    ).toBe(false)
+  })
   it('reads a committed checkpoint above the old four-digit floor', async () => {
     const f = await fixture()
     const seeded = await seedCheckpoint(f.root)
