@@ -472,5 +472,8 @@ it('refuses a changed volume after awaited page creation before admitting the re
   expect(await restoreVisibleSession({ file, store, browser, tabs, logger: silentLogger })).toEqual(
     [],
   )
-  expect(tabs.list(() => browser.state('fern')?.generation ?? null)).toHaveLength(0)
+  // The watcher can register the newly created blank page before permission changes.
+  // Admission must prevent the saved URL from being navigated after the await.
+  expect(browser.pages.get('fern')).toHaveLength(1)
+  expect(browser.pages.get('fern')![0]!.gotos).toEqual([])
 })
