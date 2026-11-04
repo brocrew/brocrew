@@ -1,7 +1,6 @@
 import { closeSync, constants, fstatSync, writeSync } from 'node:fs'
 import { join } from 'node:path'
 import { createFreshFile, openNotThroughALink } from '@brobot2/runtime/provider-home'
-import { isPrivateEntry } from '../private-files'
 
 export interface DrainTrace {
   stage: 'child-proofs' | 'server.close' | 'stopped-write' | 'blocked-write' | 'closed'
@@ -21,7 +20,13 @@ export function recordDrainTrace(root: string, event: DrainTrace): void {
       fd = createFreshFile(path, 0o600)
     }
     const stat = fstatSync(fd)
-    if (!stat.isFile() || stat.nlink !== 1 || !isPrivateEntry(stat) || stat.size > 1024 * 1024)
+    if (
+      !stat.isFile() ||
+      stat.nlink !== 1 ||
+      stat.size > 1024 * 1024 ||
+      (process.platform !== 'win32' &&
+        (stat.uid !== process.getuid?.() || (stat.mode & 0o077) !== 0))
+    )
       return
     writeSync(
       fd,

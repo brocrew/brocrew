@@ -33,6 +33,13 @@ export const Effect = z.strictObject({
       result: z.unknown().optional(),
     })
     .optional(),
+  legacyRemovalOutcome: z
+    .strictObject({
+      data: z.literal('deleted'),
+      logout: z.enum(['confirmed', 'unconfirmed']),
+    })
+    .nullable()
+    .optional(),
   previousVersion: z.string().optional(),
   previousDataSchema: z.number().int().nonnegative().safe().optional(),
 })

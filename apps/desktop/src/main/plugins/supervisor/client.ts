@@ -237,7 +237,12 @@ export class PluginWorkspaceLease {
           if (current?.epoch === record.epoch && current.phase === 'accepting')
             throw new PluginSupervisorError('busy', {
               cause: error,
-              diagnostic: error.diagnostic,
+              diagnostic: error.diagnostic ?? {
+                phase: current.phase,
+                stage: 'hello',
+                probe: 'live',
+                reason: 'unknown',
+              },
               ownerIdentity: createHash('sha256')
                 .update(`${storage.rootIdentity}\0${record.epoch}`)
                 .digest('hex'),

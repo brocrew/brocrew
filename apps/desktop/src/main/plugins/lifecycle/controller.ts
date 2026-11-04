@@ -1440,10 +1440,12 @@ export class PluginLifecycleController {
   ): Promise<PluginRemovalOutcome | void> {
     // Persist the selected package's removal facts before retiring its archive/code. Recovery
     // can then complete after those files are already gone without loading them or replaying I/O.
-    const pkg = effect.removalOutcome
-      ? undefined
-      : (this.runs.get(install.pluginId)?.package ??
-        (await this.vault.load(this.descriptor(install), [])))
+    const legacyResolved = effect.legacyRemovalOutcome !== undefined
+    const pkg =
+      effect.removalOutcome || legacyResolved
+        ? undefined
+        : (this.runs.get(install.pluginId)?.package ??
+          (await this.vault.load(this.descriptor(install), [])))
     const generic = effect.removalOutcome !== undefined || pkg?.manifest.format === 3
     let outcome = effect.removalOutcome
     if (generic && !outcome) {
@@ -1459,13 +1461,22 @@ export class PluginLifecycleController {
       effect.removalOutcome = outcome
       await this.effects.write(effect)
     }
-    const logout =
-      generic || effect.explicitRemoval !== true
+    const logout = legacyResolved
+      ? effect.legacyRemovalOutcome?.logout
+      : generic || effect.explicitRemoval !== true
         ? undefined
         : await this.beforeRemoval(install.pluginId)
     const deleteData = generic
       ? outcome!.data === 'deleted'
-      : effect.explicitRemoval === true && Boolean(pluginAdapter(install.pluginId)?.uninstall)
+      : legacyResolved
+        ? effect.legacyRemovalOutcome?.data === 'deleted'
+        : effect.explicitRemoval === true && Boolean(pluginAdapter(install.pluginId)?.uninstall)
+    if (!generic && !legacyResolved) {
+      effect.legacyRemovalOutcome = deleteData
+        ? { data: 'deleted', logout: logout ?? 'unconfirmed' }
+        : null
+      await this.effects.write(effect)
+    }
     const results = await Promise.allSettled([
       this.stop(install.pluginId, effect.operationId),
       this.revoke(install),
