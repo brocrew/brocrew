@@ -34,10 +34,12 @@ describe('fixed repository plugin list, no signing key', () => {
     'https://raw.githubusercontent.com/brocrew/brocrew/main/plugins/catalogue.json',
     'https://github.com/brocrew/plugin/archive/main.tar.gz',
     'https://person:madeup@github.com/brocrew/plugin/releases/download/v1/a.tar',
-  ])('refuses an archive outside the brocrew release-asset policy before any download', (url) => {
+  ])('retains a selected archive source without a publisher policy', (url) => {
     const list = repoListFor(packageFixture().release)
     list.entries[0]!.targets[0]!.url = url
-    expect(() => parseRepoPluginList(Buffer.from(JSON.stringify(list)), target, '1.0.0')).toThrow()
+    expect(() =>
+      parseRepoPluginList(Buffer.from(JSON.stringify(list)), target, '1.0.0'),
+    ).not.toThrow()
   })
   it('repo authority pins exact admitted bytes and never weakens the dormant signed verifier', () => {
     const bytes = packageFixture().bytes

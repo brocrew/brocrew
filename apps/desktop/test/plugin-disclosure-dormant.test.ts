@@ -33,7 +33,7 @@ it('v2 HTTP404 leaves the real v1 Settings install, update, Configure and UI rep
       controller: sharedLifecycleWorkspaces(f.controller),
       read: async () => null,
     })
-  const download = vi.fn(),
+  const download = vi.fn(f.opts.download),
     input = {
       root: f.root,
       path: bridge.path,
@@ -91,12 +91,15 @@ it('v2 HTTP404 leaves the real v1 Settings install, update, Configure and UI rep
       }),
     ).toEqual({ ok: true })
     expect(fake.open).toHaveBeenCalledOnce()
-    await c.refreshCatalogue!(pluginSha256(next.bytes))
+    await c.refreshCatalogue!(pluginSha256(next.bytes), {
+      bytes: next.bytes,
+      signature: next.signature,
+    })
     expect(await p.call({ kind: 'update', id: 'chrome' })).toMatchObject({
       ok: true,
       cards: [{ installed: true, installedVersion: '1.0.1' }],
     })
-    expect(download).not.toHaveBeenCalled()
+    expect(download).toHaveBeenCalled()
     expect(f.state.inspect().pending).toBeNull()
   } finally {
     await p.call({ kind: 'close' })

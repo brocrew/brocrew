@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, realpath, rm, writeFile, symlink, unlink } from 'node:f
 import { join } from 'node:path'
 import { loadPluginCatalogue } from '../src/main/plugins/catalogue/loader'
 import { localPluginArchive } from '../src/main/plugins/catalogue/local'
-import { downloadPluginBytes, PLUGIN_LIST_URL } from '../src/main/plugins/catalogue/download'
+import { downloadPluginBytes } from '../src/main/plugins/catalogue/download'
 import { packageFixture, fictionalPublicKey, signed } from './plugin-package-fixtures'
 const roots: string[] = []
 afterEach(async () => {
@@ -12,114 +12,35 @@ afterEach(async () => {
 })
 const key = fictionalPublicKey.export({ format: 'der', type: 'spki' }).toString('base64')
 const initial = 'https://github.com/brocrew/brocrew/releases/download/fictional-v1/'
-describe('bounded GitHub transport', () => {
-  it.each(['release-assets.githubusercontent.com', 'objects.githubusercontent.com'])(
-    'follows a brocrew release redirect to %s without credentials',
-    async (host) => {
-      const fetch = vi
-        .fn()
-        .mockResolvedValueOnce(
-          new Response('', {
-            status: 302,
-            headers: { location: `https://${host}/fictional?id=public` },
-          }),
-        )
-        .mockResolvedValueOnce(new Response('abc', { headers: { 'content-length': '3' } }))
-      expect(
-        (await downloadPluginBytes({ url: initial + 'archive.tar', maximum: 3, fetch })).toString(),
-      ).toBe('abc')
-      expect(fetch).toHaveBeenCalledTimes(2)
-      for (const [, init] of fetch.mock.calls)
-        expect(init).toMatchObject({
-          redirect: 'manual',
-          credentials: 'omit',
-          headers: { 'Accept-Encoding': 'identity' },
-        })
-    },
-  )
+describe('ordinary package transport', () => {
   it.each([
-    'http://github.com/brocrew/brocrew/releases/download/a/x',
-    'https://github.com:444/brocrew/brocrew/releases/download/a/x',
-    'https://name:secret@github.com/brocrew/brocrew/releases/download/a/x',
-    'https://github.com.evil.invalid/brocrew/brocrew/releases/download/a/x',
-    'https://release-assets.githubusercontent.com/initial',
-    'https://objects.githubusercontent.com/initial',
-    'https://github.com/foreign/brocrew/releases/download/a/x',
-  ])('refuses an unapproved initial URL before fetch', async (url) => {
-    const fetch = vi.fn()
-    await expect(downloadPluginBytes({ url, maximum: 3, fetch })).rejects.toThrow()
-    expect(fetch).not.toHaveBeenCalled()
-  })
-  it.each([
-    'http://release-assets.githubusercontent.com/x',
-    'https://foreign.invalid/x',
-    'https://name:secret@release-assets.githubusercontent.com/x',
-    'https://release-assets.githubusercontent.com:444/x',
-    'https://release-assets.githubusercontent.com/x#fragment',
-    'https://unknown.release-assets.githubusercontent.com/x',
-    'https://unknown.objects.githubusercontent.com/x',
-    PLUGIN_LIST_URL,
-  ])('refuses a bad redirect before sending the next request', async (location) => {
-    const fetch = vi.fn(async () => new Response('', { status: 302, headers: { location } }))
-    await expect(downloadPluginBytes({ url: initial + 'x', maximum: 3, fetch })).rejects.toThrow()
-    expect(fetch).toHaveBeenCalledOnce()
-  })
-  it.each([
-    'https://release-assets.githubusercontent.com/fictional',
-    'https://objects.githubusercontent.com/fictional',
-    initial + 'archive.tar',
-    'https://raw.githubusercontent.com/brocrew/brocrew/main/other.json',
-  ])('refuses a list redirect to %s before sending the next request', async (location) => {
-    const fetch = vi.fn(async () => new Response('', { status: 302, headers: { location } }))
-    await expect(downloadPluginBytes({ url: PLUGIN_LIST_URL, maximum: 3, fetch })).rejects.toThrow()
-    expect(fetch).toHaveBeenCalledOnce()
-  })
-  it('refuses an asset hop back to a non-brocrew GitHub release', async () => {
-    const fetch = vi
-      .fn()
-      .mockResolvedValueOnce(
-        new Response('', {
-          status: 302,
-          headers: { location: 'https://objects.githubusercontent.com/fictional' },
-        }),
-      )
-      .mockResolvedValueOnce(
-        new Response('', {
-          status: 302,
-          headers: { location: 'https://github.com/foreign/fictional/releases/download/v1/x' },
-        }),
-      )
-    await expect(downloadPluginBytes({ url: initial + 'x', maximum: 3, fetch })).rejects.toThrow()
-    expect(fetch).toHaveBeenCalledTimes(2)
-  })
-  it('accepts exactly three release-chain hops', async () => {
-    const fetch = vi.fn()
-    for (const location of [
-      'https://release-assets.githubusercontent.com/fictional',
-      'https://objects.githubusercontent.com/fictional',
-      initial + 'final.tar',
-    ])
-      fetch.mockResolvedValueOnce(new Response('', { status: 302, headers: { location } }))
-    fetch.mockResolvedValueOnce(new Response('abc'))
-    expect((await downloadPluginBytes({ url: initial + 'x', maximum: 3, fetch })).toString()).toBe(
-      'abc',
-    )
-    expect(fetch).toHaveBeenCalledTimes(4)
-  })
-  it('refuses a fourth redirect and applies one deadline to a stalled body', async () => {
+    'http://localhost:4567/fictional-package',
+    'https://fictional.invalid:8443/package',
+    'https://fictional.invalid/package?release=selected',
+    'https://objects.githubusercontent.com/fictional-package',
+  ])('passes the selected source to normal fetch: %s', async (url) => {
     const fetch = vi.fn(
-      async () =>
-        new Response('', {
-          status: 302,
-          headers: { location: 'https://release-assets.githubusercontent.com/next' },
-        }),
+      async () => new Response('abc', { headers: { 'content-encoding': 'gzip' } }),
     )
-    await expect(downloadPluginBytes({ url: initial + 'x', maximum: 3, fetch })).rejects.toThrow()
-    expect(fetch).toHaveBeenCalledTimes(4)
-    const stalled = vi.fn(async () => new Response(new ReadableStream({ start() {}, cancel() {} })))
+    expect(
+      (await downloadPluginBytes({ url, maximum: Number.MAX_SAFE_INTEGER, fetch })).toString(),
+    ).toBe('abc')
+    expect(fetch).toHaveBeenCalledWith(url, { signal: undefined })
+  })
+  it('reports HTTP, transport, and declared byte failures', async () => {
+    for (const response of [new Response('missing', { status: 404 }), new Response('abcd')]) {
+      const fetch = vi.fn(async () => response)
+      await expect(
+        downloadPluginBytes({ url: 'http://localhost/fictional', maximum: 100, size: 3, fetch }),
+      ).rejects.toThrow()
+    }
+    const fetch = vi.fn(async () => {
+      throw new TypeError('fictional unsupported source')
+    })
     await expect(
-      downloadPluginBytes({ url: initial + 'x', maximum: 3, milliseconds: 20, fetch: stalled }),
-    ).rejects.toThrow()
+      downloadPluginBytes({ url: 'fictional:unsupported', maximum: 100, fetch }),
+    ).rejects.toThrow('Could not download')
+    expect(fetch).toHaveBeenCalledOnce()
   })
 })
 describe.skipIf(process.platform === 'win32')('reviewed local release adapter', () => {

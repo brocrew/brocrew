@@ -28,9 +28,9 @@ afterEach(async () => {
   vi.unstubAllGlobals()
   await cleanupLifecycleFixtures()
 })
-describe('prepared owner policy stays dormant before v2 publication', () => {
+describe('ordinary legacy owner package selection', () => {
   it('keeps a live v1 owner, its cards and raw install/update working when the fixed v2 source is 404', async () => {
-    const f = await fixture()
+    const f = await fixture({}, false, 'fictional-bakery')
     const next = packageFixture({ manifest: { ...f.pkg.manifest, version: '1.0.1' } })
     f.opts.download = async (release) =>
       release.version === next.release.version ? next.archive : f.pkg.archive
@@ -52,6 +52,7 @@ describe('prepared owner policy stays dormant before v2 publication', () => {
       pinnedPublicKey: f.opts.pinnedPublicKey,
       target: f.opts.target,
       catalogue: f.opts.catalogue,
+      download: f.opts.download,
       projection: projection().sink,
       propose() {},
     })
@@ -77,14 +78,17 @@ describe('prepared owner policy stays dormant before v2 publication', () => {
         before,
       )
       // Same wire path as today's Settings. No new policy or failure state is introduced.
-      await client.install('chrome')
+      await client.install('fictional-bakery')
       expect((await client.catalogue())[0]).toMatchObject({
         state: 'Running',
         installed: true,
         installedVersion: '1.0.0',
       })
-      await client.refreshCatalogue!(pluginSha256(next.bytes))
-      await client.update!('chrome')
+      await client.refreshCatalogue!(pluginSha256(next.bytes), {
+        bytes: next.bytes,
+        signature: next.signature,
+      })
+      await client.update!('fictional-bakery')
       expect((await client.catalogue())[0]).toMatchObject({
         state: 'Running',
         installed: true,

@@ -287,6 +287,7 @@ it('Try again uses the existing catalogue/connect path and never invokes install
   })
   expect(await f.call({ kind: 'retry', id: 'chrome' })).toEqual({
     ok: false,
+    detail: 'fictional-private-owner-stack',
     error: 'Plugin unavailable. Try again.',
   })
 })

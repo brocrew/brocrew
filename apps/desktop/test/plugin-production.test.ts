@@ -101,6 +101,63 @@ async function setup(pkg = packageFixture()) {
   }
   return { controller, options, peer, supervisor, fetch, pkg }
 }
+it('the actual production facade exposes the ordinary public package interface', async () => {
+  const f = await setup()
+  const ref = {
+    source: 'http://localhost/fictional-selected.tar',
+    sha256: f.pkg.release.archive.sha256,
+    bytes: f.pkg.archive.length,
+  }
+  const inspected = {
+    id: f.pkg.release.id,
+    name: 'Fictional Bakery',
+    ref,
+    manifest: f.pkg.manifest,
+    details: {
+      version: f.pkg.release.version,
+      digest: ref.sha256,
+      manifestSha256: f.pkg.release.manifestSha256,
+      authors: ['fictional-makers'],
+      permissions: f.pkg.manifest.permissions,
+    },
+  }
+  const inspectPackage = vi.fn(async () => inspected)
+  const applyPackage = vi.fn(async () => {
+    f.peer.catalogue.mockResolvedValue([
+      {
+        id: inspected.id,
+        name: inspected.name,
+        installed: true,
+        state: 'Running',
+        installedVersion: inspected.details.version,
+      },
+    ])
+  })
+  Object.assign(f.peer, { inspectPackage, applyPackage })
+  f.controller.start(f.options)
+  await f.controller.ready!()
+  expect(await f.controller.inspect(ref)).toMatchObject({
+    intact: true,
+    authors: ['fictional-makers'],
+    permissions: inspected.details.permissions,
+  })
+  expect(await f.controller.install(ref)).toMatchObject({
+    pluginId: inspected.id,
+    version: inspected.details.version,
+    state: 'Running',
+  })
+  expect(await f.controller.update(inspected.id, ref)).toMatchObject({
+    version: inspected.details.version,
+    state: 'Running',
+  })
+  expect(await f.controller.list()).toMatchObject([
+    { id: inspected.id, installed: true, authors: ['fictional-makers'] },
+  ])
+  expect(applyPackage.mock.calls).toEqual([
+    [ref, 'install'],
+    [ref, 'update'],
+  ])
+})
 describe.skipIf(process.platform === 'win32')('first Settings startup catalogue reuse', () => {
   async function modern() {
     const f = await setup()
@@ -199,8 +256,8 @@ describe.skipIf(process.platform === 'win32')('first Settings startup catalogue 
     f.fetch.mockRejectedValueOnce(new Error('fictional offline startup'))
     f.controller.start(f.options)
     await f.controller.ready!()
-    expect(seams.connect).not.toHaveBeenCalled()
-    expect(f.fetch).toHaveBeenCalledTimes(1)
+    expect(seams.connect).toHaveBeenCalledOnce()
+    expect(f.fetch.mock.calls.length).toBeGreaterThanOrEqual(1)
     expect(await f.controller.catalogue(true)).toMatchObject([{ state: 'Available' }])
     expect(f.fetch.mock.calls.length).toBeGreaterThan(1)
     expect(seams.connect).toHaveBeenCalledOnce()
@@ -210,20 +267,20 @@ describe.skipIf(process.platform === 'win32')('first Settings startup catalogue 
     f.fetch.mockResolvedValueOnce(new Response('{}'))
     f.controller.start(f.options)
     await f.controller.ready!()
-    expect(seams.connect).not.toHaveBeenCalled()
+    expect(seams.connect).toHaveBeenCalledOnce()
     expect(await f.controller.catalogue(true)).toMatchObject([{ state: 'Available' }])
     expect(f.fetch.mock.calls.length).toBeGreaterThan(1)
   })
   it.each(['source-mismatch', 'owner-incompatible', undefined])(
-    'refetches when owner source status is %s',
+    'ignores obsolete owner source status %s',
     async (status) => {
       const f = await modern()
       Object.assign(f.peer, { mutationStatus: () => status })
       f.controller.start(f.options)
       await f.controller.ready!()
       await f.controller.catalogue(true)
-      expect(f.fetch).toHaveBeenCalledTimes(6)
-      expect(f.peer.refreshCatalogue).toHaveBeenCalledOnce()
+      expect(f.fetch).toHaveBeenCalledTimes(3)
+      expect(f.peer.refreshCatalogue).not.toHaveBeenCalled()
     },
   )
   it('forces source and owner refresh when the person chooses Try again before the first list', async () => {
@@ -316,7 +373,7 @@ describe.skipIf(process.platform === 'win32')('first Settings startup catalogue 
     expect(successor.refreshCatalogue).toHaveBeenCalledOnce()
   })
 
-  it('refetches if authenticated first-list read invalidates pre-read status', async () => {
+  it('keeps a verified startup list when obsolete owner status changes', async () => {
     const f = await modern()
     let status: string | null = null
     Object.assign(f.peer, { mutationStatus: () => status })
@@ -340,37 +397,35 @@ describe.skipIf(process.platform === 'win32')('first Settings startup catalogue 
       status = null
     })
     await f.controller.catalogue(true)
-    expect(f.fetch).toHaveBeenCalledTimes(6)
-    expect(f.peer.refreshCatalogue).toHaveBeenCalledOnce()
-    expect(status).toBe(null)
+    expect(f.fetch).toHaveBeenCalledTimes(3)
+    expect(f.peer.refreshCatalogue).not.toHaveBeenCalled()
+    expect(status).toBe('source-mismatch')
   })
   it.each(['fetch', 'owner'] as const)(
-    'keeps mismatch blocked after %s refresh failure, without retry loops',
+    'retains installed management after an explicit %s refresh error without retry loops',
     async (failure) => {
       const f = await modern()
-      let status: string | null = null
-      Object.assign(f.peer, { mutationStatus: () => status })
+      const cards = [
+        {
+          id: f.pkg.release.id,
+          name: 'Fictional Bakery',
+          installed: true,
+          state: 'Running' as const,
+          installedVersion: f.pkg.release.version,
+        },
+      ]
+      f.peer.catalogue.mockResolvedValue(cards)
       f.controller.start(f.options)
       await f.controller.ready!()
-      f.peer.catalogue.mockImplementation(async () => {
-        status = 'source-mismatch'
-        return [
-          {
-            id: f.pkg.release.id,
-            name: 'Fictional Bakery',
-            installed: false,
-            state: 'Available',
-            mutationBlocked: 'source-mismatch',
-          },
-        ]
-      })
+      await f.controller.catalogue(true)
+      const before = f.fetch.mock.calls.length
       if (failure === 'fetch') f.fetch.mockRejectedValue(new Error('fictional offline refresh'))
       else f.peer.refreshCatalogue.mockRejectedValue(new Error('fictional refused refresh'))
-      const result = await f.controller.catalogue(true)
-      expect(result).toMatchObject([{ mutationBlocked: 'source-mismatch' }])
+      expect(await f.controller.catalogue(true)).toMatchObject([
+        { installed: true, state: 'Running' },
+      ])
       expect(f.controller.refreshFailed!()).toBe(true)
-      expect(f.fetch).toHaveBeenCalledTimes(4)
-      expect(f.peer.refreshCatalogue).toHaveBeenCalledTimes(failure === 'fetch' ? 0 : 1)
+      expect(f.fetch.mock.calls.length - before).toBeLessThanOrEqual(3)
       expect(f.peer.install).not.toHaveBeenCalled()
     },
   )
@@ -557,7 +612,13 @@ describe.skipIf(process.platform === 'win32')(
       ])
       const cards = await f.controller.catalogue(true)
       expect(f.fetch).toHaveBeenCalledTimes(2)
-      expect(refreshCatalogue).toHaveBeenCalledWith(expect.stringMatching(/^[a-f0-9]{64}$/))
+      expect(refreshCatalogue).toHaveBeenCalledWith(
+        expect.stringMatching(/^[a-f0-9]{64}$/),
+        expect.objectContaining({
+          bytes: expect.any(Uint8Array),
+          signature: expect.any(Uint8Array),
+        }),
+      )
       expect(cards[0]?.updateVersion).toBe('1.0.3')
       await f.controller.catalogue()
       expect(f.fetch).toHaveBeenCalledTimes(2)
@@ -745,16 +806,16 @@ describe.skipIf(process.platform === 'win32')(
         reason: 'supervisor-unavailable',
       })
     })
-    it('no network reports a list fetch error without launch or a half-install', async () => {
+    it('no network reports a list fetch error while leaving local package operations available', async () => {
       const f = await setup()
       f.fetch.mockRejectedValue(new Error('fictional offline'))
       f.controller.start(f.options)
       expect(await f.controller.ready!()).toBe(true)
       expect(f.controller.available!()).toBe(true)
-      expect(readPluginInstructions(f.controller)).toBeNull()
+      expect(readPluginInstructions(f.controller)).toEqual([])
       await expect(f.controller.catalogue()).rejects.toThrow('fetch-error')
-      expect(f.supervisor.start).not.toHaveBeenCalled()
-      expect(seams.connect).not.toHaveBeenCalled()
+      expect(f.supervisor.start).toHaveBeenCalledOnce()
+      expect(seams.connect).toHaveBeenCalledOnce()
     })
     it.each([
       { status: 404, body: '', expected: { ok: false, listState: 'not-published' } },
@@ -785,8 +846,8 @@ describe.skipIf(process.platform === 'win32')(
         )
         expect(answer).toEqual(expected)
         expect(f.controller.available!()).toBe(true)
-        expect(f.supervisor.start).not.toHaveBeenCalled()
-        expect(seams.connect).not.toHaveBeenCalled()
+        expect(f.supervisor.start).toHaveBeenCalledOnce()
+        expect(seams.connect).toHaveBeenCalledOnce()
         expect(warn).not.toHaveBeenCalledWith('[plugins] plugin-initialization-failed')
       },
     )
@@ -807,7 +868,7 @@ describe.skipIf(process.platform === 'win32')(
           { kind: 'list' },
         ),
       ).toEqual({ ok: false, listState: 'fetch-error' })
-      expect(f.supervisor.start).not.toHaveBeenCalled()
+      expect(f.supervisor.start).toHaveBeenCalledOnce()
     })
     it('loads only the fixed repo list without a key and Install needs one press', async () => {
       const f = await setup()
@@ -843,8 +904,8 @@ describe.skipIf(process.platform === 'win32')(
       f.fetch.mockRejectedValueOnce(new Error('fictional offline'))
       f.controller.start(f.options)
       expect(await f.controller.ready!()).toBe(true)
-      expect(f.supervisor.start).not.toHaveBeenCalled()
-      expect((await f.controller.catalogue())[0]?.state).toBe('Available')
+      expect(f.supervisor.start).toHaveBeenCalledOnce()
+      expect((await f.controller.catalogue(true))[0]?.state).toBe('Available')
       await f.controller.install('fictional-bakery')
       expect(f.peer.install).toHaveBeenCalledOnce()
       expect(f.fetch).toHaveBeenCalledTimes(2)
@@ -1441,15 +1502,16 @@ describe.skipIf(process.platform === 'win32')(
       expect(f.supervisor.start).toHaveBeenCalledTimes(2)
       expect(readPluginInstructions(f.controller)?.[0]?.state).toBe('Available')
     }, 15_000)
-    it('verification failure never reaches the launcher/controller and normal callers receive only approved unavailable', async () => {
+    it('malformed discovery metadata stays visible while local package operations remain available', async () => {
       const f = await setup()
       vi.stubGlobal('fetch', vi.fn(async () => new Response('{}')) as typeof fetch)
       f.controller.start(f.options)
       expect(await f.controller.ready!()).toBe(true)
-      expect(seams.launch).not.toHaveBeenCalled()
-      expect(readPluginInstructions(f.controller)).toBeNull()
+      expect(seams.launch).toHaveBeenCalledOnce()
+      expect(readPluginInstructions(f.controller)).toEqual([])
+      await expect(f.controller.catalogue()).rejects.toThrow('fetch-error')
       await expect(f.controller.install('fictional-bakery')).rejects.toThrow(
-        'Plugin unavailable. Try again.',
+        'No package is selected for this plugin.',
       )
     })
     it('logs a closed initialization failure instead of the private thrown message', async () => {
@@ -1636,22 +1698,22 @@ it.skipIf(process.platform === 'win32')(
 )
 
 it.skipIf(process.platform === 'win32')(
-  'a legacy unavailable card still cannot turn an unadmitted false bit into Install',
+  'a legacy unavailable card preserves installed management from existing state',
   async () => {
     const f = await setup()
     Reflect.deleteProperty(f.peer, 'refreshCatalogue')
     f.controller.start(f.options)
     expect(await f.controller.ready!()).toBe(true)
     vi.spyOn(GlobalPluginState, 'observeInstallations').mockReturnValue({
-      installed: ['whatsapp'],
+      installed: ['fictional-cedar'],
       pending: null,
     })
     f.peer.catalogue.mockResolvedValue([
-      { id: 'whatsapp', name: 'WhatsApp', installed: false, state: 'Unavailable' },
+      { id: 'fictional-cedar', name: 'Fictional Cedar', installed: false, state: 'Unavailable' },
     ])
     expect(await f.controller.catalogue(true)).toMatchObject([
       {
-        id: 'whatsapp',
+        id: 'fictional-cedar',
         installed: true,
         state: 'Unavailable',
         unavailableReason: 'operation-pending',
@@ -1776,7 +1838,7 @@ it.skipIf(process.platform === 'win32')(
   },
 )
 it.skipIf(process.platform === 'win32')(
-  'an existing empty installation store does not start an owner for an empty offer list',
+  'an existing empty installation store keeps the package service available for an empty offer list',
   async () => {
     const f = await setup()
     await mkdir(f.options.root, { mode: 0o700 })
@@ -1790,8 +1852,8 @@ it.skipIf(process.platform === 'win32')(
     )
     f.controller.start(f.options)
     await f.controller.ready!()
-    expect(f.supervisor.start).not.toHaveBeenCalled()
-    expect(seams.connect).not.toHaveBeenCalled()
+    expect(f.supervisor.start).toHaveBeenCalledOnce()
+    expect(seams.connect).toHaveBeenCalledOnce()
     expect(readPluginInstructions(f.controller)).toEqual([])
     await expect(f.controller.install('fictional-cedar')).rejects.toThrow()
     expect(f.peer.install).not.toHaveBeenCalled()

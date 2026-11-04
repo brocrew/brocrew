@@ -55,14 +55,9 @@ it.each([1, 2] as const)(
     closers.push(async () => channel.close())
     await channel.call({ kind: 'attach', workspaceId: projection().sink.workspaceId })
     const expected = await channel.call({ kind: 'features' })
-    if (format === 2)
-      expect(expected).toMatchObject({
-        features: expect.arrayContaining(['authors-v1', 'prepared-mutations-v1']),
-      })
-    else
-      expect(expected).not.toMatchObject({
-        features: expect.arrayContaining(['prepared-mutations-v1']),
-      })
+    expect(expected).not.toMatchObject({
+      features: expect.arrayContaining(['prepared-mutations-v1']),
+    })
     const before = f.state.inspect(),
       entered = deferred<void>(),
       release = deferred<void>()

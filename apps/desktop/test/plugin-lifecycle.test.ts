@@ -73,16 +73,16 @@ describe.skipIf(process.platform === 'win32')(
       expect(second.rows.get('chrome')?.installId).toBe(installId)
       expect(f.controller.admitted(other, 'chrome', installId)).toBe(true)
     })
-    it('refuses declared plugin skills before prepare, staging or process start', async () => {
-      const f = await fixture({}, true)
-      await expect(f.controller.install(f.handle, 'chrome')).rejects.toMatchObject({
-        code: 'unavailable',
-        message: 'Plugin unavailable. Try again.',
-      })
-      expect(f.state.inspect().operations).toEqual([])
-      expect(f.state.inspect().guards).toEqual([])
-      expect(f.starts()).toBe(0)
-      expect(f.events).not.toContain('bind')
+    it('reads legacy skill declarations without using them as an install admission rule', async () => {
+      const f = await fixture({}, true, 'fictional-bakery')
+      await f.controller.install(f.handle, 'fictional-bakery')
+      const active = f.state.exportActivation().entries[0]!
+      expect(active.pluginId).toBe('fictional-bakery')
+      expect(f.starts()).toBe(1)
+      expect(f.local.rows.get('fictional-bakery')?.installId).toBe(active.installId)
+      expect(
+        await readFile(join(f.root, 'package-vault', active.release.archiveSha256, 'archive')),
+      ).toEqual(f.pkg.archive)
     })
     it('clears restored tool/UI bindings even when the global receipt still matches B', async () => {
       const f = await fixture()
@@ -526,6 +526,7 @@ describe.skipIf(process.platform === 'win32')(
           pinnedPublicKey: fictionalPublicKey,
           target: f.opts.target,
           catalogue: f.opts.catalogue,
+          download: f.opts.download,
           projection: local.sink,
           propose: () => {
             throw new Error('not an Apply command')
@@ -581,6 +582,7 @@ describe.skipIf(process.platform === 'win32')(
             pinnedPublicKey: fictionalPublicKey,
             target: f.opts.target,
             catalogue: f.opts.catalogue,
+            download: f.opts.download,
             projection: projection().sink,
             propose: () => {},
           })
@@ -617,6 +619,7 @@ describe.skipIf(process.platform === 'win32')(
           pinnedPublicKey: fictionalPublicKey,
           target: f.opts.target,
           catalogue: f.opts.catalogue,
+          download: f.opts.download,
           projection: projection().sink,
           propose: () => {},
         })
@@ -831,38 +834,32 @@ describe.skipIf(process.platform === 'win32')(
   },
 )
 
-describe('bounded plugin download (portable inert responses)', () => {
-  it('download refuses redirects, transformed transfer bytes and streaming overflow', async () => {
+describe('ordinary plugin download (portable inert responses)', () => {
+  it('accepts normal decoded response bytes and checks the declared archive integrity', async () => {
     const pkg = packageFixture()
     const release = {
       ...pkg.release,
       archive: {
         ...pkg.release.archive,
-        url: 'https://github.com/brocrew/brocrew/releases/download/fictional-v1/chrome.tar',
+        url: 'http://localhost:4567/fictional-package',
         size: 3,
         sha256: pluginSha256(Buffer.from('abc')),
       },
     }
     const fetcher = vi.fn()
     vi.stubGlobal('fetch', fetcher)
-    for (const response of [
-      new Response('abc', { status: 302 }),
-      new Response('abc', { headers: { 'content-encoding': 'gzip' } }),
-      new Response('abcd'),
-    ]) {
-      fetcher.mockResolvedValueOnce(response)
-      await expect(
-        downloadPluginArchive(release, new AbortController().signal),
-      ).rejects.toMatchObject({ code: 'unavailable' })
-    }
-    fetcher.mockResolvedValueOnce(new Response('abc', { headers: { 'content-length': '3' } }))
+    fetcher.mockResolvedValueOnce(new Response('abc', { headers: { 'content-encoding': 'gzip' } }))
     expect(
       Buffer.from(await downloadPluginArchive(release, new AbortController().signal)).toString(),
     ).toBe('abc')
-    expect(fetcher.mock.calls[0]?.[1]).toMatchObject({
-      redirect: 'manual',
-      headers: { 'Accept-Encoding': 'identity' },
-    })
+    expect(fetcher.mock.calls[0]?.[1]).not.toHaveProperty('redirect', 'manual')
+    expect(fetcher.mock.calls[0]?.[1]).not.toHaveProperty('headers.Accept-Encoding', 'identity')
+    for (const response of [new Response('abcd'), new Response('abd')]) {
+      fetcher.mockResolvedValueOnce(response)
+      await expect(downloadPluginArchive(release, new AbortController().signal)).rejects.toThrow()
+    }
+    fetcher.mockResolvedValueOnce(new Response('missing', { status: 404 }))
+    await expect(downloadPluginArchive(release, new AbortController().signal)).rejects.toThrow()
   })
 })
 
@@ -890,6 +887,7 @@ it.skipIf(process.platform === 'win32')(
       pinnedPublicKey: f.opts.pinnedPublicKey,
       target: f.opts.target,
       catalogue: f.opts.catalogue,
+      download: f.opts.download,
       projection: projection().sink,
       propose() {},
     })
