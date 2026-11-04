@@ -12,13 +12,22 @@ export function readVolumeIdentity(file, device, options = {}) {
     return `winvol:${device}`
   }
   if (platform !== 'darwin') return undefined
-  const read = options.read ?? ((program, args) => execFileSync(program, args, {
-    encoding: 'utf8', timeout: 2000, maxBuffer: 64 * 1024,
-    env: { ...process.env, LC_ALL: 'C', LANG: 'C' },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  }))
+  const read =
+    options.read ??
+    ((program, args) =>
+      execFileSync(program, args, {
+        encoding: 'utf8',
+        timeout: 2000,
+        maxBuffer: 64 * 1024,
+        env: { ...process.env, LC_ALL: 'C', LANG: 'C' },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      }))
   const observe = (program, args) => {
-    try { return read(program, args) } catch { throw new Error('Volume identity unavailable') }
+    try {
+      return read(program, args)
+    } catch {
+      throw new Error('Volume identity unavailable')
+    }
   }
   // diskutil accepts a device or mount point, not an arbitrary directory. df resolves
   // firmlinks as well (e.g. /Users lives on the Data volume, not the sealed root volume).

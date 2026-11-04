@@ -126,7 +126,8 @@ describe('fenced reboot proof for historical plugin runs', () => {
     witness = { kind: 'darwin-boot-session-v1', value: randomUUID() }
     const write = SupervisorStorage.prototype.write
     const interrupted = vi.spyOn(SupervisorStorage.prototype, 'write').mockImplementation(function (
-      this: SupervisorStorage, value,
+      this: SupervisorStorage,
+      value,
     ) {
       if (value.phase === 'stopped') throw new Error('fictional interrupted transition')
       return write.call(this, value)
@@ -159,7 +160,8 @@ describe('fenced reboot proof for historical plugin runs', () => {
       fenceIdentity: join(root, 'supervisor/owner-lock.sqlite'),
       hostIdentity: join(root, 'host'),
       runsIdentity: join(root, 'host/runs'),
-    })) pending.binding[key] = `999999999:${(await lstat(folder, { bigint: true })).ino}`
+    }))
+      pending.binding[key] = `999999999:${(await lstat(folder, { bigint: true })).ino}`
     for (const item of pending.census)
       item.identity = `999999999:${(await lstat(join(root, 'host/runs', item.id), { bigint: true })).ino}`
     pending.digest = createHash('sha256').update(JSON.stringify(pending.census)).digest('hex')
@@ -179,7 +181,10 @@ describe('fenced reboot proof for historical plugin runs', () => {
     expect(log).toHaveBeenCalledWith('rebound after device renumbering')
     expect(await readFile(marker(), 'utf8')).toBe(original)
     const nonce = JSON.parse(original).nonce
-    const certificate = await readFile(join(root, 'supervisor/reboot-proofs/certificates', `${nonce}.json`), 'utf8')
+    const certificate = await readFile(
+      join(root, 'supervisor/reboot-proofs/certificates', `${nonce}.json`),
+      'utf8',
+    )
     expect(certificate).toContain(volume)
   })
   it('never treats a changed Windows volume serial as legacy device renumbering', async () => {
@@ -190,26 +195,38 @@ describe('fenced reboot proof for historical plugin runs', () => {
     witness = { kind: 'darwin-boot-session-v1', value: randomUUID() }
     await refused()
   })
-  it.skipIf(process.platform === 'win32').each(['mode', 'symlink'] as const)('refuses changed run %s across a genuine reboot', async (change) => {
-    await fixture()
-    await refused()
-    if (change === 'mode') await chmod(run, 0o755)
-    else {
-      const saved = join(parent, 'saved-run')
-      await rename(run, saved)
-      await symlink(saved, run, 'dir')
-    }
-    witness = { kind: 'darwin-boot-session-v1', value: randomUUID() }
-    await refused()
-  })
+  it.skipIf(process.platform === 'win32').each(['mode', 'symlink'] as const)(
+    'refuses changed run %s across a genuine reboot',
+    async (change) => {
+      await fixture()
+      await refused()
+      if (change === 'mode') await chmod(run, 0o755)
+      else {
+        const saved = join(parent, 'saved-run')
+        await rename(run, saved)
+        await symlink(saved, run, 'dir')
+      }
+      witness = { kind: 'darwin-boot-session-v1', value: randomUUID() }
+      await refused()
+    },
+  )
   it('keeps dev:ino pinning when native volume observation races with a mount change', async () => {
     await fixture()
-    await expect(PluginSupervisor.start({
-      root, workspaceRoots: [], recoverPrevious: (previous) => previousRunsProvenStopped(root, {
-        previous, readBootWitness: observe,
-        readVolumeIdentity: async () => { proofIo.deviceOffset = 41n; return volume },
+    await expect(
+      PluginSupervisor.start({
+        root,
+        workspaceRoots: [],
+        recoverPrevious: (previous) =>
+          previousRunsProvenStopped(root, {
+            previous,
+            readBootWitness: observe,
+            readVolumeIdentity: async () => {
+              proofIo.deviceOffset = 41n
+              return volume
+            },
+          }),
       }),
-    })).rejects.toMatchObject({ code: 'cleanup-pending' })
+    ).rejects.toMatchObject({ code: 'cleanup-pending' })
     await expect(readFile(marker())).rejects.toMatchObject({ code: 'ENOENT' })
   })
   async function retainedProof(kind: 'pending' | 'certificate') {
@@ -238,40 +255,52 @@ describe('fenced reboot proof for historical plugin runs', () => {
     await attempt()
     expect(await readFile(file, 'utf8')).toBe(original)
     expect(log).toHaveBeenCalledWith('rebound after device renumbering')
-    await owner!.shutdown(); await owner!.closed; owner = undefined
+    await owner!.shutdown()
+    await owner!.closed
+    owner = undefined
     const storage = new SupervisorStorage(root, [], false)
-    storage.write({ ...storage.read()!, phase: 'blocked' }); storage.close()
+    storage.write({ ...storage.read()!, phase: 'blocked' })
+    storage.close()
     proofIo.deviceOffset = 71n
     await attempt()
-    await owner!.shutdown(); await owner!.closed; owner = undefined
+    await owner!.shutdown()
+    await owner!.closed
+    owner = undefined
     const nextStorage = new SupervisorStorage(root, [], false)
-    nextStorage.write({ ...nextStorage.read()!, phase: 'blocked' }); nextStorage.close()
+    nextStorage.write({ ...nextStorage.read()!, phase: 'blocked' })
+    nextStorage.close()
     volume = 'apfs:22222222-2222-4222-8222-222222222222'
     await refused()
   })
-  it.each(['digest', 'inode', 'hardlink'] as const)('refuses a changed legacy certificate enrollment: %s', async (change) => {
-    const file = await retainedProof('certificate')
-    const original = await makeLegacy(file)
-    await attempt()
-    await owner!.shutdown(); await owner!.closed; owner = undefined
-    const storage = new SupervisorStorage(root, [], false)
-    storage.write({ ...storage.read()!, phase: 'blocked' }); storage.close()
-    const nonce = JSON.parse(original).marker.nonce
-    const enrollment = join(root, 'supervisor/reboot-proofs/volume-bindings', `${nonce}.json`)
-    if (change === 'hardlink') await link(enrollment, join(parent, 'external-enrollment-alias'))
-    else {
-      const value = JSON.parse(await readFile(enrollment, 'utf8'))
-      if (change === 'digest') value.certificateDigest = 'f'.repeat(64)
+  it.each(['digest', 'inode', 'hardlink'] as const)(
+    'refuses a changed legacy certificate enrollment: %s',
+    async (change) => {
+      const file = await retainedProof('certificate')
+      const original = await makeLegacy(file)
+      await attempt()
+      await owner!.shutdown()
+      await owner!.closed
+      owner = undefined
+      const storage = new SupervisorStorage(root, [], false)
+      storage.write({ ...storage.read()!, phase: 'blocked' })
+      storage.close()
+      const nonce = JSON.parse(original).marker.nonce
+      const enrollment = join(root, 'supervisor/reboot-proofs/volume-bindings', `${nonce}.json`)
+      if (change === 'hardlink') await link(enrollment, join(parent, 'external-enrollment-alias'))
       else {
-        const parts = value.census[0].identity.split(':')
-        parts[2] = '999999999'
-        value.census[0].identity = parts.join(':')
-        value.digest = createHash('sha256').update(JSON.stringify(value.census)).digest('hex')
+        const value = JSON.parse(await readFile(enrollment, 'utf8'))
+        if (change === 'digest') value.certificateDigest = 'f'.repeat(64)
+        else {
+          const parts = value.census[0].identity.split(':')
+          parts[2] = '999999999'
+          value.census[0].identity = parts.join(':')
+          value.digest = createHash('sha256').update(JSON.stringify(value.census)).digest('hex')
+        }
+        await writeFile(enrollment, JSON.stringify(value))
       }
-      await writeFile(enrollment, JSON.stringify(value))
-    }
-    await refused()
-  })
+      await refused()
+    },
+  )
   it.each(['pending', 'certificate'] as const)(
     'refuses a hardlinked %s proof as takeover authority',
     async (kind) => {

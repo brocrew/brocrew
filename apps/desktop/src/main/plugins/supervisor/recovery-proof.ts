@@ -52,7 +52,10 @@ const enrollmentSchema = z.strictObject({
 })
 type Census = z.infer<typeof markerSchema>['census']
 type Binding = z.infer<typeof bindingSchema>
-type VolumeReader = (path: string, device: string) => string | undefined | Promise<string | undefined>
+type VolumeReader = (
+  path: string,
+  device: string,
+) => string | undefined | Promise<string | undefined>
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex')
 const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 const identity = async (path: string) => {
@@ -61,29 +64,62 @@ const identity = async (path: string) => {
 }
 const legacyIdentity = /^([0-9]+):([0-9]+)$/
 const durableIdentity = /^(apfs:[a-f0-9-]{36}|winvol:[0-9]+):([0-9]+):([0-9]+):([0-9]+)$/
-function matchesIdentity(saved: string, current: string, runtime: string | undefined, allowDeviceChange: boolean) {
+function matchesIdentity(
+  saved: string,
+  current: string,
+  runtime: string | undefined,
+  allowDeviceChange: boolean,
+) {
   if (saved === current || saved === runtime) return true
-  const old = legacyIdentity.exec(saved), next = durableIdentity.exec(current)
+  const old = legacyIdentity.exec(saved),
+    next = durableIdentity.exec(current)
   return !!(allowDeviceChange && old && next?.[1].startsWith('apfs:') && old[2] === next[2])
 }
-function matchesBinding(saved: Binding, current: Binding, runtime: Binding | undefined, allowDeviceChange: boolean) {
-  return saved.root === current.root &&
+function matchesBinding(
+  saved: Binding,
+  current: Binding,
+  runtime: Binding | undefined,
+  allowDeviceChange: boolean,
+) {
+  return (
+    saved.root === current.root &&
     (['rootIdentity', 'fenceIdentity', 'hostIdentity', 'runsIdentity'] as const).every((key) =>
-      matchesIdentity(saved[key], current[key], runtime?.[key], allowDeviceChange))
+      matchesIdentity(saved[key], current[key], runtime?.[key], allowDeviceChange),
+    )
+  )
 }
-function matchesCensus(saved: Census, current: Census, runtime: Census | undefined, allowDeviceChange: boolean, full: boolean) {
+function matchesCensus(
+  saved: Census,
+  current: Census,
+  runtime: Census | undefined,
+  allowDeviceChange: boolean,
+  full: boolean,
+) {
   const identities = new Map(current.map((run) => [run.id, run.identity]))
   const pins = new Map(runtime?.map((run) => [run.id, run.identity]))
-  return (!full || saved.length === current.length) && saved.every((run) => {
-    const now = identities.get(run.id), pin = pins.get(run.id)
-    return now !== undefined && matchesIdentity(run.identity, now, pin, allowDeviceChange)
-  })
+  return (
+    (!full || saved.length === current.length) &&
+    saved.every((run) => {
+      const now = identities.get(run.id),
+        pin = pins.get(run.id)
+      return now !== undefined && matchesIdentity(run.identity, now, pin, allowDeviceChange)
+    })
+  )
 }
-function rebindReason(saved: { binding: Binding; census: Census }, runtimeBinding: Binding, runtimeCensus: Census) {
+function rebindReason(
+  saved: { binding: Binding; census: Census },
+  runtimeBinding: Binding,
+  runtimeCensus: Census,
+) {
   const pins = new Map(runtimeCensus.map((run) => [run.id, run.identity]))
-  const changed = (['rootIdentity', 'fenceIdentity', 'hostIdentity', 'runsIdentity'] as const)
-    .some((key) => legacyIdentity.test(saved.binding[key]) && saved.binding[key] !== runtimeBinding[key]) ||
-    saved.census.some((run) => legacyIdentity.test(run.identity) && run.identity !== pins.get(run.id))
+  const changed =
+    (['rootIdentity', 'fenceIdentity', 'hostIdentity', 'runsIdentity'] as const).some(
+      (key) =>
+        legacyIdentity.test(saved.binding[key]) && saved.binding[key] !== runtimeBinding[key],
+    ) ||
+    saved.census.some(
+      (run) => legacyIdentity.test(run.identity) && run.identity !== pins.get(run.id),
+    )
   return changed ? 'rebound after device renumbering' : 'recorded durable volume identity'
 }
 async function snapshot(root: string, readVolume: VolumeReader) {
@@ -92,10 +128,15 @@ async function snapshot(root: string, readVolume: VolumeReader) {
   const pins: Record<string, string> = {}
   const identify = async (path: string) => {
     const stat = await lstat(path, { bigint: true })
-    if (stat.isSymbolicLink() || (!stat.isDirectory() && !stat.isFile()) ||
-      (process.platform !== 'win32' && (stat.uid !== BigInt(process.getuid!()) || (stat.mode & 0o077n) !== 0n)))
+    if (
+      stat.isSymbolicLink() ||
+      (!stat.isDirectory() && !stat.isFile()) ||
+      (process.platform !== 'win32' &&
+        (stat.uid !== BigInt(process.getuid!()) || (stat.mode & 0o077n) !== 0n))
+    )
       throw new Error('Untrusted recovery identity')
-    const device = String(stat.dev), runtime = `${stat.dev}:${stat.ino}`
+    const device = String(stat.dev),
+      runtime = `${stat.dev}:${stat.ino}`
     let volume = volumes.get(device)
     if (!volume) {
       volume = Promise.resolve(readVolume(path, device))
@@ -117,8 +158,13 @@ async function snapshot(root: string, readVolume: VolumeReader) {
     if (pin !== `${stat.dev}:${stat.ino}:${stat.uid}:${stat.mode}`)
       throw new Error('Changed recovery identity')
   }
-  return { bound, covered, runtimeBinding, runtimeCensus,
-    pins: Object.fromEntries(Object.entries(pins).sort(([a], [b]) => a.localeCompare(b))) }
+  return {
+    bound,
+    covered,
+    runtimeBinding,
+    runtimeCensus,
+    pins: Object.fromEntries(Object.entries(pins).sort(([a], [b]) => a.localeCompare(b))),
+  }
 }
 /** Reboot metadata has the same descriptor trust boundary as a guardian's exit proof. */
 async function readRebootProof(path: string): Promise<unknown> {
@@ -309,29 +355,51 @@ export async function previousRunsProvenStopped(
         enrolled = enrollmentSchema.parse(await readRebootProof(enrollmentPath))
         // Its link to the immutable certificate is exact; a different nonce, census or
         // previously recorded volume cannot be laundered through a new enrollment.
-        if (enrolled.certificateDigest !== hash(certificate) || enrolled.digest !== hash(enrolled.census) ||
-          ![enrolled.binding.rootIdentity, enrolled.binding.fenceIdentity, enrolled.binding.hostIdentity,
-            enrolled.binding.runsIdentity, ...enrolled.census.map((run) => run.identity)]
-            .every((value) => durableIdentity.test(value)) ||
+        if (
+          enrolled.certificateDigest !== hash(certificate) ||
+          enrolled.digest !== hash(enrolled.census) ||
+          ![
+            enrolled.binding.rootIdentity,
+            enrolled.binding.fenceIdentity,
+            enrolled.binding.hostIdentity,
+            enrolled.binding.runsIdentity,
+            ...enrolled.census.map((run) => run.identity),
+          ].every((value) => durableIdentity.test(value)) ||
           !matchesBinding(marker.binding, enrolled.binding, undefined, true) ||
-          !matchesCensus(marker.census, enrolled.census, undefined, true, true)) return false
+          !matchesCensus(marker.census, enrolled.census, undefined, true, true)
+        )
+          return false
       }
       const acceptedBinding = enrolled?.binding ?? marker.binding
       const acceptedCensus = enrolled?.census ?? marker.census
-      if (!matchesBinding(acceptedBinding, bound, initial.runtimeBinding, !enrolled) ||
-        !matchesCensus(acceptedCensus, covered, initial.runtimeCensus, !enrolled, false)) return false
-      const legacy = !enrolled && [
-        marker.binding.rootIdentity, marker.binding.fenceIdentity,
-        marker.binding.hostIdentity, marker.binding.runsIdentity,
-        ...marker.census.map((run) => run.identity),
-      ].some((value) => legacyIdentity.test(value))
+      if (
+        !matchesBinding(acceptedBinding, bound, initial.runtimeBinding, !enrolled) ||
+        !matchesCensus(acceptedCensus, covered, initial.runtimeCensus, !enrolled, false)
+      )
+        return false
+      const legacy =
+        !enrolled &&
+        [
+          marker.binding.rootIdentity,
+          marker.binding.fenceIdentity,
+          marker.binding.hostIdentity,
+          marker.binding.runsIdentity,
+          ...marker.census.map((run) => run.identity),
+        ].some((value) => legacyIdentity.test(value))
       if (legacy && bound.rootIdentity.startsWith('apfs:')) {
         const selected = covered.filter((run) => marker.census.some((old) => old.id === run.id))
         if (!(await unchanged())) return false
-        await publish(enrollments, name, enrollmentSchema.parse({
-          format: 1, certificateDigest: hash(certificate), binding: bound,
-          census: selected, digest: hash(selected),
-        }))
+        await publish(
+          enrollments,
+          name,
+          enrollmentSchema.parse({
+            format: 1,
+            certificateDigest: hash(certificate),
+            binding: bound,
+            census: selected,
+            digest: hash(selected),
+          }),
+        )
         console.warn(rebindReason(marker, initial.runtimeBinding, initial.runtimeCensus))
       }
       for (const run of marker.census) unresolved.delete(run.id)
@@ -358,8 +426,7 @@ export async function previousRunsProvenStopped(
       await syncDirectoryAt(proofs)
     }
     const current = bootWitness(await (observation.readBootWitness ?? readBootWitness)())
-    if (!current || !(await unchanged()))
-      return false
+    if (!current || !(await unchanged())) return false
     if (!pending) {
       await publish(
         proofs,
@@ -384,8 +451,11 @@ export async function previousRunsProvenStopped(
     }
     if (pending.witness.kind !== current.kind) return false
     const rebooted = laterBoot(pending.witness, current)
-    if (!matchesBinding(pending.binding, bound, initial.runtimeBinding, rebooted) ||
-      !matchesCensus(pending.census, covered, initial.runtimeCensus, rebooted, true)) return false
+    if (
+      !matchesBinding(pending.binding, bound, initial.runtimeBinding, rebooted) ||
+      !matchesCensus(pending.census, covered, initial.runtimeCensus, rebooted, true)
+    )
+      return false
     if (!rebooted) {
       try {
         observation.onRebootRequired?.()

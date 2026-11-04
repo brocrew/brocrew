@@ -3,10 +3,14 @@ import { execFileSync } from 'node:child_process'
 const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i
 /** Kept local because Chrome is exported as a standalone package. The app's supervisor has
  * the same native reader in resources/plugin-host/volume-identity.mjs. */
-export function readVolumeIdentity(file: string, device: string, options: {
-  platform?: NodeJS.Platform
-  read?(program: string, args: string[]): string
-} = {}): string | undefined {
+export function readVolumeIdentity(
+  file: string,
+  device: string,
+  options: {
+    platform?: NodeJS.Platform
+    read?(program: string, args: string[]): string
+  } = {},
+): string | undefined {
   const platform = options.platform ?? process.platform
   // libuv's Windows st_dev is VolumeSerialNumber.LowPart, assigned at format time.
   if (platform === 'win32') {
@@ -15,13 +19,22 @@ export function readVolumeIdentity(file: string, device: string, options: {
     return `winvol:${device}`
   }
   if (platform !== 'darwin') return undefined
-  const read = options.read ?? ((program, args) => execFileSync(program, args, {
-    encoding: 'utf8', timeout: 2000, maxBuffer: 64 * 1024,
-    env: { ...process.env, LC_ALL: 'C', LANG: 'C' },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  }))
+  const read =
+    options.read ??
+    ((program, args) =>
+      execFileSync(program, args, {
+        encoding: 'utf8',
+        timeout: 2000,
+        maxBuffer: 64 * 1024,
+        env: { ...process.env, LC_ALL: 'C', LANG: 'C' },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      }))
   const observe = (program: string, args: string[]) => {
-    try { return read(program, args) } catch { throw new Error('Volume identity unavailable') }
+    try {
+      return read(program, args)
+    } catch {
+      throw new Error('Volume identity unavailable')
+    }
   }
   const rows = observe('/bin/df', ['-P', file]).trim().split(/\r?\n/)
   const disk = rows.length === 2 && /^(\/dev\/disk[0-9]+(?:s[0-9]+)+)\s/.exec(rows[1])?.[1]
