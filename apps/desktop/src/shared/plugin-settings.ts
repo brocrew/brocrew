@@ -215,14 +215,13 @@ export interface PluginCard {
   priorityClamped?: boolean | null
   /** A living process does not imply that its agent tools are reachable. */
   toolsUnavailable?: true
-  /** Negotiated person-only Chrome recovery; absent for older supervisors. */
+  /** Negotiated person-only plugin recovery; absent for older supervisors. */
   canRestart?: true
   installedVersion?: string
   updateVersion?: string
   /** Installed package is manageable but has no release admitted for this app. */
   updatesUnavailable?: true
   uninstallDeletesData?: boolean
-  hasRemoteLogout?: boolean
   preparationRequired?: true
   mutationBlocked?: PluginMutationBlocked
 }

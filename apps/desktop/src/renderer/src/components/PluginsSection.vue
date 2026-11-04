@@ -689,10 +689,10 @@ onUnmounted(() => {
           <p v-if="card.uninstallDeletesData">
             Uninstall {{ card.name }} from all workspaces and delete its local data.
           </p>
-          <p v-else>Uninstall {{ card.name }} from all workspaces. Its data will be kept.</p>
-          <p v-if="card.hasRemoteLogout">
-            If logout cannot be confirmed, you will need to remove the linked device on your phone.
+          <p v-else-if="card.uninstallDeletesData === false">
+            Uninstall {{ card.name }} from all workspaces. Its data will be kept.
           </p>
+          <p v-else>Uninstall {{ card.name }} from all workspaces.</p>
           <button
             class="bb-button"
             type="button"

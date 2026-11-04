@@ -615,12 +615,12 @@ describe.runIf(process.platform === 'win32')('the plugin host on Windows', () =>
       })
       expect(assigned.job.guardian.birth).toMatch(/^[1-9][0-9]{1,19}$/)
       expect(assigned.job.keeper.birth).toMatch(/^[1-9][0-9]{1,19}$/)
-      await fetch(ready.origin + '/v1/launch', { headers: ready.admin().headers })
+      await fetch(ready.origin + '/v1/launch', { headers: ready.mcp().headers })
       const ids = await browserStarted(pidFile)
       expect(running(ids.pid) && running(ids.child)).toBe(true)
       if (kind === 'crash') {
         const owner = (await (
-          await fetch(ready.origin + '/v1/owner', { headers: ready.admin().headers })
+          await fetch(ready.origin + '/v1/owner', { headers: ready.mcp().headers })
         ).json()) as { pid: number }
         process.kill(owner.pid, 'SIGKILL')
       }
@@ -650,11 +650,11 @@ describe.runIf(process.platform === 'win32')('the plugin host on Windows', () =>
     const host = createPluginNodeHost({ root: folder, runtime, readyMs: 25000 })
     const handle = await host.start(fixture(serverSource(browser)))
     const ready = await readyOrWhy(handle)
-    await fetch(ready.origin + '/v1/launch', { headers: ready.admin().headers })
+    await fetch(ready.origin + '/v1/launch', { headers: ready.mcp().headers })
     const ids = await browserStarted(pidFile)
     const answer = (await (
       await fetch(ready.origin + '/v1/taskkill', {
-        headers: { ...ready.admin().headers, 'x-pid': String(ids.pid) },
+        headers: { ...ready.mcp().headers, 'x-pid': String(ids.pid) },
       })
     ).json()) as { own: string; foreign: string }
     expect(answer).toEqual({ own: 'ended', foreign: 'plugin-host-foreign-kill' })
@@ -711,7 +711,7 @@ function serverSource(browser: string): string {
 import http from 'node:http'; import fs from 'node:fs'; import {spawn, spawnSync} from 'node:child_process';
 const auth = JSON.parse(fs.readFileSync(process.env.BROCREW_CHROME_AUTH, 'utf8'));
 const server = http.createServer((req, res) => {
- const token = req.url === '/mcp' ? auth.mcpToken : auth.adminToken;
+ const token = req.url === '/healthz' ? auth.adminToken : auth.mcpToken;
  if (req.headers.authorization !== 'Bearer '+token) { res.writeHead(401).end(); return }
  res.setHeader('content-type','application/json');
  if (req.url === '/mcp') {

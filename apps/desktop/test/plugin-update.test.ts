@@ -92,7 +92,7 @@ describe.skipIf(process.platform === 'win32')(
         installedVersion: '0.1.0',
         updateVersion: '0.1.3',
       })
-      expect((await f.controller.status()).cards[0]).not.toHaveProperty('uninstallDeletesData')
+      expect((await f.controller.status()).cards[0]?.uninstallDeletesData).toBe(false)
       f.events.length = 0
       const operationId = randomUUID()
       await f.controller.update(f.handle, 'whatsapp', operationId)

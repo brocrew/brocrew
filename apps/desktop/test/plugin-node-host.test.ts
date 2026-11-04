@@ -207,7 +207,7 @@ import http from 'node:http'; import fs from 'node:fs'; import {spawn} from 'nod
 const home = process.env.BROCREW_CHROME_DATA;
 const auth = JSON.parse(fs.readFileSync(process.env.BROCREW_CHROME_AUTH, 'utf8'));
 const server = http.createServer((req, res) => {
- const token = req.url === '/mcp' ? auth.mcpToken : auth.adminToken;
+ const token = req.url === '/healthz' ? auth.adminToken : auth.mcpToken;
  if (req.headers.authorization !== 'Bearer '+token) { res.writeHead(401).end(); return }
  res.setHeader('content-type','application/json');
  if (req.url === '/mcp') {
@@ -443,7 +443,7 @@ process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
     })
     const ready = await handle.ready()
     expect(() => ready.mcp()).toThrow()
-    expect(() => ready.admin()).toThrow()
+    expect(ready).not.toHaveProperty('admin')
     const hooks = Reflect.get(ready, 'hooks') as () => {
       url: string
       headers: Record<string, string>
@@ -456,10 +456,10 @@ process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
   it('removes the bootstrap auth file at listening, before the first authenticated readiness check', async () => {
     const { host, home } = await context()
     const body = source.replace(
-      " const token = req.url === '/mcp' ? auth.mcpToken : auth.adminToken;",
+      " const token = req.url === '/healthz' ? auth.adminToken : auth.mcpToken;",
       ` if (req.url === '/mcp') fs.writeFileSync(home+'/auth-presence-at-health.json',
         JSON.stringify({present:fs.existsSync(process.env.BROCREW_CHROME_AUTH)}));
- const token = req.url === '/mcp' ? auth.mcpToken : auth.adminToken;`,
+ const token = req.url === '/healthz' ? auth.adminToken : auth.mcpToken;`,
     )
     expect(body).not.toBe(source)
     const handle = await host.start(fixture(body))
@@ -489,7 +489,7 @@ process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
       401,
     )
     const facts = await (
-      await fetch(ready.origin + '/v1/env', { headers: ready.admin().headers })
+      await fetch(ready.origin + '/v1/env', { headers: ready.mcp().headers })
     ).json()
     expect(facts).toEqual({
       home: join(home, 'data/chrome'),
@@ -498,7 +498,7 @@ process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
       inherited: true,
     })
     expect(
-      await (await fetch(ready.origin + '/v1/shared', { headers: ready.admin().headers })).json(),
+      await (await fetch(ready.origin + '/v1/shared', { headers: ready.mcp().headers })).json(),
     ).toEqual({})
     for (const path of [
       home,
@@ -554,7 +554,7 @@ process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
       const run = await host.start(fixture(source, '/mcp', true)),
         ready = await run.ready()
       expect(
-        await (await fetch(ready.origin + '/v1/shared', { headers: ready.admin().headers })).json(),
+        await (await fetch(ready.origin + '/v1/shared', { headers: ready.mcp().headers })).json(),
       ).toEqual({
         BROCREW_CHROME_SHARED: join(appData, '@brobot2', 'shared', 'chrome'),
         BROCREW_PLUGIN_OWNER_ID: owner.ownerId,
@@ -572,7 +572,7 @@ process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
       const { host, pidFile } = await context()
       const child = await host.start(fixture()),
         ready = await child.ready()
-      const response = await fetch(ready.origin + '/v1/launch', { headers: ready.admin().headers })
+      const response = await fetch(ready.origin + '/v1/launch', { headers: ready.mcp().headers })
       expect(response.status).toBe(200)
       const ids = await browserStarted(pidFile)
       expect(await liveGroupMembers(ready.serverPid)).toContain(ids.pid)
@@ -600,10 +600,10 @@ process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
       ),
     )
     const ready = await child.ready()
-    await fetch(ready.origin + '/v1/launch', { headers: ready.admin().headers })
+    await fetch(ready.origin + '/v1/launch', { headers: ready.mcp().headers })
     const ids = await browserStarted(pidFile)
     await fetch(ready.origin + '/v1/force-close', {
-      headers: { ...ready.admin().headers, 'x-child': String(ids.pid) },
+      headers: { ...ready.mcp().headers, 'x-child': String(ids.pid) },
     }).catch(() => {})
     expect(await child.exited).toEqual({ exited: true })
     expect(await liveGroupMembers(ready.serverPid)).toEqual([])
@@ -612,10 +612,10 @@ process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
     const { host, pidFile } = await context()
     const child = await host.start(fixture()),
       ready = await child.ready()
-    await fetch(ready.origin + '/v1/launch', { headers: ready.admin().headers })
+    await fetch(ready.origin + '/v1/launch', { headers: ready.mcp().headers })
     await browserStarted(pidFile)
     const owner = await (
-      await fetch(ready.origin + '/v1/owner', { headers: ready.admin().headers })
+      await fetch(ready.origin + '/v1/owner', { headers: ready.mcp().headers })
     ).json()
     if (
       !owner ||

@@ -146,7 +146,6 @@ export function registerPluginSettings(
               'updateVersion',
               'updatesUnavailable',
               'uninstallDeletesData',
-              'hasRemoteLogout',
               'preparationRequired',
               'mutationBlocked',
               'unavailableReason',
@@ -163,7 +162,6 @@ export function registerPluginSettings(
             (card.state === 'Running' && card.toolsUnavailable === true)) &&
           (card.canRestart === undefined ||
             (card.canRestart === true &&
-              card.id === 'chrome' &&
               card.installed === true &&
               (card.toolsUnavailable === true || card.state === 'Unavailable'))) &&
           (card.priorityClamped === undefined ||
@@ -180,7 +178,6 @@ export function registerPluginSettings(
             (card.installed === true && card.installedVersion !== undefined)) &&
           (card.uninstallDeletesData === undefined ||
             typeof card.uninstallDeletesData === 'boolean') &&
-          (card.hasRemoteLogout === undefined || typeof card.hasRemoteLogout === 'boolean') &&
           (card.preparationRequired === undefined || card.preparationRequired === true) &&
           (card.mutationBlocked === undefined ||
             ['source-mismatch', 'owner-incompatible'].includes(card.mutationBlocked)) &&

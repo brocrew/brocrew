@@ -50,7 +50,6 @@ export interface PluginNodeReady {
   /** These capabilities stay with the supervisor/broker; JSON contains no credential. */
   hooks?(): { url: string; headers: { Authorization: string } }
   mcp(): { url: string; headers: { Authorization: string } }
-  admin(): { url: string; headers: { Authorization: string } }
 }
 export interface PluginNodeProcess {
   readonly runId: string
@@ -309,9 +308,6 @@ export function createPluginNodeHost(options: {
               mcp(): never {
                 throw new PluginHostError('ready')
               },
-              admin(): never {
-                throw new PluginHostError('ready')
-              },
             },
             ready.client,
           )
@@ -536,14 +532,6 @@ export function createPluginNodeHost(options: {
                     return {
                       url: origin + manifest.server!.mcpPath,
                       headers: { Authorization: `Bearer ${mcpToken}` },
-                    }
-                  },
-                  admin() {
-                    current()
-                    if (!manifest.server) throw new PluginHostError('ready')
-                    return {
-                      url: origin + manifest.server!.adminPath,
-                      headers: { Authorization: `Bearer ${adminToken}` },
                     }
                   },
                 },

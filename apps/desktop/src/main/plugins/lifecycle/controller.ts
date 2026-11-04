@@ -120,6 +120,7 @@ export class PluginLifecycleController {
   >()
   private readonly toolRestartBlocks = new Map<string, symbol>()
   private readonly packageNames = new Map<string, string>()
+  private readonly removalPolicies = new Map<string, boolean>()
   private readonly attempted = new Set<string>()
   private readonly localOperations = new Set<string>()
   private readonly admittedCatalogues = new Map<string, readonly string[]>()
@@ -552,6 +553,26 @@ export class PluginLifecycleController {
       return false
     }
   }
+  private removalKey(install: Installation): string {
+    return JSON.stringify([
+      install.pluginId,
+      install.release.archiveSha256,
+      install.release.manifestSha256,
+    ])
+  }
+  /** Facts belong to the exact selected archive, even when no process is running. */
+  private async removalPolicy(install: Installation): Promise<boolean | undefined> {
+    const key = this.removalKey(install)
+    if (this.removalPolicies.has(key)) return this.removalPolicies.get(key)
+    try {
+      const checked = await this.vault.load(this.descriptor(install), [])
+      const removes = checked.contract.lifecycle.dataOnRemove === 'remove'
+      this.removalPolicies.set(key, removes)
+      return removes
+    } catch {
+      return undefined
+    }
+  }
   async status(): Promise<{ cards: PluginCard[]; cleanupPending: string[] }> {
     let unfinished: Unfinished | undefined
     const read = await this.options.state.withExclusive(async () => {
@@ -560,6 +581,13 @@ export class PluginLifecycleController {
       if (state.pending?.next)
         unfinished = { install: state.pending.next, operationId: state.pending.request.operationId }
       const activations = this.options.state.currentInstallations()
+      const removalPolicies = new Map(
+        await Promise.all(
+          activations.map(
+            async (install) => [install.pluginId, await this.removalPolicy(install)] as const,
+          ),
+        ),
+      )
       const names = new Set([
         ...releases.map((one) => one.id),
         ...state.guards.map((one) => one.pluginId),
@@ -573,12 +601,9 @@ export class PluginLifecycleController {
           return {
             id,
             name,
-            ...(this.runs.get(id)?.package.manifest.format === 3
-              ? {
-                  uninstallDeletesData:
-                    this.runs.get(id)!.package.contract.lifecycle.dataOnRemove === 'remove',
-                }
-              : {}),
+            ...(removalPolicies.get(id) === undefined
+              ? {}
+              : { uninstallDeletesData: removalPolicies.get(id)! }),
             ...(active ? { installedVersion: active.release.version } : {}),
             ...(active &&
             release &&
@@ -756,6 +781,10 @@ export class PluginLifecycleController {
       return prior.run
     }
     this.packageNames.set(install.pluginId, checked.contract.name)
+    this.removalPolicies.set(
+      this.removalKey(install),
+      checked.contract.lifecycle.dataOnRemove === 'remove',
+    )
     pluginNodePolicy(checked)
     this.attempted.add(install.pluginId)
     let startedOwner: PluginHostOwner | undefined
