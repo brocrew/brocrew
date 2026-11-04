@@ -1,3 +1,4 @@
+import { reportPluginToolFailure, type PluginToolDiagnostic } from '../tool-diagnostics'
 import { randomUUID } from 'node:crypto'
 import type { ManagedPluginMcpServer } from '@brobot2/runtime'
 import {
@@ -32,8 +33,10 @@ export function createLifecycleAgentBridge(options: {
   owner: Pick<PluginSupervisor, 'valid'>
   controller: Pick<PluginLifecycleController, 'agentAttachments' | 'attach' | 'detach'>
   refused?: () => void | Promise<void>
+  diagnostic?: (pluginId: string, reason: Parameters<PluginToolDiagnostic>[0]) => void
   binding(
     view: View,
+    diagnostic: PluginToolDiagnostic,
   ): Promise<
     Omit<
       BrokerOptions,
@@ -61,6 +64,23 @@ export function createLifecycleAgentBridge(options: {
   }
   const stopping = new Map<string, Promise<Entry>>()
   const entries = new Map<string, Promise<Entry>>()
+  const liveEntries = new Map<string, Entry>()
+  const failedRoutes = new Map<string, string>()
+  const overflowFailures = new Set<string>()
+  function failRoute(key: string, id: string) {
+    if (failedRoutes.size < 1024 || failedRoutes.has(key)) failedRoutes.set(key, id)
+    else overflowFailures.add(id) // Bounded and conservative until this installation is revoked.
+  }
+  const failedAttachments = new Set<string>()
+  const diagnostic =
+    (id: string): PluginToolDiagnostic =>
+    (reason) => {
+      try {
+        options.diagnostic?.(id, reason)
+      } catch {
+        /* Observers grant no authority. */
+      }
+    }
   const routes = new Map<string, Route>()
   const versions = new Map<string, number>()
   const retired = new Set<string>()
@@ -71,6 +91,9 @@ export function createLifecycleAgentBridge(options: {
     versions.set(id, (versions.get(id) ?? 0) + 1)
     const entry = entries.get(id)
     entries.delete(id)
+    liveEntries.delete(id)
+    overflowFailures.delete(id)
+    for (const [key, plugin] of failedRoutes) if (plugin === id) failedRoutes.delete(key)
     if (entry) {
       stopping.set(id, entry)
       void entry.then((one) => one.broker.owner.invalidate()).catch(() => undefined)
@@ -82,6 +105,9 @@ export function createLifecycleAgentBridge(options: {
       }
   }
   function revoke(lease: Readonly<WorkspaceLease>): void {
+    failedAttachments.delete(lease.id)
+    for (const key of failedRoutes.keys())
+      if (key.startsWith(lease.id + ':')) failedRoutes.delete(key)
     for (const caller of retired) if (caller.startsWith(lease.id + ':')) retired.delete(caller)
     const attached = attachments.get(lease.id)
     attachments.delete(lease.id)
@@ -120,6 +146,8 @@ export function createLifecycleAgentBridge(options: {
     const caller = `${lease.id}:${request.incarnation}`
     if (request.release) {
       retired.add(caller)
+      for (const key of failedRoutes.keys())
+        if (key.startsWith(caller + ':')) failedRoutes.delete(key)
       for (const [key, item] of routes)
         if (item.lease.id === lease.id && item.incarnation === request.incarnation) {
           routes.delete(key)
@@ -151,6 +179,7 @@ export function createLifecycleAgentBridge(options: {
       })
     }
     await attached
+    failedAttachments.delete(lease.id)
     if (!valid(lease)) return []
     const views = options.controller.agentAttachments(request.workspaceId)
     const desired = new Set(views.map((view) => view.installation.pluginId))
@@ -170,6 +199,15 @@ export function createLifecycleAgentBridge(options: {
       const identity = `${view.installation.installId}:${view.installation.incarnation}:${view.installation.configRevision}`
       const key = `${caller}:${id}`
       let cached = routes.get(key)
+      const known = liveEntries.get(id)
+      if (known?.identity === identity && !known.broker.status().available) {
+        // Keep the failed broker and its proof barrier. Removing advertisement is not recovery.
+        if (cached) {
+          routes.delete(key)
+          await closeRoute(cached.route)
+        }
+        continue
+      }
       if (cached?.identity !== identity) {
         if (cached) {
           routes.delete(key)
@@ -183,11 +221,21 @@ export function createLifecycleAgentBridge(options: {
         }
         if (!work) {
           const version = versions.get(id) ?? 0
-          work = options.binding(view).then((binding) => {
+          const report = diagnostic(id)
+          work = options.binding(view, report).then((binding) => {
             if (!view.current() || closed || (versions.get(id) ?? 0) !== version)
               throw new Error('unavailable')
             const broker = createPluginToolBroker({
               ...binding,
+              audit(event) {
+                if (event.event === 'unavailable' || event.event === 'refused')
+                  reportPluginToolFailure(report, event.reason ?? event.code ?? 'unavailable')
+                try {
+                  binding.audit?.(event)
+                } catch {
+                  /* Diagnostic only. */
+                }
+              },
               binding: { pluginId: id, installId: view.installation.installId, epoch: identity },
               reservedNamespace: 'brobot',
               hostToolNames: [],
@@ -203,11 +251,14 @@ export function createLifecycleAgentBridge(options: {
                 return active && binding.isAllowed(who, use)
               },
             })
-            return { identity, broker, workspaces: new Map<string, BrokerWorkspace>() }
+            const entry = { identity, broker, workspaces: new Map<string, BrokerWorkspace>() }
+            liveEntries.set(id, entry)
+            return entry
           })
           entries.set(id, work)
           void work.catch(() => {
             if (entries.get(id) === work) entries.delete(id)
+            reportPluginToolFailure(report, 'binding-failed')
           })
         }
         try {
@@ -227,8 +278,14 @@ export function createLifecycleAgentBridge(options: {
             agent,
             () =>
               valid(lease) && view.current() && !retired.has(caller) && entries.get(id) === work,
+            diagnostic(id),
           )
-          if (!valid(lease) || !view.current() || retired.has(caller)) {
+          if (
+            !valid(lease) ||
+            !view.current() ||
+            retired.has(caller) ||
+            !entry.broker.status().available
+          ) {
             await closeRoute(route)
             continue
           }
@@ -241,7 +298,10 @@ export function createLifecycleAgentBridge(options: {
             route,
           }
           routes.set(key, cached)
+          failedRoutes.delete(key)
         } catch {
+          failRoute(key, id)
+          reportPluginToolFailure(diagnostic(id), 'route-open-failed')
           if (options.refused) await options.refused()
           else console.warn('Some plugin tools were refused.')
           continue
@@ -254,6 +314,8 @@ export function createLifecycleAgentBridge(options: {
           ) ||
           result.some((one) => one.name.toLowerCase() === cached.route.server.name.toLowerCase())
         if (collision) {
+          failRoute(key, id)
+          reportPluginToolFailure(diagnostic(id), 'name-collision')
           routes.delete(key)
           await closeRoute(cached.route)
         } else result.push(cached.route.server)
@@ -264,12 +326,27 @@ export function createLifecycleAgentBridge(options: {
   return {
     deny,
     revoke,
+    toolsUnavailable(id: string): boolean {
+      return (
+        failedAttachments.size > 0 ||
+        overflowFailures.has(id) ||
+        liveEntries.get(id)?.broker.status().available === false ||
+        [...failedRoutes.values()].includes(id)
+      )
+    },
     routes(lease: Readonly<WorkspaceLease>, request: Request) {
-      if (waiting >= 64 || routes.size >= 1024 || retired.size >= 4096)
+      if (waiting >= 64 || routes.size >= 1024 || retired.size >= 4096) {
+        reportPluginToolFailure(diagnostic('host'), 'attachment-capacity')
         return Promise.reject(new Error('unavailable'))
+      }
       waiting++
       const work = tail
         .then(() => read(lease, request))
+        .catch((error: unknown) => {
+          if (valid(lease)) failedAttachments.add(lease.id)
+          reportPluginToolFailure(diagnostic('host'), 'attachment-failed')
+          throw error
+        })
         .finally(() => {
           waiting--
         })

@@ -22,6 +22,7 @@ const Request = z.discriminatedUnion('kind', [
   }),
   z.strictObject({ kind: z.literal('list') }),
   z.strictObject({ kind: z.literal('list-v2') }),
+  z.strictObject({ kind: z.literal('list-tool-health') }),
   z.strictObject({ kind: z.literal('features') }),
   z.strictObject({ kind: z.literal('mutation-policy'), catalogueDigest: Hex }),
   z.strictObject({ kind: z.literal('mutation-status'), catalogueDigest: Hex }),
@@ -251,6 +252,7 @@ export async function servePersonPluginControl(options: {
             return {
               features: [
                 ...PLUGIN_FRAMEWORK_FEATURES,
+                'tool-health-v1',
                 ...(options.controller.preparedMutationFeature()
                   ? ['authors-v1', 'prepared-mutations-v1']
                   : []),
@@ -268,6 +270,15 @@ export async function servePersonPluginControl(options: {
                 ...(priorityClamped !== undefined ? { priorityClamped } : {}),
               }))
           case 'list-v2':
+            // Older clients strictly validate their reply. New health fields require negotiation.
+            return (await options.controller.status()).cards
+              .filter((card) => visible(card.id))
+              .map((card) => {
+                const legacy = { ...card }
+                delete legacy.toolsUnavailable
+                return legacy
+              })
+          case 'list-tool-health':
             return (await options.controller.status()).cards.filter((card) => visible(card.id))
           case 'refresh':
             for (const one of sessions) one.preparations.clear()

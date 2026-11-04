@@ -32,10 +32,13 @@ A tool asking a person to act later must return a normal result and a genuine qu
 
 Inputs are copied strict JSON, at most 64 KiB; result data is copied/frozen strict JSON, at most 8 MiB to accommodate browser images. The later wire adapter must cap bytes before decoding too. It tags all transport/MCP errors as failed outcomes, never successful error payloads. The core is not a secret scanner for ordinary successful tool data.
 
-Errors have closed internal codes and only the approved “Plugin unavailable. Try again.” / “Plugin busy. Try again.” messages. Raw exceptions, causes, stacks, identity labels, arguments, results, server credentials and resource keys are never sent to diagnostics. Optional audit events contain only a closed event/operation/code vocabulary and a queue count; audit failure cannot change the request result. The port owns any downstream credential privately; no credential field exists on the broker API.
+Errors have closed internal codes and only the approved “Plugin unavailable. Try again.” / “Plugin busy. Try again.” messages. Raw exceptions, causes, stacks, identity labels, arguments, results, server credentials and resource keys are never sent to diagnostics. Optional audit events contain only a closed event/operation/code/reason vocabulary and a queue count; audit failure cannot change the request result. The port owns any downstream credential privately; no credential field exists on the broker API.
 
 ## Verification
 
 `pnpm exec vitest run --project desktop apps/desktop/test/plugin-tool-broker.test.ts` exercises an inert fake server and deterministic clock. No process, browser, provider, real token or filesystem state is involved. The fixtures cover reach, capability forgery/revocation/epoch boundaries, person-only admin, execution-time resource changes, immutable arguments, both fairness levels, all queue caps, abort/expiry, result-versus-proof separation, failed/late proof and secret-bearing upstream errors.
 
 Host ownership, authentication probes, adapters, real server cancellation/exit receipts and UI/person admission remain separate integration gates under the main plugins contract.
+
+
+The production supervisor persists tool failures in its private `plugin-tool-failures.log`. Each line contains UTC time, a host-owned plugin ID and a fixed failure-reason code. Both admission refusals and failures after dispatch are audited. Proof rejection, proof deadline and cancellation failure are distinct. Transport diagnostics classify connection/call/closure failures and a small allowlist of connection, timeout, cancellation and authentication causes; they never retain raw exceptions. The file refuses links, additional hard links and non-private entries. It is capped at 1 MiB; on reaching capacity the retained history is cleared before writing the newest failure. Diagnostic failure never changes execution or ownership.

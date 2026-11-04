@@ -48,6 +48,41 @@ let alive = true,
 const listState = ref<PluginListState | null>(null)
 const listFailureReason = ref<PluginListFailureReason>()
 const refreshFailed = ref(false)
+let healthTimer: ReturnType<typeof setTimeout> | undefined
+function scheduleHealth() {
+  if (alive) healthTimer = setTimeout(refreshHealth, 5000)
+}
+async function refreshHealth() {
+  try {
+    if (
+      !alive ||
+      busy.value ||
+      selected.value ||
+      reviews.value.size ||
+      confirmation.value ||
+      !cards.value.length
+    )
+      return
+    const before = cards.value
+    const turn = generation
+    // This local status read never refetches the catalogue or cancels a person's review.
+    const answer = await request({ kind: 'status' })
+    if (
+      alive &&
+      turn === generation &&
+      cards.value === before &&
+      !busy.value &&
+      !selected.value &&
+      !reviews.value.size &&
+      !confirmation.value &&
+      answer.ok &&
+      answer.cards
+    )
+      cards.value = answer.cards
+  } finally {
+    scheduleHealth()
+  }
+}
 const listMessage = computed(() => {
   switch (listState.value) {
     case 'not-published':
@@ -268,9 +303,11 @@ onMounted(async () => {
     listState.value = 'listState' in answer ? (answer.listState ?? 'fetch-error') : 'fetch-error'
     listFailureReason.value = 'reason' in answer ? answer.reason : undefined
   }
+  scheduleHealth()
 })
 onUnmounted(() => {
   alive = false
+  clearTimeout(healthTimer)
   generation++
   configurationAbort?.abort()
   stop()
@@ -355,6 +392,13 @@ onUnmounted(() => {
         <div class="plugin-card-copy">
           <h2>{{ card.name }}</h2>
           <span class="plugin-state" data-cy="plugin-state">{{ card.state }}</span>
+          <p
+            v-if="card.state === 'Running' && card.toolsUnavailable"
+            role="status"
+            data-cy="plugin-tools-unavailable"
+          >
+            Agents can't use {{ card.name }} right now.
+          </p>
           <p v-if="card.installed">Installed for all workspaces.</p>
           <p v-if="card.updatesUnavailable" role="status" data-cy="plugin-updates-unavailable">
             Updates aren’t available for this version of BroCrew.

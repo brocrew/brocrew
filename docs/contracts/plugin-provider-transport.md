@@ -17,3 +17,10 @@ Before the first Codex turn, supplied managed plugin routes get a readiness wait
 Local controls use loopback HTTP/SSE with an inert plugin and fake provider entry points, plus the actual adapters' fake start/resume controls. They cover headers, isolation, revocation, resource denial, absent unsupported surfaces, namespace collisions and secret-bearing success/error replies. Readiness controls cover held discovery, failed servers, the wait bound and cancellation. These controls do not establish real CLI behaviour.
 
 The native proof is a separate sealed check that is not included in this tree.
+
+
+## Tool health
+
+The supervisor reports tool reachability separately from the plugin process. An unavailable cached broker is retained with its quiescence barrier and its routes are withheld; a failed proof never creates a replacement. Failed route or inventory binding also degrades tool health. Successful binding clears that caller's binding failure, while an unavailable broker remains unavailable. Excess failure bookkeeping is bounded and stays conservatively degraded until the installation is revoked.
+
+Settings retains the Running process pill and shows `Agents can't use Chrome right now.` when Chrome's host tool health is degraded. An open, idle plugin list checks local status every five seconds without fetching the catalogue or cancelling an install/update review. A separate feature-negotiated person-control read carries tool health; older list replies keep their previous shape. This does not qualify provider-side reconnects or implement automatic broker/host recovery.
