@@ -145,13 +145,15 @@ it('keeps legacy release metadata unchanged without requiring author-bearing pac
   expect(entry).not.toHaveProperty('authors')
 })
 
-it.each([true, false])(
-  'binds sharedData:%s archives to the approved first host 0.1.34',
-  async (sharedData) => {
+it.each([
+  ['chrome', '0.1.35'],
+  ['whatsapp', '0.1.34'],
+])('binds %s sharedData archives to paired host %s', async (id, minimum) => {
+  for (const sharedData of [true, false]) {
     const options = fixture()
-    const out = path.join(options.base, 'shared')
+    const out = path.join(options.base, 'shared-' + sharedData)
     const entry = await assemblePluginRelease({
-      id: 'chrome',
+      id,
       out,
       proof: verifyPluginSource(options),
       targets: [{ os: 'darwin', cpu: 'arm64' }],
@@ -161,13 +163,13 @@ it.each([true, false])(
           path.join(destination, 'package', 'plugin.json'),
           JSON.stringify({ sharedData }),
         )
-        fs.writeFileSync(path.join(destination, 'chrome.tar'), 'fictional shared archive')
+        fs.writeFileSync(path.join(destination, `${id}.tar`), 'fictional shared archive')
         return { version: '0.2.0', authors: ['fictional'], manifestSha256: 'a'.repeat(64) }
       },
     })
-    expect(entry.minAppVersion).toBe('0.1.34')
+    expect(entry.minAppVersion).toBe(minimum)
     expect(
       JSON.parse(fs.readFileSync(path.join(out, 'plugin-list-entry.json'), 'utf8')).minAppVersion,
-    ).toBe('0.1.34')
-  },
-)
+    ).toBe(minimum)
+  }
+})

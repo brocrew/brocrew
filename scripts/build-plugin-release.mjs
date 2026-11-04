@@ -46,7 +46,14 @@ export async function assemblePluginRelease({ id, out, proof, targets, buildPack
         : 'Lets agents read your WhatsApp chats when you allow it, and send to the groups you choose.',
     version,
     authors,
-    minAppVersion: needsSharedDataHost ? '0.1.34' : authors === undefined ? '0.0.0' : '0.1.7',
+    // Chrome's volume enrollment and consumer recovery require the paired 0.1.35 host.
+    minAppVersion: needsSharedDataHost
+      ? id === 'chrome'
+        ? '0.1.35'
+        : '0.1.34'
+      : authors === undefined
+        ? '0.0.0'
+        : '0.1.7',
     sourceCommit: proof.sourceCommit,
     targets: downloads,
   }
