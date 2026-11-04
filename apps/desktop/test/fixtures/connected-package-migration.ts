@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
-import { dirname, join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { readFile, writeFile } from 'node:fs/promises'
 import { pluginSha256 } from '../../src/main/plugins/package-digests'
 import { tar } from '../plugin-package-fixtures'
@@ -8,7 +8,7 @@ import { tar } from '../plugin-package-fixtures'
 export type MigratedPackage = 'chrome' | 'whatsapp'
 const repository = fileURLToPath(new URL('../../../..', import.meta.url))
 
-// esbuild is supplied by the desktop's existing Vitest -> Vite dependency, not an install here.
+// Exact package pins are staged privately by the root executor, separate from app dependencies.
 interface Builder {
   onResolve(
     options: { filter: RegExp },
@@ -74,21 +74,31 @@ export function startBridge(options) {
 /**
  * An ephemeral test archive, never a distributable package or native artifact build.
  * v1 and v2 use identical production entry/server/config/UI bytes; only release metadata changes.
- * The supplied desktop dependency versions are recorded rather than mislabeled package pins.
+ * The root stages exact package dependencies; the fixture never falls back to app SDK versions.
  */
 export async function migrationPackages(id: MigratedPackage, output: string) {
-  const localRequire = createRequire(import.meta.url)
-  const vitestRequire = createRequire(localRequire.resolve('vitest/package.json'))
-  const viteRequire = createRequire(vitestRequire.resolve('vite/package.json'))
-  const bundler = viteRequire('esbuild') as Bundle
-  const desktopRequire = createRequire(join(repository, 'apps/desktop/package.json'))
-  const sdkEntry = desktopRequire.resolve('@modelcontextprotocol/sdk/server/index.js')
-  const sdkJson = join(dirname(dirname(dirname(dirname(sdkEntry)))), 'package.json')
-  const sdkRequire = createRequire(sdkJson)
+  const dependencyRoot = join(repository, '.test-toolchain/package-dependencies/node_modules')
+  const packageRequire = createRequire(join(dependencyRoot, 'fictional-fixture.cjs'))
+  const dependencies: Record<string, string> = {}
+  for (const [name, version] of [
+    ['@modelcontextprotocol/sdk', '1.32.1'],
+    ['express', '4.22.3'],
+    ['playwright-core', '1.61.0'],
+    ['esbuild', '0.25.12'],
+  ]) {
+    const metadata = JSON.parse(await readFile(join(dependencyRoot, name!, 'package.json'), 'utf8'))
+    if (metadata.version !== version)
+      throw new Error(
+        `Fixture package dependency ${name}: expected ${version}, got ${metadata.version}`,
+      )
+    dependencies[name!] = metadata.version
+  }
+  const bundler = packageRequire('esbuild') as Bundle
   const packageRoot = join(repository, 'plugins', id)
   const entry = join(packageRoot, 'src/index.ts')
   const boundary = id === 'chrome' ? /(?:^|\/)browser\/chromeBrowser\.js$/ : /^\.\/bridge\.js$/
   const result = await bundler.build({
+    absWorkingDir: repository,
     entryPoints: [entry],
     outfile: join(output, `${id}-ephemeral-entry.mjs`),
     platform: 'node',
@@ -97,9 +107,7 @@ export async function migrationPackages(id: MigratedPackage, output: string) {
     bundle: true,
     write: false,
     metafile: true,
-    // Package-pinned dependencies, if staged beside the package, take normal precedence.
-    // Otherwise the root run explicitly uses the desktop SDK and its Express dependency.
-    nodePaths: [join(repository, 'apps/desktop/node_modules'), dirname(dirname(dirname(sdkJson)))],
+    nodePaths: [dependencyRoot],
     define: { BROCREW_BRIDGE_SHA256: JSON.stringify('fictional-go-boundary-no-native-program') },
     banner: {
       js: "import { createRequire as fixtureCreateRequire } from 'node:module'; const require = fixtureCreateRequire(import.meta.url);",
@@ -120,6 +128,19 @@ export async function migrationPackages(id: MigratedPackage, output: string) {
       },
     ],
   })
+  const sdkMarker = '/node_modules/@modelcontextprotocol/sdk/'
+  const sdkRoots = new Set(
+    Object.keys(result.metafile.inputs).flatMap((file) => {
+      const absolute = resolve(repository, file).replaceAll('\\', '/')
+      const at = absolute.lastIndexOf(sdkMarker)
+      return at === -1 ? [] : [absolute.slice(0, at + sdkMarker.length)]
+    }),
+  )
+  if (sdkRoots.size === 0) throw new Error('Actual package MCP SDK was not bundled')
+  for (const root of sdkRoots) {
+    const actual = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
+    if (actual.version !== '1.32.1') throw new Error('App SDK fallback entered the package bundle')
+  }
   const server = Buffer.from(result.outputFiles[0]!.contents)
   const files = new Map<string, Buffer>([['server.mjs', server]])
   for (const name of ['index.html', 'app.js', 'style.css'])
@@ -158,10 +179,6 @@ export async function migrationPackages(id: MigratedPackage, output: string) {
     versions,
     files,
     inputs: Object.keys(result.metafile.inputs),
-    desktopFallbackDependencies: {
-      sdk: JSON.parse(await readFile(sdkJson, 'utf8')).version as string,
-      express: JSON.parse(await readFile(sdkRequire.resolve('express/package.json'), 'utf8'))
-        .version as string,
-    },
+    dependencies,
   }
 }

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { randomUUID } from 'node:crypto'
 import { copyFile, cp, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createPluginNodeHost } from '../src/main/plugins/node-host'
@@ -631,4 +631,57 @@ describe('ordinary package migration through actual app and package code', () =>
     },
     240000,
   )
+
+  it('keeps WhatsApp data and does not infer explicit logout from a missing uninstall effect', async () => {
+    const f = await fixture('whatsapp')
+    let session = await f.start()
+    await session.client.applyPackage!(f.packages.refs[0]!, 'install')
+    const page = await configure(session, 'whatsapp')
+    expect(jsonResult(await page.invoke('whatsapp_settings'))).toMatchObject({
+      read: true,
+      prefix: false,
+    })
+    const marker = await readFile(join(f.home, 'legacy-configuration.json'))
+    const before = f.state.inspect()
+    const install = f.state
+      .exportActivation()
+      .entries.find((entry) => entry.pluginId === 'whatsapp')!
+    const operationId = randomUUID()
+    // Reproduce an actual journal-only pending uninstall, with no controller explicitRemoval
+    // fact. Recovery must not invent destructive person intent from this missing effect.
+    await f.state.withExclusive(async () => {
+      f.state.prepare({
+        operationId,
+        snapshot: null,
+        workspaces: [f.workspaceId],
+        consent: {
+          action: 'uninstall',
+          pluginId: 'whatsapp',
+          expectedSequence: before.sequence,
+          expectedInstallId: install.installId,
+          release: null,
+          at: 1,
+        },
+      })
+    })
+    expect(f.state.inspect().pending?.request.operationId).toBe(operationId)
+    expect(existsSync(join(f.root, 'lifecycle-effects', operationId + '.json'))).toBe(false)
+    await session.close()
+    f.reopenState()
+    session = await f.start()
+    expect(f.state.inspect().pending).toBeNull()
+    expect(session.service.controller.agentAttachments(f.workspaceId)).toEqual([])
+    expect(f.state.exportActivation().entries).toEqual([])
+    await preserved(f)
+    expect(await readFile(join(f.home, 'settings.json'))).toEqual(f.settingsBytes)
+    expect(await readFile(join(f.home, 'legacy-configuration.json'))).toEqual(marker)
+    for (const name of ['session.db', 'messages.db', 'messages.db-wal', 'messages.db-shm'])
+      expect(await readFile(join(f.home, 'bridge', name))).toEqual(opaque)
+    expect(
+      (await f.boundaryEvents()).filter(
+        (event) => event.event === 'bridge-unlink' || event.event === 'bridge-pair',
+      ),
+    ).toEqual([])
+    expect(f.forwarded('whatsapp_before_remove')).toEqual([])
+  }, 240000)
 })
