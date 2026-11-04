@@ -513,7 +513,6 @@ describe('ordinary selected package sources', () => {
       appVersion: '1.2.0',
       catalogue: { bytes: Buffer.from('{"format":3,"entries":[]}'), signature: Buffer.alloc(0) },
       projection: projection().sink,
-      propose() {},
     })
     try {
       const id = '.fictional café ' + 'a'.repeat(100),
@@ -577,7 +576,6 @@ describe('ordinary selected package sources', () => {
             signature: Buffer.alloc(0),
           },
           projection: projection().sink,
-          propose() {},
         })
         clients.push(client)
         expect(client.mutationStatus?.()).toBeNull()

@@ -16,7 +16,7 @@ async function sources(root: string): Promise<Array<[string, string]>> {
 it('has no application-owned domain dispatcher, ledger reader or person proposal executor', async () => {
   const root = fileURLToPath(new URL('../src/', import.meta.url))
   const forbidden =
-    /\b(?:pluginAdapter|requirePluginAdapter|PluginProfileLedger|ChromeProposal|WhatsAppProposal|chromeProfileIntent|profileRevision|applyProfile|PluginUiPeer|PluginUiRpc|proposeConfig|configure-ledger|proposalFor|ledgerV2|profileCalls|installedChromeOnWindows|admittedPluginTools|hasRemoteLogout)\b|(?:chrome|whatsapp)-(?:apply|read|broker|policy)|\.admin\(|(?:card\.id|pluginId) === ['"]chrome['"]|\/v1\/(?:profiles|groups|status|uninstall)/
+    /\b(?:pluginAdapter|requirePluginAdapter|PluginProfileLedger|ChromeProposal|WhatsAppProposal|chromeProfileIntent|profileRevision|applyProfile|PluginUiPeer|PluginUiRpc|proposeConfig|configure-ledger|proposalFor|ledgerV2|profileCalls|installedChromeOnWindows|admittedPluginTools|hasRemoteLogout)\b|(?:chrome|whatsapp)-(?:apply|read|broker|policy)|\.admin\(|(?:(?:id|pluginId)\s*(?:===|==|!==|!=)\s*['"](?:chrome|whatsapp)['"]|['"](?:chrome|whatsapp)['"]\s*(?:===|==|!==|!=)\s*(?:id|pluginId))|\/v1\/(?:profiles|groups|status|uninstall)/
   const violations = (await sources(root)).flatMap(([path, source]) =>
     source
       .split('\n')

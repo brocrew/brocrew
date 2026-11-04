@@ -204,7 +204,6 @@ describe.skipIf(process.platform === 'win32')('independent owned contributions',
       target: f.opts.target,
       catalogue: { bytes: f.pkg.bytes, signature: f.pkg.signature },
       projection: projection().sink,
-      propose() {},
     })
     closers.push(() => client.close())
     const features = Reflect.get(client, 'features') as (() => readonly string[]) | undefined

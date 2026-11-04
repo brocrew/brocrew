@@ -1,3 +1,4 @@
+import { genericUiFixture } from './plugin-ui-fixtures'
 import { pluginSha256 } from '../src/main/plugins/package-digests'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdir, writeFile, readFile, symlink } from 'node:fs/promises'
@@ -48,7 +49,6 @@ describe.skipIf(process.platform === 'win32')(
           name: 'Chrome',
           installed: false,
           state: 'Available',
-          uninstallDeletesData: false,
         },
       ])
       await f.controller.install(f.handle, 'chrome', id)
@@ -119,7 +119,7 @@ describe.skipIf(process.platform === 'win32')(
       expect(f.events).toEqual(['revoke', 'clear', 'receipt'])
       expect(f.state.projections(f.local.sink.workspaceId)).toEqual([])
     })
-    it('logs a WhatsApp plugin out while it runs, then removes its code and its data; Chrome keeps its data', async () => {
+    it('removes legacy package code while preserving data for both packages and issuing no domain cleanup', async () => {
       const shown = (events: string[]) =>
         events.filter((one) => /^(log-out|stop$|remove-code$|remove-data)/.test(one))
       const f = await fixture({}, false, 'whatsapp')
@@ -133,14 +133,7 @@ describe.skipIf(process.platform === 'win32')(
         }),
       )
       await f.controller.uninstall(f.handle, 'whatsapp')
-      expect(shown(f.events)).toEqual([
-        'log-out /status',
-        'log-out /uninstall',
-        'log-out /status',
-        'stop',
-        'remove-code',
-        'remove-data whatsapp',
-      ])
+      expect(shown(f.events)).toEqual(['stop', 'remove-code'])
       const c = await fixture()
       await c.controller.install(c.handle, 'chrome')
       c.events.length = 0
@@ -507,14 +500,28 @@ describe.skipIf(process.platform === 'win32')(
       expect(reopened.matchesProjection(receipt, f.local.sink.workspaceId)).toBe(true)
     })
     it('the Settings seam installs/configures/uninstalls over separate person authority and awaits UI teardown', async () => {
-      const f = await fixture()
+      const f = await fixture({ appVersion: '1.0.0' }, false, 'fictional-bakery')
+      const pkg = genericUiFixture({ target: f.opts.target })
+      const source = join(f.parent, 'fictional-page.tar')
+      await writeFile(source, pkg.archive)
+      const start = f.opts.runtime.start
+      f.opts.runtime.start = async (spec) => {
+        const run = await start(spec)
+        await spec.onStarted?.({ pluginId: spec.package.manifest.id, runId: run.runId })
+        return run
+      }
+      const callTool = vi.fn(async () => ({ content: [], structuredContent: { recipes: [] } }))
+      f.controller.bindGenericTools({
+        listTools: async () => [],
+        callTool,
+        cancelTool: async () => ({}),
+      })
       await f.controller.detach(f.handle)
       const key = 'a'.repeat(64)
       const bridge = await servePersonPluginControl({
         root: f.root,
         key,
         controller: f.controller,
-        read: async () => ({ configRevision: 0, profiles: [], tabs: [] }),
       })
       let client: Awaited<ReturnType<typeof connectPluginSettings>> | undefined
       try {
@@ -525,25 +532,31 @@ describe.skipIf(process.platform === 'win32')(
           root: f.root,
           pinnedPublicKey: fictionalPublicKey,
           target: f.opts.target,
+          appVersion: '1.0.0',
           catalogue: f.opts.catalogue,
           download: f.opts.download,
           projection: local.sink,
-          propose: () => {
-            throw new Error('not an Apply command')
-          },
         })
         expect((await client.catalogue())[0]?.state).toBe('Available')
-        await client.install('chrome')
+        await client.install(source)
         expect((await client.catalogue())[0]?.state).toBe('Running')
-        const screen = await client.screen('chrome')
-        if (screen.tools !== undefined) throw new Error('Expected the legacy fixture page.')
-        expect(screen.verified.manifest.id).toBe('chrome')
-        expect(await screen.peer.read({}, 0, screen.binding, new AbortController().signal)).toEqual(
-          { configRevision: 0, profiles: [], tabs: [] },
-        )
+        const screen = await client.screen('fictional-bakery')
+        expect(screen.verified.manifest.id).toBe('fictional-bakery')
+        expect(
+          await screen.tools.callTool(
+            'bakery_snapshot',
+            {},
+            'read-current',
+            new AbortController().signal,
+          ),
+        ).toEqual({
+          status: 'result',
+          result: { content: [], structuredContent: { recipes: [] } },
+        })
+        expect(callTool).toHaveBeenCalledOnce()
         const destroyed = deferred<void>()
         screen.onInvalidate(() => destroyed.promise)
-        const uninstall = client.uninstall('chrome')
+        const uninstall = client.uninstall('fictional-bakery')
         await new Promise((resolve) => setTimeout(resolve, 5))
         expect(screen.current(screen.binding)).toBe(false)
         expect(f.events).not.toContain('remove-code')
@@ -738,7 +751,6 @@ describe.skipIf(process.platform === 'win32')(
           target: f.opts.target,
           catalogue: empty,
           projection: f.local.sink,
-          propose() {},
         }),
       ).rejects.toMatchObject({ code: 'unavailable' })
     })

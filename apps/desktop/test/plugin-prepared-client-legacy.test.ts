@@ -53,7 +53,6 @@ describe('client ordinary legacy package selection', () => {
       catalogue: f.opts.catalogue,
       download: f.opts.download,
       projection: projection().sink,
-      propose() {},
     })
     try {
       const cards = await client.catalogue()

@@ -8,6 +8,7 @@ import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-cl
 import { servePersonPluginControl } from '../src/main/plugins/lifecycle/person-control'
 import { parseRepoPluginList } from '../src/main/plugins/catalogue/repo-list'
 import { pluginSha256 } from '../src/main/plugins/package-digests'
+import { PluginPackageVault } from '../src/main/plugins/lifecycle/vault'
 import { immutableFile } from '../src/main/plugins/node-host-files'
 import { bootstrapPluginLifecycle } from '../src/main/plugins/lifecycle/bootstrap'
 import type { createSupervisorLifecycle } from '../src/main/plugins/lifecycle/supervisor'
@@ -116,7 +117,6 @@ async function restarted(appVersion: string, empty: boolean) {
     root: f.root,
     key: 'e'.repeat(64),
     controller,
-    read: async () => ({ profiles: [{ name: 'fern', enabled: false, open: false }], tabs: [] }),
   })
   closers.push(() => bridge.close())
   const client = await connectPluginSettings({
@@ -129,7 +129,6 @@ async function restarted(appVersion: string, empty: boolean) {
     catalogue: { bytes: view.bytes, signature: Buffer.alloc(0) },
     download: f.opts.download,
     projection: projection(f.events).sink,
-    propose() {},
   })
   recordGuards()
   closers.push(() => client.close())
@@ -149,12 +148,21 @@ async function restarted(appVersion: string, empty: boolean) {
     { id: 'chrome', installed: true, installedVersion: f.pkg.release.version, state: 'Running' },
   ])
   expect(cards[0]).not.toHaveProperty('updateVersion')
-  const page = await client.screen('chrome')
-  if (page.tools !== undefined) throw new Error('Expected the legacy fixture page.')
-  expect(page.verified.manifest.id).toBe('chrome')
-  expect(await page.peer.read({}, 0, page.binding, new AbortController().signal)).toMatchObject({
-    profiles: [{ name: 'fern', enabled: false }],
-  })
+  // Format1/2 selected installations remain readable/manageable, but their decoded UI
+  // declarations cannot reactivate the retired app domain protocol.
+  await expect(client.screen('chrome')).rejects.toThrow()
+  const vault = new PluginPackageVault(f.root, null, f.opts.target)
+  const saved = await vault.load(
+    {
+      id: installedBefore.pluginId,
+      version: installedBefore.release.version,
+      manifestSha256: installedBefore.release.manifestSha256,
+      archive: { sha256: installedBefore.release.archiveSha256 },
+    },
+    [],
+  )
+  expect(saved.manifest.id).toBe('chrome')
+  expect(pluginSha256(saved.readFile('plugin.json')!)).toBe(installedBefore.release.manifestSha256)
   expect(
     f.events
       .slice(refreshed)

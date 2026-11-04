@@ -239,7 +239,6 @@ describe.skipIf(process.platform === 'win32')(
         catalogue: { bytes: f.old.bytes, signature: Buffer.alloc(0) },
         download: f.opts.download,
         projection: projection().sink,
-        propose() {},
       })
       try {
         const screen = await client.screen('whatsapp')

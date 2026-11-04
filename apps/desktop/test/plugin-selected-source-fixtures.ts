@@ -44,7 +44,6 @@ export async function selectedSourceFixture(installed = false) {
       catalogue,
       projection: projection().sink,
       download,
-      propose() {},
     })
     const originalClose = client.close.bind(client)
     let closed = false

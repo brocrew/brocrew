@@ -64,7 +64,6 @@ describe('legacy package discovery remains optional', () => {
       catalogue: f.opts.catalogue,
       download,
       projection: projection().sink,
-      propose() {},
     })
     try {
       const cards = await client.catalogue()

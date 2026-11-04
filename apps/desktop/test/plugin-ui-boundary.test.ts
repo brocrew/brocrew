@@ -64,8 +64,10 @@ describe('generic own-plugin MCP page boundary', () => {
     const callTool = vi.fn(async () => result)
     const rpc = new PluginPageTools({ current: () => true, callTool })
     for (const input of [
-      { ...packet(), method: 'read' },
-      { ...packet(), method: 'proposeConfig' },
+      ...['read', 'subscribe', 'unsubscribe', 'proposeConfig'].map((method) => ({
+        ...packet(),
+        method,
+      })),
       { ...packet(), channel: 'brocrew-plugin-ui:v1' },
       { ...packet(), params: { tool: 'bakery_read', arguments: new Map() } },
     ])
