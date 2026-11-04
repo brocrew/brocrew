@@ -124,3 +124,144 @@ it('Claude uses its supported refresh and preserves the person server while repl
     'person-server': { type: 'http', url: 'http://127.0.0.1:9234/mcp' },
   })
 })
+
+it.each([false, true])(
+  'refreshes Claude before a recovered tool call with the same conversation (route changed %s)',
+  async (changed) => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'fictional-claude-health-')))
+    const frames = new AsyncQueue<SDKMessage>()
+    let connected = true
+    let currentRoute = {
+      name: 'plugin-fern',
+      url: 'http://127.0.0.1:8123/mcp',
+      capability: 'a'.repeat(64),
+    }
+    let installedUrl = currentRoute.url
+    const mcpServerStatus = vi.fn(async () => [
+      { name: currentRoute.name, status: connected ? ('connected' as const) : ('failed' as const) },
+      { name: 'person-server', status: 'failed' as const },
+    ])
+    const reconnectMcpServer = vi.fn(async () => {
+      connected = true
+    })
+    const setMcpServers = vi.fn(async (servers: Record<string, { url?: string }>) => {
+      installedUrl = servers[currentRoute.name]!.url!
+      return { added: [], removed: [], errors: {} }
+    })
+    const query: ClaudeQuery = Object.assign(
+      {
+        interrupt: async () => {},
+        close: () => frames.close(),
+        return: async () => frames.close(),
+        setMcpServers,
+        [Symbol.asyncIterator]: () => frames[Symbol.asyncIterator](),
+      },
+      { mcpServerStatus, reconnectMcpServer },
+    )
+    const raw = new ClaudeRuntime(
+      () => query,
+      async () => true,
+    )
+    const open = raw.start.bind(raw)
+    const successfulCalls: string[] = []
+    raw.start = async (options) => {
+      const handle = await open(options)
+      vi.spyOn(handle, 'send').mockImplementation(async () => {
+        expect(connected).toBe(true)
+        successfulCalls.push(installedUrl)
+      })
+      return handle
+    }
+    const resume = vi.spyOn(raw, 'resume')
+    const runtime = withManagedPluginAttachments(raw, {
+      read: async () => ({ revision: 'same', servers: [currentRoute] }),
+      close: async () => {},
+    })
+    const handle = await runtime.start({ cwd: root, providerHome: root })
+    cleanup.push(async () => {
+      await handle.close()
+      rmSync(root, { recursive: true, force: true })
+    })
+    frames.push({
+      type: 'system',
+      subtype: 'init',
+      session_id: 'fictional-claude',
+      cwd: root,
+    } as unknown as SDKMessage)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    const saved = handle.ref
+    expect(saved?.sessionId).toBe('fictional-claude')
+    await handle.send('fictional first tool call')
+    expect(setMcpServers).not.toHaveBeenCalled()
+    connected = false
+    if (changed)
+      currentRoute = {
+        ...currentRoute,
+        url: 'http://127.0.0.1:8124/mcp',
+        capability: 'b'.repeat(64),
+      }
+    await handle.send('fictional recovered tool call')
+    expect(mcpServerStatus).toHaveBeenCalled()
+    expect(reconnectMcpServer).toHaveBeenCalledWith('plugin-fern')
+    expect(handle.ref).toEqual(saved)
+    expect(resume).not.toHaveBeenCalled()
+    expect(successfulCalls).toEqual(['http://127.0.0.1:8123/mcp', currentRoute.url])
+    const refreshes = setMcpServers.mock.calls.length
+    await handle.send('fictional healthy following call')
+    expect(setMcpServers).toHaveBeenCalledTimes(refreshes)
+    expect(reconnectMcpServer).toHaveBeenCalledOnce()
+  },
+)
+
+it.each(['pending', 'needs-auth', 'disabled', 'missing'] as const)(
+  'unknown Claude status %s cannot authorize a reconnect',
+  async (status) => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'fictional-claude-unknown-')))
+    const frames = new AsyncQueue<SDKMessage>()
+    const reconnectMcpServer = vi.fn(async () => {})
+    const setMcpServers = vi.fn(async () => ({ added: [], removed: [], errors: {} }))
+    const query: ClaudeQuery = Object.assign(
+      {
+        interrupt: async () => {},
+        close: () => frames.close(),
+        return: async () => frames.close(),
+        setMcpServers,
+        [Symbol.asyncIterator]: () => frames[Symbol.asyncIterator](),
+      },
+      {
+        mcpServerStatus: async () =>
+          status === 'missing' ? [] : [{ name: 'plugin-fern', status }],
+        reconnectMcpServer,
+      },
+    )
+    const raw = new ClaudeRuntime(
+      () => query,
+      async () => true,
+    )
+    const open = raw.start.bind(raw),
+      sent = vi.fn(async () => {})
+    raw.start = async (options) => {
+      const handle = await open(options)
+      vi.spyOn(handle, 'send').mockImplementation(sent)
+      return handle
+    }
+    const route = {
+      name: 'plugin-fern',
+      url: 'http://127.0.0.1:8123/mcp',
+      capability: 'a'.repeat(64),
+    }
+    const runtime = withManagedPluginAttachments(raw, {
+      read: async () => ({ revision: 'same', servers: [route] }),
+      close: async () => {},
+    })
+    const handle = await runtime.start({ cwd: root, providerHome: root })
+    cleanup.push(async () => {
+      await handle.close()
+      rmSync(root, { recursive: true, force: true })
+    })
+    await handle.send('fictional ordinary turn')
+    expect(reconnectMcpServer).not.toHaveBeenCalled()
+    expect(setMcpServers).not.toHaveBeenCalled()
+    expect(sent).toHaveBeenCalledOnce()
+  },
+)

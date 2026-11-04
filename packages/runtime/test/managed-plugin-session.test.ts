@@ -879,3 +879,142 @@ it('a setter started during cleanup admission prevents preparation with an unset
     admission.mockRestore()
   }
 })
+
+it.each([true, false])(
+  'recovers a confirmed stale attachment with identical metadata (public refresh %s)',
+  async (refresh) => {
+    const f = fixture(refresh),
+      a = await f.runtime.start(initial)
+    const before = f.opened[0]!,
+      saved = a.ref
+    const health = vi.fn(async () => [route.name])
+    Object.assign(before.handle, { managedPluginHealth: health })
+    await a.send('fictional next tool call')
+    expect(health).toHaveBeenCalledWith([route])
+    if (refresh) {
+      expect(before.handle.refreshManagedPlugins).toHaveBeenCalledWith([route], [route.name])
+      expect(f.raw.resume).not.toHaveBeenCalled()
+      expect(before.send).toHaveBeenCalledOnce()
+    } else {
+      expect(f.raw.resume).toHaveBeenCalledWith(
+        saved,
+        expect.objectContaining({ managedPluginMcp: [route] }),
+      )
+      expect(before.send).not.toHaveBeenCalled()
+      expect(before.close).toHaveBeenCalledOnce()
+      expect(f.opened[1]!.send).toHaveBeenCalledWith('fictional next tool call')
+    }
+    expect(a.ref).toEqual(saved)
+    await a.close()
+  },
+)
+it.each(['ready', 'unknown', 'error', 'timeout'])(
+  'does not rotate unchanged attachments on %s health',
+  async (health) => {
+    vi.useFakeTimers()
+    const f = fixture(true),
+      a = await f.runtime.start(initial)
+    Object.assign(f.opened[0]!.handle, {
+      managedPluginHealth: vi.fn(() => {
+        if (health === 'error') return Promise.reject(new Error('fictional-private-marker'))
+        if (health === 'timeout') return new Promise(() => {})
+        return Promise.resolve(health === 'ready' ? [] : undefined)
+      }),
+    })
+    for (let i = 0; i < 2; i++) {
+      const sent = a.send('fictional ordinary turn')
+      await vi.advanceTimersByTimeAsync(PLUGIN_ATTACHMENT_WAIT_MS)
+      await sent
+    }
+    expect(f.raw.resume).not.toHaveBeenCalled()
+    expect(f.opened[0]!.handle.refreshManagedPlugins).not.toHaveBeenCalled()
+    expect(f.opened[0]!.send).toHaveBeenCalledTimes(2)
+    await a.close()
+  },
+)
+it('cancellation during a public health read cannot send or refresh after a late stale reply', async () => {
+  const f = fixture(true),
+    a = await f.runtime.start(initial)
+  let release!: (value: string[]) => void
+  let began!: () => void
+  const started = new Promise<void>((resolve) => {
+    began = resolve
+  })
+  Object.assign(f.opened[0]!.handle, {
+    managedPluginHealth: () => {
+      began()
+      return new Promise<string[]>((resolve) => {
+        release = resolve
+      })
+    },
+  })
+  const sent = a.send('fictional cancelled turn')
+  const outcome = sent.then(
+    () => undefined,
+    (error: unknown) => error,
+  )
+  await Promise.race([started, outcome])
+  expect(typeof release).toBe('function')
+  await a.interrupt()
+  release([route.name])
+  expect(await outcome).toMatchObject({ message: expect.stringContaining('stopped') })
+  expect(f.opened[0]!.send).not.toHaveBeenCalled()
+  expect(f.opened[0]!.handle.refreshManagedPlugins).not.toHaveBeenCalled()
+  await a.close()
+})
+it('does not inspect or refresh a managed connection during an active turn', async () => {
+  const f = fixture(true),
+    a = await f.runtime.start(initial)
+  const health = vi.fn(async () => 'stale')
+  Object.assign(f.opened[0]!.handle, { managedPluginHealth: health })
+  vi.spyOn(f.opened[0]!.handle, 'status').mockReturnValue('working')
+  await a.send('fictional active delivery')
+  expect(health).not.toHaveBeenCalled()
+  expect(f.opened[0]!.handle.refreshManagedPlugins).not.toHaveBeenCalled()
+  expect(f.raw.resume).not.toHaveBeenCalled()
+  await a.close()
+})
+it('stale health cannot bypass an unknown retired process exit', async () => {
+  const f = fixture(false, () => undefined),
+    a = await f.runtime.start(initial)
+  Object.assign(f.opened[0]!.handle, { managedPluginHealth: async () => [route.name] })
+  await a.send('fictional recovered turn')
+  expect(f.opened).toHaveLength(2)
+  Object.assign(f.opened[1]!.handle, { managedPluginHealth: async () => [route.name] })
+  await a.send('fictional following turn')
+  expect(f.raw.resume).toHaveBeenCalledOnce()
+  expect(f.opened[1]!.send).toHaveBeenCalledTimes(2)
+  await a.close()
+})
+
+it('a turn that becomes active during health discovery cannot be refreshed or replayed', async () => {
+  const f = fixture(true),
+    a = await f.runtime.start(initial)
+  let release!: (value: string[]) => void
+  let began!: () => void
+  const started = new Promise<void>((resolve) => {
+    began = resolve
+  })
+  Object.assign(f.opened[0]!.handle, {
+    managedPluginHealth: () => {
+      began()
+      return new Promise<string[]>((resolve) => {
+        release = resolve
+      })
+    },
+  })
+  const sent = a.send('fictional pending turn')
+  const outcome = sent.then(
+    () => undefined,
+    (error: unknown) => error,
+  )
+  await Promise.race([started, outcome])
+  expect(typeof release).toBe('function')
+  vi.spyOn(f.opened[0]!.handle, 'status').mockReturnValue('working')
+  release([route.name])
+  expect(await outcome).toBeInstanceOf(TurnInProgress)
+  expect(f.opened[0]!.handle.refreshManagedPlugins).not.toHaveBeenCalled()
+  expect(f.opened[0]!.send).not.toHaveBeenCalled()
+  expect(f.raw.resume).not.toHaveBeenCalled()
+  await a.close()
+})

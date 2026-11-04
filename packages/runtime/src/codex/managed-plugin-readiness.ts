@@ -68,3 +68,35 @@ export function waitForManagedPluginTools(
     ).then((ready) => finish(ready.every(Boolean) ? 'ready' : 'unavailable'))
   })
 }
+
+/** A fresh thread-scoped read, separate from the first-turn discovery deadline. */
+export async function failedManagedPluginConnections(
+  transport: Pick<CodexTransport, 'request'>,
+  threadId: string,
+  names: readonly string[],
+): Promise<readonly string[] | undefined> {
+  const failed: string[] = []
+  let unknown = false
+  for (const name of names) {
+    try {
+      const response = await transport.request('mcpServerStatus/list', {
+        threadId,
+        serverName: name,
+        detail: 'toolsAndAuthOnly',
+      })
+      const rows = record(response) && Array.isArray(response.data) ? response.data : []
+      const row: unknown = rows.find((one: unknown) => record(one) && one.name === name)
+      if (record(row) && row.runtimeStatus === 'failed') failed.push(name)
+      else if (
+        !record(row) ||
+        row.runtimeStatus !== 'connected' ||
+        row.toolsError !== null ||
+        !record(row.tools)
+      )
+        unknown = true
+    } catch {
+      unknown = true
+    }
+  }
+  return failed.length || !unknown ? failed : undefined
+}
