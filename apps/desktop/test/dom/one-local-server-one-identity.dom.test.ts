@@ -249,9 +249,21 @@ describe('516 §1 · the grant, on the sheet where every other grant is', () => 
 
   it('⚑ the sentence about WHEN it lands is drawn, and it says nothing running moves', async () => {
     const m = await openSheet('claude')
-    const said = m.q('external-mcp-when').textContent ?? ''
-    expect(said).toContain('next conversation')
-    expect(said).toContain('Nothing running moves')
+    for (const removed of [
+      'external-mcp-direction',
+      'external-mcp-reach-fixed',
+      'external-mcp-when',
+    ]) {
+      expect(m.all(removed), removed).toHaveLength(0)
+    }
+    expect(m.q('capability-external-mcp').textContent).toContain(
+      'May also use these external tool servers',
+    )
+    expect(m.q('external-mcp-state').textContent?.trim()).toBe('None')
+    expect(m.q('external-mcp-grant-jira').textContent).toContain('jira')
+    expect(m.q('external-mcp-grant-jira').textContent).toContain('http://127.0.0.1:8765/mcp')
+    expect(boxIn(m, 'external-mcp-grant-jira').checked).toBe(false)
+    expect(boxIn(m, 'external-mcp-grant-jira').disabled).toBe(false)
   })
 })
 
