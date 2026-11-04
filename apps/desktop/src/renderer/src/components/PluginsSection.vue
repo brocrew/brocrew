@@ -210,7 +210,7 @@ async function configure(card: PluginCard, viewId?: string) {
   await nextTick()
   if (!alive || turn !== generation) return
   const box = bounds()
-  const answer = box
+  const answer: PluginSettingsReply = box
     ? await loadPluginConfiguration(
         () =>
           request({
@@ -222,7 +222,7 @@ async function configure(card: PluginCard, viewId?: string) {
           }),
         abort.signal,
       )
-    : { ok: false }
+    : { ok: false, error: unavailable }
   if (!alive || turn !== generation) return
   if (!answer.ok) {
     if (pendingHostView?.viewId === viewId) pendingHostView = undefined
