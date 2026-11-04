@@ -1,4 +1,4 @@
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import {
   mkdtempSync,
   readFileSync,
@@ -52,6 +52,23 @@ it('keeps the diagnostic bounded and records the newest failure after reaching c
   expect(lstatSync(f.path).size).toBeLessThanOrEqual(1024 * 1024)
   expect(readFileSync(f.path, 'utf8')).toContain('reason=proof-timeout')
 })
+it.skipIf(process.platform === 'win32' || !process.getuid)(
+  'does not write a private diagnostic owned by a different caller identity',
+  () => {
+    const f = fixture()
+    writeFileSync(f.path, 'fictional-original', { mode: 0o600 })
+    const owner = process.getuid!()
+    const caller = vi.spyOn(process, 'getuid').mockReturnValue(owner + 1)
+    try {
+      recordPluginToolFailure(f.root, 'garden', 'cancelled')
+    } finally {
+      caller.mockRestore()
+    }
+    expect(readFileSync(f.path, 'utf8')).toBe('fictional-original')
+    recordPluginToolFailure(f.root, 'garden', 'cancelled')
+    expect(readFileSync(f.path, 'utf8')).toContain('reason=cancelled')
+  },
+)
 it.skipIf(process.platform === 'win32')(
   'does not write through symbolic or hard links or a public file',
   () => {
