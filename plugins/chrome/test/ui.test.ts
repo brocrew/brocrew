@@ -559,9 +559,43 @@ it('holds the switch put-back after a refusal while the person is composing a na
   await settle()
   expect(row().children[1].children[0]).toBe(input)
   expect(control()).toMatchObject({ ariaChecked: 'false', ariaBusy: 'true' })
+  expect(view.nodes.get('#status')!.textContent).toBe('Plugin unavailable. Try again.')
   input.listeners.get('compositionend')!({})
   expect(row().children[1].children[0]).toBe(input)
   expect(control()).toMatchObject({ ariaChecked: 'true' })
   expect(control().ariaBusy).toBeUndefined()
+  expect(view.nodes.get('#status')!.textContent).toBe('Plugin unavailable. Try again.')
+  view.events.get('pagehide')!({})
+})
+
+it('keeps an accepted switch change on every redraw when the read after it fails', async () => {
+  const view = screen()
+  view.reply({
+    configRevision: 1,
+    profiles: [{ name: 'fern', enabled: false, open: false }],
+    tabs: [],
+  })
+  await settle()
+  const row = () => view.nodes.get('#profiles')!.children[0] as unknown as Drawn
+  const control = () => row().children[0].children[2].children[0] as Drawn & Record<string, unknown>
+  control().listeners.get('click')!({})
+  view.reply(undefined, undefined, view.packets.at(-1))
+  await settle()
+  const read = view.packets.at(-1)!
+  expect(read.method).toBe('read')
+  expect(control()).toMatchObject({ ariaChecked: 'true' })
+  expect(control().ariaBusy).toBeUndefined()
+  view.reply(undefined, undefined, read, false)
+  await settle()
+  expect(view.nodes.get('#status')!.textContent).toBe('Plugin unavailable. Try again.')
+  row().children[0].children[2].children[2].listeners.get('click')!({})
+  expect(row().children[1].className).toBe('profile-rename')
+  expect(control()).toMatchObject({ ariaChecked: 'true' })
+  expect(control().ariaBusy).toBeUndefined()
+  control().listeners.get('click')!({})
+  expect(view.packets.at(-1)).toMatchObject({
+    method: 'proposeConfig',
+    payload: { action: 'set-enabled', profile: 'fern', enabled: false },
+  })
   view.events.get('pagehide')!({})
 })

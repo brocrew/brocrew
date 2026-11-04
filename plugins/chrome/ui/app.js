@@ -17,6 +17,8 @@ let heldSnapshot = null
 let clearing = false
 // Profiles whose on/off change is in flight, with the asked-for state, so every redraw shows it busy.
 const switching = new Map()
+// The snapshot a refused switch is put back on; its redraws keep the refusal in the status.
+let refusedOn = null
 const RENAME_ERRORS = {
   invalid: 'Profile name must be 1–60 characters.',
   duplicate: 'Another profile already uses that name.',
@@ -188,13 +190,21 @@ async function setEnabled(profile, enabled) {
   redraw()
   try {
     await rpc('proposeConfig', { action: 'set-enabled', profile, enabled })
-    switching.delete(profile)
-    await refresh()
   } catch {
     switching.delete(profile)
+    refusedOn = heldSnapshot ?? lastSnapshot
     redraw()
     say(UNAVAILABLE, 'warn')
+    return
   }
+  switching.delete(profile)
+  // The plugin took the change, so redraws show it even if the next read fails.
+  for (const snapshot of [lastSnapshot, heldSnapshot]) {
+    const known = snapshot?.profiles.find((p) => p.name === profile)
+    if (known) known.enabled = enabled
+  }
+  redraw()
+  await refresh()
 }
 // A switch with the same words in both states; its knob, colour and aria-checked say which state it is in.
 function onSwitch(profile, label) {
@@ -274,7 +284,11 @@ function draw(snapshot) {
   checked(snapshot)
   revision = snapshot.configRevision
   lastSnapshot = snapshot
-  say('Running', 'live')
+  if (snapshot === refusedOn) say(UNAVAILABLE, 'warn')
+  else {
+    refusedOn = null
+    say('Running', 'live')
+  }
   if (renaming && !snapshot.profiles.some((p) => p.name === renaming.profile)) {
     renaming = null
     composing = false
