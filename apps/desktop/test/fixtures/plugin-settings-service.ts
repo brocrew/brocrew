@@ -9,6 +9,7 @@ export async function startSettingsService(root: string) {
   const controller = {
     attach: async () => ({ workspaceId: randomUUID() }),
     detach: async () => {},
+    onHostChanged: () => () => {},
     status: async () => ({
       cards: [{ id: 'fictional-kite', state: 'Running', installed: true }],
       cleanupPending: [],

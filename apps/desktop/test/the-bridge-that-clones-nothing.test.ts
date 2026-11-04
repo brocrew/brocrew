@@ -1110,6 +1110,13 @@ function preloadSurface(): Map<string, string> {
   expect(plugins.get('onReviewInvalidated')).not.toContain('ipc.invoke')
   for (const [name, body] of plugins)
     surface.set(name, body.replace('ipc.invoke', 'ipcRenderer.invoke'))
+  expect(surface.get('pluginHost')).toMatch(/^ {2}pluginHost: pluginHostBridge\(ipcRenderer\),/)
+  surface.delete('pluginHost')
+  const pluginHost = pluginHostMembers()
+  surface.set(
+    'pluginHost.request',
+    pluginHost.get('request')!.replace('ipc.invoke', 'ipcRenderer.invoke'),
+  )
   expect(surface.get('storage')).toMatch(/^ {2}storage: storageBridge\(ipcRenderer\),/)
   surface.delete('storage')
   const storage = membersOf(
@@ -1147,6 +1154,13 @@ function preloadSurface(): Map<string, string> {
   for (const name of ['start', 'stop', 'cancel', 'openSettings'])
     surface.set(`voice.${name}`, voice.get(name)!.replaceAll('ipc.invoke', 'ipcRenderer.invoke'))
   return surface
+}
+function pluginHostMembers(): Map<string, string> {
+  return membersOf(
+    withoutProse(source('src/preload/plugin-host.ts'))
+      .split('return Object.freeze({')[1]!
+      .replace(/^ {4}(?=\w)/gm, '  '),
+  )
 }
 
 describe('§3 · what is exempt is derived from the preload, not written down (361 §2)', () => {
@@ -1200,6 +1214,19 @@ describe('§3 · what is exempt is derived from the preload, not written down (3
       /would not survive ipcRenderer\.invoke/,
     )
     expect(seen).toHaveLength(5)
+  })
+
+  it('derives the plugin-host surface and exempts only its passive subscription', () => {
+    const members = pluginHostMembers()
+    expect([...members.keys()].sort()).toEqual(['onChanged', 'request'])
+    expect(
+      [...members].filter(([, body]) => !body.includes('ipc.invoke')).map(([name]) => name),
+    ).toEqual(['onChanged'])
+    expect(members.get('request')).toContain('ipc.invoke(PLUGIN_HOST_CHANNEL, input)')
+    expect(members.get('onChanged')).toContain('ipc.on(PLUGIN_HOST_CHANGED, notify)')
+    expect(members.get('onChanged')).toContain('ipc.off(PLUGIN_HOST_CHANGED, notify)')
+    expect(NOT_THE_WIRE.has('onChanged')).toBe(true)
+    expect(NOT_THE_WIRE.has('request')).toBe(false)
   })
 
   it('the separate theme surface classifies each verb and exempts only its subscription', () => {
