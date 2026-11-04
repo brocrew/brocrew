@@ -165,3 +165,39 @@ it('never publishes a rebind when a directory changes during native observation'
   expect(store.get('fern')?.enabled).toBe(false)
   expect(JSON.stringify(f.read().profiles[0])).toBe(before)
 })
+it.each(['private-mode', 'anchored-volume', 'different-disk-home'])(
+  'a refused legacy migration still reserves local access and suppresses duplicate migration: %s', (change) => {
+    const f = fixture()
+    const local = createProfileStore({ home: f.home })
+    local.create('moss', 'panel')
+    local.setFlags('moss', { enabled: true })
+    const source = local.dirOf('moss')
+    fs.writeFileSync(path.join(source, 'fictional-sign-in'), 'fictional account')
+    expect(() => f.open({ migrationApproved: true, checkpoint: (phase: string) => {
+      if (phase === 'reserved') throw new Error('fictional stopped owner')
+    } })).toThrow('fictional stopped owner')
+    f.edit((r) => {
+      const p = r.profiles.find((p: { migratedFrom?: string }) => p.migratedFrom === 'moss')
+      for (const id of [p.directory, p.migration.source, p.migration.home]) {
+        const ino = id.ino
+        for (const key of Object.keys(id)) delete id[key]
+        Object.assign(id, { dev: '999999999', ino })
+      }
+      if (change === 'anchored-volume') p.migration.home.volume = 'apfs:22222222-2222-4222-8222-222222222222'
+      if (change === 'different-disk-home') {
+        p.migration.error = 'different-disk'
+        p.migration.home.uid = '999999999'
+      }
+    })
+    if (change === 'private-mode') fs.chmodSync(source, 0o755)
+    const store = f.open()
+    const alias = store.list().find((p) => p.name.startsWith('local-'))!.name
+    expect(store.get(alias)?.enabled).toBe(false)
+    expect(() => store.dirOf(alias)).toThrow(/reserved/)
+    expect(() => store.shared.authorization(alias)).toThrow(/reserved/)
+    expect(() => store.shared.acquire(alias)).toThrow(/reserved/)
+    f.open({ migrationApproved: true, ownerState: () => 'gone' })
+    expect(f.read().profiles.filter((p: { migratedFrom?: string }) => p.migratedFrom === 'moss')).toHaveLength(1)
+    expect(fs.readFileSync(path.join(source, 'fictional-sign-in'), 'utf8')).toBe('fictional account')
+  },
+)
