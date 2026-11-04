@@ -691,11 +691,10 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
               :text="row.words.prompt"
               :session-id="row.sessionId"
             />
-            <RequestMarkdown
-              v-if="row.words.context"
-              class="pq-asked-context"
-              :text="`${ADDED_BESIDE} ${row.words.context}`"
-            />
+            <div v-if="row.words.context" class="pq-asked-context">
+              {{ ADDED_BESIDE }}
+              <RequestMarkdown class="pq-added-markdown" :text="row.words.context" />
+            </div>
             <div
               v-for="(part, index) in row.words.parts"
               :key="part.id || index"
@@ -1369,6 +1368,12 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
 
 .pq-asked-options {
   padding-left: var(--space-6);
+}
+
+.pq-added-markdown,
+.pq-added-markdown :deep(.md-chat),
+.pq-added-markdown :deep(.md-chat > p:first-child) {
+  display: inline;
 }
 
 .pq-request-scope {
