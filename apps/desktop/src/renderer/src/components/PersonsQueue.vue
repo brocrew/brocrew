@@ -691,9 +691,11 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
               :text="row.words.prompt"
               :session-id="row.sessionId"
             />
-            <div v-if="row.words.context" class="pq-asked-context">
-              {{ ADDED_BESIDE }} <RequestMarkdown :text="row.words.context" />
-            </div>
+            <RequestMarkdown
+              v-if="row.words.context"
+              class="pq-asked-context"
+              :text="`${ADDED_BESIDE} ${row.words.context}`"
+            />
             <div
               v-for="(part, index) in row.words.parts"
               :key="part.id || index"
