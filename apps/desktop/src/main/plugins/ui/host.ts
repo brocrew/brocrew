@@ -262,7 +262,9 @@ export async function openPluginConfigurationView(
       }
       const allowed =
         current() &&
-        assets.permits(details.url, details.method) &&
+        (assets.permits(details.url, details.method) ||
+          ((details.resourceType === 'xhr' || details.resourceType === 'webSocket') &&
+            !details.url.startsWith('brocrew-plugin:'))) &&
         details.webContentsId === contents.id &&
         details.resourceType !== 'subFrame' &&
         (details.resourceType !== 'mainFrame' || details.url === assets.entry)

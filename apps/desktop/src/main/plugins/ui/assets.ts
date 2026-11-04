@@ -10,13 +10,13 @@ export const PLUGIN_SCHEME: CustomScheme = {
     secure: true,
     bypassCSP: false,
     allowServiceWorkers: false,
-    supportFetchAPI: false,
+    supportFetchAPI: true,
     corsEnabled: false,
     stream: false,
   },
 }
 export const PLUGIN_CSP =
-  "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'none'; frame-src 'none'; child-src 'none'; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+  "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src *; frame-src 'none'; child-src 'none'; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 export class PluginUiAssets {
   readonly origin: string
   readonly entry: string
