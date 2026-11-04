@@ -159,13 +159,30 @@ describe('shared grant labels and the launch permission sentences', () => {
 describe('§3 · the owner axis, said once and interpolated', () => {
   it('🔴 the header sentence is about the identity whose sheet is open, and names no slug', () => {
     const sheet = withoutProse(readFileSync(SHEET, 'utf8'))
-    expect(sheet).not.toContain('data-cy="capabilities-owner"')
-    const title = sheet.match(/data-cy="capabilities-title"[^>]*>([\s\S]*?)<\/strong>/)?.[1]
-    expect(title?.trim()).toBe('{{ called }}')
+    const header = sheet.slice(
+      sheet.indexOf('data-cy="capabilities-owner"'),
+      sheet.indexOf('</small'),
+    )
+    expect(header.length, 'the owner sentence moved').toBeGreaterThan(80)
+    // ⛔ **Twice, and both from the prop** — a sentence about *this* identity that had a slug typed
+    // into it would be right on one sheet and wrong on every other.
+    // ⚑ **Re-aimed by 712 (R41, `707` GAP-5), not stripped**: the sentence NAMES the identity now —
+    // `called`, which is `agentName` over the prop — where it printed the slug in `<code>`. So the
+    // two places are `{{ called }}`, the slug is gone from the sentence, and `called` is asked of the
+    // prop: the property this arm pinned (*from the prop, never typed*) is the one still pinned.
+    // ⚑ **D-014 · three** — the second sentence says any agent may start a conversation as it.
+    expect(header.match(/\{\{ called \}\}/g) ?? []).toHaveLength(3)
+    expect(header).not.toContain('{{ profileSlug }}')
     expect(sheet).toMatch(
       /const called = computed\(\(\) =>\s*agentName\(props\.profileSlug, store\.identities\.value\?\.identities \?\? null\)/,
     )
-    expect(sheet).toContain('{{ identity.slug }}')
+    // ⚠️ **D-014 · the second sentence is gone** — *"Any other identity named among them is one
+    // these grants point at — to change what that one may do, open its own sheet."* It was about
+    // the grant picker, which named other identities, and no grant names one now. ⚑ Its place is
+    // taken by what D-014 made true of every row: any agent may start a conversation as it.
+    expect(header).not.toContain('open its own sheet')
+    expect(header).toContain('conversation is running as {{ called }}.')
+    expect(header.trim().endsWith('and that conversation holds these grants.')).toBe(true)
   })
 
   it('⚠️ …and it no longer claims which rails fire when, because some of them do not', () => {
@@ -178,9 +195,9 @@ describe('§3 · the owner axis, said once and interpolated', () => {
     // message.
     const sheet = withoutProse(readFileSync(SHEET, 'utf8'))
     expect(sheet).not.toContain('Every rail below is enforced')
-    // The schema still supplies each editable grant; only the header paragraph was removed.
-    expect(sheet).toContain('v-for="field in visibleFields"')
-    expect(sheet).toContain('{{ field.label }}')
+    // ⚑ **Non-vacuity, and the shape of the claim that replaced it**: the row, which is true of all
+    // eight fields, rather than the act, which is true of some of them.
+    expect(sheet).toContain('’s own row: every grant below is stored on it')
     expect(CAPABILITY_FIELDS.map((field) => field.key)).toContain('canMessage')
   })
 })

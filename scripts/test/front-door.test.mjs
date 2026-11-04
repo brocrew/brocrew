@@ -95,7 +95,6 @@ describe('PLACEABLE is the wire, not a list beside it', () => {
   it('⚑ whatIsNotPlaceable finds a typo, and the wire is why it has to', () => {
     // The wire strips unknown keys in silence, so this is the only place a misspelling can fail.
     expect(whatIsNotPlaceable({ provider: 'codex', cwd: '/tmp' })).toEqual([])
-    expect(whatIsNotPlaceable({ provider: 'claude', connectionId: 'claude:sign-in' })).toEqual([])
     expect(whatIsNotPlaceable({ profileID: 'x', aproovalMode: 'auto' })).toEqual([
       'profileID',
       'aproovalMode',
@@ -139,9 +138,6 @@ describe('the front door’s refusal, both halves', () => {
     expect(whatTheFrontDoorCannotCarry({ profileId: 'smoke-x' })).toEqual(['profileId'])
     // …and the other field a placement carries that the blacklist also cannot see.
     expect(whatTheFrontDoorCannotCarry({ approvalMode: 'auto' })).toEqual(['approvalMode'])
-    expect(whatTheFrontDoorCannotCarry({ connectionId: 'claude:sign-in' })).toEqual([
-      'connectionId',
-    ])
     // ⚑ Named fields still come FIRST, so the message leads with the one a reader likely meant.
     expect(whatTheFrontDoorCannotCarry({ profileId: 'x', provider: 'claude' })).toEqual([
       'provider',
@@ -272,11 +268,10 @@ describe('427 · the REAL placed door, and what it still cannot carry', () => {
    * ⚠️ Both halves matter here — the count `ui-live-smoke.mjs` prints about how much of its
    * interim door is waiting on a surface is computed from this list.
    */
-  it('⛔ the door’s payload is read out of the component and is exactly seven fields', () => {
+  it('⛔ the door’s payload is read out of the component and is exactly six fields', () => {
     expect(SENDS).toEqual([
       'provider',
       'profileId',
-      'connectionId',
       'model',
       'reasoningEffort',
       'cwd',
@@ -331,12 +326,6 @@ describe('427 · the REAL placed door, and what it still cannot carry', () => {
     // ⚠️ …and the paired positive: a field written AFTER a block comment is still counted, so the
     // strip cannot pass by eating the rest of the literal.
     expect(fieldsOf('\n  /* a note */\n  provider: p,\n')).toEqual(['provider'])
-    expect(
-      fieldsOf(
-        '\n  provider: p,\n  ...(picked.value?.connectionId === undefined\n    ? {}\n    : { connectionId: picked.value.connectionId }),\n  ...(folder === null ? {} : { cwd: folder }),\n',
-      ),
-      'a wrapped conditional spread still carries the selected connection',
-    ).toEqual(['provider', 'connectionId', 'cwd'])
   })
 
   it('⛔ an empty field list is refused rather than reporting everything as movable', () => {

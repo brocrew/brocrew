@@ -570,15 +570,13 @@ describe('688 §7 · O1 — the agent’s own instructions draw in the sheet’s
     }))
     const own = m.q('own-instructions')
     const heading = own.querySelector('h3') as HTMLElement
-    const modelLabel = [...m.q('agent-model').querySelectorAll('span')].find(
-      (one) => words(one) === 'Model and effort',
-    ) as HTMLElement
-    expect(words(heading)).toBe('Its own instructions')
-    expect(words(modelLabel)).toBe('Model and effort')
-    expect(style(heading)).toEqual(style(modelLabel))
-    expect(m.all('own-instructions-when')).toHaveLength(0)
-    expect(m.all('capabilities-provider-note')).toHaveLength(0)
-    assertDrawn(m.q('own-instructions-text'), 'the rules editor')
+    const runsOn = m.q('capabilities-provider').querySelector('label > span') as HTMLElement
+    expect(words(runsOn)).toBe('Default provider')
+    expect(style(heading)).toEqual(style(runsOn))
+    const note = m.q('own-instructions-when')
+    const sheetNote = m.q('capabilities-provider-note')
+    expect(style(note)).toEqual(style(sheetNote))
+    expect(getComputedStyle(note).marginTop).toBe('0px')
   })
 
   it('🔴 a read that failed says so in the sheet’s error ink, with no page-sized padding', async () => {

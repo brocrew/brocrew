@@ -287,11 +287,9 @@ it('refreshes Claude across the real window after native browser sign-in complet
   expect(screen.q('provider-chip').textContent).toContain('Claude · Ready')
   screen.q('model-picker-face').click()
   await settle()
-  const selected = screen.q('model-picker-connection') as HTMLSelectElement
-  expect(selected.value).toBe('claude:sign-in')
-  expect(selected.selectedOptions[0]?.textContent).toContain('Claude')
-  expect(screen.q('model-picker-provider').dataset.provider).toBe('claude')
-  expect((screen.q('model-picker-take') as HTMLButtonElement).disabled).toBe(false)
+  expect(screen.q('model-picker-choose-claude').closest('label')?.textContent).toContain(
+    'Claude · Ready',
+  )
   expect(screen.q('app-usage').textContent).toContain('Claude · Ready')
   expect(screen.q('app-usage').textContent).toContain('5h 28%')
   expect(usage.mock.calls.length).toBeGreaterThan(1)

@@ -529,9 +529,6 @@ describe('§3 · the identity’s default provider — every writer, measured', 
       'main/db/session-store.ts',
       'main/db/session-store.ts',
       'main/db/session-store.ts',
-      'main/db/session-store.ts',
-      'main/db/session-store.ts',
-      'main/db/session-store.ts',
     ])
     const setList = (sql: string): string => sql.slice(sql.indexOf('SET'))
     expect(
@@ -542,9 +539,6 @@ describe('§3 · the identity’s default provider — every writer, measured', 
       'an UPDATE on agent_identity answers a question one of the others already answers',
     ).toEqual([
       "SET ${CAPABILITY_COLUMNS.map((column) => `${column} = ?`).join(', ')}",
-      'SET connection_id = ?',
-      'SET connection_id = ?',
-      'SET connection_id = NULL',
       'SET display_name = ?',
       'SET model_choice = ?',
       'SET provider = ?',

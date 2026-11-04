@@ -1383,8 +1383,6 @@ describe('347 · the five tools', () => {
           // ⚑ `kind` is the sixth: a normal agent or a service, fixed when it is made.
           expect(shape, tool.name).toEqual([
             'profile_slug',
-            // A declared connection selects the new agent's route, without naming an existing agent.
-            'connection',
             'provider',
             'rules',
             'model',

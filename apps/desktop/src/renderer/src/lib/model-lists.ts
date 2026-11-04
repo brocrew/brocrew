@@ -46,7 +46,6 @@ import type { SessionStore } from './session-store'
 /** ⚑ **What a person picks** — a provider's model and the effort it runs at (`null`: none to name). */
 export interface PickedModel {
   readonly provider: Provider
-  readonly connectionId?: string
   readonly model: string
   readonly effort: string | null
 }
@@ -63,17 +62,13 @@ export type HeldList =
 
 export interface ModelLists {
   /** What is held for one provider's list in one profile — `null`: nobody asked yet. */
-  held(provider: Provider, profileId?: string, connectionId?: string): HeldList | null
+  held(provider: Provider, profileId?: string): HeldList | null
   /**
    * Read one list. ⚑ Joins a read already out, and never re-asks a list the provider answered.
    * `once` (a screen warming up) re-asks nothing already held; without it (a person opening the
    * picker) a failed list is asked again.
    */
-  read(
-    provider: Provider,
-    profileId?: string,
-    options?: { readonly once?: boolean; readonly connectionId?: string },
-  ): Promise<void>
+  read(provider: Provider, profileId?: string, options?: { readonly once?: boolean }): Promise<void>
   /**
    * ⚑ **The agents subject moved** — a last pick, a default or a hand-added model: every list the
    * provider ANSWERED is read again (the host's memo answers it with no child). ⛔ A failing one is
@@ -100,44 +95,27 @@ type ListDoors = Pick<RuntimeBridge, 'modelList' | 'addHandAddedModel' | 'delete
  */
 export function createModelLists(bridge: () => ListDoors): ModelLists {
   const lists = shallowRef<Readonly<Record<string, HeldList>>>({})
-  const asked = new Map<
-    string,
-    { readonly provider: Provider; readonly profileId?: string; readonly connectionId?: string }
-  >()
+  const asked = new Map<string, { readonly provider: Provider; readonly profileId?: string }>()
   const inFlight = new Map<string, Promise<void>>()
   /** ⛔ 293 §5 — the ticket a profile's reads are answered under; {@link ModelLists.forget} moves it. */
   const tickets = new Map<string, number>()
 
   const profileOf = (profileId: string | undefined): string => profileId ?? DEFAULT_PROFILE_ID
-  const keyOf = (
-    provider: Provider,
-    profileId: string | undefined,
-    connectionId?: string,
-  ): string => {
-    const home = `${provider}:${profileOf(profileId)}`
-    return connectionId === undefined ? home : `${home}\u0000${connectionId}`
-  }
+  const keyOf = (provider: Provider, profileId: string | undefined): string =>
+    `${provider}:${profileOf(profileId)}`
 
   function put(key: string, next: HeldList): void {
     lists.value = { ...lists.value, [key]: next }
   }
 
-  function ask(
-    provider: Provider,
-    profileId: string | undefined,
-    connectionId?: string,
-  ): Promise<void> {
-    const key = keyOf(provider, profileId, connectionId)
+  function ask(provider: Provider, profileId: string | undefined): Promise<void> {
+    const key = keyOf(provider, profileId)
     const running = inFlight.get(key)
     if (running !== undefined) return running
     const profile = profileOf(profileId)
     const ticket = tickets.get(profile) ?? 0
     const ours = (): boolean => (tickets.get(profile) ?? 0) === ticket
-    asked.set(key, {
-      provider,
-      ...(profileId === undefined ? {} : { profileId }),
-      ...(connectionId === undefined ? {} : { connectionId }),
-    })
+    asked.set(key, profileId === undefined ? { provider } : { provider, profileId })
     // ⚑ An answer stays on screen while it is asked again; only nothing, or a failure, says *asking*.
     if (lists.value[key]?.state !== 'answered') put(key, { state: 'asking' })
     const read = async (): Promise<void> => {
@@ -145,7 +123,6 @@ export function createModelLists(bridge: () => ListDoors): ModelLists {
         const list = await bridge().modelList({
           provider,
           ...(profileId === undefined ? {} : { profileId }),
-          ...(connectionId === undefined ? {} : { connectionId }),
         })
         if (ours()) put(key, { state: 'answered', list })
       } catch (error) {
@@ -163,13 +140,9 @@ export function createModelLists(bridge: () => ListDoors): ModelLists {
   }
 
   /** ⚑ Asked again AFTER a read already out, so an answer from before a write is not the last word. */
-  async function askAfresh(
-    provider: Provider,
-    profileId: string | undefined,
-    connectionId?: string,
-  ): Promise<void> {
-    await inFlight.get(keyOf(provider, profileId, connectionId))
-    await ask(provider, profileId, connectionId)
+  async function askAfresh(provider: Provider, profileId: string | undefined): Promise<void> {
+    await inFlight.get(keyOf(provider, profileId))
+    await ask(provider, profileId)
   }
 
   /** ⚑ Every held list of one provider, read again — hand-added models are per provider. */
@@ -177,22 +150,22 @@ export function createModelLists(bridge: () => ListDoors): ModelLists {
     await Promise.all(
       [...asked.values()]
         .filter((parts) => parts.provider === provider)
-        .map((parts) => askAfresh(parts.provider, parts.profileId, parts.connectionId)),
+        .map((parts) => askAfresh(parts.provider, parts.profileId)),
     )
   }
 
   return {
-    held(provider, profileId, connectionId) {
-      return lists.value[keyOf(provider, profileId, connectionId)] ?? null
+    held(provider, profileId) {
+      return lists.value[keyOf(provider, profileId)] ?? null
     },
     read(provider, profileId, options) {
-      const key = keyOf(provider, profileId, options?.connectionId)
+      const key = keyOf(provider, profileId)
       const running = inFlight.get(key)
       if (running !== undefined) return running
       const now = lists.value[key]
       if (now?.state === 'answered' && now.list.notAsked === null) return Promise.resolve()
       if (options?.once === true && now !== undefined) return Promise.resolve()
-      return ask(provider, profileId, options?.connectionId)
+      return ask(provider, profileId)
     },
     async reread() {
       await Promise.all(
@@ -200,9 +173,7 @@ export function createModelLists(bridge: () => ListDoors): ModelLists {
           .filter(([, held]) => held.state === 'answered' && held.list.notAsked === null)
           .flatMap(([key]) => {
             const parts = asked.get(key)
-            return parts === undefined
-              ? []
-              : [askAfresh(parts.provider, parts.profileId, parts.connectionId)]
+            return parts === undefined ? [] : [askAfresh(parts.provider, parts.profileId)]
           }),
       )
     },

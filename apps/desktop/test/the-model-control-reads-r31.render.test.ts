@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -263,33 +263,13 @@ describe('696 §1–§5 · what a person reads about a model choice under R31', 
     if (!ownSaved.ok || ownSaved.held === null) throw new Error('not saved')
     expect(ownSaved.held).toEqual(saved.held)
     expect(heldReachesSays(ownSaved.held, null)).toBe(before)
-
-    // Shared policy helpers remain checked above; every picker omits the standing prose.
-    const picker = readFileSync(
-      join(here, '../src/renderer/src/components/ModelPicker.vue'),
-      'utf8',
-    )
-    for (const removed of [
-      'model-picker-note',
-      'model-picker-reaches',
-      'model-picker-effort-said',
-      'model-picker-effort-none',
-    ]) {
-      expect(picker, removed).not.toContain(`data-cy="${removed}"`)
-    }
-    expect(picker).not.toContain('one.row.description')
-    expect(picker).toContain('data-cy="model-picker-connection"')
-    expect(picker).toContain('data-cy="model-picker-row"')
-    expect(picker).toContain('data-cy="model-picker-effort"')
-    expect(picker).toContain('data-cy="model-picker-take"')
-    expect(picker).toContain('data-cy="model-picker-refusal"')
   })
 
   /* ─────────────────────────── §2 · provenance, named ── */
 
   // ⚑ **D-042 · re-aimed** — a saved default carries no provenance any more (`682`'s `standIn`
-  // went with the stand-in re-judge). The shared naming helper remains covered even though
-  // the picker no longer draws its standing provenance paragraph.
+  // went with the stand-in re-judge). ⚑ The one place a list's provenance is still drawn is above
+  // the menus (`agent-model-stand-in`), and that is where it is NAMED.
   it('🔴 §2 · whose list the menus are is NAMED the way every surface names that agent — and the default saved from it carries none', async () => {
     anAgent('fresh', 'never-run')
     const lets = await listFor('fresh', 'codex')
@@ -320,18 +300,6 @@ describe('696 §1–§5 · what a person reads about a model choice under R31', 
     const own = await listFor('ran', 'codex')
     expect(own.standIn).toBeNull()
     expect(theStandInNamed(own, roster())).toBe(own)
-    const control = readFileSync(
-      join(here, '../src/renderer/src/components/AgentModelChoice.vue'),
-      'utf8',
-    )
-    expect(control).not.toContain(':list-note="standInSays"')
-    expect(control).not.toContain(':reaches="aPickReaches"')
-    expect(control).not.toContain('data-cy="agent-model-reaches"')
-    expect(control).not.toContain('data-cy="agent-model-other-provider"')
-    expect(control).toContain('<ModelPicker')
-    expect(control).toContain(':profile-id="props.profileSlug"')
-    expect(control).toContain(':take="save"')
-    expect(control).toContain('data-cy="agent-model-not-in-force"')
   })
 
   /* ─────────────────────────── §3 · not in force ── */

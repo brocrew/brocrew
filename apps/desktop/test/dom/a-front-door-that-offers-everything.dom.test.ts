@@ -17,7 +17,6 @@ import {
   type Provider,
 } from '../../src/shared/runtime-ipc'
 import { MEASURED_CLAUDE } from '../fixtures/effort-launches'
-import { compatibilityConnections } from '../provider-connection-fixture'
 import { mount, unmountAll, visible, type Mounted } from './harness'
 
 /**
@@ -110,10 +109,7 @@ function listsOver(answers: { value: Partial<Record<Provider, Answer>> }): Model
 
 function installBridge(): void {
   ;(window as unknown as { api: unknown }).api = {
-    runtime: {
-      providerConnections: async () => compatibilityConnections(),
-      checkProviderAuth: () => Promise.resolve({ state: 'usable' }),
-    },
+    runtime: { checkProviderAuth: () => Promise.resolve({ state: 'usable' }) },
   }
 }
 
@@ -192,18 +188,8 @@ async function openPicker(m: Mounted): Promise<void> {
   await settle()
 }
 
-async function selectConnection(m: Mounted, provider: Provider): Promise<void> {
-  const control = m.q('model-picker-connection') as HTMLSelectElement
-  const id = `${provider}:sign-in`
-  if (control.value === id) return
-  control.value = id
-  control.dispatchEvent(new Event('change', { bubbles: true }))
-  await settle()
-}
-
 /** ⚑ …draft one provider's row, by its id. */
 async function draftRow(m: Mounted, provider: Provider, id: string): Promise<void> {
-  await selectConnection(m, provider)
   const row = m
     .q('model-picker-panel')
     .querySelector<HTMLInputElement>(
@@ -302,12 +288,10 @@ describe('§2 · a person can send without touching a control', () => {
 
 describe('§3 · the choices are reachable from THIS screen, and they reach the launch', () => {
   /** ⚑ UI-012 · one provider's section of the open panel. */
-  const section = async (m: Mounted, provider: Provider): Promise<HTMLElement> => {
-    await selectConnection(m, provider)
-    return m
+  const section = (m: Mounted, provider: Provider): HTMLElement =>
+    m
       .q('model-picker-panel')
       .querySelector<HTMLElement>(`[data-cy="model-picker-provider"][data-provider="${provider}"]`)!
-  }
   const effort = (m: Mounted, id: string): HTMLInputElement =>
     m
       .q('model-picker-panel')
@@ -327,9 +311,7 @@ describe('§3 · the choices are reachable from THIS screen, and they reach the 
     await take(door.m)
     // ⚑ **One value, three readers.** The face shows it, the sentence names it, and the launch runs
     // on it — because all three read the one resolution.
-    expect((door.m.q('model-picker-face').textContent ?? '').trim()).toBe(
-      'Claude · Fictional subscription · haiku',
-    )
+    expect((door.m.q('model-picker-face').textContent ?? '').trim()).toBe('Claude · haiku')
     expect(door.m.all('provider-is-fixed')).toHaveLength(0)
     await send(door.m)
     expect(door.started[0]?.provider).toBe('claude')
@@ -342,7 +324,7 @@ describe('§3 · the choices are reachable from THIS screen, and they reach the 
     door.answers.value = { claude: MEASURED_CLAUDE, codex: REFUSED }
     await nextTick()
     await openPicker(door.m)
-    ;(await section(door.m, 'claude'))
+    section(door.m, 'claude')
       .querySelector<HTMLButtonElement>('[data-cy="model-picker-add-open"]')!
       .click()
     await settle()
@@ -387,7 +369,7 @@ describe('§3 · the choices are reachable from THIS screen, and they reach the 
       reachedTheWindow = 0
 
       await openPicker(door.m)
-      ;(await section(door.m, 'claude'))
+      section(door.m, 'claude')
         .querySelector<HTMLButtonElement>('[data-cy="model-picker-add-open"]')!
         .click()
       await settle()
@@ -458,12 +440,11 @@ describe('§3 · the choices are reachable from THIS screen, and they reach the 
     asking.answers.value = { claude: 'pending', codex: 'pending' }
     await nextTick()
     await openPicker(asking.m)
-    // Each selected connection waits for its own answer; silence does not claim an effort limit.
-    for (const provider of ['claude', 'codex'] as const) {
-      await selectConnection(asking.m, provider)
-      expect((asking.m.q('model-picker-take') as HTMLButtonElement).disabled).toBe(true)
-      expect(asking.m.all('model-picker-row')).toHaveLength(0)
-      expect(asking.m.q('model-picker-said').textContent).toContain('Asking')
+    // Unknown readiness is disabled as Checking… in the approved 0.1.3 picker.
+    for (const provider of ['claude', 'codex']) {
+      const radio = asking.m.q(`model-picker-choose-${provider}`) as HTMLInputElement
+      expect(radio.disabled).toBe(true)
+      expect(radio.closest('label')?.textContent).toContain(' · Checking…')
     }
     expect(asking.m.all('model-picker-row')).toHaveLength(0)
     expect(asking.m.all('model-picker-effort-none')).toHaveLength(0)
@@ -478,38 +459,26 @@ describe('§3 · the choices are reachable from THIS screen, and they reach the 
     refused.answers.value = { claude: transient, codex: transient }
     await nextTick()
     await openPicker(refused.m)
-    await selectConnection(refused.m, 'codex')
+    refused.m.q('model-picker-choose-codex').click()
     await settle()
-    ;(await section(refused.m, 'codex'))
+    section(refused.m, 'codex')
       .querySelector<HTMLButtonElement>('[data-cy="model-picker-add-open"]')!
       .click()
     await settle()
     await type(refused.m, 'model-picker-add-name', 'gpt-5.6-terra')
     ;(refused.m.q('model-picker-add') as HTMLButtonElement).click()
     await settle()
-    expect(refused.m.all('model-picker-effort-none')).toHaveLength(0)
-    expect(refused.m.all('model-picker-effort')).toHaveLength(0)
-    expect(refused.m.q('model-picker-panel').textContent).not.toMatch(
-      /did not say|no effort levels/,
-    )
-    expect(
-      refused.m.q('model-picker-panel').querySelector('[data-model="gpt-5.6-terra"] input:checked'),
-    ).not.toBeNull()
-    expect((refused.m.q('model-picker-take') as HTMLButtonElement).disabled).toBe(false)
+    const none = (m: Mounted): string => (m.q('model-picker-effort-none').textContent ?? '').trim()
+    expect(none(refused.m)).toBe('Codex could not be asked which efforts “gpt-5.6-terra” offers.')
     refused.m.unmount()
 
-    // A listed model with no efforts keeps its selected row and can be taken without a level.
+    // ⚑ The paired positive: with a list, the sentence IS about the provider's row, and says so.
     const listed = open()
     listed.answers.value = { claude: REFUSED, codex: MEASURED_CLAUDE }
     await nextTick()
     await openPicker(listed.m)
     await draftRow(listed.m, 'codex', 'haiku')
-    expect(listed.m.all('model-picker-effort-none')).toHaveLength(0)
-    expect(listed.m.all('model-picker-effort')).toHaveLength(0)
-    expect(
-      listed.m.q('model-picker-panel').querySelector('[data-model="haiku"] input:checked'),
-    ).not.toBeNull()
-    expect((listed.m.q('model-picker-take') as HTMLButtonElement).disabled).toBe(false)
+    expect(none(listed.m)).toBe('“haiku” has no effort levels.')
   })
 
   it('⛔ …from this screen, not from a settings surface a person has to know about', async () => {

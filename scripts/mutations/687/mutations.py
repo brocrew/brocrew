@@ -236,7 +236,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         # entry, and the flush (which needs both piece and label) then writes neither, so the turn
         # says only Task. Killed by `what-the-cards-cannot-say-yet.test.ts`.
         [
-            (HOST, '        : { piece: carried.piece, label: carried.label, ...theRebriefMark }),\n      ...(giving?.connectionId === undefined ? {} : { connectionId: giving.connectionId }),\n      ...(drives === null ? {} : { drives }),\n      // ⚑ **414**', '        : { piece: carried.piece, ...theRebriefMark }),\n      ...(giving?.connectionId === undefined ? {} : { connectionId: giving.connectionId }),\n      ...(drives === null ? {} : { drives }),\n      // ⚑ **414**'),
+            (HOST, '        : { piece: carried.piece, label: carried.label, ...theRebriefMark }),\n      ...(drives === null ? {} : { drives }),\n      // ⚑ **414** — see {@link QueuedMessage.origin}: the flush has no `by` to derive from.\n', '        : { piece: carried.piece, ...theRebriefMark }),\n      ...(drives === null ? {} : { drives }),\n      // ⚑ **414** — see {@link QueuedMessage.origin}: the flush has no `by` to derive from.\n'),
         ],
     ),
     (

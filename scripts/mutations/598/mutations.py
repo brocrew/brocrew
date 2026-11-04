@@ -152,7 +152,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "project manager mints then belongs to nobody, so `created-by-me` admits none of them — "
         "the tier that may create can no longer start what it created, which is `HO-068` §1.2's "
         "own defect arriving through the column instead of through the grant",
-        [(HOST, '      const made = this.deps.store.createAgentIdentity(\n        { ...said, provider, ...(connectionId === undefined ? {} : { connectionId }) },\n        may.creator,\n', "      const made = this.deps.store.createAgentIdentity(\n        { ...said, provider, ...(connectionId === undefined ? {} : { connectionId }) },\n        { by: 'this-app' },\n")],
+        [(HOST, THE_AGENTS_DOOR, "    const created = this.deps.store.createAgentIdentity({ ...said, provider }, { by: 'this-app' })")],
     ),
     (
         "M2 · 🔴 the PERSON's door records `this-app`, which is the collapse `HO-084` §1 needs "

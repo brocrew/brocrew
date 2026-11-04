@@ -35,7 +35,6 @@ import { LIBRARY_QUERY_MAX, MAX_PATH_CHARS } from '../src/shared/runtime-ipc'
  * | `checkCwd.path` | 🔴 **nobody since D-016** — the project sheet's folder field was its last | ⚠️ `PATH_MAX`, paste-only |
  * | `importBundleFile.path` | the library's restore field | ⚠️ `PATH_MAX`, paste-only |
  * | `createSession.profileId` | 🔴 **nobody — a constant, since 417** | ⚑ gated before the press (169 §1) |
- * | `connectionId` on createSession, setAgentModelAndEffort, modelList and createAgent | copied from main's declared connection metadata, never typed | host revalidates provider, availability and auth method before effects |
  * | `createSession.cwd` | 🔴 **nobody — never sent, since 417** | ⚑ unbounded — nothing to violate |
  * | `agentSlug` | 🔴 **the new-agent sheet's name field, since 423** | ⚑ `isPathSegment`, not a length |
  * | `agentDisplayName` | 🔴 **the new-agent sheet's display name, since 423** | ⛔ `AGENT_DISPLAY_NAME_CHARS` |
@@ -241,8 +240,6 @@ describe('221 §3 · the count is pinned, so a new field must be classified', ()
       // `hasSomethingToSend` like every other message and to no length bound at all — the same
       // answer `sendShaped`'s `text` gets, because a message to a child is a message.
       'childMessage',
-      // A selected declared connection ID; no address, credential or typed text crosses this field.
-      'connectionId', // createSession
       'cwd',
       'reasoningEffort',
       'model',
@@ -360,8 +357,6 @@ describe('221 §3 · the count is pinned, so a new field must be classified', ()
       // a model a person added is admitted, and anything the list does not hold is refused.
       'model',
       'effort',
-      'connectionId', // setAgentModelAndEffort: the same menu-supplied, revalidated ID
-      'connectionId', // modelList: the same ID, counted separately for the separate command
       // 🔒 **`setApiKey.key`** — classified: **a person types it** (pastes it), once, on the
       // Providers screen. ⚑ Bounded at 4096 on the wire and by `api-keys.ts`' own words after it
       // (`whyNotAKey`): a bound's message names its limit, never the value, so a refusal here quotes
@@ -410,7 +405,6 @@ describe('221 §3 · the count is pinned, so a new field must be classified', ()
       // app made for an agent's request to register an MCP server (`msreq_<uuid>`), drawn on its
       // card and sent straight back. A guessed one finds no waiting request and registers nothing.
       'requestId',
-      'connectionId', // createAgent: a declared ID, with no person-typed input control
     ])
   })
 })

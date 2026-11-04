@@ -244,7 +244,6 @@ const props = withDefaults(
      */
     providerReadiness?: Readonly<Partial<Record<Provider, boolean | null>>> | null
     defaultProvider: Provider
-    defaultConnectionId?: string
     /**
      * 🔴 **The mode this conversation will begin in, because a person set it once** (500,
      * HO-036 §3.1) — *"a person sets their approval mode once, and every conversation they start
@@ -295,7 +294,7 @@ const props = withDefaults(
      */
     choices: LaunchChoices
   }>(),
-  { approvalDefaultChosen: undefined, providerReadiness: null, defaultConnectionId: undefined },
+  { approvalDefaultChosen: undefined, providerReadiness: null },
 )
 
 const emit = defineEmits<{
@@ -762,11 +761,7 @@ const lists = computed(() => props.lists ?? useModelLists())
  * ⚑ **BroBot's list on the provider this conversation will start on**, once it has answered.
  */
 const heldList = computed(() => {
-  const held = lists.value.held(
-    props.defaultProvider,
-    undefined,
-    props.choices.connectionId ?? props.defaultConnectionId,
-  )
+  const held = lists.value.held(props.defaultProvider)
   return held?.state === 'answered' ? held.list : null
 })
 
@@ -784,9 +779,6 @@ const shownPick = computed<PickedModel | null>(() => {
   if (model !== '' && modelMatchesProvider.value) {
     return {
       provider: props.defaultProvider,
-      ...(props.choices.connectionId === undefined
-        ? {}
-        : { connectionId: props.choices.connectionId }),
       model,
       effort: props.choices.reasoningEffort === '' ? null : props.choices.reasoningEffort,
     }
@@ -807,12 +799,7 @@ const shownEmpty = computed(() => 'Choose a model')
  * now (R-3). ⛔ Nothing is sent: the launch carries it.
  */
 function startOn(pick: PickedModel): Promise<string | null> {
-  choose({
-    provider: pick.provider,
-    connectionId: pick.connectionId,
-    model: pick.model,
-    reasoningEffort: pick.effort ?? '',
-  })
+  choose({ provider: pick.provider, model: pick.model, reasoningEffort: pick.effort ?? '' })
   return Promise.resolve(null)
 }
 
@@ -924,7 +911,6 @@ const recentHeadingId = useId()
 
 const settings = computed<CreateSessionInput>(() => ({
   provider: props.defaultProvider,
-  ...(props.choices.connectionId === undefined ? {} : { connectionId: props.choices.connectionId }),
   profileId: DEFAULT_PROFILE_ID,
   approvalMode: launchMode.value ?? 'ask',
   ...(sends.value === null ? {} : { model: sends.value.model }),
@@ -1094,8 +1080,6 @@ watch(
                   <span class="lbl">model</span>
                   <ModelPicker
                     :providers="providers"
-                    :preferred-provider="props.defaultProvider"
-                    :connection-id="props.choices.connectionId ?? props.defaultConnectionId"
                     :readiness="props.providerReadiness"
                     :set-up="(provider) => emit('open-providers', provider)"
                     :shown="shownPick"

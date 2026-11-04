@@ -294,14 +294,11 @@ describe('524 §2 · the identity sheet stops under-reporting', () => {
     // have claimed *nothing is registered* whenever no server happened to be restricted — which is
     // now the normal state — so the pairing is both directions in one file.
     const empty = await openSheet()
-    expect(empty.all('external-mcp-empty')).toHaveLength(0)
-    expect(empty.q('external-mcp-state').textContent).toContain('None')
+    expect(empty.q('external-mcp-empty').textContent).toContain('No external MCP servers')
     empty.unmount()
 
     answers.list = { ...answers.list, externalMcpServers: [server('kibana', 'everyone')] }
     const full = await openSheet()
-    expect(full.q('external-mcp-state').textContent).toContain('1 usable')
-    expect(full.q('external-mcp-everyones-kibana').textContent).toContain('kibana')
     expect(
       full.all('external-mcp-empty'),
       'a registry with a row claimed to be empty',
@@ -315,8 +312,7 @@ describe('524 §2 · the identity sheet stops under-reporting', () => {
     // `providerForALaunch(identities, slug, DEFAULT_PROVIDER)` and has been since `433` — so what was
     // missing was never the resolution. It was saying that one happened.
     const unsaid = await openSheet('codex')
-    expect(unsaid.all('external-mcp-answers-for-the-fallback')).toHaveLength(0)
-    expect(unsaid.q('external-mcp-held-back').textContent).toContain('which call it is about')
+    expect(unsaid.q('external-mcp-answers-for-the-fallback').textContent).toContain('falls back to')
     unsaid.unmount()
 
     // ⚑ **The pairing, one fact over**: an identity that HAS chosen gets the provider's reason and

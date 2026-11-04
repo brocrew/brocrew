@@ -81,51 +81,44 @@ function fixture(codex: ModelList = list('codex')) {
   )
   return { m, setup, take, modelList, lists }
 }
-async function chooseConnection(m: Mounted, provider: Provider): Promise<void> {
-  const control = m.q('model-picker-connection') as HTMLSelectElement
-  control.value = `${provider}:sign-in`
-  control.dispatchEvent(new Event('change', { bubbles: true }))
-  await settle()
-}
-it('shows named connections, one selected model list and only its Add action', async () => {
+it('shows provider radios, one provider model list and only its Add action', async () => {
   const { m, take } = fixture()
   await open(m)
-  const connections = m.q('model-picker-connection') as HTMLSelectElement
-  assertDrawn(connections, 'named connections', m.host)
-  expect(connections.value).toBe('claude:sign-in')
+  assertDrawn(m.q('model-picker-providers'), 'provider choices', m.host)
+  expect((m.q('model-picker-choose-claude') as HTMLInputElement).checked).toBe(true)
   expect(m.all('model-picker-row').map((el) => el.dataset.model)).toEqual(['claude-default'])
-  await chooseConnection(m, 'codex')
-  expect(connections.value).toBe('codex:sign-in')
+  m.q('model-picker-choose-codex').click()
+  await settle()
+  expect((m.q('model-picker-choose-codex') as HTMLInputElement).checked).toBe(true)
   expect(m.all('model-picker-row').map((el) => el.dataset.model)).toEqual(['codex-default'])
   expect(m.q('model-picker-add-open').textContent).toContain('+ Add a Codex model')
-  expect((m.q('model-picker-take') as HTMLButtonElement).disabled).toBe(true)
-  m.q('model-picker-row').querySelector('input')!.click()
-  await settle()
   m.q('model-picker-take').click()
   await settle()
   expect(take).toHaveBeenCalledExactlyOnceWith({
     provider: 'codex',
-    connectionId: 'codex:sign-in',
     model: 'codex-default',
     effort: null,
   })
 })
-it('refuses Take on a selected connection needing setup and opens its exact Settings card', async () => {
+it('disables the provider that needs setup and opens Settings for its exact card', async () => {
   const { m, setup, take } = fixture(missing())
   await open(m)
-  await chooseConnection(m, 'codex')
-  expect((m.q('model-picker-take') as HTMLButtonElement).disabled).toBe(true)
+  const radio = m.q('model-picker-choose-codex') as HTMLInputElement
+  expect(radio.disabled).toBe(true)
+  expect(radio.closest('label')?.textContent).toContain('Codex · Not set up')
   const link = m.q('model-picker-setup-codex')
   assertDrawn(link, 'provider setup link', m.host)
   expect(link.textContent?.trim()).toBe('Set up in Settings')
-  expect(m.q('model-picker-provider').dataset.provider).toBe('codex')
+  radio.click()
+  await settle()
+  expect(m.q('model-picker-provider').dataset.provider).toBe('claude')
   expect(m.q('model-picker-panel').textContent).not.toContain('/fictional/')
   expect(take).not.toHaveBeenCalled()
   link.click()
   await settle()
   expect(setup).toHaveBeenCalledExactlyOnceWith('codex')
 })
-it('offers plain retry wording for other failures and retries the same connection', async () => {
+it('offers plain retry wording for other failures and retries the same provider', async () => {
   const failed = {
     ...list('codex'),
     models: [],
@@ -138,8 +131,9 @@ it('offers plain retry wording for other failures and retries the same connectio
   }
   const { m, modelList } = fixture(failed)
   await open(m)
-  await chooseConnection(m, 'codex')
-  expect((m.q('model-picker-take') as HTMLButtonElement).disabled).toBe(true)
+  const codex = m.q('model-picker-choose-codex') as HTMLInputElement
+  expect(codex.disabled).toBe(true)
+  expect(codex.closest('label')?.textContent).toContain('Codex · Checking…')
   expect(m.q('model-picker-said').textContent?.trim()).toBe("Codex didn't answer. Try again.")
   expect(m.q('model-picker-said').title).toContain('/fictional/socket')
   m.q('model-picker-retry').click()
@@ -256,14 +250,13 @@ it('blocks an unknown provider even with retained models, and never relabels its
     lists,
   })
   await open(picker)
-  await chooseConnection(picker, 'codex')
-  expect((picker.q('model-picker-take') as HTMLButtonElement).disabled).toBe(true)
-  expect(picker.q('model-picker-provider').dataset.provider).toBe('codex')
-  expect(picker.all('model-picker-row')).toHaveLength(0)
-  expect(lists.held('codex', undefined, 'codex:sign-in')).toMatchObject({
-    state: 'answered',
-    list: { models: [{ id: 'codex-default' }] },
-  })
+  const radio = picker.q('model-picker-choose-codex') as HTMLInputElement
+  expect(radio.disabled).toBe(true)
+  expect(radio.closest('label')?.textContent).toContain('Codex · Checking…')
+  radio.dispatchEvent(new Event('change', { bubbles: true }))
+  await settle()
+  expect(picker.q('model-picker-provider').dataset.provider).toBe('claude')
+  expect(picker.all('model-picker-row').map((row) => row.dataset.model)).toEqual(['claude-default'])
   const sent = vi.fn()
   const m = mount(NewConversation, {
     busy: false,

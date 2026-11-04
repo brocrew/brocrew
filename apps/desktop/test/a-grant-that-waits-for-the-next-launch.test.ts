@@ -345,7 +345,7 @@ describe('470 · a grant that waits for the next launch', () => {
       expect(sheet.toLowerCase()).not.toContain('relaunch')
       expect(sheet).toContain('>\n                Reopen\n              </button>')
       // ⚑ …and the offer under the grant says the same word.
-      expect(sheet).not.toContain('Reopening one gives it what this row says now.')
+      expect(sheet).toContain('Reopening one gives it what this row says now.')
     })
   })
 
@@ -594,12 +594,8 @@ describe('470 · a grant that waits for the next launch', () => {
         'anythingMoved ? SAVE_FIRST : reopeningSays(one.heldBy) + actThere(one)',
       )
       expect(sheet).toContain('moved.value.size > 0 || externalMcpMoved.value')
-      expect(sheet).not.toContain('{{ field.whenItTakesEffect }}')
-      expect(sheet).not.toContain('{{ field.help }}')
-      expect(sheet).toContain('v-for="field in visibleFields"')
-      expect(sheet).toContain('{{ field.label }}')
-      expect(sheet).toContain('v-if="field.whenItTakesEffect && props.openAs.length > 0"')
-      // The dormant-field filter leaves every surviving editor and reopen offer generic.
+      expect(sheet).toContain('{{ field.whenItTakesEffect }}')
+      // Allow only the explicit dormant-field filter; all rendering and disclosure stay generic.
       const hiddenRulesFilter = "props.fields.filter((field) => field.key !== 'canWriteRules')"
       expect(sheet.split(hiddenRulesFilter)).toHaveLength(2)
       const genericSheet = sheet.replace(hiddenRulesFilter, 'props.fields')
@@ -610,18 +606,7 @@ describe('470 · a grant that waits for the next launch', () => {
         expect(sheet, `${field.column} is spelled in the sheet`).not.toContain(field.column)
       }
       // ⚑ …and the hooks are built from the field rather than typed out.
-      expect(sheet).not.toContain('`grant-${field.key}-when`')
-      expect(sheet).toContain('`capability-${field.key}-select`')
-      for (const removed of [
-        'external-mcp-direction',
-        'external-mcp-reach-fixed',
-        'external-mcp-when',
-        'capabilities-fold-note',
-      ]) {
-        expect(sheet, removed).not.toContain(`data-cy="${removed}"`)
-      }
-      expect(sheet).not.toContain('Open as {{ called }} in this window.')
-      expect(sheet).toContain(`@click="emit('reopen', one.sessionId)"`)
+      expect(sheet).toContain('`grant-${field.key}-when`')
       expect(sheet).toContain('`grant-${field.key}-open-now`')
     })
 

@@ -107,8 +107,8 @@ MUTATIONS = [
             (
                 CONTROL,
                 # ⚑ **W4.78 · re-anchored in place, not retired** — UI-012 (6d2d195d) removed the agent-model-stand-in <p>. The note above the list is now handed to ModelPicker as `note` and drawn as model-picker-note. The named killer still asserts it: §1 expects the note to be visible and to read 'This is BroBot’s list…'.
-                '            :list-note="standInSays"\n',
-                '            :list-note="() => null"\n',
+                "            :note=\"standInSays\"\n",
+                "            :note=\"null\"\n",
             )
         ],
     ),
@@ -119,8 +119,8 @@ MUTATIONS = [
             (
                 CONTROL,
                 # ⚑ **W4.78 · re-anchored in place, not retired** — UI-012 (6d2d195d) removed menuStandIn. The note's stand-in name is now built in standInSays. The named killer still asserts it: §1 expects 'This is BroBot’s list…', where the slug would give 'brobot’s'.
-                '  const named = theStandInNamed({ standIn: list.standIn }, roster.value).standIn\n',
-                '  const named = list.standIn\n',
+                "  const named = theStandInNamed({ standIn: listed.list.standIn }, roster.value).standIn\n",
+                "  const named = listed.list.standIn\n",
             )
         ],
     ),
@@ -191,8 +191,8 @@ MUTATIONS = [
         [
             (
                 CONTROL,
-                "  () => held.value !== null && !aChoiceIsInForce(held.value, ownProvider.value),\n",
-                "  () => held.value !== null && aChoiceIsInForce(held.value, ownProvider.value),\n",
+                "  () => held.value !== null && !aChoiceIsInForce(held.value, props.itsProvider),\n",
+                "  () => held.value !== null && aChoiceIsInForce(held.value, props.itsProvider),\n",
             )
         ],
     ),
@@ -237,8 +237,8 @@ MUTATIONS = [
             (
                 CONTROL,
                 # ⚑ **W4.78 · re-anchored in place, not retired** — UI-012 (6d2d195d) took out whatTheCatalogueLets(…, menusFor, catalogue). The provider whose list is read is now the picker's `providers` prop. With runsOn, the face shows the Claude choice over Codex's rows. The named killer still asserts it: §3 expects sections ['claude'] and rows ['default','opus'].
-                'const modelLists = computed(() => props.lists ?? useModelLists())\n',
-                "const modelLists = computed(() => {\n  const lists = props.lists ?? useModelLists()\n  return {\n    ...lists,\n    held: (...args: Parameters<ModelLists['held']>) =>\n      lists.held(props.runsOn, args[1], args[2]),\n    read: (...args: Parameters<ModelLists['read']>) =>\n      lists.read(props.runsOn, args[1], args[2]),\n  }\n})\n",
+                "            :providers=\"[menusFor]\"\n",
+                "            :providers=\"[props.runsOn]\"\n",
             )
         ],
     ),

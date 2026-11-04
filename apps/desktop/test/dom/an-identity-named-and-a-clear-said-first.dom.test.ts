@@ -46,7 +46,6 @@ import {
   type TranscriptEvent,
 } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll, visible, type Mounted } from './harness'
-import { compatibilityConnections } from '../provider-connection-fixture'
 
 /**
  * # 🔴 712 — an identity NAMED where a person reads it, and a clear SAID before the press
@@ -74,7 +73,6 @@ const ORIGINAL = { width: window.innerWidth, height: window.innerHeight }
 
 afterEach(async () => {
   unmountAll()
-  delete (window as { api?: unknown }).api
   await page.viewport(ORIGINAL.width, ORIGINAL.height)
 })
 
@@ -200,7 +198,6 @@ function storeOver(): { store: AgentStore; lists: ModelLists } {
       provider: Provider | null
       model: string | null
       effort: string | null
-      connectionId?: string
     }) => {
       if (input.provider === null) {
         world.held[input.profileId] = null
@@ -214,14 +211,7 @@ function storeOver(): { store: AgentStore; lists: ModelLists } {
       const row = theListedRow(catalogue.models, input.model)
       const pair = { model: input.model, effort: input.effort ?? theDefaultEffortOf(row) }
       if (judgeAgainstTheList(catalogue.models, pair) !== null) throw new Error('refused')
-      world.roster = world.roster.map((one) =>
-        one.slug === input.profileId ? { ...one, provider: input.provider } : one,
-      )
-      const saved: AgentModelChoice = {
-        provider: input.provider,
-        ...pair,
-        ...(input.connectionId === undefined ? {} : { connectionId: input.connectionId }),
-      }
+      const saved: AgentModelChoice = { provider: input.provider, ...pair }
       world.held[input.profileId] = saved
       return { ok: true, choice: saved }
     },
@@ -244,9 +234,6 @@ function storeOver(): { store: AgentStore; lists: ModelLists } {
       return world.reading
     },
   } as unknown as RuntimeBridge
-  ;(window as { api?: unknown }).api = {
-    runtime: { providerConnections: async () => compatibilityConnections() },
-  }
   return { store: createAgentStore(bridge), lists: createModelLists(() => bridge) }
 }
 
@@ -337,71 +324,54 @@ describe('712 §1 · R56 — the provider row says what a press would clear, BEF
     expect(whatAProviderPressWouldClear(OPUS_HIGH)).toBe(WILL_CLEAR_OPUS_HIGH)
     const m = await theSheet('worker')
     // ⚑ The premise: the control below has read the choice this line is about.
-    expect(said(m.q('model-picker-face'))).toBe('Claude · Fictional subscription · opus · high')
+    expect(said(m.q('model-picker-face'))).toBe('opus · high')
 
-    expect(m.all('capabilities-provider-select')).toHaveLength(0)
+    const line = m.q('capabilities-provider-will-clear')
+    expect(visible(line)).toBe(true)
+    expect(line.innerText).toBe(whatAProviderPressWouldClear(OPUS_HIGH))
+    // ⚑ Beside the control it is about: inside the provider block, and after its select.
+    const select = m.q('capabilities-provider-select')
+    expect(m.q('capabilities-provider').contains(line)).toBe(true)
+    expect(select.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // ⚑ The note's register — a sentence about the control, not an alarm.
+    const note = m.q('capabilities-provider-note')
+    expect(getComputedStyle(line).color).toBe(getComputedStyle(note).color)
+    expect(getComputedStyle(line).fontSize).toBe(getComputedStyle(note).fontSize)
+    // ⛔ Nothing has been pressed, so nothing says it was cleared.
+    expect(m.all('capabilities-provider-cleared')).toHaveLength(0)
+
+    await pick(m, 'capabilities-provider-select', 'codex')
+    // 🔴 After the door answered: the warning is gone with the choice, and the 696 line says what went.
     expect(m.all('capabilities-provider-will-clear')).toHaveLength(0)
-    // The legacy compatibility API still clears exactly the old provider's choice.
-    const answer = await m.store.chooseProviderFor('worker', 'codex')
-    await settle()
-    expect(answer).toEqual({ ok: true, cleared: OPUS_HIGH })
-    if (!answer.ok) throw new Error(answer.reason)
-    expect(whatTheProviderPressCleared(answer.cleared!, 'codex')).toBe(CLEARED_OPUS_HIGH_NOW_CODEX)
-    expect(said(m.q('model-picker-face'))).toBe(
-      'Codex · Fictional subscription · Nobody has chosen',
+    const cleared = m.q('capabilities-provider-cleared')
+    expect(visible(cleared)).toBe(true)
+    expect(said(cleared)).toBe(
+      whatTheProviderPressCleared({ provider: 'claude', model: 'opus', effort: 'high' }, 'codex'),
     )
+    expect(said(cleared)).toBe(CLEARED_OPUS_HIGH_NOW_CODEX)
+    expect(said(m.q('model-picker-face'))).toBe('Nobody has chosen')
     expect(m.all('agent-model-held')).toHaveLength(0)
-    // The current UI chooses connection, model and effort together.
-    await press(m, 'model-picker-face')
-    await pick(m, 'model-picker-connection', 'codex:sign-in')
-    await choose(m, 'model-picker-row', 'gpt-5.6-terra')
-    await choose(m, 'model-picker-effort', 'high')
-    await press(m, 'model-picker-take')
-    expect(world.held.worker).toEqual({
-      provider: 'codex',
-      connectionId: 'codex:sign-in',
-      model: 'gpt-5.6-terra',
-      effort: 'high',
-    })
-    expect(world.roster.find((one) => one.slug === 'worker')?.provider).toBe('codex')
-    await m.store.load()
-    await settle()
-    expect(said(m.q('model-picker-face'))).toBe(
-      'Codex · Fictional subscription · gpt-5.6-terra · high',
-    )
   })
 
   it('🔴 the DOOR’s answer alone takes the warning — with the re-read held back, the line is already gone', async () => {
     reset({ held: { worker: { ...OPUS_HIGH } } })
     const m = await theSheet('worker')
-    expect(heldFace(m)).toBe('Claude · Fictional subscription · opus · high')
+    expect(line(m)).toBe(WILL_CLEAR_OPUS_HIGH)
     let release: () => void = () => {}
     world.gate = new Promise<void>((resolve) => (release = resolve))
     try {
-      const answer = await m.store.chooseProviderFor('worker', 'codex')
-      await settle()
-      expect(answer).toEqual({ ok: true, cleared: OPUS_HIGH })
-      if (!answer.ok) throw new Error(answer.reason)
+      await pick(m, 'capabilities-provider-select', 'codex')
       // ⚑ The premise: the control below has NOT re-read — it still draws the choice it last knew —
       // so the line's absence is the door's answer and nothing else.
-      expect(said(m.q('model-picker-face'))).toBe(
-        'Codex · Fictional subscription · Nobody has chosen',
-      )
-      expect(visible(m.q('agent-model-held'))).toBe(true)
-      expect(said(m.q('agent-model-held'))).toContain('“opus” at high effort on Claude')
-      expect(said(m.q('agent-model-not-in-force'))).toBe('not in force')
-      expect(whatTheProviderPressCleared(answer.cleared!, 'codex')).toBe(
-        CLEARED_OPUS_HIGH_NOW_CODEX,
-      )
+      expect(said(m.q('model-picker-face'))).toBe('opus · high')
+      expect(said(m.q('capabilities-provider-cleared'))).toBe(CLEARED_OPUS_HIGH_NOW_CODEX)
       expect(m.all('capabilities-provider-will-clear')).toHaveLength(0)
     } finally {
       world.gate = null
       release()
     }
     await settle()
-    expect(said(m.q('model-picker-face'))).toBe(
-      'Codex · Fictional subscription · Nobody has chosen',
-    )
+    expect(said(m.q('model-picker-face'))).toBe('Nobody has chosen')
     expect(m.all('capabilities-provider-will-clear')).toHaveLength(0)
   })
 
@@ -409,12 +379,9 @@ describe('712 §1 · R56 — the provider row says what a press would clear, BEF
     reset()
     const m = await theSheet('worker')
     // ⚑ The premise: the read ANSWERED — *nobody chose* is known, not missing.
-    expect(said(m.q('model-picker-face'))).toBe(
-      'Claude · Fictional subscription · Nobody has chosen',
-    )
+    expect(said(m.q('model-picker-face'))).toBe('Nobody has chosen')
     expect(m.all('capabilities-provider-will-clear')).toHaveLength(0)
-    expect(await m.store.chooseProviderFor('worker', 'codex')).toEqual({ ok: true, cleared: null })
-    await settle()
+    await pick(m, 'capabilities-provider-select', 'codex')
     expect(m.all('capabilities-provider-will-clear')).toHaveLength(0)
     expect(m.all('capabilities-provider-cleared')).toHaveLength(0)
   })
@@ -428,13 +395,11 @@ describe('712 §1 · R56 — the provider row says what a press would clear, BEF
     await choose(m, 'model-picker-row', 'opus')
     await choose(m, 'model-picker-effort', 'high')
     await press(m, 'model-picker-take')
-    expect(said(m.q('model-picker-face'))).toBe('Claude · Fictional subscription · opus · high')
-    expect(heldFace(m)).toBe('Claude · Fictional subscription · opus · high')
+    expect(said(m.q('model-picker-face'))).toBe('opus · high')
+    expect(line(m)).toBe(WILL_CLEAR_OPUS_HIGH)
     // ⚑ …and Clear takes it away again, on the same row.
     await press(m, 'agent-model-clear')
-    expect(said(m.q('model-picker-face'))).toBe(
-      'Claude · Fictional subscription · Nobody has chosen',
-    )
+    expect(said(m.q('model-picker-face'))).toBe('Nobody has chosen')
     expect(m.all('capabilities-provider-will-clear')).toHaveLength(0)
   })
 
@@ -449,54 +414,50 @@ describe('712 §1 · R56 — the provider row says what a press would clear, BEF
     world.readFails.delete('worker')
     await m.store.load()
     await settle()
-    expect(heldFace(m)).toBe('Claude · Fictional subscription · opus · high')
+    expect(line(m)).toBe(WILL_CLEAR_OPUS_HIGH)
 
     // ⚑ And a LATER refused read keeps the last good answer — here and in the control, which agree.
     world.readFails.add('worker')
     await m.store.load()
     await settle()
     expect(m.all('agent-model-unreadable')).toHaveLength(1)
-    expect(said(m.q('model-picker-face'))).toBe('Claude · Fictional subscription · opus · high')
-    expect(heldFace(m)).toBe('Claude · Fictional subscription · opus · high')
+    expect(said(m.q('model-picker-face'))).toBe('opus · high')
+    expect(line(m)).toBe(WILL_CLEAR_OPUS_HIGH)
   })
 
   it('⚑ THE CONTROL (c) — a press to “Nobody has said”, or to the choice’s own provider, clears nothing: the line stays', async () => {
     reset({ held: { worker: { ...OPUS_HIGH } } })
     const m = await theSheet('worker')
-    expect(heldFace(m)).toBe('Claude · Fictional subscription · opus · high')
+    expect(line(m)).toBe(WILL_CLEAR_OPUS_HIGH)
 
-    expect(await m.store.chooseProviderFor('worker', null)).toEqual({ ok: true, cleared: null })
-    await settle()
+    await pick(m, 'capabilities-provider-select', '')
     // ⚑ The premise: the door kept it — main's rule, and the sentence's own last clause.
     expect(world.held.worker).toEqual(OPUS_HIGH)
     expect(m.all('capabilities-provider-cleared')).toHaveLength(0)
-    expect(said(m.q('model-picker-face'))).toBe('Claude · Fictional subscription · opus · high')
-    expect(heldFace(m)).toBe('Claude · Fictional subscription · opus · high')
+    expect(said(m.q('model-picker-face'))).toBe('opus · high')
+    expect(line(m)).toBe(WILL_CLEAR_OPUS_HIGH)
 
     // ⚑ Back to Claude — the one provider the sentence says keeps it.
-    expect(await m.store.chooseProviderFor('worker', 'claude')).toEqual({ ok: true, cleared: null })
-    await settle()
+    await pick(m, 'capabilities-provider-select', 'claude')
     expect(world.held.worker).toEqual(OPUS_HIGH)
     expect(m.all('capabilities-provider-cleared')).toHaveLength(0)
-    expect(heldFace(m)).toBe('Claude · Fictional subscription · opus · high')
+    expect(line(m)).toBe(WILL_CLEAR_OPUS_HIGH)
   })
 
   it('⚑ THE CONTROL (d) — the sheet re-pointed at another identity: its line is that one’s, never the last one’s', async () => {
     reset({ held: { worker: { ...OPUS_HIGH } } })
     const m = await theSheet('worker')
-    expect(heldFace(m)).toBe('Claude · Fictional subscription · opus · high')
+    expect(line(m)).toBe(WILL_CLEAR_OPUS_HIGH)
 
     // ⚑ An identity nobody chose for: the line goes.
     await m.point('other')
     expect(said(m.q('capabilities-slug'))).toBe('other')
-    expect(said(m.q('model-picker-face'))).toBe(
-      'Claude · Fictional subscription · Nobody has chosen',
-    )
+    expect(said(m.q('model-picker-face'))).toBe('Nobody has chosen')
     expect(m.all('capabilities-provider-will-clear')).toHaveLength(0)
 
     // ⚑ Back to `worker`: the line is back, from its own read.
     await m.point('worker')
-    expect(heldFace(m)).toBe('Claude · Fictional subscription · opus · high')
+    expect(line(m)).toBe(WILL_CLEAR_OPUS_HIGH)
 
     // 🔴 An identity whose read is REFUSED: nothing this sheet learned about `worker` is warned
     // about on its row — the reset on re-point, since no read of `other` ever answers.
@@ -507,10 +468,9 @@ describe('712 §1 · R56 — the provider row says what a press would clear, BEF
   })
 })
 
-/** The held choice stays visible while its explanatory paragraph is absent. */
-function heldFace(m: Mounted): string {
-  expect(m.all('capabilities-provider-will-clear')).toHaveLength(0)
-  const el = m.q('model-picker-face')
+/** The will-clear line's words, asserted present and visible first. */
+function line(m: Mounted): string {
+  const el = m.q('capabilities-provider-will-clear')
   expect(visible(el)).toBe(true)
   return el.innerText
 }
@@ -735,6 +695,26 @@ describe('712 §2c · R41 — the ask on an identity’s own rules names the age
 
 /* ─────────────── §2d · the capabilities sheet, named ─────────────── */
 
+/**
+ * ⚑ **Standing rule 5 — the sheet's sentences, pinned BY NAME for Ada** beside the builders the
+ * controls below use; a builder that drifted from the component fails here first.
+ */
+const OWNER_ADA =
+  'This is Ada’s own row: every grant below is stored on it and read when a conversation is running as Ada. Any agent may start a conversation as Ada, and that conversation holds these grants.'
+const SERVERS_ADA =
+  'A server registered as everyone’s is used by Ada with nothing to tick. Tick a restricted one to give Ada that one; it writes Ada’s row and changes nothing about any other identity.'
+const REOPEN_ADA = 'Open as Ada in this window. Reopening one gives it what this row says now.'
+
+// ⚠️ **D-014 · the owner line's second sentence changed** — the one about *any other identity
+// named among them* was about the grant picker, which is gone; the new one says any agent may start
+// a conversation as this identity and hold these grants.
+const ownerSays = (name: string): string =>
+  `This is ${name}’s own row: every grant below is stored on it and read when a conversation is running as ${name}. Any agent may start a conversation as ${name}, and that conversation holds these grants.`
+const serversSay = (name: string): string =>
+  `A server registered as everyone’s is used by ${name} with nothing to tick. Tick a restricted one to give ${name} that one; it writes ${name}’s row and changes nothing about any other identity.`
+const reopenSays = (name: string): string =>
+  `Open as ${name} in this window. Reopening one gives it what this row says now.`
+
 // The real editable message rail gets fixture-only launch metadata to exercise the generic offer.
 // This does not claim that the shipped message control has a Reopen offer.
 const R41_FIELDS = CAPABILITY_FIELDS.map((field) =>
@@ -751,22 +731,23 @@ const OPEN: readonly AConversationToReopen[] = [
 function namedSentences(m: Mounted): Record<string, string> {
   const out: Record<string, string> = {
     title: said(m.q('capabilities-title')),
-    servers: m
-      .q('capability-external-mcp')
-      .querySelector(':scope > span')!
-      .firstChild!.textContent!.trim(),
+    owner: said(m.q('capabilities-owner')),
+    servers: said(m.q('external-mcp-direction')),
   }
   for (const field of LAUNCH_TIME) {
-    out[`${field.key}-open`] = said(m.q(`grant-${field.key}-reopen-sess_1`))
+    out[`${field.key}-open`] = said(
+      m.q(`grant-${field.key}-open-now`).querySelector('.identity-note') as HTMLElement,
+    )
   }
   return out
 }
 function sentencesFor(name: string): Record<string, string> {
   const out: Record<string, string> = {
     title: name,
-    servers: 'May also use these external tool servers',
+    owner: ownerSays(name),
+    servers: serversSay(name),
   }
-  for (const field of LAUNCH_TIME) out[`${field.key}-open`] = 'Reopen'
+  for (const field of LAUNCH_TIME) out[`${field.key}-open`] = reopenSays(name)
   return out
 }
 
@@ -787,9 +768,9 @@ describe('712 §2d · R41 — the capabilities sheet names the identity it is ab
 
   it('🔴 project-manager named Ada: title, owner, servers and the reopen offer say Ada — the glyph and the Slug row keep the key', async () => {
     // ⚑ The builders agree with the words pinned by name.
-    expect(R41_FIELDS.find((field) => field.key === 'canMessage')?.whenItTakesEffect).toBe(
-      'Fixture-only launch disclosure for the naming contract.',
-    )
+    expect(ownerSays('Ada')).toBe(OWNER_ADA)
+    expect(serversSay('Ada')).toBe(SERVERS_ADA)
+    expect(reopenSays('Ada')).toBe(REOPEN_ADA)
     expect(LAUNCH_TIME.length).toBeGreaterThan(0)
     expect(LAUNCH_TIME.map((field) => field.key)).toEqual(['canMessage'])
 
@@ -801,8 +782,8 @@ describe('712 §2d · R41 — the capabilities sheet names the identity it is ab
       onReopen: (id) => reopened.push(id),
     })
     expect(visible(m.q('capabilities-title'))).toBe(true)
-    expect(said(m.q('capabilities-title'))).toBe('Ada')
-    expect(m.all('capabilities-owner')).toHaveLength(0)
+    expect(said(m.q('capabilities-owner')).startsWith('This is Ada’s own row:')).toBe(true)
+    expect(said(m.q('capabilities-owner'))).toContain('running as Ada.')
     expect(namedSentences(m)).toEqual(sentencesFor('Ada'))
     // ⛔ The header a person reads first prints no slug at all…
     const header = m.q('capabilities-title').closest('.sheet-header') as HTMLElement
@@ -846,8 +827,7 @@ describe('712 §2d · R41 — the capabilities sheet names the identity it is ab
 
     await m.point('worker')
     expect(namedSentences(m)).toEqual(sentencesFor('worker'))
-    expect(said(m.q('capabilities-title'))).toBe('worker')
-    expect(m.all('capabilities-owner')).toHaveLength(0)
+    expect(said(m.q('capabilities-owner')).startsWith('This is worker’s own row')).toBe(true)
     expect(said(m.host.querySelector('.sheet-glyph') as HTMLElement)).toBe('W')
 
     await m.point(DEFAULT_PROFILE_ID)

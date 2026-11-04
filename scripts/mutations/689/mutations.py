@@ -95,7 +95,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "M4 · 🔴 the read never asks a failure again · one blip leaves an agent's menus reading "
         "*could not be asked* until a restart · killed by "
         "`four-small-things-main-owes-the-window.test.ts` §3",
-        [(HOST, '    return this.modelsAskedAgainIfTheyFailed(provider, askIn, connectionId).then((one) =>\n', '    return this.probeModelsFor(provider, askIn, connectionId).then((one) =>\n')],
+        [(HOST, THE_DOOR_ASKS, "    return this.probeModelsFor(provider, askIn).then((one) =>\n")],
     ),
     (
         "M5 · ⛔ a cached SUCCESS is asked again · every ask spawns a child for a list already in "
@@ -110,10 +110,10 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
             (
                 "apps/desktop/src/main/runtime/runtime-host.ts",
                 # ⚑ **W4.91 · re-anchored in place, not retired** — 9e106ef0 removed the providerModels command; the one-provider read is the list door's theListFor now (moved from ipc.ts, reviewer's re-anchor)
-                '    const catalogue = await this.providerModels(own, provider, connectionId).catch(\n',
+                "    const catalogue = await this.providerModels(own, provider).catch((): ModelCatalogue => ({\n",
                 # ⚑ **W4.202 · the replacement re-aimed, not the anchor** — D-049's rest removed
                 # `models()`, which the mutant used to ask both; it now asks both itself.
-                '    const catalogue = await Promise.all(SUPPORTED_PROVIDERS.map((one) => this.providerModels(own, one, connectionId))).then((all) => all[SUPPORTED_PROVIDERS.indexOf(provider)] as ModelCatalogue).catch(\n',
+                "    const catalogue = await Promise.all(SUPPORTED_PROVIDERS.map((one) => this.providerModels(own, one))).then((all) => all[SUPPORTED_PROVIDERS.indexOf(provider)] as ModelCatalogue).catch((): ModelCatalogue => ({\n",
             )
         ],
     ),
@@ -124,8 +124,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
             (
                 IPC,
                 # ⚑ **W4.91 · re-anchored in place, not retired** — 9e106ef0 removed providerModels; the list door modelList takes the provider now (reviewer's re-anchor)
-                "    kind: z.literal('modelList'),\n    provider: providerSchema,\n    profileId,\n",
-                "    kind: z.literal('modelList'),\n    provider: z.string(),\n    profileId,\n",
+                "  z.object({ kind: z.literal('modelList'), provider: providerSchema, profileId }),\n",
+                "  z.object({ kind: z.literal('modelList'), provider: z.string(), profileId }),\n",
             )
         ],
     ),
@@ -133,7 +133,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "M8 · ⛔ the door starts a probe during a quit · a provider home is laid down after `closeAll` "
         "— the registry refuses the child only after — and the window is told `closing` instead of "
         "being refused · killed by `four-small-things-main-owes-the-window.test.ts` §4",
-        [(HOST, '    if (this.launches.closed) {\n      const answered = this.modelProbes.get(this.catalogueKey(provider, profileId, connectionId))\n', '    if (false) {\n      const answered = this.modelProbes.get(this.catalogueKey(provider, profileId, connectionId))\n')],
+        [(HOST, THE_QUIT, THE_QUIT.replace("    if (this.launches.closed) {\n", "    if (false) {\n"))],
     ),
     (
         # ⛔ **RETIRED BY RULING (W4.202, D-049's rest: the `models` command and the host's
@@ -189,8 +189,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         [
             (
                 HOST,
-                '    if (this.modelProbes.get(key) === cached) this.forgetModels(provider, folder, connectionId)\n',
-                '    this.forgetModels(provider, folder, connectionId)\n',
+                "    if (this.modelProbes.get(key) === cached) this.forgetModels(provider, folder)\n",
+                "    this.forgetModels(provider, folder)\n",
             )
         ],
     ),
@@ -207,8 +207,11 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         [
             (
                 HOST,
-                '    if (this.launches.closed) {\n      const answered = this.modelProbes.get(this.catalogueKey(provider, profileId, connectionId))\n',
-                '    if (this.launches.closed && !this.hasNeverRun(profileId, provider)) {\n      const answered = this.modelProbes.get(this.catalogueKey(provider, profileId, connectionId))\n',
+                THE_QUIT,
+                THE_QUIT.replace(
+                    "    if (this.launches.closed) {\n",
+                    "    if (this.launches.closed && !this.hasNeverRun(profileId)) {\n",
+                ),
             )
         ],
     ),
@@ -232,8 +235,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         [
             (
                 HOST,
-                '      const answered = this.modelProbes.get(this.catalogueKey(provider, profileId, connectionId))\n',
-                '      const answered = this.modelProbes.get(this.catalogueKey(provider, STAND_IN_PROFILE, connectionId))\n',
+                "      const answered = this.modelProbes.get(modelProbeKey(provider, profileId))\n",
+                "      const answered = this.modelProbes.get(modelProbeKey(provider, STAND_IN_PROFILE))\n",
             )
         ],
     ),

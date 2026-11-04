@@ -24,9 +24,6 @@ export interface ConversationModelPickSources {
 /** The bindings `ModelPicker` takes for a conversation. */
 export interface ConversationPickerProps {
   readonly providers: readonly CreatedSession['provider'][]
-  readonly lockedConnection: true
-  readonly preferredProvider: CreatedSession['provider']
-  readonly connectionId?: string
   readonly profileId: string | undefined
   readonly shown: PickedModel | null
   readonly drafted: PickedModel | null
@@ -87,12 +84,7 @@ export function useConversationModelPick(
     const shown: PickedModel | null =
       settings.model === null
         ? null
-        : {
-            provider: session.provider,
-            model: settings.model,
-            effort: settings.reasoningEffort,
-            ...(session.connectionId === undefined ? {} : { connectionId: session.connectionId }),
-          }
+        : { provider: session.provider, model: settings.model, effort: settings.reasoningEffort }
     // The draft starts on the queued pair, where one is: Take re-sends the model, so a draft
     // started on the running pair would undo a switch already queued. A queued provider default
     // has no name to draft, so the running model stands in for it.
@@ -106,7 +98,6 @@ export function useConversationModelPick(
         ? null
         : {
             provider: session.provider,
-            ...(session.connectionId === undefined ? {} : { connectionId: session.connectionId }),
             model: queuedModel,
             effort:
               pendingReasoningEffort === null
@@ -115,9 +106,6 @@ export function useConversationModelPick(
           }
     return {
       providers: [session.provider],
-      lockedConnection: true,
-      preferredProvider: session.provider,
-      ...(session.connectionId === undefined ? {} : { connectionId: session.connectionId }),
       profileId: session.profileId,
       shown,
       drafted,

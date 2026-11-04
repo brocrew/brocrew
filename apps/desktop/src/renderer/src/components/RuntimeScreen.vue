@@ -170,7 +170,7 @@ import {
   PROVIDER_NAME,
 } from '../../../shared/runtime-ipc'
 import { useAgentStore } from '../composables/useAgentStore'
-import { identityIn, providerForALaunch, providersNotChosenIn } from '../lib/agent-store'
+import { providerForALaunch, providersNotChosenIn } from '../lib/agent-store'
 import { NO_LAUNCH_CHOICES, type LaunchChoices } from '../lib/launch-choices'
 import { pickInAConversation, type PickedModel } from '../lib/model-lists'
 import { useModelLists } from '../composables/useModelLists'
@@ -1251,23 +1251,21 @@ const frontDoorApproval = computed<'ask' | 'auto' | null>(
 )
 
 const frontDoorProvider = computed<Provider>(() =>
-  launchChoices.value.connectionId !== undefined && launchChoices.value.provider !== null
-    ? launchChoices.value.provider
-    : readyProvider(
-        // 🔴 **The asked term is FIRST, and it is the whole of `435`'s change here** (HO-025 §4). The
-        // front door offers a provider again, and *which provider will this conversation start on* still
-        // has exactly one derivation — this one. ⛔ The control does not preview the answer; it moves the
-        // first term and reads the result back, so the sentence, the select and the payload cannot come
-        // apart. See `providerForALaunch`'s own docblock for why the term is a parameter rather than a
-        // `??` at this call site.
-        providerForALaunch(
-          agentStore.identities.value,
-          DEFAULT_PROFILE_ID,
-          DEFAULT_PROVIDER,
-          launchChoices.value.provider,
-        ),
-        launchReadiness.value,
-      ),
+  readyProvider(
+    // 🔴 **The asked term is FIRST, and it is the whole of `435`'s change here** (HO-025 §4). The
+    // front door offers a provider again, and *which provider will this conversation start on* still
+    // has exactly one derivation — this one. ⛔ The control does not preview the answer; it moves the
+    // first term and reads the result back, so the sentence, the select and the payload cannot come
+    // apart. See `providerForALaunch`'s own docblock for why the term is a parameter rather than a
+    // `??` at this call site.
+    providerForALaunch(
+      agentStore.identities.value,
+      DEFAULT_PROFILE_ID,
+      DEFAULT_PROVIDER,
+      launchChoices.value.provider,
+    ),
+    launchReadiness.value,
+  ),
 )
 
 /**
@@ -1682,7 +1680,7 @@ const draftKeyForActive = computed(() => draftSlot(activeId.value))
 const launchChoices = ref<LaunchChoices>({ ...NO_LAUNCH_CHOICES })
 watch(frontDoorProvider, (provider, before) => {
   if (provider !== before && launchChoices.value.provider !== provider)
-    launchChoices.value = { provider, model: '', reasoningEffort: '' }
+    launchChoices.value = { ...launchChoices.value, provider, model: '', reasoningEffort: '' }
 })
 
 /**
@@ -4266,12 +4264,6 @@ onUnmounted(() => {
             :draft="drafts.read(draftSlot(null))"
             :handing="drafts.paths.handing(draftSlot(null))"
             :default-provider="frontDoorProvider"
-            :default-connection-id="
-              identityIn(agentStore.identities.value, DEFAULT_PROFILE_ID)?.provider ===
-              frontDoorProvider
-                ? identityIn(agentStore.identities.value, DEFAULT_PROFILE_ID)?.connectionId
-                : undefined
-            "
             :provider-readiness="launchReadiness"
             :default-approval-mode="frontDoorApproval"
             :approval-default-chosen="agentStore.identities.value?.defaultApprovalModeChosen"

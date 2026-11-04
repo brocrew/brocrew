@@ -177,12 +177,15 @@ describe('§2 · the constant is REACHED, and nowhere pasted', () => {
   })
 
   it('⚑ …and the sheet reaches for it by NAME, which an import alone would not prove', () => {
-    // The policy constant remains covered above; the dialog now shows only grant controls.
-    const code = withoutProse(readFileSync(SHEET, 'utf8'))
-    expect(code).not.toContain('{{ SPAWN_RAIL_MEANS }}')
-    expect(code).not.toContain('data-cy="spawn-rail-means"')
-    expect(code).toContain('v-for="field in visibleFields"')
-    expect(code).toContain('{{ field.label }}')
-    expect(code).toContain(':data-cy="`capability-${field.key}-select`"')
+    // `a-census-that-asks-for-the-import-must-ask-for-the-call`: an unused import satisfies an
+    // import census, and lint is not a guard this file may lean on. So both — the symbol is
+    // imported AND it is interpolated into the template.
+    const sheet = readFileSync(SHEET, 'utf8')
+    const code = withoutProse(sheet)
+    expect(code).toMatch(
+      /import \{[\s\S]*?SPAWN_RAIL_MEANS[\s\S]*?\} from '\.\.\/\.\.\/\.\.\/shared\/capabilities'/,
+    )
+    expect(code).toContain('{{ SPAWN_RAIL_MEANS }}')
+    expect(code).toContain('data-cy="spawn-rail-means"')
   })
 })

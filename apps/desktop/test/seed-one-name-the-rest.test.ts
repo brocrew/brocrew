@@ -498,7 +498,6 @@ describe('584 · seed one identity, and generate the names', () => {
       // the claim, and still absent.
       // ⚑ `kind` joined it: a normal agent or a service, fixed when it is made. It names no agent.
       expect(Object.keys(tool?.input ?? {}).sort()).toEqual([
-        'connection',
         'effort',
         'kind',
         'model',

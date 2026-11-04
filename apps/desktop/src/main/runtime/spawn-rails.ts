@@ -652,7 +652,6 @@ export const giveRequestSchema = z
     new: z.boolean().optional(),
     /** Choose this provider's conversation; never change an existing conversation's provider. */
     provider: providerSchema.optional(),
-    connection: z.string().trim().min(1).max(200).optional(),
     /** Choose a free worker of the same normal profile rather than queueing on its primary. */
     parallel: z.boolean().optional(),
     /**

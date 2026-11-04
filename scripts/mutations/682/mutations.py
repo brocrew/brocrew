@@ -104,7 +104,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M7 · 🔴 R31b at the door gone · a choice for another provider than the identity's own is saved, "
         "and holds its next spawn there · killed by `a-persons-choice-holds-the-whole-launch.test.ts`",
-        [(HOST, '    if (connectionId === undefined && !aChoiceIsInForce(choice, itsProvider)) {\n', '    if (false) {\n')],
+        [(HOST, "    if (!aChoiceIsInForce(choice, itsProvider)) {\n", "    if (false) {\n")],
     ),
     (
         "M8 · 🔴 a provider move leaves the choice · `setAgentProvider` writes the new provider and keeps a "
@@ -331,7 +331,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "M42 · 🔴 R31b raced · the door checks the provider, awaits its list, and writes without asking "
         "again — a provider moved in between leaves the contradiction no door may leave · killed by "
         "`a-persons-choice-holds-the-whole-launch.test.ts`",
-        [(HOST, '    if (connectionId === undefined && !aChoiceIsInForce(choice, itsProviderNow)) {\n', '    if (false) {\n')],
+        [(HOST, "    if (!aChoiceIsInForce(choice, itsProviderNow)) {\n", "    if (false) {\n")],
     ),
     (
         "M43 · 🔴 a wake asks for the refused pair again · a first launch that could not ask its own list "

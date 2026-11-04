@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
+  NOBODY_HAS_WRITTEN_ONE,
   OWN_INSTRUCTIONS_CHARS,
+  TAKES_EFFECT_AT_THE_NEXT_LAUNCH,
   WROTE_IT_MEANS,
   rulesChangeLabel,
   type InstructionUnread,
@@ -371,6 +373,9 @@ async function reviewChanges(): Promise<void> {
     <!-- 🔴 **Standing rule 8.2's sentence, rendered from one constant and scoped to itself.**
          ⚠️ It says what this write does and what a person must do INSTEAD for a live agent, which
          is `HO-009` §2.2's *"Both, or the person will believe a rule is in force that is not."* -->
+    <p class="identity-note" data-cy="own-instructions-when">
+      {{ TAKES_EFFECT_AT_THE_NEXT_LAUNCH }}
+    </p>
 
     <!-- ⛔ **`EXT-015` §2.1's OTHER half — *when it was read*** (626). ⚠️ The sentence above says
          when a change takes EFFECT; this one says how old the thing on screen is, and a person
@@ -471,6 +476,10 @@ async function reviewChanges(): Promise<void> {
           </div>
         </div>
       </div>
+
+      <p v-if="history.length === 0" class="identity-note" data-cy="own-instructions-empty">
+        {{ NOBODY_HAS_WRITTEN_ONE }}
+      </p>
 
       <textarea
         v-model="draft"

@@ -101,7 +101,7 @@ MUTATIONS = [
         # handed to the provider. The plant deletes both lines, so the resumed flush hands the
         # provider a message the stop already took. Killed by `queued-message.test.ts`.
         [
-            (HOST, '      going = going.filter(({ queued }) => {\n        if (!this.holdsQueued(session, queued)) return false\n', '      going = going.filter(({ queued }) => {\n'),
+            (HOST, '      going = going.filter(({ queued }) => this.holdsQueued(session, queued))\n      if (going.length === 0) return true\n', ''),
         ],
     ),
     (

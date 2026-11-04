@@ -238,8 +238,8 @@ MUTATIONS = [
         [
             (
                 HOST,
-                'function modelProbeKey(provider: Provider, profileId: string, connectionId?: string): string {\n  const home = `${provider}:${profileId}`\n',
-                'function modelProbeKey(provider: Provider, _profileId: string, connectionId?: string): string {\n  const home = `${provider}`\n',
+                "function modelProbeKey(provider: Provider, profileId: string): string {\n  return `${provider}:${profileId}`\n}",
+                "function modelProbeKey(provider: Provider, _profileId: string): string {\n  return provider\n}",
             )
         ],
     ),
@@ -293,8 +293,8 @@ MUTATIONS = [
         [
             (
                 HOST,
-                '    const key = modelProbeKey(provider, profileId, connectionId)\n    for (const one of this.modelProbes.keys()) {\n      if (one === key || one.startsWith(`${key}\\u0000`)) this.modelProbes.delete(one)\n    }\n',
-                '    this.modelProbes.clear()\n',
+                "    this.modelProbes.delete(modelProbeKey(provider, profileId))",
+                "    this.modelProbes.clear()",
             )
         ],
     ),

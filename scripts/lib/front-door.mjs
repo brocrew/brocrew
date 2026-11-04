@@ -39,7 +39,6 @@ export const FRONT_DOOR_CANNOT_ASK = Object.freeze([
 export const PLACEABLE = Object.freeze([
   'provider',
   'profileId',
-  'connectionId',
   'cwd',
   'approvalMode',
   'model',

@@ -12,10 +12,7 @@ import type {
 import { CAPABILITY_FIXTURE } from '../provider-capability-fixture'
 import { mount, unmountAll } from './harness'
 
-afterEach(() => {
-  unmountAll()
-  Reflect.deleteProperty(window, 'api')
-})
+afterEach(unmountAll)
 async function settle() {
   for (let i = 0; i < 5; i += 1) {
     await new Promise((resolve) => setTimeout(resolve, 0))
@@ -24,44 +21,8 @@ async function settle() {
 }
 
 function opened(
-  options: {
-    approvalMode?: 'ask' | 'auto'
-    capabilities?: ProviderCapabilityMap
-    defaultConnection?: string
-    provider?: Provider
-  } = {},
+  options: { approvalMode?: 'ask' | 'auto'; capabilities?: ProviderCapabilityMap } = {},
 ) {
-  Reflect.set(window, 'api', {
-    runtime: {
-      providerConnections: async () =>
-        (['claude', 'codex'] as const).map((provider) => ({
-          id: `${provider}:sign-in`,
-          provider,
-          name: 'Fictional subscription',
-          authMethod: 'sign-in',
-          credentialSource: 'provider-sign-in',
-          baseUrl: null,
-          enabled: true,
-          contractVersion: 1,
-        })),
-    },
-  })
-  if (options.defaultConnection !== undefined) {
-    const declared = window.api.runtime.providerConnections
-    window.api.runtime.providerConnections = async () => [
-      ...(await declared()),
-      {
-        id: 'codex:api-key',
-        provider: 'codex',
-        name: 'API key',
-        authMethod: 'api-key',
-        credentialSource: 'provider-api-key',
-        baseUrl: null,
-        enabled: true,
-        contractVersion: 1,
-      },
-    ]
-  }
   const started: CreateSessionInput[] = []
   const reads: { provider: Provider; profileId?: string }[] = []
   const lists = createModelLists(() => ({
@@ -90,26 +51,12 @@ function opened(
     addHandAddedModel: async () => [],
     deleteHandAddedModel: async () => [],
   }))
-  const agents = {
-    identities: ref(
-      options.defaultConnection === undefined
-        ? null
-        : {
-            identities: [
-              {
-                slug: 'draft-reader',
-                provider: options.provider ?? 'claude',
-                connectionId: options.defaultConnection,
-              },
-            ],
-          },
-    ),
-  } as unknown as AgentStore
+  const agents = { identities: ref(null) } as unknown as AgentStore
   const m = mount(
     StartAsAgent as Component,
     {
       profileSlug: 'draft-reader',
-      provider: options.provider ?? 'claude',
+      provider: 'claude',
       defaultApprovalMode: options.approvalMode ?? 'ask',
       capabilities: options.capabilities ?? null,
       agents,
@@ -141,9 +88,7 @@ describe('choosing a provider for a new conversation as an existing agent', () =
     const { m, started, reads } = opened()
     m.q('model-picker-face').click()
     await settle()
-    const connection = m.q('model-picker-connection') as HTMLSelectElement
-    connection.value = 'codex:sign-in'
-    connection.dispatchEvent(new Event('change', { bubbles: true }))
+    m.q('model-picker-choose-codex').click()
     await settle()
     const row = m
       .q('model-picker-panel')
@@ -166,7 +111,6 @@ describe('choosing a provider for a new conversation as an existing agent', () =
       {
         profileId: 'draft-reader',
         provider: 'codex',
-        connectionId: 'codex:sign-in',
         model: 'fictional-codex',
         reasoningEffort: 'low',
         approvalMode: 'ask',
@@ -185,9 +129,7 @@ describe('choosing a provider for a new conversation as an existing agent', () =
     expect(m.q('yolo-reach').textContent?.trim()).toBe(claude.note)
     m.q('model-picker-face').click()
     await settle()
-    const connection = m.q('model-picker-connection') as HTMLSelectElement
-    connection.value = 'codex:sign-in'
-    connection.dispatchEvent(new Event('change', { bubbles: true }))
+    m.q('model-picker-choose-codex').click()
     await settle()
     const row = m
       .q('model-picker-panel')
@@ -202,16 +144,4 @@ describe('choosing a provider for a new conversation as an existing agent', () =
     expect(m.q('yolo-reach').textContent?.trim()).toBe(codex.note)
     expect(started).toEqual([])
   })
-})
-
-it('a stored connection without a model preselects its route before a new conversation', async () => {
-  const { m, reads } = opened({ provider: 'codex', defaultConnection: 'codex:sign-in' })
-  await settle()
-  expect(reads).toEqual([])
-  m.q('model-picker-face').click()
-  await settle()
-  expect((m.q('model-picker-connection') as HTMLSelectElement).value).toBe('codex:sign-in')
-  expect(reads).toEqual([
-    { provider: 'codex', profileId: 'draft-reader', connectionId: 'codex:sign-in' },
-  ])
 })

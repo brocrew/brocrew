@@ -22,7 +22,6 @@ import {
 import { aWaitingPageWithEveryCard } from './a-waiting-page-with-every-card'
 import { META, mount, paneProps, record, unmountAll } from './harness'
 import { paintedReadings, pictures } from './what-is-painted-under'
-import { compatibilityConnections } from '../provider-connection-fixture'
 
 /**
  * Every piece of text the window draws, in the states that stack its surfaces, reads at 4.5:1 on
@@ -228,7 +227,6 @@ const STATES: readonly [string, () => Promise<Element>][] = [
       await page.viewport(1200, 900)
       ;(window as { api?: unknown }).api = {
         runtime: {
-          providerConnections: async () => compatibilityConnections(),
           modelList: MODELS,
           listResumable: async () => [],
           listUnresumable: async () => [],
@@ -246,20 +244,6 @@ const STATES: readonly [string, () => Promise<Element>][] = [
       )
       await settle()
       await mustPress(m.host, '[data-cy="card-run-model"]')
-      await expect
-        .poll(() =>
-          m.host
-            .querySelector('[data-cy="model-picker-row"] input:checked + .words .label')
-            ?.textContent?.trim(),
-        )
-        .toBe('Opus')
-      await expect
-        .poll(() =>
-          m.host
-            .querySelector('[data-cy="model-picker-effort"] input:checked + .label')
-            ?.textContent?.trim(),
-        )
-        .toBe('high')
       await pause()
       return document.body
     },
@@ -372,14 +356,7 @@ const PROOF: Record<string, Proof> = {
         ? null
         : 'the busy composer holds no message',
   },
-  'the model picker open': {
-    read: [
-      '[data-cy="model-picker-panel"]:popover-open',
-      '.connection-choice > span',
-      '[data-cy="model-picker-row"] input:checked + .words .label',
-      '[data-cy="model-picker-effort"] input:checked + .label',
-    ],
-  },
+  'the model picker open': { read: ['[data-cy="model-picker-panel"]:popover-open'] },
   'the sign-in bar, its button under the pointer': { read: ['.sign-in-bar-button:hover'] },
   'the Recent activity page, every kind of card, a line under the pointer': {
     read: [

@@ -22,7 +22,6 @@ import {
   useProfileSignIn,
 } from '../../src/renderer/src/composables/useProfileSignIn'
 import { mount, unmountAll, META } from './harness'
-import { compatibilityConnections } from '../provider-connection-fixture'
 
 // The computer the window runs on, set by each test rather than read from the runner's.
 const here = vi.hoisted(() => ({ platform: 'MacIntel' }))
@@ -135,7 +134,6 @@ const runtime = {
   })),
   listResumable: vi.fn(async () => []),
   listUnresumable: vi.fn(async () => []),
-  providerConnections: vi.fn(async () => compatibilityConnections()),
   agentIdentities: vi.fn(async () => agents),
   profiles: vi.fn(async () => []),
   capabilities: vi.fn(async () => ({})),
@@ -1023,16 +1021,13 @@ it('keeps the model a person picked when changing the front-door provider', asyn
     m.q('model-picker-face').click()
     await settle()
     await settle()
-    const connection = m.q('model-picker-connection') as HTMLSelectElement
-    await expect.poll(() => connection.options.length).toBe(2)
-    const target = connection.value === 'claude:sign-in' ? 'codex' : 'claude'
-    expect(connection.disabled).toBe(false)
-    const option = [...connection.options].find((one) => one.value === `${target}:sign-in`)!
-    expect(option.disabled).toBe(false)
-    connection.value = option.value
-    connection.dispatchEvent(new Event('change'))
+    const target = (m.q('model-picker-choose-claude') as HTMLInputElement).checked
+      ? 'codex'
+      : 'claude'
+    expect((m.q(`model-picker-choose-${target}`) as HTMLInputElement).disabled).toBe(false)
+    m.q(`model-picker-choose-${target}`).click()
     await settle()
-    await expect.poll(() => m.q('model-picker-panel').textContent).toContain('Selected model')
+    expect(m.q('model-picker-panel').textContent).toContain('Selected model')
     const chosen = m.host.querySelector<HTMLInputElement>(
       `[data-cy="model-picker-row"][data-model="${target}-special"] input`,
     )!

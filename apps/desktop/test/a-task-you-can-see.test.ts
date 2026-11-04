@@ -1505,8 +1505,6 @@ describe('379 · a task you can see', () => {
         answersHeldFor: true,
         // 🔴 **488 · a READER** — every identity this app holds.
         profilesVisibleTo: true,
-        providerConnections: true,
-        connectionNamed: true,
         // ⚑ **F009 · a READER** — what one agent has done; it writes nothing and mints nothing.
         agentRecord: true,
         // 🔴 **393 · a reply carries text into the conversation that gave the work** — and reaches
@@ -1588,7 +1586,6 @@ describe('379 · a task you can see', () => {
         'answerQuestion',
         'answersHeldFor',
         'archivedVisibleTo',
-        'connectionNamed',
         'createAgentFor',
         'findKeptFiles',
         'giveWork',
@@ -1609,7 +1606,6 @@ describe('379 · a task you can see', () => {
         'pieceRecord',
         'profilesVisibleTo',
         'proposeAgentRules',
-        'providerConnections',
         'questionsListedFor',
         'queueMessage',
         'raiseAQuestion',

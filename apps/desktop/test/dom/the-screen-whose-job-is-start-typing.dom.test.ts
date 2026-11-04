@@ -142,30 +142,3 @@ describe('the short launcher keeps typing first', () => {
     expect((m.q('send-prompt') as HTMLButtonElement).disabled).toBe(true)
   })
 })
-
-it('the front door carries the chosen connection with provider, model and effort', async () => {
-  const starts: unknown[][] = []
-  const m = open({
-    seed: {
-      provider: 'codex',
-      connectionId: 'codex:sign-in',
-      model: 'fictional-small',
-      reasoningEffort: 'medium',
-    },
-    onStart: (...args: unknown[]) => starts.push(args),
-  })
-  const prompt = m.q('prompt-input') as HTMLTextAreaElement
-  prompt.value = 'Read the fictional draft.'
-  prompt.dispatchEvent(new Event('input', { bubbles: true }))
-  await nextTick()
-  m.q('send-prompt').click()
-  await expect.poll(() => starts.length).toBe(1)
-  expect(starts[0]?.[0]).toEqual({
-    provider: 'codex',
-    connectionId: 'codex:sign-in',
-    profileId: DEFAULT_PROFILE_ID,
-    approvalMode: 'ask',
-    model: 'fictional-small',
-    reasoningEffort: 'medium',
-  })
-})

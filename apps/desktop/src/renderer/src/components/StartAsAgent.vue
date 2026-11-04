@@ -10,7 +10,7 @@ import {
   type ProviderCapabilityMap,
 } from '../../../shared/runtime-ipc'
 import { useAgentStore } from '../composables/useAgentStore'
-import { identityIn, type AgentStore } from '../lib/agent-store'
+import type { AgentStore } from '../lib/agent-store'
 import { YOLO_MEANS } from '../lib/approval-mode'
 import { shouldRestoreDraft } from './NewConversation.vue'
 import PromptComposer from './PromptComposer.vue'
@@ -169,10 +169,6 @@ const folder = ref<string | null>(null)
 const picked = ref<PickedModel | null>(null)
 const provider = computed(() => picked.value?.provider ?? props.provider)
 const providers = computed(() => Object.keys(PROVIDER_NAME) as Provider[])
-const defaultConnection = computed(() => {
-  const identity = identityIn(agents.identities.value, props.profileSlug)
-  return identity?.provider === provider.value ? identity.connectionId : undefined
-})
 watch(
   () => props.profileSlug,
   () => {
@@ -261,9 +257,6 @@ function startWith(text: string, _intent?: unknown, attachments: HandedPath[] = 
     {
       provider: provider.value,
       profileId: props.profileSlug,
-      ...(picked.value?.connectionId === undefined
-        ? {}
-        : { connectionId: picked.value.connectionId }),
       ...(picked.value === null ? {} : { model: picked.value.model }),
       ...(picked.value?.effort == null ? {} : { reasoningEffort: picked.value.effort }),
       // ⚑ **D-016 · omitted for the workspace**, which is what the host resolves an absent `cwd` to.
@@ -307,8 +300,6 @@ function startWith(text: string, _intent?: unknown, attachments: HandedPath[] = 
         <span class="lbl">Model</span>
         <ModelPicker
           :providers="providers"
-          :preferred-provider="provider"
-          :connection-id="picked?.connectionId ?? defaultConnection"
           :profile-id="props.profileSlug"
           :shown="picked"
           :empty="`Default: ${providerName(provider)}`"

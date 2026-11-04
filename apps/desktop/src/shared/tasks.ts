@@ -1843,7 +1843,6 @@ export interface PieceRow {
   readonly givenFolder?: GivenFolder
   /** The model and effort its give asked for ({@link WorkGivenEvent.asked}); absent: none. */
   readonly asked?: ModelAndEffort
-  readonly connectionId?: string
   /**
    * 🔴 **W4.189 · whether its brief has been handed over** — `true` when the give went straight
    * out, or its held message was unqueued as `sent`. ⛔ **Absent while it waits, and for good when
@@ -3611,7 +3610,6 @@ export function derivePieces(
         // ⚑ **W4.189** — the folder its give named, as recorded with it; an older give has none.
         ...(event.givenFolder === undefined ? {} : { givenFolder: event.givenFolder }),
         ...(event.asked === undefined ? {} : { asked: event.asked }),
-        ...(event.connectionId === undefined ? {} : { connectionId: event.connectionId }),
         // ⚑ **W4.189** — a brief that went straight out was handed over with its give.
         ...(messageId === null ? { briefHandedOver: true as const } : {}),
       }

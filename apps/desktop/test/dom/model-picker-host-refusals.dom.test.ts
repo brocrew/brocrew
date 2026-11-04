@@ -3,7 +3,6 @@ import { nextTick } from 'vue'
 import ModelPicker from '../../src/renderer/src/components/ModelPicker.vue'
 import { createModelLists } from '../../src/renderer/src/lib/model-lists'
 import type { ListedModel, ModelList, RuntimeBridge } from '../../src/shared/runtime-ipc'
-import { compatibilityConnections } from '../provider-connection-fixture'
 import { mount, unmountAll, type Mounted } from './harness'
 
 afterEach(unmountAll)
@@ -52,7 +51,6 @@ function picker() {
   const take = vi.fn(async (): Promise<string | null> => null)
   const m = mount(ModelPicker, {
     providers: ['codex'],
-    connections: compatibilityConnections(),
     profileId: 'fictional-worker',
     shown: null,
     takeWords: 'Use this model',
@@ -90,12 +88,7 @@ describe('model picker host refusals and pending gestures', () => {
     await open(m)
     expect(button(m, 'model-picker-take').disabled).toBe(true)
     await draft(m, 'listed-model')
-    expect(m.all('model-picker-effort-said')).toHaveLength(0)
-    const selectedEffort = m
-      .all('model-picker-effort')
-      .find((one) => one.querySelector('input')?.checked)
-    expect(words(selectedEffort!.querySelector('.label')!)).toBe('High')
-    expect(words(selectedEffort!.querySelector('.tag')!)).toBe('default')
+    expect(words(m.q('model-picker-effort-said'))).toBe('More time for reasoning.')
     button(m, 'model-picker-take').click()
     await nextTick()
     expect(button(m, 'model-picker-take').disabled).toBe(true)
@@ -105,7 +98,6 @@ describe('model picker host refusals and pending gestures', () => {
     expect(take).toHaveBeenCalledTimes(1)
     expect(take).toHaveBeenLastCalledWith({
       provider: 'codex',
-      connectionId: 'codex:sign-in',
       model: 'listed-model',
       effort: 'high',
     })
@@ -179,7 +171,6 @@ describe('model picker host refusals and pending gestures', () => {
     await expect.poll(() => take.mock.calls.length).toBe(1)
     expect(take).toHaveBeenLastCalledWith({
       provider: 'codex',
-      connectionId: 'codex:sign-in',
       model: 'listed-model',
       effort: 'high',
     })

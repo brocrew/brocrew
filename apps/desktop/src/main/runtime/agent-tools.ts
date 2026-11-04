@@ -1519,7 +1519,6 @@ interface CreateAgentArguments {
    * alone holds the model it names, else the creator's.
    */
   readonly provider?: Provider
-  readonly connection?: string
   /**
    * 🔴 **618 · the new identity's own standing rules, or absent** (`HO-078` §4).
    *
@@ -1784,7 +1783,6 @@ const RULES_WHY_ARGUMENT = 'why' satisfies keyof ProposeRulesArguments
 
 const CREATE_SLUG_ARGUMENT = 'profile_slug' satisfies keyof CreateAgentArguments
 const CREATE_PROVIDER_ARGUMENT = 'provider' satisfies keyof CreateAgentArguments
-const CREATE_CONNECTION_ARGUMENT = 'connection' satisfies keyof CreateAgentArguments
 const CREATE_RULES_ARGUMENT = 'rules' satisfies keyof CreateAgentArguments
 const CREATE_MODEL_ARGUMENT = 'model' satisfies keyof CreateAgentArguments
 const CREATE_EFFORT_ARGUMENT = 'effort' satisfies keyof CreateAgentArguments
@@ -1816,7 +1814,6 @@ interface GiveWorkArguments {
   readonly new?: boolean
   /** Select this provider's conversation without changing the identity's default. */
   readonly provider?: Provider
-  readonly connection?: string
   /** Select a free worker or start another worker of the same normal profile. */
   readonly parallel?: boolean
   /** 🔴 **D-016 · R2** — files handed over with the work, kept as the piece's inputs. */
@@ -4795,8 +4792,6 @@ export interface AgentToolHost {
    * model's efforts — before anything is minted.
    */
   judgeTheDefaultItNames: RuntimeHost['judgeTheDefaultItNames']
-  connectionNamed?: RuntimeHost['connectionNamed']
-  providerConnections?: RuntimeHost['providerConnections']
   /**
    * 🔴 **486 · the standing walls, asked before a door reads an argument** (HO-031 §2.5).
    *
@@ -5293,9 +5288,6 @@ function agentRecordPayload(record: AgentRecord): Readonly<Record<string, unknow
     ...(record.agent.displayName === null ? {} : { display_name: record.agent.displayName }),
     ...(record.agent.provider === null ? {} : { provider: record.agent.provider }),
     ...(record.agent.defaultModel === null ? {} : { default_model: record.agent.defaultModel }),
-    ...(record.agent.connectionId === undefined
-      ? {}
-      : { connection_id: record.agent.connectionId }),
     rules_told: record.rules.is !== 'not-told',
     rules_begin: record.rules.is === 'they-begin' ? record.rules.line : null,
     conversations: record.conversations.map((one) => ({
@@ -6018,12 +6010,6 @@ export function agentToolsFor(
             .optional()
             .describe(
               'Set it to bring a new agent into existence under that profile name, with no standing rules, to take this work. A name that is already an agent is refused with it: give without it to use that agent, who keeps its memory.',
-            ),
-          connection: z
-            .string()
-            .optional()
-            .describe(
-              "The named connection, or its id, for this work. An existing conversation keeps its connection; choose a new worker to use another. Omit it to keep the conversation's connection or the agent's default for a new conversation. Never pass an address or key.",
             ),
           provider: documentedToolEnum(
             TOOL_INPUT_ENUMS['give_work:provider'],
@@ -7983,12 +7969,6 @@ export function agentToolsFor(
          * The shared schema advertises the closed vocabulary but preserves an unknown original
          * value, so the all-at-once structured refusal below still names what the caller may send.
          */
-        connection: z
-          .string()
-          .optional()
-          .describe(
-            "The named connection, or its id, for this agent's new conversations. Names must match one available entry. Omit it to keep the current provider default. Never pass an address or key.",
-          ),
         provider: documentedToolEnum(
           TOOL_INPUT_ENUMS['create_agent:provider'],
           'The default provider for its conversations. A give can choose another provider without changing this default.',
@@ -8137,12 +8117,6 @@ export function agentToolsFor(
               `${CREATE_EFFORT_ARGUMENT} must be an effort's name of at most 60 characters, or left out`,
             )
           }
-          const connection = args[CREATE_CONNECTION_ARGUMENT]
-          if (
-            connection !== undefined &&
-            (typeof connection !== 'string' || connection.trim() === '' || connection.length > 240)
-          )
-            problems.push('The selected connection is unavailable')
           const kind = args[CREATE_KIND_ARGUMENT]
           if (kind !== undefined && kind !== 'normal' && kind !== 'service') {
             problems.push(`${CREATE_KIND_ARGUMENT} must be one of normal, service, or left out`)
@@ -8152,48 +8126,16 @@ export function agentToolsFor(
           }
           // 🔴 **D-042 · R4 — the default it names, judged by the one seam** (`model-rails.ts`: the
           // list, then the model's efforts) — ⛔ above the mint, so a refused default creates nothing.
-          let selectedProvider = provider === undefined ? null : (provider as Provider)
-          let connectionId: string | undefined
-          if (connection !== undefined) {
-            try {
-              if (!host.connectionNamed) throw new Error('The selected connection is unavailable')
-              const selected = host.connectionNamed(
-                connection as string,
-                selectedProvider ?? undefined,
-              )
-              selectedProvider = selected.provider
-              connectionId = selected.id
-            } catch {
-              return refusalAnswer(
-                refuseTool('malformed-request', {
-                  problems: ['The selected connection is unavailable'],
-                }),
-              )
-            }
-          }
           let itsDefault: AgentModelChoice | null = null
           if (model !== undefined || effort !== undefined) {
-            let judged: Awaited<ReturnType<RuntimeHost['judgeTheDefaultItNames']>>
-            try {
-              judged = await host.judgeTheDefaultItNames(me, selectedProvider, {
-                ...(connectionId === undefined ? {} : { connectionId }),
+            const judged = await host.judgeTheDefaultItNames(
+              me,
+              provider === undefined ? null : (provider as Provider),
+              {
                 ...(model === undefined ? {} : { model: model as string }),
                 ...(effort === undefined ? {} : { effort: effort as string }),
-              })
-            } catch (error) {
-              if (
-                connectionId === undefined ||
-                !(error instanceof Error) ||
-                (error.message !== 'The selected connection is unavailable' &&
-                  error.message !== 'The selected connection changed during preparation')
-              )
-                throw error
-              return refusalAnswer(
-                refuseTool('malformed-request', {
-                  problems: ['The selected connection is unavailable'],
-                }),
-              )
-            }
+              },
+            )
             if (!judged.ok) {
               return answer(
                 { ...judged.refusal },
@@ -8211,8 +8153,7 @@ export function agentToolsFor(
             // fills it** — `NewAgent.vue` sends what somebody typed — so the two creation doors
             // differ in what they may say rather than in what the store does with it.
             displayName: null,
-            provider: selectedProvider,
-            ...(connectionId === undefined ? {} : { connectionId }),
+            provider: provider === undefined ? null : (provider as Provider),
             ...(kind === 'service' ? { asAService: true as const } : {}),
           }
           // ⛔ **The rails are the HOST's, and this file asks none of them** — the module note's
@@ -8776,22 +8717,12 @@ export function agentToolsFor(
             // that word from this toolset so no tool can come to name the person's door, and a READ is
             // no reason to weaken that ban.
             ...(report.defaultModel === null ? {} : { default_model: report.defaultModel }),
-            ...(report.connectionId === undefined ? {} : { connection_id: report.connectionId }),
             ...(report.isAService === true ? { kind: 'service' } : {}),
           }))
-          const connections = (host.providerConnections?.() ?? [])
-            .filter((row) => row.enabled)
-            .map((row) => ({
-              id: row.id,
-              provider: row.provider,
-              name: row.name,
-              label: `${PROVIDER_NAME[row.provider]} · ${row.name}`,
-            }))
           return answer(
             {
               outcome: 'ok',
               profiles,
-              ...(connections.length === 0 ? {} : { connections }),
               count: profiles.length,
               count_covers: EVERY_AGENT_THIS_APP_HOLDS,
               // 🔴 **F096 — each provider's newest usage reading, per window**.
@@ -8815,9 +8746,6 @@ export function agentToolsFor(
             [
               EVERY_AGENT_THIS_APP_HOLDS,
               ...reading.profiles.map((report) => profileText(report)),
-              ...(connections.length === 0
-                ? []
-                : ['Connections', ...connections.map((row) => row.label)]),
               ...(Object.keys(reading.usage) as Provider[]).flatMap((provider) => {
                 // Which windows it has reported, first and last, as the description promises.
                 const seen = reading.windowsSeen[provider] ?? []

@@ -115,7 +115,6 @@ export interface QueuedMessage {
    * event already uses, so *a message that is not a brief* carries no such key at all.
    */
   readonly piece?: string
-  readonly connectionId?: string
   /** ⚑ **The piece's label** (`W1.2`), present only beside {@link piece} — `UserTurnEvent.label`. */
   readonly label?: string
   /**

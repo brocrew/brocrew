@@ -499,8 +499,9 @@ describe('433 §B · the agents a reach can see', () => {
      *
      * ⛔ **`can_message` decided one thing until 433 and decides two now.** A person moving the
      * control to `any` is also deciding what that identity may enumerate and inspect, in every
-     * project. The shared descriptor retains both consequences even though the sheet now draws
-     * only its label and editor.
+     * project — and the grant sheet draws {@link CapabilityField.help} verbatim, so a string that
+     * named one consequence would be this app understating a permission at the moment somebody
+     * grants it.
      *
      * ⚠️ **Clauses by name, not the sentence pinned** — the same rule the tool descriptions above
      * are held to.
@@ -518,13 +519,6 @@ describe('433 §B · the agents a reach can see', () => {
       // ⚠️ Read through {@link capabilityField}, which cannot answer `undefined`, so a neighbour that
       // left the table cannot turn this into a comparison with the empty string.
       expect(capabilityField('canAssignWork').help).not.toContain('list and ask about')
-      const sheet = withoutProse(
-        readFileSync(join(here, '../src/renderer/src/components/CapabilitiesSheet.vue'), 'utf8'),
-      )
-      expect(sheet).not.toContain('{{ field.help }}')
-      expect(sheet).toContain('v-for="field in visibleFields"')
-      expect(sheet).toContain('{{ field.label }}')
-      expect(sheet).toContain('`capability-${field.key}-select`')
     })
 
     /**
@@ -828,14 +822,14 @@ describe('433 §B · the agents a reach can see', () => {
    * pin on the `-outside-your-project` sentences, the *same-project caller refused a conversation in
    * its own project* divergence, and the walk over the boundary rails of each act (the `read` act and
    * every `away` rail went too). ⛔ **What is left is the one that holds for any vocabulary**: each
-   * grant a model reads names what its own gate asks in the shared descriptor's bytes.
+   * grant a model reads names what its own gate asks, in the bytes the person's sheet draws.
    */
   describe('§4 · one word, two composites, and the three places that publish it', () => {
     /**
      * ⛔ **The MODEL's own copy of the rule, against the enforcement above** (standing rule 5).
      *
-     * The shared descriptor and model grant retain the same policy vocabulary. The sheet's
-     * standing helper paragraph is absent; its label and editor are checked separately above.
+     * ⚑ **It is the same bytes the person's sheet draws**, which is the property that makes this
+     * one sentence rather than three that happen to agree today — `433` F8's shape, refused.
      */
     it('⛔ each grant a model reads names what its OWN gate asks, and the sheet says it in the same bytes', () => {
       // ⚑ **D-016 · the sentence under test is `any`'s** — `same-project`'s, which this read first,

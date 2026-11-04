@@ -227,8 +227,8 @@ MUTATIONS = [
         [
             (
                 SCREEN,
-                '        providerForALaunch(\n          agentStore.identities.value,\n          DEFAULT_PROFILE_ID,\n          DEFAULT_PROVIDER,\n          launchChoices.value.provider,\n        ),\n',
-                '        DEFAULT_PROVIDER,\n',
+                '    providerForALaunch(\n      agentStore.identities.value,\n      DEFAULT_PROFILE_ID,\n      DEFAULT_PROVIDER,\n      launchChoices.value.provider,\n    ),',
+                "  DEFAULT_PROVIDER,",
             )
         ],
     ),

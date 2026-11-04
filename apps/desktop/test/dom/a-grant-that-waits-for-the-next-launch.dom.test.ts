@@ -11,7 +11,6 @@ import {
 import { EXTERNAL_MCP_TAKES_EFFECT } from '../../src/shared/external-mcp'
 import type { AgentIdentities, AgentIdentity, RuntimeBridge } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll, type Mounted } from './harness'
-import { assertDrawn, drawnReady } from './drawn'
 
 /**
  * 🔴 **470 · the sentence a person reads about the launch boundary, and the offer under it.**
@@ -43,7 +42,7 @@ interface Answers {
 let answers: Answers
 
 // Synthetic schema fixture only. No runtime grant or database column is added.
-// Copy the dormant descriptor to preserve its launch-bound offer and editor without unhiding it.
+// Copy the dormant descriptor to preserve its disclosure and editor assertions without unhiding it.
 const syntheticLaunch = {
   ...CAPABILITY_FIELDS.find((field) => field.key === 'canWriteRules')!,
   key: 'canFutureLaunch',
@@ -181,19 +180,9 @@ describe('470 · synthetic launch-bound field and live external-MCP grant', () =
       expect(m.all('capability-canWriteRules')).toHaveLength(0)
       expect(m.all('grant-canWriteRules-when')).toHaveLength(0)
       expect(m.all('grant-canWriteRules-open-now')).toHaveLength(0)
-      expect(m.all('grant-canFutureLaunch-when')).toHaveLength(0)
-      expect(syntheticLaunch.whenItTakesEffect).toContain(
-        'one already running keeps what it was told',
-      )
-      expect(syntheticLaunch.whenItTakesEffect).toContain('Narrowing it stops new requests')
-      expect(text(m, 'capability-canFutureLaunch')).toContain('Synthetic launch-bound grant')
-      const editor = m.q('capability-canFutureLaunch-select') as HTMLSelectElement
-      expect([...editor.options].map((option) => option.value)).toEqual(syntheticLaunch.vocabulary)
-      expect(editor.value).toBe(syntheticLaunch.ruled)
-      expect(editor.disabled).toBe(false)
-      editor.scrollIntoView({ block: 'nearest' })
-      await drawnReady()
-      assertDrawn(editor, 'the synthetic launch-bound editor')
+      const said = text(m, 'grant-canFutureLaunch-when')
+      expect(said).toContain('one already running keeps what it was told')
+      expect(said).toContain('Narrowing it stops new requests')
       // ⛔ **The paired negative, and it is the whole of *disclose it where it bites*** (HO-028 §3:
       // *"the disclosure should not shout at a person changing a grant it does not affect"*).
       for (const field of CAPABILITY_FIELDS.filter((one) => one.whenItTakesEffect === null)) {
@@ -219,15 +208,7 @@ describe('470 · synthetic launch-bound field and live external-MCP grant', () =
         whenItTakesEffect: 'A sentence no dispatch has written, declared by the field itself.',
       } as unknown as AnyCapabilityField
       const { m } = await sheet([], { fields: [...CAPABILITY_FIELDS, invented] })
-      expect(m.all('grant-canBroadcast-when')).toHaveLength(0)
-      expect(text(m, 'capability-canBroadcast')).toContain('May broadcast')
-      const editor = m.q('capability-canBroadcast-select') as HTMLSelectElement
-      expect([...editor.options].map((option) => option.value)).toEqual(['never', 'always'])
-      expect(editor.value).toBe('never')
-      expect(editor.disabled).toBe(false)
-      editor.scrollIntoView({ block: 'nearest' })
-      await drawnReady()
-      assertDrawn(editor, 'the independent synthetic editor')
+      expect(text(m, 'grant-canBroadcast-when')).toContain('declared by the field itself')
       // ⚑ **And the offer follows it**, because the offer keys on the same declaration.
       const { m: withOne } = await sheet([open()], { fields: [...CAPABILITY_FIELDS, invented] })
       expect(withOne.all('grant-canBroadcast-open-now')).toHaveLength(1)
@@ -237,11 +218,7 @@ describe('470 · synthetic launch-bound field and live external-MCP grant', () =
   describe('§2 · the offer appears only where there is something to reopen', () => {
     it('⛔ nothing open: the sentence stands and no offer is drawn — the paired negative', async () => {
       const { m } = await sheet([])
-      expect(m.all('grant-canFutureLaunch-when')).toHaveLength(0)
-      expect(text(m, 'capability-canFutureLaunch')).toContain('Synthetic launch-bound grant')
-      expect((m.q('capability-canFutureLaunch-select') as HTMLSelectElement).value).toBe(
-        syntheticLaunch.ruled,
-      )
+      expect(m.all('grant-canFutureLaunch-when')).toHaveLength(1)
       expect(m.all('grant-canFutureLaunch-open-now')).toHaveLength(0)
       // 🔴 **An empty list claims NOTHING.** `store.open` is what this window holds and `running`
       // on the wire is per-host, so the absence of an offer must not be a sentence saying there is
@@ -265,32 +242,18 @@ describe('470 · synthetic launch-bound field and live external-MCP grant', () =
     it('🔴 one open conversation: it is named, and pressing Reopen asks for that session', async () => {
       const { m, asked } = await sheet([open({ sessionId: 'sess_7', where: 'login-explorer' })])
       expect(text(m, 'grant-canFutureLaunch-open-now')).toContain('login-explorer')
-      // The title identifies the agent; the offer retains its exact folder and action.
-      expect(text(m, 'capabilities-title')).toContain('pm')
-      expect(
-        m.q('grant-canFutureLaunch-open-now').querySelector(':scope > p.identity-note'),
-      ).toBeNull()
-      expect(
-        m.q('grant-canFutureLaunch-open-now').querySelector('.reopen-where')?.textContent,
-      ).toBe('login-explorer')
+      // ⚑ **The identity's own slug is in the line**, so a person reading it knows which sheet's
+      // conversations these are.
+      expect(text(m, 'grant-canFutureLaunch-open-now')).toContain('pm')
       const button = m.q('grant-canFutureLaunch-reopen-sess_7') as HTMLButtonElement
-      expect(button.textContent?.trim()).toBe('Reopen')
       expect(button.disabled).toBe(false)
-      button.scrollIntoView({ block: 'nearest' })
-      await drawnReady()
-      assertDrawn(button, 'the named conversation Reopen')
       button.click()
       expect(asked()).toEqual(['sess_7'])
     })
 
     it('⚠️ …and the row falls back to the session id when this app holds no path for it', async () => {
       const { m } = await sheet([open({ sessionId: 'sess_9', where: null })])
-      expect(
-        m.q('grant-canFutureLaunch-open-now').querySelector('.reopen-where')?.textContent,
-      ).toBe('sess_9')
-      const button = m.q('grant-canFutureLaunch-reopen-sess_9') as HTMLButtonElement
-      expect(button.textContent?.trim()).toBe('Reopen')
-      expect(button.disabled).toBe(false)
+      expect(text(m, 'grant-canFutureLaunch-open-now')).toContain('sess_9')
     })
 
     it('⛔ two open conversations are two rows, and the second button asks for the SECOND one', async () => {
@@ -615,21 +578,9 @@ describe('470 · synthetic launch-bound field and live external-MCP grant', () =
 
     it('draws the real external-MCP launch disclosure and keeps the dormant rules grant hidden', async () => {
       const { m } = await serverSheet([open()])
-      expect(m.all('external-mcp-when')).toHaveLength(0)
-      expect(m.all('external-mcp-direction')).toHaveLength(0)
-      expect(m.all('external-mcp-reach-fixed')).toHaveLength(0)
-      expect(EXTERNAL_MCP_TAKES_EFFECT).toContain('next time one is reopened')
-      expect(EXTERNAL_MCP_TAKES_EFFECT).toContain('Nothing running moves.')
-      expect(text(m, 'capability-external-mcp')).toContain(
-        'May also use these external tool servers',
-      )
-      expect(text(m, 'external-mcp-grant-reference')).toContain('reference')
-      expect(text(m, 'external-mcp-grant-reference')).toContain('http://127.0.0.1:18001/mcp')
-      expect(text(m, 'external-mcp-state').trim()).toBe('None')
-      expect(serverCheckbox(m).checked).toBe(false)
-      serverCheckbox(m).scrollIntoView({ block: 'nearest' })
-      await drawnReady()
-      assertDrawn(serverCheckbox(m), 'the real external-server grant')
+      expect(text(m, 'external-mcp-when')).toBe(EXTERNAL_MCP_TAKES_EFFECT)
+      expect(text(m, 'external-mcp-when')).toContain('next time one is reopened')
+      expect(text(m, 'external-mcp-when')).toContain('Nothing running moves.')
       expect(serverCheckbox(m).disabled).toBe(false)
       expect(m.all('capability-canWriteRules')).toHaveLength(0)
       expect(m.all('grant-canWriteRules-open-now')).toHaveLength(0)
@@ -651,10 +602,7 @@ describe('470 · synthetic launch-bound field and live external-MCP grant', () =
         'canFutureLaunch',
       )
       expect(closes()).toBe(0)
-      expect(m.all('external-mcp-when')).toHaveLength(0)
-      expect(serverCheckbox(m).checked).toBe(true)
-      expect(serverCheckbox(m).disabled).toBe(false)
-      expect(text(m, 'external-mcp-state').trim()).toBe('1 usable')
+      expect(text(m, 'external-mcp-when')).toBe(EXTERNAL_MCP_TAKES_EFFECT)
     })
 
     it('closes after a real external-MCP save with no conversation open', async () => {

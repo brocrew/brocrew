@@ -36,7 +36,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         f"by that give's piece · killed by `{REPLACED}`",
         [(HOST,
           # Leaving the previous give's piece raised changes a later replacement's launch line.
-          '      const starting = this.createFromGive(start, startsOn, selectedConnection?.id)\n      this.reservingAStartFrom = null\n      this.reservingNormalWorker = null\n',
-          '      const starting = this.createFromGive(start, startsOn, selectedConnection?.id)\n      this.reservingNormalWorker = null\n')],
+          "      const starting = this.createFromGive(start, startsOn)\n      this.reservingAStartFrom = null\n      this.reservingNormalWorker = null\n",
+          "      const starting = this.createFromGive(start, startsOn)\n      this.reservingNormalWorker = null\n")],
     ),
 ]
