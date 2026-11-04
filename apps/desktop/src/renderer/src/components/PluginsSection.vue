@@ -45,7 +45,12 @@ let alive = true,
   generation = 0,
   stop = () => {},
   observer: ResizeObserver | undefined
+/** Null until the list answers; the first answer waits for the plugin service to start. */
 const listState = ref<PluginListState | null>(null)
+/** After this long, the loading line also says why the first list can be slow. */
+const SLOW_LIST_MS = 10_000
+const listSlow = ref(false)
+let slowTimer: ReturnType<typeof setTimeout> | undefined
 const listFailureReason = ref<PluginListFailureReason>()
 const refreshFailed = ref(false)
 const listMessage = computed(() => {
@@ -258,7 +263,11 @@ onMounted(async () => {
     }) ?? (() => {})
   window.addEventListener('resize', move)
   window.addEventListener('scroll', move, true)
+  slowTimer = setTimeout(() => {
+    listSlow.value = true
+  }, SLOW_LIST_MS)
   const answer = await request({ kind: 'list' })
+  clearTimeout(slowTimer)
   if (!alive) return
   if (answer.ok && answer.cards) {
     cards.value = answer.cards
@@ -271,6 +280,7 @@ onMounted(async () => {
 })
 onUnmounted(() => {
   alive = false
+  clearTimeout(slowTimer)
   generation++
   configurationAbort?.abort()
   stop()
@@ -283,7 +293,12 @@ onUnmounted(() => {
 })
 </script>
 <template>
-  <section class="plugins-section" :class="{ configuring: selected }" data-cy="plugins-section">
+  <section
+    class="plugins-section"
+    :class="{ configuring: selected }"
+    :aria-busy="listState === null"
+    data-cy="plugins-section"
+  >
     <p v-if="!selected" class="plugin-trust">
       Plugins run with your computer user’s rights; they are not sandboxed.
     </p>
@@ -297,6 +312,17 @@ onUnmounted(() => {
         placeholder="Search plugins"
         data-cy="plugins-search"
     /></label>
+    <div
+      v-if="listState === null"
+      class="plugins-loading"
+      role="status"
+      data-cy="plugins-list-loading"
+    >
+      <p><span class="spinner" aria-hidden="true"></span>Loading plugins…</p>
+      <p v-if="listSlow" class="plugins-loading-slow" data-cy="plugins-list-slow">
+        This can take a little while after BroCrew starts.
+      </p>
+    </div>
     <p v-if="listMessage" role="status" class="plugin-error" data-cy="plugins-list-status">
       {{ listMessage }}
     </p>
@@ -683,6 +709,42 @@ button:disabled {
   border-radius: var(--radius-card);
   overflow: hidden;
   background: var(--panel);
+}
+/* The Storage tab's loading line: a small spinner beside muted text. */
+.plugins-loading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  color: var(--muted);
+  font-size: var(--type-small);
+}
+.plugins-loading p {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin: 0;
+}
+.plugins-loading .plugins-loading-slow {
+  padding-left: calc(14px + var(--space-4));
+}
+.spinner {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border: calc(var(--border-width) * 2) solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
 }
 .plugin-error {
   margin: 0;

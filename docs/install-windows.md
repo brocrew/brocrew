@@ -1,6 +1,6 @@
 # Installing BroCrew on Windows
 
-A signed BroCrew installer shows **DEVERP** as publisher. Older and test builds may be unsigned. Windows can still warn about a new signed build while it earns reputation; these steps cover that warning and setting up your API keys.
+Windows can still warn about a new version at first; these steps cover that warning and setting up your API keys.
 
 ## Before you install
 
@@ -63,7 +63,7 @@ Get the latest build from the [Releases page](https://github.com/brocrew/brocrew
 
 There's no Linux or Intel Mac build yet.
 
-**Windows release builds support signing as DEVERP; older and test builds may be unsigned.** Mac builds are signed ad hoc and are not notarized. Your computer may warn when you open a download. Download BroCrew only from this repo's Releases page. Each file's SHA-256 checksum is shown next to it there, if you want to check your download. You can also run BroCrew from source (below).
+**Windows releases are signed; Windows may still warn about a new version at first.** Mac builds are signed ad hoc and are not notarized. Your computer may warn when you open a download. Download BroCrew only from this repo's Releases page. Each file's SHA-256 checksum is shown next to it there, if you want to check your download. You can also run BroCrew from source (below).
 
 **On Windows** (beta):
 
