@@ -29,19 +29,20 @@ export function readVolumeIdentity(
         env: { ...process.env, LC_ALL: 'C', LANG: 'C' },
         stdio: ['ignore', 'pipe', 'pipe'],
       }))
-  const observe = (program: string, args: string[]) => {
-    try {
-      return read(program, args)
-    } catch {
-      throw new Error('Volume identity unavailable')
-    }
+  // Foundation resolves the path's actual volume (including Data-volume firmlinks).
+  // Fresh NSURL/process each time: no cached resource value survives an observation.
+  // Only Foundation is used; no application/AppleEvents access. The path is argv data.
+  const script =
+    'ObjC.import("Foundation"); function run(argv) { var value = Ref(); ' +
+    'if (argv.length !== 1 || !$.NSURL.fileURLWithPath(argv[0]).getResourceValueForKeyError(' +
+    'value, $.NSURLVolumeUUIDStringKey, null)) throw Error("unavailable"); ' +
+    'return ObjC.unwrap(value[0]); }'
+  let value: string
+  try {
+    value = read('/usr/bin/osascript', ['-l', 'JavaScript', '-e', script, '--', file]).trim()
+  } catch {
+    throw new Error('Volume identity unavailable')
   }
-  const rows = observe('/bin/df', ['-P', file]).trim().split(/\r?\n/)
-  const disk = rows.length === 2 && /^(\/dev\/disk[0-9]+(?:s[0-9]+)+)\s/.exec(rows[1] ?? '')?.[1]
-  if (!disk) throw new Error('Volume identity unavailable')
-  const plist = observe('/usr/sbin/diskutil', ['info', '-plist', disk])
-  const matches = [...plist.matchAll(/<key>VolumeUUID<\/key>\s*<string>([^<]+)<\/string>/g)]
-  const value = matches.length === 1 ? (matches[0]?.[1] ?? '') : ''
   if (!uuid.test(value) || !/[1-9a-f]/i.test(value.replace(/-/g, '')))
     throw new Error('Volume identity unavailable')
   return `apfs:${value.toLowerCase()}`
