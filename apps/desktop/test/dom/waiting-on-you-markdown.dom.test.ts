@@ -8,6 +8,7 @@ import { wearTheme } from '../../look/fixtures/themes'
 import RequestMarkdown from '../../src/renderer/src/components/RequestMarkdown.vue'
 import { aWaitingPageWithMarkdown, LITERAL_COMMAND } from './a-waiting-page-with-markdown'
 import { mount, unmountAll } from './harness'
+import { drawnReady, inkRects } from './drawn'
 
 const original = { width: window.innerWidth, height: window.innerHeight }
 afterEach(() => {
@@ -33,9 +34,10 @@ describe.each(['classic', 'crew-night'] as const)('Waiting on you markdown in %s
     expect(group.lastChild?.textContent).toBe('.')
     expect(getComputedStyle(group).whiteSpace).toBe('nowrap')
     expect(getComputedStyle(group).fontFamily).toBe(getComputedStyle(code).fontFamily)
-    const range = document.createRange()
-    range.selectNodeContents(group.lastChild!)
-    expect(range.getBoundingClientRect().top).toBeLessThan(code.getBoundingClientRect().bottom)
+    await drawnReady()
+    const punctuation = inkRects(group.lastChild as Text)
+    expect(punctuation).toHaveLength(1)
+    expect(punctuation[0].top).toBeLessThan(code.getBoundingClientRect().bottom)
     expect(context.textContent).toBe('Added: Added after review: read summary.md.')
     const filename = 'long-name-'.repeat(80) + 'summary.md'
     const narrow = mount(RequestMarkdown, { text: `Read \`${filename}\`.` }, { width: 180 })
