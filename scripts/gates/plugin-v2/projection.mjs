@@ -13,7 +13,7 @@ export function fetchSource({ root, token, candidate }) {
   const empty = Buffer.from(
     JSON.stringify({
       ...JSON.parse(candidate),
-      entries: JSON.parse(candidate).entries.map((e) => ({ ...e, minAppVersion: '999.0.0' })),
+      entries: [],
     }),
   )
   return `// ${MARKER}\nimport fs from 'node:fs';\nimport path from 'node:path';\nimport {createHash} from 'node:crypto';

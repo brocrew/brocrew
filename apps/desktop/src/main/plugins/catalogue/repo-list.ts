@@ -27,7 +27,6 @@ const text = (maximum: number) =>
     .max(maximum)
     .regex(/^[^\p{Cc}\p{Cs}\u2028\u2029]+$/u)
 const sha = z.string().regex(/^[a-f0-9]{64}$/)
-const coreVersion = z.string().regex(/^\d{1,6}\.\d{1,6}\.\d{1,6}$/)
 const RepoList = z.strictObject({
   format: z.literal(1),
   entries: z
@@ -37,7 +36,8 @@ const RepoList = z.strictObject({
         name: text(128),
         description: text(240),
         version: text(80),
-        minAppVersion: coreVersion,
+        // Historical row metadata is readable but never compatibility authority.
+        minAppVersion: z.unknown().optional(),
         sourceCommit: z.string().optional(),
         targets: z
           .array(
@@ -75,10 +75,6 @@ const GenericRepoList = z.object({
       name: z.string().min(1),
       description: z.string(),
       version: z.string().min(1),
-      minAppVersion: z
-        .string()
-        .regex(/^\d+\.\d+\.\d+$/)
-        .default('0.0.0'),
       sourceCommit: z.string().optional(),
       authors: z.array(z.string()).optional(),
       targets: z
@@ -98,18 +94,10 @@ const GenericRepoList = z.object({
 const fail = (): never => {
   throw new PluginSupervisorError('unavailable')
 }
-function compatible(actual: string, minimum: string): boolean {
-  const match = /^(\d{1,6})\.(\d{1,6})\.(\d{1,6})(?:-[0-9A-Za-z.-]+)?$/.exec(actual)
-  if (!match) return fail()
-  const current = match.slice(1).map(Number),
-    required = minimum.split('.').map(Number)
-  for (let i = 0; i < 3; i++) if (current[i] !== required[i]) return current[i]! > required[i]!
-  return true
-}
 export function parseRepoPluginList(
   inputBytes: Uint8Array,
   target: PluginTarget,
-  appVersion: string,
+  _appVersion: string,
 ) {
   let input: unknown
   try {
@@ -128,50 +116,36 @@ export function parseRepoPluginList(
     if (new Set(entry.targets.map((one) => one.os + '/' + one.cpu)).size !== entry.targets.length)
       return fail()
   }
-  const view = (version: string) => {
-    const releases = list.entries.flatMap((entry) => {
-      const selected = entry.targets.find((one) => one.os === target.os && one.cpu === target.cpu)
-      if (!selected || !compatible(version, entry.minAppVersion)) return []
-      return [
-        {
-          ...('authors' in entry && entry.authors ? { authors: entry.authors } : {}),
-          ...('legacy' in entry && entry.legacy ? { legacy: true as const } : {}),
-          id: entry.id,
-          version: entry.version,
-          sourceCommit: entry.sourceCommit,
-          description: entry.description,
-          platforms: [{ os: selected.os, cpu: selected.cpu }],
-          archive: {
-            url: selected.url,
-            size: selected.bytes,
-            sha256: selected.sha256,
-            compression: selected.compression,
-          },
-          manifestSha256: selected.manifestSha256,
+  const releases = list.entries.flatMap((entry) => {
+    const selected = entry.targets.find((one) => one.os === target.os && one.cpu === target.cpu)
+    if (!selected) return []
+    return [
+      {
+        ...('authors' in entry && entry.authors ? { authors: entry.authors } : {}),
+        ...('legacy' in entry && entry.legacy ? { legacy: true as const } : {}),
+        id: entry.id,
+        version: entry.version,
+        sourceCommit: entry.sourceCommit,
+        description: entry.description,
+        platforms: [{ os: selected.os, cpu: selected.cpu }],
+        archive: {
+          url: selected.url,
+          size: selected.bytes,
+          sha256: selected.sha256,
+          compression: selected.compression,
         },
-      ]
-    })
-    const bytes = Buffer.from(JSON.stringify({ format: list.format, entries: releases }))
-    return { releases: parsePluginCatalogue(bytes), bytes, sha256: pluginSha256(bytes) }
-  }
-  // Every older app view changes only at a declared minimum-version threshold.
-  const versions = new Set([
-    '0.0.0',
-    ...list.entries
-      .map((entry) => entry.minAppVersion)
-      .filter((minimum) => compatible(appVersion, minimum)),
-  ])
-  const views = new Map(
-    [...versions].map((version) => {
-      const parsed = view(version)
-      return [parsed.sha256, parsed] as const
-    }),
-  )
+        manifestSha256: selected.manifestSha256,
+      },
+    ]
+  })
+  const bytes = Buffer.from(JSON.stringify({ format: list.format, entries: releases }))
+  const view = { releases: parsePluginCatalogue(bytes), bytes, sha256: pluginSha256(bytes) }
+  // Catalogue rows select archive metadata. Only the verified manifest declares compatibility.
   return {
     format: list.format,
     entries: list.entries,
-    ...view(appVersion),
-    legacyCatalogues: list.format === 1 ? [...views.values()] : [],
+    ...view,
+    legacyCatalogues: list.format === 1 ? [view] : [],
   }
 }
 /** Each app window can select its own list; default discovery is a convenience. */
