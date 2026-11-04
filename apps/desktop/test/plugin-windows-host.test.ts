@@ -56,7 +56,11 @@ vi.mock('../resources/plugin-host/boot-witness.mjs', async (original) => ({
 }))
 
 const stat = (mode: number, uid = process.getuid?.() ?? 0) =>
-  ({ mode, uid }) as unknown as import('node:fs').Stats
+  ({
+    mode,
+    uid,
+    isFile: () => (mode & 0o170000) === 0o100000,
+  }) as unknown as import('node:fs').Stats
 
 describe('the plugin host on Windows, by its platform seams', () => {
   it('compares Windows folders without case, by their own separator, and never across drives', () => {
@@ -78,21 +82,22 @@ describe('the plugin host on Windows, by its platform seams', () => {
     expect(isLocalDrivePath('C:Users', 'win32')).toBe(false)
     expect(isLocalDrivePath('/fictional', 'darwin')).toBe(true)
   })
-  it('checks owner and mode on POSIX and structural identity on Windows', () => {
+  it('accepts ordinary local modes and owners while retaining file-kind checks', () => {
     expect(isPrivateEntry(stat(0o40777, 0), 0o077, 'win32')).toBe(true)
-    // An owner is compared only where this process has one.
     if (process.getuid) {
       expect(isPrivateEntry(stat(0o40700), 0o077, 'darwin')).toBe(true)
-      expect(isPrivateEntry(stat(0o40750), 0o077, 'darwin')).toBe(false)
+      expect(isPrivateEntry(stat(0o40750), 0o077, 'darwin')).toBe(true)
       expect(isPrivateEntry(stat(0o40755), 0o022, 'darwin')).toBe(true)
-      expect(isPrivateEntry(stat(0o40700, 404941), 0o077, 'darwin')).toBe(false)
+      expect(isPrivateEntry(stat(0o40700, 404941), 0o077, 'darwin')).toBe(true)
     }
     expect(isImmutableFile(stat(0o100666), 'win32')).toBe(true)
     expect(isImmutableFile(stat(0o100400), 'darwin')).toBe(true)
-    expect(isImmutableFile(stat(0o100600), 'darwin')).toBe(false)
+    expect(isImmutableFile(stat(0o100600), 'darwin')).toBe(true)
+    expect(isImmutableFile(stat(0o40700), 'darwin')).toBe(false)
+    expect(isImmutableFile(stat(0o40777), 'win32')).toBe(false)
     expect(immutableMode(true, 'win32')).toBe(0o600)
-    expect(immutableMode(true, 'darwin')).toBe(0o500)
-    expect(immutableMode(false, 'linux')).toBe(0o400)
+    expect(immutableMode(true, 'darwin')).toBe(0o700)
+    expect(immutableMode(false, 'linux')).toBe(0o600)
   })
   it('names a pipe from the server key on Windows and keeps the socket file elsewhere', () => {
     const key = 'a'.repeat(64)
@@ -162,15 +167,20 @@ describe('the plugin host on Windows, by its platform seams', () => {
       ),
     ).toBeNull()
   })
-  it('refuses a plugin root that is not a drive-letter path on Windows and changes nothing elsewhere', async () => {
-    await expect(
-      keepPluginRootPrivate('/fictional/plugins', { platform: 'win32' }),
-    ).rejects.toThrow('unsafe-path')
-    await expect(keepPluginRootPrivate('/fictional/plugins', { platform: 'darwin' })).resolves.toBe(
-      undefined,
-    )
-    expect(isInsideCheckedRoot('/fictional/plugins', 'darwin')).toBe(true)
-    expect(isInsideCheckedRoot('C:\\Fictional\\plugins', 'win32')).toBe(false)
+  it('creates the selected real directory with ordinary filesystem semantics for either platform hint', async () => {
+    const parent = mkdtempSync(join(tmpdir(), 'fictional-root-hints-'))
+    roots.push(parent)
+    const root = join(parent, 'nested', 'plugins'),
+      kept = join(parent, 'kept.txt')
+    writeFileSync(kept, 'fictional opaque data')
+    await expect(keepPluginRootPrivate(root, { platform: 'win32' })).resolves.toBe(undefined)
+    expect(lstatSync(root).isDirectory()).toBe(true)
+    const before = readdirSync(parent)
+    await expect(keepPluginRootPrivate(root, { platform: 'darwin' })).resolves.toBe(undefined)
+    expect(readdirSync(parent)).toEqual(before)
+    expect(readFileSync(kept, 'utf8')).toBe('fictional opaque data')
+    expect(isInsideCheckedRoot(root, 'darwin')).toBe(true)
+    expect(isInsideCheckedRoot(root, 'win32')).toBe(true)
   })
 })
 

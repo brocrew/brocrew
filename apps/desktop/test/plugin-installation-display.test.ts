@@ -1,11 +1,11 @@
 import { afterEach, expect, it } from 'vitest'
-import { readdir, readFile, unlink } from 'node:fs/promises'
+import { readdir, readFile, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { GlobalPluginState } from '../src/main/plugins/state/store'
 import { cleanupLifecycleFixtures, fixture } from './plugin-lifecycle-fixtures'
 afterEach(cleanupLifecycleFixtures)
 it.skipIf(process.platform === 'win32')(
-  'observes installed and removed journal data without changing it or admitting consumers',
+  'observes installed and removed selections without changing them or admitting consumers',
   async () => {
     const f = await fixture()
     await f.controller.install(f.handle, 'chrome')
@@ -24,18 +24,21 @@ it.skipIf(process.platform === 'win32')(
   },
 )
 it.skipIf(process.platform === 'win32')(
-  'busy storage refuses display observation rather than guessing absence',
+  'observes the committed selection while its ordinary writer lock is held',
   async () => {
     const f = await fixture()
+    await f.controller.install(f.handle, 'chrome')
+    const options = { root: join(f.root, 'state'), workspaceRoots: [f.workspace] }
     await f.state.withExclusive(async () => {
-      expect(() =>
-        GlobalPluginState.observeInstallations({
-          root: join(f.root, 'state'),
-          workspaceRoots: [f.workspace],
-        }),
-      ).toThrow()
+      const before = await treeBytes(options.root)
+      expect(GlobalPluginState.observeInstallations(options)).toEqual({
+        installed: ['chrome'],
+        pending: null,
+      })
+      expect(GlobalPluginState.readInstalledPackage(options, 'chrome')).not.toBeNull()
+      expect(await treeBytes(options.root)).toEqual(before)
     })
-    expect(f.state.inspect().guards).toEqual([])
+    expect(f.state.inspect().guards.map((one) => one.pluginId)).toEqual(['chrome'])
   },
 )
 it.skipIf(process.platform === 'win32')(
@@ -43,27 +46,35 @@ it.skipIf(process.platform === 'win32')(
   async () => {
     const f = await fixture()
     const before = await readdir(f.root)
-    expect(() =>
-      GlobalPluginState.observeInstallations({
-        root: join(f.root, 'missing-state'),
-        workspaceRoots: [f.workspace],
-      }),
-    ).toThrow()
+    const options = { root: join(f.root, 'missing-state'), workspaceRoots: [f.workspace] }
+    expect(GlobalPluginState.observeInstallations(options)).toEqual({
+      installed: [],
+      pending: null,
+    })
+    expect(GlobalPluginState.readInstalledPackage(options, 'chrome')).toBeNull()
     expect(await readdir(f.root)).toEqual(before)
   },
 )
 
 it.skipIf(process.platform === 'win32')(
-  'a missing writer fence is never recreated for display',
+  'observes selected bytes without recreating missing writer or operation databases',
   async () => {
     const f = await fixture()
+    await f.controller.install(f.handle, 'chrome')
     f.state.close()
     const root = join(f.root, 'state')
     await unlink(join(root, 'writer-lock.sqlite'))
-    expect(() =>
-      GlobalPluginState.observeInstallations({ root, workspaceRoots: [f.workspace] }),
-    ).toThrow()
+    await unlink(join(root, 'operations.sqlite'))
+    const before = await treeBytes(root)
+    const options = { root, workspaceRoots: [f.workspace] }
+    expect(GlobalPluginState.observeInstallations(options)).toEqual({
+      installed: ['chrome'],
+      pending: null,
+    })
+    expect(GlobalPluginState.readInstalledPackage(options, 'chrome')).not.toBeNull()
+    expect(await treeBytes(root)).toEqual(before)
     expect(await readdir(root)).not.toContain('writer-lock.sqlite')
+    expect(await readdir(root)).not.toContain('operations.sqlite')
   },
 )
 
@@ -82,7 +93,7 @@ async function treeBytes(root: string): Promise<Record<string, string>> {
   return entries
 }
 it.skipIf(process.platform === 'win32').each(['created', 'prepared'] as const)(
-  'display refuses a missing %s seal without changing any state names or bytes; owner still repairs',
+  'a torn %s selection stays unknown without display repair; restoring its bytes preserves pending work',
   async (phase) => {
     const f = await fixture({
       fault(point) {
@@ -95,28 +106,20 @@ it.skipIf(process.platform === 'win32').each(['created', 'prepared'] as const)(
       expect(f.state.inspect().pending).not.toBeNull()
     }
     const options = { root: join(f.root, 'state'), workspaceRoots: [f.workspace] }
-    const guard = join(options.root, 'lifecycle-guard')
-    const seal = (await readdir(guard))
-      .filter((name) => name.endsWith('.seal'))
-      .sort()
-      .at(-1)!
-    await unlink(join(guard, seal)) // An interrupted publication in this fictional scratch tree.
+    const snapshot = join(options.root, 'installed-state.json')
+    const selected = await readFile(snapshot)
+    await writeFile(snapshot, '{"format":')
     const before = await treeBytes(options.root)
-    let refused = false
-    try {
-      GlobalPluginState.observeInstallations(options)
-    } catch {
-      refused = true
-    }
-    // Assert the tree first: base repairs the seal even though this was only a display read.
+    expect(() => GlobalPluginState.observeInstallations(options)).toThrow()
+    expect(GlobalPluginState.readInstalledPackage(options, 'chrome')).toBeNull()
     expect(await treeBytes(options.root)).toEqual(before)
-    expect(refused).toBe(true)
-    const owner = f.state.inspect() // Existing owner load keeps its recovery behavior.
-    expect(await readdir(guard)).toContain(seal)
+    await writeFile(snapshot, selected)
+    const owner = f.state.inspect()
     expect(owner.pending !== null).toBe(phase === 'prepared')
     expect(GlobalPluginState.observeInstallations(options)).toEqual({
       installed: [],
       pending: phase === 'prepared' ? 'chrome' : null,
     })
+    expect(await readFile(snapshot)).toEqual(selected)
   },
 )

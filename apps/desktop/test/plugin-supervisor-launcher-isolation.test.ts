@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { lstat, mkdir, mkdtemp, realpath, rm } from 'node:fs/promises'
+import { lstat, mkdir, mkdtemp, realpath, rm, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -103,15 +103,30 @@ describe('supervisor launch isolation between roots', () => {
     expect(await failed).toMatchObject({ code: 'unavailable', cause: { cause: original } })
     expect(launch).toHaveBeenCalledOnce()
   })
-  it('shares a pending launcher through admitted case aliases of the same root', async ({
-    skip,
-  }) => {
+  it('shares a pending launcher through case aliases of the same root', async ({ skip }) => {
     const first = await options()
     const alias = { ...first, root: join(dirname(first.root), 'PLUGINS'), generation: randomUUID() }
     const directory = await lstat(first.root, { bigint: true })
     const alternate = await lstat(alias.root, { bigint: true }).catch(() => null)
     if (!alternate || alternate.dev !== directory.dev || alternate.ino !== directory.ino)
       skip('This volume has case-sensitive directory names')
+    const pending = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const launch = vi.fn(() => pending)
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
+    const attempts = [first, alias].map((one) =>
+      PluginWorkspaceLease.attach({ ...one, launch }).catch((error: unknown) => error),
+    )
+    await vi.advanceTimersByTimeAsync(OWNER_LAUNCH_MS + 20)
+    for (const attempt of attempts) expect(await attempt).toMatchObject({ code: 'unavailable' })
+    expect(launch).toHaveBeenCalledOnce()
+  })
+  it('shares a pending launcher through an explicit alias to the same selected root', async () => {
+    const first = await options()
+    const alias = { ...first, root: join(dirname(first.root), 'alias'), generation: randomUUID() }
+    await symlink(first.root, alias.root, process.platform === 'win32' ? 'junction' : 'dir')
+    expect(await realpath(alias.root)).toBe(await realpath(first.root))
     const pending = new Promise<void>((resolve) => {
       release = resolve
     })

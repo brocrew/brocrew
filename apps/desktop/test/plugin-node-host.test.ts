@@ -727,7 +727,17 @@ process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
     await chmod(join(home, 'data'), 0o700)
     await host.removeData('whatsapp')
     expect(await readdir(join(home, 'data'))).toEqual(['chrome'])
-    await expect(host.removeData('../data')).rejects.toThrow('plugin-host-cleanup')
+    const slots = await readdir(join(home, 'process-slots'))
+    for (const id of ['../data', '..', '../packages']) {
+      await expect(host.removeData(id)).rejects.toThrow('plugin-host-cleanup')
+      expect(await readdir(join(home, 'data'))).toEqual(['chrome'])
+      expect(await readdir(join(home, 'process-slots'))).toEqual(slots)
+      expect(await readFile(join(home, 'data', 'chrome', 'bridge', 'messages.db'), 'utf8')).toBe(
+        'fictional messages',
+      )
+    }
+    await mkdir(join(home, 'data', '.fictional café'), { mode: 0o700 })
+    await host.removeData('.fictional café')
     expect(await readdir(join(home, 'data'))).toEqual(['chrome'])
   })
   it('keeps configured data aliases and ordinary folder permissions usable', async () => {

@@ -184,7 +184,9 @@ describe('persistent plugin selection', () => {
       workspace = randomUUID()
     const operation = f.store.prepare(input)
     expect(f.open().inspect().pending?.request).toEqual(input)
-    expect(() => f.store.emptyProjection(workspace, 'fictional-bakery')).toThrow(PluginStateError)
+    expect(f.store.emptyProjection(workspace, 'fictional-bakery')).toBeNull()
+    expect(f.store.currentInstallation('fictional-bakery')).toBeNull()
+    expect(f.store.inspect().pending).toEqual(operation)
     f.store.complete(input.operationId)
     const receipt = f.open().emptyProjection(workspace, 'fictional-bakery')!
     expect(receipt.installId).toBe(operation.next?.installId)
