@@ -664,10 +664,24 @@ describe('534 · a conversation that is born while he is looking at the rail', (
         .map((file) => relative(src, file).replaceAll('\\', '/'))
         .sort()
       expect(listeners).toEqual([
+        'renderer/src/components/PluginContributions.vue',
         'renderer/src/components/RuntimeScreen.vue',
         'renderer/src/composables/useUpdates.ts',
+        'renderer/src/lib/plugin-settings-open.ts',
         'renderer/src/lib/window-theme.ts',
       ])
+      const pluginContributions = withoutComments(
+        readFileSync(join(src, 'renderer/src/components/PluginContributions.vue'), 'utf8'),
+      )
+      expect(pluginContributions).toContain('window.api?.pluginHost')
+      const pluginSettings = withoutComments(
+        readFileSync(join(src, 'renderer/src/lib/plugin-settings-open.ts'), 'utf8'),
+      )
+      expect(pluginSettings).toContain('client: PluginHostClient | undefined')
+      for (const source of [pluginContributions, pluginSettings]) {
+        expect(source).not.toContain('window.api.runtime')
+        expect(source).not.toContain('RUNTIME_CHANGED_CHANNEL')
+      }
       const updatesListener = withoutComments(
         readFileSync(join(src, 'renderer/src/composables/useUpdates.ts'), 'utf8'),
       )
