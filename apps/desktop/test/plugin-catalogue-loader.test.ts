@@ -1,5 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { chmod, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readlink,
+  realpath,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises'
 import { join } from 'node:path'
 import { packageFixture, fictionalPublicKey, signed } from './plugin-package-fixtures'
 import { loadPluginCatalogue } from '../src/main/plugins/catalogue/loader'
@@ -82,18 +92,41 @@ describe.skipIf(process.platform === 'win32')(
       await expect(loadPluginCatalogue(f.options)).rejects.toThrow()
       expect(f.fetch).not.toHaveBeenCalled()
     })
-    it('refuses linked caches and delegates source handling to normal transport', async () => {
+    it('publishes and reverifies exact catalogue bytes through an ordinary cache directory alias', async () => {
       const f = await fixture()
       await mkdir(join(f.root, 'foreign'), { mode: 0o700 })
       await symlink(join(f.root, 'foreign'), join(f.root, 'catalogue-cache'))
-      await expect(loadPluginCatalogue(f.options)).rejects.toThrow()
-      expect(f.fetch).not.toHaveBeenCalled()
-      await rm(join(f.root, 'catalogue-cache'))
-      for (const baseUrl of ['http://fictional.invalid/', 'https://name:secret@fictional.invalid/'])
-        await expect(
-          loadPluginCatalogue({ ...f.options, sources: [{ kind: 'https', baseUrl }] }),
-        ).resolves.toBeDefined()
-      expect(f.fetch).toHaveBeenCalled()
+      const loaded = await loadPluginCatalogue(f.options)
+      expect(loaded?.entries[0]?.id).toBe('fictional-bakery')
+      expect(await readFile(loaded!.catalogue)).toEqual(f.pkg.bytes)
+      expect(await readFile(loaded!.signature)).toEqual(f.pkg.signature)
+      expect(await realpath(loaded!.catalogue)).toBe(
+        loaded!.catalogue.replace('/catalogue-cache/', '/foreign/'),
+      )
+      expect(f.fetch).toHaveBeenCalledTimes(2)
+      f.fetch.mockRejectedValue(new Error('fictional offline'))
+      expect((await loadPluginCatalogue(f.options))?.bytes).toEqual(f.pkg.bytes)
+      expect(await readlink(join(f.root, 'catalogue-cache'))).toBe(join(f.root, 'foreign'))
+    })
+    it('delegates HTTP and credential-bearing source handling to normal transport', async () => {
+      const f = await fixture()
+      for (const baseUrl of [
+        'http://fictional.invalid/',
+        'https://name:secret@fictional.invalid/',
+      ]) {
+        f.fetch.mockClear()
+        const loaded = await loadPluginCatalogue({
+          ...f.options,
+          sources: [{ kind: 'https', baseUrl }],
+        })
+        expect(loaded?.bytes).toEqual(f.pkg.bytes)
+        expect(loaded?.signatureBytes).toEqual(f.pkg.signature)
+        expect(f.fetch.mock.calls.map(([url]) => String(url))).toEqual([
+          new URL('catalogue.json', baseUrl).href,
+          new URL('catalogue.sig', baseUrl).href,
+        ])
+        expect(f.fetch.mock.calls.every(([, init]) => init?.redirect === undefined)).toBe(true)
+      }
     })
     it('refuses empty signed catalogues and changed pins for an already cached release', async () => {
       const f = await fixture()
@@ -123,7 +156,7 @@ describe.skipIf(process.platform === 'win32')(
       }
       expect(f.fetch.mock.calls.every(([, init]) => init?.redirect === undefined)).toBe(true)
     })
-    it('concurrent app copies provision one capability and reject a linked authority file', async () => {
+    it('concurrent app copies share one capability through ordinary file aliases and report malformed material', async () => {
       const f = await fixture()
       const values = await Promise.all(
         Array.from({ length: 4 }, () => pluginPersonCapability(f.root)),
@@ -139,7 +172,13 @@ describe.skipIf(process.platform === 'win32')(
       await rm(path)
       await writeFile(join(f.root, 'decoy'), values[0]!, { mode: 0o400 })
       await symlink(join(f.root, 'decoy'), path)
+      expect(await pluginPersonCapability(f.root)).toBe(values[0])
+      expect(await readlink(path)).toBe(join(f.root, 'decoy'))
+      await chmod(join(f.root, 'decoy'), 0o600)
+      await writeFile(join(f.root, 'decoy'), 'fictional malformed material')
       await expect(pluginPersonCapability(f.root)).rejects.toThrow()
+      expect(await readFile(join(f.root, 'decoy'), 'utf8')).toBe('fictional malformed material')
+      expect(await readlink(path)).toBe(join(f.root, 'decoy'))
     })
   },
 )

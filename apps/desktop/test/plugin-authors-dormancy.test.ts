@@ -28,12 +28,23 @@ afterEach(async () => {
   vi.unstubAllGlobals()
   await cleanupLifecycleFixtures()
 })
-describe('author verification stays dormant before v2 publication', () => {
-  it('keeps a live v1 owner, its cards and raw install/update working when the fixed v2 source is 404', async () => {
-    const f = await fixture()
-    const next = packageFixture({ manifest: { ...f.pkg.manifest, version: '1.0.1' } })
-    f.opts.download = async (release) =>
-      release.version === next.release.version ? next.archive : f.pkg.archive
+describe('legacy package discovery remains optional', () => {
+  it('keeps live owner cards, exact package disclosure and install/update working when the fixed v2 source is 404', async () => {
+    const f = await fixture({}, false, 'fictional-bakery')
+    const next = packageFixture({
+      manifest: {
+        ...f.pkg.manifest,
+        format: 2,
+        version: '1.0.1',
+        authors: ['fictional-baker'],
+        executor: { kind: 'node', entry: f.pkg.manifest.server!.entry },
+        hooks: [],
+      },
+    })
+    const download = vi.fn(async (release: Readonly<typeof f.pkg.release>) =>
+      release.version === next.release.version ? next.archive : f.pkg.archive,
+    )
+    f.opts.download = download
     f.opts.refreshCatalogue = async () => ({
       catalogue: { bytes: next.bytes, signature: next.signature },
       names: f.opts.names,
@@ -52,6 +63,7 @@ describe('author verification stays dormant before v2 publication', () => {
       pinnedPublicKey: f.opts.pinnedPublicKey,
       target: f.opts.target,
       catalogue: f.opts.catalogue,
+      download,
       projection: projection().sink,
       propose() {},
     })
@@ -76,15 +88,52 @@ describe('author verification stays dormant before v2 publication', () => {
       expect({ state: f.state.inspect(), events: [...f.events], tree: await tree(f.root) }).toEqual(
         before,
       )
-      // Same wire path as today's Settings. No new policy or failure state is introduced.
-      await client.install('chrome')
+      // A failed optional discovery source neither mutates the owner nor supplies package bytes.
+      download.mockResolvedValueOnce(Buffer.from('fictional changed archive'))
+      await expect(client.inspectPackage!('fictional-bakery')).rejects.toThrow(
+        'The package files do not match the selected bytes.',
+      )
+      expect({ state: f.state.inspect(), events: [...f.events], tree: await tree(f.root) }).toEqual(
+        before,
+      )
+      const selected = await client.inspectPackage!('fictional-bakery')
+      expect(selected.ref).toEqual({
+        source: f.pkg.release.archive.url,
+        sha256: pluginSha256(f.pkg.archive),
+        bytes: f.pkg.archive.length,
+      })
+      expect(selected.details).toMatchObject({
+        authors: null,
+        permissions: f.pkg.manifest.permissions,
+        digest: selected.ref.sha256,
+        manifestSha256: f.pkg.release.manifestSha256,
+      })
+      await expect(
+        client.inspectPackage!({ ...selected.ref, bytes: selected.ref.bytes + 1 }),
+      ).rejects.toThrow('The selected package byte count does not match its archive.')
+      await client.install('fictional-bakery')
       expect((await client.catalogue())[0]).toMatchObject({
         state: 'Running',
         installed: true,
         installedVersion: '1.0.0',
       })
-      await client.refreshCatalogue!(pluginSha256(next.bytes))
-      await client.update!('chrome')
+      await client.refreshCatalogue!(pluginSha256(next.bytes), {
+        bytes: next.bytes,
+        signature: next.signature,
+      })
+      const update = await client.inspectPackage!('fictional-bakery')
+      expect(update.ref).toEqual({
+        source: next.release.archive.url,
+        sha256: pluginSha256(next.archive),
+        bytes: next.archive.length,
+      })
+      expect(update.details).toMatchObject({
+        authors: ['fictional-baker'],
+        permissions: next.manifest.permissions,
+        digest: update.ref.sha256,
+        manifestSha256: next.release.manifestSha256,
+      })
+      await client.update!('fictional-bakery')
       expect((await client.catalogue())[0]).toMatchObject({
         state: 'Running',
         installed: true,
@@ -92,6 +141,12 @@ describe('author verification stays dormant before v2 publication', () => {
       })
       expect(f.state.inspect().pending).toBeNull()
       expect(f.starts()).toBe(2)
+      expect(fetch).toHaveBeenCalledOnce()
+      expect(download.mock.calls.map(([release]) => release.version)).toEqual([
+        '1.0.0',
+        '1.0.0',
+        '1.0.1',
+      ])
     } finally {
       await client.close()
       await bridge.close()
