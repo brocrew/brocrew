@@ -134,6 +134,12 @@ export function productionPluginController() {
   let refreshFailed = false
   let listFailure: PluginListError | undefined
   let catalogueEntries: Awaited<ReturnType<typeof loadRepoPluginList>>
+  // A one-use first-Settings allowance, never a disk cache or a new mutation authority.
+  // Count freshness from the verified load, including time spent finishing startup.
+  const startupCatalogueFreshMs = 30_000
+  let catalogueLoadedAt: number | undefined
+  let startupCatalogueVerifiedAt: number | undefined
+  let firstSettingsList = true
   let frozenCatalogue: typeof catalogueEntries | undefined
   let sourceVersion: 1 | 2 = 1
   const fail = (): never => {
@@ -142,6 +148,7 @@ export function productionPluginController() {
   let names: Readonly<Record<string, string>> = {}
   let loadCatalogue: (() => Promise<typeof catalogueEntries>) | undefined
   const markUnavailable = () => {
+    startupCatalogueVerifiedAt = undefined
     entries =
       entries?.map((one) => ({ ...one, state: 'Unavailable', tools: 'none', service: null })) ??
       null
@@ -277,6 +284,7 @@ export function productionPluginController() {
       return cards
     } catch (error) {
       if (ended || connected !== connection) return fail()
+      startupCatalogueVerifiedAt = undefined
       failed('catalogue-response', error)
       // Preserve a still-live channel for explicit retry/quit to detach with its acknowledgments.
       entries =
@@ -299,7 +307,16 @@ export function productionPluginController() {
     if (ended || !entries) return fail()
     if (!connected || cleanupUncertain) return unavailableCards()
     try {
-      if (refreshList) {
+      const now = performance.now()
+      const reuseStartup =
+        firstSettingsList &&
+        startupCatalogueVerifiedAt !== undefined &&
+        now >= startupCatalogueVerifiedAt &&
+        now - startupCatalogueVerifiedAt < startupCatalogueFreshMs &&
+        !refreshFailed &&
+        (catalogueEntries.format !== 2 || connected.mutationStatus?.() === null)
+      if (refreshList) firstSettingsList = false
+      if (refreshList && !reuseStartup) {
         refreshFailed = false
         const connection = current()
         if (loadCatalogue && connection.refreshCatalogue) {
@@ -373,12 +390,15 @@ export function productionPluginController() {
     },
     async retry(id) {
       if (ended || !entries?.some((entry) => entry.id === id)) return fail()
+      // A person's Try again must never spend the first-list allowance.
+      firstSettingsList = false
+      startupCatalogueVerifiedAt = undefined
       recover()
       await enter(true)
       if (ended || !entries) return fail()
       if (!connected || cleanupUncertain) return unavailableCards()
       try {
-        return await update()
+        return await facade.catalogue(true)
       } catch {
         return unavailableCards()
       }
@@ -441,6 +461,7 @@ export function productionPluginController() {
         }
       }
       initialize = async () => {
+        startupCatalogueVerifiedAt = undefined
         let phase: PluginUnavailableReason = 'storage'
         let attempt: Peer | undefined
         let storage: SupervisorStorage | undefined
@@ -450,8 +471,8 @@ export function productionPluginController() {
           diagnosticRoot = options.root
           phase = 'catalogue'
           const devSource = await devPluginSource(options.devSource)
-          loadCatalogue = () =>
-            loadRepoPluginList({
+          loadCatalogue = async () => {
+            const next = await loadRepoPluginList({
               root: options.root,
               appVersion: options.appVersion,
               fixtureSource: options.fixtureSource,
@@ -460,6 +481,9 @@ export function productionPluginController() {
               signal: lifetime.signal,
               sourceVersion,
             })
+            catalogueLoadedAt = performance.now()
+            return next
+          }
           if (!catalogueEntries || !options.supervisor.holdsLease()) {
             try {
               catalogueEntries = await loadCatalogue()
@@ -659,6 +683,7 @@ export function productionPluginController() {
             return false
           }
           await update()
+          startupCatalogueVerifiedAt = catalogueLoadedAt
           acceptingBusy = undefined
           timer = setInterval(() => {
             if (!refresh)
