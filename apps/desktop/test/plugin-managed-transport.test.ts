@@ -203,3 +203,45 @@ it('also suppresses a private admin credential in a successful tool result', asy
   expect(result).toMatchObject({ isError: true })
   noPrivateCredential(result, extraPrivateCredential)
 })
+
+it('records a closed connect-failure reason without arguments, credentials or raw transport errors', async () => {
+  const reasons: string[] = []
+  const port = createPrivatePluginPort({
+    url: 'http://127.0.0.1:1/mcp',
+    credential: 'a'.repeat(64),
+    diagnostic: (reason) => reasons.push(reason),
+  })
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => {
+      throw Object.assign(new Error('fictional-private-page-body'), {
+        cause: { code: 'ECONNRESET' },
+      })
+    }),
+  )
+  try {
+    const execution = port.tool(
+      {
+        identity: {
+          pluginId: 'chrome',
+          installId: 'fictional',
+          epoch: 'one',
+          workspaceId: 'fictional',
+          kind: 'agent',
+          incarnation: 'one',
+        },
+        name: 'echo',
+        input: { private: 'fictional-private-argument' },
+        resources: [],
+      },
+      new AbortController().signal,
+    )
+    await expect(execution.result).resolves.toEqual({ ok: false })
+    await expect(execution.quiescent).rejects.toThrow()
+    expect(reasons).toContain('transport-connect-failed')
+    expect(reasons).toContain('transport-connection-reset')
+    expect(JSON.stringify(reasons)).not.toMatch(/fictional-private|aaaaaaaa/)
+  } finally {
+    vi.unstubAllGlobals()
+  }
+})

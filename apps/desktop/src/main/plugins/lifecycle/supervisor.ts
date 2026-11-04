@@ -1,3 +1,4 @@
+import { recordPluginToolFailure } from '../tool-diagnostics'
 import { sharedLifecycleWorkspaces } from './workspaces'
 import { createLifecycleAgentBridge } from './agent-bridge'
 import { pluginToolRefusalLog } from './chrome-broker'
@@ -23,6 +24,7 @@ export async function createSupervisorLifecycle(options: {
   const controller = sharedLifecycleWorkspaces(
     await PluginLifecycleController.open({
       ...options.lifecycle,
+      toolsUnavailable: (id) => consumer.agents?.toolsUnavailable(id) ?? false,
       deny(id) {
         consumer.agents?.deny(id)
         options.lifecycle.deny(id)
@@ -40,7 +42,9 @@ export async function createSupervisorLifecycle(options: {
   const agents = createLifecycleAgentBridge({
     owner: options.owner,
     controller,
-    binding: (view) => requirePluginAdapter(view.installation.pluginId).broker(view, refused),
+    binding: (view, diagnostic) =>
+      requirePluginAdapter(view.installation.pluginId).broker(view, refused, diagnostic),
+    diagnostic: (id, reason) => recordPluginToolFailure(options.lifecycle.root, id, reason),
     refused,
   })
   consumer.agents = agents

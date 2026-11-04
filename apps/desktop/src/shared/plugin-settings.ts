@@ -210,6 +210,8 @@ export interface PluginCard {
   startupDiagnostic?: PluginStartupDiagnostic
   /** Scheduling snapshot, unknown off macOS or when the owned process cannot be read. */
   priorityClamped?: boolean | null
+  /** A living process does not imply that its agent tools are reachable. */
+  toolsUnavailable?: true
   installedVersion?: string
   updateVersion?: string
   /** Installed package is manageable but has no release admitted for this app. */
@@ -276,7 +278,7 @@ export interface PluginScreenBounds {
   height: number
 }
 export type PluginSettingsRequest =
-  | { kind: 'list' | 'availability' }
+  | { kind: 'list' | 'status' | 'availability' }
   | { kind: 'install' | 'update'; id: string; consent?: PluginDisplayedConsent }
   | { kind: 'uninstall' | 'retry'; id: string }
   | { kind: 'prepare'; action: 'install' | 'update'; id: string }

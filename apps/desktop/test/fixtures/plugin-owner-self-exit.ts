@@ -11,7 +11,13 @@ import { recordDrainTrace } from '../../src/main/plugins/supervisor/drain-trace'
 
 const [root, workspace, mode, fault] = process.argv.slice(2) as [string, string, string, string?]
 let refusedWrites =
-  fault === 'blocked-write-held' ? Infinity : fault === 'blocked-write-once' ? 1 : 0
+  fault === 'blocked-write-held'
+    ? Infinity
+    : fault === 'blocked-write-once'
+      ? 1
+      : fault === 'blocked-write-twice'
+        ? 2
+        : 0
 const write = SupervisorStorage.prototype.write
 SupervisorStorage.prototype.write = function (value) {
   if (value.phase === 'blocked' && refusedWrites > 0) {

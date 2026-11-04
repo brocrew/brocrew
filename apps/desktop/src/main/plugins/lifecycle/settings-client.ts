@@ -38,6 +38,7 @@ const Cards = z
       state: z.enum(PLUGIN_STATES),
       installed: z.boolean(),
       priorityClamped: z.boolean().nullable().optional(),
+      toolsUnavailable: z.literal(true).optional(),
       installedVersion: z.string().min(1).max(80).optional(),
       updateVersion: z.string().min(1).max(80).optional(),
       uninstallDeletesData: z.boolean().optional(),
@@ -479,8 +480,27 @@ export async function connectPluginSettings(options: {
       }
     },
     async catalogue() {
-      await checkOwner()
-      const cards = Cards.parse(await channel.call({ kind: modern ? 'list-v2' : 'list' }))
+      // A catalogue switch refuses owner checks while it runs. A list waits for the switch and
+      // reads its outcome, so the switch is never reported as the plugin service failing.
+      for (;;) {
+        while (switching) await catalogueRefresh
+        const ticket = generation
+        try {
+          await checkOwner()
+          break
+        } catch (error) {
+          if (!switching && generation === ticket) throw error
+        }
+      }
+      const cards = Cards.parse(
+        await channel.call({
+          kind: modern
+            ? features.includes('tool-health-v1')
+              ? 'list-tool-health'
+              : 'list-v2'
+            : 'list',
+        }),
+      )
       // Project reviewed local adapter capabilities without expanding the legacy owner wire.
       return cards.map((card) => ({
         ...card,

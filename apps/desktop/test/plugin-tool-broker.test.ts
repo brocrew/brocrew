@@ -623,8 +623,22 @@ describe('secret-free failures and diagnostics', () => {
     )
     for (const event of h.audit)
       expect(
-        Object.keys(event).every((key) => ['event', 'operation', 'queued', 'code'].includes(key)),
+        Object.keys(event).every((key) =>
+          ['event', 'operation', 'queued', 'code', 'reason'].includes(key),
+        ),
       ).toBe(true)
+    for (const event of h.audit)
+      if (event.reason !== undefined)
+        expect([
+          'proof-rejected',
+          'proof-timeout',
+          'cancel-failed',
+          'execution-invalid',
+          'reply-invalid',
+          'owner-invalidated',
+          'queue-deadline',
+          'call-deadline',
+        ]).toContain(event.reason)
     const logger = setup((o) => ({
       ...o,
       audit: () => {
@@ -825,4 +839,35 @@ it('does not dispatch when the caller aborts during preparation', async () => {
   expect(h.server.calls).toHaveLength(0)
   expect(h.broker.status()).toMatchObject({ executing: false, queued: 0 })
   expect(h.clock.timers.size).toBe(0)
+})
+
+it('audits every settled failure and distinguishes a rejected proof without retaining its error', async () => {
+  const h = setup()
+  const pending = h.call()
+  await tick()
+  h.server.calls[0]!.quiet.reject(new Error('fictional-private-proof-reason'))
+  await expect(pending).rejects.toMatchObject({ code: 'unavailable' })
+  expect(h.audit).toContainEqual(
+    expect.objectContaining({ event: 'unavailable', reason: 'proof-rejected' }),
+  )
+  expect(h.audit).toContainEqual(expect.objectContaining({ event: 'refused', code: 'unavailable' }))
+  expect(JSON.stringify(h.audit)).not.toContain('fictional-private-proof-reason')
+})
+
+it('distinguishes a queue deadline from a dispatched call deadline using fixed reasons', async () => {
+  const h = setup()
+  const first = h.call(),
+    second = h.call()
+  await tick()
+  h.clock.advance(120000)
+  await expect(first).rejects.toMatchObject({ code: 'deadline' })
+  await expect(second).rejects.toMatchObject({ code: 'deadline' })
+  expect(h.audit).toContainEqual(
+    expect.objectContaining({ event: 'refused', reason: 'call-deadline' }),
+  )
+  expect(h.audit).toContainEqual(
+    expect.objectContaining({ event: 'refused', reason: 'queue-deadline' }),
+  )
+  h.server.calls[0]!.quiet.resolve()
+  await tick()
 })

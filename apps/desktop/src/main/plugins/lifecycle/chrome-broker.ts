@@ -1,3 +1,4 @@
+import type { PluginToolDiagnostic } from '../tool-diagnostics'
 import { chromeAccessSnapshot, withChromeResourcePolicy } from './chrome-policy'
 import { admittedPluginTools } from './broker-inventory'
 import type { BrokerInput, BrokerOptions } from '../tool-broker'
@@ -78,6 +79,7 @@ const reads = new Set([
 export async function chromeBrokerBinding(
   view: ReturnType<PluginLifecycleController['agentAttachments']>[number],
   refused: () => void | Promise<void> = () => console.warn(refusalMessage),
+  diagnostic?: PluginToolDiagnostic,
 ) {
   if (view.installation.pluginId !== 'chrome' || !view.package.compatibility.tools)
     throw new Error('unavailable')
@@ -142,8 +144,10 @@ export async function chromeBrokerBinding(
         url: endpoint.url,
         credential,
         privateCredentials: [adminCredential],
+        diagnostic,
       }),
       (signal) => chromeAccessSnapshot(connection, signal),
+      diagnostic,
     ),
   } satisfies Omit<
     BrokerOptions,

@@ -271,7 +271,7 @@ export function productionPluginController() {
         name: names[card.id] ?? card.id,
         description: catalogueEntries!.entries.find((one) => one.id === card.id)?.description,
         state: card.state,
-        tools: card.state === 'Running' ? 'all agents' : 'none',
+        tools: card.state === 'Running' && !card.toolsUnavailable ? 'all agents' : 'none',
         service: card.state === 'Running' ? (names[card.id] ?? card.id) : null,
       }))
       return cards

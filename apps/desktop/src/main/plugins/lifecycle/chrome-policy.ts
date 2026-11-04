@@ -1,3 +1,4 @@
+import { reportPluginToolFailure, type PluginToolDiagnostic } from '../tool-diagnostics'
 import { z } from 'zod'
 import type { PluginNodeReady } from '../node-host'
 import type { BrokerRequest, BrokerServer, PluginExecution } from '../tool-broker'
@@ -84,6 +85,7 @@ function permitted(value: ChromeAccessSnapshot, request: BrokerRequest): boolean
 export function withChromeResourcePolicy(
   port: BrokerServer,
   snapshot: (signal: AbortSignal) => Promise<ChromeAccessSnapshot>,
+  diagnostic?: PluginToolDiagnostic,
 ): BrokerServer {
   return {
     admin: (request, signal) => port.admin(request, signal),
@@ -102,6 +104,7 @@ export function withChromeResourcePolicy(
           if (!metadata.has(request.name)) {
             const value = await snapshot(activeSignal)
             if (!permitted(value, request)) {
+              reportPluginToolFailure(diagnostic, 'resource-policy-refused')
               settle()
               return { ok: false as const }
             }
@@ -112,10 +115,13 @@ export function withChromeResourcePolicy(
           }
           execution = port.tool(request, activeSignal)
           const reply = await execution.result
-          if (!metadata.has(request.name) && !permitted(await snapshot(activeSignal), request))
+          if (!metadata.has(request.name) && !permitted(await snapshot(activeSignal), request)) {
+            reportPluginToolFailure(diagnostic, 'resource-policy-refused')
             return { ok: false as const }
+          }
           return activeSignal.aborted ? { ok: false as const } : reply
         } catch {
+          reportPluginToolFailure(diagnostic, 'resource-policy-failed')
           if (!execution) settle()
           return { ok: false as const }
         }

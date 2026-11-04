@@ -172,3 +172,68 @@ it.each(['install', 'update'] as const)(
     ).toHaveLength(0)
   },
 )
+/** Holds a person's list refresh while the owner switches catalogues. */
+async function holdARefresh(f: Awaited<ReturnType<typeof production>>) {
+  const call = ipcFor(f.controller),
+    gate = f.peer.pauseFeatures(),
+    listing = call({ kind: 'list' })
+  await gate.entered.promise
+  return { call, gate, listing }
+}
+const settle = () => new Promise((resolve) => setImmediate(resolve))
+it('status checks during a catalogue refresh wait for it instead of marking every plugin unavailable', async () => {
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+  try {
+    const f = await production(true)
+    const { call, gate, listing } = await holdARefresh(f)
+    let status: Promise<unknown> | undefined
+    try {
+      status = call({ kind: 'status' })
+      vi.advanceTimersByTime(5000) // The service's own status check.
+      await settle()
+      await settle()
+      expect(f.controller.instructionCatalogue()?.map((one) => one.state)).toEqual(['Running'])
+    } finally {
+      gate.release.resolve()
+    }
+    expect(await listing).toMatchObject({ ok: true, cards: [{ id: 'chrome', state: 'Running' }] })
+    const answer = await status
+    expect(answer).toMatchObject({ ok: true, cards: [{ id: 'chrome', state: 'Running' }] })
+    expect(JSON.stringify(answer)).not.toContain('catalogue-response')
+    expect(f.controller.instructionCatalogue()?.map((one) => one.state)).toEqual(['Running'])
+  } finally {
+    vi.useRealTimers()
+  }
+})
+it('a list the owner refuses after a catalogue refresh still reports the plugin list failure', async () => {
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+  try {
+    const f = await production(true)
+    const { call, gate, listing } = await holdARefresh(f)
+    const real = PersonChannel.prototype.call
+    vi.spyOn(PersonChannel.prototype, 'call').mockImplementation(function (
+      this: PersonChannel,
+      value: unknown,
+      within?: number,
+    ) {
+      return String((value as { kind?: unknown }).kind).startsWith('list')
+        ? Promise.reject(new Error('fictional list refusal'))
+        : real.call(this, value, within)
+    })
+    let status: Promise<unknown> | undefined
+    try {
+      status = call({ kind: 'status' })
+      vi.advanceTimersByTime(5000)
+    } finally {
+      gate.release.resolve()
+    }
+    expect(await status).toMatchObject({
+      ok: true,
+      cards: [{ id: 'chrome', state: 'Unavailable', unavailableReason: 'catalogue-response' }],
+    })
+    await listing
+    expect(f.controller.instructionCatalogue()?.map((one) => one.state)).toEqual(['Unavailable'])
+  } finally {
+    vi.useRealTimers()
+  }
+})
