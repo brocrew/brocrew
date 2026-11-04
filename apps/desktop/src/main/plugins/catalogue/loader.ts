@@ -104,7 +104,6 @@ export async function loadPluginCatalogue(options: {
         )
       }
     }
-    if ((await readdir(folder)).length > 512) return unavailable()
     const pointer = join(folder, 'current.json')
     const checked = async (name: string) => {
       if (!/^[a-f0-9]{64}$/.test(name)) return unavailable()
@@ -217,8 +216,6 @@ export async function loadPluginCatalogue(options: {
       if (!signed.entries.length) return unavailable()
       await keepPins(signed.entries)
       const name = digest(Buffer.concat(pair))
-      const keptNames = await readdir(folder)
-      if (!keptNames.includes(name) && keptNames.length >= 512) return unavailable()
       await publishPrivateDirectory(
         folder,
         name,
