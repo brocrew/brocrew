@@ -901,3 +901,25 @@ it('connection-led polish: a held default and its picker omit explanatory paragr
   expect(m.host.querySelector('[data-cy="model-picker-reaches"]')).toBeNull()
   expect(m.host.querySelector('[data-cy="model-picker-note"]')).toBeNull()
 })
+
+
+it('connection-led polish: saving another connection immediately shows its provider and model', async () => {
+  reset()
+  world.itsProvider = 'claude'
+  const { m } = await control('claude', 'claude')
+  await press(m, 'model-picker-face')
+  const connection = m.q('model-picker-connection') as HTMLSelectElement
+  connection.value = 'codex:sign-in'
+  connection.dispatchEvent(new Event('change', { bubbles: true }))
+  await settle()
+  await draft(m, 'gpt-5.6-luna')
+  await press(m, 'model-picker-take')
+  expect(world.sent).toEqual([{
+    profileId: 'worker', provider: 'codex', connectionId: 'codex:sign-in',
+    model: 'gpt-5.6-luna', effort: 'medium',
+  }])
+  expect(face(m)).toBe('Codex · Fictional subscription · gpt-5.6-luna · medium')
+  expect(m.all('agent-model-not-in-force')).toHaveLength(0)
+  await press(m, 'model-picker-face')
+  expect((m.q('model-picker-connection') as HTMLSelectElement).value).toBe('codex:sign-in')
+})

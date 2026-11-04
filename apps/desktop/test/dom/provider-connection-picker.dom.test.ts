@@ -30,6 +30,7 @@ function answer(provider: Provider, id: string): ModelList {
       {
         id: `model-${id}`,
         label: `model-${id}`,
+        description: 'Fictional model description that must stay out of the picker.',
         addedBy: 'the-provider',
         efforts: [{ id: 'medium', label: 'Medium' }],
         defaultEffort: 'medium',
