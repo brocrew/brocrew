@@ -72,6 +72,7 @@ import {
   NOTHING_RAN_LIMIT,
   LAUNCH_SETUP_PROVIDERS,
   packagingNames,
+  pluginOwnerQuiescence,
   launchSetupExpected,
   lineageFits,
   READY_LINE,
@@ -1373,6 +1374,26 @@ async function quit(stage) {
     90_000,
   )
   check(Boolean(ended), `${stage}: the app closed when asked`, { pid })
+  // A detached supervisor is not included in the app-PID check above. Never stop it by name.
+  // This fixture has not installed plugins: record that gap rather than claiming a drain run.
+  const pluginOwner = join(appRoot, 'plugins', 'supervisor', 'owner.json')
+  const pluginState = () => {
+    try {
+      return pluginOwnerQuiescence(JSON.parse(readFileSync(pluginOwner, 'utf8')))
+    } catch (error) {
+      return error.code === 'ENOENT' ? 'not-exercised' : 'not-stopped'
+    }
+  }
+  await until(() => pluginState() !== 'not-stopped' || null, 60_000)
+  const plugins = pluginState()
+  check(
+    plugins !== 'not-stopped',
+    `${stage}: no plugin service is left stopping after the app quit`,
+    {
+      pluginOwner: plugins,
+      installedPluginDrainExercised: plugins !== 'not-exercised',
+    },
+  )
   await stop()
 }
 

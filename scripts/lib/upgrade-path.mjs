@@ -1240,3 +1240,14 @@ export function skillsKept(before, after, candidateSkills) {
     failures.push('the catalogue revision went backwards')
   return failures
 }
+
+/** A main app exit is not proof that its separate plugin service stopped. No owner is explicit non-coverage. */
+export function pluginOwnerQuiescence(value) {
+  if (value === null) return 'not-exercised'
+  return value?.version === 1 &&
+    typeof value.epoch === 'string' &&
+    UUID.test(value.epoch) &&
+    value.phase === 'stopped'
+    ? 'stopped'
+    : 'not-stopped'
+}

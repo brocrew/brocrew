@@ -137,6 +137,16 @@ export function pluginStartupReason(
 ): PluginUnavailableReason {
   for (let depth = 0; depth < 6 && error && typeof error === 'object'; depth++) {
     if (error instanceof PluginStartupError) return error.reason
+    if (
+      error instanceof PluginSupervisorError &&
+      error.code === 'busy' &&
+      error.ownerEpoch &&
+      error.diagnostic?.reason === 'released-owner-stalled' &&
+      error.diagnostic.stage === 'attach-record' &&
+      error.diagnostic.probe === 'live' &&
+      (error.diagnostic.phase === 'draining' || error.diagnostic.phase === 'blocked')
+    )
+      return 'previous-service-stopping'
     if (error instanceof PluginSupervisorError && eligibleRebootAdvice(error))
       return 'restart-required'
     const one = error as { code?: unknown; cause?: unknown }

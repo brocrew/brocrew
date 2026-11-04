@@ -121,6 +121,23 @@ describe.skipIf(process.platform === 'win32')(
     async function phase(root: string) {
       return JSON.parse(await readFile(join(root, 'supervisor/owner.json'), 'utf8')).phase
     }
+    it('settles a failed synthetic lifecycle exit instead of leaving child-proofs pending forever', async () => {
+      const f = await fixture()
+      const run = await attached(f)
+      // No host processes exist. The synthetic bridge child is still an exit witness.
+      expect(run.fake.runs).toHaveLength(0)
+      const clean = vi.spyOn(run.service.controller, 'cleanForShutdown').mockReturnValue(false)
+      try {
+        expect(await run.owner.shutdown()).toBe(false)
+        await expect.poll(() => phase(f.root), { timeout: 1500 }).toBe('blocked')
+        // Failure must never become a stopped record or release admission to a successor.
+        await expect(
+          PluginSupervisor.start({ root: f.root, workspaceRoots: [f.workspace] }),
+        ).rejects.toMatchObject({ code: 'busy' })
+      } finally {
+        clean.mockRestore()
+      }
+    })
     it('quits an installed running plugin cleanly and a fresh owner/controller returns Running', async () => {
       const f = await fixture()
       const first = await attached(f)
@@ -461,7 +478,7 @@ describe.skipIf(process.platform === 'win32')(
         await expect(run.client.catalogue()).rejects.toThrow()
         expect(run.fake.runs[0]!.process.stop).toHaveBeenCalled()
         expect(run.service.controller.cleanForShutdown()).toBe(false)
-        expect(await phase(f.root)).toBe('draining')
+        expect(await phase(f.root)).toBe('blocked')
       },
     )
     it('intentional drain cannot turn an unproved exact-run exit into clean shutdown', async () => {
