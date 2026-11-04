@@ -120,7 +120,7 @@ describe('464 · whose grant this is', () => {
   describe('§1 · the sheet names its owner, and nobody else in the roster', () => {
     it('🔴 the owner sentence names the identity the sheet was opened for and not the other one', async () => {
       const m = await sheetFor('pm')
-      const owner = text(m, 'capabilities-owner')
+      const owner = text(m, 'capabilities-title')
       // ⛔ **Tested where the two readings DIVERGE** — with one identity in the fixture, "names the
       // owner" and "names the other row" are the same assertion and neither is measured.
       expect(owner).toContain('pm')
@@ -133,7 +133,7 @@ describe('464 · whose grant this is', () => {
       // what a component reaching past its own prop would print — passes the test above and fails
       // this one. ⚑ Only a sentence that reads `profileSlug` passes both.
       const m = await sheetFor('worker')
-      const owner = text(m, 'capabilities-owner')
+      const owner = text(m, 'capabilities-title')
       expect(owner).toContain('worker')
       // ⚠️ **And the other identity's name is nowhere in it**, which is the half that makes the
       // pair a measurement rather than two readings of the same thing.

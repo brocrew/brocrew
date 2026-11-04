@@ -176,8 +176,8 @@ MUTATIONS = [
             (
                 "apps/desktop/src/main/runtime/runtime-host.ts",
                 # ⚑ **W4.78 · re-anchored in place, not retired** — 6d2d195d (UI-012) deleted agent-store.ts' modelsFor. Finding the folder's own spelling by its fold (187) moved to the host's theListFor, which D-042's modelList door (and the save door) use. The replacement asks under the slug as given. The named killer still asserts this: §6 menuFor('developer','claude') would get no-profile for Developer/ and throw. (moved from agent-store.ts)
-                "    const catalogue = await this.providerModels(own, provider).catch((): ModelCatalogue => ({\n",
-                "    const catalogue = await this.providerModels(profileId, provider).catch((): ModelCatalogue => ({\n",
+                '    const catalogue = await this.providerModels(own, provider, connectionId).catch(\n',
+                '    const catalogue = await this.providerModels(profileId, provider, connectionId).catch(\n',
             )
         ],
     ),
@@ -306,7 +306,7 @@ MUTATIONS = [
                 # control is not on the sheet.
                 # ⚑ **W4.78 · re-anchored in place, not retired** — 6d2d195d (UI-012) added the :capabilities and :lists props to the mount. Same deletion. The named killer still asserts it: §7 mounts CapabilitiesSheet and queries agent-model.
                 # ⚑ **an agent keeps its provider · re-anchored in place, not retired** — the sheet hands the control the provider the agent runs on (runsOnNow), not the raw column.
-                "      <AgentModelChoice\n        :profile-slug=\"profileSlug\"\n        :runs-on=\"props.runsOn\"\n        :its-provider=\"runsOnNow?.provider ?? null\"\n        :capabilities=\"props.capabilities\"\n        :store=\"props.store\"\n        :lists=\"props.lists\"\n        @held=\"(choice) => (heldChoice = choice)\"\n      />\n",
+                "      <AgentModelChoice\n        :profile-slug=\"profileSlug\"\n        :runs-on=\"props.runsOn\"\n        :its-provider=\"runsOnNow?.provider ?? null\"\n        :capabilities=\"props.capabilities\"\n        :store=\"props.store\"\n        :lists=\"props.lists\"\n      />\n",
                 "",
             )
         ],
@@ -573,8 +573,8 @@ MUTATIONS = [
                 # ⚑ ANCHOR CORRECTED IN PLACE BY 696: the re-seed watches `menusFor`, which moves
                 # with *Runs on* and with a choice that holds it; the row is unchanged.
                 # ⚑ **W4.78 · re-anchored in place, not retired** — UI-012 (6d2d195d) took out watch(menusFor, seed). AgentModelChoice now hands [menusFor] to ModelPicker as `providers`, and ModelPicker's providers watch re-seeds the open draft from what the face shows. The replacement clears it instead. The named killer still asserts this ('Runs on moving while the picker is open': drafted 'opus', effort 'max'). (moved from AgentModelChoice.vue)
-                "    if (!isOpen.value) return\n    seed()\n",
-                "    if (!isOpen.value) return\n    draft.value = null\n    chosenEffort.value = null\n",
+                '    if (!alive || !isOpen.value || ticket !== metadataTicket) return\n    seed()\n    void readSelected()\n',
+                '    if (!alive || !isOpen.value || ticket !== metadataTicket) return\n    draft.value = null\n    chosenEffort.value = null\n    void readSelected()\n',
             )
         ],
     ),

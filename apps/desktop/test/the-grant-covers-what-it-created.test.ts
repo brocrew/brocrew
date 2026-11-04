@@ -280,7 +280,9 @@ describe('598 · the grant covers what it created', () => {
       expect(hostCode).toContain("createAgentIdentity(said, { by: 'a-person' })")
       // ⚑ **The agent's door reads the grant door's own answer**, so *who is asking* is answered
       // once — see `MayCreateAgents`.
-      expect(hostCode).toContain('createAgentIdentity({ ...said, provider }, may.creator)')
+      expect(hostCode).toContain(
+        'createAgentIdentity(\n        { ...said, provider, ...(connectionId === undefined ? {} : { connectionId }) },\n        may.creator,\n      )',
+      )
       // ⚑ **D-016** — the proposal door, which named the proposer, went with proposals.
       // 🔴 **The control the census needs** (standing rule 12, planting TWO): a phrase that is
       // genuinely absent, so the reads above are bytes rather than a matcher that agrees with

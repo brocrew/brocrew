@@ -11,6 +11,7 @@ import { resolveTheme } from '../../src/shared/themes/theme'
 import { validateTheme } from '../../src/shared/themes/validate'
 import DEFINED_FILE from '../../resources/themes/defined/theme.json'
 import { META, mount, paneProps, record, unmountAll, type Mounted } from './harness'
+import { compatibilityConnections } from '../provider-connection-fixture'
 
 /**
  * Text on the content's washes and raised panels, as the window draws it: the sign-in bar on the
@@ -156,6 +157,20 @@ describe('text on the content’s washes and raised panels', () => {
     await settle()
     const panel = document.querySelector<HTMLElement>('[data-cy="model-picker-panel"]:popover-open')
     expect(panel, 'the picker is open').not.toBeNull()
+    await expect
+      .poll(() =>
+        panel!
+          .querySelector('[data-cy="model-picker-row"] input:checked + .words .label')
+          ?.textContent?.trim(),
+      )
+      .toBe('Opus')
+    await expect
+      .poll(() =>
+        panel!
+          .querySelector('[data-cy="model-picker-effort"] input:checked + .label')
+          ?.textContent?.trim(),
+      )
+      .toBe('high')
     const words = panel!.querySelector<HTMLElement>('.foot .take, .add-open')
     expect(words, 'the picker offers its accent words').not.toBeNull()
     expect(readsAt(words!)).toBeLessThan(4.5)
@@ -220,6 +235,7 @@ describe('text on the content’s washes and raised panels', () => {
 function mountPickablePane(): Mounted {
   ;(window as { api?: unknown }).api = {
     runtime: {
+      providerConnections: async () => compatibilityConnections(),
       modelList: async ({ provider }: { provider: string }) => ({
         provider,
         notAsked: null,

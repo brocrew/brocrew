@@ -457,6 +457,8 @@ describe('664 · one task, one reading, in every place it is drawn', () => {
           // `takeBackPiece`; `raiseAQuestion` asks `heldBy` and the one-open-task rail
           // `workAlreadyOpenIn` is gone)
           'takeBackPiece',
+          // Selects the accepted connection from open, non-abandoned service briefs; no state is reported.
+          'pendingServiceConnection',
           // ⚑ a person's close of stopped work: whether the piece is OPEN, an openness, as a
           // take-back asks it
           'closeForAPerson',

@@ -517,12 +517,14 @@ describe('566 §5 · the sentence that names a destination, and the destination'
       { width: 900, height: 1200 },
     )
     await nextTick()
-    const said = sheet.q('external-mcp-empty').textContent ?? ''
+    expect(sheet.all('external-mcp-empty')).toHaveLength(0)
+    expect(sheet.q('external-mcp-state').textContent).toContain('None')
     const toolsPage = await openPage()
     const tab = toolsPage.q('settings-tab-tools').textContent?.trim() ?? ''
     expect(tab.length, 'the Settings tab drew no label').toBeGreaterThan(2)
-    expect(said).toContain(`${label} → ${tab}`)
-    expect(said).not.toContain('Tools in the sidebar')
+    expect(label).toBe('Settings')
+    expect(tab).toBe('Tools')
+    expect(sheet.host.textContent).not.toContain('Tools in the sidebar')
   })
   it('⛔ pressing the row asks for THIS destination — the rail routes nothing itself', async () => {
     // ⚠️ **The rail raises `go` and `RuntimeScreen` writes `place`** (`SideRail.vue:501`'s rule),

@@ -75,8 +75,11 @@ describe('the agent book from the profile door', () => {
   it('accounts for every book section and reuses the rules editor', async () => {
     const { view } = await open()
     await vi.waitFor(() =>
-      expect(view.host.querySelector('[data-cy="own-instructions-empty"]')).not.toBeNull(),
+      expect(view.host.querySelector('[data-cy="own-instructions-text"]')).not.toBeNull(),
     )
+    expect((view.q('own-instructions-text') as HTMLTextAreaElement).value).toBe('')
+    expect(view.host.querySelector('[data-cy="own-instructions-empty"]')).toBeNull()
+    expect(view.host.querySelector('[data-cy="own-instructions-when"]')).toBeNull()
     const tabs = [...view.host.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
     expect(tabs.map((tab) => tab.textContent?.trim())).toEqual([
       'Standing rules',
@@ -104,6 +107,7 @@ describe('the agent book from the profile door', () => {
     expect(new Set(headings.map((heading) => getComputedStyle(heading).fontWeight)).size).toBe(1)
     await drawnReady()
     assertDrawn(view.q('own-instructions-text'), 'the reused rules editor')
+    assertDrawn(view.q('own-instructions-save'), 'the reused rules Save')
     expect(view.host.textContent).toContain('Quill')
   })
   it('can read both providers without opening a conversation and distinguishes their empty states', async () => {
@@ -146,12 +150,16 @@ describe('the agent book from the profile door', () => {
     parts.agentMemory.mockRejectedValue(new Error('unreadable'))
     const { view } = await open(parts)
     await vi.waitFor(() =>
-      expect(view.host.querySelector('[data-cy="own-instructions-empty"]')).not.toBeNull(),
+      expect(view.host.querySelector('[data-cy="own-instructions-text"]')).not.toBeNull(),
     )
     view.q('agent-book-tab-memory').click()
     await vi.waitFor(() => expect(view.q('memory-error').textContent).toContain("couldn't be read"))
     view.q('agent-book-tab-rules').click()
     expect(view.host.querySelector('[data-cy="own-instructions-text"]')).not.toBeNull()
+    expect((view.q('own-instructions-text') as HTMLTextAreaElement).value).toBe('')
+    expect(view.host.querySelector('[data-cy="own-instructions-empty"]')).toBeNull()
+    await drawnReady()
+    assertDrawn(view.q('own-instructions-text'), 'rules after the memory refusal')
   })
   it('does not hold another section behind a slow rules read', async () => {
     const parts = fixture()
@@ -167,11 +175,16 @@ describe('the agent book from the profile door', () => {
     await vi.waitFor(() =>
       expect(view.host.querySelector('[data-cy="methods-missing"]')).not.toBeNull(),
     )
-    expect(view.host.querySelector('[data-cy="own-instructions-empty"]')).toBeNull()
+    expect(view.host.querySelector('[data-cy="own-instructions-text"]')).toBeNull()
     resolve({ own: { identity: 'quill', versions: [] }, waiting: [], readAt: 1700000000000 })
     view.q('agent-book-tab-rules').click()
     await vi.waitFor(() =>
-      expect(view.host.querySelector('[data-cy="own-instructions-empty"]')).not.toBeNull(),
+      expect(view.host.querySelector('[data-cy="own-instructions-text"]')).not.toBeNull(),
     )
+    expect((view.q('own-instructions-text') as HTMLTextAreaElement).value).toBe('')
+    expect(view.host.querySelector('[data-cy="own-instructions-empty"]')).toBeNull()
+    expect(view.host.querySelector('[data-cy="own-instructions-when"]')).toBeNull()
+    await drawnReady()
+    assertDrawn(view.q('own-instructions-text'), 'rules after the delayed read')
   })
 })

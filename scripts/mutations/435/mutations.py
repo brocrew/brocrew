@@ -176,8 +176,8 @@ MUTATIONS = [
         [
             (
                 SCREEN,
-                '      DEFAULT_PROVIDER,\n      launchChoices.value.provider,\n    ),',
-                "    DEFAULT_PROVIDER,\n  ),",
+                '          DEFAULT_PROVIDER,\n          launchChoices.value.provider,\n        ),\n',
+                '          DEFAULT_PROVIDER,\n        ),\n',
             )
         ],
     ),
@@ -189,8 +189,8 @@ MUTATIONS = [
             (
                 DOOR,
                 # ⚑ **W4.78 · re-anchored in place, not retired** — 6d2d195d folded chooseProvider into the picker's Take (startOn); picking a provider's model is how the provider is chosen (R-3). Writing provider: null snaps back to the resolved default.
-                "  choose({ provider: pick.provider, model: pick.model, reasoningEffort: pick.effort ?? '' })\n",
-                "  choose({ provider: null, model: pick.model, reasoningEffort: pick.effort ?? '' })\n",
+                '  choose({\n    provider: pick.provider,\n    connectionId: pick.connectionId,\n',
+                '  choose({\n    provider: null,\n    connectionId: pick.connectionId,\n',
             )
         ],
     ),
@@ -335,6 +335,6 @@ MUTATIONS = [
         "provider with seven models read as having none, and the gap `SessionSettings.vue` "
         "recorded `417` leaving open · killed by `a-front-door-that-offers-everything.dom.test.ts` (named by W4.78)",
         # ⚑ **W4.78 · re-anchored in place, not retired** — 6d2d195d moved the model-say paragraph (catalogue.message plus remedy) into each ModelPicker provider section as model-picker-said, on the same modelField. Gating on remedy silences 'Asking X…', empty and closing again. (moved from NewConversation.vue)
-        [("apps/desktop/src/renderer/src/components/ModelPicker.vue", "            v-if=\"section.field.message\"\n", "            v-if=\"section.field.remedy\"\n")],
+        [("apps/desktop/src/renderer/src/components/ModelPicker.vue", "              section.field.message &&\n", "              section.field.remedy &&\n")],
     ),
 ]

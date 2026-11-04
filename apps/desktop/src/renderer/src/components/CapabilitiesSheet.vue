@@ -2,38 +2,22 @@
 import { computed, reactive, ref, watch } from 'vue'
 import {
   CAPABILITY_FIELDS,
-  RULE_WRITING_POLICY,
   MAX_CAPABILITY_COUNT,
-  SPAWN_RAIL_MEANS,
   type AnyCapabilityField,
   type CapabilityGrant,
   type CapabilityKey,
 } from '../../../shared/capabilities'
-import {
-  EXTERNAL_MCP_EVERYONES,
-  EXTERNAL_MCP_REACH_IS_FIXED,
-  EXTERNAL_MCP_TAKES_EFFECT,
-} from '../../../shared/external-mcp'
+import { EXTERNAL_MCP_EVERYONES } from '../../../shared/external-mcp'
 import type {
   AgentIdentity,
   CapabilityStatus,
   Provider,
   ProviderCapabilityMap,
 } from '../../../shared/runtime-ipc'
-import { PROVIDER_NAME, agentName, providerName } from '../../../shared/runtime-ipc'
+import { agentName } from '../../../shared/runtime-ipc'
 import { identityIn, runsOnIn, type AgentStore } from '../lib/agent-store'
 import { calendarDay } from '../lib/clock'
-import {
-  whatAProviderPressWouldClear,
-  whatTheProviderPressCleared,
-} from '../lib/agent-model-choice'
-import type { AgentModelChoice as HeldModelChoice } from '../../../shared/model-choice'
 import type { ModelLists } from '../lib/model-lists'
-import {
-  aProviderNotChosenSays,
-  noProviderSavedSays,
-  providerTakesEffectNextTime,
-} from '../lib/front-door-words'
 import { reopeningSays, type AConversationToReopen } from '../lib/reopening'
 import { WHERE_AGENTS_ARE_CREATED } from '../lib/where-agents-are-created'
 import { spawnSafetyView } from '../lib/spawn-safety'
@@ -206,9 +190,6 @@ const runsOnNow = computed(() => runsOnIn(store.identities.value, props.profileS
 const identity = computed<AgentIdentity | null>(() =>
   identityIn(store.identities.value, props.profileSlug),
 )
-const isService = computed(
-  () => store.identities.value?.services?.includes(props.profileSlug) === true,
-)
 
 /**
  * ⚠️ **Declared above the watch, because the watch clears one of them on its immediate run** — a
@@ -218,22 +199,6 @@ const isService = computed(
 const saving = ref(false)
 /** The refusal the last save came back with, or null. Cleared when anything is edited. */
 const saveRefusal = ref<string | null>(null)
-/**
- * 🔴 **What the control SHOWS, held locally — because the row does not move until the write lands.**
- *
- * ⛔ **Bound straight to `identity.provider` it visibly snapped back.** `choosingProvider` is set
- * before the `await`, so Vue re-renders while the IPC is still in flight; and Vue force-patches a
- * `<select>`'s `value` on every update — `value` is the one property it never skips when the new
- * value equals the old DOM one. ⚠️ So the disabled control showed the PREVIOUS provider for the
- * whole round trip and then jumped, which reads as *my change was rejected* at the exact moment a
- * person is waiting to learn whether it was. Found in this dispatch's own review.
- *
- * ⚑ **It follows the row when the row changes**, which is how a refusal puts it back: `save`'s
- * re-read replaces the identity, the watch below re-seeds this, and a write that never landed
- * leaves the old word on screen because that is what the database still says.
- */
-const shownProvider = ref<string>('')
-
 /**
  * 🔴 **The two facts this sheet would put on the wire for one field, as a comparable string** (470).
  *
@@ -363,36 +328,6 @@ const externalMcpStatus = computed<CapabilityStatus | null>(
  */
 const externalMcpIsHeldBack = computed(() => externalMcpStatus.value?.state !== 'available')
 
-/**
- * 🔴 **524 · why the block is answering for a provider nobody chose** (`HO-048` §3).
- *
- * ⛔ **The PO asked whether resolving the EFFECTIVE provider is cheap. It was already done** —
- * {@link runsOn} is `providerForALaunch(identities, slug, DEFAULT_PROVIDER)` and has been since
- * `433`, so this block has never asked *what does this identity's provider support*. ⚠️ **What the
- * measurement found instead was that resolving it did not make the held-back state disappear**:
- * the app's own fallback was, then, the provider whose `externalMcpServers` entry was `unwired`,
- * so an identity that had chosen nothing resolved to it and was held back with ITS sentence.
- *
- * 🔴 **`605` moved that entry to `available`, so the fallback no longer produces a held-back
- * state.** ⛔ **The paragraph stays and its condition is unchanged**, because what it adds is
- * *which provider answered* — still the question a person who has chosen none has, and still
- * asked whenever anything holds the grant back, including the not-read-yet arm.
- *
- * ⚑ **So what was missing was never the resolution — it was saying that a resolution happened.**
- * *"An inert control with no explanation is the thing that cost him the trip, more than the setting
- * did."* ⛔ This says nothing the row does not carry and names no provider (`039`), and it points at
- * the control that already draws the answer rather than restating it.
- *
- * ⚠️ **Null when the identity HAS chosen**, because then there is no resolution to explain — the
- * reason beside it is about a provider a person picked.
- */
-const externalMcpAnswersForTheFallback = computed<string | null>(() =>
-  externalMcpIsHeldBack.value && identity.value !== null && runsOnNow.value?.provider == null
-    ? 'This identity has not said which provider to start on, so this answers for the one BroCrew ' +
-      'falls back to — Runs on, above, names it.'
-    : null,
-)
-
 /** The provider's OWN sentence for why — never one this file composed (`423` §2). */
 const externalMcpHeldBackBecause = computed<string | null>(() => {
   const held = externalMcpStatus.value
@@ -452,8 +387,6 @@ watch(
       const held = row === null ? undefined : row.capabilities[field.key as CapabilityKey]
       value[field.key] = held ?? field.ruled
     }
-    // ⚑ 433 · what the provider control shows, re-seeded from the row every time it changes.
-    shownProvider.value = row?.provider ?? ''
     // ⚑ 516 · and the servers this identity holds, from the same row in the same pass.
     grantedServers.value = [...(row?.externalMcpServerIds ?? [])].sort()
     // ⚑ **A row arriving is not an edit** — see {@link moved}. Seeded in the same pass that fills
@@ -566,89 +499,6 @@ async function save(): Promise<void> {
   emit('close')
 }
 
-/* ------------------------------------------------------- what it runs on, which is not a rail */
-
-/**
- * ⛔ **Both providers, from the TABLE rather than typed** — `NewAgent`'s idiom, and
- * `provider-neutrality.test.ts` allows a provider literal in the renderer in exactly two places, of
- * which this is not one.
- */
-const providers = computed<Provider[]>(() => Object.keys(PROVIDER_NAME) as Provider[])
-
-/** In flight, so a second change cannot race the first — {@link saving}'s shape, one gesture over. */
-const choosingProvider = ref(false)
-
-/** The refusal the last provider change came back with, or null. */
-const providerRefusal = ref<string | null>(null)
-/**
- * 🔴 **`696` · what the last provider change CLEARED, in words — or null** (`682`'s `R31b`).
- *
- * ⚑ **The door's answer, rendered after it wrote** ({@link whatTheProviderPressCleared}): moving an
- * identity to another provider clears the model choice for the old one in the same transaction, and
- * until `696` the press said nothing — the choice below simply went to *Nobody has chosen*. ⛔ A
- * choice is a person's, and taking it away without a word is the app deciding on their behalf.
- */
-const providerCleared = ref<string | null>(null)
-
-/**
- * 🔴 **712 · R56 — the model choice the control below HOLDS, as it last said** (`AgentModelChoice`'s
- * `held`), or `undefined` before it has said: *not known*, which draws nothing.
- *
- * ⚑ **Its read, not a second one** (R56, on `696` L2: *"The held choice lives in `AgentModelChoice`;
- * read it there."*), so the sentence above the model and the model itself cannot name two choices. ⛔ Forgotten
- * when the sheet is pointed at another identity, so one agent's choice is never warned about on
- * another's row.
- */
-const heldChoice = ref<HeldModelChoice | null | undefined>(undefined)
-watch(
-  () => props.profileSlug,
-  () => (heldChoice.value = undefined),
-)
-/** ⚑ **712 · R56 — what a press would clear, said before it** — see {@link whatAProviderPressWouldClear}. */
-const providerWillClear = computed(() =>
-  heldChoice.value === undefined ? null : whatAProviderPressWouldClear(heldChoice.value),
-)
-
-/**
- * 🔴 **Its OWN gesture, and deliberately not part of Save** (433).
- *
- * ⛔ **Provider is not a capability** — no rail reads it, `419` §3 — so it is not on
- * {@link CapabilityGrant} and it is not written by {@link save}. ⚠️ **The stronger reason is what a
- * combined Save would have to report**: two commands behind one button can half-succeed, and the
- * sheet would then have to draw a state that is neither saved nor unsaved. ⚑ So this writes on
- * change, answers its own sentence, and the Save button goes on meaning *the capabilities*.
- *
- * ⚠️ **The picked word is FOLDED against the table rather than cast.** An option value this app does
- * not know becomes `null` — *use the app's default* — which is the narrow direction and the value
- * that changes nothing, exactly as `parseProvider` folds one layer down.
- */
-async function onProviderChange(event: Event): Promise<void> {
-  const picked = (event.target as HTMLSelectElement).value
-  const chosen = providers.value.find((one) => one === picked) ?? null
-  // ⚑ **The screen follows the gesture immediately**; the row catches up when the write lands, and
-  // the watch puts this back to whatever the database says either way.
-  shownProvider.value = chosen ?? ''
-  choosingProvider.value = true
-  providerCleared.value = null
-  const answer = await store.chooseProviderFor(props.profileSlug, chosen)
-  choosingProvider.value = false
-  providerRefusal.value = answer.ok ? null : answer.reason
-  // ⚑ **`696` · only a provider can clear a choice** — the door keeps it on a move to *nobody has
-  // said* — so `chosen` is a provider whenever `cleared` is set; the guard narrows the type.
-  if (answer.ok && answer.cleared !== null && chosen !== null) {
-    providerCleared.value = whatTheProviderPressCleared(answer.cleared, chosen)
-    // ⚑ **712 · the door's answer says nothing is held now** — so the warning goes with the choice
-    // at once, rather than one read later beside the line saying it was cleared.
-    heldChoice.value = null
-  }
-  // ⛔ **A refusal puts the control back to what the database says**, because the row did not move
-  // and a control left showing a choice that did not take is a surface claiming a write. ⚠️ The
-  // watch above cannot do this: it keys on the identity's ID, which does not change when a column
-  // does — the *"do not re-fill while it is being edited"* rule above, whose cost is that the one
-  // place a re-fill IS wanted has to ask for it.
-  if (providerRefusal.value !== null) shownProvider.value = identity.value?.provider ?? ''
-}
-
 /**
  * ⛔ **Why a Reopen is refused while this grant is edited and unsaved** (470).
  *
@@ -696,26 +546,6 @@ function onKey(event: KeyboardEvent): void {
       <div class="sheet-glyph">{{ profileSlug.slice(0, 1).toUpperCase() }}</div>
       <div class="sheet-header-copy">
         <strong data-cy="capabilities-title">{{ called }}</strong>
-        <!-- 🔴 **464 · WHOSE grant this is, said before anything else** (`460` F1, and `464` §1.2).
-             ⛔ **It said *"Every rail below is enforced when an agent asks to create a
-             conversation"*, and BOTH halves had gone wrong.** The verb is the one `456` took off
-             this act, and a sentence that DESCRIBES which rails fire when goes stale every time
-             the schema changes, which is standing rule 8 on the one surface where a person is
-             choosing.
-             ⚑ **What replaces it is the OWNER axis**, in `460`'s own words: *"this grant describes
-             what the identity whose sheet is open may do."* **What is true of every field is the
-             ROW**: each is stored on this identity's row and read whenever a conversation is
-             running as it.
-             ⛔ **`v-if="identity"`, and review is why.** This header is drawn OUTSIDE the body's
-             `v-else` chain, so it renders in the no-row state too — where *this is its own row*
-             would sit directly above the paragraph saying there is no such identity. ⚠️ The
-             sentence it replaces was vague enough to survive that state; this one is not, and a
-             sentence that contradicts the paragraph under it is worse than the one removed. -->
-        <small v-if="identity" data-cy="capabilities-owner"
-          >This is {{ called }}’s own row: every grant below is stored on it and read when a
-          conversation is running as {{ called }}. Any agent may start a conversation as
-          {{ called }}, and that conversation holds these grants.</small
-        >
       </div>
       <span class="spacer"></span>
       <button
@@ -773,81 +603,7 @@ function onKey(event: KeyboardEvent): void {
         </div>
       </div>
 
-      <!-- 🔴 **What a conversation a person starts as this identity runs on** (433, HO-024 §2.1;
-           696 scoped the note to that launch — `providerTakesEffectNextTime`).
-           ⛔ **ABOVE the rails and outside them, because it is not one.** Nothing below enforces
-           anything about this: no rail reads `provider`, it refuses nothing, and the header's
-           *"every rail below"* is a sentence about the controls under `spawn-rail-means`.
-           ⚠️ **Its own gesture rather than a field on Save** — see {@link onProviderChange}. -->
-      <div class="provider-choice" data-cy="capabilities-provider">
-        <label class="provider-row">
-          <span>Default provider</span>
-          <select
-            data-cy="capabilities-provider-select"
-            :value="shownProvider"
-            :disabled="choosingProvider"
-            @change="onProviderChange"
-          >
-            <!-- ⚑ **`NewAgent`'s own words for the same empty state**, so the door that creates an
-                 identity and the door that changes one do not name one fact two ways. -->
-            <option value="">{{ noProviderSavedSays(runsOnNow) }}</option>
-            <option v-for="each in providers" :key="each" :value="each">
-              {{ providerName(each) }}
-            </option>
-          </select>
-        </label>
-        <!-- 🔴 **HO-025, through `433` relay 1:** *"changing it means a new conversation, and the
-             app should SAY that rather than offer a control that silently relaunches."* ⚑ The
-             sentence lives beside `417`'s front-door one, in `front-door-words.ts`, and is rendered
-             from the RESOLVED provider so that *nobody has said* is never what a person reads. -->
-        <!-- ⚑ An agent whose conversations ran on both, with none saved: no agent can start a
-             conversation with it until a person chooses here, so the sheet says so first. -->
-        <p
-          v-if="runsOnNow?.from === 'its-conversations-differ'"
-          class="identity-note not-chosen"
-          data-cy="capabilities-provider-not-chosen"
-          role="status"
-        >
-          {{ aProviderNotChosenSays(null, runsOnNow.startedOn) }}
-        </p>
-        <p v-else class="identity-note" data-cy="capabilities-provider-note">
-          {{ providerTakesEffectNextTime(props.runsOn, true, isService) }}
-        </p>
-        <!-- 🔴 **712 · R56 — what the press WOULD take, before it** — see `providerWillClear`.
-             ⚑ Beside the select it is about, and gone while a press is in flight. -->
-        <p
-          v-if="providerWillClear && !choosingProvider"
-          class="identity-note"
-          data-cy="capabilities-provider-will-clear"
-        >
-          {{ providerWillClear }}
-        </p>
-        <!-- 🔴 **`696` · what the press took, in the door's answer** — see `providerCleared`. -->
-        <p
-          v-if="providerCleared"
-          class="identity-note"
-          data-cy="capabilities-provider-cleared"
-          role="status"
-        >
-          {{ providerCleared }}
-        </p>
-        <p
-          v-if="providerRefusal"
-          class="sheet-state err"
-          data-cy="capabilities-provider-error"
-          role="alert"
-        >
-          <svg class="icon"><use href="#i-alert" /></svg>
-          <span>{{ providerRefusal }}</span>
-        </p>
-      </div>
-
-      <!-- 🔴 **685 · the model and effort this agent runs on when ANOTHER agent starts it
-           — a spawn, or its message** (`677`, `R25`). ⚑ **Beside the provider choice, because a model belongs to a
-           provider** (`R25` §1.2) and the menus are the one *Runs on* resolves — ⚠️ or, since
-           `696`, a no-provider agent's CHOICE's provider (`theMenusAreFor`). ⛔ **Its own
-           component and its own gesture**, for the reason the provider row and `OwnInstructions`
-           give: this sheet's Save means *the capabilities*. -->
+      <!-- The saved connection determines the provider for new conversations. -->
       <AgentModelChoice
         :profile-slug="profileSlug"
         :runs-on="props.runsOn"
@@ -855,29 +611,9 @@ function onKey(event: KeyboardEvent): void {
         :capabilities="props.capabilities"
         :store="props.store"
         :lists="props.lists"
-        @held="(choice) => (heldChoice = choice)"
       />
 
-      <!-- 🔴 **582 · the `configured` layer's editor** (`HO-063` gap 4, `HO-009` §2.2).
-           ⛔ **Its own component with its own gesture**, for the provider choice's reason directly
-           above: this sheet has one Save button and a second write behind it could half-succeed.
-           ⚠️ **ABOVE the rails and outside them, because it is not one.** Nothing a person writes
-           here refuses anything — it is text an agent reads, not a gate — and putting it under
-           `spawn-rail-means` would make the header's *"every rail below"* false. -->
-      <p class="identity-note" data-cy="rules-fixed-policy">{{ RULE_WRITING_POLICY }}</p>
       <OwnInstructions :profile-slug="profileSlug" :store="props.store" />
-
-      <!-- 🔴 **What granting any of this buys, and where it stops** (368, HO-012 §2).
-           ⛔ **ABOVE the first control and not at the foot**, which is `367` §2's rule applied one
-           surface along: a person is told what a thing does *before* they choose it, not in a
-           footnote under the checkbox they already ticked.
-           ⚑ **Here and nowhere else, because this is the only screen where *an agent created it* is
-           a certainty rather than an inference** — see {@link SPAWN_RAIL_MEANS} for what the wire
-           does and does not carry.
-           ⚠️ **`identity-note` and not `note`**: this sheet's `.note` is `display: flex` with an
-           icon as its first item, and an alert glyph on this sentence would make a disclosure read
-           as an objection — `approval-mode.ts`'s rule, and `367` M18's trap in the same breath. -->
-      <p class="identity-note" data-cy="spawn-rail-means">{{ SPAWN_RAIL_MEANS }}</p>
 
       <!-- ⚠️ **No agent starts a conversation while the switch is off, so the sheet says so** — the
            other grants still apply to conversations already running — and it does
@@ -959,21 +695,12 @@ function onKey(event: KeyboardEvent): void {
           <span>This app has no control for a “{{ field.editor }}” capability yet.</span>
         </p>
 
-        <p class="note">{{ field.help }}</p>
-
         <!-- 🔴 **470 · WHEN a change to this grant lands, on the grants that have two answers**
              (HO-028 §3, from `460` F2). ⛔ **Drawn from the field and not from a name**: the sheet
              may spell no capability key (`the-rails-a-message-passes.test.ts` §8), and a
              `v-if` on `field.editor` would be a guess about which editors have launch-time
              consequences rather than a statement about which grants do. ⚑ A field that declares
              nothing draws nothing, which is every field but one today. -->
-        <p
-          v-if="field.whenItTakesEffect"
-          class="identity-note"
-          :data-cy="`grant-${field.key}-when`"
-        >
-          {{ field.whenItTakesEffect }}
-        </p>
 
         <!-- ⚑ **The offer, and it appears only where the sentence above has something to bite on.**
              ⛔ **A POSITIVE list**: it says *here is one you can reopen* and never *there is
@@ -988,9 +715,6 @@ function onKey(event: KeyboardEvent): void {
           class="reopen-offer"
           :data-cy="`grant-${field.key}-open-now`"
         >
-          <p class="identity-note">
-            Open as {{ called }} in this window. Reopening one gives it what this row says now.
-          </p>
           <div v-for="one in props.openAs" :key="one.sessionId" class="reopen-row">
             <div class="reopen-line">
               <span class="reopen-where">{{ one.where ?? one.sessionId }}</span>
@@ -1059,11 +783,6 @@ function onKey(event: KeyboardEvent): void {
              true of the EXCEPTION and false of the common case: a server registered as everyone's
              has no box and is used all the same. ⚑ Standing rule 19's corollary — a repair that
              changes behaviour a sentence describes corrects the sentence in the same commit. -->
-        <p class="identity-note" data-cy="external-mcp-direction">
-          A server registered as everyone’s is used by {{ called }} with nothing to tick. Tick a
-          restricted one to give {{ called }} that one; it writes {{ called }}’s row and changes
-          nothing about any other identity.
-        </p>
 
         <!-- 🔴 **The refusal, drawn with the PROVIDER's own reason** (brief §2).
              ⛔ **The sentence is `HO-037` §1's *tell, don't clamp*** — it withholds nothing a person
@@ -1094,13 +813,6 @@ function onKey(event: KeyboardEvent): void {
              {@link externalMcpAnswersForTheFallback}. ⛔ Its own paragraph and NOT appended to the
              provider's sentence: that string belongs to `ProviderCapabilities` and this app does not
              own it, so growing it here would be composing a second refusal (`423` §2). -->
-        <p
-          v-if="externalMcpAnswersForTheFallback"
-          class="identity-note"
-          data-cy="external-mcp-answers-for-the-fallback"
-        >
-          {{ externalMcpAnswersForTheFallback }}
-        </p>
 
         <!-- 🔴 **524 · the servers this identity may use without being granted anything** (`HO-048` §1).
              ⛔ **No `<input>` at all, rather than a ticked one that is `disabled`.** A checkbox is a
@@ -1117,9 +829,6 @@ function onKey(event: KeyboardEvent): void {
             <span>{{ server.name }}</span>
             <em>{{ server.url }}</em>
             <em class="stored">{{ EXTERNAL_MCP_EVERYONES }}</em>
-          </p>
-          <p class="identity-note" data-cy="external-mcp-reach-fixed">
-            {{ EXTERNAL_MCP_REACH_IS_FIXED }}
           </p>
         </div>
 
@@ -1153,20 +862,9 @@ function onKey(event: KeyboardEvent): void {
              error, not an empty form, and it says where the thing that would fill it lives, because
              *a disabled control must say what would let it* (`106`). -->
         <!-- The empty-state pointer names the Settings row and its Tools tab. -->
-        <p v-if="registry.length === 0" class="note" data-cy="external-mcp-empty">
-          No external MCP servers are registered yet. Add one from Settings → Tools — a local
-          address, registered once for the whole app.
-        </p>
-
-        <p class="identity-note" data-cy="external-mcp-when">{{ EXTERNAL_MCP_TAKES_EFFECT }}</p>
       </div>
 
       <!-- ⚠️ **The blind spot, named where a person meets it** — see `CapabilityOrigin`. -->
-      <p class="identity-note" data-cy="capabilities-fold-note">
-        A value BroCrew cannot read is treated as the narrowest one — no grants, a bound of zero —
-        so a mangled column never widens what an agent may do. This sheet shows what the rails read,
-        which for such a column is that narrowest value rather than what is written in it.
-      </p>
 
       <p v-if="saveRefusal" class="note err block" data-cy="capabilities-save-refusal" role="alert">
         <svg class="icon"><use href="#i-alert" /></svg>
@@ -1350,36 +1048,6 @@ function onKey(event: KeyboardEvent): void {
   color: var(--muted);
   font-size: var(--type-caption);
   line-height: 1.5;
-}
-
-/* ⚑ 433 · the identity's provider — a `.field` in every way but the border, because the rails below
-   are separated from each other and this one is separated FROM them. */
-.provider-choice {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-
-.provider-row {
-  display: flex;
-  min-width: 0;
-  align-items: baseline;
-  gap: var(--space-4);
-}
-
-.provider-row > span {
-  color: var(--muted);
-  font-size: var(--type-caption);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-/* ⛔ The select takes the space that is left rather than its own content width, so a provider name
-   of any length cannot push the row past the sheet — `capabilities-sheet-fits.dom.test.ts`'s rule. */
-.provider-row > select {
-  min-width: 0;
-  flex: 1 1 auto;
 }
 
 .field {

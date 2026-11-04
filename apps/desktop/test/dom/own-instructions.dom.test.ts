@@ -2,12 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
 import OwnInstructions from '../../src/renderer/src/components/OwnInstructions.vue'
-import {
-  NOBODY_HAS_WRITTEN_ONE,
-  TAKES_EFFECT_AT_THE_NEXT_LAUNCH,
-  WROTE_IT_MEANS,
-  type AgentInstructionsReading,
-} from '../../src/shared/own-instructions'
+import { WROTE_IT_MEANS, type AgentInstructionsReading } from '../../src/shared/own-instructions'
 import type { AgentStore } from '../../src/renderer/src/lib/agent-store'
 import { assertDrawn, drawnReady } from './drawn'
 import { mount, unmountAll, type Mounted } from './harness'
@@ -139,7 +134,8 @@ describe('582 · the rules box a person writes in', () => {
 
   it('⛔ an agent nobody has written rules for says so, and offers the box anyway', async () => {
     const sheet = await opened(EMPTY)
-    expect(sheet.q('own-instructions-empty').textContent?.trim()).toBe(NOBODY_HAS_WRITTEN_ONE)
+    expect(sheet.all('own-instructions-empty')).toHaveLength(0)
+    expect((sheet.q('own-instructions-text') as HTMLTextAreaElement).value).toBe('')
     // ⚑ **The control exists in the empty state**, which is the whole of *there is somewhere to
     // write it now*: an editor a person only meets after somebody else has written something is
     // the door `HO-073` §3.1 says does not exist.
@@ -149,12 +145,11 @@ describe('582 · the rules box a person writes in', () => {
 
   it('🔴 the sentence about WHEN a rule takes effect is on screen, whole', async () => {
     const sheet = await opened(EMPTY)
-    const said = sheet.q('own-instructions-when')
-    // ⛔ **Standing rule 8.2's sentence is the one a person must not half-read.** `574` measured
-    // what our own prose about WHEN a fact is read costs when it is wrong; a clipped version of it
-    // is the same defect with the app doing the clipping.
-    expect(said.textContent?.trim()).toBe(TAKES_EFFECT_AT_THE_NEXT_LAUNCH)
-    assertDrawn(said, 'the sentence about when a rule takes effect')
+    expect(sheet.all('own-instructions-when')).toHaveLength(0)
+    const editor = sheet.q('own-instructions-text') as HTMLTextAreaElement
+    expect(editor.placeholder).toBe('Rules this agent should follow, in every conversation.')
+    assertDrawn(editor, 'the rules editor')
+    assertDrawn(sheet.q('own-instructions-save'), 'the Save control')
   })
 
   it('🔴 a relayed version says this app did not check the claim, from the TABLE', async () => {

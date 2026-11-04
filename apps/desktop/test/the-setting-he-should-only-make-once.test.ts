@@ -454,7 +454,7 @@ describe('500 · the setting he should only ever make once', () => {
       // ⚑ **D-016** — the spawn arm is the GIVE's start arm, and its own last return names the
       // folder it started in.
       const spawnArm = between('async giveWork(', 'startedIn: start.cwd')
-      expect(spawnArm).toContain('this.createFromGive(start, startsOn)')
+      expect(spawnArm).toContain('this.createFromGive(start, startsOn, selectedConnection?.id)')
       // The give's start arm builds the child's createSession input in a method of its own.
       const startArm = between('private createFromGive(', '\n  }\n')
       expect(startArm).toContain('approvalMode: start.approvalMode')
