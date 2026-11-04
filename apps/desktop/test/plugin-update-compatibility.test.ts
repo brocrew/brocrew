@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { readFile, readdir, mkdir, writeFile, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -17,12 +17,11 @@ import { GlobalPluginState } from '../src/main/plugins/state/store'
 import {
   JournalRecord as ParentRecord,
   decodeState as decodeParent,
+  encodeState as encodeParent,
 } from './fixtures/plugin-update-parent/state-format'
 import { pluginSha256 } from '../src/main/plugins/package-digests'
-import { GlobalPluginState as ParentState } from './fixtures/plugin-update-parent/state-store'
-import { PluginLifecycleController as ParentController } from './fixtures/plugin-update-parent/lifecycle-controller'
-import { servePersonPluginControl as parentServer } from './fixtures/plugin-update-parent/lifecycle-person-control'
-import { connectPluginSettings as parentClient } from './fixtures/plugin-update-parent/lifecycle-settings-client'
+import { PersonChannel } from '../src/main/plugins/lifecycle/transport'
+import { sharedLifecycleWorkspaces } from '../src/main/plugins/lifecycle/workspaces'
 import parentSources from './fixtures/plugin-update-parent/source.json'
 
 beforeEach(() => {
@@ -71,7 +70,7 @@ function exitable(f: Awaited<ReturnType<typeof fixture>>) {
   }
 }
 async function prepared() {
-  const f = await fixture({}, false, 'whatsapp')
+  const f = await fixture({}, false, 'fictional-bakery')
   exitable(f)
   const next = packageFixture({ manifest: { ...f.pkg.manifest, version: '1.0.3' } })
   f.opts.download = async (release) =>
@@ -80,10 +79,12 @@ async function prepared() {
     catalogue: { bytes: next.bytes, signature: next.signature },
     names: f.opts.names,
   })
-  await f.controller.install(f.handle, 'whatsapp')
-  const data = join(f.root, 'data', 'whatsapp')
+  await f.controller.install(f.handle, 'fictional-bakery')
+  const data = join(f.root, 'data', 'fictional-bakery')
   await mkdir(data, { recursive: true })
   await writeFile(join(data, 'login'), 'fictional-paired-phone')
+  await writeFile(join(data, 'profiles.json'), '{"birch":{"enabled":false}}')
+  await writeFile(join(data, 'consumed-commands.json'), '{"open-once":"consumed"}')
   await f.controller.refreshCatalogue(pluginSha256(next.bytes))
   return { ...f, next, data }
 }
@@ -94,6 +95,7 @@ const clientOptions = (f: Awaited<ReturnType<typeof fixture>>, path: string) => 
   pinnedPublicKey: f.opts.pinnedPublicKey,
   target: f.opts.target,
   catalogue: { bytes: f.pkg.bytes, signature: f.pkg.signature },
+  download: f.opts.download,
   projection: projection().sink,
   propose() {},
 })
@@ -109,7 +111,7 @@ async function diskBytes(root: string, prefix = ''): Promise<Record<string, stri
   return files
 }
 describe.skipIf(process.platform === 'win32')(
-  'mixed-version plugin owners on fictional roots',
+  'ordinary updates and retained legacy package data on fictional roots',
   () => {
     it.each(['install', 'update'] as const)(
       'keeps ordinary %s working with an intact historical v2 legacy-row vault',
@@ -165,73 +167,98 @@ describe.skipIf(process.platform === 'win32')(
         }
       },
     )
-    it('the parent client keeps listing and Configure against a new owner with a newer catalogue', async () => {
+    it('a caller keeps listing and Configure when the owner selects a different catalogue', async () => {
       const f = await prepared()
+      const data = await diskBytes(f.data)
       const bridge = await servePersonPluginControl({
         root: f.root,
         key: 'a'.repeat(64),
-        controller: f.controller,
+        controller: sharedLifecycleWorkspaces(f.controller),
         read: async () => ({}),
       })
-      const client = await parentClient(clientOptions(f, bridge.path))
+      const client = await connectPluginSettings(clientOptions(f, bridge.path))
       try {
         expect(await client.catalogue()).toMatchObject([
-          { id: 'whatsapp', installed: true, state: 'Running' },
+          { id: 'fictional-bakery', installed: true, state: 'Running', installedVersion: '1.0.0' },
         ])
-        expect(Object.keys((await client.catalogue())[0]!).sort()).toEqual([
-          'id',
-          'installed',
-          'name',
-          'state',
-        ])
-        const screen = await client.screen('whatsapp')
+        const screen = await client.screen('fictional-bakery')
         expect(screen.current(screen.binding)).toBe(true)
-        expect(screen.verified.manifest.version).toBe(f.pkg.manifest.version)
-        await f.controller.update(f.handle, 'whatsapp')
-        expect((await client.catalogue())[0]?.state).toBe('Running')
-        expect((await client.screen('whatsapp')).verified.manifest.version).toBe('1.0.3')
-        expect(await readFile(join(f.data, 'login'), 'utf8')).toBe('fictional-paired-phone')
+        expect(screen.verified.readFile('plugin.json')).toEqual(
+          Uint8Array.from(f.pkg.manifestBytes),
+        )
+        await f.controller.update(f.handle, 'fictional-bakery')
+        expect(screen.current(screen.binding)).toBe(false)
+        expect((await client.catalogue())[0]).toMatchObject({
+          state: 'Running',
+          installedVersion: '1.0.3',
+        })
+        const current = await client.screen('fictional-bakery')
+        expect(current.current(current.binding)).toBe(true)
+        expect(current.verified.readFile('plugin.json')).toEqual(
+          Uint8Array.from(f.next.manifestBytes),
+        )
+        expect(await diskBytes(f.data)).toEqual(data)
+        expect(fetch).not.toHaveBeenCalled()
       } finally {
         await client.close()
         await bridge.close()
         await f.controller.drain()
       }
     })
-    it('the new client lists and configures under the actual parent owner without offering unsupported verbs', async () => {
-      const f = await fixture({}, false, 'whatsapp')
-      exitable(f)
-      f.state.close()
-      const state = ParentState.open({ root: join(f.root, 'state'), workspaceRoots: [f.workspace] })
-      const controller = await ParentController.open({ ...f.opts, state: state as never })
-      const handle = await controller.attach(projection().sink)
-      await controller.install(handle, 'whatsapp')
-      const bridge = await parentServer({
+    it('ordinary local updates work without optional owner features and retain opaque legacy data', async () => {
+      const f = await prepared()
+      const data = await diskBytes(f.data)
+      const path = join(f.parent, 'fictional-selected-update.tar')
+      await writeFile(path, f.next.archive)
+      const call = PersonChannel.prototype.call
+      vi.spyOn(PersonChannel.prototype, 'call').mockImplementation(function (
+        this: PersonChannel,
+        input,
+      ) {
+        if (input && typeof input === 'object' && 'kind' in input && input.kind === 'features')
+          return Promise.resolve({ features: [] })
+        return call.call(this, input)
+      })
+      const bridge = await servePersonPluginControl({
         root: f.root,
         key: 'a'.repeat(64),
-        controller,
+        controller: sharedLifecycleWorkspaces(f.controller),
         read: async () => ({}),
       })
-      // The window's list can have advanced while the older owner retains its admitted list.
-      const next = packageFixture({ manifest: { ...f.pkg.manifest, version: '1.0.3' } })
-      const client = await connectPluginSettings({
-        ...clientOptions(f, bridge.path),
-        catalogue: { bytes: next.bytes, signature: next.signature },
-      })
+      const client = await connectPluginSettings(clientOptions(f, bridge.path))
       try {
-        expect(client.refreshCatalogue).toBeUndefined()
-        expect(client.update).toBeUndefined()
-        expect(await client.catalogue()).toMatchObject([
-          { installed: true, state: 'Running', uninstallDeletesData: true },
-        ])
-        const screen = await client.screen('whatsapp')
-        expect(screen.current(screen.binding)).toBe(true)
-        expect(screen.verified.manifest.version).toBe(f.pkg.manifest.version)
-        expect(state.inspect().pending).toBeNull()
+        expect(client.features!()).toEqual([])
+        expect(client.mutationRequired!()).toBe(false)
+        const before = await client.screen('fictional-bakery')
+        const selected = await client.inspectPackage!({ source: path })
+        expect(selected.ref).toEqual({
+          source: path,
+          sha256: pluginSha256(f.next.archive),
+          bytes: f.next.archive.length,
+        })
+        expect(selected.details).toMatchObject({
+          authors: null,
+          permissions: f.next.manifest.permissions,
+          digest: selected.ref.sha256,
+        })
+        await client.applyPackage!(selected.ref, 'update')
+        expect(before.current(before.binding)).toBe(false)
+        expect((await client.catalogue())[0]).toMatchObject({
+          installed: true,
+          state: 'Running',
+          installedVersion: '1.0.3',
+        })
+        expect((await client.screen('fictional-bakery')).verified.readFile('plugin.json')).toEqual(
+          Uint8Array.from(f.next.manifestBytes),
+        )
+        expect(f.state.inspect().pending).toBeNull()
+        expect(await diskBytes(f.data)).toEqual(data)
+        expect(await readFile(path)).toEqual(f.next.archive)
+        expect(fetch).not.toHaveBeenCalled()
       } finally {
         await client.close()
         await bridge.close()
-        await controller.drain()
-        state.close()
+        await f.controller.drain()
       }
     })
     it.each([
@@ -244,142 +271,173 @@ describe.skipIf(process.platform === 'win32')(
       'activated',
       'complete',
     ] as const)(
-      'the parent owner replays or refuses without recovery effects after %s, and the new owner recovers',
+      'retains selected bytes and opaque data across %s, then recovers offline without replay',
       async (boundary) => {
         const f = await prepared()
+        const data = await diskBytes(f.data)
         const operationId = '00000000-0000-4000-8000-000000000001'
+        const reached: string[] = []
         f.opts.fault = (point) => {
-          if (point === (boundary === 'prepared-missing' ? 'prepared' : boundary))
+          if (
+            boundary !== 'complete' &&
+            point === (boundary === 'prepared-missing' ? 'prepared' : boundary)
+          ) {
+            reached.push(point)
             throw new Error('fictional interruption')
+          }
         }
-        await f.controller.update(f.handle, 'whatsapp', operationId).catch(() => {})
+        const update = f.controller.update(f.handle, 'fictional-bakery', operationId)
+        if (boundary === 'complete') await update
+        else await expect(update).rejects.toThrow()
+        expect(reached).toEqual(
+          boundary === 'complete' ? [] : [boundary === 'prepared-missing' ? 'prepared' : boundary],
+        )
         if (boundary === 'prepared-missing')
           await unlink(join(f.root, 'lifecycle-effects', operationId + '.json'))
         await f.controller.drain()
-        f.state.close()
-        const before = await diskBytes(f.root)
-        const guard = join(f.root, 'state', 'lifecycle-guard')
-        const records = await Promise.all(
-          (await readdir(guard))
-            .filter((name) => /^\d{8}\.json$/.test(name))
-            .sort()
-            .map(async (name) => {
-              const bytes = await readFile(join(guard, name))
-              return { bytes, record: JSON.parse(JSON.parse(bytes.toString()).payload) }
-            }),
-        )
-        if (boundary !== 'staged') {
-          const floor = records.findIndex(({ record }) => record.event.kind === 'reader-floor')
-          expect(floor).toBeGreaterThan(0)
-          for (const entry of records.slice(0, floor))
-            expect(() => decodeParent(entry.bytes, ParentRecord)).not.toThrow()
-          expect(() => decodeParent(records[floor]!.bytes, ParentRecord)).toThrow()
-          const updating = records.findIndex(
-            ({ record }) => record.event.operation?.request.consent.action === 'update',
-          )
-          if (updating >= 0) expect(updating).toBeGreaterThan(floor)
-        }
-        const start = vi.fn(f.opts.runtime.start),
-          removeData = vi.fn(),
-          removeCode = vi.fn()
-        const attempt = async () => {
-          const state = ParentState.open({
-            root: join(f.root, 'state'),
-            workspaceRoots: [f.workspace],
-          })
-          try {
-            const parent = await ParentController.open({
-              ...f.opts,
-              state: state as never,
-              catalogue: { bytes: f.pkg.bytes, signature: f.pkg.signature },
-              runtime: { ...f.opts.runtime, start, removeData, removeCode },
-            })
-            await parent.attach(projection().sink)
-            await parent.drain()
-          } finally {
-            state.close()
-          }
-        }
-        if (boundary === 'staged') await expect(attempt()).resolves.toBeUndefined()
-        else {
-          await expect(attempt()).rejects.toMatchObject({
-            name: 'PluginStateError',
-            code: 'corrupt',
-          })
-          expect(await diskBytes(f.root)).toEqual(before)
-          expect(start).not.toHaveBeenCalled()
-        }
-        expect(fetch).not.toHaveBeenCalled()
-        expect(removeData).not.toHaveBeenCalled()
-        expect(removeCode).not.toHaveBeenCalled()
-        expect(await readFile(join(f.data, 'login'), 'utf8')).toBe('fictional-paired-phone')
+        const expectedVersion =
+          boundary === 'staged' || boundary === 'update-fenced' ? '1.0.0' : '1.0.3'
+        const selected = expectedVersion === '1.0.0' ? f.pkg : f.next
+        const download = vi.fn(async () => {
+          throw new Error('fictional offline recovery')
+        })
+        const start = vi.fn(f.opts.runtime.start)
+        const removeData = vi.fn(async () => {})
+        const removeCode = vi.fn(async () => {})
         const state = reopenLifecycleFixture(f)
-        const current = await PluginLifecycleController.open({ ...f.opts, state, fault: undefined })
-        await current.attach(projection().sink)
-        expect(state.inspect().pending).toBeNull()
-        expect(state.exportActivation().entries[0]?.release.version).toBe(
-          boundary === 'staged' || boundary === 'update-fenced' ? f.pkg.manifest.version : '1.0.3',
-        )
-        expect(await readFile(join(f.data, 'login'), 'utf8')).toBe('fictional-paired-phone')
-        await current.drain()
+        const current = await PluginLifecycleController.open({
+          ...f.opts,
+          state,
+          fault: undefined,
+          download,
+          runtime: { ...f.opts.runtime, start, removeData, removeCode },
+        })
+        try {
+          const handle = await current.attach(projection().sink)
+          expect(state.inspect().pending).toBeNull()
+          expect(state.exportActivation().entries[0]?.release).toMatchObject({
+            version: expectedVersion,
+            archiveSha256: pluginSha256(selected.archive),
+            manifestSha256: selected.release.manifestSha256,
+          })
+          expect(
+            current.screen(handle, 'fictional-bakery').package.readFile('plugin.json'),
+          ).toEqual(Uint8Array.from(selected.manifestBytes))
+          if (boundary !== 'staged' && boundary !== 'update-fenced') {
+            const beforeRetry = start.mock.calls.length
+            await current.update(handle, 'fictional-bakery', operationId)
+            expect(start).toHaveBeenCalledTimes(beforeRetry)
+            expect(state.operation(operationId)?.status).toBe('completed')
+          }
+          expect(download).not.toHaveBeenCalled()
+          expect(fetch).not.toHaveBeenCalled()
+          expect(removeData).not.toHaveBeenCalled()
+          expect(removeCode).not.toHaveBeenCalled()
+          expect(await diskBytes(f.data)).toEqual(data)
+          expect(
+            await readFile(
+              join(f.root, 'package-vault', selected.release.archive.sha256, 'archive'),
+            ),
+          ).toEqual(selected.archive)
+        } finally {
+          await current.drain()
+        }
       },
     )
   },
 )
 
 describe.skipIf(process.platform === 'win32')(
-  'reader-floor publication interrupts on fictional roots',
+  'interrupted migration of retained legacy installation and archive bytes',
   () => {
     it.each(['staged', 'published', 'durable'] as const)(
-      'the old reader stays safe when the floor is interrupted at %s',
+      'reopens the selected legacy package after atomic migration is interrupted at %s',
       async (point) => {
         const f = await prepared()
+        const selected = f.state.exportActivation()
+        const install = selected.entries[0]!
+        const operation = f.state
+          .inspect()
+          .operations.find((one) => one.operation.request.consent.action === 'install')!.operation
+        const data = await diskBytes(f.data)
         await f.controller.drain()
         f.state.close()
-        let armed = false
-        const state = GlobalPluginState.open({
-          root: join(f.root, 'state'),
-          workspaceRoots: [f.workspace],
-          fault(at) {
-            if (armed && at === point) throw new Error('fictional floor interruption')
+        const root = join(f.root, 'state')
+        const guard = join(root, 'lifecycle-guard')
+        const activations = join(root, 'activations')
+        await mkdir(guard, { recursive: true })
+        await mkdir(activations, { recursive: true })
+        const activation = encodeParent(selected)
+        const activationName = '00000002-' + pluginSha256(activation) + '.json'
+        await writeFile(join(activations, activationName), activation)
+        const events = [
+          { kind: 'created', rootId: selected.rootId, epoch: selected.epoch },
+          { kind: 'prepared', operation },
+          {
+            kind: 'completed',
+            operationId: operation.request.operationId,
+            activation: { name: activationName, sha256: pluginSha256(activation) },
           },
-        })
-        armed = true
-        expect(() => state.requireUpdateReader()).toThrow()
-        state.close()
-        const before = await diskBytes(f.root)
-        const attempt = () => {
-          const parent = ParentState.open({
-            root: join(f.root, 'state'),
+        ]
+        let previous: string | null = null
+        for (const [sequence, event] of events.entries()) {
+          const bytes = encodeParent({ sequence, previous, publicationId: randomUUID(), event })
+          expect(() => decodeParent(bytes, ParentRecord)).not.toThrow()
+          await writeFile(join(guard, String(sequence).padStart(8, '0') + '.json'), bytes)
+          previous = pluginSha256(bytes)
+        }
+        const oldJournal = await diskBytes(guard)
+        const oldActivations = await diskBytes(activations)
+        const vault = join(f.root, 'package-vault', install.release.archiveSha256)
+        await unlink(join(vault, 'release.json'))
+        await writeFile(join(vault, 'catalogue.json'), f.pkg.bytes)
+        await writeFile(join(vault, 'catalogue.sig'), f.pkg.signature)
+        const oldVault = await diskBytes(vault)
+        await unlink(join(root, 'installed-state.json'))
+        expect(() =>
+          GlobalPluginState.open({
+            root,
             workspaceRoots: [f.workspace],
-          })
-          try {
-            expect(parent.exportActivation().entries[0]?.release.version).toBe(
-              f.pkg.manifest.version,
-            )
-          } finally {
-            parent.close()
-          }
-        }
-        if (point === 'staged') expect(attempt).not.toThrow()
-        else {
-          expect(attempt).toThrow()
-          expect(await diskBytes(f.root)).toEqual(before)
-        }
-        expect(await readFile(join(f.data, 'login'), 'utf8')).toBe('fictional-paired-phone')
-        const current = GlobalPluginState.open({
-          root: join(f.root, 'state'),
-          workspaceRoots: [f.workspace],
+            fault(at) {
+              if (at === point) throw new Error('fictional migration interruption')
+            },
+          }),
+        ).toThrow('fictional migration interruption')
+        const state = reopenLifecycleFixture(f)
+        expect(state.exportActivation()).toEqual(selected)
+        expect(state.operation(operation.request.operationId)?.status).toBe('completed')
+        expect(state.inspect().pending).toBeNull()
+        const snapshot = await readFile(join(root, 'installed-state.json'))
+        expect(() => state.requireUpdateReader()).not.toThrow()
+        state.requireUpdateReader()
+        expect(await readFile(join(root, 'installed-state.json'))).toEqual(snapshot)
+        const download = vi.fn(async () => {
+          throw new Error('fictional offline migration')
+        })
+        const removeData = vi.fn(async () => {})
+        const current = await PluginLifecycleController.open({
+          ...f.opts,
+          state,
+          download,
+          fault: undefined,
+          catalogue: signed({ format: 1, entries: [] }),
+          runtime: { ...f.opts.runtime, removeData },
         })
         try {
-          expect(current.inspect().pending).toBeNull()
-          current.requireUpdateReader()
-          current.requireUpdateReader()
-          expect(current.exportActivation().entries[0]?.release.version).toBe(
-            f.pkg.manifest.version,
-          )
+          const handle = await current.attach(projection().sink)
+          expect(
+            current.screen(handle, 'fictional-bakery').package.readFile('plugin.json'),
+          ).toEqual(Uint8Array.from(f.pkg.manifestBytes))
+          expect(state.currentInstallation('fictional-bakery')?.installId).toBe(install.installId)
+          expect(await diskBytes(guard)).toEqual(oldJournal)
+          expect(await diskBytes(activations)).toEqual(oldActivations)
+          expect(await diskBytes(vault)).toEqual(oldVault)
+          expect(await diskBytes(f.data)).toEqual(data)
+          expect(download).not.toHaveBeenCalled()
+          expect(fetch).not.toHaveBeenCalled()
+          expect(removeData).not.toHaveBeenCalled()
         } finally {
-          current.close()
+          await current.drain()
         }
       },
     )
