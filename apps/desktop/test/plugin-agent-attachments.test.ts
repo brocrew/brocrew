@@ -9,7 +9,12 @@ import { fixture, cleanupLifecycleFixtures } from './plugin-lifecycle-fixtures'
 import type { WorkspaceLease } from '../src/main/plugins/supervisor/owner'
 import type { Command } from '../src/main/plugins/supervisor/protocol'
 import type { BrokerInput, BrokerClock } from '../src/main/plugins/tool-broker'
-import type { ManagedPluginMcpServer } from '@brobot2/runtime'
+import {
+  FakeRuntime,
+  withManagedPluginAttachments,
+  type ManagedPluginMcpServer,
+  type SessionHandle,
+} from '@brobot2/runtime'
 
 const closes: (() => Promise<unknown>)[] = []
 function brokerClock() {
@@ -158,6 +163,105 @@ async function live(
   }
 }
 describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, inert server', () => {
+  it.each(['claude', 'codex'] as const)(
+    '%s keeps its conversation identity and calls the real replacement route on its next sent turn',
+    async (provider) => {
+      let restart!: (runId: string, stopped: () => void) => Promise<void>
+      const f = await live({ recoverChromeHost: (view, stopped) => restart(view.runId, stopped) })
+      restart = (runId, stopped) => f.controller.restartChromeTools(runId, stopped)
+      const original = await f.binding()
+      let fail!: (error: Error) => void
+      f.binding.mockResolvedValueOnce({
+        ...original,
+        server: {
+          ...original.server,
+          tool() {
+            f.call()
+            const proof = new Promise<void>((_resolve, reject) => {
+              fail = reject
+            })
+            return { result: new Promise<never>(() => {}), quiescent: proof, cancel() {} }
+          },
+        },
+      })
+      const owner = lease(),
+        req = request(f.local.sink.workspaceId)
+      const raw = new FakeRuntime(provider)
+      const replies: unknown[] = []
+      const configs: ManagedPluginMcpServer[][] = []
+      const refresh = vi.fn()
+      function instrument<T extends SessionHandle>(
+        handle: T,
+        initial: readonly ManagedPluginMcpServer[],
+      ): T {
+        let servers = initial
+        configs.push([...servers])
+        // This fake provider owns no process; real MCP calls below still cross the host broker.
+        Object.defineProperty(handle, 'awaitProcessExit', { value: () => Promise.resolve() })
+        if (provider === 'claude')
+          Object.defineProperty(handle, 'refreshManagedPlugins', {
+            value: async (next: readonly ManagedPluginMcpServer[]) => {
+              refresh()
+              servers = next
+              configs.push([...servers])
+            },
+          })
+        const session: SessionHandle = handle
+        vi.spyOn(session, 'send').mockImplementation(async () => {
+          const client = await connected(servers[0]!)
+          replies.push(
+            await client.callTool({ name: 'echo', arguments: {} }, undefined, { timeout: 1500 }),
+          )
+        })
+        return handle
+      }
+      const start = raw.start.bind(raw),
+        resume = raw.resume.bind(raw)
+      const started = vi
+        .spyOn(raw, 'start')
+        .mockImplementation(async (options) =>
+          instrument(await start(options), options.managedPluginMcp ?? []),
+        )
+      const resumed = vi
+        .spyOn(raw, 'resume')
+        .mockImplementation(async (ref, options) =>
+          instrument(await resume(ref, options), options.managedPluginMcp ?? []),
+        )
+      const runtime = withManagedPluginAttachments(raw, {
+        async read() {
+          const servers = await f.bridge.routes(owner, req)
+          return { revision: String(f.starts()), servers }
+        },
+        async close() {
+          await f.bridge.routes(owner, { ...req, release: true })
+        },
+      })
+      const conversation = await runtime.start({ cwd: process.cwd(), providerHome: f.root })
+      closes.push(() => conversation.close())
+      const identity = conversation.ref
+      expect(identity).not.toBeNull()
+      const first = conversation.send('fictional first turn')
+      await vi.waitFor(() => expect(f.call).toHaveBeenCalledOnce())
+      fail(new Error('fictional failed completion proof'))
+      await first
+      expect(replies[0]).toMatchObject({ isError: true })
+      await vi.waitFor(() => expect(f.starts()).toBe(2))
+      await conversation.send('fictional next turn')
+      expect(replies[1]).toMatchObject({ content: [{ text: 'fictional fern' }] })
+      expect(conversation.ref).toEqual(identity)
+      expect(started).toHaveBeenCalledOnce()
+      expect(configs).toHaveLength(2)
+      expect(configs[1]![0]!.capability).not.toBe(configs[0]![0]!.capability)
+      if (provider === 'codex') {
+        expect(resumed).toHaveBeenCalledOnce()
+        expect(resumed.mock.calls[0]![0]).toEqual(identity)
+      } else {
+        expect(resumed).not.toHaveBeenCalled()
+        expect(refresh).toHaveBeenCalledOnce()
+      }
+      expect((await f.controller.status()).cards[0]).not.toHaveProperty('toolsUnavailable')
+    },
+  )
   it('records binding failure as a closed refusal without downstream names or error text', async () => {
     const f = await live()
     const log = vi.spyOn(console, 'warn').mockImplementation(() => {})

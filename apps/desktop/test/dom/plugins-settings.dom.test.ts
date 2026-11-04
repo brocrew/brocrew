@@ -830,7 +830,7 @@ it('offers the approved one-click Chrome restart only on the supported degraded 
         state: 'Running' as const,
         toolsUnavailable: true as const,
       },
-      { canRestart: true },
+      { canRestart: true as const },
     ),
   ])
   const original = f.client.request
