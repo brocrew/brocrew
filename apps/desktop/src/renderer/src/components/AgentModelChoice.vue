@@ -10,7 +10,7 @@ import {
   aChoiceIsInForce,
   type AgentModelChoice,
 } from '../../../shared/model-choice'
-import type { AgentStore } from '../lib/agent-store'
+import { runsOnIn, type AgentStore } from '../lib/agent-store'
 import { theMenusAreFor } from '../lib/agent-model-choice'
 import type { ModelLists, PickedModel } from '../lib/model-lists'
 import { useAgentStore } from '../composables/useAgentStore'
@@ -129,7 +129,10 @@ watch(
  */
 const ownProvider = computed(() => {
   const row = store.value.identities.value?.identities.find((one) => one.slug === props.profileSlug)
-  return row === undefined ? props.itsProvider : row.provider
+  if (row === undefined) return props.itsProvider
+  if (row.provider !== null) return row.provider
+  const inferred = runsOnIn(store.value.identities.value, props.profileSlug)
+  return inferred?.from === 'its-conversations' ? inferred.provider : null
 })
 const menusFor = computed(() =>
   theMenusAreFor(ownProvider.value ?? props.runsOn, ownProvider.value, held.value),
