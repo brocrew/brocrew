@@ -297,23 +297,33 @@ describe.skipIf(process.platform === 'win32')(
         ack = deferred<boolean>()
       const f = await fixture({ runtime: exitingRuntime(exit.promise) })
       await f.controller.install(f.handle, 'chrome')
+      const snapshot = join(f.root, 'state', 'installed-state.json'),
+        selected = await readFile(snapshot)
       const revoke = vi.spyOn(f.local.sink, 'revoke').mockImplementation(() => ack.promise)
       const applied = vi.spyOn(f.local.sink, 'applied')
+      const reconcile = vi.fn(async () => {
+        throw new Error('fictional newer cleanup failure')
+      })
       exit.resolve()
       await vi.waitFor(() => expect(revoke).toHaveBeenCalled())
       await expect(
         f.controller.reconcileConsumer(f.handle, {
           ...f.local.sink,
           revoke: async () => true,
-          reconcile: async () => {
-            throw new Error('fictional newer cleanup failure')
-          },
+          reconcile,
         }),
       ).rejects.toMatchObject({ code: 'corrupt' })
+      expect(reconcile).toHaveBeenCalledExactlyOnceWith({
+        pluginId: 'chrome',
+        before: null,
+        receipt: null,
+      })
+      expect(await readFile(snapshot)).toEqual(selected)
       ack.resolve(true)
       await vi.waitFor(() => expect(applied).toHaveBeenCalledWith('chrome', null))
       expect((await f.controller.status()).cleanupPending).toEqual(['chrome'])
       expect(f.controller.cleanForShutdown()).toBe(false)
+      expect(await readFile(snapshot)).toEqual(selected)
     })
     it('a proven crash drains the shared owner and its successor starts while another plugin stays running', async () => {
       const f = await fixture()
