@@ -11,6 +11,7 @@ import { PluginSupervisorAttachment, pluginSupervisorRoot } from './plugins/supe
 import { sharedDataOwner } from './plugins/shared-data'
 import { PLUGIN_SCHEME } from './plugins/ui/assets'
 import { installPluginUiRpc } from './plugins/ui/host'
+import { registerPluginHostIpc } from './plugins/host-ipc'
 import { ipcMain } from './app-ipc'
 import startStorageWorker from './storage.worker?nodeWorker'
 import { StorageService } from './storage/service'
@@ -807,6 +808,7 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
   const providerAuth = providerAuthFromModules(providerModules)
   const runtimeHost = new RuntimeHost({
     plugins: pluginController,
+    pluginContext: pluginController.pluginContext,
     pluginAttachments: {
       agent: (occupied) =>
         new WorkspacePluginAttachments(
@@ -1429,6 +1431,18 @@ function registerIpc(runtimeHost: RuntimeHost, localZone: () => LocalZone | null
     (url) => shell.openExternal(url),
   )
   installPluginUiRpc(pluginIpcMain)
+  registerPluginHostIpc(
+    ipcMain,
+    {
+      request: (_workspace, input) => pluginController.host!.request(input),
+      onChanged: (listener) =>
+        pluginController.host!.onChanged(() =>
+          listener(pluginWorkspaceIdentity(app.getPath('userData'))),
+        ),
+    },
+    (event) =>
+      storageAppWindows.has(event.sender) ? pluginWorkspaceIdentity(app.getPath('userData')) : null,
+  )
   registerPluginSettings(
     ipcMain,
     (event) => BrowserWindow.fromWebContents(event.sender),

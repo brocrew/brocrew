@@ -33,6 +33,7 @@ import type { RecoveryBridge } from '../../shared/recovery'
 import type { ThemesBridge } from '../../shared/theme-library'
 import type { StorageBridge } from '../../shared/storage'
 import type { VoiceBridge } from '../../shared/voice'
+import type { PluginHostClient } from '../../shared/plugin-host'
 
 declare module '*.vue' {
   import type { DefineComponent } from 'vue'
@@ -50,6 +51,7 @@ declare global {
       storage: StorageBridge
       voice?: VoiceBridge
       plugins?: PluginsClient
+      pluginHost?: PluginHostClient
       /** The page's own freeze report, for the stall log beside main's stalls. */
       recordPagePerformance: (report: PagePerformanceReport) => Promise<PageReportAnswer>
       /** 🔴 **B1 · updates** — every call answers the new snapshot (`shared/updates.ts`). */

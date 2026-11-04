@@ -1,4 +1,5 @@
 import type { PluginInterface, PluginPackageCard } from '../../shared/plugin-contract'
+import type { PluginHostSnapshot } from '../../shared/plugin-host'
 import { PackageRefSchema, type PackageRef } from '../../shared/plugin-package'
 import type { AnyPluginManifest } from './package-schema'
 import type { PluginMutationConsent } from '../../shared/plugin-settings'
@@ -73,6 +74,40 @@ export function productionPluginController() {
     )
   }
   let connected: Awaited<ReturnType<typeof connectPluginSettings>> | undefined
+  let workspaceId: string | undefined
+  let hostSnapshot: PluginHostSnapshot = { contributions: [], notifications: [], plugins: [] }
+  const hostListeners = new Set<() => void>()
+  let hostGeneration = 0
+  let hostNeedsNotification = false
+  const hostChanged = () => {
+    for (const listener of hostListeners) listener()
+  }
+  const clearHost = () => {
+    hostGeneration++
+    hostNeedsNotification = false
+    hostSnapshot = { contributions: [], notifications: [], plugins: [] }
+    hostChanged()
+  }
+  async function refreshHost(notify = false): Promise<PluginHostSnapshot> {
+    hostNeedsNotification ||= notify
+    const connection = connected,
+      generation = ++hostGeneration
+    if (!connection || ended || cleanupUncertain)
+      return { contributions: [], notifications: [], plugins: [] }
+    const snapshot = (await connection?.host?.snapshot()) ?? {
+      contributions: [],
+      notifications: [],
+      plugins: [],
+    }
+    if (connected === connection && hostGeneration === generation && !ended && !cleanupUncertain) {
+      hostSnapshot = snapshot
+      if (hostNeedsNotification) {
+        hostNeedsNotification = false
+        hostChanged()
+      }
+    }
+    return hostSnapshot
+  }
   let entries: readonly PluginInstructionEntry[] | null = null
   let ready: Promise<boolean> = Promise.resolve(false)
   let ended = false
@@ -151,6 +186,7 @@ export function productionPluginController() {
   let names: Readonly<Record<string, string>> = {}
   let loadCatalogue: (() => Promise<typeof catalogueEntries>) | undefined
   const markUnavailable = () => {
+    clearHost()
     startupCatalogueVerifiedAt = undefined
     entries =
       entries?.map((one) => ({ ...one, state: 'Unavailable', tools: 'none', service: null })) ??
@@ -372,7 +408,7 @@ export function productionPluginController() {
   }
   type SourceInterface = Pick<
     PluginInterface<AnyPluginManifest>,
-    'list' | 'inspect' | 'install' | 'update'
+    'list' | 'inspect' | 'install' | 'update' | 'setEnabled'
   >
   async function installSelected(
     ref: PackageRef,
@@ -434,6 +470,32 @@ export function productionPluginController() {
     }
   }
   const facade: PluginSettingsController & PluginInstructionSource & SourceInterface = {
+    host: {
+      snapshot: refreshHost,
+      async request(input) {
+        if (input.kind === 'snapshot') return { value: await refreshHost() }
+        if (!connected?.host || ended || cleanupUncertain || transition)
+          return { error: { code: 'disabled' } }
+        const answer = await connected.host.request(input)
+        await refreshHost(true).catch(() => {})
+        return answer
+      },
+      beforeTurn: (input) =>
+        !ended && !cleanupUncertain && !transition
+          ? (connected?.host?.beforeTurn(input) ?? Promise.resolve({ pointers: [] }))
+          : Promise.resolve({ pointers: [] }),
+      onChanged(listener) {
+        hostListeners.add(listener)
+        return () => {
+          hostListeners.delete(listener)
+        }
+      },
+    },
+    async setEnabled(workspace, id, enabled) {
+      if (workspace !== workspaceId || !connected?.host) return fail()
+      const answer = await facade.host!.request({ kind: 'enabled', pluginId: id, enabled })
+      if ('error' in answer) return fail()
+    },
     install: installSelected,
     update: updateSelected,
     async list(source) {
@@ -567,11 +629,27 @@ export function productionPluginController() {
       await update()
       return outcome
     },
-    screen(id) {
-      return current().screen(id)
+    screen(id, viewId) {
+      return current().screen(id, viewId)
     },
   }
   return Object.assign(facade, {
+    pluginContext: {
+      active: () =>
+        Boolean(
+          connected &&
+          !ended &&
+          !cleanupUncertain &&
+          !transition &&
+          hostSnapshot.contributions.some(
+            (item) =>
+              item.kind === 'turn.context.titles' && item.state === 'active' && item.titlesEnabled,
+          ),
+        ),
+      beforeTurn: (
+        input: Parameters<NonNullable<PluginSettingsController['host']>['beforeTurn']>[0],
+      ) => facade.host!.beforeTurn(input),
+    },
     start(options: {
       root: string
       workspaceRoot: string
@@ -588,6 +666,7 @@ export function productionPluginController() {
       sharedDataOwner?: SharedDataOwner
     }): void {
       if (ended || started) return
+      workspaceId = pluginWorkspaceIdentity(options.workspaceRoot)
       started = true
       supervisor = options.supervisor
       observeInstallations = () => {
@@ -795,6 +874,12 @@ export function productionPluginController() {
                 return false
               }
               connected = connection
+              connection.host?.onChanged(() => {
+                void refreshHost(true).catch(() => {
+                  if (connected === connection) clearHost()
+                })
+              })
+              await refreshHost(true)
               break
             } catch (error) {
               connectionError = error

@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { loadPluginConfiguration } from '../lib/plugin-configuration-load'
+import PluginContributions from './PluginContributions.vue'
+import { listenForPluginSettings } from '../lib/plugin-settings-open'
 import {
   pluginUnavailableNotice,
   pluginRemovalNotice,
@@ -31,6 +33,9 @@ const cards = ref<PluginCard[]>([]),
 const reviews = ref(new Map<string, PluginPackageInspection & { action: 'install' | 'update' }>())
 const packageLocation = ref('')
 let stopReviews = () => {}
+let stopHostSettings = () => {}
+let pendingHostView: { viewId: string; pluginId: string } | undefined
+let selectedHostViewId: string | undefined
 const selected = ref<PluginCard | null>(null),
   confirmation = ref<PluginCard | null>(null),
   stage = ref<HTMLElement | null>(null),
@@ -181,11 +186,13 @@ async function cancel() {
   error.value = ''
   screenId = null
   selected.value = null
+  selectedHostViewId = undefined
+  pendingHostView = undefined
   busy.value = false
   observer?.disconnect()
   await request({ kind: 'close' })
 }
-async function configure(card: PluginCard) {
+async function configure(card: PluginCard, viewId?: string) {
   if (busy.value) return
   reviews.value.clear()
   const turn = ++generation
@@ -197,6 +204,7 @@ async function configure(card: PluginCard) {
   error.value = ''
   busy.value = true
   selected.value = card
+  selectedHostViewId = viewId
   const ownScreen = crypto.randomUUID()
   screenId = ownScreen
   await nextTick()
@@ -204,22 +212,48 @@ async function configure(card: PluginCard) {
   const box = bounds()
   const answer = box
     ? await loadPluginConfiguration(
-        () => request({ kind: 'configure', id: card.id, screenId: ownScreen, bounds: box }),
+        () =>
+          request({
+            kind: 'configure',
+            id: card.id,
+            screenId: ownScreen,
+            bounds: box,
+            ...(viewId ? { viewId } : {}),
+          }),
         abort.signal,
       )
     : { ok: false }
   if (!alive || turn !== generation) return
-  busy.value = false
   if (!answer.ok) {
+    if (pendingHostView?.viewId === viewId) pendingHostView = undefined
     configurationFailed()
     return
   }
+  selectedHostViewId = answer.viewId ?? viewId
   configurationState.value = 'ready'
   observer = new ResizeObserver(() => {
     void move()
   })
   if (stage.value) observer.observe(stage.value)
+  busy.value = false
 }
+function openHostView(view: { viewId: string; pluginId: string }) {
+  if (!alive) return
+  if (selected.value?.id === view.pluginId && selectedHostViewId === view.viewId) {
+    pendingHostView = undefined
+    return
+  }
+  const card = cards.value.find((card) => card.id === view.pluginId)
+  if (busy.value || !card) {
+    pendingHostView = view
+    return
+  }
+  pendingHostView = undefined
+  void configure(card, view.viewId)
+}
+watch(busy, (value) => {
+  if (!value && pendingHostView) openHostView(pendingHostView)
+})
 async function inspectSelection(
   selection: { id: string } | { source: string },
   action?: 'install' | 'update',
@@ -308,6 +342,7 @@ async function change(kind: 'install' | 'update' | 'uninstall', card: PluginCard
           : unavailable
 }
 onMounted(async () => {
+  stopHostSettings = listenForPluginSettings(window.api?.pluginHost, openHostView)
   stopReviews =
     client?.onReviewInvalidated?.(() => {
       reviews.value.clear()
@@ -336,6 +371,7 @@ onMounted(async () => {
     listFailureReason.value = 'reason' in answer ? answer.reason : undefined
   }
   scheduleHealth()
+  if (pendingHostView) openHostView(pendingHostView)
 })
 onUnmounted(() => {
   alive = false
@@ -345,6 +381,7 @@ onUnmounted(() => {
   configurationAbort?.abort()
   stop()
   stopReviews()
+  stopHostSettings()
   reviews.value.clear()
   observer?.disconnect()
   window.removeEventListener('resize', move)
@@ -384,7 +421,10 @@ onUnmounted(() => {
     <p v-if="!selected" class="plugin-trust">
       Plugins run with your computer user’s rights; they are not sandboxed.
     </p>
-    <p v-if="!selected" class="plugin-trust">This change applies to all workspaces.</p>
+    <p v-if="!selected" class="plugin-trust">
+      Installed packages are shared by workspaces in this installation. Enable each plugin
+      separately for this workspace.
+    </p>
     <label v-if="!selected" class="plugin-search"
       ><span>Search plugins</span
       ><input
@@ -427,7 +467,7 @@ onUnmounted(() => {
           Cancel
         </button>
       </header>
-      <p>This change applies to all workspaces.</p>
+      <p>Your plugin manages these settings.</p>
       <div
         ref="stage"
         class="plugin-stage"
@@ -453,6 +493,7 @@ onUnmounted(() => {
       </div>
     </div>
     <div v-else class="plugin-cards">
+      <PluginContributions surface="settings" />
       <article
         v-for="card in shown"
         :key="card.id"

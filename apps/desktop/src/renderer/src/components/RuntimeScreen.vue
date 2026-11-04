@@ -311,6 +311,7 @@ import { listenProviderStates } from '../lib/provider-limit-facts'
 import TeamWorkspace from './TeamWorkspace.vue'
 import ToastStack from './ToastStack.vue'
 import SettingsScreen, { type SettingsTab } from './SettingsScreen.vue'
+import { listenForPluginSettings } from '../lib/plugin-settings-open'
 import ProviderSetupAtLaunch from './ProviderSetupAtLaunch.vue'
 
 /**
@@ -444,6 +445,13 @@ const pane = ref<InstanceType<typeof ConversationPane> | null>(null)
  */
 const { place, activeId, active, surface, view, showConversation } = useSurface(store)
 const settingsTab = ref<SettingsTab>('providers')
+let stopPluginSettings = () => {}
+onMounted(() => {
+  stopPluginSettings = listenForPluginSettings(window.api?.pluginHost, () =>
+    openSettings('plugins'),
+  )
+})
+onUnmounted(() => stopPluginSettings())
 const setupProvider = ref<Provider | null>(null)
 function openProviderSettings(provider?: Provider): void {
   setupProvider.value = provider ?? null

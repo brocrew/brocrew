@@ -13,6 +13,7 @@ import {
   type RetainedRecoveryCopy,
 } from '../shared/recovery-retention'
 import { pluginsBridge } from './plugins'
+import { pluginHostBridge } from './plugin-host'
 import { storageBridge } from './storage'
 import { voiceBridge } from './voice'
 import type { SkillsRequest, SkillsReply } from '../shared/skills-window'
@@ -1118,6 +1119,7 @@ const api = Object.freeze({
   themes: themesBridge(ipcRenderer),
   providerSetup: providerSetupBridge(ipcRenderer),
   plugins: pluginsBridge(ipcRenderer),
+  pluginHost: pluginHostBridge(ipcRenderer),
   storage: storageBridge(ipcRenderer),
   voice: voiceBridge(ipcRenderer, process.platform),
   /**

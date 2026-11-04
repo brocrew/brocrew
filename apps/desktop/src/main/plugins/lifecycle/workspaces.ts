@@ -85,6 +85,15 @@ export function sharedLifecycleWorkspaces(
       if (
         [
           'screen',
+          'hostSnapshot',
+          'hostWorkspace',
+          'hostUi',
+          'hostBeforeTurn',
+          'hostScreen',
+          'hostPageTool',
+          'hostPageCancel',
+          'setEnabled',
+          'setTitlesEnabled',
           'admitted',
           'install',
           'installPackage',

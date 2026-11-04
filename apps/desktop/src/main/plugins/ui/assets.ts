@@ -1,6 +1,7 @@
 import type { CustomScheme } from 'electron'
 import type { VerifiedPluginPackage } from '../package-verifier'
 import { verifyPluginDigest } from '../package-digests'
+import type { PluginSettingsDefinition } from '../../../shared/plugin-contract'
 
 export const PLUGIN_SCHEME: CustomScheme = {
   scheme: 'brocrew-plugin',
@@ -20,22 +21,50 @@ export class PluginUiAssets {
   readonly origin: string
   readonly entry: string
   private readonly files = new Map<string, { bytes: Uint8Array; mime: string }>()
-  constructor(verified: VerifiedPluginPackage, viewId: string) {
+  constructor(verified: VerifiedPluginPackage, viewId: string, page?: PluginSettingsDefinition) {
     if (
       !/^[a-f0-9-]{36}$/.test(viewId) ||
       !verified.compatibility.host ||
       !verified.compatibility.ui ||
-      verified.manifest.format === 3 ||
-      !verified.manifest.ui
+      !(page ?? verified.contract.settings?.page)
     )
       throw new Error('Plugin unavailable. Try again.')
     this.origin = `brocrew-plugin://${viewId}`
-    this.entry = `${this.origin}/${verified.manifest.ui.entry}`
-    for (const asset of verified.manifest.ui.assets) {
+    const settings = page ?? verified.contract.settings!.page
+    this.entry = `${this.origin}/${settings.entry}`
+    const mimeFor = (path: string) =>
+      path.endsWith('.html')
+        ? 'text/html'
+        : path.endsWith('.css')
+          ? 'text/css'
+          : path.endsWith('.js') || path.endsWith('.mjs')
+            ? 'text/javascript'
+            : path.endsWith('.svg')
+              ? 'image/svg+xml'
+              : path.endsWith('.png')
+                ? 'image/png'
+                : path.endsWith('.jpg') || path.endsWith('.jpeg')
+                  ? 'image/jpeg'
+                  : path.endsWith('.woff2')
+                    ? 'font/woff2'
+                    : 'application/octet-stream'
+    for (const path of new Set([settings.entry, ...settings.assets])) {
+      const asset = {
+        path,
+        mime:
+          verified.manifest.format === 3
+            ? mimeFor(path)
+            : (verified.manifest.ui?.assets.find((asset) => asset.path === path)?.mime ??
+              mimeFor(path)),
+      }
       const file = verified.manifest.files.find((file) => file.path === asset.path),
         bytes = verified.readFile(asset.path)
       if (!file || !bytes) throw new Error('Plugin unavailable. Try again.')
-      verifyPluginDigest(bytes, file, 256 * 1024 * 1024)
+      verifyPluginDigest(
+        bytes,
+        { size: 'bytes' in file ? file.bytes : file.size, sha256: file.sha256 },
+        256 * 1024 * 1024,
+      )
       this.files.set(`${this.origin}/${asset.path}`, {
         bytes: Uint8Array.from(bytes),
         mime: asset.mime,

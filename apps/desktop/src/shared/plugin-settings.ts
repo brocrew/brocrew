@@ -307,7 +307,7 @@ export type PluginSettingsRequest =
   | { kind: 'source'; source: string }
   | { kind: 'uninstall' | 'retry' | 'restart'; id: string }
   | { kind: 'prepare'; action: 'install' | 'update'; id: string }
-  | { kind: 'configure'; id: string; screenId: string; bounds: PluginScreenBounds }
+  | { kind: 'configure'; id: string; screenId: string; bounds: PluginScreenBounds; viewId?: string }
   | { kind: 'bounds'; bounds: PluginScreenBounds }
   | { kind: 'close' }
 export type PluginListState = 'ready' | 'empty' | 'not-published' | 'fetch-error'
@@ -316,6 +316,7 @@ export type PluginSettingsReply =
   | {
       ok: true
       inspection?: PluginPackageInspection
+      viewId?: string
       review?: PluginWindowReview
       cards?: PluginCard[]
       available?: boolean

@@ -136,6 +136,7 @@ export async function proof(config: {
     assert.equal((await handler(event, { kind: 'install', id: 'chrome' })).ok, true)
     assert.equal((await client.catalogue())[0]?.state, 'Running')
     const screen = await client.screen('chrome')
+    if (screen.tools !== undefined) throw new Error('Expected the legacy fixture page.')
     assert.equal(screen.verified.manifest.id, 'chrome')
     const snapshot = (await screen.peer.read(
       { surface: 'chrome' },

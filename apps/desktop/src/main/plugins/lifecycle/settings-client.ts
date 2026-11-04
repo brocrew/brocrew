@@ -16,6 +16,13 @@ import { Installation } from '../state/format'
 import { proposalFor } from './proposals'
 import { pluginAdapter } from './adapters'
 import { PluginSupervisorError } from '../supervisor/protocol'
+import type { PluginHostSnapshot, PluginHostUiRequest } from '../../../shared/plugin-host'
+import type {
+  PluginBeforeTurnInput,
+  PluginBeforeTurnResult,
+  PluginHostResult,
+  PluginToolCallResult,
+} from '../../../shared/plugin-contract'
 
 const Cards = z.array(
   z.object({
@@ -56,10 +63,11 @@ export async function connectPluginSettings(options: {
   )
   const screens = new Map<
     string,
-    { install: string; live: boolean; revokers: Set<() => void | Promise<void>> }
+    { install: string; live: boolean; viewId?: string; revokers: Set<() => void | Promise<void>> }
   >()
   const generations = new Map<string, number>()
   let alive = true
+  const hostListeners = new Set<() => void>()
   async function invalidate(id: string, bump = true) {
     if (bump) generations.set(id, (generations.get(id) ?? 0) + 1)
     const screen = screens.get(id)
@@ -73,6 +81,24 @@ export async function connectPluginSettings(options: {
     key: options.personKey,
     async handle(input) {
       const request = ConsumerCommand.parse(input)
+      if (request.kind === 'host-changed' || request.kind === 'host-settings-open') {
+        for (const listener of hostListeners) listener()
+        if ([...screens.values()].some((screen) => screen.viewId))
+          void channel
+            .call({ kind: 'host-snapshot' })
+            .then(async (value) => {
+              const snapshot = value as PluginHostSnapshot
+              for (const [id, screen] of screens)
+                if (
+                  screen.live &&
+                  screen.viewId &&
+                  !snapshot.settingsViews?.some((view) => view.viewId === screen.viewId)
+                )
+                  await invalidate(id)
+            })
+            .catch(() => {})
+        return true
+      }
       if (request.kind === 'revoke') {
         const screen = screens.get(request.pluginId)
         if (!screen || screen.install === request.installId) await invalidate(request.pluginId)
@@ -180,6 +206,24 @@ export async function connectPluginSettings(options: {
     }
   }
   return {
+    ...(features.includes('plugin-host-v1')
+      ? {
+          host: {
+            snapshot: async () =>
+              (await channel.call({ kind: 'host-snapshot' })) as PluginHostSnapshot,
+            request: async (request: PluginHostUiRequest) =>
+              (await channel.call({ kind: 'host-ui', request })) as PluginHostResult<unknown>,
+            beforeTurn: async (input: Omit<PluginBeforeTurnInput, 'workspaceId'>) =>
+              (await channel.call({ kind: 'host-before-turn', input })) as PluginBeforeTurnResult,
+            onChanged(listener: () => void) {
+              hostListeners.add(listener)
+              return () => {
+                hostListeners.delete(listener)
+              }
+            },
+          },
+        }
+      : {}),
     features: () => features,
     mutationStatus: () => null,
     mutationRequired: () => false,
@@ -254,7 +298,7 @@ export async function connectPluginSettings(options: {
       if (!outcome) throw new PluginSupervisorError('unavailable')
       return outcome
     },
-    async screen(pluginId): Promise<PluginUiHostOptions> {
+    async screen(pluginId, askedViewId): Promise<PluginUiHostOptions> {
       const generation = (generations.get(pluginId) ?? 0) + 1
       generations.set(pluginId, generation)
       await invalidate(pluginId, false)
@@ -270,12 +314,42 @@ export async function connectPluginSettings(options: {
         },
         [],
       )
+      const generic =
+        checked.manifest.format === 3
+          ? z
+              .object({
+                installation: Installation,
+                instanceId: z.string(),
+                viewId: z.string(),
+                contributionHandle: z.string(),
+                page: z.object({
+                  title: z.string(),
+                  entry: z.string(),
+                  assets: z.array(z.string()),
+                  fields: z.union([z.boolean(), z.record(z.string(), z.json())]).optional(),
+                }),
+              })
+              .parse(
+                await channel.call({
+                  kind: 'host-screen',
+                  pluginId,
+                  ...(askedViewId ? { viewId: askedViewId } : {}),
+                }),
+              )
+          : undefined
+      if (
+        generic &&
+        (generic.installation.installId !== installed.installId ||
+          generic.installation.release.archiveSha256 !== installed.release.archiveSha256)
+      )
+        throw new PluginSupervisorError('unavailable')
       if (!alive || (generations.get(pluginId) ?? 0) !== generation)
         throw new PluginSupervisorError('unavailable')
       const state = {
         install: installed.installId,
         live: true,
         revokers: new Set<() => void | Promise<void>>(),
+        ...(generic ? { viewId: generic.viewId } : {}),
       }
       if (!alive || generations.get(pluginId) !== generation)
         throw new PluginSupervisorError('unavailable')
@@ -300,11 +374,11 @@ export async function connectPluginSettings(options: {
         if (!current(binding)) throw new PluginSupervisorError('unavailable')
         return result
       }
-      return {
+      const common = {
         verified: checked,
         binding,
         // Host snapshots are copies; compare every bound field, not object identity.
-        current: (candidate) =>
+        current: (candidate: Readonly<PluginUiBinding>) =>
           alive &&
           state.live &&
           screens.get(pluginId) === state &&
@@ -312,10 +386,50 @@ export async function connectPluginSettings(options: {
             (key) =>
               candidate[key as keyof PluginUiBinding] === binding[key as keyof PluginUiBinding],
           ),
-        onInvalidate(revoke) {
+        onInvalidate(revoke: () => void | Promise<void>) {
           state.revokers.add(revoke)
           return () => state.revokers.delete(revoke)
         },
+      }
+      if (generic)
+        return {
+          ...common,
+          hostViewId: generic.viewId,
+          page: generic.page,
+          tools: {
+            current: () => current(binding),
+            async callTool(name, args, requestId, signal) {
+              if (!current(binding) || signal.aborted) return { status: 'disabled' }
+              return (await channel.call({
+                kind: 'page-tool',
+                input: {
+                  pluginId,
+                  instanceId: generic.instanceId,
+                  contributionHandle: generic.contributionHandle,
+                  viewId: generic.viewId,
+                  name,
+                  arguments: args,
+                  requestId,
+                },
+              })) as PluginToolCallResult
+            },
+            cancelTool: async (requestId) =>
+              channel.call({
+                kind: 'page-cancel',
+                input: { pluginId, instanceId: generic.instanceId, requestId },
+              }),
+          },
+          detached: () => {
+            void channel
+              .call({
+                kind: 'host-ui',
+                request: { kind: 'settings-close', viewId: generic.viewId },
+              })
+              .catch(() => {})
+          },
+        }
+      return {
+        ...common,
         propose: options.propose,
         peer: {
           async read() {

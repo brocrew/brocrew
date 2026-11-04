@@ -1,4 +1,5 @@
 import { ipcRenderer } from 'electron'
+import { PLUGIN_PAGE_CHANNEL } from '../shared/plugin-page'
 import {
   boundedJson,
   exact,
@@ -35,26 +36,37 @@ if (
 ) {
   const pending = new Set<string>()
   window.addEventListener('message', async (event) => {
-    if (event.source !== window || event.origin !== origin || !pluginUiPacket(event.data)) return
-    const packet = event.data
-    if (pending.has(packet.requestId) || pending.size >= PLUGIN_UI_LIMITS.pending) return
+    if (event.source !== window || event.origin !== origin) return
+    const data = event.data
+    const generic =
+      plain(data) &&
+      data.channel === PLUGIN_PAGE_CHANNEL &&
+      data.method === 'callTool' &&
+      typeof data.requestId === 'string' &&
+      plain(data.params) &&
+      typeof data.params.tool === 'string' &&
+      plain(data.params.arguments)
+    if (!pluginUiPacket(data) && !generic) return
+    const packet = data as { requestId: string; channel: string }
+    if (pending.has(packet.requestId) || (!generic && pending.size >= PLUGIN_UI_LIMITS.pending))
+      return
     pending.add(packet.requestId)
     try {
       const result: unknown = await ipcRenderer.invoke(PLUGIN_UI_RPC, { generation, packet })
       if (
         !plain(result) ||
         !(exact(result, ['ok', 'data']) || exact(result, ['ok', 'error'])) ||
-        boundedJson(result, PLUGIN_UI_LIMITS.reply + 1024) === null
+        (!generic && boundedJson(result, PLUGIN_UI_LIMITS.reply + 1024) === null)
       )
         return
       window.postMessage(
-        { channel: PLUGIN_UI_CHANNEL, requestId: packet.requestId, ...result },
+        { channel: packet.channel, requestId: packet.requestId, ...result },
         origin,
       )
     } catch {
       window.postMessage(
         {
-          channel: PLUGIN_UI_CHANNEL,
+          channel: packet.channel,
           requestId: packet.requestId,
           ok: false,
           error: PLUGIN_UI_UNAVAILABLE,

@@ -34,6 +34,8 @@ export interface PluginNodeStart {
   previousVersion?: string
   previousDataSchema?: number
   legacyConfiguration?: { directory: string; floor: string }
+  onStarted?(owner: Readonly<{ pluginId: string; runId: string }>): void | Promise<void>
+  hostRequest?: PluginHostRequestHandler
 }
 export interface PluginNodeExit {
   exited: boolean
@@ -227,6 +229,7 @@ export function createPluginNodeHost(options: {
     const runId = randomUUID()
     const slot = join(await privateChild(root, 'process-slots'), `${manifest.id}.sqlite`)
     const run = await privateChild(root, `runs/${runId}`)
+    await spec.onStarted?.({ pluginId: manifest.id, runId })
     if (manifest.format === 3) {
       if (closing) throw new PluginHostError('start')
       const declaration = manifest.runtime
@@ -279,7 +282,7 @@ export function createPluginNodeHost(options: {
         mcp: manifest.mcp,
         stop: manifest.lifecycle.stop,
         readyMs,
-        hostRequest: options.hostRequest,
+        hostRequest: spec.hostRequest ?? options.hostRequest,
       })
       const generation = starts.get(manifest.id)
       void processRun.exited

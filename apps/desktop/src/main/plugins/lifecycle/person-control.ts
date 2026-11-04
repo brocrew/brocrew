@@ -11,6 +11,12 @@ import { PersonChannel } from './transport'
 import type { PluginLifecycleController } from './controller'
 import type { LifecycleWorkspace } from './types'
 import { ProjectionReceipt } from '../state/format'
+import {
+  PluginHostUiRequest,
+  PluginTitlesInput,
+  PluginPageCall,
+  PluginPageCancel,
+} from '../host-wire'
 
 const id = z.string()
 const Request = z.discriminatedUnion('kind', [
@@ -36,6 +42,12 @@ const Request = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('install'), pluginId: id, operationId: z.uuid() }),
   z.strictObject({ kind: z.literal('uninstall'), pluginId: id, operationId: z.uuid() }),
   z.strictObject({ kind: z.literal('screen'), pluginId: id }),
+  z.strictObject({ kind: z.literal('host-snapshot') }),
+  z.strictObject({ kind: z.literal('host-ui'), request: PluginHostUiRequest }),
+  z.strictObject({ kind: z.literal('host-before-turn'), input: PluginTitlesInput }),
+  z.strictObject({ kind: z.literal('host-screen'), pluginId: id, viewId: z.string().optional() }),
+  z.strictObject({ kind: z.literal('page-tool'), input: PluginPageCall }),
+  z.strictObject({ kind: z.literal('page-cancel'), input: PluginPageCancel }),
   z.strictObject({ kind: z.literal('read'), pluginId: id, installId: z.uuid() }),
   z.strictObject({
     kind: z.literal('apply'),
@@ -57,6 +69,13 @@ export const ProjectionChange = z.strictObject({
   receipt: ProjectionReceipt.nullable(),
 })
 export const ConsumerCommand = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('host-changed') }),
+  z.strictObject({
+    kind: z.literal('host-settings-open'),
+    viewId: z.string(),
+    pluginId: id,
+    handle: z.string(),
+  }),
   z.strictObject({ kind: z.literal('revoke'), pluginId: id, installId: z.uuid() }),
   z.strictObject({ kind: z.literal('reconcile'), change: ProjectionChange }),
   z.strictObject({
@@ -177,6 +196,18 @@ export async function servePersonPluginControl(options: {
         if (!session.handle || session.failed) throw new PluginSupervisorError('unavailable')
         const handle = session.handle
         switch (request.kind) {
+          case 'host-snapshot':
+            return options.controller.hostSnapshot(handle)
+          case 'host-ui':
+            return options.controller.hostUi(handle, request.request)
+          case 'host-before-turn':
+            return options.controller.hostBeforeTurn(handle, request.input)
+          case 'host-screen':
+            return options.controller.hostScreen(handle, request.pluginId, request.viewId)
+          case 'page-tool':
+            return options.controller.hostPageTool(handle, request.input)
+          case 'page-cancel':
+            return options.controller.hostPageCancel(handle, request.input)
           case 'package-install':
             negotiatedRefusals = true
             await options.controller.installPackage(
@@ -190,6 +221,7 @@ export async function servePersonPluginControl(options: {
             return {
               features: [
                 ...PLUGIN_FRAMEWORK_FEATURES,
+                'plugin-host-v1',
                 'tool-health-v1',
                 ...(options.restartPlugin ? ['plugin-restart-v1'] : []),
               ],
@@ -298,9 +330,40 @@ export async function servePersonPluginControl(options: {
       lost: false,
       failed: false,
     }
+    const openedViews = new Set<string>()
+    let hostNoticeQueued = false
+    const stopHost = options.controller.onHostChanged((workspaceId) => {
+      if (
+        !session.handle ||
+        !channel.open ||
+        hostNoticeQueued ||
+        options.controller.hostWorkspace(session.handle) !== workspaceId
+      )
+        return
+      hostNoticeQueued = true
+      queueMicrotask(() => {
+        try {
+          if (!session.handle || !channel.open) return
+          const snapshot = options.controller.hostSnapshot(session.handle)
+          void channel.call({ kind: 'host-changed' }).catch(() => {})
+          for (const view of snapshot.settingsViews ?? [])
+            if (!openedViews.has(view.viewId)) {
+              openedViews.add(view.viewId)
+              void channel.call({ kind: 'host-settings-open', ...view }).catch(() => {})
+            }
+          for (const id of openedViews)
+            if (!snapshot.settingsViews?.some((view) => view.viewId === id)) openedViews.delete(id)
+        } catch {
+          /* The consumer can detach while its snapshot changes. */
+        } finally {
+          hostNoticeQueued = false
+        }
+      })
+    })
     sessions.add(session)
     channels.add(channel)
     channel.onClose(() => {
+      stopHost()
       session.lost = true
       channels.delete(channel)
       // Closed sessions detach independently; their callbacks cannot hold the service open.

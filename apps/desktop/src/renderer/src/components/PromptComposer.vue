@@ -162,6 +162,7 @@ import { A_STOP_ASKS_THE_TURN } from '../lib/stop-unanswered'
 import { A_STOP_THEN_THIS_IS_SENT } from '../lib/stop-unanswered'
 import { isOnlyAStopWord } from '../lib/a-stop-word'
 import { useVoiceInput } from '../lib/voice-input'
+import PluginContributions from './PluginContributions.vue'
 import type { SendBlock } from '../lib/composer-notice'
 
 /** The one place a conversation is spoken to — and the place that says why you cannot speak. */
@@ -1351,6 +1352,7 @@ defineExpose({
       <p v-if="dropping" class="dropping-here" data-cy="composer-drop-target">
         Drop to attach — the agent reads it, BroCrew does not
       </p>
+      <PluginContributions surface="composer" />
       <textarea
         ref="box"
         v-model="text"

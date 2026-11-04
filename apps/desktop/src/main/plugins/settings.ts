@@ -4,6 +4,7 @@ import {
   type PluginPackageInput,
 } from '../../shared/plugin-package'
 import type { PluginPackageInspection } from '../../shared/plugin-settings'
+import type { PluginHostConnection } from './host-client'
 import {
   PLUGIN_UNAVAILABLE_REASONS,
   PluginStartupDiagnosticSchema,
@@ -32,6 +33,7 @@ import {
 } from '../../shared/plugin-settings'
 /** Person-owned install/uninstall controller. Tests inject explicitly fictional fakes. */
 export interface PluginSettingsController {
+  host?: PluginHostConnection
   selectCatalogue?(source: string): Promise<PluginCard[]>
   inspectPackage?(input: PluginPackageInput): Promise<PluginPackageInspection>
   applyPackage?(ref: PackageRef, action: 'install' | 'update'): Promise<void>
@@ -56,7 +58,7 @@ export interface PluginSettingsController {
   restartPlugin?(pluginId: string): Promise<void>
   install(id: string, consent?: PluginMutationConsent): Promise<void>
   uninstall(id: string): Promise<PluginRemovalOutcome | void>
-  screen(id: string): Promise<PluginUiHostOptions>
+  screen(id: string, viewId?: string): Promise<PluginUiHostOptions>
 }
 /** A refusal's step and error code as closed words, never its message, which may name a path. */
 function errorCode(error: unknown): string {
@@ -308,7 +310,13 @@ export function registerPluginSettings(
           !exact(
             input,
             input.kind === 'configure'
-              ? ['kind', 'id', 'screenId', 'bounds']
+              ? [
+                  'kind',
+                  'id',
+                  'screenId',
+                  'bounds',
+                  ...(typeof input.viewId === 'string' ? ['viewId'] : []),
+                ]
               : input.kind === 'prepare'
                 ? ['kind', 'id', 'action']
                 : Object.hasOwn(input, 'consent') &&
@@ -385,7 +393,10 @@ export function registerPluginSettings(
           if (generation !== state.generation) return refused
           let source: PluginUiHostOptions
           try {
-            source = await controller.screen(card.id)
+            source = await controller.screen(
+              card.id,
+              typeof input.viewId === 'string' ? input.viewId : undefined,
+            )
           } catch (error) {
             screenRefused(`source ${errorCode(error)}`, input.bounds, owner)
             throw error
@@ -431,7 +442,7 @@ export function registerPluginSettings(
               if (!owner.isDestroyed()) owner.webContents.send(PLUGIN_SCREEN_CLOSED, input.screenId)
             }
           })
-          return { ok: true }
+          return { ok: true, ...(screen.hostViewId ? { viewId: screen.hostViewId } : {}) }
         }
         return { ok: true, cards: await catalogue() }
       } catch (error) {

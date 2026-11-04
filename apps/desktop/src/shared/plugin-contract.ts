@@ -16,7 +16,7 @@ export type PluginMcp =
   { transport: 'stdio' } | { transport: 'streamable-http'; bootstrap: 'ready-message' }
 export interface PluginButtonDefinition {
   slot: string
-  view: { label: string; icon?: string; tooltip?: string; disabled?: boolean }
+  view: { label: string; icon?: string; tooltip?: string; disabled?: boolean; busy?: boolean }
   invoke: ToolBinding
 }
 export interface PluginSettingsDefinition {
@@ -52,9 +52,16 @@ export type PluginContributionRegistration = {
   }
 }[keyof PluginContributionDefinitions]
 export type PluginContributionState = 'active' | 'inactive' | 'unsupported'
-export type PluginHostFailure = 'unsupported' | 'disabled' | 'not-found' | 'error'
+export interface PluginProtocolError {
+  code: number
+  message: string
+  data?: unknown
+}
+export type PluginHostFailure =
+  'unsupported' | 'disabled' | 'not-found' | 'error' | 'protocol-error'
 export type PluginHostResult<T> =
-  { value: T } | { error: { code: PluginHostFailure; message?: string } }
+  | { value: T }
+  | { error: { code: PluginHostFailure; message?: string; protocol?: PluginProtocolError } }
 
 export interface PluginHostMethods {
   'host.describe': {
@@ -241,6 +248,7 @@ export interface PluginMcpToolResult {
 }
 export type PluginToolCallResult =
   | { status: 'result'; result: PluginMcpToolResult }
+  | { status: 'protocol-error'; error: PluginProtocolError }
   | { status: 'transport-error'; message: string }
   | { status: 'disabled' }
 export interface PluginOperationState {

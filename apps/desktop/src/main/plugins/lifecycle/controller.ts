@@ -27,6 +27,15 @@ import type {
   Installation,
 } from './types'
 import type { PluginCard, PluginRemovalOutcome } from '../../../shared/plugin-settings'
+import { PluginHost, type PluginHostOwner, type PluginHostEnvelope } from '../host-methods'
+import { pluginToolCallResult } from '../tool-result'
+import type {
+  PluginBeforeTurnInput,
+  PluginHostResult,
+  PluginMcpToolResult,
+} from '../../../shared/plugin-contract'
+import type { PluginHostUiRequest } from '../../../shared/plugin-host'
+import type { PluginPageCall, PluginPageCancel } from '../host-wire'
 
 const refuse = (): never => {
   throw new PluginSupervisorError('unavailable')
@@ -100,6 +109,12 @@ export class PluginLifecycleController {
       return Promise.reject(new Error('Plugin MCP connection is unavailable.'))
     return this.genericTools.cancelTool(input)
   }
+  private readonly hostRegistry: PluginHost
+  private readonly hostOwners = new Map<
+    string,
+    { owner: PluginHostOwner; package: VerifiedPluginPackage }
+  >()
+  private readonly hostScopes = new Set<string>()
   private readonly workspaces = new Map<LifecycleWorkspace, Workspace>()
   private readonly blocks = new Map<string, symbol>()
   private readonly runs = new Map<string, Running>()
@@ -129,7 +144,232 @@ export class PluginLifecycleController {
     private readonly options: LifecycleOptions,
     private readonly effects: LifecycleEffects,
     private readonly vault: PluginPackageVault,
-  ) {}
+  ) {
+    this.hostRegistry = new PluginHost({
+      callTool: async (input) => ({
+        status: 'result',
+        result: (await this.genericCallTool(input)) as PluginMcpToolResult,
+      }),
+      cancelTool: (input) => this.genericCancelTool(input),
+    })
+  }
+  onHostChanged(listener: (workspaceId: string) => void): () => void {
+    return this.hostRegistry.onChanged(listener)
+  }
+  hostWorkspace(handle: LifecycleWorkspace): string {
+    return this.workspace(handle).sink.workspaceId
+  }
+  private invalidateHost(id: string, runId?: string): void {
+    const current = this.hostOwners.get(id)
+    if (!current || (runId !== undefined && current.owner.runId !== runId)) return
+    this.hostOwners.delete(id)
+    this.hostRegistry.detach(current.owner)
+    for (const key of this.hostScopes)
+      if ((JSON.parse(key) as string[])[0] === id) this.hostScopes.delete(key)
+  }
+  private syncHostWorkspace(workspace: Workspace): void {
+    const workspaceId = workspace.sink.workspaceId
+    for (const [id, { owner }] of this.hostOwners) {
+      const preference = this.options.state.getEnabled(workspaceId, id)
+      const titles = this.options.state.getTitlesEnabled(workspaceId, id)
+      const handle = [...this.workspaces].find(([, value]) => value === workspace)?.[0]
+      const install = this.current(id)
+      this.hostRegistry.setEnabled(
+        workspaceId,
+        id,
+        Boolean(
+          handle &&
+          install &&
+          this.runs.get(id)?.run.runId === owner.runId &&
+          this.admitted(handle, id, install.installId) &&
+          preference.enabled,
+        ),
+        preference.revision,
+      )
+      this.hostRegistry.setTitlesEnabled(workspaceId, id, titles.enabled, titles.revision)
+    }
+  }
+  private async attachHostOwner(
+    owner: PluginHostOwner,
+    checked: VerifiedPluginPackage,
+  ): Promise<void> {
+    this.hostOwners.set(owner.pluginId, { owner, package: checked })
+    this.hostRegistry.attach(owner)
+    for (const workspace of this.workspaces.values())
+      if (workspace.live) {
+        this.syncHostWorkspace(workspace)
+        await this.declareHostScope(workspace, owner, checked)
+      }
+  }
+  private async declareHostScope(
+    workspace: Workspace,
+    owner: PluginHostOwner,
+    checked: VerifiedPluginPackage,
+  ): Promise<void> {
+    const key = JSON.stringify([owner.pluginId, owner.runId, workspace.sink.workspaceId])
+    if (this.hostScopes.has(key)) return
+    this.hostScopes.add(key)
+    await this.hostRegistry.registerManifest(owner, workspace.sink.workspaceId, checked.manifest)
+  }
+  async handleHostRequest(
+    owner: PluginHostOwner,
+    envelope: PluginHostEnvelope,
+    signal: AbortSignal,
+  ): Promise<PluginHostResult<unknown>> {
+    const attached = this.hostOwners.get(owner.pluginId)
+    const workspace = [...this.workspaces.values()].find(
+      (one) => one.live && one.sink.workspaceId === envelope.workspaceId,
+    )
+    if (!workspace || attached?.owner.runId !== owner.runId) return { error: { code: 'not-found' } }
+    this.syncHostWorkspace(workspace)
+    return this.hostRegistry.request(owner, envelope, signal)
+  }
+  hostSnapshot(handle: LifecycleWorkspace) {
+    const workspace = this.workspace(handle)
+    this.syncHostWorkspace(workspace)
+    return {
+      ...this.hostRegistry.snapshot(workspace.sink.workspaceId),
+      plugins: this.options.state.exportActivation().entries.map((install) => ({
+        pluginId: install.pluginId,
+        name:
+          this.packageNames.get(install.pluginId) ??
+          this.options.names[install.pluginId] ??
+          install.pluginId,
+        enabled: this.options.state.getEnabled(workspace.sink.workspaceId, install.pluginId)
+          .enabled,
+      })),
+    }
+  }
+  async setEnabled(handle: LifecycleWorkspace, id: string, enabled: boolean) {
+    const workspace = this.workspace(handle)
+    const value = await this.options.state.withExclusive(async () =>
+      this.options.state.setEnabled(workspace.sink.workspaceId, id, enabled),
+    )
+    this.workspace(handle)
+    this.syncHostWorkspace(workspace)
+    if (!this.hostOwners.has(id))
+      this.hostRegistry.setEnabled(workspace.sink.workspaceId, id, value.enabled, value.revision)
+    return value
+  }
+  async setTitlesEnabled(handle: LifecycleWorkspace, id: string, enabled: boolean) {
+    const workspace = this.workspace(handle)
+    const value = await this.options.state.withExclusive(async () =>
+      this.options.state.setTitlesEnabled(workspace.sink.workspaceId, id, enabled),
+    )
+    this.workspace(handle)
+    this.syncHostWorkspace(workspace)
+    if (!this.hostOwners.has(id))
+      this.hostRegistry.setTitlesEnabled(
+        workspace.sink.workspaceId,
+        id,
+        value.enabled,
+        value.revision,
+      )
+    return value
+  }
+  async hostUi(
+    handle: LifecycleWorkspace,
+    input: PluginHostUiRequest,
+  ): Promise<PluginHostResult<unknown>> {
+    const workspace = this.workspace(handle)
+    this.syncHostWorkspace(workspace)
+    const id = workspace.sink.workspaceId
+    if (input.kind === 'snapshot') return { value: this.hostSnapshot(handle) }
+    if (input.kind === 'enabled' || input.kind === 'titles-enabled') {
+      return {
+        value:
+          input.kind === 'enabled'
+            ? await this.setEnabled(handle, input.pluginId, input.enabled)
+            : await this.setTitlesEnabled(handle, input.pluginId, input.enabled),
+      }
+    }
+    if (input.kind === 'activate') return this.hostRegistry.activate(id, input.handle)
+    if (input.kind === 'notification-action')
+      return this.hostRegistry.notificationAction(id, input.handle, input.actionId)
+    if (input.kind === 'notification-dismiss')
+      return this.hostRegistry.dismissNotification(id, input.handle)
+    if (input.kind === 'settings-open') return this.hostRegistry.openSettings(id, input.handle)
+    return this.hostRegistry.closeSettings(id, input.viewId)
+  }
+  hostBeforeTurn(handle: LifecycleWorkspace, input: Omit<PluginBeforeTurnInput, 'workspaceId'>) {
+    const workspace = this.workspace(handle)
+    this.syncHostWorkspace(workspace)
+    return this.hostRegistry.beforeTurn({ ...input, workspaceId: workspace.sink.workspaceId })
+  }
+  async hostScreen(handle: LifecycleWorkspace, id: string, viewId?: string) {
+    const workspace = this.workspace(handle)
+    this.syncHostWorkspace(workspace)
+    if (!viewId) {
+      const contribution = this.hostRegistry
+        .snapshot(workspace.sink.workspaceId)
+        .contributions.find(
+          (one) => one.pluginId === id && one.kind === 'settings.page' && one.state === 'active',
+        )
+      if (!contribution) return refuse()
+      const opened = await this.hostRegistry.openSettings(
+        workspace.sink.workspaceId,
+        contribution.handle,
+      )
+      if (!('value' in opened)) return refuse()
+      viewId = (opened.value as { viewId: string }).viewId
+    }
+    const page = this.hostRegistry.settingsPage(workspace.sink.workspaceId, viewId)
+    if (!page || page.pluginId !== id) return refuse()
+    const screen = this.screen(handle, id)
+    return {
+      installation: screen.installation,
+      instanceId: page.instanceId,
+      viewId,
+      contributionHandle: page.handle,
+      page: page.page,
+    }
+  }
+  async hostPageTool(handle: LifecycleWorkspace, input: z.infer<typeof PluginPageCall>) {
+    const workspace = this.workspace(handle)
+    this.syncHostWorkspace(workspace)
+    const page = this.hostRegistry.settingsPage(workspace.sink.workspaceId, input.viewId)
+    if (
+      !page ||
+      page.pluginId !== input.pluginId ||
+      page.instanceId !== input.instanceId ||
+      page.handle !== input.contributionHandle
+    )
+      return { status: 'disabled' as const }
+    const revision = this.options.state.getEnabled(
+      workspace.sink.workspaceId,
+      input.pluginId,
+    ).revision
+    const answer = await pluginToolCallResult(async () => ({
+      status: 'result',
+      result: (await this.genericCallTool({
+        workspaceId: workspace.sink.workspaceId,
+        pluginId: input.pluginId,
+        instanceId: input.instanceId,
+        name: input.name,
+        arguments: input.arguments,
+        requestId: input.requestId,
+        origin: 'settings.page',
+      })) as PluginMcpToolResult,
+    }))
+    if (!workspace.live) return { status: 'disabled' as const }
+    this.syncHostWorkspace(workspace)
+    const latest = this.hostRegistry.settingsPage(workspace.sink.workspaceId, input.viewId)
+    if (
+      !latest ||
+      latest.instanceId !== input.instanceId ||
+      latest.handle !== input.contributionHandle ||
+      this.options.state.getEnabled(workspace.sink.workspaceId, input.pluginId).revision !==
+        revision
+    )
+      return { status: 'disabled' as const }
+    return answer
+  }
+  hostPageCancel(handle: LifecycleWorkspace, input: z.infer<typeof PluginPageCancel>) {
+    return this.genericCancelTool({
+      ...input,
+      workspaceId: this.workspace(handle).sink.workspaceId,
+    })
+  }
   static async open(options: LifecycleOptions): Promise<PluginLifecycleController> {
     try {
       const state = options.state.inspect()
@@ -281,6 +521,7 @@ export class PluginLifecycleController {
     }
   }
   private block(id: string): symbol {
+    this.invalidateHost(id)
     this.registrations.revoke(id)
     this.profileCalls.get(id)?.abort()
     const token = Symbol()
@@ -465,6 +706,9 @@ export class PluginLifecycleController {
           }
         }
       })
+      for (const { owner, package: checked } of this.hostOwners.values())
+        await this.declareHostScope(workspace, owner, checked)
+      this.syncHostWorkspace(workspace)
       return handle
     } catch {
       workspace.live = false
@@ -492,6 +736,10 @@ export class PluginLifecycleController {
   async detach(handle: LifecycleWorkspace): Promise<void> {
     const workspace = this.workspace(handle)
     workspace.live = false
+    this.hostRegistry.detachWorkspace(workspace.sink.workspaceId)
+    for (const key of this.hostScopes)
+      if ((JSON.parse(key) as string[])[2] === workspace.sink.workspaceId)
+        this.hostScopes.delete(key)
     this.registrations.detach(workspace.sink.workspaceId)
     const results = await Promise.allSettled(
       [...workspace.receipts.values()].map((receipt) =>
@@ -514,19 +762,32 @@ export class PluginLifecycleController {
     this.packageNames.set(install.pluginId, checked.contract.name)
     pluginNodePolicy(checked)
     this.attempted.add(install.pluginId)
-    const run = await this.options.runtime.start({
-      package: checked,
-      releaseDigest: install.release.archiveSha256,
-      legacyConfiguration: {
-        directory: join(
-          this.options.root,
-          'profile-apply',
-          pluginSha256(Buffer.from(install.installId)),
-        ),
-        floor: join(this.options.root, 'profile-apply', install.installId + '.floor'),
-      },
-      ...previous,
-    })
+    let startedOwner: PluginHostOwner | undefined
+    const run = await this.options.runtime
+      .start({
+        package: checked,
+        releaseDigest: install.release.archiveSha256,
+        legacyConfiguration: {
+          directory: join(
+            this.options.root,
+            'profile-apply',
+            pluginSha256(Buffer.from(install.installId)),
+          ),
+          floor: join(this.options.root, 'profile-apply', install.installId + '.floor'),
+        },
+        ...previous,
+        onStarted: async (owner) => {
+          startedOwner = owner
+          await this.attachHostOwner(owner, checked)
+        },
+        hostRequest: (owner, envelope, signal) => this.handleHostRequest(owner, envelope, signal),
+      })
+      .catch((error) => {
+        if (startedOwner) this.invalidateHost(startedOwner.pluginId, startedOwner.runId)
+        throw error
+      })
+    if (this.hostOwners.get(install.pluginId)?.owner.runId !== run.runId)
+      await this.attachHostOwner({ pluginId: install.pluginId, runId: run.runId }, checked)
     const running: Running = { run, installId: install.installId, package: checked, ended: false }
     this.runs.set(install.pluginId, running)
     const ended = (proven: boolean) => {
@@ -965,6 +1226,7 @@ export class PluginLifecycleController {
     await this.effects.write({ ...effect, phase: 'committed' })
     this.options.state.complete(effect.operationId)
     for (const [one, receipt] of receipts) one.receipts.set(install.pluginId, receipt)
+    for (const one of this.workspaces.values()) if (one.live) this.syncHostWorkspace(one)
     this.cleanup.delete(install.pluginId)
     this.options.fault?.('activated')
   }
@@ -986,6 +1248,9 @@ export class PluginLifecycleController {
     if (!workspace.live) return refuse()
     if (!next.receipt) return refuse()
     workspace.receipts.set(install.pluginId, next.receipt)
+    const owner = this.hostOwners.get(install.pluginId)
+    if (owner) await this.declareHostScope(workspace, owner.owner, owner.package)
+    this.syncHostWorkspace(workspace)
   }
   /** Restarts the selected package using its retained process and verified declaration. */
   restartPluginTools(id: string, runId: string | undefined, stopped: () => void): Promise<void> {
@@ -1063,6 +1328,7 @@ export class PluginLifecycleController {
     return work
   }
   private async stop(id: string, operationId: string): Promise<void> {
+    this.invalidateHost(id)
     const run = this.runs.get(id)
     if (run) {
       run.ended = true

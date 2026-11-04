@@ -1,4 +1,5 @@
 import { createOwnNotesStore, type OwnNotesStore } from './own-notes'
+import { PLUGIN_TITLE_CANDIDATES_SQL } from './plugin-title-candidates'
 import { resolveProviderConnection } from './provider-connections'
 import {
   createMemoryRecoveryStore,
@@ -3296,6 +3297,9 @@ export interface SessionStore extends OwnNotesStore {
   ): ResourceRow
   /** The resources kept for one piece, oldest first. */
   resourcesOf(piece: string): readonly ResourceRow[]
+  pluginTitleCandidates?(
+    piece: string,
+  ): readonly import('../../shared/plugin-contract').PluginTitleCandidate[]
   /**
    * 🔴 **D-026 · R1 — the files kept in one scope** ({@link KeptFilesAsked}): a tree, what one
    * conversation added, or one piece — each on its piece, named by its label and the title it stands
@@ -4270,6 +4274,7 @@ export const NULL_SESSION_STORE: SessionStore = {
     throw new Error('no database: a resource cannot be kept')
   },
   resourcesOf: () => [],
+  pluginTitleCandidates: () => [],
   untitledResources: () => [],
   titleResource: () => false,
   titledResources: () => [],
@@ -11956,6 +11961,7 @@ export function createSessionStore(
     heldInCount: AppStatement
     insertResource: AppStatement
     resourcesOf: AppStatement
+    pluginTitleCandidates: AppStatement
     filesOnPiece: AppStatement
     filesAddedBy: AppStatement
     filesUnder: AppStatement
@@ -12108,6 +12114,7 @@ export function createSessionStore(
       resourcesOf: db.prepare(
         `SELECT ${RESOURCE_COLUMNS} FROM work_resource WHERE work_id = ? ORDER BY created_at, id`,
       ),
+      pluginTitleCandidates: db.prepare(PLUGIN_TITLE_CANDIDATES_SQL),
       /** ⚑ **D-026 · the files kept on one piece** — served by `work_resource_work_idx`. */
       filesOnPiece: db.prepare(`SELECT ${KEPT_FILE_COLUMNS} FROM work_resource WHERE work_id = ?`),
       /**
@@ -15055,6 +15062,22 @@ export function createSessionStore(
 
     resourcesOf(piece) {
       return (workSql().resourcesOf.all(piece) as ResourceDbRow[]).map(resourceFrom)
+    },
+    pluginTitleCandidates(piece) {
+      return (
+        workSql().pluginTitleCandidates.all(piece) as {
+          id: string
+          work_id: string
+          title: string | null
+          name: string
+          sha256: string
+        }[]
+      ).map((row) => ({
+        resourceId: row.id,
+        version: row.sha256,
+        title: row.title ?? row.name,
+        pieceId: row.work_id,
+      }))
     },
 
     filesKept(asked) {

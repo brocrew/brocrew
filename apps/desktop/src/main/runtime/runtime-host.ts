@@ -9,6 +9,8 @@ import {
   withManagedPluginAttachments,
 } from '@brobot2/runtime'
 import type { WorkspacePluginAttachments } from '../plugins/attachments'
+import type { PluginBeforeTurnInput, PluginBeforeTurnResult } from '../../shared/plugin-contract'
+import { pluginTitlesBlock, withPluginTitles } from '../plugins/title-context'
 import {
   libraryUnavailable,
   type FilesLibraryRequest,
@@ -2850,6 +2852,10 @@ export interface RuntimeHostDeps {
   /** The same real controller that makes Settings → Plugins available. */
   plugins?: PluginInstructionSource
   pluginAttachments?: Pick<WorkspacePluginAttachments, 'agent'>
+  pluginContext?: {
+    active(): boolean
+    beforeTurn(input: Omit<PluginBeforeTurnInput, 'workspaceId'>): Promise<PluginBeforeTurnResult>
+  }
   /**
    * **The instruction files this launch will append, read now** (158) — the profile's own memory,
    * the cwd chain, and the app's own workspace file, each with the text that goes to the model.
@@ -25293,6 +25299,11 @@ export class RuntimeHost implements LiveHost {
   }
 
   private sendTheAppsWords(session: HostedSession, text: string): Promise<void> {
+    if (this.deps.pluginContext?.active())
+      return this.preparePluginTitles(session, null, [{ text, from: null }]).then((block) => {
+        if (this.itStoppedUnder(session)) throw new StoppedBeforeSend()
+        return session.handle.send(withPluginTitles(text, block), this.stampFor(null, []))
+      })
     return session.handle.send(text, this.stampFor(null, []))
   }
 
@@ -25417,6 +25428,7 @@ export class RuntimeHost implements LiveHost {
     decided?: WhatTheGateDecided,
     /** Set when somebody asked for this conversation's running turn to be stopped to read these words now. */
     interrupting?: AStopAskedFor,
+    titleContext = '',
   ): Promise<void> {
     // ⚑ Whose words open the turn, from the moment they are handed over, before its row lands.
     session.aPersonsWordsOpenedIt = from?.who === 'a-person'
@@ -25501,7 +25513,10 @@ export class RuntimeHost implements LiveHost {
     // same direction, so a different rule here would be two answers to *whose words are these*.
     const framed = messageNamingThePiece(
       messageNamingItsSender(
-        messageWithHandedPaths(this.withWhereItWasMovedFrom(text, authorship.movedFrom), handed),
+        messageWithHandedPaths(
+          withPluginTitles(this.withWhereItWasMovedFrom(text, authorship.movedFrom), titleContext),
+          handed,
+        ),
         from,
         (sender) => this.whereTheSenderStands(sender, session.id, handing, drives, about),
         interrupting,
@@ -25577,6 +25592,7 @@ export class RuntimeHost implements LiveHost {
   private handTogetherToProvider(
     session: HostedSession,
     messages: readonly OneMessageOfATurn[],
+    titleContext = '',
   ): Promise<void> {
     // ⚑ Whose words open the turn, from the moment they are handed over, before its row lands.
     session.aPersonsWordsOpenedIt = messages.some(({ queued }) => queued.origin?.who === 'a-person')
@@ -25589,10 +25605,13 @@ export class RuntimeHost implements LiveHost {
     // knows.
     const soFar = aTurnThatHasSaidNothing()
     const turn = aTurnOfSeveral(
-      messages.map(({ queued, words, handed, handing }) => ({
+      messages.map(({ queued, words, handed, handing }, index) => ({
         words: messageNamingThePiece(
           messageNamingItsSender(
-            messageWithHandedPaths(words, handed.paths),
+            messageWithHandedPaths(
+              withPluginTitles(words, index === 0 ? titleContext : ''),
+              handed.paths,
+            ),
             queued.origin ?? null,
             (sender) =>
               this.whereTheSenderStands(
@@ -26626,6 +26645,13 @@ export class RuntimeHost implements LiveHost {
       // ⛔ A caller's words go straight in to a service only while it is still on that caller's
       // piece, asked again after the gate's waits, in the tick they are handed over: else they lose
       // the race, and the queue door asks them again ({@link aCallersWordsGoNow}).
+      const titleContext =
+        session.handle.status() === 'idle'
+          ? await this.preparePluginTitles(session, drives ?? handing?.piece ?? null, [
+              { text, from: this.originOf(by) },
+            ])
+          : ''
+      if (this.itStoppedUnder(session)) throw new StoppedBeforeSend()
       if (this.aCallersWordsNoLongerGoStraightIn(sessionId, by)) throw new TurnInProgress()
       await this.handToProvider(
         session,
@@ -26636,6 +26662,9 @@ export class RuntimeHost implements LiveHost {
         about,
         this.originOf(by),
         turn,
+        undefined,
+        undefined,
+        titleContext,
       )
     } catch (error) {
       if (error instanceof TurnInProgress && session.personalHandover === personalHandover)
@@ -26731,6 +26760,55 @@ export class RuntimeHost implements LiveHost {
       .resourcesOf(piece)
       .filter((one) => one.role === 'input')
       .map((one) => ({ resource: one.resource, name: one.name }))
+  }
+
+  private async preparePluginTitles(
+    session: HostedSession,
+    namedPiece: string | null,
+    messages: readonly { text: string; from: TurnOrigin | null }[],
+  ): Promise<string> {
+    const context = this.deps.pluginContext
+    if (
+      !context?.active() ||
+      messages.some(
+        (message) =>
+          aPersonsCommand(
+            message.text,
+            message.from,
+            session.commands,
+            PROVIDER_COMMAND_PREFIX[session.provider],
+          ) !== null,
+      )
+    )
+      return ''
+    const started = performance.now()
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try {
+      const receivingPiece = () =>
+        namedPiece ?? session.itsTurnDrives ?? this.deps.store.rootOf(session.id)?.piece ?? null
+      const piece = receivingPiece()
+      if (!piece || this.deps.store.workById(piece)?.owner !== session.id) return ''
+      const candidates = this.deps.store.pluginTitleCandidates?.(piece) ?? []
+      const remaining = 500 - (performance.now() - started)
+      if (remaining <= 0) return ''
+      const result = await Promise.race([
+        context.beforeTurn({ turnId: randomUUID(), pieceId: piece, candidates: [...candidates] }),
+        new Promise<PluginBeforeTurnResult>((resolve) => {
+          timer = setTimeout(() => resolve({ pointers: [] }), remaining)
+        }),
+      ])
+      if (performance.now() - started >= 500 || !context.active() || this.itStoppedUnder(session))
+        return ''
+      if (receivingPiece() !== piece || this.deps.store.workById(piece)?.owner !== session.id)
+        return ''
+      const latest = this.deps.store.pluginTitleCandidates?.(piece) ?? []
+      const block = pluginTitlesBlock(latest, result)
+      return performance.now() - started < 500 ? block : ''
+    } catch {
+      return ''
+    } finally {
+      clearTimeout(timer)
+    }
   }
 
   /**
@@ -27551,6 +27629,10 @@ export class RuntimeHost implements LiveHost {
     const personalWorkTurnBefore = session.personalWorkTurn
     const personalHandover = session.personalHandover + 1
     try {
+      const titleContext = await this.preparePluginTitles(session, null, [
+        { text, from: this.originOf(by) },
+      ])
+      if (this.itStoppedUnder(session)) throw new StoppedBeforeSend()
       await this.handToProvider(
         session,
         text,
@@ -27561,6 +27643,8 @@ export class RuntimeHost implements LiveHost {
         this.originOf(by),
         turn,
         decided,
+        undefined,
+        titleContext,
       )
     } catch (error) {
       if (error instanceof TurnInProgress && session.personalHandover === personalHandover)
@@ -32939,6 +33023,18 @@ export class RuntimeHost implements LiveHost {
       })
       session.handingOver = sending.map(({ queued }) => queued)
       try {
+        const namedPieces = new Set(
+          sending.map(({ queued, handing }) => queued.drives ?? handing?.piece ?? null),
+        )
+        const titleContext =
+          namedPieces.size > 1
+            ? ''
+            : await this.preparePluginTitles(
+                session,
+                [...namedPieces][0] ?? null,
+                sending.map(({ queued, words }) => ({ text: words, from: queued.origin ?? null })),
+              )
+        if (this.itStoppedUnder(session)) throw new StoppedBeforeSend()
         for (const { queued, handed } of sending) {
           if (queued.authorship.movedFrom === undefined) continue
           const { authorship } = queued
@@ -32985,8 +33081,9 @@ export class RuntimeHost implements LiveHost {
             one.queued.authorship,
             undefined,
             one.queued.interrupting,
+            titleContext,
           )
-        } else await this.handTogetherToProvider(session, sending)
+        } else await this.handTogetherToProvider(session, sending, titleContext)
       } finally {
         session.handingOver = []
       }

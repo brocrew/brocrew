@@ -14,11 +14,13 @@ import {
 import { PluginUiAssets } from './assets'
 import { PluginUiRpc, type PluginUiBinding, type PluginUiPeer } from './rpc'
 import { markPluginSender, markPluginSession } from './senders'
+import { PluginPageTools } from './tool-rpc'
+import type { PluginSettingsDefinition } from '../../../shared/plugin-contract'
 
 interface Registered {
   generation: string
   accepts(frame: WebFrameMain | null): boolean
-  rpc: PluginUiRpc
+  rpc: Pick<PluginUiRpc, 'invoke' | 'close'>
 }
 const registered = new Map<WebContents, Registered>()
 export function installPluginUiRpc(ipc: Pick<IpcMain, 'handle'>): void {
@@ -43,20 +45,34 @@ export function installPluginUiRpc(ipc: Pick<IpcMain, 'handle'>): void {
     },
   )
 }
-export interface PluginUiHostOptions {
+interface PluginUiHostLifetime {
   verified: VerifiedPluginPackage
   binding: Readonly<PluginUiBinding>
-  peer: PluginUiPeer
   current(binding: Readonly<PluginUiBinding>): boolean
   /** Controller wires lease loss, uninstall, upgrade and restore to this revoker. */
   onInvalidate(revoke: () => void | Promise<void>): () => void
-  /** BroCrew-owned Apply flow; proposing never commits configuration. */
-  propose(publicProposal: unknown, revision: number): void
   detached?(): void
+  hostViewId?: string
+  page?: PluginSettingsDefinition
 }
+export type PluginUiHostOptions = PluginUiHostLifetime &
+  (
+    | {
+        tools: ConstructorParameters<typeof PluginPageTools>[0]
+        peer?: never
+        propose?: never
+      }
+    | {
+        tools?: undefined
+        peer: PluginUiPeer
+        /** BroCrew-owned Apply flow; proposing never commits configuration. */
+        propose(publicProposal: unknown, revision: number): void
+      }
+  )
 export interface PluginConfigurationView {
   readonly view: WebContentsView
   readonly origin: string
+  readonly hostViewId?: string
   close(): Promise<void>
 }
 /** A failed open's refusal, with the closed step that refused it and the cause's code. */
@@ -72,7 +88,7 @@ export async function openPluginConfigurationView(
     generation = randomUUID(),
     assets = (() => {
       try {
-        return new PluginUiAssets(options.verified, id)
+        return new PluginUiAssets(options.verified, id, options.page)
       } catch (error) {
         throw refusal('assets', error)
       }
@@ -148,21 +164,26 @@ export async function openPluginConfigurationView(
       return false
     }
   }
-  const rpc = new PluginUiRpc({
-    binding,
-    schemas: (() => {
-      if (options.verified.manifest.format === 3)
-        throw new Error('Generic settings transport is not implemented by the legacy page host')
-      return options.verified.manifest.ui!.methodSchemas
-    })(),
-    peer: options.peer,
-    current: () => accepts(frame),
-    now: () => performance.now(),
-    propose: options.propose,
-    emit(subscriptionId, data) {
-      if (accepts(frame)) frame!.send(PLUGIN_UI_EVENT, generation, { subscriptionId, data })
-    },
-  })
+  const rpc = options.tools
+    ? new PluginPageTools({
+        ...options.tools,
+        current: () => accepts(frame) && options.tools!.current(),
+      })
+    : new PluginUiRpc({
+        binding,
+        schemas: (() => {
+          if (options.verified.manifest.format === 3)
+            throw new Error('Generic settings transport is not implemented by the legacy page host')
+          return options.verified.manifest.ui!.methodSchemas
+        })(),
+        peer: options.peer,
+        current: () => accepts(frame),
+        now: () => performance.now(),
+        propose: options.propose,
+        emit(subscriptionId, data) {
+          if (accepts(frame)) frame!.send(PLUGIN_UI_EVENT, generation, { subscriptionId, data })
+        },
+      })
   const close = (): Promise<void> => {
     if (cleanup) return cleanup
     let finish: () => void = () => {},
@@ -323,5 +344,10 @@ export async function openPluginConfigurationView(
     await close()
     throw (error as { step?: unknown } | null)?.step ? error : refusal('open', error)
   }
-  return { view, origin: assets.origin, close }
+  return {
+    view,
+    origin: assets.origin,
+    close,
+    ...(options.hostViewId ? { hostViewId: options.hostViewId } : {}),
+  }
 }
