@@ -16,11 +16,39 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-const proofIo = vi.hoisted(() => ({ failRename: false, deviceOffset: 0n }))
+const proofIo = vi.hoisted(() => ({ failRename: false, deviceOffset: 0n, noFollowFallback: false }))
+// Exercise Windows' descriptor-vs-path check even on a Mac: Windows has no O_NOFOLLOW.
+vi.mock('node:fs', async () => {
+  const fs = await vi.importActual<typeof import('node:fs')>('node:fs')
+  return {
+    ...fs,
+    constants: {
+      ...fs.constants,
+      get O_NOFOLLOW() {
+        return proofIo.noFollowFallback ? undefined : fs.constants.O_NOFOLLOW
+      },
+    },
+  }
+})
 vi.mock('node:fs/promises', async () => {
   const fs = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises')
   return {
     ...fs,
+    open: async (...args: Parameters<typeof fs.open>) => {
+      const handle = await fs.open(...args)
+      const stat = handle.stat.bind(handle)
+      // Renumbering affects both the pathname and an already opened descriptor. Windows'
+      // no-O_NOFOLLOW guard compares them; contradictory mock devices must not bypass it.
+      handle.stat = (async (...options: Parameters<typeof handle.stat>) => {
+        const observed = await stat(...options)
+        if (typeof observed.dev === 'bigint' && proofIo.deviceOffset)
+          return Object.assign(Object.create(Object.getPrototypeOf(observed)), observed, {
+            dev: observed.dev + proofIo.deviceOffset,
+          })
+        return observed
+      }) as typeof handle.stat
+      return handle
+    },
     lstat: async (...args: Parameters<typeof fs.lstat>) => {
       const stat = await fs.lstat(...args)
       if (typeof stat.dev === 'bigint' && proofIo.deviceOffset)
@@ -56,6 +84,7 @@ describe('fenced reboot proof for historical plugin runs', () => {
   const marker = () => join(root, 'supervisor/reboot-proofs', `pending-${epoch}.json`)
   afterEach(async () => {
     proofIo.deviceOffset = 0n
+    proofIo.noFollowFallback = false
     volume = 'apfs:11111111-1111-4111-8111-111111111111'
     vi.restoreAllMocks()
     if (owner) {
@@ -119,25 +148,28 @@ describe('fenced reboot proof for historical plugin runs', () => {
     await refused()
     expect(await readFile(marker(), 'utf8')).toContain(volume)
   })
-  it('records a durable volume and replays its certificate after two device renumberings', async () => {
-    await fixture()
-    await refused()
-    proofIo.deviceOffset = 17n
-    witness = { kind: 'darwin-boot-session-v1', value: randomUUID() }
-    const write = SupervisorStorage.prototype.write
-    const interrupted = vi.spyOn(SupervisorStorage.prototype, 'write').mockImplementation(function (
-      this: SupervisorStorage,
-      value,
-    ) {
-      if (value.phase === 'stopped') throw new Error('fictional interrupted transition')
-      return write.call(this, value)
-    })
-    await expect(attempt()).rejects.toBeDefined()
-    interrupted.mockRestore()
-    proofIo.deviceOffset = 29n
-    witness = null
-    await attempt()
-  })
+  it.each([false, true])(
+    'records a durable volume and replays its certificate after two device renumberings (no-follow fallback: %s)',
+    async (fallback) => {
+      proofIo.noFollowFallback = fallback
+      await fixture()
+      await refused()
+      proofIo.deviceOffset = 17n
+      witness = { kind: 'darwin-boot-session-v1', value: randomUUID() }
+      const write = SupervisorStorage.prototype.write
+      const interrupted = vi
+        .spyOn(SupervisorStorage.prototype, 'write')
+        .mockImplementation(function (this: SupervisorStorage, value) {
+          if (value.phase === 'stopped') throw new Error('fictional interrupted transition')
+          return write.call(this, value)
+        })
+      await expect(attempt()).rejects.toBeDefined()
+      interrupted.mockRestore()
+      proofIo.deviceOffset = 29n
+      witness = null
+      await attempt()
+    },
+  )
   it('refuses a changed anchored volume even with identical inodes and a different boot', async () => {
     await fixture()
     await refused()
@@ -248,30 +280,34 @@ describe('fenced reboot proof for historical plugin runs', () => {
     witness = null
     return join(root, 'supervisor/reboot-proofs/certificates', `${pending.nonce}.json`)
   }
-  it('enrols a legacy certificate without rewriting it, then refuses a changed recorded volume', async () => {
-    const file = await retainedProof('certificate')
-    const original = await makeLegacy(file)
-    const log = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    await attempt()
-    expect(await readFile(file, 'utf8')).toBe(original)
-    expect(log).toHaveBeenCalledWith('rebound after device renumbering')
-    await owner!.shutdown()
-    await owner!.closed
-    owner = undefined
-    const storage = new SupervisorStorage(root, [], false)
-    storage.write({ ...storage.read()!, phase: 'blocked' })
-    storage.close()
-    proofIo.deviceOffset = 71n
-    await attempt()
-    await owner!.shutdown()
-    await owner!.closed
-    owner = undefined
-    const nextStorage = new SupervisorStorage(root, [], false)
-    nextStorage.write({ ...nextStorage.read()!, phase: 'blocked' })
-    nextStorage.close()
-    volume = 'apfs:22222222-2222-4222-8222-222222222222'
-    await refused()
-  })
+  it.each([false, true])(
+    'enrols a legacy certificate without rewriting it, then refuses a changed recorded volume (no-follow fallback: %s)',
+    async (fallback) => {
+      proofIo.noFollowFallback = fallback
+      const file = await retainedProof('certificate')
+      const original = await makeLegacy(file)
+      const log = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      await attempt()
+      expect(await readFile(file, 'utf8')).toBe(original)
+      expect(log).toHaveBeenCalledWith('rebound after device renumbering')
+      await owner!.shutdown()
+      await owner!.closed
+      owner = undefined
+      const storage = new SupervisorStorage(root, [], false)
+      storage.write({ ...storage.read()!, phase: 'blocked' })
+      storage.close()
+      proofIo.deviceOffset = 71n
+      await attempt()
+      await owner!.shutdown()
+      await owner!.closed
+      owner = undefined
+      const nextStorage = new SupervisorStorage(root, [], false)
+      nextStorage.write({ ...nextStorage.read()!, phase: 'blocked' })
+      nextStorage.close()
+      volume = 'apfs:22222222-2222-4222-8222-222222222222'
+      await refused()
+    },
+  )
   it.each(['digest', 'inode', 'hardlink'] as const)(
     'refuses a changed legacy certificate enrollment: %s',
     async (change) => {
