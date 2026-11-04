@@ -99,9 +99,13 @@ describe('M55 · a Close counts as a stop before its own finalize', () => {
     closeDrainTimeoutMs: number,
     retiring?: { pending: boolean; wait: Promise<void> },
     replacement?: { pending: boolean; wait: Promise<void> },
+    titles = false,
   ): RuntimeHost =>
     new RuntimeHost({
       store,
+      ...(titles
+        ? { pluginContext: { active: () => true, beforeTurn: async () => ({ pointers: [] }) } }
+        : {}),
       discoverSessions: NO_DISCOVERY,
       nativeTranscriptPath: () => null,
       exportDirectory: () => join(userData, 'exports'),
@@ -215,49 +219,52 @@ describe('M55 · a Close counts as a stop before its own finalize', () => {
     return { closing: slot.session.closing !== null, finalizing: slot.session.finalizing !== null }
   }
 
-  it('a message whose handover lands the instant a Close begins — before finalize — waits out the stop and is delivered again, never told the conversation "is not active"', async () => {
-    host = buildHost(40)
-    const { sessionId } = await host.createSession(
-      { provider: 'claude', profileId: DEFAULT_PROFILE_ID, approvalMode: 'auto', cwd: work },
-      window,
-    )
+  it.each([false, true])(
+    'a message whose handover lands the instant a Close begins — before finalize — waits out the stop and is delivered again, never told the conversation "is not active", titles=%s',
+    async (titles) => {
+      host = buildHost(40, undefined, undefined, titles)
+      const { sessionId } = await host.createSession(
+        { provider: 'claude', profileId: DEFAULT_PROFILE_ID, approvalMode: 'auto', cwd: work },
+        window,
+      )
 
-    // ⚑ **The race, with no gate needed.** `send`'s only await before the handover
-    // (`assertSignInCurrent`'s `checkSignIn`, undefined on the Fake) resolves on the very next
-    // microtask — long before `close()`'s synchronous prefix below has even had a chance to run —
-    // so calling `close()` immediately after, in the same tick, always lands while that microtask is
-    // still pending. `close()` itself has no await before it flips the provider's own machine to
-    // `'closing'` (`tearDown` → `stopProvider` → `doStopProvider`'s IIFE → `handle.close()` →
-    // `doClose()`'s `machine.beginClose()`, none of it awaited) — so by the time this statement
-    // returns, the handle a moment from now will refuse a send as *"not active"*, not as *"a turn is
-    // already held"*.
-    const answering = host.send(sessionId, 'are you there', window)
-    const closing = host.close(sessionId, window)
+      // ⚑ **The race, with no gate needed.** `send`'s only await before the handover
+      // (`assertSignInCurrent`'s `checkSignIn`, undefined on the Fake) resolves on the very next
+      // microtask — long before `close()`'s synchronous prefix below has even had a chance to run —
+      // so calling `close()` immediately after, in the same tick, always lands while that microtask is
+      // still pending. `close()` itself has no await before it flips the provider's own machine to
+      // `'closing'` (`tearDown` → `stopProvider` → `doStopProvider`'s IIFE → `handle.close()` →
+      // `doClose()`'s `machine.beginClose()`, none of it awaited) — so by the time this statement
+      // returns, the handle a moment from now will refuse a send as *"not active"*, not as *"a turn is
+      // already held"*.
+      const answering = host.send(sessionId, 'are you there', window)
+      const closing = host.close(sessionId, window)
 
-    // ⛔ **The premise, measured rather than assumed**: right where `itStoppedUnder` will read it,
-    // this conversation is closing and NOT yet finalized — the exact gap M55 plants across.
-    expect(closingAndFinalizing(sessionId)).toEqual({ closing: true, finalizing: false })
+      // ⛔ **The premise, measured rather than assumed**: right where `itStoppedUnder` will read it,
+      // this conversation is closing and NOT yet finalized — the exact gap M55 plants across.
+      expect(closingAndFinalizing(sessionId)).toEqual({ closing: true, finalizing: false })
 
-    // 🔴 **RED under M55, GREEN on today's code.** `itStoppedUnder`'s `||` (M55 plants `&&`) is what
-    // makes this resolve instead of rejecting with the FakeRuntime's own `TURN_REFUSED` text.
-    await expect(answering).resolves.toBeUndefined()
+      // 🔴 **RED under M55, GREEN on today's code.** `itStoppedUnder`'s `||` (M55 plants `&&`) is what
+      // makes this resolve instead of rejecting with the FakeRuntime's own `TURN_REFUSED` text.
+      await expect(answering).resolves.toBeUndefined()
 
-    await closing
-    await until(
-      () => eventsOf(sessionId).some((event) => event.type === 'reopened'),
-      'the conversation to be started again',
-    )
-    const reopenedAt = eventsOf(sessionId).findIndex((event) => event.type === 'reopened')
-    const turnAt = eventsOf(sessionId).findIndex(
-      (event) => event.type === 'user_turn' && event.text === 'are you there',
-    )
-    // 🔴 **Delivered as the NEW start's own turn**, never as a message the dead conversation took.
-    expect(turnAt).toBeGreaterThan(reopenedAt)
-    expect(turnTexts(sessionId)).toEqual(['are you there'])
-    // ⚑ A second launch really ran — the redelivery is observed, not merely inferred from the
-    // absence of a thrown error.
-    expect(launches).toBe(2)
-  })
+      await closing
+      await until(
+        () => eventsOf(sessionId).some((event) => event.type === 'reopened'),
+        'the conversation to be started again',
+      )
+      const reopenedAt = eventsOf(sessionId).findIndex((event) => event.type === 'reopened')
+      const turnAt = eventsOf(sessionId).findIndex(
+        (event) => event.type === 'user_turn' && event.text === 'are you there',
+      )
+      // 🔴 **Delivered as the NEW start's own turn**, never as a message the dead conversation took.
+      expect(turnAt).toBeGreaterThan(reopenedAt)
+      expect(turnTexts(sessionId)).toEqual(['are you there'])
+      // ⚑ A second launch really ran — the redelivery is observed, not merely inferred from the
+      // absence of a thrown error.
+      expect(launches).toBe(2)
+    },
+  )
 
   it('control: the same words, sent with nothing closing, go straight out with no reopen at all', async () => {
     host = buildHost(40)
