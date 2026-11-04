@@ -297,9 +297,7 @@ export class PluginLifecycleController {
     return workspace
   }
   private current(id: string): Installation | undefined {
-    const state = this.options.state.inspect()
-    if (state.pending) return undefined
-    return this.options.state.exportActivation().entries.find((one) => one.pluginId === id)
+    return this.options.state.currentInstallation(id) ?? undefined
   }
   admitted(handle: LifecycleWorkspace, id: string, installId: string): boolean {
     try {
@@ -325,7 +323,7 @@ export class PluginLifecycleController {
       const state = this.options.state.inspect()
       if (state.pending?.next)
         unfinished = { install: state.pending.next, operationId: state.pending.request.operationId }
-      const activations = state.pending ? [] : this.options.state.exportActivation().entries
+      const activations = this.options.state.currentInstallations()
       const names = new Set([
         ...releases.map((one) => one.id),
         ...state.guards.map((one) => one.pluginId),

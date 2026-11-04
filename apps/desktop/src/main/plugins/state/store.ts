@@ -116,6 +116,22 @@ export class GlobalPluginState {
           },
     )
   }
+  /** A pending operation affects only its target, except for a global selection restore. */
+  currentInstallation(pluginId: string) {
+    return frozen(this.selected(this.disk.load(), pluginId))
+  }
+  currentInstallations() {
+    const state = this.disk.load()
+    return frozen(
+      [...state.admitted.values()].filter((entry) => this.selected(state, entry.pluginId)),
+    )
+  }
+  private selected(state: LifecycleState, pluginId: string) {
+    const pending = state.pending?.request.consent
+    if (pending && (pending.action === 'global-restore' || pending.pluginId === pluginId))
+      return null
+    return state.admitted.get(pluginId) ?? null
+  }
   /** Indexed retry lookup; ordinary operations do not scan retained history. */
   operation(operationId: string) {
     return frozen(this.disk.operation(operationId))
@@ -199,8 +215,8 @@ export class GlobalPluginState {
   }
   emptyProjection(workspaceId: string, pluginId: string): Receipt | null {
     const state = this.disk.load()
-    const current = this.active(state).entries.find((entry) => entry.pluginId === pluginId)
-    if (current === undefined) return null
+    const current = this.selected(state, pluginId)
+    if (current === null) return null
     return frozen(
       stateInput(
         installationProjection(state.rootId, state.epoch, workspaceId, current),
