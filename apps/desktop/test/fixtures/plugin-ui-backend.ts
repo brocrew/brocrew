@@ -10,6 +10,7 @@ import { genericUiFixture } from '../plugin-ui-fixtures'
 
 app.setPath('userData', process.argv.at(-1)!)
 protocol.registerSchemesAsPrivileged([PLUGIN_SCHEME])
+app.on('window-all-closed', () => {})
 const watchdog = setTimeout(() => app.exit(2), 20_000)
 const sockets = new Set<Socket>()
 const requests: string[] = []
