@@ -348,7 +348,39 @@ describe('the actual isolated host wiring', () => {
       vi.useRealTimers()
     }
   })
-  it('denies other sessions/packages, remote/file/child network and every later main-frame request', async () => {
+  it('allows generic backend fetch and WebSocket requests only for the current page lifetime', async () => {
+    const { verified, binding } = genericUiFixture()
+    let current = true
+    const page = await openPluginConfigurationView({
+      verified,
+      binding,
+      current: () => current,
+      onInvalidate: () => () => {},
+      tools: {
+        current: () => current,
+        callTool: async () => ({ status: 'result', result: { content: [] } }),
+      },
+    })
+    owned.push(page)
+    const contents = fake.contents.at(-1)!,
+      isolated = fake.sessions.at(-1)!
+    for (const [url, method, type] of [
+      ['http://fictional.invalid/configuration', 'POST', 'xhr'],
+      ['https://different.invalid/backend', 'PATCH', 'xhr'],
+      ['ws://fictional.invalid/events', 'GET', 'webSocket'],
+      ['wss://different.invalid/events', 'GET', 'webSocket'],
+    ] as const) {
+      expect(isolated.request(url, method, type, contents.id)).toBe(false)
+      expect(isolated.request(url, method, type, -1)).toBe(true)
+    }
+    expect(isolated.request(page.origin + '/main.mjs', 'GET', 'xhr', contents.id)).toBe(true)
+    current = false
+    expect(isolated.request('https://different.invalid/backend', 'GET', 'xhr', contents.id)).toBe(
+      true,
+    )
+    expect(contents.isDestroyed()).toBe(true)
+  })
+  it('denies other sessions/packages, remote scripts, file/child loads and every later main-frame request', async () => {
     const f = await host(),
       url = f.contents.url
     expect(

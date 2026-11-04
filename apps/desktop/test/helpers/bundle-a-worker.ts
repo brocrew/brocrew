@@ -36,6 +36,7 @@ export async function bundleAWorker(
   entry: string,
   outDir: string,
   fileName: string,
+  paths: Readonly<Record<string, string>> = {},
 ): Promise<string> {
   await build({
     configFile: false,
@@ -57,7 +58,7 @@ export async function bundleAWorker(
       lib: { entry: resolve(APP, entry), formats: ['cjs'], fileName: () => fileName },
       rollupOptions: {
         external: isLeftOutside,
-        output: { paths: (id) => require.resolve(id, { paths: PACKAGES_FROM }) },
+        output: { paths: (id) => paths[id] ?? require.resolve(id, { paths: PACKAGES_FROM }) },
       },
     },
   })

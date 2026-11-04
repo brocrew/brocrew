@@ -76,7 +76,7 @@ describe('per-view verified assets', () => {
     for (const rule of [
       "default-src 'none'",
       "script-src 'self'",
-      "connect-src 'none'",
+      'connect-src *',
       "frame-src 'none'",
       "worker-src 'none'",
       "object-src 'none'",
@@ -101,6 +101,7 @@ describe('per-view verified assets', () => {
       secure: true,
       bypassCSP: false,
       allowServiceWorkers: false,
+      supportFetchAPI: true,
     })
   })
 })
