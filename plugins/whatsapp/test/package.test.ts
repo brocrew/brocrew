@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto'
 import { Readable } from 'node:stream'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { loadConfig } from '../src/config.js'
 import { startWhatsApp, VERSION } from '../src/app.js'
 import { silentLogger } from '../src/logger.js'
@@ -24,13 +24,8 @@ const temporary = () => {
   cleanup.push(() => fs.rmSync(root, { recursive: true, force: true }))
   return root
 }
-const mcpToken = 'fictional-mcp-'.repeat(8)
-const adminToken = 'fictional-person-'.repeat(8)
 function configured() {
-  const home = temporary()
-  const authPath = path.join(home, 'fixture-auth.json')
-  fs.writeFileSync(authPath, JSON.stringify({ mcpToken, adminToken }), { mode: 0o600 })
-  return loadConfig({ BROCREW_WHATSAPP_DATA: home, BROCREW_WHATSAPP_AUTH: authPath })
+  return loadConfig({ BROCREW_PLUGIN_DATA: temporary() })
 }
 async function boot(options: { read?: boolean; writable?: string[]; prefix?: boolean } = {}) {
   const config = configured()
@@ -40,39 +35,31 @@ async function boot(options: { read?: boolean; writable?: string[]; prefix?: boo
   for (const group of options.writable ?? []) settings.setWritable(group, true)
   const bridge = new FakeBridge()
   let clock = 1_800_000_000_000
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
   const server = await startWhatsApp(config, {
+    transport: serverTransport,
     bridge,
     settings,
     logger: silentLogger,
     now: () => clock,
   })
   cleanup.push(() => server.close())
-  const url = `http://127.0.0.1:${(server.httpServer.address() as { port: number }).port}`
-  async function request(endpoint: string, token?: string, body?: unknown, origin?: string) {
-    const response = await fetch(url + endpoint, {
-      method: body === undefined ? 'GET' : 'POST',
-      headers: {
-        ...(token ? { authorization: `Bearer ${token}` } : {}),
-        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
-        ...(origin ? { origin } : {}),
-      },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    })
-    return { status: response.status, body: await response.json() }
-  }
   const client = new Client({ name: 'fictional-agent', version: '1.0.0' })
-  await client.connect(
-    new StreamableHTTPClientTransport(new URL(url + '/mcp'), {
-      requestInit: { headers: { authorization: `Bearer ${mcpToken}` } },
-    }),
-  )
+  await client.connect(clientTransport)
   cleanup.push(() => client.close())
   async function call(name: string, args: Record<string, unknown> = {}) {
-    const result = (await client.callTool({ name, arguments: args })) as {
+    const result = (await client.callTool({
+      name,
+      arguments: args,
+      _meta: {
+        workspaceId: 'fictional-workspace',
+        requestId: name,
+        origin: name.startsWith('whatsapp_') ? 'settings.page' : 'agent',
+      },
+    })) as {
       content: Array<{ type: string; text?: string; data?: string; mimeType?: string }>
       isError?: boolean
     }
-    expect(result.isError).toBeFalsy()
     return result
   }
   const text = async (name: string, args: Record<string, unknown> = {}) =>
@@ -89,7 +76,6 @@ async function boot(options: { read?: boolean; writable?: string[]; prefix?: boo
     config,
     settings,
     bridge,
-    request,
     call,
     text,
     refusals,
@@ -116,108 +102,26 @@ describe('WhatsApp package', () => {
     inspect('plugins/whatsapp/src')
   })
 
-  it('requires explicit private paths and distinct private tokens', () => {
+  it('requires explicit generic data paths and keeps private folders', () => {
     expect(() => loadConfig({})).toThrow('Plugin unavailable')
-    expect(() => loadConfig({ BROCREW_WHATSAPP_DATA: 'relative' })).toThrow('Plugin unavailable')
+    expect(() => loadConfig({ BROCREW_PLUGIN_DATA: 'relative' })).toThrow('Plugin unavailable')
     const config = configured()
     for (const dir of [config.home, config.files, config.downloads, config.bridgeData, config.bin])
       expect(fs.statSync(dir).mode & 0o777).toBe(0o700)
-    fs.writeFileSync(config.authPath, JSON.stringify({ mcpToken, adminToken: mcpToken }))
-    expect(() =>
-      loadConfig({ BROCREW_WHATSAPP_DATA: config.home, BROCREW_WHATSAPP_AUTH: config.authPath }),
-    ).toThrow('Plugin unavailable')
-    fs.writeFileSync(config.authPath, JSON.stringify({ mcpToken, adminToken }))
-    fs.chmodSync(config.authPath, 0o644)
-    expect(() =>
-      loadConfig({ BROCREW_WHATSAPP_DATA: config.home, BROCREW_WHATSAPP_AUTH: config.authPath }),
-    ).toThrow('Plugin unavailable')
   })
 
-  it('keeps the person’s routes apart from the tools, and refuses browser origins', async () => {
-    const { request } = await boot()
-    expect((await request('/healthz')).status).toBe(401)
-    expect((await request('/v1/status', mcpToken)).status).toBe(401)
-    expect((await request('/v1/read', mcpToken, { enabled: true })).status).toBe(401)
-    expect((await request('/mcp', adminToken, {})).status).toBe(401)
-    expect(await request('/healthz', adminToken)).toEqual({
-      status: 200,
-      body: { ok: true, version: VERSION },
-    })
-    expect(
-      (await request('/v1/status', adminToken, undefined, 'https://fictional.invalid')).status,
-    ).toBe(403)
-  })
-
-  it('refreshes groups through the bridge only for the person, preserving writing choices', async () => {
-    const { request, bridge, settings } = await boot({ writable: [ROWING.jid] })
-    expect((await request('/v1/refresh-groups', mcpToken, {})).status).toBe(401)
-    expect((await request('/v1/refresh-groups', adminToken, { route: '/chats' })).status).toBe(400)
+  it('refreshes groups through ordinary MCP, preserving writing choices', async () => {
+    const { call, bridge, settings } = await boot({ writable: [ROWING.jid] })
+    expect((await call('whatsapp_refresh_groups', { route: '/chats' })).isError).toBe(true)
     expect(bridge.requests).toEqual([])
-    const answer = await request('/v1/refresh-groups', adminToken, {})
-    expect(answer.status).toBe(200)
+    const answer = await call('whatsapp_refresh_groups')
+    expect(answer.isError).toBeFalsy()
     expect(bridge.requests).toEqual([{ route: '/groups', body: { refresh: true } }])
-    expect(answer.body.groups.find((one: { jid: string }) => one.jid === ROWING.jid).canWrite).toBe(
-      true,
-    )
     expect(settings.get().writable).toEqual([ROWING.jid])
     bridge.refreshGroups = async () => {
       throw new Error('unavailable')
     }
-    expect((await request('/v1/refresh-groups', adminToken, {})).status).toBe(503)
-  })
-
-  it('serves the page its status and settings, and takes only the person’s switches', async () => {
-    const { request, bridge, settings } = await boot()
-    expect((await request('/v1/status', adminToken)).body).toEqual({
-      state: 'linked',
-      expired: false,
-      account: 'Fictional Phone',
-      qr: null,
-      removeOnPhone: false,
-    })
-    const first = (await request('/v1/settings', adminToken)).body
-    expect(first.read).toBe(false)
-    expect(first.prefix).toBe(true)
-    expect(first.groups.every((one: { canWrite: boolean }) => !one.canWrite)).toBe(true)
-    expect((await request('/v1/read', adminToken, { enabled: true })).body.read).toBe(true)
-    expect((await request('/v1/prefix', adminToken, { enabled: false })).body.prefix).toBe(false)
-    const written = await request('/v1/group-write', adminToken, {
-      group: ROWING.jid,
-      enabled: true,
-    })
-    expect(
-      written.body.groups.find((one: { jid: string }) => one.jid === ROWING.jid).canWrite,
-    ).toBe(true)
-    expect(
-      (
-        await request('/v1/group-write', adminToken, {
-          group: '120363000000000099@g.us',
-          enabled: true,
-        })
-      ).status,
-    ).toBe(400)
-    expect(
-      (await request('/v1/group-write', adminToken, { group: INES, enabled: true })).status,
-    ).toBe(400)
-    expect((await request('/v1/read', adminToken, { enabled: 'yes' })).status).toBe(400)
-    expect((await request('/v1/read', adminToken, { enabled: true, extra: 1 })).status).toBe(400)
-    expect(settings.get()).toEqual({ read: true, prefix: false, writable: [ROWING.jid] })
-    expect((await request('/v1/link', adminToken, {})).status).toBe(409)
-    expect((await request('/v1/unlink', adminToken, {})).status).toBe(202)
-    expect(bridge.unlinked).toBe(1)
-    const linking = await request('/v1/link', adminToken, {})
-    expect(linking.status).toBe(200)
-    expect(linking.body.state).toBe('pairing')
-    expect(linking.body.qr.size).toBe(21)
-  })
-
-  it('logs out and waits for the wipe before the app uninstalls it; only the person can ask', async () => {
-    const { request, bridge } = await boot()
-    expect((await request('/v1/uninstall', mcpToken, {})).status).toBe(401)
-    expect(bridge.unlinked).toBe(0)
-    expect(await request('/v1/uninstall', adminToken, {})).toEqual({ status: 200, body: {} })
-    expect(bridge.unlinked).toBe(1)
-    expect((await request('/v1/uninstall', adminToken, { now: true })).status).toBe(400)
+    expect((await call('whatsapp_refresh_groups')).isError).toBe(true)
   })
 
   it('keeps the settings in a private file that survives a restart', async () => {
@@ -234,7 +138,7 @@ describe('WhatsApp package', () => {
     })
   })
 
-  it('offers exactly the reviewed tools, naming the files folder by its absolute path', async () => {
+  it('offers domain and Configure MCP tools, naming the files folder by its absolute path', async () => {
     const { tools, config } = await boot()
     const listed = await tools()
     expect(listed.map((tool) => tool.name).sort()).toEqual([
@@ -245,6 +149,15 @@ describe('WhatsApp package', () => {
       'search_contacts',
       'search_messages',
       'send_to_group',
+      'whatsapp_before_remove',
+      'whatsapp_link',
+      'whatsapp_refresh_groups',
+      'whatsapp_set_group_write',
+      'whatsapp_set_prefix',
+      'whatsapp_set_read',
+      'whatsapp_settings',
+      'whatsapp_status',
+      'whatsapp_unlink',
     ])
     const send = listed.find((tool) => tool.name === 'send_to_group')!
     expect(send.description).toContain(config.files)

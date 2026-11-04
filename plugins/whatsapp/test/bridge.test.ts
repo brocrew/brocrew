@@ -28,7 +28,9 @@ process.stdin.on('data', (chunk) => {
   fs.writeFileSync(path.join(cfg.dataDir, 'fake-run.json'), JSON.stringify({
     pid: process.pid, cwd: process.cwd(), env: Object.keys(process.env).sort(), config: cfg,
   }))
-  fs.writeFileSync(path.join(cfg.dataDir, 'session.db'), 'fictional session')
+  // Fictional bytes are opaque, including pre-existing DBs and sidecars. Never truncate.
+  if (!fs.existsSync(path.join(cfg.dataDir, 'session.db')))
+    fs.writeFileSync(path.join(cfg.dataDir, 'session.db'), 'fictional session', { flag: 'wx' })
   const server = http.createServer((req, res) => {
     if (req.headers.authorization !== 'Bearer ' + cfg.token) { res.writeHead(401); res.end('{}'); return }
     res.writeHead(200, { 'content-type': 'application/json' })
@@ -76,16 +78,7 @@ async function until(check: () => boolean, ms = 10_000): Promise<void> {
 function setup(program = FAKE, built = program) {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'fictional-whatsapp-bridge-'))
   cleanup.push(() => fs.rmSync(home, { recursive: true, force: true }))
-  const authPath = path.join(home, 'fixture-auth.json')
-  fs.writeFileSync(
-    authPath,
-    JSON.stringify({
-      mcpToken: 'fictional-mcp-'.repeat(8),
-      adminToken: 'fictional-person-'.repeat(8),
-    }),
-    { mode: 0o600 },
-  )
-  const config = loadConfig({ BROCREW_WHATSAPP_DATA: home, BROCREW_WHATSAPP_AUTH: authPath })
+  const config = loadConfig({ BROCREW_PLUGIN_DATA: home })
   const settings = createSettingsStore(config.home)
   const packaged = path.join(home, 'package-whatsapp-bridge')
   fs.writeFileSync(packaged, program, { mode: 0o400 })
@@ -129,6 +122,27 @@ describe('the bridge program', () => {
     // Nothing reached WhatsApp, so the phone still lists the device.
     bridge.unlink()
     expect(bridge.status().removeOnPhone).toBe(true)
+  })
+
+  it('keeps opaque pre-existing session/history and sidecars across fake bridge reopen', async () => {
+    const { bridge, config, begin } = setup()
+    const files = [
+      'session.db',
+      'session.db-wal',
+      'session.db-shm',
+      'messages.db',
+      'messages.db-wal',
+      'messages.db-shm',
+    ]
+    const saved = files.map((file) => [file, Buffer.from(`opaque-${file}\0`)] as const)
+    for (const [file, bytes] of saved) fs.writeFileSync(path.join(config.bridgeData, file), bytes)
+    await until(() => bridge.status().state === 'unlinked')
+    await bridge.close()
+    const again = begin()
+    await until(() => again.status().state === 'unlinked')
+    await again.close()
+    for (const [file, bytes] of saved)
+      expect(fs.readFileSync(path.join(config.bridgeData, file))).toEqual(bytes)
   })
 
   it('refreshes from the bridge even while the cached groups are fresh', async () => {
