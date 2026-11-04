@@ -97,6 +97,7 @@ describe.skipIf(process.platform === 'win32')('ledger reader and wire', () => {
     const f = await connected(plugin)
     await seedCheckpoint(f.root, f.active.installId)
     const screen = await f.client.screen(plugin)
+    if (screen.tools !== undefined) throw new Error('Expected the legacy fixture page.')
     const fetch = vi.fn(async () => Response.json({}))
     vi.stubGlobal('fetch', fetch)
     const read = () => screen.peer.read({}, 0, screen.binding, new AbortController().signal)
@@ -140,6 +141,7 @@ describe.skipIf(process.platform === 'win32')('ledger reader and wire', () => {
   it('preserves old reader access after the first negotiated save', async () => {
     const f = await connected()
     const screen = await f.client.screen('chrome')
+    if (screen.tools !== undefined) throw new Error('Expected the legacy fixture page.')
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => Response.json({})),

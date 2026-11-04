@@ -156,6 +156,7 @@ async function restarted(appVersion: string, empty: boolean) {
   ])
   expect(cards[0]).not.toHaveProperty('updateVersion')
   const page = await client.screen('chrome')
+  if (page.tools !== undefined) throw new Error('Expected the legacy fixture page.')
   expect(page.verified.manifest.id).toBe('chrome')
   expect(await page.peer.read({}, 0, page.binding, new AbortController().signal)).toMatchObject({
     profiles: [{ name: 'fern', enabled: false }],

@@ -42,7 +42,15 @@ readline.createInterface({input:process.stdin}).on('line', async line => {
  const packet=JSON.parse(line);
  if(!packet.method) { pending.get(packet.id)?.(packet.result); pending.delete(packet.id); return; }
  if(packet.id===undefined) return;
- if(packet.method==='initialize') return reply(packet.id,{protocolVersion:packet.params.protocolVersion,serverInfo:{name:'fictional-orchard',version:'1.0.0'},capabilities:{tools:{}}});
+ if(packet.method==='initialize') {
+  if(process.argv.includes('--describe-on-initialize')) {
+   const id='host-initialize';
+   const result=new Promise(resolve=>pending.set(id,resolve));
+   send({jsonrpc:'2.0',id,method:'brocrew/host',params:{api:1,workspaceId:'fictional-workshop',requestId:'describe',method:'host.describe',params:null}});
+   if((await result)?.value?.api!==1) throw new Error('Fictional host was not attached before initialize');
+  }
+  return reply(packet.id,{protocolVersion:packet.params.protocolVersion,serverInfo:{name:'fictional-orchard',version:'1.0.0'},capabilities:{tools:{}}});
+ }
  if(packet.method==='tools/list') return reply(packet.id,{tools:[{name:'orchard.echo',description:'Fictional echo',inputSchema:{type:'object',additionalProperties:true}}]});
  if(packet.method==='tools/call') {
   const args=packet.params.arguments;
@@ -148,6 +156,38 @@ async function context(options: Partial<Parameters<typeof createPluginNodeHost>[
   return { host, home }
 }
 describe('generic plugin process runner', () => {
+  it('attaches trusted instance metadata before a host request during MCP initialize', async () => {
+    const { host } = await context()
+    let attached: Readonly<{ pluginId: string; runId: string }> | undefined
+    const onStarted = vi.fn(async (owner) => {
+      await Promise.resolve()
+      attached = owner
+    })
+    const hostRequest = vi.fn(async (owner, envelope, signal) => {
+      expect(owner).toEqual(attached)
+      expect(signal.aborted).toBe(false)
+      expect(envelope).toEqual({
+        api: 1,
+        workspaceId: 'fictional-workshop',
+        requestId: 'describe',
+        method: 'host.describe',
+        params: null,
+      })
+      return { value: { api: 1 } }
+    })
+    const run = await host.start({
+      ...fixture({ args: ['--describe-on-initialize'] }),
+      onStarted,
+      hostRequest,
+    })
+    const ready = await run.ready()
+    expect(onStarted).toHaveBeenCalledExactlyOnceWith({
+      pluginId: 'fictional-orchard',
+      runId: run.runId,
+    })
+    expect(hostRequest).toHaveBeenCalledOnce()
+    expect((await ready.client!.listTools()).tools[0]?.name).toBe('orchard.echo')
+  })
   beforeAll(async () => {
     root = await realpath(
       await mkdtemp(

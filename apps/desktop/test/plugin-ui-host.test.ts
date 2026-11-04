@@ -2,9 +2,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
 import { resolve, join, relative } from 'node:path'
 import ts from 'typescript'
-import { uiFixture } from './plugin-ui-fixtures'
+import { genericUiFixture, uiFixture } from './plugin-ui-fixtures'
 import type { PluginUiPeer } from '../src/main/plugins/ui/rpc'
 import { PLUGIN_UI_RPC, PLUGIN_UI_CHANNEL } from '../src/shared/plugin-ui'
+import { PLUGIN_PAGE_CHANNEL } from '../src/shared/plugin-page'
+import type { PluginJsonObject, PluginToolCallResult } from '../src/shared/plugin-contract'
+import { McpError } from '@modelcontextprotocol/sdk/types.js'
 
 const fake = await vi.hoisted(async () => {
   const { EventEmitter } = await import('node:events')
@@ -140,6 +143,132 @@ function handler() {
   return fake.ipc.handle.mock.calls.find((call) => call[0] === PLUGIN_UI_RPC)![1]
 }
 describe('the actual isolated host wiring', () => {
+  it.each([-32000, -32001, -32602])(
+    'keeps protocol error %s lossless through the native page handler and valid isError results intact',
+    async (code) => {
+      const { verified, binding } = genericUiFixture()
+      const data = { field: 'collection', choices: ['fictional-drafts'] }
+      const failure = new McpError(code, 'Select a fictional collection', data)
+      const callTool = vi.fn(async (): Promise<PluginToolCallResult> => {
+        throw failure
+      })
+      const view = await openPluginConfigurationView({
+        verified,
+        binding,
+        current: () => true,
+        onInvalidate: () => () => {},
+        tools: { current: () => true, callTool },
+      })
+      owned.push(view)
+      const contents = fake.contents.at(-1)!
+      const generation = String(contents.preferences.additionalArguments).split('=')[1]
+      const event = { sender: contents, senderFrame: contents.mainFrame }
+      const call = handler()
+      const packet = {
+        channel: PLUGIN_PAGE_CHANNEL,
+        requestId: 'save',
+        method: 'callTool',
+        params: { tool: 'notes_save', arguments: { collection: 'fictional-drafts' } },
+      }
+      const answer = await call(event, structuredClone({ generation, packet }))
+      expect(structuredClone(answer)).toEqual({
+        ok: true,
+        data: { status: 'protocol-error', error: { code, message: failure.message, data } },
+      })
+      expect(JSON.parse(JSON.stringify(answer))).toEqual(answer)
+      const toolError: PluginToolCallResult = {
+        status: 'result',
+        result: {
+          content: [{ type: 'text', text: 'Fictional note could not be saved' }],
+          isError: true,
+          structuredContent: { retry: true },
+        },
+      }
+      callTool.mockResolvedValue(toolError)
+      expect(
+        await call(
+          event,
+          structuredClone({ generation, packet: { ...packet, requestId: 'retry' } }),
+        ),
+      ).toEqual({ ok: true, data: toolError })
+    },
+  )
+  it('routes a generic native page through the same tools and cancels its pending call on detach', async () => {
+    const { verified, binding } = genericUiFixture()
+    const result: PluginToolCallResult = {
+      status: 'result',
+      result: {
+        content: [{ type: 'text', text: 'Fictional note saved' }],
+        structuredContent: { saved: true },
+      },
+    }
+    const callTool = vi
+      .fn<
+        (
+          tool: string,
+          args: PluginJsonObject,
+          requestId: string,
+          signal: AbortSignal,
+        ) => Promise<PluginToolCallResult>
+      >()
+      .mockResolvedValue(result)
+    const cancelTool = vi
+      .fn<(requestId: string) => Promise<{ cancelled: boolean; completed: boolean }>>()
+      .mockResolvedValue({ cancelled: true, completed: false })
+    let current = true,
+      revoke: () => void | Promise<void> = () => {}
+    const view = await openPluginConfigurationView({
+      verified,
+      binding,
+      current: () => current,
+      onInvalidate: (stop) => {
+        revoke = stop
+        return () => {}
+      },
+      tools: { current: () => current, callTool, cancelTool },
+    })
+    owned.push(view)
+    const contents = fake.contents.at(-1)!
+    const generation = String(contents.preferences.additionalArguments).split('=')[1]
+    const event = { sender: contents, senderFrame: contents.mainFrame }
+    const call = handler()
+    const packet = {
+      channel: PLUGIN_PAGE_CHANNEL,
+      requestId: 'save',
+      method: 'callTool',
+      params: {
+        tool: 'notes_save',
+        arguments: { note: { title: 'Fictional guide' }, labels: ['draft'] },
+      },
+    }
+    expect(await call(event, structuredClone({ generation, packet }))).toEqual({
+      ok: true,
+      data: result,
+    })
+    expect(callTool).toHaveBeenCalledExactlyOnceWith(
+      'notes_save',
+      packet.params.arguments,
+      'save',
+      expect.any(AbortSignal),
+    )
+    let finish!: (value: PluginToolCallResult) => void
+    callTool.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        }),
+    )
+    const pending = call(
+      event,
+      structuredClone({ generation, packet: { ...packet, requestId: 'pending' } }),
+    )
+    current = false
+    await revoke()
+    expect(callTool.mock.calls[1]![3].aborted).toBe(true)
+    expect(cancelTool).toHaveBeenCalledExactlyOnceWith('pending')
+    finish(result)
+    expect(await pending).toMatchObject({ ok: false })
+  })
   it('uses a unique memory partition and hardened WebContentsView with the fixed host preload', async () => {
     const a = await host(),
       b = await host()

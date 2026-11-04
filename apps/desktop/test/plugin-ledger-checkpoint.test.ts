@@ -139,6 +139,7 @@ describe.skipIf(process.platform === 'win32')('bounded durable configuration led
       })
       closers.push(() => client.close())
       const screen = await client.screen(plugin)
+      if (screen.tools !== undefined) throw new Error('Expected the legacy fixture page.')
       await upgradedFixture(f.root, active.installId)
       const fetch = vi.fn(async () => Response.json({}))
       vi.stubGlobal('fetch', fetch)

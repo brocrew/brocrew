@@ -536,6 +536,7 @@ describe.skipIf(process.platform === 'win32')(
         await client.install('chrome')
         expect((await client.catalogue())[0]?.state).toBe('Running')
         const screen = await client.screen('chrome')
+        if (screen.tools !== undefined) throw new Error('Expected the legacy fixture page.')
         expect(screen.verified.manifest.id).toBe('chrome')
         expect(await screen.peer.read({}, 0, screen.binding, new AbortController().signal)).toEqual(
           { configRevision: 0, profiles: [], tabs: [] },

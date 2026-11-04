@@ -117,6 +117,7 @@ describe.skipIf(process.platform === 'win32')(
       })
       closers.push(() => client.close())
       const screen = await client.screen('chrome')
+      if (screen.tools !== undefined) throw new Error('Expected the legacy fixture page.')
       let time = 0,
         request = 0
       const rpc = new PluginUiRpc({
@@ -265,8 +266,9 @@ describe.skipIf(process.platform === 'win32')(
         propose: () => {},
       })
       closers.push(() => client.close())
-      const screen = await client.screen('chrome'),
-        fetch = vi.fn(async () => new Response('{}', { status: 201 }))
+      const screen = await client.screen('chrome')
+      if (screen.tools !== undefined) throw new Error('Expected the legacy fixture page.')
+      const fetch = vi.fn(async () => new Response('{}', { status: 201 }))
       vi.stubGlobal('fetch', fetch)
       expect(
         (

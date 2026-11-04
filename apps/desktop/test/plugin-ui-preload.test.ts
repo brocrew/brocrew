@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { PLUGIN_UI_CHANNEL, PLUGIN_UI_EVENT, PLUGIN_UI_RPC } from '../src/shared/plugin-ui'
+import { PLUGIN_PAGE_CHANNEL } from '../src/shared/plugin-page'
 const renderer = vi.hoisted(() => ({
-  invoke: vi.fn(async () => ({ ok: true, data: { loaves: 2 } })),
+  invoke: vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => ({
+    ok: true,
+    data: { loaves: 2 },
+  })),
   on: vi.fn(),
 }))
 vi.mock('electron', () => ({ ipcRenderer: renderer }))
@@ -91,4 +95,46 @@ it('drops duplicate and excess pending DOM packets before IPC', async () => {
   expect(renderer.invoke).toHaveBeenCalledTimes(4)
   for (const release of releases) release({ ok: true, data: { loaves: 2 } })
   await Promise.all(waits)
+})
+it('forwards generic MCP arguments and full replies without the legacy page quotas', async () => {
+  const window = page()
+  vi.stubGlobal('window', window)
+  const releases: ((value: unknown) => void)[] = []
+  renderer.invoke.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        releases.push(resolve)
+      }),
+  )
+  await import('../src/preload/plugin-ui')
+  const deliver = window.addEventListener.mock.calls[0]![1]
+  const args = { text: 'Fictional note '.repeat(6000), nested: { labels: ['draft'] } }
+  const generic = (requestId: string) => ({
+    channel: PLUGIN_PAGE_CHANNEL,
+    requestId,
+    method: 'callTool',
+    params: { tool: 'notes_save', arguments: args },
+  })
+  const waits = ['one', 'two', 'three', 'four', 'five', 'six', 'one'].map((requestId) =>
+    deliver({ source: window, origin, data: structuredClone(generic(requestId)) }),
+  )
+  expect(renderer.invoke).toHaveBeenCalledTimes(6)
+  expect(renderer.invoke).toHaveBeenNthCalledWith(1, PLUGIN_UI_RPC, {
+    generation,
+    packet: generic('one'),
+  })
+  const result = {
+    status: 'result',
+    result: {
+      content: [{ type: 'text', text: 'Fictional result '.repeat(70000) }],
+      structuredContent: { saved: true },
+    },
+  }
+  for (const release of releases) release(structuredClone({ ok: true, data: result }))
+  await Promise.all(waits)
+  expect(window.postMessage).toHaveBeenCalledTimes(6)
+  expect(window.postMessage).toHaveBeenCalledWith(
+    { channel: PLUGIN_PAGE_CHANNEL, requestId: 'one', ok: true, data: result },
+    origin,
+  )
 })
