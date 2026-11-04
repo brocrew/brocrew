@@ -426,8 +426,13 @@ export function renderMarkdown(source: string): string {
 }
 
 /** What an agent said, in the conversation stream. */
-export function renderChatMarkdown(source: string): string {
-  return chatRenderer.render(source)
+export function renderChatMarkdown(source: string, lead?: string): string {
+  const html = chatRenderer.render(source)
+  if (!lead) return html
+  const label = chatRenderer.utils.escapeHtml(lead)
+  return html.startsWith('<p>')
+    ? `<p>${label} ${html.slice(3)}`
+    : `<p>${label}</p>\n${html}`
 }
 
 /** One short plain preview, parsed by the same markdown library as the full words. */

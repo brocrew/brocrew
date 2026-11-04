@@ -3,7 +3,7 @@ import { runtimePathCalls, useMessagePaths, usePathsIn } from '../composables/us
 import { renderChatMarkdown } from '../lib/markdown'
 import MarkdownWords from './MarkdownWords.vue'
 
-const props = defineProps<{ text: string; sessionId?: string }>()
+const props = defineProps<{ text: string; sessionId?: string; lead?: string }>()
 const here = useMessagePaths(
   () => props.sessionId ?? null,
   () => (props.sessionId ? runtimePathCalls() : null),
@@ -16,7 +16,7 @@ const paths = usePathsIn(
 
 <template>
   <div class="request-markdown" @click="paths.clicked">
-    <MarkdownWords :text="text" :found="paths" />
+    <MarkdownWords :text="text" :found="paths" :lead="lead" />
     <p v-if="paths.failure.value" class="message-path-failure" role="status">
       {{ paths.failure.value }}
     </p>

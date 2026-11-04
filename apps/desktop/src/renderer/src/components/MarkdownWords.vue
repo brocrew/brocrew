@@ -2,9 +2,9 @@
 import { computed } from 'vue'
 import { renderChatMarkdown } from '../lib/markdown'
 import type { PathsInAMessage } from '../composables/useMessagePaths'
-const props = defineProps<{ text: string; found?: PathsInAMessage | null }>()
+const props = defineProps<{ text: string; found?: PathsInAMessage | null; lead?: string }>()
 const rendered = computed(() => {
-  const html = renderChatMarkdown(props.text).trimEnd()
+  const html = renderChatMarkdown(props.text, props.lead).trimEnd()
   return props.found?.mark(html) ?? html
 })
 </script>
