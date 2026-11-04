@@ -91,6 +91,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Install exact plugin test dependencies
+        run: npm ci --prefix scripts/gates/plugin-test-dependencies --ignore-scripts --no-audit --no-fund
+
       # `coverage-measurement.config.ts` sits at the root and imports the Vue plugin, which only the
       # desktop app depends on, so pnpm links it there and not at the root. One link, in this run's
       # checkout, lets the config load; no tracked file changes.

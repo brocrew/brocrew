@@ -77,6 +77,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Install exact plugin test dependencies
+        run: npm ci --prefix scripts/gates/plugin-test-dependencies --ignore-scripts --no-audit --no-fund
+
       # As ci.yml: `cli-equivalence` chooses the real `~/.claude` and `~/.codex` as a working
       # directory, and a fresh runner has neither. Empty is enough; nothing reads them.
       - name: Give the runner the two CLI homes

@@ -1,0 +1,14 @@
+{
+  "name": "fictional-package-validation-dependencies",
+  "private": true,
+  "version": "0.0.0",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "express": "4.22.3",
+    "playwright-core": "1.61.0",
+    "@types/express": "5.0.6",
+    "@types/node": "22.19.15",
+    "esbuild": "0.25.12",
+    "typescript": "5.9.3"
+  }
+}

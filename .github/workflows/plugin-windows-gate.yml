@@ -58,6 +58,10 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Install exact plugin test dependencies
+        run: npm ci --prefix scripts/gates/plugin-test-dependencies --ignore-scripts --no-audit --no-fund
+
       - name: The plugin host's Windows tests
         run: pnpm exec vitest run apps/desktop/test/plugin-windows-host.test.ts
       - name: Build, install, use, restart and remove Chrome in the packaged app

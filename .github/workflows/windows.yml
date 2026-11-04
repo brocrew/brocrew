@@ -128,6 +128,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Install exact plugin test dependencies
+        run: npm ci --prefix scripts/gates/plugin-test-dependencies --ignore-scripts --no-audit --no-fund
+
       # The recovery tests on this OS's own file system: real data folders and the real recovery
       # service, with no credentials and no Electron. Before packaging, which rebuilds the database
       # module for Electron. A run that collects no test fails, so a moved folder cannot pass.
