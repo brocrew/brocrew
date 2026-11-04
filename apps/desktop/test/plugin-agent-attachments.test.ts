@@ -62,6 +62,7 @@ async function live() {
   await controller.install(person, 'chrome')
   let valid = true,
     allowed = true
+  const revoked = new Set<string>()
   const call = vi.fn()
   const binding = vi.fn(async () => ({
     tools: [
@@ -95,7 +96,13 @@ async function live() {
       },
     },
   }))
-  const bridge = createLifecycleAgentBridge({ controller, owner: { valid: () => valid }, binding })
+  const diagnostic = vi.fn()
+  const bridge = createLifecycleAgentBridge({
+    controller,
+    owner: { valid: (id) => valid && !revoked.has(id) },
+    binding,
+    diagnostic,
+  })
   consumer.bridge = bridge
   closes.push(() => bridge.close())
   return {
@@ -105,6 +112,11 @@ async function live() {
     bridge,
     binding,
     call,
+    diagnostic,
+    revokeLease: (one: WorkspaceLease) => {
+      revoked.add(one.id)
+      bridge.revoke(one)
+    },
     setValid: (v: boolean) => {
       valid = v
     },
@@ -193,6 +205,46 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
       log.mockRestore()
     }
   })
+  it.each(['installation', 'lease'])(
+    'does not carry a late binding failure from a revoked %s onto a healthy caller',
+    async (scope) => {
+      const f = await live()
+      const close = scope === 'lease' ? closes.pop()! : undefined
+      const log = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      let rejectBinding!: (error: Error) => void
+      const binding = new Promise<Awaited<ReturnType<typeof f.binding>>>((_resolve, reject) => {
+        rejectBinding = reject
+      })
+      f.binding.mockImplementationOnce(() => binding)
+      try {
+        const owner = lease()
+        const pending = f.bridge.routes(owner, request(f.local.sink.workspaceId))
+        await vi.waitFor(() => expect(f.binding).toHaveBeenCalledOnce())
+        if (scope === 'installation') f.bridge.deny('chrome')
+        else f.revokeLease(owner)
+        rejectBinding(new Error('fictional stale binding failure'))
+        expect(await pending).toEqual([])
+        const [route] = await f.bridge.routes(
+          scope === 'installation' ? owner : lease(),
+          request(f.local.sink.workspaceId),
+        )
+        const client = await connected(route!)
+        expect(await client.callTool({ name: 'echo', arguments: {} })).toMatchObject({
+          content: [{ text: 'fictional fern' }],
+        })
+        expect(f.binding).toHaveBeenCalledTimes(2)
+        expect(f.call).toHaveBeenCalledOnce()
+        expect(f.diagnostic).toHaveBeenCalledWith('chrome', 'route-stale')
+        expect((await f.controller.status()).cards[0]).toMatchObject({ state: 'Running' })
+        expect((await f.controller.status()).cards[0]).not.toHaveProperty('toolsUnavailable')
+      } finally {
+        log.mockRestore()
+        // The revoked consumer's intentionally failed binding remains a negative cleanup receipt.
+        // A truthful warning must not clear that separate safety barrier.
+        if (close) await expect(close()).rejects.toThrow()
+      }
+    },
+  )
   it('every incarnation gets a distinct authenticated capability and shares one installation broker', async () => {
     const f = await live(),
       owner = lease()

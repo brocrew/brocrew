@@ -196,6 +196,7 @@ export function createLifecycleAgentBridge(options: {
     for (const view of views) {
       if (!valid(lease) || !view.current()) continue
       const id = view.installation.pluginId
+      const version = versions.get(id) ?? 0
       const identity = `${view.installation.installId}:${view.installation.incarnation}:${view.installation.configRevision}`
       const key = `${caller}:${id}`
       let cached = routes.get(key)
@@ -220,7 +221,6 @@ export function createLifecycleAgentBridge(options: {
           work = undefined
         }
         if (!work) {
-          const version = versions.get(id) ?? 0
           const report = diagnostic(id)
           work = options.binding(view, report).then((binding) => {
             if (!view.current() || closed || (versions.get(id) ?? 0) !== version)
@@ -300,8 +300,10 @@ export function createLifecycleAgentBridge(options: {
           routes.set(key, cached)
           failedRoutes.delete(key)
         } catch {
-          failRoute(key, id)
-          reportPluginToolFailure(diagnostic(id), 'route-open-failed')
+          // A retired attempt may be diagnosed, but cannot degrade its replacement's health.
+          const current = valid(lease) && view.current() && (versions.get(id) ?? 0) === version
+          if (current) failRoute(key, id)
+          reportPluginToolFailure(diagnostic(id), current ? 'route-open-failed' : 'route-stale')
           if (options.refused) await options.refused()
           else console.warn('Some plugin tools were refused.')
           continue
