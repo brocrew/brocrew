@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { readFile } from 'node:fs/promises'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
 import {
   connectPersonPluginControl,
@@ -9,11 +10,11 @@ import {
 import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
 import { parseRepoPluginList } from '../src/main/plugins/catalogue/repo-list'
 import { pluginPersonCapability } from '../src/main/plugins/catalogue/capability'
-import { PLUGIN_LIST_URL } from '../src/main/plugins/catalogue/download'
+import { PLUGIN_LIST_URL, PLUGIN_LIST_V2_URL } from '../src/main/plugins/catalogue/download'
 import { pluginSha256 } from '../src/main/plugins/package-digests'
 import type { PluginSupervisorAttachment } from '../src/main/plugins/supervisor/client'
-import { productionPluginController as oldProduction } from './fixtures/plugin-update-parent/production'
-import { connectPluginSettings as oldClient } from './fixtures/plugin-update-parent/lifecycle-settings-client'
+import { productionPluginController } from '../src/main/plugins/production'
+import { sharedLifecycleWorkspaces } from '../src/main/plugins/lifecycle/workspaces'
 import {
   cleanupLifecycleFixtures,
   fixture,
@@ -42,13 +43,12 @@ afterEach(async () => {
   await cleanupLifecycleFixtures()
 })
 
-async function setup(fixedVersion = false, invalidSource?: 'digest' | 'view') {
-  const f = await fixture({}, false, 'whatsapp')
-  const chrome = packageFixture({ manifest: { ...f.pkg.manifest, id: 'chrome' } })
+async function setup(fixedVersion = false, invalidSource?: 'view') {
+  const f = await fixture({}, false, 'fictional-bakery')
+  const chrome = packageFixture({ manifest: { ...f.pkg.manifest, id: 'fictional-pointers' } })
   const extra = packageFixture({ manifest: { ...f.pkg.manifest, id: 'fictional-maps' } })
   const original = repoListFor(f.pkg.release, 'Fictional messages')
-  // The v1 catalogue never gains IDs; a new plugin ID ships only through the
-  // versioned source added in step 4. The old facade reads this raw list unchanged.
+  // Each caller filters this ordinary discovery list for its own app version.
   const legacySource = {
     format: 1,
     entries: [
@@ -84,7 +84,6 @@ async function setup(fixedVersion = false, invalidSource?: 'digest' | 'view') {
   const repoList = fixedVersion
     ? { bytes: raw, sha256: pluginSha256(raw), appVersion: '99.0.0' }
     : undefined
-  if (repoList && invalidSource === 'digest') repoList.sha256 = '0'.repeat(64)
   if (repoList && invalidSource === 'view') repoList.appVersion = '1.0.0'
   const start = f.opts.runtime.start.bind(f.opts.runtime)
   f.opts.runtime.start = async (spec) => {
@@ -107,35 +106,37 @@ async function setup(fixedVersion = false, invalidSource?: 'digest' | 'view') {
     repoCatalogueSha256: initial.sha256,
     catalogue: { bytes: initial.bytes, signature: Buffer.alloc(0) },
     repoList,
-    names: { whatsapp: 'Fictional messages', chrome: 'Fictional browser' },
+    appVersion: fixedVersion ? '99.0.0' : '1.0.0',
+    names: { 'fictional-bakery': 'Fictional messages', 'fictional-pointers': 'Fictional browser' },
     refreshCatalogue: async () => ({
       catalogue: { bytes: source.bytes, signature: Buffer.alloc(0) },
       repoCatalogueSha256: source.sha256,
       repoList,
       names: {
-        whatsapp: 'Fictional messages',
-        chrome: 'Fictional browser',
+        'fictional-bakery': 'Fictional messages',
+        'fictional-pointers': 'Fictional browser',
         'fictional-maps': 'Fictional maps',
       },
     }),
   }
   const controller = await PluginLifecycleController.open(ownerOptions)
+  closers.push(() => controller.drain())
   const handle = await controller.attach(projection().sink)
-  await controller.install(handle, 'whatsapp')
+  await controller.install(handle, 'fictional-bakery')
   if (!fixedVersion) await controller.refreshCatalogue(two.sha256)
   const key = await pluginPersonCapability(f.root)
   const bridge = await servePersonPluginControl({
     root: f.root,
     key,
-    controller,
+    controller: sharedLifecycleWorkspaces(controller),
     read: async () => ({}),
   })
   closers.push(() => bridge.close())
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string) => {
-      expect(String(url)).toBe(PLUGIN_LIST_URL)
-      return Response.json(legacySource)
+      expect([PLUGIN_LIST_URL, PLUGIN_LIST_V2_URL]).toContain(String(url))
+      return Response.json(expanded)
     }),
   )
   const clientOptions = (catalogue = three) => ({
@@ -146,11 +147,17 @@ async function setup(fixedVersion = false, invalidSource?: 'digest' | 'view') {
     repoCatalogueSha256: catalogue.sha256,
     target: f.opts.target,
     catalogue: { bytes: catalogue.bytes, signature: Buffer.alloc(0) },
+    download: async (release: Readonly<typeof f.pkg.release>) =>
+      release.id === f.pkg.release.id
+        ? f.pkg.archive
+        : release.id === chrome.release.id
+          ? chrome.archive
+          : extra.archive,
     projection: projection().sink,
     propose: () => {},
   })
   const facade = () => {
-    const client = oldProduction()
+    const client = productionPluginController()
     keepClient(client)
     client.start({
       root: f.root,
@@ -164,6 +171,7 @@ async function setup(fixedVersion = false, invalidSource?: 'digest' | 'view') {
         ready: async () => true,
         holdsLease: () => true,
         stoppedCleanly: () => false,
+        supports: () => true,
       } as unknown as PluginSupervisorAttachment,
     })
     return client
@@ -175,6 +183,9 @@ async function setup(fixedVersion = false, invalidSource?: 'digest' | 'view') {
     key,
     one,
     two,
+    raw,
+    extra,
+    legacySource,
     three,
     facade,
     clientOptions,
@@ -186,136 +197,227 @@ async function setup(fixedVersion = false, invalidSource?: 'digest' | 'view') {
   }
 }
 
-describe.skipIf(process.platform === 'win32')('pinned production discovery', () => {
-  it('keeps old listing and Configure after a higher-minimum ID is admitted', async () => {
-    const f = await setup()
-    await f.expand()
-    const legacy = f.facade()
-    await legacy.ready!()
-    expect(await legacy.catalogue()).toMatchObject([
-      { id: 'whatsapp', state: 'Running' },
-      { id: 'chrome', state: 'Available' },
-    ])
-    const screen = await legacy.screen('whatsapp')
-    expect(screen.verified.manifest.id).toBe('whatsapp')
-    expect(screen.current(screen.binding)).toBe(true)
-    const modern = await connectPluginSettings(f.clientOptions())
-    keepClient(modern)
-    expect((await modern.catalogue()).map((one) => one.id)).toEqual([
-      'chrome',
-      'fictional-maps',
-      'whatsapp',
-    ])
-    await f.expand()
-    expect((await legacy.catalogue()).map((one) => one.id)).toEqual(['whatsapp', 'chrome'])
-    await legacy.close()
-    const reattached = f.facade()
-    await reattached.ready!()
-    expect((await reattached.catalogue()).map((one) => one.id)).toEqual(['whatsapp', 'chrome'])
-  })
-
-  it('keeps older views when a fixed-version owner starts fresh and restarts', async () => {
-    const f = await setup(true)
-    const legacy = f.facade()
-    await legacy.ready!()
-    expect((await legacy.catalogue()).map((one) => one.id)).toEqual(['whatsapp', 'chrome'])
-    expect((await legacy.screen('whatsapp')).verified.manifest.id).toBe('whatsapp')
-    const oldest = await oldClient(f.clientOptions(f.one))
-    keepClient(oldest)
-    expect((await oldest.catalogue()).map((one) => one.id)).toEqual(['whatsapp'])
-    await oldest.close()
-    await legacy.close()
-    await f.bridge.close()
-    await f.controller.drain()
-    const state = reopenLifecycleFixture(f)
-    const restored = await PluginLifecycleController.open({ ...f.ownerOptions, state })
-    const bridge = await servePersonPluginControl({
-      root: f.root,
-      key: f.key,
-      controller: restored,
-      read: async () => ({}),
+describe.skipIf(process.platform === 'win32')(
+  'ordinary production discovery and legacy package data',
+  () => {
+    it('keeps listing and Configure while each caller filters higher-minimum offers', async () => {
+      const f = await setup()
+      await f.expand()
+      const facade = f.facade()
+      expect(await facade.ready!()).toBe(true)
+      expect(await facade.catalogue()).toMatchObject([
+        { id: 'fictional-bakery', state: 'Running', installed: true },
+        { id: 'fictional-pointers', state: 'Available', installed: false },
+      ])
+      const screen = await facade.screen('fictional-bakery')
+      expect(screen.verified.manifest.id).toBe('fictional-bakery')
+      expect(screen.current(screen.binding)).toBe(true)
+      const modern = await connectPluginSettings(f.clientOptions())
+      keepClient(modern)
+      expect((await modern.catalogue()).map((one) => one.id).sort()).toEqual([
+        'fictional-bakery',
+        'fictional-maps',
+        'fictional-pointers',
+      ])
+      await f.expand()
+      expect((await facade.catalogue()).map((one) => one.id)).toEqual([
+        'fictional-bakery',
+        'fictional-pointers',
+      ])
+      await facade.close()
+      const reattached = f.facade()
+      expect(await reattached.ready!()).toBe(true)
+      expect((await reattached.catalogue()).map((one) => one.id)).toEqual([
+        'fictional-bakery',
+        'fictional-pointers',
+      ])
+      expect(
+        (await reattached.screen('fictional-bakery')).verified.readFile('plugin.json'),
+      ).toEqual(Uint8Array.from(f.pkg.manifestBytes))
     })
-    closers.push(() => bridge.close())
-    const again = f.facade()
-    await again.ready!()
-    expect((await again.catalogue()).map((one) => one.id)).toEqual(['whatsapp', 'chrome'])
-    expect((await again.screen('whatsapp')).verified.manifest.id).toBe('whatsapp')
-  })
 
-  it.each(['digest', 'view'] as const)(
-    'refuses raw source with a mismatched %s binding',
-    async (invalid) => {
-      await expect(setup(true, invalid)).rejects.toThrow()
-    },
-  )
-
-  it('retains different admitted ID sets for two legacy clients across owner refresh', async () => {
-    const f = await setup()
-    const original = await oldClient(f.clientOptions(f.one))
-    keepClient(original)
-    const newer = await oldClient(f.clientOptions(f.two))
-    keepClient(newer)
-    await f.expand()
-    expect((await original.catalogue()).map((one) => one.id)).toEqual(['whatsapp'])
-    expect((await newer.catalogue()).map((one) => one.id)).toEqual(['chrome', 'whatsapp'])
-    await original.close()
-    const again = await oldClient(f.clientOptions(f.one))
-    keepClient(again)
-    expect((await again.catalogue()).map((one) => one.id)).toEqual(['whatsapp'])
-  })
-
-  it('does not send a newly admitted ID in reverse notices to a legacy consumer', async () => {
-    const f = await setup()
-    const attached = vi.spyOn(f.controller, 'attach')
-    const receiver = projection()
-    const applied = vi.spyOn(receiver.sink, 'applied')
-    const reconcile = vi.spyOn(receiver.sink, 'reconcile')
-    const revoke = vi.spyOn(receiver.sink, 'revoke')
-    const legacy = await oldClient({ ...f.clientOptions(f.one), projection: receiver.sink })
-    keepClient(legacy)
-    const sink = attached.mock.calls[0]![0]
-    applied.mockClear()
-    reconcile.mockClear()
-    revoke.mockClear()
-    await sink.applied('fictional-maps', null)
-    await sink.reconcile({ pluginId: 'fictional-maps', before: null, receipt: null })
-    expect(await sink.revoke('fictional-maps', randomUUID())).toBe(true)
-    expect(applied).not.toHaveBeenCalled()
-    expect(reconcile).not.toHaveBeenCalled()
-    expect(revoke).not.toHaveBeenCalled()
-  })
-
-  it('refuses unknown legacy provenance without breaking another admitted client', async () => {
-    const f = await setup()
-    const bytes = Buffer.from(
-      JSON.stringify({ format: 1, entries: [...f.three.releases].reverse() }),
-    )
-    const candidate = await oldClient(
-      f.clientOptions({ ...f.three, bytes, sha256: pluginSha256(bytes) }),
-    ).then(
-      (client) => client,
-      () => undefined,
-    )
-    if (candidate) keepClient(candidate)
-    expect(candidate).toBeUndefined()
-    const admitted = await oldClient(f.clientOptions(f.two))
-    keepClient(admitted)
-    expect((await admitted.catalogue()).map((one) => one.id)).toEqual(['chrome', 'whatsapp'])
-  })
-
-  it('refuses missing legacy provenance while modern discovery stays available', async () => {
-    const f = await setup()
-    const channel = await connectPersonPluginControl({
-      path: f.bridge.path,
-      key: f.key,
-      handle: async () => true,
+    it('reopens retained installation bytes and Configure offline under a different caller list', async () => {
+      const f = await setup(true)
+      const first = await connectPluginSettings(f.clientOptions(f.one))
+      keepClient(first)
+      const screen = await first.screen('fictional-bakery')
+      expect(screen.verified.manifest.id).toBe('fictional-bakery')
+      expect(screen.current(screen.binding)).toBe(true)
+      const before = f.state.exportActivation().entries[0]!
+      await first.close()
+      await f.bridge.close()
+      await f.controller.drain()
+      const state = reopenLifecycleFixture(f)
+      const download = vi.fn(async () => {
+        throw new Error('fictional offline')
+      })
+      const restored = await PluginLifecycleController.open({ ...f.ownerOptions, state, download })
+      closers.push(() => restored.drain())
+      const bridge = await servePersonPluginControl({
+        root: f.root,
+        key: f.key,
+        controller: sharedLifecycleWorkspaces(restored),
+        read: async () => ({}),
+      })
+      closers.push(() => bridge.close())
+      const again = await connectPluginSettings({
+        ...f.clientOptions(f.two),
+        path: bridge.path,
+        download,
+      })
+      keepClient(again)
+      expect((await again.catalogue()).map((one) => one.id).sort()).toEqual([
+        'fictional-bakery',
+        'fictional-pointers',
+      ])
+      const reopened = await again.screen('fictional-bakery')
+      expect(reopened.verified.readFile('plugin.json')).toEqual(
+        Uint8Array.from(f.pkg.manifestBytes),
+      )
+      expect(reopened.binding.installId).toBe(before.installId)
+      expect(reopened.current(reopened.binding)).toBe(true)
+      expect(state.inspect().pending).toBeNull()
+      expect(download).not.toHaveBeenCalled()
+      expect(
+        await readFile(join(f.root, 'package-vault', before.release.archiveSha256, 'archive')),
+      ).toEqual(f.pkg.archive)
     })
-    try {
-      await channel.call({ kind: 'attach', workspaceId: projection().sink.workspaceId })
-      await expect(channel.call({ kind: 'list' })).rejects.toThrow()
-      expect(await channel.call({ kind: 'list-v2' })).toHaveLength(2)
-    } finally {
-      channel.close()
-    }
-  })
-})
+
+    it('rejects raw source bytes with a mismatched digest before starting a plugin', async () => {
+      const f = await fixture({}, false, 'fictional-bakery')
+      const bytes = Buffer.from(JSON.stringify(repoListFor(f.pkg.release)))
+      const before = f.state.inspect()
+      const fetch = vi.fn()
+      vi.stubGlobal('fetch', fetch)
+      await expect(
+        PluginLifecycleController.open({
+          ...f.opts,
+          repoList: { bytes, sha256: '0'.repeat(64), appVersion: '1.0.0' },
+        }),
+      ).rejects.toThrow()
+      expect(f.state.inspect()).toEqual(before)
+      expect(f.starts()).toBe(0)
+      expect(f.events).toEqual([])
+      expect(fetch).not.toHaveBeenCalled()
+    })
+
+    it('keeps a caller minimum-version view independent of the owner source view', async () => {
+      const f = await setup(true, 'view')
+      const caller = await connectPluginSettings(f.clientOptions(f.two))
+      keepClient(caller)
+      expect((await caller.catalogue()).map((one) => one.id).sort()).toEqual([
+        'fictional-bakery',
+        'fictional-pointers',
+      ])
+      expect(f.three.releases.map((one) => one.id)).toContain('fictional-maps')
+      expect(f.two.releases.map((one) => one.id)).not.toContain('fictional-maps')
+      const screen = await caller.screen('fictional-bakery')
+      expect(screen.current(screen.binding)).toBe(true)
+      expect(screen.verified.readFile('plugin.json')).toEqual(Uint8Array.from(f.pkg.manifestBytes))
+      expect(f.state.inspect().pending).toBeNull()
+    })
+
+    it('retains different caller-selected offer sets across owner refresh and reattach', async () => {
+      const f = await setup()
+      const original = await connectPluginSettings(f.clientOptions(f.one))
+      keepClient(original)
+      const newer = await connectPluginSettings(f.clientOptions(f.two))
+      keepClient(newer)
+      await f.expand()
+      expect((await original.catalogue()).map((one) => one.id)).toEqual(['fictional-bakery'])
+      expect((await newer.catalogue()).map((one) => one.id).sort()).toEqual([
+        'fictional-bakery',
+        'fictional-pointers',
+      ])
+      await original.close()
+      const again = await connectPluginSettings(f.clientOptions(f.one))
+      keepClient(again)
+      expect((await again.catalogue()).map((one) => one.id)).toEqual(['fictional-bakery'])
+      expect((await again.screen('fictional-bakery')).verified.manifest.version).toBe('1.0.0')
+    })
+
+    it('forwards new plugin notices without a caller catalogue admission filter', async () => {
+      const f = await setup()
+      const attached = vi.spyOn(f.controller, 'attach')
+      const receiver = projection()
+      const applied = vi.spyOn(receiver.sink, 'applied')
+      const reconcile = vi.spyOn(receiver.sink, 'reconcile')
+      const revoke = vi.spyOn(receiver.sink, 'revoke')
+      const caller = await connectPluginSettings({
+        ...f.clientOptions(f.one),
+        projection: receiver.sink,
+      })
+      keepClient(caller)
+      const sink = attached.mock.calls[0]![0]
+      applied.mockClear()
+      reconcile.mockClear()
+      revoke.mockClear()
+      await sink.applied('fictional-maps', null)
+      await sink.reconcile({ pluginId: 'fictional-maps', before: null, receipt: null })
+      const installId = randomUUID()
+      expect(await sink.revoke('fictional-maps', installId)).toBe(true)
+      expect(applied).toHaveBeenCalledExactlyOnceWith('fictional-maps', null)
+      expect(reconcile).toHaveBeenCalledExactlyOnceWith({
+        pluginId: 'fictional-maps',
+        before: null,
+        receipt: null,
+      })
+      expect(revoke).toHaveBeenCalledExactlyOnceWith('fictional-maps', installId)
+    })
+
+    it('accepts a reordered caller source and leaves another caller selection unchanged', async () => {
+      const f = await setup()
+      const bytes = Buffer.from(
+        JSON.stringify({ format: 1, entries: [...f.three.releases].reverse() }),
+      )
+      const candidate = await connectPluginSettings(
+        f.clientOptions({ ...f.three, bytes, sha256: pluginSha256(bytes) }),
+      )
+      keepClient(candidate)
+      expect((await candidate.catalogue()).map((one) => one.id).sort()).toEqual([
+        'fictional-bakery',
+        'fictional-maps',
+        'fictional-pointers',
+      ])
+      const other = await connectPluginSettings(f.clientOptions(f.two))
+      keepClient(other)
+      expect((await other.catalogue()).map((one) => one.id).sort()).toEqual([
+        'fictional-bakery',
+        'fictional-pointers',
+      ])
+      expect(f.state.inspect().pending).toBeNull()
+      expect((await candidate.screen('fictional-bakery')).verified.manifest.id).toBe(
+        'fictional-bakery',
+      )
+    })
+
+    it('lists without source provenance while retaining the negotiated reply shapes', async () => {
+      const f = await setup()
+      const channel = await connectPersonPluginControl({
+        path: f.bridge.path,
+        key: f.key,
+        handle: async () => true,
+      })
+      try {
+        await channel.call({ kind: 'attach', workspaceId: projection().sink.workspaceId })
+        const cards = (await channel.call({ kind: 'list' })) as Array<Record<string, unknown>>
+        expect(cards.map((one) => one.id).sort()).toEqual([
+          'fictional-bakery',
+          'fictional-pointers',
+        ])
+        expect(cards.find((one) => one.id === 'fictional-bakery')).toMatchObject({
+          installed: true,
+          state: 'Running',
+        })
+        for (const card of cards)
+          expect(Object.keys(card).sort()).toEqual(['id', 'installed', 'name', 'state'])
+        expect(await channel.call({ kind: 'list-v2' })).toMatchObject([
+          { id: 'fictional-bakery', installedVersion: '1.0.0' },
+          { id: 'fictional-pointers', installed: false },
+        ])
+      } finally {
+        channel.close()
+      }
+    })
+  },
+)
