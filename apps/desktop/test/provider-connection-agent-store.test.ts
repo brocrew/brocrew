@@ -43,3 +43,30 @@ it('legacy default and clear payloads retain their exact absent connection shape
     [{ profileId: 'fern', provider: null, model: null, effort: null }],
   ])
 })
+
+it('review regression: an omitted-connection save leaves the loaded roster exact', async () => {
+  const roster = {
+    identities: [
+      { id: 'fictional-fern', slug: 'fern', provider: 'claude', connectionId: 'claude:sign-in' },
+    ],
+    foldersWithoutARow: [],
+    use: [],
+    spawningEnabled: true,
+  }
+  const store = createAgentStore({
+    agentIdentities: async () => roster,
+    setAgentModelAndEffort: async () => ({
+      ok: true,
+      choice: {
+        provider: 'claude',
+        connectionId: 'claude:api-key',
+        model: 'fictional-small',
+        effort: null,
+      },
+    }),
+  } as unknown as RuntimeBridge)
+  await store.load()
+  const before = JSON.parse(JSON.stringify(store.identities.value))
+  await store.chooseModelFor('fern', { provider: 'claude', model: 'fictional-small', effort: null })
+  expect(store.identities.value).toEqual(before)
+})

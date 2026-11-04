@@ -224,6 +224,8 @@ describe('355 · the capabilities sheet', () => {
       'capabilities-provider-note',
       'rules-fixed-policy',
       'spawn-rail-means',
+      'external-mcp-answers-for-the-fallback',
+      'external-mcp-empty',
       'own-instructions-when',
       'own-instructions-empty',
     ])

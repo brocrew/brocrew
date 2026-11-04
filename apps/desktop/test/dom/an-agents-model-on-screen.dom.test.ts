@@ -906,3 +906,20 @@ it('connection-led polish: saving another connection immediately shows its provi
   await press(m, 'model-picker-face')
   expect((m.q('model-picker-connection') as HTMLSelectElement).value).toBe('codex:sign-in')
 })
+
+it('review regression: a stored null provider takes precedence over a stale provider prop', async () => {
+  reset()
+  world.held = { provider: 'claude', model: 'opus', effort: 'high' }
+  const { store, lists } = storeOver()
+  await store.load()
+  const m = mount(AgentModelChoice, {
+    profileSlug: 'worker',
+    runsOn: 'codex',
+    itsProvider: 'codex',
+    store,
+    lists,
+  })
+  await settle()
+  expect(face(m)).toBe('Claude · Fictional subscription · opus · high')
+  expect(m.all('agent-model-not-in-force')).toHaveLength(0)
+})
