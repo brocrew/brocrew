@@ -163,8 +163,8 @@ const PACKET_SEND_EXEMPTION = {
   path: 'plugins/lifecycle/transport.ts',
   className: 'PersonChannel',
   method: 'send',
-  reason: 'writes authenticated lifecycle frames to the supervisor socket; never a turn',
-  bodySha256: '9e2c40d482fe25d52b6d3025900ccba33d4e26130f7003790b7d92d5e875471a',
+  reason: 'writes correlated JSON lifecycle packets to its socket; never a conversation turn',
+  bodySha256: 'b17b8104f32afac42d639ffda0640a026c71957803364d40d916881b144bef17',
   calls: [
     {
       expression: "this.send({ kind: 'reply', id: packet.id, ok: true, value: value ?? null })",
@@ -183,10 +183,12 @@ const PACKET_SEND_EXEMPTION = {
                       error.code,
                     )
                       ? { pluginRefusal: error.code }
-                      : null,
+                      : this.reportRefusals() && error instanceof Error
+                        ? { pluginError: error.message }
+                        : null,
                 })`,
       censusText:
-        "this.send({ kind: 'reply', id: packet.id, ok: false, value: this.reportRefusals() && error instanceof PluginSupervisorError && ['policy-refused', 'source-mismatch', 'incompatible', 'network'].includes( error.code, ) ? { pluginRefusal: error.code } : null, }),",
+        "this.send({ kind: 'reply', id: packet.id, ok: false, value: this.reportRefusals() && error instanceof PluginSupervisorError && ['policy-refused', 'source-mismatch', 'incompatible', 'network'].includes( error.code, ) ? { pluginRefusal: error.code } : this.reportRefusals() && error instanceof Error ? { pluginError: error.message } : null, }),",
       count: 1,
     },
     {
