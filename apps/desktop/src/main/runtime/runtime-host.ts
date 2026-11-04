@@ -26645,13 +26645,13 @@ export class RuntimeHost implements LiveHost {
       // ⛔ A caller's words go straight in to a service only while it is still on that caller's
       // piece, asked again after the gate's waits, in the tick they are handed over: else they lose
       // the race, and the queue door asks them again ({@link aCallersWordsGoNow}).
-      const titleContext =
-        session.handle.status() === 'idle'
-          ? await this.preparePluginTitles(session, drives ?? handing?.piece ?? null, [
-              { text, from: this.originOf(by) },
-            ])
-          : ''
-      if (this.itStoppedUnder(session)) throw new StoppedBeforeSend()
+      let titleContext = ''
+      if (session.handle.status() === 'idle' && this.deps.pluginContext?.active()) {
+        titleContext = await this.preparePluginTitles(session, drives ?? handing?.piece ?? null, [
+          { text, from: this.originOf(by) },
+        ])
+        if (this.itStoppedUnder(session)) throw new StoppedBeforeSend()
+      }
       if (this.aCallersWordsNoLongerGoStraightIn(sessionId, by)) throw new TurnInProgress()
       await this.handToProvider(
         session,
@@ -27629,10 +27629,13 @@ export class RuntimeHost implements LiveHost {
     const personalWorkTurnBefore = session.personalWorkTurn
     const personalHandover = session.personalHandover + 1
     try {
-      const titleContext = await this.preparePluginTitles(session, null, [
-        { text, from: this.originOf(by) },
-      ])
-      if (this.itStoppedUnder(session)) throw new StoppedBeforeSend()
+      let titleContext = ''
+      if (this.deps.pluginContext?.active()) {
+        titleContext = await this.preparePluginTitles(session, null, [
+          { text, from: this.originOf(by) },
+        ])
+        if (this.itStoppedUnder(session)) throw new StoppedBeforeSend()
+      }
       await this.handToProvider(
         session,
         text,
@@ -33026,15 +33029,15 @@ export class RuntimeHost implements LiveHost {
         const namedPieces = new Set(
           sending.map(({ queued, handing }) => queued.drives ?? handing?.piece ?? null),
         )
-        const titleContext =
-          namedPieces.size > 1
-            ? ''
-            : await this.preparePluginTitles(
-                session,
-                [...namedPieces][0] ?? null,
-                sending.map(({ queued, words }) => ({ text: words, from: queued.origin ?? null })),
-              )
-        if (this.itStoppedUnder(session)) throw new StoppedBeforeSend()
+        let titleContext = ''
+        if (namedPieces.size <= 1 && this.deps.pluginContext?.active()) {
+          titleContext = await this.preparePluginTitles(
+            session,
+            [...namedPieces][0] ?? null,
+            sending.map(({ queued, words }) => ({ text: words, from: queued.origin ?? null })),
+          )
+          if (this.itStoppedUnder(session)) throw new StoppedBeforeSend()
+        }
         for (const { queued, handed } of sending) {
           if (queued.authorship.movedFrom === undefined) continue
           const { authorship } = queued
