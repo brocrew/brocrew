@@ -113,10 +113,14 @@ describe('fenced reboot proof for historical plugin runs', () => {
     return owner
   }
   const refused = () => expect(attempt()).rejects.toMatchObject({ code: 'cleanup-pending' })
+  it('records durable volume identities in newly staged reboot proofs', async () => {
+    await fixture()
+    await refused()
+    expect(await readFile(marker(), 'utf8')).toContain(volume)
+  })
   it('records a durable volume and replays its certificate after two device renumberings', async () => {
     await fixture()
     await refused()
-    expect((await readFile(marker(), 'utf8'))).toContain(volume)
     proofIo.deviceOffset = 17n
     witness = { kind: 'darwin-boot-session-v1', value: randomUUID() }
     const write = SupervisorStorage.prototype.write

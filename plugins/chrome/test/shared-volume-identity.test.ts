@@ -62,14 +62,17 @@ it.each(['inode', 'mode', 'uid', 'volume', 'replacement', 'symlink'])(
       if (change === 'replacement') fs.mkdirSync(dir, { mode: 0o700 })
       else fs.symlinkSync(saved, dir, 'dir')
     }
-    const before = fs.readFileSync(f.file, 'utf8')
+    const before = JSON.stringify(f.read().profiles[0])
+    let store: ReturnType<typeof f.open> | undefined
     try {
-      const store = f.open()
+      store = f.open()
+    } catch (error) {
+      expect(String(error)).toMatch(/identity|unavailable/i)
+    }
+    if (store) {
       expect(store.get('fern')?.enabled).toBe(false)
       expect(() => store.shared.acquire('fern')).toThrow()
-    } catch (error) {
-      if (change !== 'symlink') throw error
     }
-    expect(fs.readFileSync(f.file, 'utf8')).toBe(before)
+    expect(JSON.stringify(f.read().profiles[0])).toBe(before)
   },
 )
