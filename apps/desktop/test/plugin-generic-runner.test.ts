@@ -25,6 +25,7 @@ import { tar } from './plugin-package-fixtures'
 import { sharedDataOwner } from '../src/main/plugins/shared-data'
 import { defaultPluginRoot } from '../src/main/plugins/supervisor/client'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
+import { LifecycleEffects } from '../src/main/plugins/lifecycle/files'
 import {
   fixture as lifecycleFixture,
   cleanupLifecycleFixtures,
@@ -85,6 +86,7 @@ function fixture(
   options: {
     id?: string
     version?: string
+    dataOnRemove?: 'keep' | 'remove'
     source?: string
     process?: boolean
     http?: boolean
@@ -133,7 +135,10 @@ function fixture(
       ? { transport: 'streamable-http', bootstrap: 'ready-message' }
       : { transport: 'stdio' },
     tools: { source: 'mcp', inventory: 'tools.json' },
-    lifecycle: { stop: { signal: 'SIGTERM', graceMs: 200 }, dataOnRemove: 'keep' },
+    lifecycle: {
+      stop: { signal: 'SIGTERM', graceMs: 200 },
+      dataOnRemove: options.dataOnRemove ?? 'keep',
+    },
     data: { schema: 4, migrateOnStart: true },
   }
   const archive = tar([
@@ -307,65 +312,73 @@ ${stdioSource}`
     await expect(replacement).resolves.toHaveProperty('client')
     expect((await otherReady.client!.listTools()).tools).toHaveLength(1)
   })
-  it('recovered uninstall waits for an older guardian and delayed managed child before deleting code or data', async () => {
-    const f = await lifecycleFixture()
-    const source = `process.on('SIGTERM',()=>setTimeout(()=>process.exit(0),150));\n${stdioSource}`
-    const spec = fixture({ id: 'chrome', source })
-    const archive = join(f.parent, 'fictional-selected.tar')
-    await writeFile(archive, spec.archive)
-    await f.controller.installPackage(
-      f.handle,
-      {
-        source: archive,
-        sha256: spec.releaseDigest,
-        bytes: spec.archive.length,
-      },
-      'install',
-    )
-    const home = join(f.root, 'host')
-    const old = await context({ root: home })
-    const run = await old.host.start(spec)
-    await run.ready()
-    const data = join(home, 'data', 'chrome', 'opaque.bin')
-    await writeFile(data, Buffer.from([0, 255, 17, 4]))
-    const code = join(home, 'packages', spec.releaseDigest, 'main.mjs')
-    f.failStop()
-    await expect(f.controller.uninstall(f.handle, 'chrome')).rejects.toThrow()
-    const successor = await context({ root: home })
-    const state = reopenLifecycleFixture(f)
-    let settled = false
-    const recovered = PluginLifecycleController.open({
-      ...f.opts,
-      state,
-      runtime: {
-        ...f.opts.runtime,
-        removeCode: (id, digest) => successor.host.removePackage(id, digest),
-        removeData: (id) => successor.host.removeData(id),
-      },
-    }).then((value) => {
-      settled = true
-      return value
-    })
-    await new Promise((resolve) => setTimeout(resolve, 100))
-    expect(settled).toBe(false)
-    expect(await readFile(code, 'utf8')).toBe(source)
-    expect(await readFile(data)).toEqual(Buffer.from([0, 255, 17, 4]))
-    const unrelated = fixture({ id: 'fictional-neighbor' })
-    const neighbor = await successor.host.start(unrelated)
-    expect((await (await neighbor.ready()).client!.listTools()).tools).toHaveLength(1)
-    const stopped = run.stop()
-    await new Promise((resolve) => setTimeout(resolve, 25))
-    expect(settled).toBe(false)
-    expect(await readFile(data)).toEqual(Buffer.from([0, 255, 17, 4]))
-    expect(await stopped).toEqual({ exited: true })
-    const controller = await recovered
-    expect(state.inspect().pending).toBeNull()
-    expect(state.exportActivation().entries).toEqual([])
-    await expect(readFile(code)).rejects.toMatchObject({ code: 'ENOENT' })
-    await expect(readFile(data)).rejects.toMatchObject({ code: 'ENOENT' })
-    expect((await (await neighbor.ready()).client!.listTools()).tools).toHaveLength(1)
-    await controller.drain()
-  })
+  it.each([false, true])(
+    'recovered retirement waits for its guardian and preserves missing explicit-removal facts (lost=%s)',
+    async (lost) => {
+      const f = await lifecycleFixture()
+      const source = `process.on('SIGTERM',()=>setTimeout(()=>process.exit(0),150));\n${stdioSource}`
+      const spec = fixture({ id: 'chrome', source, dataOnRemove: 'remove' })
+      const archive = join(f.parent, 'fictional-selected.tar')
+      await writeFile(archive, spec.archive)
+      await f.controller.installPackage(
+        f.handle,
+        {
+          source: archive,
+          sha256: spec.releaseDigest,
+          bytes: spec.archive.length,
+        },
+        'install',
+      )
+      const home = join(f.root, 'host')
+      const old = await context({ root: home })
+      const run = await old.host.start(spec)
+      await run.ready()
+      const data = join(home, 'data', 'chrome', 'opaque.bin')
+      await writeFile(data, Buffer.from([0, 255, 17, 4]))
+      const code = join(home, 'packages', spec.releaseDigest, 'main.mjs')
+      f.failStop()
+      await expect(f.controller.uninstall(f.handle, 'chrome')).rejects.toThrow()
+      const operationId = f.state.inspect().pending!.request.operationId
+      const effect = await (await LifecycleEffects.open(f.root, false)).read(operationId)
+      expect(effect).toMatchObject({ explicitRemoval: true, removalOutcome: { data: 'deleted' } })
+      if (lost) await rm(join(f.root, 'lifecycle-effects', operationId + '.json'))
+      const successor = await context({ root: home })
+      const state = reopenLifecycleFixture(f)
+      let settled = false
+      const recovered = PluginLifecycleController.open({
+        ...f.opts,
+        state,
+        runtime: {
+          ...f.opts.runtime,
+          removeCode: (id, digest) => successor.host.removePackage(id, digest),
+          removeData: (id) => successor.host.removeData(id),
+        },
+      }).then((value) => {
+        settled = true
+        return value
+      })
+      await new Promise((resolve) => setTimeout(resolve, 100))
+      expect(settled).toBe(false)
+      expect(await readFile(code, 'utf8')).toBe(source)
+      expect(await readFile(data)).toEqual(Buffer.from([0, 255, 17, 4]))
+      const unrelated = fixture({ id: 'fictional-neighbor' })
+      const neighbor = await successor.host.start(unrelated)
+      expect((await (await neighbor.ready()).client!.listTools()).tools).toHaveLength(1)
+      const stopped = run.stop()
+      await new Promise((resolve) => setTimeout(resolve, 25))
+      expect(settled).toBe(false)
+      expect(await readFile(data)).toEqual(Buffer.from([0, 255, 17, 4]))
+      expect(await stopped).toEqual({ exited: true })
+      const controller = await recovered
+      expect(state.inspect().pending).toBeNull()
+      expect(state.exportActivation().entries).toEqual([])
+      await expect(readFile(code)).rejects.toMatchObject({ code: 'ENOENT' })
+      if (lost) expect(await readFile(data)).toEqual(Buffer.from([0, 255, 17, 4]))
+      else await expect(readFile(data)).rejects.toMatchObject({ code: 'ENOENT' })
+      expect((await (await neighbor.ready()).client!.listTools()).tools).toHaveLength(1)
+      await controller.drain()
+    },
+  )
   it('passes actual installation legacy paths through controller and runner bootstrap unchanged across update', async () => {
     const f = await lifecycleFixture()
     const appData = join(f.parent, 'fictional-app-data')

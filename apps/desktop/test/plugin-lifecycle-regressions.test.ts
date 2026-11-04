@@ -53,6 +53,16 @@ describe('plugin lifecycle regressions', () => {
     deletion.interrupt = true
     await expect(f.controller.uninstall(f.handle, 'fictional-bakery')).rejects.toThrow()
     expect(deletion.interrupt).toBe(false)
+    const operationId = f.state.inspect().pending!.request.operationId
+    const effect = await (await LifecycleEffects.open(f.root, false)).read(operationId)
+    expect(effect?.legacyRemovalOutcome).toBeNull()
+    const retired = (await readdir(join(f.root, 'package-vault'))).find((name) =>
+      name.startsWith('.retired-'),
+    )!
+    expect(retired).toBeTruthy()
+    await expect(readFile(join(f.root, 'package-vault', retired, 'archive'))).rejects.toMatchObject(
+      { code: 'ENOENT' },
+    )
     const state = reopenLifecycleFixture(f)
     const opening = PluginLifecycleController.open({ ...f.opts, state })
     await expect(opening).resolves.toBeDefined()

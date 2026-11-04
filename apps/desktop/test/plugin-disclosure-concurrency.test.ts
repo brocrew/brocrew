@@ -1,6 +1,6 @@
 import { afterEach, expect, it } from 'vitest'
 import { spawn, type ChildProcess } from 'node:child_process'
-import { mkdir, writeFile, readdir } from 'node:fs/promises'
+import { mkdir, writeFile, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { once } from 'node:events'
 import { randomUUID } from 'node:crypto'
@@ -63,7 +63,7 @@ function message(child: ChildProcess): Promise<{ kind: string; descriptor?: unkn
     child.once('error', failed)
   })
 }
-it('another process holding display reader pins cannot block real owner reclaim', async () => {
+it('an atomic snapshot reader cannot block owner writes and reclaim', async () => {
   const f = await disclosureFixture({ installed: true })
   closers.push(f.close)
   const folder = join(f.f.parent, 'display-reader-worker')
@@ -116,7 +116,11 @@ it('another process holding display reader pins cannot block real owner reclaim'
       expect(f.f.state.inspect().guards.find((one) => one.pluginId === pluginId)?.phase).toBe(
         'active',
       )
-      expect(await readdir(join(root, 'resolution-reservations'))).toEqual([])
+      const selected = JSON.parse(await readFile(join(root, 'installed-state.json'), 'utf8'))
+      expect(selected.pending).toBeNull()
+      expect(selected.active.some((one: { pluginId: string }) => one.pluginId === pluginId)).toBe(
+        true,
+      )
     }
   } finally {
     owner.close()
@@ -124,12 +128,11 @@ it('another process holding display reader pins cannot block real owner reclaim'
   }
   const observed = await result
   expect(observed.kind, stderr).toBe('done')
-  if (observed.descriptor !== null)
-    expect(observed.descriptor).toEqual({
-      version: '1.0.1',
-      archiveSha256: f.first.release.archive.sha256,
-      manifestSha256: f.first.release.manifestSha256,
-    })
+  expect(observed.descriptor).toEqual({
+    version: '1.0.1',
+    archiveSha256: f.first.release.archive.sha256,
+    manifestSha256: f.first.release.manifestSha256,
+  })
   expect(
     f.f.state.inspect().guards.find((one) => one.pluginId === 'chrome')?.release.archiveSha256,
   ).toBe(f.first.release.archive.sha256)
