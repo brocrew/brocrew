@@ -143,6 +143,7 @@ export const PLUGIN_UNAVAILABLE_REASONS = [
   'cleanup-pending',
   'owner-window-open',
   'restart-required',
+  'previous-service-stopping',
   'catalogue-response',
   'operation-pending',
   'unsupported',
@@ -168,6 +169,8 @@ export function pluginUnavailableNotice(reason?: PluginUnavailableReason): strin
       return 'The plugin service is busy or still stopping. Wait a moment, then try again.'
     case 'owner-window-open':
       return 'The plugin service is busy or still stopping. Wait a moment, then try again. If another BroCrew window is open, close it, then try again.'
+    case 'previous-service-stopping':
+      return "The previous plugin service didn't finish stopping. Restart your computer, then open BroCrew again."
     case 'restart-required':
       return 'Restart your computer, then reopen BroCrew.'
     case 'catalogue-response':

@@ -15,6 +15,10 @@ let renaming = null
 let composing = false
 let heldSnapshot = null
 let clearing = false
+// Profiles whose on/off change is in flight, with the asked-for state, so every redraw shows it busy.
+const switching = new Map()
+// The snapshot a refused switch is put back on; its redraws keep the refusal in the status.
+let refusedOn = null
 const RENAME_ERRORS = {
   invalid: 'Profile name must be 1–60 characters.',
   duplicate: 'Another profile already uses that name.',
@@ -180,6 +184,45 @@ function action(label, payload) {
   button.addEventListener('click', () => propose(payload))
   return button
 }
+async function setEnabled(profile, enabled) {
+  if (switching.has(profile)) return
+  switching.set(profile, enabled)
+  redraw()
+  const asked = revision
+  try {
+    await rpc('proposeConfig', { action: 'set-enabled', profile, enabled })
+  } catch {
+    switching.delete(profile)
+    refusedOn = heldSnapshot ?? lastSnapshot
+    redraw()
+    say(UNAVAILABLE, 'warn')
+    return
+  }
+  switching.delete(profile)
+  // The plugin took the change, so redraws show it even if the next read fails. Replies are not
+  // ordered, so a read of a later revision than the one asked against already knows better.
+  for (const snapshot of [lastSnapshot, heldSnapshot]) {
+    const known = snapshot?.profiles.find((p) => p.name === profile)
+    if (known && snapshot.configRevision <= asked) known.enabled = enabled
+  }
+  redraw()
+  await refresh()
+}
+// A switch with the same words in both states; its knob, colour and aria-checked say which state it is in.
+function onSwitch(profile, label) {
+  const words = profile.shared ? 'On here' : 'On'
+  const control = focusKey(text('button', words), `set-enabled:${profile.name}`)
+  const asked = switching.get(profile.name)
+  control.role = 'switch'
+  control.ariaChecked = String(asked ?? profile.enabled === true)
+  control.ariaLabel = `${label}: ${words.toLowerCase()}`
+  if (asked !== undefined) {
+    control.ariaBusy = 'true'
+    control.ariaDisabled = 'true'
+  }
+  control.addEventListener('click', () => void setEnabled(profile.name, !profile.enabled))
+  return control
+}
 function checkbox(label, checked, key, onChange) {
   const control = text('label', label)
   control.className = 'check'
@@ -243,7 +286,11 @@ function draw(snapshot) {
   checked(snapshot)
   revision = snapshot.configRevision
   lastSnapshot = snapshot
-  say('Running', 'live')
+  if (snapshot === refusedOn) say(UNAVAILABLE, 'warn')
+  else {
+    refusedOn = null
+    say('Running', 'live')
+  }
   if (renaming && !snapshot.profiles.some((p) => p.name === renaming.profile)) {
     renaming = null
     composing = false
@@ -373,23 +420,7 @@ function draw(snapshot) {
     actions.className = 'profile-actions'
     const openWindow = action('Open window', { action: 'open-window', profile: profile.name })
     openWindow.className = 'primary'
-    actions.append(
-      action(
-        profile.shared
-          ? profile.enabled
-            ? 'Switch off here'
-            : 'Switch on here'
-          : profile.enabled
-            ? 'Disable'
-            : 'Enable',
-        {
-          action: 'set-enabled',
-          profile: profile.name,
-          enabled: !profile.enabled,
-        },
-      ),
-      openWindow,
-    )
+    actions.append(onSwitch(profile, label), openWindow)
     const rename = focusKey(text('button', 'Rename'), `rename:${profile.name}`)
     rename.disabled = profile.status === 'deleting'
     rename.addEventListener('click', () => startRename(profile))

@@ -2443,3 +2443,34 @@ describe('skill catalogue upgrade evidence', () => {
     },
   )
 })
+
+describe('plugin owner quiescence across a packaged upgrade quit', () => {
+  it('distinguishes no plugin flow from a proven stopped owner', () => {
+    expect(upgradeRules.pluginOwnerQuiescence(null)).toBe('not-exercised')
+    expect(
+      upgradeRules.pluginOwnerQuiescence({
+        version: 1,
+        epoch: '11111111-1111-4111-8111-111111111111',
+        phase: 'stopped',
+      }),
+    ).toBe('stopped')
+  })
+  it.each(['accepting', 'draining', 'blocked', 'unknown'])(
+    'does not accept a %s owner just because the app exited',
+    (phase) => {
+      expect(
+        upgradeRules.pluginOwnerQuiescence({
+          version: 1,
+          epoch: '11111111-1111-4111-8111-111111111111',
+          phase,
+        }),
+      ).toBe('not-stopped')
+    },
+  )
+  it.each([undefined, {}, { phase: 'stopped' }, { version: 1, epoch: 'bad', phase: 'stopped' }])(
+    'fails closed on malformed owner evidence %j',
+    (record) => {
+      expect(upgradeRules.pluginOwnerQuiescence(record)).toBe('not-stopped')
+    },
+  )
+})

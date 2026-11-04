@@ -1,15 +1,17 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { once } from 'node:events'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { lstat, mkdir, mkdtemp, readFile, realpath, rm, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { PluginSupervisor } from '../src/main/plugins/supervisor/owner'
-import { PluginWorkspaceLease } from '../src/main/plugins/supervisor/client'
+import { PluginWorkspaceLease, supervisorRequest } from '../src/main/plugins/supervisor/client'
 import { SupervisorStorage } from '../src/main/plugins/supervisor/storage'
 import { previousRunsProvenStopped } from '../src/main/plugins/supervisor/recovery-proof'
 import { keepPluginRootPrivate } from '../src/main/plugins/private-files'
+import { pluginUnavailableNotice } from '../src/shared/plugin-settings'
+import { pluginStartupReason } from '../src/main/plugins/startup-failure'
 import { PluginStartupError } from '../src/main/plugins/startup-failure'
 import { PluginSupervisorError } from '../src/main/plugins/supervisor/protocol'
 
@@ -79,6 +81,64 @@ describe('plugin owner recovery after the caller stops waiting', () => {
     lease = await PluginWorkspaceLease.attach(options)
     return { root, options }
   }
+  it('gives plain restart advice only after observing the same live released owner for sixty seconds', async () => {
+    const { root, options } = await fixture()
+    const exit = new Promise<void>((resolve) => {
+      releaseWitness = resolve
+    })
+    owner!.adopt({ stop() {}, exited: exit, descendantsGone: async () => true })
+    const storage = new SupervisorStorage(root, [options.workspaceRoot], false)
+    try {
+      const record = storage.read()!
+      await supervisorRequest(storage, record, {
+        kind: 'release',
+        lease: lease!.lease,
+        generation: options.generation,
+        workspace: createHash('sha256').update(options.workspaceRoot).digest('hex'),
+      })
+      lease!.abandon()
+      let elapsed = 0
+      const original = performance.now.bind(performance)
+      const clock = vi.spyOn(performance, 'now').mockImplementation(() => original() + elapsed)
+      const launch = vi.fn()
+      const attempt = async () => {
+        const error: unknown = await PluginWorkspaceLease.attach({
+          ...options,
+          generation: randomUUID(),
+          launch,
+        }).catch((e: unknown) => e)
+        return pluginStartupReason(error, 'service-start')
+      }
+      try {
+        expect(await attempt()).toBe('cleanup-pending')
+        elapsed = 59_000
+        expect(await attempt()).toBe('cleanup-pending')
+        elapsed = 61_000
+        expect(await attempt()).toBe('previous-service-stopping')
+        expect(pluginUnavailableNotice('previous-service-stopping')).toBe(
+          "The previous plugin service didn't finish stopping. Restart your computer, then open BroCrew again.",
+        )
+        await writeFile(storage.stop, JSON.stringify({ epoch: randomUUID(), reason: 'released' }), {
+          mode: 0o600,
+        })
+        expect(await attempt()).toBe('cleanup-pending')
+        await writeFile(storage.stop, JSON.stringify({ epoch: record.epoch, reason: 'shutdown' }), {
+          mode: 0o600,
+        })
+        elapsed += 61_000
+        expect(await attempt()).toBe('cleanup-pending')
+        await unlink(storage.stop)
+        expect(await attempt()).toBe('cleanup-pending')
+        expect(launch).not.toHaveBeenCalled()
+        expect(storage.read()?.epoch).toBe(record.epoch)
+      } finally {
+        clock.mockRestore()
+      }
+    } finally {
+      storage.close()
+      releaseWitness!()
+    }
+  })
   it('measures existing sixty-second orphan expiry while another workspace retains the same owner', async () => {
     let now = 0
     const { root, options } = await fixture(() => now)
