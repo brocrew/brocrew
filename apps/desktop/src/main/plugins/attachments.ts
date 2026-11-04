@@ -3,15 +3,13 @@ import { z } from 'zod'
 import type { ManagedPluginAttachmentSource } from '@brobot2/runtime'
 import type { PluginSupervisorAttachment } from './supervisor/client'
 
-const Routes = z
-  .array(
-    z.strictObject({
-      name: z.string().max(64),
-      url: z.string().max(256),
-      capability: z.string().regex(/^[a-f0-9]{64}$/),
-    }),
-  )
-  .max(32)
+const Routes = z.array(
+  z.strictObject({
+    name: z.string().max(64),
+    url: z.string().max(256),
+    capability: z.string().regex(/^[a-f0-9]{64}$/),
+  }),
+)
 /** One fresh source per runtime incarnation. The supervisor owns all broker and private authority. */
 export class WorkspacePluginAttachments {
   constructor(

@@ -1,8 +1,6 @@
-import { recordPluginToolFailure } from '../tool-diagnostics'
+import { recordPluginToolFailure, pluginToolRefusalLog } from '../tool-diagnostics'
 import { sharedLifecycleWorkspaces } from './workspaces'
 import { createLifecycleAgentBridge } from './agent-bridge'
-import { pluginToolRefusalLog } from './chrome-broker'
-import { requirePluginAdapter } from './adapters'
 import type { PluginSupervisor } from '../supervisor/owner'
 import { createSupervisedPluginHost } from '../supervisor/node-host'
 import type { createPluginNodeHost, PluginNodeReady } from '../node-host'
@@ -42,14 +40,11 @@ export async function createSupervisorLifecycle(options: {
   const agents = createLifecycleAgentBridge({
     owner: options.owner,
     controller,
-    binding: (view, diagnostic) =>
-      requirePluginAdapter(view.installation.pluginId).broker(view, refused, diagnostic),
     diagnostic: (id, reason) => recordPluginToolFailure(options.lifecycle.root, id, reason),
     refused,
-    recoverHost: (view, stopped) =>
-      controller.restartPluginTools(view.installation.pluginId, view.runId, stopped),
     restartHost: (id) => controller.restartPluginTools(id, undefined, () => {}),
   })
+  controller.bindGenericTools(agents)
   consumer.agents = agents
   let closing: Promise<void> | undefined
   const bridge = await servePersonPluginControl({
@@ -71,5 +66,14 @@ export async function createSupervisorLifecycle(options: {
   options.owner.bindAgentBridge(lifecycleBridge)
   // Older owners do not call the optional cleanup hook; their physical shutdown still closes UI.
   void options.owner.closed.then(() => close())
-  return { controller, path: bridge.path, close }
+  return {
+    controller,
+    tools: {
+      listTools: agents.listTools,
+      callTool: agents.callTool,
+      cancelTool: agents.cancelTool,
+    },
+    path: bridge.path,
+    close,
+  }
 }

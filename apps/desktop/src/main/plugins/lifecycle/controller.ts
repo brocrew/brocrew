@@ -1,5 +1,6 @@
 import type { PackageRef } from '../../../shared/plugin-package'
 import { inspectPluginPackage } from '../package-source'
+import type { InstanceToolScope, PluginToolCall, PluginToolService } from '../tool-broker'
 import { createContributionRegistry, pluginContributions } from '../contributions'
 import { pluginNodePolicy } from '../node-policy'
 import { parseRepoPluginList } from '../catalogue/repo-list'
@@ -78,6 +79,26 @@ export interface PreparedPluginMutation {
 
 /** One instance per exclusively owned supervisor. Settings/person authority is never an agent API. */
 export class PluginLifecycleController {
+  private genericTools?: PluginToolService
+  /** The supervisor injects its one forwarding path after constructing the controller. */
+  bindGenericTools(tools: PluginToolService): void {
+    this.genericTools = tools
+  }
+  genericListTools(scope: InstanceToolScope, signal?: AbortSignal) {
+    if (!this.genericTools)
+      return Promise.reject(new Error('Plugin MCP connection is unavailable.'))
+    return this.genericTools.listTools(scope, signal)
+  }
+  genericCallTool(input: InstanceToolScope & Omit<PluginToolCall, 'workspaceId'>) {
+    if (!this.genericTools)
+      return Promise.reject(new Error('Plugin MCP connection is unavailable.'))
+    return this.genericTools.callTool(input)
+  }
+  genericCancelTool(input: InstanceToolScope & { requestId: string | number }) {
+    if (!this.genericTools)
+      return Promise.reject(new Error('Plugin MCP connection is unavailable.'))
+    return this.genericTools.cancelTool(input)
+  }
   private readonly workspaces = new Map<LifecycleWorkspace, Workspace>()
   private readonly blocks = new Map<string, symbol>()
   private readonly runs = new Map<string, Running>()
@@ -1433,13 +1454,8 @@ export class PluginLifecycleController {
     return [...this.runs.keys()].sort().flatMap((id) => {
       try {
         const view = this.screen(handle, id)
-        if (
-          view.package.manifest.format === 3 ||
-          !view.package.manifest.server ||
-          !view.package.compatibility.tools ||
-          !pluginContributions(view.package).tools
-        )
-          return []
+        const contributions = pluginContributions(view.package)
+        if (!contributions.tools || !contributions.mcp) return []
         const run = this.runs.get(id)!
         const choice = this.options.state.getEnabled(workspaceId, id)
         return [

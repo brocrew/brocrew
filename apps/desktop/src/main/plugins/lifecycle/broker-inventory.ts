@@ -1,46 +1,49 @@
-import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import type { PluginLifecycleController } from './controller'
+import { PluginBrokerError, type PluginMcpClient } from '../tool-broker'
 
-/**
- * The plugin's tools that a binding may offer: only reviewed names, and none whose definition carries
- * either of the plugin's credentials. Anything else is refused without hiding the reviewed tools.
- */
-export async function admittedPluginTools(
-  view: ReturnType<PluginLifecycleController['agentAttachments']>[number],
-  names: ReadonlySet<string>,
-  refused: () => void | Promise<void>,
-) {
-  const connection = await view.connection
-  if (!view.current()) throw new Error('unavailable')
-  const endpoint = connection.mcp()
-  const credential = endpoint.headers.Authorization.slice('Bearer '.length)
-  const adminCredential = connection.admin().headers.Authorization.slice('Bearer '.length)
-  const client = new Client({ name: 'brocrew-plugin-inventory', version: '1' })
-  client.onerror = () => undefined
+type View = ReturnType<PluginLifecycleController['agentAttachments']>[number]
+
+/** The process runner owns connection lifetime. Inventory/calls reuse that same MCP client. */
+export async function pluginMcpClient(view: View): Promise<PluginMcpClient> {
   try {
-    await client.connect(
-      new StreamableHTTPClientTransport(new URL(endpoint.url), {
-        requestInit: { headers: endpoint.headers, redirect: 'error' },
-        fetch: (url, init) =>
-          fetch(url, {
-            ...init,
-            redirect: 'error',
-            signal: AbortSignal.timeout(1500),
-          }),
-      }),
-    )
-    const inventory = await client.listTools(undefined, { timeout: 1500 })
-    if (inventory.nextCursor || inventory.tools.length > 256 || !view.current())
-      throw new Error('unavailable')
-    const admitted = inventory.tools.filter(
-      (tool) =>
-        names.has(tool.name) &&
-        ![credential, adminCredential].some((one) => JSON.stringify(tool).includes(one)),
-    )
-    if (admitted.length !== inventory.tools.length) await refused()
-    return { connection, endpoint, credential, adminCredential, admitted }
-  } finally {
-    await client.close()
+    const connection = await view.connection
+    if (!view.current()) throw new PluginBrokerError('unavailable')
+    const client = (connection as typeof connection & { client: PluginMcpClient }).client
+    if (!client) throw new PluginBrokerError('unavailable')
+    return client
+  } catch (error) {
+    if (error instanceof PluginBrokerError) throw error
+    throw new PluginBrokerError('transport')
+  }
+}
+
+/** Compatibility for the old package adapters until their package migration removes them. */
+export async function admittedPluginTools(
+  view: View,
+  _names: ReadonlySet<string>,
+  _refused: () => void | Promise<void>,
+) {
+  void _names
+  void _refused
+  const connection = await view.connection
+  const client = await pluginMcpClient(view)
+  const admitted = [] as Awaited<ReturnType<PluginMcpClient['listTools']>>['tools']
+  let cursor: string | undefined
+  const seen = new Set<string>()
+  do {
+    const page = await client.listTools(cursor === undefined ? undefined : { cursor })
+    if (!view.current()) throw new Error('Plugin instance is unavailable.')
+    admitted.push(...page.tools)
+    cursor = page.nextCursor
+    if (cursor !== undefined && seen.has(cursor)) throw new Error('Invalid MCP inventory cursor.')
+    if (cursor !== undefined) seen.add(cursor)
+  } while (cursor !== undefined)
+  const endpoint = connection.mcp()
+  return {
+    connection,
+    endpoint,
+    admitted,
+    credential: endpoint.headers.Authorization.slice('Bearer '.length),
+    adminCredential: connection.admin().headers.Authorization.slice('Bearer '.length),
   }
 }

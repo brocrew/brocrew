@@ -2,6 +2,7 @@ import { closeSync, constants, fstatSync, ftruncateSync, writeSync } from 'node:
 import { join } from 'node:path'
 import { createFreshFile, openNotThroughALink } from '@brobot2/runtime/provider-home'
 import { isPrivateEntry } from './private-files'
+import { immutableFile } from './node-host-files'
 
 const reasons = [
   'invalid',
@@ -76,7 +77,7 @@ export function recordPluginToolFailure(
   pluginId: string,
   reason: PluginToolFailureReason,
 ): void {
-  if (!['chrome', 'whatsapp', 'host'].includes(pluginId) || !allowed.has(reason)) return
+  if (!allowed.has(reason)) return
   let fd: number | undefined
   try {
     const path = join(root, 'plugin-tool-failures.log')
@@ -90,7 +91,7 @@ export function recordPluginToolFailure(
     }
     const stat = fstatSync(fd)
     if (!stat.isFile() || stat.nlink !== 1 || !isPrivateEntry(stat)) return
-    const line = `${new Date().toISOString()} [plugins] tool-failure plugin=${pluginId} reason=${reason}\n`
+    const line = `${new Date().toISOString()} [plugins] tool-failure plugin=${encodeURIComponent(pluginId)} reason=${reason}\n`
     // Keep accepting new reasons after the bounded history fills, without following another name.
     const full = stat.size + Buffer.byteLength(line) > 1024 * 1024
     if (full) ftruncateSync(fd, 0)
@@ -100,4 +101,14 @@ export function recordPluginToolFailure(
   } finally {
     if (fd !== undefined) closeSync(fd)
   }
+}
+
+/** A generic supervisor diagnostic; package-specific adapters are not part of forwarding. */
+export function pluginToolRefusalLog(root: string): () => Promise<void> {
+  let recorded: Promise<void> | undefined
+  return () =>
+    (recorded ??= immutableFile(
+      join(root, 'plugin-tool-refusals.log'),
+      Buffer.from('Some plugin tools are unavailable.\n'),
+    ).catch(() => undefined))
 }

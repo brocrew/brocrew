@@ -2,7 +2,6 @@ import type { PluginToolDiagnostic } from '../tool-diagnostics'
 import type { PluginRemovalOutcome } from '../../../shared/plugin-settings'
 import type { PluginNodeReady } from '../node-host'
 import { PluginSupervisorError } from '../supervisor/protocol'
-import type { createLifecycleAgentBridge } from './agent-bridge'
 import { ChromeProposal, applyChromeProfile } from './chrome-apply'
 import { chromeBrokerBinding } from './chrome-broker'
 import { readChromeConfiguration } from './chrome-read'
@@ -13,7 +12,7 @@ import { whatsappBrokerBinding } from './whatsapp-broker'
 import { readWhatsAppConfiguration } from './whatsapp-read'
 
 type AgentView = ReturnType<PluginLifecycleController['agentAttachments']>[number]
-type Binding = ReturnType<Parameters<typeof createLifecycleAgentBridge>[0]['binding']>
+type Binding = ReturnType<typeof chromeBrokerBinding>
 
 /** One reviewed adapter per hosted plugin: its page's read and apply, and its tools' binding. */
 export interface PluginAdapter {
