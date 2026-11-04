@@ -7,6 +7,7 @@ import {
   lstatSync,
   symlinkSync,
   linkSync,
+  chmodSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -60,7 +61,10 @@ it.skipIf(process.platform === 'win32')(
       writeFileSync(target, 'fictional-original', { mode: 0o600 })
       if (kind === 'symlink') symlinkSync(target, f.path)
       else if (kind === 'hardlink') linkSync(target, f.path)
-      else writeFileSync(f.path, 'fictional-original', { mode: 0o644 })
+      else {
+        writeFileSync(f.path, 'fictional-original', { mode: 0o644 })
+        chmodSync(f.path, 0o644)
+      }
       recordPluginToolFailure(f.root, 'garden', 'proof-rejected')
       expect(readFileSync(target, 'utf8')).toBe('fictional-original')
       expect(readFileSync(f.path, 'utf8')).toBe('fictional-original')
