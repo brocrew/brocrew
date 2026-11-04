@@ -144,10 +144,14 @@ it.each([false, true])(
     const reconnectMcpServer = vi.fn(async () => {
       connected = true
     })
-    const setMcpServers = vi.fn(async (servers: Record<string, { url?: string }>) => {
-      installedUrl = servers[currentRoute.name]!.url!
-      return { added: [], removed: [], errors: {} }
-    })
+    const setMcpServers = vi.fn(
+      async (servers: Parameters<NonNullable<ClaudeQuery['setMcpServers']>>[0]) => {
+        const server = servers[currentRoute.name]!
+        if (!('url' in server)) throw new Error('fictional managed server must use HTTP')
+        installedUrl = server.url
+        return { added: [], removed: [], errors: {} }
+      },
+    )
     const query: ClaudeQuery = Object.assign(
       {
         interrupt: async () => {},
