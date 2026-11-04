@@ -14,6 +14,7 @@ import { join } from 'node:path'
 import { packageFixture, fictionalPublicKey, signed } from './plugin-package-fixtures'
 import { loadPluginCatalogue } from '../src/main/plugins/catalogue/loader'
 import { pluginPersonCapability } from '../src/main/plugins/catalogue/capability'
+import { pluginSha256 } from '../src/main/plugins/package-digests'
 const roots: string[] = []
 afterEach(async () => {
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true })
@@ -91,6 +92,54 @@ describe.skipIf(process.platform === 'win32')(
       f.fetch.mockClear()
       await expect(loadPluginCatalogue(f.options)).rejects.toThrow()
       expect(f.fetch).not.toHaveBeenCalled()
+    })
+    it('publishes beyond 512 retained catalogue pairs without replacing old bytes or accepting tampering', async () => {
+      const f = await fixture()
+      const prior = await loadPluginCatalogue(f.options)
+      const cache = join(f.root, 'catalogue-cache')
+      const retained: Array<{ path: string; bytes: Buffer; signature: Buffer }> = []
+      for (let index = 0; index < 513; index++) {
+        const pair = signed({
+          format: 1,
+          entries: [{ ...f.pkg.release, version: `0.0.${index}` }],
+        })
+        const path = join(cache, pluginSha256(Buffer.concat([pair.bytes, pair.signature])))
+        await mkdir(path)
+        await writeFile(join(path, 'catalogue.json'), pair.bytes)
+        await writeFile(join(path, 'catalogue.sig'), pair.signature)
+        retained.push({ path, ...pair })
+      }
+      const next = signed({
+        format: 1,
+        entries: [{ ...f.pkg.release, version: '1.0.1' }],
+      })
+      f.fetch.mockImplementation(
+        async (url) =>
+          new Response(new Uint8Array(String(url).endsWith('.sig') ? next.signature : next.bytes)),
+      )
+      const loaded = await loadPluginCatalogue(f.options)
+      expect(loaded?.bytes).toEqual(next.bytes)
+      expect(loaded?.signatureBytes).toEqual(next.signature)
+      expect(loaded?.catalogue).not.toBe(prior?.catalogue)
+      expect(await readFile(prior!.catalogue)).toEqual(f.pkg.bytes)
+      expect(await readFile(prior!.signature)).toEqual(f.pkg.signature)
+      for (const pair of retained) {
+        expect(await readFile(join(pair.path, 'catalogue.json'))).toEqual(pair.bytes)
+        expect(await readFile(join(pair.path, 'catalogue.sig'))).toEqual(pair.signature)
+      }
+      const pointer = await readFile(join(cache, 'current.json'))
+      f.fetch.mockImplementation(
+        async (url) =>
+          new Response(String(url).endsWith('.sig') ? new Uint8Array(next.signature) : '{}'),
+      )
+      await expect(loadPluginCatalogue(f.options)).rejects.toThrow()
+      expect(await readFile(join(cache, 'current.json'))).toEqual(pointer)
+      expect(await readFile(loaded!.catalogue)).toEqual(next.bytes)
+      expect(await readFile(loaded!.signature)).toEqual(next.signature)
+      f.fetch.mockRejectedValue(new Error('fictional offline'))
+      const offline = await loadPluginCatalogue(f.options)
+      expect(offline?.bytes).toEqual(next.bytes)
+      expect(offline?.signatureBytes).toEqual(next.signature)
     })
     it('publishes and reverifies exact catalogue bytes through an ordinary cache directory alias', async () => {
       const f = await fixture()
