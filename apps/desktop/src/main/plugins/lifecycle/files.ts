@@ -22,6 +22,7 @@ export const Effect = z.strictObject({
   offlineCleanup: z.boolean(),
   compensates: z.uuid().nullable(),
   workspaceId: z.string().optional(),
+  explicitRemoval: z.boolean().optional(),
   cleanupAttempted: z.boolean().optional(),
   cleanupReply: z.unknown().optional(),
   cleanupResult: z.enum(['completed', 'unconfirmed']).optional(),

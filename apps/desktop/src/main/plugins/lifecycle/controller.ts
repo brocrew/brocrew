@@ -1400,7 +1400,11 @@ export class PluginLifecycleController {
     pkg: VerifiedPluginPackage,
   ): Promise<'not-requested' | 'completed' | 'unconfirmed'> {
     const manifest = pkg.manifest
-    if (manifest.format !== 3 || !manifest.lifecycle.beforeRemove || effect.compensates !== null)
+    if (
+      manifest.format !== 3 ||
+      !manifest.lifecycle.beforeRemove ||
+      effect.explicitRemoval !== true
+    )
       return 'not-requested'
     if (effect.cleanupAttempted) return effect.cleanupResult ?? 'unconfirmed'
     effect.cleanupAttempted = true
@@ -1446,7 +1450,7 @@ export class PluginLifecycleController {
       const cleanup = await this.genericBeforeRemoval(effect, pkg!)
       outcome = {
         data:
-          pkg!.contract.lifecycle.dataOnRemove === 'remove' && effect.compensates === null
+          pkg!.contract.lifecycle.dataOnRemove === 'remove' && effect.explicitRemoval === true
             ? 'deleted'
             : 'kept',
         cleanup,
@@ -1455,10 +1459,13 @@ export class PluginLifecycleController {
       effect.removalOutcome = outcome
       await this.effects.write(effect)
     }
-    const logout = generic ? undefined : await this.beforeRemoval(install.pluginId)
+    const logout =
+      generic || effect.explicitRemoval !== true
+        ? undefined
+        : await this.beforeRemoval(install.pluginId)
     const deleteData = generic
       ? outcome!.data === 'deleted'
-      : Boolean(pluginAdapter(install.pluginId)?.uninstall)
+      : effect.explicitRemoval === true && Boolean(pluginAdapter(install.pluginId)?.uninstall)
     const results = await Promise.allSettled([
       this.stop(install.pluginId, effect.operationId),
       this.revoke(install),
@@ -1499,6 +1506,20 @@ export class PluginLifecycleController {
     const state = this.options.state.inspect(),
       before = this.current(id)
     if (!before) return refuse()
+    const effect: Effect = {
+      format: 1,
+      operationId,
+      pluginId: id,
+      installId: before.installId,
+      action: 'uninstall',
+      phase: 'prepared',
+      offlineCleanup: true,
+      compensates,
+      explicitRemoval: compensates === null,
+      ...(workspaceId === undefined ? {} : { workspaceId }),
+    }
+    await this.effects.write(effect)
+    // Record whether removal was requested by the person before publishing its pending operation.
     const operation = this.prepareStateOperation({
       operationId,
       workspaces: [...this.workspaces.values()]
@@ -1515,18 +1536,6 @@ export class PluginLifecycleController {
         release: null,
       },
     })
-    const effect: Effect = {
-      format: 1,
-      operationId,
-      pluginId: id,
-      installId: before.installId,
-      action: 'uninstall',
-      phase: 'prepared',
-      offlineCleanup: true,
-      compensates,
-      ...(workspaceId === undefined ? {} : { workspaceId }),
-    }
-    await this.effects.write(effect)
     return this.finishRemoval(effect, operation.next!)
   }
   async uninstall(
