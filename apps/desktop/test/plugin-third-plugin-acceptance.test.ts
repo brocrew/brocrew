@@ -119,8 +119,10 @@ async function acceptance(
   const sessions: AcceptanceSession[] = []
   async function start(): Promise<AcceptanceSession> {
     const owner = await PluginSupervisor.start({ root, workspaceRoots: workspaces })
+    const sessionCleanup: { close?: () => Promise<void> } = {}
     cleanup.push(async () => {
-      await owner.shutdown()
+      if (sessionCleanup.close) await sessionCleanup.close()
+      else await owner.shutdown()
     })
     const lease = await PluginWorkspaceLease.attach({
       root,
@@ -163,12 +165,13 @@ async function acceptance(
       if (closed) return
       closed = true
       for (const page of pages) page.close()
-      for (const client of clients) await client.close()
+      await Promise.allSettled(clients.map((client) => client.close()))
       await service.close()
       await host.stop()
       await lease.close()
       expect(await owner.shutdown()).toBe(true)
     }
+    sessionCleanup.close = close
     const handles: LifecycleWorkspace[] = []
     const projections = ids.map(projection)
     for (const projection of projections)
