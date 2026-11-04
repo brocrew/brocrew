@@ -6,8 +6,22 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { PluginSupervisor } from '../../src/main/plugins/supervisor/owner'
 import { keepPluginRootPrivate } from '../../src/main/plugins/private-files'
+import { SupervisorStorage } from '../../src/main/plugins/supervisor/storage'
+import { recordDrainTrace } from '../../src/main/plugins/supervisor/drain-trace'
 
-const [root, workspace, mode] = process.argv.slice(2) as [string, string, string]
+const [root, workspace, mode, fault] = process.argv.slice(2) as [string, string, string, string?]
+let refusedWrites =
+  fault === 'blocked-write-held' ? Infinity : fault === 'blocked-write-once' ? 1 : 0
+const write = SupervisorStorage.prototype.write
+SupervisorStorage.prototype.write = function (value) {
+  if (value.phase === 'blocked' && refusedWrites > 0) {
+    refusedWrites--
+    throw Object.assign(new Error('Bearer fictional-secret /fictional/private-owner-path'), {
+      code: 'EPERM',
+    })
+  }
+  return write.call(this, value)
+}
 let releaseRevocations!: () => void
 const revocations = new Promise<void>((resolve) => {
   releaseRevocations = resolve
@@ -19,6 +33,7 @@ const owner = await PluginSupervisor.start({
   root,
   workspaceRoots: [workspace],
   drainWithin: 100,
+  traceDrain: (event) => recordDrainTrace(root, event),
   revoke: async () => {
     if (mode === 'start-failure' || mode === 'revoke-hung') await revocations
   },
@@ -30,6 +45,7 @@ const owner = await PluginSupervisor.start({
 void owner.closed.then(() => process.exit(0))
 let physical: ChildProcess | undefined
 process.on('message', (message) => {
+  if (message === 'allow-blocked-write') refusedWrites = 0
   if (message === 'fail-start') {
     rejectStart?.(new Error('fictional start may have left an unknown descendant'))
     void starting

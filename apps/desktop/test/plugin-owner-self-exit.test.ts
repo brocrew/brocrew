@@ -113,15 +113,19 @@ afterEach(async () => {
 afterAll(async () => {
   if (folder) await rm(folder, { recursive: true, force: true })
 })
-async function fixture(name: string, mode: string) {
+async function fixture(name: string, mode: string, fault?: string) {
   const parent = join(folder, name),
     root = join(parent, 'p'),
     workspaceRoot = join(parent, 'w')
   await mkdir(workspaceRoot, { recursive: true, mode: 0o700 })
   await keepPluginRootPrivate(root)
-  const child = fork(join(folder, 'owner.mjs'), [root, workspaceRoot, mode], {
-    stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
-  })
+  const child = fork(
+    join(folder, 'owner.mjs'),
+    [root, workspaceRoot, mode, ...(fault ? [fault] : [])],
+    {
+      stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
+    },
+  )
   children.push(child)
   let errors = ''
   child.stderr?.on('data', (bytes: Buffer) => {
@@ -141,6 +145,43 @@ async function fixture(name: string, mode: string) {
   return { root, workspaceRoot, child, options, lease, runId }
 }
 describe('blocked standalone owner self-exit under its unchanged fence', () => {
+  it.each(['proven', 'revoke-hung'])(
+    'keeps the blocked publication after a transient sharing refusal with %s runs',
+    async (mode) => {
+      const target = await fixture('blocked-write-once-' + mode, mode, 'blocked-write-once')
+      await target.lease.close()
+      await ended(target.child)
+      expect(target.child.exitCode).toBe(0)
+      expect(
+        JSON.parse(await readFile(join(target.root, 'supervisor/owner.json'), 'utf8')).phase,
+      ).toBe('blocked')
+      const trace = await readFile(join(target.root, 'plugin-drain.log'), 'utf8')
+      expect(trace).toContain('stage=blocked-write state=failed attempt=1 errno=EPERM')
+      expect(trace).toContain('stage=blocked-write state=complete attempt=2')
+      expect(trace).not.toMatch(/Bearer|fictional-secret|private-owner-path/)
+    },
+  )
+  it('holds the same fence before blocked publication succeeds, even with positive physical proofs', async () => {
+    const target = await fixture('blocked-write-held', 'proven', 'blocked-write-held')
+    const fence = await lstat(join(target.root, 'supervisor/owner-lock.sqlite'), { bigint: true })
+    expect(await target.lease.close()).toBe(false)
+    expect(target.child.exitCode).toBeNull()
+    await expect(
+      PluginSupervisor.start({
+        root: target.root,
+        workspaceRoots: [target.workspaceRoot],
+        recoverPrevious: () => previousRunsProvenStopped(target.root),
+      }),
+    ).rejects.toMatchObject({ code: 'busy' })
+    target.child.send('allow-blocked-write')
+    await ended(target.child)
+    expect(target.child.exitCode).toBe(0)
+    expect(
+      JSON.parse(await readFile(join(target.root, 'supervisor/owner.json'), 'utf8')).phase,
+    ).toBe('blocked')
+    const after = await lstat(join(target.root, 'supervisor/owner-lock.sqlite'), { bigint: true })
+    expect([after.dev, after.ino]).toEqual([fence.dev, fence.ino])
+  })
   it.each(['none', 'proven', 'hung', 'revoke-hung'])(
     'exits after synthetic failure with %s physical runs, rechecks receipts, and leaves another slot untouched',
     async (mode) => {

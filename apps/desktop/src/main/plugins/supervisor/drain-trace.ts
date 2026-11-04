@@ -4,7 +4,7 @@ import { createFreshFile, openNotThroughALink } from '@brobot2/runtime/provider-
 import { isPrivateEntry } from '../private-files'
 
 export interface DrainTrace {
-  stage: 'child-proofs' | 'server.close' | 'stopped-write' | 'closed'
+  stage: 'child-proofs' | 'server.close' | 'stopped-write' | 'blocked-write' | 'closed'
   state: 'waiting' | 'complete' | 'failed'
   attempt?: number
   errno?: string

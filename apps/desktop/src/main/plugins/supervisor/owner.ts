@@ -101,6 +101,20 @@ async function stopAndProveChild(child: OwnedPluginChild): Promise<boolean> {
   return didExit && areGone
 }
 
+function drainWriteErrno(error: unknown): string {
+  try {
+    const code = (error as NodeJS.ErrnoException | null)?.code
+    if (
+      typeof code === 'string' &&
+      /^(EACCES|EPERM|ENOENT|ENOSPC|EBUSY|EIO|EROFS|EMFILE|ENFILE|ENOMEM|EINVAL)$/.test(code)
+    )
+      return code
+  } catch {
+    /* An error's custom properties are not diagnostic authority. */
+  }
+  return 'UNKNOWN'
+}
+
 /** Single process-tree owner. A successor proves every prior run under the same OS fence. */
 export class PluginSupervisor {
   private readonly leases = new Map<string, WorkspaceLease>()
@@ -219,14 +233,43 @@ export class PluginSupervisor {
       refuse()
     }
   }
-  private fail(): void {
+  private fail(): boolean {
     this.record.phase = 'blocked'
+    let published = false
     try {
       this.storage.write(this.record)
-    } catch {
+      published = true
+    } catch (error) {
       /* Retain the lock even if the record cannot be updated. */
+      this.trace({
+        stage: 'blocked-write',
+        state: 'failed',
+        attempt: 1,
+        errno: drainWriteErrno(error),
+      })
     }
     clearInterval(this.timer)
+    return published
+  }
+  private async publishBlockedBeforeExit(): Promise<void> {
+    let attempt = 1
+    for (;;) {
+      attempt++
+      try {
+        this.trace({ stage: 'blocked-write', state: 'waiting', attempt })
+        this.storage.write(this.record)
+        this.trace({ stage: 'blocked-write', state: 'complete', attempt })
+        return
+      } catch (error) {
+        this.trace({
+          stage: 'blocked-write',
+          state: 'failed',
+          attempt,
+          errno: drainWriteErrno(error),
+        })
+        await new Promise((resolve) => setTimeout(resolve, 1000))
+      }
+    }
   }
   private clock(): number {
     const current = this.now()
@@ -517,13 +560,21 @@ export class PluginSupervisor {
         !result.every((child) => child.proven)
       ) {
         this.trace({ stage: 'child-proofs', state: 'failed' })
-        this.fail()
+        const published = this.fail()
         // A failed consumer can leave this process's own async work unresolved. Do not unlock
         // and let a successor overlap it. Only process death ends that work and releases the OS
         // fence. Every physical child must still supply its exact exit and descendant proof.
         // A rejected/unfinished start or an unknown physical witness never reaches this seam.
-        if (!this.startFailed && result?.every((child) => child.inProcess || child.proven))
-          this.options.onBlockedWithoutProcesses?.()
+        if (
+          this.options.onBlockedWithoutProcesses &&
+          !this.startFailed &&
+          result?.every((child) => child.inProcess || child.proven)
+        ) {
+          // A sharing refusal must not turn a blocked owner into a durable draining record.
+          // Retain the same fence and all physical proofs until publication succeeds.
+          if (!published) await this.publishBlockedBeforeExit()
+          this.options.onBlockedWithoutProcesses()
+        }
         return false
       }
       this.trace({ stage: 'child-proofs', state: 'complete' })
@@ -540,24 +591,11 @@ export class PluginSupervisor {
           this.trace({ stage: 'stopped-write', state: 'complete', attempt })
           break
         } catch (error) {
-          let errno = 'UNKNOWN'
-          try {
-            const code = (error as NodeJS.ErrnoException | null)?.code
-            if (
-              typeof code === 'string' &&
-              /^(EACCES|EPERM|ENOENT|ENOSPC|EBUSY|EIO|EROFS|EMFILE|ENFILE|ENOMEM|EINVAL)$/.test(
-                code,
-              )
-            )
-              errno = code
-          } catch {
-            /* An error's custom properties are not diagnostic authority. */
-          }
           this.trace({
             stage: 'stopped-write',
             state: 'failed',
             attempt,
-            errno,
+            errno: drainWriteErrno(error),
           })
           await new Promise((resolve) => setTimeout(resolve, 1000))
         }
