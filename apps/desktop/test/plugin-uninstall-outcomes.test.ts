@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { randomUUID } from 'node:crypto'
+import { join } from 'node:path'
+import { writeFile } from 'node:fs/promises'
 import { logOutBeforeUninstall } from '../src/main/plugins/lifecycle/whatsapp-apply'
 import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
 import { servePersonPluginControl } from '../src/main/plugins/lifecycle/person-control'
@@ -111,8 +113,10 @@ describe.skipIf(process.platform === 'win32')('uninstall results over inert peer
         projection: projection().sink,
         propose: () => {},
       })
-      expect((await client.catalogue())[0]?.hasRemoteLogout).toBe(true)
-      await client.install('whatsapp')
+      expect((await client.catalogue())[0]?.uninstallDeletesData).toBe(true)
+      const archive = join(f.parent, 'fictional-whatsapp.tar')
+      await writeFile(archive, f.pkg.archive)
+      await client.install(archive)
       vi.stubGlobal(
         'fetch',
         vi.fn(async () => Response.json({})),
@@ -121,6 +125,7 @@ describe.skipIf(process.platform === 'win32')('uninstall results over inert peer
         data: 'deleted',
         logout: 'unconfirmed',
       })
+      expect(f.events).toContain('remove-data whatsapp')
       expect((await client.catalogue())[0]?.installed).toBe(false)
       expect(f.state.inspect().pending).toBeNull()
     } finally {
