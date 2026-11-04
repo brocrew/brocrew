@@ -63,6 +63,7 @@ interface Running {
   run: LifecycleRun
   package: VerifiedPluginPackage
   ended: boolean
+  exitProven?: boolean
   revocation?: Promise<void>
   priorityClamped?: boolean | null
 }
@@ -650,12 +651,25 @@ export class PluginLifecycleController {
     const running: Running = { run, installId: install.installId, package: checked, ended: false }
     this.runs.set(install.pluginId, running)
     const ended = (proven: boolean) => {
-      if (this.runs.get(install.pluginId) !== running || running.ended) return
+      if (this.runs.get(install.pluginId) !== running) return
+      if (proven) running.exitProven = true
+      if (running.ended) return
       running.ended = true
       // Intentional exits belong to the drain; unexpected exits must also revoke consumers.
       if (this.draining && proven) return
+      const repairable =
+        !this.blocks.has(install.pluginId) ||
+        this.blocks.get(install.pluginId) === this.chromeToolRestartBlock
       const token = this.block(install.pluginId)
+      if (install.pluginId === 'chrome' && repairable) this.chromeToolRestartBlock = token
       this.cleanup.add(install.pluginId)
+      if (proven && install.pluginId === 'chrome') {
+        try {
+          this.options.onChromeHostExit?.(run.runId)
+        } catch {
+          /* Wakeup is not authority. */
+        }
+      }
       running.revocation = this.revoke(install).then(() => {
         if (
           proven &&
@@ -1106,7 +1120,32 @@ export class PluginLifecycleController {
         this.cleanup.add(id)
         // Prevent the intentional exit watcher from starting a competing revocation.
         running.ended = true
-        await bounded(() => running.run.stop())
+        if (!running.exitProven) {
+          try {
+            // Either exact stop or the retained positive exit witness is sufficient.
+            // A rejected exit witness cannot turn a still-pending stop into success.
+            const exited = running.run.exited.catch(() => new Promise<void>(() => {}))
+            await bounded(() =>
+              Promise.race([Promise.resolve().then(() => running.run.stop()), exited]),
+            )
+          } catch (error) {
+            // Keep the exact identity after a timeout. A later positive witness is
+            // a wakeup only; the bridge and this method recheck every admission fence.
+            void running.run.exited
+              .then(() => {
+                if (
+                  !this.draining &&
+                  this.runs.get(id) === running &&
+                  this.current(id)?.installId === install.installId &&
+                  this.blocks.get(id) === token
+                )
+                  this.options.onChromeHostExit?.(running.run.runId)
+              })
+              .catch(() => undefined)
+            throw error
+          }
+          running.exitProven = true
+        }
         stopped()
         // Exact host/descendant exit can now discharge the retained broker's execution barrier.
         await this.revoke(install)

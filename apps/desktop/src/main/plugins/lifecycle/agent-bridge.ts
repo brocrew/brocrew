@@ -21,6 +21,7 @@ interface Entry {
   readonly workspaces: Map<string, BrokerWorkspace>
   readonly view: View
   readonly confirmHostExit: () => void
+  readonly hostExitProof: Promise<void>
 }
 interface Route {
   lease: WorkspaceLease
@@ -91,6 +92,7 @@ export function createLifecycleAgentBridge(options: {
   const routes = new Map<string, Route>()
   const rebuilding = new Set<string>()
   const recoveries = new Map<Entry, Promise<boolean>>()
+  const hostExitNotifications = new WeakMap<Entry, Promise<void>>()
   const limited = new WeakSet<Entry>()
   const automaticRestarts: number[] = []
   const now = options.now ?? (() => performance.now())
@@ -121,15 +123,16 @@ export function createLifecycleAgentBridge(options: {
       }
     return pending
   }
-  function recoverEntry(entry: Entry, manual = false): Promise<boolean> {
+  function recoverEntry(entry: Entry, manual = false, hostGone = false): Promise<boolean> {
     const id = entry.view.installation.pluginId
     const prior = recoveries.get(entry)
     if (prior) return prior
-    if (closed || id !== 'chrome' || (!manual && liveEntries.get(id) !== entry))
+    if (closed || id !== 'chrome' || (!manual && !hostGone && liveEntries.get(id) !== entry))
       return Promise.resolve(false)
     if (!manual && entry.broker.status().available) return Promise.resolve(false)
     const completed = entry.broker.owner.hasCompletionProof()
-    if (!completed && !options.recoverChromeHost) return Promise.resolve(false)
+    if ((manual || hostGone || !completed) && !options.recoverChromeHost)
+      return Promise.resolve(false)
     if (!manual) {
       const at = now()
       while (automaticRestarts.length && automaticRestarts[0]! <= at - 600_000)
@@ -144,8 +147,8 @@ export function createLifecycleAgentBridge(options: {
     let hostProven = false
     const work = Promise.resolve()
       .then(async () => {
-        if (closed || (!manual && liveEntries.get(id) !== entry)) return false
-        if (completed && !manual) {
+        if (closed || (!manual && !hostGone && liveEntries.get(id) !== entry)) return false
+        if (completed && !manual && !hostGone) {
           const closing = deny(id)
           rebuilding.add(id)
           await Promise.all(closing)
@@ -189,7 +192,7 @@ export function createLifecycleAgentBridge(options: {
       .catch(() => {
         reportPluginToolFailure(
           diagnostic(id),
-          completed && !manual
+          completed && !manual && !hostGone
             ? 'recovery-route-close-failed'
             : hostProven
               ? 'recovery-rebind-failed'
@@ -334,10 +337,11 @@ export function createLifecycleAgentBridge(options: {
             const stopped = new Promise<void>((resolve) => {
               confirmHostExit = resolve
             })
-            let entry!: Entry
+            const held: { entry?: Entry } = {}
+            const hostExitProof = Promise.any([view.exited, stopped])
             const broker = createPluginToolBroker({
               ...binding,
-              hostExited: Promise.any([view.exited, stopped]),
+              hostExited: hostExitProof,
               audit(event) {
                 if (event.event === 'unavailable' || event.event === 'refused')
                   reportPluginToolFailure(report, event.reason ?? event.code ?? 'unavailable')
@@ -348,7 +352,7 @@ export function createLifecycleAgentBridge(options: {
                 }
                 if (event.event === 'unavailable' || event.event === 'finished')
                   queueMicrotask(() => {
-                    if (entry) void recoverEntry(entry)
+                    if (held.entry) void recoverEntry(held.entry)
                   })
               },
               binding: {
@@ -370,13 +374,15 @@ export function createLifecycleAgentBridge(options: {
                 return active && binding.isAllowed(who, use)
               },
             })
-            entry = {
+            const entry: Entry = {
               identity,
               broker,
               view,
               confirmHostExit,
+              hostExitProof,
               workspaces: new Map<string, BrokerWorkspace>(),
             }
+            held.entry = entry
             liveEntries.set(id, entry)
             return entry
           })
@@ -454,6 +460,26 @@ export function createLifecycleAgentBridge(options: {
   return {
     deny,
     revoke,
+    /** A run id is a non-authorizing wakeup, never a substitute for its retained proof. */
+    hostExited(runId: string): void {
+      void (async () => {
+        const entry = liveEntries.get('chrome') ?? (await stopping.get('chrome'))
+        if (closed || !entry || entry.view.runId !== runId) return
+        let work = hostExitNotifications.get(entry)
+        if (!work) {
+          work = (async () => {
+            await entry.view.exited
+            await entry.hostExitProof
+            if (closed) return
+            const prior = recoveries.get(entry)
+            if (prior && (await prior)) return
+            if (!closed) await recoverEntry(entry, false, true)
+          })()
+          hostExitNotifications.set(entry, work)
+        }
+        await work
+      })().catch(() => reportPluginToolFailure(diagnostic('chrome'), 'host-exit-unproven'))
+    },
     async restartChrome(): Promise<void> {
       if (closed) throw new Error('unavailable')
       const entry = liveEntries.get('chrome') ?? (await stopping.get('chrome'))

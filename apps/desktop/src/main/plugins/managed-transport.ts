@@ -273,8 +273,7 @@ export async function openManagedPluginRoute(
           res.end()
           return
         }
-        let flushed!: Promise<void>
-        flushed = new Promise<void>((resolve) => {
+        const flushed: Promise<void> = new Promise<void>((resolve) => {
           const done = () => {
             res.off('finish', done)
             res.off('close', done)

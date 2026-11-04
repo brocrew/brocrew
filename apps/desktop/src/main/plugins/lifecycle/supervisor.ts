@@ -29,6 +29,7 @@ export async function createSupervisorLifecycle(options: {
         consumer.agents?.deny(id)
         options.lifecycle.deny(id)
       },
+      onChromeHostExit: (runId) => consumer.agents?.hostExited(runId),
       runtime: {
         start: (spec) => host.prepare(spec),
         removeCode: (id, digest) => options.host.removePackage(id, digest),
