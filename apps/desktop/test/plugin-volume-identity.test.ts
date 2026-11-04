@@ -7,29 +7,29 @@ describe.each([
   ['standalone Chrome', chrome],
 ] as const)('%s native volume identity', (_name, readVolume) => {
   const volume = 'ABCDEF12-1111-4111-8111-111111111111'
-  it('resolves a firmlink through its device and records only VolumeUUID', () => {
-    const read = vi.fn((program: string) =>
-      program === '/bin/df'
-        ? 'Filesystem 512-blocks Used Available Capacity Mounted on\n/dev/disk3s5 100 20 80 20% /System/Volumes/Data\n'
-        : `<plist><dict><key>DiskUUID</key><string>other</string><key>VolumeUUID</key><string>${volume}</string></dict></plist>`,
-    )
-    expect(readVolume('/fictional/a folder', '17', { platform: 'darwin', read })).toBe(
+  it('reads the persistent Foundation UUID with the path passed only as an argument', () => {
+    const read = vi.fn(() => volume + '\n')
+    const file = `/fictional/a folder'; throw Error("injected")`
+    expect(readVolume(file, '17', { platform: 'darwin', read })).toBe(
       `apfs:${volume.toLowerCase()}`,
     )
-    expect(read.mock.calls).toEqual([
-      ['/bin/df', ['-P', '/fictional/a folder']],
-      ['/usr/sbin/diskutil', ['info', '-plist', '/dev/disk3s5']],
-    ])
+    expect(read).toHaveBeenCalledTimes(1)
+    const [program, args] = read.mock.calls[0] as unknown as [string, string[]]
+    expect(program).toBe('/usr/bin/osascript')
+    expect(args.slice(0, 3)).toEqual(['-l', 'JavaScript', '-e'])
+    expect(args.slice(-2)).toEqual(['--', file])
+    expect(args[3]).toContain('NSURLVolumeUUIDStringKey')
+    expect(args[3]).not.toContain(file)
   })
   it.each([
     '',
-    '<key>DiskUUID</key><string>other</string>',
-    '<key>VolumeUUID</key><string>invalid</string>',
-    `<key>VolumeUUID</key><string>${volume}</string><key>VolumeUUID</key><string>${volume}</string>`,
-  ])('refuses absent or ambiguous native UUID evidence %j', (plist) => {
-    const read = (program: string) =>
-      program === '/bin/df' ? 'header\n/dev/disk3s5 100 20 80 20% /mount\n' : plist
-    expect(() => readVolume('/fictional', '17', { platform: 'darwin', read })).toThrow(
+    'undefined',
+    'invalid',
+    '00000000-0000-0000-0000-000000000000',
+    `${volume}\n${volume}`,
+    `<key>VolumeUUID</key><string>${volume}</string>`,
+  ])('refuses absent or ambiguous native UUID evidence %j', (value) => {
+    expect(() => readVolume('/fictional', '17', { platform: 'darwin', read: () => value })).toThrow(
       'Volume identity unavailable',
     )
   })
