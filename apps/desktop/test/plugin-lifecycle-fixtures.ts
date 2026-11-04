@@ -62,6 +62,7 @@ export async function fixture(
   includeSkills = false,
   id = 'chrome',
   stateFault?: PluginDiskOptions['fault'],
+  manifestChange?: (manifest: ReturnType<typeof manifestFor>) => void,
 ) {
   // POSIX needs short Unix socket paths; Windows uses named pipes and its own temp directory.
   const temp = process.platform === 'win32' ? tmpdir() : '/tmp'
@@ -85,6 +86,7 @@ export async function fixture(
   manifest.platforms = [
     { os: process.platform as 'darwin' | 'linux', cpu: process.arch as 'arm64' | 'x64' },
   ]
+  manifestChange?.(manifest)
   const pkg = packageFixture({ manifest })
   const events: string[] = []
   let starts = 0,
